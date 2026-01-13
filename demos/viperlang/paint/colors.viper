@@ -10,23 +10,23 @@ entity ColorManager {
     expose Integer paletteCount;    // Number of palette colors
     expose Integer recentCount;     // Number of recent colors
 
-    // Palette storage (16 colors)
-    hide Integer p0;
-    hide Integer p1;
-    hide Integer p2;
-    hide Integer p3;
-    hide Integer p4;
-    hide Integer p5;
-    hide Integer p6;
-    hide Integer p7;
-    hide Integer p8;
-    hide Integer p9;
-    hide Integer p10;
-    hide Integer p11;
-    hide Integer p12;
-    hide Integer p13;
-    hide Integer p14;
-    hide Integer p15;
+    // Palette storage (64 colors)
+    hide Integer p0;  hide Integer p1;  hide Integer p2;  hide Integer p3;
+    hide Integer p4;  hide Integer p5;  hide Integer p6;  hide Integer p7;
+    hide Integer p8;  hide Integer p9;  hide Integer p10; hide Integer p11;
+    hide Integer p12; hide Integer p13; hide Integer p14; hide Integer p15;
+    hide Integer p16; hide Integer p17; hide Integer p18; hide Integer p19;
+    hide Integer p20; hide Integer p21; hide Integer p22; hide Integer p23;
+    hide Integer p24; hide Integer p25; hide Integer p26; hide Integer p27;
+    hide Integer p28; hide Integer p29; hide Integer p30; hide Integer p31;
+    hide Integer p32; hide Integer p33; hide Integer p34; hide Integer p35;
+    hide Integer p36; hide Integer p37; hide Integer p38; hide Integer p39;
+    hide Integer p40; hide Integer p41; hide Integer p42; hide Integer p43;
+    hide Integer p44; hide Integer p45; hide Integer p46; hide Integer p47;
+    hide Integer p48; hide Integer p49; hide Integer p50; hide Integer p51;
+    hide Integer p52; hide Integer p53; hide Integer p54; hide Integer p55;
+    hide Integer p56; hide Integer p57; hide Integer p58; hide Integer p59;
+    hide Integer p60; hide Integer p61; hide Integer p62; hide Integer p63;
 
     // Recent colors (8 colors)
     hide Integer r0;
@@ -43,24 +43,32 @@ entity ColorManager {
         foreground = config.COLOR_BLACK;
         background = config.COLOR_WHITE;
 
-        // Initialize 16-color palette
-        p0 = 0xFF000000;   // Black
-        p1 = 0xFFFFFFFF;   // White
-        p2 = 0xFFFF0000;   // Red
-        p3 = 0xFF00FF00;   // Green
-        p4 = 0xFF0000FF;   // Blue
-        p5 = 0xFFFFFF00;   // Yellow
-        p6 = 0xFFFF00FF;   // Magenta
-        p7 = 0xFF00FFFF;   // Cyan
-        p8 = 0xFF808080;   // Gray
-        p9 = 0xFFC0C0C0;   // Light Gray
-        p10 = 0xFF800000;  // Dark Red
-        p11 = 0xFF008000;  // Dark Green
-        p12 = 0xFF000080;  // Dark Blue
-        p13 = 0xFF808000;  // Olive
-        p14 = 0xFF800080;  // Purple
-        p15 = 0xFF008080;  // Teal
-        paletteCount = 16;
+        // Initialize 64-color palette (0x00RRGGBB format)
+        // Row 1: Basic colors
+        p0 = 0x000000;   p1 = 0xFFFFFF;   p2 = 0xFF0000;   p3 = 0x00FF00;
+        p4 = 0x0000FF;   p5 = 0xFFFF00;   p6 = 0xFF00FF;   p7 = 0x00FFFF;
+        // Row 2: Grays
+        p8 = 0x202020;   p9 = 0x404040;   p10 = 0x606060;  p11 = 0x808080;
+        p12 = 0xA0A0A0;  p13 = 0xC0C0C0;  p14 = 0xE0E0E0;  p15 = 0xF0F0F0;
+        // Row 3: Reds and pinks
+        p16 = 0x800000;  p17 = 0xB00000;  p18 = 0xFF0000;  p19 = 0xFF4040;
+        p20 = 0xFF8080;  p21 = 0xFFC0C0;  p22 = 0xFF69B4;  p23 = 0xFFB6C1;
+        // Row 4: Oranges and browns
+        p24 = 0x804000;  p25 = 0xB06000;  p26 = 0xFF8000;  p27 = 0xFFA040;
+        p28 = 0x8B4513;  p29 = 0xA0522D;  p30 = 0xD2691E;  p31 = 0xDEB887;
+        // Row 5: Yellows and golds
+        p32 = 0x808000;  p33 = 0xB0B000;  p34 = 0xFFFF00;  p35 = 0xFFFF80;
+        p36 = 0xFFD700;  p37 = 0xDAA520;  p38 = 0xF0E68C;  p39 = 0xFFFACD;
+        // Row 6: Greens
+        p40 = 0x004000;  p41 = 0x008000;  p42 = 0x00B000;  p43 = 0x00FF00;
+        p44 = 0x80FF80;  p45 = 0x32CD32;  p46 = 0x90EE90;  p47 = 0x98FB98;
+        // Row 7: Blues and cyans
+        p48 = 0x000040;  p49 = 0x000080;  p50 = 0x0000B0;  p51 = 0x0000FF;
+        p52 = 0x4040FF;  p53 = 0x8080FF;  p54 = 0x00FFFF;  p55 = 0x80FFFF;
+        // Row 8: Purples and magentas
+        p56 = 0x400040;  p57 = 0x800080;  p58 = 0xB000B0;  p59 = 0xFF00FF;
+        p60 = 0xFF80FF;  p61 = 0x8B008B;  p62 = 0x9932CC;  p63 = 0xDA70D6;
+        paletteCount = 64;
 
         // Clear recent colors
         r0 = 0;
@@ -110,6 +118,54 @@ entity ColorManager {
         if index == 13 { return p13; }
         if index == 14 { return p14; }
         if index == 15 { return p15; }
+        if index == 16 { return p16; }
+        if index == 17 { return p17; }
+        if index == 18 { return p18; }
+        if index == 19 { return p19; }
+        if index == 20 { return p20; }
+        if index == 21 { return p21; }
+        if index == 22 { return p22; }
+        if index == 23 { return p23; }
+        if index == 24 { return p24; }
+        if index == 25 { return p25; }
+        if index == 26 { return p26; }
+        if index == 27 { return p27; }
+        if index == 28 { return p28; }
+        if index == 29 { return p29; }
+        if index == 30 { return p30; }
+        if index == 31 { return p31; }
+        if index == 32 { return p32; }
+        if index == 33 { return p33; }
+        if index == 34 { return p34; }
+        if index == 35 { return p35; }
+        if index == 36 { return p36; }
+        if index == 37 { return p37; }
+        if index == 38 { return p38; }
+        if index == 39 { return p39; }
+        if index == 40 { return p40; }
+        if index == 41 { return p41; }
+        if index == 42 { return p42; }
+        if index == 43 { return p43; }
+        if index == 44 { return p44; }
+        if index == 45 { return p45; }
+        if index == 46 { return p46; }
+        if index == 47 { return p47; }
+        if index == 48 { return p48; }
+        if index == 49 { return p49; }
+        if index == 50 { return p50; }
+        if index == 51 { return p51; }
+        if index == 52 { return p52; }
+        if index == 53 { return p53; }
+        if index == 54 { return p54; }
+        if index == 55 { return p55; }
+        if index == 56 { return p56; }
+        if index == 57 { return p57; }
+        if index == 58 { return p58; }
+        if index == 59 { return p59; }
+        if index == 60 { return p60; }
+        if index == 61 { return p61; }
+        if index == 62 { return p62; }
+        if index == 63 { return p63; }
         return 0;
     }
 
@@ -148,22 +204,22 @@ entity ColorManager {
         }
     }
 
-    // Get red component (0-255)
+    // Get red component (0-255) - 0x00RRGGBB format
     expose func getRed() -> Integer {
-        return (foreground / 65536) % 256;
+        return (foreground / 65536) % 256;  // bits 16-23
     }
 
-    // Get green component (0-255)
+    // Get green component (0-255) - 0x00RRGGBB format
     expose func getGreen() -> Integer {
-        return (foreground / 256) % 256;
+        return (foreground / 256) % 256;  // bits 8-15
     }
 
-    // Get blue component (0-255)
+    // Get blue component (0-255) - 0x00RRGGBB format
     expose func getBlue() -> Integer {
-        return foreground % 256;
+        return foreground % 256;  // bits 0-7
     }
 
-    // Set foreground from RGB components
+    // Set foreground from RGB components (0x00RRGGBB format)
     expose func setRGB(r: Integer, g: Integer, b: Integer) {
         // Clamp values
         if r < 0 { r = 0; }
@@ -173,17 +229,17 @@ entity ColorManager {
         if b < 0 { b = 0; }
         if b > 255 { b = 255; }
 
-        foreground = 0xFF000000 + r * 65536 + g * 256 + b;
+        foreground = r * 65536 + g * 256 + b;  // 0x00RRGGBB
         addRecent(foreground);
     }
 }
 
-// Utility: Create RGB color
+// Utility: Create RGB color (0x00RRGGBB format)
 func makeRGB(r: Integer, g: Integer, b: Integer) -> Integer {
-    return 0xFF000000 + r * 65536 + g * 256 + b;
+    return r * 65536 + g * 256 + b;
 }
 
-// Utility: Blend two colors (t = 0 to 100)
+// Utility: Blend two colors (t = 0 to 100) - 0x00RRGGBB format
 func blendColors(c1: Integer, c2: Integer, t: Integer) -> Integer {
     var r1 = (c1 / 65536) % 256;
     var g1 = (c1 / 256) % 256;
@@ -197,5 +253,5 @@ func blendColors(c1: Integer, c2: Integer, t: Integer) -> Integer {
     var g = g1 + (g2 - g1) * t / 100;
     var b = b1 + (b2 - b1) * t / 100;
 
-    return 0xFF000000 + r * 65536 + g * 256 + b;
+    return r * 65536 + g * 256 + b;
 }

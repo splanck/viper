@@ -3,6 +3,16 @@ module canvas;
 
 import "./config";
 
+// Convert 0x00RRGGBB (Canvas format) to 0xRRGGBBFF (Pixels format)
+func toPixelColor(color: Integer) -> Integer {
+    return color * 256 + 255;
+}
+
+// Convert 0xRRGGBBFF (Pixels format) to 0x00RRGGBB (Canvas format)
+func fromPixelColor(color: Integer) -> Integer {
+    return color / 256;
+}
+
 // DrawingCanvas entity - manages the pixel buffer for drawing
 entity DrawingCanvas {
     expose Integer width;           // Canvas width in pixels
@@ -33,42 +43,43 @@ entity DrawingCanvas {
 
     // Clear canvas to background color
     expose func clear() {
-        // Fill by setting each pixel
+        // Fill by setting each pixel (convert to pixel format)
+        var pixelBg = toPixelColor(backgroundColor);
         var py = 0;
         while py < height {
             var px = 0;
             while px < width {
-                pixels.Set(px, py, backgroundColor);
+                pixels.Set(px, py, pixelBg);
                 px = px + 1;
             }
             py = py + 1;
         }
     }
 
-    // Get pixel color at position
+    // Get pixel color at position (returns 0x00RRGGBB format)
     expose func getPixel(x: Integer, y: Integer) -> Integer {
         if x >= 0 and x < width and y >= 0 and y < height {
-            return pixels.Get(x, y);
+            return fromPixelColor(pixels.Get(x, y));
         }
         return 0;
     }
 
-    // Set pixel color at position
+    // Set pixel color at position (expects 0x00RRGGBB format)
     expose func setPixel(x: Integer, y: Integer, color: Integer) {
         if x >= 0 and x < width and y >= 0 and y < height {
-            pixels.Set(x, y, color);
+            pixels.Set(x, y, toPixelColor(color));
         }
     }
 
-    // Set pixel with opacity blending
+    // Set pixel with opacity blending (expects 0x00RRGGBB format)
     expose func setPixelBlend(x: Integer, y: Integer, color: Integer, opacity: Integer) {
         if x >= 0 and x < width and y >= 0 and y < height {
             if opacity >= 100 {
-                pixels.Set(x, y, color);
+                pixels.Set(x, y, toPixelColor(color));
             } else if opacity > 0 {
-                var existing = pixels.Get(x, y);
+                var existing = fromPixelColor(pixels.Get(x, y));
                 var blended = blendColorsForOpacity(existing, color, opacity);
-                pixels.Set(x, y, blended);
+                pixels.Set(x, y, toPixelColor(blended));
             }
         }
     }
@@ -305,7 +316,7 @@ entity DrawingCanvas {
     }
 }
 
-// Helper: Blend two colors (t = 0 to 100)
+// Helper: Blend two colors (t = 0 to 100) - 0x00RRGGBB format
 func blendColorsForOpacity(c1: Integer, c2: Integer, t: Integer) -> Integer {
     var r1 = (c1 / 65536) % 256;
     var g1 = (c1 / 256) % 256;
@@ -319,5 +330,5 @@ func blendColorsForOpacity(c1: Integer, c2: Integer, t: Integer) -> Integer {
     var g = g1 + (g2 - g1) * t / 100;
     var b = b1 + (b2 - b1) * t / 100;
 
-    return 0xFF000000 + r * 65536 + g * 256 + b;
+    return r * 65536 + g * 256 + b;
 }

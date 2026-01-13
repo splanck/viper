@@ -46,6 +46,9 @@ typedef enum vg_widget_type {
     VG_WIDGET_CODEEDITOR,
     VG_WIDGET_IMAGE,
     VG_WIDGET_SPINNER,
+    VG_WIDGET_COLORSWATCH,
+    VG_WIDGET_COLORPALETTE,
+    VG_WIDGET_COLORPICKER,
     VG_WIDGET_CUSTOM,
 } vg_widget_type_t;
 

@@ -119,12 +119,9 @@ Several demos showcase the platform's capabilities. See the **[demos/](demos/REA
 |------|-------------|
 | `demos/viperlang/frogger` | Frogger with entity types and generics |
 | `demos/viperlang/centipede` | Centipede arcade game clone |
-| `demos/viperlang/ladders` | Donkey Kong-style platformer |
-| `demos/viperlang/paint` | Full-featured paint application |
-| `demos/viperlang/vedit` | Text editor with syntax highlighting |
+| `demos/viperlang/ladders` | Platform/ladder climbing game |
+| `demos/viperlang/paint` | Paint application with drawing tools |
 | `demos/viperlang/graphics_show` | Graphics API showcase |
-| `demos/viperlang/sql` | SQL query demonstration |
-| `demos/viperlang/telnet` | Telnet client |
 
 Run demos:
 

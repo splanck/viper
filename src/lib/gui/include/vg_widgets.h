@@ -779,6 +779,251 @@ void vg_spinner_set_font(vg_spinner_t* spinner, vg_font_t* font, float size);
 /// @brief Set change callback
 void vg_spinner_set_on_change(vg_spinner_t* spinner, vg_spinner_callback_t callback, void* user_data);
 
+//=============================================================================
+// ColorSwatch Widget
+//=============================================================================
+
+/// @brief ColorSwatch callback - called when color is selected
+typedef void (*vg_colorswatch_callback_t)(vg_widget_t* swatch, uint32_t color, void* user_data);
+
+/// @brief ColorSwatch widget structure - displays a single color
+typedef struct vg_colorswatch {
+    vg_widget_t base;
+
+    uint32_t color;              ///< The color displayed (ARGB)
+    bool selected;               ///< Is this swatch currently selected
+    bool show_border;            ///< Show border around swatch
+
+    // Appearance
+    float size;                  ///< Swatch size (width and height)
+    uint32_t border_color;       ///< Border color
+    uint32_t selected_border;    ///< Border color when selected
+    float border_width;          ///< Border width
+    float corner_radius;         ///< Corner radius
+
+    // Callback
+    vg_colorswatch_callback_t on_select;
+    void* on_select_data;
+} vg_colorswatch_t;
+
+/// @brief Create a new color swatch widget
+/// @param parent Parent widget (can be NULL)
+/// @param color Initial color (ARGB)
+/// @return New color swatch widget or NULL on failure
+vg_colorswatch_t* vg_colorswatch_create(vg_widget_t* parent, uint32_t color);
+
+/// @brief Set swatch color
+/// @param swatch ColorSwatch widget
+/// @param color New color (ARGB)
+void vg_colorswatch_set_color(vg_colorswatch_t* swatch, uint32_t color);
+
+/// @brief Get swatch color
+/// @param swatch ColorSwatch widget
+/// @return Current color (ARGB)
+uint32_t vg_colorswatch_get_color(vg_colorswatch_t* swatch);
+
+/// @brief Set selected state
+/// @param swatch ColorSwatch widget
+/// @param selected Selected state
+void vg_colorswatch_set_selected(vg_colorswatch_t* swatch, bool selected);
+
+/// @brief Check if swatch is selected
+/// @param swatch ColorSwatch widget
+/// @return true if selected
+bool vg_colorswatch_is_selected(vg_colorswatch_t* swatch);
+
+/// @brief Set selection callback
+/// @param swatch ColorSwatch widget
+/// @param callback Selection handler function
+/// @param user_data User data passed to callback
+void vg_colorswatch_set_on_select(vg_colorswatch_t* swatch, vg_colorswatch_callback_t callback, void* user_data);
+
+/// @brief Set swatch size
+/// @param swatch ColorSwatch widget
+/// @param size Size (width and height)
+void vg_colorswatch_set_size(vg_colorswatch_t* swatch, float size);
+
+//=============================================================================
+// ColorPalette Widget
+//=============================================================================
+
+/// @brief ColorPalette callback - called when a color is selected from palette
+typedef void (*vg_colorpalette_callback_t)(vg_widget_t* palette, uint32_t color, int index, void* user_data);
+
+/// @brief ColorPalette widget structure - grid of color swatches
+typedef struct vg_colorpalette {
+    vg_widget_t base;
+
+    uint32_t* colors;            ///< Array of colors (owned)
+    int color_count;             ///< Number of colors
+    int columns;                 ///< Number of columns in grid
+    int selected_index;          ///< Currently selected color index (-1 = none)
+
+    // Appearance
+    float swatch_size;           ///< Size of each swatch
+    float gap;                   ///< Gap between swatches
+    uint32_t bg_color;           ///< Background color
+    uint32_t border_color;       ///< Border around swatches
+    uint32_t selected_border;    ///< Border for selected swatch
+
+    // Callback
+    vg_colorpalette_callback_t on_select;
+    void* on_select_data;
+} vg_colorpalette_t;
+
+/// @brief Create a new color palette widget
+/// @param parent Parent widget (can be NULL)
+/// @return New color palette widget or NULL on failure
+vg_colorpalette_t* vg_colorpalette_create(vg_widget_t* parent);
+
+/// @brief Set palette colors
+/// @param palette ColorPalette widget
+/// @param colors Array of colors (copied)
+/// @param count Number of colors
+void vg_colorpalette_set_colors(vg_colorpalette_t* palette, const uint32_t* colors, int count);
+
+/// @brief Add a color to the palette
+/// @param palette ColorPalette widget
+/// @param color Color to add (ARGB)
+void vg_colorpalette_add_color(vg_colorpalette_t* palette, uint32_t color);
+
+/// @brief Clear all colors from palette
+/// @param palette ColorPalette widget
+void vg_colorpalette_clear(vg_colorpalette_t* palette);
+
+/// @brief Set number of columns
+/// @param palette ColorPalette widget
+/// @param columns Number of columns
+void vg_colorpalette_set_columns(vg_colorpalette_t* palette, int columns);
+
+/// @brief Set selected color index
+/// @param palette ColorPalette widget
+/// @param index Selected index (-1 to deselect)
+void vg_colorpalette_set_selected(vg_colorpalette_t* palette, int index);
+
+/// @brief Get selected color index
+/// @param palette ColorPalette widget
+/// @return Selected index or -1 if none
+int vg_colorpalette_get_selected(vg_colorpalette_t* palette);
+
+/// @brief Get selected color
+/// @param palette ColorPalette widget
+/// @return Selected color or 0 if none selected
+uint32_t vg_colorpalette_get_selected_color(vg_colorpalette_t* palette);
+
+/// @brief Set selection callback
+/// @param palette ColorPalette widget
+/// @param callback Selection handler function
+/// @param user_data User data passed to callback
+void vg_colorpalette_set_on_select(vg_colorpalette_t* palette, vg_colorpalette_callback_t callback, void* user_data);
+
+/// @brief Set swatch size
+/// @param palette ColorPalette widget
+/// @param size Swatch size
+void vg_colorpalette_set_swatch_size(vg_colorpalette_t* palette, float size);
+
+/// @brief Load standard 16-color palette
+/// @param palette ColorPalette widget
+void vg_colorpalette_load_standard_16(vg_colorpalette_t* palette);
+
+//=============================================================================
+// ColorPicker Widget
+//=============================================================================
+
+/// @brief ColorPicker callback - called when color changes
+typedef void (*vg_colorpicker_callback_t)(vg_widget_t* picker, uint32_t color, void* user_data);
+
+/// @brief ColorPicker widget structure - full color selection with RGB sliders
+typedef struct vg_colorpicker {
+    vg_widget_t base;
+
+    uint32_t color;              ///< Current selected color (ARGB)
+    uint8_t r, g, b, a;          ///< Individual components
+
+    // Child widgets (managed internally)
+    vg_slider_t* slider_r;       ///< Red slider
+    vg_slider_t* slider_g;       ///< Green slider
+    vg_slider_t* slider_b;       ///< Blue slider
+    vg_slider_t* slider_a;       ///< Alpha slider (optional)
+
+    vg_colorswatch_t* preview;   ///< Color preview swatch
+    vg_colorpalette_t* palette;  ///< Quick color palette
+
+    // Display options
+    bool show_alpha;             ///< Show alpha slider
+    bool show_palette;           ///< Show quick palette
+    bool show_labels;            ///< Show R/G/B labels
+    bool show_values;            ///< Show numeric values
+
+    vg_font_t* font;             ///< Font for labels
+    float font_size;             ///< Font size
+
+    // Callback
+    vg_colorpicker_callback_t on_change;
+    void* on_change_data;
+} vg_colorpicker_t;
+
+/// @brief Create a new color picker widget
+/// @param parent Parent widget (can be NULL)
+/// @return New color picker widget or NULL on failure
+vg_colorpicker_t* vg_colorpicker_create(vg_widget_t* parent);
+
+/// @brief Set picker color
+/// @param picker ColorPicker widget
+/// @param color Color (ARGB)
+void vg_colorpicker_set_color(vg_colorpicker_t* picker, uint32_t color);
+
+/// @brief Get picker color
+/// @param picker ColorPicker widget
+/// @return Current color (ARGB)
+uint32_t vg_colorpicker_get_color(vg_colorpicker_t* picker);
+
+/// @brief Set RGB components
+/// @param picker ColorPicker widget
+/// @param r Red component (0-255)
+/// @param g Green component (0-255)
+/// @param b Blue component (0-255)
+void vg_colorpicker_set_rgb(vg_colorpicker_t* picker, uint8_t r, uint8_t g, uint8_t b);
+
+/// @brief Get RGB components
+/// @param picker ColorPicker widget
+/// @param r Pointer to receive red (can be NULL)
+/// @param g Pointer to receive green (can be NULL)
+/// @param b Pointer to receive blue (can be NULL)
+void vg_colorpicker_get_rgb(vg_colorpicker_t* picker, uint8_t* r, uint8_t* g, uint8_t* b);
+
+/// @brief Set alpha component
+/// @param picker ColorPicker widget
+/// @param alpha Alpha (0-255)
+void vg_colorpicker_set_alpha(vg_colorpicker_t* picker, uint8_t alpha);
+
+/// @brief Get alpha component
+/// @param picker ColorPicker widget
+/// @return Alpha (0-255)
+uint8_t vg_colorpicker_get_alpha(vg_colorpicker_t* picker);
+
+/// @brief Show/hide alpha slider
+/// @param picker ColorPicker widget
+/// @param show true to show alpha slider
+void vg_colorpicker_show_alpha(vg_colorpicker_t* picker, bool show);
+
+/// @brief Show/hide quick palette
+/// @param picker ColorPicker widget
+/// @param show true to show palette
+void vg_colorpicker_show_palette(vg_colorpicker_t* picker, bool show);
+
+/// @brief Set change callback
+/// @param picker ColorPicker widget
+/// @param callback Change handler function
+/// @param user_data User data passed to callback
+void vg_colorpicker_set_on_change(vg_colorpicker_t* picker, vg_colorpicker_callback_t callback, void* user_data);
+
+/// @brief Set font for labels
+/// @param picker ColorPicker widget
+/// @param font Font to use
+/// @param size Font size
+void vg_colorpicker_set_font(vg_colorpicker_t* picker, vg_font_t* font, float size);
+
 #ifdef __cplusplus
 }
 #endif

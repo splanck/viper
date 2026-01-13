@@ -171,11 +171,11 @@ entity PaintApp {
         var sliderW = config.TOOL_PANEL_WIDTH - 12;
 
         sizeSlider = new slider.Slider();
-        sizeSlider.setup(sliderX, sliderY, sliderW, 16, "Size", config.MIN_BRUSH_SIZE, config.MAX_BRUSH_SIZE, brushSettings.size);
+        sizeSlider.setup(sliderX, sliderY, sliderW, 16, "Size", 1, 64, 8);
 
         sliderY = sliderY + 40;
         opacitySlider = new slider.Slider();
-        opacitySlider.setup(sliderX, sliderY, sliderW, 16, "Opacity", config.MIN_OPACITY, config.MAX_OPACITY, brushSettings.opacity);
+        opacitySlider.setup(sliderX, sliderY, sliderW, 16, "Opacity", 0, 100, 100);
 
         // Toolbar buttons
         var btnY = 8;
@@ -585,36 +585,36 @@ entity PaintApp {
         gfx.Box( panelX, panelY, config.COLOR_PANEL_WIDTH, panelH, config.UI_BG_PANEL);
         gfx.Line( panelX, panelY, panelX, panelY + panelH, config.UI_BORDER);
 
-        // Draw foreground/background color swatches
-        var swatchSize = 32;
-        var swatchX = panelX + 20;
-        var swatchY = panelY + 20;
+        // Draw foreground/background color swatches (smaller)
+        var swatchSize = 24;
+        var swatchX = panelX + 8;
+        var swatchY = panelY + 10;
 
         // Background swatch (behind)
-        gfx.Box( swatchX + 16, swatchY + 16, swatchSize, swatchSize, colors.background);
-        gfx.Frame( swatchX + 16, swatchY + 16, swatchSize, swatchSize, config.UI_BORDER);
+        gfx.Box( swatchX + 12, swatchY + 12, swatchSize, swatchSize, colors.background);
+        gfx.Frame( swatchX + 12, swatchY + 12, swatchSize, swatchSize, config.UI_BORDER);
 
         // Foreground swatch (in front)
         gfx.Box( swatchX, swatchY, swatchSize, swatchSize, colors.foreground);
         gfx.Frame( swatchX, swatchY, swatchSize, swatchSize, config.UI_BORDER);
 
         // Swap indicator
-        gfx.Text( swatchX + swatchSize + 24, swatchY + 12, "X", config.UI_TEXT_DIM);
+        gfx.Text( swatchX + swatchSize + 16, swatchY + 8, "X", config.UI_TEXT_DIM);
 
-        // Draw color palette (4x4 grid)
-        var paletteX = panelX + 10;
-        var paletteY = swatchY + swatchSize + 30;
-        var cellSize = config.PALETTE_CELL_SIZE;
+        // Draw color palette (4 columns x 16 rows = 64 colors)
+        var paletteX = panelX + 6;
+        var paletteY = swatchY + swatchSize + 20;
+        var cellSize = 20;
+        var cols = 4;
         var i = 0;
-        while i < 16 {
-            var row = i / 4;
-            var col = i % 4;
+        while i < 64 {
+            var row = i / cols;
+            var col = i % cols;
             var cx = paletteX + col * (cellSize + 2);
             var cy = paletteY + row * (cellSize + 2);
             var color = colors.getPaletteColor(i);
 
             gfx.Box( cx, cy, cellSize, cellSize, color);
-            gfx.Frame( cx, cy, cellSize, cellSize, config.UI_BORDER);
 
             i = i + 1;
         }
@@ -622,9 +622,9 @@ entity PaintApp {
         // Handle palette clicks
         if mouseDown == 1 and lastMouseDown == 0 {
             i = 0;
-            while i < 16 {
-                var row = i / 4;
-                var col = i % 4;
+            while i < 64 {
+                var row = i / cols;
+                var col = i % cols;
                 var cx = paletteX + col * (cellSize + 2);
                 var cy = paletteY + row * (cellSize + 2);
                 if mouseX >= cx and mouseX < cx + cellSize and mouseY >= cy and mouseY < cy + cellSize {

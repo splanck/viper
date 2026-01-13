@@ -31,6 +31,9 @@ set(VG_GUI_WIDGET_SOURCES
     src/widgets/vg_radiobutton.c
     src/widgets/vg_image.c
     src/widgets/vg_spinner.c
+    src/widgets/vg_colorswatch.c
+    src/widgets/vg_colorpalette.c
+    src/widgets/vg_colorpicker.c
 )
 
 set(VG_GUI_IDE_WIDGET_SOURCES
@@ -105,6 +108,13 @@ target_include_directories(gui_demo PRIVATE
 add_executable(widget_showcase examples/widget_showcase.c)
 target_link_libraries(widget_showcase vipergui vipergfx)
 target_include_directories(widget_showcase PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../graphics/include
+)
+
+add_executable(color_widgets_demo examples/color_widgets_demo.c)
+target_link_libraries(color_widgets_demo vipergui vipergfx)
+target_include_directories(color_widgets_demo PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../graphics/include
 )
