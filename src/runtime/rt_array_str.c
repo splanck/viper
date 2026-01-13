@@ -56,16 +56,7 @@ rt_string *rt_arr_str_alloc(size_t len)
     rt_string *arr =
         (rt_string *)rt_heap_alloc(RT_HEAP_ARRAY, RT_ELEM_STR, sizeof(rt_string), len, len);
 
-    if (arr)
-    {
-        // Initialize all slots to NULL (rt_heap_alloc already zero-initializes)
-        // But let's be explicit for clarity
-        for (size_t i = 0; i < len; ++i)
-        {
-            arr[i] = NULL;
-        }
-    }
-
+    // rt_heap_alloc already zero-initializes memory, so all slots are NULL
     return arr;
 }
 

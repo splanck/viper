@@ -68,6 +68,7 @@ struct RtContext;
 #include <functional>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -785,7 +786,7 @@ class VM
     /// @param fn Function to execute.
     /// @param args Argument slots for the callee's entry block.
     /// @return Return value slot.
-    Slot execFunction(const il::core::Function &fn, const std::vector<Slot> &args = {});
+    Slot execFunction(const il::core::Function &fn, std::span<const Slot> args = {});
 
     /// @brief Evaluate IL value @p v within frame @p fr.
     /// @param fr Current frame.
@@ -799,7 +800,7 @@ class VM
     /// @param blocks Map populated with basic block labels.
     /// @param bb Set to point at the entry block.
     Frame setupFrame(const il::core::Function &fn,
-                     const std::vector<Slot> &args,
+                     std::span<const Slot> args,
                      BlockMap &blocks,
                      const il::core::BasicBlock *&bb);
 
@@ -869,7 +870,7 @@ class VM
     /// @param fn Function to execute.
     /// @param args Argument slots for the callee's entry block.
     /// @return Fully initialized execution state.
-    ExecState prepareExecution(const il::core::Function &fn, const std::vector<Slot> &args);
+    ExecState prepareExecution(const il::core::Function &fn, std::span<const Slot> args);
 
     /// @brief Process step limits and debug breakpoints.
     /// @param st Current execution state.

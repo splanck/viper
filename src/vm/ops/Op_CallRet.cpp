@@ -30,16 +30,15 @@
 ///          write the result slot.  Returns capture the optional operand and
 ///          signal to the interpreter loop that unwinding should begin.
 
+#include "support/small_vector.hpp"
+
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
-#include <vector>
+#include <span>
 
-// PERFORMANCE NOTE: The function call handlers allocate vectors for arguments
-// on every call. A SmallArgBuffer optimization was attempted but reverted because
-// VMAccess::callFunction() and VM::execFunction() require std::vector<Slot>.
-// To fully optimize this, those APIs would need to accept std::span<const Slot>.
-// This is tracked in bugs/perf_issues.md as issue VM-001.
+// SmallArgBuffer: Uses SmallVector<Slot, 8> to avoid heap allocation for most function
+// calls (those with <=8 arguments). The APIs now accept std::span<const Slot>.
 
 namespace il::vm::detail::control
 {
@@ -114,7 +113,7 @@ VM::ExecResult handleCall(VM &vm,
     // Evaluate operands up front so argument propagation is explicit and
     // deterministic before dispatch.  This mirrors the IL semantics and avoids
     // leaking partially evaluated slots if a bridge call traps.
-    std::vector<Slot> args;
+    viper::support::SmallVector<Slot, 8> args;
     args.reserve(in.operands.size());
     for (const auto &op : in.operands)
         args.push_back(VMAccess::eval(vm, fr, op));
@@ -417,7 +416,7 @@ VM::ExecResult handleCallIndirect(VM &vm,
     if (calleeVal.kind == il::core::Value::Kind::GlobalAddr)
     {
         std::string calleeName = calleeVal.str;
-        std::vector<Slot> args;
+        viper::support::SmallVector<Slot, 8> args;
         if (in.operands.size() > 1)
         {
             args.reserve(in.operands.size() - 1);
@@ -460,7 +459,7 @@ VM::ExecResult handleCallIndirect(VM &vm,
             return res;
         }
         const auto *fn = reinterpret_cast<const il::core::Function *>(callee.ptr);
-        std::vector<Slot> args;
+        viper::support::SmallVector<Slot, 8> args;
         if (in.operands.size() > 1)
         {
             args.reserve(in.operands.size() - 1);

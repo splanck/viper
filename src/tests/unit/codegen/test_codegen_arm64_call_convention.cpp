@@ -92,8 +92,10 @@ TEST(Arm64CallConv, CallerWithComputedArgs)
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    // Expect mul, add, sub before the call
-    EXPECT_NE(asmText.find("mul x"), std::string::npos);
+    // Expect arithmetic operations before the call
+    // mul * 2 may be strength-reduced to lsl #1, so accept either
+    EXPECT_TRUE(asmText.find("mul x") != std::string::npos ||
+                asmText.find("lsl x") != std::string::npos);
     EXPECT_NE(asmText.find("add x"), std::string::npos);
     EXPECT_NE(asmText.find("sub x"), std::string::npos);
     EXPECT_NE(asmText.find(blSym("add3")), std::string::npos);

@@ -619,7 +619,7 @@ VM::~VM()
 /// @param fn   Function to execute.
 /// @param args Argument slots passed to the entry block parameters.
 /// @return Slot containing the function's return value.
-Slot VM::execFunction(const Function &fn, const std::vector<Slot> &args)
+Slot VM::execFunction(const Function &fn, std::span<const Slot> args)
 {
     ActiveVMGuard guard(this);
     lastTrap = {};

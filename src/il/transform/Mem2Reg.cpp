@@ -16,11 +16,6 @@
 // 1. Only entry-block allocas are promoted. Allocas inside loops represent
 //    different storage on each iteration and cannot be safely promoted.
 //
-// 2. SROA GEP offset accumulation: When handling chained GEPs like
-//    gep %3, %2, 4 where %2 = gep %1, 8, the offset should be 8+4=12 but
-//    the current code stores just the immediate offset (4).
-//    Location: runSROA() around line 560.
-//
 //===----------------------------------------------------------------------===//
 
 #include "il/transform/Mem2Reg.hpp"
@@ -585,15 +580,20 @@ static bool runSROA(Function &F)
                         }
                         else
                         {
-                            unsigned off = *offOpt;
-                            if (off > candIt->second.allocSize)
+                            // Get the base offset of the source operand to handle chained GEPs
+                            // e.g., gep %3, %2, 4 where %2 = gep %1, 8 should have offset 8+4=12
+                            auto baseOffIt = candIt->second.offsets.find(I.operands[0].id);
+                            unsigned baseOffset =
+                                (baseOffIt != candIt->second.offsets.end()) ? baseOffIt->second : 0;
+                            unsigned totalOffset = baseOffset + *offOpt;
+                            if (totalOffset > candIt->second.allocSize)
                             {
                                 candIt->second.ok = false;
                             }
                             else
                             {
                                 owner[*I.result] = candIt->second.baseId;
-                                candIt->second.offsets[*I.result] = off;
+                                candIt->second.offsets[*I.result] = totalOffset;
                             }
                         }
                     }

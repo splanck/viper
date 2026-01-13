@@ -32,6 +32,8 @@
 #include "Peephole.hpp"
 
 #include <algorithm>
+#include <optional>
+#include <unordered_map>
 
 namespace viper::codegen::aarch64
 {
@@ -382,22 +384,125 @@ namespace
     return false;
 }
 
+/// @brief Map of registers to their known constant values from MovRI.
+using RegConstMap = std::unordered_map<uint16_t, long long>;
+
+/// @brief Update register constant tracking based on an instruction.
+///
+/// @param instr Instruction to analyze.
+/// @param knownConsts Map of registers to their constant values.
+void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
+{
+    // MovRI loads a constant into a register
+    if (instr.opc == MOpcode::MovRI && instr.ops.size() == 2 && isPhysReg(instr.ops[0]) &&
+        instr.ops[1].kind == MOperand::Kind::Imm)
+    {
+        knownConsts[instr.ops[0].reg.idOrPhys] = instr.ops[1].imm;
+        return;
+    }
+
+    // Any other instruction that defines a register invalidates the constant
+    switch (instr.opc)
+    {
+        case MOpcode::MovRR:
+        case MOpcode::AddRRR:
+        case MOpcode::SubRRR:
+        case MOpcode::MulRRR:
+        case MOpcode::SDivRRR:
+        case MOpcode::UDivRRR:
+        case MOpcode::AndRRR:
+        case MOpcode::OrrRRR:
+        case MOpcode::EorRRR:
+        case MOpcode::AddRI:
+        case MOpcode::SubRI:
+        case MOpcode::LslRI:
+        case MOpcode::LsrRI:
+        case MOpcode::AsrRI:
+        case MOpcode::Cset:
+        case MOpcode::LdrRegFpImm:
+        case MOpcode::LdrRegBaseImm:
+        case MOpcode::AddFpImm:
+        case MOpcode::AdrPage:
+        case MOpcode::AddPageOff:
+        case MOpcode::MSubRRRR:
+            if (!instr.ops.empty() && isPhysReg(instr.ops[0]))
+                knownConsts.erase(instr.ops[0].reg.idOrPhys);
+            break;
+        default:
+            break;
+    }
+
+    // Calls invalidate all caller-saved registers (x0-x18)
+    if (instr.opc == MOpcode::Bl)
+    {
+        for (uint16_t i = 0; i <= 18; ++i)
+            knownConsts.erase(i);
+    }
+}
+
+/// @brief Get constant value for a register if known.
+[[nodiscard]] std::optional<long long> getConstValue(const MOperand &reg, const RegConstMap &knownConsts)
+{
+    if (!isPhysReg(reg) || reg.reg.cls != RegClass::GPR)
+        return std::nullopt;
+    auto it = knownConsts.find(reg.reg.idOrPhys);
+    if (it != knownConsts.end())
+        return it->second;
+    return std::nullopt;
+}
+
 /// @brief Apply strength reduction: mul by power of 2 -> shift left.
 ///
-/// Note: This only works for MulRRR where one operand is a constant loaded
-/// into a register. For now, we skip this since we don't have MulRI opcode.
-/// Future: could track mov rN, #const patterns.
+/// Patterns:
+/// - mul xN, xM, xK where xK is a power of 2 -> lsl xN, xM, #log2(xK)
+/// - mul xN, xK, xM where xK is a power of 2 -> lsl xN, xM, #log2(xK)
 ///
-/// @param instr Instruction to check.
+/// @param instr Instruction to check and potentially rewrite.
+/// @param knownConsts Map of registers to known constant values.
 /// @param stats Statistics to update.
 /// @return true if reduction was applied.
-[[nodiscard]] bool tryStrengthReduction([[maybe_unused]] MInstr &instr,
-                                        [[maybe_unused]] PeepholeStats &stats)
+[[nodiscard]] bool tryStrengthReduction(MInstr &instr, const RegConstMap &knownConsts, PeepholeStats &stats)
 {
-    // Currently MulRRR doesn't have an immediate form, so we can't easily
-    // detect multiply by constant without tracking prior mov instructions.
-    // This would require a more sophisticated analysis.
-    return false;
+    if (instr.opc != MOpcode::MulRRR)
+        return false;
+    if (instr.ops.size() != 3)
+        return false;
+
+    // Check if either operand (lhs=ops[1] or rhs=ops[2]) is a known power-of-2 constant
+    auto lhsConst = getConstValue(instr.ops[1], knownConsts);
+    auto rhsConst = getConstValue(instr.ops[2], knownConsts);
+
+    int shiftAmount = -1;
+    MOperand otherOperand;
+
+    if (lhsConst)
+    {
+        int log = log2IfPowerOf2(*lhsConst);
+        if (log >= 0 && log <= 63)
+        {
+            shiftAmount = log;
+            otherOperand = instr.ops[2];
+        }
+    }
+    if (shiftAmount < 0 && rhsConst)
+    {
+        int log = log2IfPowerOf2(*rhsConst);
+        if (log >= 0 && log <= 63)
+        {
+            shiftAmount = log;
+            otherOperand = instr.ops[1];
+        }
+    }
+
+    if (shiftAmount < 0)
+        return false;
+
+    // Rewrite: mul dst, xM, xK -> lsl dst, xM, #shift
+    instr.opc = MOpcode::LslRI;
+    instr.ops[1] = otherOperand;
+    instr.ops[2] = MOperand::immOp(shiftAmount);
+    ++stats.strengthReductions;
+    return true;
 }
 
 /// @brief Check if an instruction is an unconditional branch to a specific label.
@@ -528,9 +633,13 @@ PeepholeStats runPeephole(MFunction &fn)
         if (instrs.empty())
             continue;
 
-        // Pass 1: Apply instruction rewrites (cmp #0 -> tst, arithmetic identities)
+        // Pass 1: Build register constant map and apply rewrites
+        RegConstMap knownConsts;
         for (auto &instr : instrs)
         {
+            // Track constants loaded via MovRI
+            updateKnownConsts(instr, knownConsts);
+
             // Try cmp reg, #0 -> tst reg, reg
             if (tryCmpZeroToTst(instr, stats))
                 continue;
@@ -540,7 +649,7 @@ PeepholeStats runPeephole(MFunction &fn)
                 continue;
 
             // Try strength reduction (mul power-of-2 -> shift)
-            (void)tryStrengthReduction(instr, stats);
+            (void)tryStrengthReduction(instr, knownConsts, stats);
         }
 
         // Pass 2: Try to fold consecutive moves

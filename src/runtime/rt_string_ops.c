@@ -662,9 +662,23 @@ static int64_t rt_find(rt_string hay, int64_t start, rt_string needle)
     size_t start_idx = (size_t)start;
     if (needle_len > hay_len - start_idx)
         return 0;
-    for (size_t i = start_idx; i + needle_len <= hay_len; ++i)
-        if (memcmp(hay->data + i, needle->data, needle_len) == 0)
-            return (int64_t)(i + 1);
+
+    // Optimized substring search using memchr for first-character scan.
+    // memchr is typically SIMD-optimized and much faster than byte-by-byte scanning.
+    // This reduces the naive O(n*m) to O(n) for the first-character search,
+    // only falling back to memcmp when we find a potential match.
+    const char first = needle->data[0];
+    const char *pos = hay->data + start_idx;
+    const char *end = hay->data + hay_len - needle_len + 1;
+
+    while (pos < end) {
+        pos = memchr(pos, first, (size_t)(end - pos));
+        if (!pos)
+            return 0;
+        if (memcmp(pos, needle->data, needle_len) == 0)
+            return (int64_t)(pos - hay->data + 1);
+        ++pos;
+    }
     return 0;
 }
 

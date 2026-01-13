@@ -502,7 +502,7 @@ void VM::releaseFrameBuffers(Frame &fr)
 /// @param bb     Set to the entry basic block of @p fn.
 /// @return Fully initialised frame ready to run.
 Frame VM::setupFrame(const Function &fn,
-                     const std::vector<Slot> &args,
+                     std::span<const Slot> args,
                      BlockMap &blocks,
                      const BasicBlock *&bb)
 {
@@ -593,7 +593,7 @@ Frame VM::setupFrame(const Function &fn,
 /// @param fn   Function to execute.
 /// @param args Arguments passed to the function's entry block.
 /// @return Fully initialised execution state ready for the interpreter loop.
-VM::ExecState VM::prepareExecution(const Function &fn, const std::vector<Slot> &args)
+VM::ExecState VM::prepareExecution(const Function &fn, std::span<const Slot> args)
 {
     ExecState st{};
     st.owner = this;

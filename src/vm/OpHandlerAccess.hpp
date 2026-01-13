@@ -18,6 +18,7 @@
 #include "il/core/Function.hpp"
 #include "vm/VM.hpp"
 
+#include <span>
 #include <unordered_map>
 #include <vector>
 
@@ -68,7 +69,7 @@ struct VMAccess
 
     static inline Slot callFunction(VM &vm,
                                     const il::core::Function &fn,
-                                    const std::vector<Slot> &args)
+                                    std::span<const Slot> args)
     {
         return vm.execFunction(fn, args);
     }
@@ -76,7 +77,7 @@ struct VMAccess
     // Stepping helpers for components that need controlled access -------------
     static inline ExecState prepare(VM &vm,
                                     const il::core::Function &fn,
-                                    const std::vector<Slot> &args)
+                                    std::span<const Slot> args)
     {
         return vm.prepareExecution(fn, args);
     }

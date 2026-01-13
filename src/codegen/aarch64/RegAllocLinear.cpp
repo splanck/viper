@@ -122,6 +122,7 @@
 
 #include "FrameBuilder.hpp"
 #include <algorithm>
+#include <deque>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -274,8 +275,8 @@ struct VState
 
 struct RegPools
 {
-    std::vector<PhysReg> gprFree{};
-    std::vector<PhysReg> fprFree{};
+    std::deque<PhysReg> gprFree{};
+    std::deque<PhysReg> fprFree{};
     std::unordered_set<PhysReg> calleeUsed{};
     std::unordered_set<PhysReg> calleeUsedFPR{};
 
@@ -320,7 +321,7 @@ struct RegPools
             return PhysReg::X19;
         }
         auto r = gprFree.front();
-        gprFree.erase(gprFree.begin());
+        gprFree.pop_front();
         return r;
     }
 
@@ -334,7 +335,7 @@ struct RegPools
         if (fprFree.empty())
             return kScratchFPR; // Fallback to scratch register when pool exhausted
         auto r = fprFree.front();
-        fprFree.erase(fprFree.begin());
+        fprFree.pop_front();
         return r;
     }
 
@@ -656,6 +657,24 @@ class LinearAllocator
         }
     }
 
+    /// @brief Check if a physical register is callee-saved.
+    ///
+    /// Callee-saved registers (x19-x28, d8-d15) don't need to be spilled around
+    /// calls because the callee is required to preserve them.
+    [[nodiscard]] bool isCalleeSaved(PhysReg pr, RegClass cls) const noexcept
+    {
+        if (cls == RegClass::GPR)
+        {
+            return std::find(ti_.calleeSavedGPR.begin(), ti_.calleeSavedGPR.end(), pr) !=
+                   ti_.calleeSavedGPR.end();
+        }
+        else
+        {
+            return std::find(ti_.calleeSavedFPR.begin(), ti_.calleeSavedFPR.end(), pr) !=
+                   ti_.calleeSavedFPR.end();
+        }
+    }
+
     //-------------------------------------------------------------------------
     // Operand role classification
     //-------------------------------------------------------------------------
@@ -852,15 +871,18 @@ class LinearAllocator
             if (ins.ops[0].label == "rt_arr_obj_get")
                 isArrayObjGet = true;
         }
+        // Spill only caller-saved registers before the call.
+        // Callee-saved registers (x19-x28, d8-d15) don't need spilling because
+        // the callee is required to preserve them.
         std::vector<MInstr> preCall;
         for (auto &kv : gprStates_)
         {
-            if (kv.second.hasPhys)
+            if (kv.second.hasPhys && !isCalleeSaved(kv.second.phys, RegClass::GPR))
                 spillVictim(RegClass::GPR, kv.first, preCall);
         }
         for (auto &kv : fprStates_)
         {
-            if (kv.second.hasPhys)
+            if (kv.second.hasPhys && !isCalleeSaved(kv.second.phys, RegClass::FPR))
                 spillVictim(RegClass::FPR, kv.first, preCall);
         }
         for (auto &mi : preCall)
