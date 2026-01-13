@@ -35,6 +35,12 @@
 #include <cstring>
 #include <vector>
 
+// PERFORMANCE NOTE: The function call handlers allocate vectors for arguments
+// on every call. A SmallArgBuffer optimization was attempted but reverted because
+// VMAccess::callFunction() and VM::execFunction() require std::vector<Slot>.
+// To fully optimize this, those APIs would need to accept std::span<const Slot>.
+// This is tracked in bugs/perf_issues.md as issue VM-001.
+
 namespace il::vm::detail::control
 {
 /// @brief Finalise a function by propagating the return value and signalling exit.

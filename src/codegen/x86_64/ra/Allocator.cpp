@@ -40,7 +40,7 @@ namespace viper::codegen::x64::ra
 namespace
 {
 
-using RegPool = std::vector<PhysReg>;
+using RegPool = std::deque<PhysReg>;
 
 template <typename... Ts> struct Overload : Ts...
 {
@@ -139,7 +139,7 @@ void LinearScanAllocator::buildPools()
 /// @brief Access the register pool matching a class.
 /// @param cls Register class to query.
 /// @return Mutable vector of available physical registers.
-std::vector<PhysReg> &LinearScanAllocator::poolFor(RegClass cls)
+std::deque<PhysReg> &LinearScanAllocator::poolFor(RegClass cls)
 {
     return cls == RegClass::GPR ? freeGPR_ : freeXMM_;
 }
@@ -214,7 +214,7 @@ PhysReg LinearScanAllocator::takeRegister(RegClass cls, std::vector<MInstr> &pre
     }
     assert(!pool.empty() && "register pool exhausted");
     const PhysReg reg = pool.front();
-    pool.erase(pool.begin());
+    pool.pop_front();  // O(1) instead of O(n) erase(begin())
     return reg;
 }
 

@@ -124,8 +124,25 @@ CompilerResult compile(const CompilerInput &input,
         // on valid IL where definitions dominate uses but appear later in
         // the block list (e.g., match pattern lowering).
         pm.setVerifyBetweenPasses(false);
-        il::transform::PassManager::Pipeline safePipeline = {"mem2reg", "peephole", "dce"};
-        pm.run(result.module, safePipeline);
+
+        // Use optimized pipeline based on optimization level.
+        // Note: SimplifyCFG and SCCP are disabled due to known issues:
+        // - SimplifyCFG: Internal verification fails on valid IL (dominance)
+        // - SCCP: Infinite loop on certain control flow patterns
+        if (options.optLevel == OptLevel::O2)
+        {
+            // Aggressive optimization pipeline
+            il::transform::PassManager::Pipeline pipeline = {
+                "mem2reg", "dce", "gvn", "earlycse", "dse", "peephole", "dce"};
+            pm.run(result.module, pipeline);
+        }
+        else
+        {
+            // Standard optimization (O1): core passes for good performance
+            il::transform::PassManager::Pipeline pipeline = {
+                "mem2reg", "peephole", "dce"};
+            pm.run(result.module, pipeline);
+        }
     }
 
     return result;

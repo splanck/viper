@@ -26,6 +26,7 @@
 #include "Spiller.hpp"
 
 #include <bitset>
+#include <deque>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -83,8 +84,8 @@ class LinearScanAllocator
     Spiller spiller_{};
 
     std::unordered_map<uint16_t, VirtualAllocation> states_{};
-    std::vector<PhysReg> freeGPR_{};
-    std::vector<PhysReg> freeXMM_{};
+    std::deque<PhysReg> freeGPR_{};   ///< O(1) pop_front for register allocation.
+    std::deque<PhysReg> freeXMM_{};   ///< O(1) pop_front for register allocation.
     /// @brief Active virtual registers in GPR class. Uses unordered_set for O(1) insert/erase.
     std::unordered_set<uint16_t> activeGPR_{};
     /// @brief Active virtual registers in XMM class. Uses unordered_set for O(1) insert/erase.
@@ -107,7 +108,7 @@ class LinearScanAllocator
     /// @brief Retrieve the free list associated with a register class.
     /// @details Returns either the general-purpose or floating-point pool so helpers can push
     ///          and pop physical registers while allocating or releasing values.
-    [[nodiscard]] std::vector<PhysReg> &poolFor(RegClass cls);
+    [[nodiscard]] std::deque<PhysReg> &poolFor(RegClass cls);
 
     /// @brief Retrieve the currently active interval set for a register class.
     /// @details Provides access to the set that tracks active virtual register identifiers so

@@ -140,9 +140,10 @@ void lowerTerminators(const il::core::Function &fn,
                             const auto &ids = itIds->second;
                             const auto &classes = phiRegClass.at(dst);
                             const auto &spillOffsets = itSpill->second;
-                            std::unordered_map<unsigned, uint16_t> tmp2v;
-                            std::unordered_map<unsigned, RegClass> tmpRC;
-                            uint16_t nvr = 1;
+                            // Use the block's tempVReg snapshot to find correct vreg
+                            // mappings for temps defined in this block. This is critical
+                            // for phi-edge copies to emit correct values (e.g., loop
+                            // counter increments).
                             for (std::size_t ai = 0; ai < term.brArgs[0].size() && ai < ids.size();
                                  ++ai)
                             {
@@ -153,9 +154,9 @@ void lowerTerminators(const il::core::Function &fn,
                                                             ti,
                                                             fb,
                                                             outBB,
-                                                            tmp2v,
-                                                            tmpRC,
-                                                            nvr,
+                                                            blockTempVReg,
+                                                            tempRegClass,
+                                                            nextVRegId,
                                                             sv,
                                                             scls))
                                     continue;
@@ -165,7 +166,7 @@ void lowerTerminators(const il::core::Function &fn,
                                 {
                                     if (scls != RegClass::FPR)
                                     {
-                                        const uint16_t cvt = nvr++;
+                                        const uint16_t cvt = nextVRegId++;
                                         outBB.instrs.push_back(
                                             MInstr{MOpcode::SCvtF,
                                                    {MOperand::vregOp(RegClass::FPR, cvt),
@@ -183,7 +184,7 @@ void lowerTerminators(const il::core::Function &fn,
                                 {
                                     if (scls == RegClass::FPR)
                                     {
-                                        const uint16_t cvt = nvr++;
+                                        const uint16_t cvt = nextVRegId++;
                                         outBB.instrs.push_back(
                                             MInstr{MOpcode::FCvtZS,
                                                    {MOperand::vregOp(RegClass::GPR, cvt),
@@ -341,9 +342,13 @@ void lowerTerminators(const il::core::Function &fn,
                         emitEdgeCopies(falseLbl, term.brArgs[1]);
 
                     // Try to lower compares to cmp + b.<cond>
+                    // NOTE: This optimization only works for the entry block (i == 0) where
+                    // block parameters are passed in argument registers. For loop headers
+                    // with phi nodes, parameters are loaded from spill slots, not registers.
                     const auto &cond = term.operands[0];
                     bool loweredViaCompare = false;
-                    if (cond.kind == il::core::Value::Kind::Temp)
+                    const bool isEntryBlock = (i == 0);
+                    if (isEntryBlock && cond.kind == il::core::Value::Kind::Temp)
                     {
                         const auto it = std::find_if(inBB.instructions.begin(),
                                                      inBB.instructions.end(),

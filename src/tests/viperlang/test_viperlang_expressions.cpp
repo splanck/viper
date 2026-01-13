@@ -134,7 +134,8 @@ func start() {
 }
 )";
     CompilerInput input{.source = source, .path = "boolops.viper"};
-    CompilerOptions opts{};
+    // Use O0 to test IL generation without optimization (SCCP would constant-fold these)
+    CompilerOptions opts{.optLevel = OptLevel::O0};
 
     auto result = compile(input, opts, sm);
 

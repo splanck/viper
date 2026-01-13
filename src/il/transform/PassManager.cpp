@@ -82,6 +82,7 @@ PassManager::PassManager()
         [](core::Module &module, core::Function &fn)
         { return viper::analysis::BasicAA(module, fn); });
 
+    addSimplifyCFG(false); // Register simplify-cfg pass (non-aggressive by default)
     registerLoopSimplifyPass(passRegistry_);
     registerLICMPass(passRegistry_);
     registerSCCPPass(passRegistry_);

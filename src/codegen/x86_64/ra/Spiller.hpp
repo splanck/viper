@@ -22,6 +22,7 @@
 #include "../MachineIR.hpp"
 #include "../TargetX64.hpp"
 
+#include <deque>
 #include <unordered_map>
 #include <vector>
 
@@ -61,7 +62,7 @@ class Spiller
     void spillValue(RegClass cls,
                     uint16_t vreg,
                     VirtualAllocation &alloc,
-                    std::vector<PhysReg> &pool,
+                    std::deque<PhysReg> &pool,
                     std::vector<MInstr> &prefix,
                     AllocationResult &result);
 

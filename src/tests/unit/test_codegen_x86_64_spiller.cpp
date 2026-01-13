@@ -18,6 +18,7 @@
 #include "tests/TestHarness.hpp"
 
 #include <algorithm>
+#include <deque>
 
 using namespace viper::codegen::x64;
 using namespace viper::codegen::x64::ra;
@@ -69,7 +70,7 @@ TEST(Spiller, SpillsActiveValue)
     AllocationResult result{};
     result.vregToPhys.emplace(7, PhysReg::RAX);
 
-    std::vector<PhysReg> pool{};
+    std::deque<PhysReg> pool{};
     std::vector<MInstr> prefix{};
     spiller.spillValue(RegClass::GPR, 7, alloc, pool, prefix, result);
 

@@ -23,6 +23,8 @@
 #include "../RegAllocLinear.hpp"
 #include "Allocator.hpp"
 
+#include <deque>
+
 /// @file
 /// @brief Provides stack spill management utilities for linear-scan allocation.
 /// @details The spiller assigns stack slots lazily, emits loads and stores as
@@ -126,7 +128,7 @@ MInstr Spiller::makeStore(RegClass cls, const SpillPlan &plan, PhysReg src) cons
 void Spiller::spillValue(RegClass cls,
                          uint16_t vreg,
                          VirtualAllocation &alloc,
-                         std::vector<PhysReg> &pool,
+                         std::deque<PhysReg> &pool,
                          std::vector<MInstr> &prefix,
                          AllocationResult &result)
 {

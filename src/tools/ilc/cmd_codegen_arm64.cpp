@@ -572,6 +572,10 @@ static int linkToExe(const std::string &asmPath,
 #if defined(__APPLE__)
         linkCmd.push_back("-framework");
         linkCmd.push_back("Cocoa");
+        linkCmd.push_back("-framework");
+        linkCmd.push_back("IOKit");
+        linkCmd.push_back("-framework");
+        linkCmd.push_back("CoreFoundation");
 #endif
     }
 

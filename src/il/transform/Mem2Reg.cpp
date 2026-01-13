@@ -118,6 +118,7 @@ struct AllocaInfo
     bool addressTaken{false};
     bool hasStore{false};
     bool singleBlock{true};
+    bool typeConsistent{true}; ///< False if loads/stores use different types.
 };
 
 struct VarState
@@ -181,10 +182,16 @@ static AllocaMap collectAllocas(Function &F)
                 if (I.op == Opcode::Store && oi == 0)
                 {
                     AI.hasStore = true;
+                    // Check type consistency: if type was already set and differs, mark inconsistent
+                    if (AI.type.kind != Type::Kind::Void && AI.type.kind != I.type.kind)
+                        AI.typeConsistent = false;
                     AI.type = I.type;
                 }
                 else if (I.op == Opcode::Load && oi == 0)
                 {
+                    // Check type consistency: if type was already set and differs, mark inconsistent
+                    if (AI.type.kind != Type::Kind::Void && AI.type.kind != I.type.kind)
+                        AI.typeConsistent = false;
                     AI.type = I.type;
                 }
                 else
@@ -433,7 +440,7 @@ static void promoteVariables(Function &F,
     vars.reserve(infos.size());
     for (auto &[id, AI] : infos)
     {
-        if (AI.addressTaken || !AI.hasStore)
+        if (AI.addressTaken || !AI.hasStore || !AI.typeConsistent)
             continue;
         if (!isPromotableScalarType(AI.type))
             continue;
@@ -731,7 +738,7 @@ static bool runSROA(Function &F)
             if (cand.baseId < F.valueNames.size())
                 baseName = F.valueNames[cand.baseId];
             if (baseName.empty())
-                baseName = "sroa";
+                baseName = "sroa." + std::to_string(cand.baseId);
             ensureValueName(F, nextId, baseName + ".f" + std::to_string(fieldIdx++));
 
             B.instructions.insert(B.instructions.begin() + static_cast<long>(insertPos),
@@ -816,7 +823,7 @@ void mem2reg(Module &M, Mem2RegStats *stats)
         AllocaMap promotable;
         for (auto &[id, info] : infos)
         {
-            if (info.addressTaken || !info.hasStore)
+            if (info.addressTaken || !info.hasStore || !info.typeConsistent)
                 continue;
             if (!isPromotableScalarType(info.type))
                 continue;
