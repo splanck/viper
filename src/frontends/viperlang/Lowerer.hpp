@@ -923,6 +923,12 @@ class Lowerer
     /// @return The constructed value, or nullopt if not a value type.
     std::optional<LowerResult> lowerValueTypeConstruction(const std::string &typeName, CallExpr *expr);
 
+    /// @brief Lower an entity type construction call (Entity(args) syntax).
+    /// @param typeName The entity type name.
+    /// @param expr The call expression with constructor arguments.
+    /// @return The constructed entity pointer, or nullopt if not an entity type.
+    std::optional<LowerResult> lowerEntityTypeConstruction(const std::string &typeName, CallExpr *expr);
+
     /// @}
     //=========================================================================
     /// @name Boxing/Unboxing Helpers

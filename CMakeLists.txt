@@ -64,7 +64,7 @@ install(FILES "${CMAKE_BINARY_DIR}/generated/viper/version.hpp"
 
 option(VIPER_INSTALL_TUI "Install TUI apps/libraries" OFF)
 option(VIPER_BUILD_TESTING "Enable CTest-based tests" ON)
-option(VIPER_VM_THREADED "Enable threaded VM dispatch" OFF)
+option(VIPER_VM_THREADED "Enable threaded VM dispatch (faster on GCC/Clang)" ON)
 option(VIPER_VM_TAILCALL "Enable tailcall" ON)
 option(VIPER_VM_OPCOUNTS "Enable op counters" ON)
 option(VIPER_ENABLE_PASCAL "Build Pascal frontend (experimental)" OFF)

@@ -11,6 +11,16 @@
 // runs entirely in place, mutating control-flow edges and instruction operands
 // while tracking statistics for promoted variables and eliminated loads/stores.
 //
+// KNOWN LIMITATIONS:
+//
+// 1. Only entry-block allocas are promoted. Allocas inside loops represent
+//    different storage on each iteration and cannot be safely promoted.
+//
+// 2. SROA GEP offset accumulation: When handling chained GEPs like
+//    gep %3, %2, 4 where %2 = gep %1, 8, the offset should be 8+4=12 but
+//    the current code stores just the immediate offset (4).
+//    Location: runSROA() around line 560.
+//
 //===----------------------------------------------------------------------===//
 
 #include "il/transform/Mem2Reg.hpp"
@@ -145,10 +155,15 @@ static AllocaMap collectAllocas(Function &F)
 {
     AllocaMap infos;
     infos.reserve(F.valueNames.size());
-    for (auto &B : F.blocks)
-        for (auto &I : B.instructions)
+    // Only collect allocas from the entry block. Allocas inside loops
+    // represent different storage on each iteration and cannot be promoted.
+    if (!F.blocks.empty())
+    {
+        BasicBlock &entry = F.blocks.front();
+        for (auto &I : entry.instructions)
             if (I.op == Opcode::Alloca && I.result)
-                infos[*I.result] = AllocaInfo{&B, *I.result, Type{}, false, false};
+                infos[*I.result] = AllocaInfo{&entry, *I.result, Type{}, false, false};
+    }
 
     for (auto &B : F.blocks)
         for (auto &I : B.instructions)
@@ -354,9 +369,15 @@ static Value renameUses(Function &F,
         BS.incomplete.insert(varId);
         return v;
     }
+    // Create a placeholder param BEFORE recursing to break cycles.
+    // This is essential for handling loops correctly.
+    unsigned pIdx = ensureParam(B, varId, vars, blocks, nextId);
+    Value placeholder = Value::temp(B->params[pIdx].id);
+    VS.defs[B] = placeholder;
     Value v = readFromPreds(F, B, varId, vars, blocks, nextId, ctx, nullptr);
-    VS.defs[B] = v;
-    return v;
+    // The placeholder is the correct value (the block param that will receive
+    // incoming values from predecessors), so we don't need to update VS.defs[B].
+    return placeholder;
 }
 
 /// @brief Finalise a block once all of its predecessors are known.

@@ -12,6 +12,7 @@
 
 #include "frontends/viperlang/Lowerer.hpp"
 #include "frontends/viperlang/RuntimeNames.hpp"
+#include <iostream>
 
 namespace il::frontends::viperlang
 {
@@ -427,6 +428,95 @@ std::optional<LowerResult> Lowerer::lowerValueTypeConstruction(const std::string
 }
 
 //=============================================================================
+// Entity Type Construction Helper
+//=============================================================================
+
+std::optional<LowerResult> Lowerer::lowerEntityTypeConstruction(const std::string &typeName,
+                                                                 CallExpr *expr)
+{
+    auto it = entityTypes_.find(typeName);
+    if (it == entityTypes_.end())
+        return std::nullopt;
+
+    const EntityTypeInfo &info = it->second;
+
+    // Lower arguments
+    std::vector<Value> argValues;
+    for (auto &arg : expr->args)
+    {
+        auto result = lowerExpr(arg.value.get());
+        argValues.push_back(result.value);
+    }
+
+    // Allocate heap memory for the entity using rt_obj_new_i64
+    Value ptr = emitCallRet(Type(Type::Kind::Ptr),
+                            "rt_obj_new_i64",
+                            {Value::constInt(static_cast<int64_t>(info.classId)),
+                             Value::constInt(static_cast<int64_t>(info.totalSize))});
+
+    // Check if the entity has an explicit init method
+    auto initIt = info.methodMap.find("init");
+    if (initIt != info.methodMap.end())
+    {
+        // Call the explicit init method
+        std::string initName = typeName + ".init";
+        std::vector<Value> initArgs;
+        initArgs.push_back(ptr); // self is first argument
+        for (const auto &argVal : argValues)
+        {
+            initArgs.push_back(argVal);
+        }
+        emitCall(initName, initArgs);
+    }
+    else
+    {
+        // No explicit init - do inline field initialization
+        for (size_t i = 0; i < info.fields.size(); ++i)
+        {
+            const auto &field = info.fields[i];
+            Type ilFieldType = mapType(field.type);
+            Value fieldValue;
+
+            if (i < argValues.size())
+            {
+                fieldValue = argValues[i];
+            }
+            else
+            {
+                switch (ilFieldType.kind)
+                {
+                    case Type::Kind::I1:
+                        fieldValue = Value::constBool(false);
+                        break;
+                    case Type::Kind::I64:
+                    case Type::Kind::I16:
+                    case Type::Kind::I32:
+                        fieldValue = Value::constInt(0);
+                        break;
+                    case Type::Kind::F64:
+                        fieldValue = Value::constFloat(0.0);
+                        break;
+                    case Type::Kind::Str:
+                        fieldValue = emitConstStr("");
+                        break;
+                    case Type::Kind::Ptr:
+                        fieldValue = Value::null();
+                        break;
+                    default:
+                        fieldValue = Value::constInt(0);
+                        break;
+                }
+            }
+
+            Value fieldAddr = emitGEP(ptr, static_cast<int64_t>(field.offset));
+            emitStore(fieldAddr, fieldValue, ilFieldType);
+        }
+    }
+
+    return LowerResult{ptr, Type(Type::Kind::Ptr)};
+}
+
+//=============================================================================
 // Main Call Expression Lowering
 //=============================================================================
 
@@ -672,6 +762,11 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
         auto valueTypeResult = lowerValueTypeConstruction(ident->name, expr);
         if (valueTypeResult)
             return *valueTypeResult;
+
+        // Check entity type construction (Entity(args) without 'new' keyword)
+        auto entityTypeResult = lowerEntityTypeConstruction(ident->name, expr);
+        if (entityTypeResult)
+            return *entityTypeResult;
     }
 
     // Handle direct or indirect function calls
@@ -727,6 +822,45 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
         if (!isIndirectCall)
         {
             calleeName = mangleFunctionName(ident->name);
+        }
+    }
+    else if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get()))
+    {
+        // Check if this is a namespace-qualified function call (e.g., Math.add or Outer.Inner.getValue)
+        // Recursively build the qualified name from nested FieldExpr nodes
+        std::string qualifiedName;
+        std::function<bool(Expr *)> buildQualifiedName = [&](Expr *e) -> bool
+        {
+            if (auto *ident = dynamic_cast<IdentExpr *>(e))
+            {
+                qualifiedName = ident->name;
+                return true;
+            }
+            if (auto *field = dynamic_cast<FieldExpr *>(e))
+            {
+                if (buildQualifiedName(field->base.get()))
+                {
+                    qualifiedName += "." + field->field;
+                    return true;
+                }
+            }
+            return false;
+        };
+        buildQualifiedName(expr->callee.get());
+
+        // Check if the qualified name is a defined function
+        if (!qualifiedName.empty() && definedFunctions_.find(qualifiedName) != definedFunctions_.end())
+        {
+            // This is a namespace-qualified function call - emit as direct call
+            calleeName = qualifiedName;
+            isIndirectCall = false;
+        }
+        else
+        {
+            // Regular field access on a value - lower and use as indirect call
+            auto calleeResult = lowerExpr(expr->callee.get());
+            funcPtr = calleeResult.value;
+            isIndirectCall = true;
         }
     }
     else

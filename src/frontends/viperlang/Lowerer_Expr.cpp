@@ -450,16 +450,68 @@ LowerResult Lowerer::lowerNew(NewExpr *expr)
                             {Value::constInt(static_cast<int64_t>(info.classId)),
                              Value::constInt(static_cast<int64_t>(info.totalSize))});
 
-    // BUG-VL-008 fix: Call the init method instead of doing inline field initialization
-    // This ensures fields are assigned in the order specified by init(), not field declaration order
-    std::string initName = typeName + ".init";
-    std::vector<Value> initArgs;
-    initArgs.push_back(ptr); // self is first argument
-    for (const auto &argVal : argValues)
+    // Check if the entity has an explicit init method
+    auto initIt = info.methodMap.find("init");
+    if (initIt != info.methodMap.end())
     {
-        initArgs.push_back(argVal);
+        // BUG-VL-008 fix: Call the explicit init method
+        // This ensures fields are assigned in the order specified by init()
+        std::string initName = typeName + ".init";
+        std::vector<Value> initArgs;
+        initArgs.push_back(ptr); // self is first argument
+        for (const auto &argVal : argValues)
+        {
+            initArgs.push_back(argVal);
+        }
+        emitCall(initName, initArgs);
     }
-    emitCall(initName, initArgs);
+    else
+    {
+        // No explicit init - do inline field initialization
+        // Constructor args map directly to fields in declaration order
+        for (size_t i = 0; i < info.fields.size(); ++i)
+        {
+            const auto &field = info.fields[i];
+            Type ilFieldType = mapType(field.type);
+            Value fieldValue;
+
+            if (i < argValues.size())
+            {
+                // Use constructor argument
+                fieldValue = argValues[i];
+            }
+            else
+            {
+                // Use default value
+                switch (ilFieldType.kind)
+                {
+                    case Type::Kind::I1:
+                        fieldValue = Value::constBool(false);
+                        break;
+                    case Type::Kind::I64:
+                    case Type::Kind::I16:
+                    case Type::Kind::I32:
+                        fieldValue = Value::constInt(0);
+                        break;
+                    case Type::Kind::F64:
+                        fieldValue = Value::constFloat(0.0);
+                        break;
+                    case Type::Kind::Str:
+                        fieldValue = emitConstStr("");
+                        break;
+                    case Type::Kind::Ptr:
+                        fieldValue = Value::null();
+                        break;
+                    default:
+                        fieldValue = Value::constInt(0);
+                        break;
+                }
+            }
+
+            Value fieldAddr = emitGEP(ptr, static_cast<int64_t>(field.offset));
+            emitStore(fieldAddr, fieldValue, ilFieldType);
+        }
+    }
 
     // Return pointer to the allocated entity
     return {ptr, Type(Type::Kind::Ptr)};

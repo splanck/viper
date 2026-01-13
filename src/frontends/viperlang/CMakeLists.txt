@@ -38,5 +38,6 @@ target_link_libraries(fe_viperlang PUBLIC
         viper_il_core
         il_build
         il_runtime
+        il_transform
         fe_common
 )

@@ -49,6 +49,7 @@
 #include "frontends/viperlang/Lowerer.hpp"
 #include "frontends/viperlang/Parser.hpp"
 #include "frontends/viperlang/Sema.hpp"
+#include "il/transform/PassManager.hpp"
 #include <fstream>
 #include <sstream>
 
@@ -113,6 +114,19 @@ CompilerResult compile(const CompilerInput &input,
     // Phase 4: IL Lowering
     Lowerer lowerer(sema, options);
     result.module = lowerer.lower(*module);
+
+    // Phase 5: IL Optimization
+    if (options.optLevel != OptLevel::O0)
+    {
+        il::transform::PassManager pm;
+        // Disable verification between passes because the verifier doesn't
+        // compute dominance - it processes blocks in linear order and fails
+        // on valid IL where definitions dominate uses but appear later in
+        // the block list (e.g., match pattern lowering).
+        pm.setVerifyBetweenPasses(false);
+        il::transform::PassManager::Pipeline safePipeline = {"mem2reg", "peephole", "dce"};
+        pm.run(result.module, safePipeline);
+    }
 
     return result;
 }

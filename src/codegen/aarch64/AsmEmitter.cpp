@@ -376,7 +376,24 @@ void AsmEmitter::emitCmpRR(std::ostream &os, PhysReg lhs, PhysReg rhs) const
 
 void AsmEmitter::emitCmpRI(std::ostream &os, PhysReg lhs, long long imm) const
 {
-    os << "  cmp " << rn(lhs) << ", #" << imm << "\n";
+    // ARM64 cmp immediate range: 0-4095 (12-bit unsigned)
+    // ARM64 cmn immediate range: 0-4095 (equivalent to cmp with negated value)
+    // The assembler accepts "cmp xn, #-imm" and translates to "cmn xn, #imm"
+    if (imm >= 0 && imm <= 4095)
+    {
+        os << "  cmp " << rn(lhs) << ", #" << imm << "\n";
+    }
+    else if (imm >= -4095 && imm < 0)
+    {
+        // Negative immediates in cmn range - emit directly, assembler handles it
+        os << "  cmp " << rn(lhs) << ", #" << imm << "\n";
+    }
+    else
+    {
+        // Use x16 (IP0) as scratch register - it's caller-saved and not used for args
+        emitMovImm64(os, PhysReg::X16, imm);
+        os << "  cmp " << rn(lhs) << ", " << rn(PhysReg::X16) << "\n";
+    }
 }
 
 void AsmEmitter::emitTstRR(std::ostream &os, PhysReg lhs, PhysReg rhs) const

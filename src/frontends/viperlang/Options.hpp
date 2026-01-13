@@ -15,6 +15,14 @@
 namespace il::frontends::viperlang
 {
 
+/// @brief Optimization level for IL transformations.
+enum class OptLevel
+{
+    O0 = 0, ///< Minimal optimization (simplify-cfg, dce only).
+    O1 = 1, ///< Standard optimization (mem2reg, sccp, licm, peephole).
+    O2 = 2  ///< Aggressive optimization (includes inlining, gvn, dse).
+};
+
 /// @brief Options controlling ViperLang compilation behavior.
 struct CompilerOptions
 {
@@ -32,6 +40,12 @@ struct CompilerOptions
 
     /// @brief Dump IL after lowering (for debugging).
     bool dumpIL{false};
+
+    /// @brief Optimization level for IL transformations.
+    /// @details O1 is the default, providing a good balance of compilation
+    ///          speed and runtime performance. Use O0 for debugging or O2
+    ///          for maximum performance.
+    OptLevel optLevel{OptLevel::O1};
 };
 
 } // namespace il::frontends::viperlang

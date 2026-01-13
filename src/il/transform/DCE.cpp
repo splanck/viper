@@ -32,8 +32,19 @@
 #include "il/core/Module.hpp"
 #include "il/core/Value.hpp"
 #include "il/transform/CallEffects.hpp"
+#include <cstdlib>
+#include <iostream>
 #include <unordered_map>
 #include <unordered_set>
+
+namespace
+{
+static bool traceEnabled()
+{
+    static const bool enabled = std::getenv("VIPER_DCE_TRACE") != nullptr;
+    return enabled;
+}
+} // namespace
 
 using namespace il::core;
 
@@ -119,6 +130,36 @@ void dce(Module &M)
 {
     for (auto &F : M.functions)
     {
+        if (traceEnabled() && F.name == "main")
+        {
+            std::cerr << "[dce] === BEFORE DCE for " << F.name << " ===\n";
+            for (auto &B : F.blocks)
+            {
+                std::cerr << B.label << ":\n";
+                for (auto &I : B.instructions)
+                {
+                    std::cerr << "  ";
+                    if (I.result) std::cerr << "%" << *I.result << " = ";
+                    std::cerr << toString(I.op);
+                    for (auto &op : I.operands)
+                    {
+                        std::cerr << " ";
+                        if (op.kind == Value::Kind::Temp) std::cerr << "%t" << op.id;
+                        else if (op.kind == Value::Kind::ConstInt) std::cerr << "i64(" << op.i64 << ")";
+                        else if (op.kind == Value::Kind::ConstStr) std::cerr << "str(\"" << op.str << "\")";
+                        else if (op.kind == Value::Kind::GlobalAddr) std::cerr << "global(@" << op.str << ")";
+                        else if (op.kind == Value::Kind::ConstFloat) std::cerr << "f64(" << op.f64 << ")";
+                        else if (op.kind == Value::Kind::NullPtr) std::cerr << "null";
+                        else std::cerr << "?kind=" << static_cast<int>(op.kind);
+                    }
+                    if (!I.callee.empty()) std::cerr << " " << I.callee;
+                    for (size_t li = 0; li < I.labels.size(); ++li)
+                        std::cerr << " -> " << I.labels[li];
+                    std::cerr << "\n";
+                }
+            }
+            std::cerr << "[dce] === END BEFORE ===\n";
+        }
         auto uses = countUses(F);
 
         // Build a predecessor edge index once: for each target label, collect
@@ -146,16 +187,35 @@ void dce(Module &M)
                 }
             }
         }
-        // Gather allocas and whether they have loads
-        std::unordered_map<unsigned, bool> hasLoad;
+        // Gather allocas and track if they are "observed" (loaded from or used by GEP).
+        // An alloca is dead only if it has no uses at all, OR if it's only used by
+        // stores (no loads or GEPs that might lead to loads).
+        std::unordered_map<unsigned, bool> allocaObserved;
         for (auto &B : F.blocks)
             for (auto &I : B.instructions)
             {
                 if (I.op == Opcode::Alloca && I.result)
-                    hasLoad[*I.result] = false;
+                {
+                    allocaObserved[*I.result] = false;
+                    if (traceEnabled())
+                        std::cerr << "[dce] tracking alloca %" << *I.result << " in " << F.name << "\n";
+                }
+                // Mark as observed if loaded from directly
                 if (I.op == Opcode::Load && !I.operands.empty() &&
                     I.operands[0].kind == Value::Kind::Temp)
-                    hasLoad[I.operands[0].id] = true;
+                {
+                    allocaObserved[I.operands[0].id] = true;
+                    if (traceEnabled())
+                        std::cerr << "[dce] marking %" << I.operands[0].id << " as observed (load) in " << F.name << "\n";
+                }
+                // Mark as observed if used by GEP (GEP computes derived pointer)
+                if (I.op == Opcode::GEP && !I.operands.empty() &&
+                    I.operands[0].kind == Value::Kind::Temp)
+                {
+                    allocaObserved[I.operands[0].id] = true;
+                    if (traceEnabled())
+                        std::cerr << "[dce] marking %" << I.operands[0].id << " as observed (gep) in " << F.name << "\n";
+                }
             }
 
         // Remove dead loads/stores/allocas
@@ -166,19 +226,25 @@ void dce(Module &M)
                 Instr &I = B.instructions[i];
                 if (I.op == Opcode::Load && I.result && uses[*I.result] == 0)
                 {
+                    if (traceEnabled())
+                        std::cerr << "[dce] removing dead load %" << *I.result << " in " << F.name << ":" << B.label << "\n";
                     B.instructions.erase(B.instructions.begin() + i);
                     continue;
                 }
                 if (I.op == Opcode::Store && !I.operands.empty() &&
                     I.operands[0].kind == Value::Kind::Temp &&
-                    hasLoad.find(I.operands[0].id) != hasLoad.end() && !hasLoad[I.operands[0].id])
+                    allocaObserved.find(I.operands[0].id) != allocaObserved.end() && !allocaObserved[I.operands[0].id])
                 {
+                    if (traceEnabled())
+                        std::cerr << "[dce] removing dead store to %" << I.operands[0].id << " in " << F.name << ":" << B.label << "\n";
                     B.instructions.erase(B.instructions.begin() + i);
                     continue;
                 }
                 if (I.op == Opcode::Alloca && I.result &&
-                    hasLoad.find(*I.result) != hasLoad.end() && !hasLoad[*I.result])
+                    allocaObserved.find(*I.result) != allocaObserved.end() && !allocaObserved[*I.result])
                 {
+                    if (traceEnabled())
+                        std::cerr << "[dce] removing dead alloca %" << *I.result << " in " << F.name << ":" << B.label << "\n";
                     B.instructions.erase(B.instructions.begin() + i);
                     continue;
                 }
@@ -191,6 +257,8 @@ void dce(Module &M)
                     const CallEffects effects = classifyCallEffects(I);
                     if (effects.canEliminateIfUnused())
                     {
+                        if (traceEnabled())
+                            std::cerr << "[dce] removing pure call %" << *I.result << " = " << I.callee << " in " << F.name << ":" << B.label << "\n";
                         B.instructions.erase(B.instructions.begin() + i);
                         continue;
                     }
@@ -223,7 +291,11 @@ void dce(Module &M)
             {
                 const unsigned id = B.params[i].id;
                 if (id < uses.size() && uses[id] == 0)
+                {
+                    if (traceEnabled())
+                        std::cerr << "[dce] removing unused block param %" << id << " from " << B.label << "\n";
                     continue; // Dead param, skip
+                }
                 keepIndices.push_back(i);
             }
 

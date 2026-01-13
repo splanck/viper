@@ -25,11 +25,13 @@ namespace
 TEST(ViperLangControlFlow, IfStatement)
 {
     SourceManager sm;
+    // Use a runtime condition (not constant) so peephole doesn't optimize away the CBr
     const std::string source = R"(
 module Test;
 
 func start() {
-    if (true) {
+    var x = 1;
+    if (x > 0) {
         Viper.Terminal.Say("yes");
     } else {
         Viper.Terminal.Say("no");
@@ -37,7 +39,8 @@ func start() {
 }
 )";
     CompilerInput input{.source = source, .path = "if.viper"};
-    CompilerOptions opts{};
+    // Use O0 to test IL generation without optimization
+    CompilerOptions opts{.optLevel = OptLevel::O0};
 
     auto result = compile(input, opts, sm);
 
@@ -122,7 +125,8 @@ func start() {
 }
 )";
     CompilerInput input{.source = source, .path = "forin.viper"};
-    CompilerOptions opts{};
+    // Use O0 to test IL generation without optimization
+    CompilerOptions opts{.optLevel = OptLevel::O0};
 
     auto result = compile(input, opts, sm);
 

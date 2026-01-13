@@ -43,17 +43,9 @@ entity DrawingCanvas {
 
     // Clear canvas to background color
     expose func clear() {
-        // Fill by setting each pixel (convert to pixel format)
+        // Use native Fill for O(1) instead of O(width*height) pixel-by-pixel
         var pixelBg = toPixelColor(backgroundColor);
-        var py = 0;
-        while py < height {
-            var px = 0;
-            while px < width {
-                pixels.Set(px, py, pixelBg);
-                px = px + 1;
-            }
-            py = py + 1;
-        }
+        pixels.Fill(pixelBg);
     }
 
     // Get pixel color at position (returns 0x00RRGGBB format)
