@@ -622,6 +622,266 @@ void removeMarkedInstructions(std::vector<MInstr> &instrs, const std::vector<boo
     instrs.resize(writeIdx);
 }
 
+/// @brief Get a unique key for a physical register (for use in maps).
+[[nodiscard]] uint32_t regKey(const MOperand &op) noexcept
+{
+    if (op.kind != MOperand::Kind::Reg || !op.reg.isPhys)
+        return UINT32_MAX;
+    // Combine class and physical register ID into a unique key
+    return (static_cast<uint32_t>(op.reg.cls) << 16) | op.reg.idOrPhys;
+}
+
+/// @brief Classify an operand as use, def, or both.
+///
+/// Returns a pair (isUse, isDef) for the operand at the given index.
+[[nodiscard]] std::pair<bool, bool> classifyOperand(const MInstr &instr, std::size_t idx) noexcept
+{
+    // Most AArch64 instructions have dst at index 0 (def), sources at 1+ (use)
+    switch (instr.opc)
+    {
+        case MOpcode::MovRR:
+        case MOpcode::MovRI:
+        case MOpcode::FMovRR:
+        case MOpcode::FMovRI:
+            // mov dst, src
+            return idx == 0 ? std::make_pair(false, true) : std::make_pair(true, false);
+
+        case MOpcode::AddRRR:
+        case MOpcode::SubRRR:
+        case MOpcode::MulRRR:
+        case MOpcode::SDivRRR:
+        case MOpcode::UDivRRR:
+        case MOpcode::AndRRR:
+        case MOpcode::OrrRRR:
+        case MOpcode::EorRRR:
+        case MOpcode::FAddRRR:
+        case MOpcode::FSubRRR:
+        case MOpcode::FMulRRR:
+        case MOpcode::FDivRRR:
+            // op dst, lhs, rhs
+            return idx == 0 ? std::make_pair(false, true) : std::make_pair(true, false);
+
+        case MOpcode::AddRI:
+        case MOpcode::SubRI:
+        case MOpcode::LslRI:
+        case MOpcode::LsrRI:
+        case MOpcode::AsrRI:
+            // op dst, src, imm
+            if (idx == 0) return {false, true};
+            if (idx == 1) return {true, false};
+            return {false, false}; // imm
+
+        case MOpcode::CmpRR:
+        case MOpcode::TstRR:
+        case MOpcode::FCmpRR:
+            // cmp lhs, rhs (no def, both uses)
+            return {true, false};
+
+        case MOpcode::CmpRI:
+            // cmp src, imm
+            return idx == 0 ? std::make_pair(true, false) : std::make_pair(false, false);
+
+        case MOpcode::Cset:
+            // cset dst, cond
+            return idx == 0 ? std::make_pair(false, true) : std::make_pair(false, false);
+
+        case MOpcode::LdrRegFpImm:
+        case MOpcode::LdrFprFpImm:
+            // ldr dst, [fp, #imm]
+            return idx == 0 ? std::make_pair(false, true) : std::make_pair(false, false);
+
+        case MOpcode::LdrRegBaseImm:
+        case MOpcode::LdrFprBaseImm:
+            // ldr dst, [base, #imm]
+            if (idx == 0) return {false, true};
+            if (idx == 1) return {true, false};
+            return {false, false};
+
+        case MOpcode::StrRegFpImm:
+        case MOpcode::StrFprFpImm:
+            // str src, [fp, #imm]
+            return idx == 0 ? std::make_pair(true, false) : std::make_pair(false, false);
+
+        case MOpcode::StrRegBaseImm:
+        case MOpcode::StrFprBaseImm:
+            // str src, [base, #imm]
+            if (idx == 0) return {true, false};
+            if (idx == 1) return {true, false};
+            return {false, false};
+
+        case MOpcode::SCvtF:
+        case MOpcode::FCvtZS:
+        case MOpcode::UCvtF:
+        case MOpcode::FCvtZU:
+        case MOpcode::FRintN:
+            // cvt dst, src
+            return idx == 0 ? std::make_pair(false, true) : std::make_pair(true, false);
+
+        case MOpcode::MSubRRRR:
+            // msub dst, m1, m2, sub
+            return idx == 0 ? std::make_pair(false, true) : std::make_pair(true, false);
+
+        case MOpcode::AdrPage:
+            // adr dst, label
+            return idx == 0 ? std::make_pair(false, true) : std::make_pair(false, false);
+
+        case MOpcode::AddPageOff:
+            // add dst, base, label
+            if (idx == 0) return {false, true};
+            if (idx == 1) return {true, false};
+            return {false, false};
+
+        case MOpcode::Cbz:
+            // cbz reg, label
+            return idx == 0 ? std::make_pair(true, false) : std::make_pair(false, false);
+
+        case MOpcode::AddFpImm:
+            // add dst, fp, imm
+            return idx == 0 ? std::make_pair(false, true) : std::make_pair(false, false);
+
+        default:
+            // Conservative: assume first operand is def, rest are uses
+            return idx == 0 ? std::make_pair(false, true) : std::make_pair(true, false);
+    }
+}
+
+/// @brief Perform copy propagation within a basic block.
+///
+/// Tracks register copy relationships and propagates source registers through
+/// the block. When a register's value comes from a copy, we replace uses with
+/// the original source, potentially eliminating intermediate copies.
+///
+/// Example:
+///   mov x1, x0    ; x1 = x0
+///   add x2, x1, #1  ; becomes: add x2, x0, #1
+///   mov x3, x1    ; becomes: mov x3, x0 (then maybe identity if x1 not used)
+///
+/// @param instrs Instructions in the basic block.
+/// @param stats Statistics to update.
+/// @return Number of copies propagated.
+std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
+{
+    // Map from register key to its "origin" register (the source of the copy chain)
+    std::unordered_map<uint32_t, MOperand> copyOrigin;
+    std::size_t propagated = 0;
+
+    for (auto &instr : instrs)
+    {
+        // Skip non-register instructions
+        if (instr.opc == MOpcode::Br || instr.opc == MOpcode::BCond ||
+            instr.opc == MOpcode::Ret || instr.opc == MOpcode::Bl)
+        {
+            // Calls clobber caller-saved registers, invalidate their copy info
+            if (instr.opc == MOpcode::Bl)
+                copyOrigin.clear();
+            continue;
+        }
+
+        // For MovRR (register-to-register move), track the copy relationship
+        if (instr.opc == MOpcode::MovRR && instr.ops.size() == 2 &&
+            isPhysReg(instr.ops[0]) && isPhysReg(instr.ops[1]))
+        {
+            const MOperand &dst = instr.ops[0];
+            const MOperand &src = instr.ops[1];
+
+            // Find the origin of the source (follow the copy chain)
+            uint32_t srcKey = regKey(src);
+            MOperand origin = src;
+            auto it = copyOrigin.find(srcKey);
+            if (it != copyOrigin.end())
+                origin = it->second;
+
+            // If dst != origin, we can potentially propagate
+            if (!samePhysReg(dst, origin))
+            {
+                // Record that dst is a copy of origin
+                uint32_t dstKey = regKey(dst);
+                copyOrigin[dstKey] = origin;
+
+                // Update the mov to use the origin directly
+                if (!samePhysReg(src, origin))
+                {
+                    instr.ops[1] = origin;
+                    ++propagated;
+                }
+            }
+            else
+            {
+                // dst == origin, this is an identity move (will be removed later)
+                uint32_t dstKey = regKey(dst);
+                copyOrigin.erase(dstKey);
+            }
+            continue;
+        }
+
+        // For FMovRR (FP register move), same logic
+        if (instr.opc == MOpcode::FMovRR && instr.ops.size() == 2 &&
+            isPhysReg(instr.ops[0]) && isPhysReg(instr.ops[1]))
+        {
+            const MOperand &dst = instr.ops[0];
+            const MOperand &src = instr.ops[1];
+
+            uint32_t srcKey = regKey(src);
+            MOperand origin = src;
+            auto it = copyOrigin.find(srcKey);
+            if (it != copyOrigin.end())
+                origin = it->second;
+
+            if (!samePhysReg(dst, origin))
+            {
+                uint32_t dstKey = regKey(dst);
+                copyOrigin[dstKey] = origin;
+
+                if (!samePhysReg(src, origin))
+                {
+                    instr.ops[1] = origin;
+                    ++propagated;
+                }
+            }
+            else
+            {
+                uint32_t dstKey = regKey(dst);
+                copyOrigin.erase(dstKey);
+            }
+            continue;
+        }
+
+        // For other instructions, propagate copies in source operands
+        // and invalidate copy info for defined registers
+        for (std::size_t i = 0; i < instr.ops.size(); ++i)
+        {
+            auto &op = instr.ops[i];
+            if (!isPhysReg(op))
+                continue;
+
+            // Check if this operand position is a use (not a def)
+            auto [isUse, isDef] = classifyOperand(instr, i);
+
+            if (isUse)
+            {
+                // Try to replace with origin
+                uint32_t key = regKey(op);
+                auto it = copyOrigin.find(key);
+                if (it != copyOrigin.end() && !samePhysReg(op, it->second))
+                {
+                    op = it->second;
+                    ++propagated;
+                }
+            }
+
+            if (isDef)
+            {
+                // This register is redefined, invalidate its copy info
+                uint32_t key = regKey(op);
+                copyOrigin.erase(key);
+            }
+        }
+    }
+
+    stats.copiesPropagated += static_cast<int>(propagated);
+    return propagated;
+}
+
 /// @brief Check if a block is a cold block (trap handler, error block).
 ///
 /// Cold blocks are unlikely to be executed and should be placed at the end
@@ -735,6 +995,10 @@ PeepholeStats runPeephole(MFunction &fn)
             // Try strength reduction (mul power-of-2 -> shift)
             (void)tryStrengthReduction(instr, knownConsts, stats);
         }
+
+        // Pass 1.5: Copy propagation - replace uses with original sources
+        // TODO: Disabled pending investigation of correctness issues
+        // propagateCopies(instrs, stats);
 
         // Pass 2: Try to fold consecutive moves
         for (std::size_t i = 0; i + 1 < instrs.size(); ++i)

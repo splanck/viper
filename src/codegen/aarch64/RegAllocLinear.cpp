@@ -265,6 +265,7 @@ struct VState
     bool hasPhys{false};       ///< True if currently in a physical register.
     PhysReg phys{PhysReg::X0}; ///< Physical register (valid when hasPhys).
     bool spilled{false};       ///< True if value is on the stack.
+    bool dirty{false};         ///< True if register value is newer than spill slot.
     int fpOffset{0};           ///< FP-relative offset of spill slot.
     unsigned lastUse{0};       ///< Instruction index of last use (for LRU).
     unsigned nextUse{UINT_MAX}; ///< Instruction index of next use (for furthest-end-point).
@@ -532,18 +533,23 @@ class LinearAllocator
         if (!st.hasPhys)
             return;
 
-        const int off = fb_.ensureSpill(id);
+        // Only emit the store if the register value is dirty (newer than spill slot)
+        if (st.dirty)
+        {
+            const int off = fb_.ensureSpill(id);
+            if (cls == RegClass::GPR)
+                prefix.push_back(makeStrFp(st.phys, off));
+            else
+                prefix.push_back(
+                    MInstr{MOpcode::StrFprFpImm, {MOperand::regOp(st.phys), MOperand::immOp(off)}});
+            st.dirty = false;
+        }
+
+        // Always release the register and mark as spilled
         if (cls == RegClass::GPR)
-        {
-            prefix.push_back(makeStrFp(st.phys, off));
             pools_.releaseGPR(st.phys);
-        }
         else
-        {
-            prefix.push_back(
-                MInstr{MOpcode::StrFprFpImm, {MOperand::regOp(st.phys), MOperand::immOp(off)}});
             pools_.releaseFPR(st.phys);
-        }
         st.hasPhys = false;
         st.spilled = true;
     }
@@ -634,6 +640,11 @@ class LinearAllocator
         {
             assignNewPhysReg(st, isFPR);
         }
+
+        // If this is a definition, mark the register value as dirty
+        // (newer than any spill slot contents)
+        if (isDef)
+            st.dirty = true;
 
         r.isPhys = true;
         r.idOrPhys = static_cast<uint16_t>(st.phys);
@@ -881,8 +892,13 @@ class LinearAllocator
                     auto it = gprStates_.find(vid);
                     if (it != gprStates_.end() && it->second.hasPhys)
                     {
-                        const int off = fb_.ensureSpill(vid);
-                        endSpills.push_back(makeStrFp(it->second.phys, off));
+                        // Only emit store if register value is dirty (newer than spill slot)
+                        if (it->second.dirty)
+                        {
+                            const int off = fb_.ensureSpill(vid);
+                            endSpills.push_back(makeStrFp(it->second.phys, off));
+                            it->second.dirty = false;
+                        }
                         pools_.releaseGPR(it->second.phys);
                         it->second.hasPhys = false;
                         it->second.spilled = true;
@@ -893,10 +909,15 @@ class LinearAllocator
                     auto it = fprStates_.find(vid);
                     if (it != fprStates_.end() && it->second.hasPhys)
                     {
-                        const int off = fb_.ensureSpill(vid);
-                        endSpills.push_back(
-                            MInstr{MOpcode::StrFprFpImm,
-                                   {MOperand::regOp(it->second.phys), MOperand::immOp(off)}});
+                        // Only emit store if register value is dirty (newer than spill slot)
+                        if (it->second.dirty)
+                        {
+                            const int off = fb_.ensureSpill(vid);
+                            endSpills.push_back(
+                                MInstr{MOpcode::StrFprFpImm,
+                                       {MOperand::regOp(it->second.phys), MOperand::immOp(off)}});
+                            it->second.dirty = false;
+                        }
                         pools_.releaseFPR(it->second.phys);
                         it->second.hasPhys = false;
                         it->second.spilled = true;

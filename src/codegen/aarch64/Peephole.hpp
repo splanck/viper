@@ -41,13 +41,15 @@ struct PeepholeStats
     int strengthReductions{0};      ///< Number of mul→shift strength reductions.
     int branchesToNextRemoved{0};   ///< Number of branches to next block removed.
     int blocksReordered{0};          ///< Number of blocks reordered for layout.
+    int copiesPropagated{0};         ///< Number of copy propagations applied.
 
     /// @brief Total number of optimizations applied.
     [[nodiscard]] int total() const noexcept
     {
         return identityMovesRemoved + identityFMovesRemoved + consecutiveMovsFolded +
                deadInstructionsRemoved + cmpZeroToTst + arithmeticIdentities +
-               strengthReductions + branchesToNextRemoved + blocksReordered;
+               strengthReductions + branchesToNextRemoved + blocksReordered +
+               copiesPropagated;
     }
 };
 

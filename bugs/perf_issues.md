@@ -23,8 +23,8 @@ This document provides a comprehensive analysis of performance bottlenecks acros
 
 | Priority | Count | Expected Impact | Status |
 |----------|-------|-----------------|--------|
-| Critical | 18 | 30-50% improvement | 14 fixed |
-| High | 20 | 15-30% improvement | 8 fixed |
+| Critical | 18 | 30-50% improvement | 15 fixed |
+| High | 20 | 15-30% improvement | 9 fixed |
 | Medium | 15 | 5-15% improvement | 5 fixed |
 | Low | 9 | <5% improvement | 0 fixed |
 
@@ -48,6 +48,7 @@ This document provides a comprehensive analysis of performance bottlenecks acros
 | ✅ | RT-004: String split pre-allocation | 10-20% split-heavy |
 | ✅ | IL-001: Strength reduction (IndVarSimplify) | 10-20% loops |
 | ✅ | IL-002: Loop unrolling enabled in O2 | 10-30% loops |
+| ✅ | CG-002: Block-level dirty tracking | 5-15% multi-block |
 | ✅ | CG-008: Cold block reordering | 5-10% icache |
 
 ---
@@ -157,19 +158,33 @@ unsigned getNextUseDistance(uint16_t vreg, RegClass cls) const;
 
 ---
 
-#### ISSUE CG-002: Block-Level Spill/Reload Overhead ⚠️ HIGH
-**Location:** `src/codegen/aarch64/RegAllocLinear.cpp:815-861`
+#### ISSUE CG-002: Block-Level Spill/Reload Overhead ✅ FIXED
+**Location:** `src/codegen/aarch64/RegAllocLinear.cpp`
+**Status:** FIXED (2026-01-13)
 
 ```cpp
-// Spills ALL live-out values at block boundaries unconditionally
+// BEFORE: Spills ALL live-out values unconditionally
 for (auto vid : liveOutGPR_) {
     spillVictim(RegClass::GPR, vid, endBlockSpills);  // Always spills
 }
+
+// AFTER: Only spill if register value is dirty (newer than spill slot)
+struct VState {
+    // ...
+    bool dirty{false};  // NEW: tracks if register value differs from spill slot
+};
+
+void spillVictim(...) {
+    if (st.dirty) {  // Only store if value changed since last spill
+        prefix.push_back(makeStrFp(st.phys, off));
+        st.dirty = false;
+    }
+    // Always release register
+}
 ```
 
-**Problem:** Even callee-saved registers in stable allocation get spilled
-**Impact:** Excessive memory traffic across block boundaries
-**Fix:** Track allocation stability, avoid redundant spill/reload pairs
+**Fix:** Added `dirty` flag to VState that tracks whether register value is newer than spill slot. Spill stores only emitted when dirty=true.
+**Impact:** Eliminates redundant stores for values that were reloaded but not modified
 **Estimated gain:** 5-15% for multi-block functions
 
 ---
@@ -629,12 +644,12 @@ func fib(n) { if (n <= 1) return n; return fib(n-1) + fib(n-2); }
 | ✅ | VM-001 Pool binding vectors | Op_CallRet.cpp | 5-10% | DONE |
 | ✅ | CG-006 Port peephole to x86-64 | Peephole.cpp | 5-10% | DONE |
 
-### Phase 2: Core Improvements (mostly complete)
+### Phase 2: Core Improvements ✅ COMPLETE
 
 | Priority | Issue | File | Expected Gain | Status |
 |----------|-------|------|---------------|--------|
 | ✅ | CG-001 Furthest-end-point spill | RegAllocLinear.cpp | 10-20% | DONE |
-| 🔴 | CG-002 Block-level allocation | RegAllocLinear.cpp:815 | 5-15% | TODO |
+| ✅ | CG-002 Block-level dirty tracking | RegAllocLinear.cpp | 5-15% | DONE |
 | ✅ | IL-004 Increase SROA limits | Mem2Reg.cpp:38 | 5-10% | DONE |
 | ✅ | RT-004 String split pooling | rt_string_ops.c | 10-20% | DONE |
 
