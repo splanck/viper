@@ -2,6 +2,7 @@
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_event.h"
+#include "../../../graphics/include/vgfx.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -112,6 +113,171 @@ static void update_gutter_width(vg_codeeditor_t* editor) {
 }
 
 //=============================================================================
+// Undo/Redo History Management
+//=============================================================================
+
+#define HISTORY_INITIAL_CAPACITY 64
+
+static vg_edit_history_t* edit_history_create(void) {
+    vg_edit_history_t* history = calloc(1, sizeof(vg_edit_history_t));
+    if (!history) return NULL;
+
+    history->operations = calloc(HISTORY_INITIAL_CAPACITY, sizeof(vg_edit_op_t*));
+    if (!history->operations) {
+        free(history);
+        return NULL;
+    }
+
+    history->capacity = HISTORY_INITIAL_CAPACITY;
+    history->count = 0;
+    history->current_index = 0;
+    history->next_group_id = 1;
+    history->is_grouping = false;
+    history->current_group = 0;
+
+    return history;
+}
+
+static void edit_op_destroy(vg_edit_op_t* op) {
+    if (!op) return;
+    free(op->old_text);
+    free(op->new_text);
+    free(op);
+}
+
+static void edit_history_destroy(vg_edit_history_t* history) {
+    if (!history) return;
+
+    for (size_t i = 0; i < history->count; i++) {
+        edit_op_destroy(history->operations[i]);
+    }
+    free(history->operations);
+    free(history);
+}
+
+static void edit_history_clear(vg_edit_history_t* history) {
+    if (!history) return;
+
+    for (size_t i = 0; i < history->count; i++) {
+        edit_op_destroy(history->operations[i]);
+        history->operations[i] = NULL;
+    }
+    history->count = 0;
+    history->current_index = 0;
+}
+
+static void edit_history_push(vg_edit_history_t* history, vg_edit_op_t* op) {
+    if (!history || !op) return;
+
+    // Discard any redo operations
+    for (size_t i = history->current_index; i < history->count; i++) {
+        edit_op_destroy(history->operations[i]);
+        history->operations[i] = NULL;
+    }
+    history->count = history->current_index;
+
+    // Grow capacity if needed
+    if (history->count >= history->capacity) {
+        size_t new_capacity = history->capacity * 2;
+        vg_edit_op_t** new_ops = realloc(history->operations, new_capacity * sizeof(vg_edit_op_t*));
+        if (!new_ops) {
+            edit_op_destroy(op);
+            return;
+        }
+        history->operations = new_ops;
+        history->capacity = new_capacity;
+    }
+
+    // Set group ID if grouping
+    if (history->is_grouping) {
+        op->group_id = history->current_group;
+    }
+
+    history->operations[history->count++] = op;
+    history->current_index = history->count;
+}
+
+static vg_edit_op_t* edit_history_pop_undo(vg_edit_history_t* history) {
+    if (!history || history->current_index == 0) return NULL;
+    history->current_index--;
+    return history->operations[history->current_index];
+}
+
+static vg_edit_op_t* edit_history_peek_undo(vg_edit_history_t* history) {
+    if (!history || history->current_index == 0) return NULL;
+    return history->operations[history->current_index - 1];
+}
+
+static vg_edit_op_t* edit_history_pop_redo(vg_edit_history_t* history) {
+    if (!history || history->current_index >= history->count) return NULL;
+    vg_edit_op_t* op = history->operations[history->current_index];
+    history->current_index++;
+    return op;
+}
+
+static void edit_history_begin_group(vg_edit_history_t* history) {
+    if (!history) return;
+    history->is_grouping = true;
+    history->current_group = history->next_group_id++;
+}
+
+static void edit_history_end_group(vg_edit_history_t* history) {
+    if (!history) return;
+    history->is_grouping = false;
+    history->current_group = 0;
+}
+
+static vg_edit_op_t* create_edit_op(vg_edit_op_type_t type,
+                                     int start_line, int start_col,
+                                     int end_line, int end_col,
+                                     const char* old_text,
+                                     const char* new_text,
+                                     int cursor_line_before, int cursor_col_before,
+                                     int cursor_line_after, int cursor_col_after) {
+    vg_edit_op_t* op = calloc(1, sizeof(vg_edit_op_t));
+    if (!op) return NULL;
+
+    op->type = type;
+    op->start_line = start_line;
+    op->start_col = start_col;
+    op->end_line = end_line;
+    op->end_col = end_col;
+    op->old_text = old_text ? strdup(old_text) : NULL;
+    op->new_text = new_text ? strdup(new_text) : NULL;
+    op->cursor_line_before = cursor_line_before;
+    op->cursor_col_before = cursor_col_before;
+    op->cursor_line_after = cursor_line_after;
+    op->cursor_col_after = cursor_col_after;
+    op->group_id = 0;
+
+    return op;
+}
+
+//=============================================================================
+// Selection Helper Functions
+//=============================================================================
+
+static void normalize_selection(vg_codeeditor_t* editor,
+                                 int* start_line, int* start_col,
+                                 int* end_line, int* end_col) {
+    *start_line = editor->selection.start_line;
+    *start_col = editor->selection.start_col;
+    *end_line = editor->selection.end_line;
+    *end_col = editor->selection.end_col;
+
+    // Normalize: start should be before end
+    if (*start_line > *end_line ||
+        (*start_line == *end_line && *start_col > *end_col)) {
+        int tmp = *start_line;
+        *start_line = *end_line;
+        *end_line = tmp;
+        tmp = *start_col;
+        *start_col = *end_col;
+        *end_col = tmp;
+    }
+}
+
+//=============================================================================
 // CodeEditor Implementation
 //=============================================================================
 
@@ -193,6 +359,15 @@ vg_codeeditor_t* vg_codeeditor_create(vg_widget_t* parent) {
     editor->cursor_blink_time = 0;
     editor->modified = false;
 
+    // Create undo/redo history
+    editor->history = edit_history_create();
+    if (!editor->history) {
+        free(editor->lines[0].text);
+        free(editor->lines);
+        free(editor);
+        return NULL;
+    }
+
     // Add to parent
     if (parent) {
         vg_widget_add_child(parent, &editor->base);
@@ -211,6 +386,10 @@ static void codeeditor_destroy(vg_widget_t* widget) {
     editor->lines = NULL;
     editor->line_count = 0;
     editor->line_capacity = 0;
+
+    // Free undo/redo history
+    edit_history_destroy(editor->history);
+    editor->history = NULL;
 }
 
 static void codeeditor_measure(vg_widget_t* widget, float available_width, float available_height) {
@@ -481,7 +660,79 @@ static bool codeeditor_handle_event(vg_widget_t* widget, vg_event_t* event) {
             return true;
         }
 
-        case VG_EVENT_KEY_DOWN:
+        case VG_EVENT_KEY_DOWN: {
+            // Check for modifier key shortcuts first
+            uint32_t mods = event->modifiers;
+            bool has_ctrl = (mods & VG_MOD_CTRL) != 0 || (mods & VG_MOD_SUPER) != 0; // Ctrl or Cmd
+
+            // Clipboard and editing shortcuts (Ctrl/Cmd + key)
+            if (has_ctrl) {
+                switch (event->key.key) {
+                    case VG_KEY_C: // Copy
+                        if (editor->has_selection) {
+                            char* text = vg_codeeditor_get_selection(editor);
+                            if (text) {
+                                vgfx_clipboard_set_text(text);
+                                free(text);
+                            }
+                        }
+                        widget->needs_paint = true;
+                        return true;
+
+                    case VG_KEY_X: // Cut
+                        if (!editor->read_only && editor->has_selection) {
+                            char* text = vg_codeeditor_get_selection(editor);
+                            if (text) {
+                                vgfx_clipboard_set_text(text);
+                                free(text);
+                                vg_codeeditor_delete_selection(editor);
+                            }
+                        }
+                        widget->needs_paint = true;
+                        return true;
+
+                    case VG_KEY_V: // Paste
+                        if (!editor->read_only) {
+                            char* text = vgfx_clipboard_get_text();
+                            if (text) {
+                                if (editor->has_selection) {
+                                    vg_codeeditor_delete_selection(editor);
+                                }
+                                vg_codeeditor_insert_text(editor, text);
+                                free(text);
+                            }
+                        }
+                        widget->needs_paint = true;
+                        return true;
+
+                    case VG_KEY_Z: // Undo
+                        if (!editor->read_only) {
+                            vg_codeeditor_undo(editor);
+                        }
+                        widget->needs_paint = true;
+                        return true;
+
+                    case VG_KEY_Y: // Redo
+                        if (!editor->read_only) {
+                            vg_codeeditor_redo(editor);
+                        }
+                        widget->needs_paint = true;
+                        return true;
+
+                    case VG_KEY_A: // Select all
+                        editor->selection.start_line = 0;
+                        editor->selection.start_col = 0;
+                        editor->selection.end_line = editor->line_count - 1;
+                        editor->selection.end_col = (int)editor->lines[editor->line_count - 1].length;
+                        editor->has_selection = true;
+                        widget->needs_paint = true;
+                        return true;
+
+                    default:
+                        break;
+                }
+            }
+
             if (editor->read_only) {
                 // Navigation only
                 switch (event->key.key) {
@@ -570,6 +821,7 @@ static bool codeeditor_handle_event(vg_widget_t* widget, vg_event_t* event) {
             editor->has_selection = false;
             widget->needs_paint = true;
             return true;
+        }
 
         case VG_EVENT_KEY_CHAR:
             if (!editor->read_only && event->key.codepoint >= 32 && event->key.codepoint < 127) {
@@ -707,8 +959,37 @@ char* vg_codeeditor_get_text(vg_codeeditor_t* editor) {
 char* vg_codeeditor_get_selection(vg_codeeditor_t* editor) {
     if (!editor || !editor->has_selection) return NULL;
 
-    // TODO: Implement selection extraction
-    return NULL;
+    // Normalize selection (start before end)
+    int start_line, start_col, end_line, end_col;
+    normalize_selection(editor, &start_line, &start_col, &end_line, &end_col);
+
+    // Calculate buffer size needed
+    size_t total_len = 0;
+    for (int line = start_line; line <= end_line; line++) {
+        int col_start = (line == start_line) ? start_col : 0;
+        int col_end = (line == end_line) ? end_col : (int)editor->lines[line].length;
+        total_len += (size_t)(col_end - col_start);
+        if (line < end_line) total_len++;  // newline
+    }
+
+    // Allocate and copy
+    char* result = malloc(total_len + 1);
+    if (!result) return NULL;
+
+    char* ptr = result;
+    for (int line = start_line; line <= end_line; line++) {
+        int col_start = (line == start_line) ? start_col : 0;
+        int col_end = (line == end_line) ? end_col : (int)editor->lines[line].length;
+        size_t len = (size_t)(col_end - col_start);
+        if (len > 0) {
+            memcpy(ptr, editor->lines[line].text + col_start, len);
+            ptr += len;
+        }
+        if (line < end_line) *ptr++ = '\n';
+    }
+    *ptr = '\0';
+
+    return result;
 }
 
 void vg_codeeditor_set_cursor(vg_codeeditor_t* editor, int line, int col) {
@@ -762,9 +1043,82 @@ void vg_codeeditor_insert_text(vg_codeeditor_t* editor, const char* text) {
 void vg_codeeditor_delete_selection(vg_codeeditor_t* editor) {
     if (!editor || !editor->has_selection) return;
 
-    // TODO: Implement full selection deletion
+    // Normalize selection
+    int start_line, start_col, end_line, end_col;
+    normalize_selection(editor, &start_line, &start_col, &end_line, &end_col);
+
+    // Get the selected text for undo
+    char* deleted_text = vg_codeeditor_get_selection(editor);
+
+    // Save cursor state for undo
+    int cursor_before_line = editor->cursor_line;
+    int cursor_before_col = editor->cursor_col;
+
+    if (start_line == end_line) {
+        // Single line deletion
+        vg_code_line_t* line = &editor->lines[start_line];
+        memmove(line->text + start_col,
+                line->text + end_col,
+                line->length - end_col + 1);
+        line->length -= (end_col - start_col);
+        line->modified = true;
+    } else {
+        // Multi-line deletion
+        vg_code_line_t* first = &editor->lines[start_line];
+        vg_code_line_t* last = &editor->lines[end_line];
+
+        // Keep the beginning of first line and end of last line
+        size_t new_len = start_col + (last->length - end_col);
+        if (!ensure_text_capacity(first, new_len + 1)) {
+            free(deleted_text);
+            return;
+        }
+
+        // Copy end of last line to first line
+        memcpy(first->text + start_col,
+               last->text + end_col,
+               last->length - end_col + 1);
+        first->length = new_len;
+        first->modified = true;
+
+        // Free intermediate lines
+        for (int i = start_line + 1; i <= end_line; i++) {
+            free_line(&editor->lines[i]);
+        }
+
+        // Move remaining lines up
+        int lines_removed = end_line - start_line;
+        if (end_line + 1 < editor->line_count) {
+            memmove(&editor->lines[start_line + 1],
+                    &editor->lines[end_line + 1],
+                    (editor->line_count - end_line - 1) * sizeof(vg_code_line_t));
+        }
+        editor->line_count -= lines_removed;
+
+        update_gutter_width(editor);
+    }
+
+    // Set cursor to start of deleted region
+    editor->cursor_line = start_line;
+    editor->cursor_col = start_col;
     editor->has_selection = false;
     editor->modified = true;
+
+    // Record for undo
+    if (editor->history && deleted_text) {
+        vg_edit_op_t* op = create_edit_op(
+            VG_EDIT_DELETE,
+            start_line, start_col, end_line, end_col,
+            deleted_text, NULL,
+            cursor_before_line, cursor_before_col,
+            start_line, start_col
+        );
+        if (op) {
+            edit_history_push(editor->history, op);
+        }
+    }
+
+    free(deleted_text);
     editor->base.needs_paint = true;
 }
 
@@ -790,14 +1144,229 @@ void vg_codeeditor_set_syntax(vg_codeeditor_t* editor,
     editor->syntax_data = user_data;
 }
 
+// Internal helper: insert text at position without recording to history
+static void insert_text_at_internal(vg_codeeditor_t* editor,
+                                     int line, int col, const char* text) {
+    if (!editor || !text || line < 0 || line >= editor->line_count) return;
+
+    // Process character by character
+    int cur_line = line;
+    int cur_col = col;
+
+    for (const char* p = text; *p; p++) {
+        if (*p == '\n') {
+            // Insert newline
+            if (!ensure_line_capacity(editor, editor->line_count + 1)) return;
+
+            // Move lines down
+            memmove(&editor->lines[cur_line + 2],
+                    &editor->lines[cur_line + 1],
+                    (editor->line_count - cur_line - 1) * sizeof(vg_code_line_t));
+
+            vg_code_line_t* current = &editor->lines[cur_line];
+            vg_code_line_t* next = &editor->lines[cur_line + 1];
+
+            memset(next, 0, sizeof(vg_code_line_t));
+            size_t remaining = current->length - cur_col;
+
+            if (remaining > 0) {
+                next->text = malloc(remaining + 1);
+                if (next->text) {
+                    memcpy(next->text, current->text + cur_col, remaining);
+                    next->text[remaining] = '\0';
+                    next->length = remaining;
+                    next->capacity = remaining + 1;
+                }
+            } else {
+                next->text = malloc(1);
+                if (next->text) {
+                    next->text[0] = '\0';
+                    next->length = 0;
+                    next->capacity = 1;
+                }
+            }
+
+            current->text[cur_col] = '\0';
+            current->length = cur_col;
+            editor->line_count++;
+
+            cur_line++;
+            cur_col = 0;
+        } else if (*p >= 32 || *p == '\t') {
+            // Insert character
+            vg_code_line_t* ln = &editor->lines[cur_line];
+            if (!ensure_text_capacity(ln, ln->length + 2)) return;
+
+            memmove(ln->text + cur_col + 1, ln->text + cur_col, ln->length - cur_col + 1);
+            ln->text[cur_col] = *p;
+            ln->length++;
+            cur_col++;
+        }
+    }
+
+    editor->cursor_line = cur_line;
+    editor->cursor_col = cur_col;
+    editor->modified = true;
+    update_gutter_width(editor);
+}
+
+// Internal helper: delete text range without recording to history
+static void delete_text_range_internal(vg_codeeditor_t* editor,
+                                        int start_line, int start_col,
+                                        int end_line, int end_col) {
+    if (!editor || start_line < 0 || start_line >= editor->line_count) return;
+    if (end_line < 0 || end_line >= editor->line_count) return;
+
+    if (start_line == end_line) {
+        // Single line deletion
+        vg_code_line_t* line = &editor->lines[start_line];
+        if (start_col >= (int)line->length) return;
+        if (end_col > (int)line->length) end_col = (int)line->length;
+
+        memmove(line->text + start_col,
+                line->text + end_col,
+                line->length - end_col + 1);
+        line->length -= (end_col - start_col);
+    } else {
+        // Multi-line deletion
+        vg_code_line_t* first = &editor->lines[start_line];
+        vg_code_line_t* last = &editor->lines[end_line];
+
+        size_t new_len = start_col + (last->length - end_col);
+        if (!ensure_text_capacity(first, new_len + 1)) return;
+
+        memcpy(first->text + start_col,
+               last->text + end_col,
+               last->length - end_col + 1);
+        first->length = new_len;
+
+        for (int i = start_line + 1; i <= end_line; i++) {
+            free_line(&editor->lines[i]);
+        }
+
+        int lines_removed = end_line - start_line;
+        if (end_line + 1 < editor->line_count) {
+            memmove(&editor->lines[start_line + 1],
+                    &editor->lines[end_line + 1],
+                    (editor->line_count - end_line - 1) * sizeof(vg_code_line_t));
+        }
+        editor->line_count -= lines_removed;
+        update_gutter_width(editor);
+    }
+
+    editor->cursor_line = start_line;
+    editor->cursor_col = start_col;
+    editor->modified = true;
+}
+
 void vg_codeeditor_undo(vg_codeeditor_t* editor) {
-    // TODO: Implement undo
-    (void)editor;
+    if (!editor || !editor->history) return;
+
+    vg_edit_op_t* op = edit_history_pop_undo(editor->history);
+    if (!op) return;
+
+    // Handle grouped operations
+    uint32_t group = op->group_id;
+    do {
+        switch (op->type) {
+            case VG_EDIT_INSERT:
+                // Undo insert = delete the inserted text
+                delete_text_range_internal(editor,
+                    op->start_line, op->start_col,
+                    op->end_line, op->end_col);
+                break;
+
+            case VG_EDIT_DELETE:
+                // Undo delete = re-insert the deleted text
+                insert_text_at_internal(editor,
+                    op->start_line, op->start_col, op->old_text);
+                break;
+
+            case VG_EDIT_REPLACE:
+                // Undo replace = delete new text, insert old text
+                delete_text_range_internal(editor,
+                    op->start_line, op->start_col,
+                    op->end_line, op->end_col);
+                insert_text_at_internal(editor,
+                    op->start_line, op->start_col, op->old_text);
+                break;
+        }
+
+        // Restore cursor
+        editor->cursor_line = op->cursor_line_before;
+        editor->cursor_col = op->cursor_col_before;
+
+        // Check for more operations in same group
+        if (group != 0) {
+            vg_edit_op_t* next_op = edit_history_peek_undo(editor->history);
+            if (next_op && next_op->group_id == group) {
+                op = edit_history_pop_undo(editor->history);
+            } else {
+                break;
+            }
+        } else {
+            break;
+        }
+    } while (op);
+
+    editor->has_selection = false;
+    editor->base.needs_paint = true;
 }
 
 void vg_codeeditor_redo(vg_codeeditor_t* editor) {
-    // TODO: Implement redo
-    (void)editor;
+    if (!editor || !editor->history) return;
+
+    vg_edit_op_t* op = edit_history_pop_redo(editor->history);
+    if (!op) return;
+
+    // Handle grouped operations
+    uint32_t group = op->group_id;
+
+    // Collect all ops in this group
+    do {
+        switch (op->type) {
+            case VG_EDIT_INSERT:
+                // Redo insert = insert the text again
+                insert_text_at_internal(editor,
+                    op->start_line, op->start_col, op->new_text);
+                break;
+
+            case VG_EDIT_DELETE:
+                // Redo delete = delete the text again
+                delete_text_range_internal(editor,
+                    op->start_line, op->start_col,
+                    op->end_line, op->end_col);
+                break;
+
+            case VG_EDIT_REPLACE:
+                // Redo replace = delete old text, insert new text
+                delete_text_range_internal(editor,
+                    op->start_line, op->start_col,
+                    op->end_line, op->end_col);
+                insert_text_at_internal(editor,
+                    op->start_line, op->start_col, op->new_text);
+                break;
+        }
+
+        // Restore cursor
+        editor->cursor_line = op->cursor_line_after;
+        editor->cursor_col = op->cursor_col_after;
+
+        // Check for more operations in same group
+        if (group != 0 && editor->history->current_index < editor->history->count) {
+            vg_edit_op_t* next_op = editor->history->operations[editor->history->current_index];
+            if (next_op && next_op->group_id == group) {
+                op = edit_history_pop_redo(editor->history);
+            } else {
+                break;
+            }
+        } else {
+            break;
+        }
+    } while (op);
+
+    editor->has_selection = false;
+    editor->base.needs_paint = true;
 }
 
 void vg_codeeditor_set_font(vg_codeeditor_t* editor, vg_font_t* font, float size) {

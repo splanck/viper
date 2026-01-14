@@ -4,6 +4,7 @@
 #include "../../include/vg_event.h"
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>  // For strcasecmp
 
 //=============================================================================
 // Forward Declarations
@@ -560,4 +561,183 @@ void vg_menubar_set_font(vg_menubar_t* menubar, vg_font_t* font, float size) {
     menubar->font = font;
     menubar->font_size = size > 0 ? size : vg_theme_get_current()->typography.size_normal;
     menubar->base.needs_paint = true;
+}
+
+//=============================================================================
+// Keyboard Accelerators
+//=============================================================================
+
+// Key name to key code mapping
+typedef struct {
+    const char* name;
+    int key;
+} key_mapping_t;
+
+static const key_mapping_t g_key_mappings[] = {
+    // Letters
+    {"A", VG_KEY_A}, {"B", VG_KEY_B}, {"C", VG_KEY_C}, {"D", VG_KEY_D},
+    {"E", VG_KEY_E}, {"F", VG_KEY_F}, {"G", VG_KEY_G}, {"H", VG_KEY_H},
+    {"I", VG_KEY_I}, {"J", VG_KEY_J}, {"K", VG_KEY_K}, {"L", VG_KEY_L},
+    {"M", VG_KEY_M}, {"N", VG_KEY_N}, {"O", VG_KEY_O}, {"P", VG_KEY_P},
+    {"Q", VG_KEY_Q}, {"R", VG_KEY_R}, {"S", VG_KEY_S}, {"T", VG_KEY_T},
+    {"U", VG_KEY_U}, {"V", VG_KEY_V}, {"W", VG_KEY_W}, {"X", VG_KEY_X},
+    {"Y", VG_KEY_Y}, {"Z", VG_KEY_Z},
+    // Numbers
+    {"0", VG_KEY_0}, {"1", VG_KEY_1}, {"2", VG_KEY_2}, {"3", VG_KEY_3},
+    {"4", VG_KEY_4}, {"5", VG_KEY_5}, {"6", VG_KEY_6}, {"7", VG_KEY_7},
+    {"8", VG_KEY_8}, {"9", VG_KEY_9},
+    // Function keys
+    {"F1", VG_KEY_F1}, {"F2", VG_KEY_F2}, {"F3", VG_KEY_F3}, {"F4", VG_KEY_F4},
+    {"F5", VG_KEY_F5}, {"F6", VG_KEY_F6}, {"F7", VG_KEY_F7}, {"F8", VG_KEY_F8},
+    {"F9", VG_KEY_F9}, {"F10", VG_KEY_F10}, {"F11", VG_KEY_F11}, {"F12", VG_KEY_F12},
+    // Special keys
+    {"Enter", VG_KEY_ENTER}, {"Return", VG_KEY_ENTER}, {"Tab", VG_KEY_TAB},
+    {"Escape", VG_KEY_ESCAPE}, {"Esc", VG_KEY_ESCAPE}, {"Space", VG_KEY_SPACE},
+    {"Backspace", VG_KEY_BACKSPACE}, {"Delete", VG_KEY_DELETE}, {"Del", VG_KEY_DELETE},
+    {"Insert", VG_KEY_INSERT}, {"Ins", VG_KEY_INSERT},
+    {"Home", VG_KEY_HOME}, {"End", VG_KEY_END},
+    {"PageUp", VG_KEY_PAGE_UP}, {"PgUp", VG_KEY_PAGE_UP},
+    {"PageDown", VG_KEY_PAGE_DOWN}, {"PgDn", VG_KEY_PAGE_DOWN},
+    {"Up", VG_KEY_UP}, {"Down", VG_KEY_DOWN},
+    {"Left", VG_KEY_LEFT}, {"Right", VG_KEY_RIGHT},
+    // Punctuation
+    {"-", VG_KEY_MINUS}, {"=", VG_KEY_EQUAL},
+    {"[", VG_KEY_LEFT_BRACKET}, {"]", VG_KEY_RIGHT_BRACKET},
+    {";", VG_KEY_SEMICOLON}, {"'", VG_KEY_APOSTROPHE},
+    {",", VG_KEY_COMMA}, {".", VG_KEY_PERIOD},
+    {"/", VG_KEY_SLASH}, {"\\", VG_KEY_BACKSLASH},
+    {"`", VG_KEY_GRAVE},
+    {NULL, 0}
+};
+
+static int lookup_key(const char* name) {
+    for (const key_mapping_t* m = g_key_mappings; m->name; m++) {
+        if (strcasecmp(name, m->name) == 0) {
+            return m->key;
+        }
+    }
+    return VG_KEY_UNKNOWN;
+}
+
+bool vg_parse_accelerator(const char* shortcut, vg_accelerator_t* accel) {
+    if (!shortcut || !accel) return false;
+
+    accel->key = VG_KEY_UNKNOWN;
+    accel->modifiers = 0;
+
+    // Copy string for tokenizing
+    char* str = strdup(shortcut);
+    if (!str) return false;
+
+    char* saveptr;
+    char* token = strtok_r(str, "+", &saveptr);
+
+    while (token) {
+        // Trim whitespace
+        while (*token == ' ') token++;
+        char* end = token + strlen(token) - 1;
+        while (end > token && *end == ' ') *end-- = '\0';
+
+        // Check for modifiers
+        if (strcasecmp(token, "Ctrl") == 0 || strcasecmp(token, "Control") == 0) {
+            accel->modifiers |= VG_MOD_CTRL;
+        } else if (strcasecmp(token, "Cmd") == 0 || strcasecmp(token, "Command") == 0 ||
+                   strcasecmp(token, "Meta") == 0 || strcasecmp(token, "Super") == 0) {
+            accel->modifiers |= VG_MOD_SUPER;
+        } else if (strcasecmp(token, "Shift") == 0) {
+            accel->modifiers |= VG_MOD_SHIFT;
+        } else if (strcasecmp(token, "Alt") == 0 || strcasecmp(token, "Option") == 0) {
+            accel->modifiers |= VG_MOD_ALT;
+        } else {
+            // Must be the key
+            accel->key = lookup_key(token);
+        }
+
+        token = strtok_r(NULL, "+", &saveptr);
+    }
+
+    free(str);
+    return accel->key != VG_KEY_UNKNOWN;
+}
+
+void vg_menubar_register_accelerator(vg_menubar_t* menubar, vg_menu_item_t* item,
+    const char* shortcut) {
+    if (!menubar || !item || !shortcut) return;
+
+    vg_accelerator_t accel;
+    if (!vg_parse_accelerator(shortcut, &accel)) return;
+
+    // Store parsed accelerator in item
+    item->accel = accel;
+
+    // Add to accelerator table
+    vg_accel_entry_t* entry = calloc(1, sizeof(vg_accel_entry_t));
+    if (!entry) return;
+
+    entry->accel = accel;
+    entry->item = item;
+    entry->next = menubar->accel_table;
+    menubar->accel_table = entry;
+}
+
+static void rebuild_accels_for_menu(vg_menubar_t* menubar, vg_menu_t* menu) {
+    for (vg_menu_item_t* item = menu->first_item; item; item = item->next) {
+        if (item->shortcut) {
+            vg_menubar_register_accelerator(menubar, item, item->shortcut);
+        }
+        if (item->submenu) {
+            rebuild_accels_for_menu(menubar, item->submenu);
+        }
+    }
+}
+
+void vg_menubar_rebuild_accelerators(vg_menubar_t* menubar) {
+    if (!menubar) return;
+
+    // Free existing accelerator table
+    vg_accel_entry_t* entry = menubar->accel_table;
+    while (entry) {
+        vg_accel_entry_t* next = entry->next;
+        free(entry);
+        entry = next;
+    }
+    menubar->accel_table = NULL;
+
+    // Rebuild from all menus
+    for (vg_menu_t* menu = menubar->first_menu; menu; menu = menu->next) {
+        rebuild_accels_for_menu(menubar, menu);
+    }
+}
+
+bool vg_menubar_handle_accelerator(vg_menubar_t* menubar, int key, uint32_t modifiers) {
+    if (!menubar) return false;
+
+    // Normalize modifiers: treat Ctrl and Super as equivalent on Mac
+    uint32_t norm_mods = modifiers & (VG_MOD_CTRL | VG_MOD_SUPER | VG_MOD_SHIFT | VG_MOD_ALT);
+
+    for (vg_accel_entry_t* entry = menubar->accel_table; entry; entry = entry->next) {
+        // Check for match
+        uint32_t entry_mods = entry->accel.modifiers;
+
+        // Allow Ctrl and Super to be interchangeable
+        bool ctrl_match = ((norm_mods & (VG_MOD_CTRL | VG_MOD_SUPER)) != 0 &&
+                          (entry_mods & (VG_MOD_CTRL | VG_MOD_SUPER)) != 0) ||
+                         ((norm_mods & (VG_MOD_CTRL | VG_MOD_SUPER)) == 0 &&
+                          (entry_mods & (VG_MOD_CTRL | VG_MOD_SUPER)) == 0);
+
+        bool shift_match = ((norm_mods & VG_MOD_SHIFT) != 0) ==
+                          ((entry_mods & VG_MOD_SHIFT) != 0);
+        bool alt_match = ((norm_mods & VG_MOD_ALT) != 0) ==
+                        ((entry_mods & VG_MOD_ALT) != 0);
+
+        if (entry->accel.key == key && ctrl_match && shift_match && alt_match) {
+            vg_menu_item_t* item = entry->item;
+            if (item->enabled && item->action) {
+                item->action(item->action_data);
+                return true;
+            }
+        }
+    }
+
+    return false;
 }

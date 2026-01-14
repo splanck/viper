@@ -573,6 +573,37 @@ extern "C"
     /// @param b Optional pointer to receive blue component
     void vgfx_color_to_rgb(vgfx_color_t color, uint8_t *r, uint8_t *g, uint8_t *b);
 
+    //===----------------------------------------------------------------------===//
+    // Clipboard Operations
+    //===----------------------------------------------------------------------===//
+
+    /// @brief Clipboard format types
+    typedef enum {
+        VGFX_CLIPBOARD_TEXT,     ///< Plain text (UTF-8)
+        VGFX_CLIPBOARD_HTML,     ///< HTML formatted text
+        VGFX_CLIPBOARD_IMAGE,    ///< Image data (not yet supported)
+        VGFX_CLIPBOARD_FILES     ///< File paths (not yet supported)
+    } vgfx_clipboard_format_t;
+
+    /// @brief Check if the clipboard contains data in the specified format.
+    /// @param format Clipboard format to check for
+    /// @return 1 if data is available, 0 otherwise
+    int vgfx_clipboard_has_format(vgfx_clipboard_format_t format);
+
+    /// @brief Get text from the clipboard.
+    /// @details Returns a malloc'd UTF-8 string containing the clipboard text.
+    ///          The caller is responsible for freeing the returned string.
+    /// @return Clipboard text (caller must free), or NULL if not available
+    char *vgfx_clipboard_get_text(void);
+
+    /// @brief Set text to the clipboard.
+    /// @details Copies the specified UTF-8 string to the system clipboard.
+    /// @param text Text to copy (NULL clears text from clipboard)
+    void vgfx_clipboard_set_text(const char *text);
+
+    /// @brief Clear all clipboard contents.
+    void vgfx_clipboard_clear(void);
+
 #ifdef __cplusplus
 }
 #endif

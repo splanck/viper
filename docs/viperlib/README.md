@@ -13,11 +13,13 @@ implemented in C and exposed through the IL runtime system.
 | Module                          | Description                                                               |
 |---------------------------------|---------------------------------------------------------------------------|
 | [Architecture](architecture.md) | Runtime internals, type reference                                         |
+| [Audio](audio.md)               | `Sound`, `Music` — audio playback for games and applications              |
 | [Collections](collections.md)   | `Bag`, `Bytes`, `Heap`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Stack`, `TreeMap` |
 | [Core Types](core.md)           | `Object`, `Box`, `String` — foundational types                             |
 | [Cryptography](crypto.md)       | `Hash`, `KeyDerive`, `Rand`                                               |
 | [Diagnostics](diagnostics.md)   | `Assert`, `Trap`, `Stopwatch`                                             |
-| [Graphics](graphics.md)         | `Canvas`, `Color`, `Pixels`                                               |
+| [Graphics](graphics.md)         | `Canvas`, `Color`, `Pixels`, `Sprite`, `Tilemap`, `Camera`                |
+| [GUI](gui.md)                   | `App`, `Button`, `Label`, widgets — GUI toolkit for applications          |
 | [Input](input.md)               | `Keyboard`, `Mouse`, `Pad` — input for games and interactive apps       |
 | [Input/Output](io.md)           | `Archive`, `BinFile`, `Compress`, `Dir`, `File`, `LineReader`, `LineWriter`, `MemStream`, `Path`, `Watcher` |
 | [Mathematics](math.md)          | `Bits`, `Math`, `Random`, `Vec2`, `Vec3`                                  |
@@ -85,13 +87,46 @@ implemented in C and exposed through the IL runtime system.
 | [`Trap`](diagnostics.md#viperdiagnostics)         | Static   | Unconditional trap |
 | [`Stopwatch`](time.md#viperdiagnosticsstopwatch)  | Instance | Performance timing |
 
+### Viper.Audio
+
+| Class                                     | Type     | Description                      |
+|-------------------------------------------|----------|----------------------------------|
+| [`Sound`](audio.md#viperaudiosoound)      | Instance | Sound effects for short clips    |
+| [`Music`](audio.md#viperaudiomusic)       | Instance | Streaming music playback         |
+| [`Audio`](audio.md#viperaudio-static)     | Static   | Global audio control             |
+
 ### Viper.Graphics
 
-| Class                                       | Type     | Description           |
-|---------------------------------------------|----------|-----------------------|
-| [`Canvas`](graphics.md#vipergraphicscanvas) | Instance | 2D graphics canvas    |
-| [`Color`](graphics.md#vipergraphicscolor)   | Static   | Color creation        |
-| [`Pixels`](graphics.md#vipergraphicspixels) | Instance | Software image buffer |
+| Class                                         | Type     | Description                      |
+|-----------------------------------------------|----------|----------------------------------|
+| [`Canvas`](graphics.md#vipergraphicscanvas)   | Instance | 2D graphics canvas               |
+| [`Color`](graphics.md#vipergraphicscolor)     | Static   | Color creation                   |
+| [`Pixels`](graphics.md#vipergraphicspixels)   | Instance | Software image buffer            |
+| [`Sprite`](graphics.md#vipergraphicssprite)   | Instance | 2D sprite with animation         |
+| [`Tilemap`](graphics.md#vipergraphicstilemap) | Instance | Tile-based game maps             |
+| [`Camera`](graphics.md#vipergraphicscamera)   | Instance | 2D camera for scrolling/zoom     |
+
+### Viper.GUI
+
+| Class                                               | Type     | Description                       |
+|-----------------------------------------------------|----------|-----------------------------------|
+| [`App`](gui.md#vipergui-app)                        | Instance | Main application window           |
+| [`Font`](gui.md#vipergui-font)                      | Instance | Font for text rendering           |
+| [`Label`](gui.md#vipergui-label)                    | Instance | Text display widget               |
+| [`Button`](gui.md#vipergui-button)                  | Instance | Clickable button widget           |
+| [`TextInput`](gui.md#vipergui-textinput)            | Instance | Single-line text entry            |
+| [`Checkbox`](gui.md#vipergui-checkbox)              | Instance | Boolean toggle widget             |
+| [`RadioButton`](gui.md#vipergui-radiobutton)        | Instance | Single-select option widget       |
+| [`Slider`](gui.md#vipergui-slider)                  | Instance | Numeric range slider              |
+| [`Spinner`](gui.md#vipergui-spinner)                | Instance | Numeric spinner control           |
+| [`ProgressBar`](gui.md#vipergui-progressbar)        | Instance | Progress indicator                |
+| [`Dropdown`](gui.md#vipergui-dropdown)              | Instance | Drop-down selection               |
+| [`ListBox`](gui.md#vipergui-listbox)                | Instance | Scrollable list selection         |
+| [`ScrollView`](gui.md#vipergui-scrollview)          | Instance | Scrollable container              |
+| [`SplitPane`](gui.md#vipergui-splitpane)            | Instance | Resizable split container         |
+| [`TabBar`](gui.md#vipergui-tabbar)                  | Instance | Tabbed container                  |
+| [`TreeView`](gui.md#vipergui-treeview)              | Instance | Hierarchical tree widget          |
+| [`CodeEditor`](gui.md#vipergui-codeeditor)          | Instance | Code editing with syntax coloring |
 
 ### Viper.Input
 

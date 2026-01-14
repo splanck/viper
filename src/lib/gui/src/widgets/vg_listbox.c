@@ -2,6 +2,7 @@
 #include "../../include/vg_widgets.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 vg_listbox_t* vg_listbox_create(vg_widget_t* parent) {
     vg_listbox_t* listbox = calloc(1, sizeof(vg_listbox_t));
@@ -114,4 +115,154 @@ void vg_listbox_set_on_select(vg_listbox_t* listbox, vg_listbox_callback_t callb
     if (!listbox) return;
     listbox->on_select = callback;
     listbox->on_select_data = user_data;
+}
+
+//=============================================================================
+// Virtual Scrolling
+//=============================================================================
+
+void vg_listbox_set_virtual_mode(vg_listbox_t* listbox, bool enabled,
+    size_t total_count, float item_height) {
+    if (!listbox) return;
+
+    listbox->virtual_mode = enabled;
+    listbox->total_item_count = total_count;
+    if (item_height > 0) {
+        listbox->item_height = item_height;
+    }
+
+    // Initialize selection bitmap
+    if (enabled && total_count > 0) {
+        free(listbox->selection_bitmap);
+        listbox->selection_bitmap = calloc(total_count, sizeof(bool));
+        listbox->selection_bitmap_size = total_count;
+        listbox->selected_index = SIZE_MAX;  // None selected
+    }
+
+    // Reset scroll and invalidate
+    listbox->scroll_y = 0;
+    listbox->visible_start = 0;
+    listbox->visible_count = 0;
+    listbox->base.needs_paint = true;
+    listbox->base.needs_layout = true;
+}
+
+void vg_listbox_set_data_provider(vg_listbox_t* listbox,
+    vg_listbox_data_provider_t provider, void* user_data) {
+    if (!listbox) return;
+
+    listbox->data_provider = provider;
+    listbox->data_provider_user_data = user_data;
+}
+
+void vg_listbox_set_total_count(vg_listbox_t* listbox, size_t count) {
+    if (!listbox || !listbox->virtual_mode) return;
+
+    listbox->total_item_count = count;
+
+    // Resize selection bitmap if needed
+    if (count > listbox->selection_bitmap_size) {
+        bool* new_bitmap = realloc(listbox->selection_bitmap, count * sizeof(bool));
+        if (new_bitmap) {
+            // Zero out new entries
+            memset(new_bitmap + listbox->selection_bitmap_size, 0,
+                (count - listbox->selection_bitmap_size) * sizeof(bool));
+            listbox->selection_bitmap = new_bitmap;
+            listbox->selection_bitmap_size = count;
+        }
+    }
+
+    // Reset selection if out of bounds
+    if (listbox->selected_index >= count) {
+        listbox->selected_index = SIZE_MAX;
+    }
+
+    // Clamp scroll position
+    float max_scroll = count * listbox->item_height - listbox->base.height;
+    if (max_scroll < 0) max_scroll = 0;
+    if (listbox->scroll_y > max_scroll) {
+        listbox->scroll_y = max_scroll;
+    }
+
+    listbox->base.needs_paint = true;
+}
+
+void vg_listbox_invalidate_items(vg_listbox_t* listbox) {
+    if (!listbox) return;
+
+    // Clear cache
+    if (listbox->visible_cache) {
+        for (size_t i = 0; i < listbox->cache_capacity; i++) {
+            free(listbox->visible_cache[i].text);
+            listbox->visible_cache[i].text = NULL;
+        }
+    }
+
+    // Force re-fetch on next paint
+    listbox->visible_start = SIZE_MAX;
+    listbox->visible_count = 0;
+    listbox->base.needs_paint = true;
+}
+
+void vg_listbox_invalidate_item(vg_listbox_t* listbox, size_t index) {
+    if (!listbox || !listbox->virtual_mode) return;
+
+    // Check if item is in visible cache
+    if (index >= listbox->visible_start &&
+        index < listbox->visible_start + listbox->visible_count) {
+        size_t cache_index = index - listbox->visible_start;
+        if (cache_index < listbox->cache_capacity && listbox->visible_cache) {
+            free(listbox->visible_cache[cache_index].text);
+            listbox->visible_cache[cache_index].text = NULL;
+        }
+    }
+
+    listbox->base.needs_paint = true;
+}
+
+void vg_listbox_select_index(vg_listbox_t* listbox, size_t index) {
+    if (!listbox) return;
+
+    if (!listbox->virtual_mode) {
+        // Non-virtual mode: find item at index
+        vg_listbox_item_t* item = listbox->first_item;
+        for (size_t i = 0; i < index && item; i++) {
+            item = item->next;
+        }
+        vg_listbox_select(listbox, item);
+        return;
+    }
+
+    // Virtual mode
+    if (index >= listbox->total_item_count) return;
+
+    // Clear previous selection
+    if (!listbox->multi_select && listbox->selected_index < listbox->selection_bitmap_size) {
+        listbox->selection_bitmap[listbox->selected_index] = false;
+    }
+
+    // Set new selection
+    listbox->selected_index = index;
+    if (index < listbox->selection_bitmap_size) {
+        listbox->selection_bitmap[index] = true;
+    }
+
+    listbox->base.needs_paint = true;
+}
+
+size_t vg_listbox_get_selected_index(vg_listbox_t* listbox) {
+    if (!listbox) return SIZE_MAX;
+
+    if (!listbox->virtual_mode) {
+        // Non-virtual mode: find index of selected item
+        if (!listbox->selected) return SIZE_MAX;
+        size_t index = 0;
+        for (vg_listbox_item_t* item = listbox->first_item; item; item = item->next) {
+            if (item == listbox->selected) return index;
+            index++;
+        }
+        return SIZE_MAX;
+    }
+
+    return listbox->selected_index;
 }

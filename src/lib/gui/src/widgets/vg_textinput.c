@@ -2,6 +2,7 @@
 #include "../../include/vg_widgets.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_event.h"
+#include "../../../graphics/include/vgfx.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -23,6 +24,9 @@ static void textinput_paint(vg_widget_t* widget, void* canvas);
 static bool textinput_handle_event(vg_widget_t* widget, vg_event_t* event);
 static bool textinput_can_focus(vg_widget_t* widget);
 static void textinput_on_focus(vg_widget_t* widget, bool gained);
+
+// Forward declaration for clipboard support
+char* vg_textinput_get_selection(vg_textinput_t* input);
 
 //=============================================================================
 // TextInput VTable
@@ -269,7 +273,63 @@ static bool textinput_handle_event(vg_widget_t* widget, vg_event_t* event) {
             }
             return true;
 
-        case VG_EVENT_KEY_DOWN:
+        case VG_EVENT_KEY_DOWN: {
+            // Check for modifier key shortcuts
+            uint32_t mods = event->modifiers;
+            bool has_ctrl = (mods & VG_MOD_CTRL) != 0 || (mods & VG_MOD_SUPER) != 0;
+
+            // Clipboard shortcuts (work in read-only mode for copy)
+            if (has_ctrl) {
+                switch (event->key.key) {
+                    case VG_KEY_C: // Copy
+                        if (input->selection_start != input->selection_end) {
+                            char* selection = vg_textinput_get_selection(input);
+                            if (selection) {
+                                vgfx_clipboard_set_text(selection);
+                                free(selection);
+                            }
+                        }
+                        widget->needs_paint = true;
+                        return true;
+
+                    case VG_KEY_X: // Cut
+                        if (!input->read_only && input->selection_start != input->selection_end) {
+                            char* selection = vg_textinput_get_selection(input);
+                            if (selection) {
+                                vgfx_clipboard_set_text(selection);
+                                free(selection);
+                                vg_textinput_delete_selection(input);
+                            }
+                        }
+                        widget->needs_paint = true;
+                        return true;
+
+                    case VG_KEY_V: // Paste
+                        if (!input->read_only) {
+                            char* text = vgfx_clipboard_get_text();
+                            if (text) {
+                                if (input->selection_start != input->selection_end) {
+                                    vg_textinput_delete_selection(input);
+                                }
+                                vg_textinput_insert(input, text);
+                                free(text);
+                            }
+                        }
+                        widget->needs_paint = true;
+                        return true;
+
+                    case VG_KEY_A: // Select all
+                        input->selection_start = 0;
+                        input->selection_end = input->text_len;
+                        input->cursor_pos = input->text_len;
+                        widget->needs_paint = true;
+                        return true;
+
+                    default:
+                        break;
+                }
+            }
+
             if (input->read_only) {
                 // Only allow navigation in read-only mode
                 switch (event->key.key) {
@@ -350,6 +410,7 @@ static bool textinput_handle_event(vg_widget_t* widget, vg_event_t* event) {
             }
             widget->needs_paint = true;
             return true;
+        }
 
         case VG_EVENT_KEY_CHAR:
             if (!input->read_only) {
@@ -538,6 +599,25 @@ void vg_textinput_delete_selection(vg_textinput_t* input) {
     if (input->on_change) {
         input->on_change(&input->base, input->text, input->on_change_data);
     }
+}
+
+char* vg_textinput_get_selection(vg_textinput_t* input) {
+    if (!input) return NULL;
+    if (input->selection_start == input->selection_end) return NULL;
+
+    size_t start = input->selection_start < input->selection_end
+        ? input->selection_start : input->selection_end;
+    size_t end = input->selection_start < input->selection_end
+        ? input->selection_end : input->selection_start;
+
+    size_t len = end - start;
+    char* result = malloc(len + 1);
+    if (!result) return NULL;
+
+    memcpy(result, input->text + start, len);
+    result[len] = '\0';
+
+    return result;
 }
 
 void vg_textinput_set_font(vg_textinput_t* input, vg_font_t* font, float size) {

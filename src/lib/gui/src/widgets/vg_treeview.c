@@ -514,6 +514,13 @@ void vg_treeview_expand(vg_treeview_t* tree, vg_tree_node_t* node) {
         tree->base.needs_layout = true;
         tree->base.needs_paint = true;
 
+        // Lazy loading: if node has children flag but no actual children, load them
+        if (node->has_children && node->child_count == 0 && tree->on_load_children) {
+            node->loading = true;
+            tree->on_load_children(tree, node, tree->on_load_children_data);
+            // Callback should add children and then set loading=false
+        }
+
         if (tree->on_expand) {
             tree->on_expand(&tree->base, node, true, tree->on_expand_data);
         }
@@ -617,4 +624,64 @@ void vg_treeview_set_on_activate(vg_treeview_t* tree, vg_tree_activate_callback_
 
     tree->on_activate = callback;
     tree->on_activate_data = user_data;
+}
+
+//=============================================================================
+// Icon Support
+//=============================================================================
+
+void vg_tree_node_set_icon(vg_tree_node_t* node, vg_icon_t icon) {
+    if (!node) return;
+    node->icon = icon;
+}
+
+void vg_tree_node_set_expanded_icon(vg_tree_node_t* node, vg_icon_t icon) {
+    if (!node) return;
+    node->expanded_icon = icon;
+}
+
+//=============================================================================
+// Drag and Drop
+//=============================================================================
+
+void vg_treeview_set_drag_enabled(vg_treeview_t* tree, bool enabled) {
+    if (!tree) return;
+    tree->drag_enabled = enabled;
+}
+
+void vg_treeview_set_drag_callbacks(vg_treeview_t* tree,
+    vg_tree_can_drag_callback_t can_drag,
+    vg_tree_can_drop_callback_t can_drop,
+    vg_tree_on_drop_callback_t on_drop,
+    void* user_data) {
+
+    if (!tree) return;
+
+    tree->can_drag = can_drag;
+    tree->can_drop = can_drop;
+    tree->on_drop = on_drop;
+    tree->drag_user_data = user_data;
+}
+
+//=============================================================================
+// Lazy Loading
+//=============================================================================
+
+void vg_treeview_set_on_load_children(vg_treeview_t* tree,
+    vg_tree_load_children_callback_t callback, void* user_data) {
+
+    if (!tree) return;
+
+    tree->on_load_children = callback;
+    tree->on_load_children_data = user_data;
+}
+
+void vg_tree_node_set_has_children(vg_tree_node_t* node, bool has_children) {
+    if (!node) return;
+    node->has_children = has_children;
+}
+
+void vg_tree_node_set_loading(vg_tree_node_t* node, bool loading) {
+    if (!node) return;
+    node->loading = loading;
 }

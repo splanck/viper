@@ -463,3 +463,21 @@ void vg_tabbar_set_font(vg_tabbar_t* tabbar, vg_font_t* font, float size) {
     tabbar->base.needs_layout = true;
     tabbar->base.needs_paint = true;
 }
+
+void vg_tabbar_set_on_select(vg_tabbar_t* tabbar, vg_tab_select_callback_t callback, void* user_data) {
+    if (!tabbar) return;
+    tabbar->on_select = callback;
+    tabbar->on_select_data = user_data;
+}
+
+void vg_tabbar_set_on_close(vg_tabbar_t* tabbar, vg_tab_close_callback_t callback, void* user_data) {
+    if (!tabbar) return;
+    tabbar->on_close = callback;
+    tabbar->on_close_data = user_data;
+}
+
+void vg_tabbar_set_on_reorder(vg_tabbar_t* tabbar, vg_tab_reorder_callback_t callback, void* user_data) {
+    if (!tabbar) return;
+    tabbar->on_reorder = callback;
+    tabbar->on_reorder_data = user_data;
+}

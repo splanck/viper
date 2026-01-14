@@ -377,6 +377,24 @@ typedef struct vg_listbox_item {
 /// @brief ListBox selection callback
 typedef void (*vg_listbox_callback_t)(vg_widget_t* listbox, vg_listbox_item_t* item, void* user_data);
 
+// Forward declaration for icon
+struct vg_icon;
+
+/// @brief Virtual mode data provider callback
+/// @param listbox ListBox widget
+/// @param index Item index
+/// @param text Output: item text (must NOT be freed by caller)
+/// @param icon Output: item icon (optional, can be NULL)
+/// @param user_data User data
+typedef void (*vg_listbox_data_provider_t)(vg_widget_t* listbox, size_t index,
+    const char** text, struct vg_icon* icon, void* user_data);
+
+/// @brief Virtual item cache entry
+typedef struct vg_listbox_cache_entry {
+    char* text;                      ///< Cached text (owned)
+    bool selected;                   ///< Selection state
+} vg_listbox_cache_entry_t;
+
 /// @brief ListBox widget structure
 typedef struct vg_listbox {
     vg_widget_t base;
@@ -393,6 +411,25 @@ typedef struct vg_listbox {
     float scroll_y;                  ///< Vertical scroll position
 
     bool multi_select;               ///< Allow multiple selection
+
+    // Virtual scrolling mode
+    bool virtual_mode;               ///< Enable virtual scrolling
+    size_t total_item_count;         ///< Total items (when virtual)
+    vg_listbox_data_provider_t data_provider; ///< Data provider callback
+    void* data_provider_user_data;   ///< Data provider user data
+
+    // Virtual mode visible range
+    size_t visible_start;            ///< First visible item index
+    size_t visible_count;            ///< Number of visible items
+
+    // Virtual mode cache
+    vg_listbox_cache_entry_t* visible_cache; ///< Cache for visible items
+    size_t cache_capacity;           ///< Cache capacity
+
+    // Virtual mode selection (bitmap for large lists)
+    bool* selection_bitmap;          ///< Selection state for virtual mode
+    size_t selection_bitmap_size;    ///< Bitmap size
+    size_t selected_index;           ///< Currently selected index (virtual mode)
 
     // Appearance
     uint32_t bg_color;               ///< Background color
@@ -432,6 +469,47 @@ void vg_listbox_set_font(vg_listbox_t* listbox, vg_font_t* font, float size);
 
 /// @brief Set selection callback
 void vg_listbox_set_on_select(vg_listbox_t* listbox, vg_listbox_callback_t callback, void* user_data);
+
+// --- Virtual Scrolling ---
+
+/// @brief Enable virtual scrolling mode
+/// @param listbox ListBox widget
+/// @param enabled Enable virtual mode
+/// @param total_count Total number of items
+/// @param item_height Fixed item height (required for virtual mode)
+void vg_listbox_set_virtual_mode(vg_listbox_t* listbox, bool enabled,
+    size_t total_count, float item_height);
+
+/// @brief Set data provider for virtual mode
+/// @param listbox ListBox widget
+/// @param provider Data provider callback
+/// @param user_data User data
+void vg_listbox_set_data_provider(vg_listbox_t* listbox,
+    vg_listbox_data_provider_t provider, void* user_data);
+
+/// @brief Update total count (e.g., after filtering) in virtual mode
+/// @param listbox ListBox widget
+/// @param count New total count
+void vg_listbox_set_total_count(vg_listbox_t* listbox, size_t count);
+
+/// @brief Invalidate all cached items (force refresh)
+/// @param listbox ListBox widget
+void vg_listbox_invalidate_items(vg_listbox_t* listbox);
+
+/// @brief Invalidate a specific item in the cache
+/// @param listbox ListBox widget
+/// @param index Item index to invalidate
+void vg_listbox_invalidate_item(vg_listbox_t* listbox, size_t index);
+
+/// @brief Select item by index (virtual mode)
+/// @param listbox ListBox widget
+/// @param index Item index
+void vg_listbox_select_index(vg_listbox_t* listbox, size_t index);
+
+/// @brief Get selected index (virtual mode)
+/// @param listbox ListBox widget
+/// @return Selected index or SIZE_MAX if none
+size_t vg_listbox_get_selected_index(vg_listbox_t* listbox);
 
 //=============================================================================
 // Dropdown/ComboBox Widget

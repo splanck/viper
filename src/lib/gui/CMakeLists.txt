@@ -42,6 +42,18 @@ set(VG_GUI_IDE_WIDGET_SOURCES
     src/widgets/vg_splitpane.c
     src/widgets/vg_menubar.c
     src/widgets/vg_codeeditor.c
+    src/widgets/vg_statusbar.c
+    src/widgets/vg_toolbar.c
+    src/widgets/vg_dialog.c
+    src/widgets/vg_filedialog.c
+    src/widgets/vg_contextmenu.c
+    src/widgets/vg_findreplacebar.c
+    src/widgets/vg_tooltip.c
+    src/widgets/vg_commandpalette.c
+    src/widgets/vg_outputpane.c
+    src/widgets/vg_breadcrumb.c
+    src/widgets/vg_minimap.c
+    src/widgets/vg_notification.c
 )
 
 # Phase 1 + Phase 2 + Phase 3 + Phase 5: Font engine + Widget core + Widgets + IDE Widgets

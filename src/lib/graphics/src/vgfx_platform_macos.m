@@ -33,6 +33,7 @@
 ///          management and framebuffer presentation on macOS.
 
 #include "vgfx_internal.h"
+#include "../include/vgfx.h"
 
 #ifdef __APPLE__
 
@@ -835,6 +836,88 @@ void vgfx_platform_sleep_ms(int32_t ms)
         ts.tv_sec = ms / 1000;              /* Whole seconds */
         ts.tv_nsec = (ms % 1000) * 1000000; /* Fractional seconds in nanoseconds */
         nanosleep(&ts, NULL);               /* Sleep (may be interrupted) */
+    }
+}
+
+//===----------------------------------------------------------------------===//
+// Clipboard Operations
+//===----------------------------------------------------------------------===//
+
+/// @brief Check if the clipboard contains data in the specified format.
+/// @param format Clipboard format to check for
+/// @return 1 if data is available, 0 otherwise
+int vgfx_clipboard_has_format(vgfx_clipboard_format_t format)
+{
+    @autoreleasepool
+    {
+        NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+
+        switch (format)
+        {
+            case VGFX_CLIPBOARD_TEXT:
+                return [pasteboard availableTypeFromArray:@[NSPasteboardTypeString]] != nil ? 1 : 0;
+            case VGFX_CLIPBOARD_HTML:
+                return [pasteboard availableTypeFromArray:@[NSPasteboardTypeHTML]] != nil ? 1 : 0;
+            case VGFX_CLIPBOARD_IMAGE:
+                return [pasteboard availableTypeFromArray:@[NSPasteboardTypePNG, NSPasteboardTypeTIFF]] != nil ? 1 : 0;
+            case VGFX_CLIPBOARD_FILES:
+                return [pasteboard availableTypeFromArray:@[NSPasteboardTypeFileURL]] != nil ? 1 : 0;
+            default:
+                return 0;
+        }
+    }
+}
+
+/// @brief Get text from the clipboard.
+/// @details Returns a malloc'd UTF-8 string containing the clipboard text.
+///          The caller is responsible for freeing the returned string.
+/// @return Clipboard text (caller must free), or NULL if not available
+char *vgfx_clipboard_get_text(void)
+{
+    @autoreleasepool
+    {
+        NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+        NSString *string = [pasteboard stringForType:NSPasteboardTypeString];
+
+        if (!string)
+            return NULL;
+
+        const char *utf8 = [string UTF8String];
+        if (!utf8)
+            return NULL;
+
+        return strdup(utf8);
+    }
+}
+
+/// @brief Set text to the clipboard.
+/// @details Copies the specified UTF-8 string to the system clipboard.
+/// @param text Text to copy (NULL clears text from clipboard)
+void vgfx_clipboard_set_text(const char *text)
+{
+    @autoreleasepool
+    {
+        NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+        [pasteboard clearContents];
+
+        if (text)
+        {
+            NSString *string = [NSString stringWithUTF8String:text];
+            if (string)
+            {
+                [pasteboard setString:string forType:NSPasteboardTypeString];
+            }
+        }
+    }
+}
+
+/// @brief Clear all clipboard contents.
+void vgfx_clipboard_clear(void)
+{
+    @autoreleasepool
+    {
+        NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+        [pasteboard clearContents];
     }
 }
 
