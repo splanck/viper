@@ -26,6 +26,7 @@
 #include "rt_internal.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_string_builder.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -980,67 +981,50 @@ rt_string rt_str_replace(rt_string haystack, rt_string needle, rt_string replace
     if (needle_len == 0)
         return rt_string_ref(haystack);
 
-    // Count occurrences to calculate result size
-    size_t count = 0;
+    // Single-pass algorithm using string builder.
+    // This eliminates the double-scan (count + build) that was O(2*n*m).
+    // Instead we scan once, building the result as we go.
+    rt_string_builder sb;
+    rt_sb_init(&sb);
+
     const char *p = haystack->data;
     const char *end = p + hay_len;
+    const char *prev = p;
+    const char first = needle->data[0];
+    int found_any = 0;
+
+    // Use memchr for fast first-character scanning (SIMD-optimized)
     while (p <= end - needle_len)
     {
+        // Fast scan for first character of needle
+        const char *match = memchr(p, first, (size_t)(end - needle_len - p + 1));
+        if (!match)
+            break;
+
+        p = match;
         if (memcmp(p, needle->data, needle_len) == 0)
         {
-            count++;
-            p += needle_len;
-        }
-        else
-        {
-            p++;
-        }
-    }
-
-    if (count == 0)
-        return rt_string_ref(haystack);
-
-    // Calculate result length (avoiding overflow)
-    size_t result_len;
-    if (repl_len >= needle_len)
-    {
-        size_t add_per = repl_len - needle_len;
-        if (add_per > 0 && count > (SIZE_MAX - hay_len) / add_per)
-        {
-            rt_trap("rt_str_replace: length overflow");
-            return NULL;
-        }
-        result_len = hay_len + count * add_per;
-    }
-    else
-    {
-        size_t sub_per = needle_len - repl_len;
-        result_len = hay_len - count * sub_per;
-    }
-
-    rt_string result = rt_string_alloc(result_len, result_len + 1);
-    if (!result)
-        return NULL;
-
-    // Build result
-    char *dst = result->data;
-    p = haystack->data;
-    const char *prev = haystack->data;
-
-    while (p <= end - needle_len)
-    {
-        if (memcmp(p, needle->data, needle_len) == 0)
-        {
+            found_any = 1;
+            // Append chunk before match
             size_t chunk = (size_t)(p - prev);
             if (chunk > 0)
             {
-                memcpy(dst, prev, chunk);
-                dst += chunk;
+                if (rt_sb_append_bytes(&sb, prev, chunk) != RT_SB_OK)
+                {
+                    rt_sb_free(&sb);
+                    rt_trap("rt_str_replace: allocation failed");
+                    return NULL;
+                }
             }
+            // Append replacement
             if (repl_len > 0)
             {
-                memcpy(dst, replacement->data, repl_len);
-                dst += repl_len;
+                if (rt_sb_append_bytes(&sb, replacement->data, repl_len) != RT_SB_OK)
+                {
+                    rt_sb_free(&sb);
+                    rt_trap("rt_str_replace: allocation failed");
+                    return NULL;
+                }
             }
             p += needle_len;
             prev = p;
@@ -1051,16 +1035,30 @@ rt_string rt_str_replace(rt_string haystack, rt_string needle, rt_string replace
         }
     }
 
-    // Copy remainder
+    // No matches found - return original string (avoid allocation)
+    if (!found_any)
+    {
+        rt_sb_free(&sb);
+        return rt_string_ref(haystack);
+    }
+
+    // Append remainder after last match
     size_t remainder = (size_t)(end - prev);
     if (remainder > 0)
     {
-        memcpy(dst, prev, remainder);
-        dst += remainder;
+        if (rt_sb_append_bytes(&sb, prev, remainder) != RT_SB_OK)
+        {
+            rt_sb_free(&sb);
+            rt_trap("rt_str_replace: allocation failed");
+            return NULL;
+        }
     }
-    *dst = '\0';
 
-    return result;
+    // Create result string from builder
+    rt_string result = rt_string_from_bytes(sb.data, sb.len);
+    rt_sb_free(&sb);
+
+    return result ? result : rt_empty_string();
 }
 
 /// @brief Check if string starts with prefix.

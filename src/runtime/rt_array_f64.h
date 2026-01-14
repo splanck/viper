@@ -50,6 +50,20 @@ extern "C"
     /// @brief Write @p value to index @p idx with bounds checking.
     void rt_arr_f64_set(double *arr, size_t idx, double value);
 
+    /// @brief Read element at index @p idx WITHOUT bounds checking.
+    /// @warning No bounds checking! Use only when compiler has verified safety.
+    static inline double rt_arr_f64_get_unchecked(double *arr, size_t idx)
+    {
+        return arr[idx];
+    }
+
+    /// @brief Write @p value to index @p idx WITHOUT bounds checking.
+    /// @warning No bounds checking! Use only when compiler has verified safety.
+    static inline void rt_arr_f64_set_unchecked(double *arr, size_t idx, double value)
+    {
+        arr[idx] = value;
+    }
+
     /// @brief Resize an array to @p new_len elements with copy-on-resize semantics.
     /// @return 0 on success, -1 on allocation failure.
     int rt_arr_f64_resize(double **a_inout, size_t new_len);

@@ -27,10 +27,26 @@
 
 #include "Peephole.hpp"
 
+#include <algorithm>
+#include <optional>
+#include <unordered_map>
+
 namespace viper::codegen::x64
 {
 namespace
 {
+
+/// @brief Statistics tracking for peephole optimizations.
+struct PeepholeStats
+{
+    std::size_t movZeroToXor{0};
+    std::size_t cmpZeroToTest{0};
+    std::size_t arithmeticIdentities{0};
+    std::size_t strengthReductions{0};
+    std::size_t identityMovesRemoved{0};
+    std::size_t consecutiveMovsFolded{0};
+    std::size_t branchesToNextRemoved{0};
+};
 /// @brief Test whether an operand is the immediate integer zero.
 ///
 /// @details Peephole rewrites often recognise the canonical pattern of moving
@@ -60,6 +76,316 @@ namespace
 {
     const auto *reg = std::get_if<OpReg>(&operand);
     return reg != nullptr && reg->cls == RegClass::GPR;
+}
+
+/// @brief Check if an operand is a physical register.
+[[nodiscard]] bool isPhysReg(const Operand &operand) noexcept
+{
+    const auto *reg = std::get_if<OpReg>(&operand);
+    return reg != nullptr && reg->isPhys;
+}
+
+/// @brief Check if two register operands refer to the same physical register.
+[[nodiscard]] bool samePhysReg(const Operand &a, const Operand &b) noexcept
+{
+    const auto *regA = std::get_if<OpReg>(&a);
+    const auto *regB = std::get_if<OpReg>(&b);
+    if (!regA || !regB)
+        return false;
+    if (!regA->isPhys || !regB->isPhys)
+        return false;
+    return regA->cls == regB->cls && regA->idOrPhys == regB->idOrPhys;
+}
+
+/// @brief Check if an instruction is an identity move (mov r, r).
+[[nodiscard]] bool isIdentityMovRR(const MInstr &instr) noexcept
+{
+    if (instr.opcode != MOpcode::MOVrr)
+        return false;
+    if (instr.operands.size() != 2)
+        return false;
+    return samePhysReg(instr.operands[0], instr.operands[1]);
+}
+
+/// @brief Check if an instruction is an identity FPR move (movsd d, d).
+[[nodiscard]] bool isIdentityMovSDRR(const MInstr &instr) noexcept
+{
+    if (instr.opcode != MOpcode::MOVSDrr)
+        return false;
+    if (instr.operands.size() != 2)
+        return false;
+    return samePhysReg(instr.operands[0], instr.operands[1]);
+}
+
+/// @brief Get immediate value from an operand if it is an immediate.
+[[nodiscard]] std::optional<int64_t> getImmValue(const Operand &operand) noexcept
+{
+    const auto *imm = std::get_if<OpImm>(&operand);
+    if (imm)
+        return imm->val;
+    return std::nullopt;
+}
+
+/// @brief Check if a value is a power of 2 and return the log2, or -1 if not.
+[[nodiscard]] int log2IfPowerOf2(int64_t value) noexcept
+{
+    if (value <= 0)
+        return -1;
+    if ((value & (value - 1)) != 0)
+        return -1; // not a power of 2
+    int log = 0;
+    while ((1LL << log) < value)
+        ++log;
+    return log;
+}
+
+/// @brief Map of registers to their known constant values from MOVri.
+using RegConstMap = std::unordered_map<uint16_t, int64_t>;
+
+/// @brief Update register constant tracking based on an instruction.
+void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
+{
+    // MOVri loads a constant into a register
+    if (instr.opcode == MOpcode::MOVri && instr.operands.size() == 2)
+    {
+        const auto *dst = std::get_if<OpReg>(&instr.operands[0]);
+        const auto *imm = std::get_if<OpImm>(&instr.operands[1]);
+        if (dst && dst->isPhys && imm)
+        {
+            knownConsts[dst->idOrPhys] = imm->val;
+            return;
+        }
+    }
+
+    // Any instruction that defines a register invalidates the constant
+    switch (instr.opcode)
+    {
+        case MOpcode::MOVrr:
+        case MOpcode::MOVmr:
+        case MOpcode::CMOVNErr:
+        case MOpcode::LEA:
+        case MOpcode::ADDrr:
+        case MOpcode::ADDri:
+        case MOpcode::ANDrr:
+        case MOpcode::ANDri:
+        case MOpcode::ORrr:
+        case MOpcode::ORri:
+        case MOpcode::XORrr:
+        case MOpcode::XORri:
+        case MOpcode::XORrr32:
+        case MOpcode::SUBrr:
+        case MOpcode::SHLri:
+        case MOpcode::SHLrc:
+        case MOpcode::SHRri:
+        case MOpcode::SHRrc:
+        case MOpcode::SARri:
+        case MOpcode::SARrc:
+        case MOpcode::IMULrr:
+        case MOpcode::DIVS64rr:
+        case MOpcode::REMS64rr:
+        case MOpcode::DIVU64rr:
+        case MOpcode::REMU64rr:
+        case MOpcode::SETcc:
+        case MOpcode::MOVZXrr32:
+            if (!instr.operands.empty())
+            {
+                const auto *dst = std::get_if<OpReg>(&instr.operands[0]);
+                if (dst && dst->isPhys)
+                    knownConsts.erase(dst->idOrPhys);
+            }
+            break;
+
+        case MOpcode::CQO:
+            // CQO modifies RDX
+            knownConsts.erase(static_cast<uint16_t>(PhysReg::RDX));
+            break;
+
+        case MOpcode::IDIVrm:
+        case MOpcode::DIVrm:
+            // IDIV/DIV modify RAX and RDX
+            knownConsts.erase(static_cast<uint16_t>(PhysReg::RAX));
+            knownConsts.erase(static_cast<uint16_t>(PhysReg::RDX));
+            break;
+
+        default:
+            break;
+    }
+
+    // Calls invalidate all caller-saved registers
+    if (instr.opcode == MOpcode::CALL)
+    {
+        // x86-64 caller-saved: RAX, RCX, RDX, RSI, RDI, R8-R11
+        knownConsts.erase(static_cast<uint16_t>(PhysReg::RAX));
+        knownConsts.erase(static_cast<uint16_t>(PhysReg::RCX));
+        knownConsts.erase(static_cast<uint16_t>(PhysReg::RDX));
+        knownConsts.erase(static_cast<uint16_t>(PhysReg::RSI));
+        knownConsts.erase(static_cast<uint16_t>(PhysReg::RDI));
+        knownConsts.erase(static_cast<uint16_t>(PhysReg::R8));
+        knownConsts.erase(static_cast<uint16_t>(PhysReg::R9));
+        knownConsts.erase(static_cast<uint16_t>(PhysReg::R10));
+        knownConsts.erase(static_cast<uint16_t>(PhysReg::R11));
+    }
+}
+
+/// @brief Get constant value for a register if known.
+[[nodiscard]] std::optional<int64_t> getConstValue(const Operand &operand, const RegConstMap &knownConsts)
+{
+    const auto *reg = std::get_if<OpReg>(&operand);
+    if (!reg || !reg->isPhys || reg->cls != RegClass::GPR)
+        return std::nullopt;
+    auto it = knownConsts.find(reg->idOrPhys);
+    if (it != knownConsts.end())
+        return it->second;
+    return std::nullopt;
+}
+
+/// @brief Check if an instruction defines a given physical register.
+[[nodiscard]] bool definesReg(const MInstr &instr, const Operand &reg) noexcept
+{
+    if (!isPhysReg(reg))
+        return false;
+
+    const auto *targetReg = std::get_if<OpReg>(&reg);
+    if (!targetReg)
+        return false;
+
+    // Most x86-64 instructions have the destination as the first operand.
+    switch (instr.opcode)
+    {
+        case MOpcode::MOVrr:
+        case MOpcode::MOVmr:
+        case MOpcode::CMOVNErr:
+        case MOpcode::MOVri:
+        case MOpcode::LEA:
+        case MOpcode::ADDrr:
+        case MOpcode::ADDri:
+        case MOpcode::ANDrr:
+        case MOpcode::ANDri:
+        case MOpcode::ORrr:
+        case MOpcode::ORri:
+        case MOpcode::XORrr:
+        case MOpcode::XORri:
+        case MOpcode::XORrr32:
+        case MOpcode::SUBrr:
+        case MOpcode::SHLri:
+        case MOpcode::SHLrc:
+        case MOpcode::SHRri:
+        case MOpcode::SHRrc:
+        case MOpcode::SARri:
+        case MOpcode::SARrc:
+        case MOpcode::IMULrr:
+        case MOpcode::DIVS64rr:
+        case MOpcode::REMS64rr:
+        case MOpcode::DIVU64rr:
+        case MOpcode::REMU64rr:
+        case MOpcode::SETcc:
+        case MOpcode::MOVZXrr32:
+        case MOpcode::MOVSDrr:
+        case MOpcode::MOVSDmr:
+        case MOpcode::FADD:
+        case MOpcode::FSUB:
+        case MOpcode::FMUL:
+        case MOpcode::FDIV:
+        case MOpcode::CVTSI2SD:
+        case MOpcode::CVTTSD2SI:
+            if (!instr.operands.empty() && samePhysReg(instr.operands[0], reg))
+                return true;
+            break;
+
+        default:
+            break;
+    }
+    return false;
+}
+
+/// @brief Check if an instruction uses a given physical register as a source.
+[[nodiscard]] bool usesReg(const MInstr &instr, const Operand &reg) noexcept
+{
+    if (!isPhysReg(reg))
+        return false;
+
+    switch (instr.opcode)
+    {
+        case MOpcode::MOVrr:
+        case MOpcode::MOVSDrr:
+            // dst, src - check src
+            if (instr.operands.size() >= 2 && samePhysReg(instr.operands[1], reg))
+                return true;
+            break;
+
+        case MOpcode::ADDrr:
+        case MOpcode::SUBrr:
+        case MOpcode::ANDrr:
+        case MOpcode::ORrr:
+        case MOpcode::XORrr:
+        case MOpcode::IMULrr:
+        case MOpcode::FADD:
+        case MOpcode::FSUB:
+        case MOpcode::FMUL:
+        case MOpcode::FDIV:
+            // dst, src - dst is both read and written, check both
+            if (instr.operands.size() >= 1 && samePhysReg(instr.operands[0], reg))
+                return true;
+            if (instr.operands.size() >= 2 && samePhysReg(instr.operands[1], reg))
+                return true;
+            break;
+
+        case MOpcode::CMPrr:
+        case MOpcode::TESTrr:
+        case MOpcode::UCOMIS:
+            // lhs, rhs - check both
+            if (instr.operands.size() >= 1 && samePhysReg(instr.operands[0], reg))
+                return true;
+            if (instr.operands.size() >= 2 && samePhysReg(instr.operands[1], reg))
+                return true;
+            break;
+
+        case MOpcode::CMPri:
+            // reg, imm - check reg
+            if (instr.operands.size() >= 1 && samePhysReg(instr.operands[0], reg))
+                return true;
+            break;
+
+        case MOpcode::MOVrm:
+        case MOpcode::MOVSDrm:
+            // src, mem - check src
+            if (instr.operands.size() >= 1 && samePhysReg(instr.operands[0], reg))
+                return true;
+            break;
+
+        case MOpcode::CVTSI2SD:
+        case MOpcode::CVTTSD2SI:
+            // dst, src - check src
+            if (instr.operands.size() >= 2 && samePhysReg(instr.operands[1], reg))
+                return true;
+            break;
+
+        default:
+            break;
+    }
+    return false;
+}
+
+/// @brief Check if a register is an argument-passing register (RDI, RSI, RDX, RCX, R8, R9).
+[[nodiscard]] bool isArgReg(const Operand &operand) noexcept
+{
+    const auto *reg = std::get_if<OpReg>(&operand);
+    if (!reg || !reg->isPhys || reg->cls != RegClass::GPR)
+        return false;
+    const auto pr = static_cast<PhysReg>(reg->idOrPhys);
+    return pr == PhysReg::RDI || pr == PhysReg::RSI || pr == PhysReg::RDX ||
+           pr == PhysReg::RCX || pr == PhysReg::R8 || pr == PhysReg::R9;
+}
+
+/// @brief Check if an instruction is an unconditional jump to a specific label.
+[[nodiscard]] bool isJumpTo(const MInstr &instr, const std::string &label) noexcept
+{
+    if (instr.opcode != MOpcode::JMP)
+        return false;
+    if (instr.operands.empty())
+        return false;
+    const auto *lbl = std::get_if<OpLabel>(&instr.operands[0]);
+    return lbl && lbl->name == label;
 }
 
 /// @brief Rewrite a MOV immediate-to-register into XOR to synthesize zero.
@@ -97,6 +423,158 @@ void rewriteToTest(MInstr &instr, Operand regOperand)
     instr.operands.push_back(regOperand);
     instr.operands.push_back(regOperand);
 }
+
+/// @brief Rewrite arithmetic identity operations.
+///
+/// Patterns:
+/// - add reg, #0 -> identity (mark for removal)
+/// - shl/shr/sar reg, #0 -> identity (mark for removal)
+///
+/// @param instr Instruction to check.
+/// @param stats Statistics to update.
+/// @return true if the instruction is an identity and should be removed.
+[[nodiscard]] bool tryArithmeticIdentity(const MInstr &instr, PeepholeStats &stats)
+{
+    switch (instr.opcode)
+    {
+        case MOpcode::ADDri:
+            // add reg, #0 -> no-op
+            if (instr.operands.size() == 2 && isZeroImm(instr.operands[1]))
+            {
+                ++stats.arithmeticIdentities;
+                return true;
+            }
+            break;
+
+        case MOpcode::SHLri:
+        case MOpcode::SHRri:
+        case MOpcode::SARri:
+            // shift by 0 -> no-op
+            if (instr.operands.size() == 2 && isZeroImm(instr.operands[1]))
+            {
+                ++stats.arithmeticIdentities;
+                return true;
+            }
+            break;
+
+        default:
+            break;
+    }
+    return false;
+}
+
+/// @brief Apply strength reduction: mul by power-of-2 -> shift left.
+///
+/// Pattern: imul dst, src where src is a known power-of-2 constant -> shl dst, #log2(src)
+///
+/// @param instr Instruction to check and potentially rewrite.
+/// @param knownConsts Map of registers to known constant values.
+/// @param stats Statistics to update.
+/// @return true if reduction was applied.
+[[nodiscard]] bool tryStrengthReduction(MInstr &instr, const RegConstMap &knownConsts, PeepholeStats &stats)
+{
+    if (instr.opcode != MOpcode::IMULrr)
+        return false;
+    if (instr.operands.size() != 2)
+        return false;
+
+    // imul dst, src - check if src is a known power-of-2 constant
+    auto srcConst = getConstValue(instr.operands[1], knownConsts);
+    if (!srcConst)
+        return false;
+
+    int shiftAmount = log2IfPowerOf2(*srcConst);
+    if (shiftAmount < 0 || shiftAmount > 63)
+        return false;
+
+    // Rewrite: imul dst, src -> shl dst, #shift
+    instr.opcode = MOpcode::SHLri;
+    instr.operands[1] = OpImm{shiftAmount};
+    ++stats.strengthReductions;
+    return true;
+}
+
+/// @brief Try to fold consecutive moves: mov r1, r2; mov r3, r1 -> mov r3, r2
+///
+/// This optimization is only safe when r1 is not used after the second move
+/// within the same basic block, and when there are no intervening calls that
+/// might implicitly use argument registers.
+///
+/// @param instrs Vector of instructions in a basic block.
+/// @param idx Index of the first instruction to check.
+/// @param stats Statistics to update.
+/// @return true if a fold was performed.
+[[nodiscard]] bool tryFoldConsecutiveMoves(std::vector<MInstr> &instrs,
+                                           std::size_t idx,
+                                           PeepholeStats &stats)
+{
+    if (idx + 1 >= instrs.size())
+        return false;
+
+    MInstr &first = instrs[idx];
+    MInstr &second = instrs[idx + 1];
+
+    // Check for: mov r1, r2; mov r3, r1
+    const bool firstIsMovRR = (first.opcode == MOpcode::MOVrr && first.operands.size() == 2);
+    const bool secondIsMovRR = (second.opcode == MOpcode::MOVrr && second.operands.size() == 2);
+
+    if (!firstIsMovRR || !secondIsMovRR)
+        return false;
+
+    // first: dst=r1, src=r2
+    // second: dst=r3, src=r1
+    // Check if second.src == first.dst
+    if (!samePhysReg(second.operands[1], first.operands[0]))
+        return false;
+
+    // Don't fold if the intermediate register is an argument register and
+    // there's a call instruction nearby.
+    const Operand &r1 = first.operands[0];
+    if (isArgReg(r1))
+    {
+        // Check for call instructions after the second move
+        for (std::size_t i = idx + 2; i < instrs.size(); ++i)
+        {
+            if (instrs[i].opcode == MOpcode::CALL)
+                return false; // Call instruction found, don't fold
+            if (definesReg(instrs[i], r1))
+                break; // r1 is redefined before any call, safe to check further
+        }
+    }
+
+    // Check that r1 is not used after second in this block
+    for (std::size_t i = idx + 2; i < instrs.size(); ++i)
+    {
+        if (usesReg(instrs[i], r1))
+            return false; // r1 is still live, can't fold
+        if (definesReg(instrs[i], r1))
+            break; // r1 is redefined, safe to fold
+    }
+
+    // Perform the fold: second becomes mov r3, r2
+    const Operand originalSrc = first.operands[1]; // Save the original source
+    second.operands[1] = originalSrc;              // second.src = first.src
+    first.operands[0] = first.operands[1];         // Make first identity (mov r2, r2)
+    ++stats.consecutiveMovsFolded;
+    return true;
+}
+
+/// @brief Remove instructions marked for deletion from a basic block.
+void removeMarkedInstructions(std::vector<MInstr> &instrs, const std::vector<bool> &toRemove)
+{
+    std::size_t writeIdx = 0;
+    for (std::size_t readIdx = 0; readIdx < instrs.size(); ++readIdx)
+    {
+        if (!toRemove[readIdx])
+        {
+            if (writeIdx != readIdx)
+                instrs[writeIdx] = std::move(instrs[readIdx]);
+            ++writeIdx;
+        }
+    }
+    instrs.resize(writeIdx);
+}
+
 } // namespace
 
 /// @brief Apply local peephole simplifications to the provided Machine IR.
@@ -112,45 +590,109 @@ void rewriteToTest(MInstr &instr, Operand regOperand)
 /// @param fn Machine function to optimise.
 void runPeepholes(MFunction &fn)
 {
+    PeepholeStats stats;
+
     for (auto &block : fn.blocks)
     {
-        for (auto &instr : block.instructions)
+        auto &instrs = block.instructions;
+        if (instrs.empty())
+            continue;
+
+        // Pass 1: Build register constant map and apply rewrites
+        RegConstMap knownConsts;
+        std::vector<bool> toRemove(instrs.size(), false);
+
+        for (std::size_t i = 0; i < instrs.size(); ++i)
         {
+            auto &instr = instrs[i];
+
+            // Track constants loaded via MOVri
+            updateKnownConsts(instr, knownConsts);
+
             switch (instr.opcode)
             {
                 case MOpcode::MOVri:
                 {
                     if (instr.operands.size() != 2)
-                    {
                         break;
-                    }
 
                     if (!isGprReg(instr.operands[0]) || !isZeroImm(instr.operands[1]))
-                    {
                         break;
-                    }
 
                     rewriteToXor(instr, instr.operands[0]);
+                    ++stats.movZeroToXor;
                     break;
                 }
                 case MOpcode::CMPri:
                 {
                     if (instr.operands.size() != 2)
-                    {
                         break;
-                    }
 
                     if (!isGprReg(instr.operands[0]) || !isZeroImm(instr.operands[1]))
-                    {
                         break;
-                    }
 
                     rewriteToTest(instr, instr.operands[0]);
+                    ++stats.cmpZeroToTest;
                     break;
                 }
                 default:
                     break;
             }
+
+            // Try arithmetic identity elimination (add #0, shift #0)
+            if (tryArithmeticIdentity(instr, stats))
+            {
+                toRemove[i] = true;
+                continue;
+            }
+
+            // Try strength reduction (mul power-of-2 -> shift)
+            (void)tryStrengthReduction(instr, knownConsts, stats);
+        }
+
+        // Pass 2: Try to fold consecutive moves
+        for (std::size_t i = 0; i + 1 < instrs.size(); ++i)
+        {
+            (void)tryFoldConsecutiveMoves(instrs, i, stats);
+        }
+
+        // Pass 3: Mark identity moves for removal
+        for (std::size_t i = 0; i < instrs.size(); ++i)
+        {
+            if (isIdentityMovRR(instrs[i]))
+            {
+                toRemove[i] = true;
+                ++stats.identityMovesRemoved;
+            }
+            else if (isIdentityMovSDRR(instrs[i]))
+            {
+                toRemove[i] = true;
+                ++stats.identityMovesRemoved;
+            }
+        }
+
+        // Pass 4: Remove marked instructions
+        if (std::any_of(toRemove.begin(), toRemove.end(), [](bool v) { return v; }))
+        {
+            removeMarkedInstructions(instrs, toRemove);
+        }
+    }
+
+    // Pass 5: Remove jumps to the immediately following block
+    for (std::size_t bi = 0; bi + 1 < fn.blocks.size(); ++bi)
+    {
+        auto &block = fn.blocks[bi];
+        const auto &nextBlock = fn.blocks[bi + 1];
+
+        if (block.instructions.empty())
+            continue;
+
+        // Check if the last instruction is an unconditional jump to the next block
+        auto &lastInstr = block.instructions.back();
+        if (isJumpTo(lastInstr, nextBlock.label))
+        {
+            block.instructions.pop_back();
+            ++stats.branchesToNextRemoved;
         }
     }
 }

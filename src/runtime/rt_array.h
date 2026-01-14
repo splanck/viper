@@ -111,17 +111,41 @@ extern "C"
     /// @return Capacity in elements; 0 when @p arr is NULL.
     size_t rt_arr_i32_cap(int32_t *arr);
 
-    /// @brief Read element at index @p idx without bounds checks.
-    /// @param arr Array payload pointer; must be non-null and in range.
+    /// @brief Read element at index @p idx with bounds checking.
+    /// @param arr Array payload pointer; must be non-null.
     /// @param idx Zero-based index within the array length.
     /// @return Stored value at @p idx.
+    /// @note Traps on out-of-bounds access.
     int32_t rt_arr_i32_get(int32_t *arr, size_t idx);
 
-    /// @brief Write @p value to index @p idx without bounds checks.
-    /// @param arr Array payload pointer; must be non-null and in range.
+    /// @brief Write @p value to index @p idx with bounds checking.
+    /// @param arr Array payload pointer; must be non-null.
     /// @param idx Zero-based index within the array length.
     /// @param value Value to store.
+    /// @note Traps on out-of-bounds access.
     void rt_arr_i32_set(int32_t *arr, size_t idx, int32_t value);
+
+    /// @brief Read element at index @p idx WITHOUT bounds checking.
+    /// @param arr Array payload pointer; must be non-null and in range.
+    /// @param idx Zero-based index; caller guarantees idx < length.
+    /// @return Stored value at @p idx.
+    /// @warning No bounds checking! Use only when compiler has verified safety.
+    /// @note This is an inline function for maximum performance in tight loops.
+    static inline int32_t rt_arr_i32_get_unchecked(int32_t *arr, size_t idx)
+    {
+        return arr[idx];
+    }
+
+    /// @brief Write @p value to index @p idx WITHOUT bounds checking.
+    /// @param arr Array payload pointer; must be non-null and in range.
+    /// @param idx Zero-based index; caller guarantees idx < length.
+    /// @param value Value to store.
+    /// @warning No bounds checking! Use only when compiler has verified safety.
+    /// @note This is an inline function for maximum performance in tight loops.
+    static inline void rt_arr_i32_set_unchecked(int32_t *arr, size_t idx, int32_t value)
+    {
+        arr[idx] = value;
+    }
 
     /// @brief Resize an array to @p new_len elements with copy-on-resize semantics.
     /// @param a_inout Address of the array payload pointer (may point to NULL).

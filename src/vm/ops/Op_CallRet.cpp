@@ -239,19 +239,21 @@ VM::ExecResult handleCall(VM &vm,
         // End of fast path - fall through to generic RuntimeBridge
         // =========================================================================
 
+        // Function and block names for error reporting
         const std::string functionName = fr.func ? fr.func->name : std::string{};
         const std::string blockLabel = bb ? bb->label : std::string{};
 
         // Build bindings and original values lazily only for runtime calls
+        // Use SmallVector to avoid heap allocation for typical argument counts
         struct ArgBinding
         {
             Slot *reg = nullptr;
             uint8_t *stackPtr = nullptr;
         };
 
-        std::vector<ArgBinding> bindings;
+        viper::support::SmallVector<ArgBinding, 8> bindings;
         bindings.reserve(in.operands.size());
-        std::vector<Slot> originalArgs;
+        viper::support::SmallVector<Slot, 8> originalArgs;
         originalArgs.reserve(in.operands.size());
 
         uint8_t *const stackBegin = fr.stack.data();
