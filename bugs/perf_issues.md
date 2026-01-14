@@ -23,9 +23,9 @@ This document provides a comprehensive analysis of performance bottlenecks acros
 
 | Priority | Count | Expected Impact | Status |
 |----------|-------|-----------------|--------|
-| Critical | 18 | 30-50% improvement | 11 fixed today |
-| High | 20 | 15-30% improvement | 6 fixed today |
-| Medium | 15 | 5-15% improvement | 3 fixed |
+| Critical | 18 | 30-50% improvement | 14 fixed |
+| High | 20 | 15-30% improvement | 8 fixed |
+| Medium | 15 | 5-15% improvement | 5 fixed |
 | Low | 9 | <5% improvement | 0 fixed |
 
 ### Optimizations Completed (2026-01-13)
@@ -46,6 +46,9 @@ This document provides a comprehensive analysis of performance bottlenecks acros
 | ✅ | CG-001: Furthest-end-point spill | 10-20% register pressure |
 | ✅ | IL-004: Increased SROA limits (8/128) | 5-10% struct-heavy |
 | ✅ | RT-004: String split pre-allocation | 10-20% split-heavy |
+| ✅ | IL-001: Strength reduction (IndVarSimplify) | 10-20% loops |
+| ✅ | IL-002: Loop unrolling enabled in O2 | 10-30% loops |
+| ✅ | CG-008: Cold block reordering | 5-10% icache |
 
 ---
 
@@ -258,14 +261,32 @@ insertInstr(MInstr::make(MOpcode::ADDri, {rsp, paddingImm}));
 
 ### 2.4 Code Layout
 
-#### ISSUE CG-008: No Block Reordering ⚠️ MEDIUM
-**Location:** `src/codegen/aarch64/RegAllocLinear.cpp:383`
+#### ISSUE CG-008: No Block Reordering ✅ FIXED
+**Location:** `src/codegen/aarch64/Peephole.cpp`
+**Status:** FIXED (2026-01-13)
 
-Blocks processed in declaration order. Cold blocks intermixed with hot paths.
+```cpp
+// Added conservative block reordering in peephole pass:
+// 1. Identify cold blocks (trap handlers, error blocks, panic paths)
+// 2. Move cold blocks to end of function
+// 3. Keep hot blocks in original order for fall-through optimization
 
-**Impact:** Poor branch prediction, icache misses
-**Fix:** Profile-guided or heuristic-based block ordering
-**Estimated gain:** 5-10% for branch-heavy code
+bool isColdBlock(const MBasicBlock &block) noexcept
+{
+    // Blocks with "trap", "error", or "panic" in name
+    // Blocks that only call trap functions
+    return ...;
+}
+
+std::size_t reorderBlocks(MFunction &fn)
+{
+    // Partition: hot blocks first, cold blocks at end
+    // Improves icache locality for hot paths
+}
+```
+
+**Impact:** Cold error paths moved out of hot code sequences
+**Estimated gain:** 5-10% for branch-heavy code with error handling
 
 ---
 
@@ -307,23 +328,35 @@ loop-simplify → indvars → simplify-cfg → mem2reg → simplify-cfg → sccp
 
 ### 3.3 Missing Optimizations
 
-#### ISSUE IL-001: No Strength Reduction ⚠️ HIGH
-**Impact:** Loop multiplies not converted to adds
-```
-// Unoptimized:
-for(i=0; i<n; i++) a[i*8]  // multiply each iteration
+#### ISSUE IL-001: No Strength Reduction ✅ FIXED (already implemented)
+**Location:** `src/il/transform/IndVarSimplify.cpp`
+**Status:** ALREADY IMPLEMENTED
 
-// Should become:
-ptr = a; for(i=0; i<n; i++) { *ptr; ptr += 8; }
-```
-**Estimated gain:** 10-20% for index-heavy loops
+The IndVarSimplify pass already performs strength reduction:
+- Rewrites `base + i * stride` patterns into incremental updates
+- Converts loop multiplies to adds with loop-carried temporaries
+
+**Note:** This was discovered to be already working during Phase 3 investigation.
 
 ---
 
-#### ISSUE IL-002: No Loop Unrolling ⚠️ HIGH
-**Location:** Listed in PassRegistry but minimal implementation
+#### ISSUE IL-002: Loop Unrolling ✅ FIXED
+**Location:** `src/il/transform/LoopUnroll.cpp`, `src/il/transform/PassManager.cpp`
+**Status:** FIXED (2026-01-13)
 
-**Impact:** Small tight loops not unrolled
+The loop unrolling pass existed but wasn't enabled in the O2 pipeline:
+```cpp
+// PassManager.cpp - Now includes loop-unroll in O2 pipeline:
+registerPipeline("O2",
+                 {"loop-simplify",
+                  "indvars",
+                  "loop-unroll",  // NEW - enables full unrolling
+                  "simplify-cfg",
+                  // ... rest of pipeline
+                 });
+```
+
+**Impact:** Small constant-bound loops now fully unrolled
 **Estimated gain:** 10-30% for small bounded loops
 
 ---
@@ -605,14 +638,21 @@ func fib(n) { if (n <= 1) return n; return fib(n-1) + fib(n-2); }
 | ✅ | IL-004 Increase SROA limits | Mem2Reg.cpp:38 | 5-10% | DONE |
 | ✅ | RT-004 String split pooling | rt_string_ops.c | 10-20% | DONE |
 
-### Phase 3: Optimization Passes (1-2 weeks)
+### Phase 3: Optimization Passes ✅ MOSTLY COMPLETE
 
-| Priority | Issue | Description | Expected Gain |
-|----------|-------|-------------|---------------|
-| 🔴 | IL-001 | Strength reduction pass | 10-20% loops |
-| 🔴 | IL-002 | Loop unrolling | 10-30% loops |
-| 🟠 | IL-003 | Tail call optimization | 5-10% + safety |
-| 🟠 | CG-008 | Block reordering | 5-10% branches |
+| Priority | Issue | Description | Expected Gain | Status |
+|----------|-------|-------------|---------------|--------|
+| ✅ | IL-001 | Strength reduction (already in IndVarSimplify) | 10-20% loops | DONE |
+| ✅ | IL-002 | Loop unrolling (enabled in O2 pipeline) | 10-30% loops | DONE |
+| 🟠 | IL-003 | Tail call optimization | 5-10% + safety | DEFERRED |
+| ✅ | CG-008 | Cold block reordering | 5-10% icache | DONE |
+
+**Note:** IL-003 (tail call optimization) requires significant architectural changes:
+- New IL opcode (`tailcall`)
+- Parser/IR builder updates
+- VM implementation
+- Both x86-64 and AArch64 codegen support
+This is deferred to a dedicated effort.
 
 ### Phase 4: Advanced (2-4 weeks)
 

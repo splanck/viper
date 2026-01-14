@@ -40,13 +40,14 @@ struct PeepholeStats
     int arithmeticIdentities{0};    ///< Number of identity arithmetic ops removed.
     int strengthReductions{0};      ///< Number of mul→shift strength reductions.
     int branchesToNextRemoved{0};   ///< Number of branches to next block removed.
+    int blocksReordered{0};          ///< Number of blocks reordered for layout.
 
     /// @brief Total number of optimizations applied.
     [[nodiscard]] int total() const noexcept
     {
         return identityMovesRemoved + identityFMovesRemoved + consecutiveMovsFolded +
                deadInstructionsRemoved + cmpZeroToTst + arithmeticIdentities +
-               strengthReductions + branchesToNextRemoved;
+               strengthReductions + branchesToNextRemoved + blocksReordered;
     }
 };
 

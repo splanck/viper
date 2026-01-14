@@ -34,6 +34,7 @@
 #include <algorithm>
 #include <optional>
 #include <unordered_map>
+#include <vector>
 
 namespace viper::codegen::aarch64
 {
@@ -621,11 +622,94 @@ void removeMarkedInstructions(std::vector<MInstr> &instrs, const std::vector<boo
     instrs.resize(writeIdx);
 }
 
+/// @brief Check if a block is a cold block (trap handler, error block).
+///
+/// Cold blocks are unlikely to be executed and should be placed at the end
+/// of the function to improve instruction cache locality.
+[[nodiscard]] bool isColdBlock(const MBasicBlock &block) noexcept
+{
+    // Blocks with "trap" in the name are error handlers
+    if (block.name.find("trap") != std::string::npos)
+        return true;
+    if (block.name.find("error") != std::string::npos)
+        return true;
+    if (block.name.find("panic") != std::string::npos)
+        return true;
+
+    // Blocks that only call trap functions are cold
+    if (block.instrs.size() == 1)
+    {
+        const auto &instr = block.instrs[0];
+        if (instr.opc == MOpcode::Bl)
+        {
+            if (!instr.ops.empty() && instr.ops[0].kind == MOperand::Kind::Label)
+            {
+                const auto &label = instr.ops[0].label;
+                if (label.find("trap") != std::string::npos ||
+                    label.find("panic") != std::string::npos)
+                    return true;
+            }
+        }
+    }
+    return false;
+}
+
+/// @brief Reorder blocks for better code layout.
+///
+/// This function reorders blocks using a conservative heuristic:
+/// 1. Keep all hot blocks in their original order
+/// 2. Move cold blocks (trap handlers, error blocks) to the end
+///
+/// This is conservative to avoid disrupting carefully crafted block layouts
+/// while still improving icache locality by pushing error paths to the end.
+///
+/// @param fn Function to reorder.
+/// @return Number of blocks moved.
+std::size_t reorderBlocks(MFunction &fn)
+{
+    if (fn.blocks.size() <= 2)
+        return 0; // Nothing to reorder
+
+    // First pass: identify cold blocks by index
+    std::vector<std::size_t> coldIndices;
+    for (std::size_t i = 0; i < fn.blocks.size(); ++i)
+    {
+        if (isColdBlock(fn.blocks[i]))
+            coldIndices.push_back(i);
+    }
+
+    // If no cold blocks, nothing to do
+    if (coldIndices.empty())
+        return 0;
+
+    // Build new block order: hot blocks first, then cold blocks
+    std::vector<MBasicBlock> reordered;
+    reordered.reserve(fn.blocks.size());
+
+    // Add hot blocks in original order
+    for (std::size_t i = 0; i < fn.blocks.size(); ++i)
+    {
+        bool isCold = std::find(coldIndices.begin(), coldIndices.end(), i) != coldIndices.end();
+        if (!isCold)
+            reordered.push_back(std::move(fn.blocks[i]));
+    }
+
+    // Add cold blocks at the end
+    for (std::size_t idx : coldIndices)
+        reordered.push_back(std::move(fn.blocks[idx]));
+
+    fn.blocks = std::move(reordered);
+    return coldIndices.size();
+}
+
 } // namespace
 
 PeepholeStats runPeephole(MFunction &fn)
 {
     PeepholeStats stats;
+
+    // Pass 0: Reorder blocks for better code layout
+    stats.blocksReordered = static_cast<int>(reorderBlocks(fn));
 
     for (auto &block : fn.blocks)
     {

@@ -29,6 +29,7 @@
 #include "il/transform/CheckOpt.hpp"
 #include "il/transform/LICM.hpp"
 #include "il/transform/LateCleanup.hpp"
+#include "il/transform/LoopUnroll.hpp"
 #include "il/transform/PipelineExecutor.hpp"
 #include "il/transform/SimplifyCFG.hpp"
 #include "il/transform/analysis/Liveness.hpp"
@@ -97,6 +98,7 @@ PassManager::PassManager()
     registerInlinePass(passRegistry_);
     registerCheckOptPass(passRegistry_);
     registerLateCleanupPass(passRegistry_);
+    registerLoopUnrollPass(passRegistry_);
 
     // Pre-register common pipelines
     registerPipeline("O0", {"simplify-cfg", "dce"});
@@ -114,6 +116,7 @@ PassManager::PassManager()
     registerPipeline("O2",
                      {"loop-simplify",
                       "indvars",
+                      "loop-unroll",
                       "simplify-cfg",
                       "mem2reg",
                       "simplify-cfg",
