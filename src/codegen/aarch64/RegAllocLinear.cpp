@@ -267,6 +267,7 @@ struct VState
     bool spilled{false};       ///< True if value is on the stack.
     int fpOffset{0};           ///< FP-relative offset of spill slot.
     unsigned lastUse{0};       ///< Instruction index of last use (for LRU).
+    unsigned nextUse{UINT_MAX}; ///< Instruction index of next use (for furthest-end-point).
 };
 
 //-----------------------------------------------------------------------------
@@ -400,6 +401,8 @@ class LinearAllocator
     std::unordered_map<uint16_t, VState> gprStates_;
     std::unordered_map<uint16_t, VState> fprStates_;
     unsigned currentInstrIdx_{0}; ///< Current instruction index for LRU tracking.
+    std::unordered_map<uint16_t, unsigned> nextUseGPR_; ///< Next use index for GPR vregs.
+    std::unordered_map<uint16_t, unsigned> nextUseFPR_; ///< Next use index for FPR vregs.
     // CFG + liveness (conservative cross-block)
     std::unordered_map<std::string, std::size_t> blockIndex_;
     std::vector<std::vector<std::size_t>> succs_;
@@ -476,6 +479,49 @@ class LinearAllocator
         }
     }
 
+    /// @brief Compute next-use distances for all vregs in a block.
+    ///
+    /// This enables "furthest end point" spilling: when we need to spill,
+    /// we choose the vreg that won't be needed for the longest time.
+    /// Scanning backward from the end of the block, we record when each vreg
+    /// is next used.
+    void computeNextUses(const MBasicBlock &bb)
+    {
+        nextUseGPR_.clear();
+        nextUseFPR_.clear();
+
+        // Scan backward through the block
+        unsigned idx = static_cast<unsigned>(bb.instrs.size());
+        for (auto it = bb.instrs.rbegin(); it != bb.instrs.rend(); ++it)
+        {
+            --idx;
+            for (const auto &op : it->ops)
+            {
+                if (op.kind != MOperand::Kind::Reg || op.reg.isPhys)
+                    continue;
+                // Record this as the next use (scanning backward means first occurrence
+                // we see is the furthest use from the start)
+                if (op.reg.cls == RegClass::GPR)
+                    nextUseGPR_[op.reg.idOrPhys] = idx;
+                else
+                    nextUseFPR_[op.reg.idOrPhys] = idx;
+            }
+        }
+    }
+
+    /// @brief Get the next use distance for a vreg from current position.
+    /// @return Distance to next use, or UINT_MAX if not used again in block.
+    unsigned getNextUseDistance(uint16_t vreg, RegClass cls) const
+    {
+        const auto &map = (cls == RegClass::GPR) ? nextUseGPR_ : nextUseFPR_;
+        auto it = map.find(vreg);
+        if (it == map.end())
+            return UINT_MAX; // Not used again in this block
+        if (it->second <= currentInstrIdx_)
+            return UINT_MAX; // Already past this use
+        return it->second - currentInstrIdx_;
+    }
+
     //-------------------------------------------------------------------------
     // Spilling
     //-------------------------------------------------------------------------
@@ -502,24 +548,30 @@ class LinearAllocator
         st.spilled = true;
     }
 
-    /// @brief Selects a victim to spill using least-recently-used (LRU) heuristic.
+    /// @brief Selects a victim to spill using furthest-end-point heuristic.
     ///
     /// When register pressure requires spilling, we choose the virtual register
-    /// that was used longest ago, as it's less likely to be needed soon.
+    /// whose value won't be needed for the longest time. This is the classic
+    /// linear-scan spill heuristic and generally produces better code than LRU.
     ///
     /// @param cls Register class to spill from.
-    /// @param states State map for the register class.
     /// @return The vreg ID of the victim, or UINT16_MAX if none found.
-    template <typename StateMap> uint16_t selectLRUVictim(StateMap &states)
+    uint16_t selectFurthestVictim(RegClass cls)
     {
+        auto &states = (cls == RegClass::GPR) ? gprStates_ : fprStates_;
         uint16_t victim = UINT16_MAX;
-        unsigned oldestUse = UINT_MAX;
+        unsigned furthestUse = 0;
 
         for (auto &kv : states)
         {
-            if (kv.second.hasPhys && kv.second.lastUse < oldestUse)
+            if (!kv.second.hasPhys)
+                continue;
+
+            unsigned nextUse = getNextUseDistance(kv.first, cls);
+            // Prefer to spill the one with furthest (or no) next use
+            if (nextUse > furthestUse)
             {
-                oldestUse = kv.second.lastUse;
+                furthestUse = nextUse;
                 victim = kv.first;
             }
         }
@@ -532,8 +584,8 @@ class LinearAllocator
         {
             if (!pools_.gprFree.empty())
                 return;
-            // Use LRU heuristic to select victim
-            uint16_t victim = selectLRUVictim(gprStates_);
+            // Use furthest-end-point heuristic to select victim
+            uint16_t victim = selectFurthestVictim(RegClass::GPR);
             if (victim != UINT16_MAX)
                 spillVictim(RegClass::GPR, victim, prefix);
         }
@@ -541,8 +593,8 @@ class LinearAllocator
         {
             if (!pools_.fprFree.empty())
                 return;
-            // Use LRU heuristic to select victim
-            uint16_t victim = selectLRUVictim(fprStates_);
+            // Use furthest-end-point heuristic to select victim
+            uint16_t victim = selectFurthestVictim(RegClass::FPR);
             if (victim != UINT16_MAX)
                 spillVictim(RegClass::FPR, victim, prefix);
         }
@@ -790,6 +842,10 @@ class LinearAllocator
 
     void allocateBlock(MBasicBlock &bb)
     {
+        // Compute next-use information for furthest-end-point spilling
+        computeNextUses(bb);
+        currentInstrIdx_ = 0;
+
         std::vector<MInstr> rewritten;
         rewritten.reserve(bb.instrs.size());
 
@@ -798,16 +854,19 @@ class LinearAllocator
             if (isSpAdj(ins.opc) || isBranch(ins.opc))
             {
                 rewritten.push_back(ins);
+                ++currentInstrIdx_;
                 continue;
             }
 
             if (isCall(ins.opc))
             {
                 handleCall(ins, rewritten);
+                ++currentInstrIdx_;
                 continue;
             }
 
             allocateInstruction(ins, rewritten);
+            ++currentInstrIdx_;
         }
 
         if (!rewritten.empty())

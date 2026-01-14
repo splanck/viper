@@ -35,8 +35,8 @@ namespace viper::passes
 {
 namespace
 {
-constexpr unsigned kMaxSROAFields = 4;
-constexpr unsigned kMaxSROAAllocaSize = 64;
+constexpr unsigned kMaxSROAFields = 8;
+constexpr unsigned kMaxSROAAllocaSize = 128;
 
 struct SROAField
 {

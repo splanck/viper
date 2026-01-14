@@ -1230,11 +1230,10 @@ rt_string rt_str_pad_right(rt_string str, int64_t width, rt_string pad_str)
 /// @return Seq containing string parts.
 void *rt_str_split(rt_string str, rt_string delim)
 {
-    void *result = rt_seq_new();
-
     if (!str)
     {
         // Push empty string for null input
+        void *result = rt_seq_with_capacity(1);
         rt_seq_push(result, (void *)rt_empty_string());
         return result;
     }
@@ -1245,16 +1244,50 @@ void *rt_str_split(rt_string str, rt_string delim)
     // Empty delimiter: return single element with original string
     if (delim_len == 0)
     {
+        void *result = rt_seq_with_capacity(1);
         rt_seq_push(result, (void *)rt_string_ref(str));
         return result;
     }
 
-    const char *start = str->data;
-    const char *p = start;
+    // Pass 1: Count delimiters to pre-allocate result sequence
+    // Uses memchr for SIMD-optimized first-character scanning
+    const char *p = str->data;
     const char *end = str->data + str_len;
+    const char first = delim->data[0];
+    size_t count = 1; // At least one segment
 
     while (p <= end - delim_len)
     {
+        const char *match = memchr(p, first, (size_t)(end - delim_len - p + 1));
+        if (!match)
+            break;
+
+        p = match;
+        if (memcmp(p, delim->data, delim_len) == 0)
+        {
+            count++;
+            p += delim_len;
+        }
+        else
+        {
+            p++;
+        }
+    }
+
+    // Pre-allocate sequence with exact capacity
+    void *result = rt_seq_with_capacity((int64_t)count);
+
+    // Pass 2: Build segments
+    const char *start = str->data;
+    p = str->data;
+
+    while (p <= end - delim_len)
+    {
+        const char *match = memchr(p, first, (size_t)(end - delim_len - p + 1));
+        if (!match)
+            break;
+
+        p = match;
         if (memcmp(p, delim->data, delim_len) == 0)
         {
             size_t chunk_len = (size_t)(p - start);
@@ -1271,8 +1304,8 @@ void *rt_str_split(rt_string str, rt_string delim)
 
     // Add final segment
     size_t final_len = (size_t)(end - start);
-    rt_string final = rt_string_from_bytes(start, final_len);
-    rt_seq_push(result, (void *) final);
+    rt_string final_str = rt_string_from_bytes(start, final_len);
+    rt_seq_push(result, (void *)final_str);
 
     return result;
 }
