@@ -1,0 +1,41 @@
+Viper Performance Benchmark Results
+====================================
+
+Test: Recursive Fibonacci
+Hardware: Apple Silicon (arm64)
+Date: 2025-01-13
+
+fib(35) - Baseline
+------------------
+Viper Native:  0.277s
+Python:        0.680s
+Viper VM:      210.7s
+
+Viper Native is 2.5x FASTER than Python
+Python is 296x faster than Viper VM
+
+fib(40) - 10x workload
+----------------------
+Viper Native:  1.329s
+Python:        7.537s
+
+Viper Native is 5.7x FASTER than Python
+
+fib(45) - 100x workload
+-----------------------
+Viper Native:   9.829s
+Python:        83.080s
+
+Viper Native is 8.5x FASTER than Python
+
+Comparison with C (fib(45))
+---------------------------
+C -O2:          2.02s  (gold standard)
+C -O0:          4.11s  (unoptimized)
+Viper Native:   9.83s
+Python:        83.08s
+
+Analysis:
+- Viper is 4.9x slower than C -O2
+- Viper is 2.4x slower than C -O0
+- Viper is 8.5x faster than Python

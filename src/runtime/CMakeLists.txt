@@ -13,6 +13,7 @@ set(RT_BASE_SOURCES
         rt_math.c
         rt_random.c
         rt_bits.c
+        rt_pool.c
         rt_heap.c
         rt_numeric.c
         rt_numeric_conv.c

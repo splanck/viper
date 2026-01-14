@@ -113,6 +113,9 @@ PassManager::PassManager()
                       "simplify-cfg",
                       "peephole",
                       "dce"});
+    // O2 pipeline with interprocedural constant propagation:
+    // Run SCCP both before (to simplify callees) and after inline
+    // (to propagate constants through inlined code from call sites).
     registerPipeline("O2",
                      {"loop-simplify",
                       "indvars",
@@ -120,11 +123,14 @@ PassManager::PassManager()
                       "simplify-cfg",
                       "mem2reg",
                       "simplify-cfg",
-                      "sccp",
+                      "sccp",           // Pre-inline SCCP: simplify callees
                       "check-opt",
                       "dce",
                       "simplify-cfg",
                       "inline",
+                      "simplify-cfg",
+                      "sccp",           // Post-inline SCCP: propagate call-site constants
+                      "dce",            // Clean up after second SCCP
                       "simplify-cfg",
                       "licm",
                       "simplify-cfg",

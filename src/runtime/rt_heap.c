@@ -24,6 +24,7 @@
 
 #include "rt_heap.h"
 #include "rt_internal.h"
+#include "rt_pool.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -85,6 +86,8 @@ static void rt_heap_validate_header(const rt_heap_hdr_t *hdr)
 ///          structure, and sets the initial reference count to one.  The helper
 ///          automatically grows the capacity to at least @p init_len elements
 ///          and guards against integer overflow when computing the payload size.
+///          Uses the pool allocator for small allocations (<= 512 bytes) to
+///          reduce malloc/free overhead.
 /// @param kind Logical category of the allocation (string, array, object).
 /// @param elem_kind Element kind metadata stored for debugging/validation.
 /// @param elem_size Size in bytes of a single payload element.
@@ -112,22 +115,37 @@ void *rt_heap_alloc(rt_heap_kind_t kind,
         payload_bytes = cap * elem_size;
     }
     size_t total_bytes = sizeof(rt_heap_hdr_t) + payload_bytes;
-    rt_heap_hdr_t *hdr = (rt_heap_hdr_t *)malloc(total_bytes);
+
+    // Use pool allocator for small string allocations only.
+    // Arrays cannot use the pool because they grow via realloc(),
+    // which is incompatible with pool-allocated memory.
+    // Objects are excluded for similar reasons (potential resize/realloc).
+    rt_heap_hdr_t *hdr;
+    int from_pool = (kind == RT_HEAP_STRING && total_bytes <= RT_POOL_MAX_SIZE);
+    if (from_pool)
+    {
+        hdr = (rt_heap_hdr_t *)rt_pool_alloc(total_bytes);
+    }
+    else
+    {
+        hdr = (rt_heap_hdr_t *)malloc(total_bytes);
+        if (hdr)
+            memset(hdr, 0, total_bytes);
+    }
+
     if (!hdr)
         return NULL;
-    memset(hdr, 0, sizeof(*hdr));
+
+    // Pool allocator already zeros memory, but ensure header is initialized
     hdr->magic = RT_MAGIC;
     hdr->kind = (uint16_t)kind;
     hdr->elem_kind = (uint16_t)elem_kind;
-    hdr->flags = 0;
+    hdr->flags = from_pool ? RT_HEAP_FLAG_POOLED : 0;
+    hdr->alloc_size = total_bytes;
     __atomic_store_n(&hdr->refcnt, 1, __ATOMIC_RELAXED);
     hdr->len = init_len;
     hdr->cap = cap;
-    if (payload_bytes > 0)
-    {
-        void *payload = rt_heap_data(hdr);
-        memset(payload, 0, payload_bytes);
-    }
+
     return rt_heap_data(hdr);
 }
 
@@ -166,8 +184,9 @@ void rt_heap_retain(void *payload)
 /// @brief Release bookkeeping for a heap header with optional deallocation.
 /// @details Shared helper that decrements the reference count and, when
 ///          @p free_when_zero is true, clears and frees the header once the
-///          count reaches zero.  Debug builds log the resulting count when the
-///          retain/release tracing macro is enabled.
+///          count reaches zero.  Uses the pool allocator for blocks that were
+///          originally allocated from the pool.  Debug builds log the resulting
+///          count when the retain/release tracing macro is enabled.
 /// @param hdr Heap header describing the allocation; may be `NULL`.
 /// @param payload Payload pointer associated with @p hdr; used for logging.
 /// @param free_when_zero Whether to free storage when the reference count hits
@@ -189,8 +208,21 @@ static size_t rt_heap_release_impl(rt_heap_hdr_t *hdr, void *payload, int free_w
     {
         // Acquire fence pairs with releasing decrements from other threads.
         __atomic_thread_fence(__ATOMIC_ACQUIRE);
+
+        // Check if this was a pool allocation
+        int from_pool = (hdr->flags & RT_HEAP_FLAG_POOLED) != 0;
+        size_t alloc_size = hdr->alloc_size;
+
         memset(hdr, 0, sizeof(*hdr));
-        free(hdr);
+
+        if (from_pool)
+        {
+            rt_pool_free(hdr, alloc_size);
+        }
+        else
+        {
+            free(hdr);
+        }
         return 0;
     }
     return next;
@@ -228,7 +260,8 @@ size_t rt_heap_release_deferred(void *payload)
 /// @details Validates the header and, when the reference count is zero, clears
 ///          and frees the allocation.  Non-zero reference counts leave the
 ///          payload untouched so callers can safely invoke the helper after
-///          custom cleanup logic.
+///          custom cleanup logic.  Uses the pool allocator for blocks that were
+///          originally allocated from the pool.
 /// @param payload Shared payload pointer; `NULL` pointers are ignored.
 void rt_heap_free_zero_ref(void *payload)
 {
@@ -238,8 +271,21 @@ void rt_heap_free_zero_ref(void *payload)
     RT_HEAP_VALIDATE(hdr);
     if (__atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) != 0)
         return;
+
+    // Check if this was a pool allocation
+    int from_pool = (hdr->flags & RT_HEAP_FLAG_POOLED) != 0;
+    size_t alloc_size = hdr->alloc_size;
+
     memset(hdr, 0, sizeof(*hdr));
-    free(hdr);
+
+    if (from_pool)
+    {
+        rt_pool_free(hdr, alloc_size);
+    }
+    else
+    {
+        free(hdr);
+    }
 }
 
 /// @brief Obtain a mutable header pointer for a payload.

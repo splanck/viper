@@ -49,6 +49,7 @@
 #include "LoweringContext.hpp"
 #include "OpcodeDispatch.hpp"
 #include "OpcodeMappings.hpp"
+#include "TargetAArch64.hpp"
 #include "TerminatorLowering.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Type.hpp"
@@ -643,13 +644,34 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                 tempVReg[*ins.result] = dst;
                                 if (binOp)
                                 {
-                                    // For shift operations with immediate, use immOp for RHS
+                                    // Check if we can use immediate form for this operation
+                                    const bool hasConstRHS =
+                                        ins.operands[1].kind == il::core::Value::Kind::ConstInt;
                                     const bool isShift = (ins.op == il::core::Opcode::Shl ||
                                                           ins.op == il::core::Opcode::LShr ||
                                                           ins.op == il::core::Opcode::AShr);
-                                    if (isShift &&
-                                        ins.operands[1].kind == il::core::Value::Kind::ConstInt)
+                                    const bool isAddSub = (ins.op == il::core::Opcode::Add ||
+                                                           ins.op == il::core::Opcode::IAddOvf ||
+                                                           ins.op == il::core::Opcode::Sub ||
+                                                           ins.op == il::core::Opcode::ISubOvf);
+
+                                    // Use immediate form if:
+                                    // 1. RHS is a constant AND
+                                    // 2. Operation supports immediate AND
+                                    // 3. Value fits in immediate field
+                                    bool useImmediate = false;
+                                    if (hasConstRHS && binOp->supportsImmediate)
                                     {
+                                        const auto immVal = ins.operands[1].i64;
+                                        if (isShift && isValidShiftAmount(immVal))
+                                            useImmediate = true;
+                                        else if (isAddSub && isUImm12(immVal))
+                                            useImmediate = true;
+                                    }
+
+                                    if (useImmediate)
+                                    {
+                                        // Emit with immediate operand - no need to materialize RHS
                                         bbOut().instrs.push_back(
                                             MInstr{binOp->immOp,
                                                    {MOperand::vregOp(RegClass::GPR, dst),
@@ -669,10 +691,25 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                 else
                                 {
                                     // Emit comparison (cmp + cset)
-                                    bbOut().instrs.push_back(
-                                        MInstr{MOpcode::CmpRR,
-                                               {MOperand::vregOp(RegClass::GPR, lhs),
-                                                MOperand::vregOp(RegClass::GPR, rhs)}});
+                                    // Check if RHS is a small constant for CmpRI form
+                                    const bool rhsIsSmallConst =
+                                        ins.operands[1].kind == il::core::Value::Kind::ConstInt &&
+                                        isUImm12(ins.operands[1].i64);
+
+                                    if (rhsIsSmallConst)
+                                    {
+                                        bbOut().instrs.push_back(
+                                            MInstr{MOpcode::CmpRI,
+                                                   {MOperand::vregOp(RegClass::GPR, lhs),
+                                                    MOperand::immOp(ins.operands[1].i64)}});
+                                    }
+                                    else
+                                    {
+                                        bbOut().instrs.push_back(
+                                            MInstr{MOpcode::CmpRR,
+                                                   {MOperand::vregOp(RegClass::GPR, lhs),
+                                                    MOperand::vregOp(RegClass::GPR, rhs)}});
+                                    }
                                     bbOut().instrs.push_back(
                                         MInstr{MOpcode::Cset,
                                                {MOperand::vregOp(RegClass::GPR, dst),

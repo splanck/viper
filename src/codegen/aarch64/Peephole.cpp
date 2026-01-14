@@ -34,6 +34,7 @@
 #include <algorithm>
 #include <optional>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace viper::codegen::aarch64
@@ -765,13 +766,26 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
     std::unordered_map<uint32_t, MOperand> copyOrigin;
     std::size_t propagated = 0;
 
+    // Helper to invalidate all copies that depend on a register as their origin
+    auto invalidateDependents = [&copyOrigin](uint32_t originKey) {
+        // Collect keys to erase (can't erase while iterating)
+        std::vector<uint32_t> toErase;
+        for (const auto &[key, origin] : copyOrigin)
+        {
+            if (regKey(origin) == originKey)
+                toErase.push_back(key);
+        }
+        for (uint32_t key : toErase)
+            copyOrigin.erase(key);
+    };
+
     for (auto &instr : instrs)
     {
         // Skip non-register instructions
         if (instr.opc == MOpcode::Br || instr.opc == MOpcode::BCond ||
             instr.opc == MOpcode::Ret || instr.opc == MOpcode::Bl)
         {
-            // Calls clobber caller-saved registers, invalidate their copy info
+            // Calls clobber caller-saved registers, invalidate all copy info
             if (instr.opc == MOpcode::Bl)
                 copyOrigin.clear();
             continue;
@@ -783,6 +797,12 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
         {
             const MOperand &dst = instr.ops[0];
             const MOperand &src = instr.ops[1];
+            uint32_t dstKey = regKey(dst);
+
+            // First invalidate any copies that depend on dst as their origin
+            // (since dst is being redefined)
+            invalidateDependents(dstKey);
+            copyOrigin.erase(dstKey);
 
             // Find the origin of the source (follow the copy chain)
             uint32_t srcKey = regKey(src);
@@ -791,11 +811,9 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
             if (it != copyOrigin.end())
                 origin = it->second;
 
-            // If dst != origin, we can potentially propagate
+            // If dst != origin, record the copy relationship
             if (!samePhysReg(dst, origin))
             {
-                // Record that dst is a copy of origin
-                uint32_t dstKey = regKey(dst);
                 copyOrigin[dstKey] = origin;
 
                 // Update the mov to use the origin directly
@@ -804,12 +822,6 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
                     instr.ops[1] = origin;
                     ++propagated;
                 }
-            }
-            else
-            {
-                // dst == origin, this is an identity move (will be removed later)
-                uint32_t dstKey = regKey(dst);
-                copyOrigin.erase(dstKey);
             }
             continue;
         }
@@ -820,6 +832,10 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
         {
             const MOperand &dst = instr.ops[0];
             const MOperand &src = instr.ops[1];
+            uint32_t dstKey = regKey(dst);
+
+            invalidateDependents(dstKey);
+            copyOrigin.erase(dstKey);
 
             uint32_t srcKey = regKey(src);
             MOperand origin = src;
@@ -829,7 +845,6 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
 
             if (!samePhysReg(dst, origin))
             {
-                uint32_t dstKey = regKey(dst);
                 copyOrigin[dstKey] = origin;
 
                 if (!samePhysReg(src, origin))
@@ -838,26 +853,39 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
                     ++propagated;
                 }
             }
-            else
-            {
-                uint32_t dstKey = regKey(dst);
-                copyOrigin.erase(dstKey);
-            }
             continue;
         }
 
         // For other instructions, propagate copies in source operands
         // and invalidate copy info for defined registers
+
+        // First pass: collect definitions to invalidate
+        for (std::size_t i = 0; i < instr.ops.size(); ++i)
+        {
+            const auto &op = instr.ops[i];
+            if (!isPhysReg(op))
+                continue;
+
+            auto [isUse, isDef] = classifyOperand(instr, i);
+            if (isDef)
+            {
+                // This register is redefined, invalidate its copy info
+                // and all copies that depend on it
+                uint32_t key = regKey(op);
+                invalidateDependents(key);
+                copyOrigin.erase(key);
+            }
+        }
+
+        // Second pass: propagate copies in uses
         for (std::size_t i = 0; i < instr.ops.size(); ++i)
         {
             auto &op = instr.ops[i];
             if (!isPhysReg(op))
                 continue;
 
-            // Check if this operand position is a use (not a def)
             auto [isUse, isDef] = classifyOperand(instr, i);
-
-            if (isUse)
+            if (isUse && !isDef)
             {
                 // Try to replace with origin
                 uint32_t key = regKey(op);
@@ -868,18 +896,245 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
                     ++propagated;
                 }
             }
-
-            if (isDef)
-            {
-                // This register is redefined, invalidate its copy info
-                uint32_t key = regKey(op);
-                copyOrigin.erase(key);
-            }
         }
     }
 
     stats.copiesPropagated += static_cast<int>(propagated);
     return propagated;
+}
+
+/// @brief Check if an instruction has side effects and cannot be removed.
+///
+/// Instructions with side effects include stores, calls, branches, and
+/// control flow instructions.
+[[nodiscard]] bool hasSideEffects(const MInstr &instr) noexcept
+{
+    switch (instr.opc)
+    {
+        // Store instructions - write to memory
+        case MOpcode::StrRegFpImm:
+        case MOpcode::StrFprFpImm:
+        case MOpcode::StrRegBaseImm:
+        case MOpcode::StrFprBaseImm:
+        case MOpcode::StrRegSpImm:
+        case MOpcode::StrFprSpImm:
+            return true;
+
+        // Call instructions - may have arbitrary effects
+        case MOpcode::Bl:
+            return true;
+
+        // Branch and control flow - affect program flow
+        case MOpcode::Br:
+        case MOpcode::BCond:
+        case MOpcode::Ret:
+        case MOpcode::Cbz:
+            return true;
+
+        // Stack manipulation
+        case MOpcode::SubSpImm:
+        case MOpcode::AddSpImm:
+            return true;
+
+        // Comparison instructions set flags that may be used by branches
+        case MOpcode::CmpRR:
+        case MOpcode::CmpRI:
+        case MOpcode::TstRR:
+        case MOpcode::FCmpRR:
+            return true;
+
+        // Load instructions - their results may be used in other basic blocks
+        // Since we don't have cross-block liveness, treat all loads as having side effects
+        case MOpcode::LdrRegFpImm:
+        case MOpcode::LdrFprFpImm:
+        case MOpcode::LdrRegBaseImm:
+        case MOpcode::LdrFprBaseImm:
+            return true;
+
+        // Address-loading instructions (adrp/add for PC-relative addressing)
+        // These are typically used to load string constants for function calls.
+        // Without proper def-use chains, we can't safely remove these.
+        case MOpcode::AdrPage:
+        case MOpcode::AddPageOff:
+        case MOpcode::AddFpImm:
+            return true;
+
+        // Mov instructions to argument/return registers (x0-x7, v0-v7) may be setting up
+        // call arguments or return values. Without proper use-def analysis across calls,
+        // we treat these as having potential side effects.
+        case MOpcode::MovRR:
+        case MOpcode::MovRI:
+        case MOpcode::FMovRR:
+        case MOpcode::FMovRI:
+        {
+            if (instr.ops.empty())
+                return false;
+            const auto &dst = instr.ops[0];
+            if (dst.kind != MOperand::Kind::Reg || !dst.reg.isPhys)
+                return false;
+            auto pr = static_cast<PhysReg>(dst.reg.idOrPhys);
+            // x0-x7 are argument/return registers
+            if (pr >= PhysReg::X0 && pr <= PhysReg::X7)
+                return true;
+            // v0-v7 are FP argument/return registers
+            if (pr >= PhysReg::V0 && pr <= PhysReg::V7)
+                return true;
+            return false;
+        }
+
+        // All other instructions are pure computations
+        default:
+            return false;
+    }
+}
+
+/// @brief Get the physical register defined by an instruction, if any.
+///
+/// @param instr Instruction to analyze.
+/// @return The defined register operand, or nullopt if none.
+[[nodiscard]] std::optional<MOperand> getDefinedReg(const MInstr &instr) noexcept
+{
+    // Most instructions define their first operand
+    switch (instr.opc)
+    {
+        case MOpcode::MovRR:
+        case MOpcode::MovRI:
+        case MOpcode::FMovRR:
+        case MOpcode::FMovRI:
+        case MOpcode::AddRRR:
+        case MOpcode::SubRRR:
+        case MOpcode::MulRRR:
+        case MOpcode::SDivRRR:
+        case MOpcode::UDivRRR:
+        case MOpcode::AndRRR:
+        case MOpcode::OrrRRR:
+        case MOpcode::EorRRR:
+        case MOpcode::AddRI:
+        case MOpcode::SubRI:
+        case MOpcode::LslRI:
+        case MOpcode::LsrRI:
+        case MOpcode::AsrRI:
+        case MOpcode::Cset:
+        case MOpcode::LdrRegFpImm:
+        case MOpcode::LdrFprFpImm:
+        case MOpcode::LdrRegBaseImm:
+        case MOpcode::LdrFprBaseImm:
+        case MOpcode::AddFpImm:
+        case MOpcode::AdrPage:
+        case MOpcode::AddPageOff:
+        case MOpcode::FAddRRR:
+        case MOpcode::FSubRRR:
+        case MOpcode::FMulRRR:
+        case MOpcode::FDivRRR:
+        case MOpcode::SCvtF:
+        case MOpcode::FCvtZS:
+        case MOpcode::UCvtF:
+        case MOpcode::FCvtZU:
+        case MOpcode::FRintN:
+        case MOpcode::MSubRRRR:
+            if (!instr.ops.empty() && isPhysReg(instr.ops[0]))
+                return instr.ops[0];
+            break;
+
+        default:
+            break;
+    }
+    return std::nullopt;
+}
+
+/// @brief Perform dead code elimination within a basic block.
+///
+/// Uses backward liveness analysis to remove instructions whose results
+/// are never used. Only removes pure computations (no side effects).
+///
+/// @param instrs Instructions in the basic block.
+/// @param stats Statistics to update.
+/// @return Number of dead instructions removed.
+std::size_t removeDeadInstructions(std::vector<MInstr> &instrs, PeepholeStats &stats)
+{
+    if (instrs.empty())
+        return 0;
+
+    // Set of registers that are live (used by subsequent instructions)
+    std::unordered_set<uint32_t> liveRegs;
+
+    // Mark all argument registers as live at block exit (conservative)
+    // They may be used by calls or the return value
+    for (int i = 0; i <= 7; ++i)
+    {
+        liveRegs.insert((static_cast<uint32_t>(RegClass::GPR) << 16) | static_cast<uint32_t>(PhysReg::X0) + i);
+    }
+
+    // Also mark FP argument registers as live
+    for (int i = 0; i <= 7; ++i)
+    {
+        liveRegs.insert((static_cast<uint32_t>(RegClass::FPR) << 16) | static_cast<uint32_t>(PhysReg::V0) + i);
+    }
+
+    // Backward scan to compute liveness and mark dead instructions
+    std::vector<bool> toRemove(instrs.size(), false);
+    std::size_t removed = 0;
+
+    for (std::size_t i = instrs.size(); i > 0; --i)
+    {
+        const std::size_t idx = i - 1;
+        const auto &instr = instrs[idx];
+
+        // Instructions with side effects are always live
+        if (hasSideEffects(instr))
+        {
+            // Mark all source operands as live
+            for (std::size_t j = 0; j < instr.ops.size(); ++j)
+            {
+                const auto &op = instr.ops[j];
+                if (isPhysReg(op))
+                {
+                    auto [isUse, isDef] = classifyOperand(instr, j);
+                    if (isUse)
+                        liveRegs.insert(regKey(op));
+                }
+            }
+            continue;
+        }
+
+        // Check if the instruction's result is used
+        auto defReg = getDefinedReg(instr);
+        if (defReg)
+        {
+            uint32_t key = regKey(*defReg);
+            if (liveRegs.find(key) == liveRegs.end())
+            {
+                // Result is not used - mark for removal
+                toRemove[idx] = true;
+                ++removed;
+                continue;
+            }
+
+            // Result is used - remove from live set (since we're defining it)
+            liveRegs.erase(key);
+        }
+
+        // Mark all source operands as live
+        for (std::size_t j = 0; j < instr.ops.size(); ++j)
+        {
+            const auto &op = instr.ops[j];
+            if (isPhysReg(op))
+            {
+                auto [isUse, isDef] = classifyOperand(instr, j);
+                if (isUse)
+                    liveRegs.insert(regKey(op));
+            }
+        }
+    }
+
+    // Remove marked instructions
+    if (removed > 0)
+    {
+        removeMarkedInstructions(instrs, toRemove);
+        stats.deadInstructionsRemoved += static_cast<int>(removed);
+    }
+
+    return removed;
 }
 
 /// @brief Check if a block is a cold block (trap handler, error block).
@@ -1028,6 +1283,9 @@ PeepholeStats runPeephole(MFunction &fn)
         {
             removeMarkedInstructions(instrs, toRemove);
         }
+
+        // Pass 4.5: Dead code elimination - remove instructions with unused results
+        removeDeadInstructions(instrs, stats);
     }
 
     // Pass 5: Remove branches to the immediately following block

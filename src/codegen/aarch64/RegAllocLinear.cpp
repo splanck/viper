@@ -327,8 +327,36 @@ struct RegPools
         return r;
     }
 
-    void releaseGPR(PhysReg r)
+    /// @brief Take a GPR, preferring callee-saved registers.
+    ///
+    /// Used for values that need to survive function calls, since callee-saved
+    /// registers don't need to be spilled/restored around calls.
+    PhysReg takeGPRPreferCalleeSaved(const TargetInfo &ti)
     {
+        if (gprFree.empty())
+            return PhysReg::X19;
+
+        // Try to find a callee-saved register first
+        for (auto it = gprFree.begin(); it != gprFree.end(); ++it)
+        {
+            if (std::find(ti.calleeSavedGPR.begin(), ti.calleeSavedGPR.end(), *it) !=
+                ti.calleeSavedGPR.end())
+            {
+                PhysReg r = *it;
+                gprFree.erase(it);
+                return r;
+            }
+        }
+
+        // No callee-saved available, take any
+        auto r = gprFree.front();
+        gprFree.pop_front();
+        return r;
+    }
+
+    void releaseGPR(PhysReg r, const TargetInfo & /*ti*/)
+    {
+        // Release register back to pool - push to back to maintain FIFO order
         gprFree.push_back(r);
     }
 
@@ -341,8 +369,9 @@ struct RegPools
         return r;
     }
 
-    void releaseFPR(PhysReg r)
+    void releaseFPR(PhysReg r, const TargetInfo & /*ti*/)
     {
+        // Release register back to pool - push to back to maintain FIFO order
         fprFree.push_back(r);
     }
 };
@@ -404,6 +433,7 @@ class LinearAllocator
     unsigned currentInstrIdx_{0}; ///< Current instruction index for LRU tracking.
     std::unordered_map<uint16_t, unsigned> nextUseGPR_; ///< Next use index for GPR vregs.
     std::unordered_map<uint16_t, unsigned> nextUseFPR_; ///< Next use index for FPR vregs.
+    std::vector<unsigned> callPositions_; ///< Positions of call instructions in current block.
     // CFG + liveness (conservative cross-block)
     std::unordered_map<std::string, std::size_t> blockIndex_;
     std::vector<std::vector<std::size_t>> succs_;
@@ -486,13 +516,28 @@ class LinearAllocator
     /// we choose the vreg that won't be needed for the longest time.
     /// Scanning backward from the end of the block, we record when each vreg
     /// is next used.
+    ///
+    /// Also computes call positions for call-aware register allocation.
     void computeNextUses(const MBasicBlock &bb)
     {
         nextUseGPR_.clear();
         nextUseFPR_.clear();
+        callPositions_.clear();
 
-        // Scan backward through the block
-        unsigned idx = static_cast<unsigned>(bb.instrs.size());
+        // Scan forward to find call positions
+        unsigned idx = 0;
+        for (const auto &mi : bb.instrs)
+        {
+            if (isCall(mi.opc))
+                callPositions_.push_back(idx);
+            ++idx;
+        }
+
+        // Scan backward through the block for next-use computation.
+        // We want to record the LAST use of each vreg (for determining if it
+        // survives until after a call), so we DON'T overwrite existing entries.
+        // First occurrence in backward scan = latest use in forward direction.
+        idx = static_cast<unsigned>(bb.instrs.size());
         for (auto it = bb.instrs.rbegin(); it != bb.instrs.rend(); ++it)
         {
             --idx;
@@ -500,14 +545,40 @@ class LinearAllocator
             {
                 if (op.kind != MOperand::Kind::Reg || op.reg.isPhys)
                     continue;
-                // Record this as the next use (scanning backward means first occurrence
-                // we see is the furthest use from the start)
+                // Only record if not already seen (keeps latest use position)
                 if (op.reg.cls == RegClass::GPR)
-                    nextUseGPR_[op.reg.idOrPhys] = idx;
+                {
+                    if (nextUseGPR_.find(op.reg.idOrPhys) == nextUseGPR_.end())
+                        nextUseGPR_[op.reg.idOrPhys] = idx;
+                }
                 else
-                    nextUseFPR_[op.reg.idOrPhys] = idx;
+                {
+                    if (nextUseFPR_.find(op.reg.idOrPhys) == nextUseFPR_.end())
+                        nextUseFPR_[op.reg.idOrPhys] = idx;
+                }
             }
         }
+    }
+
+    /// @brief Check if a vreg's next use is after the next call.
+    ///
+    /// If a vreg is used after the next call instruction, it should be
+    /// allocated to a callee-saved register to avoid spilling.
+    bool nextUseAfterCall(uint16_t vreg, RegClass cls) const
+    {
+        unsigned nextUse = getNextUseDistance(vreg, cls);
+        if (nextUse == UINT_MAX)
+            return false; // No next use in this block
+
+        unsigned nextUseIdx = currentInstrIdx_ + nextUse;
+
+        // Find if there's a call between current position and next use
+        for (unsigned callIdx : callPositions_)
+        {
+            if (callIdx > currentInstrIdx_ && callIdx < nextUseIdx)
+                return true;
+        }
+        return false;
     }
 
     /// @brief Get the next use distance for a vreg from current position.
@@ -547,9 +618,9 @@ class LinearAllocator
 
         // Always release the register and mark as spilled
         if (cls == RegClass::GPR)
-            pools_.releaseGPR(st.phys);
+            pools_.releaseGPR(st.phys, ti_);
         else
-            pools_.releaseFPR(st.phys);
+            pools_.releaseFPR(st.phys, ti_);
         st.hasPhys = false;
         st.spilled = true;
     }
@@ -638,7 +709,7 @@ class LinearAllocator
 
         if (!st.hasPhys)
         {
-            assignNewPhysReg(st, isFPR);
+            assignNewPhysReg(st, r.idOrPhys, isFPR);
         }
 
         // If this is a definition, mark the register value as dirty
@@ -684,9 +755,34 @@ class LinearAllocator
         scratch.push_back(tmp);
     }
 
-    void assignNewPhysReg(VState &st, bool isFPR)
+    /// @brief Assign a new physical register to a virtual register.
+    ///
+    /// This implements call-aware register allocation: values that survive
+    /// function calls are preferentially assigned to callee-saved registers
+    /// (x19-x28, d8-d15) since they don't need to be spilled around calls.
+    /// Values that don't survive calls use caller-saved registers to avoid
+    /// prologue/epilogue overhead.
+    ///
+    /// @param st The VState to update with the new physical register.
+    /// @param vregId The virtual register ID (for checking call survival).
+    /// @param isFPR True if allocating a floating-point register.
+    void assignNewPhysReg(VState &st, uint16_t vregId, bool isFPR)
     {
-        PhysReg phys = isFPR ? pools_.takeFPR() : pools_.takeGPR();
+        PhysReg phys;
+        if (isFPR)
+        {
+            phys = pools_.takeFPR();
+        }
+        else
+        {
+            // For GPR: if this vreg survives a call, prefer callee-saved registers
+            // to avoid spilling around the call
+            if (nextUseAfterCall(vregId, RegClass::GPR))
+                phys = pools_.takeGPRPreferCalleeSaved(ti_);
+            else
+                phys = pools_.takeGPR();
+        }
+
         st.hasPhys = true;
         st.phys = phys;
 
@@ -899,7 +995,7 @@ class LinearAllocator
                             endSpills.push_back(makeStrFp(it->second.phys, off));
                             it->second.dirty = false;
                         }
-                        pools_.releaseGPR(it->second.phys);
+                        pools_.releaseGPR(it->second.phys, ti_);
                         it->second.hasPhys = false;
                         it->second.spilled = true;
                     }
@@ -918,7 +1014,7 @@ class LinearAllocator
                                        {MOperand::regOp(it->second.phys), MOperand::immOp(off)}});
                             it->second.dirty = false;
                         }
-                        pools_.releaseFPR(it->second.phys);
+                        pools_.releaseFPR(it->second.phys, ti_);
                         it->second.hasPhys = false;
                         it->second.spilled = true;
                     }
@@ -1017,7 +1113,7 @@ class LinearAllocator
             {
                 const int off = fb_.ensureSpill(getBarrierDstVreg);
                 suffix.push_back(makeStrFp(it->second.phys, off));
-                pools_.releaseGPR(it->second.phys);
+                pools_.releaseGPR(it->second.phys, ti_);
                 it->second.hasPhys = false;
                 it->second.spilled = true;
             }
@@ -1046,14 +1142,14 @@ class LinearAllocator
                 if (std::find(ti_.calleeSavedGPR.begin(), ti_.calleeSavedGPR.end(), pr) !=
                     ti_.calleeSavedGPR.end())
                     pools_.calleeUsed.insert(pr);
-                pools_.releaseGPR(pr);
+                pools_.releaseGPR(pr, ti_);
             }
             else
             {
                 if (std::find(ti_.calleeSavedFPR.begin(), ti_.calleeSavedFPR.end(), pr) !=
                     ti_.calleeSavedFPR.end())
                     pools_.calleeUsedFPR.insert(pr);
-                pools_.releaseFPR(pr);
+                pools_.releaseFPR(pr, ti_);
             }
         }
     }
@@ -1064,7 +1160,7 @@ class LinearAllocator
         {
             if (kv.second.hasPhys)
             {
-                pools_.releaseGPR(kv.second.phys);
+                pools_.releaseGPR(kv.second.phys, ti_);
                 kv.second.hasPhys = false;
             }
         }
@@ -1072,7 +1168,7 @@ class LinearAllocator
         {
             if (kv.second.hasPhys)
             {
-                pools_.releaseFPR(kv.second.phys);
+                pools_.releaseFPR(kv.second.phys, ti_);
                 kv.second.hasPhys = false;
             }
         }

@@ -203,8 +203,10 @@ TEST(Arm64CallConv, CallResultInCondition)
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     EXPECT_NE(asmText.find(blSym("check")), std::string::npos);
-    // After the call, the result is compared
-    EXPECT_NE(asmText.find("cmp x"), std::string::npos);
+    // After the call, the result is compared (may use cmp or tst if comparing against 0)
+    const bool hasCompare = asmText.find("cmp x") != std::string::npos ||
+                            asmText.find("tst x") != std::string::npos;
+    EXPECT_TRUE(hasCompare);
 }
 
 int main(int argc, char **argv)

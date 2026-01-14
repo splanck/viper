@@ -90,13 +90,17 @@ typedef struct rt_heap_hdr
     uint32_t magic;
     uint16_t kind;
     uint16_t elem_kind;
-    uint32_t flags; /* debug/status flags: bit0=disposed */
+    uint32_t flags; /* debug/status flags: bit0=disposed, bit1=pool-allocated */
     size_t refcnt;
     size_t len;
     size_t cap;
+    size_t alloc_size;             ///< Total allocation size in bytes (header + payload).
     int64_t class_id;              ///< Optional runtime class identifier (objects only).
     rt_heap_finalizer_t finalizer; ///< Optional finalizer callback (objects only).
 } rt_heap_hdr_t;
+
+/// @brief Flag indicating the allocation came from the pool allocator.
+#define RT_HEAP_FLAG_POOLED 0x2u
 
 #define RT_MAGIC 0x52504956u /* 'VIPR' little-endian */
 

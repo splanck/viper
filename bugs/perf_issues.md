@@ -189,21 +189,29 @@ void spillVictim(...) {
 
 ---
 
-#### ISSUE CG-003: No Move Coalescing
-**Location:** N/A (missing pass)
+#### ISSUE CG-003: Copy Propagation 🟢 IMPLEMENTED (disabled)
+**Location:** `src/codegen/aarch64/Peephole.cpp`
+**Status:** Implementation complete, correctness fixed, but disabled
+
+Copy propagation pass implemented in `propagateCopies()`:
+- Tracks register copy chains (mov dst, src -> origin mapping)
+- Properly invalidates mappings when origin register is redefined
+- Propagates original sources to uses, eliminating intermediate copies
 
 ```
-// Unoptimized:
-v1 = MovRR v0
-v2 = MovRR v1
-
-// Should become:
-v2 = MovRR v0  (or eliminated entirely)
+// Example optimization:
+mov x1, x0     ; x1 = x0
+add x2, x1, #1 ; becomes: add x2, x0, #1
 ```
 
-**Impact:** Unnecessary register-to-register moves persist until peephole
-**Fix:** Add copy coalescing pass before register allocation
-**Estimated gain:** 5-10% code size, 2-5% execution
+**Why disabled:** Enabling changes assembly patterns that 8+ golden tests verify.
+The comprehensive tests pass (correct output), but updating golden tests
+was deemed not worth the 2-5% estimated gain.
+
+**To enable:** Uncomment `propagateCopies(instrs, stats)` in Peephole.cpp
+and update affected golden tests in `src/tests/unit/codegen/`.
+
+**Estimated gain:** 2-5% execution (deferred pending test updates)
 
 ---
 
@@ -408,12 +416,25 @@ constexpr unsigned kMaxSROASize = 128;   // Now 128 bytes total
 
 ---
 
-#### ISSUE IL-005: No Interprocedural Constant Propagation ⚠️ MEDIUM
-**Impact:** Constants not tracked through call graph
+#### ISSUE IL-005: No Interprocedural Constant Propagation ✅ FIXED
+**Location:** `src/il/transform/PassManager.cpp`
+**Status:** FIXED (2026-01-13)
 
+Added second SCCP pass after inline in O2 pipeline to propagate constants
+from call sites through inlined code.
+
+```
+Pipeline order (O2):
+  ... → sccp → inline → sccp → dce → ...
+       ^                  ^
+       Pre-inline:        Post-inline:
+       simplify callees   propagate call-site constants
+```
+
+Example optimization now possible:
 ```viper
 func compute(x) { return x * 2; }
-func main() { return compute(5); }  // Could fold to 10
+func main() { return compute(5); }  // Now folds to 10 after inline+sccp
 ```
 **Estimated gain:** 5-15% for small-function-heavy code
 
@@ -474,14 +495,19 @@ static inline void rt_arr_i32_set_unchecked(int32_t *arr, size_t idx, int32_t va
 
 ---
 
-#### ISSUE RT-003: No Allocation Pooling ⚠️ HIGH
-**Location:** `src/runtime/rt_heap.c`
+#### ISSUE RT-003: No Allocation Pooling ✅ FIXED
+**Location:** `src/runtime/rt_heap.c`, `src/runtime/rt_pool.c`
+**Status:** FIXED (2026-01-13)
 
-Every allocation goes through system malloc/free.
+Added slab allocator for small string allocations. The pool allocator provides:
+- Size classes: 64, 128, 256, 512 bytes
+- Lock-free freelist with atomic CAS for thread safety
+- Automatic fallback to malloc for large allocations
+- Integration with rt_heap_alloc for RT_HEAP_STRING allocations only
+  (arrays excluded because they use realloc for growth)
 
-**Impact:** Allocator overhead for frequent small allocations
-**Fix:** Add slab allocator for common object sizes (8, 16, 32, 64, 128 bytes)
-**Estimated gain:** 10-20% for allocation-heavy code
+**Impact:** Reduced allocator overhead for frequent string operations
+**Estimated gain:** 10-20% for string-heavy code
 
 ---
 
@@ -513,11 +539,17 @@ void *result = rt_seq_with_capacity((int64_t)count);
 
 ---
 
-#### ISSUE RT-005: No String Interning ⚠️ MEDIUM
+#### ISSUE RT-005: No String Interning ⚠️ LOW (Partially Addressed)
 **Impact:** Identical strings allocated separately
 
-**Fix:** Add intern table for common strings (especially from source)
-**Estimated gain:** 5-10% memory, 5-10% comparison
+**Status:** Partially addressed - key optimizations already in place:
+- Empty string is already interned (singleton pattern in rt_empty_string)
+- Compile-time literals deduplicated via RodataPool (aarch64)
+- String comparison has pointer fast-path (if (a == b) return 1)
+- Pool allocator (RT-003) now reduces allocation overhead
+
+**Remaining work:** Full runtime intern table for dynamic strings
+**Estimated gain:** 2-5% (reduced from original estimate due to other fixes)
 
 ---
 
@@ -673,10 +705,10 @@ This is deferred to a dedicated effort.
 
 | Priority | Issue | Description | Expected Gain |
 |----------|-------|-------------|---------------|
-| 🟠 | RT-003 | Allocation pooling | 10-20% |
-| 🟠 | RT-005 | String interning | 5-10% |
-| 🟠 | IL-005 | Interprocedural const prop | 5-15% |
-| 🟡 | CG-003 | Move coalescing | 2-5% |
+| ✅ | RT-003 | Allocation pooling | 10-20% |
+| 🟢 | RT-005 | String interning (partial) | 2-5% |
+| ✅ | IL-005 | Interprocedural const prop | 5-15% |
+| 🟢 | CG-003 | Copy propagation (impl done, disabled) | 2-5% |
 
 ---
 
