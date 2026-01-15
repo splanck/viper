@@ -7,7 +7,7 @@ module bouncing;
 // Features gravity, elasticity, and ball-to-ball collisions.
 // ============================================================================
 
-import "./colors";
+bind "./colors";
 
 // Ball entity with physics
 entity Ball {

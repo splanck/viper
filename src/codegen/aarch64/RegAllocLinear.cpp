@@ -545,17 +545,12 @@ class LinearAllocator
             {
                 if (op.kind != MOperand::Kind::Reg || op.reg.isPhys)
                     continue;
-                // Only record if not already seen (keeps latest use position)
+                // Only record if not already seen (keeps first use position)
+                // Use try_emplace for single-lookup insertion
                 if (op.reg.cls == RegClass::GPR)
-                {
-                    if (nextUseGPR_.find(op.reg.idOrPhys) == nextUseGPR_.end())
-                        nextUseGPR_[op.reg.idOrPhys] = idx;
-                }
+                    nextUseGPR_.try_emplace(op.reg.idOrPhys, idx);
                 else
-                {
-                    if (nextUseFPR_.find(op.reg.idOrPhys) == nextUseFPR_.end())
-                        nextUseFPR_[op.reg.idOrPhys] = idx;
-                }
+                    nextUseFPR_.try_emplace(op.reg.idOrPhys, idx);
             }
         }
     }

@@ -1,7 +1,7 @@
 // canvas.viper - Drawing canvas for Viper Paint
 module canvas;
 
-import "./config";
+bind "./config";
 
 // Convert 0x00RRGGBB (Canvas format) to 0xRRGGBBFF (Pixels format)
 func toPixelColor(color: Integer) -> Integer {

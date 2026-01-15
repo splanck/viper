@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Unit tests for Zia import resolution.
+// Unit tests for Zia bind resolution.
 //
 //===----------------------------------------------------------------------===//
 
@@ -36,11 +36,11 @@ fs::path writeFile(const fs::path &dir, const std::string &name, const std::stri
     return path;
 }
 
-TEST(ZiaImports, ImportStringLiteralWithExtension)
+TEST(ZiaBinds, BindStringLiteralWithExtension)
 {
-    const fs::path tempRoot = fs::temp_directory_path() / "zia_import_tests" /
+    const fs::path tempRoot = fs::temp_directory_path() / "zia_bind_tests" /
                               std::to_string(static_cast<unsigned long long>(::getpid()));
-    const fs::path dir = tempRoot / "import_ok";
+    const fs::path dir = tempRoot / "bind_ok";
 
     const fs::path libPath = writeFile(dir,
                                        "lib.zia",
@@ -54,7 +54,7 @@ func greet() {
 
     const std::string mainSource = R"(
 module Main;
-import "lib.zia";
+bind "lib.zia";
 
 func start() {
     greet();
@@ -70,7 +70,7 @@ func start() {
     auto result = compile(input, opts, sm);
     if (!result.succeeded())
     {
-        std::cerr << "Diagnostics for ImportStringLiteralWithExtension:\n";
+        std::cerr << "Diagnostics for BindStringLiteralWithExtension:\n";
         for (const auto &d : result.diagnostics.diagnostics())
         {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
@@ -94,15 +94,15 @@ func start() {
     (void)libPath;
 }
 
-TEST(ZiaImports, MissingImportReportsAtImportSite)
+TEST(ZiaBinds, MissingBindReportsAtBindSite)
 {
-    const fs::path tempRoot = fs::temp_directory_path() / "zia_import_tests" /
+    const fs::path tempRoot = fs::temp_directory_path() / "zia_bind_tests" /
                               std::to_string(static_cast<unsigned long long>(::getpid()));
-    const fs::path dir = tempRoot / "missing_import";
+    const fs::path dir = tempRoot / "missing_bind";
 
     const std::string mainSource = R"(
 module Main;
-import "missing.zia";
+bind "missing.zia";
 
 func start() {
 }
@@ -129,15 +129,15 @@ func start() {
     EXPECT_TRUE(foundError);
 }
 
-TEST(ZiaImports, CircularImportDetected)
+TEST(ZiaBinds, CircularBindDetected)
 {
-    const fs::path tempRoot = fs::temp_directory_path() / "zia_import_tests" /
+    const fs::path tempRoot = fs::temp_directory_path() / "zia_bind_tests" /
                               std::to_string(static_cast<unsigned long long>(::getpid()));
     const fs::path dir = tempRoot / "cycle";
 
     const std::string aSource = R"(
 module A;
-import "b.zia";
+bind "b.zia";
 
 func a() {
 }
@@ -151,7 +151,7 @@ func start() {
 
     const std::string bSource = R"(
 module B;
-import "a.zia";
+bind "a.zia";
 
 func b() {
 }
@@ -179,12 +179,12 @@ func b() {
     EXPECT_TRUE(foundCycle);
 }
 
-/// @brief Test that transitive imports maintain correct declaration order (Bug #26).
-/// When main imports both inner and outer, where outer also imports inner,
+/// @brief Test that transitive binds maintain correct declaration order (Bug #26).
+/// When main binds both inner and outer, where outer also binds inner,
 /// the entities must be lowered in dependency order (Inner before Outer).
-TEST(ZiaImports, TransitiveImportDeclarationOrder)
+TEST(ZiaBinds, TransitiveBindDeclarationOrder)
 {
-    const fs::path tempRoot = fs::temp_directory_path() / "zia_import_tests" /
+    const fs::path tempRoot = fs::temp_directory_path() / "zia_bind_tests" /
                               std::to_string(static_cast<unsigned long long>(::getpid()));
     const fs::path dir = tempRoot / "transitive_order";
 
@@ -209,7 +209,7 @@ entity Inner {
     const fs::path outerPath = writeFile(dir, "outer.zia", R"(
 module Outer;
 
-import "./inner";
+bind "./inner";
 
 entity Outer {
     expose Inner inner;
@@ -220,12 +220,12 @@ entity Outer {
 }
 )");
 
-    // Main imports both inner AND outer (outer also imports inner)
+    // Main binds both inner AND outer (outer also binds inner)
     const std::string mainSource = R"(
 module Main;
 
-import "./inner";
-import "./outer";
+bind "./inner";
+bind "./outer";
 
 func start() {
     Outer o = new Outer();
@@ -245,7 +245,7 @@ func start() {
 
     if (!result.succeeded())
     {
-        std::cerr << "Diagnostics for TransitiveImportDeclarationOrder:\n";
+        std::cerr << "Diagnostics for TransitiveBindDeclarationOrder:\n";
         for (const auto &d : result.diagnostics.diagnostics())
         {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "

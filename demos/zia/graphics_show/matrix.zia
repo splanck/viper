@@ -6,7 +6,7 @@ module matrix;
 // Recreates the iconic "digital rain" effect from The Matrix.
 // ============================================================================
 
-import "./colors";
+bind "./colors";
 
 var CHARS: List[String];
 

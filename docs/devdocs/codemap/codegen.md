@@ -1,6 +1,8 @@
 # CODEMAP: Codegen
 
-Status:
+Last updated: 2026-01-15
+
+## Status
 
 - AArch64: Validated end‑to‑end on Apple Silicon (ran full Frogger demo).
 - x86_64: Validated on Windows with full codegen test suite passing. Supports System V AMD64 and Windows x64 ABIs.

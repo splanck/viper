@@ -2431,7 +2431,7 @@ export func add(a: i64, b: i64) -> i64 {
 func privateHelper() { ... }  // Not exported
 
 // In another file:
-import MathUtils;
+bind MathUtils;
 var result = MathUtils.add(3, 4);
 ```
 

@@ -7,7 +7,7 @@ module particles;
 // multiple emitters, and various particle behaviors.
 // ============================================================================
 
-import "./colors";
+bind "./colors";
 
 // Single particle with physics properties
 entity Particle {

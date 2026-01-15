@@ -1,9 +1,9 @@
 // eyedropper.viper - Eyedropper (color picker) tool for Viper Paint
 module eyedropper;
 
-import "../config";
-import "../canvas";
-import "../colors";
+bind "../config";
+bind "../canvas";
+bind "../colors";
 
 // EyedropperTool - picks a color from the canvas
 entity EyedropperTool {

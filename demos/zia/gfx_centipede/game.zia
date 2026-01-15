@@ -1,7 +1,7 @@
 // game.viper - Core game logic for Centipede
 module game;
 
-import "./config";
+bind "./config";
 
 // Screen height for Y-flip (Y=0 is at bottom in this graphics system)
 final SCREEN_H = 640;

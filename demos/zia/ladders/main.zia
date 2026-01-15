@@ -2,12 +2,12 @@
 // A Mr. Robot style platform/ladder climbing game
 module main;
 
-import "./config";
-import "./colors";
-import "./player";
-import "./level";
-import "./menu";
-import "./scoreboard";
+bind "./config";
+bind "./colors";
+bind "./player";
+bind "./level";
+bind "./menu";
+bind "./scoreboard";
 
 // Game state
 var gameState: Integer;

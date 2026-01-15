@@ -689,7 +689,7 @@ var result = calculate(5, 3);
 var data = Json.parse(text);  // Error: Json not defined
 
 // Solution: Import the module
-import Viper.Json;
+bind Viper.Json;
 var data = Json.parse(text);
 ```
 
@@ -1795,13 +1795,13 @@ Error: ImportError at main.zia:3:8
 
 ```rust
 // Problem: Module name doesn't match file
-import Utils;  // Looking for Utils.zia, but file is utilities.zia
+bind Utils;  // Looking for Utils.zia, but file is utilities.zia
 
 // Solution 1: Match name to file
-import Utilities;  // Matches utilities.zia
+bind Utilities;  // Matches utilities.zia
 
 // Solution 2: Use correct path
-import src.utils.Utils;  // For Utils.zia in src/utils/
+bind src.utils.Utils;  // For Utils.zia in src/utils/
 ```
 
 **Prevention:**
@@ -1825,9 +1825,9 @@ Error: ImportError at moduleA.zia:2:8
 ```rust
 // Problem: A imports B, B imports A
 // moduleA.zia
-import ModuleB;
+bind ModuleB;
 // moduleB.zia
-import ModuleA;  // Circular!
+bind ModuleA;  // Circular!
 
 // Solution: Extract shared code to third module
 // common.zia - shared types/functions
@@ -1859,7 +1859,7 @@ func internalFunc() { ... }  // Not exported (hidden by default)
 expose func publicFunc() { ... }  // Exported
 
 // Problem: Accessing non-exported symbol
-import Utils;
+bind Utils;
 Utils.internalFunc();  // Error: not exported
 
 // Solution 1: Use exported symbol

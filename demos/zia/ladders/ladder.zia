@@ -2,8 +2,8 @@
 // Ladders connect platforms and allow vertical movement
 module ladder;
 
-import "./config";
-import "./colors";
+bind "./config";
+bind "./colors";
 
 // Ladder entity - vertical climbing structure
 entity Ladder {

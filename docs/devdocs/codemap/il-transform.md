@@ -2,64 +2,106 @@
 
 Optimization passes (`src/il/transform/`) for IL programs.
 
+Last updated: 2026-01-15
+
+## Overview
+
+- **Total source files**: 60 (.hpp/.cpp)
+- **Subdirectories**: SimplifyCFG/, analysis/
+
 ## Pass Infrastructure
 
-| File                       | Purpose                                             |
-|----------------------------|-----------------------------------------------------|
-| `PassManager.hpp/cpp`      | Modular pass sequencing and analysis preservation   |
-| `PassRegistry.hpp/cpp`     | Pass factories and default pipeline builders        |
-| `PipelineExecutor.hpp/cpp` | Pipeline execution with printing/verification hooks |
-| `AnalysisManager.hpp/cpp`  | On-demand analysis construction and caching         |
+| File                    | Purpose                                             |
+|-------------------------|-----------------------------------------------------|
+| `PassManager.cpp`       | Modular pass sequencing implementation              |
+| `PassManager.hpp`       | Modular pass sequencing and analysis preservation   |
+| `PassRegistry.cpp`      | Pass factories implementation                       |
+| `PassRegistry.hpp`      | Pass factories and default pipeline builders        |
+| `PipelineExecutor.cpp`  | Pipeline execution implementation                   |
+| `PipelineExecutor.hpp`  | Pipeline execution with printing/verification hooks |
+| `AnalysisManager.cpp`   | On-demand analysis implementation                   |
+| `AnalysisManager.hpp`   | On-demand analysis construction and caching         |
 
 ## Core Passes
 
-| File                | Purpose                                        |
-|---------------------|------------------------------------------------|
-| `ConstFold.hpp/cpp` | Constant folding for arithmetic, comparisons, trig/math intrinsics |
-| `DCE.hpp/cpp`       | Dead code elimination                          |
-| `DSE.hpp/cpp`       | Dead store elimination (intra-block and cross-block) |
-| `Mem2Reg.hpp/cpp`   | Stack slot promotion to SSA                    |
-| `Peephole.hpp/cpp`  | Local algebraic simplifications (57 rules including float ops) |
-| `EarlyCSE.hpp/cpp`  | Early common subexpression elimination         |
-| `GVN.hpp/cpp`       | Global value numbering with load elimination   |
-| `Inline.hpp/cpp`    | Function inlining with enhanced cost model     |
+| File             | Purpose                                                        |
+|------------------|----------------------------------------------------------------|
+| `ConstFold.cpp`  | Constant folding implementation                                |
+| `ConstFold.hpp`  | Constant folding for arithmetic, comparisons, trig/math        |
+| `DCE.cpp`        | Dead code elimination implementation                           |
+| `DCE.hpp`        | Dead code elimination                                          |
+| `DSE.cpp`        | Dead store elimination implementation                          |
+| `DSE.hpp`        | Dead store elimination (intra-block and cross-block)           |
+| `Mem2Reg.cpp`    | Stack slot promotion implementation                            |
+| `Mem2Reg.hpp`    | Stack slot promotion to SSA                                    |
+| `Peephole.cpp`   | Local algebraic simplifications implementation                 |
+| `Peephole.hpp`   | Local algebraic simplifications (57 rules including float ops) |
+| `EarlyCSE.cpp`   | Early CSE implementation                                       |
+| `EarlyCSE.hpp`   | Early common subexpression elimination                         |
+| `GVN.cpp`        | Global value numbering implementation                          |
+| `GVN.hpp`        | Global value numbering with load elimination                   |
+| `Inline.cpp`     | Function inlining implementation                               |
+| `Inline.hpp`     | Function inlining with enhanced cost model                     |
 
 ## Utility Passes
 
-| File                  | Purpose                                      |
-|-----------------------|----------------------------------------------|
-| `CheckOpt.hpp/cpp`    | Optimization verification and checking       |
-| `LateCleanup.hpp/cpp` | Late-stage cleanup transformations           |
-| `CallEffects.hpp`     | Call effect analysis utilities               |
-| `ValueKey.hpp/cpp`    | Value keying for CSE and GVN                 |
+| File              | Purpose                                      |
+|-------------------|----------------------------------------------|
+| `CheckOpt.cpp`    | Optimization verification implementation     |
+| `CheckOpt.hpp`    | Optimization verification and checking       |
+| `LateCleanup.cpp` | Late-stage cleanup implementation            |
+| `LateCleanup.hpp` | Late-stage cleanup transformations           |
+| `CallEffects.hpp` | Call effect analysis utilities               |
+| `ValueKey.cpp`    | Value keying implementation                  |
+| `ValueKey.hpp`    | Value keying for CSE and GVN                 |
 
 ## Loop Passes
 
-| File                     | Purpose                                                |
-|--------------------------|--------------------------------------------------------|
-| `LICM.hpp/cpp`           | Loop-invariant code motion (hoisting)                  |
-| `LoopSimplify.hpp/cpp`   | Loop normalization (preheaders, single backedges)      |
-| `LoopUnroll.hpp/cpp`     | Loop unrolling for small constant-bound loops          |
-| `IndVarSimplify.hpp/cpp` | Induction variable optimization and strength reduction |
-| `SCCP.hpp/cpp`           | Sparse conditional constant propagation                |
+| File                  | Purpose                                                |
+|-----------------------|--------------------------------------------------------|
+| `LICM.cpp`            | Loop-invariant code motion implementation              |
+| `LICM.hpp`            | Loop-invariant code motion (hoisting)                  |
+| `LoopSimplify.cpp`    | Loop normalization implementation                      |
+| `LoopSimplify.hpp`    | Loop normalization (preheaders, single backedges)      |
+| `LoopUnroll.cpp`      | Loop unrolling implementation                          |
+| `LoopUnroll.hpp`      | Loop unrolling for small constant-bound loops          |
+| `IndVarSimplify.cpp`  | Induction variable optimization implementation         |
+| `IndVarSimplify.hpp`  | Induction variable optimization and strength reduction |
+| `SCCP.cpp`            | Sparse conditional constant propagation implementation |
+| `SCCP.hpp`            | Sparse conditional constant propagation                |
 
 ## Analysis (`analysis/`)
 
-| File               | Purpose                          |
-|--------------------|----------------------------------|
-| `Liveness.hpp/cpp` | Live-in/live-out set computation |
-| `LoopInfo.hpp/cpp` | Loop detection and summarization |
+| File                    | Purpose                           |
+|-------------------------|-----------------------------------|
+| `analysis/Liveness.cpp` | Live-in/live-out set impl         |
+| `analysis/Liveness.hpp` | Live-in/live-out set computation  |
+| `analysis/LoopInfo.cpp` | Loop detection implementation     |
+| `analysis/LoopInfo.hpp` | Loop detection and summarization  |
 
-## SimplifyCFG (`SimplifyCFG/`)
+## SimplifyCFG Main
 
-| File                            | Purpose                                   |
-|---------------------------------|-------------------------------------------|
-| `SimplifyCFG.hpp/cpp`           | Aggregated CFG simplification entry point |
-| `BlockMerging.hpp/cpp`          | Collapse trivial block chains             |
-| `BranchFolding.hpp/cpp`         | Simplify constant/identical branches      |
-| `ForwardingElimination.hpp/cpp` | Remove redundant forwarding blocks        |
-| `JumpThreading.hpp/cpp`         | Thread jumps through predictable branches |
-| `ParamCanonicalization.hpp/cpp` | Canonicalize block parameters             |
-| `ReachabilityCleanup.hpp/cpp`   | Prune unreachable blocks                  |
-| `Utils.hpp/cpp`                 | Shared predicate and branch utilities     |
-| `PassContext.cpp`               | Shared context for SimplifyCFG subpasses  |
+| File              | Purpose                                   |
+|-------------------|-------------------------------------------|
+| `SimplifyCFG.cpp` | Aggregated CFG simplification impl        |
+| `SimplifyCFG.hpp` | Aggregated CFG simplification entry point |
+
+## SimplifyCFG Subpasses (`SimplifyCFG/`)
+
+| File                                     | Purpose                                   |
+|------------------------------------------|-------------------------------------------|
+| `SimplifyCFG/BlockMerging.cpp`           | Collapse trivial block chains impl        |
+| `SimplifyCFG/BlockMerging.hpp`           | Collapse trivial block chains             |
+| `SimplifyCFG/BranchFolding.cpp`          | Simplify constant/identical branches impl |
+| `SimplifyCFG/BranchFolding.hpp`          | Simplify constant/identical branches      |
+| `SimplifyCFG/ForwardingElimination.cpp`  | Remove redundant forwarding blocks impl   |
+| `SimplifyCFG/ForwardingElimination.hpp`  | Remove redundant forwarding blocks        |
+| `SimplifyCFG/JumpThreading.cpp`          | Thread jumps implementation               |
+| `SimplifyCFG/JumpThreading.hpp`          | Thread jumps through predictable branches |
+| `SimplifyCFG/ParamCanonicalization.cpp`  | Canonicalize block parameters impl        |
+| `SimplifyCFG/ParamCanonicalization.hpp`  | Canonicalize block parameters             |
+| `SimplifyCFG/ReachabilityCleanup.cpp`    | Prune unreachable blocks impl             |
+| `SimplifyCFG/ReachabilityCleanup.hpp`    | Prune unreachable blocks                  |
+| `SimplifyCFG/Utils.cpp`                  | Shared utilities implementation           |
+| `SimplifyCFG/Utils.hpp`                  | Shared predicate and branch utilities     |
+| `SimplifyCFG/PassContext.cpp`            | Shared context for SimplifyCFG subpasses  |

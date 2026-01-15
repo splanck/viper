@@ -37,10 +37,10 @@ std::unique_ptr<ModuleDecl> Parser::parseModule()
 
     auto module = std::make_unique<ModuleDecl>(loc, std::move(name));
 
-    // Parse imports
-    while (check(TokenKind::KwImport))
+    // Parse binds
+    while (check(TokenKind::KwBind))
     {
-        module->imports.push_back(parseImportDecl());
+        module->binds.push_back(parseBindDecl());
     }
 
     // Parse declarations
@@ -67,20 +67,20 @@ std::unique_ptr<ModuleDecl> Parser::parseModule()
     return module;
 }
 
-ImportDecl Parser::parseImportDecl()
+BindDecl Parser::parseBindDecl()
 {
-    Token importTok = advance(); // consume 'import'
-    SourceLoc loc = importTok.loc;
+    Token bindTok = advance(); // consume 'bind'
+    SourceLoc loc = bindTok.loc;
 
     std::string path;
 
-    // Check for string literal (file path import)
+    // Check for string literal (file path bind)
     if (check(TokenKind::StringLiteral))
     {
         Token pathTok = advance();
         path = pathTok.stringValue;
     }
-    // Otherwise parse dotted identifier path: Viper.IO.File
+    // Otherwise parse dotted identifier path: Viper.Terminal
     else if (check(TokenKind::Identifier))
     {
         Token firstTok = advance();
@@ -90,8 +90,8 @@ ImportDecl Parser::parseImportDecl()
         {
             if (!check(TokenKind::Identifier))
             {
-                error("expected identifier in import path");
-                return ImportDecl(loc, path);
+                error("expected identifier in bind path");
+                return BindDecl(loc, path);
             }
             path += ".";
             Token segmentTok = advance();
@@ -100,14 +100,28 @@ ImportDecl Parser::parseImportDecl()
     }
     else
     {
-        error("expected import path (string or identifier)");
-        return ImportDecl(loc, "");
+        error("expected bind path (string or identifier)");
+        return BindDecl(loc, "");
+    }
+
+    BindDecl decl(loc, path);
+
+    // Parse optional alias: as AliasName
+    if (match(TokenKind::KwAs))
+    {
+        if (!check(TokenKind::Identifier))
+        {
+            error("expected alias name after 'as'");
+            return decl;
+        }
+        Token aliasTok = advance();
+        decl.alias = aliasTok.text;
     }
 
     if (!expect(TokenKind::Semicolon, ";"))
-        return ImportDecl(loc, path);
+        return decl;
 
-    return ImportDecl(loc, path);
+    return decl;
 }
 
 DeclPtr Parser::parseDeclaration()

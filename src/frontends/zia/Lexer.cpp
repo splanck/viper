@@ -90,8 +90,8 @@ const char *tokenKindToString(TokenKind kind)
             return "module";
         case TokenKind::KwNamespace:
             return "namespace";
-        case TokenKind::KwImport:
-            return "import";
+        case TokenKind::KwBind:
+            return "bind";
         case TokenKind::KwFunc:
             return "func";
         case TokenKind::KwReturn:
@@ -248,6 +248,7 @@ struct KeywordEntry
 constexpr std::array<KeywordEntry, 37> kKeywordTable = {{
     {"and", TokenKind::KwAnd},
     {"as", TokenKind::KwAs},
+    {"bind", TokenKind::KwBind},
     {"break", TokenKind::KwBreak},
     {"continue", TokenKind::KwContinue},
     {"else", TokenKind::KwElse},
@@ -262,7 +263,6 @@ constexpr std::array<KeywordEntry, 37> kKeywordTable = {{
     {"hide", TokenKind::KwHide},
     {"if", TokenKind::KwIf},
     {"implements", TokenKind::KwImplements},
-    {"import", TokenKind::KwImport},
     {"in", TokenKind::KwIn},
     {"interface", TokenKind::KwInterface},
     {"is", TokenKind::KwIs},

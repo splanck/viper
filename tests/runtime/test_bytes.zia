@@ -1,0 +1,26 @@
+module TestBytes;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+// Note: The Viper.Collections.Bytes API is not directly accessible from Zia.
+// Bytes operations are only available from BASIC.
+// This test serves as a placeholder to document this limitation.
+
+func testBytesNotAvailable() {
+    setTest("BytesNotAvailable");
+
+    // Bytes API functions (New, Get, Set, Len, etc.) are not exposed in Zia.
+    // They can only be used from BASIC via Viper.Collections.Bytes.* calls.
+    //
+    // For string-to-bytes conversion in Zia, use Viper.String functions
+    // or work with strings directly.
+
+    assertTrue(true, "bytes API not available in Zia");
+}
+
+func start() {
+    testBytesNotAvailable();
+
+    report();
+}

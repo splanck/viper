@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-updated: 2026-01-09
+last-updated: 2026-01-15
 ---
 
 # Viper VM — Architecture & Implementation Guide

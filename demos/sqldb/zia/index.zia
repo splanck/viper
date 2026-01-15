@@ -3,9 +3,9 @@
 
 module index;
 
-import "./types";
-import "./schema";
-import "./table";
+bind "./types";
+bind "./schema";
+bind "./table";
 
 //=============================================================================
 // INDEX ENTRY

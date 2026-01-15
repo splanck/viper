@@ -2,8 +2,8 @@
 // Enemies patrol platforms and chase the player
 module enemy;
 
-import "./config";
-import "./colors";
+bind "./config";
+bind "./colors";
 
 // Enemy states
 final ENEMY_PATROL = 0;      // Walking back and forth on platform

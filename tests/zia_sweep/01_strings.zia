@@ -1,6 +1,6 @@
 module TestStrings;
 
-import "./_support";
+bind "./_support";
 
 // Comprehensive string operations tests
 // Tests functions now aligned between sema and runtime

@@ -1,6 +1,6 @@
 module TestIO;
 
-import "./_support";
+bind "./_support";
 
 // IO tests for File, Dir, and Path operations
 // All functions now aligned between sema and runtime

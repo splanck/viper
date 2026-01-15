@@ -277,7 +277,7 @@ This single JSON document represents complex, deeply nested data:
 Parsing means reading JSON text and creating program data structures from it:
 
 ```rust
-import Viper.JSON;
+bind Viper.JSON;
 
 func start() {
     var jsonText = '{"name": "Alice", "score": 100, "active": true}';
@@ -316,7 +316,7 @@ The `.as*` methods perform type conversions:
 To save program data as JSON, you build a JSON structure programmatically:
 
 ```rust
-import Viper.JSON;
+bind Viper.JSON;
 
 func start() {
     // Create a JSON object
@@ -518,7 +518,7 @@ But CSV has significant limitations:
 ### Reading CSV
 
 ```rust
-import Viper.CSV;
+bind Viper.CSV;
 
 func start() {
     var csv = CSV.load("players.csv");
@@ -542,7 +542,7 @@ Step by step:
 ### Writing CSV
 
 ```rust
-import Viper.CSV;
+bind Viper.CSV;
 
 func start() {
     // Create a CSV with column headers
@@ -845,8 +845,8 @@ Let us build a complete application that manages contacts, demonstrating seriali
 ```rust
 module ContactManager;
 
-import Viper.JSON;
-import Viper.File;
+bind Viper.JSON;
+bind Viper.File;
 
 // ============================================
 // Data Model
@@ -1422,7 +1422,7 @@ func start() {
 
 **Zia**
 ```rust
-import Viper.JSON;
+bind Viper.JSON;
 
 var data = JSON.parse('{"name": "test", "value": 42}');
 var name = data["name"].asString();
@@ -1500,7 +1500,7 @@ final VERSION = 1;
 Here is a complete binary save example:
 
 ```rust
-import Viper.IO;
+bind Viper.IO;
 
 value GameSave {
     version: i32;
@@ -1588,8 +1588,8 @@ Here is a production-quality configuration system that demonstrates everything w
 ```rust
 module ConfigSystem;
 
-import Viper.JSON;
-import Viper.File;
+bind Viper.JSON;
+bind Viper.File;
 
 entity Config {
     hide data: JSONValue;

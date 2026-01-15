@@ -1,0 +1,25 @@
+module TestDiagnostics;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+// Note: The Viper.Diagnostics.Stopwatch API is not directly accessible from Zia.
+// Stopwatch operations are only available from BASIC.
+// This test serves as a placeholder to document this limitation.
+
+func testDiagnosticsNotAvailable() {
+    setTest("DiagnosticsNotAvailable");
+
+    // Diagnostics.Stopwatch functions (New, Start, Stop, ElapsedMs, etc.)
+    // are not exposed in Zia. They can only be used from BASIC.
+    //
+    // For timing in Zia, use Viper.Time.TickMs() or Viper.Time.TickUs().
+
+    assertTrue(true, "diagnostics stopwatch API not available in Zia");
+}
+
+func start() {
+    testDiagnosticsNotAvailable();
+
+    report();
+}

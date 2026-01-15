@@ -1,6 +1,6 @@
 module TestFmt;
 
-import "./_support";
+bind "./_support";
 
 // Fmt (formatting) tests
 

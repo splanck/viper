@@ -368,12 +368,12 @@ class Sema
     /// @{
     //=========================================================================
 
-    /// @brief Analyze an import declaration.
-    /// @param decl The import declaration.
+    /// @brief Analyze a bind declaration.
+    /// @param decl The bind declaration.
     ///
-    /// @details Brings runtime functions into scope based on the import path.
-    /// For example, `import Viper.Terminal;` makes Say, Ask, etc. available.
-    void analyzeImport(ImportDecl &decl);
+    /// @details Brings runtime functions into scope based on the bind path.
+    /// For example, `bind Viper.Terminal as Term;` makes Term.Say, Term.Ask, etc. available.
+    void analyzeBind(BindDecl &decl);
 
     /// @brief Analyze a global variable declaration.
     /// @param decl The global variable declaration.
@@ -828,8 +828,8 @@ class Sema
     /// Used during lowering to emit extern calls instead of direct calls.
     std::unordered_map<const CallExpr *, std::string> runtimeCallees_;
 
-    /// @brief Set of import paths seen in the current module.
-    std::unordered_set<std::string> imports_;
+    /// @brief Set of bind paths seen in the current module.
+    std::unordered_set<std::string> binds_;
 
     /// @brief Map from imported module names to their exported symbols.
     /// @details When `import "./colors"` is processed, "colors" maps to

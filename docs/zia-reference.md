@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-updated: 2025-12-19
+last-updated: 2026-01-15
 ---
 
 # Zia — Reference
@@ -48,8 +48,8 @@ A Zia source file has the following structure:
 ```viper
 module ModuleName;
 
-// Import declarations
-import "path/to/module";
+// Bind declarations (bring other modules into scope)
+bind "path/to/module";
 
 // Global variable declarations
 var globalVar: Type = value;
@@ -677,14 +677,15 @@ Every source file begins with a module declaration:
 module ModuleName;
 ```
 
-### Import Declaration
+### Bind Declaration
 
-Import other modules to use their types and functions:
+Bind other modules to use their types and functions:
 
 ```viper
-import "path/to/module";        // Relative or simple path
-import "./sibling";              // Same directory
-import "../parent/module";       // Parent directory
+bind "path/to/module";          // Relative or simple path
+bind "./sibling";               // Same directory
+bind "../parent/module";        // Parent directory
+bind "./utils" as U;            // With alias
 ```
 
 **Path Resolution:**
@@ -693,9 +694,9 @@ import "../parent/module";       // Parent directory
 - `"../bar"` — Resolves to `bar.zia` in parent directory
 - `"name"` — Resolves to `name.zia` in the same directory
 
-### Circular Import Protection
+### Circular Bind Protection
 
-The compiler detects circular imports and reports an error. Maximum import depth is 50 levels.
+The compiler detects circular binds and reports an error. Maximum bind depth is 50 levels.
 
 ---
 
@@ -924,8 +925,8 @@ String
 ### Module
 
 ```
-module      ::= "module" IDENT ";" import* decl*
-import      ::= "import" STRING ";"
+module      ::= "module" IDENT ";" bind* decl*
+bind        ::= "bind" STRING ["as" IDENT] ";"
 ```
 
 ### Declarations

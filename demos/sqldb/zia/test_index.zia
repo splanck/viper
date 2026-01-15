@@ -1,7 +1,7 @@
 // test_index.viper - Test index-based lookups
 module test_index;
 
-import "./executor";
+bind "./executor";
 
 Integer passed = 0;
 Integer failed = 0;

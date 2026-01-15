@@ -136,9 +136,15 @@ DomTree computeDominatorTree(const CFGContext &ctx, il::core::Function &F)
                 newIdom = intersect(p, newIdom);
             }
 
-            if (!DT.idom.contains(b) || DT.idom[b] != newIdom)
+            auto existingIt = DT.idom.find(b);
+            if (existingIt == DT.idom.end())
             {
-                DT.idom[b] = newIdom;
+                DT.idom.emplace(b, newIdom);
+                changed = true;
+            }
+            else if (existingIt->second != newIdom)
+            {
+                existingIt->second = newIdom;
                 changed = true;
             }
         }

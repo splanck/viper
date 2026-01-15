@@ -3,7 +3,7 @@
 
 module database;
 
-import "./table";
+bind "./table";
 
 //=============================================================================
 // DATABASE ENTITY

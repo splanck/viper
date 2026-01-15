@@ -907,6 +907,18 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                     argValue = emitOptionalWrap(result.value, innerType);
                 }
             }
+            // Handle type coercion when argument type is Unknown but param type is concrete
+            // This happens when indexing into an empty list that was created with []
+            else if (argType && argType->kind == TypeKindSem::Unknown && paramType)
+            {
+                Type ilParamType = mapType(paramType);
+                // If the IL types differ, we need to unbox with the correct target type
+                if (ilParamType.kind != result.type.kind && result.type.kind == Type::Kind::Ptr)
+                {
+                    // The value is boxed (Ptr) but we need the unboxed primitive type
+                    argValue = emitUnbox(result.value, ilParamType).value;
+                }
+            }
         }
 
         args.push_back(argValue);

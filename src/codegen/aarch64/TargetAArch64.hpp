@@ -19,10 +19,53 @@
 #include <optional>
 #include <vector>
 
+/// @brief AArch64 target-specific definitions for the Viper code generator.
+///
+/// This namespace contains all AArch64-specific constants, types, and functions
+/// needed for code generation, including:
+/// - Physical register definitions (GPR and FPR)
+/// - ABI constants (stack alignment, argument passing limits)
+/// - Calling convention abstraction
+/// - Immediate value validation helpers
+///
+/// The definitions follow the AAPCS64 (ARM 64-bit Procedure Call Standard)
+/// and target macOS/Darwin, though most definitions are platform-independent.
 namespace viper::codegen::aarch64
 {
 
-// 64-bit general purpose and SIMD registers used by AArch64 ABI.
+/// @brief Physical register identifiers for AArch64.
+///
+/// Enumerates all 64-bit general purpose registers (X0-X30, SP) and floating-point/
+/// SIMD registers (V0-V31) used by the AArch64 instruction set. These correspond
+/// directly to the hardware register file.
+///
+/// ## General Purpose Registers
+///
+/// | Register | AAPCS64 Usage                                          |
+/// |----------|--------------------------------------------------------|
+/// | X0-X7    | Argument/result registers (caller-saved)               |
+/// | X8       | Indirect result location register (caller-saved)       |
+/// | X9-X15   | Temporary registers (caller-saved)                     |
+/// | X16-X17  | Intra-procedure-call scratch registers (IP0/IP1)       |
+/// | X18      | Platform register (reserved on some OSes, don't use)   |
+/// | X19-X28  | Callee-saved registers                                 |
+/// | X29      | Frame pointer (FP)                                     |
+/// | X30      | Link register (LR, holds return address)               |
+/// | SP       | Stack pointer (must be 16-byte aligned)                |
+///
+/// ## Floating-Point/SIMD Registers
+///
+/// | Register | AAPCS64 Usage                                          |
+/// |----------|--------------------------------------------------------|
+/// | V0-V7    | Argument/result registers (caller-saved)               |
+/// | V8-V15   | Callee-saved (only lower 64 bits / D-register)         |
+/// | V16-V31  | Temporary registers (caller-saved)                     |
+///
+/// @note We model V registers as their 64-bit D-register aliases since Viper
+///       currently only supports scalar floating-point (f64) values.
+///
+/// @see RegClass for distinguishing GPR vs FPR
+/// @see isGPR(), isFPR() for register class queries
 enum class PhysReg
 {
     X0,
@@ -92,10 +135,18 @@ enum class PhysReg
     V31,
 };
 
+/// @brief Register class discriminator for AArch64.
+///
+/// Distinguishes between general-purpose registers (GPR) and floating-point/
+/// SIMD registers (FPR). This is essential for register allocation since the
+/// two classes have separate register files and different allocation pools.
+///
+/// @note AArch64 has a clean separation between GPR and FPR - there are no
+///       instructions that use both classes in a single operand position.
 enum class RegClass
 {
-    GPR,
-    FPR
+    GPR, ///< General-purpose registers (X0-X30, SP)
+    FPR  ///< Floating-point/SIMD registers (V0-V31 / D0-D31)
 };
 
 // =============================================================================
@@ -124,16 +175,50 @@ inline constexpr PhysReg kScratchFPR = PhysReg::V16;
 // Target Information
 // =============================================================================
 
+/// @brief Describes the target platform's ABI and register conventions.
+///
+/// TargetInfo encapsulates all platform-specific details needed for code generation:
+/// - Which registers are caller-saved vs. callee-saved
+/// - The order of registers used for argument passing
+/// - The registers used for return values
+/// - Stack alignment requirements
+///
+/// ## Usage
+///
+/// Use darwinTarget() to get the singleton instance for macOS/Darwin. The TargetInfo
+/// is typically accessed through CallingConvention for a cleaner API.
+///
+/// @see CallingConvention for a higher-level interface to calling convention rules
+/// @see darwinTarget() for the macOS/Darwin target instance
 struct TargetInfo
 {
+    /// @brief Caller-saved GPRs that may be clobbered by function calls.
+    /// Functions can use these freely without saving/restoring.
     std::vector<PhysReg> callerSavedGPR{};
+
+    /// @brief Callee-saved GPRs that must be preserved across function calls.
+    /// If a function uses these, it must save and restore them in the prologue/epilogue.
     std::vector<PhysReg> calleeSavedGPR{};
+
+    /// @brief Caller-saved FPRs that may be clobbered by function calls.
     std::vector<PhysReg> callerSavedFPR{};
+
+    /// @brief Callee-saved FPRs (only D-register portion is preserved per AAPCS64).
     std::vector<PhysReg> calleeSavedFPR{};
+
+    /// @brief Order of GPRs for passing integer/pointer arguments (x0-x7).
     std::array<PhysReg, kMaxGPRArgs> intArgOrder{};
+
+    /// @brief Order of FPRs for passing floating-point arguments (v0-v7).
     std::array<PhysReg, kMaxFPRArgs> f64ArgOrder{};
+
+    /// @brief Register for returning integer/pointer values (x0).
     PhysReg intReturnReg{PhysReg::X0};
+
+    /// @brief Register for returning floating-point values (v0/d0).
     PhysReg f64ReturnReg{PhysReg::V0};
+
+    /// @brief Required stack alignment in bytes (16 for AAPCS64).
     unsigned stackAlignment{16U};
 };
 
@@ -236,9 +321,33 @@ class CallingConvention
     const TargetInfo &ti_;
 };
 
+/// @brief Returns the singleton TargetInfo for macOS/Darwin on AArch64.
+///
+/// Provides the platform-specific register conventions and ABI details for
+/// macOS running on Apple Silicon. The returned reference is to a static
+/// object that persists for the lifetime of the program.
+///
+/// @return Reference to the Darwin target information singleton.
 [[nodiscard]] TargetInfo &darwinTarget() noexcept;
+
+/// @brief Tests whether a physical register is a general-purpose register.
+/// @param reg The register to test.
+/// @return True if reg is X0-X30 or SP, false if it's a FPR.
 [[nodiscard]] bool isGPR(PhysReg reg) noexcept;
+
+/// @brief Tests whether a physical register is a floating-point register.
+/// @param reg The register to test.
+/// @return True if reg is V0-V31, false if it's a GPR.
 [[nodiscard]] bool isFPR(PhysReg reg) noexcept;
+
+/// @brief Returns the assembly syntax name for a physical register.
+///
+/// Returns strings like "x0", "x29", "sp", "d0", etc. for use in
+/// assembly output. For FPRs, returns the D-register name since Viper
+/// uses 64-bit scalar floating-point.
+///
+/// @param reg The register to name.
+/// @return The register's assembly name (static storage, do not free).
 [[nodiscard]] const char *regName(PhysReg reg) noexcept;
 
 // =============================================================================

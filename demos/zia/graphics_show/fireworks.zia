@@ -7,7 +7,7 @@ module fireworks;
 // Features multiple explosion patterns and colors.
 // ============================================================================
 
-import "./colors";
+bind "./colors";
 
 var PI: Number;
 

@@ -1,7 +1,7 @@
 // test_features.viper - Test various SQL features
 module test_features;
 
-import "./executor";
+bind "./executor";
 
 Integer passed = 0;
 Integer failed = 0;

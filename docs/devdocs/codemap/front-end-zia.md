@@ -2,28 +2,36 @@
 
 The Zia frontend (`src/frontends/zia/`) compiles Zia source to IL.
 
-Zia is Viper's native language with entities, generics, and imports.
+Zia is Viper's native language with entities, value types, generics, lambdas, and imports.
+
+Last updated: 2026-01-15
+
+## Overview
+
+- **Total source files**: 41 (.hpp/.cpp)
 
 ## Core Infrastructure
 
-| File                | Purpose                                    |
-|---------------------|--------------------------------------------|
-| `Compiler.hpp/cpp`  | Main compiler pipeline                     |
-| `Options.hpp`       | Compiler options and configuration         |
-| `RuntimeNames.hpp`  | Runtime function name constants            |
+| File               | Purpose                                        |
+|--------------------|------------------------------------------------|
+| `Compiler.cpp`     | Main compiler pipeline implementation          |
+| `Compiler.hpp`     | Main compiler pipeline orchestration           |
+| `Options.hpp`      | Compiler options (optimization levels)         |
+| `RuntimeNames.hpp` | Runtime function name constants (~1400 funcs)  |
 
 ## Lexer and Parser
 
-| File                | Purpose                                    |
-|---------------------|--------------------------------------------|
-| `Lexer.hpp/cpp`     | Tokenizer for Zia source             |
-| `Token.hpp`         | Token types and representation             |
-| `Parser.hpp`        | Recursive-descent parser core              |
-| `Parser_Decl.cpp`   | Declaration parsing                        |
-| `Parser_Expr.cpp`   | Expression parsing                         |
-| `Parser_Stmt.cpp`   | Statement parsing                          |
-| `Parser_Type.cpp`   | Type declaration parsing                   |
-| `Parser_Tokens.cpp` | Token handling utilities                   |
+| File               | Purpose                                        |
+|--------------------|------------------------------------------------|
+| `Lexer.cpp`        | Tokenizer implementation                       |
+| `Lexer.hpp`        | Tokenizer for Zia source                       |
+| `Token.hpp`        | Token types and representation                 |
+| `Parser.hpp`       | Recursive-descent parser core                  |
+| `Parser_Decl.cpp`  | Declaration parsing (func, entity, value)      |
+| `Parser_Expr.cpp`  | Expression parsing                             |
+| `Parser_Stmt.cpp`  | Statement parsing                              |
+| `Parser_Type.cpp`  | Type declaration parsing                       |
+| `Parser_Tokens.cpp`| Token handling utilities                       |
 
 ## AST
 
@@ -38,31 +46,52 @@ Zia is Viper's native language with entities, generics, and imports.
 
 ## Types
 
-| File            | Purpose                              |
-|-----------------|--------------------------------------|
-| `Types.hpp/cpp` | Type system implementation           |
+| File         | Purpose                                                          |
+|--------------|------------------------------------------------------------------|
+| `Types.cpp`  | Type system implementation                                       |
+| `Types.hpp`  | Type system (primitives, entities, collections, optionals, funcs)|
 
 ## Semantic Analysis
 
-| File             | Purpose                              |
-|------------------|--------------------------------------|
-| `Sema.hpp/cpp`   | Main semantic analyzer               |
-| `Sema_Decl.cpp`  | Declaration analysis                 |
-| `Sema_Expr.cpp`  | Expression type checking             |
-| `Sema_Stmt.cpp`  | Statement analysis                   |
+| File              | Purpose                                    |
+|-------------------|--------------------------------------------|
+| `Sema.cpp`        | Main semantic analyzer implementation      |
+| `Sema.hpp`        | Main semantic analyzer and symbol table    |
+| `Sema_Decl.cpp`   | Declaration analysis                       |
+| `Sema_Expr.cpp`   | Expression type checking                   |
+| `Sema_Stmt.cpp`   | Statement analysis                         |
+| `Sema_Runtime.cpp`| Runtime function registration              |
 
 ## Import Resolution
 
-| File                      | Purpose                        |
-|---------------------------|--------------------------------|
-| `ImportResolver.hpp/cpp`  | Module import resolution       |
+| File                 | Purpose                           |
+|----------------------|-----------------------------------|
+| `ImportResolver.cpp` | Module import resolution impl     |
+| `ImportResolver.hpp` | Module import resolution          |
 
 ## IL Lowering
 
-| File               | Purpose                              |
-|--------------------|--------------------------------------|
-| `Lowerer.hpp/cpp`  | Main lowering coordinator            |
-| `Lowerer_Decl.cpp` | Declaration lowering                 |
-| `Lowerer_Emit.cpp` | IL emission helpers                  |
-| `Lowerer_Expr.cpp` | Expression lowering                  |
-| `Lowerer_Stmt.cpp` | Statement lowering                   |
+| File                          | Purpose                                     |
+|-------------------------------|---------------------------------------------|
+| `Lowerer.cpp`                 | Main lowering coordinator impl              |
+| `Lowerer.hpp`                 | Main lowering coordinator and BlockManager  |
+| `Lowerer_Decl.cpp`            | Declaration lowering (functions, types)     |
+| `Lowerer_Emit.cpp`            | IL emission helpers (box/unbox, GEP, etc.)  |
+| `Lowerer_Dispatch.cpp`        | Method dispatch lowering                    |
+| `Lowerer_Expr.cpp`            | Expression lowering main dispatch           |
+| `Lowerer_Expr_Binary.cpp`     | Binary operator lowering                    |
+| `Lowerer_Expr_Call.cpp`       | Function/method call lowering               |
+| `Lowerer_Expr_Collections.cpp`| List/Map/Tuple literal and index lowering   |
+| `Lowerer_Expr_Literals.cpp`   | Literal expression lowering                 |
+| `Lowerer_Expr_Match.cpp`      | Match expression lowering                   |
+| `Lowerer_Stmt.cpp`            | Statement lowering                          |
+
+## Key Features
+
+- Full type inference with Unknown type propagation
+- Entity and Value type support with vtables
+- Generic types (List<T>, Map<K,V>)
+- Lambda expressions with closures
+- Pattern matching with match expressions
+- Optional types with null safety
+- Import system for multi-file projects

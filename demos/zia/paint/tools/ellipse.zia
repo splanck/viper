@@ -1,9 +1,9 @@
 // ellipse.viper - Ellipse tool for Viper Paint
 module ellipse;
 
-import "../config";
-import "../canvas";
-import "../colors";
+bind "../config";
+bind "../canvas";
+bind "../colors";
 
 // EllipseTool - draws ellipses/circles (filled or outline)
 entity EllipseTool {

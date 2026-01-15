@@ -18,7 +18,7 @@ Source layout for the Viper compiler toolchain (current tree, kept in sync).
 | `src/common/`          | Cross-cutting utils (mangling, integer helpers, process runner)          |
 | `src/parse/`           | Cursor utilities used by frontends (`include/viper/parse/Cursor.h`)      |
 | `src/pass/`            | Generic pass manager façade (`include/viper/pass/PassManager.hpp`)       |
-| `src/tools/`           | CLI tools (`ilc`, `vbasic`, `vpascal`, `viper`, `ilrun`, `il-verify`, `il-dis`, etc.) |
+| `src/tools/`           | CLI tools (`ilc`, `vbasic`, `zia`, `vpascal`, `ilrun`, `il-verify`, `il-dis`, etc.) |
 | `src/lib/graphics/`    | ViperGFX 2D graphics library (C API, examples, tests)                    |
 | `src/tui/`             | Minimal TUI utility + tests (`apps/tui_demo.cpp`)                        |
 | `src/tests/`           | Unit, golden, e2e, and perf tests by area                                |
@@ -32,7 +32,7 @@ Source layout for the Viper compiler toolchain (current tree, kept in sync).
 - Codegen: `src/codegen/{x86_64,aarch64,common}`
 - Frontends: `src/frontends/{basic,pascal,zia,common}`
 - Runtime: `src/runtime` (C sources and headers)
-- Tools: `src/tools/{ilc,vbasic,vpascal,viper,ilrun,il-verify,il-dis,rtgen,basic-ast-dump,basic-lex-dump}`
+- Tools: `src/tools/{ilc,vbasic,zia,vpascal,ilrun,il-verify,il-dis,rtgen,basic-ast-dump,basic-lex-dump}`
 - Support & Infra: `src/{support,common,parse,pass}`
 - Libraries: `src/lib/graphics`, `src/tui`
 - Tests: `src/tests/{unit,golden,e2e,smoke,perf,...}`

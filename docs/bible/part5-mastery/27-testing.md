@@ -270,7 +270,7 @@ An inverted pyramid (many E2E tests, few unit tests) leads to slow test suites, 
 Let's start with the basics. Here's a simple function and a test for it:
 
 ```rust
-import Viper.Test;
+bind Viper.Test;
 
 func add(a: i64, b: i64) -> i64 {
     return a + b;
@@ -359,7 +359,7 @@ Without a message, a failing assertion just tells you the condition was false. W
 The `Viper.Test` module provides specialized assertion functions with better error messages:
 
 ```rust
-import Viper.Test;
+bind Viper.Test;
 
 test "assert variants" {
     // Basic
@@ -705,7 +705,7 @@ This list becomes living documentation of how your system behaves. Anyone can re
 Many tests need common setup --- creating test data, initializing objects, connecting to test databases. Rather than repeating this in every test, you can use setup and teardown blocks.
 
 ```rust
-import Viper.Test;
+bind Viper.Test;
 
 var testDatabase: Database;
 var testUser: User;
@@ -1406,7 +1406,7 @@ Each test eliminates possibilities until you find the culprit.
 Instead of testing specific examples, property-based testing checks that properties hold for many randomly generated inputs.
 
 ```rust
-import Viper.Test;
+bind Viper.Test;
 
 test "reversing twice returns original" {
     for i in 0..100 {
@@ -1796,7 +1796,7 @@ test "sumOfList returns total of all elements" {
 **Zia**
 
 ```rust
-import Viper.Test;
+bind Viper.Test;
 
 test "example test" {
     assert 1 + 1 == 2;

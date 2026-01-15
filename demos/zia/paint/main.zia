@@ -2,21 +2,21 @@
 // A full-featured paint application showcasing Viper's capabilities
 module main;
 
-import "./config";
-import "./canvas";
-import "./colors";
-import "./brush";
-import "./tools/pencil";
-import "./tools/brush";
-import "./tools/eraser";
-import "./tools/line";
-import "./tools/rectangle";
-import "./tools/ellipse";
-import "./tools/fill";
-import "./tools/eyedropper";
-import "./ui/button";
-import "./ui/slider";
-import "./app";
+bind "./config";
+bind "./canvas";
+bind "./colors";
+bind "./brush";
+bind "./tools/pencil";
+bind "./tools/brush";
+bind "./tools/eraser";
+bind "./tools/line";
+bind "./tools/rectangle";
+bind "./tools/ellipse";
+bind "./tools/fill";
+bind "./tools/eyedropper";
+bind "./ui/button";
+bind "./ui/slider";
+bind "./app";
 
 func main() {
     // Create and initialize the paint application

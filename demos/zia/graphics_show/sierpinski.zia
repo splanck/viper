@@ -7,7 +7,7 @@ module sierpinski;
 // Mandelbrot set visualization, and recursive tree.
 // ============================================================================
 
-import "./colors";
+bind "./colors";
 
 var PI: Number;
 

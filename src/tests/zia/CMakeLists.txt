@@ -57,10 +57,10 @@ function(viper_add_zia_tests)
     target_link_libraries(test_zia_lambda PRIVATE ${VIPER_ZIA_LIBS})
     viper_add_ctest(test_zia_lambda test_zia_lambda)
 
-    # Import resolution tests
-    viper_add_test(test_zia_imports ${_VIPER_ZIA_DIR}/test_zia_imports.cpp)
-    target_link_libraries(test_zia_imports PRIVATE ${VIPER_ZIA_LIBS})
-    viper_add_ctest(test_zia_imports test_zia_imports)
+    # Bind resolution tests
+    viper_add_test(test_zia_binds ${_VIPER_ZIA_DIR}/test_zia_binds.cpp)
+    target_link_libraries(test_zia_binds PRIVATE ${VIPER_ZIA_LIBS})
+    viper_add_ctest(test_zia_binds test_zia_binds)
 
     # Bug fix tests (Bugs #38-44)
     viper_add_test(test_zia_bugfixes ${_VIPER_ZIA_DIR}/test_zia_bugfixes.cpp)

@@ -1,6 +1,6 @@
 module test_simple;
 
-import "./config";
+bind "./config";
 
 // Test if module-level functions can access config
 func testModuleLevel() {

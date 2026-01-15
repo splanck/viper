@@ -1,7 +1,7 @@
 // test_functions.viper - Test SQL functions
 module test_functions;
 
-import "./executor";
+bind "./executor";
 
 Integer passed = 0;
 Integer failed = 0;

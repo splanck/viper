@@ -1,7 +1,8 @@
 # Viper Runtime Library Reference
 
-> **Version:** 0.1.2
+> **Version:** 0.2.0
 > **Status:** Pre-Alpha — API subject to change
+> **Last updated:** 2026-01-15
 
 The Viper Runtime Library provides built-in classes and utilities available to all Viper programs. These classes are
 implemented in C and exposed through the IL runtime system.

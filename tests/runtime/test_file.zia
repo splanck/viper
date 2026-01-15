@@ -1,0 +1,23 @@
+module TestFile;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+// Note: The Viper.IO.* (File, Directory, Path) APIs are not directly accessible from Zia.
+// File operations are only available from BASIC.
+// This test serves as a placeholder to document this limitation.
+
+func testFileNotAvailable() {
+    setTest("FileNotAvailable");
+
+    // File I/O functions (Exists, ReadAllText, WriteAllText, Delete, etc.)
+    // are not exposed in Zia. They can only be used from BASIC.
+
+    assertTrue(true, "file I/O API not available in Zia");
+}
+
+func start() {
+    testFileNotAvailable();
+
+    report();
+}

@@ -1,20 +1,20 @@
 // app.viper - Main application controller for Viper Paint
 module app;
 
-import "./config";
-import "./canvas";
-import "./colors";
-import "./brush";
-import "./tools/pencil";
-import "./tools/brush";
-import "./tools/eraser";
-import "./tools/line";
-import "./tools/rectangle";
-import "./tools/ellipse";
-import "./tools/fill";
-import "./tools/eyedropper";
-import "./ui/button";
-import "./ui/slider";
+bind "./config";
+bind "./canvas";
+bind "./colors";
+bind "./brush";
+bind "./tools/pencil";
+bind "./tools/brush";
+bind "./tools/eraser";
+bind "./tools/line";
+bind "./tools/rectangle";
+bind "./tools/ellipse";
+bind "./tools/fill";
+bind "./tools/eyedropper";
+bind "./ui/button";
+bind "./ui/slider";
 
 // PaintApp entity - main application controller
 entity PaintApp {

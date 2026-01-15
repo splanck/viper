@@ -1,9 +1,9 @@
 // fill.viper - Fill (flood fill) tool for Viper Paint
 module fill;
 
-import "../config";
-import "../canvas";
-import "../colors";
+bind "../config";
+bind "../canvas";
+bind "../colors";
 
 // FillTool - flood fills an area with the foreground color
 entity FillTool {

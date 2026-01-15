@@ -307,7 +307,7 @@ Now let's learn to write concurrent code, starting with threads.
 A *thread* is an independent sequence of execution. Your program starts with one thread (the main thread). You can create more.
 
 ```rust
-import Viper.Threading;
+bind Viper.Threading;
 
 func start() {
     Viper.Terminal.Say("Main thread starting");
@@ -427,7 +427,7 @@ When threads must share mutable data, you need *synchronization* — mechanisms 
 A *mutex* (mutual exclusion) ensures only one thread accesses a protected resource at a time. Think of it as a bathroom lock. When someone's inside, the door is locked, and others must wait.
 
 ```rust
-import Viper.Threading;
+bind Viper.Threading;
 
 var counter = 0;
 var mutex = Mutex.create();
@@ -541,7 +541,7 @@ For simple operations like incrementing a counter, mutexes have overhead. *Atomi
 An atomic operation completes as an indivisible unit. No thread can see it "half done." The hardware guarantees this.
 
 ```rust
-import Viper.Threading;
+bind Viper.Threading;
 
 var counter = Atomic<i64>.create(0);
 
@@ -603,7 +603,7 @@ accountMutex.synchronized(func() {
 Viper provides collections that handle synchronization internally:
 
 ```rust
-import Viper.Threading;
+bind Viper.Threading;
 
 var safeList = ConcurrentList<string>.create();
 
@@ -637,7 +637,7 @@ There's a philosophy in concurrent programming: "Don't communicate by sharing me
 Instead of multiple threads accessing shared data (with all the synchronization complexity), have threads send messages to each other. This is what *channels* provide.
 
 ```rust
-import Viper.Threading;
+bind Viper.Threading;
 
 func start() {
     var channel = Channel<string>.create();
@@ -718,7 +718,7 @@ This doesn't make race conditions impossible (you can still have logic races), b
 A mutex allows one thread in. A *semaphore* allows N threads in. Think of it as a limited parking lot with N spaces.
 
 ```rust
-import Viper.Threading;
+bind Viper.Threading;
 
 // Allow at most 3 concurrent database connections
 var dbSemaphore = Semaphore.create(3);
@@ -751,7 +751,7 @@ Even if 100 threads call `queryDatabase`, only 3 will be inside the database sec
 Creating threads has overhead. For many small tasks, a *thread pool* is more efficient. The pool maintains a fixed number of worker threads and assigns tasks to them.
 
 ```rust
-import Viper.Threading;
+bind Viper.Threading;
 
 func start() {
     // Pool with 4 worker threads
@@ -802,7 +802,7 @@ A `Future` represents a value that will be available later. `future.get()` block
 For I/O-bound work (network, files), async/await offers a cleaner model than manual threads:
 
 ```rust
-import Viper.Async;
+bind Viper.Async;
 
 async func fetchData(url: string) -> string {
     var response = await Http.getAsync(url);
@@ -1182,9 +1182,9 @@ Let's put it all together with a real application:
 ```rust
 module ImageProcessor;
 
-import Viper.Threading;
-import Viper.Graphics;
-import Viper.File;
+bind Viper.Threading;
+bind Viper.Graphics;
+bind Viper.File;
 
 value ImageTask {
     inputPath: string;
@@ -1317,7 +1317,7 @@ This example demonstrates several best practices:
 
 **Zia**
 ```rust
-import Viper.Threading;
+bind Viper.Threading;
 
 var thread = Thread.spawn(func() {
     Viper.Terminal.Say("In thread");

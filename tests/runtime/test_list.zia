@@ -1,0 +1,101 @@
+module TestList;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+// Tests for list operations using Zia list syntax
+
+func testNewAndAdd() {
+    setTest("NewAndAdd");
+
+    var list = [];
+    assertEqInt(list.count(), 0, "new list empty");
+
+    list.add(10);
+    assertEqInt(list.count(), 1, "count after add");
+
+    list.add(20);
+    list.add(30);
+    assertEqInt(list.count(), 3, "count after 3 adds");
+}
+
+func testGetSet() {
+    setTest("GetSet");
+
+    var list = [100, 200, 300];
+
+    // Get items using index
+    assertEqInt(list[0], 100, "get item 0");
+    assertEqInt(list[1], 200, "get item 1");
+    assertEqInt(list[2], 300, "get item 2");
+
+    // Get items using .get()
+    assertEqInt(list.get(0), 100, "get(0)");
+    assertEqInt(list.get(1), 200, "get(1)");
+
+    // Set item
+    list.set(1, 999);
+    assertEqInt(list[1], 999, "set item");
+}
+
+func testRemoveAt() {
+    setTest("RemoveAt");
+
+    var list = [10, 20, 30];
+
+    // Remove at index 1
+    list.removeAt(1);
+
+    assertEqInt(list.count(), 2, "count after removeAt");
+    assertEqInt(list[0], 10, "item 0 after removeAt");
+    assertEqInt(list[1], 30, "item 1 after removeAt");
+}
+
+func testClear() {
+    setTest("Clear");
+
+    var list = [1, 2, 3];
+
+    assertEqInt(list.count(), 3, "count before clear");
+
+    list.clear();
+    assertEqInt(list.count(), 0, "count after clear");
+}
+
+func testLiteralInit() {
+    setTest("LiteralInit");
+
+    // Empty list
+    var empty = [];
+    assertEqInt(empty.count(), 0, "empty list count");
+
+    // List with values
+    var nums = [1, 2, 3, 4, 5];
+    assertEqInt(nums.count(), 5, "literal list count");
+    assertEqInt(nums[0], 1, "literal first");
+    assertEqInt(nums[4], 5, "literal last");
+}
+
+func testStringList() {
+    setTest("StringList");
+
+    var strs = ["hello", "world"];
+    assertEqInt(strs.count(), 2, "string list count");
+    assertEqStr(strs[0], "hello", "string list first");
+    assertEqStr(strs[1], "world", "string list second");
+
+    strs.add("!");
+    assertEqInt(strs.count(), 3, "after add");
+    assertEqStr(strs[2], "!", "added item");
+}
+
+func start() {
+    testNewAndAdd();
+    testGetSet();
+    testRemoveAt();
+    testClear();
+    testLiteralInit();
+    testStringList();
+
+    report();
+}

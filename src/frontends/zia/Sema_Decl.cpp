@@ -19,23 +19,23 @@ namespace il::frontends::zia
 // Declaration Analysis
 //=============================================================================
 
-void Sema::analyzeImport(ImportDecl &decl)
+void Sema::analyzeBind(BindDecl &decl)
 {
     if (decl.path.empty())
     {
-        error(decl.loc, "Import path cannot be empty");
+        error(decl.loc, "Bind path cannot be empty");
         return;
     }
 
-    imports_.insert(decl.path);
+    binds_.insert(decl.path);
 
-    // Extract module name from import path
+    // Extract module name from bind path
     // For "./colors" or "../utils/colors", extract "colors"
     // For "colors", use "colors"
     std::string moduleName;
     if (!decl.alias.empty())
     {
-        // Use alias if provided: import "./colors" as c;
+        // Use alias if provided: bind "./colors" as c;
         moduleName = decl.alias;
     }
     else

@@ -3,12 +3,12 @@
 
 module parser;
 
-import "./token";
-import "./lexer";
-import "./types";
-import "./schema";
-import "./expr";
-import "./stmt";
+bind "./token";
+bind "./lexer";
+bind "./types";
+bind "./schema";
+bind "./expr";
+bind "./stmt";
 
 //=============================================================================
 // PARSER ENTITY

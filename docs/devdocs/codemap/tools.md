@@ -2,6 +2,12 @@
 
 Command-line tools (`src/tools/`) for the Viper toolchain.
 
+Last updated: 2026-01-15
+
+## Overview
+
+- **Total source files**: 39 (.hpp/.cpp)
+
 ## User-Facing Tools
 
 ### vbasic (`vbasic/`)
@@ -9,7 +15,8 @@ Command-line tools (`src/tools/`) for the Viper toolchain.
 | File             | Purpose                                |
 |------------------|----------------------------------------|
 | `main.cpp`       | BASIC interpreter/compiler entry point |
-| `usage.hpp/cpp`  | Help text and usage information        |
+| `usage.cpp`      | Help text implementation               |
+| `usage.hpp`      | Help text and usage information        |
 | `ilc_compat.cpp` | Compatibility shim for ilc integration |
 
 ### vpascal (`vpascal/`)
@@ -17,16 +24,18 @@ Command-line tools (`src/tools/`) for the Viper toolchain.
 | File             | Purpose                                 |
 |------------------|-----------------------------------------|
 | `main.cpp`       | Pascal interpreter/compiler entry point |
-| `usage.hpp/cpp`  | Help text and usage information         |
+| `usage.cpp`      | Help text implementation                |
+| `usage.hpp`      | Help text and usage information         |
 | `ilc_compat.cpp` | Compatibility shim for ilc integration  |
 
-### viper (`viper/`)
+### zia (`zia/`)
 
-| File             | Purpose                                    |
-|------------------|--------------------------------------------|
-| `main.cpp`       | Zia interpreter/compiler entry point |
-| `usage.hpp/cpp`  | Help text and usage information            |
-| `ilc_compat.cpp` | Compatibility shim for ilc integration     |
+| File             | Purpose                                |
+|------------------|----------------------------------------|
+| `main.cpp`       | Zia interpreter/compiler entry point   |
+| `usage.cpp`      | Help text implementation               |
+| `usage.hpp`      | Help text and usage information        |
+| `ilc_compat.cpp` | Compatibility shim for ilc integration |
 
 ### ilrun (`ilrun/`)
 
@@ -51,21 +60,28 @@ Command-line tools (`src/tools/`) for the Viper toolchain.
 
 ### ilc (`ilc/`)
 
-| File                        | Purpose                             |
-|-----------------------------|-------------------------------------|
-| `main.cpp`                  | Unified compiler driver entry point |
-| `cli.hpp/cpp`               | Shared CLI option parsing           |
-| `break_spec.hpp/cpp`        | Breakpoint specification parsing    |
-| `cmd_front_basic.cpp`       | BASIC frontend subcommand           |
-| `cmd_run_il.cpp`            | IL execution subcommand             |
-| `cmd_il_opt.cpp`            | IL optimization subcommand          |
-| `cmd_codegen_x64.hpp/cpp`   | x86-64 codegen subcommand           |
-| `cmd_codegen_arm64.hpp/cpp` | ARM64 codegen subcommand            |
+| File                     | Purpose                             |
+|--------------------------|-------------------------------------|
+| `main.cpp`               | Unified compiler driver entry point |
+| `cli.cpp`                | Shared CLI option parsing impl      |
+| `cli.hpp`                | Shared CLI option parsing           |
+| `break_spec.cpp`         | Breakpoint specification impl       |
+| `break_spec.hpp`         | Breakpoint specification parsing    |
+| `cmd_front_basic.cpp`    | BASIC frontend subcommand           |
+| `cmd_front_pascal.cpp`   | Pascal frontend subcommand          |
+| `cmd_front_zia.cpp`      | Zia frontend subcommand             |
+| `cmd_run_il.cpp`         | IL execution subcommand             |
+| `cmd_il_opt.cpp`         | IL optimization subcommand          |
+| `cmd_bench.cpp`          | Benchmarking subcommand             |
+| `cmd_codegen_x64.cpp`    | x86-64 codegen implementation       |
+| `cmd_codegen_x64.hpp`    | x86-64 codegen subcommand           |
+| `cmd_codegen_arm64.cpp`  | ARM64 codegen implementation        |
+| `cmd_codegen_arm64.hpp`  | ARM64 codegen subcommand            |
 
 ### rtgen (`rtgen/`)
 
-| File        | Purpose                                             |
-|-------------|-----------------------------------------------------|
+| File        | Purpose                                                |
+|-------------|--------------------------------------------------------|
 | `rtgen.cpp` | Runtime signature generator from runtime.def + headers |
 
 ## Debugging Tools
@@ -86,12 +102,15 @@ Command-line tools (`src/tools/`) for the Viper toolchain.
 
 ### common (`common/`)
 
-| File                    | Purpose                                   |
-|-------------------------|-------------------------------------------|
-| `module_loader.hpp/cpp` | Shared IL module loading with diagnostics |
+| File                 | Purpose                                   |
+|----------------------|-------------------------------------------|
+| `frontend_tool.hpp`  | Shared frontend tool utilities            |
+| `module_loader.cpp`  | Shared IL module loading implementation   |
+| `module_loader.hpp`  | Shared IL module loading with diagnostics |
 
 ### basic (`basic/`)
 
-| File             | Purpose                     |
-|------------------|-----------------------------|
-| `common.hpp/cpp` | Shared BASIC tool utilities |
+| File         | Purpose                          |
+|--------------|----------------------------------|
+| `common.cpp` | Shared BASIC tool implementation |
+| `common.hpp` | Shared BASIC tool utilities      |

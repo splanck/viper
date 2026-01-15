@@ -1,6 +1,6 @@
 module TestCollections;
 
-import "./_support";
+bind "./_support";
 
 // Comprehensive collections tests
 // Tests Seq, Map, Bag, Stack, Queue, Ring, Heap, TreeMap, Bytes, List

@@ -6,7 +6,7 @@ module snake;
 // Classic arcade snake game.
 // ============================================================================
 
-import "./colors";
+bind "./colors";
 
 var DIR_UP: Integer;
 var DIR_DOWN: Integer;

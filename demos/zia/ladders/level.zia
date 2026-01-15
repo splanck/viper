@@ -2,11 +2,11 @@
 // Manages platforms, ladders, enemies, and collectibles for each level
 module level;
 
-import "./config";
-import "./colors";
-import "./platform";
-import "./ladder";
-import "./enemy";
+bind "./config";
+bind "./colors";
+bind "./platform";
+bind "./ladder";
+bind "./enemy";
 
 // Collectible entity - items player can collect for points
 entity Collectible {

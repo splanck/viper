@@ -11,6 +11,7 @@
 ///          shims can share consistent output.
 
 #include "usage.hpp"
+#include "tools/common/CommonUsage.hpp"
 #include "viper/version.hpp"
 #include <iostream>
 
@@ -43,17 +44,23 @@ void printUsage()
               << "  zia script.zia --emit-il    Emit IL to stdout\n"
               << "  zia script.zia -o file.il   Emit IL to file\n"
               << "\n"
-              << "Options:\n"
-              << "  -o, --output FILE              Output file for IL\n"
-              << "  --emit-il                      Emit IL instead of running\n"
-              << "  --trace[=il|src]               Enable execution tracing\n"
-              << "  -h, --help                     Show this help message\n"
-              << "  --version                      Show version information\n"
-              << "\n"
+              << "Options:\n";
+    viper::tools::printSharedOptions(std::cerr);
+    std::cerr << "\n"
               << "Examples:\n"
-              << "  zia hello.zia              Run program\n"
-              << "  zia hello.zia --emit-il    Show generated IL\n"
-              << "\n";
+              << "  zia hello.zia                           Run program\n"
+              << "  zia hello.zia --emit-il                 Show generated IL\n"
+              << "  zia hello.zia -o hello.il               Save IL to file\n"
+              << "  zia hello.zia --trace --bounds-checks   Debug mode\n"
+              << "  zia hello.zia --stdin-from input.txt    Redirect input\n"
+              << "\n"
+              << "Zia Language Notes:\n"
+              << "  - Functions must return a value on all paths\n"
+              << "  - Use 'var' for mutable variables, 'let' for immutable\n"
+              << "  - Entity types are reference types, value types are copied\n"
+              << "  - Use 'bind' to include other Zia modules\n"
+              << "\n"
+              << "For detailed documentation, see: docs/zia-guide.md\n";
 }
 
 } // namespace zia

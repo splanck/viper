@@ -1,6 +1,6 @@
 module RuntimeTest14;
 
-import "./_support";
+bind "./_support";
 
 // EXPECT_OUT: RESULT: ok
 

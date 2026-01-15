@@ -1,9 +1,9 @@
 // line.viper - Line tool for Viper Paint
 module line;
 
-import "../config";
-import "../canvas";
-import "../colors";
+bind "../config";
+bind "../canvas";
+bind "../colors";
 
 // LineTool - draws straight lines from start to end
 entity LineTool {

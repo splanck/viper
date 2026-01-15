@@ -3,15 +3,15 @@
 
 module executor;
 
-import "./types";
-import "./schema";
-import "./table";
-import "./index";
-import "./expr";
-import "./stmt";
-import "./parser";
-import "./database";
-import "./result";
+bind "./types";
+bind "./schema";
+bind "./table";
+bind "./index";
+bind "./expr";
+bind "./stmt";
+bind "./parser";
+bind "./database";
+bind "./result";
 
 //=============================================================================
 // EXECUTOR ENTITY

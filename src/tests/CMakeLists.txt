@@ -890,3 +890,41 @@ if (CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "
         endif()
     endforeach()
 endif()
+
+# =============================================================================
+# Zia Runtime Tests
+# These tests verify the Viper runtime API functions work correctly via Zia.
+# Each test outputs "RESULT: ok" on success.
+# =============================================================================
+set(ZIA_RUNTIME_TESTS_DIR "${CMAKE_SOURCE_DIR}/tests/runtime")
+set(ZIA_RUNTIME_TESTS
+    test_math
+    test_string
+    test_bits
+    test_list
+    test_map
+    test_collections
+    test_bytes
+    test_datetime
+    test_random
+    test_crypto
+    test_graphics
+    test_terminal
+    test_environment
+    test_diagnostics
+    test_file
+    test_gui
+)
+
+foreach(test_name IN LISTS ZIA_RUNTIME_TESTS)
+    set(test_file "${ZIA_RUNTIME_TESTS_DIR}/${test_name}.zia")
+    if(EXISTS "${test_file}")
+        add_test(NAME zia_runtime_${test_name}
+            COMMAND $<TARGET_FILE:zia> "${test_file}"
+            WORKING_DIRECTORY "${ZIA_RUNTIME_TESTS_DIR}")
+        set_tests_properties(zia_runtime_${test_name} PROPERTIES
+            PASS_REGULAR_EXPRESSION "RESULT: ok"
+            LABELS "runtime;zia"
+            TIMEOUT 30)
+    endif()
+endforeach()

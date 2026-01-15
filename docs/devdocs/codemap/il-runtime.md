@@ -2,30 +2,42 @@
 
 Runtime signature metadata (`src/il/runtime/`) for C ABI helpers.
 
+Last updated: 2026-01-15
+
+## Overview
+
+- **Total source files**: 18 (.hpp/.cpp)
+- **Subdirectories**: classes/, signatures/
+
 ## Signature Registry
 
-| File                                 | Purpose                                                  |
-|--------------------------------------|----------------------------------------------------------|
-| `RuntimeSignatures.hpp/cpp`          | Main registry mapping helper names to IL signatures      |
-| `RuntimeSignatureParser.hpp/cpp`     | Parse compact ABI signature spellings                    |
-| `RuntimeSignaturesData.hpp`          | Static data bundles for signature catalog                |
-| `RuntimeSignatures_Handlers.hpp/cpp` | Runtime signature handler implementations                |
-| `HelperEffects.hpp`                  | Effect tags for runtime helpers (side-effects, aliasing) |
-| `RuntimeClassNames.hpp`              | Canonical runtime class name constants                   |
-| `RuntimeNameMap.hpp`                 | Name to runtime function mapping                         |
+| File                            | Purpose                                                  |
+|---------------------------------|----------------------------------------------------------|
+| `RuntimeSignatures.cpp`         | Main registry implementation                             |
+| `RuntimeSignatures.hpp`         | Main registry mapping helper names to IL signatures      |
+| `RuntimeSignatureParser.cpp`    | Parse compact ABI signature spellings impl               |
+| `RuntimeSignatureParser.hpp`    | Parse compact ABI signature spellings                    |
+| `RuntimeSignaturesData.hpp`     | Static data bundles for signature catalog                |
+| `RuntimeSignatures_Handlers.cpp`| Runtime signature handler implementations                |
+| `RuntimeSignatures_Handlers.hpp`| Runtime signature handler declarations                   |
+| `HelperEffects.hpp`             | Effect tags for runtime helpers (side-effects, aliasing) |
+| `RuntimeClassNames.hpp`         | Canonical runtime class name constants                   |
+| `RuntimeNameMap.hpp`            | Name to runtime function mapping                         |
 
 ## Runtime Classes (`classes/`)
 
-| File                     | Purpose                                            |
-|--------------------------|----------------------------------------------------|
-| `RuntimeClasses.hpp/cpp` | Runtime class metadata (StringBuilder, List, etc.) |
+| File                        | Purpose                                            |
+|-----------------------------|----------------------------------------------------|
+| `classes/RuntimeClasses.cpp`| Runtime class metadata implementation              |
+| `classes/RuntimeClasses.hpp`| Runtime class metadata (StringBuilder, List, etc.) |
 
 ## Signature Categories (`signatures/`)
 
-| File                     | Purpose                                      |
-|--------------------------|----------------------------------------------|
-| `Registry.hpp/cpp`       | Registration entry points for category files |
-| `Signatures_Arrays.cpp`  | Array helper signatures                      |
-| `Signatures_FileIO.cpp`  | File I/O helper signatures                   |
-| `Signatures_Math.cpp`    | Math function signatures                     |
-| `Signatures_Strings.cpp` | String operation signatures                  |
+| File                            | Purpose                                      |
+|---------------------------------|----------------------------------------------|
+| `signatures/Registry.cpp`       | Registration entry points implementation     |
+| `signatures/Registry.hpp`       | Registration entry points for category files |
+| `signatures/Signatures_Arrays.cpp` | Array helper signatures                   |
+| `signatures/Signatures_FileIO.cpp` | File I/O helper signatures                |
+| `signatures/Signatures_Math.cpp`   | Math function signatures                  |
+| `signatures/Signatures_Strings.cpp`| String operation signatures               |

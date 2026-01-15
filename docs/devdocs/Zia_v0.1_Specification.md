@@ -1142,10 +1142,10 @@ module MyApp.Services.UserService;
 ### Imports
 
 ```viper
-import MyApp.Models.User;           // Import specific type
-import MyApp.Utils;                 // Import entire module
-import MyApp.Utils as U;            // Import with alias
-import MyApp.Models.{User, Order};  // Import multiple
+bind MyApp.Models.User;           // Bind specific type
+bind MyApp.Utils;                 // Bind entire module
+bind MyApp.Utils as U;            // Bind with alias
+bind MyApp.Models.{User, Order};  // Bind multiple
 ```
 
 ### Visibility
@@ -1224,7 +1224,7 @@ The `arg` parameter is an opaque `Ptr` (can be `null` or any entity/object cast 
 - Runtime: Trap with `Thread.Start: invalid entry signature` if signature check fails
 
 ```viper
-import Viper.Threads;
+bind Viper.Threads;
 
 func worker() {
     // Work with no argument
@@ -1253,7 +1253,7 @@ func start() {
 It is implemented on top of the runtime’s FIFO-fair, re-entrant `Monitor` primitive.
 
 ```viper
-import Viper.Threads;
+bind Viper.Threads;
 
 entity Counter {
     Mutex mu = new Mutex();
@@ -1276,7 +1276,7 @@ Wait/Pause (v0.1):
 Viper exposes `SafeI64` as a FIFO-safe integer cell:
 
 ```viper
-import Viper.Threads;
+bind Viper.Threads;
 
 func start() {
     SafeI64 c = SafeI64.New(0);
@@ -1654,7 +1654,7 @@ func worker(arg: Ptr) {
 ```viper
 module TodoApp;
 
-import Viper.IO.File;
+bind Viper.IO.File;
 
 // Domain types
 value TodoId {

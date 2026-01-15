@@ -1,7 +1,7 @@
 // colors.viper - Color management for Viper Paint
 module colors;
 
-import "./config";
+bind "./config";
 
 // ColorManager entity - manages foreground, background, palette, and recent colors
 entity ColorManager {

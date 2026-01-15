@@ -1,9 +1,9 @@
 // rectangle.viper - Rectangle tool for Viper Paint
 module rectangle;
 
-import "../config";
-import "../canvas";
-import "../colors";
+bind "../config";
+bind "../canvas";
+bind "../colors";
 
 // RectangleTool - draws rectangles (filled or outline)
 entity RectangleTool {

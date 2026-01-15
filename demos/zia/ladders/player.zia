@@ -2,8 +2,8 @@
 // Handles player movement, climbing, and rendering
 module player;
 
-import "./config";
-import "./colors";
+bind "./config";
+bind "./colors";
 
 // Player states
 final STATE_WALKING = 0;

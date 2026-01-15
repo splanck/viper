@@ -133,10 +133,10 @@ bool ImportResolver::processModule(ModuleDecl &module,
     }
 
     std::string normalizedPath = normalizePath(modulePath);
-    if (processedFiles_.count(normalizedPath) > 0)
+    if (processedFiles_.count(normalizedPath) != 0)
         return true;
 
-    if (inProgressFiles_.count(normalizedPath) > 0)
+    if (inProgressFiles_.count(normalizedPath) != 0)
     {
         reportCycle(viaImportLoc, normalizedPath);
         return false;
@@ -150,29 +150,29 @@ bool ImportResolver::processModule(ModuleDecl &module,
     // imports B (already processed), we get [B, C, A] not [C, B, A].
     std::vector<DeclPtr> importedDecls;
 
-    for (const auto &import : module.imports)
+    for (const auto &bind : module.binds)
     {
-        std::string importFilePath = resolveImportPath(import.path, modulePath);
-        std::string normalizedImportPath = normalizePath(importFilePath);
+        std::string bindFilePath = resolveImportPath(bind.path, modulePath);
+        std::string normalizedBindPath = normalizePath(bindFilePath);
 
-        if (processedFiles_.count(normalizedImportPath) > 0)
+        if (processedFiles_.count(normalizedBindPath) != 0)
             continue;
 
-        if (inProgressFiles_.count(normalizedImportPath) > 0)
+        if (inProgressFiles_.count(normalizedBindPath) != 0)
         {
-            reportCycle(import.loc, normalizedImportPath);
+            reportCycle(bind.loc, normalizedBindPath);
             return false;
         }
 
-        auto importedModule = parseFile(importFilePath, import.loc);
-        if (!importedModule)
+        auto boundModule = parseFile(bindFilePath, bind.loc);
+        if (!boundModule)
             return false;
 
-        if (!processModule(*importedModule, importFilePath, import.loc, depth + 1))
+        if (!processModule(*boundModule, bindFilePath, bind.loc, depth + 1))
             return false;
 
-        // Collect this import's declarations (which include its transitive imports)
-        for (auto &decl : importedModule->declarations)
+        // Collect this bind's declarations (which include its transitive binds)
+        for (auto &decl : boundModule->declarations)
             importedDecls.push_back(std::move(decl));
     }
 

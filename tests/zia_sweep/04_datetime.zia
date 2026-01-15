@@ -1,6 +1,6 @@
 module TestDateTime;
 
-import "./_support";
+bind "./_support";
 
 // DateTime tests
 // Note: Some functions have sema/runtime mismatches (see bugs VL-014+)

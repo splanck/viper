@@ -5,7 +5,7 @@
 ```viper
 module MyApp;                          // Module declaration
 
-import Viper.IO.File;                  // Import
+bind Viper.IO.File;                  // Bind
 
 // Value type (copied)
 value Point {
@@ -323,7 +323,7 @@ Boolean has = unique.has(2);
 ## Threads
 
 ```viper
-import Viper.Threads;
+bind Viper.Threads;
 
 // Thread entry must be: func() -> Void  OR  func(Ptr) -> Void
 func worker() { }

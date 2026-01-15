@@ -576,9 +576,9 @@ Every file declares its module:
 ```viper
 module MyApp.Services.UserService;
 
-import MyApp.Models.User;
-import MyApp.Data.Database as DB;
-import Viper.IO.File;
+bind MyApp.Models.User;
+bind MyApp.Data.Database as DB;
+bind Viper.IO.File;
 
 // Module contents...
 ```
@@ -643,65 +643,65 @@ Zia uses the Viper.* runtime library for all standard functionality. Built-in mo
 
 ```viper
 // Collections
-import Viper.Collections.List    // Dynamic arrays
-import Viper.Collections.Map     // Key-value dictionaries
-import Viper.Collections.Seq     // Versatile sequences
-import Viper.Collections.Stack   // LIFO stack
-import Viper.Collections.Queue   // FIFO queue
-import Viper.Collections.Bag     // String sets
-import Viper.Collections.TreeMap // Ordered maps
-import Viper.Collections.Bytes   // Byte arrays
+bind Viper.Collections.List    // Dynamic arrays
+bind Viper.Collections.Map     // Key-value dictionaries
+bind Viper.Collections.Seq     // Versatile sequences
+bind Viper.Collections.Stack   // LIFO stack
+bind Viper.Collections.Queue   // FIFO queue
+bind Viper.Collections.Bag     // String sets
+bind Viper.Collections.TreeMap // Ordered maps
+bind Viper.Collections.Bytes   // Byte arrays
 
 // I/O
-import Viper.IO.File        // File operations (ReadAllText, WriteAllText, etc.)
-import Viper.IO.Dir         // Directory operations
-import Viper.IO.Path        // Path manipulation
-import Viper.IO.BinFile     // Binary file I/O
-import Viper.IO.LineReader  // Text file reading
-import Viper.IO.LineWriter  // Text file writing
+bind Viper.IO.File        // File operations (ReadAllText, WriteAllText, etc.)
+bind Viper.IO.Dir         // Directory operations
+bind Viper.IO.Path        // Path manipulation
+bind Viper.IO.BinFile     // Binary file I/O
+bind Viper.IO.LineReader  // Text file reading
+bind Viper.IO.LineWriter  // Text file writing
 
 // Terminal & Environment
-import Viper.Terminal       // Console I/O (Print, ReadLine, GetKey, etc.)
-import Viper.Environment    // Args, env vars, exit
+bind Viper.Terminal       // Console I/O (Print, ReadLine, GetKey, etc.)
+bind Viper.Environment    // Args, env vars, exit
 
 // Text & Strings
-import Viper.String         // String operations (Split, Replace, Trim, etc.)
-import Viper.Text.Codec     // Base64, Hex, URL encoding
-import Viper.Text.Csv       // CSV parsing/formatting
-import Viper.Text.StringBuilder // Efficient string building
-import Viper.Text.Guid      // GUID generation
-import Viper.Convert        // Type conversions
-import Viper.Fmt            // Number formatting
+bind Viper.String         // String operations (Split, Replace, Trim, etc.)
+bind Viper.Text.Codec     // Base64, Hex, URL encoding
+bind Viper.Text.Csv       // CSV parsing/formatting
+bind Viper.Text.StringBuilder // Efficient string building
+bind Viper.Text.Guid      // GUID generation
+bind Viper.Convert        // Type conversions
+bind Viper.Fmt            // Number formatting
 
 // Math & Random
-import Viper.Math           // Math functions (Sin, Cos, Sqrt, etc.)
-import Viper.Random         // Random number generation
-import Viper.Vec2           // 2D vector math
-import Viper.Vec3           // 3D vector math
-import Viper.Bits           // Bit manipulation
+bind Viper.Math           // Math functions (Sin, Cos, Sqrt, etc.)
+bind Viper.Random         // Random number generation
+bind Viper.Vec2           // 2D vector math
+bind Viper.Vec3           // 3D vector math
+bind Viper.Bits           // Bit manipulation
 
 // Time & Diagnostics
-import Viper.DateTime       // Date/time operations
-import Viper.Time.Clock     // Timing and sleep
-import Viper.Time.Countdown // Countdown timers
-import Viper.Diagnostics.Stopwatch // Performance timing
+bind Viper.DateTime       // Date/time operations
+bind Viper.Time.Clock     // Timing and sleep
+bind Viper.Time.Countdown // Countdown timers
+bind Viper.Diagnostics.Stopwatch // Performance timing
 
 // Crypto & Security
-import Viper.Crypto.Hash    // MD5, SHA1, SHA256, CRC32
+bind Viper.Crypto.Hash    // MD5, SHA1, SHA256, CRC32
 
 // System
-import Viper.Exec           // Run external commands
-import Viper.Machine        // System info (OS, CPU, memory)
-import Viper.Log            // Logging
+bind Viper.Exec           // Run external commands
+bind Viper.Machine        // System info (OS, CPU, memory)
+bind Viper.Log            // Logging
 
 // Threading (when needed)
-import Viper.Threads.Thread  // Thread creation
-import Viper.Threads.Monitor // Synchronization
+bind Viper.Threads.Thread  // Thread creation
+bind Viper.Threads.Monitor // Synchronization
 
 // Graphics (optional)
-import Viper.Graphics.Canvas // 2D graphics window
-import Viper.Graphics.Color  // Color utilities
-import Viper.Graphics.Pixels // Pixel buffer
+bind Viper.Graphics.Canvas // 2D graphics window
+bind Viper.Graphics.Color  // Color utilities
+bind Viper.Graphics.Pixels // Pixel buffer
 ```
 
 All standard library access goes through the Viper.* namespace.
@@ -715,7 +715,7 @@ The entire Zia grammar:
 ```ebnf
 // Program Structure
 module = "module" path
-import = "import" path ["as" name]
+bind = "import" path ["as" name]
 program = module import* declaration*
 
 // Declarations
@@ -811,7 +811,7 @@ Built-in testing with simple syntax:
 ```viper
 module UserTests;
 
-import Viper.Test;
+bind Viper.Test;
 
 test "user creation" {
     User user = new User(name: "Alice", email: "alice@example.com");

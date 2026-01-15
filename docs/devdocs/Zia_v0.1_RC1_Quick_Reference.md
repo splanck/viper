@@ -589,7 +589,7 @@ func start() {
 async     await     break     continue   else
 entity    expose    extends   final      for
 func      guard     hide      if         implements
-import    interface match     module     new
+bind    interface match     module     new
 override  return    super     value      weak
 while
 ```

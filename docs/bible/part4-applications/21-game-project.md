@@ -225,7 +225,7 @@ The frog is the heart of the game. It is what the player controls, what they ide
 // frog.zia
 module Frog;
 
-import Config;
+bind Config;
 
 // The Frog value represents everything we need to know about the player
 expose value Frog {
@@ -363,7 +363,7 @@ Vehicles are the dangers on the road. They move continuously across the screen, 
 // vehicle.zia
 module Vehicle;
 
-import Config;
+bind Config;
 
 expose value Vehicle {
     x: f64;             // Horizontal position (pixels)
@@ -444,7 +444,7 @@ Platforms are logs and turtles that float on the river. Unlike vehicles that kil
 // platform.zia
 module Platform;
 
-import Config;
+bind Config;
 
 expose value Platform {
     x: f64;
@@ -502,10 +502,10 @@ Now we bring everything together. The GameState value is the single source of tr
 // game.zia
 module Game;
 
-import Config;
-import Frog;
-import Vehicle;
-import Platform;
+bind Config;
+bind Frog;
+bind Vehicle;
+bind Platform;
 
 expose value GameState {
     frog: Frog.Frog;                    // The player
@@ -812,9 +812,9 @@ Rendering transforms game state into pictures. It reads but never modifies state
 // renderer.zia
 module Renderer;
 
-import Config;
-import Game;
-import Viper.Graphics;
+bind Config;
+bind Game;
+bind Viper.Graphics;
 
 expose func render(canvas: Canvas, state: Game.GameState) {
     // Clear the canvas
@@ -950,11 +950,11 @@ The main file brings everything together:
 // main.zia
 module Main;
 
-import Config;
-import Game;
-import Renderer;
-import Viper.Graphics;
-import Viper.Input;
+bind Config;
+bind Game;
+bind Renderer;
+bind Viper.Graphics;
+bind Viper.Input;
 
 func start() {
     // Create the game window
@@ -1257,7 +1257,7 @@ A completed Frogger is a foundation, not an endpoint. Here are ways to make it y
 Sound brings games to life. Add a hop sound when the frog moves, a splash when it drowns, a splat when hit by a car, a cheerful jingle when reaching home:
 
 ```rust
-import Viper.Audio;
+bind Viper.Audio;
 
 var hopSound = Audio.load("hop.wav");
 var splatSound = Audio.load("splat.wav");

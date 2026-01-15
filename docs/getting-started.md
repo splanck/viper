@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-01-09
+last-verified: 2026-01-15
 ---
 
 # Getting Started with Viper

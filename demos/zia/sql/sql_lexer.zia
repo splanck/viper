@@ -1,6 +1,6 @@
 module SqlLexer;
 
-import "./sql_types";
+bind "./sql_types";
 
 Integer TOK_EOF = 0;
 Integer TOK_IDENT = 1;

@@ -178,7 +178,7 @@ Now let's write some code. We'll start with the keyboard, the most common input 
 To check if a key is currently held down, use `isKeyDown`:
 
 ```rust
-import Viper.Input;
+bind Viper.Input;
 
 while gameRunning {
     if Input.isKeyDown(Key.LEFT) {
@@ -379,8 +379,8 @@ Let's put mouse input together in a practical example:
 ```rust
 module MouseDraw;
 
-import Viper.Graphics;
-import Viper.Input;
+bind Viper.Graphics;
+bind Viper.Input;
 
 func start() {
     var canvas = Canvas(800, 600);
@@ -825,8 +825,8 @@ Let's put everything together in a complete, playable example:
 ```rust
 module CharacterDemo;
 
-import Viper.Graphics;
-import Viper.Input;
+bind Viper.Graphics;
+bind Viper.Input;
 
 value Player {
     x: f64;
@@ -1181,7 +1181,7 @@ This helps you see if inputs are arriving at the right times.
 
 **Zia**
 ```rust
-import Viper.Input;
+bind Viper.Input;
 
 // Keyboard
 if Input.isKeyDown(Key.SPACE) {

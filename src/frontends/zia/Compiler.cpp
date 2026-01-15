@@ -90,8 +90,8 @@ CompilerResult compile(const CompilerInput &input,
         return result;
     }
 
-    // Phase 2.5: Process imports (load and merge imported files)
-    if (!module->imports.empty())
+    // Phase 2.5: Process binds (load and merge bound files)
+    if (!module->binds.empty())
     {
         ImportResolver resolver(result.diagnostics, sm);
         if (!resolver.resolve(*module, std::string(input.path)))

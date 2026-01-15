@@ -1,0 +1,104 @@
+module TestRandom;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+// COVER: Viper.Random.Seed
+// COVER: Viper.Random.NextInt
+// COVER: Viper.Random.Next
+
+func testSeedDeterminism() {
+    setTest("SeedDeterminism");
+
+    // Same seed should produce same sequence
+    Viper.Random.Seed(12345);
+    var a1 = Viper.Random.NextInt(1000);
+    var a2 = Viper.Random.NextInt(1000);
+    var a3 = Viper.Random.NextInt(1000);
+
+    Viper.Random.Seed(12345);
+    var b1 = Viper.Random.NextInt(1000);
+    var b2 = Viper.Random.NextInt(1000);
+    var b3 = Viper.Random.NextInt(1000);
+
+    assertEqInt(a1, b1, "same seed, same first value");
+    assertEqInt(a2, b2, "same seed, same second value");
+    assertEqInt(a3, b3, "same seed, same third value");
+}
+
+func testNextInt() {
+    setTest("NextInt");
+
+    Viper.Random.Seed(42);
+
+    // Test range
+    for (var i = 0; i < 100; i = i + 1) {
+        var n = Viper.Random.NextInt(10);
+        assertGteInt(n, 0, "nextint >= 0");
+        assertLtInt(n, 10, "nextint < 10");
+    }
+
+    // Test with larger bound
+    for (var i = 0; i < 100; i = i + 1) {
+        var n = Viper.Random.NextInt(1000000);
+        assertGteInt(n, 0, "large bound >= 0");
+        assertLtInt(n, 1000000, "large bound < 1000000");
+    }
+}
+
+func testNext() {
+    setTest("Next");
+
+    Viper.Random.Seed(42);
+
+    // Next returns float in [0, 1)
+    for (var i = 0; i < 100; i = i + 1) {
+        var n = Viper.Random.Next();
+        assertInRange(n, 0.0, 1.0, "next in [0,1)");
+        assertTrue(n < 1.0, "next < 1.0");
+    }
+}
+
+func testDistribution() {
+    setTest("Distribution");
+
+    // Simple distribution test - shouldn't be all the same value
+    Viper.Random.Seed(999);
+
+    var sum = 0;
+    var count = 100;
+    for (var i = 0; i < count; i = i + 1) {
+        sum = sum + Viper.Random.NextInt(100);
+    }
+
+    // Average should be around 50 for uniform [0,100)
+    var avg = sum / count;
+    assertGtInt(avg, 20, "average > 20 (distribution check)");
+    assertLtInt(avg, 80, "average < 80 (distribution check)");
+}
+
+func testDifferentSeeds() {
+    setTest("DifferentSeeds");
+
+    Viper.Random.Seed(111);
+    var a = Viper.Random.NextInt(1000000);
+
+    Viper.Random.Seed(222);
+    var b = Viper.Random.NextInt(1000000);
+
+    Viper.Random.Seed(333);
+    var c = Viper.Random.NextInt(1000000);
+
+    // Different seeds should (almost certainly) produce different values
+    assertTrue(a != b || b != c, "different seeds produce different values");
+}
+
+func start() {
+    testSeedDeterminism();
+    testNextInt();
+    testNext();
+    testDistribution();
+    testDifferentSeeds();
+
+    report();
+}

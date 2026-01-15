@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-updated: 2025-12-19
+last-updated: 2026-01-15
 ---
 
 # Zia — Getting Started
@@ -10,7 +10,7 @@ Learn Zia by example. For a complete reference, see **[Zia Reference](zia-refere
 
 > **What is Zia?**
 > A modern, statically-typed language with C-like syntax, first-class entities (reference types), value types,
-> generics, and module imports. It runs on Viper's VM and can be compiled to native code.
+> generics, and module bindings. It runs on Viper's VM and can be compiled to native code.
 
 ---
 
@@ -23,7 +23,7 @@ Learn Zia by example. For a complete reference, see **[Zia Reference](zia-refere
 5. [Entity Types (Classes)](#5-entity-types-classes)
 6. [Value Types (Structs)](#6-value-types-structs)
 7. [Generic Collections](#7-generic-collections)
-8. [Modules and Imports](#8-modules-and-imports)
+8. [Modules and Bindings](#8-modules-and-bindings)
 9. [Working with the Runtime](#9-working-with-the-runtime)
 10. [Example Project](#10-example-project)
 11. [Where to Go Next](#11-where-to-go-next)
@@ -302,7 +302,7 @@ players.add(p2);
 
 ---
 
-## 8. Modules and Imports
+## 8. Modules and Bindings
 
 ### Module Declaration
 
@@ -312,15 +312,16 @@ Every file starts with a module declaration:
 module MyGame;
 ```
 
-### Importing Other Modules
+### Binding Other Modules
 
-Import other `.zia` files to use their types and functions:
+Bind other `.zia` files to use their types and functions:
 
 ```viper
 module Game;
 
-import "./entities";    // imports entities.zia from same directory
-import "./utils";       // imports utils.zia
+bind "./entities";    // binds entities.zia from same directory
+bind "./utils";       // binds utils.zia
+bind "./config" as C; // bind with alias
 
 func start() {
     var player = new Player();  // Player defined in entities.zia
@@ -328,7 +329,7 @@ func start() {
 }
 ```
 
-**Import path rules:**
+**Bind path rules:**
 
 - `"./foo"` — Relative path, adds `.zia` extension
 - `"../bar"` — Parent directory relative path
@@ -468,7 +469,7 @@ For more complete examples, see the `demos/zia/` directory:
 ```viper
 module ModuleName;
 
-import "./other";
+bind "./other";
 
 // Global variables
 var globalVar = 0;

@@ -2466,7 +2466,7 @@ app.Destroy() -> void           // Clean up resources
 
 **Example:**
 ```rust
-import Viper.GUI.*
+bind Viper.GUI.*
 
 var app = new App("My Application", 800, 600)
 Theme.SetDark()
@@ -3493,7 +3493,7 @@ teardown {
 ```rust
 module Calculator_Test;
 
-import Calculator;
+bind Calculator;
 
 var calc: Calculator;
 

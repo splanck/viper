@@ -3,7 +3,7 @@
 
 module expr;
 
-import "./types";
+bind "./types";
 
 //=============================================================================
 // EXPRESSION KIND CONSTANTS

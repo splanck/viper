@@ -34,9 +34,9 @@ enum class DeclKind
     /// @see ModuleDecl
     Module,
 
-    /// @brief Import declaration: brings external modules into scope.
-    /// @see ImportDecl
-    Import,
+    /// @brief Bind declaration: brings external namespaces into scope with alias.
+    /// @see BindDecl
+    Bind,
 
     /// @brief Value type declaration: copy-semantics struct.
     /// @see ValueDecl
@@ -392,25 +392,25 @@ struct InterfaceDecl : Decl
     InterfaceDecl(SourceLoc l, std::string n) : Decl(DeclKind::Interface, l), name(std::move(n)) {}
 };
 
-/// @brief Import declaration: brings external modules into scope.
-/// @details Imports make types, functions, and values from other modules
-/// available in the current module.
+/// @brief Bind declaration: brings external namespaces into scope.
+/// @details Binds make namespaces from the runtime or other modules
+/// available in the current module with an optional alias.
 ///
 /// ## Examples
-/// - `import Viper.IO.File;` - Import specific module
-/// - `import Viper.Math as M;` - Import with alias
-struct ImportDecl : Decl
+/// - `bind Viper.Terminal;` - Bind namespace without alias
+/// - `bind Viper.Terminal as Term;` - Bind with alias
+struct BindDecl : Decl
 {
-    /// @brief The module path (e.g., "Viper.IO.File").
+    /// @brief The namespace path (e.g., "Viper.Terminal").
     std::string path;
 
-    /// @brief Import alias (empty if no alias).
+    /// @brief Bind alias (empty if no alias).
     std::string alias;
 
-    /// @brief Construct an import declaration.
+    /// @brief Construct a bind declaration.
     /// @param l Source location.
-    /// @param p The module path.
-    ImportDecl(SourceLoc l, std::string p) : Decl(DeclKind::Import, l), path(std::move(p)) {}
+    /// @param p The namespace path.
+    BindDecl(SourceLoc l, std::string p) : Decl(DeclKind::Bind, l), path(std::move(p)) {}
 };
 
 /// @brief Namespace declaration: groups declarations under a qualified name.
@@ -455,13 +455,13 @@ struct NamespaceDecl : Decl
 
 /// @brief Module declaration: the top-level compilation unit.
 /// @details Represents an entire source file as a module with a name,
-/// imports, and top-level declarations.
+/// binds, and top-level declarations.
 ///
 /// ## Example
 /// ```
 /// module MyGame;
 ///
-/// import Viper.Terminal;
+/// bind Viper.Terminal as Term;
 ///
 /// entity Player { ... }
 ///
@@ -472,8 +472,8 @@ struct ModuleDecl : Decl
     /// @brief Module name (from `module MyName;` declaration).
     std::string name;
 
-    /// @brief Import declarations.
-    std::vector<ImportDecl> imports;
+    /// @brief Bind declarations.
+    std::vector<BindDecl> binds;
 
     /// @brief Top-level declarations (types, functions, global vars).
     std::vector<DeclPtr> declarations;

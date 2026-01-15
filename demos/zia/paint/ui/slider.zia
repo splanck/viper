@@ -1,7 +1,7 @@
 // slider.viper - Slider UI control for Viper Paint
 module slider;
 
-import "../config";
+bind "../config";
 
 // Slider entity - horizontal slider for numeric values
 entity Slider {

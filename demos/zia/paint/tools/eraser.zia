@@ -1,10 +1,10 @@
 // eraser.viper - Eraser tool for Viper Paint
 module eraser;
 
-import "../config";
-import "../canvas";
-import "../colors";
-import "../brush";
+bind "../config";
+bind "../canvas";
+bind "../colors";
+bind "../brush";
 
 // EraserTool - erases to background color with variable size
 entity EraserTool {

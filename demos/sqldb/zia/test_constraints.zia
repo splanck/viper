@@ -1,7 +1,7 @@
 // test_constraints.viper - Test constraint enforcement
 module test_constraints;
 
-import "./executor";
+bind "./executor";
 
 Integer passed = 0;
 Integer failed = 0;

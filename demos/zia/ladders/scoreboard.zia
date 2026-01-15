@@ -1,8 +1,8 @@
 // scoreboard.viper - Score display and high score tracking for Ladders game
 module scoreboard;
 
-import "./config";
-import "./colors";
+bind "./config";
+bind "./colors";
 
 // High score entry
 entity HighScoreEntry {

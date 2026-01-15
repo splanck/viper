@@ -2,6 +2,8 @@
 
 Cross-platform software 2D graphics library (`src/lib/graphics/`) and Viper runtime graphics classes (`src/runtime/rt_*.c`).
 
+Last updated: 2026-01-15
+
 ## Runtime Classes (`src/runtime/`)
 
 The Viper.Graphics.* namespace is implemented by these C runtime files:

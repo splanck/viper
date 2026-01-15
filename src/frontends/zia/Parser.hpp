@@ -613,9 +613,9 @@ class Parser
     /// - Uninitialized: `Integer x;`
     DeclPtr parseJavaStyleGlobalVarDecl();
 
-    /// @brief Parse an import declaration: import Foo.Bar;
-    /// @return The parsed ImportDecl.
-    ImportDecl parseImportDecl();
+    /// @brief Parse a bind declaration: bind Viper.Terminal as Term;
+    /// @return The parsed BindDecl.
+    BindDecl parseBindDecl();
 
     /// @brief Parse function/method parameters.
     /// @return Vector of Param.

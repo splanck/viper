@@ -1,6 +1,6 @@
 module SqlMain;
 
-import "./sql_engine";
+bind "./sql_engine";
 
 func printBanner() {
     Viper.Terminal.Say("ViperSQL - embedded demo database");

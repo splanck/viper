@@ -7,7 +7,7 @@ module starfield;
 // Uses perspective projection to simulate 3D depth.
 // ============================================================================
 
-import "./colors";
+bind "./colors";
 
 // Star entity representing a single star in 3D space
 entity Star {

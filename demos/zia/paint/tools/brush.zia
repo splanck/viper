@@ -1,10 +1,10 @@
 // brush.viper - Brush tool for Viper Paint
 module brush_tool;
 
-import "../config";
-import "../canvas";
-import "../colors";
-import "../brush";
+bind "../config";
+bind "../canvas";
+bind "../colors";
+bind "../brush";
 
 // BrushTool - draws with variable size and opacity
 entity BrushTool {

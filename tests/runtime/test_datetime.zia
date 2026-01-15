@@ -1,0 +1,158 @@
+module TestDateTime;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+// COVER: Viper.DateTime.Now
+// COVER: Viper.DateTime.NowMs
+// COVER: Viper.DateTime.Create
+// COVER: Viper.DateTime.Year
+// COVER: Viper.DateTime.Month
+// COVER: Viper.DateTime.Day
+// COVER: Viper.DateTime.Hour
+// COVER: Viper.DateTime.Minute
+// COVER: Viper.DateTime.Second
+// COVER: Viper.DateTime.DayOfWeek
+// COVER: Viper.DateTime.AddDays
+// COVER: Viper.DateTime.AddSeconds
+// COVER: Viper.DateTime.Diff
+// COVER: Viper.DateTime.Format
+// COVER: Viper.DateTime.ToISO
+
+func testNow() {
+    setTest("Now");
+
+    var now = Viper.DateTime.Now();
+    assertGtInt(now, 0, "now is positive");
+
+    // Get components - should be valid
+    var year = Viper.DateTime.Year(now);
+    assertGteInt(year, 2024, "year >= 2024");
+    assertLteInt(year, 2100, "year <= 2100");
+
+    var month = Viper.DateTime.Month(now);
+    assertGteInt(month, 1, "month >= 1");
+    assertLteInt(month, 12, "month <= 12");
+
+    var day = Viper.DateTime.Day(now);
+    assertGteInt(day, 1, "day >= 1");
+    assertLteInt(day, 31, "day <= 31");
+
+    var hour = Viper.DateTime.Hour(now);
+    assertGteInt(hour, 0, "hour >= 0");
+    assertLteInt(hour, 23, "hour <= 23");
+
+    var minute = Viper.DateTime.Minute(now);
+    assertGteInt(minute, 0, "minute >= 0");
+    assertLteInt(minute, 59, "minute <= 59");
+
+    var second = Viper.DateTime.Second(now);
+    assertGteInt(second, 0, "second >= 0");
+    assertLteInt(second, 59, "second <= 59");
+}
+
+func testNowMs() {
+    setTest("NowMs");
+
+    var ms1 = Viper.DateTime.NowMs();
+    Viper.Time.SleepMs(10);
+    var ms2 = Viper.DateTime.NowMs();
+
+    assertGtInt(ms2, ms1, "time progressed");
+    assertGteInt(ms2 - ms1, 5, "at least 5ms elapsed");  // allow some tolerance
+}
+
+func testCreate() {
+    setTest("Create");
+
+    // Create a specific date/time: 2024-06-15 14:30:45
+    var dt = Viper.DateTime.Create(2024, 6, 15, 14, 30, 45);
+
+    assertEqInt(Viper.DateTime.Year(dt), 2024, "year");
+    assertEqInt(Viper.DateTime.Month(dt), 6, "month");
+    assertEqInt(Viper.DateTime.Day(dt), 15, "day");
+    assertEqInt(Viper.DateTime.Hour(dt), 14, "hour");
+    assertEqInt(Viper.DateTime.Minute(dt), 30, "minute");
+    assertEqInt(Viper.DateTime.Second(dt), 45, "second");
+}
+
+func testDayOfWeek() {
+    setTest("DayOfWeek");
+
+    // 2024-01-01 was a Monday (day of week = 1, assuming Sunday = 0)
+    var dt = Viper.DateTime.Create(2024, 1, 1, 0, 0, 0);
+    var dow = Viper.DateTime.DayOfWeek(dt);
+    assertGteInt(dow, 0, "day of week >= 0");
+    assertLteInt(dow, 6, "day of week <= 6");
+}
+
+func testAddDays() {
+    setTest("AddDays");
+
+    var dt = Viper.DateTime.Create(2024, 1, 15, 12, 0, 0);
+
+    // Add 10 days
+    var dt2 = Viper.DateTime.AddDays(dt, 10);
+    assertEqInt(Viper.DateTime.Day(dt2), 25, "day after +10");
+    assertEqInt(Viper.DateTime.Month(dt2), 1, "month unchanged");
+
+    // Add days crossing month boundary
+    var dt3 = Viper.DateTime.AddDays(dt, 20);
+    assertEqInt(Viper.DateTime.Month(dt3), 2, "month changed to Feb");
+
+    // Subtract days
+    var dt4 = Viper.DateTime.AddDays(dt, -10);
+    assertEqInt(Viper.DateTime.Day(dt4), 5, "day after -10");
+}
+
+func testAddSeconds() {
+    setTest("AddSeconds");
+
+    var dt = Viper.DateTime.Create(2024, 1, 1, 12, 30, 0);
+
+    // Add 90 seconds (1 minute 30 seconds)
+    var dt2 = Viper.DateTime.AddSeconds(dt, 90);
+    assertEqInt(Viper.DateTime.Minute(dt2), 31, "minute after +90s");
+    assertEqInt(Viper.DateTime.Second(dt2), 30, "second after +90s");
+
+    // Add 3600 seconds (1 hour)
+    var dt3 = Viper.DateTime.AddSeconds(dt, 3600);
+    assertEqInt(Viper.DateTime.Hour(dt3), 13, "hour after +3600s");
+}
+
+func testDiff() {
+    setTest("Diff");
+
+    var dt1 = Viper.DateTime.Create(2024, 1, 1, 0, 0, 0);
+    var dt2 = Viper.DateTime.Create(2024, 1, 2, 0, 0, 0);
+
+    var diff = Viper.DateTime.Diff(dt2, dt1);
+    assertEqInt(diff, 86400, "diff is 86400 seconds (1 day)");
+
+    // Same time - diff is 0
+    assertEqInt(Viper.DateTime.Diff(dt1, dt1), 0, "same time diff is 0");
+}
+
+func testFormat() {
+    setTest("Format");
+
+    var dt = Viper.DateTime.Create(2024, 6, 15, 14, 30, 45);
+
+    // Format with ISO-like pattern
+    var iso = Viper.DateTime.ToISO(dt);
+    assertNotEmpty(iso, "ISO format not empty");
+    assertContains(iso, "2024", "ISO contains year");
+}
+
+func start() {
+    testNow();
+    testNowMs();
+    testCreate();
+    testDayOfWeek();
+    testAddDays();
+    testAddSeconds();
+    testDiff();
+    testFormat();
+
+    report();
+}

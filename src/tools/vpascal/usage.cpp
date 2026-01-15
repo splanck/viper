@@ -15,6 +15,7 @@
 ///          so the main driver stays minimal.
 
 #include "usage.hpp"
+#include "tools/common/CommonUsage.hpp"
 #include "viper/version.hpp"
 #include <iostream>
 
@@ -45,17 +46,9 @@ void printUsage()
               << "  vpascal program.pas --emit-il    Emit IL to stdout\n"
               << "  vpascal program.pas -o file.il   Emit IL to file\n"
               << "\n"
-              << "Options:\n"
-              << "  -o, --output FILE              Output file for IL\n"
-              << "  --emit-il                      Emit IL instead of running\n"
-              << "  --trace[=il|src]               Enable execution tracing\n"
-              << "  --bounds-checks                Enable array bounds checking\n"
-              << "  --stdin-from FILE              Redirect stdin from file\n"
-              << "  --max-steps N                  Limit execution steps\n"
-              << "  --dump-trap                    Show detailed trap diagnostics\n"
-              << "  -h, --help                     Show this help message\n"
-              << "  --version                      Show version information\n"
-              << "\n"
+              << "Options:\n";
+    viper::tools::printSharedOptions(std::cerr);
+    std::cerr << "\n"
               << "Examples:\n"
               << "  vpascal hello.pas                         Run program\n"
               << "  vpascal hello.pas --emit-il               Show generated IL\n"

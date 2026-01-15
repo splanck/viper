@@ -3,8 +3,8 @@
 
 module table;
 
-import "./types";
-import "./schema";
+bind "./types";
+bind "./schema";
 
 //=============================================================================
 // TABLE ENTITY

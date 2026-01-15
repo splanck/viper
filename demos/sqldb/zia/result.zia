@@ -3,7 +3,7 @@
 
 module result;
 
-import "./schema";
+bind "./schema";
 
 //=============================================================================
 // QUERY RESULT ENTITY

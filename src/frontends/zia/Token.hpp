@@ -229,10 +229,10 @@ enum class TokenKind
     /// Access via: `MyLib.Foo`
     KwNamespace,
 
-    /// @brief Import statement keyword.
-    /// @details Imports symbols from another module.
-    /// Syntax: `import Viper.IO.File;`
-    KwImport,
+    /// @brief Bind statement keyword.
+    /// @details Binds a namespace to an alias for use in the current module.
+    /// Syntax: `bind Viper.Terminal as Term;`
+    KwBind,
 
     /// @brief Function declaration keyword.
     /// @details Introduces a function or method definition.

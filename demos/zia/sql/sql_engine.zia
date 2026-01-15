@@ -1,8 +1,8 @@
 module SqlEngine;
 
-import "./sql_lexer";
-import "./sql_storage";
-import "./sql_types";
+bind "./sql_lexer";
+bind "./sql_storage";
+bind "./sql_types";
 
 Integer EXPR_COMPARE = 1;
 Integer EXPR_AND = 2;

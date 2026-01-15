@@ -2,6 +2,8 @@
 
 User-facing documentation (`docs/`).
 
+Last updated: 2026-01-15
+
 ## Getting Started
 
 | File                 | Purpose                               |
@@ -14,6 +16,8 @@ User-facing documentation (`docs/`).
 |----------------------|---------------------------------|
 | `basic-language.md`  | BASIC language tutorial         |
 | `basic-reference.md` | Complete BASIC specification    |
+| `zia-tutorial.md`    | Zia language tutorial           |
+| `zia-reference.md`   | Complete Zia specification      |
 | `il-quickstart.md`   | Fast introduction to Viper IL   |
 | `il-guide.md`        | Comprehensive IL specification  |
 | `il-reference.md`    | Complete IL instruction catalog |

@@ -9,17 +9,23 @@ implementation guides.
 
 ## Quick Links
 
-| Document                              | Description                                |
-|---------------------------------------|--------------------------------------------|
-| [Getting Started](getting-started.md) | Build, install, and run your first program |
-| [BASIC Tutorial](basic-language.md)   | Learn Viper BASIC by example               |
-| [Pascal Tutorial](pascal-language.md) | Learn Viper Pascal by example              |
-| [Runtime Library](viperlib.md)        | Viper.* classes and methods reference      |
-| [IL Guide](il-guide.md)               | Comprehensive IL specification             |
+| Document                                    | Description                                |
+|---------------------------------------------|--------------------------------------------|
+| [Getting Started](getting-started.md)       | Build, install, and run your first program |
+| [Zia Tutorial](zia-getting-started.md)      | Learn Zia by example                       |
+| [Zia Reference](zia-reference.md)           | Complete Zia language specification        |
+| [BASIC Tutorial](basic-language.md)         | Learn Viper BASIC by example               |
+| [Runtime Library](viperlib.md)              | Viper.* classes and methods reference      |
+| [IL Guide](il-guide.md)                     | Comprehensive IL specification             |
 
 ---
 
 ## Language Documentation
+
+### Zia
+
+- **[Zia Tutorial](zia-getting-started.md)** — Learn Zia with hands-on examples
+- **[Zia Reference](zia-reference.md)** — Complete language specification
 
 ### Viper BASIC
 

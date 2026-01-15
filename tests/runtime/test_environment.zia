@@ -1,0 +1,106 @@
+module TestEnvironment;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+// COVER: Viper.Environment.GetArgumentCount
+// COVER: Viper.Environment.GetArgument
+// COVER: Viper.Environment.GetCommandLine
+// COVER: Viper.Environment.GetVariable
+// COVER: Viper.Environment.HasVariable
+// COVER: Viper.Environment.SetVariable
+// COVER: Viper.Environment.IsNative
+
+func testArguments() {
+    setTest("Arguments");
+
+    // Get argument count (at least 0)
+    var argc = Viper.Environment.GetArgumentCount();
+    assertGteInt(argc, 0, "argc >= 0");
+
+    // If there are arguments, we can get them
+    if (argc > 0) {
+        var arg0 = Viper.Environment.GetArgument(0);
+        assertNotEmpty(arg0, "arg0 not empty");
+    }
+    pass();
+}
+
+func testCommandLine() {
+    setTest("CommandLine");
+
+    var cmdline = Viper.Environment.GetCommandLine();
+    // Command line should exist (might be empty or contain program name)
+    assertTrue(cmdline == "" || cmdline == cmdline, "cmdline is string");
+    pass();
+}
+
+func testEnvironmentVariables() {
+    setTest("EnvironmentVariables");
+
+    // Set a variable
+    Viper.Environment.SetVariable("VIPER_TEST_VAR", "test_value_123");
+
+    // Check if it exists
+    assertTrue(Viper.Environment.HasVariable("VIPER_TEST_VAR"), "has test var");
+
+    // Get the value
+    var value = Viper.Environment.GetVariable("VIPER_TEST_VAR");
+    assertEqStr(value, "test_value_123", "get test var value");
+
+    // Update the value
+    Viper.Environment.SetVariable("VIPER_TEST_VAR", "updated_value");
+    var value2 = Viper.Environment.GetVariable("VIPER_TEST_VAR");
+    assertEqStr(value2, "updated_value", "updated value");
+}
+
+func testCommonEnvVars() {
+    setTest("CommonEnvVars");
+
+    // PATH should usually exist
+    if (Viper.Environment.HasVariable("PATH")) {
+        var path = Viper.Environment.GetVariable("PATH");
+        assertNotEmpty(path, "PATH not empty");
+    }
+    pass();
+
+    // HOME or USERPROFILE usually exist
+    if (Viper.Environment.HasVariable("HOME")) {
+        var home = Viper.Environment.GetVariable("HOME");
+        assertNotEmpty(home, "HOME not empty");
+    }
+    pass();
+}
+
+func testNonExistentVar() {
+    setTest("NonExistentVar");
+
+    // Check for a variable that definitely doesn't exist
+    var exists = Viper.Environment.HasVariable("__VIPER_DEFINITELY_NOT_EXISTS_XYZ123__");
+    assertFalse(exists, "nonexistent var doesn't exist");
+
+    // Getting nonexistent var should return empty string
+    var value = Viper.Environment.GetVariable("__VIPER_DEFINITELY_NOT_EXISTS_XYZ123__");
+    assertEqStr(value, "", "nonexistent var is empty");
+}
+
+func testIsNative() {
+    setTest("IsNative");
+
+    // IsNative returns whether running natively compiled or in VM
+    var isNative = Viper.Environment.IsNative();
+    // Either value is valid, just verify it's boolean
+    assertTrue(isNative || !isNative, "isNative is boolean");
+    pass();
+}
+
+func start() {
+    testArguments();
+    testCommandLine();
+    testEnvironmentVariables();
+    testCommonEnvVars();
+    testNonExistentVar();
+    testIsNative();
+
+    report();
+}

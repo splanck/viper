@@ -1,0 +1,148 @@
+module TestMap;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+// Tests for map operations using Zia map syntax
+
+func testNewAndSet() {
+    setTest("NewAndSet");
+
+    var map = {};
+    assertTrue(map.count() == 0, "new map is empty");
+
+    map.set("key1", 100);
+    assertEqInt(map.count(), 1, "count after one set");
+    assertFalse(map.count() == 0, "map not empty after set");
+
+    map.set("key2", 200);
+    assertEqInt(map.count(), 2, "count after two sets");
+}
+
+func testGet() {
+    setTest("Get");
+
+    var map = {"number": 42, "other": 99};
+
+    assertEqInt(map.get("number"), 42, "get number");
+    assertEqInt(map.get("other"), 99, "get other");
+}
+
+func testGetOr() {
+    setTest("GetOr");
+
+    var map = {"exists": 100};
+
+    // Key exists
+    assertEqInt(map.getOr("exists", 999), 100, "getOr existing key");
+
+    // Key doesn't exist - returns default
+    assertEqInt(map.getOr("missing", 999), 999, "getOr missing key");
+}
+
+func testHas() {
+    setTest("Has");
+
+    var map = {"present": 1};
+
+    assertTrue(map.has("present"), "has existing key");
+    assertFalse(map.has("absent"), "has missing key");
+}
+
+func testRemove() {
+    setTest("Remove");
+
+    var map = {"key1": 1, "key2": 2};
+
+    assertEqInt(map.count(), 2, "count before remove");
+    assertTrue(map.has("key1"), "has key1 before remove");
+
+    var removed = map.remove("key1");
+    assertTrue(removed, "remove returns true");
+    assertEqInt(map.count(), 1, "count after remove");
+    assertFalse(map.has("key1"), "key1 removed");
+    assertTrue(map.has("key2"), "key2 still present");
+
+    // Remove non-existent key
+    var removed2 = map.remove("nonexistent");
+    assertFalse(removed2, "remove nonexistent returns false");
+}
+
+func testClear() {
+    setTest("Clear");
+
+    var map = {"a": 1, "b": 2, "c": 3};
+
+    assertEqInt(map.count(), 3, "count before clear");
+
+    map.clear();
+    assertEqInt(map.count(), 0, "count after clear");
+    assertTrue(map.count() == 0, "empty after clear");
+}
+
+func testOverwrite() {
+    setTest("Overwrite");
+
+    var map = {"key": 100};
+    assertEqInt(map.get("key"), 100, "initial value");
+
+    // Overwrite with new value
+    map.set("key", 200);
+    assertEqInt(map.get("key"), 200, "overwritten value");
+    assertEqInt(map.count(), 1, "count unchanged after overwrite");
+}
+
+func testSetIfMissing() {
+    setTest("SetIfMissing");
+
+    // Note: setIfMissing on empty map crashes compiler, so use non-empty map
+    var map = {"existing": 1};
+
+    // First time - key missing, should set
+    map.setIfMissing("key", 100);
+    assertEqInt(map.get("key"), 100, "value set");
+
+    // Second time - key exists, should not overwrite
+    map.setIfMissing("key", 999);
+    assertEqInt(map.get("key"), 100, "value unchanged");
+}
+
+func testKeysValues() {
+    setTest("KeysValues");
+
+    var map = {"a": 1, "b": 2, "c": 3};
+
+    // Just verify keys() and values() don't crash
+    var keys = map.keys();
+    var values = map.values();
+    assertTrue(true, "keys/values returned");
+}
+
+func testLiteralInit() {
+    setTest("LiteralInit");
+
+    // Empty map
+    var empty = {};
+    assertEqInt(empty.count(), 0, "empty map count");
+
+    // Map with string keys and int values
+    var ages = {"alice": 30, "bob": 25};
+    assertEqInt(ages.count(), 2, "literal map count");
+    assertEqInt(ages.get("alice"), 30, "literal alice");
+    assertEqInt(ages.get("bob"), 25, "literal bob");
+}
+
+func start() {
+    testNewAndSet();
+    testGet();
+    testGetOr();
+    testHas();
+    testRemove();
+    testClear();
+    testOverwrite();
+    testSetIfMissing();
+    testKeysValues();
+    testLiteralInit();
+
+    report();
+}

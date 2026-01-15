@@ -1,7 +1,7 @@
 // button.viper - Button UI control for Viper Paint
 module button;
 
-import "../config";
+bind "../config";
 
 // Button entity - clickable button with text
 entity Button {

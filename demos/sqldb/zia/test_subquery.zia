@@ -1,7 +1,7 @@
 // test_subquery.viper - Test subquery support
 module test_subquery;
 
-import "./executor";
+bind "./executor";
 
 Integer passed = 0;
 Integer failed = 0;

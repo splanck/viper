@@ -102,22 +102,111 @@ class VMContext
      */
     explicit VMContext(VM &vm) noexcept;
 
+    /// @brief Evaluates a value operand within the given stack frame.
+    ///
+    /// Resolves IL value operands (temporaries, immediates, block arguments)
+    /// to their concrete runtime values. For temporaries, looks up the value
+    /// in the frame's local slots. For immediates, returns the constant directly.
+    ///
+    /// @param fr The current execution frame containing local variable values.
+    /// @param value The IL value to evaluate.
+    /// @return The evaluated slot containing the runtime value.
     Slot eval(Frame &fr, const il::core::Value &value) const;
+
+    /// @brief Executes a single instruction step in the VM.
+    ///
+    /// Fetches and executes one IL instruction, advancing the instruction
+    /// pointer. Returns the result slot for instructions that produce values,
+    /// or nullopt for void-result instructions (stores, branches, etc.).
+    ///
+    /// @param state The current execution state (frame stack, IP, etc.).
+    /// @return The result value if the instruction produces one, nullopt otherwise.
     std::optional<Slot> stepOnce(VM::ExecState &state) const;
+
+    /// @brief Handles trap dispatch when an exception or error is raised.
+    ///
+    /// Called when a trap signal is generated during execution. Determines
+    /// whether there's an active exception handler to invoke, or if the trap
+    /// should propagate up the call stack.
+    ///
+    /// @param signal The trap dispatch signal containing trap details.
+    /// @param state The current execution state to potentially modify.
+    /// @return True if the trap was handled, false if it should propagate.
     bool handleTrapDispatch(const VM::TrapDispatchSignal &signal, VM::ExecState &state) const;
+
+    /// @brief Fetches the opcode of the next instruction to execute.
+    ///
+    /// Reads the opcode from the instruction at the current instruction pointer
+    /// in the execution state. Used by dispatch strategies to determine which
+    /// handler to invoke.
+    ///
+    /// @param state The current execution state with valid IP.
+    /// @return The opcode of the current instruction.
     il::core::Opcode fetchOpcode(VM::ExecState &state) const;
+
+    /// @brief Processes the result of inline instruction execution.
+    ///
+    /// After an instruction produces a result, this method stores it in the
+    /// appropriate frame slot and advances the instruction pointer. Handles
+    /// both value-producing and void instructions.
+    ///
+    /// @param state The execution state to update.
+    /// @param exec The result from instruction execution.
     void handleInlineResult(VM::ExecState &state, const VM::ExecResult &exec) const;
+
+    /// @brief Raises a fatal trap for unimplemented opcodes.
+    ///
+    /// Called when the VM encounters an opcode without a handler implementation.
+    /// This is a development/debugging aid that terminates execution with a
+    /// clear diagnostic message indicating which opcode is missing.
+    ///
+    /// @param opcode The unimplemented opcode that was encountered.
     [[noreturn]] void trapUnimplemented(il::core::Opcode opcode) const;
+
+    /// @brief Emits trace output for debugging/profiling instruction execution.
+    ///
+    /// When tracing is enabled, records the instruction being executed along
+    /// with relevant frame state (local values, etc.) to the configured
+    /// trace sink.
+    ///
+    /// @param instr The instruction about to be executed.
+    /// @param frame The current stack frame.
     void traceStep(const il::core::Instr &instr, Frame &frame) const;
+
+    /// @brief Executes a single opcode and returns the execution result.
+    ///
+    /// Core dispatch function that invokes the appropriate handler for the
+    /// given instruction. Updates the basic block and instruction pointer
+    /// for control flow instructions.
+    ///
+    /// @param frame The current stack frame for operand access.
+    /// @param instr The instruction to execute.
+    /// @param blocks Block map for control flow target resolution.
+    /// @param bb Current basic block (updated for branches).
+    /// @param ip Instruction pointer (updated after execution).
+    /// @return The execution result (value, continue, return, trap, etc.).
     VM::ExecResult executeOpcode(Frame &frame,
                                  const il::core::Instr &instr,
                                  const VM::BlockMap &blocks,
                                  const il::core::BasicBlock *&bb,
                                  size_t &ip) const;
+
+    /// @brief Clears the runtime's current context binding.
+    ///
+    /// Called during VM cleanup to ensure the C runtime's per-thread context
+    /// pointer doesn't reference a deallocated VM.
     void clearCurrentContext() const;
 
+    /// @brief Returns the trace sink for execution tracing output.
+    /// @return Reference to the VM's configured trace sink.
     TraceSink &traceSink() const noexcept;
+
+    /// @brief Returns the debug controller for breakpoint/stepping control.
+    /// @return Reference to the VM's debug controller.
     DebugCtrl &debugController() const noexcept;
+
+    /// @brief Returns the underlying VM instance.
+    /// @return Pointer to the bound VM.
     VM *vm() const noexcept;
 
   private:

@@ -1669,7 +1669,7 @@ Organize code into reusable units.
 // File: math_utils.zia
 module MathUtils;
 
-// Exported - visible to importers
+// Exported - visible to other modules
 export func square(x: f64) -> f64 {
     return x * x;
 }
@@ -1688,24 +1688,24 @@ export entity Calculator {
 }
 ```
 
-### Importing Modules
+### Binding Modules
 
 ```rust
-// Import entire module
-import MathUtils;
+// Bind entire module
+bind MathUtils;
 var result = MathUtils.square(5);
 
-// Import specific items
-import MathUtils.square;
-import MathUtils.Calculator;
+// Bind specific items
+bind MathUtils.square;
+bind MathUtils.Calculator;
 var result = square(5);
 
-// Import with alias
-import MathUtils as Math;
+// Bind with alias
+bind MathUtils as Math;
 var result = Math.square(5);
 
-// Import all exports
-import MathUtils.*;
+// Bind all exports
+bind MathUtils.*;
 var result = square(5);
 ```
 
@@ -1719,7 +1719,7 @@ export entity Circle { ... }
 export entity Rectangle { ... }
 
 // Usage
-import Graphics.Shapes.Circle;
+bind Graphics.Shapes.Circle;
 var c = Circle(10);
 ```
 
@@ -1902,7 +1902,7 @@ Built-in testing support.
 ### Test Syntax
 
 ```rust
-import Viper.Test;
+bind Viper.Test;
 
 test "addition works correctly" {
     assert 2 + 2 == 4;
@@ -2031,7 +2031,7 @@ Reserved words that cannot be used as identifiers.
 | `protected` | Protected access |
 | `internal` | Module-internal access |
 | `export` | Export from module |
-| `import` | Import into module |
+| `bind` | Bind another module |
 
 ### Value Keywords
 

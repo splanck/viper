@@ -4,48 +4,69 @@ Shared support and infrastructure used across the toolchain.
 
 Directories: `src/support/`, `src/common/`, `src/parse/`, `src/pass/`.
 
-## Source Management
+Last updated: 2026-01-15
 
-| File                      | Purpose                                         |
-|---------------------------|-------------------------------------------------|
-| `source_manager.hpp/cpp`  | Source file registration and path normalization |
-| `source_location.hpp/cpp` | Source location value type (file, line, column) |
+## Overview
 
-## Diagnostics
+- **Total source files**: 26 (.hpp/.cpp)
+  - support/: 19 files
+  - common/: 5 files
+  - parse/: 1 file
+  - pass/: 1 file
 
-| File                    | Purpose                                             |
-|-------------------------|-----------------------------------------------------|
-| `diagnostics.hpp/cpp`   | Diagnostic engine: collect, count, print messages   |
-| `diag_expected.hpp/cpp` | Expected/diagnostic wrapper for result-style errors |
-| `diag_capture.hpp/cpp`  | Diagnostic buffer capture for tests                 |
+## Source Management (`src/support/`)
 
-## Memory
+| File                  | Purpose                                         |
+|-----------------------|-------------------------------------------------|
+| `source_manager.cpp`  | Source file registration implementation         |
+| `source_manager.hpp`  | Source file registration and path normalization |
+| `source_location.cpp` | Source location implementation                  |
+| `source_location.hpp` | Source location value type (file, line, column) |
 
-| File            | Purpose                      |
-|-----------------|------------------------------|
-| `arena.hpp/cpp` | Bump-pointer arena allocator |
+## Diagnostics (`src/support/`)
 
-## String Interning
+| File                 | Purpose                                             |
+|----------------------|-----------------------------------------------------|
+| `diagnostics.cpp`    | Diagnostic engine implementation                    |
+| `diagnostics.hpp`    | Diagnostic engine: collect, count, print messages   |
+| `diag_expected.cpp`  | Expected/diagnostic wrapper implementation          |
+| `diag_expected.hpp`  | Expected/diagnostic wrapper for result-style errors |
+| `diag_capture.cpp`   | Diagnostic buffer capture implementation            |
+| `diag_capture.hpp`   | Diagnostic buffer capture for tests                 |
 
-| File                      | Purpose                               |
-|---------------------------|---------------------------------------|
-| `string_interner.hpp/cpp` | String deduplication and symbol table |
-| `symbol.hpp/cpp`          | Interned symbol identifier type       |
+## Memory (`src/support/`)
 
-## Configuration
+| File        | Purpose                           |
+|-------------|-----------------------------------|
+| `arena.cpp` | Bump-pointer arena implementation |
+| `arena.hpp` | Bump-pointer arena allocator      |
 
-| File          | Purpose                                 |
-|---------------|-----------------------------------------|
-| `options.hpp` | Global compile-time options and toggles |
-| `result.hpp`  | Minimal Result<T> helper                |
+## String Interning (`src/support/`)
+
+| File                  | Purpose                               |
+|-----------------------|---------------------------------------|
+| `string_interner.cpp` | String deduplication implementation   |
+| `string_interner.hpp` | String deduplication and symbol table |
+| `symbol.cpp`          | Interned symbol implementation        |
+| `symbol.hpp`          | Interned symbol identifier type       |
+
+## Configuration (`src/support/`)
+
+| File              | Purpose                                 |
+|-------------------|-----------------------------------------|
+| `options.hpp`     | Global compile-time options and toggles |
+| `result.hpp`      | Minimal Result<T> helper                |
+| `small_vector.hpp`| Small-buffer-optimized vector type      |
 
 ## Common Utilities (`src/common/`)
 
 | File                 | Purpose                                                |
 |----------------------|--------------------------------------------------------|
-| `Mangle.hpp/cpp`     | Name mangling helpers used by frontends/codegen        |
+| `Mangle.cpp`         | Name mangling implementation                           |
+| `Mangle.hpp`         | Name mangling helpers used by frontends/codegen        |
 | `IntegerHelpers.hpp` | Integer helpers (width/signedness, overflow policies)  |
-| `RunProcess.hpp/cpp` | Test helper to spawn subprocesses with env/dir control |
+| `RunProcess.cpp`     | Test helper to spawn subprocesses implementation       |
+| `RunProcess.hpp`     | Test helper to spawn subprocesses with env/dir control |
 
 ## Parsing Helpers (`src/parse/`)
 
@@ -57,4 +78,4 @@ Directories: `src/support/`, `src/common/`, `src/parse/`, `src/pass/`.
 
 | File              | Purpose                                                                         |
 |-------------------|---------------------------------------------------------------------------------|
-| `PassManager.cpp` | Generic pass manager façade; public API at `include/viper/pass/PassManager.hpp` |
+| `PassManager.cpp` | Generic pass manager facade; public API at `include/viper/pass/PassManager.hpp` |

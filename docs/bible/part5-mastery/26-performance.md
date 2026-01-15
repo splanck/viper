@@ -94,7 +94,7 @@ Your intuition about what's slow is probably wrong. Programmers routinely spend 
 The simplest way to measure is with a stopwatch:
 
 ```rust
-import Viper.Time;
+bind Viper.Time;
 
 func start() {
     var startTime = Time.millis();
@@ -113,7 +113,7 @@ This tells you how long `doExpensiveWork` takes. But what if `doExpensiveWork` c
 You can time individual sections:
 
 ```rust
-import Viper.Time;
+bind Viper.Time;
 
 func processData(data: [Record]) {
     var t0 = Time.millis();
@@ -155,7 +155,7 @@ Now you know: validation is the bottleneck. Optimizing parsing or computation wo
 Let's make timing reusable:
 
 ```rust
-import Viper.Time;
+bind Viper.Time;
 
 func timed<T>(name: string, work: func() -> T) -> T {
     var start = Time.nanos();
@@ -490,7 +490,7 @@ With 1,000,000 items: ~1,000,000 operations (very fast)
 Let's benchmark all three:
 
 ```rust
-import Viper.Time;
+bind Viper.Time;
 
 func start() {
     var sizes = [1000, 10000, 100000];
@@ -1173,7 +1173,7 @@ When comparing approaches, benchmark carefully. Computers are tricky; many thing
 ### A Proper Benchmark Function
 
 ```rust
-import Viper.Time;
+bind Viper.Time;
 
 func benchmark(name: string, iterations: i64, work: func()) {
     // Warm up: let JIT/caches stabilize
@@ -1341,7 +1341,7 @@ When debugging performance, look for these usual suspects:
 
 **Zia**
 ```rust
-import Viper.Time;
+bind Viper.Time;
 
 func benchmark(name: string, work: func()) {
     var start = Time.millis();

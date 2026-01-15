@@ -3,9 +3,9 @@
 
 module stmt;
 
-import "./types";
-import "./schema";
-import "./expr";
+bind "./types";
+bind "./schema";
+bind "./expr";
 
 //=============================================================================
 // STATEMENT KIND CONSTANTS

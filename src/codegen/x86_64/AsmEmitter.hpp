@@ -96,30 +96,100 @@ class AsmEmitter
   private:
     RoDataPool *pool_{nullptr};
 
+    /// \brief Emit assembly for a single basic block including its label.
+    /// \param os Output stream for AT&T syntax assembly.
+    /// \param block Machine basic block to emit.
+    /// \param target Target information for register naming.
     static void emitBlock(std::ostream &os, const MBasicBlock &block, const TargetInfo &target);
+
+    /// \brief Emit assembly for a single machine instruction.
+    /// \param os Output stream for AT&T syntax assembly.
+    /// \param instr Machine instruction to emit.
+    /// \param target Target information for register naming.
     static void emitInstruction(std::ostream &os, const MInstr &instr, const TargetInfo &target);
+
+    /// \brief Emit instruction text from a matched encoding row.
+    /// \param row Encoding specification describing mnemonic and operand ordering.
+    /// \param operands Instruction operands to format.
+    /// \param os Output stream for assembly text.
+    /// \param target Target information for register naming.
     static void emit_from_row(const EncodingRow &row,
                               std::span<const Operand> operands,
                               std::ostream &os,
                               const TargetInfo &target);
 
+    /// \brief Format an operand for AT&T assembly output.
+    /// \param operand Operand to format (reg, imm, mem, or label).
+    /// \param target Target information for register naming.
+    /// \return Formatted string (e.g., "%rax", "$42", "8(%rbp)").
     [[nodiscard]] static std::string formatOperand(const Operand &operand,
                                                    const TargetInfo &target);
+
+    /// \brief Format a 64-bit register operand.
+    /// \param reg Register operand.
+    /// \param target Target information for register naming.
+    /// \return AT&T format register (e.g., "%rax", "%r8").
     [[nodiscard]] static std::string formatReg(const OpReg &reg, const TargetInfo &target);
+
+    /// \brief Format a register as its 8-bit low byte variant.
+    /// \param reg Register operand.
+    /// \param target Target information for register naming.
+    /// \return AT&T format 8-bit register (e.g., "%al", "%r8b").
     [[nodiscard]] static std::string formatReg8(const OpReg &reg, const TargetInfo &target);
+
+    /// \brief Format a register as its 32-bit variant.
+    /// \param reg Register operand.
+    /// \param target Target information for register naming.
+    /// \return AT&T format 32-bit register (e.g., "%eax", "%r8d").
     [[nodiscard]] static std::string formatReg32(const OpReg &reg, const TargetInfo &target);
+
+    /// \brief Format an immediate operand.
+    /// \param imm Immediate operand containing integer value.
+    /// \return AT&T format immediate (e.g., "$42", "$-1").
     [[nodiscard]] static std::string formatImm(const OpImm &imm);
+
+    /// \brief Format a memory operand with base+displacement addressing.
+    /// \param mem Memory operand containing base, index, scale, and displacement.
+    /// \param target Target information for register naming.
+    /// \return AT&T format memory reference (e.g., "8(%rbp)", "(%rax,%rcx,4)").
     [[nodiscard]] static std::string formatMem(const OpMem &mem, const TargetInfo &target);
+
+    /// \brief Format a symbolic label operand.
+    /// \param label Label operand containing symbol name.
+    /// \return Label string for use in jumps/calls.
     [[nodiscard]] static std::string formatLabel(const OpLabel &label);
+
+    /// \brief Format a RIP-relative label operand.
+    /// \param label RIP-relative label operand.
+    /// \return RIP-relative format (e.g., "_symbol(%rip)").
     [[nodiscard]] static std::string formatRipLabel(const OpRipLabel &label);
+
+    /// \brief Format a shift/rotate count operand.
+    /// \details Handles both immediate counts and %cl register counts.
+    /// \param operand Shift count (immediate or register).
+    /// \param target Target information for register naming.
+    /// \return Formatted shift count (e.g., "$3", "%cl").
     [[nodiscard]] static std::string formatShiftCount(const Operand &operand,
                                                       const TargetInfo &target);
 
+    /// \brief Format the source operand for LEA instructions.
+    /// \param operand LEA source (typically memory-style addressing).
+    /// \param target Target information for register naming.
+    /// \return Formatted LEA source address expression.
     [[nodiscard]] static std::string formatLeaSource(const Operand &operand,
                                                      const TargetInfo &target);
+
+    /// \brief Format a CALL target operand.
+    /// \details Handles direct symbols, indirect registers, and memory targets.
+    /// \param operand Call target (label, register, or memory).
+    /// \param target Target information for register naming.
+    /// \return Formatted call target (e.g., "_func", "*%rax").
     [[nodiscard]] static std::string formatCallTarget(const Operand &operand,
                                                       const TargetInfo &target);
 
+    /// \brief Get the condition code suffix for Jcc/SETcc instructions.
+    /// \param code Condition code value (0=EQ, 1=NE, etc.).
+    /// \return Condition suffix string (e.g., "e", "ne", "l", "g").
     [[nodiscard]] static std::string_view conditionSuffix(std::int64_t code) noexcept;
 };
 

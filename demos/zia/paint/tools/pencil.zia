@@ -1,9 +1,9 @@
 // pencil.viper - Pencil tool for Viper Paint
 module pencil;
 
-import "../config";
-import "../canvas";
-import "../colors";
+bind "../config";
+bind "../canvas";
+bind "../colors";
 
 // PencilTool - draws single pixel lines
 entity PencilTool {

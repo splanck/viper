@@ -1,0 +1,105 @@
+module TestCollections;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+// Note: Advanced collections (Seq, Stack, Queue, Ring, Bag, Heap, TreeMap)
+// are not directly accessible in Zia syntax. They can only be used from BASIC.
+// This test verifies that lists and maps (which ARE available in Zia) work correctly.
+//
+// Note: There's a compiler bug where indexing a list that was initialized empty
+// and had items added causes a crash. Tests work around this by initializing
+// lists with values.
+
+func testListWithValues() {
+    setTest("ListWithValues");
+
+    // Initialize list with values
+    var items = [1, 2, 3];
+    assertEqInt(items.count(), 3, "items count");
+    assertEqInt(items[0], 1, "first item");
+    assertEqInt(items[2], 3, "last item");
+
+    // Modify
+    items.set(1, 20);
+    assertEqInt(items[1], 20, "after set");
+
+    // Add more
+    items.add(4);
+    assertEqInt(items.count(), 4, "after add");
+
+    // Remove
+    items.removeAt(0);
+    assertEqInt(items.count(), 3, "after remove");
+    assertEqInt(items[0], 20, "new first");
+}
+
+func testEmptyList() {
+    setTest("EmptyList");
+
+    var items = [];
+    assertEqInt(items.count(), 0, "empty list");
+
+    items.add(1);
+    items.add(2);
+    items.add(3);
+    assertEqInt(items.count(), 3, "after adds");
+
+    // Clear
+    items.clear();
+    assertEqInt(items.count(), 0, "after clear");
+}
+
+func testMapAsCollection() {
+    setTest("MapAsCollection");
+
+    var data = {"a": 1, "b": 2, "c": 3};
+    assertEqInt(data.count(), 3, "map count");
+
+    // Access
+    assertEqInt(data.get("a"), 1, "get a");
+    assertEqInt(data.get("b"), 2, "get b");
+
+    // Check existence
+    assertTrue(data.has("a"), "has a");
+    assertFalse(data.has("x"), "not has x");
+
+    // GetOr with default
+    assertEqInt(data.getOr("x", 99), 99, "getOr default");
+    assertEqInt(data.getOr("a", 99), 1, "getOr existing");
+
+    // Remove
+    assertTrue(data.remove("b"), "remove existing");
+    assertFalse(data.has("b"), "b removed");
+    assertEqInt(data.count(), 2, "count after remove");
+}
+
+func testNestedLists() {
+    setTest("NestedLists");
+
+    // List of lists
+    var matrix = [[1, 2], [3, 4], [5, 6]];
+    assertEqInt(matrix.count(), 3, "matrix rows");
+    assertEqInt(matrix[0][0], 1, "element [0][0]");
+    assertEqInt(matrix[1][1], 4, "element [1][1]");
+    assertEqInt(matrix[2][0], 5, "element [2][0]");
+}
+
+func testNestedMapList() {
+    setTest("NestedMapList");
+
+    // Map with list values
+    var groups = {"evens": [2, 4, 6], "odds": [1, 3, 5]};
+    assertEqInt(groups.get("evens")[0], 2, "evens first");
+    assertEqInt(groups.get("odds")[2], 5, "odds third");
+}
+
+func start() {
+    testListWithValues();
+    testEmptyList();
+    testMapAsCollection();
+    testNestedLists();
+    testNestedMapList();
+
+    report();
+}

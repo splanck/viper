@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-updated: 2025-11-13
+last-updated: 2026-01-15
 ---
 
 # Viper IL — Reference
@@ -620,6 +620,13 @@ resume.same %tok
 ```il
 %fsum = sitofp %sum2
 %fn = sitofp %n2
+```
+
+**`fptosi`** — Convert floating-point to signed integer (traps on NaN or overflow).
+
+```il
+%i = fptosi %f
+%t0 = fptosi 3.7
 ```
 
 **`target`** — Specify target architecture or platform.

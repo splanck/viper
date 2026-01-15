@@ -200,7 +200,7 @@ Color.MAGENTA   // (255, 0, 255)
 Now that we understand the concepts, let's write code. Everything starts with creating a canvas — a window where we can draw:
 
 ```rust
-import Viper.Graphics;
+bind Viper.Graphics;
 
 func start() {
     var canvas = Canvas(800, 600);  // 800 pixels wide, 600 tall
@@ -436,7 +436,7 @@ Let's draw a simple scene — a house with the sun — and trace through every s
 ```rust
 module DrawingDemo;
 
-import Viper.Graphics;
+bind Viper.Graphics;
 
 func start() {
     var canvas = Canvas(640, 480);
@@ -574,7 +574,7 @@ Let's see the game loop in action:
 ```rust
 module BouncingBall;
 
-import Viper.Graphics;
+bind Viper.Graphics;
 
 func start() {
     var canvas = Canvas(800, 600);
@@ -885,7 +885,7 @@ Let's put everything together into a reusable structure:
 ```rust
 module GameFramework;
 
-import Viper.Graphics;
+bind Viper.Graphics;
 
 value Vec2 {
     x: f64;
@@ -1226,7 +1226,7 @@ canvas.drawText(405, 315, "(400,300)");
 
 **Zia**
 ```rust
-import Viper.Graphics;
+bind Viper.Graphics;
 
 var canvas = Canvas(800, 600);
 canvas.setColor(Color.RED);

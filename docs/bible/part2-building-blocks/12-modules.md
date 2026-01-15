@@ -96,7 +96,7 @@ func cube(x: f64) -> f64 {
 final PI = 3.14159265358979;
 ```
 
-This module provides math utilities. Other code can *import* this module to use its functions and constants.
+This module provides math utilities. Other code can *bind* this module to use its functions and constants.
 
 The `module MathUtils;` declaration at the top gives this module a name. This name becomes important when other files want to use this code.
 
@@ -125,9 +125,9 @@ Modules provide *namespaces*. A namespace is like a last name for your functions
 
 ```rust
 // With modules: clean, qualified names
-import Math;
-import List;
-import Database;
+bind Math;
+bind List;
+bind Database;
 
 Math.add(5, 3);           // Adds numbers
 List.add(myList, 10);     // Adds to list
@@ -138,15 +138,15 @@ Each module creates its own namespace. Functions inside `Math` don't conflict wi
 
 ---
 
-## Importing Modules
+## Binding Modules
 
-To use code from another module, you import it:
+To use code from another module, you bind it:
 
 ```rust
 // file: main.zia
 module Main;
 
-import MathUtils;
+bind MathUtils;
 
 func start() {
     var x = 5.0;
@@ -156,22 +156,22 @@ func start() {
 }
 ```
 
-The `import MathUtils` statement makes that module's contents available. You access them with the module name prefix: `MathUtils.square`.
+The `bind MathUtils` statement makes that module's contents available. You access them with the module name prefix: `MathUtils.square`.
 
 This prefix might seem annoying at first, but it's actually helpful. When you read `MathUtils.square(x)`, you know exactly where that function comes from. You don't have to wonder "which `square` function is this?" The module name tells you.
 
 ---
 
-## Different Ways to Import
+## Different Ways to Bind
 
-Zia provides several import styles for different situations.
+Zia provides several bind styles for different situations.
 
-### Import the Module
+### Bind the Module
 
-The basic import brings in the whole module:
+The basic bind brings in the whole module:
 
 ```rust
-import MathUtils;
+bind MathUtils;
 
 // Use with prefix
 var area = MathUtils.PI * MathUtils.square(radius);
@@ -179,12 +179,12 @@ var area = MathUtils.PI * MathUtils.square(radius);
 
 This is the safest approach. Names are always fully qualified, so there's no confusion.
 
-### Import Specific Items
+### Bind Specific Items
 
-If you only need certain items, import them directly:
+If you only need certain items, bind them directly:
 
 ```rust
-import MathUtils { square, PI };
+bind MathUtils { square, PI };
 
 func start() {
     Viper.Terminal.Say(square(5.0));  // No prefix needed
@@ -192,14 +192,14 @@ func start() {
 }
 ```
 
-This imports only `square` and `PI`, and you can use them without the module prefix. It's convenient when you use certain functions frequently, but be careful — if another module has a `square` function, you'll get a conflict.
+This binds only `square` and `PI`, and you can use them without the module prefix. It's convenient when you use certain functions frequently, but be careful — if another module has a `square` function, you'll get a conflict.
 
-### Import with Aliases
+### Bind with Aliases
 
-Sometimes you want to rename an import. Maybe the name is too long, or maybe it conflicts with something else:
+Sometimes you want to rename a binding. Maybe the name is too long, or maybe it conflicts with something else:
 
 ```rust
-import MathUtils { square as sq, PI as pi };
+bind MathUtils { square as sq, PI as pi };
 
 func start() {
     Viper.Terminal.Say(sq(5.0));
@@ -210,7 +210,7 @@ func start() {
 You can also alias the entire module:
 
 ```rust
-import MathUtils as M;
+bind MathUtils as M;
 
 func start() {
     Viper.Terminal.Say(M.square(5.0));
@@ -224,12 +224,12 @@ This is useful when module names are long or when two modules have the same name
 
 Here's a practical guide:
 
-**Use full module imports** when:
+**Use full module binds** when:
 - You use many items from the module
 - Clarity is more important than brevity
 - The module name provides useful context
 
-**Use specific imports** when:
+**Use specific binds** when:
 - You use only one or two items
 - You use them very frequently
 - The item names are clear without context
@@ -242,18 +242,18 @@ Here's a practical guide:
 Real-world example:
 
 ```rust
-// Good: Full import when using many functions
-import Viper.Math;
+// Good: Full bind when using many functions
+bind Viper.Math;
 var x = Viper.Math.sqrt(a) + Viper.Math.sin(b) + Viper.Math.cos(c);
 
-// Good: Specific import for frequently used items
-import Viper.Terminal { Say, ReadLine };
+// Good: Specific bind for frequently used items
+bind Viper.Terminal { Say, ReadLine };
 Say("Enter name: ");
 var name = ReadLine();
 
 // Good: Alias for clarity
-import Physics.Collision as Collision;
-import UI.Collision as UICollision;  // Different collision system
+bind Physics.Collision as Collision;
+bind UI.Collision as UICollision;  // Different collision system
 ```
 
 ---
@@ -291,7 +291,7 @@ The `count` variable and `reset` function are internal implementation details. O
 
 ```rust
 // file: main.zia
-import Counter;
+bind Counter;
 
 func start() {
     Counter.increment();
@@ -384,8 +384,8 @@ my_project/
 Modules in subdirectories use dot notation:
 
 ```rust
-import utils.math;     // Import utils/math.zia
-import utils.random;   // Import utils/random.zia
+bind utils.math;     // Bind utils/math.zia
+bind utils.random;   // Bind utils/random.zia
 
 func start() {
     var x = utils.math.square(5.0);
@@ -458,37 +458,37 @@ Choose the structure that makes sense for your project. The goal is that anyone 
 Viper comes with a rich standard library organized into modules:
 
 ```rust
-import Viper.Terminal;   // Terminal I/O
-import Viper.File;       // File operations
-import Viper.Math;       // Mathematical functions
-import Viper.Parse;      // String parsing
-import Viper.Fmt;        // Formatting
-import Viper.Time;       // Date and time
-import Viper.Random;     // Random numbers
+bind Viper.Terminal;   // Terminal I/O
+bind Viper.File;       // File operations
+bind Viper.Math;       // Mathematical functions
+bind Viper.Parse;      // String parsing
+bind Viper.Fmt;        // Formatting
+bind Viper.Time;       // Date and time
+bind Viper.Random;     // Random numbers
 ```
 
 You've been using `Viper.Terminal.Say()` all along — that's accessing the `Say` function from the `Viper.Terminal` module.
 
-The standard library is pre-imported for convenience, so you don't need explicit import statements for common modules. But understanding that they're modules helps you know where to look for functionality. Need to work with time? Check `Viper.Time`. Need to format numbers? Check `Viper.Fmt`.
+The standard library is pre-bound for convenience, so you don't need explicit bind statements for common modules. But understanding that they're modules helps you know where to look for functionality. Need to work with time? Check `Viper.Time`. Need to format numbers? Check `Viper.Fmt`.
 
 ---
 
 ## Module Dependencies
 
-Modules can import other modules, creating a dependency graph:
+Modules can bind other modules, creating a dependency graph:
 
 ```
 main.zia
-    └── imports game.zia
-        ├── imports player.zia
-        │   └── imports physics.zia
-        └── imports enemy.zia
-            └── imports physics.zia
+    └── binds game.zia
+        ├── binds player.zia
+        │   └── binds physics.zia
+        └── binds enemy.zia
+            └── binds physics.zia
 ```
 
-Both `player` and `enemy` import `physics`. That's fine — each gets access to the same physics code. The physics module is only loaded once; both modules share it.
+Both `player` and `enemy` bind `physics`. That's fine — each gets access to the same physics code. The physics module is only loaded once; both modules share it.
 
-This is normal and expected. When multiple modules need the same functionality, they should import the same shared module rather than duplicating code.
+This is normal and expected. When multiple modules need the same functionality, they should bind the same shared module rather than duplicating code.
 
 ### Understanding Dependencies
 
@@ -509,12 +509,12 @@ This is called a *dependency hierarchy*, and it's what makes large programs mana
 
 ## Circular Dependencies: The Tangled Web
 
-There's one pattern you must avoid: circular dependencies. This happens when A imports B and B imports A.
+There's one pattern you must avoid: circular dependencies. This happens when A binds B and B binds A.
 
 ```rust
 // player.zia
 module Player;
-import Enemy;  // Player needs to know about enemies
+bind Enemy;  // Player needs to know about enemies
 
 export func attackNearestEnemy() {
     var nearest = Enemy.findNearest(position);
@@ -523,7 +523,7 @@ export func attackNearestEnemy() {
 
 // enemy.zia
 module Enemy;
-import Player;  // Enemy needs to know about player
+bind Player;  // Enemy needs to know about player
 
 export func chasePlayer() {
     var target = Player.getPosition();  // Needs player position
@@ -531,7 +531,7 @@ export func chasePlayer() {
 }
 ```
 
-This looks reasonable. Players need to know about enemies to attack them. Enemies need to know about the player to chase them. But it creates a circle: Player imports Enemy, Enemy imports Player.
+This looks reasonable. Players need to know about enemies to attack them. Enemies need to know about the player to chase them. But it creates a circle: Player binds Enemy, Enemy binds Player.
 
 ### Why Circular Dependencies Are Bad
 
@@ -558,7 +558,7 @@ export value Vec2 {
 
 // player.zia
 module Player;
-import Position;
+bind Position;
 
 var position: Position.Vec2;
 
@@ -568,8 +568,8 @@ export func getPosition() -> Position.Vec2 {
 
 // enemy.zia
 module Enemy;
-import Position;
-import Player;  // Now only enemy imports player, not vice versa
+bind Position;
+bind Player;  // Now only enemy binds player, not vice versa
 
 export func chasePlayer() {
     var target = Player.getPosition();
@@ -591,7 +591,7 @@ export interface ITarget {
 
 // enemy.zia
 module Enemy;
-import Target;
+bind Target;
 
 export func chase(target: Target.ITarget) {
     var pos = target.getPosition();
@@ -621,25 +621,25 @@ How do you know if a module is doing too much? If you can't describe what it doe
 
 ### Minimize Dependencies
 
-Every import creates a coupling. The more modules you import, the more you depend on, and the harder changes become.
+Every bind creates a coupling. The more modules you bind, the more you depend on, and the harder changes become.
 
-Ask yourself: "Does this module really need that import?" Sometimes you import a module for one function that you could easily write yourself. Sometimes you import a module for a type that could be passed in instead.
+Ask yourself: "Does this module really need that binding?" Sometimes you bind a module for one function that you could easily write yourself. Sometimes you bind a module for a type that could be passed in instead.
 
 ```rust
-// High dependency: imports many modules
+// High dependency: binds many modules
 module Report;
-import Database;
-import Formatter;
-import Email;
-import Logger;
-import Config;
+bind Database;
+bind Formatter;
+bind Email;
+bind Logger;
+bind Config;
 
 // Lower dependency: receives what it needs
 module Report;
 
 export func generate(data: [Record], format: Formatter) -> string {
-    // No database import — data is passed in
-    // No email import — report is returned, caller sends it
+    // No database binding — data is passed in
+    // No email binding — report is returned, caller sends it
     // ...
 }
 ```
@@ -742,7 +742,7 @@ export func normalize(v: Vec2) -> Vec2 {
 ```rust
 module Player;
 
-import Vec2;
+bind Vec2;
 
 export value Player {
     name: string;
@@ -819,7 +819,7 @@ export func addScore(player: Player, points: i64) -> Player {
 ```rust
 module Enemy;
 
-import Vec2;
+bind Vec2;
 
 export value Enemy {
     position: Vec2.Vec2;
@@ -852,9 +852,9 @@ export func moveToward(enemy: Enemy, target: Vec2.Vec2) -> Enemy {
 ```rust
 module Main;
 
-import Vec2;
-import Player;
-import Enemy;
+bind Vec2;
+bind Player;
+bind Enemy;
 
 func start() {
     Viper.Terminal.Say("=== Modular Game Demo ===");
@@ -899,11 +899,11 @@ Now each concept lives in its own file. The dependency graph is clean:
 
 ```
 main.zia
-├── imports Vec2
-├── imports Player
-│   └── imports Vec2
-└── imports Enemy
-    └── imports Vec2
+├── binds Vec2
+├── binds Player
+│   └── binds Vec2
+└── binds Enemy
+    └── binds Vec2
 ```
 
 You can work on player logic without touching enemy code. You can test `Vec2` in isolation. The main file is short and focused on game flow. If you want to add items, you create a new `item.zia` module — no existing code needs to change.
@@ -925,10 +925,10 @@ string_utils/
 └── formatting.zia        # Output: padLeft, truncate, etc.
 ```
 
-Users import `string_utils` and get a clean, organized API:
+Users bind `string_utils` and get a clean, organized API:
 
 ```rust
-import string_utils;
+bind string_utils;
 
 var email = "test@example.com";
 if string_utils.validation.isEmail(email) {
@@ -1019,8 +1019,8 @@ One of the biggest benefits of good module design is testability. When code is p
 
 ```rust
 // vec2_test.zia
-import Vec2;
-import Viper.Test;
+bind Vec2;
+bind Viper.Test;
 
 test "add combines vectors" {
     var a = Vec2.create(1.0, 2.0);
@@ -1100,10 +1100,10 @@ test "containsAt detects @" {
 module MyModule;
 export func hello() { ... }
 
-// Importing
-import MyModule;
-import MyModule { hello };
-import OtherModule { something as alias };
+// Binding
+bind MyModule;
+bind MyModule { hello };
+bind OtherModule { something as alias };
 ```
 
 **BASIC**
@@ -1195,11 +1195,11 @@ Split it up! Authentication, UI, email, payments, and reporting are different co
 ### Circular Dependencies
 
 ```rust
-// Bad: A imports B, B imports A
+// Bad: A binds B, B binds A
 // order.zia
-import Customer;  // Order needs Customer
+bind Customer;  // Order needs Customer
 // customer.zia
-import Order;     // Customer needs Order
+bind Order;     // Customer needs Order
 ```
 
 ```rust
@@ -1209,31 +1209,31 @@ export value OrderSummary { ... }
 export value CustomerInfo { ... }
 
 // order.zia
-import types;
+bind types;
 // Uses CustomerInfo, doesn't need full Customer module
 
 // customer.zia
-import types;
+bind types;
 // Uses OrderSummary, doesn't need full Order module
 ```
 
-### Import Pollution
+### Bind Pollution
 
 ```rust
-// Bad: Importing everything unqualified
-import MathUtils { * };  // Brings ALL names into scope
-import StringUtils { * };
-import FileUtils { * };
+// Bad: Binding everything unqualified
+bind MathUtils { * };  // Brings ALL names into scope
+bind StringUtils { * };
+bind FileUtils { * };
 
 // Now you have hundreds of unqualified names
 // Which module does "format" come from? Who knows!
 ```
 
 ```rust
-// Good: Import modules, use qualified names
-import MathUtils;
-import StringUtils;
-import FileUtils;
+// Good: Bind modules, use qualified names
+bind MathUtils;
+bind StringUtils;
+bind FileUtils;
 
 var x = MathUtils.sqrt(2);
 var s = StringUtils.format("{}", x);
@@ -1269,14 +1269,14 @@ export func divide(a: i64, b: i64) -> i64 { return a / b; }
 
 - Modules organize code into separate, reusable files
 - `module Name;` declares a module
-- `import ModuleName;` brings in another module
-- `import ModuleName { item };` imports specific items
-- `import ModuleName { item as alias };` imports with renaming
+- `bind ModuleName;` brings in another module
+- `bind ModuleName { item };` binds specific items
+- `bind ModuleName { item as alias };` binds with renaming
 - `export` marks functions and value types as public
 - Items without `export` are private (internal only)
 - Modules create namespaces, preventing name collisions
 - The standard library is organized into modules
-- Dependencies flow one direction — avoid circular imports
+- Dependencies flow one direction — avoid circular bindings
 - Good module design means:
   - One concept per module
   - Minimal public interfaces
@@ -1290,7 +1290,7 @@ export func divide(a: i64, b: i64) -> i64 { return a / b; }
 
 **Exercise 12.1**: Create a `StringUtils` module with functions `repeat(s, n)` (repeat string n times) and `reverse(s)` (reverse a string). Export only these functions, keeping any helpers private. Use it from another file.
 
-**Exercise 12.2**: Split the calculator from Chapter 10 into modules: one for parsing input, one for calculations, one for display. Make sure the dependencies flow in one direction (display imports calculations, calculations imports parsing, but not the reverse).
+**Exercise 12.2**: Split the calculator from Chapter 10 into modules: one for parsing input, one for calculations, one for display. Make sure the dependencies flow in one direction (display binds calculations, calculations binds parsing, but not the reverse).
 
 **Exercise 12.3**: Create a `Constants` module with mathematical and physical constants (PI, E, SPEED_OF_LIGHT, GRAVITY, etc.). Mark them all as `final` and export them.
 

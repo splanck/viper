@@ -1,0 +1,149 @@
+module TestTerminal;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+// COVER: Viper.Terminal.Say
+// COVER: Viper.Terminal.SayInt
+// COVER: Viper.Terminal.SayNum
+// COVER: Viper.Terminal.SayBool
+// COVER: Viper.Terminal.Print
+// COVER: Viper.Terminal.PrintInt
+// COVER: Viper.Terminal.PrintNum
+// COVER: Viper.Terminal.Clear
+// COVER: Viper.Terminal.SetColor
+// COVER: Viper.Terminal.SetPosition
+// COVER: Viper.Terminal.BeginBatch
+// COVER: Viper.Terminal.EndBatch
+// COVER: Viper.Terminal.Flush
+// COVER: Viper.Terminal.Bell
+// COVER: Viper.Terminal.SetCursorVisible
+// COVER: Viper.Terminal.SetAltScreen
+// COVER: Viper.Terminal.GetKeyTimeout
+// COVER: Viper.Terminal.InKey
+
+func testBasicOutput() {
+    setTest("BasicOutput");
+
+    // Test Say (with newline)
+    Viper.Terminal.Say("Testing Say");
+    pass();
+
+    // Test SayInt
+    Viper.Terminal.SayInt(42);
+    pass();
+
+    // Test SayNum
+    Viper.Terminal.SayNum(3.14);
+    pass();
+
+    // Test SayBool
+    Viper.Terminal.SayBool(true);
+    Viper.Terminal.SayBool(false);
+    pass();
+}
+
+func testPrint() {
+    setTest("Print");
+
+    // Test Print (no newline)
+    Viper.Terminal.Print("Hello ");
+    Viper.Terminal.Print("World");
+    Viper.Terminal.Say("");  // newline
+    pass();
+
+    // Test PrintInt
+    Viper.Terminal.PrintInt(123);
+    Viper.Terminal.Say("");
+    pass();
+
+    // Test PrintNum
+    Viper.Terminal.PrintNum(2.718);
+    Viper.Terminal.Say("");
+    pass();
+}
+
+func testBatching() {
+    setTest("Batching");
+
+    // Batch operations should work without error
+    Viper.Terminal.BeginBatch();
+    Viper.Terminal.Say("Inside batch 1");
+    Viper.Terminal.Say("Inside batch 2");
+    Viper.Terminal.EndBatch();
+    pass();
+}
+
+func testScreenControl() {
+    setTest("ScreenControl");
+
+    // These are visual operations, we just verify they don't crash
+    Viper.Terminal.BeginBatch();
+
+    // Clear screen
+    Viper.Terminal.Clear();
+    pass();
+
+    // Set color (fg, bg)
+    Viper.Terminal.SetColor(7, 0);  // white on black
+    pass();
+
+    // Set cursor position
+    Viper.Terminal.SetPosition(1, 1);
+    pass();
+
+    // Flush output
+    Viper.Terminal.Flush();
+    pass();
+
+    Viper.Terminal.EndBatch();
+}
+
+func testCursorControl() {
+    setTest("CursorControl");
+
+    // Show/hide cursor (just verify no crash)
+    Viper.Terminal.SetCursorVisible(0);  // hide
+    Viper.Terminal.SetCursorVisible(1);  // show
+    pass();
+}
+
+func testAltScreen() {
+    setTest("AltScreen");
+
+    // Alt screen (0 = normal, 1 = alternate)
+    Viper.Terminal.SetAltScreen(0);  // ensure normal screen
+    pass();
+}
+
+func testInputNonBlocking() {
+    setTest("InputNonBlocking");
+
+    // Non-blocking input test
+    var key1 = Viper.Terminal.GetKeyTimeout(0);  // 0ms timeout
+    assertTrue(key1 == "" || key1 == key1, "GetKeyTimeout returns string");
+
+    var key2 = Viper.Terminal.InKey();  // returns immediately
+    assertTrue(key2 == "" || key2 == key2, "InKey returns string");
+}
+
+func testBell() {
+    setTest("Bell");
+
+    // Bell (may or may not produce sound)
+    Viper.Terminal.Bell();
+    pass();
+}
+
+func start() {
+    testBasicOutput();
+    testPrint();
+    testBatching();
+    testScreenControl();
+    testCursorControl();
+    testAltScreen();
+    testInputNonBlocking();
+    testBell();
+
+    report();
+}

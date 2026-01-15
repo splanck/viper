@@ -1,6 +1,6 @@
 module TestMath;
 
-import "./_support";
+bind "./_support";
 
 // Comprehensive math tests
 

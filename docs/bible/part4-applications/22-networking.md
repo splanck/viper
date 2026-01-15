@@ -282,7 +282,7 @@ Programs can do all of this too. That's networking.
 The simplest networking is fetching web pages and APIs. HTTP (Hypertext Transfer Protocol) is the language of the web --- the format that browsers and servers use to communicate.
 
 ```rust
-import Viper.Network;
+bind Viper.Network;
 
 func start() {
     // Fetch a web page
@@ -362,8 +362,8 @@ These methods map to CRUD operations (Create, Read, Update, Delete) that are fun
 Most modern web APIs exchange data in JSON (JavaScript Object Notation) format. JSON is a text format for structured data that's easy for both humans and computers to read.
 
 ```rust
-import Viper.Network;
-import Viper.JSON;
+bind Viper.Network;
+bind Viper.JSON;
 
 value Weather {
     temperature: f64;
@@ -441,7 +441,7 @@ A **socket** is an endpoint for communication --- like a telephone in the phone 
 Here's how to connect to a server and communicate:
 
 ```rust
-import Viper.Network;
+bind Viper.Network;
 
 func start() {
     // Connect to a server
@@ -504,7 +504,7 @@ Step 4: socket.close()
 A server listens for incoming connections instead of initiating them:
 
 ```rust
-import Viper.Network;
+bind Viper.Network;
 
 func start() {
     // Create a server socket that listens on port 8080
@@ -598,8 +598,8 @@ When Alice sends "Hello":
 ```rust
 module ChatServer;
 
-import Viper.Network;
-import Viper.Collections;
+bind Viper.Network;
+bind Viper.Collections;
 
 entity ChatServer {
     // The server socket that accepts new connections
@@ -735,8 +735,8 @@ Time 0:30 - Alice sends "/quit"
 ```rust
 module ChatClient;
 
-import Viper.Network;
-import Viper.Threading;
+bind Viper.Network;
+bind Viper.Threading;
 
 entity ChatClient {
     hide socket: TcpSocket;
@@ -850,7 +850,7 @@ UDP trades reliability for speed. When you can tolerate lost packets or have you
 ### Basic UDP Communication
 
 ```rust
-import Viper.Network;
+bind Viper.Network;
 
 // UDP sender
 func sendUdpMessage() {
@@ -894,7 +894,7 @@ Notice the differences from TCP:
 Games often need to send player state many times per second. Lost packets don't matter because new state arrives constantly. Here's a typical pattern:
 
 ```rust
-import Viper.Network;
+bind Viper.Network;
 
 // Player state that we'll send frequently
 value PlayerState {
@@ -978,7 +978,7 @@ HTTP was designed for request-response: the client asks, the server answers, don
 **WebSockets** provide full-duplex communication over a single connection. After an initial HTTP handshake, the connection stays open and either side can send messages at any time.
 
 ```rust
-import Viper.Network;
+bind Viper.Network;
 
 entity WebSocketClient {
     hide ws: WebSocket;
@@ -1060,7 +1060,7 @@ Networks are inherently unreliable. Connections drop. Servers go down. Packets g
 ### The Many Ways Networks Fail
 
 ```rust
-import Viper.Network;
+bind Viper.Network;
 
 func demonstrateFailures() {
     // Failure 1: Cannot connect
@@ -1097,7 +1097,7 @@ func demonstrateFailures() {
 For important operations, implement retry logic with exponential backoff:
 
 ```rust
-import Viper.Network;
+bind Viper.Network;
 
 func robustFetch(url: string, maxRetries: i64) -> string? {
     var retries = 0;
@@ -1640,9 +1640,9 @@ Let's tie everything together with a complete, well-structured networking applic
 ```rust
 module WeatherDashboard;
 
-import Viper.Network;
-import Viper.JSON;
-import Viper.Time;
+bind Viper.Network;
+bind Viper.JSON;
+bind Viper.Time;
 
 // Data type for weather information
 value CityWeather {
@@ -1800,7 +1800,7 @@ This example demonstrates:
 
 **Zia**
 ```rust
-import Viper.Network;
+bind Viper.Network;
 
 // HTTP request
 var response = Http.get("https://api.example.com/data");

@@ -2,8 +2,8 @@
 // Handles title screen, pause menu, and game over screens
 module menu;
 
-import "./config";
-import "./colors";
+bind "./config";
+bind "./colors";
 
 // Menu item entity
 entity MenuItem {

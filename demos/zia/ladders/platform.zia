@@ -2,8 +2,8 @@
 // Platforms are horizontal surfaces the player can walk on
 module platform;
 
-import "./config";
-import "./colors";
+bind "./config";
+bind "./colors";
 
 // Platform entity - a horizontal surface
 entity Platform {

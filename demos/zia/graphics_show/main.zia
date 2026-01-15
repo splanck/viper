@@ -7,15 +7,15 @@ module main;
 // framework. Select demos from the menu or run them individually.
 // ============================================================================
 
-import "./colors";
-import "./starfield";
-import "./matrix";
-import "./plasma";
-import "./particles";
-import "./bouncing";
-import "./snake";
-import "./fireworks";
-import "./sierpinski";
+bind "./colors";
+bind "./starfield";
+bind "./matrix";
+bind "./plasma";
+bind "./particles";
+bind "./bouncing";
+bind "./snake";
+bind "./fireworks";
+bind "./sierpinski";
 
 // Menu item structure
 entity MenuItem {

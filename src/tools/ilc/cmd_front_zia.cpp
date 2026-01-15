@@ -130,6 +130,7 @@ int runFrontZia(const FrontZiaConfig &config,
 {
     CompilerInput compilerInput{source, config.sourcePath};
     CompilerOptions compilerOpts{};
+    compilerOpts.boundsChecks = config.shared.boundsChecks;
 
     auto result = compile(compilerInput, compilerOpts, sm);
 

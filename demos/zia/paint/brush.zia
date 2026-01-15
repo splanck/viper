@@ -1,7 +1,7 @@
 // brush.viper - Brush settings for Viper Paint
 module brush;
 
-import "./config";
+bind "./config";
 
 // Brush shapes
 final SHAPE_ROUND = 0;

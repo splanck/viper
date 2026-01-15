@@ -1435,7 +1435,7 @@ The runtime provides:
 **Syntax:**
 
 ```viper
-import Viper.Threads;
+bind Viper.Threads;
 
 func worker(arg: Ptr) {
     // Thread work here
@@ -1462,7 +1462,7 @@ entity Counter {
 **Wait/Pause (v0.1):**
 
 ```viper
-import Viper.Threads;
+bind Viper.Threads;
 
 entity Mailbox {
     Mutex mu = new Mutex();

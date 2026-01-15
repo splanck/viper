@@ -1,6 +1,6 @@
 module SqlStorage;
 
-import "./sql_types";
+bind "./sql_types";
 
 func strLen(text: String) -> Integer {
     return Viper.String.Length(text);

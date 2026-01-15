@@ -8,7 +8,7 @@ module plasma;
 // Uses a lookup table for fast sine calculation.
 // ============================================================================
 
-import "./colors";
+bind "./colors";
 
 // Precomputed sine table (256 entries, values 0-255)
 var sinTable: List[Integer];

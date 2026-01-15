@@ -92,9 +92,9 @@ bool Sema::analyze(ModuleDecl &module)
 {
     currentModule_ = &module;
 
-    for (auto &import : module.imports)
+    for (auto &bind : module.binds)
     {
-        analyzeImport(import);
+        analyzeBind(bind);
     }
 
     // First pass: register all top-level declarations
