@@ -12,7 +12,7 @@ BASIC_DIR="$ROOT_DIR/demos/basic"
 TMP_DIR="/tmp/viper_demo_build_$$"
 
 ILC="$BUILD_DIR/src/tools/ilc/ilc"
-VIPER="$BUILD_DIR/src/tools/viper/viper"
+ZIA="$BUILD_DIR/src/tools/zia/zia"
 RUNTIME_LIB="$BUILD_DIR/src/runtime/libviper_runtime.a"
 GFX_LIB="$BUILD_DIR/lib/libvipergfx.a"
 GUI_LIB="$BUILD_DIR/src/lib/gui/libvipergui.a"
@@ -68,8 +68,8 @@ if [[ ! -f "$RUNTIME_LIB" ]]; then
     exit 1
 fi
 
-if [[ ! -x "$VIPER" ]]; then
-    echo -e "${RED}Error: viper not found at $VIPER${NC}"
+if [[ ! -x "$ZIA" ]]; then
+    echo -e "${RED}Error: zia not found at $ZIA${NC}"
     echo "Run 'cmake --build build' first"
     exit 1
 fi
@@ -168,10 +168,10 @@ build_zia_demo() {
     local exe_file="$BIN_DIR/${name}"
 
     echo -n "  Compiling Zia to IL... "
-    if ! "$VIPER" "$source_path" --emit-il > "$il_file" 2>/dev/null; then
+    if ! "$ZIA" "$source_path" --emit-il > "$il_file" 2>/dev/null; then
         echo -e "${RED}FAILED${NC}"
         # Show the actual error
-        "$VIPER" "$source_path" --emit-il 2>&1 | head -20
+        "$ZIA" "$source_path" --emit-il 2>&1 | head -20
         return 1
     fi
     echo -e "${GREEN}OK${NC}"
