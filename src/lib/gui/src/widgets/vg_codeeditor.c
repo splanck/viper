@@ -155,6 +155,7 @@ static void edit_history_destroy(vg_edit_history_t* history) {
     free(history);
 }
 
+__attribute__((unused))
 static void edit_history_clear(vg_edit_history_t* history) {
     if (!history) return;
 
@@ -215,12 +216,14 @@ static vg_edit_op_t* edit_history_pop_redo(vg_edit_history_t* history) {
     return op;
 }
 
+__attribute__((unused))
 static void edit_history_begin_group(vg_edit_history_t* history) {
     if (!history) return;
     history->is_grouping = true;
     history->current_group = history->next_group_id++;
 }
 
+__attribute__((unused))
 static void edit_history_end_group(vg_edit_history_t* history) {
     if (!history) return;
     history->is_grouping = false;

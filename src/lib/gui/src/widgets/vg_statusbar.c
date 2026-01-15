@@ -245,6 +245,11 @@ static void statusbar_paint(vg_widget_t* widget, void* canvas) {
         }
     }
 
+    // Suppress unused variable warnings (computed for future layout improvements)
+    (void)left_width;
+    (void)right_width;
+    (void)spacer_count;
+
     // Draw left zone items
     float x = left_x;
     for (size_t i = 0; i < sb->left_count; i++) {

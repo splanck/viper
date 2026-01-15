@@ -1371,6 +1371,132 @@ static void generateSignatures(const ParseState &state,
     std::cout << "  Generated " << outPath << "\n";
 }
 
+/// @brief Map IL return type to Zia types:: expression.
+static std::string ilTypeToZiaType(const std::string &ilType, const std::string &canonical)
+{
+    if (ilType == "str")
+        return "types::string()";
+    if (ilType == "i64")
+        return "types::integer()";
+    if (ilType == "f64")
+        return "types::number()";
+    if (ilType == "i1")
+        return "types::boolean()";
+    if (ilType == "void")
+        return "types::voidType()";
+    if (ilType == "obj" || ilType == "ptr")
+    {
+        // For factory methods that return instances of their class, derive the class type
+        // e.g., "Viper.GUI.App.New" -> runtimeClass("Viper.GUI.App")
+        // e.g., "Viper.Graphics.Pixels.LoadBmp" -> runtimeClass("Viper.Graphics.Pixels")
+        size_t lastDot = canonical.rfind('.');
+        if (lastDot != std::string::npos)
+        {
+            std::string method = canonical.substr(lastDot + 1);
+            // Check for factory method patterns (exact matches or prefixes)
+            bool isFactory = (method == "New" || method == "Create" || method == "Clone" ||
+                              method == "Copy" || method == "Open");
+            // Also check for prefix patterns like Load*, From*, etc.
+            if (!isFactory)
+            {
+                isFactory = (method.rfind("Load", 0) == 0 || method.rfind("From", 0) == 0 ||
+                             method.rfind("Parse", 0) == 0 || method.rfind("Read", 0) == 0 ||
+                             method.rfind("Decode", 0) == 0 || method.rfind("Create", 0) == 0);
+            }
+            if (isFactory)
+            {
+                std::string className = canonical.substr(0, lastDot);
+                return "types::runtimeClass(\"" + className + "\")";
+            }
+        }
+        return "types::ptr()";
+    }
+    // Default to ptr for unknown types
+    return "types::ptr()";
+}
+
+static void generateZiaExterns(const ParseState &state, const fs::path &outDir)
+{
+    fs::path outPath = outDir / "ZiaRuntimeExterns.inc";
+    std::ofstream out(outPath);
+    if (!out)
+    {
+        std::cerr << "error: cannot write " << outPath << "\n";
+        std::exit(1);
+    }
+
+    out << fileHeader("ZiaRuntimeExterns.inc",
+                      "Zia frontend extern function definitions generated from runtime.def.");
+
+    out << "// This file is included by Sema_Runtime.cpp to register all runtime functions.\n";
+    out << "// Usage: #include \"il/runtime/ZiaRuntimeExterns.inc\"\n\n";
+
+    // First emit type registry entries for runtime classes
+    out << "// " << std::string(75, '=') << "\n";
+    out << "// RUNTIME CLASS TYPE REGISTRATIONS\n";
+    out << "// " << std::string(75, '=') << "\n";
+    for (const auto &cls : state.classes)
+    {
+        out << "typeRegistry_[\"" << cls.name << "\"] = types::runtimeClass(\"" << cls.name
+            << "\");\n";
+    }
+    out << "\n";
+
+    // Group functions by namespace for readability
+    std::map<std::string, std::vector<const RuntimeFunc *>> byNamespace;
+
+    for (const auto &func : state.functions)
+    {
+        // Extract namespace: "Viper.GUI.App.New" -> "Viper.GUI"
+        size_t firstDot = func.canonical.find('.');
+        size_t secondDot = func.canonical.find('.', firstDot + 1);
+        std::string ns = "Other";
+        if (secondDot != std::string::npos)
+        {
+            ns = func.canonical.substr(0, secondDot);
+        }
+        byNamespace[ns].push_back(&func);
+    }
+
+    for (const auto &[ns, funcs] : byNamespace)
+    {
+        out << "// " << std::string(75, '=') << "\n";
+        out << "// " << ns << "\n";
+        out << "// " << std::string(75, '=') << "\n";
+
+        for (const auto *func : funcs)
+        {
+            ParsedSignature sig = parseSignature(func->signature);
+            std::string ziaType = ilTypeToZiaType(sig.returnType, func->canonical);
+            out << "defineExternFunction(\"" << func->canonical << "\", " << ziaType << ");\n";
+        }
+        out << "\n";
+    }
+
+    // Also emit aliases
+    if (!state.aliases.empty())
+    {
+        out << "// " << std::string(75, '=') << "\n";
+        out << "// ALIASES\n";
+        out << "// " << std::string(75, '=') << "\n";
+
+        for (const auto &alias : state.aliases)
+        {
+            auto it = state.func_by_id.find(alias.target_id);
+            if (it != state.func_by_id.end())
+            {
+                const auto &target = state.functions[it->second];
+                ParsedSignature sig = parseSignature(target.signature);
+                std::string ziaType = ilTypeToZiaType(sig.returnType, alias.canonical);
+                out << "defineExternFunction(\"" << alias.canonical << "\", " << ziaType << ");\n";
+            }
+        }
+        out << "\n";
+    }
+
+    std::cout << "  Generated " << outPath << "\n";
+}
+
 //===----------------------------------------------------------------------===//
 // Main
 //===----------------------------------------------------------------------===//
@@ -1415,6 +1541,7 @@ int main(int argc, char **argv)
     generateNameMap(state, outputDir);
     generateClasses(state, outputDir);
     generateSignatures(state, outputDir, inputPath);
+    generateZiaExterns(state, outputDir);
 
     std::cout << "rtgen: Done\n";
     return 0;

@@ -20,7 +20,7 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="$ROOT_DIR/build"
 
 ILC="$BUILD_DIR/src/tools/ilc/ilc"
-VIPER="$BUILD_DIR/src/tools/viper/viper"
+ZIA="$BUILD_DIR/src/tools/zia/zia"
 RUNTIME_LIB="$BUILD_DIR/src/runtime/libviper_runtime.a"
 GFX_LIB="$BUILD_DIR/lib/libvipergfx.a"
 GUI_LIB="$BUILD_DIR/src/lib/gui/libvipergui.a"
@@ -42,7 +42,7 @@ echo "Step 1: Compiling $DEMO_TYPE to IL..."
 if [[ "$DEMO_TYPE" == "basic" ]]; then
     "$ILC" front basic -emit-il "$SOURCE_FILE" > "$IL_FILE"
 elif [[ "$DEMO_TYPE" == "zia" ]]; then
-    "$VIPER" "$SOURCE_FILE" --emit-il > "$IL_FILE"
+    "$ZIA" "$SOURCE_FILE" --emit-il > "$IL_FILE"
 else
     echo "Unknown demo type: $DEMO_TYPE"
     exit 1

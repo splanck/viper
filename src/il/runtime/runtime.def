@@ -812,6 +812,289 @@ RT_FUNC(GuiContainerSetSpacing, rt_container_set_spacing, "Viper.GUI.Container.S
 RT_FUNC(GuiContainerSetPadding, rt_container_set_padding, "Viper.GUI.Container.SetPadding", "void(obj,f64)")
 
 //=============================================================================
+// GUI - CLIPBOARD (Phase 1)
+//=============================================================================
+
+RT_FUNC(ClipboardSetText,  rt_clipboard_set_text,  "Viper.GUI.Clipboard.SetText",  "void(str)")
+RT_FUNC(ClipboardGetText,  rt_clipboard_get_text,  "Viper.GUI.Clipboard.GetText",  "str()")
+RT_FUNC(ClipboardHasText,  rt_clipboard_has_text,  "Viper.GUI.Clipboard.HasText",  "i64()")
+RT_FUNC(ClipboardClear,    rt_clipboard_clear,     "Viper.GUI.Clipboard.Clear",    "void()")
+
+//=============================================================================
+// GUI - KEYBOARD SHORTCUTS (Phase 1)
+//=============================================================================
+
+RT_FUNC(ShortcutsRegister,         rt_shortcuts_register,          "Viper.GUI.Shortcuts.Register",         "void(str,str,str)")
+RT_FUNC(ShortcutsUnregister,       rt_shortcuts_unregister,        "Viper.GUI.Shortcuts.Unregister",       "void(str)")
+RT_FUNC(ShortcutsClear,            rt_shortcuts_clear,             "Viper.GUI.Shortcuts.Clear",            "void()")
+RT_FUNC(ShortcutsIsEnabled,        rt_shortcuts_is_enabled,        "Viper.GUI.Shortcuts.IsEnabled",        "i64(str)")
+RT_FUNC(ShortcutsSetEnabled,       rt_shortcuts_set_enabled,       "Viper.GUI.Shortcuts.SetEnabled",       "void(str,i64)")
+RT_FUNC(ShortcutsGetGlobalEnabled, rt_shortcuts_get_global_enabled,"Viper.GUI.Shortcuts.GetGlobalEnabled", "i64()")
+RT_FUNC(ShortcutsSetGlobalEnabled, rt_shortcuts_set_global_enabled,"Viper.GUI.Shortcuts.SetGlobalEnabled", "void(i64)")
+RT_FUNC(ShortcutsWasTriggered,     rt_shortcuts_was_triggered,     "Viper.GUI.Shortcuts.WasTriggered",     "i64(str)")
+RT_FUNC(ShortcutsGetTriggered,     rt_shortcuts_get_triggered,     "Viper.GUI.Shortcuts.GetTriggered",     "str()")
+
+//=============================================================================
+// GUI - CURSOR (Phase 1)
+//=============================================================================
+
+RT_FUNC(CursorSet,        rt_cursor_set,         "Viper.GUI.Cursor.Set",        "void(i64)")
+RT_FUNC(CursorReset,      rt_cursor_reset,       "Viper.GUI.Cursor.Reset",      "void()")
+RT_FUNC(CursorSetVisible, rt_cursor_set_visible, "Viper.GUI.Cursor.SetVisible", "void(i64)")
+
+//=============================================================================
+// GUI - MENUBAR (Phase 2)
+//=============================================================================
+
+RT_FUNC(MenuBarNew,     rt_menubar_new,      "Viper.GUI.MenuBar.New",     "obj(obj)")
+RT_FUNC(MenuBarDestroy, rt_menubar_destroy,  "Viper.GUI.MenuBar.Destroy", "void(obj)")
+RT_FUNC(MenuBarAddMenu, rt_menubar_add_menu, "Viper.GUI.MenuBar.AddMenu", "obj(obj,str)")
+
+//=============================================================================
+// GUI - MENU (Phase 2)
+//=============================================================================
+
+RT_FUNC(MenuAddItem,      rt_menu_add_item,      "Viper.GUI.Menu.AddItem",      "obj(obj,str)")
+RT_FUNC(MenuAddSeparator, rt_menu_add_separator, "Viper.GUI.Menu.AddSeparator", "void(obj)")
+RT_FUNC(MenuAddSubmenu,   rt_menu_add_submenu,   "Viper.GUI.Menu.AddSubmenu",   "obj(obj,str)")
+
+//=============================================================================
+// GUI - MENUITEM (Phase 2)
+//=============================================================================
+
+RT_FUNC(MenuItemSetText,      rt_menuitem_set_text,      "Viper.GUI.MenuItem.SetText",      "void(obj,str)")
+RT_FUNC(MenuItemSetEnabled,   rt_menuitem_set_enabled,   "Viper.GUI.MenuItem.SetEnabled",   "void(obj,i64)")
+RT_FUNC(MenuItemIsEnabled,    rt_menuitem_is_enabled,    "Viper.GUI.MenuItem.IsEnabled",    "i64(obj)")
+RT_FUNC(MenuItemSetChecked,   rt_menuitem_set_checked,   "Viper.GUI.MenuItem.SetChecked",   "void(obj,i64)")
+RT_FUNC(MenuItemIsChecked,    rt_menuitem_is_checked,    "Viper.GUI.MenuItem.IsChecked",    "i64(obj)")
+RT_FUNC(MenuItemSetShortcut,  rt_menuitem_set_shortcut,  "Viper.GUI.MenuItem.SetShortcut",  "void(obj,str)")
+RT_FUNC(MenuItemWasClicked,   rt_menuitem_was_clicked,   "Viper.GUI.MenuItem.WasClicked",   "i64(obj)")
+
+//=============================================================================
+// GUI - CONTEXTMENU (Phase 2)
+//=============================================================================
+
+RT_FUNC(ContextMenuNew,              rt_contextmenu_new,               "Viper.GUI.ContextMenu.New",              "obj()")
+RT_FUNC(ContextMenuDestroy,          rt_contextmenu_destroy,           "Viper.GUI.ContextMenu.Destroy",          "void(obj)")
+RT_FUNC(ContextMenuAddItem,          rt_contextmenu_add_item,          "Viper.GUI.ContextMenu.AddItem",          "obj(obj,str)")
+RT_FUNC(ContextMenuAddItemShortcut,  rt_contextmenu_add_item_with_shortcut, "Viper.GUI.ContextMenu.AddItemWithShortcut", "obj(obj,str,str)")
+RT_FUNC(ContextMenuAddSeparator,     rt_contextmenu_add_separator,     "Viper.GUI.ContextMenu.AddSeparator",     "void(obj)")
+RT_FUNC(ContextMenuShow,             rt_contextmenu_show,              "Viper.GUI.ContextMenu.Show",             "void(obj,i64,i64)")
+RT_FUNC(ContextMenuHide,             rt_contextmenu_hide,              "Viper.GUI.ContextMenu.Hide",             "void(obj)")
+RT_FUNC(ContextMenuIsVisible,        rt_contextmenu_is_visible,        "Viper.GUI.ContextMenu.IsVisible",        "i64(obj)")
+RT_FUNC(ContextMenuClear,            rt_contextmenu_clear,             "Viper.GUI.ContextMenu.Clear",            "void(obj)")
+
+//=============================================================================
+// GUI - STATUSBAR (Phase 3)
+//=============================================================================
+
+RT_FUNC(StatusBarNew,           rt_statusbar_new,            "Viper.GUI.StatusBar.New",           "obj(obj)")
+RT_FUNC(StatusBarDestroy,       rt_statusbar_destroy,        "Viper.GUI.StatusBar.Destroy",       "void(obj)")
+RT_FUNC(StatusBarSetLeftText,   rt_statusbar_set_left_text,  "Viper.GUI.StatusBar.SetLeftText",   "void(obj,str)")
+RT_FUNC(StatusBarSetCenterText, rt_statusbar_set_center_text,"Viper.GUI.StatusBar.SetCenterText", "void(obj,str)")
+RT_FUNC(StatusBarSetRightText,  rt_statusbar_set_right_text, "Viper.GUI.StatusBar.SetRightText",  "void(obj,str)")
+RT_FUNC(StatusBarSetVisible,    rt_statusbar_set_visible,    "Viper.GUI.StatusBar.SetVisible",    "void(obj,i64)")
+RT_FUNC(StatusBarIsVisible,     rt_statusbar_is_visible,     "Viper.GUI.StatusBar.IsVisible",     "i64(obj)")
+RT_FUNC(StatusBarAddText,       rt_statusbar_add_text,       "Viper.GUI.StatusBar.AddText",       "obj(obj,str,i64)")
+
+//=============================================================================
+// GUI - STATUSBARITEM (Phase 3)
+//=============================================================================
+
+RT_FUNC(StatusBarItemSetText,    rt_statusbaritem_set_text,    "Viper.GUI.StatusBarItem.SetText",    "void(obj,str)")
+RT_FUNC(StatusBarItemSetTooltip, rt_statusbaritem_set_tooltip, "Viper.GUI.StatusBarItem.SetTooltip", "void(obj,str)")
+RT_FUNC(StatusBarItemSetVisible, rt_statusbaritem_set_visible, "Viper.GUI.StatusBarItem.SetVisible", "void(obj,i64)")
+RT_FUNC(StatusBarItemWasClicked, rt_statusbaritem_was_clicked, "Viper.GUI.StatusBarItem.WasClicked", "i64(obj)")
+
+//=============================================================================
+// GUI - TOOLBAR (Phase 3)
+//=============================================================================
+
+RT_FUNC(ToolbarNew,          rt_toolbar_new,           "Viper.GUI.Toolbar.New",          "obj(obj)")
+RT_FUNC(ToolbarDestroy,      rt_toolbar_destroy,       "Viper.GUI.Toolbar.Destroy",      "void(obj)")
+RT_FUNC(ToolbarAddButton,    rt_toolbar_add_button,    "Viper.GUI.Toolbar.AddButton",    "obj(obj,str,str)")
+RT_FUNC(ToolbarAddSeparator, rt_toolbar_add_separator, "Viper.GUI.Toolbar.AddSeparator", "void(obj)")
+RT_FUNC(ToolbarSetIconSize,  rt_toolbar_set_icon_size, "Viper.GUI.Toolbar.SetIconSize",  "void(obj,i64)")
+RT_FUNC(ToolbarSetStyle,     rt_toolbar_set_style,     "Viper.GUI.Toolbar.SetStyle",     "void(obj,i64)")
+RT_FUNC(ToolbarGetItemCount, rt_toolbar_get_item_count,"Viper.GUI.Toolbar.GetItemCount", "i64(obj)")
+RT_FUNC(ToolbarSetVisible,   rt_toolbar_set_visible,   "Viper.GUI.Toolbar.SetVisible",   "void(obj,i64)")
+RT_FUNC(ToolbarIsVisible,    rt_toolbar_is_visible,    "Viper.GUI.Toolbar.IsVisible",    "i64(obj)")
+
+//=============================================================================
+// GUI - TOOLBARITEM (Phase 3)
+//=============================================================================
+
+RT_FUNC(ToolbarItemSetEnabled,  rt_toolbaritem_set_enabled,  "Viper.GUI.ToolbarItem.SetEnabled",  "void(obj,i64)")
+RT_FUNC(ToolbarItemIsEnabled,   rt_toolbaritem_is_enabled,   "Viper.GUI.ToolbarItem.IsEnabled",   "i64(obj)")
+RT_FUNC(ToolbarItemSetTooltip,  rt_toolbaritem_set_tooltip,  "Viper.GUI.ToolbarItem.SetTooltip",  "void(obj,str)")
+RT_FUNC(ToolbarItemSetIcon,     rt_toolbaritem_set_icon,     "Viper.GUI.ToolbarItem.SetIcon",     "void(obj,str)")
+RT_FUNC(ToolbarItemWasClicked,  rt_toolbaritem_was_clicked,  "Viper.GUI.ToolbarItem.WasClicked",  "i64(obj)")
+
+//=============================================================================
+// GUI - CODEEDITOR ENHANCEMENTS (Phase 4)
+//=============================================================================
+
+RT_FUNC(CodeEditorSetLanguage,       rt_codeeditor_set_language,        "Viper.GUI.CodeEditor.SetLanguage",       "void(obj,str)")
+RT_FUNC(CodeEditorSetTokenColor,     rt_codeeditor_set_token_color,     "Viper.GUI.CodeEditor.SetTokenColor",     "void(obj,i64,i64)")
+RT_FUNC(CodeEditorAddHighlight,      rt_codeeditor_add_highlight,       "Viper.GUI.CodeEditor.AddHighlight",      "void(obj,i64,i64,i64,i64)")
+RT_FUNC(CodeEditorClearHighlights,   rt_codeeditor_clear_highlights,    "Viper.GUI.CodeEditor.ClearHighlights",   "void(obj)")
+RT_FUNC(CodeEditorSetShowLineNums,   rt_codeeditor_set_show_line_numbers,"Viper.GUI.CodeEditor.SetShowLineNumbers","void(obj,i64)")
+RT_FUNC(CodeEditorSetGutterIcon,     rt_codeeditor_set_gutter_icon,     "Viper.GUI.CodeEditor.SetGutterIcon",     "void(obj,i64,obj,i64)")
+RT_FUNC(CodeEditorClearAllGutterIcons, rt_codeeditor_clear_all_gutter_icons, "Viper.GUI.CodeEditor.ClearGutterIcons", "void(obj,i64)")
+RT_FUNC(CodeEditorWasGutterClicked,  rt_codeeditor_was_gutter_clicked,  "Viper.GUI.CodeEditor.WasGutterClicked",  "i64(obj)")
+RT_FUNC(CodeEditorGetGutterClickLine,rt_codeeditor_get_gutter_clicked_line,"Viper.GUI.CodeEditor.GetGutterClickLine","i64(obj)")
+RT_FUNC(CodeEditorAddFoldRegion,     rt_codeeditor_add_fold_region,     "Viper.GUI.CodeEditor.AddFoldRegion",     "void(obj,i64,i64)")
+RT_FUNC(CodeEditorFold,              rt_codeeditor_fold,                "Viper.GUI.CodeEditor.Fold",              "void(obj,i64)")
+RT_FUNC(CodeEditorUnfold,            rt_codeeditor_unfold,              "Viper.GUI.CodeEditor.Unfold",            "void(obj,i64)")
+RT_FUNC(CodeEditorIsFolded,          rt_codeeditor_is_folded,           "Viper.GUI.CodeEditor.IsFolded",          "i64(obj,i64)")
+RT_FUNC(CodeEditorGetCursorCount,    rt_codeeditor_get_cursor_count,    "Viper.GUI.CodeEditor.GetCursorCount",    "i64(obj)")
+RT_FUNC(CodeEditorAddCursor,         rt_codeeditor_add_cursor,          "Viper.GUI.CodeEditor.AddCursor",         "void(obj,i64,i64)")
+RT_FUNC(CodeEditorClearCursors,      rt_codeeditor_clear_extra_cursors, "Viper.GUI.CodeEditor.ClearCursors",      "void(obj)")
+RT_FUNC(CodeEditorCursorHasSelection,rt_codeeditor_cursor_has_selection,"Viper.GUI.CodeEditor.CursorHasSelection","i64(obj,i64)")
+
+//=============================================================================
+// GUI - MESSAGEBOX (Phase 5)
+//=============================================================================
+
+RT_FUNC(MessageBoxInfo,     rt_messagebox_info,     "Viper.GUI.MessageBox.Info",     "void(str,str)")
+RT_FUNC(MessageBoxWarning,  rt_messagebox_warning,  "Viper.GUI.MessageBox.Warning",  "void(str,str)")
+RT_FUNC(MessageBoxError,    rt_messagebox_error,    "Viper.GUI.MessageBox.Error",    "void(str,str)")
+RT_FUNC(MessageBoxQuestion, rt_messagebox_question, "Viper.GUI.MessageBox.Question", "i64(str,str)")
+RT_FUNC(MessageBoxConfirm,  rt_messagebox_confirm,  "Viper.GUI.MessageBox.Confirm",  "i64(str,str)")
+
+//=============================================================================
+// GUI - FILEDIALOG (Phase 5)
+//=============================================================================
+
+RT_FUNC(FileDialogOpen,         rt_filedialog_open,          "Viper.GUI.FileDialog.Open",         "str(str,str,str)")
+RT_FUNC(FileDialogOpenMultiple, rt_filedialog_open_multiple, "Viper.GUI.FileDialog.OpenMultiple", "obj(str,str,str)")
+RT_FUNC(FileDialogSave,         rt_filedialog_save,          "Viper.GUI.FileDialog.Save",         "str(str,str,str,str)")
+RT_FUNC(FileDialogSelectFolder, rt_filedialog_select_folder, "Viper.GUI.FileDialog.SelectFolder", "str(str,str)")
+
+//=============================================================================
+// GUI - FINDBAR (Phase 6)
+//=============================================================================
+
+RT_FUNC(FindBarNew,             rt_findbar_new,              "Viper.GUI.FindBar.New",             "obj(obj)")
+RT_FUNC(FindBarDestroy,         rt_findbar_destroy,          "Viper.GUI.FindBar.Destroy",         "void(obj)")
+RT_FUNC(FindBarSetFindText,     rt_findbar_set_find_text,    "Viper.GUI.FindBar.SetFindText",     "void(obj,str)")
+RT_FUNC(FindBarGetFindText,     rt_findbar_get_find_text,    "Viper.GUI.FindBar.GetFindText",     "str(obj)")
+RT_FUNC(FindBarSetReplaceText,  rt_findbar_set_replace_text, "Viper.GUI.FindBar.SetReplaceText",  "void(obj,str)")
+RT_FUNC(FindBarGetReplaceText,  rt_findbar_get_replace_text, "Viper.GUI.FindBar.GetReplaceText",  "str(obj)")
+RT_FUNC(FindBarSetCaseSensitive,rt_findbar_set_case_sensitive,"Viper.GUI.FindBar.SetCaseSensitive","void(obj,i64)")
+RT_FUNC(FindBarIsCaseSensitive, rt_findbar_is_case_sensitive,"Viper.GUI.FindBar.IsCaseSensitive", "i64(obj)")
+RT_FUNC(FindBarSetWholeWord,    rt_findbar_set_whole_word,   "Viper.GUI.FindBar.SetWholeWord",    "void(obj,i64)")
+RT_FUNC(FindBarIsWholeWord,     rt_findbar_is_whole_word,    "Viper.GUI.FindBar.IsWholeWord",     "i64(obj)")
+RT_FUNC(FindBarSetRegex,        rt_findbar_set_regex,        "Viper.GUI.FindBar.SetRegex",        "void(obj,i64)")
+RT_FUNC(FindBarIsRegex,         rt_findbar_is_regex,         "Viper.GUI.FindBar.IsRegex",         "i64(obj)")
+RT_FUNC(FindBarSetReplaceMode,  rt_findbar_set_replace_mode, "Viper.GUI.FindBar.SetReplaceMode",  "void(obj,i64)")
+RT_FUNC(FindBarIsReplaceMode,   rt_findbar_is_replace_mode,  "Viper.GUI.FindBar.IsReplaceMode",   "i64(obj)")
+RT_FUNC(FindBarSetVisible,      rt_findbar_set_visible,      "Viper.GUI.FindBar.SetVisible",      "void(obj,i64)")
+RT_FUNC(FindBarIsVisible,       rt_findbar_is_visible,       "Viper.GUI.FindBar.IsVisible",       "i64(obj)")
+RT_FUNC(FindBarFindNext,        rt_findbar_find_next,        "Viper.GUI.FindBar.FindNext",        "i64(obj)")
+RT_FUNC(FindBarFindPrev,        rt_findbar_find_previous,    "Viper.GUI.FindBar.FindPrev",        "i64(obj)")
+RT_FUNC(FindBarReplace,         rt_findbar_replace,          "Viper.GUI.FindBar.Replace",         "i64(obj)")
+RT_FUNC(FindBarReplaceAll,      rt_findbar_replace_all,      "Viper.GUI.FindBar.ReplaceAll",      "i64(obj)")
+RT_FUNC(FindBarGetMatchCount,   rt_findbar_get_match_count,  "Viper.GUI.FindBar.GetMatchCount",   "i64(obj)")
+RT_FUNC(FindBarGetCurrentMatch, rt_findbar_get_current_match,"Viper.GUI.FindBar.GetCurrentMatch", "i64(obj)")
+RT_FUNC(FindBarFocus,           rt_findbar_focus,            "Viper.GUI.FindBar.Focus",           "void(obj)")
+
+//=============================================================================
+// GUI - COMMANDPALETTE (Phase 6)
+//=============================================================================
+
+RT_FUNC(CommandPaletteNew,            rt_commandpalette_new,             "Viper.GUI.CommandPalette.New",            "obj(obj)")
+RT_FUNC(CommandPaletteDestroy,        rt_commandpalette_destroy,         "Viper.GUI.CommandPalette.Destroy",        "void(obj)")
+RT_FUNC(CommandPaletteAddCommand,     rt_commandpalette_add_command,     "Viper.GUI.CommandPalette.AddCommand",     "void(obj,str,str,str)")
+RT_FUNC(CommandPaletteAddCmdShortcut, rt_commandpalette_add_command_with_shortcut, "Viper.GUI.CommandPalette.AddCommandWithShortcut", "void(obj,str,str,str,str)")
+RT_FUNC(CommandPaletteRemoveCommand,  rt_commandpalette_remove_command,  "Viper.GUI.CommandPalette.RemoveCommand",  "void(obj,str)")
+RT_FUNC(CommandPaletteClear,          rt_commandpalette_clear,           "Viper.GUI.CommandPalette.Clear",          "void(obj)")
+RT_FUNC(CommandPaletteShow,           rt_commandpalette_show,            "Viper.GUI.CommandPalette.Show",           "void(obj)")
+RT_FUNC(CommandPaletteHide,           rt_commandpalette_hide,            "Viper.GUI.CommandPalette.Hide",           "void(obj)")
+RT_FUNC(CommandPaletteIsVisible,      rt_commandpalette_is_visible,      "Viper.GUI.CommandPalette.IsVisible",      "i64(obj)")
+RT_FUNC(CommandPaletteSetPlaceholder, rt_commandpalette_set_placeholder, "Viper.GUI.CommandPalette.SetPlaceholder", "void(obj,str)")
+RT_FUNC(CommandPaletteGetSelected,    rt_commandpalette_get_selected_command, "Viper.GUI.CommandPalette.GetSelected", "str(obj)")
+RT_FUNC(CommandPaletteWasSelected,    rt_commandpalette_was_command_selected, "Viper.GUI.CommandPalette.WasSelected", "i64(obj)")
+
+//=============================================================================
+// GUI - TOOLTIP (Phase 7)
+//=============================================================================
+
+RT_FUNC(TooltipShow,          rt_tooltip_show,           "Viper.GUI.Tooltip.Show",          "void(str,i64,i64)")
+RT_FUNC(TooltipShowRich,      rt_tooltip_show_rich,      "Viper.GUI.Tooltip.ShowRich",      "void(str,str,i64,i64)")
+RT_FUNC(TooltipHide,          rt_tooltip_hide,           "Viper.GUI.Tooltip.Hide",          "void()")
+RT_FUNC(TooltipSetDelay,      rt_tooltip_set_delay,      "Viper.GUI.Tooltip.SetDelay",      "void(i64)")
+RT_FUNC(WidgetSetTooltip,     rt_widget_set_tooltip,     "Viper.GUI.Widget.SetTooltip",     "void(obj,str)")
+RT_FUNC(WidgetSetTooltipRich, rt_widget_set_tooltip_rich,"Viper.GUI.Widget.SetTooltipRich", "void(obj,str,str)")
+RT_FUNC(WidgetClearTooltip,   rt_widget_clear_tooltip,   "Viper.GUI.Widget.ClearTooltip",   "void(obj)")
+
+//=============================================================================
+// GUI - TOAST/NOTIFICATIONS (Phase 7)
+//=============================================================================
+
+RT_FUNC(ToastInfo,            rt_toast_info,             "Viper.GUI.Toast.Info",            "void(str)")
+RT_FUNC(ToastSuccess,         rt_toast_success,          "Viper.GUI.Toast.Success",         "void(str)")
+RT_FUNC(ToastWarning,         rt_toast_warning,          "Viper.GUI.Toast.Warning",         "void(str)")
+RT_FUNC(ToastError,           rt_toast_error,            "Viper.GUI.Toast.Error",           "void(str)")
+RT_FUNC(ToastNew,             rt_toast_new,              "Viper.GUI.Toast.New",             "obj(str,i64,i64)")
+RT_FUNC(ToastSetAction,       rt_toast_set_action,       "Viper.GUI.Toast.SetAction",       "void(obj,str)")
+RT_FUNC(ToastWasActionClicked,rt_toast_was_action_clicked,"Viper.GUI.Toast.WasActionClicked","i64(obj)")
+RT_FUNC(ToastWasDismissed,    rt_toast_was_dismissed,    "Viper.GUI.Toast.WasDismissed",    "i64(obj)")
+RT_FUNC(ToastDismiss,         rt_toast_dismiss,          "Viper.GUI.Toast.Dismiss",         "void(obj)")
+RT_FUNC(ToastSetPosition,     rt_toast_set_position,     "Viper.GUI.Toast.SetPosition",     "void(i64)")
+RT_FUNC(ToastSetMaxVisible,   rt_toast_set_max_visible,  "Viper.GUI.Toast.SetMaxVisible",   "void(i64)")
+RT_FUNC(ToastDismissAll,      rt_toast_dismiss_all,      "Viper.GUI.Toast.DismissAll",      "void()")
+
+//=============================================================================
+// GUI - BREADCRUMB (Phase 8)
+//=============================================================================
+
+RT_FUNC(BreadcrumbNew,            rt_breadcrumb_new,             "Viper.GUI.Breadcrumb.New",            "obj(obj)")
+RT_FUNC(BreadcrumbDestroy,        rt_breadcrumb_destroy,         "Viper.GUI.Breadcrumb.Destroy",        "void(obj)")
+RT_FUNC(BreadcrumbSetPath,        rt_breadcrumb_set_path,        "Viper.GUI.Breadcrumb.SetPath",        "void(obj,str,str)")
+RT_FUNC(BreadcrumbSetItems,       rt_breadcrumb_set_items,       "Viper.GUI.Breadcrumb.SetItems",       "void(obj,str)")
+RT_FUNC(BreadcrumbAddItem,        rt_breadcrumb_add_item,        "Viper.GUI.Breadcrumb.AddItem",        "void(obj,str,str)")
+RT_FUNC(BreadcrumbClear,          rt_breadcrumb_clear,           "Viper.GUI.Breadcrumb.Clear",          "void(obj)")
+RT_FUNC(BreadcrumbWasItemClicked, rt_breadcrumb_was_item_clicked,"Viper.GUI.Breadcrumb.WasItemClicked", "i64(obj)")
+RT_FUNC(BreadcrumbGetClickedIndex,rt_breadcrumb_get_clicked_index,"Viper.GUI.Breadcrumb.GetClickedIndex","i64(obj)")
+RT_FUNC(BreadcrumbGetClickedData, rt_breadcrumb_get_clicked_data,"Viper.GUI.Breadcrumb.GetClickedData", "str(obj)")
+RT_FUNC(BreadcrumbSetSeparator,   rt_breadcrumb_set_separator,   "Viper.GUI.Breadcrumb.SetSeparator",   "void(obj,str)")
+RT_FUNC(BreadcrumbSetMaxItems,    rt_breadcrumb_set_max_items,   "Viper.GUI.Breadcrumb.SetMaxItems",    "void(obj,i64)")
+
+//=============================================================================
+// GUI - MINIMAP (Phase 8)
+//=============================================================================
+
+RT_FUNC(MinimapNew,           rt_minimap_new,            "Viper.GUI.Minimap.New",           "obj(obj)")
+RT_FUNC(MinimapDestroy,       rt_minimap_destroy,        "Viper.GUI.Minimap.Destroy",       "void(obj)")
+RT_FUNC(MinimapBindEditor,    rt_minimap_bind_editor,    "Viper.GUI.Minimap.BindEditor",    "void(obj,obj)")
+RT_FUNC(MinimapUnbindEditor,  rt_minimap_unbind_editor,  "Viper.GUI.Minimap.UnbindEditor",  "void(obj)")
+RT_FUNC(MinimapSetWidth,      rt_minimap_set_width,      "Viper.GUI.Minimap.SetWidth",      "void(obj,i64)")
+RT_FUNC(MinimapGetWidth,      rt_minimap_get_width,      "Viper.GUI.Minimap.GetWidth",      "i64(obj)")
+RT_FUNC(MinimapSetScale,      rt_minimap_set_scale,      "Viper.GUI.Minimap.SetScale",      "void(obj,f64)")
+RT_FUNC(MinimapSetShowSlider, rt_minimap_set_show_slider,"Viper.GUI.Minimap.SetShowSlider", "void(obj,i64)")
+RT_FUNC(MinimapAddMarker,     rt_minimap_add_marker,     "Viper.GUI.Minimap.AddMarker",     "void(obj,i64,i64,i64)")
+RT_FUNC(MinimapRemoveMarkers, rt_minimap_remove_markers, "Viper.GUI.Minimap.RemoveMarkers", "void(obj,i64)")
+RT_FUNC(MinimapClearMarkers,  rt_minimap_clear_markers,  "Viper.GUI.Minimap.ClearMarkers",  "void(obj)")
+
+//=============================================================================
+// GUI - DRAG AND DROP (Phase 8)
+//=============================================================================
+
+RT_FUNC(WidgetSetDraggable,        rt_widget_set_draggable,         "Viper.GUI.Widget.SetDraggable",        "void(obj,i64)")
+RT_FUNC(WidgetSetDragData,         rt_widget_set_drag_data,         "Viper.GUI.Widget.SetDragData",         "void(obj,str,str)")
+RT_FUNC(WidgetIsBeingDragged,      rt_widget_is_being_dragged,      "Viper.GUI.Widget.IsBeingDragged",      "i64(obj)")
+RT_FUNC(WidgetSetDropTarget,       rt_widget_set_drop_target,       "Viper.GUI.Widget.SetDropTarget",       "void(obj,i64)")
+RT_FUNC(WidgetSetAcceptedDropTypes,rt_widget_set_accepted_drop_types,"Viper.GUI.Widget.SetAcceptedDropTypes","void(obj,str)")
+RT_FUNC(WidgetIsDragOver,          rt_widget_is_drag_over,          "Viper.GUI.Widget.IsDragOver",          "i64(obj)")
+RT_FUNC(WidgetWasDropped,          rt_widget_was_dropped,           "Viper.GUI.Widget.WasDropped",          "i64(obj)")
+RT_FUNC(WidgetGetDropType,         rt_widget_get_drop_type,         "Viper.GUI.Widget.GetDropType",         "str(obj)")
+RT_FUNC(WidgetGetDropData,         rt_widget_get_drop_data,         "Viper.GUI.Widget.GetDropData",         "str(obj)")
+RT_FUNC(AppWasFileDropped,         rt_app_was_file_dropped,         "Viper.GUI.App.WasFileDropped",         "i64(obj)")
+RT_FUNC(AppGetDroppedFileCount,    rt_app_get_dropped_file_count,   "Viper.GUI.App.GetDroppedFileCount",    "i64(obj)")
+RT_FUNC(AppGetDroppedFile,         rt_app_get_dropped_file,         "Viper.GUI.App.GetDroppedFile",         "str(obj,i64)")
+
+//=============================================================================
 // SOUND - AUDIO SYSTEM
 //=============================================================================
 

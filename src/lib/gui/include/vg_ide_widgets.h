@@ -13,6 +13,7 @@ extern "C" {
 // Forward declarations
 typedef struct vg_menu_item vg_menu_item_t;
 typedef struct vg_menu vg_menu_t;
+struct vg_treeview;
 
 //=============================================================================
 // StatusBar Widget
