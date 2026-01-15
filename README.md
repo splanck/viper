@@ -10,11 +10,11 @@ High-level frontends—like the included BASIC and Zia compilers—lower program
 
 ## Download
 
-**Latest Release:** [v0.1.3-dev](https://github.com/splanck/viper/releases/tag/v0.1.3-dev)
+**Latest Release:** [v0.2.0-dev](https://github.com/splanck/viper/releases/tag/v0.2.0-dev) (1/15/2026)
 
-- [Source (tar.gz)](https://github.com/splanck/viper/archive/refs/tags/v0.1.3-dev.tar.gz)
-- [Source (zip)](https://github.com/splanck/viper/archive/refs/tags/v0.1.3-dev.zip)
-- [Release Notes](docs/release_notes/Viper_Release_Notes_0_1_3.md)
+- [Source (tar.gz)](https://github.com/splanck/viper/archive/refs/tags/v0.2.0-dev.tar.gz)
+- [Source (zip)](https://github.com/splanck/viper/archive/refs/tags/v0.2.0-dev.zip)
+- [Release Notes](docs/release_notes/Viper_Release_Notes_0_2_0.md)
 
 Or clone the repository:
 

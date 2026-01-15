@@ -130,3 +130,12 @@ target_include_directories(color_widgets_demo PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../graphics/include
 )
+
+# ViperIDE Runtime Test (Phase 1 & 2 features)
+add_executable(viperide_menu_test ../../../demos/zia/viperide/menu_test.c)
+target_link_libraries(viperide_menu_test PRIVATE viper_runtime vipergui vipergfx)
+target_include_directories(viperide_menu_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../graphics/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../runtime
+)
