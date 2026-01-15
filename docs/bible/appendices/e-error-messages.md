@@ -9,7 +9,7 @@ A comprehensive guide to Viper error messages, their causes, and solutions. When
 Error messages in Viper follow a consistent format:
 
 ```
-Error: ErrorType at filename.viper:LINE:COLUMN
+Error: ErrorType at filename.zia:LINE:COLUMN
   Description of what went wrong
 
     LINE-1 | previous line of code
@@ -17,8 +17,8 @@ Error: ErrorType at filename.viper:LINE:COLUMN
            |     ^^^ indicator pointing to the issue
     LINE+1 | next line of code
 
-  in function 'functionName' at filename.viper:LINE
-  called from 'callerName' at filename.viper:LINE
+  in function 'functionName' at filename.zia:LINE
+  called from 'callerName' at filename.zia:LINE
 ```
 
 **Reading strategy:**
@@ -49,7 +49,7 @@ Error: ErrorType at filename.viper:LINE:COLUMN
 
 ## Syntax Errors
 
-Syntax errors occur when your code violates the grammar rules of ViperLang. The compiler catches these before your program runs.
+Syntax errors occur when your code violates the grammar rules of Zia. The compiler catches these before your program runs.
 
 > **Cross-reference:** See [Chapter 2: Your First Program](../part1-foundations/02-first-program.md) for basic syntax rules.
 
@@ -58,7 +58,7 @@ Syntax errors occur when your code violates the grammar rules of ViperLang. The 
 ### "Unexpected token"
 
 ```
-Error: SyntaxError at main.viper:5:5
+Error: SyntaxError at main.zia:5:5
   Unexpected token 'else'
 ```
 
@@ -112,7 +112,7 @@ if (x > 0 && y < 10) {
 ### "Expected ';'"
 
 ```
-Error: SyntaxError at main.viper:10:1
+Error: SyntaxError at main.zia:10:1
   Expected ';' after statement
 ```
 
@@ -152,7 +152,7 @@ var result = someFunction(arg1, arg2) +
 ### "Expected '}'"
 
 ```
-Error: SyntaxError at main.viper:EOF
+Error: SyntaxError at main.zia:EOF
   Expected '}' at end of block
 ```
 
@@ -193,11 +193,11 @@ func calculate(x: i64) -> i64 {
 ### "Invalid character"
 
 ```
-Error: SyntaxError at main.viper:3:15
+Error: SyntaxError at main.zia:3:15
   Invalid character '@'
 ```
 
-**What it means:** A character that isn't part of ViperLang syntax was found in your code.
+**What it means:** A character that isn't part of Zia syntax was found in your code.
 
 **Common causes:**
 - Copying code from websites (hidden special characters)
@@ -229,7 +229,7 @@ var email = "user@domain.com";
 ### "Unterminated string literal"
 
 ```
-Error: SyntaxError at main.viper:7:20
+Error: SyntaxError at main.zia:7:20
   Unterminated string literal
 ```
 
@@ -281,7 +281,7 @@ var text = "Line one\nLine two";
 ### "Expected identifier"
 
 ```
-Error: SyntaxError at main.viper:5:5
+Error: SyntaxError at main.zia:5:5
   Expected identifier after 'var'
 ```
 
@@ -330,7 +330,7 @@ Type errors occur when you use a value in a way that doesn't match its type.
 ### "Type mismatch"
 
 ```
-Error: TypeError at main.viper:7:14
+Error: TypeError at main.zia:7:14
   Type mismatch: expected 'i64', got 'string'
 ```
 
@@ -389,7 +389,7 @@ func getAge() -> i64 {
 ### "Cannot assign to immutable variable"
 
 ```
-Error: TypeError at main.viper:12:1
+Error: TypeError at main.zia:12:1
   Cannot assign to immutable variable 'PI'
 ```
 
@@ -434,7 +434,7 @@ counter += 1;  // OK
 ### "Incompatible types in binary operation"
 
 ```
-Error: TypeError at main.viper:8:20
+Error: TypeError at main.zia:8:20
   Cannot apply '+' to 'string' and 'i64'
 ```
 
@@ -491,7 +491,7 @@ var sum = a + b;  // 8
 ### "Cannot convert type"
 
 ```
-Error: TypeError at main.viper:15:12
+Error: TypeError at main.zia:15:12
   Cannot convert 'string' to 'i64': invalid format
 ```
 
@@ -541,7 +541,7 @@ var num = Viper.Parse.Int(cleaned);
 ### "Null pointer exception" / "Cannot access property of null"
 
 ```
-Error: NullPointerError at main.viper:15:18
+Error: NullPointerError at main.zia:15:18
   Cannot access property 'name' of null value
 ```
 
@@ -604,7 +604,7 @@ Name errors occur when you use a name that doesn't exist or conflicts with anoth
 ### "Undefined variable"
 
 ```
-Error: NameError at main.viper:15:20
+Error: NameError at main.zia:15:20
   Undefined variable 'count'
 ```
 
@@ -662,7 +662,7 @@ Viper.Terminal.Say(temp);
 ### "Undefined function"
 
 ```
-Error: NameError at main.viper:20:5
+Error: NameError at main.zia:20:5
   Undefined function 'calulate'
 ```
 
@@ -708,7 +708,7 @@ var length = myString.length();
 ### "Duplicate definition"
 
 ```
-Error: NameError at main.viper:30:6
+Error: NameError at main.zia:30:6
   Duplicate definition of 'processData'
 ```
 
@@ -769,7 +769,7 @@ count = 10;  // No 'var', just assignment
 ### "Variable used before declaration"
 
 ```
-Error: NameError at main.viper:5:12
+Error: NameError at main.zia:5:12
   Variable 'total' used before declaration
 ```
 
@@ -792,7 +792,7 @@ Viper.Terminal.Say(total);  // OK
 ### "Cannot shadow variable"
 
 ```
-Error: NameError at main.viper:12:9
+Error: NameError at main.zia:12:9
   Cannot shadow variable 'x' from outer scope
 ```
 
@@ -830,7 +830,7 @@ Errors related to function definitions and calls.
 ### "Wrong number of arguments"
 
 ```
-Error: ArgumentError at main.viper:10:5
+Error: ArgumentError at main.zia:10:5
   Function 'add' expects 2 arguments, got 3
 ```
 
@@ -877,7 +877,7 @@ var result = sum([1, 2, 3, 4, 5]);  // Pass array
 ### "Missing return statement"
 
 ```
-Error: TypeError at main.viper:25:1
+Error: TypeError at main.zia:25:1
   Function 'getValue' must return a value of type 'i64'
 ```
 
@@ -928,7 +928,7 @@ func getStatus(code: i64) -> string {
 ### "Cannot return value from void function"
 
 ```
-Error: TypeError at main.viper:8:5
+Error: TypeError at main.zia:8:5
   Cannot return a value from function with no return type
 ```
 
@@ -961,7 +961,7 @@ func printMessage(msg: string) -> string {
 ### "Argument type mismatch"
 
 ```
-Error: TypeError at main.viper:15:12
+Error: TypeError at main.zia:15:12
   Argument 1: expected 'string', got 'i64'
 ```
 
@@ -995,7 +995,7 @@ Errors related to entities (Viper's term for classes), interfaces, and object-or
 ### "Entity does not implement interface"
 
 ```
-Error: TypeError at main.viper:20:8
+Error: TypeError at main.zia:20:8
   Entity 'Circle' does not implement method 'draw' from interface 'Drawable'
 ```
 
@@ -1041,7 +1041,7 @@ entity Circle implements Drawable {
 ### "Cannot access hidden member"
 
 ```
-Error: AccessError at main.viper:30:15
+Error: AccessError at main.zia:30:15
   Cannot access hidden member 'balance' of entity 'BankAccount'
 ```
 
@@ -1075,7 +1075,7 @@ Viper.Terminal.Say(account.getBalance());  // OK
 ### "Method signature mismatch"
 
 ```
-Error: TypeError at main.viper:25:5
+Error: TypeError at main.zia:25:5
   Override of 'speak' has different signature than parent
 ```
 
@@ -1117,7 +1117,7 @@ entity Dog extends Animal {
 ### "Missing initializer"
 
 ```
-Error: TypeError at main.viper:15:12
+Error: TypeError at main.zia:15:12
   Cannot create 'Player' without initializer
 ```
 
@@ -1148,7 +1148,7 @@ var player = Player("Alice", 100);  // OK
 ### "Cannot access 'self' in static context"
 
 ```
-Error: ContextError at main.viper:12:16
+Error: ContextError at main.zia:12:16
   Cannot access 'self' outside of method context
 ```
 
@@ -1198,7 +1198,7 @@ Runtime errors occur while your program is running, typically when an operation 
 ### "Index out of bounds"
 
 ```
-Error: IndexError at main.viper:20:15
+Error: IndexError at main.zia:20:15
   Array index 10 is out of bounds for array of length 5
 ```
 
@@ -1261,7 +1261,7 @@ if scores.length > 0 {
 ### "Division by zero"
 
 ```
-Error: ArithmeticError at main.viper:12:16
+Error: ArithmeticError at main.zia:12:16
   Division by zero
 ```
 
@@ -1305,7 +1305,7 @@ var average = safeDivide(total, count, 0);
 ### "Integer overflow"
 
 ```
-Error: OverflowError at main.viper:8:12
+Error: OverflowError at main.zia:8:12
   Integer overflow: result exceeds i64 range
 ```
 
@@ -1338,7 +1338,7 @@ if big < i64.MAX {
 ### "Type cast failed"
 
 ```
-Error: CastError at main.viper:30:12
+Error: CastError at main.zia:30:12
   Cannot cast 'Dog' to 'Cat'
 ```
 
@@ -1383,7 +1383,7 @@ match animal {
 ### "Stack overflow"
 
 ```
-Error: StackOverflowError at main.viper:15:5
+Error: StackOverflowError at main.zia:15:5
   Stack overflow: too many nested function calls
 ```
 
@@ -1463,7 +1463,7 @@ Errors related to file operations and input/output.
 ### "File not found"
 
 ```
-Error: FileError at main.viper:5:20
+Error: FileError at main.zia:5:20
   File not found: 'data.txt'
 ```
 
@@ -1509,7 +1509,7 @@ if Viper.File.exists(filename) {
 ### "Permission denied"
 
 ```
-Error: FileError at main.viper:10:5
+Error: FileError at main.zia:10:5
   Permission denied: '/etc/passwd'
 ```
 
@@ -1536,7 +1536,7 @@ Viper.File.writeText(Viper.OS.homeDir() + "/config.txt", data);  // User's home
 ### "File already exists"
 
 ```
-Error: FileError at main.viper:15:5
+Error: FileError at main.zia:15:5
   File already exists: 'output.txt' (exclusive create mode)
 ```
 
@@ -1571,7 +1571,7 @@ Viper.File.writeText(filename, data);
 ### "Parse error"
 
 ```
-Error: ParseError at main.viper:8:25
+Error: ParseError at main.zia:8:25
   Invalid JSON at position 42: unexpected '}'
 ```
 
@@ -1609,7 +1609,7 @@ Errors related to memory allocation and management.
 ### "Out of memory"
 
 ```
-Error: MemoryError at main.viper:50:5
+Error: MemoryError at main.zia:50:5
   Out of memory: failed to allocate 1073741824 bytes
 ```
 
@@ -1720,7 +1720,7 @@ func operation2() {
 ### "Race condition" / "Data race detected"
 
 ```
-Warning: DataRaceWarning at main.viper:45:12
+Warning: DataRaceWarning at main.zia:45:12
   Potential data race accessing 'counter' from multiple threads
 ```
 
@@ -1785,7 +1785,7 @@ Errors related to module imports and organization.
 ### "Module not found"
 
 ```
-Error: ImportError at main.viper:3:8
+Error: ImportError at main.zia:3:8
   Module not found: 'Utils'
 ```
 
@@ -1795,13 +1795,13 @@ Error: ImportError at main.viper:3:8
 
 ```rust
 // Problem: Module name doesn't match file
-import Utils;  // Looking for Utils.viper, but file is utilities.viper
+import Utils;  // Looking for Utils.zia, but file is utilities.zia
 
 // Solution 1: Match name to file
-import Utilities;  // Matches utilities.viper
+import Utilities;  // Matches utilities.zia
 
 // Solution 2: Use correct path
-import src.utils.Utils;  // For Utils.viper in src/utils/
+import src.utils.Utils;  // For Utils.zia in src/utils/
 ```
 
 **Prevention:**
@@ -1814,7 +1814,7 @@ import src.utils.Utils;  // For Utils.viper in src/utils/
 ### "Circular import"
 
 ```
-Error: ImportError at moduleA.viper:2:8
+Error: ImportError at moduleA.zia:2:8
   Circular import detected: ModuleA -> ModuleB -> ModuleA
 ```
 
@@ -1824,15 +1824,15 @@ Error: ImportError at moduleA.viper:2:8
 
 ```rust
 // Problem: A imports B, B imports A
-// moduleA.viper
+// moduleA.zia
 import ModuleB;
-// moduleB.viper
+// moduleB.zia
 import ModuleA;  // Circular!
 
 // Solution: Extract shared code to third module
-// common.viper - shared types/functions
-// moduleA.viper - imports Common
-// moduleB.viper - imports Common
+// common.zia - shared types/functions
+// moduleA.zia - imports Common
+// moduleB.zia - imports Common
 ```
 
 **Prevention:**
@@ -1845,7 +1845,7 @@ import ModuleA;  // Circular!
 ### "Symbol not exported"
 
 ```
-Error: ImportError at main.viper:5:12
+Error: ImportError at main.zia:5:12
   Symbol 'internalFunc' is not exported from module 'Utils'
 ```
 

@@ -545,7 +545,7 @@ Memory order constants:
 | `__linux__` | Linux |
 | `__unix__` | Unix-like systems |
 | `__ANDROID__` | Android |
-| `__viperos__` | Viper OS (custom) |
+| `__viperdos__` | Viper OS (custom) |
 
 ### 7.4 Architecture Detection
 

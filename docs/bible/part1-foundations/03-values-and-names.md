@@ -971,7 +971,7 @@ Always remember: `ReadLine()` returns a string, even if the user types digits. Y
 
 Viper supports three syntax styles. The concepts -- values, variables, types, operations -- are identical in all three. Only the spelling and punctuation differ.
 
-**ViperLang**
+**Zia**
 ```rust
 var name = "Alice";
 var age = 30;

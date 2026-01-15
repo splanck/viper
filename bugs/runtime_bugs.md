@@ -1,13 +1,13 @@
 # Runtime Bugs
 
-This log captures runtime defects found during the ViperLang runtime sweep.
+This log captures runtime defects found during the Zia runtime sweep.
 
 ## Format
 
 - **ID**: RT-###
 - **Component**: Viper.* class or subsystem
 - **Summary**: краткое описание
-- **Repro**: ViperLang program path + steps
+- **Repro**: Zia program path + steps
 - **Expected**: what should happen
 - **Actual**: what happened
 - **Root Cause**: file:line + explanation
@@ -102,7 +102,7 @@ This log captures runtime defects found during the ViperLang runtime sweep.
 - **ID**: RT-019
   - **Component**: Viper.Collections.Map
   - **Summary**: `Map.Keys()` traps with `InvalidOperation: null indirect callee`.
-  - **Repro**: `/tmp/map_keys.viper`
+  - **Repro**: `/tmp/map_keys.zia`
   - **Expected**: Returns a sequence of keys.
   - **Actual**: Trap: `InvalidOperation (code=0): null indirect callee`.
   - **Root Cause**: Unknown. `Viper.Collections.Map.Keys` is present in `runtime.def`, but the method call resolves to a null callee at runtime.

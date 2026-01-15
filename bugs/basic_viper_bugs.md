@@ -1,10 +1,10 @@
-# Bugs Found During BASIC vs ViperLang Comparison
+# Bugs Found During BASIC vs Zia Comparison
 
-## ViperLang Bugs
+## Zia Bugs
 
 ### BUG-VL-001: Byte type doesn't accept integer literals
 - **Status**: ✅ FIXED
-- **Test**: `tests/comparison/viper/01_primitives.viper`
+- **Test**: `tests/comparison/viper/01_primitives.zia`
 - **Code**: `var b: Byte = 255;`
 - **Expected**: Should accept integer literal for Byte type
 - **Actual**: `Type mismatch: expected Byte, got Integer`
@@ -52,14 +52,14 @@ if (declaredType->kind == TypeKindSem::Byte && initType->kind == TypeKindSem::In
 **Option C**: Add narrowing rule with runtime range check (not recommended for Byte)
 
 #### Files Involved
-- `src/frontends/viperlang/Types.cpp` (lines 108-114) - `isAssignableFrom` numeric promotions
-- `src/frontends/viperlang/Sema_Stmt.cpp` (lines 87-93) - variable declaration type checking
+- `src/frontends/zia/Types.cpp` (lines 108-114) - `isAssignableFrom` numeric promotions
+- `src/frontends/zia/Sema_Stmt.cpp` (lines 87-93) - variable declaration type checking
 
 ---
 
 ### BUG-VL-002: Bitwise operators not supported
 - **Status**: ✅ FIXED
-- **Test**: `tests/comparison/viper/03_operators.viper`
+- **Test**: `tests/comparison/viper/03_operators.zia`
 - **Code**: `var and = a & b;`
 - **Expected**: Bitwise AND/OR/XOR/NOT should work
 - **Actual**: Parse error - operators not recognized
@@ -135,14 +135,14 @@ ExprPtr Parser::parseBitwiseAnd() {
 And update `parseLogicalAnd()` to call `parseBitwiseOr()` instead of `parseEquality()`.
 
 #### Files Involved
-- `src/frontends/viperlang/Parser_Expr.cpp` - missing parsing functions
-- `src/frontends/viperlang/Parser.hpp` - add function declarations
+- `src/frontends/zia/Parser_Expr.cpp` - missing parsing functions
+- `src/frontends/zia/Parser.hpp` - add function declarations
 
 ---
 
 ### BUG-VL-003: String concatenation with Viper.Fmt.Int() in loops causes crash
 - **Status**: ✅ FIXED
-- **Test**: `tests/comparison/viper/04_control_flow.viper`
+- **Test**: `tests/comparison/viper/04_control_flow.zia`
 - **Code**: `Viper.Terminal.Say("i = " + Viper.Fmt.Int(i));` inside for loop
 - **Expected**: Should print formatted string
 - **Actual**: Exit code 134 (SIGABRT), corrupted output
@@ -252,7 +252,7 @@ if (a && a->heap != NULL)  // Only unref heap-backed strings
 
 ### BUG-VL-004: Lambda/higher-order functions cause runtime errors
 - **Status**: ✅ FIXED
-- **Test**: `tests/comparison/viper/05_functions.viper`
+- **Test**: `tests/comparison/viper/05_functions.zia`
 - **Code**: `var add = (a: Integer, b: Integer) => a + b;`
 - **Expected**: Lambda should be callable
 - **Actual**: `call arg count mismatch: @rt_alloc expects 1 argument but got 2`
@@ -318,14 +318,14 @@ Value closurePtr =
 ```
 
 #### Files Involved
-- `src/frontends/viperlang/Lowerer_Expr.cpp` (lines 2576-2579, 2591-2595) - lambda closure allocation
+- `src/frontends/zia/Lowerer_Expr.cpp` (lines 2576-2579, 2591-2595) - lambda closure allocation
 - `src/runtime/rt_memory.c` (line 64) - `rt_alloc` only takes one argument
 
 ---
 
 ### BUG-VL-005: `override` keyword causes parse error
 - **Status**: ✅ FIXED
-- **Test**: `tests/comparison/viper/08_oop_inheritance.viper`
+- **Test**: `tests/comparison/viper/08_oop_inheritance.zia`
 - **Code**: `override expose func speak() -> String`
 - **Expected**: Should allow explicit override declaration
 - **Actual**: `error[V2000]: expected field or method declaration`
@@ -406,15 +406,15 @@ if (check(TokenKind::KwFunc)) {
 ```
 
 #### Files Involved
-- `src/frontends/viperlang/Parser_Decl.cpp` (lines 465-486) - entity member parsing missing `KwOverride` check
-- `src/frontends/viperlang/Token.hpp` (line 206) - `KwOverride` token exists
-- `src/frontends/viperlang/AST_Decl.hpp` (line 226) - `MethodDecl::isOverride` field exists
+- `src/frontends/zia/Parser_Decl.cpp` (lines 465-486) - entity member parsing missing `KwOverride` check
+- `src/frontends/zia/Token.hpp` (line 206) - `KwOverride` token exists
+- `src/frontends/zia/AST_Decl.hpp` (line 226) - `MethodDecl::isOverride` field exists
 
 ---
 
 ### BUG-VL-006: Inherited fields not accessible in child entities
 - **Status**: ✅ FIXED
-- **Test**: `tests/comparison/viper/08_oop_inheritance.viper`
+- **Test**: `tests/comparison/viper/08_oop_inheritance.zia`
 - **Code**: Child entity trying to access parent's `name` field
 - **Expected**: `name = n;` should work in child's init
 - **Actual**: `error[V3000]: Undefined identifier: name`
@@ -510,14 +510,14 @@ void Sema::analyzeEntityDecl(EntityDecl &decl)
 ```
 
 #### Files Involved
-- `src/frontends/viperlang/Sema_Decl.cpp` (lines 276-326) - `analyzeEntityDecl` ignores `baseClass`
-- `src/frontends/viperlang/AST_Decl.hpp` (line 349) - `EntityDecl::baseClass` field exists but unused in sema
+- `src/frontends/zia/Sema_Decl.cpp` (lines 276-326) - `analyzeEntityDecl` ignores `baseClass`
+- `src/frontends/zia/AST_Decl.hpp` (line 349) - `EntityDecl::baseClass` field exists but unused in sema
 
 ---
 
 ### BUG-VL-007: Polymorphism not working (child to parent assignment)
 - **Status**: ✅ FIXED
-- **Test**: `tests/comparison/viper/08_oop_inheritance.viper`
+- **Test**: `tests/comparison/viper/08_oop_inheritance.zia`
 - **Code**: `var animal: Animal = dog;`
 - **Expected**: Should allow assigning Dog to Animal variable
 - **Actual**: `error[V3000]: Type mismatch: expected Animal, got Dog`
@@ -593,14 +593,14 @@ if (kind == TypeKindSem::Entity && source.kind == TypeKindSem::Entity)
 ```
 
 #### Files Involved
-- `src/frontends/viperlang/Types.cpp` (lines 74-141) - `isAssignableFrom` missing entity inheritance check
-- `src/frontends/viperlang/Sema.cpp` - needs to track inheritance relationships
+- `src/frontends/zia/Types.cpp` (lines 74-141) - `isAssignableFrom` missing entity inheritance check
+- `src/frontends/zia/Sema.cpp` - needs to track inheritance relationships
 
 ---
 
 ### BUG-VL-008: Entity field ordering bug
 - **Status**: ✅ FIXED
-- **Test**: `tests/comparison/viper/08_oop_inheritance.viper`
+- **Test**: `tests/comparison/viper/08_oop_inheritance.zia`
 - **Observed**: When entity has multiple fields, values appear swapped
 - **Output**: `Dog name: Golden Retriever` and `Dog breed: Buddy` (swapped)
 - **Severity**: High
@@ -678,14 +678,14 @@ LowerResult Lowerer::lowerNew(NewExpr *expr)
 ```
 
 #### Files Involved
-- `src/frontends/viperlang/Lowerer_Expr.cpp` (lines 1760-1781) - `lowerNew` uses inline field init
+- `src/frontends/zia/Lowerer_Expr.cpp` (lines 1760-1781) - `lowerNew` uses inline field init
 - The generated IL shows direct field stores instead of calling the entity's `init` method
 
 ---
 
 ### BUG-VL-009: Generics not implemented
 - **Status**: 🟡 DEFERRED
-- **Test**: `tests/comparison/viper/10_oop_generics.viper`
+- **Test**: `tests/comparison/viper/10_oop_generics.zia`
 - **Code**: `entity Box[T] { expose T value; }`
 - **Expected**: Generic type parameter T should be recognized
 - **Actual**: `error[V3000]: Unknown type: T` for all uses of type parameter
@@ -771,15 +771,15 @@ TypeRef types::typeParam(const std::string &name)
 4. **Generate monomorphized code** (one version per instantiation) or implement runtime generics
 
 #### Files Involved
-- `src/frontends/viperlang/Sema.cpp` (lines 268-297) - `resolveNamedType` doesn't handle type parameters
-- `src/frontends/viperlang/Sema_Decl.cpp` - `analyzeEntityDecl` ignores `genericParams`
-- `src/frontends/viperlang/Types.hpp` - no `TypeKindSem::TypeParam` for generic parameters
+- `src/frontends/zia/Sema.cpp` (lines 268-297) - `resolveNamedType` doesn't handle type parameters
+- `src/frontends/zia/Sema_Decl.cpp` - `analyzeEntityDecl` ignores `genericParams`
+- `src/frontends/zia/Types.hpp` - no `TypeKindSem::TypeParam` for generic parameters
 
 ---
 
 ### BUG-VL-010: Interface method calls return wrong type
 - **Status**: ✅ FIXED
-- **Test**: `/tmp/test_interface_call.viper`
+- **Test**: `/tmp/test_interface_call.zia`
 - **Code**: `var shape: IShape = c; shape.getName();`
 - **Expected**: Method call through interface should return correct type
 - **Actual**: `error: store void: instruction type must be non-void` (generates broken IL)
@@ -808,15 +808,15 @@ Similar to virtual dispatch for entities, interface method calls now use runtime
 4. Generate conditional dispatch chain based on class_id
 
 #### Files Modified
-- `src/frontends/viperlang/Lowerer_Expr.cpp` - Added `lowerInterfaceMethodCall()`, added interface check in `lowerCall`
-- `src/frontends/viperlang/Lowerer_Decl.cpp` - Store `implementedInterfaces` during entity lowering
-- `src/frontends/viperlang/Lowerer.hpp` - Added `implementedInterfaces` field to `EntityTypeInfo`, added `lowerInterfaceMethodCall` declaration
+- `src/frontends/zia/Lowerer_Expr.cpp` - Added `lowerInterfaceMethodCall()`, added interface check in `lowerCall`
+- `src/frontends/zia/Lowerer_Decl.cpp` - Store `implementedInterfaces` during entity lowering
+- `src/frontends/zia/Lowerer.hpp` - Added `implementedInterfaces` field to `EntityTypeInfo`, added `lowerInterfaceMethodCall` declaration
 
 ---
 
 ### BUG-VL-011: No virtual method dispatch for inherited methods
 - **Status**: ✅ FIXED
-- **Test**: `tests/comparison/viper/08_oop_inheritance.viper`
+- **Test**: `tests/comparison/viper/08_oop_inheritance.zia`
 - **Code**:
   ```viper
   var animal: Animal = dog;  // dog is a Dog instance
@@ -852,10 +852,10 @@ Instead of vtable pointer lookup (which requires runtime pointers to function ad
 3. Generate conditional chain: `if (classId == 1) call Type1.method; else if (classId == 3) call Type3.method; else call default`
 
 #### Files Modified
-- `src/frontends/viperlang/Lowerer_Expr.cpp` - Added `lowerVirtualMethodCall()`, modified call handling
-- `src/frontends/viperlang/Lowerer_Decl.cpp` - Added vtable building in `lowerEntityDecl`
-- `src/frontends/viperlang/Lowerer.hpp` - Added vtable fields to `EntityTypeInfo`
-- `src/frontends/viperlang/RuntimeNames.hpp` - Added `kRtObjClassId` constant
+- `src/frontends/zia/Lowerer_Expr.cpp` - Added `lowerVirtualMethodCall()`, modified call handling
+- `src/frontends/zia/Lowerer_Decl.cpp` - Added vtable building in `lowerEntityDecl`
+- `src/frontends/zia/Lowerer.hpp` - Added vtable fields to `EntityTypeInfo`
+- `src/frontends/zia/RuntimeNames.hpp` - Added `kRtObjClassId` constant
 - `src/il/runtime/RuntimeSignatures.cpp` - Registered `rt_obj_class_id` descriptor
 - `src/il/runtime/signatures/Signatures_Arrays.cpp` - Registered `rt_obj_class_id` signature
 
@@ -863,7 +863,7 @@ Instead of vtable pointer lookup (which requires runtime pointers to function ad
 
 ### BUG-VL-012: Match statement causes runtime trap
 - **Status**: ✅ FIXED
-- **Test**: `/tmp/test_match2.viper`
+- **Test**: `/tmp/test_match2.zia`
 - **Code**:
   ```viper
   var x = 2;
@@ -889,50 +889,50 @@ When match arm bodies like `{ Viper.Terminal.Say("one"); }` were parsed as Block
 4. Generated IL: `call.indirect 0, %t5` - calling null pointer
 
 #### Files Involved
-- `src/frontends/viperlang/Sema_Expr.cpp` - Added `case ExprKind::Block:` and `analyzeBlockExpr()` function
-- `src/frontends/viperlang/Sema.hpp` - Added `analyzeBlockExpr()` declaration
+- `src/frontends/zia/Sema_Expr.cpp` - Added `case ExprKind::Block:` and `analyzeBlockExpr()` function
+- `src/frontends/zia/Sema.hpp` - Added `analyzeBlockExpr()` declaration
 
 ---
 
 ### BUG-VL-013: No native array support
 - **Status**: 🟡 BY DESIGN
 - **Category**: Missing Feature
-- **Description**: ViperLang has no native fixed-size arrays like BASIC's `DIM arr(10)`
+- **Description**: Zia has no native fixed-size arrays like BASIC's `DIM arr(10)`
 - **BASIC equivalent**: `DIM arr(10)`, `DIM arr(10, 10)` for 2D, `LBOUND()`, `UBOUND()`
-- **ViperLang workaround**: Use `List[T]` instead
+- **Zia workaround**: Use `List[T]` instead
 - **Severity**: Medium - different design philosophy
-- **Notes**: ViperLang uses dynamic collections (List, Map, Set) instead of fixed arrays. This is a design choice, not a bug. Consider adding array syntax as sugar over List if needed.
+- **Notes**: Zia uses dynamic collections (List, Map, Set) instead of fixed arrays. This is a design choice, not a bug. Consider adding array syntax as sugar over List if needed.
 
 ---
 
 ### BUG-VL-014: No try/catch error handling
 - **Status**: 🟡 BY DESIGN
 - **Category**: Missing Feature
-- **Description**: ViperLang has no exception-based error handling
+- **Description**: Zia has no exception-based error handling
 - **BASIC equivalent**: `TRY...CATCH...FINALLY...END TRY`, `ON ERROR GOTO`, `RESUME NEXT`
-- **ViperLang workaround**: Use `guard` statements and optional types (`T?`, `??`)
+- **Zia workaround**: Use `guard` statements and optional types (`T?`, `??`)
 - **Severity**: Medium - different design philosophy
-- **Notes**: ViperLang uses a functional approach to error handling with optionals and guard statements. Consider adding Result[T, E] type for explicit error handling.
+- **Notes**: Zia uses a functional approach to error handling with optionals and guard statements. Consider adding Result[T, E] type for explicit error handling.
 
 ---
 
 ### BUG-VL-015: No ByRef parameters
 - **Status**: 🟡 BY DESIGN
 - **Category**: Missing Feature
-- **Description**: ViperLang cannot pass parameters by reference
+- **Description**: Zia cannot pass parameters by reference
 - **BASIC equivalent**: `SUB Increment(BYREF x AS INTEGER)`
-- **ViperLang workaround**: Return modified values, use entity fields
+- **Zia workaround**: Return modified values, use entity fields
 - **Severity**: Low - can work around with return values
-- **Notes**: All ViperLang parameters are passed by value. For mutable state, use entity fields or return new values.
+- **Notes**: All Zia parameters are passed by value. For mutable state, use entity fields or return new values.
 
 ---
 
 ### BUG-VL-016: No STATIC variables
 - **Status**: 🟡 BY DESIGN
 - **Category**: Missing Feature
-- **Description**: ViperLang has no static local variables that persist across function calls
+- **Description**: Zia has no static local variables that persist across function calls
 - **BASIC equivalent**: `STATIC counter AS INTEGER`
-- **ViperLang workaround**: Use entity fields or module-level variables
+- **Zia workaround**: Use entity fields or module-level variables
 - **Severity**: Low - can work around with entity fields
 - **Notes**: Static variables can be simulated using entity fields that persist across method calls.
 
@@ -1058,7 +1058,7 @@ void Lowerer::setSymbolType(std::string_view name, AstType type)
 
 ## Notes
 
-### ViperLang Syntax Discoveries
+### Zia Syntax Discoveries
 - Module declaration required: `module Test;`
 - Entity field syntax: `expose Type name;` (not `expose name: Type`)
 - Constructor: `expose func init()` method (not explicit `new()`)

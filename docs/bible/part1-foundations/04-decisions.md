@@ -1209,7 +1209,7 @@ func start() {
         },
         4 => {
             Viper.Terminal.Say("=== CREDITS ===");
-            Viper.Terminal.Say("Created with ViperLang");
+            Viper.Terminal.Say("Created with Zia");
             Viper.Terminal.Say("Thanks for playing!");
         },
         5 => {
@@ -1251,7 +1251,7 @@ This is more concise than setting a variable in each branch.
 
 ## The Three Languages
 
-**ViperLang**
+**Zia**
 ```rust
 var score = 85;
 
@@ -1326,12 +1326,12 @@ All three express the same logic. The keywords differ, but the structure — con
 
 ## Truthiness and Falsiness
 
-In ViperLang, conditions must be actual booleans. This is different from some languages where `0` counts as false and other numbers count as true.
+In Zia, conditions must be actual booleans. This is different from some languages where `0` counts as false and other numbers count as true.
 
 ```rust
 var count = 5;
 
-if count {           // Error in ViperLang: count is a number, not a boolean
+if count {           // Error in Zia: count is a number, not a boolean
     ...
 }
 
@@ -1354,7 +1354,7 @@ var name = "";        // Empty string
 if name { ... }       // Does this run? Is "" truthy or falsy?
 ```
 
-Different languages disagree on whether empty strings are truthy or falsy. ViperLang avoids this confusion by requiring:
+Different languages disagree on whether empty strings are truthy or falsy. Zia avoids this confusion by requiring:
 
 ```rust
 if name != "" { ... }       // Explicit: "if name is not empty"
@@ -1539,7 +1539,7 @@ if username == "admin" && password == "secret" {
 if score > 100
     Viper.Terminal.Say("High score!");  // Error: missing braces
 ```
-ViperLang requires `{ }` around conditional blocks.
+Zia requires `{ }` around conditional blocks.
 
 **Using = instead of ==:**
 ```rust

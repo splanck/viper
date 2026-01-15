@@ -1,32 +1,32 @@
 # Telnet Demo Bug Tracking
 
-This document tracks bugs discovered while developing the ViperLang telnet client/server demo.
+This document tracks bugs discovered while developing the Zia telnet client/server demo.
 
 ## Overview
 
-- **Demo Location**: `/compiler/demos/viperlang/telnet/`
-- **Components**: server.viper, client.viper
+- **Demo Location**: `/compiler/demos/zia/telnet/`
+- **Components**: server.zia, client.zia
 - **Purpose**: Simple telnet server/client with shell capabilities
 
 ---
 
 ## Bugs Found
 
-### Bug #1: Missing TCP Functions in ViperLang Frontend
+### Bug #1: Missing TCP Functions in Zia Frontend
 
 **Status**: Fixed
 
-**Description**: The ViperLang frontend (Sema.cpp) was missing many TCP/Network function registrations that exist in the runtime. Functions like `SendStr`, `RecvStr`, `RecvLine`, `get_IsOpen`, `get_Available`, `SetRecvTimeout`, and all `TcpServer` functions were not exposed.
+**Description**: The Zia frontend (Sema.cpp) was missing many TCP/Network function registrations that exist in the runtime. Functions like `SendStr`, `RecvStr`, `RecvLine`, `get_IsOpen`, `get_Available`, `SetRecvTimeout`, and all `TcpServer` functions were not exposed.
 
 **Root Cause**: Manual registration mismatch between runtime and frontend.
 - Runtime functions are defined in `/src/il/runtime/runtime.def` using macros like `RT_FN()`
-- Frontend registers available functions manually in `/src/frontends/viperlang/Sema.cpp` `Sema::Sema()` constructor
+- Frontend registers available functions manually in `/src/frontends/zia/Sema.cpp` `Sema::Sema()` constructor
 - The runtime had 26 TCP functions but Sema.cpp only registered 6 basic ones
 - This is an architectural issue: runtime additions don't automatically propagate to frontends
 
-**Location**: `/src/frontends/viperlang/Sema.cpp:1160-1186` (after fix)
+**Location**: `/src/frontends/zia/Sema.cpp:1160-1186` (after fix)
 
-**Fix**: Added missing function registrations to `/src/frontends/viperlang/Sema.cpp` lines 1160-1186:
+**Fix**: Added missing function registrations to `/src/frontends/zia/Sema.cpp` lines 1160-1186:
 - Added TCP Client functions: `ConnectFor`, `get_Host`, `get_Port`, `get_LocalPort`, `get_IsOpen`, `get_Available`, `SendStr`, `SendAll`, `RecvStr`, `RecvExact`, `RecvLine`, `SetRecvTimeout`, `SetSendTimeout`
 - Added TCP Server functions: `Listen`, `ListenAt`, `get_Port`, `get_Address`, `get_IsListening`, `Accept`, `AcceptFor`, `Close`
 
@@ -52,7 +52,7 @@ This document tracks bugs discovered while developing the ViperLang telnet clien
 - No validation exists to detect frontend registrations without matching runtime implementations
 - The runtime uses `Viper.Terminal.*` namespace, not `Viper.Console.*`
 
-**Location**: `/src/frontends/viperlang/Sema.cpp` (phantom registrations have since been removed/corrected)
+**Location**: `/src/frontends/zia/Sema.cpp` (phantom registrations have since been removed/corrected)
 
 **Fix**: Updated code to use correct API names:
 - `Viper.Console.PrintStr()` -> `Viper.Terminal.Print()`
@@ -70,13 +70,13 @@ This document tracks bugs discovered while developing the ViperLang telnet clien
 
 **Status**: ✅ FIXED
 
-**Description**: ViperLang doesn't support property syntax like `str.Length` for String types. Must use function call syntax instead.
+**Description**: Zia doesn't support property syntax like `str.Length` for String types. Must use function call syntax instead.
 
 **Expected**: `cmd.Length` should return string length
 **Actual**: Compilation error - arithmetic operations fail
 
 **Root Cause**: `analyzeField()` in Sema_Expr.cpp only handles List type properties, not String.
-- Location: `/src/frontends/viperlang/Sema_Expr.cpp:687-696`
+- Location: `/src/frontends/zia/Sema_Expr.cpp:687-696`
 - The function has special handling for `List` type to support `.count` and `.size` properties:
   ```cpp
   if (baseType && baseType->kind == TypeKindSem::List) {
@@ -89,7 +89,7 @@ This document tracks bugs discovered while developing the ViperLang telnet clien
 - The function returns `types::unknown()` for all other types, causing downstream failures
 - Additionally, `RuntimeNames.hpp:154` declares `kStringLength = "Viper.String.get_Length"` but Sema.cpp registers `"Viper.String.Length"` (inconsistent naming)
 
-**Location**: `/src/frontends/viperlang/Sema_Expr.cpp:696-703` and `/src/frontends/viperlang/Lowerer_Expr.cpp:1661-1671`
+**Location**: `/src/frontends/zia/Sema_Expr.cpp:696-703` and `/src/frontends/zia/Lowerer_Expr.cpp:1661-1671`
 
 **Fix Applied**:
 1. Added String property handling to `analyzeField()` in Sema_Expr.cpp:
@@ -102,7 +102,7 @@ This document tracks bugs discovered while developing the ViperLang telnet clien
    ```
 2. Added lowering for String.Length in Lowerer_Expr.cpp to synthesize runtime call
 
-**Test**: `demos/viperlang/bug_tests/test_bug3_string_length.viper` - PASSED
+**Test**: `demos/zia/bug_tests/test_bug3_string_length.zia` - PASSED
 
 **Fixed**: [x]
 
@@ -118,7 +118,7 @@ This document tracks bugs discovered while developing the ViperLang telnet clien
 **Actual**: Runtime type mismatch error
 
 **Root Cause**: Semantic analysis doesn't validate operand types for comparison operators.
-- Location: `/src/frontends/viperlang/Sema_Expr.cpp:201-208`
+- Location: `/src/frontends/zia/Sema_Expr.cpp:201-208`
 - Comparison operators (`==`, `!=`, `<`, etc.) unconditionally return `types::boolean()` without checking operand compatibility:
   ```cpp
   case BinaryOp::Eq:
@@ -132,7 +132,7 @@ This document tracks bugs discovered while developing the ViperLang telnet clien
 - However, the IL verifier (`BranchVerifier.cpp`) may still flag type mismatches in some edge cases
 - The safer approach is to use `true`/`false` literals which have proper i1 type
 
-**Location**: `/src/frontends/viperlang/Sema_Expr.cpp:201-208`
+**Location**: `/src/frontends/zia/Sema_Expr.cpp:201-208`
 
 **Fix**: Changed all boolean comparisons to use `== true` or `== false` instead of `== 1` or `== 0`.
 
@@ -151,12 +151,12 @@ This document tracks bugs discovered while developing the ViperLang telnet clien
 **Steps to Reproduce**: Create a function returning String with many `else if` branches. At runtime, receive error: "ret value type mismatch: expected str but got i64"
 
 **Root Cause**: Incorrect implicit return value in `lowerFunctionDecl()`.
-- Location: `/src/frontends/viperlang/Lowerer_Decl.cpp:250-261`
+- Location: `/src/frontends/zia/Lowerer_Decl.cpp:250-261`
 - When a function has unterminated code paths (e.g., control flow falls through without an explicit return), the lowerer emits an implicit return
 - The original code ALWAYS emitted `emitRet(Value::constInt(0))` regardless of return type
 - This caused "ret value type mismatch: expected str but got i64" when the function returned String
 
-**Location**: `/src/frontends/viperlang/Lowerer_Decl.cpp:250-290` and `:494-529`
+**Location**: `/src/frontends/zia/Lowerer_Decl.cpp:250-290` and `:494-529`
 
 **Fix Applied**: Modified implicit return to use correct default value based on return type:
 ```cpp
@@ -182,7 +182,7 @@ switch (ilReturnType.kind) {
 }
 ```
 
-**Test**: `demos/viperlang/bug_tests/test_bug5_elseif_chain.viper` - PASSED
+**Test**: `demos/zia/bug_tests/test_bug5_elseif_chain.zia` - PASSED
 
 **Fixed**: [x]
 
@@ -192,23 +192,23 @@ switch (ilReturnType.kind) {
 
 **Status**: Fixed (Clarification: Both forms work)
 
-**Description**: ViperLang uses `||` and `&&` for logical operators, not `or` and `and` as in some other languages.
+**Description**: Zia uses `||` and `&&` for logical operators, not `or` and `and` as in some other languages.
 
 **Expected**: `if a == "x" or a == "y"` should work
 **Actual**: Compilation succeeds but generates incorrect code
 
-**Root Cause**: This is actually NOT a bug - both `or`/`and` AND `||`/`&&` are valid in ViperLang!
-- Location: `/src/frontends/viperlang/Lexer.cpp:247,273` - Keywords are tokenized:
+**Root Cause**: This is actually NOT a bug - both `or`/`and` AND `||`/`&&` are valid in Zia!
+- Location: `/src/frontends/zia/Lexer.cpp:247,273` - Keywords are tokenized:
   ```cpp
   {"and", TokenKind::KwAnd},
   {"or", TokenKind::KwOr},
   ```
-- Location: `/src/frontends/viperlang/Parser_Expr.cpp:283,303` - Both forms are parsed:
+- Location: `/src/frontends/zia/Parser_Expr.cpp:283,303` - Both forms are parsed:
   ```cpp
   while (match(TokenKind::PipePipe, &opTok) || match(TokenKind::KwOr, &opTok))
   while (match(TokenKind::AmpAmp, &opTok) || match(TokenKind::KwAnd, &opTok))
   ```
-- Location: `/src/frontends/viperlang/Lowerer_Expr.cpp:775-793` - `BinaryOp::Or` is correctly lowered:
+- Location: `/src/frontends/zia/Lowerer_Expr.cpp:775-793` - `BinaryOp::Or` is correctly lowered:
   ```cpp
   case BinaryOp::Or:
       // Boolean OR: zext to i64, perform OR, trunc back to i1
@@ -243,7 +243,7 @@ while i < entries.count() {  // This generates broken code
 ```
 
 **Root Cause**: Runtime function registered with incorrect return type in Sema.cpp.
-- Location: `/src/frontends/viperlang/Sema.cpp:1034`
+- Location: `/src/frontends/zia/Sema.cpp:1034`
   ```cpp
   runtimeFunctions_["Viper.IO.Dir.List"] = types::ptr();
   runtimeFunctions_["Viper.IO.Dir.ListSeq"] = types::ptr();
@@ -253,7 +253,7 @@ while i < entries.count() {  // This generates broken code
 - This causes `analyzeField()` and method resolution to fail
 - The lowerer generates invalid IL because the type information is lost
 
-**Location**: `/src/frontends/viperlang/Sema.cpp:1034-1040`
+**Location**: `/src/frontends/zia/Sema.cpp:1034-1040`
 
 **Fix Applied**: Changed registration to use proper typed return in Sema.cpp:
 ```cpp
@@ -265,7 +265,7 @@ runtimeFunctions_["Viper.IO.Dir.Dirs"] = types::list(types::string());
 runtimeFunctions_["Viper.IO.Dir.DirsSeq"] = types::list(types::string());
 ```
 
-**Test**: `demos/viperlang/bug_tests/test_bug7_list_simple.viper` - PASSED
+**Test**: `demos/zia/bug_tests/test_bug7_list_simple.zia` - PASSED
 (Note: Dir.List runtime function has a separate crash issue unrelated to the type fix)
 
 **Fixed**: [x]
@@ -282,7 +282,7 @@ runtimeFunctions_["Viper.IO.Dir.DirsSeq"] = types::list(types::string());
 **Actual**: Returns ptr/boxed value, string operations fail
 
 **Root Cause**: List's `.get()` method returns boxed values, and the lowerer needs type hints to unbox correctly.
-- ViperLang's List is implemented as a heterogeneous container using boxing
+- Zia's List is implemented as a heterogeneous container using boxing
 - The `.get(i)` method returns a boxed value (ptr) at the IL level
 - Without an explicit type annotation, the variable is inferred as `ptr`
 - When an explicit type like `String entry = ...` is provided:
@@ -411,12 +411,12 @@ After fixes: Compiles and runs successfully
 
 ## Test Suite
 
-Bug fix tests are located in `demos/viperlang/bug_tests/`:
-- `test_bug3_string_length.viper` - Tests String.Length property syntax
-- `test_bug5_elseif_chain.viper` - Tests else-if chains with String return
-- `test_bug7_list_simple.viper` - Tests List[String] type methods
+Bug fix tests are located in `demos/zia/bug_tests/`:
+- `test_bug3_string_length.zia` - Tests String.Length property syntax
+- `test_bug5_elseif_chain.zia` - Tests else-if chains with String return
+- `test_bug7_list_simple.zia` - Tests List[String] type methods
 
-Run all tests: `demos/viperlang/bug_tests/run_all_tests.sh`
+Run all tests: `demos/zia/bug_tests/run_all_tests.sh`
 
 ---
 

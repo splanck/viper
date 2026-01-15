@@ -77,7 +77,7 @@ Finally, you need *Viper* itself — the programming language you'll be learning
 **What is a compiler?** Remember how I said computers only understand numbers? A compiler is a program that translates the code you write (in a human-readable programming language) into the numerical instructions your computer's processor can execute.
 
 Here's the flow:
-1. You write code in a text file (like `hello.viper`)
+1. You write code in a text file (like `hello.zia`)
 2. You run the Viper compiler on that file
 3. The compiler translates your code into machine instructions
 4. The computer runs those instructions
@@ -433,7 +433,7 @@ Let's verify everything works. This is an important step — don't skip it!
 Open a new terminal window (important: new window, to make sure your PATH changes took effect), and type:
 
 ```bash
-viper --version
+zia --version
 ```
 
 **What you should see:**
@@ -447,9 +447,9 @@ Viper 0.1.3
 
 The PATH isn't set correctly. Let's debug:
 
-1. First, check if the viper executable exists:
+1. First, check if the zia executable exists:
    ```bash
-   ls ~/dev/viper/build/bin/viper
+   ls ~/dev/viper/build/bin/zia
    ```
 
    If this says "No such file or directory", the build didn't complete successfully. Go back to the building step.
@@ -463,7 +463,7 @@ The PATH isn't set correctly. Let's debug:
 
 3. As a workaround, you can always run Viper with the full path:
    ```bash
-   ~/dev/viper/build/bin/viper --version
+   ~/dev/viper/build/bin/zia --version
    ```
 
 ### Test 2: Create and Run a Test Program
@@ -488,17 +488,17 @@ func start() {
 }
 ```
 
-Save this file as `test.viper` in your `viper-projects` folder.
+Save this file as `test.zia` in your `viper-projects` folder.
 
 **How to save the file:**
-- In VS Code: File > Save (or Ctrl+S / Cmd+S), navigate to your `viper-projects` folder, name the file `test.viper`, and click Save
-- Make sure the filename ends with `.viper`, not `.viper.txt`
+- In VS Code: File > Save (or Ctrl+S / Cmd+S), navigate to your `viper-projects` folder, name the file `test.zia`, and click Save
+- Make sure the filename ends with `.zia`, not `.zia.txt`
 
 **Run the program:**
 
 In your terminal (make sure you're in the viper-projects folder):
 ```bash
-viper test.viper
+zia test.zia
 ```
 
 **What you should see:**
@@ -516,7 +516,7 @@ While you have your test file open in your editor, check these things:
 - In VS Code: Go to View > Toggle Line Numbers
 - Or search in Settings (Ctrl+, or Cmd+,) for "line numbers"
 
-**The code should be colorized.** Different parts of your code should appear in different colors — keywords like `module` and `func` in one color, the string `"Setup complete!"` in another. This is called *syntax highlighting*. If everything is the same color, your editor might not recognize the `.viper` file type, but that's okay for now.
+**The code should be colorized.** Different parts of your code should appear in different colors — keywords like `module` and `func` in one color, the string `"Setup complete!"` in another. This is called *syntax highlighting*. If everything is the same color, your editor might not recognize the `.zia` file type, but that's okay for now.
 
 ---
 
@@ -524,7 +524,7 @@ While you have your test file open in your editor, check these things:
 
 Here are solutions to problems that commonly trip up beginners:
 
-### "command not found" (for viper)
+### "command not found" (for zia)
 
 **What it means:** Your computer doesn't know where to find the Viper program.
 
@@ -541,7 +541,7 @@ Here are solutions to problems that commonly trip up beginners:
 
 4. **Use the full path:** If all else fails, you can always use the full path:
    ```bash
-   ~/dev/viper/build/bin/viper yourprogram.viper
+   ~/dev/viper/build/bin/zia yourprogram.zia
    ```
 
 ### "No such file or directory" (for your code file)
@@ -557,11 +557,11 @@ Here are solutions to problems that commonly trip up beginners:
    cd ~/viper-projects
    ```
 
-3. **Check the filename:** Make sure you saved the file with the `.viper` extension, not `.viper.txt`. In some editors (especially on Windows), you might need to select "All Files" in the save dialog to avoid this.
+3. **Check the filename:** Make sure you saved the file with the `.zia` extension, not `.zia.txt`. In some editors (especially on Windows), you might need to select "All Files" in the save dialog to avoid this.
 
 4. **Use the full path to the file:**
    ```bash
-   viper ~/viper-projects/test.viper
+   zia ~/viper-projects/test.zia
    ```
 
 ### "Permission denied"
@@ -570,9 +570,9 @@ Here are solutions to problems that commonly trip up beginners:
 
 **Solutions:**
 
-1. **On macOS/Linux**, if the viper executable doesn't have execute permission:
+1. **On macOS/Linux**, if the zia executable doesn't have execute permission:
    ```bash
-   chmod +x ~/dev/viper/build/bin/viper
+   chmod +x ~/dev/viper/build/bin/zia
    ```
 
 2. **On macOS**, if you see a security warning about an unidentified developer, go to System Preferences > Security & Privacy and click "Allow Anyway".
@@ -639,7 +639,7 @@ Every program you create follows these steps:
 
 **2. Save:** Save the file (Ctrl+S or Cmd+S). Your changes aren't written to disk until you save!
 
-**3. Run:** In the terminal, execute your program with `viper filename.viper`
+**3. Run:** In the terminal, execute your program with `zia filename.zia`
 
 **4. Observe:** Look at the output. Did it do what you expected?
 
@@ -660,13 +660,13 @@ As you work through this book, you'll create many programs. Keep them organized:
 ```
 viper-projects/
     chapter02/
-        hello.viper
-        greeting.viper
+        hello.zia
+        greeting.zia
     chapter03/
-        variables.viper
-        calculator.viper
+        variables.zia
+        calculator.zia
     experiments/
-        random-stuff.viper
+        random-stuff.zia
 ```
 
 Use folders to group related files. Give your files descriptive names. Your future self will thank you.
@@ -683,14 +683,14 @@ Let's recap what all these tools do and how they work together:
 | **Terminal** | A text-based interface for running commands | To navigate folders, run programs, and use developer tools |
 | **Git** | Downloads code from the internet and tracks changes | To download Viper (and later, to manage your own projects) |
 | **CMake** | Prepares software projects for building | Part of the Viper installation process |
-| **Compiler** (inside Viper) | Translates your code into instructions the computer can execute | Every time you run `viper yourfile.viper` |
+| **Compiler** (inside Viper) | Translates your code into instructions the computer can execute | Every time you run `zia yourfile.zia` |
 | **Viper** | The programming language and its toolchain | To run your Viper programs |
 
 The flow looks like this:
 
 ```
 You write code     -->    Code is saved    -->    Compiler reads    -->    Compiler outputs    -->    Computer runs
-in your editor           to a .viper file        and translates it        machine instructions        the program
+in your editor           to a .zia file        and translates it        machine instructions        the program
 ```
 
 ---
@@ -741,7 +741,7 @@ func start() {
 }
 ```
 
-4. Save it as `hello.viper` in your `viper-projects` folder
+4. Save it as `hello.zia` in your `viper-projects` folder
 
 5. Open your terminal and navigate to the folder:
 ```bash
@@ -750,7 +750,7 @@ cd ~/viper-projects
 
 6. Run the program:
 ```bash
-viper hello.viper
+zia hello.zia
 ```
 
 You should see:

@@ -18,16 +18,16 @@
 
 ## Bug Log
 
-### Bug #001: ViperLang cross-module entity type references fail
+### Bug #001: Zia cross-module entity type references fail
 - **Date**: 2026-01-08
-- **Language**: ViperLang
+- **Language**: Zia
 - **Component**: Frontend (Sema)
 - **Severity**: Medium
 - **Status**: FIXED IN COMPILER
 - **Description**: Using `module.EntityName` as a function return type causes "Unknown type" error
 - **Steps to Reproduce**:
-  1. Create token.viper with `entity Token { ... }`
-  2. Create lexer.viper with `import "./token";`
+  1. Create token.zia with `entity Token { ... }`
+  2. Create lexer.zia with `import "./token";`
   3. Declare function: `func readNumber() -> token.Token { ... }`
 - **Expected**: Type should resolve from imported module
 - **Actual**: Error "Unknown type: token.Token"
@@ -60,9 +60,9 @@
 - **Workaround**: Move keyword lookup to top-level FUNCTION outside CLASS
 - **Notes**: This may be a cascading effect of Bug #007 (backslash corruption) rather than a distinct parser bug.
 
-### Bug #003: ViperLang string comparison operators generate wrong IL
+### Bug #003: Zia string comparison operators generate wrong IL
 - **Date**: 2026-01-08
-- **Language**: ViperLang
+- **Language**: Zia
 - **Component**: Frontend (Lowerer/Codegen)
 - **Severity**: Critical
 - **Status**: FIXED IN COMPILER
@@ -368,9 +368,9 @@
   ```
 - **Notes**: This is expected behavior in object-oriented BASIC variants, but error handling could be improved.
 
-### Bug #013: ViperLang optional type not unwrapped for method resolution
+### Bug #013: Zia optional type not unwrapped for method resolution
 - **Date**: 2026-01-08
-- **Language**: ViperLang
+- **Language**: Zia
 - **Component**: Frontend (Sema + Lowerer)
 - **Severity**: Critical
 - **Status**: **FIXED IN COMPILER**
@@ -401,13 +401,13 @@
   1. Modified `Sema_Expr.cpp:analyzeField()` to unwrap Optional types before field/method lookup
   2. Modified `Lowerer_Expr_Call.cpp` to unwrap Optional types before method resolution
 - **Files Changed**:
-  - `src/frontends/viperlang/Sema_Expr.cpp` - Added Optional unwrapping in `analyzeField()`
-  - `src/frontends/viperlang/Lowerer_Expr_Call.cpp` - Added Optional unwrapping before method resolution
+  - `src/frontends/zia/Sema_Expr.cpp` - Added Optional unwrapping in `analyzeField()`
+  - `src/frontends/zia/Lowerer_Expr_Call.cpp` - Added Optional unwrapping before method resolution
 - **Notes**: This enables the common pattern of assigning from an optional after a null guard. A proper fix would involve flow-sensitive type narrowing, but this workaround handles the common case.
 
-### Bug #014: ViperLang optional type field access returns default values
+### Bug #014: Zia optional type field access returns default values
 - **Date**: 2026-01-08
-- **Language**: ViperLang
+- **Language**: Zia
 - **Component**: Frontend (Lowerer)
 - **Severity**: Critical
 - **Status**: **FIXED IN COMPILER**
@@ -433,12 +433,12 @@
 - **Fix Applied**:
   - Modified `Lowerer_Expr.cpp:lowerField()` to unwrap Optional types before looking up entity field information
 - **Files Changed**:
-  - `src/frontends/viperlang/Lowerer_Expr.cpp` - Added Optional unwrapping at start of `lowerField()`
+  - `src/frontends/zia/Lowerer_Expr.cpp` - Added Optional unwrapping at start of `lowerField()`
 - **Notes**: This completes the fix for optional type handling. Bug #013 fixed method calls, Bug #014 fixes field access.
 
-### Bug #015: ViperLang optional type field assignment does not work
+### Bug #015: Zia optional type field assignment does not work
 - **Date**: 2026-01-08
-- **Language**: ViperLang
+- **Language**: Zia
 - **Component**: Frontend (Lowerer)
 - **Severity**: Critical
 - **Status**: **FIXED IN COMPILER**
@@ -465,7 +465,7 @@
 - **Fix Applied**:
   - Modified `Lowerer_Expr_Binary.cpp` to unwrap Optional types before looking up entity field information for assignment
 - **Files Changed**:
-  - `src/frontends/viperlang/Lowerer_Expr_Binary.cpp` - Added Optional unwrapping before field assignment lookup
+  - `src/frontends/zia/Lowerer_Expr_Binary.cpp` - Added Optional unwrapping before field assignment lookup
 - **Notes**: This completes the fix for optional type handling. Bug #013 fixed method calls, Bug #014 fixes field reads, Bug #015 fixes field writes.
 
 ### Bug #016: Viper Basic VAL() overflow on non-numeric strings
@@ -535,9 +535,9 @@
   - `src/frontends/basic/LowerExprNumeric.cpp` (lines 394-407)
 - **Notes**: This was a classic C++ container invalidation bug. When a `std::vector` reallocates to grow, all pointers and iterators to its elements become invalid. The fix ensures all block pointers are obtained AFTER any operations that might cause reallocation, and indices are used for persistent references.
 
-### Bug #018: ViperLang method calls on primitive types (String.length(), Integer.toString()) generate incorrect IL
+### Bug #018: Zia method calls on primitive types (String.length(), Integer.toString()) generate incorrect IL
 - **Date**: 2026-01-08
-- **Language**: ViperLang
+- **Language**: Zia
 - **Component**: Frontend (Lowerer - Lowerer_Expr_Call.cpp)
 - **Severity**: Critical
 - **Status**: Fixed (COMPILER FIX)
@@ -561,14 +561,14 @@
   1. `String.length()` - directly emits call to `Viper.String.Length`
   2. `Integer.toString()` - directly emits call to `Viper.Fmt.Int`
   3. `Number.toString()` - directly emits call to `Viper.Fmt.Num`
-- **Files Modified**: `src/frontends/viperlang/Lowerer_Expr_Call.cpp` (lines 523-560)
-- **Impact**: This bug broke all ViperLang code using `str.length()` or `num.toString()` patterns. The SQL clone now works correctly.
+- **Files Modified**: `src/frontends/zia/Lowerer_Expr_Call.cpp` (lines 523-560)
+- **Impact**: This bug broke all Zia code using `str.length()` or `num.toString()` patterns. The SQL clone now works correctly.
 - **Notes**: The runtime `rt_substr` and other string functions were working correctly - the bug was entirely in the frontend lowering phase.
 
-### Bug #019: ViperLang SQL - Called nonexistent valueCount() method on Row entity
+### Bug #019: Zia SQL - Called nonexistent valueCount() method on Row entity
 - **Date**: 2026-01-08
-- **Language**: ViperLang
-- **Component**: SQL Clone (sql.viper)
+- **Language**: Zia
+- **Component**: SQL Clone (sql.zia)
 - **Severity**: High
 - **Status**: Fixed (CODE FIX)
 - **Description**: In evalSubquery() and evalInSubquery(), the code called `row.valueCount()` but the Row entity only has a `columnCount()` method.
@@ -582,7 +582,7 @@
 - **Fix**: Changed both occurrences of `valueCount()` to `columnCount()`:
   - Line 2800: `firstRow.valueCount()` → `firstRow.columnCount()`
   - Line 2871: `resultRow.valueCount()` → `resultRow.columnCount()`
-- **Files Modified**: `demos/sqldb/viperlang/sql.viper`
+- **Files Modified**: `demos/sqldb/zia/sql.zia`
 - **Notes**: Both scalar subqueries and IN subqueries now work correctly.
 
 ### Bug #020: Viper Basic 2D array reads return only the last written value
@@ -667,9 +667,9 @@
 - **Impact on SQLite Clone**: AUTOINCREMENT values were being doubled (2, 4, 6 instead of 1, 2, 3)
 - **Notes**: This is a compiler/runtime bug requiring a compiler fix. Workaround applied in SQL implementation.
 
-### Bug #022: ViperLang List[Entity].get().property causes "null indirect callee" trap
+### Bug #022: Zia List[Entity].get().property causes "null indirect callee" trap
 - **Date**: 2026-01-08
-- **Language**: ViperLang
+- **Language**: Zia
 - **Component**: Runtime
 - **Severity**: Medium
 - **Status**: WORKAROUND APPLIED
@@ -722,12 +722,12 @@
       return false;
   }
   ```
-- **Impact on SQLite Clone**: DROP INDEX in ViperLang crashes. CREATE INDEX works. Workaround applied but DROP INDEX test still fails due to remaining issues.
+- **Impact on SQLite Clone**: DROP INDEX in Zia crashes. CREATE INDEX works. Workaround applied but DROP INDEX test still fails due to remaining issues.
 - **Notes**: This appears to be a runtime issue with how entity method dispatch works after List.get(). The same pattern works in the Database entity for dropTable.
 
-### Bug #023: ViperLang function calls return function type instead of return type
+### Bug #023: Zia function calls return function type instead of return type
 - **Date**: 2026-01-08
-- **Language**: ViperLang
+- **Language**: Zia
 - **Component**: Frontend (Sema - Sema_Expr.cpp)
 - **Severity**: Critical
 - **Status**: **FIXED IN COMPILER**
@@ -768,21 +768,21 @@
 - **Fix Applied**:
   - Modified `Sema_Expr.cpp:analyzeCall()` to check if the function symbol's type is a Function type, and if so, return `funcType->returnType()` instead of the full function type
 - **Files Changed**:
-  - `src/frontends/viperlang/Sema_Expr.cpp` (lines 384-391)
-- **Test File**: `src/tests/viperlang/test_viperlang_optional_field.cpp` - Added 3 tests to verify the fix
-- **Notes**: This bug was discovered while investigating optional type field access issues. The actual root cause was in the function call type resolution, not the optional type handling. The `extractDottedName` path is used for all user-defined function calls, so this bug affected all ViperLang function calls.
+  - `src/frontends/zia/Sema_Expr.cpp` (lines 384-391)
+- **Test File**: `src/tests/zia/test_zia_optional_field.cpp` - Added 3 tests to verify the fix
+- **Notes**: This bug was discovered while investigating optional type field access issues. The actual root cause was in the function call type resolution, not the optional type handling. The `extractDottedName` path is used for all user-defined function calls, so this bug affected all Zia function calls.
 
 ---
 
-### Bug #024: ViperLang IL verification error in SqlValue.compare
+### Bug #024: Zia IL verification error in SqlValue.compare
 - **Date**: 2026-01-08
-- **Language**: ViperLang
+- **Language**: Zia
 - **Component**: Frontend (Sema - Sema_Expr.cpp)
 - **Severity**: Critical
 - **Status**: **FIXED IN COMPILER**
-- **Description**: Running ViperLang sql.viper fails with IL verifier error: `SqlValue.compare:if_then_35: store %t166 0: instruction type must be non-void`
+- **Description**: Running Zia sql.zia fails with IL verifier error: `SqlValue.compare:if_then_35: store %t166 0: instruction type must be non-void`
 - **Steps to Reproduce**:
-  1. Run: `ilc front viperlang -run demos/sqldb/viperlang/sql.viper`
+  1. Run: `ilc front zia -run demos/sqldb/zia/sql.zia`
 - **Expected**: Should compile and run the SQL database demo
 - **Actual**: Error during IL verification: `store %t166 0: instruction type must be non-void`
 - **Root Cause**: In `Sema_Expr.cpp:analyzeCall()`, the `extractDottedName` code path for resolving user-defined function calls was not storing the callee's type in `exprTypes_`. The code looked up the function symbol and returned its return type, but never called `analyzeExpr(expr->callee.get())` or stored the callee's type. When the lowerer later called `sema_.typeOf(expr->callee.get())` to determine what type of call to emit, it got `unknown`/`nullptr`, which defaulted to `Void` return type. This caused `emitCall` to be used instead of `emitCallRet`, resulting in the store of a void value error.
@@ -794,8 +794,8 @@
     exprTypes_[expr->callee.get()] = funcType;
     ```
 - **Files Changed**:
-  - `src/frontends/viperlang/Sema_Expr.cpp` (lines 371-374)
-- **Verification**: ViperLang SQL demo now runs successfully with index lookups working:
+  - `src/frontends/zia/Sema_Expr.cpp` (lines 371-374)
+- **Verification**: Zia SQL demo now runs successfully with index lookups working:
   ```
   --- Query with Index (uses index lookup) ---
   SQL: SELECT * FROM indextest WHERE name = 'Bob';
@@ -809,10 +809,10 @@
 
 ---
 
-### Bug #025: ViperLang aggregate functions (COUNT, SUM, AVG, MIN, MAX) return NULL
+### Bug #025: Zia aggregate functions (COUNT, SUM, AVG, MIN, MAX) return NULL
 - **Date**: 2026-01-08
-- **Language**: ViperLang
-- **Component**: SQL Clone (executor.viper)
+- **Language**: Zia
+- **Component**: SQL Clone (executor.zia)
 - **Severity**: High
 - **Status**: **FIXED** (code fix)
 - **Description**: Aggregate functions in SELECT queries return NULL instead of computed values
@@ -826,18 +826,18 @@
   ```
 - **Expected**: COUNT(*) = 2, SUM(score) = 182
 - **Actual**: Both return NULL for each row (4 NULLs if 4 rows)
-- **Root Cause**: The split `executor.viper` module only implements scalar functions (UPPER, LOWER, LENGTH, ABS, COALESCE) in `evalFunction()`. Aggregate functions require special handling:
+- **Root Cause**: The split `executor.zia` module only implements scalar functions (UPPER, LOWER, LENGTH, ABS, COALESCE) in `evalFunction()`. Aggregate functions require special handling:
   1. Aggregates operate on sets of rows, not individual rows
   2. Without GROUP BY, aggregates should return a single row with computed values
   3. The executeSelect() function evaluates expressions per-row, which doesn't work for aggregates
 - **Fix Applied**: Added `isAggregateExpr()`, `hasAggregates()`, `evalAggregate()` functions and modified `executeSelect()` to detect aggregate queries and compute aggregates over matching rows instead of per-row evaluation.
-- **Files Changed**: `demos/sqldb/viperlang/executor.viper`
+- **Files Changed**: `demos/sqldb/zia/executor.zia`
 - **Verification**: COUNT(*) returns 4, SUM(score) returns 362, AVG returns 90, MIN returns 87, MAX returns 95
 
-### Bug #026: ViperLang DISTINCT does not deduplicate rows
+### Bug #026: Zia DISTINCT does not deduplicate rows
 - **Date**: 2026-01-08
-- **Language**: ViperLang
-- **Component**: SQL Clone (executor.viper)
+- **Language**: Zia
+- **Component**: SQL Clone (executor.zia)
 - **Severity**: Medium
 - **Status**: **FIXED** (code fix)
 - **Description**: DISTINCT keyword has no effect, duplicate rows are returned
@@ -850,13 +850,13 @@
 - **Actual**: Returns 5 rows with duplicate 92
 - **Root Cause**: DISTINCT is parsed but not implemented in executeSelect()
 - **Fix Applied**: Added `applyDistinct()` function that builds a key from each row's values and filters out duplicates using a seen-keys list.
-- **Files Changed**: `demos/sqldb/viperlang/executor.viper`
+- **Files Changed**: `demos/sqldb/zia/executor.zia`
 - **Verification**: SELECT DISTINCT score returns 4 rows (95, 87, 92, 88)
 
-### Bug #027: ViperLang GROUP BY does not group rows
+### Bug #027: Zia GROUP BY does not group rows
 - **Date**: 2026-01-08
-- **Language**: ViperLang
-- **Component**: SQL Clone (executor.viper)
+- **Language**: Zia
+- **Component**: SQL Clone (executor.zia)
 - **Severity**: Medium
 - **Status**: **FIXED** (code fix)
 - **Description**: GROUP BY clause has no effect, all rows returned without grouping
@@ -868,7 +868,7 @@
 - **Actual**: Returns 5 rows (one per original row) with NULL counts
 - **Root Cause**: GROUP BY is parsed but grouping logic not implemented in executeSelect()
 - **Fix Applied**: Added `executeGroupBy()` function that builds groups by creating keys from GROUP BY column values, collects row indices per group, then computes aggregates and non-aggregate values per group.
-- **Files Changed**: `demos/sqldb/viperlang/executor.viper`
+- **Files Changed**: `demos/sqldb/zia/executor.zia`
 - **Verification**: SELECT score, COUNT(*) FROM scores GROUP BY score returns 4 rows with score 92 showing count 2
 
 ---
@@ -878,21 +878,21 @@
 ### Phase 6: Subqueries - In Progress
 
 #### Step 31: Scalar Subquery in WHERE - COMPLETED (2026-01-08)
-- **ViperLang**: Added EXPR_SUBQUERY type, parser support for `(SELECT ...)`, and evalSubquery() function
+- **Zia**: Added EXPR_SUBQUERY type, parser support for `(SELECT ...)`, and evalSubquery() function
 - **Viper Basic**: Added matching support with EvalSubquery() function
 - **Test Results**: Subqueries are being parsed and executed correctly
 - **Note**: Some comparison results are affected by existing type comparison issues (text vs numeric). The subquery mechanism itself works correctly.
 - **Files Modified**:
-  - `demos/sqldb/viperlang/sql.viper` - Added subquery expression type, parser, evaluator, and tests
+  - `demos/sqldb/zia/sql.zia` - Added subquery expression type, parser, evaluator, and tests
   - `demos/sqldb/basic/sql.bas` - Added matching support for subqueries
 
 #### Step 32: Subquery with IN - COMPLETED (2026-01-08)
-- **ViperLang**: Added OP_IN handling in parseCompExpr, evalInSubquery() function, and fixed Bug #019 (valueCount→columnCount)
+- **Zia**: Added OP_IN handling in parseCompExpr, evalInSubquery() function, and fixed Bug #019 (valueCount→columnCount)
 - **Viper Basic**: Added matching EvalInSubquery() function with same SELECT consumption fix
 - **Test Results**: Both languages correctly handle `WHERE id IN (SELECT ...)` patterns
 - **Key Bug Fixed**: Bug #019 - Row entity method was called as `valueCount()` but should be `columnCount()`
 - **Files Modified**:
-  - `demos/sqldb/viperlang/sql.viper` - Added IN subquery parsing and evaluation
+  - `demos/sqldb/zia/sql.zia` - Added IN subquery parsing and evaluation
   - `demos/sqldb/basic/sql.bas` - Added IN subquery parsing and evaluation
 
 ### Phase 8: Indexes - In Progress
@@ -908,20 +908,20 @@
   - Added `TryIndexLookup()` - attempts to use index for WHERE clause
   - Modified `ExecuteSelect()` to try index lookup before table scan
   - Test shows index lookup returns 1 row for `SELECT * FROM indextest WHERE name = 'Bob'`
-- **ViperLang**: COMPLETED (Bug #024 fixed)
+- **Zia**: COMPLETED (Bug #024 fixed)
   - Added `getIndexableColumn()`, `getIndexLookupValue()`, `tryIndexLookup()` helper functions
   - Modified `executeSelect()` to use `indexLookupUsed` global flag for index detection
   - Test verified: index lookup finds Bob's record correctly
 - **Files Modified**:
   - `demos/sqldb/basic/executor.bas` - Added index lookup in ExecuteSelect
   - `demos/sqldb/basic/test.bas` - Added index lookup test
-  - `demos/sqldb/viperlang/sql.viper` - Added index helper functions and executeSelect integration
-  - `src/frontends/viperlang/Sema_Expr.cpp` - Bug #024 fix (callee type caching)
+  - `demos/sqldb/zia/sql.zia` - Added index helper functions and executeSelect integration
+  - `src/frontends/zia/Sema_Expr.cpp` - Bug #024 fix (callee type caching)
 
 ### Phase 4: Advanced Queries - COMPLETED (2026-01-08)
 
 #### Step 23: Aggregate Functions (COUNT, SUM, AVG, MIN, MAX) - COMPLETED
-- **ViperLang (modular)**: Fixed in executor.viper
+- **Zia (modular)**: Fixed in executor.zia
   - Added `isAggregateExpr()` - checks if expression is an aggregate function
   - Added `hasAggregates()` - checks if SELECT has any aggregate functions
   - Added `evalAggregate()` - evaluates aggregates over a list of row indices
@@ -929,26 +929,26 @@
 - **Verification**: COUNT(*) returns 4, SUM(score) returns 362, AVG returns 90, MIN returns 87, MAX returns 95
 
 #### Step 22: DISTINCT - COMPLETED
-- **ViperLang (modular)**: Fixed in executor.viper
+- **Zia (modular)**: Fixed in executor.zia
   - Added `applyDistinct()` - builds keys from row values and filters duplicates
   - Modified `executeSelect()` to apply DISTINCT after result collection
 - **Verification**: SELECT DISTINCT score returns unique values
 
 #### Step 24: GROUP BY - COMPLETED
-- **ViperLang (modular)**: Fixed in executor.viper
+- **Zia (modular)**: Fixed in executor.zia
   - Added `executeGroupBy()` - groups rows by GROUP BY expressions, computes aggregates per group
 - **Verification**: GROUP BY score with COUNT(*) correctly shows count 2 for duplicate scores
 
 #### Step 25: HAVING - COMPLETED
-- **ViperLang (modular)**: Fixed in executor.viper
+- **Zia (modular)**: Fixed in executor.zia
   - Added `evalHavingExpr()` - evaluates HAVING condition with aggregate support
   - Added `evalHavingValue()` - evaluates values in HAVING context (aggregates, literals, columns)
   - Modified `executeGroupBy()` to filter groups based on HAVING condition
 - **Verification**: HAVING COUNT(*) > 1 correctly filters out single-row groups
 
-### Status of Modular ViperLang SQL Implementation
-- **Location**: `/demos/sqldb/viperlang/` (split modules)
-- **Original**: `/demos/sqldb/viperlang/sql.viper` (6135 lines, monolithic)
+### Status of Modular Zia SQL Implementation
+- **Location**: `/demos/sqldb/zia/` (split modules)
+- **Original**: `/demos/sqldb/zia/sql.zia` (6135 lines, monolithic)
 - **Current Status**: Core features working in modular version
   - CREATE TABLE, INSERT, SELECT, UPDATE, DELETE: Working
   - ORDER BY, LIMIT, OFFSET: Working
@@ -962,31 +962,31 @@
 ### Phase 5: JOINs - COMPLETED (2026-01-08)
 
 #### Step 27: CROSS JOIN - COMPLETED
-- **ViperLang (modular)**: Implemented in executor.viper
+- **Zia (modular)**: Implemented in executor.zia
   - Added `executeCrossJoin()` function that handles multi-table queries
   - Builds cartesian product of tables
 
 #### Step 28: INNER JOIN - COMPLETED
-- **ViperLang (modular)**: Implemented in executor.viper
+- **Zia (modular)**: Implemented in executor.zia
   - Added `evalJoinExpr()` for evaluating expressions in JOIN context
   - Added `findJoinColumnValue()` for column lookups across joined tables
   - Properly handles ON conditions for INNER JOIN
 - **Verification**: `SELECT users.name, orders.product FROM users INNER JOIN orders ON users.id = orders.user_id` returns correct matching rows
 
 #### Step 29: LEFT JOIN - COMPLETED
-- **ViperLang (modular)**: Implemented in executor.viper
+- **Zia (modular)**: Implemented in executor.zia
   - Includes all left table rows, with NULLs for unmatched right columns
 - **Verification**: LEFT JOIN includes Charlie with NULL product (no orders)
 
 #### Step 30: RIGHT JOIN / FULL JOIN - COMPLETED
-- **ViperLang (modular)**: Implemented in executor.viper
+- **Zia (modular)**: Implemented in executor.zia
   - RIGHT JOIN includes unmatched right rows with NULL left columns
   - FULL JOIN combines LEFT and RIGHT JOIN behavior
 
 ### Phase 8: Indexes (Continued) - COMPLETED (2026-01-08)
 
 #### Index-Based Lookups in Modular Version - COMPLETED
-- **ViperLang (modular)**: Implemented in executor.viper
+- **Zia (modular)**: Implemented in executor.zia
   - Added `canUseIndex()` - checks if WHERE clause is simple equality on indexed column
   - Added `indexLookup()` - uses index to find matching row indices
   - Added `updateIndexesAfterInsert()` - maintains indexes when rows are inserted
@@ -1029,7 +1029,7 @@
 ### Phase 6: Subqueries - COMPLETED (2026-01-08)
 
 #### Step 31: Scalar Subquery in WHERE - COMPLETED
-- **ViperLang (modular)**: Implemented in executor.viper
+- **Zia (modular)**: Implemented in executor.zia
   - Added `EXPR_SUBQUERY` handling in `evalExpr()`
   - Added `evalSubquery()` function that executes subquery and returns scalar value
   - Supports correlated subqueries via outerRow/outerTable context
@@ -1038,7 +1038,7 @@
   - `SELECT name FROM employees WHERE salary > (SELECT AVG(salary) FROM employees)`
 
 #### Step 32: Subquery with IN - COMPLETED
-- **ViperLang (modular)**: Implemented in executor.viper
+- **Zia (modular)**: Implemented in executor.zia
   - Added `OP_IN` handling in `evalBinary()` for subquery comparison
   - Executes subquery and checks if left value appears in results
 - **Bug Fixed**: Parser was not preserving quotes around string literals when building subquery SQL
@@ -1059,7 +1059,7 @@
 ### Phase 7: Constraints & Integrity - COMPLETED (2026-01-08)
 
 #### Constraint Enforcement Implementation
-- **ViperLang (modular)**: Implemented in executor.viper
+- **Zia (modular)**: Implemented in executor.zia
   - Added `validateConstraints()` function for comprehensive constraint checking
   - Modified `executeInsert()` to validate constraints before adding row
   - Modified `executeUpdate()` to validate constraints before applying changes (with row copy pattern)
@@ -1079,16 +1079,16 @@
 - **Total: 16/16 tests pass**
 
 ### Complete Test Summary (2026-01-09)
-- **test.viper** (main tests): 22/22 PASS
-- **test_features.viper** (advanced features): 22/22 PASS
-- **test_functions.viper** (SQL functions): 25/25 PASS
-- **test_index.viper** (index lookups): 16/16 PASS
-- **test_subquery.viper** (subqueries): 16/16 PASS
-- **test_constraints.viper** (constraints): 16/16 PASS
+- **test.zia** (main tests): 22/22 PASS
+- **test_features.zia** (advanced features): 22/22 PASS
+- **test_functions.zia** (SQL functions): 25/25 PASS
+- **test_index.zia** (index lookups): 16/16 PASS
+- **test_subquery.zia** (subqueries): 16/16 PASS
+- **test_constraints.zia** (constraints): 16/16 PASS
 - **TOTAL: 117/117 tests passing**
 
-### Modular ViperLang SQL Implementation - Complete Status
-**Location**: `/demos/sqldb/viperlang/` (split modules)
+### Modular Zia SQL Implementation - Complete Status
+**Location**: `/demos/sqldb/zia/` (split modules)
 **Files**: 14 modules + 6 test files
 
 **Core Features (All Working)**:

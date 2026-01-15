@@ -723,15 +723,15 @@ cmake --build build -j
 ./scripts/vm_benchmark.sh
 
 # Run with opcode counting
-VIPER_VM_OPCOUNTS=1 ./build/src/tools/viper/viper program.viper
+VIPER_VM_OPCOUNTS=1 ./build/src/tools/viper/viper program.zia
 
 # Profile with perf (Linux)
-perf record -g ./build/src/tools/viper/viper program.viper
+perf record -g ./build/src/tools/viper/viper program.zia
 perf report
 
 # Profile with Instruments (macOS)
 xcrun xctrace record --template 'Time Profiler' --launch -- \
-    ./build/src/tools/viper/viper program.viper
+    ./build/src/tools/viper/viper program.zia
 ```
 
 ---

@@ -2,7 +2,7 @@
 
 **Viper** is an IL-first compiler toolchain and virtual machine for exploring intermediate language design, multi-frontend architectures, and interpreter implementation techniques.
 
-High-level frontends—like the included BASIC and ViperLang compilers—lower programs into a strongly typed, SSA-inspired intermediate language (**Viper IL**). The IL can be executed by the VM or compiled to native code.
+High-level frontends—like the included BASIC and Zia compilers—lower programs into a strongly typed, SSA-inspired intermediate language (**Viper IL**). The IL can be executed by the VM or compiled to native code.
 
 > **Status:** Early development. APIs, IL, and tooling change frequently. Not production-ready.
 
@@ -41,10 +41,10 @@ Run a BASIC program:
 ./build/src/tools/vbasic/vbasic examples/basic/ex1_hello_cond.bas
 ```
 
-Run a ViperLang program:
+Run a Zia program:
 
 ```bash
-./build/src/tools/viper/viper demos/viperlang/frogger/main.viper
+./build/src/tools/zia/zia demos/zia/frogger/main.zia
 ```
 
 Run an IL program directly:
@@ -62,7 +62,7 @@ Viper is a compiler infrastructure with several components:
 | Component | Description |
 |-----------|-------------|
 | **IL** | Typed, SSA-based intermediate representation |
-| **Frontends** | Language compilers: BASIC and ViperLang |
+| **Frontends** | Language compilers: BASIC and Zia |
 | **VM** | Bytecode interpreter with pluggable dispatch strategies |
 | **Backends** | Native code generators (AArch64, x86-64) |
 | **Runtime** | Portable C libraries for core types, collections, I/O, text, math, graphics, audio, GUI, input, networking, system, diagnostics, utilities, crypto, time, threading |
@@ -84,7 +84,7 @@ Viper is in **early development**. All components are functional but incomplete:
 | Component | Notes |
 |-----------|-------|
 | BASIC Frontend | Core language implemented; OOP features work but are evolving |
-| ViperLang Frontend | Core language with entities, generics, imports; actively developed |
+| Zia Frontend | Core language with entities, generics, imports; actively developed |
 | Viper IL | Stable core; instruction set still expanding |
 | Virtual Machine | Functional with multiple dispatch strategies |
 | AArch64 Backend | Validated on Apple Silicon; actively developed |
@@ -113,15 +113,15 @@ Several demos showcase the platform's capabilities. See the **[demos/](demos/REA
 | `demos/basic/vtris` | Tetris clone with high scores |
 | `demos/basic/particles` | Graphics particle system using Canvas API |
 
-### ViperLang Demos
+### Zia Demos
 
 | Demo | Description |
 |------|-------------|
-| `demos/viperlang/frogger` | Frogger with entity types and generics |
-| `demos/viperlang/centipede` | Centipede arcade game clone |
-| `demos/viperlang/ladders` | Platform/ladder climbing game |
-| `demos/viperlang/paint` | Paint application with drawing tools |
-| `demos/viperlang/graphics_show` | Graphics API showcase |
+| `demos/zia/frogger` | Frogger with entity types and generics |
+| `demos/zia/centipede` | Centipede arcade game clone |
+| `demos/zia/ladders` | Platform/ladder climbing game |
+| `demos/zia/paint` | Paint application with drawing tools |
+| `demos/zia/graphics_show` | Graphics API showcase |
 
 Run demos:
 
@@ -129,8 +129,8 @@ Run demos:
 # BASIC
 ./build/src/tools/vbasic/vbasic demos/basic/frogger/frogger.bas
 
-# ViperLang
-./build/src/tools/viper/viper demos/viperlang/frogger/main.viper
+# Zia
+./build/src/tools/zia/zia demos/zia/frogger/main.zia
 ```
 
 ---
@@ -140,7 +140,7 @@ Run demos:
 ```
 ┌─────────────────────────────────────────┐
 │           Source Language               │
-│         (BASIC, ViperLang)              │
+│         (BASIC, Zia)              │
 └─────────────────┬───────────────────────┘
                   │
                   ▼
@@ -243,7 +243,7 @@ See the **[Runtime Library Reference](docs/viperlib/README.md)** for complete AP
 | Tool | Purpose |
 |------|---------|
 | `vbasic` | Run or compile BASIC programs |
-| `viper` | Run or compile ViperLang programs |
+| `zia` | Run or compile Zia programs |
 | `ilrun` | Execute IL programs |
 | `il-verify` | Validate IL with detailed diagnostics |
 | `il-dis` | Disassemble IL for inspection |
@@ -254,12 +254,12 @@ See the **[Runtime Library Reference](docs/viperlib/README.md)** for complete AP
 # Run BASIC
 ./build/src/tools/vbasic/vbasic program.bas
 
-# Run ViperLang
-./build/src/tools/viper/viper program.viper
+# Run Zia
+./build/src/tools/zia/zia program.zia
 
 # Emit IL from any frontend
 ./build/src/tools/vbasic/vbasic program.bas --emit-il
-./build/src/tools/viper/viper program.viper --emit-il
+./build/src/tools/zia/zia program.zia --emit-il
 
 # Run IL
 ./build/src/tools/ilrun/ilrun program.il
@@ -277,8 +277,8 @@ See the **[Runtime Library Reference](docs/viperlib/README.md)** for complete AP
 ./build/src/tools/ilc/ilc front basic -emit-il program.bas > program.il
 ./build/src/tools/ilc/ilc codegen arm64 program.il -o program
 
-# Compile ViperLang to native executable
-./build/src/tools/ilc/ilc front viperlang -emit-il program.viper > program.il
+# Compile Zia to native executable
+./build/src/tools/ilc/ilc front zia -emit-il program.zia > program.il
 ./build/src/tools/ilc/ilc codegen arm64 program.il -o program
 ```
 
@@ -329,7 +329,7 @@ ctest --test-dir build --output-on-failure
 sudo cmake --install build --prefix /usr/local
 ```
 
-Installs: `vbasic`, `vpascal`, `viper`, `ilrun`, `ilc`, `il-verify`, `il-dis`
+Installs: `vbasic`, `vpascal`, `zia`, `ilrun`, `ilc`, `il-verify`, `il-dis`
 
 ### Platform Notes
 
@@ -346,8 +346,8 @@ Installs: `vbasic`, `vpascal`, `viper`, `ilrun`, `ilc`, `il-verify`, `il-dis`
 | [Getting Started](docs/getting-started.md) | Build and run your first program |
 | [BASIC Tutorial](docs/basic-language.md) | Learn Viper BASIC by example |
 | [BASIC Reference](docs/basic-reference.md) | Complete BASIC language specification |
-| [ViperLang Getting Started](docs/viperlang-getting-started.md) | Learn ViperLang by example |
-| [ViperLang Reference](docs/viperlang-reference.md) | Complete ViperLang language specification |
+| [Zia Getting Started](docs/zia-getting-started.md) | Learn Zia by example |
+| [Zia Reference](docs/zia-reference.md) | Complete Zia language specification |
 | [Runtime Library](docs/viperlib/README.md) | Viper.* classes, methods, and properties |
 | [IL Guide](docs/il-guide.md) | IL specification and examples |
 | [IL Quickstart](docs/il-quickstart.md) | Fast introduction to Viper IL |
@@ -370,13 +370,13 @@ We are not currently seeking large feature PRs while the design solidifies. Feel
 
 ---
 
-## Related Project: ViperOS
+## Related Project: ViperDOS
 
-This repository also contains [ViperOS](viperos/README.md), a capability-based
-microkernel operating system for AArch64. ViperOS is a separate project and
+This repository also contains [ViperDOS](viperdos/README.md), a capability-based
+microkernel operating system for AArch64. ViperDOS is a separate project and
 does not depend on the Viper compiler.
 
-See [viperos/README.md](viperos/README.md) for documentation.
+See [viperdos/README.md](viperdos/README.md) for documentation.
 
 ---
 

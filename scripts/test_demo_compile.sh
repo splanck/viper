@@ -1,8 +1,8 @@
 #!/bin/bash
 # Test compilation of a single demo through the full pipeline
 # Usage: ./scripts/test_demo_compile.sh <demo_type> <source_file>
-#   demo_type: "basic" or "viperlang"
-#   source_file: path to .bas or .viper file
+#   demo_type: "basic" or "zia"
+#   source_file: path to .bas or .zia file
 # Exit codes: 0 = success, 1 = failure
 
 set -e
@@ -41,7 +41,7 @@ EXE_FILE="$TMP_DIR/${NAME}"
 echo "Step 1: Compiling $DEMO_TYPE to IL..."
 if [[ "$DEMO_TYPE" == "basic" ]]; then
     "$ILC" front basic -emit-il "$SOURCE_FILE" > "$IL_FILE"
-elif [[ "$DEMO_TYPE" == "viperlang" ]]; then
+elif [[ "$DEMO_TYPE" == "zia" ]]; then
     "$VIPER" "$SOURCE_FILE" --emit-il > "$IL_FILE"
 else
     echo "Unknown demo type: $DEMO_TYPE"
@@ -60,7 +60,7 @@ as "$ASM_FILE" -o "$OBJ_FILE"
 echo "Step 4: Linking..."
 if [[ "$DEMO_TYPE" == "basic" ]]; then
     clang++ "$OBJ_FILE" "$RUNTIME_LIB" -o "$EXE_FILE"
-elif [[ "$DEMO_TYPE" == "viperlang" ]]; then
+elif [[ "$DEMO_TYPE" == "zia" ]]; then
     clang++ "$OBJ_FILE" "$RUNTIME_LIB" "$GFX_LIB" "$GUI_LIB" $MACOS_GFX_FRAMEWORKS -o "$EXE_FILE"
 fi
 

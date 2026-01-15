@@ -1,0 +1,227 @@
+// -*- C++ -*-
+/*
+ * ViperDOS C++ Standard Library - concepts
+ * C++20 concept definitions
+ */
+
+#ifndef _VIPER_CONCEPTS
+#define _VIPER_CONCEPTS
+
+#include "type_traits"
+
+namespace std
+{
+
+/*
+ * ===========================================================================
+ * Core language concepts (C++20)
+ *
+ * Note: Full concept support requires C++20 compiler. These definitions
+ * use the `concept` keyword available in C++20 mode.
+ * ===========================================================================
+ */
+
+#if __cplusplus >= 202002L || defined(__cpp_concepts)
+
+// same_as - Types are exactly the same
+template <class T, class U>
+concept same_as = is_same_v<T, U> && is_same_v<U, T>;
+
+// derived_from - Derived class relationship
+template <class Derived, class Base>
+concept derived_from = is_base_of_v<Base, Derived> &&
+                       is_convertible_v<const volatile Derived *, const volatile Base *>;
+
+// convertible_to - Implicit and explicit conversion
+template <class From, class To>
+concept convertible_to =
+    is_convertible_v<From, To> && requires { static_cast<To>(declval<From>()); };
+
+// common_reference_with - Common reference exists
+template <class T, class U>
+concept common_reference_with =
+    same_as<common_type_t<T, U>, common_type_t<U, T>> && convertible_to<T, common_type_t<T, U>> &&
+    convertible_to<U, common_type_t<T, U>>;
+
+// common_with - Common type exists
+template <class T, class U>
+concept common_with = same_as<common_type_t<T, U>, common_type_t<U, T>> && requires {
+    static_cast<common_type_t<T, U>>(declval<T>());
+    static_cast<common_type_t<T, U>>(declval<U>());
+};
+
+/*
+ * ===========================================================================
+ * Arithmetic concepts
+ * ===========================================================================
+ */
+
+// integral - Integral type (bool, char, int, etc.)
+template <class T>
+concept integral = is_integral_v<T>;
+
+// signed_integral - Signed integral type
+template <class T>
+concept signed_integral = integral<T> && is_signed_v<T>;
+
+// unsigned_integral - Unsigned integral type
+template <class T>
+concept unsigned_integral = integral<T> && !is_signed_v<T>;
+
+// floating_point - Floating-point type
+template <class T>
+concept floating_point = is_floating_point_v<T>;
+
+/*
+ * ===========================================================================
+ * Object concepts
+ * ===========================================================================
+ */
+
+// destructible - Has accessible destructor
+template <class T>
+concept destructible = is_nothrow_destructible_v<T>;
+
+// constructible_from - Can be constructed from Args
+template <class T, class... Args>
+concept constructible_from = destructible<T> && is_constructible_v<T, Args...>;
+
+// default_initializable - Default constructible
+template <class T>
+concept default_initializable = constructible_from<T> && requires { T{}; } && requires { ::new T; };
+
+// move_constructible - Can be move constructed
+template <class T>
+concept move_constructible = constructible_from<T, T> && convertible_to<T, T>;
+
+// copy_constructible - Can be copy constructed
+template <class T>
+concept copy_constructible =
+    move_constructible<T> && constructible_from<T, T &> && convertible_to<T &, T> &&
+    constructible_from<T, const T &> && convertible_to<const T &, T> &&
+    constructible_from<T, const T> && convertible_to<const T, T>;
+
+/*
+ * ===========================================================================
+ * Comparison concepts
+ * ===========================================================================
+ */
+
+namespace __detail
+{
+// Helper for boolean testability
+template <class T>
+concept __boolean_testable_impl = convertible_to<T, bool>;
+
+template <class T>
+concept __boolean_testable = __boolean_testable_impl<T> && requires(T &&t) {
+    { !static_cast<T &&>(t) } -> __boolean_testable_impl;
+};
+
+// Helper for weakly equality comparable
+template <class T, class U>
+concept __weakly_eq_cmp_with =
+    requires(const remove_reference_t<T> &t, const remove_reference_t<U> &u) {
+        { t == u } -> __boolean_testable;
+        { t != u } -> __boolean_testable;
+        { u == t } -> __boolean_testable;
+        { u != t } -> __boolean_testable;
+    };
+} // namespace __detail
+
+// equality_comparable - Supports == and !=
+template <class T>
+concept equality_comparable = __detail::__weakly_eq_cmp_with<T, T>;
+
+// equality_comparable_with - Cross-type equality
+template <class T, class U>
+concept equality_comparable_with =
+    equality_comparable<T> && equality_comparable<U> && __detail::__weakly_eq_cmp_with<T, U>;
+
+// totally_ordered - Supports all comparison operators
+template <class T>
+concept totally_ordered = equality_comparable<T> &&
+                          requires(const remove_reference_t<T> &a, const remove_reference_t<T> &b) {
+                              { a < b } -> __detail::__boolean_testable;
+                              { a > b } -> __detail::__boolean_testable;
+                              { a <= b } -> __detail::__boolean_testable;
+                              { a >= b } -> __detail::__boolean_testable;
+                          };
+
+// totally_ordered_with - Cross-type total ordering
+template <class T, class U>
+concept totally_ordered_with =
+    totally_ordered<T> && totally_ordered<U> && equality_comparable_with<T, U> &&
+    requires(const remove_reference_t<T> &t, const remove_reference_t<U> &u) {
+        { t < u } -> __detail::__boolean_testable;
+        { t > u } -> __detail::__boolean_testable;
+        { t <= u } -> __detail::__boolean_testable;
+        { t >= u } -> __detail::__boolean_testable;
+        { u < t } -> __detail::__boolean_testable;
+        { u > t } -> __detail::__boolean_testable;
+        { u <= t } -> __detail::__boolean_testable;
+        { u >= t } -> __detail::__boolean_testable;
+    };
+
+/*
+ * ===========================================================================
+ * Object concepts (continued)
+ * ===========================================================================
+ */
+
+// movable - Move constructible and move assignable
+template <class T>
+concept movable =
+    is_object_v<T> && move_constructible<T> && is_move_assignable_v<T> && is_swappable_v<T>;
+
+// copyable - Copy constructible and copy assignable
+template <class T>
+concept copyable = copy_constructible<T> && movable<T> && is_copy_assignable_v<T>;
+
+// semiregular - Default constructible and copyable
+template <class T>
+concept semiregular = copyable<T> && default_initializable<T>;
+
+// regular - Semiregular and equality comparable
+template <class T>
+concept regular = semiregular<T> && equality_comparable<T>;
+
+/*
+ * ===========================================================================
+ * Callable concepts
+ * ===========================================================================
+ */
+
+// invocable - Can be invoked with Args
+template <class F, class... Args>
+concept invocable = requires(F &&f, Args &&...args) {
+    invoke(static_cast<F &&>(f), static_cast<Args &&>(args)...);
+};
+
+// regular_invocable - Invocable with equality-preserving semantics
+template <class F, class... Args>
+concept regular_invocable = invocable<F, Args...>;
+
+// predicate - Invocable returning bool
+template <class F, class... Args>
+concept predicate =
+    regular_invocable<F, Args...> && __detail::__boolean_testable<invoke_result_t<F, Args...>>;
+
+// relation - Binary predicate
+template <class R, class T, class U>
+concept relation =
+    predicate<R, T, T> && predicate<R, U, U> && predicate<R, T, U> && predicate<R, U, T>;
+
+// equivalence_relation - Equivalence relation
+template <class R, class T, class U>
+concept equivalence_relation = relation<R, T, U>;
+
+// strict_weak_order - Strict weak ordering
+template <class R, class T, class U>
+concept strict_weak_order = relation<R, T, U>;
+
+#endif // C++20
+
+} // namespace std
+
+#endif // _VIPER_CONCEPTS

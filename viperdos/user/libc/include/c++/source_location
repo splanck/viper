@@ -1,0 +1,91 @@
+// -*- C++ -*-
+/*
+ * ViperDOS C++ Standard Library - source_location
+ * C++20 source code location information
+ */
+
+#ifndef _VIPER_SOURCE_LOCATION
+#define _VIPER_SOURCE_LOCATION
+
+#include "cstdint"
+
+namespace std
+{
+
+/*
+ * ===========================================================================
+ * source_location - Information about the source code
+ *
+ * Represents a specific location in source code. Can be used for logging,
+ * debugging, or diagnostic purposes.
+ *
+ * Note: Full functionality requires compiler support for __builtin_* functions.
+ * ===========================================================================
+ */
+
+class source_location
+{
+  public:
+    // Construct with default (unknown) location
+    constexpr source_location() noexcept : file_("unknown"), func_("unknown"), line_(0), column_(0)
+    {
+    }
+
+    // Factory function to capture current source location
+    // Uses compiler built-ins when available
+    static consteval source_location current(
+#if defined(__has_builtin) && __has_builtin(__builtin_FILE)
+        const char *file = __builtin_FILE(),
+        const char *func = __builtin_FUNCTION(),
+        uint_least32_t line = __builtin_LINE(),
+        uint_least32_t column = __builtin_COLUMN()
+#else
+        const char *file = "unknown",
+        const char *func = "unknown",
+        uint_least32_t line = 0,
+        uint_least32_t column = 0
+#endif
+            ) noexcept
+    {
+        source_location loc;
+        loc.file_ = file;
+        loc.func_ = func;
+        loc.line_ = line;
+        loc.column_ = column;
+        return loc;
+    }
+
+    // Line number in source file (1-based, or 0 if unknown)
+    constexpr uint_least32_t line() const noexcept
+    {
+        return line_;
+    }
+
+    // Column number in source line (1-based, or 0 if unknown)
+    constexpr uint_least32_t column() const noexcept
+    {
+        return column_;
+    }
+
+    // Source file name
+    constexpr const char *file_name() const noexcept
+    {
+        return file_;
+    }
+
+    // Function name (implementation-defined format)
+    constexpr const char *function_name() const noexcept
+    {
+        return func_;
+    }
+
+  private:
+    const char *file_;
+    const char *func_;
+    uint_least32_t line_;
+    uint_least32_t column_;
+};
+
+} // namespace std
+
+#endif // _VIPER_SOURCE_LOCATION

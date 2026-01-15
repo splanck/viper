@@ -1384,7 +1384,7 @@ This program demonstrates:
 
 ## The Three Languages
 
-**ViperLang**
+**Zia**
 ```rust
 // Read
 var content = Viper.File.readText("file.txt");

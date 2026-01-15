@@ -1,14 +1,14 @@
 # Graphics Show Demo - Bug Report
 
 ## Summary
-While developing the graphics demo suite (`demos/viperlang/graphics_show/`), several bugs were discovered in the Viperlang frontend. This document catalogs each issue with reproduction steps.
+While developing the graphics demo suite (`demos/zia/graphics_show/`), several bugs were discovered in the Viperlang frontend. This document catalogs each issue with reproduction steps.
 
 ---
 
 ## BUG-001: Runtime Classes Not Registered as Types (FIXED)
 
 **Status:** Fixed in this session
-**File:** `src/frontends/viperlang/Sema.cpp`
+**File:** `src/frontends/zia/Sema.cpp`
 **Severity:** Critical
 
 ### Description
@@ -32,7 +32,7 @@ typeRegistry_["Viper.Graphics.Pixels"] = types::ptr();
 ## BUG-002: Module Import System Not Implemented (FIXED)
 
 **Status:** Fixed in this session
-**Files:** `src/frontends/viperlang/Sema_Decl.cpp`, `src/frontends/viperlang/Sema_Expr.cpp`, `src/frontends/viperlang/Lowerer_Expr.cpp`, `src/frontends/viperlang/Types.hpp`, `src/frontends/viperlang/Types.cpp`, `src/frontends/viperlang/Sema.hpp`
+**Files:** `src/frontends/zia/Sema_Decl.cpp`, `src/frontends/zia/Sema_Expr.cpp`, `src/frontends/zia/Lowerer_Expr.cpp`, `src/frontends/zia/Types.hpp`, `src/frontends/zia/Types.cpp`, `src/frontends/zia/Sema.hpp`
 **Severity:** Critical
 
 ### Description
@@ -53,11 +53,11 @@ Module-qualified access (e.g., `colors.initColors()`) was not implemented. The i
 
 ### Now Works
 ```viper
-// colors.viper
+// colors.zia
 module colors;
 func initColors() { /* ... */ }
 
-// main.viper
+// main.zia
 import "./colors";
 func main() {
     colors.initColors();  // Works: module-qualified call
@@ -78,7 +78,7 @@ func main() {
 ## BUG-003: Cannot Use `new` on Runtime Classes (FIXED)
 
 **Status:** Fixed in this session
-**Files:** `src/frontends/viperlang/Sema_Expr.cpp`, `src/frontends/viperlang/Lowerer_Expr.cpp`
+**Files:** `src/frontends/zia/Sema_Expr.cpp`, `src/frontends/zia/Lowerer_Expr.cpp`
 **Severity:** Critical
 
 ### Description
@@ -104,7 +104,7 @@ var pixels = new Viper.Graphics.Pixels(100, 100);
 ## BUG-004: Type Mismatch in Return Value Contexts (FIXED)
 
 **Status:** Fixed in this session
-**Files:** `src/frontends/viperlang/Sema_Stmt.cpp`, `src/frontends/viperlang/Lowerer_Stmt.cpp`
+**Files:** `src/frontends/zia/Sema_Stmt.cpp`, `src/frontends/zia/Lowerer_Stmt.cpp`
 **Severity:** Medium
 
 ### Description
@@ -131,7 +131,7 @@ func toInt(x: Number) -> Integer {
 ## BUG-005: Invalid Operands for Arithmetic with Mixed Entity Fields (FIXED)
 
 **Status:** Fixed in this session
-**File:** `src/frontends/viperlang/Lowerer_Expr.cpp`
+**File:** `src/frontends/zia/Lowerer_Expr.cpp`
 **Severity:** Medium
 
 ### Description
@@ -195,7 +195,7 @@ var intVal = Viper.Convert.NumToInt(Viper.Math.Floor(3.7));
 ## BUG-007: Runtime Class Method Calls Not Resolved (FIXED)
 
 **Status:** Fixed in this session
-**File:** `src/frontends/viperlang/Sema_Expr.cpp`, `src/frontends/viperlang/Lowerer_Expr.cpp`, `src/frontends/viperlang/Sema.cpp`
+**File:** `src/frontends/zia/Sema_Expr.cpp`, `src/frontends/zia/Lowerer_Expr.cpp`, `src/frontends/zia/Sema.cpp`
 **Severity:** Critical
 
 ### Description
@@ -218,7 +218,7 @@ Three issues:
 ## BUG-008: Mutable Global Variables Not Working (FIXED)
 
 **Status:** Fixed
-**Files:** `src/frontends/viperlang/Lowerer_Decl.cpp`, `src/frontends/viperlang/Lowerer.hpp`
+**Files:** `src/frontends/zia/Lowerer_Decl.cpp`, `src/frontends/zia/Lowerer.hpp`
 **Severity:** Critical
 
 ### Description
@@ -275,18 +275,18 @@ None - all discovered bugs have been fixed.
 
 ## Test Files
 The following demo files can be used to reproduce these bugs:
-- `demos/viperlang/graphics_show/main.viper`
-- `demos/viperlang/graphics_show/colors.viper`
-- `demos/viperlang/graphics_show/starfield.viper`
-- `demos/viperlang/graphics_show/plasma.viper`
+- `demos/zia/graphics_show/main.zia`
+- `demos/zia/graphics_show/colors.zia`
+- `demos/zia/graphics_show/starfield.zia`
+- `demos/zia/graphics_show/plasma.zia`
 
 ## Working Demo
 The following standalone demo works with all fixes applied:
-- `demos/viperlang/graphics_show/simple_starfield.viper`
+- `demos/zia/graphics_show/simple_starfield.zia`
 
 To run:
 ```bash
-./build/src/tools/viper/viper demos/viperlang/graphics_show/simple_starfield.viper
+./build/src/tools/viper/viper demos/zia/graphics_show/simple_starfield.zia
 ```
 
 Controls:

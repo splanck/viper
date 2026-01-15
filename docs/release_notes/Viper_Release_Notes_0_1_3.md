@@ -8,7 +8,7 @@
 
 ### Release Overview
 
-Version 0.1.3 adds two new language frontends (Pascal and ViperLang), expands the runtime library with additional
+Version 0.1.3 adds two new language frontends (Pascal and Zia), expands the runtime library with additional
 classes, and introduces basic threading support.
 
 ### New Features
@@ -55,7 +55,7 @@ begin
 end.
 ```
 
-#### ViperLang Frontend
+#### Zia Frontend
 
 New language with C-style syntax:
 
@@ -165,7 +165,7 @@ Shared components extracted for frontend reuse:
 
 **Pascal** (ported from BASIC): Snake, Frogger, vTris, Centipede
 
-**ViperLang**: Frogger, entity examples, collection demos
+**Zia**: Frogger, entity examples, collection demos
 
 ### Project Statistics
 
@@ -181,7 +181,7 @@ Shared components extracted for frontend reuse:
 ### Documentation
 
 - Pascal language reference and tutorial
-- ViperLang reference and getting started guide
+- Zia reference and getting started guide
 - Runtime library documentation (12 files covering all namespaces)
 - Threading ADR
 
@@ -189,7 +189,7 @@ Shared components extracted for frontend reuse:
 
 ```
 ┌──────────────┐  ┌───────────────┐  ┌───────────────┐
-│ BASIC Source │  │ Pascal Source │  │ ViperLang Src │
+│ BASIC Source │  │ Pascal Source │  │ Zia Src │
 └──────┬───────┘  └──────┬────────┘  └───────┬───────┘
        │                 │                   │
        ▼                 ▼                   ▼
@@ -763,8 +763,8 @@ Compile to native:
 # Snake game (Pascal)
 ./vpascal demos/pascal/snake/snake.pas
 
-# Frogger (ViperLang)
-./viper demos/viperlang/frogger.viper
+# Frogger (Zia)
+./zia demos/zia/frogger/main.zia
 ```
 
 ---
@@ -775,7 +775,7 @@ Compile to native:
 |-------------------|------------------|---------------------|-----------------|------------------|
 | BASIC Compiler    | Complete         | Enhanced with OOP   | Stable          | Stable           |
 | Pascal Compiler   | No               | No                  | No              | Complete         |
-| ViperLang         | No               | No                  | No              | Complete         |
+| Zia         | No               | No                  | No              | Complete         |
 | IL Format         | Baseline         | Extended            | Stable          | Stable           |
 | VM Execution      | 3 dispatch modes | Optimized           | Stable          | +Threading       |
 | Native Codegen    | No               | x86-64 experimental | +AArch64        | Stable           |
@@ -803,7 +803,7 @@ Compile to native:
 - IL optimization passes (mem2reg, SimplifyCFG, LICM)
 - Graph coloring register allocation
 - Debugger integration with breakpoints
-- Generics for ViperLang
+- Generics for Zia
 
 ### Post-1.0 Features
 
@@ -817,7 +817,7 @@ Compile to native:
 - Self-hosting compiler
 - JIT compilation mode
 - Advanced optimizations
-- ViperOS integration
+- ViperDOS integration
 
 ---
 

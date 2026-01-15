@@ -45,7 +45,7 @@
 | Runtime | src/runtime | 165 | 6,915 | 23,557 | 31,647 |
 | Codegen | src/codegen | 101 | 2,119 | 5,912 | 15,532 |
 | Frontends - BASIC | src/frontends/basic | 271 | 7,400 | 18,309 | 43,844 |
-| Frontends - ViperLang | src/frontends/viperlang | 35 | 2,637 | 5,895 | 11,433 |
+| Frontends - Zia | src/frontends/zia | 35 | 2,637 | 5,895 | 11,433 |
 | Frontends - Pascal | src/frontends/pascal | 40 | 2,873 | 3,422 | 15,944 |
 | Frontends - Common | src/frontends/common | 17 | 409 | 948 | 1,787 |
 | Tools | src/tools | 40 | 722 | 1,481 | 4,879 |
@@ -113,7 +113,7 @@
 | CMake | 1 | 3 | 1 | 162 |
 | Windows Module Definition | 1 | 7 | 0 | 145 |
 
-### Frontends - ViperLang
+### Frontends - Zia
 
 | Language | Files | Blank | Comment | Code (SLOC) |
 | -------- | ----- | ----- | ------- | ----------- |

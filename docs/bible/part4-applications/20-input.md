@@ -1179,7 +1179,7 @@ This helps you see if inputs are arriving at the right times.
 
 ## The Three Languages
 
-**ViperLang**
+**Zia**
 ```rust
 import Viper.Input;
 

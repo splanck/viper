@@ -1,0 +1,310 @@
+// -*- C++ -*-
+// ViperDOS C++ Standard Library - span
+// Non-owning contiguous view (C++20)
+
+#ifndef _VIPER_SPAN
+#define _VIPER_SPAN
+
+#include "array"
+#include "iterator"
+#include "limits"
+#include "type_traits"
+
+namespace std
+{
+
+// dynamic_extent sentinel
+inline constexpr size_t dynamic_extent = static_cast<size_t>(-1);
+
+namespace detail
+{
+
+// Helper to detect if type has data() and size()
+template <typename T, typename = void> struct has_data_and_size : false_type
+{
+};
+
+template <typename T>
+struct has_data_and_size<
+    T,
+    void_t<decltype(std::data(declval<T &>())), decltype(std::size(declval<T &>()))>> : true_type
+{
+};
+
+// Helper to get element type from container
+template <typename Container>
+using container_element_type = remove_pointer_t<decltype(std::data(declval<Container &>()))>;
+
+} // namespace detail
+
+// =============================================================================
+// span - Non-owning contiguous view
+// =============================================================================
+
+template <typename T, size_t Extent = dynamic_extent> class span
+{
+  public:
+    // Member types
+    using element_type = T;
+    using value_type = remove_cv_t<T>;
+    using size_type = size_t;
+    using difference_type = ptrdiff_t;
+    using pointer = T *;
+    using const_pointer = const T *;
+    using reference = T &;
+    using const_reference = const T &;
+    using iterator = pointer;
+    using reverse_iterator = std::reverse_iterator<iterator>;
+
+    // Static extent
+    static constexpr size_t extent = Extent;
+
+  private:
+    pointer data_;
+    size_type size_;
+
+  public:
+    // Constructors
+
+    // Default constructor (only for dynamic extent or zero extent)
+    template <size_t E = Extent, typename enable_if<E == dynamic_extent || E == 0, int>::type = 0>
+    constexpr span() noexcept : data_(nullptr), size_(0)
+    {
+    }
+
+    // From pointer and count
+    constexpr span(pointer ptr, size_type count) : data_(ptr), size_(count) {}
+
+    // From pointer and end
+    constexpr span(pointer first, pointer last)
+        : data_(first), size_(static_cast<size_type>(last - first))
+    {
+    }
+
+    // From C array
+    template <size_t N, typename enable_if<Extent == dynamic_extent || Extent == N, int>::type = 0>
+    constexpr span(element_type (&arr)[N]) noexcept : data_(arr), size_(N)
+    {
+    }
+
+    // From std::array
+    template <typename U,
+              size_t N,
+              typename enable_if<(Extent == dynamic_extent || Extent == N) &&
+                                     is_convertible<U (*)[], element_type (*)[]>::value,
+                                 int>::type = 0>
+    constexpr span(array<U, N> &arr) noexcept : data_(arr.data()), size_(N)
+    {
+    }
+
+    // From const std::array
+    template <typename U,
+              size_t N,
+              typename enable_if<(Extent == dynamic_extent || Extent == N) &&
+                                     is_convertible<const U (*)[], element_type (*)[]>::value,
+                                 int>::type = 0>
+    constexpr span(const array<U, N> &arr) noexcept : data_(arr.data()), size_(N)
+    {
+    }
+
+    // From container with data() and size()
+    template <
+        typename Container,
+        typename enable_if<detail::has_data_and_size<Container>::value &&
+                               is_convertible<detail::container_element_type<Container> (*)[],
+                                              element_type (*)[]>::value &&
+                               !is_same<remove_cvref_t<Container>, span>::value &&
+                               !is_same<remove_cvref_t<Container>, array<value_type, 0>>::value,
+                           int>::type = 0>
+    constexpr span(Container &cont) : data_(std::data(cont)), size_(std::size(cont))
+    {
+    }
+
+    // From const container
+    template <
+        typename Container,
+        typename enable_if<detail::has_data_and_size<Container>::value &&
+                               is_convertible<detail::container_element_type<const Container> (*)[],
+                                              element_type (*)[]>::value &&
+                               !is_same<remove_cvref_t<Container>, span>::value,
+                           int>::type = 0>
+    constexpr span(const Container &cont) : data_(std::data(cont)), size_(std::size(cont))
+    {
+    }
+
+    // Copy constructor
+    constexpr span(const span &other) noexcept = default;
+
+    // Converting constructor from other span
+    template <typename U,
+              size_t N,
+              typename enable_if<(Extent == dynamic_extent || N == dynamic_extent || Extent == N) &&
+                                     is_convertible<U (*)[], element_type (*)[]>::value,
+                                 int>::type = 0>
+    constexpr span(const span<U, N> &other) noexcept : data_(other.data()), size_(other.size())
+    {
+    }
+
+    // Assignment
+    constexpr span &operator=(const span &other) noexcept = default;
+
+    // Iterators
+    constexpr iterator begin() const noexcept
+    {
+        return data_;
+    }
+
+    constexpr iterator end() const noexcept
+    {
+        return data_ + size_;
+    }
+
+    constexpr reverse_iterator rbegin() const noexcept
+    {
+        return reverse_iterator(end());
+    }
+
+    constexpr reverse_iterator rend() const noexcept
+    {
+        return reverse_iterator(begin());
+    }
+
+    // Element access
+    constexpr reference front() const
+    {
+        return *data_;
+    }
+
+    constexpr reference back() const
+    {
+        return *(data_ + size_ - 1);
+    }
+
+    constexpr reference operator[](size_type idx) const
+    {
+        return data_[idx];
+    }
+
+    constexpr pointer data() const noexcept
+    {
+        return data_;
+    }
+
+    // Observers
+    constexpr size_type size() const noexcept
+    {
+        return size_;
+    }
+
+    constexpr size_type size_bytes() const noexcept
+    {
+        return size_ * sizeof(element_type);
+    }
+
+    constexpr bool empty() const noexcept
+    {
+        return size_ == 0;
+    }
+
+    // Subviews
+    template <size_t Count> constexpr span<element_type, Count> first() const
+    {
+        return span<element_type, Count>(data_, Count);
+    }
+
+    constexpr span<element_type, dynamic_extent> first(size_type count) const
+    {
+        return span<element_type, dynamic_extent>(data_, count);
+    }
+
+    template <size_t Count> constexpr span<element_type, Count> last() const
+    {
+        return span<element_type, Count>(data_ + (size_ - Count), Count);
+    }
+
+    constexpr span<element_type, dynamic_extent> last(size_type count) const
+    {
+        return span<element_type, dynamic_extent>(data_ + (size_ - count), count);
+    }
+
+    template <size_t Offset, size_t Count = dynamic_extent> constexpr auto subspan() const
+    {
+        if constexpr (Count != dynamic_extent)
+        {
+            return span<element_type, Count>(data_ + Offset, Count);
+        }
+        else if constexpr (Extent != dynamic_extent)
+        {
+            return span<element_type, Extent - Offset>(data_ + Offset, size_ - Offset);
+        }
+        else
+        {
+            return span<element_type, dynamic_extent>(data_ + Offset, size_ - Offset);
+        }
+    }
+
+    constexpr span<element_type, dynamic_extent> subspan(size_type offset,
+                                                         size_type count = dynamic_extent) const
+    {
+        if (count == dynamic_extent)
+        {
+            return span<element_type, dynamic_extent>(data_ + offset, size_ - offset);
+        }
+        return span<element_type, dynamic_extent>(data_ + offset, count);
+    }
+};
+
+// Deduction guides
+template <typename T, size_t N> span(T (&)[N]) -> span<T, N>;
+
+template <typename T, size_t N> span(array<T, N> &) -> span<T, N>;
+
+template <typename T, size_t N> span(const array<T, N> &) -> span<const T, N>;
+
+template <typename Container> span(Container &) -> span<typename Container::value_type>;
+
+template <typename Container> span(const Container &) -> span<const typename Container::value_type>;
+
+template <typename It, typename EndOrSize>
+span(It, EndOrSize) -> span<remove_reference_t<decltype(*declval<It &>())>>;
+
+// as_bytes / as_writable_bytes
+template <typename T, size_t N>
+span<const unsigned char, N == dynamic_extent ? dynamic_extent : N * sizeof(T)> as_bytes(
+    span<T, N> s) noexcept
+{
+    return span<const unsigned char, N == dynamic_extent ? dynamic_extent : N * sizeof(T)>(
+        reinterpret_cast<const unsigned char *>(s.data()), s.size_bytes());
+}
+
+template <typename T, size_t N, typename enable_if<!is_const<T>::value, int>::type = 0>
+span<unsigned char, N == dynamic_extent ? dynamic_extent : N * sizeof(T)> as_writable_bytes(
+    span<T, N> s) noexcept
+{
+    return span<unsigned char, N == dynamic_extent ? dynamic_extent : N * sizeof(T)>(
+        reinterpret_cast<unsigned char *>(s.data()), s.size_bytes());
+}
+
+// Comparison (not part of C++20 standard but useful)
+template <typename T, size_t E1, size_t E2>
+constexpr bool operator==(span<T, E1> lhs, span<T, E2> rhs)
+{
+    if (lhs.size() != rhs.size())
+        return false;
+    for (size_t i = 0; i < lhs.size(); ++i)
+    {
+        if (!(lhs[i] == rhs[i]))
+            return false;
+    }
+    return true;
+}
+
+template <typename T, size_t E1, size_t E2>
+constexpr bool operator!=(span<T, E1> lhs, span<T, E2> rhs)
+{
+    return !(lhs == rhs);
+}
+
+} // namespace std
+
+#endif // _VIPER_SPAN

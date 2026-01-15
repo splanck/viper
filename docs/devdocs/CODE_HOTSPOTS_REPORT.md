@@ -12,7 +12,7 @@
 
 | File | SLOC | Notes |
 |------|------|-------|
-| `src/frontends/viperlang/Lowerer_Expr.cpp` | 2,306 |  |
+| `src/frontends/zia/Lowerer_Expr.cpp` | 2,306 |  |
 | `src/il/runtime/RuntimeSignatures.cpp` | 1,972 |  |
 | `src/runtime/rt_network_http.c` | 1,938 |  |
 | `src/runtime/rt_graphics.c` | 1,588 |  |
@@ -25,11 +25,11 @@
 | `src/runtime/rt_input.c` | 1,080 |  |
 | `src/il/transform/SCCP.cpp` | 1,075 |  |
 | `src/frontends/pascal/SemanticAnalyzer_Expr.cpp` | 1,067 |  |
-| `src/frontends/viperlang/Parser_Expr.cpp` | 1,048 |  |
+| `src/frontends/zia/Parser_Expr.cpp` | 1,048 |  |
 | `src/runtime/rt_compress.c` | 1,037 |  |
 | `src/runtime/rt_archive.c` | 1,021 |  |
 | `src/il/verify/generated/SpecTables.cpp` | 974 |  |
-| `src/frontends/viperlang/Lexer.cpp` | 969 |  |
+| `src/frontends/zia/Lexer.cpp` | 969 |  |
 | `src/il/verify/EhChecks.cpp` | 962 |  |
 | `src/runtime/rt_regex.c` | 958 |  |
 
@@ -50,7 +50,7 @@
 
 ## Areas to Monitor (No Refactor Planned)
 
-- Large front-end lowering and parser files (BASIC/Pascal/ViperLang) remain dense; consider splitting by expression family when new features land.
+- Large front-end lowering and parser files (BASIC/Pascal/Zia) remain dense; consider splitting by expression family when new features land.
 - Networking and input runtime modules remain sizable; keep protocol parsers isolated from transport layers.
 - Generated tables (`RuntimeSignatures.inc`, `OpSchema.hpp`, `SpecTables.cpp`) should remain machine-generated; avoid manual edits.
 

@@ -22,7 +22,7 @@ Source code organization for the Viper compiler toolchain.
 |------------------------------------------------------|--------------------------------------------|
 | [BASIC Frontend](codemap/front-end-basic.md)         | Lexer, parser, semantic analysis, lowering |
 | [Pascal Frontend](codemap/front-end-pascal.md)       | Pascal lexer, parser, semantics, lowering  |
-| [ViperLang Frontend](codemap/front-end-viperlang.md) | ViperLang compiler with entities, generics |
+| [Zia Frontend](codemap/front-end-zia.md) | Zia compiler with entities, generics |
 | [Frontend Common](codemap/front-end-common.md)       | Shared utilities across frontends          |
 
 ## Execution & Codegen

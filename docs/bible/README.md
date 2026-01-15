@@ -4,7 +4,7 @@
 
 This book teaches you to program computers. You don't need any prior experience. By the end, you'll be building sophisticated applications: games, tools, networked systems, and more.
 
-We teach primarily in **ViperLang**, a modern language designed for clarity and power. Every concept is also shown in **BASIC** and **Pascal** for those who prefer different styles or need to work with existing code.
+We teach primarily in **Zia**, a modern language designed for clarity and power. Every concept is also shown in **BASIC** and **Pascal** for those who prefer different styles or need to work with existing code.
 
 ---
 
@@ -81,7 +81,7 @@ The Viper Bible is organized as a journey, not a dictionary. Each chapter builds
 
 | Appendix | Contents |
 |----------|----------|
-| [A. ViperLang Reference](appendices/a-viperlang-reference.md) | Complete syntax and semantics |
+| [A. Zia Reference](appendices/a-zia-reference.md) | Complete syntax and semantics |
 | [B. BASIC Reference](appendices/b-basic-reference.md) | Complete syntax and semantics |
 | [C. Pascal Reference](appendices/c-pascal-reference.md) | Complete syntax and semantics |
 | [D. Runtime Library](appendices/d-runtime-reference.md) | All built-in functions and types |
@@ -92,9 +92,9 @@ The Viper Bible is organized as a journey, not a dictionary. Each chapter builds
 
 ## The Three Languages
 
-Viper supports three languages that all compile to the same underlying system. This book emphasizes ViperLang but shows all three:
+Viper supports three languages that all compile to the same underlying system. This book emphasizes Zia but shows all three:
 
-**ViperLang** — Modern, clean, C-like syntax. Our recommended choice for new projects.
+**Zia** — Modern, clean, C-like syntax. Our recommended choice for new projects.
 ```rust
 func greet(name: string) {
     Viper.Terminal.Say("Hello, " + name + "!");

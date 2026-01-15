@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // Enable multicast support (ip_mreq, IP_ADD_MEMBERSHIP, etc.)
-#if !defined(_WIN32) && !defined(__viperos__)
+#if !defined(_WIN32) && !defined(__viperdos__)
 #define _DARWIN_C_SOURCE 1 // macOS: expose BSD extensions
 #define _GNU_SOURCE 1      // Linux: expose ip_mreq
 #endif
@@ -63,15 +63,15 @@ typedef SOCKET socket_t;
 #define ADDR_IN_USE WSAEADDRINUSE
 #define PERM_DENIED WSAEACCES
 
-#elif defined(__viperos__)
-// TODO: ViperOS - include network headers when available
-// ViperOS has BSD-style socket API in kernel/net/
+#elif defined(__viperdos__)
+// TODO: ViperDOS - include network headers when available
+// ViperDOS has BSD-style socket API in kernel/net/
 
 typedef int socket_t;
 #define INVALID_SOCK (-1)
 #define SOCK_ERROR (-1)
-#define CLOSE_SOCKET(s) (-1)  // TODO: ViperOS - implement close
-#define GET_LAST_ERROR() (-1) // TODO: ViperOS - implement errno
+#define CLOSE_SOCKET(s) (-1)  // TODO: ViperDOS - implement close
+#define GET_LAST_ERROR() (-1) // TODO: ViperDOS - implement errno
 #define WOULD_BLOCK (0)
 #define EINPROGRESS_VAL (-1)
 #define CONN_REFUSED (-1)

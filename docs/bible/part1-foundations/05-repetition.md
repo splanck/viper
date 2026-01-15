@@ -1179,7 +1179,7 @@ while count < 5 {
 
 ## The Three Languages
 
-**ViperLang**
+**Zia**
 ```rust
 // while loop
 var i = 0;
@@ -1220,7 +1220,7 @@ FOR i = 10 TO 0 STEP -2
 NEXT i
 ```
 
-BASIC's `FOR` includes the end value (unlike ViperLang's `..`). `WEND` ends the `WHILE` block. `STEP` specifies the increment.
+BASIC's `FOR` includes the end value (unlike Zia's `..`). `WEND` ends the `WHILE` block. `STEP` specifies the increment.
 
 **Pascal**
 ```pascal

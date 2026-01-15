@@ -58,9 +58,9 @@ Key insights from this metaphor:
 
 ### The Translation Metaphor
 
-Think of serialization as translation between languages. Your program thinks in "ViperLang" --- it has entities, values, arrays, and functions. A JSON file thinks in "JSON" --- it has objects, arrays, strings, and numbers. An XML file thinks in "XML" --- it has elements, attributes, and text content.
+Think of serialization as translation between languages. Your program thinks in "Zia" --- it has entities, values, arrays, and functions. A JSON file thinks in "JSON" --- it has objects, arrays, strings, and numbers. An XML file thinks in "XML" --- it has elements, attributes, and text content.
 
-To save your player to JSON, you must translate from ViperLang to JSON:
+To save your player to JSON, you must translate from Zia to JSON:
 - A `value` becomes a JSON object
 - A `string` becomes a JSON string
 - An `i64` becomes a JSON number
@@ -68,7 +68,7 @@ To save your player to JSON, you must translate from ViperLang to JSON:
 
 To load a player from JSON, you translate back:
 - A JSON object becomes values for constructing a `Player`
-- JSON strings become ViperLang strings
+- JSON strings become Zia strings
 - JSON numbers become integers or floats
 
 Some translations are lossy. JSON does not distinguish between integers and floating-point numbers --- they are all just "numbers." XML represents everything as text, so numbers like `42` are actually the characters `'4'` and `'2'`. When translating back, you must interpret the text as a number.
@@ -272,7 +272,7 @@ This single JSON document represents complex, deeply nested data:
 - The `skills` array contains objects, each with their own fields
 - The `guild` is null, indicating the player is not in a guild
 
-### Parsing JSON in ViperLang
+### Parsing JSON in Zia
 
 Parsing means reading JSON text and creating program data structures from it:
 
@@ -302,7 +302,7 @@ Let us trace through this step by step:
 
 2. **`data["name"]`**: Accesses the value associated with the key `"name"`. This returns another `JSONValue`.
 
-3. **`.asString()`**: Converts the `JSONValue` to a ViperLang string. This is necessary because JSON is dynamically typed --- the parser does not know at compile time what types you will find.
+3. **`.asString()`**: Converts the `JSONValue` to a Zia string. This is necessary because JSON is dynamically typed --- the parser does not know at compile time what types you will find.
 
 The `.as*` methods perform type conversions:
 - `.asString()` --- returns the value as a string
@@ -311,7 +311,7 @@ The `.as*` methods perform type conversions:
 - `.asBool()` --- returns the value as a boolean
 - `.asArray()` --- returns the value as an iterable array of JSONValues
 
-### Creating JSON in ViperLang
+### Creating JSON in Zia
 
 To save program data as JSON, you build a JSON structure programmatically:
 
@@ -1420,7 +1420,7 @@ func start() {
 
 ## The Three Languages
 
-**ViperLang**
+**Zia**
 ```rust
 import Viper.JSON;
 
@@ -1464,7 +1464,7 @@ begin
 end.
 ```
 
-Pascal uses bracket notation for JSON access and methods for type conversion, similar to ViperLang but with Pascal syntax conventions.
+Pascal uses bracket notation for JSON access and methods for type conversion, similar to Zia but with Pascal syntax conventions.
 
 ---
 

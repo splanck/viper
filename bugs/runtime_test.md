@@ -2,10 +2,10 @@
 
 This checklist enumerates every Viper.* runtime class, property, and method from `src/il/runtime/generated/RuntimeClasses.inc`,
 plus manually tracked runtime namespaces that are not represented as classes (Viper.Box, Viper.Diagnostics, Viper.Parse).
-Check items off as they are exercised by the runtime sweep tests (ViperLang + BASIC).
+Check items off as they are exercised by the runtime sweep tests (Zia + BASIC).
 
 Total classes: 67
-Last sweep: 2025-12-22 (runtime_sweep: ViperLang + BASIC)
+Last sweep: 2025-12-22 (runtime_sweep: Zia + BASIC)
 
 - [x] `Viper.Bits`
   - Methods

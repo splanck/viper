@@ -746,7 +746,7 @@ __attribute__((packed, aligned(8)))
 | `__unix__` | Unix-like |
 | `__ANDROID__` | Android |
 | `__FreeBSD__` | FreeBSD |
-| `__viperos__` | Viper OS |
+| `__viperdos__` | Viper OS |
 
 ### 9.7 Architecture Detection Macros
 

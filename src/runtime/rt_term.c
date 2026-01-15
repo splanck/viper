@@ -35,9 +35,9 @@
 #include <windows.h>
 #define isatty _isatty
 #define fileno _fileno
-#elif defined(__viperos__)
-// TODO: ViperOS - include terminal control headers when available
-// ViperOS will need termios-like APIs for console I/O
+#elif defined(__viperdos__)
+// TODO: ViperDOS - include terminal control headers when available
+// ViperDOS will need termios-like APIs for console I/O
 #else
 #include <sys/ioctl.h>
 #include <sys/select.h>
@@ -65,7 +65,7 @@
 //
 // =============================================================================
 
-#if !defined(_WIN32) && !defined(__viperos__)
+#if !defined(_WIN32) && !defined(__viperdos__)
 /// @brief Cached original terminal settings (before raw mode).
 static struct termios g_orig_termios;
 

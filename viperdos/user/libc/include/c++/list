@@ -1,0 +1,1009 @@
+/*
+ * ViperDOS C++ Standard Library - list
+ * Doubly-linked list container
+ */
+
+#ifndef _LIBCPP_LIST
+#define _LIBCPP_LIST
+
+#include "algorithm"
+#include "initializer_list"
+#include "iterator"
+#include "memory"
+
+namespace std
+{
+
+/* list class */
+template <class T, class Allocator = allocator<T>> class list
+{
+  public:
+    using value_type = T;
+    using allocator_type = Allocator;
+    using size_type = unsigned long;
+    using difference_type = long;
+    using reference = T &;
+    using const_reference = const T &;
+    using pointer = T *;
+    using const_pointer = const T *;
+
+  private:
+    struct node
+    {
+        T data;
+        node *prev;
+        node *next;
+
+        template <class... Args>
+        node(Args &&...args) : data(forward<Args>(args)...), prev(nullptr), next(nullptr)
+        {
+        }
+    };
+
+    using node_allocator = typename allocator_traits<Allocator>::template rebind_alloc<node>;
+
+    /* Sentinel node - doesn't hold data, but links head and tail */
+    struct sentinel_node
+    {
+        node *prev;
+        node *next;
+    };
+
+    sentinel_node sentinel_;
+    size_type size_;
+    node_allocator alloc_;
+
+    node *head()
+    {
+        return sentinel_.next;
+    }
+
+    const node *head() const
+    {
+        return sentinel_.next;
+    }
+
+    node *get_sentinel_as_node()
+    {
+        return reinterpret_cast<node *>(&sentinel_);
+    }
+
+    const node *get_sentinel_as_node() const
+    {
+        return reinterpret_cast<const node *>(&sentinel_);
+    }
+
+    void init_sentinel()
+    {
+        sentinel_.next = get_sentinel_as_node();
+        sentinel_.prev = get_sentinel_as_node();
+    }
+
+    node *allocate_node()
+    {
+        return allocator_traits<node_allocator>::allocate(alloc_, 1);
+    }
+
+    void deallocate_node(node *n)
+    {
+        allocator_traits<node_allocator>::deallocate(alloc_, n, 1);
+    }
+
+    template <class... Args> node *create_node(Args &&...args)
+    {
+        node *n = allocate_node();
+        allocator_traits<node_allocator>::construct(alloc_, n, forward<Args>(args)...);
+        return n;
+    }
+
+    void destroy_node(node *n)
+    {
+        allocator_traits<node_allocator>::destroy(alloc_, n);
+        deallocate_node(n);
+    }
+
+    void insert_before(node *pos, node *new_node)
+    {
+        new_node->prev = pos->prev;
+        new_node->next = pos;
+        pos->prev->next = new_node;
+        pos->prev = new_node;
+        ++size_;
+    }
+
+    void remove_node(node *n)
+    {
+        n->prev->next = n->next;
+        n->next->prev = n->prev;
+        --size_;
+    }
+
+  public:
+    /* Iterator */
+    class iterator
+    {
+        friend class list;
+        node *node_;
+
+      public:
+        using iterator_category = bidirectional_iterator_tag;
+        using value_type = T;
+        using difference_type = long;
+        using pointer = T *;
+        using reference = T &;
+
+        iterator() : node_(nullptr) {}
+
+        explicit iterator(node *n) : node_(n) {}
+
+        reference operator*() const
+        {
+            return node_->data;
+        }
+
+        pointer operator->() const
+        {
+            return &node_->data;
+        }
+
+        iterator &operator++()
+        {
+            node_ = node_->next;
+            return *this;
+        }
+
+        iterator operator++(int)
+        {
+            iterator tmp = *this;
+            ++*this;
+            return tmp;
+        }
+
+        iterator &operator--()
+        {
+            node_ = node_->prev;
+            return *this;
+        }
+
+        iterator operator--(int)
+        {
+            iterator tmp = *this;
+            --*this;
+            return tmp;
+        }
+
+        bool operator==(const iterator &other) const
+        {
+            return node_ == other.node_;
+        }
+
+        bool operator!=(const iterator &other) const
+        {
+            return node_ != other.node_;
+        }
+    };
+
+    /* const_iterator */
+    class const_iterator
+    {
+        friend class list;
+        const node *node_;
+
+      public:
+        using iterator_category = bidirectional_iterator_tag;
+        using value_type = T;
+        using difference_type = long;
+        using pointer = const T *;
+        using reference = const T &;
+
+        const_iterator() : node_(nullptr) {}
+
+        explicit const_iterator(const node *n) : node_(n) {}
+
+        const_iterator(const iterator &it) : node_(it.node_) {}
+
+        reference operator*() const
+        {
+            return node_->data;
+        }
+
+        pointer operator->() const
+        {
+            return &node_->data;
+        }
+
+        const_iterator &operator++()
+        {
+            node_ = node_->next;
+            return *this;
+        }
+
+        const_iterator operator++(int)
+        {
+            const_iterator tmp = *this;
+            ++*this;
+            return tmp;
+        }
+
+        const_iterator &operator--()
+        {
+            node_ = node_->prev;
+            return *this;
+        }
+
+        const_iterator operator--(int)
+        {
+            const_iterator tmp = *this;
+            --*this;
+            return tmp;
+        }
+
+        bool operator==(const const_iterator &other) const
+        {
+            return node_ == other.node_;
+        }
+
+        bool operator!=(const const_iterator &other) const
+        {
+            return node_ != other.node_;
+        }
+    };
+
+    using reverse_iterator = std::reverse_iterator<iterator>;
+    using const_reverse_iterator = std::reverse_iterator<const_iterator>;
+
+    /* Constructors */
+    list() : size_(0)
+    {
+        init_sentinel();
+    }
+
+    explicit list(const Allocator &alloc) : size_(0), alloc_(alloc)
+    {
+        init_sentinel();
+    }
+
+    explicit list(size_type count, const T &value = T(), const Allocator &alloc = Allocator())
+        : size_(0), alloc_(alloc)
+    {
+        init_sentinel();
+        for (size_type i = 0; i < count; ++i)
+        {
+            push_back(value);
+        }
+    }
+
+    template <class InputIt>
+    list(InputIt first, InputIt last, const Allocator &alloc = Allocator())
+        : size_(0), alloc_(alloc)
+    {
+        init_sentinel();
+        for (; first != last; ++first)
+        {
+            push_back(*first);
+        }
+    }
+
+    list(const list &other) : size_(0), alloc_(other.alloc_)
+    {
+        init_sentinel();
+        for (const auto &v : other)
+        {
+            push_back(v);
+        }
+    }
+
+    list(list &&other) noexcept : size_(other.size_), alloc_(move(other.alloc_))
+    {
+        if (other.empty())
+        {
+            init_sentinel();
+        }
+        else
+        {
+            sentinel_.next = other.sentinel_.next;
+            sentinel_.prev = other.sentinel_.prev;
+            sentinel_.next->prev = get_sentinel_as_node();
+            sentinel_.prev->next = get_sentinel_as_node();
+            other.init_sentinel();
+            other.size_ = 0;
+        }
+    }
+
+    list(initializer_list<T> init, const Allocator &alloc = Allocator()) : size_(0), alloc_(alloc)
+    {
+        init_sentinel();
+        for (const auto &v : init)
+        {
+            push_back(v);
+        }
+    }
+
+    ~list()
+    {
+        clear();
+    }
+
+    list &operator=(const list &other)
+    {
+        if (this != &other)
+        {
+            clear();
+            for (const auto &v : other)
+            {
+                push_back(v);
+            }
+        }
+        return *this;
+    }
+
+    list &operator=(list &&other) noexcept
+    {
+        if (this != &other)
+        {
+            clear();
+            if (!other.empty())
+            {
+                sentinel_.next = other.sentinel_.next;
+                sentinel_.prev = other.sentinel_.prev;
+                sentinel_.next->prev = get_sentinel_as_node();
+                sentinel_.prev->next = get_sentinel_as_node();
+                size_ = other.size_;
+                other.init_sentinel();
+                other.size_ = 0;
+            }
+        }
+        return *this;
+    }
+
+    list &operator=(initializer_list<T> init)
+    {
+        clear();
+        for (const auto &v : init)
+        {
+            push_back(v);
+        }
+        return *this;
+    }
+
+    void assign(size_type count, const T &value)
+    {
+        clear();
+        for (size_type i = 0; i < count; ++i)
+        {
+            push_back(value);
+        }
+    }
+
+    template <class InputIt> void assign(InputIt first, InputIt last)
+    {
+        clear();
+        for (; first != last; ++first)
+        {
+            push_back(*first);
+        }
+    }
+
+    void assign(initializer_list<T> init)
+    {
+        clear();
+        for (const auto &v : init)
+        {
+            push_back(v);
+        }
+    }
+
+    allocator_type get_allocator() const
+    {
+        return allocator_type(alloc_);
+    }
+
+    /* Element access */
+    reference front()
+    {
+        return sentinel_.next->data;
+    }
+
+    const_reference front() const
+    {
+        return sentinel_.next->data;
+    }
+
+    reference back()
+    {
+        return sentinel_.prev->data;
+    }
+
+    const_reference back() const
+    {
+        return sentinel_.prev->data;
+    }
+
+    /* Iterators */
+    iterator begin()
+    {
+        return iterator(sentinel_.next);
+    }
+
+    const_iterator begin() const
+    {
+        return const_iterator(sentinel_.next);
+    }
+
+    const_iterator cbegin() const
+    {
+        return const_iterator(sentinel_.next);
+    }
+
+    iterator end()
+    {
+        return iterator(get_sentinel_as_node());
+    }
+
+    const_iterator end() const
+    {
+        return const_iterator(get_sentinel_as_node());
+    }
+
+    const_iterator cend() const
+    {
+        return const_iterator(get_sentinel_as_node());
+    }
+
+    reverse_iterator rbegin()
+    {
+        return reverse_iterator(end());
+    }
+
+    const_reverse_iterator rbegin() const
+    {
+        return const_reverse_iterator(end());
+    }
+
+    const_reverse_iterator crbegin() const
+    {
+        return const_reverse_iterator(cend());
+    }
+
+    reverse_iterator rend()
+    {
+        return reverse_iterator(begin());
+    }
+
+    const_reverse_iterator rend() const
+    {
+        return const_reverse_iterator(begin());
+    }
+
+    const_reverse_iterator crend() const
+    {
+        return const_reverse_iterator(cbegin());
+    }
+
+    /* Capacity */
+    bool empty() const
+    {
+        return size_ == 0;
+    }
+
+    size_type size() const
+    {
+        return size_;
+    }
+
+    size_type max_size() const
+    {
+        return static_cast<size_type>(-1) / sizeof(node);
+    }
+
+    /* Modifiers */
+    void clear()
+    {
+        node *current = sentinel_.next;
+        while (current != get_sentinel_as_node())
+        {
+            node *next = current->next;
+            destroy_node(current);
+            current = next;
+        }
+        init_sentinel();
+        size_ = 0;
+    }
+
+    iterator insert(const_iterator pos, const T &value)
+    {
+        return emplace(pos, value);
+    }
+
+    iterator insert(const_iterator pos, T &&value)
+    {
+        return emplace(pos, move(value));
+    }
+
+    iterator insert(const_iterator pos, size_type count, const T &value)
+    {
+        iterator first_inserted = end();
+        for (size_type i = 0; i < count; ++i)
+        {
+            auto it = insert(pos, value);
+            if (i == 0)
+                first_inserted = it;
+        }
+        return first_inserted;
+    }
+
+    template <class InputIt> iterator insert(const_iterator pos, InputIt first, InputIt last)
+    {
+        iterator first_inserted = end();
+        bool is_first = true;
+        for (; first != last; ++first)
+        {
+            auto it = insert(pos, *first);
+            if (is_first)
+            {
+                first_inserted = it;
+                is_first = false;
+            }
+        }
+        return first_inserted;
+    }
+
+    iterator insert(const_iterator pos, initializer_list<T> ilist)
+    {
+        return insert(pos, ilist.begin(), ilist.end());
+    }
+
+    template <class... Args> iterator emplace(const_iterator pos, Args &&...args)
+    {
+        node *new_node = create_node(forward<Args>(args)...);
+        insert_before(const_cast<node *>(pos.node_), new_node);
+        return iterator(new_node);
+    }
+
+    iterator erase(const_iterator pos)
+    {
+        node *n = const_cast<node *>(pos.node_);
+        node *next = n->next;
+        remove_node(n);
+        destroy_node(n);
+        return iterator(next);
+    }
+
+    iterator erase(const_iterator first, const_iterator last)
+    {
+        while (first != last)
+        {
+            first = erase(first);
+        }
+        return iterator(const_cast<node *>(last.node_));
+    }
+
+    void push_back(const T &value)
+    {
+        emplace_back(value);
+    }
+
+    void push_back(T &&value)
+    {
+        emplace_back(move(value));
+    }
+
+    template <class... Args> reference emplace_back(Args &&...args)
+    {
+        node *new_node = create_node(forward<Args>(args)...);
+        insert_before(get_sentinel_as_node(), new_node);
+        return new_node->data;
+    }
+
+    void pop_back()
+    {
+        if (size_ > 0)
+        {
+            node *n = sentinel_.prev;
+            remove_node(n);
+            destroy_node(n);
+        }
+    }
+
+    void push_front(const T &value)
+    {
+        emplace_front(value);
+    }
+
+    void push_front(T &&value)
+    {
+        emplace_front(move(value));
+    }
+
+    template <class... Args> reference emplace_front(Args &&...args)
+    {
+        node *new_node = create_node(forward<Args>(args)...);
+        insert_before(sentinel_.next, new_node);
+        return new_node->data;
+    }
+
+    void pop_front()
+    {
+        if (size_ > 0)
+        {
+            node *n = sentinel_.next;
+            remove_node(n);
+            destroy_node(n);
+        }
+    }
+
+    void resize(size_type count)
+    {
+        while (size_ > count)
+        {
+            pop_back();
+        }
+        while (size_ < count)
+        {
+            emplace_back();
+        }
+    }
+
+    void resize(size_type count, const T &value)
+    {
+        while (size_ > count)
+        {
+            pop_back();
+        }
+        while (size_ < count)
+        {
+            push_back(value);
+        }
+    }
+
+    void swap(list &other) noexcept
+    {
+        if (empty() && other.empty())
+        {
+            return;
+        }
+        else if (empty())
+        {
+            sentinel_.next = other.sentinel_.next;
+            sentinel_.prev = other.sentinel_.prev;
+            sentinel_.next->prev = get_sentinel_as_node();
+            sentinel_.prev->next = get_sentinel_as_node();
+            other.init_sentinel();
+        }
+        else if (other.empty())
+        {
+            other.sentinel_.next = sentinel_.next;
+            other.sentinel_.prev = sentinel_.prev;
+            other.sentinel_.next->prev = other.get_sentinel_as_node();
+            other.sentinel_.prev->next = other.get_sentinel_as_node();
+            init_sentinel();
+        }
+        else
+        {
+            std::swap(sentinel_.next, other.sentinel_.next);
+            std::swap(sentinel_.prev, other.sentinel_.prev);
+            sentinel_.next->prev = get_sentinel_as_node();
+            sentinel_.prev->next = get_sentinel_as_node();
+            other.sentinel_.next->prev = other.get_sentinel_as_node();
+            other.sentinel_.prev->next = other.get_sentinel_as_node();
+        }
+        std::swap(size_, other.size_);
+        std::swap(alloc_, other.alloc_);
+    }
+
+    /* Operations */
+    void merge(list &other)
+    {
+        merge(other, less<T>());
+    }
+
+    void merge(list &&other)
+    {
+        merge(other);
+    }
+
+    template <class Compare> void merge(list &other, Compare comp)
+    {
+        if (this == &other)
+            return;
+
+        iterator it1 = begin();
+        iterator it2 = other.begin();
+
+        while (it1 != end() && it2 != other.end())
+        {
+            if (comp(*it2, *it1))
+            {
+                node *n = it2.node_;
+                ++it2;
+                other.remove_node(n);
+                insert_before(it1.node_, n);
+                ++size_;
+            }
+            else
+            {
+                ++it1;
+            }
+        }
+
+        /* Append remaining elements from other */
+        if (it2 != other.end())
+        {
+            node *first = it2.node_;
+            node *last = other.sentinel_.prev;
+
+            first->prev->next = other.get_sentinel_as_node();
+            other.sentinel_.prev = first->prev;
+
+            first->prev = sentinel_.prev;
+            sentinel_.prev->next = first;
+            last->next = get_sentinel_as_node();
+            sentinel_.prev = last;
+
+            size_ += other.size_;
+            other.size_ = 0;
+        }
+    }
+
+    template <class Compare> void merge(list &&other, Compare comp)
+    {
+        merge(other, comp);
+    }
+
+    void splice(const_iterator pos, list &other)
+    {
+        if (other.empty())
+            return;
+
+        node *insert_pos = const_cast<node *>(pos.node_);
+        node *first = other.sentinel_.next;
+        node *last = other.sentinel_.prev;
+
+        /* Unlink from other */
+        other.init_sentinel();
+
+        /* Link into this list */
+        first->prev = insert_pos->prev;
+        last->next = insert_pos;
+        insert_pos->prev->next = first;
+        insert_pos->prev = last;
+
+        size_ += other.size_;
+        other.size_ = 0;
+    }
+
+    void splice(const_iterator pos, list &&other)
+    {
+        splice(pos, other);
+    }
+
+    void splice(const_iterator pos, list &other, const_iterator it)
+    {
+        if (it == other.end())
+            return;
+
+        node *n = const_cast<node *>(it.node_);
+        node *insert_pos = const_cast<node *>(pos.node_);
+
+        /* Unlink from other */
+        n->prev->next = n->next;
+        n->next->prev = n->prev;
+        --other.size_;
+
+        /* Link into this list */
+        n->prev = insert_pos->prev;
+        n->next = insert_pos;
+        insert_pos->prev->next = n;
+        insert_pos->prev = n;
+        ++size_;
+    }
+
+    void splice(const_iterator pos, list &&other, const_iterator it)
+    {
+        splice(pos, other, it);
+    }
+
+    void splice(const_iterator pos, list &other, const_iterator first, const_iterator last)
+    {
+        if (first == last)
+            return;
+
+        node *insert_pos = const_cast<node *>(pos.node_);
+        node *first_node = const_cast<node *>(first.node_);
+        node *last_node = const_cast<node *>(last.node_)->prev;
+
+        size_type count = 0;
+        for (auto it = first; it != last; ++it)
+            ++count;
+
+        /* Unlink from other */
+        first_node->prev->next = const_cast<node *>(last.node_);
+        const_cast<node *>(last.node_)->prev = first_node->prev;
+        other.size_ -= count;
+
+        /* Link into this list */
+        first_node->prev = insert_pos->prev;
+        last_node->next = insert_pos;
+        insert_pos->prev->next = first_node;
+        insert_pos->prev = last_node;
+        size_ += count;
+    }
+
+    void splice(const_iterator pos, list &&other, const_iterator first, const_iterator last)
+    {
+        splice(pos, other, first, last);
+    }
+
+    size_type remove(const T &value)
+    {
+        return remove_if([&value](const T &v) { return v == value; });
+    }
+
+    template <class UnaryPredicate> size_type remove_if(UnaryPredicate pred)
+    {
+        size_type removed = 0;
+        auto it = begin();
+        while (it != end())
+        {
+            if (pred(*it))
+            {
+                it = erase(it);
+                ++removed;
+            }
+            else
+            {
+                ++it;
+            }
+        }
+        return removed;
+    }
+
+    void reverse()
+    {
+        if (size_ <= 1)
+            return;
+
+        node *current = sentinel_.next;
+        while (current != get_sentinel_as_node())
+        {
+            std::swap(current->prev, current->next);
+            current = current->prev; /* Was next before swap */
+        }
+        std::swap(sentinel_.prev, sentinel_.next);
+    }
+
+    size_type unique()
+    {
+        return unique(equal_to<T>());
+    }
+
+    template <class BinaryPredicate> size_type unique(BinaryPredicate pred)
+    {
+        if (size_ <= 1)
+            return 0;
+
+        size_type removed = 0;
+        auto it = begin();
+        auto next_it = it;
+        ++next_it;
+
+        while (next_it != end())
+        {
+            if (pred(*it, *next_it))
+            {
+                next_it = erase(next_it);
+                ++removed;
+            }
+            else
+            {
+                it = next_it;
+                ++next_it;
+            }
+        }
+        return removed;
+    }
+
+    void sort()
+    {
+        sort(less<T>());
+    }
+
+    template <class Compare> void sort(Compare comp)
+    {
+        if (size_ <= 1)
+            return;
+
+        /* Merge sort implementation */
+        list carry;
+        list tmp[64];
+        list *fill = &tmp[0];
+        list *counter;
+
+        while (!empty())
+        {
+            carry.splice(carry.begin(), *this, begin());
+
+            for (counter = &tmp[0]; counter != fill && !counter->empty(); ++counter)
+            {
+                counter->merge(carry, comp);
+                carry.swap(*counter);
+            }
+            carry.swap(*counter);
+            if (counter == fill)
+                ++fill;
+        }
+
+        for (counter = &tmp[1]; counter != fill; ++counter)
+        {
+            counter->merge(*(counter - 1), comp);
+        }
+        swap(*(fill - 1));
+    }
+};
+
+/* Non-member functions */
+template <class T, class Alloc>
+bool operator==(const list<T, Alloc> &lhs, const list<T, Alloc> &rhs)
+{
+    if (lhs.size() != rhs.size())
+        return false;
+    auto it1 = lhs.begin();
+    auto it2 = rhs.begin();
+    while (it1 != lhs.end())
+    {
+        if (*it1 != *it2)
+            return false;
+        ++it1;
+        ++it2;
+    }
+    return true;
+}
+
+template <class T, class Alloc>
+bool operator!=(const list<T, Alloc> &lhs, const list<T, Alloc> &rhs)
+{
+    return !(lhs == rhs);
+}
+
+template <class T, class Alloc> bool operator<(const list<T, Alloc> &lhs, const list<T, Alloc> &rhs)
+{
+    return lexicographical_compare(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
+}
+
+template <class T, class Alloc>
+bool operator<=(const list<T, Alloc> &lhs, const list<T, Alloc> &rhs)
+{
+    return !(rhs < lhs);
+}
+
+template <class T, class Alloc> bool operator>(const list<T, Alloc> &lhs, const list<T, Alloc> &rhs)
+{
+    return rhs < lhs;
+}
+
+template <class T, class Alloc>
+bool operator>=(const list<T, Alloc> &lhs, const list<T, Alloc> &rhs)
+{
+    return !(lhs < rhs);
+}
+
+template <class T, class Alloc> void swap(list<T, Alloc> &lhs, list<T, Alloc> &rhs) noexcept
+{
+    lhs.swap(rhs);
+}
+
+template <class T, class Alloc, class U>
+typename list<T, Alloc>::size_type erase(list<T, Alloc> &c, const U &value)
+{
+    return c.remove(value);
+}
+
+template <class T, class Alloc, class Pred>
+typename list<T, Alloc>::size_type erase_if(list<T, Alloc> &c, Pred pred)
+{
+    return c.remove_if(pred);
+}
+
+} // namespace std
+
+#endif /* _LIBCPP_LIST */

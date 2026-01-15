@@ -1,4 +1,4 @@
-# ViperOS — Technical Specification v1.2
+# ViperDOS — Technical Specification v1.2
 
 ## Complete Implementation-Ready Specification
 
@@ -14,7 +14,7 @@
 
 | # | Section                                           | Description                                 |
 |---|---------------------------------------------------|---------------------------------------------|
-| 1 | [Overview](#1-overview)                           | What ViperOS is, target platforms, goals    |
+| 1 | [Overview](#1-overview)                           | What ViperDOS is, target platforms, goals    |
 | 2 | [Design Principles](#2-design-principles)         | Viper-native, capability-based, async-first |
 | 3 | [Boot Architecture](#3-boot-architecture)         | UEFI boot, vboot, VBootInfo structure       |
 | 4 | [Graphics Console](#4-graphics-console)           | Framebuffer text, colors, splash, panic     |
@@ -43,7 +43,7 @@
 | 17 | [Installed System](#17-installed-system)         | Complete file listing for fresh install |
 | 18 | [Directory Layout](#18-directory-layout)         | Filesystem hierarchy, drive naming      |
 | 19 | [Standard Library](#19-standard-library)         | Viper.* namespace hierarchy             |
-| 20 | [Core Utilities](#20-core-utilities)             | Programs that ship with ViperOS         |
+| 20 | [Core Utilities](#20-core-utilities)             | Programs that ship with ViperDOS         |
 | 21 | [Shell (vsh)](#21-shell-vsh)                     | Command shell, prompt, syntax           |
 | 22 | [Configuration Format](#22-configuration-format) | ViperConfig (.vcfg) syntax              |
 | 23 | [File Formats](#23-file-formats)                 | .vpr, .vlib, .vfont, .vcfg              |
@@ -61,7 +61,7 @@
 
 | # | Section                                        | Description                     |
 |---|------------------------------------------------|---------------------------------|
-| A | [Color Reference](#appendix-a-color-reference) | ViperOS color palette           |
+| A | [Color Reference](#appendix-a-color-reference) | ViperDOS color palette           |
 | B | [Quick Reference](#appendix-b-quick-reference) | Syscalls, directories, commands |
 
 ---
@@ -72,10 +72,10 @@
 
 ## 1. Overview
 
-### 1.1 What is ViperOS?
+### 1.1 What is ViperDOS?
 
-ViperOS is a custom operating system designed from scratch to natively host the Viper Platform. Unlike traditional
-operating systems that treat applications as opaque binaries, ViperOS understands Viper IL as its native execution
+ViperDOS is a custom operating system designed from scratch to natively host the Viper Platform. Unlike traditional
+operating systems that treat applications as opaque binaries, ViperDOS understands Viper IL as its native execution
 format.
 
 ```
@@ -86,7 +86,7 @@ format.
 ├────────────────────────────────────────────────────────────────┤
 │  VCALL Boundary (syscall/svc instruction)                     │
 ├────────────────────────────────────────────────────────────────┤
-│  ViperOS Microkernel                                           │
+│  ViperDOS Microkernel                                           │
 │  (Scheduler, Memory, IPC, Capabilities, HAL)                  │
 └────────────────────────────────────────────────────────────────┘
 ```
@@ -131,7 +131,7 @@ The kernel understands a fixed set of ~8 built-in Viper types. User-defined type
 
 ### 2.6 Graphics-First
 
-ViperOS boots directly into graphics mode. The console is graphical from the first moment. Serial output is for
+ViperDOS boots directly into graphics mode. The console is graphical from the first moment. Serial output is for
 debugging only.
 
 ---
@@ -173,7 +173,7 @@ ESP (FAT32)
 │   └── BOOT/
 │       ├── BOOTX64.EFI      # vboot for x86-64
 │       └── BOOTAA64.EFI     # vboot for AArch64
-└── viperos/
+└── viperdos/
     ├── kernel.elf           # Kernel image
     ├── splash.raw           # Boot splash image (optional)
     └── initrd.tar           # Initial ramdisk
@@ -244,7 +244,7 @@ typedef struct {
 
 1. Validate VBootInfo magic
 2. **Initialize graphics console** (framebuffer text output)
-3. **Display boot splash** (ViperOS logo)
+3. **Display boot splash** (ViperDOS logo)
 4. Print boot messages to graphical console
 5. Parse memory map
 6. Set up GDT/IDT (x86)
@@ -261,13 +261,13 @@ typedef struct {
 
 ### 4.1 Overview
 
-ViperOS boots directly into graphics mode. The graphical console provides text output from the earliest moments of boot.
+ViperDOS boots directly into graphics mode. The graphical console provides text output from the earliest moments of boot.
 Serial output is maintained in parallel for debugging.
 
 ### 4.2 Color Scheme
 
 ```c
-// ViperOS color palette
+// ViperDOS color palette
 #define VIPER_GREEN       0xFF00AA44  // Primary text color
 #define VIPER_DARK_BROWN  0xFF1A1208  // Background
 #define VIPER_YELLOW      0xFFFFDD00  // Panic text, warnings
@@ -283,7 +283,7 @@ Serial output is maintained in parallel for debugging.
 
 ### 4.3 Boot Splash
 
-A simple ViperOS logo displayed immediately after graphics console initialization:
+A simple ViperDOS logo displayed immediately after graphics console initialization:
 
 ```
     ╔═══════════════════════════════════════╗
@@ -356,7 +356,7 @@ On kernel panic:
 ┌────────────────────────────────────────────────────────────────┐
 │ ████████████████████████████████████████████████████████████████│
 │ █                                                              █│
-│ █                     VIPEROS PANIC                            █│
+│ █                     VIPERDOS PANIC                            █│
 │ █                                                              █│
 │ █  Error: Page fault in kernel mode                            █│
 │ █  Code:  0x0000000E                                           █│
@@ -571,7 +571,7 @@ Architecture (context switch, interrupts) and Platform (timer, serial) interface
 
 ## 17. Installed System
 
-This section defines the exact files present on a freshly installed ViperOS system. This is the minimal bootable system.
+This section defines the exact files present on a freshly installed ViperDOS system. This is the minimal bootable system.
 
 ### 17.1 Complete File Manifest
 
@@ -652,7 +652,7 @@ SYS:                                    # Boot device (D0:\)
 
 ### 17.2 Logical Device Assigns
 
-ViperOS uses logical device names that map to physical paths:
+ViperDOS uses logical device names that map to physical paths:
 
 | Device   | Points To        | Purpose          |
 |----------|------------------|------------------|
@@ -701,14 +701,14 @@ Minimum disk requirement: 2 MB (with room for logs and user files).
 
 ### 17.5 ESP (EFI System Partition)
 
-The ESP is separate from the ViperOS filesystem:
+The ESP is separate from the ViperDOS filesystem:
 
 ```
 ESP (FAT32, ~64 MB)
 ├── EFI\
 │   └── BOOT\
 │       └── BOOTX64.EFI         # vboot bootloader
-└── viperos\
+└── viperdos\
     └── kernel.elf              # Kernel (copied from SYS:)
 ```
 
@@ -718,7 +718,7 @@ ESP (FAT32, ~64 MB)
 
 ### 18.1 Device-Oriented Hierarchy
 
-ViperOS uses logical devices rather than a single rooted tree. Every path begins with a device name followed
+ViperDOS uses logical devices rather than a single rooted tree. Every path begins with a device name followed
 by a colon.
 
 | Device      | Purpose                | Writable  |
@@ -1024,7 +1024,7 @@ class PollSet
 
 ## 20. Core Utilities
 
-These are the 29 commands that ship in `C:` (SYS:c) with every ViperOS installation.
+These are the 29 commands that ship in `C:` (SYS:c) with every ViperDOS installation.
 
 ### 20.1 File Commands
 
@@ -1046,7 +1046,7 @@ These are the 29 commands that ship in `C:` (SYS:c) with every ViperOS installat
 | `Info`    | `info [device]` | Show device/disk information |
 | `Avail`   | `avail [chip    | fast                         |total]` | Show memory available |
 | `Status`  | `status [task]` | Show running tasks           |
-| `Version` | `version`       | Show ViperOS version         |
+| `Version` | `version`       | Show ViperDOS version         |
 
 ### 20.3 Text Commands
 
@@ -1123,7 +1123,7 @@ Example: `protect myfile.vpr +e-d` (add execute, remove delete)
 
 ```
 SYS:> version
-ViperOS 0.1.0 (November 2025)
+ViperDOS 0.1.0 (November 2025)
 Viper Platform Runtime
 
 SYS:> avail
@@ -1178,8 +1178,8 @@ Task ID  Status   Pri  Name
 SYS:> run myprog
 [1] myprog started
 
-SYS:> echo "Hello from ViperOS!"
-Hello from ViperOS!
+SYS:> echo "Hello from ViperDOS!"
+Hello from ViperDOS!
 
 SYS:> ask "Continue?"
 Continue? (y/n) y
@@ -1248,7 +1248,7 @@ Echo "Starting backup..."
 Copy WORK: TO BACKUP: ALL
 
 ; Variables
-Set name "ViperOS"
+Set name "ViperDOS"
 Echo "Welcome to $name"
 
 ; Conditionals
@@ -1305,8 +1305,8 @@ On boot, the shell executes:
 Example `S:startup-sequence`:
 
 ```
-; ViperOS Startup Sequence
-Echo "ViperOS starting..."
+; ViperDOS Startup Sequence
+Echo "ViperDOS starting..."
 
 ; Set up assigns
 Assign LIBS: SYS:libs
@@ -1320,12 +1320,12 @@ Path C: ADD
 ; Start system services
 Run >NIL: SYS:viper\vlog.vpr
 
-Echo "Welcome to ViperOS!"
+Echo "Welcome to ViperDOS!"
 ```
 
 ### 21.7 Colors
 
-The shell uses the standard ViperOS color scheme:
+The shell uses the standard ViperDOS color scheme:
 
 | Element            | Color                 |
 |--------------------|-----------------------|
@@ -1352,7 +1352,7 @@ The shell uses the standard ViperOS color scheme:
 
 ### 22.1 ViperConfig (.vcfg)
 
-A simple, readable configuration format designed for ViperOS.
+A simple, readable configuration format designed for ViperDOS.
 
 #### 22.1.1 Basic Syntax
 
@@ -1360,7 +1360,7 @@ A simple, readable configuration format designed for ViperOS.
 # This is a comment
 
 # Simple key-value pairs
-hostname = "viperos"
+hostname = "viperdos"
 version = 1
 enabled = true
 timeout = 30.5
@@ -1392,7 +1392,7 @@ fullscreen = true
 
 [network]
 dhcp = true
-hostname = "viperos"
+hostname = "viperdos"
 
 # Nested sections with dot notation
 [network.dns]
@@ -1434,9 +1434,9 @@ role = "viewer"
 #### 22.1.5 Full Example: system.vcfg
 
 ```vcfg
-# ViperOS System Configuration
+# ViperDOS System Configuration
 
-hostname = "viperos"
+hostname = "viperdos"
 timezone = "UTC"
 
 [display]
@@ -1650,7 +1650,7 @@ enum VSyscall {
 
 ### 25.1 QEMU Modes
 
-ViperOS can run in QEMU in two modes:
+ViperDOS can run in QEMU in two modes:
 
 #### 25.1.1 Graphical Mode (Development)
 
@@ -1662,7 +1662,7 @@ ViperOS can run in QEMU in two modes:
 
 Opens QEMU with:
 
-- SDL/GTK window showing ViperOS display
+- SDL/GTK window showing ViperDOS display
 - Serial output mirrored to terminal
 - Interactive keyboard/mouse input
 - Full boot splash and graphics console
@@ -1706,7 +1706,7 @@ Opens QEMU with:
 # test-boot.sh - Verify kernel boots successfully
 
 TIMEOUT=30
-EXPECTED="ViperOS v"
+EXPECTED="ViperDOS v"
 
 result=$(timeout $TIMEOUT ./scripts/run-qemu.sh --headless 2>&1)
 
@@ -1803,7 +1803,7 @@ exec $QEMU \
 
 ```yaml
 # .github/workflows/test.yml
-name: ViperOS Tests
+name: ViperDOS Tests
 
 on: [push, pull_request]
 
@@ -1860,7 +1860,7 @@ gdb build/kernel/kernel.elf
 
 ### Phase 1: Graphics Boot (Months 1-3)
 
-**Goal:** Boot to graphical console with ViperOS logo.
+**Goal:** Boot to graphical console with ViperDOS logo.
 
 Deliverables:
 
@@ -1871,7 +1871,7 @@ Deliverables:
 - kprintf to screen + serial
 - Memory management basics
 
-**Milestone:** "Hello from ViperOS" displayed graphically.
+**Milestone:** "Hello from ViperDOS" displayed graphically.
 
 ### Phase 2: Multitasking (Months 4-6)
 
@@ -1941,7 +1941,7 @@ Deliverables:
 - HTTP client
 - Viper.Net library
 
-**Milestone:** Fetch webpage from ViperOS.
+**Milestone:** Fetch webpage from ViperDOS.
 
 ---
 
@@ -1951,7 +1951,7 @@ Deliverables:
 |-----------------------|-----------------------------------------|
 | Heritage              | **Retro-inspired** (not UNIX, not DOS)  |
 | Boot display          | Graphics-first (framebuffer console)    |
-| Boot splash           | Simple ViperOS logo                     |
+| Boot splash           | Simple ViperDOS logo                     |
 | Console colors        | Green on dark brown                     |
 | Panic colors          | Yellow on green                         |
 | Shell prompt          | `SYS:>` (device:path format)            |

@@ -1105,7 +1105,7 @@ This is the power of interfaces: *designing for extension without modification*.
 
 ## The Three Languages
 
-**ViperLang**
+**Zia**
 ```rust
 interface Printable {
     func print();

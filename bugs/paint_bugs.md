@@ -7,7 +7,7 @@
 **Status**: Code bug (not a compiler bug)
 
 **Description**:
-The canvas.viper file uses static-style method calls for Viper.Graphics.Pixels operations:
+The canvas.zia file uses static-style method calls for Viper.Graphics.Pixels operations:
 ```viper
 // WRONG
 Viper.Graphics.Pixels.Set(pixels, x, y, color);
@@ -15,7 +15,7 @@ Viper.Graphics.Pixels.Fill(pixels, color);
 Viper.Graphics.Pixels.Get(pixels, x, y);
 ```
 
-**Correct Pattern** (as shown in plasma.viper and other working demos):
+**Correct Pattern** (as shown in plasma.zia and other working demos):
 ```viper
 // CORRECT - call methods on the instance
 pixels.Set(x, y, color);
@@ -24,8 +24,8 @@ var c = pixels.Get(x, y);
 ```
 
 **Files Affected**:
-- canvas.viper
-- Potentially app.viper where Blit is called
+- canvas.zia
+- Potentially app.zia where Blit is called
 
 **Fix**: Refactor all Viper.Graphics.Pixels static calls to instance method calls.
 
@@ -36,7 +36,7 @@ var c = pixels.Get(x, y);
 **Status**: Code bug (not a compiler bug)
 
 **Description**:
-The UI components (button.viper, slider.viper) and app.viper use static-style calls for Canvas operations:
+The UI components (button.zia, slider.zia) and app.zia use static-style calls for Canvas operations:
 ```viper
 // WRONG
 Viper.Graphics.Canvas.BoxFill(gfx, x, y, w, h, color);
@@ -51,10 +51,10 @@ gfx.Text(x, y, text, color);
 ```
 
 **Files Affected**:
-- ui/button.viper
-- ui/slider.viper
-- app.viper (handleInput, render, draw methods)
-- tools/line.viper, rectangle.viper, ellipse.viper (drawPreview methods)
+- ui/button.zia
+- ui/slider.zia
+- app.zia (handleInput, render, draw methods)
+- tools/line.zia, rectangle.zia, ellipse.zia (drawPreview methods)
 
 ---
 
@@ -63,20 +63,20 @@ gfx.Text(x, y, text, color);
 **Status**: Code bug
 
 **Description**:
-In tools/brush.viper and tools/eraser.viper, there is a conflict between:
+In tools/brush.zia and tools/eraser.zia, there is a conflict between:
 - The imported `"../brush"` module (which contains BrushSettings entity and SHAPE_ROUND/SHAPE_SQUARE constants)
 - Attempting to access `brush.SHAPE_SQUARE` where `brush` is the import path
 
-The brush.viper file has `module brush;` but tools/brush.viper has `module brush_tool;`. When tools/brush.viper does `import "../brush";` it should be able to access `brush.SHAPE_SQUARE`.
+The brush.zia file has `module brush;` but tools/brush.zia has `module brush_tool;`. When tools/brush.zia does `import "../brush";` it should be able to access `brush.SHAPE_SQUARE`.
 
 **Error Message**:
 ```
-demos/viperlang/paint/tools/brush.viper:71:29: error[V3000]: Undefined identifier: brush
+demos/zia/paint/tools/brush.zia:71:29: error[V3000]: Undefined identifier: brush
 ```
 
 **Affected Lines**:
-- tools/brush.viper line 71: `if shape == brush.SHAPE_SQUARE`
-- tools/eraser.viper line 68: similar issue
+- tools/brush.zia line 71: `if shape == brush.SHAPE_SQUARE`
+- tools/eraser.zia line 68: similar issue
 
 **Fix**: Either:
 1. Use fully qualified constant access that works with Viperlang's module system, OR
@@ -89,7 +89,7 @@ demos/viperlang/paint/tools/brush.viper:71:29: error[V3000]: Undefined identifie
 **Status**: Needs investigation
 
 **Description**:
-canvas.viper attempts to get width/height from a loaded Pixels buffer:
+canvas.zia attempts to get width/height from a loaded Pixels buffer:
 ```viper
 width = Viper.Graphics.Pixels.Width(pixels);
 height = Viper.Graphics.Pixels.Height(pixels);
@@ -105,18 +105,18 @@ Need to verify if Pixels has `.Width` and `.Height` properties or methods, or if
 
 ## Summary of Required Fixes
 
-1. **canvas.viper**: Convert all `Viper.Graphics.Pixels.Method(pixels, ...)` to `pixels.Method(...)`
-2. **ui/button.viper, ui/slider.viper**: Convert `Viper.Graphics.Canvas.Method(gfx, ...)` to `gfx.Method(...)`
-3. **app.viper**: Same Canvas method conversion as above
-4. **tools/*.viper**: Same Canvas method conversion for drawPreview functions
-5. **tools/brush.viper, tools/eraser.viper**: Fix module constant access or inline the shape constants
+1. **canvas.zia**: Convert all `Viper.Graphics.Pixels.Method(pixels, ...)` to `pixels.Method(...)`
+2. **ui/button.zia, ui/slider.zia**: Convert `Viper.Graphics.Canvas.Method(gfx, ...)` to `gfx.Method(...)`
+3. **app.zia**: Same Canvas method conversion as above
+4. **tools/*.zia**: Same Canvas method conversion for drawPreview functions
+5. **tools/brush.zia, tools/eraser.zia**: Fix module constant access or inline the shape constants
 
 ---
 
 ## Compiler Behavior Notes
 
 When testing incrementally:
-- Simple single-file tests work (test_simple.viper compiles and runs)
+- Simple single-file tests work (test_simple.zia compiles and runs)
 - Multi-file imports work when the API calls are correct
 - The "Undefined identifier: config" errors disappeared after adding explicit config import in test files
 - The remaining errors are API usage issues, not compiler bugs
@@ -133,10 +133,10 @@ The Viperlang compiler correctly identifies invalid identifier access patterns.
 When module A imports module B which imports module C (config), the constants from C are not accessible in B when B is processed as part of A's import chain.
 
 **Reproduction**:
-1. main.viper imports app.viper
-2. app.viper imports config.viper AND other modules (canvas, colors, brush)
-3. canvas.viper imports config.viper
-4. When compiling main.viper, canvas.viper's access to `config.COLOR_WHITE` fails with "Undefined identifier: config"
+1. main.zia imports app.zia
+2. app.zia imports config.zia AND other modules (canvas, colors, brush)
+3. canvas.zia imports config.zia
+4. When compiling main.zia, canvas.zia's access to `config.COLOR_WHITE` fails with "Undefined identifier: config"
 
 **Expected Behavior**:
 Each module should have access to its own imports regardless of where it appears in the import chain.

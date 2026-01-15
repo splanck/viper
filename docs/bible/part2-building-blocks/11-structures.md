@@ -1479,7 +1479,7 @@ This example demonstrates:
 
 ## The Three Languages
 
-**ViperLang**
+**Zia**
 ```rust
 value Point {
     x: f64;

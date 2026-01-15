@@ -128,7 +128,7 @@ Error messages often look intimidating. They're full of technical jargon, file p
 Let's dissect a typical error message:
 
 ```
-Error: IndexOutOfBounds at main.viper:23:15
+Error: IndexOutOfBounds at main.zia:23:15
   Array index 10 is out of range for array of length 3
 
     21 |     var numbers = [1, 2, 3];
@@ -137,15 +137,15 @@ Error: IndexOutOfBounds at main.viper:23:15
        |                        ^^
     24 |     total += value;
 
-  in function 'processData' at main.viper:23
-  called from 'start' at main.viper:45
+  in function 'processData' at main.zia:23
+  called from 'start' at main.zia:45
 ```
 
 This message tells you:
 
 1. **Error type:** `IndexOutOfBounds` — you tried to access an array position that doesn't exist.
 
-2. **Location:** `main.viper:23:15` — file `main.viper`, line 23, column 15. This is exactly where the problem occurred.
+2. **Location:** `main.zia:23:15` — file `main.zia`, line 23, column 15. This is exactly where the problem occurred.
 
 3. **Description:** `Array index 10 is out of range for array of length 3` — you tried to access index 10, but the array only has indices 0, 1, and 2.
 
@@ -314,13 +314,13 @@ if index >= 0 && index < arr.length {
 When an error occurs, the error message often includes a *stack trace* or *call stack*. This shows the chain of function calls that led to the error.
 
 ```
-Error: DivisionByZero at calculations.viper:15:20
+Error: DivisionByZero at calculations.zia:15:20
   Cannot divide by zero
 
-  in function 'divide' at calculations.viper:15
-  called from 'computeAverage' at calculations.viper:28
-  called from 'processScores' at main.viper:42
-  called from 'start' at main.viper:8
+  in function 'divide' at calculations.zia:15
+  called from 'computeAverage' at calculations.zia:28
+  called from 'processScores' at main.zia:42
+  called from 'start' at main.zia:8
 ```
 
 Read this from top to bottom: the error occurred in `divide`, which was called by `computeAverage`, which was called by `processScores`, which was called by `start`.
@@ -1030,7 +1030,7 @@ This program demonstrates:
 
 ## The Three Languages
 
-### ViperLang
+### Zia
 ```rust
 try {
     riskyOperation();

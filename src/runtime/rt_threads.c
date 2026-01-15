@@ -121,9 +121,9 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#if defined(_WIN32) || defined(__viperos__)
+#if defined(_WIN32) || defined(__viperdos__)
 
-// TODO: ViperOS - implement threading using ViperOS task/thread syscalls
+// TODO: ViperDOS - implement threading using ViperDOS task/thread syscalls
 
 void *rt_thread_start(void *entry, void *arg)
 {

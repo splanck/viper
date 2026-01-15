@@ -286,7 +286,7 @@ test "add returns sum of two numbers" {
 Run tests with:
 
 ```bash
-viper test myprogram.viper
+zia test myprogram.zia
 ```
 
 Output:
@@ -1271,7 +1271,7 @@ Error paths are just as important as success paths. Maybe more --- bugs in error
 Code coverage measures how much of your code is executed by your tests.
 
 ```bash
-viper test --coverage myprogram.viper
+zia test --coverage myprogram.zia
 ```
 
 Output:
@@ -1279,9 +1279,9 @@ Output:
 ```
 File                  Statements    Branches    Coverage
 --------------------------------------------------------------
-math.viper            45/50         12/15       87%
-user.viper            30/32         8/10        91%
-utils.viper           20/40         5/12        52%
+math.zia            45/50         12/15       87%
+user.zia            30/32         8/10        91%
+utils.zia           20/40         5/12        52%
 --------------------------------------------------------------
 Total                 95/122        25/37       78%
 ```
@@ -1326,7 +1326,7 @@ Coverage is a tool for finding untested code, not a goal in itself.
 Low coverage in a file suggests tests are missing. Look at the uncovered lines:
 
 ```
-utils.viper: 52% coverage
+utils.zia: 52% coverage
 
 Uncovered lines:
   45-52: Error handling for file not found
@@ -1793,7 +1793,7 @@ test "sumOfList returns total of all elements" {
 
 ## The Three Languages
 
-**ViperLang**
+**Zia**
 
 ```rust
 import Viper.Test;

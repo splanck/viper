@@ -1,10 +1,10 @@
-# BASIC vs ViperLang Feature Comparison
+# BASIC vs Zia Feature Comparison
 
-A comprehensive comparison of Viper BASIC and ViperLang language capabilities based on systematic testing.
+A comprehensive comparison of Viper BASIC and Zia language capabilities based on systematic testing.
 
 ## Summary
 
-| Category | BASIC | ViperLang | Notes |
+| Category | BASIC | Zia | Notes |
 |----------|-------|-----------|-------|
 | Primitives | ✅ Full | ✅ Full | VL has hex/binary literals, BASIC has type suffixes |
 | Variables | ✅ Full | ✅ Full | BASIC has STATIC, VL has type inference |
@@ -29,7 +29,7 @@ A comprehensive comparison of Viper BASIC and ViperLang language capabilities ba
 
 ### 1. Primitive Types & Literals
 
-| Feature | BASIC | ViperLang |
+| Feature | BASIC | Zia |
 |---------|-------|-----------|
 | Integer | `DIM x AS INTEGER` / `x%` | `var x: Integer` |
 | Long | `DIM x AS LONG` / `x&` | (use Integer - 64-bit) |
@@ -49,7 +49,7 @@ A comprehensive comparison of Viper BASIC and ViperLang language capabilities ba
 
 ### 2. Variables & Constants
 
-| Feature | BASIC | ViperLang |
+| Feature | BASIC | Zia |
 |---------|-------|-----------|
 | Mutable variable | `DIM x AS ...` | `var x = ...` |
 | Constant | `CONST PI = 3.14` | `final pi = 3.14` |
@@ -57,13 +57,13 @@ A comprehensive comparison of Viper BASIC and ViperLang language capabilities ba
 | Multiple declaration | `DIM a, b, c AS INTEGER` | `var a = 1; var b = 2;` |
 | Reassignment | `x = newValue` | `x = newValue` |
 
-**Test Results:** Both pass. BASIC has STATIC variables, ViperLang doesn't.
+**Test Results:** Both pass. BASIC has STATIC variables, Zia doesn't.
 
 ---
 
 ### 3. Operators
 
-| Feature | BASIC | ViperLang |
+| Feature | BASIC | Zia |
 |---------|-------|-----------|
 | Arithmetic | `+ - * / \ MOD ^` | `+ - * / %` |
 | Integer division | `\` ✅ | ❌ (/ for integers) |
@@ -77,13 +77,13 @@ A comprehensive comparison of Viper BASIC and ViperLang language capabilities ba
 | Null coalescing | ❌ | `??` ✅ |
 | Optional chain | ❌ | `?.` ✅ |
 
-**Test Results:** Both pass. ViperLang bitwise operators now work.
+**Test Results:** Both pass. Zia bitwise operators now work.
 
 ---
 
 ### 4. Control Flow
 
-| Feature | BASIC | ViperLang |
+| Feature | BASIC | Zia |
 |---------|-------|-----------|
 | If/Then/Else | `IF...THEN...ELSE...END IF` ✅ | `if (...) {...} else {...}` ✅ |
 | ElseIf | `ELSEIF` ✅ | `else if` ✅ |
@@ -98,13 +98,13 @@ A comprehensive comparison of Viper BASIC and ViperLang language capabilities ba
 | Continue | ❌ | `continue` ✅ |
 | Guard | ❌ | `guard (...) else {...}` ✅ |
 
-**Test Results:** BASIC has more loop variants. ViperLang match statement is broken.
+**Test Results:** BASIC has more loop variants. Zia match statement is broken.
 
 ---
 
 ### 5. Functions
 
-| Feature | BASIC | ViperLang |
+| Feature | BASIC | Zia |
 |---------|-------|-----------|
 | Function (returns value) | `FUNCTION...END FUNCTION` ✅ | `func name() -> Type` ✅ |
 | Procedure (no return) | `SUB...END SUB` ✅ | `func name()` ✅ |
@@ -116,13 +116,13 @@ A comprehensive comparison of Viper BASIC and ViperLang language capabilities ba
 | Lambdas | ❌ | `(x) => x + 1` ✅ (fixed) |
 | Closures | ❌ | ✅ |
 
-**Test Results:** Both pass. BASIC has BYREF, ViperLang has lambdas.
+**Test Results:** Both pass. BASIC has BYREF, Zia has lambdas.
 
 ---
 
 ### 6. Arrays & Collections
 
-| Feature | BASIC | ViperLang |
+| Feature | BASIC | Zia |
 |---------|-------|-----------|
 | Fixed array | `DIM arr(10)` ✅ | ❌ |
 | 2D array | `DIM arr(10, 10)` ✅ | ❌ |
@@ -132,13 +132,13 @@ A comprehensive comparison of Viper BASIC and ViperLang language capabilities ba
 | Map | Via `Viper.Collections` | `Map[K,V]` ✅ built-in |
 | Set | Via `Viper.Collections` | `Set[T]` ✅ built-in |
 
-**Test Results:** BASIC has native arrays. ViperLang uses List/Map/Set instead.
+**Test Results:** BASIC has native arrays. Zia uses List/Map/Set instead.
 
 ---
 
 ### 7. OOP - Classes/Entities
 
-| Feature | BASIC | ViperLang |
+| Feature | BASIC | Zia |
 |---------|-------|-----------|
 | Class definition | `CLASS...END CLASS` ✅ | `entity Name {...}` ✅ |
 | Value type | `TYPE...END TYPE` ✅ | `value Name {...}` ✅ |
@@ -156,7 +156,7 @@ A comprehensive comparison of Viper BASIC and ViperLang language capabilities ba
 
 ### 8. OOP - Inheritance
 
-| Feature | BASIC | ViperLang |
+| Feature | BASIC | Zia |
 |---------|-------|-----------|
 | Single inheritance | `CLASS Child : Parent` ✅ | `entity Child extends Parent` ✅ |
 | Access parent fields | ✅ | ✅ (fixed - BUG-VL-006) |
@@ -165,13 +165,13 @@ A comprehensive comparison of Viper BASIC and ViperLang language capabilities ba
 | Virtual dispatch | ✅ | ❌ (BUG-VL-011) |
 | Super call | Implicit | `super(...)` |
 
-**Test Results:** BASIC has full virtual dispatch. ViperLang polymorphic assignment works but virtual dispatch doesn't.
+**Test Results:** BASIC has full virtual dispatch. Zia polymorphic assignment works but virtual dispatch doesn't.
 
 ---
 
 ### 9. OOP - Interfaces
 
-| Feature | BASIC | ViperLang |
+| Feature | BASIC | Zia |
 |---------|-------|-----------|
 | Interface definition | `INTERFACE...END INTERFACE` ✅ | `interface Name {...}` ✅ |
 | Implementation | `IMPLEMENTS IName` ✅ | `implements IName` ✅ |
@@ -179,25 +179,25 @@ A comprehensive comparison of Viper BASIC and ViperLang language capabilities ba
 | Interface variable | `DIM s AS IShape` ✅ | `var s: IShape` ✅ |
 | Call via interface | ✅ | ❌ (BUG-VL-010) |
 
-**Test Results:** BASIC interfaces work fully. ViperLang interface method calls broken.
+**Test Results:** BASIC interfaces work fully. Zia interface method calls broken.
 
 ---
 
 ### 10. Generics
 
-| Feature | BASIC | ViperLang |
+| Feature | BASIC | Zia |
 |---------|-------|-----------|
 | Generic entity | ❌ | `entity Box[T]` ❌ (BUG-VL-009) |
 | Generic function | ❌ | `func foo[T]()` ❌ |
 | Type constraints | ❌ | ❌ |
 
-**Test Results:** Neither has working generics. ViperLang has syntax but it's not implemented.
+**Test Results:** Neither has working generics. Zia has syntax but it's not implemented.
 
 ---
 
 ### 11. Error Handling
 
-| Feature | BASIC | ViperLang |
+| Feature | BASIC | Zia |
 |---------|-------|-----------|
 | Try/Catch | `TRY...CATCH...END TRY` ✅ | ❌ |
 | Finally | `FINALLY` ✅ | ❌ |
@@ -207,13 +207,13 @@ A comprehensive comparison of Viper BASIC and ViperLang language capabilities ba
 | Null check | ❌ | `value ?? default` ✅ |
 | Guard statement | ❌ | `guard (cond) else {...}` ✅ |
 
-**Test Results:** Different approaches - BASIC uses exceptions, ViperLang uses optionals/guard.
+**Test Results:** Different approaches - BASIC uses exceptions, Zia uses optionals/guard.
 
 ---
 
 ### 12. I/O
 
-| Feature | BASIC | ViperLang |
+| Feature | BASIC | Zia |
 |---------|-------|-----------|
 | Print with newline | `PRINT` ✅ | `Viper.Terminal.Say()` ✅ |
 | Print without newline | `PRINT x;` ✅ | `Viper.Terminal.Print()` ✅ |
@@ -226,7 +226,7 @@ A comprehensive comparison of Viper BASIC and ViperLang language capabilities ba
 
 ### 13. String Functions
 
-| Feature | BASIC | ViperLang |
+| Feature | BASIC | Zia |
 |---------|-------|-----------|
 | Length | `LEN()` | `Viper.String.Length()` |
 | Substring | `MID$()` | `Viper.String.Substring()` |
@@ -243,7 +243,7 @@ A comprehensive comparison of Viper BASIC and ViperLang language capabilities ba
 
 ### 14. Math Functions
 
-| Feature | BASIC | ViperLang |
+| Feature | BASIC | Zia |
 |---------|-------|-----------|
 | Absolute | `ABS()` | `Viper.Math.Abs()` |
 | Square root | `SQR()` | `Viper.Math.Sqrt()` |
@@ -261,7 +261,7 @@ A comprehensive comparison of Viper BASIC and ViperLang language capabilities ba
 
 ### 15. Modules/Namespaces
 
-| Feature | BASIC | ViperLang |
+| Feature | BASIC | Zia |
 |---------|-------|-----------|
 | Namespace | `NAMESPACE...END NAMESPACE` ✅ | `module Name;` ✅ |
 | Qualified access | `Namespace.Function()` ✅ | `Module.Function()` ✅ |
@@ -271,7 +271,7 @@ A comprehensive comparison of Viper BASIC and ViperLang language capabilities ba
 
 ---
 
-## ViperLang Gaps (Features BASIC Has That ViperLang Lacks)
+## Zia Gaps (Features BASIC Has That Zia Lacks)
 
 ### Critical (Blocking real-world use)
 1. **Virtual method dispatch** (BUG-VL-011) - Polymorphism incomplete
@@ -344,6 +344,6 @@ A comprehensive comparison of Viper BASIC and ViperLang language capabilities ba
 
 All test programs are located in:
 - `/tests/comparison/basic/` - BASIC test programs
-- `/tests/comparison/viper/` - ViperLang test programs
+- `/tests/comparison/viper/` - Zia test programs
 
 Each test file covers one category (01_primitives, 02_variables, etc.)

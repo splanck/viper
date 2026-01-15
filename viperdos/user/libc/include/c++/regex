@@ -1,0 +1,942 @@
+// -*- C++ -*-
+/*
+ * ViperDOS C++ Standard Library - regex
+ * Regular expressions library (basic implementation)
+ */
+
+#ifndef _VIPER_REGEX
+#define _VIPER_REGEX
+
+#include "iterator"
+#include "stdexcept"
+#include "string"
+#include "vector"
+
+namespace std
+{
+
+/*
+ * ===========================================================================
+ * regex_constants namespace
+ * ===========================================================================
+ */
+
+namespace regex_constants
+{
+
+// Syntax option type
+using syntax_option_type = unsigned int;
+
+constexpr syntax_option_type icase = 1 << 0;      // Case insensitive
+constexpr syntax_option_type nosubs = 1 << 1;     // No sub-expressions
+constexpr syntax_option_type optimize = 1 << 2;   // Optimize for speed
+constexpr syntax_option_type collate = 1 << 3;    // Locale-aware collation
+constexpr syntax_option_type ECMAScript = 1 << 4; // ECMAScript grammar
+constexpr syntax_option_type basic = 1 << 5;      // Basic POSIX
+constexpr syntax_option_type extended = 1 << 6;   // Extended POSIX
+constexpr syntax_option_type awk = 1 << 7;        // awk grammar
+constexpr syntax_option_type grep = 1 << 8;       // grep grammar
+constexpr syntax_option_type egrep = 1 << 9;      // egrep grammar
+constexpr syntax_option_type multiline = 1 << 10; // Multiline mode
+
+// Match flag type
+using match_flag_type = unsigned int;
+
+constexpr match_flag_type match_default = 0;
+constexpr match_flag_type match_not_bol = 1 << 0;
+constexpr match_flag_type match_not_eol = 1 << 1;
+constexpr match_flag_type match_not_bow = 1 << 2;
+constexpr match_flag_type match_not_eow = 1 << 3;
+constexpr match_flag_type match_any = 1 << 4;
+constexpr match_flag_type match_not_null = 1 << 5;
+constexpr match_flag_type match_continuous = 1 << 6;
+constexpr match_flag_type match_prev_avail = 1 << 7;
+constexpr match_flag_type format_default = 0;
+constexpr match_flag_type format_sed = 1 << 8;
+constexpr match_flag_type format_no_copy = 1 << 9;
+constexpr match_flag_type format_first_only = 1 << 10;
+
+// Error type
+enum error_type
+{
+    error_collate,
+    error_ctype,
+    error_escape,
+    error_backref,
+    error_brack,
+    error_paren,
+    error_brace,
+    error_badbrace,
+    error_range,
+    error_space,
+    error_badrepeat,
+    error_complexity,
+    error_stack
+};
+
+} // namespace regex_constants
+
+/*
+ * ===========================================================================
+ * regex_error exception
+ * ===========================================================================
+ */
+
+class regex_error : public runtime_error
+{
+  public:
+    explicit regex_error(regex_constants::error_type err) : runtime_error("regex_error"), code_(err)
+    {
+    }
+
+    regex_constants::error_type code() const
+    {
+        return code_;
+    }
+
+  private:
+    regex_constants::error_type code_;
+};
+
+/*
+ * ===========================================================================
+ * regex_traits - Character traits for regex
+ * ===========================================================================
+ */
+
+template <class CharT> struct regex_traits
+{
+    using char_type = CharT;
+    using string_type = basic_string<CharT>;
+    using locale_type = void *; // Simplified
+    using char_class_type = unsigned int;
+
+    static constexpr size_t length(const char_type *p)
+    {
+        size_t len = 0;
+        while (*p++)
+            ++len;
+        return len;
+    }
+
+    CharT translate(CharT c) const
+    {
+        return c;
+    }
+
+    CharT translate_nocase(CharT c) const
+    {
+        if (c >= 'A' && c <= 'Z')
+            return c + ('a' - 'A');
+        return c;
+    }
+
+    template <class ForwardIt> string_type transform(ForwardIt first, ForwardIt last) const
+    {
+        return string_type(first, last);
+    }
+
+    template <class ForwardIt> string_type transform_primary(ForwardIt first, ForwardIt last) const
+    {
+        return string_type(first, last);
+    }
+
+    template <class ForwardIt> string_type lookup_collatename(ForwardIt first, ForwardIt last) const
+    {
+        return string_type(first, last);
+    }
+
+    template <class ForwardIt>
+    char_class_type lookup_classname(ForwardIt first, ForwardIt last, bool icase = false) const
+    {
+        (void)first;
+        (void)last;
+        (void)icase;
+        return 0;
+    }
+
+    bool isctype(CharT c, char_class_type cl) const
+    {
+        (void)c;
+        (void)cl;
+        return false;
+    }
+
+    int value(CharT c, int base) const
+    {
+        if (base == 8)
+        {
+            if (c >= '0' && c <= '7')
+                return c - '0';
+        }
+        else if (base == 10)
+        {
+            if (c >= '0' && c <= '9')
+                return c - '0';
+        }
+        else if (base == 16)
+        {
+            if (c >= '0' && c <= '9')
+                return c - '0';
+            if (c >= 'a' && c <= 'f')
+                return c - 'a' + 10;
+            if (c >= 'A' && c <= 'F')
+                return c - 'A' + 10;
+        }
+        return -1;
+    }
+
+    locale_type imbue(locale_type loc)
+    {
+        (void)loc;
+        return nullptr;
+    }
+
+    locale_type getloc() const
+    {
+        return nullptr;
+    }
+};
+
+/*
+ * ===========================================================================
+ * basic_regex - Regular expression object
+ * ===========================================================================
+ */
+
+template <class CharT, class Traits = regex_traits<CharT>> class basic_regex
+{
+  public:
+    using value_type = CharT;
+    using traits_type = Traits;
+    using string_type = typename Traits::string_type;
+    using flag_type = regex_constants::syntax_option_type;
+
+    static constexpr flag_type icase = regex_constants::icase;
+    static constexpr flag_type nosubs = regex_constants::nosubs;
+    static constexpr flag_type optimize = regex_constants::optimize;
+    static constexpr flag_type collate = regex_constants::collate;
+    static constexpr flag_type ECMAScript = regex_constants::ECMAScript;
+    static constexpr flag_type basic = regex_constants::basic;
+    static constexpr flag_type extended = regex_constants::extended;
+    static constexpr flag_type awk = regex_constants::awk;
+    static constexpr flag_type grep = regex_constants::grep;
+    static constexpr flag_type egrep = regex_constants::egrep;
+    static constexpr flag_type multiline = regex_constants::multiline;
+
+    // Constructors
+    basic_regex() : flags_(ECMAScript), mark_count_(0) {}
+
+    explicit basic_regex(const CharT *p, flag_type f = ECMAScript)
+        : pattern_(p), flags_(f), mark_count_(0)
+    {
+        compile();
+    }
+
+    basic_regex(const CharT *p, size_t len, flag_type f = ECMAScript)
+        : pattern_(p, len), flags_(f), mark_count_(0)
+    {
+        compile();
+    }
+
+    basic_regex(const basic_regex &other) = default;
+    basic_regex(basic_regex &&other) noexcept = default;
+
+    template <class ST, class SA>
+    explicit basic_regex(const basic_string<CharT, ST, SA> &str, flag_type f = ECMAScript)
+        : pattern_(str.c_str()), flags_(f), mark_count_(0)
+    {
+        compile();
+    }
+
+    template <class ForwardIt>
+    basic_regex(ForwardIt first, ForwardIt last, flag_type f = ECMAScript)
+        : pattern_(first, last), flags_(f), mark_count_(0)
+    {
+        compile();
+    }
+
+    basic_regex(initializer_list<CharT> il, flag_type f = ECMAScript)
+        : pattern_(il), flags_(f), mark_count_(0)
+    {
+        compile();
+    }
+
+    // Destructor
+    ~basic_regex() = default;
+
+    // Assignment
+    basic_regex &operator=(const basic_regex &other) = default;
+    basic_regex &operator=(basic_regex &&other) noexcept = default;
+
+    basic_regex &operator=(const CharT *p)
+    {
+        pattern_ = p;
+        compile();
+        return *this;
+    }
+
+    template <class ST, class SA> basic_regex &operator=(const basic_string<CharT, ST, SA> &str)
+    {
+        pattern_ = str;
+        compile();
+        return *this;
+    }
+
+    basic_regex &operator=(initializer_list<CharT> il)
+    {
+        pattern_.assign(il);
+        compile();
+        return *this;
+    }
+
+    // Assign
+    basic_regex &assign(const basic_regex &other)
+    {
+        return *this = other;
+    }
+
+    basic_regex &assign(basic_regex &&other) noexcept
+    {
+        return *this = move(other);
+    }
+
+    basic_regex &assign(const CharT *p, flag_type f = ECMAScript)
+    {
+        pattern_ = p;
+        flags_ = f;
+        compile();
+        return *this;
+    }
+
+    basic_regex &assign(const CharT *p, size_t len, flag_type f = ECMAScript)
+    {
+        pattern_.assign(p, len);
+        flags_ = f;
+        compile();
+        return *this;
+    }
+
+    template <class ST, class SA>
+    basic_regex &assign(const basic_string<CharT, ST, SA> &str, flag_type f = ECMAScript)
+    {
+        pattern_ = str;
+        flags_ = f;
+        compile();
+        return *this;
+    }
+
+    template <class ForwardIt>
+    basic_regex &assign(ForwardIt first, ForwardIt last, flag_type f = ECMAScript)
+    {
+        pattern_.assign(first, last);
+        flags_ = f;
+        compile();
+        return *this;
+    }
+
+    basic_regex &assign(initializer_list<CharT> il, flag_type f = ECMAScript)
+    {
+        pattern_.assign(il);
+        flags_ = f;
+        compile();
+        return *this;
+    }
+
+    // Observers
+    unsigned mark_count() const
+    {
+        return mark_count_;
+    }
+
+    flag_type flags() const
+    {
+        return flags_;
+    }
+
+    // Locale
+    void *imbue(void *loc)
+    {
+        (void)loc;
+        return nullptr;
+    }
+
+    void *getloc() const
+    {
+        return nullptr;
+    }
+
+    // Swap
+    void swap(basic_regex &other) noexcept
+    {
+        pattern_.swap(other.pattern_);
+        flag_type tmp = flags_;
+        flags_ = other.flags_;
+        other.flags_ = tmp;
+        unsigned tmp2 = mark_count_;
+        mark_count_ = other.mark_count_;
+        other.mark_count_ = tmp2;
+    }
+
+    // Pattern access (for matching)
+    const string_type &pattern() const
+    {
+        return pattern_;
+    }
+
+  private:
+    void compile()
+    {
+        // Count capturing groups (simplified)
+        mark_count_ = 0;
+        bool in_escape = false;
+        for (size_t i = 0; i < pattern_.size(); ++i)
+        {
+            if (in_escape)
+            {
+                in_escape = false;
+                continue;
+            }
+            if (pattern_[i] == '\\')
+            {
+                in_escape = true;
+            }
+            else if (pattern_[i] == '(')
+            {
+                if (i + 1 < pattern_.size() && pattern_[i + 1] != '?')
+                {
+                    ++mark_count_;
+                }
+            }
+        }
+    }
+
+    string_type pattern_;
+    flag_type flags_;
+    unsigned mark_count_;
+    Traits traits_;
+};
+
+template <class CharT, class Traits>
+void swap(basic_regex<CharT, Traits> &a, basic_regex<CharT, Traits> &b) noexcept
+{
+    a.swap(b);
+}
+
+// Type aliases
+using regex = basic_regex<char>;
+using wregex = basic_regex<wchar_t>;
+
+/*
+ * ===========================================================================
+ * sub_match - Represents a match of a sub-expression
+ * ===========================================================================
+ */
+
+template <class BidirIt> class sub_match : public pair<BidirIt, BidirIt>
+{
+  public:
+    using iterator = BidirIt;
+    using value_type = typename iterator_traits<BidirIt>::value_type;
+    using difference_type = typename iterator_traits<BidirIt>::difference_type;
+    using string_type = basic_string<value_type>;
+
+    bool matched = false;
+
+    constexpr sub_match() = default;
+
+    difference_type length() const
+    {
+        return matched ? distance(this->first, this->second) : 0;
+    }
+
+    operator string_type() const
+    {
+        return matched ? string_type(this->first, this->second) : string_type();
+    }
+
+    string_type str() const
+    {
+        return matched ? string_type(this->first, this->second) : string_type();
+    }
+
+    int compare(const sub_match &other) const
+    {
+        return str().compare(other.str());
+    }
+
+    int compare(const string_type &s) const
+    {
+        return str().compare(s);
+    }
+
+    int compare(const value_type *s) const
+    {
+        return str().compare(s);
+    }
+};
+
+// Type aliases
+using csub_match = sub_match<const char *>;
+using wcsub_match = sub_match<const wchar_t *>;
+using ssub_match = sub_match<string::const_iterator>;
+using wssub_match = sub_match<wstring::const_iterator>;
+
+/*
+ * ===========================================================================
+ * match_results - Contains match results
+ * ===========================================================================
+ */
+
+template <class BidirIt, class Alloc = allocator<sub_match<BidirIt>>> class match_results
+{
+  public:
+    using value_type = sub_match<BidirIt>;
+    using const_reference = const value_type &;
+    using reference = value_type &;
+    using const_iterator = typename vector<value_type, Alloc>::const_iterator;
+    using iterator = const_iterator;
+    using difference_type = typename iterator_traits<BidirIt>::difference_type;
+    using size_type = size_t;
+    using allocator_type = Alloc;
+    using char_type = typename iterator_traits<BidirIt>::value_type;
+    using string_type = basic_string<char_type>;
+
+    // Constructors
+    match_results() : ready_(false) {}
+
+    explicit match_results(const Alloc &a) : matches_(a), ready_(false) {}
+
+    match_results(const match_results &) = default;
+    match_results(match_results &&) noexcept = default;
+
+    // Assignment
+    match_results &operator=(const match_results &) = default;
+    match_results &operator=(match_results &&) = default;
+
+    // State
+    bool ready() const
+    {
+        return ready_;
+    }
+
+    // Size
+    size_type size() const
+    {
+        return matches_.size();
+    }
+
+    size_type max_size() const
+    {
+        return matches_.max_size();
+    }
+
+    bool empty() const
+    {
+        return matches_.empty();
+    }
+
+    // Element access
+    difference_type length(size_type n = 0) const
+    {
+        return matches_[n].length();
+    }
+
+    difference_type position(size_type n = 0) const
+    {
+        (void)n;
+        return 0; // Would need prefix info
+    }
+
+    string_type str(size_type n = 0) const
+    {
+        return matches_[n].str();
+    }
+
+    const_reference operator[](size_type n) const
+    {
+        return matches_[n];
+    }
+
+    const_reference prefix() const
+    {
+        return prefix_;
+    }
+
+    const_reference suffix() const
+    {
+        return suffix_;
+    }
+
+    const_iterator begin() const
+    {
+        return matches_.begin();
+    }
+
+    const_iterator end() const
+    {
+        return matches_.end();
+    }
+
+    const_iterator cbegin() const
+    {
+        return matches_.cbegin();
+    }
+
+    const_iterator cend() const
+    {
+        return matches_.cend();
+    }
+
+    // Format
+    template <class OutputIt>
+    OutputIt format(OutputIt out,
+                    const char_type *fmt_first,
+                    const char_type *fmt_last,
+                    regex_constants::match_flag_type flags = regex_constants::format_default) const
+    {
+        (void)flags;
+        while (fmt_first != fmt_last)
+        {
+            *out++ = *fmt_first++;
+        }
+        return out;
+    }
+
+    template <class OutputIt, class ST, class SA>
+    OutputIt format(OutputIt out,
+                    const basic_string<char_type, ST, SA> &fmt,
+                    regex_constants::match_flag_type flags = regex_constants::format_default) const
+    {
+        return format(out, fmt.data(), fmt.data() + fmt.size(), flags);
+    }
+
+    template <class ST, class SA>
+    basic_string<char_type, ST, SA> format(
+        const basic_string<char_type, ST, SA> &fmt,
+        regex_constants::match_flag_type flags = regex_constants::format_default) const
+    {
+        basic_string<char_type, ST, SA> result;
+        format(back_inserter(result), fmt, flags);
+        return result;
+    }
+
+    string_type format(
+        const char_type *fmt,
+        regex_constants::match_flag_type flags = regex_constants::format_default) const
+    {
+        string_type result;
+        format(back_inserter(result), fmt, fmt + string_type::traits_type::length(fmt), flags);
+        return result;
+    }
+
+    // Swap
+    void swap(match_results &other) noexcept
+    {
+        matches_.swap(other.matches_);
+        swap(prefix_, other.prefix_);
+        swap(suffix_, other.suffix_);
+        swap(ready_, other.ready_);
+    }
+
+    // For internal use
+    void set_ready(bool r)
+    {
+        ready_ = r;
+    }
+
+    void resize(size_type n)
+    {
+        matches_.resize(n);
+    }
+
+    reference at(size_type n)
+    {
+        return matches_[n];
+    }
+
+  private:
+    vector<value_type, Alloc> matches_;
+    value_type prefix_;
+    value_type suffix_;
+    bool ready_;
+};
+
+template <class BidirIt, class Alloc>
+void swap(match_results<BidirIt, Alloc> &a, match_results<BidirIt, Alloc> &b) noexcept
+{
+    a.swap(b);
+}
+
+// Type aliases
+using cmatch = match_results<const char *>;
+using wcmatch = match_results<const wchar_t *>;
+using smatch = match_results<string::const_iterator>;
+using wsmatch = match_results<wstring::const_iterator>;
+
+/*
+ * ===========================================================================
+ * Matching functions (simplified - only literal matching)
+ * ===========================================================================
+ */
+
+// Simple literal matching (not full regex)
+template <class BidirIt, class CharT, class Traits>
+bool regex_match(BidirIt first,
+                 BidirIt last,
+                 match_results<BidirIt> &m,
+                 const basic_regex<CharT, Traits> &e,
+                 regex_constants::match_flag_type flags = regex_constants::match_default)
+{
+    (void)flags;
+
+    const auto &pattern = e.pattern();
+
+    // Simple literal match only
+    if (static_cast<size_t>(distance(first, last)) != pattern.size())
+    {
+        m.set_ready(true);
+        return false;
+    }
+
+    auto it = first;
+    for (size_t i = 0; i < pattern.size(); ++i, ++it)
+    {
+        if (*it != pattern[i])
+        {
+            m.set_ready(true);
+            return false;
+        }
+    }
+
+    m.resize(1);
+    m.at(0).first = first;
+    m.at(0).second = last;
+    m.at(0).matched = true;
+    m.set_ready(true);
+    return true;
+}
+
+template <class BidirIt, class CharT, class Traits>
+bool regex_match(BidirIt first,
+                 BidirIt last,
+                 const basic_regex<CharT, Traits> &e,
+                 regex_constants::match_flag_type flags = regex_constants::match_default)
+{
+    match_results<BidirIt> m;
+    return regex_match(first, last, m, e, flags);
+}
+
+template <class CharT, class Traits>
+bool regex_match(const CharT *str,
+                 match_results<const CharT *> &m,
+                 const basic_regex<CharT, Traits> &e,
+                 regex_constants::match_flag_type flags = regex_constants::match_default)
+{
+    return regex_match(str, str + Traits::length(str), m, e, flags);
+}
+
+template <class CharT, class Traits>
+bool regex_match(const CharT *str,
+                 const basic_regex<CharT, Traits> &e,
+                 regex_constants::match_flag_type flags = regex_constants::match_default)
+{
+    return regex_match(str, str + Traits::length(str), e, flags);
+}
+
+template <class ST, class SA, class CharT, class Traits>
+bool regex_match(const basic_string<CharT, ST, SA> &s,
+                 match_results<typename basic_string<CharT, ST, SA>::const_iterator> &m,
+                 const basic_regex<CharT, Traits> &e,
+                 regex_constants::match_flag_type flags = regex_constants::match_default)
+{
+    return regex_match(s.begin(), s.end(), m, e, flags);
+}
+
+template <class ST, class SA, class CharT, class Traits>
+bool regex_match(const basic_string<CharT, ST, SA> &s,
+                 const basic_regex<CharT, Traits> &e,
+                 regex_constants::match_flag_type flags = regex_constants::match_default)
+{
+    return regex_match(s.begin(), s.end(), e, flags);
+}
+
+/*
+ * ===========================================================================
+ * Search functions (simplified)
+ * ===========================================================================
+ */
+
+template <class BidirIt, class CharT, class Traits>
+bool regex_search(BidirIt first,
+                  BidirIt last,
+                  match_results<BidirIt> &m,
+                  const basic_regex<CharT, Traits> &e,
+                  regex_constants::match_flag_type flags = regex_constants::match_default)
+{
+    (void)flags;
+
+    const auto &pattern = e.pattern();
+    if (pattern.empty())
+    {
+        m.set_ready(true);
+        return false;
+    }
+
+    // Simple substring search
+    for (auto it = first; it != last; ++it)
+    {
+        auto pos = it;
+        bool match = true;
+        for (size_t i = 0; i < pattern.size() && pos != last; ++i, ++pos)
+        {
+            if (*pos != pattern[i])
+            {
+                match = false;
+                break;
+            }
+        }
+        if (match && pos != it)
+        {
+            m.resize(1);
+            m.at(0).first = it;
+            m.at(0).second = pos;
+            m.at(0).matched = true;
+            m.set_ready(true);
+            return true;
+        }
+    }
+
+    m.set_ready(true);
+    return false;
+}
+
+template <class BidirIt, class CharT, class Traits>
+bool regex_search(BidirIt first,
+                  BidirIt last,
+                  const basic_regex<CharT, Traits> &e,
+                  regex_constants::match_flag_type flags = regex_constants::match_default)
+{
+    match_results<BidirIt> m;
+    return regex_search(first, last, m, e, flags);
+}
+
+template <class CharT, class Traits>
+bool regex_search(const CharT *str,
+                  match_results<const CharT *> &m,
+                  const basic_regex<CharT, Traits> &e,
+                  regex_constants::match_flag_type flags = regex_constants::match_default)
+{
+    return regex_search(str, str + Traits::length(str), m, e, flags);
+}
+
+template <class CharT, class Traits>
+bool regex_search(const CharT *str,
+                  const basic_regex<CharT, Traits> &e,
+                  regex_constants::match_flag_type flags = regex_constants::match_default)
+{
+    return regex_search(str, str + Traits::length(str), e, flags);
+}
+
+template <class ST, class SA, class CharT, class Traits>
+bool regex_search(const basic_string<CharT, ST, SA> &s,
+                  match_results<typename basic_string<CharT, ST, SA>::const_iterator> &m,
+                  const basic_regex<CharT, Traits> &e,
+                  regex_constants::match_flag_type flags = regex_constants::match_default)
+{
+    return regex_search(s.begin(), s.end(), m, e, flags);
+}
+
+template <class ST, class SA, class CharT, class Traits>
+bool regex_search(const basic_string<CharT, ST, SA> &s,
+                  const basic_regex<CharT, Traits> &e,
+                  regex_constants::match_flag_type flags = regex_constants::match_default)
+{
+    return regex_search(s.begin(), s.end(), e, flags);
+}
+
+/*
+ * ===========================================================================
+ * Replace functions (simplified)
+ * ===========================================================================
+ */
+
+template <class OutputIt, class BidirIt, class Traits, class CharT, class ST, class SA>
+OutputIt regex_replace(OutputIt out,
+                       BidirIt first,
+                       BidirIt last,
+                       const basic_regex<CharT, Traits> &e,
+                       const basic_string<CharT, ST, SA> &fmt,
+                       regex_constants::match_flag_type flags = regex_constants::match_default)
+{
+    match_results<BidirIt> m;
+
+    while (first != last)
+    {
+        if (regex_search(first, last, m, e, flags))
+        {
+            // Copy prefix
+            for (auto it = first; it != m[0].first; ++it)
+            {
+                *out++ = *it;
+            }
+            // Copy replacement
+            for (auto c : fmt)
+            {
+                *out++ = c;
+            }
+            first = m[0].second;
+
+            if (flags & regex_constants::format_first_only)
+            {
+                break;
+            }
+        }
+        else
+        {
+            *out++ = *first++;
+        }
+    }
+
+    return out;
+}
+
+template <class Traits, class CharT, class ST, class SA, class FST, class FSA>
+basic_string<CharT, ST, SA> regex_replace(
+    const basic_string<CharT, ST, SA> &s,
+    const basic_regex<CharT, Traits> &e,
+    const basic_string<CharT, FST, FSA> &fmt,
+    regex_constants::match_flag_type flags = regex_constants::match_default)
+{
+    basic_string<CharT, ST, SA> result;
+    regex_replace(back_inserter(result), s.begin(), s.end(), e, fmt, flags);
+    return result;
+}
+
+template <class Traits, class CharT, class ST, class SA>
+basic_string<CharT, ST, SA> regex_replace(
+    const basic_string<CharT, ST, SA> &s,
+    const basic_regex<CharT, Traits> &e,
+    const CharT *fmt,
+    regex_constants::match_flag_type flags = regex_constants::match_default)
+{
+    return regex_replace(s, e, basic_string<CharT>(fmt), flags);
+}
+
+template <class Traits, class CharT>
+basic_string<CharT> regex_replace(
+    const CharT *s,
+    const basic_regex<CharT, Traits> &e,
+    const CharT *fmt,
+    regex_constants::match_flag_type flags = regex_constants::match_default)
+{
+    basic_string<CharT> result;
+    basic_string<CharT> str(s);
+    regex_replace(
+        back_inserter(result), str.begin(), str.end(), e, basic_string<CharT>(fmt), flags);
+    return result;
+}
+
+} // namespace std
+
+#endif // _VIPER_REGEX

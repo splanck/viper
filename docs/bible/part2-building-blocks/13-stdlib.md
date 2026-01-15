@@ -399,7 +399,7 @@ Your program doesn't run in isolation. It runs on a specific computer, in a spec
 When someone runs your program from the terminal with arguments:
 
 ```bash
-$ viper myprogram.viper input.txt --verbose
+$ zia myprogram.zia input.txt --verbose
 ```
 
 You can access those arguments:
@@ -411,7 +411,7 @@ for arg in args {
     Viper.Terminal.Say("Argument: " + arg);
 }
 // Output:
-// Argument: myprogram.viper
+// Argument: myprogram.zia
 // Argument: input.txt
 // Argument: --verbose
 ```
@@ -1102,7 +1102,7 @@ Examples teach faster than API reference lists. This chapter is full of examples
 
 ### Experiment in a Scratch File
 
-Create a `test.viper` file and try things:
+Create a `test.zia` file and try things:
 
 ```rust
 module Test;

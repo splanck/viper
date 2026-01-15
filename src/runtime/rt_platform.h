@@ -45,10 +45,10 @@
 #define RT_PLATFORM_LINUX 0
 #endif
 
-#if defined(__viperos__)
-#define RT_PLATFORM_VIPEROS 1
+#if defined(__viperdos__)
+#define RT_PLATFORM_VIPERDOS 1
 #else
-#define RT_PLATFORM_VIPEROS 0
+#define RT_PLATFORM_VIPERDOS 0
 #endif
 
 //===----------------------------------------------------------------------===//
@@ -376,11 +376,11 @@ static inline void rt_windows_sleep_ms(int64_t ms)
         Sleep((DWORD)ms);
 }
 
-#elif RT_PLATFORM_VIPEROS
+#elif RT_PLATFORM_VIPERDOS
 
-// ViperOS platform
-// TODO: ViperOS - include appropriate system headers
-// TODO: ViperOS - may need custom implementations for some functions
+// ViperDOS platform
+// TODO: ViperDOS - include appropriate system headers
+// TODO: ViperDOS - may need custom implementations for some functions
 
 #define RT_PATH_SEPARATOR '/'
 #define RT_PATH_SEPARATOR_STR "/"

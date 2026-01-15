@@ -6,7 +6,7 @@
 - **Status**: Phases 1-9 COMPLETE, Phase 10 IN PROGRESS
 
 ### Resolved Issues:
-1. **ViperLang (Bug #018)**: ~~FIXED~~ - Method calls on primitive types (String.length(), Integer.toString()) were incorrectly lowered as indirect function calls. Fixed in Lowerer_Expr_Call.cpp.
+1. **Zia (Bug #018)**: ~~FIXED~~ - Method calls on primitive types (String.length(), Integer.toString()) were incorrectly lowered as indirect function calls. Fixed in Lowerer_Expr_Call.cpp.
 
 2. **Viper Basic**: ~~FIXED~~ - Previous issues with ORDER BY, aggregates, and JOIN operations were likely due to test environment or have been resolved in the current codebase. All tests now pass.
 
@@ -14,7 +14,7 @@
 - RIGHT JOIN and FULL JOIN execution code: Implemented in both languages
 - RIGHT JOIN and FULL JOIN parsing: Implemented in both languages
 - Tests for RIGHT/FULL JOIN: Added to both languages
-- **ViperLang**: All tests PASS (including RIGHT JOIN and FULL JOIN)
+- **Zia**: All tests PASS (including RIGHT JOIN and FULL JOIN)
 - **Viper Basic**: All tests PASS (including RIGHT JOIN and FULL JOIN)
 
 ---
@@ -24,12 +24,12 @@
 ### 2026-01-08
 
 #### Step 1: Token Types (COMPLETE)
-- [x] ViperLang: sql.viper (combined file)
+- [x] Zia: sql.zia (combined file)
 - [x] Viper Basic: sql.bas (combined file)
 - [x] Tests passing in both languages
 
 #### Step 2: Lexer Class (COMPLETE)
-- [x] ViperLang: sql.viper (lexer functions)
+- [x] Zia: sql.zia (lexer functions)
 - [x] Viper Basic: sql.bas (lexer functions)
 - [x] Tests passing in both languages
 - **Bugs Fixed**:
@@ -37,19 +37,19 @@
   - Bug #008: Single-line IF EXIT FUNCTION pattern - Use SELECT CASE
 
 #### Step 3: SqlValue Tagged Union (COMPLETE)
-- [x] ViperLang: sql.viper (types section)
+- [x] Zia: sql.zia (types section)
 - [x] Viper Basic: sql.bas (types section)
 - [x] Tests for type handling
 - **Notes**: Used tagged union pattern with kind field and separate value fields for each type
 
 #### Step 4: Column & Row Classes (COMPLETE)
-- [x] ViperLang: sql.viper (schema section)
+- [x] Zia: sql.zia (schema section)
 - [x] Viper Basic: sql.bas (schema section)
 - [x] Tests for column definitions and rows
 - **Notes**: Column has all constraint flags; Row uses List (VL) or fixed array (VB)
 
 #### Step 5: Table Class (COMPLETE)
-- [x] ViperLang: sql.viper
+- [x] Zia: sql.zia
 - [x] Viper Basic: sql.bas
 - [x] Tests for table creation and basic operations
 - **Notes**: Table stores columns and rows, supports add/get/delete operations
@@ -62,7 +62,7 @@ All foundation components implemented and tested in both languages.
 ## Phase 2: Parser
 
 #### Steps 6-10: Expression System (COMPLETE)
-- [x] ViperLang: sql.viper (Expr entity with all expression types)
+- [x] Zia: sql.zia (Expr entity with all expression types)
 - [x] Viper Basic: sql.bas (Expr CLASS with all expression types)
 - [x] Tests for literals (NULL, INTEGER, REAL, TEXT)
 - [x] Tests for binary expressions (arithmetic: +, -, *, /, %)
@@ -72,12 +72,12 @@ All foundation components implemented and tested in both languages.
 - [x] Tests for star (*) expressions
 - [x] Tests for unary expressions (-, NOT)
 - **Notes**:
-  - ViperLang limitation: Global constants not accessible in entity methods (used literal values)
+  - Zia limitation: Global constants not accessible in entity methods (used literal values)
   - Viper Basic limitation: SELECT CASE doesn't provide guaranteed return path (used IF/ELSEIF chains)
   - Both languages use List/array for child expressions (binary, unary, function args)
 
 #### Steps 11-12: CREATE TABLE & INSERT Statements (COMPLETE)
-- [x] ViperLang: CreateTableStmt and InsertStmt entities
+- [x] Zia: CreateTableStmt and InsertStmt entities
 - [x] Viper Basic: CreateTableStmt and InsertStmt CLASSes
 - [x] Parser for CREATE TABLE syntax (with columns, types, constraints)
 - [x] Parser for INSERT INTO ... VALUES syntax (with multiple rows)
@@ -100,7 +100,7 @@ All parser components (expressions, CREATE TABLE, INSERT) implemented and tested
 - [x] Step 15: INSERT execution (single and multi-row)
 - [x] Step 16: Simple SELECT (no WHERE) - Both languages
 - [x] Step 17: SELECT with WHERE (> comparison) - Both languages
-- **ViperLang**:
+- **Zia**:
   - [x] Compiler bug #013 FIXED - Optional types now unwrap for method resolution
   - [x] Compiler bug #014 FIXED - Optional types now unwrap for field access
   - [x] Database entity with table storage
@@ -120,15 +120,15 @@ All parser components (expressions, CREATE TABLE, INSERT) implemented and tested
     - Workaround: Copy to local variable first (e.g., `tName = stmt.tableName; FindTable(tName)`)
   - Bug #012: Viper Basic objects declared with DIM need NEW before method calls
     - Fix: Add `LET obj = NEW ClassName()` before calling methods
-  - Bug #013: ViperLang optional type not unwrapped for method resolution
+  - Bug #013: Zia optional type not unwrapped for method resolution
     - **FIXED IN COMPILER**: Modified Sema_Expr.cpp and Lowerer_Expr_Call.cpp
-  - Bug #014: ViperLang optional type field access returns default values
+  - Bug #014: Zia optional type field access returns default values
     - **FIXED IN COMPILER**: Modified Lowerer_Expr.cpp
   - Fixed SqlValue.Compare() to handle TEXT vs TEXT numeric comparison
 
 ### Phase 3 Status
 - Viper Basic: Complete (all executor functions working)
-- ViperLang: Complete (all executor functions working)
+- Zia: Complete (all executor functions working)
 
 ---
 

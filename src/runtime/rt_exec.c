@@ -99,8 +99,8 @@
 #include <windows.h>
 #define popen _popen
 #define pclose _pclose
-#elif defined(__viperos__)
-// TODO: ViperOS - include process control headers when available
+#elif defined(__viperdos__)
+// TODO: ViperDOS - include process control headers when available
 #else
 #include <errno.h>
 #include <spawn.h>
@@ -155,14 +155,14 @@ static char *read_pipe_output(FILE *fp, size_t *out_len)
     return buf;
 }
 
-#if defined(__viperos__)
+#if defined(__viperdos__)
 
-// ViperOS process execution stubs
-// TODO: ViperOS - implement process execution using task_spawn syscall
+// ViperDOS process execution stubs
+// TODO: ViperDOS - implement process execution using task_spawn syscall
 
 static int64_t exec_spawn(const char *program, void *args)
 {
-    // TODO: ViperOS - implement using task_spawn or similar syscall
+    // TODO: ViperDOS - implement using task_spawn or similar syscall
     (void)program;
     (void)args;
     return -1;
@@ -170,7 +170,7 @@ static int64_t exec_spawn(const char *program, void *args)
 
 static rt_string exec_capture_spawn(const char *program, void *args)
 {
-    // TODO: ViperOS - implement process capture
+    // TODO: ViperDOS - implement process capture
     (void)program;
     (void)args;
     return rt_string_from_bytes("", 0);
@@ -791,8 +791,8 @@ int64_t rt_exec_shell(rt_string command)
     // On Windows, system() uses cmd.exe
     int result = system(cmd_str);
     return (int64_t)result;
-#elif defined(__viperos__)
-    // TODO: ViperOS - implement shell execution
+#elif defined(__viperdos__)
+    // TODO: ViperDOS - implement shell execution
     (void)cmd_str;
     return -1;
 #else

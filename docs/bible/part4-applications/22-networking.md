@@ -1798,7 +1798,7 @@ This example demonstrates:
 
 ## The Three Languages
 
-**ViperLang**
+**Zia**
 ```rust
 import Viper.Network;
 

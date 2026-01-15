@@ -1315,7 +1315,7 @@ This example demonstrates several best practices:
 
 ## The Three Languages
 
-**ViperLang**
+**Zia**
 ```rust
 import Viper.Threading;
 

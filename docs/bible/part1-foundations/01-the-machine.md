@@ -108,7 +108,7 @@ Nobody wants to write that. Nobody wants to read that. Nobody wants to debug tha
 
 A programming language is a way to write instructions that humans can read and write, which a special program (called a *compiler*) translates into the numbers the computer understands.
 
-Here's the same thing in ViperLang:
+Here's the same thing in Zia:
 
 ```rust
 var x = 0;
@@ -126,12 +126,12 @@ Programming languages are a gift from programmers to other programmers (includin
 
 ## Why Three Languages?
 
-Viper gives you three languages: ViperLang, BASIC, and Pascal. Why?
+Viper gives you three languages: Zia, BASIC, and Pascal. Why?
 
 They're different ways to express the same ideas. Like how you can give directions by listing turns ("left, right, straight, left") or by giving landmarks ("past the church, toward the lake"). Same destination, different paths.
 
 Each language has its own personality:
-- **ViperLang** is modern and concise, inspired by contemporary languages like Rust. It uses curly braces and feels familiar if you've seen any C-like language.
+- **Zia** is modern and concise, inspired by contemporary languages like Rust. It uses curly braces and feels familiar if you've seen any C-like language.
 - **BASIC** (Beginner's All-purpose Symbolic Instruction Code) was designed in the 1960s specifically to be easy for newcomers. Its syntax reads almost like English.
 - **Pascal** was created in the 1970s as a teaching language, emphasizing structured programming and clear, readable code.
 
@@ -139,7 +139,7 @@ Some people find one style more natural than another. Some languages are better 
 
 Here's "create a variable x with value 0" in all three:
 
-**ViperLang**
+**Zia**
 ```rust
 var x = 0;
 ```
@@ -156,9 +156,9 @@ var x: Integer;
 x := 0;
 ```
 
-Different words, same idea. All three compile to the same machine code. All three produce the same result. The syntax varies — ViperLang uses `var`, BASIC uses `DIM`, Pascal uses `var` but with a colon before the type. But the concept is identical: set aside a place in memory, give it a name, and put a value there.
+Different words, same idea. All three compile to the same machine code. All three produce the same result. The syntax varies — Zia uses `var`, BASIC uses `DIM`, Pascal uses `var` but with a colon before the type. But the concept is identical: set aside a place in memory, give it a name, and put a value there.
 
-This book teaches primarily in ViperLang because it's modern and clean, and its patterns transfer well to other popular languages you might learn later. But you'll see BASIC and Pascal examples throughout, and you're free to use whichever you prefer. Learning one will help you understand the others.
+This book teaches primarily in Zia because it's modern and clean, and its patterns transfer well to other popular languages you might learn later. But you'll see BASIC and Pascal examples throughout, and you're free to use whichever you prefer. Learning one will help you understand the others.
 
 ---
 
@@ -209,7 +209,7 @@ This is a subtle but crucial distinction. A chef doesn't cook by giving instruct
 
 ### A Concrete Example
 
-Let's trace through a simple process to see this mental model in action. Suppose you want a program that asks for your name and then greets you. Here's what the program might look like in ViperLang:
+Let's trace through a simple process to see this mental model in action. Suppose you want a program that asks for your name and then greets you. Here's what the program might look like in Zia:
 
 ```rust
 print("What is your name? ");

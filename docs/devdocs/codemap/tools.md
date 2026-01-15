@@ -24,7 +24,7 @@ Command-line tools (`src/tools/`) for the Viper toolchain.
 
 | File             | Purpose                                    |
 |------------------|--------------------------------------------|
-| `main.cpp`       | ViperLang interpreter/compiler entry point |
+| `main.cpp`       | Zia interpreter/compiler entry point |
 | `usage.hpp/cpp`  | Help text and usage information            |
 | `ilc_compat.cpp` | Compatibility shim for ilc integration     |
 

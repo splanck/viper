@@ -16,7 +16,7 @@ VIPER="$BUILD_DIR/src/tools/viper/viper"
 RUNTIME_LIB="$BUILD_DIR/src/runtime/libviper_runtime.a"
 GFX_LIB="$BUILD_DIR/lib/libvipergfx.a"
 GUI_LIB="$BUILD_DIR/src/lib/gui/libvipergui.a"
-VIPERLANG_DIR="$ROOT_DIR/demos/viperlang"
+ZIA_DIR="$ROOT_DIR/demos/zia"
 
 # macOS frameworks needed for graphics
 MACOS_GFX_FRAMEWORKS="-framework Cocoa -framework IOKit -framework CoreFoundation"
@@ -99,9 +99,9 @@ BASIC_DEMOS=(
     "pacman:${BASIC_DIR}/pacman/pacman.bas"
 )
 
-# ViperLang demo configurations: name:source_path
-VIPERLANG_DEMOS=(
-    "paint:${VIPERLANG_DIR}/paint/main.viper"
+# Zia demo configurations: name:source_path
+ZIA_DEMOS=(
+    "paint:${ZIA_DIR}/paint/main.zia"
 )
 
 build_basic_demo() {
@@ -152,7 +152,7 @@ build_basic_demo() {
     return 0
 }
 
-build_viperlang_demo() {
+build_zia_demo() {
     local name="$1"
     local source="$2"
     local source_path="$source"
@@ -167,7 +167,7 @@ build_viperlang_demo() {
     local obj_file="$TMP_DIR/${name}.o"
     local exe_file="$BIN_DIR/${name}"
 
-    echo -n "  Compiling ViperLang to IL... "
+    echo -n "  Compiling Zia to IL... "
     if ! "$VIPER" "$source_path" --emit-il > "$il_file" 2>/dev/null; then
         echo -e "${RED}FAILED${NC}"
         # Show the actual error
@@ -191,7 +191,7 @@ build_viperlang_demo() {
     echo -e "${GREEN}OK${NC}"
 
     echo -n "  Linking... "
-    # ViperLang demos typically need graphics libraries
+    # Zia demos typically need graphics libraries
     if ! clang++ "$obj_file" "$RUNTIME_LIB" "$GFX_LIB" "$GUI_LIB" $MACOS_GFX_FRAMEWORKS -o "$exe_file" 2>&1; then
         echo -e "${RED}FAILED${NC}"
         return 1
@@ -225,14 +225,14 @@ for demo in "${BASIC_DEMOS[@]}"; do
     echo ""
 done
 
-echo "=== ViperLang Demos ==="
+echo "=== Zia Demos ==="
 echo ""
 
-for demo in "${VIPERLANG_DEMOS[@]}"; do
+for demo in "${ZIA_DEMOS[@]}"; do
     IFS=':' read -r name source <<< "$demo"
     echo "Building $name..."
 
-    if build_viperlang_demo "$name" "$source"; then
+    if build_zia_demo "$name" "$source"; then
         ((SUCCEEDED++))
     else
         ((FAILED++))

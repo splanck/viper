@@ -1,0 +1,136 @@
+// -*- C++ -*-
+/*
+ * ViperDOS C++ Standard Library - semaphore
+ * C++20 counting semaphores
+ */
+
+#ifndef _VIPER_SEMAPHORE
+#define _VIPER_SEMAPHORE
+
+#include "atomic"
+#include "chrono"
+#include "limits"
+
+namespace std
+{
+
+/*
+ * ===========================================================================
+ * counting_semaphore - Lightweight synchronization primitive
+ *
+ * A semaphore is a lightweight synchronization primitive that can be used
+ * for limiting concurrent access to a shared resource.
+ *
+ * ViperDOS implementation: Simplified for single-threaded environment.
+ * ===========================================================================
+ */
+
+template <ptrdiff_t LeastMaxValue = numeric_limits<ptrdiff_t>::max()> class counting_semaphore
+{
+  public:
+    // Maximum value of the internal counter
+    static constexpr ptrdiff_t max() noexcept
+    {
+        return LeastMaxValue;
+    }
+
+    // Constructor
+    constexpr explicit counting_semaphore(ptrdiff_t desired) noexcept : counter_(desired) {}
+
+    // Destructor
+    ~counting_semaphore() = default;
+
+    // Non-copyable, non-movable
+    counting_semaphore(const counting_semaphore &) = delete;
+    counting_semaphore &operator=(const counting_semaphore &) = delete;
+
+    /*
+     * Atomically increment the internal counter.
+     * If there are threads blocked on acquire(), one or more will be unblocked.
+     */
+    void release(ptrdiff_t update = 1) noexcept
+    {
+        counter_.fetch_add(update, memory_order_release);
+        // In a real implementation, would notify waiting threads
+    }
+
+    /*
+     * Atomically decrement the internal counter.
+     * Blocks if counter is zero until it becomes positive.
+     */
+    void acquire() noexcept
+    {
+        // Spin until we can decrement
+        while (true)
+        {
+            ptrdiff_t old = counter_.load(memory_order_acquire);
+            if (old > 0)
+            {
+                if (counter_.compare_exchange_weak(
+                        old, old - 1, memory_order_acq_rel, memory_order_relaxed))
+                {
+                    return;
+                }
+            }
+            else
+            {
+                // In a real implementation, would block here
+                // Single-threaded: if 0, can't acquire without release
+                break;
+            }
+        }
+    }
+
+    /*
+     * Try to atomically decrement the internal counter without blocking.
+     * Returns true if successful, false if counter was zero.
+     */
+    bool try_acquire() noexcept
+    {
+        ptrdiff_t old = counter_.load(memory_order_acquire);
+        while (old > 0)
+        {
+            if (counter_.compare_exchange_weak(
+                    old, old - 1, memory_order_acq_rel, memory_order_relaxed))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /*
+     * Try to acquire with timeout.
+     */
+    template <class Rep, class Period>
+    bool try_acquire_for(const chrono::duration<Rep, Period> &rel_time)
+    {
+        (void)rel_time; // Timeout not implemented
+        return try_acquire();
+    }
+
+    /*
+     * Try to acquire until time point.
+     */
+    template <class Clock, class Duration>
+    bool try_acquire_until(const chrono::time_point<Clock, Duration> &abs_time)
+    {
+        (void)abs_time; // Timeout not implemented
+        return try_acquire();
+    }
+
+  private:
+    atomic<ptrdiff_t> counter_;
+};
+
+/*
+ * ===========================================================================
+ * binary_semaphore - Semaphore with max count of 1
+ * ===========================================================================
+ */
+
+using binary_semaphore = counting_semaphore<1>;
+
+} // namespace std
+
+#endif // _VIPER_SEMAPHORE

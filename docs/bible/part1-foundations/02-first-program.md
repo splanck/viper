@@ -130,11 +130,11 @@ func start() {
 }
 ```
 
-Now save this file as `hello.viper` in your project folder.
+Now save this file as `hello.zia` in your project folder.
 
 **Important tips for saving:**
-- Make sure the file extension is `.viper`, not `.viper.txt` or anything else
-- Use exactly lowercase `hello.viper` — consistency matters
+- Make sure the file extension is `.zia`, not `.zia.txt` or anything else
+- Use exactly lowercase `hello.zia` — consistency matters
 - Save it in your `viper-projects` folder so you can find it easily
 
 ### What If You're Not Sure You Typed It Right?
@@ -171,12 +171,12 @@ Double-check your code against this. The most common mistakes are:
 
 ## Running Your First Program
 
-With your file saved, switch to your terminal. Make sure you're in the same folder as your `hello.viper` file. If you're not sure, you can type `ls` (on macOS/Linux) or `dir` (on Windows) to see what files are in your current folder.
+With your file saved, switch to your terminal. Make sure you're in the same folder as your `hello.zia` file. If you're not sure, you can type `ls` (on macOS/Linux) or `dir` (on Windows) to see what files are in your current folder.
 
 Now type:
 
 ```bash
-viper hello.viper
+zia hello.zia
 ```
 
 And press Enter.
@@ -195,11 +195,11 @@ This might seem like a small thing — just three words on a screen. But think a
 
 ## What's Really Happening: Behind the Scenes
 
-When you typed `viper hello.viper`, a remarkable chain of events unfolded in milliseconds. Understanding this process will help you understand programming more deeply.
+When you typed `zia hello.zia`, a remarkable chain of events unfolded in milliseconds. Understanding this process will help you understand programming more deeply.
 
 ### Step 1: Reading Your Code
 
-The Viper compiler opened your `hello.viper` file and read its contents — the exact characters you typed. At this point, it's just text, like this document you're reading.
+The Viper compiler opened your `hello.zia` file and read its contents — the exact characters you typed. At this point, it's just text, like this document you're reading.
 
 ### Step 2: Lexical Analysis (Tokenizing)
 
@@ -214,7 +214,7 @@ This is like how you break a sentence into words before understanding it.
 
 ### Step 3: Parsing (Understanding Structure)
 
-The compiler checked that your tokens form valid ViperLang structure. It verified:
+The compiler checked that your tokens form valid Zia structure. It verified:
 - "There's a module declaration followed by a semicolon — good."
 - "There's a function definition with proper braces — good."
 - "Inside the function, there's a valid function call — good."
@@ -223,7 +223,7 @@ If anything was wrong (missing semicolon, misspelled keyword), this is where you
 
 ### Step 4: Compilation (Translation)
 
-The compiler translated your ViperLang code into machine code — the raw numbers that your computer's processor can execute. The friendly `Viper.Terminal.Say("Hello, World!")` became something more like "load this text into memory, call the operating system's output function, pass it the memory address..."
+The compiler translated your Zia code into machine code — the raw numbers that your computer's processor can execute. The friendly `Viper.Terminal.Say("Hello, World!")` became something more like "load this text into memory, call the operating system's output function, pass it the memory address..."
 
 ### Step 5: Execution (Running)
 
@@ -243,7 +243,7 @@ Now let's slow down and understand exactly what each line of code does and *why*
 module Hello;
 ```
 
-This line gives your program a name. In ViperLang, every program is organized into *modules* — self-contained units of code.
+This line gives your program a name. In Zia, every program is organized into *modules* — self-contained units of code.
 
 **What is a module?** Think of modules like chapters in a book. Each chapter has a title and contains related content. Your module is titled "Hello" and contains everything needed for this program.
 
@@ -251,7 +251,7 @@ This line gives your program a name. In ViperLang, every program is organized in
 
 **Could we name it something else?** Absolutely! You could write `module MyFirstProgram;` or `module Test;` or `module AnythingYouWant;`. The name is for you (and other programmers) to understand what this module is about. "Hello" is a good name for a "Hello, World!" program.
 
-**What's the semicolon for?** In ViperLang, semicolons mark the end of statements — complete thoughts or commands. It's like the period at the end of a sentence. The semicolon tells the compiler "this statement is complete, don't try to continue reading it onto the next line."
+**What's the semicolon for?** In Zia, semicolons mark the end of statements — complete thoughts or commands. It's like the period at the end of a sentence. The semicolon tells the compiler "this statement is complete, don't try to continue reading it onto the next line."
 
 **What happens without this line?** Try removing it and running your program:
 
@@ -263,10 +263,10 @@ func start() {
 
 You'll get an error like:
 ```
-hello.viper:1:1: error: expected 'module' declaration
+hello.zia:1:1: error: expected 'module' declaration
 ```
 
-Every ViperLang file must start by declaring what module it belongs to. There's no way around this — it's a fundamental requirement of the language.
+Every Zia file must start by declaring what module it belongs to. There's no way around this — it's a fundamental requirement of the language.
 
 ### Line 2: (blank)
 
@@ -282,9 +282,9 @@ func start() {
 
 This line defines a *function* called `start`. There's a lot packed into this one line, so let's break it down:
 
-**`func`** is a keyword that means "I'm about to define a function." A keyword is a special word that ViperLang reserves for specific purposes — you can't use it as a name for your own things.
+**`func`** is a keyword that means "I'm about to define a function." A keyword is a special word that Zia reserves for specific purposes — you can't use it as a name for your own things.
 
-**`start`** is the name of this function. You could name functions almost anything (`greet`, `doSomething`, `myFunction`), but `start` is special. It's the *entry point* — when you run a ViperLang program, the computer looks for a function named `start` and begins executing there.
+**`start`** is the name of this function. You could name functions almost anything (`greet`, `doSomething`, `myFunction`), but `start` is special. It's the *entry point* — when you run a Zia program, the computer looks for a function named `start` and begins executing there.
 
 **`()`** — the parentheses — indicate that this is a function (as opposed to a variable or something else), and that this particular function doesn't need any extra information to do its job. Later, you'll see functions that take *parameters* inside these parentheses, like `func greet(name)`.
 
@@ -292,7 +292,7 @@ This line defines a *function* called `start`. There's a lot packed into this on
 
 **What is a function?** A function is a named, reusable group of instructions. Think of it like a recipe: it has a name ("Chocolate Chip Cookies"), and inside it are the steps to follow. When you want cookies, you don't reinvent the process — you follow the recipe. When you want code to run, you call the function.
 
-**Why is `start` special?** Every program needs a beginning — somewhere for the computer to start executing. In ViperLang, that place is the `start` function. When you run `viper hello.viper`, the runtime system finds the `start` function and begins executing its body. Without a `start` function, the computer wouldn't know where to begin.
+**Why is `start` special?** Every program needs a beginning — somewhere for the computer to start executing. In Zia, that place is the `start` function. When you run `zia hello.zia`, the runtime system finds the `start` function and begins executing its body. Without a `start` function, the computer wouldn't know where to begin.
 
 **What happens if you name it something else?**
 
@@ -306,7 +306,7 @@ func begin() {
 
 Running this produces:
 ```
-hello.viper: error: no entry point found (missing 'start' function)
+hello.zia: error: no entry point found (missing 'start' function)
 ```
 
 The program compiles, but the computer doesn't know what to run. It's like having a recipe book with no table of contents — you don't know where to start reading.
@@ -319,9 +319,9 @@ The program compiles, but the computer doesn't know what to run. It's like havin
 
 This is the line that actually makes something happen. Let's examine each piece:
 
-**The indentation** — those four spaces at the beginning — isn't required by ViperLang. The program would work exactly the same without them. But they're *crucial* for humans. The indentation shows visually that this line is *inside* the function, subordinate to it. When you see indented code, you know it's part of something. Consistent indentation makes code readable. Most programmers use either 2 or 4 spaces for each level of indentation.
+**The indentation** — those four spaces at the beginning — isn't required by Zia. The program would work exactly the same without them. But they're *crucial* for humans. The indentation shows visually that this line is *inside* the function, subordinate to it. When you see indented code, you know it's part of something. Consistent indentation makes code readable. Most programmers use either 2 or 4 spaces for each level of indentation.
 
-**`Viper.Terminal`** refers to the Terminal module of Viper's standard library. The *standard library* is a collection of pre-written code that comes with ViperLang. You don't have to write code to display text on the screen, read files, or do math — the standard library provides these capabilities ready-made.
+**`Viper.Terminal`** refers to the Terminal module of Viper's standard library. The *standard library* is a collection of pre-written code that comes with Zia. You don't have to write code to display text on the screen, read files, or do math — the standard library provides these capabilities ready-made.
 
 The dots (`.`) are how you navigate through namespaces. `Viper` is the overall namespace for the standard library. `Terminal` is the specific module for terminal/console operations. This hierarchical naming prevents confusion — if you had your own `Terminal` module, it wouldn't conflict with Viper's.
 
@@ -339,7 +339,7 @@ The dots (`.`) are how you navigate through namespaces. `Viper` is the overall n
 
 Error:
 ```
-hello.viper:5:1: error: expected ';' before '}'
+hello.zia:5:1: error: expected ';' before '}'
 ```
 
 The compiler reached the closing brace and realized the previous statement was never properly terminated.
@@ -352,10 +352,10 @@ The compiler reached the closing brace and realized the previous statement was n
 
 Error:
 ```
-hello.viper:4:5: error: 'say' is not a member of 'Viper.Terminal'
+hello.zia:4:5: error: 'say' is not a member of 'Viper.Terminal'
 ```
 
-ViperLang is case-sensitive. `Say` and `say` are completely different names. Most of the standard library uses `PascalCase` for function names (capital letter at the start of each word).
+Zia is case-sensitive. `Say` and `say` are completely different names. Most of the standard library uses `PascalCase` for function names (capital letter at the start of each word).
 
 **What if you forget the quotes around the text?**
 
@@ -365,8 +365,8 @@ ViperLang is case-sensitive. `Say` and `say` are completely different names. Mos
 
 Error:
 ```
-hello.viper:4:27: error: expected expression
-hello.viper:4:28: error: unexpected token '!'
+hello.zia:4:27: error: expected expression
+hello.zia:4:28: error: unexpected token '!'
 ```
 
 Without quotes, the compiler tries to interpret `Hello` as a variable and gets confused by the comma, space, and exclamation mark.
@@ -391,7 +391,7 @@ func start() {
 
 Error:
 ```
-hello.viper:5:1: error: unexpected end of file, expected '}'
+hello.zia:5:1: error: unexpected end of file, expected '}'
 ```
 
 The compiler reached the end of the file still expecting to find the closing brace. Braces must always be balanced — every `{` needs a matching `}`.
@@ -431,7 +431,7 @@ begin
 end.
 ```
 
-Pascal (created in 1970) sits between BASIC's simplicity and ViperLang's modern style:
+Pascal (created in 1970) sits between BASIC's simplicity and Zia's modern style:
 
 - `program Hello;` instead of `module Hello;` — same idea, different keyword
 - `begin` and `end.` instead of `{` and `}` — same structure, spelled out in words
@@ -471,15 +471,15 @@ When things go wrong (and they will — that's normal!), error messages are your
 1. Make sure you completed the installation in Chapter 0
 2. If on macOS/Linux, run the export command again: `export PATH="$PATH:/path/to/viper/build/bin"`
 3. If on Windows, check that Viper is in your system PATH
-4. Try using the full path: `/full/path/to/viper/build/bin/viper hello.viper`
+4. Try using the full path: `/full/path/to/viper/build/bin/zia hello.zia`
 
 ### "file not found" or "No such file or directory"
 
-**What it means:** Viper can't find your `hello.viper` file.
+**What it means:** Viper can't find your `hello.zia` file.
 
 **How to fix it:**
 1. Make sure you're in the same folder as your file. Type `ls` (or `dir` on Windows) to see what files are in your current folder.
-2. Check that you saved the file with the right name — `hello.viper`, not `hello.viper.txt`
+2. Check that you saved the file with the right name — `hello.zia`, not `hello.zia.txt`
 3. Use `cd` to navigate to the folder where you saved your file
 
 ### "unterminated string literal"
@@ -656,13 +656,13 @@ func start() {
 
 Run it:
 ```
-hello.viper:4:31: error: unterminated string literal
+hello.zia:4:31: error: unterminated string literal
     Viper.Terminal.Say("Hello, World!);
                               ^
 ```
 
 The error message tells us:
-- **hello.viper** — the file with the problem
+- **hello.zia** — the file with the problem
 - **4** — line 4
 - **31** — column 31 (the position on that line)
 - **unterminated string literal** — we started a string but never ended it
@@ -682,7 +682,7 @@ func start() {
 
 Run it:
 ```
-hello.viper:5:1: error: expected ';' before '}'
+hello.zia:5:1: error: expected ';' before '}'
 }
 ^
 ```
@@ -703,7 +703,7 @@ func start() {
 
 Run it:
 ```
-hello.viper:4:5: error: 'Sya' is not a member of 'Viper.Terminal'
+hello.zia:4:5: error: 'Sya' is not a member of 'Viper.Terminal'
     Viper.Terminal.Sya("Hello, World!");
                    ^~~
 ```
@@ -714,11 +714,11 @@ The compiler knows `Terminal` exists but doesn't recognize `Sya`. This kind of e
 
 ## Summary
 
-You've written and run your first program — and in doing so, you've crossed a threshold. You now have a working development environment, understand how to write and execute ViperLang code, and can read error messages when things go wrong. Every complex program starts exactly where you are now.
+You've written and run your first program — and in doing so, you've crossed a threshold. You now have a working development environment, understand how to write and execute Zia code, and can read error messages when things go wrong. Every complex program starts exactly where you are now.
 
 Here are the key concepts from this chapter:
 
-- **Modules** organize code into named units. Every ViperLang program needs at least one module, declared with `module Name;`
+- **Modules** organize code into named units. Every Zia program needs at least one module, declared with `module Name;`
 - **Functions** are named groups of instructions. The `start` function is special — it's where your program begins execution
 - **The standard library** provides ready-made functions like `Say` and `Print` so you don't have to write everything from scratch
 - **Statements** are individual commands, ending with semicolons

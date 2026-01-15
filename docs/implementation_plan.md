@@ -163,7 +163,7 @@ recurse:
 | 1 | Foundation | 2-3 months | Project infrastructure, utilities |
 | 2 | C Frontend | 4-6 months | C17 parser and semantic analysis |
 | 3 | C Code Generation | 4-6 months | Working C compiler |
-| 4 | C++ Frontend (Tier 1-2) | 6-9 months | ViperOS C++ Profile Tier 1-2 |
+| 4 | C++ Frontend (Tier 1-2) | 6-9 months | ViperDOS C++ Profile Tier 1-2 |
 | 5 | Optimization | 3-4 months | Basic optimization passes |
 | 6 | Advanced C++ (Tier 3-4) | 6-9 months | Full C++20 support |
 | 7 | Standard Library | 2-3 months | Compiler-rt, libc++ support |
@@ -207,11 +207,11 @@ Instead of building a custom backend, vcpp could emit LLVM IR and use LLVM for o
 
 **Recommendation:** Consider LLVM backend for faster time-to-working-compiler, then optionally develop custom backend for educational/self-hosting goals.
 
-### 3.3 Feature Staging (ViperOS C++ Profile)
+### 3.3 Feature Staging (ViperDOS C++ Profile)
 
-C++ features are staged according to the ViperOS C++ Profile (see `viperos_cpp_profile.md`):
+C++ features are staged according to the ViperDOS C++ Profile (see `viperdos_cpp_profile.md`):
 
-| Tier | Phase | Key Features | ViperOS Target |
+| Tier | Phase | Key Features | ViperDOS Target |
 |------|-------|--------------|----------------|
 | **Tier 1** | Phase 4a | Classes, templates (basic), constexpr, move semantics | Kernel boot, HAL |
 | **Tier 2** | Phase 4b | Virtual functions, lambdas, advanced templates | Full kernel |
@@ -224,9 +224,9 @@ This staging allows incremental capability:
 - After **Tier 3**: Compile user applications with full standard library
 - After **Tier 4**: Full C++20 for self-hosting and future code
 
-### 3.4 Phase to ViperOS Tier Mapping
+### 3.4 Phase to ViperDOS Tier Mapping
 
-| Phase | ViperOS Tier | Validation Criteria |
+| Phase | ViperDOS Tier | Validation Criteria |
 |-------|--------------|---------------------|
 | Phase 3 | — | C compiler works; can build Viper libc |
 | Phase 4 (early) | Tier 1 | Compiles `kernel/boot/`, `kernel/arch/`, `kernel/lib/` |

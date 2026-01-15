@@ -32,8 +32,8 @@ We are not writing documentation. We are writing a *book* — one that someone c
    - Walk through what happens, line by line
    - Then generalize to the concept
 
-5. **All three languages, ViperLang first**
-   - Primary examples in ViperLang
+5. **All three languages, Zia first**
+   - Primary examples in Zia
    - Follow with BASIC and Pascal equivalents
    - Use comparison to illuminate, not confuse
 
@@ -56,7 +56,7 @@ A simple, complete, working program that demonstrates the concept. Walk through 
 Build complexity gradually. Each section introduces one new aspect. More examples, more explanation.
 
 ### 5. The Three Languages
-Show how the concept works in ViperLang, BASIC, and Pascal. Highlight similarities and differences.
+Show how the concept works in Zia, BASIC, and Pascal. Highlight similarities and differences.
 
 ### 6. Common Mistakes
 What goes wrong? Show broken code, explain why it's broken, show the fix.
@@ -120,9 +120,9 @@ func start() {
 When showing the same concept in all three languages, use this structure:
 
 ```markdown
-**ViperLang**
+**Zia**
 ```rust
-// ViperLang code here
+// Zia code here
 ```
 
 **BASIC**

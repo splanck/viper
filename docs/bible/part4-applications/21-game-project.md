@@ -58,7 +58,7 @@ This separation makes code easier to reason about. When something draws wrong, y
 
 Games are full of things: players, enemies, obstacles, collectibles, projectiles, platforms. We call these entities. An entity is anything that exists in your game world and needs to be tracked.
 
-In ViperLang, we represent entities using values and sometimes entity types. Think of a value as a filled-out form describing something:
+In Zia, we represent entities using values and sometimes entity types. Think of a value as a filled-out form describing something:
 
 ```rust
 value Frog {
@@ -71,7 +71,7 @@ value Frog {
 
 This is like a census form for a frog. Every frog has these properties, and we can look them up whenever we need to know where a frog is or whether it is alive.
 
-**Why separate data from behavior?** In ViperLang, we often keep values simple and put behavior in functions that operate on them. This makes data easy to serialize (save to files), easy to inspect for debugging, and easy to pass around. The frog does not know how to move itself; there is a `move` function that takes a frog and returns a new frog with an updated position.
+**Why separate data from behavior?** In Zia, we often keep values simple and put behavior in functions that operate on them. This makes data easy to serialize (save to files), easy to inspect for debugging, and easy to pass around. The frog does not know how to move itself; there is a `move` function that takes a frog and returns a new frog with an updated position.
 
 ### State Management: Knowing What Is True
 
@@ -143,26 +143,26 @@ We will organize the code into modules, each responsible for one aspect of the g
 
 ```
 frogger/
-├── main.viper        # Entry point and game loop
-├── config.viper      # Constants and settings
-├── game.viper        # Game state and logic
-├── frog.viper        # Player character
-├── lane.viper        # Roads and rivers
-├── vehicle.viper     # Cars and trucks
-├── platform.viper    # Logs and turtles
-├── renderer.viper    # Drawing code
-└── input.viper       # Input handling
+├── main.zia        # Entry point and game loop
+├── config.zia      # Constants and settings
+├── game.zia        # Game state and logic
+├── frog.zia        # Player character
+├── lane.zia        # Roads and rivers
+├── vehicle.zia     # Cars and trucks
+├── platform.zia    # Logs and turtles
+├── renderer.zia    # Drawing code
+└── input.zia       # Input handling
 ```
 
 Why this structure? Each file has a single responsibility:
 
-- **config.viper** holds all magic numbers in one place. Want to make the screen bigger? Change it there. Want to adjust scoring? One file.
-- **frog.viper** knows everything about how a frog works but nothing about cars, logs, or scoring.
-- **vehicle.viper** knows how cars and trucks move but nothing about frogs or platforms.
-- **game.viper** orchestrates everything, knowing about all entity types and how they interact.
-- **renderer.viper** only draws. It never changes game state.
+- **config.zia** holds all magic numbers in one place. Want to make the screen bigger? Change it there. Want to adjust scoring? One file.
+- **frog.zia** knows everything about how a frog works but nothing about cars, logs, or scoring.
+- **vehicle.zia** knows how cars and trucks move but nothing about frogs or platforms.
+- **game.zia** orchestrates everything, knowing about all entity types and how they interact.
+- **renderer.zia** only draws. It never changes game state.
 
-This separation means you can modify one aspect without breaking others. Adding a new vehicle type only touches vehicle.viper and game.viper, not the frog code or renderer.
+This separation means you can modify one aspect without breaking others. Adding a new vehicle type only touches vehicle.zia and game.zia, not the frog code or renderer.
 
 ---
 
@@ -171,7 +171,7 @@ This separation means you can modify one aspect without breaking others. Adding 
 Let us start with the foundation. Configuration values are constants that control every aspect of the game. By collecting them in one place, we make the game easy to tune and customize.
 
 ```rust
-// config.viper
+// config.zia
 module Config;
 
 // Screen dimensions
@@ -222,7 +222,7 @@ The `expose` keyword makes these constants accessible from other modules. The `f
 The frog is the heart of the game. It is what the player controls, what they identify with. Let us build it carefully.
 
 ```rust
-// frog.viper
+// frog.zia
 module Frog;
 
 import Config;
@@ -360,7 +360,7 @@ Also notice that moving sets `ridingPlatform` to null. When you hop, you leave w
 Vehicles are the dangers on the road. They move continuously across the screen, wrapping around when they exit, creating an endless stream of traffic.
 
 ```rust
-// vehicle.viper
+// vehicle.zia
 module Vehicle;
 
 import Config;
@@ -441,7 +441,7 @@ The `hitsPoint` function checks if a point (the frog's position) is inside the v
 Platforms are logs and turtles that float on the river. Unlike vehicles that kill on contact, platforms save the frog from drowning. The code is similar to vehicles with one crucial behavioral difference.
 
 ```rust
-// platform.viper
+// platform.zia
 module Platform;
 
 import Config;
@@ -499,7 +499,7 @@ The Platform code looks nearly identical to Vehicle. This might seem like unnece
 Now we bring everything together. The GameState value is the single source of truth for everything happening in the game.
 
 ```rust
-// game.viper
+// game.zia
 module Game;
 
 import Config;
@@ -809,7 +809,7 @@ This wrapper adds scoring for forward progress. Moving backward does not lose po
 Rendering transforms game state into pictures. It reads but never modifies state.
 
 ```rust
-// renderer.viper
+// renderer.zia
 module Renderer;
 
 import Config;
@@ -947,7 +947,7 @@ The UI provides at-a-glance status. Score, lives, and level are always visible. 
 The main file brings everything together:
 
 ```rust
-// main.viper
+// main.zia
 module Main;
 
 import Config;

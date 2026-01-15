@@ -166,26 +166,26 @@ int64_t rt_clock_ticks_us(void)
     return us;
 }
 
-#elif defined(__viperos__)
+#elif defined(__viperdos__)
 
-// ViperOS time implementation
-// TODO: ViperOS - implement using ViperOS syscalls (sys_clock_gettime or similar)
+// ViperDOS time implementation
+// TODO: ViperDOS - implement using ViperDOS syscalls (sys_clock_gettime or similar)
 
 void rt_sleep_ms(int32_t ms)
 {
-    // TODO: ViperOS - implement sleep using nanosleep syscall
+    // TODO: ViperDOS - implement sleep using nanosleep syscall
     (void)ms;
 }
 
 int64_t rt_timer_ms(void)
 {
-    // TODO: ViperOS - implement using monotonic clock syscall
+    // TODO: ViperDOS - implement using monotonic clock syscall
     return 0;
 }
 
 int64_t rt_clock_ticks_us(void)
 {
-    // TODO: ViperOS - implement using monotonic clock syscall with microsecond precision
+    // TODO: ViperDOS - implement using monotonic clock syscall with microsecond precision
     return 0;
 }
 

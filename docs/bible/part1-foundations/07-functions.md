@@ -678,7 +678,7 @@ Understanding the call stack helps you trace through complex code and debug prob
 
 ## Function Overloading: Same Name, Different Signatures
 
-In many languages (including ViperLang), you can define multiple functions with the same name as long as they have different parameters. This is called **function overloading**.
+In many languages (including Zia), you can define multiple functions with the same name as long as they have different parameters. This is called **function overloading**.
 
 ```rust
 func greet() {
@@ -1369,7 +1369,7 @@ Each function does one thing. They're short. They have clear names. They build o
 
 ## The Three Languages
 
-**ViperLang**
+**Zia**
 ```rust
 func add(a: i64, b: i64) -> i64 {
     return a + b;

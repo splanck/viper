@@ -312,7 +312,7 @@ set(ILC_SOURCES
         tools/ilc/main.cpp
         tools/ilc/cmd_run_il.cpp
         tools/ilc/cmd_front_basic.cpp
-        tools/ilc/cmd_front_viperlang.cpp
+        tools/ilc/cmd_front_zia.cpp
         tools/ilc/cmd_il_opt.cpp
         tools/ilc/cmd_codegen_x64.cpp
         tools/ilc/cmd_bench.cpp
@@ -325,7 +325,7 @@ set(ILC_LINK_LIBS
         il_vm
         il_transform
         fe_basic
-        fe_viperlang
+        fe_zia
         il_api
         il_tools_common
         viper_codegen_x86_64
@@ -386,23 +386,23 @@ if (VIPER_ENABLE_PASCAL)
     install(TARGETS vpascal RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif ()
 
-add_executable(viper
-        tools/viper/main.cpp
-        tools/viper/usage.cpp
-        tools/viper/ilc_compat.cpp
-        tools/ilc/cmd_front_viperlang.cpp
+add_executable(zia
+        tools/zia/main.cpp
+        tools/zia/usage.cpp
+        tools/zia/ilc_compat.cpp
+        tools/ilc/cmd_front_zia.cpp
         tools/ilc/cli.cpp)
-set_target_properties(viper PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/viper)
-target_link_libraries(viper
+set_target_properties(zia PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/zia)
+target_link_libraries(zia
         PRIVATE
         viper_common_opts
         viper::il_full
         il_vm
         il_transform
-        fe_viperlang
+        fe_zia
         il_api
         il_tools_common)
-install(TARGETS viper RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS zia RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 add_executable(ilrun
         tools/ilrun/main.cpp
@@ -446,7 +446,7 @@ add_subdirectory(frontends/basic)
 if (VIPER_ENABLE_PASCAL)
     add_subdirectory(frontends/pascal)
 endif ()
-add_subdirectory(frontends/viperlang)
+add_subdirectory(frontends/zia)
 
 add_executable(basic-ast-dump
         tools/basic-ast-dump/main.cpp

@@ -61,7 +61,7 @@ After building, confirm the primary tools work correctly:
 
 ```sh
 ./build/src/tools/vbasic/vbasic --help
-./build/src/tools/viper/viper --help
+./build/src/tools/zia/zia --help
 ./build/src/tools/ilrun/ilrun --help
 ./build/src/tools/il-verify/il-verify --help
 ```
@@ -85,9 +85,9 @@ Hello, World!
 Condition is true
 ```
 
-### ViperLang
+### Zia
 
-Create a file `hello.viper`:
+Create a file `hello.zia`:
 
 ```viper
 module Hello;
@@ -100,7 +100,7 @@ func start() {
 Run it:
 
 ```sh
-./build/src/tools/viper/viper hello.viper
+./build/src/tools/zia/zia hello.zia
 ```
 
 **Expected output:**
@@ -119,8 +119,8 @@ You can inspect the generated IL or run IL programs directly:
 # Show generated IL from BASIC
 ./build/src/tools/vbasic/vbasic examples/basic/ex1_hello_cond.bas --emit-il
 
-# Show generated IL from ViperLang
-./build/src/tools/viper/viper hello.viper --emit-il
+# Show generated IL from Zia
+./build/src/tools/zia/zia hello.zia --emit-il
 
 # Save IL to a file
 ./build/src/tools/vbasic/vbasic examples/basic/ex1_hello_cond.bas -o hello.il
@@ -130,7 +130,7 @@ You can inspect the generated IL or run IL programs directly:
 ```
 
 For more examples, see the **[BASIC Tutorial](basic-language.md)**,
-**[ViperLang Tutorial](viperlang-getting-started.md)**, and the `examples/` and `demos/` directories.
+**[Zia Tutorial](zia-getting-started.md)**, and the `examples/` and `demos/` directories.
 
 ---
 
@@ -141,7 +141,7 @@ For more examples, see the **[BASIC Tutorial](basic-language.md)**,
 | Tool        | Purpose                       | Example                  |
 |-------------|-------------------------------|--------------------------|
 | `vbasic`    | Run/compile BASIC programs    | `vbasic script.bas`      |
-| `viper`     | Run/compile ViperLang programs | `viper program.viper`   |
+| `zia`       | Run/compile Zia programs    | `zia program.zia`      |
 | `ilrun`     | Execute IL programs           | `ilrun program.il`       |
 | `il-verify` | Verify IL correctness         | `il-verify program.il`   |
 | `il-dis`    | Disassemble IL                | `il-dis program.il`      |
@@ -155,7 +155,7 @@ For more examples, see the **[BASIC Tutorial](basic-language.md)**,
 | `basic-lex-dump` | Dump BASIC tokens           | `basic-lex-dump script.bas`       |
 
 > **Note:** The old `ilc` commands still work for backwards compatibility, but the new simplified tools (`vbasic`,
-`viper`, `ilrun`) are recommended for everyday use.
+`zia`, `ilrun`) are recommended for everyday use.
 
 ---
 
@@ -189,8 +189,8 @@ Viper guarantees consistent numeric behavior across all platforms and execution 
 
 - **[BASIC Tutorial](basic-language.md)** — Learn Viper BASIC by example
 - **[BASIC Reference](basic-reference.md)** — Complete BASIC language reference
-- **[ViperLang Tutorial](viperlang-getting-started.md)** — Learn ViperLang by example
-- **[ViperLang Reference](viperlang-reference.md)** — Complete ViperLang language reference
+- **[Zia Tutorial](zia-getting-started.md)** — Learn Zia by example
+- **[Zia Reference](zia-reference.md)** — Complete Zia language reference
 - **[IL Guide](il-guide.md)** — Comprehensive IL documentation
 
 **Implementation Guides:**

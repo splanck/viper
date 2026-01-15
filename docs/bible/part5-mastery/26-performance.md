@@ -196,7 +196,7 @@ Manual timing works for small programs, but for larger ones, you need a *profile
 ### Using Viper's Built-in Profiler
 
 ```bash
-viper --profile myprogram.viper
+zia --profile myprogram.zia
 ```
 
 After your program finishes, you'll see output like:
@@ -233,7 +233,7 @@ The "Calls" column matters too. If a function is called a million times, even ti
 Viper's `--profile` uses sampling by default. For detailed analysis:
 
 ```bash
-viper --profile=instrument myprogram.viper
+zia --profile=instrument myprogram.zia
 ```
 
 ### Memory Profiling
@@ -241,7 +241,7 @@ viper --profile=instrument myprogram.viper
 Sometimes the bottleneck isn't CPU time but memory:
 
 ```bash
-viper --profile=memory myprogram.viper
+zia --profile=memory myprogram.zia
 ```
 
 Output shows allocations:
@@ -1144,10 +1144,10 @@ For CPU-intensive work, Viper can compile to native machine code:
 
 ```bash
 # VM interpretation (default)
-viper myprogram.viper
+zia myprogram.zia
 
 # Native compilation
-viper --native myprogram.viper
+zia --native myprogram.zia
 ```
 
 Native code runs directly on the CPU without interpreter overhead. For computation-heavy tasks, this can be 5-50x faster.
@@ -1253,7 +1253,7 @@ func reproduceSlowness() {
 ### Step 2: Profile to Find the Hotspot
 
 ```bash
-viper --profile slowprogram.viper
+zia --profile slowprogram.zia
 ```
 
 Look at the top functions. Is it what you expected? Often it's not.
@@ -1339,7 +1339,7 @@ When debugging performance, look for these usual suspects:
 
 ## The Three Languages
 
-**ViperLang**
+**Zia**
 ```rust
 import Viper.Time;
 
@@ -1418,7 +1418,7 @@ Remember:
 
 **Exercise 26.1 (Measure)**: Take any program you've written previously. Add timing measurements to find where it spends time. Did the results match your expectations?
 
-**Exercise 26.2 (Profile)**: Use `viper --profile` on a program that processes a file. Identify the top 3 time-consuming functions. Which one would you optimize first and why?
+**Exercise 26.2 (Profile)**: Use `zia --profile` on a program that processes a file. Identify the top 3 time-consuming functions. Which one would you optimize first and why?
 
 **Exercise 26.3 (Big O)**: What is the time complexity of each function?
 

@@ -852,7 +852,7 @@ typedef enum {
 // File filter
 typedef struct {
     char* name;                  // Display name (e.g., "Viper Files")
-    char* pattern;               // Glob pattern (e.g., "*.viper;*.vpr")
+    char* pattern;               // Glob pattern (e.g., "*.zia;*.vpr")
 } vg_file_filter_t;
 
 // File/directory entry
@@ -977,11 +977,11 @@ char* vg_filedialog_select_folder(const char* title, const char* initial_path);
    | |----------| |------------------------| |
    | | [Home]   | | Name        Size  Date | |
    | | [Desktop]| | [folder]              > | |
-   | | [Docs]   | | file1.viper  2KB  1/14 | |
-   | |          | | file2.viper  4KB  1/13 | |
+   | | [Docs]   | | file1.zia  2KB  1/14 | |
+   | |          | | file2.zia  4KB  1/13 | |
    | +----------+ +------------------------+ |
    | Filename: [                          ]  |
-   | Filter: [Viper Files (*.viper)     v]  |
+   | Filter: [Viper Files (*.zia)     v]  |
    +----------------------------------------+
    |                    [Cancel]  [Open]    |
    +----------------------------------------+

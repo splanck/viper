@@ -50,7 +50,7 @@ add_subdirectory(vm)
 add_subdirectory(perf)
 add_subdirectory(tools)
 add_subdirectory(basic)
-add_subdirectory(viperlang)
+add_subdirectory(zia)
 add_subdirectory(golden)
 add_subdirectory(e2e)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/codegen/x86_64)
@@ -436,7 +436,7 @@ viper_add_runtime_tests()
 viper_add_e2e_vm_suite()
 viper_add_il_invalid_tests()
 viper_add_basic_main_tests()
-viper_add_viperlang_tests()
+viper_add_zia_tests()
 viper_add_vm_unit_tests()
 viper_add_il_liveness_tests()
 viper_add_vm_path_tests()
@@ -871,20 +871,20 @@ if (CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "
         endif()
     endforeach()
 
-    # ViperLang demos
-    set(VIPERLANG_DEMOS
-        "paint:${DEMOS_DIR}/viperlang/paint/main.viper"
+    # Zia demos
+    set(ZIA_DEMOS
+        "paint:${DEMOS_DIR}/zia/paint/main.zia"
     )
 
-    foreach(demo IN LISTS VIPERLANG_DEMOS)
+    foreach(demo IN LISTS ZIA_DEMOS)
         string(REPLACE ":" ";" demo_parts "${demo}")
         list(GET demo_parts 0 demo_name)
         list(GET demo_parts 1 demo_source)
         if(EXISTS "${demo_source}")
-            add_test(NAME demo_viperlang_${demo_name}
-                COMMAND "${DEMO_TEST_SCRIPT}" "viperlang" "${demo_source}"
+            add_test(NAME demo_zia_${demo_name}
+                COMMAND "${DEMO_TEST_SCRIPT}" "zia" "${demo_source}"
                 WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
-            set_tests_properties(demo_viperlang_${demo_name} PROPERTIES
+            set_tests_properties(demo_zia_${demo_name} PROPERTIES
                 LABELS "demos;ARM64;NativeLink"
                 TIMEOUT 60)
         endif()

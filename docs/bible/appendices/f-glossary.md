@@ -1,6 +1,6 @@
 # Appendix F: Glossary
 
-A comprehensive reference of programming terms for beginners. Terms that are specific to ViperLang are marked with **[ViperLang]**.
+A comprehensive reference of programming terms for beginners. Terms that are specific to Zia are marked with **[Zia]**.
 
 **How to use this glossary:**
 - Look up any term you encounter in the book or in code
@@ -74,7 +74,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Atomic operation** (ah-TOM-ik): An operation that completes entirely or not at all, with no intermediate states visible to other threads. Like a single indivisible action - nothing can interrupt it halfway through. Important for thread safety. See [Chapter 24](../part4-applications/24-concurrency.md). See also *Thread*, *Race condition*.
 
-**Attribute**: A piece of metadata attached to code that provides additional information to the compiler or runtime. In ViperLang, attributes use the `@` symbol. Example: `@deprecated`, `@test`. See also *Annotation*, *Decorator*.
+**Attribute**: A piece of metadata attached to code that provides additional information to the compiler or runtime. In Zia, attributes use the `@` symbol. Example: `@deprecated`, `@test`. See also *Annotation*, *Decorator*.
 
 ---
 
@@ -110,7 +110,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Call stack**: The stack of function calls that led to the current point of execution. When function A calls function B which calls function C, the call stack is C on top of B on top of A. Important for understanding errors and debugging. See also *Stack*, *Stack trace*.
 
-**Camel case**: A naming convention where words are joined without spaces, with each word after the first capitalized. Example: `firstName`, `totalScore`, `isGameOver`. Called "camel case" because the capital letters look like humps. The standard convention for variable names in ViperLang. See also *Snake case*, *Pascal case*.
+**Camel case**: A naming convention where words are joined without spaces, with each word after the first capitalized. Example: `firstName`, `totalScore`, `isGameOver`. Called "camel case" because the capital letters look like humps. The standard convention for variable names in Zia. See also *Snake case*, *Pascal case*.
 
 **Cast**: See *Type conversion*.
 
@@ -118,13 +118,13 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Channel**: A communication mechanism for sending data between threads or processes. Like a pipe that connects different parts of your program. See [Chapter 24](../part4-applications/24-concurrency.md). See also *Thread*, *Concurrency*.
 
-**Character**: A single letter, digit, symbol, or space. In ViperLang, the `char` type represents a single Unicode character. Example: `'a'`, `'5'`, `'!'`, `' '`. See also *String*, *Unicode*.
+**Character**: A single letter, digit, symbol, or space. In Zia, the `char` type represents a single Unicode character. Example: `'a'`, `'5'`, `'!'`, `' '`. See also *String*, *Unicode*.
 
 **Child class**: See *Derived class*.
 
-**Class**: In most programming languages, a blueprint for creating objects. Defines data (fields) and behavior (methods). **[ViperLang]** In ViperLang, this concept is expressed using the `entity` keyword instead. ViperScript and ViperC use the traditional `class` keyword. See [Chapter 14](../part3-objects/14-objects.md). See also *Entity*, *Object*.
+**Class**: In most programming languages, a blueprint for creating objects. Defines data (fields) and behavior (methods). **[Zia]** In Zia, this concept is expressed using the `entity` keyword instead. ViperScript and ViperC use the traditional `class` keyword. See [Chapter 14](../part3-objects/14-objects.md). See also *Entity*, *Object*.
 
-**Closure** (KLOH-zhur): A function that captures and remembers variables from the scope where it was created, even after that scope has ended. The function "closes over" its environment. Example: a function inside another function that uses the outer function's variables. See [Appendix A](a-viperlang-reference.md). See also *Lambda*, *Scope*.
+**Closure** (KLOH-zhur): A function that captures and remembers variables from the scope where it was created, even after that scope has ended. The function "closes over" its environment. Example: a function inside another function that uses the outer function's variables. See [Appendix A](a-zia-reference.md). See also *Lambda*, *Scope*.
 
 **Code**: Instructions written in a programming language. Also called source code. The human-readable text that programmers write, which is then compiled or interpreted into something the computer can execute.
 
@@ -132,7 +132,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Collection**: A data structure that holds multiple values. Arrays, lists, maps, and sets are all collections. See [Chapter 6](../part1-foundations/06-collections.md). See also *Array*, *Map*, *Set*, *List*.
 
-**Comment**: Text in code that the computer ignores. Used to explain what code does or why. In ViperLang: `// single line comment` or `/* multi-line comment */`. Good comments explain "why," not "what." See also *Documentation*.
+**Comment**: Text in code that the computer ignores. Used to explain what code does or why. In Zia: `// single line comment` or `/* multi-line comment */`. Good comments explain "why," not "what." See also *Documentation*.
 
 **Comparison operator**: An operator that compares two values and returns a boolean. Includes `==` (equal), `!=` (not equal), `<`, `>`, `<=`, `>=`. Example: `5 > 3` returns `true`. See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Boolean*, *Operator*.
 
@@ -142,7 +142,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Compiler**: A program that translates source code into executable code. Takes the human-readable code you write and converts it to something the computer can run. See [Chapter 25](../part5-mastery/25-how-viper-works.md). See also *Interpreter*, *Compile*.
 
-**Concatenation** (kon-KAT-eh-NAY-shun): Joining strings together end-to-end. Like gluing words together. In ViperLang, use the `+` operator: `"Hello" + " " + "World"` produces `"Hello World"`. From Latin *concatenare*, "to chain together." See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *String*.
+**Concatenation** (kon-KAT-eh-NAY-shun): Joining strings together end-to-end. Like gluing words together. In Zia, use the `+` operator: `"Hello" + " " + "World"` produces `"Hello World"`. From Latin *concatenare*, "to chain together." See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *String*.
 
 **Concrete**: The opposite of abstract. A concrete class can be instantiated directly; a concrete implementation provides actual code rather than just a definition. See also *Abstract*.
 
@@ -152,9 +152,9 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Conditional**: A statement that executes code based on whether a condition is true. `if`, `else if`, and `else` are conditional statements. Example: `if (age >= 18) { ... }`. See [Chapter 4](../part1-foundations/04-decisions.md). See also *Condition*, *If statement*.
 
-**Constant**: A named value that cannot change after it's set. In ViperLang, declared with `final`. Example: `final PI = 3.14159`. Constants are typically named in UPPER_CASE. See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Variable*, *Final*.
+**Constant**: A named value that cannot change after it's set. In Zia, declared with `final`. Example: `final PI = 3.14159`. Constants are typically named in UPPER_CASE. See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Variable*, *Final*.
 
-**Constructor**: A special method called when creating a new object. Sets up the object's initial state. **[ViperLang]** In ViperLang, constructors are called initializers and use the `init` function name. See [Chapter 14](../part3-objects/14-objects.md). See also *Initializer*, *Init*, *Object*.
+**Constructor**: A special method called when creating a new object. Sets up the object's initial state. **[Zia]** In Zia, constructors are called initializers and use the `init` function name. See [Chapter 14](../part3-objects/14-objects.md). See also *Initializer*, *Init*, *Object*.
 
 **Continue**: A statement that skips the rest of the current loop iteration and moves to the next iteration. Useful when you want to skip certain cases without exiting the loop entirely. See [Chapter 5](../part1-foundations/05-repetition.md). See also *Loop*, *Break*.
 
@@ -188,7 +188,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Decrement**: To decrease a value by 1. Example: `count -= 1` or `count = count - 1`. See also *Increment*.
 
-**Default parameter**: A parameter that has a value automatically used if no argument is provided. Example: `func greet(name: string = "Guest")` - calling `greet()` uses "Guest" as the name. See [Appendix A](a-viperlang-reference.md). See also *Parameter*, *Argument*.
+**Default parameter**: A parameter that has a value automatically used if no argument is provided. Example: `func greet(name: string = "Guest")` - calling `greet()` uses "Guest" as the name. See [Appendix A](a-zia-reference.md). See also *Parameter*, *Argument*.
 
 **Definition**: Providing the implementation or value for something that was declared. A function definition includes the function body. See also *Declaration*.
 
@@ -204,7 +204,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Domain**: The subject area or business context that software addresses. A banking domain deals with accounts and transactions; a gaming domain deals with players and scores. Understanding the domain helps you design better software.
 
-**Double**: A double-precision floating-point number. Called "double" because it uses twice the memory of a single-precision float for greater precision. In ViperLang, `f64` is a double. See also *Float*, *Floating-point*.
+**Double**: A double-precision floating-point number. Called "double" because it uses twice the memory of a single-precision float for greater precision. In Zia, `f64` is a double. See also *Float*, *Floating-point*.
 
 **DRY**: "Don't Repeat Yourself." A principle that every piece of knowledge should have a single, unambiguous representation. If you find yourself copying and pasting code, consider making it a function. See also *Refactoring*.
 
@@ -220,11 +220,11 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Element**: A single item in a collection like an array or list. `numbers[0]` accesses the first element. See also *Array*, *Index*.
 
-**Encapsulation** (en-kap-soo-LAY-shun): Hiding an object's internal details and exposing only a controlled public interface. Like a car - you use the steering wheel and pedals, but the engine's internals are hidden. **[ViperLang]** Controlled using `expose` (public) and `hide` (private) visibility modifiers. See [Chapter 14](../part3-objects/14-objects.md). See also *Expose*, *Hide*, *Information hiding*.
+**Encapsulation** (en-kap-soo-LAY-shun): Hiding an object's internal details and exposing only a controlled public interface. Like a car - you use the steering wheel and pedals, but the engine's internals are hidden. **[Zia]** Controlled using `expose` (public) and `hide` (private) visibility modifiers. See [Chapter 14](../part3-objects/14-objects.md). See also *Expose*, *Hide*, *Information hiding*.
 
-**Entity** (EN-ti-tee): **[ViperLang]** The keyword used to define object templates (equivalent to "class" in other languages). An entity combines data (fields) and behavior (methods). Represents "things" with identity and behavior. Example: `entity Player { ... }`. ViperScript and ViperC use the traditional `class` keyword. See [Chapter 14](../part3-objects/14-objects.md). See also *Class*, *Object*, *Value*.
+**Entity** (EN-ti-tee): **[Zia]** The keyword used to define object templates (equivalent to "class" in other languages). An entity combines data (fields) and behavior (methods). Represents "things" with identity and behavior. Example: `entity Player { ... }`. ViperScript and ViperC use the traditional `class` keyword. See [Chapter 14](../part3-objects/14-objects.md). See also *Class*, *Object*, *Value*.
 
-**Enumeration** (ee-noo-mer-AY-shun): A type consisting of a fixed set of named values. Also called an enum. Example: `enum Color { RED, GREEN, BLUE }`. Useful when a variable should only have certain specific values. See [Appendix A](a-viperlang-reference.md). See also *Type*.
+**Enumeration** (ee-noo-mer-AY-shun): A type consisting of a fixed set of named values. Also called an enum. Example: `enum Color { RED, GREEN, BLUE }`. Useful when a variable should only have certain specific values. See [Appendix A](a-zia-reference.md). See also *Type*.
 
 **Environment**: (1) The runtime context where a program executes, including available variables and resources. (2) The development setup including operating system, tools, and configurations.
 
@@ -240,11 +240,11 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Export**: To make code available for use by other modules. Exported functions and entities can be imported elsewhere. See [Chapter 12](../part2-building-blocks/12-modules.md). See also *Import*, *Module*.
 
-**Expose**: **[ViperLang]** The visibility modifier that makes a member accessible from outside the entity (equivalent to "public" in other languages). This is the default visibility for methods in ViperLang. Example: `expose func init() { ... }`. See [Chapter 14](../part3-objects/14-objects.md). See also *Hide*, *Public*, *Encapsulation*.
+**Expose**: **[Zia]** The visibility modifier that makes a member accessible from outside the entity (equivalent to "public" in other languages). This is the default visibility for methods in Zia. Example: `expose func init() { ... }`. See [Chapter 14](../part3-objects/14-objects.md). See also *Hide*, *Public*, *Encapsulation*.
 
 **Expression**: Code that evaluates to a value. Can be used anywhere a value is expected. Examples: `2 + 3` (evaluates to 5), `x * y` (evaluates to the product), `age >= 18` (evaluates to boolean). See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Statement*, *Value*.
 
-**Extends**: **[ViperLang]** Keyword used to indicate inheritance. `entity Dog extends Animal` means Dog inherits from Animal. See [Chapter 15](../part3-objects/15-inheritance.md). See also *Inheritance*, *Base class*.
+**Extends**: **[Zia]** Keyword used to indicate inheritance. `entity Dog extends Animal` means Dog inherits from Animal. See [Chapter 15](../part3-objects/15-inheritance.md). See also *Inheritance*, *Base class*.
 
 ---
 
@@ -260,21 +260,21 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **File**: A named collection of data stored on disk. Programs can read from files (input) and write to files (output). See [Chapter 9](../part2-building-blocks/09-files.md). See also *Path*, *I/O*.
 
-**Final**: **[ViperLang]** Keyword that declares an immutable variable (constant). Once set, the value cannot be changed. Example: `final PI = 3.14159`. See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Constant*, *Immutable*, *Var*.
+**Final**: **[Zia]** Keyword that declares an immutable variable (constant). Once set, the value cannot be changed. Example: `final PI = 3.14159`. See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Constant*, *Immutable*, *Var*.
 
 **Flag**: A boolean variable that signals a condition or state. Example: `var isGameOver = false`. Named because it's like raising or lowering a flag to signal something. See also *Boolean*.
 
-**Float**: Short for floating-point number. A number with a decimal point. In ViperLang: `f32` (32-bit) or `f64` (64-bit). Examples: `3.14`, `-0.5`, `2.0`. See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Floating-point*, *Integer*.
+**Float**: Short for floating-point number. A number with a decimal point. In Zia: `f32` (32-bit) or `f64` (64-bit). Examples: `3.14`, `-0.5`, `2.0`. See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Floating-point*, *Integer*.
 
 **Floating-point** (FLOH-ting-point): Numbers with decimal points. Called "floating-point" because the decimal point can "float" to different positions to represent very large or very small numbers. Subject to precision limitations. Examples: `3.14`, `0.001`, `1000000.0`. See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Float*, *Integer*, *Double*.
 
-**For loop**: A loop that iterates a specific number of times or over a collection. In ViperLang: `for i in 0..10 { ... }` or `for item in items { ... }`. See [Chapter 5](../part1-foundations/05-repetition.md). See also *Loop*, *While loop*, *Iteration*.
+**For loop**: A loop that iterates a specific number of times or over a collection. In Zia: `for i in 0..10 { ... }` or `for item in items { ... }`. See [Chapter 5](../part1-foundations/05-repetition.md). See also *Loop*, *While loop*, *Iteration*.
 
-**Format string**: A string with placeholders that get replaced with values. Used for creating formatted output. In ViperLang, string interpolation uses `${}`: `"Hello, ${name}!"`. See also *String interpolation*.
+**Format string**: A string with placeholders that get replaced with values. Used for creating formatted output. In Zia, string interpolation uses `${}`: `"Hello, ${name}!"`. See also *String interpolation*.
 
 **Framework**: A reusable structure that provides a foundation for building applications. More comprehensive than a library - a framework calls your code rather than you calling it. Examples: web frameworks, game frameworks. See also *Library*.
 
-**Func**: **[ViperLang]** Keyword used to declare a function. Example: `func add(a: i64, b: i64) -> i64 { return a + b; }`. See [Chapter 7](../part1-foundations/07-functions.md). See also *Function*, *Method*.
+**Func**: **[Zia]** Keyword used to declare a function. Example: `func add(a: i64, b: i64) -> i64 { return a + b; }`. See [Chapter 7](../part1-foundations/07-functions.md). See also *Function*, *Method*.
 
 **Function**: A reusable block of code that performs a specific task. Takes inputs (parameters), does work, and optionally returns an output (return value). Like a machine: put something in, get something out. Example: `func add(a: i64, b: i64) -> i64 { return a + b; }`. See [Chapter 7](../part1-foundations/07-functions.md). See also *Method*, *Parameter*, *Return value*.
 
@@ -284,7 +284,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Garbage collection** (GAR-bij kuh-LEK-shun): Automatic memory management that identifies and reclaims memory no longer being used. The programmer doesn't need to manually free memory. Like a cleaning service that removes items you're no longer using. See also *Memory*, *Heap*.
 
-**Generic** (jeh-NAIR-ik): Code that works with multiple types, specified as type parameters. Write once, use with many types. Example: `func identity<T>(value: T) -> T` works with any type T. See [Appendix A](a-viperlang-reference.md). See also *Type parameter*, *Polymorphism*.
+**Generic** (jeh-NAIR-ik): Code that works with multiple types, specified as type parameters. Write once, use with many types. Example: `func identity<T>(value: T) -> T` works with any type T. See [Appendix A](a-zia-reference.md). See also *Type parameter*, *Polymorphism*.
 
 **Getter**: See *Accessor*.
 
@@ -306,7 +306,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Helper method**: A private method that assists other methods in an entity. Breaks down complex operations into smaller pieces. Example: a private `validateInput()` method called by public methods. See also *Method*, *Hide*.
 
-**Hide**: **[ViperLang]** The visibility modifier that restricts a member's access to within the entity only (equivalent to "private" in other languages). Hidden fields can only be accessed by the entity's own methods. Example: `hide balance: f64`. See [Chapter 14](../part3-objects/14-objects.md). See also *Expose*, *Private*, *Encapsulation*.
+**Hide**: **[Zia]** The visibility modifier that restricts a member's access to within the entity only (equivalent to "private" in other languages). Hidden fields can only be accessed by the entity's own methods. Example: `hide balance: f64`. See [Chapter 14](../part3-objects/14-objects.md). See also *Expose*, *Private*, *Encapsulation*.
 
 **HTTP** (Hypertext Transfer Protocol) (aitch-tee-tee-PEE): The protocol for web communication. When you visit a website, your browser uses HTTP to request pages from servers. See [Chapter 22](../part4-applications/22-networking.md). See also *TCP*, *Protocol*.
 
@@ -326,7 +326,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Implement**: To provide code that fulfills an interface or abstract definition. When an entity "implements" an interface, it provides concrete methods for all the interface's requirements. See [Chapter 16](../part3-objects/16-interfaces.md). See also *Interface*, *Implements*.
 
-**Implements**: **[ViperLang]** Keyword indicating that an entity provides implementations for an interface's methods. Example: `entity Circle implements Drawable`. See [Chapter 16](../part3-objects/16-interfaces.md). See also *Interface*, *Entity*.
+**Implements**: **[Zia]** Keyword indicating that an entity provides implementations for an interface's methods. Example: `entity Circle implements Drawable`. See [Chapter 16](../part3-objects/16-interfaces.md). See also *Interface*, *Entity*.
 
 **Implicit**: Not explicitly stated; inferred or assumed. Type inference is implicit - the compiler figures out the type without you stating it. Opposite of explicit. Example: `var x = 5` implicitly has type `i64`. See also *Explicit*, *Type inference*.
 
@@ -342,11 +342,11 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Inheritance** (in-HAIR-ih-tuns): An entity adopting properties and methods from a parent entity. The child "inherits" from the parent and can add or override functionality. Models "is-a" relationships: a Dog is an Animal. See [Chapter 15](../part3-objects/15-inheritance.md). See also *Entity*, *Extends*, *Base class*, *Derived class*.
 
-**Init**: **[ViperLang]** The special method name for initializers (constructors). Called automatically when creating new objects. Example: `expose func init(name: string) { self.name = name; }`. See [Chapter 14](../part3-objects/14-objects.md). See also *Initializer*, *Constructor*.
+**Init**: **[Zia]** The special method name for initializers (constructors). Called automatically when creating new objects. Example: `expose func init(name: string) { self.name = name; }`. See [Chapter 14](../part3-objects/14-objects.md). See also *Initializer*, *Constructor*.
 
-**Initialization**: Setting a variable's initial value when it's created. In ViperLang, variables must be initialized: `var count = 0`. See also *Declaration*, *Assignment*.
+**Initialization**: Setting a variable's initial value when it's created. In Zia, variables must be initialized: `var count = 0`. See also *Declaration*, *Assignment*.
 
-**Initializer**: A special method that sets up a new object's initial state. **[ViperLang]** In ViperLang, uses the `init` function name. Equivalent to constructor in other languages. See [Chapter 14](../part3-objects/14-objects.md). See also *Init*, *Constructor*, *Object*.
+**Initializer**: A special method that sets up a new object's initial state. **[Zia]** In Zia, uses the `init` function name. Equivalent to constructor in other languages. See [Chapter 14](../part3-objects/14-objects.md). See also *Init*, *Constructor*, *Object*.
 
 **Input**: Data that enters a program from outside - user keyboard input, file contents, network data, etc. See also *Output*, *I/O*.
 
@@ -354,13 +354,13 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Instantiate** (in-STAN-shee-ate): To create an instance (object) from an entity (class). Example: `var player = Player("Hero")` instantiates a Player. See also *Instance*, *Object*.
 
-**Integer** (IN-tuh-jur): A whole number without a decimal point. Can be positive, negative, or zero. Examples: `42`, `-7`, `0`, `1000000`. In ViperLang: `i8`, `i16`, `i32`, `i64` (signed), `u8`, `u16`, `u32`, `u64` (unsigned). See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Float*, *Signed*, *Unsigned*.
+**Integer** (IN-tuh-jur): A whole number without a decimal point. Can be positive, negative, or zero. Examples: `42`, `-7`, `0`, `1000000`. In Zia: `i8`, `i16`, `i32`, `i64` (signed), `u8`, `u16`, `u32`, `u64` (unsigned). See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Float*, *Signed*, *Unsigned*.
 
 **Integer division**: Division between two integers that produces an integer result by discarding the fractional part. Example: `10 / 3` equals `3`, not `3.333`. A common source of bugs for beginners. See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Division*, *Modulo*.
 
 **Interface** (IN-ter-fase): A contract specifying what methods an entity must implement, without providing the implementation. Defines "what" but not "how." Example: a `Drawable` interface requires a `draw()` method. See [Chapter 16](../part3-objects/16-interfaces.md). See also *Implements*, *Abstract*, *Polymorphism*.
 
-**Internal**: **[ViperLang]** A visibility modifier that makes a member accessible within the same module but not from outside. Between `expose` and `hide`. See [Appendix A](a-viperlang-reference.md). See also *Expose*, *Hide*, *Module*.
+**Internal**: **[Zia]** A visibility modifier that makes a member accessible within the same module but not from outside. Between `expose` and `hide`. See [Appendix A](a-zia-reference.md). See also *Expose*, *Hide*, *Module*.
 
 **Interpreter**: A program that executes code directly, line by line, without compiling to machine code first. Slower than compiled code but more flexible. Python and JavaScript are typically interpreted. See also *Compiler*.
 
@@ -392,13 +392,13 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Key-value pair**: An association between a key and its corresponding value in a map. The key is used to retrieve the value. See also *Key*, *Map*.
 
-**Keyword**: A reserved word with special meaning in the programming language. Cannot be used as variable names. Examples in ViperLang: `if`, `func`, `entity`, `var`, `final`, `while`, `for`, `return`. See [Appendix A](a-viperlang-reference.md). See also *Identifier*, *Reserved word*.
+**Keyword**: A reserved word with special meaning in the programming language. Cannot be used as variable names. Examples in Zia: `if`, `func`, `entity`, `var`, `final`, `while`, `for`, `return`. See [Appendix A](a-zia-reference.md). See also *Identifier*, *Reserved word*.
 
 ---
 
 ## L
 
-**Lambda** (LAM-duh): An anonymous (unnamed) function, often used inline. Short and concise, created on the fly. Example: `(x) => x * 2` is a lambda that doubles its input. From lambda calculus, a mathematical system. See [Appendix A](a-viperlang-reference.md). See also *Anonymous function*, *Closure*.
+**Lambda** (LAM-duh): An anonymous (unnamed) function, often used inline. Short and concise, created on the fly. Example: `(x) => x * 2` is a lambda that doubles its input. From lambda calculus, a mathematical system. See [Appendix A](a-zia-reference.md). See also *Anonymous function*, *Closure*.
 
 **Length**: The number of elements in a collection or characters in a string. `"Hello".length` is 5. `[1, 2, 3].length` is 3. See also *Array*, *String*.
 
@@ -428,7 +428,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Map**: A collection of key-value pairs where each key is associated with a value. Also called dictionary, hash map, or associative array. Example: mapping names to phone numbers. See [Chapter 6](../part1-foundations/06-collections.md). See also *Key*, *Value*, *Hash map*.
 
-**Match statement**: A control flow statement that compares a value against multiple patterns and executes the matching case. More powerful than multiple if/else statements. Example: `match color { RED => ..., GREEN => ..., _ => ... }`. See [Appendix A](a-viperlang-reference.md). See also *Pattern matching*.
+**Match statement**: A control flow statement that compares a value against multiple patterns and executes the matching case. More powerful than multiple if/else statements. Example: `match color { RED => ..., GREEN => ..., _ => ... }`. See [Appendix A](a-zia-reference.md). See also *Pattern matching*.
 
 **Member**: Something that belongs to an entity - either a field (data) or a method (behavior). See also *Field*, *Method*, *Entity*.
 
@@ -460,11 +460,11 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Newline**: A character that starts a new line. Written as `\n` in strings. When printed, moves the cursor to the beginning of the next line. See also *Escape character*.
 
-**Null** (NUHL): A special value representing "no value" or "nothing." Indicates the absence of an object or meaningful value. Can cause errors if you try to use a null value. In ViperLang, nullable types use `?`: `var x: i64? = null`. See [Appendix A](a-viperlang-reference.md). See also *Nullable*, *Nil*.
+**Null** (NUHL): A special value representing "no value" or "nothing." Indicates the absence of an object or meaningful value. Can cause errors if you try to use a null value. In Zia, nullable types use `?`: `var x: i64? = null`. See [Appendix A](a-zia-reference.md). See also *Nullable*, *Nil*.
 
-**Null coalescing**: Providing a default value when something is null. In ViperLang: `value ?? default` returns `value` if not null, otherwise `default`. See [Appendix A](a-viperlang-reference.md). See also *Null*, *Optional*.
+**Null coalescing**: Providing a default value when something is null. In Zia: `value ?? default` returns `value` if not null, otherwise `default`. See [Appendix A](a-zia-reference.md). See also *Null*, *Optional*.
 
-**Nullable**: A type that can hold either a value or null. Written with `?` in ViperLang: `string?` can be a string or null. See [Appendix A](a-viperlang-reference.md). See also *Null*, *Optional*.
+**Nullable**: A type that can hold either a value or null. Written with `?` in Zia: `string?` can be a string or null. See [Appendix A](a-zia-reference.md). See also *Null*, *Optional*.
 
 ---
 
@@ -478,9 +478,9 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Operator**: A symbol that performs an operation on values. Arithmetic operators (`+`, `-`, `*`, `/`), comparison operators (`==`, `<`), logical operators (`&&`, `||`), and more. See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Operand*, *Expression*.
 
-**Optional**: A type that may or may not have a value. Similar to nullable. Prevents null pointer errors by making the possibility of absence explicit. See [Appendix A](a-viperlang-reference.md). See also *Nullable*, *Null*.
+**Optional**: A type that may or may not have a value. Similar to nullable. Prevents null pointer errors by making the possibility of absence explicit. See [Appendix A](a-zia-reference.md). See also *Nullable*, *Null*.
 
-**Optional chaining**: Safely accessing properties or methods that might be null. In ViperLang: `obj?.property` returns null instead of crashing if `obj` is null. See [Appendix A](a-viperlang-reference.md). See also *Null*, *Nullable*.
+**Optional chaining**: Safely accessing properties or methods that might be null. In Zia: `obj?.property` returns null instead of crashing if `obj` is null. See [Appendix A](a-zia-reference.md). See also *Null*, *Nullable*.
 
 **Output**: Data that leaves a program - text displayed on screen, files written, network data sent, etc. See also *Input*, *I/O*.
 
@@ -514,7 +514,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Path**: The location of a file or directory in the file system. Example: `/Users/alice/Documents/code.vpr`. See [Chapter 9](../part2-building-blocks/09-files.md). See also *File*.
 
-**Pattern matching**: Checking data against patterns and extracting parts. More powerful than simple equality checking. Used in `match` statements. See [Appendix A](a-viperlang-reference.md). See also *Match statement*.
+**Pattern matching**: Checking data against patterns and extracting parts. More powerful than simple equality checking. Used in `match` statements. See [Appendix A](a-zia-reference.md). See also *Match statement*.
 
 **Performance**: How fast and efficiently a program runs. Involves execution speed, memory usage, and resource consumption. See [Chapter 26](../part5-mastery/26-performance.md). See also *Optimization*.
 
@@ -522,27 +522,27 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Polymorphism** (pol-ee-MOR-fizm): The ability to treat different types uniformly through a common interface. A function that takes `Animal` can work with `Dog`, `Cat`, or any Animal subtype. From Greek "many forms." See [Chapter 17](../part3-objects/17-polymorphism.md). See also *Interface*, *Inheritance*, *Dynamic dispatch*.
 
-**Precedence**: The order in which operators are evaluated. Multiplication has higher precedence than addition, so `2 + 3 * 4` equals `14`, not `20`. Use parentheses to override precedence. See [Appendix A](a-viperlang-reference.md). See also *Operator*.
+**Precedence**: The order in which operators are evaluated. Multiplication has higher precedence than addition, so `2 + 3 * 4` equals `14`, not `20`. Use parentheses to override precedence. See [Appendix A](a-zia-reference.md). See also *Operator*.
 
 **Primitive type**: A basic built-in type provided by the language. Integers, floats, booleans, and characters are primitives. Not composed of other types. See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Data type*, *Value type*.
 
-**Print**: To display text on the screen. In ViperLang: `Viper.Terminal.Say()` prints with a newline; `Viper.Terminal.Print()` prints without. See [Chapter 2](../part1-foundations/02-first-program.md).
+**Print**: To display text on the screen. In Zia: `Viper.Terminal.Say()` prints with a newline; `Viper.Terminal.Print()` prints without. See [Chapter 2](../part1-foundations/02-first-program.md).
 
-**Private**: Accessible only within the entity that defines it. Hidden from external code. **[ViperLang]** Use the `hide` keyword instead of "private." See [Chapter 14](../part3-objects/14-objects.md). See also *Hide*, *Public*, *Encapsulation*.
+**Private**: Accessible only within the entity that defines it. Hidden from external code. **[Zia]** Use the `hide` keyword instead of "private." See [Chapter 14](../part3-objects/14-objects.md). See also *Hide*, *Public*, *Encapsulation*.
 
-**Procedure**: A function that performs an action but doesn't return a value. Also called a subroutine or void function. In ViperLang, a function without a return type. See also *Function*, *Void*.
+**Procedure**: A function that performs an action but doesn't return a value. Also called a subroutine or void function. In Zia, a function without a return type. See also *Function*, *Void*.
 
 **Program**: A set of instructions that tells a computer what to do. Written in a programming language, then compiled or interpreted to run.
 
 **Property**: A field with associated getter and/or setter methods. Provides controlled access to data. In some languages, properties look like fields but run code when accessed. See also *Field*, *Accessor*, *Mutator*.
 
-**Protected**: **[ViperLang]** A visibility modifier that allows access within the entity and its subclasses, but not from outside the inheritance hierarchy. Between `expose` and `hide`. See [Appendix A](a-viperlang-reference.md). See also *Expose*, *Hide*.
+**Protected**: **[Zia]** A visibility modifier that allows access within the entity and its subclasses, but not from outside the inheritance hierarchy. Between `expose` and `hide`. See [Appendix A](a-zia-reference.md). See also *Expose*, *Hide*.
 
 **Protocol**: A set of rules for communication or interaction. HTTP is a protocol for web communication. TCP is a network protocol. Interfaces can be seen as protocols between code components. See also *Interface*.
 
 **Pseudocode** (SOO-doh-code): Informal description of an algorithm using natural language and programming-like structure. Helps plan code before writing it. Not meant to run, just to communicate ideas.
 
-**Public**: Accessible from anywhere, with no restrictions. **[ViperLang]** Use the `expose` keyword (which is the default for methods). See [Chapter 14](../part3-objects/14-objects.md). See also *Expose*, *Private*.
+**Public**: Accessible from anywhere, with no restrictions. **[Zia]** Use the `expose` keyword (which is the default for methods). See [Chapter 14](../part3-objects/14-objects.md). See also *Expose*, *Private*.
 
 ---
 
@@ -560,7 +560,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **RAM** (Random Access Memory) (RAM): Fast, temporary computer memory that holds running programs and their data. Contents are lost when power is off. See [Chapter 1](../part1-foundations/01-the-machine.md). See also *Memory*, *CPU*.
 
-**Range**: A sequence of numbers from a start to an end. In ViperLang: `0..10` (exclusive, 0-9) or `0..=10` (inclusive, 0-10). Used in for loops. See [Appendix A](a-viperlang-reference.md). See also *For loop*.
+**Range**: A sequence of numbers from a start to an end. In Zia: `0..10` (exclusive, 0-9) or `0..=10` (inclusive, 0-10). Used in for loops. See [Appendix A](a-zia-reference.md). See also *For loop*.
 
 **Recursion** (ree-KUR-zhun): A function calling itself to solve a problem by breaking it into smaller instances of the same problem. Must have a base case to stop. Example: calculating factorial. Can be elegant but watch for stack overflow. See [Chapter 7](../part1-foundations/07-functions.md). See also *Base case*, *Stack overflow*.
 
@@ -578,7 +578,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Return**: (1) To send a value back from a function: `return result;` (2) The `return` statement that exits a function. See [Chapter 7](../part1-foundations/07-functions.md). See also *Return value*, *Function*.
 
-**Return type**: The type of value a function returns. Declared after `->` in ViperLang: `func add(a: i64, b: i64) -> i64`. See [Chapter 7](../part1-foundations/07-functions.md). See also *Function*, *Return value*.
+**Return type**: The type of value a function returns. Declared after `->` in Zia: `func add(a: i64, b: i64) -> i64`. See [Chapter 7](../part1-foundations/07-functions.md). See also *Function*, *Return value*.
 
 **Return value**: The value a function sends back when it completes. The result of calling the function. `add(2, 3)` has return value 5. See [Chapter 7](../part1-foundations/07-functions.md). See also *Function*, *Return*.
 
@@ -594,11 +594,11 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Scope**: The region of code where a variable is accessible. Variables exist within their scope and are invisible outside it. Creates isolation between different parts of code. See [Chapter 7](../part1-foundations/07-functions.md). See also *Local variable*, *Global variable*, *Block*.
 
-**Self**: **[ViperLang]** A reference to the current object inside a method. Allows methods to access the object's fields and other methods. Example: `self.name = name`. See [Chapter 14](../part3-objects/14-objects.md). See also *This*, *Method*, *Object*.
+**Self**: **[Zia]** A reference to the current object inside a method. Allows methods to access the object's fields and other methods. Example: `self.name = name`. See [Chapter 14](../part3-objects/14-objects.md). See also *This*, *Method*, *Object*.
 
 **Semantic error**: Code that is syntactically valid but doesn't do what you intended. The hardest bugs to find because the program runs without complaints but produces wrong results. See also *Syntax error*, *Bug*.
 
-**Semicolon**: The `;` character. In ViperLang, ends statements. Example: `var x = 5;`. Missing semicolons cause syntax errors.
+**Semicolon**: The `;` character. In Zia, ends statements. Example: `var x = 5;`. Missing semicolons cause syntax errors.
 
 **Sequential**: Happening one after another, in order. Sequential execution runs each line before the next. Opposite of parallel. See also *Parallel*.
 
@@ -638,19 +638,19 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Static**: (1) Belonging to the entity itself rather than to instances. A static method can be called without creating an object. (2) Known at compile-time rather than runtime. See also *Instance*, *Static typing*.
 
-**Static typing**: Type checking done at compile time. Variables have fixed types that are known before the program runs. ViperLang uses static typing. Catches many errors early. See also *Dynamic typing*, *Type*.
+**Static typing**: Type checking done at compile time. Variables have fixed types that are known before the program runs. Zia uses static typing. Catches many errors early. See also *Dynamic typing*, *Type*.
 
 **String**: A sequence of characters (text). Written in double quotes: `"Hello, World!"`. Can contain letters, numbers, spaces, punctuation. See [Chapter 3](../part1-foundations/03-values-and-names.md) and [Chapter 8](../part2-building-blocks/08-strings.md). See also *Character*, *Concatenation*.
 
-**String interpolation**: Embedding expressions inside a string. In ViperLang: `"Hello, ${name}!"` replaces `${name}` with the value of `name`. Cleaner than concatenation. See [Appendix A](a-viperlang-reference.md). See also *Format string*.
+**String interpolation**: Embedding expressions inside a string. In Zia: `"Hello, ${name}!"` replaces `${name}` with the value of `name`. Cleaner than concatenation. See [Appendix A](a-zia-reference.md). See also *Format string*.
 
-**Struct/Structure**: A composite type grouping related values together, typically without behavior. **[ViperLang]** Use the `value` keyword. See [Chapter 11](../part2-building-blocks/11-structures.md). See also *Value*, *Entity*.
+**Struct/Structure**: A composite type grouping related values together, typically without behavior. **[Zia]** Use the `value` keyword. See [Chapter 11](../part2-building-blocks/11-structures.md). See also *Value*, *Entity*.
 
 **Subclass**: An entity that inherits from another entity (the superclass). The child in an inheritance relationship. `Dog extends Animal` makes `Dog` a subclass of `Animal`. See [Chapter 15](../part3-objects/15-inheritance.md). See also *Superclass*, *Inheritance*, *Derived class*.
 
 **Subroutine**: See *Procedure*, *Function*.
 
-**Super**: **[ViperLang]** Keyword to access the parent entity's methods, especially in initializers. `super(name)` calls the parent's initializer with `name`. See [Chapter 15](../part3-objects/15-inheritance.md). See also *Inheritance*, *Base class*.
+**Super**: **[Zia]** Keyword to access the parent entity's methods, especially in initializers. `super(name)` calls the parent's initializer with `name`. See [Chapter 15](../part3-objects/15-inheritance.md). See also *Inheritance*, *Base class*.
 
 **Superclass**: The parent entity that another entity inherits from. `Animal` is the superclass of `Dog` if `Dog extends Animal`. See [Chapter 15](../part3-objects/15-inheritance.md). See also *Subclass*, *Base class*, *Inheritance*.
 
@@ -678,7 +678,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Test**: Code that verifies other code works correctly. Tests call functions with known inputs and check for expected outputs. Essential for code quality. See [Chapter 27](../part5-mastery/27-testing.md). See also *Unit test*, *Bug*.
 
-**This**: In many languages, refers to the current object inside a method. **[ViperLang]** Uses `self` instead. See also *Self*.
+**This**: In many languages, refers to the current object inside a method. **[Zia]** Uses `self` instead. See also *Self*.
 
 **Thread**: An independent sequence of execution within a program. Multiple threads can run concurrently. All threads in a process share memory. See [Chapter 24](../part4-applications/24-concurrency.md). See also *Concurrency*, *Thread pool*, *Race condition*.
 
@@ -704,7 +704,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Type conversion**: Changing a value from one type to another. Also called casting. `Viper.Parse.Int("42")` converts string to integer. Some conversions are automatic; others must be explicit. See also *Parse*.
 
-**Type inference**: The compiler automatically determining types from context, so you don't have to write them explicitly. `var x = 5` infers that x is an integer. See [Appendix A](a-viperlang-reference.md). See also *Implicit*, *Static typing*.
+**Type inference**: The compiler automatically determining types from context, so you don't have to write them explicitly. `var x = 5` infers that x is an integer. See [Appendix A](a-zia-reference.md). See also *Implicit*, *Static typing*.
 
 **Type parameter**: In generics, a placeholder for a type that will be specified later. In `func identity<T>(value: T) -> T`, `T` is a type parameter. See also *Generic*.
 
@@ -728,15 +728,15 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 ## V
 
-**Value**: (1) A single piece of data - a specific number, text, or boolean. The actual data stored in a variable. (2) **[ViperLang]** The keyword used to define value types (equivalent to "struct" in other languages). A value groups related data fields together. Example: `value Point { x: f64; y: f64; }`. ViperScript and ViperC use the traditional `struct` keyword. See [Chapter 11](../part2-building-blocks/11-structures.md). See also *Literal*, *Variable*, *Entity*.
+**Value**: (1) A single piece of data - a specific number, text, or boolean. The actual data stored in a variable. (2) **[Zia]** The keyword used to define value types (equivalent to "struct" in other languages). A value groups related data fields together. Example: `value Point { x: f64; y: f64; }`. ViperScript and ViperC use the traditional `struct` keyword. See [Chapter 11](../part2-building-blocks/11-structures.md). See also *Literal*, *Variable*, *Entity*.
 
-**Value type**: A type where variables hold the actual data directly (not a reference). When assigned or passed, the data is copied. `value` types in ViperLang are value types. See [Chapter 11](../part2-building-blocks/11-structures.md). See also *Reference type*, *Value*.
+**Value type**: A type where variables hold the actual data directly (not a reference). When assigned or passed, the data is copied. `value` types in Zia are value types. See [Chapter 11](../part2-building-blocks/11-structures.md). See also *Reference type*, *Value*.
 
-**Var**: **[ViperLang]** Keyword that declares a mutable variable. Example: `var count = 0`. The value can be changed after creation. See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Final*, *Variable*, *Mutable*.
+**Var**: **[Zia]** Keyword that declares a mutable variable. Example: `var count = 0`. The value can be changed after creation. See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Final*, *Variable*, *Mutable*.
 
 **Variable**: A named storage location for data. Has a name, a type, and a value. The value can change over time (if mutable). Example: `var score = 100`. See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Constant*, *Type*, *Assignment*.
 
-**Variadic** (vair-ee-AD-ik): A function that accepts a variable number of arguments. In ViperLang, use `...` before the type: `func sum(numbers: ...i64)`. See [Appendix A](a-viperlang-reference.md). See also *Parameter*.
+**Variadic** (vair-ee-AD-ik): A function that accepts a variable number of arguments. In Zia, use `...` before the type: `func sum(numbers: ...i64)`. See [Appendix A](a-zia-reference.md). See also *Parameter*.
 
 **Version control**: A system for tracking changes to code over time. Allows reverting to previous versions, branching, and collaboration. Git is the most popular. See also *Git*, *Repository*.
 
@@ -746,7 +746,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Visibility**: The accessibility of code elements - who can see and use them. Controlled by modifiers like `expose` (public), `hide` (private), `protected`, and `internal`. See [Chapter 14](../part3-objects/14-objects.md). See also *Expose*, *Hide*, *Encapsulation*.
 
-**Void**: Indicating a function returns no value. A void function performs an action but doesn't produce a result. In ViperLang, simply omit the return type. See [Chapter 7](../part1-foundations/07-functions.md). See also *Function*, *Return value*.
+**Void**: Indicating a function returns no value. A void function performs an action but doesn't produce a result. In Zia, simply omit the return type. See [Chapter 7](../part1-foundations/07-functions.md). See also *Function*, *Return value*.
 
 ---
 
@@ -780,11 +780,11 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 ---
 
-## ViperLang Quick Reference
+## Zia Quick Reference
 
-Key ViperLang-specific terms and their equivalents in other languages:
+Key Zia-specific terms and their equivalents in other languages:
 
-| ViperLang | Other Languages | Meaning |
+| Zia | Other Languages | Meaning |
 |-----------|-----------------|---------|
 | `entity` | `class` | Template for objects with data and behavior |
 | `value` | `struct`, `record` | Template for pure data without identity |
@@ -800,7 +800,7 @@ Key ViperLang-specific terms and their equivalents in other languages:
 | `extends` | `extends`, `:` | Inheritance |
 | `implements` | `implements`, `:` | Interface implementation |
 
-See [Appendix A: ViperLang Reference](a-viperlang-reference.md) for complete language documentation.
+See [Appendix A: Zia Reference](a-zia-reference.md) for complete language documentation.
 
 ---
 

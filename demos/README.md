@@ -1,6 +1,6 @@
 # Viper Demos
 
-Example programs demonstrating Viper BASIC and ViperLang capabilities.
+Example programs demonstrating Viper BASIC and Zia capabilities.
 
 ## BASIC Demos
 
@@ -14,12 +14,12 @@ Example programs demonstrating Viper BASIC and ViperLang capabilities.
 | [Particles](basic/particles/) | Graphics particle system | Canvas API, OOP, physics, color fading |
 | [vTris](basic/vtris/) | Tetris clone | Levels, high scores, colorful ANSI graphics |
 
-## ViperLang Demos
+## Zia Demos
 
 | Demo | Description | Features |
 |------|-------------|----------|
-| [Frogger](viperlang/frogger.viper) | Frogger in ViperLang | Entity types, generics, imports |
-| [Entities](viperlang/entities.viper) | Entity system demo | Value/entity types, methods |
+| [Frogger](zia/frogger.zia) | Frogger in Zia | Entity types, generics, imports |
+| [Entities](zia/entities.zia) | Entity system demo | Value/entity types, methods |
 
 ## Running Demos
 
@@ -28,9 +28,9 @@ Example programs demonstrating Viper BASIC and ViperLang capabilities.
 ./build/src/tools/vbasic/vbasic demos/basic/<demo>/<main>.bas
 ```
 
-### ViperLang (VM Mode)
+### Zia (VM Mode)
 ```bash
-./build/src/tools/viper/viper demos/viperlang/<demo>.viper
+./build/src/tools/viper/viper demos/zia/<demo>.zia
 ```
 
 ### Native Compilation (BASIC)
@@ -59,5 +59,5 @@ clang++ /tmp/demo.o build/src/runtime/libviper_runtime.a -o /tmp/demo
 ## See Also
 
 - [BASIC Language Reference](../docs/basic-reference.md)
-- [ViperLang Language Reference](../docs/viperlang-reference.md)
+- [Zia Language Reference](../docs/zia-reference.md)
 - [Runtime Library](../docs/viperlib/README.md)

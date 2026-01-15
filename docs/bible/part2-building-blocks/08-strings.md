@@ -1748,7 +1748,7 @@ Lowercase: hello world from viper
 
 ## The Three Languages
 
-**ViperLang**
+**Zia**
 ```rust
 var text = "Hello, World!";
 
@@ -1844,7 +1844,7 @@ text[0] = 'J';  // Error in many languages!
 var text = "J" + text.substring(1);  // Create a new string instead
 ```
 
-Many languages (including ViperLang) don't let you modify characters in place. You create new strings instead.
+Many languages (including Zia) don't let you modify characters in place. You create new strings instead.
 
 **Comparing strings with wrong case:**
 ```rust

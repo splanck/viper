@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Runtime sweep runner for ViperLang and BASIC tests.
+Runtime sweep runner for Zia and BASIC tests.
 """
 
 from __future__ import annotations
@@ -240,15 +240,15 @@ def main() -> int:
         print(f"error: ilc not found at {ilc_path}", file=sys.stderr)
         return 1
 
-    viperlang_dir = os.path.join(repo_root, "tests", "viperlang_runtime")
+    zia_dir = os.path.join(repo_root, "tests", "zia_runtime")
     basic_dir = os.path.join(repo_root, "tests", "runtime_sweep", "basic")
 
     tests = []
-    for root, _, files in os.walk(viperlang_dir):
+    for root, _, files in os.walk(zia_dir):
         for name in sorted(files):
-            if not name.endswith(".viper") or name.startswith("_"):
+            if not name.endswith(".zia") or name.startswith("_"):
                 continue
-            tests.append(("viperlang", os.path.join(root, name)))
+            tests.append(("zia", os.path.join(root, name)))
         break
 
     for root, _, files in os.walk(basic_dir):

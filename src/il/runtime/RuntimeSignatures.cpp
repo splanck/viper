@@ -524,7 +524,7 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    // Legacy ViperLang time alias (not emitted by runtime.def).
+    // Legacy Zia time alias (not emitted by runtime.def).
     DescriptorRow{"Viper.Time.Clock.Millis",
                   std::nullopt,
                   "i64()",

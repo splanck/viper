@@ -64,7 +64,7 @@ DIM playerX AS INTEGER = 100
 DIM playerY AS INTEGER = 200
 ```
 
-**ViperLang equivalent:**
+**Zia equivalent:**
 ```rust
 // Single-line comment
 /* Multi-line comment */
@@ -137,7 +137,7 @@ SUB ProcessItems()
 END SUB
 ```
 
-**ViperLang equivalent:**
+**Zia equivalent:**
 ```rust
 var count = 0;        // Mutable variable
 final PI = 3.14159;   // Immutable constant
@@ -228,7 +228,7 @@ DIM yes AS BOOLEAN = TRUE
 DIM no AS BOOLEAN = FALSE
 ```
 
-**ViperLang equivalent:**
+**Zia equivalent:**
 ```rust
 var count: i64 = 42;      // Explicit type
 var price: f64 = 19.99;   // 64-bit float
@@ -384,7 +384,7 @@ x = TRUE OR FALSE AND FALSE   ' TRUE (AND evaluated first)
 x = (TRUE OR FALSE) AND FALSE ' FALSE (parentheses override)
 ```
 
-**ViperLang equivalent:**
+**Zia equivalent:**
 ```rust
 a + b    // Addition
 a == b   // Equal (note: double equals)
@@ -665,7 +665,7 @@ WHILE condition
 WEND
 ```
 
-**ViperLang equivalent:**
+**Zia equivalent:**
 ```rust
 if condition { ... } else { ... }
 for i in 1..=10 { ... }
@@ -851,7 +851,7 @@ FUNCTION BinarySearch(arr() AS INTEGER, target AS INTEGER, _
 END FUNCTION
 ```
 
-**ViperLang equivalent:**
+**Zia equivalent:**
 ```rust
 func greet(name: string) {
     Viper.Terminal.Say("Hello, " + name);
@@ -1040,7 +1040,7 @@ FUNCTION IndexOf(arr() AS INTEGER, target AS INTEGER) AS INTEGER
 END FUNCTION
 ```
 
-**ViperLang equivalent:**
+**Zia equivalent:**
 ```rust
 var numbers = [1, 2, 3, 4, 5];
 var first = numbers[0];
@@ -1227,7 +1227,7 @@ FUNCTION WordCount(text AS STRING) AS INTEGER
 END FUNCTION
 ```
 
-**ViperLang equivalent:**
+**Zia equivalent:**
 ```rust
 var s = "Hello, World!";
 s.toUpperCase();
@@ -1444,7 +1444,7 @@ CLOSE #1
 CLOSE #2
 ```
 
-**ViperLang equivalent:**
+**Zia equivalent:**
 ```rust
 Viper.Terminal.Say("Hello");
 var input = Viper.Terminal.Ask("Name: ");
@@ -1609,7 +1609,7 @@ TYPE Entity
 END TYPE
 ```
 
-**ViperLang equivalent:**
+**Zia equivalent:**
 ```rust
 value Point {
     x: f64;
@@ -1815,7 +1815,7 @@ NEXT animal
 
 > **See also:** [Chapter 15: Inheritance](../part3-objects/15-inheritance.md), [Chapter 17: Polymorphism](../part3-objects/17-polymorphism.md)
 
-**ViperLang equivalent:**
+**Zia equivalent:**
 ```rust
 entity Counter {
     hide count: i64;
@@ -1933,7 +1933,7 @@ FOR EACH shape IN shapes
 NEXT shape
 ```
 
-**ViperLang equivalent:**
+**Zia equivalent:**
 ```rust
 interface Drawable {
     func draw();
@@ -2100,7 +2100,7 @@ SUB ProcessWithCleanup()
 END SUB
 ```
 
-**ViperLang equivalent:**
+**Zia equivalent:**
 ```rust
 try {
     var file = Viper.File.Open("data.txt");
@@ -2420,7 +2420,7 @@ END SUB
 END MODULE
 ```
 
-**ViperLang equivalent:**
+**Zia equivalent:**
 ```rust
 module MathUtils;
 
@@ -2894,4 +2894,4 @@ ON ERROR GOTO label / RESUME NEXT
 
 ---
 
-*[Back to Table of Contents](../README.md) | [Prev: Appendix A](a-viperlang-reference.md) | [Next: Appendix C: Pascal Reference](c-pascal-reference.md)*
+*[Back to Table of Contents](../README.md) | [Prev: Appendix A](a-zia-reference.md) | [Next: Appendix C: Pascal Reference](c-pascal-reference.md)*

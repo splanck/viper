@@ -6,7 +6,7 @@ But structures have limitations that become apparent as your programs grow more 
 
 These questions lead us to *object-oriented programming* (OOP) -- a way of thinking about programs as collections of interacting *objects*. Objects combine data and behavior into unified entities that protect their internal state, expose controlled interfaces to the outside world, and can relate to each other in powerful ways.
 
-This chapter introduces the fundamentals of object-oriented programming in ViperLang. By the end, you'll understand what objects are, why they matter, and how to design them well.
+This chapter introduces the fundamentals of object-oriented programming in Zia. By the end, you'll understand what objects are, why they matter, and how to design them well.
 
 ---
 
@@ -118,7 +118,7 @@ Objects don't just organize your code -- they make it possible to build systems 
 
 ## From Values to Entities
 
-In ViperLang, the `value` keyword creates a structure -- pure data without behavior. The `entity` keyword creates something more powerful: a template for objects that combine data and behavior.
+In Zia, the `value` keyword creates a structure -- pure data without behavior. The `entity` keyword creates something more powerful: a template for objects that combine data and behavior.
 
 A value groups data:
 
@@ -164,7 +164,7 @@ Let's explore each of these in depth.
 
 ## Why "Entity" Instead of "Class"?
 
-If you've read about object-oriented programming in other languages, you've certainly encountered the term *class*. Java, Python, C++, C#, Ruby -- they all use `class` to define object templates. ViperLang uses `entity` instead.
+If you've read about object-oriented programming in other languages, you've certainly encountered the term *class*. Java, Python, C++, C#, Ruby -- they all use `class` to define object templates. Zia uses `entity` instead.
 
 This isn't just a cosmetic difference. The word "class" carries decades of accumulated complexity:
 
@@ -177,7 +177,7 @@ This isn't just a cosmetic difference. The word "class" carries decades of accum
 
 Many programmers have been burned by overly complex class hierarchies that became impossible to understand or modify. The word "class" can trigger memories of debugging a 15-level inheritance chain at 3 AM.
 
-ViperLang's `entity` is intentionally simpler and more focused. An entity is:
+Zia's `entity` is intentionally simpler and more focused. An entity is:
 
 - **A template for things.** A `Player` is a thing. A `BankAccount` is a thing. A `Rectangle` is a thing.
 - **Concrete and tangible.** You can imagine pointing at an entity and saying "that's a Player" or "that's a bank account."
@@ -193,9 +193,9 @@ The distinction helps you think clearly about your design: "Am I modeling a *thi
 
 ### Terminology Throughout This Book
 
-ViperLang has its own vocabulary:
+Zia has its own vocabulary:
 
-| ViperLang Term | Common OOP Term |
+| Zia Term | Common OOP Term |
 |----------------|-----------------|
 | entity | class |
 | value | struct, record |
@@ -390,7 +390,7 @@ Viper.Terminal.Say(rect.width);   // 1.0 (corrected)
 Viper.Terminal.Say(rect.height);  // 1.0 (corrected)
 ```
 
-You might also choose to report errors differently -- storing an error flag, logging a message, or using ViperLang's error handling mechanisms. The key insight is that the initializer controls how objects come into existence.
+You might also choose to report errors differently -- storing an error flag, logging a message, or using Zia's error handling mechanisms. The key insight is that the initializer controls how objects come into existence.
 
 ### Setup Logic in Initializers
 
@@ -509,7 +509,7 @@ Viper.Terminal.Say(counter.getCount());  // Step 3: Get value
 - The object is returned and assigned to `counter`
 
 **Step 2: `counter.increment()` is called**
-- ViperLang sees you're calling `increment` on the object stored in `counter`
+- Zia sees you're calling `increment` on the object stored in `counter`
 - Inside `increment()`, `self` automatically refers to that object
 - `self.count += 1` adds 1 to that specific object's count field
 - The count is now 1
@@ -550,7 +550,7 @@ Each call binds `self` to the appropriate object. The method is the same code, b
 
 ### `self` is Implicit in Some Languages
 
-Some languages (Python, for example) require you to explicitly list `self` as the first parameter of every method. ViperLang doesn't -- `self` is automatically available inside methods.
+Some languages (Python, for example) require you to explicitly list `self` as the first parameter of every method. Zia doesn't -- `self` is automatically available inside methods.
 
 This is cleaner and less repetitive, but it's important to understand that `self` is still there, working behind the scenes.
 
@@ -587,7 +587,7 @@ There are no rules, no validation, no protection. The object is just passive dat
 
 ### The Solution: `hide` and `expose`
 
-ViperLang lets you control what's visible from outside the entity:
+Zia lets you control what's visible from outside the entity:
 
 ```rust
 entity BankAccount {
@@ -1398,13 +1398,13 @@ entity TodoList {
 func start() {
     var todos = TodoList("My Tasks");
 
-    todos.add("Learn ViperLang");
+    todos.add("Learn Zia");
     todos.add("Build a project");
     todos.add("Read the documentation");
 
     todos.display();
     // === My Tasks ===
-    //   1. [ ] Learn ViperLang
+    //   1. [ ] Learn Zia
     //   2. [ ] Build a project
     //   3. [ ] Read the documentation
     //
@@ -1413,7 +1413,7 @@ func start() {
     todos.markDone(0);
     todos.display();
     // === My Tasks ===
-    //   1. [X] Learn ViperLang
+    //   1. [X] Learn Zia
     //   2. [ ] Build a project
     //   3. [ ] Read the documentation
     //
@@ -1436,7 +1436,7 @@ Notice how:
 
 ## The Three Languages
 
-**ViperLang**
+**Zia**
 
 ```rust
 entity Dog {

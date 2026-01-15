@@ -17,7 +17,7 @@ Code organization is one of those skills that separates beginners from intermedi
 Let's start with why this matters. Imagine you're building a simple game with a player, enemies, and items. Without any organization, you might write everything in one file:
 
 ```rust
-// game.viper — 500 lines and growing...
+// game.zia — 500 lines and growing...
 
 // Player stuff
 var playerX = 0.0;
@@ -77,12 +77,12 @@ Modules solve all these problems.
 
 ## What Is a Module?
 
-A module is a file containing related code: functions, structures, constants. Every ViperLang file is a module.
+A module is a file containing related code: functions, structures, constants. Every Zia file is a module.
 
 Here's a simple module:
 
 ```rust
-// file: math_utils.viper
+// file: math_utils.zia
 module MathUtils;
 
 func square(x: f64) -> f64 {
@@ -143,7 +143,7 @@ Each module creates its own namespace. Functions inside `Math` don't conflict wi
 To use code from another module, you import it:
 
 ```rust
-// file: main.viper
+// file: main.zia
 module Main;
 
 import MathUtils;
@@ -164,7 +164,7 @@ This prefix might seem annoying at first, but it's actually helpful. When you re
 
 ## Different Ways to Import
 
-ViperLang provides several import styles for different situations.
+Zia provides several import styles for different situations.
 
 ### Import the Module
 
@@ -265,7 +265,7 @@ Not everything in a module should be visible to outsiders. Some functions are in
 Use `export` to mark what's public:
 
 ```rust
-// file: counter.viper
+// file: counter.zia
 module Counter;
 
 var count = 0;  // Private: only this module can see it
@@ -290,7 +290,7 @@ func reset() {  // Private: internal use only
 The `count` variable and `reset` function are internal implementation details. Other modules can only use the exported functions.
 
 ```rust
-// file: main.viper
+// file: main.zia
 import Counter;
 
 func start() {
@@ -372,20 +372,20 @@ A typical project structure:
 
 ```
 my_project/
-├── main.viper       # Entry point
-├── player.viper     # Player module
-├── enemy.viper      # Enemy module
-├── graphics.viper   # Graphics module
+├── main.zia       # Entry point
+├── player.zia     # Player module
+├── enemy.zia      # Enemy module
+├── graphics.zia   # Graphics module
 └── utils/
-    ├── math.viper   # Math utilities
-    └── random.viper # Random utilities
+    ├── math.zia   # Math utilities
+    └── random.zia # Random utilities
 ```
 
 Modules in subdirectories use dot notation:
 
 ```rust
-import utils.math;     // Import utils/math.viper
-import utils.random;   // Import utils/random.viper
+import utils.math;     // Import utils/math.zia
+import utils.random;   // Import utils/random.zia
 
 func start() {
     var x = utils.math.square(5.0);
@@ -393,7 +393,7 @@ func start() {
 }
 ```
 
-The file system structure mirrors the module hierarchy. This makes it easy to find where code lives: if you're looking for `utils.math.square`, you know to look in `utils/math.viper`.
+The file system structure mirrors the module hierarchy. This makes it easy to find where code lives: if you're looking for `utils.math.square`, you know to look in `utils/math.zia`.
 
 ### Project Structure Patterns
 
@@ -402,21 +402,21 @@ There are several common ways to organize a project:
 **By feature** (recommended for most projects):
 ```
 my_game/
-├── main.viper
+├── main.zia
 ├── player/
-│   ├── player.viper
-│   ├── inventory.viper
-│   └── abilities.viper
+│   ├── player.zia
+│   ├── inventory.zia
+│   └── abilities.zia
 ├── enemy/
-│   ├── enemy.viper
-│   ├── ai.viper
-│   └── spawner.viper
+│   ├── enemy.zia
+│   ├── ai.zia
+│   └── spawner.zia
 ├── world/
-│   ├── map.viper
-│   └── tiles.viper
+│   ├── map.zia
+│   └── tiles.zia
 └── shared/
-    ├── physics.viper
-    └── math.viper
+    ├── physics.zia
+    └── math.zia
 ```
 
 Each feature gets its own directory. Related code lives together.
@@ -424,16 +424,16 @@ Each feature gets its own directory. Related code lives together.
 **By layer** (common in business applications):
 ```
 my_app/
-├── main.viper
+├── main.zia
 ├── ui/
-│   ├── forms.viper
-│   └── views.viper
+│   ├── forms.zia
+│   └── views.zia
 ├── logic/
-│   ├── validation.viper
-│   └── processing.viper
+│   ├── validation.zia
+│   └── processing.zia
 └── data/
-    ├── database.viper
-    └── models.viper
+    ├── database.zia
+    └── models.zia
 ```
 
 Code is organized by its role in the system.
@@ -441,10 +441,10 @@ Code is organized by its role in the system.
 **Flat** (fine for small projects):
 ```
 my_tool/
-├── main.viper
-├── parser.viper
-├── formatter.viper
-└── utils.viper
+├── main.zia
+├── parser.zia
+├── formatter.zia
+└── utils.zia
 ```
 
 When you have fewer than ten files, directories might be overkill.
@@ -478,12 +478,12 @@ The standard library is pre-imported for convenience, so you don't need explicit
 Modules can import other modules, creating a dependency graph:
 
 ```
-main.viper
-    └── imports game.viper
-        ├── imports player.viper
-        │   └── imports physics.viper
-        └── imports enemy.viper
-            └── imports physics.viper
+main.zia
+    └── imports game.zia
+        ├── imports player.zia
+        │   └── imports physics.zia
+        └── imports enemy.zia
+            └── imports physics.zia
 ```
 
 Both `player` and `enemy` import `physics`. That's fine — each gets access to the same physics code. The physics module is only loaded once; both modules share it.
@@ -512,7 +512,7 @@ This is called a *dependency hierarchy*, and it's what makes large programs mana
 There's one pattern you must avoid: circular dependencies. This happens when A imports B and B imports A.
 
 ```rust
-// player.viper
+// player.zia
 module Player;
 import Enemy;  // Player needs to know about enemies
 
@@ -521,7 +521,7 @@ export func attackNearestEnemy() {
     // ...
 }
 
-// enemy.viper
+// enemy.zia
 module Enemy;
 import Player;  // Enemy needs to know about player
 
@@ -548,7 +548,7 @@ There are several strategies:
 **Extract shared code into a third module:**
 
 ```rust
-// position.viper — Shared types
+// position.zia — Shared types
 module Position;
 
 export value Vec2 {
@@ -556,7 +556,7 @@ export value Vec2 {
     y: f64;
 }
 
-// player.viper
+// player.zia
 module Player;
 import Position;
 
@@ -566,7 +566,7 @@ export func getPosition() -> Position.Vec2 {
     return position;
 }
 
-// enemy.viper
+// enemy.zia
 module Enemy;
 import Position;
 import Player;  // Now only enemy imports player, not vice versa
@@ -582,14 +582,14 @@ By extracting `Vec2` into its own module, we removed one direction of the depend
 **Use interfaces (covered in Part III):**
 
 ```rust
-// target.viper
+// target.zia
 module Target;
 
 export interface ITarget {
     func getPosition() -> Vec2;
 }
 
-// enemy.viper
+// enemy.zia
 module Enemy;
 import Target;
 
@@ -690,7 +690,7 @@ Users see only `get`, `set`, and `clear`. You're free to completely rewrite the 
 
 Let's refactor our game demo into proper modules:
 
-**vec2.viper** — Vector math
+**vec2.zia** — Vector math
 ```rust
 module Vec2;
 
@@ -738,7 +738,7 @@ export func normalize(v: Vec2) -> Vec2 {
 }
 ```
 
-**player.viper** — Player entity
+**player.zia** — Player entity
 ```rust
 module Player;
 
@@ -815,7 +815,7 @@ export func addScore(player: Player, points: i64) -> Player {
 }
 ```
 
-**enemy.viper** — Enemy entity
+**enemy.zia** — Enemy entity
 ```rust
 module Enemy;
 
@@ -848,7 +848,7 @@ export func moveToward(enemy: Enemy, target: Vec2.Vec2) -> Enemy {
 }
 ```
 
-**main.viper** — Game entry point
+**main.zia** — Game entry point
 ```rust
 module Main;
 
@@ -898,7 +898,7 @@ func start() {
 Now each concept lives in its own file. The dependency graph is clean:
 
 ```
-main.viper
+main.zia
 ├── imports Vec2
 ├── imports Player
 │   └── imports Vec2
@@ -906,7 +906,7 @@ main.viper
     └── imports Vec2
 ```
 
-You can work on player logic without touching enemy code. You can test `Vec2` in isolation. The main file is short and focused on game flow. If you want to add items, you create a new `item.viper` module — no existing code needs to change.
+You can work on player logic without touching enemy code. You can test `Vec2` in isolation. The main file is short and focused on game flow. If you want to add items, you create a new `item.zia` module — no existing code needs to change.
 
 ---
 
@@ -918,11 +918,11 @@ Let's look at how modules would organize different kinds of projects:
 
 ```
 string_utils/
-├── string_utils.viper      # Main module, re-exports everything
-├── manipulation.viper      # Transformations: reverse, capitalize, etc.
-├── validation.viper        # Checking: isEmail, isNumeric, etc.
-├── parsing.viper           # Extraction: extractNumbers, splitWords, etc.
-└── formatting.viper        # Output: padLeft, truncate, etc.
+├── string_utils.zia      # Main module, re-exports everything
+├── manipulation.zia      # Transformations: reverse, capitalize, etc.
+├── validation.zia        # Checking: isEmail, isNumeric, etc.
+├── parsing.zia           # Extraction: extractNumbers, splitWords, etc.
+└── formatting.zia        # Output: padLeft, truncate, etc.
 ```
 
 Users import `string_utils` and get a clean, organized API:
@@ -941,25 +941,25 @@ if string_utils.validation.isEmail(email) {
 
 ```
 web_app/
-├── main.viper
+├── main.zia
 ├── routes/
-│   ├── home.viper
-│   ├── users.viper
-│   └── products.viper
+│   ├── home.zia
+│   ├── users.zia
+│   └── products.zia
 ├── services/
-│   ├── auth.viper
-│   ├── email.viper
-│   └── payment.viper
+│   ├── auth.zia
+│   ├── email.zia
+│   └── payment.zia
 ├── models/
-│   ├── user.viper
-│   ├── product.viper
-│   └── order.viper
+│   ├── user.zia
+│   ├── product.zia
+│   └── order.zia
 ├── database/
-│   ├── connection.viper
-│   └── queries.viper
+│   ├── connection.zia
+│   └── queries.zia
 └── utils/
-    ├── validation.viper
-    └── formatting.viper
+    ├── validation.zia
+    └── formatting.zia
 ```
 
 Routes handle HTTP requests. Services contain business logic. Models define data structures. Database handles persistence. Utils provide common helpers.
@@ -974,31 +974,31 @@ This separation means:
 
 ```
 platformer/
-├── main.viper
+├── main.zia
 ├── core/
-│   ├── game.viper          # Main game loop
-│   ├── input.viper         # Input handling
-│   └── time.viper          # Delta time, timers
+│   ├── game.zia          # Main game loop
+│   ├── input.zia         # Input handling
+│   └── time.zia          # Delta time, timers
 ├── entities/
-│   ├── player.viper
-│   ├── enemy.viper
-│   ├── item.viper
-│   └── projectile.viper
+│   ├── player.zia
+│   ├── enemy.zia
+│   ├── item.zia
+│   └── projectile.zia
 ├── systems/
-│   ├── physics.viper       # Movement, collision
-│   ├── combat.viper        # Damage, health
-│   └── scoring.viper       # Points, achievements
+│   ├── physics.zia       # Movement, collision
+│   ├── combat.zia        # Damage, health
+│   └── scoring.zia       # Points, achievements
 ├── rendering/
-│   ├── sprites.viper
-│   ├── camera.viper
-│   └── effects.viper
+│   ├── sprites.zia
+│   ├── camera.zia
+│   └── effects.zia
 ├── levels/
-│   ├── loader.viper
-│   ├── level1.viper
-│   └── level2.viper
+│   ├── loader.zia
+│   ├── level1.zia
+│   └── level2.zia
 └── shared/
-    ├── vec2.viper
-    └── rect.viper
+    ├── vec2.zia
+    └── rect.zia
 ```
 
 This structure lets the team work in parallel:
@@ -1018,7 +1018,7 @@ One of the biggest benefits of good module design is testability. When code is p
 **Isolation.** You can test a module without loading the entire application. Testing `Vec2` doesn't require creating a player or starting a game loop.
 
 ```rust
-// vec2_test.viper
+// vec2_test.zia
 import Vec2;
 import Viper.Test;
 
@@ -1094,7 +1094,7 @@ test "containsAt detects @" {
 
 ## The Three Languages
 
-**ViperLang**
+**Zia**
 ```rust
 // Defining
 module MyModule;
@@ -1196,23 +1196,23 @@ Split it up! Authentication, UI, email, payments, and reporting are different co
 
 ```rust
 // Bad: A imports B, B imports A
-// order.viper
+// order.zia
 import Customer;  // Order needs Customer
-// customer.viper
+// customer.zia
 import Order;     // Customer needs Order
 ```
 
 ```rust
 // Good: Extract shared concept
-// types.viper
+// types.zia
 export value OrderSummary { ... }
 export value CustomerInfo { ... }
 
-// order.viper
+// order.zia
 import types;
 // Uses CustomerInfo, doesn't need full Customer module
 
-// customer.viper
+// customer.zia
 import types;
 // Uses OrderSummary, doesn't need full Order module
 ```
@@ -1244,18 +1244,18 @@ FileUtils.write("out.txt", s);
 
 ```rust
 // Bad: Module is too granular
-// add.viper
+// add.zia
 module Add;
 export func add(a: i64, b: i64) -> i64 { return a + b; }
 
-// subtract.viper
+// subtract.zia
 module Subtract;
 export func subtract(a: i64, b: i64) -> i64 { return a - b; }
 ```
 
 ```rust
 // Good: Module has coherent purpose
-// math.viper
+// math.zia
 module Math;
 export func add(a: i64, b: i64) -> i64 { return a + b; }
 export func subtract(a: i64, b: i64) -> i64 { return a - b; }

@@ -38,7 +38,7 @@ This comprehensive investigation identified **47+ performance issues** across al
 
 ### 1.1 Disabled Critical Passes
 
-**Location:** `src/frontends/viperlang/Compiler.cpp:129-131`
+**Location:** `src/frontends/zia/Compiler.cpp:129-131`
 
 Two critical optimization passes are **disabled in production**:
 
@@ -59,14 +59,14 @@ Two critical optimization passes are **disabled in production**:
 **Current Status:**
 - ✅ SimplifyCFG now runs once at the start of O1/O2 pipelines
 - ⚠️ Running SimplifyCFG multiple times (after other passes) can cause temp definition issues
-- The verifier fix also uncovered a bug in the viperlang lowerer (for-in map key unboxing) which was fixed
+- The verifier fix also uncovered a bug in the zia lowerer (for-in map key unboxing) which was fixed
 
 **Remaining Limitation:** When SimplifyCFG runs after other passes like Mem2Reg, some block transformations can cause temps to become undefined. This needs further investigation.
 
 **Files affected:**
 - `src/il/verify/FunctionVerifier.cpp` - Two-pass verification fix
 - `src/il/transform/SimplifyCFG.cpp` - Now enabled
-- `src/frontends/viperlang/Lowerer_Stmt.cpp` - For-in map key unboxing fix
+- `src/frontends/zia/Lowerer_Stmt.cpp` - For-in map key unboxing fix
 
 #### SCCP - Sparse Conditional Constant Propagation (DISABLED)
 

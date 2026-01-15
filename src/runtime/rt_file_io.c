@@ -78,9 +78,9 @@ typedef SSIZE_T ssize_t;
 #ifndef EAGAIN
 #define EAGAIN EIO
 #endif
-#elif defined(__viperos__)
-// TODO: ViperOS - include file I/O headers when available
-// ViperOS has POSIX-like file I/O syscalls
+#elif defined(__viperdos__)
+// TODO: ViperDOS - include file I/O headers when available
+// ViperDOS has POSIX-like file I/O syscalls
 #include <sys/stat.h>
 #include <sys/types.h>
 typedef long ssize_t;

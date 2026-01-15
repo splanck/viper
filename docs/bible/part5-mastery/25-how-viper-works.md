@@ -121,7 +121,7 @@ These errors happen at the character level—the lexer can't even figure out wha
 You can see the tokens for any Viper program:
 
 ```bash
-viper --dump-tokens myprogram.viper
+zia --dump-tokens myprogram.zia
 ```
 
 This is useful when debugging mysterious syntax errors. Sometimes what looks correct to your eye isn't what the lexer sees.
@@ -201,7 +201,7 @@ These errors involve tokens that don't fit together properly. Each token might b
 ### Viewing the AST
 
 ```bash
-viper --dump-ast myprogram.viper
+zia --dump-ast myprogram.zia
 ```
 
 The AST shows exactly how the parser interpreted your code's structure.
@@ -328,10 +328,10 @@ You might wonder: why not go straight from source code to machine code? IL exist
 
 **Multiple Languages, One Backend**
 
-Viper supports three frontend languages: ViperLang, BASIC, and Pascal. All three compile to the same IL:
+Viper supports three frontend languages: Zia, BASIC, and Pascal. All three compile to the same IL:
 
 ```
-ViperLang ─┐
+Zia ─┐
            ├──► IL ───► VM/Native
 BASIC ─────┤
            │
@@ -355,7 +355,7 @@ IL is a convenient place to optimize code. Transformations that would be complex
 
 Here's the same function in all three Viper languages:
 
-**ViperLang**
+**Zia**
 ```rust
 func square(x: i64) -> i64 {
     return x * x;
@@ -511,7 +511,7 @@ Notice how the IL makes the control flow explicit. There's no "magic"—every br
 ### Viewing Your Program's IL
 
 ```bash
-viper --dump-il myprogram.viper
+zia --dump-il myprogram.zia
 ```
 
 This is incredibly useful for:
@@ -767,8 +767,8 @@ Error at line 20: undefined function 'foo'
 **Runtime error**: Happens when running, often with a stack trace
 ```
 Runtime error: division by zero
-  at divide (myprogram.viper:3)
-  at start (myprogram.viper:8)
+  at divide (myprogram.zia:3)
+  at start (myprogram.zia:8)
 ```
 
 ---
@@ -950,13 +950,13 @@ Understanding the compilation pipeline gives you powerful debugging strategies.
 
 2. **Check the IL** if behavior seems impossible
    ```bash
-   viper --dump-il myprogram.viper
+   zia --dump-il myprogram.zia
    ```
    Sometimes the IL reveals that your code doesn't do what you think.
 
 3. **Trace execution** with the VM's trace mode
    ```bash
-   viper --trace myprogram.viper
+   zia --trace myprogram.zia
    ```
 
 ### Understanding Performance
@@ -984,7 +984,7 @@ Viper's architecture allows three different languages to share one runtime. Let'
 
 ### Same Logic, Different Syntax
 
-**ViperLang** (modern, curly-brace syntax)
+**Zia** (modern, curly-brace syntax)
 ```rust
 func greet(name: string) {
     Viper.Terminal.Say("Hello, " + name + "!");
@@ -1040,7 +1040,7 @@ entry:
 ### Mixing Languages
 
 Because all three compile to the same IL, you can:
-- Call BASIC functions from ViperLang
+- Call BASIC functions from Zia
 - Use Pascal modules in BASIC programs
 - Share data structures across all three
 
@@ -1056,7 +1056,7 @@ Modern VMs are highly optimized. For most programs—especially those that do I/
 
 For truly performance-critical code, use native compilation:
 ```bash
-viper --compile-native myprogram.viper
+zia --compile-native myprogram.zia
 ```
 
 ### "Garbage Collection Causes Pauses"
@@ -1129,7 +1129,7 @@ Try to create one error of each type:
 Note how the error messages differ.
 
 **Exercise 25.4 - IL Comparison**
-Write the same function in ViperLang and BASIC. Use `--dump-il` on both and compare. What's the same? What's different?
+Write the same function in Zia and BASIC. Use `--dump-il` on both and compare. What's the same? What's different?
 
 **Exercise 25.5 - IL Reading**
 Look at the IL for this function:
@@ -1188,7 +1188,7 @@ For `fib(4)`, draw the call tree and show the stack state at each call and retur
 
 **Exercise 25.9 (Challenge) - Three-Language Project**
 Create a small project that uses all three languages:
-- A ViperLang main program
+- A Zia main program
 - A BASIC utility module
 - A Pascal math module
 

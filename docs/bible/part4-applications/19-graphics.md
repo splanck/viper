@@ -1224,7 +1224,7 @@ canvas.drawText(405, 315, "(400,300)");
 
 ## The Three Languages
 
-**ViperLang**
+**Zia**
 ```rust
 import Viper.Graphics;
 

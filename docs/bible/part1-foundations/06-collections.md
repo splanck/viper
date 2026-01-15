@@ -751,7 +751,7 @@ Viper performs *bounds checking* — it verifies that every array access is with
 Runtime Error: Array index out of bounds
   Index: 5
   Valid range: 0 to 4
-  at line 3 in main.viper
+  at line 3 in main.zia
 ```
 
 This is a safety feature. Without bounds checking, accessing invalid indices would read or write random memory locations, causing mysterious bugs, crashes, or security vulnerabilities.
@@ -1420,7 +1420,7 @@ func displayScores(names: [String], scores: [i64]) {
 
 Different languages handle arrays with different syntax, but the concepts are identical.
 
-**ViperLang**
+**Zia**
 ```rust
 var numbers = [10, 20, 30];
 

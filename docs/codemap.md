@@ -12,7 +12,7 @@ Source layout for the Viper compiler toolchain (current tree, kept in sync).
 | `src/il/`              | IL core types, builder, I/O, verifier, analysis, transforms, API         |
 | `src/vm/`              | Virtual Machine interpreter, opcode handlers, debug, runtime bridge      |
 | `src/codegen/`         | Native code generation backends (`x86_64/`, `aarch64/`, `common/`)       |
-| `src/frontends/`       | Language frontends: `basic/`, `pascal/`, `viperlang/`, `common/`         |
+| `src/frontends/`       | Language frontends: `basic/`, `pascal/`, `zia/`, `common/`         |
 | `src/runtime/`         | C runtime library (strings, arrays, I/O, numeric, OOP)                   |
 | `src/support/`         | Shared support: diagnostics, arena, source manager, symbols, result      |
 | `src/common/`          | Cross-cutting utils (mangling, integer helpers, process runner)          |
@@ -30,7 +30,7 @@ Source layout for the Viper compiler toolchain (current tree, kept in sync).
 - IL: `src/il/{core,build,io,verify,analysis,transform,api,utils,runtime,internal}`
 - VM: `src/vm` (+ `ops/{generated,common}` and `debug/`)
 - Codegen: `src/codegen/{x86_64,aarch64,common}`
-- Frontends: `src/frontends/{basic,pascal,viperlang,common}`
+- Frontends: `src/frontends/{basic,pascal,zia,common}`
 - Runtime: `src/runtime` (C sources and headers)
 - Tools: `src/tools/{ilc,vbasic,vpascal,viper,ilrun,il-verify,il-dis,rtgen,basic-ast-dump,basic-lex-dump}`
 - Support & Infra: `src/{support,common,parse,pass}`

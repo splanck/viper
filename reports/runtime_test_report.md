@@ -1,7 +1,7 @@
 # Viper Runtime Systematic Test Report
 
 **Date**: 2025-12-22
-**Scope**: Full runtime library coverage for ViperLang/BASIC frontend
+**Scope**: Full runtime library coverage for Zia/BASIC frontend
 
 ---
 

@@ -97,12 +97,12 @@ int cmdFrontBasic(int argc, char **argv);
 int cmdFrontPascal(int argc, char **argv);
 #endif
 
-/// @brief Handle `ilc front viperlang` subcommands.
+/// @brief Handle `ilc front zia` subcommands.
 ///
-/// @param argc Number of arguments following `front viperlang`.
+/// @param argc Number of arguments following `front zia`.
 /// @param argv Array of argument strings.
 /// @return `0` on successful compilation or execution, non‑zero on errors.
-int cmdFrontViperlang(int argc, char **argv);
+int cmdFrontZia(int argc, char **argv);
 
 /// @brief Handle `ilc -run` with an externally managed source manager.
 ///

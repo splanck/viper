@@ -97,9 +97,9 @@
 #ifndef PATH_MAX
 #define PATH_MAX MAX_PATH
 #endif
-#elif defined(__viperos__)
-// TODO: ViperOS - include appropriate headers when available
-// ViperOS uses POSIX-like APIs
+#elif defined(__viperdos__)
+// TODO: ViperDOS - include appropriate headers when available
+// ViperDOS uses POSIX-like APIs
 #ifndef PATH_MAX
 #define PATH_MAX 4096
 #endif
@@ -163,8 +163,8 @@ int64_t rt_dir_exists(rt_string path)
 
 #ifdef _WIN32
     return (st.st_mode & _S_IFDIR) != 0;
-#elif defined(__viperos__)
-    // TODO: ViperOS - check S_ISDIR equivalent
+#elif defined(__viperdos__)
+    // TODO: ViperDOS - check S_ISDIR equivalent
     return (st.st_mode & 0040000) != 0; // S_IFDIR = 0040000
 #else
     return S_ISDIR(st.st_mode);
@@ -228,9 +228,9 @@ void rt_dir_make(rt_string path)
     {
         rt_trap("Dir.Make: failed to create directory");
     }
-#elif defined(__viperos__)
-    // TODO: ViperOS - implement mkdir syscall wrapper
-    rt_trap("Dir.Make: not implemented on ViperOS");
+#elif defined(__viperdos__)
+    // TODO: ViperDOS - implement mkdir syscall wrapper
+    rt_trap("Dir.Make: not implemented on ViperDOS");
 #else
     if (mkdir(cpath, 0755) != 0 && errno != EEXIST)
     {
@@ -334,10 +334,10 @@ void rt_dir_make_all(rt_string path)
                     rt_trap("Dir.MakeAll: failed to create intermediate directory");
                     return;
                 }
-#elif defined(__viperos__)
-                // TODO: ViperOS - implement mkdir syscall wrapper
+#elif defined(__viperdos__)
+                // TODO: ViperDOS - implement mkdir syscall wrapper
                 free(tmp);
-                rt_trap("Dir.MakeAll: not implemented on ViperOS");
+                rt_trap("Dir.MakeAll: not implemented on ViperDOS");
                 return;
 #else
                 if (mkdir(tmp, 0755) != 0 && errno != EEXIST)
@@ -364,10 +364,10 @@ void rt_dir_make_all(rt_string path)
             rt_trap("Dir.MakeAll: failed to create directory");
             return;
         }
-#elif defined(__viperos__)
-        // TODO: ViperOS - implement mkdir syscall wrapper
+#elif defined(__viperdos__)
+        // TODO: ViperDOS - implement mkdir syscall wrapper
         free(tmp);
-        rt_trap("Dir.MakeAll: not implemented on ViperOS");
+        rt_trap("Dir.MakeAll: not implemented on ViperDOS");
         return;
 #else
         if (mkdir(tmp, 0755) != 0 && errno != EEXIST)
@@ -436,9 +436,9 @@ void rt_dir_remove(rt_string path)
     {
         rt_trap("Dir.Remove: failed to remove directory");
     }
-#elif defined(__viperos__)
-    // TODO: ViperOS - implement rmdir syscall wrapper
-    rt_trap("Dir.Remove: not implemented on ViperOS");
+#elif defined(__viperdos__)
+    // TODO: ViperDOS - implement rmdir syscall wrapper
+    rt_trap("Dir.Remove: not implemented on ViperDOS");
 #else
     if (rmdir(cpath) != 0)
     {
@@ -460,8 +460,8 @@ static void delete_file(const char *path)
 {
 #ifdef _WIN32
     (void)_unlink(path);
-#elif defined(__viperos__)
-    // TODO: ViperOS - implement unlink syscall wrapper
+#elif defined(__viperdos__)
+    // TODO: ViperDOS - implement unlink syscall wrapper
     (void)path;
 #else
     (void)unlink(path);
@@ -567,11 +567,11 @@ void rt_dir_remove_all(rt_string path)
 
     FindClose(h);
     _rmdir(cpath);
-#elif defined(__viperos__)
-    // TODO: ViperOS - implement directory enumeration (opendir/readdir equivalent)
+#elif defined(__viperdos__)
+    // TODO: ViperDOS - implement directory enumeration (opendir/readdir equivalent)
     // For now, just trap as not implemented
     (void)cpath;
-    rt_trap("Dir.RemoveAll: not implemented on ViperOS");
+    rt_trap("Dir.RemoveAll: not implemented on ViperDOS");
 #else
     DIR *dir = opendir(cpath);
     if (!dir)
@@ -689,8 +689,8 @@ void *rt_dir_list(rt_string path)
     } while (FindNextFileA(h, &fd));
 
     FindClose(h);
-#elif defined(__viperos__)
-    // TODO: ViperOS - implement directory listing (opendir/readdir equivalent)
+#elif defined(__viperdos__)
+    // TODO: ViperDOS - implement directory listing (opendir/readdir equivalent)
     (void)cpath;
 #else
     DIR *dir = opendir(cpath);
@@ -790,8 +790,8 @@ void *rt_dir_entries_seq(rt_string path)
 #ifdef _WIN32
     if ((st.st_mode & _S_IFDIR) == 0)
         rt_trap("Viper.IO.Dir.Entries: directory not found");
-#elif defined(__viperos__)
-    // TODO: ViperOS - check S_ISDIR equivalent
+#elif defined(__viperdos__)
+    // TODO: ViperDOS - check S_ISDIR equivalent
     if ((st.st_mode & 0040000) == 0)
         rt_trap("Viper.IO.Dir.Entries: directory not found");
 #else
@@ -825,8 +825,8 @@ void *rt_dir_entries_seq(rt_string path)
     } while (FindNextFileA(h, &fd));
 
     FindClose(h);
-#elif defined(__viperos__)
-    // TODO: ViperOS - implement directory enumeration
+#elif defined(__viperdos__)
+    // TODO: ViperDOS - implement directory enumeration
     (void)cpath;
 #else
     DIR *dir = opendir(cpath);
@@ -925,8 +925,8 @@ void *rt_dir_files(rt_string path)
     } while (FindNextFileA(h, &fd));
 
     FindClose(h);
-#elif defined(__viperos__)
-    // TODO: ViperOS - implement directory file listing
+#elif defined(__viperdos__)
+    // TODO: ViperDOS - implement directory file listing
     (void)cpath;
 #else
     DIR *dir = opendir(cpath);
@@ -1057,8 +1057,8 @@ void *rt_dir_dirs(rt_string path)
     } while (FindNextFileA(h, &fd));
 
     FindClose(h);
-#elif defined(__viperos__)
-    // TODO: ViperOS - implement directory subdirectory listing
+#elif defined(__viperdos__)
+    // TODO: ViperDOS - implement directory subdirectory listing
     (void)cpath;
 #else
     DIR *dir = opendir(cpath);
@@ -1160,9 +1160,9 @@ rt_string rt_dir_current(void)
         rt_trap("Dir.Current: failed to get current directory");
         return rt_str_empty();
     }
-#elif defined(__viperos__)
-    // TODO: ViperOS - implement getcwd syscall wrapper
-    rt_trap("Dir.Current: not implemented on ViperOS");
+#elif defined(__viperdos__)
+    // TODO: ViperDOS - implement getcwd syscall wrapper
+    rt_trap("Dir.Current: not implemented on ViperDOS");
     return rt_str_empty();
 #else
     if (getcwd(buffer, PATH_MAX) == NULL)
@@ -1235,9 +1235,9 @@ void rt_dir_set_current(rt_string path)
     {
         rt_trap("Dir.SetCurrent: failed to change directory");
     }
-#elif defined(__viperos__)
-    // TODO: ViperOS - implement chdir syscall wrapper
-    rt_trap("Dir.SetCurrent: not implemented on ViperOS");
+#elif defined(__viperdos__)
+    // TODO: ViperDOS - implement chdir syscall wrapper
+    rt_trap("Dir.SetCurrent: not implemented on ViperDOS");
 #else
     if (chdir(cpath) != 0)
     {

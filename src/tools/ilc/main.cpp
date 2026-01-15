@@ -374,9 +374,9 @@ int main(int argc, char **argv)
         return cmdFrontPascal(argc - 3, argv + 3);
     }
 #endif
-    if (cmd == "front" && argc >= 3 && std::string(argv[2]) == "viperlang")
+    if (cmd == "front" && argc >= 3 && std::string(argv[2]) == "zia")
     {
-        return cmdFrontViperlang(argc - 3, argv + 3);
+        return cmdFrontZia(argc - 3, argv + 3);
     }
     usage();
     return 1;

@@ -1125,7 +1125,7 @@ Notice how `Group` is itself `Drawable`. This is the *Composite Pattern* — tre
 
 ## The Three Languages
 
-**ViperLang**
+**Zia**
 ```rust
 interface Animal {
     func speak();

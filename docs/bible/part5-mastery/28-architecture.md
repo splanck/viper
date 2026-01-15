@@ -518,38 +518,38 @@ Example folder structure:
 project/
 ├── presentation/
 │   ├── web/
-│   │   ├── OrderController.viper
-│   │   └── ProductController.viper
+│   │   ├── OrderController.zia
+│   │   └── ProductController.zia
 │   ├── api/
-│   │   └── RestApi.viper
+│   │   └── RestApi.zia
 │   └── cli/
-│       └── AdminCommands.viper
+│       └── AdminCommands.zia
 │
 ├── application/
-│   ├── PlaceOrderUseCase.viper
-│   ├── CancelOrderUseCase.viper
-│   └── SearchProductsUseCase.viper
+│   ├── PlaceOrderUseCase.zia
+│   ├── CancelOrderUseCase.zia
+│   └── SearchProductsUseCase.zia
 │
 ├── domain/
 │   ├── entities/
-│   │   ├── Order.viper
-│   │   ├── Product.viper
-│   │   └── Customer.viper
+│   │   ├── Order.zia
+│   │   ├── Product.zia
+│   │   └── Customer.zia
 │   ├── services/
-│   │   ├── PricingService.viper
-│   │   └── InventoryService.viper
+│   │   ├── PricingService.zia
+│   │   └── InventoryService.zia
 │   └── repositories/
-│       ├── IOrderRepository.viper
-│       └── IProductRepository.viper
+│       ├── IOrderRepository.zia
+│       └── IProductRepository.zia
 │
 └── infrastructure/
     ├── persistence/
-    │   ├── SqlOrderRepository.viper
-    │   └── SqlProductRepository.viper
+    │   ├── SqlOrderRepository.zia
+    │   └── SqlProductRepository.zia
     ├── payment/
-    │   └── StripePaymentGateway.viper
+    │   └── StripePaymentGateway.zia
     └── email/
-        └── SmtpEmailService.viper
+        └── SmtpEmailService.zia
 ```
 
 ### Model-View-Controller (MVC)
@@ -1431,7 +1431,7 @@ This works but has problems:
 First, create domain objects to represent our concepts:
 
 ```rust
-// domain/Book.viper
+// domain/Book.zia
 value Book {
     isbn: string;
     title: string;
@@ -1439,7 +1439,7 @@ value Book {
     available: bool;
 }
 
-// domain/Loan.viper
+// domain/Loan.zia
 value Loan {
     id: i64;
     isbn: string;
@@ -1455,7 +1455,7 @@ Using `value` instead of `entity` because these are simple data holders without 
 Move database code to a repository:
 
 ```rust
-// infrastructure/BookRepository.viper
+// infrastructure/BookRepository.zia
 entity BookRepository {
     hide db: Database;
 
@@ -1505,7 +1505,7 @@ entity BookRepository {
     }
 }
 
-// infrastructure/LoanRepository.viper
+// infrastructure/LoanRepository.zia
 entity LoanRepository {
     hide db: Database;
 
@@ -1547,7 +1547,7 @@ entity LoanRepository {
 Create a service for business operations:
 
 ```rust
-// application/LibraryService.viper
+// application/LibraryService.zia
 entity LibraryService {
     hide bookRepo: BookRepository;
     hide loanRepo: LoanRepository;
@@ -1658,7 +1658,7 @@ entity LibraryService {
 Now the main function is just UI:
 
 ```rust
-// presentation/cli/Main.viper
+// presentation/cli/Main.zia
 func main() {
     // Setup
     var db = Database.connect("library.db");
@@ -1757,14 +1757,14 @@ func handleListBooks(library: LibraryService) {
 Finally, extract interfaces so we can test without a database:
 
 ```rust
-// domain/IBookRepository.viper
+// domain/IBookRepository.zia
 interface IBookRepository {
     func findByIsbn(isbn: string) -> Book?;
     func findAll() -> [Book];
     func save(book: Book);
 }
 
-// domain/ILoanRepository.viper
+// domain/ILoanRepository.zia
 interface ILoanRepository {
     func findActiveByIsbn(isbn: string) -> Loan?;
     func save(loan: Loan);
@@ -1787,7 +1787,7 @@ entity LibraryService {
 Now we can create in-memory implementations for testing:
 
 ```rust
-// tests/InMemoryBookRepository.viper
+// tests/InMemoryBookRepository.zia
 entity InMemoryBookRepository implements IBookRepository {
     hide books: Map<string, Book>;
 
@@ -1808,7 +1808,7 @@ entity InMemoryBookRepository implements IBookRepository {
     }
 }
 
-// tests/LibraryServiceTest.viper
+// tests/LibraryServiceTest.zia
 test "cannot borrow unavailable book" {
     var bookRepo = InMemoryBookRepository();
     var loanRepo = InMemoryLoanRepository();
@@ -1903,9 +1903,9 @@ They depend only on domain interfaces.
 
 ## Files
 
-- CreateOrderUseCase.viper - Creates new orders
-- CancelOrderUseCase.viper - Cancels existing orders
-- GetOrderUseCase.viper - Retrieves order details
+- CreateOrderUseCase.zia - Creates new orders
+- CancelOrderUseCase.zia - Cancels existing orders
+- GetOrderUseCase.zia - Retrieves order details
 ```
 
 ### Keeping Documentation Current
@@ -2120,7 +2120,7 @@ But rewriting is expensive and risky. Usually, incremental improvement is better
 
 Architecture concepts are language-independent. Here is how they appear in Viper's three languages.
 
-**ViperLang**
+**Zia**
 ```rust
 module Application;
 
@@ -2340,4 +2340,4 @@ Document your architecture decisions and implement at least two sample plugins.
 
 *The appendices provide quick references for the languages and runtime. Use them as you continue your journey.*
 
-*[Continue to Appendix A: ViperLang Reference](../appendices/a-viperlang-reference.md)*
+*[Continue to Appendix A: Zia Reference](../appendices/a-zia-reference.md)*

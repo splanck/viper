@@ -1,4 +1,4 @@
-# ViperLang Bugs Found During Ladders Demo Development
+# Zia Bugs Found During Ladders Demo Development
 
 This document tracks bugs and spec-vs-implementation differences discovered while building the Ladders game demo.
 
@@ -8,7 +8,7 @@ This document tracks bugs and spec-vs-implementation differences discovered whil
 
 ### Difference #1: Bible Appendix A Uses Different Syntax Than Actual Implementation
 
-**Document:** `docs/bible/appendices/a-viperlang-reference.md`
+**Document:** `docs/bible/appendices/a-zia-reference.md`
 
 The Bible's Appendix A describes a significantly different syntax than what is actually implemented:
 
@@ -35,7 +35,7 @@ The Bible's Appendix A describes a significantly different syntax than what is a
 
 ### Difference #2: Entry Point Function Name
 
-**Documents:** `viperlang-reference.md` says `start()`, but demos use various names.
+**Documents:** `zia-reference.md` says `start()`, but demos use various names.
 
 The spec says:
 ```viper
@@ -45,7 +45,7 @@ func start() {
 ```
 
 However, examining existing demos:
-- `gfx_centipede/main.viper` uses `func main()` (line 7)
+- `gfx_centipede/main.zia` uses `func main()` (line 7)
 - Some tests may use different patterns
 
 **Status:** Need to verify which is actually correct by testing.
@@ -63,7 +63,7 @@ From namespaces.md:
 Viper.Random.Next() -> F64 — Return next random number in [0, 1)
 ```
 
-From gfx_centipede/game.viper:
+From gfx_centipede/game.zia:
 ```viper
 var chance = Viper.Random.NextInt(100);
 ```
@@ -74,14 +74,14 @@ var chance = Viper.Random.NextInt(100);
 
 ### Difference #4: List Method Names
 
-**Document:** `viperlang-reference.md` says `list.size()`.
+**Document:** `zia-reference.md` says `list.size()`.
 
 From the reference:
 ```viper
 list.size();                        // Get count
 ```
 
-But snake.viper uses:
+But snake.zia uses:
 ```viper
 segments.count()  // Line 130
 ```
@@ -94,14 +94,14 @@ segments.count()  // Line 130
 
 ### Bug #55: Snake Demo Uses Wrong Key Codes
 
-**File:** `demos/viperlang/graphics_show/snake.viper`
+**File:** `demos/zia/graphics_show/snake.zia`
 **Severity:** Medium
 **Status:** BUG CONFIRMED
 
 **Description:**
-The snake.viper demo uses GLFW key codes instead of VGFX key codes for arrow keys.
+The snake.zia demo uses GLFW key codes instead of VGFX key codes for arrow keys.
 
-**Wrong codes used in snake.viper (lines 322-333):**
+**Wrong codes used in snake.zia (lines 322-333):**
 ```viper
 if canvas.KeyHeld(265) != 0 {  // Should be 260
     game.snake.setDirection(DIR_UP);
@@ -127,9 +127,9 @@ if canvas.KeyHeld(262) != 0 {  // Should be 259
 | UP | 260 | 265 |
 | DOWN | 261 | 264 |
 
-**Impact:** Arrow keys will not work correctly in snake.viper on VGFX backend.
+**Impact:** Arrow keys will not work correctly in snake.zia on VGFX backend.
 
-**Fix:** Replace GLFW codes with VGFX codes in snake.viper.
+**Fix:** Replace GLFW codes with VGFX codes in snake.zia.
 
 ---
 

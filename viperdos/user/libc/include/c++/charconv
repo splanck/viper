@@ -1,0 +1,441 @@
+// -*- C++ -*-
+/*
+ * ViperDOS C++ Standard Library - charconv
+ * C++17 elementary string conversions
+ */
+
+#ifndef _VIPER_CHARCONV
+#define _VIPER_CHARCONV
+
+#include "cstdint"
+#include "limits"
+#include "system_error"
+#include "type_traits"
+
+namespace std
+{
+
+/*
+ * ===========================================================================
+ * chars_format - Floating-point format specifier
+ * ===========================================================================
+ */
+
+enum class chars_format
+{
+    scientific = 1,
+    fixed = 2,
+    hex = 4,
+    general = fixed | scientific
+};
+
+constexpr chars_format operator|(chars_format a, chars_format b) noexcept
+{
+    return static_cast<chars_format>(static_cast<int>(a) | static_cast<int>(b));
+}
+
+constexpr chars_format operator&(chars_format a, chars_format b) noexcept
+{
+    return static_cast<chars_format>(static_cast<int>(a) & static_cast<int>(b));
+}
+
+constexpr chars_format operator^(chars_format a, chars_format b) noexcept
+{
+    return static_cast<chars_format>(static_cast<int>(a) ^ static_cast<int>(b));
+}
+
+constexpr chars_format operator~(chars_format a) noexcept
+{
+    return static_cast<chars_format>(~static_cast<int>(a));
+}
+
+/*
+ * ===========================================================================
+ * to_chars_result - Result of to_chars
+ * ===========================================================================
+ */
+
+struct to_chars_result
+{
+    char *ptr;
+    errc ec;
+
+    friend bool operator==(const to_chars_result &a, const to_chars_result &b) = default;
+};
+
+/*
+ * ===========================================================================
+ * from_chars_result - Result of from_chars
+ * ===========================================================================
+ */
+
+struct from_chars_result
+{
+    const char *ptr;
+    errc ec;
+
+    friend bool operator==(const from_chars_result &a, const from_chars_result &b) = default;
+};
+
+/*
+ * ===========================================================================
+ * to_chars - Integer to string conversion
+ * ===========================================================================
+ */
+
+namespace __detail
+{
+
+constexpr char __digits[] = "0123456789abcdefghijklmnopqrstuvwxyz";
+
+template <class T>
+inline to_chars_result __to_chars_integral(char *first, char *last, T value, int base)
+{
+    static_assert(is_integral_v<T>);
+
+    if (first >= last)
+    {
+        return {last, errc::value_too_large};
+    }
+
+    // Handle negative numbers for signed types
+    bool negative = false;
+    using unsigned_t = make_unsigned_t<T>;
+    unsigned_t uval;
+
+    if constexpr (is_signed_v<T>)
+    {
+        if (value < 0)
+        {
+            negative = true;
+            uval = static_cast<unsigned_t>(-(value + 1)) + 1;
+        }
+        else
+        {
+            uval = static_cast<unsigned_t>(value);
+        }
+    }
+    else
+    {
+        uval = value;
+    }
+
+    // Count digits needed
+    char buffer[sizeof(T) * 8 + 1]; // Enough for binary
+    int pos = sizeof(buffer) - 1;
+    buffer[pos] = '\0';
+
+    if (uval == 0)
+    {
+        buffer[--pos] = '0';
+    }
+    else
+    {
+        while (uval > 0)
+        {
+            buffer[--pos] = __digits[uval % base];
+            uval /= base;
+        }
+    }
+
+    if (negative)
+    {
+        buffer[--pos] = '-';
+    }
+
+    // Calculate length
+    int len = sizeof(buffer) - 1 - pos;
+
+    if (last - first < len)
+    {
+        return {last, errc::value_too_large};
+    }
+
+    // Copy to output
+    char *p = first;
+    for (int i = pos; i < (int)(sizeof(buffer) - 1); ++i)
+    {
+        *p++ = buffer[i];
+    }
+
+    return {p, errc{}};
+}
+
+} // namespace __detail
+
+// to_chars for integers (base 10)
+template <class T>
+enable_if_t<is_integral_v<T> && !is_same_v<T, bool>, to_chars_result> to_chars(char *first,
+                                                                               char *last,
+                                                                               T value)
+{
+    return __detail::__to_chars_integral(first, last, value, 10);
+}
+
+// to_chars for integers (custom base)
+template <class T>
+enable_if_t<is_integral_v<T> && !is_same_v<T, bool>, to_chars_result> to_chars(char *first,
+                                                                               char *last,
+                                                                               T value,
+                                                                               int base)
+{
+    if (base < 2 || base > 36)
+    {
+        return {last, errc::invalid_argument};
+    }
+    return __detail::__to_chars_integral(first, last, value, base);
+}
+
+// to_chars for bool
+inline to_chars_result to_chars(char *first, char *last, bool value)
+{
+    return to_chars(first, last, static_cast<int>(value));
+}
+
+// to_chars for floating-point (basic implementation)
+inline to_chars_result to_chars(char *first, char *last, float value)
+{
+    // Simplified: use snprintf-style conversion
+    // A full implementation would use Ryu or similar
+    if (last - first < 16)
+    {
+        return {last, errc::value_too_large};
+    }
+
+    // Handle special cases
+    if (value != value)
+    { // NaN
+        if (last - first >= 3)
+        {
+            *first++ = 'n';
+            *first++ = 'a';
+            *first++ = 'n';
+            return {first, errc{}};
+        }
+        return {last, errc::value_too_large};
+    }
+
+    // Use simple integer conversion for this stub
+    int ipart = static_cast<int>(value);
+    return to_chars(first, last, ipart);
+}
+
+inline to_chars_result to_chars(char *first, char *last, double value)
+{
+    return to_chars(first, last, static_cast<float>(value));
+}
+
+inline to_chars_result to_chars(char *first, char *last, long double value)
+{
+    return to_chars(first, last, static_cast<float>(value));
+}
+
+/*
+ * ===========================================================================
+ * from_chars - String to integer conversion
+ * ===========================================================================
+ */
+
+namespace __detail
+{
+
+template <class T>
+inline from_chars_result __from_chars_integral(const char *first,
+                                               const char *last,
+                                               T &value,
+                                               int base)
+{
+    static_assert(is_integral_v<T>);
+
+    if (first == last)
+    {
+        return {first, errc::invalid_argument};
+    }
+
+    const char *p = first;
+    bool negative = false;
+
+    // Handle sign for signed types
+    if constexpr (is_signed_v<T>)
+    {
+        if (*p == '-')
+        {
+            negative = true;
+            ++p;
+            if (p == last)
+            {
+                return {first, errc::invalid_argument};
+            }
+        }
+    }
+
+    // Must have at least one digit
+    if (p == last)
+    {
+        return {first, errc::invalid_argument};
+    }
+
+    using unsigned_t = make_unsigned_t<T>;
+    unsigned_t result = 0;
+    unsigned_t max_val = numeric_limits<T>::max();
+    if constexpr (is_signed_v<T>)
+    {
+        if (negative)
+        {
+            max_val = static_cast<unsigned_t>(-(numeric_limits<T>::min() + 1)) + 1;
+        }
+    }
+
+    bool has_digits = false;
+    while (p != last)
+    {
+        int digit;
+        char c = *p;
+
+        if (c >= '0' && c <= '9')
+        {
+            digit = c - '0';
+        }
+        else if (c >= 'a' && c <= 'z')
+        {
+            digit = c - 'a' + 10;
+        }
+        else if (c >= 'A' && c <= 'Z')
+        {
+            digit = c - 'A' + 10;
+        }
+        else
+        {
+            break;
+        }
+
+        if (digit >= base)
+        {
+            break;
+        }
+
+        has_digits = true;
+
+        // Check for overflow
+        if (result > (max_val - digit) / base)
+        {
+            // Find end of number for ptr
+            while (p != last)
+            {
+                c = *p;
+                int d;
+                if (c >= '0' && c <= '9')
+                    d = c - '0';
+                else if (c >= 'a' && c <= 'z')
+                    d = c - 'a' + 10;
+                else if (c >= 'A' && c <= 'Z')
+                    d = c - 'A' + 10;
+                else
+                    break;
+                if (d >= base)
+                    break;
+                ++p;
+            }
+            return {p, errc::result_out_of_range};
+        }
+
+        result = result * base + digit;
+        ++p;
+    }
+
+    if (!has_digits)
+    {
+        return {first, errc::invalid_argument};
+    }
+
+    if constexpr (is_signed_v<T>)
+    {
+        if (negative)
+        {
+            value = -static_cast<T>(result);
+        }
+        else
+        {
+            value = static_cast<T>(result);
+        }
+    }
+    else
+    {
+        value = result;
+    }
+
+    return {p, errc{}};
+}
+
+} // namespace __detail
+
+// from_chars for integers (base 10)
+template <class T>
+enable_if_t<is_integral_v<T> && !is_same_v<T, bool>, from_chars_result> from_chars(
+    const char *first, const char *last, T &value)
+{
+    return __detail::__from_chars_integral(first, last, value, 10);
+}
+
+// from_chars for integers (custom base)
+template <class T>
+enable_if_t<is_integral_v<T> && !is_same_v<T, bool>, from_chars_result> from_chars(
+    const char *first, const char *last, T &value, int base)
+{
+    if (base < 2 || base > 36)
+    {
+        return {first, errc::invalid_argument};
+    }
+    return __detail::__from_chars_integral(first, last, value, base);
+}
+
+// from_chars for floating-point (stub - not fully implemented)
+inline from_chars_result from_chars(const char *first,
+                                    const char *last,
+                                    float &value,
+                                    chars_format fmt = chars_format::general)
+{
+    (void)fmt;
+    // Simple integer-only conversion for stub
+    int ivalue;
+    auto result = from_chars(first, last, ivalue);
+    if (result.ec == errc{})
+    {
+        value = static_cast<float>(ivalue);
+    }
+    return result;
+}
+
+inline from_chars_result from_chars(const char *first,
+                                    const char *last,
+                                    double &value,
+                                    chars_format fmt = chars_format::general)
+{
+    (void)fmt;
+    int ivalue;
+    auto result = from_chars(first, last, ivalue);
+    if (result.ec == errc{})
+    {
+        value = static_cast<double>(ivalue);
+    }
+    return result;
+}
+
+inline from_chars_result from_chars(const char *first,
+                                    const char *last,
+                                    long double &value,
+                                    chars_format fmt = chars_format::general)
+{
+    (void)fmt;
+    int ivalue;
+    auto result = from_chars(first, last, ivalue);
+    if (result.ec == errc{})
+    {
+        value = static_cast<long double>(ivalue);
+    }
+    return result;
+}
+
+} // namespace std
+
+#endif // _VIPER_CHARCONV

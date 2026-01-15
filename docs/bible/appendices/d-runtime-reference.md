@@ -2886,8 +2886,8 @@ tree.SetFont(font: Font, size: f64) -> void
 var tree = new TreeView(app.Root)
 var root = tree.AddNode(null, "Project")
 var src = tree.AddNode(root, "src")
-tree.AddNode(src, "main.viper")
-tree.AddNode(src, "utils.viper")
+tree.AddNode(src, "main.zia")
+tree.AddNode(src, "utils.zia")
 var docs = tree.AddNode(root, "docs")
 tree.AddNode(docs, "README.md")
 

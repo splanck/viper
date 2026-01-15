@@ -10,7 +10,7 @@ This document maps existing Viper documentation and code examples to the Bible's
 
 - Target audience: Complete beginners who have never written code
 - Approach: Narrative, explanatory, concept-first
-- Primary language: ViperLang (with BASIC and Pascal for comparison)
+- Primary language: Zia (with BASIC and Pascal for comparison)
 - Goal: Readers can build sophisticated applications by the end
 
 ---
@@ -22,10 +22,10 @@ This document maps existing Viper documentation and code examples to the Bible's
 | Existing docs | 144 | ~28,000 | Appendices, reference validation |
 | BASIC examples | 50+ | ~400 | Exercise inspiration, code patterns |
 | Pascal examples | 6 | ~320 | Exercise inspiration |
-| ViperLang examples | 1 | ~5 | Needs expansion |
+| Zia examples | 1 | ~5 | Needs expansion |
 | BASIC demos | 7 games | ~9,600 | Part IV projects (esp. Frogger) |
 | Pascal demos | 4 games | ~2,550 | Alternative implementations |
-| ViperLang demos | 1 game | ~1,800 | Module system showcase |
+| Zia demos | 1 game | ~1,800 | Module system showcase |
 | Runtime headers | 80+ | varies | Part II/III API teaching |
 
 ---
@@ -38,7 +38,7 @@ This document maps existing Viper documentation and code examples to the Bible's
 |---------|-----------------|---------------|
 | 0. Getting Started | `/docs/getting-started.md` | Installation, verify setup |
 | 1. The Machine | New | Mental model, what computers do |
-| 2. First Program | `hello.viper`, `hello.bas`, `hello.pas` | Hello World, anatomy of a program |
+| 2. First Program | `hello.zia`, `hello.bas`, `hello.pas` | Hello World, anatomy of a program |
 | 3. Values and Names | Basic examples | Variables, types, literals |
 | 4. Making Decisions | `ex1_hello_cond.bas`, `ex4_if_elseif.bas` | if/else, conditions, booleans |
 | 5. Repetition | `ex3_for_table.bas`, loop examples | for, while, loop patterns |
@@ -68,7 +68,7 @@ This document maps existing Viper documentation and code examples to the Bible's
 | 9. Files and Persistence | File examples, `rt_file.h` | Reading/writing files |
 | 10. Errors and Recovery | `/docs/devdocs/specs/errors.md` | Try/catch, error handling |
 | 11. Structures | OOP examples | Records, grouping data |
-| 12. Modules | ViperLang Frogger demo | Import, export, organization |
+| 12. Modules | Zia Frogger demo | Import, export, organization |
 | 13. The Standard Library | `/docs/viperlib/` | Survey of available APIs |
 
 ---
@@ -110,7 +110,7 @@ Chapter 21 will walk through building Frogger from scratch, teaching:
 - Score and lives
 - Progressive difficulty
 
-Source: `/demos/basic/frogger/` (1,200+ LOC) and `/demos/viperlang/frogger/` (16 modules)
+Source: `/demos/basic/frogger/` (1,200+ LOC) and `/demos/zia/frogger/` (16 modules)
 
 ---
 
@@ -133,7 +133,7 @@ Source: `/demos/basic/frogger/` (1,200+ LOC) and `/demos/viperlang/frogger/` (16
 
 | Appendix | Source | Notes |
 |----------|--------|-------|
-| A. ViperLang Reference | `/docs/viperlang-reference.md` | Reformatted |
+| A. Zia Reference | `/docs/zia-reference.md` | Reformatted |
 | B. BASIC Reference | `/docs/basic-reference.md` | Reformatted |
 | C. Pascal Reference | `/docs/pascal-reference.md` | Reformatted |
 | D. Runtime Library | `/docs/viperlib/*.md` | Consolidated |
@@ -146,9 +146,9 @@ Source: `/demos/basic/frogger/` (1,200+ LOC) and `/demos/viperlang/frogger/` (16
 
 ### By Concept (for teaching)
 
-| Concept | ViperLang | BASIC | Pascal |
+| Concept | Zia | BASIC | Pascal |
 |---------|-----------|-------|--------|
-| Hello World | `hello.viper` | many | `hello.pas` |
+| Hello World | `hello.zia` | many | `hello.pas` |
 | Variables | needs creation | `ex5_input_echo.bas` | examples |
 | Loops | needs creation | `ex3_for_table.bas` | `fibonacci.pas` |
 | Arrays | needs creation | `ex6_array_sum.bas` | examples |
@@ -159,9 +159,9 @@ Source: `/demos/basic/frogger/` (1,200+ LOC) and `/demos/viperlang/frogger/` (16
 | Graphics | needs creation | Particles demo | demos |
 | Games | Frogger demo | 7 game demos | 4 game demos |
 
-### Gap: ViperLang Examples
+### Gap: Zia Examples
 
-The ViperLang frontend has excellent demos but lacks small teaching examples. Need to create:
+The Zia frontend has excellent demos but lacks small teaching examples. Need to create:
 - [ ] Basic variable examples
 - [ ] Control flow examples
 - [ ] Function examples
@@ -175,7 +175,7 @@ The ViperLang frontend has excellent demos but lacks small teaching examples. Ne
 
 ### Commonly Used (teach early)
 
-| Function | ViperLang | BASIC | Pascal |
+| Function | Zia | BASIC | Pascal |
 |----------|-----------|-------|--------|
 | Print text | `Viper.Terminal.Say()` | `PRINT` | `WriteLn` |
 | Read input | `Viper.Terminal.Ask()` | `INPUT` | `ReadLn` |

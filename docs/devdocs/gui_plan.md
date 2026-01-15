@@ -1,6 +1,6 @@
 # Viper.GUI Implementation Plan
 
-A comprehensive plan for building a cross-platform GUI toolkit for ViperLang, designed to support building a professional IDE.
+A comprehensive plan for building a cross-platform GUI toolkit for Zia, designed to support building a professional IDE.
 
 > **Status Update (January 2026):** Phase 7 (Runtime & API) is complete. The `Viper.GUI.*` namespace is now available to Viper programs with 24 widget classes including App, Label, Button, TextInput, Checkbox, Dropdown, Slider, ProgressBar, ListBox, RadioButton, Spinner, Image, TreeView, TabBar, CodeEditor, and layout containers.
 
@@ -24,7 +24,7 @@ A comprehensive plan for building a cross-platform GUI toolkit for ViperLang, de
 6. [IDE Widgets](#6-ide-widgets)
 7. [Theming System](#7-theming-system)
 8. [Platform Extensions](#8-platform-extensions)
-9. [ViperLang API](#9-viperlang-api)
+9. [Zia API](#9-zia-api)
 10. [Implementation Phases](#10-implementation-phases)
 
 ---
@@ -35,7 +35,7 @@ A comprehensive plan for building a cross-platform GUI toolkit for ViperLang, de
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                         ViperLang API                                │
+│                         Zia API                                │
 │              Viper.GUI.Window, Button, TextEdit, etc.               │
 └─────────────────────────────────────────────────────────────────────┘
                                   │
@@ -2172,7 +2172,7 @@ typedef enum vg_file_dialog_flags {
 
 typedef struct vg_file_filter {
     const char* name;        // e.g., "Viper Files"
-    const char* pattern;     // e.g., "*.viper;*.vp"
+    const char* pattern;     // e.g., "*.zia;*.vp"
 } vg_file_filter_t;
 
 //=============================================================================
@@ -2213,7 +2213,7 @@ void vg_file_result_free(vg_file_result_t* result);
 
 ---
 
-## 9. ViperLang API
+## 9. Zia API
 
 ### 9.1 Runtime Declarations
 
@@ -2264,7 +2264,7 @@ void rt_gui_textinput_on_submit(void* input, void* callback);
 // ... similar declarations for all widgets
 ```
 
-### 9.2 ViperLang Examples
+### 9.2 Zia Examples
 
 ```rust
 // Example 1: Simple window with button
@@ -2366,7 +2366,7 @@ func start() {
     // Tab bar and editors
     var editorArea = Viper.GUI.VBox.New(0);
     var tabs = Viper.GUI.TabBar.New();
-    tabs.AddTab("main.viper", "file");
+    tabs.AddTab("main.zia", "file");
     editorArea.Add(tabs);
 
     var editor = Viper.GUI.CodeEditor.New();
@@ -2432,7 +2432,7 @@ func start() {
 
 **Week 7-8: Integration & Polish**
 - [ ] Runtime bindings (`rt_gui_font_*`)
-- [ ] ViperLang API (`Viper.GUI.Font`)
+- [ ] Zia API (`Viper.GUI.Font`)
 - [ ] Documentation
 - [ ] Performance optimization
 - [ ] Memory leak testing
@@ -2592,7 +2592,7 @@ func start() {
 
 **Deliverables:**
 - IDE widget files
-- ViperLang syntax highlighter
+- Zia syntax highlighter
 - Test suite
 - Example: minimal IDE layout
 
@@ -2631,7 +2631,7 @@ func start() {
 
 ### Phase 7: Runtime & API (3-4 weeks)
 
-**Goal:** Complete ViperLang integration.
+**Goal:** Complete Zia integration.
 
 **Status:** ✅ **COMPLETE** (January 2026)
 
@@ -2665,7 +2665,7 @@ func start() {
 | 4. Theming | 3-4 weeks | ~1,000 | Dark/Light themes |
 | 5. IDE Widgets | 8-10 weeks | ~6,000 | TreeView, CodeEditor |
 | 6. Platform | 4-6 weeks | ~2,000 | Win32, X11 |
-| 7. Runtime | 3-4 weeks | ~1,500 | ViperLang API |
+| 7. Runtime | 3-4 weeks | ~1,500 | Zia API |
 | **Total** | **~9-12 months** | **~22,000** | **Full GUI toolkit** |
 
 ---

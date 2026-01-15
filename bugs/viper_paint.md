@@ -4,7 +4,7 @@
 
 A professional-quality paint application written in Viperlang, showcasing the full capabilities of Viper.GUI.* and Viper.Graphics.* APIs with proper OOP architecture.
 
-**Target:** `demos/viperlang/paint/`
+**Target:** `demos/zia/paint/`
 
 ### Design Decisions
 - **UI Approach:** Hybrid - Use Viper.GUI.* widgets (Button, Slider, Label) for standard controls; custom-draw specialized elements (color palette grid, canvas preview)
@@ -211,31 +211,31 @@ PaintApp (main controller)
 ## File Structure
 
 ```
-demos/viperlang/paint/
-  main.viper           - Entry point, main loop
-  app.viper            - PaintApp controller class
-  canvas.viper         - DrawingCanvas, Selection classes
+demos/zia/paint/
+  main.zia           - Entry point, main loop
+  app.zia            - PaintApp controller class
+  canvas.zia         - DrawingCanvas, Selection classes
   tools/
-    tool.viper         - ITool interface
-    pencil.viper       - PencilTool
-    brush.viper        - BrushTool
-    eraser.viper       - EraserTool
-    line.viper         - LineTool
-    rectangle.viper    - RectangleTool
-    ellipse.viper      - EllipseTool
-    fill.viper         - FillTool
-    eyedropper.viper   - EyedropperTool
-    text.viper         - TextTool
-    select.viper       - SelectTool
+    tool.zia         - ITool interface
+    pencil.zia       - PencilTool
+    brush.zia        - BrushTool
+    eraser.zia       - EraserTool
+    line.zia         - LineTool
+    rectangle.zia    - RectangleTool
+    ellipse.zia      - EllipseTool
+    fill.zia         - FillTool
+    eyedropper.zia   - EyedropperTool
+    text.zia         - TextTool
+    select.zia       - SelectTool
   ui/
-    toolbar.viper      - Top toolbar
-    toolpanel.viper    - Left tool buttons
-    colorpanel.viper   - Right color controls
-    brushpanel.viper   - Brush settings
-    statusbar.viper    - Bottom status
-  history.viper        - HistoryManager, CanvasState
-  colors.viper         - ColorManager
-  brush.viper          - BrushSettings
+    toolbar.zia      - Top toolbar
+    toolpanel.zia    - Left tool buttons
+    colorpanel.zia   - Right color controls
+    brushpanel.zia   - Brush settings
+    statusbar.zia    - Bottom status
+  history.zia        - HistoryManager, CanvasState
+  colors.zia         - ColorManager
+  brush.zia          - BrushSettings
   README.md            - Documentation
 ```
 
@@ -916,26 +916,26 @@ entity PaintApp {
 
 | File | Purpose | Lines (est.) |
 |------|---------|--------------|
-| main.viper | Entry point | 30 |
-| app.viper | PaintApp class | 400 |
-| canvas.viper | DrawingCanvas, Selection | 250 |
-| tools/tool.viper | ITool interface | 30 |
-| tools/pencil.viper | PencilTool | 80 |
-| tools/brush.viper | BrushTool | 120 |
-| tools/eraser.viper | EraserTool | 80 |
-| tools/line.viper | LineTool | 100 |
-| tools/rectangle.viper | RectangleTool | 100 |
-| tools/ellipse.viper | EllipseTool | 120 |
-| tools/fill.viper | FillTool | 100 |
-| tools/eyedropper.viper | EyedropperTool | 60 |
-| tools/select.viper | SelectTool | 150 |
-| ui/toolbar.viper | Toolbar panel | 100 |
-| ui/toolpanel.viper | Tool buttons | 100 |
-| ui/colorpanel.viper | Color controls | 150 |
-| ui/statusbar.viper | Status display | 60 |
-| history.viper | HistoryManager | 100 |
-| colors.viper | ColorManager | 120 |
-| brush.viper | BrushSettings | 50 |
+| main.zia | Entry point | 30 |
+| app.zia | PaintApp class | 400 |
+| canvas.zia | DrawingCanvas, Selection | 250 |
+| tools/tool.zia | ITool interface | 30 |
+| tools/pencil.zia | PencilTool | 80 |
+| tools/brush.zia | BrushTool | 120 |
+| tools/eraser.zia | EraserTool | 80 |
+| tools/line.zia | LineTool | 100 |
+| tools/rectangle.zia | RectangleTool | 100 |
+| tools/ellipse.zia | EllipseTool | 120 |
+| tools/fill.zia | FillTool | 100 |
+| tools/eyedropper.zia | EyedropperTool | 60 |
+| tools/select.zia | SelectTool | 150 |
+| ui/toolbar.zia | Toolbar panel | 100 |
+| ui/toolpanel.zia | Tool buttons | 100 |
+| ui/colorpanel.zia | Color controls | 150 |
+| ui/statusbar.zia | Status display | 60 |
+| history.zia | HistoryManager | 100 |
+| colors.zia | ColorManager | 120 |
+| brush.zia | BrushSettings | 50 |
 | **Total** | | **~2100** |
 
 ---

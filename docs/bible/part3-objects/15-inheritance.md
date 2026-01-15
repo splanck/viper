@@ -1035,7 +1035,7 @@ Suddenly VideoPlayer might break. Its author assumed a certain order of operatio
 
 Different Viper language styles express inheritance differently:
 
-**ViperLang**
+**Zia**
 ```rust
 entity Animal {
     name: string;
