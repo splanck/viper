@@ -384,6 +384,13 @@ if (NOT TARGET test_codegen_x86_64_lowering_rules)
     viper_add_ctest(test_codegen_x86_64_lowering_rules test_codegen_x86_64_lowering_rules)
 endif ()
 
+# Bytecode VM tests
+if (NOT TARGET test_bytecode_vm)
+    viper_add_test(test_bytecode_vm ${VIPER_TESTS_DIR}/unit/test_bytecode_vm.cpp)
+    target_link_libraries(test_bytecode_vm PRIVATE viper_bytecode il_build)
+    viper_add_ctest(test_bytecode_vm test_bytecode_vm)
+endif ()
+
 function(viper_add_runtime_tests)
     if (TARGET test_rt_string)
         return()

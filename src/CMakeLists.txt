@@ -279,6 +279,18 @@ if (VIPER_VM_THREADED)
     target_compile_definitions(il_vm PUBLIC VIPER_VM_THREADED=1)
 endif ()
 
+# Bytecode VM - fast interpreter using compact bytecode format
+add_library(viper_bytecode STATIC
+        bytecode/Bytecode.cpp
+        bytecode/BytecodeCompiler.cpp
+        bytecode/BytecodeVM.cpp)
+target_include_directories(viper_bytecode PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>)
+target_link_libraries(viper_bytecode
+        PUBLIC viper_il_core
+        PRIVATE viper_support)
+
 add_library(il_codegen_x86_64 STATIC
         codegen/x86_64/AsmEmitter.cpp
         codegen/x86_64/Backend.cpp
