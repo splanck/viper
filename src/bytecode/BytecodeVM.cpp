@@ -954,7 +954,7 @@ void BytecodeVM::call(const BytecodeFunction* func) {
     frame.pc = 0;
     frame.locals = localsStart;
     frame.stackBase = localsStart + func->numLocals;
-    frame.ehStackDepth = 0;  // TODO: exception handlers
+    frame.ehStackDepth = static_cast<uint32_t>(ehStack_.size());
     frame.callSitePc = callSitePc;
     frame.allocaBase = allocaTop_;  // Save alloca position for cleanup on return
 
@@ -2094,9 +2094,9 @@ L_SWITCH: {
 
         if (caseVal == scrutinee) {
             // Found matching case - jump to its target
-            // Offset is relative to the offset word position
+            // Offset is relative to the offset word position (same as EH_PUSH)
             int32_t caseOffset = static_cast<int32_t>(code[caseOffsetPos]);
-            pc = caseOffsetPos + caseOffset + 1;  // +1 because offset is calculated from codeOffset, not codeOffset+1
+            pc = caseOffsetPos + caseOffset;
             found = true;
             break;
         }
@@ -2105,7 +2105,7 @@ L_SWITCH: {
     if (!found) {
         // No match - use default offset
         int32_t defaultOffset = static_cast<int32_t>(code[defaultOffsetPos]);
-        pc = defaultOffsetPos + defaultOffset + 1;
+        pc = defaultOffsetPos + defaultOffset;
     }
 
     DISPATCH();
