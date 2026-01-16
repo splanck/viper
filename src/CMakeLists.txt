@@ -375,7 +375,8 @@ target_link_libraries(vbasic
         il_transform
         fe_basic
         il_api
-        il_tools_common)
+        il_tools_common
+        viper_bytecode)
 install(TARGETS vbasic RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 if (VIPER_ENABLE_PASCAL)
@@ -394,7 +395,8 @@ if (VIPER_ENABLE_PASCAL)
             il_transform
             fe_pascal
             il_api
-            il_tools_common)
+            il_tools_common
+            viper_bytecode)
     target_compile_definitions(vpascal PRIVATE VIPER_ENABLE_PASCAL=1)
     install(TARGETS vpascal RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif ()
@@ -414,7 +416,8 @@ target_link_libraries(zia
         il_transform
         fe_zia
         il_api
-        il_tools_common)
+        il_tools_common
+        viper_bytecode)
 install(TARGETS zia RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 add_executable(ilrun

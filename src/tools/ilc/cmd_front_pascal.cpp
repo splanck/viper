@@ -11,6 +11,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "cli.hpp"
+#include "bytecode/BytecodeCompiler.hpp"
+#include "bytecode/BytecodeVM.hpp"
 #include "frontends/pascal/Compiler.hpp"
 #include "il/api/expected_api.hpp"
 #include "support/diag_expected.hpp"
@@ -36,6 +38,7 @@ struct FrontPascalConfig
 {
     bool emitIl{false};
     bool run{false};
+    bool debugVm{false};                  ///< True to use standard VM for debugging.
     std::vector<std::string> sourcePaths; // Multiple source files
     ilc::SharedCliOptions shared;
     std::vector<std::string> programArgs;
@@ -67,6 +70,10 @@ il::support::Expected<FrontPascalConfig> parseFrontPascalArgs(int argc, char **a
         {
             config.run = true;
             parsingPaths = true;
+        }
+        else if (arg == "--debug-vm")
+        {
+            config.debugVm = true;
         }
         else if (arg == "--")
         {
@@ -299,32 +306,64 @@ int runFrontPascal(const FrontPascalConfig &config,
         }
     }
 
-    vm::TraceConfig traceCfg = config.shared.trace;
-    traceCfg.sm = &sm;
+    // Use standard VM for debugging (when --debug-vm or --trace is specified)
+    bool useStandardVm = config.debugVm || config.shared.trace.enabled();
 
-    vm::RunConfig runCfg;
-    runCfg.trace = traceCfg;
-    runCfg.maxSteps = config.shared.maxSteps;
-    runCfg.programArgs = config.programArgs;
-
-    vm::Runner runner(module, std::move(runCfg));
-    int rc = static_cast<int>(runner.run());
-
-    const auto trapMessage = runner.lastTrapMessage();
-    if (trapMessage)
+    if (useStandardVm)
     {
-        if (config.shared.dumpTrap && !trapMessage->empty())
+        vm::TraceConfig traceCfg = config.shared.trace;
+        traceCfg.sm = &sm;
+
+        vm::RunConfig runCfg;
+        runCfg.trace = traceCfg;
+        runCfg.maxSteps = config.shared.maxSteps;
+        runCfg.programArgs = config.programArgs;
+
+        vm::Runner runner(module, std::move(runCfg));
+        int rc = static_cast<int>(runner.run());
+
+        const auto trapMessage = runner.lastTrapMessage();
+        if (trapMessage)
         {
-            std::cerr << *trapMessage;
-            if (trapMessage->back() != '\n')
+            if (config.shared.dumpTrap && !trapMessage->empty())
             {
-                std::cerr << '\n';
+                std::cerr << *trapMessage;
+                if (trapMessage->back() != '\n')
+                {
+                    std::cerr << '\n';
+                }
+            }
+            if (rc == 0)
+            {
+                rc = 1;
             }
         }
-        if (rc == 0)
+        return rc;
+    }
+
+    // Default: use fast bytecode VM with threaded dispatch
+    viper::bytecode::BytecodeCompiler bcCompiler;
+    viper::bytecode::BytecodeModule bcModule = bcCompiler.compile(module);
+
+    viper::bytecode::BytecodeVM bcVm;
+    bcVm.setThreadedDispatch(true);
+    bcVm.setRuntimeBridgeEnabled(true);
+    bcVm.load(&bcModule);
+
+    viper::bytecode::BCSlot bcResult = bcVm.exec("main", {});
+
+    int rc = 0;
+    if (bcVm.state() == viper::bytecode::VMState::Trapped)
+    {
+        if (config.shared.dumpTrap)
         {
-            rc = 1;
+            std::cerr << bcVm.trapMessage() << "\n";
         }
+        rc = 1;
+    }
+    else
+    {
+        rc = static_cast<int>(bcResult.i64);
     }
     return rc;
 }
