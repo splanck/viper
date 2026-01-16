@@ -1,0 +1,9 @@
+module TestInterpExpr;
+
+func start() {
+    var a: Integer = 10;
+    var b: Integer = 5;
+    // Test: Expression in interpolation
+    var s: String = "sum is ${a + b}";
+    Viper.Terminal.Say(s);
+}

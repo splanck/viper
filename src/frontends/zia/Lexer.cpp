@@ -620,6 +620,7 @@ Token Lexer::lexNumber()
     {
         tok.kind = TokenKind::IntegerLiteral;
         tok.intValue = parsed.intValue;
+        tok.requiresNegation = parsed.requiresNegation;
     }
 
     return tok;
@@ -878,8 +879,9 @@ Token Lexer::lexInterpolatedStringContinuation()
             tok.kind = TokenKind::StringMid;
             tok.text.push_back(getChar()); // consume '$'
             tok.text.push_back(getChar()); // consume '{'
-            // Stay in interpolation mode but reset brace depth for this level
-            braceDepth_.back() = 0;
+            // Enter new interpolation - push brace depth and increment depth counter
+            braceDepth_.push_back(0);
+            interpolationDepth_++;
             return tok;
         }
 

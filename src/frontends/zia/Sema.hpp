@@ -334,6 +334,18 @@ class Sema
         return it != runtimeCallees_.end() ? it->second : "";
     }
 
+    /// @brief Get the runtime getter function name for a field expression.
+    /// @param expr The field expression to look up.
+    /// @return The getter name (e.g., "Viper.Math.get_Pi") or empty string.
+    ///
+    /// @details For field expressions that resolve to runtime class property getters
+    /// (like Viper.Math.Pi), this returns the resolved getter function name.
+    std::string runtimeFieldGetter(const FieldExpr *expr) const
+    {
+        auto it = runtimeFieldGetters_.find(expr);
+        return it != runtimeFieldGetters_.end() ? it->second : "";
+    }
+
     /// @brief Look up the return type of a function by name.
     /// @param name The function name (e.g., "Viper.Random.NextInt" or "MyLib.helper").
     /// @return The return type, or nullptr if not found.
@@ -827,6 +839,11 @@ class Sema
     /// @details Populated for calls to extern functions (runtime library).
     /// Used during lowering to emit extern calls instead of direct calls.
     std::unordered_map<const CallExpr *, std::string> runtimeCallees_;
+
+    /// @brief Map from field expressions to their resolved runtime getter names.
+    /// @details For namespace-style property access like Viper.Math.Pi, this maps
+    /// the FieldExpr to "Viper.Math.get_Pi" so the lowerer can emit a getter call.
+    std::unordered_map<const FieldExpr *, std::string> runtimeFieldGetters_;
 
     /// @brief Set of bind paths seen in the current module.
     std::unordered_set<std::string> binds_;

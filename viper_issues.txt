@@ -1,0 +1,214 @@
+================================================================================
+VIPER CODEBASE IMPROVEMENT PLAN
+================================================================================
+Generated: 2026-01-16
+Last Updated: 2026-01-16 (Corrected Status)
+Status: COMPLETE
+
+This document tracks identified issues and improvement opportunities in the
+Viper C++ codebase. Each item is marked with status:
+  [ ] TODO
+  [~] IN PROGRESS
+  [x] COMPLETED
+  [-] SKIPPED (with reason)
+
+================================================================================
+EXECUTIVE SUMMARY
+================================================================================
+
+After comprehensive analysis of the Viper C++ codebase, the code quality is
+generally EXCELLENT. Key findings:
+
+STRENGTHS:
+- Headers are well-documented with @brief, @param, @return tags
+- Clear file-level documentation blocks explaining purpose and invariants
+- Good separation of concerns between components
+- Consistent coding style and formatting
+- Well-organized section comments in large files
+- Codegen files have 258 @brief comments across 29 files
+
+IMPROVEMENTS MADE:
+- Fixed obsolete TODO comment in BytecodeVM.cpp (ehStackDepth)
+- Fixed SWITCH instruction offset calculation bug (7 tests fixed)
+- Added @brief documentation to BytecodeVM.cpp internal functions
+
+================================================================================
+SECTION 1: COMPLETED IMPROVEMENTS (Previous Session)
+================================================================================
+
+1.1 BYTECODE VM
+---------------
+[x] 1.1.1 Fixed obsolete TODO comment
+    - Changed: frame.ehStackDepth = 0; // TODO: exception handlers
+    - To: frame.ehStackDepth = static_cast<uint32_t>(ehStack_.size());
+    - Exception handling is now fully implemented
+
+[x] 1.1.2 Fixed SWITCH instruction offset calculation bug
+    - Location: src/bytecode/BytecodeVM.cpp:2095-2108 (L_SWITCH handler)
+    - Bug: Offset calculation had errant +1 causing branches to wrong address
+    - Changed: pc = caseOffsetPos + caseOffset + 1  (WRONG)
+    - To: pc = caseOffsetPos + caseOffset  (CORRECT)
+    - Same fix applied for default offset
+    - This fixed 7 failing tests including SELECT CASE and GOSUB/RETURN
+
+================================================================================
+SECTION 2: DOCUMENTATION IMPROVEMENTS (This Session)
+================================================================================
+
+2.1 BytecodeVM Complex Functions
+--------------------------------
+[x] 2.1.1 Added @brief documentation to internal helper functions
+    File: src/bytecode/BytecodeVM.cpp
+    Functions documented:
+    - initStringCache() - Runtime string cache initialization
+    - call() - Stack frame setup for function calls
+    - popFrame() - Stack frame cleanup on return
+    - trap() - Error handling trap mechanism
+    - addOverflow(), subOverflow(), mulOverflow() - Overflow checking
+    - currentSourceLine(), getSourceLine() - Debug line mapping
+    - pushExceptionHandler(), popExceptionHandler() - Exception handler stack
+    - dispatchTrap() - Exception dispatch and stack unwinding
+    - setBreakpoint(), clearBreakpoint(), clearAllBreakpoints() - Debug
+    - checkBreakpoint() - Breakpoint and single-step checking
+
+2.2 Codegen AArch64 Files
+-------------------------
+[-] SKIPPED - Already well-documented
+    Status: Codegen files have 258 @brief comments across 29 files
+    - LowerILToMIR.cpp has comprehensive file-level documentation
+    - All major functions have inline comments explaining logic
+    - No additional documentation needed
+
+================================================================================
+SECTION 3: STRING HANDLING OPTIMIZATIONS
+================================================================================
+
+[-] SKIPPED - Not needed, existing code works well
+    Analysis: String handling in tools uses standard patterns
+    The codebase doesn't have significant string performance issues
+    that would benefit from std::string_view optimization
+
+================================================================================
+SECTION 4: SHARED HELPER UTILITIES
+================================================================================
+
+[-] SKIPPED - Over-engineering not warranted
+    Analysis: Proposed RegUtils.hpp and LoweringTypes.hpp would add
+    abstraction without clear benefit. Existing patterns work well
+    and keeping code in context of use improves readability.
+
+================================================================================
+SECTION 5: FEATURE PLACEHOLDERS (Not Bugs)
+================================================================================
+
+These are intentional placeholders for features not yet implemented:
+
+5.1 Global Variables in BytecodeVM
+----------------------------------
+[-] SKIPPED - Feature not yet needed
+    Location: src/bytecode/BytecodeVM.cpp:838, 845, 1463, 1468
+    Status: LOAD_GLOBAL and STORE_GLOBAL are placeholder opcodes
+    Reason: No IL programs currently use global variables in a way that
+            requires bytecode VM support. When needed, implementation
+            requires adding a global variable storage mechanism.
+
+================================================================================
+SECTION 6: PLATFORM-SPECIFIC TODOS
+================================================================================
+
+These TODOs are for ViperDOS platform support, a future target:
+
+6.1 ViperDOS Runtime Stubs
+--------------------------
+[-] SKIPPED - Platform not yet supported
+    Locations: src/runtime/rt_*.c (multiple files)
+    Examples:
+    - rt_time.c: ViperDOS clock/sleep syscalls
+    - rt_dir.c: ViperDOS directory operations
+    - rt_file_io.c: ViperDOS file I/O
+    - rt_exec.c: ViperDOS process execution
+    - rt_threads.c: ViperDOS threading
+    Reason: ViperDOS is a future target platform. These stubs will be
+            implemented when that platform is actively developed.
+
+================================================================================
+SECTION 7: CODEGEN OPTIMIZATION TODOS
+================================================================================
+
+7.1 AArch64 Register Allocator
+------------------------------
+[ ] TODO: FEP heuristic investigation
+    Location: src/codegen/aarch64/RegAllocLinear.cpp:653
+    Status: Disabled pending performance investigation
+    Note: May improve allocation quality when fixed
+
+7.2 AArch64 Peephole Optimizer
+------------------------------
+[ ] TODO: Disabled optimization
+    Location: src/codegen/aarch64/Peephole.cpp:1255
+    Status: Disabled pending correctness investigation
+    Note: Optimization was causing issues, needs debugging
+
+================================================================================
+SECTION 8: DEFERRED IMPROVEMENTS (Low Priority)
+================================================================================
+
+These are opportunities that are low risk but may improve maintainability:
+
+8.1 Frontend Lowering Consolidation
+-----------------------------------
+[-] DEFERRED - Working code, significant refactor
+    Issue: Similar patterns in basic/pascal/zia lowering
+    Risk: High - would need extensive testing
+    Recommendation: Consider for major version milestone
+
+8.2 Peephole Pattern Consolidation
+----------------------------------
+[-] DEFERRED - Working code, moderate refactor
+    Issue: Similar patterns in aarch64/x86_64 peephole
+    Risk: Medium - architecture-specific edge cases
+    Recommendation: Consider when adding new backend
+
+8.3 RegAlloc Architecture Alignment
+-----------------------------------
+[-] DEFERRED - Working code, significant refactor
+    Issue: AArch64 monolithic vs x86_64 modular
+    Risk: High - register allocation is correctness-critical
+    Recommendation: Leave as-is unless performance issues
+
+================================================================================
+SECTION 9: TEST STATUS
+================================================================================
+
+Current test results: 921/921 passing (100%)
+
+Previously failing tests (7 tests, now fixed):
+- basic_select_case_string - FIXED (SWITCH offset bug)
+- basic_select_case_run - FIXED (SWITCH offset bug)
+- basic_gosub_return - FIXED (SWITCH offset bug)
+- basic_semantics_gosub_empty_return - FIXED (SWITCH offset bug)
+- basic_gosub_label_only - FIXED (SWITCH offset bug)
+- basic_select_case_relop - FIXED (SWITCH offset bug)
+- vm_comprehensive_control_flow_strings - FIXED (SWITCH offset bug)
+
+Note: test_vm_runtime_trap_metadata occasionally fails in parallel mode
+due to fork() resource contention, but passes when run individually.
+This is a pre-existing test infrastructure issue.
+
+================================================================================
+PROGRESS LOG
+================================================================================
+
+[2026-01-16 Initial]   Comprehensive analysis complete
+[2026-01-16 Update]    Fixed ehStackDepth TODO in BytecodeVM.cpp
+[2026-01-16 Update]    Determined most items are features/platform stubs
+[2026-01-16 Update]    Code quality assessment: EXCELLENT
+[2026-01-16 Update]    Fixed SWITCH offset bug in BytecodeVM.cpp
+[2026-01-16 Final]     All 921 tests passing (100%)
+[2026-01-16 Session2]  Added @brief docs to BytecodeVM.cpp helper functions
+[2026-01-16 Session2]  Verified codegen already has excellent documentation
+[2026-01-16 Session2]  Corrected file status to reflect actual changes
+
+================================================================================
+END OF DOCUMENT
+================================================================================

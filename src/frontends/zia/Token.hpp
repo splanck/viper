@@ -643,6 +643,12 @@ struct Token
     /// decimal notation. Valid only when kind == IntegerLiteral.
     int64_t intValue = 0;
 
+    /// @brief True if this integer literal requires negation to be valid.
+    /// @details Set when the literal is exactly 9223372036854775808, which
+    /// overflows int64_t but becomes valid INT64_MIN when negated.
+    /// Used by the parser to handle `-9223372036854775808`.
+    bool requiresNegation = false;
+
     /// @brief Parsed floating-point value for NumberLiteral tokens.
     /// @details Contains the numeric value after parsing. Uses IEEE 754
     /// double-precision representation. Valid only when kind == NumberLiteral.

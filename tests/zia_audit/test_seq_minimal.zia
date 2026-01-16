@@ -1,0 +1,15 @@
+module TestSeqMinimal;
+
+// Test: Minimal Seq
+
+func start() {
+    Viper.Terminal.Say("=== Seq Minimal Test ===");
+
+    var arr: Ptr = Viper.Collections.Seq.New(5);
+    Viper.Terminal.Say("Created seq");
+
+    Viper.Collections.Seq.Set(arr, 0, 10);
+    Viper.Terminal.Say("Set element");
+
+    Viper.Terminal.Say("RESULT: ok");
+}

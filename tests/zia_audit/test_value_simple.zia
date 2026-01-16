@@ -1,0 +1,27 @@
+module TestValueSimple;
+
+// Test: Simple value type
+
+value Point2D {
+    expose Number x;
+    expose Number y;
+
+    expose func init(px: Number, py: Number) {
+        x = px;
+        y = py;
+    }
+}
+
+func start() {
+    Viper.Terminal.Say("=== Value Type Simple Test ===");
+
+    var p1: Point2D = new Point2D(3.0, 4.0);
+    Viper.Terminal.Say("Created point");
+
+    // Test field access
+    if (p1.x > 2.0 && p1.y > 3.0) {
+        Viper.Terminal.Say("Fields look correct");
+    }
+
+    Viper.Terminal.Say("RESULT: ok");
+}

@@ -1,0 +1,215 @@
+module TestExpressions;
+
+// Test: Expressions (field access, method calls, indexing)
+
+var passed: Integer = 0;
+var failed: Integer = 0;
+
+func check(name: String, actual: Integer, expected: Integer) {
+    if (actual == expected) {
+        passed = passed + 1;
+    } else {
+        failed = failed + 1;
+        Viper.Terminal.Say("FAIL: " + name + " - expected " + Viper.Strings.FromInt(expected) + ", got " + Viper.Strings.FromInt(actual));
+    }
+}
+
+func checkStr(name: String, actual: String, expected: String) {
+    if (actual == expected) {
+        passed = passed + 1;
+    } else {
+        failed = failed + 1;
+        Viper.Terminal.Say("FAIL: " + name + " - expected '" + expected + "', got '" + actual + "'");
+    }
+}
+
+func checkBool(name: String, actual: Boolean, expected: Boolean) {
+    if (actual == expected) {
+        passed = passed + 1;
+    } else {
+        failed = failed + 1;
+        Viper.Terminal.Say("FAIL: " + name);
+    }
+}
+
+// Entity for field access testing
+entity Point {
+    expose Integer x;
+    expose Integer y;
+
+    expose func init(px: Integer, py: Integer) {
+        x = px;
+        y = py;
+    }
+
+    expose func getSum() -> Integer {
+        return x + y;
+    }
+
+    expose func setX(val: Integer) {
+        x = val;
+    }
+}
+
+// Nested entity for chained access
+entity Container {
+    expose Point point;
+    expose Integer value;
+
+    expose func init(px: Integer, py: Integer, v: Integer) {
+        point = new Point(px, py);
+        value = v;
+    }
+}
+
+func start() {
+    Viper.Terminal.Say("=== Expression Tests ===");
+
+    testFieldAccess();
+    testMethodCalls();
+    testFunctionCalls();
+    testCollectionIndexing();
+    testTernaryExpressions();
+    testAssignmentExpressions();
+
+    // Report results
+    Viper.Terminal.Say("=== Results ===");
+    Viper.Terminal.Say("Passed: " + Viper.Strings.FromInt(passed));
+    Viper.Terminal.Say("Failed: " + Viper.Strings.FromInt(failed));
+
+    if (failed == 0) {
+        Viper.Terminal.Say("RESULT: ok");
+    } else {
+        Viper.Terminal.Say("RESULT: fail");
+    }
+}
+
+func testFieldAccess() {
+    // Simple field access
+    var p: Point = new Point(10, 20);
+    check("Field access x", p.x, 10);
+    check("Field access y", p.y, 20);
+
+    // Field modification
+    p.x = 100;
+    check("Field modification", p.x, 100);
+
+    // Chained field access
+    var c: Container = new Container(5, 10, 42);
+    check("Chained field access point.x", c.point.x, 5);
+    check("Chained field access point.y", c.point.y, 10);
+    check("Container value", c.value, 42);
+
+    // Modify through chain
+    c.point.x = 999;
+    check("Modify through chain", c.point.x, 999);
+}
+
+func testMethodCalls() {
+    // Instance method call
+    var p: Point = new Point(3, 4);
+    check("Instance method call", p.getSum(), 7);
+
+    // Method that modifies state
+    p.setX(100);
+    check("Method modifies state", p.x, 100);
+    check("Method call after modification", p.getSum(), 104);
+
+    // Method call on chained access
+    var c: Container = new Container(2, 3, 0);
+    check("Method on chained access", c.point.getSum(), 5);
+}
+
+func testFunctionCalls() {
+    // Simple function call
+    check("Simple function call", add(3, 4), 7);
+
+    // Nested function calls
+    check("Nested function calls", add(add(1, 2), add(3, 4)), 10);
+
+    // Function with no args
+    check("Function with no args", getConstant(), 42);
+
+    // Function with multiple args
+    check("Function with 4 args", sum4(1, 2, 3, 4), 10);
+}
+
+func add(a: Integer, b: Integer) -> Integer {
+    return a + b;
+}
+
+func getConstant() -> Integer {
+    return 42;
+}
+
+func sum4(a: Integer, b: Integer, c: Integer, d: Integer) -> Integer {
+    return a + b + c + d;
+}
+
+func testCollectionIndexing() {
+    // Using Viper.Collections.Seq (fixed-size array)
+    var arr: Ptr = Viper.Collections.Seq.New(5);
+    Viper.Collections.Seq.Set(arr, 0, 10);
+    Viper.Collections.Seq.Set(arr, 1, 20);
+    Viper.Collections.Seq.Set(arr, 2, 30);
+
+    check("Seq get index 0", Viper.Box.ToI64(Viper.Collections.Seq.Get(arr, 0)), 10);
+    check("Seq get index 1", Viper.Box.ToI64(Viper.Collections.Seq.Get(arr, 1)), 20);
+    check("Seq get index 2", Viper.Box.ToI64(Viper.Collections.Seq.Get(arr, 2)), 30);
+
+    // Modify through index
+    Viper.Collections.Seq.Set(arr, 0, 999);
+    check("Seq set modifies", Viper.Box.ToI64(Viper.Collections.Seq.Get(arr, 0)), 999);
+
+    // List indexing
+    var list: Ptr = Viper.Collections.List.New();
+    Viper.Collections.List.Add(list, 100);
+    Viper.Collections.List.Add(list, 200);
+    check("List get index 0", Viper.Box.ToI64(Viper.Collections.List.get_Item(list, 0)), 100);
+    check("List get index 1", Viper.Box.ToI64(Viper.Collections.List.get_Item(list, 1)), 200);
+}
+
+func testTernaryExpressions() {
+    // Simple ternary
+    var a: Integer = true ? 10 : 20;
+    check("Ternary true", a, 10);
+
+    var b: Integer = false ? 10 : 20;
+    check("Ternary false", b, 20);
+
+    // Ternary with expressions
+    var x: Integer = 5;
+    var c: Integer = x > 3 ? x * 2 : x / 2;
+    check("Ternary with expressions", c, 10);
+
+    // Nested ternary
+    var d: Integer = x > 10 ? 1 : (x > 5 ? 2 : (x > 0 ? 3 : 4));
+    check("Nested ternary", d, 3);
+
+    // Ternary in function call
+    check("Ternary in function call", add(true ? 1 : 2, false ? 3 : 4), 5);
+}
+
+func testAssignmentExpressions() {
+    // Simple assignment
+    var x: Integer = 0;
+    x = 10;
+    check("Simple assignment", x, 10);
+
+    // Chained assignment
+    var a: Integer = 0;
+    var b: Integer = 0;
+    var c: Integer = 0;
+    a = b = c = 42;
+    check("Chained assignment a", a, 42);
+    check("Chained assignment b", b, 42);
+    check("Chained assignment c", c, 42);
+
+    // Assignment with expression
+    var y: Integer = 5;
+    y = y + 10;
+    check("Assignment with expression", y, 15);
+
+    y = y * 2;
+    check("Assignment multiply", y, 30);
+}

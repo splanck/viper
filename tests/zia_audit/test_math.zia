@@ -1,0 +1,111 @@
+module TestMath;
+
+// Test: Viper.Math runtime class
+
+var passed: Integer = 0;
+var failed: Integer = 0;
+
+func checkNum(name: String, actual: Number, expected: Number, epsilon: Number) {
+    var diff: Number = actual - expected;
+    if (diff < 0.0) { diff = 0.0 - diff; }
+    if (diff < epsilon) {
+        passed = passed + 1;
+    } else {
+        failed = failed + 1;
+        Viper.Terminal.Say("FAIL: " + name);
+    }
+}
+
+func check(name: String, actual: Integer, expected: Integer) {
+    if (actual == expected) {
+        passed = passed + 1;
+    } else {
+        failed = failed + 1;
+        Viper.Terminal.Say("FAIL: " + name + " - expected " + Viper.Strings.FromInt(expected) + ", got " + Viper.Strings.FromInt(actual));
+    }
+}
+
+func start() {
+    Viper.Terminal.Say("=== Viper.Math Tests ===");
+
+    // Constants (use get_* for property getters)
+    checkNum("Pi", Viper.Math.get_Pi(), 3.14159265, 0.0001);
+    checkNum("E", Viper.Math.get_E(), 2.71828182, 0.0001);
+    checkNum("Tau", Viper.Math.get_Tau(), 6.28318530, 0.0001);
+
+    // Absolute value
+    checkNum("Abs positive", Viper.Math.Abs(5.5), 5.5, 0.001);
+    checkNum("Abs negative", Viper.Math.Abs(-5.5), 5.5, 0.001);
+    checkNum("Abs zero", Viper.Math.Abs(0.0), 0.0, 0.001);
+
+    // Integer absolute value
+    check("AbsInt positive", Viper.Math.AbsInt(42), 42);
+    check("AbsInt negative", Viper.Math.AbsInt(-42), 42);
+    check("AbsInt zero", Viper.Math.AbsInt(0), 0);
+
+    // Square root
+    checkNum("Sqrt 4", Viper.Math.Sqrt(4.0), 2.0, 0.001);
+    checkNum("Sqrt 2", Viper.Math.Sqrt(2.0), 1.414, 0.001);
+    checkNum("Sqrt 9", Viper.Math.Sqrt(9.0), 3.0, 0.001);
+
+    // Power
+    checkNum("Pow 2^3", Viper.Math.Pow(2.0, 3.0), 8.0, 0.001);
+    checkNum("Pow 2^0", Viper.Math.Pow(2.0, 0.0), 1.0, 0.001);
+    checkNum("Pow 3^2", Viper.Math.Pow(3.0, 2.0), 9.0, 0.001);
+
+    // Trigonometry
+    checkNum("Sin 0", Viper.Math.Sin(0.0), 0.0, 0.001);
+    checkNum("Cos 0", Viper.Math.Cos(0.0), 1.0, 0.001);
+    checkNum("Tan 0", Viper.Math.Tan(0.0), 0.0, 0.001);
+
+    // Sin/Cos of Pi/2
+    checkNum("Sin Pi/2", Viper.Math.Sin(Viper.Math.get_Pi() / 2.0), 1.0, 0.001);
+    checkNum("Cos Pi/2", Viper.Math.Cos(Viper.Math.get_Pi() / 2.0), 0.0, 0.001);
+
+    // Floor and Ceil
+    checkNum("Floor 3.7", Viper.Math.Floor(3.7), 3.0, 0.001);
+    checkNum("Floor -3.7", Viper.Math.Floor(-3.7), -4.0, 0.001);
+    checkNum("Ceil 3.2", Viper.Math.Ceil(3.2), 4.0, 0.001);
+    checkNum("Ceil -3.2", Viper.Math.Ceil(-3.2), -3.0, 0.001);
+
+    // Round
+    checkNum("Round 3.4", Viper.Math.Round(3.4), 3.0, 0.001);
+    checkNum("Round 3.5", Viper.Math.Round(3.5), 4.0, 0.001);
+    checkNum("Round -3.5", Viper.Math.Round(-3.5), -4.0, 0.001);
+
+    // Min and Max
+    checkNum("Min", Viper.Math.Min(3.0, 7.0), 3.0, 0.001);
+    checkNum("Max", Viper.Math.Max(3.0, 7.0), 7.0, 0.001);
+    check("MinInt", Viper.Math.MinInt(3, 7), 3);
+    check("MaxInt", Viper.Math.MaxInt(3, 7), 7);
+
+    // Clamp
+    checkNum("Clamp in range", Viper.Math.Clamp(5.0, 0.0, 10.0), 5.0, 0.001);
+    checkNum("Clamp below", Viper.Math.Clamp(-5.0, 0.0, 10.0), 0.0, 0.001);
+    checkNum("Clamp above", Viper.Math.Clamp(15.0, 0.0, 10.0), 10.0, 0.001);
+
+    // Sign (Sgn returns Number, SgnInt returns Integer)
+    check("SgnInt positive", Viper.Math.SgnInt(42), 1);
+    check("SgnInt negative", Viper.Math.SgnInt(-42), -1);
+    check("SgnInt zero", Viper.Math.SgnInt(0), 0);
+
+    // Logarithms
+    checkNum("Log e", Viper.Math.Log(Viper.Math.get_E()), 1.0, 0.001);
+    checkNum("Log10 100", Viper.Math.Log10(100.0), 2.0, 0.001);
+    checkNum("Log2 8", Viper.Math.Log2(8.0), 3.0, 0.001);
+
+    // Exp
+    checkNum("Exp 0", Viper.Math.Exp(0.0), 1.0, 0.001);
+    checkNum("Exp 1", Viper.Math.Exp(1.0), 2.71828, 0.001);
+
+    // Report results
+    Viper.Terminal.Say("=== Results ===");
+    Viper.Terminal.Say("Passed: " + Viper.Strings.FromInt(passed));
+    Viper.Terminal.Say("Failed: " + Viper.Strings.FromInt(failed));
+
+    if (failed == 0) {
+        Viper.Terminal.Say("RESULT: ok");
+    } else {
+        Viper.Terminal.Say("RESULT: fail");
+    }
+}

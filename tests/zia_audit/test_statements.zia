@@ -1,0 +1,286 @@
+module TestStatements;
+
+// Test: Control flow statements
+
+var passed: Integer = 0;
+var failed: Integer = 0;
+
+func check(name: String, actual: Integer, expected: Integer) {
+    if (actual == expected) {
+        passed = passed + 1;
+    } else {
+        failed = failed + 1;
+        Viper.Terminal.Say("FAIL: " + name + " - expected " + Viper.Strings.FromInt(expected) + ", got " + Viper.Strings.FromInt(actual));
+    }
+}
+
+func checkBool(name: String, actual: Boolean, expected: Boolean) {
+    if (actual == expected) {
+        passed = passed + 1;
+    } else {
+        failed = failed + 1;
+        Viper.Terminal.Say("FAIL: " + name);
+    }
+}
+
+func start() {
+    Viper.Terminal.Say("=== Statement Tests ===");
+
+    // If statements
+    testIfStatements();
+
+    // While loops
+    testWhileLoops();
+
+    // For loops (C-style)
+    testForLoops();
+
+    // For-in loops
+    testForInLoops();
+
+    // Break and continue
+    testBreakContinue();
+
+    // Guard statements
+    testGuard();
+
+    // Match statements
+    testMatch();
+
+    // Report results
+    Viper.Terminal.Say("=== Results ===");
+    Viper.Terminal.Say("Passed: " + Viper.Strings.FromInt(passed));
+    Viper.Terminal.Say("Failed: " + Viper.Strings.FromInt(failed));
+
+    if (failed == 0) {
+        Viper.Terminal.Say("RESULT: ok");
+    } else {
+        Viper.Terminal.Say("RESULT: fail");
+    }
+}
+
+func testIfStatements() {
+    // Simple if
+    var x: Integer = 0;
+    if (true) {
+        x = 1;
+    }
+    check("If true branch", x, 1);
+
+    x = 0;
+    if (false) {
+        x = 1;
+    }
+    check("If false no branch", x, 0);
+
+    // If-else
+    x = 0;
+    if (true) {
+        x = 1;
+    } else {
+        x = 2;
+    }
+    check("If-else true", x, 1);
+
+    x = 0;
+    if (false) {
+        x = 1;
+    } else {
+        x = 2;
+    }
+    check("If-else false", x, 2);
+
+    // If-else if-else
+    var n: Integer = 5;
+    var result: Integer = 0;
+    if (n < 0) {
+        result = -1;
+    } else if (n == 0) {
+        result = 0;
+    } else {
+        result = 1;
+    }
+    check("If-else if-else positive", result, 1);
+
+    n = -5;
+    if (n < 0) {
+        result = -1;
+    } else if (n == 0) {
+        result = 0;
+    } else {
+        result = 1;
+    }
+    check("If-else if-else negative", result, -1);
+
+    n = 0;
+    if (n < 0) {
+        result = -1;
+    } else if (n == 0) {
+        result = 0;
+    } else {
+        result = 1;
+    }
+    check("If-else if-else zero", result, 0);
+
+    // Nested if
+    var a: Integer = 5;
+    var b: Integer = 10;
+    result = 0;
+    if (a > 0) {
+        if (b > 0) {
+            result = 1;
+        }
+    }
+    check("Nested if", result, 1);
+}
+
+func testWhileLoops() {
+    // Basic while
+    var count: Integer = 0;
+    var i: Integer = 0;
+    while (i < 5) {
+        count = count + 1;
+        i = i + 1;
+    }
+    check("While loop count", count, 5);
+
+    // While with false condition
+    count = 0;
+    while (false) {
+        count = count + 1;
+    }
+    check("While false never runs", count, 0);
+
+    // Nested while
+    var sum: Integer = 0;
+    i = 0;
+    while (i < 3) {
+        var j: Integer = 0;
+        while (j < 3) {
+            sum = sum + 1;
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    check("Nested while", sum, 9);
+}
+
+func testForLoops() {
+    // Basic C-style for loop
+    var sum: Integer = 0;
+    for (var i: Integer = 0; i < 5; i = i + 1) {
+        sum = sum + i;
+    }
+    check("For loop sum 0-4", sum, 10);
+
+    // For loop with different increment
+    sum = 0;
+    for (var i: Integer = 0; i < 10; i = i + 2) {
+        sum = sum + 1;
+    }
+    check("For loop step 2", sum, 5);
+
+    // Empty for body
+    var iterations: Integer = 0;
+    for (var i: Integer = 0; i < 3; i = i + 1) {
+        iterations = iterations + 1;
+    }
+    check("For loop iterations", iterations, 3);
+}
+
+func testForInLoops() {
+    // Range iteration (exclusive)
+    var sum: Integer = 0;
+    for i in 0..5 {
+        sum = sum + i;
+    }
+    check("For-in range 0..5", sum, 10);
+
+    // Range iteration (inclusive)
+    sum = 0;
+    for i in 0..=5 {
+        sum = sum + i;
+    }
+    check("For-in range 0..=5", sum, 15);
+
+    // NOTE: for-in with runtime Lists doesn't work - "Expression is not iterable"
+    // This is a limitation - for-in only works with ranges, not runtime collections
+}
+
+func testBreakContinue() {
+    // Break
+    var count: Integer = 0;
+    for (var i: Integer = 0; i < 100; i = i + 1) {
+        if (i == 5) {
+            break;
+        }
+        count = count + 1;
+    }
+    check("Break at 5", count, 5);
+
+    // Continue
+    count = 0;
+    for (var i: Integer = 0; i < 10; i = i + 1) {
+        if (i % 2 == 0) {
+            continue;
+        }
+        count = count + 1;
+    }
+    check("Continue evens", count, 5);
+
+    // Break in while
+    count = 0;
+    while (true) {
+        count = count + 1;
+        if (count == 10) {
+            break;
+        }
+    }
+    check("Break in while", count, 10);
+}
+
+func testGuard() {
+    // Guard with return
+    var result: Integer = guardHelper(5);
+    check("Guard pass", result, 10);
+
+    result = guardHelper(-5);
+    check("Guard fail", result, 0);
+}
+
+func guardHelper(x: Integer) -> Integer {
+    guard x > 0 else {
+        return 0;
+    }
+    return x * 2;
+}
+
+func testMatch() {
+    // Match with literals
+    var x: Integer = 2;
+    var result: Integer = 0;
+    match x {
+        0 => { result = 10; }
+        1 => { result = 20; }
+        2 => { result = 30; }
+        _ => { result = 99; }
+    }
+    check("Match literal", result, 30);
+
+    // Match with wildcard
+    x = 100;
+    match x {
+        0 => { result = 10; }
+        1 => { result = 20; }
+        _ => { result = 99; }
+    }
+    check("Match wildcard", result, 99);
+
+    // Match with binding
+    x = 42;
+    match x {
+        0 => { result = 0; }
+        n => { result = n + 1; }
+    }
+    check("Match binding", result, 43);
+}

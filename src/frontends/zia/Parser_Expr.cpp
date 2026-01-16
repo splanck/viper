@@ -520,6 +520,17 @@ ExprPtr Parser::parseUnary()
         }
         SourceLoc loc = opTok.loc;
 
+        // Special case: handle -9223372036854775808 (INT64_MIN)
+        // The literal 9223372036854775808 can't be represented as int64_t,
+        // but when negated it becomes INT64_MIN which is valid.
+        if (op == UnaryOp::Neg && check(TokenKind::IntegerLiteral) &&
+            peek().requiresNegation)
+        {
+            advance(); // consume the integer literal
+            // Return INT64_MIN directly as an integer literal
+            return std::make_unique<IntLiteralExpr>(loc, INT64_MIN);
+        }
+
         ExprPtr operand = parseUnary();
         if (!operand)
             return nullptr;
@@ -902,6 +913,15 @@ ExprPtr Parser::parsePrimary()
     // Integer literal
     if (check(TokenKind::IntegerLiteral))
     {
+        // Check for the special case where the literal requires negation
+        // (i.e., 9223372036854775808 which only becomes valid as -9223372036854775808)
+        if (peek().requiresNegation)
+        {
+            error("integer literal 9223372036854775808 out of range (use "
+                  "-9223372036854775808 for minimum signed integer)");
+            advance();
+            return std::make_unique<IntLiteralExpr>(loc, 0);
+        }
         int64_t value = peek().intValue;
         advance();
         return std::make_unique<IntLiteralExpr>(loc, value);

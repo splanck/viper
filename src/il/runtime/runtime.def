@@ -332,6 +332,15 @@ RT_FUNC(CryptoRandBytes, rt_crypto_rand_bytes, "Viper.Crypto.Rand.Bytes", "obj(i
 RT_FUNC(CryptoRandInt,   rt_crypto_rand_int,   "Viper.Crypto.Rand.Int",   "i64(i64,i64)")
 
 //=============================================================================
+// CRYPTO - AES ENCRYPTION
+//=============================================================================
+
+RT_FUNC(AesEncrypt,    rt_aes_encrypt,     "Viper.Crypto.Aes.Encrypt",    "obj(obj,obj,obj)")
+RT_FUNC(AesDecrypt,    rt_aes_decrypt,     "Viper.Crypto.Aes.Decrypt",    "obj(obj,obj,obj)")
+RT_FUNC(AesEncryptStr, rt_aes_encrypt_str, "Viper.Crypto.Aes.EncryptStr", "obj(str,str)")
+RT_FUNC(AesDecryptStr, rt_aes_decrypt_str, "Viper.Crypto.Aes.DecryptStr", "str(obj,str)")
+
+//=============================================================================
 // DATETIME
 //=============================================================================
 

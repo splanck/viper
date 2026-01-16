@@ -49,6 +49,7 @@
 #include "rt_array_i64.h"
 #include "rt_array_obj.h"
 #include "rt_array_str.h"
+#include "rt_aes.h"
 #include "rt_audio.h"
 #include "rt_bag.h"
 #include "rt_binfile.h"

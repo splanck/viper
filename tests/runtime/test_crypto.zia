@@ -12,6 +12,43 @@ bind "./_support";
 // COVER: Viper.Crypto.Hash.HmacSHA256
 // COVER: Viper.Crypto.Rand.Int
 // COVER: Viper.Crypto.Rand.Bytes
+// COVER: Viper.Crypto.Aes.EncryptStr
+// COVER: Viper.Crypto.Aes.DecryptStr
+
+func testAES() {
+    setTest("AES");
+
+    // Test basic string encryption/decryption
+    var plaintext = "Hello, World! This is a test.";
+    var password = "MySecretPassword123";
+
+    var encrypted = Viper.Crypto.Aes.EncryptStr(plaintext, password);
+    var decrypted = Viper.Crypto.Aes.DecryptStr(encrypted, password);
+    assertEqStr(decrypted, plaintext, "aes roundtrip");
+
+    // Test empty string
+    var emptyPlain = "";
+    var emptyEnc = Viper.Crypto.Aes.EncryptStr(emptyPlain, password);
+    var emptyDec = Viper.Crypto.Aes.DecryptStr(emptyEnc, password);
+    assertEqStr(emptyDec, emptyPlain, "aes empty string");
+
+    // Test different passwords work independently
+    var enc1 = Viper.Crypto.Aes.EncryptStr(plaintext, "password1");
+    var enc2 = Viper.Crypto.Aes.EncryptStr(plaintext, "password2");
+    var dec1 = Viper.Crypto.Aes.DecryptStr(enc1, "password1");
+    var dec2 = Viper.Crypto.Aes.DecryptStr(enc2, "password2");
+    assertEqStr(dec1, plaintext, "aes password1");
+    assertEqStr(dec2, plaintext, "aes password2");
+
+    // Test long text (multi-block)
+    var longPlain = "";
+    for (var i = 0; i < 50; i = i + 1) {
+        longPlain = Viper.String.Concat(longPlain, "ABCDEFGHIJ");
+    }
+    var longEnc = Viper.Crypto.Aes.EncryptStr(longPlain, password);
+    var longDec = Viper.Crypto.Aes.DecryptStr(longEnc, password);
+    assertEqStr(longDec, longPlain, "aes long text");
+}
 
 func testMD5() {
     setTest("MD5");
@@ -124,6 +161,7 @@ func testHashLength() {
 }
 
 func start() {
+    testAES();
     testMD5();
     testSHA1();
     testSHA256();

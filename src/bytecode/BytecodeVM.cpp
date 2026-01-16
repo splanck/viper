@@ -45,6 +45,12 @@ BytecodeVM::~BytecodeVM() {
     stringCache_.clear();
 }
 
+/// @brief Initialize the string cache with runtime string objects.
+///
+/// Pre-creates rt_string objects for all strings in the module's string pool.
+/// This is necessary because the runtime expects managed string pointers,
+/// not raw C strings. The cache is reference-counted and released on
+/// destruction or when a new module is loaded.
 void BytecodeVM::initStringCache() {
     // Release any existing cache
     for (rt_string s : stringCache_) {
@@ -934,6 +940,11 @@ void BytecodeVM::run() {
     }
 }
 
+/// @brief Call a bytecode function, setting up a new stack frame.
+/// @param func The function to call. Arguments must be pre-pushed on the stack.
+///
+/// Creates a new call frame with the function's parameters taken from the
+/// operand stack. Non-parameter locals are zero-initialized.
 void BytecodeVM::call(const BytecodeFunction* func) {
     // Check stack overflow
     if (callStack_.size() >= kMaxCallDepth) {
@@ -970,6 +981,11 @@ void BytecodeVM::call(const BytecodeFunction* func) {
     fp_ = &callStack_.back();
 }
 
+/// @brief Pop the current call frame and return to the caller.
+/// @return true if execution can continue in a parent frame, false if at top level.
+///
+/// Restores the previous frame's state including stack pointer and alloca
+/// position. Any stack-allocated memory from the popped frame is released.
 bool BytecodeVM::popFrame() {
     // Restore alloca stack to the base of the popped frame
     // This releases all alloca'd memory from this function call
@@ -990,12 +1006,18 @@ bool BytecodeVM::popFrame() {
     return true;
 }
 
+/// @brief Raise a trap, halting execution with an error.
+/// @param kind The type of error that occurred.
+/// @param message Human-readable description of the error.
 void BytecodeVM::trap(TrapKind kind, const char* message) {
     trapKind_ = kind;
     trapMessage_ = message;
     state_ = VMState::Trapped;
 }
 
+/// @brief Check for signed addition overflow.
+/// @return true if overflow would occur, false if safe.
+/// Uses compiler builtins when available for efficiency.
 bool BytecodeVM::addOverflow(int64_t a, int64_t b, int64_t& result) {
 #if defined(__GNUC__) || defined(__clang__)
     return __builtin_add_overflow(a, b, &result);
@@ -1009,6 +1031,8 @@ bool BytecodeVM::addOverflow(int64_t a, int64_t b, int64_t& result) {
 #endif
 }
 
+/// @brief Check for signed subtraction overflow.
+/// @return true if overflow would occur, false if safe.
 bool BytecodeVM::subOverflow(int64_t a, int64_t b, int64_t& result) {
 #if defined(__GNUC__) || defined(__clang__)
     return __builtin_sub_overflow(a, b, &result);
@@ -1022,6 +1046,8 @@ bool BytecodeVM::subOverflow(int64_t a, int64_t b, int64_t& result) {
 #endif
 }
 
+/// @brief Check for signed multiplication overflow.
+/// @return true if overflow would occur, false if safe.
 bool BytecodeVM::mulOverflow(int64_t a, int64_t b, int64_t& result) {
 #if defined(__GNUC__) || defined(__clang__)
     return __builtin_mul_overflow(a, b, &result);
@@ -1048,11 +1074,20 @@ bool BytecodeVM::mulOverflow(int64_t a, int64_t b, int64_t& result) {
 // Source Line Tracking
 //==============================================================================
 
+/// @brief Get the source line number at the current execution point.
+/// @return The source line number, or 0 if not available.
 uint32_t BytecodeVM::currentSourceLine() const {
     if (!fp_ || !fp_->func) return 0;
     return getSourceLine(fp_->func, fp_->pc);
 }
 
+/// @brief Get the source line number for a specific PC in a function.
+/// @param func The bytecode function.
+/// @param pc The program counter offset.
+/// @return The source line number, or 0 if not available.
+///
+/// Uses the function's line table to map bytecode offsets back to
+/// source locations for debugging and error reporting.
 uint32_t BytecodeVM::getSourceLine(const BytecodeFunction* func, uint32_t pc) {
     if (!func || func->lineTable.empty()) return 0;
     if (pc >= func->lineTable.size()) return 0;
@@ -1063,6 +1098,11 @@ uint32_t BytecodeVM::getSourceLine(const BytecodeFunction* func, uint32_t pc) {
 // Exception Handling
 //==============================================================================
 
+/// @brief Push an exception handler onto the handler stack.
+/// @param handlerPc The program counter of the handler entry point.
+///
+/// Captures the current frame index and stack pointer so the VM can unwind
+/// to this state if a trap occurs within the protected region.
 void BytecodeVM::pushExceptionHandler(uint32_t handlerPc) {
     BCExceptionHandler eh;
     eh.handlerPc = handlerPc;
@@ -1071,12 +1111,23 @@ void BytecodeVM::pushExceptionHandler(uint32_t handlerPc) {
     ehStack_.push_back(eh);
 }
 
+/// @brief Pop the most recently pushed exception handler.
+///
+/// Called when exiting a protected region normally (no exception occurred).
 void BytecodeVM::popExceptionHandler() {
     if (!ehStack_.empty()) {
         ehStack_.pop_back();
     }
 }
 
+/// @brief Dispatch a trap to the nearest exception handler.
+/// @param kind The type of trap that occurred.
+/// @return true if a handler was found and jumped to, false if no handler exists.
+///
+/// Unwinds the call stack searching for a registered exception handler.
+/// If found, restores the stack to the handler's saved state, pushes
+/// error information onto the operand stack, and transfers control
+/// to the handler. Returns false if the trap propagates to the top level.
 bool BytecodeVM::dispatchTrap(TrapKind kind) {
     // Search for a handler
     while (!ehStack_.empty()) {
@@ -1125,10 +1176,16 @@ bool BytecodeVM::dispatchTrap(TrapKind kind) {
 // Debug Support
 //==============================================================================
 
+/// @brief Set a breakpoint at a specific location.
+/// @param funcName The name of the function containing the breakpoint.
+/// @param pc The program counter offset within the function.
 void BytecodeVM::setBreakpoint(const std::string& funcName, uint32_t pc) {
     breakpoints_[funcName].insert(pc);
 }
 
+/// @brief Clear a breakpoint at a specific location.
+/// @param funcName The name of the function containing the breakpoint.
+/// @param pc The program counter offset to clear.
 void BytecodeVM::clearBreakpoint(const std::string& funcName, uint32_t pc) {
     auto it = breakpoints_.find(funcName);
     if (it != breakpoints_.end()) {
@@ -1139,10 +1196,16 @@ void BytecodeVM::clearBreakpoint(const std::string& funcName, uint32_t pc) {
     }
 }
 
+/// @brief Clear all breakpoints in all functions.
 void BytecodeVM::clearAllBreakpoints() {
     breakpoints_.clear();
 }
 
+/// @brief Check if execution should pause at the current location.
+/// @return true if execution should pause (breakpoint hit or single-stepping).
+///
+/// Called at the start of each instruction. Invokes the debug callback
+/// if a breakpoint is hit or single-step mode is enabled.
 bool BytecodeVM::checkBreakpoint() {
     if (!fp_ || !fp_->func) return false;
 

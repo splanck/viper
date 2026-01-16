@@ -1,0 +1,100 @@
+module TestValueTypes;
+
+// Test: Value types (copy semantics)
+
+var passed: Integer = 0;
+var failed: Integer = 0;
+
+func check(name: String, actual: Integer, expected: Integer) {
+    if (actual == expected) {
+        passed = passed + 1;
+    } else {
+        failed = failed + 1;
+        Viper.Terminal.Say("FAIL: " + name + " - expected " + Viper.Strings.FromInt(expected) + ", got " + Viper.Strings.FromInt(actual));
+    }
+}
+
+func checkNum(name: String, actual: Number, expected: Number) {
+    var diff: Number = actual - expected;
+    if (diff < 0.0) { diff = 0.0 - diff; }
+    if (diff < 0.001) {
+        passed = passed + 1;
+    } else {
+        failed = failed + 1;
+        Viper.Terminal.Say("FAIL: " + name);
+    }
+}
+
+// Value type definition
+value Point2D {
+    expose Number x;
+    expose Number y;
+
+    expose func init(px: Number, py: Number) {
+        x = px;
+        y = py;
+    }
+
+    expose func magnitude() -> Number {
+        return Viper.Math.Sqrt(x * x + y * y);
+    }
+
+    expose func add(other: Point2D) -> Point2D {
+        return new Point2D(x + other.x, y + other.y);
+    }
+}
+
+// Entity for comparison (reference semantics)
+entity PointEntity {
+    expose Number x;
+    expose Number y;
+
+    expose func init(px: Number, py: Number) {
+        x = px;
+        y = py;
+    }
+}
+
+func start() {
+    Viper.Terminal.Say("=== Value Type Tests ===");
+
+    // Basic value type
+    var p1: Point2D = new Point2D(3.0, 4.0);
+    checkNum("Point2D x", p1.x, 3.0);
+    checkNum("Point2D y", p1.y, 4.0);
+    checkNum("Point2D magnitude", p1.magnitude(), 5.0);
+
+    // Value type copy semantics - modifying copy should not affect original
+    var p2: Point2D = p1;
+    p2.x = 10.0;
+    checkNum("Original x after copy modified (value)", p1.x, 3.0);
+    checkNum("Copy x after modification", p2.x, 10.0);
+
+    // Entity reference semantics - modifying copy should affect original
+    var e1: PointEntity = new PointEntity(3.0, 4.0);
+    var e2: PointEntity = e1;
+    e2.x = 10.0;
+    checkNum("Original x after copy modified (entity)", e1.x, 10.0);
+
+    // Value type method returning new value
+    var p3: Point2D = new Point2D(1.0, 2.0);
+    var p4: Point2D = new Point2D(3.0, 4.0);
+    var p5: Point2D = p3.add(p4);
+    checkNum("Added x", p5.x, 4.0);
+    checkNum("Added y", p5.y, 6.0);
+
+    // Original unchanged after add
+    checkNum("p3.x unchanged after add", p3.x, 1.0);
+    checkNum("p4.x unchanged after add", p4.x, 3.0);
+
+    // Report results
+    Viper.Terminal.Say("=== Results ===");
+    Viper.Terminal.Say("Passed: " + Viper.Strings.FromInt(passed));
+    Viper.Terminal.Say("Failed: " + Viper.Strings.FromInt(failed));
+
+    if (failed == 0) {
+        Viper.Terminal.Say("RESULT: ok");
+    } else {
+        Viper.Terminal.Say("RESULT: fail");
+    }
+}

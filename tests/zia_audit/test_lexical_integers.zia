@@ -1,0 +1,99 @@
+module TestLexicalIntegers;
+
+// Test: Integer Literals - All formats and edge cases
+
+var passed: Integer = 0;
+var failed: Integer = 0;
+
+func check(name: String, actual: Integer, expected: Integer) {
+    if (actual == expected) {
+        passed = passed + 1;
+        Viper.Terminal.Say("PASS: " + name);
+    } else {
+        failed = failed + 1;
+        Viper.Terminal.Say("FAIL: " + name + " - expected " + Viper.Strings.FromInt(expected) + ", got " + Viper.Strings.FromInt(actual));
+    }
+}
+
+func start() {
+    Viper.Terminal.Say("=== Integer Literal Tests ===");
+
+    // Basic decimal integers
+    var a: Integer = 0;
+    check("Zero literal", a, 0);
+
+    var b: Integer = 42;
+    check("Positive decimal", b, 42);
+
+    var c: Integer = -17;
+    check("Negative decimal", c, -17);
+
+    var d: Integer = 123456789;
+    check("Large decimal", d, 123456789);
+
+    // Hexadecimal
+    var hex1: Integer = 0xFF;
+    check("Hex uppercase 0xFF", hex1, 255);
+
+    var hex2: Integer = 0xff;
+    check("Hex lowercase 0xff", hex2, 255);
+
+    var hex3: Integer = 0x0;
+    check("Hex zero 0x0", hex3, 0);
+
+    var hex4: Integer = 0xDEADBEEF;
+    check("Hex large 0xDEADBEEF", hex4, 3735928559);
+
+    var hex5: Integer = 0x7FFFFFFFFFFFFFFF;
+    check("Hex max i64", hex5, 9223372036854775807);
+
+    // Binary
+    var bin1: Integer = 0b0;
+    check("Binary 0b0", bin1, 0);
+
+    var bin2: Integer = 0b1;
+    check("Binary 0b1", bin2, 1);
+
+    var bin3: Integer = 0b1010;
+    check("Binary 0b1010", bin3, 10);
+
+    var bin4: Integer = 0b11111111;
+    check("Binary 0b11111111", bin4, 255);
+
+    var bin5: Integer = 0b1111111111111111;
+    check("Binary 16 bits", bin5, 65535);
+
+    // Edge cases - max/min values
+    var maxInt: Integer = 9223372036854775807;
+    check("Max i64 value", maxInt, 9223372036854775807);
+
+    var minInt: Integer = -9223372036854775807;
+    check("Near min i64 value", minInt, -9223372036854775807);
+
+    // Arithmetic to verify values are correct
+    var sum: Integer = 100 + 200;
+    check("Arithmetic 100+200", sum, 300);
+
+    var diff: Integer = 1000 - 1;
+    check("Arithmetic 1000-1", diff, 999);
+
+    var prod: Integer = 12 * 12;
+    check("Arithmetic 12*12", prod, 144);
+
+    var quot: Integer = 100 / 10;
+    check("Arithmetic 100/10", quot, 10);
+
+    var mod: Integer = 17 % 5;
+    check("Arithmetic 17%5", mod, 2);
+
+    // Report results
+    Viper.Terminal.Say("=== Results ===");
+    Viper.Terminal.Say("Passed: " + Viper.Strings.FromInt(passed));
+    Viper.Terminal.Say("Failed: " + Viper.Strings.FromInt(failed));
+
+    if (failed == 0) {
+        Viper.Terminal.Say("RESULT: ok");
+    } else {
+        Viper.Terminal.Say("RESULT: fail");
+    }
+}

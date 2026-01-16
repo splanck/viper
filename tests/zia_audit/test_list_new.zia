@@ -1,0 +1,12 @@
+module TestListNew;
+
+// Test: Just List.New
+
+func start() {
+    Viper.Terminal.Say("=== List New Test ===");
+
+    var list: Ptr = Viper.Collections.List.New();
+    Viper.Terminal.Say("Created list");
+
+    Viper.Terminal.Say("RESULT: ok");
+}

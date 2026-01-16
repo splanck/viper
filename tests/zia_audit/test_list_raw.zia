@@ -1,0 +1,15 @@
+module Test;
+
+// Test: List with raw (unboxed) values
+
+func start() {
+    Viper.Terminal.Say("=== List Raw Test ===");
+
+    var list: Ptr = Viper.Collections.List.New();
+    Viper.Collections.List.Add(list, 100);
+
+    var item: Ptr = Viper.Collections.List.get_Item(list, 0);
+    Viper.Terminal.Say("Got item");
+
+    Viper.Terminal.Say("RESULT: ok");
+}

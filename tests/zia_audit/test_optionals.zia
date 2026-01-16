@@ -1,0 +1,104 @@
+module TestOptionals;
+
+// Test: Optional types (T?)
+
+var passed: Integer = 0;
+var failed: Integer = 0;
+
+func check(name: String, actual: Integer, expected: Integer) {
+    if (actual == expected) {
+        passed = passed + 1;
+    } else {
+        failed = failed + 1;
+        Viper.Terminal.Say("FAIL: " + name + " - expected " + Viper.Strings.FromInt(expected) + ", got " + Viper.Strings.FromInt(actual));
+    }
+}
+
+func checkBool(name: String, actual: Boolean, expected: Boolean) {
+    if (actual == expected) {
+        passed = passed + 1;
+    } else {
+        failed = failed + 1;
+        Viper.Terminal.Say("FAIL: " + name);
+    }
+}
+
+func checkStr(name: String, actual: String, expected: String) {
+    if (actual == expected) {
+        passed = passed + 1;
+    } else {
+        failed = failed + 1;
+        Viper.Terminal.Say("FAIL: " + name + " - expected '" + expected + "', got '" + actual + "'");
+    }
+}
+
+entity Box {
+    expose Integer value;
+
+    expose func init(v: Integer) {
+        value = v;
+    }
+}
+
+func start() {
+    Viper.Terminal.Say("=== Optional Type Tests ===");
+
+    // Basic optional with value
+    var maybeInt: Integer? = 42;
+    checkBool("Optional has value", maybeInt != null, true);
+    check("Optional value", maybeInt ?? 0, 42);
+
+    // Optional set to null
+    var noInt: Integer? = null;
+    checkBool("Optional is null", noInt == null, true);
+    check("Null coalesce provides default", noInt ?? 99, 99);
+
+    // Optional entity
+    var maybeBox: Box? = new Box(100);
+    checkBool("Optional entity not null", maybeBox != null, true);
+
+    var noBox: Box? = null;
+    checkBool("Optional entity is null", noBox == null, true);
+
+    // Optional chaining (?.)
+    var b: Box? = new Box(42);
+    check("Optional chaining", b?.value ?? 0, 42);
+
+    var nullBox: Box? = null;
+    check("Optional chaining on null", nullBox?.value ?? -1, -1);
+
+    // Nested optionals
+    var a: Integer? = 10;
+    var result: Integer = a ?? 0;
+    check("Nested assign from optional", result, 10);
+
+    // Optional in condition
+    var x: Integer? = 5;
+    if (x != null) {
+        check("Optional in condition", x ?? 0, 5);
+    } else {
+        failed = failed + 1;
+        Viper.Terminal.Say("FAIL: Optional in condition - shouldn't be null");
+    }
+
+    // Setting optional to null after having value
+    var y: Integer? = 10;
+    y = null;
+    checkBool("Can set to null", y == null, true);
+
+    // Reassigning optional
+    var z: Integer? = null;
+    z = 100;
+    check("Reassign null optional", z ?? 0, 100);
+
+    // Report results
+    Viper.Terminal.Say("=== Results ===");
+    Viper.Terminal.Say("Passed: " + Viper.Strings.FromInt(passed));
+    Viper.Terminal.Say("Failed: " + Viper.Strings.FromInt(failed));
+
+    if (failed == 0) {
+        Viper.Terminal.Say("RESULT: ok");
+    } else {
+        Viper.Terminal.Say("RESULT: fail");
+    }
+}

@@ -68,6 +68,7 @@ set(RT_TEXT_SOURCES
         rt_guid.c
         rt_hash.c
         rt_keyderive.c
+        rt_aes.c
         rt_rand.c
         rt_regex.c
         rt_template.c

@@ -1,0 +1,9 @@
+module TestInterpMulti;
+
+func start() {
+    var a: Integer = 10;
+    var b: Integer = 5;
+    // Test: Multiple interpolations in one string
+    var s: String = "${a} + ${b} = ${a + b}";
+    Viper.Terminal.Say(s);
+}

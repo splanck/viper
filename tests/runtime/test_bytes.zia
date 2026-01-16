@@ -3,24 +3,157 @@ module TestBytes;
 bind "./_support";
 
 // EXPECT_OUT: RESULT: ok
-// Note: The Viper.Collections.Bytes API is not directly accessible from Zia.
-// Bytes operations are only available from BASIC.
-// This test serves as a placeholder to document this limitation.
+// COVER: Viper.Collections.Bytes.New
+// COVER: Viper.Collections.Bytes.Get
+// COVER: Viper.Collections.Bytes.Set
+// COVER: Viper.Collections.Bytes.get_Len
+// COVER: Viper.Collections.Bytes.FromStr
+// COVER: Viper.Collections.Bytes.ToStr
+// COVER: Viper.Collections.Bytes.Slice
+// COVER: Viper.Collections.Bytes.Copy
+// COVER: Viper.Collections.Bytes.ToHex
+// COVER: Viper.Collections.Bytes.FromHex
 
-func testBytesNotAvailable() {
-    setTest("BytesNotAvailable");
+func testBytesNew() {
+    setTest("BytesNew");
 
-    // Bytes API functions (New, Get, Set, Len, etc.) are not exposed in Zia.
-    // They can only be used from BASIC via Viper.Collections.Bytes.* calls.
-    //
-    // For string-to-bytes conversion in Zia, use Viper.String functions
-    // or work with strings directly.
+    var bytes = Viper.Collections.Bytes.New(16);
+    var len = Viper.Collections.Bytes.get_Len(bytes);
+    assertEqInt(len, 16, "bytes created with length 16");
 
-    assertTrue(true, "bytes API not available in Zia");
+    var bytes2 = Viper.Collections.Bytes.New(0);
+    var len2 = Viper.Collections.Bytes.get_Len(bytes2);
+    assertEqInt(len2, 0, "empty bytes");
+}
+
+func testBytesGetSet() {
+    setTest("BytesGetSet");
+
+    var bytes = Viper.Collections.Bytes.New(4);
+    Viper.Collections.Bytes.Set(bytes, 0, 65);  // 'A'
+    Viper.Collections.Bytes.Set(bytes, 1, 66);  // 'B'
+    Viper.Collections.Bytes.Set(bytes, 2, 67);  // 'C'
+    Viper.Collections.Bytes.Set(bytes, 3, 255); // max byte value
+
+    var b0 = Viper.Collections.Bytes.Get(bytes, 0);
+    var b1 = Viper.Collections.Bytes.Get(bytes, 1);
+    var b2 = Viper.Collections.Bytes.Get(bytes, 2);
+    var b3 = Viper.Collections.Bytes.Get(bytes, 3);
+
+    assertEqInt(b0, 65, "byte 0 = A");
+    assertEqInt(b1, 66, "byte 1 = B");
+    assertEqInt(b2, 67, "byte 2 = C");
+    assertEqInt(b3, 255, "byte 3 = 255");
+}
+
+func testBytesLen() {
+    setTest("BytesLen");
+
+    var bytes = Viper.Collections.Bytes.New(100);
+    var len = Viper.Collections.Bytes.get_Len(bytes);
+    assertEqInt(len, 100, "bytes length 100");
+
+    var small = Viper.Collections.Bytes.New(1);
+    assertEqInt(Viper.Collections.Bytes.get_Len(small), 1, "bytes length 1");
+}
+
+func testBytesFromStr() {
+    setTest("BytesFromStr");
+
+    var bytes = Viper.Collections.Bytes.FromStr("Hello");
+    var len = Viper.Collections.Bytes.get_Len(bytes);
+    assertEqInt(len, 5, "string bytes length");
+
+    assertEqInt(Viper.Collections.Bytes.Get(bytes, 0), 72, "H = 72");
+    assertEqInt(Viper.Collections.Bytes.Get(bytes, 1), 101, "e = 101");
+    assertEqInt(Viper.Collections.Bytes.Get(bytes, 2), 108, "l = 108");
+    assertEqInt(Viper.Collections.Bytes.Get(bytes, 3), 108, "l = 108");
+    assertEqInt(Viper.Collections.Bytes.Get(bytes, 4), 111, "o = 111");
+}
+
+func testBytesToStr() {
+    setTest("BytesToStr");
+
+    var bytes = Viper.Collections.Bytes.New(5);
+    Viper.Collections.Bytes.Set(bytes, 0, 72);   // H
+    Viper.Collections.Bytes.Set(bytes, 1, 101);  // e
+    Viper.Collections.Bytes.Set(bytes, 2, 108);  // l
+    Viper.Collections.Bytes.Set(bytes, 3, 108);  // l
+    Viper.Collections.Bytes.Set(bytes, 4, 111);  // o
+
+    var str = Viper.Collections.Bytes.ToStr(bytes);
+    assertEqStr(str, "Hello", "bytes to string");
+}
+
+func testBytesSlice() {
+    setTest("BytesSlice");
+
+    var bytes = Viper.Collections.Bytes.FromStr("Hello World");
+    // Slice(obj, start, end) - end is exclusive
+    var slice = Viper.Collections.Bytes.Slice(bytes, 0, 5);
+    var str = Viper.Collections.Bytes.ToStr(slice);
+    assertEqStr(str, "Hello", "slice first 5 bytes");
+
+    var slice2 = Viper.Collections.Bytes.Slice(bytes, 6, 11);
+    var str2 = Viper.Collections.Bytes.ToStr(slice2);
+    assertEqStr(str2, "World", "slice last 5 bytes");
+}
+
+func testBytesCopy() {
+    setTest("BytesCopy");
+
+    var src = Viper.Collections.Bytes.FromStr("ABCD");
+    var dst = Viper.Collections.Bytes.New(10);
+
+    // Copy(dst, dstIdx, src, srcIdx, count)
+    Viper.Collections.Bytes.Copy(dst, 3, src, 0, 4);
+
+    assertEqInt(Viper.Collections.Bytes.Get(dst, 0), 0, "dst[0] unchanged");
+    assertEqInt(Viper.Collections.Bytes.Get(dst, 3), 65, "dst[3] = A");
+    assertEqInt(Viper.Collections.Bytes.Get(dst, 4), 66, "dst[4] = B");
+    assertEqInt(Viper.Collections.Bytes.Get(dst, 5), 67, "dst[5] = C");
+    assertEqInt(Viper.Collections.Bytes.Get(dst, 6), 68, "dst[6] = D");
+}
+
+func testBytesHex() {
+    setTest("BytesHex");
+
+    var bytes = Viper.Collections.Bytes.New(4);
+    Viper.Collections.Bytes.Set(bytes, 0, 0xde);
+    Viper.Collections.Bytes.Set(bytes, 1, 0xad);
+    Viper.Collections.Bytes.Set(bytes, 2, 0xbe);
+    Viper.Collections.Bytes.Set(bytes, 3, 0xef);
+
+    var hex = Viper.Collections.Bytes.ToHex(bytes);
+    assertEqStr(hex, "deadbeef", "bytes to hex");
+
+    var parsed = Viper.Collections.Bytes.FromHex("cafebabe");
+    assertEqInt(Viper.Collections.Bytes.get_Len(parsed), 4, "hex parse length");
+    assertEqInt(Viper.Collections.Bytes.Get(parsed, 0), 0xca, "hex byte 0");
+    assertEqInt(Viper.Collections.Bytes.Get(parsed, 1), 0xfe, "hex byte 1");
+    assertEqInt(Viper.Collections.Bytes.Get(parsed, 2), 0xba, "hex byte 2");
+    assertEqInt(Viper.Collections.Bytes.Get(parsed, 3), 0xbe, "hex byte 3");
+}
+
+func testBytesRoundtrip() {
+    setTest("BytesRoundtrip");
+
+    var original = "The quick brown fox jumps over the lazy dog";
+    var bytes = Viper.Collections.Bytes.FromStr(original);
+    var restored = Viper.Collections.Bytes.ToStr(bytes);
+    assertEqStr(restored, original, "string roundtrip");
 }
 
 func start() {
-    testBytesNotAvailable();
+    testBytesNew();
+    testBytesGetSet();
+    testBytesLen();
+    testBytesFromStr();
+    testBytesToStr();
+    testBytesSlice();
+    testBytesCopy();
+    testBytesHex();
+    testBytesRoundtrip();
 
     report();
 }

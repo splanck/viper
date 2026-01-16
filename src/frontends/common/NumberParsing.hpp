@@ -33,6 +33,9 @@ struct ParsedNumber
     double floatValue = 0.0; ///< Float value (valid when isFloat)
     bool overflow = false;   ///< True if value overflowed during parsing
     bool valid = true;       ///< True if parsing succeeded
+    /// True if value is exactly 9223372036854775808 (requires negation to be valid).
+    /// This enables parsing `-9223372036854775808` as INT64_MIN.
+    bool requiresNegation = false;
 };
 
 /// @brief Parse a decimal numeric literal from text.
@@ -70,8 +73,12 @@ struct ParsedNumber
     }
     else
     {
-        // Parse as integer using from_chars
-        auto parseResult = std::from_chars(text.data(), text.data() + text.size(), result.intValue);
+        // Parse as unsigned first to handle the INT64_MIN edge case.
+        // The value 9223372036854775808 overflows int64_t but is exactly -INT64_MIN,
+        // which is valid when negated (e.g., "-9223372036854775808").
+        uint64_t unsignedValue = 0;
+        auto parseResult =
+            std::from_chars(text.data(), text.data() + text.size(), unsignedValue);
 
         if (parseResult.ec == std::errc::result_out_of_range)
         {
@@ -82,6 +89,29 @@ struct ParsedNumber
         {
             result.valid = false;
         }
+        else
+        {
+            // Check if value fits in signed int64_t
+            constexpr uint64_t INT64_MAX_AS_UINT = static_cast<uint64_t>(INT64_MAX);
+            constexpr uint64_t INT64_MIN_ABS = static_cast<uint64_t>(INT64_MAX) + 1;
+
+            if (unsignedValue <= INT64_MAX_AS_UINT)
+            {
+                result.intValue = static_cast<int64_t>(unsignedValue);
+            }
+            else if (unsignedValue == INT64_MIN_ABS)
+            {
+                // Special case: 9223372036854775808 requires negation to be valid
+                // Store as 0 for now, parser will handle the negation
+                result.intValue = 0;
+                result.requiresNegation = true;
+            }
+            else
+            {
+                result.overflow = true;
+                result.valid = false;
+            }
+        }
     }
 
     return result;
@@ -90,7 +120,8 @@ struct ParsedNumber
 /// @brief Parse a hexadecimal integer literal from text.
 /// @param text The hex literal text (hex digits only, no prefix)
 /// @return ParsedNumber with the parsed value (always integer)
-/// @details Expects text without prefix (e.g., "DEADBEEF" not "$DEADBEEF" or "0xDEADBEEF")
+/// @details Expects text without prefix (e.g., "DEADBEEF" not "$DEADBEEF" or "0xDEADBEEF").
+///          Hex literals are treated as bit patterns, so 0x8000000000000000 becomes INT64_MIN.
 [[nodiscard]] inline ParsedNumber parseHexLiteral(std::string_view text)
 {
     ParsedNumber result;
@@ -102,7 +133,12 @@ struct ParsedNumber
         return result;
     }
 
-    auto parseResult = std::from_chars(text.data(), text.data() + text.size(), result.intValue, 16);
+    // Parse as unsigned to allow full 64-bit range including 0x8000000000000000.
+    // Hex literals are treated as bit patterns, so values like 0x8000000000000000
+    // become negative when interpreted as signed (INT64_MIN).
+    uint64_t unsignedValue = 0;
+    auto parseResult =
+        std::from_chars(text.data(), text.data() + text.size(), unsignedValue, 16);
 
     if (parseResult.ec == std::errc::result_out_of_range)
     {
@@ -112,6 +148,11 @@ struct ParsedNumber
     else if (parseResult.ec != std::errc{})
     {
         result.valid = false;
+    }
+    else
+    {
+        // Reinterpret unsigned bits as signed - this makes 0x8000000000000000 = INT64_MIN
+        result.intValue = static_cast<int64_t>(unsignedValue);
     }
 
     return result;

@@ -1,0 +1,141 @@
+module TestOperators;
+
+// Test: All operators from the spec
+
+var passed: Integer = 0;
+var failed: Integer = 0;
+
+func check(name: String, actual: Integer, expected: Integer) {
+    if (actual == expected) {
+        passed = passed + 1;
+    } else {
+        failed = failed + 1;
+        Viper.Terminal.Say("FAIL: " + name + " - expected " + Viper.Strings.FromInt(expected) + ", got " + Viper.Strings.FromInt(actual));
+    }
+}
+
+func checkBool(name: String, actual: Boolean, expected: Boolean) {
+    if (actual == expected) {
+        passed = passed + 1;
+    } else {
+        failed = failed + 1;
+        var expStr: String = "false";
+        var actStr: String = "false";
+        if (expected) { expStr = "true"; }
+        if (actual) { actStr = "true"; }
+        Viper.Terminal.Say("FAIL: " + name + " - expected " + expStr + ", got " + actStr);
+    }
+}
+
+func checkNum(name: String, actual: Number, expected: Number) {
+    var diff: Number = actual - expected;
+    if (diff < 0.0) { diff = 0.0 - diff; }
+    if (diff < 0.0001) {
+        passed = passed + 1;
+    } else {
+        failed = failed + 1;
+        Viper.Terminal.Say("FAIL: " + name);
+    }
+}
+
+func start() {
+    Viper.Terminal.Say("=== Operator Tests ===");
+
+    // Arithmetic operators
+    check("Addition 5+3", 5 + 3, 8);
+    check("Subtraction 10-4", 10 - 4, 6);
+    check("Multiplication 6*7", 6 * 7, 42);
+    check("Division 20/4", 20 / 4, 5);
+    check("Modulo 17%5", 17 % 5, 2);
+    check("Negative modulo -17%5", -17 % 5, -2);
+    check("Modulo negative divisor 17%-5", 17 % -5, 2);
+
+    // Unary operators
+    var x: Integer = 5;
+    check("Unary minus", -x, -5);
+    check("Double negative", -(-x), 5);
+
+    // Comparison operators
+    checkBool("Equal 5==5", 5 == 5, true);
+    checkBool("Equal 5==6", 5 == 6, false);
+    checkBool("Not equal 5!=6", 5 != 6, true);
+    checkBool("Not equal 5!=5", 5 != 5, false);
+    checkBool("Less than 3<5", 3 < 5, true);
+    checkBool("Less than 5<5", 5 < 5, false);
+    checkBool("Less than 7<5", 7 < 5, false);
+    checkBool("Less or equal 3<=5", 3 <= 5, true);
+    checkBool("Less or equal 5<=5", 5 <= 5, true);
+    checkBool("Less or equal 7<=5", 7 <= 5, false);
+    checkBool("Greater than 7>5", 7 > 5, true);
+    checkBool("Greater than 5>5", 5 > 5, false);
+    checkBool("Greater than 3>5", 3 > 5, false);
+    checkBool("Greater or equal 7>=5", 7 >= 5, true);
+    checkBool("Greater or equal 5>=5", 5 >= 5, true);
+    checkBool("Greater or equal 3>=5", 3 >= 5, false);
+
+    // Logical operators
+    checkBool("Logical AND true&&true", true && true, true);
+    checkBool("Logical AND true&&false", true && false, false);
+    checkBool("Logical AND false&&true", false && true, false);
+    checkBool("Logical AND false&&false", false && false, false);
+    checkBool("Logical OR true||true", true || true, true);
+    checkBool("Logical OR true||false", true || false, true);
+    checkBool("Logical OR false||true", false || true, true);
+    checkBool("Logical OR false||false", false || false, false);
+    checkBool("Logical NOT !true", !true, false);
+    checkBool("Logical NOT !false", !false, true);
+
+    // Short-circuit evaluation test
+    var evaluated: Boolean = false;
+    var shortCircuitAnd: Boolean = false && sideEffect();
+    checkBool("Short-circuit AND", evaluated, false);
+
+    evaluated = false;
+    var shortCircuitOr: Boolean = true || sideEffect();
+    checkBool("Short-circuit OR", evaluated, false);
+
+    // Ternary operator
+    var tern1: Integer = true ? 1 : 2;
+    check("Ternary true", tern1, 1);
+    var tern2: Integer = false ? 1 : 2;
+    check("Ternary false", tern2, 2);
+
+    // Nested ternary
+    var n: Integer = 5;
+    var tern3: Integer = n > 10 ? 1 : (n > 0 ? 2 : 3);
+    check("Nested ternary", tern3, 2);
+
+    // Operator precedence
+    check("Precedence 2+3*4", 2 + 3 * 4, 14);
+    check("Precedence (2+3)*4", (2 + 3) * 4, 20);
+    check("Precedence 10-4-2", 10 - 4 - 2, 4);
+    check("Precedence 10/2/2", 10 / 2 / 2, 2);
+
+    // Mixed arithmetic
+    check("Mixed 2+3*4-5", 2 + 3 * 4 - 5, 9);
+    check("Mixed (2+3)*(4-1)", (2 + 3) * (4 - 1), 15);
+
+    // Float operators
+    checkNum("Float add", 1.5 + 2.5, 4.0);
+    checkNum("Float sub", 5.0 - 1.5, 3.5);
+    checkNum("Float mul", 2.5 * 4.0, 10.0);
+    checkNum("Float div", 10.0 / 4.0, 2.5);
+
+    // Report results
+    Viper.Terminal.Say("=== Results ===");
+    Viper.Terminal.Say("Passed: " + Viper.Strings.FromInt(passed));
+    Viper.Terminal.Say("Failed: " + Viper.Strings.FromInt(failed));
+
+    if (failed == 0) {
+        Viper.Terminal.Say("RESULT: ok");
+    } else {
+        Viper.Terminal.Say("RESULT: fail");
+    }
+}
+
+var evaluated: Boolean = false;
+
+func sideEffect() -> Boolean {
+    evaluated = true;
+    return true;
+}

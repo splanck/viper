@@ -115,6 +115,12 @@ bool ViperType::isAssignableFrom(const ViperType &source) const
     if (kind == TypeKindSem::Number && source.kind == TypeKindSem::Byte)
         return true; // Byte -> Number
 
+    // Ptr subtype compatibility: any named Ptr can be assigned to base Ptr
+    // This allows functions returning Ptr to accept results from runtime functions
+    // that return specific Ptr subtypes (e.g., Viper.Collections.Bytes)
+    if (kind == TypeKindSem::Ptr && source.kind == TypeKindSem::Ptr)
+        return true;
+
     // Interface assignment (requires declared implementation)
     if (kind == TypeKindSem::Interface &&
         (source.kind == TypeKindSem::Entity || source.kind == TypeKindSem::Value))

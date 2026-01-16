@@ -1,0 +1,102 @@
+module TestInterfaces;
+
+// Test: Interfaces and polymorphism
+
+var passed: Integer = 0;
+var failed: Integer = 0;
+
+func check(name: String, actual: Number, expected: Number) {
+    var diff: Number = actual - expected;
+    if (diff < 0.0) { diff = 0.0 - diff; }
+    if (diff < 0.001) {
+        passed = passed + 1;
+    } else {
+        failed = failed + 1;
+        Viper.Terminal.Say("FAIL: " + name);
+    }
+}
+
+func checkStr(name: String, actual: String, expected: String) {
+    if (actual == expected) {
+        passed = passed + 1;
+    } else {
+        failed = failed + 1;
+        Viper.Terminal.Say("FAIL: " + name + " - expected '" + expected + "', got '" + actual + "'");
+    }
+}
+
+// Interface definition
+interface IShape {
+    func area() -> Number;
+    func describe() -> String;
+}
+
+// Entity implementing interface
+entity Circle implements IShape {
+    expose Number radius;
+
+    expose func init(r: Number) {
+        radius = r;
+    }
+
+    expose func area() -> Number {
+        return 3.14159 * radius * radius;
+    }
+
+    expose func describe() -> String {
+        return "Circle";
+    }
+}
+
+// Another entity implementing same interface
+entity Rectangle implements IShape {
+    expose Number width;
+    expose Number height;
+
+    expose func init(w: Number, h: Number) {
+        width = w;
+        height = h;
+    }
+
+    expose func area() -> Number {
+        return width * height;
+    }
+
+    expose func describe() -> String {
+        return "Rectangle";
+    }
+}
+
+func start() {
+    Viper.Terminal.Say("=== Interface Tests ===");
+
+    // Test Circle
+    var circle: Circle = new Circle(5.0);
+    check("Circle area", circle.area(), 78.53975);
+    checkStr("Circle describe", circle.describe(), "Circle");
+
+    // Test Rectangle
+    var rect: Rectangle = new Rectangle(4.0, 6.0);
+    check("Rectangle area", rect.area(), 24.0);
+    checkStr("Rectangle describe", rect.describe(), "Rectangle");
+
+    // Polymorphism via interface
+    var shape1: IShape = new Circle(2.0);
+    var shape2: IShape = new Rectangle(3.0, 4.0);
+
+    check("Polymorphic circle area", shape1.area(), 12.56636);
+    check("Polymorphic rect area", shape2.area(), 12.0);
+    checkStr("Polymorphic circle describe", shape1.describe(), "Circle");
+    checkStr("Polymorphic rect describe", shape2.describe(), "Rectangle");
+
+    // Report results
+    Viper.Terminal.Say("=== Results ===");
+    Viper.Terminal.Say("Passed: " + Viper.Strings.FromInt(passed));
+    Viper.Terminal.Say("Failed: " + Viper.Strings.FromInt(failed));
+
+    if (failed == 0) {
+        Viper.Terminal.Say("RESULT: ok");
+    } else {
+        Viper.Terminal.Say("RESULT: fail");
+    }
+}

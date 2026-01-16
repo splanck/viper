@@ -1,0 +1,84 @@
+module TestLexicalFloats;
+
+// Test: Floating-Point Literals - All formats and edge cases
+
+var passed: Integer = 0;
+var failed: Integer = 0;
+
+func checkNum(name: String, actual: Number, expected: Number) {
+    var diff: Number = actual - expected;
+    if (diff < 0.0) {
+        diff = 0.0 - diff;
+    }
+    if (diff < 0.0001) {
+        passed = passed + 1;
+        Viper.Terminal.Say("PASS: " + name);
+    } else {
+        failed = failed + 1;
+        Viper.Terminal.Say("FAIL: " + name + " - expected " + Viper.Strings.FromDouble(expected) + ", got " + Viper.Strings.FromDouble(actual));
+    }
+}
+
+func start() {
+    Viper.Terminal.Say("=== Floating-Point Literal Tests ===");
+
+    // Basic floats
+    var a: Number = 0.0;
+    checkNum("Zero float", a, 0.0);
+
+    var b: Number = 3.14;
+    checkNum("Pi approx", b, 3.14);
+
+    var c: Number = -2.5;
+    checkNum("Negative float", c, -2.5);
+
+    var d: Number = 0.001;
+    checkNum("Small decimal", d, 0.001);
+
+    var e: Number = 123.456;
+    checkNum("Mixed decimal", e, 123.456);
+
+    // Scientific notation
+    var sci1: Number = 1e10;
+    checkNum("Scientific 1e10", sci1, 10000000000.0);
+
+    var sci2: Number = 2.5e-3;
+    checkNum("Scientific 2.5e-3", sci2, 0.0025);
+
+    var sci3: Number = 6.022e23;
+    checkNum("Avogadro approx", sci3, 6.022e23);
+
+    var sci4: Number = 1E5;
+    checkNum("Scientific uppercase E", sci4, 100000.0);
+
+    var sci5: Number = 1.0e0;
+    checkNum("Scientific 1.0e0", sci5, 1.0);
+
+    // Arithmetic with floats
+    var sum: Number = 1.5 + 2.5;
+    checkNum("Float addition", sum, 4.0);
+
+    var diff2: Number = 10.0 - 3.5;
+    checkNum("Float subtraction", diff2, 6.5);
+
+    var prod: Number = 2.5 * 4.0;
+    checkNum("Float multiplication", prod, 10.0);
+
+    var quot: Number = 10.0 / 4.0;
+    checkNum("Float division", quot, 2.5);
+
+    // Mixed int/float (should promote)
+    var mixed: Number = 5 + 2.5;
+    checkNum("Int + Float", mixed, 7.5);
+
+    // Report results
+    Viper.Terminal.Say("=== Results ===");
+    Viper.Terminal.Say("Passed: " + Viper.Strings.FromInt(passed));
+    Viper.Terminal.Say("Failed: " + Viper.Strings.FromInt(failed));
+
+    if (failed == 0) {
+        Viper.Terminal.Say("RESULT: ok");
+    } else {
+        Viper.Terminal.Say("RESULT: fail");
+    }
+}
