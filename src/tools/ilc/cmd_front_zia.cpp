@@ -15,6 +15,8 @@
 ///          optional execution using the VM for the Zia frontend.
 
 #include "cli.hpp"
+#include "bytecode/BytecodeCompiler.hpp"
+#include "bytecode/BytecodeVM.hpp"
 #include "frontends/zia/Compiler.hpp"
 #include "il/api/expected_api.hpp"
 #include "support/diag_expected.hpp"
@@ -22,6 +24,11 @@
 #include "viper/il/IO.hpp"
 #include "viper/il/Verify.hpp"
 #include "viper/vm/VM.hpp"
+
+extern "C" {
+#include "runtime/rt_args.h"
+#include "runtime/rt_string.h"
+}
 #include <cstdio>
 #include <fstream>
 #include <iostream>
@@ -42,6 +49,7 @@ struct FrontZiaConfig
 {
     bool emitIl{false};                   ///< True when `-emit-il` is requested.
     bool run{false};                      ///< True when `-run` is requested.
+    bool debugVm{false};                  ///< True to use standard VM for debugging.
     std::string sourcePath;               ///< Path to the input `.zia` source.
     ilc::SharedCliOptions shared;         ///< Shared CLI settings (trace, steps, IO).
     std::vector<std::string> programArgs; ///< Extra arguments forwarded to the program.
@@ -71,6 +79,10 @@ il::support::Expected<FrontZiaConfig> parseFrontZiaArgs(int argc, char **argv)
         else if (arg == "-run")
         {
             config.run = true;
+        }
+        else if (arg == "--debug-vm")
+        {
+            config.debugVm = true;
         }
         else if (arg == "--")
         {
@@ -164,29 +176,72 @@ int runFrontZia(const FrontZiaConfig &config,
         }
     }
 
-    vm::TraceConfig traceCfg = config.shared.trace;
-    traceCfg.sm = &sm;
+    // Use standard VM for debugging (when --debug-vm or --trace is specified)
+    bool useStandardVm = config.debugVm || config.shared.trace.enabled();
 
-    vm::RunConfig runCfg;
-    runCfg.trace = traceCfg;
-    runCfg.maxSteps = config.shared.maxSteps;
-    runCfg.programArgs = config.programArgs;
-
-    vm::Runner runner(module, std::move(runCfg));
-    int rc = static_cast<int>(runner.run());
-
-    const auto trapMessage = runner.lastTrapMessage();
-    if (trapMessage)
+    if (useStandardVm)
     {
-        if (config.shared.dumpTrap && !trapMessage->empty())
+        vm::TraceConfig traceCfg = config.shared.trace;
+        traceCfg.sm = &sm;
+
+        vm::RunConfig runCfg;
+        runCfg.trace = traceCfg;
+        runCfg.maxSteps = config.shared.maxSteps;
+        runCfg.programArgs = config.programArgs;
+
+        vm::Runner runner(module, std::move(runCfg));
+        int rc = static_cast<int>(runner.run());
+
+        const auto trapMessage = runner.lastTrapMessage();
+        if (trapMessage)
         {
-            std::cerr << *trapMessage;
-            if (trapMessage->back() != '\n')
-                std::cerr << '\n';
+            if (config.shared.dumpTrap && !trapMessage->empty())
+            {
+                std::cerr << *trapMessage;
+                if (trapMessage->back() != '\n')
+                    std::cerr << '\n';
+            }
+            if (rc == 0)
+                rc = 1;
         }
-        if (rc == 0)
-            rc = 1;
+        return rc;
     }
+
+    // Default: use fast bytecode VM with threaded dispatch
+    viper::bytecode::BytecodeCompiler bcCompiler;
+    viper::bytecode::BytecodeModule bcModule = bcCompiler.compile(module);
+
+    // Set up program arguments for the runtime
+    if (!config.programArgs.empty())
+    {
+        rt_args_clear();
+        for (const auto &s : config.programArgs)
+        {
+            rt_string tmp = rt_string_from_bytes(s.data(), s.size());
+            rt_args_push(tmp);
+            rt_string_unref(tmp);
+        }
+    }
+
+    viper::bytecode::BytecodeVM bcVm;
+    bcVm.setThreadedDispatch(true);
+    bcVm.setRuntimeBridgeEnabled(true);
+    bcVm.load(&bcModule);
+
+    viper::bytecode::BCSlot bcResult = bcVm.exec("main", {});
+
+    int rc = 0;
+    if (bcVm.state() == viper::bytecode::VMState::Trapped)
+    {
+        // Always output trap message (matching standard VM behavior)
+        std::cerr << bcVm.trapMessage() << "\n";
+        rc = 1;
+    }
+    else
+    {
+        rc = static_cast<int>(bcResult.i64);
+    }
+    std::fflush(stdout);  // Ensure all output is flushed
     return rc;
 }
 

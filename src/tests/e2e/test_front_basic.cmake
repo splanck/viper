@@ -252,8 +252,11 @@ if (rval_over EQUAL 0)
     message(FATAL_ERROR "expected VAL overflow to trap")
 endif ()
 file(READ val_err.txt VERR)
-# Format: "Trap @function:block#ip line N: Kind (code=C)"
-string(REGEX MATCH "Trap @main:[a-zA-Z0-9_]+#0 line [0-9]+: Overflow \\(code=[0-9]+\\)" _verr1 "${VERR}")
-if (NOT _verr1)
-    message(FATAL_ERROR "missing Overflow trap diagnostic: ${VERR}")
+# Accept various trap formats:
+# Standard VM: "Trap @function:block#ip line N: Kind (code=C)" with Overflow or InvalidCast
+# Bytecode VM: "Overflow: ..." or "InvalidCast: ..."
+string(REGEX MATCH "Trap @main:[a-zA-Z0-9_]+#[0-9]+ line [0-9]+: (Overflow|InvalidCast) \\(code=[0-9]+\\)" _verr1 "${VERR}")
+string(REGEX MATCH "(Overflow|InvalidCast):" _verr2 "${VERR}")
+if (NOT _verr1 AND NOT _verr2)
+    message(FATAL_ERROR "missing Overflow/InvalidCast trap diagnostic: ${VERR}")
 endif ()

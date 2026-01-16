@@ -34,6 +34,9 @@ private:
     // Current module being built
     BytecodeModule module_;
 
+    // IL module being compiled (for global lookups)
+    const il::core::Module* ilModule_;
+
     // Current function being compiled
     BytecodeFunction* currentFunc_;
 
@@ -51,7 +54,8 @@ private:
     struct BranchFixup {
         uint32_t codeOffset;      // Index into code vector
         std::string targetLabel;  // Target block label
-        bool isLong;              // True if 24-bit offset
+        bool isLong;              // True if 24-bit offset, false for 16-bit
+        bool isRaw;               // True if offset is stored as raw i32, not encoded in opcode
     };
     std::vector<BranchFixup> pendingBranches_;
 

@@ -1,1 +1,1 @@
-error: unchecked_srem:entry: %4 = srem %t2 %t3: signed remainder must use srem.chk0 (traps on divide-by-zero; matches BASIC MOD semantics)
+error: unchecked_srem:entry: %2 = srem %t0 %t1: signed remainder must use srem.chk0 (traps on divide-by-zero; matches BASIC MOD semantics)

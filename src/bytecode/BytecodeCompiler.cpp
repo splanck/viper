@@ -16,6 +16,7 @@ namespace bytecode {
 
 BytecodeModule BytecodeCompiler::compile(const il::core::Module& ilModule) {
     module_ = BytecodeModule();
+    ilModule_ = &ilModule;
 
     // Pre-register all function names to support recursive and forward calls
     for (size_t i = 0; i < ilModule.functions.size(); ++i) {
@@ -80,15 +81,24 @@ void BytecodeCompiler::buildSSAToLocalsMap(const il::core::Function& fn) {
 
     // Map block parameters and track them by block label
     blockParamIds_.clear();
+    bool isEntryBlock = true;
     for (const auto& block : fn.blocks) {
         std::vector<uint32_t> paramIds;
-        for (const auto& param : block.params) {
+        for (size_t i = 0; i < block.params.size(); ++i) {
+            const auto& param = block.params[i];
             paramIds.push_back(param.id);
             if (ssaToLocal_.find(param.id) == ssaToLocal_.end()) {
-                ssaToLocal_[param.id] = nextLocal_++;
+                // Entry block parameters correspond to function parameters
+                // They should share the same local slots
+                if (isEntryBlock && i < fn.params.size()) {
+                    ssaToLocal_[param.id] = static_cast<uint32_t>(i);
+                } else {
+                    ssaToLocal_[param.id] = nextLocal_++;
+                }
             }
         }
         blockParamIds_[block.label] = std::move(paramIds);
+        isEntryBlock = false;
     }
 
     // Map instruction results
@@ -285,8 +295,12 @@ void BytecodeCompiler::compileInstr(const il::core::Instr& instr) {
         case Opcode::ResumeNext:
         case Opcode::ResumeLabel:
         case Opcode::EhEntry:
-        case Opcode::Trap:
             // TODO: Phase 3 - Exception handling
+            break;
+
+        case Opcode::Trap:
+            // Simple trap - raises Overflow trap (default trap kind)
+            emit8(BCOpcode::TRAP, static_cast<uint8_t>(1)); // TrapKind::Overflow = 1
             break;
 
         default:
@@ -341,11 +355,22 @@ void BytecodeCompiler::pushValue(const il::core::Value& val) {
             break;
         }
 
-        case il::core::Value::Kind::GlobalAddr:
-            // TODO: Handle global addresses
-            emit(BCOpcode::LOAD_NULL);
+        case il::core::Value::Kind::GlobalAddr: {
+            // Check if this is a function reference
+            auto it = module_.functionIndex.find(val.str);
+            if (it != module_.functionIndex.end()) {
+                // Function pointer - encode as tagged pointer (high bit set)
+                // This allows call.indirect to identify function references
+                uint64_t taggedPtr = 0x8000000000000000ULL | it->second;
+                uint32_t idx = module_.addI64(static_cast<int64_t>(taggedPtr));
+                emit16(BCOpcode::LOAD_I64, static_cast<uint16_t>(idx));
+            } else {
+                // Non-function global address - emit null for now
+                emit(BCOpcode::LOAD_NULL);
+            }
             pushStack();
             break;
+        }
 
         case il::core::Value::Kind::NullPtr:
             emit(BCOpcode::LOAD_NULL);
@@ -401,7 +426,8 @@ void BytecodeCompiler::emitBranch(BCOpcode op, const std::string& label) {
     pendingBranches_.push_back({
         static_cast<uint32_t>(currentFunc_->code.size()),
         label,
-        false
+        false,  // isLong
+        false   // isRaw
     });
     emit(encodeOp16(op, 0));  // Placeholder offset
 }
@@ -410,7 +436,8 @@ void BytecodeCompiler::emitBranchLong(BCOpcode op, const std::string& label) {
     pendingBranches_.push_back({
         static_cast<uint32_t>(currentFunc_->code.size()),
         label,
-        true
+        true,   // isLong
+        false   // isRaw
     });
     emit(encodeOp24(op, 0));  // Placeholder offset
 }
@@ -426,13 +453,18 @@ void BytecodeCompiler::resolveBranches() {
         int32_t offset = static_cast<int32_t>(it->second) -
                          static_cast<int32_t>(fixup.codeOffset) - 1;
 
-        uint32_t instr = currentFunc_->code[fixup.codeOffset];
-        BCOpcode op = decodeOpcode(instr);
-
-        if (fixup.isLong) {
-            currentFunc_->code[fixup.codeOffset] = encodeOpI24(op, offset);
+        if (fixup.isRaw) {
+            // Raw offset: store offset directly in the word
+            currentFunc_->code[fixup.codeOffset] = static_cast<uint32_t>(offset);
         } else {
-            currentFunc_->code[fixup.codeOffset] = encodeOpI16(op, static_cast<int16_t>(offset));
+            uint32_t instr = currentFunc_->code[fixup.codeOffset];
+            BCOpcode op = decodeOpcode(instr);
+
+            if (fixup.isLong) {
+                currentFunc_->code[fixup.codeOffset] = encodeOpI24(op, offset);
+            } else {
+                currentFunc_->code[fixup.codeOffset] = encodeOpI16(op, static_cast<int16_t>(offset));
+            }
         }
     }
 }
@@ -480,9 +512,25 @@ void BytecodeCompiler::compileArithmetic(const il::core::Instr& instr) {
         case Opcode::UDiv:      bcOp = BCOpcode::UDIV_I64; break;
         case Opcode::SRem:      bcOp = BCOpcode::SREM_I64; break;
         case Opcode::URem:      bcOp = BCOpcode::UREM_I64; break;
-        case Opcode::IAddOvf:   bcOp = BCOpcode::ADD_I64_OVF; break;
-        case Opcode::ISubOvf:   bcOp = BCOpcode::SUB_I64_OVF; break;
-        case Opcode::IMulOvf:   bcOp = BCOpcode::MUL_I64_OVF; break;
+        case Opcode::IAddOvf:
+        case Opcode::ISubOvf:
+        case Opcode::IMulOvf: {
+            // Encode target type: 0=I1, 1=I16, 2=I32, 3=I64
+            uint8_t targetType = 3; // default to I64
+            switch (instr.type.kind) {
+                case il::core::Type::Kind::I1:  targetType = 0; break;
+                case il::core::Type::Kind::I16: targetType = 1; break;
+                case il::core::Type::Kind::I32: targetType = 2; break;
+                default: targetType = 3; break;
+            }
+            BCOpcode op = (instr.op == Opcode::IAddOvf) ? BCOpcode::ADD_I64_OVF
+                        : (instr.op == Opcode::ISubOvf) ? BCOpcode::SUB_I64_OVF
+                        : BCOpcode::MUL_I64_OVF;
+            emit8(op, targetType);
+            popStack();  // Binary ops: consume 2, produce 1
+            storeResult(instr);
+            return;  // Early return
+        }
         case Opcode::SDivChk0:  bcOp = BCOpcode::SDIV_I64_CHK; break;
         case Opcode::UDivChk0:  bcOp = BCOpcode::UDIV_I64_CHK; break;
         case Opcode::SRemChk0:  bcOp = BCOpcode::SREM_I64_CHK; break;
@@ -558,9 +606,22 @@ void BytecodeCompiler::compileConversion(const il::core::Instr& instr) {
         case Opcode::CastFpToUiRteChk:
             bcOp = BCOpcode::F64_TO_U64_CHK; break;
         case Opcode::CastSiNarrowChk:
-            bcOp = BCOpcode::I64_NARROW_CHK; break;
-        case Opcode::CastUiNarrowChk:
-            bcOp = BCOpcode::U64_NARROW_CHK; break;
+        case Opcode::CastUiNarrowChk: {
+            // Encode target type: 0=I1, 1=I16, 2=I32, 3=I64
+            uint8_t targetType = 3; // default to I64 (no-op)
+            switch (instr.type.kind) {
+                case il::core::Type::Kind::I1:  targetType = 0; break;
+                case il::core::Type::Kind::I16: targetType = 1; break;
+                case il::core::Type::Kind::I32: targetType = 2; break;
+                default: targetType = 3; break;
+            }
+            bcOp = (instr.op == Opcode::CastSiNarrowChk)
+                ? BCOpcode::I64_NARROW_CHK
+                : BCOpcode::U64_NARROW_CHK;
+            emit8(bcOp, targetType);
+            storeResult(instr);
+            return;  // Early return - we've handled this case
+        }
         case Opcode::Zext1:
             bcOp = BCOpcode::BOOL_TO_I64; break;
         case Opcode::Trunc1:
@@ -611,11 +672,35 @@ void BytecodeCompiler::compileMemory(const il::core::Instr& instr) {
             break;
 
         case Opcode::ConstStr:
-            // String literal - operand is a const string value
-            if (!instr.operands.empty() &&
-                instr.operands[0].kind == il::core::Value::Kind::ConstStr) {
-                uint32_t idx = module_.addString(instr.operands[0].str);
-                emit16(BCOpcode::LOAD_STR, static_cast<uint16_t>(idx));
+            // String literal - operand can be ConstStr or GlobalAddr
+            if (!instr.operands.empty()) {
+                const auto& op = instr.operands[0];
+                std::string strValue;
+                bool found = false;
+
+                if (op.kind == il::core::Value::Kind::ConstStr) {
+                    // Direct string constant
+                    strValue = op.str;
+                    found = true;
+                } else if (op.kind == il::core::Value::Kind::GlobalAddr) {
+                    // Reference to a global string constant - look it up
+                    if (ilModule_) {
+                        for (const auto& g : ilModule_->globals) {
+                            if (g.name == op.str) {
+                                strValue = g.init;
+                                found = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (found) {
+                    uint32_t idx = module_.addString(strValue);
+                    emit16(BCOpcode::LOAD_STR, static_cast<uint16_t>(idx));
+                } else {
+                    emit(BCOpcode::LOAD_NULL);
+                }
             } else {
                 emit(BCOpcode::LOAD_NULL);
             }
@@ -641,8 +726,28 @@ void BytecodeCompiler::compileMemory(const il::core::Instr& instr) {
         case Opcode::Load:
             // load type, ptr -> operands[0] is ptr (type is in instr.type)
             pushValue(instr.operands[0]);
-            // For now, assume i64 load
-            emit(BCOpcode::LOAD_I64_MEM);
+            // Emit appropriate load based on type
+            switch (instr.type.kind) {
+            case il::core::Type::Kind::I1:
+                emit(BCOpcode::LOAD_I8_MEM);
+                break;
+            case il::core::Type::Kind::I16:
+                emit(BCOpcode::LOAD_I16_MEM);
+                break;
+            case il::core::Type::Kind::I32:
+                emit(BCOpcode::LOAD_I32_MEM);
+                break;
+            case il::core::Type::Kind::F64:
+                emit(BCOpcode::LOAD_F64_MEM);
+                break;
+            case il::core::Type::Kind::Ptr:
+            case il::core::Type::Kind::Str:
+                emit(BCOpcode::LOAD_PTR_MEM);
+                break;
+            default:
+                emit(BCOpcode::LOAD_I64_MEM);
+                break;
+            }
             // Load consumes 1, produces 1 - no stack change
             storeResult(instr);
             break;
@@ -651,7 +756,28 @@ void BytecodeCompiler::compileMemory(const il::core::Instr& instr) {
             // store type, ptr, val -> operands[0] is ptr, operands[1] is val
             pushValue(instr.operands[0]);  // Pointer
             pushValue(instr.operands[1]);  // Value
-            emit(BCOpcode::STORE_I64_MEM);
+            // Emit appropriate store based on type
+            switch (instr.type.kind) {
+            case il::core::Type::Kind::I1:
+                emit(BCOpcode::STORE_I8_MEM);
+                break;
+            case il::core::Type::Kind::I16:
+                emit(BCOpcode::STORE_I16_MEM);
+                break;
+            case il::core::Type::Kind::I32:
+                emit(BCOpcode::STORE_I32_MEM);
+                break;
+            case il::core::Type::Kind::F64:
+                emit(BCOpcode::STORE_F64_MEM);
+                break;
+            case il::core::Type::Kind::Ptr:
+            case il::core::Type::Kind::Str:
+                emit(BCOpcode::STORE_PTR_MEM);
+                break;
+            default:
+                emit(BCOpcode::STORE_I64_MEM);
+                break;
+            }
             popStack(2);  // Consume 2, produce 0
             break;
 
@@ -674,12 +800,42 @@ void BytecodeCompiler::compileMemory(const il::core::Instr& instr) {
 }
 
 void BytecodeCompiler::compileCall(const il::core::Instr& instr) {
-    // Push arguments
+    using Opcode = il::core::Opcode;
+
+    // Handle indirect calls separately
+    if (instr.op == Opcode::CallIndirect) {
+        // For call.indirect: operands[0] is the callee (function pointer)
+        // operands[1..n] are the arguments
+        if (instr.operands.empty()) {
+            return;  // Invalid indirect call
+        }
+
+        // Push callee (function pointer) first
+        pushValue(instr.operands[0]);
+
+        // Push arguments (operands[1..])
+        for (size_t i = 1; i < instr.operands.size(); ++i) {
+            pushValue(instr.operands[i]);
+        }
+
+        // Emit CALL_INDIRECT with argument count (not including callee)
+        uint8_t argCount = static_cast<uint8_t>(instr.operands.size() - 1);
+        emit8(BCOpcode::CALL_INDIRECT, argCount);
+
+        // Pop callee + arguments, push result if any
+        popStack(static_cast<int32_t>(instr.operands.size()));
+        if (instr.result) {
+            pushStack();
+            storeResult(instr);
+        }
+        return;
+    }
+
+    // Regular direct call - push all arguments
     for (const auto& arg : instr.operands) {
         pushValue(arg);
     }
 
-    // For now, assume internal function call
     // Look up function index
     auto it = module_.functionIndex.find(instr.callee);
     if (it != module_.functionIndex.end()) {
@@ -801,10 +957,43 @@ void BytecodeCompiler::compileBranch(const il::core::Instr& instr) {
 
         case Opcode::SwitchI32: {
             // Switch statement
+            // Push the scrutinee value onto the stack
             pushValue(il::core::switchScrutinee(instr));
-            // TODO: Build switch table and emit SWITCH opcode
-            emit(BCOpcode::POP);
+
+            const size_t numCases = il::core::switchCaseCount(instr);
+            const std::string& defaultLabel = il::core::switchDefaultLabel(instr);
+
+            // Emit SWITCH opcode
+            emit(BCOpcode::SWITCH);
             popStack();
+
+            // Emit number of cases (raw 32-bit word)
+            emit(static_cast<uint32_t>(numCases));
+
+            // Remember position for default offset and emit placeholder
+            uint32_t defaultOffsetPos = static_cast<uint32_t>(currentFunc_->code.size());
+            emit(0u);  // placeholder for default offset
+
+            // Remember positions for case offsets
+            std::vector<std::pair<int32_t, uint32_t>> casePositions;  // (caseValue, offsetPos)
+            for (size_t i = 0; i < numCases; ++i) {
+                const auto& caseVal = il::core::switchCaseValue(instr, i);
+                int32_t caseInt = 0;
+                if (caseVal.kind == il::core::Value::Kind::ConstInt) {
+                    caseInt = static_cast<int32_t>(caseVal.i64);
+                }
+                emit(static_cast<uint32_t>(caseInt));  // case value
+                casePositions.push_back({caseInt, static_cast<uint32_t>(currentFunc_->code.size())});
+                emit(0u);  // placeholder for target offset
+            }
+
+            // Mark these as branch targets for later patching (using raw offsets)
+            pendingBranches_.push_back({defaultOffsetPos, defaultLabel, false, true});
+
+            for (size_t i = 0; i < numCases; ++i) {
+                const std::string& caseLabel = il::core::switchCaseLabel(instr, i);
+                pendingBranches_.push_back({casePositions[i].second, caseLabel, false, true});
+            }
             break;
         }
 

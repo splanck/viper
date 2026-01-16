@@ -13,10 +13,15 @@
 #include "bytecode/BytecodeModule.hpp"
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+// Forward declare runtime string type
+struct rt_string_impl;
+using rt_string = rt_string_impl*;
 
 // Forward declarations for runtime integration
 namespace il::vm {
@@ -35,6 +40,7 @@ using NativeHandler = std::function<void(BCSlot*, uint32_t, BCSlot*)>;
 enum class TrapKind : uint8_t {
     None = 0,
     Overflow,
+    InvalidCast,
     DivisionByZero,
     IndexOutOfBounds,
     NullPointer,
@@ -200,6 +206,14 @@ private:
     bool singleStep_;
     DebugCallback debugCallback_;
     std::unordered_map<std::string, std::set<uint32_t>> breakpoints_;  // funcName -> set of PCs
+
+    // String literal cache - stores proper rt_string objects for string constants
+    // The cache is indexed by string pool index and stores rt_string pointers
+    // that the runtime expects (not raw C strings)
+    std::vector<rt_string> stringCache_;
+
+    // Initialize string cache with rt_string objects for all strings in pool
+    void initStringCache();
 
     // Main interpreter loop (switch-based dispatch)
     void run();

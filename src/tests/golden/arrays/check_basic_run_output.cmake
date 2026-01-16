@@ -14,11 +14,20 @@ endif ()
 if (DEFINED CLEANUP_FILE)
     file(REMOVE "${CLEANUP_FILE}")
 endif ()
-execute_process(
-        COMMAND ${ILC} front basic -run ${BAS_FILE}
-        RESULT_VARIABLE res
-        OUTPUT_VARIABLE out
-        ERROR_VARIABLE err)
+# DEBUG_VM: when set, use standard VM (--debug-vm) for tests requiring runtime exception handling
+if (DEFINED DEBUG_VM)
+    execute_process(
+            COMMAND ${ILC} front basic --debug-vm -run ${BAS_FILE}
+            RESULT_VARIABLE res
+            OUTPUT_VARIABLE out
+            ERROR_VARIABLE err)
+else ()
+    execute_process(
+            COMMAND ${ILC} front basic -run ${BAS_FILE}
+            RESULT_VARIABLE res
+            OUTPUT_VARIABLE out
+            ERROR_VARIABLE err)
+endif ()
 if (NOT res EQUAL 0)
     message(FATAL_ERROR "expected zero exit: ${res} stderr: ${err}")
 endif ()

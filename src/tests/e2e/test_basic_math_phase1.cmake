@@ -16,7 +16,12 @@ endif ()
 # Use a unique filename to avoid collisions when tests run in parallel.
 get_filename_component(_BASENAME "${BAS_FILE}" NAME_WE)
 set(OUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/${_BASENAME}.out.txt")
-execute_process(COMMAND ${ILC} front basic -run ${BAS_FILE} OUTPUT_FILE ${OUT_FILE} RESULT_VARIABLE r)
+# DEBUG_VM: when set, use standard VM (--debug-vm) for tests requiring runtime exception handling
+if (DEFINED DEBUG_VM)
+    execute_process(COMMAND ${ILC} front basic --debug-vm -run ${BAS_FILE} OUTPUT_FILE ${OUT_FILE} RESULT_VARIABLE r)
+else ()
+    execute_process(COMMAND ${ILC} front basic -run ${BAS_FILE} OUTPUT_FILE ${OUT_FILE} RESULT_VARIABLE r)
+endif ()
 if (NOT r EQUAL 0)
     message(FATAL_ERROR "execution failed")
 endif ()

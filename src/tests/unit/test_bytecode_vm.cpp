@@ -620,8 +620,8 @@ static void test_exception_handling() {
 
     // eh_push with offset to handler (4 instructions ahead)
     func.code.push_back(encodeOp16(BCOpcode::EH_PUSH, 4));
-    // trap RuntimeError (7)
-    func.code.push_back(encodeOp8(BCOpcode::TRAP, 7));
+    // trap RuntimeError
+    func.code.push_back(encodeOp8(BCOpcode::TRAP, static_cast<uint8_t>(TrapKind::RuntimeError)));
     // These should be unreachable:
     func.code.push_back(encodeOp8(BCOpcode::LOAD_I8, static_cast<uint8_t>(999 & 0xFF)));
     func.code.push_back(encodeOp(BCOpcode::RETURN));
@@ -666,7 +666,7 @@ static void test_unhandled_trap() {
     func.numLocals = 1;
     func.maxStack = 2;
 
-    func.code.push_back(encodeOp8(BCOpcode::TRAP, 7));  // RuntimeError
+    func.code.push_back(encodeOp8(BCOpcode::TRAP, static_cast<uint8_t>(TrapKind::RuntimeError)));
     func.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 0));
     func.code.push_back(encodeOp(BCOpcode::RETURN));
 
@@ -711,7 +711,7 @@ static void test_eh_pop() {
 
     func.code.push_back(encodeOp16(BCOpcode::EH_PUSH, 4));  // handler at pc=4
     func.code.push_back(encodeOp(BCOpcode::EH_POP));        // unregister
-    func.code.push_back(encodeOp8(BCOpcode::TRAP, 7));      // should be unhandled
+    func.code.push_back(encodeOp8(BCOpcode::TRAP, static_cast<uint8_t>(TrapKind::RuntimeError)));  // should be unhandled
     func.code.push_back(encodeOp(BCOpcode::RETURN));
     // handler (unreachable):
     func.code.push_back(encodeOp(BCOpcode::EH_ENTRY));

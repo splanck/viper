@@ -21,6 +21,8 @@
 ///          functions so higher-level tooling can reuse them.
 
 #include "cli.hpp"
+#include "bytecode/BytecodeCompiler.hpp"
+#include "bytecode/BytecodeVM.hpp"
 #include "frontends/basic/BasicCompiler.hpp"
 #include "il/api/expected_api.hpp"
 #include "il/transform/SimplifyCFG.hpp"
@@ -28,8 +30,12 @@
 #include "support/source_manager.hpp"
 #include "viper/il/IO.hpp"
 #include "viper/il/Verify.hpp"
-#include "viper/runtime/rt.h"
 #include "viper/vm/VM.hpp"
+
+extern "C" {
+#include "runtime/rt_args.h"
+#include "runtime/rt_string.h"
+}
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -58,6 +64,7 @@ struct FrontBasicConfig
 {
     bool emitIl{false};
     bool run{false};
+    bool debugVm{false};                  ///< True to use standard VM for debugging.
     std::string sourcePath;
     ilc::SharedCliOptions shared;
     std::optional<uint32_t> sourceFileId{};
@@ -132,6 +139,10 @@ il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **arg
         else if (arg == "--no-runtime-namespaces")
         {
             config.noRuntimeNamespaces = true;
+        }
+        else if (arg == "--debug-vm")
+        {
+            config.debugVm = true;
         }
         else
         {
@@ -284,32 +295,73 @@ int runFrontBasic(const FrontBasicConfig &config,
         }
     }
 
-    vm::TraceConfig traceCfg = config.shared.trace;
-    traceCfg.sm = &sm;
+    // Use standard VM for debugging (when --debug-vm or --trace is specified)
+    bool useStandardVm = config.debugVm || config.shared.trace.enabled();
 
-    vm::RunConfig runCfg;
-    runCfg.trace = traceCfg;
-    runCfg.maxSteps = config.shared.maxSteps;
-
-    // Pass program arguments to the VM runner for safe seeding after init.
-    runCfg.programArgs = config.programArgs;
-    vm::Runner runner(module, std::move(runCfg));
-    int rc = static_cast<int>(runner.run());
-    const auto trapMessage = runner.lastTrapMessage();
-    if (trapMessage)
+    if (useStandardVm)
     {
-        if (config.shared.dumpTrap && !trapMessage->empty())
+        vm::TraceConfig traceCfg = config.shared.trace;
+        traceCfg.sm = &sm;
+
+        vm::RunConfig runCfg;
+        runCfg.trace = traceCfg;
+        runCfg.maxSteps = config.shared.maxSteps;
+        runCfg.programArgs = config.programArgs;
+
+        vm::Runner runner(module, std::move(runCfg));
+        int rc = static_cast<int>(runner.run());
+        const auto trapMessage = runner.lastTrapMessage();
+        if (trapMessage)
         {
-            std::cerr << *trapMessage;
-            if (trapMessage->back() != '\n')
+            if (config.shared.dumpTrap && !trapMessage->empty())
             {
-                std::cerr << '\n';
+                std::cerr << *trapMessage;
+                if (trapMessage->back() != '\n')
+                {
+                    std::cerr << '\n';
+                }
+            }
+            if (rc == 0)
+            {
+                rc = 1;
             }
         }
-        if (rc == 0)
+        return rc;
+    }
+
+    // Default: use fast bytecode VM with threaded dispatch
+    viper::bytecode::BytecodeCompiler bcCompiler;
+    viper::bytecode::BytecodeModule bcModule = bcCompiler.compile(module);
+
+    // Set up program arguments for the runtime
+    if (!config.programArgs.empty())
+    {
+        rt_args_clear();
+        for (const auto &s : config.programArgs)
         {
-            rc = 1;
+            rt_string tmp = rt_string_from_bytes(s.data(), s.size());
+            rt_args_push(tmp);
+            rt_string_unref(tmp);
         }
+    }
+
+    viper::bytecode::BytecodeVM bcVm;
+    bcVm.setThreadedDispatch(true);
+    bcVm.setRuntimeBridgeEnabled(true);
+    bcVm.load(&bcModule);
+
+    viper::bytecode::BCSlot bcResult = bcVm.exec("main", {});
+
+    int rc = 0;
+    if (bcVm.state() == viper::bytecode::VMState::Trapped)
+    {
+        // Always output trap message (matching standard VM behavior)
+        std::cerr << bcVm.trapMessage() << "\n";
+        rc = 1;
+    }
+    else
+    {
+        rc = static_cast<int>(bcResult.i64);
     }
     return rc;
 }
