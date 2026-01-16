@@ -296,6 +296,20 @@ Expected<Param> parseBlockParam(const std::string &paramText,
         return lineError<Param>(st.lineNo, oss.str());
     }
 
+    // For entry block parameters that shadow function parameters, reuse the
+    // existing ID from the function parameter. This ensures that references
+    // to the parameter in instructions use the correct ID.
+    if (st.curFn->blocks.empty())
+    {
+        // This is the entry block - check if this param shadows a function param
+        auto it = st.tempIds.find(nm);
+        if (it != st.tempIds.end())
+        {
+            // Reuse the function param ID
+            return Param{nm, ty, it->second};
+        }
+    }
+
     Param param{nm, ty, st.nextTemp};
     st.tempIds[nm] = st.nextTemp;
     if (st.curFn->valueNames.size() <= st.nextTemp)

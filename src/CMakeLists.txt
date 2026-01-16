@@ -289,7 +289,7 @@ target_include_directories(viper_bytecode PUBLIC
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>)
 target_link_libraries(viper_bytecode
         PUBLIC viper_il_core
-        PRIVATE viper_support)
+        PRIVATE viper_support il_vm)
 
 add_library(il_codegen_x86_64 STATIC
         codegen/x86_64/AsmEmitter.cpp
@@ -342,7 +342,8 @@ set(ILC_LINK_LIBS
         il_tools_common
         viper_codegen_x86_64
         il_codegen_aarch64
-        ilc_cmd_arm64)
+        ilc_cmd_arm64
+        viper_bytecode)
 
 if (VIPER_ENABLE_PASCAL)
     list(APPEND ILC_SOURCES tools/ilc/cmd_front_pascal.cpp)
@@ -429,7 +430,8 @@ target_link_libraries(ilrun
         viper::il_full
         il_vm
         il_api
-        il_tools_common)
+        il_tools_common
+        viper_bytecode)
 install(TARGETS ilrun RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 add_executable(il-verify tools/il-verify/il-verify.cpp)

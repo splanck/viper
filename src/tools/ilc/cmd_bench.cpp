@@ -17,6 +17,8 @@
 ///          with each dispatch strategy, and reports performance metrics.
 
 #include "cli.hpp"
+#include "bytecode/BytecodeCompiler.hpp"
+#include "bytecode/BytecodeVM.hpp"
 #include "il/core/Module.hpp"
 #include "support/source_manager.hpp"
 #include "tools/common/module_loader.hpp"
@@ -57,6 +59,8 @@ struct BenchConfig
     bool runTable = true;
     bool runSwitch = true;
     bool runThreaded = true;
+    bool runBytecodeSwitch = false;
+    bool runBytecodeThreaded = false;
     bool jsonOutput = false;
     bool verbose = false;
 };
@@ -80,9 +84,13 @@ void benchUsage()
               << "Options:\n"
               << "  -n <N>            Number of iterations (default: 3)\n"
               << "  --max-steps <N>   Maximum interpreter steps (0 = unlimited)\n"
-              << "  --table           Run only FnTable dispatch\n"
-              << "  --switch          Run only Switch dispatch\n"
-              << "  --threaded        Run only Threaded dispatch\n"
+              << "  --table           Run only FnTable dispatch (standard VM)\n"
+              << "  --switch          Run only Switch dispatch (standard VM)\n"
+              << "  --threaded        Run only Threaded dispatch (standard VM)\n"
+              << "  --bc-switch       Run Bytecode VM with switch dispatch\n"
+              << "  --bc-threaded     Run Bytecode VM with threaded dispatch\n"
+              << "  --bytecode        Run both Bytecode VM dispatch strategies\n"
+              << "  --all             Run all dispatch strategies (default if none specified)\n"
               << "  --json            Output results as JSON\n"
               << "  -v, --verbose     Verbose output\n"
               << "\n"
@@ -153,6 +161,49 @@ bool parseBenchArgs(int argc, char **argv, BenchConfig &config)
                 strategySpecified = true;
             }
             config.runThreaded = true;
+        }
+        else if (arg == "--bc-switch")
+        {
+            if (!strategySpecified)
+            {
+                config.runTable = false;
+                config.runSwitch = false;
+                config.runThreaded = false;
+                strategySpecified = true;
+            }
+            config.runBytecodeSwitch = true;
+        }
+        else if (arg == "--bc-threaded")
+        {
+            if (!strategySpecified)
+            {
+                config.runTable = false;
+                config.runSwitch = false;
+                config.runThreaded = false;
+                strategySpecified = true;
+            }
+            config.runBytecodeThreaded = true;
+        }
+        else if (arg == "--bytecode")
+        {
+            if (!strategySpecified)
+            {
+                config.runTable = false;
+                config.runSwitch = false;
+                config.runThreaded = false;
+                strategySpecified = true;
+            }
+            config.runBytecodeSwitch = true;
+            config.runBytecodeThreaded = true;
+        }
+        else if (arg == "--all")
+        {
+            config.runTable = true;
+            config.runSwitch = true;
+            config.runThreaded = true;
+            config.runBytecodeSwitch = true;
+            config.runBytecodeThreaded = true;
+            strategySpecified = true;
         }
         else if (arg == "--json")
         {
@@ -234,6 +285,56 @@ BenchResult runBenchmarkIteration(const core::Module &mod,
     return result;
 }
 
+/// @brief Run a single bytecode VM benchmark iteration.
+/// @param mod Module to execute.
+/// @param bcModule Pre-compiled bytecode module.
+/// @param strategy Dispatch strategy name ("bc-switch" or "bc-threaded").
+/// @return Benchmark result.
+BenchResult runBytecodeBenchmarkIteration(const core::Module &mod,
+                                          const viper::bytecode::BytecodeModule &bcModule,
+                                          const std::string &strategy)
+{
+    BenchResult result;
+    result.strategy = strategy;
+
+    bool useThreaded = (strategy == "bc-threaded");
+
+    auto start = std::chrono::steady_clock::now();
+
+    try
+    {
+        viper::bytecode::BytecodeVM vm;
+        vm.setThreadedDispatch(useThreaded);
+        vm.load(&bcModule);
+
+        auto retSlot = vm.exec("main", {});
+        result.returnValue = retSlot.i64;
+        result.instructions = vm.instrCount();
+
+        if (vm.state() == viper::bytecode::VMState::Trapped)
+        {
+            result.success = false;
+            return result;
+        }
+    }
+    catch (const std::exception &e)
+    {
+        result.success = false;
+        return result;
+    }
+
+    auto end = std::chrono::steady_clock::now();
+    result.timeMs =
+        std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000.0;
+
+    if (result.timeMs > 0)
+    {
+        result.insnsPerSec = (result.instructions / result.timeMs) * 1000.0;
+    }
+
+    return result;
+}
+
 /// @brief Compute median of a vector of doubles.
 double computeMedian(std::vector<double> values)
 {
@@ -271,6 +372,7 @@ bool benchmarkFile(const std::string &file,
         return false;
     }
 
+    // Standard VM strategies
     std::vector<std::string> strategies;
     if (config.runTable)
         strategies.push_back("table");
@@ -321,6 +423,64 @@ bool benchmarkFile(const std::string &file,
         }
 
         results.push_back(result);
+    }
+
+    // Bytecode VM strategies
+    std::vector<std::string> bcStrategies;
+    if (config.runBytecodeSwitch)
+        bcStrategies.push_back("bc-switch");
+    if (config.runBytecodeThreaded)
+        bcStrategies.push_back("bc-threaded");
+
+    if (!bcStrategies.empty())
+    {
+        // Compile IL to bytecode once
+        viper::bytecode::BytecodeCompiler compiler;
+        viper::bytecode::BytecodeModule bcModule = compiler.compile(mod);
+
+        for (const auto &strategy : bcStrategies)
+        {
+            std::vector<double> times;
+            std::vector<double> insnsPerSec;
+            uint64_t instructions = 0;
+            int64_t returnValue = 0;
+            bool allSuccess = true;
+
+            if (config.verbose)
+            {
+                std::cerr << "Running " << file << " with " << strategy << " ("
+                          << config.iterations << " iterations)...\n";
+            }
+
+            for (uint32_t iter = 0; iter < config.iterations; ++iter)
+            {
+                auto iterResult = runBytecodeBenchmarkIteration(mod, bcModule, strategy);
+                if (!iterResult.success)
+                {
+                    allSuccess = false;
+                    break;
+                }
+                times.push_back(iterResult.timeMs);
+                insnsPerSec.push_back(iterResult.insnsPerSec);
+                instructions = iterResult.instructions;
+                returnValue = iterResult.returnValue;
+            }
+
+            BenchResult result;
+            result.file = file;
+            result.strategy = strategy;
+            result.success = allSuccess;
+            result.instructions = instructions;
+            result.returnValue = returnValue;
+
+            if (allSuccess && !times.empty())
+            {
+                result.timeMs = computeMedian(times);
+                result.insnsPerSec = computeMedian(insnsPerSec);
+            }
+
+            results.push_back(result);
+        }
     }
 
     return true;

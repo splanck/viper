@@ -2,6 +2,8 @@
 // See LICENSE for license information.
 
 #include "bytecode/BytecodeVM.hpp"
+#include "vm/RuntimeBridge.hpp"
+#include "vm/VM.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cstring>
@@ -19,10 +21,15 @@ BytecodeVM::BytecodeVM()
     , instrCount_(0)
     , runtimeBridgeEnabled_(false)
     , useThreadedDispatch_(true)  // Default to faster threaded dispatch
+    , allocaTop_(0)
+    , singleStep_(false)
 {
     // Pre-allocate reasonable stack size
     valueStack_.resize(kMaxStackSize * kMaxCallDepth);
     callStack_.reserve(kMaxCallDepth);
+
+    // Pre-allocate alloca buffer (64KB should be sufficient for most cases)
+    allocaBuffer_.resize(64 * 1024);
 }
 
 BytecodeVM::~BytecodeVM() = default;
@@ -37,6 +44,7 @@ void BytecodeVM::load(const BytecodeModule* module) {
     trapKind_ = TrapKind::None;
     trapMessage_.clear();
     callStack_.clear();
+    ehStack_.clear();
     sp_ = valueStack_.data();
     fp_ = nullptr;
 }
@@ -69,6 +77,7 @@ BCSlot BytecodeVM::exec(const BytecodeFunction* func,
     trapKind_ = TrapKind::None;
     callStack_.clear();
     sp_ = valueStack_.data();
+    allocaTop_ = 0;  // Reset alloca stack
 
     // Push arguments onto stack as initial locals
     for (const auto& arg : args) {
@@ -616,19 +625,32 @@ void BytecodeVM::run() {
 
                 const NativeFuncRef& ref = module_->nativeFuncs[nativeIdx];
 
-                // Look up handler
-                auto it = nativeHandlers_.find(ref.name);
-                if (it == nativeHandlers_.end()) {
-                    trap(TrapKind::RuntimeError, "Native function not registered");
-                    break;
-                }
-
                 // Set up arguments (they're on the stack)
                 BCSlot* args = sp_ - argCount;
                 BCSlot result{};
 
-                // Call the handler
-                it->second(args, argCount, &result);
+                if (runtimeBridgeEnabled_) {
+                    // Use RuntimeBridge for native function calls
+                    // Convert BCSlot* to il::vm::Slot* (same layout)
+                    il::vm::Slot* vmArgs = reinterpret_cast<il::vm::Slot*>(args);
+                    std::vector<il::vm::Slot> argVec(vmArgs, vmArgs + argCount);
+
+                    il::vm::RuntimeCallContext ctx;
+                    il::vm::Slot vmResult = il::vm::RuntimeBridge::call(
+                        ctx, ref.name, argVec,
+                        il::support::SourceLoc{}, "", "");
+
+                    result.i64 = vmResult.i64;
+                } else {
+                    // Look up handler in local registry
+                    auto it = nativeHandlers_.find(ref.name);
+                    if (it == nativeHandlers_.end()) {
+                        trap(TrapKind::RuntimeError, "Native function not registered");
+                        break;
+                    }
+                    // Call the handler
+                    it->second(args, argCount, &result);
+                }
 
                 // Pop arguments
                 sp_ -= argCount;
@@ -644,13 +666,28 @@ void BytecodeVM::run() {
             // Memory Operations (basic support)
             //==================================================================
             case BCOpcode::ALLOCA: {
-                // For now, just allocate from value stack
+                // Allocate from the separate alloca buffer (not operand stack)
+                // This ensures alloca'd memory survives across function calls
                 int64_t size = (--sp_)->i64;
-                // Round up to slot size
-                size_t slots = (size + sizeof(BCSlot) - 1) / sizeof(BCSlot);
-                sp_->ptr = sp_;
+                // Align to 8 bytes
+                size = (size + 7) & ~7;
+
+                // Check for alloca overflow
+                if (allocaTop_ + static_cast<size_t>(size) > allocaBuffer_.size()) {
+                    // Grow buffer if needed (up to 1MB limit)
+                    size_t newSize = allocaBuffer_.size() * 2;
+                    if (newSize > 1024 * 1024 || allocaTop_ + static_cast<size_t>(size) > newSize) {
+                        trap(TrapKind::StackOverflow, "alloca stack overflow");
+                        break;
+                    }
+                    allocaBuffer_.resize(newSize);
+                }
+
+                // Return pointer to allocated memory
+                void* ptr = allocaBuffer_.data() + allocaTop_;
+                allocaTop_ += static_cast<size_t>(size);
+                sp_->ptr = ptr;
                 sp_++;
-                sp_ += slots;  // Reserve space
                 break;
             }
 
@@ -792,6 +829,62 @@ void BytecodeVM::run() {
                 break;
 
             //==================================================================
+            // Exception Handling
+            //==================================================================
+            case BCOpcode::EH_PUSH: {
+                // Register exception handler at offset from current PC
+                uint16_t offset = decodeArg16(instr);
+                uint32_t handlerPc = fp_->pc + offset;
+                pushExceptionHandler(handlerPc);
+                break;
+            }
+
+            case BCOpcode::EH_POP:
+                popExceptionHandler();
+                break;
+
+            case BCOpcode::EH_ENTRY:
+                // Handler entry marker - no-op, execution continues
+                break;
+
+            case BCOpcode::TRAP: {
+                uint8_t kind = decodeArg8_0(instr);
+                TrapKind trapKind = static_cast<TrapKind>(kind);
+                if (!dispatchTrap(trapKind)) {
+                    trap(trapKind, "Unhandled trap");
+                }
+                break;
+            }
+
+            case BCOpcode::TRAP_FROM_ERR: {
+                // Pop error code from stack and use as trap kind
+                int64_t code = (--sp_)->i64;
+                TrapKind trapKind = static_cast<TrapKind>(code);
+                if (!dispatchTrap(trapKind)) {
+                    trap(trapKind, "Unhandled trap from error");
+                }
+                break;
+            }
+
+            case BCOpcode::RESUME_SAME:
+                // Resume execution at the point of the trap
+                // This requires the trap PC to be stored, which we don't track yet
+                // For now, just continue (handler should set up return properly)
+                break;
+
+            case BCOpcode::RESUME_NEXT:
+                // Resume execution after the faulting instruction
+                // Similar to RESUME_SAME but skips the instruction
+                break;
+
+            case BCOpcode::RESUME_LABEL: {
+                // Resume at a specific label (offset from current PC)
+                int16_t offset = decodeArgI16(instr);
+                fp_->pc += offset;
+                break;
+            }
+
+            //==================================================================
             // Default
             //==================================================================
             default:
@@ -823,6 +916,7 @@ void BytecodeVM::call(const BytecodeFunction* func) {
     frame.stackBase = localsStart + func->numLocals;
     frame.ehStackDepth = 0;  // TODO: exception handlers
     frame.callSitePc = callSitePc;
+    frame.allocaBase = allocaTop_;  // Save alloca position for cleanup on return
 
     // Zero non-parameter locals
     std::fill(localsStart + func->numParams,
@@ -837,6 +931,10 @@ void BytecodeVM::call(const BytecodeFunction* func) {
 }
 
 bool BytecodeVM::popFrame() {
+    // Restore alloca stack to the base of the popped frame
+    // This releases all alloca'd memory from this function call
+    allocaTop_ = callStack_.back().allocaBase;
+
     // Pop frame
     callStack_.pop_back();
 
@@ -904,6 +1002,110 @@ bool BytecodeVM::mulOverflow(int64_t a, int64_t b, int64_t& result) {
     result = a * b;
     return false;
 #endif
+}
+
+//==============================================================================
+// Source Line Tracking
+//==============================================================================
+
+uint32_t BytecodeVM::currentSourceLine() const {
+    if (!fp_ || !fp_->func) return 0;
+    return getSourceLine(fp_->func, fp_->pc);
+}
+
+uint32_t BytecodeVM::getSourceLine(const BytecodeFunction* func, uint32_t pc) {
+    if (!func || func->lineTable.empty()) return 0;
+    if (pc >= func->lineTable.size()) return 0;
+    return func->lineTable[pc];
+}
+
+//==============================================================================
+// Exception Handling
+//==============================================================================
+
+void BytecodeVM::pushExceptionHandler(uint32_t handlerPc) {
+    BCExceptionHandler eh;
+    eh.handlerPc = handlerPc;
+    eh.frameIndex = static_cast<uint32_t>(callStack_.size() - 1);
+    eh.stackPointer = sp_;
+    ehStack_.push_back(eh);
+}
+
+void BytecodeVM::popExceptionHandler() {
+    if (!ehStack_.empty()) {
+        ehStack_.pop_back();
+    }
+}
+
+bool BytecodeVM::dispatchTrap(TrapKind kind) {
+    // Search for a handler
+    while (!ehStack_.empty()) {
+        BCExceptionHandler eh = ehStack_.back();
+        ehStack_.pop_back();
+
+        // Unwind call stack to the frame where handler was registered
+        while (callStack_.size() > eh.frameIndex + 1) {
+            callStack_.pop_back();
+        }
+
+        if (!callStack_.empty()) {
+            fp_ = &callStack_.back();
+            sp_ = eh.stackPointer;
+
+            // Push trap kind onto stack for handler to inspect
+            sp_->i64 = static_cast<int64_t>(kind);
+            sp_++;
+
+            // Jump to handler
+            fp_->pc = eh.handlerPc;
+            state_ = VMState::Running;
+            return true;
+        }
+    }
+
+    // No handler found - trap propagates to top level
+    return false;
+}
+
+//==============================================================================
+// Debug Support
+//==============================================================================
+
+void BytecodeVM::setBreakpoint(const std::string& funcName, uint32_t pc) {
+    breakpoints_[funcName].insert(pc);
+}
+
+void BytecodeVM::clearBreakpoint(const std::string& funcName, uint32_t pc) {
+    auto it = breakpoints_.find(funcName);
+    if (it != breakpoints_.end()) {
+        it->second.erase(pc);
+        if (it->second.empty()) {
+            breakpoints_.erase(it);
+        }
+    }
+}
+
+void BytecodeVM::clearAllBreakpoints() {
+    breakpoints_.clear();
+}
+
+bool BytecodeVM::checkBreakpoint() {
+    if (!fp_ || !fp_->func) return false;
+
+    bool isBreakpoint = false;
+    auto it = breakpoints_.find(fp_->func->name);
+    if (it != breakpoints_.end()) {
+        isBreakpoint = it->second.count(fp_->pc) > 0;
+    }
+
+    // Check if we should pause (breakpoint hit or single-stepping)
+    if (isBreakpoint || singleStep_) {
+        if (debugCallback_) {
+            return !debugCallback_(*this, fp_->func, fp_->pc, isBreakpoint);
+        }
+        return true;  // Pause if no callback but breakpoint/step triggered
+    }
+    return false;
 }
 
 //==============================================================================
@@ -1042,6 +1244,16 @@ void BytecodeVM::runThreaded() {
         [0xB8] = &&L_RETURN,
         [0xB9] = &&L_RETURN_VOID,
         [0xBA] = &&L_DEFAULT,  // TAIL_CALL
+
+        // Exception Handling (0xC0-0xCF)
+        [0xC0] = &&L_EH_PUSH,
+        [0xC1] = &&L_EH_POP,
+        [0xC2] = &&L_EH_ENTRY,
+        [0xC3] = &&L_TRAP,
+        [0xC4] = &&L_TRAP_FROM_ERR,
+        [0xCA] = &&L_RESUME_SAME,
+        [0xCB] = &&L_RESUME_NEXT,
+        [0xCC] = &&L_RESUME_LABEL,
     };
 
     // Fill uninitialized entries with default handler
@@ -1504,11 +1716,25 @@ L_I64_TO_BOOL:
 
     // Memory Operations
 L_ALLOCA: {
+    // Allocate from the separate alloca buffer (not operand stack)
     int64_t size = (--sp)->i64;
-    size_t slots = (size + sizeof(BCSlot) - 1) / sizeof(BCSlot);
-    sp->ptr = sp;
+    // Align to 8 bytes
+    size = (size + 7) & ~7;
+
+    // Check for alloca overflow
+    if (allocaTop_ + static_cast<size_t>(size) > allocaBuffer_.size()) {
+        size_t newSize = allocaBuffer_.size() * 2;
+        if (newSize > 1024 * 1024 || allocaTop_ + static_cast<size_t>(size) > newSize) {
+            trap(TrapKind::StackOverflow, "alloca stack overflow");
+            return;
+        }
+        allocaBuffer_.resize(newSize);
+    }
+
+    void* ptr = allocaBuffer_.data() + allocaTop_;
+    allocaTop_ += static_cast<size_t>(size);
+    sp->ptr = ptr;
     sp++;
-    sp += slots;
     DISPATCH();
 }
 
@@ -1650,16 +1876,30 @@ L_CALL_NATIVE: {
     }
 
     const NativeFuncRef& ref = module_->nativeFuncs[nativeIdx];
-    auto it = nativeHandlers_.find(ref.name);
-    if (it == nativeHandlers_.end()) {
-        SYNC_STATE();
-        trap(TrapKind::RuntimeError, "Native function not registered");
-        return;
-    }
-
     BCSlot* args = sp - argCount;
     BCSlot result{};
-    it->second(args, argCount, &result);
+
+    if (runtimeBridgeEnabled_) {
+        // Use RuntimeBridge for native function calls
+        il::vm::Slot* vmArgs = reinterpret_cast<il::vm::Slot*>(args);
+        std::vector<il::vm::Slot> argVec(vmArgs, vmArgs + argCount);
+
+        il::vm::RuntimeCallContext ctx;
+        il::vm::Slot vmResult = il::vm::RuntimeBridge::call(
+            ctx, ref.name, argVec,
+            il::support::SourceLoc{}, "", "");
+
+        result.i64 = vmResult.i64;
+    } else {
+        auto it = nativeHandlers_.find(ref.name);
+        if (it == nativeHandlers_.end()) {
+            SYNC_STATE();
+            trap(TrapKind::RuntimeError, "Native function not registered");
+            return;
+        }
+        it->second(args, argCount, &result);
+    }
+
     sp -= argCount;
     if (ref.hasReturn) {
         *sp++ = result;
@@ -1689,6 +1929,72 @@ L_RETURN_VOID: {
         return;
     }
     RELOAD_STATE();
+    DISPATCH();
+}
+
+//==========================================================================
+// Exception Handling
+//==========================================================================
+
+L_EH_PUSH: {
+    uint16_t offset = decodeArg16(instr);
+    uint32_t handlerPc = pc + offset;
+    SYNC_STATE();
+    sp_ = sp;
+    pushExceptionHandler(handlerPc);
+    DISPATCH();
+}
+
+L_EH_POP: {
+    SYNC_STATE();
+    popExceptionHandler();
+    DISPATCH();
+}
+
+L_EH_ENTRY: {
+    // Handler entry marker - no-op
+    DISPATCH();
+}
+
+L_TRAP: {
+    uint8_t kind = decodeArg8_0(instr);
+    TrapKind trapKind = static_cast<TrapKind>(kind);
+    SYNC_STATE();
+    sp_ = sp;
+    if (!dispatchTrap(trapKind)) {
+        trap(trapKind, "Unhandled trap");
+        return;
+    }
+    RELOAD_STATE();
+    DISPATCH();
+}
+
+L_TRAP_FROM_ERR: {
+    int64_t errCode = (--sp)->i64;
+    TrapKind trapKind = static_cast<TrapKind>(errCode);
+    SYNC_STATE();
+    sp_ = sp;
+    if (!dispatchTrap(trapKind)) {
+        trap(trapKind, "Unhandled trap from error");
+        return;
+    }
+    RELOAD_STATE();
+    DISPATCH();
+}
+
+L_RESUME_SAME: {
+    // Resume at fault point - for now just continue
+    DISPATCH();
+}
+
+L_RESUME_NEXT: {
+    // Resume after fault - for now just continue
+    DISPATCH();
+}
+
+L_RESUME_LABEL: {
+    int16_t offset = decodeArgI16(instr);
+    pc += offset;
     DISPATCH();
 }
 

@@ -13,6 +13,7 @@
 #include "bytecode/BytecodeModule.hpp"
 #include <cstdint>
 #include <functional>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -58,7 +59,20 @@ struct BCFrame {
     BCSlot* stackBase;             // Stack base for this frame
     uint32_t ehStackDepth;         // Exception handler stack depth at entry
     uint32_t callSitePc;           // PC at call site (for debugging)
+    size_t allocaBase;             // Alloca stack position at frame entry
 };
+
+/// Exception handler entry on the handler stack
+struct BCExceptionHandler {
+    uint32_t handlerPc;            // PC of handler entry point
+    uint32_t frameIndex;           // Call stack frame index when registered
+    BCSlot* stackPointer;          // Stack pointer when registered
+};
+
+/// Debug callback type for breakpoints and single-stepping
+/// Args: (vm reference, function, pc, is_breakpoint)
+/// Returns: true to continue, false to pause
+using DebugCallback = std::function<bool(class BytecodeVM&, const BytecodeFunction*, uint32_t, bool)>;
 
 /// Bytecode virtual machine
 class BytecodeVM {
@@ -109,6 +123,43 @@ public:
     /// Check if threaded dispatch is enabled
     bool useThreadedDispatch() const { return useThreadedDispatch_; }
 
+    //==========================================================================
+    // Debug Support
+    //==========================================================================
+
+    /// Set debug callback for breakpoints and single-stepping
+    void setDebugCallback(DebugCallback callback) { debugCallback_ = std::move(callback); }
+
+    /// Enable/disable single-step mode
+    void setSingleStep(bool enabled) { singleStep_ = enabled; }
+
+    /// Check if single-stepping is enabled
+    bool singleStep() const { return singleStep_; }
+
+    /// Set a breakpoint at a specific PC in a function
+    void setBreakpoint(const std::string& funcName, uint32_t pc);
+
+    /// Clear a breakpoint
+    void clearBreakpoint(const std::string& funcName, uint32_t pc);
+
+    /// Clear all breakpoints
+    void clearAllBreakpoints();
+
+    /// Get current PC (for debugging)
+    uint32_t currentPc() const { return fp_ ? fp_->pc : 0; }
+
+    /// Get current function (for debugging)
+    const BytecodeFunction* currentFunction() const { return fp_ ? fp_->func : nullptr; }
+
+    /// Get exception handler stack depth
+    size_t exceptionHandlerDepth() const { return ehStack_.size(); }
+
+    /// Get source line for current PC (0 if not available)
+    uint32_t currentSourceLine() const;
+
+    /// Get source line for a specific PC in a function (0 if not available)
+    static uint32_t getSourceLine(const BytecodeFunction* func, uint32_t pc);
+
 private:
     // Module being executed
     const BytecodeModule* module_;
@@ -138,6 +189,18 @@ private:
     bool useThreadedDispatch_;
     std::unordered_map<std::string, NativeHandler> nativeHandlers_;
 
+    // Exception handler stack
+    std::vector<BCExceptionHandler> ehStack_;
+
+    // Alloca buffer for stack allocations (separate from operand stack)
+    std::vector<uint8_t> allocaBuffer_;
+    size_t allocaTop_;  // Current allocation position
+
+    // Debug support
+    bool singleStep_;
+    DebugCallback debugCallback_;
+    std::unordered_map<std::string, std::set<uint32_t>> breakpoints_;  // funcName -> set of PCs
+
     // Main interpreter loop (switch-based dispatch)
     void run();
 
@@ -160,6 +223,14 @@ private:
     bool addOverflow(int64_t a, int64_t b, int64_t& result);
     bool subOverflow(int64_t a, int64_t b, int64_t& result);
     bool mulOverflow(int64_t a, int64_t b, int64_t& result);
+
+    // Exception handling helpers
+    void pushExceptionHandler(uint32_t handlerPc);
+    void popExceptionHandler();
+    bool dispatchTrap(TrapKind kind);  // Returns true if handler found
+
+    // Debug helpers
+    bool checkBreakpoint();  // Returns true if should pause
 };
 
 } // namespace bytecode

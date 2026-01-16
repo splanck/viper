@@ -2,7 +2,7 @@
 # File: tests/tools/CMakeLists.txt
 # Purpose: CLI and tool-specific smoke tests.
 
-set(VIPER_TOOLS_LIBS viper_il_full il_vm il_api il_transform il_tools_common)
+set(VIPER_TOOLS_LIBS viper_il_full il_vm il_api il_transform il_tools_common viper_bytecode)
 set(VIPER_TOOLS_LIBS ${VIPER_TOOLS_LIBS} PARENT_SCOPE)
 
 function(viper_add_tools_tests)

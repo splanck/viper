@@ -78,13 +78,17 @@ void BytecodeCompiler::buildSSAToLocalsMap(const il::core::Function& fn) {
         ssaToLocal_[param.id] = nextLocal_++;
     }
 
-    // Map block parameters
+    // Map block parameters and track them by block label
+    blockParamIds_.clear();
     for (const auto& block : fn.blocks) {
+        std::vector<uint32_t> paramIds;
         for (const auto& param : block.params) {
+            paramIds.push_back(param.id);
             if (ssaToLocal_.find(param.id) == ssaToLocal_.end()) {
                 ssaToLocal_[param.id] = nextLocal_++;
             }
         }
+        blockParamIds_[block.label] = std::move(paramIds);
     }
 
     // Map instruction results
@@ -635,7 +639,8 @@ void BytecodeCompiler::compileMemory(const il::core::Instr& instr) {
             break;
 
         case Opcode::Load:
-            pushValue(instr.operands[1]);  // Pointer (operand 0 is type)
+            // load type, ptr -> operands[0] is ptr (type is in instr.type)
+            pushValue(instr.operands[0]);
             // For now, assume i64 load
             emit(BCOpcode::LOAD_I64_MEM);
             // Load consumes 1, produces 1 - no stack change
@@ -643,8 +648,9 @@ void BytecodeCompiler::compileMemory(const il::core::Instr& instr) {
             break;
 
         case Opcode::Store:
-            pushValue(instr.operands[1]);  // Pointer (operand 0 is type)
-            pushValue(instr.operands[2]);  // Value
+            // store type, ptr, val -> operands[0] is ptr, operands[1] is val
+            pushValue(instr.operands[0]);  // Pointer
+            pushValue(instr.operands[1]);  // Value
             emit(BCOpcode::STORE_I64_MEM);
             popStack(2);  // Consume 2, produce 0
             break;
@@ -700,33 +706,96 @@ void BytecodeCompiler::compileCall(const il::core::Instr& instr) {
 void BytecodeCompiler::compileBranch(const il::core::Instr& instr) {
     using Opcode = il::core::Opcode;
 
+    // Helper to emit stores for branch arguments to block parameter locals
+    auto storeBranchArgs = [this](const std::string& label,
+                                   const std::vector<il::core::Value>& args) {
+        auto it = blockParamIds_.find(label);
+        if (it == blockParamIds_.end() || args.empty()) {
+            return;
+        }
+        const auto& paramIds = it->second;
+        // Store arguments to corresponding block parameter locals
+        // Store in reverse order since we pushed them in forward order
+        for (size_t i = 0; i < args.size() && i < paramIds.size(); ++i) {
+            pushValue(args[i]);
+            uint32_t local = getLocal(paramIds[i]);
+            if (local < 256) {
+                emit8(BCOpcode::STORE_LOCAL, static_cast<uint8_t>(local));
+            } else {
+                emit16(BCOpcode::STORE_LOCAL_W, static_cast<uint16_t>(local));
+            }
+            popStack();
+        }
+    };
+
     switch (instr.op) {
         case Opcode::Br: {
             // Unconditional branch
-            // First, push block arguments
+            // Store branch arguments to target block's parameter locals
             if (!instr.labels.empty() && !instr.brArgs.empty() && !instr.brArgs[0].empty()) {
-                for (const auto& arg : instr.brArgs[0]) {
-                    pushValue(arg);
-                }
-                // Store to block parameter locals
-                // TODO: Need to track block parameter mapping
+                storeBranchArgs(instr.labels[0], instr.brArgs[0]);
             }
             emitBranch(BCOpcode::JUMP, instr.labels[0]);
             break;
         }
 
         case Opcode::CBr: {
-            // Conditional branch
+            // Conditional branch: cbr %cond, thenLabel(args), elseLabel(args)
+            // We need to handle both branches' arguments
             pushValue(instr.operands[0]);  // Condition
 
-            // cbr %cond, thenLabel, elseLabel
-            // Emit: JUMP_IF_TRUE thenLabel; JUMP elseLabel
-            // Or: JUMP_IF_FALSE elseLabel; (fall through to then)
+            // If false, jump to else block
+            // But first we need to decide how to handle arguments for both branches
+            // Since both branches might have arguments, we emit:
+            //   JUMP_IF_FALSE else_setup
+            //   <then args stores>
+            //   JUMP then_block
+            // else_setup:
+            //   <else args stores>
+            //   JUMP else_block
 
-            // TODO: Handle block arguments properly
-            emitBranch(BCOpcode::JUMP_IF_FALSE, instr.labels[1]);  // Jump to else if false
-            popStack();
-            emitBranch(BCOpcode::JUMP, instr.labels[0]);  // Jump to then
+            // For simplicity, we emit separate code paths
+            // First check if either branch has arguments
+            bool hasThenArgs = instr.brArgs.size() > 0 && !instr.brArgs[0].empty();
+            bool hasElseArgs = instr.brArgs.size() > 1 && !instr.brArgs[1].empty();
+
+            if (!hasThenArgs && !hasElseArgs) {
+                // No arguments, simple branch
+                emitBranch(BCOpcode::JUMP_IF_FALSE, instr.labels[1]);
+                popStack();
+                emitBranch(BCOpcode::JUMP, instr.labels[0]);
+            } else {
+                // Complex case with branch arguments
+                // JUMP_IF_FALSE to else_args_label
+                // Store then args
+                // JUMP to then block
+                // else_args_label:
+                // Store else args
+                // JUMP to else block
+
+                // Create internal label for else args setup
+                std::string elseArgsLabel = "__else_args_" +
+                    std::to_string(currentFunc_->code.size());
+
+                emitBranch(BCOpcode::JUMP_IF_FALSE, elseArgsLabel);
+                popStack();
+
+                // Then branch arguments
+                if (hasThenArgs) {
+                    storeBranchArgs(instr.labels[0], instr.brArgs[0]);
+                }
+                emitBranch(BCOpcode::JUMP, instr.labels[0]);
+
+                // Record offset for else args label
+                blockOffsets_[elseArgsLabel] =
+                    static_cast<uint32_t>(currentFunc_->code.size());
+
+                // Else branch arguments
+                if (hasElseArgs) {
+                    storeBranchArgs(instr.labels[1], instr.brArgs[1]);
+                }
+                emitBranch(BCOpcode::JUMP, instr.labels[1]);
+            }
             break;
         }
 

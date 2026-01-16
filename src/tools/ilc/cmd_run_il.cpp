@@ -21,6 +21,8 @@
 
 #include "break_spec.hpp"
 #include "cli.hpp"
+#include "bytecode/BytecodeCompiler.hpp"
+#include "bytecode/BytecodeVM.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Module.hpp"
 #include "support/source_manager.hpp"
@@ -64,6 +66,8 @@ struct RunILConfig
     bool countFlag = false;
     bool timeFlag = false;
     bool boundsChecksRequested = false;
+    bool useBytecode = false;
+    bool useBytecodeThreaded = false;
     vm::DebugCtrl debugCtrl;
     std::unique_ptr<vm::DebugScript> debugScript;
 };
@@ -303,6 +307,15 @@ bool parseRunILArgs(int argc, char **argv, RunILConfig &config)
         {
             config.timeFlag = true;
         }
+        else if (arg == "--bytecode")
+        {
+            config.useBytecode = true;
+        }
+        else if (arg == "--bc-threaded")
+        {
+            config.useBytecode = true;
+            config.useBytecodeThreaded = true;
+        }
         else
         {
             switch (ilc::parseSharedOption(i, argc, argv, config.sharedOpts))
@@ -440,6 +453,67 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm)
         }
     }
 
+    // Use bytecode VM if requested
+    if (config.useBytecode)
+    {
+        // Compile IL to bytecode
+        viper::bytecode::BytecodeCompiler compiler;
+        viper::bytecode::BytecodeModule bcModule = compiler.compile(m);
+
+        // Create and configure VM
+        viper::bytecode::BytecodeVM vm;
+        vm.setThreadedDispatch(config.useBytecodeThreaded);
+        vm.setRuntimeBridgeEnabled(true);
+        vm.load(&bcModule);
+
+        std::chrono::steady_clock::time_point start;
+        if (config.timeFlag)
+        {
+            start = std::chrono::steady_clock::now();
+        }
+
+        // Execute main function
+        viper::bytecode::BCSlot result = vm.exec("main", {});
+
+        std::chrono::steady_clock::time_point end;
+        if (config.timeFlag)
+        {
+            end = std::chrono::steady_clock::now();
+        }
+
+        int rc = 0;
+        if (vm.state() == viper::bytecode::VMState::Trapped)
+        {
+            if (config.sharedOpts.dumpTrap)
+            {
+                std::cerr << vm.trapMessage() << "\n";
+            }
+            rc = 1;
+        }
+        else
+        {
+            rc = static_cast<int>(result.i64);
+        }
+
+        if (config.countFlag || config.timeFlag)
+        {
+            std::cerr << "[SUMMARY]";
+            if (config.countFlag)
+            {
+                std::cerr << " instr=" << vm.instrCount();
+            }
+            if (config.timeFlag)
+            {
+                double ms = std::chrono::duration<double, std::milli>(end - start).count();
+                std::cerr << " time_ms=" << ms;
+            }
+            std::cerr << "\n";
+        }
+
+        return rc;
+    }
+
+    // Standard IL VM execution path
     vm::RunConfig runCfg;
     runCfg.trace = traceCfg;
     runCfg.maxSteps = config.sharedOpts.maxSteps;

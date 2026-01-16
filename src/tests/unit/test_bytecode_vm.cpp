@@ -587,6 +587,189 @@ static void test_native_multi_args() {
     std::cout << "PASSED\n";
 }
 
+/// Test exception handling with EH_PUSH, TRAP, and handler dispatch
+static void test_exception_handling() {
+    std::cout << "  test_exception_handling: ";
+
+    BytecodeModule bcModule;
+    bcModule.magic = kBytecodeModuleMagic;
+    bcModule.version = kBytecodeVersion;
+    bcModule.flags = 0;
+
+    // Create a function that:
+    // 1. Pushes an exception handler
+    // 2. Raises a trap
+    // 3. Handler catches it and returns a sentinel value
+    //
+    // func @test_trap() -> i64
+    //   eh_push handler  ; offset to handler
+    //   trap 7           ; RuntimeError = 7
+    //   load_i64 999     ; unreachable
+    //   ret
+    // handler:
+    //   eh_entry
+    //   pop              ; discard trap kind from stack
+    //   load_i64 42      ; handler returns 42
+    //   ret
+
+    BytecodeFunction func;
+    func.name = "test_trap";
+    func.numParams = 0;
+    func.numLocals = 1;
+    func.maxStack = 4;
+
+    // eh_push with offset to handler (4 instructions ahead)
+    func.code.push_back(encodeOp16(BCOpcode::EH_PUSH, 4));
+    // trap RuntimeError (7)
+    func.code.push_back(encodeOp8(BCOpcode::TRAP, 7));
+    // These should be unreachable:
+    func.code.push_back(encodeOp8(BCOpcode::LOAD_I8, static_cast<uint8_t>(999 & 0xFF)));
+    func.code.push_back(encodeOp(BCOpcode::RETURN));
+    // handler: (pc = 4)
+    func.code.push_back(encodeOp(BCOpcode::EH_ENTRY));
+    // Pop the trap kind that dispatchTrap pushed
+    func.code.push_back(encodeOp(BCOpcode::POP));
+    // Load 42 as the return value
+    func.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 42));
+    func.code.push_back(encodeOp(BCOpcode::RETURN));
+
+    bcModule.functions.push_back(std::move(func));
+    bcModule.functionIndex["test_trap"] = 0;
+
+    BytecodeVM vm;
+    vm.load(&bcModule);
+
+    BCSlot result = vm.exec("test_trap", {});
+    assert(vm.state() == VMState::Halted);
+    assert(result.i64 == 42);  // Handler returned 42
+
+    std::cout << "PASSED\n";
+}
+
+/// Test unhandled trap
+static void test_unhandled_trap() {
+    std::cout << "  test_unhandled_trap: ";
+
+    BytecodeModule bcModule;
+    bcModule.magic = kBytecodeModuleMagic;
+    bcModule.version = kBytecodeVersion;
+    bcModule.flags = 0;
+
+    // Function that raises a trap with no handler
+    // func @unhandled() -> i64
+    //   trap 7  ; RuntimeError
+    //   ret     ; unreachable
+
+    BytecodeFunction func;
+    func.name = "unhandled";
+    func.numParams = 0;
+    func.numLocals = 1;
+    func.maxStack = 2;
+
+    func.code.push_back(encodeOp8(BCOpcode::TRAP, 7));  // RuntimeError
+    func.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 0));
+    func.code.push_back(encodeOp(BCOpcode::RETURN));
+
+    bcModule.functions.push_back(std::move(func));
+    bcModule.functionIndex["unhandled"] = 0;
+
+    BytecodeVM vm;
+    vm.load(&bcModule);
+
+    vm.exec("unhandled", {});
+    assert(vm.state() == VMState::Trapped);
+    assert(vm.trapKind() == TrapKind::RuntimeError);
+
+    std::cout << "PASSED\n";
+}
+
+/// Test EH_POP (handler unregistration)
+static void test_eh_pop() {
+    std::cout << "  test_eh_pop: ";
+
+    BytecodeModule bcModule;
+    bcModule.magic = kBytecodeModuleMagic;
+    bcModule.version = kBytecodeVersion;
+    bcModule.flags = 0;
+
+    // Function that registers and unregisters a handler, then traps
+    // func @test_eh_pop() -> i64
+    //   eh_push handler
+    //   eh_pop           ; unregister handler
+    //   trap 7           ; should be unhandled now
+    //   ret
+    // handler:
+    //   eh_entry
+    //   load_i64 42
+    //   ret
+
+    BytecodeFunction func;
+    func.name = "test_eh_pop";
+    func.numParams = 0;
+    func.numLocals = 1;
+    func.maxStack = 2;
+
+    func.code.push_back(encodeOp16(BCOpcode::EH_PUSH, 4));  // handler at pc=4
+    func.code.push_back(encodeOp(BCOpcode::EH_POP));        // unregister
+    func.code.push_back(encodeOp8(BCOpcode::TRAP, 7));      // should be unhandled
+    func.code.push_back(encodeOp(BCOpcode::RETURN));
+    // handler (unreachable):
+    func.code.push_back(encodeOp(BCOpcode::EH_ENTRY));
+    func.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 42));
+    func.code.push_back(encodeOp(BCOpcode::RETURN));
+
+    bcModule.functions.push_back(std::move(func));
+    bcModule.functionIndex["test_eh_pop"] = 0;
+
+    BytecodeVM vm;
+    vm.load(&bcModule);
+
+    vm.exec("test_eh_pop", {});
+    assert(vm.state() == VMState::Trapped);  // Should be unhandled
+    assert(vm.trapKind() == TrapKind::RuntimeError);
+
+    std::cout << "PASSED\n";
+}
+
+/// Test debug API (breakpoints, single-step)
+/// Note: Actual breakpoint interception requires debug-enabled execution mode
+static void test_debug_api() {
+    std::cout << "  test_debug_api: ";
+
+    BytecodeVM vm;
+
+    // Test breakpoint API
+    vm.setBreakpoint("test_func", 0);
+    vm.setBreakpoint("test_func", 10);
+    vm.setBreakpoint("other_func", 5);
+
+    // Clear specific breakpoint
+    vm.clearBreakpoint("test_func", 0);
+
+    // Clear all
+    vm.clearAllBreakpoints();
+
+    // Test single-step API
+    assert(vm.singleStep() == false);
+    vm.setSingleStep(true);
+    assert(vm.singleStep() == true);
+    vm.setSingleStep(false);
+
+    // Test debug callback
+    bool callbackCalled = false;
+    vm.setDebugCallback([&](BytecodeVM&, const BytecodeFunction*, uint32_t, bool) {
+        callbackCalled = true;
+        return true;
+    });
+
+    // Test getter methods
+    assert(vm.currentPc() == 0);  // No function running
+    assert(vm.currentFunction() == nullptr);
+    assert(vm.exceptionHandlerDepth() == 0);
+
+    std::cout << "PASSED\n";
+}
+
 int main() {
     std::cout << "Running bytecode VM tests...\n";
 
@@ -598,6 +781,10 @@ int main() {
     test_dispatch_benchmark();
     test_native_calls();
     test_native_multi_args();
+    test_exception_handling();
+    test_unhandled_trap();
+    test_eh_pop();
+    test_debug_api();
 
     std::cout << "All bytecode VM tests PASSED!\n";
     return 0;

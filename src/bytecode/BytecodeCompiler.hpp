@@ -44,6 +44,9 @@ private:
     // Block label -> bytecode offset mapping
     std::unordered_map<std::string, uint32_t> blockOffsets_;
 
+    // Block label -> parameter IDs mapping (for storing branch arguments)
+    std::unordered_map<std::string, std::vector<uint32_t>> blockParamIds_;
+
     // Pending branch fixups: (code offset, target label)
     struct BranchFixup {
         uint32_t codeOffset;      // Index into code vector
