@@ -216,6 +216,19 @@ void dce(Module &M)
                     if (traceEnabled())
                         std::cerr << "[dce] marking %" << I.operands[0].id << " as observed (gep) in " << F.name << "\n";
                 }
+                // Mark as observed if passed to a function call (the callee may read from it)
+                if ((I.op == Opcode::Call || I.op == Opcode::CallIndirect) && !I.operands.empty())
+                {
+                    for (auto &op : I.operands)
+                    {
+                        if (op.kind == Value::Kind::Temp)
+                        {
+                            allocaObserved[op.id] = true;
+                            if (traceEnabled())
+                                std::cerr << "[dce] marking %" << op.id << " as observed (call arg) in " << F.name << "\n";
+                        }
+                    }
+                }
             }
 
         // Remove dead loads/stores/allocas

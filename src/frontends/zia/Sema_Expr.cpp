@@ -389,6 +389,31 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
             {
                 return funcType->returnType();
             }
+
+            // BUG-007 fix: For extern runtime class constructors, return proper collection types
+            // This enables for-in iteration over runtime lists and maps
+            // For extern functions, sym.type is the return type directly (not wrapped in Function)
+            if (sym->isExtern && funcType && funcType->kind == TypeKindSem::Ptr &&
+                !funcType->name.empty())
+            {
+                // Check if this is a List runtime class
+                if (funcType->name == "Viper.Collections.List")
+                {
+                    // Return a List type with unknown element type
+                    return types::list(types::unknown());
+                }
+                if (funcType->name == "Viper.Collections.Map")
+                {
+                    // Return a Map type with unknown key/value types
+                    return types::map(types::unknown(), types::unknown());
+                }
+                if (funcType->name == "Viper.Collections.Set")
+                {
+                    // Return a Set type with unknown element type
+                    return types::set(types::unknown());
+                }
+            }
+
             return funcType;
         }
     }
@@ -667,6 +692,34 @@ TypeRef Sema::analyzeIndex(IndexExpr *expr)
 
 TypeRef Sema::analyzeField(FieldExpr *expr)
 {
+    // BUG-012 fix: Handle runtime class namespace property access (e.g., Viper.Math.Pi)
+    // For property access like Viper.Math.Pi, we need to resolve it as a getter call
+    // before trying to analyze the base, because "Viper" is not a symbol.
+    std::string dottedBase;
+    if (extractDottedName(expr->base.get(), dottedBase))
+    {
+        // Check if the dotted base is a runtime class (registered in typeRegistry_)
+        auto typeIt = typeRegistry_.find(dottedBase);
+        if (typeIt != typeRegistry_.end())
+        {
+            // Try to find a getter function: {ClassName}.get_{PropertyName}
+            std::string getterName = dottedBase + ".get_" + expr->field;
+            Symbol *sym = lookupSymbol(getterName);
+            if (sym && sym->kind == Symbol::Kind::Function)
+            {
+                // Store the resolved getter for the lowerer
+                runtimeFieldGetters_[expr] = getterName;
+                // Return the function's return type (the property type)
+                TypeRef funcType = sym->type;
+                if (funcType && funcType->kind == TypeKindSem::Function)
+                {
+                    return funcType->returnType();
+                }
+                return funcType;
+            }
+        }
+    }
+
     TypeRef baseType = analyzeExpr(expr->base.get());
 
     // Unwrap Optional types for field/method access
@@ -728,7 +781,8 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
     // Handle built-in properties like .count on lists
     if (baseType && baseType->kind == TypeKindSem::List)
     {
-        if (expr->field == "count" || expr->field == "size" || expr->field == "length")
+        if (expr->field == "Count" || expr->field == "count" || expr->field == "size" ||
+            expr->field == "length")
         {
             return types::integer();
         }

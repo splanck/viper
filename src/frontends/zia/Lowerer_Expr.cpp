@@ -198,6 +198,19 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
 
 LowerResult Lowerer::lowerField(FieldExpr *expr)
 {
+    // BUG-012 fix: Check if this field expression was resolved as a runtime getter
+    // (e.g., Viper.Math.Pi -> Viper.Math.get_Pi)
+    std::string getterName = sema_.runtimeFieldGetter(expr);
+    if (!getterName.empty())
+    {
+        // Get the return type of the getter from the expression type
+        TypeRef resultType = sema_.typeOf(expr);
+        Type ilType = mapType(resultType);
+        // Emit a no-argument call to the getter
+        Value result = emitCallRet(ilType, getterName, {});
+        return {result, ilType};
+    }
+
     // Get the type of the base expression first (before lowering)
     TypeRef baseType = sema_.typeOf(expr->base.get());
     if (!baseType)
@@ -346,7 +359,8 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
     // Handle List.count, List.size, and List.length property
     if (baseType->kind == TypeKindSem::List)
     {
-        if (expr->field == "count" || expr->field == "size" || expr->field == "length")
+        if (expr->field == "Count" || expr->field == "count" || expr->field == "size" ||
+            expr->field == "length")
         {
             // Synthesize a call to Viper.Collections.List.get_Count(list)
             Value result = emitCallRet(Type(Type::Kind::I64), kListCount, {base.value});
@@ -423,8 +437,76 @@ LowerResult Lowerer::lowerNew(NewExpr *expr)
         return {result, Type(Type::Kind::Ptr)};
     }
 
-    // Find the entity type info
+    // BUG-010 fix: Check for value type construction via 'new' keyword
+    // Value types can be instantiated with 'new' just like entity types
     std::string typeName = type->name;
+    auto valueIt = valueTypes_.find(typeName);
+    if (valueIt != valueTypes_.end())
+    {
+        const ValueTypeInfo &info = valueIt->second;
+
+        // Lower arguments
+        std::vector<Value> argValues;
+        for (auto &arg : expr->args)
+        {
+            auto result = lowerExpr(arg.value.get());
+            argValues.push_back(result.value);
+        }
+
+        // Allocate stack space for the value
+        unsigned allocaId = nextTempId();
+        il::core::Instr allocaInstr;
+        allocaInstr.result = allocaId;
+        allocaInstr.op = Opcode::Alloca;
+        allocaInstr.type = Type(Type::Kind::Ptr);
+        allocaInstr.operands = {Value::constInt(static_cast<int64_t>(info.totalSize))};
+        blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
+        Value ptr = Value::temp(allocaId);
+
+        // Check if the value type has an explicit init method
+        auto initIt = info.methodMap.find("init");
+        if (initIt != info.methodMap.end())
+        {
+            // Call the explicit init method
+            std::string initName = typeName + ".init";
+            std::vector<Value> initArgs;
+            initArgs.push_back(ptr); // self is first argument
+            for (const auto &argVal : argValues)
+            {
+                initArgs.push_back(argVal);
+            }
+            emitCall(initName, initArgs);
+        }
+        else
+        {
+            // No init method - store arguments directly into fields
+            for (size_t i = 0; i < argValues.size() && i < info.fields.size(); ++i)
+            {
+                const FieldLayout &field = info.fields[i];
+
+                // GEP to get field address
+                unsigned gepId = nextTempId();
+                il::core::Instr gepInstr;
+                gepInstr.result = gepId;
+                gepInstr.op = Opcode::GEP;
+                gepInstr.type = Type(Type::Kind::Ptr);
+                gepInstr.operands = {ptr, Value::constInt(static_cast<int64_t>(field.offset))};
+                blockMgr_.currentBlock()->instructions.push_back(gepInstr);
+                Value fieldAddr = Value::temp(gepId);
+
+                // Store the value
+                il::core::Instr storeInstr;
+                storeInstr.op = Opcode::Store;
+                storeInstr.type = mapType(field.type);
+                storeInstr.operands = {fieldAddr, argValues[i]};
+                blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+            }
+        }
+
+        return LowerResult{ptr, Type(Type::Kind::Ptr)};
+    }
+
+    // Find the entity type info
     auto it = entityTypes_.find(typeName);
     if (it == entityTypes_.end())
     {

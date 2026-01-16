@@ -12,6 +12,7 @@
 
 #include "frontends/zia/Lowerer.hpp"
 #include "frontends/zia/RuntimeNames.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 #include <iostream>
 
 namespace il::frontends::zia
@@ -401,27 +402,44 @@ std::optional<LowerResult> Lowerer::lowerValueTypeConstruction(const std::string
     blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
     Value ptr = Value::temp(allocaId);
 
-    // Store each argument into the corresponding field
-    for (size_t i = 0; i < argValues.size() && i < info.fields.size(); ++i)
+    // BUG-010 fix: Check if the value type has an explicit init method
+    auto initIt = info.methodMap.find("init");
+    if (initIt != info.methodMap.end())
     {
-        const FieldLayout &field = info.fields[i];
+        // Call the explicit init method (like entity types do)
+        std::string initName = typeName + ".init";
+        std::vector<Value> initArgs;
+        initArgs.push_back(ptr); // self is first argument
+        for (const auto &argVal : argValues)
+        {
+            initArgs.push_back(argVal);
+        }
+        emitCall(initName, initArgs);
+    }
+    else
+    {
+        // No init method - store arguments directly into fields (original behavior)
+        for (size_t i = 0; i < argValues.size() && i < info.fields.size(); ++i)
+        {
+            const FieldLayout &field = info.fields[i];
 
-        // GEP to get field address
-        unsigned gepId = nextTempId();
-        il::core::Instr gepInstr;
-        gepInstr.result = gepId;
-        gepInstr.op = Opcode::GEP;
-        gepInstr.type = Type(Type::Kind::Ptr);
-        gepInstr.operands = {ptr, Value::constInt(static_cast<int64_t>(field.offset))};
-        blockMgr_.currentBlock()->instructions.push_back(gepInstr);
-        Value fieldAddr = Value::temp(gepId);
+            // GEP to get field address
+            unsigned gepId = nextTempId();
+            il::core::Instr gepInstr;
+            gepInstr.result = gepId;
+            gepInstr.op = Opcode::GEP;
+            gepInstr.type = Type(Type::Kind::Ptr);
+            gepInstr.operands = {ptr, Value::constInt(static_cast<int64_t>(field.offset))};
+            blockMgr_.currentBlock()->instructions.push_back(gepInstr);
+            Value fieldAddr = Value::temp(gepId);
 
-        // Store the value
-        il::core::Instr storeInstr;
-        storeInstr.op = Opcode::Store;
-        storeInstr.type = mapType(field.type);
-        storeInstr.operands = {fieldAddr, argValues[i]};
-        blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+            // Store the value
+            il::core::Instr storeInstr;
+            storeInstr.op = Opcode::Store;
+            storeInstr.type = mapType(field.type);
+            storeInstr.operands = {fieldAddr, argValues[i]};
+            blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+        }
     }
 
     return LowerResult{ptr, Type(Type::Kind::Ptr)};
@@ -722,15 +740,38 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
             }
         }
 
-        args.reserve(args.size() + expr->args.size());
-        for (auto &arg : expr->args)
+        // BUG-008 fix: Look up runtime signature to auto-box primitives when expected type is ptr
+        const auto *rtDesc = il::runtime::findRuntimeDescriptor(runtimeCallee);
+        const std::vector<il::core::Type> *expectedParamTypes = nullptr;
+        if (rtDesc)
         {
-            auto result = lowerExpr(arg.value.get());
+            expectedParamTypes = &rtDesc->signature.paramTypes;
+        }
+
+        args.reserve(args.size() + expr->args.size());
+        size_t paramOffset = args.size(); // Account for implicit self parameter if present
+        for (size_t i = 0; i < expr->args.size(); ++i)
+        {
+            auto result = lowerExpr(expr->args[i].value.get());
             Value argValue = result.value;
             if (result.type.kind == Type::Kind::I32)
             {
                 argValue = widenByteToInteger(argValue);
             }
+
+            // BUG-008 fix: Auto-box primitive if expected type is Ptr
+            if (expectedParamTypes && (paramOffset + i) < expectedParamTypes->size())
+            {
+                Type expectedType = (*expectedParamTypes)[paramOffset + i];
+                if (expectedType.kind == Type::Kind::Ptr &&
+                    result.type.kind != Type::Kind::Ptr &&
+                    result.type.kind != Type::Kind::Void)
+                {
+                    // Primitive passed where object expected - auto-box
+                    argValue = emitBox(argValue, result.type);
+                }
+            }
+
             args.push_back(argValue);
         }
 

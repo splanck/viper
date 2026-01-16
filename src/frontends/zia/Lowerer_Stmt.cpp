@@ -447,10 +447,13 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
 
         std::string indexVar = "__forin_idx_" + std::to_string(nextTempId());
         std::string lenVar = "__forin_len_" + std::to_string(nextTempId());
+        std::string listVar = "__forin_list_" + std::to_string(nextTempId());
 
         createSlot(indexVar, Type(Type::Kind::I64));
         createSlot(lenVar, Type(Type::Kind::I64));
+        createSlot(listVar, Type(Type::Kind::Ptr));
         storeToSlot(indexVar, Value::constInt(0), Type(Type::Kind::I64));
+        storeToSlot(listVar, listValue.value, Type(Type::Kind::Ptr));
         Value lenVal = emitCallRet(Type(Type::Kind::I64), kListCount, {listValue.value});
         storeToSlot(lenVar, lenVal, Type(Type::Kind::I64));
 
@@ -469,7 +472,9 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
         emitCBr(cond, bodyIdx, endIdx);
 
         setBlock(bodyIdx);
-        Value boxed = emitCallRet(Type(Type::Kind::Ptr), kListGet, {listValue.value, idxVal});
+        Value listLoaded = loadFromSlot(listVar, Type(Type::Kind::Ptr));
+        Value idxInBody = loadFromSlot(indexVar, Type(Type::Kind::I64));
+        Value boxed = emitCallRet(Type(Type::Kind::Ptr), kListGet, {listLoaded, idxInBody});
         auto elemValue = emitUnbox(boxed, elemIlType);
         storeToSlot(stmt->variable, elemValue.value, elemIlType);
         lowerStmt(stmt->body.get());
@@ -491,6 +496,7 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
         removeSlot(stmt->variable);
         removeSlot(indexVar);
         removeSlot(lenVar);
+        removeSlot(listVar);
 
         locals_ = std::move(localsBackup);
         slots_ = std::move(slotsBackup);
@@ -525,10 +531,16 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
 
         std::string indexVar = "__forin_idx_" + std::to_string(nextTempId());
         std::string lenVar = "__forin_len_" + std::to_string(nextTempId());
+        std::string keysVar = "__forin_keys_" + std::to_string(nextTempId());
+        std::string mapVar = "__forin_map_" + std::to_string(nextTempId());
 
         createSlot(indexVar, Type(Type::Kind::I64));
         createSlot(lenVar, Type(Type::Kind::I64));
+        createSlot(keysVar, Type(Type::Kind::Ptr));
+        createSlot(mapVar, Type(Type::Kind::Ptr));
         storeToSlot(indexVar, Value::constInt(0), Type(Type::Kind::I64));
+        storeToSlot(keysVar, keysSeq, Type(Type::Kind::Ptr));
+        storeToSlot(mapVar, mapValue.value, Type(Type::Kind::Ptr));
         Value lenVal = emitCallRet(Type(Type::Kind::I64), kSeqLen, {keysSeq});
         storeToSlot(lenVar, lenVal, Type(Type::Kind::I64));
 
@@ -547,14 +559,19 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
         emitCBr(cond, bodyIdx, endIdx);
 
         setBlock(bodyIdx);
+        // Load keys sequence and index from slot for cross-block SSA
+        Value keysLoaded = loadFromSlot(keysVar, Type(Type::Kind::Ptr));
+        Value idxInBody = loadFromSlot(indexVar, Type(Type::Kind::I64));
         // kSeqGet returns a boxed value (Ptr), so we need to unbox it
-        Value boxedKey = emitCallRet(Type(Type::Kind::Ptr), kSeqGet, {keysSeq, idxVal});
+        Value boxedKey = emitCallRet(Type(Type::Kind::Ptr), kSeqGet, {keysLoaded, idxInBody});
         auto keyVal = emitUnbox(boxedKey, keyIlType);
         storeToSlot(stmt->variable, keyVal.value, keyIlType);
 
         if (stmt->isTuple)
         {
-            Value boxed = emitCallRet(Type(Type::Kind::Ptr), kMapGet, {mapValue.value, keyVal.value});
+            // Load map from slot for cross-block SSA
+            Value mapLoaded = loadFromSlot(mapVar, Type(Type::Kind::Ptr));
+            Value boxed = emitCallRet(Type(Type::Kind::Ptr), kMapGet, {mapLoaded, keyVal.value});
             auto unboxed = emitUnbox(boxed, valueIlType);
             storeToSlot(stmt->secondVariable, unboxed.value, valueIlType);
         }
@@ -580,6 +597,8 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
             removeSlot(stmt->secondVariable);
         removeSlot(indexVar);
         removeSlot(lenVar);
+        removeSlot(keysVar);
+        removeSlot(mapVar);
 
         locals_ = std::move(localsBackup);
         slots_ = std::move(slotsBackup);
@@ -727,7 +746,10 @@ void Lowerer::lowerMatchStmt(MatchStmt *stmt)
         if (guardBlock)
         {
             setBlock(guardBlock);
-            emitPatternBindings(arm.pattern, scrutineeValue);
+            // Reload scrutinee from slot in this block for SSA correctness
+            Value scrutineeInGuard = loadFromSlot(scrutineeSlot, scrutinee.type);
+            PatternValue scrutineeValueInGuard{scrutineeInGuard, scrutineeType};
+            emitPatternBindings(arm.pattern, scrutineeValueInGuard);
             auto guardResult = lowerExpr(arm.pattern.guard.get());
             emitCBr(guardResult.value, armBlocks[i], nextTestBlocks[i]);
         }
@@ -735,7 +757,12 @@ void Lowerer::lowerMatchStmt(MatchStmt *stmt)
         // Lower the arm body (arm.body is an expression)
         setBlock(armBlocks[i]);
         if (!guardBlock)
-            emitPatternBindings(arm.pattern, scrutineeValue);
+        {
+            // Reload scrutinee from slot in this block for SSA correctness
+            Value scrutineeInArm = loadFromSlot(scrutineeSlot, scrutinee.type);
+            PatternValue scrutineeValueInArm{scrutineeInArm, scrutineeType};
+            emitPatternBindings(arm.pattern, scrutineeValueInArm);
+        }
         if (arm.body)
         {
             // Check if it's a block expression

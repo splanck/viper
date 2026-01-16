@@ -428,7 +428,10 @@ LowerResult Lowerer::lowerMatchExpr(MatchExpr *expr)
         if (guardBlock)
         {
             setBlock(guardBlock);
-            emitPatternBindings(arm.pattern, scrutineeValue);
+            // Reload scrutinee from slot in this block for SSA correctness
+            Value scrutineeInGuard = loadFromSlot(scrutineeSlot, scrutinee.type);
+            PatternValue scrutineeValueInGuard{scrutineeInGuard, scrutineeType};
+            emitPatternBindings(arm.pattern, scrutineeValueInGuard);
             auto guardResult = lowerExpr(arm.pattern.guard.get());
             emitCBr(guardResult.value, armBlocks[i], nextTestBlocks[i]);
         }
@@ -436,7 +439,12 @@ LowerResult Lowerer::lowerMatchExpr(MatchExpr *expr)
         // Lower the arm body and store result
         setBlock(armBlocks[i]);
         if (!guardBlock)
-            emitPatternBindings(arm.pattern, scrutineeValue);
+        {
+            // Reload scrutinee from slot in this block for SSA correctness
+            Value scrutineeInArm = loadFromSlot(scrutineeSlot, scrutinee.type);
+            PatternValue scrutineeValueInArm{scrutineeInArm, scrutineeType};
+            emitPatternBindings(arm.pattern, scrutineeValueInArm);
+        }
         if (arm.body)
         {
             auto bodyResult = lowerExpr(arm.body.get());
