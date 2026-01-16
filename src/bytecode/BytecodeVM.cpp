@@ -1092,8 +1092,22 @@ bool BytecodeVM::dispatchTrap(TrapKind kind) {
             fp_ = &callStack_.back();
             sp_ = eh.stackPointer;
 
-            // Push trap kind onto stack for handler to inspect
+            // Store trap info for err.get_* introspection
+            trapKind_ = kind;
+            // Map trap kind to BASIC error code
+            switch (kind) {
+                case TrapKind::DivisionByZero: currentErrorCode_ = 11; break;  // BASIC: Division by zero
+                case TrapKind::Overflow: currentErrorCode_ = 6; break;  // BASIC: Overflow
+                case TrapKind::IndexOutOfBounds: currentErrorCode_ = 9; break;  // BASIC: Subscript out of range
+                case TrapKind::NullPointer: currentErrorCode_ = 91; break;  // BASIC: Object variable not set
+                default: currentErrorCode_ = 0; break;
+            }
+
+            // Push trap kind onto stack for handler to inspect (as error token)
             sp_->i64 = static_cast<int64_t>(kind);
+            sp_++;
+            // Push a dummy resume token (we don't really use it in bytecode VM)
+            sp_->i64 = 0;
             sp_++;
 
             // Jump to handler
@@ -1291,6 +1305,10 @@ void BytecodeVM::runThreaded() {
         [0xC2] = &&L_EH_ENTRY,
         [0xC3] = &&L_TRAP,
         [0xC4] = &&L_TRAP_FROM_ERR,
+        [0xC6] = &&L_ERR_GET_KIND,
+        [0xC7] = &&L_ERR_GET_CODE,
+        [0xC8] = &&L_ERR_GET_IP,
+        [0xC9] = &&L_ERR_GET_LINE,
         [0xCA] = &&L_RESUME_SAME,
         [0xCB] = &&L_RESUME_NEXT,
         [0xCC] = &&L_RESUME_LABEL,
@@ -1578,8 +1596,13 @@ L_MUL_I64_OVF: {
 L_SDIV_I64_CHK:
     if (sp[-1].i64 == 0) {
         SYNC_STATE();
-        trap(TrapKind::DivisionByZero, "division by zero");
-        return;
+        sp_ = sp;
+        if (!dispatchTrap(TrapKind::DivisionByZero)) {
+            trap(TrapKind::DivisionByZero, "division by zero");
+            return;
+        }
+        RELOAD_STATE();
+        DISPATCH();
     }
     sp[-2].i64 /= sp[-1].i64;
     sp--;
@@ -1588,8 +1611,13 @@ L_SDIV_I64_CHK:
 L_UDIV_I64_CHK:
     if (sp[-1].i64 == 0) {
         SYNC_STATE();
-        trap(TrapKind::DivisionByZero, "division by zero");
-        return;
+        sp_ = sp;
+        if (!dispatchTrap(TrapKind::DivisionByZero)) {
+            trap(TrapKind::DivisionByZero, "division by zero");
+            return;
+        }
+        RELOAD_STATE();
+        DISPATCH();
     }
     sp[-2].i64 = static_cast<int64_t>(
         static_cast<uint64_t>(sp[-2].i64) /
@@ -1600,8 +1628,13 @@ L_UDIV_I64_CHK:
 L_SREM_I64_CHK:
     if (sp[-1].i64 == 0) {
         SYNC_STATE();
-        trap(TrapKind::DivisionByZero, "division by zero");
-        return;
+        sp_ = sp;
+        if (!dispatchTrap(TrapKind::DivisionByZero)) {
+            trap(TrapKind::DivisionByZero, "division by zero");
+            return;
+        }
+        RELOAD_STATE();
+        DISPATCH();
     }
     sp[-2].i64 %= sp[-1].i64;
     sp--;
@@ -1610,8 +1643,13 @@ L_SREM_I64_CHK:
 L_UREM_I64_CHK:
     if (sp[-1].i64 == 0) {
         SYNC_STATE();
-        trap(TrapKind::DivisionByZero, "division by zero");
-        return;
+        sp_ = sp;
+        if (!dispatchTrap(TrapKind::DivisionByZero)) {
+            trap(TrapKind::DivisionByZero, "division by zero");
+            return;
+        }
+        RELOAD_STATE();
+        DISPATCH();
     }
     sp[-2].i64 = static_cast<int64_t>(
         static_cast<uint64_t>(sp[-2].i64) %
@@ -2209,8 +2247,9 @@ L_RETURN_VOID: {
 //==========================================================================
 
 L_EH_PUSH: {
-    uint16_t offset = decodeArg16(instr);
-    uint32_t handlerPc = pc + offset;
+    // Handler offset is in the next code word (raw i32 offset)
+    int32_t offset = static_cast<int32_t>(code[pc++]);
+    uint32_t handlerPc = static_cast<uint32_t>(static_cast<int32_t>(pc - 1) + offset);
     SYNC_STATE();
     sp_ = sp;
     pushExceptionHandler(handlerPc);
@@ -2225,6 +2264,37 @@ L_EH_POP: {
 
 L_EH_ENTRY: {
     // Handler entry marker - no-op
+    // The error and resume token are already on the stack from dispatchTrap
+    DISPATCH();
+}
+
+L_ERR_GET_KIND: {
+    // Get trap kind from error object on stack (or use current trap kind)
+    // If there's an operand, it's on the stack; otherwise use current
+    // For simplicity, always return the current trap kind
+    sp->i64 = static_cast<int64_t>(trapKind_);
+    sp++;
+    DISPATCH();
+}
+
+L_ERR_GET_CODE: {
+    // Get error code - maps trap kind to BASIC error code
+    sp->i64 = static_cast<int64_t>(currentErrorCode_);
+    sp++;
+    DISPATCH();
+}
+
+L_ERR_GET_IP: {
+    // Get fault instruction pointer - return current PC
+    sp->i64 = static_cast<int64_t>(fp_->pc);
+    sp++;
+    DISPATCH();
+}
+
+L_ERR_GET_LINE: {
+    // Get source line - we don't track this in bytecode VM, return -1
+    sp->i64 = -1;
+    sp++;
     DISPATCH();
 }
 
@@ -2269,8 +2339,9 @@ L_RESUME_NEXT: {
 }
 
 L_RESUME_LABEL: {
-    int16_t offset = decodeArgI16(instr);
-    pc += offset;
+    // Target offset is in the next code word (raw i32 offset)
+    int32_t offset = static_cast<int32_t>(code[pc++]);
+    pc = static_cast<uint32_t>(static_cast<int32_t>(pc - 1) + offset);
     DISPATCH();
 }
 

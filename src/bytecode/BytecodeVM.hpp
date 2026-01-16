@@ -173,6 +173,7 @@ private:
     // Execution state
     VMState state_;
     TrapKind trapKind_;
+    int32_t currentErrorCode_;  // Error code for current exception handler
     std::string trapMessage_;
 
     // Value stack (holds locals and operand stack for all frames)

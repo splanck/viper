@@ -615,20 +615,25 @@ static void test_exception_handling() {
     BytecodeFunction func;
     func.name = "test_trap";
     func.numParams = 0;
-    func.numLocals = 1;
+    func.numLocals = 2;  // Need 2 locals for handler params
     func.maxStack = 4;
 
-    // eh_push with offset to handler (4 instructions ahead)
-    func.code.push_back(encodeOp16(BCOpcode::EH_PUSH, 4));
+    // eh_push with raw offset to handler in next word
+    // Layout: EH_PUSH at pc=0, offset at pc=1, TRAP at pc=2, LOAD_I8 at pc=3, RETURN at pc=4
+    // Handler will be at pc=5
+    // Offset = handler_pc - offset_word_pc = 5 - 1 = 4
+    func.code.push_back(encodeOp(BCOpcode::EH_PUSH));
+    func.code.push_back(static_cast<uint32_t>(4));  // Raw offset to handler
     // trap RuntimeError
     func.code.push_back(encodeOp8(BCOpcode::TRAP, static_cast<uint8_t>(TrapKind::RuntimeError)));
     // These should be unreachable:
     func.code.push_back(encodeOp8(BCOpcode::LOAD_I8, static_cast<uint8_t>(999 & 0xFF)));
     func.code.push_back(encodeOp(BCOpcode::RETURN));
-    // handler: (pc = 4)
+    // handler: (pc = 6)
+    // dispatchTrap pushes trap kind and resume token, handler stores them to locals
+    func.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 1));  // Store resume token to local 1
+    func.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 0));  // Store trap kind to local 0
     func.code.push_back(encodeOp(BCOpcode::EH_ENTRY));
-    // Pop the trap kind that dispatchTrap pushed
-    func.code.push_back(encodeOp(BCOpcode::POP));
     // Load 42 as the return value
     func.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 42));
     func.code.push_back(encodeOp(BCOpcode::RETURN));
@@ -706,14 +711,20 @@ static void test_eh_pop() {
     BytecodeFunction func;
     func.name = "test_eh_pop";
     func.numParams = 0;
-    func.numLocals = 1;
-    func.maxStack = 2;
+    func.numLocals = 2;
+    func.maxStack = 4;
 
-    func.code.push_back(encodeOp16(BCOpcode::EH_PUSH, 4));  // handler at pc=4
+    // Layout: EH_PUSH at pc=0, offset at pc=1, EH_POP at pc=2, TRAP at pc=3, RETURN at pc=4
+    // Handler at pc=5
+    // Offset = 5 - 1 = 4
+    func.code.push_back(encodeOp(BCOpcode::EH_PUSH));
+    func.code.push_back(static_cast<uint32_t>(4));  // Raw offset to handler
     func.code.push_back(encodeOp(BCOpcode::EH_POP));        // unregister
     func.code.push_back(encodeOp8(BCOpcode::TRAP, static_cast<uint8_t>(TrapKind::RuntimeError)));  // should be unhandled
     func.code.push_back(encodeOp(BCOpcode::RETURN));
     // handler (unreachable):
+    func.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 1));  // Store resume token
+    func.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 0));  // Store trap kind
     func.code.push_back(encodeOp(BCOpcode::EH_ENTRY));
     func.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 42));
     func.code.push_back(encodeOp(BCOpcode::RETURN));

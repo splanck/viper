@@ -2,6 +2,7 @@
 // See LICENSE for license information.
 
 #include "bytecode/BytecodeCompiler.hpp"
+#include "bytecode/BytecodeVM.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
@@ -152,6 +153,15 @@ std::vector<const il::core::BasicBlock*> BytecodeCompiler::linearizeBlocks(
         }
     }
 
+    // Include any unvisited blocks (e.g., exception handler blocks)
+    // Handler blocks are not reached through normal control flow but are
+    // referenced by eh.push instructions
+    for (const auto& block : fn.blocks) {
+        if (!visited.count(&block)) {
+            result.push_back(&block);
+        }
+    }
+
     return result;
 }
 
@@ -161,6 +171,35 @@ void BytecodeCompiler::compileBlock(const il::core::BasicBlock& block) {
 
     // Handle block parameters - they receive values from branch arguments
     // The calling block will have already pushed the arguments
+
+    // Check if this is a handler block (has params and starts with eh.entry)
+    // For handler blocks, we need to pop stack values into the block parameters
+    // since they're pushed by dispatchTrap, not by a branch instruction
+    bool isHandlerBlock = false;
+    if (!block.params.empty() && !block.instructions.empty()) {
+        if (block.instructions[0].op == il::core::Opcode::EhEntry) {
+            isHandlerBlock = true;
+        }
+    }
+
+    if (isHandlerBlock) {
+        // Handler blocks receive values on the stack (error, resume_token)
+        // pushed by dispatchTrap. Store them in reverse order (LIFO).
+        auto it = blockParamIds_.find(block.label);
+        if (it != blockParamIds_.end()) {
+            const auto& paramIds = it->second;
+            // Pop in reverse order since stack is LIFO
+            for (size_t i = paramIds.size(); i > 0; --i) {
+                uint32_t local = ssaToLocal_.at(paramIds[i - 1]);
+                if (local < 256) {
+                    emit8(BCOpcode::STORE_LOCAL, static_cast<uint8_t>(local));
+                } else {
+                    emit16(BCOpcode::STORE_LOCAL_W, static_cast<uint16_t>(local));
+                }
+                popStack(1);
+            }
+        }
+    }
 
     // Compile each instruction
     for (const auto& instr : block.instructions) {
@@ -281,21 +320,124 @@ void BytecodeCompiler::compileInstr(const il::core::Instr& instr) {
             storeResult(instr);
             break;
 
-        // Exception handling (Phase 3)
+        // Exception handling
+        case Opcode::EhPush:
+            // Push exception handler - emit opcode with placeholder for handler PC
+            emit(BCOpcode::EH_PUSH);
+            if (!instr.labels.empty()) {
+                // Record fixup for handler label
+                uint32_t offsetPos = static_cast<uint32_t>(currentFunc_->code.size());
+                emit(0u);  // Placeholder for handler PC
+                pendingBranches_.push_back({offsetPos, instr.labels[0], false, true});
+            }
+            break;
+
+        case Opcode::EhPop:
+            emit(BCOpcode::EH_POP);
+            break;
+
+        case Opcode::EhEntry:
+            // Handler entry marker - no-op but we need to set up handler params
+            // The error and resume token will be on the stack when we enter
+            emit(BCOpcode::EH_ENTRY);
+            break;
+
+        case Opcode::ErrGetKind:
+            // Get trap kind from error object (on stack or in local)
+            if (!instr.operands.empty()) {
+                pushValue(instr.operands[0]);
+            }
+            emit(BCOpcode::ERR_GET_KIND);
+            if (instr.operands.empty()) {
+                pushStack();  // Result pushed
+            }
+            // else: consumed input, pushed output (net 0)
+            storeResult(instr);
+            break;
+
+        case Opcode::ErrGetCode:
+            if (!instr.operands.empty()) {
+                pushValue(instr.operands[0]);
+            }
+            emit(BCOpcode::ERR_GET_CODE);
+            if (instr.operands.empty()) {
+                pushStack();
+            }
+            storeResult(instr);
+            break;
+
+        case Opcode::ErrGetIp:
+            if (!instr.operands.empty()) {
+                pushValue(instr.operands[0]);
+            }
+            emit(BCOpcode::ERR_GET_IP);
+            if (instr.operands.empty()) {
+                pushStack();
+            }
+            storeResult(instr);
+            break;
+
+        case Opcode::ErrGetLine:
+            if (!instr.operands.empty()) {
+                pushValue(instr.operands[0]);
+            }
+            emit(BCOpcode::ERR_GET_LINE);
+            if (instr.operands.empty()) {
+                pushStack();
+            }
+            storeResult(instr);
+            break;
+
+        case Opcode::ResumeSame:
+            // Resume at the faulting instruction
+            if (!instr.operands.empty()) {
+                pushValue(instr.operands[0]);  // Push resume token
+            }
+            emit(BCOpcode::RESUME_SAME);
+            if (!instr.operands.empty()) {
+                popStack();
+            }
+            break;
+
+        case Opcode::ResumeNext:
+            // Resume after the faulting instruction
+            if (!instr.operands.empty()) {
+                pushValue(instr.operands[0]);
+            }
+            emit(BCOpcode::RESUME_NEXT);
+            if (!instr.operands.empty()) {
+                popStack();
+            }
+            break;
+
+        case Opcode::ResumeLabel:
+            // Resume at a specific label
+            if (!instr.operands.empty()) {
+                pushValue(instr.operands[0]);  // Push resume token
+            }
+            emit(BCOpcode::RESUME_LABEL);
+            if (!instr.operands.empty()) {
+                popStack();
+            }
+            // Emit branch to the label
+            if (!instr.labels.empty()) {
+                uint32_t offsetPos = static_cast<uint32_t>(currentFunc_->code.size());
+                emit(0u);  // Placeholder
+                pendingBranches_.push_back({offsetPos, instr.labels[0], false, true});
+            }
+            break;
+
         case Opcode::TrapKind:
+            // Get current trap kind
+            emit(BCOpcode::ERR_GET_KIND);
+            pushStack();
+            storeResult(instr);
+            break;
+
         case Opcode::TrapFromErr:
         case Opcode::TrapErr:
-        case Opcode::ErrGetKind:
-        case Opcode::ErrGetCode:
-        case Opcode::ErrGetIp:
-        case Opcode::ErrGetLine:
-        case Opcode::EhPush:
-        case Opcode::EhPop:
-        case Opcode::ResumeSame:
-        case Opcode::ResumeNext:
-        case Opcode::ResumeLabel:
-        case Opcode::EhEntry:
-            // TODO: Phase 3 - Exception handling
+            // These create error objects - for now emit a simple trap
+            emit8(BCOpcode::TRAP, static_cast<uint8_t>(TrapKind::RuntimeError));
             break;
 
         case Opcode::Trap:
@@ -450,8 +592,16 @@ void BytecodeCompiler::resolveBranches() {
             continue;
         }
 
+        // For regular branches (opcode+offset encoded together), after DISPATCH
+        // pc points past the instruction, so offset = target - (fixup_pos + 1)
+        // For raw offsets (separate word), after reading the offset word,
+        // pc - 1 points to the offset word, so: handlerPc = offset_pos + offset
+        // Therefore for raw offsets: offset = target - offset_pos (no -1)
         int32_t offset = static_cast<int32_t>(it->second) -
-                         static_cast<int32_t>(fixup.codeOffset) - 1;
+                         static_cast<int32_t>(fixup.codeOffset);
+        if (!fixup.isRaw) {
+            offset -= 1;  // Regular branches need -1 adjustment
+        }
 
         if (fixup.isRaw) {
             // Raw offset: store offset directly in the word

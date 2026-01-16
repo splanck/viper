@@ -842,7 +842,7 @@ function(viper_add_golden_suite_tests)
             "-DEXPECT=${EXPECT_NS_USING}"
             -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
 
-    # TRY/CATCH golden tests (require exception handling - use standard VM)
+    # TRY/CATCH golden tests (exception handling in bytecode VM)
     file(READ ${_VIPER_GOLDEN_DIR}/trycatch/try_div_zero.stdout EXPECT_TRY_DIV_ZERO)
     string(STRIP "${EXPECT_TRY_DIV_ZERO}" EXPECT_TRY_DIV_ZERO)
     viper_add_ctest(basic_trycatch_div_zero
@@ -850,7 +850,6 @@ function(viper_add_golden_suite_tests)
             -DILC=${BASIC_ILC}
             -DBAS_FILE=${_VIPER_GOLDEN_DIR}/trycatch/try_div_zero.bas
             "-DEXPECT=${EXPECT_TRY_DIV_ZERO}"
-            -DDEBUG_VM=1
             -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
 
     file(READ ${_VIPER_GOLDEN_DIR}/trycatch/nested_try_first_catches.stdout EXPECT_TRY_NESTED_INNER)
@@ -860,7 +859,6 @@ function(viper_add_golden_suite_tests)
             -DILC=${BASIC_ILC}
             -DBAS_FILE=${_VIPER_GOLDEN_DIR}/trycatch/nested_try_first_catches.bas
             "-DEXPECT=${EXPECT_TRY_NESTED_INNER}"
-            -DDEBUG_VM=1
             -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
 
     file(READ ${_VIPER_GOLDEN_DIR}/basic/namespace_inheritance.stdout EXPECT_NS_INHERITANCE)
