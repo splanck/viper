@@ -79,6 +79,81 @@
 #include <unistd.h>
 #endif
 
+//===----------------------------------------------------------------------===//
+// Thread-Safe Fallback PRNG (RACE-011 fix)
+//===----------------------------------------------------------------------===//
+//
+// When the cryptographic RNG is unavailable, we use a thread-safe fallback.
+// The xorshift64* algorithm provides good statistical properties while using
+// only local state. An atomic counter ensures each invocation gets a unique
+// seed component, even when called concurrently.
+//
+//===----------------------------------------------------------------------===//
+
+/// @brief Global atomic counter for unique fallback seeds.
+static volatile uint64_t g_fallback_counter = 0;
+
+/// @brief Atomic increment of the fallback counter.
+static inline uint64_t atomic_fetch_add_counter(void)
+{
+#if defined(_WIN32)
+    return (uint64_t)InterlockedIncrement64((volatile LONGLONG *)&g_fallback_counter);
+#else
+    return __sync_fetch_and_add(&g_fallback_counter, 1);
+#endif
+}
+
+/// @brief xorshift64* PRNG - fast and good statistical properties.
+/// @param state Pointer to PRNG state (modified in place).
+/// @return Next 64-bit random value.
+static inline uint64_t xorshift64star(uint64_t *state)
+{
+    uint64_t x = *state;
+    x ^= x >> 12;
+    x ^= x << 25;
+    x ^= x >> 27;
+    *state = x;
+    return x * 0x2545F4914F6CDD1DULL;
+}
+
+/// @brief Thread-safe fallback random byte generator.
+/// @details Uses a thread-local xorshift64* PRNG seeded with time, counter, and
+///          stack address to ensure uniqueness even under concurrent access.
+/// @param buf Destination buffer.
+/// @param len Number of bytes to fill.
+static void fallback_random_bytes(uint8_t *buf, size_t len)
+{
+    // Combine multiple entropy sources for the seed:
+    // 1. Atomic counter ensures unique seed per invocation
+    // 2. Time adds some environmental entropy
+    // 3. Stack address adds per-thread uniqueness (ASLR helps)
+    uint64_t counter = atomic_fetch_add_counter();
+
+#if defined(_WIN32)
+    uint64_t time_component = (uint64_t)GetTickCount64();
+#else
+    uint64_t time_component = (uint64_t)time(NULL);
+#endif
+
+    uint64_t state = counter ^ time_component ^ (uint64_t)(uintptr_t)&state;
+
+    // Warm up the PRNG - discard first few outputs
+    for (int i = 0; i < 10; i++)
+        xorshift64star(&state);
+
+    // Generate random bytes
+    size_t i = 0;
+    while (i < len)
+    {
+        uint64_t r = xorshift64star(&state);
+        size_t to_copy = len - i;
+        if (to_copy > sizeof(uint64_t))
+            to_copy = sizeof(uint64_t);
+        memcpy(buf + i, &r, to_copy);
+        i += to_copy;
+    }
+}
+
 /// @brief Fill buffer with cryptographically random bytes.
 /// @param buf Destination buffer.
 /// @param len Number of bytes to fill.
@@ -90,16 +165,10 @@ static void get_random_bytes(uint8_t *buf, size_t len)
     {
         CryptGenRandom(hProv, (DWORD)len, buf);
         CryptReleaseContext(hProv, 0);
+        return;
     }
-    else
-    {
-        // Fallback: less secure but functional
-        srand((unsigned int)GetTickCount());
-        for (size_t i = 0; i < len; i++)
-        {
-            buf[i] = (uint8_t)(rand() & 0xFF);
-        }
-    }
+    // Fallback: thread-safe PRNG (RACE-011 fix)
+    fallback_random_bytes(buf, len);
 #else
     int fd = open("/dev/urandom", O_RDONLY);
     if (fd >= 0)
@@ -111,12 +180,8 @@ static void get_random_bytes(uint8_t *buf, size_t len)
             return;
         }
     }
-    // Fallback: less secure but functional
-    srand((unsigned int)time(NULL));
-    for (size_t i = 0; i < len; i++)
-    {
-        buf[i] = (uint8_t)(rand() & 0xFF);
-    }
+    // Fallback: thread-safe PRNG (RACE-011 fix)
+    fallback_random_bytes(buf, len);
 #endif
 }
 

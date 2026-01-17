@@ -303,6 +303,7 @@ int rt_string_is_handle(void *p)
 /// @details Literal and embedded (SSO) strings track a reference counter inside
 ///          the handle (literal_refs), while heap-backed strings delegate to
 ///          @ref rt_heap_retain. Immortal strings skip reference updates entirely.
+///          Uses atomic operations for thread-safe reference counting (RACE-003 fix).
 /// @param s Runtime string handle.
 /// @return The same handle for chaining.
 rt_string rt_string_ref(rt_string s)
@@ -312,8 +313,17 @@ rt_string rt_string_ref(rt_string s)
     rt_heap_hdr_t *hdr = rt_string_header(s);
     if (!hdr)
     {
-        if (s->literal_refs < SIZE_MAX)
-            s->literal_refs++;
+        // Atomic increment for thread-safe reference counting
+        // Skip immortal literals (SIZE_MAX indicates immortal)
+#if RT_COMPILER_MSVC
+        size_t old = rt_atomic_load_size(&s->literal_refs, __ATOMIC_RELAXED);
+        if (old < SIZE_MAX)
+            rt_atomic_fetch_add_size(&s->literal_refs, 1, __ATOMIC_RELAXED);
+#else
+        size_t old = __atomic_load_n(&s->literal_refs, __ATOMIC_RELAXED);
+        if (old < SIZE_MAX)
+            __atomic_fetch_add(&s->literal_refs, 1, __ATOMIC_RELAXED);
+#endif
         return s;
     }
     if (rt_string_is_immortal_hdr(hdr))
@@ -327,6 +337,7 @@ rt_string rt_string_ref(rt_string s)
 ///          counts or calling @ref rt_heap_release for heap-backed strings. When
 ///          the final reference disappears the wrapper structure is freed. For
 ///          embedded (SSO) strings, this frees the combined handle+data allocation.
+///          Uses atomic operations for thread-safe reference counting (RACE-003 fix).
 /// @param s Runtime string handle to release.
 void rt_string_unref(rt_string s)
 {
@@ -335,9 +346,33 @@ void rt_string_unref(rt_string s)
     rt_heap_hdr_t *hdr = rt_string_header(s);
     if (!hdr)
     {
-        // Skip decrement for immortal literals (literal_refs == SIZE_MAX)
-        if (s->literal_refs > 0 && s->literal_refs < SIZE_MAX && --s->literal_refs == 0)
+        // Atomic decrement for thread-safe reference counting
+        // Skip immortal literals (SIZE_MAX indicates immortal) and already-zero refs
+#if RT_COMPILER_MSVC
+        size_t old = rt_atomic_load_size(&s->literal_refs, __ATOMIC_RELAXED);
+        if (old == 0 || old >= SIZE_MAX)
+            return;
+        // Use fetch_sub which returns old value; if old was 1, we decremented to 0
+        size_t prev = rt_atomic_fetch_sub_size(&s->literal_refs, 1, __ATOMIC_RELEASE);
+        if (prev == 1)
+        {
+            // We held the last reference - ensure all writes are visible before free
+            __atomic_thread_fence(__ATOMIC_ACQUIRE);
             free(s);
+        }
+#else
+        size_t old = __atomic_load_n(&s->literal_refs, __ATOMIC_RELAXED);
+        if (old == 0 || old >= SIZE_MAX)
+            return;
+        // Use fetch_sub which returns old value; if old was 1, we decremented to 0
+        size_t prev = __atomic_fetch_sub(&s->literal_refs, 1, __ATOMIC_RELEASE);
+        if (prev == 1)
+        {
+            // We held the last reference - ensure all writes are visible before free
+            __atomic_thread_fence(__ATOMIC_ACQUIRE);
+            free(s);
+        }
+#endif
         return;
     }
     if (rt_string_is_immortal_hdr(hdr))

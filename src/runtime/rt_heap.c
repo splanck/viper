@@ -355,6 +355,19 @@ void rt_heap_set_len(void *payload, size_t new_len)
     hdr->len = new_len;
 }
 
+/// @brief Atomically OR a value into a 32-bit field and return the previous value.
+/// @param ptr Pointer to the 32-bit field.
+/// @param value Value to OR into the field.
+/// @return The previous value of the field before the OR operation.
+static inline uint32_t atomic_fetch_or_u32(volatile uint32_t *ptr, uint32_t value)
+{
+#if RT_COMPILER_MSVC
+    return (uint32_t)_InterlockedOr((volatile long *)ptr, (long)value);
+#else
+    return __atomic_fetch_or(ptr, value, __ATOMIC_ACQ_REL);
+#endif
+}
+
 int32_t rt_heap_mark_disposed(void *payload)
 {
     rt_heap_hdr_t *hdr = payload_to_hdr(payload);
@@ -362,7 +375,10 @@ int32_t rt_heap_mark_disposed(void *payload)
         return 0;
     RT_HEAP_VALIDATE(hdr);
     const uint32_t DISPOSED = 0x1u;
-    const uint32_t was = hdr->flags & DISPOSED;
-    hdr->flags |= DISPOSED;
-    return was ? 1 : 0;
+
+    // Atomically set DISPOSED flag and return previous flags (RACE-005 fix)
+    // This ensures exactly one caller sees the transition from !DISPOSED to DISPOSED
+    uint32_t old_flags = atomic_fetch_or_u32(&hdr->flags, DISPOSED);
+
+    return (old_flags & DISPOSED) ? 1 : 0;
 }

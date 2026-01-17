@@ -15,6 +15,7 @@
 
 #include "rt_audio.h"
 #include "rt_object.h"
+#include "rt_platform.h"
 #include "rt_string.h"
 
 #include <stddef.h>
@@ -32,8 +33,11 @@
 /// @brief Global audio context (singleton).
 static vaud_context_t g_audio_ctx = NULL;
 
-/// @brief Initialization flag.
-static int g_audio_initialized = 0;
+/// @brief Initialization state: 0 = not init, 1 = initialized, -1 = init failed.
+static volatile int g_audio_initialized = 0;
+
+/// @brief Spinlock for thread-safe initialization (RACE-009 fix).
+static volatile int g_audio_init_lock = 0;
 
 //===----------------------------------------------------------------------===//
 // Sound Wrapper Structure
@@ -92,18 +96,52 @@ static void rt_music_finalize(void *obj)
 //===----------------------------------------------------------------------===//
 
 /// @brief Ensure the audio system is initialized.
+/// @details Uses double-checked locking with a spinlock to ensure thread-safe
+///          initialization. Only one thread will perform the actual initialization;
+///          other threads will wait and then use the result (RACE-009 fix).
 /// @return 1 if initialized, 0 on failure.
 static int ensure_audio_init(void)
 {
-    if (g_audio_initialized)
-        return 1;
+    // Fast path: already initialized (use acquire to sync with the release below)
+#if RT_COMPILER_MSVC
+    int state = rt_atomic_load_i32(&g_audio_initialized, __ATOMIC_ACQUIRE);
+#else
+    int state = __atomic_load_n(&g_audio_initialized, __ATOMIC_ACQUIRE);
+#endif
+    if (state != 0)
+        return state > 0;
 
+    // Slow path: acquire spinlock and double-check
+    while (__atomic_test_and_set(&g_audio_init_lock, __ATOMIC_ACQUIRE))
+    {
+        // Spin until we acquire the lock
+    }
+
+    // Double-check under lock
+#if RT_COMPILER_MSVC
+    state = rt_atomic_load_i32(&g_audio_initialized, __ATOMIC_RELAXED);
+#else
+    state = __atomic_load_n(&g_audio_initialized, __ATOMIC_RELAXED);
+#endif
+    if (state != 0)
+    {
+        // Another thread already initialized - release lock and return
+        __atomic_clear(&g_audio_init_lock, __ATOMIC_RELEASE);
+        return state > 0;
+    }
+
+    // We are the initializing thread
     g_audio_ctx = vaud_create();
-    if (!g_audio_ctx)
-        return 0;
 
-    g_audio_initialized = 1;
-    return 1;
+    // Set initialization state (use release to ensure context is visible)
+#if RT_COMPILER_MSVC
+    rt_atomic_store_i32(&g_audio_initialized, g_audio_ctx ? 1 : -1, __ATOMIC_RELEASE);
+#else
+    __atomic_store_n(&g_audio_initialized, g_audio_ctx ? 1 : -1, __ATOMIC_RELEASE);
+#endif
+
+    __atomic_clear(&g_audio_init_lock, __ATOMIC_RELEASE);
+    return g_audio_ctx != NULL;
 }
 
 int64_t rt_audio_init(void)
@@ -113,12 +151,26 @@ int64_t rt_audio_init(void)
 
 void rt_audio_shutdown(void)
 {
+    // Acquire lock to ensure exclusive access during shutdown
+    while (__atomic_test_and_set(&g_audio_init_lock, __ATOMIC_ACQUIRE))
+    {
+        // Spin until we acquire the lock
+    }
+
     if (g_audio_ctx)
     {
         vaud_destroy(g_audio_ctx);
         g_audio_ctx = NULL;
     }
-    g_audio_initialized = 0;
+
+    // Reset state to allow re-initialization
+#if RT_COMPILER_MSVC
+    rt_atomic_store_i32(&g_audio_initialized, 0, __ATOMIC_RELEASE);
+#else
+    __atomic_store_n(&g_audio_initialized, 0, __ATOMIC_RELEASE);
+#endif
+
+    __atomic_clear(&g_audio_init_lock, __ATOMIC_RELEASE);
 }
 
 void rt_audio_set_master_volume(int64_t volume)

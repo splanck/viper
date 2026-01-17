@@ -15,6 +15,12 @@
 // - Free blocks are tracked via an intrusive linked list (freelist)
 // - Thread safety is achieved via lock-free atomic CAS on freelists
 //
+// Thread Safety Notes:
+// - The freelist uses tagged pointers to prevent ABA problems. The upper 16
+//   bits of the 64-bit tagged pointer contain a version counter that increments
+//   on each modification, ensuring CAS operations detect intervening changes.
+// - The slab list uses atomic CAS for thread-safe insertion.
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_pool.h"
@@ -47,11 +53,87 @@ typedef struct rt_pool_slab
     char *data;                ///< Start of block data
 } rt_pool_slab_t;
 
+//===----------------------------------------------------------------------===//
+// Tagged Pointer Support (ABA Prevention)
+//===----------------------------------------------------------------------===//
+//
+// Tagged pointers use the upper 16 bits for a version counter and the lower
+// 48 bits for the actual pointer. This works because:
+// - x86-64 uses only 48 bits for user-space virtual addresses
+// - Pool blocks are aligned to at least 8 bytes
+// - The version counter detects ABA scenarios where a pointer is recycled
+//
+//===----------------------------------------------------------------------===//
+
+/// @brief Pack a pointer and version into a tagged pointer.
+static inline uint64_t pack_tagged_ptr(void *ptr, uint16_t version)
+{
+    return ((uint64_t)version << 48) | ((uint64_t)(uintptr_t)ptr & 0x0000FFFFFFFFFFFFULL);
+}
+
+/// @brief Extract the pointer from a tagged pointer.
+static inline void *unpack_ptr(uint64_t tagged)
+{
+    return (void *)(uintptr_t)(tagged & 0x0000FFFFFFFFFFFFULL);
+}
+
+/// @brief Extract the version from a tagged pointer.
+static inline uint16_t unpack_version(uint64_t tagged)
+{
+    return (uint16_t)(tagged >> 48);
+}
+
+/// @brief Atomic compare-exchange for 64-bit values.
+static inline int atomic_cas_u64(volatile uint64_t *ptr, uint64_t *expected, uint64_t desired)
+{
+#if RT_COMPILER_MSVC
+    uint64_t old = _InterlockedCompareExchange64((volatile long long *)ptr, (long long)desired, (long long)*expected);
+    if (old == *expected)
+        return 1;
+    *expected = old;
+    return 0;
+#else
+    return __atomic_compare_exchange_n(ptr, expected, desired, 1, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
+#endif
+}
+
+/// @brief Atomic load for 64-bit values.
+static inline uint64_t atomic_load_u64(volatile uint64_t *ptr)
+{
+#if RT_COMPILER_MSVC
+#if defined(_M_X64) || defined(_M_ARM64)
+    uint64_t value = *ptr;
+    _ReadWriteBarrier();
+    return value;
+#else
+    return (uint64_t)_InterlockedCompareExchange64((volatile long long *)ptr, 0, 0);
+#endif
+#else
+    return __atomic_load_n(ptr, __ATOMIC_ACQUIRE);
+#endif
+}
+
+/// @brief Atomic store for 64-bit values.
+static inline void atomic_store_u64(volatile uint64_t *ptr, uint64_t value)
+{
+#if RT_COMPILER_MSVC
+#if defined(_M_X64) || defined(_M_ARM64)
+    _ReadWriteBarrier();
+    *ptr = value;
+    _ReadWriteBarrier();
+#else
+    _InterlockedExchange64((volatile long long *)ptr, (long long)value);
+#endif
+#else
+    __atomic_store_n(ptr, value, __ATOMIC_RELEASE);
+#endif
+}
+
 /// @brief Per-size-class pool state.
 typedef struct rt_pool_state
 {
-    rt_pool_block_t *volatile freelist;  ///< Lock-free freelist head
-    rt_pool_slab_t *slabs;               ///< List of slabs (not atomic - protected by allocation)
+    volatile uint64_t freelist_tagged;   ///< Lock-free freelist head (tagged pointer)
+    rt_pool_slab_t *volatile slabs;      ///< List of slabs (atomic for thread-safe insertion)
     volatile size_t allocated;           ///< Count of blocks currently allocated
     volatile size_t free_count;          ///< Count of blocks on freelist
 } rt_pool_state_t;
@@ -125,25 +207,20 @@ static void push_slab_to_freelist(rt_pool_state_t *pool, rt_pool_slab_t *slab)
         }
     }
 
-    // Atomically prepend the chain to the freelist
-#if RT_COMPILER_MSVC
-    rt_pool_block_t *expected = (rt_pool_block_t *)rt_atomic_load_ptr(
-        (void *const volatile *)&pool->freelist, __ATOMIC_RELAXED);
+    // Atomically prepend the chain to the freelist using tagged pointers
+    uint64_t old_tagged = atomic_load_u64(&pool->freelist_tagged);
+    uint64_t new_tagged;
     do
     {
-        last->next = expected;
-    } while (!rt_atomic_compare_exchange_ptr(
-        (void *volatile *)&pool->freelist, (void **)&expected, first,
-        __ATOMIC_RELEASE, __ATOMIC_RELAXED));
+        rt_pool_block_t *old_head = (rt_pool_block_t *)unpack_ptr(old_tagged);
+        uint16_t old_version = unpack_version(old_tagged);
+        last->next = old_head;
+        new_tagged = pack_tagged_ptr(first, (uint16_t)(old_version + 1));
+    } while (!atomic_cas_u64(&pool->freelist_tagged, &old_tagged, new_tagged));
+
+#if RT_COMPILER_MSVC
     rt_atomic_fetch_add_size(&pool->free_count, slab->block_count, __ATOMIC_RELAXED);
 #else
-    rt_pool_block_t *expected = __atomic_load_n(&pool->freelist, __ATOMIC_RELAXED);
-    do
-    {
-        last->next = expected;
-    } while (!__atomic_compare_exchange_n(
-        &pool->freelist, &expected, first, 1,
-        __ATOMIC_RELEASE, __ATOMIC_RELAXED));
     __atomic_fetch_add(&pool->free_count, slab->block_count, __ATOMIC_RELAXED);
 #endif
 }
@@ -151,39 +228,36 @@ static void push_slab_to_freelist(rt_pool_state_t *pool, rt_pool_slab_t *slab)
 /// @brief Pop a block from the freelist.
 /// @param pool Pool state for the size class.
 /// @return Block pointer, or NULL if freelist is empty.
+/// @note Uses tagged pointers to prevent ABA problems. The version counter
+///       in the upper 16 bits ensures that even if a block is recycled back
+///       to the same address, the CAS will fail due to version mismatch.
 static rt_pool_block_t *pop_from_freelist(rt_pool_state_t *pool)
 {
+    uint64_t old_tagged = atomic_load_u64(&pool->freelist_tagged);
+
+    while (1)
+    {
+        rt_pool_block_t *head = (rt_pool_block_t *)unpack_ptr(old_tagged);
+        if (!head)
+            return NULL;
+
+        uint16_t old_version = unpack_version(old_tagged);
+        rt_pool_block_t *next = head->next;
+
+        // Pack the new tagged pointer with incremented version
+        uint64_t new_tagged = pack_tagged_ptr(next, (uint16_t)(old_version + 1));
+
+        if (atomic_cas_u64(&pool->freelist_tagged, &old_tagged, new_tagged))
+        {
 #if RT_COMPILER_MSVC
-    rt_pool_block_t *head = (rt_pool_block_t *)rt_atomic_load_ptr(
-        (void *const volatile *)&pool->freelist, __ATOMIC_ACQUIRE);
-    while (head)
-    {
-        rt_pool_block_t *next = head->next;
-        if (rt_atomic_compare_exchange_ptr(
-                (void *volatile *)&pool->freelist, (void **)&head, next,
-                __ATOMIC_ACQUIRE, __ATOMIC_RELAXED))
-        {
             rt_atomic_fetch_sub_size(&pool->free_count, 1, __ATOMIC_RELAXED);
-            return head;
-        }
-        // CAS failed, head was updated - retry
-    }
 #else
-    rt_pool_block_t *head = __atomic_load_n(&pool->freelist, __ATOMIC_ACQUIRE);
-    while (head)
-    {
-        rt_pool_block_t *next = head->next;
-        if (__atomic_compare_exchange_n(
-                &pool->freelist, &head, next, 1,
-                __ATOMIC_ACQUIRE, __ATOMIC_RELAXED))
-        {
             __atomic_fetch_sub(&pool->free_count, 1, __ATOMIC_RELAXED);
+#endif
             return head;
         }
-        // CAS failed, head was updated - retry
+        // CAS failed, old_tagged was updated with the current value - retry
     }
-#endif
-    return NULL;
 }
 
 /// @brief Push a block back onto the freelist.
@@ -191,24 +265,19 @@ static rt_pool_block_t *pop_from_freelist(rt_pool_state_t *pool)
 /// @param block Block to return to the freelist.
 static void push_to_freelist(rt_pool_state_t *pool, rt_pool_block_t *block)
 {
-#if RT_COMPILER_MSVC
-    rt_pool_block_t *expected = (rt_pool_block_t *)rt_atomic_load_ptr(
-        (void *const volatile *)&pool->freelist, __ATOMIC_RELAXED);
+    uint64_t old_tagged = atomic_load_u64(&pool->freelist_tagged);
+    uint64_t new_tagged;
     do
     {
-        block->next = expected;
-    } while (!rt_atomic_compare_exchange_ptr(
-        (void *volatile *)&pool->freelist, (void **)&expected, block,
-        __ATOMIC_RELEASE, __ATOMIC_RELAXED));
+        rt_pool_block_t *old_head = (rt_pool_block_t *)unpack_ptr(old_tagged);
+        uint16_t old_version = unpack_version(old_tagged);
+        block->next = old_head;
+        new_tagged = pack_tagged_ptr(block, (uint16_t)(old_version + 1));
+    } while (!atomic_cas_u64(&pool->freelist_tagged, &old_tagged, new_tagged));
+
+#if RT_COMPILER_MSVC
     rt_atomic_fetch_add_size(&pool->free_count, 1, __ATOMIC_RELAXED);
 #else
-    rt_pool_block_t *expected = __atomic_load_n(&pool->freelist, __ATOMIC_RELAXED);
-    do
-    {
-        block->next = expected;
-    } while (!__atomic_compare_exchange_n(
-        &pool->freelist, &expected, block, 1,
-        __ATOMIC_RELEASE, __ATOMIC_RELAXED));
     __atomic_fetch_add(&pool->free_count, 1, __ATOMIC_RELAXED);
 #endif
 }
@@ -232,15 +301,31 @@ void *rt_pool_alloc(size_t size)
     if (!block)
     {
         // Freelist empty - allocate a new slab
-        // Note: This is not fully thread-safe for slab list management,
-        // but races just result in extra slabs (acceptable waste).
         rt_pool_slab_t *slab = allocate_slab(class_idx);
         if (!slab)
             return NULL;
 
-        // Link slab into list (benign race - may lose slabs on shutdown)
-        slab->next = pool->slabs;
-        pool->slabs = slab;
+        // Atomically link slab into list using CAS loop
+        // This prevents the lost-update race where concurrent slab allocations
+        // could orphan one or more slabs (RACE-002 fix)
+#if RT_COMPILER_MSVC
+        rt_pool_slab_t *expected = (rt_pool_slab_t *)rt_atomic_load_ptr(
+            (void *const volatile *)&pool->slabs, __ATOMIC_RELAXED);
+        do
+        {
+            slab->next = expected;
+        } while (!rt_atomic_compare_exchange_ptr(
+            (void *volatile *)&pool->slabs, (void **)&expected, slab,
+            __ATOMIC_RELEASE, __ATOMIC_RELAXED));
+#else
+        rt_pool_slab_t *expected = __atomic_load_n(&pool->slabs, __ATOMIC_RELAXED);
+        do
+        {
+            slab->next = expected;
+        } while (!__atomic_compare_exchange_n(
+            &pool->slabs, &expected, slab, 1,
+            __ATOMIC_RELEASE, __ATOMIC_RELAXED));
+#endif
 
         // Push all blocks to freelist
         push_slab_to_freelist(pool, slab);
@@ -335,12 +420,11 @@ void rt_pool_shutdown(void)
 
         // Reset state
         pool->slabs = NULL;
+        atomic_store_u64(&pool->freelist_tagged, 0);
 #if RT_COMPILER_MSVC
-        rt_atomic_store_ptr((void *volatile *)&pool->freelist, NULL, __ATOMIC_RELAXED);
         rt_atomic_store_size(&pool->allocated, 0, __ATOMIC_RELAXED);
         rt_atomic_store_size(&pool->free_count, 0, __ATOMIC_RELAXED);
 #else
-        __atomic_store_n(&pool->freelist, NULL, __ATOMIC_RELAXED);
         __atomic_store_n(&pool->allocated, 0, __ATOMIC_RELAXED);
         __atomic_store_n(&pool->free_count, 0, __ATOMIC_RELAXED);
 #endif
