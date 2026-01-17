@@ -102,7 +102,7 @@ This file tracks all bugs discovered while building the web server demo.
 
 - **ID**: BUG-005
 - **Severity**: Medium
-- **Status**: Open
+- **Status**: Fixed
 - **Component**: Webserver Demo
 - **Description**: The HTTP request parser uses module-level variables (`reqMethod`, `reqPath`, `reqVersion`, `reqHost`, `reqIfModifiedSince`) that are shared across all worker threads. When concurrent requests arrive, one thread can overwrite these variables while another thread is still using them, causing incorrect request handling.
 - **Steps to Reproduce**:
@@ -119,11 +119,11 @@ This file tracks all bugs discovered while building the web server demo.
   var reqHost: String;
   var reqIfModifiedSince: Integer;
   ```
-- **Fix Options**:
-  1. Pass request data through function parameters instead of module-level variables
-  2. Add thread-local storage support to Zia
-  3. Use a mutex/monitor around request parsing (would reduce concurrency)
-- **Workaround**: For low-concurrency scenarios, the bug is unlikely to trigger
+- **Fix**: Refactored request parsing to use pure functions that return values instead of modifying shared state. Created `extractMethod()` and `extractRequestPath()` functions that take the raw request and return the parsed value. `handleClient()` now uses local variables instead of module-level variables.
+  - Removed module-level request variables
+  - Added `findLineEnd()`, `extractMethod()`, `extractRequestPath()`, `isValidRequest()` pure functions
+  - Updated `handleClient()` to use local `reqMethod` and `reqPath` variables
+  - Tested with 50 concurrent requests - all succeeded with no race conditions
 
 ---
 
