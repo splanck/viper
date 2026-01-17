@@ -5,11 +5,26 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include <dirent.h>
 #include <sys/stat.h>
+
+// Platform-specific includes
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#include <shlobj.h>  // For SHGetFolderPath
+#include <direct.h>
+#define strcasecmp _stricmp
+#define stat _stat
+#define S_ISDIR(m) (((m) & _S_IFMT) == _S_IFDIR)
+#else
+#include <dirent.h>
 #include <unistd.h>
 #include <pwd.h>
 #include <fnmatch.h>
+#include <strings.h>
+#endif
 
 //=============================================================================
 // Forward Declarations
@@ -35,10 +50,67 @@ static vg_widget_vtable_t g_filedialog_vtable = {
 };
 
 //=============================================================================
-// Helper Functions
+// Platform Abstraction Layer
 //=============================================================================
 
+#ifdef _WIN32
+
+// Windows implementation of pattern matching (simple fnmatch equivalent)
+static bool win_match_pattern(const char* pattern, const char* filename) {
+    const char* p = pattern;
+    const char* f = filename;
+
+    while (*p && *f) {
+        if (*p == '*') {
+            p++;
+            if (!*p) return true;  // Trailing * matches everything
+            // Try to match rest of pattern at each position
+            while (*f) {
+                if (win_match_pattern(p, f)) return true;
+                f++;
+            }
+            return false;
+        } else if (*p == '?') {
+            p++;
+            f++;
+        } else {
+            // Case-insensitive compare
+            char pc = *p, fc = *f;
+            if (pc >= 'A' && pc <= 'Z') pc += 32;
+            if (fc >= 'A' && fc <= 'Z') fc += 32;
+            if (pc != fc) return false;
+            p++;
+            f++;
+        }
+    }
+
+    while (*p == '*') p++;  // Skip trailing asterisks
+    return !*p && !*f;
+}
+
+#endif
+
 static char* get_home_directory(void) {
+#ifdef _WIN32
+    // Try USERPROFILE first
+    const char* userprofile = getenv("USERPROFILE");
+    if (userprofile) return _strdup(userprofile);
+
+    // Fall back to HOMEDRIVE + HOMEPATH
+    const char* homedrive = getenv("HOMEDRIVE");
+    const char* homepath = getenv("HOMEPATH");
+    if (homedrive && homepath) {
+        size_t len = strlen(homedrive) + strlen(homepath) + 1;
+        char* result = malloc(len);
+        if (result) {
+            strcpy(result, homedrive);
+            strcat(result, homepath);
+            return result;
+        }
+    }
+
+    return _strdup("C:\\");
+#else
     const char* home = getenv("HOME");
     if (home) return strdup(home);
 
@@ -46,47 +118,87 @@ static char* get_home_directory(void) {
     if (pw && pw->pw_dir) return strdup(pw->pw_dir);
 
     return strdup("/");
+#endif
 }
 
 static char* join_path(const char* dir, const char* file) {
     size_t dir_len = strlen(dir);
     size_t file_len = strlen(file);
-    bool need_slash = (dir_len > 0 && dir[dir_len - 1] != '/');
 
-    char* result = malloc(dir_len + (need_slash ? 1 : 0) + file_len + 1);
+#ifdef _WIN32
+    char sep = '\\';
+    bool need_sep = (dir_len > 0 && dir[dir_len - 1] != '\\' && dir[dir_len - 1] != '/');
+#else
+    char sep = '/';
+    bool need_sep = (dir_len > 0 && dir[dir_len - 1] != '/');
+#endif
+
+    char* result = malloc(dir_len + (need_sep ? 1 : 0) + file_len + 1);
     if (!result) return NULL;
 
     strcpy(result, dir);
-    if (need_slash) strcat(result, "/");
+    if (need_sep) {
+        result[dir_len] = sep;
+        result[dir_len + 1] = '\0';
+    }
     strcat(result, file);
 
     return result;
 }
 
 static char* get_parent_directory(const char* path) {
-    if (!path || !*path) return strdup("/");
+    if (!path || !*path) {
+#ifdef _WIN32
+        return _strdup("C:\\");
+#else
+        return strdup("/");
+#endif
+    }
 
+#ifdef _WIN32
+    char* result = _strdup(path);
+#else
     char* result = strdup(path);
+#endif
     if (!result) return NULL;
 
     // Remove trailing slashes
     size_t len = strlen(result);
-    while (len > 1 && result[len - 1] == '/') {
+#ifdef _WIN32
+    while (len > 1 && (result[len - 1] == '\\' || result[len - 1] == '/')) {
         result[--len] = '\0';
     }
 
     // Find last slash
+    char* last_slash = strrchr(result, '\\');
+    if (!last_slash) last_slash = strrchr(result, '/');
+
+    if (last_slash == result) {
+        result[1] = '\0';
+    } else if (last_slash == result + 2 && result[1] == ':') {
+        // C:\ case
+        result[3] = '\0';
+    } else if (last_slash) {
+        *last_slash = '\0';
+    } else {
+        free(result);
+        return _strdup(".");
+    }
+#else
+    while (len > 1 && result[len - 1] == '/') {
+        result[--len] = '\0';
+    }
+
     char* last_slash = strrchr(result, '/');
     if (last_slash == result) {
-        // Root directory
         result[1] = '\0';
     } else if (last_slash) {
         *last_slash = '\0';
     } else {
-        // No slash found, return current dir
         free(result);
         return strdup(".");
     }
+#endif
 
     return result;
 }
@@ -109,9 +221,21 @@ static bool match_filter(const char* filename, const char* pattern) {
     }
 
     // Pattern can be multiple patterns separated by semicolons
+#ifdef _WIN32
+    char* patterns = _strdup(pattern);
+#else
     char* patterns = strdup(pattern);
-    char* saveptr;
-    char* token = strtok_r(patterns, ";", &saveptr);
+#endif
+    if (!patterns) return true;
+
+    char* saveptr = NULL;
+    char* token = NULL;
+
+#ifdef _WIN32
+    token = strtok_s(patterns, ";", &saveptr);
+#else
+    token = strtok_r(patterns, ";", &saveptr);
+#endif
 
     while (token) {
         // Trim whitespace
@@ -119,11 +243,19 @@ static bool match_filter(const char* filename, const char* pattern) {
         char* end = token + strlen(token) - 1;
         while (end > token && *end == ' ') *end-- = '\0';
 
+#ifdef _WIN32
+        if (win_match_pattern(token, filename)) {
+            free(patterns);
+            return true;
+        }
+        token = strtok_s(NULL, ";", &saveptr);
+#else
         if (fnmatch(token, filename, FNM_CASEFOLD) == 0) {
             free(patterns);
             return true;
         }
         token = strtok_r(NULL, ";", &saveptr);
+#endif
     }
 
     free(patterns);
@@ -150,8 +282,83 @@ static void load_directory(vg_filedialog_t* dialog, const char* path) {
 
     // Update current path
     free(dialog->current_path);
+#ifdef _WIN32
+    dialog->current_path = _strdup(path);
+#else
     dialog->current_path = strdup(path);
+#endif
 
+#ifdef _WIN32
+    // Windows directory iteration using FindFirstFile/FindNextFile
+    char search_path[MAX_PATH];
+    snprintf(search_path, sizeof(search_path), "%s\\*", path);
+
+    WIN32_FIND_DATAA find_data;
+    HANDLE hFind = FindFirstFileA(search_path, &find_data);
+
+    if (hFind == INVALID_HANDLE_VALUE) return;
+
+    do {
+        // Skip . and ..
+        if (strcmp(find_data.cFileName, ".") == 0 || strcmp(find_data.cFileName, "..") == 0) {
+            continue;
+        }
+
+        // Skip hidden files if not showing them
+        if (!dialog->show_hidden && (find_data.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN)) {
+            continue;
+        }
+
+        bool is_dir = (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+
+        // In folder select mode, only show directories
+        if (dialog->mode == VG_FILEDIALOG_SELECT_FOLDER && !is_dir) {
+            continue;
+        }
+
+        // Apply filter for non-directories
+        if (!is_dir && dialog->filter_count > 0 && dialog->active_filter < dialog->filter_count) {
+            if (!match_filter(find_data.cFileName, dialog->filters[dialog->active_filter].pattern)) {
+                continue;
+            }
+        }
+
+        // Create entry
+        vg_file_entry_t* fe = calloc(1, sizeof(vg_file_entry_t));
+        if (!fe) continue;
+
+        fe->name = _strdup(find_data.cFileName);
+        fe->full_path = join_path(path, find_data.cFileName);
+        fe->is_directory = is_dir;
+
+        // Calculate size (combine high and low parts for 64-bit size)
+        fe->size = ((int64_t)find_data.nFileSizeHigh << 32) | find_data.nFileSizeLow;
+
+        // Convert FILETIME to time_t
+        ULARGE_INTEGER ull;
+        ull.LowPart = find_data.ftLastWriteTime.dwLowDateTime;
+        ull.HighPart = find_data.ftLastWriteTime.dwHighDateTime;
+        fe->modified_time = (int64_t)((ull.QuadPart - 116444736000000000ULL) / 10000000ULL);
+
+        // Add to array
+        if (dialog->entry_count >= dialog->entry_capacity) {
+            size_t new_cap = dialog->entry_capacity == 0 ? 64 : dialog->entry_capacity * 2;
+            vg_file_entry_t** new_entries = realloc(dialog->entries, new_cap * sizeof(vg_file_entry_t*));
+            if (!new_entries) {
+                free_entry(fe);
+                continue;
+            }
+            dialog->entries = new_entries;
+            dialog->entry_capacity = new_cap;
+        }
+
+        dialog->entries[dialog->entry_count++] = fe;
+
+    } while (FindNextFileA(hFind, &find_data));
+
+    FindClose(hFind);
+#else
+    // POSIX directory iteration
     DIR* dir = opendir(path);
     if (!dir) return;
 
@@ -222,6 +429,7 @@ static void load_directory(vg_filedialog_t* dialog, const char* path) {
     }
 
     closedir(dir);
+#endif
 
     // Sort entries
     if (dialog->entry_count > 0) {
@@ -296,8 +504,13 @@ static void confirm_selection(vg_filedialog_t* dialog) {
             for (size_t i = 0; i < dialog->selection_count; i++) {
                 int idx = dialog->selected_indices[i];
                 if (idx >= 0 && (size_t)idx < dialog->entry_count) {
+#ifdef _WIN32
+                    dialog->selected_files[dialog->selected_file_count++] =
+                        _strdup(dialog->entries[idx]->full_path);
+#else
                     dialog->selected_files[dialog->selected_file_count++] =
                         strdup(dialog->entries[idx]->full_path);
+#endif
                 }
             }
         }
@@ -305,7 +518,11 @@ static void confirm_selection(vg_filedialog_t* dialog) {
         // In folder mode with no selection, return current directory
         dialog->selected_files = malloc(sizeof(char*));
         if (dialog->selected_files) {
+#ifdef _WIN32
+            dialog->selected_files[0] = _strdup(dialog->current_path);
+#else
             dialog->selected_files[0] = strdup(dialog->current_path);
+#endif
             dialog->selected_file_count = 1;
         }
     }
@@ -339,7 +556,11 @@ vg_filedialog_t* vg_filedialog_create(vg_filedialog_mode_t mode) {
     vg_theme_t* theme = vg_theme_get_current();
 
     // Initialize dialog fields
+#ifdef _WIN32
+    dialog->base.title = _strdup(title);
+#else
     dialog->base.title = strdup(title);
+#endif
     dialog->base.show_close_button = true;
     dialog->base.draggable = true;
     dialog->base.modal = true;
@@ -627,19 +848,31 @@ void vg_filedialog_destroy(vg_filedialog_t* dialog) {
 void vg_filedialog_set_title(vg_filedialog_t* dialog, const char* title) {
     if (!dialog) return;
     free((void*)dialog->base.title);
+#ifdef _WIN32
+    dialog->base.title = title ? _strdup(title) : NULL;
+#else
     dialog->base.title = title ? strdup(title) : NULL;
+#endif
 }
 
 void vg_filedialog_set_initial_path(vg_filedialog_t* dialog, const char* path) {
     if (!dialog) return;
     free(dialog->current_path);
+#ifdef _WIN32
+    dialog->current_path = path ? _strdup(path) : get_home_directory();
+#else
     dialog->current_path = path ? strdup(path) : get_home_directory();
+#endif
 }
 
 void vg_filedialog_set_filename(vg_filedialog_t* dialog, const char* filename) {
     if (!dialog) return;
     free(dialog->default_filename);
+#ifdef _WIN32
+    dialog->default_filename = filename ? _strdup(filename) : NULL;
+#else
     dialog->default_filename = filename ? strdup(filename) : NULL;
+#endif
 }
 
 void vg_filedialog_set_multi_select(vg_filedialog_t* dialog, bool multi) {
@@ -665,8 +898,13 @@ void vg_filedialog_add_filter(vg_filedialog_t* dialog, const char* name, const c
         dialog->filter_capacity = new_cap;
     }
 
+#ifdef _WIN32
+    dialog->filters[dialog->filter_count].name = _strdup(name);
+    dialog->filters[dialog->filter_count].pattern = _strdup(pattern);
+#else
     dialog->filters[dialog->filter_count].name = strdup(name);
     dialog->filters[dialog->filter_count].pattern = strdup(pattern);
+#endif
     dialog->filter_count++;
 }
 
@@ -683,7 +921,11 @@ void vg_filedialog_clear_filters(vg_filedialog_t* dialog) {
 void vg_filedialog_set_default_extension(vg_filedialog_t* dialog, const char* ext) {
     if (!dialog) return;
     free(dialog->default_extension);
+#ifdef _WIN32
+    dialog->default_extension = ext ? _strdup(ext) : NULL;
+#else
     dialog->default_extension = ext ? strdup(ext) : NULL;
+#endif
 }
 
 void vg_filedialog_add_bookmark(vg_filedialog_t* dialog, const char* name, const char* path) {
@@ -697,8 +939,13 @@ void vg_filedialog_add_bookmark(vg_filedialog_t* dialog, const char* name, const
         dialog->bookmark_capacity = new_cap;
     }
 
+#ifdef _WIN32
+    dialog->bookmarks[dialog->bookmark_count].name = _strdup(name);
+    dialog->bookmarks[dialog->bookmark_count].path = _strdup(path);
+#else
     dialog->bookmarks[dialog->bookmark_count].name = strdup(name);
     dialog->bookmarks[dialog->bookmark_count].path = strdup(path);
+#endif
     dialog->bookmarks[dialog->bookmark_count].icon.type = VG_ICON_NONE;
     dialog->bookmark_count++;
 }
@@ -740,8 +987,13 @@ void vg_filedialog_add_default_bookmarks(vg_filedialog_t* dialog) {
         free(home);
     }
 
-    // Add root
+#ifdef _WIN32
+    // Add drives on Windows
+    vg_filedialog_add_bookmark(dialog, "Computer", "C:\\");
+#else
+    // Add root on Unix
     vg_filedialog_add_bookmark(dialog, "Computer", "/");
+#endif
 }
 
 void vg_filedialog_clear_bookmarks(vg_filedialog_t* dialog) {
@@ -818,7 +1070,11 @@ char* vg_filedialog_open_file(const char* title, const char* initial_path,
     // For now, we just return NULL - proper modal dialog requires event loop integration
     char* result = NULL;
     if (dialog->selected_file_count > 0 && dialog->selected_files[0]) {
+#ifdef _WIN32
+        result = _strdup(dialog->selected_files[0]);
+#else
         result = strdup(dialog->selected_files[0]);
+#endif
     }
 
     vg_filedialog_destroy(dialog);
@@ -842,7 +1098,11 @@ char* vg_filedialog_save_file(const char* title, const char* initial_path,
 
     char* result = NULL;
     if (dialog->selected_file_count > 0 && dialog->selected_files[0]) {
+#ifdef _WIN32
+        result = _strdup(dialog->selected_files[0]);
+#else
         result = strdup(dialog->selected_files[0]);
+#endif
     }
 
     vg_filedialog_destroy(dialog);
@@ -861,7 +1121,11 @@ char* vg_filedialog_select_folder(const char* title, const char* initial_path) {
 
     char* result = NULL;
     if (dialog->selected_file_count > 0 && dialog->selected_files[0]) {
+#ifdef _WIN32
+        result = _strdup(dialog->selected_files[0]);
+#else
         result = strdup(dialog->selected_files[0]);
+#endif
     }
 
     vg_filedialog_destroy(dialog);

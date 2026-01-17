@@ -84,12 +84,16 @@
 //===----------------------------------------------------------------------===//
 
 #if RT_COMPILER_MSVC
-// MSVC doesn't support weak linkage; use selectany for similar effect
-#define RT_WEAK __declspec(selectany)
+// MSVC doesn't support weak linkage for functions. For data, use selectany.
+// For functions, we define RT_WEAK as empty - test overrides work via link order.
+#define RT_WEAK
+#define RT_WEAK_DATA __declspec(selectany)
 #elif RT_COMPILER_GCC_LIKE
 #define RT_WEAK __attribute__((weak))
+#define RT_WEAK_DATA __attribute__((weak))
 #else
 #define RT_WEAK
+#define RT_WEAK_DATA
 #endif
 
 //===----------------------------------------------------------------------===//
@@ -98,6 +102,7 @@
 
 #if RT_COMPILER_MSVC
 #include <intrin.h>
+#include <immintrin.h>
 
 // Memory ordering constants (matching GCC values for compatibility)
 #define __ATOMIC_RELAXED 0
@@ -202,6 +207,94 @@ static inline int64_t rt_atomic_fetch_sub_i64(volatile int64_t *ptr, int64_t val
     return _InterlockedExchangeAdd64((volatile long long *)ptr, -value);
 }
 
+// Atomic load (size_t) - needed because size_t is unsigned and may differ from int64_t
+static inline size_t rt_atomic_load_size(const volatile size_t *ptr, int order)
+{
+    (void)order;
+#if defined(_M_X64) || defined(_M_ARM64)
+    size_t value = *ptr;
+    _ReadWriteBarrier();
+    return value;
+#else
+    return (size_t)_InterlockedCompareExchange64((volatile long long *)ptr, 0, 0);
+#endif
+}
+
+// Atomic store (size_t)
+static inline void rt_atomic_store_size(volatile size_t *ptr, size_t value, int order)
+{
+    (void)order;
+#if defined(_M_X64) || defined(_M_ARM64)
+    _ReadWriteBarrier();
+    *ptr = value;
+    _ReadWriteBarrier();
+#else
+    _InterlockedExchange64((volatile long long *)ptr, (long long)value);
+#endif
+}
+
+// Atomic fetch-add (size_t)
+static inline size_t rt_atomic_fetch_add_size(volatile size_t *ptr, size_t value, int order)
+{
+    (void)order;
+    return (size_t)_InterlockedExchangeAdd64((volatile long long *)ptr, (long long)value);
+}
+
+// Atomic fetch-sub (size_t)
+static inline size_t rt_atomic_fetch_sub_size(volatile size_t *ptr, size_t value, int order)
+{
+    (void)order;
+    return (size_t)_InterlockedExchangeAdd64((volatile long long *)ptr, -(long long)value);
+}
+
+// Atomic load (pointer)
+static inline void *rt_atomic_load_ptr(void *const volatile *ptr, int order)
+{
+    (void)order;
+    void *value = *ptr;
+    _ReadWriteBarrier();
+    return value;
+}
+
+// Atomic store (pointer)
+static inline void rt_atomic_store_ptr(void *volatile *ptr, void *value, int order)
+{
+    (void)order;
+    _ReadWriteBarrier();
+    *ptr = value;
+    _ReadWriteBarrier();
+}
+
+// Atomic exchange (pointer)
+static inline void *rt_atomic_exchange_ptr(void *volatile *ptr, void *value, int order)
+{
+    (void)order;
+#if defined(_M_X64) || defined(_M_ARM64)
+    return _InterlockedExchangePointer(ptr, value);
+#else
+    return (void *)_InterlockedExchange((volatile long *)ptr, (long)value);
+#endif
+}
+
+// Atomic compare-exchange (pointer)
+static inline int rt_atomic_compare_exchange_ptr(
+    void *volatile *ptr, void **expected, void *desired, int success_order, int fail_order)
+{
+    (void)success_order;
+    (void)fail_order;
+#if defined(_M_X64) || defined(_M_ARM64)
+    void *old = _InterlockedCompareExchangePointer(ptr, desired, *expected);
+#else
+    void *old = (void *)_InterlockedCompareExchange((volatile long *)ptr, (long)desired, (long)*expected);
+#endif
+    if (old == *expected)
+    {
+        return 1;
+    }
+    *expected = old;
+    return 0;
+}
+
 // Map GCC-style atomic builtins to our functions
 #define __atomic_load_n(ptr, order)                                                                \
     _Generic((ptr),                                                                                \
@@ -212,14 +305,20 @@ static inline int64_t rt_atomic_fetch_sub_i64(volatile int64_t *ptr, int64_t val
         volatile int64_t *: rt_atomic_load_i64,                                                    \
         const volatile int64_t *: rt_atomic_load_i64,                                              \
         int64_t *: rt_atomic_load_i64,                                                             \
-        const int64_t *: rt_atomic_load_i64)((ptr), (order))
+        const int64_t *: rt_atomic_load_i64,                                                       \
+        volatile size_t *: rt_atomic_load_size,                                                    \
+        const volatile size_t *: rt_atomic_load_size,                                              \
+        size_t *: rt_atomic_load_size,                                                             \
+        const size_t *: rt_atomic_load_size)((ptr), (order))
 
 #define __atomic_store_n(ptr, val, order)                                                          \
     _Generic((ptr),                                                                                \
         volatile int *: rt_atomic_store_i32,                                                       \
         int *: rt_atomic_store_i32,                                                                \
         volatile int64_t *: rt_atomic_store_i64,                                                   \
-        int64_t *: rt_atomic_store_i64)((ptr), (val), (order))
+        int64_t *: rt_atomic_store_i64,                                                            \
+        volatile size_t *: rt_atomic_store_size,                                                   \
+        size_t *: rt_atomic_store_size)((ptr), (val), (order))
 
 #define __atomic_exchange_n(ptr, val, order)                                                       \
     rt_atomic_exchange_i32((volatile int *)(ptr), (val), (order))
@@ -232,14 +331,18 @@ static inline int64_t rt_atomic_fetch_sub_i64(volatile int64_t *ptr, int64_t val
         volatile int *: rt_atomic_fetch_add_i32,                                                   \
         int *: rt_atomic_fetch_add_i32,                                                            \
         volatile int64_t *: rt_atomic_fetch_add_i64,                                               \
-        int64_t *: rt_atomic_fetch_add_i64)((ptr), (val), (order))
+        int64_t *: rt_atomic_fetch_add_i64,                                                        \
+        volatile size_t *: rt_atomic_fetch_add_size,                                               \
+        size_t *: rt_atomic_fetch_add_size)((ptr), (val), (order))
 
 #define __atomic_fetch_sub(ptr, val, order)                                                        \
     _Generic((ptr),                                                                                \
         volatile int *: rt_atomic_fetch_sub_i32,                                                   \
         int *: rt_atomic_fetch_sub_i32,                                                            \
         volatile int64_t *: rt_atomic_fetch_sub_i64,                                               \
-        int64_t *: rt_atomic_fetch_sub_i64)((ptr), (val), (order))
+        int64_t *: rt_atomic_fetch_sub_i64,                                                        \
+        volatile size_t *: rt_atomic_fetch_sub_size,                                               \
+        size_t *: rt_atomic_fetch_sub_size)((ptr), (val), (order))
 
 // Atomic test-and-set (spinlock primitive)
 static inline int rt_atomic_test_and_set(volatile int *ptr, int order)
@@ -259,6 +362,22 @@ static inline void rt_atomic_clear(volatile int *ptr, int order)
 
 #define __atomic_test_and_set(ptr, order) rt_atomic_test_and_set((volatile int *)(ptr), (order))
 #define __atomic_clear(ptr, order) rt_atomic_clear((volatile int *)(ptr), (order))
+
+// Atomic thread fence
+static inline void rt_atomic_thread_fence(int order)
+{
+    (void)order;
+    // Use _mm_mfence for full memory barrier on x86/x64
+    // This is more portable than MemoryBarrier() which requires windows.h
+#if defined(_M_X64) || defined(_M_IX86)
+    _mm_mfence();
+#elif defined(_M_ARM64)
+    __dmb(_ARM64_BARRIER_SY);
+#else
+    _ReadWriteBarrier();
+#endif
+}
+#define __atomic_thread_fence(order) rt_atomic_thread_fence(order)
 
 #endif // RT_COMPILER_MSVC
 

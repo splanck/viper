@@ -267,7 +267,7 @@ BenchResult runBenchmarkIteration(const core::Module &mod,
         result.returnValue = runner.run();
         result.instructions = runner.instructionCount();
     }
-    catch (const std::exception &e)
+    catch (const std::exception &)
     {
         result.success = false;
         return result;
@@ -317,7 +317,7 @@ BenchResult runBytecodeBenchmarkIteration(const core::Module &mod,
             return result;
         }
     }
-    catch (const std::exception &e)
+    catch (const std::exception &)
     {
         result.success = false;
         return result;

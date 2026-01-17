@@ -24,6 +24,7 @@
 
 #include "rt_heap.h"
 #include "rt_internal.h"
+#include "rt_platform.h"
 #include "rt_pool.h"
 
 #include <assert.h>

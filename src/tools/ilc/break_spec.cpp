@@ -76,9 +76,9 @@ bool isSrcBreakSpec(const std::string &spec)
     }
 
     // Portion before the colon must contain non-whitespace characters.
-    for (std::string::size_type i = 0; i < pos; ++i)
+    for (std::string::size_type j = 0; j < pos; ++j)
     {
-        if (!std::isspace(static_cast<unsigned char>(spec[i])))
+        if (!std::isspace(static_cast<unsigned char>(spec[j])))
             return true;
     }
 

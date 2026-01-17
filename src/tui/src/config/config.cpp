@@ -184,7 +184,7 @@ input::KeyChord parse_chord(const std::string &str)
         std::transform(token.begin(),
                        token.end(),
                        lower.begin(),
-                       [](unsigned char c) { return std::tolower(c); });
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         if (lower == "ctrl")
         {
             kc.mods |= term::KeyEvent::Ctrl;
@@ -222,7 +222,7 @@ bool parse_bool(const std::string &s)
     std::string lower;
     lower.resize(s.size());
     std::transform(
-        s.begin(), s.end(), lower.begin(), [](unsigned char c) { return std::tolower(c); });
+        s.begin(), s.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return lower == "1" || lower == "true" || lower == "yes";
 }
 
@@ -259,7 +259,7 @@ bool loadFromFile(const std::string &path, Config &out)
             std::transform(section.begin(),
                            section.end(),
                            section.begin(),
-                           [](unsigned char c) { return std::tolower(c); });
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
             continue;
         }
         auto eq = trimmed.find('=');
@@ -274,7 +274,7 @@ bool loadFromFile(const std::string &path, Config &out)
         std::transform(key.begin(),
                        key.end(),
                        lower_key.begin(),
-                       [](unsigned char c) { return std::tolower(c); });
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
         if (section == "theme")
         {

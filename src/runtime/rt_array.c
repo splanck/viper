@@ -22,6 +22,7 @@
 ///          guard against memory corruption and incorrect sharing semantics.
 
 #include "rt_array.h"
+#include "rt_platform.h"
 
 #include <assert.h>
 #include <limits.h>

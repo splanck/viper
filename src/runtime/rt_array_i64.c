@@ -17,6 +17,7 @@
 
 #include "rt_array_i64.h"
 #include "rt_array.h" // for rt_arr_oob_panic
+#include "rt_platform.h"
 
 #include <assert.h>
 #include <limits.h>

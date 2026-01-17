@@ -78,6 +78,8 @@ typedef SSIZE_T ssize_t;
 #ifndef EAGAIN
 #define EAGAIN EIO
 #endif
+// mode_t for Windows (off_t is defined in sys/types.h as _off_t)
+typedef unsigned short mode_t;
 #elif defined(__viperdos__)
 // TODO: ViperDOS - include file I/O headers when available
 // ViperDOS has POSIX-like file I/O syscalls
@@ -91,9 +93,9 @@ typedef long ssize_t;
 #define S_IROTH 0004
 #define S_IWOTH 0002
 #ifndef EINTR
-#define EINTR 0 // Windows doesn't have EINTR; reads/writes don't get interrupted
+#define EINTR 0 // ViperDOS may not define EINTR
 #endif
-// mode_t for Windows (off_t is defined in sys/types.h as _off_t)
+// ViperDOS needs mode_t definition
 typedef unsigned short mode_t;
 #else
 // POSIX systems

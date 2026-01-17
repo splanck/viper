@@ -23,9 +23,9 @@ namespace il::frontends::basic
 // Forward declarations to minimize dependencies
 class Lowerer;
 class OopIndex;
-class ClassInfo;
-class ClassLayout;
-class Expr;
+struct ClassInfo;
+struct ClassLayout;
+struct Expr;
 
 /// @brief Context object passed through OOP lowering pipeline.
 /// @details Provides a consistent interface for OOP lowering functions to access

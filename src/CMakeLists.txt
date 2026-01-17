@@ -86,6 +86,9 @@ target_include_directories(il_runtime PUBLIC
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
     set_source_files_properties(il/runtime/RuntimeSignatures.cpp
             PROPERTIES COMPILE_FLAGS "-fconstexpr-steps=100000000")
+elseif (MSVC)
+    set_source_files_properties(il/runtime/RuntimeSignatures.cpp
+            PROPERTIES COMPILE_FLAGS "/constexpr:steps100000000")
 endif ()
 
 add_library(il_build STATIC il/build/IRBuilder.cpp)

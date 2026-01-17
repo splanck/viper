@@ -33,6 +33,7 @@
 #include <cstdlib>
 #include <limits>
 #include <optional>
+#include <type_traits>
 
 using namespace il::core;
 
@@ -41,6 +42,63 @@ namespace il::transform
 
 namespace
 {
+
+#ifdef _MSC_VER
+// MSVC doesn't have __builtin_*_overflow, so we implement our own for long long
+
+static inline bool msvc_add_overflow(long long a, long long b, long long *result)
+{
+    *result = static_cast<long long>(
+        static_cast<unsigned long long>(a) + static_cast<unsigned long long>(b));
+    if (b >= 0)
+        return *result < a;
+    else
+        return *result > a;
+}
+
+static inline bool msvc_sub_overflow(long long a, long long b, long long *result)
+{
+    *result = static_cast<long long>(
+        static_cast<unsigned long long>(a) - static_cast<unsigned long long>(b));
+    if (b >= 0)
+        return *result > a;
+    else
+        return *result < a;
+}
+
+static inline bool msvc_mul_overflow(long long a, long long b, long long *result)
+{
+    if (a == 0 || b == 0)
+    {
+        *result = 0;
+        return false;
+    }
+    if (a == (std::numeric_limits<long long>::min)() && b == -1)
+    {
+        *result = (std::numeric_limits<long long>::min)();
+        return true;
+    }
+    if (b == (std::numeric_limits<long long>::min)() && a == -1)
+    {
+        *result = (std::numeric_limits<long long>::min)();
+        return true;
+    }
+    long long abs_a = a < 0 ? -a : a;
+    long long abs_b = b < 0 ? -b : b;
+    if (abs_a > (std::numeric_limits<long long>::max)() / abs_b)
+    {
+        *result = static_cast<long long>(
+            static_cast<unsigned long long>(a) * static_cast<unsigned long long>(b));
+        return true;
+    }
+    *result = a * b;
+    return false;
+}
+
+#define __builtin_add_overflow(a, b, r) msvc_add_overflow(a, b, r)
+#define __builtin_sub_overflow(a, b, r) msvc_sub_overflow(a, b, r)
+#define __builtin_mul_overflow(a, b, r) msvc_mul_overflow(a, b, r)
+#endif // _MSC_VER
 
 /// @brief Extract a 64-bit integer constant operand.
 /// @details Recognises @ref Value::Kind::ConstInt operands and exposes their

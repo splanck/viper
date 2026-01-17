@@ -766,4 +766,116 @@ void vgfx_platform_sleep_ms(int32_t ms)
     }
 }
 
+//===----------------------------------------------------------------------===//
+// Clipboard Operations
+//===----------------------------------------------------------------------===//
+
+/// @brief Check if the clipboard contains data in the specified format.
+/// @param format Clipboard format to check for
+/// @return 1 if data is available, 0 otherwise
+int vgfx_clipboard_has_format(vgfx_clipboard_format_t format)
+{
+    switch (format)
+    {
+        case VGFX_CLIPBOARD_TEXT:
+            return IsClipboardFormatAvailable(CF_UNICODETEXT) ||
+                   IsClipboardFormatAvailable(CF_TEXT);
+        case VGFX_CLIPBOARD_HTML:
+            // HTML format is registered dynamically
+            {
+                UINT cf_html = RegisterClipboardFormatW(L"HTML Format");
+                return cf_html ? IsClipboardFormatAvailable(cf_html) : 0;
+            }
+        case VGFX_CLIPBOARD_IMAGE:
+            return IsClipboardFormatAvailable(CF_BITMAP) ||
+                   IsClipboardFormatAvailable(CF_DIB);
+        case VGFX_CLIPBOARD_FILES:
+            return IsClipboardFormatAvailable(CF_HDROP);
+        default:
+            return 0;
+    }
+}
+
+/// @brief Get text from the clipboard.
+/// @details Returns a malloc'd UTF-8 string containing the clipboard text.
+///          The caller is responsible for freeing the returned string.
+/// @return Clipboard text (caller must free), or NULL if not available
+char *vgfx_clipboard_get_text(void)
+{
+    if (!OpenClipboard(NULL))
+        return NULL;
+
+    char *result = NULL;
+    HANDLE hData = GetClipboardData(CF_UNICODETEXT);
+
+    if (hData)
+    {
+        WCHAR *wstr = (WCHAR *)GlobalLock(hData);
+        if (wstr)
+        {
+            /* Convert UTF-16 to UTF-8 */
+            int len = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, NULL, 0, NULL, NULL);
+            if (len > 0)
+            {
+                result = (char *)malloc(len);
+                if (result)
+                {
+                    WideCharToMultiByte(CP_UTF8, 0, wstr, -1, result, len, NULL, NULL);
+                }
+            }
+            GlobalUnlock(hData);
+        }
+    }
+
+    CloseClipboard();
+    return result;
+}
+
+/// @brief Set text to the clipboard.
+/// @details Copies the specified UTF-8 string to the system clipboard.
+/// @param text Text to copy (NULL clears text from clipboard)
+void vgfx_clipboard_set_text(const char *text)
+{
+    if (!OpenClipboard(NULL))
+        return;
+
+    EmptyClipboard();
+
+    if (text)
+    {
+        /* Convert UTF-8 to UTF-16 */
+        int wlen = MultiByteToWideChar(CP_UTF8, 0, text, -1, NULL, 0);
+        if (wlen > 0)
+        {
+            HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, wlen * sizeof(WCHAR));
+            if (hMem)
+            {
+                WCHAR *wstr = (WCHAR *)GlobalLock(hMem);
+                if (wstr)
+                {
+                    MultiByteToWideChar(CP_UTF8, 0, text, -1, wstr, wlen);
+                    GlobalUnlock(hMem);
+                    SetClipboardData(CF_UNICODETEXT, hMem);
+                }
+                else
+                {
+                    GlobalFree(hMem);
+                }
+            }
+        }
+    }
+
+    CloseClipboard();
+}
+
+/// @brief Clear all clipboard contents.
+void vgfx_clipboard_clear(void)
+{
+    if (OpenClipboard(NULL))
+    {
+        EmptyClipboard();
+        CloseClipboard();
+    }
+}
+
 #endif /* _WIN32 */

@@ -27,6 +27,117 @@
 #include <cstdint>
 #include <limits>
 #include <utility>
+#include <type_traits>
+
+#ifdef _MSC_VER
+// MSVC doesn't have __builtin_*_overflow, so we implement our own templates
+namespace il::vm::detail::msvc_overflow
+{
+/// @brief Perform checked signed addition with overflow detection for MSVC.
+template <typename T>
+inline typename std::enable_if<std::is_signed<T>::value, bool>::type
+checked_add(T lhs, T rhs, T *result)
+{
+    *result = static_cast<T>(static_cast<typename std::make_unsigned<T>::type>(lhs) +
+                             static_cast<typename std::make_unsigned<T>::type>(rhs));
+    if (rhs >= 0)
+        return *result < lhs;
+    else
+        return *result > lhs;
+}
+
+/// @brief Perform checked unsigned addition with overflow detection for MSVC.
+template <typename T>
+inline typename std::enable_if<std::is_unsigned<T>::value, bool>::type
+checked_add(T lhs, T rhs, T *result)
+{
+    *result = lhs + rhs;
+    return *result < lhs;
+}
+
+/// @brief Perform checked signed subtraction with overflow detection for MSVC.
+template <typename T>
+inline typename std::enable_if<std::is_signed<T>::value, bool>::type
+checked_sub(T lhs, T rhs, T *result)
+{
+    *result = static_cast<T>(static_cast<typename std::make_unsigned<T>::type>(lhs) -
+                             static_cast<typename std::make_unsigned<T>::type>(rhs));
+    if (rhs >= 0)
+        return *result > lhs;
+    else
+        return *result < lhs;
+}
+
+/// @brief Perform checked unsigned subtraction with overflow detection for MSVC.
+template <typename T>
+inline typename std::enable_if<std::is_unsigned<T>::value, bool>::type
+checked_sub(T lhs, T rhs, T *result)
+{
+    *result = lhs - rhs;
+    return lhs < rhs;
+}
+
+/// @brief Perform checked signed multiplication with overflow detection for MSVC.
+template <typename T>
+inline typename std::enable_if<std::is_signed<T>::value, bool>::type
+checked_mul(T lhs, T rhs, T *result)
+{
+    using U = typename std::make_unsigned<T>::type;
+    if (sizeof(T) <= 4)
+    {
+        int64_t wide = static_cast<int64_t>(lhs) * static_cast<int64_t>(rhs);
+        *result = static_cast<T>(wide);
+        return wide < static_cast<int64_t>((std::numeric_limits<T>::min)()) ||
+               wide > static_cast<int64_t>((std::numeric_limits<T>::max)());
+    }
+    else
+    {
+        if (lhs == 0 || rhs == 0)
+        {
+            *result = 0;
+            return false;
+        }
+        if (lhs == (std::numeric_limits<T>::min)() && rhs == -1)
+        {
+            *result = (std::numeric_limits<T>::min)();
+            return true;
+        }
+        if (rhs == (std::numeric_limits<T>::min)() && lhs == -1)
+        {
+            *result = (std::numeric_limits<T>::min)();
+            return true;
+        }
+        T abs_lhs = lhs < 0 ? -lhs : lhs;
+        T abs_rhs = rhs < 0 ? -rhs : rhs;
+        if (abs_lhs > (std::numeric_limits<T>::max)() / abs_rhs)
+        {
+            *result = static_cast<T>(static_cast<U>(lhs) * static_cast<U>(rhs));
+            return true;
+        }
+        *result = lhs * rhs;
+        return false;
+    }
+}
+
+/// @brief Perform checked unsigned multiplication with overflow detection for MSVC.
+template <typename T>
+inline typename std::enable_if<std::is_unsigned<T>::value, bool>::type
+checked_mul(T lhs, T rhs, T *result)
+{
+    if (lhs == 0 || rhs == 0)
+    {
+        *result = 0;
+        return false;
+    }
+    *result = lhs * rhs;
+    return lhs > (std::numeric_limits<T>::max)() / rhs;
+}
+} // namespace il::vm::detail::msvc_overflow
+
+#define __builtin_add_overflow(a, b, r) il::vm::detail::msvc_overflow::checked_add(a, b, r)
+#define __builtin_sub_overflow(a, b, r) il::vm::detail::msvc_overflow::checked_sub(a, b, r)
+#define __builtin_mul_overflow(a, b, r) il::vm::detail::msvc_overflow::checked_mul(a, b, r)
+#endif // _MSC_VER
 
 namespace il::vm::detail::integer
 {

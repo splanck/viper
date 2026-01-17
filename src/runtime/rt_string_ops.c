@@ -24,6 +24,7 @@
 
 #include "rt_int_format.h"
 #include "rt_internal.h"
+#include "rt_platform.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_string_builder.h"
@@ -215,7 +216,11 @@ static rt_string rt_string_alloc(size_t len, size_t cap)
 static rt_string rt_empty_string(void)
 {
     static rt_string empty = NULL;
+#if RT_COMPILER_MSVC
+    rt_string cached = (rt_string)rt_atomic_load_ptr((void *const volatile *)&empty, __ATOMIC_ACQUIRE);
+#else
     rt_string cached = __atomic_load_n(&empty, __ATOMIC_ACQUIRE);
+#endif
     if (cached)
         return cached;
 
@@ -242,8 +247,13 @@ static rt_string rt_empty_string(void)
     candidate->literal_refs = 0;
 
     rt_string expected = NULL;
+#if RT_COMPILER_MSVC
+    if (!rt_atomic_compare_exchange_ptr(
+            (void *volatile *)&empty, (void **)&expected, candidate, __ATOMIC_RELEASE, __ATOMIC_ACQUIRE))
+#else
     if (!__atomic_compare_exchange_n(
             &empty, &expected, candidate, /*weak=*/0, __ATOMIC_RELEASE, __ATOMIC_ACQUIRE))
+#endif
     {
         // Lost the race; discard our candidate and use the published singleton.
         free(candidate);

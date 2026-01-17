@@ -124,9 +124,9 @@ TerminalSession::TerminalSession()
 
     if (!env_no_tty() && env_true("VIPERTUI_MOUSE"))
     {
-        ::viper::tui::term::RealTermIO io;
-        io.write("\x1b[?1000h\x1b[?1002h\x1b[?1006h"); // enable mouse + SGR
-        io.flush();
+        ::viper::tui::term::RealTermIO mouse_io;
+        mouse_io.write("\x1b[?1000h\x1b[?1002h\x1b[?1006h"); // enable mouse + SGR
+        mouse_io.flush();
     }
 
     active_ = true;

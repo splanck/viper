@@ -95,6 +95,7 @@
 #include "rt_object.h"
 #include "rt_heap.h"
 #include "rt_oop.h"
+#include "rt_platform.h"
 #include "rt_string.h"
 
 #include <stddef.h>

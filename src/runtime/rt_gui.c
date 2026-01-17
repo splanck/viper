@@ -25,8 +25,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include <strings.h>  // For strcasecmp
 #include <ctype.h>    // For toupper
+
+// For strcasecmp: Windows uses _stricmp, POSIX uses strcasecmp
+#ifdef _WIN32
+#define strcasecmp _stricmp
+#else
+#include <strings.h>
+#endif
 
 //=============================================================================
 // Helper Functions

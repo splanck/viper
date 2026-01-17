@@ -4,7 +4,17 @@
 #include "../../include/vg_event.h"
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>  // For strcasecmp
+
+// For strcasecmp: Windows uses _stricmp, POSIX uses strcasecmp
+// For strdup: Windows uses _strdup
+// For strtok_r: Windows uses strtok_s
+#ifdef _WIN32
+#define strcasecmp _stricmp
+#define strdup _strdup
+#define strtok_r strtok_s
+#else
+#include <strings.h>
+#endif
 
 //=============================================================================
 // Forward Declarations

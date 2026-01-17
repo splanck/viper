@@ -18,9 +18,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_pool.h"
+#include "rt_platform.h"
 
 #include <assert.h>
-#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -50,10 +50,10 @@ typedef struct rt_pool_slab
 /// @brief Per-size-class pool state.
 typedef struct rt_pool_state
 {
-    _Atomic(rt_pool_block_t *) freelist; ///< Lock-free freelist head
+    rt_pool_block_t *volatile freelist;  ///< Lock-free freelist head
     rt_pool_slab_t *slabs;               ///< List of slabs (not atomic - protected by allocation)
-    _Atomic(size_t) allocated;           ///< Count of blocks currently allocated
-    _Atomic(size_t) free_count;          ///< Count of blocks on freelist
+    volatile size_t allocated;           ///< Count of blocks currently allocated
+    volatile size_t free_count;          ///< Count of blocks on freelist
 } rt_pool_state_t;
 
 /// @brief Global pool state for each size class.
@@ -126,15 +126,26 @@ static void push_slab_to_freelist(rt_pool_state_t *pool, rt_pool_slab_t *slab)
     }
 
     // Atomically prepend the chain to the freelist
-    rt_pool_block_t *expected = atomic_load_explicit(&pool->freelist, memory_order_relaxed);
+#if RT_COMPILER_MSVC
+    rt_pool_block_t *expected = (rt_pool_block_t *)rt_atomic_load_ptr(
+        (void *const volatile *)&pool->freelist, __ATOMIC_RELAXED);
     do
     {
         last->next = expected;
-    } while (!atomic_compare_exchange_weak_explicit(
-        &pool->freelist, &expected, first,
-        memory_order_release, memory_order_relaxed));
-
-    atomic_fetch_add_explicit(&pool->free_count, slab->block_count, memory_order_relaxed);
+    } while (!rt_atomic_compare_exchange_ptr(
+        (void *volatile *)&pool->freelist, (void **)&expected, first,
+        __ATOMIC_RELEASE, __ATOMIC_RELAXED));
+    rt_atomic_fetch_add_size(&pool->free_count, slab->block_count, __ATOMIC_RELAXED);
+#else
+    rt_pool_block_t *expected = __atomic_load_n(&pool->freelist, __ATOMIC_RELAXED);
+    do
+    {
+        last->next = expected;
+    } while (!__atomic_compare_exchange_n(
+        &pool->freelist, &expected, first, 1,
+        __ATOMIC_RELEASE, __ATOMIC_RELAXED));
+    __atomic_fetch_add(&pool->free_count, slab->block_count, __ATOMIC_RELAXED);
+#endif
 }
 
 /// @brief Pop a block from the freelist.
@@ -142,19 +153,36 @@ static void push_slab_to_freelist(rt_pool_state_t *pool, rt_pool_slab_t *slab)
 /// @return Block pointer, or NULL if freelist is empty.
 static rt_pool_block_t *pop_from_freelist(rt_pool_state_t *pool)
 {
-    rt_pool_block_t *head = atomic_load_explicit(&pool->freelist, memory_order_acquire);
+#if RT_COMPILER_MSVC
+    rt_pool_block_t *head = (rt_pool_block_t *)rt_atomic_load_ptr(
+        (void *const volatile *)&pool->freelist, __ATOMIC_ACQUIRE);
     while (head)
     {
         rt_pool_block_t *next = head->next;
-        if (atomic_compare_exchange_weak_explicit(
-                &pool->freelist, &head, next,
-                memory_order_acquire, memory_order_relaxed))
+        if (rt_atomic_compare_exchange_ptr(
+                (void *volatile *)&pool->freelist, (void **)&head, next,
+                __ATOMIC_ACQUIRE, __ATOMIC_RELAXED))
         {
-            atomic_fetch_sub_explicit(&pool->free_count, 1, memory_order_relaxed);
+            rt_atomic_fetch_sub_size(&pool->free_count, 1, __ATOMIC_RELAXED);
             return head;
         }
         // CAS failed, head was updated - retry
     }
+#else
+    rt_pool_block_t *head = __atomic_load_n(&pool->freelist, __ATOMIC_ACQUIRE);
+    while (head)
+    {
+        rt_pool_block_t *next = head->next;
+        if (__atomic_compare_exchange_n(
+                &pool->freelist, &head, next, 1,
+                __ATOMIC_ACQUIRE, __ATOMIC_RELAXED))
+        {
+            __atomic_fetch_sub(&pool->free_count, 1, __ATOMIC_RELAXED);
+            return head;
+        }
+        // CAS failed, head was updated - retry
+    }
+#endif
     return NULL;
 }
 
@@ -163,15 +191,26 @@ static rt_pool_block_t *pop_from_freelist(rt_pool_state_t *pool)
 /// @param block Block to return to the freelist.
 static void push_to_freelist(rt_pool_state_t *pool, rt_pool_block_t *block)
 {
-    rt_pool_block_t *expected = atomic_load_explicit(&pool->freelist, memory_order_relaxed);
+#if RT_COMPILER_MSVC
+    rt_pool_block_t *expected = (rt_pool_block_t *)rt_atomic_load_ptr(
+        (void *const volatile *)&pool->freelist, __ATOMIC_RELAXED);
     do
     {
         block->next = expected;
-    } while (!atomic_compare_exchange_weak_explicit(
-        &pool->freelist, &expected, block,
-        memory_order_release, memory_order_relaxed));
-
-    atomic_fetch_add_explicit(&pool->free_count, 1, memory_order_relaxed);
+    } while (!rt_atomic_compare_exchange_ptr(
+        (void *volatile *)&pool->freelist, (void **)&expected, block,
+        __ATOMIC_RELEASE, __ATOMIC_RELAXED));
+    rt_atomic_fetch_add_size(&pool->free_count, 1, __ATOMIC_RELAXED);
+#else
+    rt_pool_block_t *expected = __atomic_load_n(&pool->freelist, __ATOMIC_RELAXED);
+    do
+    {
+        block->next = expected;
+    } while (!__atomic_compare_exchange_n(
+        &pool->freelist, &expected, block, 1,
+        __ATOMIC_RELEASE, __ATOMIC_RELAXED));
+    __atomic_fetch_add(&pool->free_count, 1, __ATOMIC_RELAXED);
+#endif
 }
 
 void *rt_pool_alloc(size_t size)
@@ -212,7 +251,11 @@ void *rt_pool_alloc(size_t size)
             return NULL; // Should not happen
     }
 
-    atomic_fetch_add_explicit(&pool->allocated, 1, memory_order_relaxed);
+#if RT_COMPILER_MSVC
+    rt_atomic_fetch_add_size(&pool->allocated, 1, __ATOMIC_RELAXED);
+#else
+    __atomic_fetch_add(&pool->allocated, 1, __ATOMIC_RELAXED);
+#endif
 
     // Zero the block before returning (caller expects zeroed memory)
     memset(block, 0, kClassSizes[class_idx]);
@@ -242,7 +285,11 @@ void rt_pool_free(void *ptr, size_t size)
     // Push block back to freelist
     push_to_freelist(pool, (rt_pool_block_t *)ptr);
 
-    atomic_fetch_sub_explicit(&pool->allocated, 1, memory_order_relaxed);
+#if RT_COMPILER_MSVC
+    rt_atomic_fetch_sub_size(&pool->allocated, 1, __ATOMIC_RELAXED);
+#else
+    __atomic_fetch_sub(&pool->allocated, 1, __ATOMIC_RELAXED);
+#endif
 }
 
 void rt_pool_stats(rt_pool_class_t class_idx, size_t *out_allocated, size_t *out_free)
@@ -258,10 +305,17 @@ void rt_pool_stats(rt_pool_class_t class_idx, size_t *out_allocated, size_t *out
 
     rt_pool_state_t *pool = &g_pools[class_idx];
 
+#if RT_COMPILER_MSVC
     if (out_allocated)
-        *out_allocated = atomic_load_explicit(&pool->allocated, memory_order_relaxed);
+        *out_allocated = rt_atomic_load_size(&pool->allocated, __ATOMIC_RELAXED);
     if (out_free)
-        *out_free = atomic_load_explicit(&pool->free_count, memory_order_relaxed);
+        *out_free = rt_atomic_load_size(&pool->free_count, __ATOMIC_RELAXED);
+#else
+    if (out_allocated)
+        *out_allocated = __atomic_load_n(&pool->allocated, __ATOMIC_RELAXED);
+    if (out_free)
+        *out_free = __atomic_load_n(&pool->free_count, __ATOMIC_RELAXED);
+#endif
 }
 
 void rt_pool_shutdown(void)
@@ -281,8 +335,14 @@ void rt_pool_shutdown(void)
 
         // Reset state
         pool->slabs = NULL;
-        atomic_store_explicit(&pool->freelist, NULL, memory_order_relaxed);
-        atomic_store_explicit(&pool->allocated, 0, memory_order_relaxed);
-        atomic_store_explicit(&pool->free_count, 0, memory_order_relaxed);
+#if RT_COMPILER_MSVC
+        rt_atomic_store_ptr((void *volatile *)&pool->freelist, NULL, __ATOMIC_RELAXED);
+        rt_atomic_store_size(&pool->allocated, 0, __ATOMIC_RELAXED);
+        rt_atomic_store_size(&pool->free_count, 0, __ATOMIC_RELAXED);
+#else
+        __atomic_store_n(&pool->freelist, NULL, __ATOMIC_RELAXED);
+        __atomic_store_n(&pool->allocated, 0, __ATOMIC_RELAXED);
+        __atomic_store_n(&pool->free_count, 0, __ATOMIC_RELAXED);
+#endif
     }
 }

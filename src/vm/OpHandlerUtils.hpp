@@ -21,6 +21,12 @@
 
 #include <string>
 #include <utility>
+#include <type_traits>
+#include <limits>
+
+#ifdef _MSC_VER
+#include <intrin.h>
+#endif
 
 namespace il::core
 {
@@ -31,6 +37,115 @@ namespace il::vm::detail
 {
 namespace ops
 {
+
+#ifdef _MSC_VER
+// MSVC doesn't have __builtin_*_overflow, so we implement our own
+
+/// @brief Perform checked signed addition with overflow detection for MSVC.
+template <typename T>
+[[nodiscard]] inline typename std::enable_if<std::is_signed<T>::value, bool>::type
+checked_add_impl(T lhs, T rhs, T *result)
+{
+    // Signed overflow: if signs are the same but result sign differs
+    *result = static_cast<T>(static_cast<typename std::make_unsigned<T>::type>(lhs) +
+                             static_cast<typename std::make_unsigned<T>::type>(rhs));
+    if (rhs >= 0)
+        return *result < lhs; // Positive rhs, result should be >= lhs
+    else
+        return *result > lhs; // Negative rhs, result should be <= lhs
+}
+
+/// @brief Perform checked unsigned addition with overflow detection for MSVC.
+template <typename T>
+[[nodiscard]] inline typename std::enable_if<std::is_unsigned<T>::value, bool>::type
+checked_add_impl(T lhs, T rhs, T *result)
+{
+    *result = lhs + rhs;
+    return *result < lhs; // Unsigned wrap-around
+}
+
+/// @brief Perform checked signed subtraction with overflow detection for MSVC.
+template <typename T>
+[[nodiscard]] inline typename std::enable_if<std::is_signed<T>::value, bool>::type
+checked_sub_impl(T lhs, T rhs, T *result)
+{
+    *result = static_cast<T>(static_cast<typename std::make_unsigned<T>::type>(lhs) -
+                             static_cast<typename std::make_unsigned<T>::type>(rhs));
+    if (rhs >= 0)
+        return *result > lhs; // Subtracting positive, result should be <= lhs
+    else
+        return *result < lhs; // Subtracting negative, result should be >= lhs
+}
+
+/// @brief Perform checked unsigned subtraction with overflow detection for MSVC.
+template <typename T>
+[[nodiscard]] inline typename std::enable_if<std::is_unsigned<T>::value, bool>::type
+checked_sub_impl(T lhs, T rhs, T *result)
+{
+    *result = lhs - rhs;
+    return lhs < rhs; // Unsigned underflow
+}
+
+/// @brief Perform checked signed multiplication with overflow detection for MSVC.
+template <typename T>
+[[nodiscard]] inline typename std::enable_if<std::is_signed<T>::value, bool>::type
+checked_mul_impl(T lhs, T rhs, T *result)
+{
+    using U = typename std::make_unsigned<T>::type;
+    // Use double-width multiplication for 32-bit types
+    if constexpr (sizeof(T) <= 4)
+    {
+        int64_t wide = static_cast<int64_t>(lhs) * static_cast<int64_t>(rhs);
+        *result = static_cast<T>(wide);
+        return wide < static_cast<int64_t>(std::numeric_limits<T>::min()) ||
+               wide > static_cast<int64_t>(std::numeric_limits<T>::max());
+    }
+    else
+    {
+        // For 64-bit, check for overflow before computing
+        if (lhs == 0 || rhs == 0)
+        {
+            *result = 0;
+            return false;
+        }
+        if (lhs == std::numeric_limits<T>::min() && rhs == -1)
+        {
+            *result = std::numeric_limits<T>::min();
+            return true;
+        }
+        if (rhs == std::numeric_limits<T>::min() && lhs == -1)
+        {
+            *result = std::numeric_limits<T>::min();
+            return true;
+        }
+        T abs_lhs = lhs < 0 ? -lhs : lhs;
+        T abs_rhs = rhs < 0 ? -rhs : rhs;
+        if (abs_lhs > std::numeric_limits<T>::max() / abs_rhs)
+        {
+            *result = static_cast<T>(static_cast<U>(lhs) * static_cast<U>(rhs));
+            return true;
+        }
+        *result = lhs * rhs;
+        return false;
+    }
+}
+
+/// @brief Perform checked unsigned multiplication with overflow detection for MSVC.
+template <typename T>
+[[nodiscard]] inline typename std::enable_if<std::is_unsigned<T>::value, bool>::type
+checked_mul_impl(T lhs, T rhs, T *result)
+{
+    if (lhs == 0 || rhs == 0)
+    {
+        *result = 0;
+        return false;
+    }
+    *result = lhs * rhs;
+    return lhs > std::numeric_limits<T>::max() / rhs;
+}
+
+#endif // _MSC_VER
+
 /// @brief Perform checked addition using compiler builtins.
 /// @tparam T Arithmetic type to operate on.
 /// @param lhs Left operand.
@@ -40,7 +155,11 @@ namespace ops
 /// @note Force-inlined for optimal performance in hot interpreter loops.
 template <typename T> [[nodiscard]] inline bool checked_add(T lhs, T rhs, T *result)
 {
+#ifdef _MSC_VER
+    return checked_add_impl(lhs, rhs, result);
+#else
     return __builtin_add_overflow(lhs, rhs, result);
+#endif
 }
 
 /// @brief Perform checked subtraction using compiler builtins.
@@ -52,7 +171,11 @@ template <typename T> [[nodiscard]] inline bool checked_add(T lhs, T rhs, T *res
 /// @note Force-inlined for optimal performance in hot interpreter loops.
 template <typename T> [[nodiscard]] inline bool checked_sub(T lhs, T rhs, T *result)
 {
+#ifdef _MSC_VER
+    return checked_sub_impl(lhs, rhs, result);
+#else
     return __builtin_sub_overflow(lhs, rhs, result);
+#endif
 }
 
 /// @brief Perform checked multiplication using compiler builtins.
@@ -64,7 +187,11 @@ template <typename T> [[nodiscard]] inline bool checked_sub(T lhs, T rhs, T *res
 /// @note Force-inlined for optimal performance in hot interpreter loops.
 template <typename T> [[nodiscard]] inline bool checked_mul(T lhs, T rhs, T *result)
 {
+#ifdef _MSC_VER
+    return checked_mul_impl(lhs, rhs, result);
+#else
     return __builtin_mul_overflow(lhs, rhs, result);
+#endif
 }
 
 /// @brief Apply two's complement wrapping semantics to addition.

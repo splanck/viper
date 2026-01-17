@@ -68,7 +68,7 @@ TEST(Spiller, SpillsActiveValue)
     alloc.hasPhys = true;
     alloc.phys = PhysReg::RAX;
     AllocationResult result{};
-    result.vregToPhys.emplace(7, PhysReg::RAX);
+    result.vregToPhys.emplace(static_cast<uint16_t>(7), PhysReg::RAX);
 
     std::deque<PhysReg> pool{};
     std::vector<MInstr> prefix{};
