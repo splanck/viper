@@ -1,0 +1,158 @@
+// Viper Web Server - Thread-Safe Logger
+// Provides logging with levels, timestamps, and request tracking
+module logger;
+
+// ============================================================================
+// LOG LEVELS
+// ============================================================================
+
+final LOG_DEBUG = 0;
+final LOG_INFO = 1;
+final LOG_WARN = 2;
+final LOG_ERROR = 3;
+
+// Current log level (messages below this level are ignored)
+var log_level: Integer;
+
+// Monitor object for thread-safe logging
+var log_monitor: List[Integer];
+
+// ============================================================================
+// INITIALIZATION
+// ============================================================================
+
+func log_init(level: Integer) {
+    log_level = level;
+    // Create a dummy list to use as monitor object
+    log_monitor = Viper.Collections.List.New();
+}
+
+// ============================================================================
+// INTERNAL HELPERS
+// ============================================================================
+
+func log_levelName(level: Integer) -> String {
+    if level == LOG_DEBUG {
+        return "DEBUG";
+    }
+    if level == LOG_INFO {
+        return "INFO";
+    }
+    if level == LOG_WARN {
+        return "WARN";
+    }
+    if level == LOG_ERROR {
+        return "ERROR";
+    }
+    return "?????";
+}
+
+func log_pad2(n: Integer) -> String {
+    if n < 10 {
+        return "0" + Viper.Fmt.Int(n);
+    }
+    return Viper.Fmt.Int(n);
+}
+
+func log_pad3(n: Integer) -> String {
+    if n < 10 {
+        return "00" + Viper.Fmt.Int(n);
+    }
+    if n < 100 {
+        return "0" + Viper.Fmt.Int(n);
+    }
+    return Viper.Fmt.Int(n);
+}
+
+func log_timestamp() -> String {
+    var now = Viper.DateTime.Now();
+    var ms = Viper.DateTime.NowMs() % 1000;
+
+    var year = Viper.DateTime.Year(now);
+    var month = Viper.DateTime.Month(now);
+    var day = Viper.DateTime.Day(now);
+    var hour = Viper.DateTime.Hour(now);
+    var minute = Viper.DateTime.Minute(now);
+    var second = Viper.DateTime.Second(now);
+
+    // Format: YYYY-MM-DD HH:MM:SS.mmm
+    var ts = Viper.Fmt.Int(year) + "-";
+    ts = ts + log_pad2(month) + "-";
+    ts = ts + log_pad2(day) + " ";
+    ts = ts + log_pad2(hour) + ":";
+    ts = ts + log_pad2(minute) + ":";
+    ts = ts + log_pad2(second) + ".";
+    ts = ts + log_pad3(ms);
+
+    return ts;
+}
+
+// ============================================================================
+// CORE LOGGING
+// ============================================================================
+
+func log_write(level: Integer, message: String) {
+    if level < log_level {
+        return;
+    }
+
+    var line = "[" + log_timestamp() + "] [" + log_levelName(level) + "] " + message;
+
+    // Thread-safe output
+    Viper.Threads.Monitor.Enter(log_monitor);
+    Viper.Terminal.Say(line);
+    Viper.Threads.Monitor.Exit(log_monitor);
+}
+
+// ============================================================================
+// PUBLIC LOGGING FUNCTIONS
+// ============================================================================
+
+func log_debug(message: String) {
+    log_write(LOG_DEBUG, message);
+}
+
+func log_info(message: String) {
+    log_write(LOG_INFO, message);
+}
+
+func log_warn(message: String) {
+    log_write(LOG_WARN, message);
+}
+
+func log_error(message: String) {
+    log_write(LOG_ERROR, message);
+}
+
+// ============================================================================
+// REQUEST LOGGING
+// ============================================================================
+
+// Log an HTTP request with timing
+// Format: CLIENT_IP METHOD PATH STATUS SIZE DURATION_MS
+func log_request(clientIp: String, method: String, path: String,
+                 status: Integer, size: Integer, durationMs: Integer) {
+    var msg = clientIp + " " + method + " " + path + " ";
+    msg = msg + Viper.Fmt.Int(status) + " ";
+    msg = msg + Viper.Fmt.Int(size) + " ";
+    msg = msg + Viper.Fmt.Int(durationMs) + "ms";
+
+    // Use appropriate log level based on status
+    if status >= 500 {
+        log_write(LOG_ERROR, msg);
+    } else if status >= 400 {
+        log_write(LOG_WARN, msg);
+    } else {
+        log_write(LOG_INFO, msg);
+    }
+}
+
+// Get current time in milliseconds for duration tracking
+func log_startTimer() -> Integer {
+    return Viper.Time.Clock.Ticks();
+}
+
+// Calculate elapsed time in milliseconds
+func log_elapsed(startTime: Integer) -> Integer {
+    return Viper.Time.Clock.Ticks() - startTime;
+}

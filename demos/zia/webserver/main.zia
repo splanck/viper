@@ -1,6 +1,7 @@
 // Viper Web Server - A multithreaded HTTP server written in Zia
 module main;
 
+bind "./logger";
 bind "./threadpool";
 
 // ============================================================================
@@ -10,7 +11,8 @@ bind "./threadpool";
 final DEFAULT_PORT = 8080;
 final MAX_REQUEST_SIZE = 8192;
 final WORKER_COUNT = 4;
-final VERSION = "0.3.0";
+final VERSION = "0.4.0";
+final LOG_LEVEL = LOG_INFO;  // From logger.zia
 
 // Web root directory (relative to server location)
 var webRoot: String;
@@ -356,7 +358,54 @@ func serveStaticFile(path: String) -> String {
 // CLIENT HANDLING
 // ============================================================================
 
+// Extract HTTP status code from response string
+// Response starts with "HTTP/1.1 XXX StatusText\r\n..."
+func extractStatusCode(response: String) -> Integer {
+    // Find the first space (after HTTP/1.1)
+    var len = Viper.String.Length(response);
+    if len < 12 {
+        return 0;
+    }
+
+    // Status code starts at position 9 (after "HTTP/1.1 ")
+    var codeStr = Viper.String.Substring(response, 9, 3);
+
+    // Parse the 3-digit code manually
+    var c1 = Viper.String.Substring(codeStr, 0, 1);
+    var c2 = Viper.String.Substring(codeStr, 1, 1);
+    var c3 = Viper.String.Substring(codeStr, 2, 1);
+
+    var d1 = charToDigit(c1);
+    var d2 = charToDigit(c2);
+    var d3 = charToDigit(c3);
+
+    if d1 < 0 || d2 < 0 || d3 < 0 {
+        return 0;
+    }
+
+    return d1 * 100 + d2 * 10 + d3;
+}
+
+func charToDigit(c: String) -> Integer {
+    if c == "0" { return 0; }
+    if c == "1" { return 1; }
+    if c == "2" { return 2; }
+    if c == "3" { return 3; }
+    if c == "4" { return 4; }
+    if c == "5" { return 5; }
+    if c == "6" { return 6; }
+    if c == "7" { return 7; }
+    if c == "8" { return 8; }
+    if c == "9" { return 9; }
+    return -1;
+}
+
 func handleClient(client: Ptr) {
+    var startTime = log_startTimer();
+    var clientHost = Viper.Network.Tcp.get_Host(client);
+    var statusCode = 200;
+    var responseSize = 0;
+
     // Set a timeout for receiving
     Viper.Network.Tcp.SetRecvTimeout(client, 5000);
 
@@ -371,37 +420,37 @@ func handleClient(client: Ptr) {
 
     // Parse request
     if parseRequest(rawRequest) == false {
+        statusCode = 400;
         var response = response400();
+        responseSize = Viper.String.Length(response);
         Viper.Network.Tcp.SendStr(client, response);
         Viper.Network.Tcp.Close(client);
+        log_request(clientHost, "???", "???", statusCode, responseSize, log_elapsed(startTime));
         return;
     }
 
-    // Log request
-    var clientHost = Viper.Network.Tcp.get_Host(client);
-    var clientPort = Viper.Network.Tcp.get_Port(client);
-    Viper.Terminal.Print(clientHost);
-    Viper.Terminal.Print(":");
-    Viper.Terminal.PrintInt(clientPort);
-    Viper.Terminal.Print(" ");
-    Viper.Terminal.Print(reqMethod);
-    Viper.Terminal.Print(" ");
-    Viper.Terminal.Say(reqPath);
-
-    // Only handle GET requests for now
+    // Only handle GET and HEAD requests
     if reqMethod != "GET" && reqMethod != "HEAD" {
-        Viper.Terminal.Say("  [405] Method not allowed: " + reqMethod);
+        statusCode = 405;
         var response = buildResponse(405, "Method Not Allowed", "text/plain", "Method not allowed");
+        responseSize = Viper.String.Length(response);
         Viper.Network.Tcp.SendStr(client, response);
         Viper.Network.Tcp.Close(client);
+        log_request(clientHost, reqMethod, reqPath, statusCode, responseSize, log_elapsed(startTime));
         return;
     }
 
     // Serve static file
     var response = serveStaticFile(reqPath);
-    Viper.Network.Tcp.SendStr(client, response);
+    responseSize = Viper.String.Length(response);
 
+    // Extract status code from response (first line: "HTTP/1.1 XXX ...")
+    statusCode = extractStatusCode(response);
+
+    Viper.Network.Tcp.SendStr(client, response);
     Viper.Network.Tcp.Close(client);
+
+    log_request(clientHost, reqMethod, reqPath, statusCode, responseSize, log_elapsed(startTime));
 }
 
 // ============================================================================
@@ -411,25 +460,29 @@ func handleClient(client: Ptr) {
 func main() {
     var port = DEFAULT_PORT;
 
+    // Initialize logger first
+    log_init(LOG_LEVEL);
+
     // Set web root to www directory relative to current dir
     webRoot = Viper.IO.Path.Join(Viper.IO.Dir.Current(), "www");
 
+    // Startup banner (always shown)
     Viper.Terminal.Say("========================================");
     Viper.Terminal.Say("  Viper Web Server v" + VERSION);
     Viper.Terminal.Say("========================================");
-    Viper.Terminal.Say("Starting server on port " + Viper.Fmt.Int(port) + "...");
-    Viper.Terminal.Say("Web root: " + webRoot);
-    Viper.Terminal.Say("Workers: " + Viper.Fmt.Int(WORKER_COUNT));
-    Viper.Terminal.Say("");
+
+    log_info("Starting server on port " + Viper.Fmt.Int(port));
+    log_info("Web root: " + webRoot);
+    log_info("Workers: " + Viper.Fmt.Int(WORKER_COUNT));
 
     // Initialize thread pool with worker count
     pool_init(&handleClient, WORKER_COUNT);
-    Viper.Terminal.Say("Thread pool started with " + Viper.Fmt.Int(WORKER_COUNT) + " workers");
+    log_info("Thread pool initialized");
 
     // Create server
     var server = Viper.Network.TcpServer.Listen(port);
 
-    Viper.Terminal.Say("Server listening on http://localhost:" + Viper.Fmt.Int(port) + "/");
+    log_info("Server listening on http://localhost:" + Viper.Fmt.Int(port) + "/");
     Viper.Terminal.Say("Press Ctrl+C to stop.");
     Viper.Terminal.Say("");
 
@@ -444,8 +497,9 @@ func main() {
     }
 
     // Shutdown thread pool
+    log_info("Shutting down...");
     pool_shutdown();
 
     Viper.Network.TcpServer.Close(server);
-    Viper.Terminal.Say("Server stopped.");
+    log_info("Server stopped");
 }
