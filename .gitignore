@@ -59,6 +59,8 @@ CPackSourceConfig.cmake
 !src/tests/**/*.out
 !src/tests/**/*.bas.out
 *.app
+*.il
+!src/tests/**/*.il
 *.gch
 *.pch
 *.ilk

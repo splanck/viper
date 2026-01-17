@@ -27,6 +27,11 @@
 #include <time.h> // For struct timespec (defined in UCRT)
 #include <windows.h>
 
+// Disable Windows abort dialog so tests exit cleanly on assertion failures
+// Call VIPER_DISABLE_ABORT_DIALOG() at the start of main() in test executables
+#define VIPER_DISABLE_ABORT_DIALOG()                                                               \
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT)
+
 // Standard file descriptors
 #ifndef STDIN_FILENO
 #define STDIN_FILENO 0
@@ -271,6 +276,7 @@ static inline pid_t waitpid(pid_t pid, int *status, int options)
     do                                                                                             \
     {                                                                                              \
     } while (0)
+#define VIPER_DISABLE_ABORT_DIALOG() (void)0
 #endif
 
 #endif // VIPER_TESTS_POSIX_COMPAT_H

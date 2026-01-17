@@ -835,6 +835,10 @@ function(viper_add_basic_strings_test)
     if (TEST basic_strings)
         return()
     endif ()
+    # Shell script test - skip on Windows
+    if (WIN32)
+        return()
+    endif ()
 
     viper_add_ctest(basic_strings ${CMAKE_SOURCE_DIR}/scripts/test_strings.sh)
     set_tests_properties(basic_strings PROPERTIES LABELS BasicStrings)

@@ -345,12 +345,15 @@ if(VIPER_BUILD_TESTING)
     COMMENT "Clearing CTest cache to fix parallel scheduling"
   )
 
-  add_test(
-    NAME basic_select_case_string
-    COMMAND ${CMAKE_SOURCE_DIR}/src/tests/integration/basic/select_case_string.sh
-            ${CMAKE_BINARY_DIR}
-  )
-  set_tests_properties(basic_select_case_string PROPERTIES LABELS golden)
+  # Shell script test - only runs on Unix
+  if(NOT WIN32)
+    add_test(
+      NAME basic_select_case_string
+      COMMAND ${CMAKE_SOURCE_DIR}/src/tests/integration/basic/select_case_string.sh
+              ${CMAKE_BINARY_DIR}
+    )
+    set_tests_properties(basic_select_case_string PROPERTIES LABELS golden)
+  endif()
 endif()
 
 # ---- ViperGFX library ----

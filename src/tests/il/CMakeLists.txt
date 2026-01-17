@@ -747,7 +747,7 @@ function(viper_add_il_invalid_tests)
         return()
     endif ()
 
-    set(IL_VERIFY ${CMAKE_BINARY_DIR}/src/tools/il-verify/il-verify)
+    set(IL_VERIFY $<TARGET_FILE:il-verify>)
     set(_VIPER_INVALID_DIR ${CMAKE_SOURCE_DIR}/src/tests/golden/invalid_il)
 
     viper_add_ctest(il_verify_invalid_bad_types
