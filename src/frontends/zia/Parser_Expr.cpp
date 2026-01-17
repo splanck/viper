@@ -498,7 +498,7 @@ ExprPtr Parser::parseMultiplicative()
 ExprPtr Parser::parseUnary()
 {
     if (check(TokenKind::Minus) || check(TokenKind::Bang) || check(TokenKind::Tilde) ||
-        check(TokenKind::KwNot))
+        check(TokenKind::KwNot) || check(TokenKind::Ampersand))
     {
         Token opTok = advance();
         UnaryOp op;
@@ -513,6 +513,9 @@ ExprPtr Parser::parseUnary()
                 break;
             case TokenKind::Tilde:
                 op = UnaryOp::BitNot;
+                break;
+            case TokenKind::Ampersand:
+                op = UnaryOp::AddressOf;
                 break;
             default:
                 error("expected unary operator");

@@ -474,6 +474,21 @@ LowerResult Lowerer::lowerUnary(UnaryExpr *expr)
             Value result = emitBinary(Opcode::Xor, operand.type, operand.value, Value::constInt(-1));
             return {result, operand.type};
         }
+
+        case UnaryOp::AddressOf:
+        {
+            // Address-of operator for function references: &funcName
+            // Returns a pointer to the function
+            auto *ident = dynamic_cast<IdentExpr *>(expr->operand.get());
+            if (!ident)
+            {
+                // Should have been caught in semantic analysis
+                return {Value::constInt(0), Type(Type::Kind::Ptr)};
+            }
+
+            std::string mangledName = mangleFunctionName(ident->name);
+            return {Value::global(mangledName), Type(Type::Kind::Ptr)};
+        }
     }
 
     return operand;

@@ -1,0 +1,136 @@
+// Viper Web Server - Thread Pool Implementation
+// Provides a pool of worker threads to handle concurrent connections
+module threadpool;
+
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
+
+final POOL_DEFAULT_WORKER_COUNT = 4;
+
+// ============================================================================
+// THREAD POOL STATE
+// ============================================================================
+
+// The connection queue - used as the monitor object
+var pool_queue: List[Ptr];
+
+// Worker thread handles for cleanup
+var pool_workers: List[Ptr];
+
+// Flag to signal shutdown
+var pool_running: Integer;
+
+// Number of active workers
+var pool_workerCount: Integer;
+
+// Handler function pointer for processing connections
+var pool_handler: Ptr;
+
+// ============================================================================
+// WORKER THREAD
+// ============================================================================
+
+func pool_workerLoop(arg: Ptr) {
+    while pool_running == 1 {
+        var conn: Ptr;
+
+        // Acquire the queue lock
+        Viper.Threads.Monitor.Enter(pool_queue);
+
+        // Wait while queue is empty and we're still running
+        while Viper.Collections.List.get_Count(pool_queue) == 0 && pool_running == 1 {
+            Viper.Threads.Monitor.Wait(pool_queue);
+        }
+
+        // If we're shutting down and queue is empty, exit
+        if pool_running == 0 && Viper.Collections.List.get_Count(pool_queue) == 0 {
+            Viper.Threads.Monitor.Exit(pool_queue);
+            return;
+        }
+
+        // Pop a connection from the front of the queue
+        if Viper.Collections.List.get_Count(pool_queue) > 0 {
+            conn = Viper.Collections.List.get_Item(pool_queue, 0);
+            Viper.Collections.List.RemoveAt(pool_queue, 0);
+        }
+
+        Viper.Threads.Monitor.Exit(pool_queue);
+
+        // Handle the connection outside the lock
+        // Call the stored handler function with the connection
+        pool_handleConnection(conn);
+    }
+}
+
+// Internal: call the handler - this will be called with the stored function pointer
+func pool_handleConnection(conn: Ptr) {
+    // For now, we call handleClient directly since indirect calls through
+    // stored function pointers require more lowerer work.
+    // The handleClient function is defined in main.zia and merged via bind.
+    handleClient(conn);
+}
+
+// ============================================================================
+// PUBLIC API
+// ============================================================================
+
+// Initialize the thread pool with the given number of workers
+// handler: function pointer to call for each connection (use &funcName)
+// numWorkers: number of worker threads (0 = use default)
+func pool_init(handler: Ptr, numWorkers: Integer) {
+    pool_handler = handler;
+    pool_running = 1;
+
+    if numWorkers <= 0 {
+        pool_workerCount = POOL_DEFAULT_WORKER_COUNT;
+    } else {
+        pool_workerCount = numWorkers;
+    }
+
+    // Create the connection queue
+    pool_queue = Viper.Collections.List.New();
+
+    // Create worker list
+    pool_workers = Viper.Collections.List.New();
+
+    // Spawn worker threads
+    var i = 0;
+    while i < pool_workerCount {
+        var worker = Viper.Threads.Thread.Start(&pool_workerLoop, 0);
+        Viper.Collections.List.Add(pool_workers, worker);
+        i = i + 1;
+    }
+}
+
+// Submit a connection to be handled by the pool
+func pool_submit(conn: Ptr) {
+    Viper.Threads.Monitor.Enter(pool_queue);
+    Viper.Collections.List.Add(pool_queue, conn);
+    // Signal one waiting worker
+    Viper.Threads.Monitor.Pause(pool_queue);
+    Viper.Threads.Monitor.Exit(pool_queue);
+}
+
+// Shutdown the thread pool gracefully
+func pool_shutdown() {
+    // Signal shutdown
+    Viper.Threads.Monitor.Enter(pool_queue);
+    pool_running = 0;
+    // Wake all workers so they can see the shutdown flag
+    Viper.Threads.Monitor.PauseAll(pool_queue);
+    Viper.Threads.Monitor.Exit(pool_queue);
+
+    // Join all worker threads
+    var i = 0;
+    while i < pool_workerCount {
+        var worker = Viper.Collections.List.get_Item(pool_workers, i);
+        Viper.Threads.Thread.Join(worker);
+        i = i + 1;
+    }
+}
+
+// Get number of workers in the pool
+func pool_getWorkerCount() -> Integer {
+    return pool_workerCount;
+}

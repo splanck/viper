@@ -2,18 +2,55 @@
 // See LICENSE for license information.
 
 #include "bytecode/BytecodeVM.hpp"
+#include "il/core/Module.hpp"
+#include "il/runtime/signatures/Registry.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VM.hpp"
+#include "vm/VMContext.hpp"
+#include "vm/OpHandlerAccess.hpp"
 #include "viper/runtime/rt.h"
+#include "rt_threads.h"
+#include "support/small_vector.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <vector>
 
 namespace viper {
 namespace bytecode {
+
+//===----------------------------------------------------------------------===//
+// Thread-local active BytecodeVM tracking
+//===----------------------------------------------------------------------===//
+
+/// Thread-local pointer to the currently active BytecodeVM.
+/// This enables runtime handlers (like Thread.Start) to detect when they're
+/// being called from bytecode execution and handle threading correctly.
+thread_local BytecodeVM* tlsActiveBytecodeVM = nullptr;
+
+/// Thread-local pointer to the current BytecodeModule (for thread spawning).
+thread_local const BytecodeModule* tlsActiveBytecodeModule = nullptr;
+
+BytecodeVM* activeBytecodeVMInstance() {
+    return tlsActiveBytecodeVM;
+}
+
+const BytecodeModule* activeBytecodeModule() {
+    return tlsActiveBytecodeModule;
+}
+
+ActiveBytecodeVMGuard::ActiveBytecodeVMGuard(BytecodeVM* vm)
+    : previous_(tlsActiveBytecodeVM), current_(vm)
+{
+    tlsActiveBytecodeVM = vm;
+}
+
+ActiveBytecodeVMGuard::~ActiveBytecodeVMGuard() {
+    tlsActiveBytecodeVM = previous_;
+}
 
 BytecodeVM::BytecodeVM()
     : module_(nullptr)
@@ -114,6 +151,11 @@ BCSlot BytecodeVM::exec(const BytecodeFunction* func,
         return BCSlot{};
     }
 
+    // Set up thread-local context so Thread.Start handler can find us
+    ActiveBytecodeVMGuard vmGuard(this);
+    const BytecodeModule* prevModule = tlsActiveBytecodeModule;
+    tlsActiveBytecodeModule = module_;
+
     // Reset state
     state_ = VMState::Ready;
     trapKind_ = TrapKind::None;
@@ -134,6 +176,7 @@ BCSlot BytecodeVM::exec(const BytecodeFunction* func,
         if (!fp_ && state_ != VMState::Trapped) {
             trap(TrapKind::RuntimeError, "Frame setup failed");
         }
+        tlsActiveBytecodeModule = prevModule;
         return BCSlot{};
     }
 
@@ -147,6 +190,9 @@ BCSlot BytecodeVM::exec(const BytecodeFunction* func,
 #else
     run();
 #endif
+
+    // Restore module thread-local
+    tlsActiveBytecodeModule = prevModule;
 
     // Return result
     if (state_ == VMState::Halted && sp_ > valueStack_.data()) {
@@ -2419,6 +2465,204 @@ L_DEFAULT:
 }
 
 #endif // __GNUC__ || __clang__
+
+//===----------------------------------------------------------------------===//
+// Bytecode VM Thread.Start Handler
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+/// Payload for spawning a new bytecode VM thread.
+struct BytecodeThreadPayload {
+    const BytecodeModule* module;
+    const BytecodeFunction* entry;
+    void* arg;
+    bool runtimeBridgeEnabled;
+};
+
+/// Thread entry trampoline for bytecode VM threads.
+extern "C" void bytecode_thread_entry_trampoline(void* raw) {
+    BytecodeThreadPayload* payload = static_cast<BytecodeThreadPayload*>(raw);
+    if (!payload || !payload->module || !payload->entry) {
+        delete payload;
+        rt_abort("Thread.Start: invalid bytecode entry");
+        return;
+    }
+
+    // Create a new BytecodeVM for this thread
+    BytecodeVM vm;
+    vm.load(payload->module);
+    vm.setRuntimeBridgeEnabled(payload->runtimeBridgeEnabled);
+
+    // Set up argument
+    std::vector<BCSlot> args;
+    if (payload->entry->numParams > 0) {
+        BCSlot argSlot{};
+        argSlot.ptr = payload->arg;
+        args.push_back(argSlot);
+    }
+
+    // Execute the entry function
+    vm.exec(payload->entry, args);
+
+    delete payload;
+}
+
+/// Resolve a bytecode function by pointer value.
+/// The bytecode VM uses tagged function pointers: high bit set, lower bits are function index.
+static const BytecodeFunction* resolveBytecodeEntry(const BytecodeModule* module, void* entry) {
+    if (!entry || !module) return nullptr;
+
+    // Check if this is a tagged function pointer (high bit set)
+    constexpr uint64_t kFuncPtrTag = 0x8000000000000000ULL;
+    uint64_t val = reinterpret_cast<uint64_t>(entry);
+
+    if (val & kFuncPtrTag) {
+        // Extract function index from tagged pointer
+        uint64_t funcIdx = val & ~kFuncPtrTag;
+        if (funcIdx < module->functions.size()) {
+            return &module->functions[funcIdx];
+        }
+        return nullptr;
+    }
+
+    // Fallback: try to match as a raw pointer (for compatibility)
+    const auto* candidate = static_cast<const BytecodeFunction*>(entry);
+    for (const auto& fn : module->functions) {
+        if (&fn == candidate) {
+            return &fn;
+        }
+    }
+    return nullptr;
+}
+
+/// Payload for standard VM thread spawning (duplicate of ThreadsRuntime.cpp)
+struct VmThreadStartPayload {
+    const il::core::Module* module = nullptr;
+    std::shared_ptr<il::vm::VM::ProgramState> program;
+    const il::core::Function* entry = nullptr;
+    void* arg = nullptr;
+};
+
+/// Standard VM thread entry trampoline
+extern "C" void vm_thread_entry_trampoline_bc(void* raw) {
+    VmThreadStartPayload* payload = static_cast<VmThreadStartPayload*>(raw);
+    if (!payload || !payload->module || !payload->entry) {
+        delete payload;
+        rt_abort("Thread.Start: invalid entry");
+        return;
+    }
+
+    try {
+        il::vm::VM vm(*payload->module, payload->program);
+        viper::support::SmallVector<il::vm::Slot, 2> args;
+        if (payload->entry->params.size() == 1) {
+            il::vm::Slot s{};
+            s.ptr = payload->arg;
+            args.push_back(s);
+        }
+        il::vm::detail::VMAccess::callFunction(vm, *payload->entry, args);
+    } catch (...) {
+        rt_abort("Thread.Start: unhandled exception");
+    }
+    delete payload;
+}
+
+/// Resolve IL function pointer to module function
+static const il::core::Function* resolveILEntry(const il::core::Module& module, void* entry) {
+    if (!entry) return nullptr;
+    const auto* candidate = static_cast<const il::core::Function*>(entry);
+    for (const auto& fn : module.functions) {
+        if (&fn == candidate) return &fn;
+    }
+    return nullptr;
+}
+
+/// Validate thread entry signature for standard VM
+static void validateEntrySignature(const il::core::Function& fn) {
+    using Kind = il::core::Type::Kind;
+    if (fn.retType.kind != Kind::Void)
+        rt_trap("Thread.Start: invalid entry signature");
+    if (fn.params.empty()) return;
+    if (fn.params.size() == 1 && fn.params[0].type.kind == Kind::Ptr) return;
+    rt_trap("Thread.Start: invalid entry signature");
+}
+
+/// Handler for Viper.Threads.Thread.Start - handles both standard VM and BytecodeVM.
+static void unified_thread_start_handler(void** args, void* result) {
+    void* entry = nullptr;
+    void* arg = nullptr;
+    if (args && args[0])
+        entry = *reinterpret_cast<void**>(args[0]);
+    if (args && args[1])
+        arg = *reinterpret_cast<void**>(args[1]);
+
+    if (!entry)
+        rt_trap("Thread.Start: null entry");
+
+    // Check for standard VM first
+    il::vm::VM* stdVm = il::vm::activeVMInstance();
+    if (stdVm) {
+        std::shared_ptr<il::vm::VM::ProgramState> program = stdVm->programState();
+        if (!program)
+            rt_trap("Thread.Start: invalid runtime state");
+
+        const il::core::Module& module = stdVm->module();
+        const il::core::Function* entryFn = resolveILEntry(module, entry);
+        if (!entryFn)
+            rt_trap("Thread.Start: invalid entry");
+        validateEntrySignature(*entryFn);
+
+        auto* payload = new VmThreadStartPayload{&module, std::move(program), entryFn, arg};
+        void* thread = rt_thread_start(
+            reinterpret_cast<void*>(&vm_thread_entry_trampoline_bc), payload);
+        if (result)
+            *reinterpret_cast<void**>(result) = thread;
+        return;
+    }
+
+    // Check for BytecodeVM
+    BytecodeVM* bcVm = activeBytecodeVMInstance();
+    const BytecodeModule* bcModule = activeBytecodeModule();
+    if (bcVm && bcModule) {
+        const BytecodeFunction* entryFn = resolveBytecodeEntry(bcModule, entry);
+        if (!entryFn)
+            rt_trap("Thread.Start: invalid bytecode entry");
+
+        auto* payload = new BytecodeThreadPayload{
+            bcModule, entryFn, arg, bcVm->runtimeBridgeEnabled()};
+        void* thread = rt_thread_start(
+            reinterpret_cast<void*>(&bytecode_thread_entry_trampoline), payload);
+        if (result)
+            *reinterpret_cast<void**>(result) = thread;
+        return;
+    }
+
+    // No VM active - direct call (native code path)
+    void* thread = rt_thread_start(entry, arg);
+    if (result)
+        *reinterpret_cast<void**>(result) = thread;
+}
+
+/// Static initializer to register the unified Thread.Start handler.
+/// This overrides the standard VM handler when BytecodeVM is linked.
+struct UnifiedThreadHandlerRegistrar {
+    UnifiedThreadHandlerRegistrar() {
+        using il::runtime::signatures::make_signature;
+        using il::runtime::signatures::SigParam;
+
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Threads.Thread.Start";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.fn = reinterpret_cast<void*>(&unified_thread_start_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+};
+
+// Register the unified handler when the library is loaded
+[[maybe_unused]] const UnifiedThreadHandlerRegistrar kUnifiedThreadHandlerRegistrar{};
+
+} // anonymous namespace
 
 } // namespace bytecode
 } // namespace viper

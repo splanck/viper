@@ -446,9 +446,10 @@ struct BinaryExpr : Expr
 /// @brief Unary operators for UnaryExpr.
 enum class UnaryOp
 {
-    Neg,    ///< Arithmetic negation: `-a`
-    Not,    ///< Logical NOT: `!a`
-    BitNot, ///< Bitwise NOT: `~a`
+    Neg,       ///< Arithmetic negation: `-a`
+    Not,       ///< Logical NOT: `!a`
+    BitNot,    ///< Bitwise NOT: `~a`
+    AddressOf, ///< Address-of / function reference: `&func`
 };
 
 /// @brief Unary operation expression: `-a`, `!b`, `~c`.

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-updated: 2026-01-15
+last-updated: 2026-01-17
 ---
 
 # Zia — Reference
@@ -236,6 +236,34 @@ variableName        // Variable reference
 | `-` | Negation | `-x` |
 | `!` | Logical NOT | `!flag` |
 | `~` | Bitwise NOT | `~bits` |
+| `&` | Function reference | `&myFunc` |
+
+### Function References
+
+The `&` operator obtains a reference (pointer) to a function, which can be stored in a variable or passed as an argument:
+
+```viper
+func handler(arg: Ptr) {
+    // Handle something
+}
+
+func takeCallback(callback: Ptr) {
+    // Use the callback
+}
+
+func start() {
+    var h = &handler;           // Get function reference
+    takeCallback(&handler);     // Pass function reference directly
+
+    // With Thread.Start
+    var thread = Viper.Threads.Thread.Start(&handler, 0);
+}
+```
+
+**Notes:**
+- The `&` operator can only be applied to function names, not variables or expressions
+- Function references are stored as `Ptr` type
+- Use with `Viper.Threads.Thread.Start()` to spawn threads with custom entry points
 
 ### Binary Operators
 
@@ -878,7 +906,7 @@ From highest to lowest:
 | Precedence | Operators | Associativity |
 |------------|-----------|---------------|
 | 1 | `()` `[]` `.` `?.` | Left |
-| 2 | `-` `!` `~` (unary) | Right |
+| 2 | `-` `!` `~` `&` (unary) | Right |
 | 3 | `*` `/` `%` | Left |
 | 4 | `+` `-` | Left |
 | 5 | `<` `<=` `>` `>=` | Left |
@@ -970,7 +998,7 @@ equality    ::= comparison (("==" | "!=") comparison)*
 comparison  ::= additive (("<" | "<=" | ">" | ">=") additive)*
 additive    ::= multiplicative (("+" | "-") multiplicative)*
 multiplicative ::= unary (("*" | "/" | "%") unary)*
-unary       ::= ("-" | "!" | "~") unary | postfix
+unary       ::= ("-" | "!" | "~" | "&") unary | postfix
 postfix     ::= primary (call | index | field | optionalChain)*
 primary     ::= literal | IDENT | "(" expr ")" | "new" type "(" args ")"
               | "[" exprList "]" | "{" mapEntries "}"

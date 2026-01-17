@@ -1,6 +1,7 @@
-// Viper Web Server - A HTTP server written in Zia
-// Note: Threading blocked by BUG-002 (Zia doesn't support function pointers)
+// Viper Web Server - A multithreaded HTTP server written in Zia
 module main;
+
+bind "./threadpool";
 
 // ============================================================================
 // CONFIGURATION
@@ -8,7 +9,8 @@ module main;
 
 final DEFAULT_PORT = 8080;
 final MAX_REQUEST_SIZE = 8192;
-final VERSION = "0.2.0";
+final WORKER_COUNT = 4;
+final VERSION = "0.3.0";
 
 // Web root directory (relative to server location)
 var webRoot: String;
@@ -417,7 +419,12 @@ func main() {
     Viper.Terminal.Say("========================================");
     Viper.Terminal.Say("Starting server on port " + Viper.Fmt.Int(port) + "...");
     Viper.Terminal.Say("Web root: " + webRoot);
+    Viper.Terminal.Say("Workers: " + Viper.Fmt.Int(WORKER_COUNT));
     Viper.Terminal.Say("");
+
+    // Initialize thread pool with worker count
+    pool_init(&handleClient, WORKER_COUNT);
+    Viper.Terminal.Say("Thread pool started with " + Viper.Fmt.Int(WORKER_COUNT) + " workers");
 
     // Create server
     var server = Viper.Network.TcpServer.Listen(port);
@@ -426,15 +433,18 @@ func main() {
     Viper.Terminal.Say("Press Ctrl+C to stop.");
     Viper.Terminal.Say("");
 
-    // Accept connections in a loop
+    // Accept connections and dispatch to thread pool
     var running = 1;
     while running == 1 {
         // Accept a client connection
         var client = Viper.Network.TcpServer.Accept(server);
 
-        // Handle the client (single-threaded)
-        handleClient(client);
+        // Submit to thread pool for handling
+        pool_submit(client);
     }
+
+    // Shutdown thread pool
+    pool_shutdown();
 
     Viper.Network.TcpServer.Close(server);
     Viper.Terminal.Say("Server stopped.");

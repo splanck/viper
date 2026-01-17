@@ -269,6 +269,35 @@ TypeRef Sema::analyzeUnary(UnaryExpr *expr)
                 error(expr->loc, "Bitwise not requires integral operand");
             }
             return types::integer();
+
+        case UnaryOp::AddressOf:
+        {
+            // Address-of operator for function references: &funcName
+            // The operand must be an identifier referring to a function
+            auto *ident = dynamic_cast<IdentExpr *>(expr->operand.get());
+            if (!ident)
+            {
+                error(expr->loc, "Address-of operator requires a function name");
+                return types::unknown();
+            }
+
+            Symbol *sym = lookupSymbol(ident->name);
+            if (!sym)
+            {
+                error(expr->loc, "Unknown identifier '" + ident->name + "'");
+                return types::unknown();
+            }
+
+            if (sym->kind != Symbol::Kind::Function && sym->kind != Symbol::Kind::Method)
+            {
+                error(expr->loc, "Address-of operator requires a function name");
+                return types::unknown();
+            }
+
+            // Return the function's type (which is already a function type)
+            // This allows assignment to function-typed variables
+            return sym->type;
+        }
     }
 
     return types::unknown();

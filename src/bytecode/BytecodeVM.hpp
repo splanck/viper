@@ -248,5 +248,26 @@ private:
     bool checkBreakpoint();  // Returns true if should pause
 };
 
+/// @brief Get the currently active BytecodeVM on this thread.
+/// @return Pointer to the active BytecodeVM, or nullptr if none.
+BytecodeVM* activeBytecodeVMInstance();
+
+/// @brief Get the BytecodeModule of the active BytecodeVM.
+/// @return Pointer to the module, or nullptr if no VM is active.
+const BytecodeModule* activeBytecodeModule();
+
+/// @brief RAII guard that sets the active BytecodeVM for the current thread.
+struct ActiveBytecodeVMGuard {
+    explicit ActiveBytecodeVMGuard(BytecodeVM* vm);
+    ~ActiveBytecodeVMGuard();
+
+    ActiveBytecodeVMGuard(const ActiveBytecodeVMGuard&) = delete;
+    ActiveBytecodeVMGuard& operator=(const ActiveBytecodeVMGuard&) = delete;
+
+private:
+    BytecodeVM* previous_;
+    BytecodeVM* current_;
+};
+
 } // namespace bytecode
 } // namespace viper

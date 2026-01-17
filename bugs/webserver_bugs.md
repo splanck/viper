@@ -49,8 +49,8 @@ This file tracks all bugs discovered while building the web server demo.
 
 - **ID**: BUG-003
 - **Severity**: High
-- **Status**: Open
-- **Component**: VM
+- **Status**: Fixed
+- **Component**: VM / BytecodeVM
 - **Description**: When running programs with threading through the VM (both Zia and BASIC), the program either crashes (SIGSEGV at address 0x0) or hangs indefinitely. This occurs even when function pointers are correctly resolved (BUG-002 is fixed).
 - **Steps to Reproduce**:
   1. Create a simple threading program in Zia or BASIC:
@@ -65,14 +65,15 @@ This file tracks all bugs discovered while building the web server demo.
   3. Program crashes or hangs
 - **Expected**: Thread should start, run, and join successfully
 - **Actual**: Crash with SIGSEGV (exit code 139) or hang
-- **Observations**:
-  - Running with `--trace` flag makes the program work correctly
-  - The crash occurs in thread #2 at address 0x0
-  - Native C runtime threading tests pass
-  - Issue affects both Zia and BASIC frontends
-- **Root Cause**: Unknown. Likely a race condition or thread synchronization issue in the VM's thread handling. The `--trace` flag slows execution enough to avoid the race.
-- **Workaround**: Use `--trace` flag when running threaded programs
-- **Impact**: Multithreading in VM-executed programs is unreliable
+- **Root Cause**: The BytecodeVM (default execution mode) was not setting a thread-local context like the standard VM does. When `Thread.Start` was called, the handler checked `activeVMInstance()` which returned nullptr because BytecodeVM is a separate class. This caused the handler to fall back to calling `rt_thread_start` directly with the function pointer - but the function pointer was an IL function object or tagged bytecode function index, not a native function pointer, causing a crash.
+- **Fix**:
+  1. Added thread-local tracking for active BytecodeVM (`tlsActiveBytecodeVM`, `tlsActiveBytecodeModule`) in BytecodeVM.cpp
+  2. Created `ActiveBytecodeVMGuard` RAII class to set the thread-local during bytecode execution
+  3. Implemented a unified `Thread.Start` handler in BytecodeVM.cpp that:
+     - First checks for standard VM via `activeVMInstance()` and handles it
+     - Then checks for BytecodeVM via `activeBytecodeVMInstance()` and handles it
+     - Falls back to direct `rt_thread_start` only for native code paths
+  4. The bytecode handler resolves tagged function pointers (high bit set, lower bits are function index) to `BytecodeFunction*` and spawns a new BytecodeVM on the child thread
 
 ---
 
@@ -80,29 +81,20 @@ This file tracks all bugs discovered while building the web server demo.
 
 - **ID**: BUG-004
 - **Severity**: High
-- **Status**: Open
-- **Component**: VM
-- **Description**: When a string returned from a runtime function (like `Path.Join`) is stored to a variable and then loaded, the string value becomes corrupted or invalid. Passing the string directly to another function (without storing) works correctly.
+- **Status**: Fixed
+- **Component**: VM / Runtime
+- **Description**: When a string returned from a runtime function (like `Path.Join` or string concatenation) is stored to a variable and then loaded, the string value becomes corrupted or invalid.
 - **Steps to Reproduce**:
-  1. Call `Path.Join` and store the result in a variable
-  2. Pass that variable to `File.Exists`
-  3. The file is not found even though it exists
-- **Expected**: File.Exists should find the file
-- **Actual**: File.Exists returns false for valid paths
-- **Working Example**:
-  ```zia
-  // This works - direct call without storing
-  var exists = Viper.IO.File.Exists(Viper.IO.Path.Join("/etc", "passwd"));
-  ```
-- **Failing Example**:
-  ```zia
-  // This fails - storing to variable first
-  var path = Viper.IO.Path.Join("/etc", "passwd");
-  var exists = Viper.IO.File.Exists(path);
-  ```
-- **Root Cause**: Unknown. Likely an issue with how the VM stores string values to stack slots (`alloca`/`store`) and loads them back (`load`). The string's internal data pointer may not survive the store/load cycle correctly.
-- **Workaround**: Avoid storing runtime-returned strings to variables before passing them to other functions. Use direct function chaining instead.
-- **Impact**: Significant limitation on code structure when working with file paths and other runtime-generated strings.
+  1. Concatenate two strings and store the result
+  2. Use the stored string
+  3. The string is corrupted
+- **Expected**: String operations should work correctly
+- **Actual**: String values are corrupted after concatenation
+- **Root Cause**: The `rt_concat` runtime function releases both of its string arguments after use, but the RuntimeBridge was using `DirectHandler` which passes arguments directly without retaining them. This caused use-after-free when the VM still had references to the input strings.
+- **Fix**: Modified `src/tools/rtgen/rtgen.cpp` to detect functions like `rt_concat` that consume their string arguments and use `ConsumingStringHandler` instead of `DirectHandler`. The `ConsumingStringHandler` template retains string arguments (via `rt_string_ref`) before the call, ensuring the strings remain valid during the function call.
+- **Files Modified**:
+  - `src/tools/rtgen/rtgen.cpp`: Added `needsConsumingStringHandler()` and `buildConsumingStringHandlerExpr()` functions
+  - `src/il/runtime/generated/RuntimeSignatures.inc`: Regenerated with ConsumingStringHandler for rt_concat
 
 ---
 
