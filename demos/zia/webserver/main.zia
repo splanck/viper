@@ -1,6 +1,7 @@
 // Viper Web Server - A multithreaded HTTP server written in Zia
 module main;
 
+bind "./config";
 bind "./logger";
 bind "./threadpool";
 
@@ -8,11 +9,8 @@ bind "./threadpool";
 // CONFIGURATION
 // ============================================================================
 
-final DEFAULT_PORT = 8080;
 final MAX_REQUEST_SIZE = 8192;
-final WORKER_COUNT = 4;
-final VERSION = "0.4.0";
-final LOG_LEVEL = LOG_INFO;  // From logger.zia
+final VERSION = "0.5.0";
 
 // Web root directory (relative to server location)
 var webRoot: String;
@@ -386,20 +384,6 @@ func extractStatusCode(response: String) -> Integer {
     return d1 * 100 + d2 * 10 + d3;
 }
 
-func charToDigit(c: String) -> Integer {
-    if c == "0" { return 0; }
-    if c == "1" { return 1; }
-    if c == "2" { return 2; }
-    if c == "3" { return 3; }
-    if c == "4" { return 4; }
-    if c == "5" { return 5; }
-    if c == "6" { return 6; }
-    if c == "7" { return 7; }
-    if c == "8" { return 8; }
-    if c == "9" { return 9; }
-    return -1;
-}
-
 func handleClient(client: Ptr) {
     var startTime = log_startTimer();
     var clientHost = Viper.Network.Tcp.get_Host(client);
@@ -458,31 +442,43 @@ func handleClient(client: Ptr) {
 // ============================================================================
 
 func main() {
-    var port = DEFAULT_PORT;
+    // Load configuration from file (or use defaults)
+    var configPath = Viper.IO.Path.Join(Viper.IO.Dir.Current(), CFG_FILENAME);
+    var configLoaded = config_load(configPath);
 
-    // Initialize logger first
-    log_init(LOG_LEVEL);
+    // Initialize logger with configured level
+    log_init(cfg_log_level);
 
-    // Set web root to www directory relative to current dir
-    webRoot = Viper.IO.Path.Join(Viper.IO.Dir.Current(), "www");
+    // Set web root (resolve relative paths)
+    if Viper.String.Substring(cfg_webroot, 0, 1) == "/" {
+        webRoot = cfg_webroot;
+    } else {
+        webRoot = Viper.IO.Path.Join(Viper.IO.Dir.Current(), cfg_webroot);
+    }
 
     // Startup banner (always shown)
     Viper.Terminal.Say("========================================");
     Viper.Terminal.Say("  Viper Web Server v" + VERSION);
     Viper.Terminal.Say("========================================");
 
-    log_info("Starting server on port " + Viper.Fmt.Int(port));
-    log_info("Web root: " + webRoot);
-    log_info("Workers: " + Viper.Fmt.Int(WORKER_COUNT));
+    if configLoaded {
+        log_info("Configuration loaded from " + configPath);
+    } else {
+        log_info("Using default configuration (no " + CFG_FILENAME + " found)");
+    }
 
-    // Initialize thread pool with worker count
-    pool_init(&handleClient, WORKER_COUNT);
+    log_info("Port: " + Viper.Fmt.Int(cfg_port));
+    log_info("Web root: " + webRoot);
+    log_info("Workers: " + Viper.Fmt.Int(cfg_workers));
+
+    // Initialize thread pool with configured worker count
+    pool_init(&handleClient, cfg_workers);
     log_info("Thread pool initialized");
 
-    // Create server
-    var server = Viper.Network.TcpServer.Listen(port);
+    // Create server on configured port
+    var server = Viper.Network.TcpServer.Listen(cfg_port);
 
-    log_info("Server listening on http://localhost:" + Viper.Fmt.Int(port) + "/");
+    log_info("Server listening on http://localhost:" + Viper.Fmt.Int(cfg_port) + "/");
     Viper.Terminal.Say("Press Ctrl+C to stop.");
     Viper.Terminal.Say("");
 
