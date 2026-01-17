@@ -54,6 +54,7 @@ static void call_string_len_overflow()
 
 int main()
 {
+    SKIP_TEST_NO_FORK();
     std::string out = capture(call_string_len_overflow);
     bool ok = out.find("rt_string_alloc: length overflow") != std::string::npos;
     assert(ok);

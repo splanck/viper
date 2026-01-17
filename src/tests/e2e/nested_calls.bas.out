@@ -1,0 +1,1 @@
+c:/git/viper/src/tests/e2e/nested_calls.bas:8:13: error: EXCL:entry_EXCL: ret %t4: ret value type mismatch: expected i64 but got str

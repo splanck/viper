@@ -55,6 +55,7 @@ void expect_input_failure(const char *literal)
 
 int main()
 {
+    SKIP_TEST_NO_FORK();
     expect_input_failure("12abc");
     expect_input_failure("7.5foo");
     return 0;

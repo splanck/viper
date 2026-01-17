@@ -31,6 +31,10 @@
 #include <string>
 #include <string_view>
 
+#ifdef _WIN32
+#include <cstdlib>
+#endif
+
 namespace
 {
 
@@ -317,6 +321,11 @@ int run_codegen_x64(int argc, char **argv)
 ///          4. Fall back to displaying usage when no match exists.
 int main(int argc, char **argv)
 {
+#ifdef _WIN32
+    // Disable Windows abort dialog so runtime panics exit cleanly
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+#endif
+
     if (argc < 2)
     {
         usage();

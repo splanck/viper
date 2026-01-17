@@ -1,0 +1,3 @@
+PASS: basic constructor args
+name=MyRect
+PASS: multi-type constructor args

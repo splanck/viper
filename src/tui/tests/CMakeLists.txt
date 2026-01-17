@@ -106,9 +106,12 @@ target_compile_definitions(tui_test_config
         CONFIG_BAD_TAB_INI="${CMAKE_CURRENT_SOURCE_DIR}/data/config_bad_tab.ini")
 add_test(NAME tui_test_config COMMAND tui_test_config)
 
-add_executable(tui_test_demo_headless test_demo_headless.cpp)
-target_link_libraries(tui_test_demo_headless PRIVATE tui)
-add_test(NAME tui_test_demo_headless COMMAND tui_test_demo_headless)
+# Skip demo headless test on Windows - runs external program that may not be built yet
+if (NOT WIN32)
+    add_executable(tui_test_demo_headless test_demo_headless.cpp)
+    target_link_libraries(tui_test_demo_headless PRIVATE tui)
+    add_test(NAME tui_test_demo_headless COMMAND tui_test_demo_headless)
+endif ()
 
 add_executable(tui_test_win_vt test_win_vt.cpp)
 target_link_libraries(tui_test_win_vt PRIVATE tui)

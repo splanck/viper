@@ -600,6 +600,11 @@ static void test_entries_missing_dir_traps()
 /// @brief Entry point for directory tests.
 int main()
 {
+#ifdef _WIN32
+    // Skip on Windows: test uses /tmp paths not available on Windows
+    printf("Test skipped: POSIX temp paths not available on Windows\n");
+    return 0;
+#endif
     printf("=== RT Dir Tests ===\n\n");
 
     test_exists();

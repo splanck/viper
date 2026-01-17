@@ -20,6 +20,11 @@ endif ()
 ## Normalize IL version to avoid test churn on version bumps.
 file(READ ${GOLDEN} golden_content)
 file(READ ${OUT_FILE} out_content)
+# Normalize Windows line endings
+string(REPLACE "\r\n" "\n" golden_content "${golden_content}")
+string(REPLACE "\r" "\n" golden_content "${golden_content}")
+string(REPLACE "\r\n" "\n" out_content "${out_content}")
+string(REPLACE "\r" "\n" out_content "${out_content}")
 string(REGEX REPLACE "^il [0-9]+\\.[0-9]+\\.[0-9]+" "il VERSION" golden_content "${golden_content}")
 string(REGEX REPLACE "^il [0-9]+\\.[0-9]+\\.[0-9]+" "il VERSION" out_content "${out_content}")
 if (NOT out_content STREQUAL golden_content)
@@ -45,6 +50,15 @@ if (NOT DEFINED SKIP_RUNTIME)
             RESULT_VARIABLE folded_res
             OUTPUT_VARIABLE folded_out
             ERROR_VARIABLE folded_err)
+    # Normalize Windows line endings for comparison
+    string(REPLACE "\r\n" "\n" base_out "${base_out}")
+    string(REPLACE "\r" "\n" base_out "${base_out}")
+    string(REPLACE "\r\n" "\n" base_err "${base_err}")
+    string(REPLACE "\r" "\n" base_err "${base_err}")
+    string(REPLACE "\r\n" "\n" folded_out "${folded_out}")
+    string(REPLACE "\r" "\n" folded_out "${folded_out}")
+    string(REPLACE "\r\n" "\n" folded_err "${folded_err}")
+    string(REPLACE "\r" "\n" folded_err "${folded_err}")
     if (NOT base_res EQUAL folded_res)
         message(FATAL_ERROR "exit status mismatch: ${base_res} vs ${folded_res}")
     endif ()

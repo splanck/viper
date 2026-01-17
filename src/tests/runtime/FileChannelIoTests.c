@@ -22,6 +22,12 @@
 /// @brief End-to-end checks for channel open/read/write/close workflows.
 int main(void)
 {
+#ifdef _WIN32
+    // Skip on Windows: test uses POSIX file descriptor operations (lseek, dup2)
+    // that have different semantics on Windows
+    printf("Test skipped: POSIX file descriptor operations not compatible with Windows\n");
+    return 0;
+#endif
     char template_path[128];
     int written =
         snprintf(template_path, sizeof(template_path), "tmp_channel_io_%ld.txt", (long)getpid());

@@ -103,6 +103,13 @@ if(MSVC)
     list(APPEND IL_COMPILE_FLAGS
       /wd4189  # local variable initialized but not referenced
       /wd4505  # unreferenced local function
+      /wd4702  # unreachable code (SKIP_TEST_NO_FORK returns early on Windows)
+      /wd4245  # signed/unsigned mismatch in assignment (tests intentionally pass -1 to unsigned)
+      /wd4389  # signed/unsigned mismatch in comparison (rt_len returns signed, strlen returns size_t)
+      /wd4456  # declaration hides previous local declaration (test scoping patterns)
+      /wd4267  # conversion from size_t to unsigned int
+      /wd4611  # setjmp and C++ object destruction interaction
+      /wd4244  # conversion from int to char (tolower/toupper in std::transform)
     )
   endif()
   # MSVC-specific defines for secure CRT

@@ -1,0 +1,3 @@
+PASS: finally runs after catch
+PASS: multiple try-catch-finally work
+=== TRY/FINALLY TESTS COMPLETE ===

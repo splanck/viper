@@ -11,6 +11,9 @@ execute_process(COMMAND ${IL_VERIFY} ${FILE} RESULT_VARIABLE res OUTPUT_VARIABLE
 if (res EQUAL 0)
     message(FATAL_ERROR "expected non-zero exit")
 endif ()
+# Normalize Windows line endings for pattern matching
+string(REPLACE "\r\n" "\n" out "${out}")
+string(REPLACE "\r" "\n" out "${out}")
 if (NOT out MATCHES "${EXPECT}")
     message(FATAL_ERROR "expected message not found: ${EXPECT}\n${out}")
 endif ()

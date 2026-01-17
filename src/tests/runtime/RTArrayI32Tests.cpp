@@ -14,6 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "viper/runtime/rt.h"
+#include "tests/common/PosixCompat.h"
 
 #ifdef NDEBUG
 #undef NDEBUG
@@ -23,7 +24,6 @@
 #include <cstdio>
 #include <cstdlib>
 #if !defined(_WIN32)
-#include "tests/common/PosixCompat.h"
 #include "tests/common/WaitCompat.hpp"
 #include <string>
 #include <sys/types.h>
@@ -46,6 +46,7 @@ static void resize_or_abort(int32_t **arr, size_t new_len)
 
 int main()
 {
+    SKIP_TEST_NO_FORK();
     int32_t *arr = rt_arr_i32_new(0);
     assert(arr != nullptr);
     assert(rt_arr_i32_len(arr) == 0);

@@ -104,6 +104,7 @@ std::string captureTrap(bool includeMetadata, bool primeContext)
 
 int main()
 {
+    SKIP_TEST_NO_FORK();
     const std::string firstDiag = captureTrap(true, false);
     assert(firstDiag.find("Trap @first_fn") != std::string::npos);
     assert(firstDiag.find("first trap") != std::string::npos);

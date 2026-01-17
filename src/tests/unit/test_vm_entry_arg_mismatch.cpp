@@ -110,6 +110,7 @@ bool trapHeaderMatches(const std::string &diag, std::string_view function, std::
 
 int main()
 {
+    SKIP_TEST_NO_FORK();
     Module module;
     il::build::IRBuilder builder(module);
 

@@ -617,6 +617,7 @@ TEST(OptimizerDifferential, PipelinesPreserveVmSemantics)
 
 int main(int argc, char **argv)
 {
+    SKIP_TEST_NO_FORK();
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

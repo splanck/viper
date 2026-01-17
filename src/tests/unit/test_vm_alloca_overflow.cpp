@@ -22,6 +22,7 @@
 
 int main()
 {
+    SKIP_TEST_NO_FORK();
     il::core::Module m;
     il::build::IRBuilder b(m);
     auto &fn = b.startFunction("main", il::core::Type(il::core::Type::Kind::I64), {});

@@ -1,0 +1,7 @@
+PASS: count after adds
+PASS: Has existing
+PASS: Has missing
+PASS: Remove
+PASS: Remove non-existent
+PASS: Clear
+=== MAP TESTS COMPLETE ===

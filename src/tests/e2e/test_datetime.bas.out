@@ -1,0 +1,5 @@
+PASS: timestamp arithmetic
+PASS: seconds per day
+PASS: days calculation
+PASS: positive timestamp
+=== DATETIME TESTS COMPLETE ===

@@ -23,6 +23,7 @@
 
 int main()
 {
+    SKIP_TEST_NO_FORK();
     using namespace il::core;
     Module module;
     il::build::IRBuilder builder(module);

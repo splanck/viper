@@ -68,6 +68,7 @@ std::string captureRuntimeTrap(bool attachLoc)
 
 int main()
 {
+    SKIP_TEST_NO_FORK();
     // Format: "Trap @function:block#ip line N: Kind (code=C)"
     // Line is omitted when unknown (instead of showing "line -1")
     const std::string withLoc = captureRuntimeTrap(true);

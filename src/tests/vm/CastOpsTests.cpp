@@ -198,6 +198,8 @@ int main()
         const char *expectedKind;
     };
 
+    // Fork-based trap tests - skip on Windows
+#if !VIPER_NO_FORK
     const std::array<TrapCase, 4> fpCastTrapInputs = {
         {{std::numeric_limits<double>::quiet_NaN(), "InvalidCast"},
          {-0.0, "InvalidCast"},
@@ -213,6 +215,7 @@ int main()
         const bool matches = diag.find(expected) != std::string::npos;
         assert(matches && "unexpected trap kind for cast.fp_to_ui.rte.chk operand");
     }
+#endif
 
     return 0;
 }

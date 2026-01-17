@@ -11,7 +11,12 @@ execute_process(COMMAND ${ILC} front basic -emit-il ${BAS_FILE} OUTPUT_VARIABLE 
 if (NOT res EQUAL 0)
     message(FATAL_ERROR "emit-il failed")
 endif ()
+# Normalize Windows line endings
+string(REPLACE "\r\n" "\n" out "${out}")
+string(REPLACE "\r" "\n" out "${out}")
 file(READ ${GOLDEN} expected)
+string(REPLACE "\r\n" "\n" expected "${expected}")
+string(REPLACE "\r" "\n" expected "${expected}")
 ## Normalize IL version to avoid test churn on version bumps.
 string(REGEX REPLACE "^il [0-9]+\\.[0-9]+\\.[0-9]+" "il VERSION" out "${out}")
 string(REGEX REPLACE "^il [0-9]+\\.[0-9]+\\.[0-9]+" "il VERSION" expected "${expected}")

@@ -236,6 +236,8 @@ typedef int pid_t;
 // fork() doesn't exist on Windows - tests using fork should skip
 // Use SKIP_TEST_NO_FORK() at the start of main() for fork-based tests
 #define VIPER_NO_FORK 1
+// SKIP_TEST_NO_FORK returns early and prints skip message
+// The rest of main() won't execute on Windows, which may cause unreachable code warnings
 #define SKIP_TEST_NO_FORK()                                                                        \
     do                                                                                             \
     {                                                                                              \

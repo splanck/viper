@@ -823,6 +823,11 @@ static void test_scale_down()
 
 int main()
 {
+#ifdef _WIN32
+    // Skip on Windows: test uses /tmp paths not available on Windows
+    printf("Test skipped: POSIX temp paths not available on Windows\n");
+    return 0;
+#endif
     printf("=== Viper.Graphics.Pixels Tests ===\n\n");
 
     // Constructors

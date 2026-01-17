@@ -16,6 +16,9 @@ if (res EQUAL 0)
     message(FATAL_ERROR "expected non-zero exit")
 endif ()
 
+# Normalize Windows line endings
+string(REPLACE "\r\n" "\n" stderr "${stderr}")
+string(REPLACE "\r" "\n" stderr "${stderr}")
 string(STRIP "${stderr}" stderr_stripped)
 # Format: "Trap @function:block#ip line N: Kind (code=C): detail"
 # The function:block portion is captured as one group

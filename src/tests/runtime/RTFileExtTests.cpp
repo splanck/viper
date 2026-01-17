@@ -546,6 +546,11 @@ static void test_nonexistent()
 /// @brief Entry point for file extension tests.
 int main()
 {
+#ifdef _WIN32
+    // Skip on Windows: test uses /tmp paths not available on Windows
+    printf("Test skipped: POSIX temp paths not available on Windows\n");
+    return 0;
+#endif
     printf("=== RT File Extension Tests ===\n\n");
 
     test_exists();

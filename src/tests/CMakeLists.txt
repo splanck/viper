@@ -54,6 +54,9 @@ add_subdirectory(zia)
 add_subdirectory(golden)
 add_subdirectory(e2e)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/codegen/x86_64)
+
+# ARM64/AArch64 tests - skip on Windows (x86_64)
+if (NOT WIN32)
 add_executable(test_target_aarch64 ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_target_aarch64.cpp)
 target_link_libraries(test_target_aarch64 PRIVATE viper_testing il_codegen_aarch64)
 viper_add_ctest(test_target_aarch64 $<TARGET_FILE:test_target_aarch64>)
@@ -312,6 +315,7 @@ viper_add_ctest(test_codegen_arm64_call_convention $<TARGET_FILE:test_codegen_ar
 add_executable(test_codegen_arm64_fp ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_fp.cpp)
 target_link_libraries(test_codegen_arm64_fp PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
 viper_add_ctest(test_codegen_arm64_fp $<TARGET_FILE:test_codegen_arm64_fp>)
+endif () # NOT WIN32 - ARM64 tests
 
 viper_add_ctest(NoAssertFalseGuard
         ${CMAKE_COMMAND}
@@ -321,12 +325,15 @@ viper_add_ctest(NoAssertFalseGuard
 add_test(NAME smoke_term_basic
         COMMAND $<TARGET_FILE:ilc> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/term_basic.bas)
 
-add_test(NAME basic_sum_no_linenos
-        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_sum_no_linenos.sh
-        $<TARGET_FILE:ilc>)
-set_tests_properties(basic_sum_no_linenos
-        PROPERTIES
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+# Shell script tests - skip on Windows
+if (NOT WIN32)
+    add_test(NAME basic_sum_no_linenos
+            COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_sum_no_linenos.sh
+            $<TARGET_FILE:ilc>)
+    set_tests_properties(basic_sum_no_linenos
+            PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endif ()
 
 add_executable(test_basic_oop_parsing ${CMAKE_CURRENT_SOURCE_DIR}/unit/BasicOOP_Parsing.cpp)
 target_link_libraries(test_basic_oop_parsing fe_basic viper_testing)
@@ -483,13 +490,16 @@ add_executable(test_oop_dispose ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestDispose
 target_link_libraries(test_oop_dispose PRIVATE fe_basic viper_testing viper_test_common)
 viper_add_ctest(test_oop_dispose test_oop_dispose)
 
-add_test(NAME basic_repros
-        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_basic_repros.sh
-        $<TARGET_FILE:ilc>)
-set_tests_properties(basic_repros
-        PROPERTIES
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        LABELS smoke)
+# Shell script tests - skip on Windows
+if (NOT WIN32)
+    add_test(NAME basic_repros
+            COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_basic_repros.sh
+            $<TARGET_FILE:ilc>)
+    set_tests_properties(basic_repros
+            PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            LABELS smoke)
+endif ()
 
 if (VIPER_ENABLE_PASCAL)
 # =============================================================================

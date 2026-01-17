@@ -26,6 +26,9 @@ endif ()
 
 execute_process(COMMAND ${ILC} front basic -emit-il ${BAS_FILE} ${_ns_flag}
         RESULT_VARIABLE res OUTPUT_VARIABLE out ERROR_VARIABLE out)
+# Normalize Windows line endings
+string(REPLACE "\r\n" "\n" out "${out}")
+string(REPLACE "\r" "\n" out "${out}")
 
 if (_expect_exit_zero)
     if (NOT res EQUAL 0)

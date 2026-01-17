@@ -59,6 +59,7 @@ static std::string read_child_stderr_and_wait(pid_t pid, int fd)
 
 int main()
 {
+    SKIP_TEST_NO_FORK();
     // Case 1: Register extern and invoke successfully.
     {
         il::vm::ExternDesc ext;

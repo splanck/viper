@@ -61,10 +61,10 @@ entry:
     assert(literalValue.str == std::string("line\n\t\"quote\"\\path!"));
 
     std::string serialized = il::io::Serializer::toString(module);
-    assert(serialized.find(R"(@nl = "\n")") != std::string::npos);
-    assert(serialized.find(R"(@tab = "tab:\t")") != std::string::npos);
-    assert(serialized.find(R"(@quote = "quote:\"")") != std::string::npos);
-    assert(serialized.find(R"(@mix = "slashes\\ and hex!")") != std::string::npos);
+    assert(serialized.find("@nl = \"\\n\"") != std::string::npos);
+    assert(serialized.find("@tab = \"tab:\\t\"") != std::string::npos);
+    assert(serialized.find("@quote = \"quote:\\\"\"") != std::string::npos);
+    assert(serialized.find("@mix = \"slashes\\\\ and hex!\"") != std::string::npos);
     assert(serialized.find("const_str \"line\\n\\t\\\"quote\\\"\\\\path!\"") != std::string::npos);
 
     return 0;

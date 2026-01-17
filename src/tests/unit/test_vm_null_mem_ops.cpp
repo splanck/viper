@@ -237,6 +237,7 @@ std::string runModuleAndCapture(il::core::Module module)
 
 int main()
 {
+    SKIP_TEST_NO_FORK();
     std::string loadTrap = runModuleAndCapture(makeLoadModule());
     bool loadOk =
         loadTrap.find("Trap @main:entry#0 line 1: InvalidOperation (code=0): null load") !=

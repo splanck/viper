@@ -56,6 +56,8 @@ CPackSourceConfig.cmake
 *.dll
 *.exe
 *.out
+!src/tests/**/*.out
+!src/tests/**/*.bas.out
 *.app
 *.gch
 *.pch

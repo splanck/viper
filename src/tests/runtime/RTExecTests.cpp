@@ -210,6 +210,12 @@ static void test_run_null_args()
 
 int main()
 {
+#ifdef _WIN32
+    // Skip on Windows: test uses POSIX shell commands (true, false, /bin/echo)
+    // that don't exist on Windows
+    printf("Test skipped: POSIX shell commands not available on Windows\n");
+    return 0;
+#endif
     test_shell_true();
     test_shell_false();
     test_shell_echo();

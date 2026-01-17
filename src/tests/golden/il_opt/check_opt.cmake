@@ -28,6 +28,11 @@ endif ()
 ## Normalize IL version to avoid test churn on version bumps.
 file(READ ${GOLDEN} golden_content)
 file(READ ${OUT_FILE} out_content)
+# Normalize Windows line endings
+string(REPLACE "\r\n" "\n" golden_content "${golden_content}")
+string(REPLACE "\r" "\n" golden_content "${golden_content}")
+string(REPLACE "\r\n" "\n" out_content "${out_content}")
+string(REPLACE "\r" "\n" out_content "${out_content}")
 string(REGEX REPLACE "^il [0-9]+\\.[0-9]+\\.[0-9]+" "il VERSION" golden_content "${golden_content}")
 string(REGEX REPLACE "^il [0-9]+\\.[0-9]+\\.[0-9]+" "il VERSION" out_content "${out_content}")
 if (NOT out_content STREQUAL golden_content)

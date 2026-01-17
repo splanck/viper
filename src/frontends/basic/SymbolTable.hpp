@@ -43,7 +43,7 @@ namespace il::frontends::basic
 {
 
 // Forward declarations
-class ClassLayout;
+struct ClassLayout;
 
 /// @brief Unified symbol table for BASIC variable and type tracking.
 ///

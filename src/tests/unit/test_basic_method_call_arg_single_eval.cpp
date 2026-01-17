@@ -20,6 +20,7 @@
 #include "support/source_manager.hpp"
 #include "tests/TestHarness.hpp"
 
+#include <algorithm>
 #include <string>
 
 using namespace il::frontends::basic;

@@ -238,6 +238,11 @@ static void test_nonexistent_path_trap()
 
 int main()
 {
+#ifdef _WIN32
+    // Skip on Windows: test uses /tmp paths not available on Windows
+    printf("Test skipped: POSIX temp paths not available on Windows\n");
+    return 0;
+#endif
     printf("=== Watcher Runtime Tests ===\n");
 
     test_event_constants();

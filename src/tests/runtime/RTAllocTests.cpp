@@ -52,6 +52,7 @@ static void call_alloc_negative()
 
 int main()
 {
+    SKIP_TEST_NO_FORK();
     std::string out = capture(call_alloc_negative);
     bool ok = out.find("negative allocation") != std::string::npos;
     assert(ok);

@@ -17,6 +17,9 @@ execute_process(
 if (NOT res EQUAL 0)
     message(FATAL_ERROR "emit-il failed: ${res} stderr: ${err}")
 endif ()
+# Normalize Windows line endings
+string(REPLACE "\r\n" "\n" out "${out}")
+string(REPLACE "\r" "\n" out "${out}")
 
 # MUST_HAVE: semicolon-separated list of substrings expected to occur
 if (DEFINED MUST_HAVE)

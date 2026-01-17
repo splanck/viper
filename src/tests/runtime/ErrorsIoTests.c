@@ -181,6 +181,11 @@ static void ensure_seek_out_of_range_reports_invalid_operation(void)
 /// @brief Execute all IO error-path unit checks.
 int main(void)
 {
+#ifdef _WIN32
+    // Skip on Windows: test uses /tmp paths not available on Windows
+    printf("Test skipped: POSIX temp paths not available on Windows\n");
+    return 0;
+#endif
     ensure_missing_open_sets_file_not_found();
     ensure_read_byte_reports_eof();
     ensure_read_line_reports_eof();

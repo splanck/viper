@@ -56,6 +56,7 @@ void reportRuntimeContext()
 
 int main()
 {
+    SKIP_TEST_NO_FORK();
 #if defined(__APPLE__)
     std::fprintf(stderr, "switch-block-label: skipping on macOS sandbox environment\n");
     return 0;

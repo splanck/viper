@@ -169,6 +169,7 @@ static void testVerySmallStack()
 
 int main()
 {
+    SKIP_TEST_NO_FORK();
     testLargeStackAllocation();
     testSmallStackOverflow();
     testDefaultStackSize();

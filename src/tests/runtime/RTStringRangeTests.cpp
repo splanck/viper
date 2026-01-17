@@ -57,6 +57,7 @@ static void call_mid_negative()
 
 int main()
 {
+    SKIP_TEST_NO_FORK();
     std::string out = capture(call_left_negative);
     bool ok = out.find("LEFT$: len must be >= 0") != std::string::npos;
     assert(ok);
