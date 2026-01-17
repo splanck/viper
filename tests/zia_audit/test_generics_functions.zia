@@ -1,0 +1,115 @@
+module TestGenericFunctions;
+
+// Comprehensive tests for generic functions
+
+var passed: Integer = 0;
+var failed: Integer = 0;
+
+func check(name: String, actual: Integer, expected: Integer) {
+    if (actual == expected) {
+        passed = passed + 1;
+    } else {
+        failed = failed + 1;
+        Viper.Terminal.Say("FAIL: " + name + " - expected " + Viper.Strings.FromInt(expected) + ", got " + Viper.Strings.FromInt(actual));
+    }
+}
+
+func checkStr(name: String, actual: String, expected: String) {
+    if (actual == expected) {
+        passed = passed + 1;
+    } else {
+        failed = failed + 1;
+        Viper.Terminal.Say("FAIL: " + name + " - expected '" + expected + "', got '" + actual + "'");
+    }
+}
+
+func checkBool(name: String, actual: Boolean, expected: Boolean) {
+    if (actual == expected) {
+        passed = passed + 1;
+    } else {
+        failed = failed + 1;
+        var actualStr: String = "false";
+        var expectedStr: String = "false";
+        if (actual) { actualStr = "true"; }
+        if (expected) { expectedStr = "true"; }
+        Viper.Terminal.Say("FAIL: " + name + " - expected " + expectedStr + ", got " + actualStr);
+    }
+}
+
+// Basic identity function
+func identity[T](x: T) -> T {
+    return x;
+}
+
+// Wrap a value with local variable
+func wrap[T](x: T) -> T {
+    var y: T = x;
+    return y;
+}
+
+// Generic function calling another generic function
+func doubleIdentity[T](x: T) -> T {
+    var y: T = identity[T](x);
+    return y;
+}
+
+// Triple nested calls
+func tripleIdentity[T](x: T) -> T {
+    var a: T = identity[T](x);
+    var b: T = identity[T](a);
+    return identity[T](b);
+}
+
+// Generic function with multiple parameters of same type
+func pick[T](a: T, b: T) -> T {
+    return a;
+}
+
+// Chained generic function calls
+func chain[T](x: T) -> T {
+    return identity[T](wrap[T](x));
+}
+
+// Deep nesting as function argument
+func deepNest[T](x: T) -> T {
+    return identity[T](identity[T](identity[T](x)));
+}
+
+func start() {
+    Viper.Terminal.Say("=== Generic Function Tests ===");
+
+    // Test with Integer
+    check("identity Integer", identity[Integer](42), 42);
+    check("wrap Integer", wrap[Integer](100), 100);
+    check("doubleIdentity Integer", doubleIdentity[Integer](7), 7);
+    check("tripleIdentity Integer", tripleIdentity[Integer](999), 999);
+    check("pick Integer", pick[Integer](5, 3), 5);
+    check("chain Integer", chain[Integer](123), 123);
+    check("deepNest Integer", deepNest[Integer](456), 456);
+
+    // Test with String
+    checkStr("identity String", identity[String]("hello"), "hello");
+    checkStr("wrap String", wrap[String]("world"), "world");
+    checkStr("doubleIdentity String", doubleIdentity[String]("test"), "test");
+    checkStr("tripleIdentity String", tripleIdentity[String]("abc"), "abc");
+    checkStr("pick String", pick[String]("first", "second"), "first");
+    checkStr("chain String", chain[String]("chained"), "chained");
+    checkStr("deepNest String", deepNest[String]("deep"), "deep");
+
+    // Test with Boolean
+    checkBool("identity Boolean true", identity[Boolean](true), true);
+    checkBool("identity Boolean false", identity[Boolean](false), false);
+    checkBool("wrap Boolean", wrap[Boolean](true), true);
+    checkBool("doubleIdentity Boolean", doubleIdentity[Boolean](true), true);
+
+    // Report results
+    Viper.Terminal.Say("=== Results ===");
+    Viper.Terminal.Say("Passed: " + Viper.Strings.FromInt(passed));
+    Viper.Terminal.Say("Failed: " + Viper.Strings.FromInt(failed));
+
+    if (failed == 0) {
+        Viper.Terminal.Say("RESULT: ok");
+    } else {
+        Viper.Terminal.Say("RESULT: fail");
+    }
+}

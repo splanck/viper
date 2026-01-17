@@ -247,15 +247,15 @@ void Lowerer::emitPatternTest(const MatchArm::Pattern &pattern,
             const std::vector<FieldLayout> *fields = nullptr;
             if (scrutinee.type->kind == TypeKindSem::Value)
             {
-                auto it = valueTypes_.find(scrutinee.type->name);
-                if (it != valueTypes_.end())
-                    fields = &it->second.fields;
+                const ValueTypeInfo *valueInfo = getOrCreateValueTypeInfo(scrutinee.type->name);
+                if (valueInfo)
+                    fields = &valueInfo->fields;
             }
             else if (scrutinee.type->kind == TypeKindSem::Entity)
             {
-                auto it = entityTypes_.find(scrutinee.type->name);
-                if (it != entityTypes_.end())
-                    fields = &it->second.fields;
+                const EntityTypeInfo *entityInfo = getOrCreateEntityTypeInfo(scrutinee.type->name);
+                if (entityInfo)
+                    fields = &entityInfo->fields;
             }
 
             if (!fields || fields->size() != pattern.subpatterns.size())
@@ -326,15 +326,15 @@ void Lowerer::emitPatternBindings(const MatchArm::Pattern &pattern, const Patter
             const std::vector<FieldLayout> *fields = nullptr;
             if (scrutinee.type->kind == TypeKindSem::Value)
             {
-                auto it = valueTypes_.find(scrutinee.type->name);
-                if (it != valueTypes_.end())
-                    fields = &it->second.fields;
+                const ValueTypeInfo *valueInfo = getOrCreateValueTypeInfo(scrutinee.type->name);
+                if (valueInfo)
+                    fields = &valueInfo->fields;
             }
             else if (scrutinee.type->kind == TypeKindSem::Entity)
             {
-                auto it = entityTypes_.find(scrutinee.type->name);
-                if (it != entityTypes_.end())
-                    fields = &it->second.fields;
+                const EntityTypeInfo *entityInfo = getOrCreateEntityTypeInfo(scrutinee.type->name);
+                if (entityInfo)
+                    fields = &entityInfo->fields;
             }
 
             if (!fields || fields->size() != pattern.subpatterns.size())

@@ -90,6 +90,7 @@
 #include "frontends/zia/AST.hpp"
 #include "frontends/zia/Types.hpp"
 #include "support/diagnostics.hpp"
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
@@ -334,6 +335,43 @@ class Sema
         return it != runtimeCallees_.end() ? it->second : "";
     }
 
+    /// @brief Get the mangled function name for a generic function call.
+    /// @param expr The call expression to look up.
+    /// @return The mangled name (e.g., "identity$Integer") or empty string.
+    ///
+    /// @details For generic function calls like `identity[Integer](100)`, this
+    /// returns the mangled function name that the lowerer should use.
+    std::string genericFunctionCallee(const CallExpr *expr) const
+    {
+        auto it = genericFunctionCallees_.find(expr);
+        if (it == genericFunctionCallees_.end())
+            return "";
+
+        std::string mangledName = it->second;
+
+        // If we're in a generic context, substitute type parameters in the mangled name
+        // e.g., "identity$T" becomes "identity$Integer" when T=Integer
+        if (!typeParamStack_.empty())
+        {
+            // Find the type argument part (after $)
+            size_t dollarPos = mangledName.find('$');
+            if (dollarPos != std::string::npos)
+            {
+                std::string baseName = mangledName.substr(0, dollarPos);
+                std::string typeArgPart = mangledName.substr(dollarPos + 1);
+
+                // Check if the type argument is a type parameter that should be substituted
+                TypeRef substType = lookupTypeParam(typeArgPart);
+                if (substType && !substType->name.empty())
+                {
+                    mangledName = baseName + "$" + substType->name;
+                }
+            }
+        }
+
+        return mangledName;
+    }
+
     /// @brief Get the runtime getter function name for a field expression.
     /// @param expr The field expression to look up.
     /// @return The getter name (e.g., "Viper.Math.get_Pi") or empty string.
@@ -372,6 +410,70 @@ class Sema
     /// @param name The variable name.
     /// @return The variable's type, or nullptr if not found.
     TypeRef lookupVarType(const std::string &name);
+
+    /// @brief Get the type of a field for a given type.
+    /// @param typeName The fully qualified type name (may be mangled for generics).
+    /// @param fieldName The field name.
+    /// @return The field's type, or nullptr if not found.
+    TypeRef getFieldType(const std::string &typeName, const std::string &fieldName) const
+    {
+        std::string key = typeName + "." + fieldName;
+        auto it = fieldTypes_.find(key);
+        return it != fieldTypes_.end() ? it->second : nullptr;
+    }
+
+    /// @brief Look up method type from the cached method types.
+    /// @param typeName The fully qualified type name (may be mangled for generics).
+    /// @param methodName The method name.
+    /// @return The method's function type, or nullptr if not found.
+    TypeRef getMethodType(const std::string &typeName, const std::string &methodName) const
+    {
+        std::string key = typeName + "." + methodName;
+        auto it = methodTypes_.find(key);
+        return it != methodTypes_.end() ? it->second : nullptr;
+    }
+
+    /// @brief Get the original generic declaration for an instantiated type.
+    /// @param mangledName The mangled type name (e.g., "Box$Integer").
+    /// @return The original declaration, or nullptr if not a generic instantiation.
+    Decl *getGenericDeclForInstantiation(const std::string &mangledName) const
+    {
+        // Extract base name from mangled name (before '$')
+        size_t dollarPos = mangledName.find('$');
+        if (dollarPos == std::string::npos)
+            return nullptr;
+        std::string baseName = mangledName.substr(0, dollarPos);
+        auto it = genericTypeDecls_.find(baseName);
+        return it != genericTypeDecls_.end() ? it->second : nullptr;
+    }
+
+    /// @brief Check if a type name is an instantiated generic.
+    /// @param typeName The type name to check.
+    /// @return True if this is an instantiated generic type.
+    bool isInstantiatedGeneric(const std::string &typeName) const
+    {
+        return typeName.find('$') != std::string::npos;
+    }
+
+    /// @brief Push substitution context for a mangled generic instantiation.
+    /// @param mangledName The mangled name (e.g., "Container$Integer").
+    /// @return True if context was pushed, false if not a generic instantiation.
+    ///
+    /// @details Extracts the base name and type arguments from the mangled name,
+    /// looks up the generic declaration, and pushes the substitution context.
+    /// Must be balanced with popTypeParams().
+    bool pushSubstitutionContext(const std::string &mangledName);
+
+    /// @brief Pop the current type parameter substitution scope.
+    ///
+    /// @details Called when leaving a generic context. Restores the previous
+    /// substitution scope (or empty if this was the only one).
+    void popTypeParams();
+
+    /// @brief Resolve a simple type name to a semantic type.
+    /// @param name The type name (e.g., "Integer", "MyClass").
+    /// @return The semantic type, or unknown if not found.
+    TypeRef resolveNamedType(const std::string &name) const;
 
   private:
     //=========================================================================
@@ -679,11 +781,6 @@ class Sema
     /// @{
     //=========================================================================
 
-    /// @brief Resolve a simple type name to a semantic type.
-    /// @param name The type name (e.g., "Integer", "MyClass").
-    /// @return The semantic type, or unknown if not found.
-    TypeRef resolveNamedType(const std::string &name) const;
-
     /// @brief Resolve a type node to a semantic type.
     /// @param node The AST type node.
     /// @return The resolved semantic type.
@@ -729,6 +826,113 @@ class Sema
                          std::vector<CapturedVar> &captures);
 
     /// @}
+
+public:
+    //=========================================================================
+    /// @name Generic Type Parameter Management
+    /// @brief Methods for managing type parameter substitutions in generic contexts.
+    /// @{
+    //=========================================================================
+
+    /// @brief Push a new type parameter substitution scope.
+    /// @param substitutions Map from type parameter names to concrete types.
+    ///
+    /// @details Called when entering a generic context (e.g., instantiating
+    /// a generic type or function). Must be balanced with popTypeParams().
+    void pushTypeParams(const std::map<std::string, TypeRef> &substitutions);
+
+    /// @brief Look up a type parameter in the current substitution context.
+    /// @param name The type parameter name (e.g., "T").
+    /// @return The substituted type if found, nullptr otherwise.
+    ///
+    /// @details Searches from innermost to outermost substitution scope.
+    /// Returns nullptr if the name is not a type parameter in any active scope.
+    TypeRef lookupTypeParam(const std::string &name) const;
+
+    /// @brief Substitute type parameters in a type using the current substitution context.
+    /// @param type The type to substitute.
+    /// @return The type with type parameters replaced by their substituted values.
+    TypeRef substituteTypeParams(TypeRef type) const;
+
+    /// @brief Check if currently inside a generic context.
+    /// @return True if there are active type parameter substitutions.
+    bool inGenericContext() const
+    {
+        return !typeParamStack_.empty();
+    }
+
+    /// @brief Generate a mangled name for a generic type instantiation.
+    /// @param base The base type name (e.g., "Box").
+    /// @param args The type arguments (e.g., [Integer]).
+    /// @return The mangled name (e.g., "Box$Integer").
+    static std::string mangleGenericName(const std::string &base,
+                                         const std::vector<TypeRef> &args);
+
+    /// @brief Register a generic type declaration for later instantiation.
+    /// @param name The type name (e.g., "Box").
+    /// @param decl Pointer to the AST declaration.
+    void registerGenericType(const std::string &name, Decl *decl);
+
+    /// @brief Instantiate a generic type with concrete type arguments.
+    /// @param name The base type name (e.g., "Box").
+    /// @param args The concrete type arguments (e.g., [Integer]).
+    /// @param loc Source location for error reporting.
+    /// @return The instantiated type, or unknown on error.
+    TypeRef instantiateGenericType(const std::string &name,
+                                   const std::vector<TypeRef> &args,
+                                   SourceLoc loc);
+
+    /// @brief Get the generic parameters from a declaration.
+    /// @param decl The declaration (ValueDecl, EntityDecl, or InterfaceDecl).
+    /// @return Vector of type parameter names.
+    static std::vector<std::string> getGenericParams(const Decl *decl);
+
+    /// @brief Analyze a generic type body with current substitutions.
+    /// @param decl The generic type declaration.
+    /// @param mangledName The mangled name for the instantiation.
+    /// @return The instantiated type.
+    TypeRef analyzeGenericTypeBody(Decl *decl, const std::string &mangledName);
+
+  public:
+    //=========================================================================
+    /// @name Generic Functions
+    /// @brief Methods for generic function support.
+    /// @{
+    //=========================================================================
+
+    /// @brief Register a generic function declaration for later instantiation.
+    /// @param name The function name (e.g., "identity").
+    /// @param decl Pointer to the AST declaration.
+    void registerGenericFunction(const std::string &name, FunctionDecl *decl);
+
+    /// @brief Check if a function is a generic function.
+    /// @param name The function name.
+    /// @return True if the function is generic.
+    bool isGenericFunction(const std::string &name) const;
+
+    /// @brief Get a generic function declaration.
+    /// @param name The function name.
+    /// @return Pointer to the declaration, or nullptr if not found.
+    FunctionDecl *getGenericFunction(const std::string &name) const;
+
+    /// @brief Instantiate a generic function with concrete type arguments.
+    /// @param name The function name (e.g., "identity").
+    /// @param args The concrete type arguments (e.g., [Integer]).
+    /// @param loc Source location for error reporting.
+    /// @return The instantiated function type, or unknown on error.
+    TypeRef instantiateGenericFunction(const std::string &name,
+                                       const std::vector<TypeRef> &args,
+                                       SourceLoc loc);
+
+    /// @brief Check if a type implements a given interface.
+    /// @param type The type to check.
+    /// @param interfaceName The interface name.
+    /// @return True if the type implements the interface.
+    bool typeImplementsInterface(TypeRef type, const std::string &interfaceName) const;
+
+    /// @}
+
+  private:
     //=========================================================================
     /// @name Error Reporting
     /// @brief Methods for reporting semantic errors.
@@ -840,6 +1044,11 @@ class Sema
     /// Used during lowering to emit extern calls instead of direct calls.
     std::unordered_map<const CallExpr *, std::string> runtimeCallees_;
 
+    /// @brief Resolved generic function call mangled names.
+    /// @details Key: CallExpr pointer, Value: Mangled function name (e.g., "identity$Integer").
+    /// Used by the lowerer to determine which instantiated function to call.
+    std::unordered_map<const CallExpr *, std::string> genericFunctionCallees_;
+
     /// @brief Map from field expressions to their resolved runtime getter names.
     /// @details For namespace-style property access like Viper.Math.Pi, this maps
     /// the FieldExpr to "Viper.Math.get_Pi" so the lowerer can emit a getter call.
@@ -852,6 +1061,31 @@ class Sema
     /// @details When `import "./colors"` is processed, "colors" maps to
     /// the symbols defined in colors.zia. Used for qualified access.
     std::unordered_map<std::string, std::unordered_map<std::string, Symbol>> moduleExports_;
+
+    /// @brief Active type parameter substitutions for current generic context.
+    /// @details Maps type parameter names (e.g., "T") to concrete types.
+    /// Stack allows nested generic contexts (e.g., generic method in generic type).
+    std::vector<std::map<std::string, TypeRef>> typeParamStack_;
+
+    /// @brief Cache of instantiated generic types.
+    /// @details Key: "TypeName$Arg1$Arg2", Value: Instantiated TypeRef.
+    /// Prevents re-instantiation of the same generic type arguments.
+    std::map<std::string, TypeRef> genericInstances_;
+
+    /// @brief Original generic type declarations (uninstantiated).
+    /// @details Key: Type name, Value: AST declaration pointer.
+    /// Used to find the original type when instantiating.
+    std::map<std::string, Decl *> genericTypeDecls_;
+
+    /// @brief Original generic function declarations (uninstantiated).
+    /// @details Key: Function name, Value: AST declaration pointer.
+    /// Used to find the original function when instantiating.
+    std::map<std::string, FunctionDecl *> genericFunctionDecls_;
+
+    /// @brief Cache of instantiated generic function types.
+    /// @details Key: "FuncName$Arg1$Arg2", Value: Instantiated function TypeRef.
+    /// Prevents re-instantiation of the same generic function arguments.
+    std::map<std::string, TypeRef> genericFunctionInstances_;
 
     /// @}
 };

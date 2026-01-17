@@ -453,6 +453,19 @@ class Lowerer
     /// @brief Entity type layout information.
     std::map<std::string, EntityTypeInfo> entityTypes_;
 
+    /// @brief Pending generic entity instantiations that need methods lowered.
+    /// @details Populated during expression lowering when generic entities are
+    /// constructed, and processed after all declarations are lowered.
+    std::vector<std::string> pendingEntityInstantiations_;
+
+    /// @brief Pending generic value type instantiations that need methods lowered.
+    std::vector<std::string> pendingValueInstantiations_;
+
+    /// @brief Pending generic function instantiations that need to be lowered.
+    /// @details Populated during call expression lowering when generic functions
+    /// are called, and processed after all declarations are lowered.
+    std::vector<std::pair<std::string, FunctionDecl *>> pendingFunctionInstantiations_;
+
     /// @brief Interface type information.
     std::map<std::string, InterfaceTypeInfo> interfaceTypes_;
 
@@ -527,6 +540,22 @@ class Lowerer
     /// @brief Lower a function declaration.
     /// @param decl The function declaration.
     void lowerFunctionDecl(FunctionDecl &decl);
+
+    /// @brief Get or create ValueTypeInfo for a type.
+    /// @param typeName The type name (may be mangled for generics).
+    /// @return Pointer to ValueTypeInfo, or nullptr if not found.
+    ///
+    /// @details For instantiated generic types, lazily creates the info
+    /// from the original generic declaration and substituted field types.
+    const ValueTypeInfo *getOrCreateValueTypeInfo(const std::string &typeName);
+
+    /// @brief Get or create EntityTypeInfo for an entity type.
+    /// @param typeName The type name (may be mangled for generics).
+    /// @return Pointer to EntityTypeInfo, or nullptr if not found.
+    ///
+    /// @details For instantiated generic types, lazily creates the info
+    /// from the original generic declaration and substituted field types.
+    const EntityTypeInfo *getOrCreateEntityTypeInfo(const std::string &typeName);
 
     /// @brief Lower a value type declaration.
     /// @param decl The value type declaration.
@@ -677,6 +706,17 @@ class Lowerer
     /// @brief Lower a call expression.
     /// @return LowerResult with the call result.
     LowerResult lowerCall(CallExpr *expr);
+
+    /// @brief Lower a generic function call.
+    /// @param mangledName The instantiated function name (e.g., "identity$Integer").
+    /// @param expr The call expression.
+    /// @return LowerResult with the call result.
+    LowerResult lowerGenericFunctionCall(const std::string &mangledName, CallExpr *expr);
+
+    /// @brief Lower an instantiation of a generic function.
+    /// @param mangledName The instantiated function name (e.g., "identity$Integer").
+    /// @param decl The generic function declaration.
+    void lowerGenericFunctionInstantiation(const std::string &mangledName, FunctionDecl *decl);
 
     /// @brief Lower a field access expression.
     /// @return LowerResult with the field value.
@@ -990,6 +1030,11 @@ class Lowerer
     /// @param type The Zia semantic type.
     /// @return The corresponding IL type.
     Type mapType(TypeRef type);
+
+    /// @brief Map an IL type back to a semantic type.
+    /// @param ilType The IL type.
+    /// @return A corresponding semantic type (best effort).
+    TypeRef reverseMapType(Type ilType);
 
     /// @brief Get the size in bytes for an IL type.
     /// @param type The IL type.

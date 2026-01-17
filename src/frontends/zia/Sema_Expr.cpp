@@ -359,6 +359,170 @@ static bool extractDottedName(Expr *expr, std::string &out)
 
 TypeRef Sema::analyzeCall(CallExpr *expr)
 {
+    // Handle generic function calls: identity[Integer](100)
+    // Parser produces: CallExpr(callee=IndexExpr(base=IdentExpr, index=IdentExpr/expr), args)
+    // We need to detect when the "index" is actually a type argument
+    if (expr->callee->kind == ExprKind::Index)
+    {
+        auto *indexExpr = static_cast<IndexExpr *>(expr->callee.get());
+        if (indexExpr->base->kind == ExprKind::Ident)
+        {
+            auto *identExpr = static_cast<IdentExpr *>(indexExpr->base.get());
+            if (isGenericFunction(identExpr->name))
+            {
+                // This is a generic function call!
+                // The "index" should be a type name
+                std::vector<TypeRef> typeArgs;
+
+                // Try to interpret the index expression as a type
+                if (indexExpr->index->kind == ExprKind::Ident)
+                {
+                    auto *typeIdent = static_cast<IdentExpr *>(indexExpr->index.get());
+                    // Create a NamedType node and resolve it
+                    auto typeNode = std::make_unique<NamedType>(typeIdent->loc, typeIdent->name);
+                    TypeRef typeArg = resolveTypeNode(typeNode.get());
+                    if (typeArg && typeArg->kind != TypeKindSem::Unknown)
+                    {
+                        typeArgs.push_back(typeArg);
+                    }
+                    else
+                    {
+                        error(typeIdent->loc, "Unknown type: " + typeIdent->name);
+                        return types::unknown();
+                    }
+                }
+                else
+                {
+                    error(indexExpr->index->loc,
+                          "Expected type argument for generic function call");
+                    return types::unknown();
+                }
+
+                // Instantiate the generic function with the type arguments
+                TypeRef funcType =
+                    instantiateGenericFunction(identExpr->name, typeArgs, expr->loc);
+
+                // Store the mangled name for the lowerer
+                std::string mangledName = mangleGenericName(identExpr->name, typeArgs);
+                genericFunctionCallees_[expr] = mangledName;
+
+                // Store the instantiated function type so the lowerer can access it
+                exprTypes_[expr->callee.get()] = funcType;
+
+                // Analyze arguments
+                for (auto &arg : expr->args)
+                {
+                    analyzeExpr(arg.value.get());
+                }
+
+                // Return the function's return type
+                if (funcType && funcType->kind == TypeKindSem::Function)
+                {
+                    return funcType->returnType();
+                }
+                return types::unknown();
+            }
+        }
+    }
+
+    // Type inference for generic function calls without explicit type arguments
+    // e.g., identity(42) instead of identity[Integer](42)
+    // This must come BEFORE the dotted name lookup to catch simple IdentExpr callees
+    if (expr->callee->kind == ExprKind::Ident)
+    {
+        auto *identExpr = static_cast<IdentExpr *>(expr->callee.get());
+        if (isGenericFunction(identExpr->name))
+        {
+            FunctionDecl *genericDecl = getGenericFunction(identExpr->name);
+            if (genericDecl && !genericDecl->genericParams.empty() && !expr->args.empty())
+            {
+                // Analyze all arguments first to get their types
+                std::vector<TypeRef> argTypes;
+                for (auto &arg : expr->args)
+                {
+                    TypeRef argType = analyzeExpr(arg.value.get());
+                    argTypes.push_back(argType);
+                }
+
+                // Build set of type parameter names for quick lookup
+                std::set<std::string> typeParamNames(genericDecl->genericParams.begin(),
+                                                     genericDecl->genericParams.end());
+
+                // Infer type parameters from argument types
+                std::map<std::string, TypeRef> inferredTypes;
+                for (size_t i = 0; i < genericDecl->params.size() && i < argTypes.size(); ++i)
+                {
+                    // Check if the parameter type is a type parameter (e.g., T)
+                    TypeNode *paramTypeNode = genericDecl->params[i].type.get();
+                    if (paramTypeNode && paramTypeNode->kind == TypeKind::Named)
+                    {
+                        auto *namedType = static_cast<NamedType *>(paramTypeNode);
+                        // Check if this name is a type parameter
+                        if (typeParamNames.count(namedType->name) > 0)
+                        {
+                            // This parameter has type T, infer T from the argument
+                            const std::string &typeParamName = namedType->name;
+                            TypeRef argType = argTypes[i];
+                            if (argType && argType->kind != TypeKindSem::Unknown)
+                            {
+                                // Check for consistency if already inferred
+                                auto it = inferredTypes.find(typeParamName);
+                                if (it != inferredTypes.end())
+                                {
+                                    if (it->second != argType)
+                                    {
+                                        error(expr->args[i].value->loc,
+                                              "Type mismatch in generic function call: "
+                                              "cannot infer consistent type for " + typeParamName);
+                                        return types::unknown();
+                                    }
+                                }
+                                else
+                                {
+                                    inferredTypes[typeParamName] = argType;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Check that all type parameters were inferred
+                std::vector<TypeRef> typeArgs;
+                for (const auto &paramName : genericDecl->genericParams)
+                {
+                    auto it = inferredTypes.find(paramName);
+                    if (it != inferredTypes.end())
+                    {
+                        typeArgs.push_back(it->second);
+                    }
+                    else
+                    {
+                        error(expr->loc, "Cannot infer type argument for '" + paramName +
+                                             "' in generic function call");
+                        return types::unknown();
+                    }
+                }
+
+                // Instantiate the generic function with inferred type arguments
+                TypeRef funcType = instantiateGenericFunction(identExpr->name, typeArgs, expr->loc);
+
+                // Store the mangled name for the lowerer
+                std::string mangledName = mangleGenericName(identExpr->name, typeArgs);
+                genericFunctionCallees_[expr] = mangledName;
+
+                // Store the instantiated function type
+                exprTypes_[expr->callee.get()] = funcType;
+
+                // Return the function's return type
+                if (funcType && funcType->kind == TypeKindSem::Function)
+                {
+                    return funcType->returnType();
+                }
+                return types::unknown();
+            }
+        }
+    }
+
     // First, try to resolve dotted function names like Viper.Terminal.Say or MyLib.helper
     // This unified lookup works for both runtime functions and user-defined namespaced functions
     std::string dottedName;

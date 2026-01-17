@@ -378,11 +378,11 @@ std::optional<LowerResult> Lowerer::lowerBuiltinCall(const std::string &name, Ca
 std::optional<LowerResult> Lowerer::lowerValueTypeConstruction(const std::string &typeName,
                                                                 CallExpr *expr)
 {
-    auto it = valueTypes_.find(typeName);
-    if (it == valueTypes_.end())
+    const ValueTypeInfo *infoPtr = getOrCreateValueTypeInfo(typeName);
+    if (!infoPtr)
         return std::nullopt;
 
-    const ValueTypeInfo &info = it->second;
+    const ValueTypeInfo &info = *infoPtr;
 
     // Lower arguments
     std::vector<Value> argValues;
@@ -452,11 +452,11 @@ std::optional<LowerResult> Lowerer::lowerValueTypeConstruction(const std::string
 std::optional<LowerResult> Lowerer::lowerEntityTypeConstruction(const std::string &typeName,
                                                                  CallExpr *expr)
 {
-    auto it = entityTypes_.find(typeName);
-    if (it == entityTypes_.end())
+    const EntityTypeInfo *infoPtr = getOrCreateEntityTypeInfo(typeName);
+    if (!infoPtr)
         return std::nullopt;
 
-    const EntityTypeInfo &info = it->second;
+    const EntityTypeInfo &info = *infoPtr;
 
     // Lower arguments
     std::vector<Value> argValues;
@@ -540,6 +540,48 @@ std::optional<LowerResult> Lowerer::lowerEntityTypeConstruction(const std::strin
 
 LowerResult Lowerer::lowerCall(CallExpr *expr)
 {
+    // Check for generic function call: identity[Integer](42)
+    std::string genericCallee = sema_.genericFunctionCallee(expr);
+    if (!genericCallee.empty())
+    {
+        return lowerGenericFunctionCall(genericCallee, expr);
+    }
+
+    // Handle generic function calls that weren't detected during semantic analysis
+    // This happens for calls inside generic function bodies like: identity[T](x)
+    // where T is a type parameter that needs to be substituted
+    if (expr->callee->kind == ExprKind::Index)
+    {
+        auto *indexExpr = static_cast<IndexExpr *>(expr->callee.get());
+        if (indexExpr->base->kind == ExprKind::Ident)
+        {
+            auto *identExpr = static_cast<IdentExpr *>(indexExpr->base.get());
+            // Check if this is a call to a generic function
+            if (sema_.isGenericFunction(identExpr->name))
+            {
+                // Get the type argument from the index expression
+                if (indexExpr->index->kind == ExprKind::Ident)
+                {
+                    auto *typeArgExpr = static_cast<IdentExpr *>(indexExpr->index.get());
+                    std::string typeArgName = typeArgExpr->name;
+
+                    // If the type arg is a type parameter, substitute it
+                    TypeRef substType = sema_.lookupTypeParam(typeArgName);
+                    if (substType)
+                    {
+                        // Use the type's name if it has one, otherwise use kindToString
+                        typeArgName = substType->name.empty() ? kindToString(substType->kind)
+                                                              : substType->name;
+                    }
+
+                    // Build the mangled name
+                    std::string mangledName = identExpr->name + "$" + typeArgName;
+                    return lowerGenericFunctionCall(mangledName, expr);
+                }
+            }
+        }
+    }
+
     // Check for method call on value or entity type: obj.method()
     if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get()))
     {
@@ -576,10 +618,10 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
             std::string typeName = baseType->name;
 
             // Check value type methods
-            auto it = valueTypes_.find(typeName);
-            if (it != valueTypes_.end())
+            const ValueTypeInfo *valueInfo = getOrCreateValueTypeInfo(typeName);
+            if (valueInfo)
             {
-                if (auto *method = it->second.findMethod(fieldExpr->field))
+                if (auto *method = valueInfo->findMethod(fieldExpr->field))
                 {
                     auto baseResult = lowerExpr(fieldExpr->base.get());
                     return lowerMethodCall(method, typeName, baseResult.value, expr);
@@ -587,10 +629,10 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
             }
 
             // Check entity type methods with virtual dispatch
-            auto entityIt = entityTypes_.find(typeName);
-            if (entityIt != entityTypes_.end())
+            const EntityTypeInfo *entityInfoPtr = getOrCreateEntityTypeInfo(typeName);
+            if (entityInfoPtr)
             {
-                const EntityTypeInfo &entityInfo = entityIt->second;
+                const EntityTypeInfo &entityInfo = *entityInfoPtr;
 
                 size_t vtableSlot = entityInfo.findVtableSlot(fieldExpr->field);
                 if (vtableSlot != SIZE_MAX)
@@ -1031,6 +1073,16 @@ LowerResult Lowerer::lowerMethodCall(MethodDecl *method,
                                      Value selfValue,
                                      CallExpr *expr)
 {
+    // Look up the cached method type - this has already-substituted types for generics
+    TypeRef methodType = sema_.getMethodType(typeName, method->name);
+    std::vector<TypeRef> paramTypes;
+    TypeRef returnType = types::voidType();
+    if (methodType && methodType->kind == TypeKindSem::Function)
+    {
+        paramTypes = methodType->paramTypes();
+        returnType = methodType->returnType();
+    }
+
     std::vector<Value> args;
     args.reserve(expr->args.size() + 1);
     args.push_back(selfValue);
@@ -1041,9 +1093,10 @@ LowerResult Lowerer::lowerMethodCall(MethodDecl *method,
         auto result = lowerExpr(arg.value.get());
         Value argValue = result.value;
 
-        if (i < method->params.size() && method->params[i].type)
+        // Use cached param type from methodType instead of resolving from AST
+        if (i < paramTypes.size())
         {
-            TypeRef paramType = sema_.resolveType(method->params[i].type.get());
+            TypeRef paramType = paramTypes[i];
             TypeRef argType = sema_.typeOf(arg.value.get());
             if (paramType && paramType->kind == TypeKindSem::Optional)
             {
@@ -1066,8 +1119,6 @@ LowerResult Lowerer::lowerMethodCall(MethodDecl *method,
         args.push_back(argValue);
     }
 
-    TypeRef returnType =
-        method->returnType ? sema_.resolveType(method->returnType.get()) : types::voidType();
     Type ilReturnType = mapType(returnType);
 
     std::string methodName = typeName + "." + method->name;
@@ -1081,6 +1132,121 @@ LowerResult Lowerer::lowerMethodCall(MethodDecl *method,
     else
     {
         Value result = emitCallRet(ilReturnType, methodName, args);
+        return {result, ilReturnType};
+    }
+}
+
+//=============================================================================
+// Generic Function Call Lowering
+//=============================================================================
+
+LowerResult Lowerer::lowerGenericFunctionCall(const std::string &mangledName, CallExpr *expr)
+{
+    // Get the function type from Sema
+    TypeRef funcType = sema_.typeOf(expr->callee.get());
+    if (!funcType || funcType->kind != TypeKindSem::Function)
+    {
+        // Fallback - compute return type from generic function declaration
+        std::string baseName = mangledName.substr(0, mangledName.find('$'));
+        std::string concreteTypeName = mangledName.substr(mangledName.find('$') + 1);
+        FunctionDecl *genericDecl = sema_.getGenericFunction(baseName);
+
+        Type ilReturnType = Type(Type::Kind::I64); // Default fallback
+        if (genericDecl)
+        {
+            // Resolve return type from declaration and substitute type parameters
+            if (genericDecl->returnType)
+            {
+                TypeRef declReturnType = sema_.resolveType(genericDecl->returnType.get());
+                if (declReturnType && declReturnType->kind == TypeKindSem::TypeParam)
+                {
+                    // Return type is a type parameter - substitute with concrete type
+                    TypeRef concreteType = sema_.resolveNamedType(concreteTypeName);
+                    if (concreteType)
+                    {
+                        ilReturnType = mapType(concreteType);
+                    }
+                }
+                else if (declReturnType)
+                {
+                    ilReturnType = mapType(declReturnType);
+                }
+            }
+            else
+            {
+                ilReturnType = Type(Type::Kind::Void);
+            }
+        }
+
+        // Lower arguments
+        std::vector<Value> args;
+        for (auto &arg : expr->args)
+        {
+            auto result = lowerExpr(arg.value.get());
+            args.push_back(result.value);
+        }
+
+        // Queue the instantiated generic function for later lowering
+        if (genericDecl && definedFunctions_.find(mangledName) == definedFunctions_.end())
+        {
+            // Mark as defined now to avoid re-queuing, but queue for actual lowering
+            definedFunctions_.insert(mangledName);
+            pendingFunctionInstantiations_.push_back({mangledName, genericDecl});
+        }
+
+        // Call the function
+        if (ilReturnType.kind == Type::Kind::Void)
+        {
+            emitCall(mangledName, args);
+            return {Value::constInt(0), Type(Type::Kind::Void)};
+        }
+        else
+        {
+            Value result = emitCallRet(ilReturnType, mangledName, args);
+            return {result, ilReturnType};
+        }
+    }
+
+    // We have proper function type info
+    TypeRef returnType = funcType->returnType();
+    Type ilReturnType = returnType ? mapType(returnType) : Type(Type::Kind::Void);
+
+    // Lower arguments
+    std::vector<Value> args;
+    const auto &paramTypes = funcType->paramTypes();
+    for (size_t i = 0; i < expr->args.size(); ++i)
+    {
+        auto result = lowerExpr(expr->args[i].value.get());
+        Value argValue = result.value;
+
+        // Widen bytes to integers
+        if (result.type.kind == Type::Kind::I32)
+        {
+            argValue = widenByteToInteger(argValue);
+        }
+
+        args.push_back(argValue);
+    }
+
+    // Queue the instantiated generic function for later lowering
+    std::string baseName = mangledName.substr(0, mangledName.find('$'));
+    FunctionDecl *genericDecl = sema_.getGenericFunction(baseName);
+    if (genericDecl && definedFunctions_.find(mangledName) == definedFunctions_.end())
+    {
+        // Mark as defined now to avoid re-queuing, but queue for actual lowering
+        definedFunctions_.insert(mangledName);
+        pendingFunctionInstantiations_.push_back({mangledName, genericDecl});
+    }
+
+    // Call the function
+    if (ilReturnType.kind == Type::Kind::Void)
+    {
+        emitCall(mangledName, args);
+        return {Value::constInt(0), Type(Type::Kind::Void)};
+    }
+    else
+    {
+        Value result = emitCallRet(ilReturnType, mangledName, args);
         return {result, ilReturnType};
     }
 }

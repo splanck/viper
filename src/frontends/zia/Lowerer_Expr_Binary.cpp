@@ -192,10 +192,10 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                 std::string typeName = baseType->name;
 
                 // Check value types
-                auto valueIt = valueTypes_.find(typeName);
-                if (valueIt != valueTypes_.end())
+                const ValueTypeInfo *valueInfo = getOrCreateValueTypeInfo(typeName);
+                if (valueInfo)
                 {
-                    const FieldLayout *field = valueIt->second.findField(fieldExpr->field);
+                    const FieldLayout *field = valueInfo->findField(fieldExpr->field);
                     if (field)
                     {
                         Value fieldValue = wrapValueForOptionalField(right.value, field->type, rightType);
@@ -205,10 +205,10 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                 }
 
                 // Check entity types
-                auto entityIt = entityTypes_.find(typeName);
-                if (entityIt != entityTypes_.end())
+                const EntityTypeInfo *entityInfoPtr = getOrCreateEntityTypeInfo(typeName);
+                if (entityInfoPtr)
                 {
-                    const FieldLayout *field = entityIt->second.findField(fieldExpr->field);
+                    const FieldLayout *field = entityInfoPtr->findField(fieldExpr->field);
                     if (field)
                     {
                         Value fieldValue = wrapValueForOptionalField(right.value, field->type, rightType);

@@ -124,6 +124,30 @@ struct Param
     ExprPtr defaultValue;
 };
 
+/// @brief Generic type parameter specification.
+/// @details Represents a type parameter in a generic declaration, with
+/// an optional constraint (interface name) that the type must satisfy.
+///
+/// ## Examples
+/// - `T` - Unconstrained type parameter
+/// - `T: Comparable` - Type parameter constrained to Comparable interface
+struct TypeParam
+{
+    /// @brief Type parameter name (e.g., "T", "K", "V").
+    std::string name;
+
+    /// @brief Optional constraint interface name (empty if unconstrained).
+    /// @details When non-empty, the concrete type argument must implement
+    /// this interface.
+    std::string constraint;
+
+    /// @brief Construct an unconstrained type parameter.
+    TypeParam(std::string n) : name(std::move(n)) {}
+
+    /// @brief Construct a constrained type parameter.
+    TypeParam(std::string n, std::string c) : name(std::move(n)), constraint(std::move(c)) {}
+};
+
 /// @brief Global function declaration.
 /// @details Defines a function at module level (not a method).
 ///
@@ -140,6 +164,11 @@ struct FunctionDecl : Decl
 
     /// @brief Generic type parameter names (e.g., [T, U]).
     std::vector<std::string> genericParams;
+
+    /// @brief Optional constraints for generic type parameters.
+    /// @details Parallel array to genericParams. If genericParamConstraints[i] is non-empty,
+    /// it specifies the interface that genericParams[i] must implement.
+    std::vector<std::string> genericParamConstraints;
 
     /// @brief Function parameters.
     std::vector<Param> params;

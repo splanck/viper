@@ -72,6 +72,9 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module)
     locals_.clear();
     usedExterns_.clear();
     definedFunctions_.clear();
+    pendingEntityInstantiations_.clear();
+    pendingValueInstantiations_.clear();
+    pendingFunctionInstantiations_.clear();
 
     // Setup string table emitter
     stringTable_.setEmitter([this](const std::string &label, const std::string &content)
@@ -81,6 +84,80 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module)
     for (auto &decl : module.declarations)
     {
         lowerDecl(decl.get());
+    }
+
+    // Process pending generic entity instantiations
+    // These were deferred during expression lowering because we couldn't
+    // lower methods while inside another function's body
+    while (!pendingEntityInstantiations_.empty())
+    {
+        std::string typeName = pendingEntityInstantiations_.back();
+        pendingEntityInstantiations_.pop_back();
+
+        auto it = entityTypes_.find(typeName);
+        if (it == entityTypes_.end())
+            continue;
+
+        EntityTypeInfo &info = it->second;
+
+        // Push substitution context so type parameters resolve correctly
+        bool pushedContext = sema_.pushSubstitutionContext(typeName);
+
+        // Lower all methods for this instantiated generic entity
+        for (auto *method : info.methods)
+        {
+            lowerMethodDecl(*method, typeName, true);
+        }
+
+        // Emit vtable
+        if (!info.vtable.empty())
+        {
+            emitVtable(info);
+        }
+
+        // Pop substitution context if we pushed one
+        if (pushedContext)
+        {
+            sema_.popTypeParams();
+        }
+    }
+
+    // Process pending generic value type instantiations
+    while (!pendingValueInstantiations_.empty())
+    {
+        std::string typeName = pendingValueInstantiations_.back();
+        pendingValueInstantiations_.pop_back();
+
+        auto it = valueTypes_.find(typeName);
+        if (it == valueTypes_.end())
+            continue;
+
+        ValueTypeInfo &info = it->second;
+
+        // Push substitution context so type parameters resolve correctly
+        bool pushedContext = sema_.pushSubstitutionContext(typeName);
+
+        // Lower all methods for this instantiated generic value type
+        for (auto *method : info.methods)
+        {
+            lowerMethodDecl(*method, typeName, false);
+        }
+
+        // Pop substitution context if we pushed one
+        if (pushedContext)
+        {
+            sema_.popTypeParams();
+        }
+    }
+
+    // Process pending generic function instantiations
+    while (!pendingFunctionInstantiations_.empty())
+    {
+        auto [mangledName, decl] = pendingFunctionInstantiations_.back();
+        pendingFunctionInstantiations_.pop_back();
+
+        // Lower the generic function instantiation
+        lowerGenericFunctionInstantiation(mangledName, decl);
     }
 
     // Add extern declarations for used runtime functions
@@ -96,7 +173,7 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module)
         if (dotPos != std::string::npos)
         {
             std::string typeName = externName.substr(0, dotPos);
-            if (valueTypes_.find(typeName) != valueTypes_.end() ||
+            if (getOrCreateValueTypeInfo(typeName) ||
                 entityTypes_.find(typeName) != entityTypes_.end())
             {
                 isLocalMethod = true;

@@ -91,6 +91,10 @@ void Sema::analyzeGlobalVarDecl(GlobalVarDecl &decl)
 
 void Sema::analyzeValueDecl(ValueDecl &decl)
 {
+    // Generic types are registered in the first pass; skip body analysis
+    if (!decl.genericParams.empty())
+        return;
+
     auto selfType = types::value(decl.name);
     currentSelfType_ = selfType;
 
@@ -223,11 +227,17 @@ template void Sema::registerTypeMembers<InterfaceDecl>(InterfaceDecl &, bool);
 
 void Sema::registerEntityMembers(EntityDecl &decl)
 {
+    // Skip member registration for generic types - done during instantiation
+    if (!decl.genericParams.empty())
+        return;
     registerTypeMembers(decl, true);
 }
 
 void Sema::registerValueMembers(ValueDecl &decl)
 {
+    // Skip member registration for generic types - done during instantiation
+    if (!decl.genericParams.empty())
+        return;
     registerTypeMembers(decl, true);
 }
 
@@ -238,6 +248,10 @@ void Sema::registerInterfaceMembers(InterfaceDecl &decl)
 
 void Sema::analyzeEntityDecl(EntityDecl &decl)
 {
+    // Generic types are registered in the first pass; skip body analysis
+    if (!decl.genericParams.empty())
+        return;
+
     auto selfType = types::entity(decl.name);
     currentSelfType_ = selfType;
 
@@ -442,6 +456,11 @@ void Sema::analyzeInterfaceDecl(InterfaceDecl &decl)
 
 void Sema::analyzeFunctionDecl(FunctionDecl &decl)
 {
+    // Generic functions are registered in the first pass; skip body analysis
+    // The body will be analyzed when the function is instantiated
+    if (!decl.genericParams.empty())
+        return;
+
     currentFunction_ = &decl;
     expectedReturnType_ =
         decl.returnType ? resolveTypeNode(decl.returnType.get()) : types::voidType();

@@ -199,6 +199,10 @@ void Lowerer::lowerGlobalVarDecl(GlobalVarDecl &decl)
 
 void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
 {
+    // Skip generic functions - they will be instantiated when called
+    if (!decl.genericParams.empty())
+        return;
+
     // Determine return type
     TypeRef returnType =
         decl.returnType ? sema_.resolveType(decl.returnType.get()) : types::voidType();
@@ -324,8 +328,297 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
     currentReturnType_ = nullptr;
 }
 
+void Lowerer::lowerGenericFunctionInstantiation(const std::string &mangledName,
+                                                 FunctionDecl *decl)
+{
+    // Push substitution context so type parameters resolve correctly
+    bool pushedContext = sema_.pushSubstitutionContext(mangledName);
+
+    // Get the instantiated function type from Sema
+    // The types should resolve with substitutions active
+    TypeRef returnType =
+        decl->returnType ? sema_.resolveType(decl->returnType.get()) : types::voidType();
+    Type ilReturnType = mapType(returnType);
+
+    // Build parameter list
+    std::vector<il::core::Param> params;
+    params.reserve(decl->params.size());
+    for (const auto &param : decl->params)
+    {
+        TypeRef paramType = param.type ? sema_.resolveType(param.type.get()) : types::unknown();
+        params.push_back({param.name, mapType(paramType)});
+    }
+
+    // Track this function as defined in this module
+    definedFunctions_.insert(mangledName);
+
+    // Create function
+    currentFunc_ = &builder_->startFunction(mangledName, ilReturnType, params);
+    currentReturnType_ = returnType;
+    blockMgr_.bind(builder_.get(), currentFunc_);
+    locals_.clear();
+    slots_.clear();
+    localTypes_.clear();
+
+    // Create entry block with the function's params as block params
+    builder_->createBlock(*currentFunc_, "entry_0", currentFunc_->params);
+    size_t entryIdx = currentFunc_->blocks.size() - 1;
+    setBlock(entryIdx);
+
+    // Define parameters using slot-based storage
+    const auto &blockParams = currentFunc_->blocks[entryIdx].params;
+    for (size_t i = 0; i < decl->params.size() && i < blockParams.size(); ++i)
+    {
+        TypeRef paramType =
+            decl->params[i].type ? sema_.resolveType(decl->params[i].type.get()) : types::unknown();
+        Type ilParamType = mapType(paramType);
+
+        // Create slot and store the parameter value
+        createSlot(decl->params[i].name, ilParamType);
+        storeToSlot(decl->params[i].name, Value::temp(blockParams[i].id), ilParamType);
+        localTypes_[decl->params[i].name] = paramType;
+    }
+
+    // Lower function body
+    if (decl->body)
+    {
+        lowerStmt(decl->body.get());
+    }
+
+    // Add implicit return if needed
+    if (!isTerminated())
+    {
+        if (ilReturnType.kind == Type::Kind::Void)
+        {
+            emitRetVoid();
+        }
+        else
+        {
+            Value defaultValue;
+            switch (ilReturnType.kind)
+            {
+                case Type::Kind::I1:
+                    defaultValue = Value::constBool(false);
+                    break;
+                case Type::Kind::I64:
+                case Type::Kind::I16:
+                case Type::Kind::I32:
+                    defaultValue = Value::constInt(0);
+                    break;
+                case Type::Kind::F64:
+                    defaultValue = Value::constFloat(0.0);
+                    break;
+                case Type::Kind::Str:
+                    defaultValue = emitConstStr("");
+                    break;
+                case Type::Kind::Ptr:
+                    defaultValue = Value::null();
+                    break;
+                default:
+                    defaultValue = Value::constInt(0);
+                    break;
+            }
+            emitRet(defaultValue);
+        }
+    }
+
+    // Pop substitution context
+    if (pushedContext)
+    {
+        sema_.popTypeParams();
+    }
+
+    currentFunc_ = nullptr;
+    currentReturnType_ = nullptr;
+}
+
+const ValueTypeInfo *Lowerer::getOrCreateValueTypeInfo(const std::string &typeName)
+{
+    // Check existing cache
+    auto it = valueTypes_.find(typeName);
+    if (it != valueTypes_.end())
+    {
+        return &it->second;
+    }
+
+    // Check if this is an instantiated generic
+    if (!sema_.isInstantiatedGeneric(typeName))
+    {
+        return nullptr;
+    }
+
+    // Get the original generic declaration
+    Decl *genericDecl = sema_.getGenericDeclForInstantiation(typeName);
+    if (!genericDecl || genericDecl->kind != DeclKind::Value)
+    {
+        return nullptr;
+    }
+
+    auto *valueDecl = static_cast<ValueDecl *>(genericDecl);
+
+    // Build ValueTypeInfo for the instantiated type
+    ValueTypeInfo info;
+    info.name = typeName;
+    info.totalSize = 0;
+
+    for (auto &member : valueDecl->members)
+    {
+        if (member->kind == DeclKind::Field)
+        {
+            auto *field = static_cast<FieldDecl *>(member.get());
+            // Get the substituted field type from Sema
+            TypeRef fieldType = sema_.getFieldType(typeName, field->name);
+            if (!fieldType)
+                fieldType = types::unknown();
+
+            Type ilFieldType = mapType(fieldType);
+            size_t alignment = getILTypeAlignment(ilFieldType);
+
+            FieldLayout layout;
+            layout.name = field->name;
+            layout.type = fieldType;
+            layout.offset = alignTo(info.totalSize, alignment);
+            layout.size = getILTypeSize(ilFieldType);
+
+            info.fieldIndex[field->name] = info.fields.size();
+            info.fields.push_back(layout);
+            info.totalSize = layout.offset + layout.size;
+        }
+        else if (member->kind == DeclKind::Method)
+        {
+            auto *method = static_cast<MethodDecl *>(member.get());
+            info.methodMap[method->name] = method;
+            info.methods.push_back(method);
+        }
+    }
+
+    // Store the value type info
+    valueTypes_[typeName] = std::move(info);
+
+    // Defer method lowering until after all declarations are processed
+    // (we may be in the middle of lowering another function body)
+    pendingValueInstantiations_.push_back(typeName);
+
+    return &valueTypes_[typeName];
+}
+
+const EntityTypeInfo *Lowerer::getOrCreateEntityTypeInfo(const std::string &typeName)
+{
+    // Check existing cache
+    auto it = entityTypes_.find(typeName);
+    if (it != entityTypes_.end())
+    {
+        return &it->second;
+    }
+
+    // Check if this is an instantiated generic
+    if (!sema_.isInstantiatedGeneric(typeName))
+    {
+        return nullptr;
+    }
+
+    // Get the original generic declaration
+    Decl *genericDecl = sema_.getGenericDeclForInstantiation(typeName);
+    if (!genericDecl || genericDecl->kind != DeclKind::Entity)
+    {
+        return nullptr;
+    }
+
+    auto *entityDecl = static_cast<EntityDecl *>(genericDecl);
+
+    // Build EntityTypeInfo for the instantiated type
+    EntityTypeInfo info;
+    info.name = typeName;
+    info.baseClass = entityDecl->baseClass;
+    info.totalSize = kEntityFieldsOffset; // Space for header + vtable ptr
+    info.classId = nextClassId_++;
+    info.vtableName = "__vtable_" + typeName;
+
+    // Store implemented interfaces
+    for (const auto &iface : entityDecl->interfaces)
+    {
+        info.implementedInterfaces.insert(iface);
+    }
+
+    // Handle inheritance (if base class exists, copy its fields)
+    if (!entityDecl->baseClass.empty())
+    {
+        auto parentIt = entityTypes_.find(entityDecl->baseClass);
+        if (parentIt != entityTypes_.end())
+        {
+            const EntityTypeInfo &parent = parentIt->second;
+            for (const auto &parentField : parent.fields)
+            {
+                info.fieldIndex[parentField.name] = info.fields.size();
+                info.fields.push_back(parentField);
+            }
+            info.totalSize = parent.totalSize;
+            info.vtable = parent.vtable;
+            info.vtableIndex = parent.vtableIndex;
+        }
+    }
+
+    // Process members
+    for (auto &member : entityDecl->members)
+    {
+        if (member->kind == DeclKind::Field)
+        {
+            auto *field = static_cast<FieldDecl *>(member.get());
+            // Get the substituted field type from Sema
+            TypeRef fieldType = sema_.getFieldType(typeName, field->name);
+            if (!fieldType)
+                fieldType = types::unknown();
+
+            Type ilFieldType = mapType(fieldType);
+            size_t alignment = getILTypeAlignment(ilFieldType);
+
+            FieldLayout layout;
+            layout.name = field->name;
+            layout.type = fieldType;
+            layout.offset = alignTo(info.totalSize, alignment);
+            layout.size = getILTypeSize(ilFieldType);
+
+            info.fieldIndex[field->name] = info.fields.size();
+            info.fields.push_back(layout);
+            info.totalSize = layout.offset + layout.size;
+        }
+        else if (member->kind == DeclKind::Method)
+        {
+            auto *method = static_cast<MethodDecl *>(member.get());
+            info.methodMap[method->name] = method;
+            info.methods.push_back(method);
+
+            // Build vtable
+            std::string methodQualName = typeName + "." + method->name;
+            auto vtableIt = info.vtableIndex.find(method->name);
+            if (vtableIt != info.vtableIndex.end())
+            {
+                info.vtable[vtableIt->second] = methodQualName;
+            }
+            else
+            {
+                info.vtableIndex[method->name] = info.vtable.size();
+                info.vtable.push_back(methodQualName);
+            }
+        }
+    }
+
+    // Store the entity type info
+    entityTypes_[typeName] = std::move(info);
+
+    // Defer method lowering until after all declarations are processed
+    // (we may be in the middle of lowering another function body)
+    pendingEntityInstantiations_.push_back(typeName);
+
+    return &entityTypes_[typeName];
+}
+
 void Lowerer::lowerValueDecl(ValueDecl &decl)
 {
+    // Skip uninstantiated generic types - they're lowered during instantiation
+    if (!decl.genericParams.empty())
+        return;
+
     // Use qualified name for value types inside namespaces
     std::string qualifiedName = qualifyName(decl.name);
 
@@ -377,6 +670,10 @@ void Lowerer::lowerValueDecl(ValueDecl &decl)
 
 void Lowerer::lowerEntityDecl(EntityDecl &decl)
 {
+    // Skip uninstantiated generic types - they're lowered during instantiation
+    if (!decl.genericParams.empty())
+        return;
+
     // Compute field layout (entity fields start after object header + vtable ptr)
     // Use qualified name for entities inside namespaces
     std::string qualifiedName = qualifyName(decl.name);
@@ -525,16 +822,32 @@ void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, boo
     }
     else
     {
-        auto it = valueTypes_.find(typeName);
-        if (it == valueTypes_.end())
+        const ValueTypeInfo *valueInfo = getOrCreateValueTypeInfo(typeName);
+        if (!valueInfo)
             return;
-        currentValueType_ = &it->second;
+        currentValueType_ = valueInfo;
         currentEntityType_ = nullptr;
     }
 
-    // Determine return type
-    TypeRef returnType =
-        decl.returnType ? sema_.resolveType(decl.returnType.get()) : types::voidType();
+    // Look up cached method type - this has already-substituted types for generics
+    TypeRef methodType = sema_.getMethodType(typeName, decl.name);
+    std::vector<TypeRef> cachedParamTypes;
+    TypeRef returnType = types::voidType();
+    if (methodType && methodType->kind == TypeKindSem::Function)
+    {
+        cachedParamTypes = methodType->paramTypes();
+        returnType = methodType->returnType();
+    }
+    else
+    {
+        // Fallback to direct resolution for non-generic types
+        returnType = decl.returnType ? sema_.resolveType(decl.returnType.get()) : types::voidType();
+        for (const auto &param : decl.params)
+        {
+            TypeRef paramType = param.type ? sema_.resolveType(param.type.get()) : types::unknown();
+            cachedParamTypes.push_back(paramType);
+        }
+    }
     Type ilReturnType = mapType(returnType);
 
     // Build parameter list: self (ptr) + declared params
@@ -542,10 +855,11 @@ void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, boo
     params.reserve(decl.params.size() + 1);
     params.push_back({"self", Type(Type::Kind::Ptr)});
 
-    for (const auto &param : decl.params)
+    for (size_t i = 0; i < decl.params.size(); ++i)
     {
-        TypeRef paramType = param.type ? sema_.resolveType(param.type.get()) : types::unknown();
-        params.push_back({param.name, mapType(paramType)});
+        // Use cached param type if available, otherwise resolve from AST
+        TypeRef paramType = (i < cachedParamTypes.size()) ? cachedParamTypes[i] : types::unknown();
+        params.push_back({decl.params[i].name, mapType(paramType)});
     }
 
     // Mangle method name: TypeName.methodName
@@ -556,6 +870,7 @@ void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, boo
     blockMgr_.bind(builder_.get(), currentFunc_);
     locals_.clear();
     slots_.clear();
+    localTypes_.clear();
 
     // Create entry block with the function's params as block params
     // (required for proper VM argument passing)
@@ -578,12 +893,14 @@ void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, boo
         // Block param i+1 corresponds to method param i (after self)
         if (i + 1 < blockParams.size())
         {
-            TypeRef paramType = decl.params[i].type ? sema_.resolveType(decl.params[i].type.get())
-                                                    : types::unknown();
+            // Use cached param type if available
+            TypeRef paramType = (i < cachedParamTypes.size()) ? cachedParamTypes[i] : types::unknown();
             Type ilParamType = mapType(paramType);
 
             createSlot(decl.params[i].name, ilParamType);
             storeToSlot(decl.params[i].name, Value::temp(blockParams[i + 1].id), ilParamType);
+            // Store parameter type for expression lowering
+            localTypes_[decl.params[i].name] = paramType;
         }
     }
 

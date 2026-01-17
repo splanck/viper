@@ -32,20 +32,21 @@ LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
                                              Value selfValue,
                                              CallExpr *expr)
 {
-    // Get return type - search up inheritance chain if needed
-    MethodDecl *method = entityInfo.findMethod(methodName);
-    std::string parentName = entityInfo.baseClass;
-    while (!method && !parentName.empty())
-    {
-        auto parentIt = entityTypes_.find(parentName);
-        if (parentIt == entityTypes_.end()) break;
-        method = parentIt->second.findMethod(methodName);
-        parentName = parentIt->second.baseClass;
-    }
-
+    // Get return type from cached method type - search up inheritance chain if needed
     TypeRef returnType = types::voidType();
-    if (method && method->returnType)
-        returnType = sema_.resolveType(method->returnType.get());
+    std::string searchType = entityInfo.name;
+    while (!searchType.empty())
+    {
+        TypeRef methodType = sema_.getMethodType(searchType, methodName);
+        if (methodType && methodType->kind == TypeKindSem::Function)
+        {
+            returnType = methodType->returnType();
+            break;
+        }
+        auto it = entityTypes_.find(searchType);
+        if (it == entityTypes_.end()) break;
+        searchType = it->second.baseClass;
+    }
     Type ilReturnType = mapType(returnType);
 
     // Build argument list: self + call args
@@ -154,13 +155,15 @@ LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
 
 LowerResult Lowerer::lowerInterfaceMethodCall(const InterfaceTypeInfo &ifaceInfo,
                                                const std::string &methodName,
-                                               MethodDecl *method,
+                                               MethodDecl * /*method*/,
                                                Value selfValue,
                                                CallExpr *expr)
 {
+    // Get return type from cached interface method type
     TypeRef returnType = types::voidType();
-    if (method && method->returnType)
-        returnType = sema_.resolveType(method->returnType.get());
+    TypeRef methodType = sema_.getMethodType(ifaceInfo.name, methodName);
+    if (methodType && methodType->kind == TypeKindSem::Function)
+        returnType = methodType->returnType();
     Type ilReturnType = mapType(returnType);
 
     // Build argument list

@@ -371,6 +371,30 @@ Lowerer::Type Lowerer::mapType(TypeRef type)
     return Type(toILType(*type));
 }
 
+TypeRef Lowerer::reverseMapType(Type ilType)
+{
+    switch (ilType.kind)
+    {
+        case Type::Kind::I64:
+            return types::integer();
+        case Type::Kind::F64:
+            return types::number();
+        case Type::Kind::I1:
+            return types::boolean();
+        case Type::Kind::Str:
+            return types::string();
+        case Type::Kind::I32:
+        case Type::Kind::I16:
+            return types::byte();
+        case Type::Kind::Ptr:
+            return types::ptr();
+        case Type::Kind::Void:
+            return types::voidType();
+        default:
+            return types::unknown();
+    }
+}
+
 size_t Lowerer::getILTypeSize(Type type)
 {
     switch (type.kind)

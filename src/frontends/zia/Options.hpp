@@ -45,7 +45,7 @@ struct CompilerOptions
     /// @details O1 is the default, providing a good balance of compilation
     ///          speed and runtime performance. Use O0 for debugging or O2
     ///          for maximum performance.
-    OptLevel optLevel{OptLevel::O1};
+    OptLevel optLevel{OptLevel::O0};
 };
 
 } // namespace il::frontends::zia

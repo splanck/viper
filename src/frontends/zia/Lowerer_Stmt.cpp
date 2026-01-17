@@ -95,6 +95,13 @@ void Lowerer::lowerVarStmt(VarStmt *stmt)
         initValue = result.value;
         ilType = result.type;
 
+        // In generic contexts, semantic types may be unknown because generic
+        // function bodies aren't fully analyzed. Use the lowered expression type.
+        if (!stmt->type && (!varType || varType->kind == TypeKindSem::Unknown))
+        {
+            varType = reverseMapType(ilType);
+        }
+
         // Handle integer-to-number conversion when declaring Number with Integer initializer
         if (varType && varType->kind == TypeKindSem::Number && ilType.kind == Type::Kind::I64)
         {

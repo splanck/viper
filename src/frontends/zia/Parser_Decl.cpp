@@ -181,8 +181,8 @@ DeclPtr Parser::parseFunctionDecl()
 
     auto func = std::make_unique<FunctionDecl>(loc, std::move(name));
 
-    // Generic parameters
-    func->genericParams = parseGenericParams();
+    // Generic parameters with optional constraints
+    func->genericParams = parseGenericParamsWithConstraints(func->genericParamConstraints);
 
     // Parameters
     if (!expect(TokenKind::LParen, "("))
@@ -333,6 +333,49 @@ std::vector<std::string> Parser::parseGenericParams()
         }
         Token nameTok = advance();
         params.push_back(nameTok.text);
+    } while (match(TokenKind::Comma));
+
+    if (!expect(TokenKind::RBracket, "]"))
+        return {};
+
+    return params;
+}
+
+std::vector<std::string> Parser::parseGenericParamsWithConstraints(std::vector<std::string> &constraints)
+{
+    std::vector<std::string> params;
+    constraints.clear();
+
+    if (!match(TokenKind::LBracket))
+    {
+        return params;
+    }
+
+    do
+    {
+        if (!check(TokenKind::Identifier))
+        {
+            error("expected type parameter name");
+            return {};
+        }
+        Token nameTok = advance();
+        params.push_back(nameTok.text);
+
+        // Check for optional constraint: T: ConstraintName
+        if (match(TokenKind::Colon))
+        {
+            if (!check(TokenKind::Identifier))
+            {
+                error("expected constraint interface name after ':'");
+                return {};
+            }
+            Token constraintTok = advance();
+            constraints.push_back(constraintTok.text);
+        }
+        else
+        {
+            constraints.push_back(""); // No constraint
+        }
     } while (match(TokenKind::Comma));
 
     if (!expect(TokenKind::RBracket, "]"))

@@ -105,7 +105,9 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
     auto slotIt = slots_.find(expr->name);
     if (slotIt != slots_.end())
     {
-        TypeRef type = sema_.typeOf(expr);
+        // Use localTypes_ first (set for parameters in generic method bodies), fall back to sema_.typeOf()
+        auto localTypeIt = localTypes_.find(expr->name);
+        TypeRef type = (localTypeIt != localTypes_.end()) ? localTypeIt->second : sema_.typeOf(expr);
         Type ilType = mapType(type);
         Value loaded = loadFromSlot(expr->name, ilType);
         return {loaded, ilType};
@@ -114,7 +116,8 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
     Value *local = lookupLocal(expr->name);
     if (local)
     {
-        TypeRef type = sema_.typeOf(expr);
+        auto localTypeIt = localTypes_.find(expr->name);
+        TypeRef type = (localTypeIt != localTypes_.end()) ? localTypeIt->second : sema_.typeOf(expr);
         return {*local, mapType(type)};
     }
 
@@ -279,11 +282,10 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
 
     // Check if base is a value type
     std::string typeName = baseType->name;
-    auto it = valueTypes_.find(typeName);
-    if (it != valueTypes_.end())
+    const ValueTypeInfo *info = getOrCreateValueTypeInfo(typeName);
+    if (info)
     {
-        const ValueTypeInfo &info = it->second;
-        const FieldLayout *field = info.findField(expr->field);
+        const FieldLayout *field = info->findField(expr->field);
 
         if (field)
         {
@@ -312,10 +314,10 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
     }
 
     // Check if base is an entity type
-    auto entityIt = entityTypes_.find(typeName);
-    if (entityIt != entityTypes_.end())
+    const EntityTypeInfo *entityInfoPtr = getOrCreateEntityTypeInfo(typeName);
+    if (entityInfoPtr)
     {
-        const EntityTypeInfo &info = entityIt->second;
+        const EntityTypeInfo &info = *entityInfoPtr;
         const FieldLayout *field = info.findField(expr->field);
 
         if (field)
@@ -440,10 +442,10 @@ LowerResult Lowerer::lowerNew(NewExpr *expr)
     // BUG-010 fix: Check for value type construction via 'new' keyword
     // Value types can be instantiated with 'new' just like entity types
     std::string typeName = type->name;
-    auto valueIt = valueTypes_.find(typeName);
-    if (valueIt != valueTypes_.end())
+    const ValueTypeInfo *valueInfo = getOrCreateValueTypeInfo(typeName);
+    if (valueInfo)
     {
-        const ValueTypeInfo &info = valueIt->second;
+        const ValueTypeInfo &info = *valueInfo;
 
         // Lower arguments
         std::vector<Value> argValues;
@@ -507,14 +509,14 @@ LowerResult Lowerer::lowerNew(NewExpr *expr)
     }
 
     // Find the entity type info
-    auto it = entityTypes_.find(typeName);
-    if (it == entityTypes_.end())
+    const EntityTypeInfo *infoPtr = getOrCreateEntityTypeInfo(typeName);
+    if (!infoPtr)
     {
         // Not an entity type
         return {Value::null(), Type(Type::Kind::Ptr)};
     }
 
-    const EntityTypeInfo &info = it->second;
+    const EntityTypeInfo &info = *infoPtr;
 
     // Lower arguments
     std::vector<Value> argValues;
