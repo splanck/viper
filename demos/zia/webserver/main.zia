@@ -10,7 +10,7 @@ bind "./threadpool";
 // ============================================================================
 
 final MAX_REQUEST_SIZE = 8192;
-final VERSION = "0.5.0";
+final VERSION = "0.6.0";
 
 // Web root directory (relative to server location)
 var webRoot: String;
@@ -60,6 +60,61 @@ var reqMethod: String;
 var reqPath: String;
 var reqVersion: String;
 var reqHost: String;
+var reqIfModifiedSince: Integer;  // Unix timestamp, 0 if not present
+
+// Parse a header line and extract value for known headers
+func parseHeader(line: String) {
+    var len = Viper.String.Length(line);
+
+    // Find colon separator
+    var colonPos = -1;
+    var i = 0;
+    while i < len {
+        var ch = Viper.String.Substring(line, i, 1);
+        if ch == ":" {
+            colonPos = i;
+            break;
+        }
+        i = i + 1;
+    }
+
+    if colonPos <= 0 {
+        return;
+    }
+
+    // Extract header name (case-insensitive check)
+    var headerName = Viper.String.Substring(line, 0, colonPos);
+
+    // Skip colon and optional space
+    var valueStart = colonPos + 1;
+    if valueStart < len {
+        var ch = Viper.String.Substring(line, valueStart, 1);
+        if ch == " " {
+            valueStart = valueStart + 1;
+        }
+    }
+
+    // Extract value (trim trailing whitespace)
+    var valueLen = len - valueStart;
+    var value = "";
+    if valueLen > 0 {
+        value = Viper.String.Substring(line, valueStart, valueLen);
+        // Trim trailing \r if present
+        var vLen = Viper.String.Length(value);
+        if vLen > 0 {
+            var lastCh = Viper.String.Substring(value, vLen - 1, 1);
+            if lastCh == "\r" {
+                value = Viper.String.Substring(value, 0, vLen - 1);
+            }
+        }
+    }
+
+    // Check known headers (case-insensitive)
+    if headerName == "Host" || headerName == "host" || headerName == "HOST" {
+        reqHost = value;
+    }
+    // If-Modified-Since parsing would require date parsing - simplified for now
+}
 
 func parseRequest(rawRequest: String) -> Boolean {
     // Reset
@@ -67,63 +122,88 @@ func parseRequest(rawRequest: String) -> Boolean {
     reqPath = "";
     reqVersion = "";
     reqHost = "";
+    reqIfModifiedSince = 0;
 
-    // Find end of first line
     var len = Viper.String.Length(rawRequest);
     var i = 0;
-    var lineEnd = -1;
+    var lineStart = 0;
+    var lineCount = 0;
 
-    while i < len {
-        var ch = Viper.String.Substring(rawRequest, i, 1);
-        if ch == "\r" || ch == "\n" {
-            lineEnd = i;
-            break;
+    // Parse line by line
+    while i <= len {
+        var atEnd = i == len;
+        var isNewline = false;
+
+        if atEnd == false {
+            var ch = Viper.String.Substring(rawRequest, i, 1);
+            isNewline = ch == "\n";
         }
-        i = i + 1;
-    }
 
-    if lineEnd == -1 {
-        lineEnd = len;
-    }
-
-    // Parse request line
-    var requestLine = Viper.String.Substring(rawRequest, 0, lineEnd);
-
-    // Parse "METHOD PATH VERSION" - find first and second space
-    var firstSpace = -1;
-    var secondSpace = -1;
-    i = 0;
-    while i < lineEnd {
-        var ch = Viper.String.Substring(requestLine, i, 1);
-        if ch == " " {
-            if firstSpace == -1 {
-                firstSpace = i;
-            } else {
-                secondSpace = i;
-                break;
+        if isNewline || atEnd {
+            var lineLen = i - lineStart;
+            // Remove \r if present
+            if lineLen > 0 {
+                var checkPos = lineStart + lineLen - 1;
+                if checkPos < len {
+                    var lastCh = Viper.String.Substring(rawRequest, checkPos, 1);
+                    if lastCh == "\r" {
+                        lineLen = lineLen - 1;
+                    }
+                }
             }
+
+            if lineLen > 0 {
+                var line = Viper.String.Substring(rawRequest, lineStart, lineLen);
+
+                if lineCount == 0 {
+                    // Parse request line "METHOD PATH VERSION"
+                    var firstSpace = -1;
+                    var secondSpace = -1;
+                    var j = 0;
+                    while j < lineLen {
+                        var ch = Viper.String.Substring(line, j, 1);
+                        if ch == " " {
+                            if firstSpace == -1 {
+                                firstSpace = j;
+                            } else {
+                                secondSpace = j;
+                                break;
+                            }
+                        }
+                        j = j + 1;
+                    }
+
+                    if firstSpace == -1 {
+                        return false;
+                    }
+
+                    reqMethod = Viper.String.Substring(line, 0, firstSpace);
+
+                    if secondSpace == -1 {
+                        var pathLen = lineLen - firstSpace - 1;
+                        reqPath = Viper.String.Substring(line, firstSpace + 1, pathLen);
+                    } else {
+                        var pathLen = secondSpace - firstSpace - 1;
+                        reqPath = Viper.String.Substring(line, firstSpace + 1, pathLen);
+                        var versionLen = lineLen - secondSpace - 1;
+                        reqVersion = Viper.String.Substring(line, secondSpace + 1, versionLen);
+                    }
+                } else {
+                    // Parse header line
+                    parseHeader(line);
+                }
+
+                lineCount = lineCount + 1;
+            } else {
+                // Empty line = end of headers
+                if lineCount > 0 {
+                    break;
+                }
+            }
+
+            lineStart = i + 1;
         }
         i = i + 1;
-    }
-
-    if firstSpace == -1 {
-        return false;
-    }
-
-    // Extract method
-    reqMethod = Viper.String.Substring(requestLine, 0, firstSpace);
-
-    // Extract path
-    if secondSpace == -1 {
-        // No version specified
-        var pathLen = lineEnd - firstSpace - 1;
-        reqPath = Viper.String.Substring(requestLine, firstSpace + 1, pathLen);
-    } else {
-        var pathLen = secondSpace - firstSpace - 1;
-        reqPath = Viper.String.Substring(requestLine, firstSpace + 1, pathLen);
-        // Extract version
-        var versionLen = lineEnd - secondSpace - 1;
-        reqVersion = Viper.String.Substring(requestLine, secondSpace + 1, versionLen);
     }
 
     return reqMethod != "" && reqPath != "";
@@ -133,7 +213,9 @@ func parseRequest(rawRequest: String) -> Boolean {
 // HTTP RESPONSE BUILDING
 // ============================================================================
 
-func buildResponse(statusCode: Integer, statusText: String, contentType: String, body: String) -> String {
+// Build response with optional Last-Modified header and optional body inclusion
+func buildResponseFull(statusCode: Integer, statusText: String, contentType: String,
+                       body: String, lastModified: Integer, includeBody: Boolean) -> String {
     var bodyLen = Viper.String.Length(body);
 
     var response = "HTTP/1.1 ";
@@ -147,18 +229,50 @@ func buildResponse(statusCode: Integer, statusText: String, contentType: String,
     response = response + "Content-Length: ";
     response = response + Viper.Fmt.Int(bodyLen);
     response = response + "\r\n";
+
+    // Add Last-Modified header if provided
+    if lastModified > 0 {
+        response = response + "Last-Modified: ";
+        response = response + formatHttpDate(lastModified);
+        response = response + "\r\n";
+    }
+
     response = response + "Connection: close\r\n";
     response = response + "Server: Viper/";
     response = response + VERSION;
     response = response + "\r\n";
     response = response + "\r\n";
-    response = response + body;
+
+    // Only include body for non-HEAD requests
+    if includeBody {
+        response = response + body;
+    }
 
     return response;
 }
 
+func buildResponse(statusCode: Integer, statusText: String, contentType: String, body: String) -> String {
+    return buildResponseFull(statusCode, statusText, contentType, body, 0, true);
+}
+
+// Format HTTP date from Unix timestamp (simplified - just timestamp for now)
+// Full HTTP date format: "Sun, 06 Nov 1994 08:49:37 GMT"
+func formatHttpDate(timestamp: Integer) -> String {
+    // For now, return Unix timestamp as string
+    // Full date formatting would require day-of-week calculation
+    return Viper.Fmt.Int(timestamp);
+}
+
 func response200(contentType: String, body: String) -> String {
     return buildResponse(200, "OK", contentType, body);
+}
+
+func response200WithMod(contentType: String, body: String, lastMod: Integer, isHead: Boolean) -> String {
+    return buildResponseFull(200, "OK", contentType, body, lastMod, isHead == false);
+}
+
+func response304() -> String {
+    return buildResponseFull(304, "Not Modified", "text/plain", "", 0, false);
 }
 
 func response404() -> String {
@@ -322,7 +436,12 @@ func buildFullPath(relativePath: String) -> String {
     return Viper.IO.Path.Join(webRoot, relativePath);
 }
 
-func serveStaticFile(path: String) -> String {
+func getFileModTime(fullPath: String) -> Integer {
+    return Viper.IO.File.Modified(fullPath);
+}
+
+// Serve static file with support for HEAD requests
+func serveStaticFile(path: String, isHead: Boolean) -> String {
     // Normalize and validate path
     var normalizedPath = normalizePath(path);
 
@@ -345,11 +464,14 @@ func serveStaticFile(path: String) -> String {
         return response404();
     }
 
+    // Get file modification time
+    var modTime = getFileModTime(buildFullPath(relativePath));
+
     // Read file content
     var content = readFileContent(buildFullPath(relativePath));
     var mimeType = getFileMimeType(buildFullPath(relativePath));
 
-    return response200(mimeType, content);
+    return response200WithMod(mimeType, content, modTime, isHead);
 }
 
 // ============================================================================
@@ -424,8 +546,11 @@ func handleClient(client: Ptr) {
         return;
     }
 
+    // Determine if this is a HEAD request (headers only, no body)
+    var isHead = reqMethod == "HEAD";
+
     // Serve static file
-    var response = serveStaticFile(reqPath);
+    var response = serveStaticFile(reqPath, isHead);
     responseSize = Viper.String.Length(response);
 
     // Extract status code from response (first line: "HTTP/1.1 XXX ...")
