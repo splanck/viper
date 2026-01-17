@@ -618,6 +618,7 @@ void rt_term_say(rt_string s)
 {
     rt_print_str(s);
     rt_output_str("\n");
+    rt_output_flush();
 }
 
 /// @brief Print an integer followed by a newline.
@@ -626,6 +627,7 @@ void rt_term_say_i64(int64_t v)
 {
     rt_print_i64(v);
     rt_output_str("\n");
+    rt_output_flush();
 }
 
 /// @brief Print a floating-point number followed by a newline.
@@ -634,6 +636,7 @@ void rt_term_say_f64(double v)
 {
     rt_print_f64(v);
     rt_output_str("\n");
+    rt_output_flush();
 }
 
 /// @brief Print a boolean as "true" or "false" followed by a newline.
@@ -641,6 +644,7 @@ void rt_term_say_f64(double v)
 void rt_term_say_bool(int8_t v)
 {
     rt_output_str(v ? "true\n" : "false\n");
+    rt_output_flush();
 }
 
 /// @brief Print a string without a trailing newline.

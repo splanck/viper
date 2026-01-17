@@ -1,0 +1,441 @@
+// Viper Web Server - A HTTP server written in Zia
+// Note: Threading blocked by BUG-002 (Zia doesn't support function pointers)
+module main;
+
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
+
+final DEFAULT_PORT = 8080;
+final MAX_REQUEST_SIZE = 8192;
+final VERSION = "0.2.0";
+
+// Web root directory (relative to server location)
+var webRoot: String;
+
+// ============================================================================
+// HTTP REQUEST PARSING
+// ============================================================================
+
+// Parse HTTP request line to extract method, path, and version
+// Returns true if parsing succeeded
+func parseRequestLine(line: String, method: String, path: String, version: String) -> Boolean {
+    // Find first space (after method)
+    var len = Viper.String.Length(line);
+    var i = 0;
+    var firstSpace = -1;
+    var secondSpace = -1;
+
+    while i < len {
+        var ch = Viper.String.Substring(line, i, 1);
+        if ch == " " {
+            if firstSpace == -1 {
+                firstSpace = i;
+            } else {
+                secondSpace = i;
+                break;
+            }
+        }
+        i = i + 1;
+    }
+
+    if firstSpace == -1 || secondSpace == -1 {
+        return false;
+    }
+
+    // Extract parts
+    method = Viper.String.Substring(line, 0, firstSpace);
+    var pathLen = secondSpace - firstSpace - 1;
+    path = Viper.String.Substring(line, firstSpace + 1, pathLen);
+    var versionLen = len - secondSpace - 1;
+    version = Viper.String.Substring(line, secondSpace + 1, versionLen);
+
+    return true;
+}
+
+// Simple request structure using module-level variables
+var reqMethod: String;
+var reqPath: String;
+var reqVersion: String;
+var reqHost: String;
+
+func parseRequest(rawRequest: String) -> Boolean {
+    // Reset
+    reqMethod = "";
+    reqPath = "";
+    reqVersion = "";
+    reqHost = "";
+
+    // Find end of first line
+    var len = Viper.String.Length(rawRequest);
+    var i = 0;
+    var lineEnd = -1;
+
+    while i < len {
+        var ch = Viper.String.Substring(rawRequest, i, 1);
+        if ch == "\r" || ch == "\n" {
+            lineEnd = i;
+            break;
+        }
+        i = i + 1;
+    }
+
+    if lineEnd == -1 {
+        lineEnd = len;
+    }
+
+    // Parse request line
+    var requestLine = Viper.String.Substring(rawRequest, 0, lineEnd);
+
+    // Parse "METHOD PATH VERSION" - find first and second space
+    var firstSpace = -1;
+    var secondSpace = -1;
+    i = 0;
+    while i < lineEnd {
+        var ch = Viper.String.Substring(requestLine, i, 1);
+        if ch == " " {
+            if firstSpace == -1 {
+                firstSpace = i;
+            } else {
+                secondSpace = i;
+                break;
+            }
+        }
+        i = i + 1;
+    }
+
+    if firstSpace == -1 {
+        return false;
+    }
+
+    // Extract method
+    reqMethod = Viper.String.Substring(requestLine, 0, firstSpace);
+
+    // Extract path
+    if secondSpace == -1 {
+        // No version specified
+        var pathLen = lineEnd - firstSpace - 1;
+        reqPath = Viper.String.Substring(requestLine, firstSpace + 1, pathLen);
+    } else {
+        var pathLen = secondSpace - firstSpace - 1;
+        reqPath = Viper.String.Substring(requestLine, firstSpace + 1, pathLen);
+        // Extract version
+        var versionLen = lineEnd - secondSpace - 1;
+        reqVersion = Viper.String.Substring(requestLine, secondSpace + 1, versionLen);
+    }
+
+    return reqMethod != "" && reqPath != "";
+}
+
+// ============================================================================
+// HTTP RESPONSE BUILDING
+// ============================================================================
+
+func buildResponse(statusCode: Integer, statusText: String, contentType: String, body: String) -> String {
+    var bodyLen = Viper.String.Length(body);
+
+    var response = "HTTP/1.1 ";
+    response = response + Viper.Fmt.Int(statusCode);
+    response = response + " ";
+    response = response + statusText;
+    response = response + "\r\n";
+    response = response + "Content-Type: ";
+    response = response + contentType;
+    response = response + "\r\n";
+    response = response + "Content-Length: ";
+    response = response + Viper.Fmt.Int(bodyLen);
+    response = response + "\r\n";
+    response = response + "Connection: close\r\n";
+    response = response + "Server: Viper/";
+    response = response + VERSION;
+    response = response + "\r\n";
+    response = response + "\r\n";
+    response = response + body;
+
+    return response;
+}
+
+func response200(contentType: String, body: String) -> String {
+    return buildResponse(200, "OK", contentType, body);
+}
+
+func response404() -> String {
+    var body = "<!DOCTYPE html><html><head><title>404 Not Found</title></head>";
+    body = body + "<body><h1>404 Not Found</h1><p>The requested resource was not found.</p></body></html>";
+    return buildResponse(404, "Not Found", "text/html; charset=utf-8", body);
+}
+
+func response500(message: String) -> String {
+    var body = "<!DOCTYPE html><html><head><title>500 Internal Server Error</title></head>";
+    body = body + "<body><h1>500 Internal Server Error</h1><p>";
+    body = body + message;
+    body = body + "</p></body></html>";
+    return buildResponse(500, "Internal Server Error", "text/html; charset=utf-8", body);
+}
+
+func response400() -> String {
+    var body = "<!DOCTYPE html><html><head><title>400 Bad Request</title></head>";
+    body = body + "<body><h1>400 Bad Request</h1><p>Invalid HTTP request.</p></body></html>";
+    return buildResponse(400, "Bad Request", "text/html; charset=utf-8", body);
+}
+
+// ============================================================================
+// MIME TYPE DETECTION
+// ============================================================================
+
+func getMimeType(path: String) -> String {
+    var len = Viper.String.Length(path);
+
+    // Find last dot
+    var dotPos = -1;
+    var i = len - 1;
+    while i >= 0 {
+        var ch = Viper.String.Substring(path, i, 1);
+        if ch == "." {
+            dotPos = i;
+            break;
+        }
+        i = i - 1;
+    }
+
+    if dotPos == -1 {
+        return "application/octet-stream";
+    }
+
+    var extLen = len - dotPos;
+    var ext = Viper.String.Substring(path, dotPos, extLen);
+
+    // Check extensions
+    if ext == ".html" || ext == ".htm" {
+        return "text/html; charset=utf-8";
+    }
+    if ext == ".css" {
+        return "text/css; charset=utf-8";
+    }
+    if ext == ".js" {
+        return "application/javascript";
+    }
+    if ext == ".json" {
+        return "application/json";
+    }
+    if ext == ".png" {
+        return "image/png";
+    }
+    if ext == ".jpg" || ext == ".jpeg" {
+        return "image/jpeg";
+    }
+    if ext == ".gif" {
+        return "image/gif";
+    }
+    if ext == ".ico" {
+        return "image/x-icon";
+    }
+    if ext == ".svg" {
+        return "image/svg+xml";
+    }
+    if ext == ".txt" {
+        return "text/plain; charset=utf-8";
+    }
+    if ext == ".xml" {
+        return "application/xml";
+    }
+
+    return "application/octet-stream";
+}
+
+// ============================================================================
+// PATH SECURITY
+// ============================================================================
+
+// Check if path is safe (no directory traversal)
+func isPathSafe(path: String) -> Boolean {
+    // Check for ".." sequences
+    var len = Viper.String.Length(path);
+    var i = 0;
+
+    while i < len - 1 {
+        var ch1 = Viper.String.Substring(path, i, 1);
+        var ch2 = Viper.String.Substring(path, i + 1, 1);
+        if ch1 == "." && ch2 == "." {
+            return false;
+        }
+        i = i + 1;
+    }
+
+    // Check for null bytes
+    i = 0;
+    while i < len {
+        var ch = Viper.String.Substring(path, i, 1);
+        if ch == "\0" {
+            return false;
+        }
+        i = i + 1;
+    }
+
+    return true;
+}
+
+// Normalize path (handle /)
+func normalizePath(path: String) -> String {
+    // If path is just "/", serve index.html
+    if path == "/" {
+        return "/index.html";
+    }
+
+    // Remove query string if present
+    var len = Viper.String.Length(path);
+    var i = 0;
+    while i < len {
+        var ch = Viper.String.Substring(path, i, 1);
+        if ch == "?" {
+            return Viper.String.Substring(path, 0, i);
+        }
+        i = i + 1;
+    }
+
+    return path;
+}
+
+// ============================================================================
+// STATIC FILE SERVING
+// ============================================================================
+
+// Workaround for BUG-004: VM string store/load corruption
+// These helper functions take the fullPath as a parameter to avoid storing
+// the runtime-created string to a local variable.
+
+func fileExists(fullPath: String) -> Boolean {
+    return Viper.IO.File.Exists(fullPath);
+}
+
+func readFileContent(fullPath: String) -> String {
+    return Viper.IO.File.ReadAllText(fullPath);
+}
+
+func getFileMimeType(fullPath: String) -> String {
+    return getMimeType(fullPath);
+}
+
+func buildFullPath(relativePath: String) -> String {
+    return Viper.IO.Path.Join(webRoot, relativePath);
+}
+
+func serveStaticFile(path: String) -> String {
+    // Normalize and validate path
+    var normalizedPath = normalizePath(path);
+
+    if isPathSafe(normalizedPath) == false {
+        return response404();
+    }
+
+    // Build relative path (remove leading /)
+    var relativePath = normalizedPath;
+    var pathLen = Viper.String.Length(normalizedPath);
+    if pathLen > 0 {
+        var firstChar = Viper.String.Substring(normalizedPath, 0, 1);
+        if firstChar == "/" {
+            relativePath = Viper.String.Substring(normalizedPath, 1, pathLen - 1);
+        }
+    }
+
+    // Workaround for BUG-004: pass path through functions to avoid local storage
+    if fileExists(buildFullPath(relativePath)) == false {
+        return response404();
+    }
+
+    // Read file content
+    var content = readFileContent(buildFullPath(relativePath));
+    var mimeType = getFileMimeType(buildFullPath(relativePath));
+
+    return response200(mimeType, content);
+}
+
+// ============================================================================
+// CLIENT HANDLING
+// ============================================================================
+
+func handleClient(client: Ptr) {
+    // Set a timeout for receiving
+    Viper.Network.Tcp.SetRecvTimeout(client, 5000);
+
+    // Read request (up to MAX_REQUEST_SIZE bytes)
+    var rawRequest = Viper.Network.Tcp.RecvStr(client, MAX_REQUEST_SIZE);
+
+    var requestLen = Viper.String.Length(rawRequest);
+    if requestLen == 0 {
+        Viper.Network.Tcp.Close(client);
+        return;
+    }
+
+    // Parse request
+    if parseRequest(rawRequest) == false {
+        var response = response400();
+        Viper.Network.Tcp.SendStr(client, response);
+        Viper.Network.Tcp.Close(client);
+        return;
+    }
+
+    // Log request
+    var clientHost = Viper.Network.Tcp.get_Host(client);
+    var clientPort = Viper.Network.Tcp.get_Port(client);
+    Viper.Terminal.Print(clientHost);
+    Viper.Terminal.Print(":");
+    Viper.Terminal.PrintInt(clientPort);
+    Viper.Terminal.Print(" ");
+    Viper.Terminal.Print(reqMethod);
+    Viper.Terminal.Print(" ");
+    Viper.Terminal.Say(reqPath);
+
+    // Only handle GET requests for now
+    if reqMethod != "GET" && reqMethod != "HEAD" {
+        Viper.Terminal.Say("  [405] Method not allowed: " + reqMethod);
+        var response = buildResponse(405, "Method Not Allowed", "text/plain", "Method not allowed");
+        Viper.Network.Tcp.SendStr(client, response);
+        Viper.Network.Tcp.Close(client);
+        return;
+    }
+
+    // Serve static file
+    var response = serveStaticFile(reqPath);
+    Viper.Network.Tcp.SendStr(client, response);
+
+    Viper.Network.Tcp.Close(client);
+}
+
+// ============================================================================
+// MAIN SERVER
+// ============================================================================
+
+func main() {
+    var port = DEFAULT_PORT;
+
+    // Set web root to www directory relative to current dir
+    webRoot = Viper.IO.Path.Join(Viper.IO.Dir.Current(), "www");
+
+    Viper.Terminal.Say("========================================");
+    Viper.Terminal.Say("  Viper Web Server v" + VERSION);
+    Viper.Terminal.Say("========================================");
+    Viper.Terminal.Say("Starting server on port " + Viper.Fmt.Int(port) + "...");
+    Viper.Terminal.Say("Web root: " + webRoot);
+    Viper.Terminal.Say("");
+
+    // Create server
+    var server = Viper.Network.TcpServer.Listen(port);
+
+    Viper.Terminal.Say("Server listening on http://localhost:" + Viper.Fmt.Int(port) + "/");
+    Viper.Terminal.Say("Press Ctrl+C to stop.");
+    Viper.Terminal.Say("");
+
+    // Accept connections in a loop
+    var running = 1;
+    while running == 1 {
+        // Accept a client connection
+        var client = Viper.Network.TcpServer.Accept(server);
+
+        // Handle the client (single-threaded)
+        handleClient(client);
+    }
+
+    Viper.Network.TcpServer.Close(server);
+    Viper.Terminal.Say("Server stopped.");
+}

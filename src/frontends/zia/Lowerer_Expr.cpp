@@ -195,6 +195,23 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
         return {loaded, ilType};
     }
 
+    // Check if identifier refers to a function - return its address for function pointers
+    // This enables passing functions to Thread.Start, callbacks, etc.
+    std::string mangledName = mangleFunctionName(expr->name);
+    if (definedFunctions_.find(mangledName) != definedFunctions_.end())
+    {
+        // Function is defined in this module - return its address
+        return {Value::global(mangledName), Type(Type::Kind::Ptr)};
+    }
+
+    // Check if it's an extern function (runtime API)
+    Symbol *sym = sema_.findExternFunction(expr->name);
+    if (sym)
+    {
+        // External function reference - return its address
+        return {Value::global(expr->name), Type(Type::Kind::Ptr)};
+    }
+
     // Unknown identifier
     return {Value::constInt(0), Type(Type::Kind::I64)};
 }
