@@ -1032,6 +1032,25 @@ static std::string buildDirectHandlerExpr(const std::string &c_symbol, const CSi
     return "&DirectHandler<" + args + ">::invoke";
 }
 
+static std::string buildConsumingStringHandlerExpr(const std::string &c_symbol, const CSignature &sig)
+{
+    std::string args = "&" + c_symbol + ", " + sig.returnType;
+    for (const auto &arg : sig.argTypes)
+    {
+        args += ", " + arg;
+    }
+    return "&ConsumingStringHandler<" + args + ">::invoke";
+}
+
+/// @brief Check if a runtime function consumes its string arguments.
+/// @details Functions like rt_concat release their string arguments after use,
+///          so the VM must retain them before the call to prevent use-after-free.
+static bool needsConsumingStringHandler(const std::string &c_symbol)
+{
+    // rt_concat releases both of its string arguments after use
+    return c_symbol == "rt_concat";
+}
+
 static DescriptorFields buildDefaultDescriptor(
     const RuntimeEntry &entry,
     const std::unordered_map<std::string, CSignature> &cSignatures,
@@ -1061,9 +1080,12 @@ static DescriptorFields buildDefaultDescriptor(
     }
 
     auto cSigIt = cSignatures.find(entry.c_symbol);
+    bool useConsumingHandler = needsConsumingStringHandler(entry.c_symbol);
     if (cSigIt != cSignatures.end())
     {
-        fields.handler = buildDirectHandlerExpr(entry.c_symbol, cSigIt->second);
+        fields.handler = useConsumingHandler
+                             ? buildConsumingStringHandlerExpr(entry.c_symbol, cSigIt->second)
+                             : buildDirectHandlerExpr(entry.c_symbol, cSigIt->second);
     }
     else
     {
@@ -1072,7 +1094,9 @@ static DescriptorFields buildDefaultDescriptor(
         fallback.returnType = ilTypeToCType(parsed.returnType);
         for (const auto &arg : parsed.argTypes)
             fallback.argTypes.push_back(ilTypeToCType(arg));
-        fields.handler = buildDirectHandlerExpr(entry.c_symbol, fallback);
+        fields.handler = useConsumingHandler
+                             ? buildConsumingStringHandlerExpr(entry.c_symbol, fallback)
+                             : buildDirectHandlerExpr(entry.c_symbol, fallback);
     }
 
     fields.lowering = "kManualLowering";
