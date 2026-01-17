@@ -1,0 +1,20 @@
+Test 1: Basic USING
+Resource created
+Inside USING
+Resource destroyed
+After USING
+
+Test 2: Multiple USING blocks
+Resource created
+First block
+Resource destroyed
+Resource created
+Second block
+Resource destroyed
+
+Test 3: Operations inside USING
+Resource created
+Resource destroyed
+Total:2
+
+Done
