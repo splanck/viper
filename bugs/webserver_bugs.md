@@ -98,6 +98,35 @@ This file tracks all bugs discovered while building the web server demo.
 
 ---
 
+### BUG-005: Race condition in webserver request parsing
+
+- **ID**: BUG-005
+- **Severity**: Medium
+- **Status**: Open
+- **Component**: Webserver Demo
+- **Description**: The HTTP request parser uses module-level variables (`reqMethod`, `reqPath`, `reqVersion`, `reqHost`, `reqIfModifiedSince`) that are shared across all worker threads. When concurrent requests arrive, one thread can overwrite these variables while another thread is still using them, causing incorrect request handling.
+- **Steps to Reproduce**:
+  1. Start the webserver
+  2. Send multiple concurrent requests: `for i in 1 2 3 4 5; do curl -s http://localhost:8080/api/status & done`
+  3. Observe server logs - some requests may show empty method/path or wrong status codes
+- **Expected**: All concurrent requests should be handled correctly with proper method/path
+- **Actual**: Some requests get 405 "Method Not Allowed" with empty method/path fields, or other incorrect behavior
+- **Root Cause**: Module-level variables at `main.zia:130-134` are not thread-safe:
+  ```zia
+  var reqMethod: String;
+  var reqPath: String;
+  var reqVersion: String;
+  var reqHost: String;
+  var reqIfModifiedSince: Integer;
+  ```
+- **Fix Options**:
+  1. Pass request data through function parameters instead of module-level variables
+  2. Add thread-local storage support to Zia
+  3. Use a mutex/monitor around request parsing (would reduce concurrency)
+- **Workaround**: For low-concurrency scenarios, the bug is unlikely to trigger
+
+---
+
 ### BUG-001: Stdout not flushed without --trace flag
 
 - **ID**: BUG-001
