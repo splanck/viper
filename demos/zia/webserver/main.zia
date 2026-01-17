@@ -4,16 +4,87 @@ module main;
 bind "./config";
 bind "./logger";
 bind "./threadpool";
+bind "./router";
 
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
 
 final MAX_REQUEST_SIZE = 8192;
-final VERSION = "0.6.0";
+final VERSION = "0.7.0";
 
 // Web root directory (relative to server location)
 var webRoot: String;
+
+// ============================================================================
+// DYNAMIC ROUTE HANDLERS
+// ============================================================================
+
+// Handler for /api/status - returns server status as JSON
+func handleApiStatus(path: String, query: String) -> String {
+    var body = "{";
+    body = body + "\"server\": \"Viper Web Server\",";
+    body = body + "\"version\": \"" + VERSION + "\",";
+    body = body + "\"status\": \"running\",";
+    body = body + "\"workers\": " + Viper.Fmt.Int(cfg_workers);
+    body = body + "}";
+
+    return buildResponse(200, "OK", "application/json", body);
+}
+
+// Handler for /api/echo - echoes query parameters
+func handleApiEcho(path: String, query: String) -> String {
+    var message = router_getQueryParam(query, "message");
+    if message == "" {
+        message = "Hello from Viper!";
+    }
+
+    var body = "{\"echo\": \"" + message + "\"}";
+    return buildResponse(200, "OK", "application/json", body);
+}
+
+// Handler for /api/time - returns current server time
+func handleApiTime(path: String, query: String) -> String {
+    var now = Viper.DateTime.Now();
+    var year = Viper.DateTime.Year(now);
+    var month = Viper.DateTime.Month(now);
+    var day = Viper.DateTime.Day(now);
+    var hour = Viper.DateTime.Hour(now);
+    var minute = Viper.DateTime.Minute(now);
+    var second = Viper.DateTime.Second(now);
+
+    var body = "{";
+    body = body + "\"year\": " + Viper.Fmt.Int(year) + ",";
+    body = body + "\"month\": " + Viper.Fmt.Int(month) + ",";
+    body = body + "\"day\": " + Viper.Fmt.Int(day) + ",";
+    body = body + "\"hour\": " + Viper.Fmt.Int(hour) + ",";
+    body = body + "\"minute\": " + Viper.Fmt.Int(minute) + ",";
+    body = body + "\"second\": " + Viper.Fmt.Int(second);
+    body = body + "}";
+
+    return buildResponse(200, "OK", "application/json", body);
+}
+
+// Dispatch to appropriate handler based on route ID
+func dispatchRoute(routeId: Integer, path: String, query: String) -> String {
+    if routeId == ROUTE_ID_STATUS {
+        return handleApiStatus(path, query);
+    }
+    if routeId == ROUTE_ID_ECHO {
+        return handleApiEcho(path, query);
+    }
+    if routeId == ROUTE_ID_TIME {
+        return handleApiTime(path, query);
+    }
+    // Unknown route - return 404
+    return response404();
+}
+
+// Register all API routes
+func registerRoutes() {
+    router_init();
+    // Routes are defined directly in router.zia router_findRoute()
+}
 
 // ============================================================================
 // HTTP REQUEST PARSING
@@ -549,8 +620,18 @@ func handleClient(client: Ptr) {
     // Determine if this is a HEAD request (headers only, no body)
     var isHead = reqMethod == "HEAD";
 
-    // Serve static file
-    var response = serveStaticFile(reqPath, isHead);
+    var response: String;
+
+    // Check for dynamic route first
+    var routeId = router_findRoute(reqPath);
+    if routeId != ROUTE_ID_NONE {
+        var path = router_extractPath(reqPath);
+        var query = router_extractQuery(reqPath);
+        response = dispatchRoute(routeId, path, query);
+    } else {
+        // Fall back to static file serving
+        response = serveStaticFile(reqPath, isHead);
+    }
     responseSize = Viper.String.Length(response);
 
     // Extract status code from response (first line: "HTTP/1.1 XXX ...")
@@ -595,6 +676,10 @@ func main() {
     log_info("Port: " + Viper.Fmt.Int(cfg_port));
     log_info("Web root: " + webRoot);
     log_info("Workers: " + Viper.Fmt.Int(cfg_workers));
+
+    // Initialize router and register API routes
+    registerRoutes();
+    log_info("Routes registered: " + Viper.Fmt.Int(router_getCount()) + " API endpoints");
 
     // Initialize thread pool with configured worker count
     pool_init(&handleClient, cfg_workers);
