@@ -21,7 +21,12 @@ int main()
 {
     using il::vm::DebugCtrl;
     assert(DebugCtrl::normalizePath(R"(a\b\c)") == "a/b/c");
+#ifdef _WIN32
+    // On Windows, paths are lowercased for case-insensitive comparison
+    assert(DebugCtrl::normalizePath(R"(C:\project\src\..\main.bas)") == "c:/project/main.bas");
+#else
     assert(DebugCtrl::normalizePath(R"(C:\project\src\..\main.bas)") == "C:/project/main.bas");
+#endif
     assert(DebugCtrl::normalizePath("./a/./b") == "a/b");
     assert(DebugCtrl::normalizePath("../foo/../bar") == "../bar");
     assert(DebugCtrl::normalizePath("dir/../file") == "file");

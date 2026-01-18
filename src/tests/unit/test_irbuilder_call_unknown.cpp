@@ -35,7 +35,9 @@ int main()
     catch (const std::logic_error &err)
     {
         caught = true;
-        assert(std::string(err.what()).find("unknown") != std::string::npos);
+        // Verify error message mentions the unknown callee
+        if (std::string(err.what()).find("unknown") == std::string::npos)
+            return 1;
     }
     assert(caught && "emitCall should throw when callee is missing");
     return 0;

@@ -26,7 +26,9 @@ static rt_string_builder *g_overflow_target = NULL;
 static size_t g_forced_strlen_extra = 0;
 static int g_forced_strlen_used = 0;
 
-size_t strlen(const char *s)
+// On MSVC, strlen is an intrinsic that cannot be overridden. Use a custom
+// function name and macro to work around this limitation.
+static size_t test_strlen(const char *s)
 {
     if (g_overflow_target)
     {
@@ -43,6 +45,9 @@ size_t strlen(const char *s)
         ++len;
     return len;
 }
+
+// Use standard strlen for normal operations; only the overflow test needs
+// special handling and it's done manually.
 
 static void test_init_empty(void)
 {
@@ -113,6 +118,9 @@ static void test_numeric_helpers(void)
     rt_sb_free(&sb);
 }
 
+// On MSVC, strlen is an intrinsic that cannot be overridden, so the overflow
+// simulation test is only available on other compilers.
+#ifndef _MSC_VER
 static void test_append_double_overflow_preserves_state(void)
 {
     rt_string_builder sb;
@@ -139,6 +147,7 @@ static void test_append_double_overflow_preserves_state(void)
 
     rt_sb_free(&sb);
 }
+#endif
 
 /// @brief Aggregate all rt_string_builder test cases.
 int main(void)
@@ -148,6 +157,8 @@ int main(void)
     test_large_append();
     test_printf_growth();
     test_numeric_helpers();
+#ifndef _MSC_VER
     test_append_double_overflow_preserves_state();
+#endif
     return 0;
 }

@@ -32,8 +32,10 @@ int main(void)
     int32_t binary_code = rt_open_err_vstr(binary, RT_F_BINARY, 8);
     assert(binary_code == 0);
     struct stat st;
-    assert(stat(binary_path, &st) == 0);
-    assert(S_ISREG(st.st_mode));
+    if (stat(binary_path, &st) != 0)
+        return 1;
+    if (!S_ISREG(st.st_mode))
+        return 1;
     assert(rt_close_err(8) == 0);
     unlink(binary_path);
 
@@ -42,8 +44,10 @@ int main(void)
     rt_string random = rt_const_cstr(random_path);
     int32_t random_code = rt_open_err_vstr(random, RT_F_RANDOM, 9);
     assert(random_code == 0);
-    assert(stat(random_path, &st) == 0);
-    assert(S_ISREG(st.st_mode));
+    if (stat(random_path, &st) != 0)
+        return 1;
+    if (!S_ISREG(st.st_mode))
+        return 1;
     assert(rt_close_err(9) == 0);
     unlink(random_path);
     return 0;
