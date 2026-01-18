@@ -75,6 +75,7 @@ enum class RuntimeTypeId : std::size_t
     RTCLS_Stopwatch,
     RTCLS_Guid,
     RTCLS_Hash,
+    RTCLS_Json,
     RTCLS_KeyDerive,
     RTCLS_CryptoRand,
     RTCLS_Pattern,

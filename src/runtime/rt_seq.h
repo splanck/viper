@@ -138,6 +138,37 @@ extern "C"
     /// @return New sequence with same elements.
     void *rt_seq_clone(void *obj);
 
+    /// @brief Sort the elements in the sequence in ascending order.
+    /// @details Uses a stable merge sort algorithm. Elements are compared
+    ///          using string comparison if they are strings, or by pointer
+    ///          value for other objects. For custom ordering, use SortBy.
+    /// @param obj Opaque Seq object pointer. If NULL, this is a no-op.
+    /// @note O(n log n) time complexity.
+    /// @note Modifies the Seq in place (no new allocation).
+    /// @note Thread safety: Not thread-safe.
+    /// @see rt_seq_sort_by For custom comparison functions
+    void rt_seq_sort(void *obj);
+
+    /// @brief Sort the elements using a custom comparison function.
+    /// @details Uses a stable merge sort. The comparison function should
+    ///          return negative if a < b, zero if equal, positive if a > b.
+    /// @param obj Opaque Seq object pointer. If NULL, this is a no-op.
+    /// @param cmp Comparison function receiving two element pointers.
+    /// @note O(n log n) time complexity.
+    /// @note Modifies the Seq in place (no new allocation).
+    /// @note Thread safety: Not thread-safe.
+    void rt_seq_sort_by(void *obj, int64_t (*cmp)(void *, void *));
+
+    /// @brief Sort the elements in descending order.
+    /// @details Uses a stable merge sort algorithm. Elements are compared
+    ///          using string comparison if they are strings, or by pointer
+    ///          value for other objects. Results are reversed from rt_seq_sort.
+    /// @param obj Opaque Seq object pointer. If NULL, this is a no-op.
+    /// @note O(n log n) time complexity.
+    /// @note Modifies the Seq in place (no new allocation).
+    /// @note Thread safety: Not thread-safe.
+    void rt_seq_sort_desc(void *obj);
+
 #ifdef __cplusplus
 }
 #endif

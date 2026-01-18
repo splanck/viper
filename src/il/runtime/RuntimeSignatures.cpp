@@ -82,6 +82,7 @@
 #include "rt_input.h"
 #include "rt_int_format.h"
 #include "rt_internal.h"
+#include "rt_json.h"
 #include "rt_keyderive.h"
 #include "rt_linereader.h"
 #include "rt_linewriter.h"

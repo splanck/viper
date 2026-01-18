@@ -168,14 +168,13 @@ void rt_heap_retain(void *payload)
     RT_HEAP_VALIDATE(hdr);
     const size_t old = __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED);
     assert(old > 0);
-#ifndef NDEBUG
-    // Debug build: best-effort overflow guard (cannot be made perfect without a CAS loop).
+    // Overflow guard: enabled in all builds for safety.
+    // Best-effort check (cannot be made perfect without a CAS loop).
     if (old >= SIZE_MAX - 1)
     {
         rt_trap("refcount overflow");
         return;
     }
-#endif
     const size_t next = __atomic_fetch_add(&hdr->refcnt, 1, __ATOMIC_RELAXED) + 1;
 #ifdef VIPER_RC_DEBUG
     fprintf(stderr, "rt_heap_retain(%p) => %zu\n", payload, next);

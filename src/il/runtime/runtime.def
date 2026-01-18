@@ -263,6 +263,8 @@ RT_FUNC(SeqReverse,      rt_seq_reverse,       "Viper.Collections.Seq.Reverse", 
 RT_FUNC(SeqSet,          rt_seq_set,           "Viper.Collections.Seq.Set",          "void(obj,i64,obj)")
 RT_FUNC(SeqShuffle,      rt_seq_shuffle,       "Viper.Collections.Seq.Shuffle",      "void(obj)")
 RT_FUNC(SeqSlice,        rt_seq_slice,         "Viper.Collections.Seq.Slice",        "obj(obj,i64,i64)")
+RT_FUNC(SeqSort,         rt_seq_sort,          "Viper.Collections.Seq.Sort",         "void(obj)")
+RT_FUNC(SeqSortDesc,     rt_seq_sort_desc,     "Viper.Collections.Seq.SortDesc",     "void(obj)")
 RT_FUNC(SeqWithCapacity, rt_seq_with_capacity, "Viper.Collections.Seq.WithCapacity", "obj(i64)")
 
 //=============================================================================
@@ -1541,6 +1543,18 @@ RT_FUNC(CsvFormat,          rt_csv_format,            "Viper.Text.Csv.Format",  
 RT_FUNC(CsvFormatWith,      rt_csv_format_with,       "Viper.Text.Csv.FormatWith",      "str(obj,str)")
 
 //=============================================================================
+// TEXT - JSON
+//=============================================================================
+
+RT_FUNC(JsonParse,          rt_json_parse,            "Viper.Text.Json.Parse",          "obj(str)")
+RT_FUNC(JsonParseObject,    rt_json_parse_object,     "Viper.Text.Json.ParseObject",    "obj(str)")
+RT_FUNC(JsonParseArray,     rt_json_parse_array,      "Viper.Text.Json.ParseArray",     "obj(str)")
+RT_FUNC(JsonFormat,         rt_json_format,           "Viper.Text.Json.Format",         "str(obj)")
+RT_FUNC(JsonFormatPretty,   rt_json_format_pretty,    "Viper.Text.Json.FormatPretty",   "str(obj,i64)")
+RT_FUNC(JsonIsValid,        rt_json_is_valid,         "Viper.Text.Json.IsValid",        "i1(str)")
+RT_FUNC(JsonTypeOf,         rt_json_type_of,          "Viper.Text.Json.TypeOf",         "str(obj)")
+
+//=============================================================================
 // TEXT - GUID
 //=============================================================================
 
@@ -2205,6 +2219,8 @@ RT_CLASS_BEGIN("Viper.Collections.Seq", Seq, "obj", SeqNew)
     RT_METHOD("Set", "void(i64,obj)", SeqSet)
     RT_METHOD("Shuffle", "void()", SeqShuffle)
     RT_METHOD("Slice", "obj(i64,i64)", SeqSlice)
+    RT_METHOD("Sort", "void()", SeqSort)
+    RT_METHOD("SortDesc", "void()", SeqSortDesc)
 RT_CLASS_END()
 
 // Viper.Collections.Stack - LIFO collection
@@ -3370,6 +3386,17 @@ RT_CLASS_BEGIN("Viper.Text.Csv", Csv, "obj", none)
     RT_METHOD("ParseLine", "obj(str)", CsvParseLine)
     RT_METHOD("ParseLineWith", "obj(str,str)", CsvParseLineWith)
     RT_METHOD("ParseWith", "obj(str,str)", CsvParseWith)
+RT_CLASS_END()
+
+// Viper.Text.Json - JSON parsing and formatting (ECMA-404/RFC 8259)
+RT_CLASS_BEGIN("Viper.Text.Json", Json, "obj", none)
+    RT_METHOD("Format", "str(obj)", JsonFormat)
+    RT_METHOD("FormatPretty", "str(obj,i64)", JsonFormatPretty)
+    RT_METHOD("IsValid", "i1(str)", JsonIsValid)
+    RT_METHOD("Parse", "obj(str)", JsonParse)
+    RT_METHOD("ParseArray", "obj(str)", JsonParseArray)
+    RT_METHOD("ParseObject", "obj(str)", JsonParseObject)
+    RT_METHOD("TypeOf", "str(obj)", JsonTypeOf)
 RT_CLASS_END()
 
 // Viper.Text.Guid - UUID generation and manipulation

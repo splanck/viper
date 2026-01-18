@@ -18,6 +18,7 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_random.h"
+#include "rt_string.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -1158,4 +1159,251 @@ void *rt_seq_clone(void *obj)
 
     rt_seq_impl *seq = (rt_seq_impl *)obj;
     return rt_seq_slice(obj, 0, seq->len);
+}
+
+//=============================================================================
+// Sorting Implementation
+//=============================================================================
+
+// Forward declaration for rt_seq_sort_by (used by rt_seq_sort)
+void rt_seq_sort_by(void *obj, int64_t (*cmp)(void *, void *));
+
+/// @brief Default comparison function for sorting.
+/// @details Compares elements as strings if they appear to be strings,
+///          otherwise compares by pointer value. String comparison is
+///          case-sensitive and lexicographic.
+/// @param a First element pointer.
+/// @param b Second element pointer.
+/// @return Negative if a < b, zero if equal, positive if a > b.
+static int64_t seq_default_compare(void *a, void *b)
+{
+    // If both are NULL, they're equal
+    if (!a && !b)
+        return 0;
+    // NULL sorts before non-NULL
+    if (!a)
+        return -1;
+    if (!b)
+        return 1;
+
+    // Check if elements are strings using the runtime string checker
+    if (rt_string_is_handle(a) && rt_string_is_handle(b))
+    {
+        return rt_str_cmp((rt_string)a, (rt_string)b);
+    }
+
+    // Fall back to pointer comparison for non-strings
+    if (a < b)
+        return -1;
+    if (a > b)
+        return 1;
+    return 0;
+}
+
+/// @brief Merge two sorted halves of an array.
+/// @details Used by merge sort. Merges items[left..mid] and items[mid+1..right]
+///          into a sorted sequence.
+/// @param items Array of element pointers.
+/// @param temp Temporary buffer for merging.
+/// @param left Start index of left half.
+/// @param mid End index of left half.
+/// @param right End index of right half.
+/// @param cmp Comparison function.
+static void seq_merge(void **items,
+                      void **temp,
+                      int64_t left,
+                      int64_t mid,
+                      int64_t right,
+                      int64_t (*cmp)(void *, void *))
+{
+    int64_t i = left;
+    int64_t j = mid + 1;
+    int64_t k = left;
+
+    // Merge the two halves
+    while (i <= mid && j <= right)
+    {
+        if (cmp(items[i], items[j]) <= 0)
+        {
+            temp[k++] = items[i++];
+        }
+        else
+        {
+            temp[k++] = items[j++];
+        }
+    }
+
+    // Copy remaining elements from left half
+    while (i <= mid)
+    {
+        temp[k++] = items[i++];
+    }
+
+    // Copy remaining elements from right half
+    while (j <= right)
+    {
+        temp[k++] = items[j++];
+    }
+
+    // Copy back to original array
+    for (int64_t x = left; x <= right; x++)
+    {
+        items[x] = temp[x];
+    }
+}
+
+/// @brief Recursive merge sort implementation.
+/// @param items Array of element pointers.
+/// @param temp Temporary buffer.
+/// @param left Start index.
+/// @param right End index (inclusive).
+/// @param cmp Comparison function.
+static void seq_merge_sort(void **items,
+                           void **temp,
+                           int64_t left,
+                           int64_t right,
+                           int64_t (*cmp)(void *, void *))
+{
+    if (left >= right)
+        return;
+
+    int64_t mid = left + (right - left) / 2;
+    seq_merge_sort(items, temp, left, mid, cmp);
+    seq_merge_sort(items, temp, mid + 1, right, cmp);
+    seq_merge(items, temp, left, mid, right, cmp);
+}
+
+/// @brief Sorts the elements in the Seq in ascending order.
+///
+/// Rearranges elements into ascending order using a stable merge sort algorithm.
+/// Strings are compared lexicographically (case-sensitive). Non-string objects
+/// are compared by their memory address (pointer value).
+///
+/// **Sorting behavior:**
+/// - Strings: Lexicographic comparison ("a" < "b" < "z")
+/// - Other objects: Pointer comparison (for consistent ordering)
+/// - NULL values sort before non-NULL values
+///
+/// **Stability:**
+/// The sort is stable, meaning equal elements maintain their relative order.
+///
+/// **Example:**
+/// ```
+/// Dim seq = Seq.New()
+/// seq.Push("cherry")
+/// seq.Push("apple")
+/// seq.Push("banana")
+/// seq.Sort()
+/// ' seq is now: ["apple", "banana", "cherry"]
+/// ```
+///
+/// @param obj Pointer to a Seq object. If NULL, this is a no-op.
+///
+/// @note O(n log n) time complexity.
+/// @note O(n) additional space for the merge operation.
+/// @note Modifies the Seq in place.
+/// @note Thread safety: Not thread-safe.
+///
+/// @see rt_seq_sort_desc For descending order
+/// @see rt_seq_sort_by For custom comparison
+void rt_seq_sort(void *obj)
+{
+    rt_seq_sort_by(obj, seq_default_compare);
+}
+
+/// @brief Sorts the elements using a custom comparison function.
+///
+/// Rearranges elements into order determined by the provided comparison function.
+/// The comparison function receives two element pointers and should return:
+/// - Negative value if the first element should come before the second
+/// - Zero if the elements are equal (stable sort preserves order)
+/// - Positive value if the first element should come after the second
+///
+/// **Example with numbers (boxed):**
+/// ```
+/// Function CompareNumbers(a, b) As I64
+///     Dim na = Unbox.I64(a)
+///     Dim nb = Unbox.I64(b)
+///     Return na - nb
+/// End Function
+///
+/// Dim seq = Seq.New()
+/// seq.Push(Box.I64(42))
+/// seq.Push(Box.I64(17))
+/// seq.Push(Box.I64(99))
+/// seq.SortBy(AddressOf CompareNumbers)
+/// ' seq is now: [17, 42, 99]
+/// ```
+///
+/// @param obj Pointer to a Seq object. If NULL, this is a no-op.
+/// @param cmp Comparison function. If NULL, uses default string/pointer comparison.
+///
+/// @note O(n log n) time complexity.
+/// @note O(n) additional space for the merge operation.
+/// @note Modifies the Seq in place.
+/// @note The comparison function must be consistent (transitive ordering).
+/// @note Thread safety: Not thread-safe.
+///
+/// @see rt_seq_sort For default ascending sort
+void rt_seq_sort_by(void *obj, int64_t (*cmp)(void *, void *))
+{
+    if (!obj)
+        return;
+
+    rt_seq_impl *seq = (rt_seq_impl *)obj;
+
+    // Nothing to sort
+    if (seq->len <= 1)
+        return;
+
+    // Use default comparison if none provided
+    if (!cmp)
+        cmp = seq_default_compare;
+
+    // Allocate temporary buffer for merge sort
+    void **temp = (void **)malloc((size_t)seq->len * sizeof(void *));
+    if (!temp)
+    {
+        rt_trap("Seq.Sort: memory allocation failed");
+        return;
+    }
+
+    // Perform stable merge sort
+    seq_merge_sort(seq->items, temp, 0, seq->len - 1, cmp);
+
+    free(temp);
+}
+
+/// @brief Comparison function for descending sort.
+static int64_t seq_compare_desc(void *a, void *b)
+{
+    return -seq_default_compare(a, b);
+}
+
+/// @brief Sorts the elements in the Seq in descending order.
+///
+/// Rearranges elements into descending order using a stable merge sort algorithm.
+/// This is equivalent to calling Sort() followed by Reverse(), but more efficient.
+///
+/// **Example:**
+/// ```
+/// Dim seq = Seq.New()
+/// seq.Push("apple")
+/// seq.Push("cherry")
+/// seq.Push("banana")
+/// seq.SortDesc()
+/// ' seq is now: ["cherry", "banana", "apple"]
+/// ```
+///
+/// @param obj Pointer to a Seq object. If NULL, this is a no-op.
+///
+/// @note O(n log n) time complexity.
+/// @note O(n) additional space for the merge operation.
+/// @note Modifies the Seq in place.
+/// @note Thread safety: Not thread-safe.
+///
+/// @see rt_seq_sort For ascending order
+void rt_seq_sort_desc(void *obj)
+{
+    rt_seq_sort_by(obj, seq_compare_desc);
 }

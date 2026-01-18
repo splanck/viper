@@ -68,6 +68,7 @@ set(RT_TEXT_SOURCES
         rt_csv.c
         rt_guid.c
         rt_hash.c
+        rt_json.c
         rt_keyderive.c
         rt_aes.c
         rt_rand.c
