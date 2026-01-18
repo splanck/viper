@@ -222,7 +222,6 @@ void LowerILToMIR::resetFunctionState()
     valueToVReg_.clear();
     blockInfo_.clear();
     callPlans_.clear();
-    entryParamToPhysReg_.clear();
 }
 
 /// @brief Map an IL value kind to a machine register class for the target.
@@ -306,12 +305,9 @@ Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &val
 
     if (!isImmediate(value))
     {
-        // Check if this is an entry block parameter - if so, return the physical register directly
-        const auto physIt = entryParamToPhysReg_.find(value.id);
-        if (physIt != entryParamToPhysReg_.end())
-        {
-            return physIt->second;
-        }
+        // Entry block parameters are now handled at function entry via MOV instructions
+        // that copy from physical argument registers to virtual registers. This ensures
+        // the values are properly preserved across function calls.
         const VReg vreg = ensureVReg(value.id, value.kind);
         return makeVRegOperand(vreg.cls, vreg.id);
     }
@@ -549,7 +545,45 @@ MFunction LowerILToMIR::lower(const ILFunction &func)
             }
         }
     }
-    entryParamToPhysReg_ = std::move(entryParamToPhysReg);
+    // NOTE: We intentionally do NOT set entryParamToPhysReg_ here.
+    // Entry parameters arrive in caller-saved registers (RCX, RDX, R8, R9 on Windows;
+    // RDI, RSI, RDX, RCX, R8, R9 on SysV). If we return these physical registers
+    // directly in makeOperandForValue(), they will be clobbered by any function
+    // call before the parameter is used. Instead, we emit MOV instructions at
+    // function entry to copy parameters from physical registers to virtual registers,
+    // which the register allocator will properly manage (spilling across calls).
+
+    // Emit moves for register-passed parameters at the start of the entry block
+    if (!entryParamToPhysReg.empty() && !result.blocks.empty())
+    {
+        auto &entryBlock = result.blocks[0];
+        for (const auto &[paramId, physOp] : entryParamToPhysReg)
+        {
+            // Find the kind for this parameter
+            const auto &entryParams = func.blocks[0];
+            ILValue::Kind kind = ILValue::Kind::I64; // default
+            for (std::size_t p = 0; p < entryParams.paramIds.size(); ++p)
+            {
+                if (entryParams.paramIds[p] == paramId && p < entryParams.paramKinds.size())
+                {
+                    kind = entryParams.paramKinds[p];
+                    break;
+                }
+            }
+
+            // Create a vreg and emit MOV from physical register to vreg
+            const VReg vreg = ensureVReg(paramId, kind);
+            const Operand dest = makeVRegOperand(vreg.cls, vreg.id);
+            if (vreg.cls == RegClass::XMM)
+            {
+                entryBlock.instructions.push_back(MInstr::make(MOpcode::MOVSDrr, {dest, physOp}));
+            }
+            else
+            {
+                entryBlock.instructions.push_back(MInstr::make(MOpcode::MOVrr, {dest, physOp}));
+            }
+        }
+    }
 
     // Emit loads for stack-passed parameters at the start of the entry block
     if (!stackParams.empty() && !result.blocks.empty())

@@ -175,7 +175,7 @@ static constexpr std::array<EncodingRow, 46> kEncodingTable = {{
     {MOpcode::XORrr32,
      "xorl",
      EncodingForm::RegReg,
-     OperandOrder::R_R,
+     OperandOrder::R_R32,
      makePattern(OperandKind::Reg, OperandKind::Reg, OperandKind::None),
      EncodingFlag::RequiresModRM},
     {MOpcode::CMPrr,

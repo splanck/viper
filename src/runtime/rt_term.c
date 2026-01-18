@@ -172,10 +172,11 @@ static int stdout_isatty(void)
 }
 
 #if defined(_WIN32)
-/// @brief Enable ANSI escape sequence processing on Windows consoles.
-/// @details Lazily toggles the `ENABLE_VIRTUAL_TERMINAL_PROCESSING` flag the
-///          first time terminal output is requested so subsequent writes honour
-///          colour and cursor positioning sequences.
+/// @brief Enable ANSI escape sequence processing and UTF-8 on Windows consoles.
+/// @details Lazily toggles the `ENABLE_VIRTUAL_TERMINAL_PROCESSING` flag and
+///          sets the console codepage to UTF-8 (65001) the first time terminal
+///          output is requested so subsequent writes honour colour, cursor
+///          positioning sequences, and UTF-8 box-drawing characters.
 static void enable_vt(void)
 {
     static int once = 0;
@@ -191,6 +192,9 @@ static void enable_vt(void)
             SetConsoleMode(h, mode);
         }
     }
+    // Enable UTF-8 codepage for proper Unicode/box-drawing character display
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
     once = 1;
 }
 #endif

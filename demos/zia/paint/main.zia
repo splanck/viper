@@ -19,9 +19,8 @@ bind "./ui/slider";
 bind "./app";
 
 func main() {
-    // Create and initialize the paint application
+    // Create the paint application (new calls init automatically)
     var app = new PaintApp();
-    app.init();
 
     // Run the main application loop
     app.run();
