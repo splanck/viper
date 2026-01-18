@@ -93,6 +93,7 @@
 
 #include "rt_log.h"
 #include "rt_internal.h"
+#include "rt_platform.h"
 
 #include <stdio.h>
 #include <time.h>
@@ -111,18 +112,19 @@ extern "C"
 
     /// @brief Formats the current time as an HH:MM:SS string for log timestamps.
     ///
-    /// Uses localtime() to get the current time in the local timezone and
-    /// formats it as a human-readable timestamp for log output.
+    /// Uses thread-safe rt_localtime_r() to get the current time in the local
+    /// timezone and formats it as a human-readable timestamp for log output.
     ///
     /// @param buf Output buffer for the formatted time string.
     /// @param size Size of the output buffer in bytes (should be at least 9).
     ///
-    /// @note If localtime() fails (extremely rare), buf[0] is set to '\0'.
+    /// @note If localtime fails (extremely rare), buf[0] is set to '\0'.
     /// @note Uses 24-hour format.
     static void get_time_str(char *buf, size_t size)
     {
         time_t now = time(NULL);
-        struct tm *tm_info = localtime(&now);
+        struct tm tm_buf;
+        struct tm *tm_info = rt_localtime_r(&now, &tm_buf);
         if (tm_info)
         {
             strftime(buf, size, "%H:%M:%S", tm_info);

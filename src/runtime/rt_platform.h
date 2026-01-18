@@ -515,6 +515,44 @@ static inline void rt_windows_sleep_ms(int64_t ms)
 #endif // RT_PLATFORM_WINDOWS
 
 //===----------------------------------------------------------------------===//
+// Thread-Safe Time Functions
+//===----------------------------------------------------------------------===//
+
+#include <time.h>
+
+/// @brief Thread-safe version of localtime().
+/// @param timer Pointer to time_t value to convert.
+/// @param result Pointer to struct tm to store the result.
+/// @return Pointer to result on success, NULL on failure.
+static inline struct tm *rt_localtime_r(const time_t *timer, struct tm *result)
+{
+#if RT_PLATFORM_WINDOWS
+    // Windows localtime_s has reversed parameter order and returns errno_t
+    if (localtime_s(result, timer) == 0)
+        return result;
+    return NULL;
+#else
+    return localtime_r(timer, result);
+#endif
+}
+
+/// @brief Thread-safe version of gmtime().
+/// @param timer Pointer to time_t value to convert.
+/// @param result Pointer to struct tm to store the result.
+/// @return Pointer to result on success, NULL on failure.
+static inline struct tm *rt_gmtime_r(const time_t *timer, struct tm *result)
+{
+#if RT_PLATFORM_WINDOWS
+    // Windows gmtime_s has reversed parameter order and returns errno_t
+    if (gmtime_s(result, timer) == 0)
+        return result;
+    return NULL;
+#else
+    return gmtime_r(timer, result);
+#endif
+}
+
+//===----------------------------------------------------------------------===//
 // Format Attribute
 //===----------------------------------------------------------------------===//
 

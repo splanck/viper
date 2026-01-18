@@ -42,8 +42,8 @@ void Sema::analyzeBind(BindDecl &decl)
     {
         // Extract filename without extension from path
         std::string path = decl.path;
-        // Remove directory components
-        auto lastSlash = path.rfind('/');
+        // Remove directory components (handle both / and \ separators)
+        auto lastSlash = path.find_last_of("/\\");
         if (lastSlash != std::string::npos)
         {
             path = path.substr(lastSlash + 1);

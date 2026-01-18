@@ -97,7 +97,7 @@
 /// |----------|----------------------------|
 /// | macOS    | Full support (pthreads)    |
 /// | Linux    | Full support (pthreads)    |
-/// | Windows  | Traps (not implemented)    |
+/// | Windows  | Full support (Win32 API)   |
 ///
 /// @see rt_threads.c For thread creation and joining
 /// @see rt_safe_i64.c For thread-safe integer operations using monitors
@@ -115,57 +115,596 @@
 
 #if defined(_WIN32)
 
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
+/// @brief Waiter state enumeration for Windows.
+enum
+{
+    RT_MON_WAITER_WAITING_PAUSE = 0, ///< Thread called Wait(), waiting for Pause signal.
+    RT_MON_WAITER_WAITING_LOCK = 1,  ///< Thread waiting to acquire the lock.
+    RT_MON_WAITER_ACQUIRED = 2,      ///< Thread has been granted ownership.
+};
+
+/// @brief Represents a thread waiting on a monitor (Windows version).
+typedef struct RtMonitorWaiter
+{
+    struct RtMonitorWaiter *next; ///< Next waiter in queue (singly linked).
+    CONDITION_VARIABLE cv;        ///< Per-waiter condition variable.
+    DWORD threadId;               ///< The waiting thread's ID.
+    int state;                    ///< Current state (from enum above).
+    size_t desired_recursion;     ///< Recursion count to restore on acquisition.
+} RtMonitorWaiter;
+
+/// @brief The monitor state associated with an object (Windows version).
+typedef struct RtMonitor
+{
+    CRITICAL_SECTION cs;        ///< Critical section protecting all monitor state.
+    DWORD owner;                ///< Current owner thread ID.
+    int owner_valid;            ///< Non-zero if monitor is currently owned.
+    size_t recursion;           ///< Re-entry count for owner.
+    RtMonitorWaiter *acq_head;  ///< Head of acquisition queue.
+    RtMonitorWaiter *acq_tail;  ///< Tail of acquisition queue.
+    RtMonitorWaiter *wait_head; ///< Head of wait queue.
+    RtMonitorWaiter *wait_tail; ///< Tail of wait queue.
+} RtMonitor;
+
+/// @brief Hash table entry mapping object address to monitor.
+typedef struct RtMonitorEntry
+{
+    void *key;                   ///< Object address (hash key).
+    struct RtMonitorEntry *next; ///< Next entry in hash chain.
+    RtMonitor monitor;           ///< The monitor state.
+} RtMonitorEntry;
+
+#define RT_MONITOR_BUCKETS 4096u
+
+static CRITICAL_SECTION g_monitor_table_cs;
+static int g_monitor_table_cs_init = 0;
+static RtMonitorEntry *g_monitor_table[RT_MONITOR_BUCKETS];
+
+static void ensure_table_cs_init(void)
+{
+    // Simple one-time init; ok for single-threaded startup
+    if (!g_monitor_table_cs_init)
+    {
+        InitializeCriticalSection(&g_monitor_table_cs);
+        g_monitor_table_cs_init = 1;
+    }
+}
+
+static size_t hash_ptr(void *p)
+{
+    uintptr_t x = (uintptr_t)p;
+    x >>= 4;
+    x ^= x >> 16;
+    x *= 0x9E3779B97F4A7C15ull;
+    return (size_t)(x & (RT_MONITOR_BUCKETS - 1u));
+}
+
+static RtMonitor *get_monitor_for(void *obj)
+{
+    ensure_table_cs_init();
+    size_t idx = hash_ptr(obj);
+
+    EnterCriticalSection(&g_monitor_table_cs);
+    RtMonitorEntry *it = g_monitor_table[idx];
+    while (it)
+    {
+        if (it->key == obj)
+        {
+            LeaveCriticalSection(&g_monitor_table_cs);
+            return &it->monitor;
+        }
+        it = it->next;
+    }
+
+    RtMonitorEntry *node = (RtMonitorEntry *)calloc(1, sizeof(*node));
+    if (!node)
+    {
+        LeaveCriticalSection(&g_monitor_table_cs);
+        rt_trap("rt_monitor: alloc failed");
+        return NULL;
+    }
+    node->key = obj;
+    node->next = g_monitor_table[idx];
+    g_monitor_table[idx] = node;
+
+    InitializeCriticalSection(&node->monitor.cs);
+
+    LeaveCriticalSection(&g_monitor_table_cs);
+    return &node->monitor;
+}
+
+static int monitor_is_owner(const RtMonitor *m, DWORD self)
+{
+    return m->owner_valid && m->owner == self;
+}
+
+static void monitor_grant_next_waiter(RtMonitor *m)
+{
+    RtMonitorWaiter *w = m->acq_head;
+    if (!w)
+        return;
+    m->acq_head = w->next;
+    if (!m->acq_head)
+        m->acq_tail = NULL;
+
+    m->owner = w->threadId;
+    m->owner_valid = 1;
+    m->recursion = w->desired_recursion;
+
+    w->state = RT_MON_WAITER_ACQUIRED;
+    WakeConditionVariable(&w->cv);
+}
+
+static void monitor_enqueue_acq(RtMonitor *m, RtMonitorWaiter *w)
+{
+    w->next = NULL;
+    if (m->acq_tail)
+    {
+        m->acq_tail->next = w;
+        m->acq_tail = w;
+    }
+    else
+    {
+        m->acq_head = w;
+        m->acq_tail = w;
+    }
+}
+
+static void monitor_remove_acq(RtMonitor *m, RtMonitorWaiter *w)
+{
+    RtMonitorWaiter *prev = NULL;
+    RtMonitorWaiter *cur = m->acq_head;
+    while (cur)
+    {
+        if (cur == w)
+        {
+            if (prev)
+                prev->next = cur->next;
+            else
+                m->acq_head = cur->next;
+            if (m->acq_tail == cur)
+                m->acq_tail = prev;
+            cur->next = NULL;
+            return;
+        }
+        prev = cur;
+        cur = cur->next;
+    }
+}
+
+static void monitor_enqueue_wait(RtMonitor *m, RtMonitorWaiter *w)
+{
+    w->next = NULL;
+    if (m->wait_tail)
+    {
+        m->wait_tail->next = w;
+        m->wait_tail = w;
+    }
+    else
+    {
+        m->wait_head = w;
+        m->wait_tail = w;
+    }
+}
+
+static void monitor_remove_wait(RtMonitor *m, RtMonitorWaiter *w)
+{
+    RtMonitorWaiter *prev = NULL;
+    RtMonitorWaiter *cur = m->wait_head;
+    while (cur)
+    {
+        if (cur == w)
+        {
+            if (prev)
+                prev->next = cur->next;
+            else
+                m->wait_head = cur->next;
+            if (m->wait_tail == cur)
+                m->wait_tail = prev;
+            cur->next = NULL;
+            return;
+        }
+        prev = cur;
+        cur = cur->next;
+    }
+}
+
+static void monitor_enter_blocking(RtMonitor *m, DWORD self, DWORD timeout_ms, int timed)
+{
+    if (!m)
+    {
+        rt_trap("rt_monitor: null monitor");
+        return;
+    }
+
+    if (monitor_is_owner(m, self))
+    {
+        m->recursion += 1;
+        return;
+    }
+
+    if (!m->owner_valid && m->acq_head == NULL)
+    {
+        m->owner = self;
+        m->owner_valid = 1;
+        m->recursion = 1;
+        return;
+    }
+
+    RtMonitorWaiter w = {0};
+    InitializeConditionVariable(&w.cv);
+    w.threadId = self;
+    w.state = RT_MON_WAITER_WAITING_LOCK;
+    w.desired_recursion = 1;
+    monitor_enqueue_acq(m, &w);
+
+    ULONGLONG start = GetTickCount64();
+    while (w.state != RT_MON_WAITER_ACQUIRED)
+    {
+        DWORD wait_time = INFINITE;
+        if (timed)
+        {
+            ULONGLONG elapsed = GetTickCount64() - start;
+            if (elapsed >= timeout_ms)
+            {
+                // Timeout
+                if (w.state != RT_MON_WAITER_ACQUIRED)
+                {
+                    monitor_remove_acq(m, &w);
+                    return;
+                }
+                break;
+            }
+            wait_time = (DWORD)(timeout_ms - elapsed);
+        }
+
+        BOOL ok = SleepConditionVariableCS(&w.cv, &m->cs, wait_time);
+        if (!ok && GetLastError() == ERROR_TIMEOUT && w.state != RT_MON_WAITER_ACQUIRED)
+        {
+            monitor_remove_acq(m, &w);
+            return;
+        }
+    }
+}
+
 void rt_monitor_enter(void *obj)
 {
-    (void)obj;
-    rt_trap("Viper.Threads.Monitor: unsupported on this platform");
+    if (!obj)
+        rt_trap("Monitor.Enter: null object");
+    if (!obj)
+        return;
+    RtMonitor *m = get_monitor_for(obj);
+    if (!m)
+        return;
+    EnterCriticalSection(&m->cs);
+    monitor_enter_blocking(m, GetCurrentThreadId(), 0, 0);
+    LeaveCriticalSection(&m->cs);
 }
 
 int8_t rt_monitor_try_enter(void *obj)
 {
-    (void)obj;
-    rt_trap("Viper.Threads.Monitor: unsupported on this platform");
+    if (!obj)
+        rt_trap("Monitor.Enter: null object");
+    if (!obj)
+        return 0;
+    RtMonitor *m = get_monitor_for(obj);
+    if (!m)
+        return 0;
+    DWORD self = GetCurrentThreadId();
+
+    EnterCriticalSection(&m->cs);
+    if (monitor_is_owner(m, self))
+    {
+        m->recursion += 1;
+        LeaveCriticalSection(&m->cs);
+        return 1;
+    }
+    if (!m->owner_valid && m->acq_head == NULL)
+    {
+        m->owner = self;
+        m->owner_valid = 1;
+        m->recursion = 1;
+        LeaveCriticalSection(&m->cs);
+        return 1;
+    }
+    LeaveCriticalSection(&m->cs);
     return 0;
 }
 
 int8_t rt_monitor_try_enter_for(void *obj, int64_t ms)
 {
-    (void)obj;
-    (void)ms;
-    rt_trap("Viper.Threads.Monitor: unsupported on this platform");
-    return 0;
+    if (!obj)
+        rt_trap("Monitor.Enter: null object");
+    if (!obj)
+        return 0;
+    if (ms < 0)
+        ms = 0;
+    RtMonitor *m = get_monitor_for(obj);
+    if (!m)
+        return 0;
+    DWORD self = GetCurrentThreadId();
+
+    EnterCriticalSection(&m->cs);
+    if (monitor_is_owner(m, self))
+    {
+        m->recursion += 1;
+        LeaveCriticalSection(&m->cs);
+        return 1;
+    }
+    if (!m->owner_valid && m->acq_head == NULL)
+    {
+        m->owner = self;
+        m->owner_valid = 1;
+        m->recursion = 1;
+        LeaveCriticalSection(&m->cs);
+        return 1;
+    }
+
+    RtMonitorWaiter w = {0};
+    InitializeConditionVariable(&w.cv);
+    w.threadId = self;
+    w.state = RT_MON_WAITER_WAITING_LOCK;
+    w.desired_recursion = 1;
+    monitor_enqueue_acq(m, &w);
+
+    ULONGLONG start = GetTickCount64();
+    DWORD timeout_ms = (DWORD)ms;
+    while (w.state != RT_MON_WAITER_ACQUIRED)
+    {
+        ULONGLONG elapsed = GetTickCount64() - start;
+        if (elapsed >= timeout_ms)
+        {
+            if (w.state != RT_MON_WAITER_ACQUIRED)
+            {
+                monitor_remove_acq(m, &w);
+                LeaveCriticalSection(&m->cs);
+                return 0;
+            }
+            break;
+        }
+        DWORD wait_time = (DWORD)(timeout_ms - elapsed);
+
+        BOOL ok = SleepConditionVariableCS(&w.cv, &m->cs, wait_time);
+        if (!ok && GetLastError() == ERROR_TIMEOUT && w.state != RT_MON_WAITER_ACQUIRED)
+        {
+            monitor_remove_acq(m, &w);
+            LeaveCriticalSection(&m->cs);
+            return 0;
+        }
+    }
+
+    LeaveCriticalSection(&m->cs);
+    return 1;
 }
 
 void rt_monitor_exit(void *obj)
 {
-    (void)obj;
-    rt_trap("Viper.Threads.Monitor: unsupported on this platform");
+    if (!obj)
+        rt_trap("Monitor.Exit: null object");
+    if (!obj)
+        return;
+    RtMonitor *m = get_monitor_for(obj);
+    if (!m)
+        return;
+    DWORD self = GetCurrentThreadId();
+
+    EnterCriticalSection(&m->cs);
+    if (!monitor_is_owner(m, self))
+    {
+        LeaveCriticalSection(&m->cs);
+        rt_trap("Monitor.Exit: not owner");
+        return;
+    }
+    if (m->recursion > 1)
+    {
+        m->recursion -= 1;
+        LeaveCriticalSection(&m->cs);
+        return;
+    }
+
+    m->owner_valid = 0;
+    m->recursion = 0;
+    monitor_grant_next_waiter(m);
+    LeaveCriticalSection(&m->cs);
 }
 
 void rt_monitor_wait(void *obj)
 {
-    (void)obj;
-    rt_trap("Viper.Threads.Monitor: unsupported on this platform");
+    if (!obj)
+        rt_trap("Monitor.Wait: not owner");
+    if (!obj)
+        return;
+    RtMonitor *m = get_monitor_for(obj);
+    if (!m)
+        return;
+    DWORD self = GetCurrentThreadId();
+    EnterCriticalSection(&m->cs);
+
+    if (!monitor_is_owner(m, self))
+    {
+        LeaveCriticalSection(&m->cs);
+        rt_trap("Monitor.Wait: not owner");
+        return;
+    }
+
+    const size_t saved_recursion = m->recursion;
+
+    // Release the monitor fully and hand off to the next waiter.
+    m->owner_valid = 0;
+    m->recursion = 0;
+    monitor_grant_next_waiter(m);
+
+    RtMonitorWaiter w = {0};
+    InitializeConditionVariable(&w.cv);
+    w.threadId = self;
+    w.state = RT_MON_WAITER_WAITING_PAUSE;
+    w.desired_recursion = saved_recursion;
+    monitor_enqueue_wait(m, &w);
+
+    while (w.state == RT_MON_WAITER_WAITING_PAUSE)
+    {
+        SleepConditionVariableCS(&w.cv, &m->cs, INFINITE);
+    }
+
+    // Wait for re-acquisition.
+    while (w.state != RT_MON_WAITER_ACQUIRED)
+    {
+        SleepConditionVariableCS(&w.cv, &m->cs, INFINITE);
+    }
+
+    LeaveCriticalSection(&m->cs);
 }
 
 int8_t rt_monitor_wait_for(void *obj, int64_t ms)
 {
-    (void)obj;
-    (void)ms;
-    rt_trap("Viper.Threads.Monitor: unsupported on this platform");
-    return 0;
+    if (!obj)
+        rt_trap("Monitor.Wait: not owner");
+    if (!obj)
+        return 0;
+    RtMonitor *m = get_monitor_for(obj);
+    if (!m)
+        return 0;
+    DWORD self = GetCurrentThreadId();
+    EnterCriticalSection(&m->cs);
+
+    if (!monitor_is_owner(m, self))
+    {
+        LeaveCriticalSection(&m->cs);
+        rt_trap("Monitor.Wait: not owner");
+        return 0;
+    }
+
+    if (ms < 0)
+        ms = 0;
+
+    const size_t saved_recursion = m->recursion;
+
+    // Release the monitor fully and hand off to the next waiter.
+    m->owner_valid = 0;
+    m->recursion = 0;
+    monitor_grant_next_waiter(m);
+
+    RtMonitorWaiter w = {0};
+    InitializeConditionVariable(&w.cv);
+    w.threadId = self;
+    w.state = RT_MON_WAITER_WAITING_PAUSE;
+    w.desired_recursion = saved_recursion;
+    monitor_enqueue_wait(m, &w);
+
+    int timed_out = 0;
+    ULONGLONG start = GetTickCount64();
+    DWORD timeout_ms = (DWORD)ms;
+    while (w.state == RT_MON_WAITER_WAITING_PAUSE)
+    {
+        ULONGLONG elapsed = GetTickCount64() - start;
+        if (elapsed >= timeout_ms)
+        {
+            if (w.state == RT_MON_WAITER_WAITING_PAUSE)
+            {
+                timed_out = 1;
+                break;
+            }
+            break;
+        }
+        DWORD wait_time = (DWORD)(timeout_ms - elapsed);
+        BOOL ok = SleepConditionVariableCS(&w.cv, &m->cs, wait_time);
+        if (!ok && GetLastError() == ERROR_TIMEOUT && w.state == RT_MON_WAITER_WAITING_PAUSE)
+        {
+            timed_out = 1;
+            break;
+        }
+    }
+
+    if (timed_out)
+    {
+        // Timeout while still in the wait queue: remove and begin fair re-acquire.
+        monitor_remove_wait(m, &w);
+        w.state = RT_MON_WAITER_WAITING_LOCK;
+        monitor_enqueue_acq(m, &w);
+        if (!m->owner_valid && m->acq_head)
+            monitor_grant_next_waiter(m);
+    }
+
+    while (w.state != RT_MON_WAITER_ACQUIRED)
+    {
+        SleepConditionVariableCS(&w.cv, &m->cs, INFINITE);
+    }
+
+    LeaveCriticalSection(&m->cs);
+    return timed_out ? 0 : 1;
 }
 
 void rt_monitor_pause(void *obj)
 {
-    (void)obj;
-    rt_trap("Viper.Threads.Monitor: unsupported on this platform");
+    if (!obj)
+        rt_trap("Monitor.Pause: not owner");
+    if (!obj)
+        return;
+    RtMonitor *m = get_monitor_for(obj);
+    if (!m)
+        return;
+    DWORD self = GetCurrentThreadId();
+    EnterCriticalSection(&m->cs);
+
+    if (!monitor_is_owner(m, self))
+    {
+        LeaveCriticalSection(&m->cs);
+        rt_trap("Monitor.Pause: not owner");
+        return;
+    }
+
+    RtMonitorWaiter *w = m->wait_head;
+    if (w)
+    {
+        m->wait_head = w->next;
+        if (!m->wait_head)
+            m->wait_tail = NULL;
+        w->next = NULL;
+
+        w->state = RT_MON_WAITER_WAITING_LOCK;
+        monitor_enqueue_acq(m, w);
+        WakeConditionVariable(&w->cv);
+    }
+
+    LeaveCriticalSection(&m->cs);
 }
 
 void rt_monitor_pause_all(void *obj)
 {
-    (void)obj;
-    rt_trap("Viper.Threads.Monitor: unsupported on this platform");
+    if (!obj)
+        rt_trap("Monitor.PauseAll: not owner");
+    if (!obj)
+        return;
+    RtMonitor *m = get_monitor_for(obj);
+    if (!m)
+        return;
+    DWORD self = GetCurrentThreadId();
+    EnterCriticalSection(&m->cs);
+
+    if (!monitor_is_owner(m, self))
+    {
+        LeaveCriticalSection(&m->cs);
+        rt_trap("Monitor.PauseAll: not owner");
+        return;
+    }
+
+    while (m->wait_head)
+    {
+        RtMonitorWaiter *w = m->wait_head;
+        m->wait_head = w->next;
+        if (!m->wait_head)
+            m->wait_tail = NULL;
+        w->next = NULL;
+
+        w->state = RT_MON_WAITER_WAITING_LOCK;
+        monitor_enqueue_acq(m, w);
+        WakeConditionVariable(&w->cv);
+    }
+
+    LeaveCriticalSection(&m->cs);
 }
 
 #else

@@ -107,6 +107,7 @@ TerminalSession::TerminalSession()
 #endif
 
 #if defined(_WIN32)
+    // Configure stdout for virtual terminal processing (ANSI escape sequences)
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
     if (hOut && hOut != INVALID_HANDLE_VALUE)
     {
@@ -114,6 +115,21 @@ TerminalSession::TerminalSession()
         {
             DWORD mode = orig_out_mode_ | ENABLE_VIRTUAL_TERMINAL_PROCESSING;
             SetConsoleMode(hOut, mode);
+        }
+    }
+
+    // Configure stdin for raw input with virtual terminal input (ANSI sequences)
+    HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
+    if (hIn && hIn != INVALID_HANDLE_VALUE)
+    {
+        if (GetConsoleMode(hIn, &orig_in_mode_))
+        {
+            // Enable virtual terminal input to receive ANSI escape sequences
+            // Disable line input, echo, and processed input for raw mode
+            DWORD mode = orig_in_mode_;
+            mode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
+            mode &= ~(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT);
+            SetConsoleMode(hIn, mode);
         }
     }
 #endif
@@ -163,6 +179,11 @@ TerminalSession::~TerminalSession()
     if (hOut && hOut != INVALID_HANDLE_VALUE)
     {
         SetConsoleMode(hOut, orig_out_mode_);
+    }
+    HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
+    if (hIn && hIn != INVALID_HANDLE_VALUE)
+    {
+        SetConsoleMode(hIn, orig_in_mode_);
     }
 #endif
 }

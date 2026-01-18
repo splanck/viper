@@ -49,6 +49,7 @@ class TerminalSession
 #endif
 #if defined(_WIN32)
     DWORD orig_out_mode_{0};
+    DWORD orig_in_mode_{0};
 #endif
 };
 

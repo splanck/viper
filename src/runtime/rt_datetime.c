@@ -63,10 +63,9 @@
 /// - Scheduling future events
 /// - Formatting dates for different locales
 ///
-/// **Thread Safety:** Most functions use thread-local time conversion buffers
-/// provided by the C library. However, `localtime` may not be thread-safe on
-/// all platforms. For multi-threaded applications, consider external
-/// synchronization.
+/// **Thread Safety:** All functions use thread-safe time conversion functions
+/// (rt_localtime_r/rt_gmtime_r) that store results in caller-provided buffers,
+/// making them safe for use from multiple threads concurrently.
 ///
 /// @see rt_time.c For high-resolution timing and performance measurement
 /// @see rt_stopwatch.c For elapsed time measurement
@@ -187,7 +186,8 @@ int64_t rt_datetime_now_ms(void)
 int64_t rt_datetime_year(int64_t timestamp)
 {
     time_t t = (time_t)timestamp;
-    struct tm *tm = localtime(&t);
+    struct tm tm_buf;
+    struct tm *tm = rt_localtime_r(&t, &tm_buf);
     return tm ? (int64_t)(tm->tm_year + 1900) : 0;
 }
 
@@ -226,7 +226,8 @@ int64_t rt_datetime_year(int64_t timestamp)
 int64_t rt_datetime_month(int64_t timestamp)
 {
     time_t t = (time_t)timestamp;
-    struct tm *tm = localtime(&t);
+    struct tm tm_buf;
+    struct tm *tm = rt_localtime_r(&t, &tm_buf);
     return tm ? (int64_t)(tm->tm_mon + 1) : 0;
 }
 
@@ -255,7 +256,8 @@ int64_t rt_datetime_month(int64_t timestamp)
 int64_t rt_datetime_day(int64_t timestamp)
 {
     time_t t = (time_t)timestamp;
-    struct tm *tm = localtime(&t);
+    struct tm tm_buf;
+    struct tm *tm = rt_localtime_r(&t, &tm_buf);
     return tm ? (int64_t)tm->tm_mday : 0;
 }
 
@@ -290,7 +292,8 @@ int64_t rt_datetime_day(int64_t timestamp)
 int64_t rt_datetime_hour(int64_t timestamp)
 {
     time_t t = (time_t)timestamp;
-    struct tm *tm = localtime(&t);
+    struct tm tm_buf;
+    struct tm *tm = rt_localtime_r(&t, &tm_buf);
     return tm ? (int64_t)tm->tm_hour : 0;
 }
 
@@ -319,7 +322,8 @@ int64_t rt_datetime_hour(int64_t timestamp)
 int64_t rt_datetime_minute(int64_t timestamp)
 {
     time_t t = (time_t)timestamp;
-    struct tm *tm = localtime(&t);
+    struct tm tm_buf;
+    struct tm *tm = rt_localtime_r(&t, &tm_buf);
     return tm ? (int64_t)tm->tm_min : 0;
 }
 
@@ -347,7 +351,8 @@ int64_t rt_datetime_minute(int64_t timestamp)
 int64_t rt_datetime_second(int64_t timestamp)
 {
     time_t t = (time_t)timestamp;
-    struct tm *tm = localtime(&t);
+    struct tm tm_buf;
+    struct tm *tm = rt_localtime_r(&t, &tm_buf);
     return tm ? (int64_t)tm->tm_sec : 0;
 }
 
@@ -392,7 +397,8 @@ int64_t rt_datetime_second(int64_t timestamp)
 int64_t rt_datetime_day_of_week(int64_t timestamp)
 {
     time_t t = (time_t)timestamp;
-    struct tm *tm = localtime(&t);
+    struct tm tm_buf;
+    struct tm *tm = rt_localtime_r(&t, &tm_buf);
     return tm ? (int64_t)tm->tm_wday : 0;
 }
 
@@ -450,7 +456,8 @@ int64_t rt_datetime_day_of_week(int64_t timestamp)
 rt_string rt_datetime_format(int64_t timestamp, rt_string format)
 {
     time_t t = (time_t)timestamp;
-    struct tm *tm = localtime(&t);
+    struct tm tm_buf;
+    struct tm *tm = rt_localtime_r(&t, &tm_buf);
     if (!tm)
     {
         return rt_string_from_bytes("", 0);
@@ -516,7 +523,8 @@ rt_string rt_datetime_format(int64_t timestamp, rt_string format)
 rt_string rt_datetime_to_iso(int64_t timestamp)
 {
     time_t t = (time_t)timestamp;
-    struct tm *tm = gmtime(&t); // Use UTC for ISO format
+    struct tm tm_buf;
+    struct tm *tm = rt_gmtime_r(&t, &tm_buf); // Use UTC for ISO format
     if (!tm)
     {
         return rt_string_from_bytes("", 0);
