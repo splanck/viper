@@ -22,6 +22,7 @@
 #pragma once
 
 #include <cstddef>
+#include <string_view>
 #include <vector>
 
 namespace il::runtime
@@ -173,5 +174,11 @@ struct RuntimeClass
 ///     - Methods implicitly take the receiver as arg0 (not spelled in signature)
 ///     - Example: "str(i64,i64)" for String.Substring(start,len) -> string
 const std::vector<RuntimeClass> &runtimeClassCatalog();
+
+/// @brief Find a runtime class by its fully-qualified name.
+/// @param qname Fully-qualified class name (e.g., "Viper.String").
+/// @returns Pointer to the matching RuntimeClass, or nullptr if not found.
+/// @note Comparison is case-insensitive.
+const RuntimeClass *findRuntimeClassByQName(std::string_view qname);
 
 } // namespace il::runtime

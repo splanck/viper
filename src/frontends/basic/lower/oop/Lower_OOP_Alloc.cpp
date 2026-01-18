@@ -51,10 +51,9 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
     // Runtime class ctor mapping via catalog (e.g., Viper.Strings.FromStr)
     {
         std::string qname = qualify(expr.className);
-        const auto &classes = il::runtime::runtimeClassCatalog();
-        for (const auto &c : classes)
+        if (const auto *c = il::runtime::findRuntimeClassByQName(qname))
         {
-            if (string_utils::iequals(qname, c.qname) && c.ctor && std::string(c.ctor).size())
+            if (c->ctor && std::string(c->ctor).size())
             {
                 std::vector<Value> args;
                 args.reserve(expr.args.size());
@@ -66,7 +65,7 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
                 // Heuristic return type: strings return Str; others Ptr
                 Type ret = (qname == il::runtime::RTCLASS_STRING) ? Type(Type::Kind::Str)
                                                                   : Type(Type::Kind::Ptr);
-                Value obj = emitCallRet(ret, c.ctor, args);
+                Value obj = emitCallRet(ret, c->ctor, args);
                 return {obj, ret};
             }
         }

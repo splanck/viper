@@ -269,16 +269,7 @@ std::optional<MethodDispatchResolver::Resolution> MethodDispatchResolver::tryRun
     const std::string &classQName, const std::string &methodName, std::size_t argCount)
 {
     // Check if this is a runtime class
-    auto isRuntimeClass = [](const std::string &qn)
-    {
-        const auto &rc = il::runtime::runtimeClassCatalog();
-        for (const auto &c : rc)
-            if (string_utils::iequals(qn, c.qname))
-                return true;
-        return false;
-    };
-
-    if (!isRuntimeClass(classQName))
+    if (!il::runtime::findRuntimeClassByQName(classQName))
         return std::nullopt;
 
     auto &midx = runtimeMethodIndex();

@@ -19,7 +19,9 @@
 ///          keymap, keeping ownership of callbacks centralised.
 
 #include "tui/widgets/command_palette.hpp"
+
 #include "tui/render/screen.hpp"
+#include "tui/util/string.hpp"
 
 namespace viper::tui::widgets
 {
@@ -50,18 +52,10 @@ bool CommandPalette::wantsFocus() const
 void CommandPalette::update()
 {
     results_.clear();
-    auto q = query_;
-    for (auto &c : q)
-    {
-        c = static_cast<char>(std::tolower(c));
-    }
+    std::string q = util::toLower(query_);
     for (const auto &cmd : km_.commands())
     {
-        std::string name = cmd.name;
-        for (auto &ch : name)
-        {
-            ch = static_cast<char>(std::tolower(ch));
-        }
+        std::string name = util::toLower(cmd.name);
         if (q.empty() || name.find(q) != std::string::npos)
         {
             results_.push_back(cmd.id);

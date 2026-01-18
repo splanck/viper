@@ -136,15 +136,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
             else
             {
                 // Static call on a runtime class from the catalog (no receiver)
-                auto isRuntimeClass = [&](const std::string &qn)
-                {
-                    const auto &rc = il::runtime::runtimeClassCatalog();
-                    for (const auto &c : rc)
-                        if (string_utils::iequals(qn, c.qname))
-                            return true;
-                    return false;
-                };
-                if (isRuntimeClass(qname))
+                if (il::runtime::findRuntimeClassByQName(qname))
                 {
                     auto &midx = runtimeMethodIndex();
                     auto info = midx.find(qname, expr.method, expr.args.size());
@@ -230,15 +222,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                 qClass = std::string(il::runtime::RTCLASS_STRING);
         }
         // Only consult the runtime method catalog for true runtime classes
-        auto isRuntimeClass = [&](const std::string &qn)
-        {
-            const auto &rc = il::runtime::runtimeClassCatalog();
-            for (const auto &c : rc)
-                if (string_utils::iequals(qn, c.qname))
-                    return true;
-            return false;
-        };
-        if (!qClass.empty() && isRuntimeClass(qClass))
+        if (!qClass.empty() && il::runtime::findRuntimeClassByQName(qClass))
         {
             auto &midx = runtimeMethodIndex();
             auto info = midx.find(qClass, expr.method, expr.args.size());

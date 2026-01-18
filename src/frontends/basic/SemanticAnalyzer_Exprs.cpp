@@ -100,17 +100,6 @@ static std::optional<std::string> runtimeClassQNameFromExpr(const Expr &expr)
     return JoinDots(parts);
 }
 
-static const il::runtime::RuntimeClass *findRuntimeClass(std::string_view qname)
-{
-    const auto &classes = il::runtime::runtimeClassCatalog();
-    for (const auto &c : classes)
-    {
-        if (string_utils::iequals(qname, c.qname))
-            return &c;
-    }
-    return nullptr;
-}
-
 static std::optional<SemanticAnalyzer::Type> semanticTypeFromRuntimeType(std::string_view ty)
 {
     if (ty == "i64")
@@ -134,13 +123,13 @@ static std::optional<SemanticAnalyzer::Type> resolveRuntimePropertyType(
     {
         if (auto qname = runtimeClassQNameFromExpr(*expr.base))
         {
-            klass = findRuntimeClass(*qname);
+            klass = il::runtime::findRuntimeClassByQName(*qname);
         }
         else if (auto *var = as<const VarExpr>(*expr.base))
         {
             if (auto qname = analyzer.lookupObjectClassQName(var->name))
             {
-                klass = findRuntimeClass(*qname);
+                klass = il::runtime::findRuntimeClassByQName(*qname);
             }
         }
     }
@@ -762,18 +751,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
         auto &tyreg = runtimeTypeRegistry();
         if (tyreg.kindOf(expr.className) == TypeKind::BuiltinExternalType)
         {
-            const auto &classes = il::runtime::runtimeClassCatalog();
-            const std::string canon = toLowerQualified(expr.className);
-            const il::runtime::RuntimeClass *found = nullptr;
-            for (const auto &c : classes)
-            {
-                if (toLowerQualified(c.qname) == canon)
-                {
-                    found = &c;
-                    break;
-                }
-            }
-            if (found)
+            if (const auto *found = il::runtime::findRuntimeClassByQName(expr.className))
             {
                 if (!found->ctor || std::string(found->ctor).empty())
                 {

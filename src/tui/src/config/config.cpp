@@ -27,8 +27,10 @@
 
 #include "tui/config/config.hpp"
 
+#include "tui/util/color.hpp"
+#include "tui/util/string.hpp"
+
 #include <algorithm>
-#include <cctype>
 #include <exception>
 #include <fstream>
 #include <limits>
@@ -57,38 +59,6 @@ std::string trim(std::string_view sv)
         sv.remove_suffix(1);
     }
     return std::string(sv);
-}
-
-/// @brief Decode a hex RGB triplet into an RGBA colour.
-/// @details Accepts values in the form ``#RRGGBB`` or ``RRGGBB`` and stores the
-///          converted components in @p out.  The alpha channel is forced to 255
-///          to match terminal expectations.
-/// @param s Input colour string.
-/// @param out Destination colour populated on success.
-/// @return @c true when parsing succeeds, otherwise @c false.
-bool parse_color(const std::string &s, render::RGBA &out)
-{
-    std::string hex = s;
-    if (!hex.empty() && hex[0] == '#')
-    {
-        hex.erase(0, 1);
-    }
-    if (hex.size() != 6)
-    {
-        return false;
-    }
-    unsigned v = 0;
-    std::istringstream iss(hex);
-    iss >> std::hex >> v;
-    if (iss.fail())
-    {
-        return false;
-    }
-    out.r = static_cast<uint8_t>((v >> 16) & 0xFF);
-    out.g = static_cast<uint8_t>((v >> 8) & 0xFF);
-    out.b = static_cast<uint8_t>(v & 0xFF);
-    out.a = 255;
-    return true;
 }
 
 /// @brief Convert a symbolic key name into a @ref term::KeyEvent::Code.
@@ -179,12 +149,7 @@ input::KeyChord parse_chord(const std::string &str)
     while (std::getline(ss, token, '+'))
     {
         token = trim(token);
-        std::string lower;
-        lower.resize(token.size());
-        std::transform(token.begin(),
-                       token.end(),
-                       lower.begin(),
-                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        std::string lower = util::toLower(token);
         if (lower == "ctrl")
         {
             kc.mods |= term::KeyEvent::Ctrl;
@@ -219,10 +184,7 @@ input::KeyChord parse_chord(const std::string &str)
 /// @return @c true when @p s represents a truthy value.
 bool parse_bool(const std::string &s)
 {
-    std::string lower;
-    lower.resize(s.size());
-    std::transform(
-        s.begin(), s.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    std::string lower = util::toLower(s);
     return lower == "1" || lower == "true" || lower == "yes";
 }
 
@@ -256,10 +218,7 @@ bool loadFromFile(const std::string &path, Config &out)
         if (trimmed.front() == '[' && trimmed.back() == ']')
         {
             section = trimmed.substr(1, trimmed.size() - 2);
-            std::transform(section.begin(),
-                           section.end(),
-                           section.begin(),
-                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            util::toLowerInPlace(section);
             continue;
         }
         auto eq = trimmed.find('=');
@@ -269,17 +228,12 @@ bool loadFromFile(const std::string &path, Config &out)
         }
         std::string key = trim(trimmed.substr(0, eq));
         std::string value = trim(trimmed.substr(eq + 1));
-        std::string lower_key;
-        lower_key.resize(key.size());
-        std::transform(key.begin(),
-                       key.end(),
-                       lower_key.begin(),
-                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        std::string lower_key = util::toLower(key);
 
         if (section == "theme")
         {
             render::RGBA col;
-            if (!parse_color(value, col))
+            if (!util::parseHexColor(value, col))
             {
                 continue;
             }

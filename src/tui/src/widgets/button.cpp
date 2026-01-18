@@ -16,6 +16,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "tui/widgets/button.hpp"
+
+#include "tui/render/box.hpp"
 #include "tui/render/screen.hpp"
 
 #include <algorithm>
@@ -51,33 +53,8 @@ void Button::paint(render::ScreenBuffer &sb)
     int w = rect_.w;
     int h = rect_.h;
 
-    // Top and bottom borders
-    for (int x = 0; x < w; ++x)
-    {
-        auto &top = sb.at(y0, x0 + x);
-        top.ch = (x == 0 || x == w - 1) ? U'+' : U'-';
-        top.style = border;
-        auto &bot = sb.at(y0 + h - 1, x0 + x);
-        bot.ch = (x == 0 || x == w - 1) ? U'+' : U'-';
-        bot.style = border;
-    }
-
-    // Sides and fill
-    for (int y = 1; y < h - 1; ++y)
-    {
-        auto &left = sb.at(y0 + y, x0);
-        left.ch = U'|';
-        left.style = border;
-        auto &right = sb.at(y0 + y, x0 + w - 1);
-        right.ch = U'|';
-        right.style = border;
-        for (int x = 1; x < w - 1; ++x)
-        {
-            auto &cell = sb.at(y0 + y, x0 + x);
-            cell.ch = U' ';
-            cell.style = txt;
-        }
-    }
+    // Draw bordered box with styled fill
+    render::drawBox(sb, x0, y0, w, h, &border, &txt, true);
 
     // Minimum height of 3 required to render text inside the border.
     if (h >= 3)

@@ -16,8 +16,10 @@ add_library(tui STATIC
         src/term/clipboard.cpp
         src/input/keymap.cpp
         src/util/unicode.cpp
+        src/util/color.cpp
         src/render/screen.cpp
         src/render/renderer.cpp
+        src/render/box.cpp
         src/ui/widget.cpp
         src/ui/container.cpp
         src/ui/focus.cpp

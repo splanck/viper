@@ -17,6 +17,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "tui/ui/modal.hpp"
+
+#include "tui/render/box.hpp"
 #include "tui/render/screen.hpp"
 
 #include <algorithm>
@@ -203,29 +205,7 @@ void Popup::layout(const Rect &r)
 ///          layout stage enforces this by clamping dimensions.
 void Popup::paint(render::ScreenBuffer &sb)
 {
-    int x0 = box_.x;
-    int y0 = box_.y;
-    int w = box_.w;
-    int h = box_.h;
-
-    for (int x = 0; x < w; ++x)
-    {
-        auto &top = sb.at(y0, x0 + x);
-        top.ch = (x == 0 || x == w - 1) ? U'+' : U'-';
-        auto &bot = sb.at(y0 + h - 1, x0 + x);
-        bot.ch = (x == 0 || x == w - 1) ? U'+' : U'-';
-    }
-    for (int y = 1; y < h - 1; ++y)
-    {
-        auto &left = sb.at(y0 + y, x0);
-        left.ch = U'|';
-        auto &right = sb.at(y0 + y, x0 + w - 1);
-        right.ch = U'|';
-        for (int x = 1; x < w - 1; ++x)
-        {
-            sb.at(y0 + y, x0 + x).ch = U' ';
-        }
-    }
+    render::drawBox(sb, box_.x, box_.y, box_.w, box_.h);
 }
 
 /// @brief Handle key events that should dismiss the popup.

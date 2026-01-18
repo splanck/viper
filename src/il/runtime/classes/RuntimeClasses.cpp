@@ -25,6 +25,8 @@
 
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <utility>
 
 namespace il::runtime
@@ -84,6 +86,33 @@ const std::vector<RuntimeClass> &runtimeClassCatalog()
         return catalog;
     }();
     return catalog_init;
+}
+
+const RuntimeClass *findRuntimeClassByQName(std::string_view qname)
+{
+    const auto &catalog = runtimeClassCatalog();
+    for (const auto &c : catalog)
+    {
+        std::string_view cname{c.qname};
+        if (qname.size() != cname.size())
+        {
+            continue;
+        }
+        bool match = std::equal(qname.begin(),
+                                qname.end(),
+                                cname.begin(),
+                                cname.end(),
+                                [](char a, char b)
+                                {
+                                    return std::toupper(static_cast<unsigned char>(a)) ==
+                                           std::toupper(static_cast<unsigned char>(b));
+                                });
+        if (match)
+        {
+            return &c;
+        }
+    }
+    return nullptr;
 }
 
 } // namespace il::runtime

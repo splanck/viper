@@ -22,6 +22,8 @@
 
 #include "tui/syntax/rules.hpp"
 
+#include "tui/util/color.hpp"
+
 #include <cctype>
 #include <fstream>
 #include <sstream>
@@ -135,21 +137,6 @@ struct JsonParser
     }
 };
 
-/// @brief Convert a `#RRGGBB` string into an RGBA struct.
-/// @details Parses the red, green, and blue components from hexadecimal pairs
-///          and leaves alpha at zero (the renderer interprets it as opaque).
-///          Invalid strings leave the struct at its default value.
-render::RGBA parseColor(const std::string &hex)
-{
-    render::RGBA c{};
-    if (hex.size() == 7 && hex[0] == '#')
-    {
-        c.r = static_cast<uint8_t>(std::stoi(hex.substr(1, 2), nullptr, 16));
-        c.g = static_cast<uint8_t>(std::stoi(hex.substr(3, 2), nullptr, 16));
-        c.b = static_cast<uint8_t>(std::stoi(hex.substr(5, 2), nullptr, 16));
-    }
-    return c;
-}
 } // namespace
 
 /// @brief Load syntax rules from a JSON file located at @p path.
@@ -213,7 +200,7 @@ bool SyntaxRuleSet::loadFromFile(const std::string &path)
                         return false;
                     if (skey == "fg")
                     {
-                        style.fg = parseColor(p.parseString());
+                        (void)util::parseHexColor(p.parseString(), style.fg);
                     }
                     else if (skey == "bold")
                     {

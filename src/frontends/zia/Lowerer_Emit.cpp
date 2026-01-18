@@ -12,6 +12,7 @@
 
 #include "frontends/zia/Lowerer.hpp"
 #include "frontends/zia/RuntimeNames.hpp"
+#include "support/alignment.hpp"
 #include <cctype>
 
 namespace il::frontends::zia
@@ -441,7 +442,7 @@ size_t Lowerer::getILTypeAlignment(Type type)
 
 size_t Lowerer::alignTo(size_t offset, size_t alignment)
 {
-    return (offset + alignment - 1) & ~(alignment - 1);
+    return viper::support::alignUp(offset, alignment);
 }
 
 //=============================================================================

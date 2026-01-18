@@ -1055,9 +1055,22 @@ static uint8_t *extract_bytes_data(void *bytes, size_t *out_len)
     return data;
 }
 
-/// @brief Compute HMAC-MD5 with raw bytes.
-static void hmac_md5_raw(
-    const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len, uint8_t out[16])
+/// @brief Hash function pointer type for HMAC computation.
+typedef void (*hash_fn_t)(const uint8_t *data, size_t len, uint8_t *digest);
+
+/// @brief Generic HMAC computation with parameterized hash function.
+/// @param hash_fn The hash function to use (MD5, SHA1, or SHA256).
+/// @param digest_size Size of the hash digest in bytes (16, 20, or 32).
+/// @param key HMAC key bytes.
+/// @param key_len Length of key in bytes.
+/// @param data Data to authenticate.
+/// @param data_len Length of data in bytes.
+/// @param out Output buffer (must be at least digest_size bytes).
+static void hmac_compute(
+    hash_fn_t hash_fn, size_t digest_size,
+    const uint8_t *key, size_t key_len,
+    const uint8_t *data, size_t data_len,
+    uint8_t *out)
 {
     uint8_t k_padded[HMAC_BLOCK_SIZE];
     uint8_t k_ipad[HMAC_BLOCK_SIZE];
@@ -1066,8 +1079,8 @@ static void hmac_md5_raw(
     // If key is longer than block size, hash it first
     if (key_len > HMAC_BLOCK_SIZE)
     {
-        compute_md5(key, key_len, k_padded);
-        memset(k_padded + 16, 0, HMAC_BLOCK_SIZE - 16);
+        hash_fn(key, key_len, k_padded);
+        memset(k_padded + digest_size, 0, HMAC_BLOCK_SIZE - digest_size);
     }
     else
     {
@@ -1083,7 +1096,7 @@ static void hmac_md5_raw(
     }
 
     // Inner hash: H(K xor ipad || data)
-    uint8_t inner_hash[16];
+    uint8_t inner_hash[32]; // Max digest size
     size_t inner_len = HMAC_BLOCK_SIZE + data_len;
     uint8_t *inner_data = (uint8_t *)malloc(inner_len);
     if (!inner_data)
@@ -1092,108 +1105,35 @@ static void hmac_md5_raw(
     memcpy(inner_data, k_ipad, HMAC_BLOCK_SIZE);
     if (data_len > 0)
         memcpy(inner_data + HMAC_BLOCK_SIZE, data, data_len);
-    compute_md5(inner_data, inner_len, inner_hash);
+    hash_fn(inner_data, inner_len, inner_hash);
     free(inner_data);
 
     // Outer hash: H(K xor opad || inner_hash)
-    uint8_t outer_data[HMAC_BLOCK_SIZE + 16];
+    uint8_t outer_data[HMAC_BLOCK_SIZE + 32]; // Max digest size
     memcpy(outer_data, k_opad, HMAC_BLOCK_SIZE);
-    memcpy(outer_data + HMAC_BLOCK_SIZE, inner_hash, 16);
-    compute_md5(outer_data, HMAC_BLOCK_SIZE + 16, out);
+    memcpy(outer_data + HMAC_BLOCK_SIZE, inner_hash, digest_size);
+    hash_fn(outer_data, HMAC_BLOCK_SIZE + digest_size, out);
+}
+
+/// @brief Compute HMAC-MD5 with raw bytes.
+static void hmac_md5_raw(
+    const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len, uint8_t out[16])
+{
+    hmac_compute((hash_fn_t)compute_md5, 16, key, key_len, data, data_len, out);
 }
 
 /// @brief Compute HMAC-SHA1 with raw bytes.
 static void hmac_sha1_raw(
     const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len, uint8_t out[20])
 {
-    uint8_t k_padded[HMAC_BLOCK_SIZE];
-    uint8_t k_ipad[HMAC_BLOCK_SIZE];
-    uint8_t k_opad[HMAC_BLOCK_SIZE];
-
-    // If key is longer than block size, hash it first
-    if (key_len > HMAC_BLOCK_SIZE)
-    {
-        compute_sha1(key, key_len, k_padded);
-        memset(k_padded + 20, 0, HMAC_BLOCK_SIZE - 20);
-    }
-    else
-    {
-        memcpy(k_padded, key, key_len);
-        memset(k_padded + key_len, 0, HMAC_BLOCK_SIZE - key_len);
-    }
-
-    // XOR key with ipad and opad
-    for (int i = 0; i < HMAC_BLOCK_SIZE; i++)
-    {
-        k_ipad[i] = k_padded[i] ^ 0x36;
-        k_opad[i] = k_padded[i] ^ 0x5c;
-    }
-
-    // Inner hash: H(K xor ipad || data)
-    uint8_t inner_hash[20];
-    size_t inner_len = HMAC_BLOCK_SIZE + data_len;
-    uint8_t *inner_data = (uint8_t *)malloc(inner_len);
-    if (!inner_data)
-        rt_trap("HMAC: memory allocation failed");
-
-    memcpy(inner_data, k_ipad, HMAC_BLOCK_SIZE);
-    if (data_len > 0)
-        memcpy(inner_data + HMAC_BLOCK_SIZE, data, data_len);
-    compute_sha1(inner_data, inner_len, inner_hash);
-    free(inner_data);
-
-    // Outer hash: H(K xor opad || inner_hash)
-    uint8_t outer_data[HMAC_BLOCK_SIZE + 20];
-    memcpy(outer_data, k_opad, HMAC_BLOCK_SIZE);
-    memcpy(outer_data + HMAC_BLOCK_SIZE, inner_hash, 20);
-    compute_sha1(outer_data, HMAC_BLOCK_SIZE + 20, out);
+    hmac_compute((hash_fn_t)compute_sha1, 20, key, key_len, data, data_len, out);
 }
 
 /// @brief Compute HMAC-SHA256 with raw bytes (exported for PBKDF2).
 void rt_hash_hmac_sha256_raw(
     const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len, uint8_t out[32])
 {
-    uint8_t k_padded[HMAC_BLOCK_SIZE];
-    uint8_t k_ipad[HMAC_BLOCK_SIZE];
-    uint8_t k_opad[HMAC_BLOCK_SIZE];
-
-    // If key is longer than block size, hash it first
-    if (key_len > HMAC_BLOCK_SIZE)
-    {
-        compute_sha256(key, key_len, k_padded);
-        memset(k_padded + 32, 0, HMAC_BLOCK_SIZE - 32);
-    }
-    else
-    {
-        memcpy(k_padded, key, key_len);
-        memset(k_padded + key_len, 0, HMAC_BLOCK_SIZE - key_len);
-    }
-
-    // XOR key with ipad and opad
-    for (int i = 0; i < HMAC_BLOCK_SIZE; i++)
-    {
-        k_ipad[i] = k_padded[i] ^ 0x36;
-        k_opad[i] = k_padded[i] ^ 0x5c;
-    }
-
-    // Inner hash: H(K xor ipad || data)
-    uint8_t inner_hash[32];
-    size_t inner_len = HMAC_BLOCK_SIZE + data_len;
-    uint8_t *inner_data = (uint8_t *)malloc(inner_len);
-    if (!inner_data)
-        rt_trap("HMAC: memory allocation failed");
-
-    memcpy(inner_data, k_ipad, HMAC_BLOCK_SIZE);
-    if (data_len > 0)
-        memcpy(inner_data + HMAC_BLOCK_SIZE, data, data_len);
-    compute_sha256(inner_data, inner_len, inner_hash);
-    free(inner_data);
-
-    // Outer hash: H(K xor opad || inner_hash)
-    uint8_t outer_data[HMAC_BLOCK_SIZE + 32];
-    memcpy(outer_data, k_opad, HMAC_BLOCK_SIZE);
-    memcpy(outer_data + HMAC_BLOCK_SIZE, inner_hash, 32);
-    compute_sha256(outer_data, HMAC_BLOCK_SIZE + 32, out);
+    hmac_compute((hash_fn_t)compute_sha256, 32, key, key_len, data, data_len, out);
 }
 
 //=============================================================================

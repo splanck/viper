@@ -88,6 +88,8 @@
 
 #include "FrameBuilder.hpp"
 
+#include "support/alignment.hpp"
+
 #include <algorithm>
 
 namespace viper::codegen::aarch64
@@ -138,8 +140,7 @@ void FrameBuilder::finalize()
     // slots. Add any reserved outgoing-arg area.
     usedBytes += fn_->frame.maxOutgoingBytes;
     // Round up to 16-byte alignment.
-    if (usedBytes % kStackAlignment != 0)
-        usedBytes = (usedBytes + (kStackAlignment - 1)) & ~(kStackAlignment - 1);
+    usedBytes = viper::support::alignUp(usedBytes, kStackAlignment);
     fn_->frame.totalBytes = usedBytes;
     fn_->localFrameSize = usedBytes; // bridge for current emitter plan field
 }

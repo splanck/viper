@@ -219,15 +219,7 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
         {
             if (auto qClass = runtimeClassQNameFrom(*expr.base))
             {
-                auto isRuntimeClass = [&](const std::string &qn)
-                {
-                    const auto &rc = il::runtime::runtimeClassCatalog();
-                    for (const auto &c : rc)
-                        if (string_utils::iequals(qn, c.qname))
-                            return true;
-                    return false;
-                };
-                if (isRuntimeClass(*qClass))
+                if (il::runtime::findRuntimeClassByQName(*qClass))
                 {
                     auto prop = runtimePropertyIndex().find(*qClass, expr.member);
                     if (prop)
@@ -275,15 +267,7 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
                 qClass = std::string(il::runtime::RTCLASS_STRING);
 
             // Only use runtime property catalog for known runtime classes
-            auto isRuntimeClass = [&](const std::string &qn)
-            {
-                const auto &rc = il::runtime::runtimeClassCatalog();
-                for (const auto &c : rc)
-                    if (string_utils::iequals(qn, c.qname))
-                        return true;
-                return false;
-            };
-            if (!qClass.empty() && isRuntimeClass(qClass))
+            if (!qClass.empty() && il::runtime::findRuntimeClassByQName(qClass))
             {
                 auto prop = runtimePropertyIndex().find(qClass, expr.member);
                 if (prop)
