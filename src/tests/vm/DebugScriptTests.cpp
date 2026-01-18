@@ -47,8 +47,16 @@ int main(int argc, char **argv)
     std::string dbgErr = "dbg.err";
     std::string refOut = "ref.out";
     std::string cmd = ilc + " -run " + ilFile + " --step >step.out 2>step.err";
-    if (std::system(cmd.c_str()) != 10 * 256)
+    int ret = std::system(cmd.c_str());
+#ifdef _WIN32
+    // Windows returns exit code directly
+    if (ret != 10)
         return 1;
+#else
+    // POSIX returns status in format exit_code * 256
+    if (ret != 10 * 256)
+        return 1;
+#endif
     std::remove("step.out");
     std::remove("step.err");
     cmd = ilc + " -run " + ilFile + " --trace=il --break L3 --debug-cmds " + scriptCRLF + " >" +

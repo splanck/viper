@@ -30,8 +30,16 @@ int main(int argc, char **argv)
     std::string ilFile = argv[2];
     std::string outFile = "break.out";
     std::string cmd = ilc + " -run " + ilFile + " --break L3 2>" + outFile;
-    if (std::system(cmd.c_str()) != 10 * 256)
+    int ret = std::system(cmd.c_str());
+#ifdef _WIN32
+    // Windows returns exit code directly
+    if (ret != 10)
         return 1;
+#else
+    // POSIX returns status in format exit_code * 256
+    if (ret != 10 * 256)
+        return 1;
+#endif
     std::ifstream out(outFile);
     std::string line;
     if (!std::getline(out, line))

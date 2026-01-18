@@ -33,7 +33,13 @@ int main(int argc, char **argv)
     std::string cmd =
         ilc + " -run " + ilFile + " --break entry --debug-cmds " + script + " 2>" + errFile;
     int rc = std::system(cmd.c_str());
+#ifdef _WIN32
+    // Windows returns exit code directly
+    if (rc != 7)
+#else
+    // POSIX returns status in format exit_code * 256
     if (rc != 7 * 256)
+#endif
     {
         std::cerr << "unexpected exit status: " << rc << "\n";
         std::remove(errFile.c_str());
