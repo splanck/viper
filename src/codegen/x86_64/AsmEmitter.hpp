@@ -202,6 +202,7 @@ enum class OperandOrder
     M,         ///< Single memory operand.
     I,         ///< Single immediate operand.
     R_R,       ///< Destination register with register source.
+    R_R32,     ///< Destination register with register source (32-bit operands).
     R_M,       ///< Destination register with memory source.
     M_R,       ///< Destination memory with register source.
     R_I,       ///< Destination register with immediate source.

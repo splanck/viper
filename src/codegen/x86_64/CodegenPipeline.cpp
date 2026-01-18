@@ -748,9 +748,14 @@ PipelineResult CodegenPipeline::run()
         return result;
     }
 
-    if (!opts_.emit_asm)
+    // If user requested assembly output via -S with a specific path, stop here.
+    // Don't try to assemble or link - just emit the assembly file.
+    if (opts_.emit_asm && !opts_.output_asm_path.empty())
     {
-        // Maintain parity with previous behaviour by always keeping the file around for linking.
+        result.exit_code = 0;
+        result.stdout_text = out.str();
+        result.stderr_text = err.str();
+        return result;
     }
 
     // Check if -o path looks like an executable (ends with .exe or has no extension)

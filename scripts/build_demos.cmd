@@ -137,7 +137,7 @@ if errorlevel 1 (
 echo   OK
 
 echo   Generating x86_64 assembly...
-"%ILC%" codegen x64 -S "%IL_FILE%" -o "%ASM_FILE%" 2>nul
+"%ILC%" codegen x64 "%IL_FILE%" -S "%ASM_FILE%" 2>nul
 if errorlevel 1 (
     echo   FAILED: x86_64 codegen
     echo   (This is expected - x86_64 backend is incomplete on Windows^)
@@ -166,7 +166,8 @@ if errorlevel 1 (
     goto :eof
 )
 
-clang++ "%OBJ_FILE%" "%RUNTIME_LIB%" -o "%EXE_FILE%" 2>nul
+REM Use MSVC-style linking to avoid CRT conflicts
+clang++ -fuse-ld=lld-link "%OBJ_FILE%" "%RUNTIME_LIB%" -Xlinker /DEFAULTLIB:msvcrtd -luser32 -lkernel32 -lws2_32 -ladvapi32 -lxinput -o "%EXE_FILE%" 2>nul
 if errorlevel 1 (
     echo   FAILED: Linking
     set /a FAILED+=1
@@ -213,7 +214,7 @@ if errorlevel 1 (
 echo   OK
 
 echo   Generating x86_64 assembly...
-"%ILC%" codegen x64 -S "%IL_FILE%" -o "%ASM_FILE%" 2>nul
+"%ILC%" codegen x64 "%IL_FILE%" -S "%ASM_FILE%" 2>nul
 if errorlevel 1 (
     echo   FAILED: x86_64 codegen
     echo   (This is expected - x86_64 backend is incomplete on Windows^)
@@ -241,7 +242,8 @@ if errorlevel 1 (
     goto :eof
 )
 
-clang++ "%OBJ_FILE%" "%RUNTIME_LIB%" "%GFX_LIB%" "%GUI_LIB%" -o "%EXE_FILE%" 2>nul
+REM Use MSVC-style linking to avoid CRT conflicts
+clang++ -fuse-ld=lld-link "%OBJ_FILE%" "%RUNTIME_LIB%" "%GFX_LIB%" "%GUI_LIB%" -Xlinker /DEFAULTLIB:msvcrtd -luser32 -lgdi32 -lkernel32 -lws2_32 -ladvapi32 -lxinput -o "%EXE_FILE%" 2>nul
 if errorlevel 1 (
     echo   FAILED: Linking
     set /a FAILED+=1
