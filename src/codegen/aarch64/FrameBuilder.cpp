@@ -140,7 +140,7 @@ void FrameBuilder::finalize()
     // slots. Add any reserved outgoing-arg area.
     usedBytes += fn_->frame.maxOutgoingBytes;
     // Round up to 16-byte alignment.
-    usedBytes = viper::support::alignUp(usedBytes, kStackAlignment);
+    usedBytes = il::support::alignUp(usedBytes, kStackAlignment);
     fn_->frame.totalBytes = usedBytes;
     fn_->localFrameSize = usedBytes; // bridge for current emitter plan field
 }

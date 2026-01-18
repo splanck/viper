@@ -24,7 +24,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace viper::support
+namespace il::support
 {
 
 /// @brief A vector-like container with inline storage for small element counts.
@@ -284,4 +284,4 @@ class SmallVector
     [[nodiscard]] std::span<const T> span() const noexcept { return {data(), size_}; }
 };
 
-} // namespace viper::support
+} // namespace il::support

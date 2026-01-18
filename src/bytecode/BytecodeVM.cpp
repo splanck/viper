@@ -2828,7 +2828,7 @@ extern "C" void vm_thread_entry_trampoline_bc(void* raw) {
 
     try {
         il::vm::VM vm(*payload->module, payload->program);
-        viper::support::SmallVector<il::vm::Slot, 2> args;
+        il::support::SmallVector<il::vm::Slot, 2> args;
         if (payload->entry->params.size() == 1) {
             il::vm::Slot s{};
             s.ptr = payload->arg;

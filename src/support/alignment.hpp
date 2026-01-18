@@ -20,7 +20,7 @@
 #include <cstdint>
 #include <type_traits>
 
-namespace viper::support
+namespace il::support
 {
 
 /// @brief Round a value up to the next multiple of alignment.
@@ -50,4 +50,4 @@ template <typename T>
     return (n & (alignment - 1)) == 0;
 }
 
-} // namespace viper::support
+} // namespace il::support

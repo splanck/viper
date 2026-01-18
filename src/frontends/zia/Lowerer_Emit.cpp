@@ -442,7 +442,7 @@ size_t Lowerer::getILTypeAlignment(Type type)
 
 size_t Lowerer::alignTo(size_t offset, size_t alignment)
 {
-    return viper::support::alignUp(offset, alignment);
+    return il::support::alignUp(offset, alignment);
 }
 
 //=============================================================================

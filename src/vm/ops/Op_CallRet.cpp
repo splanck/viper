@@ -113,7 +113,7 @@ VM::ExecResult handleCall(VM &vm,
     // Evaluate operands up front so argument propagation is explicit and
     // deterministic before dispatch.  This mirrors the IL semantics and avoids
     // leaking partially evaluated slots if a bridge call traps.
-    viper::support::SmallVector<Slot, 8> args;
+    il::support::SmallVector<Slot, 8> args;
     args.reserve(in.operands.size());
     for (const auto &op : in.operands)
         args.push_back(VMAccess::eval(vm, fr, op));
@@ -251,9 +251,9 @@ VM::ExecResult handleCall(VM &vm,
             uint8_t *stackPtr = nullptr;
         };
 
-        viper::support::SmallVector<ArgBinding, 8> bindings;
+        il::support::SmallVector<ArgBinding, 8> bindings;
         bindings.reserve(in.operands.size());
-        viper::support::SmallVector<Slot, 8> originalArgs;
+        il::support::SmallVector<Slot, 8> originalArgs;
         originalArgs.reserve(in.operands.size());
 
         uint8_t *const stackBegin = fr.stack.data();
@@ -418,7 +418,7 @@ VM::ExecResult handleCallIndirect(VM &vm,
     if (calleeVal.kind == il::core::Value::Kind::GlobalAddr)
     {
         std::string calleeName = calleeVal.str;
-        viper::support::SmallVector<Slot, 8> args;
+        il::support::SmallVector<Slot, 8> args;
         if (in.operands.size() > 1)
         {
             args.reserve(in.operands.size() - 1);
@@ -461,7 +461,7 @@ VM::ExecResult handleCallIndirect(VM &vm,
             return res;
         }
         const auto *fn = reinterpret_cast<const il::core::Function *>(callee.ptr);
-        viper::support::SmallVector<Slot, 8> args;
+        il::support::SmallVector<Slot, 8> args;
         if (in.operands.size() > 1)
         {
             args.reserve(in.operands.size() - 1);
