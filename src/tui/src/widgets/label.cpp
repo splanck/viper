@@ -19,7 +19,7 @@
 ///          but documented thoroughly to serve as an example for other widgets.
 
 #include "tui/widgets/label.hpp"
-#include "tui/render/screen.hpp"
+#include "tui/render/text.hpp"
 
 namespace viper::tui::widgets
 {
@@ -31,19 +31,13 @@ namespace viper::tui::widgets
 Label::Label(std::string text, const style::Theme &theme) : text_(std::move(text)), theme_(theme) {}
 
 /// @brief Render the label contents into the supplied screen buffer.
-/// @details Iterates over the visible characters in @ref text_, clamps drawing to
-///          the widget rectangle, and writes glyph/style pairs directly into the
-///          screen buffer.  Characters beyond the available width are truncated
+/// @details Uses the renderText utility to paint the text, clipping to the
+///          widget rectangle.  Characters beyond the available width are truncated
 ///          so the widget never wraps implicitly.
 void Label::paint(render::ScreenBuffer &sb)
 {
     const auto &st = theme_.style(style::Role::Normal);
-    for (std::size_t i = 0; i < text_.size() && static_cast<int>(i) < rect_.w; ++i)
-    {
-        auto &cell = sb.at(rect_.y, rect_.x + static_cast<int>(i));
-        cell.ch = static_cast<char32_t>(text_[i]);
-        cell.style = st;
-    }
+    render::renderText(sb, rect_.y, rect_.x, rect_.w, text_, st);
 }
 
 } // namespace viper::tui::widgets

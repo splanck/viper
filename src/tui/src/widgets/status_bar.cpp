@@ -19,7 +19,7 @@
 ///          before drawing text so previous frames do not leak visual artefacts.
 
 #include "tui/widgets/status_bar.hpp"
-#include "tui/render/screen.hpp"
+#include "tui/render/text.hpp"
 
 #include <algorithm>
 
@@ -58,27 +58,12 @@ void StatusBar::paint(render::ScreenBuffer &sb)
 {
     const auto &st = theme_.style(style::Role::Normal);
     int y = rect_.y + rect_.h - 1;
-    for (int x = 0; x < rect_.w; ++x)
-    {
-        auto &cell = sb.at(y, rect_.x + x);
-        cell.ch = U' ';
-        cell.style = st;
-    }
-    for (std::size_t i = 0; i < left_.size() && static_cast<int>(i) < rect_.w; ++i)
-    {
-        auto &cell = sb.at(y, rect_.x + static_cast<int>(i));
-        cell.ch = static_cast<char32_t>(left_[i]);
-        cell.style = st;
-    }
-    int start = rect_.x + rect_.w - static_cast<int>(right_.size());
-    start = std::max(start, rect_.x);
-    for (std::size_t i = 0; i < right_.size() && start + static_cast<int>(i) < rect_.x + rect_.w;
-         ++i)
-    {
-        auto &cell = sb.at(y, start + static_cast<int>(i));
-        cell.ch = static_cast<char32_t>(right_[i]);
-        cell.style = st;
-    }
+    // Clear the row with spaces
+    sb.fillRect(rect_.x, y, rect_.w, 1, U' ', &st);
+    // Render left-aligned text
+    render::renderText(sb, y, rect_.x, rect_.w, left_, st);
+    // Render right-aligned text
+    render::renderTextRight(sb, y, rect_.x, rect_.w, right_, st);
 }
 
 } // namespace viper::tui::widgets

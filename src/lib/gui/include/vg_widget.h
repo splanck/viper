@@ -175,6 +175,24 @@ struct vg_widget {
 };
 
 //=============================================================================
+// Child Iteration Macros
+//=============================================================================
+
+/// @brief Iterate over all children of a widget.
+/// @param parent Pointer to the parent widget.
+/// @param child Loop variable name (declared as vg_widget_t*).
+#define VG_FOREACH_CHILD(parent, child) \
+    for (vg_widget_t* child = (parent)->first_child; child; child = child->next_sibling)
+
+/// @brief Iterate over visible children of a widget (skips invisible children).
+/// @param parent Pointer to the parent widget.
+/// @param child Loop variable name (declared as vg_widget_t*).
+/// @note The loop variable is declared inside the macro; use a unique name.
+#define VG_FOREACH_VISIBLE_CHILD(parent, child) \
+    for (vg_widget_t* child = (parent)->first_child; child; child = child->next_sibling) \
+        if (!child->visible) continue; else
+
+//=============================================================================
 // Widget Creation/Destruction
 //=============================================================================
 

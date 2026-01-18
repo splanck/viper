@@ -36,6 +36,7 @@ class Function;
 namespace il::frontends::basic
 {
 class Lowerer;
+struct SymbolInfo;
 }
 
 namespace il::frontends::basic::lower
@@ -138,6 +139,27 @@ class Emitter
   private:
     Lowerer &lowerer_;
     common::CommonLowering common_;
+
+    /// @brief Release a single object slot, emitting destructor call if needed.
+    void releaseObjectSlot(SymbolInfo &info);
+
+    /// @brief State tracking for array release runtime helper requests.
+    struct ArrayReleaseState
+    {
+        bool requestedI64{false};
+        bool requestedF64{false};
+        bool requestedStr{false};
+        bool requestedObj{false};
+    };
+
+    /// @brief Emit the appropriate array release call based on element type.
+    /// @param handle Array handle value.
+    /// @param info Symbol info describing the array.
+    /// @param state Tracks which runtime helpers have been requested.
+    /// @param skipObjectArrays If true, return false for object arrays without emitting.
+    /// @return True if release was emitted, false if skipped.
+    bool emitArrayRelease(Value handle, const SymbolInfo &info,
+                          ArrayReleaseState &state, bool skipObjectArrays);
 
     struct TempRelease
     {

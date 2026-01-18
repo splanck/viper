@@ -53,7 +53,6 @@
 
 #include "rt_hash.h"
 
-#include "rt_bytes.h"
 #include "rt_codec.h"
 #include "rt_crc32.h"
 #include "rt_internal.h"
@@ -646,27 +645,10 @@ rt_string rt_hash_md5(rt_string str)
 /// @see rt_hash_sha256_bytes For a secure alternative
 rt_string rt_hash_md5_bytes(void *bytes)
 {
-    if (!bytes)
-    {
-        uint8_t digest[16];
-        compute_md5(NULL, 0, digest);
-        return rt_codec_hex_enc_bytes(digest, 16);
-    }
-
-    int64_t len = rt_bytes_len(bytes);
+    size_t len;
+    uint8_t *data = rt_bytes_extract_raw(bytes, &len);
     uint8_t digest[16];
-
-    // Get raw data pointer from bytes object
-    uint8_t *data = (uint8_t *)malloc((size_t)len);
-    if (!data && len > 0)
-        rt_trap("Hash: memory allocation failed");
-
-    for (int64_t i = 0; i < len; i++)
-    {
-        data[i] = (uint8_t)rt_bytes_get(bytes, i);
-    }
-
-    compute_md5(data, (size_t)len, digest);
+    compute_md5(data ? data : (const uint8_t *)"", len, digest);
     free(data);
     return rt_codec_hex_enc_bytes(digest, 16);
 }
@@ -750,26 +732,10 @@ rt_string rt_hash_sha1(rt_string str)
 /// @see rt_hash_sha256_bytes For a secure alternative
 rt_string rt_hash_sha1_bytes(void *bytes)
 {
-    if (!bytes)
-    {
-        uint8_t digest[20];
-        compute_sha1(NULL, 0, digest);
-        return rt_codec_hex_enc_bytes(digest, 20);
-    }
-
-    int64_t len = rt_bytes_len(bytes);
+    size_t len;
+    uint8_t *data = rt_bytes_extract_raw(bytes, &len);
     uint8_t digest[20];
-
-    uint8_t *data = (uint8_t *)malloc((size_t)len);
-    if (!data && len > 0)
-        rt_trap("Hash: memory allocation failed");
-
-    for (int64_t i = 0; i < len; i++)
-    {
-        data[i] = (uint8_t)rt_bytes_get(bytes, i);
-    }
-
-    compute_sha1(data, (size_t)len, digest);
+    compute_sha1(data ? data : (const uint8_t *)"", len, digest);
     free(data);
     return rt_codec_hex_enc_bytes(digest, 20);
 }
@@ -876,26 +842,10 @@ rt_string rt_hash_sha256(rt_string str)
 /// @see rt_hash_md5_bytes For legacy/checksum uses (NOT secure)
 rt_string rt_hash_sha256_bytes(void *bytes)
 {
-    if (!bytes)
-    {
-        uint8_t hash[32];
-        compute_sha256(NULL, 0, hash);
-        return rt_codec_hex_enc_bytes(hash, 32);
-    }
-
-    int64_t len = rt_bytes_len(bytes);
+    size_t len;
+    uint8_t *data = rt_bytes_extract_raw(bytes, &len);
     uint8_t hash[32];
-
-    uint8_t *data = (uint8_t *)malloc((size_t)len);
-    if (!data && len > 0)
-        rt_trap("Hash: memory allocation failed");
-
-    for (int64_t i = 0; i < len; i++)
-    {
-        data[i] = (uint8_t)rt_bytes_get(bytes, i);
-    }
-
-    compute_sha256(data, (size_t)len, hash);
+    compute_sha256(data ? data : (const uint8_t *)"", len, hash);
     free(data);
     return rt_codec_hex_enc_bytes(hash, 32);
 }
@@ -1003,21 +953,9 @@ int64_t rt_hash_crc32(rt_string str)
 /// @see rt_hash_sha256_bytes For security-sensitive applications
 int64_t rt_hash_crc32_bytes(void *bytes)
 {
-    if (!bytes)
-        return (int64_t)rt_crc32_compute(NULL, 0);
-
-    int64_t len = rt_bytes_len(bytes);
-
-    uint8_t *data = (uint8_t *)malloc((size_t)len);
-    if (!data && len > 0)
-        rt_trap("Hash: memory allocation failed");
-
-    for (int64_t i = 0; i < len; i++)
-    {
-        data[i] = (uint8_t)rt_bytes_get(bytes, i);
-    }
-
-    uint32_t result = rt_crc32_compute(data, (size_t)len);
+    size_t len;
+    uint8_t *data = rt_bytes_extract_raw(bytes, &len);
+    uint32_t result = rt_crc32_compute(data ? data : (const uint8_t *)"", len);
     free(data);
     return (int64_t)result;
 }

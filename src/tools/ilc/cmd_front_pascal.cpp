@@ -11,20 +11,17 @@
 //===----------------------------------------------------------------------===//
 
 #include "cli.hpp"
-#include "bytecode/BytecodeCompiler.hpp"
-#include "bytecode/BytecodeVM.hpp"
 #include "frontends/pascal/Compiler.hpp"
 #include "il/api/expected_api.hpp"
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
+#include "tools/common/source_loader.hpp"
+#include "tools/common/vm_executor.hpp"
 #include "viper/il/IO.hpp"
 #include "viper/il/Verify.hpp"
 #include "viper/vm/VM.hpp"
-#include <cstdint>
 #include <cstdio>
-#include <fstream>
 #include <iostream>
-#include <sstream>
 #include <string>
 
 using namespace il;
@@ -42,12 +39,6 @@ struct FrontPascalConfig
     std::vector<std::string> sourcePaths; // Multiple source files
     ilc::SharedCliOptions shared;
     std::vector<std::string> programArgs;
-};
-
-struct LoadedSource
-{
-    std::string buffer;
-    uint32_t fileId{0};
 };
 
 /// @brief Parse CLI arguments for the Pascal frontend subcommand.
@@ -124,35 +115,6 @@ il::support::Expected<FrontPascalConfig> parseFrontPascalArgs(int argc, char **a
     return il::support::Expected<FrontPascalConfig>(std::move(config));
 }
 
-/// @brief Load Pascal source text and register it with the source manager.
-il::support::Expected<LoadedSource> loadSourceBuffer(const std::string &path,
-                                                     il::support::SourceManager &sm)
-{
-    std::ifstream in(path);
-    if (!in)
-    {
-        return il::support::Expected<LoadedSource>(il::support::Diagnostic{
-            il::support::Severity::Error, "unable to open " + path, {}, {}});
-    }
-
-    std::ostringstream ss;
-    ss << in.rdbuf();
-
-    std::string contents = ss.str();
-
-    const uint32_t fileId = sm.addFile(path);
-    if (fileId == 0)
-    {
-        return il::support::Expected<LoadedSource>(il::support::makeError(
-            {}, std::string{il::support::kSourceManagerFileIdOverflowMessage}));
-    }
-
-    LoadedSource source{};
-    source.buffer = std::move(contents);
-    source.fileId = fileId;
-    return il::support::Expected<LoadedSource>(std::move(source));
-}
-
 /// @brief Detect if source begins with 'unit' keyword (vs 'program').
 /// Uses simple keyword detection - not full lexing.
 bool isUnitSource(const std::string &source)
@@ -222,7 +184,7 @@ bool isUnitSource(const std::string &source)
 /// @brief Compile (and optionally execute) Pascal source according to config.
 /// Handles both single-file and multi-file compilation.
 int runFrontPascal(const FrontPascalConfig &config,
-                   const std::vector<LoadedSource> &sources,
+                   const std::vector<il::tools::common::LoadedSource> &sources,
                    il::support::SourceManager &sm)
 {
     PascalCompilerOptions compilerOpts{};
@@ -342,30 +304,11 @@ int runFrontPascal(const FrontPascalConfig &config,
     }
 
     // Default: use fast bytecode VM with threaded dispatch
-    viper::bytecode::BytecodeCompiler bcCompiler;
-    viper::bytecode::BytecodeModule bcModule = bcCompiler.compile(module);
+    il::tools::common::VMExecutorConfig vmConfig;
+    vmConfig.outputTrapMessage = config.shared.dumpTrap;
 
-    viper::bytecode::BytecodeVM bcVm;
-    bcVm.setThreadedDispatch(true);
-    bcVm.setRuntimeBridgeEnabled(true);
-    bcVm.load(&bcModule);
-
-    viper::bytecode::BCSlot bcResult = bcVm.exec("main", {});
-
-    int rc = 0;
-    if (bcVm.state() == viper::bytecode::VMState::Trapped)
-    {
-        if (config.shared.dumpTrap)
-        {
-            std::cerr << bcVm.trapMessage() << "\n";
-        }
-        rc = 1;
-    }
-    else
-    {
-        rc = static_cast<int>(bcResult.i64);
-    }
-    return rc;
+    auto result = il::tools::common::executeBytecodeVM(module, vmConfig);
+    return result.exitCode;
 }
 
 } // namespace
@@ -385,10 +328,10 @@ int cmdFrontPascalWithSourceManager(int argc, char **argv, il::support::SourceMa
     FrontPascalConfig config = std::move(parsed.value());
 
     // Load all source files
-    std::vector<LoadedSource> sources;
+    std::vector<il::tools::common::LoadedSource> sources;
     for (const auto &path : config.sourcePaths)
     {
-        auto source = loadSourceBuffer(path, sm);
+        auto source = il::tools::common::loadSourceBuffer(path, sm);
         if (!source)
         {
             const auto &diag = source.error();

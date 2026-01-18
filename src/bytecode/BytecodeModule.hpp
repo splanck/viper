@@ -12,12 +12,34 @@
 
 #include "bytecode/Bytecode.hpp"
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 namespace viper {
 namespace bytecode {
+
+namespace detail {
+/// @brief Find or add a value to a pool with deduplication.
+/// @tparam T Element type.
+/// @tparam Eq Equality predicate.
+/// @param pool The pool to search and potentially append to.
+/// @param value The value to find or add.
+/// @param eq Equality comparison function.
+/// @return Index of the value in the pool.
+template <typename T, typename Eq>
+inline uint32_t findOrAddToPool(std::vector<T>& pool, const T& value, Eq eq) {
+    for (size_t i = 0; i < pool.size(); ++i) {
+        if (eq(pool[i], value)) {
+            return static_cast<uint32_t>(i);
+        }
+    }
+    uint32_t idx = static_cast<uint32_t>(pool.size());
+    pool.push_back(value);
+    return idx;
+}
+} // namespace detail
 
 /// Information about a local variable for debugging
 struct LocalVarInfo {
@@ -140,45 +162,24 @@ struct BytecodeModule {
         return idx;
     }
 
-    // Add an i64 constant to pool, returning index
+    // Add an i64 constant to pool, returning index (deduplicates)
     uint32_t addI64(int64_t value) {
-        // Check if already exists
-        for (size_t i = 0; i < i64Pool.size(); ++i) {
-            if (i64Pool[i] == value) {
-                return static_cast<uint32_t>(i);
-            }
-        }
-        uint32_t idx = static_cast<uint32_t>(i64Pool.size());
-        i64Pool.push_back(value);
-        return idx;
+        return detail::findOrAddToPool(i64Pool, value, std::equal_to<int64_t>{});
     }
 
-    // Add an f64 constant to pool, returning index
+    // Add an f64 constant to pool, returning index (bitwise comparison for NaN)
     uint32_t addF64(double value) {
-        // Check if already exists (bitwise comparison for NaN)
-        for (size_t i = 0; i < f64Pool.size(); ++i) {
-            uint64_t* a = reinterpret_cast<uint64_t*>(&f64Pool[i]);
-            uint64_t* b = reinterpret_cast<uint64_t*>(&value);
-            if (*a == *b) {
-                return static_cast<uint32_t>(i);
-            }
-        }
-        uint32_t idx = static_cast<uint32_t>(f64Pool.size());
-        f64Pool.push_back(value);
-        return idx;
+        auto bitwiseEq = [](double a, double b) {
+            uint64_t* pa = reinterpret_cast<uint64_t*>(&a);
+            uint64_t* pb = reinterpret_cast<uint64_t*>(&b);
+            return *pa == *pb;
+        };
+        return detail::findOrAddToPool(f64Pool, value, bitwiseEq);
     }
 
-    // Add a string constant to pool, returning index
+    // Add a string constant to pool, returning index (deduplicates)
     uint32_t addString(const std::string& value) {
-        // Check if already exists
-        for (size_t i = 0; i < stringPool.size(); ++i) {
-            if (stringPool[i] == value) {
-                return static_cast<uint32_t>(i);
-            }
-        }
-        uint32_t idx = static_cast<uint32_t>(stringPool.size());
-        stringPool.push_back(value);
-        return idx;
+        return detail::findOrAddToPool(stringPool, value, std::equal_to<std::string>{});
     }
 
     // Add a native function reference, returning index

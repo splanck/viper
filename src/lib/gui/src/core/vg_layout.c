@@ -89,9 +89,7 @@ static void vbox_measure(vg_widget_t* self, float available_width, float availab
     int visible_count = 0;
 
     // First pass: measure children
-    for (vg_widget_t* child = self->first_child; child; child = child->next_sibling) {
-        if (!child->visible) continue;
-
+    VG_FOREACH_VISIBLE_CHILD(self, child) {
         vg_widget_measure(child, available_width - padding_h, available_height - padding_v);
 
         float child_width = child->measured_width + child->layout.margin_left + child->layout.margin_right;
@@ -139,9 +137,7 @@ static void vbox_arrange(vg_widget_t* self, float x, float y, float width, float
     float total_flex = 0;
     int visible_count = 0;
 
-    for (vg_widget_t* child = self->first_child; child; child = child->next_sibling) {
-        if (!child->visible) continue;
-
+    VG_FOREACH_VISIBLE_CHILD(self, child) {
         if (child->layout.flex > 0) {
             total_flex += child->layout.flex;
         } else {
@@ -158,9 +154,7 @@ static void vbox_arrange(vg_widget_t* self, float x, float y, float width, float
     // Arrange children
     float child_y = content_y;
 
-    for (vg_widget_t* child = self->first_child; child; child = child->next_sibling) {
-        if (!child->visible) continue;
-
+    VG_FOREACH_VISIBLE_CHILD(self, child) {
         float child_height;
         if (child->layout.flex > 0) {
             child_height = flex_unit * child->layout.flex;
@@ -254,9 +248,7 @@ static void hbox_measure(vg_widget_t* self, float available_width, float availab
     float max_height = 0;
     int visible_count = 0;
 
-    for (vg_widget_t* child = self->first_child; child; child = child->next_sibling) {
-        if (!child->visible) continue;
-
+    VG_FOREACH_VISIBLE_CHILD(self, child) {
         vg_widget_measure(child, available_width - padding_h, available_height - padding_v);
 
         float child_width = child->measured_width + child->layout.margin_left + child->layout.margin_right;
@@ -301,9 +293,7 @@ static void hbox_arrange(vg_widget_t* self, float x, float y, float width, float
     float total_flex = 0;
     int visible_count = 0;
 
-    for (vg_widget_t* child = self->first_child; child; child = child->next_sibling) {
-        if (!child->visible) continue;
-
+    VG_FOREACH_VISIBLE_CHILD(self, child) {
         if (child->layout.flex > 0) {
             total_flex += child->layout.flex;
         } else {
@@ -318,9 +308,7 @@ static void hbox_arrange(vg_widget_t* self, float x, float y, float width, float
 
     float child_x = content_x;
 
-    for (vg_widget_t* child = self->first_child; child; child = child->next_sibling) {
-        if (!child->visible) continue;
-
+    VG_FOREACH_VISIBLE_CHILD(self, child) {
         float child_width;
         if (child->layout.flex > 0) {
             child_width = flex_unit * child->layout.flex;
@@ -430,9 +418,7 @@ static void flex_measure(vg_widget_t* self, float available_width, float availab
     float cross_size = 0;
     int visible_count = 0;
 
-    for (vg_widget_t* child = self->first_child; child; child = child->next_sibling) {
-        if (!child->visible) continue;
-
+    VG_FOREACH_VISIBLE_CHILD(self, child) {
         vg_widget_measure(child, available_width - padding_h, available_height - padding_v);
 
         float child_main = is_row ?
@@ -485,9 +471,7 @@ static void flex_arrange(vg_widget_t* self, float x, float y, float width, float
     float total_flex = 0;
     int visible_count = 0;
 
-    for (vg_widget_t* child = self->first_child; child; child = child->next_sibling) {
-        if (!child->visible) continue;
-
+    VG_FOREACH_VISIBLE_CHILD(self, child) {
         float child_main = is_row ?
             child->measured_width + child->layout.margin_left + child->layout.margin_right :
             child->measured_height + child->layout.margin_top + child->layout.margin_bottom;
@@ -506,9 +490,7 @@ static void flex_arrange(vg_widget_t* self, float x, float y, float width, float
 
     float main_pos = is_reverse ? main_size : 0;
 
-    for (vg_widget_t* child = self->first_child; child; child = child->next_sibling) {
-        if (!child->visible) continue;
-
+    VG_FOREACH_VISIBLE_CHILD(self, child) {
         float child_main_size;
         if (child->layout.flex > 0) {
             child_main_size = flex_unit * child->layout.flex;

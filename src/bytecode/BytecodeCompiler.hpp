@@ -108,6 +108,10 @@ private:
     // Get or create local slot for SSA value
     uint32_t getLocal(uint32_t ssaId);
 
+    // Local variable load/store with automatic wide variant selection
+    void emitLoadLocal(uint32_t local);
+    void emitStoreLocal(uint32_t local);
+
     // Opcode translation helpers
     void compileArithmetic(const il::core::Instr& instr);
     void compileComparison(const il::core::Instr& instr);

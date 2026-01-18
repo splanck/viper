@@ -15,24 +15,17 @@
 ///          optional execution using the VM for the Zia frontend.
 
 #include "cli.hpp"
-#include "bytecode/BytecodeCompiler.hpp"
-#include "bytecode/BytecodeVM.hpp"
 #include "frontends/zia/Compiler.hpp"
 #include "il/api/expected_api.hpp"
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
+#include "tools/common/source_loader.hpp"
+#include "tools/common/vm_executor.hpp"
 #include "viper/il/IO.hpp"
 #include "viper/il/Verify.hpp"
 #include "viper/vm/VM.hpp"
-
-extern "C" {
-#include "runtime/rt_args.h"
-#include "runtime/rt_string.h"
-}
 #include <cstdio>
-#include <fstream>
 #include <iostream>
-#include <sstream>
 #include <string>
 
 using namespace il;
@@ -208,41 +201,13 @@ int runFrontZia(const FrontZiaConfig &config,
     }
 
     // Default: use fast bytecode VM with threaded dispatch
-    viper::bytecode::BytecodeCompiler bcCompiler;
-    viper::bytecode::BytecodeModule bcModule = bcCompiler.compile(module);
+    il::tools::common::VMExecutorConfig vmConfig;
+    vmConfig.programArgs = config.programArgs;
+    vmConfig.outputTrapMessage = true;
+    vmConfig.flushStdout = true;
 
-    // Set up program arguments for the runtime
-    if (!config.programArgs.empty())
-    {
-        rt_args_clear();
-        for (const auto &s : config.programArgs)
-        {
-            rt_string tmp = rt_string_from_bytes(s.data(), s.size());
-            rt_args_push(tmp);
-            rt_string_unref(tmp);
-        }
-    }
-
-    viper::bytecode::BytecodeVM bcVm;
-    bcVm.setThreadedDispatch(true);
-    bcVm.setRuntimeBridgeEnabled(true);
-    bcVm.load(&bcModule);
-
-    viper::bytecode::BCSlot bcResult = bcVm.exec("main", {});
-
-    int rc = 0;
-    if (bcVm.state() == viper::bytecode::VMState::Trapped)
-    {
-        // Always output trap message (matching standard VM behavior)
-        std::cerr << bcVm.trapMessage() << "\n";
-        rc = 1;
-    }
-    else
-    {
-        rc = static_cast<int>(bcResult.i64);
-    }
-    std::fflush(stdout);  // Ensure all output is flushed
-    return rc;
+    auto vmResult = il::tools::common::executeBytecodeVM(module, vmConfig);
+    return vmResult.exitCode;
 }
 
 } // namespace
@@ -268,18 +233,13 @@ int cmdFrontZia(int argc, char **argv)
 
     FrontZiaConfig config = std::move(parsed.value());
 
-    std::ifstream in(config.sourcePath);
-    if (!in)
+    auto source = il::tools::common::loadSourceBuffer(config.sourcePath, sm);
+    if (!source)
     {
-        std::cerr << "error: unable to open " << config.sourcePath << "\n";
+        const auto &diag = source.error();
+        il::support::printDiag(diag, std::cerr, &sm);
         return 1;
     }
 
-    std::ostringstream ss;
-    ss << in.rdbuf();
-    std::string source = ss.str();
-
-    sm.addFile(config.sourcePath);
-
-    return runFrontZia(config, source, sm);
+    return runFrontZia(config, source.value().buffer, sm);
 }

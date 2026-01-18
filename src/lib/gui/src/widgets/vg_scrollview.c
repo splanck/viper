@@ -45,9 +45,7 @@ static void calculate_content_size(vg_scrollview_t* scroll) {
     float max_right = 0;
     float max_bottom = 0;
 
-    for (vg_widget_t* child = base->first_child; child; child = child->next_sibling) {
-        if (!child->visible) continue;
-
+    VG_FOREACH_VISIBLE_CHILD(base, child) {
         float right = child->x + child->width;
         float bottom = child->y + child->height;
 
@@ -183,9 +181,7 @@ static void scrollview_arrange(vg_widget_t* widget, float x, float y, float widt
     clamp_scroll(scroll);
 
     // Arrange children at their positions minus scroll offset
-    for (vg_widget_t* child = widget->first_child; child; child = child->next_sibling) {
-        if (!child->visible) continue;
-
+    VG_FOREACH_VISIBLE_CHILD(widget, child) {
         // Measure child
         if (child->vtable && child->vtable->measure) {
             child->vtable->measure(child, scroll->content_width, scroll->content_height);
@@ -214,9 +210,7 @@ static void scrollview_paint(vg_widget_t* widget, void* canvas) {
 
     // Draw children (clipping would be done by canvas)
     // Children are already positioned with scroll offset
-    for (vg_widget_t* child = widget->first_child; child; child = child->next_sibling) {
-        if (!child->visible) continue;
-
+    VG_FOREACH_VISIBLE_CHILD(widget, child) {
         if (child->vtable && child->vtable->paint) {
             child->vtable->paint(child, canvas);
         }

@@ -191,11 +191,7 @@ void BytecodeCompiler::compileBlock(const il::core::BasicBlock& block) {
             // Pop in reverse order since stack is LIFO
             for (size_t i = paramIds.size(); i > 0; --i) {
                 uint32_t local = ssaToLocal_.at(paramIds[i - 1]);
-                if (local < 256) {
-                    emit8(BCOpcode::STORE_LOCAL, static_cast<uint8_t>(local));
-                } else {
-                    emit16(BCOpcode::STORE_LOCAL_W, static_cast<uint16_t>(local));
-                }
+                emitStoreLocal(local);
                 popStack(1);
             }
         }
@@ -461,11 +457,7 @@ void BytecodeCompiler::pushValue(const il::core::Value& val) {
     switch (val.kind) {
         case il::core::Value::Kind::Temp: {
             uint32_t local = getLocal(val.id);
-            if (local < 256) {
-                emit8(BCOpcode::LOAD_LOCAL, static_cast<uint8_t>(local));
-            } else {
-                emit16(BCOpcode::LOAD_LOCAL_W, static_cast<uint16_t>(local));
-            }
+            emitLoadLocal(local);
             pushStack();
             break;
         }
@@ -530,11 +522,7 @@ void BytecodeCompiler::pushValue(const il::core::Value& val) {
 void BytecodeCompiler::storeResult(const il::core::Instr& instr) {
     if (instr.result) {
         uint32_t local = getLocal(*instr.result);
-        if (local < 256) {
-            emit8(BCOpcode::STORE_LOCAL, static_cast<uint8_t>(local));
-        } else {
-            emit16(BCOpcode::STORE_LOCAL_W, static_cast<uint16_t>(local));
-        }
+        emitStoreLocal(local);
         popStack();
     } else {
         // No result - pop value if stack isn't empty
@@ -648,6 +636,22 @@ uint32_t BytecodeCompiler::getLocal(uint32_t ssaId) {
     uint32_t local = nextLocal_++;
     ssaToLocal_[ssaId] = local;
     return local;
+}
+
+void BytecodeCompiler::emitLoadLocal(uint32_t local) {
+    if (local < 256) {
+        emit8(BCOpcode::LOAD_LOCAL, static_cast<uint8_t>(local));
+    } else {
+        emit16(BCOpcode::LOAD_LOCAL_W, static_cast<uint16_t>(local));
+    }
+}
+
+void BytecodeCompiler::emitStoreLocal(uint32_t local) {
+    if (local < 256) {
+        emit8(BCOpcode::STORE_LOCAL, static_cast<uint8_t>(local));
+    } else {
+        emit16(BCOpcode::STORE_LOCAL_W, static_cast<uint16_t>(local));
+    }
 }
 
 void BytecodeCompiler::compileArithmetic(const il::core::Instr& instr) {
@@ -1031,11 +1035,7 @@ void BytecodeCompiler::compileBranch(const il::core::Instr& instr) {
         for (size_t i = 0; i < args.size() && i < paramIds.size(); ++i) {
             pushValue(args[i]);
             uint32_t local = getLocal(paramIds[i]);
-            if (local < 256) {
-                emit8(BCOpcode::STORE_LOCAL, static_cast<uint8_t>(local));
-            } else {
-                emit16(BCOpcode::STORE_LOCAL_W, static_cast<uint16_t>(local));
-            }
+            emitStoreLocal(local);
             popStack();
         }
     };

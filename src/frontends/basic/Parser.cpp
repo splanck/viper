@@ -414,30 +414,15 @@ std::unique_ptr<Program> Parser::parseProgram()
 // ADDFILE handling
 // -----------------------------------------------------------------------------
 
-bool Parser::handleTopLevelAddFile(Program &prog)
+Parser::AddFileResult Parser::processAddFileInclude(const Token &kw)
 {
-    if (!at(TokenKind::KeywordAddfile))
-        return false;
-
-    Token kw = consume(); // ADDFILE
-
-    if (!sm_ || !emitter_)
-    {
-        /// @brief Emits error.
-        emitError("B0001", kw.loc, "ADDFILE is not supported in this parsing context");
-        syncToStmtBoundary();
-        if (at(TokenKind::EndOfLine))
-            consume();
-        return true;
-    }
+    AddFileResult result;
 
     Token pathTok = expect(TokenKind::String);
     std::string rawPath = pathTok.lexeme;
 
     while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
-    {
         consume();
-    }
     if (at(TokenKind::EndOfLine))
         consume();
 
@@ -452,34 +437,33 @@ bool Parser::handleTopLevelAddFile(Program &prog)
     std::filesystem::path canon = std::filesystem::weakly_canonical(resolved, ec);
     const std::string canonStr = ec ? resolved.lexically_normal().string() : canon.string();
 
+    // Check include depth and cycles.
     if (includeStack_)
     {
         if (includeStack_->size() >= static_cast<size_t>(maxIncludeDepth_))
         {
-            /// @brief Emits error.
             emitError("B0001", kw.loc, "ADDFILE depth limit exceeded");
-            return true;
+            return result;
         }
         for (const auto &p : *includeStack_)
         {
             if (p == canonStr)
             {
-                /// @brief Emits error.
                 emitError("B0001", kw.loc, "cyclic ADDFILE detected: " + canonStr);
-                return true;
+                return result;
             }
         }
         includeStack_->push_back(canonStr);
     }
 
+    // Read file contents.
     std::ifstream in(canonStr);
     if (!in)
     {
-        /// @brief Emits error.
         emitError("B0001", kw.loc, "unable to open: " + canonStr);
         if (includeStack_ && !includeStack_->empty())
             includeStack_->pop_back();
-        return true;
+        return result;
     }
     std::ostringstream ss;
     ss << in.rdbuf();
@@ -488,47 +472,75 @@ bool Parser::handleTopLevelAddFile(Program &prog)
     uint32_t newFileId = sm_->addFile(canonStr);
     if (newFileId == 0)
     {
-        /// @brief Emits error.
         emitError("B0005", kw.loc, std::string{il::support::kSourceManagerFileIdOverflowMessage});
         if (includeStack_ && !includeStack_->empty())
             includeStack_->pop_back();
-        return true;
+        return result;
     }
     emitter_->addSource(newFileId, contents);
 
-    // Parse included file with suppressed undefined-label check.
+    // Create and configure child parser.
     Parser child(contents, newFileId, emitter_, sm_, includeStack_, /*suppress*/ true);
-    // Copy parent's array registry to child so it knows about existing arrays. (BUG-100)
     child.arrays_ = arrays_;
-    // Propagate known namespaces so qualified-name parsing inside includes
-    // recognizes the same namespace heads as the parent parser.
     child.knownNamespaces_ = knownNamespaces_;
-    // Propagate CONST values so SELECT CASE labels work across ADDFILE. (BUG-OOP-019)
     child.knownConstInts_ = knownConstInts_;
     child.knownConstStrs_ = knownConstStrs_;
+
+    // Parse the included file.
     auto subprog = child.parseProgram();
     if (!subprog)
     {
         if (includeStack_ && !includeStack_->empty())
             includeStack_->pop_back();
-        return true;
+        return result;
     }
 
-    for (auto &p : subprog->procs)
-        prog.procs.push_back(std::move(p));
-    for (auto &s : subprog->main)
-        prog.main.push_back(std::move(s));
-
-    for (const auto &arrName : child.arrays_)
-        arrays_.insert(arrName);
-    // Merge child's CONSTs back to parent for cross-file visibility. (BUG-OOP-019)
-    for (const auto &kv : child.knownConstInts_)
-        knownConstInts_.insert(kv);
-    for (const auto &kv : child.knownConstStrs_)
-        knownConstStrs_.insert(kv);
+    // Extract child parser state for caller.
+    result.success = true;
+    result.subprog = std::move(subprog);
+    result.arrays = child.arrays_;
+    result.constInts = child.knownConstInts_;
+    result.constStrs = child.knownConstStrs_;
 
     if (includeStack_ && !includeStack_->empty())
         includeStack_->pop_back();
+    return result;
+}
+
+bool Parser::handleTopLevelAddFile(Program &prog)
+{
+    if (!at(TokenKind::KeywordAddfile))
+        return false;
+
+    Token kw = consume(); // ADDFILE
+
+    if (!sm_ || !emitter_)
+    {
+        emitError("B0001", kw.loc, "ADDFILE is not supported in this parsing context");
+        syncToStmtBoundary();
+        if (at(TokenKind::EndOfLine))
+            consume();
+        return true;
+    }
+
+    auto result = processAddFileInclude(kw);
+    if (!result.success)
+        return true;
+
+    // Merge results into program.
+    for (auto &p : result.subprog->procs)
+        prog.procs.push_back(std::move(p));
+    for (auto &s : result.subprog->main)
+        prog.main.push_back(std::move(s));
+
+    // Merge child state back to parent.
+    for (const auto &arrName : result.arrays)
+        arrays_.insert(arrName);
+    for (const auto &kv : result.constInts)
+        knownConstInts_.insert(kv);
+    for (const auto &kv : result.constStrs)
+        knownConstStrs_.insert(kv);
+
     return true;
 }
 
@@ -538,9 +550,9 @@ bool Parser::handleAddFileInto(std::vector<StmtPtr> &dst)
         return false;
 
     Token kw = consume(); // ADDFILE
+
     if (!sm_ || !emitter_)
     {
-        /// @brief Emits error.
         emitError("B0001", kw.loc, "ADDFILE is not supported in this parsing context");
         syncToStmtBoundary();
         if (at(TokenKind::EndOfLine))
@@ -548,100 +560,22 @@ bool Parser::handleAddFileInto(std::vector<StmtPtr> &dst)
         return true;
     }
 
-    Token pathTok = expect(TokenKind::String);
-    std::string rawPath = pathTok.lexeme;
-
-    while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
-        consume();
-    if (at(TokenKind::EndOfLine))
-        consume();
-
-    // Resolve path relative to current file
-    const uint32_t includingFileId = kw.loc.file_id;
-    std::filesystem::path base(sm_->getPath(includingFileId));
-    std::filesystem::path candidate(rawPath);
-    std::filesystem::path resolved =
-        candidate.is_absolute() ? candidate : base.parent_path() / candidate;
-
-    std::error_code ec;
-    std::filesystem::path canon = std::filesystem::weakly_canonical(resolved, ec);
-    const std::string canonStr = ec ? resolved.lexically_normal().string() : canon.string();
-
-    if (includeStack_)
-    {
-        if (includeStack_->size() >= static_cast<size_t>(maxIncludeDepth_))
-        {
-            /// @brief Emits error.
-            emitError("B0001", kw.loc, "ADDFILE depth limit exceeded");
-            return true;
-        }
-        for (const auto &p : *includeStack_)
-        {
-            if (p == canonStr)
-            {
-                /// @brief Emits error.
-                emitError("B0001", kw.loc, "cyclic ADDFILE detected: " + canonStr);
-                return true;
-            }
-        }
-        includeStack_->push_back(canonStr);
-    }
-
-    std::ifstream in(canonStr);
-    if (!in)
-    {
-        /// @brief Emits error.
-        emitError("B0001", kw.loc, "unable to open: " + canonStr);
-        if (includeStack_ && !includeStack_->empty())
-            includeStack_->pop_back();
+    auto result = processAddFileInclude(kw);
+    if (!result.success)
         return true;
-    }
-    std::ostringstream ss;
-    ss << in.rdbuf();
-    std::string contents = ss.str();
 
-    uint32_t newFileId = sm_->addFile(canonStr);
-    if (newFileId == 0)
-    {
-        /// @brief Emits error.
-        emitError("B0005", kw.loc, std::string{il::support::kSourceManagerFileIdOverflowMessage});
-        if (includeStack_ && !includeStack_->empty())
-            includeStack_->pop_back();
-        return true;
-    }
-    emitter_->addSource(newFileId, contents);
-
-    Parser child(contents, newFileId, emitter_, sm_, includeStack_, /*suppress*/ true);
-    // Keep parsing behaviour consistent with the including context by
-    // propagating selected state to the child parser.
-    // - Arrays: disambiguate name(args) as array vs call consistently.
-    // - Namespaces: preserve the set of known namespace heads for qualified calls.
-    // - CONSTs: SELECT CASE labels must see CONSTs from parent (BUG-OOP-019)
-    child.arrays_ = arrays_;
-    child.knownNamespaces_ = knownNamespaces_;
-    child.knownConstInts_ = knownConstInts_;
-    child.knownConstStrs_ = knownConstStrs_;
-    auto subprog = child.parseProgram();
-    if (!subprog)
-    {
-        if (includeStack_ && !includeStack_->empty())
-            includeStack_->pop_back();
-        return true;
-    }
-
-    for (auto &p : subprog->procs)
+    // Merge results into destination.
+    for (auto &p : result.subprog->procs)
         dst.push_back(std::move(p));
-    for (auto &s : subprog->main)
+    for (auto &s : result.subprog->main)
         dst.push_back(std::move(s));
 
-    // Merge child's CONSTs back to parent for cross-file visibility. (BUG-OOP-019)
-    for (const auto &kv : child.knownConstInts_)
+    // Merge CONSTs back to parent.
+    for (const auto &kv : result.constInts)
         knownConstInts_.insert(kv);
-    for (const auto &kv : child.knownConstStrs_)
+    for (const auto &kv : result.constStrs)
         knownConstStrs_.insert(kv);
 
-    if (includeStack_ && !includeStack_->empty())
-        includeStack_->pop_back();
     return true;
 }
 
@@ -649,48 +583,45 @@ bool Parser::handleAddFileInto(std::vector<StmtPtr> &dst)
 // Error Reporting Helpers
 // ============================================================================
 
-void Parser::emitError(std::string_view code, const Token &tok, std::string message)
+void Parser::emitDiagnostic(
+    il::support::Severity sev,
+    std::string_view code,
+    il::support::SourceLoc loc,
+    uint32_t len,
+    std::string message)
 {
     if (emitter_)
     {
-        emitter_->emit(il::support::Severity::Error,
-                       std::string(code),
-                       tok.loc,
-                       static_cast<uint32_t>(tok.lexeme.size()),
-                       std::move(message));
+        emitter_->emit(sev, std::string(code), loc, len, std::move(message));
     }
     else
     {
-        std::fprintf(stderr, "Error: %s\n", message.c_str());
+        const char *prefix = (sev == il::support::Severity::Warning) ? "Warning" : "Error";
+        std::fprintf(stderr, "%s: %s\n", prefix, message.c_str());
     }
+}
+
+void Parser::emitError(std::string_view code, const Token &tok, std::string message)
+{
+    emitDiagnostic(il::support::Severity::Error,
+                   code,
+                   tok.loc,
+                   static_cast<uint32_t>(tok.lexeme.size()),
+                   std::move(message));
 }
 
 void Parser::emitError(std::string_view code, il::support::SourceLoc loc, std::string message)
 {
-    if (emitter_)
-    {
-        emitter_->emit(il::support::Severity::Error, std::string(code), loc, 0, std::move(message));
-    }
-    else
-    {
-        std::fprintf(stderr, "Error: %s\n", message.c_str());
-    }
+    emitDiagnostic(il::support::Severity::Error, code, loc, 0, std::move(message));
 }
 
 void Parser::emitWarning(std::string_view code, const Token &tok, std::string message)
 {
-    if (emitter_)
-    {
-        emitter_->emit(il::support::Severity::Warning,
-                       std::string(code),
-                       tok.loc,
-                       static_cast<uint32_t>(tok.lexeme.size()),
-                       std::move(message));
-    }
-    else
-    {
-        std::fprintf(stderr, "Warning: %s\n", message.c_str());
-    }
+    emitDiagnostic(il::support::Severity::Warning,
+                   code,
+                   tok.loc,
+                   static_cast<uint32_t>(tok.lexeme.size()),
+                   std::move(message));
 }
 
 } // namespace il::frontends::basic

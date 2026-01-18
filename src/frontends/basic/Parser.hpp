@@ -220,6 +220,24 @@ class Parser
     static void registerIoParsers(StatementParserRegistry &registry);
     static void registerCoreParsers(StatementParserRegistry &registry);
     static void registerOopParsers(StatementParserRegistry &registry);
+    /// @brief Result of processing an ADDFILE include.
+    struct AddFileResult
+    {
+        bool success{false};         ///< True if include succeeded.
+        std::unique_ptr<Program> subprog; ///< Parsed program from include.
+        std::unordered_set<std::string> arrays;    ///< Arrays from child parser.
+        std::unordered_map<std::string, int64_t> constInts;  ///< CONSTs from child.
+        std::unordered_map<std::string, std::string> constStrs; ///< CONSTs from child.
+    };
+
+    /// @brief Common logic for processing an ADDFILE directive.
+    /// @details Handles path resolution, include depth/cycle checking, file reading,
+    ///          child parser setup, and parsing. The caller provides the results
+    ///          destination via the merge callbacks.
+    /// @param kw The ADDFILE keyword token.
+    /// @return Result containing parsed subprogram and child parser state on success.
+    AddFileResult processAddFileInclude(const Token &kw);
+
     /// @brief Handle a top-level ADDFILE directive if present.
     /// @details When the current token is ADDFILE and a source manager is available,
     ///          resolves, loads, and parses the included file, then merges its AST
@@ -712,6 +730,14 @@ class Parser
     /// @param tok Token providing source location.
     /// @param message Warning message text.
     void emitWarning(std::string_view code, const Token &tok, std::string message);
+
+  private:
+    /// @brief Common helper for diagnostic emission.
+    void emitDiagnostic(il::support::Severity sev,
+                        std::string_view code,
+                        il::support::SourceLoc loc,
+                        uint32_t len,
+                        std::string message);
 
     // ---------------------------------------------------------------------
     // ADDFILE support

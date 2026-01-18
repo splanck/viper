@@ -300,7 +300,7 @@ vg_widget_t* vg_widget_find_by_name(vg_widget_t* root, const char* name) {
         return root;
     }
 
-    for (vg_widget_t* child = root->first_child; child; child = child->next_sibling) {
+    VG_FOREACH_CHILD(root, child) {
         vg_widget_t* found = vg_widget_find_by_name(child, name);
         if (found) return found;
     }
@@ -315,7 +315,7 @@ vg_widget_t* vg_widget_find_by_id(vg_widget_t* root, uint32_t id) {
         return root;
     }
 
-    for (vg_widget_t* child = root->first_child; child; child = child->next_sibling) {
+    VG_FOREACH_CHILD(root, child) {
         vg_widget_t* found = vg_widget_find_by_id(child, id);
         if (found) return found;
     }
@@ -498,10 +498,8 @@ void vg_widget_measure(vg_widget_t* root, float available_width, float available
     if (!root || !root->visible) return;
 
     // Measure children first
-    for (vg_widget_t* child = root->first_child; child; child = child->next_sibling) {
-        if (child->visible) {
-            vg_widget_measure(child, available_width, available_height);
-        }
+    VG_FOREACH_VISIBLE_CHILD(root, child) {
+        vg_widget_measure(child, available_width, available_height);
     }
 
     // Then measure this widget
@@ -522,14 +520,12 @@ void vg_widget_arrange(vg_widget_t* root, float x, float y, float width, float h
     float cx = root->layout.padding_left;
     float cy = root->layout.padding_top;
 
-    for (vg_widget_t* child = root->first_child; child; child = child->next_sibling) {
-        if (child->visible) {
-            vg_widget_arrange(child,
-                              cx + child->layout.margin_left,
-                              cy + child->layout.margin_top,
-                              child->measured_width,
-                              child->measured_height);
-        }
+    VG_FOREACH_VISIBLE_CHILD(root, child) {
+        vg_widget_arrange(child,
+                          cx + child->layout.margin_left,
+                          cy + child->layout.margin_top,
+                          child->measured_width,
+                          child->measured_height);
     }
 
     root->needs_layout = false;
@@ -549,7 +545,7 @@ void vg_widget_paint(vg_widget_t* root, void* canvas) {
     }
 
     // Paint children
-    for (vg_widget_t* child = root->first_child; child; child = child->next_sibling) {
+    VG_FOREACH_CHILD(root, child) {
         vg_widget_paint(child, canvas);
     }
 

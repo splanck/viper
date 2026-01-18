@@ -21,28 +21,20 @@
 ///          functions so higher-level tooling can reuse them.
 
 #include "cli.hpp"
-#include "bytecode/BytecodeCompiler.hpp"
-#include "bytecode/BytecodeVM.hpp"
 #include "frontends/basic/BasicCompiler.hpp"
 #include "il/api/expected_api.hpp"
 #include "il/transform/SimplifyCFG.hpp"
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
+#include "tools/common/source_loader.hpp"
+#include "tools/common/vm_executor.hpp"
 #include "viper/il/IO.hpp"
 #include "viper/il/Verify.hpp"
 #include "viper/vm/VM.hpp"
-
-extern "C" {
-#include "runtime/rt_args.h"
-#include "runtime/rt_string.h"
-}
-#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-#include <fstream>
 #include <iostream>
 #include <optional>
-#include <sstream>
 #include <string>
 
 #ifdef _WIN32
@@ -70,12 +62,6 @@ struct FrontBasicConfig
     std::optional<uint32_t> sourceFileId{};
     std::vector<std::string> programArgs; ///< Arguments to pass to BASIC program after '--'.
     bool noRuntimeNamespaces{false};
-};
-
-struct LoadedSource
-{
-    std::string buffer;
-    uint32_t fileId{0};
 };
 
 /// @brief Identify diagnostics that reflect SourceManager identifier overflow.
@@ -167,45 +153,6 @@ il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **arg
     }
 
     return il::support::Expected<FrontBasicConfig>(std::move(config));
-}
-
-/// @brief Load BASIC source text and register it with the source manager.
-///
-/// Opens @p path, reads the entire file into memory, stores the contents in a
-/// @ref LoadedSource buffer, and registers the path with @p sm so diagnostics
-/// can resolve the location later. Errors propagate as diagnostics inside an
-/// @ref il::support::Expected value.
-///
-/// @param path Filesystem path to the BASIC source file.
-/// @param sm Source manager tracking file identifiers for diagnostics.
-/// @return Loaded source buffer on success; otherwise a diagnostic describing
-///         the I/O failure.
-il::support::Expected<LoadedSource> loadSourceBuffer(const std::string &path,
-                                                     il::support::SourceManager &sm)
-{
-    std::ifstream in(path);
-    if (!in)
-    {
-        return il::support::Expected<LoadedSource>(il::support::Diagnostic{
-            il::support::Severity::Error, "unable to open " + path, {}, {}});
-    }
-
-    std::ostringstream ss;
-    ss << in.rdbuf();
-
-    std::string contents = ss.str();
-
-    const uint32_t fileId = sm.addFile(path);
-    if (fileId == 0)
-    {
-        return il::support::Expected<LoadedSource>(il::support::makeError(
-            {}, std::string{il::support::kSourceManagerFileIdOverflowMessage}));
-    }
-
-    LoadedSource source{};
-    source.buffer = std::move(contents);
-    source.fileId = fileId;
-    return il::support::Expected<LoadedSource>(std::move(source));
 }
 
 /// @brief Compile (and optionally execute) BASIC source according to @p config.
@@ -330,40 +277,12 @@ int runFrontBasic(const FrontBasicConfig &config,
     }
 
     // Default: use fast bytecode VM with threaded dispatch
-    viper::bytecode::BytecodeCompiler bcCompiler;
-    viper::bytecode::BytecodeModule bcModule = bcCompiler.compile(module);
+    il::tools::common::VMExecutorConfig vmConfig;
+    vmConfig.programArgs = config.programArgs;
+    vmConfig.outputTrapMessage = true;
 
-    // Set up program arguments for the runtime
-    if (!config.programArgs.empty())
-    {
-        rt_args_clear();
-        for (const auto &s : config.programArgs)
-        {
-            rt_string tmp = rt_string_from_bytes(s.data(), s.size());
-            rt_args_push(tmp);
-            rt_string_unref(tmp);
-        }
-    }
-
-    viper::bytecode::BytecodeVM bcVm;
-    bcVm.setThreadedDispatch(true);
-    bcVm.setRuntimeBridgeEnabled(true);
-    bcVm.load(&bcModule);
-
-    viper::bytecode::BCSlot bcResult = bcVm.exec("main", {});
-
-    int rc = 0;
-    if (bcVm.state() == viper::bytecode::VMState::Trapped)
-    {
-        // Always output trap message (matching standard VM behavior)
-        std::cerr << bcVm.trapMessage() << "\n";
-        rc = 1;
-    }
-    else
-    {
-        rc = static_cast<int>(bcResult.i64);
-    }
-    return rc;
+    auto vmResult = il::tools::common::executeBytecodeVM(module, vmConfig);
+    return vmResult.exitCode;
 }
 
 } // namespace
@@ -389,7 +308,7 @@ int cmdFrontBasicWithSourceManager(int argc, char **argv, il::support::SourceMan
 
     FrontBasicConfig config = std::move(parsed.value());
 
-    auto source = loadSourceBuffer(config.sourcePath, sm);
+    auto source = il::tools::common::loadSourceBuffer(config.sourcePath, sm);
     if (!source)
     {
         const auto &diag = source.error();

@@ -220,8 +220,12 @@ target_include_directories(il_utils PUBLIC
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
 )
 
-add_library(il_tools_common STATIC tools/common/module_loader.cpp)
-target_link_libraries(il_tools_common PUBLIC il_api)
+add_library(il_tools_common STATIC
+        tools/common/module_loader.cpp
+        tools/common/source_loader.cpp
+        tools/common/vm_executor.cpp
+)
+target_link_libraries(il_tools_common PUBLIC il_api viper_bytecode)
 target_include_directories(il_tools_common PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
