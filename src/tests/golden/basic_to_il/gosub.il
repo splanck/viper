@@ -56,12 +56,12 @@ entry:
   br L10
 L10:
   .loc 1 1 4
-  store i64, %t1, 1
+  store i64, %t0, 1
   .loc 1 1 4
   br L20
 L20:
   .loc 1 2 4
-  store i64, %t0, 2
+  store i64, %t1, 2
   .loc 1 2 4
   br L30
 L30:

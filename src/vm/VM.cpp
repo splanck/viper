@@ -163,66 +163,75 @@ class SwitchDispatchDriver final : public VM::DispatchDriver
 
 #if VIPER_THREADING_SUPPORTED
 /// @brief Dispatch driver that uses computed goto threading.
-/// @note This implementation still uses the original threaded dispatch
-///       because computed gotos require embedding the loop directly.
-///       A future refactor could extract the label handling into the strategy.
+/// @note This implementation uses an optimized fast-path dispatch that inlines
+///       the common case (next instruction in same block) to minimize overhead.
+///       The slow path handles block transitions, debug hooks, and exit checks.
 class ThreadedDispatchDriver final : public VM::DispatchDriver
 {
   public:
     /// @brief Execute the interpreter using computed gotos for dispatch.
-    /// @details Maintains a label table built from the opcode list and jumps
-    ///          directly to handlers while catching trap signals so the VM can
-    ///          resume execution without unwinding.
+    /// @details Uses an optimized dispatch loop that inlines the fast path:
+    ///          1. Increment ip
+    ///          2. Check bounds (unlikely branch)
+    ///          3. Fetch next instruction directly
+    ///          4. Dispatch via computed goto
+    ///          The slow path handles block exhaustion, debug hooks, and exit.
     /// @param vm Virtual machine instance.
     /// @param context Context used to handle traps and debugging requests.
     /// @param state Execution state under control of the dispatcher.
     /// @return True when execution terminated normally; false otherwise.
     bool run(VM &vm, VMContext &context, VM::ExecState &state) override
     {
-        // Note: The threaded dispatch requires special handling due to computed gotos.
-        // For now, we keep the original implementation but could refactor this
-        // to use a ThreadedStrategy that encapsulates the label table.
+        // Cache frequently accessed state in locals for faster access
         const il::core::Instr *currentInstr = nullptr;
-
-        auto fetchNext = [&]() -> il::core::Opcode
-        {
-            vm.beginDispatch(state);
-
-            const il::core::Instr *instr = nullptr;
-            const bool hasInstr = vm.selectInstruction(state, instr);
-            currentInstr = instr;
-            if (!hasInstr)
-                return instr ? instr->op : il::core::Opcode::Trap;
-            return instr->op;
-        };
+        il::core::Opcode opcode = il::core::Opcode::Trap;
 
         // =====================================================================
         // Threaded Dispatch: Label Address Table (Generated)
-        // =====================================================================
-        // This array contains computed-goto label addresses (&&LBL_*) for each
-        // opcode. GCC/Clang extension enables direct jumps via goto *kOpLabels[op].
-        // Each label corresponds to an opcode in il/core/Opcode.def order.
-        //
-        // Generated file - do not edit. See docs/generated-files.md.
         // =====================================================================
         static void *kOpLabels[] = {
 #include "vm/ops/generated/ThreadedLabels.inc"
         };
 
         static constexpr size_t kOpLabelCount = sizeof(kOpLabels) / sizeof(kOpLabels[0]);
-
-        // Compile-time verification: label table must have kNumOpcodes + 1 entries
-        // (one per opcode plus LBL_UNIMPL fallback for bounds checking)
         static_assert(kOpLabelCount == il::core::kNumOpcodes + 1,
                       "Threaded label table size mismatch: expected kNumOpcodes + 1 labels");
 
+        // =====================================================================
+        // Fast-path dispatch macro: inlines the common case
+        // =====================================================================
+        // The common case after executing an instruction is:
+        //   1. ip++ stays within current block
+        //   2. No exit requested
+        //   3. No debug pause needed
+        // This macro inlines that path to avoid function call overhead.
+        // =====================================================================
 #define DISPATCH_TO(OPCODE_VALUE)                                                                  \
     do                                                                                             \
     {                                                                                              \
         size_t index = static_cast<size_t>(OPCODE_VALUE);                                          \
-        if (index >= kOpLabelCount - 1)                                                            \
+        if (index >= kOpLabelCount - 1) [[unlikely]]                                               \
             index = kOpLabelCount - 1;                                                             \
         goto *kOpLabels[index];                                                                    \
+    } while (false)
+
+        // Fast-path: dispatch next instruction inline
+        // Note: ip is already incremented by handleInlineResult->finalizeDispatch
+        // Only falls through to slow path on block exhaustion or exit
+#define DISPATCH_NEXT_FAST()                                                                       \
+    do                                                                                             \
+    {                                                                                              \
+        if (state.ip < state.bb->instructions.size()) [[likely]]                                   \
+        {                                                                                          \
+            currentInstr = &state.bb->instructions[state.ip];                                      \
+            state.currentInstr = currentInstr;                                                     \
+            vm.setCurrentContext(state.fr, state.bb, state.ip, *currentInstr);                     \
+            opcode = currentInstr->op;                                                             \
+            vm.traceInstruction(*currentInstr, state.fr);                                          \
+            VIPER_VM_DISPATCH_BEFORE(state, opcode);                                               \
+            DISPATCH_TO(opcode);                                                                   \
+        }                                                                                          \
+        goto LBL_SLOW_PATH;                                                                        \
     } while (false)
 
         for (;;)
@@ -230,21 +239,96 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
             vm.clearCurrentContext();
             try
             {
-                il::core::Opcode opcode = fetchNext();
-                if (state.exitRequested)
+                // =============================================================
+                // Slow path entry: handles first instruction and block transitions
+                // =============================================================
+                // Reset per-dispatch state
+                state.exitRequested = false;
+                state.hasPendingResult = false;
+
+                // Check for block exhaustion
+                if (!state.bb || state.ip >= state.bb->instructions.size()) [[unlikely]]
+                {
+                    vm.clearCurrentContext();
+                    Slot zero{};
+                    zero.i64 = 0;
+                    state.pendingResult = zero;
+                    state.hasPendingResult = true;
+                    state.exitRequested = true;
                     return true;
+                }
+
+                // Fetch current instruction
+                currentInstr = &state.bb->instructions[state.ip];
+                state.currentInstr = currentInstr;
+
+                // Update context for diagnostics (only on slow path)
+                vm.setCurrentContext(state.fr, state.bb, state.ip, *currentInstr);
+
+                // Check for debug pause (only on slow path - rare)
+                if (auto pause = vm.shouldPause(state, currentInstr, false)) [[unlikely]]
+                {
+                    state.pendingResult = *pause;
+                    state.hasPendingResult = true;
+                    state.exitRequested = true;
+                    return true;
+                }
+
+                opcode = currentInstr->op;
+                vm.traceInstruction(*currentInstr, state.fr);
+                VIPER_VM_DISPATCH_BEFORE(state, opcode);
+                DISPATCH_TO(opcode);
+
+                // =============================================================
+                // Slow path: reached after DISPATCH_NEXT_FAST detects block end
+                // =============================================================
+            LBL_SLOW_PATH:
+                // Check for exit after handler (e.g., Ret instruction)
+                if (state.exitRequested) [[unlikely]]
+                    return true;
+
+                // Reset per-dispatch state for next iteration
+                state.exitRequested = false;
+                state.hasPendingResult = false;
+
+                // Check for block exhaustion
+                if (!state.bb || state.ip >= state.bb->instructions.size()) [[unlikely]]
+                {
+                    vm.clearCurrentContext();
+                    Slot zero{};
+                    zero.i64 = 0;
+                    state.pendingResult = zero;
+                    state.hasPendingResult = true;
+                    state.exitRequested = true;
+                    return true;
+                }
+
+                // Fetch current instruction
+                currentInstr = &state.bb->instructions[state.ip];
+                state.currentInstr = currentInstr;
+
+                // Update context for diagnostics
+                vm.setCurrentContext(state.fr, state.bb, state.ip, *currentInstr);
+
+                // Check for debug pause
+                if (auto pause = vm.shouldPause(state, currentInstr, false)) [[unlikely]]
+                {
+                    state.pendingResult = *pause;
+                    state.hasPendingResult = true;
+                    state.exitRequested = true;
+                    return true;
+                }
+
+                opcode = currentInstr->op;
+                vm.traceInstruction(*currentInstr, state.fr);
                 VIPER_VM_DISPATCH_BEFORE(state, opcode);
                 DISPATCH_TO(opcode);
 
                 // =============================================================
                 // Threaded Dispatch: Case Labels (Generated)
                 // =============================================================
-                // This include expands to LBL_<OpName>: labels with handler
-                // bodies for each opcode. After handling, each case fetches the
-                // next opcode and jumps via DISPATCH_TO(). This implements the
-                // computed-goto threaded interpreter pattern for fast dispatch.
-                //
-                // Generated file - do not edit. See docs/generated-files.md.
+                // Each label handles one opcode then uses DISPATCH_NEXT_FAST()
+                // to inline the fast path for fetching the next instruction.
                 // =============================================================
 #include "vm/ops/generated/ThreadedCases.inc"
 
@@ -260,6 +344,7 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
             }
         }
 
+#undef DISPATCH_NEXT_FAST
 #undef DISPATCH_TO
         return false; // Unreachable but placates control-flow analysis.
     }

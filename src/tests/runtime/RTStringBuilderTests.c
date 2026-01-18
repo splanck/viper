@@ -26,9 +26,11 @@ static rt_string_builder *g_overflow_target = NULL;
 static size_t g_forced_strlen_extra = 0;
 static int g_forced_strlen_used = 0;
 
-// On MSVC, strlen is an intrinsic that cannot be overridden. Use a custom
-// function name and macro to work around this limitation.
-static size_t test_strlen(const char *s)
+// On MSVC, strlen is an intrinsic that cannot be overridden, so we skip
+// the overflow test on that platform. On other compilers, we override strlen
+// to simulate an overflow condition.
+#ifndef _MSC_VER
+size_t strlen(const char *s)
 {
     if (g_overflow_target)
     {
@@ -45,9 +47,7 @@ static size_t test_strlen(const char *s)
         ++len;
     return len;
 }
-
-// Use standard strlen for normal operations; only the overflow test needs
-// special handling and it's done manually.
+#endif
 
 static void test_init_empty(void)
 {

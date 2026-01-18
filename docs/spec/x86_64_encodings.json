@@ -353,7 +353,7 @@
       "opcode": "XORrr32",
       "mnemonic": "xorl",
       "form": "RegReg",
-      "order": "R_R32",
+      "order": "R_R",
       "pattern": [
         "Reg",
         "Reg"
