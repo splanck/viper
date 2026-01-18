@@ -54,6 +54,53 @@ using il::io::formatLineDiag;
 
 using Operand = Value;
 
+/// @brief Tracks string literal parsing state for scanners that respect quoted regions.
+/// @details When scanning IL text that may contain string literals, delimiters and
+///          special characters inside quoted regions must be ignored. This class
+///          encapsulates the `inString` and `escape` state tracking logic.
+class StringStateTracker
+{
+    bool inString_ = false;
+    bool escape_ = false;
+
+public:
+    /// @brief Process a character and update string tracking state.
+    /// @details Call this for each character in the input. Returns true if the
+    ///          character is inside a string literal (including the opening/closing
+    ///          quotes) and should be treated as literal content.
+    /// @param c The current character.
+    /// @return True if the character is part of a string literal.
+    bool processChar(char c)
+    {
+        if (inString_)
+        {
+            if (escape_)
+            {
+                escape_ = false;
+                return true;
+            }
+            if (c == '\\')
+            {
+                escape_ = true;
+                return true;
+            }
+            if (c == '"')
+                inString_ = false;
+            return true;
+        }
+        if (c == '"')
+        {
+            inString_ = true;
+            return true;
+        }
+        return false;
+    }
+
+    /// @brief Check if an unfinished string or escape sequence remains.
+    /// @return True if the string state is incomplete at end of input.
+    [[nodiscard]] bool hasUnfinishedString() const { return escape_ || inString_; }
+};
+
 // Shared scanners to reduce duplication across parser helpers.
 static Expected<std::pair<size_t, size_t>> findTopLevelParenRange(ParserState &state,
                                                                   const Instr &instr,
@@ -64,34 +111,13 @@ static Expected<std::pair<size_t, size_t>> findTopLevelParenRange(ParserState &s
     size_t lp = std::string::npos;
     size_t rp = std::string::npos;
     size_t depth = 0;
-    bool inString = false;
-    bool escape = false;
+    StringStateTracker stringState;
 
     for (size_t index = startIndex; index < text.size(); ++index)
     {
         char c = text[index];
-        if (inString)
-        {
-            if (escape)
-            {
-                escape = false;
-                continue;
-            }
-            if (c == '\\')
-            {
-                escape = true;
-                continue;
-            }
-            if (c == '"')
-                inString = false;
+        if (stringState.processChar(c))
             continue;
-        }
-
-        if (c == '"')
-        {
-            inString = true;
-            continue;
-        }
 
         if (c == '(')
         {
@@ -142,36 +168,16 @@ static Expected<std::vector<std::string>> splitTopLevel(ParserState &state,
 {
     std::vector<std::string> tokens;
     std::string current;
-    bool inString = false;
-    bool escape = false;
+    StringStateTracker stringState;
     size_t depth = 0;
 
     const bool whitespaceOnly = trim(text).empty();
 
     for (char c : text)
     {
-        if (inString)
+        if (stringState.processChar(c))
         {
             current.push_back(c);
-            if (escape)
-            {
-                escape = false;
-                continue;
-            }
-            if (c == '\\')
-            {
-                escape = true;
-                continue;
-            }
-            if (c == '"')
-                inString = false;
-            continue;
-        }
-
-        if (c == '"')
-        {
-            current.push_back(c);
-            inString = true;
             continue;
         }
 
@@ -211,7 +217,7 @@ static Expected<std::vector<std::string>> splitTopLevel(ParserState &state,
         current.push_back(c);
     }
 
-    if (escape || inString)
+    if (stringState.hasUnfinishedString())
     {
         std::ostringstream msg;
         msg << "malformed " << context;
@@ -404,32 +410,12 @@ Expected<void> OperandParser::parseBranchTarget(const std::string &segment,
     const char *mnemonic = il::core::getOpcodeInfo(instr_.op).name;
     viper::il::io::Context ctx{state_, const_cast<Instr &>(instr_)};
     size_t lp = std::string::npos;
-    bool inString = false;
-    bool escape = false;
+    StringStateTracker stringState;
     for (size_t pos = 0; pos < text.size(); ++pos)
     {
         char c = text[pos];
-        if (inString)
-        {
-            if (escape)
-            {
-                escape = false;
-                continue;
-            }
-            if (c == '\\')
-            {
-                escape = true;
-                continue;
-            }
-            if (c == '"')
-                inString = false;
+        if (stringState.processChar(c))
             continue;
-        }
-        if (c == '"')
-        {
-            inString = true;
-            continue;
-        }
         if (c == '(')
         {
             lp = pos;
@@ -451,8 +437,7 @@ Expected<void> OperandParser::parseBranchTarget(const std::string &segment,
 
     size_t rp = std::string::npos;
     size_t depth = 0;
-    inString = false;
-    escape = false;
+    StringStateTracker stringState2;
     for (size_t pos = lp; pos < text.size(); ++pos)
     {
         char c = text[pos];
@@ -461,27 +446,8 @@ Expected<void> OperandParser::parseBranchTarget(const std::string &segment,
             ++depth;
             continue;
         }
-        if (inString)
-        {
-            if (escape)
-            {
-                escape = false;
-                continue;
-            }
-            if (c == '\\')
-            {
-                escape = true;
-                continue;
-            }
-            if (c == '"')
-                inString = false;
+        if (stringState2.processChar(c))
             continue;
-        }
-        if (c == '"')
-        {
-            inString = true;
-            continue;
-        }
         if (c == '(')
         {
             ++depth;
@@ -501,7 +467,7 @@ Expected<void> OperandParser::parseBranchTarget(const std::string &segment,
         }
     }
 
-    if (rp == std::string::npos || depth != 0 || inString)
+    if (rp == std::string::npos || depth != 0 || stringState2.hasUnfinishedString())
     {
         return Expected<void>{
             il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, "mismatched ')'")};

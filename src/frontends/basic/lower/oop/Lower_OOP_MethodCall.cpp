@@ -172,27 +172,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                         RVal av = lowerExpr(*a);
                         args.push_back(av.value);
                     }
-                    auto mapBasicToIl = [](BasicType t) -> Type::Kind
-                    {
-                        switch (t)
-                        {
-                            case BasicType::String:
-                                return Type::Kind::Str;
-                            case BasicType::Float:
-                                return Type::Kind::F64;
-                            case BasicType::Bool:
-                                return Type::Kind::I1;
-                            case BasicType::Void:
-                                return Type::Kind::Void;
-                            case BasicType::Object:
-                                return Type::Kind::Ptr;
-                            case BasicType::Int:
-                            case BasicType::Unknown:
-                            default:
-                                return Type::Kind::I64;
-                        }
-                    };
-                    Type retTy(mapBasicToIl(info->ret));
+                    Type retTy(type_conv::basicTypeToIlKind(info->ret));
                     runtimeTracker.trackCalleeName(info->target);
                     curLoc = expr.loc;
                     Value result = retTy.kind == Type::Kind::Void
@@ -256,26 +236,6 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
             args.reserve(1 + expr.args.size());
             args.push_back(base.value);
 
-            auto mapBasicToIl = [](BasicType t) -> Type::Kind
-            {
-                switch (t)
-                {
-                    case BasicType::String:
-                        return Type::Kind::Str;
-                    case BasicType::Float:
-                        return Type::Kind::F64;
-                    case BasicType::Bool:
-                        return Type::Kind::I1;
-                    case BasicType::Void:
-                        return Type::Kind::Void;
-                    case BasicType::Object:
-                        return Type::Kind::Ptr;
-                    case BasicType::Int:
-                    case BasicType::Unknown:
-                    default:
-                        return Type::Kind::I64;
-                }
-            };
             // Coerce each user arg to expected BasicType
             for (size_t i = 0; i < expr.args.size(); ++i)
             {
@@ -296,9 +256,9 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
             paramTypes.push_back(qClass == il::runtime::RTCLASS_STRING ? Type(Type::Kind::Str)
                                                                        : Type(Type::Kind::Ptr));
             for (BasicType bt : info->args)
-                paramTypes.push_back(Type(mapBasicToIl(bt)));
+                paramTypes.push_back(Type(type_conv::basicTypeToIlKind(bt)));
 
-            Type retTy(mapBasicToIl(info->ret));
+            Type retTy(type_conv::basicTypeToIlKind(info->ret));
             // Record the catalog target spelling (e.g., Viper.String.Substring)
             // so extern declarations can include the accessor alongside
             // canonical function names selected at call sites.
@@ -340,27 +300,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                     args.push_back(av.value);
                 }
                 // Receiver is ptr; args are passed as-is; ret type from info
-                auto mapBasicToIl = [](BasicType t) -> Type::Kind
-                {
-                    switch (t)
-                    {
-                        case BasicType::String:
-                            return Type::Kind::Str;
-                        case BasicType::Float:
-                            return Type::Kind::F64;
-                        case BasicType::Bool:
-                            return Type::Kind::I1;
-                        case BasicType::Void:
-                            return Type::Kind::Void;
-                        case BasicType::Object:
-                            return Type::Kind::Ptr;
-                        case BasicType::Int:
-                        case BasicType::Unknown:
-                        default:
-                            return Type::Kind::I64;
-                    }
-                };
-                Type retTy(mapBasicToIl(info->ret));
+                Type retTy(type_conv::basicTypeToIlKind(info->ret));
                 runtimeTracker.trackCalleeName(info->target);
                 curLoc = expr.loc;
                 Value result = retTy.kind == Type::Kind::Void

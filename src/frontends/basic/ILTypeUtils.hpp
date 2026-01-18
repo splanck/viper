@@ -18,8 +18,11 @@
 
 #pragma once
 
+#include "frontends/basic/BasicTypes.hpp"
 #include "frontends/common/TypeUtils.hpp"
 #include "il/core/Type.hpp"
+
+#include <string_view>
 
 namespace il::frontends::basic::il_utils
 {
@@ -81,5 +84,25 @@ namespace il::frontends::basic::type_conv
 /// @param type BASIC field type enumerator.
 /// @return Size in bytes required to store the field.
 [[nodiscard]] std::size_t getFieldSize(::il::frontends::basic::Type type) noexcept;
+
+/// @brief Convert a BasicType enum to its IL Type::Kind.
+///
+/// @details Maps the runtime method index's BasicType enum values to their
+///          corresponding IL type kinds. Used when processing runtime method
+///          signatures from the catalog.
+///
+/// @param t BasicType enumeration value.
+/// @return Corresponding IL Type::Kind. Defaults to I64 for unknown types.
+[[nodiscard]] il::core::Type::Kind basicTypeToIlKind(BasicType t) noexcept;
+
+/// @brief Convert a runtime scalar type token to an IL Type.
+///
+/// @details Maps string tokens from runtime property/method signatures
+///          (e.g., "i64", "f64", "str", "obj") to their IL Type equivalents.
+///          Used when processing runtime property types from the catalog.
+///
+/// @param token Runtime scalar type string (e.g., "i64", "f64", "i1", "str", "obj").
+/// @return Corresponding IL Type. Defaults to I64 for unrecognized tokens.
+[[nodiscard]] il::core::Type runtimeScalarToType(std::string_view token) noexcept;
 
 } // namespace il::frontends::basic::type_conv

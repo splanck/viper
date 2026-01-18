@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <string>
 #include <string_view>
 
 namespace il::frontends::basic::string_utils

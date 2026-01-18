@@ -49,12 +49,15 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
+#include "frontends/basic/StringUtils.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
 #include "frontends/basic/ast/StmtBase.hpp"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 namespace il::frontends::basic
 {
@@ -413,6 +416,59 @@ template <typename T> [[nodiscard]] constexpr const T &cast(const Stmt &stmt) no
     expr->loc = loc;
     expr->value = value;
     return expr;
+}
+
+//===----------------------------------------------------------------------===//
+// Runtime Class Name Utilities
+//===----------------------------------------------------------------------===//
+
+/// @brief Recursively collects qualified name segments from an expression.
+/// @details Walks a chain of VarExpr or MemberAccessExpr nodes to build a list
+///          of name segments. For example, `Viper.String.Length` produces
+///          ["Viper", "String", "Length"].
+/// @param expr Expression to traverse.
+/// @param out Vector to accumulate name segments.
+/// @return True if the expression forms a valid qualified name, false otherwise.
+inline bool collectQualifiedSegments(const Expr &expr, std::vector<std::string> &out)
+{
+    if (auto *var = as<const VarExpr>(expr))
+    {
+        out.push_back(var->name);
+        return true;
+    }
+    if (auto *mem = as<const MemberAccessExpr>(expr))
+    {
+        if (!mem->base)
+            return false;
+        if (!collectQualifiedSegments(*mem->base, out))
+            return false;
+        out.push_back(mem->member);
+        return true;
+    }
+    return false;
+}
+
+/// @brief Extracts a runtime class qualified name from an expression.
+/// @details Attempts to interpret the expression as a qualified name chain
+///          (e.g., `Viper.String`). Returns the qualified name if the chain
+///          starts with "Viper" (case-insensitive), nullopt otherwise.
+/// @param expr Expression to analyze.
+/// @return Qualified class name (e.g., "Viper.String") or nullopt.
+[[nodiscard]] inline std::optional<std::string> runtimeClassQNameFrom(const Expr &expr)
+{
+    std::vector<std::string> parts;
+    if (!collectQualifiedSegments(expr, parts))
+        return std::nullopt;
+    if (parts.empty() || !string_utils::iequals(parts.front(), "Viper"))
+        return std::nullopt;
+    std::string qname;
+    for (size_t i = 0; i < parts.size(); ++i)
+    {
+        if (i)
+            qname.push_back('.');
+        qname += parts[i];
+    }
+    return qname;
 }
 
 } // namespace il::frontends::basic

@@ -47,42 +47,6 @@ using AstType = ::il::frontends::basic::Type;
 namespace il::frontends::basic
 {
 
-static bool collectQualifiedSegments(const Expr &expr, std::vector<std::string> &out)
-{
-    if (auto *var = as<const VarExpr>(expr))
-    {
-        out.push_back(var->name);
-        return true;
-    }
-    if (auto *mem = as<const MemberAccessExpr>(expr))
-    {
-        if (!mem->base)
-            return false;
-        if (!collectQualifiedSegments(*mem->base, out))
-            return false;
-        out.push_back(mem->member);
-        return true;
-    }
-    return false;
-}
-
-static std::optional<std::string> runtimeClassQNameFrom(const Expr &expr)
-{
-    std::vector<std::string> parts;
-    if (!collectQualifiedSegments(expr, parts))
-        return std::nullopt;
-    if (parts.empty() || !string_utils::iequals(parts.front(), "Viper"))
-        return std::nullopt;
-    std::string qname;
-    for (size_t i = 0; i < parts.size(); ++i)
-    {
-        if (i)
-            qname.push_back('.');
-        qname += parts[i];
-    }
-    return qname;
-}
-
 static std::optional<std::string> runtimeCtorClassQNameFromName(std::string_view calleeName)
 {
     if (calleeName.empty())
@@ -583,18 +547,6 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
         {
             // Runtime class property setter via catalog (e.g., Viper.String)
             {
-                auto mapTy = [](std::string_view t) -> Lowerer::Type::Kind
-                {
-                    if (t == "i64")
-                        return Lowerer::Type::Kind::I64;
-                    if (t == "f64")
-                        return Lowerer::Type::Kind::F64;
-                    if (t == "i1")
-                        return Lowerer::Type::Kind::I1;
-                    if (t == "str")
-                        return Lowerer::Type::Kind::Str;
-                    return Lowerer::Type::Kind::I64;
-                };
                 auto &pidx = runtimePropertyIndex();
 
                 if (member->base)
@@ -619,7 +571,7 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                                 return;
                             }
                             Lowerer::RVal v = value;
-                            auto k = mapTy(prop->type);
+                            auto k = type_conv::runtimeScalarToType(prop->type).kind;
                             if (k == Lowerer::Type::Kind::I1)
                                 v = lowerer_.coerceToBool(std::move(v), stmt.loc);
                             else if (k == Lowerer::Type::Kind::F64)
@@ -662,7 +614,7 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                         }
                         Lowerer::RVal v = value;
                         // Coerce according to expected type token
-                        auto k = mapTy(prop->type);
+                        auto k = type_conv::runtimeScalarToType(prop->type).kind;
                         if (k == Lowerer::Type::Kind::I1)
                             v = lowerer_.coerceToBool(std::move(v), stmt.loc);
                         else if (k == Lowerer::Type::Kind::F64)

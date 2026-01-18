@@ -15,10 +15,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "ILTypeUtils.hpp"
+
+#include "BasicTypes.hpp"
 #include "ast/NodeFwd.hpp"
 #include "il/core/Type.hpp"
 
 #include <cstddef>
+#include <string_view>
 
 namespace il::frontends::basic::type_conv
 {
@@ -68,6 +71,46 @@ std::size_t getFieldSize(::il::frontends::basic::Type type) noexcept
         default:
             return 8;
     }
+}
+
+il::core::Type::Kind basicTypeToIlKind(BasicType t) noexcept
+{
+    using Kind = il::core::Type::Kind;
+    switch (t)
+    {
+        case BasicType::String:
+            return Kind::Str;
+        case BasicType::Float:
+            return Kind::F64;
+        case BasicType::Bool:
+            return Kind::I1;
+        case BasicType::Void:
+            return Kind::Void;
+        case BasicType::Object:
+            return Kind::Ptr;
+        case BasicType::Int:
+        case BasicType::Unknown:
+        default:
+            return Kind::I64;
+    }
+}
+
+il::core::Type runtimeScalarToType(std::string_view token) noexcept
+{
+    using IlType = il::core::Type;
+    if (token == "i64")
+        return IlType(IlType::Kind::I64);
+    if (token == "f64")
+        return IlType(IlType::Kind::F64);
+    if (token == "i1")
+        return IlType(IlType::Kind::I1);
+    if (token == "str")
+        return IlType(IlType::Kind::Str);
+    if (token == "obj")
+        return IlType(IlType::Kind::Ptr);
+    if (token == "void")
+        return IlType(IlType::Kind::Void);
+    return IlType(IlType::Kind::I64);
 }
 
 } // namespace il::frontends::basic::type_conv
