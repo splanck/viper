@@ -39,6 +39,7 @@
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
 
+#include "il/utils/UseDefInfo.hpp"
 #include "il/utils/Utils.hpp"
 
 #include <algorithm>
@@ -114,12 +115,14 @@ struct State
 /// @param B Current basic block in dominator traversal.
 /// @param DT Dominator tree for the function.
 /// @param AA Alias analysis used for load/store reasoning.
+/// @param useInfo Use-def chains for O(uses) value replacement.
 /// @param state Current value/load memoization state (copied per child).
 /// @param changed Output flag set true if any instruction is removed.
 void visitBlock(Function &F,
                 BasicBlock *B,
                 const viper::analysis::DomTree &DT,
                 viper::analysis::BasicAA &AA,
+                viper::il::UseDefInfo &useInfo,
                 State state,
                 bool &changed)
 {
@@ -138,7 +141,7 @@ void visitBlock(Function &F,
             auto it = state.loads.find(key);
             if (it != state.loads.end())
             {
-                viper::il::replaceAllUses(F, *I.result, it->second);
+                useInfo.replaceAllUses(*I.result, it->second);
                 B->instructions.erase(B->instructions.begin() + static_cast<long>(idx));
                 changed = true;
                 continue; // don't advance idx
@@ -153,7 +156,7 @@ void visitBlock(Function &F,
                 if (AA.alias(kv.first.ptr, key.ptr, kv.first.size, key.size) ==
                     viper::analysis::AliasResult::MustAlias)
                 {
-                    viper::il::replaceAllUses(F, *I.result, kv.second);
+                    useInfo.replaceAllUses(*I.result, kv.second);
                     B->instructions.erase(B->instructions.begin() + static_cast<long>(idx));
                     changed = true;
                     replaced = true;
@@ -217,7 +220,7 @@ void visitBlock(Function &F,
             auto found = state.exprs.find(*key);
             if (found != state.exprs.end())
             {
-                viper::il::replaceAllUses(F, *I.result, found->second);
+                useInfo.replaceAllUses(*I.result, found->second);
                 B->instructions.erase(B->instructions.begin() + static_cast<long>(idx));
                 changed = true;
                 continue;
@@ -237,7 +240,7 @@ void visitBlock(Function &F,
     {
         for (auto *Child : it->second)
         {
-            visitBlock(F, Child, DT, AA, state, changed);
+            visitBlock(F, Child, DT, AA, useInfo, state, changed);
         }
     }
 }
@@ -272,10 +275,13 @@ PreservedAnalyses GVN::run(Function &function, AnalysisManager &analysis)
     if (function.blocks.empty())
         return PreservedAnalyses::all();
 
+    // Build use-def chains once for O(uses) replacement instead of O(instructions)
+    viper::il::UseDefInfo useInfo(function);
+
     State state;
 
     // Start at entry block
-    visitBlock(function, &function.blocks.front(), dom, aa, state, changed);
+    visitBlock(function, &function.blocks.front(), dom, aa, useInfo, state, changed);
 
     if (!changed)
         return PreservedAnalyses::all();

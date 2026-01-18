@@ -213,7 +213,9 @@ target_include_directories(il_transform PUBLIC
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
 )
 
-add_library(il_utils STATIC il/utils/Utils.cpp)
+add_library(il_utils STATIC
+        il/utils/Utils.cpp
+        il/utils/UseDefInfo.cpp)
 target_link_libraries(il_utils PUBLIC viper_il_core)
 target_include_directories(il_utils PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>

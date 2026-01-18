@@ -24,6 +24,7 @@
 #include "il/transform/ValueKey.hpp"
 
 #include "il/core/Instr.hpp"
+#include "il/utils/UseDefInfo.hpp"
 #include "il/utils/Utils.hpp"
 
 #include <unordered_map>
@@ -42,10 +43,14 @@ namespace
 ///          analysis. The pass only folds instructions that pass
 ///          @ref makeValueKey (side-effect free, non-trapping, and
 ///          non-memory). Operand normalization handles commutative opcodes.
+///          Uses UseDefInfo for O(uses) replacement instead of O(instructions).
 /// @param F Function to optimize in place.
 /// @return True if any redundant instruction was removed; false otherwise.
 bool runEarlyCSE(Function &F)
 {
+    // Build use-def chains once for O(uses) replacement
+    viper::il::UseDefInfo useInfo(F);
+
     bool changed = false;
     for (auto &B : F.blocks)
     {
@@ -63,7 +68,7 @@ bool runEarlyCSE(Function &F)
             if (it != table.end())
             {
                 const Value existing = it->second;
-                viper::il::replaceAllUses(F, *I.result, existing);
+                useInfo.replaceAllUses(*I.result, existing);
                 B.instructions.erase(B.instructions.begin() + static_cast<long>(idx));
                 changed = true;
                 continue; // don't advance idx

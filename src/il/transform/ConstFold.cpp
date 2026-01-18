@@ -28,12 +28,14 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
 #include "il/core/Value.hpp"
+#include "il/utils/UseDefInfo.hpp"
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <limits>
 #include <optional>
 #include <type_traits>
+#include <vector>
 
 using namespace il::core;
 
@@ -180,22 +182,6 @@ static std::optional<long long> checkedMul(long long a, long long b)
     return result;
 }
 
-/// @brief Substitute a folded value for all uses of a temporary.
-/// @details Walks every block and instruction operand to replace references to
-///          the temporary identifier with the folded constant.  Must be invoked
-///          before erasing the defining instruction to avoid dangling
-///          references.
-/// @param f Function containing the temporary.
-/// @param id Temporary identifier to rewrite.
-/// @param v Replacement value to substitute.
-static void replaceAll(Function &f, unsigned id, const Value &v)
-{
-    for (auto &b : f.blocks)
-        for (auto &in : b.instructions)
-            for (auto &op : in.operands)
-                if (op.kind == Value::Kind::Temp && op.id == id)
-                    op = v;
-}
 
 /// @brief Fold recognised math runtime calls into constants.
 /// @details Handles a curated set of runtime helpers (absolute value, rounding,
@@ -516,9 +502,9 @@ static bool foldCall(const Instr &in, Value &out)
 /// @brief Perform constant folding across a module in-place.
 /// @details Visits every instruction, attempting to fold recognised runtime
 ///          calls, unary casts, and binary arithmetic operations.  Successful
-///          folds update all uses of the temporary via @ref replaceAll and erase
-///          the original instruction, shrinking the IR without altering
-///          observable behaviour.
+///          folds update all uses of the temporary via UseDefInfo for O(uses)
+///          replacement instead of O(instructions), then erase the original
+///          instruction, shrinking the IR without altering observable behaviour.
 /// @param m Module whose functions are to be folded.
 void constFold(Module &m)
 {
@@ -526,8 +512,14 @@ void constFold(Module &m)
     // occur at runtime, folding must not change behavior.
     for (auto &f : m.functions)
     {
+        // Build use-def chains once per function for O(uses) replacement
+        viper::il::UseDefInfo useInfo(f);
+
         for (auto &b : f.blocks)
         {
+            // Collect indices of instructions to erase (process in reverse later)
+            std::vector<size_t> toErase;
+
             for (size_t i = 0; i < b.instructions.size(); ++i)
             {
                 Instr &in = b.instructions[i];
@@ -793,10 +785,15 @@ void constFold(Module &m)
                 }
                 if (folded)
                 {
-                    replaceAll(f, *in.result, repl);
-                    b.instructions.erase(b.instructions.begin() + i);
-                    --i;
+                    useInfo.replaceAllUses(*in.result, repl);
+                    toErase.push_back(i);
                 }
+            }
+
+            // Erase folded instructions in reverse order to preserve indices
+            for (auto it = toErase.rbegin(); it != toErase.rend(); ++it)
+            {
+                b.instructions.erase(b.instructions.begin() + static_cast<long>(*it));
             }
         }
     }
