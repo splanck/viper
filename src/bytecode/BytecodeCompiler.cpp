@@ -328,6 +328,7 @@ void BytecodeCompiler::compileInstr(const il::core::Instr& instr) {
                 // Record fixup for handler label
                 uint32_t offsetPos = static_cast<uint32_t>(currentFunc_->code.size());
                 emit(0u);  // Placeholder for handler PC
+                // isRaw=true because the offset is in a separate word, not encoded in the instruction
                 pendingBranches_.push_back({offsetPos, instr.labels[0], false, true});
             }
             break;
@@ -435,6 +436,11 @@ void BytecodeCompiler::compileInstr(const il::core::Instr& instr) {
             break;
 
         case Opcode::TrapFromErr:
+            // Push error code operand onto stack, then raise as trap kind
+            pushValue(instr.operands[0]);
+            emit(BCOpcode::TRAP_FROM_ERR);
+            break;
+
         case Opcode::TrapErr:
             // These create error objects - for now emit a simple trap
             emit8(BCOpcode::TRAP, static_cast<uint8_t>(TrapKind::RuntimeError));

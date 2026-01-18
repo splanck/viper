@@ -384,9 +384,26 @@ void BytecodeVM::run() {
                 break;
 
             case BCOpcode::ADD_I64_OVF: {
-                int64_t result;
-                if (addOverflow(sp_[-2].i64, sp_[-1].i64, result)) {
-                    trap(TrapKind::Overflow, "Overflow: integer overflow in add");
+                // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
+                uint8_t targetType = decodeArg8_0(instr);
+                int64_t a = sp_[-2].i64, b = sp_[-1].i64;
+                int64_t result = a + b;
+                bool overflow = false;
+                switch (targetType) {
+                    case 1: // I16
+                        overflow = (result < INT16_MIN || result > INT16_MAX);
+                        break;
+                    case 2: // I32
+                        overflow = (result < INT32_MIN || result > INT32_MAX);
+                        break;
+                    default: // I64
+                        overflow = addOverflow(a, b, result);
+                        break;
+                }
+                if (overflow) {
+                    if (!dispatchTrap(TrapKind::Overflow)) {
+                        trap(TrapKind::Overflow, "Overflow: integer overflow in add");
+                    }
                     break;
                 }
                 sp_[-2].i64 = result;
@@ -395,9 +412,26 @@ void BytecodeVM::run() {
             }
 
             case BCOpcode::SUB_I64_OVF: {
-                int64_t result;
-                if (subOverflow(sp_[-2].i64, sp_[-1].i64, result)) {
-                    trap(TrapKind::Overflow, "Overflow: integer overflow in sub");
+                // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
+                uint8_t targetType = decodeArg8_0(instr);
+                int64_t a = sp_[-2].i64, b = sp_[-1].i64;
+                int64_t result = a - b;
+                bool overflow = false;
+                switch (targetType) {
+                    case 1: // I16
+                        overflow = (result < INT16_MIN || result > INT16_MAX);
+                        break;
+                    case 2: // I32
+                        overflow = (result < INT32_MIN || result > INT32_MAX);
+                        break;
+                    default: // I64
+                        overflow = subOverflow(a, b, result);
+                        break;
+                }
+                if (overflow) {
+                    if (!dispatchTrap(TrapKind::Overflow)) {
+                        trap(TrapKind::Overflow, "Overflow: integer overflow in sub");
+                    }
                     break;
                 }
                 sp_[-2].i64 = result;
@@ -406,9 +440,26 @@ void BytecodeVM::run() {
             }
 
             case BCOpcode::MUL_I64_OVF: {
-                int64_t result;
-                if (mulOverflow(sp_[-2].i64, sp_[-1].i64, result)) {
-                    trap(TrapKind::Overflow, "Overflow: integer overflow in mul");
+                // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
+                uint8_t targetType = decodeArg8_0(instr);
+                int64_t a = sp_[-2].i64, b = sp_[-1].i64;
+                int64_t result = a * b;
+                bool overflow = false;
+                switch (targetType) {
+                    case 1: // I16
+                        overflow = (result < INT16_MIN || result > INT16_MAX);
+                        break;
+                    case 2: // I32
+                        overflow = (result < INT32_MIN || result > INT32_MAX);
+                        break;
+                    default: // I64
+                        overflow = mulOverflow(a, b, result);
+                        break;
+                }
+                if (overflow) {
+                    if (!dispatchTrap(TrapKind::Overflow)) {
+                        trap(TrapKind::Overflow, "Overflow: integer overflow in mul");
+                    }
                     break;
                 }
                 sp_[-2].i64 = result;
@@ -418,7 +469,9 @@ void BytecodeVM::run() {
 
             case BCOpcode::SDIV_I64_CHK:
                 if (sp_[-1].i64 == 0) {
-                    trap(TrapKind::DivisionByZero, "division by zero");
+                    if (!dispatchTrap(TrapKind::DivisionByZero)) {
+                        trap(TrapKind::DivisionByZero, "division by zero");
+                    }
                     break;
                 }
                 sp_[-2].i64 = sp_[-2].i64 / sp_[-1].i64;
@@ -427,7 +480,9 @@ void BytecodeVM::run() {
 
             case BCOpcode::UDIV_I64_CHK:
                 if (sp_[-1].i64 == 0) {
-                    trap(TrapKind::DivisionByZero, "division by zero");
+                    if (!dispatchTrap(TrapKind::DivisionByZero)) {
+                        trap(TrapKind::DivisionByZero, "division by zero");
+                    }
                     break;
                 }
                 sp_[-2].i64 = static_cast<int64_t>(
@@ -438,7 +493,9 @@ void BytecodeVM::run() {
 
             case BCOpcode::SREM_I64_CHK:
                 if (sp_[-1].i64 == 0) {
-                    trap(TrapKind::DivisionByZero, "division by zero");
+                    if (!dispatchTrap(TrapKind::DivisionByZero)) {
+                        trap(TrapKind::DivisionByZero, "division by zero");
+                    }
                     break;
                 }
                 sp_[-2].i64 = sp_[-2].i64 % sp_[-1].i64;
@@ -447,7 +504,9 @@ void BytecodeVM::run() {
 
             case BCOpcode::UREM_I64_CHK:
                 if (sp_[-1].i64 == 0) {
-                    trap(TrapKind::DivisionByZero, "division by zero");
+                    if (!dispatchTrap(TrapKind::DivisionByZero)) {
+                        trap(TrapKind::DivisionByZero, "division by zero");
+                    }
                     break;
                 }
                 sp_[-2].i64 = static_cast<int64_t>(
@@ -462,7 +521,9 @@ void BytecodeVM::run() {
                 int64_t lo = sp_[-2].i64;
                 int64_t idx = sp_[-3].i64;
                 if (idx < lo || idx >= hi) {
-                    trap(TrapKind::IndexOutOfBounds, "index out of bounds");
+                    if (!dispatchTrap(TrapKind::IndexOutOfBounds)) {
+                        trap(TrapKind::IndexOutOfBounds, "index out of bounds");
+                    }
                     break;
                 }
                 sp_ -= 2;  // Pop lo, hi; keep idx
@@ -640,6 +701,113 @@ void BytecodeVM::run() {
                 sp_[-1].i64 = static_cast<int64_t>(sp_[-1].f64);
                 break;
 
+            case BCOpcode::F64_TO_I64_CHK: {
+                // Float to signed int64 with overflow check and round-to-even
+                double val = sp_[-1].f64;
+                // Check for NaN
+                if (val != val) {
+                    if (!dispatchTrap(TrapKind::InvalidCast)) {
+                        trap(TrapKind::InvalidCast, "InvalidCast: float to int conversion of NaN");
+                    }
+                    break;
+                }
+                // Round to nearest, ties to even (banker's rounding)
+                double rounded = std::rint(val);
+                // Check for out of range (INT64_MIN to INT64_MAX)
+                constexpr double maxI64 = 9223372036854775807.0;
+                constexpr double minI64 = -9223372036854775808.0;
+                if (rounded > maxI64 || rounded < minI64) {
+                    if (!dispatchTrap(TrapKind::InvalidCast)) {
+                        trap(TrapKind::InvalidCast, "InvalidCast: float to int conversion overflow");
+                    }
+                    break;
+                }
+                sp_[-1].i64 = static_cast<int64_t>(rounded);
+                break;
+            }
+
+            case BCOpcode::F64_TO_U64_CHK: {
+                // Float to unsigned int64 with overflow check and round-to-even
+                double val = sp_[-1].f64;
+                // Check for NaN
+                if (val != val) {
+                    if (!dispatchTrap(TrapKind::InvalidCast)) {
+                        trap(TrapKind::InvalidCast, "InvalidCast: float to uint conversion of NaN");
+                    }
+                    break;
+                }
+                // Round to nearest, ties to even (banker's rounding)
+                double rounded = std::rint(val);
+                // Check for out of range (0 to UINT64_MAX)
+                constexpr double maxU64 = 18446744073709551615.0;
+                if (rounded < 0.0 || rounded > maxU64) {
+                    if (!dispatchTrap(TrapKind::InvalidCast)) {
+                        trap(TrapKind::InvalidCast, "InvalidCast: float to uint conversion overflow");
+                    }
+                    break;
+                }
+                sp_[-1].i64 = static_cast<int64_t>(static_cast<uint64_t>(rounded));
+                break;
+            }
+
+            case BCOpcode::I64_NARROW_CHK: {
+                // Signed narrow conversion with overflow check
+                // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
+                uint8_t targetType = decodeArg8_0(instr);
+                int64_t val = sp_[-1].i64;
+                bool inRange = true;
+                switch (targetType) {
+                    case 0: // I1 (boolean)
+                        inRange = (val == 0 || val == 1);
+                        break;
+                    case 1: // I16
+                        inRange = (val >= INT16_MIN && val <= INT16_MAX);
+                        break;
+                    case 2: // I32
+                        inRange = (val >= INT32_MIN && val <= INT32_MAX);
+                        break;
+                    default: // I64 - always in range
+                        break;
+                }
+                if (!inRange) {
+                    if (!dispatchTrap(TrapKind::Overflow)) {
+                        trap(TrapKind::Overflow, "Overflow: signed narrow conversion overflow");
+                    }
+                    break;
+                }
+                // Value stays the same (already narrowed semantically)
+                break;
+            }
+
+            case BCOpcode::U64_NARROW_CHK: {
+                // Unsigned narrow conversion with overflow check
+                // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
+                uint8_t targetType = decodeArg8_0(instr);
+                uint64_t val = static_cast<uint64_t>(sp_[-1].i64);
+                bool inRange = true;
+                switch (targetType) {
+                    case 0: // I1 (boolean)
+                        inRange = (val <= 1);
+                        break;
+                    case 1: // I16
+                        inRange = (val <= UINT16_MAX);
+                        break;
+                    case 2: // I32
+                        inRange = (val <= UINT32_MAX);
+                        break;
+                    default: // I64 - always in range
+                        break;
+                }
+                if (!inRange) {
+                    if (!dispatchTrap(TrapKind::Overflow)) {
+                        trap(TrapKind::Overflow, "Overflow: unsigned narrow conversion overflow");
+                    }
+                    break;
+                }
+                // Value stays the same (already narrowed semantically)
+                break;
+            }
+
             case BCOpcode::BOOL_TO_I64:
                 // Already i64 with 0 or 1
                 break;
@@ -676,6 +844,42 @@ void BytecodeVM::run() {
             case BCOpcode::JUMP_LONG: {
                 int32_t offset = decodeArgI24(instr);
                 fp_->pc += offset;
+                break;
+            }
+
+            case BCOpcode::SWITCH: {
+                // Format: SWITCH [numCases:u32] [defaultOffset:i32] [caseVal:i32 caseOffset:i32]...
+                // Pop scrutinee from stack
+                int32_t scrutinee = static_cast<int32_t>((--sp_)->i64);
+
+                // pc currently points to the word after SWITCH opcode (numCases)
+                const uint32_t* code = fp_->func->code.data();
+                uint32_t numCases = code[fp_->pc++];
+
+                // Position of default offset word
+                uint32_t defaultOffsetPos = fp_->pc++;
+
+                // Search for matching case
+                bool found = false;
+                for (uint32_t i = 0; i < numCases; ++i) {
+                    int32_t caseVal = static_cast<int32_t>(code[fp_->pc++]);
+                    uint32_t caseOffsetPos = fp_->pc++;
+
+                    if (caseVal == scrutinee) {
+                        // Found matching case - jump to its target
+                        // Offset is relative to the offset word position
+                        int32_t caseOffset = static_cast<int32_t>(code[caseOffsetPos]);
+                        fp_->pc = caseOffsetPos + caseOffset;
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found) {
+                    // No match - use default offset
+                    int32_t defaultOffset = static_cast<int32_t>(code[defaultOffsetPos]);
+                    fp_->pc = defaultOffsetPos + defaultOffset;
+                }
                 break;
             }
 
@@ -754,6 +958,46 @@ void BytecodeVM::run() {
                 // Push result if function returns a value
                 if (ref.hasReturn) {
                     *sp_++ = result;
+                }
+                break;
+            }
+
+            case BCOpcode::CALL_INDIRECT: {
+                // Indirect call through function pointer
+                // Stack layout: [callee][arg0][arg1]...[argN] <- sp
+                uint8_t argCount = decodeArg8_0(instr);
+
+                // Get callee from below the arguments
+                BCSlot* callee = sp_ - argCount - 1;
+                BCSlot* args = sp_ - argCount;
+
+                // Check if callee is a tagged function pointer (high bit set)
+                constexpr uint64_t kFuncPtrTag = 0x8000000000000000ULL;
+                uint64_t calleeVal = static_cast<uint64_t>(callee->i64);
+
+                if (calleeVal & kFuncPtrTag) {
+                    // Tagged function index - extract and call
+                    uint32_t funcIdx = static_cast<uint32_t>(calleeVal & 0x7FFFFFFFULL);
+                    if (funcIdx >= module_->functions.size()) {
+                        trap(TrapKind::RuntimeError, "Invalid indirect function index");
+                        break;
+                    }
+
+                    // Shift arguments down to overwrite the callee slot
+                    for (int i = 0; i < argCount; ++i) {
+                        callee[i] = args[i];
+                    }
+                    sp_ = callee + argCount;  // Adjust stack pointer
+
+                    call(&module_->functions[funcIdx]);
+                } else if (calleeVal == 0) {
+                    // Null function pointer
+                    trap(TrapKind::NullPointer, "Null indirect callee");
+                    break;
+                } else {
+                    // Unknown pointer format
+                    trap(TrapKind::RuntimeError, "Invalid indirect call target");
+                    break;
                 }
                 break;
             }
@@ -924,9 +1168,10 @@ void BytecodeVM::run() {
             // Exception Handling
             //==================================================================
             case BCOpcode::EH_PUSH: {
-                // Register exception handler at offset from current PC
-                uint16_t offset = decodeArg16(instr);
-                uint32_t handlerPc = fp_->pc + offset;
+                // Handler offset is in the next code word (raw i32 offset)
+                const uint32_t* code = fp_->func->code.data();
+                int32_t offset = static_cast<int32_t>(code[fp_->pc++]);
+                uint32_t handlerPc = static_cast<uint32_t>(static_cast<int32_t>(fp_->pc - 1) + offset);
                 pushExceptionHandler(handlerPc);
                 break;
             }
@@ -958,6 +1203,33 @@ void BytecodeVM::run() {
                 break;
             }
 
+            case BCOpcode::ERR_GET_KIND: {
+                // Pop error object from stack and return its kind
+                // In our simple model, the error object IS the trap kind
+                int64_t errVal = (--sp_)->i64;
+                sp_->i64 = errVal;  // Push the kind (same as error value)
+                sp_++;
+                break;
+            }
+
+            case BCOpcode::ERR_GET_CODE:
+                // Get error code - maps trap kind to BASIC error code
+                sp_->i64 = static_cast<int64_t>(currentErrorCode_);
+                sp_++;
+                break;
+
+            case BCOpcode::ERR_GET_IP:
+                // Get fault instruction pointer - return current PC
+                sp_->i64 = static_cast<int64_t>(fp_->pc);
+                sp_++;
+                break;
+
+            case BCOpcode::ERR_GET_LINE:
+                // Get source line - we don't track this in bytecode VM, return -1
+                sp_->i64 = -1;
+                sp_++;
+                break;
+
             case BCOpcode::RESUME_SAME:
                 // Resume execution at the point of the trap
                 // This requires the trap PC to be stored, which we don't track yet
@@ -970,9 +1242,10 @@ void BytecodeVM::run() {
                 break;
 
             case BCOpcode::RESUME_LABEL: {
-                // Resume at a specific label (offset from current PC)
-                int16_t offset = decodeArgI16(instr);
-                fp_->pc += offset;
+                // Resume at a specific label (offset is in next code word)
+                const uint32_t* code = fp_->func->code.data();
+                int32_t offset = static_cast<int32_t>(code[fp_->pc++]);
+                fp_->pc = static_cast<uint32_t>(static_cast<int32_t>(fp_->pc - 1) + offset);
                 break;
             }
 
