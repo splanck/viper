@@ -41,6 +41,7 @@
 
 #include "il/transform/analysis/Liveness.hpp" // for CFGInfo
 
+#include "il/utils/UseDefInfo.hpp"
 #include "il/utils/Utils.hpp"
 
 #include <optional>
@@ -415,6 +416,9 @@ PreservedAnalyses IndVarSimplify::run(Function &function, AnalysisManager &analy
     auto &dom = analysis.getFunctionResult<viper::analysis::DomTree>("dominators", function);
     (void)dom;
 
+    // Build use-def chains for O(uses) replacement
+    viper::il::UseDefInfo useInfo(function);
+
     bool changed = false;
 
     for (const Loop &loop : loopInfo.loops())
@@ -528,7 +532,7 @@ PreservedAnalyses IndVarSimplify::run(Function &function, AnalysisManager &analy
         LTerm.brArgs[*li].push_back(Value::temp(nextId - 1));
 
         // Inside header, replace uses of computed addr with header param and erase the instructions
-        viper::il::replaceAllUses(function, addrExpr->addrId, Value::temp(addrParamId));
+        useInfo.replaceAllUses(addrExpr->addrId, Value::temp(addrParamId));
         // Erase the add and its mul if dead (single-use guaranteed earlier)
         // Remove add first
         for (size_t i = 0; i < header->instructions.size(); ++i)

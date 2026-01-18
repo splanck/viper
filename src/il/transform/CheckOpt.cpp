@@ -22,6 +22,7 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/Value.hpp"
+#include "il/utils/UseDefInfo.hpp"
 #include "il/utils/Utils.hpp"
 
 #include <functional>
@@ -280,6 +281,9 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
 
     bool changed = false;
 
+    // Build use-def chains once for O(uses) replacement
+    viper::il::UseDefInfo useInfo(function);
+
     // =========================================================================
     // Phase 1: Dominance-based redundancy elimination
     // =========================================================================
@@ -305,8 +309,7 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
             {
                 if (instr.result && it->second.resultId)
                 {
-                    viper::il::replaceAllUses(
-                        function, *instr.result, Value::temp(*it->second.resultId));
+                    useInfo.replaceAllUses(*instr.result, Value::temp(*it->second.resultId));
                 }
                 toErase.push_back({block, idx});
                 changed = true;

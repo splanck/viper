@@ -25,6 +25,7 @@
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
 
+#include "il/utils/UseDefInfo.hpp"
 #include "il/utils/Utils.hpp"
 
 #include <algorithm>
@@ -382,7 +383,8 @@ bool inlineCallSite(Function &caller,
         ensureValueName(caller, retParam.id, retParam.name);
 
         Value repl = Value::temp(retParam.id);
-        viper::il::replaceAllUses(caller, *callInstr.result, repl);
+        viper::il::UseDefInfo useInfo(caller);
+        useInfo.replaceAllUses(*callInstr.result, repl);
         replaceUsesInBlock(continuation, *callInstr.result, repl);
     }
 
