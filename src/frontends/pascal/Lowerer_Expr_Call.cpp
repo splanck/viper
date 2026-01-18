@@ -22,11 +22,6 @@ namespace il::frontends::pascal
 
 using common::char_utils::toLowercase;
 
-inline std::string toLower(const std::string &s)
-{
-    return toLowercase(s);
-}
-
 LowerResult Lowerer::lowerCall(const CallExpr &expr)
 {
     // Check for constructor call (marked by semantic analyzer)
@@ -63,11 +58,11 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
     // Implicit method call on Self inside a method: MethodName(args)
     if (!currentClassName_.empty())
     {
-        std::string classKey = toLower(currentClassName_);
+        std::string classKey = toLowercase(currentClassName_);
         auto *ci = sema_->lookupClass(classKey);
         if (ci)
         {
-            std::string mkey = toLower(callee);
+            std::string mkey = toLowercase(callee);
             const MethodInfo *methodInfo = ci->findMethod(mkey);
             if (methodInfo)
             {
@@ -129,7 +124,7 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
         {
             const WithContext &ctx = *it;
             if (ctx.type.kind == PasTypeKind::Class &&
-                toLower(ctx.type.name) == toLower(expr.withClassName))
+                toLowercase(ctx.type.name) == toLowercase(expr.withClassName))
             {
                 // Load the object pointer from the with context's slot
                 Value objPtr = emitLoad(Type(Type::Kind::Ptr), ctx.slot);
@@ -144,11 +139,11 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
                 }
 
                 // Get method info
-                std::string classKey = toLower(expr.withClassName);
+                std::string classKey = toLowercase(expr.withClassName);
                 auto *ci = sema_->lookupClass(classKey);
                 if (ci)
                 {
-                    std::string mkey = toLower(callee);
+                    std::string mkey = toLowercase(callee);
                     const MethodInfo *methodInfo = ci->findMethod(mkey);
                     if (methodInfo)
                     {
@@ -191,7 +186,7 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
     // Type-cast form: TClass(expr)
     // If callee is a type name and that type is a class, lower as rt_cast_as
     {
-        std::string key = toLower(callee);
+        std::string key = toLowercase(callee);
         auto typeOpt = sema_->lookupType(key);
         if (typeOpt &&
             (typeOpt->kind == PasTypeKind::Class || typeOpt->kind == PasTypeKind::Interface))
@@ -209,7 +204,7 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
             int64_t classId = 0;
             if (typeOpt->kind == PasTypeKind::Class)
             {
-                std::string classKey = toLower(typeOpt->name);
+                std::string classKey = toLowercase(typeOpt->name);
                 auto layoutIt = classLayouts_.find(classKey);
                 if (layoutIt != classLayouts_.end())
                 {
@@ -280,7 +275,7 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
     }
 
     // Check for builtin functions
-    std::string lowerCallee = toLower(callee);
+    std::string lowerCallee = toLowercase(callee);
     auto builtinOpt = lookupBuiltin(lowerCallee);
 
     if (builtinOpt)
@@ -452,7 +447,7 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
             if (expr.args[0]->kind == ExprKind::Name)
             {
                 const auto &nameExpr = static_cast<const NameExpr &>(*expr.args[0]);
-                std::string key = toLower(nameExpr.name);
+                std::string key = toLowercase(nameExpr.name);
                 auto it = locals_.find(key);
                 if (it != locals_.end())
                 {
@@ -583,8 +578,8 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
                 // Look up interface table for this class+interface
                 std::string ifaceName = paramType.name;
                 std::string className = srcType.name;
-                std::string ifaceKey = toLower(ifaceName);
-                std::string classKey = toLower(className);
+                std::string ifaceKey = toLowercase(ifaceName);
+                std::string classKey = toLowercase(className);
 
                 auto layoutIt = interfaceLayouts_.find(ifaceKey);
                 auto classLayoutIt = classLayouts_.find(classKey);
@@ -616,7 +611,7 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
                 if (expr.args[i]->kind == ExprKind::Name)
                 {
                     const auto &nameExpr = static_cast<const NameExpr &>(*expr.args[i]);
-                    std::string key = toLower(nameExpr.name);
+                    std::string key = toLowercase(nameExpr.name);
                     auto localIt = locals_.find(key);
                     if (localIt != locals_.end())
                     {

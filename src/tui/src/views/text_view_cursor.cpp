@@ -27,6 +27,8 @@
 
 #include "tui/views/text_view.hpp"
 
+#include "tui/util/numeric.hpp"
+
 #include <algorithm>
 #include <limits>
 #include <string>
@@ -34,26 +36,10 @@
 #include <utility>
 
 using viper::tui::util::char_width;
+using viper::tui::util::clampAdd;
 
 namespace viper::tui::views
 {
-namespace
-{
-/// @brief Clamp an addition to avoid overflowing @c size_t.
-/// @details Adds @p delta to @p base unless the addition would overflow, in
-///          which case the saturated maximum is returned. Cursor arithmetic
-///          relies on this to remain robust when processing large buffers.
-/// @param base Starting value.
-/// @param delta Amount to add to @p base.
-/// @return @p base + @p delta when representable, otherwise the saturated limit.
-std::size_t clampAdd(std::size_t base, std::size_t delta)
-{
-    const std::size_t max = std::numeric_limits<std::size_t>::max();
-    if (max - base < delta)
-        return max;
-    return base + delta;
-}
-} // namespace
 
 /// @brief Construct a TextView bound to a text buffer and theme.
 /// @details Stores references to the backing @ref text::TextBuffer and

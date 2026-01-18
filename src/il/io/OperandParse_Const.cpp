@@ -25,11 +25,7 @@
 
 #include "il/core/Instr.hpp"
 #include "il/core/Value.hpp"
-#include "il/internal/io/ParserState.hpp"
-#include "il/internal/io/ParserUtil.hpp"
 #include "il/io/StringEscape.hpp"
-
-#include "support/diag_expected.hpp"
 
 #include <cctype>
 #include <optional>
@@ -62,22 +58,6 @@ bool equalsIgnoreCase(std::string_view value, std::string_view literal)
             return false;
     }
     return true;
-}
-
-/// @brief Build a parse result representing a syntax error at the current cursor.
-/// @details Constant operand parsing reports failures through the
-///          `Expected<void>` stored inside @ref ParseResult.  This helper
-///          packages @p message with the active source location so diagnostics
-///          mirror the legacy operand parser.
-/// @param ctx Parser state carrying diagnostic and location information.
-/// @param message Human readable description of the error.
-/// @return Parse result whose status holds the constructed diagnostic.
-ParseResult syntaxError(Context &ctx, std::string message)
-{
-    ParseResult result;
-    result.status = ::il::support::Expected<void>{
-        ::il::io::makeLineErrorDiag(ctx.state.curLoc, ctx.state.lineNo, std::move(message))};
-    return result;
 }
 
 /// @brief Consume the next whitespace-delimited token from the IL cursor.

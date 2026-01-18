@@ -73,6 +73,29 @@ static inline int16_t u8_to_s16(uint8_t sample)
     return (int16_t)((sample - 128) << 8);
 }
 
+/// @brief Convert one PCM frame from raw bytes to stereo 16-bit signed samples.
+/// @details Handles both 8-bit unsigned and 16-bit signed PCM, and mono/stereo
+///          sources. Mono sources are duplicated to both output channels.
+/// @param src Pointer to raw PCM data for one frame.
+/// @param bits_per_sample Bits per sample (8 or 16).
+/// @param channels Number of channels in source (1 or 2).
+/// @param left Output: left channel sample.
+/// @param right Output: right channel sample.
+static inline void decode_pcm_frame(const uint8_t *src, int32_t bits_per_sample,
+                                     int32_t channels, int16_t *left, int16_t *right)
+{
+    if (bits_per_sample == 8)
+    {
+        *left = u8_to_s16(src[0]);
+        *right = (channels == 2) ? u8_to_s16(src[1]) : *left;
+    }
+    else /* 16-bit */
+    {
+        *left = (int16_t)read_u16_le(src);
+        *right = (channels == 2) ? (int16_t)read_u16_le(src + 2) : *left;
+    }
+}
+
 //===----------------------------------------------------------------------===//
 // WAV Header Parsing
 //===----------------------------------------------------------------------===//
@@ -221,18 +244,7 @@ static int convert_pcm_to_stereo_s16(const uint8_t *data, const vaud_wav_info *i
     for (int64_t i = 0; i < frame_count; i++)
     {
         int16_t left, right;
-
-        if (info->bits_per_sample == 8)
-        {
-            left = u8_to_s16(src[0]);
-            right = (info->channels == 2) ? u8_to_s16(src[1]) : left;
-        }
-        else /* 16-bit */
-        {
-            left = (int16_t)read_u16_le(src);
-            right = (info->channels == 2) ? (int16_t)read_u16_le(src + 2) : left;
-        }
-
+        decode_pcm_frame(src, info->bits_per_sample, info->channels, &left, &right);
         *dst++ = left;
         *dst++ = right;
         src += bytes_per_frame;
@@ -418,18 +430,7 @@ int32_t vaud_wav_read_frames(void *file, int16_t *samples, int32_t frames,
     for (int32_t i = 0; i < frames_read; i++)
     {
         int16_t left, right;
-
-        if (bits_per_sample == 8)
-        {
-            left = u8_to_s16(src[0]);
-            right = (channels == 2) ? u8_to_s16(src[1]) : left;
-        }
-        else /* 16-bit */
-        {
-            left = (int16_t)read_u16_le(src);
-            right = (channels == 2) ? (int16_t)read_u16_le(src + 2) : left;
-        }
-
+        decode_pcm_frame(src, bits_per_sample, channels, &left, &right);
         *dst++ = left;
         *dst++ = right;
         src += bytes_per_frame;

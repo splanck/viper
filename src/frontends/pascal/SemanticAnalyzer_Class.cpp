@@ -26,12 +26,6 @@ namespace il::frontends::pascal
 // Use common toLowercase for case-insensitive comparison
 using common::char_utils::toLowercase;
 
-// Alias for compatibility with existing code
-inline std::string toLower(const std::string &s)
-{
-    return toLowercase(s);
-}
-
 //===----------------------------------------------------------------------===//
 // Class/Interface Semantic Checks
 //===----------------------------------------------------------------------===//
@@ -56,7 +50,7 @@ void SemanticAnalyzer::checkClassInfo(const ClassInfo &classInfo)
 
     if (!classInfo.baseClass.empty())
     {
-        std::string baseKey = toLower(classInfo.baseClass);
+        std::string baseKey = toLowercase(classInfo.baseClass);
         if (classes_.find(baseKey) != classes_.end())
         {
             // It's a class - use as base class
@@ -79,7 +73,7 @@ void SemanticAnalyzer::checkClassInfo(const ClassInfo &classInfo)
     // We need to verify interfaces list items are actually interfaces, not classes
     for (const auto &ifaceName : effectiveInterfaces)
     {
-        std::string key = toLower(ifaceName);
+        std::string key = toLowercase(ifaceName);
         // Check if it's a class (error) or interface (ok)
         if (classes_.find(key) != classes_.end())
         {
@@ -148,7 +142,7 @@ std::optional<MethodInfo> SemanticAnalyzer::findVirtualInBase(const std::string 
     if (className.empty())
         return std::nullopt;
 
-    std::string classKey = toLower(className);
+    std::string classKey = toLowercase(className);
     auto it = classes_.find(classKey);
     if (it == classes_.end())
         return std::nullopt;
@@ -156,7 +150,7 @@ std::optional<MethodInfo> SemanticAnalyzer::findVirtualInBase(const std::string 
     const ClassInfo &baseClass = it->second;
 
     // Look for method in this class (returns first virtual overload)
-    std::string methodKey = toLower(methodName);
+    std::string methodKey = toLowercase(methodName);
     auto methodIt = baseClass.methods.find(methodKey);
     if (methodIt != baseClass.methods.end())
     {
@@ -179,7 +173,7 @@ std::optional<MethodInfo> SemanticAnalyzer::findVirtualInBaseWithSignature(
     if (className.empty())
         return std::nullopt;
 
-    std::string classKey = toLower(className);
+    std::string classKey = toLowercase(className);
     auto it = classes_.find(classKey);
     if (it == classes_.end())
         return std::nullopt;
@@ -187,7 +181,7 @@ std::optional<MethodInfo> SemanticAnalyzer::findVirtualInBaseWithSignature(
     const ClassInfo &baseClass = it->second;
 
     // Look for method with matching signature in this class
-    std::string methodKey = toLower(targetMethod.name);
+    std::string methodKey = toLowercase(targetMethod.name);
     auto methodIt = baseClass.methods.find(methodKey);
     if (methodIt != baseClass.methods.end())
     {
@@ -263,7 +257,7 @@ void SemanticAnalyzer::checkInterfaceImplementationWith(
     // Check each required method is implemented with matching signature
     for (const MethodInfo &ifaceMethod : requiredMethods)
     {
-        std::string methodKey = toLower(ifaceMethod.name);
+        std::string methodKey = toLowercase(ifaceMethod.name);
 
         // Helper to find a method with matching signature in a method map
         auto findMatchingMethod =
@@ -291,7 +285,7 @@ void SemanticAnalyzer::checkInterfaceImplementationWith(
         std::string baseClass = classInfo.baseClass;
         while (!baseClass.empty() && !found)
         {
-            std::string baseKey = toLower(baseClass);
+            std::string baseKey = toLowercase(baseClass);
             auto baseIt = classes_.find(baseKey);
             if (baseIt == classes_.end())
                 break;
@@ -319,7 +313,7 @@ void SemanticAnalyzer::checkInterfaceImplementationWith(
 void SemanticAnalyzer::collectInterfaceMethods(const std::string &ifaceName,
                                                std::vector<MethodInfo> &methods) const
 {
-    std::string key = toLower(ifaceName);
+    std::string key = toLowercase(ifaceName);
     auto it = interfaces_.find(key);
     if (it == interfaces_.end())
         return;
@@ -345,7 +339,7 @@ void SemanticAnalyzer::collectInterfaceMethods(const std::string &ifaceName,
 void SemanticAnalyzer::collectInterfaceMethods(const std::string &ifaceName,
                                                std::map<std::string, MethodInfo> &methods) const
 {
-    std::string key = toLower(ifaceName);
+    std::string key = toLowercase(ifaceName);
     auto it = interfaces_.find(key);
     if (it == interfaces_.end())
         return;
@@ -399,8 +393,8 @@ bool SemanticAnalyzer::classImplementsInterface(const std::string &className,
     if (className.empty() || interfaceName.empty())
         return false;
 
-    std::string classKey = toLower(className);
-    std::string ifaceKey = toLower(interfaceName);
+    std::string classKey = toLowercase(className);
+    std::string ifaceKey = toLowercase(interfaceName);
 
     auto classIt = classes_.find(classKey);
     if (classIt == classes_.end())
@@ -411,7 +405,7 @@ bool SemanticAnalyzer::classImplementsInterface(const std::string &className,
     // Check directly implemented interfaces
     for (const auto &implIface : classInfo.interfaces)
     {
-        if (toLower(implIface) == ifaceKey)
+        if (toLowercase(implIface) == ifaceKey)
             return true;
 
         // Check if implemented interface extends target interface
@@ -422,7 +416,7 @@ bool SemanticAnalyzer::classImplementsInterface(const std::string &className,
     // Also check if "baseClass" is actually an interface (parser puts first parent there)
     if (!classInfo.baseClass.empty())
     {
-        std::string baseKey = toLower(classInfo.baseClass);
+        std::string baseKey = toLowercase(classInfo.baseClass);
         if (interfaces_.find(baseKey) != interfaces_.end())
         {
             if (baseKey == ifaceKey ||
@@ -434,7 +428,7 @@ bool SemanticAnalyzer::classImplementsInterface(const std::string &className,
     // Recurse to base class
     if (!classInfo.baseClass.empty())
     {
-        std::string baseKey = toLower(classInfo.baseClass);
+        std::string baseKey = toLowercase(classInfo.baseClass);
         if (classes_.find(baseKey) != classes_.end())
         {
             return classImplementsInterface(classInfo.baseClass, interfaceName);
@@ -451,10 +445,10 @@ bool SemanticAnalyzer::classInheritsFrom(const std::string &derivedName,
         return false;
 
     // Same class (case-insensitive)
-    if (toLower(derivedName) == toLower(baseName))
+    if (toLowercase(derivedName) == toLowercase(baseName))
         return true;
 
-    std::string derivedKey = toLower(derivedName);
+    std::string derivedKey = toLowercase(derivedName);
     auto it = classes_.find(derivedKey);
     if (it == classes_.end())
         return false;
@@ -474,7 +468,7 @@ bool SemanticAnalyzer::isAbstractClass(const std::string &className) const
 {
     if (className.empty())
         return false;
-    std::string key = toLower(className);
+    std::string key = toLowercase(className);
     auto it = classes_.find(key);
     if (it == classes_.end())
         return false;
@@ -496,7 +490,7 @@ bool SemanticAnalyzer::isAbstractClass(const std::string &className) const
     std::string base = cls.baseClass;
     while (!base.empty())
     {
-        std::string bkey = toLower(base);
+        std::string bkey = toLowercase(base);
         auto bit = classes_.find(bkey);
         if (bit == classes_.end())
             break;
@@ -526,8 +520,8 @@ bool SemanticAnalyzer::isAbstractClass(const std::string &className) const
                                                        inheritedAbstract.end(),
                                                        [this, &m](const MethodInfo &abs)
                                                        {
-                                                           return toLower(abs.name) ==
-                                                                      toLower(m.name) &&
+                                                           return toLowercase(abs.name) ==
+                                                                      toLowercase(m.name) &&
                                                                   parameterTypesMatch(abs, m);
                                                        }),
                                         inheritedAbstract.end());
@@ -552,7 +546,7 @@ bool SemanticAnalyzer::isMemberVisible(Visibility visibility,
         return false;
 
     // Case-insensitive comparison
-    return toLower(declaringClass) == toLower(accessingClass);
+    return toLowercase(declaringClass) == toLowercase(accessingClass);
 }
 
 bool SemanticAnalyzer::interfaceExtendsInterface(const std::string &derivedName,
@@ -562,10 +556,10 @@ bool SemanticAnalyzer::interfaceExtendsInterface(const std::string &derivedName,
         return false;
 
     // Same interface (case-insensitive)
-    if (toLower(derivedName) == toLower(baseName))
+    if (toLowercase(derivedName) == toLowercase(baseName))
         return true;
 
-    std::string derivedKey = toLower(derivedName);
+    std::string derivedKey = toLowercase(derivedName);
     auto it = interfaces_.find(derivedKey);
     if (it == interfaces_.end())
         return false;
@@ -584,7 +578,7 @@ bool SemanticAnalyzer::interfaceExtendsInterface(const std::string &derivedName,
 
 const ClassInfo *SemanticAnalyzer::lookupClass(const std::string &name) const
 {
-    std::string key = toLower(name);
+    std::string key = toLowercase(name);
     auto it = classes_.find(key);
     if (it != classes_.end())
         return &it->second;
@@ -593,7 +587,7 @@ const ClassInfo *SemanticAnalyzer::lookupClass(const std::string &name) const
 
 const InterfaceInfo *SemanticAnalyzer::lookupInterface(const std::string &name) const
 {
-    std::string key = toLower(name);
+    std::string key = toLowercase(name);
     auto it = interfaces_.find(key);
     if (it != interfaces_.end())
         return &it->second;
@@ -650,7 +644,7 @@ int SemanticAnalyzer::overloadMatchScore(const MethodInfo &method,
                 argType.kind == PasTypeKind::Array)
             {
                 // Named types - check if names match exactly
-                if (toLower(argType.name) == toLower(paramType.name))
+                if (toLowercase(argType.name) == toLowercase(paramType.name))
                     score += 10; // Exact match
                 else
                     score += 5; // Compatible but not exact (e.g., derived class)

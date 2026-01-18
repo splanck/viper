@@ -28,6 +28,7 @@
 #include "tui/views/text_view.hpp"
 
 #include "tui/syntax/rules.hpp"
+#include "tui/util/numeric.hpp"
 
 #include <algorithm>
 #include <limits>
@@ -36,28 +37,10 @@
 #include <vector>
 
 using viper::tui::util::char_width;
+using viper::tui::util::clampAdd;
 
 namespace viper::tui::views
 {
-namespace
-{
-/// @brief Clamp an addition to avoid overflowing @c size_t.
-/// @details Adds @p delta to @p base unless the computation would overflow,
-///          in which case @c std::numeric_limits<size_t>::max() is returned.
-///          The helper mirrors the arithmetic used by the text buffer when
-///          computing absolute offsets so the renderer stays defensive against
-///          large selections or buffers.
-/// @param base Starting value.
-/// @param delta Amount to add to @p base.
-/// @return @p base + @p delta when it fits, otherwise the saturated maximum.
-std::size_t clampAdd(std::size_t base, std::size_t delta)
-{
-    const std::size_t max = std::numeric_limits<std::size_t>::max();
-    if (max - base < delta)
-        return max;
-    return base + delta;
-}
-} // namespace
 
 /// @brief Paint the visible region of the text buffer into the screen buffer.
 /// @details Iterates every viewport row, rendering optional line numbers,

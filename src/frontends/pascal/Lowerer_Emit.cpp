@@ -22,11 +22,6 @@ namespace il::frontends::pascal
 
 using common::char_utils::toLowercase;
 
-inline std::string toLower(const std::string &s)
-{
-    return toLowercase(s);
-}
-
 //===----------------------------------------------------------------------===//
 // Block Management (delegating to common::BlockManager)
 //===----------------------------------------------------------------------===//
@@ -160,7 +155,7 @@ PasType Lowerer::typeOfExpr(const Expr &expr)
         // Check class fields when inside a class method
         if (!currentClassName_.empty())
         {
-            auto *classInfo = sema_->lookupClass(toLower(currentClassName_));
+            auto *classInfo = sema_->lookupClass(toLowercase(currentClassName_));
             if (classInfo)
             {
                 auto fieldIt = classInfo->fields.find(key);
@@ -184,7 +179,7 @@ PasType Lowerer::typeOfExpr(const Expr &expr)
 
             if (baseType.kind == PasTypeKind::Class)
             {
-                auto *classInfo = sema_->lookupClass(toLower(baseType.name));
+                auto *classInfo = sema_->lookupClass(toLowercase(baseType.name));
                 if (classInfo)
                 {
                     auto fieldIt = classInfo->fields.find(fieldKey);

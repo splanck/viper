@@ -26,12 +26,6 @@ namespace il::frontends::pascal
 // Use common toLowercase for case-insensitive comparison
 using common::char_utils::toLowercase;
 
-// Alias for compatibility with existing code (accepts string_view)
-inline std::string toLower(std::string_view s)
-{
-    return toLowercase(std::string(s));
-}
-
 namespace
 {
 
@@ -1126,7 +1120,7 @@ const std::unordered_map<std::string, PascalBuiltin> &nameIndex()
         {
             if (desc.name)
             {
-                map[toLower(desc.name)] = desc.id;
+                map[toLowercase(std::string(desc.name))] = desc.id;
             }
         }
         return map;
@@ -1142,7 +1136,7 @@ const std::unordered_map<std::string, PascalBuiltin> &nameIndex()
 
 std::optional<PascalBuiltin> lookupBuiltin(std::string_view name)
 {
-    std::string key = toLower(name);
+    std::string key = toLowercase(std::string(name));
     const auto &index = nameIndex();
     auto it = index.find(key);
     if (it != index.end())
@@ -1245,7 +1239,7 @@ std::vector<std::string> getRequiredExterns(const std::vector<PascalBuiltin> &us
 
 bool isViperUnit(std::string_view unitName)
 {
-    std::string key = toLower(unitName);
+    std::string key = toLowercase(std::string(unitName));
     return key == "viper.strings" || key == "viperstrings" || key == "viper.math" ||
            key == "vipermath" || key == "viper.terminal" || key == "viperterminal" ||
            key == "viper.io" || key == "viperio" || key == "viper.datetime" ||
@@ -1257,7 +1251,7 @@ bool isViperUnit(std::string_view unitName)
 
 std::vector<PascalBuiltin> getUnitBuiltins(std::string_view unitName)
 {
-    std::string key = toLower(unitName);
+    std::string key = toLowercase(std::string(unitName));
     std::vector<PascalBuiltin> result;
 
     if (key == "viper.strings" || key == "viperstrings")

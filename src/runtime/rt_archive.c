@@ -29,6 +29,7 @@
 #include "rt_box.h"
 #include "rt_bytes.h"
 #include "rt_compress.h"
+#include "rt_crc32.h"
 #include "rt_dir.h"
 #include "rt_internal.h"
 #include "rt_map.h"
@@ -138,44 +139,6 @@ typedef struct rt_archive
     int write_entry_count;      // Number of entries written
     int write_entry_cap;        // Capacity
 } rt_archive_t;
-
-//=============================================================================
-// CRC32 (same as in rt_compress.c)
-//=============================================================================
-
-static uint32_t crc32_table[256];
-static int crc32_table_init = 0;
-
-static void init_crc32_table(void)
-{
-    if (crc32_table_init)
-        return;
-
-    for (uint32_t i = 0; i < 256; i++)
-    {
-        uint32_t c = i;
-        for (int j = 0; j < 8; j++)
-        {
-            if (c & 1)
-                c = 0xEDB88320 ^ (c >> 1);
-            else
-                c >>= 1;
-        }
-        crc32_table[i] = c;
-    }
-    crc32_table_init = 1;
-}
-
-static uint32_t compute_crc32(const uint8_t *data, size_t len)
-{
-    init_crc32_table();
-    uint32_t crc = 0xFFFFFFFF;
-    for (size_t i = 0; i < len; i++)
-    {
-        crc = crc32_table[(crc ^ data[i]) & 0xFF] ^ (crc >> 8);
-    }
-    return crc ^ 0xFFFFFFFF;
-}
 
 //=============================================================================
 // Little-Endian Helpers
@@ -384,7 +347,7 @@ static void *read_entry_data(rt_archive_t *ar, zip_entry_t *e)
     if (e->method == ZIP_METHOD_STORED)
     {
         // Verify CRC
-        uint32_t crc = compute_crc32(compressed, e->uncompressed_size);
+        uint32_t crc = rt_crc32_compute(compressed, e->uncompressed_size);
         if (crc != e->crc32)
             rt_trap("Archive: CRC mismatch");
 
@@ -404,7 +367,7 @@ static void *read_entry_data(rt_archive_t *ar, zip_entry_t *e)
         void *result = rt_compress_inflate(comp_bytes);
 
         // Verify CRC
-        uint32_t crc = compute_crc32(bytes_data(result), bytes_len(result));
+        uint32_t crc = rt_crc32_compute(bytes_data(result), bytes_len(result));
         if (crc != e->crc32)
             rt_trap("Archive: CRC mismatch");
 
@@ -1023,7 +986,7 @@ void rt_archive_add(void *obj, rt_string name, void *data)
     size_t raw_len = (size_t)bytes_len(data);
 
     // Compute CRC
-    uint32_t crc = compute_crc32(raw_data, raw_len);
+    uint32_t crc = rt_crc32_compute(raw_data, raw_len);
 
     // Decide whether to compress
     void *compressed = NULL;

@@ -26,12 +26,6 @@ namespace il::frontends::pascal
 // Use common toLowercase for case-insensitive comparison
 using common::char_utils::toLowercase;
 
-// Alias for compatibility with existing code
-inline std::string toLower(const std::string &s)
-{
-    return toLowercase(s);
-}
-
 //===----------------------------------------------------------------------===//
 // Statement Analysis
 //===----------------------------------------------------------------------===//
@@ -121,7 +115,7 @@ void SemanticAnalyzer::analyzeAssign(AssignStmt &stmt)
     if (stmt.target->kind == ExprKind::Name)
     {
         const auto &nameExpr = static_cast<const NameExpr &>(*stmt.target);
-        std::string key = toLower(nameExpr.name);
+        std::string key = toLowercase(nameExpr.name);
         if (readOnlyLoopVars_.count(key))
         {
             error(stmt, "cannot assign to loop variable '" + nameExpr.name + "' inside loop body");
@@ -136,7 +130,7 @@ void SemanticAnalyzer::analyzeAssign(AssignStmt &stmt)
         bool isClassField = false;
         if (!currentClassName_.empty())
         {
-            auto *classInfo = lookupClass(toLower(currentClassName_));
+            auto *classInfo = lookupClass(toLowercase(currentClassName_));
             if (classInfo && classInfo->fields.find(key) != classInfo->fields.end())
             {
                 isClassField = true;
@@ -391,7 +385,7 @@ void SemanticAnalyzer::analyzeRepeat(RepeatStmt &stmt)
 void SemanticAnalyzer::analyzeFor(ForStmt &stmt)
 {
     // Look up or declare the loop variable
-    std::string varKey = toLower(stmt.loopVar);
+    std::string varKey = toLowercase(stmt.loopVar);
     auto varType = lookupVariable(varKey);
 
     if (!varType)
@@ -474,7 +468,7 @@ void SemanticAnalyzer::analyzeForIn(ForInStmt &stmt)
     pushScope();
 
     // Declare the loop variable with inferred element type
-    std::string varKey = toLower(stmt.loopVar);
+    std::string varKey = toLowercase(stmt.loopVar);
     if (validIterable)
     {
         addVariable(varKey, elementType);
@@ -554,7 +548,7 @@ void SemanticAnalyzer::analyzeCase(CaseStmt &stmt)
             {
                 // Check if it's an enum constant
                 auto &nameExpr = static_cast<NameExpr &>(*label);
-                if (auto constType = lookupConstant(toLower(nameExpr.name)))
+                if (auto constType = lookupConstant(toLowercase(nameExpr.name)))
                 {
                     if (constType->kind == PasTypeKind::Enum && constType->enumOrdinal >= 0)
                     {
@@ -603,7 +597,7 @@ void SemanticAnalyzer::analyzeRaise(RaiseStmt &stmt)
             {
                 // Verify the class derives from Exception
                 bool derivesFromException = false;
-                std::string checkClass = toLower(excType.name);
+                std::string checkClass = toLowercase(excType.name);
                 while (!checkClass.empty())
                 {
                     if (checkClass == "exception")
@@ -614,7 +608,7 @@ void SemanticAnalyzer::analyzeRaise(RaiseStmt &stmt)
                     auto classIt = classes_.find(checkClass);
                     if (classIt == classes_.end())
                         break;
-                    checkClass = toLower(classIt->second.baseClass);
+                    checkClass = toLowercase(classIt->second.baseClass);
                 }
                 if (!derivesFromException)
                 {
@@ -687,7 +681,7 @@ void SemanticAnalyzer::analyzeTryExcept(TryExceptStmt &stmt)
     for (auto &handler : stmt.handlers)
     {
         // Validate handler type derives from Exception
-        std::string typeLower = toLower(handler.typeName);
+        std::string typeLower = toLowercase(handler.typeName);
         auto typeIt = types_.find(typeLower);
         if (typeIt == types_.end())
         {
@@ -715,7 +709,7 @@ void SemanticAnalyzer::analyzeTryExcept(TryExceptStmt &stmt)
                 auto classIt = classes_.find(checkClass);
                 if (classIt == classes_.end())
                     break;
-                checkClass = toLower(classIt->second.baseClass);
+                checkClass = toLowercase(classIt->second.baseClass);
             }
             if (!derivesFromException)
             {
@@ -732,7 +726,7 @@ void SemanticAnalyzer::analyzeTryExcept(TryExceptStmt &stmt)
             PasType excType;
             excType.kind = PasTypeKind::Class;
             excType.name = handler.typeName;
-            addVariable(toLower(handler.varName), excType);
+            addVariable(toLowercase(handler.varName), excType);
         }
 
         // Track that we're inside an except handler for raise; validation
@@ -811,7 +805,7 @@ void SemanticAnalyzer::analyzeInherited(InheritedStmt &stmt)
     }
 
     // Look up the current class to find its base class
-    std::string classKey = toLower(currentClassName_);
+    std::string classKey = toLowercase(currentClassName_);
     auto classIt = classes_.find(classKey);
     if (classIt == classes_.end())
     {
@@ -840,13 +834,13 @@ void SemanticAnalyzer::analyzeInherited(InheritedStmt &stmt)
 
     auto hasMethodInHierarchy = [&](const std::string &method) -> bool
     {
-        std::string cur = toLower(baseName);
+        std::string cur = toLowercase(baseName);
         while (!cur.empty())
         {
             auto *ci = lookupClass(cur);
             if (!ci)
                 break;
-            std::string mkey = toLower(method);
+            std::string mkey = toLowercase(method);
             const MethodInfo *methodInfo = ci->findMethod(mkey);
             if (methodInfo)
             {
@@ -858,7 +852,7 @@ void SemanticAnalyzer::analyzeInherited(InheritedStmt &stmt)
             }
             if (ci->baseClass.empty())
                 break;
-            cur = toLower(ci->baseClass);
+            cur = toLowercase(ci->baseClass);
         }
         return false;
     };

@@ -26,12 +26,6 @@ namespace il::frontends::pascal
 // Use common toLowercase for case-insensitive comparison
 using common::char_utils::toLowercase;
 
-// Alias for compatibility with existing code
-inline std::string toLower(const std::string &s)
-{
-    return toLowercase(s);
-}
-
 //===----------------------------------------------------------------------===//
 // Expression Type Checking
 //===----------------------------------------------------------------------===//
@@ -105,7 +99,7 @@ PasType SemanticAnalyzer::typeOfNil(NilLiteralExpr & /*expr*/)
 
 PasType SemanticAnalyzer::typeOfName(NameExpr &expr)
 {
-    std::string key = toLower(expr.name);
+    std::string key = toLowercase(expr.name);
 
     // Check if the variable is undefined (e.g., for loop variable after loop ends)
     if (undefinedVars_.count(key))
@@ -144,7 +138,7 @@ PasType SemanticAnalyzer::typeOfName(NameExpr &expr)
         const WithContext &ctx = *it;
         if (ctx.type.kind == PasTypeKind::Class)
         {
-            auto *classInfo = lookupClass(toLower(ctx.type.name));
+            auto *classInfo = lookupClass(toLowercase(ctx.type.name));
             if (classInfo)
             {
                 // Check fields
@@ -214,7 +208,7 @@ PasType SemanticAnalyzer::typeOfName(NameExpr &expr)
     if (!currentClassName_.empty())
     {
         // Walk up the inheritance chain to find a matching field
-        std::string cur = toLower(currentClassName_);
+        std::string cur = toLowercase(currentClassName_);
         while (!cur.empty())
         {
             auto *classInfo = lookupClass(cur);
@@ -228,11 +222,11 @@ PasType SemanticAnalyzer::typeOfName(NameExpr &expr)
             // Move to base class (if any)
             if (classInfo->baseClass.empty())
                 break;
-            cur = toLower(classInfo->baseClass);
+            cur = toLowercase(classInfo->baseClass);
         }
 
         // Walk up the inheritance chain to find a matching property
-        cur = toLower(currentClassName_);
+        cur = toLowercase(currentClassName_);
         while (!cur.empty())
         {
             auto *classInfo = lookupClass(cur);
@@ -246,11 +240,11 @@ PasType SemanticAnalyzer::typeOfName(NameExpr &expr)
             // Move to base class (if any)
             if (classInfo->baseClass.empty())
                 break;
-            cur = toLower(classInfo->baseClass);
+            cur = toLowercase(classInfo->baseClass);
         }
 
         // Walk up the inheritance chain to find a matching method (for implicit Self calls)
-        cur = toLower(currentClassName_);
+        cur = toLowercase(currentClassName_);
         while (!cur.empty())
         {
             auto *classInfo = lookupClass(cur);
@@ -265,7 +259,7 @@ PasType SemanticAnalyzer::typeOfName(NameExpr &expr)
             // Move to base class (if any)
             if (classInfo->baseClass.empty())
                 break;
-            cur = toLower(classInfo->baseClass);
+            cur = toLowercase(classInfo->baseClass);
         }
     }
     else
@@ -276,7 +270,7 @@ PasType SemanticAnalyzer::typeOfName(NameExpr &expr)
         {
             if (selfTy->kind == PasTypeKind::Class && !selfTy->name.empty())
             {
-                std::string cur = toLower(selfTy->name);
+                std::string cur = toLowercase(selfTy->name);
                 while (!cur.empty())
                 {
                     auto *classInfo = lookupClass(cur);
@@ -289,10 +283,10 @@ PasType SemanticAnalyzer::typeOfName(NameExpr &expr)
                     }
                     if (classInfo->baseClass.empty())
                         break;
-                    cur = toLower(classInfo->baseClass);
+                    cur = toLowercase(classInfo->baseClass);
                 }
                 // Try properties
-                cur = toLower(selfTy->name);
+                cur = toLowercase(selfTy->name);
                 while (!cur.empty())
                 {
                     auto *classInfo = lookupClass(cur);
@@ -305,7 +299,7 @@ PasType SemanticAnalyzer::typeOfName(NameExpr &expr)
                     }
                     if (classInfo->baseClass.empty())
                         break;
-                    cur = toLower(classInfo->baseClass);
+                    cur = toLowercase(classInfo->baseClass);
                 }
             }
         }
@@ -440,7 +434,7 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
 
         // Type-cast form: TClass(expr)
         // If the callee name is a type and that type is a class/interface, treat this as a cast
-        std::string calleeKey = toLower(calleeName);
+        std::string calleeKey = toLowercase(calleeName);
         if (auto typeOpt = lookupType(calleeKey))
         {
             if (typeOpt->kind == PasTypeKind::Class || typeOpt->kind == PasTypeKind::Interface)
@@ -475,10 +469,10 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
         // Implicit method call on Self inside a method: MethodName(args)
         if (!currentClassName_.empty())
         {
-            auto *classInfo = lookupClass(toLower(currentClassName_));
+            auto *classInfo = lookupClass(toLowercase(currentClassName_));
             if (classInfo)
             {
-                std::string mkey = toLower(calleeName);
+                std::string mkey = toLowercase(calleeName);
                 const std::vector<MethodInfo> *overloads = classInfo->findOverloads(mkey);
                 if (overloads && !overloads->empty())
                 {
@@ -544,10 +538,10 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
             const WithContext &ctx = *it;
             if (ctx.type.kind == PasTypeKind::Class)
             {
-                auto *classInfo = lookupClass(toLower(ctx.type.name));
+                auto *classInfo = lookupClass(toLowercase(ctx.type.name));
                 if (classInfo)
                 {
-                    std::string mkey = toLower(calleeName);
+                    std::string mkey = toLowercase(calleeName);
                     const std::vector<MethodInfo> *overloads = classInfo->findOverloads(mkey);
                     if (overloads && !overloads->empty())
                     {
@@ -608,7 +602,7 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
         if (fieldExpr.base && fieldExpr.base->kind == ExprKind::Name)
         {
             const auto &baseName = static_cast<const NameExpr &>(*fieldExpr.base);
-            std::string baseKey = toLower(baseName.name);
+            std::string baseKey = toLowercase(baseName.name);
 
             // Check if this is a type name (not a variable)
             if (!lookupVariable(baseKey) && !lookupConstant(baseKey))
@@ -639,7 +633,7 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                         auto *classInfo = lookupClass(baseKey);
                         if (classInfo)
                         {
-                            std::string methodKey = toLower(calleeName);
+                            std::string methodKey = toLowercase(calleeName);
                             const MethodInfo *methodInfo = classInfo->findMethod(methodKey);
                             if (methodInfo)
                             {
@@ -690,14 +684,14 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
             {
                 className = receiverType.name;
                 // Methods are stored with qualified keys
-                std::string qualifiedKey = toLower(className + "." + calleeName);
+                std::string qualifiedKey = toLowercase(className + "." + calleeName);
                 sig = lookupFunction(qualifiedKey);
 
                 // Always check visibility for class methods, even if found in function table
-                auto *classInfo = lookupClass(toLower(className));
+                auto *classInfo = lookupClass(toLowercase(className));
                 if (classInfo)
                 {
-                    std::string methodKey = toLower(calleeName);
+                    std::string methodKey = toLowercase(calleeName);
                     const MethodInfo *methodInfo = classInfo->findMethod(methodKey);
                     if (methodInfo)
                     {
@@ -722,10 +716,10 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
             {
                 // Interface method call
                 std::string ifaceName = receiverType.name;
-                auto *ifaceInfo = lookupInterface(toLower(ifaceName));
+                auto *ifaceInfo = lookupInterface(toLowercase(ifaceName));
                 if (ifaceInfo)
                 {
-                    std::string methodKey = toLower(calleeName);
+                    std::string methodKey = toLowercase(calleeName);
                     const MethodInfo *methodInfo = ifaceInfo->findMethod(methodKey);
                     if (methodInfo)
                     {
@@ -797,7 +791,7 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
     // For non-method calls, look up in global functions
     if (!isMethodCall)
     {
-        std::string key = toLower(calleeName);
+        std::string key = toLowercase(calleeName);
         sig = lookupFunction(key);
 
         if (!sig)
@@ -820,16 +814,16 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
     else if (!sig)
     {
         // Method call - look up with qualified name
-        std::string qualifiedKey = toLower(className + "." + calleeName);
+        std::string qualifiedKey = toLowercase(className + "." + calleeName);
         sig = lookupFunction(qualifiedKey);
 
         if (!sig)
         {
             // Check in class methods directly
-            auto *classInfo = lookupClass(toLower(className));
+            auto *classInfo = lookupClass(toLowercase(className));
             if (classInfo)
             {
-                std::string methodKey = toLower(calleeName);
+                std::string methodKey = toLowercase(calleeName);
                 const MethodInfo *methodInfo = classInfo->findMethod(methodKey);
                 if (methodInfo)
                 {
@@ -952,7 +946,7 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
     }
 
     // Special validation for SetLength: first argument must be a dynamic array or string
-    std::string calleeKey = toLower(calleeName);
+    std::string calleeKey = toLowercase(calleeName);
     if (calleeKey == "setlength" && !expr.args.empty() && expr.args[0])
     {
         PasType firstArgType = typeOf(*expr.args[0]);
@@ -1031,13 +1025,13 @@ PasType SemanticAnalyzer::typeOfField(FieldExpr &expr)
     // For records/classes, look up field or property
     if (baseType.kind == PasTypeKind::Record || baseType.kind == PasTypeKind::Class)
     {
-        std::string fieldKey = toLower(expr.field);
+        std::string fieldKey = toLowercase(expr.field);
 
         // For class types, look up fields from class info (baseType.fields may be empty)
         if (baseType.kind == PasTypeKind::Class)
         {
             // Walk up the inheritance chain to find a matching field
-            std::string cur = toLower(baseType.name);
+            std::string cur = toLowercase(baseType.name);
             while (!cur.empty())
             {
                 auto *classInfo = lookupClass(cur);
@@ -1059,11 +1053,11 @@ PasType SemanticAnalyzer::typeOfField(FieldExpr &expr)
                 }
                 if (classInfo->baseClass.empty())
                     break;
-                cur = toLower(classInfo->baseClass);
+                cur = toLowercase(classInfo->baseClass);
             }
 
             // Walk up the inheritance chain to find a matching property
-            cur = toLower(baseType.name);
+            cur = toLowercase(baseType.name);
             while (!cur.empty())
             {
                 auto *classInfo = lookupClass(cur);
@@ -1085,17 +1079,17 @@ PasType SemanticAnalyzer::typeOfField(FieldExpr &expr)
                 }
                 if (classInfo->baseClass.empty())
                     break;
-                cur = toLower(classInfo->baseClass);
+                cur = toLowercase(classInfo->baseClass);
             }
 
             // Not a field or property; could be a constructor call without parentheses (e.g.,
             // TClass.Create)
-            auto *ci = lookupClass(toLower(baseType.name));
+            auto *ci = lookupClass(toLowercase(baseType.name));
             if (ci)
             {
                 // If the member is 'Create', treat as constructor call; enforce abstract and
                 // visibility rules
-                if (fieldKey == toLower(std::string("Create")))
+                if (fieldKey == toLowercase(std::string("Create")))
                 {
                     // Check constructor visibility
                     const MethodInfo *ctorMethod = ci->findMethod(fieldKey);
@@ -1130,7 +1124,7 @@ PasType SemanticAnalyzer::typeOfField(FieldExpr &expr)
                     if (expr.base && expr.base->kind == ExprKind::Name)
                     {
                         const auto &baseName = static_cast<const NameExpr &>(*expr.base);
-                        std::string baseKey = toLower(baseName.name);
+                        std::string baseKey = toLowercase(baseName.name);
                         // If it's a type name (not a variable), treat as constructor call
                         if (!lookupVariable(baseKey) && !lookupConstant(baseKey) &&
                             lookupType(baseKey))
@@ -1163,8 +1157,8 @@ PasType SemanticAnalyzer::typeOfField(FieldExpr &expr)
     // For interface types, look up method (interfaces have no fields)
     if (baseType.kind == PasTypeKind::Interface)
     {
-        std::string methodKey = toLower(expr.field);
-        auto *ifaceInfo = lookupInterface(toLower(baseType.name));
+        std::string methodKey = toLowercase(expr.field);
+        auto *ifaceInfo = lookupInterface(toLowercase(baseType.name));
         if (ifaceInfo)
         {
             const MethodInfo *methodInfo = ifaceInfo->findMethod(methodKey);

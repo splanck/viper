@@ -24,21 +24,16 @@ namespace il::frontends::pascal
 
 using common::char_utils::toLowercase;
 
-inline std::string toLower(const std::string &s)
-{
-    return toLowercase(s);
-}
-
 //===----------------------------------------------------------------------===//
 // ClassLayout Helper
 //===----------------------------------------------------------------------===//
 
 const ClassFieldLayout *ClassLayout::findField(const std::string &name) const
 {
-    std::string key = toLower(name);
+    std::string key = toLowercase(name);
     for (const auto &field : fields)
     {
-        if (toLower(field.name) == key)
+        if (toLowercase(field.name) == key)
             return &field;
     }
     return nullptr;
@@ -77,7 +72,7 @@ void Lowerer::scanClasses(const std::vector<std::unique_ptr<Decl>> &decls)
 
     std::function<void(const std::string &)> visit = [&](const std::string &name)
     {
-        std::string key = toLower(name);
+        std::string key = toLowercase(name);
         if (visited.count(key))
             return;
         visited.insert(key);
@@ -107,7 +102,7 @@ void Lowerer::scanClasses(const std::vector<std::unique_ptr<Decl>> &decls)
 
 void Lowerer::computeClassLayout(const std::string &className)
 {
-    std::string key = toLower(className);
+    std::string key = toLowercase(className);
     const ClassInfo *info = sema_->lookupClass(key);
     if (!info)
         return;
@@ -122,7 +117,7 @@ void Lowerer::computeClassLayout(const std::string &className)
     // If there's a base class, inherit its fields first
     if (!info->baseClass.empty())
     {
-        auto baseIt = classLayouts_.find(toLower(info->baseClass));
+        auto baseIt = classLayouts_.find(toLowercase(info->baseClass));
         if (baseIt != classLayouts_.end())
         {
             // Copy base class fields (they're already at correct offsets)
@@ -165,7 +160,7 @@ void Lowerer::computeClassLayout(const std::string &className)
 
 void Lowerer::computeVtableLayout(const std::string &className)
 {
-    std::string key = toLower(className);
+    std::string key = toLowercase(className);
     const ClassInfo *info = sema_->lookupClass(key);
     if (!info)
         return;
@@ -176,7 +171,7 @@ void Lowerer::computeVtableLayout(const std::string &className)
     // If there's a base class, inherit its vtable slots
     if (!info->baseClass.empty())
     {
-        auto baseIt = vtableLayouts_.find(toLower(info->baseClass));
+        auto baseIt = vtableLayouts_.find(toLowercase(info->baseClass));
         if (baseIt != vtableLayouts_.end())
         {
             vtable.slots = baseIt->second.slots;
@@ -191,14 +186,14 @@ void Lowerer::computeVtableLayout(const std::string &className)
             if (!methodInfo.isVirtual && !methodInfo.isOverride)
                 continue; // Skip non-virtual methods
 
-            std::string methodKey = toLower(methodInfo.name);
+            std::string methodKey = toLowercase(methodInfo.name);
 
             if (methodInfo.isOverride)
             {
                 // Find existing slot and update implementation class
                 for (auto &slot : vtable.slots)
                 {
-                    if (toLower(slot.methodName) == methodKey)
+                    if (toLowercase(slot.methodName) == methodKey)
                     {
                         slot.implClass = className;
                         break;
@@ -223,14 +218,14 @@ void Lowerer::computeVtableLayout(const std::string &className)
 
 int Lowerer::getVirtualSlot(const std::string &className, const std::string &methodName) const
 {
-    auto it = vtableLayouts_.find(toLower(className));
+    auto it = vtableLayouts_.find(toLowercase(className));
     if (it == vtableLayouts_.end())
         return -1;
 
-    std::string methodKey = toLower(methodName);
+    std::string methodKey = toLowercase(methodName);
     for (const auto &slot : it->second.slots)
     {
-        if (toLower(slot.methodName) == methodKey)
+        if (toLowercase(slot.methodName) == methodKey)
             return slot.slot;
     }
     return -1;
@@ -239,7 +234,7 @@ int Lowerer::getVirtualSlot(const std::string &className, const std::string &met
 std::size_t Lowerer::getFieldOffset(const std::string &className,
                                     const std::string &fieldName) const
 {
-    auto it = classLayouts_.find(toLower(className));
+    auto it = classLayouts_.find(toLowercase(className));
     if (it == classLayouts_.end())
         return 0;
 
@@ -273,7 +268,7 @@ void Lowerer::emitOopModuleInit()
     // Register interface implementation tables for each class
     for (const auto &className : classRegistrationOrder_)
     {
-        const ClassInfo *classInfo = sema_->lookupClass(toLower(className));
+        const ClassInfo *classInfo = sema_->lookupClass(toLowercase(className));
         if (!classInfo)
             continue;
 
@@ -286,7 +281,7 @@ void Lowerer::emitOopModuleInit()
         // Also inherited interfaces from base class
         if (!classInfo->baseClass.empty())
         {
-            const ClassInfo *baseInfo = sema_->lookupClass(toLower(classInfo->baseClass));
+            const ClassInfo *baseInfo = sema_->lookupClass(toLowercase(classInfo->baseClass));
             if (baseInfo)
             {
                 for (const auto &ifaceName : baseInfo->interfaces)
@@ -295,7 +290,7 @@ void Lowerer::emitOopModuleInit()
                     bool isDirect = false;
                     for (const auto &directIface : classInfo->interfaces)
                     {
-                        if (toLower(directIface) == toLower(ifaceName))
+                        if (toLowercase(directIface) == toLowercase(ifaceName))
                         {
                             isDirect = true;
                             break;
@@ -318,7 +313,7 @@ void Lowerer::emitOopModuleInit()
 
 void Lowerer::emitVtableRegistration(const std::string &className)
 {
-    std::string key = toLower(className);
+    std::string key = toLowercase(className);
     auto layoutIt = classLayouts_.find(key);
     auto vtableIt = vtableLayouts_.find(key);
 
@@ -357,7 +352,7 @@ void Lowerer::emitVtableRegistration(const std::string &className)
     long long baseClassId = 0;
     if (!info->baseClass.empty())
     {
-        auto baseLayoutIt = classLayouts_.find(toLower(info->baseClass));
+        auto baseLayoutIt = classLayouts_.find(toLowercase(info->baseClass));
         if (baseLayoutIt != classLayouts_.end())
         {
             baseClassId = baseLayoutIt->second.classId;
@@ -421,7 +416,7 @@ LowerResult Lowerer::lowerConstructorCall(const CallExpr &expr)
     // The semantic analyzer has already marked this as a constructor call
 
     std::string className = expr.constructorClassName;
-    std::string key = toLower(className);
+    std::string key = toLowercase(className);
 
     // Special handling for built-in Exception class
     if (key == "exception")
@@ -490,7 +485,7 @@ LowerResult Lowerer::lowerConstructorCall(const CallExpr &expr)
     const ClassInfo *ci = sema_->lookupClass(key);
     if (ci)
     {
-        const MethodInfo *ctorInfo = ci->findMethod(toLower(ctorName));
+        const MethodInfo *ctorInfo = ci->findMethod(toLowercase(ctorName));
         if (ctorInfo)
         {
             size_t userArgCount = expr.args.size();
@@ -546,13 +541,13 @@ LowerResult Lowerer::lowerMethodCall(const FieldExpr &fieldExpr, const CallExpr 
     std::string methodName = fieldExpr.field;
 
     // Get method info
-    const ClassInfo *classInfo = sema_->lookupClass(toLower(className));
+    const ClassInfo *classInfo = sema_->lookupClass(toLowercase(className));
     if (!classInfo)
     {
         return {Value::constInt(0), Type(Type::Kind::I64)};
     }
 
-    const MethodInfo *methodInfo = classInfo->findMethod(toLower(methodName));
+    const MethodInfo *methodInfo = classInfo->findMethod(toLowercase(methodName));
     if (!methodInfo)
     {
         return {Value::constInt(0), Type(Type::Kind::I64)};
@@ -641,7 +636,7 @@ LowerResult Lowerer::lowerObjectFieldAccess(const FieldExpr &expr)
     if (expr.base->kind == ExprKind::Name)
     {
         const auto &nameExpr = static_cast<const NameExpr &>(*expr.base);
-        std::string varName = toLower(nameExpr.name);
+        std::string varName = toLowercase(nameExpr.name);
 
         if (varName == "self" && !currentClassName_.empty())
         {
@@ -663,9 +658,9 @@ LowerResult Lowerer::lowerObjectFieldAccess(const FieldExpr &expr)
     }
 
     // Special handling for built-in Exception class
-    if (toLower(className) == "exception")
+    if (toLowercase(className) == "exception")
     {
-        std::string fieldName = toLower(expr.field);
+        std::string fieldName = toLowercase(expr.field);
         if (fieldName == "message")
         {
             // Exception.Message -> rt_exc_get_message(exc)
@@ -678,7 +673,7 @@ LowerResult Lowerer::lowerObjectFieldAccess(const FieldExpr &expr)
     }
 
     // Get field offset
-    auto layoutIt = classLayouts_.find(toLower(className));
+    auto layoutIt = classLayouts_.find(toLowercase(className));
     if (layoutIt == classLayouts_.end())
     {
         return {Value::constInt(0), Type(Type::Kind::I64)};
@@ -736,7 +731,7 @@ void Lowerer::scanInterfaces(const std::vector<std::unique_ptr<Decl>> &decls)
 
     std::function<void(const std::string &)> visit = [&](const std::string &name)
     {
-        std::string key = toLower(name);
+        std::string key = toLowercase(name);
         if (visited.count(key))
             return;
         visited.insert(key);
@@ -768,7 +763,7 @@ void Lowerer::scanInterfaces(const std::vector<std::unique_ptr<Decl>> &decls)
 
 void Lowerer::computeInterfaceLayout(const std::string &ifaceName)
 {
-    std::string key = toLower(ifaceName);
+    std::string key = toLowercase(ifaceName);
     const InterfaceInfo *info = sema_->lookupInterface(key);
     if (!info)
         return;
@@ -804,7 +799,7 @@ void Lowerer::computeInterfaceLayout(const std::string &ifaceName)
 
 void Lowerer::computeInterfaceImplTables(const std::string &className)
 {
-    std::string classKey = toLower(className);
+    std::string classKey = toLowercase(className);
     const ClassInfo *classInfo = sema_->lookupClass(classKey);
     if (!classInfo)
         return;
@@ -812,7 +807,7 @@ void Lowerer::computeInterfaceImplTables(const std::string &className)
     // Process each interface this class implements
     for (const auto &ifaceName : classInfo->interfaces)
     {
-        std::string ifaceKey = toLower(ifaceName);
+        std::string ifaceKey = toLowercase(ifaceName);
         auto layoutIt = interfaceLayouts_.find(ifaceKey);
         if (layoutIt == interfaceLayouts_.end())
             continue;
@@ -826,7 +821,7 @@ void Lowerer::computeInterfaceImplTables(const std::string &className)
         // For each slot in the interface, find the implementing method in the class
         for (const auto &slot : ifaceLayout.slots)
         {
-            std::string methodKey = toLower(slot.methodName);
+            std::string methodKey = toLowercase(slot.methodName);
 
             // Search for the method in this class or its base classes
             std::string implClassName = className;
@@ -841,7 +836,7 @@ void Lowerer::computeInterfaceImplTables(const std::string &className)
                 }
                 if (searchClass->baseClass.empty())
                     break;
-                searchClass = sema_->lookupClass(toLower(searchClass->baseClass));
+                searchClass = sema_->lookupClass(toLowercase(searchClass->baseClass));
             }
 
             // Add mangled method name
@@ -857,13 +852,13 @@ void Lowerer::computeInterfaceImplTables(const std::string &className)
     // Also handle interfaces inherited from base class
     if (!classInfo->baseClass.empty())
     {
-        std::string baseKey = toLower(classInfo->baseClass);
+        std::string baseKey = toLowercase(classInfo->baseClass);
         const ClassInfo *baseInfo = sema_->lookupClass(baseKey);
         if (baseInfo)
         {
             for (const auto &ifaceName : baseInfo->interfaces)
             {
-                std::string ifaceKey = toLower(ifaceName);
+                std::string ifaceKey = toLowercase(ifaceName);
                 std::string tableKey = classKey + "." + ifaceKey;
 
                 // Only add if not already handled (direct implementation takes precedence)
@@ -883,7 +878,7 @@ void Lowerer::computeInterfaceImplTables(const std::string &className)
                 // For inherited interfaces, methods may come from this class or base
                 for (const auto &slot : ifaceLayout.slots)
                 {
-                    std::string methodKey = toLower(slot.methodName);
+                    std::string methodKey = toLowercase(slot.methodName);
 
                     std::string implClassName = className;
                     const ClassInfo *searchClass = classInfo;
@@ -897,7 +892,7 @@ void Lowerer::computeInterfaceImplTables(const std::string &className)
                         }
                         if (searchClass->baseClass.empty())
                             break;
-                        searchClass = sema_->lookupClass(toLower(searchClass->baseClass));
+                        searchClass = sema_->lookupClass(toLowercase(searchClass->baseClass));
                     }
 
                     std::string mangledName = mangleMethod(implClassName, slot.methodName);
@@ -913,8 +908,8 @@ void Lowerer::computeInterfaceImplTables(const std::string &className)
 void Lowerer::emitInterfaceTableRegistration(const std::string &className,
                                              const std::string &ifaceName)
 {
-    std::string classKey = toLower(className);
-    std::string ifaceKey = toLower(ifaceName);
+    std::string classKey = toLowercase(className);
+    std::string ifaceKey = toLowercase(ifaceName);
     std::string tableKey = classKey + "." + ifaceKey;
 
     auto implIt = interfaceImplTables_.find(tableKey);
@@ -994,13 +989,13 @@ LowerResult Lowerer::lowerInterfaceMethodCall(const FieldExpr &fieldExpr, const 
     }
 
     // Get method return type from interface info
-    const InterfaceInfo *ifaceInfo = sema_->lookupInterface(toLower(ifaceName));
+    const InterfaceInfo *ifaceInfo = sema_->lookupInterface(toLowercase(ifaceName));
     if (!ifaceInfo)
     {
         return {Value::constInt(0), Type(Type::Kind::I64)};
     }
 
-    const MethodInfo *methodInfo = ifaceInfo->findMethod(toLower(methodName));
+    const MethodInfo *methodInfo = ifaceInfo->findMethod(toLowercase(methodName));
     Type retTy = Type(Type::Kind::Void);
     if (methodInfo)
     {
@@ -1013,7 +1008,7 @@ LowerResult Lowerer::lowerInterfaceMethodCall(const FieldExpr &fieldExpr, const 
     if (fieldExpr.base->kind == ExprKind::Name)
     {
         const auto &nameExpr = static_cast<const NameExpr &>(*fieldExpr.base);
-        std::string key = toLower(nameExpr.name);
+        std::string key = toLowercase(nameExpr.name);
         auto localIt = locals_.find(key);
         if (localIt != locals_.end())
         {
@@ -1072,14 +1067,14 @@ LowerResult Lowerer::lowerInterfaceMethodCall(const FieldExpr &fieldExpr, const 
 
 int Lowerer::getInterfaceSlot(const std::string &ifaceName, const std::string &methodName) const
 {
-    auto it = interfaceLayouts_.find(toLower(ifaceName));
+    auto it = interfaceLayouts_.find(toLowercase(ifaceName));
     if (it == interfaceLayouts_.end())
         return -1;
 
-    std::string methodKey = toLower(methodName);
+    std::string methodKey = toLowercase(methodName);
     for (const auto &slot : it->second.slots)
     {
-        if (toLower(slot.methodName) == methodKey)
+        if (toLowercase(slot.methodName) == methodKey)
             return slot.slot;
     }
     return -1;
@@ -1087,7 +1082,7 @@ int Lowerer::getInterfaceSlot(const std::string &ifaceName, const std::string &m
 
 const InterfaceLayout *Lowerer::getInterfaceLayout(const std::string &ifaceName) const
 {
-    auto it = interfaceLayouts_.find(toLower(ifaceName));
+    auto it = interfaceLayouts_.find(toLowercase(ifaceName));
     if (it == interfaceLayouts_.end())
         return nullptr;
     return &it->second;

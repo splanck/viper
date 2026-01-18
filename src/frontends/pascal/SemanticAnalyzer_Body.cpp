@@ -26,12 +26,6 @@ namespace il::frontends::pascal
 // Use common toLowercase for case-insensitive comparison
 using common::char_utils::toLowercase;
 
-// Alias for compatibility with existing code
-inline std::string toLower(const std::string &s)
-{
-    return toLowercase(s);
-}
-
 //===----------------------------------------------------------------------===//
 // Body Analysis (Pass 2)
 //===----------------------------------------------------------------------===//
@@ -132,7 +126,7 @@ void SemanticAnalyzer::analyzeProcedureBody(ProcedureDecl &decl)
     for (const auto &param : decl.params)
     {
         PasType paramType = param.type ? resolveType(*param.type) : PasType::unknown();
-        addVariable(toLower(param.name), paramType);
+        addVariable(toLowercase(param.name), paramType);
     }
 
     // v0.1: Reject nested procedures/functions
@@ -158,7 +152,7 @@ void SemanticAnalyzer::analyzeProcedureBody(ProcedureDecl &decl)
     {
         auto bindFields = [&](const std::string &className)
         {
-            std::string cur = toLower(className);
+            std::string cur = toLowercase(className);
             while (!cur.empty())
             {
                 auto *classInfo = lookupClass(cur);
@@ -175,7 +169,7 @@ void SemanticAnalyzer::analyzeProcedureBody(ProcedureDecl &decl)
                 }
                 if (classInfo->baseClass.empty())
                     break;
-                cur = toLower(classInfo->baseClass);
+                cur = toLowercase(classInfo->baseClass);
             }
         };
         bindFields(decl.className);
@@ -201,7 +195,7 @@ void SemanticAnalyzer::analyzeFunctionBody(FunctionDecl &decl)
         return;
 
     // Set current function for return type checking
-    std::string key = toLower(decl.name);
+    std::string key = toLowercase(decl.name);
     auto it = functions_.find(key);
     if (it != functions_.end())
     {
@@ -229,7 +223,7 @@ void SemanticAnalyzer::analyzeFunctionBody(FunctionDecl &decl)
     for (const auto &param : decl.params)
     {
         PasType paramType = param.type ? resolveType(*param.type) : PasType::unknown();
-        addVariable(toLower(param.name), paramType);
+        addVariable(toLowercase(param.name), paramType);
     }
 
     // Register Result variable with function's return type
@@ -260,7 +254,7 @@ void SemanticAnalyzer::analyzeFunctionBody(FunctionDecl &decl)
     {
         auto bindFields = [&](const std::string &className)
         {
-            std::string cur = toLower(className);
+            std::string cur = toLowercase(className);
             while (!cur.empty())
             {
                 auto *classInfo = lookupClass(cur);
@@ -276,7 +270,7 @@ void SemanticAnalyzer::analyzeFunctionBody(FunctionDecl &decl)
                 }
                 if (classInfo->baseClass.empty())
                     break;
-                cur = toLower(classInfo->baseClass);
+                cur = toLowercase(classInfo->baseClass);
             }
         };
         bindFields(decl.className);
@@ -316,7 +310,7 @@ void SemanticAnalyzer::analyzeConstructorBody(ConstructorDecl &decl)
     for (const auto &param : decl.params)
     {
         PasType paramType = param.type ? resolveType(*param.type) : PasType::unknown();
-        addVariable(toLower(param.name), paramType);
+        addVariable(toLowercase(param.name), paramType);
     }
 
     // Register local declarations
@@ -330,7 +324,7 @@ void SemanticAnalyzer::analyzeConstructorBody(ConstructorDecl &decl)
     {
         auto bindFields = [&](const std::string &className)
         {
-            std::string cur = toLower(className);
+            std::string cur = toLowercase(className);
             while (!cur.empty())
             {
                 auto *classInfo = lookupClass(cur);
@@ -346,7 +340,7 @@ void SemanticAnalyzer::analyzeConstructorBody(ConstructorDecl &decl)
                 }
                 if (classInfo->baseClass.empty())
                     break;
-                cur = toLower(classInfo->baseClass);
+                cur = toLowercase(classInfo->baseClass);
             }
         };
         bindFields(decl.className);
@@ -385,7 +379,7 @@ void SemanticAnalyzer::analyzeDestructorBody(DestructorDecl &decl)
     {
         auto bindFields = [&](const std::string &className)
         {
-            std::string cur = toLower(className);
+            std::string cur = toLowercase(className);
             while (!cur.empty())
             {
                 auto *classInfo = lookupClass(cur);
@@ -401,7 +395,7 @@ void SemanticAnalyzer::analyzeDestructorBody(DestructorDecl &decl)
                 }
                 if (classInfo->baseClass.empty())
                     break;
-                cur = toLower(classInfo->baseClass);
+                cur = toLowercase(classInfo->baseClass);
             }
         };
         bindFields(decl.className);

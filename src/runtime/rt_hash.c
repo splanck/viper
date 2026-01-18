@@ -54,74 +54,14 @@
 #include "rt_hash.h"
 
 #include "rt_bytes.h"
+#include "rt_codec.h"
+#include "rt_crc32.h"
 #include "rt_internal.h"
 #include "rt_string.h"
 
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-
-/// Hex character lookup table for encoding.
-static const char hex_chars[] = "0123456789abcdef";
-
-/// @brief Convert bytes to lowercase hex string.
-static rt_string bytes_to_hex_string(const uint8_t *data, size_t len)
-{
-    size_t hex_len = len * 2;
-    char *hex = (char *)malloc(hex_len + 1);
-    if (!hex)
-        rt_trap("Hash: memory allocation failed");
-
-    for (size_t i = 0; i < len; i++)
-    {
-        hex[i * 2] = hex_chars[(data[i] >> 4) & 0xF];
-        hex[i * 2 + 1] = hex_chars[data[i] & 0xF];
-    }
-    hex[hex_len] = '\0';
-
-    rt_string result = rt_string_from_bytes(hex, hex_len);
-    free(hex);
-    return result;
-}
-
-//=============================================================================
-// CRC32 Implementation (IEEE 802.3 polynomial)
-//=============================================================================
-
-static uint32_t crc32_table[256];
-static int crc32_table_initialized = 0;
-
-static void init_crc32_table(void)
-{
-    if (crc32_table_initialized)
-        return;
-
-    for (uint32_t i = 0; i < 256; i++)
-    {
-        uint32_t crc = i;
-        for (int j = 0; j < 8; j++)
-        {
-            if (crc & 1)
-                crc = (crc >> 1) ^ 0xEDB88320; // IEEE polynomial, reversed
-            else
-                crc >>= 1;
-        }
-        crc32_table[i] = crc;
-    }
-    crc32_table_initialized = 1;
-}
-
-static uint32_t compute_crc32(const uint8_t *data, size_t len)
-{
-    init_crc32_table();
-
-    uint32_t crc = 0xFFFFFFFF;
-    for (size_t i = 0; i < len; i++)
-    {
-        crc = crc32_table[(crc ^ data[i]) & 0xFF] ^ (crc >> 8);
-    }
-    return crc ^ 0xFFFFFFFF;
-}
 
 //=============================================================================
 // MD5 Implementation (RFC 1321)
@@ -674,7 +614,7 @@ rt_string rt_hash_md5(rt_string str)
 
     uint8_t digest[16];
     compute_md5((const uint8_t *)cstr, strlen(cstr), digest);
-    return bytes_to_hex_string(digest, 16);
+    return rt_codec_hex_enc_bytes(digest, 16);
 }
 
 /// @brief Computes the MD5 hash of a Bytes object.
@@ -710,7 +650,7 @@ rt_string rt_hash_md5_bytes(void *bytes)
     {
         uint8_t digest[16];
         compute_md5(NULL, 0, digest);
-        return bytes_to_hex_string(digest, 16);
+        return rt_codec_hex_enc_bytes(digest, 16);
     }
 
     int64_t len = rt_bytes_len(bytes);
@@ -728,7 +668,7 @@ rt_string rt_hash_md5_bytes(void *bytes)
 
     compute_md5(data, (size_t)len, digest);
     free(data);
-    return bytes_to_hex_string(digest, 16);
+    return rt_codec_hex_enc_bytes(digest, 16);
 }
 
 /// @brief Computes the SHA-1 hash of a string.
@@ -779,7 +719,7 @@ rt_string rt_hash_sha1(rt_string str)
 
     uint8_t digest[20];
     compute_sha1((const uint8_t *)cstr, strlen(cstr), digest);
-    return bytes_to_hex_string(digest, 20);
+    return rt_codec_hex_enc_bytes(digest, 20);
 }
 
 /// @brief Computes the SHA-1 hash of a Bytes object.
@@ -814,7 +754,7 @@ rt_string rt_hash_sha1_bytes(void *bytes)
     {
         uint8_t digest[20];
         compute_sha1(NULL, 0, digest);
-        return bytes_to_hex_string(digest, 20);
+        return rt_codec_hex_enc_bytes(digest, 20);
     }
 
     int64_t len = rt_bytes_len(bytes);
@@ -831,7 +771,7 @@ rt_string rt_hash_sha1_bytes(void *bytes)
 
     compute_sha1(data, (size_t)len, digest);
     free(data);
-    return bytes_to_hex_string(digest, 20);
+    return rt_codec_hex_enc_bytes(digest, 20);
 }
 
 /// @brief Computes the SHA-256 hash of a string.
@@ -896,7 +836,7 @@ rt_string rt_hash_sha256(rt_string str)
 
     uint8_t hash[32];
     compute_sha256((const uint8_t *)cstr, strlen(cstr), hash);
-    return bytes_to_hex_string(hash, 32);
+    return rt_codec_hex_enc_bytes(hash, 32);
 }
 
 /// @brief Computes the SHA-256 hash of a Bytes object.
@@ -940,7 +880,7 @@ rt_string rt_hash_sha256_bytes(void *bytes)
     {
         uint8_t hash[32];
         compute_sha256(NULL, 0, hash);
-        return bytes_to_hex_string(hash, 32);
+        return rt_codec_hex_enc_bytes(hash, 32);
     }
 
     int64_t len = rt_bytes_len(bytes);
@@ -957,7 +897,7 @@ rt_string rt_hash_sha256_bytes(void *bytes)
 
     compute_sha256(data, (size_t)len, hash);
     free(data);
-    return bytes_to_hex_string(hash, 32);
+    return rt_codec_hex_enc_bytes(hash, 32);
 }
 
 /// @brief Computes the CRC32 checksum of a string.
@@ -1019,9 +959,9 @@ int64_t rt_hash_crc32(rt_string str)
 {
     const char *cstr = rt_string_cstr(str);
     if (!cstr)
-        return (int64_t)compute_crc32(NULL, 0);
+        return (int64_t)rt_crc32_compute(NULL, 0);
 
-    return (int64_t)compute_crc32((const uint8_t *)cstr, strlen(cstr));
+    return (int64_t)rt_crc32_compute((const uint8_t *)cstr, strlen(cstr));
 }
 
 /// @brief Computes the CRC32 checksum of a Bytes object.
@@ -1064,7 +1004,7 @@ int64_t rt_hash_crc32(rt_string str)
 int64_t rt_hash_crc32_bytes(void *bytes)
 {
     if (!bytes)
-        return (int64_t)compute_crc32(NULL, 0);
+        return (int64_t)rt_crc32_compute(NULL, 0);
 
     int64_t len = rt_bytes_len(bytes);
 
@@ -1077,7 +1017,7 @@ int64_t rt_hash_crc32_bytes(void *bytes)
         data[i] = (uint8_t)rt_bytes_get(bytes, i);
     }
 
-    uint32_t result = compute_crc32(data, (size_t)len);
+    uint32_t result = rt_crc32_compute(data, (size_t)len);
     free(data);
     return (int64_t)result;
 }
@@ -1276,7 +1216,7 @@ rt_string rt_hash_hmac_md5(rt_string key, rt_string data)
                  (const uint8_t *)data_cstr,
                  strlen(data_cstr),
                  digest);
-    return bytes_to_hex_string(digest, 16);
+    return rt_codec_hex_enc_bytes(digest, 16);
 }
 
 /// @brief Compute HMAC-MD5 of Bytes data with Bytes key.
@@ -1298,7 +1238,7 @@ rt_string rt_hash_hmac_md5_bytes(void *key, void *data)
     if (msg_data)
         free(msg_data);
 
-    return bytes_to_hex_string(digest, 16);
+    return rt_codec_hex_enc_bytes(digest, 16);
 }
 
 /// @brief Compute HMAC-SHA1 of string data with string key.
@@ -1317,7 +1257,7 @@ rt_string rt_hash_hmac_sha1(rt_string key, rt_string data)
                   (const uint8_t *)data_cstr,
                   strlen(data_cstr),
                   digest);
-    return bytes_to_hex_string(digest, 20);
+    return rt_codec_hex_enc_bytes(digest, 20);
 }
 
 /// @brief Compute HMAC-SHA1 of Bytes data with Bytes key.
@@ -1339,7 +1279,7 @@ rt_string rt_hash_hmac_sha1_bytes(void *key, void *data)
     if (msg_data)
         free(msg_data);
 
-    return bytes_to_hex_string(digest, 20);
+    return rt_codec_hex_enc_bytes(digest, 20);
 }
 
 /// @brief Compute HMAC-SHA256 of string data with string key.
@@ -1358,7 +1298,7 @@ rt_string rt_hash_hmac_sha256(rt_string key, rt_string data)
                             (const uint8_t *)data_cstr,
                             strlen(data_cstr),
                             digest);
-    return bytes_to_hex_string(digest, 32);
+    return rt_codec_hex_enc_bytes(digest, 32);
 }
 
 /// @brief Compute HMAC-SHA256 of Bytes data with Bytes key.
@@ -1380,5 +1320,5 @@ rt_string rt_hash_hmac_sha256_bytes(void *key, void *data)
     if (msg_data)
         free(msg_data);
 
-    return bytes_to_hex_string(digest, 32);
+    return rt_codec_hex_enc_bytes(digest, 32);
 }

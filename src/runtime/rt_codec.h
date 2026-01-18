@@ -50,6 +50,13 @@ extern "C"
     /// @return Newly allocated lowercase hex string.
     rt_string rt_codec_hex_enc(rt_string str);
 
+    /// @brief Hex-encode raw byte data.
+    /// @param data Pointer to byte data to encode.
+    /// @param len Length of data in bytes.
+    /// @return Newly allocated lowercase hex string.
+    /// @details Used by rt_hash for hash output formatting.
+    rt_string rt_codec_hex_enc_bytes(const uint8_t *data, size_t len);
+
     /// @brief Hex-decode a string.
     /// @param str Hex-encoded string.
     /// @return Newly allocated decoded string.

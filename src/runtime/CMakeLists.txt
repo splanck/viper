@@ -1,5 +1,6 @@
 set(RT_BASE_SOURCES
         rt_context.c
+        rt_crc32.c
         rt_error.c
         rt_trap.c
         rt_fp.c

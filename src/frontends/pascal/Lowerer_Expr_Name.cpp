@@ -22,14 +22,9 @@ namespace il::frontends::pascal
 
 using common::char_utils::toLowercase;
 
-inline std::string toLower(const std::string &s)
-{
-    return toLowercase(s);
-}
-
 LowerResult Lowerer::lowerName(const NameExpr &expr)
 {
-    std::string key = toLower(expr.name);
+    std::string key = toLowercase(expr.name);
 
     // Check locals FIRST - user-defined symbols shadow builtins
     auto localIt = locals_.find(key);
@@ -69,7 +64,7 @@ LowerResult Lowerer::lowerName(const NameExpr &expr)
         const WithContext &ctx = *it;
         if (ctx.type.kind == PasTypeKind::Class)
         {
-            auto *classInfo = sema_->lookupClass(toLower(ctx.type.name));
+            auto *classInfo = sema_->lookupClass(toLowercase(ctx.type.name));
             if (classInfo)
             {
                 // Check fields
@@ -134,7 +129,7 @@ LowerResult Lowerer::lowerName(const NameExpr &expr)
     if (!currentClassName_.empty())
     {
         // Walk inheritance chain looking for field or property
-        std::string curClass = toLower(currentClassName_);
+        std::string curClass = toLowercase(currentClassName_);
         while (!curClass.empty())
         {
             auto *classInfo = sema_->lookupClass(curClass);
@@ -188,7 +183,7 @@ LowerResult Lowerer::lowerName(const NameExpr &expr)
             }
 
             // Move to base class
-            curClass = toLower(classInfo->baseClass);
+            curClass = toLowercase(classInfo->baseClass);
         }
     }
 

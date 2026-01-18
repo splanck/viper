@@ -26,12 +26,6 @@ namespace il::frontends::pascal
 // Use common toLowercase for case-insensitive comparison
 using common::char_utils::toLowercase;
 
-// Alias for compatibility with existing code
-inline std::string toLower(const std::string &s)
-{
-    return toLowercase(s);
-}
-
 //===----------------------------------------------------------------------===//
 // Type Resolution
 //===----------------------------------------------------------------------===//
@@ -52,7 +46,7 @@ PasType SemanticAnalyzer::resolveType(TypeNode &typeNode)
         case TypeKind::Named:
         {
             auto &named = static_cast<NamedTypeNode &>(typeNode);
-            std::string key = toLower(named.name);
+            std::string key = toLowercase(named.name);
 
             // Check built-in types first
             if (key == "integer")
@@ -155,7 +149,7 @@ PasType SemanticAnalyzer::resolveType(TypeNode &typeNode)
             {
                 if (field.type)
                 {
-                    result.fields[toLower(field.name)] =
+                    result.fields[toLowercase(field.name)] =
                         std::make_shared<PasType>(resolveType(*field.type));
                 }
             }
@@ -471,7 +465,7 @@ bool SemanticAnalyzer::isConstantExpr(const Expr &expr) const
         {
             // Check if it's a constant identifier
             const auto &nameExpr = static_cast<const NameExpr &>(expr);
-            std::string key = toLower(nameExpr.name);
+            std::string key = toLowercase(nameExpr.name);
             return constants_.count(key) > 0;
         }
 
@@ -562,7 +556,7 @@ int64_t SemanticAnalyzer::evaluateConstantInt(const Expr &expr) const
         {
             // Look up constant value
             const auto &nameExpr = static_cast<const NameExpr &>(expr);
-            std::string key = toLower(nameExpr.name);
+            std::string key = toLowercase(nameExpr.name);
 
             // Check for stored integer constant value
             auto valIt = constantValues_.find(key);
@@ -644,7 +638,7 @@ double SemanticAnalyzer::evaluateConstantReal(const Expr &expr) const
         case ExprKind::Name:
         {
             const auto &nameExpr = static_cast<const NameExpr &>(expr);
-            std::string key = toLower(nameExpr.name);
+            std::string key = toLowercase(nameExpr.name);
 
             // Check for stored real constant value
             auto realIt = constantRealValues_.find(key);
@@ -716,7 +710,7 @@ std::string SemanticAnalyzer::evaluateConstantString(const Expr &expr) const
         case ExprKind::Name:
         {
             const auto &nameExpr = static_cast<const NameExpr &>(expr);
-            std::string key = toLower(nameExpr.name);
+            std::string key = toLowercase(nameExpr.name);
 
             auto strIt = constantStrValues_.find(key);
             if (strIt != constantStrValues_.end())
@@ -756,7 +750,7 @@ bool SemanticAnalyzer::evaluateConstantBool(const Expr &expr) const
         case ExprKind::Name:
         {
             const auto &nameExpr = static_cast<const NameExpr &>(expr);
-            std::string key = toLower(nameExpr.name);
+            std::string key = toLowercase(nameExpr.name);
 
             // Check for boolean constant - need to look up type and get value
             auto constIt = constants_.find(key);

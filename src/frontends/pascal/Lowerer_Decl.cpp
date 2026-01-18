@@ -20,11 +20,6 @@ namespace il::frontends::pascal
 
 using common::char_utils::toLowercase;
 
-inline std::string toLower(const std::string &s)
-{
-    return toLowercase(s);
-}
-
 //===----------------------------------------------------------------------===//
 // Declaration Lowering
 //===----------------------------------------------------------------------===//
@@ -48,7 +43,7 @@ void Lowerer::registerGlobals(const std::vector<std::unique_ptr<Decl>> &decls)
         PasType type = sema_->resolveType(*varDecl.type);
         for (const auto &name : varDecl.names)
         {
-            std::string key = toLower(name);
+            std::string key = toLowercase(name);
             globalTypes_[key] = type;
         }
     }
@@ -115,7 +110,7 @@ void Lowerer::allocateLocals(const std::vector<std::unique_ptr<Decl>> &decls, bo
 
             for (const auto &name : varDecl.names)
             {
-                std::string key = toLower(name);
+                std::string key = toLowercase(name);
 
                 // Skip globals only when processing main - locals in procedures can shadow globals
                 if (isMain && globalTypes_.find(key) != globalTypes_.end())
@@ -201,7 +196,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
 
     // Look up the function signature to get parameter and return types
     std::string funcKey =
-        decl.isMethod() ? toLower(decl.className + "." + decl.name) : toLower(decl.name);
+        decl.isMethod() ? toLowercase(decl.className + "." + decl.name) : toLowercase(decl.name);
     auto sig = sema_->lookupFunction(funcKey);
 
     // Build parameter list
@@ -264,7 +259,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
     // Clear locals for this function
     locals_.clear();
     localTypes_.clear();
-    currentFuncName_ = toLower(decl.name);
+    currentFuncName_ = toLowercase(decl.name);
     currentClassName_ = decl.isMethod() ? decl.className : "";
 
     // For methods, map Self parameter to locals
@@ -284,7 +279,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
          ++i)
     {
         const auto &param = decl.params[i];
-        std::string key = toLower(param.name);
+        std::string key = toLowercase(param.name);
 
         unsigned paramId = currentFunc_->params[i + paramOffset].id;
         Value paramVal = Value::temp(paramId);
@@ -306,7 +301,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
     }
 
     // Allocate result variable for the function
-    std::string resultKey = toLower(decl.name);
+    std::string resultKey = toLowercase(decl.name);
     Value resultSlot = emitAlloca(8);
     locals_[resultKey] = resultSlot;
     // Record return type for 'Result' variable
@@ -340,7 +335,7 @@ void Lowerer::lowerProcedureDecl(ProcedureDecl &decl)
 
     // Look up the procedure signature to get parameter types
     std::string funcKey =
-        decl.isMethod() ? toLower(decl.className + "." + decl.name) : toLower(decl.name);
+        decl.isMethod() ? toLowercase(decl.className + "." + decl.name) : toLowercase(decl.name);
     auto sig = sema_->lookupFunction(funcKey);
 
     // Build parameter list
@@ -412,7 +407,7 @@ void Lowerer::lowerProcedureDecl(ProcedureDecl &decl)
          ++i)
     {
         const auto &param = decl.params[i];
-        std::string key = toLower(param.name);
+        std::string key = toLowercase(param.name);
 
         unsigned paramId = currentFunc_->params[i + paramOffset].id;
         Value paramVal = Value::temp(paramId);
@@ -531,7 +526,7 @@ void Lowerer::lowerConstructorDecl(ConstructorDecl &decl)
     for (size_t i = 0; i < decl.params.size() && (i + 1) < currentFunc_->params.size(); ++i)
     {
         const auto &param = decl.params[i];
-        std::string key = toLower(param.name);
+        std::string key = toLowercase(param.name);
 
         unsigned paramId = currentFunc_->params[i + 1].id;
         Value paramVal = Value::temp(paramId);

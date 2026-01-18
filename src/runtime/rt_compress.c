@@ -29,6 +29,7 @@
 #include "rt_compress.h"
 
 #include "rt_bytes.h"
+#include "rt_crc32.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_string.h"
@@ -86,47 +87,6 @@ static inline int64_t bytes_len(void *obj)
     if (!obj)
         return 0;
     return ((bytes_impl *)obj)->len;
-}
-
-//=============================================================================
-// CRC32 (for GZIP)
-//=============================================================================
-
-/// @brief CRC32 lookup table (IEEE polynomial)
-static uint32_t crc32_table[256];
-static int crc32_table_init = 0;
-
-/// @brief Initialize CRC32 table
-static void init_crc32_table(void)
-{
-    if (crc32_table_init)
-        return;
-
-    for (uint32_t i = 0; i < 256; i++)
-    {
-        uint32_t c = i;
-        for (int j = 0; j < 8; j++)
-        {
-            if (c & 1)
-                c = 0xEDB88320 ^ (c >> 1);
-            else
-                c >>= 1;
-        }
-        crc32_table[i] = c;
-    }
-    crc32_table_init = 1;
-}
-
-/// @brief Compute CRC32 of data
-static uint32_t compute_crc32(const uint8_t *data, size_t len)
-{
-    init_crc32_table();
-    uint32_t crc = 0xFFFFFFFF;
-    for (size_t i = 0; i < len; i++)
-    {
-        crc = crc32_table[(crc ^ data[i]) & 0xFF] ^ (crc >> 8);
-    }
-    return crc ^ 0xFFFFFFFF;
 }
 
 //=============================================================================
@@ -1259,7 +1219,7 @@ static void *gzip_data(const uint8_t *data, size_t len, int level)
     uint8_t *deflated_data = bytes_data(deflated);
 
     // Calculate CRC32
-    uint32_t crc = compute_crc32(data, len);
+    uint32_t crc = rt_crc32_compute(data, len);
 
     // Create output: header (10) + deflated + trailer (8)
     size_t total_len = 10 + deflated_len + 8;
@@ -1360,7 +1320,7 @@ static void *gunzip_data(const uint8_t *data, size_t len)
     void *result = inflate_data(data + pos, compressed_len);
 
     // Verify CRC
-    uint32_t actual_crc = compute_crc32(bytes_data(result), bytes_len(result));
+    uint32_t actual_crc = rt_crc32_compute(bytes_data(result), bytes_len(result));
     if (actual_crc != expected_crc)
         rt_trap("Gunzip: CRC mismatch");
 

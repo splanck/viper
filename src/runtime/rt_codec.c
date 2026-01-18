@@ -602,6 +602,36 @@ rt_string rt_codec_hex_enc(rt_string str)
     return result;
 }
 
+/// @brief Encodes raw byte data to hexadecimal representation.
+///
+/// Lower-level version of rt_codec_hex_enc that takes raw byte data
+/// instead of an rt_string. Used internally by rt_hash for hash output.
+///
+/// @param data Pointer to byte data to encode.
+/// @param len Length of data in bytes.
+/// @return Newly allocated lowercase hex string. Traps on allocation failure.
+rt_string rt_codec_hex_enc_bytes(const uint8_t *data, size_t len)
+{
+    if (!data || len == 0)
+        return rt_string_from_bytes("", 0);
+
+    size_t output_len = len * 2;
+    char *out = (char *)malloc(output_len + 1);
+    if (!out)
+        rt_trap("Codec.HexEncBytes: memory allocation failed");
+
+    for (size_t i = 0; i < len; i++)
+    {
+        out[i * 2] = hex_chars[(data[i] >> 4) & 0xF];
+        out[i * 2 + 1] = hex_chars[data[i] & 0xF];
+    }
+    out[output_len] = '\0';
+
+    rt_string result = rt_string_from_bytes(out, output_len);
+    free(out);
+    return result;
+}
+
 /// @brief Decodes a hexadecimal string back to binary data.
 ///
 /// Converts pairs of hexadecimal characters back to their byte values.

@@ -21,9 +21,6 @@
 
 #include "viper/il/io/OperandParse.hpp"
 
-#include "il/internal/io/ParserState.hpp"
-#include "il/internal/io/ParserUtil.hpp"
-
 #include <string>
 #include <utility>
 
@@ -32,22 +29,6 @@ namespace viper::il::io
 namespace
 {
 using viper::parse::Cursor;
-
-/// @brief Build a ParseResult describing a label syntax error.
-/// @details Populates the result with a diagnostic carrying the provided
-///          message and source location taken from the parser context.  Keeping
-///          the helper local avoids duplicating the diagnostic wiring across the
-///          various early-exit sites in @ref parseLabelOperand.
-/// @param ctx Parsing context containing source location and diagnostics sink.
-/// @param message Human-readable description of the syntax problem.
-/// @return ParseResult initialised with an error status and message.
-ParseResult syntaxError(Context &ctx, std::string message)
-{
-    ParseResult result;
-    result.status = ::il::support::Expected<void>{
-        ::il::io::makeLineErrorDiag(ctx.state.curLoc, ctx.state.lineNo, std::move(message))};
-    return result;
-}
 
 } // namespace
 

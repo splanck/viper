@@ -27,11 +27,6 @@ namespace il::frontends::pascal
 
 using common::char_utils::toLowercase;
 
-inline std::string toLower(const std::string &s)
-{
-    return toLowercase(s);
-}
-
 //===----------------------------------------------------------------------===//
 // Expression Lowering Dispatcher
 //===----------------------------------------------------------------------===//
@@ -75,7 +70,7 @@ LowerResult Lowerer::lowerExpr(const Expr &expr)
             {
                 // Lookup class id
                 int64_t classId = 0;
-                auto it = classLayouts_.find(toLower(target.name));
+                auto it = classLayouts_.find(toLowercase(target.name));
                 if (it != classLayouts_.end())
                     classId = it->second.classId;
                 usedExterns_.insert("rt_cast_as");
@@ -105,7 +100,7 @@ LowerResult Lowerer::lowerExpr(const Expr &expr)
             {
                 // Lookup class id
                 int64_t classId = 0;
-                auto it = classLayouts_.find(toLower(target.name));
+                auto it = classLayouts_.find(toLowercase(target.name));
                 if (it != classLayouts_.end())
                     classId = it->second.classId;
                 usedExterns_.insert("rt_cast_as");

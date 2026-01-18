@@ -26,12 +26,6 @@ namespace il::frontends::pascal
 // Use common toLowercase for case-insensitive comparison
 using common::char_utils::toLowercase;
 
-// Alias for compatibility with existing code
-inline std::string toLower(const std::string &s)
-{
-    return toLowercase(s);
-}
-
 //===----------------------------------------------------------------------===//
 // Scope Management
 //===----------------------------------------------------------------------===//
@@ -76,14 +70,14 @@ void SemanticAnalyzer::addLocalVariable(const std::string &name, const PasType &
 
 void SemanticAnalyzer::markDefinitelyAssigned(const std::string &name)
 {
-    std::string key = toLower(name);
+    std::string key = toLowercase(name);
     uninitializedNonNullableVars_.erase(key);
     definitelyAssignedVars_.insert(key);
 }
 
 bool SemanticAnalyzer::isDefinitelyAssigned(const std::string &name) const
 {
-    std::string key = toLower(name);
+    std::string key = toLowercase(name);
     // If not in the uninitialized set, it's either:
     // 1. Not a non-nullable reference type
     // 2. Definitely assigned
@@ -96,7 +90,7 @@ bool SemanticAnalyzer::isDefinitelyAssigned(const std::string &name) const
 
 std::optional<PasType> SemanticAnalyzer::lookupType(const std::string &name) const
 {
-    std::string key = toLower(name);
+    std::string key = toLowercase(name);
     auto it = types_.find(key);
     if (it != types_.end())
         return it->second;
@@ -105,7 +99,7 @@ std::optional<PasType> SemanticAnalyzer::lookupType(const std::string &name) con
 
 std::optional<PasType> SemanticAnalyzer::lookupVariable(const std::string &name) const
 {
-    std::string key = toLower(name);
+    std::string key = toLowercase(name);
     // Search from innermost scope outward
     for (auto it = varScopes_.rbegin(); it != varScopes_.rend(); ++it)
     {
@@ -118,7 +112,7 @@ std::optional<PasType> SemanticAnalyzer::lookupVariable(const std::string &name)
 
 std::optional<PasType> SemanticAnalyzer::lookupConstant(const std::string &name) const
 {
-    std::string key = toLower(name);
+    std::string key = toLowercase(name);
     auto it = constants_.find(key);
     if (it != constants_.end())
         return it->second;
@@ -127,7 +121,7 @@ std::optional<PasType> SemanticAnalyzer::lookupConstant(const std::string &name)
 
 std::optional<int64_t> SemanticAnalyzer::lookupConstantInt(const std::string &name) const
 {
-    std::string key = toLower(name);
+    std::string key = toLowercase(name);
     auto it = constantValues_.find(key);
     if (it != constantValues_.end())
         return it->second;
@@ -136,7 +130,7 @@ std::optional<int64_t> SemanticAnalyzer::lookupConstantInt(const std::string &na
 
 std::optional<double> SemanticAnalyzer::lookupConstantReal(const std::string &name) const
 {
-    std::string key = toLower(name);
+    std::string key = toLowercase(name);
     auto it = constantRealValues_.find(key);
     if (it != constantRealValues_.end())
         return it->second;
@@ -145,7 +139,7 @@ std::optional<double> SemanticAnalyzer::lookupConstantReal(const std::string &na
 
 std::optional<std::string> SemanticAnalyzer::lookupConstantStr(const std::string &name) const
 {
-    std::string key = toLower(name);
+    std::string key = toLowercase(name);
     auto it = constantStrValues_.find(key);
     if (it != constantStrValues_.end())
         return it->second;
@@ -154,7 +148,7 @@ std::optional<std::string> SemanticAnalyzer::lookupConstantStr(const std::string
 
 const FuncSignature *SemanticAnalyzer::lookupFunction(const std::string &name) const
 {
-    std::string key = toLower(name);
+    std::string key = toLowercase(name);
     auto it = functions_.find(key);
     if (it != functions_.end())
         return &it->second;
@@ -164,7 +158,7 @@ const FuncSignature *SemanticAnalyzer::lookupFunction(const std::string &name) c
 const Expr *SemanticAnalyzer::getDefaultParamExpr(const std::string &funcName,
                                                   size_t paramIndex) const
 {
-    std::string key = toLower(funcName) + ":" + std::to_string(paramIndex);
+    std::string key = toLowercase(funcName) + ":" + std::to_string(paramIndex);
     auto it = defaultParamExprs_.find(key);
     return (it != defaultParamExprs_.end()) ? it->second : nullptr;
 }
@@ -175,7 +169,7 @@ const Expr *SemanticAnalyzer::getDefaultMethodParamExpr(const std::string &class
 {
     // Method defaults are stored with key "classname.methodname:paramindex"
     std::string key =
-        toLower(className) + "." + toLower(methodName) + ":" + std::to_string(paramIndex);
+        toLowercase(className) + "." + toLowercase(methodName) + ":" + std::to_string(paramIndex);
     auto it = defaultParamExprs_.find(key);
     return (it != defaultParamExprs_.end()) ? it->second : nullptr;
 }
@@ -280,7 +274,7 @@ bool SemanticAnalyzer::isNilCheck(const Expr &expr, std::string &varName, bool &
         return false;
     }
 
-    varName = toLower(static_cast<const NameExpr *>(nameExpr)->name);
+    varName = toLowercase(static_cast<const NameExpr *>(nameExpr)->name);
     isNotNil = (binExpr.op == BinaryExpr::Op::Ne); // <> nil means "is not nil"
     return true;
 }
@@ -298,7 +292,7 @@ void SemanticAnalyzer::popNarrowing()
 
 void SemanticAnalyzer::invalidateNarrowing(const std::string &varName)
 {
-    std::string key = toLower(varName);
+    std::string key = toLowercase(varName);
     // Remove from all narrowing scopes
     for (auto &scope : narrowingScopes_)
     {
@@ -308,7 +302,7 @@ void SemanticAnalyzer::invalidateNarrowing(const std::string &varName)
 
 std::optional<PasType> SemanticAnalyzer::lookupEffectiveType(const std::string &name) const
 {
-    std::string key = toLower(name);
+    std::string key = toLowercase(name);
 
     // Check narrowing scopes first (from innermost to outermost)
     for (auto it = narrowingScopes_.rbegin(); it != narrowingScopes_.rend(); ++it)
@@ -409,7 +403,7 @@ void SemanticAnalyzer::registerBuiltins()
             }
         }
 
-        functions_[toLower(desc.name)] = sig;
+        functions_[toLowercase(desc.name)] = sig;
     }
 
     // Register built-in units (Viper.Strings, Viper.Math)
@@ -493,7 +487,7 @@ void SemanticAnalyzer::registerBuiltinUnits()
                 }
             }
 
-            unit.functions[toLower(desc.name)] = sig;
+            unit.functions[toLowercase(desc.name)] = sig;
         }
 
         registerUnit(unit);
@@ -545,7 +539,7 @@ void SemanticAnalyzer::registerBuiltinUnits()
                 }
             }
 
-            unit.functions[toLower(desc.name)] = sig;
+            unit.functions[toLowercase(desc.name)] = sig;
         }
 
         // Also register core math functions that should be in the unit per spec:
@@ -558,7 +552,7 @@ void SemanticAnalyzer::registerBuiltinUnits()
             sig.returnType = resultTypeToPassType(res);
             sig.params.emplace_back("arg", maskToType(argMask));
             sig.isVarParam.push_back(false);
-            unit.functions[toLower(name)] = sig;
+            unit.functions[toLowercase(name)] = sig;
         };
 
         // Re-export core math functions in the unit
@@ -582,13 +576,13 @@ void SemanticAnalyzer::registerBuiltinUnits()
 
 void SemanticAnalyzer::registerUnit(const UnitInfo &unitInfo)
 {
-    std::string key = toLower(unitInfo.name);
+    std::string key = toLowercase(unitInfo.name);
     units_[key] = unitInfo;
 }
 
 const UnitInfo *SemanticAnalyzer::getUnit(const std::string &name) const
 {
-    auto it = units_.find(toLower(name));
+    auto it = units_.find(toLowercase(name));
     if (it != units_.end())
         return &it->second;
     return nullptr;
@@ -644,7 +638,7 @@ bool SemanticAnalyzer::importUnits(const std::vector<std::string> &unitNames)
                 sig.returnType = getBuiltinResultType(builtin);
                 sig.requiredParams = desc.minArgs;
 
-                std::string key = toLower(desc.name);
+                std::string key = toLowercase(desc.name);
                 functions_[key] = sig;
             }
 
@@ -742,7 +736,7 @@ UnitInfo SemanticAnalyzer::extractUnitExports(const Unit &unit)
             case DeclKind::Type:
             {
                 auto &td = static_cast<const TypeDecl &>(*decl);
-                std::string key = toLower(td.name);
+                std::string key = toLowercase(td.name);
                 // Type must be resolved - look it up from current types_
                 auto it = types_.find(key);
                 if (it != types_.end())
@@ -752,7 +746,7 @@ UnitInfo SemanticAnalyzer::extractUnitExports(const Unit &unit)
             case DeclKind::Const:
             {
                 auto &cd = static_cast<const ConstDecl &>(*decl);
-                std::string key = toLower(cd.name);
+                std::string key = toLowercase(cd.name);
                 auto it = constants_.find(key);
                 if (it != constants_.end())
                 {
@@ -790,7 +784,7 @@ UnitInfo SemanticAnalyzer::extractUnitExports(const Unit &unit)
                     name = static_cast<const ProcedureDecl &>(*decl).name;
                 else
                     name = static_cast<const FunctionDecl &>(*decl).name;
-                std::string key = toLower(name);
+                std::string key = toLowercase(name);
                 auto it = functions_.find(key);
                 if (it != functions_.end())
                     info.functions[key] = it->second;
@@ -799,7 +793,7 @@ UnitInfo SemanticAnalyzer::extractUnitExports(const Unit &unit)
             case DeclKind::Class:
             {
                 auto &cd = static_cast<const ClassDecl &>(*decl);
-                std::string key = toLower(cd.name);
+                std::string key = toLowercase(cd.name);
                 auto it = classes_.find(key);
                 if (it != classes_.end())
                     info.classes[key] = it->second;
@@ -808,7 +802,7 @@ UnitInfo SemanticAnalyzer::extractUnitExports(const Unit &unit)
             case DeclKind::Interface:
             {
                 auto &id = static_cast<const InterfaceDecl &>(*decl);
-                std::string key = toLower(id.name);
+                std::string key = toLowercase(id.name);
                 auto it = interfaces_.find(key);
                 if (it != interfaces_.end())
                     info.interfaces[key] = it->second;

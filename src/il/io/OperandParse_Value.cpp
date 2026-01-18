@@ -25,8 +25,6 @@
 
 #include "il/core/Instr.hpp"
 #include "il/core/Value.hpp"
-#include "il/internal/io/ParserState.hpp"
-#include "il/internal/io/ParserUtil.hpp"
 
 #include <cctype>
 #include <sstream>
@@ -68,20 +66,6 @@ std::string formatLineMessage(Context &ctx, std::string message)
 template <class T> Expected<T> makeSyntaxError(ParserState &state, std::string message)
 {
     return Expected<T>{::il::io::makeLineErrorDiag(state.curLoc, state.lineNo, std::move(message))};
-}
-
-/// @brief Convenience wrapper that packages a syntax error into ParseResult.
-/// @details Matches the structure produced by other operand parsers by storing
-///          the diagnostic inside @ref ParseResult::status.
-/// @param ctx Parser context describing the error location.
-/// @param message Diagnostic string emitted to users.
-/// @return Parse result whose status contains the formatted error.
-ParseResult syntaxError(Context &ctx, std::string message)
-{
-    ParseResult result;
-    result.status = ::il::support::Expected<void>{
-        ::il::io::makeLineErrorDiag(ctx.state.curLoc, ctx.state.lineNo, std::move(message))};
-    return result;
 }
 
 /// @brief Drop leading ASCII whitespace from @p text.

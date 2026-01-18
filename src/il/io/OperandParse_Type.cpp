@@ -25,11 +25,7 @@
 
 #include "il/core/Instr.hpp"
 #include "il/core/Type.hpp"
-#include "il/internal/io/ParserState.hpp"
-#include "il/internal/io/ParserUtil.hpp"
 #include "il/internal/io/TypeParser.hpp"
-
-#include "support/diag_expected.hpp"
 
 #include <cctype>
 #include <sstream>
@@ -38,25 +34,6 @@
 
 namespace viper::il::io
 {
-namespace
-{
-
-/// @brief Construct a parse result representing a type syntax error.
-/// @details Type operand parsing uses the shared Expected-based diagnostic
-///          channel.  This helper wraps the provided message with line/location
-///          context, yielding a result whose status signals failure to the caller.
-/// @param ctx Parser context holding the current source location.
-/// @param message Diagnostic text to surface to the user.
-/// @return Parse result whose status contains the formatted diagnostic.
-ParseResult syntaxError(Context &ctx, std::string message)
-{
-    ParseResult result;
-    result.status = ::il::support::Expected<void>{
-        ::il::io::makeLineErrorDiag(ctx.state.curLoc, ctx.state.lineNo, std::move(message))};
-    return result;
-}
-
-} // namespace
 
 /// @brief Parse a type literal operand and attach it to the active instruction.
 /// @details Consumes the next non-whitespace token, normalises trailing commas

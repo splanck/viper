@@ -20,11 +20,6 @@ namespace il::frontends::pascal
 
 using common::char_utils::toLowercase;
 
-inline std::string toLower(const std::string &s)
-{
-    return toLowercase(s);
-}
-
 LowerResult Lowerer::lowerIndex(const IndexExpr &expr)
 {
     // Get base type
@@ -36,7 +31,7 @@ LowerResult Lowerer::lowerIndex(const IndexExpr &expr)
         if (expr.base->kind == ExprKind::Name)
         {
             const auto &nameExpr = static_cast<const NameExpr &>(*expr.base);
-            std::string key = toLower(nameExpr.name);
+            std::string key = toLowercase(nameExpr.name);
 
             Value baseAddr;
             bool found = false;
@@ -98,19 +93,19 @@ std::pair<Lowerer::Value, Lowerer::Type> Lowerer::getFieldAddress(Value baseAddr
                                                                   const PasType &baseType,
                                                                   const std::string &fieldName)
 {
-    std::string fieldKey = toLower(fieldName);
+    std::string fieldKey = toLowercase(fieldName);
 
     // For class types, use the computed class layout which accounts for vptr
     if (baseType.kind == PasTypeKind::Class)
     {
-        std::string classKey = toLower(baseType.name);
+        std::string classKey = toLowercase(baseType.name);
         auto layoutIt = classLayouts_.find(classKey);
         if (layoutIt != classLayouts_.end())
         {
             const ClassLayout &layout = layoutIt->second;
             for (const auto &field : layout.fields)
             {
-                if (toLower(field.name) == fieldKey)
+                if (toLowercase(field.name) == fieldKey)
                 {
                     Type fieldType = mapType(field.type);
                     Value fieldAddr =
@@ -162,7 +157,7 @@ LowerResult Lowerer::lowerField(const FieldExpr &expr)
     if (expr.base->kind == ExprKind::Name)
     {
         const auto &nameExpr = static_cast<const NameExpr &>(*expr.base);
-        std::string baseName = toLower(nameExpr.name);
+        std::string baseName = toLowercase(nameExpr.name);
 
         // Check if base is a class type (not a variable)
         if (!locals_.count(baseName))
@@ -174,7 +169,7 @@ LowerResult Lowerer::lowerField(const FieldExpr &expr)
                 auto *classInfo = sema_->lookupClass(baseName);
                 if (classInfo)
                 {
-                    std::string methodKey = toLower(expr.field);
+                    std::string methodKey = toLowercase(expr.field);
                     auto methodIt = classInfo->methods.find(methodKey);
                     if (methodIt != classInfo->methods.end())
                     {
@@ -212,10 +207,10 @@ LowerResult Lowerer::lowerField(const FieldExpr &expr)
         std::string methodName = expr.field;
 
         // Get interface info
-        const InterfaceInfo *ifaceInfo = sema_->lookupInterface(toLower(ifaceName));
+        const InterfaceInfo *ifaceInfo = sema_->lookupInterface(toLowercase(ifaceName));
         if (ifaceInfo)
         {
-            auto methodIt = ifaceInfo->methods.find(toLower(methodName));
+            auto methodIt = ifaceInfo->methods.find(toLowercase(methodName));
             if (methodIt != ifaceInfo->methods.end())
             {
                 // Create a synthetic CallExpr for the interface method call
@@ -235,7 +230,7 @@ LowerResult Lowerer::lowerField(const FieldExpr &expr)
         if (expr.base->kind == ExprKind::Name)
         {
             const auto &nameExpr = static_cast<const NameExpr &>(*expr.base);
-            std::string key = toLower(nameExpr.name);
+            std::string key = toLowercase(nameExpr.name);
 
             // Check local variables first
             auto it = locals_.find(key);
@@ -273,7 +268,7 @@ LowerResult Lowerer::lowerField(const FieldExpr &expr)
         if (expr.base->kind == ExprKind::Name)
         {
             const auto &nameExpr = static_cast<const NameExpr &>(*expr.base);
-            std::string key = toLower(nameExpr.name);
+            std::string key = toLowercase(nameExpr.name);
             auto it = locals_.find(key);
             if (it != locals_.end())
             {
@@ -296,7 +291,7 @@ LowerResult Lowerer::lowerField(const FieldExpr &expr)
             if (!foundObjPtr && !currentClassName_.empty())
             {
                 // Check if it's a class field accessed inside a method
-                auto *classInfo = sema_->lookupClass(toLower(currentClassName_));
+                auto *classInfo = sema_->lookupClass(toLowercase(currentClassName_));
                 if (classInfo)
                 {
                     auto fieldIt = classInfo->fields.find(key);
@@ -345,15 +340,15 @@ LowerResult Lowerer::lowerField(const FieldExpr &expr)
 
         // Check if this is a property access or a zero-argument method call (Pascal allows calling
         // without parens)
-        auto *classInfo = sema_->lookupClass(toLower(baseType.name));
+        auto *classInfo = sema_->lookupClass(toLowercase(baseType.name));
         if (classInfo)
         {
-            std::string methodKey = toLower(expr.field);
+            std::string methodKey = toLowercase(expr.field);
             // 1) Property read lowering - check current class and base classes
             const PropertyInfo *foundProperty = nullptr;
             std::string definingClassName;
             {
-                std::string cur = toLower(baseType.name);
+                std::string cur = toLowercase(baseType.name);
                 while (!cur.empty())
                 {
                     auto *ci = sema_->lookupClass(cur);
@@ -368,7 +363,7 @@ LowerResult Lowerer::lowerField(const FieldExpr &expr)
                     }
                     if (ci->baseClass.empty())
                         break;
-                    cur = toLower(ci->baseClass);
+                    cur = toLowercase(ci->baseClass);
                 }
             }
             if (foundProperty)
@@ -386,7 +381,7 @@ LowerResult Lowerer::lowerField(const FieldExpr &expr)
                 if (p.getter.kind == PropertyAccessor::Kind::Field)
                 {
                     // Build class type with fields from the defining class
-                    auto *defClassInfo = sema_->lookupClass(toLower(definingClassName));
+                    auto *defClassInfo = sema_->lookupClass(toLowercase(definingClassName));
                     PasType classTypeWithFields = PasType::classType(definingClassName);
                     if (defClassInfo)
                     {

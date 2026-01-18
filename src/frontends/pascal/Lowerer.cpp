@@ -22,12 +22,6 @@ namespace il::frontends::pascal
 
 using common::char_utils::toLowercase;
 
-/// @brief Convert string to lowercase for case-insensitive comparisons.
-inline std::string toLower(const std::string &s)
-{
-    return toLowercase(s);
-}
-
 //===----------------------------------------------------------------------===//
 // Construction
 //===----------------------------------------------------------------------===//
@@ -129,7 +123,7 @@ Lowerer::Module Lowerer::lower(Program &prog, SemanticAnalyzer &sema)
     // Call unit initialization functions in order
     for (const auto &unitName : prog.usedUnits)
     {
-        std::string initFuncName = "__" + toLower(unitName) + "_init__";
+        std::string initFuncName = "__" + toLowercase(unitName) + "_init__";
         // Check if function exists in module (it may have been merged from unit)
         bool found = false;
         for (const auto &func : module_->functions)
@@ -156,7 +150,7 @@ Lowerer::Module Lowerer::lower(Program &prog, SemanticAnalyzer &sema)
     // Call unit finalization functions in reverse order before returning
     for (auto it = prog.usedUnits.rbegin(); it != prog.usedUnits.rend(); ++it)
     {
-        std::string finalFuncName = "__" + toLower(*it) + "_final__";
+        std::string finalFuncName = "__" + toLowercase(*it) + "_final__";
         // Check if function exists in module
         bool found = false;
         for (const auto &func : module_->functions)
@@ -248,7 +242,7 @@ Lowerer::Module Lowerer::lower(Unit &unit, SemanticAnalyzer &sema)
     // Lower initialization section
     if (unit.initSection && !unit.initSection->stmts.empty())
     {
-        std::string initName = "__" + toLower(unit.name) + "_init__";
+        std::string initName = "__" + toLowercase(unit.name) + "_init__";
         currentFunc_ = &builder_->startFunction(initName, Type(Type::Kind::Void), {});
         blockMgr_.bind(builder_.get(), currentFunc_);
         locals_.clear();
@@ -263,7 +257,7 @@ Lowerer::Module Lowerer::lower(Unit &unit, SemanticAnalyzer &sema)
     // Lower finalization section
     if (unit.finalSection && !unit.finalSection->stmts.empty())
     {
-        std::string finalName = "__" + toLower(unit.name) + "_final__";
+        std::string finalName = "__" + toLowercase(unit.name) + "_final__";
         currentFunc_ = &builder_->startFunction(finalName, Type(Type::Kind::Void), {});
         blockMgr_.bind(builder_.get(), currentFunc_);
         locals_.clear();

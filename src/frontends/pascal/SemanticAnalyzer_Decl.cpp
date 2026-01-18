@@ -26,12 +26,6 @@ namespace il::frontends::pascal
 // Use common toLowercase for case-insensitive comparison
 using common::char_utils::toLowercase;
 
-// Alias for compatibility with existing code
-inline std::string toLower(const std::string &s)
-{
-    return toLowercase(s);
-}
-
 //===----------------------------------------------------------------------===//
 // Declaration Collection (Pass 1)
 //===----------------------------------------------------------------------===//
@@ -167,7 +161,7 @@ void SemanticAnalyzer::collectDecl(Decl &decl)
 
 void SemanticAnalyzer::registerType(const std::string &name, TypeNode &typeNode)
 {
-    std::string key = toLower(name);
+    std::string key = toLowercase(name);
     PasType resolved = resolveType(typeNode);
     resolved.name = name;
     types_[key] = resolved;
@@ -177,7 +171,7 @@ void SemanticAnalyzer::registerType(const std::string &name, TypeNode &typeNode)
     {
         for (size_t i = 0; i < resolved.enumValues.size(); ++i)
         {
-            std::string constKey = toLower(resolved.enumValues[i]);
+            std::string constKey = toLowercase(resolved.enumValues[i]);
             // Check for duplicate constant name
             if (constants_.find(constKey) != constants_.end())
             {
@@ -193,7 +187,7 @@ void SemanticAnalyzer::registerType(const std::string &name, TypeNode &typeNode)
 
 void SemanticAnalyzer::registerVariable(const std::string &name, TypeNode &typeNode)
 {
-    std::string key = toLower(name);
+    std::string key = toLowercase(name);
     PasType resolved = resolveType(typeNode);
 
     // Local variables (inside routines) need definite assignment tracking
@@ -209,7 +203,7 @@ void SemanticAnalyzer::registerVariable(const std::string &name, TypeNode &typeN
 
 void SemanticAnalyzer::registerConstant(const std::string &name, Expr &value, TypeNode *typeNode)
 {
-    std::string key = toLower(name);
+    std::string key = toLowercase(name);
     PasType type;
 
     if (typeNode)
@@ -278,7 +272,7 @@ void SemanticAnalyzer::registerProcedure(ProcedureDecl &decl)
     // Method implementations (e.g., TClass.Method) use qualified names
     // and don't participate in free function overloading
     std::string key =
-        decl.isMethod() ? toLower(decl.className + "." + decl.name) : toLower(decl.name);
+        decl.isMethod() ? toLowercase(decl.className + "." + decl.name) : toLowercase(decl.name);
 
     // v0.1: Check for user-defined overloading (not allowed for free procedures)
     if (!decl.isMethod())
@@ -327,7 +321,7 @@ void SemanticAnalyzer::registerFunction(FunctionDecl &decl)
     // Method implementations (e.g., TClass.Method) use qualified names
     // and don't participate in free function overloading
     std::string key =
-        decl.isMethod() ? toLower(decl.className + "." + decl.name) : toLower(decl.name);
+        decl.isMethod() ? toLowercase(decl.className + "." + decl.name) : toLowercase(decl.name);
 
     // v0.1: Check for user-defined overloading (not allowed for free functions)
     if (!decl.isMethod())
@@ -373,7 +367,7 @@ void SemanticAnalyzer::registerFunction(FunctionDecl &decl)
 
 void SemanticAnalyzer::registerClass(ClassDecl &decl)
 {
-    std::string key = toLower(decl.name);
+    std::string key = toLowercase(decl.name);
 
     // Prevent redefinition of built-in Exception class
     if (key == "exception")
@@ -406,7 +400,7 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                 field.isWeak = member.isWeak;
                 field.visibility = member.visibility;
                 field.loc = member.loc;
-                info.fields[toLower(member.fieldName)] = field;
+                info.fields[toLowercase(member.fieldName)] = field;
                 break;
             }
             case ClassMember::Kind::Method:
@@ -426,7 +420,7 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                         method.visibility = member.visibility;
                         method.loc = fd.loc;
                         size_t required = 0;
-                        std::string methodKey = toLower(decl.name) + "." + toLower(fd.name);
+                        std::string methodKey = toLowercase(decl.name) + "." + toLowercase(fd.name);
                         for (size_t i = 0; i < fd.params.size(); ++i)
                         {
                             const auto &param = fd.params[i];
@@ -446,7 +440,7 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                         }
                         method.requiredParams = required;
                         // Check for duplicate signature in existing overloads
-                        std::string key = toLower(fd.name);
+                        std::string key = toLowercase(fd.name);
                         auto &overloads = info.methods[key];
                         bool hasDuplicate = false;
                         for (const auto &existing : overloads)
@@ -475,7 +469,7 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                         method.visibility = member.visibility;
                         method.loc = pd.loc;
                         size_t required = 0;
-                        std::string methodKey = toLower(decl.name) + "." + toLower(pd.name);
+                        std::string methodKey = toLowercase(decl.name) + "." + toLowercase(pd.name);
                         for (size_t i = 0; i < pd.params.size(); ++i)
                         {
                             const auto &param = pd.params[i];
@@ -495,7 +489,7 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                         }
                         method.requiredParams = required;
                         // Check for duplicate signature in existing overloads
-                        std::string key = toLower(pd.name);
+                        std::string key = toLowercase(pd.name);
                         auto &overloads = info.methods[key];
                         bool hasDuplicate = false;
                         for (const auto &existing : overloads)
@@ -527,7 +521,7 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                     method.visibility = member.visibility;
                     method.loc = cd.loc;
                     size_t required = 0;
-                    std::string methodKey = toLower(decl.name) + "." + toLower(cd.name);
+                    std::string methodKey = toLowercase(decl.name) + "." + toLowercase(cd.name);
                     for (size_t i = 0; i < cd.params.size(); ++i)
                     {
                         const auto &param = cd.params[i];
@@ -547,7 +541,7 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                     }
                     method.requiredParams = required;
                     // Check for duplicate signature in existing overloads
-                    std::string key = toLower(cd.name);
+                    std::string key = toLowercase(cd.name);
                     auto &overloads = info.methods[key];
                     bool hasDuplicate = false;
                     for (const auto &existing : overloads)
@@ -578,7 +572,7 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                     // If base class has a destructor, this is an override
                     if (!decl.baseClass.empty())
                     {
-                        const ClassInfo *baseInfo = lookupClass(toLower(decl.baseClass));
+                        const ClassInfo *baseInfo = lookupClass(toLowercase(decl.baseClass));
                         if (baseInfo && baseInfo->hasDestructor)
                         {
                             method.isOverride = true;
@@ -587,7 +581,7 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                     method.visibility = member.visibility;
                     method.loc = dd.loc;
                     // Destructors cannot be overloaded
-                    info.methods[toLower(dd.name)].push_back(method);
+                    info.methods[toLowercase(dd.name)].push_back(method);
                 }
                 break;
             }
@@ -609,7 +603,7 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
         pinfo.visibility = member.visibility;
         pinfo.loc = pd.loc;
 
-        auto lower = [&](const std::string &n) { return toLower(n); };
+        auto lower = [&](const std::string &n) { return toLowercase(n); };
 
         // Validate getter target
         if (pd.getter.empty())
@@ -708,13 +702,13 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
             }
         }
 
-        info.properties[toLower(pinfo.name)] = pinfo;
+        info.properties[toLowercase(pinfo.name)] = pinfo;
     }
 
     // Validate interface implementations
     for (const std::string &ifaceName : decl.interfaces)
     {
-        std::string ifaceKey = toLower(ifaceName);
+        std::string ifaceKey = toLowercase(ifaceName);
         const InterfaceInfo *iface = lookupInterface(ifaceKey);
         if (!iface)
         {
@@ -725,7 +719,7 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
         // Check each interface method is implemented (including inherited methods)
         for (const auto &[methodName, ifaceMethods] : iface->methods)
         {
-            std::string methodKey = toLower(methodName);
+            std::string methodKey = toLowercase(methodName);
 
             // Search for method in class and its base classes
             const std::vector<MethodInfo> *classMethods = nullptr;
@@ -742,7 +736,7 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
                 std::string baseClassName = decl.baseClass;
                 while (!baseClassName.empty() && !classMethods)
                 {
-                    const ClassInfo *baseClass = lookupClass(toLower(baseClassName));
+                    const ClassInfo *baseClass = lookupClass(toLowercase(baseClassName));
                     if (!baseClass)
                         break;
 
@@ -797,7 +791,7 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
 
 void SemanticAnalyzer::registerInterface(InterfaceDecl &decl)
 {
-    std::string key = toLower(decl.name);
+    std::string key = toLowercase(decl.name);
 
     // Register as a type
     PasType ifaceType = PasType::interfaceType(decl.name);
@@ -825,7 +819,7 @@ void SemanticAnalyzer::registerInterface(InterfaceDecl &decl)
             method.isVarParam.push_back(param.isVar);
         }
         // Check for duplicate signature in existing overloads
-        std::string methodKey = toLower(sig.name);
+        std::string methodKey = toLowercase(sig.name);
         auto &overloads = info.methods[methodKey];
         bool hasDuplicate = false;
         for (const auto &existing : overloads)
@@ -857,7 +851,7 @@ void SemanticAnalyzer::checkConstructorDestructor(ClassDecl &decl)
                 auto &dtor = static_cast<DestructorDecl &>(*member.methodDecl);
 
                 // Destructor must be named "Destroy"
-                if (toLower(dtor.name) != "destroy")
+                if (toLowercase(dtor.name) != "destroy")
                 {
                     error(dtor.loc, "destructor must be named 'Destroy', not '" + dtor.name + "'");
                 }

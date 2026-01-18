@@ -26,21 +26,19 @@
 #pragma once
 
 #include "il/core/Value.hpp"
+#include "il/internal/io/ParserState.hpp"
+#include "il/internal/io/ParserUtil.hpp"
 #include "support/diag_expected.hpp"
 #include "viper/parse/Cursor.h"
 
 #include <optional>
 #include <string>
+#include <utility>
 
 namespace il::core
 {
 struct Instr;
 } // namespace il::core
-
-namespace il::io::detail
-{
-struct ParserState;
-} // namespace il::io::detail
 
 namespace viper::il::io
 {
@@ -83,6 +81,20 @@ struct ParseResult
         return hasValue() || hasLabel();
     }
 };
+
+/// @brief Build a ParseResult describing a syntax error.
+/// @details Populates the result with a diagnostic carrying the provided
+///          message and source location taken from the parser context.
+/// @param ctx Parsing context containing source location and diagnostics sink.
+/// @param message Human-readable description of the syntax problem.
+/// @return ParseResult initialised with an error status and message.
+inline ParseResult syntaxError(Context &ctx, std::string message)
+{
+    ParseResult result;
+    result.status = ::il::support::Expected<void>{
+        ::il::io::makeLineErrorDiag(ctx.state.curLoc, ctx.state.lineNo, std::move(message))};
+    return result;
+}
 
 /// @brief Parse a general Value operand from the supplied cursor segment.
 /// @param cur Cursor positioned at the start of the operand token.

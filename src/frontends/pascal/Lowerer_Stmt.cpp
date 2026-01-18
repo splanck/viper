@@ -20,11 +20,6 @@ namespace il::frontends::pascal
 
 using common::char_utils::toLowercase;
 
-inline std::string toLower(const std::string &s)
-{
-    return toLowercase(s);
-}
-
 //===----------------------------------------------------------------------===//
 // Statement Lowering
 //===----------------------------------------------------------------------===//
@@ -100,7 +95,7 @@ void Lowerer::lowerInherited(const InheritedStmt &stmt)
         return;
 
     // Lookup base class
-    auto *ci = sema_->lookupClass(toLower(currentClassName_));
+    auto *ci = sema_->lookupClass(toLowercase(currentClassName_));
     if (!ci || ci->baseClass.empty())
         return;
     std::string baseClass = ci->baseClass;
@@ -148,7 +143,7 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
     if (stmt.target->kind == ExprKind::Name)
     {
         auto &nameExpr = static_cast<const NameExpr &>(*stmt.target);
-        std::string key = toLower(nameExpr.name);
+        std::string key = toLowercase(nameExpr.name);
 
         // Map "Result" to the current function's return slot
         if (key == "result" && !currentFuncName_.empty())
@@ -213,8 +208,8 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                     emitStore(Type(Type::Kind::Ptr), slot, objPtr);
 
                     // Look up interface table for this class+interface
-                    std::string ifaceKey = toLower(ifaceName);
-                    std::string classKey = toLower(className);
+                    std::string ifaceKey = toLowercase(ifaceName);
+                    std::string classKey = toLowercase(className);
 
                     auto layoutIt = interfaceLayouts_.find(ifaceKey);
                     if (layoutIt != interfaceLayouts_.end())
@@ -282,7 +277,7 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
             const WithContext &ctx = *it;
             if (ctx.type.kind == PasTypeKind::Class)
             {
-                auto *classInfo = sema_->lookupClass(toLower(ctx.type.name));
+                auto *classInfo = sema_->lookupClass(toLowercase(ctx.type.name));
                 if (classInfo)
                 {
                     // Check for property setter
@@ -349,7 +344,7 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
         // Walk inheritance chain to find the field/property
         if (!currentClassName_.empty())
         {
-            std::string curClass = toLower(currentClassName_);
+            std::string curClass = toLowercase(currentClassName_);
             while (!curClass.empty())
             {
                 auto *classInfo = sema_->lookupClass(curClass);
@@ -405,7 +400,7 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                         LowerResult value = lowerExpr(*stmt.value);
 
                         // Check if this is a weak reference field
-                        auto layoutIt = classLayouts_.find(toLower(currentClassName_));
+                        auto layoutIt = classLayouts_.find(toLowercase(currentClassName_));
                         const ClassFieldLayout *fieldLayout = nullptr;
                         if (layoutIt != classLayouts_.end())
                         {
@@ -428,7 +423,7 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                 }
 
                 // Move to base class
-                curClass = toLower(classInfo->baseClass);
+                curClass = toLowercase(classInfo->baseClass);
             }
         }
         // Unknown target - just return
@@ -448,7 +443,7 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
             fieldExpr.base->kind == ExprKind::Name)
         {
             const auto &nameExpr = static_cast<const NameExpr &>(*fieldExpr.base);
-            std::string key = toLower(nameExpr.name);
+            std::string key = toLowercase(nameExpr.name);
             auto it = locals_.find(key);
             if (it != locals_.end())
             {
@@ -457,11 +452,11 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                 if (baseType.kind == PasTypeKind::Class)
                 {
                     // Search for property in class hierarchy
-                    std::string propKey = toLower(fieldExpr.field);
+                    std::string propKey = toLowercase(fieldExpr.field);
                     const PropertyInfo *foundProperty = nullptr;
                     std::string definingClassName;
                     {
-                        std::string cur = toLower(baseType.name);
+                        std::string cur = toLowercase(baseType.name);
                         while (!cur.empty())
                         {
                             auto *ci = sema_->lookupClass(cur);
@@ -476,7 +471,7 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                             }
                             if (ci->baseClass.empty())
                                 break;
-                            cur = toLower(ci->baseClass);
+                            cur = toLowercase(ci->baseClass);
                         }
                     }
                     if (foundProperty)
@@ -493,7 +488,7 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                         }
                         if (p.setter.kind == PropertyAccessor::Kind::Field)
                         {
-                            auto *defClassInfo = sema_->lookupClass(toLower(definingClassName));
+                            auto *defClassInfo = sema_->lookupClass(toLowercase(definingClassName));
                             PasType classTypeWithFields = PasType::classType(definingClassName);
                             if (defClassInfo)
                             {
@@ -515,7 +510,7 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                 // Default: direct field store
                 if (baseType.kind == PasTypeKind::Class)
                 {
-                    auto *classInfo = sema_->lookupClass(toLower(baseType.name));
+                    auto *classInfo = sema_->lookupClass(toLowercase(baseType.name));
                     PasType classTypeWithFields = baseType;
                     if (classInfo)
                     {
@@ -531,7 +526,7 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                     LowerResult value = lowerExpr(*stmt.value);
 
                     // Check if this is a weak reference field
-                    auto layoutIt = classLayouts_.find(toLower(baseType.name));
+                    auto layoutIt = classLayouts_.find(toLowercase(baseType.name));
                     const ClassFieldLayout *fieldLayout = nullptr;
                     if (layoutIt != classLayouts_.end())
                     {
@@ -579,11 +574,11 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                 Value objPtr = emitLoad(Type(Type::Kind::Ptr), globalAddr);
 
                 // Search for property in class hierarchy (same as local handling)
-                std::string propKey = toLower(fieldExpr.field);
+                std::string propKey = toLowercase(fieldExpr.field);
                 const PropertyInfo *foundProperty = nullptr;
                 std::string definingClassName;
                 {
-                    std::string cur = toLower(baseType.name);
+                    std::string cur = toLowercase(baseType.name);
                     while (!cur.empty())
                     {
                         auto *ci = sema_->lookupClass(cur);
@@ -598,7 +593,7 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                         }
                         if (ci->baseClass.empty())
                             break;
-                        cur = toLower(ci->baseClass);
+                        cur = toLowercase(ci->baseClass);
                     }
                 }
                 if (foundProperty)
@@ -613,7 +608,7 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                     }
                     if (p.setter.kind == PropertyAccessor::Kind::Field)
                     {
-                        auto *defClassInfo = sema_->lookupClass(toLower(definingClassName));
+                        auto *defClassInfo = sema_->lookupClass(toLowercase(definingClassName));
                         PasType classTypeWithFields = PasType::classType(definingClassName);
                         if (defClassInfo)
                         {
@@ -631,7 +626,7 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                 }
 
                 // Default: direct field store
-                auto *classInfo = sema_->lookupClass(toLower(baseType.name));
+                auto *classInfo = sema_->lookupClass(toLowercase(baseType.name));
                 PasType classTypeWithFields = baseType;
                 if (classInfo)
                 {
@@ -647,7 +642,7 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                 LowerResult value = lowerExpr(*stmt.value);
 
                 // Check if this is a weak reference field
-                auto layoutIt = classLayouts_.find(toLower(baseType.name));
+                auto layoutIt = classLayouts_.find(toLowercase(baseType.name));
                 const ClassFieldLayout *fieldLayout = nullptr;
                 if (layoutIt != classLayouts_.end())
                 {
@@ -670,7 +665,7 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
             else if (!currentClassName_.empty())
             {
                 // Base name is a field on Self (e.g., Inner.Val := ...)
-                auto *selfClass = sema_->lookupClass(toLower(currentClassName_));
+                auto *selfClass = sema_->lookupClass(toLowercase(currentClassName_));
                 if (selfClass)
                 {
                     auto selfIt = locals_.find("self");
@@ -689,7 +684,7 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
                         if (baseType.kind == PasTypeKind::Class)
                         {
                             // Now address of nested field on that object
-                            auto *innerClass = sema_->lookupClass(toLower(baseType.name));
+                            auto *innerClass = sema_->lookupClass(toLowercase(baseType.name));
                             PasType innerType = PasType::classType(baseType.name);
                             if (innerClass)
                             {
@@ -731,7 +726,7 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
         if (baseType.kind == PasTypeKind::Array && indexExpr.base->kind == ExprKind::Name)
         {
             const auto &nameExpr = static_cast<const NameExpr &>(*indexExpr.base);
-            std::string key = toLower(nameExpr.name);
+            std::string key = toLowercase(nameExpr.name);
 
             Value baseAddr;
             bool found = false;
@@ -901,7 +896,7 @@ void Lowerer::lowerFor(const ForStmt &stmt)
     size_t exitBlock = createBlock("for_exit");
 
     // Allocate loop variable if not already
-    std::string key = toLower(stmt.loopVar);
+    std::string key = toLowercase(stmt.loopVar);
     Value loopSlot;
     auto it = locals_.find(key);
     if (it == locals_.end())
@@ -1060,7 +1055,7 @@ void Lowerer::lowerForIn(const ForInStmt &stmt)
     setBlock(bodyBlock);
 
     // Allocate loop variable slot if not already present
-    std::string key = toLower(stmt.loopVar);
+    std::string key = toLowercase(stmt.loopVar);
     Value varSlot;
     if (locals_.find(key) == locals_.end())
     {
@@ -1308,7 +1303,7 @@ void Lowerer::lowerTryExcept(const TryExceptStmt &stmt)
         // Bind exception variable if named
         if (!h.varName.empty())
         {
-            std::string key = toLower(h.varName);
+            std::string key = toLowercase(h.varName);
             Value slot = emitAlloca(8);
             locals_[key] = slot;
             emitStore(Type(Type::Kind::Ptr), slot, errParam);
