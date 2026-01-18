@@ -48,6 +48,8 @@ namespace il::core
 {
 
 /// @brief Tagged value used as operands and results in IL.
+/// @details Uses a union for i64/f64/id to save 8+ bytes per Value since only
+///          one payload is active at a time based on the kind discriminant.
 struct Value
 {
     /// @brief Enumerates the different value forms.
@@ -61,19 +63,29 @@ struct Value
         NullPtr
     };
     /// Discriminant selecting which payload is active.
-    Kind kind;
-    /// Integer payload used when kind == Kind::ConstInt.
-    long long i64{0};
-    /// Floating-point payload used when kind == Kind::ConstFloat.
-    double f64{0.0};
-    /// Temporary identifier used when kind == Kind::Temp.
-    unsigned id{0};
+    Kind kind{Kind::NullPtr};
+    /// @brief Union of mutually exclusive payloads (only one active per kind).
+    /// @details Saves 8+ bytes per Value vs separate fields. Access the member
+    ///          matching the current kind: i64 for ConstInt, f64 for ConstFloat,
+    ///          id for Temp. Other kinds use the str field instead.
+    union
+    {
+        /// Integer payload used when kind == Kind::ConstInt.
+        long long i64;
+        /// Floating-point payload used when kind == Kind::ConstFloat.
+        double f64;
+        /// Temporary identifier used when kind == Kind::Temp.
+        unsigned id;
+    };
     /// String payload for string constants and global names.
     std::string str;
 
     /// @brief Flag set when the integer literal represents an i1 boolean.
     /// @invariant Only meaningful when kind == Kind::ConstInt.
     bool isBool{false};
+
+    /// @brief Default constructor initializes to NullPtr with zeroed union.
+    Value() : kind{Kind::NullPtr}, i64{0}, str{}, isBool{false} {}
 
     /// @brief Construct a temporary value.
     /// @param t Identifier of the temporary.

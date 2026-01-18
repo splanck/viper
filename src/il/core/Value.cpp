@@ -42,7 +42,10 @@ namespace il::core
 /// @return Value representing the temporary reference.
 Value Value::temp(unsigned t)
 {
-    return Value{Kind::Temp, 0, 0.0, t, ""};
+    Value v;
+    v.kind = Kind::Temp;
+    v.id = t;
+    return v;
 }
 
 /// @brief Create a signed integer constant value.
@@ -50,9 +53,12 @@ Value Value::temp(unsigned t)
 ///          wraparound semantics are maintained when consumed by handlers.
 /// @param v Integer payload to embed in the value.
 /// @return Value representing the integer literal.
-Value Value::constInt(long long v)
+Value Value::constInt(long long val)
 {
-    return Value{Kind::ConstInt, v, 0.0, 0, ""};
+    Value v;
+    v.kind = Kind::ConstInt;
+    v.i64 = val;
+    return v;
 }
 
 /// @brief Create a boolean literal backed by the integer constant encoding.
@@ -61,9 +67,13 @@ Value Value::constInt(long long v)
 ///          `false` instead of numeric digits.
 /// @param v Boolean payload to embed in the value.
 /// @return Value representing the boolean literal.
-Value Value::constBool(bool v)
+Value Value::constBool(bool val)
 {
-    return Value{Kind::ConstInt, v ? 1 : 0, 0.0, 0, "", true};
+    Value v;
+    v.kind = Kind::ConstInt;
+    v.i64 = val ? 1 : 0;
+    v.isBool = true;
+    return v;
 }
 
 /// @brief Create a floating-point constant value.
@@ -71,9 +81,12 @@ Value Value::constBool(bool v)
 ///          through the IR unchanged.
 /// @param v Floating-point payload to embed in the value.
 /// @return Value representing the floating literal.
-Value Value::constFloat(double v)
+Value Value::constFloat(double val)
 {
-    return Value{Kind::ConstFloat, 0, v, 0, ""};
+    Value v;
+    v.kind = Kind::ConstFloat;
+    v.f64 = val;
+    return v;
 }
 
 /// @brief Create a string literal value.
@@ -84,7 +97,10 @@ Value Value::constFloat(double v)
 /// @return Value representing the string literal.
 Value Value::constStr(std::string s)
 {
-    return Value{Kind::ConstStr, 0, 0.0, 0, std::move(s)};
+    Value v;
+    v.kind = Kind::ConstStr;
+    v.str = std::move(s);
+    return v;
 }
 
 /// @brief Create a global address value that refers to a named global symbol.
@@ -94,7 +110,10 @@ Value Value::constStr(std::string s)
 /// @return Value representing the global address literal.
 Value Value::global(std::string s)
 {
-    return Value{Kind::GlobalAddr, 0, 0.0, 0, std::move(s)};
+    Value v;
+    v.kind = Kind::GlobalAddr;
+    v.str = std::move(s);
+    return v;
 }
 
 /// @brief Create the null pointer literal used by pointer-typed values.
@@ -103,7 +122,7 @@ Value Value::global(std::string s)
 /// @return Value representing the null literal.
 Value Value::null()
 {
-    return Value{Kind::NullPtr, 0, 0.0, 0, ""};
+    return Value{}; // Default constructor creates NullPtr
 }
 
 /// @brief Render a value into its textual IL representation.
