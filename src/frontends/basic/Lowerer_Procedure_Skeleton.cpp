@@ -28,7 +28,9 @@
 
 #include "viper/il/IRBuilder.hpp"
 
+#include <algorithm>
 #include <cassert>
+#include <vector>
 
 #ifdef DEBUG
 #include <unordered_set>
@@ -172,8 +174,16 @@ void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNam
 void Lowerer::allocateBooleanSlots(const std::unordered_set<std::string> &paramNames,
                                    bool includeParams)
 {
-    for (auto &[name, info] : symbols)
+    // Sort symbol names for deterministic allocation order across platforms.
+    std::vector<std::string> sortedNames;
+    sortedNames.reserve(symbols.size());
+    for (const auto &[name, info] : symbols)
+        sortedNames.push_back(name);
+    std::sort(sortedNames.begin(), sortedNames.end());
+
+    for (const auto &name : sortedNames)
     {
+        auto &info = symbols.at(name);
         if (!shouldAllocateSlot(name, info, paramNames, includeParams))
             continue;
         if (info.slotId)
@@ -196,8 +206,16 @@ void Lowerer::allocateBooleanSlots(const std::unordered_set<std::string> &paramN
 void Lowerer::allocateNonBooleanSlots(const std::unordered_set<std::string> &paramNames,
                                       bool includeParams)
 {
-    for (auto &[name, info] : symbols)
+    // Sort symbol names for deterministic allocation order across platforms.
+    std::vector<std::string> sortedNames;
+    sortedNames.reserve(symbols.size());
+    for (const auto &[name, info] : symbols)
+        sortedNames.push_back(name);
+    std::sort(sortedNames.begin(), sortedNames.end());
+
+    for (const auto &name : sortedNames)
     {
+        auto &info = symbols.at(name);
         if (!shouldAllocateSlot(name, info, paramNames, includeParams))
             continue;
         if (info.slotId)
@@ -235,8 +253,16 @@ void Lowerer::allocateNonBooleanSlots(const std::unordered_set<std::string> &par
 void Lowerer::allocateArrayLengthSlots(const std::unordered_set<std::string> &paramNames,
                                        bool includeParams)
 {
-    for (auto &[name, info] : symbols)
+    // Sort symbol names for deterministic allocation order across platforms.
+    std::vector<std::string> sortedNames;
+    sortedNames.reserve(symbols.size());
+    for (const auto &[name, info] : symbols)
+        sortedNames.push_back(name);
+    std::sort(sortedNames.begin(), sortedNames.end());
+
+    for (const auto &name : sortedNames)
     {
+        auto &info = symbols.at(name);
         if (!info.referenced || !info.isArray)
             continue;
         bool isParam = paramNames.find(name) != paramNames.end();

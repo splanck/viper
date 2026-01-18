@@ -48,9 +48,9 @@ func @main() -> i64 {
 entry:
   call @__mod_init$oop()
   %t0 = alloca 8
+  store ptr, %t0, null
   %t1 = alloca 8
   %t2 = alloca 8
-  store ptr, %t2, null
   br L10
 L10:
   .loc 1 1 4
@@ -58,16 +58,16 @@ L10:
   .loc 1 1 4
   call @rt_arr_i64_retain(%t3)
   .loc 1 1 4
-  %t4 = load ptr, %t2
+  %t4 = load ptr, %t0
   .loc 1 1 4
   call @rt_arr_i64_release(%t4)
   .loc 1 1 4
-  store ptr, %t2, %t3
+  store ptr, %t0, %t3
   .loc 1 1 4
   br L20
 L20:
   .loc 1 2 13
-  %t5 = load ptr, %t2
+  %t5 = load ptr, %t0
   .loc 1 2 13
   %t6 = call @rt_arr_i64_len(%t5)
   .loc 1 2 13
@@ -89,7 +89,7 @@ L30:
   cbr %t12, redim_len_fail, redim_len_cont(%t10)
 L40:
   .loc 1 4 4
-  %t16 = load ptr, %t2
+  %t16 = load ptr, %t0
   .loc 1 4 10
   %t17 = load i64, %t1
   .loc 1 4 8
@@ -110,7 +110,7 @@ L40:
   cbr %t24, bc_oob0, bc_ok0
 L50:
   .loc 1 5 12
-  %t25 = load ptr, %t2
+  %t25 = load ptr, %t0
   .loc 1 5 14
   %t26 = load i64, %t1
   .loc 1 5 12
@@ -142,7 +142,7 @@ L60:
   br L70
 L70:
   .loc 1 7 10
-  %t37 = load i64, %t0
+  %t37 = load i64, %t2
   .loc 1 7 10
   call @Viper.Terminal.PrintI64(%t37)
   .loc 1 7 10
@@ -155,26 +155,26 @@ L80:
   .loc 1 8 4
   ret 0
 exit:
-  %t39 = load ptr, %t2
+  %t39 = load ptr, %t0
   call @rt_arr_i64_release(%t39)
-  store ptr, %t2, null
+  store ptr, %t0, null
   ret 0
 redim_len_fail:
   .loc 1 3 4
   trap
 redim_len_cont(%len:i64):
   .loc 1 3 15
-  %t13 = load ptr, %t2
+  %t13 = load ptr, %t0
   .loc 1 3 15
   %t14 = call @rt_arr_i64_resize(%t13, %len)
   .loc 1 3 15
   call @rt_arr_i64_retain(%t14)
   .loc 1 3 15
-  %t15 = load ptr, %t2
+  %t15 = load ptr, %t0
   .loc 1 3 15
   call @rt_arr_i64_release(%t15)
   .loc 1 3 15
-  store ptr, %t2, %t14
+  store ptr, %t0, %t14
   .loc 1 3 4
   br L40
 bc_ok0:
@@ -191,7 +191,7 @@ bc_ok1:
   .loc 1 5 12
   %t34 = call @rt_arr_i64_get(%t25, %t26)
   .loc 1 5 4
-  store i64, %t0, %t34
+  store i64, %t2, %t34
   .loc 1 5 4
   br L60
 bc_oob1:

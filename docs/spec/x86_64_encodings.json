@@ -353,7 +353,7 @@
       "opcode": "XORrr32",
       "mnemonic": "xorl",
       "form": "RegReg",
-      "order": "R_R",
+      "order": "R_R32",
       "pattern": [
         "Reg",
         "Reg"
@@ -591,11 +591,11 @@
     {
       "opcode": "MOVSDrm",
       "mnemonic": "movsd",
-      "form": "RegMem",
-      "order": "R_M",
+      "form": "MemReg",
+      "order": "M_R",
       "pattern": [
-        "Reg",
-        "Mem"
+        "Mem",
+        "Reg"
       ],
       "flags": [
         "RequiresModRM"
@@ -604,11 +604,11 @@
     {
       "opcode": "MOVSDmr",
       "mnemonic": "movsd",
-      "form": "MemReg",
-      "order": "M_R",
+      "form": "RegMem",
+      "order": "R_M",
       "pattern": [
-        "Mem",
-        "Reg"
+        "Reg",
+        "Mem"
       ],
       "flags": [
         "RequiresModRM"

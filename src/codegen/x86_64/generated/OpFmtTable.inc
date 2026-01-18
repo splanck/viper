@@ -47,7 +47,7 @@ static constexpr std::array<OpFmt, 46> kOpFmt = {{
     {MOpcode::CQO, "cqto", 0U, 0U},
     {MOpcode::IDIVrm, "idivq", 1U, kFmtDirect},
     {MOpcode::DIVrm, "divq", 1U, kFmtDirect},
-    {MOpcode::XORrr32, "xorl", 2U, 0U},
+    {MOpcode::XORrr32, "xorl", 2U, kFmtReg32},
     {MOpcode::CMPrr, "cmpq", 2U, 0U},
     {MOpcode::CMPri, "cmpq", 2U, 0U},
     {MOpcode::SETcc, "set", 2U, static_cast<std::uint8_t>(kFmtCond | kFmtSetcc)},

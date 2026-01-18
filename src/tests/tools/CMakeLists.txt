@@ -21,6 +21,7 @@ function(viper_add_tools_tests)
     viper_add_test(test_tools_module_loader
             ${_VIPER_TOOLS_DIR}/ModuleLoaderTests.cpp)
     target_include_directories(test_tools_module_loader PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_definitions(test_tools_module_loader PRIVATE VIPER_REPO_ROOT="${CMAKE_SOURCE_DIR}")
     target_link_libraries(test_tools_module_loader PRIVATE ${VIPER_TOOLS_LIBS})
     viper_add_ctest(test_tools_module_loader test_tools_module_loader)
 

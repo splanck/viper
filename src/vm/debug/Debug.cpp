@@ -59,6 +59,16 @@ std::string DebugCtrl::normalizePath(std::string p)
     if (generic.empty())
         return p.front() == '/' ? std::string{"/"} : std::string{"."};
 
+#ifdef _WIN32
+    // Match the source manager's lowercasing on Windows for case-insensitive
+    // path comparisons.
+    for (char &ch : generic)
+    {
+        if (ch >= 'A' && ch <= 'Z')
+            ch = static_cast<char>(ch - 'A' + 'a');
+    }
+#endif
+
     return generic;
 }
 

@@ -50,9 +50,9 @@ func @main() -> i64 {
 entry:
   call @__mod_init$oop()
   %t0 = alloca 8
+  store ptr, %t0, null
   %t1 = alloca 8
   %t2 = alloca 8
-  store ptr, %t2, null
   %t3 = alloca 8
   br L10
 L10:
@@ -61,14 +61,14 @@ L10:
   .loc 1 1 4
   %t5 = call @Viper.Convert.ToInt(%t4)
   .loc 1 1 4
-  store i64, %t3, %t5
+  store i64, %t2, %t5
   .loc 1 1 4
   call @rt_str_release_maybe(%t4)
   .loc 1 1 4
   br L20
 L20:
   .loc 1 2 10
-  %t6 = load i64, %t3
+  %t6 = load i64, %t2
   .loc 1 2 4
   %t7 = iadd.ovf %t6, 1
   .loc 1 2 4
@@ -82,7 +82,7 @@ L30:
   br L40
 L40:
   .loc 1 4 4
-  store i64, %t0, 0
+  store i64, %t3, 0
   .loc 1 4 4
   br L50
 L50:
@@ -90,7 +90,7 @@ L50:
   br loop_head
 L100:
   .loc 1 10 11
-  %t44 = load i64, %t0
+  %t44 = load i64, %t3
   .loc 1 10 11
   call @Viper.Terminal.PrintI64(%t44)
   .loc 1 10 11
@@ -103,9 +103,9 @@ L110:
   .loc 1 11 5
   ret 0
 exit:
-  %t46 = load ptr, %t2
+  %t46 = load ptr, %t0
   call @rt_arr_i64_release(%t46)
-  store ptr, %t2, null
+  store ptr, %t0, null
   ret 0
 dim_len_fail:
   .loc 1 2 4
@@ -116,18 +116,18 @@ dim_len_cont(%len:i64):
   .loc 1 2 10
   call @rt_arr_i64_retain(%t10)
   .loc 1 2 10
-  %t11 = load ptr, %t2
+  %t11 = load ptr, %t0
   .loc 1 2 10
   call @rt_arr_i64_release(%t11)
   .loc 1 2 10
-  store ptr, %t2, %t10
+  store ptr, %t0, %t10
   .loc 1 2 4
   br L30
 loop_head:
   .loc 1 5 10
   %t12 = load i64, %t1
   .loc 1 5 14
-  %t13 = load i64, %t3
+  %t13 = load i64, %t2
   .loc 1 5 12
   %t14 = scmp_lt %t12, %t13
   .loc 1 5 12
@@ -146,7 +146,7 @@ loop_body:
   .loc 1 6 19
   %t20 = imul.ovf %t18, %t19
   .loc 1 6 6
-  %t21 = load ptr, %t2
+  %t21 = load ptr, %t0
   .loc 1 6 12
   %t22 = load i64, %t1
   .loc 1 6 10
@@ -172,9 +172,9 @@ bc_ok0:
   .loc 1 6 10
   call @rt_arr_i64_set(%t21, %t22, %t20)
   .loc 1 7 14
-  %t30 = load i64, %t0
+  %t30 = load i64, %t3
   .loc 1 7 18
-  %t31 = load ptr, %t2
+  %t31 = load ptr, %t0
   .loc 1 7 20
   %t32 = load i64, %t1
   .loc 1 7 18
@@ -204,7 +204,7 @@ bc_ok1:
   .loc 1 7 16
   %t41 = iadd.ovf %t30, %t40
   .loc 1 7 6
-  store i64, %t0, %t41
+  store i64, %t3, %t41
   .loc 1 8 14
   %t42 = load i64, %t1
   .loc 1 8 16
