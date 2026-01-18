@@ -1696,11 +1696,15 @@ void BytecodeVM::runThreaded() {
         [0xCC] = &&L_RESUME_LABEL,
     };
 
-    // Fill uninitialized entries with default handler
-    for (int i = 0; i < 256; i++) {
-        if (dispatchTable[i] == nullptr) {
-            dispatchTable[i] = &&L_DEFAULT;
+    // Fill uninitialized entries with default handler (once only)
+    static bool tableInitialized = false;
+    if (!tableInitialized) {
+        for (int i = 0; i < 256; i++) {
+            if (dispatchTable[i] == nullptr) {
+                dispatchTable[i] = &&L_DEFAULT;
+            }
         }
+        tableInitialized = true;
     }
 
     state_ = VMState::Running;

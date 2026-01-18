@@ -163,18 +163,41 @@ struct OpFmt
 // Include the generated OpFmt table
 #include "generated/OpFmtTable.inc"
 
-/// @brief Retrieves fmt value using linear search.
-/// @details Uses linear search because kOpFmt table order may not match MOpcode enum order.
+/// @brief Number of MOpcode values (MOVrr=0 to MOVSDmr=51, plus 1).
+constexpr std::size_t kMOpcodeCount = 52;
+
+/// @brief Build a compile-time lookup table mapping MOpcode -> index in kOpFmt.
+/// @details Returns kOpFmt.size() (invalid index) for opcodes not in the table.
+constexpr std::array<std::size_t, kMOpcodeCount> buildOpFmtLookup() noexcept
+{
+    std::array<std::size_t, kMOpcodeCount> lookup{};
+    // Initialize all to invalid index
+    for (auto &idx : lookup)
+        idx = kOpFmt.size();
+    // Populate valid entries
+    for (std::size_t i = 0; i < kOpFmt.size(); ++i)
+    {
+        const auto opcIdx = static_cast<std::size_t>(kOpFmt[i].opc);
+        if (opcIdx < kMOpcodeCount)
+            lookup[opcIdx] = i;
+    }
+    return lookup;
+}
+
+/// @brief Static lookup table for O(1) OpFmt access by MOpcode.
+static constexpr auto kOpFmtLookup = buildOpFmtLookup();
+
+/// @brief Retrieves fmt value using O(1) lookup table.
+/// @details Direct array indexing instead of linear search for better performance.
 const OpFmt *getFmt(MOpcode opc) noexcept
 {
-    for (const auto &fmt : kOpFmt)
-    {
-        if (fmt.opc == opc)
-        {
-            return &fmt;
-        }
-    }
-    return nullptr;
+    const auto idx = static_cast<std::size_t>(opc);
+    if (idx >= kMOpcodeCount)
+        return nullptr;
+    const auto tableIdx = kOpFmtLookup[idx];
+    if (tableIdx >= kOpFmt.size())
+        return nullptr;
+    return &kOpFmt[tableIdx];
 }
 
 [[nodiscard]] int encodeRegister(const OpReg &reg) noexcept;
