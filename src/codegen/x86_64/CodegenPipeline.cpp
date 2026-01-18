@@ -276,11 +276,29 @@ int invokeLinker(const std::filesystem::path &asmPath,
     const std::optional<std::filesystem::path> buildDirOpt = findBuildDir();
     const std::filesystem::path buildDir = buildDirOpt.value_or(std::filesystem::path{});
 
-    auto runtimeArchivePath = [&](std::string_view libBaseName) -> std::filesystem::path
+    // Try multiple paths for runtime libraries: Release, Debug, and direct path
+    // MSVC multi-config builds put outputs in Release/ or Debug/ subdirectories
+    auto findRuntimeArchive = [&](std::string_view libBaseName) -> std::optional<std::filesystem::path>
     {
+        const std::string libFile = std::string(libBaseName) + ".lib";
         if (!buildDir.empty())
-            return buildDir / "src/runtime" / (std::string(libBaseName) + ".lib");
-        return std::filesystem::path("src/runtime") / (std::string(libBaseName) + ".lib");
+        {
+            // Try Release first, then Debug, then direct path
+            const std::filesystem::path releasePath = buildDir / "src/runtime/Release" / libFile;
+            if (fileExists(releasePath))
+                return releasePath;
+            const std::filesystem::path debugPath = buildDir / "src/runtime/Debug" / libFile;
+            if (fileExists(debugPath))
+                return debugPath;
+            const std::filesystem::path directPath = buildDir / "src/runtime" / libFile;
+            if (fileExists(directPath))
+                return directPath;
+        }
+        // Fallback: try relative paths
+        const std::filesystem::path relPath = std::filesystem::path("src/runtime") / libFile;
+        if (fileExists(relPath))
+            return relPath;
+        return std::nullopt;
     };
 
     std::vector<std::string> cmd = {kCcCommand, toNativePath(asmPath)};
@@ -297,15 +315,49 @@ int invokeLinker(const std::filesystem::path &asmPath,
                                                   "viper_rt_base"};
     for (const auto &lib : rtLibs)
     {
-        const std::filesystem::path path = runtimeArchivePath(lib);
-        if (fileExists(path))
-            cmd.push_back(toNativePath(path));
+        const auto pathOpt = findRuntimeArchive(lib);
+        if (pathOpt.has_value())
+            cmd.push_back(toNativePath(*pathOpt));
+    }
+
+    // Find and link vipergfx and viperaud libraries (in lib/ instead of src/runtime/)
+    auto findLibArchive = [&](std::string_view libBaseName) -> std::optional<std::filesystem::path>
+    {
+        const std::string libFile = std::string(libBaseName) + ".lib";
+        if (!buildDir.empty())
+        {
+            // Try Release first, then Debug, then direct path
+            const std::filesystem::path releasePath = buildDir / "lib/Release" / libFile;
+            if (fileExists(releasePath))
+                return releasePath;
+            const std::filesystem::path debugPath = buildDir / "lib/Debug" / libFile;
+            if (fileExists(debugPath))
+                return debugPath;
+            const std::filesystem::path directPath = buildDir / "lib" / libFile;
+            if (fileExists(directPath))
+                return directPath;
+        }
+        return std::nullopt;
+    };
+
+    // Link graphics and audio backend libraries
+    const std::vector<std::string_view> backendLibs = {"vipergfx", "viperaud"};
+    for (const auto &lib : backendLibs)
+    {
+        const auto pathOpt = findLibArchive(lib);
+        if (pathOpt.has_value())
+            cmd.push_back(toNativePath(*pathOpt));
     }
 
     // Add Windows CRT and system libraries
     cmd.push_back("-lmsvcrt");
     cmd.push_back("-lucrt");
     cmd.push_back("-lvcruntime");
+
+    // Add Windows system libraries needed for graphics and input
+    cmd.push_back("-lgdi32");
+    cmd.push_back("-luser32");
+    cmd.push_back("-lxinput");
 
     cmd.push_back("-o");
     cmd.push_back(toNativePath(exePath));

@@ -141,6 +141,11 @@ class LinearScanAllocator
     ///          reuse it.
     void releaseRegister(PhysReg phys, RegClass cls);
 
+    /// @brief Release registers for vregs whose live intervals have ended.
+    /// @details At each instruction, checks all active vregs and releases those whose
+    ///          interval ends at or before the current instruction.
+    void expireIntervals();
+
     /// @brief Spill the active interval with the furthest end point.
     /// @details Selects a victim live range in @p cls, emits the necessary spill code into
     ///          @p prefix, updates state bookkeeping, and frees the associated physical register

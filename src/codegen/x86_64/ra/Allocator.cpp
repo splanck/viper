@@ -259,6 +259,61 @@ void LinearScanAllocator::spillOne(RegClass cls, std::vector<MInstr> &prefix)
     spiller_.spillValue(cls, victimId, victim, poolFor(cls), prefix, result_);
 }
 
+/// @brief Release registers for vregs whose live intervals have ended.
+/// @details At each instruction, we check all active vregs to see if their
+///          interval ends at or before the current instruction. If so, the vreg
+///          is no longer live and its physical register can be returned to the
+///          free pool for reuse. This is essential for correct register reuse
+///          within basic blocks.
+void LinearScanAllocator::expireIntervals()
+{
+    // Collect expired vregs (can't modify active set while iterating)
+    std::vector<uint16_t> expiredGPR{};
+    std::vector<uint16_t> expiredXMM{};
+
+    for (auto vreg : activeGPR_)
+    {
+        const auto *interval = intervals_.lookup(vreg);
+        // Expire if interval ends at or before current instruction
+        if (interval && interval->end <= currentInstrIdx_)
+        {
+            expiredGPR.push_back(vreg);
+        }
+    }
+
+    for (auto vreg : activeXMM_)
+    {
+        const auto *interval = intervals_.lookup(vreg);
+        if (interval && interval->end <= currentInstrIdx_)
+        {
+            expiredXMM.push_back(vreg);
+        }
+    }
+
+    // Now release the expired vregs
+    for (auto vreg : expiredGPR)
+    {
+        auto it = states_.find(vreg);
+        if (it != states_.end() && it->second.hasPhys)
+        {
+            releaseRegister(it->second.phys, RegClass::GPR);
+            it->second.hasPhys = false;
+        }
+        removeActive(RegClass::GPR, vreg);
+    }
+
+    for (auto vreg : expiredXMM)
+    {
+        auto it = states_.find(vreg);
+        if (it != states_.end() && it->second.hasPhys)
+        {
+            releaseRegister(it->second.phys, RegClass::XMM);
+            it->second.hasPhys = false;
+        }
+        removeActive(RegClass::XMM, vreg);
+    }
+}
+
 /// @brief Rewrite a block so each instruction uses allocated registers.
 /// @details The method iterates the block, lowering PX_COPY pseudos via the
 ///          coalescer and handling other instructions by:
@@ -277,6 +332,10 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
 
     for (const auto &instr : block.instructions)
     {
+        // Expire vregs whose live intervals have ended before this instruction.
+        // This ensures their physical registers are returned to the free pool for reuse.
+        expireIntervals();
+
         if (instr.opcode == MOpcode::PX_COPY)
         {
             coalescer.lower(instr, rewritten);
@@ -330,9 +389,12 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
                             }
 
                             auto &state = it->second;
-                            // Only spill if the value is still needed (live past this point)
+                            // Check if the value is still needed after this point.
+                            // If we don't have interval info, conservatively assume
+                            // the value might be needed and spill it to avoid data loss.
                             const auto *interval = intervals_.lookup(vreg);
-                            if (interval && interval->end > currentInstrIdx_)
+                            const bool valueNeeded = !interval || interval->end > currentInstrIdx_;
+                            if (valueNeeded)
                             {
                                 spiller_.ensureSpillSlot(RegClass::GPR, state.spill);
                                 state.spill.needsSpill = true;
@@ -392,11 +454,12 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
                 {
                     continue;
                 }
-                // Check if this value is used after the call
+                // Check if this value is used after the call.
+                // If we don't have interval info, conservatively spill to avoid data loss.
                 const auto *interval = intervals_.lookup(vreg);
-                if (!interval || interval->end <= currentInstrIdx_ + 1)
+                if (interval && interval->end <= currentInstrIdx_ + 1)
                 {
-                    continue;
+                    continue;  // Only skip if interval confirms value is dead after call
                 }
                 gprToSpill.push_back(vreg);
             }
@@ -414,10 +477,11 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
                 {
                     continue;
                 }
+                // If we don't have interval info, conservatively spill to avoid data loss.
                 const auto *interval = intervals_.lookup(vreg);
-                if (!interval || interval->end <= currentInstrIdx_ + 1)
+                if (interval && interval->end <= currentInstrIdx_ + 1)
                 {
-                    continue;
+                    continue;  // Only skip if interval confirms value is dead after call
                 }
                 xmmToSpill.push_back(vreg);
             }
