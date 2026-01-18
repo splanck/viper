@@ -263,8 +263,8 @@ Example:
 
 ```bash
 # Compile Frogger to native ARM64
-./build/src/tools/ilc/ilc front basic -emit-il demos/basic/frogger/frogger.bas > frogger.il
-./build/src/tools/ilc/ilc codegen arm64 frogger.il -S frogger.s
+./build/src/tools/viper/viper front basic -emit-il demos/basic/frogger/frogger.bas > frogger.il
+./build/src/tools/viper/viper codegen arm64 frogger.il -S frogger.s
 as frogger.s -o frogger.o
 clang++ frogger.o build/src/runtime/libviper_runtime.a -o frogger_native
 ./frogger_native
@@ -451,7 +451,7 @@ New streamlined tools for common tasks:
 ./ilrun program.il                # Run IL code
 
 # Previous syntax (still supported)
-./build/src/tools/ilc/ilc front basic -run program.bas
+./build/src/tools/viper/viper front basic -run program.bas
 ```
 
 #### Enhanced Debugging

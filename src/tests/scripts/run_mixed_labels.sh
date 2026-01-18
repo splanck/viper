@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-BIN="${1:-./build/src/tools/ilc/ilc}"
+BIN="${1:-./build/src/tools/viper/viper}"
 BASIC="src/tests/basic/mixed_labels.bas"
 OUT="$("$BIN" front basic -run "$BASIC")"
 EXPECTED=$'start\nlanded on 100'

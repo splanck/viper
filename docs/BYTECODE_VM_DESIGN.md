@@ -1390,7 +1390,7 @@ src/bytecode/
     ├── test_bytecode_threading.cpp
     └── test_bytecode_concurrency.cpp
 
-src/tools/ilc/
+src/tools/viper/
 ├── cmd_run_bytecode.cpp      # CLI integration
 
 docs/
@@ -1401,7 +1401,7 @@ docs/
 ### 16.2 Milestone Criteria
 
 1. Threaded programs execute correctly
-2. `ilc -run --bytecode` works for all test programs
+2. `viper -run --bytecode` works for all test programs
 3. Performance within 10-50x of Python
 4. All existing tests pass
 

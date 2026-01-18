@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-BIN="${1:-./build/src/tools/ilc/ilc}"
+BIN="${1:-./build/src/tools/viper/viper}"
 
 run() {
   local file="$1" expect="$2"

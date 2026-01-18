@@ -14,8 +14,8 @@ jobs:
       - uses: actions/checkout@v3
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-      - name: Build ilc
-        run: cmake --build build --target ilc -j2
+      - name: Build viper
+        run: cmake --build build --target viper -j2
       - name: Run basic string tests
         run: ctest --test-dir build --output-on-failure -R basic_strings
   build:

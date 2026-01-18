@@ -1151,7 +1151,7 @@ Programs can run in two modes:
     - Full debugging support
     - Overflow-checked arithmetic
 
-2. **Native Compilation**: Via `ilc codegen arm64`
+2. **Native Compilation**: Via `viper codegen arm64`
     - Compile to native ARM64 binary
     - Better performance
     - Requires explicit compilation step

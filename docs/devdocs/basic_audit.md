@@ -7,7 +7,7 @@
 
 ## METHODOLOGY
 
-Each feature is tested by writing a minimal program, compiling with `ilc front basic`, and running in the VM. Only
+Each feature is tested by writing a minimal program, compiling with `viper front basic`, and running in the VM. Only
 features that actually compile and run are documented as "SUPPORTED".
 
 ---

@@ -114,7 +114,7 @@ TEST(ARM64E2E, MinimalPrintTest)
 
     const std::string buildDir = getBuildDir();
     const std::string vbasic = buildDir + "/src/tools/vbasic/vbasic";
-    const std::string ilc = buildDir + "/src/tools/ilc/ilc";
+    const std::string ilc = buildDir + "/src/tools/viper/viper";
 
     if (!fileExists(vbasic) || !fileExists(ilc))
     {
@@ -151,7 +151,7 @@ TEST(ARM64E2E, ArrayOperationsTest)
 
     const std::string buildDir = getBuildDir();
     const std::string vbasic = buildDir + "/src/tools/vbasic/vbasic";
-    const std::string ilc = buildDir + "/src/tools/ilc/ilc";
+    const std::string ilc = buildDir + "/src/tools/viper/viper";
 
     if (!fileExists(vbasic) || !fileExists(ilc))
     {
@@ -191,7 +191,7 @@ TEST(ARM64E2E, FroggerCompilesToAsm)
 
     const std::string buildDir = getBuildDir();
     const std::string vbasic = buildDir + "/src/tools/vbasic/vbasic";
-    const std::string ilc = buildDir + "/src/tools/ilc/ilc";
+    const std::string ilc = buildDir + "/src/tools/viper/viper";
     const std::string froggerBas = "../demos/basic/frogger/frogger.bas";
 
     if (!fileExists(vbasic) || !fileExists(ilc))
@@ -237,7 +237,7 @@ TEST(ARM64E2E, VtrisCompilesToAsm)
 
     const std::string buildDir = getBuildDir();
     const std::string vbasic = buildDir + "/src/tools/vbasic/vbasic";
-    const std::string ilc = buildDir + "/src/tools/ilc/ilc";
+    const std::string ilc = buildDir + "/src/tools/viper/viper";
     const std::string vtrisBas = "../demos/basic/vtris/vtris.bas";
 
     if (!fileExists(vbasic) || !fileExists(ilc))

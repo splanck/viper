@@ -5,7 +5,7 @@ ilrun \- Run a Viper IL program
 .B ilrun
 [\fIoptions\fR] \fIFILE.il\fR
 .SH DESCRIPTION
-\fBilrun\fR is a user-friendly wrapper for executing textual Viper IL files that define a \fCfunc @main()\fR entry point. It mirrors the \fBilc -run\fR engine but with simpler syntax.
+\fBilrun\fR is a user-friendly wrapper for executing textual Viper IL files that define a \fCfunc @main()\fR entry point. It mirrors the \fBviper -run\fR engine but with simpler syntax.
 .SH OPTIONS
 .TP
 \fB--trace\fR[=\fIil\fR|\fIsrc\fR]
@@ -51,5 +51,5 @@ ilrun program.il --trace --break-src main.bas:10
 .SH EXIT STATUS
 0 on success; non-zero on error.
 .SH SEE ALSO
-\fBilc\fR(1), \fBil-verify\fR(1)
+\fBviper\fR(1), \fBil-verify\fR(1)
 

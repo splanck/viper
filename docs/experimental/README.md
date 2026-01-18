@@ -16,7 +16,7 @@ cmake --build build -j
 
 This will build:
 - `vpascal` - Pascal compiler/runner
-- Pascal support in `ilc` (via `ilc front pascal`)
+- Pascal support in `viper` (via `viper front pascal`)
 - Pascal test suite
 
 ### Documentation

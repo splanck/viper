@@ -8,7 +8,7 @@ function(viper_add_golden_suite_tests)
     endif ()
 
     set(_VIPER_GOLDEN_DIR ${CMAKE_CURRENT_FUNCTION_LIST_DIR})
-    set(BASIC_ILC $<TARGET_FILE:ilc>)
+    set(BASIC_ILC $<TARGET_FILE:viper>)
 
     file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/unknown_var.stderr EXPECT_UNKNOWN_VAR)
     string(STRIP "${EXPECT_UNKNOWN_VAR}" EXPECT_UNKNOWN_VAR)

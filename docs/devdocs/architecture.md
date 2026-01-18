@@ -64,7 +64,7 @@ the IL as the thin waist between language-specific semantics and machine executi
 
 ### End-to-end lifecycle
 
-`ilc` is the command-line entry point. It parses arguments, loads source files, and drives the compile and execute
+`viper` is the command-line entry point. It parses arguments, loads source files, and drives the compile and execute
 pipeline:
 
 1. BASIC front end emits IL.
@@ -73,7 +73,7 @@ pipeline:
 4. VM loads the module and runs `main`.
 
 ```sh
-$ ilc run examples/basic/ex1_hello_cond.bas
+$ viper run examples/basic/ex1_hello_cond.bas
 HELLO
 READY
 10
@@ -90,7 +90,7 @@ When the native backend is enabled, the same IL feeds the code generator instead
 - **VM:** `src/vm/`, `src/runtime/`.
 - **Code generation:** `src/codegen/` (x86_64, aarch64, common).
 - **Support utilities:** `src/support/`.
-- **Tools:** `src/tools/ilc/` (driver and subcommands), `src/tools/`.
+- **Tools:** `src/tools/viper/` (driver and subcommands), `src/tools/`.
 - **Docs & examples:** `docs/`, `examples/`, `tests/` (`unit/`, `golden/`, `e2e/`).
 - **Build system:** top-level `CMakeLists.txt`, `cmake/` helpers, `scripts/` for dev automation.
 
@@ -264,14 +264,14 @@ Differential testing against the VM keeps codegen honest once implemented.
 
 ### Tools & CLI
 
-The CLI (`ilc`) dispatches to focused handlers based on the first tokens:
+The CLI (`viper`) dispatches to focused handlers based on the first tokens:
 
 - `-run <file.il> [--trace] [--stdin-from <file>] [--max-steps N] [--bounds-checks]`
 - `front basic -emit-il <file.bas> [--bounds-checks]`
 - `front basic -run <file.bas> [--trace] [--stdin-from <file>] [--max-steps N] [--bounds-checks]`
 - `il-opt <in.il> -o <out.il> --passes p1,p2`
 
-Handlers live in `src/tools/ilc/cmd_run_il.cpp`, `cmd_front_basic.cpp`, and `cmd_il_opt.cpp`; `src/tools/ilc/main.cpp`
+Handlers live in `src/tools/viper/cmd_run_il.cpp`, `cmd_front_basic.cpp`, and `cmd_il_opt.cpp`; `src/tools/viper/main.cpp`
 merely dispatches to these subcommands. Additional tools (verifier, disassembler) reuse the same IL libraries.
 
 Diagnostics carry source mapping (file/line/column) through AST → IL → VM/native for clear errors, and a REPL (
@@ -352,7 +352,7 @@ the IL version and updating consumers.
 ```
 
 Top-level CMake targets include `il_core`, `il_vm`, `il_codegen_x86_64`, `il_codegen_aarch64`, `frontend_basic`,
-`librt`, CLI executables (`ilc`, `vbasic`, `ilrun`, `il-dis`, `il-verify`), and dedicated test binaries.
+`librt`, CLI executables (`viper`, `vbasic`, `ilrun`, `il-dis`, `il-verify`), and dedicated test binaries.
 
 ### Tooling & Build
 

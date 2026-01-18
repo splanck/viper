@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the top-level `ilc` driver. The executable dispatches to
+// Implements the top-level `viper` driver. The executable dispatches to
 // subcommands that run IL programs, compile BASIC, or apply optimizer passes.
 // Shared CLI plumbing lives in cli.cpp; this file wires those helpers into the
 // `main` entry point and prints user-facing usage information.
@@ -13,7 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Entry point and usage utilities for the `ilc` driver.
+/// @brief Entry point and usage utilities for the `viper` driver.
 /// @details The translation unit owns only user-interface glue; heavy lifting
 ///          such as pass management or VM execution is delegated to subcommands.
 
@@ -38,16 +38,16 @@
 namespace
 {
 
-/// @brief Print the ilc version banner and runtime configuration summary.
+/// @brief Print the viper version banner and runtime configuration summary.
 ///
-/// @details The banner includes the ilc version, current IL version, and whether
+/// @details The banner includes the viper version, current IL version, and whether
 ///          deterministic numerics are enabled. The routine is factored out so
 ///          both `main` and future subcommands can reuse it when handling
 ///          `--version` flags.
 void printVersion()
 {
     // Version banner
-    std::cout << "ilc v" << VIPER_VERSION_STR << "\n";
+    std::cout << "viper v" << VIPER_VERSION_STR << "\n";
     if (std::string(VIPER_SNAPSHOT_STR).size())
         std::cout << "snap: " << VIPER_SNAPSHOT_STR << "\n";
     std::cout << "IL current: " << VIPER_IL_VERSION_STR << "\n";
@@ -247,7 +247,7 @@ int dumpRuntimeClasses()
 }
 } // namespace
 
-/// @brief Print synopsis and option hints for the `ilc` CLI.
+/// @brief Print synopsis and option hints for the `viper` CLI.
 ///
 /// @details Step-by-step summary:
 ///          1. Emit the tool banner with version information.
@@ -258,22 +258,22 @@ int dumpRuntimeClasses()
 void usage()
 {
     std::cerr
-        << "ilc v" << VIPER_VERSION_STR << "\n"
-        << "Usage: ilc -run <file.il> [--trace=il|src] [--stdin-from <file>] [--max-steps N]"
+        << "viper v" << VIPER_VERSION_STR << "\n"
+        << "Usage: viper -run <file.il> [--trace=il|src] [--stdin-from <file>] [--max-steps N]"
            " [--break label|file:line]* [--break-src file:line]* [--watch name]* [--bounds-checks] "
            "[--count] [--time] [--dump-trap]\n"
-        << "       ilc front basic -emit-il <file.bas> [--bounds-checks] "
+        << "       viper front basic -emit-il <file.bas> [--bounds-checks] "
            "[--no-runtime-namespaces]\n"
-        << "       ilc front basic -run <file.bas> [--trace=il|src] [--stdin-from <file>] "
+        << "       viper front basic -run <file.bas> [--trace=il|src] [--stdin-from <file>] "
            "[--max-steps N] [--bounds-checks] [--dump-trap] [--no-runtime-namespaces]\n"
-        << "       ilc front pascal -emit-il <file.pas> [unit1.pas unit2.pas ...]\n"
-        << "       ilc front pascal -run <file.pas> [unit1.pas ...] [--trace=il|src] [--stdin-from "
+        << "       viper front pascal -emit-il <file.pas> [unit1.pas unit2.pas ...]\n"
+        << "       viper front pascal -run <file.pas> [unit1.pas ...] [--trace=il|src] [--stdin-from "
            "<file>]\n"
-        << "       ilc codegen x64 -S <in.il> [-o <exe>] [--run-native]\n"
-        << "       ilc codegen arm64 <in.il> [-S <out.s>] [-o <exe|obj>] [-run-native]\n"
-        << "       ilc il-opt <in.il> -o <out.il> [--passes p1,p2] [-print-before] [-print-after]"
+        << "       viper codegen x64 -S <in.il> [-o <exe>] [--run-native]\n"
+        << "       viper codegen arm64 <in.il> [-S <out.s>] [-o <exe|obj>] [-run-native]\n"
+        << "       viper il-opt <in.il> -o <out.il> [--passes p1,p2] [-print-before] [-print-after]"
            " [-verify-each]\n"
-        << "       ilc bench <file.il> [file2.il ...] [-n N] [--table|--switch|--threaded] "
+        << "       viper bench <file.il> [file2.il ...] [-n N] [--table|--switch|--threaded] "
            "[--json]\n"
         << "\nIL notes:\n"
         << "  IL modules executed with -run must define func @main().\n"
@@ -290,7 +290,7 @@ void usage()
 namespace viper::tools::ilc
 {
 
-/// @brief Adapter invoked by `ilc codegen x64` from the top-level driver.
+/// @brief Adapter invoked by `viper codegen x64` from the top-level driver.
 /// @details The driver hands control to this helper with `argv` still pointing
 ///          at the architecture token. The helper strips it before delegating to
 ///          the actual command implementation so existing parsing logic
@@ -306,7 +306,7 @@ int run_codegen_x64(int argc, char **argv)
 
 } // namespace viper::tools::ilc
 
-/// @brief Program entry for the `ilc` command-line tool.
+/// @brief Program entry for the `viper` command-line tool.
 ///
 /// @param argc Number of command-line arguments.
 /// @param argv Array of argument strings.

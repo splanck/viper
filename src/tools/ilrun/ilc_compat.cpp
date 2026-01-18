@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Compatibility shims for ilc functions used by cmd_run_il.cpp
+// Compatibility shims for viper CLI functions used by cmd_run_il.cpp
 //
 //===----------------------------------------------------------------------===//
 

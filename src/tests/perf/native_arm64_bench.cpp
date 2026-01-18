@@ -18,7 +18,7 @@
 
 #include "il/io/Parser.hpp"
 #include "il/transform/PassManager.hpp"
-#include "tools/ilc/cmd_codegen_arm64.hpp"
+#include "tools/viper/cmd_codegen_arm64.hpp"
 
 #include <chrono>
 #include <cstdlib>

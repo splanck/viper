@@ -44,7 +44,7 @@ Status notes:
 - src/frontends/zia — Zia frontend (lexer, parser, semantic analysis, IL lowerer)
 - src/frontends/pascal — Pascal frontend (lexer, parser, semantic analysis, IL lowerer)
 - src/frontends/common — Shared frontend utilities
-- src/tools/ilc — Unified compiler driver (run IL, front basic, il-opt, codegen)
+- src/tools/viper — Unified compiler driver (run IL, front basic, il-opt, codegen)
 - src/tools/zia — Zia compiler driver
 - src/tools/vbasic — Friendly BASIC wrapper over `ilc front basic`
 - src/tools/ilrun — Friendly IL runner wrapper over `ilc -run`

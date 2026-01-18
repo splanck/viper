@@ -32,7 +32,7 @@
 #include "il/verify/Verifier.hpp"
 #include "support/diag_expected.hpp"
 #include "tests/TestHarness.hpp"
-#include "tools/ilc/cmd_codegen_arm64.hpp"
+#include "tools/viper/cmd_codegen_arm64.hpp"
 
 #include "tests/common/PosixCompat.h"
 #include <atomic>

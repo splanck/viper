@@ -20,7 +20,7 @@ Speak:
 RETURN
 BAS
 
-OUT="$("${BUILD_DIR}/src/tools/ilc/ilc" front basic -run "$TMP")"
+OUT="$("${BUILD_DIR}/src/tools/viper/viper" front basic -run "$TMP")"
 if [[ "$OUT" != $'woof\n???' ]]; then
   echo "Unexpected output:"
   printf '%s\n' "$OUT"

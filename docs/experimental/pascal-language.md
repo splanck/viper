@@ -539,4 +539,4 @@ end.
 
 - Multi-file compilation with units
 - Exception handling patterns
-- Native code compilation with `ilc codegen arm64`
+- Native code compilation with `viper codegen arm64`

@@ -2,7 +2,7 @@
 
 Last Updated: 2025-11-15
 
-Scope: Tooling/driver/infra issues (ilc/vm/runtime/registry), not language semantics.
+Scope: Tooling/driver/infra issues (viper/vm/runtime/registry), not language semantics.
 
 ---
 
@@ -10,14 +10,14 @@ Scope: Tooling/driver/infra issues (ilc/vm/runtime/registry), not language seman
 
 Status: Fixed (signature arity derived from registry; unit test added)
 Category: Frontend (Semantics)/Tooling
-Severity: High (crashes `ilc` on common usage)
+Severity: High (crashes `viper` on common usage)
 
 Reproduction:
 
 - E2E test `basic_args_some` fails when running:
-    - `ilc front basic -run tests/e2e/basic_args_some.bas -- foo "bar baz"`
+    - `viper front basic -run tests/e2e/basic_args_some.bas -- foo "bar baz"`
 - Minimal cases:
-    - `PRINT ARG$(0)` → `ilc ... -emit-il` or `-run` segfaults (139)
+    - `PRINT ARG$(0)` → `viper ... -emit-il` or `-run` segfaults (139)
     - `PRINT COMMAND$()` → reports nonsensical arity in diag, then crashes
 
 Observed Diagnostics:
@@ -273,7 +273,7 @@ Impact: None observed in tests, but order-of-init was brittle.
 
 Summary:
 
-- `ilc front basic -run ... -- args` seeded runtime arguments in the CLI before
+- `viper front basic -run ... -- args` seeded runtime arguments in the CLI before
   VM initialisation. This worked but coupled CLI to runtime init order.
 
 Fix:

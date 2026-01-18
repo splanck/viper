@@ -140,7 +140,7 @@ Demonstrates:
 Compile with:
 
 ```bash
-./build/src/tools/ilc/ilc front basic -emit-il examples/basic/namespace_demo.bas
+./build/src/tools/viper/viper front basic -emit-il examples/basic/namespace_demo.bas
 ```
 
 ## CI Integration
@@ -306,7 +306,7 @@ cat tests/golden/basic/namespace_simple.stdout
 
 ```bash
 # Compile manually to see errors
-./build/src/tools/ilc/ilc front basic -emit-il examples/basic/namespace_demo.bas
+./build/src/tools/viper/viper front basic -emit-il examples/basic/namespace_demo.bas
 ```
 
 ## Performance Benchmarking

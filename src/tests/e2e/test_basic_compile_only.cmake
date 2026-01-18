@@ -14,7 +14,7 @@ endif ()
 # Verify IL well-formedness using il-verify next to ilc
 set(IL_VERIFY ${ILC})
 # Handle both Unix and Windows paths (CMake uses forward slashes even on Windows)
-string(REPLACE "/tools/ilc/ilc" "/tools/il-verify/il-verify" IL_VERIFY ${IL_VERIFY})
+string(REPLACE "/tools/viper/viper" "/tools/il-verify/il-verify" IL_VERIFY ${IL_VERIFY})
 string(REPLACE "/tools/ilc/Debug/ilc.exe" "/tools/il-verify/Debug/il-verify.exe" IL_VERIFY ${IL_VERIFY})
 string(REPLACE "/tools/ilc/Release/ilc.exe" "/tools/il-verify/Release/il-verify.exe" IL_VERIFY ${IL_VERIFY})
 execute_process(COMMAND ${IL_VERIFY} ${IL_FILE} RESULT_VARIABLE r2)

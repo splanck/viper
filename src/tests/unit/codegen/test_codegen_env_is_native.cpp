@@ -18,7 +18,7 @@
 #include "il/io/Parser.hpp"
 #include "il/verify/Verifier.hpp"
 #include "tests/TestHarness.hpp"
-#include "tools/ilc/cmd_codegen_arm64.hpp"
+#include "tools/viper/cmd_codegen_arm64.hpp"
 
 #include <filesystem>
 #include <fstream>

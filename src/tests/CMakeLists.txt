@@ -323,13 +323,13 @@ viper_add_ctest(NoAssertFalseGuard
         -P ${CMAKE_SOURCE_DIR}/src/tests/tools/NoAssertFalseTest.cmake)
 
 add_test(NAME smoke_term_basic
-        COMMAND $<TARGET_FILE:ilc> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/term_basic.bas)
+        COMMAND $<TARGET_FILE:viper> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/term_basic.bas)
 
 # Shell script tests - skip on Windows
 if (NOT WIN32)
     add_test(NAME basic_sum_no_linenos
             COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_sum_no_linenos.sh
-            $<TARGET_FILE:ilc>)
+            $<TARGET_FILE:viper>)
     set_tests_properties(basic_sum_no_linenos
             PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
@@ -425,10 +425,10 @@ target_link_libraries(test_run_process_quotes PRIVATE viper_common)
 viper_add_ctest(test_run_process_quotes test_run_process_quotes)
 
 add_test(NAME smoke_basic_oop
-        COMMAND $<TARGET_FILE:ilc> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/basic_oop.bas)
+        COMMAND $<TARGET_FILE:viper> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/basic_oop.bas)
 
 add_test(NAME smoke_basic_point_ctor
-        COMMAND $<TARGET_FILE:ilc> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/basic_point_ctor.bas)
+        COMMAND $<TARGET_FILE:viper> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/basic_point_ctor.bas)
 
 viper_add_unit_support_tests()
 viper_add_il_core_tests()
@@ -494,7 +494,7 @@ viper_add_ctest(test_oop_dispose test_oop_dispose)
 if (NOT WIN32)
     add_test(NAME basic_repros
             COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_basic_repros.sh
-            $<TARGET_FILE:ilc>)
+            $<TARGET_FILE:viper>)
     set_tests_properties(basic_repros
             PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -703,17 +703,17 @@ set_tests_properties(test_pascal_semantic_destructor PROPERTIES LABELS pascal)
 
 # Pascal frontend smoke test (emit IL)
 add_test(NAME pascal_skeleton_emit_il
-        COMMAND $<TARGET_FILE:ilc> front pascal -emit-il ${CMAKE_CURRENT_SOURCE_DIR}/data/pascal/hello.pas)
+        COMMAND $<TARGET_FILE:viper> front pascal -emit-il ${CMAKE_CURRENT_SOURCE_DIR}/data/pascal/hello.pas)
 set_tests_properties(pascal_skeleton_emit_il PROPERTIES LABELS pascal)
 
 # Pascal frontend smoke test (run)
 add_test(NAME pascal_skeleton_run
-        COMMAND $<TARGET_FILE:ilc> front pascal -run ${CMAKE_CURRENT_SOURCE_DIR}/data/pascal/hello.pas)
+        COMMAND $<TARGET_FILE:viper> front pascal -run ${CMAKE_CURRENT_SOURCE_DIR}/data/pascal/hello.pas)
 set_tests_properties(pascal_skeleton_run PROPERTIES LABELS pascal)
 
 # Pascal exception handling emit IL test
 add_test(NAME pascal_eh_emit_il
-        COMMAND $<TARGET_FILE:ilc> front pascal -emit-il ${CMAKE_CURRENT_SOURCE_DIR}/data/pascal/exception_handling.pas)
+        COMMAND $<TARGET_FILE:viper> front pascal -emit-il ${CMAKE_CURRENT_SOURCE_DIR}/data/pascal/exception_handling.pas)
 set_tests_properties(pascal_eh_emit_il PROPERTIES LABELS pascal)
 
 # Pascal properties tests

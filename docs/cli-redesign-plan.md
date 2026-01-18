@@ -29,7 +29,7 @@ backwards compatibility.
 ```
 src/
 ├── tools/
-│   ├── ilc/                   # Monolithic tool (18MB binary)
+│   ├── viper/                 # Monolithic tool (18MB binary)
 │   │   ├── main.cpp           # Main dispatcher
 │   │   ├── cmd_run_il.cpp     # IL VM execution
 │   │   ├── cmd_front_basic.cpp # BASIC frontend
@@ -212,8 +212,8 @@ std::vector<std::string> translate_args(int argc, char** argv) {
 add_executable(vbasic
     tools/vbasic/main.cpp
     tools/vbasic/usage.cpp
-    tools/ilc/cmd_front_basic.cpp  # Reuse existing logic
-    tools/ilc/cli.cpp)
+    tools/viper/cmd_front_basic.cpp  # Reuse existing logic
+    tools/viper/cli.cpp)
 set_target_properties(vbasic PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/vbasic)
 target_link_libraries(vbasic
@@ -292,7 +292,7 @@ Notes:
 
 ```cpp
 // src/tools/ilrun/main.cpp
-#include "tools/ilc/cli.hpp"
+#include "tools/viper/cli.hpp"
 
 int main(int argc, char** argv) {
     if (argc < 2) {
@@ -320,9 +320,9 @@ int main(int argc, char** argv) {
 add_executable(ilrun
     tools/ilrun/main.cpp
     tools/ilrun/usage.cpp
-    tools/ilc/cmd_run_il.cpp  # Reuse existing logic
-    tools/ilc/cli.cpp
-    tools/ilc/break_spec.cpp)
+    tools/viper/cmd_run_il.cpp  # Reuse existing logic
+    tools/viper/cli.cpp
+    tools/viper/break_spec.cpp)
 set_target_properties(ilrun PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/ilrun)
 target_link_libraries(ilrun
@@ -535,7 +535,7 @@ if (argc == 2) {
 
 ```cpp
 // src/tools/ilopt/main.cpp
-#include "tools/ilc/cli.hpp"
+#include "tools/viper/cli.hpp"
 
 int main(int argc, char** argv) {
     return cmdILOpt(argc - 1, argv + 1);
@@ -547,8 +547,8 @@ int main(int argc, char** argv) {
 ```cmake
 add_executable(ilopt
     tools/ilopt/main.cpp
-    tools/ilc/cmd_il_opt.cpp
-    tools/ilc/cli.cpp)
+    tools/viper/cmd_il_opt.cpp
+    tools/viper/cli.cpp)
 target_link_libraries(ilopt PRIVATE ... il_transform ...)
 install(TARGETS ilopt RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 ```
@@ -614,8 +614,8 @@ src/tools/
 │   └── usage.cpp
 ├── ilopt/                      # NEW (P2): IL optimizer
 │   └── main.cpp
-├── ilc/                        # EXISTING: Keep for compatibility
-│   ├── main.cpp                # Eventually simplify to IL compiler only
+├── viper/                      # Main CLI tool
+│   ├── main.cpp                # Main dispatcher
 │   ├── cmd_run_il.cpp
 │   ├── cmd_front_basic.cpp
 │   ├── cmd_il_opt.cpp
@@ -752,8 +752,8 @@ src/tools/
 
 ## References
 
-- Current ilc implementation: `src/tools/ilc/`
+- Current viper implementation: `src/tools/viper/`
 - CMake build config: `src/CMakeLists.txt` (lines 251-272)
-- Existing CLI helpers: `src/tools/ilc/cli.hpp`, `cli.cpp`
-- BASIC frontend: `src/tools/ilc/cmd_front_basic.cpp`
-- IL runner: `src/tools/ilc/cmd_run_il.cpp`
+- Existing CLI helpers: `src/tools/viper/cli.hpp`, `cli.cpp`
+- BASIC frontend: `src/tools/viper/cmd_front_basic.cpp`
+- IL runner: `src/tools/viper/cmd_run_il.cpp`

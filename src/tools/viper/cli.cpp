@@ -5,14 +5,14 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements shared command-line parsing for the ilc driver.  The helpers here
+// Implements shared command-line parsing for the viper driver.  The helpers here
 // decode the global options that apply to multiple subcommands so individual
 // entry points can focus on their feature-specific flags.
 //
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Parses global command-line options shared by ilc subcommands.
+/// @brief Parses global command-line options shared by viper subcommands.
 /// @details Keeping this logic out of the subcommand implementations minimises
 ///          duplication and ensures future options behave uniformly across the
 ///          driver.
@@ -26,7 +26,7 @@
 namespace ilc
 {
 
-/// @brief Parse an ilc global option and update the shared options structure.
+/// @brief Parse a viper global option and update the shared options structure.
 ///
 /// @details Recognised options include tracing (`--trace[=mode]`), stdin
 ///          redirection, instruction limits, bounds checks, and trap dumping.

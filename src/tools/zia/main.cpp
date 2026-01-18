@@ -15,7 +15,7 @@
 ///          the tool supports common flags, usage text, and version reporting.
 
 #include "tools/common/frontend_tool.hpp"
-#include "tools/ilc/cli.hpp"
+#include "tools/viper/cli.hpp"
 #include "usage.hpp"
 
 /// @brief Main entry point for the Zia compiler CLI.

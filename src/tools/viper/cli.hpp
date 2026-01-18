@@ -5,8 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tools/ilc/cli.hpp
-// Purpose: Declarations for ilc subcommand handlers and usage helper.
+// File: tools/viper/cli.hpp
+// Purpose: Declarations for viper subcommand handlers and usage helper.
 // Key invariants: None.
 // Ownership/Lifetime: N/A.
 // Links: docs/codemap.md
@@ -27,7 +27,7 @@ class SourceManager;
 namespace ilc
 {
 
-/// @brief Shared configuration for ilc subcommands that execute IL.
+/// @brief Shared configuration for viper subcommands that execute IL.
 struct SharedCliOptions
 {
     /// @brief Trace settings requested via --trace flags.
@@ -54,7 +54,7 @@ enum class SharedOptionParseResult
     Error       ///< Argument looked like a shared option but was malformed.
 };
 
-/// @brief Parse an ilc option common to multiple subcommands.
+/// @brief Parse a viper option common to multiple subcommands.
 ///
 /// @param index Index of the current argument; advanced when parameters are consumed.
 /// @param argc Total number of arguments available.
@@ -68,9 +68,9 @@ SharedOptionParseResult parseSharedOption(int &index,
 
 } // namespace ilc
 
-/// @brief Handle `ilc front basic` subcommands.
+/// @brief Handle `viper front basic` subcommands.
 ///
-/// Invoked when the command line begins with `ilc front basic`. After the
+/// Invoked when the command line begins with `viper front basic`. After the
 /// subcommand tokens are consumed, `argc` and `argv` contain the remaining
 /// arguments specific to the BASIC front end.
 ///
@@ -83,9 +83,9 @@ SharedOptionParseResult parseSharedOption(int &index,
 /// redirect `stdin` when `--stdin-from` is provided.
 int cmdFrontBasic(int argc, char **argv);
 
-/// @brief Handle `ilc front pascal` subcommands.
+/// @brief Handle `viper front pascal` subcommands.
 ///
-/// Invoked when the command line begins with `ilc front pascal`. After the
+/// Invoked when the command line begins with `viper front pascal`. After the
 /// subcommand tokens are consumed, `argc` and `argv` contain the remaining
 #ifdef VIPER_ENABLE_PASCAL
 /// arguments specific to the Pascal front end.
@@ -97,14 +97,14 @@ int cmdFrontBasic(int argc, char **argv);
 int cmdFrontPascal(int argc, char **argv);
 #endif
 
-/// @brief Handle `ilc front zia` subcommands.
+/// @brief Handle `viper front zia` subcommands.
 ///
 /// @param argc Number of arguments following `front zia`.
 /// @param argv Array of argument strings.
 /// @return `0` on successful compilation or execution, non‑zero on errors.
 int cmdFrontZia(int argc, char **argv);
 
-/// @brief Handle `ilc -run` with an externally managed source manager.
+/// @brief Handle `viper -run` with an externally managed source manager.
 ///
 /// Allows tests to preconfigure the @ref il::support::SourceManager used by the
 /// run command, enabling overflow scenarios to be triggered deterministically.
@@ -115,9 +115,9 @@ int cmdFrontZia(int argc, char **argv);
 /// @return Exit status of the run command; non-zero on failure.
 int cmdRunILWithSourceManager(int argc, char **argv, il::support::SourceManager &sm);
 
-/// @brief Handle `ilc -run`.
+/// @brief Handle `viper -run`.
 ///
-/// Triggered when `ilc` receives the `-run` option. `argv[0]` should hold the
+/// Triggered when `viper` receives the `-run` option. `argv[0]` should hold the
 /// path to an IL file and the remaining elements provide optional flags such as
 /// tracing or debugger control.
 ///
@@ -130,12 +130,12 @@ int cmdRunILWithSourceManager(int argc, char **argv, il::support::SourceManager 
 /// collect execution statistics.
 int cmdRunIL(int argc, char **argv);
 
-/// @brief Handle `ilc il-opt`.
+/// @brief Handle `viper il-opt`.
 ///
-/// Invoked for the `ilc il-opt` subcommand. `argv[0]` supplies the input IL
+/// Invoked for the `viper il-opt` subcommand. `argv[0]` supplies the input IL
 /// file while subsequent arguments select passes and the output file.
 ///
-/// @param argc Number of arguments following `ilc il-opt`.
+/// @param argc Number of arguments following `viper il-opt`.
 /// @param argv Argument vector beginning with the input IL file.
 /// @return `0` on success or `1` if arguments are malformed or file operations
 ///         fail.
@@ -144,9 +144,9 @@ int cmdRunIL(int argc, char **argv);
 /// `stdout`.
 int cmdILOpt(int argc, char **argv);
 
-/// @brief Handle `ilc bench` subcommand.
+/// @brief Handle `viper bench` subcommand.
 ///
-/// Invoked when the command line begins with `ilc bench`. Benchmarks IL programs
+/// Invoked when the command line begins with `viper bench`. Benchmarks IL programs
 /// using different VM dispatch strategies and reports performance metrics.
 ///
 /// @param argc Number of arguments following `bench`.
@@ -154,9 +154,9 @@ int cmdILOpt(int argc, char **argv);
 /// @return `0` on success, non-zero on failure.
 int cmdBench(int argc, char **argv);
 
-/// @brief Print usage information for ilc.
+/// @brief Print usage information for viper.
 ///
-/// Called when no or invalid arguments are supplied to `ilc` or when a handler
+/// Called when no or invalid arguments are supplied to `viper` or when a handler
 /// needs to display help text.
 ///
 /// @return void

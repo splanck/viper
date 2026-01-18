@@ -17,7 +17,7 @@ Last updated: 2026-01-15
 | `main.cpp`       | BASIC interpreter/compiler entry point |
 | `usage.cpp`      | Help text implementation               |
 | `usage.hpp`      | Help text and usage information        |
-| `ilc_compat.cpp` | Compatibility shim for ilc integration |
+| `ilc_compat.cpp` | Compatibility shim for viper integration |
 
 ### vpascal (`vpascal/`)
 
@@ -26,7 +26,7 @@ Last updated: 2026-01-15
 | `main.cpp`       | Pascal interpreter/compiler entry point |
 | `usage.cpp`      | Help text implementation                |
 | `usage.hpp`      | Help text and usage information         |
-| `ilc_compat.cpp` | Compatibility shim for ilc integration  |
+| `ilc_compat.cpp` | Compatibility shim for viper integration  |
 
 ### zia (`zia/`)
 
@@ -35,14 +35,14 @@ Last updated: 2026-01-15
 | `main.cpp`       | Zia interpreter/compiler entry point   |
 | `usage.cpp`      | Help text implementation               |
 | `usage.hpp`      | Help text and usage information        |
-| `ilc_compat.cpp` | Compatibility shim for ilc integration |
+| `ilc_compat.cpp` | Compatibility shim for viper integration |
 
 ### ilrun (`ilrun/`)
 
 | File             | Purpose                                |
 |------------------|----------------------------------------|
 | `main.cpp`       | IL program runner entry point          |
-| `ilc_compat.cpp` | Compatibility shim for ilc integration |
+| `ilc_compat.cpp` | Compatibility shim for viper integration |
 
 ### il-verify (`il-verify/`)
 
@@ -58,7 +58,7 @@ Last updated: 2026-01-15
 
 ## Advanced Tools
 
-### ilc (`ilc/`)
+### viper (`viper/`)
 
 | File                     | Purpose                             |
 |--------------------------|-------------------------------------|

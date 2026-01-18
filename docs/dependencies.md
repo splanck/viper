@@ -1,6 +1,6 @@
 # ViperDOS Dependencies for Viper Compiler Toolchain
 
-This document catalogs all external environment dependencies required to port the Viper compiler toolchain (vbasic, ilc, runtime/VM) to ViperDOS. Dependencies are grouped by category and prioritized by criticality.
+This document catalogs all external environment dependencies required to port the Viper compiler toolchain (vbasic, viper, runtime/VM) to ViperDOS. Dependencies are grouped by category and prioritized by criticality.
 
 ## Quick Reference: Minimum Viable Port
 
@@ -469,7 +469,7 @@ The runtime uses C++ for some threading primitives:
 ## Implementation Priority for ViperDOS
 
 ### Phase 1: Minimal Compiler (No Runtime)
-Get vbasic and ilc working to compile programs:
+Get vbasic and viper working to compile programs:
 1. Memory: `malloc`, `free`, `calloc`, `realloc`
 2. String: `memcpy`, `memset`, `strlen`, `strcmp`, `strcpy`, `snprintf`
 3. File I/O: `open`, `close`, `read`, `write`

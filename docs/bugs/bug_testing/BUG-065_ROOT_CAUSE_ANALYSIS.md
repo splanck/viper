@@ -354,7 +354,7 @@ Ensure `isFieldInScope` uses case-insensitive lookup (similar to the `findField`
 **Verify Fix**:
 
 ```bash
-./build/src/tools/ilc/ilc front basic -emit-il bugs/bug_testing/debug_parse_test.bas | grep -A 20 "TEST.SETITEM"
+./build/src/tools/viper/viper front basic -emit-il bugs/bug_testing/debug_parse_test.bas | grep -A 20 "TEST.SETITEM"
 ```
 
 Should see:

@@ -1319,7 +1319,7 @@ for (const auto &[methodName, methodInfo] : info.methods)
 **Test Result**:
 
 ```
-$ ./build/src/tools/ilc/ilc front basic -emit-il /tmp/bug_testing/frogger_test02d_isalive.bas
+$ ./build/src/tools/viper/viper front basic -emit-il /tmp/bug_testing/frogger_test02d_isalive.bas
 error[B2017]: method 'ISALIVE' conflicts with field 'ISALIVE' (names are case-insensitive); rename one to avoid runtime errors
 ```
 

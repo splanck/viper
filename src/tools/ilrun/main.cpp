@@ -15,7 +15,7 @@
 /// @details Wrapper around the existing ilc -run functionality with
 ///          cleaner, more intuitive command-line syntax.
 
-#include "tools/ilc/cli.hpp"
+#include "tools/viper/cli.hpp"
 #include "viper/version.hpp"
 #include <iostream>
 #include <string_view>

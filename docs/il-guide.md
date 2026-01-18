@@ -93,7 +93,7 @@ entry:
 Run it with `ilc`:
 
 ```bash
-ilc -run first.il
+viper -run first.il
 ```
 
 Expected output:
@@ -336,7 +336,7 @@ entry:
 
 ### Debugging IL
 
-- `ilc -run --trace foo.il` prints each instruction as it executes.
+- `viper -run --trace foo.il` prints each instruction as it executes.
 - `il-verify foo.il` checks structural rules without running.
 - Common errors like "type mismatch" or "undefined block" point to the offending line.
 
@@ -350,7 +350,7 @@ entry:
 
 - Read the full [IL reference](#reference) for all instructions.
 - Explore the `examples/` and `tests/golden/` directories for more programs.
-- Try adding your own IL file and running it with `ilc`.
+- Try adding your own IL file and running it with `viper`.
 
 ### Common mistakes
 
@@ -1298,7 +1298,7 @@ value via parameter `%a1`.
 
 #### Stats
 
-`ilc il-opt --mem2reg-stats` prints the number of promoted variables and the
+`viper il-opt --mem2reg-stats` prints the number of promoted variables and the
 removed loads/stores when the pass runs.
 
 ## Examples

@@ -17,40 +17,40 @@ function(viper_add_vm_debug_tests)
     viper_add_test(test_vm_trace_il ${_VIPER_VM_DIR}/TraceILTests.cpp NO_CTEST)
     viper_add_ctest(test_vm_trace_il
             test_vm_trace_il
-            $<TARGET_FILE:ilc>
+            $<TARGET_FILE:viper>
             ${CMAKE_SOURCE_DIR}/examples/il/trace_min.il
             ${CMAKE_SOURCE_DIR}/src/tests/vm/trace_min.trace)
 
     viper_add_test(test_vm_break_label ${_VIPER_VM_DIR}/BreakLabelTests.cpp NO_CTEST)
     viper_add_ctest(test_vm_break_label
             test_vm_break_label
-            $<TARGET_FILE:ilc>
+            $<TARGET_FILE:viper>
             ${CMAKE_SOURCE_DIR}/examples/il/break_label.il)
 
     viper_add_test(test_vm_debug_script ${_VIPER_VM_DIR}/DebugScriptTests.cpp NO_CTEST)
     viper_add_ctest(test_vm_debug_script
             test_vm_debug_script
-            $<TARGET_FILE:ilc>
+            $<TARGET_FILE:viper>
             ${CMAKE_SOURCE_DIR}/examples/il/debug_script.il
             ${CMAKE_SOURCE_DIR}/examples/il/debug_script.txt)
 
     viper_add_test(test_vm_watch ${_VIPER_VM_DIR}/WatchTests.cpp NO_CTEST)
     viper_add_ctest(test_vm_watch
             test_vm_watch
-            $<TARGET_FILE:ilc>
+            $<TARGET_FILE:viper>
             ${CMAKE_SOURCE_DIR}/src/tests/vm/WatchTests.il)
 
     viper_add_test(test_vm_block_param_step ${_VIPER_VM_DIR}/BlockParamStepTests.cpp NO_CTEST)
     viper_add_ctest(test_vm_block_param_step
             test_vm_block_param_step
-            $<TARGET_FILE:ilc>
+            $<TARGET_FILE:viper>
             ${CMAKE_SOURCE_DIR}/src/tests/vm/BlockParamStep.il
             ${CMAKE_SOURCE_DIR}/src/tests/vm/BlockParamStep.txt)
 
     viper_add_test(test_vm_summary ${_VIPER_VM_DIR}/SummaryTests.cpp NO_CTEST)
     viper_add_ctest(test_vm_summary
             test_vm_summary
-            $<TARGET_FILE:ilc>
+            $<TARGET_FILE:viper>
             ${CMAKE_SOURCE_DIR}/examples/il/summary.il)
 endfunction()
 

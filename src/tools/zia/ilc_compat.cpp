@@ -6,15 +6,15 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Compatibility shim for ilc-style usage printing.
-/// @details Provides a legacy `usage()` function expected by older entry points
-///          and forwards to the shared Zia usage printer.
+/// @brief Compatibility shim for viper CLI-style usage printing.
+/// @details Provides a `usage()` function expected by shared command entry points
+///          and forwards to the Zia-specific usage printer.
 
 #include "usage.hpp"
 
-/// @brief Legacy usage hook for ilc compatibility.
-/// @details Calls @ref zia::printUsage so older code paths can continue
-///          to emit the standard help text without duplicating strings.
+/// @brief Usage hook for viper CLI compatibility.
+/// @details Calls @ref zia::printUsage so shared code paths can
+///          emit the Zia-specific help text.
 void usage()
 {
     zia::printUsage();

@@ -40,15 +40,15 @@ Run with:
 
 #### Simplified CLI Tools
 
-New user-friendly compiler drivers replace verbose `ilc` subcommands:
+New user-friendly compiler drivers replace verbose `viper` subcommands:
 
 | Old Command | New Command |
 |-------------|-------------|
-| `ilc front basic -run file.bas` | `vbasic file.bas` |
-| `ilc front viperlang -run file.viper` | `zia file.zia` |
-| `ilc -run file.il` | `ilrun file.il` |
+| `viper front basic -run file.bas` | `vbasic file.bas` |
+| `viper front zia -run file.zia` | `zia file.zia` |
+| `viper -run file.il` | `ilrun file.il` |
 
-The `ilc` tool remains available for advanced use cases.
+The `viper` tool remains available for advanced use cases.
 
 #### Pascal Frontend Moved to Experimental
 
@@ -199,7 +199,7 @@ Sprite, tilemap, and camera support for 2D games:
 
 1. **ViperLang renamed to Zia**: Update file extensions from `.viper` to `.zia`
 2. **Pascal not in default build**: Enable with `-DVIPER_BUILD_PASCAL=ON`
-3. **New CLI tools**: Use `vbasic`, `zia`, `ilrun` instead of `ilc` subcommands
+3. **New CLI tools**: Use `vbasic`, `zia`, `ilrun` instead of `viper` subcommands
 
 ### Migration from v0.1.3
 
@@ -209,7 +209,7 @@ Rename your files and update the tool:
 
 ```bash
 # Old
-./build/src/tools/ilc/ilc front viperlang -run program.viper
+./build/src/tools/viper/viper front viperlang -run program.viper
 
 # New
 mv program.viper program.zia
@@ -220,7 +220,7 @@ mv program.viper program.zia
 
 ```bash
 # Old
-./build/src/tools/ilc/ilc front basic -run program.bas
+./build/src/tools/viper/viper front basic -run program.bas
 
 # New
 ./build/src/tools/vbasic/vbasic program.bas

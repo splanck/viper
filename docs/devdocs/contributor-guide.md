@@ -346,7 +346,7 @@ parameter list.
 
 #### Breaking on source lines
 
-`ilc` can halt execution before running a specific source line.
+`viper` can halt execution before running a specific source line.
 
 #### Flags
 
@@ -355,20 +355,20 @@ parameter list.
 - `--break-src <file:line>`: Explicit source-line breakpoint.
 
 Paths are normalized before comparison, including platform separators and `.`/`..` segments. When the normalized path
-does not match the location recorded in the IL, `ilc` falls back to comparing only the basename.
+does not match the location recorded in the IL, `viper` falls back to comparing only the basename.
 
 Specifying the same breakpoint more than once coalesces into a single breakpoint. When multiple instructions map to the
-same source line, `ilc` reports the breakpoint once per line until control transfers to a different basic block.
+same source line, `viper` reports the breakpoint once per line until control transfers to a different basic block.
 
 #### Examples
 
 ```sh
 # Path normalization: break at the first PRINT in math_basics.bas
-ilc front basic -run ./examples/basic/../basic/math_basics.bas \
+viper front basic -run ./examples/basic/../basic/math_basics.bas \
   --break ./examples/basic/../basic/math_basics.bas:4 --trace=src
 
 # Basename fallback with the explicit flag
-ilc front basic -run examples/basic/sine_cosine.bas \
+viper front basic -run examples/basic/sine_cosine.bas \
   --break-src sine_cosine.bas:5 --trace=src
 ```
 
@@ -379,7 +379,7 @@ These built-in functions interact with the terminal and require manual testing t
 #### Non-blocking read (INKEY$)
 
 ```sh
-ilc front basic -run examples/inkey_smoke.bas
+viper front basic -run examples/inkey_smoke.bas
 ```
 
 Expected: Program polls once, prints "No key" (or the key code if pressed quickly), and exits immediately without
@@ -391,7 +391,7 @@ Create a temporary test file and run:
 
 ```sh
 echo 'COLOR 7,0: PRINT "Press a key": k$ = GETKEY$(): PRINT "Got:"; ASC(k$)' > /tmp/getkey.bas
-ilc front basic -run /tmp/getkey.bas
+viper front basic -run /tmp/getkey.bas
 ```
 
 Expected: Program waits for one keystroke, then prints the ASCII code and exits.
@@ -404,7 +404,7 @@ arguments.
 Use the factorial example to inspect recursive calls.
 
 ```sh
-ilc -run tests/e2e/factorial.bas --trace=src \
+viper -run tests/e2e/factorial.bas --trace=src \
     --break-src tests/e2e/factorial.bas:5 \
     --debug-cmds examples/il/debug_script.txt
 ```

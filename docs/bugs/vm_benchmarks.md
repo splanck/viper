@@ -4,7 +4,7 @@
 - Commit: 1f76a521
 - Runs per case: 3
 - IL glob: examples/il/*.il
-- ILC: /Users/stephen/git/viper/build/src/tools/ilc/ilc
+- ILC: /Users/stephen/git/viper/build/src/tools/viper/viper
 
 | timestamp                 | file                              | requested | actual | runs | avg_ms | min_ms | max_ms | instr |
 |---------------------------|-----------------------------------|----------:|-------:|-----:|-------:|-------:|-------:|------:|
@@ -51,7 +51,7 @@
 - Commit: 1f76a521
 - Runs per case: 3
 - IL glob: examples/il/*.il
-- ILC: /Users/stephen/git/viper/build/src/tools/ilc/ilc
+- ILC: /Users/stephen/git/viper/build/src/tools/viper/viper
 
 | timestamp                 | file                              | requested | actual | runs | avg_ms | min_ms | max_ms | instr |
 |---------------------------|-----------------------------------|----------:|-------:|-----:|-------:|-------:|-------:|------:|
@@ -98,7 +98,7 @@
 - Commit: 1f76a521
 - Runs per case: 3
 - IL glob: examples/il/*.il
-- ILC: /Users/stephen/git/viper/build/src/tools/ilc/ilc
+- ILC: /Users/stephen/git/viper/build/src/tools/viper/viper
 
 | timestamp                 | file                              | requested |  actual | runs |   avg_ms |   min_ms |   max_ms | instr |
 |---------------------------|-----------------------------------|----------:|--------:|-----:|---------:|---------:|---------:|------:|
@@ -145,7 +145,7 @@
 - Commit: 3d88cbb0
 - Runs per case: 3
 - IL glob: examples/il/*.il
-- ILC: /Users/stephen/git/viper/build/src/tools/ilc/ilc
+- ILC: /Users/stephen/git/viper/build/src/tools/viper/viper
 
 | timestamp                 | file                              | requested |   actual | runs |   avg_ms |   min_ms |   max_ms | instr |
 |---------------------------|-----------------------------------|----------:|---------:|-----:|---------:|---------:|---------:|------:|

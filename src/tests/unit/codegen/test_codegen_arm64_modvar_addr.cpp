@@ -10,7 +10,7 @@
 #include <sstream>
 #include <string>
 
-#include "tools/ilc/cmd_codegen_arm64.hpp"
+#include "tools/viper/cmd_codegen_arm64.hpp"
 
 using namespace viper::tools::ilc;
 

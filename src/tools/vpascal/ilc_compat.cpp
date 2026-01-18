@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Compatibility shims for ilc functions used by cmd_front_pascal.cpp
+// Compatibility shims for viper CLI functions used by cmd_front_pascal.cpp
 //
 //===----------------------------------------------------------------------===//
 

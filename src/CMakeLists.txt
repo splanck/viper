@@ -325,20 +325,20 @@ target_include_directories(il_codegen_x86_64 PUBLIC
 add_dependencies(il_codegen_x86_64 generate_runtime_registry)
 
 add_library(ilc_cmd_arm64 STATIC
-        tools/ilc/cmd_codegen_arm64.cpp)
+        tools/viper/cmd_codegen_arm64.cpp)
 target_link_libraries(ilc_cmd_arm64 PRIVATE viper_common_opts viper_common il_tools_common il_codegen_aarch64 viper::il_full)
 
-# Build ilc sources list conditionally based on enabled frontends
+# Build viper (CLI) sources list conditionally based on enabled frontends
 set(ILC_SOURCES
-        tools/ilc/main.cpp
-        tools/ilc/cmd_run_il.cpp
-        tools/ilc/cmd_front_basic.cpp
-        tools/ilc/cmd_front_zia.cpp
-        tools/ilc/cmd_il_opt.cpp
-        tools/ilc/cmd_codegen_x64.cpp
-        tools/ilc/cmd_bench.cpp
-        tools/ilc/cli.cpp
-        tools/ilc/break_spec.cpp)
+        tools/viper/main.cpp
+        tools/viper/cmd_run_il.cpp
+        tools/viper/cmd_front_basic.cpp
+        tools/viper/cmd_front_zia.cpp
+        tools/viper/cmd_il_opt.cpp
+        tools/viper/cmd_codegen_x64.cpp
+        tools/viper/cmd_bench.cpp
+        tools/viper/cli.cpp
+        tools/viper/break_spec.cpp)
 
 set(ILC_LINK_LIBS
         viper_common_opts
@@ -355,26 +355,26 @@ set(ILC_LINK_LIBS
         viper_bytecode)
 
 if (VIPER_ENABLE_PASCAL)
-    list(APPEND ILC_SOURCES tools/ilc/cmd_front_pascal.cpp)
+    list(APPEND ILC_SOURCES tools/viper/cmd_front_pascal.cpp)
     list(APPEND ILC_LINK_LIBS fe_pascal)
 endif ()
 
-add_executable(ilc ${ILC_SOURCES})
-set_target_properties(ilc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/ilc)
-target_link_libraries(ilc PRIVATE ${ILC_LINK_LIBS})
+add_executable(viper ${ILC_SOURCES})
+set_target_properties(viper PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/viper)
+target_link_libraries(viper PRIVATE ${ILC_LINK_LIBS})
 if (VIPER_ENABLE_PASCAL)
-    target_compile_definitions(ilc PRIVATE VIPER_ENABLE_PASCAL=1)
+    target_compile_definitions(viper PRIVATE VIPER_ENABLE_PASCAL=1)
 endif ()
-get_target_property(ILC_LINK_LIBS ilc LINK_LIBRARIES)
-message(STATUS "ilc LINK_LIBRARIES: ${ILC_LINK_LIBS}")
-install(TARGETS ilc RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+get_target_property(VIPER_LINK_LIBS viper LINK_LIBRARIES)
+message(STATUS "viper LINK_LIBRARIES: ${VIPER_LINK_LIBS}")
+install(TARGETS viper RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 add_executable(vbasic
         tools/vbasic/main.cpp
         tools/vbasic/usage.cpp
         tools/vbasic/ilc_compat.cpp
-        tools/ilc/cmd_front_basic.cpp
-        tools/ilc/cli.cpp)
+        tools/viper/cmd_front_basic.cpp
+        tools/viper/cli.cpp)
 set_target_properties(vbasic PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/vbasic)
 target_link_libraries(vbasic
         PRIVATE
@@ -393,8 +393,8 @@ if (VIPER_ENABLE_PASCAL)
             tools/vpascal/main.cpp
             tools/vpascal/usage.cpp
             tools/vpascal/ilc_compat.cpp
-            tools/ilc/cmd_front_pascal.cpp
-            tools/ilc/cli.cpp)
+            tools/viper/cmd_front_pascal.cpp
+            tools/viper/cli.cpp)
     set_target_properties(vpascal PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/vpascal)
     target_link_libraries(vpascal
             PRIVATE
@@ -414,8 +414,8 @@ add_executable(zia
         tools/zia/main.cpp
         tools/zia/usage.cpp
         tools/zia/ilc_compat.cpp
-        tools/ilc/cmd_front_zia.cpp
-        tools/ilc/cli.cpp)
+        tools/viper/cmd_front_zia.cpp
+        tools/viper/cli.cpp)
 set_target_properties(zia PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/zia)
 target_link_libraries(zia
         PRIVATE
@@ -432,9 +432,9 @@ install(TARGETS zia RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 add_executable(ilrun
         tools/ilrun/main.cpp
         tools/ilrun/ilc_compat.cpp
-        tools/ilc/cmd_run_il.cpp
-        tools/ilc/cli.cpp
-        tools/ilc/break_spec.cpp)
+        tools/viper/cmd_run_il.cpp
+        tools/viper/cli.cpp
+        tools/viper/break_spec.cpp)
 set_target_properties(ilrun PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/ilrun)
 target_link_libraries(ilrun
         PRIVATE

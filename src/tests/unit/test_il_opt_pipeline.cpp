@@ -10,7 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tools/ilc/cli.hpp"
+#include "tools/viper/cli.hpp"
 
 #include <cassert>
 #include <filesystem>

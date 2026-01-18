@@ -23,7 +23,7 @@
 #include "support/diagnostics.hpp"
 #include "support/source_location.hpp"
 #include "support/source_manager.hpp"
-#include "tools/ilc/cli.hpp"
+#include "tools/viper/cli.hpp"
 
 #include <cassert>
 #include <chrono>
@@ -44,7 +44,7 @@ void usage() {}
 
 // Include the implementation under test so the helper functions (e.g., runFrontBasic)
 // are available within this translation unit.
-#include "tools/ilc/cmd_front_basic.cpp"
+#include "tools/viper/cmd_front_basic.cpp"
 
 namespace il::support
 {

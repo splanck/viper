@@ -1,0 +1,48 @@
+.TH zia 1 "Viper" "viper-zia" "User Commands"
+.SH NAME
+zia \- Zia programming language compiler and interpreter
+.SH SYNOPSIS
+.B zia
+[\fIoptions\fR] \fIFILE.zia\fR
+.SH DESCRIPTION
+Run Zia programs or emit IL from Zia source. The tool wraps the \fBviper\fR front end for convenience.
+.SH MODES
+.TP
+Run (default)
+\fBzia\fR \fIFILE.zia\fR [run options]
+.TP
+Emit IL to stdout
+\fBzia --emit-il\fR \fIFILE.zia\fR
+.TP
+Emit IL to file
+\fBzia -o\fR \fIFILE.il\fR \fIFILE.zia\fR
+.SH OPTIONS
+.TP
+\fB-o\fR, \fB--output\fR \fIFILE\fR
+Output IL file when emitting.
+.TP
+\fB--emit-il\fR
+Emit IL instead of running.
+.TP
+\fB--trace\fR[=\fIil\fR|\fIsrc\fR]
+Enable tracing.
+.TP
+\fB--bounds-checks\fR
+Enable array bounds checks.
+.TP
+\fB--stdin-from\fR \fIFILE\fR
+Redirect stdin from file.
+.TP
+\fB--max-steps\fR \fIN\fR
+Limit instruction steps.
+.TP
+\fB--dump-trap\fR
+Show detailed trap diagnostics.
+.TP
+\fB-h\fR, \fB--help\fR; \fB--version\fR
+Show help or version and exit.
+.SH NOTES
+Functions must return a value on all paths. Use 'var' for mutable variables and 'let' for immutable. Entity types are reference types; value types are copied. Use 'bind' to include other Zia modules.
+.SH SEE ALSO
+\fBviper\fR(1), \fBvbasic\fR(1), \fBilrun\fR(1)
+

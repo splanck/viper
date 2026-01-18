@@ -52,7 +52,7 @@ il-dis program.il
 
 ---
 
-## Advanced Tool: ilc
+## Advanced Tool: viper
 
 The unified compiler driver provides advanced functionality.
 
@@ -60,19 +60,19 @@ The unified compiler driver provides advanced functionality.
 
 The CLI is organized around primary entry points:
 
-- `ilc -run <file.il>` — Execute an IL module
-- `ilc front basic -emit-il <file.bas>` — Lower BASIC to IL
-- `ilc front basic -run <file.bas>` — Compile and execute BASIC
-- `ilc il-opt <in.il> -o <out.il>` — Run optimization passes
-- `ilc codegen x64 <in.il> -o <out>` — Compile to x86-64 native code (experimental; unvalidated on real x86)
-- `ilc codegen arm64 <in.il> -S <out.s>` — Generate ARM64 assembly
+- `viper -run <file.il>` — Execute an IL module
+- `viper front basic -emit-il <file.bas>` — Lower BASIC to IL
+- `viper front basic -run <file.bas>` — Compile and execute BASIC
+- `viper il-opt <in.il> -o <out.il>` — Run optimization passes
+- `viper codegen x64 <in.il> -o <out>` — Compile to x86-64 native code (experimental; unvalidated on real x86)
+- `viper codegen arm64 <in.il> -S <out.s>` — Generate ARM64 assembly
 
-### ilc -run
+### viper -run
 
 Execute IL modules with debugging controls.
 
 ```bash
-ilc -run <file.il> [flags]
+viper -run <file.il> [flags]
 ```
 
 | Flag                         | Description                                  |
@@ -91,24 +91,24 @@ ilc -run <file.il> [flags]
 | `--count`                    | Print executed instruction count at exit     |
 | `--time`                     | Print wall-clock execution time              |
 
-### ilc front basic
+### viper front basic
 
 Compile BASIC programs.
 
 ```bash
 # Emit IL
-ilc front basic -emit-il <file.bas> [--bounds-checks]
+viper front basic -emit-il <file.bas> [--bounds-checks]
 
 # Run BASIC programs
-ilc front basic -run <file.bas> [--trace=il|src] [--stdin-from <file>]
+viper front basic -run <file.bas> [--trace=il|src] [--stdin-from <file>]
 ```
 
-### ilc il-opt
+### viper il-opt
 
 Run optimization passes on IL modules.
 
 ```bash
-ilc il-opt <in.il> -o <out.il> [flags]
+viper il-opt <in.il> -o <out.il> [flags]
 ```
 
 | Flag              | Description                        |
@@ -119,17 +119,17 @@ ilc il-opt <in.il> -o <out.il> [flags]
 
 Default pipeline: `mem2reg,constfold,peephole,dce`
 
-### ilc codegen
+### viper codegen
 
 Compile IL to native code.
 
 ```bash
 # x86-64
-ilc codegen x64 <in.il> -o <executable>
-ilc codegen x64 <in.il> -S <out.s>  # Assembly only
+viper codegen x64 <in.il> -o <executable>
+viper codegen x64 <in.il> -S <out.s>  # Assembly only
 
 # ARM64 (Apple Silicon validated)
-ilc codegen arm64 <in.il> -S <out.s>
+viper codegen arm64 <in.il> -S <out.s>
 ```
 
 ---

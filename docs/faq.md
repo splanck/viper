@@ -58,11 +58,11 @@ For additional options:
 ./build/src/tools/vpascal/vpascal --help
 ```
 
-The advanced `ilc` command is also available:
+The advanced `viper` command is also available:
 
 ```bash
-./build/src/tools/ilc/ilc front basic -run myprogram.bas
-./build/src/tools/ilc/ilc front pascal -run myprogram.pas
+./build/src/tools/viper/viper front basic -run myprogram.bas
+./build/src/tools/viper/viper front pascal -run myprogram.pas
 ```
 
 ### 6. Where can I find example programs?
@@ -204,7 +204,7 @@ See `/docs/il-guide.md` for the complete IL specification.
 Yes! The IL has a textual assembly syntax. You can write `.il` files and run them:
 
 ```bash
-./build/src/tools/ilc/ilc run myprogram.il
+./build/src/tools/viper/viper run myprogram.il
 ```
 
 Tools available:
@@ -241,7 +241,7 @@ The VM supports source-level debugging:
 
 ```bash
 # Set breakpoint and run
-./build/src/tools/ilc/ilc front basic -run program.bas -break program.bas:42
+./build/src/tools/viper/viper front basic -run program.bas -break program.bas:42
 
 # Use debugger commands
 # (watch variables, step through code, inspect state)

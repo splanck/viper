@@ -354,13 +354,13 @@ The dispatch strategy is selected at VM construction via environment variable:
 
 ```bash
 # Use function table dispatch (portable, moderate performance)
-VIPER_DISPATCH=table ./ilc -run program.il
+VIPER_DISPATCH=table ./viper -run program.il
 
 # Use switch statement dispatch (good cache locality)
-VIPER_DISPATCH=switch ./ilc -run program.il
+VIPER_DISPATCH=switch ./viper -run program.il
 
 # Use threaded dispatch (fastest, requires GCC/Clang)
-VIPER_DISPATCH=threaded ./ilc -run program.il
+VIPER_DISPATCH=threaded ./viper -run program.il
 ```
 
 **Default:** Threaded if supported (`VIPER_THREADING_SUPPORTED=1`), otherwise Switch.
@@ -434,20 +434,20 @@ Disable via environment: `VIPER_ENABLE_OPCOUNTS=0`
 
 ### Benchmark Harness
 
-The `ilc bench` command provides a built-in benchmark harness for comparing dispatch strategies:
+The `viper bench` command provides a built-in benchmark harness for comparing dispatch strategies:
 
 ```sh
 # Run all three strategies with 3 iterations each
-ilc bench program.il
+viper bench program.il
 
 # Run a specific strategy with 5 iterations
-ilc bench program.il -n 5 --table
+viper bench program.il -n 5 --table
 
 # Run multiple files with JSON output
-ilc bench file1.il file2.il --json
+viper bench file1.il file2.il --json
 
 # Limit execution with max-steps
-ilc bench program.il --max-steps 1000000
+viper bench program.il --max-steps 1000000
 ```
 
 **Output format (text):**
@@ -1034,7 +1034,7 @@ This guide summarizes runtime tuning knobs for the VM and how to benchmark dispa
     - `threaded`: computed goto (if built with `VIPER_VM_THREADED`)
 
 - Env `VIPER_ENABLE_OPCOUNTS` (default on): enable per-opcode execution counters. You can query counts via
-  `Runner::opcodeCounts()` or the `--count` flag in `ilc -run`.
+  `Runner::opcodeCounts()` or the `--count` flag in `viper -run`.
 
 - Env `VIPER_INTERRUPT_EVERY_N`: periodically invoke a host callback every N instructions (see
   `RunConfig::interruptEveryN`).

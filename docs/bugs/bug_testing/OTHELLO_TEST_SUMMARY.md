@@ -305,7 +305,7 @@ way due to array access limitations.
 
 ```bash
 cd /Users/stephen/git/viper
-./build/src/tools/ilc/ilc front basic -run bugs/bug_testing/othello_simple.bas 2>&1 | grep -v "rt_heap"
+./build/src/tools/viper/viper front basic -run bugs/bug_testing/othello_simple.bas 2>&1 | grep -v "rt_heap"
 ```
 
 ---

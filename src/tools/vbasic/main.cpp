@@ -15,7 +15,7 @@
 /// @details Uses shared frontend tool infrastructure and delegates to ilc front basic.
 
 #include "tools/common/frontend_tool.hpp"
-#include "tools/ilc/cli.hpp"
+#include "tools/viper/cli.hpp"
 #include "usage.hpp"
 
 /// @brief Main entry point for vbasic command-line tool.

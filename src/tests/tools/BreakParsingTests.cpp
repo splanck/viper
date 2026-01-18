@@ -13,7 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tools/ilc/break_spec.hpp"
+#include "tools/viper/break_spec.hpp"
 #include <iostream>
 
 int main()

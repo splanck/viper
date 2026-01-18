@@ -148,14 +148,14 @@ For more examples, see the **[BASIC Tutorial](basic-language.md)**,
 
 ### Advanced Tools
 
-| Tool             | Purpose                     | Example                           |
-|------------------|-----------------------------|-----------------------------------|
-| `ilc`            | Unified compiler (advanced) | `ilc front basic -run script.bas` |
+| Tool             | Purpose                     | Example                             |
+|------------------|-----------------------------|-------------------------------------|
+| `viper`          | Unified compiler (advanced) | `viper front basic -run script.bas` |
 | `basic-ast-dump` | Dump BASIC AST              | `basic-ast-dump script.bas`       |
 | `basic-lex-dump` | Dump BASIC tokens           | `basic-lex-dump script.bas`       |
 
-> **Note:** The old `ilc` commands still work for backwards compatibility, but the new simplified tools (`vbasic`,
-`zia`, `ilrun`) are recommended for everyday use.
+> **Note:** The simplified tools (`vbasic`, `zia`, `ilrun`) are recommended for everyday use. The unified `viper`
+command provides access to advanced features.
 
 ---
 

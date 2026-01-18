@@ -13,7 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tools/ilc/cli.hpp"
+#include "tools/viper/cli.hpp"
 
 #include <cassert>
 
@@ -30,7 +30,7 @@ void usage()
     gUsageCalled = true;
 }
 
-#include "tools/ilc/cmd_front_basic.cpp"
+#include "tools/viper/cmd_front_basic.cpp"
 
 namespace il::frontends::basic
 {

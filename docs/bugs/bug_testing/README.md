@@ -51,16 +51,16 @@ From the viper root directory:
 
 ```bash
 # Run individual test
-./build/src/tools/ilc/ilc front basic -run bugs/bug_testing/test_01_base_class.bas
+./build/src/tools/viper/viper front basic -run bugs/bug_testing/test_01_base_class.bas
 
 # Run without heap debug output
-./build/src/tools/ilc/ilc front basic -run bugs/bug_testing/comprehensive_test.bas 2>&1 | grep -v "rt_heap"
+./build/src/tools/viper/viper front basic -run bugs/bug_testing/comprehensive_test.bas 2>&1 | grep -v "rt_heap"
 
 # Run adventure game
-./build/src/tools/ilc/ilc front basic -run bugs/bug_testing/adventure_game_v2.bas 2>&1 | grep -v "rt_heap"
+./build/src/tools/viper/viper front basic -run bugs/bug_testing/adventure_game_v2.bas 2>&1 | grep -v "rt_heap"
 
 # Run dungeon crawler
-./build/src/tools/ilc/ilc front basic -run bugs/bug_testing/dungeon_crawler.bas 2>&1 | grep -v "rt_heap"
+./build/src/tools/viper/viper front basic -run bugs/bug_testing/dungeon_crawler.bas 2>&1 | grep -v "rt_heap"
 ```
 
 ## Key Findings

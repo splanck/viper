@@ -87,20 +87,20 @@ All three demos compile and link:
 
 ```bash
 # Chess (357KB binary)
-./build/src/tools/ilc/ilc front basic -emit-il demos/basic/chess/chess.bas > /tmp/chess.il
-./build/src/tools/ilc/ilc codegen arm64 /tmp/chess.il -S /tmp/chess.s
+./build/src/tools/viper/viper front basic -emit-il demos/basic/chess/chess.bas > /tmp/chess.il
+./build/src/tools/viper/viper codegen arm64 /tmp/chess.il -S /tmp/chess.s
 as /tmp/chess.s -o /tmp/chess.o
 clang++ /tmp/chess.o build/src/runtime/libviper_runtime.a -o /tmp/chess_native
 
 # Vtris (298KB binary)
-./build/src/tools/ilc/ilc front basic -emit-il demos/basic/vtris/vtris.bas > /tmp/vtris.il
-./build/src/tools/ilc/ilc codegen arm64 /tmp/vtris.il -S /tmp/vtris.s
+./build/src/tools/viper/viper front basic -emit-il demos/basic/vtris/vtris.bas > /tmp/vtris.il
+./build/src/tools/viper/viper codegen arm64 /tmp/vtris.il -S /tmp/vtris.s
 as /tmp/vtris.s -o /tmp/vtris.o
 clang++ /tmp/vtris.o build/src/runtime/libviper_runtime.a -o /tmp/vtris_native
 
 # Frogger (271KB binary)
-./build/src/tools/ilc/ilc front basic -emit-il demos/basic/frogger/frogger.bas > /tmp/frogger.il
-./build/src/tools/ilc/ilc codegen arm64 /tmp/frogger.il -S /tmp/frogger.s
+./build/src/tools/viper/viper front basic -emit-il demos/basic/frogger/frogger.bas > /tmp/frogger.il
+./build/src/tools/viper/viper codegen arm64 /tmp/frogger.il -S /tmp/frogger.s
 as /tmp/frogger.s -o /tmp/frogger.o
 clang++ /tmp/frogger.o build/src/runtime/libviper_runtime.a -o /tmp/frogger_native
 ```

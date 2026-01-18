@@ -14,7 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "support/source_manager.hpp"
-#include "tools/ilc/cli.hpp"
+#include "tools/viper/cli.hpp"
 
 #include <cassert>
 #include <chrono>

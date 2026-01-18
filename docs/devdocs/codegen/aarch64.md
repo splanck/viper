@@ -62,12 +62,12 @@ allocation similar to x86‑64.
 ### CLI driver integration (text emission only)
 
 - Files:
-    - `src/tools/ilc/cmd_codegen_arm64.hpp`
-    - `src/tools/ilc/cmd_codegen_arm64.cpp`
-    - `src/tools/ilc/main.cpp`
-    - `src/CMakeLists.txt` (adds `ilc_cmd_arm64` static library and links it into `ilc`)
+    - `src/tools/viper/cmd_codegen_arm64.hpp`
+    - `src/tools/viper/cmd_codegen_arm64.cpp`
+    - `src/tools/viper/main.cpp`
+    - `src/CMakeLists.txt` (adds `ilc_cmd_arm64` static library and links it into `viper`)
 - Usage:
-    - `ilc codegen arm64 <input.il> -S <out.s>`
+    - `viper codegen arm64 <input.il> -S <out.s>`
     - The command:
         - Loads an IL module from disk.
         - Iterates functions and emits textual assembly using the AArch64 emitter.
@@ -125,7 +125,7 @@ allocation similar to x86‑64.
 ### Build integration
 
 - `src/codegen/aarch64/CMakeLists.txt` builds `il_codegen_aarch64` (target + emitter).
-- `src/CMakeLists.txt` exposes `ilc_cmd_arm64` as a static lib; `ilc` links `ilc_cmd_arm64` and `il_codegen_aarch64`.
+- `src/CMakeLists.txt` exposes `ilc_cmd_arm64` as a static lib; `viper` links `ilc_cmd_arm64` and `il_codegen_aarch64`.
 
 ## Current Implementation Details
 
@@ -190,7 +190,7 @@ into `(x0, x1)` with a scratch. The header is header‑only and requires a targe
 
 2) Cleanly factor the pattern‑lowerer — DONE
     - Extracted the pattern code into a small internal `Arm64PatternLowerer` helper inside
-      `src/tools/ilc/cmd_codegen_arm64.cpp`, keeping the CLI tidy and making opcode→sequence mappings centralized.
+      `src/tools/viper/cmd_codegen_arm64.cpp`, keeping the CLI tidy and making opcode→sequence mappings centralized.
     - Future: consider a table‑driven mapping from IL opcodes to emitter lambdas for rr/ri forms.
 
 3) Expand parameter coverage to x2..x7 for 3+ argument functions (still single‑block patterns)
@@ -287,7 +287,7 @@ entry:
 }
 EOF
 
-./build/src/tools/ilc/ilc codegen arm64 /tmp/test.il -S /tmp/test.s
+./build/src/tools/viper/viper codegen arm64 /tmp/test.il -S /tmp/test.s
 as /tmp/test.s -o /tmp/test.o
 clang++ /tmp/test.o -o /tmp/test_native
 /tmp/test_native
@@ -307,7 +307,7 @@ The AArch64 backend supports CLI flags to dump Machine IR (MIR) for debugging an
 **Example usage:**
 
 ```bash
-./build/src/tools/ilc/ilc codegen arm64 /tmp/test.il -S /tmp/test.s --dump-mir-after-ra
+./build/src/tools/viper/viper codegen arm64 /tmp/test.il -S /tmp/test.s --dump-mir-after-ra
 ```
 
 **Example output:**
@@ -332,8 +332,8 @@ Note: Fast-path lowering may produce physical registers directly even before RA 
 ### Test Frogger Compilation
 
 ```bash
-./build/src/tools/ilc/ilc front basic -emit-il demos/basic/frogger/frogger.bas > /tmp/frogger.il
-./build/src/tools/ilc/ilc codegen arm64 /tmp/frogger.il -S /tmp/frogger.s
+./build/src/tools/viper/ilc front basic -emit-il demos/basic/frogger/frogger.bas > /tmp/frogger.il
+./build/src/tools/viper/viper codegen arm64 /tmp/frogger.il -S /tmp/frogger.s
 as /tmp/frogger.s -o /tmp/frogger.o
 clang++ /tmp/frogger.o build/src/runtime/libviper_runtime.a -o /tmp/frogger_native
 ./_run_if_arm64 /tmp/frogger_native   # helper or manual run on Apple Silicon host
@@ -394,8 +394,8 @@ To reproduce these bugs:
 
 ```bash
 cd /Users/stephen/git/viper
-./build/src/tools/ilc/ilc front basic -emit-il demos/basic/frogger/frogger.bas > /tmp/frogger.il
-./build/src/tools/ilc/ilc codegen arm64 /tmp/frogger.il -S /tmp/frogger.s
+./build/src/tools/viper/ilc front basic -emit-il demos/basic/frogger/frogger.bas > /tmp/frogger.il
+./build/src/tools/viper/viper codegen arm64 /tmp/frogger.il -S /tmp/frogger.s
 as /tmp/frogger.s  # Fails with multiple errors
 ```
 

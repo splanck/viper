@@ -183,7 +183,7 @@ Blocks with no parameters skip this step to remain fast.
 
 The interpreter can emit a deterministic trace of executed IL instructions. On
 each dispatch, `TraceSink::onStep` records the current instruction before it is
-executed. Enable this via `--trace=il` in `ilc -run`:
+executed. Enable this via `--trace=il` in `viper -run`:
 
 ```
 [IL] fn=@foo blk=L3 ip=#12 op=add %t1, %t2 -> %t3

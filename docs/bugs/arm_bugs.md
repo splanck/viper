@@ -108,7 +108,7 @@ codegen.
     - AArch64 emitter initializes the runtime context in `main` (see `src/codegen/aarch64/AsmEmitter.cpp:829-846`), so
       native calls have an active context.
     - Minimal IL program that uses `rt_modvar_addr_i64` to increment a counter prints `1` when run via
-      `ilc codegen arm64 -run-native`.
+      `viper codegen arm64 -run-native`.
 
   Example IL (sanity-checked):
     - `extern @rt_modvar_addr_i64(str) -> ptr`

@@ -62,7 +62,7 @@ The verifier checks types, control flow, and instruction well-formedness. No out
 ### 3. Run the Program
 
 ```sh
-ilc -run hello.il
+viper -run hello.il
 ```
 
 Output:
@@ -224,7 +224,7 @@ il-dis program.il
 Run IL programs on the VM:
 
 ```sh
-ilc -run program.il
+viper -run program.il
 ```
 
 ### Transform IL
@@ -232,20 +232,20 @@ ilc -run program.il
 Apply optimization passes:
 
 ```sh
-ilc opt program.il -p simplifycfg -o optimized.il
+viper opt program.il -p simplifycfg -o optimized.il
 ```
 
-Preset pipelines via `ilc il-opt`:
+Preset pipelines via `viper il-opt`:
 
 ```sh
 # O1 (default): mem2reg + SCCP + LICM + peephole + DCE
-ilc il-opt program.il --pipeline O1 -o program.o1.il
+viper il-opt program.il --pipeline O1 -o program.o1.il
 
 # O2: adds loop-simplify + EarlyCSE + DSE for extra cleanup
-ilc il-opt program.il --pipeline O2 -o program.o2.il
+viper il-opt program.il --pipeline O2 -o program.o2.il
 
 # Custom sequence
-ilc il-opt program.il --passes "simplify-cfg,mem2reg,sccp,dce" -o out.il
+viper il-opt program.il --passes "simplify-cfg,mem2reg,sccp,dce" -o out.il
 ```
 
 Available passes: `simplifycfg`, `liveness`, `licm`, `sccp`
@@ -263,5 +263,5 @@ Available passes: `simplifycfg`, `liveness`, `licm`, `sccp`
 **Explore:**
 
 - Check `tests/golden/il/` for more IL examples
-- Run `ilc --help` for all available options
+- Run `viper --help` for all available options
 - Experiment with optimization passes

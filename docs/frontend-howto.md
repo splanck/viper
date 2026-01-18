@@ -504,7 +504,7 @@ entry:
 This IL can be:
 
 - **Verified**: `il-verify output.il` checks for structural correctness
-- **Executed**: `ilc -run output.il` runs it in the VM
+- **Executed**: `viper -run output.il` runs it in the VM
 - **Compiled**: (future) x86-64 codegen
 
 ### Key Takeaways
@@ -549,7 +549,7 @@ Now let's explore each component in detail, starting with build system integrati
 ## 3. Build System Integration
 
 Viper uses CMake for build management. This section explains how to integrate your frontend into the build system so it
-can be compiled and used by the `ilc` command-line tool.
+can be compiled and used by the `viper` command-line tool.
 
 ### Directory Structure
 
@@ -581,7 +581,7 @@ src/frontends/yourfrontend/
 ### CMakeLists.txt
 
 **What this does:** Defines a static library target (`fe_yourfrontend`) that compiles your frontend sources and links
-against Viper IL infrastructure. The library can then be linked into the `ilc` tool or other programs.
+against Viper IL infrastructure. The library can then be linked into the `viper` tool or other programs.
 
 **File:** `src/frontends/yourfrontend/CMakeLists.txt`
 
@@ -636,40 +636,40 @@ target_include_directories(fe_yourfrontend PUBLIC
 target_compile_features(fe_yourfrontend PUBLIC cxx_std_17)
 ```
 
-### Register with ilc Tool
+### Register with viper Tool
 
-**Why register with ilc?** The `ilc` (IL Compiler) tool is Viper's command-line interface for all compilation
+**Why register with ilc?** The `viper` (IL Compiler) tool is Viper's command-line interface for all compilation
 operations. It provides a unified interface:
 
 ```bash
-ilc front basic source.bas    # Compile BASIC
-ilc front c source.c           # Compile C (future)
-ilc front yourfrontend test.src  # Your frontend!
+viper front basic source.bas    # Compile BASIC
+viper front c source.c           # Compile C (future)
+viper front yourfrontend test.src  # Your frontend!
 ```
 
-Registering your frontend makes it accessible via `ilc front yourfrontend`, which is essential for testing and
+Registering your frontend makes it accessible via `viper front yourfrontend`, which is essential for testing and
 integration with the test suite.
 
-**File:** `src/tools/ilc/CMakeLists.txt` (add to existing file)
+**File:** `src/tools/viper/CMakeLists.txt` (add to existing file)
 
 ```cmake
 # Add your command handler source
 # This source file implements cmdFrontYourFrontend(), the entry point
-# for your frontend when invoked via ilc.
-target_sources(ilc PRIVATE
+# for your frontend when invoked via viper.
+target_sources(viper PRIVATE
     cmd_front_yourfrontend.cpp
 )
 
-# Link your frontend library into ilc
-# PRIVATE = ilc binary needs your frontend, but downstream consumers don't
-target_link_libraries(ilc PRIVATE
+# Link your frontend library into viper
+# PRIVATE = viper binary needs your frontend, but downstream consumers don't
+target_link_libraries(viper PRIVATE
     fe_yourfrontend
 )
 ```
 
-**File:** `src/tools/ilc/main.cpp` (add to command dispatch)
+**File:** `src/tools/viper/main.cpp` (add to command dispatch)
 
-**What this does:** Adds a command dispatch path for your frontend. When the user runs `ilc front yourfrontend <args>`,
+**What this does:** Adds a command dispatch path for your frontend. When the user runs `viper front yourfrontend <args>`,
 this code routes control to your `cmdFrontYourFrontend()` function.
 
 ```cpp
@@ -681,10 +681,10 @@ int main(int argc, char **argv) {
     // ... existing code that parses argv[1] into 'cmd' ...
 
     // Add your frontend command
-    // Command format: ilc front yourfrontend [options] source.src
+    // Command format: viper front yourfrontend [options] source.src
     //
     // argv layout after this check:
-    //   argv[0] = "ilc"
+    //   argv[0] = "viper"
     //   argv[1] = "front"
     //   argv[2] = "yourfrontend"
     //   argv[3..] = your frontend's arguments
@@ -703,7 +703,7 @@ program_options). This keeps dependencies minimal and build times fast.
 
 ### Command Handler Template
 
-**What this does:** Implements the entry point for your frontend when invoked via `ilc front yourfrontend`. This is the
+**What this does:** Implements the entry point for your frontend when invoked via `viper front yourfrontend`. This is the
 glue code that:
 
 1. Parses command-line options
@@ -711,7 +711,7 @@ glue code that:
 3. Invokes your compiler
 4. Handles the result (emit IL, run in VM, or report errors)
 
-**File:** `src/tools/ilc/cmd_front_yourfrontend.cpp`
+**File:** `src/tools/viper/cmd_front_yourfrontend.cpp`
 
 ```cpp
 #include "yourfrontend/Compiler.hpp"   // Your frontend's main API
@@ -745,7 +745,7 @@ int cmdFrontYourFrontend(int argc, char **argv) {
     }
 
     if (sourcePath.empty()) {
-        std::cerr << "Usage: ilc front yourfrontend [-emit-il|-run] <source>\n";
+        std::cerr << "Usage: viper front yourfrontend [-emit-il|-run] <source>\n";
         return 1;
     }
 
@@ -809,14 +809,14 @@ int cmdFrontYourFrontend(int argc, char **argv) {
     //
     // PHASE 6: Emit IL or run in VM
     //
-    // If -emit-il: Serialize IL module to stdout (for inspection or piping to ilc)
+    // If -emit-il: Serialize IL module to stdout (for inspection or piping to viper)
     // If -run: Verify IL structure, then execute @main() in the VM
     //
 
     if (emitIl) {
         // Serialize IL to stdout in textual format.
         // Output can be saved to a .il file or piped to another tool.
-        // Example: ilc front yourfrontend -emit-il test.src > test.il
+        // Example: viper front yourfrontend -emit-il test.src > test.il
         il::io::Serializer::write(result.module, std::cout);
         return 0;
     }
@@ -886,11 +886,11 @@ cmake -S . -B build
 cmake --build build --target fe_yourfrontend
 
 # Build ilc tool
-cmake --build build --target ilc
+cmake --build build --target viper
 
 # Test
-./build/src/tools/ilc/ilc front yourfrontend -emit-il test.src
-./build/src/tools/ilc/ilc front yourfrontend -run test.src
+./build/src/tools/viper/viper front yourfrontend -emit-il test.src
+./build/src/tools/viper/viper front yourfrontend -run test.src
 ```
 
 ---
@@ -3655,8 +3655,8 @@ il::io::Serializer::write(module, std::cerr);
 **Trace VM Execution:**
 
 ```bash
-./ilc front yourfrontend -run --trace=il test.src
-./ilc front yourfrontend -run --trace=src test.src
+./viper front yourfrontend -run --trace=il test.src
+./viper front yourfrontend -run --trace=src test.src
 ```
 
 **Check Opcode Usage:**

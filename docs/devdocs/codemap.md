@@ -43,7 +43,7 @@ Source code organization for the Viper compiler toolchain.
 
 | Component                       | Description                                                   |
 |---------------------------------|---------------------------------------------------------------|
-| [Tools](codemap/tools.md)       | CLI tools (ilc, vbasic, vpascal, viper, ilrun, il-verify, il-dis) |
+| [Tools](codemap/tools.md)       | CLI tools (viper, vbasic, vpascal, zia, ilrun, il-verify, il-dis) |
 | [Graphics](codemap/graphics.md) | ViperGFX 2D graphics library                      |
 | [TUI](codemap/tui.md)           | Minimal TUI utility + tests                       |
 
