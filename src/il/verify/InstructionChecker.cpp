@@ -233,7 +233,7 @@ Expected<void> applyIdxChk(const VerifyCtx &ctx, const InstructionSpec &)
 Expected<void> applyCastFpToSiRteChk(const VerifyCtx &ctx, const InstructionSpec &)
 {
     const auto kind = ctx.instr.type.kind;
-    if (kind != Type::Kind::I16 && kind != Type::Kind::I32 && kind != Type::Kind::I64)
+    if (!detail::isSupportedIntegerWidth(kind))
         return fail(ctx, "cast result must be i16, i32, or i64");
     ctx.types.recordResult(ctx.instr, ctx.instr.type);
     return {};
@@ -246,7 +246,7 @@ Expected<void> applyCastFpToSiRteChk(const VerifyCtx &ctx, const InstructionSpec
 Expected<void> applyCastFpToUiRteChk(const VerifyCtx &ctx, const InstructionSpec &)
 {
     const auto kind = ctx.instr.type.kind;
-    if (kind != Type::Kind::I16 && kind != Type::Kind::I32 && kind != Type::Kind::I64)
+    if (!detail::isSupportedIntegerWidth(kind))
         return fail(ctx, "cast result must be i16, i32, or i64");
     ctx.types.recordResult(ctx.instr, ctx.instr.type);
     return {};
@@ -260,7 +260,7 @@ Expected<void> applyCastFpToUiRteChk(const VerifyCtx &ctx, const InstructionSpec
 Expected<void> applyCastSiNarrowChk(const VerifyCtx &ctx, const InstructionSpec &)
 {
     const auto kind = ctx.instr.type.kind;
-    if (kind != Type::Kind::I16 && kind != Type::Kind::I32)
+    if (!detail::isNarrowingTargetWidth(kind))
         return fail(ctx, "narrowing cast result must be i16 or i32");
     ctx.types.recordResult(ctx.instr, ctx.instr.type);
     return {};
@@ -273,7 +273,7 @@ Expected<void> applyCastSiNarrowChk(const VerifyCtx &ctx, const InstructionSpec 
 Expected<void> applyCastUiNarrowChk(const VerifyCtx &ctx, const InstructionSpec &)
 {
     const auto kind = ctx.instr.type.kind;
-    if (kind != Type::Kind::I16 && kind != Type::Kind::I32)
+    if (!detail::isNarrowingTargetWidth(kind))
         return fail(ctx, "narrowing cast result must be i16 or i32");
     ctx.types.recordResult(ctx.instr, ctx.instr.type);
     return {};

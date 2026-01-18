@@ -19,30 +19,16 @@
 ///          also reference-counted via the heap allocator.
 
 #include "rt_array_str.h"
+#include "rt_internal.h"
 
 #include <assert.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 
-/// @brief Retrieve the heap header for a runtime string array payload.
-/// @param payload Array payload pointer (may be NULL).
-/// @return Header describing the allocation, or NULL when @p payload is null.
-static rt_heap_hdr_t *rt_arr_str_hdr(const rt_string *payload)
-{
-    return payload ? rt_heap_hdr((void *)payload) : NULL;
-}
-
-/// @brief Confirm that a heap header matches the expected string array metadata.
-/// @details Validates the heap kind and element kind to ensure we're operating
-///          on a string array allocation.
-/// @param hdr Heap header retrieved from an array payload.
-static void rt_arr_str_assert_header(rt_heap_hdr_t *hdr)
-{
-    assert(hdr);
-    assert(hdr->kind == RT_HEAP_ARRAY);
-    assert(hdr->elem_kind == RT_ELEM_STR);
-}
+// Generate standard array helper functions using macros from rt_internal.h
+RT_ARR_DEFINE_HDR_FN(rt_arr_str_hdr, rt_string)
+RT_ARR_DEFINE_ASSERT_HEADER_FN(rt_arr_str_assert_header, RT_ELEM_STR)
 
 /// @brief Allocate a new array of string handles.
 /// @details Allocates an array with @p len slots for string pointers, all

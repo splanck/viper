@@ -294,9 +294,9 @@ static constexpr std::array<EncodingRow, 46> kEncodingTable = {{
      EncodingFlag::RequiresModRM},
     {MOpcode::MOVSDmr,
      "movsd",
-     EncodingForm::RegMem,
-     OperandOrder::R_M,
-     makePattern(OperandKind::Reg, OperandKind::Mem, OperandKind::None),
+     EncodingForm::MemReg,
+     OperandOrder::M_R,
+     makePattern(OperandKind::Mem, OperandKind::Reg, OperandKind::None),
      EncodingFlag::RequiresModRM},
 }};
 

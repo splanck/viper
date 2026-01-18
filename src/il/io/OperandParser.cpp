@@ -435,43 +435,10 @@ Expected<void> OperandParser::parseBranchTarget(const std::string &segment,
         return {};
     }
 
-    size_t rp = std::string::npos;
-    size_t depth = 0;
-    StringStateTracker stringState2;
-    for (size_t pos = lp; pos < text.size(); ++pos)
-    {
-        char c = text[pos];
-        if (pos == lp)
-        {
-            ++depth;
-            continue;
-        }
-        if (stringState2.processChar(c))
-            continue;
-        if (c == '(')
-        {
-            ++depth;
-            continue;
-        }
-        if (c == ')')
-        {
-            if (depth == 0)
-                break;
-            --depth;
-            if (depth == 0)
-            {
-                rp = pos;
-                break;
-            }
-            continue;
-        }
-    }
-
-    if (rp == std::string::npos || depth != 0 || stringState2.hasUnfinishedString())
-    {
-        return Expected<void>{
-            il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, "mismatched ')'")};
-    }
+    auto parenRange = findTopLevelParenRange(state_, instr_, text, lp, mnemonic);
+    if (!parenRange)
+        return Expected<void>{parenRange.error()};
+    size_t rp = parenRange.value().second;
 
     if (!trim(text.substr(rp + 1)).empty())
     {
@@ -599,33 +566,12 @@ Expected<void> OperandParser::parseSwitchTargets(const std::string &text)
     {
         size_t split = remaining.size();
         size_t depth = 0;
-        bool inString = false;
-        bool escape = false;
+        StringStateTracker stringState;
         for (size_t pos = 0; pos < remaining.size(); ++pos)
         {
             char c = remaining[pos];
-            if (inString)
-            {
-                if (escape)
-                {
-                    escape = false;
-                    continue;
-                }
-                if (c == '\\')
-                {
-                    escape = true;
-                    continue;
-                }
-                if (c == '"')
-                    inString = false;
+            if (stringState.processChar(c))
                 continue;
-            }
-
-            if (c == '"')
-            {
-                inString = true;
-                continue;
-            }
 
             if (c == '(')
                 ++depth;
@@ -645,7 +591,7 @@ Expected<void> OperandParser::parseSwitchTargets(const std::string &text)
             }
         }
 
-        if (inString || escape)
+        if (stringState.hasUnfinishedString())
             return malformedSwitch();
 
         std::string segment = trim(remaining.substr(0, split));

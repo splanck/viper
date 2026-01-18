@@ -59,7 +59,7 @@ entry:
   br L10
 L10:
   .loc 1 1 4
-  store i64, %t1, 1
+  store i64, %t5, 1
   .loc 1 1 4
   br L20
 L20:
@@ -69,7 +69,7 @@ L20:
   br L30
 L30:
   .loc 1 3 15
-  %t6 = load i64, %t1
+  %t6 = load i64, %t5
   .loc 1 3 15
   %t7:i32 = cast.si_narrow.chk %t6
   .loc 1 3 10
@@ -120,17 +120,17 @@ L50:
   cbr %t19, val_ok, val_fail
 L60:
   .loc 1 6 4
-  store f64, %t0, 1.8999999999999999
+  store f64, %t1, 1.8999999999999999
   .loc 1 6 4
   br L70
 L70:
   .loc 1 7 4
-  store f64, %t5, -1.8999999999999999
+  store f64, %t0, -1.8999999999999999
   .loc 1 7 4
   br L80
 L80:
   .loc 1 8 14
-  %t24 = load f64, %t0
+  %t24 = load f64, %t1
   .loc 1 8 10
   %t25 = call @rt_int_floor(%t24)
   .loc 1 8 10
@@ -140,7 +140,7 @@ L80:
   .loc 1 8 10
   call @Viper.Terminal.PrintStr(%t26)
   .loc 1 8 23
-  %t27 = load f64, %t5
+  %t27 = load f64, %t0
   .loc 1 8 19
   %t28 = call @rt_int_floor(%t27)
   .loc 1 8 19

@@ -1028,33 +1028,6 @@ int64_t rt_hash_crc32_bytes(void *bytes)
 
 #define HMAC_BLOCK_SIZE 64 // Block size for MD5, SHA1, SHA256
 
-/// @brief Helper to extract bytes from a Bytes object.
-static uint8_t *extract_bytes_data(void *bytes, size_t *out_len)
-{
-    if (!bytes)
-    {
-        *out_len = 0;
-        return NULL;
-    }
-
-    int64_t len = rt_bytes_len(bytes);
-    *out_len = (size_t)len;
-
-    if (len == 0)
-        return NULL;
-
-    uint8_t *data = (uint8_t *)malloc((size_t)len);
-    if (!data)
-        rt_trap("HMAC: memory allocation failed");
-
-    for (int64_t i = 0; i < len; i++)
-    {
-        data[i] = (uint8_t)rt_bytes_get(bytes, i);
-    }
-
-    return data;
-}
-
 /// @brief Hash function pointer type for HMAC computation.
 typedef void (*hash_fn_t)(const uint8_t *data, size_t len, uint8_t *digest);
 
@@ -1163,8 +1136,8 @@ rt_string rt_hash_hmac_md5(rt_string key, rt_string data)
 rt_string rt_hash_hmac_md5_bytes(void *key, void *data)
 {
     size_t key_len, data_len;
-    uint8_t *key_data = extract_bytes_data(key, &key_len);
-    uint8_t *msg_data = extract_bytes_data(data, &data_len);
+    uint8_t *key_data = rt_bytes_extract_raw(key, &key_len);
+    uint8_t *msg_data = rt_bytes_extract_raw(data, &data_len);
 
     uint8_t digest[16];
     hmac_md5_raw(key_data ? key_data : (const uint8_t *)"",
@@ -1204,8 +1177,8 @@ rt_string rt_hash_hmac_sha1(rt_string key, rt_string data)
 rt_string rt_hash_hmac_sha1_bytes(void *key, void *data)
 {
     size_t key_len, data_len;
-    uint8_t *key_data = extract_bytes_data(key, &key_len);
-    uint8_t *msg_data = extract_bytes_data(data, &data_len);
+    uint8_t *key_data = rt_bytes_extract_raw(key, &key_len);
+    uint8_t *msg_data = rt_bytes_extract_raw(data, &data_len);
 
     uint8_t digest[20];
     hmac_sha1_raw(key_data ? key_data : (const uint8_t *)"",
@@ -1245,8 +1218,8 @@ rt_string rt_hash_hmac_sha256(rt_string key, rt_string data)
 rt_string rt_hash_hmac_sha256_bytes(void *key, void *data)
 {
     size_t key_len, data_len;
-    uint8_t *key_data = extract_bytes_data(key, &key_len);
-    uint8_t *msg_data = extract_bytes_data(data, &data_len);
+    uint8_t *key_data = rt_bytes_extract_raw(key, &key_len);
+    uint8_t *msg_data = rt_bytes_extract_raw(data, &data_len);
 
     uint8_t digest[32];
     rt_hash_hmac_sha256_raw(key_data ? key_data : (const uint8_t *)"",

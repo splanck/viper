@@ -17,6 +17,7 @@
 
 #include "rt_array_f64.h"
 #include "rt_array.h" // for rt_arr_oob_panic
+#include "rt_internal.h"
 #include "rt_platform.h"
 
 #include <assert.h>
@@ -35,15 +36,9 @@ rt_heap_hdr_t *rt_arr_f64_hdr(const double *payload)
     return payload ? rt_heap_hdr((void *)payload) : NULL;
 }
 
-/// @brief Assert that a heap header describes an F64 array.
-/// @details Validates allocation kind and element kind to detect misuse.
-/// @param hdr Heap header to validate (must be non-NULL).
-static void rt_arr_f64_assert_header(rt_heap_hdr_t *hdr)
-{
-    assert(hdr);
-    assert(hdr->kind == RT_HEAP_ARRAY);
-    assert(hdr->elem_kind == RT_ELEM_F64);
-}
+// Generate standard array helper functions using macros from rt_internal.h
+RT_ARR_DEFINE_ASSERT_HEADER_FN(rt_arr_f64_assert_header, RT_ELEM_F64)
+RT_ARR_DEFINE_PAYLOAD_BYTES_FN(rt_arr_f64_payload_bytes, double)
 
 /// @brief Validate array bounds and panic on out-of-range access.
 /// @details Traps via @ref rt_arr_oob_panic when @p arr is NULL or @p idx is
@@ -61,19 +56,6 @@ static void rt_arr_f64_validate_bounds(double *arr, size_t idx)
     size_t len = hdr->len;
     if (idx >= len)
         rt_arr_oob_panic(idx, len);
-}
-
-/// @brief Compute payload byte size for a given capacity.
-/// @details Returns 0 on overflow or when @p cap is zero.
-/// @param cap Desired element capacity.
-/// @return Payload size in bytes, or 0 on overflow.
-static size_t rt_arr_f64_payload_bytes(size_t cap)
-{
-    if (cap == 0)
-        return 0;
-    if (cap > (SIZE_MAX - sizeof(rt_heap_hdr_t)) / sizeof(double))
-        return 0;
-    return cap * sizeof(double);
 }
 
 /// @brief Allocate a new array of doubles with length @p len.
@@ -173,94 +155,8 @@ void rt_arr_f64_copy_payload(double *dst, const double *src, size_t count)
     memcpy(dst, src, count * sizeof(double));
 }
 
-/// @brief Resize the backing allocation in place when possible.
-/// @details Reallocates the combined header+payload block and zeroes any newly
-///          added elements. Returns -1 on allocation or overflow failure.
-/// @param hdr_inout In/out pointer to the array header.
-/// @param payload_inout In/out pointer to the array payload.
-/// @param new_len New logical length and capacity.
-/// @return 0 on success, -1 on failure.
-static int rt_arr_f64_grow_in_place(rt_heap_hdr_t **hdr_inout,
-                                    double **payload_inout,
-                                    size_t new_len)
-{
-    rt_heap_hdr_t *hdr = *hdr_inout;
-    size_t old_len = hdr ? hdr->len : 0;
-    size_t new_cap = new_len;
-    size_t payload_bytes = rt_arr_f64_payload_bytes(new_cap);
-    if (new_cap > 0 && payload_bytes == 0)
-        return -1;
-
-    size_t total_bytes = sizeof(rt_heap_hdr_t) + payload_bytes;
-    rt_heap_hdr_t *resized = (rt_heap_hdr_t *)realloc(hdr, total_bytes);
-    if (!resized)
-        return -1;
-
-    double *payload = (double *)rt_heap_data(resized);
-    if (new_len > old_len)
-    {
-        size_t grow = new_len - old_len;
-        memset(payload + old_len, 0, grow * sizeof(double));
-    }
-    resized->cap = new_cap;
-    resized->len = new_len;
-
-    *hdr_inout = resized;
-    *payload_inout = payload;
-    return 0;
-}
-
-/// @brief Resize an array with copy-on-resize semantics.
-/// @details If the array is shared (refcount > 1), a new allocation is created
-///          and elements are copied into it before releasing the old payload.
-///          When growing in place, new elements are zero-initialized.
-/// @param a_inout Pointer to the payload pointer to update.
-/// @param new_len Desired logical length.
-/// @return 0 on success, -1 on allocation or parameter failure.
-int rt_arr_f64_resize(double **a_inout, size_t new_len)
-{
-    if (!a_inout)
-        return -1;
-
-    double *arr = *a_inout;
-    if (!arr)
-    {
-        double *fresh = rt_arr_f64_new(new_len);
-        if (!fresh)
-            return -1;
-        *a_inout = fresh;
-        return 0;
-    }
-
-    rt_heap_hdr_t *hdr = rt_arr_f64_hdr(arr);
-    rt_arr_f64_assert_header(hdr);
-
-    size_t old_len = hdr->len;
-    size_t cap = hdr->cap;
-    if (new_len <= cap)
-    {
-        if (new_len > old_len)
-            memset(arr + old_len, 0, (new_len - old_len) * sizeof(double));
-        rt_heap_set_len(arr, new_len);
-        return 0;
-    }
-
-    if (__atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) > 1)
-    {
-        double *fresh = rt_arr_f64_new(new_len);
-        if (!fresh)
-            return -1;
-        size_t copy_len = old_len < new_len ? old_len : new_len;
-        rt_arr_f64_copy_payload(fresh, arr, copy_len);
-        rt_arr_f64_release(arr);
-        *a_inout = fresh;
-        return 0;
-    }
-
-    rt_heap_hdr_t *hdr_mut = hdr;
-    double *payload = arr;
-    if (rt_arr_f64_grow_in_place(&hdr_mut, &payload, new_len) != 0)
-        return -1;
-    *a_inout = payload;
-    return 0;
-}
+// Generate grow_in_place and resize functions using macros from rt_internal.h
+RT_ARR_DEFINE_GROW_IN_PLACE_FN(rt_arr_f64_grow_in_place, double, rt_arr_f64_payload_bytes)
+RT_ARR_DEFINE_RESIZE_FN(rt_arr_f64_resize, double, rt_arr_f64_hdr, rt_arr_f64_assert_header,
+                        rt_arr_f64_new, rt_arr_f64_copy_payload, rt_arr_f64_release,
+                        rt_arr_f64_grow_in_place)

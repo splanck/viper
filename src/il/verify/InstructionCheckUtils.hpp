@@ -49,4 +49,26 @@ bool fitsInIntegerKind(long long value, il::core::Type::Kind kind);
 /// @return Optional kind describing the category, or std::nullopt when dynamic.
 std::optional<il::core::Type::Kind> kindFromCategory(il::core::TypeCategory category);
 
+/// @brief Check if a type kind is a supported integer width for arithmetic operations.
+/// @details Returns true for I16, I32, and I64 - the integer types that can be
+///          used with arithmetic instructions, index operations, and integer casts.
+/// @param kind Type kind to check.
+/// @return True when @p kind is one of I16, I32, or I64.
+inline bool isSupportedIntegerWidth(il::core::Type::Kind kind)
+{
+    return kind == il::core::Type::Kind::I16 || kind == il::core::Type::Kind::I32 ||
+           kind == il::core::Type::Kind::I64;
+}
+
+/// @brief Check if a type kind is a supported narrowing target width.
+/// @details Returns true for I16 and I32 - the integer types that can be
+///          targets of narrowing cast operations. I64 is excluded since it cannot
+///          be a narrowing target (it's the widest integer type).
+/// @param kind Type kind to check.
+/// @return True when @p kind is one of I16 or I32.
+inline bool isNarrowingTargetWidth(il::core::Type::Kind kind)
+{
+    return kind == il::core::Type::Kind::I16 || kind == il::core::Type::Kind::I32;
+}
+
 } // namespace il::verify::detail

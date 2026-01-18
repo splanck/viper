@@ -15,6 +15,7 @@
 
 #include "rt_bytes.h"
 
+#include "rt_codec.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_string.h"
@@ -91,12 +92,6 @@ static rt_bytes_impl *rt_bytes_alloc(int64_t len)
     return bytes;
 }
 
-/// @brief Hexadecimal character lookup table for byte-to-hex encoding.
-///
-/// Maps nibble values (0-15) to their lowercase hexadecimal character
-/// representation. Used by rt_bytes_to_hex for efficient encoding.
-static const char hex_chars[] = "0123456789abcdef";
-
 /// @brief Base64 character lookup table for encoding (RFC 4648).
 ///
 /// Maps 6-bit values (0-63) to the standard Base64 alphabet:
@@ -106,26 +101,6 @@ static const char hex_chars[] = "0123456789abcdef";
 /// - 62: '+'
 /// - 63: '/'
 static const char b64_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-/// @brief Converts a hexadecimal character to its numeric value.
-///
-/// Parses a single hex digit character and returns its value.
-/// Accepts both uppercase and lowercase letters.
-///
-/// @param c The character to convert ('0'-'9', 'a'-'f', or 'A'-'F').
-///
-/// @return The numeric value 0-15, or -1 if the character is not a valid
-///         hexadecimal digit.
-static int hex_digit_value(char c)
-{
-    if (c >= '0' && c <= '9')
-        return c - '0';
-    if (c >= 'a' && c <= 'f')
-        return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F')
-        return c - 'A' + 10;
-    return -1;
-}
 
 /// @brief Converts a Base64 character to its numeric value.
 ///
@@ -271,8 +246,8 @@ void *rt_bytes_from_hex(rt_string hex)
     rt_bytes_impl *bytes = rt_bytes_alloc(len);
     for (int64_t i = 0; i < len; i++)
     {
-        int hi = hex_digit_value(hex_str[i * 2]);
-        int lo = hex_digit_value(hex_str[i * 2 + 1]);
+        int hi = rt_hex_digit_value(hex_str[i * 2]);
+        int lo = rt_hex_digit_value(hex_str[i * 2 + 1]);
 
         if (hi < 0 || lo < 0)
             rt_trap("Bytes.FromHex: invalid hex character");
@@ -555,21 +530,8 @@ rt_string rt_bytes_to_hex(void *obj)
     if (bytes->len == 0)
         return rt_string_from_bytes("", 0);
 
-    size_t result_len = (size_t)bytes->len * 2;
-    char *result = (char *)malloc(result_len + 1);
-    if (!result)
-        rt_trap("Bytes: memory allocation failed");
-
-    for (int64_t i = 0; i < bytes->len; i++)
-    {
-        result[i * 2] = hex_chars[(bytes->data[i] >> 4) & 0xF];
-        result[i * 2 + 1] = hex_chars[bytes->data[i] & 0xF];
-    }
-    result[result_len] = '\0';
-
-    rt_string str = rt_string_from_bytes(result, result_len);
-    free(result);
-    return str;
+    // Use shared codec utility for hex encoding
+    return rt_codec_hex_enc_bytes(bytes->data, (size_t)bytes->len);
 }
 
 /// @brief Converts the Bytes object to a Base64-encoded string.
@@ -890,4 +852,62 @@ void *rt_bytes_clone(void *obj)
 
     rt_bytes_impl *bytes = (rt_bytes_impl *)obj;
     return rt_bytes_slice(obj, 0, bytes->len);
+}
+
+//=============================================================================
+// Internal Utilities (declared in rt_internal.h)
+//=============================================================================
+
+/// @brief Extract raw bytes from a Bytes object into a newly allocated buffer.
+///
+/// This utility function extracts the contents of a Bytes object into a
+/// freshly allocated raw buffer. It's used internally by cryptographic and
+/// encoding routines that need to work with raw byte arrays.
+///
+/// @param bytes Bytes object pointer. May be NULL.
+/// @param out_len Output parameter that receives the length of the data.
+///
+/// @return Pointer to a newly allocated buffer containing the bytes data,
+///         or NULL if the input is NULL or empty. Caller must free() the
+///         returned buffer when done.
+///
+/// @note Traps on allocation failure.
+uint8_t *rt_bytes_extract_raw(void *bytes, size_t *out_len)
+{
+    if (!bytes)
+    {
+        *out_len = 0;
+        return NULL;
+    }
+
+    rt_bytes_impl *impl = (rt_bytes_impl *)bytes;
+    *out_len = (size_t)impl->len;
+
+    if (impl->len == 0)
+        return NULL;
+
+    uint8_t *data = (uint8_t *)malloc((size_t)impl->len);
+    if (!data)
+        rt_trap("Bytes: memory allocation failed");
+
+    memcpy(data, impl->data, (size_t)impl->len);
+    return data;
+}
+
+/// @brief Create a Bytes object from raw data.
+///
+/// This utility function creates a new Bytes object and initializes it
+/// with a copy of the provided raw data. It's used internally by
+/// cryptographic routines that produce raw byte arrays.
+///
+/// @param data Pointer to raw data buffer. May be NULL if len is 0.
+/// @param len Length of the data in bytes.
+///
+/// @return New Bytes object containing a copy of the data.
+void *rt_bytes_from_raw(const uint8_t *data, size_t len)
+{
+    rt_bytes_impl *bytes = rt_bytes_alloc((int64_t)len);
+    if (len > 0 && data)
+        memcpy(bytes->data, data, len);
+    return bytes;
 }

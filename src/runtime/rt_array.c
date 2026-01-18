@@ -22,6 +22,7 @@
 ///          guard against memory corruption and incorrect sharing semantics.
 
 #include "rt_array.h"
+#include "rt_internal.h"
 #include "rt_platform.h"
 
 #include <assert.h>
@@ -53,17 +54,9 @@ void rt_arr_oob_panic(size_t idx, size_t len)
     abort();
 }
 
-/// @brief Confirm that a heap header matches the expected array metadata.
-/// @details Validates the heap kind and element kind so that higher level code
-///          never manipulates the wrong allocation through the array helpers.
-///          Firing assertions early helps pinpoint incorrect pointer sharing.
-/// @param hdr Heap header retrieved from an array payload.
-static void rt_arr_i32_assert_header(rt_heap_hdr_t *hdr)
-{
-    assert(hdr);
-    assert(hdr->kind == RT_HEAP_ARRAY);
-    assert(hdr->elem_kind == RT_ELEM_I32);
-}
+// Generate standard array helper functions using macros from rt_internal.h
+RT_ARR_DEFINE_ASSERT_HEADER_FN(rt_arr_i32_assert_header, RT_ELEM_I32)
+RT_ARR_DEFINE_PAYLOAD_BYTES_FN(rt_arr_i32_payload_bytes, int32_t)
 
 /// @brief Verify that an index falls inside the logical length of an array.
 /// @details Checks the array pointer, confirms the backing header is valid, and
@@ -82,21 +75,6 @@ static void rt_arr_i32_validate_bounds(int32_t *arr, size_t idx)
     size_t len = hdr->len;
     if (idx >= len)
         rt_arr_oob_panic(idx, len);
-}
-
-/// @brief Compute the payload size in bytes for a requested capacity.
-/// @details Guards against overflow when translating an element count into the
-///          number of bytes required for the allocation.  Returning zero signals
-///          that the request was invalid or empty.
-/// @param cap Requested capacity in elements.
-/// @return Number of bytes needed for the payload, or zero on overflow.
-static size_t rt_arr_i32_payload_bytes(size_t cap)
-{
-    if (cap == 0)
-        return 0;
-    if (cap > (SIZE_MAX - sizeof(rt_heap_hdr_t)) / sizeof(int32_t))
-        return 0;
-    return cap * sizeof(int32_t);
 }
 
 /// @brief Allocate a new array with @p len elements.
@@ -200,99 +178,8 @@ void rt_arr_i32_copy_payload(int32_t *dst, const int32_t *src, size_t count)
     memcpy(dst, src, count * sizeof(int32_t));
 }
 
-/// @brief Attempt to grow an array in place, reallocating the underlying block.
-/// @details Recomputes the payload capacity, performs a `realloc`, and zeros the
-///          newly exposed region when the array has grown.  On success both the
-///          header pointer and payload pointer are updated to point at the new
-///          storage.
-/// @param hdr_inout Pointer to the header pointer that will be updated in place.
-/// @param payload_inout Pointer to the payload pointer updated in place.
-/// @param new_len New logical length requested by the caller.
-/// @return Zero on success; -1 on allocation failure or overflow.
-static int rt_arr_i32_grow_in_place(rt_heap_hdr_t **hdr_inout,
-                                    int32_t **payload_inout,
-                                    size_t new_len)
-{
-    rt_heap_hdr_t *hdr = *hdr_inout;
-    size_t old_len = hdr ? hdr->len : 0;
-    size_t new_cap = new_len;
-    size_t payload_bytes = rt_arr_i32_payload_bytes(new_cap);
-    if (new_cap > 0 && payload_bytes == 0)
-        return -1;
-
-    size_t total_bytes = sizeof(rt_heap_hdr_t) + payload_bytes;
-    rt_heap_hdr_t *resized = (rt_heap_hdr_t *)realloc(hdr, total_bytes);
-    if (!resized)
-        return -1;
-
-    int32_t *payload = (int32_t *)rt_heap_data(resized);
-    // Use the snapshotted old_len to avoid relying on header contents mid-mutation.
-    if (new_len > old_len)
-    {
-        size_t grow = new_len - old_len;
-        memset(payload + old_len, 0, grow * sizeof(int32_t));
-    }
-    resized->cap = new_cap;
-    resized->len = new_len;
-
-    *hdr_inout = resized;
-    *payload_inout = payload;
-    return 0;
-}
-
-/// @brief Resize an array handle to the requested length.
-/// @details Handles the `NULL` array case by allocating a fresh buffer, performs
-///          copy-on-write when the array is shared, and otherwise grows the
-///          allocation in place.  New elements are zero-initialised to match the
-///          runtime specification.
-/// @param a_inout Pointer to the array payload handle updated in place.
-/// @param new_len Target logical length of the array.
-/// @return Zero on success; -1 on allocation failure or invalid arguments.
-int rt_arr_i32_resize(int32_t **a_inout, size_t new_len)
-{
-    if (!a_inout)
-        return -1;
-
-    int32_t *arr = *a_inout;
-    if (!arr)
-    {
-        int32_t *fresh = rt_arr_i32_new(new_len);
-        if (!fresh)
-            return -1;
-        *a_inout = fresh;
-        return 0;
-    }
-
-    rt_heap_hdr_t *hdr = rt_arr_i32_hdr(arr);
-    rt_arr_i32_assert_header(hdr);
-
-    size_t old_len = hdr->len;
-    size_t cap = hdr->cap;
-    if (new_len <= cap)
-    {
-        if (new_len > old_len)
-            memset(arr + old_len, 0, (new_len - old_len) * sizeof(int32_t));
-        rt_heap_set_len(arr, new_len);
-        return 0;
-    }
-
-    if (__atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) > 1)
-    {
-        int32_t *fresh = rt_arr_i32_new(new_len);
-        if (!fresh)
-            return -1;
-        size_t copy_len = old_len < new_len ? old_len : new_len;
-        // rt_arr_i32_new and the existing array guarantee non-null payloads when copy_len > 0.
-        rt_arr_i32_copy_payload(fresh, arr, copy_len);
-        rt_arr_i32_release(arr);
-        *a_inout = fresh;
-        return 0;
-    }
-
-    rt_heap_hdr_t *hdr_mut = hdr;
-    int32_t *payload = arr;
-    if (rt_arr_i32_grow_in_place(&hdr_mut, &payload, new_len) != 0)
-        return -1;
-    *a_inout = payload;
-    return 0;
-}
+// Generate grow_in_place and resize functions using macros from rt_internal.h
+RT_ARR_DEFINE_GROW_IN_PLACE_FN(rt_arr_i32_grow_in_place, int32_t, rt_arr_i32_payload_bytes)
+RT_ARR_DEFINE_RESIZE_FN(rt_arr_i32_resize, int32_t, rt_arr_i32_hdr, rt_arr_i32_assert_header,
+                        rt_arr_i32_new, rt_arr_i32_copy_payload, rt_arr_i32_release,
+                        rt_arr_i32_grow_in_place)

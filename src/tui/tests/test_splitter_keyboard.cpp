@@ -19,6 +19,7 @@
 #include <memory>
 
 using viper::tui::term::KeyEvent;
+using viper::tui::ui::Event;
 using viper::tui::widgets::HSplitter;
 using viper::tui::widgets::VSplitter;
 
@@ -48,16 +49,16 @@ int main()
     KeyEvent k{};
     k.mods = KeyEvent::Ctrl;
     k.code = KeyEvent::Code::Left;
-    assert(hs.onEvent(k));
+    assert(hs.onEvent(Event{k}));
     assert(lp->last.w == 45);
     assert(rp->last.w == 55);
 
     for (int i = 0; i < 20; ++i)
-        hs.onEvent(k);
+        hs.onEvent(Event{k});
     assert(lp->last.w == 5);
 
     k.code = KeyEvent::Code::Right;
-    assert(hs.onEvent(k));
+    assert(hs.onEvent(Event{k}));
     assert(lp->last.w == 10);
 
     // Vertical splitter ratio adjustments
@@ -69,13 +70,13 @@ int main()
     vs.layout({0, 0, 10, 100});
 
     k.code = KeyEvent::Code::Up;
-    assert(vs.onEvent(k));
+    assert(vs.onEvent(Event{k}));
     assert(tp->last.h == 45);
     assert(bp->last.h == 55);
 
     k.code = KeyEvent::Code::Down;
     for (int i = 0; i < 20; ++i)
-        vs.onEvent(k);
+        vs.onEvent(Event{k});
     assert(tp->last.h == 95);
 
     return 0;

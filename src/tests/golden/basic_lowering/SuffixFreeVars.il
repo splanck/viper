@@ -50,11 +50,11 @@ func @main() -> i64 {
 entry:
   call @__mod_init$oop()
   %t0 = alloca 8
+  store ptr, %t0, null
   %t1 = alloca 8
-  %t2 = call @rt_str_empty()
-  store str, %t1, %t2
-  %t3 = alloca 8
-  store ptr, %t3, null
+  %t2 = alloca 8
+  %t3 = call @rt_str_empty()
+  store str, %t2, %t3
   br UL1000000000
 UL1000000000:
   .loc 1 1 1
@@ -68,36 +68,36 @@ UL999999998:
   .loc 1 3 1
   call @rt_arr_i64_retain(%t4)
   .loc 1 3 1
-  %t5 = load ptr, %t3
+  %t5 = load ptr, %t0
   .loc 1 3 1
   call @rt_arr_i64_release(%t5)
   .loc 1 3 1
-  store ptr, %t3, %t4
+  store ptr, %t0, %t4
   .loc 1 3 1
   br UL999999997
 UL999999997:
   .loc 1 4 15
   %t6 = const_str @.L0
   .loc 1 4 1
-  %t7 = load str, %t1
+  %t7 = load str, %t2
   .loc 1 4 1
   call @rt_str_release_maybe(%t7)
   .loc 1 4 1
   call @rt_str_retain_maybe(%t6)
   .loc 1 4 1
-  store str, %t1, %t6
+  store str, %t2, %t6
   .loc 1 4 1
   br UL999999996
 UL999999996:
   .loc 1 5 1
-  store i64, %t0, 5
+  store i64, %t1, 5
   .loc 1 5 1
   br UL999999995
 UL999999995:
   .loc 1 6 17
-  %t8 = load i64, %t0
+  %t8 = load i64, %t1
   .loc 1 6 1
-  %t9 = load ptr, %t3
+  %t9 = load ptr, %t0
   .loc 1 6 5
   %t10 = call @rt_arr_i64_len(%t9)
   .loc 1 6 5
@@ -116,7 +116,7 @@ UL999999995:
   cbr %t16, bc_oob0, bc_ok0
 UL999999994:
   .loc 1 7 7
-  %t17 = load str, %t1
+  %t17 = load str, %t2
   .loc 1 7 7
   call @rt_str_retain_maybe(%t17)
   .loc 1 7 7
@@ -131,7 +131,7 @@ UL999999994:
   br UL999999993
 UL999999993:
   .loc 1 8 7
-  %t19 = load i64, %t0
+  %t19 = load i64, %t1
   .loc 1 8 7
   call @Viper.Terminal.PrintI64(%t19)
   .loc 1 8 7
@@ -142,7 +142,7 @@ UL999999993:
   br UL999999992
 UL999999992:
   .loc 1 9 7
-  %t21 = load ptr, %t3
+  %t21 = load ptr, %t0
   .loc 1 9 7
   %t22 = call @rt_arr_i64_len(%t21)
   .loc 1 9 7
@@ -160,9 +160,9 @@ UL999999992:
   .loc 1 9 7
   cbr %t28, bc_oob1, bc_ok1
 exit:
-  %t31 = load ptr, %t3
+  %t31 = load ptr, %t0
   call @rt_arr_i64_release(%t31)
-  store ptr, %t3, null
+  store ptr, %t0, null
   ret 0
 bc_ok0:
   .loc 1 6 5

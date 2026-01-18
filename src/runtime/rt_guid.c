@@ -185,20 +185,6 @@ static void get_random_bytes(uint8_t *buf, size_t len)
 #endif
 }
 
-/// @brief Convert hex character to integer value.
-/// @param c Hex character (0-9, a-f, A-F).
-/// @return Value 0-15, or -1 if invalid.
-static int hex_digit_value(char c)
-{
-    if (c >= '0' && c <= '9')
-        return c - '0';
-    if (c >= 'a' && c <= 'f')
-        return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F')
-        return c - 'A' + 10;
-    return -1;
-}
-
 //=============================================================================
 // Public API
 //=============================================================================
@@ -443,9 +429,9 @@ void *rt_guid_to_bytes(rt_string str)
             continue;
         }
 
-        // Parse two hex digits
-        int hi = hex_digit_value(s[str_pos]);
-        int lo = hex_digit_value(s[str_pos + 1]);
+        // Parse two hex digits using shared utility
+        int hi = rt_hex_digit_value(s[str_pos]);
+        int lo = rt_hex_digit_value(s[str_pos + 1]);
         rt_bytes_set(bytes, byte_idx, (hi << 4) | lo);
 
         byte_idx++;

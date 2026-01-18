@@ -123,6 +123,31 @@ void ScreenBuffer::clear(const Style &style)
     std::fill(cells_.begin(), cells_.end(), blank);
 }
 
+/// @brief Fill a rectangular region with the specified character and style.
+/// @details Iterates through the specified region and sets each cell's character.
+///          If a style pointer is provided, the cell style is also updated.
+///          Bounds are automatically clamped to the buffer dimensions.
+void ScreenBuffer::fillRect(int x, int y, int w, int h, char32_t ch, const Style *style)
+{
+    int x0 = std::max(0, x);
+    int y0 = std::max(0, y);
+    int x1 = std::min(cols_, x + w);
+    int y1 = std::min(rows_, y + h);
+
+    for (int row = y0; row < y1; ++row)
+    {
+        for (int col = x0; col < x1; ++col)
+        {
+            Cell &cell = at(row, col);
+            cell.ch = ch;
+            if (style)
+            {
+                cell.style = *style;
+            }
+        }
+    }
+}
+
 /// @brief Save the current frame as the baseline for the next diff.
 /// @details Resizes the snapshot storage on demand and copies the full cell
 ///          array.  Callers typically invoke this after flushing terminal

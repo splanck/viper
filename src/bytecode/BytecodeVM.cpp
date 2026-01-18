@@ -1908,7 +1908,7 @@ L_ADD_I64_OVF: {
             overflow = (result < INT32_MIN || result > INT32_MAX);
             break;
         default: // I64
-            overflow = __builtin_add_overflow(a, b, &result);
+            overflow = addOverflow(a, b, result);
             break;
     }
     if (overflow) {
@@ -1935,7 +1935,7 @@ L_SUB_I64_OVF: {
             overflow = (result < INT32_MIN || result > INT32_MAX);
             break;
         default: // I64
-            overflow = __builtin_sub_overflow(a, b, &result);
+            overflow = subOverflow(a, b, result);
             break;
     }
     if (overflow) {
@@ -1962,7 +1962,7 @@ L_MUL_I64_OVF: {
             overflow = (result < INT32_MIN || result > INT32_MAX);
             break;
         default: // I64
-            overflow = __builtin_mul_overflow(a, b, &result);
+            overflow = mulOverflow(a, b, result);
             break;
     }
     if (overflow) {

@@ -60,24 +60,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-/// @brief Hex character lookup table for encoding (lowercase).
-static const char hex_chars[] = "0123456789abcdef";
-
 /// @brief Base64 character lookup table for encoding (RFC 4648 standard alphabet).
 static const char b64_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-/// @brief Convert hex character to value (0-15).
-/// @return Value 0-15, or -1 if invalid.
-static int hex_digit_value(char c)
-{
-    if (c >= '0' && c <= '9')
-        return c - '0';
-    if (c >= 'a' && c <= 'f')
-        return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F')
-        return c - 'A' + 10;
-    return -1;
-}
 
 /// @brief Convert Base64 character to value (0-63).
 /// @return Value 0-63, -2 for '=', or -1 if invalid.
@@ -180,8 +164,8 @@ rt_string rt_codec_url_encode(rt_string str)
         else
         {
             out[o++] = '%';
-            out[o++] = hex_chars[(c >> 4) & 0xF];
-            out[o++] = hex_chars[c & 0xF];
+            out[o++] = rt_hex_chars[(c >> 4) & 0xF];
+            out[o++] = rt_hex_chars[c & 0xF];
         }
     }
     out[o] = '\0';
@@ -245,8 +229,8 @@ rt_string rt_codec_url_decode(rt_string str)
         char c = input[i];
         if (c == '%' && i + 2 < input_len)
         {
-            int hi = hex_digit_value(input[i + 1]);
-            int lo = hex_digit_value(input[i + 2]);
+            int hi = rt_hex_digit_value(input[i + 1]);
+            int lo = rt_hex_digit_value(input[i + 2]);
             if (hi >= 0 && lo >= 0)
             {
                 out[o++] = (char)((hi << 4) | lo);
@@ -592,8 +576,8 @@ rt_string rt_codec_hex_enc(rt_string str)
     const uint8_t *data = (const uint8_t *)input;
     for (size_t i = 0; i < input_len; i++)
     {
-        out[i * 2] = hex_chars[(data[i] >> 4) & 0xF];
-        out[i * 2 + 1] = hex_chars[data[i] & 0xF];
+        out[i * 2] = rt_hex_chars[(data[i] >> 4) & 0xF];
+        out[i * 2 + 1] = rt_hex_chars[data[i] & 0xF];
     }
     out[output_len] = '\0';
 
@@ -622,8 +606,8 @@ rt_string rt_codec_hex_enc_bytes(const uint8_t *data, size_t len)
 
     for (size_t i = 0; i < len; i++)
     {
-        out[i * 2] = hex_chars[(data[i] >> 4) & 0xF];
-        out[i * 2 + 1] = hex_chars[data[i] & 0xF];
+        out[i * 2] = rt_hex_chars[(data[i] >> 4) & 0xF];
+        out[i * 2 + 1] = rt_hex_chars[data[i] & 0xF];
     }
     out[output_len] = '\0';
 
@@ -688,8 +672,8 @@ rt_string rt_codec_hex_dec(rt_string str)
 
     for (size_t i = 0; i < out_len; i++)
     {
-        int hi = hex_digit_value(input[i * 2]);
-        int lo = hex_digit_value(input[i * 2 + 1]);
+        int hi = rt_hex_digit_value(input[i * 2]);
+        int lo = rt_hex_digit_value(input[i * 2 + 1]);
 
         if (hi < 0 || lo < 0)
         {

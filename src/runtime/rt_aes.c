@@ -29,6 +29,7 @@
 #include "rt_aes.h"
 
 #include "rt_bytes.h"
+#include "rt_internal.h"
 #include "rt_string.h"
 
 #include <stdlib.h>
@@ -640,44 +641,6 @@ static uint8_t *aes_cbc_decrypt(const uint8_t *ciphertext, size_t len,
 }
 
 //=============================================================================
-// Helper Functions for Bytes Objects
-//=============================================================================
-
-/// @brief Extract raw bytes from a Bytes object
-static uint8_t *bytes_to_raw(void *bytes, size_t *out_len)
-{
-    if (!bytes)
-    {
-        *out_len = 0;
-        return NULL;
-    }
-
-    int64_t len = rt_bytes_len(bytes);
-    *out_len = (size_t)len;
-
-    if (len == 0)
-        return NULL;
-
-    uint8_t *data = (uint8_t *)malloc((size_t)len);
-    if (!data)
-        rt_trap("AES: memory allocation failed");
-
-    for (int64_t i = 0; i < len; i++)
-        data[i] = (uint8_t)rt_bytes_get(bytes, i);
-
-    return data;
-}
-
-/// @brief Create a Bytes object from raw bytes
-static void *raw_to_bytes(const uint8_t *data, size_t len)
-{
-    void *bytes = rt_bytes_new((int64_t)len);
-    for (size_t i = 0; i < len; i++)
-        rt_bytes_set(bytes, (int64_t)i, data[i]);
-    return bytes;
-}
-
-//=============================================================================
 // Public API
 //=============================================================================
 
@@ -693,9 +656,9 @@ static void *raw_to_bytes(const uint8_t *data, size_t len)
 void *rt_aes_encrypt(void *data, void *key, void *iv)
 {
     size_t data_len, key_len, iv_len;
-    uint8_t *data_raw = bytes_to_raw(data, &data_len);
-    uint8_t *key_raw = bytes_to_raw(key, &key_len);
-    uint8_t *iv_raw = bytes_to_raw(iv, &iv_len);
+    uint8_t *data_raw = rt_bytes_extract_raw(data, &data_len);
+    uint8_t *key_raw = rt_bytes_extract_raw(key, &key_len);
+    uint8_t *iv_raw = rt_bytes_extract_raw(iv, &iv_len);
 
     // Validate key length
     int nk, nr;
@@ -742,7 +705,7 @@ void *rt_aes_encrypt(void *data, void *key, void *iv)
     uint8_t *cipher = aes_cbc_encrypt(data_raw, data_len, key_raw, iv_raw, nk, nr, &cipher_len);
 
     // Create result
-    void *result = raw_to_bytes(cipher, cipher_len);
+    void *result = rt_bytes_from_raw(cipher, cipher_len);
 
     free(data_raw);
     free(key_raw);
@@ -764,9 +727,9 @@ void *rt_aes_encrypt(void *data, void *key, void *iv)
 void *rt_aes_decrypt(void *data, void *key, void *iv)
 {
     size_t data_len, key_len, iv_len;
-    uint8_t *data_raw = bytes_to_raw(data, &data_len);
-    uint8_t *key_raw = bytes_to_raw(key, &key_len);
-    uint8_t *iv_raw = bytes_to_raw(iv, &iv_len);
+    uint8_t *data_raw = rt_bytes_extract_raw(data, &data_len);
+    uint8_t *key_raw = rt_bytes_extract_raw(key, &key_len);
+    uint8_t *iv_raw = rt_bytes_extract_raw(iv, &iv_len);
 
     // Validate key length
     int nk, nr;
@@ -814,7 +777,7 @@ void *rt_aes_decrypt(void *data, void *key, void *iv)
     }
 
     // Create result
-    void *result = raw_to_bytes(plain, plain_len);
+    void *result = rt_bytes_from_raw(plain, plain_len);
     free(plain);
 
     return result;

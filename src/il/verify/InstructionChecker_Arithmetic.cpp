@@ -130,11 +130,8 @@ Expected<void> checkIdxChk(const VerifyCtx &ctx)
     if (ctx.instr.operands.size() != 3)
         return fail(ctx, "invalid operand count");
 
-    const auto isSupportedWidth = [](Type::Kind kind)
-    { return kind == Type::Kind::I16 || kind == Type::Kind::I32 || kind == Type::Kind::I64; };
-
     Type::Kind expectedKind = Type::Kind::Void;
-    if (isSupportedWidth(ctx.instr.type.kind))
+    if (detail::isSupportedIntegerWidth(ctx.instr.type.kind))
         expectedKind = ctx.instr.type.kind;
 
     const auto classifyOperand = [&](const Value &value) -> Expected<Type::Kind>
@@ -172,7 +169,7 @@ Expected<void> checkIdxChk(const VerifyCtx &ctx)
             return Expected<void>(kindResult.error());
 
         const Type::Kind operandKind = kindResult.value();
-        if (!isSupportedWidth(operandKind))
+        if (!detail::isSupportedIntegerWidth(operandKind))
             return fail(ctx, "operands must be i16, i32, or i64");
 
         if (expectedKind == Type::Kind::Void)
@@ -181,7 +178,7 @@ Expected<void> checkIdxChk(const VerifyCtx &ctx)
             return fail(ctx, "operands must share integer width");
     }
 
-    if (!isSupportedWidth(expectedKind))
+    if (!detail::isSupportedIntegerWidth(expectedKind))
         return fail(ctx, "operands must be i16, i32, or i64");
 
     if (ctx.instr.type.kind != Type::Kind::Void && ctx.instr.type.kind != expectedKind)

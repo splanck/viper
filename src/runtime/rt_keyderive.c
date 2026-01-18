@@ -27,6 +27,7 @@
 #include "rt_keyderive.h"
 
 #include "rt_bytes.h"
+#include "rt_codec.h"
 #include "rt_hash.h"
 #include "rt_internal.h"
 #include "rt_string.h"
@@ -43,56 +44,6 @@
 
 /// SHA256 output size in bytes.
 #define SHA256_DIGEST_LEN 32
-
-/// Hex character lookup table.
-static const char hex_chars[] = "0123456789abcdef";
-
-/// @brief Convert bytes to lowercase hex string.
-static rt_string bytes_to_hex(const uint8_t *data, size_t len)
-{
-    size_t hex_len = len * 2;
-    char *hex = (char *)malloc(hex_len + 1);
-    if (!hex)
-        rt_trap("KeyDerive: memory allocation failed");
-
-    for (size_t i = 0; i < len; i++)
-    {
-        hex[i * 2] = hex_chars[(data[i] >> 4) & 0xF];
-        hex[i * 2 + 1] = hex_chars[data[i] & 0xF];
-    }
-    hex[hex_len] = '\0';
-
-    rt_string result = rt_string_from_bytes(hex, hex_len);
-    free(hex);
-    return result;
-}
-
-/// @brief Extract raw bytes from a Bytes object.
-static uint8_t *extract_bytes(void *bytes, size_t *out_len)
-{
-    if (!bytes)
-    {
-        *out_len = 0;
-        return NULL;
-    }
-
-    int64_t len = rt_bytes_len(bytes);
-    *out_len = (size_t)len;
-
-    if (len == 0)
-        return NULL;
-
-    uint8_t *data = (uint8_t *)malloc((size_t)len);
-    if (!data)
-        rt_trap("KeyDerive: memory allocation failed");
-
-    for (int64_t i = 0; i < len; i++)
-    {
-        data[i] = (uint8_t)rt_bytes_get(bytes, i);
-    }
-
-    return data;
-}
 
 /// @brief PBKDF2-HMAC-SHA256 implementation (RFC 2898 / RFC 8018).
 ///
@@ -188,7 +139,7 @@ void *rt_keyderive_pbkdf2_sha256(rt_string password,
 
     // Extract salt
     size_t salt_len;
-    uint8_t *salt_data = extract_bytes(salt, &salt_len);
+    uint8_t *salt_data = rt_bytes_extract_raw(salt, &salt_len);
 
     // Allocate output buffer
     uint8_t *derived_key = (uint8_t *)malloc((size_t)key_len);
@@ -208,12 +159,7 @@ void *rt_keyderive_pbkdf2_sha256(rt_string password,
         free(salt_data);
 
     // Create Bytes object from derived key
-    void *result = rt_bytes_new(key_len);
-    for (int64_t i = 0; i < key_len; i++)
-    {
-        rt_bytes_set(result, i, derived_key[i]);
-    }
-
+    void *result = rt_bytes_from_raw(derived_key, (size_t)key_len);
     free(derived_key);
     return result;
 }
@@ -244,7 +190,7 @@ rt_string rt_keyderive_pbkdf2_sha256_str(rt_string password,
 
     // Extract salt
     size_t salt_len;
-    uint8_t *salt_data = extract_bytes(salt, &salt_len);
+    uint8_t *salt_data = rt_bytes_extract_raw(salt, &salt_len);
 
     // Allocate output buffer
     uint8_t *derived_key = (uint8_t *)malloc((size_t)key_len);
@@ -263,8 +209,8 @@ rt_string rt_keyderive_pbkdf2_sha256_str(rt_string password,
     if (salt_data)
         free(salt_data);
 
-    // Convert to hex string
-    rt_string result = bytes_to_hex(derived_key, (size_t)key_len);
+    // Convert to hex string using shared codec utility
+    rt_string result = rt_codec_hex_enc_bytes(derived_key, (size_t)key_len);
     free(derived_key);
     return result;
 }

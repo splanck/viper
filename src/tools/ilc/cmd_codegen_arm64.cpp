@@ -30,6 +30,7 @@
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
 #include "tools/common/module_loader.hpp"
+#include "tools/common/ArgvView.hpp"
 
 #include <cctype>
 #include <filesystem>
@@ -63,50 +64,8 @@ constexpr std::string_view kUsage =
     "usage: ilc codegen arm64 <file.il> [-S <file.s>] [-o <a.out>] [-run-native]\n"
     "       [--dump-mir-before-ra] [--dump-mir-after-ra] [--dump-mir-full]\n";
 
-/// @brief Lightweight argv view with bounds-checked helpers.
-/// @details Wraps the raw argc/argv pair to make argument parsing more explicit
-///          and defensive. The view does not own the underlying strings; it
-///          merely provides safe accessors and slicing helpers.
-struct ArgvView
-{
-    int argc;
-    char **argv;
-
-    /// @brief Report whether the view contains any usable arguments.
-    /// @return True if argc is zero or argv is null; otherwise false.
-    [[nodiscard]] bool empty() const
-    {
-        return argc <= 0 || argv == nullptr;
-    }
-
-    /// @brief Return the first argument if present.
-    /// @return argv[0] when available; otherwise an empty string view.
-    [[nodiscard]] std::string_view front() const
-    {
-        return empty() ? std::string_view{} : argv[0];
-    }
-
-    /// @brief Fetch an argument by index with bounds checks.
-    /// @param i Zero-based argument index to query.
-    /// @return argv[i] if in range; otherwise an empty string view.
-    [[nodiscard]] std::string_view at(int i) const
-    {
-        if (i < 0 || i >= argc || argv == nullptr)
-            return std::string_view{};
-        return argv[i];
-    }
-
-    /// @brief Create a view with the first @p n arguments removed.
-    /// @param n Count of arguments to drop from the front.
-    /// @return New ArgvView starting at argv[n], or an empty view if @p n exceeds
-    ///         the current argument count.
-    [[nodiscard]] ArgvView drop_front(int n = 1) const
-    {
-        if (n >= argc)
-            return {0, nullptr};
-        return {argc - n, argv + n};
-    }
-};
+// Use shared ArgvView from tools/common
+using viper::tools::ArgvView;
 
 /// @brief Parsed CLI options for the arm64 codegen subcommand.
 /// @details Captures output destinations, flags, and diagnostics preferences

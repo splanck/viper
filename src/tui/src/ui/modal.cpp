@@ -118,13 +118,7 @@ void ModalHost::paint(render::ScreenBuffer &sb)
     }
     if (!modals_.empty())
     {
-        for (int y = rect_.y; y < rect_.y + rect_.h; ++y)
-        {
-            for (int x = rect_.x; x < rect_.x + rect_.w; ++x)
-            {
-                sb.at(y, x).ch = U' ';
-            }
-        }
+        sb.fillRect(rect_.x, rect_.y, rect_.w, rect_.h);
         for (auto &m : modals_)
         {
             m->paint(sb);

@@ -38,6 +38,11 @@
 
 namespace viper::tui::widgets
 {
+
+//=============================================================================
+// HSplitter Implementation
+//=============================================================================
+
 /// @brief Create a horizontal splitter with the given children and initial ratio.
 /// @details Transfers ownership of @p left and @p right into the splitter and
 ///          stores the requested division ratio without clamping.  The first
@@ -46,8 +51,9 @@ namespace viper::tui::widgets
 HSplitter::HSplitter(std::unique_ptr<ui::Widget> left,
                      std::unique_ptr<ui::Widget> right,
                      float ratio)
-    : left_(std::move(left)), right_(std::move(right)), ratio_(ratio)
+    : first_(std::move(left)), second_(std::move(right))
 {
+    ratio_ = ratio;
 }
 
 /// @brief Distribute the assigned rectangle between the splitter children.
@@ -64,31 +70,46 @@ void HSplitter::layout(const ui::Rect &r)
     int rightW = r.w - leftW;
     ui::Rect lr{r.x, r.y, leftW, r.h};
     ui::Rect rr{r.x + leftW, r.y, rightW, r.h};
-    if (left_)
-    {
-        left_->layout(lr);
-    }
-    if (right_)
-    {
-        right_->layout(rr);
-    }
+    if (first_)
+        first_->layout(lr);
+    if (second_)
+        second_->layout(rr);
 }
 
-/// @brief Paint both child widgets into the provided screen buffer.
-/// @details Delegates to the children in declaration order, allowing them to
-///          render overlapping content if desired.  Splitters themselves emit no
-///          pixels beyond what their children produce.
-void HSplitter::paint(render::ScreenBuffer &sb)
+/// @brief Handle keyboard input for resizing the horizontal splitter.
+/// @details Reacts to Ctrl+Left and Ctrl+Right by nudging the ratio in 5%
+///          increments, clamps the stored value, and triggers a relayout of the
+///          cached rectangle.  Other events are ignored so focus traversal and
+///          child handling continue to work as normal.
+/// @param ev Key event describing the user input.
+/// @return True when the ratio changed and a relayout occurred.
+bool HSplitter::onKeyEvent(const viper::tui::term::KeyEvent &ev)
 {
-    if (left_)
+    using viper::tui::term::KeyEvent;
+    if ((ev.mods & KeyEvent::Ctrl) == 0)
+        return false;
+
+    bool changed = false;
+    if (ev.code == KeyEvent::Code::Left)
     {
-        left_->paint(sb);
+        ratio_ = detail::clampRatio(ratio_ - 0.05F);
+        changed = true;
     }
-    if (right_)
+    if (ev.code == KeyEvent::Code::Right)
     {
-        right_->paint(sb);
+        ratio_ = detail::clampRatio(ratio_ + 0.05F);
+        changed = true;
     }
+    if (!changed)
+        return false;
+
+    layout(rect_);
+    return true;
 }
+
+//=============================================================================
+// VSplitter Implementation
+//=============================================================================
 
 /// @brief Construct a vertical splitter with the supplied child widgets.
 /// @details Ownership is transferred to the splitter and the starting ratio is
@@ -97,8 +118,9 @@ void HSplitter::paint(render::ScreenBuffer &sb)
 VSplitter::VSplitter(std::unique_ptr<ui::Widget> top,
                      std::unique_ptr<ui::Widget> bottom,
                      float ratio)
-    : top_(std::move(top)), bottom_(std::move(bottom)), ratio_(ratio)
+    : first_(std::move(top)), second_(std::move(bottom))
 {
+    ratio_ = ratio;
 }
 
 /// @brief Split the rectangle into stacked child regions and propagate layout.
@@ -113,78 +135,10 @@ void VSplitter::layout(const ui::Rect &r)
     int bottomH = r.h - topH;
     ui::Rect tr{r.x, r.y, r.w, topH};
     ui::Rect br{r.x, r.y + topH, r.w, bottomH};
-    if (top_)
-    {
-        top_->layout(tr);
-    }
-    if (bottom_)
-    {
-        bottom_->layout(br);
-    }
-}
-
-/// @brief Delegate painting to both vertical splitter children.
-void VSplitter::paint(render::ScreenBuffer &sb)
-{
-    if (top_)
-    {
-        top_->paint(sb);
-    }
-    if (bottom_)
-    {
-        bottom_->paint(sb);
-    }
-}
-
-} // namespace viper::tui::widgets
-
-namespace viper::tui::widgets
-{
-
-/// @brief Clamp splitter ratios to a practical interactive range.
-/// @details Prevents callers from collapsing a child entirely (less than 5%) or
-///          hiding the opposite child (greater than 95%).  This keeps keyboard
-///          adjustments responsive even after repeated changes.
-/// @param r Requested ratio from user input.
-/// @return Ratio snapped into the inclusive [0.05, 0.95] interval.
-static inline float clamp_ratio(float r)
-{
-    if (r < 0.05F)
-        return 0.05F;
-    if (r > 0.95F)
-        return 0.95F;
-    return r;
-}
-
-/// @brief Handle keyboard input for resizing the horizontal splitter.
-/// @details Reacts to Ctrl+Left and Ctrl+Right by nudging the ratio in 5%
-///          increments, clamps the stored value, and triggers a relayout of the
-///          cached rectangle.  Other events are ignored so focus traversal and
-///          child handling continue to work as normal.
-/// @param ev Key event describing the user input.
-/// @return True when the ratio changed and a relayout occurred.
-bool HSplitter::onEvent(const viper::tui::term::KeyEvent &ev)
-{
-    using viper::tui::term::KeyEvent;
-    if ((ev.mods & KeyEvent::Ctrl) == 0)
-        return false;
-
-    bool changed = false;
-    if (ev.code == KeyEvent::Code::Left)
-    {
-        ratio_ = clamp_ratio(ratio_ - 0.05F);
-        changed = true;
-    }
-    if (ev.code == KeyEvent::Code::Right)
-    {
-        ratio_ = clamp_ratio(ratio_ + 0.05F);
-        changed = true;
-    }
-    if (!changed)
-        return false;
-
-    layout(rect_);
-    return true;
+    if (first_)
+        first_->layout(tr);
+    if (second_)
+        second_->layout(br);
 }
 
 /// @brief Handle keyboard input for resizing the vertical splitter.
@@ -193,7 +147,7 @@ bool HSplitter::onEvent(const viper::tui::term::KeyEvent &ev)
 ///          painting reflects the new heights immediately.
 /// @param ev Key event describing the user input.
 /// @return True when the ratio changed and children were relaid out.
-bool VSplitter::onEvent(const viper::tui::term::KeyEvent &ev)
+bool VSplitter::onKeyEvent(const viper::tui::term::KeyEvent &ev)
 {
     using viper::tui::term::KeyEvent;
     if ((ev.mods & KeyEvent::Ctrl) == 0)
@@ -202,12 +156,12 @@ bool VSplitter::onEvent(const viper::tui::term::KeyEvent &ev)
     bool changed = false;
     if (ev.code == KeyEvent::Code::Up)
     {
-        ratio_ = clamp_ratio(ratio_ - 0.05F);
+        ratio_ = detail::clampRatio(ratio_ - 0.05F);
         changed = true;
     }
     if (ev.code == KeyEvent::Code::Down)
     {
-        ratio_ = clamp_ratio(ratio_ + 0.05F);
+        ratio_ = detail::clampRatio(ratio_ + 0.05F);
         changed = true;
     }
     if (!changed)
@@ -215,20 +169,6 @@ bool VSplitter::onEvent(const viper::tui::term::KeyEvent &ev)
 
     layout(rect_);
     return true;
-}
-
-/// @brief Bridge generic UI events to the horizontal splitter key handler.
-/// @details Extracts the contained key event and reuses the specialised
-///          overload so mouse or focus events continue to bubble normally.
-bool HSplitter::onEvent(const ui::Event &ev)
-{
-    return onEvent(ev.key);
-}
-
-/// @brief Bridge generic UI events to the vertical splitter key handler.
-bool VSplitter::onEvent(const ui::Event &ev)
-{
-    return onEvent(ev.key);
 }
 
 } // namespace viper::tui::widgets

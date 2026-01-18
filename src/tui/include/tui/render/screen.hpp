@@ -91,6 +91,15 @@ class ScreenBuffer
     /// @brief Fill all cells with spaces using the given style.
     void clear(const Style &style);
 
+    /// @brief Fill a rectangular region with the specified character and style.
+    /// @param x Left column of the rectangle.
+    /// @param y Top row of the rectangle.
+    /// @param w Width of the rectangle.
+    /// @param h Height of the rectangle.
+    /// @param ch Character to fill with (defaults to space).
+    /// @param style Optional style to apply (cell styles unchanged if nullptr).
+    void fillRect(int x, int y, int w, int h, char32_t ch = U' ', const Style *style = nullptr);
+
     /// @brief Snapshot current buffer into previous state for diffing.
     void snapshotPrev();
 
