@@ -44,7 +44,6 @@ namespace
 [[nodiscard]] ILModule makeReturnModule()
 {
     ILValue i64Param = makeParam(0, ILValue::Kind::I64);
-    ILValue f64Param = makeParam(0, ILValue::Kind::F64);
 
     ILBlock i64Entry{};
     i64Entry.name = "entry";
@@ -56,11 +55,17 @@ namespace
     i64Func.name = "ret_i64";
     i64Func.blocks = {i64Entry};
 
+    // For f64, return a constant (3.14159) instead of a parameter.
+    // This ensures the movsd instruction is actually emitted and not optimized
+    // away as an identity move (when returning the same XMM0 register it came in on).
+    ILValue f64Const{};
+    f64Const.kind = ILValue::Kind::F64;
+    f64Const.id = -1; // immediate
+    f64Const.f64 = 3.14159;
+
     ILBlock f64Entry{};
     f64Entry.name = "entry";
-    f64Entry.paramIds = {f64Param.id};
-    f64Entry.paramKinds = {f64Param.kind};
-    f64Entry.instrs = {makeReturnInstr(f64Param)};
+    f64Entry.instrs = {makeReturnInstr(f64Const)};
 
     ILFunction f64Func{};
     f64Func.name = "ret_f64";

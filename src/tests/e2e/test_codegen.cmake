@@ -7,7 +7,12 @@ separate_arguments(ASM_FLAGS_LIST NATIVE_COMMAND "${ASM_FLAGS}")
 set(LD_FLAGS "${LD_FLAGS} -no-pie")
 separate_arguments(LD_FLAGS_LIST NATIVE_COMMAND "${LD_FLAGS}")
 
-file(WRITE out.s ".text\n.globl main\nmain:\n  mov $0, %eax\n  ret\n.section .note.GNU-stack,\"\",@progbits\n")
+# .note.GNU-stack marks stack non-executable on Linux; omit on Windows
+if(WIN32)
+    file(WRITE out.s ".text\n.globl main\nmain:\n  mov $0, %eax\n  ret\n")
+else()
+    file(WRITE out.s ".text\n.globl main\nmain:\n  mov $0, %eax\n  ret\n.section .note.GNU-stack,\"\",@progbits\n")
+endif()
 
 if (MODE STREQUAL "syntax")
     execute_process(

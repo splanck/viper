@@ -163,25 +163,18 @@ struct OpFmt
 // Include the generated OpFmt table
 #include "generated/OpFmtTable.inc"
 
-/// @brief Retrieves fmt value.
+/// @brief Retrieves fmt value using linear search.
+/// @details Uses linear search because kOpFmt table order may not match MOpcode enum order.
 const OpFmt *getFmt(MOpcode opc) noexcept
 {
-    const auto needle = static_cast<std::underlying_type_t<MOpcode>>(opc);
-    const auto it =
-        std::lower_bound(kOpFmt.begin(),
-                         kOpFmt.end(),
-                         needle,
-                         [](const OpFmt &fmt, std::underlying_type_t<MOpcode> value)
-                         { return static_cast<std::underlying_type_t<MOpcode>>(fmt.opc) < value; });
-    if (it == kOpFmt.end())
+    for (const auto &fmt : kOpFmt)
     {
-        return nullptr;
+        if (fmt.opc == opc)
+        {
+            return &fmt;
+        }
     }
-    if (static_cast<std::underlying_type_t<MOpcode>>(it->opc) != needle)
-    {
-        return nullptr;
-    }
-    return &*it;
+    return nullptr;
 }
 
 [[nodiscard]] int encodeRegister(const OpReg &reg) noexcept;
