@@ -1333,18 +1333,7 @@ static bool is_unreserved(char c)
            c == '.' || c == '_' || c == '~';
 }
 
-/// @brief Convert hex character to value.
-/// @return -1 if invalid.
-static int hex_char_to_int(char c)
-{
-    if (c >= '0' && c <= '9')
-        return c - '0';
-    if (c >= 'A' && c <= 'F')
-        return c - 'A' + 10;
-    if (c >= 'a' && c <= 'f')
-        return c - 'a' + 10;
-    return -1;
-}
+// Note: hex_char_to_int functionality provided by rt_hex_digit_value() in rt_internal.h
 
 /// @brief Percent-encode a string.
 /// @return Allocated string, caller must free.
@@ -1395,8 +1384,8 @@ static char *percent_decode(const char *str)
     {
         if (str[i] == '%' && i + 2 < len)
         {
-            int high = hex_char_to_int(str[i + 1]);
-            int low = hex_char_to_int(str[i + 2]);
+            int high = rt_hex_digit_value(str[i + 1]);
+            int low = rt_hex_digit_value(str[i + 2]);
             if (high >= 0 && low >= 0)
             {
                 *p++ = (char)((high << 4) | low);
