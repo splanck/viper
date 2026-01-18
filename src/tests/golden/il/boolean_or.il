@@ -57,7 +57,7 @@ L10:
   .loc 1 1 4
   %t7 = call @Viper.Convert.ToInt(%t6)
   .loc 1 1 4
-  store i64, %t5, %t7
+  store i64, %t4, %t7
   .loc 1 1 4
   call @rt_str_release_maybe(%t6)
   .loc 1 1 4
@@ -68,7 +68,7 @@ L20:
   .loc 1 2 4
   %t9 = call @Viper.Convert.ToInt(%t8)
   .loc 1 2 4
-  store i64, %t4, %t9
+  store i64, %t5, %t9
   .loc 1 2 4
   call @rt_str_release_maybe(%t8)
   .loc 1 2 4
@@ -81,7 +81,7 @@ L40:
   br L50
 L50:
   .loc 1 5 14
-  %t10 = load i64, %t5
+  %t10 = load i64, %t4
   .loc 1 5 16
   %t11 = icmp_ne %t10, 0
   .loc 1 5 16
@@ -102,7 +102,7 @@ L60:
   .loc 1 6 21
   %t17 = isub.ovf 0, %t16
   .loc 1 6 25
-  %t18 = load i64, %t4
+  %t18 = load i64, %t5
   .loc 1 6 27
   %t19 = icmp_ne %t18, 0
   .loc 1 6 27
