@@ -853,6 +853,47 @@ std::size_t runBlockDCE(std::vector<MInstr> &instrs, PeepholeStats &stats)
             // Instructions with side effects cannot be eliminated
             if (hasSideEffects(instr))
             {
+                // Labels are jump targets - any register could be live at entry
+                // because control can flow there from a branch elsewhere.
+                // Mark all allocatable registers as live to prevent incorrectly
+                // eliminating code that precedes a branch to this label.
+                if (instr.opcode == MOpcode::LABEL)
+                {
+                    // GPRs
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::RAX));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::RBX));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::RCX));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::RDX));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::RSI));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::RDI));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::R8));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::R9));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::R10));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::R11));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::R12));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::R13));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::R14));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::R15));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::RBP));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::RSP));
+                    // XMM registers
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM0));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM1));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM2));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM3));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM4));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM5));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM6));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM7));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM8));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM9));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM10));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM11));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM12));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM13));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM14));
+                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM15));
+                }
                 collectUsedRegs(instr, liveRegs);
                 continue;
             }
