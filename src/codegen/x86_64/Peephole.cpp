@@ -48,6 +48,7 @@ struct PeepholeStats
     std::size_t consecutiveMovsFolded{0};
     std::size_t branchesToNextRemoved{0};
     std::size_t deadCodeEliminated{0};
+    std::size_t coldBlocksMoved{0};
 };
 /// @brief Test whether an operand is the immediate integer zero.
 ///
@@ -988,7 +989,73 @@ void runPeepholes(MFunction &fn)
         runBlockDCE(instrs, stats);
     }
 
-    // Pass 6: Remove jumps to the immediately following block
+    // Pass 6: Block layout optimization - move cold blocks to the end
+    // Cold blocks are those containing UD2 (trap) or with labels suggesting error handling
+    if (fn.blocks.size() > 2)
+    {
+        std::vector<std::size_t> coldIndices;
+        std::vector<std::size_t> hotIndices;
+
+        // First block (entry) is always hot and stays first
+        hotIndices.push_back(0);
+
+        // Classify remaining blocks
+        for (std::size_t bi = 1; bi < fn.blocks.size(); ++bi)
+        {
+            const auto &block = fn.blocks[bi];
+            bool isCold = false;
+
+            // Check for trap/error indicators in label
+            const auto &label = block.label;
+            if (label.find("trap") != std::string::npos ||
+                label.find("error") != std::string::npos ||
+                label.find("panic") != std::string::npos ||
+                label.find("unreachable") != std::string::npos)
+            {
+                isCold = true;
+            }
+
+            // Check for UD2 instruction (trap)
+            if (!isCold)
+            {
+                for (const auto &instr : block.instructions)
+                {
+                    if (instr.opcode == MOpcode::UD2)
+                    {
+                        isCold = true;
+                        break;
+                    }
+                }
+            }
+
+            if (isCold)
+                coldIndices.push_back(bi);
+            else
+                hotIndices.push_back(bi);
+        }
+
+        // Only reorder if we found cold blocks
+        if (!coldIndices.empty() && hotIndices.size() > 1)
+        {
+            std::vector<MBasicBlock> newBlocks;
+            newBlocks.reserve(fn.blocks.size());
+
+            // Add hot blocks first
+            for (std::size_t idx : hotIndices)
+                newBlocks.push_back(std::move(fn.blocks[idx]));
+
+            // Add cold blocks at the end
+            for (std::size_t idx : coldIndices)
+            {
+                newBlocks.push_back(std::move(fn.blocks[idx]));
+                ++stats.coldBlocksMoved;
+            }
+
+            fn.blocks = std::move(newBlocks);
+        }
+    }
+
+    // Pass 7: Remove jumps to the immediately following block
     for (std::size_t bi = 0; bi + 1 < fn.blocks.size(); ++bi)
     {
         auto &block = fn.blocks[bi];
