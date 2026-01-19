@@ -29,6 +29,7 @@
 | `Width`       | Integer | Canvas width in pixels                             |
 | `Height`      | Integer | Canvas height in pixels                            |
 | `ShouldClose` | Integer | Non-zero if the user requested to close the canvas |
+| `IsFullscreen`| Integer | Non-zero if canvas is in fullscreen mode (read-only) |
 
 ### Methods
 
@@ -68,6 +69,8 @@
 | `SaveBmp(path)`                       | `Integer(String)`                     | Saves canvas to BMP file (returns 1 on success)            |
 | `SetClipRect(x, y, w, h)`             | `Void(Integer...)`                    | Sets clipping rectangle; all drawing is constrained to it  |
 | `ClearClipRect()`                     | `Void()`                              | Clears clipping rectangle; restores full canvas drawing    |
+| `SetTitle(title)`                     | `Void(String)`                        | Changes the window title at runtime                        |
+| `SetFullscreen(enable)`               | `Void(Integer)`                       | Toggles fullscreen mode (1 = fullscreen, 0 = windowed)     |
 
 ### Color Format
 
@@ -246,6 +249,49 @@ canvas.Box(0, 0, 50, 50, &H0000FF00)  ' Visible
 - **Scrollable regions:** Clip to viewport during scrolling
 - **Minimap rendering:** Clip map to minimap area
 - **Text overflow:** Prevent text from drawing outside containers
+
+### Window Controls
+
+Change the window title or toggle fullscreen mode at runtime:
+
+```basic
+' Create a canvas
+DIM canvas AS Viper.Graphics.Canvas
+canvas = NEW Viper.Graphics.Canvas("My Game", 800, 600)
+
+' Update window title dynamically (e.g., show FPS or game state)
+canvas.SetTitle("My Game - Level 1")
+canvas.SetTitle("My Game - Score: 1000")
+
+' Toggle fullscreen with F11 key
+DO WHILE canvas.ShouldClose = 0
+    canvas.Poll()
+
+    ' Toggle fullscreen on F11 press
+    IF Viper.Input.Keyboard.Pressed(300) THEN  ' 300 = F11
+        IF canvas.IsFullscreen THEN
+            canvas.SetFullscreen(0)  ' Exit fullscreen
+        ELSE
+            canvas.SetFullscreen(1)  ' Enter fullscreen
+        END IF
+    END IF
+
+    ' ... render game ...
+
+    canvas.Flip()
+LOOP
+```
+
+**Platform Behavior:**
+- **macOS:** Uses native Cocoa fullscreen (menu bar hidden, dock accessible via mouse)
+- **Linux:** Uses X11 EWMH protocol (_NET_WM_STATE_FULLSCREEN)
+- **Windows:** Uses Win32 API (removes decorations, covers taskbar)
+
+**Notes:**
+- Fullscreen mode uses the display's native resolution
+- Window size (Width/Height) remains unchanged; content is scaled
+- `IsFullscreen` property reflects current state (read-only)
+- Calling `SetFullscreen` with current state has no effect
 
 ---
 

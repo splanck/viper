@@ -120,6 +120,20 @@ StmtPtr Parser::parseBlock()
     std::vector<StmtPtr> statements;
     while (!check(TokenKind::RBrace) && !check(TokenKind::Eof))
     {
+        // Check for declaration keywords that shouldn't appear inside a block.
+        // If we see these, the block was likely not properly closed.
+        // Note: 'value' is not included because it can be used as an identifier
+        // (e.g., "Integer value = 0;"). We only check for unambiguous declaration starters.
+        // 'func' is always a declaration keyword and cannot be used as an identifier.
+        if (check(TokenKind::KwFunc) ||
+            (check(TokenKind::KwExpose) && check(TokenKind::KwFunc, 1)) ||
+            (check(TokenKind::KwHide) && check(TokenKind::KwFunc, 1)) ||
+            check(TokenKind::KwEntity) || check(TokenKind::KwInterface))
+        {
+            error("unexpected declaration keyword in block - possible missing '}'");
+            break;
+        }
+
         StmtPtr stmt = parseStatement();
         if (!stmt)
         {

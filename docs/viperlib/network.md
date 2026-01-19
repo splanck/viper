@@ -1,6 +1,6 @@
 # Network
 
-> TCP and UDP networking with HTTP client and DNS resolution support.
+> TCP and UDP networking with HTTP/HTTPS client and DNS resolution support.
 
 **Part of the [Viper Runtime Library](README.md)**
 
@@ -674,27 +674,46 @@ PRINT "Content-Length: "; headers.Get("content-length")
 ### Features
 
 - **HTTP/1.1 support** - Standard HTTP/1.1 protocol
+- **HTTPS support** - TLS 1.3 with automatic certificate verification
 - **Redirect handling** - Automatically follows 301, 302, 307, 308 redirects (up to 5)
 - **Content-Length** - Handles Content-Length bodies
 - **Chunked encoding** - Handles Transfer-Encoding: chunked responses
 - **Timeout** - Default 30 second timeout
 
+### HTTPS/TLS Support
+
+The HTTP client transparently supports HTTPS URLs using TLS 1.3:
+
+- **Automatic upgrade** - URLs starting with `https://` automatically use TLS
+- **Certificate verification** - Server certificates are validated by default
+- **Modern security** - Uses TLS 1.3 with ChaCha20-Poly1305 cipher suite
+- **X25519 key exchange** - Secure elliptic curve Diffie-Hellman
+
+```basic
+' HTTPS works exactly like HTTP
+DIM data AS STRING = Viper.Network.Http.Get("https://api.example.com/secure")
+PRINT data
+
+' Download over HTTPS
+Viper.Network.Http.Download("https://example.com/file.zip", "/tmp/file.zip")
+```
+
 ### Error Handling
 
 HTTP operations trap on errors:
 
-- Traps on HTTPS URLs (not supported)
 - Traps on invalid URL format
 - Traps on connection failure
+- Traps on TLS handshake failure (certificate errors, protocol errors)
 - Traps on timeout
 - Traps on too many redirects (>5)
 
 ### Limitations
 
-- **HTTP only** - HTTPS is not supported
 - **IPv4 only** - IPv6 addresses not supported in URLs
 - **No cookies** - Cookie handling not included
 - **No auth** - Use `HttpReq` for custom headers including Authorization
+- **No client certificates** - Client-side TLS certificates not supported
 
 ---
 

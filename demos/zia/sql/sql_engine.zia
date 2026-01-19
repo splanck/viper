@@ -2870,28 +2870,28 @@ entity SqlEngine {
                 String funcName = t.text;
                 ts.advance();
                 if !expectSymbol(ts, "(") { return null; }
-                var func = new ValueExpr();
-                func.kind = VAL_FUNC;
-                func.name = funcName;
-                func.args = [];
-                func.countStar = false;
-                func.distinct = false;
-                if ts.matchSymbol(")") { return func; }
+                var fn = new ValueExpr();
+                fn.kind = VAL_FUNC;
+                fn.name = funcName;
+                fn.args = [];
+                fn.countStar = false;
+                fn.distinct = false;
+                if ts.matchSymbol(")") { return fn; }
                 if Viper.String.ToUpper(funcName) == "COUNT" && ts.matchSymbol("*") {
-                    func.countStar = true;
+                    fn.countStar = true;
                     if !expectSymbol(ts, ")") { return null; }
-                    return func;
+                    return fn;
                 }
-                if ts.matchKeyword("DISTINCT") { func.distinct = true; }
+                if ts.matchKeyword("DISTINCT") { fn.distinct = true; }
                 while true {
                     ValueExpr? arg = parseValueExpr(ts, table, allowUnknown);
                     if arg == null { return null; }
-                    func.args.add(arg);
+                    fn.args.add(arg);
                     if ts.matchSymbol(",") { continue; }
                     break;
                 }
                 if !expectSymbol(ts, ")") { return null; }
-                return func;
+                return fn;
             }
             Integer colIndex = -1;
             if table != null {

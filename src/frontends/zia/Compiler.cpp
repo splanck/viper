@@ -50,7 +50,9 @@
 #include "frontends/zia/Parser.hpp"
 #include "frontends/zia/Sema.hpp"
 #include "il/transform/PassManager.hpp"
+#include <chrono>
 #include <fstream>
+#include <iostream>
 #include <sstream>
 
 namespace il::frontends::zia
@@ -77,9 +79,17 @@ CompilerResult compile(const CompilerInput &input,
         result.fileId = sm.addFile(std::string(input.path));
     }
 
+    // Debug timing
+    auto debugTime = [](const char *phase) {
+        if (const char *env = std::getenv("ZIA_DEBUG_COMPILE"))
+            std::cerr << "[zia] " << phase << std::endl;
+    };
+
+    debugTime("Phase 1: Lexing");
     // Phase 1: Lexing
     Lexer lexer(std::string(input.source), result.fileId, result.diagnostics);
 
+    debugTime("Phase 2: Parsing");
     // Phase 2: Parsing
     Parser parser(lexer, result.diagnostics);
     auto module = parser.parseModule();
@@ -90,6 +100,7 @@ CompilerResult compile(const CompilerInput &input,
         return result;
     }
 
+    debugTime("Phase 2.5: Import resolution");
     // Phase 2.5: Process binds (load and merge bound files)
     if (!module->binds.empty())
     {
@@ -101,6 +112,7 @@ CompilerResult compile(const CompilerInput &input,
         }
     }
 
+    debugTime("Phase 3: Semantic Analysis");
     // Phase 3: Semantic Analysis
     Sema sema(result.diagnostics);
     bool semanticOk = sema.analyze(*module);
@@ -111,9 +123,11 @@ CompilerResult compile(const CompilerInput &input,
         return result;
     }
 
+    debugTime("Phase 4: IL Lowering");
     // Phase 4: IL Lowering
     Lowerer lowerer(sema, options);
     result.module = lowerer.lower(*module);
+    debugTime("Phase 4: Done");
 
     // Phase 5: IL Optimization
     if (options.optLevel != OptLevel::O0)

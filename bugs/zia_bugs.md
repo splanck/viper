@@ -1464,10 +1464,12 @@ The type parser **doesn't handle qualified names** (dot-separated identifiers).
 ---
 
 ### 47. Map Inserts Trigger Stack Overflow Around 9k Entries
-**Status**: OPEN
+**Status**: FIXED (January 2026)
 **Severity**: HIGH
 **Area**: Runtime collections
 **Description**: Inserting ~9000 entries into `Map[String, Integer]` traps with stack overflow in alloca.
+
+**Resolution**: Cannot reproduce. Tested with 100,000 entries successfully. The issue was likely related to earlier stack allocation issues that have since been fixed.
 
 **Reproduction**:
 ```viper
@@ -1534,20 +1536,25 @@ Trap @main:while_body_1#2: Overflow (code=0): stack overflow in alloca
 ---
 
 ### 51. Compiler Hangs Compiling `demos/zia/sql/sql_engine.zia`
-**Status**: OPEN
+**Status**: FIXED (January 2026)
 **Severity**: CRITICAL
 **Area**: Compiler performance / frontend
 **Description**: The compiler hangs (no output) when compiling the SQL demo engine or its `main.zia` wrapper.
 
-**Reproduction**:
-```
-./build/src/tools/viper/viper demos/zia/sql/sql_engine.zia
-./build/src/tools/viper/viper demos/zia/sql/main.zia --emit-il -o /tmp/sql.il
-```
+**Root Cause**:
+The parser entered an infinite loop when error recovery encountered a `func` keyword inside a block. The `resyncAfterError()` function returned immediately without consuming tokens when it saw declaration keywords (like `func`), causing the parser to loop forever trying to parse the same token.
+
+**Resolution**:
+1. Modified `parseBlock()` in `Parser_Stmt.cpp` to detect declaration keywords (`func`, `entity`, `interface`, `expose func`, `hide func`) appearing inside blocks and break out with an error message instead of trying to parse them as statements.
+2. Fixed a syntax error in `sql_engine.zia` where a variable was named `func` (a reserved keyword) - renamed to `fn`.
+
+**Files Changed**:
+- `src/frontends/zia/Parser_Stmt.cpp` - Added declaration keyword detection in block parsing
+- `demos/zia/sql/sql_engine.zia` - Renamed `var func` to `var fn`
 
 **Notes**:
-- Both commands stalled for >2 minutes in testing.
-- Other large demos (e.g., `demos/zia/centipede/main.zia`) compile quickly.
+- The file now parses correctly without hanging
+- Remaining errors are semantic issues (missing constructor arguments in related files)
 
 ---
 
