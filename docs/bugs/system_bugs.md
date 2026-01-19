@@ -283,4 +283,4 @@ Fix:
 
 Files:
 
-- `include/viper/vm/VM.hpp`, `src/vm/Runner.cpp`, `src/tools/ilc/cmd_front_basic.cpp`.
+- `include/viper/vm/VM.hpp`, `src/vm/Runner.cpp`, `src/tools/viper/cmd_front_basic.cpp`.

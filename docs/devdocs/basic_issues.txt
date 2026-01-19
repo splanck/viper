@@ -268,7 +268,7 @@ After each phase:
 After all phases:
 1. Full clean rebuild
 2. Full test suite (all 565 tests)
-3. Manual smoke test of ilc tool
+3. Manual smoke test of viper tool
 4. Review for any regressions
 
 =============================================================================

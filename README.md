@@ -270,16 +270,16 @@ See the **[Runtime Library Reference](docs/viperlib/README.md)** for complete AP
 
 **Advanced tool:**
 
-`ilc` is a unified compiler driver for advanced workflows:
+`viper` is a unified compiler driver for advanced workflows:
 
 ```bash
 # Compile BASIC to native executable (experimental)
-./build/src/tools/ilc/ilc front basic -emit-il program.bas > program.il
-./build/src/tools/ilc/ilc codegen arm64 program.il -o program
+./build/src/tools/viper/viper front basic -emit-il program.bas > program.il
+./build/src/tools/viper/viper codegen arm64 program.il -o program
 
 # Compile Zia to native executable
-./build/src/tools/ilc/ilc front zia -emit-il program.zia > program.il
-./build/src/tools/ilc/ilc codegen arm64 program.il -o program
+./build/src/tools/viper/viper front zia -emit-il program.zia > program.il
+./build/src/tools/viper/viper codegen arm64 program.il -o program
 ```
 
 ---
@@ -329,7 +329,7 @@ ctest --test-dir build --output-on-failure
 sudo cmake --install build --prefix /usr/local
 ```
 
-Installs: `vbasic`, `vpascal`, `zia`, `ilrun`, `ilc`, `il-verify`, `il-dis`
+Installs: `vbasic`, `vpascal`, `zia`, `ilrun`, `viper`, `il-verify`, `il-dis`
 
 ### Platform Notes
 

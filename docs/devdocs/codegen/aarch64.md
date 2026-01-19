@@ -65,7 +65,7 @@ allocation similar to x86‑64.
     - `src/tools/viper/cmd_codegen_arm64.hpp`
     - `src/tools/viper/cmd_codegen_arm64.cpp`
     - `src/tools/viper/main.cpp`
-    - `src/CMakeLists.txt` (adds `ilc_cmd_arm64` static library and links it into `viper`)
+    - `src/CMakeLists.txt` (adds `viper_cmd_arm64` static library and links it into `viper`)
 - Usage:
     - `viper codegen arm64 <input.il> -S <out.s>`
     - The command:
@@ -125,7 +125,7 @@ allocation similar to x86‑64.
 ### Build integration
 
 - `src/codegen/aarch64/CMakeLists.txt` builds `il_codegen_aarch64` (target + emitter).
-- `src/CMakeLists.txt` exposes `ilc_cmd_arm64` as a static lib; `viper` links `ilc_cmd_arm64` and `il_codegen_aarch64`.
+- `src/CMakeLists.txt` exposes `viper_cmd_arm64` as a static lib; `viper` links `viper_cmd_arm64` and `il_codegen_aarch64`.
 
 ## Current Implementation Details
 

@@ -53,6 +53,10 @@ implementation guides.
 
 - **[Frontend How-To](frontend-howto.md)** — Build your own language frontend
 
+### Runtime
+
+- **[Runtime Extension How-To](runtime_extend_howto.md)** — Add new classes and functions to the runtime
+
 ### Virtual Machine
 
 - **[VM Architecture](vm.md)** — VM design, dispatch strategies, and internals

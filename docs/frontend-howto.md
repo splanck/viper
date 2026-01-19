@@ -638,7 +638,7 @@ target_compile_features(fe_yourfrontend PUBLIC cxx_std_17)
 
 ### Register with viper Tool
 
-**Why register with ilc?** The `viper` (IL Compiler) tool is Viper's command-line interface for all compilation
+**Why register with viper?** The `viper` tool is Viper's command-line interface for all compilation
 operations. It provides a unified interface:
 
 ```bash
