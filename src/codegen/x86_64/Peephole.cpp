@@ -30,6 +30,7 @@
 #include <algorithm>
 #include <optional>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace viper::codegen::x64
 {
@@ -46,6 +47,7 @@ struct PeepholeStats
     std::size_t identityMovesRemoved{0};
     std::size_t consecutiveMovsFolded{0};
     std::size_t branchesToNextRemoved{0};
+    std::size_t deadCodeEliminated{0};
 };
 /// @brief Test whether an operand is the immediate integer zero.
 ///
@@ -559,6 +561,311 @@ void rewriteToTest(MInstr &instr, Operand regOperand)
     return true;
 }
 
+// Forward declaration
+void removeMarkedInstructions(std::vector<MInstr> &instrs, const std::vector<bool> &toRemove);
+
+/// @brief Check if an instruction has observable side effects.
+/// @details Instructions with side effects cannot be eliminated even if their
+///          result is unused. This includes memory stores, calls, and control flow.
+[[nodiscard]] bool hasSideEffects(const MInstr &instr) noexcept
+{
+    switch (instr.opcode)
+    {
+        // Memory stores
+        case MOpcode::MOVrm:
+        case MOpcode::MOVSDrm:
+        // Control flow
+        case MOpcode::JMP:
+        case MOpcode::JCC:
+        case MOpcode::CALL:
+        case MOpcode::RET:
+        case MOpcode::UD2:
+        case MOpcode::LABEL:
+        // Instructions that set flags used by subsequent JCC
+        case MOpcode::CMPrr:
+        case MOpcode::CMPri:
+        case MOpcode::TESTrr:
+        case MOpcode::UCOMIS:
+        // Division instructions (can trap)
+        case MOpcode::IDIVrm:
+        case MOpcode::DIVrm:
+        case MOpcode::CQO:
+        // Parallel copy pseudo (used in phi lowering)
+        case MOpcode::PX_COPY:
+            return true;
+        default:
+            return false;
+    }
+}
+
+/// @brief Get the destination register from an instruction, if it defines one.
+[[nodiscard]] std::optional<uint16_t> getDefReg(const MInstr &instr) noexcept
+{
+    if (instr.operands.empty())
+        return std::nullopt;
+
+    switch (instr.opcode)
+    {
+        case MOpcode::MOVrr:
+        case MOpcode::MOVmr:
+        case MOpcode::MOVri:
+        case MOpcode::CMOVNErr:
+        case MOpcode::LEA:
+        case MOpcode::ADDrr:
+        case MOpcode::ADDri:
+        case MOpcode::ANDrr:
+        case MOpcode::ANDri:
+        case MOpcode::ORrr:
+        case MOpcode::ORri:
+        case MOpcode::XORrr:
+        case MOpcode::XORri:
+        case MOpcode::XORrr32:
+        case MOpcode::SUBrr:
+        case MOpcode::SHLri:
+        case MOpcode::SHLrc:
+        case MOpcode::SHRri:
+        case MOpcode::SHRrc:
+        case MOpcode::SARri:
+        case MOpcode::SARrc:
+        case MOpcode::IMULrr:
+        case MOpcode::DIVS64rr:
+        case MOpcode::REMS64rr:
+        case MOpcode::DIVU64rr:
+        case MOpcode::REMU64rr:
+        case MOpcode::SETcc:
+        case MOpcode::MOVZXrr32:
+        case MOpcode::MOVSDrr:
+        case MOpcode::MOVSDmr:
+        case MOpcode::FADD:
+        case MOpcode::FSUB:
+        case MOpcode::FMUL:
+        case MOpcode::FDIV:
+        case MOpcode::CVTSI2SD:
+        case MOpcode::CVTTSD2SI:
+        {
+            const auto *reg = std::get_if<OpReg>(&instr.operands[0]);
+            if (reg && reg->isPhys)
+                return reg->idOrPhys;
+            return std::nullopt;
+        }
+        default:
+            return std::nullopt;
+    }
+}
+
+/// @brief Collect all physical registers used by an instruction.
+void collectUsedRegs(const MInstr &instr, std::unordered_set<uint16_t> &usedRegs)
+{
+    // Helper to add a register if it's physical
+    auto addIfPhysReg = [&usedRegs](const Operand &op)
+    {
+        const auto *reg = std::get_if<OpReg>(&op);
+        if (reg && reg->isPhys)
+            usedRegs.insert(reg->idOrPhys);
+    };
+
+    // Helper to add registers from memory operand
+    auto addMemRegs = [&usedRegs](const Operand &op)
+    {
+        const auto *mem = std::get_if<OpMem>(&op);
+        if (mem)
+        {
+            // Base register is always valid in OpMem
+            if (mem->base.isPhys)
+                usedRegs.insert(mem->base.idOrPhys);
+            // Index register is only valid when hasIndex is true
+            if (mem->hasIndex && mem->index.isPhys)
+                usedRegs.insert(mem->index.idOrPhys);
+        }
+    };
+
+    switch (instr.opcode)
+    {
+        case MOpcode::MOVrr:
+        case MOpcode::MOVSDrr:
+        case MOpcode::CVTSI2SD:
+        case MOpcode::CVTTSD2SI:
+            // dst, src - use src
+            if (instr.operands.size() >= 2)
+                addIfPhysReg(instr.operands[1]);
+            break;
+
+        case MOpcode::ADDrr:
+        case MOpcode::SUBrr:
+        case MOpcode::ANDrr:
+        case MOpcode::ORrr:
+        case MOpcode::XORrr:
+        case MOpcode::IMULrr:
+        case MOpcode::FADD:
+        case MOpcode::FSUB:
+        case MOpcode::FMUL:
+        case MOpcode::FDIV:
+            // dst, src - both are used (dst is read-modify-write)
+            if (instr.operands.size() >= 1)
+                addIfPhysReg(instr.operands[0]);
+            if (instr.operands.size() >= 2)
+                addIfPhysReg(instr.operands[1]);
+            break;
+
+        case MOpcode::MOVmr:
+        case MOpcode::MOVSDmr:
+            // dst, mem - use mem's registers
+            if (instr.operands.size() >= 2)
+                addMemRegs(instr.operands[1]);
+            break;
+
+        case MOpcode::MOVrm:
+        case MOpcode::MOVSDrm:
+            // mem, src - use both mem's registers and src
+            if (instr.operands.size() >= 1)
+                addMemRegs(instr.operands[0]);
+            if (instr.operands.size() >= 2)
+                addIfPhysReg(instr.operands[1]);
+            break;
+
+        case MOpcode::CMPrr:
+        case MOpcode::TESTrr:
+        case MOpcode::UCOMIS:
+            // lhs, rhs - use both
+            if (instr.operands.size() >= 1)
+                addIfPhysReg(instr.operands[0]);
+            if (instr.operands.size() >= 2)
+                addIfPhysReg(instr.operands[1]);
+            break;
+
+        case MOpcode::CMPri:
+        case MOpcode::ADDri:
+        case MOpcode::ANDri:
+        case MOpcode::ORri:
+        case MOpcode::XORri:
+        case MOpcode::SHLri:
+        case MOpcode::SHRri:
+        case MOpcode::SARri:
+            // dst, imm - dst is read-modify-write
+            if (instr.operands.size() >= 1)
+                addIfPhysReg(instr.operands[0]);
+            break;
+
+        case MOpcode::LEA:
+            // dst, mem - use mem's registers
+            if (instr.operands.size() >= 2)
+                addMemRegs(instr.operands[1]);
+            break;
+
+        case MOpcode::CALL:
+            // Calls may use all argument registers
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::RDI));
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::RSI));
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::RDX));
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::RCX));
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::R8));
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::R9));
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::RSP));
+            // XMM0-7 for float args
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::XMM0));
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::XMM1));
+            break;
+
+        case MOpcode::RET:
+            // Return uses RAX (or XMM0 for floats)
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::RAX));
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::XMM0));
+            usedRegs.insert(static_cast<uint16_t>(PhysReg::RSP));
+            break;
+
+        default:
+            // For other instructions, conservatively assume all operand registers are used
+            for (const auto &op : instr.operands)
+            {
+                addIfPhysReg(op);
+                addMemRegs(op);
+            }
+            break;
+    }
+}
+
+/// @brief Run dead code elimination on a basic block.
+/// @details Performs backward liveness analysis and removes instructions that
+///          define registers which are never used. Iterates until fixpoint.
+/// @param instrs Instructions in the basic block.
+/// @param stats Statistics counter to update.
+/// @return Number of instructions eliminated.
+std::size_t runBlockDCE(std::vector<MInstr> &instrs, PeepholeStats &stats)
+{
+    if (instrs.empty())
+        return 0;
+
+    std::size_t totalEliminated = 0;
+    bool changed = true;
+
+    while (changed)
+    {
+        changed = false;
+
+        // Build liveness: for each instruction, which registers are live after it?
+        // Work backwards from the end of the block
+        std::unordered_set<uint16_t> liveRegs;
+
+        // At block exit, assume all callee-saved and return registers are live
+        liveRegs.insert(static_cast<uint16_t>(PhysReg::RAX));
+        liveRegs.insert(static_cast<uint16_t>(PhysReg::RBX));
+        liveRegs.insert(static_cast<uint16_t>(PhysReg::RBP));
+        liveRegs.insert(static_cast<uint16_t>(PhysReg::RSP));
+        liveRegs.insert(static_cast<uint16_t>(PhysReg::R12));
+        liveRegs.insert(static_cast<uint16_t>(PhysReg::R13));
+        liveRegs.insert(static_cast<uint16_t>(PhysReg::R14));
+        liveRegs.insert(static_cast<uint16_t>(PhysReg::R15));
+        liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM0));
+
+        std::vector<bool> toRemove(instrs.size(), false);
+
+        // Process instructions in reverse order
+        for (std::size_t i = instrs.size(); i > 0; --i)
+        {
+            const std::size_t idx = i - 1;
+            const auto &instr = instrs[idx];
+
+            // Instructions with side effects cannot be eliminated
+            if (hasSideEffects(instr))
+            {
+                collectUsedRegs(instr, liveRegs);
+                continue;
+            }
+
+            // Check if the instruction defines a register
+            auto defReg = getDefReg(instr);
+            if (!defReg.has_value())
+            {
+                // No def, keep and collect uses
+                collectUsedRegs(instr, liveRegs);
+                continue;
+            }
+
+            // If the defined register is not live, this instruction is dead
+            if (liveRegs.find(*defReg) == liveRegs.end())
+            {
+                toRemove[idx] = true;
+                ++stats.deadCodeEliminated;
+                changed = true;
+                continue;
+            }
+
+            // Remove def from live set, add uses
+            liveRegs.erase(*defReg);
+            collectUsedRegs(instr, liveRegs);
+        }
+
+        // Remove dead instructions
+        if (changed)
+        {
+            removeMarkedInstructions(instrs, toRemove);
+            totalEliminated += std::count(toRemove.begin(), toRemove.end(), true);
+        }
+    }
+
+    return totalEliminated;
+}
+
 /// @brief Remove instructions marked for deletion from a basic block.
 void removeMarkedInstructions(std::vector<MInstr> &instrs, const std::vector<bool> &toRemove)
 {
@@ -676,9 +983,12 @@ void runPeepholes(MFunction &fn)
         {
             removeMarkedInstructions(instrs, toRemove);
         }
+
+        // Pass 5: Dead code elimination
+        runBlockDCE(instrs, stats);
     }
 
-    // Pass 5: Remove jumps to the immediately following block
+    // Pass 6: Remove jumps to the immediately following block
     for (std::size_t bi = 0; bi + 1 < fn.blocks.size(); ++bi)
     {
         auto &block = fn.blocks[bi];
