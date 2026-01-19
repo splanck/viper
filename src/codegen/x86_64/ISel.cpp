@@ -547,6 +547,8 @@ void ISel::lowerSelect(MFunction &func) const
 /// \details Matches patterns where a shift by 1, 2, or 3 (scale 2, 4, 8) is added
 ///          to a base pointer, and the result is used as a memory base. Transforms
 ///          into disp(base, index, scale) addressing to reduce instruction count.
+///          Optimized to use O(1) map lookups instead of O(n) linear scans for
+///          MOVrr definitions.
 void ISel::foldSibAddressing(MFunction &func) const
 {
     (void)target_;
@@ -565,16 +567,40 @@ void ISel::foldSibAddressing(MFunction &func) const
         uint16_t shiftedVreg{0};
     };
 
+    /// @brief MOVrr definition info for O(1) lookup.
+    struct MovInfo
+    {
+        std::size_t defIdx{0};
+        uint16_t srcVreg{0};
+        bool srcIsPhys{false};
+    };
+
     for (auto &block : func.blocks)
     {
-        std::unordered_map<uint16_t, ShlInfo> shlDefs; // result vreg -> info
-        std::unordered_map<uint16_t, AddInfo> addDefs; // result vreg -> info
+        std::unordered_map<uint16_t, ShlInfo> shlDefs;  // result vreg -> info
+        std::unordered_map<uint16_t, AddInfo> addDefs;  // result vreg -> info
+        std::unordered_map<uint16_t, MovInfo> movDefs;  // dest vreg -> info (for O(1) lookup)
         std::unordered_map<uint16_t, std::size_t> useCount;
 
-        // First pass: record SHL and ADD definitions, count uses
+        // First pass: record SHL, ADD, and MOVrr definitions, count uses
         for (std::size_t idx = 0; idx < block.instructions.size(); ++idx)
         {
             const auto &instr = block.instructions[idx];
+
+            // Record MOVrr for O(1) lookup later (replaces O(n) linear scan)
+            if (instr.opcode == MOpcode::MOVrr && instr.operands.size() >= 2)
+            {
+                const auto *dst = asReg(instr.operands[0]);
+                const auto *src = asReg(instr.operands[1]);
+                if (dst && src && !dst->isPhys && dst->cls == RegClass::GPR)
+                {
+                    MovInfo info{};
+                    info.defIdx = idx;
+                    info.srcVreg = src->idOrPhys;
+                    info.srcIsPhys = src->isPhys;
+                    movDefs[dst->idOrPhys] = info;
+                }
+            }
 
             // Record SHLri with shift 1, 2, or 3 (scale 2, 4, 8)
             if (instr.opcode == MOpcode::SHLri && instr.operands.size() >= 2)
@@ -686,53 +712,32 @@ void ISel::foldSibAddressing(MFunction &func) const
                     continue; // Multiple uses - can't fold
                 }
 
-                // We need to find the original index register before the SHL
-                // Look for MOVrr that defined the SHL source
+                // Find the original index register before the SHL using O(1) map lookup
                 uint16_t indexVreg = shlInfo.srcVreg;
-                for (std::size_t i = 0; i < shlInfo.defIdx; ++i)
+                auto movIt = movDefs.find(shlInfo.srcVreg);
+                if (movIt != movDefs.end() && !movIt->second.srcIsPhys &&
+                    movIt->second.defIdx < shlInfo.defIdx)
                 {
-                    const auto &prev = block.instructions[i];
-                    if (prev.opcode == MOpcode::MOVrr && prev.operands.size() >= 2)
-                    {
-                        const auto *movDst = asReg(prev.operands[0]);
-                        const auto *movSrc = asReg(prev.operands[1]);
-                        if (movDst && movSrc && !movDst->isPhys && !movSrc->isPhys &&
-                            movDst->idOrPhys == shlInfo.srcVreg)
-                        {
-                            indexVreg = movSrc->idOrPhys;
-                            toErase.push_back(i); // Mark MOV for removal
-                            break;
-                        }
-                    }
+                    indexVreg = movIt->second.srcVreg;
+                    toErase.push_back(movIt->second.defIdx); // Mark MOV for removal
                 }
 
-                // Transform: mem(base+shifted) -> mem(base, index, scale)
-                // The base register needs to be the original base before ADD
-                // Find MOVrr that copies base to the ADD destination
+                // Find the original base register before ADD using O(1) map lookup
                 uint16_t realBaseVreg = addInfo.baseVreg;
-                for (std::size_t i = 0; i < addInfo.defIdx; ++i)
+                auto baseMovIt = movDefs.find(addInfo.baseVreg);
+                if (baseMovIt != movDefs.end() && baseMovIt->second.defIdx < addInfo.defIdx)
                 {
-                    const auto &prev = block.instructions[i];
-                    if (prev.opcode == MOpcode::MOVrr && prev.operands.size() >= 2)
+                    if (!baseMovIt->second.srcIsPhys)
                     {
-                        const auto *movDst = asReg(prev.operands[0]);
-                        const auto *movSrc = asReg(prev.operands[1]);
-                        if (movDst && movSrc && !movDst->isPhys &&
-                            movDst->idOrPhys == addInfo.baseVreg)
-                        {
-                            if (!movSrc->isPhys)
-                            {
-                                realBaseVreg = movSrc->idOrPhys;
-                            }
-                            else
-                            {
-                                // Base is a physical register - use it directly
-                                mem->base = *movSrc;
-                            }
-                            toErase.push_back(i);
-                            break;
-                        }
+                        realBaseVreg = baseMovIt->second.srcVreg;
                     }
+                    else
+                    {
+                        // Base is a physical register - use it directly
+                        mem->base.isPhys = true;
+                        mem->base.idOrPhys = baseMovIt->second.srcVreg;
+                    }
+                    toErase.push_back(baseMovIt->second.defIdx);
                 }
 
                 // Update memory operand with SIB addressing

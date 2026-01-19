@@ -232,7 +232,8 @@ void LinearScanAllocator::releaseRegister(PhysReg phys, RegClass cls)
 /// @details The allocator selects the earliest active value, requests that the
 ///          spiller emit a store, and returns the freed register to the pool.
 ///          Values that already lack a physical register are skipped to avoid
-///          redundant work.
+///          redundant work. Uses lifetime-based slot reuse when interval info
+///          is available to reduce stack frame size.
 /// @param cls Register class experiencing pressure.
 /// @param prefix Instruction list capturing generated spill code.
 void LinearScanAllocator::spillOne(RegClass cls, std::vector<MInstr> &prefix)
@@ -256,7 +257,17 @@ void LinearScanAllocator::spillOne(RegClass cls, std::vector<MInstr> &prefix)
     {
         return;
     }
-    spiller_.spillValue(cls, victimId, victim, poolFor(cls), prefix, result_);
+    // Use lifetime-based slot reuse when interval info is available
+    const auto *interval = intervals_.lookup(victimId);
+    if (interval)
+    {
+        spiller_.spillValueWithReuse(cls, victimId, victim, poolFor(cls), prefix, result_,
+                                     interval->start, interval->end);
+    }
+    else
+    {
+        spiller_.spillValue(cls, victimId, victim, poolFor(cls), prefix, result_);
+    }
 }
 
 /// @brief Release registers for vregs whose live intervals have ended.
@@ -396,7 +407,16 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
                             const bool valueNeeded = !interval || interval->end > currentInstrIdx_;
                             if (valueNeeded)
                             {
-                                spiller_.ensureSpillSlot(RegClass::GPR, state.spill);
+                                // Use lifetime-based slot reuse when interval is available
+                                if (interval)
+                                {
+                                    spiller_.ensureSpillSlotWithReuse(RegClass::GPR, state.spill,
+                                                                      interval->start, interval->end);
+                                }
+                                else
+                                {
+                                    spiller_.ensureSpillSlot(RegClass::GPR, state.spill);
+                                }
                                 state.spill.needsSpill = true;
                                 prefix.push_back(
                                     spiller_.makeStore(RegClass::GPR, state.spill, state.phys));
@@ -486,11 +506,20 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
                 xmmToSpill.push_back(vreg);
             }
 
-            // Now spill the collected values
+            // Now spill the collected values using lifetime-based slot reuse
             for (auto vreg : gprToSpill)
             {
                 auto &state = states_[vreg];
-                spiller_.ensureSpillSlot(RegClass::GPR, state.spill);
+                const auto *interval = intervals_.lookup(vreg);
+                if (interval)
+                {
+                    spiller_.ensureSpillSlotWithReuse(RegClass::GPR, state.spill,
+                                                      interval->start, interval->end);
+                }
+                else
+                {
+                    spiller_.ensureSpillSlot(RegClass::GPR, state.spill);
+                }
                 state.spill.needsSpill = true;
                 prefix.push_back(spiller_.makeStore(RegClass::GPR, state.spill, state.phys));
                 releaseRegister(state.phys, RegClass::GPR);
@@ -501,7 +530,16 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
             for (auto vreg : xmmToSpill)
             {
                 auto &state = states_[vreg];
-                spiller_.ensureSpillSlot(RegClass::XMM, state.spill);
+                const auto *interval = intervals_.lookup(vreg);
+                if (interval)
+                {
+                    spiller_.ensureSpillSlotWithReuse(RegClass::XMM, state.spill,
+                                                      interval->start, interval->end);
+                }
+                else
+                {
+                    spiller_.ensureSpillSlot(RegClass::XMM, state.spill);
+                }
                 state.spill.needsSpill = true;
                 prefix.push_back(spiller_.makeStore(RegClass::XMM, state.spill, state.phys));
                 releaseRegister(state.phys, RegClass::XMM);
@@ -575,12 +613,14 @@ void LinearScanAllocator::releaseActiveForBlock(MBasicBlock &block)
         {
             // Value is live across block boundary - spill it so successor blocks
             // can reload it. This is essential for cross-block correctness.
+            // Use lifetime-based slot reuse to reduce stack frame size.
             auto &state = it->second;
             if (!state.spill.needsSpill)
             {
                 state.spill.needsSpill = true;
             }
-            spiller_.ensureSpillSlot(RegClass::GPR, state.spill);
+            spiller_.ensureSpillSlotWithReuse(RegClass::GPR, state.spill,
+                                              interval->start, interval->end);
 
             // Emit a store to the spill slot
             spills.push_back(spiller_.makeStore(RegClass::GPR, state.spill, state.phys));
@@ -605,12 +645,14 @@ void LinearScanAllocator::releaseActiveForBlock(MBasicBlock &block)
         if (interval && interval->end > currentInstrIdx_)
         {
             // Value is live across block boundary - spill it
+            // Use lifetime-based slot reuse to reduce stack frame size.
             auto &state = it->second;
             if (!state.spill.needsSpill)
             {
                 state.spill.needsSpill = true;
             }
-            spiller_.ensureSpillSlot(RegClass::XMM, state.spill);
+            spiller_.ensureSpillSlotWithReuse(RegClass::XMM, state.spill,
+                                              interval->start, interval->end);
 
             // Emit a store to the spill slot
             spills.push_back(spiller_.makeStore(RegClass::XMM, state.spill, state.phys));

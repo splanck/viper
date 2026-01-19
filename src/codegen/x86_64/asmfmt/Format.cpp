@@ -18,7 +18,6 @@
 #include "../TargetX64.hpp"
 
 #include <cstddef>
-#include <sstream>
 #include <string>
 
 namespace asmfmt
@@ -114,46 +113,58 @@ std::string fmt_reg(int reg)
     }
 
     const unsigned virt = static_cast<unsigned>(-reg - 1);
-    std::ostringstream os{};
-    os << "%v" << virt;
-    return os.str();
+    std::string result;
+    result.reserve(16);  // Pre-size for typical virtual register names
+    result += "%v";
+    result += std::to_string(virt);
+    return result;
 }
 
 /// @brief Render a memory addressing expression.
 /// @details Emits the displacement, base register, and optional index/scale in
 ///          canonical AT&T order.  Missing fields are omitted to avoid
-///          redundant commas.
+///          redundant commas.  Uses pre-sized string buffer for efficiency.
 /// @param a Structured memory operand describing the address.
 /// @return Assembly string representing the effective address.
 std::string format_mem(const MemAddr &a)
 {
-    std::ostringstream os{};
+    std::string result;
+    result.reserve(64);  // Pre-size for typical memory operand
+
     if (a.disp != 0)
     {
-        os << a.disp;
+        result += std::to_string(a.disp);
     }
 
-    os << '(' << fmt_reg(a.base);
+    result += '(';
+    result += fmt_reg(a.base);
     if (a.has_index)
     {
-        os << ',' << fmt_reg(a.index) << ',' << static_cast<unsigned>(a.scale);
+        result += ',';
+        result += fmt_reg(a.index);
+        result += ',';
+        result += std::to_string(static_cast<unsigned>(a.scale));
     }
-    os << ')';
-    return os.str();
+    result += ')';
+    return result;
 }
 
 /// @brief Format raw data bytes into `.ascii` and `.byte` directives.
 /// @details Groups printable runs into `.ascii` directives with escaped
 ///          content and emits up to 16 non-printable bytes per `.byte` line.
+///          Uses pre-sized string buffer for efficiency.
 /// @param bytes Raw data blob to render.
 /// @return Multi-line assembly listing representing the data section.
 std::string format_rodata_bytes(std::string_view bytes)
 {
-    std::ostringstream os{};
+    std::string result;
+    // Reserve approximately 3x the input size to accommodate formatting overhead
+    result.reserve(bytes.size() * 3 + 32);
+
     if (bytes.empty())
     {
-        os << "  # empty literal\n";
-        return os.str();
+        result += "  # empty literal\n";
+        return result;
     }
 
     std::size_t index = 0;
@@ -168,11 +179,13 @@ std::string format_rodata_bytes(std::string_view bytes)
                 ++index;
             }
             const std::string_view run{bytes.data() + begin, index - begin};
-            os << "  .ascii \"" << escape_ascii(run) << "\"\n";
+            result += "  .ascii \"";
+            result += escape_ascii(run);
+            result += "\"\n";
             continue;
         }
 
-        os << "  .byte ";
+        result += "  .byte ";
         std::size_t emitted = 0;
         while (index < bytes.size() && emitted < 16U)
         {
@@ -183,16 +196,16 @@ std::string format_rodata_bytes(std::string_view bytes)
             }
             if (emitted != 0)
             {
-                os << ", ";
+                result += ", ";
             }
-            os << static_cast<unsigned>(byte_val);
+            result += std::to_string(static_cast<unsigned>(byte_val));
             ++index;
             ++emitted;
         }
-        os << '\n';
+        result += '\n';
     }
 
-    return os.str();
+    return result;
 }
 
 } // namespace asmfmt
