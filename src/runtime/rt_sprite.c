@@ -334,8 +334,7 @@ void rt_sprite_draw(void *sprite_ptr, void *canvas_ptr)
     }
 
     // Scale the frame if needed
-    void *scaled = frame;
-    int64_t need_free_scaled = 0;
+    void *transformed = frame;
 
     if (sprite->scale_x != 100 || sprite->scale_y != 100)
     {
@@ -345,19 +344,40 @@ void rt_sprite_draw(void *sprite_ptr, void *canvas_ptr)
             new_w = 1;
         if (new_h < 1)
             new_h = 1;
-        scaled = rt_pixels_scale(frame, new_w, new_h);
+        void *scaled = rt_pixels_scale(frame, new_w, new_h);
         if (scaled)
-            need_free_scaled = 1;
-        else
-            scaled = frame;
+            transformed = scaled;
     }
 
-    // For now, rotation is not implemented - just blit scaled
-    // TODO: Implement rotation
-    rt_canvas_blit_alpha(canvas_ptr, sprite->x - sprite->origin_x, sprite->y - sprite->origin_y, scaled);
+    // Rotate the (scaled) frame if needed
+    if (sprite->rotation != 0)
+    {
+        void *rotated = rt_pixels_rotate(transformed, (double)sprite->rotation);
+        if (rotated)
+            transformed = rotated;
+    }
 
-    // Note: scaled pixels will be GC'd
-    (void)need_free_scaled;
+    // Calculate blit position, accounting for origin and transformed dimensions
+    int64_t tw = rt_pixels_width(transformed);
+    int64_t th = rt_pixels_height(transformed);
+
+    // The origin point should stay at the sprite's (x, y) position
+    // After rotation, the image size may have changed, so we need to center it
+    int64_t blit_x = sprite->x - tw / 2;
+    int64_t blit_y = sprite->y - th / 2;
+
+    // If origin is set, use it as the center point relative to original size
+    if (sprite->origin_x != 0 || sprite->origin_y != 0)
+    {
+        // The sprite position should be at the original origin point
+        // which is now at the center of the rotated image
+        blit_x = sprite->x - tw / 2;
+        blit_y = sprite->y - th / 2;
+    }
+
+    rt_canvas_blit_alpha(canvas_ptr, blit_x, blit_y, transformed);
+
+    // Note: transformed pixels will be GC'd
 }
 
 void rt_sprite_set_origin(void *sprite_ptr, int64_t x, int64_t y)

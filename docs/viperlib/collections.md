@@ -590,6 +590,21 @@ push/pop, insert/remove, and slicing operations.
 | `Shuffle()`            | `Void()`                | Shuffles the elements in place (deterministic when `Viper.Random.Seed` is set)        |
 | `Slice(start, end)`    | `Seq(Integer, Integer)` | Returns a new sequence with elements from start (inclusive) to end (exclusive)        |
 | `Clone()`              | `Seq()`                 | Returns a shallow copy of the sequence                                                |
+| `Sort()`               | `Void()`                | Sorts elements in ascending order (stable merge sort)                                 |
+| `SortDesc()`           | `Void()`                | Sorts elements in descending order (stable merge sort)                                |
+| `Keep(pred)`           | `Seq(Function)`         | Returns new Seq with elements where predicate returns true                            |
+| `Reject(pred)`         | `Seq(Function)`         | Returns new Seq excluding elements where predicate returns true                       |
+| `Apply(fn)`            | `Seq(Function)`         | Returns new Seq with each element transformed by function                             |
+| `All(pred)`            | `Boolean(Function)`     | Returns true if all elements satisfy predicate (true for empty)                       |
+| `Any(pred)`            | `Boolean(Function)`     | Returns true if any element satisfies predicate (false for empty)                     |
+| `None(pred)`           | `Boolean(Function)`     | Returns true if no elements satisfy predicate (true for empty)                        |
+| `CountWhere(pred)`     | `Integer(Function)`     | Returns count of elements satisfying predicate                                        |
+| `FindWhere(pred)`      | `Object(Function)`      | Returns first element satisfying predicate, or NULL                                   |
+| `Take(n)`              | `Seq(Integer)`          | Returns new Seq with first n elements                                                 |
+| `Drop(n)`              | `Seq(Integer)`          | Returns new Seq skipping first n elements                                             |
+| `TakeWhile(pred)`      | `Seq(Function)`         | Returns new Seq with leading elements while predicate is true                         |
+| `DropWhile(pred)`      | `Seq(Function)`         | Returns new Seq skipping leading elements while predicate is true                     |
+| `Fold(init, fn)`       | `Object(Object, Function)` | Reduces sequence to single value using accumulator                                 |
 
 ### Example
 
@@ -666,12 +681,87 @@ FOR i = 1 TO 1000
 NEXT i
 ```
 
+### Sorting
+
+```basic
+DIM names AS Viper.Collections.Seq
+names = NEW Viper.Collections.Seq()
+names.Push("Charlie")
+names.Push("Alice")
+names.Push("Bob")
+
+' Sort in ascending order
+names.Sort()
+' names is now: Alice, Bob, Charlie
+
+' Sort in descending order
+names.SortDesc()
+' names is now: Charlie, Bob, Alice
+```
+
+### Functional Operations
+
+Seq provides functional-style operations for filtering, transforming, and querying elements.
+
+```basic
+DIM numbers AS Viper.Collections.Seq
+numbers = NEW Viper.Collections.Seq()
+FOR i = 1 TO 10
+    numbers.Push(i)
+NEXT i
+
+' Keep only even numbers (filter)
+DIM evens AS Viper.Collections.Seq
+evens = numbers.Keep(FUNCTION(n) RETURN n MOD 2 = 0)
+' evens contains: 2, 4, 6, 8, 10
+
+' Reject odd numbers (inverse filter)
+DIM alsoEvens AS Viper.Collections.Seq
+alsoEvens = numbers.Reject(FUNCTION(n) RETURN n MOD 2 = 1)
+
+' Transform each element (map)
+DIM doubled AS Viper.Collections.Seq
+doubled = numbers.Apply(FUNCTION(n) RETURN n * 2)
+' doubled contains: 2, 4, 6, 8, 10, 12, 14, 16, 18, 20
+
+' Check predicates
+DIM allPositive AS INTEGER = numbers.All(FUNCTION(n) RETURN n > 0)  ' True
+DIM anyLarge AS INTEGER = numbers.Any(FUNCTION(n) RETURN n > 100)   ' False
+DIM noneTiny AS INTEGER = numbers.None(FUNCTION(n) RETURN n < 0)    ' True
+
+' Count matching elements
+DIM evenCount AS INTEGER = numbers.CountWhere(FUNCTION(n) RETURN n MOD 2 = 0)
+' evenCount = 5
+
+' Find first matching element
+DIM firstEven AS INTEGER = numbers.FindWhere(FUNCTION(n) RETURN n MOD 2 = 0)
+' firstEven = 2
+
+' Take and Drop
+DIM firstThree AS Viper.Collections.Seq = numbers.Take(3)   ' 1, 2, 3
+DIM afterThree AS Viper.Collections.Seq = numbers.Drop(3)   ' 4, 5, 6, 7, 8, 9, 10
+
+' TakeWhile and DropWhile
+DIM smallNums AS Viper.Collections.Seq = numbers.TakeWhile(FUNCTION(n) RETURN n < 5)
+' smallNums contains: 1, 2, 3, 4
+DIM largeNums AS Viper.Collections.Seq = numbers.DropWhile(FUNCTION(n) RETURN n < 5)
+' largeNums contains: 5, 6, 7, 8, 9, 10
+
+' Fold (reduce) to compute sum
+DIM sum AS INTEGER = numbers.Fold(0, FUNCTION(acc, n) RETURN acc + n)
+' sum = 55
+```
+
 ### Use Cases
 
 - **Stack:** Use `Push()` and `Pop()` for LIFO operations
 - **Queue:** Use `Push()` to add and `Remove(0)` to dequeue (FIFO)
 - **Dynamic Array:** Use `Get()`/`Set()` for random access
 - **Slicing:** Use `Slice()` to extract sub-sequences
+- **Filtering:** Use `Keep()` and `Reject()` to filter by condition
+- **Transformation:** Use `Apply()` to transform all elements
+- **Queries:** Use `All()`, `Any()`, `None()` for predicate checks
+- **Aggregation:** Use `Fold()` to reduce to a single value
 
 ---
 

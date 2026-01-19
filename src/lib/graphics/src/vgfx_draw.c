@@ -82,8 +82,24 @@ static inline void plot_pixel_checked(struct vgfx_window *win,
                                       int32_t y,
                                       vgfx_color_t color)
 {
-    /* Bounds check - silently discard out-of-bounds pixels */
-    if (x < 0 || x >= win->width || y < 0 || y >= win->height)
+    /* Bounds check against clip rectangle (or window bounds if no clip) */
+    int32_t min_x = 0, min_y = 0;
+    int32_t max_x = win->width, max_y = win->height;
+
+    if (win->clip_enabled)
+    {
+        /* Intersect with clip rectangle */
+        if (win->clip_x > min_x)
+            min_x = win->clip_x;
+        if (win->clip_y > min_y)
+            min_y = win->clip_y;
+        if (win->clip_x + win->clip_w < max_x)
+            max_x = win->clip_x + win->clip_w;
+        if (win->clip_y + win->clip_h < max_y)
+            max_y = win->clip_y + win->clip_h;
+    }
+
+    if (x < min_x || x >= max_x || y < min_y || y >= max_y)
     {
         return;
     }
@@ -142,8 +158,24 @@ static void hline_callback(int32_t x0, int32_t x1, int32_t y, void *ctx)
     struct vgfx_window *win = hctx->win;
     vgfx_color_t color = hctx->color;
 
-    /* Bounds check Y coordinate (reject entire scanline if out of bounds) */
-    if (y < 0 || y >= win->height)
+    /* Determine clip bounds */
+    int32_t min_x = 0, min_y = 0;
+    int32_t max_x = win->width, max_y = win->height;
+
+    if (win->clip_enabled)
+    {
+        if (win->clip_x > min_x)
+            min_x = win->clip_x;
+        if (win->clip_y > min_y)
+            min_y = win->clip_y;
+        if (win->clip_x + win->clip_w < max_x)
+            max_x = win->clip_x + win->clip_w;
+        if (win->clip_y + win->clip_h < max_y)
+            max_y = win->clip_y + win->clip_h;
+    }
+
+    /* Bounds check Y coordinate (reject entire scanline if out of clip bounds) */
+    if (y < min_y || y >= max_y)
         return;
 
     /* Ensure x0 <= x1 (swap if needed) */
@@ -154,11 +186,11 @@ static void hline_callback(int32_t x0, int32_t x1, int32_t y, void *ctx)
         x1 = tmp;
     }
 
-    /* Clip X coordinates to window bounds [0, width) */
-    if (x0 < 0)
-        x0 = 0;
-    if (x1 >= win->width)
-        x1 = win->width - 1;
+    /* Clip X coordinates to clip bounds */
+    if (x0 < min_x)
+        x0 = min_x;
+    if (x1 >= max_x)
+        x1 = max_x - 1;
     if (x0 > x1)
         return; /* Scanline entirely clipped */
 
@@ -548,11 +580,27 @@ void vgfx_draw_fill_rect(
     if (w <= 0 || h <= 0)
         return;
 
-    /* Clip rectangle to window bounds [0, width) × [0, height) */
-    int32_t x1 = (x < 0) ? 0 : x;
-    int32_t y1 = (y < 0) ? 0 : y;
-    int32_t x2 = (x + w > win->width) ? win->width : x + w;
-    int32_t y2 = (y + h > win->height) ? win->height : y + h;
+    /* Determine clip bounds (use clip rect if enabled, otherwise window bounds) */
+    int32_t clip_min_x = 0, clip_min_y = 0;
+    int32_t clip_max_x = win->width, clip_max_y = win->height;
+
+    if (win->clip_enabled)
+    {
+        if (win->clip_x > clip_min_x)
+            clip_min_x = win->clip_x;
+        if (win->clip_y > clip_min_y)
+            clip_min_y = win->clip_y;
+        if (win->clip_x + win->clip_w < clip_max_x)
+            clip_max_x = win->clip_x + win->clip_w;
+        if (win->clip_y + win->clip_h < clip_max_y)
+            clip_max_y = win->clip_y + win->clip_h;
+    }
+
+    /* Clip rectangle to clip bounds */
+    int32_t x1 = (x < clip_min_x) ? clip_min_x : x;
+    int32_t y1 = (y < clip_min_y) ? clip_min_y : y;
+    int32_t x2 = (x + w > clip_max_x) ? clip_max_x : x + w;
+    int32_t y2 = (y + h > clip_max_y) ? clip_max_y : y + h;
 
     /* Check if rectangle is completely out of bounds (no pixels to draw) */
     if (x1 >= x2 || y1 >= y2)
@@ -642,6 +690,53 @@ void vgfx_draw_fill_circle(
 
     /* Fill circle using scanline algorithm */
     filled_circle(cx, cy, radius, hline_callback, &ctx);
+}
+
+//===----------------------------------------------------------------------===//
+// Clipping Functions
+//===----------------------------------------------------------------------===//
+
+/// @brief Set the clipping rectangle for all drawing operations.
+/// @details All subsequent drawing operations will be clipped to the specified
+///          rectangle. The clip rectangle is intersected with the window bounds.
+///
+/// @param window Window handle
+/// @param x      Left edge X coordinate of clip rect
+/// @param y      Top edge Y coordinate of clip rect
+/// @param w      Width of clip rect
+/// @param h      Height of clip rect
+///
+/// @pre  window is a valid struct vgfx_window*
+/// @post All drawing operations will be clipped to (x, y, w, h)
+void vgfx_set_clip(vgfx_window_t window, int32_t x, int32_t y, int32_t w, int32_t h)
+{
+    struct vgfx_window *win = (struct vgfx_window *)window;
+    if (!win)
+        return;
+
+    /* Store clip rectangle */
+    win->clip_x = x;
+    win->clip_y = y;
+    win->clip_w = w;
+    win->clip_h = h;
+    win->clip_enabled = 1;
+}
+
+/// @brief Clear the clipping rectangle, restoring full-window drawing.
+/// @details After calling this function, drawing operations can affect any
+///          pixel within the window bounds.
+///
+/// @param window Window handle
+///
+/// @pre  window is a valid struct vgfx_window*
+/// @post Clipping is disabled; drawing affects entire window
+void vgfx_clear_clip(vgfx_window_t window)
+{
+    struct vgfx_window *win = (struct vgfx_window *)window;
+    if (!win)
+        return;
+
+    win->clip_enabled = 0;
 }
 
 //===----------------------------------------------------------------------===//

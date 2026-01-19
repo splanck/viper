@@ -49,6 +49,7 @@
 #include "rt_json.h"
 
 #include "rt_box.h"
+#include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_map.h"
 #include "rt_seq.h"
@@ -838,125 +839,96 @@ static void format_value(string_builder *sb, void *obj, int64_t indent, int64_t 
         return;
     }
 
-    // Check if it's a string
+    // Check if it's a string handle (most common case for strings)
     if (rt_string_is_handle(obj))
     {
         format_string(sb, (rt_string)obj);
         return;
     }
 
-    // Check if it's a Seq (array)
-    // We detect Seq by checking if it has the expected methods
-    // For now, use a simple heuristic based on the object type
-    int64_t box_type = rt_box_type(obj);
+    // Distinguish between boxes and collections using allocation size.
+    // The heap header stores the payload size:
+    // - rt_box_t = 16 bytes (tag + union)
+    // - rt_seq_impl = 24 bytes (len + cap + items pointer)
+    // - rt_map_impl = 32 bytes (vptr + buckets + capacity + count)
+    //
+    // This is more reliable than checking the first field (which would be
+    // box.tag, seq.len, or map.vptr - all potentially overlapping values).
 
-    if (box_type == 1)
+    rt_heap_hdr_t *hdr = rt_heap_hdr(obj);
+    if (hdr && hdr->magic == RT_MAGIC)
     {
-        // Boxed i64 (could be bool)
-        int64_t val = rt_unbox_i64(obj);
-        if (val == 0)
-            sb_append(sb, "false");
-        else if (val == 1)
-            sb_append(sb, "true");
-        else
+        size_t obj_size = hdr->len;
+
+        // Box is exactly 16 bytes (sizeof(rt_box_t))
+        if (obj_size == 16)
         {
-            // It's an integer, format as number
-            char buf[32];
-            snprintf(buf, sizeof(buf), "%lld", (long long)val);
-            sb_append(sb, buf);
-        }
-        return;
-    }
+            // This is a box - check its type
+            int64_t box_type = rt_box_type(obj);
 
-    if (box_type == 2)
-    {
-        // Boxed f64
-        double val = rt_unbox_f64(obj);
-
-        // Handle special values
-        if (isnan(val))
-        {
-            sb_append(sb, "null"); // JSON doesn't support NaN
-            return;
-        }
-        if (isinf(val))
-        {
-            sb_append(sb, "null"); // JSON doesn't support Infinity
-            return;
-        }
-
-        char buf[64];
-        // Format with enough precision
-        snprintf(buf, sizeof(buf), "%.17g", val);
-        sb_append(sb, buf);
-        return;
-    }
-
-    if (box_type == 4)
-    {
-        // Boxed string
-        rt_string str = rt_unbox_str(obj);
-        format_string(sb, str);
-        return;
-    }
-
-    // Try to detect Seq vs Map
-    // This is a heuristic - we check if rt_seq_len works
-    // In practice, Viper types should have proper type tags
-
-    // Check if it's a Map by trying rt_map_len
-    // If it doesn't trap, it's a Map
-    // For safety, we check box_type == 0 (unboxed object)
-
-    if (box_type == 0)
-    {
-        // It's an unboxed object - could be Seq or Map
-        // Try to determine type by checking if Map methods work
-
-        // This is a simplified approach - in a full implementation,
-        // we'd have proper type tags. For now, we assume:
-        // - If it responds to rt_map_has, it's a Map
-        // - Otherwise, treat as Seq
-
-        // Since we can't easily distinguish without type info,
-        // we'll try Seq first (more common for arrays)
-
-        // Check if it looks like a Seq by trying to get length
-        int64_t seq_len = rt_seq_len(obj);
-        if (seq_len >= 0)
-        {
-            // Could still be a Map (both have len)
-            // Try map-specific operation
-            int64_t map_len = rt_map_len(obj);
-
-            // If both work, we need more info
-            // For now, check if it's empty - if empty, prefer array
-            if (seq_len == 0 && map_len == 0)
+            if (box_type == RT_BOX_I64)
             {
-                // Ambiguous empty collection - default to array
-                sb_append(sb, "[]");
+                int64_t val = rt_unbox_i64(obj);
+                char buf[32];
+                snprintf(buf, sizeof(buf), "%lld", (long long)val);
+                sb_append(sb, buf);
                 return;
             }
 
-            // If map has keys but seq doesn't have items at index 0,
-            // it's likely a map
-            if (map_len > 0)
+            if (box_type == RT_BOX_F64)
             {
-                format_object(sb, obj, indent, level);
+                double val = rt_unbox_f64(obj);
+                if (isnan(val))
+                {
+                    sb_append(sb, "null");
+                    return;
+                }
+                if (isinf(val))
+                {
+                    sb_append(sb, "null");
+                    return;
+                }
+                char buf[64];
+                snprintf(buf, sizeof(buf), "%.17g", val);
+                sb_append(sb, buf);
                 return;
             }
 
-            // Otherwise treat as array
+            if (box_type == RT_BOX_I1)
+            {
+                int8_t val = rt_unbox_i1(obj);
+                sb_append(sb, val ? "true" : "false");
+                return;
+            }
+
+            if (box_type == RT_BOX_STR)
+            {
+                rt_string str = rt_unbox_str(obj);
+                format_string(sb, str);
+                return;
+            }
+
+            // Unknown box type - format as null
+            sb_append(sb, "null");
+            return;
+        }
+
+        // Seq is 24 bytes
+        if (obj_size == 24)
+        {
             format_array(sb, obj, indent, level);
             return;
         }
 
-        // If seq_len fails, try as map
-        format_object(sb, obj, indent, level);
-        return;
+        // Map is 32 bytes
+        if (obj_size == 32)
+        {
+            format_object(sb, obj, indent, level);
+            return;
+        }
     }
 
-    // Unknown type - format as null
+    // Unknown or invalid object - format as null
     sb_append(sb, "null");
 }
 
@@ -1311,31 +1283,31 @@ rt_string rt_json_type_of(void *obj)
     if (rt_string_is_handle(obj))
         return rt_string_from_bytes("string", 6);
 
-    int64_t box_type = rt_box_type(obj);
-
-    if (box_type == 1)
+    // Use allocation size to distinguish between boxes and collections
+    rt_heap_hdr_t *hdr = rt_heap_hdr(obj);
+    if (hdr && hdr->magic == RT_MAGIC)
     {
-        int64_t val = rt_unbox_i64(obj);
-        if (val == 0 || val == 1)
-            return rt_string_from_bytes("boolean", 7);
-        return rt_string_from_bytes("number", 6);
-    }
+        size_t obj_size = hdr->len;
 
-    if (box_type == 2)
-        return rt_string_from_bytes("number", 6);
+        // Box is 16 bytes
+        if (obj_size == 16)
+        {
+            int64_t box_type = rt_box_type(obj);
+            if (box_type == RT_BOX_I64 || box_type == RT_BOX_F64)
+                return rt_string_from_bytes("number", 6);
+            if (box_type == RT_BOX_I1)
+                return rt_string_from_bytes("boolean", 7);
+            if (box_type == RT_BOX_STR)
+                return rt_string_from_bytes("string", 6);
+        }
 
-    if (box_type == 4)
-        return rt_string_from_bytes("string", 6);
+        // Seq is 24 bytes
+        if (obj_size == 24)
+            return rt_string_from_bytes("array", 5);
 
-    if (box_type == 0)
-    {
-        // Unboxed object - could be Seq or Map
-        // Try to distinguish by checking map keys
-        int64_t map_len = rt_map_len(obj);
-        if (map_len >= 0)
+        // Map is 32 bytes
+        if (obj_size == 32)
             return rt_string_from_bytes("object", 6);
-
-        return rt_string_from_bytes("array", 5);
     }
 
     return rt_string_from_bytes("unknown", 7);

@@ -267,6 +267,14 @@ RT_FUNC(SeqSort,         rt_seq_sort,          "Viper.Collections.Seq.Sort",    
 RT_FUNC(SeqSortDesc,     rt_seq_sort_desc,     "Viper.Collections.Seq.SortDesc",     "void(obj)")
 RT_FUNC(SeqWithCapacity, rt_seq_with_capacity, "Viper.Collections.Seq.WithCapacity", "obj(i64)")
 
+// Seq slicing operations (non-callback based)
+RT_FUNC(SeqTake,         rt_seq_take,          "Viper.Collections.Seq.Take",         "obj(obj,i64)")
+RT_FUNC(SeqDrop,         rt_seq_drop,          "Viper.Collections.Seq.Drop",         "obj(obj,i64)")
+
+// Note: Callback-based functional operations (Keep, Reject, Apply, All, Any, None,
+// CountWhere, FindWhere, TakeWhile, DropWhile, Fold) are available in the C API
+// (rt_seq.h) but not exposed to IL until proper closure support is added.
+
 //=============================================================================
 // COLLECTIONS - STACK
 //=============================================================================
@@ -2204,6 +2212,7 @@ RT_CLASS_BEGIN("Viper.Collections.Seq", Seq, "obj", SeqNew)
     RT_PROP("Len", "i64", SeqLen, none)
     RT_METHOD("Clear", "void()", SeqClear)
     RT_METHOD("Clone", "obj()", SeqClone)
+    RT_METHOD("Drop", "obj(i64)", SeqDrop)
     RT_METHOD("Find", "i64(obj)", SeqFind)
     RT_METHOD("First", "obj()", SeqFirst)
     RT_METHOD("Get", "obj(i64)", SeqGet)
@@ -2221,6 +2230,7 @@ RT_CLASS_BEGIN("Viper.Collections.Seq", Seq, "obj", SeqNew)
     RT_METHOD("Slice", "obj(i64,i64)", SeqSlice)
     RT_METHOD("Sort", "void()", SeqSort)
     RT_METHOD("SortDesc", "void()", SeqSortDesc)
+    RT_METHOD("Take", "obj(i64)", SeqTake)
 RT_CLASS_END()
 
 // Viper.Collections.Stack - LIFO collection

@@ -124,6 +124,13 @@ extern "C"
     /// @return New rotated Pixels object.
     void *rt_pixels_rotate_180(void *pixels);
 
+    /// @brief Rotate the image by an arbitrary angle.
+    /// @param pixels Pixels object.
+    /// @param angle_degrees Rotation angle in degrees (positive = clockwise).
+    /// @return New rotated Pixels object with expanded dimensions to fit.
+    /// @note Uses bilinear interpolation for smooth results.
+    void *rt_pixels_rotate(void *pixels, double angle_degrees);
+
     /// @brief Scale the image using nearest-neighbor interpolation.
     /// @param pixels Pixels object.
     /// @param new_width Target width.

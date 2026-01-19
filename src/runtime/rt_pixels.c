@@ -18,6 +18,7 @@
 #include "rt_object.h"
 #include "rt_string.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -714,6 +715,162 @@ void *rt_pixels_rotate_180(void *pixels)
     for (int64_t i = 0; i < total; i++)
     {
         result->data[total - 1 - i] = p->data[i];
+    }
+
+    return result;
+}
+
+void *rt_pixels_rotate(void *pixels, double angle_degrees)
+{
+    if (!pixels)
+    {
+        rt_trap("Pixels.Rotate: null pixels");
+        return NULL;
+    }
+
+    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
+
+    if (p->width <= 0 || p->height <= 0)
+        return pixels_alloc(0, 0);
+
+    // Normalize angle to 0-360
+    while (angle_degrees < 0)
+        angle_degrees += 360.0;
+    while (angle_degrees >= 360.0)
+        angle_degrees -= 360.0;
+
+    // Fast paths for common angles
+    if (fabs(angle_degrees) < 0.001 || fabs(angle_degrees - 360.0) < 0.001)
+    {
+        // No rotation - return a copy
+        rt_pixels_impl *result = pixels_alloc(p->width, p->height);
+        if (!result)
+            return NULL;
+        memcpy(result->data, p->data, (size_t)(p->width * p->height) * sizeof(uint32_t));
+        return result;
+    }
+    if (fabs(angle_degrees - 90.0) < 0.001)
+        return rt_pixels_rotate_cw(pixels);
+    if (fabs(angle_degrees - 180.0) < 0.001)
+        return rt_pixels_rotate_180(pixels);
+    if (fabs(angle_degrees - 270.0) < 0.001)
+        return rt_pixels_rotate_ccw(pixels);
+
+    // Convert to radians
+    double rad = angle_degrees * (3.14159265358979323846 / 180.0);
+    double cos_a = cos(rad);
+    double sin_a = sin(rad);
+
+    // Calculate new bounding box dimensions
+    // The four corners of the original image rotated about center
+    double hw = p->width / 2.0;
+    double hh = p->height / 2.0;
+
+    // Rotated corner positions (relative to center)
+    double corners[4][2] = {
+        {-hw * cos_a + hh * sin_a, -hw * sin_a - hh * cos_a}, // top-left
+        {hw * cos_a + hh * sin_a, hw * sin_a - hh * cos_a},   // top-right
+        {hw * cos_a - hh * sin_a, hw * sin_a + hh * cos_a},   // bottom-right
+        {-hw * cos_a - hh * sin_a, -hw * sin_a + hh * cos_a}  // bottom-left
+    };
+
+    double min_x = corners[0][0], max_x = corners[0][0];
+    double min_y = corners[0][1], max_y = corners[0][1];
+    for (int i = 1; i < 4; i++)
+    {
+        if (corners[i][0] < min_x)
+            min_x = corners[i][0];
+        if (corners[i][0] > max_x)
+            max_x = corners[i][0];
+        if (corners[i][1] < min_y)
+            min_y = corners[i][1];
+        if (corners[i][1] > max_y)
+            max_y = corners[i][1];
+    }
+
+    int64_t new_width = (int64_t)ceil(max_x - min_x);
+    int64_t new_height = (int64_t)ceil(max_y - min_y);
+    if (new_width < 1)
+        new_width = 1;
+    if (new_height < 1)
+        new_height = 1;
+
+    rt_pixels_impl *result = pixels_alloc(new_width, new_height);
+    if (!result)
+        return NULL;
+
+    // Clear to transparent
+    memset(result->data, 0, (size_t)(new_width * new_height) * sizeof(uint32_t));
+
+    // New center
+    double new_hw = new_width / 2.0;
+    double new_hh = new_height / 2.0;
+
+    // For each destination pixel, find source pixel using inverse rotation
+    for (int64_t dy = 0; dy < new_height; dy++)
+    {
+        for (int64_t dx = 0; dx < new_width; dx++)
+        {
+            // Destination position relative to new center
+            double dx_c = dx - new_hw;
+            double dy_c = dy - new_hh;
+
+            // Inverse rotation to find source position
+            double sx_c = dx_c * cos_a + dy_c * sin_a;
+            double sy_c = -dx_c * sin_a + dy_c * cos_a;
+
+            // Source position in original image coordinates
+            double sx = sx_c + hw;
+            double sy = sy_c + hh;
+
+            // Bilinear interpolation
+            int64_t x0 = (int64_t)floor(sx);
+            int64_t y0 = (int64_t)floor(sy);
+            int64_t x1 = x0 + 1;
+            int64_t y1 = y0 + 1;
+
+            // Skip if completely outside source
+            if (x1 < 0 || x0 >= p->width || y1 < 0 || y0 >= p->height)
+                continue;
+
+            // Fractional parts
+            double fx = sx - x0;
+            double fy = sy - y0;
+
+            // Get the four surrounding pixels (with bounds checking)
+            uint32_t c00 = 0, c10 = 0, c01 = 0, c11 = 0;
+
+            if (x0 >= 0 && x0 < p->width && y0 >= 0 && y0 < p->height)
+                c00 = p->data[y0 * p->width + x0];
+            if (x1 >= 0 && x1 < p->width && y0 >= 0 && y0 < p->height)
+                c10 = p->data[y0 * p->width + x1];
+            if (x0 >= 0 && x0 < p->width && y1 >= 0 && y1 < p->height)
+                c01 = p->data[y1 * p->width + x0];
+            if (x1 >= 0 && x1 < p->width && y1 >= 0 && y1 < p->height)
+                c11 = p->data[y1 * p->width + x1];
+
+            // Bilinear interpolation for each channel
+            uint8_t r00 = (c00 >> 0) & 0xFF, g00 = (c00 >> 8) & 0xFF;
+            uint8_t b00 = (c00 >> 16) & 0xFF, a00 = (c00 >> 24) & 0xFF;
+            uint8_t r10 = (c10 >> 0) & 0xFF, g10 = (c10 >> 8) & 0xFF;
+            uint8_t b10 = (c10 >> 16) & 0xFF, a10 = (c10 >> 24) & 0xFF;
+            uint8_t r01 = (c01 >> 0) & 0xFF, g01 = (c01 >> 8) & 0xFF;
+            uint8_t b01 = (c01 >> 16) & 0xFF, a01 = (c01 >> 24) & 0xFF;
+            uint8_t r11 = (c11 >> 0) & 0xFF, g11 = (c11 >> 8) & 0xFF;
+            uint8_t b11 = (c11 >> 16) & 0xFF, a11 = (c11 >> 24) & 0xFF;
+
+            double r = r00 * (1 - fx) * (1 - fy) + r10 * fx * (1 - fy) + r01 * (1 - fx) * fy + r11 * fx * fy;
+            double g = g00 * (1 - fx) * (1 - fy) + g10 * fx * (1 - fy) + g01 * (1 - fx) * fy + g11 * fx * fy;
+            double b = b00 * (1 - fx) * (1 - fy) + b10 * fx * (1 - fy) + b01 * (1 - fx) * fy + b11 * fx * fy;
+            double a = a00 * (1 - fx) * (1 - fy) + a10 * fx * (1 - fy) + a01 * (1 - fx) * fy + a11 * fx * fy;
+
+            uint8_t ri = (uint8_t)(r > 255 ? 255 : (r < 0 ? 0 : r));
+            uint8_t gi = (uint8_t)(g > 255 ? 255 : (g < 0 ? 0 : g));
+            uint8_t bi = (uint8_t)(b > 255 ? 255 : (b < 0 ? 0 : b));
+            uint8_t ai = (uint8_t)(a > 255 ? 255 : (a < 0 ? 0 : a));
+
+            result->data[dy * new_width + dx] = ri | (gi << 8) | (bi << 16) | (ai << 24);
+        }
     }
 
     return result;

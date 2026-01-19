@@ -66,6 +66,8 @@
 | `GetPixel(x, y)`                      | `Integer(Integer, Integer)`           | Gets pixel color at (x, y)                                 |
 | `CopyRect(x, y, w, h)`                | `Pixels(Integer...)`                  | Copies canvas region to a Pixels buffer                    |
 | `SaveBmp(path)`                       | `Integer(String)`                     | Saves canvas to BMP file (returns 1 on success)            |
+| `SetClipRect(x, y, w, h)`             | `Void(Integer...)`                    | Sets clipping rectangle; all drawing is constrained to it  |
+| `ClearClipRect()`                     | `Void()`                              | Clears clipping rectangle; restores full canvas drawing    |
 
 ### Color Format
 
@@ -217,6 +219,34 @@ IF success = 1 THEN
 END IF
 ```
 
+### Canvas Clipping
+
+Restrict drawing to a rectangular region. All drawing operations will be clipped to the
+specified bounds until `ClearClipRect()` is called.
+
+```basic
+' Set a clipping region (x=100, y=100, width=200, height=150)
+canvas.SetClipRect(100, 100, 200, 150)
+
+' This circle will only appear within the clip region
+canvas.Disc(150, 150, 100, &H00FF0000)
+
+' Drawing outside the clip region is ignored
+canvas.Box(0, 0, 50, 50, &H0000FF00)  ' Not visible (outside clip)
+
+' Restore full canvas drawing
+canvas.ClearClipRect()
+
+' Now drawing works across the entire canvas again
+canvas.Box(0, 0, 50, 50, &H0000FF00)  ' Visible
+```
+
+**Use Cases for Clipping:**
+- **UI panels:** Clip content to panel boundaries
+- **Scrollable regions:** Clip to viewport during scrolling
+- **Minimap rendering:** Clip map to minimap area
+- **Text overflow:** Prevent text from drawing outside containers
+
 ---
 
 ## Viper.Graphics.Color
@@ -292,6 +322,7 @@ Creates a new pixel buffer initialized to transparent black (0x00000000).
 | `RotateCW()`                      | `Pixels()`                                                           | Return a 90-degree clockwise rotated copy (swaps dimensions)                      |
 | `RotateCCW()`                     | `Pixels()`                                                           | Return a 90-degree counter-clockwise rotated copy (swaps dimensions)              |
 | `Rotate180()`                     | `Pixels()`                                                           | Return a 180-degree rotated copy                                                  |
+| `Rotate(angle)`                   | `Pixels(Float)`                                                      | Return a rotated copy at arbitrary angle (bilinear interpolation)                 |
 | `Scale(width, height)`            | `Pixels(Integer, Integer)`                                           | Return a scaled copy using nearest-neighbor interpolation                         |
 
 ### Static Methods
@@ -364,6 +395,11 @@ rotated = pixels.RotateCW()  ' Rotate 90 degrees clockwise
 rotated = pixels.RotateCCW() ' Rotate 90 degrees counter-clockwise
 rotated = pixels.Rotate180() ' Rotate 180 degrees
 
+' Arbitrary angle rotation (uses bilinear interpolation for smooth results)
+rotated = pixels.Rotate(45.0)   ' Rotate 45 degrees clockwise
+rotated = pixels.Rotate(-30.0)  ' Rotate 30 degrees counter-clockwise
+' Note: Output dimensions expand to fit the rotated image without clipping
+
 ' Scale to new dimensions (nearest-neighbor interpolation)
 DIM scaled AS Viper.Graphics.Pixels
 scaled = pixels.Scale(128, 128)  ' Scale to 128x128
@@ -381,6 +417,8 @@ scaled = pixels.Scale(pixels.Width * 2, pixels.Height * 2)  ' Double size
 - When loading BMP files, alpha is set to 255 (opaque) for all pixels
 - All transform operations (flip, rotate, scale) return new Pixels objects
 - RotateCW and RotateCCW swap width and height dimensions
+- Rotate(angle) uses bilinear interpolation for smooth results at any angle
+- Rotate(angle) expands output dimensions to fit rotated image without clipping
 - Scale uses nearest-neighbor interpolation (fast, no blending)
 
 ---

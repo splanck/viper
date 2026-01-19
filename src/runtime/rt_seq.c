@@ -1407,3 +1407,598 @@ void rt_seq_sort_desc(void *obj)
 {
     rt_seq_sort_by(obj, seq_compare_desc);
 }
+
+//=============================================================================
+// Functional Operations
+//=============================================================================
+
+/// @brief Create a new Seq containing only elements matching a predicate.
+///
+/// Iterates through the Seq and includes elements for which the predicate
+/// function returns non-zero (true). This is the primary filtering operation.
+///
+/// **Example:**
+/// ```
+/// Function IsEven(n) As Bool
+///     Return Unbox.I64(n) Mod 2 = 0
+/// End Function
+///
+/// Dim nums = Seq.New()
+/// nums.Push(Box.I64(1))
+/// nums.Push(Box.I64(2))
+/// nums.Push(Box.I64(3))
+/// nums.Push(Box.I64(4))
+/// Dim evens = nums.Keep(AddressOf IsEven)
+/// ' evens is: [2, 4]
+/// ```
+///
+/// @param obj Pointer to a Seq object. If NULL, returns empty Seq.
+/// @param pred Predicate function returning non-zero to include element.
+///             If NULL, returns a clone of the original Seq.
+///
+/// @return New Seq containing only matching elements.
+///
+/// @note O(n) time complexity.
+/// @note Creates a new Seq; original is not modified.
+/// @note Thread safety: Not thread-safe.
+///
+/// @see rt_seq_reject For the inverse operation
+void *rt_seq_keep(void *obj, int8_t (*pred)(void *))
+{
+    if (!obj)
+        return rt_seq_new();
+
+    if (!pred)
+        return rt_seq_clone(obj);
+
+    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    void *result = rt_seq_new();
+
+    for (int64_t i = 0; i < seq->len; i++)
+    {
+        if (pred(seq->items[i]))
+        {
+            rt_seq_push(result, seq->items[i]);
+        }
+    }
+
+    return result;
+}
+
+/// @brief Create a new Seq excluding elements matching a predicate.
+///
+/// Inverse of Keep. Includes elements for which the predicate returns zero (false).
+///
+/// **Example:**
+/// ```
+/// Function IsEmpty(s) As Bool
+///     Return Len(s) = 0
+/// End Function
+///
+/// Dim words = Seq.New()
+/// words.Push("hello")
+/// words.Push("")
+/// words.Push("world")
+/// words.Push("")
+/// Dim nonEmpty = words.Reject(AddressOf IsEmpty)
+/// ' nonEmpty is: ["hello", "world"]
+/// ```
+///
+/// @param obj Pointer to a Seq object. If NULL, returns empty Seq.
+/// @param pred Predicate function. Elements where this returns non-zero are excluded.
+///             If NULL, returns a clone of the original Seq.
+///
+/// @return New Seq containing only non-matching elements.
+///
+/// @note O(n) time complexity.
+/// @note Thread safety: Not thread-safe.
+///
+/// @see rt_seq_keep For the inverse operation
+void *rt_seq_reject(void *obj, int8_t (*pred)(void *))
+{
+    if (!obj)
+        return rt_seq_new();
+
+    if (!pred)
+        return rt_seq_clone(obj);
+
+    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    void *result = rt_seq_new();
+
+    for (int64_t i = 0; i < seq->len; i++)
+    {
+        if (!pred(seq->items[i]))
+        {
+            rt_seq_push(result, seq->items[i]);
+        }
+    }
+
+    return result;
+}
+
+/// @brief Create a new Seq by transforming each element with a function.
+///
+/// Applies the transform function to each element and collects the results
+/// into a new Seq. This is the primary mapping operation.
+///
+/// **Example:**
+/// ```
+/// Function Double(n) As Object
+///     Return Box.I64(Unbox.I64(n) * 2)
+/// End Function
+///
+/// Dim nums = Seq.New()
+/// nums.Push(Box.I64(1))
+/// nums.Push(Box.I64(2))
+/// nums.Push(Box.I64(3))
+/// Dim doubled = nums.Apply(AddressOf Double)
+/// ' doubled is: [2, 4, 6]
+/// ```
+///
+/// @param obj Pointer to a Seq object. If NULL, returns empty Seq.
+/// @param fn Transform function. If NULL, returns a clone of the original.
+///
+/// @return New Seq containing transformed elements.
+///
+/// @note O(n) time complexity.
+/// @note The transform function must return a valid object pointer.
+/// @note Thread safety: Not thread-safe.
+void *rt_seq_apply(void *obj, void *(*fn)(void *))
+{
+    if (!obj)
+        return rt_seq_new();
+
+    if (!fn)
+        return rt_seq_clone(obj);
+
+    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    void *result = rt_seq_with_capacity(seq->len);
+
+    for (int64_t i = 0; i < seq->len; i++)
+    {
+        rt_seq_push(result, fn(seq->items[i]));
+    }
+
+    return result;
+}
+
+/// @brief Check if all elements satisfy a predicate.
+///
+/// Returns true if the predicate returns non-zero for every element.
+/// Returns true for empty sequences (vacuous truth).
+///
+/// **Example:**
+/// ```
+/// Function IsPositive(n) As Bool
+///     Return Unbox.I64(n) > 0
+/// End Function
+///
+/// Dim nums = Seq.New()
+/// nums.Push(Box.I64(1))
+/// nums.Push(Box.I64(2))
+/// nums.Push(Box.I64(3))
+/// Print nums.All(AddressOf IsPositive)  ' True
+///
+/// nums.Push(Box.I64(-1))
+/// Print nums.All(AddressOf IsPositive)  ' False
+/// ```
+///
+/// @param obj Pointer to a Seq object. If NULL, returns 1 (true).
+/// @param pred Predicate function. If NULL, returns 1 (true).
+///
+/// @return 1 if all elements match, 0 otherwise.
+///
+/// @note O(n) worst case, but short-circuits on first non-match.
+/// @note Thread safety: Not thread-safe.
+///
+/// @see rt_seq_any For checking if any element matches
+/// @see rt_seq_none For checking if no elements match
+int8_t rt_seq_all(void *obj, int8_t (*pred)(void *))
+{
+    if (!obj || !pred)
+        return 1;
+
+    rt_seq_impl *seq = (rt_seq_impl *)obj;
+
+    for (int64_t i = 0; i < seq->len; i++)
+    {
+        if (!pred(seq->items[i]))
+        {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+/// @brief Check if any element satisfies a predicate.
+///
+/// Returns true if the predicate returns non-zero for at least one element.
+/// Returns false for empty sequences.
+///
+/// **Example:**
+/// ```
+/// Function IsNegative(n) As Bool
+///     Return Unbox.I64(n) < 0
+/// End Function
+///
+/// Dim nums = Seq.New()
+/// nums.Push(Box.I64(1))
+/// nums.Push(Box.I64(2))
+/// Print nums.Any(AddressOf IsNegative)  ' False
+///
+/// nums.Push(Box.I64(-1))
+/// Print nums.Any(AddressOf IsNegative)  ' True
+/// ```
+///
+/// @param obj Pointer to a Seq object. If NULL, returns 0 (false).
+/// @param pred Predicate function. If NULL, returns 0 (false).
+///
+/// @return 1 if any element matches, 0 otherwise.
+///
+/// @note O(n) worst case, but short-circuits on first match.
+/// @note Thread safety: Not thread-safe.
+///
+/// @see rt_seq_all For checking if all elements match
+/// @see rt_seq_none For checking if no elements match
+int8_t rt_seq_any(void *obj, int8_t (*pred)(void *))
+{
+    if (!obj || !pred)
+        return 0;
+
+    rt_seq_impl *seq = (rt_seq_impl *)obj;
+
+    for (int64_t i = 0; i < seq->len; i++)
+    {
+        if (pred(seq->items[i]))
+        {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+/// @brief Check if no elements satisfy a predicate.
+///
+/// Returns true if the predicate returns zero for every element.
+/// Returns true for empty sequences.
+///
+/// **Example:**
+/// ```
+/// Function IsNull(obj) As Bool
+///     Return obj = Nothing
+/// End Function
+///
+/// Dim items = Seq.New()
+/// items.Push("a")
+/// items.Push("b")
+/// Print items.None(AddressOf IsNull)  ' True (no nulls)
+/// ```
+///
+/// @param obj Pointer to a Seq object. If NULL, returns 1 (true).
+/// @param pred Predicate function. If NULL, returns 1 (true).
+///
+/// @return 1 if no elements match, 0 otherwise.
+///
+/// @note O(n) worst case, but short-circuits on first match.
+/// @note Thread safety: Not thread-safe.
+///
+/// @see rt_seq_all For checking if all elements match
+/// @see rt_seq_any For checking if any element matches
+int8_t rt_seq_none(void *obj, int8_t (*pred)(void *))
+{
+    return !rt_seq_any(obj, pred);
+}
+
+/// @brief Count elements that satisfy a predicate.
+///
+/// **Example:**
+/// ```
+/// Function StartsWithA(s) As Bool
+///     Return Left(s, 1) = "A"
+/// End Function
+///
+/// Dim words = Seq.New()
+/// words.Push("Apple")
+/// words.Push("Banana")
+/// words.Push("Apricot")
+/// words.Push("Cherry")
+/// Print words.CountWhere(AddressOf StartsWithA)  ' 2
+/// ```
+///
+/// @param obj Pointer to a Seq object. If NULL, returns 0.
+/// @param pred Predicate function. If NULL, returns total length.
+///
+/// @return Number of elements for which predicate returns non-zero.
+///
+/// @note O(n) time complexity.
+/// @note Thread safety: Not thread-safe.
+int64_t rt_seq_count_where(void *obj, int8_t (*pred)(void *))
+{
+    if (!obj)
+        return 0;
+
+    rt_seq_impl *seq = (rt_seq_impl *)obj;
+
+    if (!pred)
+        return seq->len;
+
+    int64_t count = 0;
+    for (int64_t i = 0; i < seq->len; i++)
+    {
+        if (pred(seq->items[i]))
+        {
+            count++;
+        }
+    }
+
+    return count;
+}
+
+/// @brief Find the first element satisfying a predicate.
+///
+/// **Example:**
+/// ```
+/// Function IsLong(s) As Bool
+///     Return Len(s) > 5
+/// End Function
+///
+/// Dim words = Seq.New()
+/// words.Push("hi")
+/// words.Push("hello")
+/// words.Push("wonderful")
+/// words.Push("world")
+/// Dim found = words.FindWhere(AddressOf IsLong)
+/// Print found  ' "wonderful"
+/// ```
+///
+/// @param obj Pointer to a Seq object. If NULL, returns NULL.
+/// @param pred Predicate function. If NULL, returns first element or NULL.
+///
+/// @return First matching element, or NULL if none found.
+///
+/// @note O(n) worst case, but short-circuits on first match.
+/// @note Thread safety: Not thread-safe.
+void *rt_seq_find_where(void *obj, int8_t (*pred)(void *))
+{
+    if (!obj)
+        return NULL;
+
+    rt_seq_impl *seq = (rt_seq_impl *)obj;
+
+    if (seq->len == 0)
+        return NULL;
+
+    if (!pred)
+        return seq->items[0];
+
+    for (int64_t i = 0; i < seq->len; i++)
+    {
+        if (pred(seq->items[i]))
+        {
+            return seq->items[i];
+        }
+    }
+
+    return NULL;
+}
+
+/// @brief Create a new Seq with the first N elements.
+///
+/// **Example:**
+/// ```
+/// Dim nums = Seq.New()
+/// For i = 1 To 10
+///     nums.Push(Box.I64(i))
+/// Next
+/// Dim first3 = nums.Take(3)
+/// ' first3 is: [1, 2, 3]
+/// ```
+///
+/// @param obj Pointer to a Seq object. If NULL, returns empty Seq.
+/// @param n Number of elements to take. Clamped to [0, len].
+///
+/// @return New Seq containing at most n elements from the start.
+///
+/// @note O(n) time complexity.
+/// @note Thread safety: Not thread-safe.
+///
+/// @see rt_seq_drop For skipping elements
+/// @see rt_seq_slice For arbitrary ranges
+void *rt_seq_take(void *obj, int64_t n)
+{
+    if (!obj || n <= 0)
+        return rt_seq_new();
+
+    rt_seq_impl *seq = (rt_seq_impl *)obj;
+
+    if (n >= seq->len)
+        return rt_seq_clone(obj);
+
+    return rt_seq_slice(obj, 0, n);
+}
+
+/// @brief Create a new Seq skipping the first N elements.
+///
+/// **Example:**
+/// ```
+/// Dim nums = Seq.New()
+/// For i = 1 To 5
+///     nums.Push(Box.I64(i))
+/// Next
+/// Dim rest = nums.Drop(2)
+/// ' rest is: [3, 4, 5]
+/// ```
+///
+/// @param obj Pointer to a Seq object. If NULL, returns empty Seq.
+/// @param n Number of elements to skip. Clamped to [0, len].
+///
+/// @return New Seq containing elements after the first n.
+///
+/// @note O(n) time complexity.
+/// @note Thread safety: Not thread-safe.
+///
+/// @see rt_seq_take For taking elements
+/// @see rt_seq_slice For arbitrary ranges
+void *rt_seq_drop(void *obj, int64_t n)
+{
+    if (!obj)
+        return rt_seq_new();
+
+    rt_seq_impl *seq = (rt_seq_impl *)obj;
+
+    if (n <= 0)
+        return rt_seq_clone(obj);
+
+    if (n >= seq->len)
+        return rt_seq_new();
+
+    return rt_seq_slice(obj, n, seq->len);
+}
+
+/// @brief Create a new Seq with elements taken while predicate is true.
+///
+/// Takes elements from the start while the predicate returns non-zero.
+/// Stops at the first element where predicate is false.
+///
+/// **Example:**
+/// ```
+/// Function LessThan5(n) As Bool
+///     Return Unbox.I64(n) < 5
+/// End Function
+///
+/// Dim nums = Seq.New()
+/// nums.Push(Box.I64(1))
+/// nums.Push(Box.I64(3))
+/// nums.Push(Box.I64(7))
+/// nums.Push(Box.I64(2))
+/// Dim taken = nums.TakeWhile(AddressOf LessThan5)
+/// ' taken is: [1, 3] (stops at 7)
+/// ```
+///
+/// @param obj Pointer to a Seq object. If NULL, returns empty Seq.
+/// @param pred Predicate function. If NULL, returns clone.
+///
+/// @return New Seq with leading elements matching predicate.
+///
+/// @note O(n) time complexity.
+/// @note Thread safety: Not thread-safe.
+///
+/// @see rt_seq_drop_while For the inverse operation
+void *rt_seq_take_while(void *obj, int8_t (*pred)(void *))
+{
+    if (!obj)
+        return rt_seq_new();
+
+    if (!pred)
+        return rt_seq_clone(obj);
+
+    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    void *result = rt_seq_new();
+
+    for (int64_t i = 0; i < seq->len; i++)
+    {
+        if (!pred(seq->items[i]))
+        {
+            break;
+        }
+        rt_seq_push(result, seq->items[i]);
+    }
+
+    return result;
+}
+
+/// @brief Create a new Seq skipping elements while predicate is true.
+///
+/// Skips elements from the start while the predicate returns non-zero.
+/// Includes all elements from the first non-match onwards.
+///
+/// **Example:**
+/// ```
+/// Function LessThan5(n) As Bool
+///     Return Unbox.I64(n) < 5
+/// End Function
+///
+/// Dim nums = Seq.New()
+/// nums.Push(Box.I64(1))
+/// nums.Push(Box.I64(3))
+/// nums.Push(Box.I64(7))
+/// nums.Push(Box.I64(2))
+/// Dim rest = nums.DropWhile(AddressOf LessThan5)
+/// ' rest is: [7, 2] (skipped 1, 3)
+/// ```
+///
+/// @param obj Pointer to a Seq object. If NULL, returns empty Seq.
+/// @param pred Predicate function. If NULL, returns empty Seq.
+///
+/// @return New Seq with elements after the leading matching ones.
+///
+/// @note O(n) time complexity.
+/// @note Thread safety: Not thread-safe.
+///
+/// @see rt_seq_take_while For the inverse operation
+void *rt_seq_drop_while(void *obj, int8_t (*pred)(void *))
+{
+    if (!obj)
+        return rt_seq_new();
+
+    if (!pred)
+        return rt_seq_new();
+
+    rt_seq_impl *seq = (rt_seq_impl *)obj;
+
+    // Find the first non-matching element
+    int64_t start = 0;
+    while (start < seq->len && pred(seq->items[start]))
+    {
+        start++;
+    }
+
+    return rt_seq_slice(obj, start, seq->len);
+}
+
+/// @brief Reduce the sequence to a single value using an accumulator.
+///
+/// Applies the reducer function to each element and an accumulator,
+/// threading the result through as the new accumulator.
+///
+/// **Example:**
+/// ```
+/// Function Sum(acc, n) As Object
+///     Return Box.I64(Unbox.I64(acc) + Unbox.I64(n))
+/// End Function
+///
+/// Dim nums = Seq.New()
+/// nums.Push(Box.I64(1))
+/// nums.Push(Box.I64(2))
+/// nums.Push(Box.I64(3))
+/// nums.Push(Box.I64(4))
+/// Dim total = nums.Fold(Box.I64(0), AddressOf Sum)
+/// Print Unbox.I64(total)  ' 10
+/// ```
+///
+/// @param obj Pointer to a Seq object. If NULL, returns init.
+/// @param init Initial accumulator value.
+/// @param fn Reducer function: fn(accumulator, element) -> new accumulator.
+///           If NULL, returns init.
+///
+/// @return Final accumulated value.
+///
+/// @note O(n) time complexity.
+/// @note Thread safety: Not thread-safe.
+void *rt_seq_fold(void *obj, void *init, void *(*fn)(void *, void *))
+{
+    if (!obj || !fn)
+        return init;
+
+    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    void *acc = init;
+
+    for (int64_t i = 0; i < seq->len; i++)
+    {
+        acc = fn(acc, seq->items[i]);
+    }
+
+    return acc;
+}

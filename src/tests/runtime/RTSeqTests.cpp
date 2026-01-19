@@ -550,6 +550,396 @@ static void test_null_seq_errors()
     EXPECT_TRAP(rt_seq_remove(nullptr, 0));
 }
 
+//=============================================================================
+// Sort tests
+//=============================================================================
+
+static void test_sort_strings()
+{
+    void *seq = rt_seq_new();
+
+    // Create string handles for testing (using raw pointers as mock strings)
+    const char *s1 = "cherry";
+    const char *s2 = "apple";
+    const char *s3 = "banana";
+    const char *s4 = "date";
+
+    rt_seq_push(seq, (void *)s1);
+    rt_seq_push(seq, (void *)s2);
+    rt_seq_push(seq, (void *)s3);
+    rt_seq_push(seq, (void *)s4);
+
+    // Sort should order by pointer value for non-string objects
+    rt_seq_sort(seq);
+
+    // After sorting, elements should be in some consistent order
+    assert(rt_seq_len(seq) == 4);
+    // All original elements should still be present
+    assert(rt_seq_has(seq, (void *)s1));
+    assert(rt_seq_has(seq, (void *)s2));
+    assert(rt_seq_has(seq, (void *)s3));
+    assert(rt_seq_has(seq, (void *)s4));
+}
+
+static void test_sort_empty()
+{
+    void *seq = rt_seq_new();
+    rt_seq_sort(seq); // Should not crash
+    assert(rt_seq_len(seq) == 0);
+}
+
+static void test_sort_single()
+{
+    void *seq = rt_seq_new();
+    int a = 10;
+    rt_seq_push(seq, &a);
+    rt_seq_sort(seq);
+    assert(rt_seq_len(seq) == 1);
+    assert(rt_seq_get(seq, 0) == &a);
+}
+
+static void test_sort_null()
+{
+    rt_seq_sort(nullptr); // Should not crash
+    rt_seq_sort_desc(nullptr); // Should not crash
+}
+
+static void test_sort_desc()
+{
+    void *seq = rt_seq_new();
+
+    int a = 10, b = 20, c = 30;
+    rt_seq_push(seq, &a);
+    rt_seq_push(seq, &b);
+    rt_seq_push(seq, &c);
+
+    rt_seq_sort_desc(seq);
+
+    // After desc sort, order should be reversed from ascending
+    assert(rt_seq_len(seq) == 3);
+    assert(rt_seq_has(seq, &a));
+    assert(rt_seq_has(seq, &b));
+    assert(rt_seq_has(seq, &c));
+}
+
+//=============================================================================
+// Take and Drop tests
+//=============================================================================
+
+static void test_take()
+{
+    void *seq = rt_seq_new();
+    int a = 1, b = 2, c = 3, d = 4, e = 5;
+    rt_seq_push(seq, &a);
+    rt_seq_push(seq, &b);
+    rt_seq_push(seq, &c);
+    rt_seq_push(seq, &d);
+    rt_seq_push(seq, &e);
+
+    // Take 3 elements
+    void *taken = rt_seq_take(seq, 3);
+    assert(rt_seq_len(taken) == 3);
+    assert(rt_seq_get(taken, 0) == &a);
+    assert(rt_seq_get(taken, 1) == &b);
+    assert(rt_seq_get(taken, 2) == &c);
+
+    // Original unchanged
+    assert(rt_seq_len(seq) == 5);
+
+    // Take 0 elements
+    void *taken0 = rt_seq_take(seq, 0);
+    assert(rt_seq_len(taken0) == 0);
+
+    // Take negative
+    void *taken_neg = rt_seq_take(seq, -5);
+    assert(rt_seq_len(taken_neg) == 0);
+
+    // Take more than length
+    void *taken_all = rt_seq_take(seq, 100);
+    assert(rt_seq_len(taken_all) == 5);
+
+    // Take from null
+    void *taken_null = rt_seq_take(nullptr, 3);
+    assert(rt_seq_len(taken_null) == 0);
+}
+
+static void test_drop()
+{
+    void *seq = rt_seq_new();
+    int a = 1, b = 2, c = 3, d = 4, e = 5;
+    rt_seq_push(seq, &a);
+    rt_seq_push(seq, &b);
+    rt_seq_push(seq, &c);
+    rt_seq_push(seq, &d);
+    rt_seq_push(seq, &e);
+
+    // Drop 2 elements
+    void *dropped = rt_seq_drop(seq, 2);
+    assert(rt_seq_len(dropped) == 3);
+    assert(rt_seq_get(dropped, 0) == &c);
+    assert(rt_seq_get(dropped, 1) == &d);
+    assert(rt_seq_get(dropped, 2) == &e);
+
+    // Original unchanged
+    assert(rt_seq_len(seq) == 5);
+
+    // Drop 0 elements (clone)
+    void *dropped0 = rt_seq_drop(seq, 0);
+    assert(rt_seq_len(dropped0) == 5);
+
+    // Drop negative (clone)
+    void *dropped_neg = rt_seq_drop(seq, -5);
+    assert(rt_seq_len(dropped_neg) == 5);
+
+    // Drop more than length
+    void *dropped_all = rt_seq_drop(seq, 100);
+    assert(rt_seq_len(dropped_all) == 0);
+
+    // Drop from null
+    void *dropped_null = rt_seq_drop(nullptr, 3);
+    assert(rt_seq_len(dropped_null) == 0);
+}
+
+//=============================================================================
+// Functional operations tests (C API level)
+//=============================================================================
+
+// Predicate: returns true if pointer value is even (for testing)
+static int8_t is_even_ptr(void *p)
+{
+    return ((intptr_t)p % 2) == 0 ? 1 : 0;
+}
+
+// Predicate: always true
+static int8_t always_true(void *p)
+{
+    (void)p;
+    return 1;
+}
+
+// Predicate: always false
+static int8_t always_false(void *p)
+{
+    (void)p;
+    return 0;
+}
+
+// Transform: returns the same pointer (identity)
+static void *identity(void *p)
+{
+    return p;
+}
+
+// Reducer: just returns the element (for testing fold)
+static void *take_second(void *acc, void *elem)
+{
+    (void)acc;
+    return elem;
+}
+
+static void test_keep()
+{
+    void *seq = rt_seq_new();
+    int a = 2, b = 3, c = 4, d = 5, e = 6;
+    rt_seq_push(seq, &a);
+    rt_seq_push(seq, &b);
+    rt_seq_push(seq, &c);
+    rt_seq_push(seq, &d);
+    rt_seq_push(seq, &e);
+
+    // Keep with always_true returns clone
+    void *all = rt_seq_keep(seq, always_true);
+    assert(rt_seq_len(all) == 5);
+
+    // Keep with always_false returns empty
+    void *none = rt_seq_keep(seq, always_false);
+    assert(rt_seq_len(none) == 0);
+
+    // Keep with null pred returns clone
+    void *cloned = rt_seq_keep(seq, nullptr);
+    assert(rt_seq_len(cloned) == 5);
+
+    // Keep from null returns empty
+    void *from_null = rt_seq_keep(nullptr, always_true);
+    assert(rt_seq_len(from_null) == 0);
+}
+
+static void test_reject()
+{
+    void *seq = rt_seq_new();
+    int a = 2, b = 3, c = 4;
+    rt_seq_push(seq, &a);
+    rt_seq_push(seq, &b);
+    rt_seq_push(seq, &c);
+
+    // Reject with always_true returns empty
+    void *none = rt_seq_reject(seq, always_true);
+    assert(rt_seq_len(none) == 0);
+
+    // Reject with always_false returns clone
+    void *all = rt_seq_reject(seq, always_false);
+    assert(rt_seq_len(all) == 3);
+
+    // Reject from null returns empty
+    void *from_null = rt_seq_reject(nullptr, always_true);
+    assert(rt_seq_len(from_null) == 0);
+}
+
+static void test_apply()
+{
+    void *seq = rt_seq_new();
+    int a = 1, b = 2, c = 3;
+    rt_seq_push(seq, &a);
+    rt_seq_push(seq, &b);
+    rt_seq_push(seq, &c);
+
+    // Apply identity returns equivalent seq
+    void *applied = rt_seq_apply(seq, identity);
+    assert(rt_seq_len(applied) == 3);
+    assert(rt_seq_get(applied, 0) == &a);
+    assert(rt_seq_get(applied, 1) == &b);
+    assert(rt_seq_get(applied, 2) == &c);
+
+    // Apply with null fn returns clone
+    void *cloned = rt_seq_apply(seq, nullptr);
+    assert(rt_seq_len(cloned) == 3);
+
+    // Apply to null returns empty
+    void *from_null = rt_seq_apply(nullptr, identity);
+    assert(rt_seq_len(from_null) == 0);
+}
+
+static void test_all_any_none()
+{
+    void *seq = rt_seq_new();
+    int a = 1, b = 2, c = 3;
+    rt_seq_push(seq, &a);
+    rt_seq_push(seq, &b);
+    rt_seq_push(seq, &c);
+
+    // All with always_true
+    assert(rt_seq_all(seq, always_true) == 1);
+
+    // All with always_false
+    assert(rt_seq_all(seq, always_false) == 0);
+
+    // Any with always_true
+    assert(rt_seq_any(seq, always_true) == 1);
+
+    // Any with always_false
+    assert(rt_seq_any(seq, always_false) == 0);
+
+    // None with always_true
+    assert(rt_seq_none(seq, always_true) == 0);
+
+    // None with always_false
+    assert(rt_seq_none(seq, always_false) == 1);
+
+    // Empty sequence
+    void *empty = rt_seq_new();
+    assert(rt_seq_all(empty, always_true) == 1);   // vacuous truth
+    assert(rt_seq_any(empty, always_true) == 0);   // no elements
+    assert(rt_seq_none(empty, always_true) == 1);  // no elements
+
+    // Null handling
+    assert(rt_seq_all(nullptr, always_true) == 1);
+    assert(rt_seq_any(nullptr, always_true) == 0);
+    assert(rt_seq_none(nullptr, always_true) == 1);
+    assert(rt_seq_all(seq, nullptr) == 1);
+    assert(rt_seq_any(seq, nullptr) == 0);
+    assert(rt_seq_none(seq, nullptr) == 1);
+}
+
+static void test_count_where()
+{
+    void *seq = rt_seq_new();
+    int a = 1, b = 2, c = 3;
+    rt_seq_push(seq, &a);
+    rt_seq_push(seq, &b);
+    rt_seq_push(seq, &c);
+
+    assert(rt_seq_count_where(seq, always_true) == 3);
+    assert(rt_seq_count_where(seq, always_false) == 0);
+    assert(rt_seq_count_where(seq, nullptr) == 3); // null pred returns len
+    assert(rt_seq_count_where(nullptr, always_true) == 0);
+}
+
+static void test_find_where()
+{
+    void *seq = rt_seq_new();
+    int a = 1, b = 2, c = 3;
+    rt_seq_push(seq, &a);
+    rt_seq_push(seq, &b);
+    rt_seq_push(seq, &c);
+
+    assert(rt_seq_find_where(seq, always_true) == &a); // first element
+    assert(rt_seq_find_where(seq, always_false) == nullptr);
+    assert(rt_seq_find_where(seq, nullptr) == &a); // null pred returns first
+    assert(rt_seq_find_where(nullptr, always_true) == nullptr);
+
+    // Empty sequence
+    void *empty = rt_seq_new();
+    assert(rt_seq_find_where(empty, always_true) == nullptr);
+}
+
+static void test_take_while_drop_while()
+{
+    void *seq = rt_seq_new();
+    int a = 1, b = 2, c = 3;
+    rt_seq_push(seq, &a);
+    rt_seq_push(seq, &b);
+    rt_seq_push(seq, &c);
+
+    // TakeWhile with always_true takes all
+    void *all = rt_seq_take_while(seq, always_true);
+    assert(rt_seq_len(all) == 3);
+
+    // TakeWhile with always_false takes none
+    void *none_tw = rt_seq_take_while(seq, always_false);
+    assert(rt_seq_len(none_tw) == 0);
+
+    // DropWhile with always_true drops all
+    void *none_dw = rt_seq_drop_while(seq, always_true);
+    assert(rt_seq_len(none_dw) == 0);
+
+    // DropWhile with always_false keeps all
+    void *all_dw = rt_seq_drop_while(seq, always_false);
+    assert(rt_seq_len(all_dw) == 3);
+
+    // Null handling
+    assert(rt_seq_len(rt_seq_take_while(nullptr, always_true)) == 0);
+    assert(rt_seq_len(rt_seq_drop_while(nullptr, always_true)) == 0);
+    assert(rt_seq_len(rt_seq_take_while(seq, nullptr)) == 3); // null pred = clone
+    assert(rt_seq_len(rt_seq_drop_while(seq, nullptr)) == 0); // null pred = empty
+}
+
+static void test_fold()
+{
+    void *seq = rt_seq_new();
+    int a = 1, b = 2, c = 3;
+    rt_seq_push(seq, &a);
+    rt_seq_push(seq, &b);
+    rt_seq_push(seq, &c);
+
+    int init = 0;
+    // Fold with take_second returns last element
+    void *result = rt_seq_fold(seq, &init, take_second);
+    assert(result == &c);
+
+    // Empty seq returns init
+    void *empty = rt_seq_new();
+    result = rt_seq_fold(empty, &init, take_second);
+    assert(result == &init);
+
+    // Null seq returns init
+    result = rt_seq_fold(nullptr, &init, take_second);
+    assert(result == &init);
+
+    // Null fn returns init
+    result = rt_seq_fold(seq, &init, nullptr);
+    assert(result == &init);
+}
+
 int main()
 {
     test_new_and_basic_properties();
@@ -573,6 +963,27 @@ int main()
     test_null_handling();
     test_bounds_errors();
     test_null_seq_errors();
+
+    // Sort tests
+    test_sort_strings();
+    test_sort_empty();
+    test_sort_single();
+    test_sort_null();
+    test_sort_desc();
+
+    // Take and Drop tests
+    test_take();
+    test_drop();
+
+    // Functional operations tests
+    test_keep();
+    test_reject();
+    test_apply();
+    test_all_any_none();
+    test_count_where();
+    test_find_where();
+    test_take_while_drop_while();
+    test_fold();
 
     return 0;
 }

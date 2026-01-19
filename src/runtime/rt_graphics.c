@@ -1883,18 +1883,16 @@ int64_t rt_color_darken(int64_t color, int64_t amount)
 
 void rt_canvas_set_clip_rect(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h)
 {
-    // TODO: Implement clip rect when vgfx adds support
-    (void)canvas_ptr;
-    (void)x;
-    (void)y;
-    (void)w;
-    (void)h;
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (canvas && canvas->gfx_win)
+        vgfx_set_clip(canvas->gfx_win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h);
 }
 
 void rt_canvas_clear_clip_rect(void *canvas_ptr)
 {
-    // TODO: Implement clear clip rect when vgfx adds support
-    (void)canvas_ptr;
+    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    if (canvas && canvas->gfx_win)
+        vgfx_clear_clip(canvas->gfx_win);
 }
 
 void rt_canvas_set_title(void *canvas_ptr, rt_string title)

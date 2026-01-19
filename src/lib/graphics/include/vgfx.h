@@ -369,6 +369,31 @@ extern "C"
     int vgfx_get_framebuffer(vgfx_window_t window, vgfx_framebuffer_t *out_fb);
 
     //===----------------------------------------------------------------------===//
+    // Clipping
+    //===----------------------------------------------------------------------===//
+
+    /// @brief Set the clipping rectangle for all drawing operations.
+    /// @details When a clipping rectangle is set, all subsequent drawing operations
+    ///          are constrained to render only within the specified region. Pixels
+    ///          outside the clipping rectangle are not modified. The clipping region
+    ///          is intersected with the window bounds.
+    /// @param window Window handle
+    /// @param x Left edge X coordinate of clip rect
+    /// @param y Top edge Y coordinate of clip rect
+    /// @param w Width of clip rect (pixels)
+    /// @param h Height of clip rect (pixels)
+    /// @note The clip rect persists until cleared with vgfx_clear_clip().
+    /// @note A zero or negative width/height results in no drawing.
+    void vgfx_set_clip(vgfx_window_t window, int32_t x, int32_t y, int32_t w, int32_t h);
+
+    /// @brief Clear the clipping rectangle, restoring full-window drawing.
+    /// @details After calling this function, drawing operations can affect any
+    ///          pixel within the window bounds. Equivalent to setting the clip
+    ///          rectangle to the full window size.
+    /// @param window Window handle
+    void vgfx_clear_clip(vgfx_window_t window);
+
+    //===----------------------------------------------------------------------===//
     // Drawing Primitives
     //===----------------------------------------------------------------------===//
 

@@ -169,6 +169,124 @@ extern "C"
     /// @note Thread safety: Not thread-safe.
     void rt_seq_sort_desc(void *obj);
 
+    //=========================================================================
+    // Functional Operations - Keep, Reject, Apply, All, Any, etc.
+    //=========================================================================
+
+    /// @brief Create a new Seq containing only elements matching a predicate.
+    /// @details Iterates through the Seq and includes elements for which the
+    ///          predicate function returns non-zero (true).
+    /// @param obj Opaque Seq object pointer. If NULL, returns empty Seq.
+    /// @param pred Predicate function that takes an element and returns non-zero
+    ///             to include it. If NULL, returns a clone of the original.
+    /// @return New Seq containing only matching elements.
+    /// @note O(n) time complexity.
+    /// @note Creates a new Seq; original is not modified.
+    void *rt_seq_keep(void *obj, int8_t (*pred)(void *));
+
+    /// @brief Create a new Seq excluding elements matching a predicate.
+    /// @details Inverse of Keep. Includes elements for which the predicate
+    ///          returns zero (false).
+    /// @param obj Opaque Seq object pointer. If NULL, returns empty Seq.
+    /// @param pred Predicate function. If NULL, returns a clone of the original.
+    /// @return New Seq containing only non-matching elements.
+    /// @note O(n) time complexity.
+    void *rt_seq_reject(void *obj, int8_t (*pred)(void *));
+
+    /// @brief Create a new Seq by transforming each element with a function.
+    /// @details Applies the transform function to each element and collects
+    ///          the results into a new Seq.
+    /// @param obj Opaque Seq object pointer. If NULL, returns empty Seq.
+    /// @param fn Transform function that takes an element and returns a new
+    ///           element. If NULL, returns a clone of the original.
+    /// @return New Seq containing transformed elements.
+    /// @note O(n) time complexity.
+    void *rt_seq_apply(void *obj, void *(*fn)(void *));
+
+    /// @brief Check if all elements satisfy a predicate.
+    /// @details Returns true if the predicate returns non-zero for every element.
+    ///          Returns true for empty sequences (vacuous truth).
+    /// @param obj Opaque Seq object pointer. If NULL, returns 1 (true).
+    /// @param pred Predicate function. If NULL, returns 1 (true).
+    /// @return 1 if all elements match, 0 otherwise.
+    /// @note O(n) worst case, but short-circuits on first non-match.
+    int8_t rt_seq_all(void *obj, int8_t (*pred)(void *));
+
+    /// @brief Check if any element satisfies a predicate.
+    /// @details Returns true if the predicate returns non-zero for at least
+    ///          one element. Returns false for empty sequences.
+    /// @param obj Opaque Seq object pointer. If NULL, returns 0 (false).
+    /// @param pred Predicate function. If NULL, returns 0 (false).
+    /// @return 1 if any element matches, 0 otherwise.
+    /// @note O(n) worst case, but short-circuits on first match.
+    int8_t rt_seq_any(void *obj, int8_t (*pred)(void *));
+
+    /// @brief Check if no elements satisfy a predicate.
+    /// @details Returns true if the predicate returns zero for every element.
+    ///          Returns true for empty sequences.
+    /// @param obj Opaque Seq object pointer. If NULL, returns 1 (true).
+    /// @param pred Predicate function. If NULL, returns 1 (true).
+    /// @return 1 if no elements match, 0 otherwise.
+    /// @note O(n) worst case, but short-circuits on first match.
+    int8_t rt_seq_none(void *obj, int8_t (*pred)(void *));
+
+    /// @brief Count elements that satisfy a predicate.
+    /// @param obj Opaque Seq object pointer. If NULL, returns 0.
+    /// @param pred Predicate function. If NULL, returns total length.
+    /// @return Number of elements for which predicate returns non-zero.
+    /// @note O(n) time complexity.
+    int64_t rt_seq_count_where(void *obj, int8_t (*pred)(void *));
+
+    /// @brief Find the first element satisfying a predicate.
+    /// @param obj Opaque Seq object pointer. If NULL, returns NULL.
+    /// @param pred Predicate function. If NULL, returns first element or NULL.
+    /// @return First matching element, or NULL if none found.
+    /// @note O(n) worst case, but short-circuits on first match.
+    void *rt_seq_find_where(void *obj, int8_t (*pred)(void *));
+
+    /// @brief Create a new Seq with the first N elements.
+    /// @param obj Opaque Seq object pointer. If NULL, returns empty Seq.
+    /// @param n Number of elements to take. Clamped to [0, len].
+    /// @return New Seq containing at most n elements from the start.
+    /// @note O(n) time complexity.
+    void *rt_seq_take(void *obj, int64_t n);
+
+    /// @brief Create a new Seq skipping the first N elements.
+    /// @param obj Opaque Seq object pointer. If NULL, returns empty Seq.
+    /// @param n Number of elements to skip. Clamped to [0, len].
+    /// @return New Seq containing elements after the first n.
+    /// @note O(n) time complexity.
+    void *rt_seq_drop(void *obj, int64_t n);
+
+    /// @brief Create a new Seq with elements taken while predicate is true.
+    /// @details Takes elements from the start while the predicate returns
+    ///          non-zero. Stops at the first element where predicate is false.
+    /// @param obj Opaque Seq object pointer. If NULL, returns empty Seq.
+    /// @param pred Predicate function. If NULL, returns clone.
+    /// @return New Seq with leading elements matching predicate.
+    /// @note O(n) time complexity.
+    void *rt_seq_take_while(void *obj, int8_t (*pred)(void *));
+
+    /// @brief Create a new Seq skipping elements while predicate is true.
+    /// @details Skips elements from the start while the predicate returns
+    ///          non-zero. Includes all elements from the first non-match.
+    /// @param obj Opaque Seq object pointer. If NULL, returns empty Seq.
+    /// @param pred Predicate function. If NULL, returns empty Seq.
+    /// @return New Seq with elements after the leading matching ones.
+    /// @note O(n) time complexity.
+    void *rt_seq_drop_while(void *obj, int8_t (*pred)(void *));
+
+    /// @brief Reduce the sequence to a single value using an accumulator.
+    /// @details Applies the reducer function to each element and an accumulator,
+    ///          threading the result through as the new accumulator.
+    /// @param obj Opaque Seq object pointer. If NULL, returns init.
+    /// @param init Initial accumulator value.
+    /// @param fn Reducer function: fn(accumulator, element) -> new accumulator.
+    ///           If NULL, returns init.
+    /// @return Final accumulated value.
+    /// @note O(n) time complexity.
+    void *rt_seq_fold(void *obj, void *init, void *(*fn)(void *, void *));
+
 #ifdef __cplusplus
 }
 #endif

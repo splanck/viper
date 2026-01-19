@@ -155,6 +155,32 @@ struct vgfx_window
     uint8_t mouse_button_state[8];
 
     //===------------------------------------------------------------------===//
+    // Drawing State
+    //===------------------------------------------------------------------===//
+
+    /// @brief Whether clipping is enabled (1 = yes, 0 = no).
+    /// @details When enabled, all drawing operations are constrained to the
+    ///          clip rectangle. When disabled, drawing is constrained to the
+    ///          full window bounds.
+    int32_t clip_enabled;
+
+    /// @brief Clip rectangle X coordinate (left edge).
+    /// @details Only valid when clip_enabled is non-zero.
+    int32_t clip_x;
+
+    /// @brief Clip rectangle Y coordinate (top edge).
+    /// @details Only valid when clip_enabled is non-zero.
+    int32_t clip_y;
+
+    /// @brief Clip rectangle width.
+    /// @details Only valid when clip_enabled is non-zero.
+    int32_t clip_w;
+
+    /// @brief Clip rectangle height.
+    /// @details Only valid when clip_enabled is non-zero.
+    int32_t clip_h;
+
+    //===------------------------------------------------------------------===//
     // Timing
     //===------------------------------------------------------------------===//
 

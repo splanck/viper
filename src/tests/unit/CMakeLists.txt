@@ -513,6 +513,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_csv PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_csv test_rt_csv)
 
+    viper_add_test(test_rt_json ${VIPER_TESTS_DIR}/runtime/RTJsonTests.cpp)
+    target_link_libraries(test_rt_json PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_json test_rt_json)
+
     viper_add_test(test_rt_hash ${VIPER_TESTS_DIR}/runtime/RTHashTests.cpp)
     target_link_libraries(test_rt_hash PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_hash test_rt_hash)
