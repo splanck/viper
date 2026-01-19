@@ -140,8 +140,14 @@ struct SlotKeyHash
 void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &frame)
 {
     std::unordered_set<PhysReg> usedCalleeSaved{};
-    std::set<int> gprSlots{};
-    std::set<int> xmmSlots{};
+    std::set<int> gprSpillSlots{};
+    std::set<int> xmmSpillSlots{};
+    int maxAllocaSlotIndex = -1;  // Track the highest alloca slot index
+
+    // The Spiller uses a 1000 offset to distinguish spill slots from alloca slots:
+    // - Alloca slots: slotIndex = resultId (0, 1, 2, ...)
+    // - Spill slots: slotIndex = spillSlot + 1000 (1000, 1001, 1002, ...)
+    constexpr int kSpillSlotOffset = 1000;
 
     for (auto &block : func.blocks)
     {
@@ -180,18 +186,36 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
                 assert(placeholder % kSlotSizeBytes == 0 && placeholder > 0 &&
                        "spill slots expected to use 8-byte stepping");
                 const int slotIndex = placeholder / kSlotSizeBytes - 1;
-                const RegClass cls = deduceMemClass(instr, idx);
-                if (cls == RegClass::XMM)
+
+                // Distinguish between alloca slots (< 1000) and spill slots (>= 1000)
+                if (slotIndex >= kSpillSlotOffset)
                 {
-                    xmmSlots.insert(slotIndex);
+                    // This is a spill slot - collect for remapping
+                    const RegClass cls = deduceMemClass(instr, idx);
+                    if (cls == RegClass::XMM)
+                    {
+                        xmmSpillSlots.insert(slotIndex);
+                    }
+                    else
+                    {
+                        gprSpillSlots.insert(slotIndex);
+                    }
                 }
                 else
                 {
-                    gprSlots.insert(slotIndex);
+                    // This is an alloca slot - track the max for frame layout
+                    // Alloca slots also need remapping to come after callee-saved area
+                    maxAllocaSlotIndex = std::max(maxAllocaSlotIndex, slotIndex);
                 }
             }
         }
     }
+
+    // Compute the alloca area size (number of 8-byte alloca slots)
+    // +1 because slotIndex is 0-based and we need space for slots 0..maxAllocaSlotIndex
+    const int allocaAreaBytes = (maxAllocaSlotIndex >= 0)
+        ? (maxAllocaSlotIndex + 1) * kSlotSizeBytes
+        : 0;
 
     frame.usedCalleeSaved.clear();
     for (auto reg : target.calleeSavedGPR)
@@ -216,21 +240,31 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
     const int calleeSavedBytes = static_cast<int>(frame.usedCalleeSaved.size()) * kSlotSizeBytes;
 
     std::unordered_map<SlotKey, int, SlotKeyHash> slotOffsets{};
-    int runningOffset = calleeSavedBytes;
 
-    for (int slot : gprSlots)
+    // Remap alloca slots to come AFTER the callee-saved area
+    // Alloca slot N (with placeholder offset -(N+1)*8) maps to -(calleeSavedBytes + (N+1)*8)
+    for (int slot = 0; slot <= maxAllocaSlotIndex; ++slot)
+    {
+        const int newOffset = -(calleeSavedBytes + (slot + 1) * kSlotSizeBytes);
+        slotOffsets.emplace(SlotKey{RegClass::GPR, slot}, newOffset);
+    }
+
+    // Start spill slots AFTER the callee-saved area AND the alloca area
+    int runningOffset = calleeSavedBytes + allocaAreaBytes;
+
+    for (int slot : gprSpillSlots)
     {
         runningOffset += kSlotSizeBytes;
         slotOffsets.emplace(SlotKey{RegClass::GPR, slot}, -runningOffset);
     }
-    for (int slot : xmmSlots)
+    for (int slot : xmmSpillSlots)
     {
         runningOffset += kSlotSizeBytes;
         slotOffsets.emplace(SlotKey{RegClass::XMM, slot}, -runningOffset);
     }
 
-    frame.spillAreaGPR = static_cast<int>(gprSlots.size()) * kSlotSizeBytes;
-    frame.spillAreaXMM = static_cast<int>(xmmSlots.size()) * kSlotSizeBytes;
+    frame.spillAreaGPR = static_cast<int>(gprSpillSlots.size()) * kSlotSizeBytes;
+    frame.spillAreaXMM = static_cast<int>(xmmSpillSlots.size()) * kSlotSizeBytes;
 
     if (frame.outgoingArgArea < 0)
     {

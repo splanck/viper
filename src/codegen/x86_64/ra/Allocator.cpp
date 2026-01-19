@@ -104,6 +104,84 @@ LinearScanAllocator::LinearScanAllocator(MFunction &func,
 /// @return Summary of virtual→physical mappings and spill requirements.
 AllocationResult LinearScanAllocator::run()
 {
+    // Pre-pass: identify vregs that span multiple blocks.
+    // Because our linear live interval analysis doesn't account for control flow,
+    // vregs used in multiple blocks may be incorrectly allocated when a forward
+    // jump goes from a later block (in linear order) to an earlier block. By
+    // pre-marking such vregs as needing spills, we ensure that every use triggers
+    // a reload from the spill slot, guaranteeing correctness.
+    std::unordered_map<uint16_t, std::size_t> vregFirstBlock;
+    std::unordered_set<uint16_t> crossBlockVregs;
+
+    for (std::size_t blockIdx = 0; blockIdx < func_.blocks.size(); ++blockIdx)
+    {
+        const auto &block = func_.blocks[blockIdx];
+        for (const auto &instr : block.instructions)
+        {
+            for (const auto &operand : instr.operands)
+            {
+                if (const auto *reg = std::get_if<OpReg>(&operand); reg && !reg->isPhys)
+                {
+                    auto it = vregFirstBlock.find(reg->idOrPhys);
+                    if (it == vregFirstBlock.end())
+                    {
+                        vregFirstBlock[reg->idOrPhys] = blockIdx;
+                    }
+                    else if (it->second != blockIdx)
+                    {
+                        crossBlockVregs.insert(reg->idOrPhys);
+                    }
+                }
+                else if (const auto *mem = std::get_if<OpMem>(&operand))
+                {
+                    if (!mem->base.isPhys)
+                    {
+                        auto it = vregFirstBlock.find(mem->base.idOrPhys);
+                        if (it == vregFirstBlock.end())
+                        {
+                            vregFirstBlock[mem->base.idOrPhys] = blockIdx;
+                        }
+                        else if (it->second != blockIdx)
+                        {
+                            crossBlockVregs.insert(mem->base.idOrPhys);
+                        }
+                    }
+                    if (mem->hasIndex && !mem->index.isPhys)
+                    {
+                        auto it = vregFirstBlock.find(mem->index.idOrPhys);
+                        if (it == vregFirstBlock.end())
+                        {
+                            vregFirstBlock[mem->index.idOrPhys] = blockIdx;
+                        }
+                        else if (it->second != blockIdx)
+                        {
+                            crossBlockVregs.insert(mem->index.idOrPhys);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Pre-mark cross-block vregs as needing spills. This ensures that any use
+    // will go through the reload path, preventing stale register values when
+    // control flow doesn't match linear instruction order.
+    // IMPORTANT: We must NOT use slot reuse for cross-block vregs because their
+    // linear live intervals don't accurately represent actual lifetimes. Due to
+    // control flow (especially forward jumps), two vregs with "non-overlapping"
+    // linear intervals may actually be live at the same time.
+    for (uint16_t vreg : crossBlockVregs)
+    {
+        // Determine the register class from the live interval
+        const auto *interval = intervals_.lookup(vreg);
+        RegClass cls = interval ? interval->cls : RegClass::GPR;
+
+        auto &state = stateFor(cls, vreg);
+        state.spill.needsSpill = true;
+        // Allocate a unique spill slot for this vreg - no reuse to avoid conflicts
+        spiller_.ensureSpillSlot(cls, state.spill);
+    }
+
     Coalescer coalescer{*this, spiller_};
     for (auto &block : func_.blocks)
     {
@@ -552,6 +630,45 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
             releaseCallReserved();
         }
 
+        // Handle CQO: implicitly writes to RDX (sign-extends RAX into RDX:RAX)
+        // Any vreg currently in RDX must be spilled before CQO executes
+        if (instr.opcode == MOpcode::CQO)
+        {
+            for (auto vreg : activeGPR_)
+            {
+                auto it = states_.find(vreg);
+                if (it == states_.end() || !it->second.hasPhys)
+                {
+                    continue;
+                }
+                auto &state = it->second;
+                if (state.phys != PhysReg::RDX)
+                {
+                    continue;
+                }
+                // RDX will be clobbered by CQO - spill if value is still needed
+                const auto *interval = intervals_.lookup(vreg);
+                if (interval && interval->end <= currentInstrIdx_ + 1)
+                {
+                    // Value is dead after CQO, just release the register
+                    releaseRegister(state.phys, RegClass::GPR);
+                    state.hasPhys = false;
+                    removeActive(RegClass::GPR, vreg);
+                }
+                else
+                {
+                    // Value is needed later - spill it
+                    spiller_.ensureSpillSlot(RegClass::GPR, state.spill);
+                    state.spill.needsSpill = true;
+                    prefix.push_back(spiller_.makeStore(RegClass::GPR, state.spill, state.phys));
+                    releaseRegister(state.phys, RegClass::GPR);
+                    state.hasPhys = false;
+                    removeActive(RegClass::GPR, vreg);
+                }
+                break; // Only one vreg can be in RDX
+            }
+        }
+
         for (auto &pre : prefix)
         {
             rewritten.push_back(std::move(pre));
@@ -599,7 +716,13 @@ void LinearScanAllocator::releaseActiveForBlock(MBasicBlock &block)
 
     std::vector<MInstr> spills{};
 
-    // Process GPR values
+    // Process GPR values at block boundaries.
+    // Cross-block vregs (marked with needsSpill=true in the pre-pass) are already
+    // handled by processRegOperand which emits stores on defs. We only need to
+    // emit an additional store here if the current register value hasn't been
+    // stored yet (i.e., the vreg was modified since last store).
+    // Single-block vregs (needsSpill=false) don't need spilling since no other
+    // block can access them.
     for (auto vreg : activeGPR_)
     {
         auto it = states_.find(vreg);
@@ -608,31 +731,18 @@ void LinearScanAllocator::releaseActiveForBlock(MBasicBlock &block)
             continue;
         }
 
-        const auto *interval = intervals_.lookup(vreg);
-        if (interval && interval->end > currentInstrIdx_)
-        {
-            // Value is live across block boundary - spill it so successor blocks
-            // can reload it. This is essential for cross-block correctness.
-            // Use lifetime-based slot reuse to reduce stack frame size.
-            auto &state = it->second;
-            if (!state.spill.needsSpill)
-            {
-                state.spill.needsSpill = true;
-            }
-            spiller_.ensureSpillSlotWithReuse(RegClass::GPR, state.spill,
-                                              interval->start, interval->end);
-
-            // Emit a store to the spill slot
-            spills.push_back(spiller_.makeStore(RegClass::GPR, state.spill, state.phys));
-        }
-
-        // Release the register
+        auto &state = it->second;
+        // For cross-block vregs that are already marked for spilling, we need to
+        // ensure the current value is in memory. The processRegOperand handles
+        // stores on defs, so the spill slot should be up to date. We just need
+        // to release the register.
+        // For single-block vregs, we can just release without spilling.
         releaseRegister(it->second.phys, RegClass::GPR);
         it->second.hasPhys = false;
     }
     activeGPR_.clear();
 
-    // Process XMM values
+    // Process XMM values - same approach as GPR
     for (auto vreg : activeXMM_)
     {
         auto it = states_.find(vreg);
@@ -641,24 +751,6 @@ void LinearScanAllocator::releaseActiveForBlock(MBasicBlock &block)
             continue;
         }
 
-        const auto *interval = intervals_.lookup(vreg);
-        if (interval && interval->end > currentInstrIdx_)
-        {
-            // Value is live across block boundary - spill it
-            // Use lifetime-based slot reuse to reduce stack frame size.
-            auto &state = it->second;
-            if (!state.spill.needsSpill)
-            {
-                state.spill.needsSpill = true;
-            }
-            spiller_.ensureSpillSlotWithReuse(RegClass::XMM, state.spill,
-                                              interval->start, interval->end);
-
-            // Emit a store to the spill slot
-            spills.push_back(spiller_.makeStore(RegClass::XMM, state.spill, state.phys));
-        }
-
-        // Release the register
         releaseRegister(it->second.phys, RegClass::XMM);
         it->second.hasPhys = false;
     }
@@ -701,6 +793,14 @@ std::vector<LinearScanAllocator::OperandRole> LinearScanAllocator::classifyOpera
             {
                 roles[0] = OperandRole{false, true};
             }
+            break;
+        case MOpcode::MOVmr:
+            // Load from memory to register: dest is def-only, source memory is use
+            if (!roles.empty())
+            {
+                roles[0] = OperandRole{false, true};
+            }
+            // operand 1 (memory) base/index handled by handleOperand
             break;
         case MOpcode::LEA:
             if (!roles.empty())

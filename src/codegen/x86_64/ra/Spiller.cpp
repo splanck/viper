@@ -24,6 +24,7 @@
 #include "Allocator.hpp"
 
 #include <deque>
+#include <limits>
 
 /// @file
 /// @brief Provides stack spill management utilities for linear-scan allocation.
@@ -97,9 +98,14 @@ void Spiller::ensureSpillSlot(RegClass cls, SpillPlan &plan)
     if (cls == RegClass::GPR)
     {
         plan.slot = nextSpillSlotGPR_++;
+        // Add a lifetime entry with infinite duration to prevent reuse.
+        // This ensures slots allocated without reuse analysis (e.g., for
+        // cross-block vregs) are never reclaimed by ensureSpillSlotWithReuse.
+        gprSlotLifetimes_.push_back(SlotLifetime{0, std::numeric_limits<std::size_t>::max(), true});
         return;
     }
     plan.slot = nextSpillSlotXMM_++;
+    xmmSlotLifetimes_.push_back(SlotLifetime{0, std::numeric_limits<std::size_t>::max(), true});
 }
 
 /// @brief Assign a spill slot with lifetime-based reuse analysis.

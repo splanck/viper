@@ -565,11 +565,32 @@ void rewriteToTest(MInstr &instr, Operand regOperand)
 // Forward declaration
 void removeMarkedInstructions(std::vector<MInstr> &instrs, const std::vector<bool> &toRemove);
 
+/// @brief Check if an instruction modifies RSP (the stack pointer).
+/// @details RSP modifications always have implicit side effects because they
+///          change the stack frame layout. These must never be eliminated.
+[[nodiscard]] bool modifiesRSP(const MInstr &instr) noexcept
+{
+    if (instr.operands.empty())
+        return false;
+
+    // Check if the first operand (destination) is RSP
+    const auto *reg = std::get_if<OpReg>(&instr.operands[0]);
+    if (!reg || !reg->isPhys)
+        return false;
+
+    return static_cast<PhysReg>(reg->idOrPhys) == PhysReg::RSP;
+}
+
 /// @brief Check if an instruction has observable side effects.
 /// @details Instructions with side effects cannot be eliminated even if their
-///          result is unused. This includes memory stores, calls, and control flow.
+///          result is unused. This includes memory stores, calls, control flow,
+///          and RSP modifications (which affect the stack frame).
 [[nodiscard]] bool hasSideEffects(const MInstr &instr) noexcept
 {
+    // RSP modifications are always significant - they affect the stack frame
+    if (modifiesRSP(instr))
+        return true;
+
     switch (instr.opcode)
     {
         // Memory stores
@@ -808,9 +829,12 @@ std::size_t runBlockDCE(std::vector<MInstr> &instrs, PeepholeStats &stats)
         std::unordered_set<uint16_t> liveRegs;
 
         // At block exit, assume all callee-saved and return registers are live
+        // On Windows x64, callee-saved GPRs are: RBX, RBP, RDI, RSI, RSP, R12-R15
         liveRegs.insert(static_cast<uint16_t>(PhysReg::RAX));
         liveRegs.insert(static_cast<uint16_t>(PhysReg::RBX));
         liveRegs.insert(static_cast<uint16_t>(PhysReg::RBP));
+        liveRegs.insert(static_cast<uint16_t>(PhysReg::RDI));
+        liveRegs.insert(static_cast<uint16_t>(PhysReg::RSI));
         liveRegs.insert(static_cast<uint16_t>(PhysReg::RSP));
         liveRegs.insert(static_cast<uint16_t>(PhysReg::R12));
         liveRegs.insert(static_cast<uint16_t>(PhysReg::R13));
