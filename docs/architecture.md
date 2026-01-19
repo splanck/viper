@@ -24,7 +24,7 @@ Status notes:
 - VM — Stack-based interpreter for IL with tracing, debugging, and runtime bridge
 - Frontends — BASIC, Zia, and Pascal front ends lowering to IL
 - Codegen — Native code generation backends (AArch64 validated; x86_64 experimental)
-- Tools — CLI entry points (ilc, vbasic, zia, vpascal, ilrun, il-verify, il-dis, BASIC/Zia/Pascal helpers)
+- Tools — CLI entry points (viper, vbasic, zia, vpascal, ilrun, il-verify, il-dis, BASIC/Zia/Pascal helpers)
 - Runtime — C runtime library and ABI bridge used by IL and VM
 
 ---
@@ -46,8 +46,8 @@ Status notes:
 - src/frontends/common — Shared frontend utilities
 - src/tools/viper — Unified compiler driver (run IL, front basic, il-opt, codegen)
 - src/tools/zia — Zia compiler driver
-- src/tools/vbasic — Friendly BASIC wrapper over `ilc front basic`
-- src/tools/ilrun — Friendly IL runner wrapper over `ilc -run`
+- src/tools/vbasic — Friendly BASIC wrapper over `viper front basic`
+- src/tools/ilrun — Friendly IL runner wrapper over `viper -run`
 - src/tools/il-verify — Standalone IL verifier CLI
 - src/tools/il-dis — IL disassembler (text pretty-printer)
 - src/tools/basic-ast-dump, src/tools/basic-lex-dump — BASIC developer utilities
@@ -63,7 +63,7 @@ Public headers are under `include/viper/...`:
 
 ## CLI Tools (Built Targets)
 
-- `ilc` — Unified driver
+- `viper` — Unified driver
     - `-run <file.il>` — Execute IL on the VM
     - `front basic -emit-il|-run <file.bas>` — BASIC compile/run
     - `il-opt <in.il> -o <out.il> [--passes ...]` — Optimizer

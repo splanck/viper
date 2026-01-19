@@ -332,7 +332,7 @@ Note: Fast-path lowering may produce physical registers directly even before RA 
 ### Test Frogger Compilation
 
 ```bash
-./build/src/tools/viper/ilc front basic -emit-il demos/basic/frogger/frogger.bas > /tmp/frogger.il
+./build/src/tools/viper/viper front basic -emit-il demos/basic/frogger/frogger.bas > /tmp/frogger.il
 ./build/src/tools/viper/viper codegen arm64 /tmp/frogger.il -S /tmp/frogger.s
 as /tmp/frogger.s -o /tmp/frogger.o
 clang++ /tmp/frogger.o build/src/runtime/libviper_runtime.a -o /tmp/frogger_native
@@ -394,7 +394,7 @@ To reproduce these bugs:
 
 ```bash
 cd /Users/stephen/git/viper
-./build/src/tools/viper/ilc front basic -emit-il demos/basic/frogger/frogger.bas > /tmp/frogger.il
+./build/src/tools/viper/viper front basic -emit-il demos/basic/frogger/frogger.bas > /tmp/frogger.il
 ./build/src/tools/viper/viper codegen arm64 /tmp/frogger.il -S /tmp/frogger.s
 as /tmp/frogger.s  # Fails with multiple errors
 ```

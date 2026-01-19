@@ -90,10 +90,15 @@ extern "C"
 // Shared Hex Encoding/Decoding Utilities
 //=============================================================================
 
-/// @brief Hexadecimal character lookup table for byte-to-hex encoding.
+/// @brief Hexadecimal character lookup table for byte-to-hex encoding (lowercase).
 /// @details Maps nibble values (0-15) to lowercase hexadecimal characters.
 ///          Used by hex encoding functions throughout the runtime.
 static const char rt_hex_chars[] = "0123456789abcdef";
+
+/// @brief Hexadecimal character lookup table for byte-to-hex encoding (uppercase).
+/// @details Maps nibble values (0-15) to uppercase hexadecimal characters.
+///          Used for URL encoding and other contexts requiring uppercase hex.
+static const char rt_hex_chars_upper[] = "0123456789ABCDEF";
 
 /// @brief Converts a hexadecimal character to its numeric value.
 /// @param c The character to convert ('0'-'9', 'a'-'f', or 'A'-'F').

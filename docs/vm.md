@@ -1061,7 +1061,7 @@ Environment variables:
 
 - `RUNS_PER_CASE` (default `3`): number of runs per (mode, program) pair.
 - `IL_GLOB` (default `examples/il/*.il`): glob for IL programs to benchmark (relative to repo root).
-- `ILC_BIN`: optional path to `ilc`; otherwise auto-detected under `build/`.
+- `ILC_BIN`: optional path to `viper`; otherwise auto-detected under `build/`.
 
 Each invocation writes a timestamped section header and a per-row timestamp, along with averages and min/max timings,
 the actual dispatch kind, and instruction counts extracted from `--count` and `--time` summaries.

@@ -456,7 +456,7 @@ Portable C runtime providing:
 
 ### Developer Tools
 
-- **ilc** - Compiler driver for BASIC and IL
+- **viper** - Compiler driver for BASIC and IL
 - **il-verify** - IL validation with diagnostics
 - **il-dis** - IL disassembler
 - **basic-ast-dump** - AST visualization

@@ -953,7 +953,7 @@ viper codegen arm64 program.il -S program.s
 as program.s -o program.o
 clang++ program.o build/src/runtime/libviper_runtime.a -o program
 
-# Recommended: let ilc link the native executable (auto-selects required runtime components)
+# Recommended: let viper link the native executable (auto-selects required runtime components)
 viper codegen arm64 program.il -run-native
 ```
 

@@ -1539,8 +1539,8 @@ static char *percent_encode(const char *str, bool encode_slash)
         else
         {
             *p++ = '%';
-            *p++ = "0123456789ABCDEF"[(unsigned char)c >> 4];
-            *p++ = "0123456789ABCDEF"[(unsigned char)c & 0x0F];
+            *p++ = rt_hex_chars_upper[(unsigned char)c >> 4];
+            *p++ = rt_hex_chars_upper[(unsigned char)c & 0x0F];
         }
     }
     *p = '\0';

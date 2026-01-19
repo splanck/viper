@@ -324,12 +324,12 @@ target_include_directories(il_codegen_x86_64 PUBLIC
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>)
 add_dependencies(il_codegen_x86_64 generate_runtime_registry)
 
-add_library(ilc_cmd_arm64 STATIC
+add_library(viper_cmd_arm64 STATIC
         tools/viper/cmd_codegen_arm64.cpp)
-target_link_libraries(ilc_cmd_arm64 PRIVATE viper_common_opts viper_common il_tools_common il_codegen_aarch64 viper::il_full)
+target_link_libraries(viper_cmd_arm64 PRIVATE viper_common_opts viper_common il_tools_common il_codegen_aarch64 viper::il_full)
 
 # Build viper (CLI) sources list conditionally based on enabled frontends
-set(ILC_SOURCES
+set(VIPER_CLI_SOURCES
         tools/viper/main.cpp
         tools/viper/cmd_run_il.cpp
         tools/viper/cmd_front_basic.cpp
@@ -340,7 +340,7 @@ set(ILC_SOURCES
         tools/viper/cli.cpp
         tools/viper/break_spec.cpp)
 
-set(ILC_LINK_LIBS
+set(VIPER_CLI_LINK_LIBS
         viper_common_opts
         viper::il_full
         il_vm
@@ -351,17 +351,17 @@ set(ILC_LINK_LIBS
         il_tools_common
         viper_codegen_x86_64
         il_codegen_aarch64
-        ilc_cmd_arm64
+        viper_cmd_arm64
         viper_bytecode)
 
 if (VIPER_ENABLE_PASCAL)
-    list(APPEND ILC_SOURCES tools/viper/cmd_front_pascal.cpp)
-    list(APPEND ILC_LINK_LIBS fe_pascal)
+    list(APPEND VIPER_CLI_SOURCES tools/viper/cmd_front_pascal.cpp)
+    list(APPEND VIPER_CLI_LINK_LIBS fe_pascal)
 endif ()
 
-add_executable(viper ${ILC_SOURCES})
+add_executable(viper ${VIPER_CLI_SOURCES})
 set_target_properties(viper PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/viper)
-target_link_libraries(viper PRIVATE ${ILC_LINK_LIBS})
+target_link_libraries(viper PRIVATE ${VIPER_CLI_LINK_LIBS})
 if (VIPER_ENABLE_PASCAL)
     target_compile_definitions(viper PRIVATE VIPER_ENABLE_PASCAL=1)
 endif ()
@@ -372,7 +372,7 @@ install(TARGETS viper RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 add_executable(vbasic
         tools/vbasic/main.cpp
         tools/vbasic/usage.cpp
-        tools/vbasic/ilc_compat.cpp
+        tools/vbasic/cli_compat.cpp
         tools/viper/cmd_front_basic.cpp
         tools/viper/cli.cpp)
 set_target_properties(vbasic PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/vbasic)
@@ -392,7 +392,7 @@ if (VIPER_ENABLE_PASCAL)
     add_executable(vpascal
             tools/vpascal/main.cpp
             tools/vpascal/usage.cpp
-            tools/vpascal/ilc_compat.cpp
+            tools/vpascal/cli_compat.cpp
             tools/viper/cmd_front_pascal.cpp
             tools/viper/cli.cpp)
     set_target_properties(vpascal PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/vpascal)
@@ -413,7 +413,7 @@ endif ()
 add_executable(zia
         tools/zia/main.cpp
         tools/zia/usage.cpp
-        tools/zia/ilc_compat.cpp
+        tools/zia/cli_compat.cpp
         tools/viper/cmd_front_zia.cpp
         tools/viper/cli.cpp)
 set_target_properties(zia PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/zia)
@@ -431,7 +431,7 @@ install(TARGETS zia RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 add_executable(ilrun
         tools/ilrun/main.cpp
-        tools/ilrun/ilc_compat.cpp
+        tools/ilrun/cli_compat.cpp
         tools/viper/cmd_run_il.cpp
         tools/viper/cli.cpp
         tools/viper/break_spec.cpp)

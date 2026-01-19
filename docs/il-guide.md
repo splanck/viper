@@ -90,7 +90,7 @@ entry:
 }
 ```
 
-Run it with `ilc`:
+Run it with `viper`:
 
 ```bash
 viper -run first.il

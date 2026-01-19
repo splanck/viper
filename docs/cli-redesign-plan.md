@@ -8,7 +8,7 @@ created: 2025-11-15
 
 ## Executive Summary
 
-**Objective**: Simplify Viper CLI from `ilc front basic -run script.bas` (5 tokens) to `vbasic script.bas` (2 tokens),
+**Objective**: Simplify Viper CLI from `viper front basic -run script.bas` (5 tokens) to `vbasic script.bas` (2 tokens),
 matching industry standards (Python, Node.js, Ruby, Lua).
 
 **Approach**: Create user-friendly wrappers (`vbasic`, `ilrun`) while preserving existing `ilc` functionality for
@@ -47,17 +47,17 @@ src/
 
 | Task                | Current Command                     | Token Count |
 |---------------------|-------------------------------------|-------------|
-| Run BASIC           | `ilc front basic -run file.bas`     | 5           |
-| Emit BASIC IL       | `ilc front basic -emit-il file.bas` | 5           |
-| Run IL              | `ilc -run file.il`                  | 3           |
-| Compile IL → native | `ilc codegen x64 -S file.il -o exe` | 7           |
-| Optimize IL         | `ilc il-opt file.il -o out.il`      | 5           |
+| Run BASIC           | `viper front basic -run file.bas`     | 5           |
+| Emit BASIC IL       | `viper front basic -emit-il file.bas` | 5           |
+| Run IL              | `viper -run file.il`                  | 3           |
+| Compile IL → native | `viper codegen x64 -S file.il -o exe` | 7           |
+| Optimize IL         | `viper il-opt file.il -o out.il`      | 5           |
 
 ### Problems Identified
 
 1. **Cognitive Overhead**: Users must learn `ilc` subcommand structure
 2. **Verbose**: Common operations require 5-7 tokens vs 2 for competitors
-3. **Non-Intuitive**: `ilc front basic -run` is opaque to newcomers
+3. **Non-Intuitive**: `viper front basic -run` is opaque to newcomers
 4. **Inconsistent**: Some tools follow simple pattern (`il-verify file.il`), others don't
 5. **Discovery**: Hard to find available commands without deep --help reading
 
@@ -71,7 +71,7 @@ src/
 |----------|----------------------------|------------------------------|----------|
 | `vbasic` | Run/compile BASIC programs | `vbasic game.bas`            | P0       |
 | `ilrun`  | Execute IL programs        | `ilrun program.il`           | P0       |
-| `ilc`    | Compile IL → native        | `ilc program.il -o exe`      | P1       |
+| `ilc`    | Compile IL → native        | `viper program.il -o exe`      | P1       |
 | `ilopt`  | Optimize IL                | `ilopt program.il -o out.il` | P2       |
 
 ### Developer Tools (Keep As-Is)
@@ -101,7 +101,7 @@ src/tools/vbasic/
 
 **Option A: Thin Wrapper (Recommended)**
 
-- New executable that translates `vbasic` args → `ilc front basic` args
+- New executable that translates `vbasic` args → `viper front basic` args
 - Reuses all existing `cmdFrontBasic` logic
 - ~200 lines of code
 - Minimal maintenance burden
@@ -372,7 +372,7 @@ if (cmd == "front") {
 
 **Files to Modify**:
 
-- `docs/getting-started.md` - Replace `ilc front basic` examples with `vbasic`
+- `docs/getting-started.md` - Replace `viper front basic` examples with `vbasic`
 - `docs/basic-language.md` - Update all command examples
 - `docs/basic-reference.md` - Update code examples
 - `README.md` - Update quickstart examples
@@ -388,7 +388,7 @@ if (cmd == "front") {
 
 ```markdown
 <!-- BEFORE -->
-./build/src/tools/ilc/ilc front basic -run examples/basic/ex1_hello_cond.bas
+./build/src/tools/viper/viper front basic -run examples/basic/ex1_hello_cond.bas
 
 <!-- AFTER -->
 ./build/src/tools/vbasic/vbasic examples/basic/ex1_hello_cond.bas
@@ -414,7 +414,7 @@ for test in examples/basic/*.bas; do
     echo "Testing: $test"
 
     # Old way (must still work)
-    ./build/src/tools/ilc/ilc front basic -run "$test" > old_out.txt
+    ./build/src/tools/viper/viper front basic -run "$test" > old_out.txt
 
     # New way
     ./build/src/tools/vbasic/vbasic "$test" > new_out.txt
@@ -500,7 +500,7 @@ if (compile_mode) {
 
 ### 3.2: File Extension Auto-Detection (`ilc` Smart Mode)
 
-**Goal**: `ilc file.bas` → auto-run BASIC, `ilc file.il` → auto-run IL
+**Goal**: `viper file.bas` → auto-run BASIC, `viper file.il` → auto-run IL
 
 **Implementation**:
 
@@ -529,7 +529,7 @@ if (argc == 2) {
 
 ### 3.3: `ilopt` Tool
 
-**Goal**: Rename `ilc il-opt` → `ilopt`
+**Goal**: Rename `viper il-opt` → `ilopt`
 
 **Implementation**:
 
@@ -590,8 +590,8 @@ install(TARGETS ilopt RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
   - Simpler, more intuitive commands matching industry standards (Python, Node.js, Ruby)
 
 ### Deprecated (Soft)
-- `ilc front basic -run` - Use `vbasic` instead
-- `ilc -run` - Use `ilrun` instead
+- `viper front basic -run` - Use `vbasic` instead
+- `viper -run` - Use `ilrun` instead
 - Old commands still work, but new commands are recommended
 
 ### Documentation

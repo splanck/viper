@@ -885,7 +885,7 @@ cmake -S . -B build
 # Build your frontend
 cmake --build build --target fe_yourfrontend
 
-# Build ilc tool
+# Build viper tool
 cmake --build build --target viper
 
 # Test

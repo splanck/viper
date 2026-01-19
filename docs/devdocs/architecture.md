@@ -275,7 +275,7 @@ Handlers live in `src/tools/viper/cmd_run_il.cpp`, `cmd_front_basic.cpp`, and `c
 merely dispatches to these subcommands. Additional tools (verifier, disassembler) reuse the same IL libraries.
 
 Diagnostics carry source mapping (file/line/column) through AST → IL → VM/native for clear errors, and a REPL (
-`ilc repl`) is a nice-to-have backed by the VM.
+`viper repl`) is a nice-to-have backed by the VM.
 
 ### Extensibility points
 
@@ -343,7 +343,7 @@ the IL version and updating consumers.
   vm/                # interpreter
   codegen/           # Native backends (x86_64, aarch64, common)
   frontends/basic/   # BASIC lexer, parser, AST, lowering
-  tools/ilc/         # CLI driver and subcommands
+  tools/viper/         # CLI driver and subcommands
 /tests/
   unit/              # dependency-free unit tests (internal harness)
   golden/            # text-based golden tests

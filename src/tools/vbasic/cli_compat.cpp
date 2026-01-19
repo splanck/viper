@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Compatibility shims for viper CLI functions used by cmd_front_basic.cpp
+// CLI compatibility shims for cmd_front_basic.cpp
 //
 //===----------------------------------------------------------------------===//
 
