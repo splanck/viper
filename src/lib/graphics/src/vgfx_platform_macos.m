@@ -921,6 +921,87 @@ void vgfx_clipboard_clear(void)
     }
 }
 
+//===----------------------------------------------------------------------===//
+// Window Title and Fullscreen
+//===----------------------------------------------------------------------===//
+
+/// @brief Set the window title.
+/// @details Updates the NSWindow's title bar text.
+///
+/// @param win   Pointer to the window structure
+/// @param title New title string (UTF-8)
+void vgfx_platform_set_title(struct vgfx_window *win, const char *title)
+{
+    if (!win || !win->platform_data || !title)
+        return;
+
+    @autoreleasepool
+    {
+        vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
+
+        if (platform->window)
+        {
+            [platform->window setTitle:[NSString stringWithUTF8String:title]];
+        }
+    }
+}
+
+/// @brief Set the window to fullscreen or windowed mode.
+/// @details Toggles the NSWindow between fullscreen and windowed modes using
+///          macOS's native fullscreen API (toggleFullScreen:).
+///
+/// @param win        Pointer to the window structure
+/// @param fullscreen 1 for fullscreen, 0 for windowed
+/// @return 1 on success, 0 on failure
+int vgfx_platform_set_fullscreen(struct vgfx_window *win, int fullscreen)
+{
+    if (!win || !win->platform_data)
+        return 0;
+
+    @autoreleasepool
+    {
+        vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
+
+        if (!platform->window)
+            return 0;
+
+        /* Check current fullscreen state */
+        BOOL is_currently_fullscreen =
+            ([platform->window styleMask] & NSWindowStyleMaskFullScreen) != 0;
+
+        /* Only toggle if state needs to change */
+        if (fullscreen && !is_currently_fullscreen)
+        {
+            [platform->window toggleFullScreen:nil];
+        }
+        else if (!fullscreen && is_currently_fullscreen)
+        {
+            [platform->window toggleFullScreen:nil];
+        }
+
+        return 1;
+    }
+}
+
+/// @brief Check if the window is in fullscreen mode.
+/// @param win Pointer to the window structure
+/// @return 1 if fullscreen, 0 if windowed
+int vgfx_platform_is_fullscreen(struct vgfx_window *win)
+{
+    if (!win || !win->platform_data)
+        return 0;
+
+    @autoreleasepool
+    {
+        vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
+
+        if (!platform->window)
+            return 0;
+
+        return ([platform->window styleMask] & NSWindowStyleMaskFullScreen) != 0 ? 1 : 0;
+    }
+}
+
 #endif /* __APPLE__ */
 
 //===----------------------------------------------------------------------===//

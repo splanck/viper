@@ -878,4 +878,117 @@ void vgfx_clipboard_clear(void)
     }
 }
 
+//===----------------------------------------------------------------------===//
+// Window Title and Fullscreen
+//===----------------------------------------------------------------------===//
+
+/// @brief Saved window state for restoring from fullscreen.
+typedef struct
+{
+    DWORD style;
+    DWORD exStyle;
+    RECT rect;
+    int is_fullscreen;
+} vgfx_win32_saved_state;
+
+/// @brief Global saved window state (one window at a time for simplicity).
+static vgfx_win32_saved_state g_saved_state = {0};
+
+/// @brief Set the window title.
+/// @details Updates the Win32 window's title bar text using SetWindowTextW.
+///
+/// @param win   Pointer to the window structure
+/// @param title New title string (UTF-8)
+void vgfx_platform_set_title(struct vgfx_window *win, const char *title)
+{
+    if (!win || !win->platform_data || !title)
+        return;
+
+    vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
+    if (!w32->hwnd)
+        return;
+
+    /* Convert UTF-8 to UTF-16 */
+    WCHAR *wtitle = utf8_to_utf16(title);
+    if (wtitle)
+    {
+        SetWindowTextW(w32->hwnd, wtitle);
+        free(wtitle);
+    }
+}
+
+/// @brief Set the window to fullscreen or windowed mode.
+/// @details Uses the borderless fullscreen approach: removes window decorations
+///          and resizes the window to cover the entire screen. The window state
+///          is saved to restore later when exiting fullscreen.
+///
+/// @param win        Pointer to the window structure
+/// @param fullscreen 1 for fullscreen, 0 for windowed
+/// @return 1 on success, 0 on failure
+int vgfx_platform_set_fullscreen(struct vgfx_window *win, int fullscreen)
+{
+    if (!win || !win->platform_data)
+        return 0;
+
+    vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
+    if (!w32->hwnd)
+        return 0;
+
+    if (fullscreen && !g_saved_state.is_fullscreen)
+    {
+        /* Save current window state */
+        g_saved_state.style = GetWindowLong(w32->hwnd, GWL_STYLE);
+        g_saved_state.exStyle = GetWindowLong(w32->hwnd, GWL_EXSTYLE);
+        GetWindowRect(w32->hwnd, &g_saved_state.rect);
+        g_saved_state.is_fullscreen = 1;
+
+        /* Get monitor info for the monitor containing this window */
+        HMONITOR hMonitor = MonitorFromWindow(w32->hwnd, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO mi = {sizeof(mi)};
+        GetMonitorInfo(hMonitor, &mi);
+
+        /* Remove window decorations and maximize to monitor size */
+        SetWindowLong(w32->hwnd, GWL_STYLE, g_saved_state.style & ~(WS_CAPTION | WS_THICKFRAME));
+        SetWindowLong(w32->hwnd,
+                      GWL_EXSTYLE,
+                      g_saved_state.exStyle &
+                          ~(WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_STATICEDGE));
+
+        SetWindowPos(w32->hwnd,
+                     HWND_TOP,
+                     mi.rcMonitor.left,
+                     mi.rcMonitor.top,
+                     mi.rcMonitor.right - mi.rcMonitor.left,
+                     mi.rcMonitor.bottom - mi.rcMonitor.top,
+                     SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    }
+    else if (!fullscreen && g_saved_state.is_fullscreen)
+    {
+        /* Restore previous window state */
+        SetWindowLong(w32->hwnd, GWL_STYLE, g_saved_state.style);
+        SetWindowLong(w32->hwnd, GWL_EXSTYLE, g_saved_state.exStyle);
+
+        SetWindowPos(w32->hwnd,
+                     NULL,
+                     g_saved_state.rect.left,
+                     g_saved_state.rect.top,
+                     g_saved_state.rect.right - g_saved_state.rect.left,
+                     g_saved_state.rect.bottom - g_saved_state.rect.top,
+                     SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+
+        g_saved_state.is_fullscreen = 0;
+    }
+
+    return 1;
+}
+
+/// @brief Check if the window is in fullscreen mode.
+/// @param win Pointer to the window structure
+/// @return 1 if fullscreen, 0 if windowed
+int vgfx_platform_is_fullscreen(struct vgfx_window *win)
+{
+    (void)win;
+    return g_saved_state.is_fullscreen;
+}
+
 #endif /* _WIN32 */

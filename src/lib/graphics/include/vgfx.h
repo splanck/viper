@@ -358,6 +358,28 @@ extern "C"
     /// @return Current FPS setting, or -1 if window is NULL
     int32_t vgfx_get_fps(vgfx_window_t window);
 
+    /// @brief Set the window title.
+    /// @details Changes the window's title bar text at runtime. The title string
+    ///          is copied internally, so the caller's string can be freed after
+    ///          the call returns.
+    /// @param window Window handle
+    /// @param title New window title (UTF-8 string; NULL restores default)
+    void vgfx_set_title(vgfx_window_t window, const char *title);
+
+    /// @brief Set the window to fullscreen or windowed mode.
+    /// @details Toggles the window between fullscreen and windowed modes. In
+    ///          fullscreen mode, the window covers the entire screen with no
+    ///          title bar or borders. The framebuffer is resized to match the
+    ///          screen dimensions, and a RESIZE event is generated.
+    /// @param window Window handle
+    /// @param fullscreen 1 for fullscreen, 0 for windowed mode
+    void vgfx_set_fullscreen(vgfx_window_t window, int fullscreen);
+
+    /// @brief Check if the window is in fullscreen mode.
+    /// @param window Window handle
+    /// @return 1 if fullscreen, 0 if windowed, -1 if window is NULL
+    int vgfx_is_fullscreen(vgfx_window_t window);
+
     /// @brief Get direct access to the framebuffer.
     /// @details Returns a descriptor with pointers to the raw RGBA pixel data.
     ///          The framebuffer is always stored in row-major order with 4 bytes

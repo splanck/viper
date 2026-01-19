@@ -296,6 +296,33 @@ void vgfx_platform_sleep_ms(int32_t ms);
 /// @post Return value >= previous calls within the same process
 int64_t vgfx_platform_now_ms(void);
 
+/// @brief Set the window title.
+/// @details Updates the native OS window's title bar text.
+///
+/// @param win   Pointer to the window structure
+/// @param title New title string (UTF-8), or NULL for default
+///
+/// @pre  win != NULL
+/// @pre  win->platform_data != NULL
+void vgfx_platform_set_title(struct vgfx_window *win, const char *title);
+
+/// @brief Set the window to fullscreen or windowed mode.
+/// @details Toggles the native OS window between fullscreen and windowed modes.
+///          The framebuffer should be reallocated by the caller if dimensions change.
+///
+/// @param win        Pointer to the window structure
+/// @param fullscreen 1 for fullscreen, 0 for windowed
+///
+/// @pre  win != NULL
+/// @pre  win->platform_data != NULL
+/// @return 1 on success, 0 on failure
+int vgfx_platform_set_fullscreen(struct vgfx_window *win, int fullscreen);
+
+/// @brief Check if the window is in fullscreen mode.
+/// @param win Pointer to the window structure
+/// @return 1 if fullscreen, 0 if windowed
+int vgfx_platform_is_fullscreen(struct vgfx_window *win);
+
 //===----------------------------------------------------------------------===//
 // Internal Helper Functions
 //===----------------------------------------------------------------------===//

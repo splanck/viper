@@ -241,11 +241,11 @@ PRINT Viper.Math.Hypot(3, 4)             ' Output: 5.0
 
 ## Viper.Random
 
-Random number generation.
+Random number generation with uniform and distribution-based functions.
 
 **Type:** Static utility class
 
-### Methods
+### Core Methods
 
 | Method         | Signature          | Description                                     |
 |----------------|--------------------|-------------------------------------------------|
@@ -253,10 +253,21 @@ Random number generation.
 | `Next()`       | `Double()`         | Returns a random double in the range [0.0, 1.0) |
 | `NextInt(max)` | `Integer(Integer)` | Returns a random integer in the range [0, max)  |
 
+### Distribution Methods
+
+| Method                     | Signature              | Description                                           |
+|----------------------------|------------------------|-------------------------------------------------------|
+| `Range(min, max)`          | `Integer(Integer, Integer)` | Returns a random integer in [min, max] inclusive |
+| `Gaussian(mean, stddev)`   | `Double(Double, Double)` | Returns a normally distributed random value         |
+| `Exponential(lambda)`      | `Double(Double)`       | Returns an exponentially distributed random value     |
+| `Dice(sides)`              | `Integer(Integer)`     | Simulates a dice roll, returns [1, sides]             |
+| `Chance(probability)`      | `Integer(Double)`      | Returns 1 with probability p, otherwise 0             |
+| `Shuffle(seq)`             | `Void(Seq)`            | Randomly shuffles a sequence in place                 |
+
 ### Example
 
 ```basic
-' Seed with current time for different sequences each run
+' Seed for reproducible sequences
 Viper.Random.Seed(12345)
 
 ' Random float between 0 and 1
@@ -269,11 +280,50 @@ DIM n AS INTEGER
 n = Viper.Random.NextInt(100)
 PRINT n  ' Output: 0-99 (varies)
 
+' Random integer in range [1, 10] inclusive
+DIM x AS INTEGER
+x = Viper.Random.Range(1, 10)
+PRINT x  ' Output: 1-10 (varies)
+
 ' Simulate dice roll (1-6)
 DIM die AS INTEGER
-die = Viper.Random.NextInt(6) + 1
+die = Viper.Random.Dice(6)
 PRINT "You rolled: "; die
+
+' Gaussian distribution (bell curve) with mean=100, stddev=15
+DIM iq AS DOUBLE
+iq = Viper.Random.Gaussian(100.0, 15.0)
+PRINT "IQ Score: "; INT(iq)
+
+' Exponential distribution (for waiting times, etc.)
+DIM waitTime AS DOUBLE
+waitTime = Viper.Random.Exponential(0.5)  ' mean = 2.0
+PRINT "Wait: "; waitTime
+
+' 70% chance of success
+IF Viper.Random.Chance(0.7) = 1 THEN
+    PRINT "Success!"
+ELSE
+    PRINT "Failed."
+END IF
+
+' Shuffle a sequence
+DIM seq AS Viper.Collections.Seq
+seq = Viper.Collections.Seq.New()
+FOR i = 1 TO 5
+    seq.Push(Viper.Box.I64(i))
+NEXT i
+Viper.Random.Shuffle(seq)  ' Now shuffled: e.g., [3, 1, 5, 2, 4]
 ```
+
+### Notes
+
+- All random functions use the same LCG (Linear Congruential Generator)
+- Sequences are deterministic for a given seed
+- `Gaussian` uses the Box-Muller transform for accurate normal distribution
+- `Exponential(lambda)` produces values with mean = 1/lambda
+- `Range(a, b)` automatically swaps bounds if min > max
+- `Shuffle` performs a Fisher-Yates shuffle (O(n) complexity)
 
 ---
 

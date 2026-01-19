@@ -434,5 +434,47 @@ void vgfx_mock_inject_focus(vgfx_window_t window, int gained)
 }
 
 //===----------------------------------------------------------------------===//
+// Window Title and Fullscreen (Mock)
+//===----------------------------------------------------------------------===//
+
+/// @brief Mock fullscreen state (per-window tracking would be needed for multiple windows)
+static int g_mock_fullscreen = 0;
+
+/// @brief Set the window title (mock version - no-op).
+/// @details The mock backend has no title bar, so this is a no-op.
+///
+/// @param win   Pointer to the window structure (unused)
+/// @param title New title string (unused)
+void vgfx_platform_set_title(struct vgfx_window *win, const char *title)
+{
+    (void)win;
+    (void)title;
+    /* Mock backend has no title bar - no-op */
+}
+
+/// @brief Set fullscreen mode (mock version - updates state only).
+/// @details The mock backend has no display, but tracks the fullscreen state
+///          for test verification.
+///
+/// @param win        Pointer to the window structure
+/// @param fullscreen 1 for fullscreen, 0 for windowed
+/// @return 1 (always succeeds)
+int vgfx_platform_set_fullscreen(struct vgfx_window *win, int fullscreen)
+{
+    (void)win;
+    g_mock_fullscreen = fullscreen ? 1 : 0;
+    return 1;
+}
+
+/// @brief Check fullscreen mode (mock version).
+/// @param win Pointer to the window structure (unused)
+/// @return Current mock fullscreen state
+int vgfx_platform_is_fullscreen(struct vgfx_window *win)
+{
+    (void)win;
+    return g_mock_fullscreen;
+}
+
+//===----------------------------------------------------------------------===//
 // End of Mock Backend
 //===----------------------------------------------------------------------===//

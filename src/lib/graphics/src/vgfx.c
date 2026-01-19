@@ -445,6 +445,45 @@ int32_t vgfx_get_fps(vgfx_window_t window)
     return window->fps;
 }
 
+/// @brief Set the window title.
+/// @details Changes the window's title bar text at runtime.
+///
+/// @param window Window handle
+/// @param title  New title string (UTF-8), or NULL for default
+void vgfx_set_title(vgfx_window_t window, const char *title)
+{
+    if (!window)
+        return;
+
+    const char *actual_title = title ? title : VGFX_DEFAULT_TITLE;
+    vgfx_platform_set_title(window, actual_title);
+}
+
+/// @brief Set the window to fullscreen or windowed mode.
+/// @details Toggles between fullscreen and windowed modes. The framebuffer
+///          may be resized when switching modes.
+///
+/// @param window     Window handle
+/// @param fullscreen 1 for fullscreen, 0 for windowed
+void vgfx_set_fullscreen(vgfx_window_t window, int fullscreen)
+{
+    if (!window)
+        return;
+
+    vgfx_platform_set_fullscreen(window, fullscreen);
+}
+
+/// @brief Check if the window is in fullscreen mode.
+/// @param window Window handle
+/// @return 1 if fullscreen, 0 if windowed, -1 if window is NULL
+int vgfx_is_fullscreen(vgfx_window_t window)
+{
+    if (!window)
+        return -1;
+
+    return vgfx_platform_is_fullscreen(window);
+}
+
 //===----------------------------------------------------------------------===//
 // Window Management
 //===----------------------------------------------------------------------===//

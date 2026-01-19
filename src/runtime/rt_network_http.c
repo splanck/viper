@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_network.h"
+#include "rt_tls.h"
 
 #include "rt_box.h"
 #include "rt_bytes.h"
@@ -31,6 +32,7 @@
 #define strncasecmp _strnicmp
 #else
 #include <strings.h>
+#include <unistd.h>
 #endif
 
 //=============================================================================
@@ -77,8 +79,9 @@ void rt_net_init_wsa(void);
 typedef struct parsed_url
 {
     char *host; // Allocated hostname
-    int port;   // Port number (default 80)
+    int port;   // Port number (default 80 for http, 443 for https)
     char *path; // Path including query string (allocated)
+    int use_tls; // 1 for https, 0 for http
 } parsed_url_t;
 
 /// @brief HTTP header entry.
@@ -88,6 +91,148 @@ typedef struct http_header
     char *value;
     struct http_header *next;
 } http_header_t;
+
+/// @brief HTTP connection context (TCP or TLS).
+typedef struct http_conn
+{
+    void *tcp;                  // TCP connection (for plain HTTP)
+    rt_tls_session_t *tls;      // TLS session (for HTTPS)
+    int use_tls;                // 1 if using TLS
+    uint8_t read_buf[4096];     // Read buffer
+    size_t read_buf_len;        // Bytes in buffer
+    size_t read_buf_pos;        // Current position in buffer
+} http_conn_t;
+
+/// @brief Initialize HTTP connection for TCP.
+static void http_conn_init_tcp(http_conn_t *conn, void *tcp)
+{
+    conn->tcp = tcp;
+    conn->tls = NULL;
+    conn->use_tls = 0;
+    conn->read_buf_len = 0;
+    conn->read_buf_pos = 0;
+}
+
+/// @brief Initialize HTTP connection for TLS.
+static void http_conn_init_tls(http_conn_t *conn, rt_tls_session_t *tls)
+{
+    conn->tcp = NULL;
+    conn->tls = tls;
+    conn->use_tls = 1;
+    conn->read_buf_len = 0;
+    conn->read_buf_pos = 0;
+}
+
+/// @brief Send all data over HTTP connection.
+static int http_conn_send(http_conn_t *conn, const uint8_t *data, size_t len)
+{
+    if (conn->use_tls)
+    {
+        long sent = rt_tls_send(conn->tls, data, len);
+        return sent >= 0 ? 0 : -1;
+    }
+    else
+    {
+        void *bytes = rt_bytes_new((int64_t)len);
+        memcpy(bytes_data(bytes), data, len);
+        rt_tcp_send_all(conn->tcp, bytes);
+        return 0;
+    }
+}
+
+/// @brief Receive data from HTTP connection (buffered).
+static long http_conn_recv(http_conn_t *conn, uint8_t *buf, size_t len)
+{
+    size_t total = 0;
+
+    // First, drain any buffered data
+    while (total < len && conn->read_buf_pos < conn->read_buf_len)
+    {
+        buf[total++] = conn->read_buf[conn->read_buf_pos++];
+    }
+
+    if (total == len)
+        return (long)total;
+
+    // Need more data from network
+    if (conn->use_tls)
+    {
+        long n = rt_tls_recv(conn->tls, buf + total, len - total);
+        if (n > 0)
+            total += n;
+    }
+    else
+    {
+        void *data = rt_tcp_recv(conn->tcp, (int64_t)(len - total));
+        int64_t data_len = rt_bytes_len(data);
+        if (data_len > 0)
+        {
+            memcpy(buf + total, bytes_data(data), data_len);
+            total += data_len;
+        }
+    }
+
+    return (long)total;
+}
+
+/// @brief Receive exactly one byte from HTTP connection.
+static int http_conn_recv_byte(http_conn_t *conn, uint8_t *byte)
+{
+    // Check buffer first
+    if (conn->read_buf_pos < conn->read_buf_len)
+    {
+        *byte = conn->read_buf[conn->read_buf_pos++];
+        return 1;
+    }
+
+    // Refill buffer
+    if (conn->use_tls)
+    {
+        long n = rt_tls_recv(conn->tls, conn->read_buf, sizeof(conn->read_buf));
+        if (n <= 0)
+            return 0;
+        conn->read_buf_len = (size_t)n;
+        conn->read_buf_pos = 0;
+    }
+    else
+    {
+        void *data = rt_tcp_recv(conn->tcp, (int64_t)sizeof(conn->read_buf));
+        int64_t data_len = rt_bytes_len(data);
+        if (data_len <= 0)
+            return 0;
+        memcpy(conn->read_buf, bytes_data(data), data_len);
+        conn->read_buf_len = (size_t)data_len;
+        conn->read_buf_pos = 0;
+    }
+
+    *byte = conn->read_buf[conn->read_buf_pos++];
+    return 1;
+}
+
+/// @brief Close HTTP connection.
+static void http_conn_close(http_conn_t *conn)
+{
+    if (conn->use_tls && conn->tls)
+    {
+        int sock = rt_tls_get_socket(conn->tls);
+        rt_tls_close(conn->tls);
+        conn->tls = NULL;
+        // Close underlying socket
+        if (sock >= 0)
+        {
+#ifdef _WIN32
+            closesocket(sock);
+#else
+            close(sock);
+#endif
+        }
+    }
+    else if (conn->tcp)
+    {
+        rt_tcp_close(conn->tcp);
+        conn->tcp = NULL;
+    }
+}
 
 /// @brief HTTP request structure.
 typedef struct rt_http_req
@@ -127,16 +272,20 @@ static int parse_url(const char *url_str, parsed_url_t *result)
 {
     memset(result, 0, sizeof(*result));
     result->port = 80;
+    result->use_tls = 0;
 
-    // Check for http:// prefix
+    // Check for http:// or https:// prefix
     if (strncmp(url_str, "http://", 7) == 0)
     {
         url_str += 7;
+        result->use_tls = 0;
+        result->port = 80;
     }
     else if (strncmp(url_str, "https://", 8) == 0)
     {
-        // HTTPS not supported
-        return -1;
+        url_str += 8;
+        result->use_tls = 1;
+        result->port = 443;
     }
 
     // Find end of host (either ':', '/', or end of string)
@@ -340,9 +489,9 @@ static char *build_request(rt_http_req_t *req)
     return request;
 }
 
-/// @brief Read a line from socket (up to CRLF).
+/// @brief Read a line from connection (up to CRLF).
 /// @return Allocated line without CRLF, or NULL on error.
-static char *read_line(void *tcp)
+static char *read_line_conn(http_conn_t *conn)
 {
     char *line = NULL;
     size_t len = 0;
@@ -353,8 +502,8 @@ static char *read_line(void *tcp)
 
     while (1)
     {
-        void *data = rt_tcp_recv(tcp, 1);
-        if (rt_bytes_len(data) == 0)
+        uint8_t byte;
+        if (http_conn_recv_byte(conn, &byte) == 0)
         {
             // Connection closed
             if (len == 0)
@@ -365,8 +514,7 @@ static char *read_line(void *tcp)
             break;
         }
 
-        uint8_t *byte_ptr = bytes_data(data);
-        char c = (char)byte_ptr[0];
+        char c = (char)byte;
 
         if (c == '\n')
         {
@@ -472,7 +620,7 @@ static void parse_header_line(const char *line, void *headers_map)
 }
 
 /// @brief Read response body with Content-Length.
-static uint8_t *read_body_content_length(void *tcp, size_t content_length, size_t *out_len)
+static uint8_t *read_body_content_length_conn(http_conn_t *conn, size_t content_length, size_t *out_len)
 {
     uint8_t *body = (uint8_t *)malloc(content_length);
     if (!body)
@@ -484,13 +632,10 @@ static uint8_t *read_body_content_length(void *tcp, size_t content_length, size_
         size_t remaining = content_length - total_read;
         size_t chunk_size = remaining < HTTP_BUFFER_SIZE ? remaining : HTTP_BUFFER_SIZE;
 
-        void *data = rt_tcp_recv(tcp, (int64_t)chunk_size);
-        int64_t len = rt_bytes_len(data);
-        if (len == 0)
+        long len = http_conn_recv(conn, body + total_read, chunk_size);
+        if (len <= 0)
             break;
 
-        uint8_t *data_ptr = bytes_data(data);
-        memcpy(body + total_read, data_ptr, len);
         total_read += len;
     }
 
@@ -499,7 +644,7 @@ static uint8_t *read_body_content_length(void *tcp, size_t content_length, size_
 }
 
 /// @brief Read chunked transfer encoding body.
-static uint8_t *read_body_chunked(void *tcp, size_t *out_len)
+static uint8_t *read_body_chunked_conn(http_conn_t *conn, size_t *out_len)
 {
     size_t body_cap = HTTP_BUFFER_SIZE;
     size_t body_len = 0;
@@ -510,7 +655,7 @@ static uint8_t *read_body_chunked(void *tcp, size_t *out_len)
     while (1)
     {
         // Read chunk size line
-        char *size_line = read_line(tcp);
+        char *size_line = read_line_conn(conn);
         if (!size_line)
             break;
 
@@ -533,7 +678,7 @@ static uint8_t *read_body_chunked(void *tcp, size_t *out_len)
         if (chunk_size == 0)
         {
             // Last chunk - read trailing CRLF
-            char *trailer = read_line(tcp);
+            char *trailer = read_line_conn(conn);
             free(trailer);
             break;
         }
@@ -552,28 +697,25 @@ static uint8_t *read_body_chunked(void *tcp, size_t *out_len)
         }
 
         // Read chunk data
-        size_t read = 0;
-        while (read < chunk_size)
+        size_t bytes_read = 0;
+        while (bytes_read < chunk_size)
         {
-            size_t remaining = chunk_size - read;
+            size_t remaining = chunk_size - bytes_read;
             size_t to_read = remaining < HTTP_BUFFER_SIZE ? remaining : HTTP_BUFFER_SIZE;
 
-            void *data = rt_tcp_recv(tcp, (int64_t)to_read);
-            int64_t len = rt_bytes_len(data);
-            if (len == 0)
+            long len = http_conn_recv(conn, body + body_len, to_read);
+            if (len <= 0)
             {
                 *out_len = body_len;
                 return body;
             }
 
-            uint8_t *data_ptr = bytes_data(data);
-            memcpy(body + body_len, data_ptr, len);
             body_len += len;
-            read += len;
+            bytes_read += len;
         }
 
         // Read trailing CRLF after chunk
-        char *chunk_end = read_line(tcp);
+        char *chunk_end = read_line_conn(conn);
         free(chunk_end);
     }
 
@@ -582,7 +724,7 @@ static uint8_t *read_body_chunked(void *tcp, size_t *out_len)
 }
 
 /// @brief Read response body until connection closes.
-static uint8_t *read_body_until_close(void *tcp, size_t *out_len)
+static uint8_t *read_body_until_close_conn(http_conn_t *conn, size_t *out_len)
 {
     size_t body_cap = HTTP_BUFFER_SIZE;
     size_t body_len = 0;
@@ -592,13 +734,8 @@ static uint8_t *read_body_until_close(void *tcp, size_t *out_len)
 
     while (1)
     {
-        void *data = rt_tcp_recv(tcp, HTTP_BUFFER_SIZE);
-        int64_t len = rt_bytes_len(data);
-        if (len == 0)
-            break;
-
         // Expand buffer if needed
-        while (body_len + len > body_cap)
+        if (body_len + HTTP_BUFFER_SIZE > body_cap)
         {
             body_cap *= 2;
             uint8_t *new_body = (uint8_t *)realloc(body, body_cap);
@@ -610,8 +747,10 @@ static uint8_t *read_body_until_close(void *tcp, size_t *out_len)
             body = new_body;
         }
 
-        uint8_t *data_ptr = bytes_data(data);
-        memcpy(body + body_len, data_ptr, len);
+        long len = http_conn_recv(conn, body + body_len, HTTP_BUFFER_SIZE);
+        if (len <= 0)
+            break;
+
         body_len += len;
     }
 
@@ -630,50 +769,91 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
         return NULL;
     }
 
-    // Connect to server
-    rt_string host = rt_string_from_bytes(req->url.host, strlen(req->url.host));
-    void *tcp = req->timeout_ms > 0 ? rt_tcp_connect_for(host, req->url.port, req->timeout_ms)
-                                    : rt_tcp_connect(host, req->url.port);
+    // Create connection (TLS or plain TCP)
+    http_conn_t conn;
+    memset(&conn, 0, sizeof(conn));
 
-    if (!tcp || !rt_tcp_is_open(tcp))
+    if (req->url.use_tls)
     {
-        rt_trap("HTTP: connection failed");
-        return NULL;
+        // HTTPS - use TLS
+        rt_tls_config_t tls_config;
+        rt_tls_config_init(&tls_config);
+        tls_config.hostname = req->url.host;
+        tls_config.verify_cert = 0; // Skip cert verification for now
+        if (req->timeout_ms > 0)
+            tls_config.timeout_ms = req->timeout_ms;
+
+        rt_tls_session_t *tls = rt_tls_connect(req->url.host, (uint16_t)req->url.port, &tls_config);
+        if (!tls)
+        {
+            rt_trap("HTTPS: connection failed");
+            return NULL;
+        }
+        http_conn_init_tls(&conn, tls);
     }
-
-    // Set socket timeout
-    if (req->timeout_ms > 0)
+    else
     {
-        rt_tcp_set_recv_timeout(tcp, req->timeout_ms);
-        rt_tcp_set_send_timeout(tcp, req->timeout_ms);
+        // HTTP - use plain TCP
+        rt_string host = rt_string_from_bytes(req->url.host, strlen(req->url.host));
+        void *tcp = req->timeout_ms > 0 ? rt_tcp_connect_for(host, req->url.port, req->timeout_ms)
+                                        : rt_tcp_connect(host, req->url.port);
+        rt_string_unref(host);
+
+        if (!tcp || !rt_tcp_is_open(tcp))
+        {
+            rt_trap("HTTP: connection failed");
+            return NULL;
+        }
+
+        // Set socket timeout
+        if (req->timeout_ms > 0)
+        {
+            rt_tcp_set_recv_timeout(tcp, req->timeout_ms);
+            rt_tcp_set_send_timeout(tcp, req->timeout_ms);
+        }
+        http_conn_init_tcp(&conn, tcp);
     }
 
     // Build and send request
     char *request_str = build_request(req);
     if (!request_str)
     {
-        rt_tcp_close(tcp);
+        http_conn_close(&conn);
         rt_trap("HTTP: failed to build request");
         return NULL;
     }
 
-    size_t request_len = strlen(request_str) + (req->body ? req->body_len : 0);
-    void *request_bytes = rt_bytes_new((int64_t)request_len);
-    uint8_t *request_ptr = bytes_data(request_bytes);
-
     size_t header_len = strlen(request_str);
-    memcpy(request_ptr, request_str, header_len);
+    size_t request_len = header_len + (req->body ? req->body_len : 0);
+    uint8_t *request_buf = (uint8_t *)malloc(request_len);
+    if (!request_buf)
+    {
+        free(request_str);
+        http_conn_close(&conn);
+        rt_trap("HTTP: memory allocation failed");
+        return NULL;
+    }
+
+    memcpy(request_buf, request_str, header_len);
     if (req->body && req->body_len > 0)
-        memcpy(request_ptr + header_len, req->body, req->body_len);
+        memcpy(request_buf + header_len, req->body, req->body_len);
 
     free(request_str);
-    rt_tcp_send_all(tcp, request_bytes);
+
+    if (http_conn_send(&conn, request_buf, request_len) < 0)
+    {
+        free(request_buf);
+        http_conn_close(&conn);
+        rt_trap("HTTP: send failed");
+        return NULL;
+    }
+    free(request_buf);
 
     // Read status line
-    char *status_line = read_line(tcp);
+    char *status_line = read_line_conn(&conn);
     if (!status_line)
     {
-        rt_tcp_close(tcp);
+        http_conn_close(&conn);
         rt_trap("HTTP: invalid response");
         return NULL;
     }
@@ -684,7 +864,7 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
 
     if (status < 0)
     {
-        rt_tcp_close(tcp);
+        http_conn_close(&conn);
         rt_trap("HTTP: invalid status line");
         return NULL;
     }
@@ -695,7 +875,7 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
 
     while (1)
     {
-        char *line = read_line(tcp);
+        char *line = read_line_conn(&conn);
         if (!line || line[0] == '\0')
         {
             free(line);
@@ -718,14 +898,14 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
     // Handle redirects (3xx with Location)
     if ((status == 301 || status == 302 || status == 307 || status == 308) && redirect_location)
     {
-        rt_tcp_close(tcp);
+        http_conn_close(&conn);
         free(status_text);
 
         // Parse new URL
         parsed_url_t new_url;
         if (parse_url(redirect_location, &new_url) < 0)
         {
-            // Relative URL - use same host
+            // Relative URL - use same host and scheme
             if (redirect_location[0] == '/')
             {
                 free(req->url.path);
@@ -780,20 +960,20 @@ static rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remainin
     }
     else if (transfer_encoding_val && strstr(rt_string_cstr(transfer_encoding_val), "chunked"))
     {
-        body = read_body_chunked(tcp, &body_len);
+        body = read_body_chunked_conn(&conn, &body_len);
     }
     else if (content_length_val)
     {
         size_t content_len = (size_t)atoll(rt_string_cstr(content_length_val));
-        body = read_body_content_length(tcp, content_len, &body_len);
+        body = read_body_content_length_conn(&conn, content_len, &body_len);
     }
     else
     {
         // Read until connection closes
-        body = read_body_until_close(tcp, &body_len);
+        body = read_body_until_close_conn(&conn, &body_len);
     }
 
-    rt_tcp_close(tcp);
+    http_conn_close(&conn);
     if (transfer_encoding_val)
         rt_string_unref(transfer_encoding_val);
     if (content_length_val)

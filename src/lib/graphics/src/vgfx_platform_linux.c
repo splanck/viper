@@ -649,4 +649,131 @@ void vgfx_platform_sleep_ms(int32_t ms)
     }
 }
 
+//===----------------------------------------------------------------------===//
+// Window Title and Fullscreen
+//===----------------------------------------------------------------------===//
+
+/// @brief Set the window title.
+/// @details Updates the X11 window's title using XStoreName.
+///
+/// @param win   Pointer to the window structure
+/// @param title New title string (UTF-8)
+void vgfx_platform_set_title(struct vgfx_window *win, const char *title)
+{
+    if (!win || !win->platform_data || !title)
+        return;
+
+    vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+    if (!x11->display || !x11->window)
+        return;
+
+    XStoreName(x11->display, x11->window, title);
+    XSetIconName(x11->display, x11->window, title);
+    XFlush(x11->display);
+}
+
+/// @brief Set the window to fullscreen or windowed mode.
+/// @details Uses the EWMH _NET_WM_STATE_FULLSCREEN hint to toggle fullscreen.
+///          This is the standard way to request fullscreen on modern X11
+///          window managers (GNOME, KDE, etc.).
+///
+/// @param win        Pointer to the window structure
+/// @param fullscreen 1 for fullscreen, 0 for windowed
+/// @return 1 on success, 0 on failure
+int vgfx_platform_set_fullscreen(struct vgfx_window *win, int fullscreen)
+{
+    if (!win || !win->platform_data)
+        return 0;
+
+    vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+    if (!x11->display || !x11->window)
+        return 0;
+
+    /* Get the EWMH atoms for fullscreen state */
+    Atom wm_state = XInternAtom(x11->display, "_NET_WM_STATE", False);
+    Atom wm_fullscreen = XInternAtom(x11->display, "_NET_WM_STATE_FULLSCREEN", False);
+
+    if (wm_state == None || wm_fullscreen == None)
+        return 0;
+
+    /* Send a client message to the window manager to change fullscreen state */
+    XEvent event;
+    memset(&event, 0, sizeof(event));
+    event.type = ClientMessage;
+    event.xclient.window = x11->window;
+    event.xclient.message_type = wm_state;
+    event.xclient.format = 32;
+    event.xclient.data.l[0] = fullscreen ? 1 : 0; /* _NET_WM_STATE_ADD or _NET_WM_STATE_REMOVE */
+    event.xclient.data.l[1] = (long)wm_fullscreen;
+    event.xclient.data.l[2] = 0; /* No second property */
+    event.xclient.data.l[3] = 1; /* Source indication: normal application */
+
+    XSendEvent(x11->display,
+               DefaultRootWindow(x11->display),
+               False,
+               SubstructureRedirectMask | SubstructureNotifyMask,
+               &event);
+
+    XFlush(x11->display);
+    return 1;
+}
+
+/// @brief Check if the window is in fullscreen mode.
+/// @details Queries the _NET_WM_STATE property to check for fullscreen.
+///
+/// @param win Pointer to the window structure
+/// @return 1 if fullscreen, 0 if windowed
+int vgfx_platform_is_fullscreen(struct vgfx_window *win)
+{
+    if (!win || !win->platform_data)
+        return 0;
+
+    vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+    if (!x11->display || !x11->window)
+        return 0;
+
+    Atom wm_state = XInternAtom(x11->display, "_NET_WM_STATE", False);
+    Atom wm_fullscreen = XInternAtom(x11->display, "_NET_WM_STATE_FULLSCREEN", False);
+
+    if (wm_state == None || wm_fullscreen == None)
+        return 0;
+
+    /* Query the _NET_WM_STATE property */
+    Atom actual_type;
+    int actual_format;
+    unsigned long nitems, bytes_after;
+    unsigned char *data = NULL;
+
+    int status = XGetWindowProperty(x11->display,
+                                    x11->window,
+                                    wm_state,
+                                    0,
+                                    1024,
+                                    False,
+                                    XA_ATOM,
+                                    &actual_type,
+                                    &actual_format,
+                                    &nitems,
+                                    &bytes_after,
+                                    &data);
+
+    if (status != Success || !data)
+        return 0;
+
+    /* Check if _NET_WM_STATE_FULLSCREEN is in the list */
+    int is_fullscreen = 0;
+    Atom *atoms = (Atom *)data;
+    for (unsigned long i = 0; i < nitems; i++)
+    {
+        if (atoms[i] == wm_fullscreen)
+        {
+            is_fullscreen = 1;
+            break;
+        }
+    }
+
+    XFree(data);
+    return is_fullscreen;
+}
+
 #endif /* __linux__ || __unix__ */

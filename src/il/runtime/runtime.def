@@ -1428,6 +1428,14 @@ RT_FUNC(RandomNextInt, rt_rand_int,      "Viper.Random.NextInt", "i64(i64)")
 RT_FUNC(RandomSeed,    rt_randomize_i64, "Viper.Random.Seed",    "void(i64)")
 // Note: Viper.Math.Randomize is already defined in RuntimeSignatures.cpp
 
+// Random distributions
+RT_FUNC(RandomRange,       rt_rand_range,       "Viper.Random.Range",       "i64(i64,i64)")
+RT_FUNC(RandomGaussian,    rt_rand_gaussian,    "Viper.Random.Gaussian",    "f64(f64,f64)")
+RT_FUNC(RandomExponential, rt_rand_exponential, "Viper.Random.Exponential", "f64(f64)")
+RT_FUNC(RandomDice,        rt_rand_dice,        "Viper.Random.Dice",        "i64(i64)")
+RT_FUNC(RandomChance,      rt_rand_chance,      "Viper.Random.Chance",      "i64(f64)")
+RT_FUNC(RandomShuffle,     rt_rand_shuffle,     "Viper.Random.Shuffle",     "void(obj)")
+
 //=============================================================================
 // STRING FUNCTIONS
 //=============================================================================

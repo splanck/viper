@@ -28,6 +28,7 @@
 #include "rt_context.h"
 #include "rt_internal.h"
 #include <assert.h>
+#include <math.h>
 
 /// @brief Seed the random generator with an unsigned 64-bit value.
 /// @details Replaces the linear congruential generator state in the current
@@ -84,4 +85,112 @@ long long rt_rand_int(long long max)
     // Use unsigned modulo to avoid bias issues with negative numbers
     uint64_t umax = (uint64_t)max;
     return (long long)(ctx->rng_state % umax);
+}
+
+//=============================================================================
+// Random Distributions
+//=============================================================================
+
+/// @brief Generate a random integer in the range [min, max] (inclusive).
+/// @details Swaps bounds if inverted, then uses the core LCG.
+long long rt_rand_range(long long min, long long max)
+{
+    if (min > max)
+    {
+        long long tmp = min;
+        min = max;
+        max = tmp;
+    }
+    long long range = max - min + 1;
+    return min + rt_rand_int(range);
+}
+
+/// @brief Generate a random number from a Gaussian (normal) distribution.
+/// @details Uses the Box-Muller transform: given two uniform U1, U2 in (0,1),
+///          Z = sqrt(-2*ln(U1)) * cos(2*pi*U2) is standard normal N(0,1).
+///          Then scale/shift to N(mean, stddev^2).
+double rt_rand_gaussian(double mean, double stddev)
+{
+    if (stddev <= 0.0)
+        return mean;
+
+    // Generate two uniform random numbers in (0, 1)
+    // Avoid exact 0 to prevent log(0)
+    double u1 = rt_rnd();
+    double u2 = rt_rnd();
+
+    // Ensure u1 is not zero (extremely rare but possible)
+    while (u1 == 0.0)
+        u1 = rt_rnd();
+
+    // Box-Muller transform
+    static const double TWO_PI = 6.283185307179586476925286766559;
+    double z = sqrt(-2.0 * log(u1)) * cos(TWO_PI * u2);
+
+    return mean + stddev * z;
+}
+
+/// @brief Generate a random number from an exponential distribution.
+/// @details Uses inverse transform sampling: X = -ln(1-U)/lambda where U is
+///          uniform [0,1). This produces Exp(lambda) with mean 1/lambda.
+double rt_rand_exponential(double lambda)
+{
+    if (lambda <= 0.0)
+        return 0.0;
+
+    double u = rt_rnd();
+    // Avoid log(0) when u is exactly 1.0 (extremely rare)
+    while (u >= 1.0)
+        u = rt_rnd();
+
+    return -log(1.0 - u) / lambda;
+}
+
+/// @brief Simulate a dice roll (1 to sides inclusive).
+/// @details Returns a uniform random integer in [1, sides].
+long long rt_rand_dice(long long sides)
+{
+    if (sides <= 0)
+        return 1;
+    return 1 + rt_rand_int(sides);
+}
+
+/// @brief Generate a random boolean with given probability.
+/// @details Returns 1 with probability p, 0 with probability 1-p.
+long long rt_rand_chance(double probability)
+{
+    if (probability <= 0.0)
+        return 0;
+    if (probability >= 1.0)
+        return 1;
+    return rt_rnd() < probability ? 1 : 0;
+}
+
+/// @brief Shuffle elements in a Seq randomly (Fisher-Yates algorithm).
+/// @details Uses the current RNG state for deterministic shuffling.
+void rt_rand_shuffle(void *seq)
+{
+    if (!seq)
+        return;
+
+    // Forward declare to avoid header dependency
+    extern int64_t rt_seq_len(void *);
+    extern void *rt_seq_get(void *, int64_t);
+    extern void rt_seq_set(void *, int64_t, void *);
+
+    int64_t n = rt_seq_len(seq);
+    if (n <= 1)
+        return;
+
+    // Fisher-Yates shuffle
+    for (int64_t i = n - 1; i > 0; i--)
+    {
+        int64_t j = rt_rand_int(i + 1);
+        if (i != j)
+        {
+            void *tmp = rt_seq_get(seq, i);
+            rt_seq_set(seq, i, rt_seq_get(seq, j));
+            rt_seq_set(seq, j, tmp);
+        }
+    }
 }

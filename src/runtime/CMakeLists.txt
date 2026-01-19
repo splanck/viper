@@ -126,6 +126,8 @@ set(RT_THREADS_SOURCES
 set(RT_NETWORK_SOURCES
         rt_network.c
         rt_network_http.c
+        rt_crypto.c
+        rt_tls.c
 )
 
 set(RT_PUBLIC_HEADERS
