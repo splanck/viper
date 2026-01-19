@@ -106,6 +106,22 @@ void LiveIntervals::run(const MFunction &func)
                             updateInterval(interval, index);
                         }
                     }
+                    // Also track the index register if present
+                    if (mem->hasIndex && !mem->index.isPhys)
+                    {
+                        auto &interval = intervals_[mem->index.idOrPhys];
+                        if (interval.vreg == 0U && interval.end == 0U)
+                        {
+                            interval.vreg = mem->index.idOrPhys;
+                            interval.cls = mem->index.cls;
+                            interval.start = index;
+                            interval.end = index + 1U;
+                        }
+                        else
+                        {
+                            updateInterval(interval, index);
+                        }
+                    }
                 }
             }
             ++index;

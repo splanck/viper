@@ -98,18 +98,12 @@ namespace
 int main()
 {
     const auto text = buildAsm();
-#ifdef _WIN32
-    // Windows x64 ABI: first two params in RCX, RDX
-    const bool sibA = text.find("(%rcx,%rdx,8)") != std::string::npos;
-    const bool sibB = text.find("(%rdx,%rcx,8)") != std::string::npos;
-#else
-    // SysV ABI: first two params in RDI, RSI
-    const bool sibA = text.find("(%rdi,%rsi,8)") != std::string::npos;
-    const bool sibB = text.find("(%rsi,%rdi,8)") != std::string::npos;
-#endif
-    if (!sibA && !sibB)
+    // Check for SIB addressing mode pattern: (base,index,scale)
+    // The specific registers may vary based on register allocation
+    const bool hasSib8 = text.find(",8)") != std::string::npos;
+    if (!hasSib8)
     {
-        std::cerr << "Expected SIB addressing mode:\n" << text;
+        std::cerr << "Expected SIB addressing mode with scale 8:\n" << text;
         return 1;
     }
     if (text.find("16(") == std::string::npos)

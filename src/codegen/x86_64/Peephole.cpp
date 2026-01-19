@@ -348,8 +348,8 @@ void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
 
         case MOpcode::MOVrm:
         case MOpcode::MOVSDrm:
-            // src, mem - check src
-            if (instr.operands.size() >= 1 && samePhysReg(instr.operands[0], reg))
+            // mem, src - check src (operands[1] is the source register)
+            if (instr.operands.size() >= 2 && samePhysReg(instr.operands[1], reg))
                 return true;
             break;
 
@@ -651,19 +651,10 @@ void runPeepholes(MFunction &fn)
         }
 
         // Pass 2: Try to fold consecutive moves
-        // DISABLED: This optimization has a bug where it doesn't detect register uses in
-        // MOVrm (store) instructions, causing values that should persist across calls
-        // to be incorrectly folded away. The usesReg function checks operands[0] for MOVrm
-        // but that's the memory operand, not the source register (operands[1]).
-        // Disabling this prevents runtime crashes in programs with many local variables
-        // that need to be preserved across function calls.
-        // TODO: Fix usesReg to correctly check MOVrm operands[1] for source register.
-#if 0
         for (std::size_t i = 0; i + 1 < instrs.size(); ++i)
         {
             (void)tryFoldConsecutiveMoves(instrs, i, stats);
         }
-#endif
 
         // Pass 3: Mark identity moves for removal
         for (std::size_t i = 0; i < instrs.size(); ++i)

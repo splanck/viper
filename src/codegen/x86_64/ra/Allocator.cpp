@@ -797,6 +797,11 @@ void LinearScanAllocator::handleOperand(Operand &operand,
                         {
                             OperandRole baseRole{true, false};
                             processRegOperand(mem.base, baseRole, prefix, suffix, scratch);
+                            // Also process the index register if present
+                            if (mem.hasIndex)
+                            {
+                                processRegOperand(mem.index, baseRole, prefix, suffix, scratch);
+                            }
                         },
                         [](auto &) {}},
                operand);
