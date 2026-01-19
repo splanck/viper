@@ -12,7 +12,7 @@ set "BASIC_DIR=%ROOT_DIR%\demos\basic"
 set "ZIA_DIR=%ROOT_DIR%\demos\zia"
 set "TMP_DIR=%TEMP%\viper_demo_build_%RANDOM%"
 
-set "ILC=%BUILD_DIR%\src\tools\ilc\Debug\ilc.exe"
+set "VIPER=%BUILD_DIR%\src\tools\viper\Debug\viper.exe"
 set "ZIA=%BUILD_DIR%\src\tools\zia\Debug\zia.exe"
 set "RUNTIME_LIB=%BUILD_DIR%\src\runtime\Debug\viper_runtime.lib"
 set "GFX_LIB=%BUILD_DIR%\lib\Debug\vipergfx.lib"
@@ -47,8 +47,8 @@ echo ==============================================
 echo.
 
 REM Check prerequisites
-if not exist "%ILC%" (
-    echo ERROR: ilc not found at %ILC%
+if not exist "%VIPER%" (
+    echo ERROR: viper not found at %VIPER%
     echo Run 'cmake --build build' first
     exit /b 1
 )
@@ -127,7 +127,7 @@ set "OBJ_FILE=%TMP_DIR%\%NAME%.obj"
 set "EXE_FILE=%BIN_DIR%\%NAME%.exe"
 
 echo   Compiling BASIC to IL...
-"%ILC%" front basic -emit-il "%SOURCE%" > "%IL_FILE%" 2>nul
+"%VIPER%" front basic -emit-il "%SOURCE%" > "%IL_FILE%" 2>nul
 if errorlevel 1 (
     echo   FAILED: BASIC compilation
     set /a FAILED+=1
@@ -137,7 +137,7 @@ if errorlevel 1 (
 echo   OK
 
 echo   Generating x86_64 assembly...
-"%ILC%" codegen x64 "%IL_FILE%" -S "%ASM_FILE%" 2>nul
+"%VIPER%" codegen x64 "%IL_FILE%" -S "%ASM_FILE%" 2>nul
 if errorlevel 1 (
     echo   FAILED: x86_64 codegen
     echo   (This is expected - x86_64 backend is incomplete on Windows^)
@@ -214,7 +214,7 @@ if errorlevel 1 (
 echo   OK
 
 echo   Generating x86_64 assembly...
-"%ILC%" codegen x64 "%IL_FILE%" -S "%ASM_FILE%" 2>nul
+"%VIPER%" codegen x64 "%IL_FILE%" -S "%ASM_FILE%" 2>nul
 if errorlevel 1 (
     echo   FAILED: x86_64 codegen
     echo   (This is expected - x86_64 backend is incomplete on Windows^)
