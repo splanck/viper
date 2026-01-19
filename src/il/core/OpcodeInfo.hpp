@@ -201,8 +201,8 @@ extern const std::array<OpcodeInfo, kNumOpcodes> kOpcodeTable;
 const OpcodeInfo &getOpcodeInfo(Opcode op);
 
 /// @brief Enumerate all opcodes defined by the IL in declaration order.
-/// @return Vector containing every opcode exactly once.
-std::vector<Opcode> all_opcodes();
+/// @return Const reference to a cached vector containing every opcode exactly once.
+const std::vector<Opcode> &all_opcodes();
 
 /// @brief Retrieve the conservative memory interaction classification.
 /// @param op Opcode to query.

@@ -120,16 +120,20 @@ const OpcodeInfo &getOpcodeInfo(Opcode op)
 }
 
 /// @brief Enumerate every opcode in declaration order.
-/// @details Materialises a vector containing each opcode enumeration value,
-///          primarily used by tools that need to iterate over all opcodes in a
+/// @details Returns a reference to a statically cached vector containing each
+///          opcode enumeration value, avoiding allocation on repeated calls.
+///          Primarily used by tools that need to iterate over all opcodes in a
 ///          stable order for reporting or analysis.
-/// @return Vector populated with every opcode value.
-std::vector<Opcode> all_opcodes()
+/// @return Const reference to vector populated with every opcode value.
+const std::vector<Opcode> &all_opcodes()
 {
-    std::vector<Opcode> ops;
-    ops.reserve(kNumOpcodes);
-    for (size_t index = 0; index < kNumOpcodes; ++index)
-        ops.push_back(static_cast<Opcode>(index));
+    static const std::vector<Opcode> ops = []() {
+        std::vector<Opcode> v;
+        v.reserve(kNumOpcodes);
+        for (size_t index = 0; index < kNumOpcodes; ++index)
+            v.push_back(static_cast<Opcode>(index));
+        return v;
+    }();
     return ops;
 }
 

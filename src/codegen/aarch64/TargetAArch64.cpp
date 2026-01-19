@@ -184,11 +184,16 @@ TargetInfo darwinTargetInstance = makeDarwinTarget();
 
 } // namespace
 
+/// @brief Get the singleton TargetInfo instance for Darwin/macOS AArch64.
+/// @return Reference to the pre-configured Darwin target information.
 TargetInfo &darwinTarget() noexcept
 {
     return darwinTargetInstance;
 }
 
+/// @brief Check if a physical register is a general-purpose register (GPR).
+/// @param reg The physical register to check.
+/// @return True if the register is X0-X30 or SP, false otherwise.
 bool isGPR(PhysReg reg) noexcept
 {
     switch (reg)
@@ -231,6 +236,9 @@ bool isGPR(PhysReg reg) noexcept
     }
 }
 
+/// @brief Check if a physical register is a floating-point/SIMD register (FPR).
+/// @param reg The physical register to check.
+/// @return True if the register is V0-V31, false otherwise.
 bool isFPR(PhysReg reg) noexcept
 {
     switch (reg)
@@ -273,6 +281,9 @@ bool isFPR(PhysReg reg) noexcept
     }
 }
 
+/// @brief Get the assembly name for a physical register.
+/// @param reg The physical register to get the name for.
+/// @return The lowercase assembly name string (e.g., "x0", "sp", "v0").
 const char *regName(PhysReg reg) noexcept
 {
     switch (reg)

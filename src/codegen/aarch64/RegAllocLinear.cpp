@@ -135,6 +135,11 @@ namespace
 // Helper predicates for register classification
 //-----------------------------------------------------------------------------
 
+/// @brief Check if a GPR is available for register allocation.
+/// @param r The physical register to check.
+/// @return True if the register can be allocated to virtual registers.
+/// @details Excludes frame pointer (X29), link register (X30), stack pointer (SP),
+///          platform reserved (X18), and global scratch register (X9).
 static bool isAllocatableGPR(PhysReg r)
 {
     switch (r)
@@ -151,6 +156,10 @@ static bool isAllocatableGPR(PhysReg r)
     }
 }
 
+/// @brief Check if a register is used for argument passing.
+/// @param r The physical register to check.
+/// @param ti Target information containing the ABI's argument register lists.
+/// @return True if the register is in the integer or floating-point argument order.
 static bool isArgRegister(PhysReg r, const TargetInfo &ti)
 {
     for (auto ar : ti.intArgOrder)
@@ -166,6 +175,9 @@ static bool isArgRegister(PhysReg r, const TargetInfo &ti)
 // Opcode classification helpers
 //-----------------------------------------------------------------------------
 
+/// @brief Check if an opcode uses a use-def-def register pattern.
+/// @param opc The machine opcode to check.
+/// @return True for three-operand ALU operations (dst = src1 op src2).
 static bool isUseDefDefLike(MOpcode opc)
 {
     switch (opc)
@@ -184,6 +196,9 @@ static bool isUseDefDefLike(MOpcode opc)
     }
 }
 
+/// @brief Check if an opcode uses a use-def-immediate register pattern.
+/// @param opc The machine opcode to check.
+/// @return True for two-operand ALU operations with immediate (dst = src op imm).
 static bool isUseDefImmLike(MOpcode opc)
 {
     switch (opc)
@@ -199,52 +214,82 @@ static bool isUseDefImmLike(MOpcode opc)
     }
 }
 
+/// @brief Check if an opcode adjusts the stack pointer.
+/// @param opc The machine opcode to check.
+/// @return True for SubSpImm or AddSpImm opcodes.
 static bool isSpAdj(MOpcode opc)
 {
     return opc == MOpcode::SubSpImm || opc == MOpcode::AddSpImm;
 }
 
+/// @brief Check if an opcode is an unconditional or conditional branch.
+/// @param opc The machine opcode to check.
+/// @return True for Br or BCond opcodes.
+/// @note Cbz is not included since it has a register operand needing allocation.
 static bool isBranch(MOpcode opc)
 {
-    // Note: Cbz has a register operand that needs allocation, so it's NOT included here
     return opc == MOpcode::Br || opc == MOpcode::BCond;
 }
 
+/// @brief Check if an opcode is a function call.
+/// @param opc The machine opcode to check.
+/// @return True for Bl (branch-and-link) opcode.
 static bool isCall(MOpcode opc)
 {
     return opc == MOpcode::Bl;
 }
 
+/// @brief Check if an opcode is a register-register comparison.
+/// @param opc The machine opcode to check.
+/// @return True for CmpRR opcode.
 static bool isCmpRR(MOpcode opc)
 {
     return opc == MOpcode::CmpRR;
 }
 
+/// @brief Check if an opcode is a register-immediate comparison.
+/// @param opc The machine opcode to check.
+/// @return True for CmpRI opcode.
 static bool isCmpRI(MOpcode opc)
 {
     return opc == MOpcode::CmpRI;
 }
 
+/// @brief Check if an opcode is a conditional set.
+/// @param opc The machine opcode to check.
+/// @return True for Cset opcode.
 static bool isCset(MOpcode opc)
 {
     return opc == MOpcode::Cset;
 }
 
+/// @brief Check if an opcode is a return instruction.
+/// @param opc The machine opcode to check.
+/// @return True for Ret opcode.
 static bool isRet(MOpcode opc)
 {
     return opc == MOpcode::Ret;
 }
 
+/// @brief Check if an opcode is a basic block terminator.
+/// @param opc The machine opcode to check.
+/// @return True for branches and returns.
 static bool isTerminator(MOpcode opc)
 {
     return isBranch(opc) || isRet(opc);
 }
 
+/// @brief Check if an opcode is a memory load instruction.
+/// @param opc The machine opcode to check.
+/// @return True for LdrRegFpImm or LdrRegBaseImm opcodes.
 static bool isMemLd(MOpcode opc)
 {
     return opc == MOpcode::LdrRegFpImm || opc == MOpcode::LdrRegBaseImm;
 }
 
+/// @brief Check if an opcode is a memory store instruction.
+/// @param opc The machine opcode to check.
+/// @return True for StrRegFpImm, StrRegBaseImm, or StrRegSpImm opcodes.
 static bool isMemSt(MOpcode opc)
 {
     return opc == MOpcode::StrRegFpImm || opc == MOpcode::StrRegBaseImm ||

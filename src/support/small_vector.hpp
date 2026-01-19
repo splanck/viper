@@ -65,16 +65,16 @@ class SmallVector
     SmallVector(std::initializer_list<T> init)
     {
         reserve(init.size());
-        for (const auto &elem : init)
-            push_back(elem);
+        std::copy(init.begin(), init.end(), data());
+        size_ = init.size();
     }
 
     /// @brief Copy constructor.
     SmallVector(const SmallVector &other)
     {
         reserve(other.size_);
-        for (size_t i = 0; i < other.size_; ++i)
-            push_back(other[i]);
+        std::copy(other.data(), other.data() + other.size_, data());
+        size_ = other.size_;
     }
 
     /// @brief Move constructor.
@@ -114,8 +114,8 @@ class SmallVector
         {
             clear();
             reserve(other.size_);
-            for (size_t i = 0; i < other.size_; ++i)
-                push_back(other[i]);
+            std::copy(other.data(), other.data() + other.size_, data());
+            size_ = other.size_;
         }
         return *this;
     }
@@ -158,9 +158,7 @@ class SmallVector
 
         // Need to grow to heap
         T *newBuf = new T[n];
-        T *src = data();
-        for (size_t i = 0; i < size_; ++i)
-            newBuf[i] = src[i];
+        std::copy(data(), data() + size_, newBuf);
 
         if (isHeap())
             delete[] heap_;
