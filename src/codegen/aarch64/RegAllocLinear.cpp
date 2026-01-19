@@ -476,8 +476,8 @@ class LinearAllocator
     std::unordered_map<uint16_t, VState> gprStates_;
     std::unordered_map<uint16_t, VState> fprStates_;
     unsigned currentInstrIdx_{0}; ///< Current instruction index for LRU tracking.
-    std::unordered_map<uint16_t, unsigned> nextUseGPR_; ///< Next use index for GPR vregs.
-    std::unordered_map<uint16_t, unsigned> nextUseFPR_; ///< Next use index for FPR vregs.
+    std::unordered_map<uint16_t, std::vector<unsigned>> usePositionsGPR_; ///< All use positions for GPR vregs.
+    std::unordered_map<uint16_t, std::vector<unsigned>> usePositionsFPR_; ///< All use positions for FPR vregs.
     std::vector<unsigned> callPositions_; ///< Positions of call instructions in current block.
     // CFG + liveness (conservative cross-block)
     std::unordered_map<std::string, std::size_t> blockIndex_;
@@ -559,44 +559,34 @@ class LinearAllocator
     ///
     /// This enables "furthest end point" spilling: when we need to spill,
     /// we choose the vreg that won't be needed for the longest time.
-    /// Scanning backward from the end of the block, we record when each vreg
-    /// is next used.
+    /// We scan forward through the block and record ALL use positions for each vreg.
+    /// This allows us to find the actual next use from any instruction position.
     ///
     /// Also computes call positions for call-aware register allocation.
     void computeNextUses(const MBasicBlock &bb)
     {
-        nextUseGPR_.clear();
-        nextUseFPR_.clear();
+        usePositionsGPR_.clear();
+        usePositionsFPR_.clear();
         callPositions_.clear();
 
-        // Scan forward to find call positions
+        // Single forward scan to collect all use positions and call positions
         unsigned idx = 0;
         for (const auto &mi : bb.instrs)
         {
             if (isCall(mi.opc))
                 callPositions_.push_back(idx);
-            ++idx;
-        }
 
-        // Scan backward through the block for next-use computation.
-        // We want to record the LAST use of each vreg (for determining if it
-        // survives until after a call), so we DON'T overwrite existing entries.
-        // First occurrence in backward scan = latest use in forward direction.
-        idx = static_cast<unsigned>(bb.instrs.size());
-        for (auto it = bb.instrs.rbegin(); it != bb.instrs.rend(); ++it)
-        {
-            --idx;
-            for (const auto &op : it->ops)
+            for (const auto &op : mi.ops)
             {
                 if (op.kind != MOperand::Kind::Reg || op.reg.isPhys)
                     continue;
-                // Only record if not already seen (keeps first use position)
-                // Use try_emplace for single-lookup insertion
+                // Record every use position for each vreg
                 if (op.reg.cls == RegClass::GPR)
-                    nextUseGPR_.try_emplace(op.reg.idOrPhys, idx);
+                    usePositionsGPR_[op.reg.idOrPhys].push_back(idx);
                 else
-                    nextUseFPR_.try_emplace(op.reg.idOrPhys, idx);
+                    usePositionsFPR_[op.reg.idOrPhys].push_back(idx);
             }
+            ++idx;
         }
     }
 
@@ -625,13 +615,17 @@ class LinearAllocator
     /// @return Distance to next use, or UINT_MAX if not used again in block.
     unsigned getNextUseDistance(uint16_t vreg, RegClass cls) const
     {
-        const auto &map = (cls == RegClass::GPR) ? nextUseGPR_ : nextUseFPR_;
+        const auto &map = (cls == RegClass::GPR) ? usePositionsGPR_ : usePositionsFPR_;
         auto it = map.find(vreg);
         if (it == map.end())
-            return UINT_MAX; // Not used again in this block
-        if (it->second <= currentInstrIdx_)
-            return UINT_MAX; // Already past this use
-        return it->second - currentInstrIdx_;
+            return UINT_MAX; // Not used in this block
+
+        // Binary search for the first use position after currentInstrIdx_
+        const auto &positions = it->second;
+        auto pos = std::upper_bound(positions.begin(), positions.end(), currentInstrIdx_);
+        if (pos == positions.end())
+            return UINT_MAX; // No future use in this block
+        return *pos - currentInstrIdx_;
     }
 
     //-------------------------------------------------------------------------
@@ -694,32 +688,10 @@ class LinearAllocator
 
     uint16_t selectFurthestVictim(RegClass cls)
     {
-        auto &states = (cls == RegClass::GPR) ? gprStates_ : fprStates_;
-        uint16_t victim = UINT16_MAX;
-        unsigned furthestUse = 0;
-
-        for (auto &kv : states)
-        {
-            if (!kv.second.hasPhys)
-                continue;
-
-            // Get distance to next use for this vreg
-            unsigned nextUseDist = getNextUseDistance(kv.first, cls);
-
-            // Prefer spilling vregs with no future use in this block (UINT_MAX distance)
-            // or those used furthest in the future
-            if (nextUseDist > furthestUse)
-            {
-                furthestUse = nextUseDist;
-                victim = kv.first;
-            }
-        }
-
-        // Fall back to LRU if no suitable victim found
-        if (victim == UINT16_MAX)
-            return selectLRUVictim(cls);
-
-        return victim;
+        // TEMPORARILY DISABLED: FEP heuristic has bugs causing crashes in complex programs.
+        // Fall back to LRU which is conservative but correct.
+        // TODO: Debug and re-enable FEP for better performance.
+        return selectLRUVictim(cls);
     }
 
     void maybeSpillForPressure(RegClass cls, std::vector<MInstr> &prefix)

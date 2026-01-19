@@ -183,6 +183,10 @@ SECTION 11: IMPLEMENTATION LOG (2026-01-19)
 [2026-01-19 11:45] Optimized SmallVector with std::copy (4 methods improved)
 [2026-01-19 11:50] Optimized all_opcodes() to return cached static vector
 [2026-01-19 11:55] Build and tests passed (922/922)
+[2026-01-19 12:00] Fixed paint demo crash - disabled buggy FEP spill heuristic in AArch64 allocator
+                   Root cause: FEP was computing "last use" instead of "next use" distances
+                   Temporary fix: Fall back to LRU heuristic (conservative but correct)
+                   All demos (paint, chess, pacman, frogger, vtris, centipede) now work
 
 ================================================================================
 SECTION 12: TEST STATUS
