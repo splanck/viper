@@ -110,4 +110,114 @@ void Arena::reset()
 {
     offset_ = 0;
 }
+
+// =============================================================================
+// GrowingArena implementation
+// =============================================================================
+
+void *GrowingArena::Chunk::tryAllocate(size_t sz, size_t align)
+{
+    // Validate alignment (power of two, non-zero)
+    if (align == 0 || (align & (align - 1)) != 0)
+        return nullptr;
+
+    const std::uintptr_t base = reinterpret_cast<std::uintptr_t>(data.get());
+    const std::uintptr_t current = base + offset;
+    const std::uintptr_t mask = static_cast<std::uintptr_t>(align - 1);
+    const std::uintptr_t aligned = (current + mask) & ~mask;
+    const size_t adjustment = static_cast<size_t>(aligned - current);
+    const size_t newOffset = offset + adjustment + sz;
+
+    if (newOffset > size)
+        return nullptr;
+
+    offset = newOffset;
+    return data.get() + offset - sz;
+}
+
+GrowingArena::GrowingArena(size_t initialChunkSize, size_t growthChunkSize)
+    : growthChunkSize_(growthChunkSize)
+{
+    chunks_.reserve(4); // Reserve space for a few chunks
+    allocateChunk(initialChunkSize);
+}
+
+GrowingArena::~GrowingArena()
+{
+    destroyObjects();
+}
+
+GrowingArena::GrowingArena(GrowingArena &&other) noexcept
+    : chunks_(std::move(other.chunks_))
+    , destructors_(std::move(other.destructors_))
+    , growthChunkSize_(other.growthChunkSize_)
+{
+}
+
+GrowingArena &GrowingArena::operator=(GrowingArena &&other) noexcept
+{
+    if (this != &other)
+    {
+        destroyObjects();
+        chunks_ = std::move(other.chunks_);
+        destructors_ = std::move(other.destructors_);
+        growthChunkSize_ = other.growthChunkSize_;
+    }
+    return *this;
+}
+
+void *GrowingArena::allocate(size_t size, size_t align)
+{
+    // Try to allocate from the current chunk
+    if (!chunks_.empty())
+    {
+        if (void *ptr = chunks_.back().tryAllocate(size, align))
+            return ptr;
+    }
+
+    // Need a new chunk - allocate at least enough for this request
+    const size_t chunkSize = std::max(growthChunkSize_, size + align);
+    allocateChunk(chunkSize);
+
+    void *ptr = chunks_.back().tryAllocate(size, align);
+    if (!ptr)
+        throw std::bad_alloc();
+
+    return ptr;
+}
+
+void GrowingArena::reset()
+{
+    destroyObjects();
+    // Keep the first chunk, clear the rest
+    if (!chunks_.empty())
+    {
+        chunks_[0].offset = 0;
+        chunks_.resize(1);
+    }
+}
+
+size_t GrowingArena::totalAllocated() const noexcept
+{
+    size_t total = 0;
+    for (const auto &chunk : chunks_)
+        total += chunk.offset;
+    return total;
+}
+
+void GrowingArena::allocateChunk(size_t minSize)
+{
+    chunks_.emplace_back(minSize);
+}
+
+void GrowingArena::destroyObjects()
+{
+    // Destroy in reverse order (LIFO)
+    for (auto it = destructors_.rbegin(); it != destructors_.rend(); ++it)
+    {
+        it->destroy(it->object);
+    }
+    destructors_.clear();
+}
+
 } // namespace il::support

@@ -115,6 +115,7 @@ class OopIndexBuilder
     [[nodiscard]] std::string joinNamespace() const;
 
     // Phase methods
+    void scanDeclarations(const std::vector<StmtPtr> &stmts);
     void scanClasses(const std::vector<StmtPtr> &stmts);
     void scanInterfaces(const std::vector<StmtPtr> &stmts);
     void collectUsingDirectives(const std::vector<StmtPtr> &stmts);
@@ -123,8 +124,9 @@ class OopIndexBuilder
     void buildVtables();
     void checkInterfaceConformance();
 
-    // Class member processing
+    // Declaration processing
     void processClassDecl(const ClassDecl &classDecl);
+    void processInterfaceDecl(const InterfaceDecl &interfaceDecl);
     void processPropertyDecl(const PropertyDecl &prop, ClassInfo &info);
     void processConstructorDecl(const ConstructorDecl &ctor,
                                 ClassInfo &info,

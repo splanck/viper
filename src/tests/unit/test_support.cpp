@@ -195,6 +195,69 @@ int main()
     arena.allocate(32, 1);
     assert(arena.allocate(std::numeric_limits<size_t>::max() - 15, 1) == nullptr);
 
+    // GrowingArena basic allocation
+    {
+        il::support::GrowingArena growArena(64, 128);
+        void *g1 = growArena.allocate(32, 8);
+        assert(g1 != nullptr);
+        assert(reinterpret_cast<uintptr_t>(g1) % 8 == 0);
+
+        // Force growth by allocating more than initial chunk
+        void *g2 = growArena.allocate(100, 8);
+        assert(g2 != nullptr);
+        assert(growArena.chunkCount() >= 2);
+
+        // Test create<T>()
+        struct TestStruct
+        {
+            int a;
+            double b;
+            TestStruct(int x, double y) : a(x), b(y) {}
+        };
+        auto *ts = growArena.create<TestStruct>(42, 3.14);
+        assert(ts != nullptr);
+        assert(ts->a == 42);
+        assert(ts->b == 3.14);
+
+        // Test totalAllocated
+        assert(growArena.totalAllocated() > 0);
+    }
+
+    // GrowingArena destructor tracking
+    {
+        static int destructorCount = 0;
+        struct TrackedObj
+        {
+            int *counter;
+            TrackedObj(int *c) : counter(c) {}
+            ~TrackedObj() { ++(*counter); }
+        };
+
+        {
+            il::support::GrowingArena destructArena(256);
+            destructArena.create<TrackedObj>(&destructorCount);
+            destructArena.create<TrackedObj>(&destructorCount);
+            destructArena.create<TrackedObj>(&destructorCount);
+            assert(destructorCount == 0); // Not destroyed yet
+        }
+        // Arena destroyed - objects should be destroyed
+        assert(destructorCount == 3);
+
+        // Test reset
+        destructorCount = 0;
+        {
+            il::support::GrowingArena resetArena(256);
+            resetArena.create<TrackedObj>(&destructorCount);
+            resetArena.create<TrackedObj>(&destructorCount);
+            resetArena.reset();
+            assert(destructorCount == 2);
+
+            resetArena.create<TrackedObj>(&destructorCount);
+            // Will be destroyed on scope exit
+        }
+        assert(destructorCount == 3);
+    }
+
     // String interner overflow handling
     il::support::StringInterner boundedInterner(2);
     auto s0 = boundedInterner.intern("s0");

@@ -334,7 +334,7 @@ void OopIndexBuilder::processClassDecl(const ClassDecl &classDecl)
     index_.classes()[info.qualifiedName] = std::move(info);
 }
 
-void OopIndexBuilder::scanClasses(const std::vector<StmtPtr> &stmts)
+void OopIndexBuilder::scanDeclarations(const std::vector<StmtPtr> &stmts)
 {
     for (const auto &stmtPtr : stmts)
     {
@@ -348,7 +348,7 @@ void OopIndexBuilder::scanClasses(const std::vector<StmtPtr> &stmts)
                 const auto &ns = static_cast<const NamespaceDecl &>(*stmtPtr);
                 for (const auto &seg : ns.path)
                     nsStack_.push_back(seg);
-                scanClasses(ns.body);
+                scanDeclarations(ns.body);
                 nsStack_.resize(nsStack_.size() >= ns.path.size() ? nsStack_.size() - ns.path.size()
                                                                   : 0);
                 break;
@@ -356,94 +356,95 @@ void OopIndexBuilder::scanClasses(const std::vector<StmtPtr> &stmts)
             case Stmt::Kind::ClassDecl:
                 processClassDecl(static_cast<const ClassDecl &>(*stmtPtr));
                 break;
+            case Stmt::Kind::InterfaceDecl:
+                processInterfaceDecl(static_cast<const InterfaceDecl &>(*stmtPtr));
+                break;
             default:
                 break;
         }
     }
 }
 
-void OopIndexBuilder::scanInterfaces(const std::vector<StmtPtr> &stmts)
+void OopIndexBuilder::processInterfaceDecl(const InterfaceDecl &idecl)
 {
-    for (const auto &stmt : stmts)
+    InterfaceInfo ii;
+    ii.qualifiedName = joinQualified(idecl.qualifiedName);
+    if (ii.qualifiedName.empty())
+        return;
+
+    ii.ifaceId = index_.allocateInterfaceId();
+
+    std::unordered_set<std::string> seen;
+    for (const auto &mem : idecl.members)
     {
-        if (!stmt)
+        if (!mem)
             continue;
 
-        if (auto *ns = as<const NamespaceDecl>(*stmt))
+        if (auto *pd = as<const PropertyDecl>(*mem))
         {
-            scanInterfaces(ns->body);
+            if (emitter_)
+            {
+                emitter_->emit(il::support::Severity::Error,
+                               "B2115",
+                               pd->loc,
+                               1,
+                               "interfaces cannot declare properties (methods only)");
+            }
             continue;
         }
 
-        if (auto *idecl = as<const InterfaceDecl>(*stmt))
+        if (auto *md = as<const MethodDecl>(*mem))
         {
-            InterfaceInfo ii;
-            ii.qualifiedName = joinQualified(idecl->qualifiedName);
-            if (ii.qualifiedName.empty())
-                continue;
-
-            ii.ifaceId = index_.allocateInterfaceId();
-
-            std::unordered_set<std::string> seen;
-            for (const auto &mem : idecl->members)
+            if (md->isStatic && emitter_)
             {
-                if (!mem)
-                    continue;
-
-                if (auto *pd = as<const PropertyDecl>(*mem))
-                {
-                    if (emitter_)
-                    {
-                        emitter_->emit(il::support::Severity::Error,
-                                       "B2115",
-                                       pd->loc,
-                                       1,
-                                       "interfaces cannot declare properties (methods only)");
-                    }
-                    continue;
-                }
-
-                if (auto *md = as<const MethodDecl>(*mem))
-                {
-                    if (md->isStatic && emitter_)
-                    {
-                        emitter_->emit(il::support::Severity::Error,
-                                       "B2116",
-                                       md->loc,
-                                       1,
-                                       "interfaces cannot declare STATIC methods");
-                    }
-
-                    if (seen.contains(md->name))
-                    {
-                        if (emitter_)
-                        {
-                            std::string msg = "interface '" + ii.qualifiedName +
-                                              "' declares duplicate method '" + md->name + "'.";
-                            emitter_->emit(il::support::Severity::Error,
-                                           "E_IFACE_DUP_METHOD",
-                                           md->loc,
-                                           static_cast<uint32_t>(md->name.size()),
-                                           std::move(msg));
-                        }
-                        continue;
-                    }
-                    seen.insert(md->name);
-
-                    IfaceMethodSig slot;
-                    slot.name = md->name;
-                    for (const auto &p : md->params)
-                        slot.paramTypes.push_back(p.type);
-                    if (md->ret)
-                        slot.returnType = md->ret;
-                    else if (auto suffixType = inferAstTypeFromSuffix(md->name))
-                        slot.returnType = suffixType;
-                    ii.slots.push_back(std::move(slot));
-                }
+                emitter_->emit(il::support::Severity::Error,
+                               "B2116",
+                               md->loc,
+                               1,
+                               "interfaces cannot declare STATIC methods");
             }
-            index_.interfacesByQname()[ii.qualifiedName] = std::move(ii);
+
+            if (seen.contains(md->name))
+            {
+                if (emitter_)
+                {
+                    std::string msg = "interface '" + ii.qualifiedName +
+                                      "' declares duplicate method '" + md->name + "'.";
+                    emitter_->emit(il::support::Severity::Error,
+                                   "E_IFACE_DUP_METHOD",
+                                   md->loc,
+                                   static_cast<uint32_t>(md->name.size()),
+                                   std::move(msg));
+                }
+                continue;
+            }
+            seen.insert(md->name);
+
+            IfaceMethodSig slot;
+            slot.name = md->name;
+            for (const auto &p : md->params)
+                slot.paramTypes.push_back(p.type);
+            if (md->ret)
+                slot.returnType = md->ret;
+            else if (auto suffixType = inferAstTypeFromSuffix(md->name))
+                slot.returnType = suffixType;
+            ii.slots.push_back(std::move(slot));
         }
     }
+    index_.interfacesByQname()[ii.qualifiedName] = std::move(ii);
+}
+
+// Legacy compatibility - forwards to unified scan
+void OopIndexBuilder::scanClasses(const std::vector<StmtPtr> &stmts)
+{
+    scanDeclarations(stmts);
+}
+
+// Legacy compatibility - now a no-op since scanDeclarations handles both
+void OopIndexBuilder::scanInterfaces(const std::vector<StmtPtr> &stmts)
+{
+    // Interface scanning is now done in scanDeclarations
+    (void)stmts;
 }
 
 void OopIndexBuilder::collectUsingDirectives(const std::vector<StmtPtr> &stmts)

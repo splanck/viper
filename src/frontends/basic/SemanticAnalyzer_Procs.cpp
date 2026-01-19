@@ -473,12 +473,15 @@ void SemanticAnalyzer::analyze(const Program &prog)
     // Construct TypeResolver after declare pass completes.
     resolver_ = std::make_unique<TypeResolver>(ns_, usings_);
 
-    // Analyze main module body FIRST so module-level variables are registered
-    // in symbols_ before procedures are analyzed. This allows procedures to
-    // reference module-level globals without explicit parameters.
+    // Pre-collect all labels (line numbers) from main block for GOTO/GOSUB validation.
+    // This must happen before analysis since GOTO can jump forward.
     for (const auto &stmt : prog.main)
         if (stmt)
             labels_.insert(stmt->line);
+
+    // Analyze main module body so module-level variables are registered
+    // in symbols_ before procedures are analyzed. This allows procedures to
+    // reference module-level globals without explicit parameters.
     for (const auto &stmt : prog.main)
         if (stmt)
             visitStmt(*stmt);
