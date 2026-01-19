@@ -1,0 +1,27 @@
+module simple_entity;
+
+entity Point {
+    expose Integer x;
+    expose Integer y;
+    
+    expose func init() {
+        x = 0;
+        y = 0;
+    }
+    
+    expose func set(px: Integer, py: Integer) {
+        x = px;
+        y = py;
+    }
+    
+    expose func distFromOrigin() -> Integer {
+        return x * x + y * y;
+    }
+}
+
+func main() {
+    var p = new Point();
+    p.set(3, 4);
+    var dist = p.distFromOrigin();
+    // dist should be 25
+}

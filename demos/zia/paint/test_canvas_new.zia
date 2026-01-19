@@ -1,0 +1,11 @@
+module test_canvas_new;
+
+bind "./config";
+bind "./canvas";
+
+func main() {
+    // Just create a DrawingCanvas
+    var c = new canvas.DrawingCanvas();
+    // This should call DrawingCanvas.init() automatically
+    // which sets width=0, height=0, backgroundColor=config.COLOR_WHITE
+}

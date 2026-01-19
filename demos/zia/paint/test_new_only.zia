@@ -1,0 +1,24 @@
+module test_new_only;
+
+bind "./config";
+bind "./canvas";
+bind "./colors";
+bind "./brush";
+bind "./tools/pencil";
+bind "./tools/brush";
+bind "./tools/eraser";
+bind "./tools/line";
+bind "./tools/rectangle";
+bind "./tools/ellipse";
+bind "./tools/fill";
+bind "./tools/eyedropper";
+bind "./ui/button";
+bind "./ui/slider";
+bind "./app";
+
+func main() {
+    // Just create the app, don't call run
+    var myapp = new app.PaintApp();
+    // PaintApp.init is called automatically by new
+    // This should create all the sub-entities
+}

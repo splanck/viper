@@ -83,29 +83,19 @@ entity PaintApp {
         canvas = new canvas.DrawingCanvas();
         canvas.initWithSize(1024, 768);
 
-        // Initialize color and brush
+        // Initialize color and brush (new calls init automatically)
         colors = new colors.ColorManager();
-        colors.init();
         brushSettings = new brush.BrushSettings();
-        brushSettings.init();
 
-        // Initialize tools
+        // Initialize tools (new calls init automatically)
         pencilTool = new pencil.PencilTool();
-        pencilTool.init();
         brushTool = new brush_tool.BrushTool();
-        brushTool.init();
         eraserTool = new eraser.EraserTool();
-        eraserTool.init();
         lineTool = new line.LineTool();
-        lineTool.init();
         rectTool = new rectangle.RectangleTool();
-        rectTool.init();
         ellipseTool = new ellipse.EllipseTool();
-        ellipseTool.init();
         fillTool = new fill.FillTool();
-        fillTool.init();
         eyedropperTool = new eyedropper.EyedropperTool();
-        eyedropperTool.init();
 
         currentTool = config.TOOL_BRUSH;  // Start with brush
 

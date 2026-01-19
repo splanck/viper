@@ -1,0 +1,27 @@
+module minimal_test;
+
+// Minimal entity to test OOP in native
+entity Counter {
+    expose Integer value;
+
+    expose func init() {
+        value = 0;
+    }
+
+    expose func increment() {
+        value = value + 1;
+    }
+
+    expose func get() -> Integer {
+        return value;
+    }
+}
+
+func main() {
+    var c = new Counter();
+    c.increment();
+    c.increment();
+    c.increment();
+    var result = c.get();
+    // Should return 3
+}

@@ -1,0 +1,22 @@
+module entity_gfx_test;
+
+entity TestEntity {
+    expose Integer value;
+    expose ptr canvas;
+
+    expose func init() {
+        value = 42;
+        canvas = Viper.Graphics.Canvas.New("Entity Test", 100, 100);
+    }
+
+    expose func cleanup() {
+        // Just set value to show we got here
+        value = 99;
+    }
+}
+
+func main() {
+    var entity = new TestEntity();
+    entity.cleanup();
+    // Return entity.value which should be 99
+}

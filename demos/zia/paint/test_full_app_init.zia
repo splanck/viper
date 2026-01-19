@@ -1,0 +1,177 @@
+module test_full_app_init;
+
+bind "./config";
+bind "./canvas";
+bind "./colors";
+bind "./brush";
+bind "./tools/pencil";
+bind "./tools/brush";
+bind "./tools/eraser";
+bind "./tools/line";
+bind "./tools/rectangle";
+bind "./tools/ellipse";
+bind "./tools/fill";
+bind "./tools/eyedropper";
+bind "./ui/button";
+bind "./ui/slider";
+
+// Full PaintApp clone
+entity FullPaintApp {
+    hide Viper.Graphics.Canvas gfx;
+    expose canvas.DrawingCanvas drawCanvas;
+    expose colors.ColorManager clrMgr;
+    expose brush.BrushSettings brsh;
+
+    hide pencil.PencilTool pencilTool;
+    hide brush_tool.BrushTool brushTool;
+    hide eraser.EraserTool eraserTool;
+    hide line.LineTool lineTool;
+    hide rectangle.RectangleTool rectTool;
+    hide ellipse.EllipseTool ellipseTool;
+    hide fill.FillTool fillTool;
+    hide eyedropper.EyedropperTool eyedropperTool;
+
+    expose Integer currentTool;
+
+    // All 8 tool buttons
+    hide button.ToolButton btnPencil;
+    hide button.ToolButton btnBrush;
+    hide button.ToolButton btnEraser;
+    hide button.ToolButton btnLine;
+    hide button.ToolButton btnRect;
+    hide button.ToolButton btnEllipse;
+    hide button.ToolButton btnFill;
+    hide button.ToolButton btnEyedropper;
+
+    // 2 sliders
+    hide slider.Slider sizeSlider;
+    hide slider.Slider opacitySlider;
+
+    // 4 buttons
+    hide button.Button btnNew;
+    hide button.Button btnOpen;
+    hide button.Button btnSave;
+    hide button.Button btnClear;
+
+    // Mouse state
+    hide Integer mouseX;
+    hide Integer mouseY;
+    hide Integer mouseDown;
+    hide Integer lastMouseDown;
+
+    // Application state
+    expose Integer running;
+    expose String statusMessage;
+
+    // Canvas offset
+    hide Integer canvasOffsetX;
+    hide Integer canvasOffsetY;
+
+    expose func init() {
+        gfx = Viper.Graphics.Canvas.New(config.WINDOW_TITLE, config.WINDOW_WIDTH, config.WINDOW_HEIGHT);
+
+        drawCanvas = new canvas.DrawingCanvas();
+        drawCanvas.initWithSize(1024, 768);
+
+        clrMgr = new colors.ColorManager();
+        brsh = new brush.BrushSettings();
+
+        pencilTool = new pencil.PencilTool();
+        brushTool = new brush_tool.BrushTool();
+        eraserTool = new eraser.EraserTool();
+        lineTool = new line.LineTool();
+        rectTool = new rectangle.RectangleTool();
+        ellipseTool = new ellipse.EllipseTool();
+        fillTool = new fill.FillTool();
+        eyedropperTool = new eyedropper.EyedropperTool();
+
+        currentTool = config.TOOL_BRUSH;
+
+        canvasOffsetX = config.TOOL_PANEL_WIDTH + 10;
+        canvasOffsetY = config.TOOLBAR_HEIGHT + 10;
+
+        initUI();
+
+        running = 1;
+        statusMessage = "Ready - Click to draw, 1-8: tools, Q: quit";
+        mouseX = 0;
+        mouseY = 0;
+        mouseDown = 0;
+        lastMouseDown = 0;
+    }
+
+    hide func initUI() {
+        var toolX = 6;
+        var toolY = config.TOOLBAR_HEIGHT + 10;
+        var toolSize = config.TOOL_BUTTON_SIZE;
+        var margin = config.TOOL_BUTTON_MARGIN;
+
+        btnPencil = new button.ToolButton();
+        btnPencil.setup(toolX, toolY, toolSize, "P", config.TOOL_PENCIL);
+        toolY = toolY + toolSize + margin;
+
+        btnBrush = new button.ToolButton();
+        btnBrush.setup(toolX, toolY, toolSize, "B", config.TOOL_BRUSH);
+        btnBrush.selected = 1;
+        toolY = toolY + toolSize + margin;
+
+        btnEraser = new button.ToolButton();
+        btnEraser.setup(toolX, toolY, toolSize, "E", config.TOOL_ERASER);
+        toolY = toolY + toolSize + margin;
+
+        btnLine = new button.ToolButton();
+        btnLine.setup(toolX, toolY, toolSize, "L", config.TOOL_LINE);
+        toolY = toolY + toolSize + margin;
+
+        btnRect = new button.ToolButton();
+        btnRect.setup(toolX, toolY, toolSize, "R", config.TOOL_RECTANGLE);
+        toolY = toolY + toolSize + margin;
+
+        btnEllipse = new button.ToolButton();
+        btnEllipse.setup(toolX, toolY, toolSize, "O", config.TOOL_ELLIPSE);
+        toolY = toolY + toolSize + margin;
+
+        btnFill = new button.ToolButton();
+        btnFill.setup(toolX, toolY, toolSize, "F", config.TOOL_FILL);
+        toolY = toolY + toolSize + margin;
+
+        btnEyedropper = new button.ToolButton();
+        btnEyedropper.setup(toolX, toolY, toolSize, "I", config.TOOL_EYEDROPPER);
+
+        var sliderX = 6;
+        var sliderY = toolY + toolSize + 30;
+        var sliderW = config.TOOL_PANEL_WIDTH - 12;
+
+        sizeSlider = new slider.Slider();
+        sizeSlider.setup(sliderX, sliderY, sliderW, 16, "Size", 1, 64, 8);
+
+        sliderY = sliderY + 40;
+        opacitySlider = new slider.Slider();
+        opacitySlider.setup(sliderX, sliderY, sliderW, 16, "Opacity", 0, 100, 100);
+
+        var btnY = 8;
+        var btnH = 24;
+        var btnW = 50;
+        var btnX = config.TOOL_PANEL_WIDTH + 10;
+
+        btnNew = new button.Button();
+        btnNew.setup(btnX, btnY, btnW, btnH, "New");
+        btnX = btnX + btnW + 6;
+
+        btnOpen = new button.Button();
+        btnOpen.setup(btnX, btnY, btnW, btnH, "Open");
+        btnX = btnX + btnW + 6;
+
+        btnSave = new button.Button();
+        btnSave.setup(btnX, btnY, btnW, btnH, "Save");
+        btnX = btnX + btnW + 20;
+
+        btnClear = new button.Button();
+        btnClear.setup(btnX, btnY, btnW + 10, btnH, "Clear");
+    }
+}
+
+func main() {
+    var app = new FullPaintApp();
+    // Don't run, just test initialization
+}

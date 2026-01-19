@@ -1,0 +1,116 @@
+module test_8_buttons;
+
+bind "./config";
+bind "./canvas";
+bind "./colors";
+bind "./brush";
+bind "./tools/pencil";
+bind "./tools/brush";
+bind "./tools/eraser";
+bind "./tools/line";
+bind "./tools/rectangle";
+bind "./tools/ellipse";
+bind "./tools/fill";
+bind "./tools/eyedropper";
+bind "./ui/button";
+bind "./ui/slider";
+
+entity TestApp {
+    hide Viper.Graphics.Canvas gfx;
+    expose canvas.DrawingCanvas drawCanvas;
+    expose colors.ColorManager clrMgr;
+    expose brush.BrushSettings brsh;
+
+    hide pencil.PencilTool pencilTool;
+    hide brush_tool.BrushTool brushTool;
+    hide eraser.EraserTool eraserTool;
+    hide line.LineTool lineTool;
+    hide rectangle.RectangleTool rectTool;
+    hide ellipse.EllipseTool ellipseTool;
+    hide fill.FillTool fillTool;
+    hide eyedropper.EyedropperTool eyedropperTool;
+
+    expose Integer currentTool;
+
+    // 8 tool buttons
+    hide button.ToolButton btnPencil;
+    hide button.ToolButton btnBrush;
+    hide button.ToolButton btnEraser;
+    hide button.ToolButton btnLine;
+    hide button.ToolButton btnRect;
+    hide button.ToolButton btnEllipse;
+    hide button.ToolButton btnFill;
+    hide button.ToolButton btnEyedropper;
+
+    // 1 slider
+    hide slider.Slider sizeSlider;
+
+    hide Integer mouseX;
+    hide Integer mouseY;
+    hide Integer running;
+
+    expose func init() {
+        gfx = Viper.Graphics.Canvas.New(config.WINDOW_TITLE, 800, 600);
+
+        drawCanvas = new canvas.DrawingCanvas();
+        drawCanvas.initWithSize(640, 480);
+
+        clrMgr = new colors.ColorManager();
+        brsh = new brush.BrushSettings();
+
+        pencilTool = new pencil.PencilTool();
+        brushTool = new brush_tool.BrushTool();
+        eraserTool = new eraser.EraserTool();
+        lineTool = new line.LineTool();
+        rectTool = new rectangle.RectangleTool();
+        ellipseTool = new ellipse.EllipseTool();
+        fillTool = new fill.FillTool();
+        eyedropperTool = new eyedropper.EyedropperTool();
+
+        currentTool = config.TOOL_BRUSH;
+
+        var y = 50;
+        btnPencil = new button.ToolButton();
+        btnPencil.setup(10, y, 32, "P", config.TOOL_PENCIL);
+        y = y + 40;
+
+        btnBrush = new button.ToolButton();
+        btnBrush.setup(10, y, 32, "B", config.TOOL_BRUSH);
+        y = y + 40;
+
+        btnEraser = new button.ToolButton();
+        btnEraser.setup(10, y, 32, "E", config.TOOL_ERASER);
+        y = y + 40;
+
+        btnLine = new button.ToolButton();
+        btnLine.setup(10, y, 32, "L", config.TOOL_LINE);
+        y = y + 40;
+
+        btnRect = new button.ToolButton();
+        btnRect.setup(10, y, 32, "R", config.TOOL_RECTANGLE);
+        y = y + 40;
+
+        btnEllipse = new button.ToolButton();
+        btnEllipse.setup(10, y, 32, "O", config.TOOL_ELLIPSE);
+        y = y + 40;
+
+        btnFill = new button.ToolButton();
+        btnFill.setup(10, y, 32, "F", config.TOOL_FILL);
+        y = y + 40;
+
+        btnEyedropper = new button.ToolButton();
+        btnEyedropper.setup(10, y, 32, "I", config.TOOL_EYEDROPPER);
+        y = y + 40;
+
+        sizeSlider = new slider.Slider();
+        sizeSlider.setup(10, y, 60, 16, "Size", 1, 64, 8);
+
+        mouseX = 0;
+        mouseY = 0;
+        running = 1;
+    }
+}
+
+func main() {
+    var app = new TestApp();
+}

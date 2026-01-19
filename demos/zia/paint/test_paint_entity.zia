@@ -1,0 +1,83 @@
+module test_paint_entity;
+
+bind "./config";
+bind "./canvas";
+bind "./colors";
+bind "./brush";
+bind "./tools/pencil";
+bind "./tools/brush";
+bind "./tools/eraser";
+bind "./tools/line";
+bind "./tools/rectangle";
+bind "./tools/ellipse";
+bind "./tools/fill";
+bind "./tools/eyedropper";
+bind "./ui/button";
+bind "./ui/slider";
+
+// Simplified PaintApp entity with all fields
+entity TestPaintApp {
+    hide Viper.Graphics.Canvas gfx;
+    expose canvas.DrawingCanvas drawCanvas;
+    expose colors.ColorManager clrMgr;
+    expose brush.BrushSettings brsh;
+
+    hide pencil.PencilTool pencilTool;
+    hide brush_tool.BrushTool brushTool;
+    hide eraser.EraserTool eraserTool;
+    hide line.LineTool lineTool;
+    hide rectangle.RectangleTool rectTool;
+    hide ellipse.EllipseTool ellipseTool;
+    hide fill.FillTool fillTool;
+    hide eyedropper.EyedropperTool eyedropperTool;
+
+    expose Integer currentTool;
+
+    hide button.ToolButton btnPencil;
+    hide button.ToolButton btnBrush;
+
+    hide slider.Slider sizeSlider;
+
+    hide Integer mouseX;
+    hide Integer mouseY;
+    hide Integer running;
+
+    expose func init() {
+        gfx = Viper.Graphics.Canvas.New(config.WINDOW_TITLE, 800, 600);
+
+        drawCanvas = new canvas.DrawingCanvas();
+        drawCanvas.initWithSize(640, 480);
+
+        clrMgr = new colors.ColorManager();
+        brsh = new brush.BrushSettings();
+
+        pencilTool = new pencil.PencilTool();
+        brushTool = new brush_tool.BrushTool();
+        eraserTool = new eraser.EraserTool();
+        lineTool = new line.LineTool();
+        rectTool = new rectangle.RectangleTool();
+        ellipseTool = new ellipse.EllipseTool();
+        fillTool = new fill.FillTool();
+        eyedropperTool = new eyedropper.EyedropperTool();
+
+        currentTool = config.TOOL_BRUSH;
+
+        btnPencil = new button.ToolButton();
+        btnPencil.setup(10, 50, 32, "P", config.TOOL_PENCIL);
+
+        btnBrush = new button.ToolButton();
+        btnBrush.setup(10, 90, 32, "B", config.TOOL_BRUSH);
+
+        sizeSlider = new slider.Slider();
+        sizeSlider.setup(10, 130, 60, 16, "Size", 1, 64, 8);
+
+        mouseX = 0;
+        mouseY = 0;
+        running = 1;
+    }
+}
+
+func main() {
+    var app = new TestPaintApp();
+    // Don't call run, just test initialization
+}

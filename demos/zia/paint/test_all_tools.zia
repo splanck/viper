@@ -1,0 +1,39 @@
+module test_all_tools;
+
+bind "./config";
+bind "./canvas";
+bind "./colors";
+bind "./brush";
+bind "./tools/pencil";
+bind "./tools/brush";
+bind "./tools/eraser";
+bind "./tools/line";
+bind "./tools/rectangle";
+bind "./tools/ellipse";
+bind "./tools/fill";
+bind "./tools/eyedropper";
+
+func main() {
+    // Create graphics canvas
+    var gfx = Viper.Graphics.Canvas.New(config.WINDOW_TITLE, 800, 600);
+
+    // Create DrawingCanvas and initialize with size
+    var c = new canvas.DrawingCanvas();
+    c.initWithSize(640, 480);
+
+    // Create ColorManager
+    var clr = new colors.ColorManager();
+
+    // Create BrushSettings
+    var brsh = new brush.BrushSettings();
+
+    // Create all tools
+    var pencilTool = new pencil.PencilTool();
+    var brushTool = new brush_tool.BrushTool();
+    var eraserTool = new eraser.EraserTool();
+    var lineTool = new line.LineTool();
+    var rectTool = new rectangle.RectangleTool();
+    var ellipseTool = new ellipse.EllipseTool();
+    var fillTool = new fill.FillTool();
+    var eyedropperTool = new eyedropper.EyedropperTool();
+}
