@@ -125,6 +125,40 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx);
 // Utility Functions
 //===----------------------------------------------------------------------===//
 
+/// @brief Result of single-block fast-path validation.
+/// @details Provides references to the front block and output MIR block if
+///          validation succeeds, allowing callers to avoid repeated lookups.
+struct SingleBlockFastPathSetup
+{
+    const il::core::BasicBlock &bb;  ///< Reference to the single block.
+    MBasicBlock &bbMir;              ///< Reference to the output MIR block.
+};
+
+/// @brief Validate context for single-block fast-path patterns.
+/// @details Checks that the function has exactly one block with at least
+///          minInstrs instructions. Returns references to avoid repeated
+///          lookups in calling code.
+/// @param ctx Fast-path context to validate.
+/// @param minInstrs Minimum required instruction count (default: 2).
+/// @param requireParams If true, block must have at least one parameter.
+/// @return Setup struct if valid, nullopt otherwise.
+[[nodiscard]] inline std::optional<SingleBlockFastPathSetup>
+validateSingleBlockFastPath(FastPathContext &ctx, std::size_t minInstrs = 2, bool requireParams = true)
+{
+    if (ctx.fn.blocks.empty())
+        return std::nullopt;
+    if (ctx.fn.blocks.size() != 1)
+        return std::nullopt;
+
+    const auto &bb = ctx.fn.blocks.front();
+    if (bb.instructions.size() < minInstrs)
+        return std::nullopt;
+    if (requireParams && bb.params.empty())
+        return std::nullopt;
+
+    return SingleBlockFastPathSetup{bb, ctx.bbOut(0)};
+}
+
 /// @brief Check if a basic block has side effects that prevent fast-path.
 [[nodiscard]] inline bool hasSideEffects(const il::core::BasicBlock &bb)
 {

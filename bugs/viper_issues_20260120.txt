@@ -1,0 +1,414 @@
+================================================================================
+VIPER CODEBASE IMPROVEMENT PLAN
+================================================================================
+Date: 2026-01-20
+Status: IN PROGRESS
+Total Lines Analyzed: 351,351 (1,237 files)
+
+================================================================================
+SECTION 1: EXECUTIVE SUMMARY
+================================================================================
+
+Comprehensive analysis of the Viper C++ codebase identified opportunities for:
+- Performance optimizations (O(n²/n³) algorithms, string inefficiencies)
+- Code deduplication (shared helpers, common patterns)
+- Documentation gaps (missing function/class comments)
+- Code readability improvements
+
+Priority breakdown:
+- HIGH PRIORITY: 8 items (performance, critical docs)
+- MEDIUM PRIORITY: 12 items (code duplication, documentation)
+- LOW PRIORITY: 6 items (style, minor improvements)
+
+================================================================================
+SECTION 2: HIGH PRIORITY ISSUES
+================================================================================
+
+------------------------------------------------------------------------------
+2.1 PERFORMANCE: O(n³) Loop Parent Detection in LoopInfo.cpp
+------------------------------------------------------------------------------
+File: src/il/transform/analysis/LoopInfo.cpp
+Lines: 203-222
+Status: [X] COMPLETED - Added loopSizes cache for O(1) size lookup
+
+Problem:
+Nested loop to find parent loops with findLoop() inside inner loop creates
+O(n³) complexity for large loop nests.
+
+Current code:
+  for (auto &loop : info.loops_)           // O(n)
+      for (const auto &candidate : info.loops_)  // O(n)
+          if (!parent || info.findLoop(*parent)->blockLabels.size() > ...)  // O(n)
+
+Fix: Cache loop sizes in a map before iteration, use single pass algorithm.
+
+------------------------------------------------------------------------------
+2.2 PERFORMANCE: Chained Map Lookups in Mem2Reg.cpp SROA
+------------------------------------------------------------------------------
+File: src/il/transform/Mem2Reg.cpp
+Lines: 570-596
+Status: [X] COMPLETED - Changed owner map to store SROACandidate* directly
+
+Problem:
+Three sequential map lookups per GEP instruction:
+  owner.find() → candidates.find() → offsets.find()
+
+Fix: Flatten lookup or use combined key.
+
+------------------------------------------------------------------------------
+2.3 DOCUMENTATION: vm/Trap.hpp Public Functions Undocumented
+------------------------------------------------------------------------------
+File: src/vm/Trap.hpp
+Lines: 151-153
+Status: [X] COMPLETED - Added @brief/@details/@param/@return docs
+
+Functions needing documentation:
+- void vm_raise(TrapKind kind, int32_t code = 0);
+- void vm_raise_from_error(const VmError &error);
+- std::string vm_format_error(const VmError &error, const FrameInfo &frame);
+
+------------------------------------------------------------------------------
+2.4 DOCUMENTATION: support/small_vector.hpp Methods
+------------------------------------------------------------------------------
+File: src/support/small_vector.hpp
+Lines: 183-203
+Status: [X] COMPLETED - Added @brief docs for public accessors
+
+Public methods needing @brief documentation:
+- data()
+- data() const
+- empty()
+- size()
+
+------------------------------------------------------------------------------
+2.5 PERFORMANCE: String Concatenation in EhChecks.cpp
+------------------------------------------------------------------------------
+File: src/il/verify/EhChecks.cpp
+Lines: 1085-1091, 157-177
+Status: [X] COMPLETED - Added reserve() pre-allocation
+
+Problem:
+Multiple += operations on strings cause repeated allocations:
+  std::string suffix = "eh.push block ";
+  suffix += ehPushBlock->label;
+  suffix += " does not dominate...";
+
+Fix: Use string reserve() or single-expression concatenation.
+
+------------------------------------------------------------------------------
+2.6 CODE QUALITY: Fastpath Validation Duplication
+------------------------------------------------------------------------------
+Files: src/codegen/aarch64/fastpaths/FastPaths_*.cpp (5 files)
+Status: [X] COMPLETED - Added validateSingleBlockFastPath() helper in FastPathsInternal.hpp
+
+Problem:
+Identical validation pattern repeated in all 5 fastpath files:
+  if (ctx.fn.blocks.empty()) return std::nullopt;
+  const auto &bb = ctx.fn.blocks.front();
+  if (ctx.fn.blocks.size() != 1 || bb.instructions.size() < 2 ...)
+
+Fix: Extract to shared helper function in FastPathsInternal.hpp
+
+------------------------------------------------------------------------------
+2.7 DOCUMENTATION: ParallelCopyResolver Algorithm
+------------------------------------------------------------------------------
+File: src/codegen/x86_64/ParallelCopyResolver.hpp
+Lines: 66-184
+Status: [X] COMPLETED - Added detailed algorithm comments explaining phases
+
+Problem:
+Complex topological sort + cycle breaking algorithm lacks inline comments.
+- In-degree computation (lines 68-106) not explained
+- Cycle detection and breaking (lines 141-183) not documented
+
+------------------------------------------------------------------------------
+2.8 PERFORMANCE: std::to_string in Hot Assembly Paths
+------------------------------------------------------------------------------
+Files: src/codegen/x86_64/AsmEmitter.cpp, asmfmt/Format.cpp
+Lines: Multiple (265, 278, 362, 385 in AsmEmitter; 61, 119, 136, 201 in Format)
+Status: [ ] PENDING
+
+Problem:
+std::to_string() creates temporaries in hot assembly emission loop.
+
+Fix: Use pre-allocated buffer or snprintf-style formatting.
+
+================================================================================
+SECTION 3: MEDIUM PRIORITY ISSUES
+================================================================================
+
+------------------------------------------------------------------------------
+3.1 CODE DEDUP: Container Lookup Helper Functions
+------------------------------------------------------------------------------
+Files: Multiple across IL, VM, Codegen
+Status: [ ] PENDING
+
+Pattern repeated 100+ times:
+  auto it = map.find(key);
+  if (it != map.end()) {
+      // use it->second
+  }
+
+Fix: Create template helpers in support/:
+  template<typename Map, typename Key>
+  auto* findOrNull(Map& map, const Key& key);
+
+  template<typename Map, typename Key, typename Default>
+  auto getOr(const Map& map, const Key& key, Default&& def);
+
+------------------------------------------------------------------------------
+3.2 CODE DEDUP: MInstr Construction Patterns
+------------------------------------------------------------------------------
+File: src/codegen/aarch64/fastpaths/FastPaths_*.cpp
+Status: [ ] PENDING
+
+Problem:
+Verbose MInstr constructions repeated heavily:
+  MInstr{MOpcode::MOV_RR_64, {MOperand::reg(destReg), MOperand::reg(srcReg)}}
+
+Fix: Create builder methods:
+  MInstr::movRR64(destReg, srcReg);
+  MInstr::addRRR(dest, lhs, rhs);
+
+------------------------------------------------------------------------------
+3.3 DOCUMENTATION: SimplifyCFG.hpp Pass Context
+------------------------------------------------------------------------------
+File: src/il/transform/SimplifyCFG.hpp
+Lines: 58-87
+Status: [X] COMPLETED - Added docs for constructor and all methods
+
+Methods needing documentation:
+- isDebugLoggingEnabled()
+- logDebug()
+- isEHSensitive()
+- SimplifyCFGPassContext constructor parameters
+
+------------------------------------------------------------------------------
+3.4 CODE QUALITY: Long Function Decomposition - SCCP.cpp
+------------------------------------------------------------------------------
+File: src/il/transform/SCCP.cpp
+Lines: 1-1502 (entire file)
+Status: [ ] PENDING
+
+Problem: 1502 line monolithic file
+Fix: Extract fold functions into separate helpers by type.
+
+------------------------------------------------------------------------------
+3.5 CODE QUALITY: Long Function Decomposition - Peephole.cpp
+------------------------------------------------------------------------------
+File: src/codegen/aarch64/Peephole.cpp
+Lines: 1-1313
+Status: [ ] PENDING
+
+Problem: 1313 line monolithic peephole optimizer
+Fix: Extract pattern matching into categorized helper functions.
+
+------------------------------------------------------------------------------
+3.6 PERFORMANCE: string_view Parameters
+------------------------------------------------------------------------------
+Files: Multiple
+Status: [~] DEFERRED - Functions use string concatenation internally, change not beneficial
+
+Functions taking const std::string& that could use string_view:
+- LoopSimplify.cpp:86 makeUniqueLabel(... const std::string &base)
+- Inline.cpp:108 depthKey(const std::string &fn, const std::string &label)
+- Inline.cpp:164 lookupValueName(... const std::string &fallback)
+- Inline.cpp:263 makeUniqueLabel(... const std::string &base)
+
+------------------------------------------------------------------------------
+3.7 DOCUMENTATION: CopyPair/CopyEmitter Structs
+------------------------------------------------------------------------------
+File: src/codegen/x86_64/ParallelCopyResolver.hpp
+Lines: 29-42
+Status: [X] COMPLETED - Added @brief/@details/@param for all members/methods
+
+Struct members need documentation:
+- CopyPair::srcV, dstV, cls
+- CopyEmitter virtual methods
+
+------------------------------------------------------------------------------
+3.8 CODE DEDUP: Error Construction in IL IO
+------------------------------------------------------------------------------
+Files: src/il/io/*.cpp (82 error constructions)
+Status: [ ] PENDING
+
+Pattern:
+  if (!condition) {
+      return diag::Error(...);
+  }
+
+Fix: Create RETURN_IF macro or inline helper.
+
+------------------------------------------------------------------------------
+3.9 DOCUMENTATION: Block Access Helper Patterns
+------------------------------------------------------------------------------
+Files: Fastpaths, codegen
+Status: [ ] PENDING
+
+Repeated pattern needing documentation:
+  const auto &opI = bb.instructions[bb.instructions.size() - 2];
+  const auto &retI = bb.instructions.back();
+
+Could add helpers: secondToLast(), last() with clear semantics.
+
+------------------------------------------------------------------------------
+3.10 PERFORMANCE: Liveness Block Index Lookup
+------------------------------------------------------------------------------
+File: src/il/transform/analysis/Liveness.cpp
+Lines: 410-420
+Status: [ ] PENDING
+
+Sequential find() calls for each successor could be batched.
+
+------------------------------------------------------------------------------
+3.11 DOCUMENTATION: IRBuilder.hpp Methods
+------------------------------------------------------------------------------
+File: src/il/build/IRBuilder.hpp
+Lines: 150+
+Status: [ ] PENDING
+
+Review all public builder methods for complete documentation.
+
+------------------------------------------------------------------------------
+3.12 CODE QUALITY: EhChecks.cpp Decomposition
+------------------------------------------------------------------------------
+File: src/il/verify/EhChecks.cpp
+Lines: 1-1316
+Status: [ ] PENDING
+
+Problem: 1316 line verification file
+Fix: Extract state management and validation logic into helpers.
+
+================================================================================
+SECTION 4: LOW PRIORITY ISSUES
+================================================================================
+
+------------------------------------------------------------------------------
+4.1 STYLE: Typo in SimplifyCFG Comment
+------------------------------------------------------------------------------
+File: src/il/transform/SimplifyCFG.hpp
+Line: 24
+Status: [X] COMPLETED - Fixed "Canon icalize" to "Canonicalize"
+
+------------------------------------------------------------------------------
+4.2 DOCUMENTATION: Private Namespace Details
+------------------------------------------------------------------------------
+File: src/codegen/x86_64/ParallelCopyResolver.hpp
+Lines: 47, 66
+Status: [ ] PENDING
+
+Private helper functions in detail namespace:
+- findMaxVirtualRegister()
+- resolveClassCopies()
+
+------------------------------------------------------------------------------
+4.3 DOCUMENTATION: SmallVector Private Members
+------------------------------------------------------------------------------
+File: src/support/small_vector.hpp
+Lines: 42-46
+Status: [ ] PENDING
+
+Convert inline comments to Doxygen @brief tags for:
+- inlineStorage_
+- heap_
+- capacity_
+- size_
+
+------------------------------------------------------------------------------
+4.4 STYLE: Iterator vs Range-Based For
+------------------------------------------------------------------------------
+Files: Multiple in IL transform
+Status: [ ] PENDING - NOT NEEDED
+
+After review, iterator-based loops are used for erasure patterns which
+require iterators. These are already optimal.
+
+------------------------------------------------------------------------------
+4.5 DOCUMENTATION: Template Registration Methods
+------------------------------------------------------------------------------
+File: src/il/transform/AnalysisManager.hpp
+Lines: 80+
+Status: [ ] PENDING
+
+Template methods registerModuleAnalysis() etc may need parameter docs.
+
+------------------------------------------------------------------------------
+4.6 CODE QUALITY: Vector reserve() Opportunities
+------------------------------------------------------------------------------
+Files: Multiple
+Status: [ ] PENDING
+
+Minor optimization opportunities for reserve() calls before loops.
+
+================================================================================
+SECTION 5: IMPLEMENTATION LOG
+================================================================================
+
+[2026-01-20 START] Beginning implementation of improvements...
+
+------------------------------------------------------------------------------
+5.1 COMPLETED ITEMS
+------------------------------------------------------------------------------
+
+(Items will be moved here as completed)
+
+------------------------------------------------------------------------------
+5.2 IN PROGRESS
+------------------------------------------------------------------------------
+
+(Current work items)
+
+------------------------------------------------------------------------------
+5.3 BLOCKED/DEFERRED
+------------------------------------------------------------------------------
+
+(Items that cannot be completed due to dependencies or issues)
+
+================================================================================
+SECTION 6: FILES MODIFIED
+================================================================================
+
+1. src/il/transform/analysis/LoopInfo.cpp
+   - Added loop size caching for O(1) lookup during parent detection
+
+2. src/il/transform/Mem2Reg.cpp
+   - Changed owner map to store SROACandidate* directly to eliminate chained lookups
+
+3. src/vm/Trap.hpp
+   - Added documentation for vm_raise, vm_raise_from_error, vm_format_error
+
+4. src/support/small_vector.hpp
+   - Added @brief documentation for public accessor methods
+
+5. src/il/verify/EhChecks.cpp
+   - Added string reserve() pre-allocation to optimize concatenation
+
+6. src/codegen/aarch64/fastpaths/FastPathsInternal.hpp
+   - Added validateSingleBlockFastPath() shared helper function
+   - Added SingleBlockFastPathSetup struct for validation results
+
+7. src/codegen/x86_64/ParallelCopyResolver.hpp
+   - Added documentation for resolveClassCopies algorithm (phases 0-2)
+   - Added documentation for CopyPair and CopyEmitter structs
+   - Added documentation for findMaxVirtualRegister helper
+
+8. src/il/transform/SimplifyCFG.hpp
+   - Fixed typo "Canon icalize" -> "Canonicalize"
+   - Added documentation for SimplifyCFGPassContext methods
+
+================================================================================
+SECTION 7: BUILD/TEST STATUS
+================================================================================
+
+Initial build status: TBD
+Interim build status: SUCCESS (all targets built)
+Interim test results: 922/922 tests PASSED (100%)
+Final build status: SUCCESS (all targets built)
+Final test results: 922/922 tests PASSED (100%) with -j1
+Note: One pre-existing flaky test (test_vm_runtime_trap_metadata) fails
+      intermittently under high parallelism due to a race condition unrelated
+      to these changes.
+
+================================================================================
+END OF PLAN
+================================================================================

@@ -224,11 +224,19 @@ class SmallVector
 
     // Accessors
 
+    /// @brief Return the number of elements in the vector.
     [[nodiscard]] size_t size() const noexcept { return size_; }
+
+    /// @brief Return the total capacity (inline or heap).
     [[nodiscard]] size_t capacity() const noexcept { return isHeap() ? capacity_ : N; }
+
+    /// @brief Return true if the vector contains no elements.
     [[nodiscard]] bool empty() const noexcept { return size_ == 0; }
 
+    /// @brief Return a pointer to the underlying element storage.
     [[nodiscard]] T *data() noexcept { return isHeap() ? heap_ : inlineStorage_; }
+
+    /// @brief Return a const pointer to the underlying element storage.
     [[nodiscard]] const T *data() const noexcept { return isHeap() ? heap_ : inlineStorage_; }
 
     [[nodiscard]] reference operator[](size_t i) noexcept

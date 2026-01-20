@@ -21,7 +21,7 @@
 // - Remove empty blocks that only forward to successors
 // - Merge blocks when predecessor has single successor and vice versa
 // - Eliminate unreachable basic blocks using reachability analysis
-// - Canon icalize block parameters by removing unused parameters
+// - Canonicalize block parameters by removing unused parameters
 // - Simplify parameter passing when all arguments are identical
 //
 // Design Notes:
@@ -69,6 +69,10 @@ struct SimplifyCFG
     /// \brief Per-run context shared across helper routines.
     struct SimplifyCFGPassContext
     {
+        /// \brief Construct a pass context for simplifying a function.
+        /// \param function The function to simplify.
+        /// \param module Parent module (may be null if unavailable).
+        /// \param stats Statistics accumulator updated during the pass.
         SimplifyCFGPassContext(il::core::Function &function,
                                const il::core::Module *module,
                                Stats &stats);
@@ -77,8 +81,19 @@ struct SimplifyCFG
         const il::core::Module *module; ///< Parent module, may be null.
         Stats &stats;                   ///< Mutable statistics for the run.
 
+        /// \brief Check if debug logging is enabled for this pass context.
+        /// \return True if debug messages should be emitted.
         bool isDebugLoggingEnabled() const;
+
+        /// \brief Emit a debug log message if logging is enabled.
+        /// \param message The message to log.
         void logDebug(std::string_view message) const;
+
+        /// \brief Check if a block is sensitive to exception handling.
+        /// \details EH-sensitive blocks (handlers, cleanup) require special care
+        ///          during CFG transformations to preserve exception semantics.
+        /// \param block The block to check.
+        /// \return True if the block should be treated as EH-sensitive.
         bool isEHSensitive(const il::core::BasicBlock &block) const;
 
       private:

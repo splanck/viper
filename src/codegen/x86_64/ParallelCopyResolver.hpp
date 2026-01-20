@@ -24,26 +24,51 @@
 namespace viper::codegen::x64
 {
 
+/// @brief Register class enumeration (forward declared).
 enum class RegClass : int;
 
+/// @brief A single parallel copy assignment from source to destination.
+/// @details Represents one copy operation in a parallel assignment set.
+///          Multiple CopyPairs form a parallel copy that must execute atomically.
 struct CopyPair
 {
-    std::uint16_t srcV;
-    std::uint16_t dstV;
-    RegClass cls;
+    std::uint16_t srcV; ///< Source virtual register number.
+    std::uint16_t dstV; ///< Destination virtual register number.
+    RegClass cls;       ///< Register class (GPR, FP, etc.) for this copy.
 };
 
+/// @brief Interface for emitting resolved copy instructions.
+/// @details Implementations translate abstract copy operations into target-specific
+///          machine instructions. The resolver calls these methods in the order
+///          needed to correctly materialize parallel copies.
 struct CopyEmitter
 {
+    /// @brief Emit a register-to-register move.
+    /// @param cls Register class of the operands.
+    /// @param src Source virtual register.
+    /// @param dst Destination virtual register.
     virtual void movVRegToVReg(RegClass cls, std::uint16_t src, std::uint16_t dst) = 0;
+
+    /// @brief Spill a register to a temporary location (for cycle breaking).
+    /// @param cls Register class of the operand.
+    /// @param src Source virtual register to save.
     virtual void movVRegToTemp(RegClass cls, std::uint16_t src) = 0;
+
+    /// @brief Restore from temporary to a register (for cycle breaking).
+    /// @param cls Register class of the operand.
+    /// @param dst Destination virtual register to restore into.
     virtual void movTempToVReg(RegClass cls, std::uint16_t dst) = 0;
+
     virtual ~CopyEmitter() = default;
 };
 
 namespace detail
 {
 
+/// @brief Find the maximum virtual register number in a set of copy pairs.
+/// @details Used to size internal data structures for the resolution algorithm.
+/// @param pairs Copy pairs to scan.
+/// @return The maximum virtual register number found, or 0 if empty.
 inline std::uint32_t findMaxVirtualRegister(const std::vector<CopyPair> &pairs)
 {
     std::uint32_t maxValue = 0U;
@@ -63,8 +88,20 @@ inline std::uint32_t findMaxVirtualRegister(const std::vector<CopyPair> &pairs)
     return maxValue;
 }
 
+/// @brief Resolve parallel copies for a single register class using topological sort.
+/// @details The algorithm works in two phases:
+///   Phase 1 (Topological Sort): Process acyclic copies by tracking in-degrees.
+///     - A copy is "ready" when its source register has no pending writes (in-degree 0).
+///     - After emitting a copy, decrement the in-degree of its destination, potentially
+///       making dependent copies ready.
+///   Phase 2 (Cycle Breaking): Any remaining unprocessed copies form cycles.
+///     - Break each cycle by spilling one source to a temporary, emitting the chain,
+///       then restoring from the temporary to complete the cycle.
+/// @param pairs Copy pairs to resolve (all must be same register class).
+/// @param emitter Interface for emitting move instructions.
 inline void resolveClassCopies(std::vector<CopyPair> pairs, CopyEmitter &emitter)
 {
+    // Phase 0: Filter out self-copies (src == dst) as they require no action.
     std::vector<CopyPair> workList;
     workList.reserve(pairs.size());
     const auto inputCount = static_cast<std::uint32_t>(pairs.size());
@@ -82,6 +119,9 @@ inline void resolveClassCopies(std::vector<CopyPair> pairs, CopyEmitter &emitter
         return;
     }
 
+    // Build dependency graph:
+    // - bySrc[r] = indices of copies that read from register r
+    // - indegree[r] = count of copies that write to register r
     const std::uint32_t maxReg = findMaxVirtualRegister(workList);
     std::vector<std::vector<std::uint32_t>> bySrc(maxReg + 1U);
     std::vector<std::uint32_t> indegree(maxReg + 1U, 0U);
@@ -93,6 +133,7 @@ inline void resolveClassCopies(std::vector<CopyPair> pairs, CopyEmitter &emitter
         bySrc[pair.srcV].push_back(index);
     }
 
+    // Initialize ready queue with copies whose source has no pending writes.
     std::vector<std::uint32_t> ready;
     ready.reserve(total);
     std::vector<char> processed(total, 0);
@@ -105,6 +146,7 @@ inline void resolveClassCopies(std::vector<CopyPair> pairs, CopyEmitter &emitter
         }
     }
 
+    // Phase 1: Topological sort - emit acyclic copies in dependency order.
     while (!ready.empty())
     {
         const std::uint32_t index = ready.back();
@@ -138,6 +180,8 @@ inline void resolveClassCopies(std::vector<CopyPair> pairs, CopyEmitter &emitter
         }
     }
 
+    // Phase 2: Cycle breaking - remaining unprocessed copies form cycles.
+    // For each cycle: spill one source to temp, emit chain, restore from temp.
     for (std::uint32_t index = 0U; index < total; ++index)
     {
         if (processed[index] != 0)
@@ -145,10 +189,12 @@ inline void resolveClassCopies(std::vector<CopyPair> pairs, CopyEmitter &emitter
             continue;
         }
 
+        // Start of a cycle: save the source to a temporary register.
         const CopyPair &startPair = workList[index];
         emitter.movVRegToTemp(startPair.cls, startPair.srcV);
         processed[index] = 1;
 
+        // Walk the cycle chain: emit copies until we reach the start source.
         const std::uint16_t startSrc = startPair.srcV;
         const std::uint16_t startDst = startPair.dstV;
         std::uint16_t current = startDst;
@@ -179,6 +225,7 @@ inline void resolveClassCopies(std::vector<CopyPair> pairs, CopyEmitter &emitter
             current = chainPair.dstV;
         }
 
+        // Complete the cycle: restore from temp to the original destination.
         emitter.movTempToVReg(startPair.cls, startDst);
     }
 }

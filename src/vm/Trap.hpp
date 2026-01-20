@@ -148,8 +148,28 @@ void vm_store_trap_token_message(std::string_view text);
 /// @return Copy of the stored message text.
 std::string vm_current_trap_message();
 
+/// @brief Raise a trap with the specified kind and optional error code.
+/// @details Populates and stores a trap token that can be queried via
+///          vm_current_trap_token(). If an error handler is installed in the
+///          active VM, control transfers to the handler; otherwise execution
+///          terminates with a diagnostic message.
+/// @param kind Classification of the trap condition (e.g., DivideByZero).
+/// @param code Secondary error code providing additional context (default 0).
 void vm_raise(TrapKind kind, int32_t code = 0);
+
+/// @brief Raise a trap from an existing VmError record.
+/// @details Copies the provided error into the trap token storage and triggers
+///          the same handling logic as vm_raise(). Use this overload when the
+///          error record has already been constructed externally.
+/// @param error Fully populated error record to propagate.
 void vm_raise_from_error(const VmError &error);
+
+/// @brief Format a human-readable diagnostic message for a trap.
+/// @details Combines the error classification, code, and frame context into a
+///          multi-line string suitable for display to users or logging.
+/// @param error Error record containing trap kind, code, and location info.
+/// @param frame Execution context (function name, block label, source line).
+/// @return Formatted diagnostic message string.
 std::string vm_format_error(const VmError &error, const FrameInfo &frame);
 
 #ifdef IL_VM_TRAP_RESTORE_EOF

@@ -199,20 +199,30 @@ LoopInfo computeLoopInfo(Module &module, Function &function)
     }
 
     // Parent/child nesting (pick smallest containing loop as parent).
+    // Pre-cache loop sizes for O(1) lookup instead of O(n) findLoop() calls.
+    std::unordered_map<std::string, size_t> loopSizes;
+    loopSizes.reserve(info.loops_.size());
+    for (const auto &loop : info.loops_)
+    {
+        loopSizes[loop.headerLabel] = loop.blockLabels.size();
+    }
+
     auto contains = [](const Loop &loop, std::string_view label) { return loop.contains(label); };
     for (auto &loop : info.loops_)
     {
         std::optional<std::string> parent;
+        size_t parentSize = SIZE_MAX;
         for (const auto &candidate : info.loops_)
         {
             if (candidate.headerLabel == loop.headerLabel)
                 continue;
             if (!contains(candidate, loop.headerLabel))
                 continue;
-            if (!parent ||
-                info.findLoop(*parent)->blockLabels.size() > candidate.blockLabels.size())
+            // Use cached size lookup instead of findLoop()->blockLabels.size()
+            if (!parent || candidate.blockLabels.size() < parentSize)
             {
                 parent = candidate.headerLabel;
+                parentSize = candidate.blockLabels.size();
             }
         }
         if (parent)

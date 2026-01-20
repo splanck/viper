@@ -1082,7 +1082,11 @@ il::support::Expected<void> checkDominanceOfHandlers(const EhModel &model)
             // This ensures the handler is installed before the protected code runs.
             if (!isDominator(domInfo, ehPushBlock, protectedBlock))
             {
-                std::string suffix = "eh.push block ";
+                // Pre-allocate string to avoid multiple reallocations
+                std::string suffix;
+                suffix.reserve(64 + ehPushBlock->label.size() + protectedBlock->label.size() +
+                               handlerBlock->label.size());
+                suffix = "eh.push block ";
                 suffix += ehPushBlock->label;
                 suffix += " does not dominate protected block ";
                 suffix += protectedBlock->label;

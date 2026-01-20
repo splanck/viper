@@ -530,7 +530,10 @@ static void promoteVariables(Function &F,
 static bool runSROA(Function &F)
 {
     std::unordered_map<unsigned, SROACandidate> candidates;
-    std::unordered_map<unsigned, unsigned> owner; // temp -> base alloca id
+    // Map temp id directly to candidate pointer to avoid two-step lookup.
+    // Previously: owner[temp] -> baseId, then candidates[baseId] -> candidate
+    // Now: owner[temp] -> candidate pointer (single lookup)
+    std::unordered_map<unsigned, SROACandidate *> owner;
 
     for (auto &B : F.blocks)
     {
@@ -552,8 +555,8 @@ static bool runSROA(Function &F)
             cand.ok = true;
             cand.offsets.emplace(*I.result, 0);
 
-            candidates.emplace(*I.result, std::move(cand));
-            owner.emplace(*I.result, *I.result);
+            auto [it, inserted] = candidates.emplace(*I.result, std::move(cand));
+            owner.emplace(*I.result, &it->second);
         }
     }
 
@@ -570,30 +573,30 @@ static bool runSROA(Function &F)
                 auto ownIt = owner.find(I.operands[0].id);
                 if (ownIt != owner.end())
                 {
-                    auto candIt = candidates.find(ownIt->second);
-                    if (candIt != candidates.end() && candIt->second.ok)
+                    SROACandidate *cand = ownIt->second;
+                    if (cand->ok)
                     {
                         auto offOpt = constOffset(I.operands[1]);
                         if (!offOpt || !I.result)
                         {
-                            candIt->second.ok = false;
+                            cand->ok = false;
                         }
                         else
                         {
                             // Get the base offset of the source operand to handle chained GEPs
                             // e.g., gep %3, %2, 4 where %2 = gep %1, 8 should have offset 8+4=12
-                            auto baseOffIt = candIt->second.offsets.find(I.operands[0].id);
+                            auto baseOffIt = cand->offsets.find(I.operands[0].id);
                             unsigned baseOffset =
-                                (baseOffIt != candIt->second.offsets.end()) ? baseOffIt->second : 0;
+                                (baseOffIt != cand->offsets.end()) ? baseOffIt->second : 0;
                             unsigned totalOffset = baseOffset + *offOpt;
-                            if (totalOffset > candIt->second.allocSize)
+                            if (totalOffset > cand->allocSize)
                             {
-                                candIt->second.ok = false;
+                                cand->ok = false;
                             }
                             else
                             {
-                                owner[*I.result] = candIt->second.baseId;
-                                candIt->second.offsets[*I.result] = totalOffset;
+                                owner[*I.result] = cand;
+                                cand->offsets[*I.result] = totalOffset;
                             }
                         }
                     }
@@ -607,10 +610,7 @@ static bool runSROA(Function &F)
                 auto ownIt = owner.find(v.id);
                 if (ownIt == owner.end())
                     return;
-                auto candIt = candidates.find(ownIt->second);
-                if (candIt == candidates.end())
-                    return;
-                SROACandidate &cand = candIt->second;
+                SROACandidate &cand = *ownIt->second;
                 if (!cand.ok)
                     return;
 
