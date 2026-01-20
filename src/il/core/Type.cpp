@@ -20,6 +20,9 @@
 
 #include "il/core/Type.hpp"
 
+#include <array>
+#include <string_view>
+
 namespace il::core
 {
 
@@ -32,39 +35,38 @@ namespace il::core
 /// @param k Enumeration tag describing the type category.
 Type::Type(Kind k) : kind(k) {}
 
+/// @brief Static lookup table for type kind string representations.
+/// @details Uses O(1) array indexing instead of switch statement branching.
+///          Index order must match Type::Kind enum values exactly.
+static constexpr std::array<std::string_view, 10> kTypeKindNames = {{
+    "void",       // Kind::Void = 0
+    "i1",         // Kind::I1 = 1
+    "i16",        // Kind::I16 = 2
+    "i32",        // Kind::I32 = 3
+    "i64",        // Kind::I64 = 4
+    "f64",        // Kind::F64 = 5
+    "ptr",        // Kind::Ptr = 6
+    "str",        // Kind::Str = 7
+    "error",      // Kind::Error = 8
+    "resume_tok"  // Kind::ResumeTok = 9
+}};
+
 /// @brief Render an IL type enumerator to its canonical textual spelling.
 ///
 /// Used by diagnostics and the text serialiser to produce stable, lower-case
 /// mnemonics that match the IL specification.  Unknown enumerators fall back to
 /// the empty string so callers can provide bespoke error messaging.
 ///
+/// @details Uses O(1) array lookup instead of switch statement for guaranteed
+///          constant-time performance regardless of enum value distribution.
+///
 /// @param k Enumeration tag to translate.
 /// @return Canonical string name for the provided type tag.
 std::string kindToString(Type::Kind k)
 {
-    switch (k)
-    {
-        case Type::Kind::Void:
-            return "void";
-        case Type::Kind::I1:
-            return "i1";
-        case Type::Kind::I16:
-            return "i16";
-        case Type::Kind::I32:
-            return "i32";
-        case Type::Kind::I64:
-            return "i64";
-        case Type::Kind::F64:
-            return "f64";
-        case Type::Kind::Ptr:
-            return "ptr";
-        case Type::Kind::Str:
-            return "str";
-        case Type::Kind::Error:
-            return "error";
-        case Type::Kind::ResumeTok:
-            return "resume_tok";
-    }
+    const auto index = static_cast<std::size_t>(k);
+    if (index < kTypeKindNames.size())
+        return std::string(kTypeKindNames[index]);
     return "";
 }
 

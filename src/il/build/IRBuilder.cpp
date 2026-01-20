@@ -36,40 +36,6 @@ using namespace il::support;
 //===----------------------------------------------------------------------===//
 
 #ifndef NDEBUG
-/// @brief Check that a block label is unique within a function.
-/// @param fn Function containing the blocks.
-/// @param label Label to check for uniqueness.
-/// @param existingBlocks Number of blocks to check (0 = all).
-static void assertUniqueLabelInFunction(const Function &fn, const std::string &label)
-{
-    for (const auto &block : fn.blocks)
-    {
-        assert(block.label != label && "block label already exists in function");
-    }
-}
-
-/// @brief Check that a name is not already used as a function in the module.
-/// @param mod Module to check.
-/// @param name Name to check.
-static void assertUniqueFunctionName(const Module &mod, const std::string &name)
-{
-    for (const auto &fn : mod.functions)
-    {
-        assert(fn.name != name && "function name already exists in module");
-    }
-}
-
-/// @brief Check that a name is not already used as an extern in the module.
-/// @param mod Module to check.
-/// @param name Name to check.
-static void assertUniqueExternName(const Module &mod, const std::string &name)
-{
-    for (const auto &ex : mod.externs)
-    {
-        assert(ex.name != name && "extern name already exists in module");
-    }
-}
-
 /// @brief Check that a parameter type is valid (not Void).
 /// @param params Parameters to validate.
 static void assertValidParamTypes(const std::vector<Param> &params)
@@ -87,15 +53,26 @@ static void assertValidParamTypes(const std::vector<Param> &params)
 ///          seed the @ref calleeReturnTypes cache.  This enables later calls to
 ///          @ref emitCall to validate that callees exist and to stamp the
 ///          expected result type before any new instructions are emitted.
+///          In debug builds, also initializes hash sets for O(1) uniqueness checking.
 ///
 /// @param m Module that will be extended by this builder.
 /// @note Populates callee metadata so emitCall can validate future calls.
 IRBuilder::IRBuilder(il::core::Module &m) : mod(m)
 {
     for (const auto &fn : mod.functions)
+    {
         calleeReturnTypes[fn.name] = fn.retType;
+#ifndef NDEBUG
+        usedFunctionNames_.insert(fn.name);
+#endif
+    }
     for (const auto &ex : mod.externs)
+    {
         calleeReturnTypes[ex.name] = ex.retType;
+#ifndef NDEBUG
+        usedExternNames_.insert(ex.name);
+#endif
+    }
 }
 
 /// @brief Declare an external function and record its signature.
@@ -111,8 +88,10 @@ il::core::Extern &IRBuilder::addExtern(const std::string &name,
 #ifndef NDEBUG
     // Extern name must not be empty
     assert(!name.empty() && "extern name cannot be empty");
-    // Extern name must be unique
-    assertUniqueExternName(mod, name);
+    // Extern name must be unique - O(1) hash set lookup instead of O(n) linear scan
+    assert(usedExternNames_.find(name) == usedExternNames_.end() &&
+           "extern name already exists in module");
+    usedExternNames_.insert(name);
 #endif
 
     mod.externs.push_back({name, ret, params});
@@ -166,6 +145,8 @@ il::core::Function &IRBuilder::startFunction(const std::string &name,
     // Note: We don't assert function name uniqueness here because:
     // 1. Some code patterns call startFunction multiple times (VM_TailCallTests)
     // 2. Duplicate function names indicate bugs elsewhere but are caught by verification
+    // Initialize per-function block label tracking for this function
+    usedBlockLabelsPerFunc_[name].clear();
 #endif
 
     mod.functions.push_back({name, ret, {}, {}, {}});
@@ -198,8 +179,11 @@ il::core::BasicBlock &IRBuilder::createBlock(il::core::Function &fn,
 #ifndef NDEBUG
     // Block label must not be empty
     assert(!label.empty() && "block label cannot be empty");
-    // Block label must be unique within the function
-    assertUniqueLabelInFunction(fn, label);
+    // Block label must be unique within the function - O(1) hash set lookup instead of O(n) linear scan
+    auto &funcLabels = usedBlockLabelsPerFunc_[fn.name];
+    assert(funcLabels.find(label) == funcLabels.end() &&
+           "block label already exists in function");
+    funcLabels.insert(label);
     // Validate block parameter types (no Void parameters allowed)
     assertValidParamTypes(params);
 #endif
@@ -238,8 +222,11 @@ il::core::BasicBlock &IRBuilder::insertBlock(il::core::Function &fn,
 #ifndef NDEBUG
     // Block label must not be empty
     assert(!label.empty() && "block label cannot be empty");
-    // Block label must be unique within the function
-    assertUniqueLabelInFunction(fn, label);
+    // Block label must be unique within the function - O(1) hash set lookup instead of O(n) linear scan
+    auto &funcLabels = usedBlockLabelsPerFunc_[fn.name];
+    assert(funcLabels.find(label) == funcLabels.end() &&
+           "block label already exists in function");
+    funcLabels.insert(label);
 #endif
 
     if (idx > fn.blocks.size())

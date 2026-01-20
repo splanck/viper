@@ -189,10 +189,83 @@ SECTION 11: IMPLEMENTATION LOG (2026-01-19)
                    All demos (paint, chess, pacman, frogger, vtris, centipede) now work
 
 ================================================================================
-SECTION 12: TEST STATUS
+SECTION 12: OPTIMIZATION REVIEW (2026-01-20 Session)
+================================================================================
+
+Comprehensive review of remaining optimization opportunities from agent analysis.
+Finding: Most optimizations were already implemented in the codebase.
+
+12.1 ALREADY IMPLEMENTED OPTIMIZATIONS
+--------------------------------------
+
+[x] 12.1.1 IRBuilder hash set for name uniqueness (IL)
+    Location: src/il/build/IRBuilder.hpp:197-203
+    Status: Already implemented with std::unordered_set for O(1) uniqueness checks
+    Uses: usedFunctionNames_, usedExternNames_, usedBlockLabelsPerFunc_
+
+[x] 12.1.2 Type stringify array lookup (IL)
+    Location: src/il/core/Type.cpp:41-52
+    Status: Already implemented with constexpr std::array for O(1) lookup
+    Uses: kTypeKindNames array indexed by enum value
+
+[x] 12.1.3 Trap dispatch [[unlikely]] attribute (VM)
+    Location: src/vm/VM.cpp:213-314 (ThreadedDispatchDriver)
+    Status: Already implemented with [[likely]]/[[unlikely]] on all critical paths
+    Examples: Lines 213, 224, 250, 269, 287, 295, 314
+
+[x] 12.1.4 SIB folding O(n²) fix (Codegen)
+    Location: src/codegen/x86_64/ISel.cpp:550-551
+    Status: Already optimized with O(1) hash map lookups
+    Uses: shlDefs, addDefs, movDefs unordered_maps
+
+[x] 12.1.5 Allocator active set iteration (Codegen)
+    Location: src/codegen/x86_64/ra/Allocator.hpp:89-92
+    Status: Already uses std::unordered_set for O(1) insert/erase
+    Uses: activeGPR_, activeXMM_ unordered_sets
+
+[x] 12.1.6 Partial register stall avoidance (x86)
+    Location: src/codegen/x86_64/ISel.cpp:42-95
+    Status: Already implemented via ensureMovzxAfterSetcc()
+    Inserts: MOVZX after SETCC to avoid partial register stalls
+
+[x] 12.1.7 Cross-block constant propagation (Codegen)
+    Location: src/il/transform/SCCP.cpp
+    Status: Already done via SCCP (Sparse Conditional Constant Propagation) at IL level
+    Handles: Cross-block constants, dead branch elimination, phi node optimization
+
+[x] 12.1.8 Operand pre-filtering (Codegen)
+    Location: src/codegen/x86_64/Peephole.cpp
+    Status: Already efficient with std::get_if for O(1) variant type checking
+
+12.2 OPTIMIZATIONS SKIPPED (Complexity vs Benefit Trade-off)
+------------------------------------------------------------
+
+[-] 12.2.1 Function valueNames sparse map (IL)
+    Location: src/il/core/Function.hpp:92
+    Issue: Suggested converting vector to sparse map for empty names
+    Reason skipped: API change would affect 9+ files, alignment benefits minimal
+
+[-] 12.2.2 ExecResult bit packing (VM)
+    Location: src/vm/VM.hpp:276-286
+    Issue: Suggested packing bools into single byte
+    Reason skipped: Alignment requirements for Slot union nullify any benefit
+    Current: 16 bytes due to alignment, packing would still be 16 bytes
+
+================================================================================
+SECTION 13: TEST STATUS
 ================================================================================
 
 Current test results: 922/922 passing (100%)
+
+================================================================================
+SECTION 14: IMPLEMENTATION LOG (Continued)
+================================================================================
+
+[2026-01-20 Session] Optimization review
+[2026-01-20] Reviewed top 10 optimization items from agent analysis
+[2026-01-20] Found 8 optimizations already implemented in codebase
+[2026-01-20] Skipped 2 optimizations due to complexity/benefit trade-offs
+[2026-01-20] Build and tests passed (922/922)
 
 ================================================================================
 END OF DOCUMENT

@@ -57,6 +57,7 @@
 #include "support/source_location.hpp"
 #include <optional>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace il::build
@@ -192,6 +193,15 @@ class IRBuilder
     unsigned nextTemp{0};                 ///< Next temporary id
     std::unordered_map<std::string, il::core::Type>
         calleeReturnTypes; ///< Cached return types keyed by callee name
+
+#ifndef NDEBUG
+    /// @brief Hash sets for O(1) uniqueness checking in debug builds.
+    /// @details These replace O(n) linear scans for name uniqueness validation.
+    std::unordered_set<std::string> usedFunctionNames_; ///< Module-wide function names
+    std::unordered_set<std::string> usedExternNames_;   ///< Module-wide extern names
+    /// @brief Per-function block label tracking, keyed by function name.
+    std::unordered_map<std::string, std::unordered_set<std::string>> usedBlockLabelsPerFunc_;
+#endif
 
     /// @brief Append instruction @p instr to current block.
     /// @param instr Instruction to append.
