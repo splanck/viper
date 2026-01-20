@@ -54,7 +54,7 @@ namespace kernel
 class Spinlock
 {
   public:
-    Spinlock() : next_ticket_(0), now_serving_(0), saved_daif_(0) {}
+    Spinlock() : next_ticket_(0), now_serving_(0) {}
 
     // Non-copyable, non-movable
     Spinlock(const Spinlock &) = delete;
@@ -65,15 +65,16 @@ class Spinlock
      *
      * @details
      * Disables interrupts before acquiring to prevent deadlock.
-     * The interrupt state is saved and restored on release.
+     * Returns the saved interrupt state which must be passed to release().
+     *
+     * @return The saved DAIF (interrupt state) to pass to release().
      */
-    void acquire()
+    u64 acquire()
     {
         // Save and disable interrupts (prevent interrupt handler deadlock)
-        u64 daif;
-        asm volatile("mrs %0, daif" : "=r"(daif));
+        u64 saved_daif;
+        asm volatile("mrs %0, daif" : "=r"(saved_daif));
         asm volatile("msr daifset, #0xf" ::: "memory");
-        saved_daif_ = daif;
 
         // Get our ticket number atomically
         u32 my_ticket;
@@ -99,6 +100,8 @@ class Spinlock
             // Yield hint to save power while spinning
             asm volatile("yield");
         }
+
+        return saved_daif;
     }
 
     /**
@@ -106,9 +109,11 @@ class Spinlock
      *
      * @details
      * Increments the "now serving" counter to allow the next waiter to proceed,
-     * then restores the saved interrupt state.
+     * then restores the provided interrupt state.
+     *
+     * @param saved_daif The saved interrupt state returned from acquire().
      */
-    void release()
+    void release(u64 saved_daif)
     {
         // Increment now_serving atomically with release semantics
         u32 val;
@@ -120,15 +125,16 @@ class Spinlock
                      : "memory");
 
         // Restore interrupt state
-        asm volatile("msr daif, %0" ::"r"(saved_daif_) : "memory");
+        asm volatile("msr daif, %0" ::"r"(saved_daif) : "memory");
     }
 
     /**
      * @brief Try to acquire the lock without spinning.
      *
+     * @param[out] saved_daif If successful, receives the saved interrupt state.
      * @return true if lock was acquired, false if already held.
      */
-    bool try_acquire()
+    bool try_acquire(u64 &saved_daif)
     {
         // Save and disable interrupts
         u64 daif;
@@ -174,7 +180,7 @@ class Spinlock
             return false;
         }
 
-        saved_daif_ = daif;
+        saved_daif = daif;
         return true;
     }
 
@@ -195,7 +201,6 @@ class Spinlock
   private:
     volatile u32 next_ticket_; ///< Next ticket to be handed out
     volatile u32 now_serving_; ///< Current ticket being served
-    u64 saved_daif_;           ///< Saved interrupt state
 };
 
 /**
@@ -204,6 +209,8 @@ class Spinlock
  * @details
  * Acquires the lock on construction and releases on destruction,
  * ensuring the lock is always released even on early return or exception.
+ * The guard stores the saved interrupt state (DAIF) to correctly restore
+ * interrupts on release, even under SMP contention.
  */
 class SpinlockGuard
 {
@@ -214,7 +221,7 @@ class SpinlockGuard
      */
     explicit SpinlockGuard(Spinlock &lock) : lock_(lock)
     {
-        lock_.acquire();
+        saved_daif_ = lock_.acquire();
     }
 
     /**
@@ -222,7 +229,7 @@ class SpinlockGuard
      */
     ~SpinlockGuard()
     {
-        lock_.release();
+        lock_.release(saved_daif_);
     }
 
     // Non-copyable, non-movable
@@ -231,6 +238,7 @@ class SpinlockGuard
 
   private:
     Spinlock &lock_;
+    u64 saved_daif_; ///< Saved interrupt state for this acquisition
 };
 
 /**
@@ -239,6 +247,16 @@ class SpinlockGuard
  * @details
  * A single-bit lock useful for simple cases where ticket fairness
  * isn't needed. More efficient than Spinlock for very short critical sections.
+ *
+ * @warning INTERRUPT SAFETY: Unlike Spinlock, AtomicFlag does NOT disable
+ * interrupts. If code holding an AtomicFlag can be interrupted, and the
+ * interrupt handler attempts to acquire the same flag, DEADLOCK will occur.
+ * Only use AtomicFlag when:
+ * - The flag is never acquired from interrupt handlers, OR
+ * - Interrupts are already disabled at the call site, OR
+ * - The code is guaranteed to run only in non-interruptible context
+ *
+ * For general-purpose kernel synchronization, prefer Spinlock or SpinlockGuard.
  */
 class AtomicFlag
 {

@@ -3,6 +3,7 @@
 #include "../cap/table.hpp"
 #include "../console/serial.hpp"
 #include "../kobj/channel.hpp"
+#include "../lib/spinlock.hpp"
 #include "../lib/timerwheel.hpp"
 #include "../sched/scheduler.hpp"
 #include "../sched/task.hpp"
@@ -68,6 +69,9 @@ struct WaitEntry
 // Wait queue table
 constexpr u32 MAX_WAIT_ENTRIES = 32;
 static WaitEntry wait_queue[MAX_WAIT_ENTRIES];
+
+// Spinlock protecting timers[], wait_queue[], and next_timer_id
+static Spinlock poll_lock;
 
 /** @copydoc poll::init */
 void init()
@@ -138,9 +142,12 @@ static Timer *alloc_timer()
 /** @copydoc poll::timer_create */
 i64 timer_create(u64 timeout_ms)
 {
+    u64 saved_daif = poll_lock.acquire();
+
     Timer *t = alloc_timer();
     if (!t)
     {
+        poll_lock.release(saved_daif);
         return error::VERR_OUT_OF_MEMORY;
     }
 
@@ -149,39 +156,54 @@ i64 timer_create(u64 timeout_ms)
     t->active = true;
     t->waiter = nullptr;
 
-    return static_cast<i64>(t->id);
+    u32 id = t->id;
+    poll_lock.release(saved_daif);
+    return static_cast<i64>(id);
 }
 
 /** @copydoc poll::timer_expired */
 bool timer_expired(u32 timer_id)
 {
+    u64 saved_daif = poll_lock.acquire();
+
     Timer *t = find_timer(timer_id);
     if (!t)
     {
+        poll_lock.release(saved_daif);
         return true; // Non-existent timer is "expired"
     }
-    return time_now_ms() >= t->expire_time;
+    bool expired = time_now_ms() >= t->expire_time;
+    poll_lock.release(saved_daif);
+    return expired;
 }
 
 /** @copydoc poll::timer_cancel */
 i64 timer_cancel(u32 timer_id)
 {
+    u64 saved_daif = poll_lock.acquire();
+
     Timer *t = find_timer(timer_id);
     if (!t)
     {
+        poll_lock.release(saved_daif);
         return error::VERR_NOT_FOUND;
     }
 
-    // Wake up any waiter
-    if (t->waiter)
-    {
-        t->waiter->state = task::TaskState::Ready;
-        scheduler::enqueue(t->waiter);
-        t->waiter = nullptr;
-    }
+    // Capture waiter before clearing timer
+    task::Task *waiter = t->waiter;
 
+    t->waiter = nullptr;
     t->active = false;
     t->id = 0;
+
+    poll_lock.release(saved_daif);
+
+    // Wake up any waiter (outside lock to avoid nested lock issues)
+    if (waiter)
+    {
+        waiter->state = task::TaskState::Ready;
+        scheduler::enqueue(waiter);
+    }
 
     return error::VOK;
 }
@@ -194,19 +216,13 @@ i64 sleep_ms(u64 ms)
         return error::VOK;
     }
 
-    // Create a timer
+    // Create a timer (acquires lock internally)
     i64 timer_result = timer_create(ms);
     if (timer_result < 0)
     {
         return timer_result;
     }
     u32 timer_id = static_cast<u32>(timer_result);
-
-    Timer *t = find_timer(timer_id);
-    if (!t)
-    {
-        return error::VERR_UNKNOWN;
-    }
 
     // Block until timer expires
     task::Task *current = task::current();
@@ -220,19 +236,27 @@ i64 sleep_ms(u64 ms)
     // Wait for timer
     while (!timer_expired(timer_id))
     {
-        current->state = task::TaskState::Blocked;
-        t->waiter = current;
-        task::yield();
-
-        // Re-check timer (may have been woken by something else)
-        t = find_timer(timer_id);
-        if (!t)
+        // Register as waiter under lock
         {
-            break; // Timer was cancelled
+            u64 saved_daif = poll_lock.acquire();
+            Timer *t = find_timer(timer_id);
+            if (t)
+            {
+                t->waiter = current;
+            }
+            poll_lock.release(saved_daif);
+
+            if (!t)
+            {
+                break; // Timer was cancelled
+            }
         }
+
+        current->state = task::TaskState::Blocked;
+        task::yield();
     }
 
-    // Clean up timer
+    // Clean up timer (acquires lock internally)
     timer_cancel(timer_id);
 
     return error::VOK;
@@ -342,16 +366,26 @@ void check_timers()
     // Process the timer wheel (O(1) amortized)
     timerwheel::tick(now);
 
-    // Also check legacy timers for backward compatibility
+    // Collect expired timer waiters under lock, then wake outside lock
+    task::Task *waiters_to_wake[MAX_TIMERS];
+    u32 wake_count = 0;
+
+    u64 saved_daif = poll_lock.acquire();
     for (u32 i = 0; i < MAX_TIMERS; i++)
     {
         if (timers[i].active && timers[i].waiter && now >= timers[i].expire_time)
         {
-            task::Task *waiter = timers[i].waiter;
+            waiters_to_wake[wake_count++] = timers[i].waiter;
             timers[i].waiter = nullptr;
-            waiter->state = task::TaskState::Ready;
-            scheduler::enqueue(waiter);
         }
+    }
+    poll_lock.release(saved_daif);
+
+    // Wake all expired timer waiters outside lock
+    for (u32 i = 0; i < wake_count; i++)
+    {
+        waiters_to_wake[i]->state = task::TaskState::Ready;
+        scheduler::enqueue(waiters_to_wake[i]);
     }
 }
 
@@ -363,6 +397,7 @@ void register_wait(u32 handle, EventType events)
         return;
 
     // Resolve capability handle to channel_id for proper notification matching
+    // (Done outside lock since cap table has its own synchronization)
     u32 channel_id = 0xFFFFFFFF;
     if (has_event(events, EventType::CHANNEL_READ) || has_event(events, EventType::CHANNEL_WRITE))
     {
@@ -381,7 +416,8 @@ void register_wait(u32 handle, EventType events)
         }
     }
 
-    // Find an empty slot
+    // Find an empty slot under lock
+    u64 saved_daif = poll_lock.acquire();
     for (u32 i = 0; i < MAX_WAIT_ENTRIES; i++)
     {
         if (!wait_queue[i].active)
@@ -391,9 +427,11 @@ void register_wait(u32 handle, EventType events)
             wait_queue[i].channel_id = channel_id;
             wait_queue[i].events = events;
             wait_queue[i].active = true;
+            poll_lock.release(saved_daif);
             return;
         }
     }
+    poll_lock.release(saved_daif);
 }
 
 /** @copydoc poll::notify_handle */
@@ -401,7 +439,11 @@ void notify_handle(u32 handle, EventType events)
 {
     // 'handle' here is actually a channel_id from channel::try_send/try_recv
     // Match against stored channel_id (resolved from capability handles)
-    bool found = false;
+    // Collect waiters under lock, wake them outside lock
+    task::Task *waiters_to_wake[MAX_WAIT_ENTRIES];
+    u32 wake_count = 0;
+
+    u64 saved_daif = poll_lock.acquire();
     for (u32 i = 0; i < MAX_WAIT_ENTRIES; i++)
     {
         if (wait_queue[i].active &&
@@ -413,19 +455,22 @@ void notify_handle(u32 handle, EventType events)
                 task::Task *waiter = wait_queue[i].task;
                 wait_queue[i].active = false;
                 wait_queue[i].task = nullptr;
-                found = true;
 
-                // Wake the task
                 if (waiter && waiter->state == task::TaskState::Blocked)
                 {
-                    waiter->state = task::TaskState::Ready;
-                    scheduler::enqueue(waiter);
+                    waiters_to_wake[wake_count++] = waiter;
                 }
             }
         }
     }
-    // Removed verbose "no waiter" debug spam - uncomment if debugging poll issues
-    (void)found;
+    poll_lock.release(saved_daif);
+
+    // Wake waiters outside lock
+    for (u32 i = 0; i < wake_count; i++)
+    {
+        waiters_to_wake[i]->state = task::TaskState::Ready;
+        scheduler::enqueue(waiters_to_wake[i]);
+    }
 }
 
 /** @copydoc poll::unregister_wait */
@@ -435,6 +480,7 @@ void unregister_wait()
     if (!current)
         return;
 
+    u64 saved_daif = poll_lock.acquire();
     for (u32 i = 0; i < MAX_WAIT_ENTRIES; i++)
     {
         if (wait_queue[i].active && wait_queue[i].task == current)
@@ -443,6 +489,7 @@ void unregister_wait()
             wait_queue[i].task = nullptr;
         }
     }
+    poll_lock.release(saved_daif);
 }
 
 /** @copydoc poll::clear_task_waiters */
@@ -450,6 +497,8 @@ void clear_task_waiters(task::Task *t)
 {
     if (!t)
         return;
+
+    u64 saved_daif = poll_lock.acquire();
 
     // Clear all timer waiters for this task
     for (u32 i = 0; i < MAX_TIMERS; i++)
@@ -469,6 +518,8 @@ void clear_task_waiters(task::Task *t)
             wait_queue[i].task = nullptr;
         }
     }
+
+    poll_lock.release(saved_daif);
 }
 
 /** @copydoc poll::test_poll */

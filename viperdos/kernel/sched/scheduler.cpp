@@ -79,15 +79,16 @@ Spinlock sched_lock;
 // 8 priority queues (0=highest, 7=lowest) - used for initial boot and global operations
 PriorityQueue priority_queues[task::NUM_PRIORITY_QUEUES];
 
-// Statistics
-u64 context_switch_count = 0;
+// Statistics (use atomics for SMP-safe access)
+// Note: Use volatile to prevent compiler optimization and __atomic for SMP safety
+volatile u64 context_switch_count = 0;
 
 // Scheduler running flag
 bool running = false;
 
 // Load balancing interval (ticks)
 constexpr u32 LOAD_BALANCE_INTERVAL = 100;
-u32 load_balance_counter = 0;
+volatile u32 load_balance_counter = 0;
 
 /**
  * @brief Map a task priority (0-255) to a queue index (0-7).
@@ -463,7 +464,8 @@ task::Task *steal_task(u32 current_cpu)
             continue;
 
         // Try to acquire victim's lock without blocking
-        if (!victim.lock.try_acquire())
+        u64 saved_daif;
+        if (!victim.lock.try_acquire(saved_daif))
             continue;
 
         // Steal from the lowest priority queue that has tasks
@@ -503,7 +505,7 @@ task::Task *steal_task(u32 current_cpu)
                     victim.total_tasks--;
                     victim.migrations++;
 
-                    victim.lock.release();
+                    victim.lock.release(saved_daif);
 
                     per_cpu_sched[current_cpu].steals++;
                     return t;
@@ -512,7 +514,7 @@ task::Task *steal_task(u32 current_cpu)
             }
         }
 
-        victim.lock.release();
+        victim.lock.release(saved_daif);
     }
 
     return nullptr;
@@ -532,7 +534,7 @@ bool any_ready_percpu(u32 cpu_id)
     PerCpuScheduler &sched = per_cpu_sched[cpu_id];
 
     // Lock ordering: sched_lock (caller holds) -> per-CPU lock
-    sched.lock.acquire();
+    u64 saved_daif = sched.lock.acquire();
     bool has_ready = false;
     for (u8 i = 0; i < task::NUM_PRIORITY_QUEUES; i++)
     {
@@ -542,7 +544,7 @@ bool any_ready_percpu(u32 cpu_id)
             break;
         }
     }
-    sched.lock.release();
+    sched.lock.release(saved_daif);
 
     return has_ready;
 }
@@ -579,7 +581,7 @@ void init()
     // Initialize boot CPU (CPU 0)
     per_cpu_sched[0].initialized = true;
 
-    context_switch_count = 0;
+    __atomic_store_n(&context_switch_count, 0, __ATOMIC_RELAXED);
     running = false;
 
     // Initialize idle state tracking
@@ -673,7 +675,7 @@ void schedule()
     }
 
     // Critical section: queue manipulation and state transitions
-    sched_lock.acquire();
+    u64 sched_saved_daif = sched_lock.acquire();
 
     // Fall back to global queue if no per-CPU task found
     if (!next)
@@ -688,7 +690,7 @@ void schedule()
         if (!next || next == current)
         {
             // Already running idle or no idle task
-            sched_lock.release();
+            sched_lock.release(sched_saved_daif);
             return;
         }
     }
@@ -701,7 +703,7 @@ void schedule()
         {
             enqueue_locked(current);
         }
-        sched_lock.release();
+        sched_lock.release(sched_saved_daif);
         return;
     }
 
@@ -722,7 +724,7 @@ void schedule()
         {
             // Task exited - don't re-enqueue
             // Serial output for debugging
-            if (context_switch_count <= 10)
+            if (__atomic_load_n(&context_switch_count, __ATOMIC_RELAXED) <= 10)
             {
                 serial::puts("[sched] Task '");
                 serial::puts(current->name);
@@ -740,7 +742,7 @@ void schedule()
         serial::puts("' not Ready (state=");
         serial::put_dec(static_cast<u32>(next->state));
         serial::puts(")\n");
-        sched_lock.release();
+        sched_lock.release(sched_saved_daif);
         return;
     }
 
@@ -773,10 +775,10 @@ void schedule()
 
     next->switch_count++;
 
-    context_switch_count++;
+    u64 switch_num = __atomic_fetch_add(&context_switch_count, 1, __ATOMIC_RELAXED) + 1;
 
     // Debug output (first 5 switches only)
-    if (context_switch_count <= 5)
+    if (switch_num <= 5)
     {
         serial::puts("[sched] ");
         if (current)
@@ -805,7 +807,7 @@ void schedule()
     }
 
     // Release lock before context switch - the new task will run with interrupts enabled
-    sched_lock.release();
+    sched_lock.release(sched_saved_daif);
 
     // Perform context switch (with interrupts enabled)
     if (old)
@@ -862,9 +864,9 @@ void tick()
                 // Lock ordering: sched_lock (already held) -> per-CPU lock
                 if (per_cpu_sched[cpu_id].initialized)
                 {
-                    per_cpu_sched[cpu_id].lock.acquire();
+                    u64 percpu_saved_daif = per_cpu_sched[cpu_id].lock.acquire();
                     ready = per_cpu_sched[cpu_id].queues[i].head;
-                    per_cpu_sched[cpu_id].lock.release();
+                    per_cpu_sched[cpu_id].lock.release(percpu_saved_daif);
                 }
                 if (!ready)
                 {
@@ -1013,7 +1015,7 @@ void preempt()
 
     task::set_current(first);
 
-    context_switch_count++;
+    __atomic_fetch_add(&context_switch_count, 1, __ATOMIC_RELAXED);
 
     // Load the first task's context and jump to it
     // We create a dummy "old" context on the stack that we don't care about
@@ -1034,7 +1036,7 @@ void preempt()
 /** @copydoc scheduler::get_context_switches */
 u64 get_context_switches()
 {
-    return context_switch_count;
+    return __atomic_load_n(&context_switch_count, __ATOMIC_RELAXED);
 }
 
 /** @copydoc scheduler::get_queue_length */
@@ -1063,7 +1065,7 @@ void get_stats(Stats *stats)
 
     SpinlockGuard guard(sched_lock);
 
-    stats->context_switches = context_switch_count;
+    stats->context_switches = __atomic_load_n(&context_switch_count, __ATOMIC_RELAXED);
     stats->total_ready = 0;
     stats->blocked_tasks = 0;
     stats->exited_tasks = 0;
@@ -1187,11 +1189,11 @@ void balance_load()
 {
     u32 current_cpu = cpu::current_id();
 
-    // Only run load balancing periodically
-    load_balance_counter++;
-    if (load_balance_counter < LOAD_BALANCE_INTERVAL)
+    // Only run load balancing periodically (atomic increment for SMP safety)
+    u32 counter = __atomic_fetch_add(&load_balance_counter, 1, __ATOMIC_RELAXED) + 1;
+    if (counter < LOAD_BALANCE_INTERVAL)
         return;
-    load_balance_counter = 0;
+    __atomic_store_n(&load_balance_counter, 0, __ATOMIC_RELAXED);
 
     // Find the most and least loaded CPUs
     u32 max_load = 0, min_load = 0xFFFFFFFF;

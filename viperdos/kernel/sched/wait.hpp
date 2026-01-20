@@ -13,23 +13,44 @@
  * events and to be woken up when those events occur. Unlike single-task
  * pointers, wait queues support multiple waiters and provide FIFO ordering.
  *
- * Usage:
- * @code
- * WaitQueue wq;
- * wait_init(&wq);
+ * ## Locking Requirements
  *
- * // To block:
- * wait_prepare(&wq, task::current());
- * if (condition_not_met) {
- *     wait_sleep(&wq);  // Task is now blocked
- * } else {
- *     wait_abort(&wq, task::current());  // Condition met, don't sleep
+ * @warning WaitQueue operations are NOT thread-safe on their own. Callers
+ * MUST hold an appropriate lock (typically a Spinlock) when calling any
+ * WaitQueue function that modifies the queue state. This includes:
+ * - wait_enqueue() - adds task to queue
+ * - wait_dequeue() - removes task from queue
+ * - wait_wake_one() - removes and wakes first task
+ * - wait_wake_all() - removes and wakes all tasks
+ *
+ * The read-only functions wait_empty() and wait_count() should also be
+ * called under the same lock if the result affects synchronization decisions.
+ *
+ * Typical pattern with external locking:
+ * @code
+ * Spinlock lock;
+ * WaitQueue wq;
+ *
+ * // To block (producer/consumer example):
+ * u64 saved_daif = lock.acquire();
+ * while (buffer_empty) {
+ *     wait_enqueue(&wq, task::current());
+ *     lock.release(saved_daif);
+ *     task::yield();  // Switch away, wake will re-acquire
+ *     saved_daif = lock.acquire();
  * }
+ * // ... consume from buffer ...
+ * lock.release(saved_daif);
  *
  * // To wake:
- * wait_wake_one(&wq);   // Wake first waiter
- * wait_wake_all(&wq);   // Wake all waiters
+ * u64 saved_daif = lock.acquire();
+ * // ... produce to buffer ...
+ * wait_wake_one(&wq);
+ * lock.release(saved_daif);
  * @endcode
+ *
+ * @note The lock must be released BEFORE calling task::yield() but the task
+ * must be enqueued BEFORE releasing the lock to avoid lost wakeups.
  */
 namespace sched
 {

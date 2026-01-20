@@ -521,18 +521,18 @@ i64 send(u32 channel_id, const void *data, u32 size)
     // Blocking loop - must use manual lock management due to yield semantics
     while (true)
     {
-        channel_lock.acquire();
+        u64 saved_daif = channel_lock.acquire();
 
         Channel *ch = find_channel_by_id_locked(channel_id);
         if (!ch)
         {
-            channel_lock.release();
+            channel_lock.release(saved_daif);
             return error::VERR_INVALID_HANDLE;
         }
 
         if (ch->state != ChannelState::OPEN)
         {
-            channel_lock.release();
+            channel_lock.release(saved_daif);
             return error::VERR_CHANNEL_CLOSED;
         }
 
@@ -545,7 +545,7 @@ i64 send(u32 channel_id, const void *data, u32 size)
             // Notify poll waiters that channel has data
             poll::notify_handle(channel_id, poll::EventType::CHANNEL_READ);
 
-            channel_lock.release();
+            channel_lock.release(saved_daif);
             return error::VOK;
         }
 
@@ -553,13 +553,13 @@ i64 send(u32 channel_id, const void *data, u32 size)
         task::Task *current = task::current();
         if (!current)
         {
-            channel_lock.release();
+            channel_lock.release(saved_daif);
             return error::VERR_WOULD_BLOCK;
         }
 
         // Add to send wait queue (sets state to Blocked)
         sched::wait_enqueue(&ch->send_waiters, current);
-        channel_lock.release();
+        channel_lock.release(saved_daif);
 
         task::yield();
         // Loop will re-acquire lock and re-check condition
@@ -599,18 +599,18 @@ i64 recv(u32 channel_id, void *buffer, u32 buffer_size)
     // Blocking loop - must use manual lock management due to yield semantics
     while (true)
     {
-        channel_lock.acquire();
+        u64 saved_daif = channel_lock.acquire();
 
         Channel *ch = find_channel_by_id_locked(channel_id);
         if (!ch)
         {
-            channel_lock.release();
+            channel_lock.release(saved_daif);
             return error::VERR_INVALID_HANDLE;
         }
 
         if (ch->state != ChannelState::OPEN)
         {
-            channel_lock.release();
+            channel_lock.release(saved_daif);
             return error::VERR_CHANNEL_CLOSED;
         }
 
@@ -623,7 +623,7 @@ i64 recv(u32 channel_id, void *buffer, u32 buffer_size)
             // Notify poll waiters that channel has space
             poll::notify_handle(channel_id, poll::EventType::CHANNEL_WRITE);
 
-            channel_lock.release();
+            channel_lock.release(saved_daif);
             return static_cast<i64>(actual_size);
         }
 
@@ -631,13 +631,13 @@ i64 recv(u32 channel_id, void *buffer, u32 buffer_size)
         task::Task *current = task::current();
         if (!current)
         {
-            channel_lock.release();
+            channel_lock.release(saved_daif);
             return error::VERR_WOULD_BLOCK;
         }
 
         // Add to recv wait queue (sets state to Blocked)
         sched::wait_enqueue(&ch->recv_waiters, current);
-        channel_lock.release();
+        channel_lock.release(saved_daif);
 
         task::yield();
         // Loop will re-acquire lock and re-check condition

@@ -33,12 +33,12 @@ bool try_lock(PiMutex *m)
     if (!m || !m->initialized)
         return false;
 
-    m->lock.acquire();
+    u64 saved_daif = m->lock.acquire();
 
     if (m->owner != nullptr)
     {
         // Already owned by someone
-        m->lock.release();
+        m->lock.release(saved_daif);
         return false;
     }
 
@@ -46,7 +46,7 @@ bool try_lock(PiMutex *m)
     task::Task *cur = task::current();
     if (!cur)
     {
-        m->lock.release();
+        m->lock.release(saved_daif);
         return false;
     }
 
@@ -54,7 +54,7 @@ bool try_lock(PiMutex *m)
     m->owner_original_priority = cur->priority;
     m->boosted_priority = cur->priority;
 
-    m->lock.release();
+    m->lock.release(saved_daif);
     return true;
 }
 
@@ -63,13 +63,13 @@ void contend(PiMutex *m, task::Task *waiter)
     if (!m || !m->initialized || !waiter)
         return;
 
-    m->lock.acquire();
+    u64 saved_daif = m->lock.acquire();
 
     task::Task *owner = m->owner;
     if (!owner)
     {
         // Mutex was released, nothing to do
-        m->lock.release();
+        m->lock.release(saved_daif);
         return;
     }
 
@@ -89,7 +89,7 @@ void contend(PiMutex *m, task::Task *waiter)
         serial::puts(")\n");
     }
 
-    m->lock.release();
+    m->lock.release(saved_daif);
 }
 
 void unlock(PiMutex *m)
@@ -97,13 +97,13 @@ void unlock(PiMutex *m)
     if (!m || !m->initialized)
         return;
 
-    m->lock.acquire();
+    u64 saved_daif = m->lock.acquire();
 
     task::Task *cur = task::current();
     if (!cur || m->owner != cur)
     {
         // Not the owner, can't unlock
-        m->lock.release();
+        m->lock.release(saved_daif);
         return;
     }
 
@@ -125,7 +125,7 @@ void unlock(PiMutex *m)
     m->owner_original_priority = 128;
     m->boosted_priority = 128;
 
-    m->lock.release();
+    m->lock.release(saved_daif);
 }
 
 bool is_locked(PiMutex *m)
@@ -133,9 +133,9 @@ bool is_locked(PiMutex *m)
     if (!m || !m->initialized)
         return false;
 
-    m->lock.acquire();
+    u64 saved_daif = m->lock.acquire();
     bool locked = (m->owner != nullptr);
-    m->lock.release();
+    m->lock.release(saved_daif);
 
     return locked;
 }
@@ -145,9 +145,9 @@ task::Task *get_owner(PiMutex *m)
     if (!m || !m->initialized)
         return nullptr;
 
-    m->lock.acquire();
+    u64 saved_daif = m->lock.acquire();
     task::Task *owner = m->owner;
-    m->lock.release();
+    m->lock.release(saved_daif);
 
     return owner;
 }

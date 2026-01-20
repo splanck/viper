@@ -5,6 +5,7 @@
 #include "../console/serial.hpp"
 #include "../include/constants.hpp"
 #include "../ipc/poll.hpp"
+#include "../lib/spinlock.hpp"
 #include "../lib/str.hpp"
 #include "../mm/vmm.hpp"
 #include "../viper/address_space.hpp"
@@ -34,11 +35,25 @@ namespace task
 
 namespace
 {
+/**
+ * @brief Lock protecting task table and stack pool operations.
+ *
+ * @details
+ * This lock must be held when:
+ * - Allocating or deallocating task slots
+ * - Allocating or freeing kernel stacks
+ * - Modifying next_task_id
+ *
+ * This prevents race conditions on SMP systems where multiple CPUs
+ * could otherwise allocate the same task slot or stack.
+ */
+Spinlock task_lock;
+
 // Task storage
 Task tasks[MAX_TASKS];
 u32 next_task_id = 1;
 
-// Current running task
+// Current running task (per-CPU in SMP, but simplified here)
 Task *current_task = nullptr;
 
 // Idle task (always task 0)
@@ -70,9 +85,10 @@ void init_signal_state(Task *t)
 /**
  * @brief Find an unused task slot in the global task table.
  *
+ * @note Caller must hold task_lock.
  * @return Pointer to an Invalid task slot, or `nullptr` if table is full.
  */
-Task *allocate_task()
+Task *allocate_task_locked()
 {
     for (u32 i = 0; i < MAX_TASKS; i++)
     {
@@ -114,9 +130,10 @@ u32 free_stack_count = 0;
  * | Stack (16KB)      | <- Usable stack space
  * +-------------------+ <- stack top (grows down from here)
  *
+ * @note Caller must hold task_lock.
  * @return Pointer to the base of the usable stack, or `nullptr` on exhaustion.
  */
-u8 *allocate_kernel_stack()
+u8 *allocate_kernel_stack_locked()
 {
     // First try the free list
     if (free_stack_list)
@@ -160,9 +177,10 @@ u8 *allocate_kernel_stack()
 /**
  * @brief Free a kernel stack, returning it to the free list for reuse.
  *
+ * @note Caller must hold task_lock.
  * @param stack Pointer to the usable stack base (as returned by allocate_kernel_stack).
  */
-void free_kernel_stack(u8 *stack)
+void free_kernel_stack_locked(u8 *stack)
 {
     if (!stack)
         return;
@@ -223,7 +241,10 @@ void init()
     idle_task->dl_abs_deadline = 0;
     idle_task->next = nullptr;
     idle_task->prev = nullptr;
-    idle_task->kernel_stack = allocate_kernel_stack();
+    // Acquire lock for consistency (though init runs single-threaded)
+    u64 saved_daif = task_lock.acquire();
+    idle_task->kernel_stack = allocate_kernel_stack_locked();
+    task_lock.release(saved_daif);
     idle_task->kernel_stack_top = idle_task->kernel_stack + KERNEL_STACK_SIZE;
     idle_task->trap_frame = nullptr;
     idle_task->wait_channel = nullptr;
@@ -271,27 +292,35 @@ void init()
 /** @copydoc task::create */
 Task *create(const char *name, TaskEntry entry, void *arg, u32 flags)
 {
-    Task *t = allocate_task();
+    // Acquire task_lock for allocation operations
+    u64 saved_daif = task_lock.acquire();
+
+    Task *t = allocate_task_locked();
     if (!t)
     {
+        task_lock.release(saved_daif);
         serial::puts("[task] ERROR: No free task slots\n");
         return nullptr;
     }
 
     // Allocate kernel stack
-    t->kernel_stack = allocate_kernel_stack();
+    t->kernel_stack = allocate_kernel_stack_locked();
     if (!t->kernel_stack)
     {
         // Release the task slot we just allocated
         t->state = TaskState::Invalid;
         t->id = 0;
+        task_lock.release(saved_daif);
         serial::puts("[task] ERROR: Failed to allocate kernel stack\n");
         return nullptr;
     }
     t->kernel_stack_top = t->kernel_stack + KERNEL_STACK_SIZE;
 
-    // Initialize task fields
+    // Initialize task fields - get next_task_id while holding lock
     t->id = next_task_id++;
+
+    // Release lock before the rest of initialization
+    task_lock.release(saved_daif);
     lib::strcpy_safe(t->name, name, sizeof(t->name));
     t->state = TaskState::Ready;
     t->flags = flags | TASK_FLAG_KERNEL; // All tasks are kernel tasks for now
@@ -422,27 +451,35 @@ static void user_task_entry_trampoline(void *)
 /** @copydoc task::create_user_task */
 Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack)
 {
-    Task *t = allocate_task();
+    // Acquire task_lock for allocation operations
+    u64 saved_daif = task_lock.acquire();
+
+    Task *t = allocate_task_locked();
     if (!t)
     {
+        task_lock.release(saved_daif);
         serial::puts("[task] ERROR: No free task slots for user task\n");
         return nullptr;
     }
 
     // Allocate kernel stack (user tasks still need one for syscalls)
-    t->kernel_stack = allocate_kernel_stack();
+    t->kernel_stack = allocate_kernel_stack_locked();
     if (!t->kernel_stack)
     {
         // Release the task slot we just allocated
         t->state = TaskState::Invalid;
         t->id = 0;
+        task_lock.release(saved_daif);
         serial::puts("[task] ERROR: Failed to allocate kernel stack for user task\n");
         return nullptr;
     }
     t->kernel_stack_top = t->kernel_stack + KERNEL_STACK_SIZE;
 
-    // Initialize task fields
+    // Initialize task fields - get next_task_id while holding lock
     t->id = next_task_id++;
+
+    // Release lock before the rest of initialization
+    task_lock.release(saved_daif);
     lib::strcpy_safe(t->name, name, sizeof(t->name));
     t->state = TaskState::Ready;
     t->flags = TASK_FLAG_USER; // User task, not kernel
@@ -855,10 +892,12 @@ u32 reap_exited()
             serial::put_dec(t.id);
             serial::puts(")\n");
 
-            // Free kernel stack
+            // Free kernel stack (must hold task_lock)
             if (t.kernel_stack)
             {
-                free_kernel_stack(t.kernel_stack);
+                u64 saved_daif = task_lock.acquire();
+                free_kernel_stack_locked(t.kernel_stack);
+                task_lock.release(saved_daif);
                 t.kernel_stack = nullptr;
                 t.kernel_stack_top = nullptr;
             }
@@ -912,10 +951,12 @@ void destroy(Task *t)
     serial::put_dec(t->id);
     serial::puts(")\n");
 
-    // Free kernel stack
+    // Free kernel stack (requires lock for pool access)
     if (t->kernel_stack)
     {
-        free_kernel_stack(t->kernel_stack);
+        u64 saved_daif = task_lock.acquire();
+        free_kernel_stack_locked(t->kernel_stack);
+        task_lock.release(saved_daif);
         t->kernel_stack = nullptr;
         t->kernel_stack_top = nullptr;
     }
