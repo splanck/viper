@@ -3,6 +3,7 @@ set(RT_BASE_SOURCES
         rt_crc32.c
         rt_error.c
         rt_trap.c
+        rt_stack_safety.c
         rt_fp.c
         rt_memory.c
         rt_output.c
@@ -134,6 +135,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_context.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_error.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_trap.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_stack_safety.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt.hpp
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_fp.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_math.h

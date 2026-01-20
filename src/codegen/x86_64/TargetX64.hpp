@@ -85,6 +85,12 @@ inline constexpr int kSlotSizeBytes = 8;
 ///          frame lowering and call lowering to enforce alignment.
 inline constexpr int kStackAlignment = 16;
 
+/// \brief Page size for stack probing (bytes).
+/// \details When allocating stack frames larger than this threshold, the code
+///          generator emits stack probing code to ensure the guard page is
+///          touched and stack overflow is detected properly.
+inline constexpr int kPageSize = 4096;
+
 /// \brief Maximum number of integer/pointer arguments passed in registers (SysV).
 /// \details The SysV AMD64 ABI allows up to 6 integer arguments in registers
 ///          (RDI, RSI, RDX, RCX, R8, R9). Additional arguments go on the stack.

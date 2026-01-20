@@ -228,6 +228,7 @@ int invokeAssembler(const std::filesystem::path &asmPath,
 /// @return Normalised linker exit code (-1 when the command could not start).
 int invokeLinker(const std::filesystem::path &asmPath,
                  const std::filesystem::path &exePath,
+                 std::size_t stackSize,
                  std::ostream &out,
                  std::ostream &err)
 {
@@ -358,6 +359,10 @@ int invokeLinker(const std::filesystem::path &asmPath,
     cmd.push_back("-lgdi32");
     cmd.push_back("-luser32");
     cmd.push_back("-lxinput");
+
+    // Set stack size (default 8MB for better recursion support)
+    const std::size_t effectiveStackSize = (stackSize > 0) ? stackSize : (8 * 1024 * 1024);
+    cmd.push_back("-Wl,/STACK:" + std::to_string(effectiveStackSize));
 
     cmd.push_back("-o");
     cmd.push_back(toNativePath(exePath));
@@ -651,11 +656,20 @@ int invokeLinker(const std::filesystem::path &asmPath,
 
 #if defined(__APPLE__)
     cmd.push_back("-Wl,-dead_strip");
+    // Set stack size (default 8MB for better recursion support)
+    // macOS requires size in hex
+    const std::size_t effStack = (stackSize > 0) ? stackSize : (8 * 1024 * 1024);
+    std::ostringstream stackArg;
+    stackArg << "-Wl,-stack_size,0x" << std::hex << effStack;
+    cmd.push_back(stackArg.str());
 #else
     cmd.push_back("-Wl,--gc-sections");
     if (needThreads)
         cmd.push_back("-pthread");
     cmd.push_back("-lm");
+    // Set stack size (default 8MB for better recursion support)
+    const std::size_t effStack = (stackSize > 0) ? stackSize : (8 * 1024 * 1024);
+    cmd.push_back("-Wl,-z,stack-size=" + std::to_string(effStack));
 #endif
 
     cmd.push_back("-o");
@@ -854,7 +868,7 @@ PipelineResult CodegenPipeline::run()
     const std::filesystem::path exePath = opts_.output_obj_path.empty()
                                               ? deriveExecutablePath(opts_)
                                               : std::filesystem::path(opts_.output_obj_path);
-    const int linkExit = invokeLinker(asmPath, exePath, out, err);
+    const int linkExit = invokeLinker(asmPath, exePath, opts_.stack_size, out, err);
     if (linkExit != 0)
     {
         result.exit_code = linkExit == -1 ? 1 : linkExit;

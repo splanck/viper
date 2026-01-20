@@ -266,8 +266,10 @@ entity DrawingCanvas {
     }
 
     // Flood fill helper with depth limit
+    // Note: depth limit must be low enough to avoid stack overflow in native code
+    // (~280 bytes per frame, 1MB default stack = ~3500 max, use 2000 for safety)
     hide func floodFillHelper(x: Integer, y: Integer, targetColor: Integer, newColor: Integer, depth: Integer) {
-        if depth > 10000 {
+        if depth > 2000 {
             return;
         }
         if x < 0 or x >= width or y < 0 or y >= height {
