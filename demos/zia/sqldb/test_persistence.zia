@@ -1,0 +1,274 @@
+// test_persistence.zia - Tests for Phase 10: Storage & Persistence
+// Part of SQLite Clone - ViperLang Implementation
+
+module test_persistence;
+
+bind "./executor";
+
+//=============================================================================
+// TEST UTILITIES
+//=============================================================================
+
+Integer passed = 0;
+Integer failed = 0;
+
+func assertTrue(cond: Boolean, desc: String) {
+    if cond {
+        Viper.Terminal.Say("  PASS: " + desc);
+        passed = passed + 1;
+    } else {
+        Viper.Terminal.Say("  FAIL: " + desc);
+        failed = failed + 1;
+    }
+}
+
+func assertFalse(cond: Boolean, desc: String) {
+    assertTrue(cond == false, desc);
+}
+
+//=============================================================================
+// TESTS
+//=============================================================================
+
+func testDescribe() {
+    Viper.Terminal.Say("Testing DESCRIBE...");
+    var exec = new Executor();
+    exec.init();
+
+    // Create a table with various constraints
+    exec.executeSql("CREATE TABLE test_describe (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, email TEXT)");
+
+    var result = exec.executeSql("DESCRIBE test_describe");
+    assertTrue(result.success, "DESCRIBE should succeed");
+    assertTrue(result.rowCount() == 3, "Should have 3 columns");
+
+    // Check column names in result
+    var row0 = result.getRow(0);
+    if row0 != null {
+        var r = row0;
+        assertTrue(r.getValue(0).textValue == "id", "First column should be 'id'");
+    }
+}
+
+func testHelp() {
+    Viper.Terminal.Say("Testing HELP...");
+    var exec = new Executor();
+    exec.init();
+
+    var result = exec.executeSql("HELP");
+    assertTrue(result.success, "HELP should succeed");
+    assertTrue(result.rowCount() > 10, "HELP should show many commands");
+}
+
+func testVacuum() {
+    Viper.Terminal.Say("Testing VACUUM...");
+    var exec = new Executor();
+    exec.init();
+
+    // Create table and add rows
+    exec.executeSql("CREATE TABLE test_vacuum (id INTEGER, name TEXT)");
+    exec.executeSql("INSERT INTO test_vacuum VALUES (1, 'Alice')");
+    exec.executeSql("INSERT INTO test_vacuum VALUES (2, 'Bob')");
+    exec.executeSql("INSERT INTO test_vacuum VALUES (3, 'Charlie')");
+
+    // Delete a row
+    exec.executeSql("DELETE FROM test_vacuum WHERE id = 2");
+
+    // Verify row is marked deleted but table still has it
+    var beforeVacuum = exec.executeSql("SELECT * FROM test_vacuum");
+    assertTrue(beforeVacuum.rowCount() == 2, "Should show 2 rows after delete");
+
+    // Run VACUUM
+    var vacuumResult = exec.executeSql("VACUUM");
+    assertTrue(vacuumResult.success, "VACUUM should succeed");
+
+    // Verify message
+    var hasRemoved = Viper.String.IndexOf(vacuumResult.message, "removed") >= 0;
+    assertTrue(hasRemoved, "VACUUM message should mention removed rows");
+}
+
+func testAlterTableAddColumn() {
+    Viper.Terminal.Say("Testing ALTER TABLE ADD COLUMN...");
+    var exec = new Executor();
+    exec.init();
+
+    exec.executeSql("CREATE TABLE test_alter (id INTEGER, name TEXT)");
+    exec.executeSql("INSERT INTO test_alter VALUES (1, 'Alice')");
+
+    var result = exec.executeSql("ALTER TABLE test_alter ADD COLUMN email TEXT");
+    assertTrue(result.success, "ALTER TABLE ADD COLUMN should succeed");
+
+    // Verify the new column exists
+    var selectResult = exec.executeSql("SELECT * FROM test_alter");
+    assertTrue(selectResult.success, "SELECT after ALTER should succeed");
+
+    // Verify the new column has NULL for existing rows
+    var row = selectResult.getRow(0);
+    if row != null {
+        var r = row;
+        assertTrue(r.columnCount() == 3, "Row should have 3 columns now");
+        assertTrue(r.getValue(2).isNull(), "New column should be NULL");
+    }
+}
+
+func testAlterTableDropColumn() {
+    Viper.Terminal.Say("Testing ALTER TABLE DROP COLUMN...");
+    var exec = new Executor();
+    exec.init();
+
+    exec.executeSql("CREATE TABLE test_drop (id INTEGER, name TEXT, email TEXT)");
+    exec.executeSql("INSERT INTO test_drop VALUES (1, 'Alice', 'alice@example.com')");
+
+    var result = exec.executeSql("ALTER TABLE test_drop DROP COLUMN email");
+    assertTrue(result.success, "ALTER TABLE DROP COLUMN should succeed");
+
+    // Verify the column is gone
+    var selectResult = exec.executeSql("SELECT * FROM test_drop");
+    assertTrue(selectResult.success, "SELECT after DROP COLUMN should succeed");
+
+    var row = selectResult.getRow(0);
+    if row != null {
+        var r = row;
+        assertTrue(r.columnCount() == 2, "Row should have 2 columns now");
+    }
+}
+
+func testAlterTableRename() {
+    Viper.Terminal.Say("Testing ALTER TABLE RENAME...");
+    var exec = new Executor();
+    exec.init();
+
+    exec.executeSql("CREATE TABLE old_name (id INTEGER)");
+
+    var result = exec.executeSql("ALTER TABLE old_name RENAME TO new_name");
+    assertTrue(result.success, "ALTER TABLE RENAME should succeed");
+
+    // Verify old name doesn't work
+    var oldResult = exec.executeSql("SELECT * FROM old_name");
+    assertFalse(oldResult.success, "SELECT from old name should fail");
+
+    // Verify new name works
+    var newResult = exec.executeSql("SELECT * FROM new_name");
+    assertTrue(newResult.success, "SELECT from new name should succeed");
+}
+
+func testAlterTableRenameColumn() {
+    Viper.Terminal.Say("Testing ALTER TABLE RENAME COLUMN...");
+    var exec = new Executor();
+    exec.init();
+
+    exec.executeSql("CREATE TABLE test_rename_col (old_col INTEGER)");
+    exec.executeSql("INSERT INTO test_rename_col VALUES (42)");
+
+    var result = exec.executeSql("ALTER TABLE test_rename_col RENAME COLUMN old_col TO new_col");
+    assertTrue(result.success, "ALTER TABLE RENAME COLUMN should succeed");
+
+    // Verify old column name doesn't work
+    var oldResult = exec.executeSql("SELECT old_col FROM test_rename_col");
+    assertFalse(oldResult.success, "SELECT old_col should fail");
+
+    // Verify new column name works
+    var newResult = exec.executeSql("SELECT new_col FROM test_rename_col");
+    assertTrue(newResult.success, "SELECT new_col should succeed");
+}
+
+func testSaveAndOpen() {
+    Viper.Terminal.Say("Testing SAVE and OPEN...");
+    var exec = new Executor();
+    exec.init();
+
+    // Create tables and data
+    exec.executeSql("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)");
+    exec.executeSql("INSERT INTO users VALUES (1, 'Alice')");
+    exec.executeSql("INSERT INTO users VALUES (2, 'Bob')");
+
+    // Save to file
+    var saveResult = exec.executeSql("SAVE '/tmp/test_sqldb.sql'");
+    assertTrue(saveResult.success, "SAVE should succeed");
+
+    // Create new executor and load the file
+    var exec2 = new Executor();
+    exec2.init();
+
+    var openResult = exec2.executeSql("OPEN '/tmp/test_sqldb.sql'");
+    assertTrue(openResult.success, "OPEN should succeed");
+
+    // Verify data was loaded
+    var selectResult = exec2.executeSql("SELECT * FROM users");
+    assertTrue(selectResult.success, "SELECT after OPEN should succeed");
+    assertTrue(selectResult.rowCount() == 2, "Should have 2 rows after OPEN");
+
+    // Cleanup
+    Viper.IO.File.Delete("/tmp/test_sqldb.sql");
+}
+
+func testExportImport() {
+    Viper.Terminal.Say("Testing EXPORT and IMPORT...");
+    var exec = new Executor();
+    exec.init();
+
+    // Create table and data
+    exec.executeSql("CREATE TABLE products (id INTEGER, name TEXT, price INTEGER)");
+    exec.executeSql("INSERT INTO products VALUES (1, 'Apple', 100)");
+    exec.executeSql("INSERT INTO products VALUES (2, 'Banana', 50)");
+    exec.executeSql("INSERT INTO products VALUES (3, 'Cherry', 200)");
+
+    // Export to CSV
+    var exportResult = exec.executeSql("EXPORT products TO '/tmp/products.csv'");
+    assertTrue(exportResult.success, "EXPORT should succeed");
+
+    // Verify file exists
+    assertTrue(Viper.IO.File.Exists("/tmp/products.csv"), "CSV file should exist");
+
+    // Create new table and import
+    exec.executeSql("CREATE TABLE products2 (id INTEGER, name TEXT, price INTEGER)");
+    var importResult = exec.executeSql("IMPORT INTO products2 FROM '/tmp/products.csv'");
+    assertTrue(importResult.success, "IMPORT should succeed");
+
+    // Verify data was imported
+    var selectResult = exec.executeSql("SELECT * FROM products2");
+    assertTrue(selectResult.success, "SELECT after IMPORT should succeed");
+    assertTrue(selectResult.rowCount() == 3, "Should have 3 rows after IMPORT");
+
+    // Cleanup
+    Viper.IO.File.Delete("/tmp/products.csv");
+}
+
+func testShowTables() {
+    Viper.Terminal.Say("Testing SHOW TABLES...");
+    var exec = new Executor();
+    exec.init();
+
+    exec.executeSql("CREATE TABLE table1 (id INTEGER)");
+    exec.executeSql("CREATE TABLE table2 (id INTEGER)");
+    exec.executeSql("CREATE TABLE table3 (id INTEGER)");
+
+    var result = exec.executeSql("SHOW TABLES");
+    assertTrue(result.success, "SHOW TABLES should succeed");
+    assertTrue(result.rowCount() == 3, "Should show 3 tables");
+}
+
+//=============================================================================
+// MAIN
+//=============================================================================
+
+func start() {
+    Viper.Terminal.Say("=== Phase 10: Persistence Tests ===");
+    Viper.Terminal.Say("");
+
+    testDescribe();
+    testHelp();
+    testVacuum();
+    testAlterTableAddColumn();
+    testAlterTableDropColumn();
+    testAlterTableRename();
+    testAlterTableRenameColumn();
+    testSaveAndOpen();
+    testExportImport();
+    testShowTables();
+
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("=== Results ===");
+    Viper.Terminal.Say("Passed: " + Viper.Fmt.Int(passed));
+    Viper.Terminal.Say("Failed: " + Viper.Fmt.Int(failed));
+}

@@ -1,0 +1,312 @@
+// repl.zia - Interactive REPL for ViperSQL
+// Part of SQLite Clone - ViperLang Implementation
+
+module repl;
+
+bind "./executor";
+
+//=============================================================================
+// REPL STATE
+//=============================================================================
+
+Executor globalExecutor;
+Boolean running = true;
+String inputBuffer = "";
+Boolean multilineMode = false;
+
+//=============================================================================
+// RESULT FORMATTING
+//=============================================================================
+
+func formatResult(result: QueryResult) {
+    if result.success == false {
+        Viper.Terminal.Say("Error: " + result.errorMessage);
+        return;
+    }
+
+    // If there's a message (DDL/DML result), show it
+    if result.message != "" {
+        Viper.Terminal.Say(result.message);
+        return;
+    }
+
+    // If there are rows, format as table
+    if result.rowCount() > 0 {
+        printTable(result);
+    } else if result.columnNames.count() > 0 {
+        // Query returned no rows
+        Viper.Terminal.Say("(0 rows)");
+    }
+}
+
+func printTable(result: QueryResult) {
+    // Calculate column widths
+    var colWidths: List[Integer] = [];
+    var ci = 0;
+    while ci < result.columnNames.count() {
+        var width = Viper.String.Length(result.columnNames.get(ci));
+        colWidths.add(width);
+        ci = ci + 1;
+    }
+
+    // Check data widths
+    var ri = 0;
+    while ri < result.rowCount() {
+        var row = result.getRow(ri);
+        if row != null {
+            var r = row;
+            ci = 0;
+            while ci < r.columnCount() && ci < colWidths.count() {
+                var val = r.getValue(ci);
+                var valStr = val.toString();
+                var valLen = Viper.String.Length(valStr);
+                if valLen > colWidths.get(ci) {
+                    colWidths.set(ci, valLen);
+                }
+                ci = ci + 1;
+            }
+        }
+        ri = ri + 1;
+    }
+
+    // Print header
+    printSeparator(colWidths);
+    printRow(result.columnNames, colWidths);
+    printSeparator(colWidths);
+
+    // Print rows
+    ri = 0;
+    while ri < result.rowCount() {
+        var row = result.getRow(ri);
+        if row != null {
+            var r = row;
+            var values: List[String] = [];
+            ci = 0;
+            while ci < r.columnCount() {
+                values.add(r.getValue(ci).toString());
+                ci = ci + 1;
+            }
+            printRow(values, colWidths);
+        }
+        ri = ri + 1;
+    }
+    printSeparator(colWidths);
+
+    Viper.Terminal.Say("(" + Viper.Fmt.Int(result.rowCount()) + " rows)");
+}
+
+func printSeparator(colWidths: List[Integer]) {
+    var line = "+";
+    var ci = 0;
+    while ci < colWidths.count() {
+        var width = colWidths.get(ci);
+        var i = 0;
+        while i < width + 2 {
+            line = line + "-";
+            i = i + 1;
+        }
+        line = line + "+";
+        ci = ci + 1;
+    }
+    Viper.Terminal.Say(line);
+}
+
+func printRow(values: List[String], colWidths: List[Integer]) {
+    var line = "|";
+    var ci = 0;
+    while ci < values.count() && ci < colWidths.count() {
+        var val = values.get(ci);
+        var width = colWidths.get(ci);
+        line = line + " " + padRight(val, width) + " |";
+        ci = ci + 1;
+    }
+    Viper.Terminal.Say(line);
+}
+
+func padRight(str: String, width: Integer) -> String {
+    var result = str;
+    var len = Viper.String.Length(str);
+    while len < width {
+        result = result + " ";
+        len = len + 1;
+    }
+    return result;
+}
+
+//=============================================================================
+// COMMAND PROCESSING
+//=============================================================================
+
+func processCommand(input: String) {
+    var trimmed = Viper.String.Trim(input);
+
+    // Check for meta-commands
+    if Viper.String.StartsWith(trimmed, ".") || Viper.String.StartsWith(trimmed, "\\") {
+        processMetaCommand(trimmed);
+        return;
+    }
+
+    // Empty input
+    if trimmed == "" {
+        return;
+    }
+
+    // Execute SQL
+    var result = globalExecutor.executeSql(trimmed);
+    formatResult(result);
+}
+
+func processMetaCommand(cmd: String) {
+    var lower = Viper.String.ToLower(cmd);
+
+    if lower == ".help" || lower == "\\?" || lower == "\\h" {
+        printHelp();
+        return;
+    }
+
+    if lower == ".quit" || lower == ".exit" || lower == "\\q" {
+        running = false;
+        Viper.Terminal.Say("Goodbye!");
+        return;
+    }
+
+    if lower == ".tables" || lower == "\\dt" {
+        var result = globalExecutor.executeSql("SHOW TABLES");
+        formatResult(result);
+        return;
+    }
+
+    if Viper.String.StartsWith(lower, ".describe ") || Viper.String.StartsWith(lower, "\\d ") {
+        var tableName = "";
+        if Viper.String.StartsWith(lower, ".describe ") {
+            tableName = Viper.String.Substring(cmd, 10, Viper.String.Length(cmd) - 10);
+        } else {
+            tableName = Viper.String.Substring(cmd, 3, Viper.String.Length(cmd) - 3);
+        }
+        tableName = Viper.String.Trim(tableName);
+        var result = globalExecutor.executeSql("DESCRIBE " + tableName);
+        formatResult(result);
+        return;
+    }
+
+    if Viper.String.StartsWith(lower, ".save ") {
+        var filename = Viper.String.Substring(cmd, 6, Viper.String.Length(cmd) - 6);
+        filename = Viper.String.Trim(filename);
+        var result = globalExecutor.executeSql("SAVE '" + filename + "'");
+        formatResult(result);
+        return;
+    }
+
+    if Viper.String.StartsWith(lower, ".open ") {
+        var filename = Viper.String.Substring(cmd, 6, Viper.String.Length(cmd) - 6);
+        filename = Viper.String.Trim(filename);
+        var result = globalExecutor.executeSql("OPEN '" + filename + "'");
+        formatResult(result);
+        return;
+    }
+
+    if lower == ".schema" {
+        // Show schema for all tables
+        var tablesResult = globalExecutor.executeSql("SHOW TABLES");
+        var ti = 0;
+        while ti < tablesResult.rowCount() {
+            var row = tablesResult.getRow(ti);
+            if row != null {
+                var r = row;
+                var tableName = r.getValue(0).textValue;
+                Viper.Terminal.Say("");
+                Viper.Terminal.Say("Table: " + tableName);
+                var descResult = globalExecutor.executeSql("DESCRIBE " + tableName);
+                formatResult(descResult);
+            }
+            ti = ti + 1;
+        }
+        return;
+    }
+
+    Viper.Terminal.Say("Unknown command: " + cmd);
+    Viper.Terminal.Say("Type .help for help");
+}
+
+func printHelp() {
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("ViperSQL - Interactive SQL Shell");
+    Viper.Terminal.Say("================================");
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("Meta-commands:");
+    Viper.Terminal.Say("  .help, \\?        Show this help");
+    Viper.Terminal.Say("  .quit, .exit, \\q Exit the shell");
+    Viper.Terminal.Say("  .tables, \\dt     List all tables");
+    Viper.Terminal.Say("  .describe <tbl>  Show table schema");
+    Viper.Terminal.Say("  \\d <table>       Show table schema");
+    Viper.Terminal.Say("  .schema          Show all table schemas");
+    Viper.Terminal.Say("  .save <file>     Save database to file");
+    Viper.Terminal.Say("  .open <file>     Load database from file");
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("SQL Commands:");
+    Viper.Terminal.Say("  CREATE TABLE name (col type, ...)");
+    Viper.Terminal.Say("  DROP TABLE name");
+    Viper.Terminal.Say("  INSERT INTO table VALUES (...)");
+    Viper.Terminal.Say("  SELECT ... FROM table [WHERE ...]");
+    Viper.Terminal.Say("  UPDATE table SET col=val [WHERE ...]");
+    Viper.Terminal.Say("  DELETE FROM table [WHERE ...]");
+    Viper.Terminal.Say("  ALTER TABLE name ADD/DROP/RENAME ...");
+    Viper.Terminal.Say("  CREATE INDEX name ON table (cols)");
+    Viper.Terminal.Say("  VACUUM");
+    Viper.Terminal.Say("  HELP");
+    Viper.Terminal.Say("");
+    Viper.Terminal.Say("End SQL statements with a semicolon (;)");
+    Viper.Terminal.Say("Multi-line input is supported.");
+    Viper.Terminal.Say("");
+}
+
+//=============================================================================
+// MAIN REPL LOOP
+//=============================================================================
+
+func start() {
+    globalExecutor = new Executor();
+    globalExecutor.init();
+
+    Viper.Terminal.Say("ViperSQL v1.0 - Interactive SQL Shell");
+    Viper.Terminal.Say("Type .help for help, .quit to exit");
+    Viper.Terminal.Say("");
+
+    while running {
+        // Show prompt
+        if multilineMode {
+            Viper.Terminal.Print("   ...> ");
+        } else {
+            Viper.Terminal.Print("vipersql> ");
+        }
+
+        // Read input
+        var line = Viper.Terminal.Ask("");
+
+        // Handle multi-line input
+        inputBuffer = inputBuffer + line;
+
+        // Check if statement is complete (ends with semicolon or is a meta-command)
+        var trimmed = Viper.String.Trim(inputBuffer);
+
+        if Viper.String.StartsWith(trimmed, ".") || Viper.String.StartsWith(trimmed, "\\") {
+            // Meta-command - process immediately
+            processCommand(inputBuffer);
+            inputBuffer = "";
+            multilineMode = false;
+        } else if Viper.String.EndsWith(trimmed, ";") {
+            // Complete statement - process
+            processCommand(inputBuffer);
+            inputBuffer = "";
+            multilineMode = false;
+        } else if trimmed != "" {
+            // Incomplete statement - continue reading
+            inputBuffer = inputBuffer + " ";
+            multilineMode = true;
+        } else {
+            // Empty line
+            inputBuffer = "";
+            multilineMode = false;
+        }
+    }
+}

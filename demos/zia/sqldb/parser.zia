@@ -97,6 +97,12 @@ entity Parser {
             return exprNull();
         }
 
+        // CASE expression
+        if kind == TK_CASE {
+            advance();
+            return parseCaseExpr();
+        }
+
         // Identifier (column ref or function call)
         if kind == TK_IDENTIFIER {
             var name = currentToken.text;
@@ -304,6 +310,45 @@ entity Parser {
 
     expose func parseExpr() -> Expr {
         return parseOrExpr();
+    }
+
+    // Parse CASE WHEN ... THEN ... ELSE ... END expression
+    expose func parseCaseExpr() -> Expr {
+        var expr = new Expr();
+        expr.init();
+        expr.initCase();
+
+        // Parse WHEN ... THEN ... clauses
+        while currentToken.kind == TK_WHEN {
+            advance();  // consume WHEN
+
+            var condition = parseExpr();
+
+            if currentToken.kind != TK_THEN {
+                setError("Expected THEN after WHEN condition");
+                return exprNull();
+            }
+            advance();  // consume THEN
+
+            var result = parseExpr();
+            expr.addCaseWhen(condition, result);
+        }
+
+        // Parse optional ELSE clause
+        if currentToken.kind == TK_ELSE {
+            advance();  // consume ELSE
+            var elseExpr = parseExpr();
+            expr.setCaseElse(elseExpr);
+        }
+
+        // Expect END
+        if currentToken.kind != TK_END {
+            setError("Expected END to close CASE expression");
+            return exprNull();
+        }
+        advance();  // consume END
+
+        return expr;
     }
 
     //=========================================================================

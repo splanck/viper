@@ -66,6 +66,13 @@ entity SqlIndex {
         return columnNames.count();
     }
 
+    expose func getColumnName(index: Integer) -> String {
+        if index >= 0 && index < columnNames.count() {
+            return columnNames.get(index);
+        }
+        return "";
+    }
+
     // Compute a simple hash for a string
     expose func hashString(s: String) -> Integer {
         var hash = 0;
@@ -269,5 +276,12 @@ entity IndexManager {
 
     expose func indexCount() -> Integer {
         return indexes.count();
+    }
+
+    expose func getIndex(index: Integer) -> SqlIndex? {
+        if index >= 0 && index < indexes.count() {
+            return indexes.get(index);
+        }
+        return null;
     }
 }

@@ -16,6 +16,7 @@ final EXPR_UNARY = 4;        // Unary operation (-, NOT)
 final EXPR_FUNCTION = 5;     // Function call (COUNT, SUM, etc.)
 final EXPR_STAR = 6;         // SELECT * wildcard
 final EXPR_SUBQUERY = 7;     // Scalar subquery (SELECT ...)
+final EXPR_CASE = 8;         // CASE WHEN ... THEN ... ELSE ... END
 
 //=============================================================================
 // BINARY OPERATOR CONSTANTS
@@ -71,6 +72,11 @@ entity Expr {
     // For EXPR_SUBQUERY (stores SQL to re-parse - avoids circular dependency)
     expose String subquerySQL;
 
+    // For EXPR_CASE
+    expose List[Expr] caseConditions;  // WHEN conditions
+    expose List[Expr] caseResults;     // THEN results
+    expose Expr? caseElse;             // ELSE result (null if no ELSE)
+
     expose func init() {
         kind = EXPR_LITERAL;
         literalValue = new SqlValue();
@@ -81,6 +87,9 @@ entity Expr {
         funcName = "";
         args = [];
         subquerySQL = "";
+        caseConditions = [];
+        caseResults = [];
+        caseElse = null;
     }
 
     expose func initLiteral(val: SqlValue) {
@@ -122,6 +131,22 @@ entity Expr {
     expose func initSubquery(sql: String) {
         kind = EXPR_SUBQUERY;
         subquerySQL = sql;
+    }
+
+    expose func initCase() {
+        kind = EXPR_CASE;
+        caseConditions = [];
+        caseResults = [];
+        caseElse = null;
+    }
+
+    expose func addCaseWhen(condition: Expr, result: Expr) {
+        caseConditions.add(condition);
+        caseResults.add(result);
+    }
+
+    expose func setCaseElse(elseExpr: Expr) {
+        caseElse = elseExpr;
     }
 
     expose func isLiteral() -> Boolean {
