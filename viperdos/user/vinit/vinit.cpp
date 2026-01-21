@@ -45,15 +45,16 @@ struct ServerInfo
 
 // Two-disk architecture: servers are on system disk (/sys)
 // Note: inputd removed - kernel handles keyboard input directly
-// Storage/network servers disabled - using full monolithic kernel instead
+// Hybrid mode: FS uses kernel VFS, network uses netd (kernel net not implemented)
 static ServerInfo g_servers[] = {
     // Display server must start first - consoled depends on it for GUI
     {"displayd", "/sys/displayd.sys", "DISPLAY", 0, false},
     // Essential: always spawn, required for shell I/O (needs displayd)
     {"consoled", "/sys/consoled.sys", "CONSOLED", 0, false},
+    // Network server - kernel net stack not implemented, use netd
+    {"netd", "/sys/netd.sys", "NETD", 0, false},
     // Disabled - using kernel services directly (monolithic mode)
     // {"blkd", "/sys/blkd.sys", "BLKD", 0, false},
-    // {"netd", "/sys/netd.sys", "NETD", 0, false},
     // {"fsd", "/sys/fsd.sys", "FSD", 0, false},
 };
 

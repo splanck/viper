@@ -46,12 +46,9 @@ static netclient::Client g_netd_client;
 
 extern "C" int __viper_netd_is_available()
 {
-    i32 rc = g_netd_client.connect();
-    if (rc != 0)
-    {
-        return 0;
-    }
-    return 1;
+    // Try to connect to netd service. Returns 1 if available, 0 if not.
+    // Hybrid mode: kernel FS, userland network (netd).
+    return g_netd_client.connect() == 0 ? 1 : 0;
 }
 
 extern "C" unsigned int __viper_netd_poll_handle()

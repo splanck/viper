@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Build-time feature toggles (microkernel migration safety)
 # -----------------------------------------------------------------------------
 
-option(VIPER_MICROKERNEL_MODE "Identify build as microkernel mode" ON)
+option(VIPER_MICROKERNEL_MODE "Identify build as microkernel mode" OFF)
 option(VIPER_KERNEL_ENABLE_FS "Enable in-kernel filesystem (VFS + ViperFS)" ON)
 option(VIPER_KERNEL_ENABLE_NET "Enable in-kernel TCP/IP stack + socket/DNS syscalls" OFF)
 option(VIPER_KERNEL_ENABLE_TLS "Enable kernel-managed TLS sessions (SYS_TLS_*)" OFF)

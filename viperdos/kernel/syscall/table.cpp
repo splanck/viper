@@ -1350,12 +1350,14 @@ static SyscallResult sys_socket_connect(u64 a0, u64 a1, u64 a2, u64, u64, u64)
         return SyscallResult::err(error::VERR_INVALID_HANDLE);
     }
 
-    // Convert u32 IP to Ipv4Addr
+    // Convert u32 IP from network byte order (s_addr format) to Ipv4Addr.
+    // Network byte order stores first octet in lowest memory address.
+    // On little-endian, loading s_addr as u32 puts first octet in lowest bits.
     net::Ipv4Addr ip;
-    ip.bytes[0] = (ip_raw >> 24) & 0xFF;
-    ip.bytes[1] = (ip_raw >> 16) & 0xFF;
-    ip.bytes[2] = (ip_raw >> 8) & 0xFF;
-    ip.bytes[3] = ip_raw & 0xFF;
+    ip.bytes[0] = ip_raw & 0xFF;
+    ip.bytes[1] = (ip_raw >> 8) & 0xFF;
+    ip.bytes[2] = (ip_raw >> 16) & 0xFF;
+    ip.bytes[3] = (ip_raw >> 24) & 0xFF;
 
 #if VIPER_KERNEL_DEBUG_NET_SYSCALL
     if (log::get_level() == log::Level::Debug)

@@ -272,7 +272,8 @@ static bool kernel_path_only(const char *path)
 
 extern "C" int __viper_fsd_is_available()
 {
-    return (g_fsd_client.connect() == 0) ? 1 : 0;
+    // Monolithic mode: FSD server not running, use kernel syscalls directly
+    return 0;
 }
 
 extern "C" int __viper_fsd_is_fd(int fd)
