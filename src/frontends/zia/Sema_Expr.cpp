@@ -652,7 +652,22 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
             {
                 for (auto &arg : expr->args)
                 {
-                    analyzeExpr(arg.value.get());
+                    TypeRef argType = analyzeExpr(arg.value.get());
+                    // Type check for remove/contains - argument should match element type
+                    if ((fieldExpr->field == "remove" || fieldExpr->field == "contains") &&
+                        elemType && argType && !expr->args.empty())
+                    {
+                        // Check if argument type is compatible with element type
+                        // Integer arg for non-Integer list is likely a removeAt() confusion
+                        if (argType->kind == TypeKindSem::Integer &&
+                            elemType->kind != TypeKindSem::Integer)
+                        {
+                            error(expr->args[0].value->loc,
+                                  "Type mismatch: " + fieldExpr->field +
+                                      "() expects element type, got Integer. "
+                                      "Did you mean removeAt() to remove by index?");
+                        }
+                    }
                 }
                 return types::boolean();
             }
@@ -660,7 +675,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
             // Methods that return void
             if (fieldExpr->field == "add" || fieldExpr->field == "insert" ||
                 fieldExpr->field == "set" || fieldExpr->field == "clear" ||
-                fieldExpr->field == "reverse" || fieldExpr->field == "sort")
+                fieldExpr->field == "reverse" || fieldExpr->field == "sort" ||
+                fieldExpr->field == "removeAt")
             {
                 for (auto &arg : expr->args)
                 {

@@ -111,6 +111,8 @@ final TK_END = 115;
 final TK_UNION = 116;
 final TK_ALL = 117;
 final TK_CAST = 118;
+final TK_EXCEPT = 137;
+final TK_INTERSECT = 138;
 
 // Keywords - Utility
 final TK_SHOW = 120;
@@ -127,6 +129,11 @@ final TK_ADD = 130;
 final TK_COLUMN = 131;
 final TK_RENAME = 132;
 final TK_IF = 133;
+
+// Keywords - Multi-Database (Phase 1)
+final TK_DATABASE = 134;
+final TK_DATABASES = 135;
+final TK_USE = 136;
 
 // Operators
 final TK_PLUS = 140;

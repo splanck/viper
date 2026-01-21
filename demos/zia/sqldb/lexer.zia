@@ -219,6 +219,8 @@ entity Lexer {
         if (word == "UNION") { return TK_UNION; }
         if (word == "ALL") { return TK_ALL; }
         if (word == "CAST") { return TK_CAST; }
+        if (word == "EXCEPT") { return TK_EXCEPT; }
+        if (word == "INTERSECT") { return TK_INTERSECT; }
         if (word == "SHOW") { return TK_SHOW; }
         if (word == "DESCRIBE") { return TK_DESCRIBE; }
         if (word == "EXPLAIN") { return TK_EXPLAIN; }
@@ -233,6 +235,9 @@ entity Lexer {
         if (word == "COLUMN") { return TK_COLUMN; }
         if (word == "RENAME") { return TK_RENAME; }
         if (word == "IF") { return TK_IF; }
+        if (word == "DATABASE") { return TK_DATABASE; }
+        if (word == "DATABASES") { return TK_DATABASES; }
+        if (word == "USE") { return TK_USE; }
         return TK_IDENTIFIER;
     }
 

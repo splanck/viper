@@ -1,0 +1,119 @@
+// page.zia - Page Layout Constants and Structures
+// Part of ViperSQL - Binary Storage Engine (Phase 2)
+
+module page;
+
+//=============================================================================
+// PAGE CONSTANTS
+//=============================================================================
+
+// Page size - 4KB is standard for database systems
+final PAGE_SIZE = 4096;
+
+// Page types
+final PAGE_TYPE_HEADER = 0;      // File header (page 0)
+final PAGE_TYPE_SCHEMA = 1;      // Schema/catalog information
+final PAGE_TYPE_DATA = 2;        // Table data
+final PAGE_TYPE_INDEX = 3;       // B-tree index nodes
+final PAGE_TYPE_OVERFLOW = 4;    // Large value overflow
+final PAGE_TYPE_FREELIST = 5;    // Free page tracking
+
+// Magic number for file identification
+final MAGIC_STRING = "VIPERSQL";
+final FILE_VERSION = 1;
+
+// Header page layout offsets
+final HEADER_MAGIC_OFFSET = 0;           // 8 bytes: "VIPERSQL"
+final HEADER_VERSION_OFFSET = 8;         // 4 bytes: version number
+final HEADER_PAGE_SIZE_OFFSET = 12;      // 4 bytes: page size (4096)
+final HEADER_PAGE_COUNT_OFFSET = 16;     // 8 bytes: total pages in file
+final HEADER_SCHEMA_PAGE_OFFSET = 24;    // 8 bytes: first schema page
+final HEADER_FREELIST_HEAD_OFFSET = 32;  // 8 bytes: first free page
+final HEADER_RESERVED_OFFSET = 40;       // Rest is reserved
+
+// Data page layout offsets
+final DATA_PAGE_TYPE_OFFSET = 0;         // 1 byte: page type
+final DATA_TABLE_ID_OFFSET = 1;          // 4 bytes: table ID
+final DATA_ROW_COUNT_OFFSET = 5;         // 2 bytes: number of rows
+final DATA_FREE_SPACE_OFFSET = 7;        // 2 bytes: offset to free space
+final DATA_NEXT_PAGE_OFFSET = 9;         // 8 bytes: next data page
+final DATA_SLOT_DIR_OFFSET = 17;         // Start of slot directory
+
+// Value type tags for serialization
+final VAL_TYPE_NULL = 0;
+final VAL_TYPE_INT = 1;
+final VAL_TYPE_REAL = 2;
+final VAL_TYPE_TEXT = 3;
+final VAL_TYPE_BLOB = 4;
+
+// Maximum inline value size before overflow
+final MAX_INLINE_SIZE = 2000;
+
+//=============================================================================
+// PAGE ID TYPE
+//=============================================================================
+
+// Page ID is just an Integer (8 bytes when serialized)
+// PageID 0 = header page
+// PageID 1+ = data/schema/index pages
+// PageID -1 = invalid/null page reference
+
+final INVALID_PAGE_ID = -1;
+
+//=============================================================================
+// PAGE HEADER ENTITY
+//=============================================================================
+
+entity PageHeader {
+    expose Integer pageType;
+    expose Integer pageId;
+
+    expose func init() {
+        pageType = PAGE_TYPE_DATA;
+        pageId = INVALID_PAGE_ID;
+    }
+
+    expose func initWithType(ptype: Integer, pid: Integer) {
+        pageType = ptype;
+        pageId = pid;
+    }
+}
+
+//=============================================================================
+// SLOT DIRECTORY ENTRY
+//=============================================================================
+
+// Slot directory entry: points to a row within the page
+entity SlotEntry {
+    expose Integer offset;      // Offset from page start to row data
+    expose Integer length;      // Length of row data
+    expose Boolean deleted;     // Tombstone flag
+
+    expose func init() {
+        offset = 0;
+        length = 0;
+        deleted = false;
+    }
+
+    expose func initWithValues(off: Integer, len: Integer) {
+        offset = off;
+        length = len;
+        deleted = false;
+    }
+}
+
+//=============================================================================
+// UTILITY FUNCTIONS
+//=============================================================================
+
+// Calculate available space in a data page
+func calculateFreeSpace(rowCount: Integer, freeSpaceOffset: Integer) -> Integer {
+    // Slot directory grows from front, row data from back
+    var slotDirEnd = DATA_SLOT_DIR_OFFSET + (rowCount * 6);  // 6 bytes per slot entry
+    return freeSpaceOffset - slotDirEnd;
+}
+
+// Check if a value needs overflow storage
+func needsOverflow(valueSize: Integer) -> Boolean {
+    return valueSize > MAX_INLINE_SIZE;
+}

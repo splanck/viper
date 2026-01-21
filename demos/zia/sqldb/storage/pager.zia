@@ -1,0 +1,452 @@
+// pager.zia - Low-level Page I/O
+// Part of ViperSQL - Binary Storage Engine (Phase 2)
+
+module pager;
+
+bind "./page";
+bind "./serializer";
+
+//=============================================================================
+// PAGE ENTITY
+//=============================================================================
+
+// Represents a single page in memory
+entity Page {
+    expose Integer pageId;
+    expose Integer pageType;
+    expose BinaryBuffer data;
+    expose Boolean dirty;
+    expose Integer pinCount;
+
+    expose func init() {
+        pageId = INVALID_PAGE_ID;
+        pageType = PAGE_TYPE_DATA;
+        data = new BinaryBuffer();
+        data.initWithCapacity(PAGE_SIZE);
+        dirty = false;
+        pinCount = 0;
+    }
+
+    expose func initWithId(pid: Integer, ptype: Integer) {
+        pageId = pid;
+        pageType = ptype;
+        data = new BinaryBuffer();
+        data.initWithCapacity(PAGE_SIZE);
+        dirty = false;
+        pinCount = 0;
+    }
+
+    // Mark page as modified
+    expose func markDirty() {
+        dirty = true;
+    }
+
+    // Pin the page (prevent eviction)
+    expose func pin() {
+        pinCount = pinCount + 1;
+    }
+
+    // Unpin the page
+    expose func unpin() {
+        if pinCount > 0 {
+            pinCount = pinCount - 1;
+        }
+    }
+
+    // Check if page can be evicted
+    expose func canEvict() -> Boolean {
+        return pinCount == 0;
+    }
+
+    // Reset page for reuse
+    expose func reset() {
+        data = new BinaryBuffer();
+        data.initWithCapacity(PAGE_SIZE);
+        dirty = false;
+        pinCount = 0;
+    }
+}
+
+//=============================================================================
+// PAGER ENTITY
+//=============================================================================
+
+// Manages page I/O for a database file
+entity Pager {
+    expose String filename;
+    expose Integer pageCount;
+    expose Integer freeListHead;
+    expose Boolean isOpen;
+
+    // File header info (cached)
+    hide Integer fileVersion;
+    hide Integer schemaPageId;
+
+    expose func init() {
+        filename = "";
+        pageCount = 0;
+        freeListHead = INVALID_PAGE_ID;
+        isOpen = false;
+        fileVersion = FILE_VERSION;
+        schemaPageId = 1;
+    }
+
+    //=========================================================================
+    // FILE OPERATIONS
+    //=========================================================================
+
+    // Create a new database file
+    expose func createDatabase(fname: String) -> Boolean {
+        filename = fname;
+
+        // Write initial header page
+        var header = new BinaryBuffer();
+        header.initWithCapacity(PAGE_SIZE);
+
+        // Magic string "VIPERSQL"
+        writeHeaderMagic(header);
+
+        // Version
+        header.seek(HEADER_VERSION_OFFSET);
+        header.writeInt32(FILE_VERSION);
+
+        // Page size
+        header.seek(HEADER_PAGE_SIZE_OFFSET);
+        header.writeInt32(PAGE_SIZE);
+
+        // Initial page count (header + schema page)
+        header.seek(HEADER_PAGE_COUNT_OFFSET);
+        header.writeInt64(2);
+
+        // Schema page pointer
+        header.seek(HEADER_SCHEMA_PAGE_OFFSET);
+        header.writeInt64(1);
+
+        // Free list head (none initially)
+        header.seek(HEADER_FREELIST_HEAD_OFFSET);
+        header.writeInt64(INVALID_PAGE_ID);
+
+        // Write header to file
+        writePageToFile(0, header);
+
+        // Create empty schema page
+        var schemaPage = new BinaryBuffer();
+        schemaPage.initWithCapacity(PAGE_SIZE);
+        schemaPage.writeByte(PAGE_TYPE_SCHEMA);
+        schemaPage.writeInt32(0);  // Table count
+        writePageToFile(1, schemaPage);
+
+        pageCount = 2;
+        freeListHead = INVALID_PAGE_ID;
+        schemaPageId = 1;
+        isOpen = true;
+
+        return true;
+    }
+
+    // Open an existing database file
+    expose func openDatabase(fname: String) -> Boolean {
+        filename = fname;
+
+        if Viper.IO.File.Exists(fname) == false {
+            return false;
+        }
+
+        // Read header page
+        var hdr = new BinaryBuffer();
+        hdr.initWithCapacity(PAGE_SIZE);
+        if readPageIntoBuffer(0, hdr) == false {
+            return false;
+        }
+
+        // Verify magic
+        hdr.seek(HEADER_MAGIC_OFFSET);
+        if verifyHeaderMagic(hdr) == false {
+            return false;
+        }
+
+        // Read version
+        hdr.seek(HEADER_VERSION_OFFSET);
+        fileVersion = hdr.readInt32();
+
+        // Read page count
+        hdr.seek(HEADER_PAGE_COUNT_OFFSET);
+        pageCount = hdr.readInt64();
+
+        // Read schema page pointer
+        hdr.seek(HEADER_SCHEMA_PAGE_OFFSET);
+        schemaPageId = hdr.readInt64();
+
+        // Read free list head
+        hdr.seek(HEADER_FREELIST_HEAD_OFFSET);
+        freeListHead = hdr.readInt64();
+
+        isOpen = true;
+        return true;
+    }
+
+    // Close the database
+    expose func closeDatabase() {
+        if isOpen {
+            // Update header with current state
+            var header = new BinaryBuffer();
+            header.initWithCapacity(PAGE_SIZE);
+
+            writeHeaderMagic(header);
+
+            header.seek(HEADER_VERSION_OFFSET);
+            header.writeInt32(fileVersion);
+
+            header.seek(HEADER_PAGE_SIZE_OFFSET);
+            header.writeInt32(PAGE_SIZE);
+
+            header.seek(HEADER_PAGE_COUNT_OFFSET);
+            header.writeInt64(pageCount);
+
+            header.seek(HEADER_SCHEMA_PAGE_OFFSET);
+            header.writeInt64(schemaPageId);
+
+            header.seek(HEADER_FREELIST_HEAD_OFFSET);
+            header.writeInt64(freeListHead);
+
+            writePageToFile(0, header);
+        }
+        isOpen = false;
+    }
+
+    //=========================================================================
+    // PAGE ALLOCATION
+    //=========================================================================
+
+    // Allocate a new page
+    expose func allocatePage() -> Integer {
+        // Check free list first
+        if freeListHead != INVALID_PAGE_ID {
+            var pageId = freeListHead;
+            // Read free page to get next in chain
+            var fp = new BinaryBuffer();
+            fp.initWithCapacity(PAGE_SIZE);
+            if readPageIntoBuffer(pageId, fp) {
+                fp.seek(1);  // Skip page type byte
+                freeListHead = fp.readInt64();
+            } else {
+                freeListHead = INVALID_PAGE_ID;
+            }
+            return pageId;
+        }
+
+        // Allocate new page at end
+        var newPageId = pageCount;
+        pageCount = pageCount + 1;
+        return newPageId;
+    }
+
+    // Free a page (add to free list)
+    expose func freePage(pageId: Integer) {
+        var page = new BinaryBuffer();
+        page.initWithCapacity(PAGE_SIZE);
+        page.writeByte(PAGE_TYPE_FREELIST);
+        page.writeInt64(freeListHead);  // Link to previous head
+        writePageToFile(pageId, page);
+        freeListHead = pageId;
+    }
+
+    //=========================================================================
+    // PAGE I/O
+    //=========================================================================
+
+    // Read a page from disk
+    expose func readPage(pageId: Integer) -> Page? {
+        if pageId < 0 || pageId >= pageCount {
+            return null;
+        }
+
+        // Use readPageWithBuffer to avoid optional type issue
+        var page = new Page();
+        page.init();
+        page.pageId = pageId;
+
+        if readPageIntoBuffer(pageId, page.data) == false {
+            return null;
+        }
+
+        page.data.seek(0);
+        page.pageType = page.data.readByte();
+
+        return page;
+    }
+
+    // Read page data into an existing buffer (returns false on failure)
+    hide func readPageIntoBuffer(pageId: Integer, dest: BinaryBuffer) -> Boolean {
+        if Viper.IO.File.Exists(filename) == false {
+            return false;
+        }
+
+        var content = Viper.IO.File.ReadAllText(filename);
+        var startOffset = pageId * PAGE_SIZE;
+
+        if startOffset + PAGE_SIZE > Viper.String.Length(content) {
+            return false;
+        }
+
+        var pageData = Viper.String.Substring(content, startOffset, PAGE_SIZE);
+
+        // Copy page data into destination buffer
+        dest.seek(0);
+        var i = 0;
+        var len = Viper.String.Length(pageData);
+        while i < len && i < PAGE_SIZE {
+            var ch = Viper.String.Substring(pageData, i, 1);
+            var code = Viper.String.Asc(ch);
+            dest.writeByte(code);
+            i = i + 1;
+        }
+        // Fill remaining with zeros
+        while i < PAGE_SIZE {
+            dest.writeByte(0);
+            i = i + 1;
+        }
+        dest.seek(0);
+        return true;
+    }
+
+    // Write a page to disk
+    expose func writePage(page: Page) -> Boolean {
+        if page.pageId == INVALID_PAGE_ID {
+            return false;
+        }
+
+        // Ensure page type is at position 0
+        page.data.seek(0);
+        page.data.writeByte(page.pageType);
+
+        writePageToFile(page.pageId, page.data);
+        page.dirty = false;
+        return true;
+    }
+
+    //=========================================================================
+    // LOW-LEVEL FILE I/O
+    //=========================================================================
+
+    // Convert binary buffer to string for file storage
+    // (workaround: Zia doesn't have binary file I/O)
+    hide func bufferToString(buf: BinaryBuffer) -> String {
+        var result = "";
+        var bytes = buf.getBytes();
+        var i = 0;
+        while i < PAGE_SIZE {
+            var b = 0;
+            if i < bytes.count() {
+                b = bytes.get(i);
+            }
+            result = result + Viper.String.Chr(b);
+            i = i + 1;
+        }
+        return result;
+    }
+
+    // Convert string back to binary buffer
+    hide func stringToBuffer(s: String) -> BinaryBuffer {
+        var buf = new BinaryBuffer();
+        buf.initWithCapacity(PAGE_SIZE);
+        var i = 0;
+        var len = Viper.String.Length(s);
+        while i < len && i < PAGE_SIZE {
+            var ch = Viper.String.Substring(s, i, 1);
+            var code = Viper.String.Asc(ch);
+            buf.writeByte(code);
+            i = i + 1;
+        }
+        // Fill remaining with zeros
+        while i < PAGE_SIZE {
+            buf.writeByte(0);
+            i = i + 1;
+        }
+        buf.seek(0);
+        return buf;
+    }
+
+    // Write a page to the file at the given page ID
+    hide func writePageToFile(pageId: Integer, buf: BinaryBuffer) {
+        // Read entire file, update the page, write back
+        // (This is inefficient but necessary without seek support)
+        var content = "";
+        if Viper.IO.File.Exists(filename) {
+            content = Viper.IO.File.ReadAllText(filename);
+        }
+
+        // Pad content to the right length
+        var targetLen = (pageId + 1) * PAGE_SIZE;
+        while Viper.String.Length(content) < targetLen {
+            content = content + Viper.String.Chr(0);
+        }
+
+        // Build new content with updated page
+        var pageData = bufferToString(buf);
+        var startOffset = pageId * PAGE_SIZE;
+
+        var newContent = "";
+        if startOffset > 0 {
+            newContent = Viper.String.Substring(content, 0, startOffset);
+        }
+        newContent = newContent + pageData;
+        var endOffset = startOffset + PAGE_SIZE;
+        if endOffset < Viper.String.Length(content) {
+            newContent = newContent + Viper.String.Substring(content, endOffset, Viper.String.Length(content) - endOffset);
+        }
+
+        Viper.IO.File.WriteAllText(filename, newContent);
+    }
+
+    // Read a page from the file at the given page ID
+    hide func readPageFromFile(pageId: Integer) -> BinaryBuffer? {
+        if Viper.IO.File.Exists(filename) == false {
+            return null;
+        }
+
+        var content = Viper.IO.File.ReadAllText(filename);
+        var startOffset = pageId * PAGE_SIZE;
+
+        if startOffset + PAGE_SIZE > Viper.String.Length(content) {
+            return null;
+        }
+
+        var pageData = Viper.String.Substring(content, startOffset, PAGE_SIZE);
+        return stringToBuffer(pageData);
+    }
+
+    //=========================================================================
+    // HEADER HELPERS
+    //=========================================================================
+
+    hide func writeHeaderMagic(buf: BinaryBuffer) {
+        buf.seek(HEADER_MAGIC_OFFSET);
+        // "VIPERSQL" = 8 bytes
+        buf.writeByte(86);   // V
+        buf.writeByte(73);   // I
+        buf.writeByte(80);   // P
+        buf.writeByte(69);   // E
+        buf.writeByte(82);   // R
+        buf.writeByte(83);   // S
+        buf.writeByte(81);   // Q
+        buf.writeByte(76);   // L
+    }
+
+    hide func verifyHeaderMagic(buf: BinaryBuffer) -> Boolean {
+        if buf.readByte() != 86 { return false; }   // V
+        if buf.readByte() != 73 { return false; }   // I
+        if buf.readByte() != 80 { return false; }   // P
+        if buf.readByte() != 69 { return false; }   // E
+        if buf.readByte() != 82 { return false; }   // R
+        if buf.readByte() != 83 { return false; }   // S
+        if buf.readByte() != 81 { return false; }   // Q
+        if buf.readByte() != 76 { return false; }   // L
+        return true;
+    }
+
+    // Get schema page ID
+    expose func getSchemaPageId() -> Integer {
+        return schemaPageId;
+    }
+}

@@ -1,0 +1,313 @@
+// data_page.zia - Data Page Manager
+// Part of ViperSQL - Binary Storage Engine (Phase 2)
+
+module data_page;
+
+bind "./page";
+bind "./serializer";
+bind "./pager";
+bind "../table";
+bind "../types";
+
+// Slot entry size: 6 bytes (offset: 2, length: 2, flags: 2)
+final SLOT_ENTRY_SIZE = 6;
+
+//=============================================================================
+// DATA PAGE MANAGER
+//=============================================================================
+
+// Manages row storage within a data page
+// Page layout:
+//   [0]: Page type (1 byte)
+//   [1-4]: Table ID (4 bytes)
+//   [5-6]: Row count (2 bytes)
+//   [7-8]: Free space pointer (2 bytes, offset from page start)
+//   [9-16]: Next page ID (8 bytes)
+//   [17...]: Slot directory (grows forward)
+//   [...]: Row data (grows backward from end)
+
+entity DataPageManager {
+    hide RowSerializer rowSer;
+
+    expose func init() {
+        rowSer = new RowSerializer();
+        rowSer.init();
+    }
+
+    //=========================================================================
+    // PAGE INITIALIZATION
+    //=========================================================================
+
+    // Initialize a new data page
+    expose func initDataPage(page: Page, tableId: Integer) {
+        page.pageType = PAGE_TYPE_DATA;
+        page.data.seek(0);
+
+        // Page type
+        page.data.writeByte(PAGE_TYPE_DATA);
+
+        // Table ID
+        page.data.writeInt32(tableId);
+
+        // Row count
+        page.data.writeInt16(0);
+
+        // Free space pointer (starts at end of page)
+        page.data.writeInt16(PAGE_SIZE);
+
+        // Next page ID (none)
+        page.data.writeInt64(INVALID_PAGE_ID);
+
+        page.markDirty();
+    }
+
+    //=========================================================================
+    // PAGE METADATA
+    //=========================================================================
+
+    // Get table ID from page
+    expose func getTableId(page: Page) -> Integer {
+        page.data.seek(DATA_TABLE_ID_OFFSET);
+        return page.data.readInt32();
+    }
+
+    // Get row count from page
+    expose func getRowCount(page: Page) -> Integer {
+        page.data.seek(DATA_ROW_COUNT_OFFSET);
+        return page.data.readInt16();
+    }
+
+    // Set row count
+    hide func setRowCount(page: Page, count: Integer) {
+        page.data.seek(DATA_ROW_COUNT_OFFSET);
+        page.data.writeInt16(count);
+        page.markDirty();
+    }
+
+    // Get free space pointer
+    expose func getFreeSpacePointer(page: Page) -> Integer {
+        page.data.seek(DATA_FREE_SPACE_OFFSET);
+        return page.data.readInt16();
+    }
+
+    // Set free space pointer
+    hide func setFreeSpacePointer(page: Page, ptr: Integer) {
+        page.data.seek(DATA_FREE_SPACE_OFFSET);
+        page.data.writeInt16(ptr);
+        page.markDirty();
+    }
+
+    // Get next page ID
+    expose func getNextPageId(page: Page) -> Integer {
+        page.data.seek(DATA_NEXT_PAGE_OFFSET);
+        return page.data.readInt64();
+    }
+
+    // Set next page ID
+    expose func setNextPageId(page: Page, nextId: Integer) {
+        page.data.seek(DATA_NEXT_PAGE_OFFSET);
+        page.data.writeInt64(nextId);
+        page.markDirty();
+    }
+
+    //=========================================================================
+    // SLOT DIRECTORY
+    //=========================================================================
+
+    // Get slot entry offset in page
+    hide func slotOffset(slotIdx: Integer) -> Integer {
+        return DATA_SLOT_DIR_OFFSET + (slotIdx * SLOT_ENTRY_SIZE);
+    }
+
+    // Read a slot entry
+    expose func readSlot(page: Page, slotIdx: Integer) -> SlotEntry {
+        var entry = new SlotEntry();
+        entry.init();
+
+        page.data.seek(slotOffset(slotIdx));
+        entry.offset = page.data.readInt16();
+        entry.length = page.data.readInt16();
+        var flags = page.data.readInt16();
+        entry.deleted = (flags % 2) == 1;
+
+        return entry;
+    }
+
+    // Write a slot entry
+    hide func writeSlot(page: Page, slotIdx: Integer, entry: SlotEntry) {
+        page.data.seek(slotOffset(slotIdx));
+        page.data.writeInt16(entry.offset);
+        page.data.writeInt16(entry.length);
+        var flags = 0;
+        if entry.deleted { flags = 1; }
+        page.data.writeInt16(flags);
+        page.markDirty();
+    }
+
+    //=========================================================================
+    // FREE SPACE CALCULATION
+    //=========================================================================
+
+    // Calculate available free space in page
+    expose func getFreeSpace(page: Page) -> Integer {
+        var rowCount = getRowCount(page);
+        var slotDirEnd = slotOffset(rowCount);
+        var freePtr = getFreeSpacePointer(page);
+        return freePtr - slotDirEnd - SLOT_ENTRY_SIZE;  // Reserve space for new slot
+    }
+
+    // Check if a row fits in the page
+    expose func canFitRow(page: Page, row: Row) -> Boolean {
+        var rowSize = rowSer.rowSize(row);
+        var freeSpace = getFreeSpace(page);
+        return rowSize <= freeSpace;
+    }
+
+    //=========================================================================
+    // ROW OPERATIONS
+    //=========================================================================
+
+    // Insert a row into the page
+    // Returns slot index, or -1 if page is full
+    expose func insertRow(page: Page, row: Row) -> Integer {
+        var rowSize = rowSer.rowSize(row);
+
+        // Check if row fits
+        if canFitRow(page, row) == false {
+            return -1;
+        }
+
+        // Calculate new positions
+        var rowCount = getRowCount(page);
+        var freePtr = getFreeSpacePointer(page);
+        var newFreePtr = freePtr - rowSize;
+
+        // Serialize row at new position
+        page.data.seek(newFreePtr);
+        rowSer.serializeRow(row, page.data);
+
+        // Create slot entry
+        var slot = new SlotEntry();
+        slot.initWithValues(newFreePtr, rowSize);
+        writeSlot(page, rowCount, slot);
+
+        // Update metadata
+        setRowCount(page, rowCount + 1);
+        setFreeSpacePointer(page, newFreePtr);
+
+        return rowCount;
+    }
+
+    // Read a row from the page by slot index
+    expose func readRow(page: Page, slotIdx: Integer) -> Row? {
+        var rowCount = getRowCount(page);
+        if slotIdx < 0 || slotIdx >= rowCount {
+            return null;
+        }
+
+        var slot = readSlot(page, slotIdx);
+        if slot.deleted {
+            return null;
+        }
+
+        page.data.seek(slot.offset);
+        return rowSer.deserializeRow(page.data);
+    }
+
+    // Mark a row as deleted
+    expose func deleteRow(page: Page, slotIdx: Integer) -> Boolean {
+        var rowCount = getRowCount(page);
+        if slotIdx < 0 || slotIdx >= rowCount {
+            return false;
+        }
+
+        var slot = readSlot(page, slotIdx);
+        if slot.deleted {
+            return false;  // Already deleted
+        }
+
+        slot.deleted = true;
+        writeSlot(page, slotIdx, slot);
+        return true;
+    }
+
+    // Update a row in place (if it fits)
+    // Returns true if updated in place, false if row doesn't fit
+    expose func updateRow(page: Page, slotIdx: Integer, newRow: Row) -> Boolean {
+        var rowCount = getRowCount(page);
+        if slotIdx < 0 || slotIdx >= rowCount {
+            return false;
+        }
+
+        var slot = readSlot(page, slotIdx);
+        var newSize = rowSer.rowSize(newRow);
+
+        // If new row fits in existing slot space, update in place
+        if newSize <= slot.length {
+            page.data.seek(slot.offset);
+            rowSer.serializeRow(newRow, page.data);
+            // Update slot length (actual used size)
+            slot.length = newSize;
+            writeSlot(page, slotIdx, slot);
+            return true;
+        }
+
+        // Row doesn't fit - caller must delete and reinsert
+        return false;
+    }
+
+    //=========================================================================
+    // PAGE ITERATION
+    //=========================================================================
+
+    // Iterate over all non-deleted rows in the page
+    // Callback receives (slotIdx, row)
+    expose func forEachRow(page: Page) -> List[Row] {
+        var rows: List[Row] = [];
+        var rowCount = getRowCount(page);
+
+        var i = 0;
+        while i < rowCount {
+            var maybeRow = readRow(page, i);
+            if maybeRow != null {
+                var row = maybeRow;
+                rows.add(row);
+            }
+            i = i + 1;
+        }
+
+        return rows;
+    }
+
+    //=========================================================================
+    // PAGE COMPACTION
+    //=========================================================================
+
+    // Compact the page to reclaim space from deleted rows
+    expose func compactPage(page: Page) {
+        var rowCount = getRowCount(page);
+        var tableId = getTableId(page);
+
+        // Collect non-deleted rows
+        var liveRows: List[Row] = [];
+        var i = 0;
+        while i < rowCount {
+            var maybeRow = readRow(page, i);
+            if maybeRow != null {
+                var row = maybeRow;
+                liveRows.add(row);
+            }
+            i = i + 1;
+        }
+
+        // Reinitialize page
+        initDataPage(page, tableId);
+
+        // Reinsert live rows
+        i = 0;
+        while i < liveRows.count() {
+            insertRow(page, liveRows.get(i));
+            i = i + 1;
+        }
+    }
+}

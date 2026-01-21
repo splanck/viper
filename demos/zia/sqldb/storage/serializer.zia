@@ -1,0 +1,382 @@
+// serializer.zia - Value and Row Serialization
+// Part of ViperSQL - Binary Storage Engine (Phase 2)
+
+module serializer;
+
+bind "../types";
+bind "../table";
+bind "./page";
+
+//=============================================================================
+// BINARY BUFFER
+//=============================================================================
+
+// Simple binary buffer for building serialized data
+entity BinaryBuffer {
+    expose List[Integer] bytes;
+    expose Integer position;
+
+    expose func init() {
+        bytes = [];
+        position = 0;
+    }
+
+    expose func initWithCapacity(capacity: Integer) {
+        bytes = [];
+        position = 0;
+        // Pre-allocate capacity
+        var i = 0;
+        while i < capacity {
+            bytes.add(0);
+            i = i + 1;
+        }
+        position = 0;
+    }
+
+    expose func size() -> Integer {
+        return bytes.count();
+    }
+
+    expose func writePosition() -> Integer {
+        return position;
+    }
+
+    // Write a single byte (0-255)
+    expose func writeByte(b: Integer) {
+        if position < bytes.count() {
+            bytes.set(position, b % 256);
+        } else {
+            bytes.add(b % 256);
+        }
+        position = position + 1;
+    }
+
+    // Write a 2-byte integer (little-endian)
+    expose func writeInt16(val: Integer) {
+        writeByte(val % 256);
+        writeByte((val / 256) % 256);
+    }
+
+    // Write a 4-byte integer (little-endian)
+    expose func writeInt32(val: Integer) {
+        writeByte(val % 256);
+        writeByte((val / 256) % 256);
+        writeByte((val / 65536) % 256);
+        writeByte((val / 16777216) % 256);
+    }
+
+    // Write an 8-byte integer (little-endian)
+    expose func writeInt64(val: Integer) {
+        writeInt32(val % 4294967296);
+        writeInt32(val / 4294967296);
+    }
+
+    // Write a string (length-prefixed)
+    expose func writeString(s: String) {
+        var len = Viper.String.Length(s);
+        writeInt32(len);
+        var i = 0;
+        while i < len {
+            var ch = Viper.String.Substring(s, i, 1);
+            var code = Viper.String.Asc(ch);
+            writeByte(code);
+            i = i + 1;
+        }
+    }
+
+    // Read a single byte
+    expose func readByte() -> Integer {
+        if position >= bytes.count() {
+            return 0;
+        }
+        var b = bytes.get(position);
+        position = position + 1;
+        return b;
+    }
+
+    // Read a 2-byte integer
+    expose func readInt16() -> Integer {
+        var b0 = readByte();
+        var b1 = readByte();
+        return b0 + (b1 * 256);
+    }
+
+    // Read a 4-byte integer
+    expose func readInt32() -> Integer {
+        var b0 = readByte();
+        var b1 = readByte();
+        var b2 = readByte();
+        var b3 = readByte();
+        return b0 + (b1 * 256) + (b2 * 65536) + (b3 * 16777216);
+    }
+
+    // Read an 8-byte integer
+    expose func readInt64() -> Integer {
+        var lo = readInt32();
+        var hi = readInt32();
+        return lo + (hi * 4294967296);
+    }
+
+    // Read a string
+    expose func readString() -> String {
+        var len = readInt32();
+        var result = "";
+        var i = 0;
+        while i < len {
+            var code = readByte();
+            result = result + Viper.String.Chr(code);
+            i = i + 1;
+        }
+        return result;
+    }
+
+    // Reset read position
+    expose func resetPosition() {
+        position = 0;
+    }
+
+    // Seek to position
+    expose func seek(pos: Integer) {
+        position = pos;
+    }
+
+    // Get all bytes as a list
+    expose func getBytes() -> List[Integer] {
+        return bytes;
+    }
+
+    // Convert to hex string (for debugging)
+    expose func toHexString() -> String {
+        var result = "";
+        var i = 0;
+        while i < bytes.count() {
+            var b = bytes.get(i);
+            var hi = b / 16;
+            var lo = b % 16;
+            result = result + hexDigit(hi) + hexDigit(lo) + " ";
+            i = i + 1;
+        }
+        return result;
+    }
+}
+
+// Helper function for hex digits
+func hexDigit(n: Integer) -> String {
+    if n < 10 {
+        return Viper.String.Chr(48 + n);  // '0' = 48
+    }
+    return Viper.String.Chr(65 + n - 10);  // 'A' = 65
+}
+
+//=============================================================================
+// SQLVALUE SERIALIZER
+//=============================================================================
+
+entity ValueSerializer {
+    expose func init() {
+        // No state needed
+    }
+
+    // Serialize a SqlValue to binary buffer
+    expose func serializeValue(val: SqlValue, buf: BinaryBuffer) {
+        if val.kind == SQL_NULL {
+            buf.writeByte(VAL_TYPE_NULL);
+            return;
+        }
+
+        if val.kind == SQL_INTEGER {
+            buf.writeByte(VAL_TYPE_INT);
+            buf.writeInt64(val.intValue);
+            return;
+        }
+
+        if val.kind == SQL_REAL {
+            buf.writeByte(VAL_TYPE_REAL);
+            // Store real as string for now (Zia doesn't have float->bytes conversion)
+            buf.writeString(val.textValue);
+            return;
+        }
+
+        if val.kind == SQL_TEXT {
+            buf.writeByte(VAL_TYPE_TEXT);
+            buf.writeString(val.textValue);
+            return;
+        }
+
+        // Default: NULL
+        buf.writeByte(VAL_TYPE_NULL);
+    }
+
+    // Deserialize a SqlValue from binary buffer
+    expose func deserializeValue(buf: BinaryBuffer) -> SqlValue {
+        var typeTag = buf.readByte();
+
+        if typeTag == VAL_TYPE_NULL {
+            return sqlNull();
+        }
+
+        if typeTag == VAL_TYPE_INT {
+            var intVal = buf.readInt64();
+            return sqlInteger(intVal);
+        }
+
+        if typeTag == VAL_TYPE_REAL {
+            var realText = buf.readString();
+            return sqlReal(0.0, realText);
+        }
+
+        if typeTag == VAL_TYPE_TEXT {
+            var textVal = buf.readString();
+            return sqlText(textVal);
+        }
+
+        return sqlNull();
+    }
+
+    // Calculate serialized size of a value
+    expose func valueSize(val: SqlValue) -> Integer {
+        if val.kind == SQL_NULL {
+            return 1;  // Type tag only
+        }
+
+        if val.kind == SQL_INTEGER {
+            return 1 + 8;  // Type tag + 8 bytes
+        }
+
+        if val.kind == SQL_REAL {
+            return 1 + 4 + Viper.String.Length(val.textValue);  // Tag + len + string
+        }
+
+        if val.kind == SQL_TEXT {
+            return 1 + 4 + Viper.String.Length(val.textValue);  // Tag + len + string
+        }
+
+        return 1;
+    }
+}
+
+//=============================================================================
+// ROW SERIALIZER
+//=============================================================================
+
+entity RowSerializer {
+    hide ValueSerializer valSer;
+
+    expose func init() {
+        valSer = new ValueSerializer();
+        valSer.init();
+    }
+
+    // Serialize a row to binary buffer
+    expose func serializeRow(row: Row, buf: BinaryBuffer) {
+        // Write column count
+        buf.writeInt16(row.columnCount());
+
+        // Write each value
+        var i = 0;
+        while i < row.columnCount() {
+            var val = row.getValue(i);
+            valSer.serializeValue(val, buf);
+            i = i + 1;
+        }
+    }
+
+    // Deserialize a row from binary buffer
+    expose func deserializeRow(buf: BinaryBuffer) -> Row {
+        var row = new Row();
+        row.init();
+
+        var colCount = buf.readInt16();
+
+        var i = 0;
+        while i < colCount {
+            var val = valSer.deserializeValue(buf);
+            row.addValue(val);
+            i = i + 1;
+        }
+
+        return row;
+    }
+
+    // Calculate serialized size of a row
+    expose func rowSize(row: Row) -> Integer {
+        var size = 2;  // Column count
+
+        var i = 0;
+        while i < row.columnCount() {
+            size = size + valSer.valueSize(row.getValue(i));
+            i = i + 1;
+        }
+
+        return size;
+    }
+}
+
+//=============================================================================
+// COLUMN SERIALIZER
+//=============================================================================
+
+entity ColumnSerializer {
+    expose func init() {
+        // No state needed
+    }
+
+    // Serialize a column definition
+    expose func serializeColumn(col: Column, buf: BinaryBuffer) {
+        buf.writeString(col.name);
+        buf.writeInt32(col.typeCode);
+
+        // Flags byte: primary, autoincrement, notnull, unique, foreign key
+        var flags = 0;
+        if col.primaryKey { flags = flags + 1; }
+        if col.autoIncrement { flags = flags + 2; }
+        if col.notNull { flags = flags + 4; }
+        if col.unique { flags = flags + 8; }
+        if col.isForeignKey { flags = flags + 16; }
+        if col.hasDefault { flags = flags + 32; }
+        buf.writeByte(flags);
+
+        // Foreign key info
+        if col.isForeignKey {
+            buf.writeString(col.refTableName);
+            buf.writeString(col.refColumnName);
+        }
+
+        // Default value
+        if col.hasDefault {
+            var valSer = new ValueSerializer();
+            valSer.init();
+            valSer.serializeValue(col.defaultValue, buf);
+        }
+    }
+
+    // Deserialize a column definition
+    expose func deserializeColumn(buf: BinaryBuffer) -> Column {
+        var col = new Column();
+        col.init();
+
+        col.name = buf.readString();
+        col.typeCode = buf.readInt32();
+
+        var flags = buf.readByte();
+        col.primaryKey = (flags % 2) == 1;
+        col.autoIncrement = ((flags / 2) % 2) == 1;
+        col.notNull = ((flags / 4) % 2) == 1;
+        col.unique = ((flags / 8) % 2) == 1;
+        col.isForeignKey = ((flags / 16) % 2) == 1;
+        col.hasDefault = ((flags / 32) % 2) == 1;
+
+        if col.isForeignKey {
+            col.refTableName = buf.readString();
+            col.refColumnName = buf.readString();
+        }
+
+        if col.hasDefault {
+            var valSer = new ValueSerializer();
+            valSer.init();
+            col.defaultValue = valSer.deserializeValue(buf);
+        }
+
+        return col;
+    }
+}

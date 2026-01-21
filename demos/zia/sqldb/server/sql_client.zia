@@ -1,0 +1,180 @@
+// sql_client.zia - SQL Network Client
+// Part of ViperSQL - Phase 6: Network Server
+
+module sql_client;
+
+//=============================================================================
+// CLIENT CONSTANTS
+//=============================================================================
+
+final DEFAULT_PORT = 5432;
+final MAX_RESPONSE_SIZE = 1048576;  // 1MB max response
+final RECV_TIMEOUT = 30000;
+
+//=============================================================================
+// SQL CLIENT
+//=============================================================================
+
+entity SqlClient {
+    expose String host;
+    expose Integer port;
+    expose TcpClient connection;
+    expose Boolean connected;
+    expose String lastError;
+
+    expose func init() {
+        host = "localhost";
+        port = DEFAULT_PORT;
+        connected = false;
+        lastError = "";
+    }
+
+    expose func initWithHostPort(h: String, p: Integer) {
+        host = h;
+        port = p;
+        connected = false;
+        lastError = "";
+    }
+
+    //=========================================================================
+    // CONNECTION
+    //=========================================================================
+
+    // Connect to the server
+    expose func connect() -> Boolean {
+        connection = Viper.Network.Tcp.Connect(host, port);
+        connected = true;
+
+        // Set timeout
+        Viper.Network.Tcp.SetRecvTimeout(connection, RECV_TIMEOUT);
+
+        // Wait for READY
+        var response = Viper.Network.Tcp.RecvStr(connection, MAX_RESPONSE_SIZE);
+        if Viper.String.Contains(response, "READY") == false {
+            lastError = "Server did not send READY";
+            disconnect();
+            return false;
+        }
+
+        return true;
+    }
+
+    // Disconnect from the server
+    expose func disconnect() {
+        if connected {
+            Viper.Network.Tcp.SendStr(connection, "QUIT\n");
+            Viper.Network.Tcp.Close(connection);
+            connected = false;
+        }
+    }
+
+    // Check if connected
+    expose func isConnected() -> Boolean {
+        return connected;
+    }
+
+    //=========================================================================
+    // QUERY EXECUTION
+    //=========================================================================
+
+    // Execute a query and get response
+    expose func execute(query: String) -> String {
+        if connected == false {
+            lastError = "Not connected";
+            return "";
+        }
+
+        // Send query
+        Viper.Network.Tcp.SendStr(connection, query + "\n");
+
+        // Read response until READY
+        var response = "";
+        var done = false;
+
+        while done == false {
+            var chunk = Viper.Network.Tcp.RecvStr(connection, MAX_RESPONSE_SIZE);
+            if Viper.String.Length(chunk) == 0 {
+                done = true;
+            } else {
+                response = response + chunk;
+                if Viper.String.Contains(chunk, "READY") {
+                    done = true;
+                }
+            }
+        }
+
+        // Remove READY from response
+        var readyPos = Viper.String.IndexOf(response, "READY");
+        if readyPos >= 0 {
+            response = Viper.String.Substring(response, 0, readyPos);
+        }
+
+        return Viper.String.Trim(response);
+    }
+
+    // Execute and print result
+    expose func executeAndPrint(query: String) {
+        var result = execute(query);
+        if Viper.String.Length(result) > 0 {
+            Viper.Terminal.Say(result);
+        }
+    }
+
+    //=========================================================================
+    // ERROR HANDLING
+    //=========================================================================
+
+    expose func getLastError() -> String {
+        return lastError;
+    }
+}
+
+//=============================================================================
+// INTERACTIVE CLIENT
+//=============================================================================
+
+func runInteractive(host: String, port: Integer) {
+    var client = new SqlClient();
+    client.initWithHostPort(host, port);
+
+    Viper.Terminal.Say("Connecting to " + host + ":" + Viper.Fmt.Int(port) + "...");
+
+    if client.connect() == false {
+        Viper.Terminal.Say("Connection failed: " + client.getLastError());
+        return;
+    }
+
+    Viper.Terminal.Say("Connected to ViperSQL server");
+    Viper.Terminal.Say("Type SQL queries or 'quit' to exit");
+    Viper.Terminal.Say("");
+
+    var running = true;
+    while running {
+        Viper.Terminal.Say("vipersql> ");
+        var input = Viper.Terminal.Hear();
+        var query = Viper.String.Trim(input);
+
+        if query == "quit" || query == "exit" || query == "\\q" {
+            running = false;
+        } else if Viper.String.Length(query) > 0 {
+            client.executeAndPrint(query);
+            Viper.Terminal.Say("");
+        }
+    }
+
+    client.disconnect();
+    Viper.Terminal.Say("Disconnected.");
+}
+
+//=============================================================================
+// MAIN
+//=============================================================================
+
+func main() {
+    Viper.Terminal.Say("========================================");
+    Viper.Terminal.Say("  ViperSQL Client");
+    Viper.Terminal.Say("========================================");
+    Viper.Terminal.Say("");
+
+    runInteractive("localhost", DEFAULT_PORT);
+}

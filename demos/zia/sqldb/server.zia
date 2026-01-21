@@ -1,0 +1,255 @@
+// server.zia - Multi-Database Server (Phase 1)
+// Part of ViperSQL - Production Database Server
+// Manages multiple databases in a single server instance
+
+module server;
+
+bind "./database";
+bind "./table";
+bind "./index";
+
+//=============================================================================
+// DATABASE SERVER ENTITY
+//=============================================================================
+
+entity DatabaseServer {
+    // Map of database name to Database object
+    // Since Zia doesn't have native Map, we use parallel lists
+    expose List[String] dbNames;
+    expose List[Database] dbList;
+    expose List[IndexManager] indexManagers;
+
+    // Current database context
+    expose String currentDbName;
+    expose Integer currentDbIndex;
+
+    expose func init() {
+        dbNames = [];
+        dbList = [];
+        indexManagers = [];
+        currentDbName = "";
+        currentDbIndex = -1;
+
+        // Create default database
+        createDatabase("main");
+        useDatabase("main");
+    }
+
+    //=========================================================================
+    // DATABASE MANAGEMENT
+    //=========================================================================
+
+    // Create a new database
+    expose func createDatabase(name: String) -> Boolean {
+        // Check if database already exists
+        var i = 0;
+        while i < dbNames.count() {
+            if dbNames.get(i) == name {
+                return false;
+            }
+            i = i + 1;
+        }
+
+        // Create new database
+        var db = new Database();
+        db.initWithName(name);
+        dbNames.add(name);
+        dbList.add(db);
+
+        // Create index manager for this database
+        var idxMgr = new IndexManager();
+        idxMgr.init();
+        indexManagers.add(idxMgr);
+
+        return true;
+    }
+
+    // Drop a database
+    expose func dropDatabase(name: String) -> Boolean {
+        // Cannot drop current database
+        if name == currentDbName {
+            return false;
+        }
+
+        // Cannot drop 'main' database
+        if name == "main" {
+            return false;
+        }
+
+        // Find the index of the database to drop
+        var dropIdx = -1;
+        var i = 0;
+        while i < dbNames.count() {
+            if dbNames.get(i) == name {
+                dropIdx = i;
+                i = dbNames.count();  // break
+            }
+            i = i + 1;
+        }
+
+        if dropIdx < 0 {
+            return false;  // Database not found
+        }
+
+        // Workaround for BUG-002: List.remove() doesn't work
+        // Rebuild lists without the dropped database
+        var newDbNames: List[String] = [];
+        var newDbList: List[Database] = [];
+        var newIndexManagers: List[IndexManager] = [];
+
+        i = 0;
+        while i < dbNames.count() {
+            if i != dropIdx {
+                newDbNames.add(dbNames.get(i));
+                newDbList.add(dbList.get(i));
+                newIndexManagers.add(indexManagers.get(i));
+            }
+            i = i + 1;
+        }
+
+        dbNames = newDbNames;
+        dbList = newDbList;
+        indexManagers = newIndexManagers;
+
+        // Update currentDbIndex if needed (if current was after dropped)
+        if currentDbIndex > dropIdx {
+            currentDbIndex = currentDbIndex - 1;
+        }
+
+        return true;
+    }
+
+    // Switch to a different database
+    expose func useDatabase(name: String) -> Boolean {
+        var i = 0;
+        while i < dbNames.count() {
+            if dbNames.get(i) == name {
+                currentDbName = name;
+                currentDbIndex = i;
+                return true;
+            }
+            i = i + 1;
+        }
+        return false;
+    }
+
+    // Check if a database exists
+    expose func databaseExists(name: String) -> Boolean {
+        var i = 0;
+        while i < dbNames.count() {
+            if dbNames.get(i) == name {
+                return true;
+            }
+            i = i + 1;
+        }
+        return false;
+    }
+
+    // Get list of all database names
+    expose func listDatabases() -> List[String] {
+        return dbNames;
+    }
+
+    // Get database count
+    expose func databaseCount() -> Integer {
+        return dbNames.count();
+    }
+
+    // Get database by name
+    expose func getDatabase(name: String) -> Database? {
+        var i = 0;
+        while i < dbNames.count() {
+            if dbNames.get(i) == name {
+                return dbList.get(i);
+            }
+            i = i + 1;
+        }
+        return null;
+    }
+
+    // Get index manager for a database
+    expose func getIndexManager(name: String) -> IndexManager? {
+        var i = 0;
+        while i < dbNames.count() {
+            if dbNames.get(i) == name {
+                return indexManagers.get(i);
+            }
+            i = i + 1;
+        }
+        return null;
+    }
+
+    //=========================================================================
+    // CURRENT DATABASE ACCESS
+    //=========================================================================
+
+    // Get current database
+    expose func currentDatabase() -> Database? {
+        if currentDbIndex < 0 || currentDbIndex >= dbList.count() {
+            return null;
+        }
+        return dbList.get(currentDbIndex);
+    }
+
+    // Get current index manager
+    expose func currentIndexManager() -> IndexManager? {
+        if currentDbIndex < 0 || currentDbIndex >= indexManagers.count() {
+            return null;
+        }
+        return indexManagers.get(currentDbIndex);
+    }
+
+    //=========================================================================
+    // UTILITY METHODS
+    //=========================================================================
+
+    // Get statistics for a database
+    expose func getDatabaseStats(name: String) -> String {
+        var maybeDb = getDatabase(name);
+        if maybeDb == null {
+            return "Database not found";
+        }
+        var db = maybeDb;
+
+        var stats = "Database: " + name + "\n";
+        stats = stats + "Tables: " + Viper.Fmt.Int(db.tableCount()) + "\n";
+
+        // Count total rows across all tables
+        var totalRows = 0;
+        var i = 0;
+        while i < db.tableCount() {
+            var maybeTable = db.getTable(i);
+            if maybeTable != null {
+                var table = maybeTable;
+                totalRows = totalRows + table.rowCount();
+            }
+            i = i + 1;
+        }
+        stats = stats + "Total rows: " + Viper.Fmt.Int(totalRows);
+
+        return stats;
+    }
+
+    // Clear all data from current database (for testing)
+    expose func clearCurrentDatabase() {
+        if currentDbIndex >= 0 && currentDbIndex < dbList.count() {
+            var db = dbList.get(currentDbIndex);
+            // Create a fresh database with the same name
+            var newDb = new Database();
+            newDb.initWithName(db.name);
+            dbList.set(currentDbIndex, newDb);
+
+            // Create a fresh index manager
+            var newIdxMgr = new IndexManager();
+            newIdxMgr.init();
+            indexManagers.set(currentDbIndex, newIdxMgr);
+        }
+    }
+}
+
+// Factory function
+func makeServer() -> DatabaseServer {
+    var server = new DatabaseServer();
+    server.init();
+    return server;
+}

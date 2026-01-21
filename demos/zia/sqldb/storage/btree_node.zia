@@ -1,0 +1,379 @@
+// btree_node.zia - B-Tree Node Structure
+// Part of ViperSQL - B-Tree Indexes (Phase 3)
+
+module btree_node;
+
+bind "./page";
+bind "./serializer";
+bind "../types";
+
+//=============================================================================
+// B-TREE CONSTANTS
+//=============================================================================
+
+// Minimum degree (t) - each node except root has at least t-1 keys
+// Maximum keys per node: 2t - 1
+// Maximum children per node: 2t
+final BTREE_MIN_DEGREE = 50;  // Gives ~99 keys per node
+
+// Page layout for B-tree index nodes
+// [0]: Page type (1 byte) = PAGE_TYPE_INDEX
+// [1-4]: Index ID (4 bytes)
+// [5]: Is leaf flag (1 byte)
+// [6-7]: Key count (2 bytes)
+// [8-15]: Parent page ID (8 bytes)
+// [16-23]: Right sibling page ID (8 bytes)
+// [24...]: Keys and child pointers
+
+final INDEX_PAGE_TYPE_OFFSET = 0;
+final INDEX_ID_OFFSET = 1;
+final INDEX_IS_LEAF_OFFSET = 5;
+final INDEX_KEY_COUNT_OFFSET = 6;
+final INDEX_PARENT_OFFSET = 8;
+final INDEX_RIGHT_SIBLING_OFFSET = 16;
+final INDEX_DATA_OFFSET = 24;
+
+//=============================================================================
+// B-TREE KEY ENTITY
+//=============================================================================
+
+// A key in the B-tree contains the indexed value and a row pointer (page ID + slot)
+entity BTreeKey {
+    expose SqlValue keyValue;
+    expose Integer dataPageId;   // Page where the row is stored
+    expose Integer dataSlotId;   // Slot within the page
+
+    expose func init() {
+        keyValue = new SqlValue();
+        keyValue.initNull();
+        dataPageId = INVALID_PAGE_ID;
+        dataSlotId = -1;
+    }
+
+    expose func initWithValue(val: SqlValue, pageId: Integer, slotId: Integer) {
+        keyValue = val;
+        dataPageId = pageId;
+        dataSlotId = slotId;
+    }
+
+    // Compare keys
+    expose func compareTo(other: BTreeKey) -> Integer {
+        return keyValue.compare(other.keyValue);
+    }
+}
+
+//=============================================================================
+// B-TREE NODE ENTITY
+//=============================================================================
+
+// Represents a node in the B-tree (corresponds to an index page)
+entity BTreeNode {
+    expose Integer pageId;
+    expose Integer indexId;
+    expose Boolean isLeaf;
+    expose Integer parentPageId;
+    expose Integer rightSiblingPageId;
+
+    // Keys stored in this node
+    expose List[BTreeKey] keys;
+
+    // Child page IDs (only used for internal nodes)
+    // children[i] contains keys < keys[i]
+    // children[keys.count()] contains keys >= keys[keys.count()-1]
+    expose List[Integer] children;
+
+    expose func init() {
+        pageId = INVALID_PAGE_ID;
+        indexId = 0;
+        isLeaf = true;
+        parentPageId = INVALID_PAGE_ID;
+        rightSiblingPageId = INVALID_PAGE_ID;
+        keys = [];
+        children = [];
+    }
+
+    expose func initAsLeaf(pid: Integer, idxId: Integer) {
+        pageId = pid;
+        indexId = idxId;
+        isLeaf = true;
+        parentPageId = INVALID_PAGE_ID;
+        rightSiblingPageId = INVALID_PAGE_ID;
+        keys = [];
+        children = [];
+    }
+
+    expose func initAsInternal(pid: Integer, idxId: Integer) {
+        pageId = pid;
+        indexId = idxId;
+        isLeaf = false;
+        parentPageId = INVALID_PAGE_ID;
+        rightSiblingPageId = INVALID_PAGE_ID;
+        keys = [];
+        children = [];
+    }
+
+    // Get number of keys
+    expose func keyCount() -> Integer {
+        return keys.count();
+    }
+
+    // Check if node is full (has max keys)
+    expose func isFull() -> Boolean {
+        return keys.count() >= (2 * BTREE_MIN_DEGREE - 1);
+    }
+
+    // Check if node has minimum keys (except for root)
+    expose func hasMinKeys() -> Boolean {
+        return keys.count() >= (BTREE_MIN_DEGREE - 1);
+    }
+
+    // Get key at index
+    expose func getKey(index: Integer) -> BTreeKey? {
+        if index < 0 || index >= keys.count() {
+            return null;
+        }
+        return keys.get(index);
+    }
+
+    // Get child page ID at index
+    expose func getChild(index: Integer) -> Integer {
+        if index < 0 || index >= children.count() {
+            return INVALID_PAGE_ID;
+        }
+        return children.get(index);
+    }
+
+    // Insert a key at the correct position (maintains sorted order)
+    expose func insertKey(key: BTreeKey) -> Integer {
+        // Find insertion position
+        var pos = 0;
+        while pos < keys.count() {
+            if key.compareTo(keys.get(pos)) < 0 {
+                // Found position
+                break;
+            }
+            pos = pos + 1;
+        }
+
+        // Insert at position (shift others)
+        insertKeyAt(pos, key);
+        return pos;
+    }
+
+    // Insert key at specific position
+    expose func insertKeyAt(pos: Integer, key: BTreeKey) {
+        // Build new list with key at position (workaround for no insert method)
+        var newKeys: List[BTreeKey] = [];
+        var i = 0;
+        while i < keys.count() {
+            if i == pos {
+                newKeys.add(key);
+            }
+            newKeys.add(keys.get(i));
+            i = i + 1;
+        }
+        if pos >= keys.count() {
+            newKeys.add(key);
+        }
+        keys = newKeys;
+    }
+
+    // Remove key at index
+    expose func removeKeyAt(pos: Integer) -> BTreeKey? {
+        if pos < 0 || pos >= keys.count() {
+            return null;
+        }
+
+        var removed = keys.get(pos);
+
+        // Build new list without the key (workaround for no remove method)
+        var newKeys: List[BTreeKey] = [];
+        var i = 0;
+        while i < keys.count() {
+            if i != pos {
+                newKeys.add(keys.get(i));
+            }
+            i = i + 1;
+        }
+        keys = newKeys;
+        return removed;
+    }
+
+    // Insert child pointer at position
+    expose func insertChildAt(pos: Integer, childPageId: Integer) {
+        var newChildren: List[Integer] = [];
+        var i = 0;
+        while i < children.count() {
+            if i == pos {
+                newChildren.add(childPageId);
+            }
+            newChildren.add(children.get(i));
+            i = i + 1;
+        }
+        if pos >= children.count() {
+            newChildren.add(childPageId);
+        }
+        children = newChildren;
+    }
+
+    // Remove child pointer at position
+    expose func removeChildAt(pos: Integer) -> Integer {
+        if pos < 0 || pos >= children.count() {
+            return INVALID_PAGE_ID;
+        }
+
+        var removed = children.get(pos);
+
+        var newChildren: List[Integer] = [];
+        var i = 0;
+        while i < children.count() {
+            if i != pos {
+                newChildren.add(children.get(i));
+            }
+            i = i + 1;
+        }
+        children = newChildren;
+        return removed;
+    }
+
+    // Find the index of child to search for a given key
+    expose func findChildIndex(searchKey: SqlValue) -> Integer {
+        var i = 0;
+        while i < keys.count() {
+            if searchKey.compare(keys.get(i).keyValue) < 0 {
+                return i;
+            }
+            i = i + 1;
+        }
+        return keys.count();
+    }
+
+    // Search for exact key match
+    expose func findKey(searchKey: SqlValue) -> Integer {
+        var i = 0;
+        while i < keys.count() {
+            var cmp = searchKey.compare(keys.get(i).keyValue);
+            if cmp == 0 {
+                return i;
+            }
+            if cmp < 0 {
+                return -1;  // Key not found, would be before this position
+            }
+            i = i + 1;
+        }
+        return -1;  // Key not found
+    }
+}
+
+//=============================================================================
+// NODE SERIALIZATION
+//=============================================================================
+
+entity BTreeNodeSerializer {
+    hide ValueSerializer valSer;
+
+    expose func init() {
+        valSer = new ValueSerializer();
+        valSer.init();
+    }
+
+    // Serialize a B-tree node to a page
+    expose func serializeNode(node: BTreeNode, page: Page) {
+        page.pageType = PAGE_TYPE_INDEX;
+        page.data.seek(0);
+
+        // Write page type
+        page.data.writeByte(PAGE_TYPE_INDEX);
+
+        // Write index ID
+        page.data.writeInt32(node.indexId);
+
+        // Write is leaf flag
+        if node.isLeaf {
+            page.data.writeByte(1);
+        } else {
+            page.data.writeByte(0);
+        }
+
+        // Write key count
+        page.data.writeInt16(node.keyCount());
+
+        // Write parent page ID
+        page.data.writeInt64(node.parentPageId);
+
+        // Write right sibling page ID
+        page.data.writeInt64(node.rightSiblingPageId);
+
+        // Write keys
+        var i = 0;
+        while i < node.keyCount() {
+            var key = node.keys.get(i);
+            valSer.serializeValue(key.keyValue, page.data);
+            page.data.writeInt64(key.dataPageId);
+            page.data.writeInt32(key.dataSlotId);
+            i = i + 1;
+        }
+
+        // Write child pointers (if internal node)
+        if node.isLeaf == false {
+            i = 0;
+            while i < node.children.count() {
+                page.data.writeInt64(node.children.get(i));
+                i = i + 1;
+            }
+        }
+
+        page.markDirty();
+    }
+
+    // Deserialize a B-tree node from a page
+    expose func deserializeNode(page: Page) -> BTreeNode {
+        var node = new BTreeNode();
+        node.init();
+        node.pageId = page.pageId;
+
+        page.data.seek(0);
+
+        // Read page type (skip)
+        page.data.readByte();
+
+        // Read index ID
+        node.indexId = page.data.readInt32();
+
+        // Read is leaf flag
+        node.isLeaf = page.data.readByte() == 1;
+
+        // Read key count
+        var keyCount = page.data.readInt16();
+
+        // Read parent page ID
+        node.parentPageId = page.data.readInt64();
+
+        // Read right sibling page ID
+        node.rightSiblingPageId = page.data.readInt64();
+
+        // Read keys
+        var i = 0;
+        while i < keyCount {
+            var key = new BTreeKey();
+            key.init();
+            key.keyValue = valSer.deserializeValue(page.data);
+            key.dataPageId = page.data.readInt64();
+            key.dataSlotId = page.data.readInt32();
+            node.keys.add(key);
+            i = i + 1;
+        }
+
+        // Read child pointers (if internal node)
+        if node.isLeaf == false {
+            i = 0;
+            while i <= keyCount {  // n+1 children for n keys
+                var childPageId = page.data.readInt64();
+                node.children.add(childPageId);
+                i = i + 1;
+            }
+        }
+
+        return node;
+    }
+}

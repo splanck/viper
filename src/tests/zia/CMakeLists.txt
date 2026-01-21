@@ -111,4 +111,14 @@ function(viper_add_zia_tests)
     viper_add_test(test_zia_optional_field ${_VIPER_ZIA_DIR}/test_zia_optional_field.cpp)
     target_link_libraries(test_zia_optional_field PRIVATE ${VIPER_ZIA_LIBS})
     viper_add_ctest(test_zia_optional_field test_zia_optional_field)
+
+    # List.removeAt() and type checking for List.remove()
+    viper_add_test(test_zia_list_remove_at ${_VIPER_ZIA_DIR}/test_zia_list_remove_at.cpp)
+    target_link_libraries(test_zia_list_remove_at PRIVATE ${VIPER_ZIA_LIBS})
+    viper_add_ctest(test_zia_list_remove_at test_zia_list_remove_at)
+
+    # Bug #003 fix: Optional type narrowing after null check
+    viper_add_test(test_zia_optional_narrowing ${_VIPER_ZIA_DIR}/test_zia_optional_narrowing.cpp)
+    target_link_libraries(test_zia_optional_narrowing PRIVATE ${VIPER_ZIA_LIBS})
+    viper_add_ctest(test_zia_optional_narrowing test_zia_optional_narrowing)
 endfunction()

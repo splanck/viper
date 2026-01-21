@@ -1,0 +1,504 @@
+// txn.zia - Transaction Manager
+// Part of ViperSQL - Phase 5: ACID Transactions
+
+module txn;
+
+bind "./page";
+bind "./wal";
+bind "./serializer";
+
+//=============================================================================
+// TRANSACTION CONSTANTS
+//=============================================================================
+
+// Transaction states
+final TXN_ACTIVE = 1;      // Transaction is running
+final TXN_COMMITTED = 2;   // Transaction committed successfully
+final TXN_ABORTED = 3;     // Transaction was rolled back
+final TXN_PREPARED = 4;    // Transaction prepared (for 2PC)
+
+// Isolation levels
+final ISOLATION_READ_UNCOMMITTED = 1;
+final ISOLATION_READ_COMMITTED = 2;
+final ISOLATION_REPEATABLE_READ = 3;
+final ISOLATION_SERIALIZABLE = 4;
+
+// Lock modes
+final LOCK_SHARED = 1;     // Read lock (S)
+final LOCK_EXCLUSIVE = 2;  // Write lock (X)
+
+//=============================================================================
+// TRANSACTION ENTITY
+//=============================================================================
+
+entity Transaction {
+    expose Integer txnId;
+    expose Integer state;
+    expose Integer isolationLevel;
+    expose LSN startLSN;
+    expose LSN lastLSN;
+    expose Integer startTimestamp;
+    expose Integer commitTimestamp;
+
+    // Tracking for rollback
+    expose List[Integer] modifiedPages;
+    expose List[Integer] insertedRows;  // For undo on abort
+
+    // Locks held by this transaction
+    expose List[Lock] heldLocks;
+
+    expose func init() {
+        txnId = 0;
+        state = TXN_ACTIVE;
+        isolationLevel = ISOLATION_READ_COMMITTED;
+        startLSN = new LSN();
+        startLSN.init();
+        lastLSN = new LSN();
+        lastLSN.init();
+        startTimestamp = 0;
+        commitTimestamp = 0;
+        modifiedPages = [];
+        insertedRows = [];
+        heldLocks = [];
+    }
+
+    expose func initWithId(id: Integer, ts: Integer) {
+        init();
+        txnId = id;
+        startTimestamp = ts;
+    }
+
+    expose func isActive() -> Boolean {
+        return state == TXN_ACTIVE;
+    }
+
+    expose func isCommitted() -> Boolean {
+        return state == TXN_COMMITTED;
+    }
+
+    expose func isAborted() -> Boolean {
+        return state == TXN_ABORTED;
+    }
+
+    expose func addModifiedPage(pageId: Integer) {
+        // Check if already tracked
+        var i = 0;
+        while i < modifiedPages.count() {
+            if modifiedPages.get(i) == pageId {
+                return;
+            }
+            i = i + 1;
+        }
+        modifiedPages.add(pageId);
+    }
+
+    expose func addInsertedRow(tableId: Integer, rowId: Integer) {
+        // Encode as single integer: tableId * 1000000 + rowId
+        insertedRows.add(tableId * 1000000 + rowId);
+    }
+
+    expose func toString() -> String {
+        var stateStr = "UNKNOWN";
+        if state == TXN_ACTIVE { stateStr = "ACTIVE"; }
+        if state == TXN_COMMITTED { stateStr = "COMMITTED"; }
+        if state == TXN_ABORTED { stateStr = "ABORTED"; }
+        if state == TXN_PREPARED { stateStr = "PREPARED"; }
+        return "Transaction[" + Viper.Fmt.Int(txnId) + "] " + stateStr;
+    }
+}
+
+//=============================================================================
+// LOCK ENTITY
+//=============================================================================
+
+entity Lock {
+    expose Integer resourceType;   // 0=table, 1=page, 2=row
+    expose Integer resourceId;     // ID of the locked resource
+    expose Integer tableId;        // Table ID (for row locks)
+    expose Integer mode;           // LOCK_SHARED or LOCK_EXCLUSIVE
+    expose Integer txnId;          // Owning transaction
+
+    expose func init() {
+        resourceType = 0;
+        resourceId = 0;
+        tableId = 0;
+        mode = LOCK_SHARED;
+        txnId = 0;
+    }
+
+    expose func initTableLock(tblId: Integer, lockMode: Integer, tid: Integer) {
+        resourceType = 0;
+        resourceId = tblId;
+        tableId = tblId;
+        mode = lockMode;
+        txnId = tid;
+    }
+
+    expose func initPageLock(pageId: Integer, lockMode: Integer, tid: Integer) {
+        resourceType = 1;
+        resourceId = pageId;
+        tableId = 0;
+        mode = lockMode;
+        txnId = tid;
+    }
+
+    expose func initRowLock(tblId: Integer, rowId: Integer, lockMode: Integer, tid: Integer) {
+        resourceType = 2;
+        resourceId = rowId;
+        tableId = tblId;
+        mode = lockMode;
+        txnId = tid;
+    }
+
+    expose func isCompatible(other: Lock) -> Boolean {
+        // Same resource?
+        if resourceType != other.resourceType {
+            return true;
+        }
+        if resourceId != other.resourceId {
+            return true;
+        }
+        if resourceType == 2 && tableId != other.tableId {
+            return true;  // Different tables
+        }
+
+        // Same resource - check mode compatibility
+        // S + S = compatible
+        // S + X = incompatible
+        // X + X = incompatible
+        if mode == LOCK_SHARED && other.mode == LOCK_SHARED {
+            return true;
+        }
+        return false;
+    }
+
+    expose func toString() -> String {
+        var typeStr = "TABLE";
+        if resourceType == 1 { typeStr = "PAGE"; }
+        if resourceType == 2 { typeStr = "ROW"; }
+        var modeStr = "S";
+        if mode == LOCK_EXCLUSIVE { modeStr = "X"; }
+        return typeStr + "[" + Viper.Fmt.Int(resourceId) + "] " + modeStr + " (txn=" + Viper.Fmt.Int(txnId) + ")";
+    }
+}
+
+//=============================================================================
+// LOCK MANAGER
+//=============================================================================
+
+entity LockManager {
+    expose List[Lock] activeLocks;
+
+    expose func init() {
+        activeLocks = [];
+    }
+
+    // Acquire a lock (returns true if successful)
+    expose func acquireLock(lock: Lock) -> Boolean {
+        // Check for conflicts
+        var i = 0;
+        while i < activeLocks.count() {
+            var existing = activeLocks.get(i);
+            if existing.txnId != lock.txnId {
+                if existing.isCompatible(lock) == false {
+                    return false;  // Conflict
+                }
+            }
+            i = i + 1;
+        }
+
+        // No conflict - grant lock
+        activeLocks.add(lock);
+        return true;
+    }
+
+    // Release a specific lock
+    expose func releaseLock(lock: Lock) {
+        // Workaround for BUG-002: List.remove() doesn't work
+        var newLocks: List[Lock] = [];
+        var i = 0;
+        while i < activeLocks.count() {
+            var existing = activeLocks.get(i);
+            // Keep if different lock
+            if existing.txnId != lock.txnId || existing.resourceType != lock.resourceType || existing.resourceId != lock.resourceId {
+                newLocks.add(existing);
+            }
+            i = i + 1;
+        }
+        activeLocks = newLocks;
+    }
+
+    // Release all locks held by a transaction
+    expose func releaseAllLocks(txnId: Integer) {
+        var newLocks: List[Lock] = [];
+        var i = 0;
+        while i < activeLocks.count() {
+            var lock = activeLocks.get(i);
+            if lock.txnId != txnId {
+                newLocks.add(lock);
+            }
+            i = i + 1;
+        }
+        activeLocks = newLocks;
+    }
+
+    // Check if a transaction holds a lock
+    expose func holdsLock(txnId: Integer, resourceType: Integer, resourceId: Integer) -> Boolean {
+        var i = 0;
+        while i < activeLocks.count() {
+            var lock = activeLocks.get(i);
+            if lock.txnId == txnId && lock.resourceType == resourceType && lock.resourceId == resourceId {
+                return true;
+            }
+            i = i + 1;
+        }
+        return false;
+    }
+
+    // Get lock count
+    expose func lockCount() -> Integer {
+        return activeLocks.count();
+    }
+
+    // Get locks for a transaction
+    expose func getLocksForTxn(txnId: Integer) -> List[Lock] {
+        var result: List[Lock] = [];
+        var i = 0;
+        while i < activeLocks.count() {
+            var lock = activeLocks.get(i);
+            if lock.txnId == txnId {
+                result.add(lock);
+            }
+            i = i + 1;
+        }
+        return result;
+    }
+}
+
+//=============================================================================
+// TRANSACTION MANAGER
+//=============================================================================
+
+entity TransactionManager {
+    expose Integer nextTxnId;
+    expose Integer timestampCounter;
+    expose List[Transaction] activeTransactions;
+    expose LockManager lockMgr;
+    expose WALManager wal;
+    expose Boolean autoCommit;
+
+    expose func init() {
+        nextTxnId = 1;
+        timestampCounter = 1;
+        activeTransactions = [];
+        lockMgr = new LockManager();
+        lockMgr.init();
+        wal = new WALManager();
+        wal.init();
+        autoCommit = true;  // Default SQL behavior
+    }
+
+    expose func initWithWAL(walManager: WALManager) {
+        init();
+        wal = walManager;
+    }
+
+    //=========================================================================
+    // TRANSACTION LIFECYCLE
+    //=========================================================================
+
+    // Begin a new transaction
+    expose func begin() -> Transaction {
+        var txn = new Transaction();
+        txn.initWithId(nextTxnId, timestampCounter);
+        nextTxnId = nextTxnId + 1;
+        timestampCounter = timestampCounter + 1;
+
+        // Log BEGIN
+        txn.startLSN = wal.logBegin(txn.txnId);
+        txn.lastLSN = txn.startLSN;
+
+        activeTransactions.add(txn);
+        return txn;
+    }
+
+    // Commit a transaction
+    expose func commit(txn: Transaction) -> Boolean {
+        if txn.state != TXN_ACTIVE {
+            return false;
+        }
+
+        // Log COMMIT (forces flush for durability)
+        txn.lastLSN = wal.logCommit(txn.txnId);
+        txn.commitTimestamp = timestampCounter;
+        timestampCounter = timestampCounter + 1;
+        txn.state = TXN_COMMITTED;
+
+        // Release all locks
+        lockMgr.releaseAllLocks(txn.txnId);
+
+        // Remove from active list
+        removeFromActive(txn.txnId);
+
+        return true;
+    }
+
+    // Abort/rollback a transaction
+    expose func abort(txn: Transaction) -> Boolean {
+        if txn.state != TXN_ACTIVE {
+            return false;
+        }
+
+        // Log ABORT
+        txn.lastLSN = wal.logAbort(txn.txnId);
+        txn.state = TXN_ABORTED;
+
+        // Undo changes (in a real system, we'd replay log backwards)
+        // For now, just mark as aborted
+
+        // Release all locks
+        lockMgr.releaseAllLocks(txn.txnId);
+
+        // Remove from active list
+        removeFromActive(txn.txnId);
+
+        return true;
+    }
+
+    // Helper to remove transaction from active list
+    hide func removeFromActive(txnId: Integer) {
+        var newActive: List[Transaction] = [];
+        var i = 0;
+        while i < activeTransactions.count() {
+            var t = activeTransactions.get(i);
+            if t.txnId != txnId {
+                newActive.add(t);
+            }
+            i = i + 1;
+        }
+        activeTransactions = newActive;
+    }
+
+    //=========================================================================
+    // LOCK OPERATIONS
+    //=========================================================================
+
+    // Acquire a shared (read) lock on a table
+    expose func lockTableShared(txn: Transaction, tableId: Integer) -> Boolean {
+        var lock = new Lock();
+        lock.initTableLock(tableId, LOCK_SHARED, txn.txnId);
+        if lockMgr.acquireLock(lock) {
+            txn.heldLocks.add(lock);
+            return true;
+        }
+        return false;
+    }
+
+    // Acquire an exclusive (write) lock on a table
+    expose func lockTableExclusive(txn: Transaction, tableId: Integer) -> Boolean {
+        var lock = new Lock();
+        lock.initTableLock(tableId, LOCK_EXCLUSIVE, txn.txnId);
+        if lockMgr.acquireLock(lock) {
+            txn.heldLocks.add(lock);
+            return true;
+        }
+        return false;
+    }
+
+    // Acquire a shared lock on a row
+    expose func lockRowShared(txn: Transaction, tableId: Integer, rowId: Integer) -> Boolean {
+        var lock = new Lock();
+        lock.initRowLock(tableId, rowId, LOCK_SHARED, txn.txnId);
+        if lockMgr.acquireLock(lock) {
+            txn.heldLocks.add(lock);
+            return true;
+        }
+        return false;
+    }
+
+    // Acquire an exclusive lock on a row
+    expose func lockRowExclusive(txn: Transaction, tableId: Integer, rowId: Integer) -> Boolean {
+        var lock = new Lock();
+        lock.initRowLock(tableId, rowId, LOCK_EXCLUSIVE, txn.txnId);
+        if lockMgr.acquireLock(lock) {
+            txn.heldLocks.add(lock);
+            return true;
+        }
+        return false;
+    }
+
+    //=========================================================================
+    // LOGGING OPERATIONS
+    //=========================================================================
+
+    // Log an insert operation
+    expose func logInsert(txn: Transaction, tableId: Integer, pageId: Integer, slotId: Integer, rowData: BinaryBuffer) {
+        txn.lastLSN = wal.logInsert(txn.txnId, tableId, pageId, slotId, rowData);
+        txn.addModifiedPage(pageId);
+        txn.addInsertedRow(tableId, slotId);
+    }
+
+    // Log an update operation
+    expose func logUpdate(txn: Transaction, tableId: Integer, pageId: Integer, slotId: Integer, before: BinaryBuffer, after: BinaryBuffer) {
+        txn.lastLSN = wal.logUpdate(txn.txnId, tableId, pageId, slotId, before, after);
+        txn.addModifiedPage(pageId);
+    }
+
+    // Log a delete operation
+    expose func logDelete(txn: Transaction, tableId: Integer, pageId: Integer, slotId: Integer, rowData: BinaryBuffer) {
+        txn.lastLSN = wal.logDelete(txn.txnId, tableId, pageId, slotId, rowData);
+        txn.addModifiedPage(pageId);
+    }
+
+    //=========================================================================
+    // QUERY METHODS
+    //=========================================================================
+
+    // Get transaction by ID
+    expose func getTransaction(txnId: Integer) -> Transaction? {
+        var i = 0;
+        while i < activeTransactions.count() {
+            var txn = activeTransactions.get(i);
+            if txn.txnId == txnId {
+                return txn;
+            }
+            i = i + 1;
+        }
+        return null;
+    }
+
+    // Get number of active transactions
+    expose func activeCount() -> Integer {
+        return activeTransactions.count();
+    }
+
+    // Get list of active transaction IDs (for checkpointing)
+    expose func getActiveTxnIds() -> List[Integer] {
+        var result: List[Integer] = [];
+        var i = 0;
+        while i < activeTransactions.count() {
+            result.add(activeTransactions.get(i).txnId);
+            i = i + 1;
+        }
+        return result;
+    }
+
+    // Create a checkpoint
+    expose func checkpoint() -> LSN {
+        return wal.checkpoint(getActiveTxnIds());
+    }
+
+    //=========================================================================
+    // AUTO-COMMIT MODE
+    //=========================================================================
+
+    // Set auto-commit mode
+    expose func setAutoCommit(enabled: Boolean) {
+        autoCommit = enabled;
+    }
+
+    // Get auto-commit mode
+    expose func isAutoCommit() -> Boolean {
+        return autoCommit;
+    }
+}

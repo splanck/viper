@@ -144,6 +144,112 @@ func testCaseInWhere() {
 }
 
 //=============================================================================
+// EXCEPT TESTS (Phase 8)
+//=============================================================================
+
+func testExcept() {
+    Viper.Terminal.Say("Testing EXCEPT...");
+    var exec = new Executor();
+    exec.init();
+
+    exec.executeSql("CREATE TABLE t1 (id INTEGER, name TEXT)");
+    exec.executeSql("CREATE TABLE t2 (id INTEGER, name TEXT)");
+
+    exec.executeSql("INSERT INTO t1 VALUES (1, 'Alice')");
+    exec.executeSql("INSERT INTO t1 VALUES (2, 'Bob')");
+    exec.executeSql("INSERT INTO t1 VALUES (3, 'Charlie')");
+    exec.executeSql("INSERT INTO t2 VALUES (2, 'Bob')");
+    exec.executeSql("INSERT INTO t2 VALUES (4, 'Diana')");
+
+    // EXCEPT returns rows in first that are not in second
+    var result = exec.executeSql("SELECT id, name FROM t1 EXCEPT SELECT id, name FROM t2");
+    assertTrue(result.success, "EXCEPT should succeed");
+    assertTrue(result.rowCount() == 2, "EXCEPT should return 2 rows (Alice, Charlie - not Bob)");
+}
+
+func testExceptWithDuplicates() {
+    Viper.Terminal.Say("Testing EXCEPT with duplicates...");
+    var exec = new Executor();
+    exec.init();
+
+    exec.executeSql("CREATE TABLE t1 (id INTEGER, name TEXT)");
+    exec.executeSql("CREATE TABLE t2 (id INTEGER, name TEXT)");
+
+    // t1 has duplicate rows
+    exec.executeSql("INSERT INTO t1 VALUES (1, 'Alice')");
+    exec.executeSql("INSERT INTO t1 VALUES (1, 'Alice')");
+    exec.executeSql("INSERT INTO t1 VALUES (2, 'Bob')");
+    exec.executeSql("INSERT INTO t2 VALUES (2, 'Bob')");
+
+    // EXCEPT removes duplicates from first result
+    var result = exec.executeSql("SELECT id, name FROM t1 EXCEPT SELECT id, name FROM t2");
+    assertTrue(result.success, "EXCEPT with duplicates should succeed");
+    assertTrue(result.rowCount() == 1, "EXCEPT should return 1 row (Alice, deduplicated)");
+}
+
+//=============================================================================
+// INTERSECT TESTS (Phase 8)
+//=============================================================================
+
+func testIntersect() {
+    Viper.Terminal.Say("Testing INTERSECT...");
+    var exec = new Executor();
+    exec.init();
+
+    exec.executeSql("CREATE TABLE t1 (id INTEGER, name TEXT)");
+    exec.executeSql("CREATE TABLE t2 (id INTEGER, name TEXT)");
+
+    exec.executeSql("INSERT INTO t1 VALUES (1, 'Alice')");
+    exec.executeSql("INSERT INTO t1 VALUES (2, 'Bob')");
+    exec.executeSql("INSERT INTO t1 VALUES (3, 'Charlie')");
+    exec.executeSql("INSERT INTO t2 VALUES (2, 'Bob')");
+    exec.executeSql("INSERT INTO t2 VALUES (3, 'Charlie')");
+    exec.executeSql("INSERT INTO t2 VALUES (4, 'Diana')");
+
+    // INTERSECT returns rows that exist in both
+    var result = exec.executeSql("SELECT id, name FROM t1 INTERSECT SELECT id, name FROM t2");
+    assertTrue(result.success, "INTERSECT should succeed");
+    assertTrue(result.rowCount() == 2, "INTERSECT should return 2 rows (Bob, Charlie)");
+}
+
+func testIntersectWithDuplicates() {
+    Viper.Terminal.Say("Testing INTERSECT with duplicates...");
+    var exec = new Executor();
+    exec.init();
+
+    exec.executeSql("CREATE TABLE t1 (id INTEGER, name TEXT)");
+    exec.executeSql("CREATE TABLE t2 (id INTEGER, name TEXT)");
+
+    // Both tables have duplicate rows that match
+    exec.executeSql("INSERT INTO t1 VALUES (1, 'Alice')");
+    exec.executeSql("INSERT INTO t1 VALUES (1, 'Alice')");
+    exec.executeSql("INSERT INTO t2 VALUES (1, 'Alice')");
+    exec.executeSql("INSERT INTO t2 VALUES (1, 'Alice')");
+
+    // INTERSECT removes duplicates
+    var result = exec.executeSql("SELECT id, name FROM t1 INTERSECT SELECT id, name FROM t2");
+    assertTrue(result.success, "INTERSECT with duplicates should succeed");
+    assertTrue(result.rowCount() == 1, "INTERSECT should return 1 row (Alice, deduplicated)");
+}
+
+func testIntersectNoMatch() {
+    Viper.Terminal.Say("Testing INTERSECT with no matching rows...");
+    var exec = new Executor();
+    exec.init();
+
+    exec.executeSql("CREATE TABLE t1 (id INTEGER, name TEXT)");
+    exec.executeSql("CREATE TABLE t2 (id INTEGER, name TEXT)");
+
+    exec.executeSql("INSERT INTO t1 VALUES (1, 'Alice')");
+    exec.executeSql("INSERT INTO t2 VALUES (2, 'Bob')");
+
+    // No matching rows
+    var result = exec.executeSql("SELECT id, name FROM t1 INTERSECT SELECT id, name FROM t2");
+    assertTrue(result.success, "INTERSECT with no match should succeed");
+    assertTrue(result.rowCount() == 0, "INTERSECT should return 0 rows");
+}
+
+//=============================================================================
 // MAIN
 //=============================================================================
 
@@ -156,6 +262,13 @@ func start() {
     testCaseExpression();
     testCaseWithoutElse();
     testCaseInWhere();
+
+    // Phase 8: EXCEPT and INTERSECT
+    testExcept();
+    testExceptWithDuplicates();
+    testIntersect();
+    testIntersectWithDuplicates();
+    testIntersectNoMatch();
 
     Viper.Terminal.Say("");
     Viper.Terminal.Say("=== Results ===");

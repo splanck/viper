@@ -1,0 +1,530 @@
+// btree.zia - B-Tree Implementation
+// Part of ViperSQL - B-Tree Indexes (Phase 3)
+
+module btree;
+
+bind "./page";
+bind "./buffer";
+bind "./btree_node";
+bind "../types";
+
+//=============================================================================
+// B-TREE INDEX ENTITY
+//=============================================================================
+
+entity BTree {
+    expose Integer indexId;
+    expose String indexName;
+    expose Integer tableId;
+    expose String columnName;
+    expose Boolean isUnique;
+
+    // Root page ID
+    expose Integer rootPageId;
+
+    // Buffer pool for page access
+    hide BufferPool pool;
+    hide BTreeNodeSerializer nodeSer;
+
+    expose func init() {
+        indexId = 0;
+        indexName = "";
+        tableId = 0;
+        columnName = "";
+        isUnique = false;
+        rootPageId = INVALID_PAGE_ID;
+        nodeSer = new BTreeNodeSerializer();
+        nodeSer.init();
+    }
+
+    expose func initWithPool(bufferPool: BufferPool) {
+        indexId = 0;
+        indexName = "";
+        tableId = 0;
+        columnName = "";
+        isUnique = false;
+        rootPageId = INVALID_PAGE_ID;
+        pool = bufferPool;
+        nodeSer = new BTreeNodeSerializer();
+        nodeSer.init();
+    }
+
+    expose func setBufferPool(bufferPool: BufferPool) {
+        pool = bufferPool;
+    }
+
+    //=========================================================================
+    // TREE CREATION
+    //=========================================================================
+
+    // Create a new empty B-tree
+    expose func create(name: String, tblId: Integer, colName: String, unique: Boolean) {
+        indexName = name;
+        tableId = tblId;
+        columnName = colName;
+        isUnique = unique;
+
+        // Create root node (starts as empty leaf)
+        var rootPage = pool.newPage(PAGE_TYPE_INDEX);
+        rootPageId = rootPage.pageId;
+
+        var root = new BTreeNode();
+        root.initAsLeaf(rootPageId, indexId);
+
+        nodeSer.serializeNode(root, rootPage);
+        pool.unpinPage(rootPageId, true);
+    }
+
+    //=========================================================================
+    // SEARCH OPERATIONS
+    //=========================================================================
+
+    // Search for a key and return its row location
+    expose func search(searchKey: SqlValue) -> BTreeKey? {
+        if rootPageId == INVALID_PAGE_ID {
+            return null;
+        }
+
+        return searchInNode(rootPageId, searchKey);
+    }
+
+    // Recursive search in a node
+    hide func searchInNode(nodePageId: Integer, searchKey: SqlValue) -> BTreeKey? {
+        var maybePage = pool.fetchPage(nodePageId);
+        if maybePage == null {
+            return null;
+        }
+        var page = maybePage;
+        var node = nodeSer.deserializeNode(page);
+        pool.unpinPage(nodePageId, false);
+
+        // Search for key in this node
+        var keyIdx = node.findKey(searchKey);
+        if keyIdx >= 0 {
+            // Found exact match
+            return node.keys.get(keyIdx);
+        }
+
+        // If leaf, key not found
+        if node.isLeaf {
+            return null;
+        }
+
+        // Search in appropriate child
+        var childIdx = node.findChildIndex(searchKey);
+        var childPageId = node.getChild(childIdx);
+        if childPageId == INVALID_PAGE_ID {
+            return null;
+        }
+
+        return searchInNode(childPageId, searchKey);
+    }
+
+    // Range search: find all keys in [minKey, maxKey]
+    expose func rangeSearch(minKey: SqlValue, maxKey: SqlValue) -> List[BTreeKey] {
+        var results: List[BTreeKey] = [];
+        if rootPageId == INVALID_PAGE_ID {
+            return results;
+        }
+
+        rangeSearchInNode(rootPageId, minKey, maxKey, results);
+        return results;
+    }
+
+    // Recursive range search
+    hide func rangeSearchInNode(nodePageId: Integer, minKey: SqlValue, maxKey: SqlValue, results: List[BTreeKey]) {
+        var maybePage = pool.fetchPage(nodePageId);
+        if maybePage == null {
+            return;
+        }
+        var page = maybePage;
+        var node = nodeSer.deserializeNode(page);
+        pool.unpinPage(nodePageId, false);
+
+        var i = 0;
+        while i < node.keyCount() {
+            var key = node.keys.get(i);
+
+            // If internal node, check if we need to go down left child
+            if node.isLeaf == false {
+                if minKey.compare(key.keyValue) <= 0 {
+                    var childPageId = node.getChild(i);
+                    if childPageId != INVALID_PAGE_ID {
+                        rangeSearchInNode(childPageId, minKey, maxKey, results);
+                    }
+                }
+            }
+
+            // Check if this key is in range
+            if minKey.compare(key.keyValue) <= 0 && key.keyValue.compare(maxKey) <= 0 {
+                results.add(key);
+            }
+
+            // If key is beyond max, we're done
+            if key.keyValue.compare(maxKey) > 0 {
+                return;
+            }
+
+            i = i + 1;
+        }
+
+        // Check rightmost child
+        if node.isLeaf == false && node.children.count() > node.keyCount() {
+            var childPageId = node.getChild(node.keyCount());
+            if childPageId != INVALID_PAGE_ID {
+                rangeSearchInNode(childPageId, minKey, maxKey, results);
+            }
+        }
+    }
+
+    //=========================================================================
+    // INSERT OPERATIONS
+    //=========================================================================
+
+    // Insert a key into the B-tree
+    expose func insert(key: BTreeKey) -> Boolean {
+        if rootPageId == INVALID_PAGE_ID {
+            return false;
+        }
+
+        // Check uniqueness constraint
+        if isUnique {
+            var existing = search(key.keyValue);
+            if existing != null {
+                return false;  // Duplicate key
+            }
+        }
+
+        // Check if root is full
+        var maybePage = pool.fetchPage(rootPageId);
+        if maybePage == null {
+            return false;
+        }
+        var page = maybePage;
+        var root = nodeSer.deserializeNode(page);
+
+        if root.isFull() {
+            // Create new root
+            var newRootPage = pool.newPage(PAGE_TYPE_INDEX);
+            var newRootPageId = newRootPage.pageId;
+
+            var newRoot = new BTreeNode();
+            newRoot.initAsInternal(newRootPageId, indexId);
+            newRoot.children.add(rootPageId);
+
+            // Update old root's parent
+            root.parentPageId = newRootPageId;
+            nodeSer.serializeNode(root, page);
+
+            // Split the old root
+            splitChild(newRoot, 0, root);
+
+            // Update root pointer
+            rootPageId = newRootPageId;
+
+            // Serialize new root
+            var maybeNewRootPage = pool.fetchPage(newRootPageId);
+            if maybeNewRootPage != null {
+                var nrp = maybeNewRootPage;
+                nodeSer.serializeNode(newRoot, nrp);
+                pool.unpinPage(newRootPageId, true);
+            }
+
+            pool.unpinPage(page.pageId, true);
+            pool.unpinPage(newRootPage.pageId, true);
+
+            // Insert into new tree
+            return insertNonFull(newRootPageId, key);
+        } else {
+            pool.unpinPage(page.pageId, false);
+            return insertNonFull(rootPageId, key);
+        }
+    }
+
+    // Insert into a non-full node
+    hide func insertNonFull(nodePageId: Integer, key: BTreeKey) -> Boolean {
+        var maybePage = pool.fetchPage(nodePageId);
+        if maybePage == null {
+            return false;
+        }
+        var page = maybePage;
+        var node = nodeSer.deserializeNode(page);
+
+        if node.isLeaf {
+            // Insert key directly
+            node.insertKey(key);
+            nodeSer.serializeNode(node, page);
+            pool.unpinPage(nodePageId, true);
+            return true;
+        }
+
+        // Find child to descend to
+        var childIdx = node.findChildIndex(key.keyValue);
+        var childPageId = node.getChild(childIdx);
+
+        // Fetch child
+        var maybeChildPage = pool.fetchPage(childPageId);
+        if maybeChildPage == null {
+            pool.unpinPage(nodePageId, false);
+            return false;
+        }
+        var childPage = maybeChildPage;
+        var child = nodeSer.deserializeNode(childPage);
+
+        if child.isFull() {
+            // Split child first
+            splitChild(node, childIdx, child);
+            nodeSer.serializeNode(node, page);
+
+            // Determine which child to use after split
+            if key.keyValue.compare(node.keys.get(childIdx).keyValue) > 0 {
+                childIdx = childIdx + 1;
+                childPageId = node.getChild(childIdx);
+            }
+
+            pool.unpinPage(childPage.pageId, true);
+        } else {
+            pool.unpinPage(childPage.pageId, false);
+        }
+
+        pool.unpinPage(nodePageId, true);
+        return insertNonFull(childPageId, key);
+    }
+
+    // Split a full child node
+    hide func splitChild(parent: BTreeNode, childIdx: Integer, child: BTreeNode) {
+        // Create new node (right sibling)
+        var newPage = pool.newPage(PAGE_TYPE_INDEX);
+        var newNode = new BTreeNode();
+        if child.isLeaf {
+            newNode.initAsLeaf(newPage.pageId, indexId);
+        } else {
+            newNode.initAsInternal(newPage.pageId, indexId);
+        }
+        newNode.parentPageId = parent.pageId;
+
+        // Move right half of keys to new node
+        var midIdx = BTREE_MIN_DEGREE - 1;
+        var i = midIdx + 1;
+        while i < child.keyCount() {
+            newNode.keys.add(child.keys.get(i));
+            i = i + 1;
+        }
+
+        // Move right half of children (if internal)
+        if child.isLeaf == false {
+            i = midIdx + 1;
+            while i < child.children.count() {
+                newNode.children.add(child.children.get(i));
+                i = i + 1;
+            }
+        }
+
+        // Get middle key to promote to parent
+        var midKey = child.keys.get(midIdx);
+
+        // Truncate child's keys
+        var newChildKeys: List[BTreeKey] = [];
+        i = 0;
+        while i < midIdx {
+            newChildKeys.add(child.keys.get(i));
+            i = i + 1;
+        }
+        child.keys = newChildKeys;
+
+        // Truncate child's children (if internal)
+        if child.isLeaf == false {
+            var newChildChildren: List[Integer] = [];
+            i = 0;
+            while i <= midIdx {
+                newChildChildren.add(child.children.get(i));
+                i = i + 1;
+            }
+            child.children = newChildChildren;
+        }
+
+        // Update sibling pointers
+        newNode.rightSiblingPageId = child.rightSiblingPageId;
+        child.rightSiblingPageId = newNode.pageId;
+
+        // Insert new child pointer and key into parent
+        parent.insertChildAt(childIdx + 1, newNode.pageId);
+        parent.insertKeyAt(childIdx, midKey);
+
+        // Serialize the new node
+        nodeSer.serializeNode(newNode, newPage);
+
+        // Serialize the child (will be done by caller)
+        var maybeChildPage = pool.fetchPage(child.pageId);
+        if maybeChildPage != null {
+            var childPage = maybeChildPage;
+            nodeSer.serializeNode(child, childPage);
+            pool.unpinPage(child.pageId, true);
+        }
+
+        pool.unpinPage(newPage.pageId, true);
+    }
+
+    //=========================================================================
+    // DELETE OPERATIONS
+    //=========================================================================
+
+    // Delete a key from the B-tree
+    expose func delete(searchKey: SqlValue) -> Boolean {
+        if rootPageId == INVALID_PAGE_ID {
+            return false;
+        }
+
+        return deleteFromNode(rootPageId, searchKey);
+    }
+
+    // Delete from a node
+    hide func deleteFromNode(nodePageId: Integer, searchKey: SqlValue) -> Boolean {
+        var maybePage = pool.fetchPage(nodePageId);
+        if maybePage == null {
+            return false;
+        }
+        var page = maybePage;
+        var node = nodeSer.deserializeNode(page);
+
+        var keyIdx = node.findKey(searchKey);
+
+        if keyIdx >= 0 {
+            // Key found in this node
+            if node.isLeaf {
+                // Simple case: remove from leaf
+                node.removeKeyAt(keyIdx);
+                nodeSer.serializeNode(node, page);
+                pool.unpinPage(nodePageId, true);
+                return true;
+            } else {
+                // Complex case: handle internal node deletion
+                // For simplicity, replace with predecessor and delete predecessor
+                var predKey = findPredecessor(node, keyIdx);
+                if predKey != null {
+                    var pk = predKey;
+                    node.keys.set(keyIdx, pk);
+                    nodeSer.serializeNode(node, page);
+                    pool.unpinPage(nodePageId, true);
+                    // Delete predecessor from left subtree
+                    var leftChildId = node.getChild(keyIdx);
+                    return deleteFromNode(leftChildId, pk.keyValue);
+                }
+                pool.unpinPage(nodePageId, false);
+                return false;
+            }
+        }
+
+        // Key not in this node
+        if node.isLeaf {
+            pool.unpinPage(nodePageId, false);
+            return false;  // Key doesn't exist
+        }
+
+        // Find child to descend to
+        var childIdx = node.findChildIndex(searchKey);
+        var childPageId = node.getChild(childIdx);
+
+        pool.unpinPage(nodePageId, false);
+        return deleteFromNode(childPageId, searchKey);
+    }
+
+    // Find predecessor (rightmost key in left subtree)
+    hide func findPredecessor(node: BTreeNode, keyIdx: Integer) -> BTreeKey? {
+        var childPageId = node.getChild(keyIdx);
+        if childPageId == INVALID_PAGE_ID {
+            return null;
+        }
+
+        var maybePage = pool.fetchPage(childPageId);
+        if maybePage == null {
+            return null;
+        }
+        var page = maybePage;
+        var child = nodeSer.deserializeNode(page);
+        pool.unpinPage(childPageId, false);
+
+        // Go right until we reach a leaf
+        while child.isLeaf == false {
+            var rightmostChildId = child.getChild(child.children.count() - 1);
+            maybePage = pool.fetchPage(rightmostChildId);
+            if maybePage == null {
+                return null;
+            }
+            page = maybePage;
+            child = nodeSer.deserializeNode(page);
+            pool.unpinPage(rightmostChildId, false);
+        }
+
+        // Return rightmost key in leaf
+        if child.keyCount() > 0 {
+            return child.keys.get(child.keyCount() - 1);
+        }
+        return null;
+    }
+
+    //=========================================================================
+    // UTILITY FUNCTIONS
+    //=========================================================================
+
+    // Get the height of the tree
+    expose func height() -> Integer {
+        if rootPageId == INVALID_PAGE_ID {
+            return 0;
+        }
+
+        var h = 0;
+        var currentPageId = rootPageId;
+
+        while currentPageId != INVALID_PAGE_ID {
+            var maybePage = pool.fetchPage(currentPageId);
+            if maybePage == null {
+                break;
+            }
+            var page = maybePage;
+            var node = nodeSer.deserializeNode(page);
+            pool.unpinPage(currentPageId, false);
+
+            h = h + 1;
+
+            if node.isLeaf {
+                break;
+            }
+
+            currentPageId = node.getChild(0);
+        }
+
+        return h;
+    }
+
+    // Count total keys in the tree
+    expose func countKeys() -> Integer {
+        if rootPageId == INVALID_PAGE_ID {
+            return 0;
+        }
+
+        return countKeysInNode(rootPageId);
+    }
+
+    hide func countKeysInNode(nodePageId: Integer) -> Integer {
+        var maybePage = pool.fetchPage(nodePageId);
+        if maybePage == null {
+            return 0;
+        }
+        var page = maybePage;
+        var node = nodeSer.deserializeNode(page);
+        pool.unpinPage(nodePageId, false);
+
+        var count = node.keyCount();
+
+        if node.isLeaf == false {
+            var i = 0;
+            while i < node.children.count() {
+                count = count + countKeysInNode(node.getChild(i));
+                i = i + 1;
+            }
+        }
+
+        return count;
+    }
+}

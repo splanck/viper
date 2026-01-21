@@ -136,10 +136,51 @@ void Sema::analyzeIfStmt(IfStmt *stmt)
         error(stmt->condition->loc, "Condition must be Boolean");
     }
 
-    analyzeStmt(stmt->thenBranch.get());
+    // Check for null check pattern for type narrowing
+    std::string nullCheckVar;
+    bool isNotNull = false;
+    bool hasNullCheck = tryExtractNullCheck(stmt->condition.get(), nullCheckVar, isNotNull);
+
+    TypeRef narrowedType = nullptr;
+    if (hasNullCheck)
+    {
+        // Look up the variable's current type
+        TypeRef varType = lookupVarType(nullCheckVar);
+        if (varType && varType->kind == TypeKindSem::Optional)
+        {
+            // Get the inner (non-optional) type
+            narrowedType = varType->innerType();
+        }
+    }
+
+    // Analyze then-branch with narrowing if condition is "x != null"
+    if (hasNullCheck && isNotNull && narrowedType)
+    {
+        pushNarrowingScope();
+        narrowType(nullCheckVar, narrowedType);
+        analyzeStmt(stmt->thenBranch.get());
+        popNarrowingScope();
+    }
+    else
+    {
+        analyzeStmt(stmt->thenBranch.get());
+    }
+
+    // Analyze else-branch with narrowing if condition is "x == null"
     if (stmt->elseBranch)
     {
-        analyzeStmt(stmt->elseBranch.get());
+        if (hasNullCheck && !isNotNull && narrowedType)
+        {
+            // In else branch of "x == null", x is not null
+            pushNarrowingScope();
+            narrowType(nullCheckVar, narrowedType);
+            analyzeStmt(stmt->elseBranch.get());
+            popNarrowingScope();
+        }
+        else
+        {
+            analyzeStmt(stmt->elseBranch.get());
+        }
     }
 }
 

@@ -1008,12 +1008,77 @@ Symbol *Sema::lookupSymbol(const std::string &name)
 
 TypeRef Sema::lookupVarType(const std::string &name)
 {
+    // Check narrowed types first (for flow-sensitive type analysis)
+    for (auto it = narrowedTypes_.rbegin(); it != narrowedTypes_.rend(); ++it)
+    {
+        auto found = it->find(name);
+        if (found != it->end())
+        {
+            return found->second;
+        }
+    }
+
+    // Fall back to declared type
     Symbol *sym = currentScope_->lookup(name);
     if (sym && (sym->kind == Symbol::Kind::Variable || sym->kind == Symbol::Kind::Parameter))
     {
         return sym->type;
     }
     return nullptr;
+}
+
+//=============================================================================
+// Type Narrowing (Flow-Sensitive Type Analysis)
+//=============================================================================
+
+void Sema::pushNarrowingScope()
+{
+    narrowedTypes_.push_back({});
+}
+
+void Sema::popNarrowingScope()
+{
+    if (!narrowedTypes_.empty())
+    {
+        narrowedTypes_.pop_back();
+    }
+}
+
+void Sema::narrowType(const std::string &name, TypeRef narrowedType)
+{
+    if (!narrowedTypes_.empty())
+    {
+        narrowedTypes_.back()[name] = narrowedType;
+    }
+}
+
+bool Sema::tryExtractNullCheck(Expr *cond, std::string &varName, bool &isNotNull)
+{
+    // Pattern: x != null or x == null
+    if (cond->kind != ExprKind::Binary)
+        return false;
+
+    auto *binary = static_cast<BinaryExpr *>(cond);
+    if (binary->op != BinaryOp::Ne && binary->op != BinaryOp::Eq)
+        return false;
+
+    isNotNull = (binary->op == BinaryOp::Ne);
+
+    // Check for "x != null" pattern
+    if (binary->left->kind == ExprKind::Ident && binary->right->kind == ExprKind::NullLiteral)
+    {
+        varName = static_cast<IdentExpr *>(binary->left.get())->name;
+        return true;
+    }
+
+    // Check for "null != x" pattern
+    if (binary->left->kind == ExprKind::NullLiteral && binary->right->kind == ExprKind::Ident)
+    {
+        varName = static_cast<IdentExpr *>(binary->right.get())->name;
+        return true;
+    }
+
+    return false;
 }
 
 //=============================================================================

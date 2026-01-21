@@ -1,0 +1,350 @@
+// schema_page.zia - Schema/Catalog Page Manager
+// Part of ViperSQL - Binary Storage Engine (Phase 2)
+
+module schema_page;
+
+bind "./page";
+bind "./serializer";
+bind "./pager";
+bind "../table";
+bind "../schema";
+
+//=============================================================================
+// TABLE METADATA ENTITY
+//=============================================================================
+
+// Represents table metadata stored in schema pages
+entity TableMeta {
+    expose Integer tableId;
+    expose String tableName;
+    expose Integer firstDataPage;  // First page containing table data
+    expose Integer columnCount;
+    expose List[Column] columns;
+    expose Integer rowCount;
+    expose Integer nextAutoIncrement;
+
+    expose func init() {
+        tableId = 0;
+        tableName = "";
+        firstDataPage = INVALID_PAGE_ID;
+        columnCount = 0;
+        columns = [];
+        rowCount = 0;
+        nextAutoIncrement = 1;
+    }
+
+    expose func initFromTable(id: Integer, table: Table) {
+        tableId = id;
+        tableName = table.name;
+        firstDataPage = INVALID_PAGE_ID;
+        columnCount = table.columnCount();
+        columns = [];
+
+        var i = 0;
+        while i < table.columnCount() {
+            var maybeCol = table.getColumn(i);
+            if maybeCol != null {
+                var col = maybeCol;
+                columns.add(col);
+            }
+            i = i + 1;
+        }
+
+        rowCount = table.rowCount();
+        nextAutoIncrement = table.autoIncrementValue;
+    }
+
+    // Convert back to Table
+    expose func toTable() -> Table {
+        var table = new Table();
+        table.initWithName(tableName);
+
+        var i = 0;
+        while i < columns.count() {
+            var col = columns.get(i);
+            table.addColumn(col);
+            i = i + 1;
+        }
+
+        table.autoIncrementValue = nextAutoIncrement;
+        return table;
+    }
+}
+
+//=============================================================================
+// SCHEMA PAGE MANAGER
+//=============================================================================
+
+// Manages table catalog in schema pages
+// Schema page layout:
+//   [0]: Page type (1 byte) = PAGE_TYPE_SCHEMA
+//   [1-4]: Table count (4 bytes)
+//   [5-12]: Next schema page ID (8 bytes)
+//   [13...]: Table metadata entries
+
+entity SchemaPageManager {
+    hide ColumnSerializer colSer;
+
+    expose func init() {
+        colSer = new ColumnSerializer();
+        colSer.init();
+    }
+
+    //=========================================================================
+    // PAGE INITIALIZATION
+    //=========================================================================
+
+    // Initialize a new schema page
+    expose func initSchemaPage(page: Page) {
+        page.pageType = PAGE_TYPE_SCHEMA;
+        page.data.seek(0);
+
+        // Page type
+        page.data.writeByte(PAGE_TYPE_SCHEMA);
+
+        // Table count
+        page.data.writeInt32(0);
+
+        // Next schema page ID (none)
+        page.data.writeInt64(INVALID_PAGE_ID);
+
+        page.markDirty();
+    }
+
+    //=========================================================================
+    // PAGE METADATA
+    //=========================================================================
+
+    // Get table count from schema page
+    expose func getTableCount(page: Page) -> Integer {
+        page.data.seek(1);
+        return page.data.readInt32();
+    }
+
+    // Set table count
+    hide func setTableCount(page: Page, count: Integer) {
+        page.data.seek(1);
+        page.data.writeInt32(count);
+        page.markDirty();
+    }
+
+    // Get next schema page ID
+    expose func getNextSchemaPage(page: Page) -> Integer {
+        page.data.seek(5);
+        return page.data.readInt64();
+    }
+
+    // Set next schema page ID
+    expose func setNextSchemaPage(page: Page, nextId: Integer) {
+        page.data.seek(5);
+        page.data.writeInt64(nextId);
+        page.markDirty();
+    }
+
+    //=========================================================================
+    // TABLE METADATA SERIALIZATION
+    //=========================================================================
+
+    // Serialize table metadata to buffer
+    expose func serializeTableMeta(meta: TableMeta, buf: BinaryBuffer) {
+        buf.writeInt32(meta.tableId);
+        buf.writeString(meta.tableName);
+        buf.writeInt64(meta.firstDataPage);
+        buf.writeInt32(meta.columnCount);
+
+        // Serialize each column
+        var i = 0;
+        while i < meta.columns.count() {
+            var col = meta.columns.get(i);
+            colSer.serializeColumn(col, buf);
+            i = i + 1;
+        }
+
+        buf.writeInt64(meta.rowCount);
+        buf.writeInt64(meta.nextAutoIncrement);
+    }
+
+    // Deserialize table metadata from buffer
+    expose func deserializeTableMeta(buf: BinaryBuffer) -> TableMeta {
+        var meta = new TableMeta();
+        meta.init();
+
+        meta.tableId = buf.readInt32();
+        meta.tableName = buf.readString();
+        meta.firstDataPage = buf.readInt64();
+        meta.columnCount = buf.readInt32();
+
+        // Deserialize columns
+        var i = 0;
+        while i < meta.columnCount {
+            var col = colSer.deserializeColumn(buf);
+            meta.columns.add(col);
+            i = i + 1;
+        }
+
+        meta.rowCount = buf.readInt64();
+        meta.nextAutoIncrement = buf.readInt64();
+
+        return meta;
+    }
+
+    //=========================================================================
+    // SCHEMA PAGE OPERATIONS
+    //=========================================================================
+
+    // Read all table metadata from schema page
+    expose func readAllTables(page: Page) -> List[TableMeta] {
+        var tables: List[TableMeta] = [];
+        var tableCount = getTableCount(page);
+
+        page.data.seek(13);  // Start of table entries
+
+        var i = 0;
+        while i < tableCount {
+            var meta = deserializeTableMeta(page.data);
+            tables.add(meta);
+            i = i + 1;
+        }
+
+        return tables;
+    }
+
+    // Write all table metadata to schema page
+    // Note: This rewrites the entire page - not efficient for single updates
+    expose func writeAllTables(page: Page, tables: List[TableMeta]) {
+        initSchemaPage(page);
+        setTableCount(page, tables.count());
+
+        page.data.seek(13);  // Start of table entries
+
+        var i = 0;
+        while i < tables.count() {
+            var meta = tables.get(i);
+            serializeTableMeta(meta, page.data);
+            i = i + 1;
+        }
+
+        page.markDirty();
+    }
+
+    // Find a table by name
+    expose func findTable(page: Page, tableName: String) -> TableMeta? {
+        var tables = readAllTables(page);
+
+        var i = 0;
+        while i < tables.count() {
+            var meta = tables.get(i);
+            if meta.tableName == tableName {
+                return meta;
+            }
+            i = i + 1;
+        }
+
+        return null;
+    }
+
+    // Find a table by ID
+    expose func findTableById(page: Page, tableId: Integer) -> TableMeta? {
+        var tables = readAllTables(page);
+
+        var i = 0;
+        while i < tables.count() {
+            var meta = tables.get(i);
+            if meta.tableId == tableId {
+                return meta;
+            }
+            i = i + 1;
+        }
+
+        return null;
+    }
+
+    // Add a new table
+    expose func addTable(page: Page, meta: TableMeta) -> Boolean {
+        var tables = readAllTables(page);
+
+        // Check if table already exists
+        var i = 0;
+        while i < tables.count() {
+            var existing = tables.get(i);
+            if existing.tableName == meta.tableName {
+                return false;  // Already exists
+            }
+            i = i + 1;
+        }
+
+        // Assign table ID
+        var maxId = 0;
+        i = 0;
+        while i < tables.count() {
+            var t = tables.get(i);
+            if t.tableId > maxId {
+                maxId = t.tableId;
+            }
+            i = i + 1;
+        }
+        meta.tableId = maxId + 1;
+
+        tables.add(meta);
+        writeAllTables(page, tables);
+        return true;
+    }
+
+    // Update an existing table
+    expose func updateTable(page: Page, meta: TableMeta) -> Boolean {
+        var tables = readAllTables(page);
+
+        var i = 0;
+        while i < tables.count() {
+            var existing = tables.get(i);
+            if existing.tableId == meta.tableId {
+                tables.set(i, meta);
+                writeAllTables(page, tables);
+                return true;
+            }
+            i = i + 1;
+        }
+
+        return false;  // Not found
+    }
+
+    // Remove a table
+    expose func removeTable(page: Page, tableName: String) -> Boolean {
+        var tables = readAllTables(page);
+        var newTables: List[TableMeta] = [];
+        var found = false;
+
+        var i = 0;
+        while i < tables.count() {
+            var meta = tables.get(i);
+            if meta.tableName == tableName {
+                found = true;
+            } else {
+                newTables.add(meta);
+            }
+            i = i + 1;
+        }
+
+        if found {
+            writeAllTables(page, newTables);
+        }
+        return found;
+    }
+
+    // Get next table ID
+    expose func getNextTableId(page: Page) -> Integer {
+        var tables = readAllTables(page);
+        var maxId = 0;
+
+        var i = 0;
+        while i < tables.count() {
+            var t = tables.get(i);
+            if t.tableId > maxId {
+                maxId = t.tableId;
+            }
+            i = i + 1;
+        }
+
+        return maxId + 1;
+    }
+}

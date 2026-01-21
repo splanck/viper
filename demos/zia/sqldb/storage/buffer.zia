@@ -1,0 +1,295 @@
+// buffer.zia - Buffer Pool (Page Cache)
+// Part of ViperSQL - Binary Storage Engine (Phase 2)
+
+module buffer;
+
+bind "./page";
+bind "./pager";
+bind "./serializer";
+
+//=============================================================================
+// BUFFER POOL CONSTANTS
+//=============================================================================
+
+// Default buffer pool size (number of pages to cache)
+final DEFAULT_POOL_SIZE = 100;
+
+//=============================================================================
+// BUFFER POOL ENTITY
+//=============================================================================
+
+// LRU-style buffer pool for caching pages
+entity BufferPool {
+    expose Pager pager;
+    hide List[Page] pages;
+    hide List[Integer] pageIds;
+    hide List[Integer] accessOrder;  // For LRU eviction
+    hide Integer maxSize;
+    hide Integer accessCounter;
+
+    expose func init() {
+        pager = new Pager();
+        pager.init();
+        pages = [];
+        pageIds = [];
+        accessOrder = [];
+        maxSize = DEFAULT_POOL_SIZE;
+        accessCounter = 0;
+    }
+
+    expose func initWithSize(poolSize: Integer) {
+        pager = new Pager();
+        pager.init();
+        pages = [];
+        pageIds = [];
+        accessOrder = [];
+        maxSize = poolSize;
+        accessCounter = 0;
+    }
+
+    expose func initWithPager(existingPager: Pager) {
+        pager = existingPager;
+        pages = [];
+        pageIds = [];
+        accessOrder = [];
+        maxSize = DEFAULT_POOL_SIZE;
+        accessCounter = 0;
+    }
+
+    //=========================================================================
+    // DATABASE FILE OPERATIONS
+    //=========================================================================
+
+    // Create a new database
+    expose func createDatabase(filename: String) -> Boolean {
+        return pager.createDatabase(filename);
+    }
+
+    // Open an existing database
+    expose func openDatabase(filename: String) -> Boolean {
+        return pager.openDatabase(filename);
+    }
+
+    // Close the database and flush all dirty pages
+    expose func closeDatabase() {
+        flushAll();
+        pager.closeDatabase();
+        pages = [];
+        pageIds = [];
+        accessOrder = [];
+    }
+
+    //=========================================================================
+    // PAGE ACCESS
+    //=========================================================================
+
+    // Fetch a page (from cache or disk)
+    expose func fetchPage(pageId: Integer) -> Page? {
+        // Check if page is in cache
+        var cacheIdx = findInCache(pageId);
+        if cacheIdx >= 0 {
+            // Update access order for LRU
+            updateAccessOrder(cacheIdx);
+            var page = pages.get(cacheIdx);
+            page.pin();
+            return page;
+        }
+
+        // Not in cache - load from disk
+        var page = pager.readPage(pageId);
+        if page == null {
+            return null;
+        }
+        var p = page;
+
+        // Make room if cache is full
+        if pages.count() >= maxSize {
+            evictPage();
+        }
+
+        // Add to cache
+        pages.add(p);
+        pageIds.add(pageId);
+        accessOrder.add(accessCounter);
+        accessCounter = accessCounter + 1;
+
+        p.pin();
+        return p;
+    }
+
+    // Create a new page
+    expose func newPage(pageType: Integer) -> Page {
+        var pageId = pager.allocatePage();
+
+        var page = new Page();
+        page.initWithId(pageId, pageType);
+        page.markDirty();
+
+        // Make room if cache is full
+        if pages.count() >= maxSize {
+            evictPage();
+        }
+
+        // Add to cache
+        pages.add(page);
+        pageIds.add(pageId);
+        accessOrder.add(accessCounter);
+        accessCounter = accessCounter + 1;
+
+        page.pin();
+        return page;
+    }
+
+    // Unpin a page (allow eviction)
+    expose func unpinPage(pageId: Integer, isDirty: Boolean) {
+        var cacheIdx = findInCache(pageId);
+        if cacheIdx >= 0 {
+            var page = pages.get(cacheIdx);
+            page.unpin();
+            if isDirty {
+                page.markDirty();
+            }
+        }
+    }
+
+    // Flush a specific page to disk
+    expose func flushPage(pageId: Integer) -> Boolean {
+        var cacheIdx = findInCache(pageId);
+        if cacheIdx < 0 {
+            return false;
+        }
+
+        var page = pages.get(cacheIdx);
+        if page.dirty {
+            pager.writePage(page);
+        }
+        return true;
+    }
+
+    // Flush all dirty pages to disk
+    expose func flushAll() {
+        var i = 0;
+        while i < pages.count() {
+            var page = pages.get(i);
+            if page.dirty {
+                pager.writePage(page);
+            }
+            i = i + 1;
+        }
+    }
+
+    // Delete a page (free for reuse)
+    expose func deletePage(pageId: Integer) {
+        // Remove from cache if present
+        var cacheIdx = findInCache(pageId);
+        if cacheIdx >= 0 {
+            removeFromCache(cacheIdx);
+        }
+
+        // Add to free list
+        pager.freePage(pageId);
+    }
+
+    //=========================================================================
+    // CACHE MANAGEMENT
+    //=========================================================================
+
+    // Find a page in the cache
+    hide func findInCache(pageId: Integer) -> Integer {
+        var i = 0;
+        while i < pageIds.count() {
+            if pageIds.get(i) == pageId {
+                return i;
+            }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    // Update LRU access order
+    hide func updateAccessOrder(cacheIdx: Integer) {
+        accessOrder.set(cacheIdx, accessCounter);
+        accessCounter = accessCounter + 1;
+    }
+
+    // Find the least recently used page that can be evicted
+    hide func findEvictCandidate() -> Integer {
+        var minAccess = accessCounter + 1;
+        var minIdx = -1;
+
+        var i = 0;
+        while i < pages.count() {
+            var page = pages.get(i);
+            if page.canEvict() {
+                var access = accessOrder.get(i);
+                if access < minAccess {
+                    minAccess = access;
+                    minIdx = i;
+                }
+            }
+            i = i + 1;
+        }
+
+        return minIdx;
+    }
+
+    // Evict a page from the cache
+    hide func evictPage() {
+        var evictIdx = findEvictCandidate();
+        if evictIdx < 0 {
+            // No evictable pages - this shouldn't happen normally
+            return;
+        }
+
+        var page = pages.get(evictIdx);
+
+        // Write to disk if dirty
+        if page.dirty {
+            pager.writePage(page);
+        }
+
+        // Remove from cache
+        removeFromCache(evictIdx);
+    }
+
+    // Remove a page from the cache at index
+    hide func removeFromCache(idx: Integer) {
+        // Workaround for BUG-002: List.remove() doesn't work
+        var newPages: List[Page] = [];
+        var newPageIds: List[Integer] = [];
+        var newAccessOrder: List[Integer] = [];
+
+        var i = 0;
+        while i < pages.count() {
+            if i != idx {
+                newPages.add(pages.get(i));
+                newPageIds.add(pageIds.get(i));
+                newAccessOrder.add(accessOrder.get(i));
+            }
+            i = i + 1;
+        }
+
+        pages = newPages;
+        pageIds = newPageIds;
+        accessOrder = newAccessOrder;
+    }
+
+    //=========================================================================
+    // UTILITY
+    //=========================================================================
+
+    // Get current cache size
+    expose func cacheSize() -> Integer {
+        return pages.count();
+    }
+
+    // Get pager for direct access
+    expose func getPager() -> Pager {
+        return pager;
+    }
+
+    // Get schema page ID
+    expose func getSchemaPageId() -> Integer {
+        return pager.getSchemaPageId();
+    }
+}

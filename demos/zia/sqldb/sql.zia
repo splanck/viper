@@ -133,6 +133,8 @@ final TK_END = 115;
 final TK_UNION = 116;
 final TK_ALL = 117;
 final TK_CAST = 118;
+final TK_EXCEPT = 137;
+final TK_INTERSECT = 138;
 
 // Keywords - Utility
 final TK_SHOW = 120;
@@ -471,6 +473,8 @@ entity Lexer {
         if (word == "UNION") { return TK_UNION; }
         if (word == "ALL") { return TK_ALL; }
         if (word == "CAST") { return TK_CAST; }
+        if (word == "EXCEPT") { return TK_EXCEPT; }
+        if (word == "INTERSECT") { return TK_INTERSECT; }
         if (word == "SHOW") { return TK_SHOW; }
         if (word == "DESCRIBE") { return TK_DESCRIBE; }
         if (word == "EXPLAIN") { return TK_EXPLAIN; }

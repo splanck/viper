@@ -1,0 +1,360 @@
+// sql_server.zia - SQL Network Server (Core Components)
+// Part of ViperSQL - Phase 6: Network Server
+//
+// Note: This module provides the core server infrastructure.
+// Actual network listening requires the Viper runtime with TCP support.
+
+module sql_server;
+
+bind "../executor";
+bind "../types";
+
+//=============================================================================
+// SERVER CONSTANTS
+//=============================================================================
+
+final DEFAULT_PORT = 5432;           // PostgreSQL-like port
+final MAX_QUERY_SIZE = 65536;        // 64KB max query
+final RECV_TIMEOUT = 30000;          // 30 second timeout
+
+// Protocol message types
+final MSG_QUERY = 81;        // 'Q' - Query
+final MSG_TERMINATE = 88;    // 'X' - Terminate
+final MSG_READY = 90;        // 'Z' - Ready for query
+final MSG_ERROR = 69;        // 'E' - Error
+final MSG_ROW_DESC = 84;     // 'T' - Row description
+final MSG_DATA_ROW = 68;     // 'D' - Data row
+final MSG_COMPLETE = 67;     // 'C' - Command complete
+final MSG_AUTH = 82;         // 'R' - Authentication
+
+//=============================================================================
+// HELPER FUNCTIONS
+//=============================================================================
+
+// Check if string starts with prefix
+func stringStartsWith(s: String, prefix: String) -> Boolean {
+    var prefixLen = Viper.String.Length(prefix);
+    var sLen = Viper.String.Length(s);
+    if sLen < prefixLen {
+        return false;
+    }
+    var start = Viper.String.Substring(s, 0, prefixLen);
+    return start == prefix;
+}
+
+// Check if string contains substring
+func stringContains(s: String, sub: String) -> Boolean {
+    var sLen = Viper.String.Length(s);
+    var subLen = Viper.String.Length(sub);
+    if subLen > sLen {
+        return false;
+    }
+    var i = 0;
+    while i <= sLen - subLen {
+        var slice = Viper.String.Substring(s, i, subLen);
+        if slice == sub {
+            return true;
+        }
+        i = i + 1;
+    }
+    return false;
+}
+
+// Find index of substring
+func stringIndexOf(s: String, sub: String) -> Integer {
+    var sLen = Viper.String.Length(s);
+    var subLen = Viper.String.Length(sub);
+    if subLen > sLen {
+        return -1;
+    }
+    var i = 0;
+    while i <= sLen - subLen {
+        var slice = Viper.String.Substring(s, i, subLen);
+        if slice == sub {
+            return i;
+        }
+        i = i + 1;
+    }
+    return -1;
+}
+
+// Convert string to uppercase (wrapper for Viper.String.ToUpper)
+func stringToUpper(s: String) -> String {
+    return Viper.String.ToUpper(s);
+}
+
+//=============================================================================
+// CLIENT SESSION
+//=============================================================================
+
+entity ClientSession {
+    expose Integer sessionId;
+    expose String clientHost;
+    expose String username;
+    expose Boolean authenticated;
+    expose Integer currentTxnId;
+    expose Boolean inTransaction;
+
+    expose func init() {
+        sessionId = 0;
+        clientHost = "";
+        username = "";
+        authenticated = false;
+        currentTxnId = 0;
+        inTransaction = false;
+    }
+
+    expose func initWithId(id: Integer, host: String) {
+        sessionId = id;
+        clientHost = host;
+        username = "";
+        authenticated = false;
+        currentTxnId = 0;
+        inTransaction = false;
+    }
+
+    expose func toString() -> String {
+        return "Session[" + Viper.Fmt.Int(sessionId) + "] " + clientHost + " user=" + username;
+    }
+}
+
+//=============================================================================
+// QUERY RESULT
+//=============================================================================
+
+entity ServerQueryResult {
+    expose Boolean success;
+    expose String errorMessage;
+    expose List[String] columnNames;
+    expose List[String] columnTypes;
+    expose List[List[String]] rows;
+    expose Integer rowsAffected;
+    expose String commandTag;
+
+    expose func init() {
+        success = true;
+        errorMessage = "";
+        columnNames = [];
+        columnTypes = [];
+        rows = [];
+        rowsAffected = 0;
+        commandTag = "OK";
+    }
+
+    expose func setError(msg: String) {
+        success = false;
+        errorMessage = msg;
+    }
+
+    expose func addColumn(name: String, typeName: String) {
+        columnNames.add(name);
+        columnTypes.add(typeName);
+    }
+
+    expose func addRow(rowValues: List[String]) {
+        rows.add(rowValues);
+    }
+
+    expose func rowCount() -> Integer {
+        return rows.count();
+    }
+
+    expose func columnCount() -> Integer {
+        return columnNames.count();
+    }
+}
+
+//=============================================================================
+// SQL SERVER
+//=============================================================================
+
+entity SqlServer {
+    expose Integer port;
+    expose Boolean running;
+    expose Integer nextSessionId;
+    expose Integer connectionsHandled;
+    expose Integer queriesExecuted;
+    expose Executor executor;
+
+    expose func init() {
+        port = DEFAULT_PORT;
+        running = false;
+        nextSessionId = 1;
+        connectionsHandled = 0;
+        queriesExecuted = 0;
+        executor = new Executor();
+        executor.init();
+    }
+
+    expose func initWithPort(p: Integer) {
+        init();
+        port = p;
+    }
+
+    //=========================================================================
+    // QUERY PROCESSING (Used by network layer)
+    //=========================================================================
+
+    // Process a query string and return result
+    expose func processQuery(query: String) -> ServerQueryResult {
+        queriesExecuted = queriesExecuted + 1;
+        return executeQuery(query);
+    }
+
+    // Execute a SQL query
+    hide func executeQuery(query: String) -> ServerQueryResult {
+        var result = new ServerQueryResult();
+        result.init();
+
+        // Use the executor to run the query
+        var execResult = executor.executeSql(query);
+
+        // Check success
+        if execResult.success == false {
+            result.success = false;
+            result.errorMessage = execResult.message;
+            return result;
+        }
+
+        // Set command tag
+        result.commandTag = determineCommandTag(query);
+        result.rowsAffected = execResult.rowsAffected;
+
+        // Copy column names
+        var i = 0;
+        var numCols = execResult.columnNames.count();
+        while i < numCols {
+            result.columnNames.add(execResult.columnNames.get(i));
+            result.columnTypes.add("TEXT");
+            i = i + 1;
+        }
+
+        // Copy rows
+        var numRows = execResult.rows.count();
+        i = 0;
+        while i < numRows {
+            var srcRow = execResult.rows.get(i);
+            var destRow: List[String] = [];
+            var j = 0;
+            var numColsInRow = srcRow.columnCount();
+            while j < numColsInRow {
+                destRow.add(srcRow.getValue(j).toString());
+                j = j + 1;
+            }
+            result.rows.add(destRow);
+            i = i + 1;
+        }
+
+        return result;
+    }
+
+    // Determine command tag from query
+    hide func determineCommandTag(query: String) -> String {
+        var upper = stringToUpper(query);
+
+        if stringStartsWith(upper, "SELECT") { return "SELECT"; }
+        if stringStartsWith(upper, "INSERT") { return "INSERT"; }
+        if stringStartsWith(upper, "UPDATE") { return "UPDATE"; }
+        if stringStartsWith(upper, "DELETE") { return "DELETE"; }
+        if stringStartsWith(upper, "CREATE") { return "CREATE"; }
+        if stringStartsWith(upper, "DROP") { return "DROP"; }
+        if stringStartsWith(upper, "ALTER") { return "ALTER"; }
+
+        return "OK";
+    }
+
+    //=========================================================================
+    // RESPONSE FORMATTING
+    //=========================================================================
+
+    // Format query result as text
+    expose func formatResult(result: ServerQueryResult) -> String {
+        if result.success == false {
+            return "ERROR: " + result.errorMessage + "\n";
+        }
+
+        var output = "";
+
+        // Send column headers
+        if result.columnCount() > 0 {
+            var i = 0;
+            while i < result.columnCount() {
+                if i > 0 {
+                    output = output + "\t";
+                }
+                output = output + result.columnNames.get(i);
+                i = i + 1;
+            }
+            output = output + "\n";
+
+            // Send separator
+            i = 0;
+            while i < result.columnCount() {
+                if i > 0 {
+                    output = output + "\t";
+                }
+                output = output + "--------";
+                i = i + 1;
+            }
+            output = output + "\n";
+        }
+
+        // Send rows
+        var rowIdx = 0;
+        while rowIdx < result.rowCount() {
+            var row = result.rows.get(rowIdx);
+            var colIdx = 0;
+            while colIdx < row.count() {
+                if colIdx > 0 {
+                    output = output + "\t";
+                }
+                output = output + row.get(colIdx);
+                colIdx = colIdx + 1;
+            }
+            output = output + "\n";
+            rowIdx = rowIdx + 1;
+        }
+
+        // Send completion message
+        output = output + result.commandTag;
+        if result.rowsAffected > 0 {
+            output = output + " " + Viper.Fmt.Int(result.rowsAffected);
+        }
+        output = output + "\n";
+
+        return output;
+    }
+
+    //=========================================================================
+    // STATISTICS
+    //=========================================================================
+
+    expose func getConnectionCount() -> Integer {
+        return connectionsHandled;
+    }
+
+    expose func getQueryCount() -> Integer {
+        return queriesExecuted;
+    }
+
+    expose func getStats() -> String {
+        var stats = "ViperSQL Server Statistics:\n";
+        stats = stats + "  Port: " + Viper.Fmt.Int(port) + "\n";
+        stats = stats + "  Connections: " + Viper.Fmt.Int(connectionsHandled) + "\n";
+        stats = stats + "  Queries: " + Viper.Fmt.Int(queriesExecuted);
+        return stats;
+    }
+
+    //=========================================================================
+    // SESSION MANAGEMENT
+    //=========================================================================
+
+    expose func createSession(host: String) -> ClientSession {
+        connectionsHandled = connectionsHandled + 1;
+        var session = new ClientSession();
+        session.initWithId(nextSessionId, host);
+        nextSessionId = nextSessionId + 1;
+        session.authenticated = true;
+        return session;
+    }
+}

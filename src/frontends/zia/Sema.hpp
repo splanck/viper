@@ -825,6 +825,26 @@ class Sema
                          const std::set<std::string> &lambdaLocals,
                          std::vector<CapturedVar> &captures);
 
+    /// @brief Push a new type narrowing scope.
+    /// @details Called when entering a branch where types may be narrowed.
+    void pushNarrowingScope();
+
+    /// @brief Pop the current type narrowing scope.
+    /// @details Called when leaving a branch with narrowed types.
+    void popNarrowingScope();
+
+    /// @brief Narrow a variable's type in the current scope.
+    /// @param name The variable name.
+    /// @param narrowedType The narrowed (non-optional) type.
+    void narrowType(const std::string &name, TypeRef narrowedType);
+
+    /// @brief Try to extract a null check from a condition expression.
+    /// @param cond The condition expression.
+    /// @param varName Output: the variable being null-checked.
+    /// @param isNotNull Output: true if checking != null, false if == null.
+    /// @return True if the condition is a null check pattern.
+    bool tryExtractNullCheck(Expr *cond, std::string &varName, bool &isNotNull);
+
     /// @}
 
 public:
@@ -1066,6 +1086,12 @@ public:
     /// @details Maps type parameter names (e.g., "T") to concrete types.
     /// Stack allows nested generic contexts (e.g., generic method in generic type).
     std::vector<std::map<std::string, TypeRef>> typeParamStack_;
+
+    /// @brief Stack of narrowed type overrides for flow-sensitive type analysis.
+    /// @details When analyzing code after a null check like `if (x != null)`,
+    /// we narrow `x` from `T?` to `T`. Each entry maps variable names to their
+    /// narrowed types. Pushed/popped with narrowing scopes.
+    std::vector<std::unordered_map<std::string, TypeRef>> narrowedTypes_;
 
     /// @brief Cache of instantiated generic types.
     /// @details Key: "TypeName$Arg1$Arg2", Value: Instantiated TypeRef.

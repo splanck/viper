@@ -12,12 +12,18 @@ bind "./stmt";
 bind "./parser";
 bind "./database";
 bind "./result";
+bind "./server";
 
 //=============================================================================
 // EXECUTOR ENTITY
 //=============================================================================
 
 entity Executor {
+    // Multi-database server (Phase 1)
+    expose DatabaseServer server;
+
+    // These point to server's current database/index manager
+    // Using non-optional because server always has a current database
     expose Database db;
     expose IndexManager indexMgr;
 
@@ -28,14 +34,23 @@ entity Executor {
     hide String currentTableAlias;
 
     expose func init() {
-        db = new Database();
-        db.init();
-        indexMgr = new IndexManager();
-        indexMgr.init();
+        server = new DatabaseServer();
+        server.init();
+        // Initialize db and indexMgr - server always has 'main' database after init
+        // Direct assignment from server lists (guaranteed non-null after server.init())
+        db = server.dbList.get(0);
+        indexMgr = server.indexManagers.get(0);
         outerRow = null;
         outerTable = null;
         outerTableAlias = "";
         currentTableAlias = "";
+    }
+
+    // Refresh db and indexMgr references from server's current database
+    hide func refreshCurrentDatabase() {
+        // Server's currentDbIndex is always valid after init
+        db = server.dbList.get(server.currentDbIndex);
+        indexMgr = server.indexManagers.get(server.currentDbIndex);
     }
 
     //=========================================================================
@@ -1611,6 +1626,18 @@ entity Executor {
                 }
                 return executeCreateIndex(stmt);
             }
+            // CREATE DATABASE
+            if parser.currentKind() == TK_DATABASE {
+                parser.advance();
+                if parser.currentKind() == TK_IDENTIFIER {
+                    var dbName = parser.currentText();
+                    return executeCreateDatabase(dbName);
+                }
+                var result = new QueryResult();
+                result.init();
+                result.setError("CREATE DATABASE requires a database name");
+                return result;
+            }
         }
 
         if kind == TK_INSERT {
@@ -1663,6 +1690,47 @@ entity Executor {
                     return executeUnion(firstResult, secondResult, unionAll);
                 }
             }
+
+            // Check for EXCEPT
+            if parser.currentKind() == TK_EXCEPT {
+                parser.advance();
+                if parser.currentKind() == TK_SELECT {
+                    parser.advance();
+                    var stmt2 = parser.parseSelectStmt();
+                    if parser.hasError {
+                        var result = new QueryResult();
+                        result.init();
+                        result.setError(parser.error);
+                        return result;
+                    }
+                    var secondResult = executeSelect(stmt2);
+                    if secondResult.success == false {
+                        return secondResult;
+                    }
+                    return executeExcept(firstResult, secondResult);
+                }
+            }
+
+            // Check for INTERSECT
+            if parser.currentKind() == TK_INTERSECT {
+                parser.advance();
+                if parser.currentKind() == TK_SELECT {
+                    parser.advance();
+                    var stmt2 = parser.parseSelectStmt();
+                    if parser.hasError {
+                        var result = new QueryResult();
+                        result.init();
+                        result.setError(parser.error);
+                        return result;
+                    }
+                    var secondResult = executeSelect(stmt2);
+                    if secondResult.success == false {
+                        return secondResult;
+                    }
+                    return executeIntersect(firstResult, secondResult);
+                }
+            }
+
             return firstResult;
         }
 
@@ -1719,12 +1787,65 @@ entity Executor {
                 }
                 return executeDropIndex(stmt);
             }
+            // DROP DATABASE
+            if parser.currentKind() == TK_DATABASE {
+                parser.advance();
+                if parser.currentKind() == TK_IDENTIFIER {
+                    var dbName = parser.currentText();
+                    return executeDropDatabase(dbName);
+                }
+                var result = new QueryResult();
+                result.init();
+                result.setError("DROP DATABASE requires a database name");
+                return result;
+            }
+        }
+
+        // USE command: USE database_name
+        if kind == TK_USE {
+            parser.advance();
+            if parser.currentKind() == TK_IDENTIFIER || parser.currentKind() == TK_DATABASE {
+                var dbName = parser.currentText();
+                parser.advance();
+                // Handle "USE DATABASE name" syntax
+                if parser.currentKind() == TK_IDENTIFIER {
+                    dbName = parser.currentText();
+                }
+                return executeUseDatabase(dbName);
+            }
+            var result = new QueryResult();
+            result.init();
+            result.setError("USE requires a database name: USE database_name");
+            return result;
         }
 
         if kind == TK_SHOW {
             parser.advance();
             var result = new QueryResult();
             result.init();
+
+            // SHOW DATABASES
+            if parser.currentKind() == TK_DATABASES {
+                result.addColumnName("database_name");
+                var dbNames = server.listDatabases();
+                var i = 0;
+                while i < dbNames.count() {
+                    var row = new Row();
+                    row.init();
+                    var dbName = dbNames.get(i);
+                    // Mark current database with asterisk
+                    if dbName == server.currentDbName {
+                        row.addValue(sqlText(dbName + " *"));
+                    } else {
+                        row.addValue(sqlText(dbName));
+                    }
+                    result.addRow(row);
+                    i = i + 1;
+                }
+                return result;
+            }
+
+            // SHOW TABLES (default)
             result.addColumnName("table_name");
             var i = 0;
             while i < db.tableCount() {
@@ -1900,6 +2021,78 @@ entity Executor {
             result.message = "Index '" + stmt.indexName + "' dropped";
         } else {
             result.setError("Index '" + stmt.indexName + "' not found");
+        }
+
+        return result;
+    }
+
+    //=========================================================================
+    // MULTI-DATABASE OPERATIONS (Phase 1)
+    //=========================================================================
+
+    // CREATE DATABASE
+    expose func executeCreateDatabase(dbName: String) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        if server.databaseExists(dbName) {
+            result.setError("Database '" + dbName + "' already exists");
+            return result;
+        }
+
+        if server.createDatabase(dbName) {
+            result.message = "Database '" + dbName + "' created";
+        } else {
+            result.setError("Failed to create database '" + dbName + "'");
+        }
+
+        return result;
+    }
+
+    // DROP DATABASE
+    expose func executeDropDatabase(dbName: String) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        if dbName == "main" {
+            result.setError("Cannot drop the 'main' database");
+            return result;
+        }
+
+        if dbName == server.currentDbName {
+            result.setError("Cannot drop the current database. Use another database first.");
+            return result;
+        }
+
+        if server.databaseExists(dbName) == false {
+            result.setError("Database '" + dbName + "' does not exist");
+            return result;
+        }
+
+        if server.dropDatabase(dbName) {
+            result.message = "Database '" + dbName + "' dropped";
+        } else {
+            result.setError("Failed to drop database '" + dbName + "'");
+        }
+
+        return result;
+    }
+
+    // USE database
+    expose func executeUseDatabase(dbName: String) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        if server.databaseExists(dbName) == false {
+            result.setError("Database '" + dbName + "' does not exist");
+            return result;
+        }
+
+        if server.useDatabase(dbName) {
+            refreshCurrentDatabase();
+            result.message = "Switched to database '" + dbName + "'";
+        } else {
+            result.setError("Failed to switch to database '" + dbName + "'");
         }
 
         return result;
@@ -3169,5 +3362,93 @@ entity Executor {
             ci = ci + 1;
         }
         return true;
+    }
+
+    //=========================================================================
+    // EXCEPT OPERATION (Phase 8)
+    //=========================================================================
+
+    // Execute EXCEPT - returns rows in first that are not in second
+    expose func executeExcept(first: QueryResult, second: QueryResult) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        // Copy column names from first result
+        var ci = 0;
+        while ci < first.columnNames.count() {
+            result.addColumnName(first.columnNames.get(ci));
+            ci = ci + 1;
+        }
+
+        // Add rows from first that are not in second
+        var ri = 0;
+        while ri < first.rowCount() {
+            var row = first.getRow(ri);
+            if row != null {
+                var r = row;
+                // Check if this row exists in second result
+                if isRowInResult(second, r) == false {
+                    // Only add if not already in result (avoid duplicates)
+                    if isDuplicateRow(result, r) == false {
+                        result.addRow(r);
+                    }
+                }
+            }
+            ri = ri + 1;
+        }
+
+        return result;
+    }
+
+    //=========================================================================
+    // INTERSECT OPERATION (Phase 8)
+    //=========================================================================
+
+    // Execute INTERSECT - returns rows that exist in both results
+    expose func executeIntersect(first: QueryResult, second: QueryResult) -> QueryResult {
+        var result = new QueryResult();
+        result.init();
+
+        // Copy column names from first result
+        var ci = 0;
+        while ci < first.columnNames.count() {
+            result.addColumnName(first.columnNames.get(ci));
+            ci = ci + 1;
+        }
+
+        // Add rows from first that also exist in second
+        var ri = 0;
+        while ri < first.rowCount() {
+            var row = first.getRow(ri);
+            if row != null {
+                var r = row;
+                // Check if this row exists in second result
+                if isRowInResult(second, r) {
+                    // Only add if not already in result (avoid duplicates)
+                    if isDuplicateRow(result, r) == false {
+                        result.addRow(r);
+                    }
+                }
+            }
+            ri = ri + 1;
+        }
+
+        return result;
+    }
+
+    // Check if a row exists in a result set
+    hide func isRowInResult(result: QueryResult, row: Row) -> Boolean {
+        var ri = 0;
+        while ri < result.rowCount() {
+            var existingRow = result.getRow(ri);
+            if existingRow != null {
+                var er = existingRow;
+                if rowsEqual(er, row) {
+                    return true;
+                }
+            }
+            ri = ri + 1;
+        }
+        return false;
     }
 }
