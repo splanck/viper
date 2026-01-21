@@ -201,10 +201,12 @@ CachedInode *InodeCache::evict()
 
 bool InodeCache::load_inode(u64 ino, Inode *out)
 {
-    u64 block_num = viperfs().inode_block(ino);
-    u64 offset = viperfs().inode_offset(ino);
+    if (!parent_) return false;
 
-    CacheBlock *block = cache().get(block_num);
+    u64 block_num = parent_->inode_block(ino);
+    u64 offset = parent_->inode_offset(ino);
+
+    CacheBlock *block = parent_->get_cache().get(block_num);
     if (!block)
     {
         return false;
@@ -213,17 +215,19 @@ bool InodeCache::load_inode(u64 ino, Inode *out)
     const Inode *disk_inode = reinterpret_cast<const Inode *>(block->data + offset);
     *out = *disk_inode;
 
-    cache().release(block);
+    parent_->get_cache().release(block);
     return true;
 }
 
 bool InodeCache::store_inode(const Inode *inode)
 {
-    u64 ino = inode->inode_num;
-    u64 block_num = viperfs().inode_block(ino);
-    u64 offset = viperfs().inode_offset(ino);
+    if (!parent_) return false;
 
-    CacheBlock *block = cache().get_for_write(block_num);
+    u64 ino = inode->inode_num;
+    u64 block_num = parent_->inode_block(ino);
+    u64 offset = parent_->inode_offset(ino);
+
+    CacheBlock *block = parent_->get_cache().get_for_write(block_num);
     if (!block)
     {
         return false;
@@ -233,7 +237,7 @@ bool InodeCache::store_inode(const Inode *inode)
     *disk_inode = *inode;
     block->dirty = true;
 
-    cache().release(block);
+    parent_->get_cache().release(block);
     return true;
 }
 
@@ -435,7 +439,7 @@ u64 ViperFS::alloc_zeroed_block_unlocked()
     if (block_num == 0)
         return 0;
 
-    CacheBlock *block = cache().get(block_num);
+    CacheBlock *block = get_cache().get(block_num);
     if (!block)
     {
         // Allocation succeeded but cache failed - free the block to prevent leak
@@ -449,7 +453,7 @@ u64 ViperFS::alloc_zeroed_block_unlocked()
         block->data[i] = 0;
     }
     block->dirty = true;
-    cache().release(block);
+    get_cache().release(block);
 
     return block_num;
 }
@@ -466,7 +470,7 @@ bool ViperFS::mount()
     serial::puts("[viperfs] Mounting filesystem...\n");
 
     // Read superblock (block 0)
-    CacheBlock *sb_block = cache().get(0);
+    CacheBlock *sb_block = get_cache().get(0);
     if (!sb_block)
     {
         serial::puts("[viperfs] Failed to read superblock\n");
@@ -484,7 +488,7 @@ bool ViperFS::mount()
         serial::puts(" (expected ");
         serial::put_hex(VIPERFS_MAGIC);
         serial::puts(")\n");
-        cache().release(sb_block);
+        get_cache().release(sb_block);
         return false;
     }
 
@@ -494,16 +498,17 @@ bool ViperFS::mount()
         serial::puts("[viperfs] Unsupported version: ");
         serial::put_dec(sb->version);
         serial::puts("\n");
-        cache().release(sb_block);
+        get_cache().release(sb_block);
         return false;
     }
 
     // Copy superblock data
     sb_ = *sb;
-    cache().release(sb_block);
+    get_cache().release(sb_block);
 
-    // Initialize inode cache
+    // Initialize inode cache with parent pointer
     inode_cache_.init();
+    inode_cache_.set_parent(this);
 
     mounted_ = true;
 
@@ -521,23 +526,31 @@ bool ViperFS::mount()
 
     // Initialize journal (located after data blocks)
     // Use the last JOURNAL_BLOCKS blocks of the filesystem for journaling
-    u64 journal_start = sb_.total_blocks - JOURNAL_BLOCKS;
-    if (journal_start > sb_.data_start)
+    // Note: Journal uses global cache, so skip for user filesystem (which has custom cache_)
+    if (cache_ == nullptr)
     {
-        if (journal_init(journal_start, JOURNAL_BLOCKS))
+        u64 journal_start = sb_.total_blocks - JOURNAL_BLOCKS;
+        if (journal_start > sb_.data_start)
         {
-            // Replay any committed transactions from previous crash
-            journal().replay();
-            serial::puts("[viperfs] Journaling enabled\n");
+            if (journal_init(journal_start, JOURNAL_BLOCKS))
+            {
+                // Replay any committed transactions from previous crash
+                journal().replay();
+                serial::puts("[viperfs] Journaling enabled\n");
+            }
+            else
+            {
+                serial::puts("[viperfs] Warning: journaling disabled\n");
+            }
         }
         else
         {
-            serial::puts("[viperfs] Warning: journaling disabled\n");
+            serial::puts("[viperfs] Filesystem too small for journaling\n");
         }
     }
     else
     {
-        serial::puts("[viperfs] Filesystem too small for journaling\n");
+        serial::puts("[viperfs] User disk: journaling skipped (uses separate cache)\n");
     }
 
     return true;
@@ -557,7 +570,7 @@ void ViperFS::unmount()
     {
         journal().sync();
     }
-    cache().sync();
+    get_cache().sync();
 
     mounted_ = false;
     serial::puts("[viperfs] Unmounted\n");
@@ -584,7 +597,7 @@ Inode *ViperFS::read_inode(u64 ino)
     u64 block_num = inode_block(ino);
     u64 offset = inode_offset(ino);
 
-    CacheBlock *block = cache().get(block_num);
+    CacheBlock *block = get_cache().get(block_num);
     if (!block)
     {
         serial::puts("[viperfs] Failed to read inode block\n");
@@ -604,14 +617,14 @@ Inode *ViperFS::read_inode(u64 ino)
     }
     if (!inode)
     {
-        cache().release(block);
+        get_cache().release(block);
         return nullptr;
     }
 
     const Inode *disk_inode = reinterpret_cast<const Inode *>(block->data + offset);
     *inode = *disk_inode;
 
-    cache().release(block);
+    get_cache().release(block);
     return inode;
 }
 
@@ -648,14 +661,14 @@ u64 ViperFS::read_indirect(u64 block_num, u64 index)
         return 0;
     }
 
-    CacheBlock *block = cache().get(block_num);
+    CacheBlock *block = get_cache().get(block_num);
     if (!block)
         return 0;
 
     const u64 *ptrs = reinterpret_cast<const u64 *>(block->data);
     u64 result = ptrs[index];
 
-    cache().release(block);
+    get_cache().release(block);
     return result;
 }
 
@@ -733,7 +746,7 @@ i64 ViperFS::read_data(Inode *inode, u64 offset, void *buf, usize len)
         else
         {
             // Read from cache
-            CacheBlock *block = cache().get(block_num);
+            CacheBlock *block = get_cache().get(block_num);
             if (!block)
             {
                 serial::puts("[viperfs] Failed to read data block\n");
@@ -745,7 +758,7 @@ i64 ViperFS::read_data(Inode *inode, u64 offset, void *buf, usize len)
                 dst[i] = block->data[block_off + i];
             }
 
-            cache().release(block);
+            get_cache().release(block);
         }
 
         dst += to_read;
@@ -887,7 +900,7 @@ u64 ViperFS::alloc_block_unlocked()
     // Scan bitmap for free block
     for (u64 bitmap_block = 0; bitmap_block < sb_.bitmap_blocks; bitmap_block++)
     {
-        CacheBlock *block = cache().get(sb_.bitmap_start + bitmap_block);
+        CacheBlock *block = get_cache().get(sb_.bitmap_start + bitmap_block);
         if (!block)
             continue;
 
@@ -904,14 +917,14 @@ u64 ViperFS::alloc_block_unlocked()
                         u64 block_num = bitmap_block * BLOCK_SIZE * 8 + byte * 8 + bit;
                         if (block_num >= sb_.total_blocks)
                         {
-                            cache().release(block);
+                            get_cache().release(block);
                             return 0;
                         }
 
                         // Mark as used
                         block->data[byte] |= (1 << bit);
                         block->dirty = true;
-                        cache().release(block);
+                        get_cache().release(block);
 
                         sb_.free_blocks--;
                         return block_num;
@@ -919,7 +932,7 @@ u64 ViperFS::alloc_block_unlocked()
                 }
             }
         }
-        cache().release(block);
+        get_cache().release(block);
     }
 
     return 0;
@@ -937,13 +950,13 @@ void ViperFS::free_block_unlocked(u64 block_num)
     u64 byte_in_block = (block_num / 8) % BLOCK_SIZE;
     u8 bit = block_num % 8;
 
-    CacheBlock *block = cache().get(sb_.bitmap_start + bitmap_block);
+    CacheBlock *block = get_cache().get(sb_.bitmap_start + bitmap_block);
     if (!block)
         return;
 
     block->data[byte_in_block] &= ~(1 << bit);
     block->dirty = true;
-    cache().release(block);
+    get_cache().release(block);
 
     sb_.free_blocks++;
 }
@@ -960,7 +973,7 @@ u64 ViperFS::alloc_inode_unlocked()
         u64 block_num = inode_block(ino);
         u64 offset = inode_offset(ino);
 
-        CacheBlock *block = cache().get(block_num);
+        CacheBlock *block = get_cache().get(block_num);
         if (!block)
             continue;
 
@@ -971,10 +984,10 @@ u64 ViperFS::alloc_inode_unlocked()
             // to prevent races (set a minimal mode that indicates "in use")
             inode->mode = mode::TYPE_FILE; // Will be overwritten by caller
             block->dirty = true;
-            cache().release(block);
+            get_cache().release(block);
             return ino;
         }
-        cache().release(block);
+        get_cache().release(block);
     }
 
     return 0;
@@ -989,14 +1002,14 @@ void ViperFS::free_inode_unlocked(u64 ino)
     u64 block_num = inode_block(ino);
     u64 offset = inode_offset(ino);
 
-    CacheBlock *block = cache().get(block_num);
+    CacheBlock *block = get_cache().get(block_num);
     if (!block)
         return;
 
     Inode *inode = reinterpret_cast<Inode *>(block->data + offset);
     inode->mode = 0; // Mark as free
     block->dirty = true;
-    cache().release(block);
+    get_cache().release(block);
 }
 
 /** @copydoc fs::viperfs::ViperFS::write_inode */
@@ -1008,14 +1021,14 @@ bool ViperFS::write_inode(Inode *inode)
     u64 block_num = inode_block(inode->inode_num);
     u64 offset = inode_offset(inode->inode_num);
 
-    CacheBlock *block = cache().get(block_num);
+    CacheBlock *block = get_cache().get(block_num);
     if (!block)
         return false;
 
     Inode *disk_inode = reinterpret_cast<Inode *>(block->data + offset);
     *disk_inode = *inode;
     block->dirty = true;
-    cache().release(block);
+    get_cache().release(block);
 
     return true;
 }
@@ -1027,17 +1040,17 @@ void ViperFS::sync()
         return;
 
     // Write superblock
-    CacheBlock *sb_block = cache().get(0);
+    CacheBlock *sb_block = get_cache().get(0);
     if (sb_block)
     {
         Superblock *sb = reinterpret_cast<Superblock *>(sb_block->data);
         *sb = sb_;
         sb_block->dirty = true;
-        cache().release(sb_block);
+        get_cache().release(sb_block);
     }
 
     // Sync all dirty blocks
-    cache().sync();
+    get_cache().sync();
 }
 
 /** @copydoc fs::viperfs::ViperFS::write_indirect */
@@ -1055,14 +1068,14 @@ bool ViperFS::write_indirect(u64 block_num, u64 index, u64 value)
         return false;
     }
 
-    CacheBlock *block = cache().get(block_num);
+    CacheBlock *block = get_cache().get(block_num);
     if (!block)
         return false;
 
     u64 *ptrs = reinterpret_cast<u64 *>(block->data);
     ptrs[index] = value;
     block->dirty = true;
-    cache().release(block);
+    get_cache().release(block);
     return true;
 }
 
@@ -1157,7 +1170,7 @@ i64 ViperFS::write_data(Inode *inode, u64 offset, const void *buf, usize len)
         }
 
         // Write to block
-        CacheBlock *block = cache().get(block_num);
+        CacheBlock *block = get_cache().get(block_num);
         if (!block)
             return written > 0 ? static_cast<i64>(written) : -1;
 
@@ -1166,7 +1179,7 @@ i64 ViperFS::write_data(Inode *inode, u64 offset, const void *buf, usize len)
             block->data[block_off + i] = src[written + i];
         }
         block->dirty = true;
-        cache().release(block);
+        get_cache().release(block);
 
         written += to_write;
         offset += to_write;
@@ -1226,7 +1239,7 @@ bool ViperFS::truncate(Inode *inode, u64 new_size)
                 u64 block_num = get_block_ptr(inode, last_block_idx);
                 if (block_num != 0)
                 {
-                    CacheBlock *block = cache().get_for_write(block_num);
+                    CacheBlock *block = get_cache().get_for_write(block_num);
                     if (block)
                     {
                         // Zero from partial_offset to end of block
@@ -1234,7 +1247,7 @@ bool ViperFS::truncate(Inode *inode, u64 new_size)
                         {
                             block->data[i] = 0;
                         }
-                        cache().release(block);
+                        get_cache().release(block);
                     }
                 }
             }
@@ -1271,7 +1284,7 @@ bool ViperFS::fsync(Inode *inode)
     // Sync all dirty blocks for this file
     // Note: In a more sophisticated implementation, we would track
     // which blocks belong to this file. For now, sync all dirty blocks.
-    cache().sync();
+    get_cache().sync();
 
     return true;
 }
@@ -1425,11 +1438,11 @@ u64 ViperFS::create_file(Inode *dir, const char *name, usize name_len)
     if (txn)
     {
         u64 inode_blk = inode_block(ino);
-        CacheBlock *blk = cache().get(inode_blk);
+        CacheBlock *blk = get_cache().get(inode_blk);
         if (blk)
         {
             journal().log_block(txn, inode_blk, blk->data);
-            cache().release(blk);
+            get_cache().release(blk);
         }
     }
 
@@ -1537,7 +1550,7 @@ u64 ViperFS::create_dir(Inode *dir, const char *name, usize name_len)
     dotdot->name[1] = '.';
 
     // Write directory data
-    CacheBlock *block = cache().get(data_block);
+    CacheBlock *block = get_cache().get(data_block);
     if (!block)
     {
         free_block_unlocked(data_block);
@@ -1549,7 +1562,7 @@ u64 ViperFS::create_dir(Inode *dir, const char *name, usize name_len)
         block->data[i] = dir_data[i];
     }
     block->dirty = true;
-    cache().release(block);
+    get_cache().release(block);
 
     // Write inode to disk
     if (!write_inode(&new_inode))
@@ -1770,7 +1783,7 @@ void ViperFS::free_inode_blocks(Inode *inode)
     // Free single indirect blocks
     if (inode->indirect != 0)
     {
-        CacheBlock *block = cache().get(inode->indirect);
+        CacheBlock *block = get_cache().get(inode->indirect);
         if (block)
         {
             const u64 *ptrs = reinterpret_cast<const u64 *>(block->data);
@@ -1781,7 +1794,7 @@ void ViperFS::free_inode_blocks(Inode *inode)
                     free_block_unlocked(ptrs[i]);
                 }
             }
-            cache().release(block);
+            get_cache().release(block);
         }
         free_block_unlocked(inode->indirect);
         inode->indirect = 0;
@@ -1790,7 +1803,7 @@ void ViperFS::free_inode_blocks(Inode *inode)
     // Free double indirect blocks
     if (inode->double_indirect != 0)
     {
-        CacheBlock *l1_block = cache().get(inode->double_indirect);
+        CacheBlock *l1_block = get_cache().get(inode->double_indirect);
         if (l1_block)
         {
             const u64 *l1_ptrs = reinterpret_cast<const u64 *>(l1_block->data);
@@ -1798,7 +1811,7 @@ void ViperFS::free_inode_blocks(Inode *inode)
             {
                 if (l1_ptrs[i] != 0)
                 {
-                    CacheBlock *l2_block = cache().get(l1_ptrs[i]);
+                    CacheBlock *l2_block = get_cache().get(l1_ptrs[i]);
                     if (l2_block)
                     {
                         const u64 *l2_ptrs = reinterpret_cast<const u64 *>(l2_block->data);
@@ -1809,12 +1822,12 @@ void ViperFS::free_inode_blocks(Inode *inode)
                                 free_block_unlocked(l2_ptrs[j]);
                             }
                         }
-                        cache().release(l2_block);
+                        get_cache().release(l2_block);
                     }
                     free_block_unlocked(l1_ptrs[i]);
                 }
             }
-            cache().release(l1_block);
+            get_cache().release(l1_block);
         }
         free_block_unlocked(inode->double_indirect);
         inode->double_indirect = 0;
@@ -2083,6 +2096,49 @@ bool ViperFS::rename(Inode *old_dir,
     write_inode(new_dir);
 
     return true;
+}
+
+// =============================================================================
+// User Disk ViperFS Instance
+// =============================================================================
+
+static ViperFS g_user_viperfs;
+static bool g_user_viperfs_initialized = false;
+
+/** @copydoc fs::viperfs::user_viperfs */
+ViperFS &user_viperfs()
+{
+    return g_user_viperfs;
+}
+
+/** @copydoc fs::viperfs::user_viperfs_init */
+bool user_viperfs_init()
+{
+    if (!user_cache_available())
+    {
+        serial::puts("[viperfs] User cache not available\n");
+        return false;
+    }
+
+    if (g_user_viperfs.mount(&user_cache()))
+    {
+        g_user_viperfs_initialized = true;
+        return true;
+    }
+    return false;
+}
+
+/** @copydoc fs::viperfs::user_viperfs_available */
+bool user_viperfs_available()
+{
+    return g_user_viperfs_initialized;
+}
+
+/** @brief Mount with specific cache. */
+bool ViperFS::mount(BlockCache *cache_ptr)
+{
+    cache_ = cache_ptr;
+    return mount();
 }
 
 } // namespace fs::viperfs

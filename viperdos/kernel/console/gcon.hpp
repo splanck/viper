@@ -78,10 +78,23 @@ bool is_available();
  * - `\\b` erases the previous character cell on the current line.
  *
  * If the console is not available, the call is a no-op.
+ * Respects GUI mode - skips framebuffer output if GUI mode is active.
  *
  * @param c The character to output.
  */
 void putc(char c);
+
+/**
+ * @brief Output a single character, bypassing GUI mode check.
+ *
+ * @details
+ * Same as putc() but always writes to the framebuffer regardless of GUI mode.
+ * Used by kernel TTY for direct text output to support fast console rendering
+ * without IPC overhead.
+ *
+ * @param c The character to output.
+ */
+void putc_force(char c);
 
 /**
  * @brief Output a NUL-terminated string to the graphics console.

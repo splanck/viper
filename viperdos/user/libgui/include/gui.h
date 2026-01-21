@@ -265,8 +265,19 @@ uint32_t gui_get_stride(gui_window_t *win);
 /**
  * @brief Present window content to screen (full surface).
  * @param win Window handle.
+ *
+ * This is synchronous - waits for displayd to acknowledge.
  */
 void gui_present(gui_window_t *win);
+
+/**
+ * @brief Present window content to screen asynchronously (fire-and-forget).
+ * @param win Window handle.
+ *
+ * Does not wait for displayd to respond. Use this for better performance
+ * when you don't need to synchronize with the display.
+ */
+void gui_present_async(gui_window_t *win);
 
 /**
  * @brief Present a specific region of the window.

@@ -17,6 +17,12 @@
 
 #include "../include/types.hpp"
 
+// Forward declaration for block device
+namespace virtio
+{
+class BlkDevice;
+}
+
 namespace fs
 {
 
@@ -87,7 +93,7 @@ class BlockCache
 {
   public:
     /**
-     * @brief Initialize the cache structures.
+     * @brief Initialize the cache structures (uses default system blk_device).
      *
      * @details
      * Marks all blocks invalid, sets up the LRU list, clears the hash table and
@@ -96,6 +102,14 @@ class BlockCache
      * @return `true` on success.
      */
     bool init();
+
+    /**
+     * @brief Initialize the cache with a specific block device.
+     *
+     * @param device Block device to use for I/O.
+     * @return `true` on success.
+     */
+    bool init(::virtio::BlkDevice *device);
 
     // Get a block (loads from disk if needed)
     // Increments refcount - must call release() when done
@@ -256,6 +270,9 @@ class BlockCache
     // Sequential access tracking
     u64 last_block_{0};
 
+    // Block device for I/O (nullptr = use default blk_device())
+    ::virtio::BlkDevice *device_{nullptr};
+
     // Internal helpers
     /** @brief Hash a block number into the lookup table index. */
     u32 hash_func(u64 block_num);
@@ -281,9 +298,9 @@ class BlockCache
     bool write_block(u64 block_num, const void *buf);
 };
 
-// Global cache instance
+// Global cache instance (system disk)
 /**
- * @brief Get the global block cache instance.
+ * @brief Get the global block cache instance (for system disk).
  *
  * @return Reference to the global cache.
  */
@@ -291,11 +308,34 @@ BlockCache &cache();
 
 // Initialize the cache subsystem
 /**
- * @brief Initialize the global cache instance.
+ * @brief Initialize the global cache instance (system disk).
  *
  * @details
  * Convenience wrapper for `cache().init()`.
  */
 void cache_init();
+
+// User disk cache instance
+/**
+ * @brief Get the user disk block cache instance.
+ *
+ * @details
+ * Returns the block cache for the user disk (8MB, /c/, /certs/, etc.).
+ *
+ * @return Reference to the user cache.
+ */
+BlockCache &user_cache();
+
+/**
+ * @brief Initialize the user disk cache instance.
+ */
+void user_cache_init();
+
+/**
+ * @brief Check if the user disk cache is available.
+ *
+ * @return true if user cache is initialized.
+ */
+bool user_cache_available();
 
 } // namespace fs

@@ -5,6 +5,7 @@
 #include "../../input/input.hpp"
 #include "../../ipc/poll.hpp"
 #include "../../sched/scheduler.hpp"
+#include "../../tty/tty.hpp"
 #include "gic.hpp"
 
 #ifndef CONFIG_TIMER_HEARTBEAT
@@ -208,6 +209,17 @@ void timer_irq_handler(u32)
 
     // Poll for input events
     input::poll();
+
+    // In GUI mode, push keyboard chars directly to TTY for responsive input
+    // This bypasses the displayd/consoled IPC path which has high latency
+    if (gcon::is_gui_mode())
+    {
+        i32 c;
+        while ((c = input::getchar()) >= 0)
+        {
+            tty::push_input(static_cast<char>(c));
+        }
+    }
 
     // Poll for network packets
 #if VIPER_KERNEL_ENABLE_NET

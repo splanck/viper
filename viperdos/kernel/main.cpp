@@ -764,21 +764,62 @@ extern "C" void kernel_main(void *boot_info_ptr)
                 serial::puts("[kernel] Initializing VFS...\n");
                 fs::vfs::init();
 
-                // Test VFS operations
+                // Initialize user disk (8MB disk for /c/, /certs/, etc.)
+                serial::puts("[kernel] Initializing user disk...\n");
+                virtio::user_blk_init();
+                if (virtio::user_blk_device())
+                {
+                    serial::puts("[kernel] User disk found: ");
+                    serial::put_dec(virtio::user_blk_device()->size_bytes() / (1024 * 1024));
+                    serial::puts(" MB\n");
+
+                    fs::user_cache_init();
+                    if (fs::user_cache_available())
+                    {
+                        if (fs::viperfs::user_viperfs_init())
+                        {
+                            serial::puts("[kernel] User filesystem mounted: ");
+                            serial::puts(fs::viperfs::user_viperfs().label());
+                            serial::puts("\n");
+                        }
+                        else
+                        {
+                            serial::puts("[kernel] User filesystem mount failed\n");
+                        }
+                    }
+                    else
+                    {
+                        serial::puts("[kernel] User cache init failed\n");
+                    }
+                }
+                else
+                {
+                    serial::puts("[kernel] User disk not found\n");
+                }
+
+                // Test VFS operations - test user disk (hello.prg in /c/)
                 serial::puts("[kernel] Testing VFS operations...\n");
-                i32 fd = fs::vfs::open("/hello.txt", fs::vfs::flags::O_RDONLY);
+                i32 fd = fs::vfs::open("/c/hello.prg", fs::vfs::flags::O_RDONLY);
                 if (fd >= 0)
                 {
-                    serial::puts("[kernel] Opened /hello.txt as fd ");
+                    serial::puts("[kernel] Opened /c/hello.prg as fd ");
                     serial::put_dec(fd);
                     serial::puts("\n");
 
-                    char buf[64] = {};
-                    i64 bytes = fs::vfs::read(fd, buf, sizeof(buf) - 1);
+                    // Read first 4 bytes (ELF magic)
+                    char buf[8] = {};
+                    i64 bytes = fs::vfs::read(fd, buf, 4);
                     if (bytes > 0)
                     {
-                        serial::puts("[kernel] Read via VFS: ");
-                        serial::puts(buf);
+                        serial::puts("[kernel] Read ELF header: ");
+                        serial::put_hex(static_cast<u8>(buf[0]));
+                        serial::puts(" ");
+                        serial::put_hex(static_cast<u8>(buf[1]));
+                        serial::puts(" ");
+                        serial::put_hex(static_cast<u8>(buf[2]));
+                        serial::puts(" ");
+                        serial::put_hex(static_cast<u8>(buf[3]));
+                        serial::puts("\n");
                     }
 
                     fs::vfs::close(fd);
@@ -786,15 +827,15 @@ extern "C" void kernel_main(void *boot_info_ptr)
                 }
                 else
                 {
-                    serial::puts("[kernel] VFS open failed\n");
+                    serial::puts("[kernel] VFS open /c/hello.prg failed\n");
                 }
 
-                // Test creating a file via VFS
-                fd = fs::vfs::open("/vfs_test.txt",
+                // Test creating a file on user disk
+                fd = fs::vfs::open("/t/t/vfs_test.txt",
                                    fs::vfs::flags::O_RDWR | fs::vfs::flags::O_CREAT);
                 if (fd >= 0)
                 {
-                    serial::puts("[kernel] Created /vfs_test.txt as fd ");
+                    serial::puts("[kernel] Created /t/vfs_test.txt as fd ");
                     serial::put_dec(fd);
                     serial::puts("\n");
 

@@ -120,6 +120,7 @@ void init()
         assign_table[i].active = false;
         assign_table[i].name[0] = '\0';
         assign_table[i].dir_inode = 0;
+        assign_table[i].fs = nullptr;
         assign_table[i].flags = ASSIGN_NONE;
         assign_table[i].next = nullptr;
     }
@@ -128,17 +129,17 @@ void init()
     // Create system assigns pointing to ViperFS root
     u64 root_inode = fs::viperfs::ROOT_INODE;
 
-    // SYS: - Boot device root (ViperFS root directory)
-    set("SYS", root_inode, ASSIGN_SYSTEM);
+    // SYS: - Boot device root (ViperFS root directory on system disk)
+    set("SYS", root_inode, ASSIGN_SYSTEM, nullptr);
     console::print("[assign] SYS: -> root inode ");
     console::print_dec(static_cast<i64>(root_inode));
-    console::print("\n");
+    console::print(" (system disk)\n");
 
     // D0: - Physical drive 0 (same as SYS for now)
-    set("D0", root_inode, ASSIGN_SYSTEM);
+    set("D0", root_inode, ASSIGN_SYSTEM, nullptr);
     console::print("[assign] D0:  -> root inode ");
     console::print_dec(static_cast<i64>(root_inode));
-    console::print("\n");
+    console::print(" (system disk)\n");
 
     console::print("[assign] Assign system initialized\n");
 }
@@ -149,6 +150,7 @@ void setup_standard_assigns()
     console::print("[assign] Setting up standard assigns...\n");
 
     // Standard directory mappings (lowercase on disk, uppercase assign names)
+    // These are all on the user disk
     struct StandardAssign
     {
         const char *name; // Assign name (e.g., "C")
@@ -163,19 +165,26 @@ void setup_standard_assigns()
         {"CERTS", "/certs"}, // Certificate store
     };
 
+    // Get user filesystem pointer (these directories are on user disk)
+    ::fs::viperfs::ViperFS *user_fs = nullptr;
+    if (::fs::viperfs::user_viperfs_available())
+    {
+        user_fs = &::fs::viperfs::user_viperfs();
+    }
+
     for (const auto &sa : standard_assigns)
     {
         u64 ino = fs::vfs::resolve_path(sa.path);
         if (ino != 0)
         {
-            set(sa.name, ino, ASSIGN_SYSTEM);
+            set(sa.name, ino, ASSIGN_SYSTEM, user_fs);
             console::print("[assign] ");
             console::print(sa.name);
             console::print(":  -> ");
             console::print(sa.path);
             console::print(" (inode ");
             console::print_dec(static_cast<i64>(ino));
-            console::print(")\n");
+            console::print(", user disk)\n");
         }
         else
         {
@@ -190,7 +199,7 @@ void setup_standard_assigns()
 
 // Set an assign
 /** @copydoc viper::assign::set */
-AssignError set(const char *name, u64 dir_inode, u32 flags)
+AssignError set(const char *name, u64 dir_inode, u32 flags, ::fs::viperfs::ViperFS *fs)
 {
     if (!name || name[0] == '\0')
     {
@@ -214,6 +223,7 @@ AssignError set(const char *name, u64 dir_inode, u32 flags)
         }
         // Update existing
         entry->dir_inode = dir_inode;
+        entry->fs = fs;
         entry->flags = flags;
         return AssignError::OK;
     }
@@ -228,6 +238,7 @@ AssignError set(const char *name, u64 dir_inode, u32 flags)
     // Create new entry
     lib::strncpy(entry->name, name, MAX_ASSIGN_NAME + 1);
     entry->dir_inode = dir_inode;
+    entry->fs = fs;
     entry->flags = flags;
     entry->next = nullptr;
     entry->active = true;
@@ -254,7 +265,7 @@ AssignError set_from_handle(const char *name, Handle handle, u32 flags)
         // Get the DirObject and extract its inode
         kobj::DirObject *dir = static_cast<kobj::DirObject *>(entry->object);
         u64 inode = dir->inode_num();
-        return set(name, inode, flags);
+        return set(name, inode, flags, nullptr);
     }
 
     // Try as channel (for service registration)
@@ -397,7 +408,7 @@ AssignError add(const char *name, u64 dir_inode)
     if (!entry)
     {
         // Create new assign with MULTI flag
-        AssignError err = set(name, dir_inode, ASSIGN_MULTI);
+        AssignError err = set(name, dir_inode, ASSIGN_MULTI, nullptr);
         return err;
     }
 
@@ -424,6 +435,7 @@ AssignError add(const char *name, u64 dir_inode)
 
     lib::strncpy(new_entry->name, name, MAX_ASSIGN_NAME + 1);
     new_entry->dir_inode = dir_inode;
+    new_entry->fs = nullptr; // Multi-dir adds use system disk by default
     new_entry->flags = ASSIGN_MULTI;
     new_entry->next = nullptr;
     new_entry->active = true;
@@ -636,11 +648,24 @@ Handle resolve_path(const char *path, u32 flags)
         return cap::HANDLE_INVALID;
     }
 
-    // Look up the assign's base inode
-    u64 base_inode = get_inode(assign_name);
+    // Look up the assign entry to get both inode and filesystem
+    AssignEntry *entry = find_assign(assign_name);
+    if (!entry)
+    {
+        return cap::HANDLE_INVALID;
+    }
+
+    u64 base_inode = entry->dir_inode;
     if (base_inode == 0)
     {
         return cap::HANDLE_INVALID;
+    }
+
+    // Get the filesystem for this assign (nullptr = system disk)
+    fs::viperfs::ViperFS *fs = entry->fs;
+    if (!fs)
+    {
+        fs = &fs::viperfs::viperfs();
     }
 
     // Get current viper's cap_table
@@ -691,7 +716,7 @@ Handle resolve_path(const char *path, u32 flags)
     // Current inode we're traversing from
     u64 current_ino = base_inode;
 
-    // Walk path components
+    // Walk path components using the correct filesystem
     const char *p = remainder;
     while (*p)
     {
@@ -714,8 +739,8 @@ Handle resolve_path(const char *path, u32 flags)
         if (comp_len == 0)
             continue;
 
-        // Read current directory inode
-        fs::viperfs::Inode *dir_inode = fs::viperfs::viperfs().read_inode(current_ino);
+        // Read current directory inode from the correct filesystem
+        fs::viperfs::Inode *dir_inode = fs->read_inode(current_ino);
         if (!dir_inode)
         {
             return cap::HANDLE_INVALID;
@@ -724,13 +749,13 @@ Handle resolve_path(const char *path, u32 flags)
         // Check that current inode is a directory
         if (!fs::viperfs::is_directory(dir_inode))
         {
-            fs::viperfs::viperfs().release_inode(dir_inode);
+            fs->release_inode(dir_inode);
             return cap::HANDLE_INVALID;
         }
 
         // Lookup the component in this directory
-        u64 next_ino = fs::viperfs::viperfs().lookup(dir_inode, comp_start, comp_len);
-        fs::viperfs::viperfs().release_inode(dir_inode);
+        u64 next_ino = fs->lookup(dir_inode, comp_start, comp_len);
+        fs->release_inode(dir_inode);
 
         if (next_ino == 0)
         {
@@ -742,14 +767,14 @@ Handle resolve_path(const char *path, u32 flags)
     }
 
     // Create a handle for the final inode
-    fs::viperfs::Inode *final_inode = fs::viperfs::viperfs().read_inode(current_ino);
+    fs::viperfs::Inode *final_inode = fs->read_inode(current_ino);
     if (!final_inode)
     {
         return cap::HANDLE_INVALID;
     }
 
     bool is_dir = fs::viperfs::is_directory(final_inode);
-    fs::viperfs::viperfs().release_inode(final_inode);
+    fs->release_inode(final_inode);
 
     if (is_dir)
     {

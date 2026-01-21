@@ -34,7 +34,7 @@
 /* When enabled, the kernel identifies itself as "microkernel mode" at boot.
  * In microkernel mode, kernel services (net, tls) are disabled by default. */
 #ifndef VIPER_MICROKERNEL_MODE
-#define VIPER_MICROKERNEL_MODE 1
+#define VIPER_MICROKERNEL_MODE 0
 #endif
 
 // -----------------------------------------------------------------------------
@@ -51,13 +51,13 @@
 /// Enable the in-kernel network stack and socket/DNS syscalls.
 /// Disabled by default in microkernel mode - use netd instead.
 #ifndef VIPER_KERNEL_ENABLE_NET
-#define VIPER_KERNEL_ENABLE_NET 0
+#define VIPER_KERNEL_ENABLE_NET 1
 #endif
 
 /// Enable kernel-managed TLS sessions and `SYS_TLS_*` syscalls.
 /// Disabled by default in microkernel mode - use libtls instead.
 #ifndef VIPER_KERNEL_ENABLE_TLS
-#define VIPER_KERNEL_ENABLE_TLS 0
+#define VIPER_KERNEL_ENABLE_TLS 1
 #endif
 
 /// Enable the in-kernel block device driver (virtio-blk).

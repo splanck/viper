@@ -21,9 +21,14 @@ namespace fs
 // Cache lock for thread-safe access
 static Spinlock cache_lock;
 
-// Global cache instance
+// Global cache instance (system disk)
 static BlockCache g_cache;
 static bool g_cache_initialized = false;
+
+// User disk cache instance
+static BlockCache g_user_cache;
+static bool g_user_cache_initialized = false;
+static Spinlock user_cache_lock;
 
 /** @copydoc fs::cache */
 BlockCache &cache()
@@ -41,10 +46,43 @@ void cache_init()
     }
 }
 
+/** @copydoc fs::user_cache */
+BlockCache &user_cache()
+{
+    return g_user_cache;
+}
+
+/** @copydoc fs::user_cache_init */
+void user_cache_init()
+{
+    SpinlockGuard guard(user_cache_lock);
+    auto *user_blk = ::virtio::user_blk_device();
+    if (user_blk && g_user_cache.init(user_blk))
+    {
+        g_user_cache_initialized = true;
+        serial::puts("[cache] User disk cache initialized\n");
+    }
+}
+
+/** @copydoc fs::user_cache_available */
+bool user_cache_available()
+{
+    return g_user_cache_initialized;
+}
+
 /** @copydoc fs::BlockCache::init */
 bool BlockCache::init()
 {
+    // Use default system block device
+    return init(nullptr);
+}
+
+bool BlockCache::init(::virtio::BlkDevice *device)
+{
     serial::puts("[cache] Initializing block cache...\n");
+
+    // Store device pointer (nullptr = use default blk_device())
+    device_ = device;
 
     // Initialize all blocks as invalid
     for (usize i = 0; i < CACHE_BLOCKS; i++)
@@ -229,7 +267,8 @@ CacheBlock *BlockCache::evict()
 /** @copydoc fs::BlockCache::read_block */
 bool BlockCache::read_block(u64 block_num, void *buf)
 {
-    auto *blk = virtio::blk_device();
+    // Use configured device or default to system blk_device
+    auto *blk = device_ ? device_ : ::virtio::blk_device();
     if (!blk)
         return false;
 
@@ -243,7 +282,8 @@ bool BlockCache::read_block(u64 block_num, void *buf)
 /** @copydoc fs::BlockCache::write_block */
 bool BlockCache::write_block(u64 block_num, const void *buf)
 {
-    auto *blk = virtio::blk_device();
+    // Use configured device or default to system blk_device
+    auto *blk = device_ ? device_ : ::virtio::blk_device();
     if (!blk)
         return false;
 

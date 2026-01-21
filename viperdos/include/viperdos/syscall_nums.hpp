@@ -408,15 +408,16 @@
 
 /** @name TTY Syscalls (0x120 - 0x12F)
  *  @details
- *  Kernel TTY buffer for text-mode console input. consoled pushes keyboard
+ *  Kernel TTY buffer for text-mode console I/O. Timer interrupt pushes keyboard
  *  characters to the kernel buffer, clients read via blocking syscalls.
+ *  Output writes directly to framebuffer via gcon, bypassing IPC.
  *  @{
  */
 /** @brief Read characters from TTY input buffer (blocks until data available). */
 #define SYS_TTY_READ 0x120
-/** @brief Write characters to TTY output (currently forwards to serial). */
+/** @brief Write characters to TTY output (renders directly to framebuffer). */
 #define SYS_TTY_WRITE 0x121
-/** @brief Push a character into TTY input buffer (used by consoled). */
+/** @brief Push a character into TTY input buffer (used internally by timer). */
 #define SYS_TTY_PUSH_INPUT 0x122
 /** @brief Check if TTY has input available (non-blocking). */
 #define SYS_TTY_HAS_INPUT 0x123

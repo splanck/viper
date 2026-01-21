@@ -90,6 +90,7 @@ extern int __viper_consoled_trygetchar(void);
 #define SYS_GETCWD 0x67
 #define SYS_CHDIR 0x68
 #define SYS_GETCHAR 0xF1
+#define SYS_TTY_WRITE 0x121
 
 
 /**
@@ -416,20 +417,16 @@ ssize_t write(int fd, const void *buf, size_t count)
         return __viper_fsd_write(fd, buf, count);
     }
 
-    /* For stdout/stderr, try to send to consoled for GUI display */
+    /* For stdout/stderr, route through consoled for GUI display.
+     * If consoled is not available, fall back to kernel TTY. */
     if (fd == STDOUT_FILENO || fd == STDERR_FILENO)
     {
         if (__viper_consoled_is_available())
         {
-            /* Send to consoled (GUI console window) */
-            ssize_t result = __viper_consoled_write(buf, count);
-            if (result >= 0)
-            {
-                /* Also send to kernel for serial output (debugging) */
-                (void)__syscall3(SYS_WRITE, fd, (long)buf, (long)count);
-                return result;
-            }
+            return __viper_consoled_write(buf, count);
         }
+        /* Fallback to kernel TTY if consoled not available */
+        return __syscall2(SYS_TTY_WRITE, (long)buf, (long)count);
     }
 
     return __syscall3(SYS_WRITE, fd, (long)buf, (long)count);

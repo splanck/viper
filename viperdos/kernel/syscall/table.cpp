@@ -271,13 +271,8 @@ static SyscallResult sys_task_spawn(u64 a0, u64 a1, u64 a2, u64, u64, u64)
         return SyscallResult::err(error::VERR_INVALID_ARG);
     }
 
-    // Two-disk architecture: only /sys/* paths can be loaded via kernel VFS
-    // Other paths should use SYS_TASK_SPAWN_SHM via fsd
-    if (!(path[0] == '/' && path[1] == 's' && path[2] == 'y' &&
-          path[3] == 's' && path[4] == '/'))
-    {
-        return SyscallResult::err(error::VERR_NOT_FOUND);
-    }
+    // Monolithic mode: kernel VFS handles all paths (both /sys/* and user disk)
+    // The VFS will route to the appropriate filesystem based on path
 
     // Get current task's viper as parent
     task::Task *current_task = task::current();

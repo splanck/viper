@@ -25,7 +25,9 @@ namespace input
 // (timer interrupt vs syscall context)
 static Spinlock char_lock;
 
-// Event ring buffer
+// Event ring buffer - uses atomic operations for lock-free SPSC queue
+// Producer (timer interrupt) only writes queue_tail
+// Consumer (syscall context) only writes queue_head
 static Event event_queue[EVENT_QUEUE_SIZE];
 static volatile usize queue_head = 0;
 static volatile usize queue_tail = 0;
@@ -72,17 +74,21 @@ void init()
  * @brief Push an input event into the event ring buffer.
  *
  * @details
+ * Lock-free for SPSC queue. Uses memory barriers for correctness.
  * Drops the event if the ring buffer is full.
  *
  * @param ev Event to enqueue.
  */
 static void push_event(const Event &ev)
 {
-    usize next = (queue_tail + 1) % EVENT_QUEUE_SIZE;
-    if (next != queue_head)
+    usize tail = __atomic_load_n(&queue_tail, __ATOMIC_RELAXED);
+    usize next = (tail + 1) % EVENT_QUEUE_SIZE;
+    usize head = __atomic_load_n(&queue_head, __ATOMIC_ACQUIRE);
+
+    if (next != head)
     {
-        event_queue[queue_tail] = ev;
-        queue_tail = next;
+        event_queue[tail] = ev;
+        __atomic_store_n(&queue_tail, next, __ATOMIC_RELEASE);
     }
 }
 
@@ -329,18 +335,24 @@ void poll()
 /** @copydoc input::has_event */
 bool has_event()
 {
-    return queue_head != queue_tail;
+    usize head = __atomic_load_n(&queue_head, __ATOMIC_RELAXED);
+    usize tail = __atomic_load_n(&queue_tail, __ATOMIC_ACQUIRE);
+    return head != tail;
 }
 
 /** @copydoc input::get_event */
 bool get_event(Event *event)
 {
-    if (queue_head == queue_tail)
+    usize head = __atomic_load_n(&queue_head, __ATOMIC_RELAXED);
+    usize tail = __atomic_load_n(&queue_tail, __ATOMIC_ACQUIRE);
+
+    if (head == tail)
     {
         return false;
     }
-    *event = event_queue[queue_head];
-    queue_head = (queue_head + 1) % EVENT_QUEUE_SIZE;
+
+    *event = event_queue[head];
+    __atomic_store_n(&queue_head, (head + 1) % EVENT_QUEUE_SIZE, __ATOMIC_RELEASE);
     return true;
 }
 

@@ -808,4 +808,134 @@ void blk_init()
     }
 }
 
+// =============================================================================
+// User Disk Block Device (8MB = 16384 sectors)
+// =============================================================================
+
+// Expected capacity for user disk (8MB = 16384 sectors)
+constexpr u64 USER_DISK_SECTORS = 16384;
+
+// User disk block device instance
+static BlkDevice g_user_blk_device;
+static bool g_user_blk_initialized = false;
+
+/**
+ * @brief IRQ handler for user disk virtio-blk interrupts.
+ */
+static void user_blk_irq_handler(u32)
+{
+    if (g_user_blk_initialized)
+    {
+        g_user_blk_device.handle_interrupt();
+    }
+}
+
+/** @copydoc virtio::user_blk_device */
+BlkDevice *user_blk_device()
+{
+    return g_user_blk_initialized ? &g_user_blk_device : nullptr;
+}
+
+/**
+ * @brief Initialize the user disk block device.
+ *
+ * @details
+ * Finds and initializes the 8MB user disk (16384 sectors).
+ * This is separate from the system disk to support the two-disk architecture.
+ */
+bool BlkDevice::init_user_disk()
+{
+    // Find the USER disk (8MB = 16384 sectors)
+    u64 base = find_blk_by_capacity(USER_DISK_SECTORS);
+    if (!base)
+    {
+        serial::puts("[virtio-blk] User disk (8MB) not found\n");
+        return false;
+    }
+
+    // Use common init sequence
+    if (!basic_init(base))
+    {
+        serial::puts("[virtio-blk] User disk init failed\n");
+        return false;
+    }
+
+    // Calculate device index for IRQ
+    device_index_ = static_cast<u32>((base - kernel::constants::hw::VIRTIO_MMIO_BASE) /
+                                      kernel::constants::hw::VIRTIO_DEVICE_STRIDE);
+    irq_num_ = VIRTIO_IRQ_BASE + device_index_;
+
+    serial::puts("[virtio-blk] Initializing user disk at ");
+    serial::put_hex(base);
+    serial::puts(" (IRQ ");
+    serial::put_dec(irq_num_);
+    serial::puts(")\n");
+
+    // Read configuration
+    capacity_ = read_config64(0);
+    sector_size_ = 512;
+
+    // Check for read-only
+    write32(reg::DEVICE_FEATURES_SEL, 0);
+    u32 features = read32(reg::DEVICE_FEATURES);
+    readonly_ = (features & blk_features::RO) != 0;
+
+    serial::puts("[virtio-blk] User disk capacity: ");
+    serial::put_dec(capacity_);
+    serial::puts(" sectors (");
+    serial::put_dec((capacity_ * sector_size_) / (1024 * 1024));
+    serial::puts(" MB)\n");
+
+    // Negotiate features
+    if (!negotiate_features(0))
+    {
+        serial::puts("[virtio-blk] User disk feature negotiation failed\n");
+        set_status(status::FAILED);
+        return false;
+    }
+
+    // Initialize virtqueue
+    if (!vq_.init(this, 0, 128))
+    {
+        serial::puts("[virtio-blk] User disk virtqueue init failed\n");
+        set_status(status::FAILED);
+        return false;
+    }
+
+    // Allocate request buffer
+    requests_phys_ = pmm::alloc_page();
+    if (!requests_phys_)
+    {
+        serial::puts("[virtio-blk] Failed to allocate user disk request buffer\n");
+        set_status(status::FAILED);
+        return false;
+    }
+    requests_ = reinterpret_cast<PendingRequest *>(pmm::phys_to_virt(requests_phys_));
+
+    // Zero request buffer
+    for (usize i = 0; i < pmm::PAGE_SIZE / sizeof(u64); i++)
+    {
+        reinterpret_cast<u64 *>(requests_)[i] = 0;
+    }
+
+    // Device is ready
+    add_status(status::DRIVER_OK);
+
+    // Register IRQ handler
+    gic::register_handler(irq_num_, user_blk_irq_handler);
+    gic::enable_irq(irq_num_);
+
+    serial::puts("[virtio-blk] User disk driver initialized\n");
+    return true;
+}
+
+/** @copydoc virtio::user_blk_init */
+void user_blk_init()
+{
+    if (g_user_blk_device.init_user_disk())
+    {
+        g_user_blk_initialized = true;
+    }
+}
+
 } // namespace virtio

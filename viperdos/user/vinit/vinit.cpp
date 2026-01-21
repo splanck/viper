@@ -7,7 +7,7 @@
 //
 // File: user/vinit/vinit.cpp
 // Purpose: ViperDOS init process entry point and interactive shell.
-// Key invariants: First user-space process; launches microkernel servers.
+// Key invariants: First user-space process; launches display servers.
 // Ownership/Lifetime: Long-running init process.
 // Links: user/vinit/vinit.hpp
 //
@@ -21,10 +21,12 @@
  * `vinit` is the first user-space process started by the kernel. It provides
  * an interactive shell for debugging and demos.
  *
- * At startup, vinit launches the microkernel user-space servers:
- * - blkd: Block device server (VirtIO-blk driver)
- * - netd: Network server (VirtIO-net driver + TCP/IP stack)
- * - fsd:  Filesystem server (ViperFS) - depends on blkd
+ * At startup, vinit launches display servers for GUI output:
+ * - displayd: Framebuffer management
+ * - consoled: Console window for shell I/O
+ *
+ * Storage and network services are provided directly by the kernel in
+ * monolithic mode (VIPER_MICROKERNEL_MODE=0).
  */
 #include "vinit.hpp"
 
@@ -43,27 +45,26 @@ struct ServerInfo
 
 // Two-disk architecture: servers are on system disk (/sys)
 // Note: inputd removed - kernel handles keyboard input directly
-// Storage/network servers may fail if user disk is missing
+// Storage/network servers disabled - using full monolithic kernel instead
 static ServerInfo g_servers[] = {
     // Display server must start first - consoled depends on it for GUI
     {"displayd", "/sys/displayd.sys", "DISPLAY", 0, false},
     // Essential: always spawn, required for shell I/O (needs displayd)
     {"consoled", "/sys/consoled.sys", "CONSOLED", 0, false},
-    // Storage/Network: may fail if disk1 missing
-    {"blkd", "/sys/blkd.sys", "BLKD", 0, false},
-    {"netd", "/sys/netd.sys", "NETD", 0, false},
-    {"fsd", "/sys/fsd.sys", "FSD", 0, false},
+    // Disabled - using kernel services directly (monolithic mode)
+    // {"blkd", "/sys/blkd.sys", "BLKD", 0, false},
+    // {"netd", "/sys/netd.sys", "NETD", 0, false},
+    // {"fsd", "/sys/fsd.sys", "FSD", 0, false},
 };
 
 static constexpr usize SERVER_COUNT = sizeof(g_servers) / sizeof(g_servers[0]);
 static constexpr usize CONSOLED_INDEX = 1;
-static constexpr usize BLKD_INDEX = 2;
-static constexpr usize FSD_INDEX = 4;
 
 static u32 g_device_root = 0xFFFFFFFFu;
 static bool g_have_device_root = false;
 
-/// Track whether user filesystem (fsd) is available for user programs
+/// Track whether FSD server is available for user programs.
+/// In monolithic mode, FSD is not started - use kernel VFS directly.
 static bool g_fsd_available = false;
 
 /**
@@ -254,15 +255,6 @@ static bool start_server_by_index(usize idx)
         return false;
     }
 
-    // fsd depends on blkd
-    if (idx == FSD_INDEX && !g_servers[BLKD_INDEX].available)
-    {
-        print_str("[vinit] ");
-        print_str(srv.name);
-        print_str(": requires blkd\n");
-        return false;
-    }
-
     u32 bootstrap_send = 0xFFFFFFFFu;
     srv.pid = spawn_server(srv.path, srv.name, &bootstrap_send);
     if (g_have_device_root)
@@ -331,12 +323,11 @@ usize get_server_count()
 }
 
 /**
- * @brief Check if fsd (user filesystem) is available.
+ * @brief Check if filesystem is available.
  *
  * @details
- * In the two-disk architecture, fsd provides access to user programs on disk1.
- * When disk1 is missing or blkd fails, fsd will not be available and the
- * system runs in "system-only" mode with only /sys paths accessible.
+ * In monolithic mode, the kernel provides filesystem services directly.
+ * This always returns true since kernel FS is always available.
  */
 bool is_fsd_available()
 {
@@ -344,21 +335,16 @@ bool is_fsd_available()
 }
 
 /**
- * @brief Start all microkernel servers (optional).
+ * @brief Start display and console servers.
  *
  * @details
- * Attempts to start microkernel user-space servers. These servers provide
- * an IPC-based interface to system services:
- * - blkd: Block device access
- * - netd: Network stack
- * - fsd:  Filesystem
+ * In monolithic mode, the kernel provides all storage and network services
+ * directly via syscalls. Only display and console servers are started:
+ * - displayd: Framebuffer management for GUI mode
+ * - consoled: Console window for shell I/O
  *
- * IMPORTANT: Server startup is done in two phases to avoid a race condition:
- * 1. SPAWN PHASE: Load all server ELFs from disk (uses kernel's block driver)
- * 2. CAPS PHASE: Send device capabilities to servers (unblocks their device init)
- *
- * This ordering ensures the kernel can load all ELFs before blkd resets the
- * VirtIO block device (which invalidates the kernel's block driver state).
+ * Storage/network servers (blkd, netd, fsd) are disabled - libc routes
+ * directly to kernel syscalls for file/network operations.
  */
 static void start_servers()
 {
@@ -376,12 +362,11 @@ static void start_servers()
 
     if (!have_any)
     {
-        print_str("[vinit] No microkernel servers found, using kernel services\n\n");
+        print_str("[vinit] No display servers found\n\n");
         return;
     }
 
-    print_str("[vinit] Starting microkernel servers...\n");
-    print_str("[vinit] (Note: servers require dedicated VirtIO devices)\n");
+    print_str("[vinit] Starting display servers...\n");
 
     // Find device root capability and save it for later restarts
     g_have_device_root = find_device_root_cap(&g_device_root);
@@ -459,15 +444,6 @@ static void start_servers()
         if (srv.pid <= 0)
             continue;
 
-        // fsd depends on blkd - skip if blkd not available
-        if (i == FSD_INDEX && !g_servers[BLKD_INDEX].available)
-        {
-            print_str("[vinit] ");
-            print_str(srv.name);
-            print_str(": requires blkd\n");
-            continue;
-        }
-
         // consoled needs longer timeout - it waits for displayd + creates GUI window
         u32 timeout = (i == CONSOLED_INDEX) ? 5000 : 2000;
         if (wait_for_service(srv.assign, timeout))
@@ -476,12 +452,6 @@ static void start_servers()
             print_str(srv.assign);
             print_str(": ready\n");
             srv.available = true;
-
-            // Track fsd availability for graceful degradation
-            if (i == FSD_INDEX)
-            {
-                g_fsd_available = true;
-            }
         }
         else
         {
@@ -491,38 +461,9 @@ static void start_servers()
         }
     }
 
-    // Two-disk architecture: report boot mode
-    if (g_fsd_available)
-    {
-        print_str("[vinit] User disk available - full functionality\n");
-    }
-    else if (g_servers[BLKD_INDEX].available)
-    {
-        print_str("[vinit] Block device available but fsd failed\n");
-        print_str("[vinit] Running in system-only mode\n");
-    }
-    else
-    {
-        print_str("[vinit] User disk unavailable - system-only mode\n");
-        print_str("[vinit] Note: /c/ commands unavailable, use /sys/ paths\n");
-    }
+    // Monolithic mode: kernel provides all storage/network services directly
+    print_str("[vinit] Monolithic kernel mode - using kernel services\n");
     print_str("\n");
-
-    // ==========================================================================
-    // PHASE 4: RUN SMOKE TESTS (if fsd available)
-    // ==========================================================================
-    // Two-disk architecture: smoke tests are on user disk (/c/), so they
-    // can only run if fsd is available. Skip them in system-only mode.
-    if (!g_fsd_available)
-    {
-        print_str("[vinit] Skipping smoke tests (user disk unavailable)\n\n");
-    }
-    else
-    {
-        // TODO: Run smoke tests via fsd using spawn_shm
-        // For now, smoke tests must be run manually via 'run /c/xxx_smoke.prg'
-        print_str("[vinit] Smoke tests available via 'run' command\n\n");
-    }
 }
 
 /**

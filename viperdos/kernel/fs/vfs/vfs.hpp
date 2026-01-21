@@ -67,11 +67,23 @@ using namespace viper::seek_whence;
 constexpr usize MAX_FDS = 32;
 
 // File descriptor entry
+} // namespace fs::vfs
+
+// Forward declaration for ViperFS (in fs::viperfs namespace)
+namespace fs::viperfs
+{
+class ViperFS;
+}
+
+namespace fs::vfs
+{
+
 /**
  * @brief One open file descriptor entry.
  *
  * @details
- * Stores inode number, current file offset, and open flags.
+ * Stores inode number, current file offset, open flags, and which
+ * filesystem the file belongs to.
  */
 struct FileDesc
 {
@@ -79,6 +91,7 @@ struct FileDesc
     u64 inode_num; // Inode number
     u64 offset;    // Current file position
     u32 flags;     // Open flags
+    fs::viperfs::ViperFS *fs; // Which filesystem this FD belongs to
 };
 
 // File descriptor table (per-process)

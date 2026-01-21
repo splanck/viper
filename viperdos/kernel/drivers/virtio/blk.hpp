@@ -139,7 +139,7 @@ class BlkDevice : public Device
   public:
     // Initialize the block device
     /**
-     * @brief Initialize and configure the virtio-blk device.
+     * @brief Initialize and configure the virtio-blk device (system disk).
      *
      * @details
      * Locates a virtio-blk MMIO device, resets it, negotiates features, sets up
@@ -149,6 +149,16 @@ class BlkDevice : public Device
      * @return `true` on success, otherwise `false`.
      */
     bool init();
+
+    /**
+     * @brief Initialize and configure the user disk block device.
+     *
+     * @details
+     * Finds and initializes the 8MB user disk (separate from system disk).
+     *
+     * @return `true` on success, otherwise `false`.
+     */
+    bool init_user_disk();
 
     // Read sectors from disk (blocking)
     // Returns 0 on success, negative on error
@@ -389,9 +399,14 @@ class BlkDevice : public Device
 };
 
 // Global block device initialization and access
-/** @brief Initialize the global virtio-blk device instance. */
+/** @brief Initialize the global virtio-blk device instance (system disk). */
 void blk_init();
-/** @brief Get the global virtio-blk device instance, or nullptr if unavailable. */
+/** @brief Get the global virtio-blk device instance (system disk), or nullptr if unavailable. */
 BlkDevice *blk_device();
+
+/** @brief Initialize the user disk block device instance. */
+void user_blk_init();
+/** @brief Get the user disk block device instance, or nullptr if unavailable. */
+BlkDevice *user_blk_device();
 
 } // namespace virtio

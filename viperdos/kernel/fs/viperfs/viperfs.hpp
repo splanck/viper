@@ -32,6 +32,9 @@ constexpr usize INODE_CACHE_SIZE = 32;
 /** @brief Hash table size for inode lookup. */
 constexpr usize INODE_HASH_SIZE = 16;
 
+// Forward declaration
+class ViperFS;
+
 /**
  * @brief Cached inode entry with reference counting.
  *
@@ -105,6 +108,9 @@ class InodeCache
      */
     void dump_stats();
 
+    /** @brief Set the parent ViperFS instance. */
+    void set_parent(ViperFS *parent) { parent_ = parent; }
+
   private:
     CachedInode entries_[INODE_CACHE_SIZE];
     CachedInode *hash_[INODE_HASH_SIZE];
@@ -113,6 +119,7 @@ class InodeCache
 
     u64 hits_;
     u64 misses_;
+    ViperFS *parent_{nullptr}; // Parent ViperFS instance
 
     u32 hash_func(u64 ino);
     CachedInode *find(u64 ino);
@@ -123,7 +130,7 @@ class InodeCache
     void insert_hash(CachedInode *ci);
     void remove_hash(CachedInode *ci);
 
-    // Disk I/O helpers (use ViperFS methods)
+    // Disk I/O helpers (use parent ViperFS methods)
     bool load_inode(u64 ino, Inode *out);
     bool store_inode(const Inode *inode);
 };
@@ -159,7 +166,7 @@ class ViperFS
 {
   public:
     /**
-     * @brief Mount the filesystem.
+     * @brief Mount the filesystem using default cache.
      *
      * @details
      * Reads and validates the superblock from block 0 and marks the filesystem
@@ -169,6 +176,18 @@ class ViperFS
      * @return `true` on success, otherwise `false`.
      */
     bool mount();
+
+    /**
+     * @brief Mount the filesystem using a specific block cache.
+     *
+     * @details
+     * Like mount(), but uses the specified cache for all block I/O.
+     * Used for the user disk ViperFS instance.
+     *
+     * @param cache Block cache to use for I/O.
+     * @return `true` on success, otherwise `false`.
+     */
+    bool mount(BlockCache *cache);
 
     /**
      * @brief Unmount the filesystem.
@@ -530,6 +549,16 @@ class ViperFS
     Superblock sb_;
     bool mounted_{false};
     InodeCache inode_cache_; // Inode cache instance
+    BlockCache *cache_{nullptr}; // Block cache (nullptr = use default cache())
+
+  public:
+    /** @brief Get the appropriate block cache. */
+    BlockCache &get_cache()
+    {
+        return cache_ ? *cache_ : cache();
+    }
+
+  private:
 
     // Thread safety: protects all filesystem metadata operations
     // This lock is held during:
@@ -644,5 +673,38 @@ class InodeGuard
   private:
     Inode *inode_;
 };
+
+// =============================================================================
+// User Disk ViperFS Instance
+// =============================================================================
+
+/**
+ * @brief Get the user disk ViperFS instance.
+ *
+ * @details
+ * Returns the ViperFS instance for the user disk (8MB), which contains
+ * directories like /c/, /certs/, /s/, /t/.
+ *
+ * @return Reference to user ViperFS instance.
+ */
+ViperFS &user_viperfs();
+
+/**
+ * @brief Initialize the user disk ViperFS.
+ *
+ * @details
+ * Mounts the user disk filesystem. Requires user_blk_init() and
+ * user_cache_init() to be called first.
+ *
+ * @return `true` on success, otherwise `false`.
+ */
+bool user_viperfs_init();
+
+/**
+ * @brief Check if user ViperFS is available.
+ *
+ * @return true if user filesystem is mounted.
+ */
+bool user_viperfs_available();
 
 } // namespace fs::viperfs

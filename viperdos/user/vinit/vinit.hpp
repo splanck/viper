@@ -104,6 +104,9 @@ void cmd_delete(const char *args);
 void cmd_makedir(const char *args);
 void cmd_rename(const char *args);
 
+// Path utilities
+bool normalize_path(const char *path, const char *cwd, char *out, usize out_size);
+
 // Misc commands
 void cmd_run(const char *path);
 void cmd_run_fsd(const char *path);

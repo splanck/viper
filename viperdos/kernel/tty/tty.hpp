@@ -36,8 +36,9 @@ i64 read(void *buf, u32 size);
  * @brief Write characters to TTY output.
  *
  * @details
- * Currently forwards to serial output. In the future could be used for
- * kernel-level output buffering.
+ * Renders text directly to the framebuffer via gcon::putc_force(), bypassing
+ * any GUI mode restrictions. Also outputs to serial for debugging.
+ * This eliminates IPC overhead for console output.
  *
  * @param buf Source buffer.
  * @param size Number of bytes to write.
@@ -56,7 +57,7 @@ bool has_input();
  * @brief Push a character into the TTY input buffer.
  *
  * @details
- * Called by consoled when it receives keyboard input. Wakes any tasks
+ * Called by timer interrupt when keyboard input arrives. Wakes any tasks
  * blocked in read().
  *
  * @param c Character to push.

@@ -1567,7 +1567,8 @@ extern "C" void _start()
         poll_mouse();
         poll_keyboard();
 
-        // Yield if we had no work
+        // Yield only if no work was done - this prevents starving other processes
+        // while still being responsive when there are messages to process
         if (!had_message)
         {
             sys::yield();

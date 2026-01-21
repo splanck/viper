@@ -257,12 +257,13 @@ static bool send_request_recv_reply(const void *req, size_t req_len,
         return false;
     }
 
-    // Wait for reply on the RECV endpoint (up to ~10 seconds worth of yields)
+    // Wait for reply on the RECV endpoint - spin until ready
+    // displayd should respond quickly since it doesn't yield
     uint32_t recv_handles[4];
     uint32_t recv_handle_count = 4;
 
     // Note: send_ch was transferred to displayd, so we no longer own it
-    for (uint32_t i = 0; i < 100000; i++)
+    for (uint32_t i = 0; i < 1000000; i++)
     {
         recv_handle_count = 4;
         int64_t n = sys::channel_recv(recv_ch, reply, reply_len, recv_handles, &recv_handle_count);
@@ -279,12 +280,11 @@ static bool send_request_recv_reply(const void *req, size_t req_len,
             }
             return true;
         }
-        if (n == VERR_WOULD_BLOCK)
+        if (n != VERR_WOULD_BLOCK)
         {
-            sys::yield();
-            continue;
+            break;
         }
-        break;
+        // Spin - don't yield
     }
 
     sys::channel_close(recv_ch);
@@ -663,6 +663,23 @@ extern "C" uint32_t gui_get_stride(gui_window_t *win)
 extern "C" void gui_present(gui_window_t *win)
 {
     gui_present_region(win, 0, 0, 0, 0);  // 0,0,0,0 = full surface
+}
+
+extern "C" void gui_present_async(gui_window_t *win)
+{
+    if (!win) return;
+
+    PresentRequest req;
+    req.type = DISP_PRESENT;
+    req.request_id = g_request_id++;
+    req.surface_id = win->surface_id;
+    req.damage_x = 0;
+    req.damage_y = 0;
+    req.damage_w = 0;
+    req.damage_h = 0;
+
+    // Fire-and-forget: send without waiting for reply
+    sys::channel_send(g_display_channel, &req, sizeof(req), nullptr, 0);
 }
 
 extern "C" void gui_present_region(gui_window_t *win, uint32_t x, uint32_t y, uint32_t w, uint32_t h)

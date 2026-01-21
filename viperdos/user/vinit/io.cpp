@@ -43,6 +43,15 @@ static bool g_console_ready = false;
 static u32 g_console_cols = 80;
 static u32 g_console_rows = 25;
 
+// =============================================================================
+// Output Buffering
+// =============================================================================
+
+// Buffer console output to reduce IPC overhead
+static constexpr usize OUTPUT_BUFFER_SIZE = 2048;
+static char g_output_buffer[OUTPUT_BUFFER_SIZE];
+static usize g_output_len = 0;
+
 bool init_console()
 {
     // Connect to CONSOLED service - get a send endpoint to consoled
@@ -86,13 +95,16 @@ bool init_console()
         return false;
     }
 
-    // Wait for reply
+    // Wait for reply with proper timeout (5 seconds)
+    // Use sleep instead of yield to give consoled time to process
     ConnectReply reply;
     u32 recv_handles[4];
     u32 recv_handle_count = 4;
     bool got_reply = false;
+    const u32 timeout_ms = 5000;
+    const u32 interval_ms = 10;
 
-    for (u32 i = 0; i < 2000; i++)
+    for (u32 waited = 0; waited < timeout_ms; waited += interval_ms)
     {
         recv_handle_count = 4;
         i64 n = sys::channel_recv(reply_recv, &reply, sizeof(reply), recv_handles, &recv_handle_count);
@@ -103,7 +115,7 @@ bool init_console()
         }
         if (n == VERR_WOULD_BLOCK)
         {
-            sys::yield();
+            sys::sleep(interval_ms);
             continue;
         }
         // Error case
@@ -147,7 +159,7 @@ bool init_console()
     return true;
 }
 
-static void console_write(const char *s, usize len)
+static void console_write_direct(const char *s, usize len)
 {
     if (!g_console_ready || len == 0)
         return;
@@ -178,6 +190,33 @@ static void console_write(const char *s, usize len)
             break;
         // Buffer full - sleep briefly to let consoled catch up
         sys::sleep(1);
+    }
+}
+
+static void console_flush_buffer()
+{
+    if (g_output_len > 0)
+    {
+        console_write_direct(g_output_buffer, g_output_len);
+        g_output_len = 0;
+    }
+}
+
+static void console_write(const char *s, usize len)
+{
+    if (!g_console_ready || len == 0)
+        return;
+
+    // Add to buffer, flushing as needed
+    for (usize i = 0; i < len; i++)
+    {
+        g_output_buffer[g_output_len++] = s[i];
+
+        // Flush on newline or when buffer is full
+        if (s[i] == '\n' || g_output_len >= OUTPUT_BUFFER_SIZE - 1)
+        {
+            console_flush_buffer();
+        }
     }
 }
 
@@ -368,7 +407,11 @@ void print_str(const char *s)
 
 void flush_console()
 {
-    // No-op - consoled drains all messages before presenting
+    // Flush any buffered output to consoled
+    if (g_console_ready)
+    {
+        console_flush_buffer();
+    }
 }
 
 void print_char(char c)
@@ -377,6 +420,8 @@ void print_char(char c)
     {
         char buf[2] = {c, '\0'};
         console_write(buf, 1);
+        // Flush immediately for interactive echo
+        console_flush_buffer();
     }
     else
     {

@@ -321,24 +321,24 @@ void cmd_run(const char *cmdline)
     const char *path = path_buf;
     const char *args = args_len > 0 ? args_buf : nullptr;
 
-    // Route based on path
+    // Route based on path and FSD availability
     if (is_sys_path(path))
     {
         // System path - use kernel VFS directly
         run_via_kernel(path, args);
     }
+    else if (is_fsd_available())
+    {
+        // User path with FSD available - use FSD
+        run_via_fsd(path, args);
+    }
     else
     {
-        // User path - requires fsd
-        if (!is_fsd_available())
-        {
-            print_str("Run: filesystem not available\n");
-            print_str("Hint: Only /sys/* paths work in system-only mode\n");
-            last_rc = RC_FAIL;
-            last_error = "Filesystem unavailable";
-            return;
-        }
-        run_via_fsd(path, args);
+        // Monolithic mode: use kernel VFS for all paths
+        // Normalize the path first (handle assigns like C:)
+        char normalized[256];
+        normalize_path(path, current_dir, normalized, sizeof(normalized));
+        run_via_kernel(normalized, args);
     }
 }
 

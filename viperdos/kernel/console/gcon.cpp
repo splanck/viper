@@ -1014,6 +1014,69 @@ void putc(char c)
     draw_cursor_if_visible();
 }
 
+/** @copydoc gcon::putc_force */
+void putc_force(char c)
+{
+    if (!initialized)
+        return;
+
+    // Note: Unlike putc(), this function ignores gui_mode_active
+    // to allow kernel TTY output to render directly to framebuffer
+
+    // Process through ANSI state machine first
+    if (ansi_process(c))
+    {
+        return; // Character was consumed by escape sequence
+    }
+
+    // Auto-scroll to bottom when new output arrives
+    scroll_offset = 0;
+
+    // Erase cursor before any operation that might affect its position
+    erase_cursor_if_drawn();
+
+    switch (c)
+    {
+        case '\n':
+            newline();
+            break;
+        case '\r':
+            cursor_x = 0;
+            break;
+        case '\t':
+            // Align to next 8-column boundary
+            do
+            {
+                buffer_put_char(' ', cursor_x, cursor_y);
+                draw_char(cursor_x, cursor_y, ' ');
+                advance_cursor();
+            } while (cursor_x % 8 != 0 && cursor_x < cols);
+            break;
+        case '\b':
+            // Backspace only moves cursor left, does NOT erase (VT100 behavior)
+            // Applications that want destructive backspace use "\b \b"
+            if (cursor_x > 0)
+            {
+                cursor_x--;
+            }
+            break;
+        case '\x1B':
+            // ESC character - handled by ansi_process, but in case we get here
+            break;
+        default:
+            if (c >= 32 && c < 127)
+            {
+                buffer_put_char(c, cursor_x, cursor_y);
+                draw_char(cursor_x, cursor_y, c);
+                advance_cursor();
+            }
+            break;
+    }
+
+    // Redraw cursor at new position
+    draw_cursor_if_visible();
+}
+
 /** @copydoc gcon::puts */
 void puts(const char *s)
 {

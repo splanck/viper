@@ -215,8 +215,9 @@ static bool g_needs_present = false;
 static constexpr uint64_t FRAME_INTERVAL_MS = 16;
 static uint64_t g_last_present_time = 0;
 
-// Message batching - process at most N messages before checking events
-static constexpr uint32_t MAX_MESSAGES_PER_BATCH = 64;
+// Message batching - process messages aggressively
+// Keyboard input is now handled directly by kernel, so no need to limit
+static constexpr uint32_t MAX_MESSAGES_PER_BATCH = 256;
 
 static void newline()
 {
@@ -898,7 +899,9 @@ enum KeyCode : uint16_t
     KEY_SPACE = 57,
 };
 
-static char keycode_to_ascii(uint16_t keycode, uint8_t modifiers)
+// Currently unused - keyboard input handled directly by kernel
+// Kept for potential future use (e.g., special key handling)
+[[maybe_unused]] static char keycode_to_ascii(uint16_t keycode, uint8_t modifiers)
 {
     bool shift = (modifiers & 0x01) != 0;
     bool ctrl = (modifiers & 0x02) != 0;
@@ -1192,8 +1195,8 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
 
             // Use handles[0] as reply channel if provided, else use client_channel
             uint32_t reply_channel = (handle_count > 0 && handles[0] != 0xFFFFFFFF)
-                ? handles[0] : client_channel;
-            sys::channel_send(reply_channel, &reply, sizeof(reply), nullptr, 0);
+                ? handles[0] : static_cast<uint32_t>(client_channel);
+            sys::channel_send(static_cast<int32_t>(reply_channel), &reply, sizeof(reply), nullptr, 0);
             break;
         }
 
@@ -1365,37 +1368,30 @@ extern "C" void _start()
             }
         }
 
-        // STEP 2: Present with frame rate limiting
+        // STEP 2: Present with frame rate limiting (async for performance)
         now = sys::uptime();
         uint64_t time_since_present = now - g_last_present_time;
 
         if (g_needs_present && time_since_present >= FRAME_INTERVAL_MS)
         {
-            gui_present(g_window);
+            gui_present_async(g_window);  // Non-blocking present
             g_needs_present = false;
             g_last_present_time = now;
         }
 
-        // STEP 3: Poll GUI events (keyboard) - limit iterations to reduce IPC overhead
-        // Each gui_poll_event() call involves an IPC round-trip, so we cap at 8 events
-        for (int ev_count = 0; ev_count < 8; ev_count++)
+        // STEP 3: Keyboard input is now handled directly by kernel timer handler
+        // No need to poll GUI events for keyboard - just drain any pending events occasionally
+        // to prevent displayd's queue from filling up
+        if ((now % 100) == 0)  // Every ~100ms, drain any pending events
         {
-            if (gui_poll_event(g_window, &event) != 0)
-                break;  // No more events
-
-            did_work = true;
-            if (event.type == GUI_EVENT_KEY && event.key.pressed)
+            while (gui_poll_event(g_window, &event) == 0)
             {
-                // Convert keycode to ASCII and push to kernel TTY buffer
-                char ch = keycode_to_ascii(event.key.keycode, event.key.modifiers);
-                if (ch != 0)
-                {
-                    sys::tty_push_input(ch);
-                }
+                // Just consume events - keyboard handled by kernel
             }
         }
 
-        // STEP 4: Sleep/yield if idle
+        // STEP 4: Yield if no work was done
+        // This prevents starving other processes while still being responsive
         if (!did_work)
         {
             if (g_needs_present)

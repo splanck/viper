@@ -27,6 +27,12 @@
 #include "../cap/handle.hpp"
 #include "../include/types.hpp"
 
+// Forward declaration
+namespace fs::viperfs
+{
+class ViperFS;
+}
+
 namespace viper::assign
 {
 
@@ -84,9 +90,10 @@ struct AssignEntry
         u32 channel_id; /**< Global channel ID (for service assigns with ASSIGN_SERVICE). */
     };
 
-    u32 flags;         /**< Bitmask of @ref AssignFlags. */
-    AssignEntry *next; /**< Next directory in a multi-assign chain. */
-    bool active;       /**< Whether this table entry is in use. */
+    ::fs::viperfs::ViperFS *fs; /**< Filesystem this inode belongs to (nullptr = system disk). */
+    u32 flags;                  /**< Bitmask of @ref AssignFlags. */
+    AssignEntry *next;          /**< Next directory in a multi-assign chain. */
+    bool active;                /**< Whether this table entry is in use. */
 };
 
 /**
@@ -157,9 +164,11 @@ void setup_standard_assigns();
  * @param name Assign name without a colon.
  * @param dir_inode Inode number of the directory to associate with the name.
  * @param flags Flags describing behavior; use @ref ASSIGN_SYSTEM for boot-time assigns.
+ * @param fs Filesystem this inode belongs to (nullptr = system disk).
  * @return An @ref AssignError describing success/failure.
  */
-AssignError set(const char *name, u64 dir_inode, u32 flags = ASSIGN_NONE);
+AssignError set(const char *name, u64 dir_inode, u32 flags = ASSIGN_NONE,
+                ::fs::viperfs::ViperFS *fs = nullptr);
 
 /**
  * @brief Create or update an assign mapping from a directory handle.

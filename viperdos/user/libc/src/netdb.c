@@ -41,6 +41,10 @@
 extern int __viper_netd_is_available(void);
 extern int __viper_netd_dns_resolve(const char *hostname, unsigned int *out_ip_be);
 
+/* Kernel DNS syscall for monolithic mode */
+extern long __syscall2(long num, long arg0, long arg1);
+#define SYS_DNS_RESOLVE 0x55
+
 /* Thread-local h_errno */
 int h_errno = 0;
 
@@ -103,16 +107,19 @@ struct hostent *gethostbyname(const char *name)
     }
 
     unsigned int ip = 0;
+    int rc;
 
-    /* Use netd DNS resolver (microkernel mode) */
-    if (!__viper_netd_is_available())
+    /* Try netd first (microkernel mode), fall back to kernel (monolithic mode) */
+    if (__viper_netd_is_available())
     {
-        /* netd not running - DNS resolution unavailable */
-        h_errno = NO_RECOVERY;
-        return (void *)0;
+        rc = __viper_netd_dns_resolve(name, &ip);
+    }
+    else
+    {
+        /* Monolithic mode: use kernel DNS syscall */
+        rc = (int)__syscall2(SYS_DNS_RESOLVE, (long)name, (long)&ip);
     }
 
-    int rc = __viper_netd_dns_resolve(name, &ip);
     if (rc != 0)
     {
         h_errno = HOST_NOT_FOUND;

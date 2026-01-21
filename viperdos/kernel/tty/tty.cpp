@@ -1,4 +1,5 @@
 #include "tty.hpp"
+#include "../console/gcon.hpp"
 #include "../console/serial.hpp"
 #include "../lib/spinlock.hpp"
 #include "../sched/scheduler.hpp"
@@ -133,12 +134,13 @@ i64 write(const void *buf, u32 size)
         return 0;
     }
 
-    // For now, just write to serial output
-    // In the future, could buffer for consoled to consume
+    // Write directly to framebuffer via gcon (bypasses GUI mode check).
+    // Serial output removed - it was causing significant slowdown due to
+    // UART FIFO wait loops. Debug output still goes to serial via serial::puts.
     const char *src = static_cast<const char *>(buf);
     for (u32 i = 0; i < size; i++)
     {
-        serial::putc(src[i]);
+        gcon::putc_force(src[i]);
     }
 
     return static_cast<i64>(size);
