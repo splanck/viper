@@ -99,9 +99,42 @@ static Vma *find_unlocked(Vma *head, u64 addr)
     return nullptr;
 }
 
+/**
+ * @brief Check if a range [start, end) overlaps with any existing VMA.
+ * @note Caller must hold lock_.
+ * @return Pointer to overlapping VMA, or nullptr if no overlap.
+ */
+static Vma *find_overlap_unlocked(Vma *head, u64 start, u64 end)
+{
+    Vma *vma = head;
+    while (vma)
+    {
+        // Two ranges [a, b) and [c, d) overlap iff: a < d && c < b
+        // Here: existing VMA is [vma->start, vma->end), new range is [start, end)
+        if (start < vma->end && vma->start < end)
+        {
+            return vma; // Found overlap
+        }
+        // Optimization: if existing VMA starts at or after our end, no more overlaps possible
+        // (since list is sorted by start address)
+        if (vma->start >= end)
+        {
+            break;
+        }
+        vma = vma->next;
+    }
+    return nullptr;
+}
+
 Vma *VmaList::find(u64 addr)
 {
     SpinlockGuard guard(lock_);
+    return find_unlocked(head_, addr);
+}
+
+Vma *VmaList::find_locked(u64 addr)
+{
+    // Caller must hold lock_
     return find_unlocked(head_, addr);
 }
 
@@ -128,8 +161,8 @@ Vma *VmaList::add(u64 start, u64 end, u32 prot, VmaType type)
 
     SpinlockGuard guard(lock_);
 
-    // Check for overlaps (simplified - just check if start is in an existing VMA)
-    if (find_unlocked(head_, start) != nullptr)
+    // Check for overlaps with any existing VMA in the range [start, end)
+    if (find_overlap_unlocked(head_, start, end) != nullptr)
     {
         serial::puts("[vma] ERROR: VMA overlaps existing region\n");
         return nullptr;
@@ -247,6 +280,11 @@ void VmaList::clear()
 
 /**
  * @brief Handle a demand page fault by allocating and mapping a page.
+ *
+ * @details
+ * Fixes RC-007 and RC-008: Holds VMA lock during lookup and iteration to
+ * prevent TOCTOU races. Copies VMA properties before releasing lock to
+ * avoid holding lock across pmm/map operations (which have their own locks).
  */
 FaultResult handle_demand_fault(VmaList *vma_list,
                                 u64 fault_addr,
@@ -261,13 +299,16 @@ FaultResult handle_demand_fault(VmaList *vma_list,
     // Page-align the fault address
     u64 page_addr = fault_addr & ~0xFFFULL;
 
-    // Find the VMA containing this address
-    Vma *vma = vma_list->find(fault_addr);
+    // Acquire VMA lock for the entire lookup phase
+    u64 saved_daif = vma_list->acquire_lock();
+
+    // Find the VMA containing this address (under lock)
+    Vma *vma = vma_list->find_locked(fault_addr);
     if (!vma)
     {
         // Check if this is a potential stack growth
         // Stack grows downward, so check if address is just below a stack VMA
-        Vma *v = vma_list->head();
+        Vma *v = vma_list->head_locked();
         while (v)
         {
             if (v->type == VmaType::STACK)
@@ -275,16 +316,33 @@ FaultResult handle_demand_fault(VmaList *vma_list,
                 // Stack growth: allow faults within one page of the stack bottom
                 if (fault_addr >= v->start - 4096 && fault_addr < v->start)
                 {
+                    // Check stack size limit (vma->end is fixed stack top, vma->start grows down)
+                    u64 new_stack_size = v->end - page_addr;
+                    if (new_stack_size > MAX_STACK_SIZE)
+                    {
+                        vma_list->release_lock(saved_daif);
+                        serial::puts("[vma] ERROR: Stack growth limit exceeded (");
+                        serial::put_dec(new_stack_size / 1024);
+                        serial::puts(" KB > ");
+                        serial::put_dec(MAX_STACK_SIZE / 1024);
+                        serial::puts(" KB)\n");
+                        return FaultResult::UNHANDLED;
+                    }
+
                     serial::puts("[vma] Growing stack from ");
                     serial::put_hex(v->start);
                     serial::puts(" to ");
                     serial::put_hex(page_addr);
                     serial::puts("\n");
 
-                    // Extend the VMA
+                    // Extend the VMA (under lock)
                     v->start = page_addr;
 
-                    // Allocate and map the new stack page
+                    // Copy VMA properties before releasing lock
+                    u32 stack_prot = v->prot;
+                    vma_list->release_lock(saved_daif);
+
+                    // Allocate and map the new stack page (outside lock)
                     u64 phys = pmm::alloc_page();
                     if (phys == 0)
                     {
@@ -292,14 +350,14 @@ FaultResult handle_demand_fault(VmaList *vma_list,
                         return FaultResult::ERROR;
                     }
 
-                    // Zero the page
-                    u8 *ptr = reinterpret_cast<u8 *>(phys);
+                    // Zero the page (convert physical to virtual address)
+                    u8 *ptr = reinterpret_cast<u8 *>(pmm::phys_to_virt(phys));
                     for (usize i = 0; i < 4096; i++)
                     {
                         ptr[i] = 0;
                     }
 
-                    if (!map_callback(page_addr, phys, v->prot))
+                    if (!map_callback(page_addr, phys, stack_prot))
                     {
                         pmm::free_page(phys);
                         return FaultResult::ERROR;
@@ -311,23 +369,31 @@ FaultResult handle_demand_fault(VmaList *vma_list,
             v = v->next;
         }
 
+        vma_list->release_lock(saved_daif);
         return FaultResult::UNHANDLED;
     }
 
-    // Check access permissions
+    // Check access permissions (under lock)
     if (vma->type == VmaType::GUARD)
     {
+        vma_list->release_lock(saved_daif);
         serial::puts("[vma] Access to guard page\n");
         return FaultResult::UNHANDLED;
     }
 
     if (is_write && !(vma->prot & vma_prot::WRITE))
     {
+        vma_list->release_lock(saved_daif);
         serial::puts("[vma] Write to read-only region\n");
         return FaultResult::UNHANDLED;
     }
 
-    // Allocate a physical page
+    // Copy VMA properties before releasing lock to avoid TOCTOU
+    u32 vma_prot_copy = vma->prot;
+    VmaType vma_type_copy = vma->type;
+    vma_list->release_lock(saved_daif);
+
+    // Allocate a physical page (outside lock to avoid lock ordering issues)
     u64 phys = pmm::alloc_page();
     if (phys == 0)
     {
@@ -335,10 +401,10 @@ FaultResult handle_demand_fault(VmaList *vma_list,
         return FaultResult::ERROR;
     }
 
-    // Initialize the page based on VMA type
-    u8 *ptr = reinterpret_cast<u8 *>(phys);
+    // Initialize the page based on VMA type (convert physical to virtual address)
+    u8 *ptr = reinterpret_cast<u8 *>(pmm::phys_to_virt(phys));
 
-    switch (vma->type)
+    switch (vma_type_copy)
     {
         case VmaType::ANONYMOUS:
         case VmaType::STACK:
@@ -359,13 +425,13 @@ FaultResult handle_demand_fault(VmaList *vma_list,
             break;
 
         case VmaType::GUARD:
-            // Should not reach here
+            // Should not reach here (checked above under lock)
             pmm::free_page(phys);
             return FaultResult::UNHANDLED;
     }
 
     // Map the page
-    if (!map_callback(page_addr, phys, vma->prot))
+    if (!map_callback(page_addr, phys, vma_prot_copy))
     {
         pmm::free_page(phys);
         serial::puts("[vma] ERROR: Failed to map page\n");

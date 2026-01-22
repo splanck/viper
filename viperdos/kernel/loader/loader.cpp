@@ -124,8 +124,8 @@ LoadResult load_elf(viper::Viper *v, const void *elf_data, usize elf_size)
             return result;
         }
 
-        // Zero the entire region first (for BSS)
-        u8 *dest = reinterpret_cast<u8 *>(phys);
+        // Zero the entire region first (for BSS) - convert physical to virtual address
+        u8 *dest = reinterpret_cast<u8 *>(pmm::phys_to_virt(phys));
         for (usize j = 0; j < pages * 4096; j++)
         {
             dest[j] = 0;
@@ -288,11 +288,11 @@ static u64 setup_user_stack(viper::AddressSpace *as)
         return 0;
     }
 
-    // Zero the stack
+    // Zero the stack (convert physical to virtual address)
     u64 phys = as->translate(stack_base);
     if (phys != 0)
     {
-        u8 *stack_mem = reinterpret_cast<u8 *>(phys);
+        u8 *stack_mem = reinterpret_cast<u8 *>(pmm::phys_to_virt(phys));
         for (usize i = 0; i < stack_size; i++)
         {
             stack_mem[i] = 0;

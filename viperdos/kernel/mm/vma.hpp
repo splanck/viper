@@ -116,6 +116,15 @@ struct Vma
 constexpr usize MAX_VMAS = 64;
 
 /**
+ * @brief Maximum stack size in bytes (8 MB).
+ *
+ * @details
+ * Limits how far a stack can grow via demand faulting. This prevents
+ * a runaway process from exhausting all memory through stack growth.
+ */
+constexpr u64 MAX_STACK_SIZE = 8 * 1024 * 1024;
+
+/**
  * @brief VMA list manager for an address space.
  *
  * @details
@@ -184,8 +193,17 @@ class VmaList
 
     /**
      * @brief Get the head of the VMA list.
+     * @warning Returns unlocked pointer - use head_locked() for concurrent access.
      */
     Vma *head()
+    {
+        return head_;
+    }
+
+    /**
+     * @brief Get the head of the VMA list (caller must hold lock).
+     */
+    Vma *head_locked()
     {
         return head_;
     }
@@ -197,6 +215,31 @@ class VmaList
     {
         return count_;
     }
+
+    /**
+     * @brief Acquire the VMA list lock.
+     * @return Saved DAIF value for release.
+     */
+    u64 acquire_lock()
+    {
+        return lock_.acquire();
+    }
+
+    /**
+     * @brief Release the VMA list lock.
+     * @param saved_daif Value returned by acquire_lock().
+     */
+    void release_lock(u64 saved_daif)
+    {
+        lock_.release(saved_daif);
+    }
+
+    /**
+     * @brief Find a VMA containing an address (caller must hold lock).
+     * @param addr Virtual address to look up.
+     * @return Pointer to VMA, or nullptr if not found.
+     */
+    Vma *find_locked(u64 addr);
 
     /**
      * @brief Clear all VMAs.

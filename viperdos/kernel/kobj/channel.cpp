@@ -31,11 +31,28 @@ Channel *Channel::create()
 /** @copydoc kobj::Channel::adopt */
 Channel *Channel::adopt(u32 channel_id, u8 endpoints)
 {
-    // Verify the channel exists.
-    channel::Channel *low_ch = channel::get(channel_id);
-    if (!low_ch)
+    // Atomically verify the channel exists and add references for the endpoints.
+    // This avoids TOCTOU race where channel could be closed between get() and use.
+    if (endpoints & ENDPOINT_SEND)
     {
-        return nullptr;
+        i64 result = channel::add_endpoint_ref(channel_id, true);
+        if (result != error::VOK)
+        {
+            return nullptr;
+        }
+    }
+    if (endpoints & ENDPOINT_RECV)
+    {
+        i64 result = channel::add_endpoint_ref(channel_id, false);
+        if (result != error::VOK)
+        {
+            // Rollback the send ref if we added it
+            if (endpoints & ENDPOINT_SEND)
+            {
+                channel::close_endpoint_by_id(channel_id, true);
+            }
+            return nullptr;
+        }
     }
 
     return new Channel(channel_id, endpoints);
@@ -44,24 +61,16 @@ Channel *Channel::adopt(u32 channel_id, u8 endpoints)
 /** @copydoc kobj::Channel::wrap */
 Channel *Channel::wrap(u32 channel_id, bool is_send)
 {
-    // Verify the channel exists
-    channel::Channel *low_ch = channel::get(channel_id);
-    if (!low_ch)
+    // Atomically verify the channel exists and increment reference count.
+    // This avoids TOCTOU race where channel could be closed between get() and ref++.
+    i64 result = channel::add_endpoint_ref(channel_id, is_send);
+    if (result != error::VOK)
     {
         return nullptr;
     }
 
-    // Create wrapper and increment appropriate reference count
+    // Create wrapper - reference count already incremented
     Channel *ch = new Channel(channel_id, is_send ? ENDPOINT_SEND : ENDPOINT_RECV);
-
-    if (is_send)
-    {
-        low_ch->send_refs++;
-    }
-    else
-    {
-        low_ch->recv_refs++;
-    }
 
     serial::puts("[kobj::channel] Wrapped channel ID ");
     serial::put_dec(channel_id);
@@ -77,17 +86,14 @@ Channel::~Channel()
 {
     if (channel_id_ != 0)
     {
-        channel::Channel *low_ch = channel::get(channel_id_);
-        if (low_ch)
+        // Use atomic close_endpoint_by_id to avoid TOCTOU race with get()
+        if (endpoints_ & ENDPOINT_SEND)
         {
-            if (endpoints_ & ENDPOINT_SEND)
-            {
-                channel::close_endpoint(low_ch, true);
-            }
-            if (endpoints_ & ENDPOINT_RECV)
-            {
-                channel::close_endpoint(low_ch, false);
-            }
+            channel::close_endpoint_by_id(channel_id_, true);
+        }
+        if (endpoints_ & ENDPOINT_RECV)
+        {
+            channel::close_endpoint_by_id(channel_id_, false);
         }
     }
 }

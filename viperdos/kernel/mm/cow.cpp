@@ -81,7 +81,7 @@ bool CowManager::init(u64 mem_start, u64 mem_end, PageInfo *page_info_array)
             return false;
         }
 
-        page_info_ = reinterpret_cast<PageInfo *>(info_phys);
+        page_info_ = reinterpret_cast<PageInfo *>(pmm::phys_to_virt(info_phys));
         serial::puts("[cow] Page info array at ");
         serial::put_hex(info_phys);
         serial::puts("\n");

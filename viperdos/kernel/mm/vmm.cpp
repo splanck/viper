@@ -426,6 +426,8 @@ void unmap_page(u64 virt)
 /** @copydoc vmm::virt_to_phys */
 u64 virt_to_phys(u64 virt)
 {
+    SpinlockGuard guard(vmm_lock);
+
     if (!pgt_root)
     {
         // Identity mapping fallback

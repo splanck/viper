@@ -239,9 +239,10 @@ static poll::EventType check_readiness(u32 handle, poll::EventType mask)
         return triggered; // No kernel networking
     }
 
-    // For channel events, look up handle in cap_table
+    // For channel events, look up handle in cap_table to get channel ID
+    // Use ID-based has_message/has_space which are TOCTOU-safe
+    u32 channel_id = 0;
     cap::Table *ct = viper::current_cap_table();
-    channel::Channel *ch = nullptr;
 
     if (ct && (poll::has_event(mask, poll::EventType::CHANNEL_READ) ||
                poll::has_event(mask, poll::EventType::CHANNEL_WRITE)))
@@ -249,52 +250,32 @@ static poll::EventType check_readiness(u32 handle, poll::EventType mask)
         cap::Entry *entry = ct->get(handle);
         if (entry && entry->kind == cap::Kind::Channel)
         {
-            // entry->object is kobj::Channel*, need to get underlying channel
+            // entry->object is kobj::Channel*, get the channel ID
             kobj::Channel *kch = static_cast<kobj::Channel *>(entry->object);
             if (kch)
             {
-                ch = channel::get(kch->id());
+                channel_id = kch->id();
             }
         }
     }
 
-    // Check channel read readiness (recv endpoint)
+    // Check channel read readiness (recv endpoint) using TOCTOU-safe ID lookup
     if (poll::has_event(mask, poll::EventType::CHANNEL_READ))
     {
-        if (ch)
+        u32 id_to_check = (channel_id != 0) ? channel_id : handle;
+        if (channel::has_message(id_to_check))
         {
-            if (channel::has_message(ch))
-            {
-                triggered = triggered | poll::EventType::CHANNEL_READ;
-            }
-        }
-        else
-        {
-            // Fallback to legacy channel ID lookup
-            if (channel::has_message(handle))
-            {
-                triggered = triggered | poll::EventType::CHANNEL_READ;
-            }
+            triggered = triggered | poll::EventType::CHANNEL_READ;
         }
     }
 
-    // Check channel write readiness (send endpoint)
+    // Check channel write readiness (send endpoint) using TOCTOU-safe ID lookup
     if (poll::has_event(mask, poll::EventType::CHANNEL_WRITE))
     {
-        if (ch)
+        u32 id_to_check = (channel_id != 0) ? channel_id : handle;
+        if (channel::has_space(id_to_check))
         {
-            if (channel::has_space(ch))
-            {
-                triggered = triggered | poll::EventType::CHANNEL_WRITE;
-            }
-        }
-        else
-        {
-            // Fallback to legacy channel ID lookup
-            if (channel::has_space(handle))
-            {
-                triggered = triggered | poll::EventType::CHANNEL_WRITE;
-            }
+            triggered = triggered | poll::EventType::CHANNEL_WRITE;
         }
     }
 

@@ -198,8 +198,10 @@ i64 timer_cancel(u32 timer_id)
 
     poll_lock.release(saved_daif);
 
-    // Wake up any waiter (outside lock to avoid nested lock issues)
-    if (waiter)
+    // Wake up any waiter (outside lock to avoid nested lock issues).
+    // Only wake if the waiter is actually blocked - if the task exited the
+    // sleep loop due to timer_expired() check, it may already be Running.
+    if (waiter && waiter->state == task::TaskState::Blocked)
     {
         waiter->state = task::TaskState::Ready;
         scheduler::enqueue(waiter);
@@ -233,27 +235,38 @@ i64 sleep_ms(u64 ms)
         return error::VERR_UNKNOWN;
     }
 
-    // Wait for timer
-    while (!timer_expired(timer_id))
+    // Wait for timer using proper sleep/wakeup protocol to avoid lost wakeups.
+    // The key invariant is: state must be set to Blocked BEFORE releasing the lock
+    // that protects the waiter registration. Otherwise, the waker can see the waiter
+    // and set state to Ready, which then gets overwritten back to Blocked.
+    while (true)
     {
-        // Register as waiter under lock
-        {
-            u64 saved_daif = poll_lock.acquire();
-            Timer *t = find_timer(timer_id);
-            if (t)
-            {
-                t->waiter = current;
-            }
-            poll_lock.release(saved_daif);
+        // Check under lock if timer expired - this avoids TOCTOU race with check_timers
+        u64 saved_daif = poll_lock.acquire();
+        Timer *t = find_timer(timer_id);
 
-            if (!t)
-            {
-                break; // Timer was cancelled
-            }
+        if (!t)
+        {
+            poll_lock.release(saved_daif);
+            break; // Timer was cancelled or already cleaned up
         }
 
+        u64 now = time_now_ms();
+        if (now >= t->expire_time)
+        {
+            poll_lock.release(saved_daif);
+            break; // Timer expired
+        }
+
+        // Register as waiter AND set state to Blocked while holding lock.
+        // This ensures that if check_timers() sees us as a waiter, we are
+        // guaranteed to be in Blocked state and the Ready transition is valid.
+        t->waiter = current;
         current->state = task::TaskState::Blocked;
+        poll_lock.release(saved_daif);
+
         task::yield();
+        // Loop will re-check timer expiration
     }
 
     // Clean up timer (acquires lock internally)
@@ -381,11 +394,15 @@ void check_timers()
     }
     poll_lock.release(saved_daif);
 
-    // Wake all expired timer waiters outside lock
+    // Wake all expired timer waiters outside lock.
+    // Only wake tasks that are actually blocked to avoid corrupting Running tasks.
     for (u32 i = 0; i < wake_count; i++)
     {
-        waiters_to_wake[i]->state = task::TaskState::Ready;
-        scheduler::enqueue(waiters_to_wake[i]);
+        if (waiters_to_wake[i]->state == task::TaskState::Blocked)
+        {
+            waiters_to_wake[i]->state = task::TaskState::Ready;
+            scheduler::enqueue(waiters_to_wake[i]);
+        }
     }
 }
 

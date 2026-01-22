@@ -92,7 +92,7 @@ void asid_free(u16 asid)
 /** @copydoc viper::AddressSpace::phys_to_virt */
 u64 *AddressSpace::phys_to_virt(u64 phys)
 {
-    return reinterpret_cast<u64 *>(phys);
+    return reinterpret_cast<u64 *>(pmm::phys_to_virt(phys));
 }
 
 /** @copydoc viper::AddressSpace::init */

@@ -898,13 +898,9 @@ static SyscallResult sys_channel_send(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u6
     }
 
     kobj::Channel *ch = static_cast<kobj::Channel *>(entry->object);
-    channel::Channel *low_ch = channel::get(ch->id());
-    if (!low_ch)
-    {
-        return SyscallResult::err(error::VERR_INVALID_HANDLE);
-    }
 
-    i64 result = channel::try_send(low_ch, data, size, handles, handle_count);
+    // Use TOCTOU-safe ID-based send that does atomic lookup under lock
+    i64 result = channel::try_send(ch->id(), data, size, handles, handle_count);
 
     if (result < 0)
     {
@@ -959,15 +955,12 @@ static SyscallResult sys_channel_recv(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u6
     }
 
     kobj::Channel *ch = static_cast<kobj::Channel *>(entry->object);
-    channel::Channel *low_ch = channel::get(ch->id());
-    if (!low_ch)
-    {
-        return SyscallResult::err(error::VERR_INVALID_HANDLE);
-    }
 
     cap::Handle tmp_handles[channel::MAX_HANDLES_PER_MSG];
     u32 tmp_handle_count = 0;
-    i64 result = channel::try_recv(low_ch, data, size, tmp_handles, &tmp_handle_count);
+
+    // Use TOCTOU-safe ID-based recv that does atomic lookup under lock
+    i64 result = channel::try_recv(ch->id(), data, size, tmp_handles, &tmp_handle_count);
 
     if (result < 0)
     {

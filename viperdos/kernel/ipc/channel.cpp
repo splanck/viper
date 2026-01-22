@@ -236,11 +236,13 @@ i64 set_capacity(Channel *ch, u32 new_capacity)
     return error::VOK;
 }
 
-/** @copydoc channel::try_send(Channel*, ...) */
-i64 try_send(Channel *ch, const void *data, u32 size, const cap::Handle *handles, u32 handle_count)
+/**
+ * @brief Internal try_send without lock acquisition.
+ * @note Caller must hold channel_lock.
+ */
+static i64 try_send_locked(
+    Channel *ch, const void *data, u32 size, const cap::Handle *handles, u32 handle_count)
 {
-    SpinlockGuard guard(channel_lock);
-
     if (!ch || ch->state != ChannelState::OPEN)
     {
         return error::VERR_INVALID_HANDLE;
@@ -330,12 +332,20 @@ i64 try_send(Channel *ch, const void *data, u32 size, const cap::Handle *handles
     return error::VOK;
 }
 
-/** @copydoc channel::try_recv(Channel*, ...) */
-i64 try_recv(
-    Channel *ch, void *buffer, u32 buffer_size, cap::Handle *out_handles, u32 *out_handle_count)
+/** @copydoc channel::try_send(Channel*, ...) */
+i64 try_send(Channel *ch, const void *data, u32 size, const cap::Handle *handles, u32 handle_count)
 {
     SpinlockGuard guard(channel_lock);
+    return try_send_locked(ch, data, size, handles, handle_count);
+}
 
+/**
+ * @brief Internal try_recv without lock acquisition.
+ * @note Caller must hold channel_lock.
+ */
+static i64 try_recv_locked(
+    Channel *ch, void *buffer, u32 buffer_size, cap::Handle *out_handles, u32 *out_handle_count)
+{
     if (!ch || ch->state != ChannelState::OPEN)
     {
         return error::VERR_INVALID_HANDLE;
@@ -414,18 +424,70 @@ i64 try_recv(
     return static_cast<i64>(actual_size);
 }
 
-/** @copydoc channel::try_send(u32, ...) - Legacy */
-i64 try_send(u32 channel_id, const void *data, u32 size)
+/** @copydoc channel::try_recv(Channel*, ...) */
+i64 try_recv(
+    Channel *ch, void *buffer, u32 buffer_size, cap::Handle *out_handles, u32 *out_handle_count)
 {
-    Channel *ch = get(channel_id);
-    return try_send(ch, data, size, nullptr, 0);
+    SpinlockGuard guard(channel_lock);
+    return try_recv_locked(ch, buffer, buffer_size, out_handles, out_handle_count);
 }
 
-/** @copydoc channel::try_recv(u32, ...) - Legacy */
+/** @copydoc channel::try_send(u32, const void*, u32) */
+i64 try_send(u32 channel_id, const void *data, u32 size)
+{
+    // Acquire lock once for the entire operation to avoid TOCTOU race
+    SpinlockGuard guard(channel_lock);
+    Channel *ch = find_channel_by_id_locked(channel_id);
+    if (!ch)
+    {
+        return error::VERR_INVALID_HANDLE;
+    }
+    // Use internal unlocked version since we already hold the lock
+    return try_send_locked(ch, data, size, nullptr, 0);
+}
+
+/** @copydoc channel::try_send(u32, ..., handles) */
+i64 try_send(u32 channel_id, const void *data, u32 size,
+             const cap::Handle *handles, u32 handle_count)
+{
+    // Acquire lock once for the entire operation to avoid TOCTOU race
+    SpinlockGuard guard(channel_lock);
+    Channel *ch = find_channel_by_id_locked(channel_id);
+    if (!ch)
+    {
+        return error::VERR_INVALID_HANDLE;
+    }
+    // Use internal unlocked version since we already hold the lock
+    return try_send_locked(ch, data, size, handles, handle_count);
+}
+
+/** @copydoc channel::try_recv(u32, void*, u32) */
 i64 try_recv(u32 channel_id, void *buffer, u32 buffer_size)
 {
-    Channel *ch = get(channel_id);
-    return try_recv(ch, buffer, buffer_size, nullptr, nullptr);
+    // Acquire lock once for the entire operation to avoid TOCTOU race
+    SpinlockGuard guard(channel_lock);
+    Channel *ch = find_channel_by_id_locked(channel_id);
+    if (!ch)
+    {
+        return error::VERR_INVALID_HANDLE;
+    }
+    // Use internal unlocked version since we already hold the lock
+    return try_recv_locked(ch, buffer, buffer_size, nullptr, nullptr);
+}
+
+/** @copydoc channel::try_recv(u32, ..., handles) */
+i64 try_recv(u32 channel_id, void *buffer, u32 buffer_size,
+             cap::Handle *out_handles, u32 *out_handle_count)
+{
+    // Acquire lock once for the entire operation to avoid TOCTOU race
+    SpinlockGuard guard(channel_lock);
+    Channel *ch = find_channel_by_id_locked(channel_id);
+    if (!ch)
+    {
+        return error::VERR_INVALID_HANDLE;
+    }
+    // Use internal unlocked version since we already hold the lock
+    return try_recv_locked(ch, buffer, buffer_size, out_handles, out_handle_count);
 }
 
 /**
@@ -750,6 +812,74 @@ bool has_space(u32 channel_id)
     SpinlockGuard guard(channel_lock);
     Channel *ch = find_channel_by_id_locked(channel_id);
     return ch ? ch->count < ch->capacity : false;
+}
+
+/** @copydoc channel::add_endpoint_ref */
+i64 add_endpoint_ref(u32 channel_id, bool is_send)
+{
+    SpinlockGuard guard(channel_lock);
+
+    Channel *ch = find_channel_by_id_locked(channel_id);
+    if (!ch)
+    {
+        return error::VERR_INVALID_HANDLE;
+    }
+
+    if (is_send)
+    {
+        ch->send_refs++;
+    }
+    else
+    {
+        ch->recv_refs++;
+    }
+
+    return error::VOK;
+}
+
+/** @copydoc channel::close_endpoint_by_id */
+i64 close_endpoint_by_id(u32 channel_id, bool is_send)
+{
+    SpinlockGuard guard(channel_lock);
+
+    Channel *ch = find_channel_by_id_locked(channel_id);
+    if (!ch)
+    {
+        return error::VERR_INVALID_HANDLE;
+    }
+
+    if (is_send)
+    {
+        if (ch->send_refs > 0)
+        {
+            ch->send_refs--;
+        }
+    }
+    else
+    {
+        if (ch->recv_refs > 0)
+        {
+            ch->recv_refs--;
+        }
+    }
+
+    // If both endpoints are closed, destroy the channel
+    if (ch->send_refs == 0 && ch->recv_refs == 0)
+    {
+        ch->state = ChannelState::CLOSED;
+
+        // Wake up ALL blocked tasks so they can observe the closed state
+        sched::wait_wake_all(&ch->send_waiters);
+        sched::wait_wake_all(&ch->recv_waiters);
+
+        // Clean up any pending messages with transferred handles
+        cleanup_pending_handles(ch);
+
+        ch->state = ChannelState::FREE;
+        ch->id = 0;
+    }
+
+    return error::VOK;
 }
 
 } // namespace channel

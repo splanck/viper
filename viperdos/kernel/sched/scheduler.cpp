@@ -507,7 +507,9 @@ task::Task *steal_task(u32 current_cpu)
 
                     victim.lock.release(saved_daif);
 
-                    per_cpu_sched[current_cpu].steals++;
+                    // Update steal counter atomically to avoid race with other CPUs
+                    // Since this is our own CPU's counter, we just need atomicity
+                    __atomic_fetch_add(&per_cpu_sched[current_cpu].steals, 1, __ATOMIC_RELAXED);
                     return t;
                 }
                 t = t->prev;

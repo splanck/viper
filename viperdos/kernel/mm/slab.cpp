@@ -86,6 +86,7 @@ Slab *allocate_slab(SlabCache *cache)
 
     // Initialize slab header
     slab->next = nullptr;
+    slab->cache = cache; // Set owning cache for O(1) ownership verification
     slab->in_use = 0;
     slab->total = cache->objects_per_slab;
 
@@ -226,7 +227,9 @@ void cache_destroy(SlabCache *cache)
         return;
     }
 
-    SpinlockGuard guard(slab_lock);
+    // Acquire global lock first, then per-cache lock (lock ordering)
+    SpinlockGuard global_guard(slab_lock);
+    SpinlockGuard cache_guard(cache->lock);
 
     // Free all slabs
     Slab *slab = cache->slab_list;
@@ -254,7 +257,7 @@ void *alloc(SlabCache *cache)
         return nullptr;
     }
 
-    SpinlockGuard guard(slab_lock);
+    SpinlockGuard guard(cache->lock);
 
     // Try to find a slab with free objects (check partial list first)
     Slab *slab = cache->partial_list;
@@ -331,26 +334,30 @@ void free(SlabCache *cache, void *ptr)
         return;
     }
 
-    SpinlockGuard guard(slab_lock);
+    SpinlockGuard guard(cache->lock);
 
     // Find the slab containing this object
     Slab *slab = find_slab_for_object(ptr);
 
-    // Verify the slab belongs to this cache by checking address range
-    bool found = false;
-    for (Slab *s = cache->slab_list; s; s = s->next)
-    {
-        if (s == slab)
-        {
-            found = true;
-            break;
-        }
-    }
-
-    if (!found)
+    // O(1) ownership verification using the slab's cache pointer
+    if (slab->cache != cache)
     {
         serial::puts("[slab] ERROR: Object does not belong to this cache!\n");
         return;
+    }
+
+    // Double-free detection: check if pointer is already in the free list
+    for (void *p = slab->free_list; p != nullptr; p = *reinterpret_cast<void **>(p))
+    {
+        if (p == ptr)
+        {
+            serial::puts("[slab] ERROR: Double-free detected! ptr=");
+            serial::put_hex(reinterpret_cast<u64>(ptr));
+            serial::puts(" cache=");
+            serial::puts(cache->name);
+            serial::puts("\n");
+            return; // Don't corrupt the free list
+        }
     }
 
     // Was this slab previously full?
@@ -389,7 +396,7 @@ void cache_stats(SlabCache *cache, u32 *out_slabs, u32 *out_objects_used, u32 *o
         return;
     }
 
-    SpinlockGuard guard(slab_lock);
+    SpinlockGuard guard(cache->lock);
 
     u32 slabs = 0;
     u32 used = 0;
@@ -415,13 +422,15 @@ void dump_stats()
 {
     serial::puts("[slab] === Slab Allocator Statistics ===\n");
 
-    SpinlockGuard guard(slab_lock);
+    // Global lock to iterate cache table, per-cache lock for stats
+    SpinlockGuard global_guard(slab_lock);
 
     for (usize i = 0; i < MAX_CACHES; i++)
     {
         if (caches[i].active)
         {
             SlabCache *cache = &caches[i];
+            SpinlockGuard cache_guard(cache->lock);
 
             u32 slabs = 0;
             u32 used = 0;

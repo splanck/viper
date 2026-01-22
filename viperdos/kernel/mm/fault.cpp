@@ -381,6 +381,9 @@ static void log_fault(const FaultInfo &info, const char *task_name)
  * only one reference (this process), we simply make it writable. If shared,
  * we allocate a new page, copy the data, and remap.
  *
+ * Fixes VMA TOCTOU: Holds VMA lock during lookup and copies properties
+ * before releasing to avoid use-after-free.
+ *
  * @param proc The current process.
  * @param fault_addr The faulting virtual address.
  * @return FaultResult indicating how the fault was handled.
@@ -390,10 +393,14 @@ static FaultResult handle_cow_fault(viper::Viper *proc, u64 fault_addr)
     // Align to page boundary
     u64 page_addr = fault_addr & ~0xFFFULL;
 
-    // Find the VMA containing this address
-    Vma *vma = proc->vma_list.find(fault_addr);
+    // Hold VMA lock during lookup and validation
+    u64 saved_daif = proc->vma_list.acquire_lock();
+
+    // Find the VMA containing this address (under lock)
+    Vma *vma = proc->vma_list.find_locked(fault_addr);
     if (!vma)
     {
+        proc->vma_list.release_lock(saved_daif);
         serial::puts("[cow] No VMA for address ");
         serial::put_hex(fault_addr);
         serial::puts("\n");
@@ -403,6 +410,7 @@ static FaultResult handle_cow_fault(viper::Viper *proc, u64 fault_addr)
     // Check if this VMA supports writes
     if (!(vma->prot & vma_prot::WRITE))
     {
+        proc->vma_list.release_lock(saved_daif);
         serial::puts("[cow] VMA is not writable\n");
         return FaultResult::UNHANDLED;
     }
@@ -410,9 +418,14 @@ static FaultResult handle_cow_fault(viper::Viper *proc, u64 fault_addr)
     // Check if this is a COW VMA
     if (!(vma->flags & vma_flags::COW))
     {
+        proc->vma_list.release_lock(saved_daif);
         serial::puts("[cow] VMA is not marked COW\n");
         return FaultResult::UNHANDLED;
     }
+
+    // Copy VMA properties before releasing lock
+    u32 vma_prot_copy = vma->prot;
+    proc->vma_list.release_lock(saved_daif);
 
     // Get the address space
     viper::AddressSpace *as = viper::get_address_space(proc);
@@ -447,13 +460,13 @@ static FaultResult handle_cow_fault(viper::Viper *proc, u64 fault_addr)
         // Unmap and remap with write permission
         as->unmap(page_addr, pmm::PAGE_SIZE);
 
-        // Convert VMA prot to address space prot
+        // Convert VMA prot to address space prot (using copied value)
         u32 as_prot = 0;
-        if (vma->prot & vma_prot::READ)
+        if (vma_prot_copy & vma_prot::READ)
             as_prot |= viper::prot::READ;
-        if (vma->prot & vma_prot::WRITE)
+        if (vma_prot_copy & vma_prot::WRITE)
             as_prot |= viper::prot::WRITE;
-        if (vma->prot & vma_prot::EXEC)
+        if (vma_prot_copy & vma_prot::EXEC)
             as_prot |= viper::prot::EXEC;
 
         if (!as->map(page_addr, old_phys, pmm::PAGE_SIZE, as_prot))
@@ -477,21 +490,19 @@ static FaultResult handle_cow_fault(viper::Viper *proc, u64 fault_addr)
         return FaultResult::ERROR;
     }
 
-    // Copy page contents
-    // Note: Using identity mapping - physical address = virtual address for kernel
-    lib::memcpy(
-        reinterpret_cast<void *>(new_phys), reinterpret_cast<void *>(old_phys), pmm::PAGE_SIZE);
+    // Copy page contents (convert physical to virtual addresses)
+    lib::memcpy(pmm::phys_to_virt(new_phys), pmm::phys_to_virt(old_phys), pmm::PAGE_SIZE);
 
     // Unmap old page
     as->unmap(page_addr, pmm::PAGE_SIZE);
 
-    // Map new page with full permissions
+    // Map new page with full permissions (using copied value)
     u32 as_prot = 0;
-    if (vma->prot & vma_prot::READ)
+    if (vma_prot_copy & vma_prot::READ)
         as_prot |= viper::prot::READ;
-    if (vma->prot & vma_prot::WRITE)
+    if (vma_prot_copy & vma_prot::WRITE)
         as_prot |= viper::prot::WRITE;
-    if (vma->prot & vma_prot::EXEC)
+    if (vma_prot_copy & vma_prot::EXEC)
         as_prot |= viper::prot::EXEC;
 
     if (!as->map(page_addr, new_phys, pmm::PAGE_SIZE, as_prot))

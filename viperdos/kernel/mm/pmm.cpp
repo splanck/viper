@@ -450,6 +450,8 @@ u64 get_total_pages()
 /** @copydoc pmm::get_free_pages */
 u64 get_free_pages()
 {
+    SpinlockGuard guard(pmm_lock);
+
     u64 total_free = 0;
 
     if (buddy_available)
@@ -458,10 +460,7 @@ u64 get_free_pages()
     }
 
     // Add bitmap free pages (pre-framebuffer region)
-    {
-        SpinlockGuard guard(pmm_lock);
-        total_free += free_count;
-    }
+    total_free += free_count;
 
     return total_free;
 }
@@ -469,6 +468,8 @@ u64 get_free_pages()
 /** @copydoc pmm::get_used_pages */
 u64 get_used_pages()
 {
+    SpinlockGuard guard(pmm_lock);
+
     u64 total_used = 0;
 
     if (buddy_available)

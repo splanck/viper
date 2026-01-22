@@ -53,8 +53,8 @@ Spinlock task_lock;
 Task tasks[MAX_TASKS];
 u32 next_task_id = 1;
 
-// Current running task (per-CPU in SMP, but simplified here)
-Task *current_task = nullptr;
+// Per-CPU current_task is stored in cpu::CpuData::current_task
+// Accessor functions current() and set_current() use cpu::current() to get/set it
 
 // Idle task (always task 0)
 Task *idle_task = nullptr;
@@ -284,7 +284,7 @@ void init()
     idle_task->context.x28 = 0;
 
     // Set current task to idle initially
-    current_task = idle_task;
+    set_current(idle_task);
 
     serial::puts("[task] Task subsystem initialized\n");
 }
@@ -341,7 +341,10 @@ Task *create(const char *name, TaskEntry entry, void *arg, u32 flags)
     t->trap_frame = nullptr;
     t->cpu_ticks = 0;
     t->switch_count = 0;
-    t->parent_id = current_task ? current_task->id : 0;
+    {
+        Task *curr = current();
+        t->parent_id = curr ? curr->id : 0;
+    }
 
     // Set up initial context
     // The stack grows downward, so we start at the top
@@ -388,14 +391,17 @@ Task *create(const char *name, TaskEntry entry, void *arg, u32 flags)
     t->user_stack = 0;
 
     // Initialize CWD - inherit from parent if exists, otherwise root
-    if (current_task && current_task->cwd[0])
     {
-        lib::strcpy_safe(t->cwd, current_task->cwd, sizeof(t->cwd));
-    }
-    else
-    {
-        t->cwd[0] = '/';
-        t->cwd[1] = '\0';
+        Task *curr = current();
+        if (curr && curr->cwd[0])
+        {
+            lib::strcpy_safe(t->cwd, curr->cwd, sizeof(t->cwd));
+        }
+        else
+        {
+            t->cwd[0] = '/';
+            t->cwd[1] = '\0';
+        }
     }
 
     // Initialize signal state (kernel tasks don't typically use signals)
@@ -413,7 +419,7 @@ Task *create(const char *name, TaskEntry entry, void *arg, u32 flags)
  */
 static void user_task_entry_trampoline(void *)
 {
-    Task *t = current_task;
+    Task *t = current();
     if (!t || !t->viper)
     {
         serial::puts("[task] PANIC: user_task_entry_trampoline with invalid task/viper\n");
@@ -500,7 +506,10 @@ Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack)
     t->trap_frame = nullptr;
     t->cpu_ticks = 0;
     t->switch_count = 0;
-    t->parent_id = current_task ? current_task->id : 0;
+    {
+        Task *curr = current();
+        t->parent_id = curr ? curr->id : 0;
+    }
 
     // Set up user task fields
     t->viper = reinterpret_cast<struct ViperProcess *>(viper_ptr);
@@ -508,14 +517,17 @@ Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack)
     t->user_stack = stack;
 
     // Initialize CWD - inherit from parent if exists, otherwise root
-    if (current_task && current_task->cwd[0])
     {
-        lib::strcpy_safe(t->cwd, current_task->cwd, sizeof(t->cwd));
-    }
-    else
-    {
-        t->cwd[0] = '/';
-        t->cwd[1] = '\0';
+        Task *curr = current();
+        if (curr && curr->cwd[0])
+        {
+            lib::strcpy_safe(t->cwd, curr->cwd, sizeof(t->cwd));
+        }
+        else
+        {
+            t->cwd[0] = '/';
+            t->cwd[1] = '\0';
+        }
     }
 
     // Initialize signal state for user task
@@ -525,7 +537,7 @@ Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack)
     u64 *stack_ptr = reinterpret_cast<u64 *>(t->kernel_stack_top);
     stack_ptr -= 2;
     stack_ptr[0] = reinterpret_cast<u64>(user_task_entry_trampoline);
-    stack_ptr[1] = 0; // arg = nullptr (we use current_task instead)
+    stack_ptr[1] = 0; // arg = nullptr (we use current() instead)
 
     t->context.x30 = reinterpret_cast<u64>(task_entry_trampoline);
     t->context.sp = reinterpret_cast<u64>(stack_ptr);
@@ -557,19 +569,19 @@ Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack)
 /** @copydoc task::current */
 Task *current()
 {
-    return current_task;
+    return static_cast<Task *>(cpu::current()->current_task);
 }
 
 /** @copydoc task::set_current */
 void set_current(Task *t)
 {
-    current_task = t;
+    cpu::current()->current_task = t;
 }
 
 /** @copydoc task::exit */
 void exit(i32 code)
 {
-    Task *t = current_task;
+    Task *t = current();
     if (!t)
         return;
 
@@ -780,7 +792,7 @@ u32 list_tasks(TaskInfo *buffer, u32 max_count)
         return 0;
     }
 
-    Task *curr = current_task;
+    Task *curr = current();
     u32 count = 0;
 
     // Check if there's a current viper (user process)
@@ -881,7 +893,7 @@ u32 reap_exited()
             continue;
 
         // Don't reap current task (shouldn't be exited anyway)
-        if (&t == current_task)
+        if (&t == current())
             continue;
 
         if (t.state == TaskState::Exited)
@@ -932,7 +944,7 @@ void destroy(Task *t)
         return;
 
     // Can't destroy current task
-    if (t == current_task)
+    if (t == current())
     {
         serial::puts("[task] ERROR: Cannot destroy current task\n");
         return;
@@ -1024,14 +1036,20 @@ i32 kill(u32 pid, i32 signal)
             serial::put_dec(signal);
             serial::puts("\n");
 
-            // If blocked, wake it up first
+            // If blocked, remove from wait queue but DO NOT enqueue to ready queue.
+            // This avoids the race where wakeup() enqueues, then we set state to Exited,
+            // leaving an Exited task in the ready queue (RC-016).
             if (t->state == TaskState::Blocked)
             {
-                wakeup(t);
+                if (t->wait_channel)
+                {
+                    sched::WaitQueue *wq = reinterpret_cast<sched::WaitQueue *>(t->wait_channel);
+                    sched::wait_dequeue(wq, t);
+                }
             }
 
             // If this is the current task, call exit
-            if (t == current_task)
+            if (t == current())
             {
                 exit(-signal); // Exit with negative signal as code
                 // exit() never returns

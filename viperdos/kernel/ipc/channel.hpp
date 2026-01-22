@@ -224,14 +224,34 @@ i64 try_recv(
     Channel *ch, void *buffer, u32 buffer_size, cap::Handle *out_handles, u32 *out_handle_count);
 
 /**
- * @brief Legacy try_send using channel ID (for backward compatibility).
+ * @brief Try send using channel ID (TOCTOU-safe).
+ *
+ * @details
+ * Looks up the channel by ID under the lock and performs the send atomically,
+ * avoiding TOCTOU races with channel closure.
  */
 i64 try_send(u32 channel_id, const void *data, u32 size);
 
 /**
- * @brief Legacy try_recv using channel ID (for backward compatibility).
+ * @brief Try send with handle transfer using channel ID (TOCTOU-safe).
+ *
+ * @details
+ * Looks up the channel by ID under the lock and performs the send atomically,
+ * including handle transfer, avoiding TOCTOU races with channel closure.
+ */
+i64 try_send(u32 channel_id, const void *data, u32 size,
+             const cap::Handle *handles, u32 handle_count);
+
+/**
+ * @brief Try recv using channel ID (TOCTOU-safe).
  */
 i64 try_recv(u32 channel_id, void *buffer, u32 buffer_size);
+
+/**
+ * @brief Try recv with handle transfer using channel ID (TOCTOU-safe).
+ */
+i64 try_recv(u32 channel_id, void *buffer, u32 buffer_size,
+             cap::Handle *out_handles, u32 *out_handle_count);
 
 /**
  * @brief Blocking send (legacy interface).
@@ -275,7 +295,37 @@ bool has_space(u32 channel_id);
 
 /**
  * @brief Look up an open channel by ID.
+ *
+ * @warning The returned pointer is only valid while the caller holds the
+ * channel lock. If you need to use the channel outside a locked section,
+ * use add_endpoint_ref() / close_endpoint_by_id() for reference counting.
  */
 Channel *get(u32 channel_id);
+
+/**
+ * @brief Atomically increment endpoint reference count.
+ *
+ * @details
+ * Looks up the channel by ID and increments the appropriate reference count
+ * under the channel lock, avoiding TOCTOU races.
+ *
+ * @param channel_id Channel ID to look up.
+ * @param is_send True to increment send_refs, false for recv_refs.
+ * @return @ref error::VOK on success, or negative error code.
+ */
+i64 add_endpoint_ref(u32 channel_id, bool is_send);
+
+/**
+ * @brief Atomically close an endpoint by channel ID.
+ *
+ * @details
+ * Looks up the channel by ID and closes the endpoint under the lock,
+ * avoiding TOCTOU races.
+ *
+ * @param channel_id Channel ID to look up.
+ * @param is_send True to close send endpoint, false for recv.
+ * @return @ref error::VOK on success, or negative error code.
+ */
+i64 close_endpoint_by_id(u32 channel_id, bool is_send);
 
 } // namespace channel

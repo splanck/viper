@@ -16,6 +16,7 @@
 #pragma once
 
 #include "../include/types.hpp"
+#include "../lib/spinlock.hpp"
 
 /**
  * @file slab.hpp
@@ -47,6 +48,9 @@
 namespace slab
 {
 
+// Forward declaration for Slab struct
+struct SlabCache;
+
 /** @brief Maximum name length for a slab cache. */
 constexpr usize MAX_CACHE_NAME = 32;
 
@@ -63,10 +67,11 @@ constexpr usize MAX_CACHES = 16;
  */
 struct Slab
 {
-    Slab *next;      ///< Next slab in the cache's slab list
-    void *free_list; ///< Head of free object list within this slab
-    u32 in_use;      ///< Number of objects currently allocated
-    u32 total;       ///< Total number of objects in this slab
+    Slab *next;        ///< Next slab in the cache's slab list
+    SlabCache *cache;  ///< Owning cache (for O(1) ownership verification)
+    void *free_list;   ///< Head of free object list within this slab
+    u32 in_use;        ///< Number of objects currently allocated
+    u32 total;         ///< Total number of objects in this slab
 };
 
 /**
@@ -86,6 +91,7 @@ struct SlabCache
     u64 alloc_count;           ///< Total allocations (statistics)
     u64 free_count;            ///< Total frees (statistics)
     bool active;               ///< Whether this cache slot is in use
+    mutable Spinlock lock;     ///< Per-cache lock for SMP scalability
 };
 
 /**
