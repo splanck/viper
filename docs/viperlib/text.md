@@ -12,6 +12,8 @@
 - [Viper.Text.Pattern](#vipertextpattern)
 - [Viper.Text.Template](#vipertexttemplate)
 - [Viper.Text.StringBuilder](#vipertextstringbuilder)
+- [Viper.Data.Xml](#viperdataxml)
+- [Viper.Data.Yaml](#viperdatayaml)
 
 ---
 
@@ -555,6 +557,288 @@ FOR i = 1 TO 1000
     result = result + "item "  ' Creates new string each iteration
 NEXT i
 ```
+
+---
+
+## Viper.Data.Xml
+
+XML parsing, manipulation, and formatting with DOM-style API.
+
+**Type:** Static utility class with node objects
+
+### Parsing Methods
+
+| Method            | Signature         | Description                                      |
+|-------------------|-------------------|--------------------------------------------------|
+| `Parse(text)`     | `Object(String)`  | Parse XML string into a node tree                |
+| `IsValid(text)`   | `Boolean(String)` | Check if string is valid XML                     |
+| `Error()`         | `String()`        | Get last parse error message (empty if none)     |
+
+### Node Creation
+
+| Method              | Signature        | Description                                |
+|---------------------|------------------|--------------------------------------------|
+| `Element(tagName)`  | `Object(String)` | Create a new element node                  |
+| `Text(content)`     | `Object(String)` | Create a text node                         |
+| `Comment(content)`  | `Object(String)` | Create a comment node                      |
+| `Cdata(content)`    | `Object(String)` | Create a CDATA section node                |
+
+### Node Properties
+
+| Method          | Signature          | Description                                       |
+|-----------------|--------------------|---------------------------------------------------|
+| `NodeType(n)`   | `Integer(Object)`  | Get node type (1=element, 3=text, 4=cdata, 8=comment) |
+| `Tag(n)`        | `String(Object)`   | Get element tag name (empty for non-elements)     |
+| `Content(n)`    | `String(Object)`   | Get text/comment/cdata content                    |
+| `TextContent(n)`| `String(Object)`   | Get all descendant text content concatenated      |
+
+### Attribute Methods
+
+| Method                 | Signature                  | Description                            |
+|------------------------|----------------------------|----------------------------------------|
+| `Attr(node, name)`     | `String(Object, String)`   | Get attribute value (empty if missing) |
+| `HasAttr(node, name)`  | `Boolean(Object, String)`  | Check if attribute exists              |
+| `SetAttr(node, n, v)`  | `Void(Object, String, String)` | Set or add attribute              |
+| `RemoveAttr(node, n)`  | `Boolean(Object, String)`  | Remove attribute; returns true if existed |
+| `AttrNames(node)`      | `Seq(Object)`              | Get all attribute names as a Seq       |
+
+### Child Navigation
+
+| Method                    | Signature                  | Description                            |
+|---------------------------|----------------------------|----------------------------------------|
+| `Children(node)`          | `Seq(Object)`              | Get all child nodes                    |
+| `ChildCount(node)`        | `Integer(Object)`          | Get number of children                 |
+| `ChildAt(node, index)`    | `Object(Object, Integer)`  | Get child at index (0-based)           |
+| `Child(node, tagName)`    | `Object(Object, String)`   | Get first child element with tag       |
+| `ChildrenByTag(node, tag)`| `Seq(Object, String)`      | Get all children with tag name         |
+
+### Tree Modification
+
+| Method                    | Signature                        | Description                           |
+|---------------------------|----------------------------------|---------------------------------------|
+| `Append(parent, child)`   | `Void(Object, Object)`           | Append child to parent                |
+| `Insert(parent, i, child)`| `Void(Object, Integer, Object)`  | Insert child at index                 |
+| `Remove(parent, child)`   | `Boolean(Object, Object)`        | Remove child; returns true if found   |
+| `RemoveAt(parent, index)` | `Void(Object, Integer)`          | Remove child at index                 |
+| `SetText(element, text)`  | `Void(Object, String)`           | Set element's text content            |
+
+### Tree Navigation
+
+| Method              | Signature        | Description                                |
+|---------------------|------------------|--------------------------------------------|
+| `Parent(node)`      | `Object(Object)` | Get parent node (null if root)             |
+| `Root(node)`        | `Object(Object)` | Get root node of the tree                  |
+| `Find(node, tag)`   | `Object(Object, String)` | Find first descendant with tag     |
+| `FindAll(node, tag)`| `Seq(Object, String)` | Find all descendants with tag         |
+
+### Formatting
+
+| Method                  | Signature                   | Description                              |
+|-------------------------|-----------------------------|------------------------------------------|
+| `Format(node)`          | `String(Object)`            | Format as compact XML string             |
+| `FormatPretty(node, i)` | `String(Object, Integer)`   | Format with indentation (i spaces)       |
+
+### Utility Methods
+
+| Method          | Signature        | Description                                    |
+|-----------------|------------------|------------------------------------------------|
+| `Escape(text)`  | `String(String)` | Escape special XML characters (&lt; &gt; etc.) |
+| `Unescape(text)`| `String(String)` | Unescape XML entities                          |
+
+### Example
+
+```basic
+' Parse XML
+DIM xml AS STRING = "<root><item id=""1"">Hello</item><item id=""2"">World</item></root>"
+DIM doc AS OBJECT = Viper.Data.Xml.Parse(xml)
+
+' Navigate the tree
+DIM root AS OBJECT = doc
+PRINT Viper.Data.Xml.Tag(root)           ' Output: "root"
+PRINT Viper.Data.Xml.ChildCount(root)    ' Output: 2
+
+' Get children by tag
+DIM items AS OBJECT = Viper.Data.Xml.ChildrenByTag(root, "item")
+FOR i = 0 TO items.Len - 1
+    DIM item AS OBJECT = items.Get(i)
+    DIM id AS STRING = Viper.Data.Xml.Attr(item, "id")
+    DIM text AS STRING = Viper.Data.Xml.TextContent(item)
+    PRINT "Item "; id; ": "; text
+NEXT i
+
+' Build XML programmatically
+DIM newRoot AS OBJECT = Viper.Data.Xml.Element("config")
+DIM setting AS OBJECT = Viper.Data.Xml.Element("setting")
+Viper.Data.Xml.SetAttr(setting, "name", "debug")
+Viper.Data.Xml.SetAttr(setting, "value", "true")
+Viper.Data.Xml.Append(newRoot, setting)
+
+' Format with pretty printing
+DIM output AS STRING = Viper.Data.Xml.FormatPretty(newRoot, 2)
+PRINT output
+```
+
+### Node Types
+
+| Value | Type    | Description                               |
+|-------|---------|-------------------------------------------|
+| 1     | Element | An XML element (e.g., `<tag>`)            |
+| 3     | Text    | Text content inside an element            |
+| 4     | CDATA   | CDATA section (`<![CDATA[...]]>`)         |
+| 8     | Comment | XML comment (`<!-- ... -->`)              |
+
+### Use Cases
+
+- **Configuration files:** Read/write XML config files
+- **Data interchange:** Parse XML from web services
+- **Document processing:** Transform XML documents
+- **SOAP/REST APIs:** Handle XML-based protocols
+
+---
+
+## Viper.Data.Yaml
+
+YAML parsing and formatting for configuration files and data serialization.
+
+**Type:** Static utility class
+
+### Parsing Methods
+
+| Method            | Signature         | Description                                      |
+|-------------------|-------------------|--------------------------------------------------|
+| `Parse(text)`     | `Object(String)`  | Parse YAML string into a value tree              |
+| `IsValid(text)`   | `Boolean(String)` | Check if string is valid YAML                    |
+| `Error()`         | `String()`        | Get last parse error message (empty if none)     |
+
+### Formatting Methods
+
+| Method                 | Signature                  | Description                              |
+|------------------------|----------------------------|------------------------------------------|
+| `Format(value)`        | `String(Object)`           | Format value as YAML string              |
+| `FormatIndent(val, n)` | `String(Object, Integer)`  | Format with custom indentation (n spaces)|
+
+### Type Information
+
+| Method           | Signature         | Description                                       |
+|------------------|-------------------|---------------------------------------------------|
+| `TypeOf(value)`  | `String(Object)`  | Get type: "null", "bool", "int", "float", "str", "list", "map" |
+
+### Value Access
+
+YAML values are returned as native Viper types:
+
+| YAML Type   | Viper Type         | Access Method                      |
+|-------------|--------------------|------------------------------------|
+| null        | null               | Check with `value = NULL`          |
+| bool        | Boolean (boxed)    | `Viper.Unbox.I1(value)`            |
+| int         | Integer (boxed)    | `Viper.Unbox.I64(value)`           |
+| float       | Double (boxed)     | `Viper.Unbox.F64(value)`           |
+| string      | String (boxed)     | `Viper.Unbox.Str(value)`           |
+| list/array  | Seq                | `value.Get(index)`, `value.Len`    |
+| map/object  | Map                | `value.Get(key)`, `value.Keys()`   |
+
+### Example
+
+```basic
+' Parse YAML
+DIM yaml AS STRING = "name: John Doe" + CHR(10) + _
+                     "age: 30" + CHR(10) + _
+                     "active: true" + CHR(10) + _
+                     "skills:" + CHR(10) + _
+                     "  - Python" + CHR(10) + _
+                     "  - JavaScript"
+
+DIM data AS OBJECT = Viper.Data.Yaml.Parse(yaml)
+
+' Access values (data is a Map)
+DIM name AS STRING = Viper.Unbox.Str(data.Get("name"))
+DIM age AS INTEGER = Viper.Unbox.I64(data.Get("age"))
+DIM active AS INTEGER = Viper.Unbox.I1(data.Get("active"))
+PRINT "Name: "; name                ' Output: John Doe
+PRINT "Age: "; age                  ' Output: 30
+PRINT "Active: "; active            ' Output: 1 (true)
+
+' Access nested list
+DIM skills AS OBJECT = data.Get("skills")  ' This is a Seq
+PRINT "Skills count: "; skills.Len         ' Output: 2
+FOR i = 0 TO skills.Len - 1
+    PRINT "  - "; Viper.Unbox.Str(skills.Get(i))
+NEXT i
+
+' Check type before accessing
+DIM value AS OBJECT = data.Get("age")
+DIM valueType AS STRING = Viper.Data.Yaml.TypeOf(value)
+IF valueType = "int" THEN
+    PRINT "Age is an integer: "; Viper.Unbox.I64(value)
+END IF
+```
+
+### Building and Formatting YAML
+
+```basic
+' Build a structure programmatically
+DIM config AS OBJECT = Viper.Collections.Map.New()
+config.Set("database", Viper.Box.Str("postgresql"))
+config.Set("port", Viper.Box.I64(5432))
+config.Set("enabled", Viper.Box.I1(1))
+
+DIM hosts AS OBJECT = Viper.Collections.Seq.New()
+hosts.Push(Viper.Box.Str("localhost"))
+hosts.Push(Viper.Box.Str("db.example.com"))
+config.Set("hosts", hosts)
+
+' Format as YAML
+DIM output AS STRING = Viper.Data.Yaml.Format(config)
+PRINT output
+' Output:
+' database: postgresql
+' port: 5432
+' enabled: true
+' hosts:
+'   - localhost
+'   - db.example.com
+```
+
+### Validation Example
+
+```basic
+DIM input AS STRING = "invalid: yaml: content: ["
+
+IF Viper.Data.Yaml.IsValid(input) THEN
+    DIM data AS OBJECT = Viper.Data.Yaml.Parse(input)
+    ' Process data...
+ELSE
+    PRINT "Invalid YAML: "; Viper.Data.Yaml.Error()
+END IF
+```
+
+### YAML Features Supported
+
+- **Scalars:** Strings, integers, floats, booleans, null
+- **Collections:** Lists (sequences) and maps (dictionaries)
+- **Multi-line strings:** Literal (`|`) and folded (`>`) style
+- **Anchors and aliases:** `&anchor` and `*alias`
+- **Flow style:** Inline `[1, 2, 3]` and `{key: value}`
+- **Comments:** Lines starting with `#`
+- **Multiple documents:** Separated by `---`
+
+### YAML vs JSON
+
+| Feature           | YAML                  | JSON                  |
+|-------------------|-----------------------|-----------------------|
+| Human readable    | Very (indentation)    | Moderate              |
+| Comments          | Yes (`#`)             | No                    |
+| Multi-line strings| Yes (`\|`, `>`)       | Escape sequences      |
+| Quotes required   | Often optional        | Always for strings    |
+| Use case          | Config files          | Data interchange      |
+
+### Use Cases
+
+- **Configuration files:** Application settings, deployment configs
+- **Data serialization:** Human-readable data storage
+- **CI/CD pipelines:** GitHub Actions, GitLab CI, etc.
+- **Kubernetes/Docker:** Container orchestration configs
+- **Documentation:** Structured metadata in docs
 
 ---
 

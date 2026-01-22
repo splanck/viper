@@ -14,6 +14,7 @@
 - [Viper.Collections.Queue](#vipercollectionsqueue)
 - [Viper.Collections.Ring](#vipercollectionsring)
 - [Viper.Collections.Seq](#vipercollectionsseq)
+- [Viper.Collections.Set](#vipercollectionsset)
 - [Viper.Collections.Stack](#vipercollectionsstack)
 - [Viper.Collections.TreeMap](#vipercollectionstreemap)
 
@@ -762,6 +763,132 @@ DIM sum AS INTEGER = numbers.Fold(0, FUNCTION(acc, n) RETURN acc + n)
 - **Transformation:** Use `Apply()` to transform all elements
 - **Queries:** Use `All()`, `Any()`, `None()` for predicate checks
 - **Aggregation:** Use `Fold()` to reduce to a single value
+
+---
+
+## Viper.Collections.Set
+
+A generic set data structure for storing unique objects. Efficiently handles membership testing, set operations (union,
+intersection, difference), and subset/superset queries. Unlike `Bag` which stores strings, `Set` stores arbitrary objects.
+
+**Type:** Instance (obj)
+**Constructor:** `Viper.Collections.Set.New()`
+
+### Properties
+
+| Property  | Type    | Description                       |
+|-----------|---------|-----------------------------------|
+| `Len`     | Integer | Number of objects in the set      |
+| `IsEmpty` | Boolean | True if set contains no objects   |
+
+### Methods
+
+| Method              | Signature         | Description                                                    |
+|---------------------|-------------------|----------------------------------------------------------------|
+| `Put(obj)`          | `Boolean(Object)` | Add an object; returns true if new, false if already present   |
+| `Drop(obj)`         | `Boolean(Object)` | Remove an object; returns true if removed, false if not found  |
+| `Has(obj)`          | `Boolean(Object)` | Check if object is in the set                                  |
+| `Clear()`           | `Void()`          | Remove all objects from the set                                |
+| `Items()`           | `Seq()`           | Get all objects as a Seq (order undefined)                     |
+| `Merge(other)`      | `Set(Set)`        | Return new set with union of both sets                         |
+| `Common(other)`     | `Set(Set)`        | Return new set with intersection of both sets                  |
+| `Diff(other)`       | `Set(Set)`        | Return new set with elements in this but not other             |
+| `IsSubset(other)`   | `Boolean(Set)`    | True if this set is a subset of other                          |
+| `IsSuperset(other)` | `Boolean(Set)`    | True if this set is a superset of other                        |
+| `IsDisjoint(other)` | `Boolean(Set)`    | True if sets have no elements in common                        |
+
+### Notes
+
+- Objects are compared by reference identity, not value equality
+- Order of objects returned by `Items()` is not guaranteed (hash table)
+- Set operations (`Merge`, `Common`, `Diff`) return new sets; originals are unchanged
+- Uses object identity hash for O(1) average-case operations
+- Automatically resizes when load factor exceeds threshold
+
+### Example
+
+```basic
+' Create and populate a set
+DIM items AS OBJECT = Viper.Collections.Set.New()
+DIM a AS OBJECT = Viper.Box.I64(1)
+DIM b AS OBJECT = Viper.Box.I64(2)
+DIM c AS OBJECT = Viper.Box.I64(3)
+
+items.Put(a)
+items.Put(b)
+items.Put(c)
+PRINT items.Len           ' Output: 3
+
+' Duplicate add returns false
+DIM wasNew AS INTEGER = items.Put(a)
+PRINT wasNew              ' Output: 0 (already present)
+
+' Membership testing
+PRINT items.Has(b)        ' Output: 1 (true)
+DIM d AS OBJECT = Viper.Box.I64(4)
+PRINT items.Has(d)        ' Output: 0 (false)
+
+' Remove an element
+DIM removed AS INTEGER = items.Drop(b)
+PRINT removed             ' Output: 1 (was removed)
+PRINT items.Has(b)        ' Output: 0 (no longer present)
+
+' Set operations
+DIM setA AS OBJECT = Viper.Collections.Set.New()
+DIM x AS OBJECT = Viper.Box.Str("x")
+DIM y AS OBJECT = Viper.Box.Str("y")
+DIM z AS OBJECT = Viper.Box.Str("z")
+DIM w AS OBJECT = Viper.Box.Str("w")
+setA.Put(x)
+setA.Put(y)
+setA.Put(z)
+
+DIM setB AS OBJECT = Viper.Collections.Set.New()
+setB.Put(y)
+setB.Put(z)
+setB.Put(w)
+
+' Union: elements in either set
+DIM merged AS OBJECT = setA.Merge(setB)
+PRINT merged.Len          ' Output: 4 (x, y, z, w)
+
+' Intersection: elements in both sets
+DIM common AS OBJECT = setA.Common(setB)
+PRINT common.Len          ' Output: 2 (y, z)
+
+' Difference: elements in A but not B
+DIM diff AS OBJECT = setA.Diff(setB)
+PRINT diff.Len            ' Output: 1 (x only)
+
+' Subset/superset checks
+DIM subset AS OBJECT = Viper.Collections.Set.New()
+subset.Put(y)
+subset.Put(z)
+PRINT subset.IsSubset(setA)     ' Output: 1 (true)
+PRINT setA.IsSuperset(subset)   ' Output: 1 (true)
+
+' Disjoint check
+DIM disjoint AS OBJECT = Viper.Collections.Set.New()
+disjoint.Put(w)
+PRINT setA.IsDisjoint(disjoint) ' Output: 1 (true - no common elements)
+```
+
+### Set vs Bag
+
+| Feature          | Set                        | Bag                     |
+|------------------|----------------------------|-------------------------|
+| Element type     | Any object                 | Strings only            |
+| Comparison       | Reference identity         | String value            |
+| Subset/Superset  | Yes                        | No                      |
+| Disjoint check   | Yes                        | No                      |
+
+### Use Cases
+
+- **Object deduplication:** Track unique object instances
+- **Graph algorithms:** Track visited nodes
+- **Relationship modeling:** Many-to-many relationships
+- **Set mathematics:** Compute unions, intersections, and differences
+- **Access control:** Track permissions or capabilities
 
 ---
 

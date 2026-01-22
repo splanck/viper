@@ -9,6 +9,7 @@
 - [Viper.Crypto.Hash](#vipercryptohash)
 - [Viper.Crypto.KeyDerive](#vipercryptokeyderive)
 - [Viper.Crypto.Rand](#vipercryptorand)
+- [Viper.Crypto.Tls](#vipercryptotls)
 
 ---
 
@@ -309,8 +310,160 @@ END SUB
 
 ---
 
+## Viper.Crypto.Tls
+
+TLS (Transport Layer Security) client for encrypted TCP connections. Uses TLS 1.3 with modern cipher suites.
+
+**Type:** Instance class
+
+**Constructors:**
+
+- `Viper.Crypto.Tls.Connect(host, port)` - Connect with TLS to host:port
+- `Viper.Crypto.Tls.ConnectFor(host, port, timeoutMs)` - Connect with timeout
+
+### Properties
+
+| Property | Type    | Description                                |
+|----------|---------|--------------------------------------------|
+| `Host`   | String  | Remote host name (read-only)               |
+| `Port`   | Integer | Remote port number (read-only)             |
+| `IsOpen` | Boolean | True if connection is open (read-only)     |
+
+### Send Methods
+
+| Method          | Returns | Description                                |
+|-----------------|---------|--------------------------------------------|
+| `Send(data)`    | Integer | Send Bytes, return number of bytes sent    |
+| `SendStr(text)` | Integer | Send string as UTF-8, return bytes sent    |
+
+### Receive Methods
+
+| Method             | Returns | Description                                |
+|--------------------|---------|--------------------------------------------|
+| `Recv(maxBytes)`   | Bytes   | Receive up to maxBytes (may return fewer)  |
+| `RecvStr(maxBytes)`| String  | Receive up to maxBytes as UTF-8 string     |
+
+### Control Methods
+
+| Method    | Returns | Description                                       |
+|-----------|---------|---------------------------------------------------|
+| `Close()` | void    | Close the TLS connection                          |
+| `Error()` | String  | Get last error message (empty if no error)        |
+
+### TLS Implementation
+
+The TLS implementation uses:
+
+- **Protocol:** TLS 1.3 (RFC 8446)
+- **Key Exchange:** X25519 (Curve25519 ECDH)
+- **Cipher:** ChaCha20-Poly1305 AEAD
+- **Hash:** SHA-256
+- **Certificate Verification:** Enabled by default
+
+### Example
+
+```basic
+' Connect to HTTPS server
+DIM conn AS OBJECT = Viper.Crypto.Tls.Connect("example.com", 443)
+
+IF conn.IsOpen THEN
+    PRINT "Connected to "; conn.Host; ":"; conn.Port
+
+    ' Send HTTP request over TLS
+    DIM request AS STRING = "GET / HTTP/1.1" + CHR(13) + CHR(10) + _
+                            "Host: example.com" + CHR(13) + CHR(10) + _
+                            "Connection: close" + CHR(13) + CHR(10) + _
+                            CHR(13) + CHR(10)
+    conn.SendStr(request)
+
+    ' Receive response
+    DIM response AS STRING = conn.RecvStr(4096)
+    PRINT response
+
+    conn.Close()
+ELSE
+    PRINT "TLS Error: "; conn.Error()
+END IF
+```
+
+### Timeout Example
+
+```basic
+' Connect with 5 second timeout
+DIM conn AS OBJECT = Viper.Crypto.Tls.ConnectFor("slow-server.com", 443, 5000)
+
+IF conn.IsOpen THEN
+    ' Connection succeeded within timeout
+    conn.SendStr("Hello, TLS!")
+    DIM response AS STRING = conn.RecvStr(1024)
+    conn.Close()
+ELSE
+    PRINT "Connection timed out or failed: "; conn.Error()
+END IF
+```
+
+### Binary Data Example
+
+```basic
+' Send and receive binary data over TLS
+DIM conn AS OBJECT = Viper.Crypto.Tls.Connect("api.example.com", 8443)
+
+IF conn.IsOpen THEN
+    ' Send binary packet
+    DIM packet AS OBJECT = Viper.Collections.Bytes.FromHex("010203040506")
+    conn.Send(packet)
+
+    ' Receive binary response
+    DIM response AS OBJECT = conn.Recv(1024)
+    PRINT "Received "; response.Len; " bytes"
+    PRINT "Hex: "; response.ToHex()
+
+    conn.Close()
+END IF
+```
+
+### Error Handling
+
+TLS operations trap on errors:
+
+- `Connect()` traps on connection refused, host not found, or TLS handshake failure
+- `ConnectFor()` traps on timeout
+- `Send()` traps if connection is closed
+- `Recv()` traps on receive errors
+- Certificate validation failures cause `Connect()` to trap
+
+Use `Error()` to get descriptive error messages for debugging.
+
+### Security Notes
+
+- **Certificate verification:** Server certificates are validated against system trust store
+- **Hostname verification:** Server certificate must match the requested hostname
+- **No self-signed certificates:** Self-signed or untrusted certificates will fail
+- **Forward secrecy:** X25519 key exchange provides perfect forward secrecy
+- **AEAD encryption:** ChaCha20-Poly1305 provides authenticated encryption
+
+### Use Cases
+
+- **HTTPS clients:** Connect to secure web services
+- **Secure APIs:** Communicate with REST/gRPC services over TLS
+- **Database connections:** Secure database communication
+- **Email protocols:** IMAPS, SMTPS, POP3S
+- **Custom protocols:** Add TLS security to any TCP protocol
+
+### Tls vs Http
+
+| Use Case                    | Recommended Class  |
+|-----------------------------|--------------------|
+| Simple HTTPS requests       | `Viper.Network.Http` |
+| Custom HTTP headers/options | `Viper.Network.HttpReq` |
+| WebSocket over TLS          | `Viper.Network.WebSocket` (wss://) |
+| Raw TLS socket              | `Viper.Crypto.Tls` |
+| Custom TLS protocols        | `Viper.Crypto.Tls` |
+
+---
+
 ## See Also
 
 - [Collections](collections.md) - `Bytes` for binary data handling
 - [Text Processing](text.md) - `Codec` for Base64/Hex encoding of hashes and keys
-- [Network](network.md) - Secure communication with HMAC message authentication
+- [Network](network.md) - `Tcp` for unencrypted connections, `Http` for HTTPS, `WebSocket` for WSS

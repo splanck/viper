@@ -19,6 +19,7 @@ set(RT_BASE_SOURCES
         rt_heap.c
         rt_numeric.c
         rt_numeric_conv.c
+        rt_bigint.c
         rt_debug.c
         rt_fmt.c
         rt_format.c
@@ -56,6 +57,7 @@ set(RT_COLLECTIONS_SOURCES
         rt_list.c
         rt_pqueue.c
         rt_seq.c
+        rt_set.c
         rt_stack.c
         rt_queue.c
         rt_ring.c
@@ -70,6 +72,8 @@ set(RT_TEXT_SOURCES
         rt_guid.c
         rt_hash.c
         rt_json.c
+        rt_xml.c
+        rt_yaml.c
         rt_keyderive.c
         rt_aes.c
         rt_rand.c
@@ -105,6 +109,8 @@ set(RT_GRAPHICS_SOURCES
         rt_gui.c
         rt_input.c
         rt_input_pad.c
+        rt_mat3.c
+        rt_mat4.c
         rt_vec2.c
         rt_vec3.c
         rt_pixels.c
@@ -118,15 +124,18 @@ set(RT_AUDIO_SOURCES
 )
 
 set(RT_THREADS_SOURCES
+        rt_channel.c
         rt_monitor.c
         rt_safe_i64.c
         rt_threads.c
+        rt_threadpool.c
         rt_threads_primitives.cpp
 )
 
 set(RT_NETWORK_SOURCES
         rt_network.c
         rt_network_http.c
+        rt_websocket.c
         rt_crypto.c
         rt_tls.c
 )

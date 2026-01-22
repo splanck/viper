@@ -952,3 +952,304 @@ rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_c
 
     return session;
 }
+
+//=============================================================================
+// Viper API Wrappers
+//=============================================================================
+//
+// These functions wrap the low-level TLS API for use by the Viper runtime.
+// They handle conversion between Viper types (rt_string, Bytes) and C types.
+//
+//=============================================================================
+
+#include "rt_bytes.h"
+#include "rt_object.h"
+#include "rt_string.h"
+
+/// @brief Internal structure for Viper TLS objects.
+typedef struct rt_viper_tls
+{
+    rt_tls_session_t *session;
+    char *host;
+    int64_t port;
+} rt_viper_tls_t;
+
+/// @brief Finalizer for TLS objects.
+static void rt_viper_tls_finalize(void *obj)
+{
+    if (!obj)
+        return;
+    rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
+    if (tls->session)
+    {
+        rt_tls_close(tls->session);
+        tls->session = NULL;
+    }
+    if (tls->host)
+    {
+        free(tls->host);
+        tls->host = NULL;
+    }
+}
+
+/// @brief Connect to a TLS server.
+/// @param host Hostname to connect to.
+/// @param port Port number.
+/// @return TLS object or NULL on error.
+void *rt_viper_tls_connect(rt_string host, int64_t port)
+{
+    if (!host || port < 1 || port > 65535)
+        return NULL;
+
+    const char *host_cstr = rt_string_cstr(host);
+    if (!host_cstr)
+        return NULL;
+
+    rt_tls_config_t config;
+    rt_tls_config_init(&config);
+    config.hostname = host_cstr;
+
+    rt_tls_session_t *session = rt_tls_connect(host_cstr, (uint16_t)port, &config);
+    if (!session)
+        return NULL;
+
+    // Create Viper TLS object
+    rt_viper_tls_t *tls = (rt_viper_tls_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_viper_tls_t));
+    if (!tls)
+    {
+        rt_tls_close(session);
+        return NULL;
+    }
+
+    tls->session = session;
+    tls->host = strdup(host_cstr);
+    tls->port = port;
+
+    rt_obj_set_finalizer(tls, rt_viper_tls_finalize);
+
+    return tls;
+}
+
+/// @brief Connect to a TLS server with timeout.
+/// @param host Hostname to connect to.
+/// @param port Port number.
+/// @param timeout_ms Timeout in milliseconds.
+/// @return TLS object or NULL on error.
+void *rt_viper_tls_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
+{
+    if (!host || port < 1 || port > 65535)
+        return NULL;
+
+    const char *host_cstr = rt_string_cstr(host);
+    if (!host_cstr)
+        return NULL;
+
+    rt_tls_config_t config;
+    rt_tls_config_init(&config);
+    config.hostname = host_cstr;
+    config.timeout_ms = (int)timeout_ms;
+
+    rt_tls_session_t *session = rt_tls_connect(host_cstr, (uint16_t)port, &config);
+    if (!session)
+        return NULL;
+
+    // Create Viper TLS object
+    rt_viper_tls_t *tls = (rt_viper_tls_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_viper_tls_t));
+    if (!tls)
+    {
+        rt_tls_close(session);
+        return NULL;
+    }
+
+    tls->session = session;
+    tls->host = strdup(host_cstr);
+    tls->port = port;
+
+    rt_obj_set_finalizer(tls, rt_viper_tls_finalize);
+
+    return tls;
+}
+
+/// @brief Get the hostname of the TLS connection.
+rt_string rt_viper_tls_host(void *obj)
+{
+    if (!obj)
+        return rt_string_from_bytes("", 0);
+    rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
+    const char *h = tls->host ? tls->host : "";
+    return rt_string_from_bytes(h, strlen(h));
+}
+
+/// @brief Get the port of the TLS connection.
+int64_t rt_viper_tls_port(void *obj)
+{
+    if (!obj)
+        return 0;
+    rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
+    return tls->port;
+}
+
+/// @brief Check if the TLS connection is open.
+int8_t rt_viper_tls_is_open(void *obj)
+{
+    if (!obj)
+        return 0;
+    rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
+    return tls->session != NULL;
+}
+
+/// @brief Send bytes over TLS connection.
+/// @param obj TLS object.
+/// @param data Bytes object to send.
+/// @return Number of bytes sent, or -1 on error.
+int64_t rt_viper_tls_send(void *obj, void *data)
+{
+    if (!obj || !data)
+        return -1;
+
+    rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
+    if (!tls->session)
+        return -1;
+
+    int64_t len = rt_bytes_len(data);
+    if (len == 0)
+        return 0;
+
+    // Copy bytes to temporary buffer
+    uint8_t *buffer = (uint8_t *)malloc((size_t)len);
+    if (!buffer)
+        return -1;
+    for (int64_t i = 0; i < len; i++)
+        buffer[i] = (uint8_t)rt_bytes_get(data, i);
+
+    long result = rt_tls_send(tls->session, buffer, (size_t)len);
+    free(buffer);
+    return (int64_t)result;
+}
+
+/// @brief Send string over TLS connection.
+/// @param obj TLS object.
+/// @param text String to send.
+/// @return Number of bytes sent, or -1 on error.
+int64_t rt_viper_tls_send_str(void *obj, rt_string text)
+{
+    if (!obj || !text)
+        return -1;
+
+    rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
+    if (!tls->session)
+        return -1;
+
+    const char *cstr = rt_string_cstr(text);
+    if (!cstr)
+        return 0;
+    size_t len = strlen(cstr);
+    if (len == 0)
+        return 0;
+
+    long result = rt_tls_send(tls->session, cstr, len);
+    return (int64_t)result;
+}
+
+/// @brief Receive bytes from TLS connection.
+/// @param obj TLS object.
+/// @param max_bytes Maximum bytes to receive.
+/// @return Bytes object with received data, or NULL on error.
+void *rt_viper_tls_recv(void *obj, int64_t max_bytes)
+{
+    if (!obj || max_bytes <= 0)
+        return NULL;
+
+    rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
+    if (!tls->session)
+        return NULL;
+
+    // Allocate temporary buffer
+    size_t buf_size = (size_t)max_bytes;
+    uint8_t *buffer = (uint8_t *)malloc(buf_size);
+    if (!buffer)
+        return NULL;
+
+    long received = rt_tls_recv(tls->session, buffer, buf_size);
+    if (received <= 0)
+    {
+        free(buffer);
+        return received == 0 ? rt_bytes_new(0) : NULL;
+    }
+
+    // Create Bytes object and copy data
+    void *result = rt_bytes_new((int64_t)received);
+    for (long i = 0; i < received; i++)
+        rt_bytes_set(result, i, buffer[i]);
+
+    free(buffer);
+    return result;
+}
+
+/// @brief Receive string from TLS connection.
+/// @param obj TLS object.
+/// @param max_bytes Maximum bytes to receive.
+/// @return String with received data, or empty string on error.
+rt_string rt_viper_tls_recv_str(void *obj, int64_t max_bytes)
+{
+    if (!obj || max_bytes <= 0)
+        return rt_string_from_bytes("", 0);
+
+    rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
+    if (!tls->session)
+        return rt_string_from_bytes("", 0);
+
+    // Allocate temporary buffer
+    size_t buf_size = (size_t)max_bytes;
+    char *buffer = (char *)malloc(buf_size + 1);
+    if (!buffer)
+        return rt_string_from_bytes("", 0);
+
+    long received = rt_tls_recv(tls->session, buffer, buf_size);
+    if (received <= 0)
+    {
+        free(buffer);
+        return rt_string_from_bytes("", 0);
+    }
+
+    buffer[received] = '\0';
+    rt_string result = rt_string_from_bytes(buffer, (size_t)received);
+    free(buffer);
+    return result;
+}
+
+/// @brief Close the TLS connection.
+void rt_viper_tls_close(void *obj)
+{
+    if (!obj)
+        return;
+
+    rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
+    if (tls->session)
+    {
+        rt_tls_close(tls->session);
+        tls->session = NULL;
+    }
+}
+
+/// @brief Get the last error message.
+rt_string rt_viper_tls_error(void *obj)
+{
+    const char *msg;
+    if (!obj)
+    {
+        msg = "null object";
+        return rt_string_from_bytes(msg, strlen(msg));
+    }
+
+    rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
+    if (!tls->session)
+    {
+        msg = "connection closed";
+        return rt_string_from_bytes(msg, strlen(msg));
+    }
+
+    const char *err = rt_tls_get_error(tls->session);
+    msg = err ? err : "no error";
+    return rt_string_from_bytes(msg, strlen(msg));
+}

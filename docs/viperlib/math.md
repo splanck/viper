@@ -1,16 +1,135 @@
 # Mathematics
 
-> Mathematical functions, vectors, bit operations, and random numbers.
+> Mathematical functions, vectors, matrices, bit operations, and random numbers.
 
 **Part of the [Viper Runtime Library](README.md)**
 
 ## Contents
 
+- [Viper.Math.BigInt](#vipermathbigint)
 - [Viper.Bits](#viperbits)
 - [Viper.Math](#vipermath)
+- [Viper.Math.Mat3](#vipermathmat3)
+- [Viper.Math.Mat4](#vipermathmat4)
 - [Viper.Random](#viperrandom)
 - [Viper.Vec2](#vipervec2)
 - [Viper.Vec3](#vipervec3)
+
+---
+
+## Viper.Math.BigInt
+
+Arbitrary precision integers for calculations that exceed 64-bit limits.
+
+**Type:** Instance (obj)
+**Constructor:** `Viper.Math.BigInt.FromInt(value)` or `Viper.Math.BigInt.FromStr(str)`
+
+### Static Constructors
+
+| Method           | Signature   | Description                            |
+|------------------|-------------|----------------------------------------|
+| `FromInt(value)` | `obj(i64)`  | Create BigInt from 64-bit integer      |
+| `FromStr(str)`   | `obj(str)`  | Parse from string (decimal, hex 0x, binary 0b, octal 0o) |
+| `FromBytes(b)`   | `obj(obj)`  | Create from big-endian two's complement bytes |
+| `get_Zero`       | `obj()`     | Get BigInt representing zero           |
+| `get_One`        | `obj()`     | Get BigInt representing one            |
+
+### Conversion Methods
+
+| Method            | Signature       | Description                                |
+|-------------------|-----------------|--------------------------------------------|
+| `ToInt()`         | `i64(obj)`      | Convert to 64-bit integer (truncates)      |
+| `ToString()`      | `str(obj)`      | Convert to decimal string                  |
+| `ToStrBase(base)` | `str(obj,i64)`  | Convert to string in base 2-36             |
+| `ToBytes()`       | `obj(obj)`      | Convert to big-endian two's complement     |
+| `FitsInt()`       | `i1(obj)`       | True if value fits in 64-bit integer       |
+
+### Arithmetic Methods
+
+| Method        | Signature       | Description                    |
+|---------------|-----------------|--------------------------------|
+| `Add(other)`  | `obj(obj,obj)`  | Addition: self + other         |
+| `Sub(other)`  | `obj(obj,obj)`  | Subtraction: self - other      |
+| `Mul(other)`  | `obj(obj,obj)`  | Multiplication: self * other   |
+| `Div(other)`  | `obj(obj,obj)`  | Division: self / other         |
+| `Mod(other)`  | `obj(obj,obj)`  | Remainder: self % other        |
+| `Neg()`       | `obj(obj)`      | Negation: -self                |
+| `Abs()`       | `obj(obj)`      | Absolute value                 |
+
+### Comparison Methods
+
+| Method         | Signature       | Description                           |
+|----------------|-----------------|---------------------------------------|
+| `Cmp(other)`   | `i64(obj,obj)`  | Compare: -1 if <, 0 if ==, 1 if >     |
+| `Eq(other)`    | `i1(obj,obj)`   | True if equal                         |
+| `IsZero()`     | `i1(obj)`       | True if value is zero                 |
+| `IsNegative()` | `i1(obj)`       | True if value is negative             |
+| `Sign()`       | `i64(obj)`      | Sign: -1, 0, or 1                     |
+
+### Bitwise Methods
+
+| Method        | Signature       | Description                    |
+|---------------|-----------------|--------------------------------|
+| `And(other)`  | `obj(obj,obj)`  | Bitwise AND                    |
+| `Or(other)`   | `obj(obj,obj)`  | Bitwise OR                     |
+| `Xor(other)`  | `obj(obj,obj)`  | Bitwise XOR                    |
+| `Not()`       | `obj(obj)`      | Bitwise NOT (two's complement) |
+| `Shl(n)`      | `obj(obj,i64)`  | Left shift by n bits           |
+| `Shr(n)`      | `obj(obj,i64)`  | Arithmetic right shift         |
+
+### Advanced Methods
+
+| Method            | Signature           | Description                        |
+|-------------------|---------------------|------------------------------------|
+| `Pow(n)`          | `obj(obj,i64)`      | Raise to power n                   |
+| `PowMod(n,m)`     | `obj(obj,obj,obj)`  | Modular exponentiation: self^n mod m |
+| `Gcd(other)`      | `obj(obj,obj)`      | Greatest common divisor            |
+| `Lcm(other)`      | `obj(obj,obj)`      | Least common multiple              |
+| `BitLength()`     | `i64(obj)`          | Number of bits needed              |
+| `TestBit(n)`      | `i1(obj,i64)`       | Test bit at position n             |
+| `SetBit(n)`       | `obj(obj,i64)`      | Set bit at position n              |
+| `ClearBit(n)`     | `obj(obj,i64)`      | Clear bit at position n            |
+| `Sqrt()`          | `obj(obj)`          | Integer square root (floor)        |
+
+### Example
+
+```basic
+' Create BigInts
+DIM a AS OBJECT = Viper.Math.BigInt.FromStr("123456789012345678901234567890")
+DIM b AS OBJECT = Viper.Math.BigInt.FromInt(12345)
+
+' Arithmetic
+DIM sum AS OBJECT = Viper.Math.BigInt.Add(a, b)
+DIM product AS OBJECT = Viper.Math.BigInt.Mul(a, b)
+PRINT Viper.Math.BigInt.ToString(sum)
+
+' Check if result fits in regular integer
+IF Viper.Math.BigInt.FitsInt(b) THEN
+    DIM n AS INTEGER = Viper.Math.BigInt.ToInt(b)
+    PRINT n  ' 12345
+END IF
+
+' Compute factorial of 100
+DIM factorial AS OBJECT = Viper.Math.BigInt.get_One()
+FOR i = 2 TO 100
+    DIM bi AS OBJECT = Viper.Math.BigInt.FromInt(i)
+    factorial = Viper.Math.BigInt.Mul(factorial, bi)
+NEXT i
+PRINT Viper.Math.BigInt.ToString(factorial)
+
+' RSA-style modular exponentiation
+DIM base AS OBJECT = Viper.Math.BigInt.FromInt(2)
+DIM exp AS OBJECT = Viper.Math.BigInt.FromInt(1000)
+DIM modulus AS OBJECT = Viper.Math.BigInt.FromStr("1000000007")
+DIM result AS OBJECT = Viper.Math.BigInt.PowMod(base, exp, modulus)
+```
+
+### Use Cases
+
+- **Cryptography:** RSA, Diffie-Hellman, large prime operations
+- **Exact arithmetic:** Financial calculations without rounding errors
+- **Number theory:** Factorials, Fibonacci, combinatorics
+- **Scientific computing:** Large integer sequences
 
 ---
 
@@ -505,8 +624,213 @@ PRINT "Midpoint: ("; midpoint.X; ", "; midpoint.Y; ", "; midpoint.Z; ")"  ' (50,
 
 ---
 
+## Viper.Math.Mat3
+
+3×3 matrix for 2D transformations including translation, rotation, scaling, and shearing.
+
+**Type:** Instance (obj)
+**Constructor:** `Viper.Mat3.New(m00, m01, m02, m10, m11, m12, m20, m21, m22)` or `Viper.Mat3.Identity()`
+
+### Static Constructors
+
+| Method              | Signature                        | Description                              |
+|---------------------|----------------------------------|------------------------------------------|
+| `New(...)`          | `obj(f64×9)`                     | Create matrix from 9 elements (row-major)|
+| `Identity()`        | `obj()`                          | Create identity matrix                   |
+| `Zero()`            | `obj()`                          | Create zero matrix                       |
+| `Translate(tx, ty)` | `obj(f64, f64)`                  | Create translation matrix                |
+| `Scale(sx, sy)`     | `obj(f64, f64)`                  | Create scaling matrix                    |
+| `ScaleUniform(s)`   | `obj(f64)`                       | Create uniform scaling matrix            |
+| `Rotate(angle)`     | `obj(f64)`                       | Create rotation matrix (radians)         |
+| `Shear(sx, sy)`     | `obj(f64, f64)`                  | Create shear matrix                      |
+
+### Element Access
+
+| Method        | Signature           | Description                           |
+|---------------|---------------------|---------------------------------------|
+| `Get(r, c)`   | `f64(obj, i64, i64)`| Get element at row r, column c (0-2)  |
+| `Row(r)`      | `obj(obj, i64)`     | Get row r as Vec3 (0-2)               |
+| `Col(c)`      | `obj(obj, i64)`     | Get column c as Vec3 (0-2)            |
+
+### Arithmetic Methods
+
+| Method          | Signature           | Description                        |
+|-----------------|---------------------|------------------------------------|
+| `Add(other)`    | `obj(obj, obj)`     | Matrix addition                    |
+| `Sub(other)`    | `obj(obj, obj)`     | Matrix subtraction                 |
+| `Mul(other)`    | `obj(obj, obj)`     | Matrix multiplication              |
+| `MulScalar(s)`  | `obj(obj, f64)`     | Scalar multiplication              |
+| `Neg()`         | `obj(obj)`          | Negate all elements                |
+
+### Transform Methods
+
+| Method              | Signature       | Description                                 |
+|---------------------|-----------------|---------------------------------------------|
+| `TransformPoint(v)` | `obj(obj, obj)` | Transform a Vec2 point (with translation)   |
+| `TransformVec(v)`   | `obj(obj, obj)` | Transform a Vec2 vector (without translation)|
+
+### Matrix Operations
+
+| Method        | Signature           | Description                                   |
+|---------------|---------------------|-----------------------------------------------|
+| `Transpose()` | `obj(obj)`          | Return transposed matrix                      |
+| `Det()`       | `f64(obj)`          | Calculate determinant                         |
+| `Inverse()`   | `obj(obj)`          | Return inverse matrix (traps if singular)     |
+| `Eq(other,e)` | `i1(obj, obj, f64)` | Compare with epsilon tolerance                |
+
+### Example
+
+```basic
+' Create transformation matrices
+DIM translate AS OBJECT = Viper.Mat3.Translate(100.0, 50.0)
+DIM rotate AS OBJECT = Viper.Mat3.Rotate(Viper.Math.Rad(45))
+DIM scale AS OBJECT = Viper.Mat3.Scale(2.0, 2.0)
+
+' Combine transformations (order matters!)
+DIM transform AS OBJECT = Viper.Mat3.Mul(translate, Viper.Mat3.Mul(rotate, scale))
+
+' Transform a point
+DIM point AS OBJECT = Viper.Vec2.New(10.0, 20.0)
+DIM transformed AS OBJECT = Viper.Mat3.TransformPoint(transform, point)
+PRINT "Transformed: ("; transformed.X; ", "; transformed.Y; ")"
+
+' Get matrix element
+PRINT Viper.Mat3.Get(transform, 0, 0)  ' Element at row 0, col 0
+
+' Invert the transformation
+DIM inverse AS OBJECT = Viper.Mat3.Inverse(transform)
+DIM original AS OBJECT = Viper.Mat3.TransformPoint(inverse, transformed)
+```
+
+### Use Cases
+
+- **2D graphics:** Transforming sprites, shapes, and textures
+- **UI layout:** Positioning and scaling UI elements
+- **Animation:** Interpolating between transformation states
+- **Physics:** Coordinate system conversions
+
+---
+
+## Viper.Math.Mat4
+
+4×4 matrix for 3D transformations including translation, rotation, scaling, and projection.
+
+**Type:** Instance (obj)
+**Constructor:** `Viper.Mat4.New(m00...m33)` or `Viper.Mat4.Identity()`
+
+### Static Constructors
+
+| Method                 | Signature                        | Description                               |
+|------------------------|----------------------------------|-------------------------------------------|
+| `New(...)`             | `obj(f64×16)`                    | Create matrix from 16 elements (row-major)|
+| `Identity()`           | `obj()`                          | Create identity matrix                    |
+| `Zero()`               | `obj()`                          | Create zero matrix                        |
+| `Translate(x, y, z)`   | `obj(f64, f64, f64)`             | Create translation matrix                 |
+| `Scale(sx, sy, sz)`    | `obj(f64, f64, f64)`             | Create scaling matrix                     |
+| `ScaleUniform(s)`      | `obj(f64)`                       | Create uniform scaling matrix             |
+| `RotateX(angle)`       | `obj(f64)`                       | Create X-axis rotation matrix (radians)   |
+| `RotateY(angle)`       | `obj(f64)`                       | Create Y-axis rotation matrix (radians)   |
+| `RotateZ(angle)`       | `obj(f64)`                       | Create Z-axis rotation matrix (radians)   |
+| `RotateAxis(axis, a)`  | `obj(obj, f64)`                  | Create rotation around Vec3 axis          |
+
+### Projection Constructors
+
+| Method                              | Signature                              | Description                               |
+|-------------------------------------|----------------------------------------|-------------------------------------------|
+| `Perspective(fov, aspect, near, far)` | `obj(f64, f64, f64, f64)`            | Create perspective projection             |
+| `Ortho(l, r, b, t, near, far)`      | `obj(f64, f64, f64, f64, f64, f64)`   | Create orthographic projection            |
+| `LookAt(eye, target, up)`           | `obj(obj, obj, obj)`                  | Create view matrix from eye position      |
+
+### Element Access
+
+| Method      | Signature             | Description                          |
+|-------------|-----------------------|--------------------------------------|
+| `Get(r, c)` | `f64(obj, i64, i64)`  | Get element at row r, column c (0-3) |
+
+### Arithmetic Methods
+
+| Method          | Signature           | Description             |
+|-----------------|---------------------|-------------------------|
+| `Add(other)`    | `obj(obj, obj)`     | Matrix addition         |
+| `Sub(other)`    | `obj(obj, obj)`     | Matrix subtraction      |
+| `Mul(other)`    | `obj(obj, obj)`     | Matrix multiplication   |
+| `MulScalar(s)`  | `obj(obj, f64)`     | Scalar multiplication   |
+| `Neg()`         | `obj(obj)`          | Negate all elements     |
+
+### Transform Methods
+
+| Method              | Signature       | Description                                 |
+|---------------------|-----------------|---------------------------------------------|
+| `TransformPoint(v)` | `obj(obj, obj)` | Transform a Vec3 point (with translation)   |
+| `TransformVec(v)`   | `obj(obj, obj)` | Transform a Vec3 vector (without translation)|
+
+### Matrix Operations
+
+| Method        | Signature           | Description                               |
+|---------------|---------------------|-------------------------------------------|
+| `Transpose()` | `obj(obj)`          | Return transposed matrix                  |
+| `Det()`       | `f64(obj)`          | Calculate determinant                     |
+| `Inverse()`   | `obj(obj)`          | Return inverse matrix (traps if singular) |
+| `Eq(other,e)` | `i1(obj, obj, f64)` | Compare with epsilon tolerance            |
+
+### Example
+
+```basic
+' Set up a 3D camera
+DIM eye AS OBJECT = Viper.Vec3.New(0.0, 5.0, 10.0)
+DIM target AS OBJECT = Viper.Vec3.Zero()
+DIM up AS OBJECT = Viper.Vec3.New(0.0, 1.0, 0.0)
+DIM view AS OBJECT = Viper.Mat4.LookAt(eye, target, up)
+
+' Create perspective projection (45 degree FOV, 16:9 aspect)
+DIM projection AS OBJECT = Viper.Mat4.Perspective(Viper.Math.Rad(45), 16.0/9.0, 0.1, 100.0)
+
+' Create model transformation
+DIM model AS OBJECT = Viper.Mat4.Mul(
+    Viper.Mat4.Translate(0.0, 1.0, 0.0),
+    Viper.Mat4.RotateY(Viper.Math.Rad(30))
+)
+
+' Combine: MVP = projection * view * model
+DIM mvp AS OBJECT = Viper.Mat4.Mul(projection, Viper.Mat4.Mul(view, model))
+
+' Transform a vertex
+DIM vertex AS OBJECT = Viper.Vec3.New(1.0, 0.0, 0.0)
+DIM transformed AS OBJECT = Viper.Mat4.TransformPoint(mvp, vertex)
+
+' Orthographic projection for 2D/UI
+DIM ortho AS OBJECT = Viper.Mat4.Ortho(0, 800, 600, 0, -1, 1)
+```
+
+### Projection Parameters
+
+**Perspective:**
+- `fov` — Field of view in radians (vertical)
+- `aspect` — Width/height aspect ratio
+- `near` — Near clipping plane distance (must be > 0)
+- `far` — Far clipping plane distance (must be > near)
+
+**Orthographic:**
+- `left`, `right` — Left and right clipping planes
+- `bottom`, `top` — Bottom and top clipping planes
+- `near`, `far` — Near and far clipping planes
+
+**LookAt:**
+- `eye` — Camera position (Vec3)
+- `target` — Point to look at (Vec3)
+- `up` — Up direction (Vec3, typically (0,1,0))
+
+### Use Cases
+
+- **3D graphics:** Model-view-projection transformations
+- **Game engines:** Camera and object positioning
+- **Physics simulation:** Coordinate transformations
+- **CAD/modeling:** 3D object manipulation
+
+---
+
 ## See Also
 
-- [Graphics](graphics.md) - Use `Vec2` and `Vec3` with `Canvas` and `Pixels` for 2D/3D graphics
+- [Graphics](graphics.md) - Use `Vec2`, `Vec3`, `Mat3`, and `Mat4` with `Canvas` and `Pixels` for 2D/3D graphics
 - [Cryptography](crypto.md) - `Rand` for cryptographically secure randomness
 

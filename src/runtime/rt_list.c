@@ -556,3 +556,160 @@ int8_t rt_list_remove(void *list, void *elem)
     rt_list_remove_at(list, idx);
     return 1;
 }
+
+/// @brief Creates a new List containing a slice of elements.
+///
+/// Returns a new List containing elements from the specified range.
+/// The original List is not modified.
+///
+/// **Example:**
+/// ```
+/// Dim list = List.New()
+/// list.Add("a")
+/// list.Add("b")
+/// list.Add("c")
+/// list.Add("d")
+/// Dim slice = list.Slice(1, 3)
+/// ' slice contains ["b", "c"]
+/// ```
+///
+/// @param list  Pointer to a List object.
+/// @param start Start index (inclusive, clamped to 0).
+/// @param end   End index (exclusive, clamped to Count).
+///
+/// @return New List containing the elements in the range.
+///
+/// @note O(k) time where k = end - start.
+/// @note Thread safety: Not thread-safe.
+void *rt_list_slice(void *list, int64_t start, int64_t end)
+{
+    void *result = rt_ns_list_new();
+    if (!result)
+        return NULL;
+
+    if (!list)
+        return result;
+
+    rt_list_impl *L = as_list(list);
+    size_t len = rt_arr_obj_len(L->arr);
+
+    // Clamp indices
+    if (start < 0)
+        start = 0;
+    if (end < 0)
+        end = 0;
+    if ((size_t)start > len)
+        start = (int64_t)len;
+    if ((size_t)end > len)
+        end = (int64_t)len;
+    if (start >= end)
+        return result;
+
+    // Copy elements
+    for (int64_t i = start; i < end; i++)
+    {
+        void *elem = rt_arr_obj_get(L->arr, (size_t)i);
+        rt_list_add(result, elem);
+    }
+
+    return result;
+}
+
+/// @brief Reverses the order of elements in the List in place.
+///
+/// Swaps elements from both ends toward the center, modifying
+/// the original List.
+///
+/// **Example:**
+/// ```
+/// Dim list = List.New()
+/// list.Add("a")
+/// list.Add("b")
+/// list.Add("c")
+/// list.Flip()
+/// ' list now contains ["c", "b", "a"]
+/// ```
+///
+/// @param list Pointer to a List object. If NULL, this is a no-op.
+///
+/// @note O(n) time complexity.
+/// @note Thread safety: Not thread-safe.
+void rt_list_flip(void *list)
+{
+    if (!list)
+        return;
+
+    rt_list_impl *L = as_list(list);
+    size_t len = rt_arr_obj_len(L->arr);
+    if (len < 2)
+        return;
+
+    // Swap elements from both ends toward center
+    for (size_t i = 0; i < len / 2; i++)
+    {
+        size_t j = len - 1 - i;
+        void *a = L->arr[i];
+        void *b = L->arr[j];
+        // Direct swap without reference counting (elements stay in list)
+        L->arr[i] = b;
+        L->arr[j] = a;
+    }
+}
+
+/// @brief Returns the first element in the List.
+///
+/// **Example:**
+/// ```
+/// Dim list = List.New()
+/// list.Add("a")
+/// list.Add("b")
+/// Print list.First()  ' Outputs: a
+/// ```
+///
+/// @param list Pointer to a List object.
+///
+/// @return The first element, or NULL if the List is empty or NULL.
+///
+/// @note O(1) time complexity.
+/// @note Thread safety: Not thread-safe.
+void *rt_list_first(void *list)
+{
+    if (!list)
+        return NULL;
+
+    rt_list_impl *L = as_list(list);
+    size_t len = rt_arr_obj_len(L->arr);
+    if (len == 0)
+        return NULL;
+
+    return rt_arr_obj_get(L->arr, 0);
+}
+
+/// @brief Returns the last element in the List.
+///
+/// **Example:**
+/// ```
+/// Dim list = List.New()
+/// list.Add("a")
+/// list.Add("b")
+/// Print list.Last()  ' Outputs: b
+/// ```
+///
+/// @param list Pointer to a List object.
+///
+/// @return The last element, or NULL if the List is empty or NULL.
+///
+/// @note O(1) time complexity.
+/// @note Thread safety: Not thread-safe.
+void *rt_list_last(void *list)
+{
+    if (!list)
+        return NULL;
+
+    rt_list_impl *L = as_list(list);
+    size_t len = rt_arr_obj_len(L->arr);
+    if (len == 0)
+        return NULL;
+
+    return rt_arr_obj_get(L->arr, len - 1);
+}

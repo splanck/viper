@@ -119,6 +119,39 @@ extern "C"
     /// @return 1 when an element was removed, 0 otherwise.
     int8_t rt_list_remove(void *list, void *elem);
 
+    /// What: Create a new List containing elements from @p start to @p end.
+    /// Why:  Support sub-list extraction for common list operations.
+    /// How:  Creates a new List and copies elements in the specified range.
+    ///
+    /// @param list  Opaque List object pointer.
+    /// @param start 0-based start index (inclusive, clamped to 0).
+    /// @param end   0-based end index (exclusive, clamped to Count).
+    /// @return New List containing the slice; empty List if range is invalid.
+    void *rt_list_slice(void *list, int64_t start, int64_t end);
+
+    /// What: Reverse the order of elements in the list in place.
+    /// Why:  Support common list transformation without creating a new list.
+    /// How:  Swaps elements from both ends toward the center.
+    ///
+    /// @param list Opaque List object pointer.
+    void rt_list_flip(void *list);
+
+    /// What: Get the first element in the list.
+    /// Why:  Convenience method for common head/first access pattern.
+    /// How:  Returns element at index 0.
+    ///
+    /// @param list Opaque List object pointer.
+    /// @return The first element, or NULL if list is empty.
+    void *rt_list_first(void *list);
+
+    /// What: Get the last element in the list.
+    /// Why:  Convenience method for common tail/last access pattern.
+    /// How:  Returns element at index Count-1.
+    ///
+    /// @param list Opaque List object pointer.
+    /// @return The last element, or NULL if list is empty.
+    void *rt_list_last(void *list);
+
 #ifdef __cplusplus
 }
 #endif

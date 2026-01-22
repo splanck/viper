@@ -162,6 +162,25 @@ RT_FUNC(BagNew,     rt_bag_new,      "Viper.Collections.Bag.New",         "obj()
 RT_FUNC(BagPut,     rt_bag_put,      "Viper.Collections.Bag.Put",         "i1(obj,str)")
 
 //=============================================================================
+// COLLECTIONS - SET (Generic)
+//=============================================================================
+
+RT_FUNC(SetClear,      rt_set_clear,       "Viper.Collections.Set.Clear",       "void(obj)")
+RT_FUNC(SetCommon,     rt_set_common,      "Viper.Collections.Set.Common",      "obj(obj,obj)")
+RT_FUNC(SetDiff,       rt_set_diff,        "Viper.Collections.Set.Diff",        "obj(obj,obj)")
+RT_FUNC(SetDrop,       rt_set_drop,        "Viper.Collections.Set.Drop",        "i1(obj,obj)")
+RT_FUNC(SetHas,        rt_set_has,         "Viper.Collections.Set.Has",         "i1(obj,obj)")
+RT_FUNC(SetIsDisjoint, rt_set_is_disjoint, "Viper.Collections.Set.IsDisjoint",  "i1(obj,obj)")
+RT_FUNC(SetIsEmpty,    rt_set_is_empty,    "Viper.Collections.Set.get_IsEmpty", "i1(obj)")
+RT_FUNC(SetIsSubset,   rt_set_is_subset,   "Viper.Collections.Set.IsSubset",    "i1(obj,obj)")
+RT_FUNC(SetIsSuperset, rt_set_is_superset, "Viper.Collections.Set.IsSuperset",  "i1(obj,obj)")
+RT_FUNC(SetItems,      rt_set_items,       "Viper.Collections.Set.Items",       "obj(obj)")
+RT_FUNC(SetLen,        rt_set_len,         "Viper.Collections.Set.get_Len",     "i64(obj)")
+RT_FUNC(SetMerge,      rt_set_merge,       "Viper.Collections.Set.Merge",       "obj(obj,obj)")
+RT_FUNC(SetNew,        rt_set_new,         "Viper.Collections.Set.New",         "obj()")
+RT_FUNC(SetPut,        rt_set_put,         "Viper.Collections.Set.Put",         "i1(obj,obj)")
+
+//=============================================================================
 // COLLECTIONS - LIST
 //=============================================================================
 
@@ -176,6 +195,10 @@ RT_FUNC(ListNew,      rt_ns_list_new,    "Viper.Collections.List.New",        "o
 RT_FUNC(ListRemove,   rt_list_remove,    "Viper.Collections.List.Remove",     "i1(obj,obj)")
 RT_FUNC(ListRemoveAt, rt_list_remove_at, "Viper.Collections.List.RemoveAt",   "void(obj,i64)")
 RT_FUNC(ListSetItem,  rt_list_set_item,  "Viper.Collections.List.set_Item",   "void(obj,i64,obj)")
+RT_FUNC(ListSlice,    rt_list_slice,     "Viper.Collections.List.Slice",      "obj(obj,i64,i64)")
+RT_FUNC(ListFlip,     rt_list_flip,      "Viper.Collections.List.Flip",       "void(obj)")
+RT_FUNC(ListFirst,    rt_list_first,     "Viper.Collections.List.First",      "obj(obj)")
+RT_FUNC(ListLast,     rt_list_last,      "Viper.Collections.List.Last",       "obj(obj)")
 
 //=============================================================================
 // COLLECTIONS - MAP
@@ -349,6 +372,22 @@ RT_FUNC(AesEncrypt,    rt_aes_encrypt,     "Viper.Crypto.Aes.Encrypt",    "obj(o
 RT_FUNC(AesDecrypt,    rt_aes_decrypt,     "Viper.Crypto.Aes.Decrypt",    "obj(obj,obj,obj)")
 RT_FUNC(AesEncryptStr, rt_aes_encrypt_str, "Viper.Crypto.Aes.EncryptStr", "obj(str,str)")
 RT_FUNC(AesDecryptStr, rt_aes_decrypt_str, "Viper.Crypto.Aes.DecryptStr", "str(obj,str)")
+
+//=============================================================================
+// CRYPTO - TLS (Secure Connections)
+//=============================================================================
+
+RT_FUNC(TlsConnect,    rt_viper_tls_connect,     "Viper.Crypto.Tls.Connect",    "obj(str,i64)")
+RT_FUNC(TlsConnectFor, rt_viper_tls_connect_for, "Viper.Crypto.Tls.ConnectFor", "obj(str,i64,i64)")
+RT_FUNC(TlsHost,       rt_viper_tls_host,        "Viper.Crypto.Tls.get_Host",   "str(obj)")
+RT_FUNC(TlsPort,       rt_viper_tls_port,        "Viper.Crypto.Tls.get_Port",   "i64(obj)")
+RT_FUNC(TlsIsOpen,     rt_viper_tls_is_open,     "Viper.Crypto.Tls.get_IsOpen", "i1(obj)")
+RT_FUNC(TlsSend,       rt_viper_tls_send,        "Viper.Crypto.Tls.Send",       "i64(obj,obj)")
+RT_FUNC(TlsSendStr,    rt_viper_tls_send_str,    "Viper.Crypto.Tls.SendStr",    "i64(obj,str)")
+RT_FUNC(TlsRecv,       rt_viper_tls_recv,        "Viper.Crypto.Tls.Recv",       "obj(obj,i64)")
+RT_FUNC(TlsRecvStr,    rt_viper_tls_recv_str,    "Viper.Crypto.Tls.RecvStr",    "str(obj,i64)")
+RT_FUNC(TlsClose,      rt_viper_tls_close,       "Viper.Crypto.Tls.Close",      "void(obj)")
+RT_FUNC(TlsError,      rt_viper_tls_error,       "Viper.Crypto.Tls.Error",      "str(obj)")
 
 //=============================================================================
 // DATETIME
@@ -1437,6 +1476,59 @@ RT_FUNC(RandomChance,      rt_rand_chance,      "Viper.Random.Chance",      "i64
 RT_FUNC(RandomShuffle,     rt_rand_shuffle,     "Viper.Random.Shuffle",     "void(obj)")
 
 //=============================================================================
+// BIGINT - Arbitrary Precision Integers
+//=============================================================================
+
+// Creation
+RT_FUNC(BigIntFromI64,      rt_bigint_from_i64,     "Viper.Math.BigInt.FromInt",      "obj(i64)")
+RT_FUNC(BigIntFromStr,      rt_bigint_from_str,     "Viper.Math.BigInt.FromStr",      "obj(str)")
+RT_FUNC(BigIntFromBytes,    rt_bigint_from_bytes,   "Viper.Math.BigInt.FromBytes",    "obj(obj)")
+RT_FUNC(BigIntZero,         rt_bigint_zero,         "Viper.Math.BigInt.get_Zero",     "obj()")
+RT_FUNC(BigIntOne,          rt_bigint_one,          "Viper.Math.BigInt.get_One",      "obj()")
+
+// Conversion
+RT_FUNC(BigIntToI64,        rt_bigint_to_i64,       "Viper.Math.BigInt.ToInt",        "i64(obj)")
+RT_FUNC(BigIntToStr,        rt_bigint_to_str,       "Viper.Math.BigInt.ToString",     "str(obj)")
+RT_FUNC(BigIntToStrBase,    rt_bigint_to_str_base,  "Viper.Math.BigInt.ToStrBase",    "str(obj,i64)")
+RT_FUNC(BigIntToBytes,      rt_bigint_to_bytes,     "Viper.Math.BigInt.ToBytes",      "obj(obj)")
+RT_FUNC(BigIntFitsI64,      rt_bigint_fits_i64,     "Viper.Math.BigInt.FitsInt",      "i1(obj)")
+
+// Arithmetic
+RT_FUNC(BigIntAdd,          rt_bigint_add,          "Viper.Math.BigInt.Add",          "obj(obj,obj)")
+RT_FUNC(BigIntSub,          rt_bigint_sub,          "Viper.Math.BigInt.Sub",          "obj(obj,obj)")
+RT_FUNC(BigIntMul,          rt_bigint_mul,          "Viper.Math.BigInt.Mul",          "obj(obj,obj)")
+RT_FUNC(BigIntDiv,          rt_bigint_div,          "Viper.Math.BigInt.Div",          "obj(obj,obj)")
+RT_FUNC(BigIntMod,          rt_bigint_mod,          "Viper.Math.BigInt.Mod",          "obj(obj,obj)")
+RT_FUNC(BigIntNeg,          rt_bigint_neg,          "Viper.Math.BigInt.Neg",          "obj(obj)")
+RT_FUNC(BigIntAbs,          rt_bigint_abs,          "Viper.Math.BigInt.Abs",          "obj(obj)")
+
+// Comparison
+RT_FUNC(BigIntCmp,          rt_bigint_cmp,          "Viper.Math.BigInt.Cmp",          "i64(obj,obj)")
+RT_FUNC(BigIntEq,           rt_bigint_eq,           "Viper.Math.BigInt.Eq",           "i1(obj,obj)")
+RT_FUNC(BigIntIsZero,       rt_bigint_is_zero,      "Viper.Math.BigInt.IsZero",       "i1(obj)")
+RT_FUNC(BigIntIsNegative,   rt_bigint_is_negative,  "Viper.Math.BigInt.IsNegative",   "i1(obj)")
+RT_FUNC(BigIntSign,         rt_bigint_sign,         "Viper.Math.BigInt.Sign",         "i64(obj)")
+
+// Bitwise
+RT_FUNC(BigIntAnd,          rt_bigint_and,          "Viper.Math.BigInt.And",          "obj(obj,obj)")
+RT_FUNC(BigIntOr,           rt_bigint_or,           "Viper.Math.BigInt.Or",           "obj(obj,obj)")
+RT_FUNC(BigIntXor,          rt_bigint_xor,          "Viper.Math.BigInt.Xor",          "obj(obj,obj)")
+RT_FUNC(BigIntNot,          rt_bigint_not,          "Viper.Math.BigInt.Not",          "obj(obj)")
+RT_FUNC(BigIntShl,          rt_bigint_shl,          "Viper.Math.BigInt.Shl",          "obj(obj,i64)")
+RT_FUNC(BigIntShr,          rt_bigint_shr,          "Viper.Math.BigInt.Shr",          "obj(obj,i64)")
+
+// Advanced
+RT_FUNC(BigIntPow,          rt_bigint_pow,          "Viper.Math.BigInt.Pow",          "obj(obj,i64)")
+RT_FUNC(BigIntPowMod,       rt_bigint_pow_mod,      "Viper.Math.BigInt.PowMod",       "obj(obj,obj,obj)")
+RT_FUNC(BigIntGcd,          rt_bigint_gcd,          "Viper.Math.BigInt.Gcd",          "obj(obj,obj)")
+RT_FUNC(BigIntLcm,          rt_bigint_lcm,          "Viper.Math.BigInt.Lcm",          "obj(obj,obj)")
+RT_FUNC(BigIntBitLen,       rt_bigint_bit_length,   "Viper.Math.BigInt.BitLength",    "i64(obj)")
+RT_FUNC(BigIntTestBit,      rt_bigint_test_bit,     "Viper.Math.BigInt.TestBit",      "i1(obj,i64)")
+RT_FUNC(BigIntSetBit,       rt_bigint_set_bit,      "Viper.Math.BigInt.SetBit",       "obj(obj,i64)")
+RT_FUNC(BigIntClearBit,     rt_bigint_clear_bit,    "Viper.Math.BigInt.ClearBit",     "obj(obj,i64)")
+RT_FUNC(BigIntSqrt,         rt_bigint_sqrt,         "Viper.Math.BigInt.Sqrt",         "obj(obj)")
+
+//=============================================================================
 // STRING FUNCTIONS
 //=============================================================================
 
@@ -1571,6 +1663,76 @@ RT_FUNC(JsonIsValid,        rt_json_is_valid,         "Viper.Text.Json.IsValid",
 RT_FUNC(JsonTypeOf,         rt_json_type_of,          "Viper.Text.Json.TypeOf",         "str(obj)")
 
 //=============================================================================
+// TEXT - XML
+//=============================================================================
+
+// Parsing
+RT_FUNC(XmlParse,           rt_xml_parse,             "Viper.Data.Xml.Parse",           "obj(str)")
+RT_FUNC(XmlError,           rt_xml_error,             "Viper.Data.Xml.Error",           "str()")
+RT_FUNC(XmlIsValid,         rt_xml_is_valid,          "Viper.Data.Xml.IsValid",         "i1(str)")
+
+// Node Creation
+RT_FUNC(XmlElement,         rt_xml_element,           "Viper.Data.Xml.Element",         "obj(str)")
+RT_FUNC(XmlText,            rt_xml_text,              "Viper.Data.Xml.Text",            "obj(str)")
+RT_FUNC(XmlComment,         rt_xml_comment,           "Viper.Data.Xml.Comment",         "obj(str)")
+RT_FUNC(XmlCdata,           rt_xml_cdata,             "Viper.Data.Xml.Cdata",           "obj(str)")
+
+// Node Properties
+RT_FUNC(XmlNodeType,        rt_xml_node_type,         "Viper.Data.Xml.NodeType",        "i64(obj)")
+RT_FUNC(XmlTag,             rt_xml_tag,               "Viper.Data.Xml.Tag",             "str(obj)")
+RT_FUNC(XmlContent,         rt_xml_content,           "Viper.Data.Xml.Content",         "str(obj)")
+RT_FUNC(XmlTextContent,     rt_xml_text_content,      "Viper.Data.Xml.TextContent",     "str(obj)")
+
+// Attributes
+RT_FUNC(XmlAttr,            rt_xml_attr,              "Viper.Data.Xml.Attr",            "str(obj,str)")
+RT_FUNC(XmlHasAttr,         rt_xml_has_attr,          "Viper.Data.Xml.HasAttr",         "i1(obj,str)")
+RT_FUNC(XmlSetAttr,         rt_xml_set_attr,          "Viper.Data.Xml.SetAttr",         "void(obj,str,str)")
+RT_FUNC(XmlRemoveAttr,      rt_xml_remove_attr,       "Viper.Data.Xml.RemoveAttr",      "i1(obj,str)")
+RT_FUNC(XmlAttrNames,       rt_xml_attr_names,        "Viper.Data.Xml.AttrNames",       "obj(obj)")
+
+// Children
+RT_FUNC(XmlChildren,        rt_xml_children,          "Viper.Data.Xml.Children",        "obj(obj)")
+RT_FUNC(XmlChildCount,      rt_xml_child_count,       "Viper.Data.Xml.ChildCount",      "i64(obj)")
+RT_FUNC(XmlChildAt,         rt_xml_child_at,          "Viper.Data.Xml.ChildAt",         "obj(obj,i64)")
+RT_FUNC(XmlChild,           rt_xml_child,             "Viper.Data.Xml.Child",           "obj(obj,str)")
+RT_FUNC(XmlChildrenByTag,   rt_xml_children_by_tag,   "Viper.Data.Xml.ChildrenByTag",   "obj(obj,str)")
+RT_FUNC(XmlAppend,          rt_xml_append,            "Viper.Data.Xml.Append",          "void(obj,obj)")
+RT_FUNC(XmlInsert,          rt_xml_insert,            "Viper.Data.Xml.Insert",          "void(obj,i64,obj)")
+RT_FUNC(XmlRemove,          rt_xml_remove,            "Viper.Data.Xml.Remove",          "i1(obj,obj)")
+RT_FUNC(XmlRemoveAt,        rt_xml_remove_at,         "Viper.Data.Xml.RemoveAt",        "void(obj,i64)")
+RT_FUNC(XmlSetText,         rt_xml_set_text,          "Viper.Data.Xml.SetText",         "void(obj,str)")
+
+// Navigation
+RT_FUNC(XmlParent,          rt_xml_parent,            "Viper.Data.Xml.Parent",          "obj(obj)")
+RT_FUNC(XmlRoot,            rt_xml_root,              "Viper.Data.Xml.Root",            "obj(obj)")
+RT_FUNC(XmlFindAll,         rt_xml_find_all,          "Viper.Data.Xml.FindAll",         "obj(obj,str)")
+RT_FUNC(XmlFind,            rt_xml_find,              "Viper.Data.Xml.Find",            "obj(obj,str)")
+
+// Formatting
+RT_FUNC(XmlFormat,          rt_xml_format,            "Viper.Data.Xml.Format",          "str(obj)")
+RT_FUNC(XmlFormatPretty,    rt_xml_format_pretty,     "Viper.Data.Xml.FormatPretty",    "str(obj,i64)")
+
+// Utility
+RT_FUNC(XmlEscape,          rt_xml_escape,            "Viper.Data.Xml.Escape",          "str(str)")
+RT_FUNC(XmlUnescape,        rt_xml_unescape,          "Viper.Data.Xml.Unescape",        "str(str)")
+
+//=============================================================================
+// DATA - YAML
+//=============================================================================
+
+// Parsing
+RT_FUNC(YamlParse,          rt_yaml_parse,            "Viper.Data.Yaml.Parse",          "obj(str)")
+RT_FUNC(YamlError,          rt_yaml_error,            "Viper.Data.Yaml.Error",          "str()")
+RT_FUNC(YamlIsValid,        rt_yaml_is_valid,         "Viper.Data.Yaml.IsValid",        "i1(str)")
+
+// Formatting
+RT_FUNC(YamlFormat,         rt_yaml_format,           "Viper.Data.Yaml.Format",         "str(obj)")
+RT_FUNC(YamlFormatIndent,   rt_yaml_format_indent,    "Viper.Data.Yaml.FormatIndent",   "str(obj,i64)")
+
+// Type Inspection
+RT_FUNC(YamlTypeOf,         rt_yaml_type_of,          "Viper.Data.Yaml.TypeOf",         "str(obj)")
+
+//=============================================================================
 // TEXT - GUID
 //=============================================================================
 
@@ -1664,6 +1826,39 @@ RT_FUNC(RwLockTryReadEnter,    rt_rwlock_try_read_enter,     "Viper.Threads.RwLo
 RT_FUNC(RwLockTryWriteEnter,   rt_rwlock_try_write_enter,    "Viper.Threads.RwLock.TryWriteEnter",    "i1(obj)")
 RT_FUNC(RwLockGetReaders,      rt_rwlock_get_readers,        "Viper.Threads.RwLock.get_Readers",      "i64(obj)")
 RT_FUNC(RwLockGetIsWriteLocked,rt_rwlock_get_is_write_locked,"Viper.Threads.RwLock.get_IsWriteLocked","i1(obj)")
+
+//=============================================================================
+// THREADS - POOL
+//=============================================================================
+
+RT_FUNC(PoolNew,           rt_threadpool_new,            "Viper.Threads.Pool.New",            "obj(i64)")
+RT_FUNC(PoolSubmit,        rt_threadpool_submit,         "Viper.Threads.Pool.Submit",         "i1(obj,obj,obj)")
+RT_FUNC(PoolWait,          rt_threadpool_wait,           "Viper.Threads.Pool.Wait",           "void(obj)")
+RT_FUNC(PoolWaitFor,       rt_threadpool_wait_for,       "Viper.Threads.Pool.WaitFor",        "i1(obj,i64)")
+RT_FUNC(PoolShutdown,      rt_threadpool_shutdown,       "Viper.Threads.Pool.Shutdown",       "void(obj)")
+RT_FUNC(PoolShutdownNow,   rt_threadpool_shutdown_now,   "Viper.Threads.Pool.ShutdownNow",    "void(obj)")
+RT_FUNC(PoolGetSize,       rt_threadpool_get_size,       "Viper.Threads.Pool.get_Size",       "i64(obj)")
+RT_FUNC(PoolGetPending,    rt_threadpool_get_pending,    "Viper.Threads.Pool.get_Pending",    "i64(obj)")
+RT_FUNC(PoolGetActive,     rt_threadpool_get_active,     "Viper.Threads.Pool.get_Active",     "i64(obj)")
+RT_FUNC(PoolGetIsShutdown, rt_threadpool_get_is_shutdown,"Viper.Threads.Pool.get_IsShutdown", "i1(obj)")
+
+//=============================================================================
+// THREADS - CHANNEL
+//=============================================================================
+
+RT_FUNC(ChannelNew,          rt_channel_new,            "Viper.Threads.Channel.New",           "obj(i64)")
+RT_FUNC(ChannelSend,         rt_channel_send,           "Viper.Threads.Channel.Send",          "void(obj,obj)")
+RT_FUNC(ChannelTrySend,      rt_channel_try_send,       "Viper.Threads.Channel.TrySend",       "i1(obj,obj)")
+RT_FUNC(ChannelSendFor,      rt_channel_send_for,       "Viper.Threads.Channel.SendFor",       "i1(obj,obj,i64)")
+RT_FUNC(ChannelRecv,         rt_channel_recv,           "Viper.Threads.Channel.Recv",          "obj(obj)")
+RT_FUNC(ChannelTryRecv,      rt_channel_try_recv,       "Viper.Threads.Channel.TryRecv",       "i1(obj,obj)")
+RT_FUNC(ChannelRecvFor,      rt_channel_recv_for,       "Viper.Threads.Channel.RecvFor",       "i1(obj,obj,i64)")
+RT_FUNC(ChannelClose,        rt_channel_close,          "Viper.Threads.Channel.Close",         "void(obj)")
+RT_FUNC(ChannelGetLen,       rt_channel_get_len,        "Viper.Threads.Channel.get_Len",       "i64(obj)")
+RT_FUNC(ChannelGetCap,       rt_channel_get_cap,        "Viper.Threads.Channel.get_Cap",       "i64(obj)")
+RT_FUNC(ChannelGetIsClosed,  rt_channel_get_is_closed,  "Viper.Threads.Channel.get_IsClosed",  "i1(obj)")
+RT_FUNC(ChannelGetIsEmpty,   rt_channel_get_is_empty,   "Viper.Threads.Channel.get_IsEmpty",   "i1(obj)")
+RT_FUNC(ChannelGetIsFull,    rt_channel_get_is_full,    "Viper.Threads.Channel.get_IsFull",    "i1(obj)")
 
 //=============================================================================
 // TIME - CLOCK
@@ -1784,6 +1979,63 @@ RT_FUNC(Vec3X,      rt_vec3_x,      "Viper.Vec3.get_X",  "f64(obj)")
 RT_FUNC(Vec3Y,      rt_vec3_y,      "Viper.Vec3.get_Y",  "f64(obj)")
 RT_FUNC(Vec3Z,      rt_vec3_z,      "Viper.Vec3.get_Z",  "f64(obj)")
 RT_FUNC(Vec3Zero,   rt_vec3_zero,   "Viper.Vec3.Zero",   "obj()")
+
+//=============================================================================
+// MAT3 (3x3 Matrix for 2D transformations)
+//=============================================================================
+
+RT_FUNC(Mat3New,              rt_mat3_new,              "Viper.Mat3.New",             "obj(f64,f64,f64,f64,f64,f64,f64,f64,f64)")
+RT_FUNC(Mat3Identity,         rt_mat3_identity,         "Viper.Mat3.Identity",        "obj()")
+RT_FUNC(Mat3Zero,             rt_mat3_zero,             "Viper.Mat3.Zero",            "obj()")
+RT_FUNC(Mat3Translate,        rt_mat3_translate,        "Viper.Mat3.Translate",       "obj(f64,f64)")
+RT_FUNC(Mat3Scale,            rt_mat3_scale,            "Viper.Mat3.Scale",           "obj(f64,f64)")
+RT_FUNC(Mat3ScaleUniform,     rt_mat3_scale_uniform,    "Viper.Mat3.ScaleUniform",    "obj(f64)")
+RT_FUNC(Mat3Rotate,           rt_mat3_rotate,           "Viper.Mat3.Rotate",          "obj(f64)")
+RT_FUNC(Mat3Shear,            rt_mat3_shear,            "Viper.Mat3.Shear",           "obj(f64,f64)")
+RT_FUNC(Mat3Get,              rt_mat3_get,              "Viper.Mat3.Get",             "f64(obj,i64,i64)")
+RT_FUNC(Mat3Row,              rt_mat3_row,              "Viper.Mat3.Row",             "obj(obj,i64)")
+RT_FUNC(Mat3Col,              rt_mat3_col,              "Viper.Mat3.Col",             "obj(obj,i64)")
+RT_FUNC(Mat3Add,              rt_mat3_add,              "Viper.Mat3.Add",             "obj(obj,obj)")
+RT_FUNC(Mat3Sub,              rt_mat3_sub,              "Viper.Mat3.Sub",             "obj(obj,obj)")
+RT_FUNC(Mat3Mul,              rt_mat3_mul,              "Viper.Mat3.Mul",             "obj(obj,obj)")
+RT_FUNC(Mat3MulScalar,        rt_mat3_mul_scalar,       "Viper.Mat3.MulScalar",       "obj(obj,f64)")
+RT_FUNC(Mat3TransformPoint,   rt_mat3_transform_point,  "Viper.Mat3.TransformPoint",  "obj(obj,obj)")
+RT_FUNC(Mat3TransformVec,     rt_mat3_transform_vec,    "Viper.Mat3.TransformVec",    "obj(obj,obj)")
+RT_FUNC(Mat3Transpose,        rt_mat3_transpose,        "Viper.Mat3.Transpose",       "obj(obj)")
+RT_FUNC(Mat3Det,              rt_mat3_det,              "Viper.Mat3.Det",             "f64(obj)")
+RT_FUNC(Mat3Inverse,          rt_mat3_inverse,          "Viper.Mat3.Inverse",         "obj(obj)")
+RT_FUNC(Mat3Neg,              rt_mat3_neg,              "Viper.Mat3.Neg",             "obj(obj)")
+RT_FUNC(Mat3Eq,               rt_mat3_eq,               "Viper.Mat3.Eq",              "i1(obj,obj,f64)")
+
+//=============================================================================
+// MAT4 (4x4 Matrix for 3D transformations)
+//=============================================================================
+
+RT_FUNC(Mat4New,              rt_mat4_new,              "Viper.Mat4.New",             "obj(f64,f64,f64,f64,f64,f64,f64,f64,f64,f64,f64,f64,f64,f64,f64,f64)")
+RT_FUNC(Mat4Identity,         rt_mat4_identity,         "Viper.Mat4.Identity",        "obj()")
+RT_FUNC(Mat4Zero,             rt_mat4_zero,             "Viper.Mat4.Zero",            "obj()")
+RT_FUNC(Mat4Translate,        rt_mat4_translate,        "Viper.Mat4.Translate",       "obj(f64,f64,f64)")
+RT_FUNC(Mat4Scale,            rt_mat4_scale,            "Viper.Mat4.Scale",           "obj(f64,f64,f64)")
+RT_FUNC(Mat4ScaleUniform,     rt_mat4_scale_uniform,    "Viper.Mat4.ScaleUniform",    "obj(f64)")
+RT_FUNC(Mat4RotateX,          rt_mat4_rotate_x,         "Viper.Mat4.RotateX",         "obj(f64)")
+RT_FUNC(Mat4RotateY,          rt_mat4_rotate_y,         "Viper.Mat4.RotateY",         "obj(f64)")
+RT_FUNC(Mat4RotateZ,          rt_mat4_rotate_z,         "Viper.Mat4.RotateZ",         "obj(f64)")
+RT_FUNC(Mat4RotateAxis,       rt_mat4_rotate_axis,      "Viper.Mat4.RotateAxis",      "obj(obj,f64)")
+RT_FUNC(Mat4Perspective,      rt_mat4_perspective,      "Viper.Mat4.Perspective",     "obj(f64,f64,f64,f64)")
+RT_FUNC(Mat4Ortho,            rt_mat4_ortho,            "Viper.Mat4.Ortho",           "obj(f64,f64,f64,f64,f64,f64)")
+RT_FUNC(Mat4LookAt,           rt_mat4_look_at,          "Viper.Mat4.LookAt",          "obj(obj,obj,obj)")
+RT_FUNC(Mat4Get,              rt_mat4_get,              "Viper.Mat4.Get",             "f64(obj,i64,i64)")
+RT_FUNC(Mat4Add,              rt_mat4_add,              "Viper.Mat4.Add",             "obj(obj,obj)")
+RT_FUNC(Mat4Sub,              rt_mat4_sub,              "Viper.Mat4.Sub",             "obj(obj,obj)")
+RT_FUNC(Mat4Mul,              rt_mat4_mul,              "Viper.Mat4.Mul",             "obj(obj,obj)")
+RT_FUNC(Mat4MulScalar,        rt_mat4_mul_scalar,       "Viper.Mat4.MulScalar",       "obj(obj,f64)")
+RT_FUNC(Mat4TransformPoint,   rt_mat4_transform_point,  "Viper.Mat4.TransformPoint",  "obj(obj,obj)")
+RT_FUNC(Mat4TransformVec,     rt_mat4_transform_vec,    "Viper.Mat4.TransformVec",    "obj(obj,obj)")
+RT_FUNC(Mat4Transpose,        rt_mat4_transpose,        "Viper.Mat4.Transpose",       "obj(obj)")
+RT_FUNC(Mat4Det,              rt_mat4_det,              "Viper.Mat4.Det",             "f64(obj)")
+RT_FUNC(Mat4Inverse,          rt_mat4_inverse,          "Viper.Mat4.Inverse",         "obj(obj)")
+RT_FUNC(Mat4Neg,              rt_mat4_neg,              "Viper.Mat4.Neg",             "obj(obj)")
+RT_FUNC(Mat4Eq,               rt_mat4_eq,               "Viper.Mat4.Eq",              "i1(obj,obj,f64)")
 
 //=============================================================================
 //=============================================================================
@@ -2088,6 +2340,23 @@ RT_FUNC(UrlEncodeQueryMap, rt_url_encode_query, "Viper.Network.Url.EncodeQuery",
 RT_FUNC(UrlDecodeQueryStr, rt_url_decode_query, "Viper.Network.Url.DecodeQuery", "obj(str)")
 RT_FUNC(UrlIsValid, rt_url_is_valid, "Viper.Network.Url.IsValid", "i1(str)")
 
+// WebSocket client
+RT_FUNC(WsConnect,     rt_ws_connect,       "Viper.Network.WebSocket.Connect",        "obj(str)")
+RT_FUNC(WsConnectFor,  rt_ws_connect_for,   "Viper.Network.WebSocket.ConnectFor",     "obj(str,i64)")
+RT_FUNC(WsUrl,         rt_ws_url,           "Viper.Network.WebSocket.get_Url",        "str(obj)")
+RT_FUNC(WsIsOpen,      rt_ws_is_open,       "Viper.Network.WebSocket.get_IsOpen",     "i1(obj)")
+RT_FUNC(WsCloseCode,   rt_ws_close_code,    "Viper.Network.WebSocket.get_CloseCode",  "i64(obj)")
+RT_FUNC(WsCloseReason, rt_ws_close_reason,  "Viper.Network.WebSocket.get_CloseReason","str(obj)")
+RT_FUNC(WsSend,        rt_ws_send,          "Viper.Network.WebSocket.Send",           "void(obj,str)")
+RT_FUNC(WsSendBytes,   rt_ws_send_bytes,    "Viper.Network.WebSocket.SendBytes",      "void(obj,obj)")
+RT_FUNC(WsPing,        rt_ws_ping,          "Viper.Network.WebSocket.Ping",           "void(obj)")
+RT_FUNC(WsRecv,        rt_ws_recv,          "Viper.Network.WebSocket.Recv",           "str(obj)")
+RT_FUNC(WsRecvFor,     rt_ws_recv_for,      "Viper.Network.WebSocket.RecvFor",        "str(obj,i64)")
+RT_FUNC(WsRecvBytes,   rt_ws_recv_bytes,    "Viper.Network.WebSocket.RecvBytes",      "obj(obj)")
+RT_FUNC(WsRecvBytesFor,rt_ws_recv_bytes_for,"Viper.Network.WebSocket.RecvBytesFor",   "obj(obj,i64)")
+RT_FUNC(WsClose,       rt_ws_close,         "Viper.Network.WebSocket.Close",          "void(obj)")
+RT_FUNC(WsCloseWith,   rt_ws_close_with,    "Viper.Network.WebSocket.CloseWith",      "void(obj,i64,str)")
+
 // RUNTIME CLASSES
 //
 // Classes define the OOP interface exposed to Viper languages.
@@ -2147,6 +2416,23 @@ RT_CLASS_BEGIN("Viper.Collections.Bag", Bag, "obj", BagNew)
     RT_METHOD("Put", "i1(str)", BagPut)
 RT_CLASS_END()
 
+// Viper.Collections.Set - generic set of unique objects
+RT_CLASS_BEGIN("Viper.Collections.Set", Set, "obj", SetNew)
+    RT_PROP("IsEmpty", "i1", SetIsEmpty, none)
+    RT_PROP("Len", "i64", SetLen, none)
+    RT_METHOD("Clear", "void()", SetClear)
+    RT_METHOD("Common", "obj(obj)", SetCommon)
+    RT_METHOD("Diff", "obj(obj)", SetDiff)
+    RT_METHOD("Drop", "i1(obj)", SetDrop)
+    RT_METHOD("Has", "i1(obj)", SetHas)
+    RT_METHOD("IsDisjoint", "i1(obj)", SetIsDisjoint)
+    RT_METHOD("IsSubset", "i1(obj)", SetIsSubset)
+    RT_METHOD("IsSuperset", "i1(obj)", SetIsSuperset)
+    RT_METHOD("Items", "obj()", SetItems)
+    RT_METHOD("Merge", "obj(obj)", SetMerge)
+    RT_METHOD("Put", "i1(obj)", SetPut)
+RT_CLASS_END()
+
 // Viper.Collections.List
 RT_CLASS_BEGIN("Viper.Collections.List", List, "obj", ListNew)
     RT_PROP("Count", "i64", ListGetCount, none)
@@ -2159,6 +2445,10 @@ RT_CLASS_BEGIN("Viper.Collections.List", List, "obj", ListNew)
     RT_METHOD("RemoveAt", "void(i64)", ListRemoveAt)
     RT_METHOD("get_Item", "obj(i64)", ListGetItem)
     RT_METHOD("set_Item", "void(i64,obj)", ListSetItem)
+    RT_METHOD("Slice", "obj(i64,i64)", ListSlice)
+    RT_METHOD("Flip", "void()", ListFlip)
+    RT_METHOD("First", "obj()", ListFirst)
+    RT_METHOD("Last", "obj()", ListLast)
 RT_CLASS_END()
 
 // Viper.Collections.Map - key-value dictionary (string keys)
@@ -2304,6 +2594,26 @@ RT_CLASS_END()
 RT_CLASS_BEGIN("Viper.Crypto.Rand", CryptoRand, "obj", none)
     RT_METHOD("Bytes", "obj(i64)", CryptoRandBytes)
     RT_METHOD("Int", "i64(i64,i64)", CryptoRandInt)
+RT_CLASS_END()
+
+// Viper.Crypto.Tls - TLS 1.3 secure connections
+RT_CLASS_BEGIN("Viper.Crypto.Tls", Tls, "obj", none)
+    // Static constructors
+    RT_METHOD("Connect", "obj(str,i64)", TlsConnect)
+    RT_METHOD("ConnectFor", "obj(str,i64,i64)", TlsConnectFor)
+    // Properties
+    RT_PROP("Host", "str", TlsHost, none)
+    RT_PROP("Port", "i64", TlsPort, none)
+    RT_PROP("IsOpen", "i1", TlsIsOpen, none)
+    // Send methods
+    RT_METHOD("Send", "i64(obj)", TlsSend)
+    RT_METHOD("SendStr", "i64(str)", TlsSendStr)
+    // Receive methods
+    RT_METHOD("Recv", "obj(i64)", TlsRecv)
+    RT_METHOD("RecvStr", "str(i64)", TlsRecvStr)
+    // Error and close
+    RT_METHOD("Error", "str()", TlsError)
+    RT_METHOD("Close", "void()", TlsClose)
 RT_CLASS_END()
 
 // Viper.DateTime - static utility class
@@ -3735,4 +4045,28 @@ RT_CLASS_BEGIN("Viper.Network.Url", Url, "obj", none)
     RT_METHOD("EncodeQuery", "str(obj)", UrlEncodeQueryMap)
     RT_METHOD("DecodeQuery", "obj(str)", UrlDecodeQueryStr)
     RT_METHOD("IsValid", "i1(str)", UrlIsValid)
+RT_CLASS_END()
+
+// Viper.Network.WebSocket - WebSocket client for real-time communication
+RT_CLASS_BEGIN("Viper.Network.WebSocket", WebSocket, "obj", WsConnect)
+    // Static constructors
+    RT_METHOD("Connect", "obj(str)", WsConnect)
+    RT_METHOD("ConnectFor", "obj(str,i64)", WsConnectFor)
+    // Properties
+    RT_PROP("Url", "str", WsUrl, none)
+    RT_PROP("IsOpen", "i1", WsIsOpen, none)
+    RT_PROP("CloseCode", "i64", WsCloseCode, none)
+    RT_PROP("CloseReason", "str", WsCloseReason, none)
+    // Send methods
+    RT_METHOD("Send", "void(str)", WsSend)
+    RT_METHOD("SendBytes", "void(obj)", WsSendBytes)
+    RT_METHOD("Ping", "void()", WsPing)
+    // Receive methods
+    RT_METHOD("Recv", "str()", WsRecv)
+    RT_METHOD("RecvFor", "str(i64)", WsRecvFor)
+    RT_METHOD("RecvBytes", "obj()", WsRecvBytes)
+    RT_METHOD("RecvBytesFor", "obj(i64)", WsRecvBytesFor)
+    // Close methods
+    RT_METHOD("Close", "void()", WsClose)
+    RT_METHOD("CloseWith", "void(i64,str)", WsCloseWith)
 RT_CLASS_END()

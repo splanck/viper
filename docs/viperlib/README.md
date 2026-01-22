@@ -2,7 +2,7 @@
 
 > **Version:** 0.2.0
 > **Status:** Pre-Alpha — API subject to change
-> **Last updated:** 2026-01-15
+> **Last updated:** 2026-01-21
 
 The Viper Runtime Library provides built-in classes and utilities available to all Viper programs. These classes are
 implemented in C and exposed through the IL runtime system.
@@ -15,19 +15,19 @@ implemented in C and exposed through the IL runtime system.
 |---------------------------------|---------------------------------------------------------------------------|
 | [Architecture](architecture.md) | Runtime internals, type reference                                         |
 | [Audio](audio.md)               | `Sound`, `Music` — audio playback for games and applications              |
-| [Collections](collections.md)   | `Bag`, `Bytes`, `Heap`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Stack`, `TreeMap` |
+| [Collections](collections.md)   | `Bag`, `Bytes`, `Heap`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Set`, `Stack`, `TreeMap` |
 | [Core Types](core.md)           | `Object`, `Box`, `String` — foundational types                             |
-| [Cryptography](crypto.md)       | `Hash`, `KeyDerive`, `Rand`                                               |
+| [Cryptography](crypto.md)       | `Hash`, `KeyDerive`, `Rand`, `Tls`                                        |
 | [Diagnostics](diagnostics.md)   | `Assert`, `Trap`, `Stopwatch`                                             |
 | [Graphics](graphics.md)         | `Canvas`, `Color`, `Pixels`, `Sprite`, `Tilemap`, `Camera`                |
 | [GUI](gui.md)                   | `App`, `Button`, `Label`, widgets — GUI toolkit for applications          |
 | [Input](input.md)               | `Keyboard`, `Mouse`, `Pad` — input for games and interactive apps       |
 | [Input/Output](io.md)           | `Archive`, `BinFile`, `Compress`, `Dir`, `File`, `LineReader`, `LineWriter`, `MemStream`, `Path`, `Watcher` |
-| [Mathematics](math.md)          | `Bits`, `Math`, `Random`, `Vec2`, `Vec3`                                  |
-| [Network](network.md)           | `Dns`, `Http`, `HttpReq`, `HttpRes`, `Tcp`, `TcpServer`, `Udp`, `Url`      |
+| [Mathematics](math.md)          | `BigInt`, `Bits`, `Mat3`, `Mat4`, `Math`, `Random`, `Vec2`, `Vec3`        |
+| [Network](network.md)           | `Dns`, `Http`, `HttpReq`, `HttpRes`, `Tcp`, `TcpServer`, `Udp`, `Url`, `WebSocket` |
 | [System](system.md)             | `Environment`, `Exec`, `Machine`, `Terminal`                              |
-| [Text Processing](text.md)      | `Codec`, `Csv`, `Guid`, `Pattern`, `StringBuilder`, `Template`            |
-| [Threads](threads.md)           | `Barrier`, `Gate`, `Monitor`, `RwLock`, `SafeI64`, `Thread`               |
+| [Text Processing](text.md)      | `Codec`, `Csv`, `Guid`, `Pattern`, `StringBuilder`, `Template`, `Xml`, `Yaml` |
+| [Threads](threads.md)           | `Barrier`, `Channel`, `Gate`, `Monitor`, `Pool`, `RwLock`, `SafeI64`, `Thread` |
 | [Time & Timing](time.md)        | `Clock`, `Countdown`, `DateTime`, `Stopwatch`                             |
 | [Utilities](utilities.md)       | `Convert`, `Fmt`, `Log`, `Parse`                                          |
 
@@ -49,6 +49,8 @@ implemented in C and exposed through the IL runtime system.
 | [`Log`](utilities.md#viperlog)              | Static   | Logging utilities                             |
 | [`Machine`](system.md#vipermachine)         | Static   | System information queries                    |
 | [`Math`](math.md#vipermath)                 | Static   | Mathematical functions (trig, pow, abs, etc.) |
+| [`Mat3`](math.md#vipermathmat3)             | Instance | 3×3 matrix for 2D transformations             |
+| [`Mat4`](math.md#vipermathmat4)             | Instance | 4×4 matrix for 3D transformations             |
 | [`Object`](core.md#viperobject)             | Base     | Root type for all reference types             |
 | [`Parse`](utilities.md#viperparse)          | Static   | String parsing utilities                      |
 | [`Random`](math.md#viperrandom)             | Static   | Random number generation                      |
@@ -56,6 +58,12 @@ implemented in C and exposed through the IL runtime system.
 | [`Terminal`](system.md#viperterminal)       | Static   | Terminal input/output                         |
 | [`Vec2`](math.md#vipervec2)                 | Instance | 2D vector math                                |
 | [`Vec3`](math.md#vipervec3)                 | Instance | 3D vector math                                |
+
+### Viper.Math
+
+| Class                                       | Type     | Description                                   |
+|---------------------------------------------|----------|-----------------------------------------------|
+| [`BigInt`](math.md#vipermathbigint)         | Instance | Arbitrary precision integers                  |
 
 ### Viper.Collections
 
@@ -69,16 +77,25 @@ implemented in C and exposed through the IL runtime system.
 | [`Heap`](collections.md#vipercollectionsheap)       | Instance | Priority queue (min/max heap)       |
 | [`Ring`](collections.md#vipercollectionsring)       | Instance | Fixed-size circular buffer          |
 | [`Seq`](collections.md#vipercollectionsseq)         | Instance | Growable array with stack/queue ops |
+| [`Set`](collections.md#vipercollectionsset)         | Instance | Generic object set with set ops     |
 | [`Stack`](collections.md#vipercollectionsstack)     | Instance | LIFO collection                     |
 | [`TreeMap`](collections.md#vipercollectionstreemap) | Instance | Sorted key-value map                |
 
 ### Viper.Crypto
 
-| Class                                         | Type   | Description                              |
-|-----------------------------------------------|--------|------------------------------------------|
-| [`Hash`](crypto.md#vipercryptohash)           | Static | CRC32, MD5, SHA1, SHA256                 |
-| [`KeyDerive`](crypto.md#vipercryptokeyderive) | Static | PBKDF2-SHA256 key derivation             |
-| [`Rand`](crypto.md#vipercryptorand)           | Static | Cryptographically secure random bytes    |
+| Class                                         | Type     | Description                              |
+|-----------------------------------------------|----------|------------------------------------------|
+| [`Hash`](crypto.md#vipercryptohash)           | Static   | CRC32, MD5, SHA1, SHA256                 |
+| [`KeyDerive`](crypto.md#vipercryptokeyderive) | Static   | PBKDF2-SHA256 key derivation             |
+| [`Rand`](crypto.md#vipercryptorand)           | Static   | Cryptographically secure random bytes    |
+| [`Tls`](crypto.md#vipercryptotls)             | Instance | TLS 1.3 secure socket connections        |
+
+### Viper.Data
+
+| Class                                   | Type   | Description                        |
+|-----------------------------------------|--------|------------------------------------|
+| [`Xml`](text.md#viperdataxml)           | Static | XML parsing, manipulation, output  |
+| [`Yaml`](text.md#viperdatayaml)         | Static | YAML parsing and formatting        |
 
 ### Viper.Diagnostics
 
@@ -154,16 +171,17 @@ implemented in C and exposed through the IL runtime system.
 
 ### Viper.Network
 
-| Class                                           | Type     | Description                           |
-|-------------------------------------------------|----------|---------------------------------------|
-| [`Dns`](network.md#vipernetworkdns)             | Static   | DNS resolution and validation         |
-| [`Http`](network.md#vipernetworkhttp)           | Static   | Simple HTTP helpers                   |
-| [`HttpReq`](network.md#vipernetworkhttpreq)     | Instance | HTTP request builder                  |
-| [`HttpRes`](network.md#vipernetworkhttpres)     | Instance | HTTP response wrapper                 |
-| [`Tcp`](network.md#vipernetworktcp)             | Instance | TCP client connection                 |
-| [`TcpServer`](network.md#vipernetworktcpserver) | Instance | TCP server (listener)                 |
-| [`Udp`](network.md#vipernetworkudp)             | Instance | UDP datagram socket                   |
-| [`Url`](network.md#vipernetworkurl)             | Instance | URL parsing and building              |
+| Class                                             | Type     | Description                           |
+|---------------------------------------------------|----------|---------------------------------------|
+| [`Dns`](network.md#vipernetworkdns)               | Static   | DNS resolution and validation         |
+| [`Http`](network.md#vipernetworkhttp)             | Static   | Simple HTTP helpers                   |
+| [`HttpReq`](network.md#vipernetworkhttpreq)       | Instance | HTTP request builder                  |
+| [`HttpRes`](network.md#vipernetworkhttpres)       | Instance | HTTP response wrapper                 |
+| [`Tcp`](network.md#vipernetworktcp)               | Instance | TCP client connection                 |
+| [`TcpServer`](network.md#vipernetworktcpserver)   | Instance | TCP server (listener)                 |
+| [`Udp`](network.md#vipernetworkudp)               | Instance | UDP datagram socket                   |
+| [`Url`](network.md#vipernetworkurl)               | Instance | URL parsing and building              |
+| [`WebSocket`](network.md#vipernetworkwebsocket)   | Instance | WebSocket client (RFC 6455)           |
 
 ### Viper.Text
 
@@ -181,8 +199,10 @@ implemented in C and exposed through the IL runtime system.
 | Class                                         | Type     | Description                                  |
 |-----------------------------------------------|----------|----------------------------------------------|
 | [`Barrier`](threads.md#viperthreadsbarrier)   | Instance | Synchronization barrier for N participants   |
+| [`Channel`](threads.md#viperthreadschannel)   | Instance | Bounded channel for thread communication     |
 | [`Gate`](threads.md#viperthreadsgate)         | Instance | Counting gate/semaphore                      |
 | [`Monitor`](threads.md#viperthreadsmonitor)   | Static   | FIFO-fair, re-entrant object monitor         |
+| [`Pool`](threads.md#viperthreadspool)         | Instance | Thread pool for concurrent task execution    |
 | [`RwLock`](threads.md#viperthreadsrwlock)     | Instance | Reader-writer lock                           |
 | [`SafeI64`](threads.md#viperthreadssafei64)   | Instance | FIFO-serialized safe integer cell            |
 | [`Thread`](threads.md#viperthreadsthread)     | Instance | OS thread handle + join/sleep/yield helpers  |
@@ -217,7 +237,8 @@ implemented in C and exposed through the IL runtime system.
 | Legacy compatibility      | `List`    | Similar to VB6 Collection                |
 | LIFO (last-in-first-out)  | `Stack`   | Simple push/pop interface                |
 | Sorted key-value          | `TreeMap` | Keys in sorted order, floor/ceil queries |
-| Unique strings            | `Bag`     | Set operations (union, intersect, diff)  |
+| Unique objects            | `Set`     | Object set with set operations           |
+| Unique strings            | `Bag`     | String set operations (union, etc.)      |
 
 ---
 

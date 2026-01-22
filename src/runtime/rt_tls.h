@@ -15,6 +15,7 @@
 #ifndef VIPER_RT_TLS_H
 #define VIPER_RT_TLS_H
 
+#include "rt_string.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -81,6 +82,43 @@ extern "C"
 
     /// @brief Get underlying socket file descriptor.
     int rt_tls_get_socket(rt_tls_session_t *session);
+
+    //=========================================================================
+    // Viper API wrappers (Viper.Crypto.Tls)
+    //=========================================================================
+
+    /// @brief Connect to host:port with TLS, default timeout.
+    void *rt_viper_tls_connect(rt_string host, int64_t port);
+
+    /// @brief Connect to host:port with TLS, custom timeout.
+    void *rt_viper_tls_connect_for(rt_string host, int64_t port, int64_t timeout_ms);
+
+    /// @brief Get connected hostname.
+    rt_string rt_viper_tls_host(void *obj);
+
+    /// @brief Get connected port.
+    int64_t rt_viper_tls_port(void *obj);
+
+    /// @brief Check if connection is open.
+    int8_t rt_viper_tls_is_open(void *obj);
+
+    /// @brief Send Bytes data over TLS.
+    int64_t rt_viper_tls_send(void *obj, void *data);
+
+    /// @brief Send String data over TLS.
+    int64_t rt_viper_tls_send_str(void *obj, rt_string text);
+
+    /// @brief Receive up to max_bytes as Bytes.
+    void *rt_viper_tls_recv(void *obj, int64_t max_bytes);
+
+    /// @brief Receive up to max_bytes as String.
+    rt_string rt_viper_tls_recv_str(void *obj, int64_t max_bytes);
+
+    /// @brief Close the TLS connection.
+    void rt_viper_tls_close(void *obj);
+
+    /// @brief Get last error message.
+    rt_string rt_viper_tls_error(void *obj);
 
 #ifdef __cplusplus
 }

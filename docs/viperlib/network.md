@@ -14,6 +14,7 @@
 - [Viper.Network.HttpReq](#vipernetworkhttpreq)
 - [Viper.Network.HttpRes](#vipernetworkhttpres)
 - [Viper.Network.Url](#vipernetworkurl)
+- [Viper.Network.WebSocket](#vipernetworkwebsocket)
 
 ---
 
@@ -1017,8 +1018,153 @@ PRINT parsed.Get("a")  ' "1"
 
 ---
 
+## Viper.Network.WebSocket
+
+WebSocket client for bidirectional, full-duplex communication over a single TCP connection. Supports both text and
+binary messages following RFC 6455.
+
+**Type:** Instance class
+
+**Constructors:**
+
+- `Viper.Network.WebSocket.Connect(url)` - Connect to WebSocket server
+- `Viper.Network.WebSocket.ConnectFor(url, timeoutMs)` - Connect with timeout
+
+### Properties
+
+| Property      | Type    | Description                                        |
+|---------------|---------|----------------------------------------------------|
+| `Url`         | String  | WebSocket URL (ws:// or wss://) (read-only)        |
+| `IsOpen`      | Boolean | True if connection is open (read-only)             |
+| `CloseCode`   | Integer | Close status code (0 if not closed) (read-only)    |
+| `CloseReason` | String  | Close reason message (empty if not closed)         |
+
+### Send Methods
+
+| Method            | Returns | Description                                  |
+|-------------------|---------|----------------------------------------------|
+| `Send(text)`      | void    | Send text message (UTF-8)                    |
+| `SendBytes(data)` | void    | Send binary message (Bytes)                  |
+| `Ping()`          | void    | Send ping frame (server responds with pong)  |
+
+### Receive Methods
+
+| Method               | Returns | Description                                          |
+|----------------------|---------|------------------------------------------------------|
+| `Recv()`             | String  | Receive text message (blocks)                        |
+| `RecvFor(ms)`        | String  | Receive text with timeout (empty string on timeout)  |
+| `RecvBytes()`        | Bytes   | Receive binary message (blocks)                      |
+| `RecvBytesFor(ms)`   | Bytes   | Receive binary with timeout (null on timeout)        |
+
+### Close Methods
+
+| Method               | Returns | Description                                          |
+|----------------------|---------|------------------------------------------------------|
+| `Close()`            | void    | Close connection with default code (1000 Normal)     |
+| `CloseWith(code,msg)`| void    | Close connection with specific code and reason       |
+
+### URL Format
+
+WebSocket URLs follow this format:
+```
+ws://host[:port][/path]      # Unencrypted (port 80 default)
+wss://host[:port][/path]     # TLS encrypted (port 443 default)
+```
+
+### Example
+
+```basic
+' Connect to a WebSocket server
+DIM ws AS OBJECT = Viper.Network.WebSocket.Connect("wss://echo.websocket.org/")
+
+IF ws.IsOpen THEN
+    PRINT "Connected to "; ws.Url
+
+    ' Send a text message
+    ws.Send("Hello, WebSocket!")
+
+    ' Receive response
+    DIM response AS STRING = ws.Recv()
+    PRINT "Received: "; response
+
+    ' Send binary data
+    DIM data AS OBJECT = Viper.Collections.Bytes.FromHex("deadbeef")
+    ws.SendBytes(data)
+
+    ' Receive binary response
+    DIM binResponse AS OBJECT = ws.RecvBytes()
+    PRINT "Binary: "; binResponse.ToHex()
+
+    ' Clean close
+    ws.Close()
+END IF
+```
+
+### Receive with Timeout Example
+
+```basic
+DIM ws AS OBJECT = Viper.Network.WebSocket.Connect("ws://example.com/stream")
+
+' Receive with 5 second timeout
+DO WHILE ws.IsOpen
+    DIM msg AS STRING = ws.RecvFor(5000)
+    IF msg <> "" THEN
+        PRINT "Message: "; msg
+    ELSE
+        PRINT "No message within timeout"
+        ' Could send ping to keep connection alive
+        ws.Ping()
+    END IF
+LOOP
+
+PRINT "Connection closed: "; ws.CloseCode; " - "; ws.CloseReason
+```
+
+### Close Codes
+
+| Code | Name              | Description                                    |
+|------|-------------------|------------------------------------------------|
+| 1000 | Normal Closure    | Normal close (default for `Close()`)           |
+| 1001 | Going Away        | Server or client is shutting down              |
+| 1002 | Protocol Error    | Protocol error received                        |
+| 1003 | Unsupported Data  | Received data type not supported               |
+| 1006 | Abnormal Closure  | Connection lost without close frame            |
+| 1007 | Invalid Data      | Message data was invalid (e.g., bad UTF-8)     |
+| 1008 | Policy Violation  | Message violates policy                        |
+| 1009 | Message Too Big   | Message exceeds size limit                     |
+| 1011 | Server Error      | Server encountered unexpected error            |
+
+### Error Handling
+
+WebSocket operations trap on errors:
+
+- `Connect()` traps on invalid URL, connection refused, or handshake failure
+- `ConnectFor()` traps on timeout in addition to connection errors
+- `Send()`/`SendBytes()` trap if connection is closed
+- `Recv()` traps on protocol errors
+- Operations on `wss://` URLs trap on TLS errors
+
+### Protocol Notes
+
+- **Frame masking:** Client frames are automatically masked per RFC 6455
+- **Ping/pong:** Pong frames are handled automatically; use `Ping()` to test connectivity
+- **Message fragmentation:** Large messages are automatically fragmented/reassembled
+- **UTF-8 validation:** Text messages are validated for proper UTF-8 encoding
+- **Subprotocols:** Not currently supported; use headers via `HttpReq` if needed
+
+### Use Cases
+
+- **Real-time applications:** Chat, notifications, live updates
+- **Gaming:** Multiplayer game state synchronization
+- **Financial feeds:** Stock tickers, trading data
+- **IoT:** Device monitoring and control
+- **Collaborative tools:** Real-time document editing
+
+---
+
 ## See Also
 
 - [Collections](collections.md) - `Bytes`, `Map`, `Seq` types used by network classes
 - [Input/Output](io.md) - File operations for saving downloaded content
+- [Cryptography](crypto.md) - `Tls` for secure connections
 
