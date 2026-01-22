@@ -4,22 +4,72 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/frontends/basic/SemanticAnalyzer.cpp
-// Purpose: Houses shared helpers and common utilities for the BASIC semantic
-//          analyzer along with constructor and accessors.
-// Key invariants: Symbol tables mirror analyzer state; helper routines remain
-//                 internal to the BASIC frontend.
-// Ownership/Lifetime: Borrowed DiagnosticEmitter; AST nodes owned externally.
-// Links: docs/codemap.md
-//
-//===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Provides shared utilities, accessors, and helper functions for the BASIC semantic
-/// analyzer.
-/// @details The definitions here back the analyzer's public API and expose
-///          reusable utilities to other translation units within the BASIC frontend.
+///
+/// @file SemanticAnalyzer.cpp
+/// @brief Core implementation of the BASIC semantic analyzer.
+///
+/// @details This file contains the main implementation of the BASIC semantic
+/// analyzer, including constructor, accessors, and shared utility functions.
+/// The semantic analyzer performs type checking, name resolution, and other
+/// validation on the BASIC AST before code generation.
+///
+/// ## Semantic Analysis Overview
+///
+/// The BASIC semantic analyzer performs several critical validation phases:
+///
+/// ### Phase 1: Name Resolution
+///
+/// - Resolves variable and function names to their declarations
+/// - Validates namespace and USING directive visibility
+/// - Checks for undefined identifiers
+///
+/// ### Phase 2: Type Checking
+///
+/// - Validates expression types and operator compatibility
+/// - Checks assignment compatibility (type coercion rules)
+/// - Validates function call argument types
+///
+/// ### Phase 3: Control Flow Analysis
+///
+/// - Ensures all code paths return a value (for functions)
+/// - Validates GOTO/GOSUB targets
+/// - Checks loop and conditional structure
+///
+/// ### Phase 4: OOP Validation
+///
+/// - Validates class inheritance chains
+/// - Checks interface implementation completeness
+/// - Validates property get/set consistency
+///
+/// ## Symbol Table Management
+///
+/// The analyzer maintains several symbol tables:
+/// - **symbols_**: Global set of all declared symbols
+/// - **varTable_**: Local/global variable mappings
+/// - **procReg_**: Procedure (SUB/FUNCTION) registry
+///
+/// ## Error Reporting
+///
+/// All semantic errors are reported through the DiagnosticEmitter interface,
+/// providing source locations for precise error messages.
+///
+/// ## Usage
+///
+/// ```cpp
+/// DiagnosticEmitter emitter;
+/// SemanticAnalyzer analyzer(emitter);
+/// bool success = analyzer.analyze(program);
+/// // Check emitter for any errors
+/// ```
+///
+/// @invariant Symbol tables are consistent with analyzed AST.
+/// @invariant DiagnosticEmitter is never null during analysis.
+/// @invariant AST nodes are not modified during analysis.
+///
+/// @see SemanticAnalyzer.hpp - Public interface
+/// @see SemanticAnalyzer_Internal.hpp - Internal helpers
+/// @see DiagnosticEmitter - Error reporting interface
+///
 
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/SemanticAnalyzer_Internal.hpp"

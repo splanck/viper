@@ -4,20 +4,94 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/il/runtime/classes/RuntimeClasses.hpp
-// Purpose: Describe runtime classes (initially Viper.String) as C++ POD
-//          descriptors consumable by frontends, verifiers, and backends.
-// Invariants:
-//   - The catalog is immutable after construction and returned as a const ref.
-//   - All string fields are static string literals or nullptr where allowed.
-//   - Receiver (object) is arg0 in method signatures.
-// Ownership/Lifetime:
-//   - The returned vector and elements have static storage lifetime.
-// Links:
-//   - docs/il-guide.md#reference
-//   - docs/architecture.md#cpp-overview
-//   - src/il/runtime/classes/RuntimeClasses.inc (single source of truth)
+///
+/// @file RuntimeClasses.hpp
+/// @brief Runtime class metadata and unified signature registry for all frontends.
+///
+/// @details This file defines the data structures and interfaces for runtime
+/// class metadata, enabling all Viper frontends to access type information
+/// about runtime library classes like Viper.String, Viper.File, etc.
+///
+/// ## Architecture Overview
+///
+/// Runtime class information flows through the system as follows:
+///
+/// ```
+/// runtime.def          Source of truth for all runtime definitions
+///      │
+///      ▼ (rtgen tool)
+/// RuntimeClasses.inc   Generated C++ macro invocations
+///      │
+///      ▼ (macro expansion)
+/// runtimeClassCatalog()  Immutable vector of RuntimeClass descriptors
+///      │
+///      ▼ (builds hash indexes)
+/// RuntimeRegistry       O(1) method/property lookup with parsed signatures
+///      │
+///      ├─────────────────┬─────────────────┐
+///      ▼                 ▼                 ▼
+/// BASIC Frontend    Zia Frontend    Pascal Frontend
+/// (toBasicType)     (toZiaType)     (future)
+/// ```
+///
+/// ## Key Components
+///
+/// ### Raw Catalog (runtimeClassCatalog)
+///
+/// The catalog is a statically-initialized vector of RuntimeClass descriptors.
+/// Each descriptor contains:
+/// - Qualified name (e.g., "Viper.String")
+/// - Type ID for runtime type identification
+/// - Properties with getter/setter targets
+/// - Methods with signature strings
+///
+/// ### RuntimeRegistry (Singleton)
+///
+/// The registry builds hash indexes over the catalog for O(1) lookup:
+/// - Methods indexed by "class|method#arity"
+/// - Properties indexed by "class.property"
+/// - Functions indexed by canonical extern name
+///
+/// ### Frontend-Agnostic Types (ILScalarType)
+///
+/// Parsed signatures use ILScalarType to represent types in a
+/// frontend-independent way. Each frontend provides an adapter
+/// (toBasicType, toZiaType) to convert to their native type systems.
+///
+/// ## Signature String Format
+///
+/// Method signatures use the format: `returnType(param1,param2,...)`
+///
+/// Type tokens:
+/// - `i64` - 64-bit signed integer
+/// - `f64` - 64-bit floating point
+/// - `i1` - Boolean
+/// - `str` - String reference
+/// - `obj` / `ptr` - Object pointer
+/// - `void` - No return value
+///
+/// Examples:
+/// - `"str(i64,i64)"` - Returns string, takes two integers (String.Substring)
+/// - `"i64()"` - Returns integer, no parameters (String.Length getter)
+/// - `"void(str)"` - Returns void, takes string (StringBuilder.Append)
+///
+/// ## Thread Safety
+///
+/// The catalog and registry are built using function-local statics with
+/// guaranteed thread-safe initialization. Once built, all data is immutable.
+///
+/// ## Invariants
+///
+/// - The catalog is immutable after construction
+/// - All string fields point to static string literals or are nullptr
+/// - Signatures omit the receiver (self/this); it's implicit arg0
+/// - The registry provides case-insensitive lookup
+///
+/// @see RuntimeClasses.cpp - Implementation of catalog and registry
+/// @see RuntimeClasses.inc - Generated class descriptors
+/// @see runtime.def - Source definitions for runtime library
+/// @see docs/il-guide.md - IL specification reference
+///
 
 #pragma once
 

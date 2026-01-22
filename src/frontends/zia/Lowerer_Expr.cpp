@@ -8,6 +8,76 @@
 /// @file Lowerer_Expr.cpp
 /// @brief Expression lowering for the Zia IL lowerer.
 ///
+/// @details This file implements expression lowering for the Zia frontend,
+/// converting Zia AST expression nodes into IL instructions. It handles all
+/// expression types including literals, identifiers, binary/unary operations,
+/// function calls, field accesses, and collection operations.
+///
+/// ## Expression Lowering Overview
+///
+/// Each expression type has a dedicated lowering function that:
+/// 1. Evaluates sub-expressions recursively
+/// 2. Emits appropriate IL instructions
+/// 3. Returns a LowerResult containing the result Value and Type
+///
+/// ## LowerResult Structure
+///
+/// The return type `LowerResult` is a pair of:
+/// - **Value**: The IL value representing the expression result (SSA register)
+/// - **Type**: The IL type of the result (I64, F64, Ptr, etc.)
+///
+/// ## Expression Categories
+///
+/// ### Literal Expressions
+/// - IntLiteral → `const.i64`
+/// - NumberLiteral → `const.f64`
+/// - StringLiteral → Global string + runtime interning
+/// - BoolLiteral → `const.i1`
+/// - NullLiteral → `const.ptr 0`
+/// - ListLiteral → Runtime List allocation + element insertion
+/// - MapLiteral → Runtime Map allocation + key-value insertion
+///
+/// ### Identifier Expressions
+/// - Local variables → Load from stack slot
+/// - Parameters → Direct parameter access
+/// - Global variables → Load from global
+/// - Constants → Inline constant value
+///
+/// ### Binary/Unary Expressions
+/// - Arithmetic: +, -, *, /, % → IL arithmetic ops or extern calls
+/// - Comparison: ==, !=, <, >, <=, >= → IL comparison ops
+/// - Logical: &&, || → Short-circuit evaluation with branches
+/// - Bitwise: &, |, ^, <<, >> → IL bitwise ops
+/// - String concatenation → Runtime Concat call
+///
+/// ### Call Expressions
+/// - User functions → IL call instruction
+/// - Runtime methods → Extern call to runtime library
+/// - Constructors → New allocation + constructor call
+///
+/// ### Field Expressions
+/// - Struct fields → Field access instruction
+/// - Runtime properties → Getter/setter extern calls
+/// - Method calls → Method resolution + dispatch
+///
+/// ## Type Coercion
+///
+/// The lowerer handles implicit type coercions:
+/// - Integer → Number promotion for mixed arithmetic
+/// - Numeric → String for string concatenation
+/// - Optional unwrapping for null-safe operations
+///
+/// ## Runtime Integration
+///
+/// Runtime method calls are resolved through the extern symbol table. Property
+/// getters/setters use canonical names like "Viper.String.get_Length". The
+/// lowerer extracts return types from function type symbols when needed.
+///
+/// @see Lowerer.hpp - Main lowerer class definition
+/// @see Lowerer_Expr_Call.cpp - Detailed call expression handling
+/// @see Lowerer_Expr_Binary.cpp - Binary operation lowering
+/// @see Lowerer_Expr_Literals.cpp - Literal expression lowering
+///
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/Lowerer.hpp"

@@ -1,21 +1,64 @@
 //===----------------------------------------------------------------------===//
 //
 // Part of the Viper project, under the GNU GPL v3.
-// See LICENSE in the project root for license information.
+// See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: src/frontends/basic/Lexer.cpp
-// Purpose: Tokenise BASIC source text into the stream consumed by the parser
-//          while preserving line-structured layout for diagnostic reporting.
-// Key invariants: The cursor state (`pos_`, `line_`, and `column_`) always
-//                 reflects the next character to be read; keyword lookups use a
-//                 binary search over a sorted static table.
-// Ownership/Lifetime: The lexer borrows the source buffer for the duration of
-//                     scanning and never allocates persistent state beyond
-//                     temporary token strings.
-// Links: docs/codemap.md
-//
+///
+/// @file Lexer.cpp
+/// @brief Lexical analyzer for the BASIC frontend.
+///
+/// @details This file implements the BASIC lexer which converts source text
+/// into a stream of tokens for the parser. The lexer handles all BASIC-specific
+/// syntax including keywords, operators, literals, and comments.
+///
+/// ## Tokenization Strategy
+///
+/// The lexer uses a single-character lookahead approach:
+/// 1. Skip whitespace and comments
+/// 2. Examine current character to determine token type
+/// 3. Consume characters belonging to the token
+/// 4. Return token with source location
+///
+/// ## Keyword Recognition
+///
+/// BASIC keywords (IF, THEN, WHILE, etc.) are recognized using binary search
+/// over a sorted keyword table. Identifiers that match keywords are converted
+/// to keyword tokens. Comparison is case-insensitive (BASIC tradition).
+///
+/// ## Numeric Literals
+///
+/// Supports:
+/// - Decimal integers: `123`
+/// - Hexadecimal: `&H1F` or `0x1F`
+/// - Binary: `&B1010` or `0b1010`
+/// - Floating point: `1.5`, `1.5E-3`
+/// - Type suffixes: `%` (long), `!` (single), `#` (double)
+///
+/// ## String Literals
+///
+/// BASIC strings use double quotes with doubling for escapes:
+/// - `"Hello, World!"`
+/// - `"He said ""Hi"""`
+///
+/// ## Comments
+///
+/// Supports both comment styles:
+/// - `REM This is a comment`
+/// - `' This is also a comment`
+///
+/// ## Source Location Tracking
+///
+/// The lexer maintains accurate line and column positions for each token,
+/// enabling precise error messages from the parser and semantic analyzer.
+///
+/// @invariant pos_ always points to the next character to be read.
+/// @invariant line_ and column_ reflect the position of pos_.
+/// @invariant The source buffer is never modified.
+///
+/// @see Lexer.hpp - Lexer class interface and Token structure
+/// @see Parser.hpp - Consumer of the token stream
+///
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Lexer.hpp"
