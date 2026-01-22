@@ -990,12 +990,22 @@ void Sema::defineSymbol(const std::string &name, Symbol symbol)
     currentScope_->define(name, std::move(symbol));
 }
 
-void Sema::defineExternFunction(const std::string &name, TypeRef returnType)
+void Sema::defineExternFunction(const std::string &name,
+                                 TypeRef returnType,
+                                 const std::vector<TypeRef> &paramTypes)
 {
     Symbol sym;
     sym.kind = Symbol::Kind::Function;
     sym.name = name;
-    sym.type = returnType; // For extern functions, we store just the return type
+    // Create full function type if param types provided, otherwise just return type
+    if (paramTypes.empty())
+    {
+        sym.type = returnType;
+    }
+    else
+    {
+        sym.type = types::function(paramTypes, returnType);
+    }
     sym.isExtern = true;
     sym.decl = nullptr; // No AST declaration for extern functions
     defineSymbol(name, std::move(sym));

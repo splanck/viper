@@ -21,9 +21,8 @@ using il::frontends::basic::runtimeMethodIndex;
 
 TEST(RuntimeMethodIndexBasic, StringSubstringTarget)
 {
-    // Seed from catalog explicitly
-    const auto &cat = il::runtime::runtimeClassCatalog();
-    runtimeMethodIndex().seed(cat);
+    // Seed uses RuntimeRegistry internally
+    runtimeMethodIndex().seed();
 
     auto info = runtimeMethodIndex().find("Viper.String", "Substring", 2);
     ASSERT_TRUE(info.has_value());
@@ -37,9 +36,8 @@ TEST(RuntimeMethodIndexBasic, StringSubstringTarget)
 
 TEST(RuntimeMethodIndexBasic, ObjectMethodsTargets)
 {
-    // Seed from catalog explicitly
-    const auto &cat = il::runtime::runtimeClassCatalog();
-    runtimeMethodIndex().seed(cat);
+    // Seed uses RuntimeRegistry internally
+    runtimeMethodIndex().seed();
 
     // Equals has arity 1
     auto eq = runtimeMethodIndex().find("Viper.Object", "Equals", 1);

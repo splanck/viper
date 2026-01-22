@@ -22,7 +22,11 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace il::runtime
@@ -176,6 +180,143 @@ struct RuntimeClass
     std::vector<RuntimeProperty> properties; ///< Declared properties.
     std::vector<RuntimeMethod> methods;      ///< Declared methods.
 };
+
+//===----------------------------------------------------------------------===//
+/// @name Frontend-Agnostic Type System
+/// @brief Parsed signature types shared across all frontends.
+/// @{
+//===----------------------------------------------------------------------===//
+
+/// @brief Frontend-agnostic scalar types for runtime signatures.
+/// @details Frontends map these to their native type systems.
+enum class ILScalarType : std::uint8_t
+{
+    Void,    ///< void return type
+    I64,     ///< 64-bit signed integer
+    F64,     ///< 64-bit floating point
+    Bool,    ///< Boolean (i1)
+    String,  ///< String reference (str)
+    Object,  ///< Object pointer (obj/ptr)
+    Unknown  ///< Unrecognized or parse error
+};
+
+/// @brief Parsed signature with structured type information.
+/// @details Extracted from signature strings like "str(i64,i64)".
+struct ParsedSignature
+{
+    ILScalarType returnType{ILScalarType::Unknown};
+    std::vector<ILScalarType> params;
+
+    /// @brief Check if the signature was parsed successfully.
+    [[nodiscard]] bool isValid() const
+    {
+        return returnType != ILScalarType::Unknown;
+    }
+
+    /// @brief Get the number of parameters (excluding receiver).
+    [[nodiscard]] std::size_t arity() const
+    {
+        return params.size();
+    }
+};
+
+/// @brief Extended method descriptor with parsed signature.
+struct ParsedMethod
+{
+    const char *name;      ///< Method name (e.g., "Substring").
+    const char *target;    ///< Canonical extern target.
+    ParsedSignature signature;
+};
+
+/// @brief Extended property descriptor with parsed type.
+struct ParsedProperty
+{
+    const char *name;   ///< Property name (e.g., "Length").
+    ILScalarType type;  ///< Resolved property type.
+    const char *getter; ///< Getter extern target.
+    const char *setter; ///< Setter extern target or nullptr.
+    bool readonly;      ///< True if setter is nullptr.
+};
+
+/// @brief Parse a signature string like "str(i64,i64)" into structured form.
+/// @param sig The signature string from RuntimeMethod.
+/// @return Parsed signature with return type and parameter types.
+ParsedSignature parseRuntimeSignature(std::string_view sig);
+
+/// @brief Map IL token (i64, f64, str, etc.) to ILScalarType.
+/// @param tok Token from signature parsing.
+/// @return Corresponding ILScalarType, or Unknown if unrecognized.
+ILScalarType mapILToken(std::string_view tok);
+
+/// @brief Unified runtime registry with parsed signatures and lookup.
+/// @details Provides O(1) lookup for methods and properties by building
+/// hash indexes over the runtime class catalog. Frontends use this
+/// registry and map ILScalarType to their native type systems.
+///
+/// ## Usage
+/// ```cpp
+/// const auto& reg = RuntimeRegistry::instance();
+/// auto method = reg.findMethod("Viper.String", "Substring", 2);
+/// if (method) {
+///     // method->signature.returnType, method->signature.params
+/// }
+/// ```
+class RuntimeRegistry
+{
+  public:
+    /// @brief Get the singleton instance.
+    static const RuntimeRegistry &instance();
+
+    /// @brief Find a method by class, name, and arity.
+    /// @param classQName Fully-qualified class name (e.g., "Viper.String").
+    /// @param methodName Method name (e.g., "Substring").
+    /// @param arity Number of parameters (excluding receiver).
+    /// @return Parsed method info if found, nullopt otherwise.
+    /// @note Comparison is case-insensitive.
+    [[nodiscard]] std::optional<ParsedMethod> findMethod(std::string_view classQName,
+                                                         std::string_view methodName,
+                                                         std::size_t arity) const;
+
+    /// @brief Find a property by class and name.
+    /// @param classQName Fully-qualified class name.
+    /// @param propertyName Property name.
+    /// @return Parsed property info if found, nullopt otherwise.
+    /// @note Comparison is case-insensitive.
+    [[nodiscard]] std::optional<ParsedProperty> findProperty(std::string_view classQName,
+                                                             std::string_view propertyName) const;
+
+    /// @brief Find a function signature by canonical extern name.
+    /// @param canonicalName Full extern name (e.g., "Viper.String.Substring").
+    /// @return Parsed signature if found, nullopt otherwise.
+    /// @note Comparison is case-insensitive.
+    [[nodiscard]] std::optional<ParsedSignature> findFunction(std::string_view canonicalName) const;
+
+    /// @brief List available method arities for diagnostics.
+    /// @param classQName Fully-qualified class name.
+    /// @param methodName Method name.
+    /// @return List of strings like "Substring/2" for each arity found.
+    [[nodiscard]] std::vector<std::string> methodCandidates(std::string_view classQName,
+                                                            std::string_view methodName) const;
+
+    /// @brief Get the underlying raw catalog.
+    /// @return Reference to the runtime class catalog.
+    [[nodiscard]] const std::vector<RuntimeClass> &rawCatalog() const;
+
+  private:
+    RuntimeRegistry();
+    void buildIndexes();
+
+    static std::string methodKey(std::string_view cls, std::string_view method, std::size_t arity);
+    static std::string propertyKey(std::string_view cls, std::string_view prop);
+    static std::string functionKey(std::string_view name);
+    static std::string toLower(std::string_view s);
+
+    std::unordered_map<std::string, ParsedMethod> methodIndex_;
+    std::unordered_map<std::string, ParsedProperty> propertyIndex_;
+    std::unordered_map<std::string, ParsedSignature> functionIndex_;
+};
+
+/// @}
 
 /// @brief Expose the immutable runtime class catalog.
 /// @returns Const reference to a statically initialized vector of descriptors.

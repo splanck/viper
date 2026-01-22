@@ -7,6 +7,7 @@ set(ZIA_SOURCES
         Parser_Type.cpp
         Parser_Decl.cpp
         Types.cpp
+        RuntimeAdapter.cpp
         Sema.cpp
         Sema_Runtime.cpp
         Sema_Decl.cpp

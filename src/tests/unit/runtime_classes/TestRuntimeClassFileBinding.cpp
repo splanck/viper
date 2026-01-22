@@ -9,8 +9,7 @@
 
 TEST(RuntimeClassFileBinding, MethodIndexTargets)
 {
-    const auto &cat = il::runtime::runtimeClassCatalog();
-    il::frontends::basic::runtimeMethodIndex().seed(cat);
+    il::frontends::basic::runtimeMethodIndex().seed();
     auto &midx = il::frontends::basic::runtimeMethodIndex();
     // Exists(path)
     auto a = midx.find("Viper.IO.File", "Exists", 1);

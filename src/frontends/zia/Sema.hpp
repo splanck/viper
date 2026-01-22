@@ -569,10 +569,14 @@ class Sema
     /// @brief Register an external (runtime) function.
     /// @param name The fully qualified function name (e.g., "Viper.Terminal.Say").
     /// @param returnType The function's return type.
+    /// @param paramTypes Optional vector of parameter types.
     ///
     /// @details Creates a Symbol with isExtern=true and registers it in scope.
     /// Used for runtime library functions that have no AST declaration.
-    void defineExternFunction(const std::string &name, TypeRef returnType);
+    /// When paramTypes are provided, the symbol's type is a function type.
+    void defineExternFunction(const std::string &name,
+                              TypeRef returnType,
+                              const std::vector<TypeRef> &paramTypes = {});
 
     /// @}
     //=========================================================================

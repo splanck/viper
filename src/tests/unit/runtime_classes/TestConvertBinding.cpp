@@ -37,8 +37,7 @@ TEST(RuntimeClassConvertBinding, CatalogContainsConvert)
 
 TEST(RuntimeClassConvertBinding, MethodIndexTargets)
 {
-    const auto &cat = il::runtime::runtimeClassCatalog();
-    il::frontends::basic::runtimeMethodIndex().seed(cat);
+    il::frontends::basic::runtimeMethodIndex().seed();
     auto &midx = il::frontends::basic::runtimeMethodIndex();
 
     // ToInt64(str) -> Viper.Convert.ToInt

@@ -115,4 +115,242 @@ const RuntimeClass *findRuntimeClassByQName(std::string_view qname)
     return nullptr;
 }
 
+//===----------------------------------------------------------------------===//
+// ILScalarType Mapping and Signature Parsing
+//===----------------------------------------------------------------------===//
+
+ILScalarType mapILToken(std::string_view tok)
+{
+    if (tok == "i64")
+        return ILScalarType::I64;
+    if (tok == "f64")
+        return ILScalarType::F64;
+    if (tok == "i1")
+        return ILScalarType::Bool;
+    if (tok == "str")
+        return ILScalarType::String;
+    if (tok == "void")
+        return ILScalarType::Void;
+    if (tok == "obj" || tok == "ptr")
+        return ILScalarType::Object;
+    return ILScalarType::Unknown;
+}
+
+ParsedSignature parseRuntimeSignature(std::string_view sig)
+{
+    ParsedSignature result;
+
+    // Expect format: ret(args) e.g., "str(i64,i64)"
+    auto lparen = sig.find('(');
+    auto rparen = sig.rfind(')');
+    if (lparen == std::string_view::npos || rparen == std::string_view::npos || rparen < lparen)
+    {
+        return result; // Invalid, returnType stays Unknown
+    }
+
+    // Extract return type (before '(')
+    std::string_view retTok = sig.substr(0, lparen);
+    // Trim leading/trailing whitespace
+    while (!retTok.empty() && std::isspace(static_cast<unsigned char>(retTok.front())))
+        retTok.remove_prefix(1);
+    while (!retTok.empty() && std::isspace(static_cast<unsigned char>(retTok.back())))
+        retTok.remove_suffix(1);
+
+    result.returnType = mapILToken(retTok);
+
+    // Extract and parse parameters
+    std::string_view args = sig.substr(lparen + 1, rparen - lparen - 1);
+    std::size_t pos = 0;
+    while (pos < args.size())
+    {
+        // Skip spaces and commas
+        while (pos < args.size() && (args[pos] == ' ' || args[pos] == ','))
+            ++pos;
+        if (pos >= args.size())
+            break;
+
+        // Read token until comma or space
+        std::size_t start = pos;
+        while (pos < args.size() && args[pos] != ',' &&
+               !std::isspace(static_cast<unsigned char>(args[pos])))
+            ++pos;
+
+        std::string_view tok = args.substr(start, pos - start);
+        if (!tok.empty())
+            result.params.push_back(mapILToken(tok));
+    }
+
+    return result;
+}
+
+//===----------------------------------------------------------------------===//
+// RuntimeRegistry Implementation
+//===----------------------------------------------------------------------===//
+
+std::string RuntimeRegistry::toLower(std::string_view s)
+{
+    std::string out;
+    out.reserve(s.size());
+    for (unsigned char c : s)
+        out.push_back(static_cast<char>(std::tolower(c)));
+    return out;
+}
+
+std::string RuntimeRegistry::methodKey(std::string_view cls,
+                                        std::string_view method,
+                                        std::size_t arity)
+{
+    std::string key;
+    key.reserve(cls.size() + method.size() + 16);
+    key.append(toLower(cls));
+    key.push_back('|');
+    key.append(toLower(method));
+    key.push_back('#');
+    key.append(std::to_string(arity));
+    return key;
+}
+
+std::string RuntimeRegistry::propertyKey(std::string_view cls, std::string_view prop)
+{
+    std::string key;
+    key.reserve(cls.size() + prop.size() + 2);
+    key.append(toLower(cls));
+    key.push_back('.');
+    key.append(toLower(prop));
+    return key;
+}
+
+std::string RuntimeRegistry::functionKey(std::string_view name)
+{
+    return toLower(name);
+}
+
+RuntimeRegistry::RuntimeRegistry()
+{
+    buildIndexes();
+}
+
+void RuntimeRegistry::buildIndexes()
+{
+    const auto &catalog = runtimeClassCatalog();
+
+    for (const auto &cls : catalog)
+    {
+        const char *qname = cls.qname;
+
+        // Index methods
+        for (const auto &m : cls.methods)
+        {
+            ParsedSignature sig = parseRuntimeSignature(m.signature ? m.signature : "");
+            if (!sig.isValid())
+                continue;
+
+            ParsedMethod pm;
+            pm.name = m.name;
+            pm.target = m.target;
+            pm.signature = std::move(sig);
+
+            // Index by class|method#arity
+            methodIndex_[methodKey(qname, m.name, pm.signature.arity())] = pm;
+
+            // Index by canonical function name for direct lookup
+            if (m.target)
+                functionIndex_[functionKey(m.target)] = pm.signature;
+        }
+
+        // Index properties
+        for (const auto &p : cls.properties)
+        {
+            ParsedProperty pp;
+            pp.name = p.name;
+            pp.type = mapILToken(p.type ? p.type : "");
+            pp.getter = p.getter;
+            pp.setter = p.setter;
+            pp.readonly = p.readonly;
+
+            propertyIndex_[propertyKey(qname, p.name)] = pp;
+
+            // Index getter as function
+            if (p.getter)
+            {
+                ParsedSignature getterSig;
+                getterSig.returnType = pp.type;
+                // Getter takes receiver only (no explicit params)
+                functionIndex_[functionKey(p.getter)] = getterSig;
+            }
+
+            // Index setter as function
+            if (p.setter)
+            {
+                ParsedSignature setterSig;
+                setterSig.returnType = ILScalarType::Void;
+                setterSig.params.push_back(pp.type);
+                functionIndex_[functionKey(p.setter)] = setterSig;
+            }
+        }
+    }
+}
+
+const RuntimeRegistry &RuntimeRegistry::instance()
+{
+    static RuntimeRegistry reg;
+    return reg;
+}
+
+std::optional<ParsedMethod> RuntimeRegistry::findMethod(std::string_view classQName,
+                                                         std::string_view methodName,
+                                                         std::size_t arity) const
+{
+    auto it = methodIndex_.find(methodKey(classQName, methodName, arity));
+    if (it == methodIndex_.end())
+        return std::nullopt;
+    return it->second;
+}
+
+std::optional<ParsedProperty> RuntimeRegistry::findProperty(std::string_view classQName,
+                                                             std::string_view propertyName) const
+{
+    auto it = propertyIndex_.find(propertyKey(classQName, propertyName));
+    if (it == propertyIndex_.end())
+        return std::nullopt;
+    return it->second;
+}
+
+std::optional<ParsedSignature> RuntimeRegistry::findFunction(std::string_view canonicalName) const
+{
+    auto it = functionIndex_.find(functionKey(canonicalName));
+    if (it == functionIndex_.end())
+        return std::nullopt;
+    return it->second;
+}
+
+std::vector<std::string> RuntimeRegistry::methodCandidates(std::string_view classQName,
+                                                           std::string_view methodName) const
+{
+    std::vector<std::string> out;
+    std::string prefix;
+    prefix.reserve(classQName.size() + methodName.size() + 2);
+    prefix.append(toLower(classQName));
+    prefix.push_back('|');
+    prefix.append(toLower(methodName));
+    prefix.push_back('#');
+
+    for (const auto &p : methodIndex_)
+    {
+        const std::string &k = p.first;
+        if (k.rfind(prefix, 0) == 0)
+        {
+            auto pos = k.rfind('#');
+            std::string ar = pos != std::string::npos ? k.substr(pos + 1) : std::string("?");
+            out.push_back(std::string(methodName) + "/" + ar);
+        }
+    }
+    return out;
+}
+
+const std::vector<RuntimeClass> &RuntimeRegistry::rawCatalog() const
+{
+    return runtimeClassCatalog();
+}
+
 } // namespace il::runtime

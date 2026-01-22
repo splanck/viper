@@ -398,8 +398,13 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
         Symbol *getterSym = sema_.findExternFunction(getterName);
         if (getterSym && getterSym->type)
         {
-            // Determine the return type
-            Type retType = mapType(getterSym->type);
+            // Determine the return type - extract from function type if needed
+            TypeRef symType = getterSym->type;
+            if (symType->kind == TypeKindSem::Function && symType->returnType())
+            {
+                symType = symType->returnType();
+            }
+            Type retType = mapType(symType);
 
             // Emit call to the getter function
             Value result = emitCallRet(retType, getterName, {base.value});

@@ -196,8 +196,8 @@ void seedRuntimeClassCatalogs(NamespaceRegistry &registry)
     runtimeTypeRegistry().seedRuntimeClasses(classes);
     // Properties
     runtimePropertyIndex().seed(classes);
-    // Methods
-    runtimeMethodIndex().seed(classes);
+    // Methods - uses RuntimeRegistry internally
+    runtimeMethodIndex().seed();
     // Namespace prefixes from class names
     registry.seedRuntimeClassNamespaces(classes);
 }
