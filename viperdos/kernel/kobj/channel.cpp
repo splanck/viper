@@ -31,28 +31,15 @@ Channel *Channel::create()
 /** @copydoc kobj::Channel::adopt */
 Channel *Channel::adopt(u32 channel_id, u8 endpoints)
 {
-    // Atomically verify the channel exists and add references for the endpoints.
-    // This avoids TOCTOU race where channel could be closed between get() and use.
-    if (endpoints & ENDPOINT_SEND)
+    // adopt() is for initial publication of a newly-created legacy channel
+    // where endpoint reference counts are ALREADY initialized (send_refs=1, recv_refs=1).
+    // We do NOT add refs here - the caller (channel::create) already set them.
+    //
+    // Verify the channel exists by checking has_space (true for valid open channels).
+    // A newly created empty channel always has space.
+    if (!channel::has_space(channel_id))
     {
-        i64 result = channel::add_endpoint_ref(channel_id, true);
-        if (result != error::VOK)
-        {
-            return nullptr;
-        }
-    }
-    if (endpoints & ENDPOINT_RECV)
-    {
-        i64 result = channel::add_endpoint_ref(channel_id, false);
-        if (result != error::VOK)
-        {
-            // Rollback the send ref if we added it
-            if (endpoints & ENDPOINT_SEND)
-            {
-                channel::close_endpoint_by_id(channel_id, true);
-            }
-            return nullptr;
-        }
+        return nullptr;
     }
 
     return new Channel(channel_id, endpoints);
