@@ -260,10 +260,11 @@ static poll::EventType check_readiness(u32 handle, poll::EventType mask)
     }
 
     // Check channel read readiness (recv endpoint) using TOCTOU-safe ID lookup
+    // Only check if we successfully looked up the channel ID from the cap_table.
+    // The 'handle' is a cap_table index, NOT a channel_id, so we can't use it as fallback.
     if (poll::has_event(mask, poll::EventType::CHANNEL_READ))
     {
-        u32 id_to_check = (channel_id != 0) ? channel_id : handle;
-        if (channel::has_message(id_to_check))
+        if (channel_id != 0 && channel::has_message(channel_id))
         {
             triggered = triggered | poll::EventType::CHANNEL_READ;
         }
@@ -272,8 +273,7 @@ static poll::EventType check_readiness(u32 handle, poll::EventType mask)
     // Check channel write readiness (send endpoint) using TOCTOU-safe ID lookup
     if (poll::has_event(mask, poll::EventType::CHANNEL_WRITE))
     {
-        u32 id_to_check = (channel_id != 0) ? channel_id : handle;
-        if (channel::has_space(id_to_check))
+        if (channel_id != 0 && channel::has_space(channel_id))
         {
             triggered = triggered | poll::EventType::CHANNEL_WRITE;
         }
