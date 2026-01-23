@@ -172,3 +172,15 @@ add_gui_program(hello_gui hello_gui/hello_gui.c)
 
 # taskbar - Desktop shell taskbar
 add_gui_program(taskbar taskbar/taskbar.c)
+
+# workbench - Amiga-inspired desktop environment (system binary)
+add_executable(workbench.sys workbench/workbench.c)
+target_compile_options(workbench.sys PRIVATE ${USER_COMPILE_OPTIONS})
+target_link_options(workbench.sys PRIVATE ${USER_LINK_OPTIONS})
+target_include_directories(workbench.sys PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/libc/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/libc/include/c++
+        ${CMAKE_CURRENT_SOURCE_DIR}/libgui/include
+)
+target_link_libraries(workbench.sys PRIVATE vipergui viperlibc)

@@ -50,9 +50,10 @@ add_custom_command(
         --add ${CMAKE_BINARY_DIR}/fsd.sys:fsd.sys
         --add ${CMAKE_BINARY_DIR}/consoled.sys:consoled.sys
         --add ${CMAKE_BINARY_DIR}/displayd.sys:displayd.sys
+        --add ${CMAKE_BINARY_DIR}/workbench.sys:workbench.sys
     DEPENDS
         vinit.sys blkd.sys netd.sys fsd.sys
-        consoled.sys displayd.sys
+        consoled.sys displayd.sys workbench.sys
     COMMENT "Creating sys.img with system servers"
     VERBATIM
 )
@@ -95,14 +96,15 @@ add_custom_command(
 add_custom_target(user_image ALL DEPENDS ${USER_IMAGE})
 
 # -----------------------------------------------------------------------------
-# Legacy compatibility: disk.img alias for sys.img
+# Legacy compatibility: disk.img symlink to sys.img
 # -----------------------------------------------------------------------------
 set(DISK_IMAGE "${CMAKE_BINARY_DIR}/disk.img")
 add_custom_command(
     OUTPUT ${DISK_IMAGE}
-    COMMAND ${CMAKE_COMMAND} -E copy ${SYS_IMAGE} ${DISK_IMAGE}
+    COMMAND ${CMAKE_COMMAND} -E rm -f ${DISK_IMAGE}
+    COMMAND ${CMAKE_COMMAND} -E create_symlink sys.img ${DISK_IMAGE}
     DEPENDS ${SYS_IMAGE}
-    COMMENT "Creating disk.img (legacy alias for sys.img)"
+    COMMENT "Creating disk.img symlink to sys.img"
     VERBATIM
 )
 add_custom_target(disk_image ALL DEPENDS ${DISK_IMAGE})

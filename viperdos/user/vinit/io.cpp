@@ -58,7 +58,7 @@ bool init_console()
     u32 service_handle = 0xFFFFFFFF;
     if (sys::assign_get("CONSOLED", &service_handle) != 0 || service_handle == 0xFFFFFFFF)
     {
-        sys::print("[vinit] init_console: assign_get failed\n");
+        // Silent failure - expected when polling before consoled starts
         return false;
     }
 

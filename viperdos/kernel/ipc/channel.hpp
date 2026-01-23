@@ -46,7 +46,7 @@ namespace channel
 /** @brief Maximum bytes stored in a single channel message. */
 constexpr u32 MAX_MSG_SIZE = 256;
 /** @brief Maximum number of channels that can exist at once. */
-constexpr u32 MAX_CHANNELS = 64;
+constexpr u32 MAX_CHANNELS = 256;
 /** @brief Default number of queued messages per channel. */
 constexpr u32 DEFAULT_PENDING = 128;
 /** @brief Maximum configurable pending message capacity. */

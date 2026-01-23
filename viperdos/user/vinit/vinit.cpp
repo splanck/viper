@@ -47,19 +47,18 @@ struct ServerInfo
 // Note: inputd removed - kernel handles keyboard input directly
 // Hybrid mode: FS uses kernel VFS, network uses netd (kernel net not implemented)
 static ServerInfo g_servers[] = {
-    // Display server must start first - consoled depends on it for GUI
+    // Display server must start first - GUI apps depend on it
     {"displayd", "/sys/displayd.sys", "DISPLAY", 0, false},
-    // Essential: always spawn, required for shell I/O (needs displayd)
-    {"consoled", "/sys/consoled.sys", "CONSOLED", 0, false},
     // Network server - kernel net stack not implemented, use netd
     {"netd", "/sys/netd.sys", "NETD", 0, false},
+    // consoled is now launched on-demand from workbench Shell icon
+    // {"consoled", "/sys/consoled.sys", "CONSOLED", 0, false},
     // Disabled - using kernel services directly (monolithic mode)
     // {"blkd", "/sys/blkd.sys", "BLKD", 0, false},
     // {"fsd", "/sys/fsd.sys", "FSD", 0, false},
 };
 
 static constexpr usize SERVER_COUNT = sizeof(g_servers) / sizeof(g_servers[0]);
-static constexpr usize CONSOLED_INDEX = 1;
 
 static u32 g_device_root = 0xFFFFFFFFu;
 static bool g_have_device_root = false;
@@ -445,8 +444,7 @@ static void start_servers()
         if (srv.pid <= 0)
             continue;
 
-        // consoled needs longer timeout - it waits for displayd + creates GUI window
-        u32 timeout = (i == CONSOLED_INDEX) ? 5000 : 2000;
+        u32 timeout = 2000;
         if (wait_for_service(srv.assign, timeout))
         {
             print_str("[vinit] ");
@@ -540,18 +538,43 @@ extern "C" void _start()
     // Start microkernel servers (blkd, netd, fsd)
     start_servers();
 
-    // Connect to console server for GUI output
-    if (init_console())
+    // Try to start the Workbench desktop environment
+    // (consoled will be spawned on-demand when user clicks Shell icon)
+    print_str("[vinit] Starting Workbench desktop...\n");
+    u64 wb_pid = 0;
+    u64 wb_tid = 0;
+    i64 wb_err = sys::spawn("/sys/workbench.sys", nullptr, &wb_pid, &wb_tid, nullptr, nullptr);
+
+    if (wb_err == 0)
     {
-        print_str("[vinit] Connected to console server\n");
+        print_str("[vinit] Workbench started (pid=");
+        put_hex(static_cast<u32>(wb_pid));
+        print_str(")\n");
+        print_str("[vinit] Desktop ready - click Shell icon to start console\n");
+
+        // Wait for user to spawn consoled via workbench Shell icon
+        // Then connect and run the shell
+        while (true)
+        {
+            // Try to connect to consoled (spawned by workbench when user clicks Shell)
+            if (init_console())
+            {
+                print_str("[vinit] Connected to console - starting shell\n");
+                shell_loop();
+                // After shell exits, wait for next consoled instance
+                print_str("[vinit] Shell exited, waiting for next console...\n");
+            }
+
+            // Sleep briefly before checking again
+            sys::sleep(100);
+        }
     }
     else
     {
-        print_str("[vinit] Warning: could not connect to consoled\n");
+        print_str("[vinit] Workbench failed to start, falling back to shell\n");
+        // Fall back to text shell
+        shell_loop();
     }
-
-    // Run the shell
-    shell_loop();
 
     print_str("[vinit] EndShell - Shutting down.\n");
     sys::exit(0);

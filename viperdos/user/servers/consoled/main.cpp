@@ -106,8 +106,14 @@ static Cell *g_buffer = nullptr;
 // Service channel
 static int32_t g_service_channel = -1;
 
-// Note: Input is now handled via kernel TTY buffer (sys::tty_push_input)
-// No client-specific input channels needed anymore.
+// Multi-instance support
+static bool g_is_primary = false;  // True if registered as CONSOLED service
+static uint32_t g_instance_id = 0; // Instance counter for window titles
+
+// Local input buffer for interactive mode
+static constexpr size_t INPUT_BUF_SIZE = 256;
+static char g_input_buf[INPUT_BUF_SIZE];
+static size_t g_input_len = 0;
 
 // =============================================================================
 // Buffer Management
@@ -906,9 +912,8 @@ enum KeyCode : uint16_t
     KEY_SPACE = 57,
 };
 
-// Currently unused - keyboard input handled directly by kernel
-// Kept for potential future use (e.g., special key handling)
-[[maybe_unused]] static char keycode_to_ascii(uint16_t keycode, uint8_t modifiers)
+// Convert keycode to ASCII character
+static char keycode_to_ascii(uint16_t keycode, uint8_t modifiers)
 {
     bool shift = (modifiers & 0x01) != 0;
     bool ctrl = (modifiers & 0x02) != 0;
@@ -974,31 +979,220 @@ enum KeyCode : uint16_t
 }
 
 // =============================================================================
-// Bootstrap
+// Local Shell (for secondary instances)
 // =============================================================================
 
-static void recv_bootstrap_caps()
+static void print_prompt()
 {
-    constexpr int32_t BOOTSTRAP_RECV = 0;
-    uint8_t dummy[1];
-    uint32_t handles[4];
-    uint32_t handle_count = 4;
+    const char *prompt = "> ";
+    write_text(prompt, 2);
+}
 
-    for (uint32_t i = 0; i < 2000; i++)
+static int64_t spawn_program(const char *path)
+{
+    uint64_t pid = 0, tid = 0;
+    int64_t result;
+
+    __asm__ volatile(
+        "mov x0, %[path]\n\t"
+        "mov x1, xzr\n\t"       // name = NULL
+        "mov x2, xzr\n\t"       // args = NULL
+        "mov x8, #0x05\n\t"     // SYS_TASK_SPAWN
+        "svc #0\n\t"
+        "mov %[result], x0\n\t"
+        "mov %[pid], x1\n\t"
+        "mov %[tid], x2\n\t"
+        : [result] "=r" (result), [pid] "=r" (pid), [tid] "=r" (tid)
+        : [path] "r" (path)
+        : "x0", "x1", "x2", "x8", "memory"
+    );
+
+    if (result == 0)
     {
-        handle_count = 4;
-        int64_t n = sys::channel_recv(BOOTSTRAP_RECV, dummy, sizeof(dummy), handles, &handle_count);
-        if (n >= 0)
-        {
-            sys::channel_close(BOOTSTRAP_RECV);
-            return;
-        }
-        if (n == VERR_WOULD_BLOCK)
-        {
-            sys::yield();
-            continue;
-        }
+        return static_cast<int64_t>(pid);
+    }
+    return result;  // Error code (negative)
+}
+
+static bool str_starts_with(const char *str, const char *prefix)
+{
+    while (*prefix)
+    {
+        if (*str++ != *prefix++)
+            return false;
+    }
+    return true;
+}
+
+static bool str_equal(const char *a, const char *b)
+{
+    while (*a && *b)
+    {
+        if (*a++ != *b++)
+            return false;
+    }
+    return *a == *b;
+}
+
+static void handle_local_command(const char *cmd, size_t len)
+{
+    // Skip leading whitespace
+    while (len > 0 && (*cmd == ' ' || *cmd == '\t'))
+    {
+        cmd++;
+        len--;
+    }
+
+    // Skip trailing whitespace
+    while (len > 0 && (cmd[len - 1] == ' ' || cmd[len - 1] == '\t'))
+    {
+        len--;
+    }
+
+    if (len == 0)
+    {
+        print_prompt();
         return;
+    }
+
+    // Built-in commands
+    if (str_equal(cmd, "clear") || str_equal(cmd, "cls"))
+    {
+        clear_buffer();
+        g_cursor_x = 0;
+        g_cursor_y = 0;
+        redraw_all();
+        g_needs_present = true;
+        print_prompt();
+        return;
+    }
+
+    if (str_equal(cmd, "exit") || str_equal(cmd, "quit"))
+    {
+        sys::exit(0);
+    }
+
+    if (str_equal(cmd, "help") || str_equal(cmd, "?"))
+    {
+        write_text("Commands:\n", 10);
+        write_text("  clear     - Clear screen\n", 27);
+        write_text("  exit      - Close this console\n", 33);
+        write_text("  help      - Show this help\n", 29);
+        write_text("  run PATH  - Run a program\n", 28);
+        write_text("  /sys/X    - Run /sys/X directly\n", 34);
+        write_text("  /c/X      - Run /c/X directly\n", 32);
+        print_prompt();
+        return;
+    }
+
+    // Run command
+    const char *path = nullptr;
+    char path_buf[128];
+
+    if (str_starts_with(cmd, "run "))
+    {
+        path = cmd + 4;
+        while (*path == ' ')
+            path++;
+    }
+    else if (cmd[0] == '/')
+    {
+        // Direct path
+        path = cmd;
+    }
+    else
+    {
+        // Try as program name in /c/
+        size_t i = 0;
+        path_buf[i++] = '/';
+        path_buf[i++] = 'c';
+        path_buf[i++] = '/';
+        for (size_t j = 0; j < len && i < 120; j++)
+        {
+            path_buf[i++] = cmd[j];
+        }
+        // Add .prg extension if not present
+        if (i > 4 && path_buf[i - 4] != '.')
+        {
+            path_buf[i++] = '.';
+            path_buf[i++] = 'p';
+            path_buf[i++] = 'r';
+            path_buf[i++] = 'g';
+        }
+        path_buf[i] = '\0';
+        path = path_buf;
+    }
+
+    if (path && *path)
+    {
+        write_text("Launching: ", 11);
+        write_text(path, 0);  // Write until null
+        for (const char *p = path; *p; p++)
+            write_text(p, 1);
+        write_text("\n", 1);
+
+        int64_t result = spawn_program(path);
+        if (result < 0)
+        {
+            write_text("Error: Failed to spawn (", 24);
+            char num[16];
+            int64_t v = -result;
+            int ni = 15;
+            num[ni] = '\0';
+            do { num[--ni] = '0' + (v % 10); v /= 10; } while (v > 0);
+            write_text(&num[ni], 16 - ni);
+            write_text(")\n", 2);
+        }
+        else
+        {
+            write_text("Started (pid ", 13);
+            char num[16];
+            int64_t v = result;
+            int ni = 15;
+            num[ni] = '\0';
+            do { num[--ni] = '0' + (v % 10); v /= 10; } while (v > 0);
+            write_text(&num[ni], 16 - ni);
+            write_text(")\n", 2);
+        }
+    }
+    else
+    {
+        write_text("Unknown command: ", 17);
+        write_text(cmd, len);
+        write_text("\n", 1);
+    }
+
+    print_prompt();
+}
+
+static void handle_keyboard_input(char c)
+{
+    if (c == '\r' || c == '\n')
+    {
+        // Enter pressed - process command
+        write_text("\n", 1);
+        g_input_buf[g_input_len] = '\0';
+        handle_local_command(g_input_buf, g_input_len);
+        g_input_len = 0;
+    }
+    else if (c == '\b')
+    {
+        // Backspace
+        if (g_input_len > 0)
+        {
+            g_input_len--;
+            write_text("\b", 1);  // Moves cursor back and clears
+        }
+    }
+    else if (c >= 0x20 && c < 0x7F)
+    {
+        // Printable character
+        if (g_input_len < INPUT_BUF_SIZE - 1)
+        {
+            g_input_buf[g_input_len++] = c;
+            char str[2] = {c, '\0'};
+            write_text(str, 1);
+        }
     }
 }
 
@@ -1219,24 +1413,80 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
 // Main Entry Point
 // =============================================================================
 
+// BSS section symbols from linker script
+extern "C" char __bss_start[];
+extern "C" char __bss_end[];
+
+static void clear_bss(void)
+{
+    for (char *p = __bss_start; p < __bss_end; p++)
+    {
+        *p = 0;
+    }
+}
+
+// Global marker for earliest debug - avoids any stack operations
 extern "C" void _start()
 {
+    // Clear BSS first - critical for C++ global initializers
+    clear_bss();
+
     debug_print("[consoled] Starting console server (GUI mode)...\n");
 
-    // Receive bootstrap capabilities
-    recv_bootstrap_caps();
+    // Receive bootstrap capabilities (optional - may not exist if spawned from workbench)
+    // Only wait briefly to avoid blocking secondary instances
+    debug_print("[consoled] Checking bootstrap channel...\n");
+    {
+        constexpr int32_t BOOTSTRAP_RECV = 0;
+        uint8_t dummy[1];
+        uint32_t handles[4];
+        uint32_t handle_count = 4;
+
+        // Quick check - only a few attempts for secondary instances
+        for (uint32_t i = 0; i < 50; i++)
+        {
+            handle_count = 4;
+            int64_t n = sys::channel_recv(BOOTSTRAP_RECV, dummy, sizeof(dummy), handles, &handle_count);
+            if (n >= 0)
+            {
+                debug_print("[consoled] Received bootstrap caps\n");
+                sys::channel_close(BOOTSTRAP_RECV);
+                break;
+            }
+            if (n != VERR_WOULD_BLOCK)
+            {
+                debug_print("[consoled] No bootstrap channel (secondary instance)\n");
+                break;  // Error - probably spawned from workbench, no bootstrap
+            }
+            sys::yield();
+        }
+    }
 
     // Wait for displayd to be available (it must start before us)
+    // Use sleep instead of yield to give displayd time to initialize
     debug_print("[consoled] Waiting for displayd...\n");
-    for (uint32_t attempt = 0; attempt < 200; attempt++)
+    bool displayd_found = false;
+    for (uint32_t attempt = 0; attempt < 100; attempt++)
     {
         uint32_t handle = 0xFFFFFFFF;
-        if (sys::assign_get("DISPLAY", &handle) == 0 && handle != 0xFFFFFFFF)
+        int64_t result = sys::assign_get("DISPLAY", &handle);
+        if (result == 0 && handle != 0xFFFFFFFF)
         {
             sys::channel_close(static_cast<int32_t>(handle));
+            displayd_found = true;
+            debug_print("[consoled] Found displayd after ");
+            debug_print_dec(attempt);
+            debug_print(" attempts\n");
             break;
         }
-        sys::yield();
+        // Sleep 10ms between attempts (total max wait: 1 second)
+        sys::sleep(10);
+    }
+
+    if (!displayd_found)
+    {
+        debug_print("[consoled] ERROR: displayd not found after 1 second\n");
+        sys::exit(1);
     }
 
     // Initialize GUI library
@@ -1246,6 +1496,7 @@ extern "C" void _start()
         debug_print("[consoled] Failed to initialize GUI library\n");
         sys::exit(1);
     }
+    debug_print("[consoled] GUI initialized\n");
 
     // Get display information
     gui_display_info_t display;
@@ -1286,16 +1537,47 @@ extern "C" void _start()
     // Initialize buffer
     clear_buffer();
 
-    // Create console window
-    g_window = gui_create_window("Console", g_window_width, g_window_height);
+    // Check if another consoled is already registered (for unique window title)
+    uint32_t existing_handle = 0xFFFFFFFF;
+    bool consoled_exists = (sys::assign_get("CONSOLED", &existing_handle) == 0 && existing_handle != 0xFFFFFFFF);
+    if (consoled_exists)
+    {
+        sys::channel_close(static_cast<int32_t>(existing_handle));
+        g_instance_id = sys::uptime() % 1000;  // Use timestamp for unique ID
+    }
+
+    // Create console window with unique title for secondary instances
+    char window_title[32] = "Console";
+    if (consoled_exists)
+    {
+        // Format: "Console #123"
+        char *p = window_title + 7;
+        *p++ = ' ';
+        *p++ = '#';
+        uint32_t id = g_instance_id;
+        char digits[4];
+        int di = 0;
+        do { digits[di++] = '0' + (id % 10); id /= 10; } while (id > 0 && di < 4);
+        while (di > 0) *p++ = digits[--di];
+        *p = '\0';
+    }
+
+    debug_print("[consoled] Creating window: ");
+    debug_print(window_title);
+    debug_print("\n");
+
+    g_window = gui_create_window(window_title, g_window_width, g_window_height);
     if (!g_window)
     {
         debug_print("[consoled] Failed to create console window\n");
         sys::exit(1);
     }
+    debug_print("[consoled] Window created successfully\n");
 
-    // Position window near top-left corner
-    gui_set_position(g_window, 20, 20);
+    // Position window - offset for secondary instances to avoid overlap
+    int32_t win_x = 20 + (consoled_exists ? 40 : 0);
+    int32_t win_y = 20 + (consoled_exists ? 40 : 0);
+    gui_set_position(g_window, win_x, win_y);
 
     // Disable kernel gcon framebuffer output
     // TEMPORARILY DISABLED - vinit IPC path is disabled for debugging
@@ -1319,14 +1601,30 @@ extern "C" void _start()
     int32_t recv_ch = static_cast<int32_t>(ch_result.val1);
     g_service_channel = recv_ch;
 
-    // Register with assign system
-    if (sys::assign_set("CONSOLED", send_ch) < 0)
+    // Register with assign system (may fail if another instance is primary)
+    debug_print("[consoled] Attempting to register as CONSOLED service...\n");
+    int64_t assign_result = sys::assign_set("CONSOLED", send_ch);
+    if (assign_result < 0)
     {
-        debug_print("[consoled] Failed to register CONSOLED assign\n");
-        sys::exit(1);
-    }
+        debug_print("[consoled] assign_set failed with error: ");
+        debug_print_dec(static_cast<uint64_t>(-assign_result));
+        debug_print("\n");
+        debug_print("[consoled] Running as secondary instance (interactive mode)\n");
+        g_is_primary = false;
+        sys::channel_close(send_ch);
+        sys::channel_close(recv_ch);
+        g_service_channel = -1;
 
-    debug_print("[consoled] Service registered as CONSOLED\n");
+        // Show welcome message for interactive console
+        write_text("ViperDOS Console (Interactive)\n", 31);
+        write_text("Type 'help' for commands.\n\n", 27);
+        print_prompt();
+    }
+    else
+    {
+        debug_print("[consoled] Service registered as CONSOLED\n");
+        g_is_primary = true;
+    }
     debug_print("[consoled] Ready.\n");
 
     // Main event loop
@@ -1339,39 +1637,42 @@ extern "C" void _start()
 
     while (true)
     {
+
         bool did_work = false;
         uint64_t now = sys::uptime();
 
-        // STEP 1: Process messages in LIMITED batches
-        // This ensures we check for GUI events even under heavy write load
-        uint32_t messages_processed = 0;
-
-        while (messages_processed < MAX_MESSAGES_PER_BATCH)
+        // STEP 1: Process IPC messages (primary instance only)
+        if (g_is_primary && g_service_channel >= 0)
         {
-            uint32_t handle_count = 4;
-            int64_t n = sys::channel_recv(g_service_channel, msg_buf, sizeof(msg_buf),
-                                          handles, &handle_count);
+            uint32_t messages_processed = 0;
 
-            if (n > 0)
+            while (messages_processed < MAX_MESSAGES_PER_BATCH)
             {
-                did_work = true;
-                messages_processed++;
+                uint32_t handle_count = 4;
+                int64_t n = sys::channel_recv(g_service_channel, msg_buf, sizeof(msg_buf),
+                                              handles, &handle_count);
 
-                int32_t client_ch = (handle_count > 0) ? static_cast<int32_t>(handles[0]) : -1;
-                handle_request(client_ch, msg_buf, static_cast<size_t>(n), handles, handle_count);
-
-                // Close received handles (skip those marked as consumed with 0xFFFFFFFF)
-                for (uint32_t i = 0; i < handle_count; i++)
+                if (n > 0)
                 {
-                    if (handles[i] != 0xFFFFFFFF)
+                    did_work = true;
+                    messages_processed++;
+
+                    int32_t client_ch = (handle_count > 0) ? static_cast<int32_t>(handles[0]) : -1;
+                    handle_request(client_ch, msg_buf, static_cast<size_t>(n), handles, handle_count);
+
+                    // Close received handles (skip those marked as consumed with 0xFFFFFFFF)
+                    for (uint32_t i = 0; i < handle_count; i++)
                     {
-                        sys::channel_close(static_cast<int32_t>(handles[i]));
+                        if (handles[i] != 0xFFFFFFFF)
+                        {
+                            sys::channel_close(static_cast<int32_t>(handles[i]));
+                        }
                     }
                 }
-            }
-            else
-            {
-                break;
+                else
+                {
+                    break;
+                }
             }
         }
 
@@ -1386,14 +1687,36 @@ extern "C" void _start()
             g_last_present_time = now;
         }
 
-        // STEP 3: Keyboard input is now handled directly by kernel timer handler
-        // No need to poll GUI events for keyboard - just drain any pending events occasionally
-        // to prevent displayd's queue from filling up
-        if ((now % 100) == 0)  // Every ~100ms, drain any pending events
+        // STEP 3: Process GUI events (keyboard input)
+        // For secondary instances, we handle keyboard locally
+        // For primary, keyboard goes through kernel TTY but we still process other events
+        while (gui_poll_event(g_window, &event) == 0)
         {
-            while (gui_poll_event(g_window, &event) == 0)
+            did_work = true;
+
+            if (event.type == GUI_EVENT_KEY && event.key.pressed)
             {
-                // Just consume events - keyboard handled by kernel
+                // Convert keycode to ASCII
+                char c = keycode_to_ascii(event.key.keycode, event.key.modifiers);
+                if (c != 0)
+                {
+                    if (!g_is_primary)
+                    {
+                        // Secondary instance: handle input locally
+                        handle_keyboard_input(c);
+                    }
+                    // Primary instance: kernel timer already pushes to TTY
+                    // (see timer.cpp is_gui_mode check) - don't double-push
+                }
+            }
+            else if (event.type == GUI_EVENT_CLOSE)
+            {
+                // Allow closing secondary instances
+                if (!g_is_primary)
+                {
+                    debug_print("[consoled] Secondary instance exiting on close event\n");
+                    sys::exit(0);
+                }
             }
         }
 

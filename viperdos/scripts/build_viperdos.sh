@@ -407,7 +407,7 @@ if [[ -x "$TOOLS_DIR/mkfs.viperfs" ]]; then
     # sys.img - System disk (2MB)
     # -------------------------------------------------------------------------
     SYS_ARGS=("$BUILD_DIR/sys.img" 2 "$BUILD_DIR/vinit.sys")
-    for srv in blkd netd fsd consoled displayd; do
+    for srv in blkd netd fsd consoled displayd workbench; do
         [[ -f "$BUILD_DIR/${srv}.sys" ]] && SYS_ARGS+=(--add "$BUILD_DIR/${srv}.sys:${srv}.sys")
     done
     "$TOOLS_DIR/mkfs.viperfs" "${SYS_ARGS[@]}"
@@ -428,9 +428,10 @@ if [[ -x "$TOOLS_DIR/mkfs.viperfs" ]]; then
     "$TOOLS_DIR/mkfs.viperfs" "${USER_ARGS[@]}"
     print_success "user.img created (user disk)"
 
-    # Legacy compatibility: disk.img alias for sys.img
-    cp -f "$BUILD_DIR/sys.img" "$BUILD_DIR/disk.img"
-    print_success "disk.img created (legacy alias)"
+    # Legacy compatibility: disk.img symlink to sys.img
+    rm -f "$BUILD_DIR/disk.img"
+    ln -s sys.img "$BUILD_DIR/disk.img"
+    print_success "disk.img symlink created (legacy alias)"
 else
     print_warning "mkfs.viperfs not found, using existing disk images"
 fi

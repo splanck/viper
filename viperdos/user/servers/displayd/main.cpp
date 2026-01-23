@@ -58,7 +58,9 @@ static void debug_print_dec(int64_t val)
 }
 
 // Framebuffer state
-static uint32_t *g_fb = nullptr;
+static uint32_t *g_fb = nullptr;        // Front buffer (actual framebuffer)
+static uint32_t *g_back_buffer = nullptr; // Back buffer for double buffering
+static uint32_t *g_draw_target = nullptr; // Current drawing target
 static uint32_t g_fb_width = 0;
 static uint32_t g_fb_height = 0;
 static uint32_t g_fb_pitch = 0;
@@ -339,12 +341,12 @@ static void recv_bootstrap_caps()
     }
 }
 
-// Drawing primitives
+// Drawing primitives - use g_draw_target for compositing, g_fb for cursor
 static inline void put_pixel(uint32_t x, uint32_t y, uint32_t color)
 {
     if (x < g_fb_width && y < g_fb_height)
     {
-        g_fb[y * (g_fb_pitch / 4) + x] = color;
+        g_draw_target[y * (g_fb_pitch / 4) + x] = color;
     }
 }
 
@@ -352,7 +354,7 @@ static inline uint32_t get_pixel(uint32_t x, uint32_t y)
 {
     if (x < g_fb_width && y < g_fb_height)
     {
-        return g_fb[y * (g_fb_pitch / 4) + x];
+        return g_draw_target[y * (g_fb_pitch / 4) + x];
     }
     return 0;
 }
@@ -371,7 +373,7 @@ static void fill_rect(int32_t x, int32_t y, uint32_t w, uint32_t h, uint32_t col
     {
         for (int32_t px = x1; px < x2; px++)
         {
-            g_fb[py * (g_fb_pitch / 4) + px] = color;
+            g_draw_target[py * (g_fb_pitch / 4) + px] = color;
         }
     }
 }
@@ -527,9 +529,35 @@ static void draw_window_decorations(Surface *surf)
     draw_char(min_x + 4, btn_y + 4, '_', COLOR_WHITE);
 }
 
-// Composite all surfaces to framebuffer
+// Copy back buffer to front buffer (fast page flip)
+static void flip_buffers()
+{
+    uint32_t pixels_per_row = g_fb_pitch / 4;
+    uint32_t total_pixels = pixels_per_row * g_fb_height;
+
+    // Fast copy using 64-bit transfers where possible
+    uint64_t *dst = reinterpret_cast<uint64_t *>(g_fb);
+    uint64_t *src = reinterpret_cast<uint64_t *>(g_back_buffer);
+    uint32_t count64 = total_pixels / 2;
+
+    for (uint32_t i = 0; i < count64; i++)
+    {
+        dst[i] = src[i];
+    }
+
+    // Handle odd pixel if any
+    if (total_pixels & 1)
+    {
+        g_fb[total_pixels - 1] = g_back_buffer[total_pixels - 1];
+    }
+}
+
+// Composite all surfaces to framebuffer (double-buffered)
 static void composite()
 {
+    // Draw to back buffer to avoid flicker
+    g_draw_target = g_back_buffer;
+
     // Draw green border around screen edges (matches kernel console theme)
     // Top border
     fill_rect(0, 0, g_fb_width, SCREEN_BORDER_WIDTH, COLOR_VIPER_GREEN);
@@ -579,7 +607,7 @@ static void composite()
         // Draw decorations first
         draw_window_decorations(surf);
 
-        // Blit surface content
+        // Blit surface content to back buffer
         for (uint32_t sy = 0; sy < surf->height; sy++)
         {
             int32_t dst_y = surf->y + static_cast<int32_t>(sy);
@@ -591,12 +619,18 @@ static void composite()
                 if (dst_x < 0 || dst_x >= static_cast<int32_t>(g_fb_width)) continue;
 
                 uint32_t pixel = surf->pixels[sy * (surf->stride / 4) + sx];
-                g_fb[dst_y * (g_fb_pitch / 4) + dst_x] = pixel;
+                g_back_buffer[dst_y * (g_fb_pitch / 4) + dst_x] = pixel;
             }
         }
     }
 
-    // Save background under cursor, then draw cursor
+    // Copy back buffer to front buffer in one operation
+    flip_buffers();
+
+    // Switch to front buffer for cursor operations
+    g_draw_target = g_fb;
+
+    // Save background under cursor, then draw cursor (on front buffer)
     save_cursor_background();
     draw_cursor();
 }
@@ -606,6 +640,7 @@ static Surface *find_surface_at(int32_t x, int32_t y)
 {
     Surface *best = nullptr;
     uint32_t best_z = 0;
+    bool found_any = false;
 
     for (uint32_t i = 0; i < MAX_SURFACES; i++)
     {
@@ -621,10 +656,12 @@ static Surface *find_surface_at(int32_t x, int32_t y)
         if (x >= win_x && x < win_x2 && y >= win_y && y < win_y2)
         {
             // Pick the one with highest z-order (top-most)
-            if (surf->z_order > best_z)
+            // Use >= for first match to handle z_order = 0 (SYSTEM surfaces)
+            if (!found_any || surf->z_order > best_z)
             {
                 best = surf;
                 best_z = surf->z_order;
+                found_any = true;
             }
         }
     }
@@ -704,8 +741,17 @@ static void handle_create_surface(int32_t client_channel, const uint8_t *data, s
     surf->pixels = reinterpret_cast<uint32_t *>(shm_result.virt_addr);
     surf->event_channel = -1;  // No event channel until client subscribes
     surf->event_queue.init();
-    surf->z_order = g_next_z_order++; // New window gets highest z-order
     surf->flags = req->flags;
+    // SYSTEM surfaces (like desktop/workbench) stay at z-order 0 (always behind)
+    // Other windows get highest z-order (on top)
+    if (surf->flags & SURFACE_FLAG_SYSTEM)
+    {
+        surf->z_order = 0;
+    }
+    else
+    {
+        surf->z_order = g_next_z_order++;
+    }
     surf->minimized = false;
     surf->maximized = false;
 
@@ -739,8 +785,11 @@ static void handle_create_surface(int32_t client_channel, const uint8_t *data, s
         }
     }
 
-    // Set focus to new surface
-    g_focused_surface = surf->id;
+    // Set focus to new surface (unless it's a SYSTEM surface like desktop)
+    if (!(surf->flags & SURFACE_FLAG_SYSTEM))
+    {
+        g_focused_surface = surf->id;
+    }
 
     reply.status = 0;
     reply.surface_id = surf->id;
@@ -1374,7 +1423,9 @@ static void poll_mouse()
             if (surf)
             {
                 // Handle focus change and bring to front
-                if (surf->id != g_focused_surface)
+                // Don't change focus to SYSTEM surfaces (like desktop/workbench)
+                // They should never receive focus or come to front
+                if (surf->id != g_focused_surface && !(surf->flags & SURFACE_FLAG_SYSTEM))
                 {
                     Surface *old_focused = find_surface_by_id(g_focused_surface);
                     if (old_focused)
@@ -1556,6 +1607,19 @@ extern "C" void _start()
     debug_print(" at 0x");
     debug_print_hex(fb_info.address);
     debug_print("\n");
+
+    // Allocate back buffer for double buffering (eliminates flicker)
+    uint64_t back_buffer_size = static_cast<uint64_t>(g_fb_pitch) * g_fb_height;
+    auto back_buffer_result = sys::shm_create(back_buffer_size);
+    if (back_buffer_result.error != 0)
+    {
+        debug_print("[displayd] Failed to allocate back buffer\n");
+        sys::exit(1);
+    }
+    g_back_buffer = reinterpret_cast<uint32_t *>(back_buffer_result.virt_addr);
+    g_draw_target = g_fb;  // Default to front buffer
+
+    debug_print("[displayd] Double buffering enabled\n");
 
     // Set mouse bounds
     sys::set_mouse_bounds(g_fb_width, g_fb_height);

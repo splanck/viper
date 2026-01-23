@@ -172,8 +172,11 @@ static int parse_args(void)
  *
  * Called by the kernel after loading the program.
  * Clears BSS, parses command line args, then calls main.
+ *
+ * This is a weak symbol so programs can provide their own _start
+ * (e.g., servers like consoled that don't use argc/argv).
  */
-void _start(void)
+__attribute__((weak)) void _start(void)
 {
     /* Clear BSS */
     clear_bss();

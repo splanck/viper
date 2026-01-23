@@ -311,10 +311,12 @@ static void dir_sys_directory(const char *path, usize *count, usize *col)
     }
 
     // Read directory entries using kernel readdir
-    // Use larger buffer to fit all entries (DirEnt is ~268 bytes each)
+    // Loop to handle directories larger than one buffer
     u8 buf[4096];
-    i64 bytes = sys::readdir(fd, buf, sizeof(buf));
-    if (bytes > 0)
+    i64 bytes;
+
+    // Loop until all entries are read (readdir returns 0 at EOF)
+    while ((bytes = sys::readdir(fd, buf, sizeof(buf))) > 0)
     {
         usize offset = 0;
         while (offset < static_cast<usize>(bytes))
@@ -517,11 +519,13 @@ static void list_kernel_directory(const char *path, usize *file_count, usize *di
         return;
     }
 
-    // Use a larger buffer to fit all directory entries
-    // DirEnt is ~268 bytes, user disk may have many entries
+    // Use a larger buffer to fit directory entries
+    // DirEnt is ~268 bytes, loop to handle directories larger than one buffer
     u8 buf[4096];
-    i64 bytes = sys::readdir(fd, buf, sizeof(buf));
-    if (bytes > 0)
+    i64 bytes;
+
+    // Loop until all entries are read (readdir returns 0 at EOF)
+    while ((bytes = sys::readdir(fd, buf, sizeof(buf))) > 0)
     {
         usize offset = 0;
         while (offset < static_cast<usize>(bytes))

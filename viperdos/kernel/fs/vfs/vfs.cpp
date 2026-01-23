@@ -734,13 +734,17 @@ i32 fsync(i32 fd)
  *
  * @details
  * The readdir callback appends fixed-size @ref DirEnt records into the caller
- * buffer and tracks whether the buffer has overflowed.
+ * buffer and tracks whether the buffer has overflowed. Uses entry-count-based
+ * offset tracking to support reading directories larger than one buffer.
  */
 struct GetdentsCtx
 {
     u8 *buf;
     usize buf_len;
     usize bytes_written;
+    usize entries_to_skip;  ///< Entries to skip (from previous reads)
+    usize entries_seen;     ///< Total entries seen during this scan
+    usize entries_written;  ///< Entries successfully written to buffer
     bool overflow;
 };
 
@@ -757,6 +761,13 @@ struct GetdentsCtx
 static void getdents_callback(const char *name, usize name_len, u64 ino, u8 file_type, void *ctx)
 {
     auto *gctx = static_cast<GetdentsCtx *>(ctx);
+
+    // Track all entries seen
+    gctx->entries_seen++;
+
+    // Skip entries from previous reads
+    if (gctx->entries_seen <= gctx->entries_to_skip)
+        return;
 
     if (gctx->overflow)
         return;
@@ -786,6 +797,7 @@ static void getdents_callback(const char *name, usize name_len, u64 ino, u8 file
     ent->name[ent->namelen] = '\0';
 
     gctx->bytes_written += reclen;
+    gctx->entries_written++;
 }
 
 /** @copydoc fs::vfs::getdents */
@@ -814,22 +826,21 @@ i64 getdents(i32 fd, void *buf, usize len)
         return -1;
     }
 
-    // Set up context
+    // Set up context - use entry-count-based offset for multi-buffer reads
     GetdentsCtx ctx;
     ctx.buf = static_cast<u8 *>(buf);
     ctx.buf_len = len;
     ctx.bytes_written = 0;
+    ctx.entries_to_skip = desc->offset; // offset tracks entry count, not bytes
+    ctx.entries_seen = 0;
+    ctx.entries_written = 0;
     ctx.overflow = false;
 
-    // Read directory entries
-    fs->readdir(inode, desc->offset, getdents_callback, &ctx);
+    // Read directory entries from the beginning, skipping already-read entries
+    fs->readdir(inode, 0, getdents_callback, &ctx);
 
-    // Update file offset based on entries read
-    // Each call reads all entries, so set offset to indicate EOF
-    if (ctx.bytes_written > 0)
-    {
-        desc->offset = inode->size; // Mark as fully read
-    }
+    // Update offset by number of entries successfully written
+    desc->offset += ctx.entries_written;
 
     fs->release_inode(inode);
 
