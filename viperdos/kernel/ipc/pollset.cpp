@@ -8,6 +8,7 @@
 #include "../lib/spinlock.hpp"
 #include "../sched/scheduler.hpp"
 #include "../sched/task.hpp"
+#include "../tty/tty.hpp"
 #include "../viper/viper.hpp"
 #include "channel.hpp"
 #include "poll.hpp"
@@ -225,7 +226,9 @@ static poll::EventType check_readiness(u32 handle, poll::EventType mask)
             // - input::char_buffer (raw keyboard input not yet drained)
             // - serial input
             // - console::input_buffer (already drained from input subsystem)
-            if (input::has_char() || serial::has_char() || console::has_input())
+            // - tty::input_buffer (in GUI mode, timer ISR drains input to TTY)
+            if (input::has_char() || serial::has_char() || console::has_input() ||
+                tty::has_input())
             {
                 triggered = triggered | poll::EventType::CONSOLE_INPUT;
             }
@@ -244,24 +247,30 @@ static poll::EventType check_readiness(u32 handle, poll::EventType mask)
     u32 channel_id = 0;
     cap::Table *ct = viper::current_cap_table();
 
-    if (ct && (poll::has_event(mask, poll::EventType::CHANNEL_READ) ||
-               poll::has_event(mask, poll::EventType::CHANNEL_WRITE)))
+    if (poll::has_event(mask, poll::EventType::CHANNEL_READ) ||
+        poll::has_event(mask, poll::EventType::CHANNEL_WRITE))
     {
-        cap::Entry *entry = ct->get(handle);
-        if (entry && entry->kind == cap::Kind::Channel)
+        if (ct)
         {
-            // entry->object is kobj::Channel*, get the channel ID
-            kobj::Channel *kch = static_cast<kobj::Channel *>(entry->object);
-            if (kch)
+            // Userspace context: handle is a cap_table index, look up channel ID
+            cap::Entry *entry = ct->get(handle);
+            if (entry && entry->kind == cap::Kind::Channel)
             {
-                channel_id = kch->id();
+                kobj::Channel *kch = static_cast<kobj::Channel *>(entry->object);
+                if (kch)
+                {
+                    channel_id = kch->id();
+                }
             }
+        }
+        else
+        {
+            // Kernel test context: no viper, handle IS the channel ID directly
+            channel_id = handle;
         }
     }
 
     // Check channel read readiness (recv endpoint) using TOCTOU-safe ID lookup
-    // Only check if we successfully looked up the channel ID from the cap_table.
-    // The 'handle' is a cap_table index, NOT a channel_id, so we can't use it as fallback.
     if (poll::has_event(mask, poll::EventType::CHANNEL_READ))
     {
         if (channel_id != 0 && channel::has_message(channel_id))
@@ -404,37 +413,91 @@ i64 wait(u32 poll_id, poll::PollEvent *out_events, u32 max_events, i64 timeout_m
             return 0;
         }
 
-        // Register for event-driven wakeup on channel handles
-        // (pseudo-handles like CONSOLE_INPUT still need polling)
-        if (!has_pseudo_handles)
+        // Register for event-driven wakeup on channel handles.
+        // We always register channel handles so notify_handle() can wake us,
+        // even when pseudo-handles are present.
+        bool has_channel_handles = false;
+        for (u32 i = 0; i < MAX_ENTRIES_PER_SET; i++)
         {
-            // Register waits for all channel handles
-            for (u32 i = 0; i < MAX_ENTRIES_PER_SET; i++)
+            if (!ps->entries[i].active)
+                continue;
+
+            u32 handle = ps->entries[i].handle;
+            poll::EventType mask = ps->entries[i].mask;
+
+            // Only register for real handles, not pseudo-handles
+            if (handle != poll::HANDLE_CONSOLE_INPUT && handle != poll::HANDLE_NETWORK_RX)
             {
-                if (!ps->entries[i].active)
-                    continue;
-
-                u32 handle = ps->entries[i].handle;
-                poll::EventType mask = ps->entries[i].mask;
-
-                // Only register for real handles, not pseudo-handles
-                if (handle != poll::HANDLE_CONSOLE_INPUT && handle != poll::HANDLE_NETWORK_RX)
-                {
-                    poll::register_wait(handle, mask);
-                }
-            }
-
-            // Block the task - will be woken by notify_handle
-            if (current)
-            {
-                current->state = task::TaskState::Blocked;
+                poll::register_wait(handle, mask);
+                has_channel_handles = true;
             }
         }
 
-        // Yield and try again
+        // Choose blocking strategy based on handle types present.
+        // The key requirement is that we can be woken by EITHER:
+        // - notify_handle() when a channel has data (for channel handles)
+        // - check_timers() when the poll interval expires (for timeout/pseudo-handles)
+        u32 poll_timer_id = 0;
+
+        if (has_pseudo_handles)
+        {
+            // When pseudo-handles are present, create a timer for periodic polling
+            // while also being wakeable by channel events via notify_handle().
+            // This enables dual-wake: both timer expiry and channel events wake us.
+            constexpr u64 PSEUDO_POLL_INTERVAL_MS = 10;
+            i64 timer_result = poll::timer_create(PSEUDO_POLL_INTERVAL_MS);
+
+            if (timer_result >= 0)
+            {
+                poll_timer_id = static_cast<u32>(timer_result);
+                // Register as timer waiter and set state to Blocked atomically.
+                // This enables dual-wake: check_timers() wakes on timer expiry,
+                // notify_handle() wakes on channel events.
+                poll::register_timer_wait_and_block(poll_timer_id);
+            }
+            else if (current)
+            {
+                // Fallback if timer creation fails - just block
+                current->state = task::TaskState::Blocked;
+            }
+        }
+        else if (has_channel_handles)
+        {
+            // No pseudo-handles but have channel handles.
+            // If a timeout is specified, create a timer to honor it.
+            // Otherwise block until a channel event wakes us.
+            if (timeout_ms > 0)
+            {
+                // Calculate remaining time until deadline
+                u64 now = poll::time_now_ms();
+                u64 remaining = (deadline > now) ? (deadline - now) : 1;
+                i64 timer_result = poll::timer_create(remaining);
+
+                if (timer_result >= 0)
+                {
+                    poll_timer_id = static_cast<u32>(timer_result);
+                    poll::register_timer_wait_and_block(poll_timer_id);
+                }
+                else if (current)
+                {
+                    current->state = task::TaskState::Blocked;
+                }
+            }
+            else if (current)
+            {
+                // No timeout (wait indefinitely) - block until channel event
+                current->state = task::TaskState::Blocked;
+            }
+        }
+        // else: No handles at all (shouldn't happen) - just yield without blocking
+
         task::yield();
 
-        // Unregister waits when we wake up
+        // Clean up: cancel timer and unregister waits
+        if (poll_timer_id != 0)
+        {
+            poll::timer_cancel(poll_timer_id);
+        }
         poll::unregister_wait();
     }
 }

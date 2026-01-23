@@ -311,4 +311,21 @@ void unregister_wait();
  */
 void clear_task_waiters(task::Task *t);
 
+/**
+ * @brief Register current task as waiter on a timer and set state to Blocked.
+ *
+ * @details
+ * Atomically registers the current task as the waiter for the specified timer
+ * and sets the task state to Blocked. This enables dual-wake semantics where
+ * either check_timers() (on timer expiry) or notify_handle() (on channel events)
+ * can wake the task.
+ *
+ * This is used by pollset::wait() when pseudo-handles are present: a timer
+ * provides periodic wakeup for pseudo-handle polling, while channel waits
+ * provide immediate wakeup for channel events.
+ *
+ * @param timer_id Timer handle to register as waiter on.
+ */
+void register_timer_wait_and_block(u32 timer_id);
+
 } // namespace poll

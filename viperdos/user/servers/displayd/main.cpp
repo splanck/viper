@@ -131,7 +131,7 @@ struct Surface
     uint32_t shm_handle;
     uint32_t *pixels;
     char title[64];
-    int32_t client_channel; // Channel for sending events
+    int32_t event_channel;  // Channel for pushing events to client (-1 if not subscribed)
     EventQueue event_queue;
     uint32_t z_order;       // Higher = on top
     uint32_t flags;         // SurfaceFlags
@@ -311,6 +311,7 @@ static const uint8_t g_font[96][8] = {
 
 // Service channel
 static int32_t g_service_channel = -1;
+static int32_t g_poll_set = -1;  // Poll set for service channel
 
 // Receive bootstrap capabilities
 static void recv_bootstrap_caps()
@@ -701,7 +702,7 @@ static void handle_create_surface(int32_t client_channel, const uint8_t *data, s
     surf->in_use = true;
     surf->shm_handle = shm_result.handle;
     surf->pixels = reinterpret_cast<uint32_t *>(shm_result.virt_addr);
-    surf->client_channel = client_channel;
+    surf->event_channel = -1;  // No event channel until client subscribes
     surf->event_queue.init();
     surf->z_order = g_next_z_order++; // New window gets highest z-order
     surf->flags = req->flags;
@@ -807,6 +808,12 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
                 if (g_surfaces[i].in_use && g_surfaces[i].id == req->surface_id)
                 {
                     sys::shm_close(g_surfaces[i].shm_handle);
+                    // Close event channel if subscribed
+                    if (g_surfaces[i].event_channel >= 0)
+                    {
+                        sys::channel_close(g_surfaces[i].event_channel);
+                        g_surfaces[i].event_channel = -1;
+                    }
                     g_surfaces[i].in_use = false;
                     g_surfaces[i].pixels = nullptr;
                     reply.status = 0;
@@ -822,6 +829,7 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
         case DISP_PRESENT:
         {
             if (len < sizeof(PresentRequest)) return;
+
             // Just recomposite
             composite();
 
@@ -913,6 +921,40 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
 
             sys::channel_send(client_channel, &reply, sizeof(reply), nullptr, 0);
             composite(); // Redraw to update title bar
+            break;
+        }
+
+        case DISP_SUBSCRIBE_EVENTS:
+        {
+            if (len < sizeof(SubscribeEventsRequest)) return;
+            auto *req = reinterpret_cast<const SubscribeEventsRequest *>(data);
+
+            GenericReply reply;
+            reply.type = DISP_GENERIC_REPLY;
+            reply.request_id = req->request_id;
+            reply.status = -1;
+
+            // Find the surface and store the event channel
+            Surface *surf = find_surface_by_id(req->surface_id);
+            if (surf && handle_count > 0)
+            {
+                // Close old event channel if any
+                if (surf->event_channel >= 0)
+                {
+                    sys::channel_close(surf->event_channel);
+                }
+                // Store the new event channel (write endpoint from client)
+                surf->event_channel = static_cast<int32_t>(handles[0]);
+                reply.status = 0;
+
+                debug_print("[displayd] Subscribed events for surface ");
+                debug_print_dec(surf->id);
+                debug_print(" channel=");
+                debug_print_dec(surf->event_channel);
+                debug_print("\n");
+            }
+
+            sys::channel_send(client_channel, &reply, sizeof(reply), nullptr, 0);
             break;
         }
 
@@ -1099,9 +1141,19 @@ static void queue_mouse_event(Surface *surf, uint8_t event_type, int32_t local_x
     ev.mouse.event_type = event_type;
     ev.mouse.button = button;
     ev.mouse._pad = 0;
-    if (!surf->event_queue.push(ev))
+
+    // If client has event channel, send directly (preferred path)
+    if (surf->event_channel >= 0)
     {
-        // Overflow - event dropped (don't spam logs for mouse moves)
+        sys::channel_send(surf->event_channel, &ev.mouse, sizeof(ev.mouse), nullptr, 0);
+    }
+    else
+    {
+        // Fall back to queue for legacy poll-based clients
+        if (!surf->event_queue.push(ev))
+        {
+            // Overflow - event dropped (don't spam logs for mouse moves)
+        }
     }
 }
 
@@ -1116,9 +1168,18 @@ static void queue_focus_event(Surface *surf, bool gained)
     ev.focus._pad[0] = 0;
     ev.focus._pad[1] = 0;
     ev.focus._pad[2] = 0;
-    if (!surf->event_queue.push(ev))
+
+    // If client has event channel, send directly
+    if (surf->event_channel >= 0)
     {
-        // Overflow - focus event dropped
+        sys::channel_send(surf->event_channel, &ev.focus, sizeof(ev.focus), nullptr, 0);
+    }
+    else
+    {
+        if (!surf->event_queue.push(ev))
+        {
+            // Overflow - focus event dropped
+        }
     }
 }
 
@@ -1129,9 +1190,18 @@ static void queue_close_event(Surface *surf)
     ev.event_type = DISP_EVENT_CLOSE;
     ev.close.type = DISP_EVENT_CLOSE;
     ev.close.surface_id = surf->id;
-    if (!surf->event_queue.push(ev))
+
+    // If client has event channel, send directly
+    if (surf->event_channel >= 0)
     {
-        // Overflow - close event dropped
+        sys::channel_send(surf->event_channel, &ev.close, sizeof(ev.close), nullptr, 0);
+    }
+    else
+    {
+        if (!surf->event_queue.push(ev))
+        {
+            // Overflow - close event dropped
+        }
     }
 }
 
@@ -1145,9 +1215,18 @@ static void queue_key_event(Surface *surf, uint16_t keycode, uint8_t modifiers, 
     ev.key.keycode = keycode;
     ev.key.modifiers = modifiers;
     ev.key.pressed = pressed ? 1 : 0;
-    if (!surf->event_queue.push(ev))
+
+    // If client has event channel, send directly
+    if (surf->event_channel >= 0)
     {
-        // Overflow - key event dropped
+        sys::channel_send(surf->event_channel, &ev.key, sizeof(ev.key), nullptr, 0);
+    }
+    else
+    {
+        if (!surf->event_queue.push(ev))
+        {
+            // Overflow - key event dropped
+        }
     }
 }
 
@@ -1506,6 +1585,23 @@ extern "C" void _start()
     int32_t recv_ch = static_cast<int32_t>(ch_result.val1);
     g_service_channel = recv_ch;
 
+    // Create poll set for efficient message waiting
+    g_poll_set = sys::poll_create();
+    if (g_poll_set < 0)
+    {
+        debug_print("[displayd] Failed to create poll set\n");
+        sys::exit(1);
+    }
+
+    // Add service channel to poll set (wake when messages arrive)
+    if (sys::poll_add(static_cast<uint32_t>(g_poll_set),
+                      static_cast<uint32_t>(recv_ch),
+                      sys::POLL_CHANNEL_READ) != 0)
+    {
+        debug_print("[displayd] Failed to add channel to poll set\n");
+        sys::exit(1);
+    }
+
     // Register as DISPLAY
     if (sys::assign_set("DISPLAY", send_ch) < 0)
     {
@@ -1519,15 +1615,24 @@ extern "C" void _start()
     // Main event loop
     uint8_t msg_buf[MAX_PAYLOAD];
     uint32_t handles[4];
+    sys::PollEvent poll_events[1];
 
     // Process messages in batches to avoid starving input polling
     constexpr uint32_t MAX_MESSAGES_PER_BATCH = 16;
+    // Short poll timeout for mouse responsiveness (~200Hz polling)
+    // IPC messages wake us immediately regardless of timeout
+    constexpr int64_t POLL_TIMEOUT_MS = 5;
 
     while (true)
     {
-        // Process a batch of client messages
+        // Wait for messages on service channel
+        // - Wakes immediately when IPC message arrives
+        // - Times out after 5ms to poll mouse/keyboard
+        int32_t poll_result = sys::poll_wait(static_cast<uint32_t>(g_poll_set),
+                                              poll_events, 1, POLL_TIMEOUT_MS);
+
+        // Process messages if channel has data
         uint32_t messages_processed = 0;
-        bool had_message = false;
 
         while (messages_processed < MAX_MESSAGES_PER_BATCH)
         {
@@ -1537,7 +1642,6 @@ extern "C" void _start()
 
             if (n > 0)
             {
-                had_message = true;
                 messages_processed++;
 
                 // Got a message
@@ -1545,6 +1649,7 @@ extern "C" void _start()
                 {
                     // Message with reply channel - handle and respond
                     int32_t client_ch = static_cast<int32_t>(handles[0]);
+
                     handle_request(client_ch, msg_buf, static_cast<size_t>(n),
                                   handles + 1, handle_count - 1);
 
@@ -1563,16 +1668,11 @@ extern "C" void _start()
             }
         }
 
-        // Always poll input devices (even during heavy message traffic)
+        // Always poll input devices
         poll_mouse();
         poll_keyboard();
 
-        // Yield only if no work was done - this prevents starving other processes
-        // while still being responsive when there are messages to process
-        if (!had_message)
-        {
-            sys::yield();
-        }
+        (void)poll_result;  // Suppress unused warning
     }
 
     sys::exit(0);

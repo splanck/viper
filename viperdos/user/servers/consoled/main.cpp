@@ -176,6 +176,13 @@ static void present_cell(uint32_t cx, uint32_t cy)
 }
 
 // =============================================================================
+// Presentation Tracking
+// =============================================================================
+
+// Flag to track if we need to present (declared here so scroll_up can use it)
+static bool g_needs_present = false;
+
+// =============================================================================
 // Scrolling
 // =============================================================================
 
@@ -199,17 +206,17 @@ static void scroll_up()
         c.bg = g_bg_color;
     }
 
-    // Redraw entire window
+    // Redraw entire window and mark for presentation.
+    // Don't call gui_present() here - it does a synchronous busy-spin wait
+    // which causes severe slowdown during rapid scrolling. Let the main loop
+    // handle presentation asynchronously with frame rate limiting.
     redraw_all();
-    gui_present(g_window);
+    g_needs_present = true;
 }
 
 // =============================================================================
 // Text Output
 // =============================================================================
-
-// Flag to track if we need to present
-static bool g_needs_present = false;
 
 // Frame rate limiting - target ~60 FPS (16ms frame time)
 static constexpr uint64_t FRAME_INTERVAL_MS = 16;
@@ -617,7 +624,7 @@ static void handle_csi(char final_char)
                     g_cursor_x = 0;
                     g_cursor_y = 0;
                     redraw_all();
-                    gui_present(g_window);
+                    g_needs_present = true;
                     break;
             }
             break;
@@ -1047,7 +1054,7 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
             g_cursor_x = 0;
             g_cursor_y = 0;
             redraw_all();
-            gui_present(g_window);
+            g_needs_present = true;
 
             ClearReply reply;
             reply.type = CON_CLEAR_REPLY;

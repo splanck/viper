@@ -233,6 +233,19 @@ static const uint8_t g_font[96][8] = {
 // Helper Functions
 // =============================================================================
 
+// Debug helper for libgui
+static void debug_num(const char* prefix, int64_t val)
+{
+    sys::print(prefix);
+    if (val < 0) { sys::print("-"); val = -val; }
+    char buf[24];
+    int i = 22;
+    buf[23] = '\0';
+    do { buf[i--] = '0' + (val % 10); val /= 10; } while (val && i >= 0);
+    sys::print(&buf[i+1]);
+    sys::print("\n");
+}
+
 static bool send_request_recv_reply(const void *req, size_t req_len,
                                      void *reply, size_t reply_len,
                                      uint32_t *out_handles = nullptr,
@@ -242,7 +255,10 @@ static bool send_request_recv_reply(const void *req, size_t req_len,
 
     // Create reply channel
     auto ch_result = sys::channel_create();
-    if (ch_result.error != 0) return false;
+    if (ch_result.error != 0) {
+        debug_num("[libgui] channel_create failed: ", ch_result.error);
+        return false;
+    }
 
     int32_t send_ch = static_cast<int32_t>(ch_result.val0);  // CAP_WRITE - for sending
     int32_t recv_ch = static_cast<int32_t>(ch_result.val1);  // CAP_READ - for receiving
@@ -252,18 +268,21 @@ static bool send_request_recv_reply(const void *req, size_t req_len,
     int64_t err = sys::channel_send(g_display_channel, req, req_len, send_handles, 1);
     if (err != 0)
     {
+        debug_num("[libgui] send failed: ", err);
         sys::channel_close(send_ch);
         sys::channel_close(recv_ch);
         return false;
     }
 
-    // Wait for reply on the RECV endpoint - spin until ready
-    // displayd should respond quickly since it doesn't yield
+    // Wait for reply on the RECV endpoint with yield between attempts.
+    // Previously this was a busy spin loop that wasted CPU cycles and could
+    // prevent displayd from getting scheduled to process the request.
     uint32_t recv_handles[4];
     uint32_t recv_handle_count = 4;
 
     // Note: send_ch was transferred to displayd, so we no longer own it
-    for (uint32_t i = 0; i < 1000000; i++)
+    // Use a reasonable timeout (5000 attempts * 1ms yield = ~5 seconds max)
+    for (uint32_t i = 0; i < 5000; i++)
     {
         recv_handle_count = 4;
         int64_t n = sys::channel_recv(recv_ch, reply, reply_len, recv_handles, &recv_handle_count);
@@ -282,11 +301,15 @@ static bool send_request_recv_reply(const void *req, size_t req_len,
         }
         if (n != VERR_WOULD_BLOCK)
         {
+            // Debug: unexpected error
+            debug_num("[libgui] recv error: ", n);
             break;
         }
-        // Spin - don't yield
+        // Yield to let displayd process the request
+        sys::yield();
     }
 
+    debug_num("[libgui] recv timeout after loops: ", 5000);
     sys::channel_close(recv_ch);
     return false;
 }
@@ -427,6 +450,58 @@ extern "C" gui_window_t *gui_create_window(const char *title, uint32_t width, ui
     }
     win->title[i] = '\0';
 
+    // Subscribe to events via dedicated channel (avoids flooding service channel)
+    auto ev_ch = sys::channel_create();
+    if (ev_ch.error == 0)
+    {
+        int32_t ev_send = static_cast<int32_t>(ev_ch.val0);  // Write end for displayd
+        int32_t ev_recv = static_cast<int32_t>(ev_ch.val1);  // Read end for us
+
+        SubscribeEventsRequest sub_req;
+        sub_req.type = DISP_SUBSCRIBE_EVENTS;
+        sub_req.request_id = g_request_id++;
+        sub_req.surface_id = win->surface_id;
+
+        // Create reply channel for subscribe request
+        auto reply_ch = sys::channel_create();
+        if (reply_ch.error == 0)
+        {
+            int32_t reply_send = static_cast<int32_t>(reply_ch.val0);
+            int32_t reply_recv = static_cast<int32_t>(reply_ch.val1);
+
+            // Send subscribe request with reply channel first, then event channel
+            uint32_t send_handles[2] = {static_cast<uint32_t>(reply_send), static_cast<uint32_t>(ev_send)};
+            int64_t err = sys::channel_send(g_display_channel, &sub_req, sizeof(sub_req), send_handles, 2);
+
+            if (err == 0)
+            {
+                // Wait for reply
+                GenericReply sub_reply;
+                for (uint32_t j = 0; j < 1000; j++)
+                {
+                    int64_t n = sys::channel_recv(reply_recv, &sub_reply, sizeof(sub_reply), nullptr, nullptr);
+                    if (n > 0)
+                    {
+                        if (sub_reply.status == 0)
+                        {
+                            win->event_channel = ev_recv;
+                        }
+                        break;
+                    }
+                    if (n != VERR_WOULD_BLOCK) break;
+                    sys::yield();
+                }
+            }
+            sys::channel_close(reply_recv);
+        }
+
+        // If subscription failed, close the event channel
+        if (win->event_channel < 0)
+        {
+            sys::channel_close(ev_recv);
+        }
+    }
+
     return win;
 }
 
@@ -560,6 +635,58 @@ extern "C" gui_window_t *gui_create_window_ex(const char *title, uint32_t width,
         }
     }
     win->title[i] = '\0';
+
+    // Subscribe to events via dedicated channel (avoids flooding service channel)
+    auto ev_ch = sys::channel_create();
+    if (ev_ch.error == 0)
+    {
+        int32_t ev_send = static_cast<int32_t>(ev_ch.val0);  // Write end for displayd
+        int32_t ev_recv = static_cast<int32_t>(ev_ch.val1);  // Read end for us
+
+        SubscribeEventsRequest sub_req;
+        sub_req.type = DISP_SUBSCRIBE_EVENTS;
+        sub_req.request_id = g_request_id++;
+        sub_req.surface_id = win->surface_id;
+
+        // Create reply channel for subscribe request
+        auto reply_ch = sys::channel_create();
+        if (reply_ch.error == 0)
+        {
+            int32_t reply_send = static_cast<int32_t>(reply_ch.val0);
+            int32_t reply_recv = static_cast<int32_t>(reply_ch.val1);
+
+            // Send subscribe request with reply channel first, then event channel
+            uint32_t send_handles[2] = {static_cast<uint32_t>(reply_send), static_cast<uint32_t>(ev_send)};
+            int64_t err = sys::channel_send(g_display_channel, &sub_req, sizeof(sub_req), send_handles, 2);
+
+            if (err == 0)
+            {
+                // Wait for reply
+                GenericReply sub_reply;
+                for (uint32_t j = 0; j < 1000; j++)
+                {
+                    int64_t n = sys::channel_recv(reply_recv, &sub_reply, sizeof(sub_reply), nullptr, nullptr);
+                    if (n > 0)
+                    {
+                        if (sub_reply.status == 0)
+                        {
+                            win->event_channel = ev_recv;
+                        }
+                        break;
+                    }
+                    if (n != VERR_WOULD_BLOCK) break;
+                    sys::yield();
+                }
+            }
+            sys::channel_close(reply_recv);
+        }
+
+        // If subscription failed, close the event channel
+        if (win->event_channel < 0)
+        {
+            sys::channel_close(ev_recv);
+        }
+    }
 
     return win;
 }
@@ -707,7 +834,76 @@ extern "C" int gui_poll_event(gui_window_t *win, gui_event_t *event)
 {
     if (!win || !event) return -1;
 
-    // Send poll event request to displayd
+    // If we have an event channel, receive directly from it (fast path)
+    if (win->event_channel >= 0)
+    {
+        // Buffer large enough for any event type
+        uint8_t ev_buf[64];
+        int64_t n = sys::channel_recv(win->event_channel, ev_buf, sizeof(ev_buf), nullptr, nullptr);
+
+        if (n <= 0)
+        {
+            // No event available - yield to prevent busy loop
+            // This is critical: without yield, fast polling can starve other processes
+            sys::yield();
+            event->type = GUI_EVENT_NONE;
+            return -1;
+        }
+
+        // First 4 bytes is event type
+        uint32_t ev_type = *reinterpret_cast<uint32_t *>(ev_buf);
+
+        switch (ev_type)
+        {
+            case DISP_EVENT_MOUSE:
+            {
+                auto *mouse = reinterpret_cast<MouseEvent *>(ev_buf);
+                event->type = GUI_EVENT_MOUSE;
+                event->mouse.x = mouse->x;
+                event->mouse.y = mouse->y;
+                event->mouse.dx = mouse->dx;
+                event->mouse.dy = mouse->dy;
+                event->mouse.buttons = mouse->buttons;
+                event->mouse.event_type = mouse->event_type;
+                event->mouse.button = mouse->button;
+                event->mouse._pad = 0;
+                break;
+            }
+
+            case DISP_EVENT_KEY:
+            {
+                auto *key = reinterpret_cast<KeyEvent *>(ev_buf);
+                event->type = GUI_EVENT_KEY;
+                event->key.keycode = key->keycode;
+                event->key.modifiers = key->modifiers;
+                event->key.pressed = key->pressed;
+                break;
+            }
+
+            case DISP_EVENT_FOCUS:
+            {
+                auto *focus = reinterpret_cast<FocusEvent *>(ev_buf);
+                event->type = GUI_EVENT_FOCUS;
+                event->focus.gained = focus->gained;
+                event->focus._pad[0] = 0;
+                event->focus._pad[1] = 0;
+                event->focus._pad[2] = 0;
+                break;
+            }
+
+            case DISP_EVENT_CLOSE:
+                event->type = GUI_EVENT_CLOSE;
+                break;
+
+            default:
+                event->type = GUI_EVENT_NONE;
+                return -1;
+        }
+
+        return 0;  // Event available
+    }
+
+    // Fall back to request/reply for legacy compatibility (slow path)
     PollEventRequest req;
     req.type = DISP_POLL_EVENT;
     req.request_id = g_request_id++;

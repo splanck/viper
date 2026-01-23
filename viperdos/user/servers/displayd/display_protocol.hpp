@@ -183,6 +183,23 @@ struct CloseEvent
     uint32_t surface_id;
 };
 
+// Request: Subscribe to events (sets up event channel)
+struct SubscribeEventsRequest
+{
+    uint32_t type; // DISP_SUBSCRIBE_EVENTS
+    uint32_t request_id;
+    uint32_t surface_id;
+    // handle[0] = event channel (write endpoint) for displayd to push events
+};
+
+// Reply: Subscribe events
+struct SubscribeEventsReply
+{
+    uint32_t type; // DISP_GENERIC_REPLY
+    uint32_t request_id;
+    int32_t status; // 0 = success
+};
+
 // Request: Poll for events
 struct PollEventRequest
 {

@@ -389,7 +389,11 @@ void check_timers()
         if (timers[i].active && timers[i].waiter && now >= timers[i].expire_time)
         {
             waiters_to_wake[wake_count++] = timers[i].waiter;
+            // Fully deactivate expired timer to free the slot.
+            // The woken task will call timer_cancel() but that's now a no-op.
             timers[i].waiter = nullptr;
+            timers[i].active = false;
+            timers[i].id = 0;
         }
     }
     poll_lock.release(saved_daif);
@@ -517,12 +521,17 @@ void clear_task_waiters(task::Task *t)
 
     u64 saved_daif = poll_lock.acquire();
 
-    // Clear all timer waiters for this task
+    // Clear and deactivate all timers waiting on this task.
+    // Previously we only cleared the waiter, leaving the timer active
+    // but orphaned. This caused timer slot leaks when tasks exited
+    // while blocked on timers.
     for (u32 i = 0; i < MAX_TIMERS; i++)
     {
         if (timers[i].active && timers[i].waiter == t)
         {
             timers[i].waiter = nullptr;
+            timers[i].active = false;
+            timers[i].id = 0;
         }
     }
 
@@ -534,6 +543,28 @@ void clear_task_waiters(task::Task *t)
             wait_queue[i].active = false;
             wait_queue[i].task = nullptr;
         }
+    }
+
+    poll_lock.release(saved_daif);
+}
+
+/** @copydoc poll::register_timer_wait_and_block */
+void register_timer_wait_and_block(u32 timer_id)
+{
+    task::Task *current = task::current();
+    if (!current)
+        return;
+
+    u64 saved_daif = poll_lock.acquire();
+
+    Timer *t = find_timer(timer_id);
+    if (t)
+    {
+        // Register as timer waiter AND set state to Blocked atomically.
+        // This ensures check_timers() sees a consistent state: if it finds
+        // us as a waiter, we are guaranteed to be in Blocked state.
+        t->waiter = current;
+        current->state = task::TaskState::Blocked;
     }
 
     poll_lock.release(saved_daif);
