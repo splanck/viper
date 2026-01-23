@@ -251,10 +251,13 @@ static bool send_request_recv_reply(const void *req, size_t req_len,
                                      uint32_t *out_handles = nullptr,
                                      uint32_t *handle_count = nullptr)
 {
+    sys::print("[gui] send_request_recv_reply entry\n");
     if (g_display_channel < 0) return false;
 
+    sys::print("[gui] calling channel_create\n");
     // Create reply channel
     auto ch_result = sys::channel_create();
+    sys::print("[gui] channel_create returned\n");
     if (ch_result.error != 0) {
         debug_num("[libgui] channel_create failed: ", ch_result.error);
         return false;
@@ -262,10 +265,14 @@ static bool send_request_recv_reply(const void *req, size_t req_len,
 
     int32_t send_ch = static_cast<int32_t>(ch_result.val0);  // CAP_WRITE - for sending
     int32_t recv_ch = static_cast<int32_t>(ch_result.val1);  // CAP_READ - for receiving
+    debug_num("[gui] send_ch=", send_ch);
+    debug_num("[gui] recv_ch=", recv_ch);
 
     // Send request with the SEND endpoint so displayd can write the reply back
     uint32_t send_handles[1] = {static_cast<uint32_t>(send_ch)};
+    sys::print("[gui] calling channel_send\n");
     int64_t err = sys::channel_send(g_display_channel, req, req_len, send_handles, 1);
+    sys::print("[gui] channel_send returned\n");
     if (err != 0)
     {
         debug_num("[libgui] send failed: ", err);
@@ -280,12 +287,14 @@ static bool send_request_recv_reply(const void *req, size_t req_len,
     uint32_t recv_handles[4];
     uint32_t recv_handle_count = 4;
 
+    sys::print("[gui] entering recv loop\n");
     // Note: send_ch was transferred to displayd, so we no longer own it
     // Use a reasonable timeout (5000 attempts * 1ms yield = ~5 seconds max)
     for (uint32_t i = 0; i < 5000; i++)
     {
         recv_handle_count = 4;
         int64_t n = sys::channel_recv(recv_ch, reply, reply_len, recv_handles, &recv_handle_count);
+        if (i == 0) debug_num("[gui] first recv returned: ", n);
         if (n > 0)
         {
             sys::channel_close(recv_ch);
@@ -564,6 +573,7 @@ extern "C" const char *gui_get_title(gui_window_t *win)
 extern "C" gui_window_t *gui_create_window_ex(const char *title, uint32_t width, uint32_t height,
                                                uint32_t flags)
 {
+    sys::print("[gui] create_window_ex entry\n");
     if (!g_initialized) return nullptr;
 
     CreateSurfaceRequest req;
@@ -589,32 +599,42 @@ extern "C" gui_window_t *gui_create_window_ex(const char *title, uint32_t width,
     uint32_t handles[4];
     uint32_t handle_count = 4;
 
+    sys::print("[gui] sending create request\n");
     if (!send_request_recv_reply(&req, sizeof(req), &reply, sizeof(reply), handles, &handle_count))
     {
+        sys::print("[gui] send_request_recv_reply failed\n");
         return nullptr;
     }
+    sys::print("[gui] got reply\n");
 
     if (reply.status != 0 || handle_count == 0)
     {
+        sys::print("[gui] reply status bad\n");
         return nullptr;
     }
 
     // Map shared memory
+    sys::print("[gui] mapping shm\n");
     auto map_result = sys::shm_map(handles[0]);
     if (map_result.error != 0)
     {
+        sys::print("[gui] shm_map failed\n");
         sys::shm_close(handles[0]);
         return nullptr;
     }
+    sys::print("[gui] shm mapped OK\n");
 
     // Allocate window structure
+    sys::print("[gui] allocating window struct\n");
     gui_window_t *win = new gui_window_t();
+    sys::print("[gui] new returned\n");
     if (!win)
     {
         sys::shm_unmap(map_result.virt_addr);
         sys::shm_close(handles[0]);
         return nullptr;
     }
+    sys::print("[gui] window struct allocated\n");
 
     win->surface_id = reply.surface_id;
     win->width = width;

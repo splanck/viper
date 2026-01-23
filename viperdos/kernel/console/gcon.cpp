@@ -36,17 +36,17 @@ u32 cursor_x = 0;
 u32 cursor_y = 0;
 u32 cols = 0;
 u32 rows = 0;
-u32 fg_color = colors::VIPER_GREEN;
-u32 bg_color = colors::VIPER_DARK_BROWN;
+u32 fg_color = colors::WHITE;
+u32 bg_color = colors::VIPER_BLUE;
 
 // Border constants (use centralized values)
 constexpr u32 BORDER_WIDTH = kc::display::BORDER_WIDTH;
 constexpr u32 TEXT_INSET = kc::display::TEXT_INSET;
-constexpr u32 BORDER_COLOR = kc::color::VIPER_GREEN;
+constexpr u32 BORDER_COLOR = 0xFF003366;  // Darker blue border
 
 // Default colors for reset
-u32 default_fg = colors::VIPER_GREEN;
-u32 default_bg = colors::VIPER_DARK_BROWN;
+u32 default_fg = colors::WHITE;
+u32 default_bg = colors::VIPER_BLUE;
 
 // Cursor state
 bool cursor_visible = false;                                   // Whether cursor should be shown
@@ -907,11 +907,11 @@ bool init()
     serial::put_dec(rows);
     serial::puts("\n");
 
-    // Set default colors
-    fg_color = colors::VIPER_GREEN;
-    bg_color = colors::VIPER_DARK_BROWN;
-    default_fg = colors::VIPER_GREEN;
-    default_bg = colors::VIPER_DARK_BROWN;
+    // Set default colors (white on blue)
+    fg_color = colors::WHITE;
+    bg_color = colors::VIPER_BLUE;
+    default_fg = colors::WHITE;
+    default_bg = colors::VIPER_BLUE;
 
     // Draw border and fill inner area with background color
     draw_border();
@@ -1308,8 +1308,8 @@ void draw_scroll_indicator(u32 offset)
     u32 start_col = cols - pos - 1;
     u32 saved_fg = fg_color;
     u32 saved_bg = bg_color;
-    fg_color = colors::VIPER_DARK_BROWN;
-    bg_color = colors::VIPER_GREEN;
+    fg_color = colors::VIPER_BLUE;
+    bg_color = colors::WHITE;
 
     for (u32 i = 0; i < pos; i++)
     {

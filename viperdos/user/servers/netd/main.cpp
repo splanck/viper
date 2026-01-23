@@ -824,6 +824,9 @@ static void server_loop()
  */
 extern "C" void _start()
 {
+    // Reset console colors to defaults (white on blue)
+    sys::print("\033[0m");
+
     debug_print("[netd] Network server starting\n");
     recv_bootstrap_caps();
 

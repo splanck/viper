@@ -451,6 +451,12 @@ static void start_servers()
             print_str(srv.assign);
             print_str(": ready\n");
             srv.available = true;
+
+            // When displayd is ready, disable kernel gcon to prevent interference
+            if (streq(srv.assign, "DISPLAY"))
+            {
+                sys::gcon_set_gui_mode(true);
+            }
         }
         else
         {
@@ -519,6 +525,9 @@ static void test_malloc_at_startup()
  */
 extern "C" void _start()
 {
+    // Reset console colors to white on blue at startup (from viper_colors.h)
+    print_str(ANSI_RESET);
+
     print_str("========================================\n");
     print_str("  ViperDOS 0.2.0 - Init Process\n");
     print_str("========================================\n\n");
@@ -538,8 +547,7 @@ extern "C" void _start()
     // Start microkernel servers (blkd, netd, fsd)
     start_servers();
 
-    // Try to start the Workbench desktop environment
-    // (consoled will be spawned on-demand when user clicks Shell icon)
+    // Start the Workbench desktop environment
     print_str("[vinit] Starting Workbench desktop...\n");
     u64 wb_pid = 0;
     u64 wb_tid = 0;

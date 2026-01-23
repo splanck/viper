@@ -299,8 +299,8 @@ static int g_page_line = 0;
 
 bool page_wait()
 {
-    // Use shell color (yellow) after reverse video ends
-    sys::print("\x1b[7m-- More (Space=page, Enter=line, Q=quit) --\x1b[0m\x1b[33m");
+    // Use reverse video for prompt, then reset to defaults (white on blue)
+    sys::print("\x1b[7m-- More (Space=page, Enter=line, Q=quit) --\x1b[0m");
 
     int c = sys::getchar();
 

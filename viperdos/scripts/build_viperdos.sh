@@ -668,8 +668,7 @@ case "$MODE" in
             -chardev stdio,id=ser0,mux=on,signal=off
             -serial chardev:ser0
         )
-        echo "  Display: Graphics mode (ramfb + mouse + keyboard)"
-        echo "  Tip: Run 'run /c/displayd.sys' then 'run /c/hello_gui.prg' to test GUI"
+        echo "  Display: Graphics mode (ramfb)"
         ;;
 esac
 

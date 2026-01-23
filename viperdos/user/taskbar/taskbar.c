@@ -12,15 +12,16 @@
 #include <gui.h>
 #include <stdio.h>
 #include <string.h>
+#include "../include/viper_colors.h"
 
-// Colors
-#define COLOR_TASKBAR_BG    0xFF303050  // Dark blue-gray
-#define COLOR_BUTTON_BG     0xFF404060  // Lighter gray
+// Colors (using centralized viper_colors.h where applicable)
+#define COLOR_TASKBAR_BG    0xFF303050  // Dark blue-gray (taskbar-specific)
+#define COLOR_BUTTON_BG     0xFF404060  // Lighter gray (taskbar-specific)
 #define COLOR_BUTTON_ACTIVE 0xFF5060A0  // Blue highlight for focused
 #define COLOR_BUTTON_MIN    0xFF505070  // Dimmer for minimized
-#define COLOR_TEXT          0xFFFFFFFF  // White
-#define COLOR_TEXT_DIM      0xFFA0A0A0  // Gray for minimized
-#define COLOR_BORDER        0xFF202030  // Dark border
+#define COLOR_TEXT          VIPER_COLOR_WHITE
+#define COLOR_TEXT_DIM      VIPER_COLOR_GRAY_LIGHT
+#define COLOR_BORDER        0xFF202030  // Dark border (taskbar-specific)
 
 // Layout
 #define TASKBAR_HEIGHT      32

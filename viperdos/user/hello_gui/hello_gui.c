@@ -10,16 +10,17 @@
 #include <gui.h>
 #include <stdio.h>
 #include <string.h>
+#include "../include/viper_colors.h"
 
-// Colors
-#define COLOR_BLUE      0xFF2040A0
-#define COLOR_WHITE     0xFFFFFFFF
-#define COLOR_BLACK     0xFF000000
-#define COLOR_GRAY      0xFF808080
-#define COLOR_LIGHTGRAY 0xFFC0C0C0
-#define COLOR_RED       0xFFFF0000
-#define COLOR_GREEN     0xFF00FF00
-#define COLOR_YELLOW    0xFFFFFF00
+// Colors (aliases to centralized viper_colors.h)
+#define COLOR_BLUE      VIPER_COLOR_BLUE
+#define COLOR_WHITE     VIPER_COLOR_WHITE
+#define COLOR_BLACK     VIPER_COLOR_BLACK
+#define COLOR_GRAY      VIPER_COLOR_GRAY_MED
+#define COLOR_LIGHTGRAY VIPER_COLOR_GRAY_LIGHT
+#define COLOR_RED       VIPER_COLOR_RED
+#define COLOR_GREEN     VIPER_COLOR_GREEN
+#define COLOR_YELLOW    VIPER_COLOR_YELLOW
 
 // Draw a simple button
 static void draw_button(gui_window_t *win, int x, int y, int w, int h,

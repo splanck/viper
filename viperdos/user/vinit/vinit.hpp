@@ -5,6 +5,7 @@
 #pragma once
 
 #include "../syscall.hpp"
+#include "../include/viper_colors.h"
 
 // =============================================================================
 // String Helpers

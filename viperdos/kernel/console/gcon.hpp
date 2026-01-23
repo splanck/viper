@@ -39,7 +39,9 @@ constexpr u32 VIPER_DARK_BROWN = 0xFF1A1208;
 constexpr u32 VIPER_YELLOW = 0xFFFFDD00;
 constexpr u32 VIPER_WHITE = 0xFFEEEEEE;
 constexpr u32 VIPER_RED = 0xFFCC3333;
+constexpr u32 VIPER_BLUE = 0xFF0055AA;   // Workbench blue
 constexpr u32 BLACK = 0xFF000000;
+constexpr u32 WHITE = 0xFFFFFFFF;
 } // namespace colors
 
 /**

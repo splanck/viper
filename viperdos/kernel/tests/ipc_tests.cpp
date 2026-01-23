@@ -39,7 +39,6 @@ static void ping_task_fn(void *arg)
 
     if (gcon::is_available())
     {
-        gcon::set_colors(gcon::colors::VIPER_GREEN, gcon::colors::VIPER_DARK_BROWN);
         gcon::puts("  Ping task started\n");
     }
 
@@ -109,7 +108,6 @@ static void pong_task_fn(void *arg)
 
     if (gcon::is_available())
     {
-        gcon::set_colors(gcon::colors::VIPER_YELLOW, gcon::colors::VIPER_DARK_BROWN);
         gcon::puts("  Pong task started\n");
     }
 

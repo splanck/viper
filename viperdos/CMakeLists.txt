@@ -51,9 +51,10 @@ add_custom_command(
         --add ${CMAKE_BINARY_DIR}/consoled.sys:consoled.sys
         --add ${CMAKE_BINARY_DIR}/displayd.sys:displayd.sys
         --add ${CMAKE_BINARY_DIR}/workbench.sys:workbench.sys
+        --add ${CMAKE_BINARY_DIR}/hello_gui.prg:hello_gui.prg
     DEPENDS
         vinit.sys blkd.sys netd.sys fsd.sys
-        consoled.sys displayd.sys workbench.sys
+        consoled.sys displayd.sys workbench.sys hello_gui.prg
     COMMENT "Creating sys.img with system servers"
     VERBATIM
 )

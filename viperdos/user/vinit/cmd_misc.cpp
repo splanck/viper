@@ -106,7 +106,7 @@ static void run_via_kernel(const char *path, const char *args)
         print_str("Run: wait failed (error ");
         put_num(exited_pid);
         print_str(")\n");
-        print_str("\033[33m");
+        print_str(ANSI_RESET);
         last_rc = RC_FAIL;
         last_error = "Wait failed";
         return;
@@ -117,7 +117,7 @@ static void run_via_kernel(const char *path, const char *args)
     print_str(" exited with status ");
     put_num(static_cast<i64>(status));
     print_str("\n");
-    print_str("\033[33m");
+    print_str(ANSI_RESET);
     last_rc = RC_OK;
 }
 
@@ -261,7 +261,7 @@ static void run_via_fsd(const char *path, const char *args)
         print_str("Run: wait failed (error ");
         put_num(exited_pid);
         print_str(")\n");
-        print_str("\033[33m");
+        print_str(ANSI_RESET);
         last_rc = RC_FAIL;
         last_error = "Wait failed";
         return;
@@ -272,7 +272,7 @@ static void run_via_fsd(const char *path, const char *args)
     print_str(" exited with status ");
     put_num(static_cast<i64>(status));
     print_str("\n");
-    print_str("\033[33m");
+    print_str(ANSI_RESET);
     last_rc = RC_OK;
 }
 
@@ -515,7 +515,7 @@ void cmd_run_fsd(const char *cmdline)
         print_str("RunFSD: wait failed (error ");
         put_num(exited_pid);
         print_str(")\n");
-        print_str("\033[33m");
+        print_str(ANSI_RESET);
         last_rc = RC_FAIL;
         last_error = "Wait failed";
         return;
@@ -527,7 +527,7 @@ void cmd_run_fsd(const char *cmdline)
     put_num(static_cast<i64>(status));
     print_str("\n");
 
-    print_str("\033[33m");
+    print_str(ANSI_RESET);
     last_rc = RC_OK;
 }
 

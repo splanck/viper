@@ -8,14 +8,14 @@
 extern void paging_enable();
 extern void paging_disable();
 
-// ANSI escape to set shell foreground color (yellow)
-static constexpr const char *SHELL_COLOR = "\033[33m";
+// ANSI escape to reset to default colors (from centralized viper_colors.h)
+static constexpr const char *SHELL_COLOR = ANSI_RESET;
 
 void shell_loop()
 {
     char line[256];
 
-    // Set shell text color to yellow
+    // Set shell text color to white
     print_str(SHELL_COLOR);
     print_str("\n========================================\n");
     print_str("        ViperDOS 0.2.0 Shell\n");

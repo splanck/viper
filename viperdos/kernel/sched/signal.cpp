@@ -259,7 +259,6 @@ void deliver_fault_signal(i32 signum, const FaultInfo *info)
     // Also display on graphics console
     if (gcon::is_available())
     {
-        gcon::set_colors(gcon::colors::VIPER_YELLOW, gcon::colors::BLACK);
         gcon::puts("\n[signal] Task '");
         gcon::puts(task_name);
         gcon::puts("' received ");
@@ -271,7 +270,6 @@ void deliver_fault_signal(i32 signum, const FaultInfo *info)
             gcon::puts(")");
         }
         gcon::puts("\n");
-        gcon::set_colors(gcon::colors::VIPER_WHITE, gcon::colors::BLACK);
     }
 
     // Terminate the task

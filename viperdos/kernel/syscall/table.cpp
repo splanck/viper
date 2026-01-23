@@ -2631,8 +2631,14 @@ static SyscallResult sys_debug_print(u64 a0, u64, u64, u64, u64, u64)
 {
     const char *msg = reinterpret_cast<const char *>(a0);
 
-    if (validate_user_string(msg, 4096) < 0)
+    serial::puts("[dbg] sys_debug_print addr=0x");
+    serial::put_hex(a0);
+    serial::puts("\n");
+
+    i64 len = validate_user_string(msg, 4096);
+    if (len < 0)
     {
+        serial::puts("[dbg] validate_user_string failed\n");
         return SyscallResult::err(error::VERR_INVALID_ARG);
     }
 

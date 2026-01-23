@@ -54,8 +54,8 @@ constexpr u64 RAM_SIZE = 128 * 1024 * 1024;
 /// Framebuffer base address (reserved region in RAM)
 constexpr u64 FB_BASE = 0x41000000;
 
-/// Maximum framebuffer size (8MB)
-constexpr u64 FB_SIZE = 8 * 1024 * 1024;
+/// Maximum framebuffer size (9MB for 1920x1080)
+constexpr u64 FB_SIZE = 9 * 1024 * 1024;
 
 /// Kernel stack pool base address
 constexpr u64 STACK_POOL_BASE = 0x44000000;
@@ -359,6 +359,7 @@ constexpr u32 VIPER_DARK_BROWN = 0xFF1A1208;
 constexpr u32 VIPER_YELLOW = 0xFFFFDD00;
 constexpr u32 VIPER_RED = 0xFFCC3333;
 constexpr u32 VIPER_WHITE = 0xFFEEEEEE;
+constexpr u32 VIPER_BLUE = 0xFF0055AA;   // Workbench blue (matches desktop)
 
 } // namespace color
 

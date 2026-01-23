@@ -25,6 +25,7 @@
  */
 
 #include "../../syscall.hpp"
+#include "../../include/viper_colors.h"
 #include "console_protocol.hpp"
 #include <gui.h>
 
@@ -39,9 +40,9 @@ static constexpr uint32_t FONT_WIDTH = 8 * FONT_SCALE / 2;   // 12 pixels at 1.5
 static constexpr uint32_t FONT_HEIGHT = 8 * FONT_SCALE / 2;  // 12 pixels at 1.5x
 static constexpr uint32_t PADDING = 8;
 
-// Colors
-static constexpr uint32_t DEFAULT_FG = 0xFF00AA44;  // VIPER_GREEN
-static constexpr uint32_t DEFAULT_BG = 0xFF1A1208;  // VIPER_DARK_BROWN
+// Colors (from centralized viper_colors.h)
+static constexpr uint32_t DEFAULT_FG = VIPER_COLOR_TEXT;
+static constexpr uint32_t DEFAULT_BG = VIPER_COLOR_CONSOLE_BG;
 
 // =============================================================================
 // Debug Output (serial only)
@@ -313,28 +314,28 @@ static size_t g_csi_param_count = 0;
 static uint32_t g_csi_current_param = 0;
 static bool g_csi_has_param = false;
 
-// Standard ANSI colors (index 0-7)
+// Standard ANSI colors (index 0-7) - from centralized viper_colors.h
 static constexpr uint32_t ansi_colors[8] = {
-    0xFF000000,  // 0: Black
-    0xFFAA0000,  // 1: Red
-    0xFF00AA00,  // 2: Green
-    0xFFAAAA00,  // 3: Yellow (brown)
-    0xFF0000AA,  // 4: Blue
-    0xFFAA00AA,  // 5: Magenta
-    0xFF00AAAA,  // 6: Cyan
-    0xFFAAAAAA,  // 7: White (light gray)
+    ANSI_COLOR_BLACK,
+    ANSI_COLOR_RED,
+    ANSI_COLOR_GREEN,
+    ANSI_COLOR_YELLOW,
+    ANSI_COLOR_BLUE,
+    ANSI_COLOR_MAGENTA,
+    ANSI_COLOR_CYAN,
+    ANSI_COLOR_WHITE,
 };
 
-// Bright ANSI colors (index 8-15)
+// Bright ANSI colors (index 8-15) - from centralized viper_colors.h
 static constexpr uint32_t ansi_bright_colors[8] = {
-    0xFF555555,  // 8: Bright black (dark gray)
-    0xFFFF5555,  // 9: Bright red
-    0xFF55FF55,  // 10: Bright green
-    0xFFFFFF55,  // 11: Bright yellow
-    0xFF5555FF,  // 12: Bright blue
-    0xFFFF55FF,  // 13: Bright magenta
-    0xFF55FFFF,  // 14: Bright cyan
-    0xFFFFFFFF,  // 15: Bright white
+    ANSI_COLOR_BRIGHT_BLACK,
+    ANSI_COLOR_BRIGHT_RED,
+    ANSI_COLOR_BRIGHT_GREEN,
+    ANSI_COLOR_BRIGHT_YELLOW,
+    ANSI_COLOR_BRIGHT_BLUE,
+    ANSI_COLOR_BRIGHT_MAGENTA,
+    ANSI_COLOR_BRIGHT_CYAN,
+    ANSI_COLOR_BRIGHT_WHITE,
 };
 
 // Track if bold/bright mode is active for colors
@@ -1431,6 +1432,9 @@ extern "C" void _start()
     // Clear BSS first - critical for C++ global initializers
     clear_bss();
 
+    // Reset console colors to defaults (white on blue)
+    sys::print("\033[0m");
+
     debug_print("[consoled] Starting console server (GUI mode)...\n");
 
     // Receive bootstrap capabilities (optional - may not exist if spawned from workbench)
@@ -1512,9 +1516,9 @@ extern "C" void _start()
     debug_print_dec(display.height);
     debug_print("\n");
 
-    // Calculate window size (90% of screen)
-    g_window_width = (display.width * 90) / 100;
-    g_window_height = (display.height * 90) / 100;
+    // Calculate window size (60% of screen)
+    g_window_width = (display.width * 60) / 100;
+    g_window_height = (display.height * 60) / 100;
 
     // Calculate text grid size (accounting for padding)
     g_cols = (g_window_width - 2 * PADDING) / FONT_WIDTH;

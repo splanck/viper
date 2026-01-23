@@ -11,6 +11,7 @@
  */
 
 #include "../../syscall.hpp"
+#include "../../include/viper_colors.h"
 #include "display_protocol.hpp"
 
 using namespace display_protocol;
@@ -172,14 +173,14 @@ static constexpr uint32_t TITLE_BAR_HEIGHT = 24;
 static constexpr uint32_t BORDER_WIDTH = 2;
 static constexpr uint32_t CLOSE_BUTTON_SIZE = 16;
 
-// Colors
-static constexpr uint32_t COLOR_DESKTOP = 0xFF2D5A88;      // Blue desktop
-static constexpr uint32_t COLOR_TITLE_FOCUSED = 0xFF4080C0;
-static constexpr uint32_t COLOR_TITLE_UNFOCUSED = 0xFF606060;
-static constexpr uint32_t COLOR_BORDER = 0xFF303030;
-static constexpr uint32_t COLOR_CLOSE_BTN = 0xFFCC4444;
-static constexpr uint32_t COLOR_WHITE = 0xFFFFFFFF;
-static constexpr uint32_t COLOR_VIPER_GREEN = 0xFF00AA44;  // Match kernel console border
+// Colors (from centralized viper_colors.h)
+static constexpr uint32_t COLOR_DESKTOP = VIPER_COLOR_DESKTOP;
+static constexpr uint32_t COLOR_TITLE_FOCUSED = VIPER_COLOR_TITLE_FOCUSED;
+static constexpr uint32_t COLOR_TITLE_UNFOCUSED = VIPER_COLOR_TITLE_UNFOCUSED;
+static constexpr uint32_t COLOR_BORDER = VIPER_COLOR_WINDOW_BORDER;
+static constexpr uint32_t COLOR_CLOSE_BTN = VIPER_COLOR_BTN_CLOSE;
+static constexpr uint32_t COLOR_WHITE = VIPER_COLOR_WHITE;
+static constexpr uint32_t COLOR_SCREEN_BORDER = VIPER_COLOR_BORDER;
 
 // Screen border (matches kernel console)
 static constexpr uint32_t SCREEN_BORDER_WIDTH = 20;
@@ -472,9 +473,9 @@ static void draw_cursor()
     }
 }
 
-// Button colors
-static constexpr uint32_t COLOR_MIN_BTN = 0xFF4040C0;  // Blue for minimize
-static constexpr uint32_t COLOR_MAX_BTN = 0xFF40C040;  // Green for maximize
+// Button colors (from centralized viper_colors.h)
+static constexpr uint32_t COLOR_MIN_BTN = VIPER_COLOR_BTN_MIN;
+static constexpr uint32_t COLOR_MAX_BTN = VIPER_COLOR_BTN_MAX;
 
 // Window decoration drawing
 static void draw_window_decorations(Surface *surf)
@@ -558,15 +559,15 @@ static void composite()
     // Draw to back buffer to avoid flicker
     g_draw_target = g_back_buffer;
 
-    // Draw green border around screen edges (matches kernel console theme)
+    // Draw blue border around screen edges
     // Top border
-    fill_rect(0, 0, g_fb_width, SCREEN_BORDER_WIDTH, COLOR_VIPER_GREEN);
+    fill_rect(0, 0, g_fb_width, SCREEN_BORDER_WIDTH, COLOR_SCREEN_BORDER);
     // Bottom border
-    fill_rect(0, g_fb_height - SCREEN_BORDER_WIDTH, g_fb_width, SCREEN_BORDER_WIDTH, COLOR_VIPER_GREEN);
+    fill_rect(0, g_fb_height - SCREEN_BORDER_WIDTH, g_fb_width, SCREEN_BORDER_WIDTH, COLOR_SCREEN_BORDER);
     // Left border
-    fill_rect(0, 0, SCREEN_BORDER_WIDTH, g_fb_height, COLOR_VIPER_GREEN);
+    fill_rect(0, 0, SCREEN_BORDER_WIDTH, g_fb_height, COLOR_SCREEN_BORDER);
     // Right border
-    fill_rect(g_fb_width - SCREEN_BORDER_WIDTH, 0, SCREEN_BORDER_WIDTH, g_fb_height, COLOR_VIPER_GREEN);
+    fill_rect(g_fb_width - SCREEN_BORDER_WIDTH, 0, SCREEN_BORDER_WIDTH, g_fb_height, COLOR_SCREEN_BORDER);
 
     // Clear inner desktop area
     fill_rect(SCREEN_BORDER_WIDTH, SCREEN_BORDER_WIDTH,
@@ -1460,9 +1461,12 @@ static void poll_mouse()
                     if (g_cursor_y >= title_y1 && g_cursor_y < title_y2)
                     {
                         // Check for window control buttons
-                        int32_t win_x2 = surf->x + static_cast<int32_t>(surf->width + BORDER_WIDTH);
+                        // Must match draw_window_decorations() calculation:
+                        // close_x = win_x + win_w - BORDER_WIDTH - CLOSE_BUTTON_SIZE - 4
+                        // where win_x = surf->x - BORDER_WIDTH, win_w = surf->width + BORDER_WIDTH * 2
+                        // So: close_x = surf->x + surf->width - CLOSE_BUTTON_SIZE - 4
                         int32_t btn_spacing = static_cast<int32_t>(CLOSE_BUTTON_SIZE + 4);
-                        int32_t close_x = win_x2 - static_cast<int32_t>(CLOSE_BUTTON_SIZE + 4);
+                        int32_t close_x = surf->x + static_cast<int32_t>(surf->width) - static_cast<int32_t>(CLOSE_BUTTON_SIZE) - 4;
                         int32_t max_x = close_x - btn_spacing;
                         int32_t min_x = max_x - btn_spacing;
                         int32_t btn_size = static_cast<int32_t>(CLOSE_BUTTON_SIZE);
@@ -1582,6 +1586,9 @@ static void poll_mouse()
 // Main entry point
 extern "C" void _start()
 {
+    // Reset console colors to defaults (white on blue)
+    sys::print("\033[0m");
+
     debug_print("[displayd] Starting display server...\n");
 
     // Receive bootstrap capabilities

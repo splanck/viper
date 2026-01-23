@@ -253,7 +253,6 @@ void init_interrupts()
         gcon::puts("\n");
 
         // Show memory stats
-        gcon::set_colors(gcon::colors::VIPER_YELLOW, gcon::colors::VIPER_DARK_BROWN);
         gcon::puts("  Memory: ");
         u64 free_mb = (pmm::get_free_pages() * 4) / 1024;
         if (free_mb >= 100)
@@ -436,13 +435,26 @@ extern "C" void kernel_main(void *boot_info_ptr)
     {
         // Use GOP framebuffer from UEFI
         const auto &fb = boot::get_framebuffer();
-        serial::puts("[kernel] Using UEFI GOP framebuffer\n");
+        serial::puts("[kernel] UEFI GOP framebuffer: ");
+        serial::put_dec(fb.width);
+        serial::puts("x");
+        serial::put_dec(fb.height);
+        serial::puts("\n");
 
-        // Initialize ramfb module with external framebuffer info
-        if (ramfb::init_external(fb.base, fb.width, fb.height, fb.pitch, fb.bpp))
+        // Check if GOP resolution meets our desired resolution
+        // If GOP is too small, we'll try to use ramfb instead
+        if (fb.width >= kc::display::DEFAULT_WIDTH && fb.height >= kc::display::DEFAULT_HEIGHT)
         {
-            serial::puts("[kernel] Framebuffer initialized (UEFI GOP)\n");
-            fb_initialized = true;
+            // Initialize ramfb module with external framebuffer info
+            if (ramfb::init_external(fb.base, fb.width, fb.height, fb.pitch, fb.bpp))
+            {
+                serial::puts("[kernel] Framebuffer initialized (UEFI GOP)\n");
+                fb_initialized = true;
+            }
+        }
+        else
+        {
+            serial::puts("[kernel] GOP resolution too small, trying ramfb\n");
         }
     }
 
@@ -479,18 +491,15 @@ extern "C" void kernel_main(void *boot_info_ptr)
             gcon::puts("\n");
 
             // Print version info
-            gcon::set_colors(gcon::colors::VIPER_YELLOW, gcon::colors::VIPER_DARK_BROWN);
             gcon::puts("  Version: 0.1.0\n");
             gcon::puts("  Architecture: AArch64\n");
             gcon::puts("\n");
 
             // Print main message
-            gcon::set_colors(gcon::colors::VIPER_WHITE, gcon::colors::VIPER_DARK_BROWN);
             gcon::puts("  Hello from ViperDOS!\n");
             gcon::puts("\n");
 
             // Print status
-            gcon::set_colors(gcon::colors::VIPER_GREEN, gcon::colors::VIPER_DARK_BROWN);
             gcon::puts("  [OK] Serial console initialized\n");
             gcon::puts("  [OK] fw_cfg interface detected\n");
             gcon::puts("  [OK] Framebuffer initialized (1024x768)\n");
@@ -514,7 +523,6 @@ extern "C" void kernel_main(void *boot_info_ptr)
             gcon::puts(" characters\n");
             gcon::puts("\n");
 
-            gcon::set_colors(gcon::colors::VIPER_WHITE, gcon::colors::VIPER_DARK_BROWN);
             gcon::puts("  Kernel initialization complete.\n");
             gcon::puts("  System halted.\n");
         }
@@ -1249,7 +1257,6 @@ extern "C" void kernel_main(void *boot_info_ptr)
     if (gcon::is_available())
     {
         gcon::puts("\n");
-        gcon::set_colors(gcon::colors::VIPER_WHITE, gcon::colors::VIPER_DARK_BROWN);
         gcon::puts("  Starting scheduler...\n");
     }
 

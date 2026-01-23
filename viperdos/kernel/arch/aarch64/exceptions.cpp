@@ -241,10 +241,8 @@ extern "C"
         // Display on graphics console if available
         if (gcon::is_available())
         {
-            gcon::set_colors(gcon::colors::VIPER_RED, gcon::colors::BLACK);
             gcon::puts("\n\n  !!! KERNEL PANIC !!!\n");
             gcon::puts("  Synchronous Exception\n");
-            gcon::set_colors(gcon::colors::VIPER_WHITE, gcon::colors::BLACK);
             gcon::puts("  EC: ");
             // Simple hex output
             const char hex[] = "0123456789ABCDEF";
@@ -287,7 +285,6 @@ extern "C"
 
         if (gcon::is_available())
         {
-            gcon::set_colors(gcon::colors::VIPER_RED, gcon::colors::BLACK);
             gcon::puts("\n\n  !!! KERNEL PANIC !!!\n");
             gcon::puts("  System Error (SError)\n");
         }

@@ -545,10 +545,28 @@ static EFI_STATUS load_elf(void *elf_data,
 // =============================================================================
 
 /**
+ * @brief Desired resolution preferences (in order of preference).
+ */
+static const struct {
+    UINT32 width;
+    UINT32 height;
+} preferred_resolutions[] = {
+    { 1024, 768 },
+    { 1280, 1024 },
+    { 1280, 800 },
+    { 1280, 720 },
+    { 1440, 900 },
+    { 1600, 900 },
+    { 1680, 1050 },
+    { 1920, 1080 },
+};
+
+/**
  * @brief Query GOP to obtain framebuffer information for the kernel.
  *
  * @details
- * Locates the UEFI Graphics Output Protocol and fills the provided
+ * Locates the UEFI Graphics Output Protocol, attempts to set the highest
+ * available resolution from the preferred list, and fills the provided
  * @ref VBootFramebuffer structure with:
  * - Framebuffer physical base address.
  * - Resolution and stride.
@@ -573,6 +591,79 @@ static EFI_STATUS get_framebuffer(VBootFramebuffer *fb)
         // Not fatal - kernel can work without framebuffer
         fb->base = 0;
         return EFI_SUCCESS;
+    }
+
+    // Try to find and set the best available resolution
+    print(L"[*] GOP modes available: ");
+    print_dec(gop->Mode->MaxMode);
+    println(L"");
+
+    UINT32 best_mode = gop->Mode->Mode;  // Current mode as fallback
+    UINT32 best_width = gop->Mode->Info->HorizontalResolution;
+    UINT32 best_height = gop->Mode->Info->VerticalResolution;
+    int best_pref = -1;  // Index in preferred_resolutions, -1 = not found
+
+    // Enumerate all modes to find the best match
+    for (UINT32 mode = 0; mode < gop->Mode->MaxMode; mode++)
+    {
+        EFI_GRAPHICS_OUTPUT_MODE_INFORMATION *mode_info;
+        UINTN info_size;
+        status = gop->QueryMode(gop, mode, &info_size, &mode_info);
+        if (EFI_ERROR(status))
+            continue;
+
+        UINT32 w = mode_info->HorizontalResolution;
+        UINT32 h = mode_info->VerticalResolution;
+
+        // Only consider 32bpp modes (BlitOnly has no direct framebuffer)
+        if (mode_info->PixelFormat == PixelBltOnly)
+            continue;
+
+        // Check if this matches a preferred resolution
+        for (UINTN pref = 0; pref < sizeof(preferred_resolutions)/sizeof(preferred_resolutions[0]); pref++)
+        {
+            if (w == preferred_resolutions[pref].width &&
+                h == preferred_resolutions[pref].height)
+            {
+                // Found a match - is it better than what we have?
+                if (best_pref < 0 || pref < (UINTN)best_pref)
+                {
+                    best_mode = mode;
+                    best_width = w;
+                    best_height = h;
+                    best_pref = (int)pref;
+                }
+                break;
+            }
+        }
+
+        // If no preferred match yet, track largest resolution as fallback
+        if (best_pref < 0 && (w * h > best_width * best_height))
+        {
+            best_mode = mode;
+            best_width = w;
+            best_height = h;
+        }
+    }
+
+    // Set the best mode if different from current
+    if (best_mode != gop->Mode->Mode)
+    {
+        print(L"    Switching to mode ");
+        print_dec(best_mode);
+        print(L" (");
+        print_dec(best_width);
+        print(L"x");
+        print_dec(best_height);
+        println(L")");
+
+        status = gop->SetMode(gop, best_mode);
+        if (EFI_ERROR(status))
+        {
+            print(L"    [!] SetMode failed: ");
+            print_status(status);
+            // Continue with current mode
+        }
     }
 
     fb->base = gop->Mode->FrameBufferBase;

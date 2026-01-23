@@ -238,7 +238,6 @@ static void log_fault(const FaultInfo &info, const char *task_name)
     // Graphics console output
     if (gcon::is_available())
     {
-        gcon::set_colors(gcon::colors::VIPER_YELLOW, gcon::colors::BLACK);
         gcon::puts("\n[page_fault] ");
         gcon::puts(info.is_user ? "User" : "Kernel");
         gcon::puts(" ");
@@ -253,7 +252,6 @@ static void log_fault(const FaultInfo &info, const char *task_name)
             gcon::putc(hex[(info.fault_addr >> i) & 0xF]);
         }
         gcon::puts("\n");
-        gcon::set_colors(gcon::colors::VIPER_WHITE, gcon::colors::BLACK);
     }
 }
 
@@ -349,9 +347,7 @@ static void log_fault(const FaultInfo &info, const char *task_name)
 
     if (gcon::is_available())
     {
-        gcon::set_colors(gcon::colors::VIPER_RED, gcon::colors::BLACK);
         gcon::puts("\n\n  !!! KERNEL PANIC !!!\n\n");
-        gcon::set_colors(gcon::colors::VIPER_WHITE, gcon::colors::BLACK);
         gcon::puts("  ");
         gcon::puts(fault_type_name(info.type));
         gcon::puts(" at 0x");
