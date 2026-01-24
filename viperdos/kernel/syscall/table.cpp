@@ -1468,6 +1468,10 @@ static SyscallResult sys_socket_recv(u64 a0, u64 a1, u64 a2, u64, u64, u64)
         return SyscallResult::err(error::VERR_INVALID_ARG);
     }
 
+    // Poll network to process any pending packets before checking the receive buffer.
+    // This ensures data that has arrived at the NIC gets moved into the socket's rx_buf.
+    net::network_poll();
+
     i64 result = net::tcp::socket_recv(sock, buf, len);
 #if VIPER_KERNEL_DEBUG_NET_SYSCALL
     if (log::get_level() == log::Level::Debug)
