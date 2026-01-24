@@ -45,15 +45,12 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E echo "Creating sys.img (system disk)..."
     COMMAND ${MKFS_TOOL} ${SYS_IMAGE} 2
         --add ${CMAKE_BINARY_DIR}/vinit.sys:vinit.sys
-        --add ${CMAKE_BINARY_DIR}/blkd.sys:blkd.sys
-        --add ${CMAKE_BINARY_DIR}/netd.sys:netd.sys
-        --add ${CMAKE_BINARY_DIR}/fsd.sys:fsd.sys
         --add ${CMAKE_BINARY_DIR}/consoled.sys:consoled.sys
         --add ${CMAKE_BINARY_DIR}/displayd.sys:displayd.sys
         --add ${CMAKE_BINARY_DIR}/workbench.sys:workbench.sys
         --add ${CMAKE_BINARY_DIR}/hello_gui.prg:hello_gui.prg
     DEPENDS
-        vinit.sys blkd.sys netd.sys fsd.sys
+        vinit.sys
         consoled.sys displayd.sys workbench.sys hello_gui.prg
     COMMENT "Creating sys.img with system servers"
     VERBATIM
@@ -71,7 +68,6 @@ add_custom_command(
         --mkdir c --mkdir certs --mkdir s --mkdir t
         --add ${CMAKE_BINARY_DIR}/hello.prg:c/hello.prg
         --add ${CMAKE_BINARY_DIR}/fsd_smoke.prg:c/fsd_smoke.prg
-        --add ${CMAKE_BINARY_DIR}/netd_smoke.prg:c/netd_smoke.prg
         --add ${CMAKE_BINARY_DIR}/tls_smoke.prg:c/tls_smoke.prg
         --add ${CMAKE_BINARY_DIR}/edit.prg:c/edit.prg
         --add ${CMAKE_BINARY_DIR}/sftp.prg:c/sftp.prg
@@ -87,7 +83,7 @@ add_custom_command(
         --add ${CMAKE_BINARY_DIR}/hello_gui.prg:c/hello_gui.prg
         --add ${CMAKE_BINARY_DIR}/taskbar.prg:c/taskbar.prg
     DEPENDS
-        hello.prg fsd_smoke.prg netd_smoke.prg tls_smoke.prg edit.prg
+        hello.prg fsd_smoke.prg tls_smoke.prg edit.prg
         sftp.prg ssh.prg ping.prg fsinfo.prg netstat.prg sysinfo.prg
         devices.prg mathtest.prg faulttest_null.prg faulttest_illegal.prg
         hello_gui.prg taskbar.prg

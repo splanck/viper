@@ -78,6 +78,11 @@
 #include "viper/address_space.hpp"
 #include "viper/viper.hpp"
 
+#if VIPER_KERNEL_ENABLE_NET
+#include "drivers/virtio/net.hpp"
+#include "net/netstack.hpp"
+#endif
+
 
 // Linker-provided symbols
 extern "C"
@@ -126,12 +131,7 @@ void print_boot_banner()
     serial::puts("\n");
     serial::puts("=========================================\n");
     serial::puts("  ViperDOS v0.3.1 - AArch64\n");
-    serial::puts("  Mode: ");
-#if VIPER_MICROKERNEL_MODE
-    serial::puts("MICROKERNEL (bring-up)\n");
-#else
-    serial::puts("HYBRID\n");
-#endif
+    serial::puts("  Mode: MONOLITHIC\n");
     serial::puts("  Kernel services: fs=");
     serial::put_dec(static_cast<u64>(VIPER_KERNEL_ENABLE_FS));
     serial::puts(" net=");
@@ -214,14 +214,13 @@ void init_memory_subsystem()
     slab::init();
     slab::init_object_caches();
 
-    // Update graphics console with memory info
+    // Show high-level progress on display
     if (gcon::is_available())
     {
-        gcon::puts("  [OK] Physical memory manager initialized\n");
-        gcon::puts("  [OK] Virtual memory manager initialized\n");
-        gcon::puts("  [OK] Kernel heap initialized\n");
-        gcon::puts("  [OK] Slab allocator initialized\n");
+        gcon::puts("  Memory...OK\n");
     }
+    // Brief pause for readability
+    timer::delay_ms(50);
 }
 
 /**
@@ -243,25 +242,13 @@ void init_interrupts()
     exceptions::enable_interrupts();
     serial::puts("[kernel] Interrupts enabled\n");
 
-    // Update graphics console
+    // Show high-level progress on display
     if (gcon::is_available())
     {
-        gcon::puts("  [OK] Exception handlers installed\n");
-        gcon::puts("  [OK] GIC initialized\n");
-        gcon::puts("  [OK] Timer started (1000 Hz)\n");
-        gcon::puts("  [OK] Interrupts enabled\n");
-        gcon::puts("\n");
-
-        // Show memory stats
-        gcon::puts("  Memory: ");
-        u64 free_mb = (pmm::get_free_pages() * 4) / 1024;
-        if (free_mb >= 100)
-            gcon::putc('0' + (free_mb / 100) % 10);
-        if (free_mb >= 10)
-            gcon::putc('0' + (free_mb / 10) % 10);
-        gcon::putc('0' + free_mb % 10);
-        gcon::puts(" MB free\n");
+        gcon::puts("  Interrupts...OK\n");
     }
+    // Brief pause for readability
+    timer::delay_ms(50);
 }
 
 /**
@@ -374,10 +361,6 @@ void init_network_subsystem()
             serial::putc('.');
             serial::put_dec(resolved_ip.bytes[3]);
             serial::puts("\n");
-
-            // Test HTTP fetch
-            serial::puts("[kernel] Testing HTTP fetch...\n");
-            net::http::fetch("example.com", "/");
         }
         else
         {
@@ -489,42 +472,10 @@ extern "C" void kernel_main(void *boot_info_ptr)
             gcon::puts("              |_|                          \n");
             gcon::puts("  =========================================\n");
             gcon::puts("\n");
-
-            // Print version info
-            gcon::puts("  Version: 0.1.0\n");
-            gcon::puts("  Architecture: AArch64\n");
+            gcon::puts("  Version: 0.2.0 | AArch64\n");
             gcon::puts("\n");
-
-            // Print main message
-            gcon::puts("  Hello from ViperDOS!\n");
+            gcon::puts("  Booting...\n");
             gcon::puts("\n");
-
-            // Print status
-            gcon::puts("  [OK] Serial console initialized\n");
-            gcon::puts("  [OK] fw_cfg interface detected\n");
-            gcon::puts("  [OK] Framebuffer initialized (1024x768)\n");
-            gcon::puts("  [OK] Graphics console initialized\n");
-            gcon::puts("\n");
-
-            // Print dimensions
-            u32 cols, rows;
-            gcon::get_size(cols, rows);
-            gcon::puts("  Console size: ");
-            // Simple number printing
-            if (cols >= 100)
-                gcon::putc('0' + (cols / 100) % 10);
-            if (cols >= 10)
-                gcon::putc('0' + (cols / 10) % 10);
-            gcon::putc('0' + cols % 10);
-            gcon::puts(" x ");
-            if (rows >= 10)
-                gcon::putc('0' + (rows / 10) % 10);
-            gcon::putc('0' + rows % 10);
-            gcon::puts(" characters\n");
-            gcon::puts("\n");
-
-            gcon::puts("  Kernel initialization complete.\n");
-            gcon::puts("  System halted.\n");
         }
         else
         {
@@ -926,16 +877,8 @@ extern "C" void kernel_main(void *boot_info_ptr)
 
     if (gcon::is_available())
     {
-        gcon::puts("  [OK] virtio subsystem initialized (");
-        u32 count = virtio::device_count();
-        if (count >= 10)
-            gcon::putc('0' + (count / 10) % 10);
-        gcon::putc('0' + count % 10);
-        gcon::puts(" devices)\n");
-        if (virtio::blk_device())
-        {
-            gcon::puts("  [OK] virtio-blk driver ready\n");
-        }
+        gcon::puts("  Devices...OK\n");
+        timer::delay_ms(50);
     }
 
     // Configure MMU for user space support (Phase 3)
@@ -1238,14 +1181,12 @@ extern "C" void kernel_main(void *boot_info_ptr)
 
     if (gcon::is_available())
     {
-        gcon::puts("  [OK] Viper subsystem initialized\n");
-        gcon::puts("  [OK] Task subsystem initialized\n");
-        gcon::puts("  [OK] Scheduler initialized\n");
-        gcon::puts("  [OK] Channel subsystem initialized\n");
-        gcon::puts("  [OK] Poll/timer subsystem initialized\n");
+        gcon::puts("  Kernel...OK\n");
+        gcon::puts("\n");
+        timer::delay_ms(100);
     }
 
-    // Print success message
+    // Print success message to serial
     serial::puts("\nHello from ViperDOS!\n");
     serial::puts("Kernel initialization complete.\n");
 
@@ -1256,8 +1197,8 @@ extern "C" void kernel_main(void *boot_info_ptr)
 
     if (gcon::is_available())
     {
-        gcon::puts("\n");
-        gcon::puts("  Starting scheduler...\n");
+        gcon::puts("  Starting...\n");
+        timer::delay_ms(200);
     }
 
     // Start the scheduler - this never returns

@@ -1,23 +1,26 @@
 /**
  * @file netstack.hpp
- * @brief Simplified user-space network stack.
+ * @brief Kernel TCP/IP network stack.
  *
  * @details
- * This is a simplified network stack for the netd server, providing:
+ * This is the kernel-space network stack providing:
  * - Ethernet frame handling
  * - ARP resolution
  * - IPv4 packet processing
  * - ICMP (ping)
  * - UDP sockets
- * - TCP connections (basic)
+ * - TCP connections
  * - DNS resolution
  */
 #pragma once
 
-#include "../../libvirtio/include/net.hpp"
-#include "../../syscall.hpp"
+#include "../include/types.hpp"
+#include "../include/constants.hpp"
+#include "../drivers/virtio/net.hpp"
 
-namespace netstack
+namespace kc = kernel::constants;
+
+namespace net
 {
 
 // =============================================================================
@@ -160,7 +163,6 @@ inline u16 checksum(const void *data, usize len)
 // Protocol Headers
 // =============================================================================
 
-// Ethernet header
 struct EthHeader
 {
     MacAddr dst;
@@ -171,7 +173,6 @@ struct EthHeader
 constexpr u16 ETH_TYPE_IPV4 = 0x0800;
 constexpr u16 ETH_TYPE_ARP = 0x0806;
 
-// ARP header
 struct ArpHeader
 {
     u16 hw_type;
@@ -189,7 +190,6 @@ constexpr u16 ARP_HW_ETHERNET = 1;
 constexpr u16 ARP_OP_REQUEST = 1;
 constexpr u16 ARP_OP_REPLY = 2;
 
-// IPv4 header
 struct Ipv4Header
 {
     u8 version_ihl;
@@ -208,7 +208,6 @@ constexpr u8 IP_PROTO_ICMP = 1;
 constexpr u8 IP_PROTO_TCP = 6;
 constexpr u8 IP_PROTO_UDP = 17;
 
-// ICMP header
 struct IcmpHeader
 {
     u8 type;
@@ -221,7 +220,6 @@ struct IcmpHeader
 constexpr u8 ICMP_ECHO_REQUEST = 8;
 constexpr u8 ICMP_ECHO_REPLY = 0;
 
-// UDP header
 struct UdpHeader
 {
     u16 src_port;
@@ -230,7 +228,6 @@ struct UdpHeader
     u16 checksum;
 } __attribute__((packed));
 
-// TCP header
 struct TcpHeader
 {
     u16 src_port;
@@ -252,122 +249,7 @@ constexpr u8 TCP_PSH = 0x08;
 constexpr u8 TCP_ACK = 0x10;
 
 // =============================================================================
-// Network Interface
-// =============================================================================
-
-class NetIf
-{
-  public:
-    void init(virtio::NetDevice *dev);
-
-    MacAddr mac() const
-    {
-        return mac_;
-    }
-
-    Ipv4Addr ip() const
-    {
-        return ip_;
-    }
-
-    Ipv4Addr netmask() const
-    {
-        return netmask_;
-    }
-
-    Ipv4Addr gateway() const
-    {
-        return gateway_;
-    }
-
-    Ipv4Addr dns() const
-    {
-        return dns_;
-    }
-
-    void set_ip(const Ipv4Addr &ip)
-    {
-        ip_ = ip;
-    }
-
-    void set_netmask(const Ipv4Addr &mask)
-    {
-        netmask_ = mask;
-    }
-
-    void set_gateway(const Ipv4Addr &gw)
-    {
-        gateway_ = gw;
-    }
-
-    void set_dns(const Ipv4Addr &d)
-    {
-        dns_ = d;
-    }
-
-    bool is_local(const Ipv4Addr &addr) const
-    {
-        return ip_.same_subnet(addr, netmask_);
-    }
-
-    Ipv4Addr next_hop(const Ipv4Addr &dest) const
-    {
-        if (is_local(dest))
-            return dest;
-        return gateway_;
-    }
-
-    virtio::NetDevice *device()
-    {
-        return dev_;
-    }
-
-  private:
-    virtio::NetDevice *dev_{nullptr};
-    MacAddr mac_;
-    Ipv4Addr ip_;
-    Ipv4Addr netmask_;
-    Ipv4Addr gateway_;
-    Ipv4Addr dns_;
-};
-
-// =============================================================================
-// ARP Cache
-// =============================================================================
-
-class ArpCache
-{
-  public:
-    void init(NetIf *netif);
-
-    // Lookup MAC for IP (returns zero MAC if not found)
-    MacAddr lookup(const Ipv4Addr &ip);
-
-    // Add entry
-    void add(const Ipv4Addr &ip, const MacAddr &mac);
-
-    // Send ARP request
-    void send_request(const Ipv4Addr &ip);
-
-    // Handle incoming ARP packet
-    void handle_arp(const ArpHeader *arp, usize len);
-
-  private:
-    static constexpr usize CACHE_SIZE = 16;
-
-    struct Entry
-    {
-        Ipv4Addr ip;
-        MacAddr mac;
-        bool valid;
-    };
-
-    Entry entries_[CACHE_SIZE];
-    NetIf *netif_{nullptr};
-};
-
-// =============================================================================
-// TCP Connection
+// TCP State
 // =============================================================================
 
 enum class TcpState
@@ -385,13 +267,10 @@ enum class TcpState
     TIME_WAIT
 };
 
-/**
- * @brief Minimal socket status flags for readiness queries.
- *
- * @details
- * These are intentionally aligned with the netd IPC protocol's
- * netproto::SocketStatusFlags so callers can forward them directly.
- */
+// =============================================================================
+// Socket Status Flags
+// =============================================================================
+
 enum SocketStatusFlags : u32
 {
     SOCK_READABLE = (1u << 0),
@@ -399,10 +278,27 @@ enum SocketStatusFlags : u32
     SOCK_EOF = (1u << 2),
 };
 
+// =============================================================================
+// Error Codes
+// =============================================================================
+
+constexpr i32 VERR_NO_RESOURCE = -12;
+constexpr i32 VERR_NOT_SUPPORTED = -38;
+constexpr i32 VERR_INVALID_HANDLE = -100;
+constexpr i32 VERR_INVALID_ARG = -22;
+constexpr i32 VERR_TIMEOUT = -110;
+constexpr i32 VERR_CONNECTION = -111;
+constexpr i32 VERR_WOULD_BLOCK = -300;
+
+// =============================================================================
+// TCP Connection
+// =============================================================================
+
 class TcpConnection
 {
   public:
     bool in_use{false};
+    u32 owner_pid{0}; // Process ID that owns this socket
     TcpState state{TcpState::CLOSED};
 
     Ipv4Addr local_ip;
@@ -410,24 +306,24 @@ class TcpConnection
     Ipv4Addr remote_ip;
     u16 remote_port{0};
 
-    u32 snd_una{0};    // Oldest unacknowledged seq
-    u32 snd_nxt{0};    // Next seq to send
-    u32 rcv_nxt{0};    // Next expected seq
+    u32 snd_una{0};
+    u32 snd_nxt{0};
+    u32 rcv_nxt{0};
 
-    // Receive buffer - sized to handle SSH/SFTP traffic (32KB)
-    static constexpr usize RX_BUF_SIZE = 32768;
+    // Receive buffer (32KB for SSH/SFTP traffic)
+    static constexpr usize RX_BUF_SIZE = kc::net::TCP_RX_BUFFER_SIZE;
     u8 rx_buf[RX_BUF_SIZE];
     usize rx_head{0};
     usize rx_tail{0};
 
     // Send buffer
-    static constexpr usize TX_BUF_SIZE = 8192;
+    static constexpr usize TX_BUF_SIZE = kc::net::TCP_TX_BUFFER_SIZE;
     u8 tx_buf[TX_BUF_SIZE];
     usize tx_head{0};
     usize tx_tail{0};
 
     // Pending accept (for listening sockets)
-    static constexpr usize MAX_BACKLOG = 8;
+    static constexpr usize MAX_BACKLOG = kc::net::TCP_BACKLOG_SIZE;
 
     struct PendingConn
     {
@@ -447,12 +343,10 @@ class TcpConnection
         return RX_BUF_SIZE - rx_head + rx_tail;
     }
 
-    // Free space in rx buffer (for TCP window advertisement)
     u16 rx_window() const
     {
         usize used = rx_available();
         usize free = (RX_BUF_SIZE > used) ? (RX_BUF_SIZE - used - 1) : 0;
-        // Cap at 16-bit max for TCP window field
         return (free > 65535) ? 65535 : static_cast<u16>(free);
     }
 
@@ -472,11 +366,11 @@ class UdpSocket
 {
   public:
     bool in_use{false};
+    u32 owner_pid{0};
     Ipv4Addr local_ip;
     u16 local_port{0};
 
-    // Receive buffer (stores datagrams)
-    static constexpr usize RX_BUF_SIZE = 4096;
+    static constexpr usize RX_BUF_SIZE = kc::net::UDP_RX_BUFFER_SIZE;
     u8 rx_buf[RX_BUF_SIZE];
     usize rx_len{0};
     Ipv4Addr rx_src_ip;
@@ -485,120 +379,93 @@ class UdpSocket
 };
 
 // =============================================================================
-// Network Stack
+// Network Stack (Singleton)
 // =============================================================================
 
-class NetworkStack
+constexpr usize MAX_TCP_CONNS = kc::net::MAX_TCP_CONNS;
+constexpr usize MAX_UDP_SOCKETS = kc::net::MAX_UDP_SOCKETS;
+
+// Initialize the network stack
+void network_init();
+
+// Poll for incoming packets (call periodically)
+void network_poll();
+
+// Check if network is available
+bool is_available();
+
+// =============================================================================
+// TCP Socket API (for syscall handlers)
+// =============================================================================
+
+namespace tcp
 {
-  public:
-    bool init(virtio::NetDevice *dev);
 
-    // Packet reception
-    void poll();
-    void process_frame(const u8 *data, usize len);
+// Create a new TCP socket
+// Returns socket ID (0..MAX_TCP_CONNS-1) or negative error
+i64 socket_create(u32 process_id);
 
-    // High-level operations
-    i32 socket_create(u16 type);
-    i32 socket_connect(u32 sock_id, const Ipv4Addr &ip, u16 port);
-    i32 socket_bind(u32 sock_id, u16 port);
-    i32 socket_listen(u32 sock_id, u32 backlog);
-    i32 socket_accept(u32 sock_id, Ipv4Addr *remote_ip, u16 *remote_port);
-    i32 socket_send(u32 sock_id, const void *data, usize len);
-    i32 socket_recv(u32 sock_id, void *buf, usize max_len);
-    i32 socket_close(u32 sock_id);
+// Connect to a remote host
+// Returns true on success
+bool socket_connect(i32 sock, const Ipv4Addr &ip, u16 port);
 
-    // Socket readiness / status
-    i32 socket_status(u32 sock_id, u32 *out_flags, u32 *out_rx_available) const;
-    bool any_socket_readable() const;
+// Send data on a connected socket
+// Returns bytes sent or negative error
+i64 socket_send(i32 sock, const void *buf, usize len);
 
-    // DNS
-    i32 dns_resolve(const char *hostname, Ipv4Addr *out);
+// Receive data from a connected socket
+// Returns bytes received, 0 on EOF, or negative error (VERR_WOULD_BLOCK if no data)
+i64 socket_recv(i32 sock, void *buf, usize len);
 
-    // ICMP
-    i32 ping(const Ipv4Addr &ip, u32 timeout_ms);
+// Close a socket
+void socket_close(i32 sock);
 
-    // Network info
-    NetIf *netif()
-    {
-        return &netif_;
-    }
+// Check if a socket is owned by a process
+bool socket_owned_by(i32 sock, u32 process_id);
 
-    // Statistics
-    u64 tx_packets() const
-    {
-        return tx_packets_;
-    }
+// Get socket status (for poll support)
+i32 socket_status(i32 sock, u32 *out_flags, u32 *out_rx_available);
 
-    u64 rx_packets() const
-    {
-        return rx_packets_;
-    }
+} // namespace tcp
 
-    u64 tx_bytes() const
-    {
-        return tx_bytes_;
-    }
+// =============================================================================
+// DNS API
+// =============================================================================
 
-    u64 rx_bytes() const
-    {
-        return rx_bytes_;
-    }
+namespace dns
+{
 
-    u32 tcp_conn_count() const;
-    u32 udp_sock_count() const;
+// Resolve a hostname to an IP address
+// Returns true on success, false on failure/timeout
+bool resolve(const char *hostname, Ipv4Addr *out, u32 timeout_ms);
 
-  private:
-    NetIf netif_;
-    ArpCache arp_;
+} // namespace dns
 
-    // TCP connections
-    static constexpr usize MAX_TCP_CONNS = 32;
-    TcpConnection tcp_conns_[MAX_TCP_CONNS];
+// =============================================================================
+// ICMP API
+// =============================================================================
 
-    // UDP sockets
-    static constexpr usize MAX_UDP_SOCKETS = 16;
-    UdpSocket udp_sockets_[MAX_UDP_SOCKETS];
+namespace icmp
+{
 
-    // Port allocation
-    u16 next_ephemeral_port_{49152};
+// Send a ping and wait for reply
+// Returns RTT in ms on success, negative on timeout
+i32 ping(const Ipv4Addr &ip, u32 timeout_ms);
 
-    // Statistics
-    u64 tx_packets_{0};
-    u64 rx_packets_{0};
-    u64 tx_bytes_{0};
-    u64 rx_bytes_{0};
+} // namespace icmp
 
-    // Packet ID counter
-    u16 ip_id_{1};
+} // namespace net
 
-    // DNS state
-    u16 dns_txid_{1};
-    bool dns_pending_{false};
-    Ipv4Addr dns_result_;
+// =============================================================================
+// Network Statistics
+// =============================================================================
 
-    // ICMP state
-    u16 icmp_seq_{1};
-    bool icmp_pending_{false};
-    bool icmp_received_{false};
+struct NetStats;  // Forward declaration from viperdos/net_stats.hpp
 
-    // Packet processing
-    void handle_arp(const u8 *data, usize len);
-    void handle_ipv4(const u8 *data, usize len);
-    void handle_icmp(const Ipv4Header *ip, const u8 *data, usize len);
-    void handle_udp(const Ipv4Header *ip, const u8 *data, usize len);
-    void handle_tcp(const Ipv4Header *ip, const u8 *data, usize len);
+namespace net
+{
 
-    // Packet sending
-    bool send_frame(const MacAddr &dst, u16 ethertype, const void *data, usize len);
-    bool send_ip_packet(const Ipv4Addr &dst, u8 protocol, const void *data, usize len);
-    bool send_tcp_segment(TcpConnection *conn, u8 flags, const void *data, usize len);
-    bool send_udp_datagram(
-        const Ipv4Addr &dst, u16 src_port, u16 dst_port, const void *data, usize len);
+// Get network statistics
+void get_stats(::NetStats *out);
 
-    // TCP helpers
-    TcpConnection *find_tcp_conn(const Ipv4Addr &remote_ip, u16 remote_port, u16 local_port);
-    TcpConnection *find_listening_socket(u16 local_port);
-    u16 alloc_port();
-};
-
-} // namespace netstack
+} // namespace net

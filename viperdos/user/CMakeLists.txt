@@ -26,17 +26,11 @@ add_subdirectory(libc)
 # Build the virtio library for user-space drivers
 add_subdirectory(libvirtio)
 
-# Build the microkernel servers
+# Build the GUI servers (networking is now in-kernel)
 add_subdirectory(servers)
 
 # Build the SSH library
 add_subdirectory(libssh)
-
-# Build the filesystem client library
-add_subdirectory(libfsclient)
-
-# Build the network client library
-add_subdirectory(libnetclient)
 
 # Build the TLS library
 add_subdirectory(libtls)
@@ -84,7 +78,7 @@ add_system_binary(vinit
         vinit/shell.cpp
 )
 # Note: viperlibc must come last to resolve symbols from other libs (e.g., vipertls uses gethostbyname)
-target_link_libraries(vinit.sys PRIVATE viperfsclient vipernetclient vipertls viperlibc)
+target_link_libraries(vinit.sys PRIVATE vipertls viperlibc)
 
 # hello - simple test program for spawn testing
 add_user_program(hello hello/hello.cpp)
@@ -118,9 +112,6 @@ add_user_program(edit edit/edit.cpp)
 
 # fsd_smoke - validates libc→fsd routing when fsd is present
 add_user_program(fsd_smoke fstest/fsd_smoke.c)
-
-# netd_smoke - validates that NETD responds to IPC requests when present
-add_user_program(netd_smoke fstest/netd_smoke.cpp)
 
 # tls_smoke - validates user-space TLS library
 add_executable(tls_smoke.prg fstest/tls_smoke.c)

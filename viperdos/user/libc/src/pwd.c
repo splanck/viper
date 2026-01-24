@@ -96,8 +96,33 @@ static int fill_passwd(struct passwd *pwd, char *buf, size_t buflen, uid_t uid, 
     return 0;
 }
 
-/*
- * getpwnam - Get password entry by name
+/**
+ * @brief Get password entry by username.
+ *
+ * @details
+ * Searches the password database for an entry with a matching username
+ * and returns a pointer to a structure containing the user information.
+ *
+ * ViperDOS recognizes two usernames:
+ * - "root": Superuser (uid 0)
+ * - "viper": Default user (uid 1000)
+ *
+ * The returned structure contains:
+ * - pw_name: Username
+ * - pw_passwd: Encrypted password ("x" in ViperDOS)
+ * - pw_uid/pw_gid: User/group IDs
+ * - pw_gecos: User information field
+ * - pw_dir: Home directory
+ * - pw_shell: Login shell
+ *
+ * @warning The returned pointer points to static storage that is
+ * overwritten by subsequent calls to getpwnam(), getpwuid(), or getpwent().
+ * Use getpwnam_r() for thread-safe access.
+ *
+ * @param name Username to search for.
+ * @return Pointer to passwd structure, or NULL if not found.
+ *
+ * @see getpwnam_r, getpwuid, getpwent
  */
 struct passwd *getpwnam(const char *name)
 {
@@ -111,8 +136,26 @@ struct passwd *getpwnam(const char *name)
     return result;
 }
 
-/*
- * getpwuid - Get password entry by user ID
+/**
+ * @brief Get password entry by user ID.
+ *
+ * @details
+ * Searches the password database for an entry with a matching numeric
+ * user ID and returns a pointer to a structure containing the user info.
+ *
+ * ViperDOS recognizes two user IDs:
+ * - 0: root (superuser)
+ * - 1000: viper (default user)
+ *
+ * Any other UID is treated as the viper user for compatibility.
+ *
+ * @warning The returned pointer points to static storage that is
+ * overwritten by subsequent calls. Use getpwuid_r() for thread-safe access.
+ *
+ * @param uid Numeric user ID to search for.
+ * @return Pointer to passwd structure, or NULL if not found.
+ *
+ * @see getpwuid_r, getpwnam, getpwent
  */
 struct passwd *getpwuid(uid_t uid)
 {
@@ -126,8 +169,26 @@ struct passwd *getpwuid(uid_t uid)
     return result;
 }
 
-/*
- * getpwnam_r - Get password entry by name (reentrant)
+/**
+ * @brief Get password entry by username (reentrant version).
+ *
+ * @details
+ * Thread-safe version of getpwnam(). Instead of using static storage,
+ * the caller provides buffers for the result. Multiple threads can
+ * safely call this function concurrently.
+ *
+ * The buf parameter must be large enough to hold all string fields
+ * (username, password, gecos, home directory, shell). The result
+ * pointer is set to pwd on success, or NULL if the user is not found.
+ *
+ * @param name Username to search for.
+ * @param pwd Caller-provided passwd structure to fill in.
+ * @param buf Buffer for storing string data.
+ * @param buflen Size of the buffer.
+ * @param result Set to pwd on success, NULL if not found.
+ * @return 0 on success, EINVAL on invalid args, ERANGE if buffer too small.
+ *
+ * @see getpwnam, getpwuid_r
  */
 int getpwnam_r(
     const char *name, struct passwd *pwd, char *buf, size_t buflen, struct passwd **result)
@@ -163,8 +224,22 @@ int getpwnam_r(
     return 0;
 }
 
-/*
- * getpwuid_r - Get password entry by user ID (reentrant)
+/**
+ * @brief Get password entry by user ID (reentrant version).
+ *
+ * @details
+ * Thread-safe version of getpwuid(). Instead of using static storage,
+ * the caller provides buffers for the result. Multiple threads can
+ * safely call this function concurrently.
+ *
+ * @param uid Numeric user ID to search for.
+ * @param pwd Caller-provided passwd structure to fill in.
+ * @param buf Buffer for storing string data.
+ * @param buflen Size of the buffer.
+ * @param result Set to pwd on success, NULL if not found.
+ * @return 0 on success, EINVAL on invalid args, ERANGE if buffer too small.
+ *
+ * @see getpwuid, getpwnam_r
  */
 int getpwuid_r(uid_t uid, struct passwd *pwd, char *buf, size_t buflen, struct passwd **result)
 {
@@ -200,24 +275,58 @@ int getpwuid_r(uid_t uid, struct passwd *pwd, char *buf, size_t buflen, struct p
     return 0;
 }
 
-/*
- * setpwent - Open/rewind the password file
+/**
+ * @brief Open or rewind the password database.
+ *
+ * @details
+ * Resets the password database to the beginning, so that the next call
+ * to getpwent() will return the first entry. If the database was already
+ * open, it is rewound to the beginning.
+ *
+ * In ViperDOS, this simply resets the enumeration index since there
+ * is no actual password file to open.
+ *
+ * @see endpwent, getpwent
  */
 void setpwent(void)
 {
     pwd_index = 0;
 }
 
-/*
- * endpwent - Close the password file
+/**
+ * @brief Close the password database.
+ *
+ * @details
+ * Closes the password database after enumeration is complete. This
+ * should be called when you're done iterating with getpwent() to
+ * release any resources.
+ *
+ * In ViperDOS, this simply resets the enumeration index.
+ *
+ * @see setpwent, getpwent
  */
 void endpwent(void)
 {
     pwd_index = 0;
 }
 
-/*
- * getpwent - Get next password entry
+/**
+ * @brief Get next password entry.
+ *
+ * @details
+ * Returns the next entry from the password database. Call setpwent()
+ * first to start from the beginning. After the last entry, returns NULL.
+ *
+ * ViperDOS has only two entries:
+ * 1. root (uid 0)
+ * 2. viper (uid 1000)
+ *
+ * @warning The returned pointer points to static storage that is
+ * overwritten by subsequent calls. This function is not thread-safe.
+ *
+ * @return Pointer to passwd structure, or NULL when done.
+ *
+ * @see setpwent, endpwent, getpwnam, getpwuid
  */
 struct passwd *getpwent(void)
 {

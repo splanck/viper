@@ -110,7 +110,6 @@ bool normalize_path(const char *path, const char *cwd, char *out, usize out_size
 
 // Misc commands
 void cmd_run(const char *path);
-void cmd_run_fsd(const char *path);
 void cmd_assign(const char *args);
 void cmd_path(const char *args);
 void cmd_fetch(const char *url);
@@ -121,10 +120,6 @@ bool restart_server(const char *name);
 usize get_server_count();
 void get_server_status(
     usize idx, const char **name, const char **assign, i64 *pid, bool *running, bool *available);
-
-/// Check if fsd (user filesystem) is available.
-/// Returns false in system-only mode when user disk is missing.
-bool is_fsd_available();
 
 // =============================================================================
 // Shell Loop

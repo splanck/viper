@@ -5,12 +5,11 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # -----------------------------------------------------------------------------
-# Build-time feature toggles (microkernel migration safety)
+# Build-time feature toggles
 # -----------------------------------------------------------------------------
 
-option(VIPER_MICROKERNEL_MODE "Identify build as microkernel mode" OFF)
 option(VIPER_KERNEL_ENABLE_FS "Enable in-kernel filesystem (VFS + ViperFS)" ON)
-option(VIPER_KERNEL_ENABLE_NET "Enable in-kernel TCP/IP stack + socket/DNS syscalls" OFF)
+option(VIPER_KERNEL_ENABLE_NET "Enable in-kernel TCP/IP stack + socket/DNS syscalls" ON)
 option(VIPER_KERNEL_ENABLE_TLS "Enable kernel-managed TLS sessions (SYS_TLS_*)" OFF)
 option(VIPER_KERNEL_DEBUG_NET_SYSCALL "Enable verbose socket/DNS syscall logging" OFF)
 option(VIPER_KERNEL_DEBUG_TCP "Enable verbose TCP stack logging" OFF)
@@ -73,6 +72,8 @@ set(KERNEL_SOURCES
         drivers/virtio/gpu.cpp
         drivers/virtio/input.cpp
         drivers/virtio/rng.cpp
+        drivers/virtio/net.cpp
+        net/netstack.cpp
         input/input.cpp
         tty/tty.cpp
         fs/cache.cpp
@@ -94,7 +95,6 @@ add_executable(kernel.sys ${KERNEL_SOURCES})
 
 # Compile-time config macros (see kernel/include/config.hpp)
 target_compile_definitions(kernel.sys PRIVATE
-        VIPER_MICROKERNEL_MODE=$<BOOL:${VIPER_MICROKERNEL_MODE}>
         VIPER_KERNEL_ENABLE_FS=$<BOOL:${VIPER_KERNEL_ENABLE_FS}>
         VIPER_KERNEL_ENABLE_NET=$<BOOL:${VIPER_KERNEL_ENABLE_NET}>
         VIPER_KERNEL_ENABLE_TLS=$<BOOL:${VIPER_KERNEL_ENABLE_TLS}>

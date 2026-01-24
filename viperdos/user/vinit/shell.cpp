@@ -17,10 +17,7 @@ void shell_loop()
 
     // Set shell text color to white
     print_str(SHELL_COLOR);
-    print_str("\n========================================\n");
-    print_str("        ViperDOS 0.2.0 Shell\n");
-    print_str("========================================\n");
-    print_str("Type 'Help' for available commands.\n\n");
+    print_str("\nViperDOS Shell\n\n");
 
     // Enable cursor visibility
     print_str("\x1B[?25h");
@@ -122,15 +119,6 @@ void shell_loop()
         else if (strcasestart(cmd_line, "servers "))
         {
             cmd_servers(get_args(cmd_line, 8));
-        }
-        else if (strcasestart(cmd_line, "runfsd "))
-        {
-            cmd_run_fsd(get_args(cmd_line, 7));
-        }
-        else if (strcaseeq(cmd_line, "runfsd"))
-        {
-            print_str("RunFSD: missing program path\n");
-            last_rc = RC_ERROR;
         }
         else if (strcasestart(cmd_line, "run "))
         {

@@ -2,6 +2,9 @@
 #include "../../console/gcon.hpp"
 #include "../../console/serial.hpp"
 #include "../../include/config.hpp"
+#if VIPER_KERNEL_ENABLE_NET
+#include "../../net/netstack.hpp"
+#endif
 #include "../../input/input.hpp"
 #include "../../ipc/poll.hpp"
 #include "../../sched/scheduler.hpp"

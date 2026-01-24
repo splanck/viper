@@ -746,6 +746,18 @@ long sysconf(int name)
 #define SYS_GETPID 0xA0
 #define SYS_GETPPID 0xA1
 
+/**
+ * @brief Check file accessibility.
+ *
+ * @details
+ * Checks whether the calling process can access the file pathname.
+ * In ViperDOS, this is simplified to checking file existence since
+ * there is no full permission model yet.
+ *
+ * @param pathname Path to the file to check.
+ * @param mode Access mode (F_OK, R_OK, W_OK, X_OK - currently ignored).
+ * @return 0 if accessible, -1 if not.
+ */
 int access(const char *pathname, int mode)
 {
     /* Simple implementation: check if file exists by trying to stat it */
@@ -755,6 +767,16 @@ int access(const char *pathname, int mode)
     return (result < 0) ? -1 : 0;
 }
 
+/**
+ * @brief Delete a name from the filesystem.
+ *
+ * @details
+ * Removes the specified file. If the file has no other links, it is deleted.
+ * Routes through fsd for user filesystem paths.
+ *
+ * @param pathname Path to the file to delete.
+ * @return 0 on success, -1 on error.
+ */
 int unlink(const char *pathname)
 {
     if (__viper_fsd_is_available())
@@ -769,6 +791,16 @@ int unlink(const char *pathname)
     return (int)__syscall1(SYS_UNLINK, (long)pathname);
 }
 
+/**
+ * @brief Delete an empty directory.
+ *
+ * @details
+ * Removes the specified directory, which must be empty. Routes through fsd
+ * for user filesystem paths.
+ *
+ * @param pathname Path to the directory to delete.
+ * @return 0 on success, -1 on error.
+ */
 int rmdir(const char *pathname)
 {
     if (__viper_fsd_is_available())
@@ -783,6 +815,17 @@ int rmdir(const char *pathname)
     return (int)__syscall1(SYS_RMDIR, (long)pathname);
 }
 
+/**
+ * @brief Create a hard link to a file.
+ *
+ * @details
+ * Creates a hard link named newpath to the existing file oldpath.
+ * Currently not implemented in ViperDOS.
+ *
+ * @param oldpath Existing file to link to.
+ * @param newpath New name for the link.
+ * @return -1 (ENOSYS - not implemented).
+ */
 int link(const char *oldpath, const char *newpath)
 {
     /* Hard links not implemented yet */
@@ -791,6 +834,17 @@ int link(const char *oldpath, const char *newpath)
     return -1; /* ENOSYS */
 }
 
+/**
+ * @brief Rename or move a file.
+ *
+ * @details
+ * Renames the file from oldpath to newpath. If newpath exists, it is
+ * replaced. Routes through fsd for user filesystem paths.
+ *
+ * @param oldpath Current pathname of the file.
+ * @param newpath New pathname for the file.
+ * @return 0 on success, -1 on error.
+ */
 int rename(const char *oldpath, const char *newpath)
 {
     if (!oldpath || !newpath)
@@ -811,19 +865,52 @@ int rename(const char *oldpath, const char *newpath)
     return (int)__syscall2(SYS_RENAME, (long)oldpath, (long)newpath);
 }
 
+/**
+ * @brief Create a symbolic link.
+ *
+ * @details
+ * Creates a symbolic link named linkpath that contains the string target.
+ *
+ * @param target The target path that the symlink will point to.
+ * @param linkpath The path where the symlink will be created.
+ * @return 0 on success, -1 on error.
+ */
 int symlink(const char *target, const char *linkpath)
 {
     return (int)__syscall2(SYS_SYMLINK, (long)target, (long)linkpath);
 }
 
+/**
+ * @brief Read the target of a symbolic link.
+ *
+ * @details
+ * Places the contents of the symbolic link pathname in the buffer buf.
+ * The string is not null-terminated if it exceeds bufsiz bytes.
+ *
+ * @param pathname Path to the symbolic link.
+ * @param buf Buffer to store the link target.
+ * @param bufsiz Size of the buffer.
+ * @return Number of bytes placed in buf, or -1 on error.
+ */
 ssize_t readlink(const char *pathname, char *buf, size_t bufsiz)
 {
     return __syscall3(SYS_READLINK, (long)pathname, (long)buf, (long)bufsiz);
 }
 
-/* Static hostname buffer */
+/** Static hostname buffer (default: "viperdos"). */
 static char hostname_buf[256] = "viperdos";
 
+/**
+ * @brief Get the hostname of the system.
+ *
+ * @details
+ * Retrieves the standard host name for the current machine. The name is
+ * null-terminated unless it requires more than len bytes.
+ *
+ * @param name Buffer to store the hostname.
+ * @param len Size of the buffer.
+ * @return 0 on success, -1 on error.
+ */
 int gethostname(char *name, size_t len)
 {
     if (!name || len == 0)
@@ -839,6 +926,17 @@ int gethostname(char *name, size_t len)
     return 0;
 }
 
+/**
+ * @brief Set the hostname of the system.
+ *
+ * @details
+ * Sets the host name to the value given in name. This is typically
+ * a privileged operation.
+ *
+ * @param name New hostname string.
+ * @param len Length of the hostname (not including null terminator).
+ * @return 0 on success, -1 on error.
+ */
 int sethostname(const char *name, size_t len)
 {
     if (!name)
@@ -854,63 +952,146 @@ int sethostname(const char *name, size_t len)
     return 0;
 }
 
-/* User/group IDs - ViperDOS is single-user, always return 0 (root) */
+/**
+ * @defgroup uid_gid User and Group ID Functions
+ * @brief Functions for getting/setting user and group IDs.
+ *
+ * @details ViperDOS is a single-user system, so all UID/GID functions
+ * return 0 (root) and set operations always succeed.
+ * @{
+ */
+
+/**
+ * @brief Get real user ID.
+ * @return Real user ID (always 0 in ViperDOS).
+ */
 uid_t getuid(void)
 {
     return 0;
 }
 
+/**
+ * @brief Get effective user ID.
+ * @return Effective user ID (always 0 in ViperDOS).
+ */
 uid_t geteuid(void)
 {
     return 0;
 }
 
+/**
+ * @brief Get real group ID.
+ * @return Real group ID (always 0 in ViperDOS).
+ */
 gid_t getgid(void)
 {
     return 0;
 }
 
+/**
+ * @brief Get effective group ID.
+ * @return Effective group ID (always 0 in ViperDOS).
+ */
 gid_t getegid(void)
 {
     return 0;
 }
 
+/**
+ * @brief Set user ID.
+ * @param uid User ID to set (ignored in ViperDOS).
+ * @return 0 (always succeeds in single-user system).
+ */
 int setuid(uid_t uid)
 {
     (void)uid;
     return 0; /* Always succeeds in single-user system */
 }
 
+/**
+ * @brief Set group ID.
+ * @param gid Group ID to set (ignored in ViperDOS).
+ * @return 0 (always succeeds in single-user system).
+ */
 int setgid(gid_t gid)
 {
     (void)gid;
     return 0;
 }
 
-/* Process group operations */
+/** @} */ /* End of uid_gid group */
+
+/**
+ * @defgroup pgrp Process Group Functions
+ * @brief Functions for process group and session management.
+ * @{
+ */
+
+/**
+ * @brief Get process group ID of calling process.
+ * @return Process group ID.
+ */
 pid_t getpgrp(void)
 {
     return (pid_t)__syscall1(SYS_GETPGID, 0);
 }
 
+/**
+ * @brief Set process group ID.
+ *
+ * @param pid Process ID (0 means calling process).
+ * @param pgid Process group ID to join (0 means use pid as pgid).
+ * @return 0 on success, -1 on error.
+ */
 int setpgid(pid_t pid, pid_t pgid)
 {
     return (int)__syscall2(SYS_SETPGID, pid, pgid);
 }
 
+/**
+ * @brief Create a new session.
+ *
+ * @details Creates a new session if the calling process is not a process
+ * group leader. The calling process becomes the session leader and
+ * process group leader of the new session.
+ *
+ * @return Session ID of the new session, or -1 on error.
+ */
 pid_t setsid(void)
 {
     return (pid_t)__syscall1(SYS_SETSID, 0);
 }
 
-/* Pipe - not implemented yet */
+/** @} */ /* End of pgrp group */
+
+/**
+ * @brief Create a pipe.
+ *
+ * @details Creates a unidirectional data channel (pipe). pipefd[0] is the
+ * read end, pipefd[1] is the write end. Not yet implemented in ViperDOS.
+ *
+ * @param pipefd Array to receive the two file descriptors.
+ * @return -1 (ENOSYS - not implemented).
+ */
 int pipe(int pipefd[2])
 {
     (void)pipefd;
     return -1; /* ENOSYS */
 }
 
-/* Execute functions - stubs for now */
+/**
+ * @defgroup exec Exec Functions
+ * @brief Functions to execute programs (stubs - not yet implemented).
+ * @{
+ */
+
+/**
+ * @brief Execute a program (by path).
+ *
+ * @param pathname Path to the program to execute.
+ * @param argv Argument vector (null-terminated).
+ * @return -1 (ENOSYS - not implemented).
+ */
 int execv(const char *pathname, char *const argv[])
 {
     (void)pathname;
@@ -918,6 +1099,14 @@ int execv(const char *pathname, char *const argv[])
     return -1; /* ENOSYS */
 }
 
+/**
+ * @brief Execute a program (with environment).
+ *
+ * @param pathname Path to the program to execute.
+ * @param argv Argument vector (null-terminated).
+ * @param envp Environment vector (null-terminated).
+ * @return -1 (ENOSYS - not implemented).
+ */
 int execve(const char *pathname, char *const argv[], char *const envp[])
 {
     (void)pathname;
@@ -926,6 +1115,13 @@ int execve(const char *pathname, char *const argv[], char *const envp[])
     return -1; /* ENOSYS */
 }
 
+/**
+ * @brief Execute a program (search PATH).
+ *
+ * @param file Program name (searched in PATH if no '/').
+ * @param argv Argument vector (null-terminated).
+ * @return -1 (ENOSYS - not implemented).
+ */
 int execvp(const char *file, char *const argv[])
 {
     (void)file;
@@ -933,13 +1129,28 @@ int execvp(const char *file, char *const argv[])
     return -1; /* ENOSYS */
 }
 
-/* Fork */
+/** @} */ /* End of exec group */
+
+/**
+ * @brief Create a child process.
+ *
+ * @details Creates a new process by duplicating the calling process.
+ * The child process is an exact copy of the parent at the time of fork().
+ *
+ * @return In parent: child's PID. In child: 0. On error: -1.
+ */
 pid_t fork(void)
 {
     return (pid_t)__syscall1(SYS_FORK, 0);
 }
 
-/* File operations - stubs */
+/**
+ * @brief Truncate a file to a specified length (by path).
+ *
+ * @param path Path to the file.
+ * @param length New length in bytes.
+ * @return -1 (ENOSYS - not implemented).
+ */
 int truncate(const char *path, long length)
 {
     (void)path;
@@ -947,6 +1158,13 @@ int truncate(const char *path, long length)
     return -1; /* ENOSYS */
 }
 
+/**
+ * @brief Truncate a file to a specified length (by file descriptor).
+ *
+ * @param fd File descriptor of an open file.
+ * @param length New length in bytes.
+ * @return -1 (ENOSYS - not implemented).
+ */
 int ftruncate(int fd, long length)
 {
     (void)fd;
@@ -958,8 +1176,18 @@ int ftruncate(int fd, long length)
 extern int __viper_fsd_is_fd(int fd);
 extern int __viper_fsd_fsync(int fd);
 
+/** Syscall number for fsync. */
 #define SYS_FSYNC 0x49
 
+/**
+ * @brief Synchronize a file's state with storage device.
+ *
+ * @details Transfers all modified data and metadata of the file referred
+ * to by fd to the underlying storage device. This ensures data durability.
+ *
+ * @param fd File descriptor of an open file.
+ * @return 0 on success, -1 on error.
+ */
 int fsync(int fd)
 {
     /* Route fsd-managed file descriptors through the fsd backend */
@@ -976,6 +1204,13 @@ int fsync(int fd)
     return 0;
 }
 
+/**
+ * @brief Get configurable pathname variables (by path).
+ *
+ * @param path Path to query.
+ * @param name Configuration variable name.
+ * @return -1 (ENOSYS - not implemented).
+ */
 long pathconf(const char *path, int name)
 {
     (void)path;
@@ -983,6 +1218,13 @@ long pathconf(const char *path, int name)
     return -1; /* ENOSYS */
 }
 
+/**
+ * @brief Get configurable pathname variables (by file descriptor).
+ *
+ * @param fd File descriptor to query.
+ * @param name Configuration variable name.
+ * @return -1 (ENOSYS - not implemented).
+ */
 long fpathconf(int fd, int name)
 {
     (void)fd;
@@ -990,12 +1232,29 @@ long fpathconf(int fd, int name)
     return -1; /* ENOSYS */
 }
 
+/**
+ * @brief Set an alarm clock for delivery of a signal.
+ *
+ * @details Arranges for a SIGALRM signal to be delivered to the process
+ * after the specified number of seconds. Not implemented in ViperDOS.
+ *
+ * @param seconds Seconds until alarm (0 cancels pending alarm).
+ * @return Time remaining from previous alarm (always 0).
+ */
 unsigned int alarm(unsigned int seconds)
 {
     (void)seconds;
     return 0; /* Not implemented */
 }
 
+/**
+ * @brief Wait for a signal.
+ *
+ * @details Suspends the calling process until a signal is delivered.
+ * In ViperDOS, this simply sleeps indefinitely.
+ *
+ * @return -1 (always, when interrupted by signal).
+ */
 int pause(void)
 {
     /* Block forever - in practice would wait for signal */

@@ -127,6 +127,18 @@ int nanosleep(const struct timespec *req, struct timespec *rem)
     return 0;
 }
 
+/**
+ * @brief Get time from a specified clock.
+ *
+ * @details
+ * Retrieves the current time from the specified clock and stores it in tp.
+ * ViperDOS supports CLOCK_REALTIME and CLOCK_MONOTONIC, both returning
+ * uptime since system boot (no real-time clock available).
+ *
+ * @param clk_id Clock to query (CLOCK_REALTIME or CLOCK_MONOTONIC).
+ * @param tp Structure to receive the time value.
+ * @return 0 on success, -1 on error (invalid clock or NULL tp).
+ */
 int clock_gettime(clockid_t clk_id, struct timespec *tp)
 {
     if (!tp)
@@ -146,6 +158,17 @@ int clock_gettime(clockid_t clk_id, struct timespec *tp)
     return 0;
 }
 
+/**
+ * @brief Get clock resolution.
+ *
+ * @details
+ * Retrieves the resolution (precision) of the specified clock. In ViperDOS,
+ * all clocks have millisecond resolution (1,000,000 nanoseconds).
+ *
+ * @param clk_id Clock to query (CLOCK_REALTIME or CLOCK_MONOTONIC).
+ * @param res If non-NULL, receives the clock resolution.
+ * @return 0 on success, -1 on invalid clock ID.
+ */
 int clock_getres(clockid_t clk_id, struct timespec *res)
 {
     if (clk_id != CLOCK_REALTIME && clk_id != CLOCK_MONOTONIC)
@@ -161,6 +184,18 @@ int clock_getres(clockid_t clk_id, struct timespec *res)
     return 0;
 }
 
+/**
+ * @brief Get current time with microsecond precision.
+ *
+ * @details
+ * Returns the current time in seconds and microseconds. In ViperDOS,
+ * this is uptime since boot rather than calendar time. The timezone
+ * parameter is ignored.
+ *
+ * @param tv Structure to receive the time value.
+ * @param tz Timezone (ignored, pass NULL).
+ * @return 0 on success, -1 if tv is NULL.
+ */
 int gettimeofday(struct timeval *tv, void *tz)
 {
     (void)tz; /* Timezone not supported */
@@ -177,9 +212,26 @@ int gettimeofday(struct timeval *tv, void *tz)
     return 0;
 }
 
-/* Static storage for gmtime/localtime results */
+/** Static storage for gmtime/localtime results (non-reentrant). */
 static struct tm _tm_result;
 
+/**
+ * @brief Convert time_t to broken-down time (UTC).
+ *
+ * @details
+ * Converts the calendar time pointed to by timep into a broken-down time
+ * structure (struct tm) expressed in UTC. The result is stored in static
+ * memory and overwritten by subsequent calls.
+ *
+ * @warning This implementation is a simplified approximation since ViperDOS
+ * doesn't have a real-time clock. The time value is treated as uptime rather
+ * than actual calendar time.
+ *
+ * @param timep Pointer to time_t value to convert.
+ * @return Pointer to static struct tm, or NULL if timep is NULL.
+ *
+ * @note Not thread-safe; use gmtime_r() for reentrant version (if available).
+ */
 struct tm *gmtime(const time_t *timep)
 {
     if (!timep)
@@ -207,12 +259,37 @@ struct tm *gmtime(const time_t *timep)
     return &_tm_result;
 }
 
+/**
+ * @brief Convert time_t to broken-down local time.
+ *
+ * @details
+ * Converts the calendar time to local time. In ViperDOS, there is no
+ * timezone support, so this is equivalent to gmtime().
+ *
+ * @param timep Pointer to time_t value to convert.
+ * @return Pointer to static struct tm, or NULL if timep is NULL.
+ *
+ * @note Not thread-safe.
+ */
 struct tm *localtime(const time_t *timep)
 {
     /* No timezone support, just use gmtime */
     return gmtime(timep);
 }
 
+/**
+ * @brief Convert broken-down time to time_t.
+ *
+ * @details
+ * Converts the broken-down time structure to a time_t value representing
+ * the same time. This is the inverse of localtime()/gmtime().
+ *
+ * @warning This is a simplified implementation that doesn't handle real
+ * calendar dates accurately (no leap years, varying month lengths, etc.).
+ *
+ * @param tm Pointer to struct tm to convert.
+ * @return time_t representation, or -1 if tm is NULL.
+ */
 time_t mktime(struct tm *tm)
 {
     if (!tm)
@@ -230,6 +307,28 @@ time_t mktime(struct tm *tm)
     return result;
 }
 
+/**
+ * @brief Format time into a string.
+ *
+ * @details
+ * Formats the broken-down time tm according to the format string and stores
+ * the result in s. The format string may contain literal characters and
+ * conversion specifiers beginning with %.
+ *
+ * Supported format specifiers (minimal implementation):
+ * - %H: Hour (00-23)
+ * - %M: Minute (00-59)
+ * - %S: Second (00-59)
+ * - %%: Literal %
+ *
+ * Other format specifiers are copied to the output literally.
+ *
+ * @param s Buffer to store the formatted string.
+ * @param max Maximum number of bytes to write (including null terminator).
+ * @param format Format string with conversion specifiers.
+ * @param tm Broken-down time to format.
+ * @return Number of bytes written (excluding null terminator), or 0 on error.
+ */
 size_t strftime(char *s, size_t max, const char *format, const struct tm *tm)
 {
     /* Minimal implementation - just copy format with some substitutions */

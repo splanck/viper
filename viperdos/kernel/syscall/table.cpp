@@ -53,6 +53,10 @@
 #include "../viper/address_space.hpp"
 #include "../viper/viper.hpp"
 
+#if VIPER_KERNEL_ENABLE_NET
+#include "../net/netstack.hpp"
+#endif
+
 namespace syscall
 {
 
@@ -1335,7 +1339,10 @@ static SyscallResult sys_socket_connect(u64 a0, u64 a1, u64 a2, u64, u64, u64)
 {
     i32 sock = static_cast<i32>(a0);
     u32 ip_raw = static_cast<u32>(a1);
-    u16 port = static_cast<u16>(a2);
+    u16 port_be = static_cast<u16>(a2);
+
+    // Convert port from network byte order (big-endian) to host byte order
+    u16 port = net::ntohs(port_be);
 
     viper::Viper *v = viper::current();
     if (!v || !net::tcp::socket_owned_by(sock, static_cast<u32>(v->id)))

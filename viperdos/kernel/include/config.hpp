@@ -20,49 +20,32 @@
  * @brief Build-time feature toggles for the ViperDOS kernel.
  *
  * @details
- * These macros are intended to make microkernel migration safer by allowing
- * incremental, reversible changes. Defaults preserve current behavior.
- *
+ * These macros control which kernel subsystems are enabled at build time.
  * Values are `0` (disabled) or `1` (enabled). They may be overridden via the
  * build system (e.g., `target_compile_definitions`).
  */
 
-/* -----------------------------------------------------------------------------
- * Build mode
- * -------------------------------------------------------------------------- */
-
-/* When enabled, the kernel identifies itself as "microkernel mode" at boot.
- * In microkernel mode, kernel services (net, tls) are disabled by default. */
-#ifndef VIPER_MICROKERNEL_MODE
-#define VIPER_MICROKERNEL_MODE 0
-#endif
-
 // -----------------------------------------------------------------------------
-// Kernel service toggles (HYBRID compatibility layer)
+// Kernel service toggles
 // -----------------------------------------------------------------------------
 
 /// Enable the in-kernel filesystem (VFS + ViperFS).
 /// When disabled, file/dir syscalls return VERR_NOT_SUPPORTED.
-/// The kernel loader can still load from memory via SYS_TASK_SPAWN_SHM.
 #ifndef VIPER_KERNEL_ENABLE_FS
 #define VIPER_KERNEL_ENABLE_FS 1
 #endif
 
 /// Enable the in-kernel network stack and socket/DNS syscalls.
-/// Disabled by default in microkernel mode - use netd instead.
 #ifndef VIPER_KERNEL_ENABLE_NET
 #define VIPER_KERNEL_ENABLE_NET 1
 #endif
 
 /// Enable kernel-managed TLS sessions and `SYS_TLS_*` syscalls.
-/// Disabled by default in microkernel mode - use libtls instead.
 #ifndef VIPER_KERNEL_ENABLE_TLS
 #define VIPER_KERNEL_ENABLE_TLS 1
 #endif
 
 /// Enable the in-kernel block device driver (virtio-blk).
-/// The kernel always needs this to load vinit from disk.
-/// After vinit loads blkd, blkd will take over block device management.
 #ifndef VIPER_KERNEL_ENABLE_BLK
 #define VIPER_KERNEL_ENABLE_BLK 1
 #endif

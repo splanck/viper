@@ -1516,8 +1516,8 @@ extern "C" void _start()
     debug_print_dec(display.height);
     debug_print("\n");
 
-    // Calculate window size (60% of screen)
-    g_window_width = (display.width * 60) / 100;
+    // Calculate window size (70% width, 60% height for wider console)
+    g_window_width = (display.width * 70) / 100;
     g_window_height = (display.height * 60) / 100;
 
     // Calculate text grid size (accounting for padding)
@@ -1619,10 +1619,7 @@ extern "C" void _start()
         sys::channel_close(recv_ch);
         g_service_channel = -1;
 
-        // Show welcome message for interactive console
-        write_text("ViperDOS Console (Interactive)\n", 31);
-        write_text("Type 'help' for commands.\n\n", 27);
-        print_prompt();
+        // Shell will show its own welcome message
     }
     else
     {

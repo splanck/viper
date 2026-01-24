@@ -824,6 +824,10 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
     {
         case DISP_GET_INFO:
         {
+            debug_print("[displayd] Handling DISP_GET_INFO, client_channel=");
+            debug_print_dec(client_channel);
+            debug_print("\n");
+
             if (len < sizeof(GetInfoRequest)) return;
             auto *req = reinterpret_cast<const GetInfoRequest *>(data);
 
@@ -835,7 +839,10 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
             reply.height = g_fb_height;
             reply.format = 0x34325258; // XRGB8888
 
-            sys::channel_send(client_channel, &reply, sizeof(reply), nullptr, 0);
+            int64_t send_result = sys::channel_send(client_channel, &reply, sizeof(reply), nullptr, 0);
+            debug_print("[displayd] DISP_GET_INFO reply sent, result=");
+            debug_print_dec(send_result);
+            debug_print("\n");
             break;
         }
 
@@ -1694,8 +1701,24 @@ extern "C" void _start()
     // IPC messages wake us immediately regardless of timeout
     constexpr int64_t POLL_TIMEOUT_MS = 5;
 
+    // Debug: track loop iterations to detect if displayd is running
+    uint64_t loop_count = 0;
+    uint64_t last_debug_time = 0;
+
     while (true)
     {
+        loop_count++;
+
+        // Print periodic heartbeat to show displayd is running
+        uint64_t now = sys::uptime();
+        if (now - last_debug_time > 5000)
+        {
+            debug_print("[displayd] Heartbeat: loop=");
+            debug_print_dec(static_cast<int64_t>(loop_count));
+            debug_print("\n");
+            last_debug_time = now;
+        }
+
         // Wait for messages on service channel
         // - Wakes immediately when IPC message arrives
         // - Times out after 5ms to poll mouse/keyboard
@@ -1715,7 +1738,16 @@ extern "C" void _start()
             {
                 messages_processed++;
 
-                // Got a message
+                // Got a message - show message type
+                uint32_t msg_type = *reinterpret_cast<uint32_t *>(msg_buf);
+                debug_print("[displayd] Received msg type=");
+                debug_print_dec(msg_type);
+                debug_print(" len=");
+                debug_print_dec(n);
+                debug_print(" handles=");
+                debug_print_dec(handle_count);
+                debug_print("\n");
+
                 if (handle_count > 0)
                 {
                     // Message with reply channel - handle and respond

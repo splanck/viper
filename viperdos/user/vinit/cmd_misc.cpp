@@ -2,14 +2,13 @@
  * @file cmd_misc.cpp
  * @brief Miscellaneous shell commands for vinit (run, assign, path, fetch).
  *
- * Uses netclient for DNS and libc sockets for TCP (routes through netd).
+ * Uses libc for DNS resolution and TCP sockets.
  * Uses libtls for HTTPS connections.
  */
 #include "vinit.hpp"
 
-#include "fsclient.hpp"
-#include "netclient.hpp"
 #include <arpa/inet.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -18,9 +17,6 @@ extern "C"
 {
 #include "libtls/include/tls.h"
 }
-
-// Global netclient instance for DNS resolution
-static netclient::Client g_netd;
 
 /**
  * @brief Check if path is a /sys path (system disk).
@@ -62,7 +58,7 @@ static void build_spawn_args(const char *args, char *out, usize out_size)
 }
 
 /**
- * @brief Run a program from the system disk (/sys) via kernel VFS.
+ * @brief Run a program via kernel VFS.
  */
 static void run_via_kernel(const char *path, const char *args)
 {
@@ -122,166 +118,7 @@ static void run_via_kernel(const char *path, const char *args)
 }
 
 /**
- * @brief Run a program from the user disk via fsd + spawn_shm.
- */
-static void run_via_fsd(const char *path, const char *args)
-{
-    fsclient::Client fs;
-    u32 file_id = 0;
-    i32 ferr = fs.open(path, 0 /* O_RDONLY */, &file_id);
-
-    // If not found and not an absolute path, try /c/ prefix
-    char search_path[256];
-    if (ferr < 0 && path[0] != '/')
-    {
-        usize i = 0;
-        search_path[i++] = '/';
-        search_path[i++] = 'c';
-        search_path[i++] = '/';
-
-        const char *q = path;
-        while (*q && i < 250)
-            search_path[i++] = *q++;
-        search_path[i] = '\0';
-
-        ferr = fs.open(search_path, 0, &file_id);
-
-        // Try adding .prg extension
-        if (ferr < 0)
-        {
-            usize len = i;
-            if (len < 4 || !streq(search_path + len - 4, ".prg"))
-            {
-                if (len + 4 < 255)
-                {
-                    search_path[len++] = '.';
-                    search_path[len++] = 'p';
-                    search_path[len++] = 'r';
-                    search_path[len++] = 'g';
-                    search_path[len] = '\0';
-                    ferr = fs.open(search_path, 0, &file_id);
-                }
-            }
-        }
-
-        if (ferr >= 0)
-        {
-            path = search_path;
-        }
-    }
-
-    if (ferr < 0)
-    {
-        print_str("Run: failed to open \"");
-        print_str(path);
-        print_str("\" (error ");
-        put_num(ferr);
-        print_str(")\n");
-        last_rc = RC_FAIL;
-        last_error = "File not found";
-        return;
-    }
-
-    u64 size = 0;
-    i32 serr = fs.file_size(file_id, &size);
-    if (serr < 0 || size == 0 || size > 0xFFFFFFFFull)
-    {
-        (void)fs.close(file_id);
-        print_str("Run: failed to stat executable\n");
-        last_rc = RC_FAIL;
-        last_error = "Stat failed";
-        return;
-    }
-
-    auto shm = sys::shm_create(size);
-    if (shm.error < 0)
-    {
-        (void)fs.close(file_id);
-        print_str("Run: failed to allocate memory\n");
-        last_rc = RC_FAIL;
-        last_error = "SHM create failed";
-        return;
-    }
-
-    u8 *dst = reinterpret_cast<u8 *>(shm.virt_addr);
-    i64 nread = fs.read(file_id, dst, static_cast<u32>(size));
-    (void)fs.close(file_id);
-
-    if (nread < 0 || static_cast<u64>(nread) != size)
-    {
-        (void)sys::shm_unmap(shm.virt_addr);
-        (void)sys::shm_close(shm.handle);
-        print_str("Run: failed to read executable\n");
-        last_rc = RC_FAIL;
-        last_error = "Read failed";
-        return;
-    }
-
-    // Build args with PWD prefix
-    char spawn_args[512];
-    build_spawn_args(args, spawn_args, sizeof(spawn_args));
-
-    u64 pid = 0;
-    u64 tid = 0;
-    u32 bootstrap_send = 0xFFFFFFFFu;
-    i64 err =
-        sys::spawn_shm(shm.handle, 0, size, path, &pid, &tid, spawn_args, &bootstrap_send);
-
-    (void)sys::shm_unmap(shm.virt_addr);
-    (void)sys::shm_close(shm.handle);
-
-    if (err < 0)
-    {
-        print_str("Run: failed to spawn \"");
-        print_str(path);
-        print_str("\" (error ");
-        put_num(err);
-        print_str(")\n");
-        last_rc = RC_FAIL;
-        last_error = "Spawn failed";
-        return;
-    }
-
-    if (bootstrap_send != 0xFFFFFFFFu)
-    {
-        sys::channel_close(static_cast<i32>(bootstrap_send));
-    }
-
-    print_str("Started process ");
-    put_num(static_cast<i64>(pid));
-    print_str(" (task ");
-    put_num(static_cast<i64>(tid));
-    print_str(")\n");
-
-    i32 status = 0;
-    i64 exited_pid = sys::waitpid(pid, &status);
-
-    if (exited_pid < 0)
-    {
-        print_str("Run: wait failed (error ");
-        put_num(exited_pid);
-        print_str(")\n");
-        print_str(ANSI_RESET);
-        last_rc = RC_FAIL;
-        last_error = "Wait failed";
-        return;
-    }
-
-    print_str("Process ");
-    put_num(exited_pid);
-    print_str(" exited with status ");
-    put_num(static_cast<i64>(status));
-    print_str("\n");
-    print_str(ANSI_RESET);
-    last_rc = RC_OK;
-}
-
-/**
- * @brief Unified run command with path routing.
- *
- * Two-disk architecture:
- * - /sys/ paths use kernel VFS (always available)
- * - Other paths use fsd (requires user disk)
+ * @brief Run command - spawns a program via kernel VFS.
  */
 void cmd_run(const char *cmdline)
 {
@@ -321,69 +158,26 @@ void cmd_run(const char *cmdline)
     const char *path = path_buf;
     const char *args = args_len > 0 ? args_buf : nullptr;
 
-    // Route based on path and FSD availability
-    if (is_sys_path(path))
+    // Normalize path for non-absolute paths
+    if (!is_sys_path(path) && path[0] != '/')
     {
-        // System path - use kernel VFS directly
-        run_via_kernel(path, args);
-    }
-    else if (is_fsd_available())
-    {
-        // User path with FSD available - use FSD
-        run_via_fsd(path, args);
-    }
-    else
-    {
-        // Monolithic mode: use kernel VFS for all paths
-        // Normalize the path first (handle assigns like C:)
+        // Try to find the program on the user disk
+        char search_path[256];
+
+        // First try current directory
         char normalized[256];
         normalize_path(path, current_dir, normalized, sizeof(normalized));
-        run_via_kernel(normalized, args);
-    }
-}
 
-void cmd_run_fsd(const char *cmdline)
-{
-    if (!cmdline || *cmdline == '\0')
-    {
-        print_str("RunFSD: missing program path\n");
-        last_rc = RC_ERROR;
-        last_error = "No path specified";
-        return;
-    }
+        // Try normalized path first
+        i32 fd = sys::open(normalized, sys::O_RDONLY);
+        if (fd >= 0)
+        {
+            sys::close(fd);
+            run_via_kernel(normalized, args);
+            return;
+        }
 
-    // Parse the command line: first word is path, rest are args
-    char path_buf[256];
-    char args_buf[256];
-    usize path_len = 0;
-    usize args_len = 0;
-
-    const char *p = cmdline;
-    while (*p == ' ')
-        p++;
-
-    while (*p && *p != ' ' && path_len < 255)
-        path_buf[path_len++] = *p++;
-    path_buf[path_len] = '\0';
-
-    while (*p == ' ')
-        p++;
-
-    while (*p && args_len < 255)
-        args_buf[args_len++] = *p++;
-    args_buf[args_len] = '\0';
-
-    const char *path = path_buf;
-    const char *args = args_len > 0 ? args_buf : nullptr;
-
-    fsclient::Client fs;
-    u32 file_id = 0;
-    i32 ferr = fs.open(path, 0 /* O_RDONLY */, &file_id);
-
-    // If not found and not an absolute/relative path, try /c/ like Run does.
-    if (ferr < 0 && path[0] != '/' && !strstart(path, "./") && !strstart(path, "../"))
-    {
-        char search_path[256];
+        // Try /c/ prefix
         usize i = 0;
         search_path[i++] = '/';
         search_path[i++] = 'c';
@@ -394,141 +188,39 @@ void cmd_run_fsd(const char *cmdline)
             search_path[i++] = *q++;
         search_path[i] = '\0';
 
-        ferr = fs.open(search_path, 0 /* O_RDONLY */, &file_id);
-        if (ferr < 0)
+        fd = sys::open(search_path, sys::O_RDONLY);
+        if (fd >= 0)
         {
-            usize len = i;
-            if (len < 4 || !streq(search_path + len - 4, ".prg"))
+            sys::close(fd);
+            run_via_kernel(search_path, args);
+            return;
+        }
+
+        // Try with .prg extension
+        if (i + 4 < 255)
+        {
+            search_path[i++] = '.';
+            search_path[i++] = 'p';
+            search_path[i++] = 'r';
+            search_path[i++] = 'g';
+            search_path[i] = '\0';
+
+            fd = sys::open(search_path, sys::O_RDONLY);
+            if (fd >= 0)
             {
-                if (len + 4 < 255)
-                {
-                    search_path[len++] = '.';
-                    search_path[len++] = 'p';
-                    search_path[len++] = 'r';
-                    search_path[len++] = 'g';
-                    search_path[len] = '\0';
-                    ferr = fs.open(search_path, 0 /* O_RDONLY */, &file_id);
-                }
+                sys::close(fd);
+                run_via_kernel(search_path, args);
+                return;
             }
         }
 
-        if (ferr >= 0)
-        {
-            path = search_path;
-        }
+        // Fall through to try the original path
     }
 
-    if (ferr < 0)
-    {
-        print_str("RunFSD: failed to open \"");
-        print_str(path);
-        print_str("\" (error ");
-        put_num(ferr);
-        print_str(")\n");
-        last_rc = RC_FAIL;
-        last_error = "FSD open failed";
-        return;
-    }
-
-    u64 size = 0;
-    i32 serr = fs.file_size(file_id, &size);
-    if (serr < 0 || size == 0 || size > 0xFFFFFFFFull)
-    {
-        (void)fs.close(file_id);
-        print_str("RunFSD: failed to stat executable (error ");
-        put_num(serr);
-        print_str(")\n");
-        last_rc = RC_FAIL;
-        last_error = "FSD stat failed";
-        return;
-    }
-
-    auto shm = sys::shm_create(size);
-    if (shm.error < 0)
-    {
-        (void)fs.close(file_id);
-        print_str("RunFSD: failed to allocate SHM (error ");
-        put_num(shm.error);
-        print_str(")\n");
-        last_rc = RC_FAIL;
-        last_error = "SHM create failed";
-        return;
-    }
-
-    u8 *dst = reinterpret_cast<u8 *>(shm.virt_addr);
-    i64 nread = fs.read(file_id, dst, static_cast<u32>(size));
-    (void)fs.close(file_id);
-
-    if (nread < 0 || static_cast<u64>(nread) != size)
-    {
-        (void)sys::shm_unmap(shm.virt_addr);
-        (void)sys::shm_close(shm.handle);
-        print_str("RunFSD: failed to read executable (error ");
-        put_num(nread);
-        print_str(")\n");
-        last_rc = RC_FAIL;
-        last_error = "FSD read failed";
-        return;
-    }
-
-    // Build args with PWD prefix
-    char spawn_args[512];
-    build_spawn_args(args, spawn_args, sizeof(spawn_args));
-
-    u64 pid = 0;
-    u64 tid = 0;
-    u32 bootstrap_send = 0xFFFFFFFFu;
-    i64 err =
-        sys::spawn_shm(shm.handle, 0, size, path /* name */, &pid, &tid, spawn_args, &bootstrap_send);
-
-    (void)sys::shm_unmap(shm.virt_addr);
-    (void)sys::shm_close(shm.handle);
-
-    if (err < 0)
-    {
-        print_str("RunFSD: failed to spawn \"");
-        print_str(path);
-        print_str("\" (error ");
-        put_num(err);
-        print_str(")\n");
-        last_rc = RC_FAIL;
-        last_error = "Spawn failed";
-        return;
-    }
-
-    if (bootstrap_send != 0xFFFFFFFFu)
-    {
-        sys::channel_close(static_cast<i32>(bootstrap_send));
-    }
-
-    print_str("Started process ");
-    put_num(static_cast<i64>(pid));
-    print_str(" (task ");
-    put_num(static_cast<i64>(tid));
-    print_str(")\n");
-
-    i32 status = 0;
-    i64 exited_pid = sys::waitpid(pid, &status);
-
-    if (exited_pid < 0)
-    {
-        print_str("RunFSD: wait failed (error ");
-        put_num(exited_pid);
-        print_str(")\n");
-        print_str(ANSI_RESET);
-        last_rc = RC_FAIL;
-        last_error = "Wait failed";
-        return;
-    }
-
-    print_str("Process ");
-    put_num(exited_pid);
-    print_str(" exited with status ");
-    put_num(static_cast<i64>(status));
-    print_str("\n");
-
-    print_str(ANSI_RESET);
-    last_rc = RC_OK;
+    // Normalize the path and run
+    char normalized[256];
+    normalize_path(path, current_dir, normalized, sizeof(normalized));
+    run_via_kernel(normalized, args);
 }
 
 void cmd_assign(const char *args)
@@ -752,23 +444,16 @@ void cmd_fetch(const char *url)
     print_str(parsed.host);
     print_str("...\n");
 
-    // Use netclient for DNS resolution (routes through netd)
-    if (g_netd.connect() != 0)
-    {
-        print_str("Fetch: network not available\n");
-        last_rc = RC_ERROR;
-        return;
-    }
-
-    u32 ip_be = 0;
-    if (g_netd.dns_resolve(parsed.host, &ip_be) != 0)
+    // Use libc gethostbyname for DNS resolution
+    struct hostent *he = gethostbyname(parsed.host);
+    if (!he || !he->h_addr_list || !he->h_addr_list[0])
     {
         print_str("Fetch: DNS resolution failed\n");
         last_rc = RC_ERROR;
         return;
     }
 
-    // Convert from network byte order for display
+    u32 ip_be = *reinterpret_cast<u32 *>(he->h_addr_list[0]);
     u32 ip = ntohl(ip_be);
     print_str("Connecting to ");
     put_num((ip >> 24) & 0xFF);
@@ -784,7 +469,7 @@ void cmd_fetch(const char *url)
         print_str(" (HTTPS)");
     print_str("...\n");
 
-    // Create socket via libc (routes through netd)
+    // Create socket via libc
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0)
     {

@@ -289,8 +289,11 @@ static bool send_request_recv_reply(const void *req, size_t req_len,
 
     sys::print("[gui] entering recv loop\n");
     // Note: send_ch was transferred to displayd, so we no longer own it
-    // Use a reasonable timeout (5000 attempts * 1ms yield = ~5 seconds max)
-    for (uint32_t i = 0; i < 5000; i++)
+    // Use a reasonable timeout: 500 attempts * 10ms sleep = 5 seconds max
+    // CRITICAL: Must use sleep() not yield() - yield() doesn't guarantee
+    // any time passes, so the loop can spin through all iterations before
+    // displayd gets scheduled to process the message.
+    for (uint32_t i = 0; i < 500; i++)
     {
         recv_handle_count = 4;
         int64_t n = sys::channel_recv(recv_ch, reply, reply_len, recv_handles, &recv_handle_count);
@@ -314,11 +317,12 @@ static bool send_request_recv_reply(const void *req, size_t req_len,
             debug_num("[libgui] recv error: ", n);
             break;
         }
-        // Yield to let displayd process the request
-        sys::yield();
+        // Sleep to let displayd get scheduled and process the request
+        // sleep() actually waits, unlike yield() which just gives up timeslice
+        sys::sleep(10);
     }
 
-    debug_num("[libgui] recv timeout after loops: ", 5000);
+    debug_num("[libgui] recv timeout after loops: ", 500);
     sys::channel_close(recv_ch);
     return false;
 }
@@ -484,9 +488,9 @@ extern "C" gui_window_t *gui_create_window(const char *title, uint32_t width, ui
 
             if (err == 0)
             {
-                // Wait for reply
+                // Wait for reply (100 attempts * 10ms = 1 second timeout)
                 GenericReply sub_reply;
-                for (uint32_t j = 0; j < 1000; j++)
+                for (uint32_t j = 0; j < 100; j++)
                 {
                     int64_t n = sys::channel_recv(reply_recv, &sub_reply, sizeof(sub_reply), nullptr, nullptr);
                     if (n > 0)
@@ -498,7 +502,7 @@ extern "C" gui_window_t *gui_create_window(const char *title, uint32_t width, ui
                         break;
                     }
                     if (n != VERR_WOULD_BLOCK) break;
-                    sys::yield();
+                    sys::sleep(10);
                 }
             }
             sys::channel_close(reply_recv);
@@ -681,9 +685,9 @@ extern "C" gui_window_t *gui_create_window_ex(const char *title, uint32_t width,
 
             if (err == 0)
             {
-                // Wait for reply
+                // Wait for reply (100 attempts * 10ms = 1 second timeout)
                 GenericReply sub_reply;
-                for (uint32_t j = 0; j < 1000; j++)
+                for (uint32_t j = 0; j < 100; j++)
                 {
                     int64_t n = sys::channel_recv(reply_recv, &sub_reply, sizeof(sub_reply), nullptr, nullptr);
                     if (n > 0)
@@ -695,7 +699,7 @@ extern "C" gui_window_t *gui_create_window_ex(const char *title, uint32_t width,
                         break;
                     }
                     if (n != VERR_WOULD_BLOCK) break;
-                    sys::yield();
+                    sys::sleep(10);
                 }
             }
             sys::channel_close(reply_recv);

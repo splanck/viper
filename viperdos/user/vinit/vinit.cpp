@@ -63,10 +63,6 @@ static constexpr usize SERVER_COUNT = sizeof(g_servers) / sizeof(g_servers[0]);
 static u32 g_device_root = 0xFFFFFFFFu;
 static bool g_have_device_root = false;
 
-/// Track whether FSD server is available for user programs.
-/// In monolithic mode, FSD is not started - use kernel VFS directly.
-static bool g_fsd_available = false;
-
 /**
  * @brief User-space sbrk wrapper for startup malloc test.
  */
@@ -320,18 +316,6 @@ void get_server_status(
 usize get_server_count()
 {
     return SERVER_COUNT;
-}
-
-/**
- * @brief Check if filesystem is available.
- *
- * @details
- * In monolithic mode, the kernel provides filesystem services directly.
- * This always returns true since kernel FS is always available.
- */
-bool is_fsd_available()
-{
-    return g_fsd_available;
 }
 
 /**

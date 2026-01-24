@@ -44,8 +44,39 @@ int optopt = '?';
 /* Internal state */
 static char *nextchar = NULL;
 
-/*
- * getopt - Parse command-line options
+/**
+ * @brief Parse short command-line options.
+ *
+ * @details
+ * Parses command-line arguments looking for options specified in optstring.
+ * Each option is a single character optionally followed by ':' (requires
+ * argument) or '::' (optional argument).
+ *
+ * Example optstring: "ab:c::" means:
+ * - 'a': Simple option, no argument
+ * - 'b': Requires an argument (-b value or -bvalue)
+ * - 'c': Has an optional argument (-cvalue only)
+ *
+ * On each call, getopt() returns the next option character. When all options
+ * are processed, it returns -1. Non-option arguments can be processed by
+ * examining argv[optind] after getopt() returns -1.
+ *
+ * Special behavior:
+ * - "--" stops option processing (everything after is non-option)
+ * - Unknown options return '?' and set optopt to the character
+ * - Missing required arguments return '?' (or ':' if optstring starts with ':')
+ *
+ * Global variables modified:
+ * - optarg: Points to option's argument (if any)
+ * - optind: Index of next argument to process
+ * - optopt: The option character that caused an error
+ *
+ * @param argc Argument count (from main).
+ * @param argv Argument vector (from main).
+ * @param optstring String describing valid options.
+ * @return Option character on success, '?' on error, -1 when done.
+ *
+ * @see getopt_long, getopt_long_only
  */
 int getopt(int argc, char *const argv[], const char *optstring)
 {
@@ -132,8 +163,42 @@ int getopt(int argc, char *const argv[], const char *optstring)
     return c;
 }
 
-/*
- * getopt_long - Parse long command-line options
+/**
+ * @brief Parse long and short command-line options.
+ *
+ * @details
+ * Extended version of getopt() that also handles long options in the form
+ * "--option" or "--option=value". Long options are defined by an array of
+ * struct option, terminated by a zero-filled entry.
+ *
+ * The struct option fields are:
+ * - name: Long option name (without the leading --)
+ * - has_arg: no_argument (0), required_argument (1), or optional_argument (2)
+ * - flag: If non-NULL, set *flag to val and return 0; else return val
+ * - val: Value to return or store in *flag
+ *
+ * Example:
+ * @code
+ * struct option long_options[] = {
+ *     {"help",    no_argument,       NULL, 'h'},
+ *     {"output",  required_argument, NULL, 'o'},
+ *     {"verbose", no_argument,       &verbose_flag, 1},
+ *     {0, 0, 0, 0}
+ * };
+ * @endcode
+ *
+ * Short options are still processed according to optstring. When a long
+ * option is matched, its index in longopts is stored in *longindex (if
+ * longindex is not NULL).
+ *
+ * @param argc Argument count (from main).
+ * @param argv Argument vector (from main).
+ * @param optstring String describing valid short options.
+ * @param longopts Array of struct option describing long options.
+ * @param longindex If non-NULL, receives index of matched long option.
+ * @return Option character/value on success, '?' on error, -1 when done.
+ *
+ * @see getopt, getopt_long_only, struct option
  */
 int getopt_long(int argc,
                 char *const argv[],
@@ -259,8 +324,33 @@ int getopt_long(int argc,
     return getopt(argc, argv, optstring);
 }
 
-/*
- * getopt_long_only - Parse long options with single dash
+/**
+ * @brief Parse long options with single dash.
+ *
+ * @details
+ * Like getopt_long(), but long options can be specified with a single
+ * dash (e.g., "-help" instead of "--help"). This provides compatibility
+ * with programs that use single-dash long options.
+ *
+ * The function first tries to match the argument as a long option. If
+ * no long option matches and the argument starts with a single dash,
+ * it falls back to processing as short options.
+ *
+ * Example: With "-verbose" and longopts containing "verbose":
+ * - getopt_long() would process -v, -e, -r, -b, -o, -s, -e as short opts
+ * - getopt_long_only() would match "--verbose" long option
+ *
+ * Note: Ambiguity between long options and short option clusters is
+ * resolved in favor of long options.
+ *
+ * @param argc Argument count (from main).
+ * @param argv Argument vector (from main).
+ * @param optstring String describing valid short options.
+ * @param longopts Array of struct option describing long options.
+ * @param longindex If non-NULL, receives index of matched long option.
+ * @return Option character/value on success, '?' on error, -1 when done.
+ *
+ * @see getopt_long, getopt
  */
 int getopt_long_only(int argc,
                      char *const argv[],

@@ -202,8 +202,40 @@ static int poll_set_configure(
     return 0;
 }
 
-/*
- * poll - Wait for events on file descriptors
+/**
+ * @brief Wait for events on multiple file descriptors.
+ *
+ * @details
+ * Examines a set of file descriptors to see if some of them are ready
+ * for I/O operations. The function blocks until one of the following:
+ *
+ * - One or more file descriptors become ready
+ * - The call is interrupted by a signal
+ * - The timeout expires
+ *
+ * Each pollfd structure specifies a file descriptor to monitor and the
+ * events of interest (events field). On return, revents is filled with
+ * the events that occurred.
+ *
+ * Event flags:
+ * - POLLIN: Data available to read
+ * - POLLOUT: Writing is possible
+ * - POLLPRI: Priority data available
+ * - POLLERR: Error condition (output only)
+ * - POLLHUP: Hang up (output only)
+ * - POLLNVAL: Invalid file descriptor (output only)
+ *
+ * ViperDOS implementation details:
+ * - stdin (fd 0) maps to console input pseudo-handle
+ * - Socket FDs route to kernel or netd based on backend
+ * - Regular file FDs are treated as always ready
+ *
+ * @param fds Array of pollfd structures specifying fds and events.
+ * @param nfds Number of elements in the fds array.
+ * @param timeout Timeout in milliseconds (-1 for infinite, 0 for immediate).
+ * @return Number of fds with events on success, 0 on timeout, -1 on error.
+ *
+ * @see ppoll, select, pselect
  */
 int poll(struct pollfd *fds, nfds_t nfds, int timeout)
 {
@@ -509,8 +541,24 @@ int poll(struct pollfd *fds, nfds_t nfds, int timeout)
     return count;
 }
 
-/*
- * ppoll - poll with precise timeout and signal mask
+/**
+ * @brief Wait for events with precise timeout and signal mask.
+ *
+ * @details
+ * Like poll(), but with nanosecond timeout precision and the ability to
+ * atomically change the signal mask during the wait. The original signal
+ * mask is restored when the call returns.
+ *
+ * @note The signal mask is currently ignored in ViperDOS. The timeout
+ * is converted to milliseconds since that's the kernel's resolution.
+ *
+ * @param fds Array of pollfd structures specifying fds and events.
+ * @param nfds Number of elements in the fds array.
+ * @param timeout_ts Timeout as timespec (NULL for infinite).
+ * @param sigmask Signal mask to use during wait (ignored).
+ * @return Number of fds with events on success, 0 on timeout, -1 on error.
+ *
+ * @see poll, pselect
  */
 int ppoll(struct pollfd *fds, nfds_t nfds, const struct timespec *timeout_ts, const void *sigmask)
 {
@@ -532,8 +580,35 @@ int ppoll(struct pollfd *fds, nfds_t nfds, const struct timespec *timeout_ts, co
     return poll(fds, nfds, timeout_ms);
 }
 
-/*
- * select - Synchronous I/O multiplexing
+/**
+ * @brief Synchronous I/O multiplexing (BSD-style).
+ *
+ * @details
+ * Examines file descriptor sets to see if some of them are ready for
+ * reading, writing, or have exceptional conditions pending. This is
+ * the older BSD interface; poll() is generally preferred for new code.
+ *
+ * The function modifies the fd_set arguments to indicate which file
+ * descriptors are ready:
+ * - readfds: Modified to contain only fds ready for reading
+ * - writefds: Modified to contain only fds ready for writing
+ * - exceptfds: Modified to contain only fds with exceptions (cleared in ViperDOS)
+ *
+ * The timeout argument specifies the maximum time to wait:
+ * - NULL: Wait indefinitely
+ * - Zero (0.0): Return immediately (poll)
+ * - Positive: Wait up to the specified time
+ *
+ * ViperDOS converts select() calls to poll() internally.
+ *
+ * @param nfds Highest file descriptor number + 1.
+ * @param readfds Set of fds to check for reading (modified on return).
+ * @param writefds Set of fds to check for writing (modified on return).
+ * @param exceptfds Set of fds to check for exceptions (cleared on return).
+ * @param timeout Maximum time to wait (NULL for infinite).
+ * @return Number of ready fds on success, 0 on timeout, -1 on error.
+ *
+ * @see pselect, poll, ppoll
  */
 int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout)
 {
@@ -661,8 +736,31 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struc
     return rc;
 }
 
-/*
- * pselect - select with precise timeout and signal mask
+/**
+ * @brief Select with precise timeout and signal mask.
+ *
+ * @details
+ * Like select(), but with nanosecond timeout precision and the ability
+ * to atomically change the signal mask during the wait. This function
+ * was introduced to fix race conditions with signals.
+ *
+ * Key differences from select():
+ * - Timeout is specified as struct timespec (nanoseconds) instead of
+ *   struct timeval (microseconds)
+ * - Timeout is const (not modified on return)
+ * - Signal mask can be atomically changed during the wait
+ *
+ * @note The signal mask is currently ignored in ViperDOS.
+ *
+ * @param nfds Highest file descriptor number + 1.
+ * @param readfds Set of fds to check for reading (modified on return).
+ * @param writefds Set of fds to check for writing (modified on return).
+ * @param exceptfds Set of fds to check for exceptions (cleared on return).
+ * @param timeout Maximum time to wait (NULL for infinite).
+ * @param sigmask Signal mask to use during wait (ignored).
+ * @return Number of ready fds on success, 0 on timeout, -1 on error.
+ *
+ * @see select, ppoll, poll
  */
 int pselect(int nfds,
             fd_set *readfds,

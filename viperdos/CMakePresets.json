@@ -8,30 +8,16 @@
   "configurePresets": [
     {
       "name": "default",
-      "displayName": "Default (Microkernel Mode)",
-      "description": "Microkernel build - kernel net/tls disabled, user-space servers required",
+      "displayName": "Default (Monolithic Kernel)",
+      "description": "Monolithic kernel build with all kernel services enabled",
       "binaryDir": "${sourceDir}/build",
+      "toolchainFile": "${sourceDir}/cmake/aarch64-clang-toolchain.cmake",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "VIPER_MICROKERNEL_MODE": "ON",
-        "VIPER_KERNEL_ENABLE_FS": "ON",
-        "VIPER_KERNEL_ENABLE_NET": "OFF",
-        "VIPER_KERNEL_ENABLE_TLS": "OFF"
-      }
-    },
-    {
-      "name": "hybrid",
-      "displayName": "Hybrid Mode (Legacy)",
-      "description": "Hybrid build with all kernel services enabled for compatibility",
-      "binaryDir": "${sourceDir}/build-hybrid",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "VIPER_MICROKERNEL_MODE": "OFF",
         "VIPER_KERNEL_ENABLE_FS": "ON",
         "VIPER_KERNEL_ENABLE_NET": "ON",
-        "VIPER_KERNEL_ENABLE_TLS": "ON"
+        "VIPER_KERNEL_ENABLE_TLS": "OFF"
       }
     },
     {
@@ -39,15 +25,13 @@
       "displayName": "Debug Build",
       "description": "Debug build with verbose logging",
       "binaryDir": "${sourceDir}/build-debug",
+      "toolchainFile": "${sourceDir}/cmake/aarch64-clang-toolchain.cmake",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "VIPER_MICROKERNEL_MODE": "OFF",
         "VIPER_KERNEL_ENABLE_FS": "ON",
         "VIPER_KERNEL_ENABLE_NET": "ON",
-        "VIPER_KERNEL_ENABLE_TLS": "ON",
-        "VIPER_KERNEL_DEBUG_NET_SYSCALL": "ON",
-        "VIPER_KERNEL_DEBUG_TCP": "ON"
+        "VIPER_KERNEL_ENABLE_TLS": "OFF"
       }
     }
   ],
@@ -55,10 +39,6 @@
     {
       "name": "default",
       "configurePreset": "default"
-    },
-    {
-      "name": "hybrid",
-      "configurePreset": "hybrid"
     },
     {
       "name": "debug",
@@ -69,13 +49,6 @@
     {
       "name": "default",
       "configurePreset": "default",
-      "output": {
-        "outputOnFailure": true
-      }
-    },
-    {
-      "name": "hybrid",
-      "configurePreset": "hybrid",
       "output": {
         "outputOnFailure": true
       }

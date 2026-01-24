@@ -7,7 +7,7 @@
 //
 // File: user/libc/src/netdb.c
 // Purpose: Network database functions for ViperDOS libc.
-// Key invariants: DNS via netd; static service/protocol tables.
+// Key invariants: DNS via kernel syscall; static service/protocol tables.
 // Ownership/Lifetime: Library; static storage for results.
 // Links: user/libc/include/netdb.h
 //
@@ -25,7 +25,7 @@
  * - Protocol lookup: getprotobyname, getprotobynumber
  * - Error handling: herror, hstrerror, gai_strerror
  *
- * DNS resolution is performed via IPC to netd (network daemon).
+ * DNS resolution is performed via kernel syscall.
  * Service and protocol lookups use static built-in tables for
  * common services (http, https, ssh, etc.) and protocols (tcp, udp).
  */
@@ -37,11 +37,7 @@
 #include "../include/stdlib.h"
 #include "../include/string.h"
 
-/* netd backend helpers (libc netd_backend.cpp) */
-extern int __viper_netd_is_available(void);
-extern int __viper_netd_dns_resolve(const char *hostname, unsigned int *out_ip_be);
-
-/* Kernel DNS syscall for monolithic mode */
+/* Kernel DNS syscall */
 extern long __syscall2(long num, long arg0, long arg1);
 #define SYS_DNS_RESOLVE 0x55
 
@@ -72,8 +68,34 @@ static const char *gai_errmsgs[] = {
     "Buffer overflow",              /* EAI_OVERFLOW */
 };
 
-/*
- * gethostbyname - Resolve hostname to address
+/**
+ * @defgroup hostlookup Host Name Lookup
+ * @brief Functions for resolving hostnames to IP addresses.
+ * @{
+ */
+
+/**
+ * @brief Resolve a hostname to an IPv4 address.
+ *
+ * @details
+ * Looks up the given hostname and returns a structure containing its
+ * IPv4 address(es). The lookup is performed in this order:
+ *
+ * 1. If the name is a valid dotted-decimal IPv4 address, convert directly
+ * 2. Otherwise, perform DNS resolution via kernel syscall
+ *
+ * The returned hostent structure is stored in static memory and will be
+ * overwritten by subsequent calls to this function or gethostbyaddr().
+ *
+ * @warning This function is not thread-safe. Use gethostbyname_r() for
+ * reentrant hostname lookup, or preferably use getaddrinfo().
+ *
+ * @param name Hostname to resolve (e.g., "www.example.com") or dotted-decimal
+ *             IPv4 address (e.g., "192.168.1.1").
+ * @return Pointer to static hostent structure on success, or NULL on error
+ *         (check h_errno for details).
+ *
+ * @see gethostbyaddr, gethostbyname_r, getaddrinfo
  */
 struct hostent *gethostbyname(const char *name)
 {
@@ -107,18 +129,7 @@ struct hostent *gethostbyname(const char *name)
     }
 
     unsigned int ip = 0;
-    int rc;
-
-    /* Try netd first (microkernel mode), fall back to kernel (monolithic mode) */
-    if (__viper_netd_is_available())
-    {
-        rc = __viper_netd_dns_resolve(name, &ip);
-    }
-    else
-    {
-        /* Monolithic mode: use kernel DNS syscall */
-        rc = (int)__syscall2(SYS_DNS_RESOLVE, (long)name, (long)&ip);
-    }
+    int rc = (int)__syscall2(SYS_DNS_RESOLVE, (long)name, (long)&ip);
 
     if (rc != 0)
     {
@@ -145,8 +156,22 @@ struct hostent *gethostbyname(const char *name)
     return &static_hostent;
 }
 
-/*
- * gethostbyaddr - Reverse lookup
+/**
+ * @brief Resolve an IP address to a hostname (reverse DNS).
+ *
+ * @details
+ * Performs a reverse DNS lookup, converting an IP address to its associated
+ * hostname. This is the inverse of gethostbyname().
+ *
+ * @note Not implemented in ViperDOS. Always returns NULL with h_errno set
+ * to NO_DATA.
+ *
+ * @param addr Pointer to the address to look up (struct in_addr for IPv4).
+ * @param len Size of the address structure.
+ * @param type Address family (AF_INET or AF_INET6).
+ * @return NULL (not implemented).
+ *
+ * @see gethostbyname, getnameinfo
  */
 struct hostent *gethostbyaddr(const void *addr, socklen_t len, int type)
 {
@@ -158,18 +183,76 @@ struct hostent *gethostbyaddr(const void *addr, socklen_t len, int type)
     return (void *)0;
 }
 
+/**
+ * @brief Get next entry from the hosts database.
+ *
+ * @details
+ * In a traditional Unix system, this function reads the next entry from
+ * /etc/hosts. ViperDOS does not maintain a hosts database file.
+ *
+ * @note Not implemented. Always returns NULL.
+ *
+ * @return NULL (not implemented).
+ *
+ * @see sethostent, endhostent
+ */
 struct hostent *gethostent(void)
 {
     return (void *)0;
 }
 
+/**
+ * @brief Open or rewind the hosts database.
+ *
+ * @details
+ * In a traditional Unix system, this function opens /etc/hosts or rewinds
+ * it to the beginning if already open. If stayopen is non-zero, the file
+ * remains open between gethostent() calls.
+ *
+ * @note Not implemented in ViperDOS.
+ *
+ * @param stayopen If non-zero, keep the database open between calls.
+ *
+ * @see gethostent, endhostent
+ */
 void sethostent(int stayopen)
 {
     (void)stayopen;
 }
 
+/**
+ * @brief Close the hosts database.
+ *
+ * @details
+ * In a traditional Unix system, this function closes /etc/hosts.
+ *
+ * @note Not implemented in ViperDOS.
+ *
+ * @see gethostent, sethostent
+ */
 void endhostent(void) {}
 
+/**
+ * @brief Thread-safe hostname resolution.
+ *
+ * @details
+ * Reentrant version of gethostbyname(). Instead of using static storage,
+ * the caller provides buffers for the result. This function is thread-safe.
+ *
+ * This implementation wraps the non-thread-safe gethostbyname() and copies
+ * the result to the caller-provided buffers. True thread safety would
+ * require a thread-safe DNS implementation.
+ *
+ * @param name Hostname to resolve.
+ * @param ret Caller-provided hostent structure to fill in.
+ * @param buf Buffer for storing strings and address data.
+ * @param buflen Size of the buffer.
+ * @param result Pointer set to ret on success, or NULL on failure.
+ * @param h_errnop Pointer to receive the h_errno value on error.
+ * @return 0 on success, ERANGE if buffer too small, -1 on lookup failure.
+ *
+ * @see gethostbyname, getaddrinfo
+ */
 int gethostbyname_r(const char *name,
                     struct hostent *ret,
                     char *buf,
@@ -245,6 +328,31 @@ static char static_servname[64];
 static char static_proto[16];
 static char *static_serv_aliases[1] = {(void *)0};
 
+/** @} */ /* end of hostlookup group */
+
+/**
+ * @defgroup servicelookup Service Name Lookup
+ * @brief Functions for mapping service names to port numbers.
+ * @{
+ */
+
+/**
+ * @brief Look up a network service by name.
+ *
+ * @details
+ * Searches for a service entry matching the given name and protocol.
+ * ViperDOS uses a built-in table of common services (http, https, ssh,
+ * ftp, smtp, dns, telnet, ntp) rather than reading from /etc/services.
+ *
+ * @param name Service name to look up (e.g., "http", "ssh").
+ * @param proto Protocol name filter (e.g., "tcp", "udp"), or NULL for any.
+ * @return Pointer to static servent structure on success, or NULL if not found.
+ *
+ * @warning The returned structure uses static storage and is overwritten
+ * by subsequent calls to this function or getservbyport().
+ *
+ * @see getservbyport, getaddrinfo
+ */
 struct servent *getservbyname(const char *name, const char *proto)
 {
     for (int i = 0; known_services[i].name; i++)
@@ -268,6 +376,23 @@ struct servent *getservbyname(const char *name, const char *proto)
     return (void *)0;
 }
 
+/**
+ * @brief Look up a network service by port number.
+ *
+ * @details
+ * Searches for a service entry matching the given port number and protocol.
+ * ViperDOS uses a built-in table of common services rather than reading
+ * from /etc/services.
+ *
+ * @param port Port number in network byte order.
+ * @param proto Protocol name filter (e.g., "tcp", "udp"), or NULL for any.
+ * @return Pointer to static servent structure on success, or NULL if not found.
+ *
+ * @warning The returned structure uses static storage and is overwritten
+ * by subsequent calls to this function or getservbyname().
+ *
+ * @see getservbyname, getnameinfo
+ */
 struct servent *getservbyport(int port, const char *proto)
 {
     int host_port = ntohs(port);
@@ -292,19 +417,58 @@ struct servent *getservbyport(int port, const char *proto)
     return (void *)0;
 }
 
+/**
+ * @brief Get next entry from the services database.
+ *
+ * @details
+ * In a traditional Unix system, this function reads the next entry from
+ * /etc/services. ViperDOS does not support iterating the services database.
+ *
+ * @note Not implemented. Always returns NULL.
+ *
+ * @return NULL (not implemented).
+ *
+ * @see setservent, endservent
+ */
 struct servent *getservent(void)
 {
     return (void *)0;
 }
 
+/**
+ * @brief Open or rewind the services database.
+ *
+ * @details
+ * In a traditional Unix system, this function opens /etc/services or
+ * rewinds it to the beginning if already open.
+ *
+ * @note Not implemented in ViperDOS.
+ *
+ * @param stayopen If non-zero, keep the database open between calls.
+ *
+ * @see getservent, endservent
+ */
 void setservent(int stayopen)
 {
     (void)stayopen;
 }
 
+/**
+ * @brief Close the services database.
+ *
+ * @note Not implemented in ViperDOS.
+ *
+ * @see getservent, setservent
+ */
 void endservent(void) {}
 
-/* Protocol lookup */
+/** @} */ /* end of servicelookup group */
+
+/**
+ * @defgroup protolookup Protocol Lookup
+ * @brief Functions for mapping protocol names to numbers.
+ * @{
+ */
 static struct
 {
     const char *name;
@@ -315,6 +479,22 @@ static struct protoent static_protoent;
 static char static_protoname[32];
 static char *static_proto_aliases[1] = {(void *)0};
 
+/**
+ * @brief Look up a protocol by name.
+ *
+ * @details
+ * Searches for a protocol entry matching the given name. ViperDOS uses
+ * a built-in table of common protocols (ip, icmp, tcp, udp) rather than
+ * reading from /etc/protocols.
+ *
+ * @param name Protocol name to look up (e.g., "tcp", "udp", "icmp").
+ * @return Pointer to static protoent structure on success, or NULL if not found.
+ *
+ * @warning The returned structure uses static storage and is overwritten
+ * by subsequent calls to this function or getprotobynumber().
+ *
+ * @see getprotobynumber
+ */
 struct protoent *getprotobyname(const char *name)
 {
     for (int i = 0; known_protos[i].name; i++)
@@ -331,6 +511,25 @@ struct protoent *getprotobyname(const char *name)
     return (void *)0;
 }
 
+/**
+ * @brief Look up a protocol by number.
+ *
+ * @details
+ * Searches for a protocol entry matching the given protocol number.
+ * ViperDOS uses a built-in table of common protocols:
+ * - 0: IP (Internet Protocol)
+ * - 1: ICMP (Internet Control Message Protocol)
+ * - 6: TCP (Transmission Control Protocol)
+ * - 17: UDP (User Datagram Protocol)
+ *
+ * @param proto Protocol number to look up.
+ * @return Pointer to static protoent structure on success, or NULL if not found.
+ *
+ * @warning The returned structure uses static storage and is overwritten
+ * by subsequent calls to this function or getprotobyname().
+ *
+ * @see getprotobyname
+ */
 struct protoent *getprotobynumber(int proto)
 {
     for (int i = 0; known_protos[i].name; i++)
@@ -347,20 +546,92 @@ struct protoent *getprotobynumber(int proto)
     return (void *)0;
 }
 
+/**
+ * @brief Get next entry from the protocols database.
+ *
+ * @details
+ * In a traditional Unix system, this function reads the next entry from
+ * /etc/protocols. ViperDOS does not support iterating the protocols database.
+ *
+ * @note Not implemented. Always returns NULL.
+ *
+ * @return NULL (not implemented).
+ *
+ * @see setprotoent, endprotoent
+ */
 struct protoent *getprotoent(void)
 {
     return (void *)0;
 }
 
+/**
+ * @brief Open or rewind the protocols database.
+ *
+ * @details
+ * In a traditional Unix system, this function opens /etc/protocols or
+ * rewinds it to the beginning if already open.
+ *
+ * @note Not implemented in ViperDOS.
+ *
+ * @param stayopen If non-zero, keep the database open between calls.
+ *
+ * @see getprotoent, endprotoent
+ */
 void setprotoent(int stayopen)
 {
     (void)stayopen;
 }
 
+/**
+ * @brief Close the protocols database.
+ *
+ * @note Not implemented in ViperDOS.
+ *
+ * @see getprotoent, setprotoent
+ */
 void endprotoent(void) {}
 
-/*
- * getaddrinfo - Modern address resolution
+/** @} */ /* end of protolookup group */
+
+/**
+ * @defgroup addrinfo Modern Address Resolution
+ * @brief Protocol-independent hostname and service resolution.
+ *
+ * The getaddrinfo() and getnameinfo() functions provide a modern,
+ * protocol-independent interface for name resolution, replacing the
+ * older gethostbyname() and getservbyname() functions.
+ * @{
+ */
+
+/**
+ * @brief Resolve hostname and service to socket addresses.
+ *
+ * @details
+ * The getaddrinfo() function performs hostname and service name resolution,
+ * returning socket address structures suitable for creating a socket and
+ * connecting to or binding to.
+ *
+ * The function can:
+ * - Resolve hostnames to IP addresses via DNS
+ * - Map service names (e.g., "http") to port numbers
+ * - Handle both IPv4 and IPv6 addresses (though ViperDOS only supports IPv4)
+ * - Accept numeric addresses and port numbers directly
+ *
+ * The hints parameter allows the caller to specify preferences for:
+ * - Address family (ai_family): AF_INET, AF_INET6, or AF_UNSPEC
+ * - Socket type (ai_socktype): SOCK_STREAM, SOCK_DGRAM, etc.
+ * - Protocol (ai_protocol): IPPROTO_TCP, IPPROTO_UDP, etc.
+ * - Flags (ai_flags): AI_PASSIVE, AI_CANONNAME, AI_NUMERICHOST, etc.
+ *
+ * @param node Hostname or numeric address string (or NULL for local address).
+ * @param service Service name or port number string (or NULL for any port).
+ * @param hints Criteria for selecting addresses (or NULL for defaults).
+ * @param res Pointer to receive the linked list of results.
+ * @return 0 on success, or non-zero EAI_* error code on failure.
+ *
+ * @note Results must be freed with freeaddrinfo().
+ *
+ * @see freeaddrinfo, getnameinfo, gai_strerror
  */
 int getaddrinfo(const char *node,
                 const char *service,
@@ -497,8 +768,18 @@ int getaddrinfo(const char *node,
     return 0;
 }
 
-/*
- * freeaddrinfo - Free result from getaddrinfo
+/**
+ * @brief Free address information returned by getaddrinfo().
+ *
+ * @details
+ * Frees the memory allocated by a successful call to getaddrinfo().
+ * This function walks the linked list of addrinfo structures and
+ * frees each one, including any associated memory for socket addresses
+ * and canonical names.
+ *
+ * @param res Pointer to the addrinfo list to free (may be NULL).
+ *
+ * @see getaddrinfo
  */
 void freeaddrinfo(struct addrinfo *res)
 {
@@ -514,8 +795,37 @@ void freeaddrinfo(struct addrinfo *res)
     }
 }
 
-/*
- * getnameinfo - Reverse lookup
+/**
+ * @brief Convert socket address to host and service names.
+ *
+ * @details
+ * The getnameinfo() function is the inverse of getaddrinfo(). It converts
+ * a socket address to a host name and service name string.
+ *
+ * The function can perform:
+ * - Reverse DNS lookup (address to hostname)
+ * - Port number to service name mapping
+ * - Or return numeric strings if requested or if lookup fails
+ *
+ * Flags control the behavior:
+ * - NI_NUMERICHOST: Return numeric address string instead of hostname
+ * - NI_NUMERICSERV: Return numeric port instead of service name
+ * - NI_DGRAM: Service is a datagram service (affects service lookup)
+ * - NI_NAMEREQD: Return error if hostname cannot be resolved
+ *
+ * @note Reverse DNS is not implemented in ViperDOS. Host lookups will
+ * fall back to numeric format.
+ *
+ * @param addr Socket address to convert.
+ * @param addrlen Size of the socket address.
+ * @param host Buffer to receive the hostname (or NULL if not needed).
+ * @param hostlen Size of the host buffer.
+ * @param serv Buffer to receive the service name (or NULL if not needed).
+ * @param servlen Size of the service buffer.
+ * @param flags Control flags (NI_NUMERICHOST, NI_NUMERICSERV, etc.).
+ * @return 0 on success, or non-zero EAI_* error code on failure.
+ *
+ * @see getaddrinfo, gai_strerror
  */
 int getnameinfo(const struct sockaddr *addr,
                 socklen_t addrlen,
@@ -577,8 +887,33 @@ int getnameinfo(const struct sockaddr *addr,
     return 0;
 }
 
-/*
- * gai_strerror - Error string for getaddrinfo errors
+/** @} */ /* end of addrinfo group */
+
+/**
+ * @defgroup neterror Network Error Functions
+ * @brief Functions for reporting network-related errors.
+ * @{
+ */
+
+/**
+ * @brief Get error message for getaddrinfo() errors.
+ *
+ * @details
+ * Returns a human-readable string describing the error indicated by
+ * the error code returned from getaddrinfo() or getnameinfo().
+ *
+ * Common error codes include:
+ * - EAI_NONAME: Node or service not known
+ * - EAI_AGAIN: Temporary failure in name resolution
+ * - EAI_FAIL: Non-recoverable failure in name resolution
+ * - EAI_MEMORY: Memory allocation failure
+ * - EAI_SERVICE: Service not supported for socket type
+ * - EAI_FAMILY: Address family not supported
+ *
+ * @param errcode Error code from getaddrinfo() or getnameinfo().
+ * @return Pointer to a static string describing the error.
+ *
+ * @see getaddrinfo, getnameinfo
  */
 const char *gai_strerror(int errcode)
 {
@@ -590,8 +925,20 @@ const char *gai_strerror(int errcode)
     return "Unknown error";
 }
 
-/*
- * herror - Print host lookup error
+/**
+ * @brief Print a host lookup error message to stderr.
+ *
+ * @details
+ * Prints a message to stderr describing the most recent host lookup error
+ * (stored in the global h_errno variable). If s is non-NULL and non-empty,
+ * it is printed followed by ": " before the error description.
+ *
+ * This function is analogous to perror() for errno, but for host lookup
+ * errors from gethostbyname() and gethostbyaddr().
+ *
+ * @param s Optional prefix string (or NULL for no prefix).
+ *
+ * @see hstrerror, perror, gethostbyname
  */
 void herror(const char *s)
 {
@@ -604,8 +951,24 @@ void herror(const char *s)
     fputc('\n', stderr);
 }
 
-/*
- * hstrerror - Host error string
+/**
+ * @brief Get error message for host lookup errors.
+ *
+ * @details
+ * Returns a human-readable string describing the host lookup error code.
+ * This is typically used with the h_errno global variable after a failed
+ * call to gethostbyname() or gethostbyaddr().
+ *
+ * Error codes include:
+ * - HOST_NOT_FOUND: The specified host is unknown
+ * - TRY_AGAIN: Temporary error; try again later
+ * - NO_RECOVERY: Non-recoverable error
+ * - NO_DATA: Host exists but has no address data
+ *
+ * @param err Host error code (typically from h_errno).
+ * @return Pointer to a static string describing the error.
+ *
+ * @see herror, gethostbyname, gethostbyaddr
  */
 const char *hstrerror(int err)
 {
@@ -625,3 +988,5 @@ const char *hstrerror(int err)
             return "Unknown error";
     }
 }
+
+/** @} */ /* end of neterror group */

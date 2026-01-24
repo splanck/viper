@@ -57,12 +57,11 @@ set(LIBC_C_SOURCES
         src/ndbm.c
         src/utmpx.c
         src/syscall.S
+        src/fsd_stubs.c
 )
 
 set(LIBC_CXX_SOURCES
         src/new.cpp
-        src/fsd_backend.cpp
-        src/netd_backend.cpp
         src/consoled_backend.cpp
 )
 
@@ -85,8 +84,7 @@ target_compile_options(viperlibc PRIVATE
         -Wextra
 )
 
-# libc uses the user-space fsd client library when available.
-target_link_libraries(viperlibc PUBLIC viperfsclient vipernetclient)
+# libc is standalone - all I/O goes through kernel syscalls
 
 # Set output directory
 set_target_properties(viperlibc PROPERTIES

@@ -353,20 +353,6 @@ if(VIPERDOS_HAS_QEMU)
 	        TIMEOUT 200
 	    )
 
-	    # --- netd IPC smoke test ---
-	    # Runs a small user program after netd is ready that queries NETD for basic
-	    # interface configuration and prints a success marker.
-	    add_qemu_test(netd_smoke
-	        --disk
-	        --microkernel-devices
-	        --timeout 180
-	        --expect "\\[netd_smoke\\] OK: NETD ip="
-	    )
-	    set_tests_properties(qemu_netd_smoke PROPERTIES
-	        LABELS "qemu;userspace;microkernel;network"
-	        TIMEOUT 200
-	    )
-
 	    # --- TLS library smoke test ---
 	    # Tests user-space TLS library API (config, session creation, info queries).
 	    # Does not require network - tests API without actual connections.

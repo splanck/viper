@@ -609,6 +609,335 @@ constexpr const char* DISPLAYD_PATH = "/sys/displayd.sys";
 
 } // namespace mount
 
+// =============================================================================
+// SECTION 17: NETWORK STACK PARAMETERS
+// =============================================================================
+namespace net {
+
+// ----- Port Ranges -----
+
+/// Starting ephemeral port for outbound connections
+constexpr u16 EPHEMERAL_PORT_START = 49152;
+
+/// Maximum ephemeral port value
+constexpr u16 EPHEMERAL_PORT_MAX = 65534;
+
+/// DNS server port
+constexpr u16 DNS_PORT = 53;
+
+// ----- Buffer Sizes -----
+
+/// Network receive buffer for polling
+constexpr u32 RX_BUFFER_SIZE = 2048;
+
+/// Maximum Ethernet frame size (1500 + headers)
+constexpr u32 FRAME_MAX_SIZE = 1518;
+
+/// Maximum IP packet payload
+constexpr u32 IP_PACKET_MAX = 1500;
+
+/// Maximum TCP segment data size
+constexpr u32 TCP_SEGMENT_MAX = 1460;
+
+/// Maximum TCP data chunk per send
+constexpr u32 TCP_MAX_CHUNK = 1400;
+
+/// Maximum UDP datagram size
+constexpr u32 UDP_DATAGRAM_MAX = 1472;
+
+/// DNS query buffer size
+constexpr u32 DNS_QUERY_BUFFER_SIZE = 256;
+
+/// ARP frame buffer size
+constexpr u32 ARP_FRAME_SIZE = 64;
+
+/// ICMP buffer size
+constexpr u32 ICMP_BUFFER_SIZE = 64;
+
+/// ICMP data payload size
+constexpr u32 ICMP_DATA_SIZE = 56;
+
+// ----- Connection Limits -----
+
+/// Maximum TCP connections
+constexpr u32 MAX_TCP_CONNS = 32;
+
+/// Maximum UDP sockets
+constexpr u32 MAX_UDP_SOCKETS = 16;
+
+/// TCP receive buffer size per connection
+constexpr u32 TCP_RX_BUFFER_SIZE = 32768;
+
+/// TCP transmit buffer size per connection
+constexpr u32 TCP_TX_BUFFER_SIZE = 8192;
+
+/// TCP backlog queue size (pending connections)
+constexpr u32 TCP_BACKLOG_SIZE = 8;
+
+/// UDP receive buffer size per socket
+constexpr u32 UDP_RX_BUFFER_SIZE = 4096;
+
+/// ARP cache size (entries)
+constexpr u32 ARP_CACHE_SIZE = 16;
+
+// ----- Timeouts and Retries -----
+
+/// TCP connect poll iterations (legacy, kept for reference)
+constexpr u32 TCP_CONNECT_POLL_ITERATIONS = 2000;
+
+/// TCP connect timeout in milliseconds
+constexpr u32 TCP_CONNECT_TIMEOUT_MS = 5000;
+
+/// DNS resolution poll iterations
+constexpr u32 DNS_POLL_ITERATIONS = 5000;
+
+/// TCP close grace period poll count
+constexpr u32 TCP_CLOSE_POLL_ITERATIONS = 20;
+
+/// ARP request retry poll count
+constexpr u32 ARP_REQUEST_POLL_ITERATIONS = 50;
+
+/// ICMP reply poll count
+constexpr u32 ICMP_POLL_ITERATIONS = 100;
+
+/// Busy-wait delay iteration count (CPU yield)
+constexpr u32 BUSY_WAIT_ITERATIONS = 1000;
+
+/// TCP/DNS retry attempt count
+constexpr u32 CONNECT_RETRY_COUNT = 5;
+
+// ----- Protocol Defaults -----
+
+/// Default IP TTL
+constexpr u8 IP_TTL_DEFAULT = 64;
+
+} // namespace net
+
+// =============================================================================
+// SECTION 18: VIRTIO DRIVER PARAMETERS
+// =============================================================================
+namespace virtio {
+
+// ----- Network Driver -----
+
+/// Number of RX buffers for virtio-net
+constexpr u32 NET_RX_BUFFER_COUNT = 32;
+
+/// Size of each RX buffer
+constexpr u32 NET_RX_BUFFER_SIZE = 2048;
+
+/// RX queue size (descriptors)
+constexpr u32 NET_RX_QUEUE_SIZE = 16;
+
+/// RX/TX virtqueue size
+constexpr u32 NET_VIRTQUEUE_SIZE = 128;
+
+/// Network init poll iterations
+constexpr u32 NET_INIT_POLL_ITERATIONS = 1000;
+
+// ----- Block Driver -----
+
+/// System disk capacity (sectors)
+constexpr u32 SYSTEM_DISK_SECTORS = 4096;
+
+/// User disk capacity (sectors)
+constexpr u32 USER_DISK_SECTORS = 16384;
+
+/// Block I/O polling timeout iterations
+constexpr u32 BLK_POLLING_TIMEOUT = 10000000;
+
+/// Block device virtqueue size
+constexpr u32 BLK_VIRTQUEUE_SIZE = 128;
+
+// ----- GPU Driver -----
+
+/// Max GPU scanouts (displays)
+constexpr u32 GPU_MAX_SCANOUTS = 16;
+
+/// GPU command buffer size
+constexpr u32 GPU_CMD_BUF_SIZE = 4096;
+
+/// GPU response buffer size
+constexpr u32 GPU_RESP_BUF_SIZE = 4096;
+
+/// GPU control virtqueue size
+constexpr u32 GPU_CONTROLQ_SIZE = 64;
+
+/// GPU cursor virtqueue size
+constexpr u32 GPU_CURSORQ_SIZE = 16;
+
+// ----- Input Driver -----
+
+/// Input event buffers count
+constexpr u32 INPUT_EVENT_BUFFERS = 64;
+
+/// Input config string/bitmap size
+constexpr u32 INPUT_CONFIG_SIZE = 128;
+
+// ----- RNG Driver -----
+
+/// RNG buffer size
+constexpr u32 RNG_BUFFER_SIZE = 256;
+
+/// RNG polling timeout iterations
+constexpr u32 RNG_POLLING_TIMEOUT = 100000;
+
+// ----- Common -----
+
+/// VirtQueue ring alignment
+constexpr u32 RING_ALIGNMENT = 4096;
+
+/// Guest page size (legacy virtio)
+constexpr u32 GUEST_PAGE_SIZE = 4096;
+
+} // namespace virtio
+
+// =============================================================================
+// SECTION 19: CFS SCHEDULER PARAMETERS
+// =============================================================================
+namespace cfs {
+
+/// Minimum scheduling granularity (microseconds)
+constexpr u32 MIN_GRANULARITY_US = 750;
+
+/// Target latency for all runnable tasks (microseconds)
+constexpr u32 TARGET_LATENCY_US = 6000;
+
+/// Default weight for nice 0 tasks
+constexpr u32 WEIGHT_DEFAULT = 1024;
+
+/// Vruntime calculation shift factor
+constexpr u32 VRUNTIME_SHIFT = 22;
+
+} // namespace cfs
+
+// =============================================================================
+// SECTION 20: DEADLINE SCHEDULER PARAMETERS
+// =============================================================================
+namespace deadline {
+
+/// Bandwidth fraction denominator (0.1% = 1/1000)
+constexpr u32 BANDWIDTH_FRACTION = 1000;
+
+/// Maximum total bandwidth (95% of capacity)
+constexpr u32 MAX_TOTAL_BANDWIDTH = 950;
+
+} // namespace deadline
+
+// =============================================================================
+// SECTION 21: MEMORY MANAGEMENT PARAMETERS
+// =============================================================================
+namespace vmm {
+
+/// Maximum VMAs per address space
+constexpr u32 MAX_VMAS = 64;
+
+/// Maximum stack size per process (8MB)
+constexpr u64 MAX_STACK_SIZE = 8 * 1024 * 1024;
+
+/// Stack guard page size
+constexpr u64 STACK_GUARD_PAGE_SIZE = 4096;
+
+/// Maximum kernel heap size
+constexpr u64 KHEAP_MAX_SIZE = 64 * 1024 * 1024;
+
+/// Bitmap word bit count
+constexpr u32 BITMAP_WORD_BITS = 64;
+
+/// Maximum ASID count
+constexpr u32 MAX_ASID = 256;
+
+} // namespace vmm
+
+// =============================================================================
+// SECTION 22: SYSCALL PARAMETERS
+// =============================================================================
+namespace sys {
+
+/// Maximum shared memory mappings per process
+constexpr u32 MAX_SHM_MAPPINGS = 256;
+
+/// Maximum DMA allocations
+constexpr u32 MAX_DMA_ALLOCATIONS = 64;
+
+/// Maximum heap allocation size (64MB)
+constexpr u64 MAX_HEAP_ALLOC = 64 * 1024 * 1024;
+
+/// Maximum framebuffer width
+constexpr u32 MAX_FB_WIDTH = 8192;
+
+/// Maximum framebuffer height
+constexpr u32 MAX_FB_HEIGHT = 8192;
+
+/// Maximum message log size for validation
+constexpr u32 MAX_MSG_LOG_SIZE = 4096;
+
+} // namespace sys
+
+// =============================================================================
+// SECTION 23: CONSOLE AND TTY PARAMETERS
+// =============================================================================
+namespace console {
+
+/// Console input buffer size
+constexpr u32 INPUT_BUFFER_SIZE = 1024;
+
+/// Console line buffer size
+constexpr u32 LINE_BUFFER_SIZE = 256;
+
+/// TTY input buffer size
+constexpr u32 TTY_BUFFER_SIZE = 256;
+
+/// Input character translation buffer size
+constexpr u32 CHAR_BUFFER_SIZE = 256;
+
+/// Input event queue size
+constexpr u32 EVENT_QUEUE_SIZE = 64;
+
+} // namespace console
+
+// =============================================================================
+// SECTION 24: FILESYSTEM PARAMETERS
+// =============================================================================
+namespace fs {
+
+/// Maximum path component stack depth for traversal
+constexpr u32 MAX_PATH_STACK_DEPTH = 64;
+
+/// Filename buffer size
+constexpr u32 FILENAME_BUFFER_SIZE = 256;
+
+/// ViperFS inode size
+constexpr u32 VIPERFS_INODE_SIZE = 256;
+
+/// Maximum journal block records
+constexpr u32 MAX_JOURNAL_BLOCKS = 32;
+
+} // namespace fs
+
+// =============================================================================
+// SECTION 25: BOOT PARAMETERS
+// =============================================================================
+namespace boot {
+
+/// Maximum memory regions in boot info
+constexpr u32 MAX_MEMORY_REGIONS = 64;
+
+} // namespace boot
+
+// =============================================================================
+// SECTION 26: CPU PARAMETERS
+// =============================================================================
+namespace cpu {
+
+/// CPU per-core stack size
+constexpr u64 STACK_SIZE = 16384;
+
+/// Cache line size for flush operations
+constexpr u32 CACHE_LINE_SIZE = 64;
+
+} // namespace cpu
+
 } // namespace kernel::constants
 
 // Convenience namespace alias for shorter access

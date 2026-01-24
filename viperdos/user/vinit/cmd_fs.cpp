@@ -2,18 +2,12 @@
  * @file cmd_fs.cpp
  * @brief Filesystem shell commands for vinit.
  *
- * Uses fsclient to route all file operations through fsd (microkernel path).
- * Two-disk architecture: /sys paths go to kernel VFS, other paths to fsd.
+ * Uses kernel VFS for all filesystem operations (monolithic kernel mode).
  */
 #include "vinit.hpp"
 
-#include "fsclient.hpp"
-
-// Global fsclient instance for all filesystem operations
-static fsclient::Client g_fsd;
-
 // =============================================================================
-// Path Helpers for Two-Disk Architecture
+// Path Helpers
 // =============================================================================
 
 /**
@@ -133,24 +127,6 @@ bool normalize_path(const char *path, const char *cwd, char *out, usize out_size
     return true;
 }
 
-/**
- * @brief Check if fsd is available and connected.
- *
- * Two-disk architecture: First checks if fsd registered at startup,
- * then tries to connect. In system-only mode (no user disk), this
- * will always fail.
- */
-static bool fsd_available()
-{
-    // Quick check if fsd never started
-    if (!is_fsd_available())
-        return false;
-
-    // Try to connect (may fail if fsd crashed)
-    return g_fsd.connect() == 0;
-}
-
-
 void cmd_cd(const char *args)
 {
     const char *path = "/";
@@ -167,7 +143,7 @@ void cmd_cd(const char *args)
         return;
     }
 
-    // Two-disk architecture: route by path
+    // Validate directory exists using kernel VFS
     if (is_sys_path(normalized))
     {
         // /sys paths - use kernel chdir
@@ -185,39 +161,27 @@ void cmd_cd(const char *args)
     }
     else if (is_root_path(normalized))
     {
-        // Root "/" - always valid (shows both sys and user dirs)
-        // Update current_dir directly - kernel doesn't know about unified root
+        // Root "/" - always valid
         current_dir[0] = '/';
         current_dir[1] = '\0';
     }
     else
     {
-        // User paths - validate directory exists
-        bool valid = false;
-
-        if (fsd_available())
+        // User paths - use kernel VFS
+        i32 fd = sys::open(normalized, sys::O_RDONLY);
+        if (fd >= 0)
         {
-            // Use FSD to verify
-            u32 dir_id = 0;
-            i32 err = g_fsd.open(normalized, 0, &dir_id);
-            if (err == 0)
+            sys::close(fd);
+            // Update current_dir
+            usize i = 0;
+            while (normalized[i] && i < MAX_PATH_LEN - 1)
             {
-                g_fsd.close(dir_id);
-                valid = true;
+                current_dir[i] = normalized[i];
+                i++;
             }
+            current_dir[i] = '\0';
         }
         else
-        {
-            // Monolithic mode: use kernel VFS
-            i32 fd = sys::open(normalized, sys::O_RDONLY);
-            if (fd >= 0)
-            {
-                sys::close(fd);
-                valid = true;
-            }
-        }
-
-        if (!valid)
         {
             print_str("CD: ");
             print_str(normalized);
@@ -226,15 +190,6 @@ void cmd_cd(const char *args)
             last_error = "Directory not found";
             return;
         }
-
-        // Update current_dir directly
-        usize i = 0;
-        while (normalized[i] && i < MAX_PATH_LEN - 1)
-        {
-            current_dir[i] = normalized[i];
-            i++;
-        }
-        current_dir[i] = '\0';
     }
 
     last_rc = RC_OK;
@@ -242,7 +197,6 @@ void cmd_cd(const char *args)
 
 void cmd_pwd()
 {
-    // Two-disk architecture: we track cwd ourselves for user paths
     print_str(current_dir);
     print_str("\n");
     last_rc = RC_OK;
@@ -296,9 +250,9 @@ static void print_dir_entry(const char *name, bool is_dir, usize *col)
 }
 
 /**
- * @brief List /sys directory using kernel VFS.
+ * @brief List directory using kernel VFS.
  */
-static void dir_sys_directory(const char *path, usize *count, usize *col)
+static void dir_kernel_directory(const char *path, usize *count, usize *col)
 {
     // Open via kernel VFS
     i32 fd = sys::open(path, sys::O_RDONLY);
@@ -311,11 +265,9 @@ static void dir_sys_directory(const char *path, usize *count, usize *col)
     }
 
     // Read directory entries using kernel readdir
-    // Loop to handle directories larger than one buffer
     u8 buf[4096];
     i64 bytes;
 
-    // Loop until all entries are read (readdir returns 0 at EOF)
     while ((bytes = sys::readdir(fd, buf, sizeof(buf))) > 0)
     {
         usize offset = 0;
@@ -358,94 +310,19 @@ void cmd_dir(const char *path)
     usize count = 0;
     usize col = 0;
 
-    // Two-disk architecture: handle different path types
     if (is_root_path(normalized))
     {
         // Root "/" - show synthetic /sys plus user disk root contents
-        // First, show /sys as virtual directory
         print_dir_entry("sys", true, &col);
         count++;
 
-        // Then show user disk root contents
-        if (fsd_available())
-        {
-            // Use FSD if available
-            u32 dir_id = 0;
-            if (g_fsd.open("/", 0, &dir_id) == 0)
-            {
-                while (true)
-                {
-                    u64 ino = 0;
-                    u8 type = 0;
-                    char name[256];
-                    i32 rc = g_fsd.readdir_one(dir_id, &ino, &type, name, sizeof(name));
-                    if (rc <= 0)
-                        break;
-
-                    // Skip . and ..
-                    if (name[0] == '.' && (name[1] == '\0' ||
-                                           (name[1] == '.' && name[2] == '\0')))
-                        continue;
-
-                    print_dir_entry(name, type == 2, &col);
-                    count++;
-                }
-                g_fsd.close(dir_id);
-            }
-        }
-        else
-        {
-            // Monolithic mode: use kernel VFS for user disk root
-            dir_sys_directory("/", &count, &col);
-        }
-    }
-    else if (is_sys_path(normalized))
-    {
-        // /sys paths - use kernel VFS
-        dir_sys_directory(normalized, &count, &col);
+        // Show user disk root contents via kernel VFS
+        dir_kernel_directory("/", &count, &col);
     }
     else
     {
-        // User paths - use fsd if available, otherwise kernel VFS
-        if (fsd_available())
-        {
-            u32 dir_id = 0;
-            i32 err = g_fsd.open(normalized, 0, &dir_id);
-            if (err != 0)
-            {
-                print_str("Dir: cannot open \"");
-                print_str(normalized);
-                print_str("\"\n");
-                last_rc = RC_ERROR;
-                last_error = "Directory not found";
-                return;
-            }
-
-            while (true)
-            {
-                u64 ino = 0;
-                u8 type = 0;
-                char name[256];
-                i32 rc = g_fsd.readdir_one(dir_id, &ino, &type, name, sizeof(name));
-                if (rc <= 0)
-                    break;
-
-                // Skip . and ..
-                if (name[0] == '.' && (name[1] == '\0' ||
-                                       (name[1] == '.' && name[2] == '\0')))
-                    continue;
-
-                print_dir_entry(name, type == 2, &col);
-                count++;
-            }
-
-            g_fsd.close(dir_id);
-        }
-        else
-        {
-            // Monolithic mode: use kernel VFS directly
-            dir_sys_directory(normalized, &count, &col);
-        }
+        // All paths use kernel VFS
+        dir_kernel_directory(normalized, &count, &col);
     }
 
     if (col > 0)
@@ -505,9 +382,8 @@ static void print_list_entry(const char *name, bool is_dir, bool readonly)
 }
 
 /**
- * @brief List /sys directory entries in detailed format.
+ * @brief List directory using kernel VFS (detailed format).
  */
-// List directory using kernel syscalls (for both /sys and user paths in monolithic mode)
 static void list_kernel_directory(const char *path, usize *file_count, usize *dir_count, bool readonly)
 {
     i32 fd = sys::open(path, sys::O_RDONLY);
@@ -519,12 +395,9 @@ static void list_kernel_directory(const char *path, usize *file_count, usize *di
         return;
     }
 
-    // Use a larger buffer to fit directory entries
-    // DirEnt is ~268 bytes, loop to handle directories larger than one buffer
     u8 buf[4096];
     i64 bytes;
 
-    // Loop until all entries are read (readdir returns 0 at EOF)
     while ((bytes = sys::readdir(fd, buf, sizeof(buf))) > 0)
     {
         usize offset = 0;
@@ -575,103 +448,24 @@ void cmd_list(const char *path)
     usize file_count = 0;
     usize dir_count = 0;
 
-    // Two-disk architecture: handle different path types
     if (is_root_path(normalized))
     {
         // Root "/" - show synthetic /sys plus user disk root contents
         print_list_entry("sys", true, true); // readonly system directory
         dir_count++;
 
-        // Then show user disk root contents
-        if (fsd_available())
-        {
-            // Use FSD if available
-            u32 dir_id = 0;
-            if (g_fsd.open("/", 0, &dir_id) == 0)
-            {
-                while (true)
-                {
-                    u64 ino = 0;
-                    u8 type = 0;
-                    char name[256];
-                    i32 rc = g_fsd.readdir_one(dir_id, &ino, &type, name, sizeof(name));
-                    if (rc <= 0)
-                        break;
-
-                    // Skip . and ..
-                    if (name[0] == '.' && (name[1] == '\0' ||
-                                           (name[1] == '.' && name[2] == '\0')))
-                        continue;
-
-                    bool is_dir = (type == 2);
-                    print_list_entry(name, is_dir, false);
-
-                    if (is_dir)
-                        dir_count++;
-                    else
-                        file_count++;
-                }
-                g_fsd.close(dir_id);
-            }
-        }
-        else
-        {
-            // Monolithic mode: use kernel VFS for user disk root
-            list_kernel_directory("/", &file_count, &dir_count, false);
-        }
+        // Show user disk root contents via kernel VFS
+        list_kernel_directory("/", &file_count, &dir_count, false);
     }
     else if (is_sys_path(normalized))
     {
-        // /sys paths - use kernel VFS (always readonly)
+        // /sys paths are readonly
         list_kernel_directory(normalized, &file_count, &dir_count, true);
     }
     else
     {
-        // User paths - use fsd if available, otherwise kernel VFS
-        if (fsd_available())
-        {
-            u32 dir_id = 0;
-            i32 err = g_fsd.open(normalized, 0, &dir_id);
-            if (err != 0)
-            {
-                print_str("List: cannot open \"");
-                print_str(normalized);
-                print_str("\"\n");
-                last_rc = RC_ERROR;
-                last_error = "Directory not found";
-                return;
-            }
-
-            while (true)
-            {
-                u64 ino = 0;
-                u8 type = 0;
-                char name[256];
-                i32 rc = g_fsd.readdir_one(dir_id, &ino, &type, name, sizeof(name));
-                if (rc <= 0)
-                    break;
-
-                // Skip . and ..
-                if (name[0] == '.' && (name[1] == '\0' ||
-                                       (name[1] == '.' && name[2] == '\0')))
-                    continue;
-
-                bool is_dir = (type == 2);
-                print_list_entry(name, is_dir, false);
-
-                if (is_dir)
-                    dir_count++;
-                else
-                    file_count++;
-            }
-
-            g_fsd.close(dir_id);
-        }
-        else
-        {
-            // Monolithic mode: use kernel VFS directly
-            list_kernel_directory(normalized, &file_count, &dir_count, false);
-        }
+        // User paths
+        list_kernel_directory(normalized, &file_count, &dir_count, false);
     }
 
     print_str("\n");
@@ -711,7 +505,7 @@ void cmd_type(const char *path)
         return;
     }
 
-    // Use kernel VFS (works for both /sys and user paths)
+    // Use kernel VFS
     i32 fd = sys::open(normalized, sys::O_RDONLY);
     if (fd < 0)
     {
