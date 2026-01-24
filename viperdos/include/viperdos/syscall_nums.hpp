@@ -167,6 +167,8 @@
 #define SYS_SOCKET_CLOSE 0x54
 /** @brief Resolve a hostname to a packed IPv4 address. */
 #define SYS_DNS_RESOLVE 0x55
+/** @brief Poll a socket for readiness (returns POLLIN/POLLOUT/POLLHUP flags). */
+#define SYS_SOCKET_POLL 0x56
 /** @} */
 
 /** @name Directory / Filesystem Maintenance Syscalls (0x60 - 0x6F)

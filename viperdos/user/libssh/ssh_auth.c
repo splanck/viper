@@ -138,6 +138,8 @@ int ssh_auth_password(ssh_session_t *session, const char *password)
     size_t response_len;
     uint8_t msg_type;
 
+    fprintf(stderr, "[ssh-auth] Waiting for auth response...\n");
+    int wait_count = 0;
     while (1)
     {
         rc = ssh_packet_recv(session, &msg_type, response, &response_len);
@@ -146,10 +148,20 @@ int ssh_auth_password(ssh_session_t *session, const char *password)
             /* No data yet, yield and retry */
             extern long __syscall1(long, long);
             __syscall1(0x31 /* SYS_YIELD */, 0);
+            wait_count++;
+            if (wait_count % 10000 == 0)
+            {
+                fprintf(stderr, "[ssh-auth] Still waiting... (count=%d)\n", wait_count);
+            }
             continue;
         }
         if (rc < 0)
+        {
+            fprintf(stderr, "[ssh-auth] ssh_packet_recv returned error %d\n", rc);
             return rc;
+        }
+
+        fprintf(stderr, "[ssh-auth] Received msg_type=%d, len=%zu\n", msg_type, response_len);
 
         if (msg_type == SSH_MSG_USERAUTH_SUCCESS)
         {

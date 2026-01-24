@@ -6,6 +6,7 @@
 #include "include/ssh.h"
 #include "ssh_internal.h"
 #include <poll.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 

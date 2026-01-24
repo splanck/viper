@@ -1526,6 +1526,35 @@ static SyscallResult sys_dns_resolve(u64 a0, u64 a1, u64, u64, u64, u64)
               (static_cast<u32>(result_ip.bytes[3]) << 24);
     return SyscallResult::ok();
 }
+
+static SyscallResult sys_socket_poll(u64 a0, u64 a1, u64 a2, u64, u64, u64)
+{
+    i32 sock = static_cast<i32>(a0);
+    u32 *out_flags = reinterpret_cast<u32 *>(a1);
+    u32 *out_rx_available = reinterpret_cast<u32 *>(a2);
+
+    viper::Viper *v = viper::current();
+    if (!v || !net::tcp::socket_owned_by(sock, static_cast<u32>(v->id)))
+    {
+        return SyscallResult::err(error::VERR_INVALID_HANDLE);
+    }
+
+    if (!validate_user_write(out_flags, sizeof(u32)) ||
+        !validate_user_write(out_rx_available, sizeof(u32)))
+    {
+        return SyscallResult::err(error::VERR_INVALID_ARG);
+    }
+
+    // Poll network to process any pending packets before checking status.
+    net::network_poll();
+
+    i32 result = net::tcp::socket_status(sock, out_flags, out_rx_available);
+    if (result < 0)
+    {
+        return SyscallResult::err(result);
+    }
+    return SyscallResult::ok();
+}
 #else
 static SyscallResult sys_socket_create(u64, u64, u64, u64, u64, u64)
 {
@@ -1553,6 +1582,11 @@ static SyscallResult sys_socket_close(u64, u64, u64, u64, u64, u64)
 }
 
 static SyscallResult sys_dns_resolve(u64, u64, u64, u64, u64, u64)
+{
+    return SyscallResult::err(error::VERR_NOT_SUPPORTED);
+}
+
+static SyscallResult sys_socket_poll(u64, u64, u64, u64, u64, u64)
 {
     return SyscallResult::err(error::VERR_NOT_SUPPORTED);
 }
@@ -4473,6 +4507,7 @@ static const SyscallEntry syscall_table[] = {
     {SYS_SOCKET_RECV, sys_socket_recv, "socket_recv", 3},
     {SYS_SOCKET_CLOSE, sys_socket_close, "socket_close", 1},
     {SYS_DNS_RESOLVE, sys_dns_resolve, "dns_resolve", 2},
+    {SYS_SOCKET_POLL, sys_socket_poll, "socket_poll", 3},
 
     // Directory/FS (0x60-0x6F)
     {SYS_READDIR, sys_readdir, "readdir", 3},

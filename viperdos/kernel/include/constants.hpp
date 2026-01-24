@@ -695,13 +695,13 @@ constexpr u32 DNS_POLL_ITERATIONS = 5000;
 constexpr u32 TCP_CLOSE_POLL_ITERATIONS = 20;
 
 /// ARP request retry poll count
-constexpr u32 ARP_REQUEST_POLL_ITERATIONS = 50;
+constexpr u32 ARP_REQUEST_POLL_ITERATIONS = 200;
 
 /// ICMP reply poll count
 constexpr u32 ICMP_POLL_ITERATIONS = 100;
 
 /// Busy-wait delay iteration count (CPU yield)
-constexpr u32 BUSY_WAIT_ITERATIONS = 1000;
+constexpr u32 BUSY_WAIT_ITERATIONS = 50000;
 
 /// TCP/DNS retry attempt count
 constexpr u32 CONNECT_RETRY_COUNT = 5;

@@ -477,6 +477,7 @@ i64 socket_recv(i32 sock, void *buf, usize len)
         return VERR_INVALID_HANDLE;
 
     usize available = conn->rx_available();
+
     if (available == 0)
     {
         if (conn->state == TcpState::CLOSE_WAIT || conn->state == TcpState::CLOSED)
@@ -1211,7 +1212,28 @@ static void handle_tcp(const Ipv4Header *ip, const u8 *data, usize len)
                                 conn->rx_tail = (conn->rx_tail + 1) % TcpConnection::RX_BUF_SIZE;
                             }
                             conn->rcv_nxt += static_cast<u32>(payload_len);
+                            serial::puts("[tcp] copied ");
+                            serial::put_dec(payload_len);
+                            serial::puts(" bytes to rx_buf, avail=");
+                            serial::put_dec(conn->rx_available());
+                            serial::putc('\n');
                         }
+                        else
+                        {
+                            serial::puts("[tcp] DROP: no space, need=");
+                            serial::put_dec(payload_len);
+                            serial::puts(" have=");
+                            serial::put_dec(space);
+                            serial::putc('\n');
+                        }
+                    }
+                    else
+                    {
+                        serial::puts("[tcp] DROP: seq mismatch, got=");
+                        serial::put_hex(seq);
+                        serial::puts(" expect=");
+                        serial::put_hex(conn->rcv_nxt);
+                        serial::putc('\n');
                     }
                     send_tcp_segment(conn, TCP_ACK, nullptr, 0);
                 }

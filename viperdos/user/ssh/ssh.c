@@ -328,11 +328,6 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (verbose)
-    {
-        printf("Authentication successful\n");
-    }
-
     /* Open channel */
     ssh_channel_t *channel = ssh_channel_new(session);
     if (!channel)
@@ -440,6 +435,7 @@ int main(int argc, char *argv[])
         /* Use a timeout to ensure we regularly check both stdin and socket,
          * even if one is more active than the other. */
         int pr = poll(pfds, 2, 100);
+
         if (pr < 0)
         {
             continue;
