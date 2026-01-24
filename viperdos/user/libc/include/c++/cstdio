@@ -3,8 +3,7 @@
 
 #include "../stdio.h"
 
-namespace std
-{
+namespace std {
 
 /* Types */
 using ::FILE;

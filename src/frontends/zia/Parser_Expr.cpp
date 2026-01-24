@@ -327,7 +327,8 @@ ExprPtr Parser::parseBitwiseOr()
         if (!right)
             return nullptr;
 
-        expr = std::make_unique<BinaryExpr>(loc, BinaryOp::BitOr, std::move(expr), std::move(right));
+        expr =
+            std::make_unique<BinaryExpr>(loc, BinaryOp::BitOr, std::move(expr), std::move(right));
     }
 
     return expr;
@@ -347,7 +348,8 @@ ExprPtr Parser::parseBitwiseXor()
         if (!right)
             return nullptr;
 
-        expr = std::make_unique<BinaryExpr>(loc, BinaryOp::BitXor, std::move(expr), std::move(right));
+        expr =
+            std::make_unique<BinaryExpr>(loc, BinaryOp::BitXor, std::move(expr), std::move(right));
     }
 
     return expr;
@@ -367,7 +369,8 @@ ExprPtr Parser::parseBitwiseAnd()
         if (!right)
             return nullptr;
 
-        expr = std::make_unique<BinaryExpr>(loc, BinaryOp::BitAnd, std::move(expr), std::move(right));
+        expr =
+            std::make_unique<BinaryExpr>(loc, BinaryOp::BitAnd, std::move(expr), std::move(right));
     }
 
     return expr;
@@ -526,8 +529,7 @@ ExprPtr Parser::parseUnary()
         // Special case: handle -9223372036854775808 (INT64_MIN)
         // The literal 9223372036854775808 can't be represented as int64_t,
         // but when negated it becomes INT64_MIN which is valid.
-        if (op == UnaryOp::Neg && check(TokenKind::IntegerLiteral) &&
-            peek().requiresNegation)
+        if (op == UnaryOp::Neg && check(TokenKind::IntegerLiteral) && peek().requiresNegation)
         {
             advance(); // consume the integer literal
             // Return INT64_MIN directly as an integer literal

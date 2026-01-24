@@ -255,6 +255,7 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
         const Instr *instr;
         std::string target;
     };
+
     std::vector<EhPushCheck> ehPushChecks;
     std::vector<std::string> labelRefs;
 
@@ -281,8 +282,8 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
         {
             std::ostringstream message;
             message << "eh.push target ^" << check.target << " must name a handler block";
-            return Expected<void>{
-                makeError(check.instr->loc, formatInstrDiag(fn, *check.bb, *check.instr, message.str()))};
+            return Expected<void>{makeError(
+                check.instr->loc, formatInstrDiag(fn, *check.bb, *check.instr, message.str()))};
         }
     }
 
@@ -290,8 +291,7 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     for (const auto &label : labelRefs)
     {
         if (!labels.contains(label))
-            return Expected<void>{
-                makeError({}, formatFunctionDiag(fn, "unknown label " + label))};
+            return Expected<void>{makeError({}, formatFunctionDiag(fn, "unknown label " + label))};
     }
 
     return {};

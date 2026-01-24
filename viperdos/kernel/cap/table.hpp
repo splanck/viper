@@ -19,8 +19,7 @@
  * objects. This file defines the table entry format and the `cap::Table` class
  * that manages allocation, lookup, and derivation.
  */
-namespace cap
-{
+namespace cap {
 
 // Object kinds (kernel object types)
 /**
@@ -31,8 +30,7 @@ namespace cap
  * by syscall implementations to ensure a handle refers to the expected object
  * type.
  */
-enum class Kind : u16
-{
+enum class Kind : u16 {
     Invalid = 0,
     // KHeap objects
     String = 1,
@@ -70,8 +68,7 @@ constexpr u32 NO_PARENT = 0xFFFFFFFFU;
  * The `parent_index` field enables revocation propagation: when a capability
  * is revoked, all capabilities derived from it are also revoked.
  */
-struct Entry
-{
+struct Entry {
     void *object;     // Pointer to kernel object
     u32 rights;       // Rights bitmap
     u32 parent_index; // Index of parent capability (NO_PARENT if root)
@@ -98,8 +95,7 @@ struct Entry
  * The table does not own the underlying objects; it only stores pointers and
  * metadata.
  */
-class Table
-{
+class Table {
   public:
     static constexpr usize DEFAULT_CAPACITY = 256;
 
@@ -253,14 +249,12 @@ class Table
 
     // Accessors
     /// @brief Number of currently allocated entries.
-    usize count() const
-    {
+    usize count() const {
         return count_;
     }
 
     /// @brief Total capacity of the table.
-    usize capacity() const
-    {
+    usize capacity() const {
         return capacity_;
     }
 
@@ -268,7 +262,7 @@ class Table
     Entry *entries_ = nullptr;
     usize capacity_ = 0;
     usize count_ = 0;
-    u32 free_head_ = 0;  // Free list head (index)
+    u32 free_head_ = 0;     // Free list head (index)
     mutable Spinlock lock_; // Protects all table operations
 };
 

@@ -3,8 +3,7 @@
 
 #include "../ctype.h"
 
-namespace std
-{
+namespace std {
 
 using ::isalnum;
 using ::isalpha;

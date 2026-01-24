@@ -64,6 +64,7 @@ struct Value
     };
     /// Discriminant selecting which payload is active.
     Kind kind{Kind::NullPtr};
+
     /// @brief Union of mutually exclusive payloads (only one active per kind).
     /// @details Saves 8+ bytes per Value vs separate fields. Access the member
     ///          matching the current kind: i64 for ConstInt, f64 for ConstFloat,
@@ -77,6 +78,7 @@ struct Value
         /// Temporary identifier used when kind == Kind::Temp.
         unsigned id;
     };
+
     /// String payload for string constants and global names.
     std::string str;
 

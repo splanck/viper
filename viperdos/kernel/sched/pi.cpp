@@ -13,11 +13,9 @@
 #include "pi.hpp"
 #include "../console/serial.hpp"
 
-namespace pi
-{
+namespace pi {
 
-void init_mutex(PiMutex *m)
-{
+void init_mutex(PiMutex *m) {
     if (!m)
         return;
 
@@ -28,15 +26,13 @@ void init_mutex(PiMutex *m)
     m->initialized = true;
 }
 
-bool try_lock(PiMutex *m)
-{
+bool try_lock(PiMutex *m) {
     if (!m || !m->initialized)
         return false;
 
     u64 saved_daif = m->lock.acquire();
 
-    if (m->owner != nullptr)
-    {
+    if (m->owner != nullptr) {
         // Already owned by someone
         m->lock.release(saved_daif);
         return false;
@@ -44,8 +40,7 @@ bool try_lock(PiMutex *m)
 
     // Acquire the mutex
     task::Task *cur = task::current();
-    if (!cur)
-    {
+    if (!cur) {
         m->lock.release(saved_daif);
         return false;
     }
@@ -58,24 +53,21 @@ bool try_lock(PiMutex *m)
     return true;
 }
 
-void contend(PiMutex *m, task::Task *waiter)
-{
+void contend(PiMutex *m, task::Task *waiter) {
     if (!m || !m->initialized || !waiter)
         return;
 
     u64 saved_daif = m->lock.acquire();
 
     task::Task *owner = m->owner;
-    if (!owner)
-    {
+    if (!owner) {
         // Mutex was released, nothing to do
         m->lock.release(saved_daif);
         return;
     }
 
     // If waiter has higher priority (lower number), boost owner
-    if (waiter->priority < owner->priority)
-    {
+    if (waiter->priority < owner->priority) {
         // Boost owner to waiter's priority
         owner->priority = waiter->priority;
         m->boosted_priority = waiter->priority;
@@ -92,24 +84,21 @@ void contend(PiMutex *m, task::Task *waiter)
     m->lock.release(saved_daif);
 }
 
-void unlock(PiMutex *m)
-{
+void unlock(PiMutex *m) {
     if (!m || !m->initialized)
         return;
 
     u64 saved_daif = m->lock.acquire();
 
     task::Task *cur = task::current();
-    if (!cur || m->owner != cur)
-    {
+    if (!cur || m->owner != cur) {
         // Not the owner, can't unlock
         m->lock.release(saved_daif);
         return;
     }
 
     // Restore original priority if it was boosted
-    if (cur->priority != m->owner_original_priority)
-    {
+    if (cur->priority != m->owner_original_priority) {
         serial::puts("[pi] Restoring task '");
         serial::puts(cur->name);
         serial::puts("' priority from ");
@@ -128,8 +117,7 @@ void unlock(PiMutex *m)
     m->lock.release(saved_daif);
 }
 
-bool is_locked(PiMutex *m)
-{
+bool is_locked(PiMutex *m) {
     if (!m || !m->initialized)
         return false;
 
@@ -140,8 +128,7 @@ bool is_locked(PiMutex *m)
     return locked;
 }
 
-task::Task *get_owner(PiMutex *m)
-{
+task::Task *get_owner(PiMutex *m) {
     if (!m || !m->initialized)
         return nullptr;
 
@@ -152,20 +139,17 @@ task::Task *get_owner(PiMutex *m)
     return owner;
 }
 
-void boost_priority(task::Task *t, u8 new_priority)
-{
+void boost_priority(task::Task *t, u8 new_priority) {
     if (!t)
         return;
 
     // Only boost if new priority is higher (lower number = higher priority)
-    if (new_priority < t->priority)
-    {
+    if (new_priority < t->priority) {
         t->priority = new_priority;
     }
 }
 
-void restore_priority(task::Task *t)
-{
+void restore_priority(task::Task *t) {
     if (!t)
         return;
 

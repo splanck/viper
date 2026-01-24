@@ -8,12 +8,12 @@
 // Layout-specific vtables
 //=============================================================================
 
-static void vbox_measure(vg_widget_t* self, float available_width, float available_height);
-static void vbox_arrange(vg_widget_t* self, float x, float y, float width, float height);
-static void hbox_measure(vg_widget_t* self, float available_width, float available_height);
-static void hbox_arrange(vg_widget_t* self, float x, float y, float width, float height);
-static void flex_measure(vg_widget_t* self, float available_width, float available_height);
-static void flex_arrange(vg_widget_t* self, float x, float y, float width, float height);
+static void vbox_measure(vg_widget_t *self, float available_width, float available_height);
+static void vbox_arrange(vg_widget_t *self, float x, float y, float width, float height);
+static void hbox_measure(vg_widget_t *self, float available_width, float available_height);
+static void hbox_arrange(vg_widget_t *self, float x, float y, float width, float height);
+static void flex_measure(vg_widget_t *self, float available_width, float available_height);
+static void flex_arrange(vg_widget_t *self, float x, float y, float width, float height);
 
 static const vg_widget_vtable_t g_vbox_vtable = {
     .measure = vbox_measure,
@@ -34,15 +34,18 @@ static const vg_widget_vtable_t g_flex_vtable = {
 // VBox Implementation
 //=============================================================================
 
-vg_widget_t* vg_vbox_create(float spacing) {
-    vg_widget_t* widget = vg_widget_create(VG_WIDGET_CONTAINER);
-    if (!widget) return NULL;
+vg_widget_t *vg_vbox_create(float spacing)
+{
+    vg_widget_t *widget = vg_widget_create(VG_WIDGET_CONTAINER);
+    if (!widget)
+        return NULL;
 
     widget->vtable = &g_vbox_vtable;
 
     // Allocate layout data
-    vg_vbox_layout_t* layout = calloc(1, sizeof(vg_vbox_layout_t));
-    if (!layout) {
+    vg_vbox_layout_t *layout = calloc(1, sizeof(vg_vbox_layout_t));
+    if (!layout)
+    {
         vg_widget_destroy(widget);
         return NULL;
     }
@@ -55,31 +58,39 @@ vg_widget_t* vg_vbox_create(float spacing) {
     return widget;
 }
 
-void vg_vbox_set_spacing(vg_widget_t* vbox, float spacing) {
-    if (!vbox || !vbox->impl_data) return;
-    vg_vbox_layout_t* layout = (vg_vbox_layout_t*)vbox->impl_data;
+void vg_vbox_set_spacing(vg_widget_t *vbox, float spacing)
+{
+    if (!vbox || !vbox->impl_data)
+        return;
+    vg_vbox_layout_t *layout = (vg_vbox_layout_t *)vbox->impl_data;
     layout->spacing = spacing;
     vbox->needs_layout = true;
 }
 
-void vg_vbox_set_align(vg_widget_t* vbox, vg_align_t align) {
-    if (!vbox || !vbox->impl_data) return;
-    vg_vbox_layout_t* layout = (vg_vbox_layout_t*)vbox->impl_data;
+void vg_vbox_set_align(vg_widget_t *vbox, vg_align_t align)
+{
+    if (!vbox || !vbox->impl_data)
+        return;
+    vg_vbox_layout_t *layout = (vg_vbox_layout_t *)vbox->impl_data;
     layout->align = align;
     vbox->needs_layout = true;
 }
 
-void vg_vbox_set_justify(vg_widget_t* vbox, vg_justify_t justify) {
-    if (!vbox || !vbox->impl_data) return;
-    vg_vbox_layout_t* layout = (vg_vbox_layout_t*)vbox->impl_data;
+void vg_vbox_set_justify(vg_widget_t *vbox, vg_justify_t justify)
+{
+    if (!vbox || !vbox->impl_data)
+        return;
+    vg_vbox_layout_t *layout = (vg_vbox_layout_t *)vbox->impl_data;
     layout->justify = justify;
     vbox->needs_layout = true;
 }
 
-static void vbox_measure(vg_widget_t* self, float available_width, float available_height) {
-    if (!self || !self->impl_data) return;
+static void vbox_measure(vg_widget_t *self, float available_width, float available_height)
+{
+    if (!self || !self->impl_data)
+        return;
 
-    vg_vbox_layout_t* layout = (vg_vbox_layout_t*)self->impl_data;
+    vg_vbox_layout_t *layout = (vg_vbox_layout_t *)self->impl_data;
 
     float padding_h = self->layout.padding_left + self->layout.padding_right;
     float padding_v = self->layout.padding_top + self->layout.padding_bottom;
@@ -89,19 +100,24 @@ static void vbox_measure(vg_widget_t* self, float available_width, float availab
     int visible_count = 0;
 
     // First pass: measure children
-    VG_FOREACH_VISIBLE_CHILD(self, child) {
+    VG_FOREACH_VISIBLE_CHILD(self, child)
+    {
         vg_widget_measure(child, available_width - padding_h, available_height - padding_v);
 
-        float child_width = child->measured_width + child->layout.margin_left + child->layout.margin_right;
-        float child_height = child->measured_height + child->layout.margin_top + child->layout.margin_bottom;
+        float child_width =
+            child->measured_width + child->layout.margin_left + child->layout.margin_right;
+        float child_height =
+            child->measured_height + child->layout.margin_top + child->layout.margin_bottom;
 
-        if (child_width > max_width) max_width = child_width;
+        if (child_width > max_width)
+            max_width = child_width;
         total_height += child_height;
         visible_count++;
     }
 
     // Add spacing between children
-    if (visible_count > 1) {
+    if (visible_count > 1)
+    {
         total_height += layout->spacing * (visible_count - 1);
     }
 
@@ -109,23 +125,27 @@ static void vbox_measure(vg_widget_t* self, float available_width, float availab
     self->measured_width = max_width + padding_h;
     self->measured_height = total_height + padding_v;
 
-    if (self->constraints.min_width > 0 && self->measured_width < self->constraints.min_width) {
+    if (self->constraints.min_width > 0 && self->measured_width < self->constraints.min_width)
+    {
         self->measured_width = self->constraints.min_width;
     }
-    if (self->constraints.min_height > 0 && self->measured_height < self->constraints.min_height) {
+    if (self->constraints.min_height > 0 && self->measured_height < self->constraints.min_height)
+    {
         self->measured_height = self->constraints.min_height;
     }
 }
 
-static void vbox_arrange(vg_widget_t* self, float x, float y, float width, float height) {
-    if (!self || !self->impl_data) return;
+static void vbox_arrange(vg_widget_t *self, float x, float y, float width, float height)
+{
+    if (!self || !self->impl_data)
+        return;
 
     self->x = x;
     self->y = y;
     self->width = width;
     self->height = height;
 
-    vg_vbox_layout_t* layout = (vg_vbox_layout_t*)self->impl_data;
+    vg_vbox_layout_t *layout = (vg_vbox_layout_t *)self->impl_data;
 
     float content_x = self->layout.padding_left;
     float content_y = self->layout.padding_top;
@@ -137,11 +157,16 @@ static void vbox_arrange(vg_widget_t* self, float x, float y, float width, float
     float total_flex = 0;
     int visible_count = 0;
 
-    VG_FOREACH_VISIBLE_CHILD(self, child) {
-        if (child->layout.flex > 0) {
+    VG_FOREACH_VISIBLE_CHILD(self, child)
+    {
+        if (child->layout.flex > 0)
+        {
             total_flex += child->layout.flex;
-        } else {
-            total_fixed += child->measured_height + child->layout.margin_top + child->layout.margin_bottom;
+        }
+        else
+        {
+            total_fixed +=
+                child->measured_height + child->layout.margin_top + child->layout.margin_bottom;
         }
         visible_count++;
     }
@@ -154,11 +179,15 @@ static void vbox_arrange(vg_widget_t* self, float x, float y, float width, float
     // Arrange children
     float child_y = content_y;
 
-    VG_FOREACH_VISIBLE_CHILD(self, child) {
+    VG_FOREACH_VISIBLE_CHILD(self, child)
+    {
         float child_height;
-        if (child->layout.flex > 0) {
+        if (child->layout.flex > 0)
+        {
             child_height = flex_unit * child->layout.flex;
-        } else {
+        }
+        else
+        {
             child_height = child->measured_height;
         }
 
@@ -166,7 +195,8 @@ static void vbox_arrange(vg_widget_t* self, float x, float y, float width, float
         float child_x;
         float child_width;
 
-        switch (layout->align) {
+        switch (layout->align)
+        {
             case VG_ALIGN_START:
                 child_x = content_x + child->layout.margin_left;
                 child_width = child->measured_width;
@@ -176,18 +206,22 @@ static void vbox_arrange(vg_widget_t* self, float x, float y, float width, float
                 child_width = child->measured_width;
                 break;
             case VG_ALIGN_END:
-                child_x = content_x + content_width - child->measured_width - child->layout.margin_right;
+                child_x =
+                    content_x + content_width - child->measured_width - child->layout.margin_right;
                 child_width = child->measured_width;
                 break;
             case VG_ALIGN_STRETCH:
             default:
                 child_x = content_x + child->layout.margin_left;
-                child_width = content_width - child->layout.margin_left - child->layout.margin_right;
+                child_width =
+                    content_width - child->layout.margin_left - child->layout.margin_right;
                 break;
         }
 
-        vg_widget_arrange(child, child_x, child_y + child->layout.margin_top, child_width, child_height);
-        child_y += child_height + child->layout.margin_top + child->layout.margin_bottom + layout->spacing;
+        vg_widget_arrange(
+            child, child_x, child_y + child->layout.margin_top, child_width, child_height);
+        child_y +=
+            child_height + child->layout.margin_top + child->layout.margin_bottom + layout->spacing;
     }
 }
 
@@ -195,14 +229,17 @@ static void vbox_arrange(vg_widget_t* self, float x, float y, float width, float
 // HBox Implementation
 //=============================================================================
 
-vg_widget_t* vg_hbox_create(float spacing) {
-    vg_widget_t* widget = vg_widget_create(VG_WIDGET_CONTAINER);
-    if (!widget) return NULL;
+vg_widget_t *vg_hbox_create(float spacing)
+{
+    vg_widget_t *widget = vg_widget_create(VG_WIDGET_CONTAINER);
+    if (!widget)
+        return NULL;
 
     widget->vtable = &g_hbox_vtable;
 
-    vg_hbox_layout_t* layout = calloc(1, sizeof(vg_hbox_layout_t));
-    if (!layout) {
+    vg_hbox_layout_t *layout = calloc(1, sizeof(vg_hbox_layout_t));
+    if (!layout)
+    {
         vg_widget_destroy(widget);
         return NULL;
     }
@@ -215,31 +252,39 @@ vg_widget_t* vg_hbox_create(float spacing) {
     return widget;
 }
 
-void vg_hbox_set_spacing(vg_widget_t* hbox, float spacing) {
-    if (!hbox || !hbox->impl_data) return;
-    vg_hbox_layout_t* layout = (vg_hbox_layout_t*)hbox->impl_data;
+void vg_hbox_set_spacing(vg_widget_t *hbox, float spacing)
+{
+    if (!hbox || !hbox->impl_data)
+        return;
+    vg_hbox_layout_t *layout = (vg_hbox_layout_t *)hbox->impl_data;
     layout->spacing = spacing;
     hbox->needs_layout = true;
 }
 
-void vg_hbox_set_align(vg_widget_t* hbox, vg_align_t align) {
-    if (!hbox || !hbox->impl_data) return;
-    vg_hbox_layout_t* layout = (vg_hbox_layout_t*)hbox->impl_data;
+void vg_hbox_set_align(vg_widget_t *hbox, vg_align_t align)
+{
+    if (!hbox || !hbox->impl_data)
+        return;
+    vg_hbox_layout_t *layout = (vg_hbox_layout_t *)hbox->impl_data;
     layout->align = align;
     hbox->needs_layout = true;
 }
 
-void vg_hbox_set_justify(vg_widget_t* hbox, vg_justify_t justify) {
-    if (!hbox || !hbox->impl_data) return;
-    vg_hbox_layout_t* layout = (vg_hbox_layout_t*)hbox->impl_data;
+void vg_hbox_set_justify(vg_widget_t *hbox, vg_justify_t justify)
+{
+    if (!hbox || !hbox->impl_data)
+        return;
+    vg_hbox_layout_t *layout = (vg_hbox_layout_t *)hbox->impl_data;
     layout->justify = justify;
     hbox->needs_layout = true;
 }
 
-static void hbox_measure(vg_widget_t* self, float available_width, float available_height) {
-    if (!self || !self->impl_data) return;
+static void hbox_measure(vg_widget_t *self, float available_width, float available_height)
+{
+    if (!self || !self->impl_data)
+        return;
 
-    vg_hbox_layout_t* layout = (vg_hbox_layout_t*)self->impl_data;
+    vg_hbox_layout_t *layout = (vg_hbox_layout_t *)self->impl_data;
 
     float padding_h = self->layout.padding_left + self->layout.padding_right;
     float padding_v = self->layout.padding_top + self->layout.padding_bottom;
@@ -248,41 +293,50 @@ static void hbox_measure(vg_widget_t* self, float available_width, float availab
     float max_height = 0;
     int visible_count = 0;
 
-    VG_FOREACH_VISIBLE_CHILD(self, child) {
+    VG_FOREACH_VISIBLE_CHILD(self, child)
+    {
         vg_widget_measure(child, available_width - padding_h, available_height - padding_v);
 
-        float child_width = child->measured_width + child->layout.margin_left + child->layout.margin_right;
-        float child_height = child->measured_height + child->layout.margin_top + child->layout.margin_bottom;
+        float child_width =
+            child->measured_width + child->layout.margin_left + child->layout.margin_right;
+        float child_height =
+            child->measured_height + child->layout.margin_top + child->layout.margin_bottom;
 
         total_width += child_width;
-        if (child_height > max_height) max_height = child_height;
+        if (child_height > max_height)
+            max_height = child_height;
         visible_count++;
     }
 
-    if (visible_count > 1) {
+    if (visible_count > 1)
+    {
         total_width += layout->spacing * (visible_count - 1);
     }
 
     self->measured_width = total_width + padding_h;
     self->measured_height = max_height + padding_v;
 
-    if (self->constraints.min_width > 0 && self->measured_width < self->constraints.min_width) {
+    if (self->constraints.min_width > 0 && self->measured_width < self->constraints.min_width)
+    {
         self->measured_width = self->constraints.min_width;
     }
-    if (self->constraints.min_height > 0 && self->measured_height < self->constraints.min_height) {
+    if (self->constraints.min_height > 0 && self->measured_height < self->constraints.min_height)
+    {
         self->measured_height = self->constraints.min_height;
     }
 }
 
-static void hbox_arrange(vg_widget_t* self, float x, float y, float width, float height) {
-    if (!self || !self->impl_data) return;
+static void hbox_arrange(vg_widget_t *self, float x, float y, float width, float height)
+{
+    if (!self || !self->impl_data)
+        return;
 
     self->x = x;
     self->y = y;
     self->width = width;
     self->height = height;
 
-    vg_hbox_layout_t* layout = (vg_hbox_layout_t*)self->impl_data;
+    vg_hbox_layout_t *layout = (vg_hbox_layout_t *)self->impl_data;
 
     float content_x = self->layout.padding_left;
     float content_y = self->layout.padding_top;
@@ -293,11 +347,16 @@ static void hbox_arrange(vg_widget_t* self, float x, float y, float width, float
     float total_flex = 0;
     int visible_count = 0;
 
-    VG_FOREACH_VISIBLE_CHILD(self, child) {
-        if (child->layout.flex > 0) {
+    VG_FOREACH_VISIBLE_CHILD(self, child)
+    {
+        if (child->layout.flex > 0)
+        {
             total_flex += child->layout.flex;
-        } else {
-            total_fixed += child->measured_width + child->layout.margin_left + child->layout.margin_right;
+        }
+        else
+        {
+            total_fixed +=
+                child->measured_width + child->layout.margin_left + child->layout.margin_right;
         }
         visible_count++;
     }
@@ -308,18 +367,23 @@ static void hbox_arrange(vg_widget_t* self, float x, float y, float width, float
 
     float child_x = content_x;
 
-    VG_FOREACH_VISIBLE_CHILD(self, child) {
+    VG_FOREACH_VISIBLE_CHILD(self, child)
+    {
         float child_width;
-        if (child->layout.flex > 0) {
+        if (child->layout.flex > 0)
+        {
             child_width = flex_unit * child->layout.flex;
-        } else {
+        }
+        else
+        {
             child_width = child->measured_width;
         }
 
         float child_y;
         float child_height;
 
-        switch (layout->align) {
+        switch (layout->align)
+        {
             case VG_ALIGN_START:
                 child_y = content_y + child->layout.margin_top;
                 child_height = child->measured_height;
@@ -329,18 +393,22 @@ static void hbox_arrange(vg_widget_t* self, float x, float y, float width, float
                 child_height = child->measured_height;
                 break;
             case VG_ALIGN_END:
-                child_y = content_y + content_height - child->measured_height - child->layout.margin_bottom;
+                child_y = content_y + content_height - child->measured_height -
+                          child->layout.margin_bottom;
                 child_height = child->measured_height;
                 break;
             case VG_ALIGN_STRETCH:
             default:
                 child_y = content_y + child->layout.margin_top;
-                child_height = content_height - child->layout.margin_top - child->layout.margin_bottom;
+                child_height =
+                    content_height - child->layout.margin_top - child->layout.margin_bottom;
                 break;
         }
 
-        vg_widget_arrange(child, child_x + child->layout.margin_left, child_y, child_width, child_height);
-        child_x += child_width + child->layout.margin_left + child->layout.margin_right + layout->spacing;
+        vg_widget_arrange(
+            child, child_x + child->layout.margin_left, child_y, child_width, child_height);
+        child_x +=
+            child_width + child->layout.margin_left + child->layout.margin_right + layout->spacing;
     }
 }
 
@@ -348,14 +416,17 @@ static void hbox_arrange(vg_widget_t* self, float x, float y, float width, float
 // Flex Layout Implementation
 //=============================================================================
 
-vg_widget_t* vg_flex_create(void) {
-    vg_widget_t* widget = vg_widget_create(VG_WIDGET_CONTAINER);
-    if (!widget) return NULL;
+vg_widget_t *vg_flex_create(void)
+{
+    vg_widget_t *widget = vg_widget_create(VG_WIDGET_CONTAINER);
+    if (!widget)
+        return NULL;
 
     widget->vtable = &g_flex_vtable;
 
-    vg_flex_layout_t* layout = calloc(1, sizeof(vg_flex_layout_t));
-    if (!layout) {
+    vg_flex_layout_t *layout = calloc(1, sizeof(vg_flex_layout_t));
+    if (!layout)
+    {
         vg_widget_destroy(widget);
         return NULL;
     }
@@ -370,46 +441,59 @@ vg_widget_t* vg_flex_create(void) {
     return widget;
 }
 
-void vg_flex_set_direction(vg_widget_t* flex, vg_direction_t direction) {
-    if (!flex || !flex->impl_data) return;
-    vg_flex_layout_t* layout = (vg_flex_layout_t*)flex->impl_data;
+void vg_flex_set_direction(vg_widget_t *flex, vg_direction_t direction)
+{
+    if (!flex || !flex->impl_data)
+        return;
+    vg_flex_layout_t *layout = (vg_flex_layout_t *)flex->impl_data;
     layout->direction = direction;
     flex->needs_layout = true;
 }
 
-void vg_flex_set_align_items(vg_widget_t* flex, vg_align_t align) {
-    if (!flex || !flex->impl_data) return;
-    vg_flex_layout_t* layout = (vg_flex_layout_t*)flex->impl_data;
+void vg_flex_set_align_items(vg_widget_t *flex, vg_align_t align)
+{
+    if (!flex || !flex->impl_data)
+        return;
+    vg_flex_layout_t *layout = (vg_flex_layout_t *)flex->impl_data;
     layout->align_items = align;
     flex->needs_layout = true;
 }
 
-void vg_flex_set_justify_content(vg_widget_t* flex, vg_justify_t justify) {
-    if (!flex || !flex->impl_data) return;
-    vg_flex_layout_t* layout = (vg_flex_layout_t*)flex->impl_data;
+void vg_flex_set_justify_content(vg_widget_t *flex, vg_justify_t justify)
+{
+    if (!flex || !flex->impl_data)
+        return;
+    vg_flex_layout_t *layout = (vg_flex_layout_t *)flex->impl_data;
     layout->justify_content = justify;
     flex->needs_layout = true;
 }
 
-void vg_flex_set_gap(vg_widget_t* flex, float gap) {
-    if (!flex || !flex->impl_data) return;
-    vg_flex_layout_t* layout = (vg_flex_layout_t*)flex->impl_data;
+void vg_flex_set_gap(vg_widget_t *flex, float gap)
+{
+    if (!flex || !flex->impl_data)
+        return;
+    vg_flex_layout_t *layout = (vg_flex_layout_t *)flex->impl_data;
     layout->gap = gap;
     flex->needs_layout = true;
 }
 
-void vg_flex_set_wrap(vg_widget_t* flex, bool wrap) {
-    if (!flex || !flex->impl_data) return;
-    vg_flex_layout_t* layout = (vg_flex_layout_t*)flex->impl_data;
+void vg_flex_set_wrap(vg_widget_t *flex, bool wrap)
+{
+    if (!flex || !flex->impl_data)
+        return;
+    vg_flex_layout_t *layout = (vg_flex_layout_t *)flex->impl_data;
     layout->wrap = wrap;
     flex->needs_layout = true;
 }
 
-static void flex_measure(vg_widget_t* self, float available_width, float available_height) {
-    if (!self || !self->impl_data) return;
+static void flex_measure(vg_widget_t *self, float available_width, float available_height)
+{
+    if (!self || !self->impl_data)
+        return;
 
-    vg_flex_layout_t* layout = (vg_flex_layout_t*)self->impl_data;
-    bool is_row = (layout->direction == VG_DIRECTION_ROW || layout->direction == VG_DIRECTION_ROW_REVERSE);
+    vg_flex_layout_t *layout = (vg_flex_layout_t *)self->impl_data;
+    bool is_row =
+        (layout->direction == VG_DIRECTION_ROW || layout->direction == VG_DIRECTION_ROW_REVERSE);
 
     float padding_h = self->layout.padding_left + self->layout.padding_right;
     float padding_v = self->layout.padding_top + self->layout.padding_bottom;
@@ -418,45 +502,56 @@ static void flex_measure(vg_widget_t* self, float available_width, float availab
     float cross_size = 0;
     int visible_count = 0;
 
-    VG_FOREACH_VISIBLE_CHILD(self, child) {
+    VG_FOREACH_VISIBLE_CHILD(self, child)
+    {
         vg_widget_measure(child, available_width - padding_h, available_height - padding_v);
 
-        float child_main = is_row ?
-            child->measured_width + child->layout.margin_left + child->layout.margin_right :
-            child->measured_height + child->layout.margin_top + child->layout.margin_bottom;
-        float child_cross = is_row ?
-            child->measured_height + child->layout.margin_top + child->layout.margin_bottom :
-            child->measured_width + child->layout.margin_left + child->layout.margin_right;
+        float child_main =
+            is_row
+                ? child->measured_width + child->layout.margin_left + child->layout.margin_right
+                : child->measured_height + child->layout.margin_top + child->layout.margin_bottom;
+        float child_cross =
+            is_row ? child->measured_height + child->layout.margin_top + child->layout.margin_bottom
+                   : child->measured_width + child->layout.margin_left + child->layout.margin_right;
 
         main_size += child_main;
-        if (child_cross > cross_size) cross_size = child_cross;
+        if (child_cross > cross_size)
+            cross_size = child_cross;
         visible_count++;
     }
 
-    if (visible_count > 1) {
+    if (visible_count > 1)
+    {
         main_size += layout->gap * (visible_count - 1);
     }
 
-    if (is_row) {
+    if (is_row)
+    {
         self->measured_width = main_size + padding_h;
         self->measured_height = cross_size + padding_v;
-    } else {
+    }
+    else
+    {
         self->measured_width = cross_size + padding_h;
         self->measured_height = main_size + padding_v;
     }
 }
 
-static void flex_arrange(vg_widget_t* self, float x, float y, float width, float height) {
-    if (!self || !self->impl_data) return;
+static void flex_arrange(vg_widget_t *self, float x, float y, float width, float height)
+{
+    if (!self || !self->impl_data)
+        return;
 
     self->x = x;
     self->y = y;
     self->width = width;
     self->height = height;
 
-    vg_flex_layout_t* layout = (vg_flex_layout_t*)self->impl_data;
-    bool is_row = (layout->direction == VG_DIRECTION_ROW || layout->direction == VG_DIRECTION_ROW_REVERSE);
-    bool is_reverse = (layout->direction == VG_DIRECTION_ROW_REVERSE || layout->direction == VG_DIRECTION_COLUMN_REVERSE);
+    vg_flex_layout_t *layout = (vg_flex_layout_t *)self->impl_data;
+    bool is_row =
+        (layout->direction == VG_DIRECTION_ROW || layout->direction == VG_DIRECTION_ROW_REVERSE);
+    bool is_reverse = (layout->direction == VG_DIRECTION_ROW_REVERSE ||
+                       layout->direction == VG_DIRECTION_COLUMN_REVERSE);
 
     float content_x = self->layout.padding_left;
     float content_y = self->layout.padding_top;
@@ -471,14 +566,19 @@ static void flex_arrange(vg_widget_t* self, float x, float y, float width, float
     float total_flex = 0;
     int visible_count = 0;
 
-    VG_FOREACH_VISIBLE_CHILD(self, child) {
-        float child_main = is_row ?
-            child->measured_width + child->layout.margin_left + child->layout.margin_right :
-            child->measured_height + child->layout.margin_top + child->layout.margin_bottom;
+    VG_FOREACH_VISIBLE_CHILD(self, child)
+    {
+        float child_main =
+            is_row
+                ? child->measured_width + child->layout.margin_left + child->layout.margin_right
+                : child->measured_height + child->layout.margin_top + child->layout.margin_bottom;
 
-        if (child->layout.flex > 0) {
+        if (child->layout.flex > 0)
+        {
             total_flex += child->layout.flex;
-        } else {
+        }
+        else
+        {
             total_fixed += child_main;
         }
         visible_count++;
@@ -490,37 +590,50 @@ static void flex_arrange(vg_widget_t* self, float x, float y, float width, float
 
     float main_pos = is_reverse ? main_size : 0;
 
-    VG_FOREACH_VISIBLE_CHILD(self, child) {
+    VG_FOREACH_VISIBLE_CHILD(self, child)
+    {
         float child_main_size;
-        if (child->layout.flex > 0) {
+        if (child->layout.flex > 0)
+        {
             child_main_size = flex_unit * child->layout.flex;
-        } else {
+        }
+        else
+        {
             child_main_size = is_row ? child->measured_width : child->measured_height;
         }
 
         float child_cross_size;
-        if (layout->align_items == VG_ALIGN_STRETCH) {
+        if (layout->align_items == VG_ALIGN_STRETCH)
+        {
             child_cross_size = cross_size;
-        } else {
+        }
+        else
+        {
             child_cross_size = is_row ? child->measured_height : child->measured_width;
         }
 
         float child_x, child_y, child_w, child_h;
 
-        if (is_row) {
+        if (is_row)
+        {
             child_w = child_main_size;
             child_h = child_cross_size - child->layout.margin_top - child->layout.margin_bottom;
 
-            if (is_reverse) {
+            if (is_reverse)
+            {
                 main_pos -= child_main_size + child->layout.margin_right;
                 child_x = content_x + main_pos;
                 main_pos -= child->layout.margin_left + layout->gap;
-            } else {
+            }
+            else
+            {
                 child_x = content_x + main_pos + child->layout.margin_left;
-                main_pos += child_main_size + child->layout.margin_left + child->layout.margin_right + layout->gap;
+                main_pos += child_main_size + child->layout.margin_left +
+                            child->layout.margin_right + layout->gap;
             }
 
-            switch (layout->align_items) {
+            switch (layout->align_items)
+            {
                 case VG_ALIGN_START:
                     child_y = content_y + child->layout.margin_top;
                     break;
@@ -534,20 +647,27 @@ static void flex_arrange(vg_widget_t* self, float x, float y, float width, float
                     child_y = content_y + child->layout.margin_top;
                     break;
             }
-        } else {
+        }
+        else
+        {
             child_h = child_main_size;
             child_w = child_cross_size - child->layout.margin_left - child->layout.margin_right;
 
-            if (is_reverse) {
+            if (is_reverse)
+            {
                 main_pos -= child_main_size + child->layout.margin_bottom;
                 child_y = content_y + main_pos;
                 main_pos -= child->layout.margin_top + layout->gap;
-            } else {
+            }
+            else
+            {
                 child_y = content_y + main_pos + child->layout.margin_top;
-                main_pos += child_main_size + child->layout.margin_top + child->layout.margin_bottom + layout->gap;
+                main_pos += child_main_size + child->layout.margin_top +
+                            child->layout.margin_bottom + layout->gap;
             }
 
-            switch (layout->align_items) {
+            switch (layout->align_items)
+            {
                 case VG_ALIGN_START:
                     child_x = content_x + child->layout.margin_left;
                     break;
@@ -571,14 +691,17 @@ static void flex_arrange(vg_widget_t* self, float x, float y, float width, float
 // Layout Engine Entry Points
 //=============================================================================
 
-void vg_layout_vbox(vg_widget_t* container, float width, float height) {
+void vg_layout_vbox(vg_widget_t *container, float width, float height)
+{
     vbox_arrange(container, container->x, container->y, width, height);
 }
 
-void vg_layout_hbox(vg_widget_t* container, float width, float height) {
+void vg_layout_hbox(vg_widget_t *container, float width, float height)
+{
     hbox_arrange(container, container->x, container->y, width, height);
 }
 
-void vg_layout_flex(vg_widget_t* container, float width, float height) {
+void vg_layout_flex(vg_widget_t *container, float width, float height)
+{
     flex_arrange(container, container->x, container->y, width, height);
 }

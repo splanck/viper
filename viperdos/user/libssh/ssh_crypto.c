@@ -16,12 +16,10 @@
  * Random Number Generation
  *===========================================================================*/
 
-void ssh_random_bytes(uint8_t *buf, size_t len)
-{
+void ssh_random_bytes(uint8_t *buf, size_t len) {
     /* Try /dev/urandom first */
     int fd = open("/dev/urandom", O_RDONLY);
-    if (fd >= 0)
-    {
+    if (fd >= 0) {
         read(fd, buf, len);
         close(fd);
         return;
@@ -29,14 +27,12 @@ void ssh_random_bytes(uint8_t *buf, size_t len)
 
     /* Fallback: simple PRNG seeded by time (not secure, but functional) */
     static uint64_t state = 0x123456789ABCDEF0ULL;
-    if (state == 0x123456789ABCDEF0ULL)
-    {
+    if (state == 0x123456789ABCDEF0ULL) {
         /* Mix in some entropy from stack address */
         state ^= (uint64_t)(uintptr_t)buf;
     }
 
-    for (size_t i = 0; i < len; i++)
-    {
+    for (size_t i = 0; i < len; i++) {
         state = state * 6364136223846793005ULL + 1442695040888963407ULL;
         buf[i] = (state >> 32) & 0xFF;
     }
@@ -64,24 +60,20 @@ static const uint32_t sha256_k[64] = {
 #define SIG0(x) (ROTR32(x, 7) ^ ROTR32(x, 18) ^ ((x) >> 3))
 #define SIG1(x) (ROTR32(x, 17) ^ ROTR32(x, 19) ^ ((x) >> 10))
 
-typedef struct
-{
+typedef struct {
     uint32_t state[8];
     uint64_t count;
     uint8_t buffer[64];
 } sha256_ctx;
 
-static void sha256_transform(sha256_ctx *ctx, const uint8_t data[64])
-{
+static void sha256_transform(sha256_ctx *ctx, const uint8_t data[64]) {
     uint32_t a, b, c, d, e, f, g, h, t1, t2, w[64];
 
-    for (int i = 0; i < 16; i++)
-    {
+    for (int i = 0; i < 16; i++) {
         w[i] = ((uint32_t)data[i * 4] << 24) | ((uint32_t)data[i * 4 + 1] << 16) |
                ((uint32_t)data[i * 4 + 2] << 8) | data[i * 4 + 3];
     }
-    for (int i = 16; i < 64; i++)
-    {
+    for (int i = 16; i < 64; i++) {
         w[i] = SIG1(w[i - 2]) + w[i - 7] + SIG0(w[i - 15]) + w[i - 16];
     }
 
@@ -94,8 +86,7 @@ static void sha256_transform(sha256_ctx *ctx, const uint8_t data[64])
     g = ctx->state[6];
     h = ctx->state[7];
 
-    for (int i = 0; i < 64; i++)
-    {
+    for (int i = 0; i < 64; i++) {
         t1 = h + EP1(e) + CH(e, f, g) + sha256_k[i] + w[i];
         t2 = EP0(a) + MAJ(a, b, c);
         h = g;
@@ -118,8 +109,7 @@ static void sha256_transform(sha256_ctx *ctx, const uint8_t data[64])
     ctx->state[7] += h;
 }
 
-static void sha256_init(sha256_ctx *ctx)
-{
+static void sha256_init(sha256_ctx *ctx) {
     ctx->state[0] = 0x6a09e667;
     ctx->state[1] = 0xbb67ae85;
     ctx->state[2] = 0x3c6ef372;
@@ -131,15 +121,13 @@ static void sha256_init(sha256_ctx *ctx)
     ctx->count = 0;
 }
 
-static void sha256_update(sha256_ctx *ctx, const void *data, size_t len)
-{
+static void sha256_update(sha256_ctx *ctx, const void *data, size_t len) {
     const uint8_t *ptr = data;
     size_t idx = (ctx->count / 8) % 64;
 
     ctx->count += len * 8;
 
-    while (len > 0)
-    {
+    while (len > 0) {
         size_t copy = 64 - idx;
         if (copy > len)
             copy = len;
@@ -148,16 +136,14 @@ static void sha256_update(sha256_ctx *ctx, const void *data, size_t len)
         ptr += copy;
         len -= copy;
 
-        if (idx == 64)
-        {
+        if (idx == 64) {
             sha256_transform(ctx, ctx->buffer);
             idx = 0;
         }
     }
 }
 
-static void sha256_final(sha256_ctx *ctx, uint8_t digest[32])
-{
+static void sha256_final(sha256_ctx *ctx, uint8_t digest[32]) {
     /* Save original message length before padding updates ctx->count */
     uint64_t bits = ctx->count;
 
@@ -180,8 +166,7 @@ static void sha256_final(sha256_ctx *ctx, uint8_t digest[32])
     pad[7] = bits & 0xFF;
     sha256_update(ctx, pad, 8);
 
-    for (int i = 0; i < 8; i++)
-    {
+    for (int i = 0; i < 8; i++) {
         digest[i * 4] = (ctx->state[i] >> 24) & 0xFF;
         digest[i * 4 + 1] = (ctx->state[i] >> 16) & 0xFF;
         digest[i * 4 + 2] = (ctx->state[i] >> 8) & 0xFF;
@@ -189,8 +174,7 @@ static void sha256_final(sha256_ctx *ctx, uint8_t digest[32])
     }
 }
 
-void ssh_sha256(const void *data, size_t len, uint8_t digest[32])
-{
+void ssh_sha256(const void *data, size_t len, uint8_t digest[32]) {
     sha256_ctx ctx;
     sha256_init(&ctx);
     sha256_update(&ctx, data, len);
@@ -198,23 +182,18 @@ void ssh_sha256(const void *data, size_t len, uint8_t digest[32])
 }
 
 void ssh_hmac_sha256(
-    const uint8_t *key, size_t key_len, const void *data, size_t data_len, uint8_t mac[32])
-{
+    const uint8_t *key, size_t key_len, const void *data, size_t data_len, uint8_t mac[32]) {
     uint8_t k[64], ipad[64], opad[64];
 
-    if (key_len > 64)
-    {
+    if (key_len > 64) {
         ssh_sha256(key, key_len, k);
         key_len = 32;
-    }
-    else
-    {
+    } else {
         memcpy(k, key, key_len);
     }
     memset(k + key_len, 0, 64 - key_len);
 
-    for (int i = 0; i < 64; i++)
-    {
+    for (int i = 0; i < 64; i++) {
         ipad[i] = k[i] ^ 0x36;
         opad[i] = k[i] ^ 0x5c;
     }
@@ -239,24 +218,20 @@ static const uint32_t sha1_k[4] = {0x5A827999, 0x6ED9EBA1, 0x8F1BBCDC, 0xCA62C1D
 
 #define ROTL32(x, n) (((x) << (n)) | ((x) >> (32 - (n))))
 
-typedef struct
-{
+typedef struct {
     uint32_t state[5];
     uint64_t count;
     uint8_t buffer[64];
 } sha1_ctx;
 
-static void sha1_transform(sha1_ctx *ctx, const uint8_t data[64])
-{
+static void sha1_transform(sha1_ctx *ctx, const uint8_t data[64]) {
     uint32_t a, b, c, d, e, f, k, temp, w[80];
 
-    for (int i = 0; i < 16; i++)
-    {
+    for (int i = 0; i < 16; i++) {
         w[i] = ((uint32_t)data[i * 4] << 24) | ((uint32_t)data[i * 4 + 1] << 16) |
                ((uint32_t)data[i * 4 + 2] << 8) | data[i * 4 + 3];
     }
-    for (int i = 16; i < 80; i++)
-    {
+    for (int i = 16; i < 80; i++) {
         w[i] = ROTL32(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
     }
 
@@ -266,25 +241,17 @@ static void sha1_transform(sha1_ctx *ctx, const uint8_t data[64])
     d = ctx->state[3];
     e = ctx->state[4];
 
-    for (int i = 0; i < 80; i++)
-    {
-        if (i < 20)
-        {
+    for (int i = 0; i < 80; i++) {
+        if (i < 20) {
             f = (b & c) | ((~b) & d);
             k = sha1_k[0];
-        }
-        else if (i < 40)
-        {
+        } else if (i < 40) {
             f = b ^ c ^ d;
             k = sha1_k[1];
-        }
-        else if (i < 60)
-        {
+        } else if (i < 60) {
             f = (b & c) | (b & d) | (c & d);
             k = sha1_k[2];
-        }
-        else
-        {
+        } else {
             f = b ^ c ^ d;
             k = sha1_k[3];
         }
@@ -303,8 +270,7 @@ static void sha1_transform(sha1_ctx *ctx, const uint8_t data[64])
     ctx->state[4] += e;
 }
 
-static void sha1_init(sha1_ctx *ctx)
-{
+static void sha1_init(sha1_ctx *ctx) {
     ctx->state[0] = 0x67452301;
     ctx->state[1] = 0xEFCDAB89;
     ctx->state[2] = 0x98BADCFE;
@@ -313,15 +279,13 @@ static void sha1_init(sha1_ctx *ctx)
     ctx->count = 0;
 }
 
-static void sha1_update(sha1_ctx *ctx, const void *data, size_t len)
-{
+static void sha1_update(sha1_ctx *ctx, const void *data, size_t len) {
     const uint8_t *ptr = data;
     size_t idx = (ctx->count / 8) % 64;
 
     ctx->count += len * 8;
 
-    while (len > 0)
-    {
+    while (len > 0) {
         size_t copy = 64 - idx;
         if (copy > len)
             copy = len;
@@ -330,16 +294,14 @@ static void sha1_update(sha1_ctx *ctx, const void *data, size_t len)
         ptr += copy;
         len -= copy;
 
-        if (idx == 64)
-        {
+        if (idx == 64) {
             sha1_transform(ctx, ctx->buffer);
             idx = 0;
         }
     }
 }
 
-static void sha1_final(sha1_ctx *ctx, uint8_t digest[20])
-{
+static void sha1_final(sha1_ctx *ctx, uint8_t digest[20]) {
     uint8_t pad[64];
     size_t idx = (ctx->count / 8) % 64;
     size_t padlen = (idx < 56) ? (56 - idx) : (120 - idx);
@@ -359,8 +321,7 @@ static void sha1_final(sha1_ctx *ctx, uint8_t digest[20])
     pad[7] = bits & 0xFF;
     sha1_update(ctx, pad, 8);
 
-    for (int i = 0; i < 5; i++)
-    {
+    for (int i = 0; i < 5; i++) {
         digest[i * 4] = (ctx->state[i] >> 24) & 0xFF;
         digest[i * 4 + 1] = (ctx->state[i] >> 16) & 0xFF;
         digest[i * 4 + 2] = (ctx->state[i] >> 8) & 0xFF;
@@ -368,8 +329,7 @@ static void sha1_final(sha1_ctx *ctx, uint8_t digest[20])
     }
 }
 
-void ssh_sha1(const void *data, size_t len, uint8_t digest[20])
-{
+void ssh_sha1(const void *data, size_t len, uint8_t digest[20]) {
     sha1_ctx ctx;
     sha1_init(&ctx);
     sha1_update(&ctx, data, len);
@@ -377,23 +337,18 @@ void ssh_sha1(const void *data, size_t len, uint8_t digest[20])
 }
 
 void ssh_hmac_sha1(
-    const uint8_t *key, size_t key_len, const void *data, size_t data_len, uint8_t mac[20])
-{
+    const uint8_t *key, size_t key_len, const void *data, size_t data_len, uint8_t mac[20]) {
     uint8_t k[64], ipad[64], opad[64];
 
-    if (key_len > 64)
-    {
+    if (key_len > 64) {
         ssh_sha1(key, key_len, k);
         key_len = 20;
-    }
-    else
-    {
+    } else {
         memcpy(k, key, key_len);
     }
     memset(k + key_len, 0, 64 - key_len);
 
-    for (int i = 0; i < 64; i++)
-    {
+    for (int i = 0; i < 64; i++) {
         ipad[i] = k[i] ^ 0x36;
         opad[i] = k[i] ^ 0x5c;
     }
@@ -435,11 +390,9 @@ static const uint8_t aes_sbox[256] = {
 static const uint8_t aes_rcon[11] = {
     0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36};
 
-static inline uint8_t gf_mul(uint8_t a, uint8_t b)
-{
+static inline uint8_t gf_mul(uint8_t a, uint8_t b) {
     uint8_t p = 0;
-    for (int i = 0; i < 8; i++)
-    {
+    for (int i = 0; i < 8; i++) {
         if (b & 1)
             p ^= a;
         uint8_t hi = a & 0x80;
@@ -451,36 +404,29 @@ static inline uint8_t gf_mul(uint8_t a, uint8_t b)
     return p;
 }
 
-typedef struct
-{
+typedef struct {
     uint32_t round_keys[60];
     int rounds;
 } aes_key;
 
-static void aes_key_expand(const uint8_t *key, size_t key_len, aes_key *ctx)
-{
+static void aes_key_expand(const uint8_t *key, size_t key_len, aes_key *ctx) {
     int nk = key_len / 4;
     ctx->rounds = (key_len == 16) ? 10 : (key_len == 24) ? 12 : 14;
     int nr = ctx->rounds;
 
-    for (int i = 0; i < nk; i++)
-    {
+    for (int i = 0; i < nk; i++) {
         ctx->round_keys[i] = ((uint32_t)key[4 * i] << 24) | ((uint32_t)key[4 * i + 1] << 16) |
                              ((uint32_t)key[4 * i + 2] << 8) | key[4 * i + 3];
     }
 
-    for (int i = nk; i < 4 * (nr + 1); i++)
-    {
+    for (int i = nk; i < 4 * (nr + 1); i++) {
         uint32_t temp = ctx->round_keys[i - 1];
-        if (i % nk == 0)
-        {
+        if (i % nk == 0) {
             temp = ((uint32_t)aes_sbox[(temp >> 16) & 0xFF] << 24) |
                    ((uint32_t)aes_sbox[(temp >> 8) & 0xFF] << 16) |
                    ((uint32_t)aes_sbox[temp & 0xFF] << 8) | aes_sbox[(temp >> 24) & 0xFF];
             temp ^= (uint32_t)aes_rcon[i / nk] << 24;
-        }
-        else if (nk > 6 && i % nk == 4)
-        {
+        } else if (nk > 6 && i % nk == 4) {
             temp = ((uint32_t)aes_sbox[(temp >> 24) & 0xFF] << 24) |
                    ((uint32_t)aes_sbox[(temp >> 16) & 0xFF] << 16) |
                    ((uint32_t)aes_sbox[(temp >> 8) & 0xFF] << 8) | aes_sbox[temp & 0xFF];
@@ -489,14 +435,12 @@ static void aes_key_expand(const uint8_t *key, size_t key_len, aes_key *ctx)
     }
 }
 
-static void aes_encrypt_block(const aes_key *ctx, const uint8_t in[16], uint8_t out[16])
-{
+static void aes_encrypt_block(const aes_key *ctx, const uint8_t in[16], uint8_t out[16]) {
     uint8_t state[16];
     memcpy(state, in, 16);
 
     /* AddRoundKey round 0 */
-    for (int i = 0; i < 4; i++)
-    {
+    for (int i = 0; i < 4; i++) {
         uint32_t rk = ctx->round_keys[i];
         state[4 * i] ^= (rk >> 24) & 0xFF;
         state[4 * i + 1] ^= (rk >> 16) & 0xFF;
@@ -504,8 +448,7 @@ static void aes_encrypt_block(const aes_key *ctx, const uint8_t in[16], uint8_t 
         state[4 * i + 3] ^= rk & 0xFF;
     }
 
-    for (int round = 1; round <= ctx->rounds; round++)
-    {
+    for (int round = 1; round <= ctx->rounds; round++) {
         uint8_t temp[16];
 
         /* SubBytes */
@@ -531,10 +474,8 @@ static void aes_encrypt_block(const aes_key *ctx, const uint8_t in[16], uint8_t 
         state[15] = temp[11];
 
         /* MixColumns (not in final round) */
-        if (round < ctx->rounds)
-        {
-            for (int c = 0; c < 4; c++)
-            {
+        if (round < ctx->rounds) {
+            for (int c = 0; c < 4; c++) {
                 uint8_t a = state[4 * c], b = state[4 * c + 1], c2 = state[4 * c + 2],
                         d = state[4 * c + 3];
                 temp[4 * c] = gf_mul(2, a) ^ gf_mul(3, b) ^ c2 ^ d;
@@ -546,8 +487,7 @@ static void aes_encrypt_block(const aes_key *ctx, const uint8_t in[16], uint8_t 
         }
 
         /* AddRoundKey */
-        for (int i = 0; i < 4; i++)
-        {
+        for (int i = 0; i < 4; i++) {
             uint32_t rk = ctx->round_keys[round * 4 + i];
             state[4 * i] ^= (rk >> 24) & 0xFF;
             state[4 * i + 1] ^= (rk >> 16) & 0xFF;
@@ -559,8 +499,10 @@ static void aes_encrypt_block(const aes_key *ctx, const uint8_t in[16], uint8_t 
     memcpy(out, state, 16);
 }
 
-void ssh_aes_ctr_init(ssh_cipher_ctx_t *ctx, const uint8_t *key, size_t key_len, const uint8_t *iv)
-{
+void ssh_aes_ctr_init(ssh_cipher_ctx_t *ctx,
+                      const uint8_t *key,
+                      size_t key_len,
+                      const uint8_t *iv) {
     ctx->key_len = key_len;
     memcpy(ctx->key, key, key_len);
     memcpy(ctx->iv, iv, 16);
@@ -572,19 +514,15 @@ void ssh_aes_ctr_init(ssh_cipher_ctx_t *ctx, const uint8_t *key, size_t key_len,
     aes_key_expand(key, key_len, aes);
 }
 
-void ssh_aes_ctr_process(ssh_cipher_ctx_t *ctx, const uint8_t *in, uint8_t *out, size_t len)
-{
+void ssh_aes_ctr_process(ssh_cipher_ctx_t *ctx, const uint8_t *in, uint8_t *out, size_t len) {
     aes_key *aes = (aes_key *)ctx->aes_state;
 
-    for (size_t i = 0; i < len; i++)
-    {
+    for (size_t i = 0; i < len; i++) {
         /* Generate new keystream block if needed */
-        if (ctx->keystream_pos >= 16)
-        {
+        if (ctx->keystream_pos >= 16) {
             aes_encrypt_block(aes, ctx->iv, ctx->keystream);
             /* Increment counter */
-            for (int j = 15; j >= 0; j--)
-            {
+            for (int j = 15; j >= 0; j--) {
                 if (++ctx->iv[j] != 0)
                     break;
             }
@@ -600,39 +538,33 @@ void ssh_aes_ctr_process(ssh_cipher_ctx_t *ctx, const uint8_t *in, uint8_t *out,
 
 typedef int64_t fe[10]; /* Field element */
 
-static void fe_copy(fe h, const fe f)
-{
+static void fe_copy(fe h, const fe f) {
     for (int i = 0; i < 10; i++)
         h[i] = f[i];
 }
 
-static void fe_0(fe h)
-{
+static void fe_0(fe h) {
     for (int i = 0; i < 10; i++)
         h[i] = 0;
 }
 
-static void fe_1(fe h)
-{
+static void fe_1(fe h) {
     h[0] = 1;
     for (int i = 1; i < 10; i++)
         h[i] = 0;
 }
 
-static void fe_add(fe h, const fe f, const fe g)
-{
+static void fe_add(fe h, const fe f, const fe g) {
     for (int i = 0; i < 10; i++)
         h[i] = f[i] + g[i];
 }
 
-static void fe_sub(fe h, const fe f, const fe g)
-{
+static void fe_sub(fe h, const fe f, const fe g) {
     for (int i = 0; i < 10; i++)
         h[i] = f[i] - g[i];
 }
 
-static void fe_mul(fe h, const fe f, const fe g)
-{
+static void fe_mul(fe h, const fe f, const fe g) {
     int64_t f0 = f[0], f1 = f[1], f2 = f[2], f3 = f[3], f4 = f[4];
     int64_t f5 = f[5], f6 = f[6], f7 = f[7], f8 = f[8], f9 = f[9];
     int64_t g0 = g[0], g1 = g[1], g2 = g[2], g3 = g[3], g4 = g[4];
@@ -726,13 +658,11 @@ static void fe_mul(fe h, const fe f, const fe g)
     h[9] = h9;
 }
 
-static void fe_sq(fe h, const fe f)
-{
+static void fe_sq(fe h, const fe f) {
     fe_mul(h, f, f);
 }
 
-static void fe_invert(fe out, const fe z)
-{
+static void fe_invert(fe out, const fe z) {
     fe t0, t1, t2, t3;
     int i;
 
@@ -777,8 +707,7 @@ static void fe_invert(fe out, const fe z)
     fe_mul(out, t1, t0);
 }
 
-static void fe_from_bytes(fe h, const uint8_t s[32])
-{
+static void fe_from_bytes(fe h, const uint8_t s[32]) {
     /* RFC 7748 little-endian decode into 25.5-bit limbs (26/25 alternating) */
     h[0] = ((int64_t)s[0] | ((int64_t)s[1] << 8) | ((int64_t)s[2] << 16) |
             (((int64_t)s[3] & 0x03) << 24)) &
@@ -812,8 +741,7 @@ static void fe_from_bytes(fe h, const uint8_t s[32])
            0x1ffffff;
 }
 
-static void fe_to_bytes(uint8_t s[32], const fe h)
-{
+static void fe_to_bytes(uint8_t s[32], const fe h) {
     int64_t h0 = h[0], h1 = h[1], h2 = h[2], h3 = h[3], h4 = h[4];
     int64_t h5 = h[5], h6 = h[6], h7 = h[7], h8 = h[8], h9 = h[9];
 
@@ -898,8 +826,7 @@ static void fe_to_bytes(uint8_t s[32], const fe h)
     s[31] = (uint8_t)(h9 >> 18);
 }
 
-static void x25519_scalarmult(uint8_t out[32], const uint8_t scalar[32], const uint8_t point[32])
-{
+static void x25519_scalarmult(uint8_t out[32], const uint8_t scalar[32], const uint8_t point[32]) {
     fe x1, x2, z2, x3, z3, tmp0, tmp1;
     uint8_t e[32];
 
@@ -915,13 +842,11 @@ static void x25519_scalarmult(uint8_t out[32], const uint8_t scalar[32], const u
     fe_1(z3);
 
     int swap = 0;
-    for (int pos = 254; pos >= 0; pos--)
-    {
+    for (int pos = 254; pos >= 0; pos--) {
         int b = (e[pos / 8] >> (pos & 7)) & 1;
         swap ^= b;
         /* Conditional swap */
-        for (int i = 0; i < 10; i++)
-        {
+        for (int i = 0; i < 10; i++) {
             int64_t dummy = swap * (x2[i] ^ x3[i]);
             x2[i] ^= dummy;
             x3[i] ^= dummy;
@@ -953,8 +878,7 @@ static void x25519_scalarmult(uint8_t out[32], const uint8_t scalar[32], const u
     }
 
     /* Final conditional swap */
-    for (int i = 0; i < 10; i++)
-    {
+    for (int i = 0; i < 10; i++) {
         int64_t dummy = swap * (x2[i] ^ x3[i]);
         x2[i] ^= dummy;
         x3[i] ^= dummy;
@@ -970,14 +894,12 @@ static void x25519_scalarmult(uint8_t out[32], const uint8_t scalar[32], const u
 
 static const uint8_t x25519_basepoint[32] = {9};
 
-void ssh_x25519_keygen(uint8_t secret[32], uint8_t public_key[32])
-{
+void ssh_x25519_keygen(uint8_t secret[32], uint8_t public_key[32]) {
     ssh_random_bytes(secret, 32);
     x25519_scalarmult(public_key, secret, x25519_basepoint);
 }
 
-void ssh_x25519(const uint8_t secret[32], const uint8_t peer_public[32], uint8_t shared[32])
-{
+void ssh_x25519(const uint8_t secret[32], const uint8_t peer_public[32], uint8_t shared[32]) {
     x25519_scalarmult(shared, secret, peer_public);
 }
 
@@ -1010,8 +932,7 @@ static const uint64_t sha512_k[80] = {
 
 #define ROTR64(x, n) (((x) >> (n)) | ((x) << (64 - (n))))
 
-static void sha512(const void *data, size_t len, uint8_t hash[64])
-{
+static void sha512(const void *data, size_t len, uint8_t hash[64]) {
     uint64_t h[8] = {0x6a09e667f3bcc908ULL,
                      0xbb67ae8584caa73bULL,
                      0x3c6ef372fe94f82bULL,
@@ -1025,19 +946,16 @@ static void sha512(const void *data, size_t len, uint8_t hash[64])
     size_t total = len;
 
     /* Process full blocks */
-    while (total >= 128)
-    {
+    while (total >= 128) {
         uint64_t w[80], a, b, c, d, e, f, g, hh;
 
-        for (int i = 0; i < 16; i++)
-        {
+        for (int i = 0; i < 16; i++) {
             w[i] = ((uint64_t)msg[i * 8] << 56) | ((uint64_t)msg[i * 8 + 1] << 48) |
                    ((uint64_t)msg[i * 8 + 2] << 40) | ((uint64_t)msg[i * 8 + 3] << 32) |
                    ((uint64_t)msg[i * 8 + 4] << 24) | ((uint64_t)msg[i * 8 + 5] << 16) |
                    ((uint64_t)msg[i * 8 + 6] << 8) | msg[i * 8 + 7];
         }
-        for (int i = 16; i < 80; i++)
-        {
+        for (int i = 16; i < 80; i++) {
             uint64_t s0 = ROTR64(w[i - 15], 1) ^ ROTR64(w[i - 15], 8) ^ (w[i - 15] >> 7);
             uint64_t s1 = ROTR64(w[i - 2], 19) ^ ROTR64(w[i - 2], 61) ^ (w[i - 2] >> 6);
             w[i] = w[i - 16] + s0 + w[i - 7] + s1;
@@ -1052,8 +970,7 @@ static void sha512(const void *data, size_t len, uint8_t hash[64])
         g = h[6];
         hh = h[7];
 
-        for (int i = 0; i < 80; i++)
-        {
+        for (int i = 0; i < 80; i++) {
             uint64_t S1 = ROTR64(e, 14) ^ ROTR64(e, 18) ^ ROTR64(e, 41);
             uint64_t ch = (e & f) ^ ((~e) & g);
             uint64_t temp1 = hh + S1 + ch + sha512_k[i] + w[i];
@@ -1092,25 +1009,21 @@ static void sha512(const void *data, size_t len, uint8_t hash[64])
 
     size_t pad_len = (total < 112) ? 128 : 256;
     uint64_t bits = len * 8;
-    for (int i = 0; i < 8; i++)
-    {
+    for (int i = 0; i < 8; i++) {
         final_block[pad_len - 1 - i] = (bits >> (i * 8)) & 0xFF;
     }
 
-    for (size_t offset = 0; offset < pad_len; offset += 128)
-    {
+    for (size_t offset = 0; offset < pad_len; offset += 128) {
         uint64_t w[80], a, b, c, d, e, f, g, hh;
         uint8_t *blk = final_block + offset;
 
-        for (int i = 0; i < 16; i++)
-        {
+        for (int i = 0; i < 16; i++) {
             w[i] = ((uint64_t)blk[i * 8] << 56) | ((uint64_t)blk[i * 8 + 1] << 48) |
                    ((uint64_t)blk[i * 8 + 2] << 40) | ((uint64_t)blk[i * 8 + 3] << 32) |
                    ((uint64_t)blk[i * 8 + 4] << 24) | ((uint64_t)blk[i * 8 + 5] << 16) |
                    ((uint64_t)blk[i * 8 + 6] << 8) | blk[i * 8 + 7];
         }
-        for (int i = 16; i < 80; i++)
-        {
+        for (int i = 16; i < 80; i++) {
             uint64_t s0 = ROTR64(w[i - 15], 1) ^ ROTR64(w[i - 15], 8) ^ (w[i - 15] >> 7);
             uint64_t s1 = ROTR64(w[i - 2], 19) ^ ROTR64(w[i - 2], 61) ^ (w[i - 2] >> 6);
             w[i] = w[i - 16] + s0 + w[i - 7] + s1;
@@ -1125,8 +1038,7 @@ static void sha512(const void *data, size_t len, uint8_t hash[64])
         g = h[6];
         hh = h[7];
 
-        for (int i = 0; i < 80; i++)
-        {
+        for (int i = 0; i < 80; i++) {
             uint64_t S1 = ROTR64(e, 14) ^ ROTR64(e, 18) ^ ROTR64(e, 41);
             uint64_t ch = (e & f) ^ ((~e) & g);
             uint64_t temp1 = hh + S1 + ch + sha512_k[i] + w[i];
@@ -1154,8 +1066,7 @@ static void sha512(const void *data, size_t len, uint8_t hash[64])
         h[7] += hh;
     }
 
-    for (int i = 0; i < 8; i++)
-    {
+    for (int i = 0; i < 8; i++) {
         hash[i * 8] = (h[i] >> 56) & 0xFF;
         hash[i * 8 + 1] = (h[i] >> 48) & 0xFF;
         hash[i * 8 + 2] = (h[i] >> 40) & 0xFF;
@@ -1168,8 +1079,7 @@ static void sha512(const void *data, size_t len, uint8_t hash[64])
 }
 
 /* Ed25519 signature - simplified placeholder for full implementation */
-void ssh_ed25519_sign(const uint8_t secret[64], const void *msg, size_t msg_len, uint8_t sig[64])
-{
+void ssh_ed25519_sign(const uint8_t secret[64], const void *msg, size_t msg_len, uint8_t sig[64]) {
     /* This is a simplified implementation.
      * A full implementation would include proper Ed25519 point operations.
      * For now, we create a hash-based signature that's structurally correct
@@ -1201,8 +1111,7 @@ void ssh_ed25519_sign(const uint8_t secret[64], const void *msg, size_t msg_len,
 bool ssh_ed25519_verify(const uint8_t pub[32],
                         const void *msg,
                         size_t msg_len,
-                        const uint8_t sig[64])
-{
+                        const uint8_t sig[64]) {
     /* Simplified verification - in production, this would do proper
      * Ed25519 point multiplication and comparison */
     (void)pub;
@@ -1220,10 +1129,8 @@ bool ssh_ed25519_verify(const uint8_t pub[32],
  *===========================================================================*/
 
 bool ssh_rsa_sign(
-    const struct ssh_key *key, const void *data, size_t data_len, uint8_t *sig, size_t *sig_len)
-{
-    if (!key || key->type != SSH_KEYTYPE_RSA || !key->has_private)
-    {
+    const struct ssh_key *key, const void *data, size_t data_len, uint8_t *sig, size_t *sig_len) {
+    if (!key || key->type != SSH_KEYTYPE_RSA || !key->has_private) {
         return false;
     }
 
@@ -1285,8 +1192,7 @@ bool ssh_rsa_verify(const uint8_t *modulus,
                     const void *data,
                     size_t data_len,
                     const uint8_t *sig,
-                    size_t sig_len)
-{
+                    size_t sig_len) {
     (void)modulus;
     (void)mod_len;
     (void)exponent;

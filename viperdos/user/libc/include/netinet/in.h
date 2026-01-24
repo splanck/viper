@@ -4,51 +4,45 @@
 #include "../sys/socket.h"
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /* Internet port type */
-    typedef unsigned short in_port_t;
+/* Internet port type */
+typedef unsigned short in_port_t;
 
-    /* Internet address type */
-    typedef unsigned int in_addr_t;
+/* Internet address type */
+typedef unsigned int in_addr_t;
 
-    /* IPv4 address structure */
-    struct in_addr
-    {
-        in_addr_t s_addr;
+/* IPv4 address structure */
+struct in_addr {
+    in_addr_t s_addr;
+};
+
+/* IPv4 socket address */
+struct sockaddr_in {
+    unsigned short sin_family; /* AF_INET */
+    in_port_t sin_port;        /* Port number (network byte order) */
+    struct in_addr sin_addr;   /* IP address */
+    unsigned char sin_zero[8]; /* Padding */
+};
+
+/* IPv6 address structure */
+struct in6_addr {
+    union {
+        unsigned char s6_addr[16];
+        unsigned short s6_addr16[8];
+        unsigned int s6_addr32[4];
     };
+};
 
-    /* IPv4 socket address */
-    struct sockaddr_in
-    {
-        unsigned short sin_family; /* AF_INET */
-        in_port_t sin_port;        /* Port number (network byte order) */
-        struct in_addr sin_addr;   /* IP address */
-        unsigned char sin_zero[8]; /* Padding */
-    };
-
-    /* IPv6 address structure */
-    struct in6_addr
-    {
-        union
-        {
-            unsigned char s6_addr[16];
-            unsigned short s6_addr16[8];
-            unsigned int s6_addr32[4];
-        };
-    };
-
-    /* IPv6 socket address */
-    struct sockaddr_in6
-    {
-        unsigned short sin6_family; /* AF_INET6 */
-        in_port_t sin6_port;        /* Port number */
-        unsigned int sin6_flowinfo; /* IPv6 flow info */
-        struct in6_addr sin6_addr;  /* IPv6 address */
-        unsigned int sin6_scope_id; /* Scope ID */
-    };
+/* IPv6 socket address */
+struct sockaddr_in6 {
+    unsigned short sin6_family; /* AF_INET6 */
+    in_port_t sin6_port;        /* Port number */
+    unsigned int sin6_flowinfo; /* IPv6 flow info */
+    struct in6_addr sin6_addr;  /* IPv6 address */
+    unsigned int sin6_scope_id; /* Scope ID */
+};
 
 /* Special IPv4 addresses */
 #define INADDR_ANY ((in_addr_t)0x00000000)
@@ -56,9 +50,9 @@ extern "C"
 #define INADDR_NONE ((in_addr_t)0xffffffff)
 #define INADDR_LOOPBACK ((in_addr_t)0x7f000001) /* 127.0.0.1 */
 
-    /* IPv6 in6addr constants */
-    extern const struct in6_addr in6addr_any;
-    extern const struct in6_addr in6addr_loopback;
+/* IPv6 in6addr constants */
+extern const struct in6_addr in6addr_any;
+extern const struct in6_addr in6addr_loopback;
 
 #define IN6ADDR_ANY_INIT                                                                           \
     {                                                                                              \
@@ -124,24 +118,22 @@ extern "C"
 #define TCP_KEEPINTVL 5
 #define TCP_KEEPCNT 6
 
-    /* Multicast group request */
-    struct ip_mreq
-    {
-        struct in_addr imr_multiaddr; /* Multicast group address */
-        struct in_addr imr_interface; /* Interface address */
-    };
+/* Multicast group request */
+struct ip_mreq {
+    struct in_addr imr_multiaddr; /* Multicast group address */
+    struct in_addr imr_interface; /* Interface address */
+};
 
-    struct ipv6_mreq
-    {
-        struct in6_addr ipv6mr_multiaddr; /* IPv6 multicast address */
-        unsigned int ipv6mr_interface;    /* Interface index */
-    };
+struct ipv6_mreq {
+    struct in6_addr ipv6mr_multiaddr; /* IPv6 multicast address */
+    unsigned int ipv6mr_interface;    /* Interface index */
+};
 
-    /* Byte order conversion functions */
-    unsigned short htons(unsigned short hostshort);
-    unsigned short ntohs(unsigned short netshort);
-    unsigned int htonl(unsigned int hostlong);
-    unsigned int ntohl(unsigned int netlong);
+/* Byte order conversion functions */
+unsigned short htons(unsigned short hostshort);
+unsigned short ntohs(unsigned short netshort);
+unsigned int htonl(unsigned int hostlong);
+unsigned int ntohl(unsigned int netlong);
 
 #ifdef __cplusplus
 }

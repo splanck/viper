@@ -17,8 +17,7 @@
  * allows characters to be queued between polls and provides a consistent
  * interface regardless of input source.
  */
-namespace console
-{
+namespace console {
 
 /** @brief Size of the console input ring buffer. */
 constexpr usize INPUT_BUFFER_SIZE = 1024;

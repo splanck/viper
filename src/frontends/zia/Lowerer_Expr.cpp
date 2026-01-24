@@ -175,9 +175,11 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
     auto slotIt = slots_.find(expr->name);
     if (slotIt != slots_.end())
     {
-        // Use localTypes_ first (set for parameters in generic method bodies), fall back to sema_.typeOf()
+        // Use localTypes_ first (set for parameters in generic method bodies), fall back to
+        // sema_.typeOf()
         auto localTypeIt = localTypes_.find(expr->name);
-        TypeRef type = (localTypeIt != localTypes_.end()) ? localTypeIt->second : sema_.typeOf(expr);
+        TypeRef type =
+            (localTypeIt != localTypes_.end()) ? localTypeIt->second : sema_.typeOf(expr);
         Type ilType = mapType(type);
         Value loaded = loadFromSlot(expr->name, ilType);
         return {loaded, ilType};
@@ -187,7 +189,8 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
     if (local)
     {
         auto localTypeIt = localTypes_.find(expr->name);
-        TypeRef type = (localTypeIt != localTypes_.end()) ? localTypeIt->second : sema_.typeOf(expr);
+        TypeRef type =
+            (localTypeIt != localTypes_.end()) ? localTypeIt->second : sema_.typeOf(expr);
         return {*local, mapType(type)};
     }
 
@@ -1350,8 +1353,7 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
 
     // Allocate closure struct: { ptr funcPtr, ptr envPtr } = 16 bytes
     Value closureSizeVal = Value::constInt(16);
-    Value closurePtr =
-        emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {closureSizeVal});
+    Value closurePtr = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {closureSizeVal});
 
     // Store function pointer at offset 0
     emitStore(closurePtr, funcPtr, Type(Type::Kind::Ptr));

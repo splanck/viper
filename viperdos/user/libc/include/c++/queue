@@ -11,15 +11,13 @@
 #include "initializer_list"
 #include "vector"
 
-namespace std
-{
+namespace std {
 
 // =============================================================================
 // queue - FIFO queue adapter
 // =============================================================================
 
-template <typename T, typename Container = deque<T>> class queue
-{
+template <typename T, typename Container = deque<T>> class queue {
   public:
     using container_type = Container;
     using value_type = typename Container::value_type;
@@ -45,73 +43,60 @@ template <typename T, typename Container = deque<T>> class queue
     template <typename InputIt> queue(InputIt first, InputIt last) : c(first, last) {}
 
     // Assignment
-    queue &operator=(const queue &other)
-    {
+    queue &operator=(const queue &other) {
         c = other.c;
         return *this;
     }
 
-    queue &operator=(queue &&other) noexcept
-    {
+    queue &operator=(queue &&other) noexcept {
         c = std::move(other.c);
         return *this;
     }
 
     // Element access
-    reference front()
-    {
+    reference front() {
         return c.front();
     }
 
-    const_reference front() const
-    {
+    const_reference front() const {
         return c.front();
     }
 
-    reference back()
-    {
+    reference back() {
         return c.back();
     }
 
-    const_reference back() const
-    {
+    const_reference back() const {
         return c.back();
     }
 
     // Capacity
-    bool empty() const
-    {
+    bool empty() const {
         return c.empty();
     }
 
-    size_type size() const
-    {
+    size_type size() const {
         return c.size();
     }
 
     // Modifiers
-    void push(const value_type &value)
-    {
+    void push(const value_type &value) {
         c.push_back(value);
     }
 
-    void push(value_type &&value)
-    {
+    void push(value_type &&value) {
         c.push_back(std::move(value));
     }
 
-    template <typename... Args> decltype(auto) emplace(Args &&...args)
-    {
+    template <typename... Args> decltype(auto) emplace(Args &&...args) {
         return c.emplace_back(std::forward<Args>(args)...);
     }
 
-    void pop()
-    {
+    void pop() {
         c.pop_front();
     }
 
-    void swap(queue &other) noexcept
-    {
+    void swap(queue &other) noexcept {
         using std::swap;
         swap(c, other.c);
     }
@@ -126,44 +111,37 @@ template <typename T, typename Container = deque<T>> class queue
 
 // Comparison operators
 template <typename T, typename Container>
-bool operator==(const queue<T, Container> &lhs, const queue<T, Container> &rhs)
-{
+bool operator==(const queue<T, Container> &lhs, const queue<T, Container> &rhs) {
     return lhs.c == rhs.c;
 }
 
 template <typename T, typename Container>
-bool operator!=(const queue<T, Container> &lhs, const queue<T, Container> &rhs)
-{
+bool operator!=(const queue<T, Container> &lhs, const queue<T, Container> &rhs) {
     return !(lhs == rhs);
 }
 
 template <typename T, typename Container>
-bool operator<(const queue<T, Container> &lhs, const queue<T, Container> &rhs)
-{
+bool operator<(const queue<T, Container> &lhs, const queue<T, Container> &rhs) {
     return lhs.c < rhs.c;
 }
 
 template <typename T, typename Container>
-bool operator<=(const queue<T, Container> &lhs, const queue<T, Container> &rhs)
-{
+bool operator<=(const queue<T, Container> &lhs, const queue<T, Container> &rhs) {
     return !(rhs < lhs);
 }
 
 template <typename T, typename Container>
-bool operator>(const queue<T, Container> &lhs, const queue<T, Container> &rhs)
-{
+bool operator>(const queue<T, Container> &lhs, const queue<T, Container> &rhs) {
     return rhs < lhs;
 }
 
 template <typename T, typename Container>
-bool operator>=(const queue<T, Container> &lhs, const queue<T, Container> &rhs)
-{
+bool operator>=(const queue<T, Container> &lhs, const queue<T, Container> &rhs) {
     return !(lhs < rhs);
 }
 
 template <typename T, typename Container>
-void swap(queue<T, Container> &lhs, queue<T, Container> &rhs) noexcept
-{
+void swap(queue<T, Container> &lhs, queue<T, Container> &rhs) noexcept {
     lhs.swap(rhs);
 }
 
@@ -174,8 +152,7 @@ void swap(queue<T, Container> &lhs, queue<T, Container> &rhs) noexcept
 template <typename T,
           typename Container = vector<T>,
           typename Compare = less<typename Container::value_type>>
-class priority_queue
-{
+class priority_queue {
   public:
     using container_type = Container;
     using value_compare = Compare;
@@ -189,10 +166,8 @@ class priority_queue
     Compare comp;
 
     // Heap operations
-    void sift_up(size_type index)
-    {
-        while (index > 0)
-        {
+    void sift_up(size_type index) {
+        while (index > 0) {
             size_type parent = (index - 1) / 2;
             if (!comp(c[parent], c[index]))
                 break;
@@ -201,11 +176,9 @@ class priority_queue
         }
     }
 
-    void sift_down(size_type index)
-    {
+    void sift_down(size_type index) {
         size_type size = c.size();
-        while (true)
-        {
+        while (true) {
             size_type largest = index;
             size_type left = 2 * index + 1;
             size_type right = 2 * index + 2;
@@ -223,12 +196,10 @@ class priority_queue
         }
     }
 
-    void heapify()
-    {
+    void heapify() {
         if (c.size() < 2)
             return;
-        for (size_type i = c.size() / 2; i-- > 0;)
-        {
+        for (size_type i = c.size() / 2; i-- > 0;) {
             sift_down(i);
         }
     }
@@ -239,111 +210,93 @@ class priority_queue
 
     explicit priority_queue(const Compare &compare) : c(), comp(compare) {}
 
-    priority_queue(const Compare &compare, const Container &cont) : c(cont), comp(compare)
-    {
+    priority_queue(const Compare &compare, const Container &cont) : c(cont), comp(compare) {
         heapify();
     }
 
-    priority_queue(const Compare &compare, Container &&cont) : c(std::move(cont)), comp(compare)
-    {
+    priority_queue(const Compare &compare, Container &&cont) : c(std::move(cont)), comp(compare) {
         heapify();
     }
 
     priority_queue(const priority_queue &other) : c(other.c), comp(other.comp) {}
 
     priority_queue(priority_queue &&other) noexcept
-        : c(std::move(other.c)), comp(std::move(other.comp))
-    {
-    }
+        : c(std::move(other.c)), comp(std::move(other.comp)) {}
 
     template <typename InputIt>
     priority_queue(InputIt first, InputIt last, const Compare &compare = Compare())
-        : c(first, last), comp(compare)
-    {
+        : c(first, last), comp(compare) {
         heapify();
     }
 
     template <typename InputIt>
     priority_queue(InputIt first, InputIt last, const Compare &compare, const Container &cont)
-        : c(cont), comp(compare)
-    {
+        : c(cont), comp(compare) {
         c.insert(c.end(), first, last);
         heapify();
     }
 
     template <typename InputIt>
     priority_queue(InputIt first, InputIt last, const Compare &compare, Container &&cont)
-        : c(std::move(cont)), comp(compare)
-    {
+        : c(std::move(cont)), comp(compare) {
         c.insert(c.end(), first, last);
         heapify();
     }
 
     // Assignment
-    priority_queue &operator=(const priority_queue &other)
-    {
+    priority_queue &operator=(const priority_queue &other) {
         c = other.c;
         comp = other.comp;
         return *this;
     }
 
-    priority_queue &operator=(priority_queue &&other) noexcept
-    {
+    priority_queue &operator=(priority_queue &&other) noexcept {
         c = std::move(other.c);
         comp = std::move(other.comp);
         return *this;
     }
 
     // Element access
-    const_reference top() const
-    {
+    const_reference top() const {
         return c.front();
     }
 
     // Capacity
-    bool empty() const
-    {
+    bool empty() const {
         return c.empty();
     }
 
-    size_type size() const
-    {
+    size_type size() const {
         return c.size();
     }
 
     // Modifiers
-    void push(const value_type &value)
-    {
+    void push(const value_type &value) {
         c.push_back(value);
         sift_up(c.size() - 1);
     }
 
-    void push(value_type &&value)
-    {
+    void push(value_type &&value) {
         c.push_back(std::move(value));
         sift_up(c.size() - 1);
     }
 
-    template <typename... Args> void emplace(Args &&...args)
-    {
+    template <typename... Args> void emplace(Args &&...args) {
         c.emplace_back(std::forward<Args>(args)...);
         sift_up(c.size() - 1);
     }
 
-    void pop()
-    {
+    void pop() {
         if (c.empty())
             return;
         c[0] = std::move(c.back());
         c.pop_back();
-        if (!c.empty())
-        {
+        if (!c.empty()) {
             sift_down(0);
         }
     }
 
-    void swap(priority_queue &other) noexcept
-    {
+    void swap(priority_queue &other) noexcept {
         using std::swap;
         swap(c, other.c);
         swap(comp, other.comp);
@@ -352,8 +305,7 @@ class priority_queue
 
 template <typename T, typename Container, typename Compare>
 void swap(priority_queue<T, Container, Compare> &lhs,
-          priority_queue<T, Container, Compare> &rhs) noexcept
-{
+          priority_queue<T, Container, Compare> &rhs) noexcept {
     lhs.swap(rhs);
 }
 

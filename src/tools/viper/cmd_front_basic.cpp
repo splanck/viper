@@ -56,7 +56,7 @@ struct FrontBasicConfig
 {
     bool emitIl{false};
     bool run{false};
-    bool debugVm{false};                  ///< True to use standard VM for debugging.
+    bool debugVm{false}; ///< True to use standard VM for debugging.
     std::string sourcePath;
     ilc::SharedCliOptions shared;
     std::optional<uint32_t> sourceFileId{};

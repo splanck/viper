@@ -15,10 +15,8 @@ int last_rc = RC_OK;
 const char *last_error = nullptr;
 char current_dir[MAX_PATH_LEN] = "/";
 
-void refresh_current_dir()
-{
-    if (sys::getcwd(current_dir, sizeof(current_dir)) < 0)
-    {
+void refresh_current_dir() {
+    if (sys::getcwd(current_dir, sizeof(current_dir)) < 0) {
         current_dir[0] = '/';
         current_dir[1] = '\0';
     }
@@ -32,14 +30,12 @@ static char history[HISTORY_SIZE][HISTORY_LINE_LEN];
 static usize history_count = 0;
 static usize history_index = 0;
 
-void history_add(const char *line)
-{
+void history_add(const char *line) {
     if (strlen(line) == 0)
         return;
 
     // Don't add duplicates of the last command
-    if (history_count > 0)
-    {
+    if (history_count > 0) {
         usize last = (history_count - 1) % HISTORY_SIZE;
         if (streq(history[last], line))
             return;
@@ -48,16 +44,14 @@ void history_add(const char *line)
     // Copy to history buffer
     usize idx = history_count % HISTORY_SIZE;
     usize i = 0;
-    for (; line[i] && i < HISTORY_LINE_LEN - 1; i++)
-    {
+    for (; line[i] && i < HISTORY_LINE_LEN - 1; i++) {
         history[idx][i] = line[i];
     }
     history[idx][i] = '\0';
     history_count++;
 }
 
-const char *history_get(usize index)
-{
+const char *history_get(usize index) {
     if (index >= history_count)
         return nullptr;
     usize first = (history_count > HISTORY_SIZE) ? (history_count - HISTORY_SIZE) : 0;
@@ -70,45 +64,36 @@ const char *history_get(usize index)
 // Line Editing Helpers
 // =============================================================================
 
-static void redraw_line_from(const char *buf, usize len, usize pos)
-{
-    for (usize i = pos; i < len; i++)
-    {
+static void redraw_line_from(const char *buf, usize len, usize pos) {
+    for (usize i = pos; i < len; i++) {
         print_char(buf[i]);
     }
     print_char(' ');
-    for (usize i = len + 1; i > pos; i--)
-    {
+    for (usize i = len + 1; i > pos; i--) {
         print_char('\b');
     }
 }
 
-static void cursor_left(usize n)
-{
-    while (n--)
-    {
+static void cursor_left(usize n) {
+    while (n--) {
         print_str("\033[D");
     }
 }
 
-static void cursor_right(usize n)
-{
-    while (n--)
-    {
+static void cursor_right(usize n) {
+    while (n--) {
         print_str("\033[C");
     }
 }
 
-static void replace_line(char *buf, usize *len, usize *pos, const char *newline)
-{
+static void replace_line(char *buf, usize *len, usize *pos, const char *newline) {
     cursor_left(*pos);
     for (usize i = 0; i < *len; i++)
         print_char(' ');
     cursor_left(*len);
     *len = 0;
     *pos = 0;
-    for (usize i = 0; newline[i] && i < 255; i++)
-    {
+    for (usize i = 0; newline[i] && i < 255; i++) {
         buf[i] = newline[i];
         print_char(newline[i]);
         (*len)++;
@@ -128,8 +113,7 @@ static const char *commands[] = {"Assign", "Avail",  "Caps",    "chdir",  "Cls",
                                  "Type",   "Uptime", "Version", "Why"};
 static const usize num_commands = sizeof(commands) / sizeof(commands[0]);
 
-static usize common_prefix(const char *a, const char *b)
-{
+static usize common_prefix(const char *a, const char *b) {
     usize i = 0;
     while (a[i] && b[i] && a[i] == b[i])
         i++;
@@ -148,27 +132,19 @@ static constexpr i32 KEY_RIGHT_ARROW = -106;
 
 // Get a character from the appropriate input source
 // Returns positive for ASCII chars, negative for special keys
-static i32 get_input_char()
-{
-    if (is_console_ready())
-    {
+static i32 get_input_char() {
+    if (is_console_ready()) {
         return getchar_from_console();
-    }
-    else
-    {
+    } else {
         return static_cast<i32>(static_cast<u8>(sys::getchar()));
     }
 }
 
 // Try to get a character without blocking (for CRLF handling)
-static i32 try_get_input_char()
-{
-    if (is_console_ready())
-    {
+static i32 try_get_input_char() {
+    if (is_console_ready()) {
         return try_getchar_from_console();
-    }
-    else
-    {
+    } else {
         return sys::try_getchar();
     }
 }
@@ -177,8 +153,7 @@ static i32 try_get_input_char()
 // Readline
 // =============================================================================
 
-usize readline(char *buf, usize maxlen)
-{
+usize readline(char *buf, usize maxlen) {
     usize len = 0;
     usize pos = 0;
 
@@ -186,28 +161,22 @@ usize readline(char *buf, usize maxlen)
     saved_line[0] = '\0';
     history_index = history_count;
 
-    while (len < maxlen - 1)
-    {
+    while (len < maxlen - 1) {
         i32 input = get_input_char();
 
         // Handle special keys from consoled (negative values)
-        if (input < 0)
-        {
-            switch (input)
-            {
+        if (input < 0) {
+            switch (input) {
                 case KEY_UP_ARROW:
-                    if (history_index > 0)
-                    {
-                        if (history_index == history_count && len > 0)
-                        {
+                    if (history_index > 0) {
+                        if (history_index == history_count && len > 0) {
                             for (usize i = 0; i <= len; i++)
                                 saved_line[i] = buf[i];
                         }
                         history_index--;
                         usize first =
                             (history_count > HISTORY_SIZE) ? (history_count - HISTORY_SIZE) : 0;
-                        if (history_index >= first)
-                        {
+                        if (history_index >= first) {
                             const char *hist = history_get(history_index);
                             if (hist)
                                 replace_line(buf, &len, &pos, hist);
@@ -215,15 +184,11 @@ usize readline(char *buf, usize maxlen)
                     }
                     continue;
                 case KEY_DOWN_ARROW:
-                    if (history_index < history_count)
-                    {
+                    if (history_index < history_count) {
                         history_index++;
-                        if (history_index == history_count)
-                        {
+                        if (history_index == history_count) {
                             replace_line(buf, &len, &pos, saved_line);
-                        }
-                        else
-                        {
+                        } else {
                             const char *hist = history_get(history_index);
                             if (hist)
                                 replace_line(buf, &len, &pos, hist);
@@ -231,32 +196,28 @@ usize readline(char *buf, usize maxlen)
                     }
                     continue;
                 case KEY_LEFT_ARROW:
-                    if (pos > 0)
-                    {
+                    if (pos > 0) {
                         cursor_left(1);
                         pos--;
                     }
                     continue;
                 case KEY_RIGHT_ARROW:
-                    if (pos < len)
-                    {
+                    if (pos < len) {
                         cursor_right(1);
                         pos++;
                     }
                     continue;
                 default:
-                    continue;  // Unknown special key
+                    continue; // Unknown special key
             }
         }
 
         char c = static_cast<char>(input);
 
         // Handle escape sequences (only when using kernel console)
-        if (c == '\033' && !is_console_ready())
-        {
+        if (c == '\033' && !is_console_ready()) {
             char c2 = sys::getchar();
-            if (c2 == '[')
-            {
+            if (c2 == '[') {
                 // Parse CSI sequence: ESC [ [params] final_char
                 // xterm sends ESC[1;2A for Shift+Up, etc.
                 char seq[16];
@@ -264,44 +225,38 @@ usize readline(char *buf, usize maxlen)
                 char c3;
 
                 // Read until we get a letter (final character)
-                while (seq_len < 15)
-                {
+                while (seq_len < 15) {
                     c3 = sys::getchar();
                     if (c3 >= 'A' && c3 <= 'Z')
-                        break;  // Final character
+                        break; // Final character
                     if (c3 >= 'a' && c3 <= 'z')
-                        break;  // Final character
+                        break; // Final character
                     if (c3 == '~')
-                        break;  // Function key final
+                        break; // Function key final
                     seq[seq_len++] = c3;
                 }
                 seq[seq_len] = '\0';
 
                 // Check for Shift modifier (;2 before final char)
-                bool shift = (seq_len >= 2 && seq[seq_len-2] == ';' && seq[seq_len-1] == '2');
+                bool shift = (seq_len >= 2 && seq[seq_len - 2] == ';' && seq[seq_len - 1] == '2');
 
-                switch (c3)
-                {
+                switch (c3) {
                     case 'A': // Up arrow (or Shift+Up for scroll)
-                        if (shift)
-                        {
+                        if (shift) {
                             // Shift+Up: pass through to console for scrolling
                             // by echoing the sequence
                             print_str("\033[1;2A");
                             break;
                         }
-                        if (history_index > 0)
-                        {
-                            if (history_index == history_count && len > 0)
-                            {
+                        if (history_index > 0) {
+                            if (history_index == history_count && len > 0) {
                                 for (usize i = 0; i <= len; i++)
                                     saved_line[i] = buf[i];
                             }
                             history_index--;
                             usize first =
                                 (history_count > HISTORY_SIZE) ? (history_count - HISTORY_SIZE) : 0;
-                            if (history_index >= first)
-                            {
+                            if (history_index >= first) {
                                 const char *hist = history_get(history_index);
                                 if (hist)
                                     replace_line(buf, &len, &pos, hist);
@@ -309,21 +264,16 @@ usize readline(char *buf, usize maxlen)
                         }
                         break;
                     case 'B': // Down arrow (or Shift+Down for scroll)
-                        if (shift)
-                        {
+                        if (shift) {
                             // Shift+Down: pass through to console for scrolling
                             print_str("\033[1;2B");
                             break;
                         }
-                        if (history_index < history_count)
-                        {
+                        if (history_index < history_count) {
                             history_index++;
-                            if (history_index == history_count)
-                            {
+                            if (history_index == history_count) {
                                 replace_line(buf, &len, &pos, saved_line);
-                            }
-                            else
-                            {
+                            } else {
                                 const char *hist = history_get(history_index);
                                 if (hist)
                                     replace_line(buf, &len, &pos, hist);
@@ -331,15 +281,13 @@ usize readline(char *buf, usize maxlen)
                         }
                         break;
                     case 'C': // Right arrow
-                        if (pos < len)
-                        {
+                        if (pos < len) {
                             cursor_right(1);
                             pos++;
                         }
                         break;
                     case 'D': // Left arrow
-                        if (pos > 0)
-                        {
+                        if (pos > 0) {
                             cursor_left(1);
                             pos--;
                         }
@@ -354,8 +302,7 @@ usize readline(char *buf, usize maxlen)
                         break;
                     case '3':               // Delete key
                         c = sys::getchar(); // consume '~'
-                        if (pos < len)
-                        {
+                        if (pos < len) {
                             memmove(buf + pos, buf + pos + 1, len - pos);
                             len--;
                             redraw_line_from(buf, len, pos);
@@ -371,16 +318,13 @@ usize readline(char *buf, usize maxlen)
             continue;
         }
 
-        if (c == '\r' || c == '\n')
-        {
+        if (c == '\r' || c == '\n') {
             // Many serial terminals send CRLF for Enter. If we broke on CR,
             // opportunistically consume a following LF so it doesn't leak into
             // the next foreground program (e.g., password prompts).
-            if (c == '\r')
-            {
+            if (c == '\r') {
                 i32 next = try_get_input_char();
-                if (next == '\n')
-                {
+                if (next == '\n') {
                     // consumed
                 }
             }
@@ -389,10 +333,8 @@ usize readline(char *buf, usize maxlen)
             break;
         }
 
-        if (c == 127 || c == '\b')
-        {
-            if (pos > 0)
-            {
+        if (c == 127 || c == '\b') {
+            if (pos > 0) {
                 pos--;
                 memmove(buf + pos, buf + pos + 1, len - pos);
                 len--;
@@ -444,24 +386,18 @@ usize readline(char *buf, usize maxlen)
             continue;
         }
 
-        if (c == '\t')
-        {
+        if (c == '\t') {
             buf[len] = '\0';
             const char *first_match = nullptr;
             usize match_count = 0;
             usize prefix_len = 0;
 
-            for (usize i = 0; i < num_commands; i++)
-            {
-                if (strstart(commands[i], buf))
-                {
-                    if (match_count == 0)
-                    {
+            for (usize i = 0; i < num_commands; i++) {
+                if (strstart(commands[i], buf)) {
+                    if (match_count == 0) {
                         first_match = commands[i];
                         prefix_len = strlen(commands[i]);
-                    }
-                    else
-                    {
+                    } else {
                         prefix_len = common_prefix(first_match, commands[i]);
                         if (prefix_len < len)
                             prefix_len = len;
@@ -470,30 +406,21 @@ usize readline(char *buf, usize maxlen)
                 }
             }
 
-            if (match_count == 1)
-            {
+            if (match_count == 1) {
                 replace_line(buf, &len, &pos, first_match);
-            }
-            else if (match_count > 1)
-            {
-                if (prefix_len > len)
-                {
-                    for (usize i = len; i < prefix_len; i++)
-                    {
+            } else if (match_count > 1) {
+                if (prefix_len > len) {
+                    for (usize i = len; i < prefix_len; i++) {
                         buf[i] = first_match[i];
                         print_char(first_match[i]);
                     }
                     len = prefix_len;
                     pos = len;
                     buf[len] = '\0';
-                }
-                else
-                {
+                } else {
                     print_str("\n");
-                    for (usize i = 0; i < num_commands; i++)
-                    {
-                        if (strstart(commands[i], buf))
-                        {
+                    for (usize i = 0; i < num_commands; i++) {
+                        if (strstart(commands[i], buf)) {
                             print_str(commands[i]);
                             print_str("  ");
                         }
@@ -509,8 +436,7 @@ usize readline(char *buf, usize maxlen)
             continue;
         }
 
-        if (c >= 32 && c < 127)
-        {
+        if (c >= 32 && c < 127) {
             if (len >= maxlen - 1)
                 continue;
             memmove(buf + pos + 1, buf + pos, len - pos);
@@ -518,8 +444,7 @@ usize readline(char *buf, usize maxlen)
             len++;
             print_char(c);
             pos++;
-            if (pos < len)
-            {
+            if (pos < len) {
                 redraw_line_from(buf, len, pos);
             }
         }

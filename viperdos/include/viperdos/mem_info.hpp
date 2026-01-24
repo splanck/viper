@@ -52,8 +52,7 @@
  * The `_reserved` field exists so the ABI can grow in the future without
  * immediately changing the structure size observed by existing binaries.
  */
-struct MemInfo
-{
+struct MemInfo {
     unsigned long long total_pages; /**< Total number of managed physical pages. */
     unsigned long long free_pages;  /**< Pages currently available for allocation. */
     unsigned long long used_pages;  /**< Pages currently allocated/in-use. */

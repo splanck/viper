@@ -20,23 +20,20 @@
 #include "../viper/viper.hpp"
 #include "tests.hpp"
 
-namespace tests
-{
+namespace tests {
 
 // Test result tracking
 static int viper_tests_passed = 0;
 static int viper_tests_failed = 0;
 
-static void viper_test_pass(const char *name)
-{
+static void viper_test_pass(const char *name) {
     serial::puts("[TEST] ");
     serial::puts(name);
     serial::puts(" PASSED\n");
     viper_tests_passed++;
 }
 
-static void viper_test_fail(const char *name, const char *reason)
-{
+static void viper_test_fail(const char *name, const char *reason) {
     serial::puts("[TEST] ");
     serial::puts(name);
     serial::puts(" FAILED: ");
@@ -49,28 +46,22 @@ static void viper_test_fail(const char *name, const char *reason)
 // Channel Tests
 // ============================================================================
 
-static void test_channel_create()
-{
+static void test_channel_create() {
     const char *name = "channel_create";
 
     i64 ch_id = channel::create();
-    if (ch_id >= 0)
-    {
+    if (ch_id >= 0) {
         viper_test_pass(name);
-    }
-    else
-    {
+    } else {
         viper_test_fail(name, "channel::create returned error");
     }
 }
 
-static void test_channel_send_recv()
-{
+static void test_channel_send_recv() {
     const char *name = "channel_send_recv";
 
     i64 ch_id = channel::create();
-    if (ch_id < 0)
-    {
+    if (ch_id < 0) {
         viper_test_fail(name, "failed to create channel");
         return;
     }
@@ -78,8 +69,7 @@ static void test_channel_send_recv()
     // Send a message
     const char *msg = "TEST";
     i64 send_result = channel::send(static_cast<u32>(ch_id), msg, 5);
-    if (send_result < 0)
-    {
+    if (send_result < 0) {
         viper_test_fail(name, "send failed");
         return;
     }
@@ -87,44 +77,36 @@ static void test_channel_send_recv()
     // Receive the message
     char buf[32] = {0};
     i64 recv_result = channel::recv(static_cast<u32>(ch_id), buf, sizeof(buf));
-    if (recv_result < 0)
-    {
+    if (recv_result < 0) {
         viper_test_fail(name, "recv failed");
         return;
     }
 
     // Verify content
-    if (buf[0] == 'T' && buf[1] == 'E' && buf[2] == 'S' && buf[3] == 'T')
-    {
+    if (buf[0] == 'T' && buf[1] == 'E' && buf[2] == 'S' && buf[3] == 'T') {
         viper_test_pass(name);
-    }
-    else
-    {
+    } else {
         viper_test_fail(name, "message content mismatch");
     }
 }
 
-static void test_channel_multiple_messages()
-{
+static void test_channel_multiple_messages() {
     const char *name = "channel_multiple_messages";
 
     i64 ch_id = channel::create();
-    if (ch_id < 0)
-    {
+    if (ch_id < 0) {
         viper_test_fail(name, "failed to create channel");
         return;
     }
 
     // Send multiple messages
-    for (int i = 0; i < 5; i++)
-    {
+    for (int i = 0; i < 5; i++) {
         char msg[8];
         msg[0] = 'M';
         msg[1] = static_cast<char>('0' + i);
         msg[2] = '\0';
         i64 r = channel::send(static_cast<u32>(ch_id), msg, 3);
-        if (r < 0)
-        {
+        if (r < 0) {
             viper_test_fail(name, "send failed");
             return;
         }
@@ -132,23 +114,18 @@ static void test_channel_multiple_messages()
 
     // Receive and verify order
     bool ok = true;
-    for (int i = 0; i < 5; i++)
-    {
+    for (int i = 0; i < 5; i++) {
         char buf[8];
         i64 r = channel::recv(static_cast<u32>(ch_id), buf, sizeof(buf));
-        if (r < 0 || buf[1] != static_cast<char>('0' + i))
-        {
+        if (r < 0 || buf[1] != static_cast<char>('0' + i)) {
             ok = false;
             break;
         }
     }
 
-    if (ok)
-    {
+    if (ok) {
         viper_test_pass(name);
-    }
-    else
-    {
+    } else {
         viper_test_fail(name, "message order or content error");
     }
 }
@@ -157,13 +134,11 @@ static void test_channel_multiple_messages()
 // Poll Tests
 // ============================================================================
 
-static void test_poll_channel_readable()
-{
+static void test_poll_channel_readable() {
     const char *name = "poll_channel_readable";
 
     i64 ch_id = channel::create();
-    if (ch_id < 0)
-    {
+    if (ch_id < 0) {
         viper_test_fail(name, "failed to create channel");
         return;
     }
@@ -177,8 +152,7 @@ static void test_poll_channel_readable()
     poll::poll(&ev, 1, 0); // Non-blocking
 
     // Should have CHANNEL_WRITE triggered (channel has space)
-    if ((ev.triggered & poll::EventType::CHANNEL_WRITE) == poll::EventType::NONE)
-    {
+    if ((ev.triggered & poll::EventType::CHANNEL_WRITE) == poll::EventType::NONE) {
         viper_test_fail(name, "empty channel not writable");
         return;
     }
@@ -190,23 +164,18 @@ static void test_poll_channel_readable()
     ev.triggered = poll::EventType::NONE;
     poll::poll(&ev, 1, 0);
 
-    if ((ev.triggered & poll::EventType::CHANNEL_READ) != poll::EventType::NONE)
-    {
+    if ((ev.triggered & poll::EventType::CHANNEL_READ) != poll::EventType::NONE) {
         viper_test_pass(name);
-    }
-    else
-    {
+    } else {
         viper_test_fail(name, "channel with data not readable");
     }
 }
 
-static void test_poll_timeout()
-{
+static void test_poll_timeout() {
     const char *name = "poll_timeout";
 
     i64 ch_id = channel::create();
-    if (ch_id < 0)
-    {
+    if (ch_id < 0) {
         viper_test_fail(name, "failed to create channel");
         return;
     }
@@ -223,31 +192,25 @@ static void test_poll_timeout()
 
     // Should have waited roughly 50ms
     u64 elapsed = after - before;
-    if (elapsed >= 40 && elapsed <= 200)
-    { // Allow some tolerance
+    if (elapsed >= 40 && elapsed <= 200) { // Allow some tolerance
         viper_test_pass(name);
-    }
-    else
-    {
+    } else {
         viper_test_fail(name, "timeout duration incorrect");
     }
 }
 
-static void test_timer_create_expired()
-{
+static void test_timer_create_expired() {
     const char *name = "timer_create_expired";
 
     // Create a timer for 10ms
     i64 timer_id = poll::timer_create(10);
-    if (timer_id < 0)
-    {
+    if (timer_id < 0) {
         viper_test_fail(name, "timer_create failed");
         return;
     }
 
     // Initially should not be expired
-    if (poll::timer_expired(static_cast<u32>(timer_id)))
-    {
+    if (poll::timer_expired(static_cast<u32>(timer_id))) {
         viper_test_fail(name, "timer expired immediately");
         return;
     }
@@ -256,30 +219,23 @@ static void test_timer_create_expired()
     poll::sleep_ms(50);
 
     // Now should be expired
-    if (poll::timer_expired(static_cast<u32>(timer_id)))
-    {
+    if (poll::timer_expired(static_cast<u32>(timer_id))) {
         viper_test_pass(name);
-    }
-    else
-    {
+    } else {
         viper_test_fail(name, "timer not expired after delay");
     }
 }
 
-static void test_time_monotonic()
-{
+static void test_time_monotonic() {
     const char *name = "time_monotonic";
 
     u64 t1 = poll::time_now_ms();
     poll::sleep_ms(10);
     u64 t2 = poll::time_now_ms();
 
-    if (t2 > t1)
-    {
+    if (t2 > t1) {
         viper_test_pass(name);
-    }
-    else
-    {
+    } else {
         viper_test_fail(name, "time not monotonic");
     }
 }
@@ -288,14 +244,12 @@ static void test_time_monotonic()
 // Capability Table Tests
 // ============================================================================
 
-static void test_cap_table_basic()
-{
+static void test_cap_table_basic() {
     const char *name = "cap_table_basic";
 
     // Create a capability table directly for testing
     cap::Table table;
-    if (!table.init(64))
-    {
+    if (!table.init(64)) {
         viper_test_fail(name, "failed to init cap table");
         return;
     }
@@ -303,16 +257,14 @@ static void test_cap_table_basic()
     // Insert a test capability
     int dummy_object = 42;
     cap::Handle h = table.insert(&dummy_object, cap::Kind::Blob, cap::CAP_RW);
-    if (h == cap::HANDLE_INVALID)
-    {
+    if (h == cap::HANDLE_INVALID) {
         viper_test_fail(name, "insert failed");
         return;
     }
 
     // Look it up
     cap::Entry *e = table.get(h);
-    if (!e || e->object != &dummy_object)
-    {
+    if (!e || e->object != &dummy_object) {
         viper_test_fail(name, "get failed");
         return;
     }
@@ -320,8 +272,7 @@ static void test_cap_table_basic()
     // Remove it
     table.remove(h);
     cap::Entry *e2 = table.get(h);
-    if (e2 != nullptr)
-    {
+    if (e2 != nullptr) {
         viper_test_fail(name, "remove failed");
         return;
     }
@@ -334,8 +285,7 @@ static void test_cap_table_basic()
 // Main Test Runner
 // ============================================================================
 
-void run_viper_tests()
-{
+void run_viper_tests() {
     serial::puts("\n");
     serial::puts("========================================\n");
     serial::puts("  ViperDOS Viper Subsystem Tests\n");
@@ -370,12 +320,9 @@ void run_viper_tests()
     serial::put_dec(viper_tests_failed);
     serial::puts("\n========================================\n");
 
-    if (viper_tests_failed == 0)
-    {
+    if (viper_tests_failed == 0) {
         serial::puts("[RESULT] ALL VIPER TESTS PASSED\n");
-    }
-    else
-    {
+    } else {
         serial::puts("[RESULT] SOME VIPER TESTS FAILED\n");
     }
 }

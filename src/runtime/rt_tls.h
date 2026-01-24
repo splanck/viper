@@ -24,16 +24,16 @@ extern "C"
 {
 #endif
 
-    // TLS error codes
-    #define RT_TLS_OK 0
-    #define RT_TLS_ERROR -1
-    #define RT_TLS_ERROR_SOCKET -2
-    #define RT_TLS_ERROR_HANDSHAKE -3
-    #define RT_TLS_ERROR_CERTIFICATE -4
-    #define RT_TLS_ERROR_CLOSED -5
-    #define RT_TLS_ERROR_TIMEOUT -6
-    #define RT_TLS_ERROR_MEMORY -7
-    #define RT_TLS_ERROR_INVALID_ARG -8
+// TLS error codes
+#define RT_TLS_OK 0
+#define RT_TLS_ERROR -1
+#define RT_TLS_ERROR_SOCKET -2
+#define RT_TLS_ERROR_HANDSHAKE -3
+#define RT_TLS_ERROR_CERTIFICATE -4
+#define RT_TLS_ERROR_CLOSED -5
+#define RT_TLS_ERROR_TIMEOUT -6
+#define RT_TLS_ERROR_MEMORY -7
+#define RT_TLS_ERROR_INVALID_ARG -8
 
     /// @brief Opaque TLS session handle.
     typedef struct rt_tls_session rt_tls_session_t;
@@ -78,7 +78,9 @@ extern "C"
     /// @param port Port number.
     /// @param config TLS configuration (NULL for defaults).
     /// @return Connected TLS session or NULL on error.
-    rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_config_t *config);
+    rt_tls_session_t *rt_tls_connect(const char *host,
+                                     uint16_t port,
+                                     const rt_tls_config_t *config);
 
     /// @brief Get underlying socket file descriptor.
     int rt_tls_get_socket(rt_tls_session_t *session);

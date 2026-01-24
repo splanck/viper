@@ -10,8 +10,7 @@
 #include "chrono"
 #include "mutex"
 
-namespace std
-{
+namespace std {
 
 /*
  * ===========================================================================
@@ -21,8 +20,7 @@ namespace std
  * ===========================================================================
  */
 
-class shared_mutex
-{
+class shared_mutex {
   public:
     shared_mutex() noexcept : exclusive_(false), shared_count_(0) {}
 
@@ -32,40 +30,34 @@ class shared_mutex
     shared_mutex &operator=(const shared_mutex &) = delete;
 
     // Exclusive locking
-    void lock()
-    {
+    void lock() {
         exclusive_ = true;
     }
 
-    bool try_lock()
-    {
+    bool try_lock() {
         if (exclusive_ || shared_count_ > 0)
             return false;
         exclusive_ = true;
         return true;
     }
 
-    void unlock()
-    {
+    void unlock() {
         exclusive_ = false;
     }
 
     // Shared locking
-    void lock_shared()
-    {
+    void lock_shared() {
         ++shared_count_;
     }
 
-    bool try_lock_shared()
-    {
+    bool try_lock_shared() {
         if (exclusive_)
             return false;
         ++shared_count_;
         return true;
     }
 
-    void unlock_shared()
-    {
+    void unlock_shared() {
         if (shared_count_ > 0)
             --shared_count_;
     }
@@ -81,8 +73,7 @@ class shared_mutex
  * ===========================================================================
  */
 
-class shared_timed_mutex
-{
+class shared_timed_mutex {
   public:
     shared_timed_mutex() noexcept : exclusive_(false), shared_count_(0) {}
 
@@ -92,43 +83,36 @@ class shared_timed_mutex
     shared_timed_mutex &operator=(const shared_timed_mutex &) = delete;
 
     // Exclusive locking
-    void lock()
-    {
+    void lock() {
         exclusive_ = true;
     }
 
-    bool try_lock()
-    {
+    bool try_lock() {
         if (exclusive_ || shared_count_ > 0)
             return false;
         exclusive_ = true;
         return true;
     }
 
-    template <class Rep, class Period> bool try_lock_for(const chrono::duration<Rep, Period> &)
-    {
+    template <class Rep, class Period> bool try_lock_for(const chrono::duration<Rep, Period> &) {
         return try_lock();
     }
 
     template <class Clock, class Duration>
-    bool try_lock_until(const chrono::time_point<Clock, Duration> &)
-    {
+    bool try_lock_until(const chrono::time_point<Clock, Duration> &) {
         return try_lock();
     }
 
-    void unlock()
-    {
+    void unlock() {
         exclusive_ = false;
     }
 
     // Shared locking
-    void lock_shared()
-    {
+    void lock_shared() {
         ++shared_count_;
     }
 
-    bool try_lock_shared()
-    {
+    bool try_lock_shared() {
         if (exclusive_)
             return false;
         ++shared_count_;
@@ -136,19 +120,16 @@ class shared_timed_mutex
     }
 
     template <class Rep, class Period>
-    bool try_lock_shared_for(const chrono::duration<Rep, Period> &)
-    {
+    bool try_lock_shared_for(const chrono::duration<Rep, Period> &) {
         return try_lock_shared();
     }
 
     template <class Clock, class Duration>
-    bool try_lock_shared_until(const chrono::time_point<Clock, Duration> &)
-    {
+    bool try_lock_shared_until(const chrono::time_point<Clock, Duration> &) {
         return try_lock_shared();
     }
 
-    void unlock_shared()
-    {
+    void unlock_shared() {
         if (shared_count_ > 0)
             --shared_count_;
     }
@@ -164,15 +145,13 @@ class shared_timed_mutex
  * ===========================================================================
  */
 
-template <class Mutex> class shared_lock
-{
+template <class Mutex> class shared_lock {
   public:
     using mutex_type = Mutex;
 
     shared_lock() noexcept : mutex_(nullptr), owns_(false) {}
 
-    explicit shared_lock(mutex_type &m) : mutex_(&m), owns_(false)
-    {
+    explicit shared_lock(mutex_type &m) : mutex_(&m), owns_(false) {
         mutex_->lock_shared();
         owns_ = true;
     }
@@ -185,18 +164,13 @@ template <class Mutex> class shared_lock
 
     template <class Rep, class Period>
     shared_lock(mutex_type &m, const chrono::duration<Rep, Period> &timeout)
-        : mutex_(&m), owns_(mutex_->try_lock_shared_for(timeout))
-    {
-    }
+        : mutex_(&m), owns_(mutex_->try_lock_shared_for(timeout)) {}
 
     template <class Clock, class Duration>
     shared_lock(mutex_type &m, const chrono::time_point<Clock, Duration> &deadline)
-        : mutex_(&m), owns_(mutex_->try_lock_shared_until(deadline))
-    {
-    }
+        : mutex_(&m), owns_(mutex_->try_lock_shared_until(deadline)) {}
 
-    ~shared_lock()
-    {
+    ~shared_lock() {
         if (owns_)
             mutex_->unlock_shared();
     }
@@ -204,14 +178,12 @@ template <class Mutex> class shared_lock
     shared_lock(const shared_lock &) = delete;
     shared_lock &operator=(const shared_lock &) = delete;
 
-    shared_lock(shared_lock &&other) noexcept : mutex_(other.mutex_), owns_(other.owns_)
-    {
+    shared_lock(shared_lock &&other) noexcept : mutex_(other.mutex_), owns_(other.owns_) {
         other.mutex_ = nullptr;
         other.owns_ = false;
     }
 
-    shared_lock &operator=(shared_lock &&other) noexcept
-    {
+    shared_lock &operator=(shared_lock &&other) noexcept {
         if (owns_)
             mutex_->unlock_shared();
         mutex_ = other.mutex_;
@@ -221,40 +193,34 @@ template <class Mutex> class shared_lock
         return *this;
     }
 
-    void lock()
-    {
+    void lock() {
         mutex_->lock_shared();
         owns_ = true;
     }
 
-    bool try_lock()
-    {
+    bool try_lock() {
         owns_ = mutex_->try_lock_shared();
         return owns_;
     }
 
     template <class Rep, class Period>
-    bool try_lock_for(const chrono::duration<Rep, Period> &timeout)
-    {
+    bool try_lock_for(const chrono::duration<Rep, Period> &timeout) {
         owns_ = mutex_->try_lock_shared_for(timeout);
         return owns_;
     }
 
     template <class Clock, class Duration>
-    bool try_lock_until(const chrono::time_point<Clock, Duration> &deadline)
-    {
+    bool try_lock_until(const chrono::time_point<Clock, Duration> &deadline) {
         owns_ = mutex_->try_lock_shared_until(deadline);
         return owns_;
     }
 
-    void unlock()
-    {
+    void unlock() {
         mutex_->unlock_shared();
         owns_ = false;
     }
 
-    void swap(shared_lock &other) noexcept
-    {
+    void swap(shared_lock &other) noexcept {
         Mutex *tmp_m = mutex_;
         bool tmp_o = owns_;
         mutex_ = other.mutex_;
@@ -263,26 +229,22 @@ template <class Mutex> class shared_lock
         other.owns_ = tmp_o;
     }
 
-    mutex_type *release() noexcept
-    {
+    mutex_type *release() noexcept {
         mutex_type *m = mutex_;
         mutex_ = nullptr;
         owns_ = false;
         return m;
     }
 
-    mutex_type *mutex() const noexcept
-    {
+    mutex_type *mutex() const noexcept {
         return mutex_;
     }
 
-    bool owns_lock() const noexcept
-    {
+    bool owns_lock() const noexcept {
         return owns_;
     }
 
-    explicit operator bool() const noexcept
-    {
+    explicit operator bool() const noexcept {
         return owns_;
     }
 
@@ -291,8 +253,7 @@ template <class Mutex> class shared_lock
     bool owns_;
 };
 
-template <class Mutex> void swap(shared_lock<Mutex> &a, shared_lock<Mutex> &b) noexcept
-{
+template <class Mutex> void swap(shared_lock<Mutex> &a, shared_lock<Mutex> &b) noexcept {
     a.swap(b);
 }
 

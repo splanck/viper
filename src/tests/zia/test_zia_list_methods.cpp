@@ -169,8 +169,7 @@ func start() {
         {
             for (const auto &in : bb.instructions)
             {
-                if (in.op == il::core::Opcode::Call &&
-                    in.callee.find("Find") != std::string::npos)
+                if (in.op == il::core::Opcode::Call && in.callee.find("Find") != std::string::npos)
                 {
                     hasFindCall = true;
                 }

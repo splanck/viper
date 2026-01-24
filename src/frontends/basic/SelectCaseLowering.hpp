@@ -126,7 +126,7 @@ class SelectCaseLowering
         Kind kind{Kind::Default};
         std::pair<int32_t, int32_t> valueRange{0, 0};
         size_t armIndex{};
-        size_t targetIdx{SIZE_MAX};  // BUG-017 fix: Use index instead of pointer
+        size_t targetIdx{SIZE_MAX}; // BUG-017 fix: Use index instead of pointer
         il::support::SourceLoc loc{};
         std::string_view strLiteral{};
     };

@@ -1,9 +1,9 @@
 // test_font.c - Font engine unit tests
 #include "vg_font.h"
-#include <stdio.h>
-#include <string.h>
 #include <assert.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 //=============================================================================
 // Test Utilities
@@ -12,40 +12,63 @@
 static int tests_passed = 0;
 static int tests_failed = 0;
 
-#define TEST(name) \
-    printf("  Testing %s... ", #name); \
+#define TEST(name)                                                                                 \
+    printf("  Testing %s... ", #name);                                                             \
     fflush(stdout)
 
-#define PASS() do { \
-    printf("PASS\n"); \
-    tests_passed++; \
-} while(0)
+#define PASS()                                                                                     \
+    do                                                                                             \
+    {                                                                                              \
+        printf("PASS\n");                                                                          \
+        tests_passed++;                                                                            \
+    } while (0)
 
-#define FAIL(msg) do { \
-    printf("FAIL: %s\n", msg); \
-    tests_failed++; \
-} while(0)
+#define FAIL(msg)                                                                                  \
+    do                                                                                             \
+    {                                                                                              \
+        printf("FAIL: %s\n", msg);                                                                 \
+        tests_failed++;                                                                            \
+    } while (0)
 
-#define ASSERT_TRUE(cond) do { \
-    if (!(cond)) { FAIL(#cond " is false"); return; } \
-} while(0)
+#define ASSERT_TRUE(cond)                                                                          \
+    do                                                                                             \
+    {                                                                                              \
+        if (!(cond))                                                                               \
+        {                                                                                          \
+            FAIL(#cond " is false");                                                               \
+            return;                                                                                \
+        }                                                                                          \
+    } while (0)
 
-#define ASSERT_EQ(a, b) do { \
-    if ((a) != (b)) { FAIL(#a " != " #b); return; } \
-} while(0)
+#define ASSERT_EQ(a, b)                                                                            \
+    do                                                                                             \
+    {                                                                                              \
+        if ((a) != (b))                                                                            \
+        {                                                                                          \
+            FAIL(#a " != " #b);                                                                    \
+            return;                                                                                \
+        }                                                                                          \
+    } while (0)
 
-#define ASSERT_NOT_NULL(ptr) do { \
-    if ((ptr) == NULL) { FAIL(#ptr " is NULL"); return; } \
-} while(0)
+#define ASSERT_NOT_NULL(ptr)                                                                       \
+    do                                                                                             \
+    {                                                                                              \
+        if ((ptr) == NULL)                                                                         \
+        {                                                                                          \
+            FAIL(#ptr " is NULL");                                                                 \
+            return;                                                                                \
+        }                                                                                          \
+    } while (0)
 
 //=============================================================================
 // UTF-8 Tests
 //=============================================================================
 
-static void test_utf8_decode_ascii(void) {
+static void test_utf8_decode_ascii(void)
+{
     TEST(utf8_decode_ascii);
 
-    const char* str = "Hello";
+    const char *str = "Hello";
     uint32_t cp = vg_utf8_decode(&str);
     ASSERT_EQ(cp, 'H');
 
@@ -55,37 +78,41 @@ static void test_utf8_decode_ascii(void) {
     PASS();
 }
 
-static void test_utf8_decode_2byte(void) {
+static void test_utf8_decode_2byte(void)
+{
     TEST(utf8_decode_2byte);
 
-    const char* str = "\xC3\xA9";  // é (U+00E9)
+    const char *str = "\xC3\xA9"; // é (U+00E9)
     uint32_t cp = vg_utf8_decode(&str);
     ASSERT_EQ(cp, 0xE9);
 
     PASS();
 }
 
-static void test_utf8_decode_3byte(void) {
+static void test_utf8_decode_3byte(void)
+{
     TEST(utf8_decode_3byte);
 
-    const char* str = "\xE4\xB8\xAD";  // 中 (U+4E2D)
+    const char *str = "\xE4\xB8\xAD"; // 中 (U+4E2D)
     uint32_t cp = vg_utf8_decode(&str);
     ASSERT_EQ(cp, 0x4E2D);
 
     PASS();
 }
 
-static void test_utf8_decode_4byte(void) {
+static void test_utf8_decode_4byte(void)
+{
     TEST(utf8_decode_4byte);
 
-    const char* str = "\xF0\x9F\x98\x80";  // 😀 (U+1F600)
+    const char *str = "\xF0\x9F\x98\x80"; // 😀 (U+1F600)
     uint32_t cp = vg_utf8_decode(&str);
     ASSERT_EQ(cp, 0x1F600);
 
     PASS();
 }
 
-static void test_utf8_strlen(void) {
+static void test_utf8_strlen(void)
+{
     TEST(utf8_strlen);
 
     ASSERT_EQ(vg_utf8_strlen("Hello"), 5);
@@ -96,7 +123,8 @@ static void test_utf8_strlen(void) {
     PASS();
 }
 
-static void test_utf8_offset(void) {
+static void test_utf8_offset(void)
+{
     TEST(utf8_offset);
 
     ASSERT_EQ(vg_utf8_offset("Hello", 0), 0);
@@ -106,7 +134,7 @@ static void test_utf8_offset(void) {
     // Multi-byte characters
     ASSERT_EQ(vg_utf8_offset("Héllo", 0), 0);
     ASSERT_EQ(vg_utf8_offset("Héllo", 1), 1);
-    ASSERT_EQ(vg_utf8_offset("Héllo", 2), 3);  // After 'é' (2 bytes)
+    ASSERT_EQ(vg_utf8_offset("Héllo", 2), 3); // After 'é' (2 bytes)
 
     PASS();
 }
@@ -115,26 +143,29 @@ static void test_utf8_offset(void) {
 // Font Loading Tests (require actual font file)
 //=============================================================================
 
-static void test_font_load_null(void) {
+static void test_font_load_null(void)
+{
     TEST(font_load_null);
 
-    vg_font_t* font = vg_font_load(NULL, 0);
+    vg_font_t *font = vg_font_load(NULL, 0);
     ASSERT_TRUE(font == NULL);
 
     PASS();
 }
 
-static void test_font_load_empty(void) {
+static void test_font_load_empty(void)
+{
     TEST(font_load_empty);
 
     uint8_t empty[1] = {0};
-    vg_font_t* font = vg_font_load(empty, 1);
+    vg_font_t *font = vg_font_load(empty, 1);
     ASSERT_TRUE(font == NULL);
 
     PASS();
 }
 
-static void test_font_destroy_null(void) {
+static void test_font_destroy_null(void)
+{
     TEST(font_destroy_null);
 
     // Should not crash
@@ -148,14 +179,15 @@ static void test_font_destroy_null(void) {
 //=============================================================================
 
 #ifdef TEST_FONT_PATH
-static void test_font_load_file(void) {
+static void test_font_load_file(void)
+{
     TEST(font_load_file);
 
-    vg_font_t* font = vg_font_load_file(TEST_FONT_PATH);
+    vg_font_t *font = vg_font_load_file(TEST_FONT_PATH);
     ASSERT_NOT_NULL(font);
 
     // Check family name
-    const char* family = vg_font_get_family(font);
+    const char *family = vg_font_get_family(font);
     ASSERT_NOT_NULL(family);
     printf("(Family: %s) ", family);
 
@@ -170,7 +202,7 @@ static void test_font_load_file(void) {
     ASSERT_TRUE(vg_font_has_glyph(font, 'Z'));
 
     // Get glyph
-    const vg_glyph_t* glyph = vg_font_get_glyph(font, 16.0f, 'A');
+    const vg_glyph_t *glyph = vg_font_get_glyph(font, 16.0f, 'A');
     ASSERT_NOT_NULL(glyph);
     ASSERT_TRUE(glyph->advance > 0);
 
@@ -198,7 +230,8 @@ static void test_font_load_file(void) {
 // Main
 //=============================================================================
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv)
+{
     printf("Viper GUI Font Engine Tests\n");
     printf("============================\n\n");
 

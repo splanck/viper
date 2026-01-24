@@ -66,8 +66,8 @@ TEST(Arm64CLI, Select_ConstArms)
     // Expect compare (cmp or tst), conditional branch, and movs for phi edge copies.
     // Block parameters now use spill slots for correctness across block boundaries.
     // Note: peephole optimizer may convert `cmp x, #0` to `tst x, x`
-    const bool hasCompare = asmText.find("cmp") != std::string::npos ||
-                            asmText.find("tst") != std::string::npos;
+    const bool hasCompare =
+        asmText.find("cmp") != std::string::npos || asmText.find("tst") != std::string::npos;
     EXPECT_TRUE(hasCompare);
     EXPECT_NE(asmText.find("b."), std::string::npos);
     EXPECT_NE(asmText.find(" mov x"), std::string::npos);

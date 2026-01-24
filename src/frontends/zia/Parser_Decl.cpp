@@ -341,7 +341,8 @@ std::vector<std::string> Parser::parseGenericParams()
     return params;
 }
 
-std::vector<std::string> Parser::parseGenericParamsWithConstraints(std::vector<std::string> &constraints)
+std::vector<std::string> Parser::parseGenericParamsWithConstraints(
+    std::vector<std::string> &constraints)
 {
     std::vector<std::string> params;
     constraints.clear();

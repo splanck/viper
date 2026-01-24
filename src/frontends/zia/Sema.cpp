@@ -167,8 +167,7 @@ TypeRef Sema::substituteTypeParams(TypeRef type) const
     return type;
 }
 
-std::string Sema::mangleGenericName(const std::string &base,
-                                    const std::vector<TypeRef> &args)
+std::string Sema::mangleGenericName(const std::string &base, const std::vector<TypeRef> &args)
 {
     std::string result = base;
     for (const auto &arg : args)
@@ -238,9 +237,9 @@ TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName)
                     {
                         paramTypes.push_back(resolveTypeNode(param.type.get()));
                     }
-                    TypeRef returnType =
-                        method->returnType ? resolveTypeNode(method->returnType.get())
-                                           : types::voidType();
+                    TypeRef returnType = method->returnType
+                                             ? resolveTypeNode(method->returnType.get())
+                                             : types::voidType();
                     std::string key = mangledName + "." + method->name;
                     methodTypes_[key] = types::function(paramTypes, returnType);
                 }
@@ -272,9 +271,9 @@ TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName)
                     {
                         paramTypes.push_back(resolveTypeNode(param.type.get()));
                     }
-                    TypeRef returnType =
-                        method->returnType ? resolveTypeNode(method->returnType.get())
-                                           : types::voidType();
+                    TypeRef returnType = method->returnType
+                                             ? resolveTypeNode(method->returnType.get())
+                                             : types::voidType();
                     std::string key = mangledName + "." + method->name;
                     methodTypes_[key] = types::function(paramTypes, returnType);
                 }
@@ -312,9 +311,9 @@ TypeRef Sema::instantiateGenericType(const std::string &name,
 
     if (args.size() != genericParams.size())
     {
-        error(loc, "Generic type " + name + " expects " +
-                       std::to_string(genericParams.size()) + " type arguments, got " +
-                       std::to_string(args.size()));
+        error(loc,
+              "Generic type " + name + " expects " + std::to_string(genericParams.size()) +
+                  " type arguments, got " + std::to_string(args.size()));
         return types::unknown();
     }
 
@@ -411,9 +410,10 @@ TypeRef Sema::instantiateGenericFunction(const std::string &name,
     // Check argument count
     if (args.size() != funcDecl->genericParams.size())
     {
-        error(loc, "Generic function " + name + " expects " +
-                       std::to_string(funcDecl->genericParams.size()) +
-                       " type arguments, got " + std::to_string(args.size()));
+        error(loc,
+              "Generic function " + name + " expects " +
+                  std::to_string(funcDecl->genericParams.size()) + " type arguments, got " +
+                  std::to_string(args.size()));
         return types::unknown();
     }
 
@@ -430,9 +430,10 @@ TypeRef Sema::instantiateGenericFunction(const std::string &name,
             // Check if the type implements the required interface
             if (!typeImplementsInterface(argType, constraintName))
             {
-                error(loc, "Type '" + (argType ? argType->name : "unknown") +
-                               "' does not implement interface '" + constraintName +
-                               "' required by type parameter '" + funcDecl->genericParams[i] + "'");
+                error(loc,
+                      "Type '" + (argType ? argType->name : "unknown") +
+                          "' does not implement interface '" + constraintName +
+                          "' required by type parameter '" + funcDecl->genericParams[i] + "'");
                 return types::unknown();
             }
         }
@@ -598,9 +599,8 @@ bool Sema::analyze(ModuleDecl &module)
                 else
                 {
                     // Non-generic function: resolve types normally
-                    TypeRef returnType =
-                        func->returnType ? resolveTypeNode(func->returnType.get())
-                                         : types::voidType();
+                    TypeRef returnType = func->returnType ? resolveTypeNode(func->returnType.get())
+                                                          : types::voidType();
 
                     std::vector<TypeRef> paramTypes;
                     for (const auto &param : func->params)
@@ -635,7 +635,8 @@ bool Sema::analyze(ModuleDecl &module)
                     {
                         paramTypes.push_back(types::typeParam(param));
                     }
-                    valueType = std::make_shared<ViperType>(TypeKindSem::Value, value->name, paramTypes);
+                    valueType =
+                        std::make_shared<ViperType>(TypeKindSem::Value, value->name, paramTypes);
                 }
                 else
                 {
@@ -667,7 +668,8 @@ bool Sema::analyze(ModuleDecl &module)
                     {
                         paramTypes.push_back(types::typeParam(param));
                     }
-                    entityType = std::make_shared<ViperType>(TypeKindSem::Entity, entity->name, paramTypes);
+                    entityType =
+                        std::make_shared<ViperType>(TypeKindSem::Entity, entity->name, paramTypes);
                 }
                 else
                 {
@@ -991,8 +993,8 @@ void Sema::defineSymbol(const std::string &name, Symbol symbol)
 }
 
 void Sema::defineExternFunction(const std::string &name,
-                                 TypeRef returnType,
-                                 const std::vector<TypeRef> &paramTypes)
+                                TypeRef returnType,
+                                const std::vector<TypeRef> &paramTypes)
 {
     Symbol sym;
     sym.kind = Symbol::Kind::Function;

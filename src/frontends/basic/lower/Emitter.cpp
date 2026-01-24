@@ -368,8 +368,10 @@ void Emitter::storeArray(Value slot, Value value, AstType elementType, bool isOb
 ///          epilogues remain idempotent.
 ///
 /// @param paramNames Names of parameters that should remain alive.
-bool Emitter::emitArrayRelease(Value handle, const SymbolInfo &info,
-                               ArrayReleaseState &state, bool skipObjectArrays)
+bool Emitter::emitArrayRelease(Value handle,
+                               const SymbolInfo &info,
+                               ArrayReleaseState &state,
+                               bool skipObjectArrays)
 {
     if (info.type == AstType::Str)
     {

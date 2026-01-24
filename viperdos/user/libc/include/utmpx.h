@@ -10,8 +10,7 @@
 #include <sys/types.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 /* Size limits */
@@ -30,65 +29,64 @@ extern "C"
 #define USER_PROCESS 7  /* Normal process */
 #define DEAD_PROCESS 8  /* Terminated process */
 
-    /* utmpx entry structure */
-    struct utmpx
-    {
-        char ut_user[__UT_NAMESIZE]; /* Username */
-        char ut_id[4];               /* Inittab ID */
-        char ut_line[__UT_LINESIZE]; /* Device name (tty) */
-        pid_t ut_pid;                /* Process ID */
-        short ut_type;               /* Type of entry */
-        struct timeval ut_tv;        /* Time entry was made */
-        char ut_host[__UT_HOSTSIZE]; /* Hostname for remote login */
-        /* Implementation-specific fields */
-        int __ut_pad[4];
-    };
+/* utmpx entry structure */
+struct utmpx {
+    char ut_user[__UT_NAMESIZE]; /* Username */
+    char ut_id[4];               /* Inittab ID */
+    char ut_line[__UT_LINESIZE]; /* Device name (tty) */
+    pid_t ut_pid;                /* Process ID */
+    short ut_type;               /* Type of entry */
+    struct timeval ut_tv;        /* Time entry was made */
+    char ut_host[__UT_HOSTSIZE]; /* Hostname for remote login */
+    /* Implementation-specific fields */
+    int __ut_pad[4];
+};
 
-    /*
-     * Open the user accounting database.
-     */
-    void setutxent(void);
+/*
+ * Open the user accounting database.
+ */
+void setutxent(void);
 
-    /*
-     * Close the user accounting database.
-     */
-    void endutxent(void);
+/*
+ * Close the user accounting database.
+ */
+void endutxent(void);
 
-    /*
-     * Read the next entry from the database.
-     * Returns pointer to static utmpx structure, or NULL at end.
-     */
-    struct utmpx *getutxent(void);
+/*
+ * Read the next entry from the database.
+ * Returns pointer to static utmpx structure, or NULL at end.
+ */
+struct utmpx *getutxent(void);
 
-    /*
-     * Search for an entry by ID.
-     * Returns pointer to static utmpx structure, or NULL if not found.
-     */
-    struct utmpx *getutxid(const struct utmpx *id);
+/*
+ * Search for an entry by ID.
+ * Returns pointer to static utmpx structure, or NULL if not found.
+ */
+struct utmpx *getutxid(const struct utmpx *id);
 
-    /*
-     * Search for an entry by line (tty).
-     * Returns pointer to static utmpx structure, or NULL if not found.
-     */
-    struct utmpx *getutxline(const struct utmpx *line);
+/*
+ * Search for an entry by line (tty).
+ * Returns pointer to static utmpx structure, or NULL if not found.
+ */
+struct utmpx *getutxline(const struct utmpx *line);
 
-    /*
-     * Write an entry to the database.
-     * Returns pointer to written entry, or NULL on error.
-     */
-    struct utmpx *pututxline(const struct utmpx *utmpx);
+/*
+ * Write an entry to the database.
+ * Returns pointer to written entry, or NULL on error.
+ */
+struct utmpx *pututxline(const struct utmpx *utmpx);
 
-    /* Non-standard but common extensions */
+/* Non-standard but common extensions */
 
-    /*
-     * Update the wtmp file (login history).
-     */
-    void updwtmpx(const char *file, const struct utmpx *utmpx);
+/*
+ * Update the wtmp file (login history).
+ */
+void updwtmpx(const char *file, const struct utmpx *utmpx);
 
-    /*
-     * Get the pathname of the utmpx file.
-     */
-    int utmpxname(const char *file);
+/*
+ * Get the pathname of the utmpx file.
+ */
+int utmpxname(const char *file);
 
 #ifdef __cplusplus
 }

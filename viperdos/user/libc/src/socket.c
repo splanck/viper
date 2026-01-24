@@ -38,11 +38,11 @@
 /* Kernel socket syscalls */
 extern long __syscall3(long num, long arg0, long arg1, long arg2);
 extern long __syscall4(long num, long arg0, long arg1, long arg2, long arg3);
-#define SYS_SOCKET_CREATE  0x50
+#define SYS_SOCKET_CREATE 0x50
 #define SYS_SOCKET_CONNECT 0x51
-#define SYS_SOCKET_SEND    0x52
-#define SYS_SOCKET_RECV    0x53
-#define SYS_SOCKET_CLOSE   0x54
+#define SYS_SOCKET_SEND 0x52
+#define SYS_SOCKET_RECV 0x53
+#define SYS_SOCKET_CLOSE 0x54
 
 // -----------------------------------------------------------------------------
 // libc socket FD virtualization
@@ -56,15 +56,13 @@ extern long __syscall4(long num, long arg0, long arg1, long arg2, long arg3);
 #define VIPER_SOCKET_FD_BASE 128
 #define VIPER_SOCKET_MAX_FDS 64
 
-typedef struct
-{
+typedef struct {
     int in_use;
     int socket_id;     /* kernel socket id (index in tcp socket table) */
     unsigned int refs; /* reference count across duplicated FDs */
 } viper_socket_obj_t;
 
-typedef struct
-{
+typedef struct {
     int in_use;
     unsigned short obj_index;
 } viper_socket_fd_t;
@@ -72,18 +70,15 @@ typedef struct
 static viper_socket_obj_t g_sock_objs[VIPER_SOCKET_MAX_FDS];
 static viper_socket_fd_t g_sock_fds[VIPER_SOCKET_MAX_FDS];
 
-static int viper_sock_fd_in_range(int fd)
-{
+static int viper_sock_fd_in_range(int fd) {
     return fd >= VIPER_SOCKET_FD_BASE && fd < (VIPER_SOCKET_FD_BASE + VIPER_SOCKET_MAX_FDS);
 }
 
-static int viper_sock_fd_index(int fd)
-{
+static int viper_sock_fd_index(int fd) {
     return fd - VIPER_SOCKET_FD_BASE;
 }
 
-static int viper_sock_get_obj_index_for_fd(int fd)
-{
+static int viper_sock_get_obj_index_for_fd(int fd) {
     if (!viper_sock_fd_in_range(fd))
         return -1;
 
@@ -103,20 +98,16 @@ static int viper_sock_get_obj_index_for_fd(int fd)
     return obj;
 }
 
-static viper_socket_obj_t *viper_sock_get_obj_for_fd(int fd)
-{
+static viper_socket_obj_t *viper_sock_get_obj_for_fd(int fd) {
     int obj = viper_sock_get_obj_index_for_fd(fd);
     if (obj < 0)
         return (viper_socket_obj_t *)0;
     return &g_sock_objs[obj];
 }
 
-static int viper_sock_alloc_obj(int socket_id)
-{
-    for (int i = 0; i < VIPER_SOCKET_MAX_FDS; i++)
-    {
-        if (!g_sock_objs[i].in_use)
-        {
+static int viper_sock_alloc_obj(int socket_id) {
+    for (int i = 0; i < VIPER_SOCKET_MAX_FDS; i++) {
+        if (!g_sock_objs[i].in_use) {
             g_sock_objs[i].in_use = 1;
             g_sock_objs[i].socket_id = socket_id;
             g_sock_objs[i].refs = 1;
@@ -126,8 +117,7 @@ static int viper_sock_alloc_obj(int socket_id)
     return -EMFILE;
 }
 
-static void viper_sock_release_obj(int obj)
-{
+static void viper_sock_release_obj(int obj) {
     if (obj < 0 || obj >= VIPER_SOCKET_MAX_FDS)
         return;
     g_sock_objs[obj].in_use = 0;
@@ -135,15 +125,12 @@ static void viper_sock_release_obj(int obj)
     g_sock_objs[obj].refs = 0;
 }
 
-static int viper_sock_alloc_fd_slot(int obj)
-{
+static int viper_sock_alloc_fd_slot(int obj) {
     if (obj < 0 || obj >= VIPER_SOCKET_MAX_FDS)
         return -EINVAL;
 
-    for (int i = 0; i < VIPER_SOCKET_MAX_FDS; i++)
-    {
-        if (!g_sock_fds[i].in_use)
-        {
+    for (int i = 0; i < VIPER_SOCKET_MAX_FDS; i++) {
+        if (!g_sock_fds[i].in_use) {
             g_sock_fds[i].in_use = 1;
             g_sock_fds[i].obj_index = (unsigned short)obj;
             return VIPER_SOCKET_FD_BASE + i;
@@ -152,8 +139,7 @@ static int viper_sock_alloc_fd_slot(int obj)
     return -EMFILE;
 }
 
-static int viper_sock_alloc_specific_fd_slot(int fd, int obj)
-{
+static int viper_sock_alloc_specific_fd_slot(int fd, int obj) {
     if (!viper_sock_fd_in_range(fd))
         return -EINVAL;
     if (obj < 0 || obj >= VIPER_SOCKET_MAX_FDS)
@@ -171,8 +157,7 @@ static int viper_sock_alloc_specific_fd_slot(int fd, int obj)
     return fd;
 }
 
-static void viper_sock_free_fd_slot(int fd)
-{
+static void viper_sock_free_fd_slot(int fd) {
     if (!viper_sock_fd_in_range(fd))
         return;
 
@@ -184,8 +169,7 @@ static void viper_sock_free_fd_slot(int fd)
     g_sock_fds[idx].obj_index = 0;
 }
 
-static int viper_sock_close_obj(viper_socket_obj_t *obj)
-{
+static int viper_sock_close_obj(viper_socket_obj_t *obj) {
     if (!obj || !obj->in_use)
         return -EBADF;
 
@@ -193,8 +177,7 @@ static int viper_sock_close_obj(viper_socket_obj_t *obj)
     return (rc == 0) ? 0 : (int)rc;
 }
 
-static int viper_sock_close_fd(int fd)
-{
+static int viper_sock_close_fd(int fd) {
     int obj_index = viper_sock_get_obj_index_for_fd(fd);
     if (obj_index < 0)
         return -EBADF;
@@ -206,8 +189,7 @@ static int viper_sock_close_fd(int fd)
     if (obj->refs > 0)
         obj->refs--;
 
-    if (obj->refs == 0)
-    {
+    if (obj->refs == 0) {
         (void)viper_sock_close_obj(obj);
         viper_sock_release_obj(obj_index);
     }
@@ -215,8 +197,7 @@ static int viper_sock_close_fd(int fd)
     return 0;
 }
 
-static int viper_sock_dup_fd(int oldfd)
-{
+static int viper_sock_dup_fd(int oldfd) {
     int obj_index = viper_sock_get_obj_index_for_fd(oldfd);
     if (obj_index < 0)
         return -EBADF;
@@ -233,8 +214,7 @@ static int viper_sock_dup_fd(int oldfd)
     return newfd;
 }
 
-static int viper_sock_dup2_fd(int oldfd, int newfd)
-{
+static int viper_sock_dup2_fd(int oldfd, int newfd) {
     if (oldfd == newfd)
         return newfd;
 
@@ -246,8 +226,7 @@ static int viper_sock_dup2_fd(int oldfd, int newfd)
         return -ENOTSUP;
 
     // If newfd already exists as a socket FD, close it first.
-    if (viper_sock_get_obj_for_fd(newfd) != (viper_socket_obj_t *)0)
-    {
+    if (viper_sock_get_obj_for_fd(newfd) != (viper_socket_obj_t *)0) {
         (void)viper_sock_close_fd(newfd);
     }
 
@@ -260,14 +239,12 @@ static int viper_sock_dup2_fd(int oldfd, int newfd)
 }
 
 // Exposed for other libc modules (e.g., unistd.c, poll.c).
-int __viper_socket_is_fd(int fd)
-{
+int __viper_socket_is_fd(int fd) {
     return viper_sock_get_obj_for_fd(fd) ? 1 : 0;
 }
 
 // Exposed for other libc modules (e.g., poll.c) to query socket id.
-int __viper_socket_get_backend(int fd, int *out_backend, int *out_socket_id)
-{
+int __viper_socket_get_backend(int fd, int *out_backend, int *out_socket_id) {
     viper_socket_obj_t *obj = viper_sock_get_obj_for_fd(fd);
     if (!obj)
         return -EBADF;
@@ -278,23 +255,19 @@ int __viper_socket_get_backend(int fd, int *out_backend, int *out_socket_id)
     return 0;
 }
 
-int __viper_socket_close(int fd)
-{
+int __viper_socket_close(int fd) {
     return viper_sock_close_fd(fd);
 }
 
-int __viper_socket_dup(int oldfd)
-{
+int __viper_socket_dup(int oldfd) {
     return viper_sock_dup_fd(oldfd);
 }
 
-int __viper_socket_dup2(int oldfd, int newfd)
-{
+int __viper_socket_dup2(int oldfd, int newfd) {
     return viper_sock_dup2_fd(oldfd, newfd);
 }
 
-static int viper_sock_translate_fd(int fd, int *out_socket_id)
-{
+static int viper_sock_translate_fd(int fd, int *out_socket_id) {
     viper_socket_obj_t *obj = viper_sock_get_obj_for_fd(fd);
     if (!obj)
         return -EBADF;
@@ -330,8 +303,7 @@ const struct in6_addr in6addr_loopback = IN6ADDR_LOOPBACK_INIT;
  *
  * @see ntohs, htonl, ntohl
  */
-unsigned short htons(unsigned short hostshort)
-{
+unsigned short htons(unsigned short hostshort) {
     return ((hostshort & 0xff) << 8) | ((hostshort >> 8) & 0xff);
 }
 
@@ -348,8 +320,7 @@ unsigned short htons(unsigned short hostshort)
  *
  * @see htons, htonl, ntohl
  */
-unsigned short ntohs(unsigned short netshort)
-{
+unsigned short ntohs(unsigned short netshort) {
     return htons(netshort);
 }
 
@@ -366,8 +337,7 @@ unsigned short ntohs(unsigned short netshort)
  *
  * @see ntohl, htons, ntohs
  */
-unsigned int htonl(unsigned int hostlong)
-{
+unsigned int htonl(unsigned int hostlong) {
     return ((hostlong & 0xff) << 24) | ((hostlong & 0xff00) << 8) | ((hostlong >> 8) & 0xff00) |
            ((hostlong >> 24) & 0xff);
 }
@@ -385,8 +355,7 @@ unsigned int htonl(unsigned int hostlong)
  *
  * @see htonl, htons, ntohs
  */
-unsigned int ntohl(unsigned int netlong)
-{
+unsigned int ntohl(unsigned int netlong) {
     return htonl(netlong);
 }
 
@@ -421,27 +390,23 @@ unsigned int ntohl(unsigned int netlong)
  *
  * @see connect, send, recv, close
  */
-int socket(int domain, int type, int protocol)
-{
+int socket(int domain, int type, int protocol) {
     long rc = __syscall3(SYS_SOCKET_CREATE, domain, type, protocol);
-    if (rc < 0)
-    {
+    if (rc < 0) {
         errno = EPROTONOSUPPORT;
         return -1;
     }
     int sock_id = (int)rc;
 
     int obj = viper_sock_alloc_obj(sock_id);
-    if (obj < 0)
-    {
+    if (obj < 0) {
         (void)__syscall3(SYS_SOCKET_CLOSE, sock_id, 0, 0);
         errno = -obj;
         return -1;
     }
 
     int fd = viper_sock_alloc_fd_slot(obj);
-    if (fd < 0)
-    {
+    if (fd < 0) {
         (void)__syscall3(SYS_SOCKET_CLOSE, sock_id, 0, 0);
         viper_sock_release_obj(obj);
         errno = -fd;
@@ -468,8 +433,7 @@ int socket(int domain, int type, int protocol)
  *
  * @see socket, listen, accept
  */
-int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
-{
+int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
     /* ViperDOS kernel doesn't have bind - sockets connect directly */
     (void)sockfd;
     (void)addr;
@@ -494,8 +458,7 @@ int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
  *
  * @see socket, bind, accept
  */
-int listen(int sockfd, int backlog)
-{
+int listen(int sockfd, int backlog) {
     /* ViperDOS kernel doesn't have listen - no server sockets yet */
     (void)sockfd;
     (void)backlog;
@@ -521,8 +484,7 @@ int listen(int sockfd, int backlog)
  *
  * @see socket, bind, listen, accept4
  */
-int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen)
-{
+int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen) {
     /* ViperDOS kernel doesn't have accept - no server sockets yet */
     (void)sockfd;
     (void)addr;
@@ -549,8 +511,7 @@ int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen)
  *
  * @see accept, socket
  */
-int accept4(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags)
-{
+int accept4(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags) {
     (void)flags;
     return accept(sockfd, addr, addrlen);
 }
@@ -576,34 +537,29 @@ int accept4(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags)
  *
  * @see socket, send, recv, close
  */
-int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
-{
+int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
     int sock_id = -1;
     int trc = viper_sock_translate_fd(sockfd, &sock_id);
-    if (trc < 0)
-    {
+    if (trc < 0) {
         errno = -trc;
         return -1;
     }
 
-    if (addrlen < sizeof(struct sockaddr_in))
-    {
+    if (addrlen < sizeof(struct sockaddr_in)) {
         errno = EINVAL;
         return -1;
     }
     const struct sockaddr_in *sin = (const struct sockaddr_in *)addr;
-    if (sin->sin_family != AF_INET)
-    {
+    if (sin->sin_family != AF_INET) {
         errno = EAFNOSUPPORT;
         return -1;
     }
 
     /* Kernel syscall: ip in network order, port in network order */
-    int rc = (int)__syscall3(SYS_SOCKET_CONNECT, sock_id,
-                             (long)sin->sin_addr.s_addr, (long)sin->sin_port);
+    int rc = (int)__syscall3(
+        SYS_SOCKET_CONNECT, sock_id, (long)sin->sin_addr.s_addr, (long)sin->sin_port);
 
-    if (rc != 0)
-    {
+    if (rc != 0) {
         errno = ECONNREFUSED;
         return -1;
     }
@@ -633,21 +589,18 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
  *
  * @see recv, sendto, connect
  */
-ssize_t send(int sockfd, const void *buf, size_t len, int flags)
-{
+ssize_t send(int sockfd, const void *buf, size_t len, int flags) {
     (void)flags; /* ViperDOS doesn't use flags */
     int sock_id = -1;
     int trc = viper_sock_translate_fd(sockfd, &sock_id);
-    if (trc < 0)
-    {
+    if (trc < 0) {
         errno = -trc;
         return -1;
     }
 
     long result = __syscall3(SYS_SOCKET_SEND, sock_id, (long)buf, (long)len);
 
-    if (result < 0)
-    {
+    if (result < 0) {
         errno = (int)(-result);
         return -1;
     }
@@ -677,28 +630,22 @@ ssize_t send(int sockfd, const void *buf, size_t len, int flags)
  *
  * @see send, recvfrom, connect
  */
-ssize_t recv(int sockfd, void *buf, size_t len, int flags)
-{
+ssize_t recv(int sockfd, void *buf, size_t len, int flags) {
     (void)flags; /* ViperDOS doesn't use flags */
     int sock_id = -1;
     int trc = viper_sock_translate_fd(sockfd, &sock_id);
-    if (trc < 0)
-    {
+    if (trc < 0) {
         errno = -trc;
         return -1;
     }
 
     long result = __syscall3(SYS_SOCKET_RECV, sock_id, (long)buf, (long)len);
 
-    if (result < 0)
-    {
+    if (result < 0) {
         /* Convert VERR_WOULD_BLOCK (-300) to EAGAIN for POSIX compatibility */
-        if (result == -300)
-        {
+        if (result == -300) {
             errno = EAGAIN;
-        }
-        else
-        {
+        } else {
             errno = (int)(-result);
         }
         return -1;
@@ -732,11 +679,9 @@ ssize_t sendto(int sockfd,
                size_t len,
                int flags,
                const struct sockaddr *dest_addr,
-               socklen_t addrlen)
-{
+               socklen_t addrlen) {
     /* For connected sockets, just use send */
-    if (dest_addr == (void *)0)
-    {
+    if (dest_addr == (void *)0) {
         return send(sockfd, buf, len, flags);
     }
     /* UDP sendto not supported */
@@ -767,11 +712,9 @@ ssize_t sendto(int sockfd,
  * @see recv, sendto
  */
 ssize_t recvfrom(
-    int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen)
-{
+    int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen) {
     /* For connected sockets, just use recv */
-    if (src_addr == (void *)0)
-    {
+    if (src_addr == (void *)0) {
         return recv(sockfd, buf, len, flags);
     }
     /* UDP recvfrom not supported */
@@ -799,11 +742,9 @@ ssize_t recvfrom(
  *
  * @see recvmsg, send, sendto
  */
-ssize_t sendmsg(int sockfd, const struct msghdr *msg, int flags)
-{
+ssize_t sendmsg(int sockfd, const struct msghdr *msg, int flags) {
     /* Simplified implementation using send for single iovec */
-    if (msg->msg_iovlen == 1)
-    {
+    if (msg->msg_iovlen == 1) {
         return sendto(sockfd,
                       msg->msg_iov[0].iov_base,
                       msg->msg_iov[0].iov_len,
@@ -834,11 +775,9 @@ ssize_t sendmsg(int sockfd, const struct msghdr *msg, int flags)
  *
  * @see sendmsg, recv, recvfrom
  */
-ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags)
-{
+ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags) {
     /* Simplified implementation using recv for single iovec */
-    if (msg->msg_iovlen == 1)
-    {
+    if (msg->msg_iovlen == 1) {
         return recvfrom(sockfd,
                         msg->msg_iov[0].iov_base,
                         msg->msg_iov[0].iov_len,
@@ -875,8 +814,7 @@ ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags)
  *
  * @see setsockopt
  */
-int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optlen)
-{
+int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optlen) {
     /* ViperDOS doesn't support socket options yet - return success for common cases */
     (void)sockfd;
     (void)level;
@@ -911,8 +849,7 @@ int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optl
  *
  * @see getsockopt
  */
-int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t optlen)
-{
+int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t optlen) {
     /* ViperDOS doesn't support socket options yet - return success for common cases */
     (void)sockfd;
     (void)level;
@@ -939,8 +876,7 @@ int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t
  *
  * @see getpeername, bind
  */
-int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen)
-{
+int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen) {
     /* Not implemented */
     (void)sockfd;
     (void)addr;
@@ -965,8 +901,7 @@ int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen)
  *
  * @see getsockname, connect
  */
-int getpeername(int sockfd, struct sockaddr *addr, socklen_t *addrlen)
-{
+int getpeername(int sockfd, struct sockaddr *addr, socklen_t *addrlen) {
     /* Not implemented */
     (void)sockfd;
     (void)addr;
@@ -993,12 +928,10 @@ int getpeername(int sockfd, struct sockaddr *addr, socklen_t *addrlen)
  *
  * @see close, socket
  */
-int shutdown(int sockfd, int how)
-{
+int shutdown(int sockfd, int how) {
     (void)how;
     int rc = viper_sock_close_fd(sockfd);
-    if (rc < 0)
-    {
+    if (rc < 0) {
         errno = -rc;
         return -1;
     }
@@ -1023,8 +956,7 @@ int shutdown(int sockfd, int how)
  *
  * @see pipe, socket
  */
-int socketpair(int domain, int type, int protocol, int sv[2])
-{
+int socketpair(int domain, int type, int protocol, int sv[2]) {
     /* Not implemented */
     (void)domain;
     (void)type;
@@ -1062,11 +994,9 @@ int socketpair(int domain, int type, int protocol, int sv[2])
  *
  * @see inet_aton, inet_ntoa, inet_pton
  */
-in_addr_t inet_addr(const char *cp)
-{
+in_addr_t inet_addr(const char *cp) {
     struct in_addr addr;
-    if (inet_aton(cp, &addr) == 0)
-    {
+    if (inet_aton(cp, &addr) == 0) {
         return INADDR_NONE;
     }
     return addr.s_addr;
@@ -1092,20 +1022,17 @@ in_addr_t inet_addr(const char *cp)
  *
  * @see inet_addr, inet_ntoa, inet_pton
  */
-int inet_aton(const char *cp, struct in_addr *inp)
-{
+int inet_aton(const char *cp, struct in_addr *inp) {
     unsigned long parts[4];
     int num_parts = 0;
     const char *p = cp;
 
     /* Parse up to 4 parts separated by dots */
-    while (*p && num_parts < 4)
-    {
+    while (*p && num_parts < 4) {
         unsigned long val = 0;
         int digits = 0;
 
-        while (*p >= '0' && *p <= '9')
-        {
+        while (*p >= '0' && *p <= '9') {
             val = val * 10 + (*p - '0');
             if (val > 255)
                 return 0;
@@ -1118,12 +1045,9 @@ int inet_aton(const char *cp, struct in_addr *inp)
 
         parts[num_parts++] = val;
 
-        if (*p == '.')
-        {
+        if (*p == '.') {
             p++;
-        }
-        else
-        {
+        } else {
             break;
         }
     }
@@ -1134,8 +1058,7 @@ int inet_aton(const char *cp, struct in_addr *inp)
 
     /* Convert to network byte order based on number of parts */
     unsigned long result;
-    switch (num_parts)
-    {
+    switch (num_parts) {
         case 1:
             result = parts[0];
             break;
@@ -1175,28 +1098,21 @@ int inet_aton(const char *cp, struct in_addr *inp)
  *
  * @see inet_aton, inet_addr, inet_ntop
  */
-char *inet_ntoa(struct in_addr in)
-{
+char *inet_ntoa(struct in_addr in) {
     static char buf[INET_ADDRSTRLEN];
     unsigned int addr = ntohl(in.s_addr);
 
     int pos = 0;
-    for (int i = 3; i >= 0; i--)
-    {
+    for (int i = 3; i >= 0; i--) {
         unsigned int octet = (addr >> (i * 8)) & 0xff;
-        if (octet >= 100)
-        {
+        if (octet >= 100) {
             buf[pos++] = '0' + octet / 100;
             buf[pos++] = '0' + (octet / 10) % 10;
             buf[pos++] = '0' + octet % 10;
-        }
-        else if (octet >= 10)
-        {
+        } else if (octet >= 10) {
             buf[pos++] = '0' + octet / 10;
             buf[pos++] = '0' + octet % 10;
-        }
-        else
-        {
+        } else {
             buf[pos++] = '0' + octet;
         }
         if (i > 0)
@@ -1224,14 +1140,10 @@ char *inet_ntoa(struct in_addr in)
  *
  * @see inet_ntop, inet_aton
  */
-int inet_pton(int af, const char *src, void *dst)
-{
-    if (af == AF_INET)
-    {
+int inet_pton(int af, const char *src, void *dst) {
+    if (af == AF_INET) {
         return inet_aton(src, (struct in_addr *)dst);
-    }
-    else if (af == AF_INET6)
-    {
+    } else if (af == AF_INET6) {
         /* Simplified IPv6 parsing - not fully implemented */
         errno = EAFNOSUPPORT;
         return -1;
@@ -1262,12 +1174,9 @@ int inet_pton(int af, const char *src, void *dst)
  *
  * @see inet_pton, inet_ntoa
  */
-const char *inet_ntop(int af, const void *src, char *dst, socklen_t size)
-{
-    if (af == AF_INET)
-    {
-        if (size < INET_ADDRSTRLEN)
-        {
+const char *inet_ntop(int af, const void *src, char *dst, socklen_t size) {
+    if (af == AF_INET) {
+        if (size < INET_ADDRSTRLEN) {
             errno = ENOSPC;
             return (void *)0;
         }
@@ -1276,9 +1185,7 @@ const char *inet_ntop(int af, const void *src, char *dst, socklen_t size)
         size_t len = strlen(result);
         memcpy(dst, result, len + 1);
         return dst;
-    }
-    else if (af == AF_INET6)
-    {
+    } else if (af == AF_INET6) {
         /* Simplified IPv6 output - not fully implemented */
         errno = EAFNOSUPPORT;
         return (void *)0;
@@ -1302,8 +1209,7 @@ const char *inet_ntop(int af, const void *src, char *dst, socklen_t size)
  *
  * @see inet_addr, inet_makeaddr
  */
-in_addr_t inet_network(const char *cp)
-{
+in_addr_t inet_network(const char *cp) {
     return inet_addr(cp);
 }
 
@@ -1323,8 +1229,7 @@ in_addr_t inet_network(const char *cp)
  *
  * @see inet_netof, inet_lnaof, inet_network
  */
-struct in_addr inet_makeaddr(in_addr_t net, in_addr_t host)
-{
+struct in_addr inet_makeaddr(in_addr_t net, in_addr_t host) {
     struct in_addr addr;
     addr.s_addr = htonl(net | host);
     return addr;
@@ -1348,8 +1253,7 @@ struct in_addr inet_makeaddr(in_addr_t net, in_addr_t host)
  *
  * @see inet_netof, inet_makeaddr
  */
-in_addr_t inet_lnaof(struct in_addr in)
-{
+in_addr_t inet_lnaof(struct in_addr in) {
     unsigned int addr = ntohl(in.s_addr);
     if ((addr & 0x80000000) == 0)
         return addr & 0x00ffffff; /* Class A */
@@ -1376,8 +1280,7 @@ in_addr_t inet_lnaof(struct in_addr in)
  *
  * @see inet_lnaof, inet_makeaddr
  */
-in_addr_t inet_netof(struct in_addr in)
-{
+in_addr_t inet_netof(struct in_addr in) {
     unsigned int addr = ntohl(in.s_addr);
     if ((addr & 0x80000000) == 0)
         return (addr >> 24) & 0xff; /* Class A */

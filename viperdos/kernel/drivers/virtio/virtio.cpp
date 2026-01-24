@@ -1,7 +1,7 @@
 #include "virtio.hpp"
 #include "../../console/serial.hpp"
-#include "../../mm/pmm.hpp"
 #include "../../lib/spinlock.hpp"
+#include "../../mm/pmm.hpp"
 
 /**
  * @file virtio.cpp
@@ -15,8 +15,7 @@
  * The discovery list is used by device-specific drivers via `find_device()`
  * which returns and claims a device base address for initialization.
  */
-namespace virtio
-{
+namespace virtio {
 
 // Device registry
 static DeviceInfo devices[MAX_DEVICES];
@@ -24,22 +23,19 @@ static usize num_devices = 0;
 static Spinlock device_lock;
 
 /** @copydoc virtio::Device::init */
-bool Device::init(u64 base_addr)
-{
+bool Device::init(u64 base_addr) {
     base_ = base_addr;
     mmio_ = reinterpret_cast<volatile u32 *>(base_addr);
 
     // Check magic
     u32 magic = read32(reg::MAGIC);
-    if (magic != MAGIC_VALUE)
-    {
+    if (magic != MAGIC_VALUE) {
         return false;
     }
 
     // Check version (1 = legacy, 2 = modern)
     version_ = read32(reg::VERSION);
-    if (version_ != 1 && version_ != 2)
-    {
+    if (version_ != 1 && version_ != 2) {
         serial::puts("[virtio] Unsupported device version ");
         serial::put_dec(version_);
         serial::puts("\n");
@@ -47,8 +43,7 @@ bool Device::init(u64 base_addr)
     }
 
     device_id_ = read32(reg::DEVICE_ID);
-    if (device_id_ == 0)
-    {
+    if (device_id_ == 0) {
         return false; // Invalid device
     }
 
@@ -56,68 +51,57 @@ bool Device::init(u64 base_addr)
 }
 
 /** @copydoc virtio::Device::reset */
-void Device::reset()
-{
+void Device::reset() {
     write32(reg::STATUS, 0);
     // Wait for reset to complete
-    while (read32(reg::STATUS) != 0)
-    {
+    while (read32(reg::STATUS) != 0) {
         asm volatile("yield");
     }
 }
 
 /** @copydoc virtio::Device::read32 */
-u32 Device::read32(u32 offset)
-{
+u32 Device::read32(u32 offset) {
     return mmio_[offset / 4];
 }
 
 /** @copydoc virtio::Device::write32 */
-void Device::write32(u32 offset, u32 value)
-{
+void Device::write32(u32 offset, u32 value) {
     mmio_[offset / 4] = value;
 }
 
 /** @copydoc virtio::Device::read_config8 */
-u8 Device::read_config8(u32 offset)
-{
+u8 Device::read_config8(u32 offset) {
     volatile u8 *config =
         reinterpret_cast<volatile u8 *>(reinterpret_cast<u64>(mmio_) + reg::CONFIG + offset);
     return *config;
 }
 
 /** @copydoc virtio::Device::read_config16 */
-u16 Device::read_config16(u32 offset)
-{
+u16 Device::read_config16(u32 offset) {
     volatile u16 *config =
         reinterpret_cast<volatile u16 *>(reinterpret_cast<u64>(mmio_) + reg::CONFIG + offset);
     return *config;
 }
 
 /** @copydoc virtio::Device::read_config32 */
-u32 Device::read_config32(u32 offset)
-{
+u32 Device::read_config32(u32 offset) {
     return read32(reg::CONFIG + offset);
 }
 
 /** @copydoc virtio::Device::read_config64 */
-u64 Device::read_config64(u32 offset)
-{
+u64 Device::read_config64(u32 offset) {
     u32 lo = read32(reg::CONFIG + offset);
     u32 hi = read32(reg::CONFIG + offset + 4);
     return (static_cast<u64>(hi) << 32) | lo;
 }
 
 /** @copydoc virtio::Device::negotiate_features */
-bool Device::negotiate_features(u64 required)
-{
-    if (is_legacy())
-    {
+bool Device::negotiate_features(u64 required) {
+    if (is_legacy()) {
         // Legacy: simpler feature negotiation
         u32 device_features = read32(reg::DEVICE_FEATURES);
 
-        if ((device_features & static_cast<u32>(required)) != static_cast<u32>(required))
-        {
+        if ((device_features & static_cast<u32>(required)) != static_cast<u32>(required)) {
             serial::puts("[virtio] Missing required features\n");
             return false;
         }
@@ -138,8 +122,7 @@ bool Device::negotiate_features(u64 required)
     u64 device_features = (static_cast<u64>(features_hi) << 32) | features_lo;
 
     // Check required features are available
-    if ((device_features & required) != required)
-    {
+    if ((device_features & required) != required) {
         serial::puts("[virtio] Missing required features\n");
         return false;
     }
@@ -154,8 +137,7 @@ bool Device::negotiate_features(u64 required)
     add_status(status::FEATURES_OK);
 
     // Verify FEATURES_OK is still set
-    if (!(get_status() & status::FEATURES_OK))
-    {
+    if (!(get_status() & status::FEATURES_OK)) {
         serial::puts("[virtio] Device rejected features\n");
         return false;
     }
@@ -164,41 +146,34 @@ bool Device::negotiate_features(u64 required)
 }
 
 /** @copydoc virtio::Device::set_status */
-void Device::set_status(u32 s)
-{
+void Device::set_status(u32 s) {
     write32(reg::STATUS, s);
 }
 
 /** @copydoc virtio::Device::get_status */
-u32 Device::get_status()
-{
+u32 Device::get_status() {
     return read32(reg::STATUS);
 }
 
 /** @copydoc virtio::Device::add_status */
-void Device::add_status(u32 bits)
-{
+void Device::add_status(u32 bits) {
     write32(reg::STATUS, get_status() | bits);
 }
 
 /** @copydoc virtio::Device::read_isr */
-u32 Device::read_isr()
-{
+u32 Device::read_isr() {
     return read32(reg::INTERRUPT_STATUS);
 }
 
 /** @copydoc virtio::Device::ack_interrupt */
-void Device::ack_interrupt(u32 bits)
-{
+void Device::ack_interrupt(u32 bits) {
     write32(reg::INTERRUPT_ACK, bits);
 }
 
 /** @copydoc virtio::Device::basic_init */
-bool Device::basic_init(u64 base_addr)
-{
+bool Device::basic_init(u64 base_addr) {
     // Step 1: Initialize and verify device
-    if (!init(base_addr))
-    {
+    if (!init(base_addr)) {
         return false;
     }
 
@@ -206,8 +181,7 @@ bool Device::basic_init(u64 base_addr)
     reset();
 
     // Step 3: For legacy devices, set guest page size
-    if (is_legacy())
-    {
+    if (is_legacy()) {
         write32(reg::GUEST_PAGE_SIZE, 4096);
     }
 
@@ -220,29 +194,25 @@ bool Device::basic_init(u64 base_addr)
 
 // Probe for virtio devices
 /** @copydoc virtio::init */
-void init()
-{
+void init() {
     serial::puts("[virtio] Probing for devices...\n");
 
     num_devices = 0;
 
     // QEMU virt machine: virtio MMIO at 0x0a000000-0x0a004000
     // Each device is 0x200 bytes apart
-    for (u64 addr = 0x0a000000; addr < 0x0a004000 && num_devices < MAX_DEVICES; addr += 0x200)
-    {
+    for (u64 addr = 0x0a000000; addr < 0x0a004000 && num_devices < MAX_DEVICES; addr += 0x200) {
         volatile u32 *mmio = reinterpret_cast<volatile u32 *>(addr);
 
         // Check magic
         u32 magic = mmio[reg::MAGIC / 4];
-        if (magic != MAGIC_VALUE)
-        {
+        if (magic != MAGIC_VALUE) {
             continue;
         }
 
         // Check device ID
         u32 dev_id = mmio[reg::DEVICE_ID / 4];
-        if (dev_id == 0)
-        {
+        if (dev_id == 0) {
             continue; // No device
         }
 
@@ -252,8 +222,7 @@ void init()
         devices[num_devices].in_use = false;
 
         const char *type_name = "unknown";
-        switch (dev_id)
-        {
+        switch (dev_id) {
             case device_type::NET:
                 type_name = "network";
                 break;
@@ -289,14 +258,11 @@ void init()
 }
 
 /** @copydoc virtio::find_device */
-u64 find_device(u32 type)
-{
+u64 find_device(u32 type) {
     SpinlockGuard guard(device_lock);
 
-    for (usize i = 0; i < num_devices; i++)
-    {
-        if (devices[i].type == type && !devices[i].in_use)
-        {
+    for (usize i = 0; i < num_devices; i++) {
+        if (devices[i].type == type && !devices[i].in_use) {
             devices[i].in_use = true;
             return devices[i].base;
         }
@@ -305,14 +271,12 @@ u64 find_device(u32 type)
 }
 
 /** @copydoc virtio::device_count */
-usize device_count()
-{
+usize device_count() {
     return num_devices;
 }
 
 /** @copydoc virtio::get_device_info */
-const DeviceInfo *get_device_info(usize index)
-{
+const DeviceInfo *get_device_info(usize index) {
     if (index >= num_devices)
         return nullptr;
     return &devices[index];

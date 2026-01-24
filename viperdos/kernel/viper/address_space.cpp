@@ -20,8 +20,7 @@
 #include "../mm/cow.hpp"
 #include "../mm/pmm.hpp"
 
-namespace viper
-{
+namespace viper {
 
 // Spinlock protecting ASID bitmap operations
 static Spinlock asid_lock;
@@ -31,13 +30,11 @@ static u64 asid_bitmap[4] = {0, 0, 0, 0};
 static u16 asid_next = 1; // Start at 1, 0 is reserved for kernel
 
 /** @copydoc viper::asid_init */
-void asid_init()
-{
+void asid_init() {
     SpinlockGuard guard(asid_lock);
 
     // Clear bitmap - all ASIDs free
-    for (int i = 0; i < 4; i++)
-    {
+    for (int i = 0; i < 4; i++) {
         asid_bitmap[i] = 0;
     }
     // Reserve ASID 0 for kernel
@@ -48,13 +45,11 @@ void asid_init()
 }
 
 /** @copydoc viper::asid_alloc */
-u16 asid_alloc()
-{
+u16 asid_alloc() {
     SpinlockGuard guard(asid_lock);
 
     // Search for a free ASID starting from asid_next
-    for (u16 i = 0; i < MAX_ASID; i++)
-    {
+    for (u16 i = 0; i < MAX_ASID; i++) {
         u16 asid = (asid_next + i) % MAX_ASID;
         if (asid == 0)
             continue; // Skip kernel ASID
@@ -62,8 +57,7 @@ u16 asid_alloc()
         u32 word = asid / 64;
         u32 bit = asid % 64;
 
-        if (!(asid_bitmap[word] & (1ULL << bit)))
-        {
+        if (!(asid_bitmap[word] & (1ULL << bit))) {
             // Found free ASID
             asid_bitmap[word] |= (1ULL << bit);
             asid_next = (asid + 1) % MAX_ASID;
@@ -76,8 +70,7 @@ u16 asid_alloc()
 }
 
 /** @copydoc viper::asid_free */
-void asid_free(u16 asid)
-{
+void asid_free(u16 asid) {
     if (asid == 0 || asid >= MAX_ASID)
         return;
 
@@ -90,25 +83,21 @@ void asid_free(u16 asid)
 }
 
 /** @copydoc viper::AddressSpace::phys_to_virt */
-u64 *AddressSpace::phys_to_virt(u64 phys)
-{
+u64 *AddressSpace::phys_to_virt(u64 phys) {
     return reinterpret_cast<u64 *>(pmm::phys_to_virt(phys));
 }
 
 /** @copydoc viper::AddressSpace::init */
-bool AddressSpace::init()
-{
+bool AddressSpace::init() {
     // Allocate ASID
     asid_ = asid_alloc();
-    if (asid_ == ASID_INVALID)
-    {
+    if (asid_ == ASID_INVALID) {
         return false;
     }
 
     // Allocate root page table (L0)
     u64 l0_page = pmm::alloc_page();
-    if (l0_page == 0)
-    {
+    if (l0_page == 0) {
         asid_free(asid_);
         asid_ = ASID_INVALID;
         return false;
@@ -118,8 +107,7 @@ bool AddressSpace::init()
 
     // Zero the L0 table
     u64 *l0 = phys_to_virt(root_);
-    for (int i = 0; i < 512; i++)
-    {
+    for (int i = 0; i < 512; i++) {
         l0[i] = 0;
     }
 
@@ -127,12 +115,10 @@ bool AddressSpace::init()
     // This allows kernel code to run when exceptions occur from user space
     // We can't share the kernel's L1 directly because user mappings would corrupt it
     u64 kernel_ttbr0 = mmu::get_kernel_ttbr0();
-    if (kernel_ttbr0 != 0)
-    {
+    if (kernel_ttbr0 != 0) {
         // Allocate user's L1 table
         u64 l1_page = pmm::alloc_page();
-        if (l1_page == 0)
-        {
+        if (l1_page == 0) {
             pmm::free_page(l0_page);
             asid_free(asid_);
             asid_ = ASID_INVALID;
@@ -141,15 +127,13 @@ bool AddressSpace::init()
 
         // Zero user's L1 table
         u64 *user_l1 = phys_to_virt(l1_page);
-        for (int i = 0; i < 512; i++)
-        {
+        for (int i = 0; i < 512; i++) {
             user_l1[i] = 0;
         }
 
         // Copy kernel's L1[0] and L1[1] entries (0-2GB kernel mappings)
         u64 *kernel_l0 = phys_to_virt(kernel_ttbr0);
-        if (kernel_l0[0] & pte::VALID)
-        {
+        if (kernel_l0[0] & pte::VALID) {
             u64 *kernel_l1 = phys_to_virt(kernel_l0[0] & pte::ADDR_MASK);
             user_l1[0] = kernel_l1[0]; // Device memory 0-1GB
             user_l1[1] = kernel_l1[1]; // RAM 1-2GB
@@ -169,8 +153,7 @@ bool AddressSpace::init()
 }
 
 /** @copydoc viper::AddressSpace::destroy */
-void AddressSpace::destroy()
-{
+void AddressSpace::destroy() {
     if (root_ == 0)
         return;
 
@@ -184,17 +167,14 @@ void AddressSpace::destroy()
     // Walk and free all page table levels
     u64 *l0 = phys_to_virt(root_);
 
-    for (int i = 0; i < 512; i++)
-    {
+    for (int i = 0; i < 512; i++) {
         u64 entry = l0[i];
 
-        if (!(entry & pte::VALID))
-        {
+        if (!(entry & pte::VALID)) {
             continue;
         }
 
-        if (entry & pte::TABLE)
-        {
+        if (entry & pte::TABLE) {
             u64 l1_addr = entry & pte::ADDR_MASK;
 
             // The user's L1[0] contains entries copied from kernel
@@ -203,64 +183,50 @@ void AddressSpace::destroy()
 
             // Walk L1
             u64 *l1 = phys_to_virt(l1_addr);
-            for (int j = 0; j < 512; j++)
-            {
+            for (int j = 0; j < 512; j++) {
                 u64 l1_entry = l1[j];
 
-                if (!(l1_entry & pte::VALID))
-                {
+                if (!(l1_entry & pte::VALID)) {
                     continue;
                 }
 
                 // Skip kernel mappings in slot 0's L1 (entries 0 and 1 are kernel)
-                if (is_user_l1_with_kernel && (j == 0 || j == 1))
-                {
+                if (is_user_l1_with_kernel && (j == 0 || j == 1)) {
                     continue;
                 }
 
-                if (l1_entry & pte::TABLE)
-                {
+                if (l1_entry & pte::TABLE) {
                     u64 l2_addr = l1_entry & pte::ADDR_MASK;
 
                     // Walk L2
                     u64 *l2 = phys_to_virt(l2_addr);
-                    for (int k = 0; k < 512; k++)
-                    {
+                    for (int k = 0; k < 512; k++) {
                         u64 l2_entry = l2[k];
 
-                        if (!(l2_entry & pte::VALID))
-                        {
+                        if (!(l2_entry & pte::VALID)) {
                             continue;
                         }
 
-                        if (l2_entry & pte::TABLE)
-                        {
+                        if (l2_entry & pte::TABLE) {
                             u64 l3_addr = l2_entry & pte::ADDR_MASK;
 
                             // Walk L3 and free user pages
                             u64 *l3 = phys_to_virt(l3_addr);
-                            for (int l = 0; l < 512; l++)
-                            {
+                            for (int l = 0; l < 512; l++) {
                                 u64 l3_entry = l3[l];
 
-                                if (l3_entry & pte::VALID)
-                                {
+                                if (l3_entry & pte::VALID) {
                                     // Free the user data page, respecting COW reference counts
                                     u64 page_addr = l3_entry & pte::ADDR_MASK;
                                     u16 refcount = mm::cow::cow_manager().get_ref(page_addr);
-                                    if (refcount > 1)
-                                    {
+                                    if (refcount > 1) {
                                         // Page is COW-shared with another process - just decrement
                                         mm::cow::cow_manager().dec_ref(page_addr);
-                                    }
-                                    else if (refcount == 1)
-                                    {
+                                    } else if (refcount == 1) {
                                         // Last reference - decrement and free
                                         mm::cow::cow_manager().dec_ref(page_addr);
                                         pmm::free_page(page_addr);
-                                    }
-                                    else
-                                    {
+                                    } else {
                                         // refcount == 0: page wasn't COW-tracked, just free it
                                         pmm::free_page(page_addr);
                                     }
@@ -287,8 +253,7 @@ void AddressSpace::destroy()
     root_ = 0;
 
     // Free ASID
-    if (asid_ != ASID_INVALID)
-    {
+    if (asid_ != ASID_INVALID) {
         asid_free(asid_);
         asid_ = ASID_INVALID;
     }
@@ -297,10 +262,8 @@ void AddressSpace::destroy()
 }
 
 /** @copydoc viper::AddressSpace::get_or_alloc_table */
-u64 *AddressSpace::get_or_alloc_table(u64 *parent, int index)
-{
-    if (!(parent[index] & pte::VALID))
-    {
+u64 *AddressSpace::get_or_alloc_table(u64 *parent, int index) {
+    if (!(parent[index] & pte::VALID)) {
         // Allocate new table
         u64 page = pmm::alloc_page();
         if (page == 0)
@@ -308,8 +271,7 @@ u64 *AddressSpace::get_or_alloc_table(u64 *parent, int index)
 
         // Zero the new table
         u64 *child = phys_to_virt(page);
-        for (int i = 0; i < 512; i++)
-        {
+        for (int i = 0; i < 512; i++) {
             child[i] = 0;
         }
 
@@ -321,16 +283,14 @@ u64 *AddressSpace::get_or_alloc_table(u64 *parent, int index)
 }
 
 /** @copydoc viper::AddressSpace::map */
-bool AddressSpace::map(u64 virt, u64 phys, usize size, u32 prot_flags)
-{
+bool AddressSpace::map(u64 virt, u64 phys, usize size, u32 prot_flags) {
     if (root_ == 0)
         return false;
 
     u64 *l0 = phys_to_virt(root_);
     usize pages = (size + 4095) / 4096;
 
-    for (usize i = 0; i < pages; i++)
-    {
+    for (usize i = 0; i < pages; i++) {
         u64 va = virt + i * 4096;
         u64 pa = phys + i * 4096;
 
@@ -358,12 +318,10 @@ bool AddressSpace::map(u64 virt, u64 phys, usize size, u32 prot_flags)
             pa | pte::VALID | pte::PAGE | pte::AF | pte::SH_INNER | pte::AP_EL0 | pte::ATTR_NORMAL;
 
         // Set protection bits
-        if (!(prot_flags & prot::WRITE))
-        {
+        if (!(prot_flags & prot::WRITE)) {
             entry |= pte::AP_RO;
         }
-        if (!(prot_flags & prot::EXEC))
-        {
+        if (!(prot_flags & prot::EXEC)) {
             entry |= pte::UXN | pte::PXN;
         }
 
@@ -377,16 +335,14 @@ bool AddressSpace::map(u64 virt, u64 phys, usize size, u32 prot_flags)
 }
 
 /** @copydoc viper::AddressSpace::unmap */
-void AddressSpace::unmap(u64 virt, usize size)
-{
+void AddressSpace::unmap(u64 virt, usize size) {
     if (root_ == 0)
         return;
 
     u64 *l0 = phys_to_virt(root_);
     usize pages = (size + 4095) / 4096;
 
-    for (usize i = 0; i < pages; i++)
-    {
+    for (usize i = 0; i < pages; i++) {
         u64 va = virt + i * 4096;
 
         int i0 = (va >> 39) & 0x1FF;
@@ -416,27 +372,23 @@ void AddressSpace::unmap(u64 virt, usize size)
 }
 
 /** @copydoc viper::AddressSpace::alloc_map */
-u64 AddressSpace::alloc_map(u64 virt, usize size, u32 prot_flags)
-{
+u64 AddressSpace::alloc_map(u64 virt, usize size, u32 prot_flags) {
     usize pages = (size + 4095) / 4096;
 
     // Allocate physical pages
     u64 phys = pmm::alloc_pages(pages);
-    if (phys == 0)
-    {
+    if (phys == 0) {
         return 0;
     }
 
     // Zero the allocated pages
     u64 *ptr = phys_to_virt(phys);
-    for (usize i = 0; i < (pages * 4096) / sizeof(u64); i++)
-    {
+    for (usize i = 0; i < (pages * 4096) / sizeof(u64); i++) {
         ptr[i] = 0;
     }
 
     // Map into address space
-    if (!map(virt, phys, size, prot_flags))
-    {
+    if (!map(virt, phys, size, prot_flags)) {
         pmm::free_pages(phys, pages);
         return 0;
     }
@@ -445,8 +397,7 @@ u64 AddressSpace::alloc_map(u64 virt, usize size, u32 prot_flags)
 }
 
 /** @copydoc viper::AddressSpace::translate */
-u64 AddressSpace::translate(u64 virt)
-{
+u64 AddressSpace::translate(u64 virt) {
     if (root_ == 0)
         return 0;
 
@@ -477,8 +428,7 @@ u64 AddressSpace::translate(u64 virt)
 }
 
 /** @copydoc viper::switch_address_space */
-void switch_address_space(u64 ttbr0, u16 asid)
-{
+void switch_address_space(u64 ttbr0, u16 asid) {
     // TTBR0_EL1 format: ASID in bits [63:48], table address in bits [47:1]
     u64 val = ttbr0 | (static_cast<u64>(asid) << 48);
 
@@ -488,8 +438,7 @@ void switch_address_space(u64 ttbr0, u16 asid)
 }
 
 /** @copydoc viper::tlb_flush_asid */
-void tlb_flush_asid(u16 asid)
-{
+void tlb_flush_asid(u16 asid) {
     u64 val = static_cast<u64>(asid) << 48;
     asm volatile("tlbi   aside1is, %0    \n"
                  "dsb    sy              \n"
@@ -497,8 +446,7 @@ void tlb_flush_asid(u16 asid)
 }
 
 /** @copydoc viper::tlb_flush_page */
-void tlb_flush_page(u64 virt, u16 asid)
-{
+void tlb_flush_page(u64 virt, u16 asid) {
     // TLBI VAE1IS: invalidate by VA and ASID
     u64 val = (virt >> 12) | (static_cast<u64>(asid) << 48);
     asm volatile("tlbi   vae1is, %0      \n"
@@ -507,10 +455,8 @@ void tlb_flush_page(u64 virt, u16 asid)
 }
 
 /** @copydoc viper::AddressSpace::clone_cow_from */
-bool AddressSpace::clone_cow_from(AddressSpace *parent)
-{
-    if (!parent || !parent->is_valid() || !is_valid())
-    {
+bool AddressSpace::clone_cow_from(AddressSpace *parent) {
+    if (!parent || !parent->is_valid() || !is_valid()) {
         serial::puts("[address_space] clone_cow_from: invalid address space\n");
         return false;
     }
@@ -526,8 +472,7 @@ bool AddressSpace::clone_cow_from(AddressSpace *parent)
 
     // Walk parent's page tables and create matching mappings
     // Skip L0[0] which contains kernel mappings (already set up in init)
-    for (int i0 = 1; i0 < 512; i0++)
-    {
+    for (int i0 = 1; i0 < 512; i0++) {
         if (!(parent_l0[i0] & pte::VALID))
             continue;
         if (!(parent_l0[i0] & pte::TABLE))
@@ -540,8 +485,7 @@ bool AddressSpace::clone_cow_from(AddressSpace *parent)
 
         u64 *parent_l1 = phys_to_virt(parent_l0[i0] & pte::ADDR_MASK);
 
-        for (int i1 = 0; i1 < 512; i1++)
-        {
+        for (int i1 = 0; i1 < 512; i1++) {
             if (!(parent_l1[i1] & pte::VALID))
                 continue;
             if (!(parent_l1[i1] & pte::TABLE))
@@ -553,8 +497,7 @@ bool AddressSpace::clone_cow_from(AddressSpace *parent)
 
             u64 *parent_l2 = phys_to_virt(parent_l1[i1] & pte::ADDR_MASK);
 
-            for (int i2 = 0; i2 < 512; i2++)
-            {
+            for (int i2 = 0; i2 < 512; i2++) {
                 if (!(parent_l2[i2] & pte::VALID))
                     continue;
                 if (!(parent_l2[i2] & pte::TABLE))
@@ -566,8 +509,7 @@ bool AddressSpace::clone_cow_from(AddressSpace *parent)
 
                 u64 *parent_l3 = phys_to_virt(parent_l2[i2] & pte::ADDR_MASK);
 
-                for (int i3 = 0; i3 < 512; i3++)
-                {
+                for (int i3 = 0; i3 < 512; i3++) {
                     u64 entry = parent_l3[i3];
                     if (!(entry & pte::VALID))
                         continue;
@@ -602,16 +544,14 @@ bool AddressSpace::clone_cow_from(AddressSpace *parent)
 }
 
 /** @copydoc viper::AddressSpace::make_cow_readonly */
-void AddressSpace::make_cow_readonly()
-{
+void AddressSpace::make_cow_readonly() {
     if (!is_valid())
         return;
 
     u64 *l0 = phys_to_virt(root_);
 
     // Walk all user mappings (skip L0[0] which is kernel)
-    for (int i0 = 1; i0 < 512; i0++)
-    {
+    for (int i0 = 1; i0 < 512; i0++) {
         if (!(l0[i0] & pte::VALID))
             continue;
         if (!(l0[i0] & pte::TABLE))
@@ -619,8 +559,7 @@ void AddressSpace::make_cow_readonly()
 
         u64 *l1 = phys_to_virt(l0[i0] & pte::ADDR_MASK);
 
-        for (int i1 = 0; i1 < 512; i1++)
-        {
+        for (int i1 = 0; i1 < 512; i1++) {
             if (!(l1[i1] & pte::VALID))
                 continue;
             if (!(l1[i1] & pte::TABLE))
@@ -628,8 +567,7 @@ void AddressSpace::make_cow_readonly()
 
             u64 *l2 = phys_to_virt(l1[i1] & pte::ADDR_MASK);
 
-            for (int i2 = 0; i2 < 512; i2++)
-            {
+            for (int i2 = 0; i2 < 512; i2++) {
                 if (!(l2[i2] & pte::VALID))
                     continue;
                 if (!(l2[i2] & pte::TABLE))
@@ -637,10 +575,8 @@ void AddressSpace::make_cow_readonly()
 
                 u64 *l3 = phys_to_virt(l2[i2] & pte::ADDR_MASK);
 
-                for (int i3 = 0; i3 < 512; i3++)
-                {
-                    if (l3[i3] & pte::VALID)
-                    {
+                for (int i3 = 0; i3 < 512; i3++) {
+                    if (l3[i3] & pte::VALID) {
                         // Set read-only bit
                         l3[i3] |= pte::AP_RO;
                     }

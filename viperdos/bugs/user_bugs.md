@@ -10,6 +10,7 @@
 
 Three user-space test programs were created to validate the libc runtime and
 syscall interfaces:
+
 - **fsinfo.elf** - Filesystem information utility
 - **netstat.elf** - Network statistics utility
 - **sysinfo.elf** - System information and runtime tests
@@ -31,6 +32,7 @@ When a program includes both libc headers (e.g., `<unistd.h>`) and `syscall.hpp`
 there are macro/constexpr conflicts for `SEEK_SET`, `SEEK_CUR`, and `SEEK_END`.
 
 The libc `unistd.h` defines these as macros:
+
 ```c
 #define SEEK_SET 0
 #define SEEK_CUR 1
@@ -38,6 +40,7 @@ The libc `unistd.h` defines these as macros:
 ```
 
 While `syscall.hpp` tries to define them as constexpr in the `sys` namespace:
+
 ```cpp
 constexpr i32 SEEK_SET = viper::seek_whence::SET;
 ```
@@ -46,6 +49,7 @@ The preprocessor replaces `SEEK_SET` with `0`, resulting in invalid code.
 
 **Fix Applied:**
 Added `#undef` directives in `syscall.hpp` before the constexpr declarations:
+
 ```cpp
 #ifdef SEEK_SET
 #undef SEEK_SET
@@ -55,6 +59,7 @@ constexpr i32 SEEK_SET = viper::seek_whence::SET;
 
 **Recommendation:**
 Consider a more comprehensive solution:
+
 - Use different names in the sys namespace (e.g., `sys::SEEK_SET_`)
 - Or move to a unified header approach
 
@@ -76,11 +81,13 @@ was linked against libc, the libc version was used, causing:
 3. Arrow-up to access command history would cause display corruption
 
 **Symptoms:**
+
 - Pressing arrow-up would display garbage or misaligned text
 - Cursor position got out of sync with the displayed line
 
 **Fix Applied:**
 Renamed vinit's local functions to avoid conflicts:
+
 - `puts()` → `print_str()`
 - `putchar()` → `print_char()`
 
@@ -94,6 +101,7 @@ Renamed vinit's local functions to avoid conflicts:
 
 **Description:**
 When loading user programs, the kernel prints:
+
 ```
 [kheap] ERROR: kfree() on invalid pointer 0x4022c010 (outside heap range...)
 ```
@@ -130,6 +138,7 @@ was never updated to include the new region.
 
 **Fix Applied:**
 Updated `kheap.cpp` to track multiple heap regions:
+
 1. Added `HeapRegion` struct and `heap_regions[]` array to track all allocated regions
 2. Added `is_in_heap()` function to check if an address is in any valid region
 3. Modified `expand_heap()` to register new regions via `add_heap_region()`
@@ -146,6 +155,7 @@ Updated `kheap.cpp` to track multiple heap regions:
 
 **Description:**
 After running the storage subsystem tests, fsck.ziafs reports:
+
 ```
 WARNING: Orphaned inode 13 (not reachable from root)
 WARNING: Superblock free_blocks=2011 but counted 1893 free
@@ -176,6 +186,7 @@ void ViperFS::free_inode(u64 ino)
 
 However, the storage tests at `kernel/main.cpp:758` run without a subsequent
 `sync()` call. The test sequence is:
+
 1. `test_vfs_file_create_write_read()` creates `/testfile.txt` (inode 13)
 2. File is unlinked - `free_inode()` sets `mode=0` in cache (block marked dirty)
 3. Tests complete, but dirty blocks may not be flushed to disk
@@ -190,6 +201,7 @@ in specific command handlers, not after the test suite.
 **Fix Applied:**
 Added `fs::viperfs::viperfs().sync()` after `tests::run_storage_tests()` in
 `kernel/main.cpp:773-776` to ensure all filesystem changes are persisted:
+
 ```cpp
 if (fs::viperfs::viperfs().is_mounted())
 {
@@ -211,6 +223,7 @@ the superblock after adding files (was writing initial count before files).
 
 **Description:**
 During kernel initialization, assign path resolution tests fail:
+
 ```
 SYS: -> inode 4294967295 FAIL
 SYS:vinit.elf -> inode 4294967295 FAIL
@@ -267,6 +280,7 @@ an associated capability table.
 Replaced the capability-based `resolve_path()` tests with lower-level
 `get_inode()` tests that don't require a Viper context. The tests at
 `kernel/main.cpp:699-735` now use:
+
 - `viper::assign::get_inode("SYS")` - tests assign lookup
 - `viper::assign::get_inode("D0")` - tests second assign
 - `fs::vfs::open("/vinit.elf", ...)` - tests file access via VFS
@@ -300,6 +314,7 @@ Added `print_str("\n")` after the file content read loop.
 
 **Description:**
 The kernel prints:
+
 ```
 [kheap] WARNING: Non-contiguous heap expansion at 0x4022c000
 ```
@@ -345,16 +360,19 @@ expansion is now handled correctly.
 ## Test Results
 
 ### Programs Built Successfully
+
 - [x] fsinfo.elf (87,048 bytes)
 - [x] netstat.elf (87,016 bytes)
 - [x] sysinfo.elf (93,760 bytes)
 
 ### Programs Included in Disk Image
+
 - [x] /fsinfo.elf (inode 7)
 - [x] /netstat.elf (inode 8)
 - [x] /sysinfo.elf (inode 9)
 
 ### Kernel-Level Tests
+
 - [x] Storage Tests: ALL PASSED (16/16)
 - [x] Viper Tests: ALL PASSED (8/8)
 - [x] Poll/Timer Tests: PASSED

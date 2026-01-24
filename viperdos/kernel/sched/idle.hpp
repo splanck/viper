@@ -14,16 +14,14 @@
 
 #include "../include/types.hpp"
 
-namespace idle
-{
+namespace idle {
 
 /**
  * @brief Idle state statistics per CPU.
  */
-struct IdleStats
-{
-    u64 wfi_count;      ///< Number of times WFI was executed
-    u64 wakeup_count;   ///< Number of times CPU woke from idle
+struct IdleStats {
+    u64 wfi_count;    ///< Number of times WFI was executed
+    u64 wakeup_count; ///< Number of times CPU woke from idle
 };
 
 /**

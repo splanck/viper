@@ -35,8 +35,7 @@
  * usable pages as free while keeping reserved regions allocated (kernel image,
  * bitmap storage, and other fixed reservations).
  */
-namespace pmm
-{
+namespace pmm {
 
 /** @brief Base page size in bytes (4 KiB). */
 constexpr u64 PAGE_SIZE = 4096;
@@ -49,8 +48,7 @@ constexpr u64 PAGE_SHIFT = 12;
  * @param addr Address in bytes.
  * @return The smallest address `>= addr` that is aligned to @ref PAGE_SIZE.
  */
-constexpr u64 page_align_up(u64 addr)
-{
+constexpr u64 page_align_up(u64 addr) {
     return (addr + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
 }
 
@@ -60,8 +58,7 @@ constexpr u64 page_align_up(u64 addr)
  * @param addr Address in bytes.
  * @return The largest address `<= addr` that is aligned to @ref PAGE_SIZE.
  */
-constexpr u64 page_align_down(u64 addr)
-{
+constexpr u64 page_align_down(u64 addr) {
     return addr & ~(PAGE_SIZE - 1);
 }
 
@@ -162,8 +159,7 @@ u64 get_used_pages();
  * @param phys Physical address.
  * @return Virtual address corresponding to `phys`.
  */
-inline void *phys_to_virt(u64 phys)
-{
+inline void *phys_to_virt(u64 phys) {
     return reinterpret_cast<void *>(phys);
 }
 
@@ -176,8 +172,7 @@ inline void *phys_to_virt(u64 phys)
  * @param virt Virtual address.
  * @return Physical address corresponding to `virt`.
  */
-inline u64 virt_to_phys(void *virt)
-{
+inline u64 virt_to_phys(void *virt) {
     return reinterpret_cast<u64>(virt);
 }
 

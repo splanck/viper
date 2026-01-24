@@ -262,7 +262,8 @@ void SelectCaseLowering::lowerStringArms(const SelectCaseStmt &stmt,
         il::core::Value labelValue = lowerer_.emitConstStr(lowerer_.getStringLabel(labelStr));
         // rt_str_eq returns i64 (0 or 1), convert to boolean
         il::core::Type i64Ty(il::core::Type::Kind::I64);
-        il::core::Value result = lowerer_.emitCallRet(i64Ty, "rt_str_eq", {stringSelector, labelValue});
+        il::core::Value result =
+            lowerer_.emitCallRet(i64Ty, "rt_str_eq", {stringSelector, labelValue});
         return lowerer_.coerceToBool({result, i64Ty}, entry.loc).value;
     };
 
@@ -351,7 +352,7 @@ void SelectCaseLowering::lowerNumericDispatch(const SelectCaseStmt &stmt,
     }
     else if (hasComparisons)
     {
-        defaultEntry.targetIdx = SIZE_MAX;  // Will be allocated later
+        defaultEntry.targetIdx = SIZE_MAX; // Will be allocated later
     }
     else
     {

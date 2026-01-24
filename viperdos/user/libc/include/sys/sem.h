@@ -11,8 +11,7 @@
 #include <time.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 /* Semaphore operation flags */
@@ -43,79 +42,74 @@ extern "C"
 #define SEMUME SEMOPM            /* Max undo entries per process */
 #define SEMMNU SEMMNS            /* Max undo structures in system */
 
-    /* Semaphore buffer for semop() */
-    struct sembuf
-    {
-        unsigned short sem_num; /* Semaphore number */
-        short sem_op;           /* Semaphore operation */
-        short sem_flg;          /* Operation flags */
-    };
+/* Semaphore buffer for semop() */
+struct sembuf {
+    unsigned short sem_num; /* Semaphore number */
+    short sem_op;           /* Semaphore operation */
+    short sem_flg;          /* Operation flags */
+};
 
-    /* Individual semaphore structure (kernel internal representation) */
-    struct sem
-    {
-        unsigned short semval;  /* Semaphore value */
-        pid_t sempid;           /* PID of last operation */
-        unsigned short semncnt; /* # waiting for increase */
-        unsigned short semzcnt; /* # waiting for zero */
-    };
+/* Individual semaphore structure (kernel internal representation) */
+struct sem {
+    unsigned short semval;  /* Semaphore value */
+    pid_t sempid;           /* PID of last operation */
+    unsigned short semncnt; /* # waiting for increase */
+    unsigned short semzcnt; /* # waiting for zero */
+};
 
-    /* Semaphore set data structure */
-    struct semid_ds
-    {
-        struct ipc_perm sem_perm; /* Operation permission struct */
-        time_t sem_otime;         /* Last semop() time */
-        time_t sem_ctime;         /* Last change time */
-        unsigned long sem_nsems;  /* Number of semaphores in set */
-    };
+/* Semaphore set data structure */
+struct semid_ds {
+    struct ipc_perm sem_perm; /* Operation permission struct */
+    time_t sem_otime;         /* Last semop() time */
+    time_t sem_ctime;         /* Last change time */
+    unsigned long sem_nsems;  /* Number of semaphores in set */
+};
 
-    /* Info structure for IPC_INFO/SEM_INFO */
-    struct seminfo
-    {
-        int semmap; /* # of entries in semaphore map */
-        int semmni; /* Max # of semaphore sets */
-        int semmns; /* Max # of semaphores in system */
-        int semmnu; /* Max # of undo structures in system */
-        int semmsl; /* Max # of semaphores per set */
-        int semopm; /* Max # of operations per semop call */
-        int semume; /* Max # of undo entries per process */
-        int semusz; /* Size of struct sem_undo */
-        int semvmx; /* Max semaphore value */
-        int semaem; /* Max value for adjust on exit */
-    };
+/* Info structure for IPC_INFO/SEM_INFO */
+struct seminfo {
+    int semmap; /* # of entries in semaphore map */
+    int semmni; /* Max # of semaphore sets */
+    int semmns; /* Max # of semaphores in system */
+    int semmnu; /* Max # of undo structures in system */
+    int semmsl; /* Max # of semaphores per set */
+    int semopm; /* Max # of operations per semop call */
+    int semume; /* Max # of undo entries per process */
+    int semusz; /* Size of struct sem_undo */
+    int semvmx; /* Max semaphore value */
+    int semaem; /* Max value for adjust on exit */
+};
 
-    /* Union for semctl() fourth argument */
-    union semun
-    {
-        int val;               /* Value for SETVAL */
-        struct semid_ds *buf;  /* Buffer for IPC_STAT, IPC_SET */
-        unsigned short *array; /* Array for GETALL, SETALL */
-        struct seminfo *__buf; /* Buffer for IPC_INFO */
-    };
+/* Union for semctl() fourth argument */
+union semun {
+    int val;               /* Value for SETVAL */
+    struct semid_ds *buf;  /* Buffer for IPC_STAT, IPC_SET */
+    unsigned short *array; /* Array for GETALL, SETALL */
+    struct seminfo *__buf; /* Buffer for IPC_INFO */
+};
 
-    /*
-     * Get a semaphore set identifier.
-     * Returns semaphore set ID on success, -1 on error.
-     */
-    int semget(key_t key, int nsems, int semflg);
+/*
+ * Get a semaphore set identifier.
+ * Returns semaphore set ID on success, -1 on error.
+ */
+int semget(key_t key, int nsems, int semflg);
 
-    /*
-     * Perform semaphore operations.
-     * Returns 0 on success, -1 on error.
-     */
-    int semop(int semid, struct sembuf *sops, size_t nsops);
+/*
+ * Perform semaphore operations.
+ * Returns 0 on success, -1 on error.
+ */
+int semop(int semid, struct sembuf *sops, size_t nsops);
 
-    /*
-     * Perform timed semaphore operations.
-     * Returns 0 on success, -1 on error.
-     */
-    int semtimedop(int semid, struct sembuf *sops, size_t nsops, const struct timespec *timeout);
+/*
+ * Perform timed semaphore operations.
+ * Returns 0 on success, -1 on error.
+ */
+int semtimedop(int semid, struct sembuf *sops, size_t nsops, const struct timespec *timeout);
 
-    /*
-     * Semaphore control operations.
-     * Return value depends on cmd.
-     */
-    int semctl(int semid, int semnum, int cmd, ...);
+/*
+ * Semaphore control operations.
+ * Return value depends on cmd.
+ */
+int semctl(int semid, int semnum, int cmd, ...);
 
 #ifdef __cplusplus
 }

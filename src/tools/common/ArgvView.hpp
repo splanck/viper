@@ -31,7 +31,10 @@ struct ArgvView
 
     /// @brief Determine whether the view contains no arguments.
     /// @return True when `argc` is non-positive or the pointer is null.
-    [[nodiscard]] bool empty() const { return argc <= 0 || argv == nullptr; }
+    [[nodiscard]] bool empty() const
+    {
+        return argc <= 0 || argv == nullptr;
+    }
 
     /// @brief Access the first argument in the sequence.
     /// @details Returns an empty view when the sequence is empty.

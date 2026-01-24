@@ -101,8 +101,7 @@ class GrowingArena
     /// @details For trivially-destructible types, no tracking overhead is incurred.
     ///          For types with non-trivial destructors, the destructor will be
     ///          called when the arena is destroyed or reset.
-    template <typename T, typename... Args>
-    T *create(Args &&...args)
+    template <typename T, typename... Args> T *create(Args &&...args)
     {
         void *mem = allocate(sizeof(T), alignof(T));
         T *obj = new (mem) T(std::forward<Args>(args)...);
@@ -125,7 +124,10 @@ class GrowingArena
     [[nodiscard]] size_t totalAllocated() const noexcept;
 
     /// @brief Get number of chunks allocated.
-    [[nodiscard]] size_t chunkCount() const noexcept { return chunks_.size(); }
+    [[nodiscard]] size_t chunkCount() const noexcept
+    {
+        return chunks_.size();
+    }
 
   private:
     /// @brief A memory chunk with bump-pointer allocation.
@@ -136,6 +138,7 @@ class GrowingArena
         size_t offset = 0;
 
         Chunk() = default;
+
         explicit Chunk(size_t sz) : data(std::make_unique<std::byte[]>(sz)), size(sz), offset(0) {}
 
         // Move-only

@@ -48,8 +48,7 @@ extern int __viper_fsd_is_fd(int fd);
 extern int __viper_fsd_readdir(int fd, struct dirent *out_ent);
 
 /* Internal directory stream structure */
-struct _DIR
-{
+struct _DIR {
     int fd;              /* File descriptor for the directory */
     char buffer[2048];   /* Buffer for directory entries */
     int buf_pos;         /* Current position in buffer */
@@ -63,12 +62,9 @@ static struct _DIR dir_pool[MAX_DIRS];
 static int dir_pool_used[MAX_DIRS] = {0};
 
 /* Allocate a DIR from the pool */
-static struct _DIR *alloc_dir(void)
-{
-    for (int i = 0; i < MAX_DIRS; i++)
-    {
-        if (!dir_pool_used[i])
-        {
+static struct _DIR *alloc_dir(void) {
+    for (int i = 0; i < MAX_DIRS; i++) {
+        if (!dir_pool_used[i]) {
             dir_pool_used[i] = 1;
             return &dir_pool[i];
         }
@@ -77,12 +73,9 @@ static struct _DIR *alloc_dir(void)
 }
 
 /* Free a DIR back to the pool */
-static void free_dir(struct _DIR *dir)
-{
-    for (int i = 0; i < MAX_DIRS; i++)
-    {
-        if (&dir_pool[i] == dir)
-        {
+static void free_dir(struct _DIR *dir) {
+    for (int i = 0; i < MAX_DIRS; i++) {
+        if (&dir_pool[i] == dir) {
             dir_pool_used[i] = 0;
             return;
         }
@@ -109,8 +102,7 @@ static void free_dir(struct _DIR *dir)
  *
  * @see readdir, closedir, rewinddir
  */
-DIR *opendir(const char *name)
-{
+DIR *opendir(const char *name) {
     if (!name)
         return NULL;
 
@@ -121,8 +113,7 @@ DIR *opendir(const char *name)
 
     /* Allocate DIR structure */
     struct _DIR *dir = alloc_dir();
-    if (!dir)
-    {
+    if (!dir) {
         close(fd);
         return NULL;
     }
@@ -158,20 +149,17 @@ DIR *opendir(const char *name)
  *
  * @see opendir, closedir, rewinddir
  */
-struct dirent *readdir(DIR *dirp)
-{
+struct dirent *readdir(DIR *dirp) {
     if (!dirp)
         return NULL;
 
-    if (__viper_fsd_is_fd(dirp->fd))
-    {
+    if (__viper_fsd_is_fd(dirp->fd)) {
         int rc = __viper_fsd_readdir(dirp->fd, &dirp->entry);
         return (rc > 0) ? &dirp->entry : NULL;
     }
 
     /* If buffer is empty or exhausted, read more */
-    if (dirp->buf_pos >= dirp->buf_len)
-    {
+    if (dirp->buf_pos >= dirp->buf_len) {
         long result = __syscall3(SYS_READDIR, dirp->fd, (long)dirp->buffer, sizeof(dirp->buffer));
         if (result <= 0)
             return NULL;
@@ -228,8 +216,7 @@ struct dirent *readdir(DIR *dirp)
  *
  * @see opendir, readdir
  */
-int closedir(DIR *dirp)
-{
+int closedir(DIR *dirp) {
     if (!dirp)
         return -1;
 
@@ -255,13 +242,11 @@ int closedir(DIR *dirp)
  *
  * @see opendir, readdir
  */
-void rewinddir(DIR *dirp)
-{
+void rewinddir(DIR *dirp) {
     if (!dirp)
         return;
 
-    if (__viper_fsd_is_fd(dirp->fd))
-    {
+    if (__viper_fsd_is_fd(dirp->fd)) {
         (void)lseek(dirp->fd, 0, SEEK_SET);
         return;
     }
@@ -286,8 +271,7 @@ void rewinddir(DIR *dirp)
  *
  * @see opendir, fchdir
  */
-int dirfd(DIR *dirp)
-{
+int dirfd(DIR *dirp) {
     if (!dirp)
         return -1;
     return dirp->fd;

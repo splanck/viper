@@ -11,12 +11,10 @@
  */
 #include "../include/virtqueue.hpp"
 
-namespace virtio
-{
+namespace virtio {
 
 // Calculate legacy vring size (contiguous layout)
-static usize vring_size(u32 num, usize align)
-{
+static usize vring_size(u32 num, usize align) {
     usize desc_size = num * sizeof(VringDesc);
     usize avail_size = sizeof(VringAvail) + num * sizeof(u16) + sizeof(u16);
     usize used_size = sizeof(VringUsed) + num * sizeof(VringUsedElem) + sizeof(u16);
@@ -29,8 +27,7 @@ static usize vring_size(u32 num, usize align)
     return size;
 }
 
-bool Virtqueue::init(Device *dev, u32 queue_idx, u32 queue_size)
-{
+bool Virtqueue::init(Device *dev, u32 queue_idx, u32 queue_size) {
     dev_ = dev;
     queue_idx_ = queue_idx;
     legacy_ = dev->is_legacy();
@@ -39,45 +36,36 @@ bool Virtqueue::init(Device *dev, u32 queue_idx, u32 queue_size)
     dev->write32(reg::QUEUE_SEL, queue_idx);
 
     // Check queue isn't already in use
-    if (legacy_)
-    {
-        if (dev->read32(reg::QUEUE_PFN) != 0)
-        {
+    if (legacy_) {
+        if (dev->read32(reg::QUEUE_PFN) != 0) {
             return false;
         }
-    }
-    else
-    {
-        if (dev->read32(reg::QUEUE_READY))
-        {
+    } else {
+        if (dev->read32(reg::QUEUE_READY)) {
             return false;
         }
     }
 
     // Get max queue size
     u32 max_size = dev->read32(reg::QUEUE_NUM_MAX);
-    if (max_size == 0)
-    {
+    if (max_size == 0) {
         return false;
     }
 
     // Use requested size or max, whichever is smaller
-    if (queue_size > max_size || queue_size == 0)
-    {
+    if (queue_size > max_size || queue_size == 0) {
         queue_size = max_size;
     }
     size_ = queue_size;
 
-    if (legacy_)
-    {
+    if (legacy_) {
         // Legacy mode: allocate contiguous vring using DMA
         constexpr usize VRING_ALIGN = 4096;
         usize total_size = vring_size(size_, VRING_ALIGN);
         usize alloc_size = (total_size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
 
         device::DmaBuffer buf;
-        if (device::dma_alloc(alloc_size, &buf) != 0)
-        {
+        if (device::dma_alloc(alloc_size, &buf) != 0) {
             return false;
         }
 
@@ -86,8 +74,7 @@ bool Virtqueue::init(Device *dev, u32 queue_idx, u32 queue_size)
 
         // Zero entire region
         u8 *vring_mem = reinterpret_cast<u8 *>(desc_virt_);
-        for (usize i = 0; i < alloc_size; i++)
-        {
+        for (usize i = 0; i < alloc_size; i++) {
             vring_mem[i] = 0;
         }
 
@@ -112,9 +99,7 @@ bool Virtqueue::init(Device *dev, u32 queue_idx, u32 queue_size)
         dev->write32(reg::QUEUE_NUM, size_);
         dev->write32(reg::QUEUE_ALIGN, VRING_ALIGN);
         dev->write32(reg::QUEUE_PFN, desc_phys_ >> 12);
-    }
-    else
-    {
+    } else {
         // Modern mode: separate allocations
 
         // Allocate descriptor table
@@ -122,8 +107,7 @@ bool Virtqueue::init(Device *dev, u32 queue_idx, u32 queue_size)
         usize desc_alloc = (desc_bytes + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
 
         device::DmaBuffer desc_buf;
-        if (device::dma_alloc(desc_alloc, &desc_buf) != 0)
-        {
+        if (device::dma_alloc(desc_alloc, &desc_buf) != 0) {
             return false;
         }
         desc_phys_ = desc_buf.phys_addr;
@@ -131,8 +115,7 @@ bool Virtqueue::init(Device *dev, u32 queue_idx, u32 queue_size)
         desc_ = reinterpret_cast<VringDesc *>(desc_virt_);
 
         // Zero descriptor table
-        for (usize i = 0; i < desc_alloc; i++)
-        {
+        for (usize i = 0; i < desc_alloc; i++) {
             reinterpret_cast<u8 *>(desc_)[i] = 0;
         }
 
@@ -141,8 +124,7 @@ bool Virtqueue::init(Device *dev, u32 queue_idx, u32 queue_size)
         usize avail_alloc = (avail_bytes + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
 
         device::DmaBuffer avail_buf;
-        if (device::dma_alloc(avail_alloc, &avail_buf) != 0)
-        {
+        if (device::dma_alloc(avail_alloc, &avail_buf) != 0) {
             device::dma_free(desc_virt_);
             return false;
         }
@@ -151,8 +133,7 @@ bool Virtqueue::init(Device *dev, u32 queue_idx, u32 queue_size)
         avail_ = reinterpret_cast<VringAvail *>(avail_virt_);
 
         // Zero available ring
-        for (usize i = 0; i < avail_alloc; i++)
-        {
+        for (usize i = 0; i < avail_alloc; i++) {
             reinterpret_cast<u8 *>(avail_)[i] = 0;
         }
 
@@ -161,8 +142,7 @@ bool Virtqueue::init(Device *dev, u32 queue_idx, u32 queue_size)
         usize used_alloc = (used_bytes + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
 
         device::DmaBuffer used_buf;
-        if (device::dma_alloc(used_alloc, &used_buf) != 0)
-        {
+        if (device::dma_alloc(used_alloc, &used_buf) != 0) {
             device::dma_free(desc_virt_);
             device::dma_free(avail_virt_);
             return false;
@@ -172,8 +152,7 @@ bool Virtqueue::init(Device *dev, u32 queue_idx, u32 queue_size)
         used_ = reinterpret_cast<VringUsed *>(used_virt_);
 
         // Zero used ring
-        for (usize i = 0; i < used_alloc; i++)
-        {
+        for (usize i = 0; i < used_alloc; i++) {
             reinterpret_cast<u8 *>(used_)[i] = 0;
         }
 
@@ -193,8 +172,7 @@ bool Virtqueue::init(Device *dev, u32 queue_idx, u32 queue_size)
     }
 
     // Initialize free list (all descriptors chained)
-    for (u32 i = 0; i < size_ - 1; i++)
-    {
+    for (u32 i = 0; i < size_ - 1; i++) {
         desc_[i].next = i + 1;
         desc_[i].flags = desc_flags::NEXT;
     }
@@ -206,10 +184,8 @@ bool Virtqueue::init(Device *dev, u32 queue_idx, u32 queue_size)
     return true;
 }
 
-void Virtqueue::destroy()
-{
-    if (!dev_)
-    {
+void Virtqueue::destroy() {
+    if (!dev_) {
         return;
     }
 
@@ -218,18 +194,14 @@ void Virtqueue::destroy()
     dev_->write32(reg::QUEUE_READY, 0);
 
     // Free DMA memory
-    if (desc_virt_)
-    {
+    if (desc_virt_) {
         device::dma_free(desc_virt_);
     }
-    if (!legacy_)
-    {
-        if (avail_virt_)
-        {
+    if (!legacy_) {
+        if (avail_virt_) {
             device::dma_free(avail_virt_);
         }
-        if (used_virt_)
-        {
+        if (used_virt_) {
             device::dma_free(used_virt_);
         }
     }
@@ -240,10 +212,8 @@ void Virtqueue::destroy()
     used_ = nullptr;
 }
 
-i32 Virtqueue::alloc_desc()
-{
-    if (num_free_ == 0)
-    {
+i32 Virtqueue::alloc_desc() {
+    if (num_free_ == 0) {
         return -1;
     }
 
@@ -260,10 +230,8 @@ i32 Virtqueue::alloc_desc()
     return idx;
 }
 
-void Virtqueue::free_desc(u32 idx)
-{
-    if (idx >= size_)
-    {
+void Virtqueue::free_desc(u32 idx) {
+    if (idx >= size_) {
         return;
     }
 
@@ -273,28 +241,23 @@ void Virtqueue::free_desc(u32 idx)
     num_free_++;
 }
 
-void Virtqueue::free_chain(u32 head)
-{
+void Virtqueue::free_chain(u32 head) {
     u32 idx = head;
-    while (true)
-    {
+    while (true) {
         u16 flags = desc_[idx].flags;
         u16 next = desc_[idx].next;
 
         free_desc(idx);
 
-        if (!(flags & desc_flags::NEXT))
-        {
+        if (!(flags & desc_flags::NEXT)) {
             break;
         }
         idx = next;
     }
 }
 
-void Virtqueue::set_desc(u32 idx, u64 addr, u32 len, u16 flags)
-{
-    if (idx >= size_)
-    {
+void Virtqueue::set_desc(u32 idx, u64 addr, u32 len, u16 flags) {
+    if (idx >= size_) {
         return;
     }
 
@@ -303,10 +266,8 @@ void Virtqueue::set_desc(u32 idx, u64 addr, u32 len, u16 flags)
     desc_[idx].flags = flags;
 }
 
-void Virtqueue::chain_desc(u32 idx, u32 next_idx)
-{
-    if (idx >= size_ || next_idx >= size_)
-    {
+void Virtqueue::chain_desc(u32 idx, u32 next_idx) {
+    if (idx >= size_ || next_idx >= size_) {
         return;
     }
 
@@ -314,8 +275,7 @@ void Virtqueue::chain_desc(u32 idx, u32 next_idx)
     desc_[idx].flags |= desc_flags::NEXT;
 }
 
-void Virtqueue::submit(u32 head)
-{
+void Virtqueue::submit(u32 head) {
     u16 avail_idx = avail_->idx;
     avail_->ring[avail_idx % size_] = head;
 
@@ -325,21 +285,18 @@ void Virtqueue::submit(u32 head)
     avail_->idx = avail_idx + 1;
 }
 
-void Virtqueue::kick()
-{
+void Virtqueue::kick() {
     // Memory barrier before notify
     asm volatile("dmb sy" ::: "memory");
 
     dev_->write32(reg::QUEUE_NOTIFY, queue_idx_);
 }
 
-i32 Virtqueue::poll_used()
-{
+i32 Virtqueue::poll_used() {
     // Memory barrier to ensure we see latest used index
     asm volatile("dmb sy" ::: "memory");
 
-    if (last_used_idx_ == used_->idx)
-    {
+    if (last_used_idx_ == used_->idx) {
         return -1;
     }
 
@@ -351,8 +308,7 @@ i32 Virtqueue::poll_used()
     return head;
 }
 
-u32 Virtqueue::get_used_len(u32 /* idx */)
-{
+u32 Virtqueue::get_used_len(u32 /* idx */) {
     return last_used_len_;
 }
 

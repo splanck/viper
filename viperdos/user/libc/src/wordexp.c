@@ -49,8 +49,7 @@
 /*
  * Helper: Check if character is special shell character
  */
-static int is_special_char(char c)
-{
+static int is_special_char(char c) {
     return c == '|' || c == '&' || c == ';' || c == '<' || c == '>' || c == '(' || c == ')' ||
            c == '{' || c == '}';
 }
@@ -58,15 +57,12 @@ static int is_special_char(char c)
 /*
  * Helper: Add a word to the word list
  */
-static int add_word(wordexp_t *we, const char *word, size_t len, size_t *capacity)
-{
+static int add_word(wordexp_t *we, const char *word, size_t len, size_t *capacity) {
     /* Check if we need to grow the array */
-    if (we->we_wordc + we->we_offs >= *capacity)
-    {
+    if (we->we_wordc + we->we_offs >= *capacity) {
         size_t new_cap = *capacity * 2;
         char **new_wordv = (char **)realloc(we->we_wordv, new_cap * sizeof(char *));
-        if (!new_wordv)
-        {
+        if (!new_wordv) {
             return WRDE_NOSPACE;
         }
         we->we_wordv = new_wordv;
@@ -75,8 +71,7 @@ static int add_word(wordexp_t *we, const char *word, size_t len, size_t *capacit
 
     /* Allocate and copy the word */
     char *word_copy = (char *)malloc(len + 1);
-    if (!word_copy)
-    {
+    if (!word_copy) {
         return WRDE_NOSPACE;
     }
     memcpy(word_copy, word, len);
@@ -91,17 +86,14 @@ static int add_word(wordexp_t *we, const char *word, size_t len, size_t *capacit
 /*
  * Helper: Expand tilde in path
  */
-static char *expand_tilde(const char *str, size_t *len)
-{
-    if (str[0] != '~')
-    {
+static char *expand_tilde(const char *str, size_t *len) {
+    if (str[0] != '~') {
         return NULL;
     }
 
     /* Get home directory from environment */
     const char *home = getenv("HOME");
-    if (!home)
-    {
+    if (!home) {
         home = "/";
     }
 
@@ -109,14 +101,12 @@ static char *expand_tilde(const char *str, size_t *len)
     size_t rest_start = 1;
 
     /* Find end of username (if any) */
-    while (str[rest_start] && str[rest_start] != '/')
-    {
+    while (str[rest_start] && str[rest_start] != '/') {
         rest_start++;
     }
 
     /* For now, only support plain ~ (no ~user) */
-    if (rest_start > 1)
-    {
+    if (rest_start > 1) {
         return NULL;
     }
 
@@ -124,8 +114,7 @@ static char *expand_tilde(const char *str, size_t *len)
     size_t total_len = home_len + rest_len;
 
     char *result = (char *)malloc(total_len + 1);
-    if (!result)
-    {
+    if (!result) {
         return NULL;
     }
 
@@ -140,10 +129,8 @@ static char *expand_tilde(const char *str, size_t *len)
 /*
  * Helper: Expand environment variable
  */
-static char *expand_variable(const char *str, size_t *consumed)
-{
-    if (str[0] != '$')
-    {
+static char *expand_variable(const char *str, size_t *consumed) {
+    if (str[0] != '$') {
         *consumed = 0;
         return NULL;
     }
@@ -151,38 +138,30 @@ static char *expand_variable(const char *str, size_t *consumed)
     const char *start;
     size_t name_len;
 
-    if (str[1] == '{')
-    {
+    if (str[1] == '{') {
         start = str + 2;
         const char *end = strchr(start, '}');
-        if (!end)
-        {
+        if (!end) {
             *consumed = 0;
             return NULL;
         }
         name_len = end - start;
         *consumed = name_len + 3; /* ${ + name + } */
-    }
-    else if (isalpha((unsigned char)str[1]) || str[1] == '_')
-    {
+    } else if (isalpha((unsigned char)str[1]) || str[1] == '_') {
         start = str + 1;
         name_len = 0;
-        while (isalnum((unsigned char)start[name_len]) || start[name_len] == '_')
-        {
+        while (isalnum((unsigned char)start[name_len]) || start[name_len] == '_') {
             name_len++;
         }
         *consumed = name_len + 1; /* $ + name */
-    }
-    else
-    {
+    } else {
         *consumed = 0;
         return NULL;
     }
 
     /* Extract variable name */
     char name[256];
-    if (name_len >= sizeof(name))
-    {
+    if (name_len >= sizeof(name)) {
         name_len = sizeof(name) - 1;
     }
     memcpy(name, start, name_len);
@@ -190,8 +169,7 @@ static char *expand_variable(const char *str, size_t *consumed)
 
     /* Look up value */
     const char *value = getenv(name);
-    if (!value)
-    {
+    if (!value) {
         value = "";
     }
 
@@ -201,10 +179,8 @@ static char *expand_variable(const char *str, size_t *consumed)
 /*
  * wordexp - Perform word expansion
  */
-int wordexp(const char *words, wordexp_t *pwordexp, int flags)
-{
-    if (!words || !pwordexp)
-    {
+int wordexp(const char *words, wordexp_t *pwordexp, int flags) {
+    if (!words || !pwordexp) {
         return WRDE_BADCHAR;
     }
 
@@ -214,34 +190,28 @@ int wordexp(const char *words, wordexp_t *pwordexp, int flags)
     int undef = flags & WRDE_UNDEF;
 
     /* Initialize or prepare for append */
-    if (!append)
-    {
+    if (!append) {
         pwordexp->we_wordc = 0;
         pwordexp->we_wordv = NULL;
-        if (!use_offs)
-        {
+        if (!use_offs) {
             pwordexp->we_offs = 0;
         }
     }
 
     /* Allocate initial word array */
     size_t capacity = INITIAL_WORDS + pwordexp->we_offs;
-    if (append && pwordexp->we_wordv)
-    {
+    if (append && pwordexp->we_wordv) {
         capacity = pwordexp->we_wordc + pwordexp->we_offs + INITIAL_WORDS;
     }
 
-    if (!append || !pwordexp->we_wordv)
-    {
+    if (!append || !pwordexp->we_wordv) {
         pwordexp->we_wordv = (char **)malloc(capacity * sizeof(char *));
-        if (!pwordexp->we_wordv)
-        {
+        if (!pwordexp->we_wordv) {
             return WRDE_NOSPACE;
         }
 
         /* Initialize offset slots to NULL */
-        for (size_t i = 0; i < pwordexp->we_offs; i++)
-        {
+        for (size_t i = 0; i < pwordexp->we_offs; i++) {
             pwordexp->we_wordv[i] = NULL;
         }
     }
@@ -253,16 +223,12 @@ int wordexp(const char *words, wordexp_t *pwordexp, int flags)
     int in_single_quote = 0;
     int in_double_quote = 0;
 
-    while (*p)
-    {
+    while (*p) {
         /* Skip whitespace between words */
-        if (!in_single_quote && !in_double_quote && isspace((unsigned char)*p))
-        {
-            if (word_len > 0)
-            {
+        if (!in_single_quote && !in_double_quote && isspace((unsigned char)*p)) {
+            if (word_len > 0) {
                 int err = add_word(pwordexp, word_buf, word_len, &capacity);
-                if (err)
-                {
+                if (err) {
                     wordfree(pwordexp);
                     return err;
                 }
@@ -273,10 +239,8 @@ int wordexp(const char *words, wordexp_t *pwordexp, int flags)
         }
 
         /* Check for command substitution */
-        if (!in_single_quote && (*p == '`' || (*p == '$' && p[1] == '(')))
-        {
-            if (nocmd)
-            {
+        if (!in_single_quote && (*p == '`' || (*p == '$' && p[1] == '('))) {
+            if (nocmd) {
                 wordfree(pwordexp);
                 return WRDE_CMDSUB;
             }
@@ -286,35 +250,29 @@ int wordexp(const char *words, wordexp_t *pwordexp, int flags)
         }
 
         /* Check for special characters */
-        if (!in_single_quote && !in_double_quote && is_special_char(*p))
-        {
+        if (!in_single_quote && !in_double_quote && is_special_char(*p)) {
             wordfree(pwordexp);
             return WRDE_BADCHAR;
         }
 
         /* Handle quotes */
-        if (*p == '\'' && !in_double_quote)
-        {
+        if (*p == '\'' && !in_double_quote) {
             in_single_quote = !in_single_quote;
             p++;
             continue;
         }
 
-        if (*p == '"' && !in_single_quote)
-        {
+        if (*p == '"' && !in_single_quote) {
             in_double_quote = !in_double_quote;
             p++;
             continue;
         }
 
         /* Handle escape */
-        if (*p == '\\' && !in_single_quote)
-        {
+        if (*p == '\\' && !in_single_quote) {
             p++;
-            if (*p)
-            {
-                if (word_len < sizeof(word_buf) - 1)
-                {
+            if (*p) {
+                if (word_len < sizeof(word_buf) - 1) {
                     word_buf[word_len++] = *p;
                 }
                 p++;
@@ -323,15 +281,12 @@ int wordexp(const char *words, wordexp_t *pwordexp, int flags)
         }
 
         /* Tilde expansion (only at start of word) */
-        if (*p == '~' && word_len == 0 && !in_single_quote)
-        {
+        if (*p == '~' && word_len == 0 && !in_single_quote) {
             size_t expanded_len;
             char *expanded = expand_tilde(p, &expanded_len);
-            if (expanded)
-            {
+            if (expanded) {
                 size_t copy_len = expanded_len;
-                if (word_len + copy_len > sizeof(word_buf) - 1)
-                {
+                if (word_len + copy_len > sizeof(word_buf) - 1) {
                     copy_len = sizeof(word_buf) - 1 - word_len;
                 }
                 memcpy(word_buf + word_len, expanded, copy_len);
@@ -339,8 +294,7 @@ int wordexp(const char *words, wordexp_t *pwordexp, int flags)
 
                 /* Skip the tilde portion in input */
                 p++;
-                while (*p && *p != '/' && !isspace((unsigned char)*p))
-                {
+                while (*p && *p != '/' && !isspace((unsigned char)*p)) {
                     p++;
                 }
 
@@ -350,26 +304,20 @@ int wordexp(const char *words, wordexp_t *pwordexp, int flags)
         }
 
         /* Variable expansion */
-        if (*p == '$' && !in_single_quote)
-        {
+        if (*p == '$' && !in_single_quote) {
             size_t consumed;
             char *expanded = expand_variable(p, &consumed);
-            if (consumed > 0)
-            {
-                if (expanded)
-                {
+            if (consumed > 0) {
+                if (expanded) {
                     size_t expanded_len = strlen(expanded);
                     size_t copy_len = expanded_len;
-                    if (word_len + copy_len > sizeof(word_buf) - 1)
-                    {
+                    if (word_len + copy_len > sizeof(word_buf) - 1) {
                         copy_len = sizeof(word_buf) - 1 - word_len;
                     }
                     memcpy(word_buf + word_len, expanded, copy_len);
                     word_len += copy_len;
                     free(expanded);
-                }
-                else if (undef)
-                {
+                } else if (undef) {
                     wordfree(pwordexp);
                     return WRDE_BADVAL;
                 }
@@ -379,37 +327,31 @@ int wordexp(const char *words, wordexp_t *pwordexp, int flags)
         }
 
         /* Regular character */
-        if (word_len < sizeof(word_buf) - 1)
-        {
+        if (word_len < sizeof(word_buf) - 1) {
             word_buf[word_len++] = *p;
         }
         p++;
     }
 
     /* Check for unterminated quotes */
-    if (in_single_quote || in_double_quote)
-    {
+    if (in_single_quote || in_double_quote) {
         wordfree(pwordexp);
         return WRDE_SYNTAX;
     }
 
     /* Add final word if any */
-    if (word_len > 0)
-    {
+    if (word_len > 0) {
         int err = add_word(pwordexp, word_buf, word_len, &capacity);
-        if (err)
-        {
+        if (err) {
             wordfree(pwordexp);
             return err;
         }
     }
 
     /* NULL-terminate the word list */
-    if (pwordexp->we_wordc + pwordexp->we_offs >= capacity)
-    {
+    if (pwordexp->we_wordc + pwordexp->we_offs >= capacity) {
         char **new_wordv = (char **)realloc(pwordexp->we_wordv, (capacity + 1) * sizeof(char *));
-        if (!new_wordv)
-        {
+        if (!new_wordv) {
             wordfree(pwordexp);
             return WRDE_NOSPACE;
         }
@@ -423,16 +365,13 @@ int wordexp(const char *words, wordexp_t *pwordexp, int flags)
 /*
  * wordfree - Free word expansion results
  */
-void wordfree(wordexp_t *pwordexp)
-{
-    if (!pwordexp || !pwordexp->we_wordv)
-    {
+void wordfree(wordexp_t *pwordexp) {
+    if (!pwordexp || !pwordexp->we_wordv) {
         return;
     }
 
     /* Free each word (skip the offset slots) */
-    for (size_t i = pwordexp->we_offs; i < pwordexp->we_offs + pwordexp->we_wordc; i++)
-    {
+    for (size_t i = pwordexp->we_offs; i < pwordexp->we_offs + pwordexp->we_wordc; i++) {
         free(pwordexp->we_wordv[i]);
     }
 

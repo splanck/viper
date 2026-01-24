@@ -23,8 +23,7 @@
  * may print concurrently, callers should serialize access at a higher level to
  * avoid interleaved output.
  */
-namespace serial
-{
+namespace serial {
 
 /**
  * @brief Initialize the serial console.

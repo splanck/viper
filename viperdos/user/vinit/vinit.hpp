@@ -4,8 +4,8 @@
  */
 #pragma once
 
-#include "../syscall.hpp"
 #include "../include/viper_colors.h"
+#include "../syscall.hpp"
 
 // =============================================================================
 // String Helpers
@@ -137,8 +137,7 @@ void shell_loop();
  * @param skip Number of characters to skip (command length + space).
  * @return Pointer to arguments or nullptr if none.
  */
-inline const char *get_args(const char *cmd, usize skip)
-{
+inline const char *get_args(const char *cmd, usize skip) {
     if (strlen(cmd) <= skip)
         return nullptr;
     const char *args = cmd + skip;

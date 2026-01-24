@@ -122,12 +122,12 @@ in [Viper Processes and Address Spaces](viper_processes.md).
 In microkernel mode, user-space servers communicate via shared memory regions. The kernel provides syscalls for
 creating and mapping shared memory:
 
-| Syscall | Number | Description |
-|---------|--------|-------------|
-| `shm_create` | 0x109 | Create a shared memory region |
-| `shm_map` | 0x10A | Map shared memory into calling process |
-| `shm_unmap` | 0x10B | Unmap shared memory from address space |
-| `shm_close` | 0x10C | Close shared memory handle |
+| Syscall      | Number | Description                            |
+|--------------|--------|----------------------------------------|
+| `shm_create` | 0x109  | Create a shared memory region          |
+| `shm_map`    | 0x10A  | Map shared memory into calling process |
+| `shm_unmap`  | 0x10B  | Unmap shared memory from address space |
+| `shm_close`  | 0x10C  | Close shared memory handle             |
 
 Shared memory is used for:
 

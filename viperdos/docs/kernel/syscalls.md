@@ -124,17 +124,17 @@ Backed by:
 
 Syscalls for user-space drivers to access hardware:
 
-| Syscall | Number | Description |
-|---------|--------|-------------|
-| `map_device` | 0x100 | Map device MMIO into user space |
-| `irq_register` | 0x101 | Register for IRQ delivery |
-| `irq_wait` | 0x102 | Wait for IRQ |
-| `irq_ack` | 0x103 | Acknowledge IRQ |
-| `dma_alloc` | 0x104 | Allocate DMA buffer |
-| `dma_free` | 0x105 | Free DMA buffer |
-| `virt_to_phys` | 0x106 | Translate VA to PA |
-| `device_enum` | 0x107 | Enumerate devices |
-| `irq_unregister` | 0x108 | Unregister IRQ |
+| Syscall          | Number | Description                     |
+|------------------|--------|---------------------------------|
+| `map_device`     | 0x100  | Map device MMIO into user space |
+| `irq_register`   | 0x101  | Register for IRQ delivery       |
+| `irq_wait`       | 0x102  | Wait for IRQ                    |
+| `irq_ack`        | 0x103  | Acknowledge IRQ                 |
+| `dma_alloc`      | 0x104  | Allocate DMA buffer             |
+| `dma_free`       | 0x105  | Free DMA buffer                 |
+| `virt_to_phys`   | 0x106  | Translate VA to PA              |
+| `device_enum`    | 0x107  | Enumerate devices               |
+| `irq_unregister` | 0x108  | Unregister IRQ                  |
 
 These syscalls require `CAP_DEVICE_ACCESS` capability.
 
@@ -146,12 +146,12 @@ Backed by:
 
 Syscalls for shared memory between processes:
 
-| Syscall | Number | Description |
-|---------|--------|-------------|
-| `shm_create` | 0x109 | Create shared memory region |
-| `shm_map` | 0x10A | Map SHM into address space |
-| `shm_unmap` | 0x10B | Unmap SHM from address space |
-| `shm_close` | 0x10C | Close SHM handle |
+| Syscall      | Number | Description                  |
+|--------------|--------|------------------------------|
+| `shm_create` | 0x109  | Create shared memory region  |
+| `shm_map`    | 0x10A  | Map SHM into address space   |
+| `shm_unmap`  | 0x10B  | Unmap SHM from address space |
+| `shm_close`  | 0x10C  | Close SHM handle             |
 
 Backed by:
 
@@ -162,16 +162,16 @@ Backed by:
 
 Process lifecycle and session management:
 
-| Syscall | Number | Description |
-|---------|--------|-------------|
-| `fork` | 0x0B | Fork process with COW |
-| `getpid` | 0xA0 | Get process ID |
-| `getppid` | 0xA1 | Get parent process ID |
-| `getpgid` | 0xA2 | Get process group ID |
-| `setpgid` | 0xA3 | Set process group ID |
-| `getsid` | 0xA4 | Get session ID |
-| `setsid` | 0xA5 | Create new session |
-| `waitpid` | 0xA6 | Wait for child process |
+| Syscall   | Number | Description            |
+|-----------|--------|------------------------|
+| `fork`    | 0x0B   | Fork process with COW  |
+| `getpid`  | 0xA0   | Get process ID         |
+| `getppid` | 0xA1   | Get parent process ID  |
+| `getpgid` | 0xA2   | Get process group ID   |
+| `setpgid` | 0xA3   | Set process group ID   |
+| `getsid`  | 0xA4   | Get session ID         |
+| `setsid`  | 0xA5   | Create new session     |
+| `waitpid` | 0xA6   | Wait for child process |
 
 Backed by:
 
@@ -180,12 +180,12 @@ Backed by:
 
 ### Capability Management
 
-| Syscall | Number | Description |
-|---------|--------|-------------|
-| `cap_derive` | 0x70 | Derive with reduced rights |
-| `cap_revoke` | 0x71 | Revoke capability and derivatives |
-| `cap_query` | 0x72 | Query capability info |
-| `cap_list` | 0x73 | List all capabilities |
+| Syscall      | Number | Description                       |
+|--------------|--------|-----------------------------------|
+| `cap_derive` | 0x70   | Derive with reduced rights        |
+| `cap_revoke` | 0x71   | Revoke capability and derivatives |
+| `cap_query`  | 0x72   | Query capability info             |
+| `cap_list`   | 0x73   | List all capabilities             |
 
 Backed by:
 

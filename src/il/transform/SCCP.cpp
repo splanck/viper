@@ -84,8 +84,8 @@ namespace
 {
 inline bool msvc_add_overflow_ll(long long a, long long b, long long *result)
 {
-    *result = static_cast<long long>(
-        static_cast<unsigned long long>(a) + static_cast<unsigned long long>(b));
+    *result = static_cast<long long>(static_cast<unsigned long long>(a) +
+                                     static_cast<unsigned long long>(b));
     if (b >= 0)
         return *result < a;
     else
@@ -94,8 +94,8 @@ inline bool msvc_add_overflow_ll(long long a, long long b, long long *result)
 
 inline bool msvc_sub_overflow_ll(long long a, long long b, long long *result)
 {
-    *result = static_cast<long long>(
-        static_cast<unsigned long long>(a) - static_cast<unsigned long long>(b));
+    *result = static_cast<long long>(static_cast<unsigned long long>(a) -
+                                     static_cast<unsigned long long>(b));
     if (b >= 0)
         return *result > a;
     else
@@ -123,8 +123,8 @@ inline bool msvc_mul_overflow_ll(long long a, long long b, long long *result)
     long long abs_b = b < 0 ? -b : b;
     if (abs_a > (std::numeric_limits<long long>::max)() / abs_b)
     {
-        *result = static_cast<long long>(
-            static_cast<unsigned long long>(a) * static_cast<unsigned long long>(b));
+        *result = static_cast<long long>(static_cast<unsigned long long>(a) *
+                                         static_cast<unsigned long long>(b));
         return true;
     }
     *result = a * b;

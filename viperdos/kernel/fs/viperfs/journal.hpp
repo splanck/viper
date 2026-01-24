@@ -4,8 +4,7 @@
 #include "../cache.hpp"
 #include "format.hpp"
 
-namespace fs::viperfs
-{
+namespace fs::viperfs {
 
 /**
  * @file journal.hpp
@@ -37,8 +36,7 @@ namespace fs::viperfs
  * Tracks the state of an in-progress transaction including which blocks
  * have been logged and the current write position in the journal.
  */
-struct Transaction
-{
+struct Transaction {
     u64 sequence;                            // Transaction sequence number
     u8 num_blocks;                           // Number of blocks logged so far
     u64 blocks[MAX_JOURNAL_BLOCKS];          // Block numbers logged
@@ -57,8 +55,7 @@ struct Transaction
  * - Transaction records with block data
  * - Commit records marking transaction boundaries
  */
-class Journal
-{
+class Journal {
   public:
     /**
      * @brief Initialize the journal for a filesystem.
@@ -151,16 +148,14 @@ class Journal
     /**
      * @brief Check if journaling is enabled.
      */
-    bool is_enabled() const
-    {
+    bool is_enabled() const {
         return enabled_;
     }
 
     /**
      * @brief Get current transaction sequence number.
      */
-    u64 sequence() const
-    {
+    u64 sequence() const {
         return header_.sequence;
     }
 

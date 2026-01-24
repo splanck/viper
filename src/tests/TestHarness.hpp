@@ -183,9 +183,9 @@ struct TestSkip final : public std::exception
 /// and a callable that executes the test body.
 struct TestCase
 {
-    std::string suite;            ///< Name of the test suite (first TEST argument).
-    std::string name;             ///< Name of the individual test (second TEST argument).
-    std::function<void()> fn;     ///< The test function body to execute.
+    std::string suite;        ///< Name of the test suite (first TEST argument).
+    std::string name;         ///< Name of the individual test (second TEST argument).
+    std::function<void()> fn; ///< The test function body to execute.
 };
 
 /// @brief Access the global test registry.

@@ -80,7 +80,8 @@ CompilerResult compile(const CompilerInput &input,
     }
 
     // Debug timing
-    auto debugTime = [](const char *phase) {
+    auto debugTime = [](const char *phase)
+    {
         if (const char *env = std::getenv("ZIA_DEBUG_COMPILE"))
             std::cerr << "[zia] " << phase << std::endl;
     };
@@ -146,9 +147,15 @@ CompilerResult compile(const CompilerInput &input,
             // Aggressive optimization pipeline with CFG simplification
             // Note: SimplifyCFG is run only once at the start due to issues
             // with running it after other passes that modify temp definitions.
-            il::transform::PassManager::Pipeline pipeline = {
-                "simplify-cfg", "mem2reg", "dce", "licm",
-                "gvn", "earlycse", "dse", "peephole", "dce"};
+            il::transform::PassManager::Pipeline pipeline = {"simplify-cfg",
+                                                             "mem2reg",
+                                                             "dce",
+                                                             "licm",
+                                                             "gvn",
+                                                             "earlycse",
+                                                             "dse",
+                                                             "peephole",
+                                                             "dce"};
             pm.run(result.module, pipeline);
         }
         else

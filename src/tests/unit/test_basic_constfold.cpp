@@ -228,7 +228,7 @@ int main()
         foldConstants(*prog);
         auto *pr = dynamic_cast<PrintStmt *>(prog->main[0].get());
         auto *ie = dynamic_cast<IntExpr *>(pr->items[0].expr.get());
-        assert(ie && ie->value == 2);  // backslash + n = 2 chars
+        assert(ie && ie->value == 2); // backslash + n = 2 chars
     }
 
     // MID$ clamps indices and handles unicode source

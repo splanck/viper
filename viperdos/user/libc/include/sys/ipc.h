@@ -9,14 +9,13 @@
 #include "types.h"
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /*
-     * IPC key type
-     */
-    typedef int key_t;
+/*
+ * IPC key type
+ */
+typedef int key_t;
 
 /*
  * Mode bits for get operations
@@ -38,31 +37,30 @@ extern "C"
  */
 #define IPC_PRIVATE ((key_t)0) /* Private key */
 
-    /*
-     * Permission structure for IPC operations
-     */
-    struct ipc_perm
-    {
-        key_t __key;          /* Key supplied to xxxget() */
-        uid_t uid;            /* Effective UID of owner */
-        gid_t gid;            /* Effective GID of owner */
-        uid_t cuid;           /* Effective UID of creator */
-        gid_t cgid;           /* Effective GID of creator */
-        mode_t mode;          /* Permissions */
-        unsigned short __seq; /* Sequence number */
-    };
+/*
+ * Permission structure for IPC operations
+ */
+struct ipc_perm {
+    key_t __key;          /* Key supplied to xxxget() */
+    uid_t uid;            /* Effective UID of owner */
+    gid_t gid;            /* Effective GID of owner */
+    uid_t cuid;           /* Effective UID of creator */
+    gid_t cgid;           /* Effective GID of creator */
+    mode_t mode;          /* Permissions */
+    unsigned short __seq; /* Sequence number */
+};
 
-    /*
-     * ftok - Generate IPC key from pathname and project ID
-     *
-     * Generates a key suitable for use with msgget(), semget(), or shmget().
-     *
-     * @pathname: Path to an existing file
-     * @proj_id: Project identifier (only lower 8 bits used)
-     *
-     * Returns the generated key, or -1 on error.
-     */
-    key_t ftok(const char *pathname, int proj_id);
+/*
+ * ftok - Generate IPC key from pathname and project ID
+ *
+ * Generates a key suitable for use with msgget(), semget(), or shmget().
+ *
+ * @pathname: Path to an existing file
+ * @proj_id: Project identifier (only lower 8 bits used)
+ *
+ * Returns the generated key, or -1 on error.
+ */
+key_t ftok(const char *pathname, int proj_id);
 
 #ifdef __cplusplus
 }

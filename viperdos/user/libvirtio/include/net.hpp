@@ -11,12 +11,10 @@
 #include "virtio.hpp"
 #include "virtqueue.hpp"
 
-namespace virtio
-{
+namespace virtio {
 
 // virtio-net feature bits
-namespace net_features
-{
+namespace net_features {
 constexpr u64 CSUM = 1ULL << 0;       // Checksum offload
 constexpr u64 GUEST_CSUM = 1ULL << 1; // Guest handles checksum
 constexpr u64 MAC = 1ULL << 5;        // Device has MAC address
@@ -28,8 +26,7 @@ constexpr u64 MQ = 1ULL << 22;        // Multiple queues
 } // namespace net_features
 
 // virtio-net header (prepended to every packet)
-struct NetHeader
-{
+struct NetHeader {
     u8 flags;
     u8 gso_type;
     u16 hdr_len;
@@ -39,15 +36,13 @@ struct NetHeader
 } __attribute__((packed));
 
 // Header flags
-namespace net_hdr_flags
-{
+namespace net_hdr_flags {
 constexpr u8 NEEDS_CSUM = 1;
 constexpr u8 DATA_VALID = 2;
 } // namespace net_hdr_flags
 
 // GSO types
-namespace net_gso
-{
+namespace net_gso {
 constexpr u8 NONE = 0;
 constexpr u8 TCPV4 = 1;
 constexpr u8 UDP = 3;
@@ -55,8 +50,7 @@ constexpr u8 TCPV6 = 4;
 } // namespace net_gso
 
 // virtio-net config space layout
-struct NetConfig
-{
+struct NetConfig {
     u8 mac[6];
     u16 status;
     u16 max_virtqueue_pairs;
@@ -64,8 +58,7 @@ struct NetConfig
 } __attribute__((packed));
 
 // Network status bits
-namespace net_status
-{
+namespace net_status {
 constexpr u16 LINK_UP = 1;
 constexpr u16 ANNOUNCE = 2;
 } // namespace net_status
@@ -73,8 +66,7 @@ constexpr u16 ANNOUNCE = 2;
 /**
  * @brief User-space VirtIO network device driver.
  */
-class NetDevice : public Device
-{
+class NetDevice : public Device {
   public:
     /**
      * @brief Initialize the network device.
@@ -138,23 +130,19 @@ class NetDevice : public Device
     bool link_up() const;
 
     // Statistics
-    u64 tx_packets() const
-    {
+    u64 tx_packets() const {
         return tx_packets_;
     }
 
-    u64 rx_packets() const
-    {
+    u64 rx_packets() const {
         return rx_packets_;
     }
 
-    u64 tx_bytes() const
-    {
+    u64 tx_bytes() const {
         return tx_bytes_;
     }
 
-    u64 rx_bytes() const
-    {
+    u64 rx_bytes() const {
         return rx_bytes_;
     }
 
@@ -169,8 +157,7 @@ class NetDevice : public Device
     static constexpr usize RX_BUFFER_COUNT = 32;
     static constexpr usize RX_BUFFER_SIZE = 2048;
 
-    struct RxBuffer
-    {
+    struct RxBuffer {
         u8 data[RX_BUFFER_SIZE];
         bool in_use;
         u16 desc_idx;
@@ -188,8 +175,7 @@ class NetDevice : public Device
     // Received packet queue
     static constexpr usize RX_QUEUE_SIZE = 16;
 
-    struct ReceivedPacket
-    {
+    struct ReceivedPacket {
         u8 *data;
         u16 len;
         bool valid;

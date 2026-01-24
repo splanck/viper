@@ -17,22 +17,18 @@
 #include "file.hpp"
 #include "../console/serial.hpp"
 
-namespace kobj
-{
+namespace kobj {
 
 /** @copydoc kobj::FileObject::create */
-FileObject *FileObject::create(u64 inode_num, u32 flags)
-{
+FileObject *FileObject::create(u64 inode_num, u32 flags) {
     // Verify the inode exists
     fs::viperfs::Inode *inode = fs::viperfs::viperfs().read_inode(inode_num);
-    if (!inode)
-    {
+    if (!inode) {
         return nullptr;
     }
 
     // Verify it's a file (not a directory)
-    if (fs::viperfs::is_directory(inode))
-    {
+    if (fs::viperfs::is_directory(inode)) {
         fs::viperfs::viperfs().release_inode(inode);
         return nullptr;
     }
@@ -40,8 +36,7 @@ FileObject *FileObject::create(u64 inode_num, u32 flags)
     u64 initial_offset = 0;
 
     // Handle O_APPEND
-    if (flags & file_flags::O_APPEND)
-    {
+    if (flags & file_flags::O_APPEND) {
         initial_offset = inode->size;
     }
 
@@ -49,8 +44,7 @@ FileObject *FileObject::create(u64 inode_num, u32 flags)
 
     // Allocate the file object
     FileObject *file = new FileObject(inode_num, flags);
-    if (!file)
-    {
+    if (!file) {
         return nullptr;
     }
 
@@ -64,22 +58,18 @@ FileObject *FileObject::create(u64 inode_num, u32 flags)
 }
 
 /** @copydoc kobj::FileObject::read */
-i64 FileObject::read(void *buf, usize len)
-{
-    if (!can_read())
-    {
+i64 FileObject::read(void *buf, usize len) {
+    if (!can_read()) {
         return -1; // Not readable
     }
 
     fs::viperfs::Inode *inode = fs::viperfs::viperfs().read_inode(inode_num_);
-    if (!inode)
-    {
+    if (!inode) {
         return -1;
     }
 
     i64 bytes = fs::viperfs::viperfs().read_data(inode, offset_, buf, len);
-    if (bytes > 0)
-    {
+    if (bytes > 0) {
         offset_ += bytes;
     }
 
@@ -88,22 +78,18 @@ i64 FileObject::read(void *buf, usize len)
 }
 
 /** @copydoc kobj::FileObject::write */
-i64 FileObject::write(const void *buf, usize len)
-{
-    if (!can_write())
-    {
+i64 FileObject::write(const void *buf, usize len) {
+    if (!can_write()) {
         return -1; // Not writable
     }
 
     fs::viperfs::Inode *inode = fs::viperfs::viperfs().read_inode(inode_num_);
-    if (!inode)
-    {
+    if (!inode) {
         return -1;
     }
 
     i64 bytes = fs::viperfs::viperfs().write_data(inode, offset_, buf, len);
-    if (bytes > 0)
-    {
+    if (bytes > 0) {
         offset_ += bytes;
         fs::viperfs::viperfs().write_inode(inode);
     }
@@ -113,12 +99,10 @@ i64 FileObject::write(const void *buf, usize len)
 }
 
 /** @copydoc kobj::FileObject::seek */
-i64 FileObject::seek(i64 offset, i32 whence)
-{
+i64 FileObject::seek(i64 offset, i32 whence) {
     i64 new_offset;
 
-    switch (whence)
-    {
+    switch (whence) {
         case seek_origin::SET:
             new_offset = offset;
             break;
@@ -127,11 +111,9 @@ i64 FileObject::seek(i64 offset, i32 whence)
             new_offset = static_cast<i64>(offset_) + offset;
             break;
 
-        case seek_origin::END:
-        {
+        case seek_origin::END: {
             fs::viperfs::Inode *inode = fs::viperfs::viperfs().read_inode(inode_num_);
-            if (!inode)
-            {
+            if (!inode) {
                 return -1;
             }
             new_offset = static_cast<i64>(inode->size) + offset;
@@ -143,8 +125,7 @@ i64 FileObject::seek(i64 offset, i32 whence)
             return -1;
     }
 
-    if (new_offset < 0)
-    {
+    if (new_offset < 0) {
         return -1;
     }
 

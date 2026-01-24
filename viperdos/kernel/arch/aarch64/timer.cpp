@@ -34,11 +34,9 @@
  * interrupt handler does minimal work and defers heavier processing to bottom
  * halves or kernel threads.
  */
-namespace timer
-{
+namespace timer {
 
-namespace
-{
+namespace {
 // Physical timer PPI (Private Peripheral Interrupt)
 constexpr u32 TIMER_IRQ = 30;
 
@@ -56,8 +54,7 @@ u64 ns_per_tick_q32 = 0; // Fixed-point (Q32) nanoseconds per tick
 u64 ticks_per_us = 0;    // Ticks per microsecond (for fast conversion)
 
 // One-shot timer queue entry
-struct OneshotTimer
-{
+struct OneshotTimer {
     Timestamp deadline;
     TimerCallback callback;
     void *context;
@@ -75,8 +72,7 @@ u32 next_timer_id = 1;
  *
  * @return The value of `CNTFRQ_EL0` (ticks per second).
  */
-inline u64 read_cntfrq()
-{
+inline u64 read_cntfrq() {
     u64 val;
     asm volatile("mrs %0, cntfrq_el0" : "=r"(val));
     return val;
@@ -88,8 +84,7 @@ inline u64 read_cntfrq()
  *
  * @return The value of `CNTPCT_EL0`.
  */
-inline u64 read_cntpct()
-{
+inline u64 read_cntpct() {
     u64 val;
     asm volatile("mrs %0, cntpct_el0" : "=r"(val));
     return val;
@@ -101,8 +96,7 @@ inline u64 read_cntpct()
  *
  * @return The value of `CNTP_CVAL_EL0`.
  */
-inline u64 read_cntp_cval()
-{
+inline u64 read_cntp_cval() {
     u64 val;
     asm volatile("mrs %0, cntp_cval_el0" : "=r"(val));
     return val;
@@ -114,8 +108,7 @@ inline u64 read_cntp_cval()
  *
  * @param val New compare value for `CNTP_CVAL_EL0`.
  */
-inline void write_cntp_cval(u64 val)
-{
+inline void write_cntp_cval(u64 val) {
     asm volatile("msr cntp_cval_el0, %0" : : "r"(val));
 }
 
@@ -125,8 +118,7 @@ inline void write_cntp_cval(u64 val)
  *
  * @return The value of `CNTP_CTL_EL0`.
  */
-inline u64 read_cntp_ctl()
-{
+inline u64 read_cntp_ctl() {
     u64 val;
     asm volatile("mrs %0, cntp_ctl_el0" : "=r"(val));
     return val;
@@ -138,8 +130,7 @@ inline u64 read_cntp_ctl()
  *
  * @param val Value to write to `CNTP_CTL_EL0`.
  */
-inline void write_cntp_ctl(u64 val)
-{
+inline void write_cntp_ctl(u64 val) {
     asm volatile("msr cntp_ctl_el0, %0" : : "r"(val));
 }
 
@@ -148,23 +139,19 @@ inline void write_cntp_ctl(u64 val)
  *
  * Called from the timer interrupt handler.
  */
-void check_oneshot_timers()
-{
+void check_oneshot_timers() {
     u64 current = read_cntpct();
 
-    for (u32 i = 0; i < MAX_ONESHOT_TIMERS; i++)
-    {
+    for (u32 i = 0; i < MAX_ONESHOT_TIMERS; i++) {
         OneshotTimer &t = oneshot_timers[i];
-        if (t.active && current >= t.deadline)
-        {
+        if (t.active && current >= t.deadline) {
             // Mark as inactive before calling to allow re-scheduling
             t.active = false;
             TimerCallback cb = t.callback;
             void *ctx = t.context;
 
             // Call the callback
-            if (cb)
-            {
+            if (cb) {
                 cb(ctx);
             }
         }
@@ -189,8 +176,7 @@ void check_oneshot_timers()
  * Because this runs in interrupt context, work done here should remain
  * bounded and non-blocking.
  */
-void timer_irq_handler(u32)
-{
+void timer_irq_handler(u32) {
     __atomic_fetch_add(&ticks, 1, __ATOMIC_RELAXED);
 
     // Schedule next interrupt
@@ -199,8 +185,7 @@ void timer_irq_handler(u32)
 
     // Debug output every second
 #if CONFIG_TIMER_HEARTBEAT
-    if (ticks % 1000 == 0)
-    {
+    if (ticks % 1000 == 0) {
         serial::puts("[timer] ");
         serial::put_dec(ticks / 1000);
         serial::puts("s\n");
@@ -215,11 +200,9 @@ void timer_irq_handler(u32)
 
     // In GUI mode, push keyboard chars directly to TTY for responsive input
     // This bypasses the displayd/consoled IPC path which has high latency
-    if (gcon::is_gui_mode())
-    {
+    if (gcon::is_gui_mode()) {
         i32 c;
-        while ((c = input::getchar()) >= 0)
-        {
+        while ((c = input::getchar()) >= 0) {
             tty::push_input(static_cast<char>(c));
         }
     }
@@ -242,8 +225,7 @@ void timer_irq_handler(u32)
 } // namespace
 
 /** @copydoc timer::init */
-void init()
-{
+void init() {
     serial::puts("[timer] Initializing ARM architected timer\n");
 
     // Read timer frequency
@@ -280,8 +262,7 @@ void init()
     serial::puts("\n");
 
     // Initialize one-shot timer array
-    for (u32 i = 0; i < MAX_ONESHOT_TIMERS; i++)
-    {
+    for (u32 i = 0; i < MAX_ONESHOT_TIMERS; i++) {
         oneshot_timers[i].active = false;
         oneshot_timers[i].id = 0;
     }
@@ -305,8 +286,7 @@ void init()
 }
 
 /** @copydoc timer::init_secondary */
-void init_secondary()
-{
+void init_secondary() {
     // Note: frequency, interval, and conversion factors are already set by boot CPU
     // The timer handler is already registered globally
 
@@ -324,14 +304,12 @@ void init_secondary()
 }
 
 /** @copydoc timer::get_ticks */
-u64 get_ticks()
-{
+u64 get_ticks() {
     return ticks;
 }
 
 /** @copydoc timer::get_frequency */
-u64 get_frequency()
-{
+u64 get_frequency() {
     return frequency;
 }
 
@@ -340,14 +318,12 @@ u64 get_frequency()
 // ============================================================================
 
 /** @copydoc timer::now */
-Timestamp now()
-{
+Timestamp now() {
     return read_cntpct();
 }
 
 /** @copydoc timer::ticks_to_ns */
-u64 ticks_to_ns(Timestamp timer_ticks)
-{
+u64 ticks_to_ns(Timestamp timer_ticks) {
     // Use Q32 fixed-point multiplication for precision
     // ns = ticks * ns_per_tick_q32 / 2^32
     // We need 128-bit multiplication, but we can approximate:
@@ -363,17 +339,13 @@ u64 ticks_to_ns(Timestamp timer_ticks)
 }
 
 /** @copydoc timer::ns_to_ticks */
-Timestamp ns_to_ticks(u64 ns)
-{
+Timestamp ns_to_ticks(u64 ns) {
     // ticks = ns * frequency / 1e9
     // Use microsecond intermediate to avoid overflow
-    if (ns < 1000000000ULL)
-    {
+    if (ns < 1000000000ULL) {
         // For sub-second values, compute directly
         return (ns * frequency) / 1000000000ULL;
-    }
-    else
-    {
+    } else {
         // For larger values, split to avoid overflow
         u64 seconds = ns / 1000000000ULL;
         u64 remainder_ns = ns % 1000000000ULL;
@@ -382,20 +354,17 @@ Timestamp ns_to_ticks(u64 ns)
 }
 
 /** @copydoc timer::get_ns */
-u64 get_ns()
-{
+u64 get_ns() {
     return ticks_to_ns(read_cntpct());
 }
 
 /** @copydoc timer::get_us */
-u64 get_us()
-{
+u64 get_us() {
     return ticks_to_ns(read_cntpct()) / 1000;
 }
 
 /** @copydoc timer::get_ms */
-u64 get_ms()
-{
+u64 get_ms() {
     return ticks_to_ns(read_cntpct()) / 1000000;
 }
 
@@ -404,45 +373,38 @@ u64 get_ms()
 // ============================================================================
 
 /** @copydoc timer::delay_ns */
-void delay_ns(u64 ns)
-{
+void delay_ns(u64 ns) {
     Timestamp deadline = read_cntpct() + ns_to_ticks(ns);
 
     // Spin on the counter for precise timing
-    while (read_cntpct() < deadline)
-    {
+    while (read_cntpct() < deadline) {
         // Tight spin for nanosecond precision
         asm volatile("" ::: "memory"); // Prevent optimization
     }
 }
 
 /** @copydoc timer::delay_us */
-void delay_us(u64 us)
-{
+void delay_us(u64 us) {
     Timestamp deadline = read_cntpct() + (us * ticks_per_us);
 
     // Spin for microsecond delays
-    while (read_cntpct() < deadline)
-    {
+    while (read_cntpct() < deadline) {
         asm volatile("" ::: "memory");
     }
 }
 
 /** @copydoc timer::delay_ms */
-void delay_ms(u32 ms)
-{
+void delay_ms(u32 ms) {
     // For millisecond delays, use wfi for power efficiency
     Timestamp deadline = read_cntpct() + ns_to_ticks(static_cast<u64>(ms) * 1000000ULL);
 
-    while (read_cntpct() < deadline)
-    {
+    while (read_cntpct() < deadline) {
         asm volatile("wfi");
     }
 }
 
 /** @copydoc timer::wait_until */
-void wait_until(Timestamp deadline)
-{
+void wait_until(Timestamp deadline) {
     u64 current = read_cntpct();
 
     if (current >= deadline)
@@ -452,19 +414,14 @@ void wait_until(Timestamp deadline)
     u64 remaining_ticks = deadline - current;
     u64 remaining_us = remaining_ticks / ticks_per_us;
 
-    if (remaining_us < 100)
-    {
+    if (remaining_us < 100) {
         // Short wait - spin
-        while (read_cntpct() < deadline)
-        {
+        while (read_cntpct() < deadline) {
             asm volatile("" ::: "memory");
         }
-    }
-    else
-    {
+    } else {
         // Longer wait - use wfi
-        while (read_cntpct() < deadline)
-        {
+        while (read_cntpct() < deadline) {
             asm volatile("wfi");
         }
     }
@@ -475,13 +432,10 @@ void wait_until(Timestamp deadline)
 // ============================================================================
 
 /** @copydoc timer::schedule_oneshot */
-u32 schedule_oneshot(Timestamp deadline, TimerCallback callback, void *context)
-{
+u32 schedule_oneshot(Timestamp deadline, TimerCallback callback, void *context) {
     // Find a free slot
-    for (u32 i = 0; i < MAX_ONESHOT_TIMERS; i++)
-    {
-        if (!oneshot_timers[i].active)
-        {
+    for (u32 i = 0; i < MAX_ONESHOT_TIMERS; i++) {
+        if (!oneshot_timers[i].active) {
             u32 id = next_timer_id++;
             if (next_timer_id == 0)
                 next_timer_id = 1; // Skip 0
@@ -502,15 +456,12 @@ u32 schedule_oneshot(Timestamp deadline, TimerCallback callback, void *context)
 }
 
 /** @copydoc timer::cancel_oneshot */
-bool cancel_oneshot(u32 timer_id)
-{
+bool cancel_oneshot(u32 timer_id) {
     if (timer_id == 0)
         return false;
 
-    for (u32 i = 0; i < MAX_ONESHOT_TIMERS; i++)
-    {
-        if (oneshot_timers[i].active && oneshot_timers[i].id == timer_id)
-        {
+    for (u32 i = 0; i < MAX_ONESHOT_TIMERS; i++) {
+        if (oneshot_timers[i].active && oneshot_timers[i].id == timer_id) {
             oneshot_timers[i].active = false;
             return true;
         }

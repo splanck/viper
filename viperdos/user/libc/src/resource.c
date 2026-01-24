@@ -71,24 +71,20 @@ static struct rlimit default_limits[RLIMIT_NLIMITS] = {
 /*
  * getrlimit - Get resource limits
  */
-int getrlimit(int resource, struct rlimit *rlim)
-{
-    if (!rlim)
-    {
+int getrlimit(int resource, struct rlimit *rlim) {
+    if (!rlim) {
         errno = EFAULT;
         return -1;
     }
 
-    if (resource < 0 || resource >= RLIMIT_NLIMITS)
-    {
+    if (resource < 0 || resource >= RLIMIT_NLIMITS) {
         errno = EINVAL;
         return -1;
     }
 
     /* Try syscall first */
     long result = __syscall2(SYS_GETRLIMIT, (long)resource, (long)rlim);
-    if (result == 0)
-    {
+    if (result == 0) {
         return 0;
     }
 
@@ -100,37 +96,30 @@ int getrlimit(int resource, struct rlimit *rlim)
 /*
  * setrlimit - Set resource limits
  */
-int setrlimit(int resource, const struct rlimit *rlim)
-{
-    if (!rlim)
-    {
+int setrlimit(int resource, const struct rlimit *rlim) {
+    if (!rlim) {
         errno = EFAULT;
         return -1;
     }
 
-    if (resource < 0 || resource >= RLIMIT_NLIMITS)
-    {
+    if (resource < 0 || resource >= RLIMIT_NLIMITS) {
         errno = EINVAL;
         return -1;
     }
 
     /* Validate limits */
-    if (rlim->rlim_cur > rlim->rlim_max)
-    {
+    if (rlim->rlim_cur > rlim->rlim_max) {
         errno = EINVAL;
         return -1;
     }
 
     /* Try syscall */
     long result = __syscall2(SYS_SETRLIMIT, (long)resource, (long)rlim);
-    if (result < 0)
-    {
+    if (result < 0) {
         /* Syscall not implemented - store locally */
-        if (resource >= 0 && resource < RLIMIT_NLIMITS)
-        {
+        if (resource >= 0 && resource < RLIMIT_NLIMITS) {
             /* Only allow lowering limits, not raising above max */
-            if (rlim->rlim_max > default_limits[resource].rlim_max)
-            {
+            if (rlim->rlim_max > default_limits[resource].rlim_max) {
                 errno = EPERM;
                 return -1;
             }
@@ -144,10 +133,8 @@ int setrlimit(int resource, const struct rlimit *rlim)
 /*
  * prlimit - Get and set resource limits
  */
-int prlimit(pid_t pid, int resource, const struct rlimit *new_limit, struct rlimit *old_limit)
-{
-    if (resource < 0 || resource >= RLIMIT_NLIMITS)
-    {
+int prlimit(pid_t pid, int resource, const struct rlimit *new_limit, struct rlimit *old_limit) {
+    if (resource < 0 || resource >= RLIMIT_NLIMITS) {
         errno = EINVAL;
         return -1;
     }
@@ -155,24 +142,19 @@ int prlimit(pid_t pid, int resource, const struct rlimit *new_limit, struct rlim
     /* Try syscall */
     long result =
         __syscall4(SYS_PRLIMIT, (long)pid, (long)resource, (long)new_limit, (long)old_limit);
-    if (result < 0)
-    {
+    if (result < 0) {
         /* Syscall not implemented - handle locally for current process */
-        if (pid != 0)
-        {
+        if (pid != 0) {
             errno = ESRCH;
             return -1;
         }
 
-        if (old_limit)
-        {
+        if (old_limit) {
             *old_limit = default_limits[resource];
         }
 
-        if (new_limit)
-        {
-            if (new_limit->rlim_cur > new_limit->rlim_max)
-            {
+        if (new_limit) {
+            if (new_limit->rlim_cur > new_limit->rlim_max) {
                 errno = EINVAL;
                 return -1;
             }
@@ -186,24 +168,20 @@ int prlimit(pid_t pid, int resource, const struct rlimit *new_limit, struct rlim
 /*
  * getrusage - Get resource usage
  */
-int getrusage(int who, struct rusage *usage)
-{
-    if (!usage)
-    {
+int getrusage(int who, struct rusage *usage) {
+    if (!usage) {
         errno = EFAULT;
         return -1;
     }
 
-    if (who != RUSAGE_SELF && who != RUSAGE_CHILDREN && who != RUSAGE_THREAD)
-    {
+    if (who != RUSAGE_SELF && who != RUSAGE_CHILDREN && who != RUSAGE_THREAD) {
         errno = EINVAL;
         return -1;
     }
 
     /* Try syscall */
     long result = __syscall2(SYS_GETRUSAGE, (long)who, (long)usage);
-    if (result < 0)
-    {
+    if (result < 0) {
         /* Syscall not implemented - return zeros */
         memset(usage, 0, sizeof(struct rusage));
     }
@@ -214,24 +192,20 @@ int getrusage(int who, struct rusage *usage)
 /*
  * getpriority - Get process priority
  */
-int getpriority(int which, id_t who)
-{
-    if (which < 0 || which > PRIO_USER)
-    {
+int getpriority(int which, id_t who) {
+    if (which < 0 || which > PRIO_USER) {
         errno = EINVAL;
         return -1;
     }
 
     /* Try syscall */
     long result = __syscall2(SYS_GETPRIORITY, (long)which, (long)who);
-    if (result < 0 && result > -4096)
-    {
+    if (result < 0 && result > -4096) {
         errno = (int)(-result);
         return -1;
     }
 
-    if (result < -4096)
-    {
+    if (result < -4096) {
         /* Syscall not implemented - return default priority */
         return 0;
     }
@@ -242,10 +216,8 @@ int getpriority(int which, id_t who)
 /*
  * setpriority - Set process priority
  */
-int setpriority(int which, id_t who, int prio)
-{
-    if (which < 0 || which > PRIO_USER)
-    {
+int setpriority(int which, id_t who, int prio) {
+    if (which < 0 || which > PRIO_USER) {
         errno = EINVAL;
         return -1;
     }
@@ -257,8 +229,7 @@ int setpriority(int which, id_t who, int prio)
 
     /* Try syscall */
     long result = __syscall3(SYS_SETPRIORITY, (long)which, (long)who, (long)prio);
-    if (result < 0 && result > -4096)
-    {
+    if (result < 0 && result > -4096) {
         errno = (int)(-result);
         return -1;
     }

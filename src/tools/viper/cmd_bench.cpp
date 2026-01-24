@@ -16,9 +16,9 @@
 /// @details Provides CLI parsing for benchmark configuration, runs IL programs
 ///          with each dispatch strategy, and reports performance metrics.
 
-#include "cli.hpp"
 #include "bytecode/BytecodeCompiler.hpp"
 #include "bytecode/BytecodeVM.hpp"
+#include "cli.hpp"
 #include "il/core/Module.hpp"
 #include "support/source_manager.hpp"
 #include "tools/common/module_loader.hpp"
@@ -448,8 +448,8 @@ bool benchmarkFile(const std::string &file,
 
             if (config.verbose)
             {
-                std::cerr << "Running " << file << " with " << strategy << " ("
-                          << config.iterations << " iterations)...\n";
+                std::cerr << "Running " << file << " with " << strategy << " (" << config.iterations
+                          << " iterations)...\n";
             }
 
             for (uint32_t iter = 0; iter < config.iterations; ++iter)

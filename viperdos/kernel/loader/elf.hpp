@@ -18,8 +18,7 @@
 
 #include "../include/types.hpp"
 
-namespace elf
-{
+namespace elf {
 
 /**
  * @brief ELF64 file header.
@@ -34,8 +33,7 @@ namespace elf
  * Only fields needed by the loader are interpreted; section headers are not
  * used during load.
  */
-struct Elf64_Ehdr
-{
+struct Elf64_Ehdr {
     u8 e_ident[16];  // Magic number and other info
     u16 e_type;      // Object file type
     u16 e_machine;   // Architecture
@@ -62,8 +60,7 @@ struct Elf64_Ehdr
  * - `p_vaddr` and `p_memsz` describe where/how much memory is reserved at runtime.
  * - `p_flags` determines segment permissions (read/write/execute).
  */
-struct Elf64_Phdr
-{
+struct Elf64_Phdr {
     u32 p_type;   // Segment type
     u32 p_flags;  // Segment flags
     u64 p_offset; // Segment file offset

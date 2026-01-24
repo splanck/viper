@@ -45,19 +45,19 @@
  *  The numeric values are shared with the kernel's `cap::Kind` enum.
  *  @{
  */
-#define CAP_KIND_INVALID 0    /**< Invalid/unused handle slot. */
-#define CAP_KIND_STRING 1     /**< Kernel-owned string object. */
-#define CAP_KIND_ARRAY 2      /**< Kernel-owned array object. */
-#define CAP_KIND_BLOB 3       /**< Kernel-owned binary blob object. */
-#define CAP_KIND_CHANNEL 16   /**< IPC channel endpoint. */
-#define CAP_KIND_POLL 17      /**< Poll set used for event multiplexing. */
-#define CAP_KIND_TIMER 18     /**< Timer object that can signal poll events. */
-#define CAP_KIND_TASK 19      /**< Task/process handle. */
-#define CAP_KIND_VIPER 20     /**< "Viper" process container/instance handle. */
-#define CAP_KIND_FILE 21      /**< File object (handle-based filesystem API). */
-#define CAP_KIND_DIRECTORY 22 /**< Directory object (handle-based filesystem API). */
-#define CAP_KIND_SURFACE 23   /**< Graphics surface/framebuffer object. */
-#define CAP_KIND_INPUT 24     /**< Input device/stream object. */
+#define CAP_KIND_INVALID 0        /**< Invalid/unused handle slot. */
+#define CAP_KIND_STRING 1         /**< Kernel-owned string object. */
+#define CAP_KIND_ARRAY 2          /**< Kernel-owned array object. */
+#define CAP_KIND_BLOB 3           /**< Kernel-owned binary blob object. */
+#define CAP_KIND_CHANNEL 16       /**< IPC channel endpoint. */
+#define CAP_KIND_POLL 17          /**< Poll set used for event multiplexing. */
+#define CAP_KIND_TIMER 18         /**< Timer object that can signal poll events. */
+#define CAP_KIND_TASK 19          /**< Task/process handle. */
+#define CAP_KIND_VIPER 20         /**< "Viper" process container/instance handle. */
+#define CAP_KIND_FILE 21          /**< File object (handle-based filesystem API). */
+#define CAP_KIND_DIRECTORY 22     /**< Directory object (handle-based filesystem API). */
+#define CAP_KIND_SURFACE 23       /**< Graphics surface/framebuffer object. */
+#define CAP_KIND_INPUT 24         /**< Input device/stream object. */
 #define CAP_KIND_SHARED_MEMORY 25 /**< Shared memory object. */
 #define CAP_KIND_DEVICE 26        /**< Device capability (microkernel). */
 /** @} */
@@ -109,8 +109,7 @@
  * The `handle` field is included for convenience when the structure appears in
  * arrays or logs; user-space usually already knows which handle it queried.
  */
-struct CapInfo
-{
+struct CapInfo {
     unsigned int handle;      /**< Handle value being described. */
     unsigned short kind;      /**< Object kind (`CAP_KIND_*`). */
     unsigned char generation; /**< Generation counter to detect stale handles. */
@@ -127,8 +126,7 @@ struct CapInfo
  * @ref CapInfo but is optimized for enumeration rather than querying a single
  * handle.
  */
-struct CapListEntry
-{
+struct CapListEntry {
     unsigned int handle;      /**< Capability handle value. */
     unsigned short kind;      /**< Object kind (`CAP_KIND_*`). */
     unsigned char generation; /**< Generation counter. */

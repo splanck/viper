@@ -80,43 +80,34 @@ static struct lconv c_lconv = {
  *
  * Only "C", "POSIX", and "" (default) are supported.
  */
-char *setlocale(int category, const char *locale)
-{
+char *setlocale(int category, const char *locale) {
     /* Validate category */
-    if (category < LC_ALL || category > LC_MAX)
-    {
+    if (category < LC_ALL || category > LC_MAX) {
         return (char *)0;
     }
 
     /* Query current locale */
-    if (locale == (char *)0)
-    {
+    if (locale == (char *)0) {
         return current_locales[category];
     }
 
     /* Empty string means use default (C locale) */
-    if (locale[0] == '\0')
-    {
+    if (locale[0] == '\0') {
         locale = "C";
     }
 
     /* Only C and POSIX locales are supported */
-    if (strcmp(locale, "C") != 0 && strcmp(locale, "POSIX") != 0)
-    {
+    if (strcmp(locale, "C") != 0 && strcmp(locale, "POSIX") != 0) {
         return (char *)0;
     }
 
     /* Set locale for specified category */
-    if (category == LC_ALL)
-    {
+    if (category == LC_ALL) {
         /* Set all categories */
-        for (int i = LC_ALL; i <= LC_MAX; i++)
-        {
+        for (int i = LC_ALL; i <= LC_MAX; i++) {
             current_locales[i] = "C";
         }
-    }
-    else
-    {
+    } else {
         current_locales[category] = "C";
     }
 
@@ -128,7 +119,6 @@ char *setlocale(int category, const char *locale)
  *
  * Returns the C locale conventions (always).
  */
-struct lconv *localeconv(void)
-{
+struct lconv *localeconv(void) {
     return &c_lconv;
 }

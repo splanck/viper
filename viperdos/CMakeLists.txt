@@ -41,19 +41,19 @@ set(USER_IMAGE "${CMAKE_BINARY_DIR}/user.img")
 # -----------------------------------------------------------------------------
 # Contains system files accessible via kernel VFS at /sys/*
 add_custom_command(
-    OUTPUT ${SYS_IMAGE}
-    COMMAND ${CMAKE_COMMAND} -E echo "Creating sys.img (system disk)..."
-    COMMAND ${MKFS_TOOL} ${SYS_IMAGE} 2
+        OUTPUT ${SYS_IMAGE}
+        COMMAND ${CMAKE_COMMAND} -E echo "Creating sys.img (system disk)..."
+        COMMAND ${MKFS_TOOL} ${SYS_IMAGE} 2
         --add ${CMAKE_BINARY_DIR}/vinit.sys:vinit.sys
         --add ${CMAKE_BINARY_DIR}/consoled.sys:consoled.sys
         --add ${CMAKE_BINARY_DIR}/displayd.sys:displayd.sys
         --add ${CMAKE_BINARY_DIR}/workbench.sys:workbench.sys
         --add ${CMAKE_BINARY_DIR}/hello_gui.prg:hello_gui.prg
-    DEPENDS
+        DEPENDS
         vinit.sys
         consoled.sys displayd.sys workbench.sys hello_gui.prg
-    COMMENT "Creating sys.img with system servers"
-    VERBATIM
+        COMMENT "Creating sys.img with system servers"
+        VERBATIM
 )
 add_custom_target(sys_image ALL DEPENDS ${SYS_IMAGE})
 
@@ -62,33 +62,29 @@ add_custom_target(sys_image ALL DEPENDS ${SYS_IMAGE})
 # -----------------------------------------------------------------------------
 # Contains user files accessible via fsd
 add_custom_command(
-    OUTPUT ${USER_IMAGE}
-    COMMAND ${CMAKE_COMMAND} -E echo "Creating user.img (user disk)..."
-    COMMAND ${MKFS_TOOL} ${USER_IMAGE} 8
+        OUTPUT ${USER_IMAGE}
+        COMMAND ${CMAKE_COMMAND} -E echo "Creating user.img (user disk)..."
+        COMMAND ${MKFS_TOOL} ${USER_IMAGE} 8
         --mkdir c --mkdir certs --mkdir s --mkdir t
-        --add ${CMAKE_BINARY_DIR}/hello.prg:c/hello.prg
-        --add ${CMAKE_BINARY_DIR}/fsd_smoke.prg:c/fsd_smoke.prg
-        --add ${CMAKE_BINARY_DIR}/tls_smoke.prg:c/tls_smoke.prg
+        # Core utilities
         --add ${CMAKE_BINARY_DIR}/edit.prg:c/edit.prg
-        --add ${CMAKE_BINARY_DIR}/sftp.prg:c/sftp.prg
         --add ${CMAKE_BINARY_DIR}/ssh.prg:c/ssh.prg
+        --add ${CMAKE_BINARY_DIR}/sftp.prg:c/sftp.prg
         --add ${CMAKE_BINARY_DIR}/ping.prg:c/ping.prg
         --add ${CMAKE_BINARY_DIR}/fsinfo.prg:c/fsinfo.prg
         --add ${CMAKE_BINARY_DIR}/netstat.prg:c/netstat.prg
         --add ${CMAKE_BINARY_DIR}/sysinfo.prg:c/sysinfo.prg
         --add ${CMAKE_BINARY_DIR}/devices.prg:c/devices.prg
-        --add ${CMAKE_BINARY_DIR}/mathtest.prg:c/mathtest.prg
-        --add ${CMAKE_BINARY_DIR}/faulttest_null.prg:c/faulttest_null.prg
-        --add ${CMAKE_BINARY_DIR}/faulttest_illegal.prg:c/faulttest_illegal.prg
-        --add ${CMAKE_BINARY_DIR}/hello_gui.prg:c/hello_gui.prg
+        # GUI utilities (Phase 3)
         --add ${CMAKE_BINARY_DIR}/taskbar.prg:c/taskbar.prg
-    DEPENDS
-        hello.prg fsd_smoke.prg tls_smoke.prg edit.prg
-        sftp.prg ssh.prg ping.prg fsinfo.prg netstat.prg sysinfo.prg
-        devices.prg mathtest.prg faulttest_null.prg faulttest_illegal.prg
-        hello_gui.prg taskbar.prg
-    COMMENT "Creating user.img with user programs"
-    VERBATIM
+        --add ${CMAKE_BINARY_DIR}/guisysinfo.prg:c/guisysinfo.prg
+        --add ${CMAKE_BINARY_DIR}/taskman.prg:c/taskman.prg
+        --add ${CMAKE_BINARY_DIR}/prefs.prg:c/prefs.prg
+        DEPENDS
+        edit.prg ssh.prg sftp.prg ping.prg fsinfo.prg netstat.prg
+        sysinfo.prg devices.prg taskbar.prg guisysinfo.prg taskman.prg prefs.prg
+        COMMENT "Creating user.img with user programs"
+        VERBATIM
 )
 add_custom_target(user_image ALL DEPENDS ${USER_IMAGE})
 
@@ -97,12 +93,12 @@ add_custom_target(user_image ALL DEPENDS ${USER_IMAGE})
 # -----------------------------------------------------------------------------
 set(DISK_IMAGE "${CMAKE_BINARY_DIR}/disk.img")
 add_custom_command(
-    OUTPUT ${DISK_IMAGE}
-    COMMAND ${CMAKE_COMMAND} -E rm -f ${DISK_IMAGE}
-    COMMAND ${CMAKE_COMMAND} -E create_symlink sys.img ${DISK_IMAGE}
-    DEPENDS ${SYS_IMAGE}
-    COMMENT "Creating disk.img symlink to sys.img"
-    VERBATIM
+        OUTPUT ${DISK_IMAGE}
+        COMMAND ${CMAKE_COMMAND} -E rm -f ${DISK_IMAGE}
+        COMMAND ${CMAKE_COMMAND} -E create_symlink sys.img ${DISK_IMAGE}
+        DEPENDS ${SYS_IMAGE}
+        COMMENT "Creating disk.img symlink to sys.img"
+        VERBATIM
 )
 add_custom_target(disk_image ALL DEPENDS ${DISK_IMAGE})
 

@@ -17,8 +17,7 @@
 
 #include "../../include/types.hpp"
 
-namespace fs::viperfs
-{
+namespace fs::viperfs {
 
 /**
  * @file format.hpp
@@ -62,8 +61,7 @@ constexpr u64 ROOT_INODE = 2;
  * on-disk structures such as the block bitmap and inode table. The structure is
  * padded to exactly one block.
  */
-struct Superblock
-{
+struct Superblock {
     u32 magic;              // VIPERFS_MAGIC
     u32 version;            // VIPERFS_VERSION
     u64 block_size;         // Block size (4096)
@@ -99,8 +97,7 @@ constexpr u64 JOURNAL_BLOCKS = 16;
 /**
  * @brief Transaction state in journal.
  */
-namespace txn_state
-{
+namespace txn_state {
 constexpr u8 TXN_INVALID = 0;   // Invalid/unused entry
 constexpr u8 TXN_ACTIVE = 1;    // Transaction in progress
 constexpr u8 TXN_COMMITTED = 2; // Transaction committed (needs replay)
@@ -114,8 +111,7 @@ constexpr u8 TXN_COMPLETE = 3;  // Transaction completed (can be discarded)
  * Contains metadata about the journal state and the location of the
  * first valid transaction. Updated atomically when transactions complete.
  */
-struct JournalHeader
-{
+struct JournalHeader {
     u32 magic;          // JOURNAL_MAGIC
     u32 version;        // Journal format version (1)
     u64 sequence;       // Current transaction sequence number
@@ -135,8 +131,7 @@ static_assert(sizeof(JournalHeader) == 4096, "JournalHeader must be 4096 bytes")
  * Records the original block number that was modified. The actual block
  * data follows this record.
  */
-struct JournalBlockRecord
-{
+struct JournalBlockRecord {
     u64 block_num; // Original block number on disk
     u64 checksum;  // Simple checksum of block data
 };
@@ -151,8 +146,7 @@ struct JournalBlockRecord
  * 3. The actual block data for each record
  * 4. A commit record (magic number) at the end
  */
-struct JournalTransaction
-{
+struct JournalTransaction {
     u32 magic;     // JOURNAL_MAGIC
     u8 state;      // txn_state value
     u8 num_blocks; // Number of blocks in this transaction
@@ -168,8 +162,7 @@ static_assert(sizeof(JournalTransaction) == 4096, "JournalTransaction must be 40
 /**
  * @brief Commit record marking the end of a valid transaction.
  */
-struct JournalCommit
-{
+struct JournalCommit {
     u32 magic;          // JOURNAL_MAGIC
     u64 sequence;       // Must match transaction sequence
     u32 checksum;       // Checksum of entire transaction
@@ -187,8 +180,7 @@ static_assert(sizeof(JournalCommit) == 4096, "JournalCommit must be 4096 bytes")
  * The high bits encode the inode type (file/dir/symlink). Permission bits are
  * currently simplified.
  */
-namespace mode
-{
+namespace mode {
 constexpr u32 TYPE_MASK = 0xF000;
 constexpr u32 TYPE_FILE = 0x8000;
 constexpr u32 TYPE_DIR = 0x4000;
@@ -209,8 +201,7 @@ constexpr u32 PERM_EXEC = 0x0001;
  * indirection. Larger files use single and double indirect blocks. Triple
  * indirection is reserved but may not be implemented in the current driver.
  */
-struct Inode
-{
+struct Inode {
     u64 inode_num;       // Inode number
     u32 mode;            // Type + permissions
     u32 flags;           // Flags
@@ -231,8 +222,7 @@ static_assert(sizeof(Inode) == 256, "Inode must be 256 bytes");
 
 // Directory entry file types
 /** @brief Directory entry type codes stored in @ref DirEntry::file_type. */
-namespace file_type
-{
+namespace file_type {
 constexpr u8 UNKNOWN = 0;
 constexpr u8 FILE = 1;
 constexpr u8 DIR = 2;
@@ -248,8 +238,7 @@ constexpr u8 LINK = 7;
  * allows skipping to the next entry. Deleted entries are represented by
  * `inode == 0`.
  */
-struct DirEntry
-{
+struct DirEntry {
     u64 inode;    // Inode number (0 = deleted)
     u16 rec_len;  // Total entry length (for skipping)
     u8 name_len;  // Name length
@@ -272,20 +261,17 @@ constexpr usize MAX_NAME_LEN = 255;
  * @param inode Inode pointer.
  * @return `true` if inode type is directory.
  */
-inline bool is_directory(const Inode *inode)
-{
+inline bool is_directory(const Inode *inode) {
     return (inode->mode & mode::TYPE_MASK) == mode::TYPE_DIR;
 }
 
 /** @brief Check whether an inode is a regular file. */
-inline bool is_file(const Inode *inode)
-{
+inline bool is_file(const Inode *inode) {
     return (inode->mode & mode::TYPE_MASK) == mode::TYPE_FILE;
 }
 
 /** @brief Check whether an inode is a symbolic link. */
-inline bool is_symlink(const Inode *inode)
-{
+inline bool is_symlink(const Inode *inode) {
     return (inode->mode & mode::TYPE_MASK) == mode::TYPE_LINK;
 }
 
@@ -296,10 +282,8 @@ inline bool is_symlink(const Inode *inode)
  * @param mode Inode mode field.
  * @return Directory entry type code.
  */
-inline u8 mode_to_file_type(u32 mode)
-{
-    switch (mode & mode::TYPE_MASK)
-    {
+inline u8 mode_to_file_type(u32 mode) {
+    switch (mode & mode::TYPE_MASK) {
         case mode::TYPE_FILE:
             return file_type::FILE;
         case mode::TYPE_DIR:
@@ -321,8 +305,7 @@ inline u8 mode_to_file_type(u32 mode)
  * @param name_len Length of the name in bytes.
  * @return Total record length in bytes.
  */
-inline u16 dir_entry_size(u8 name_len)
-{
+inline u16 dir_entry_size(u8 name_len) {
     // Round up to 8-byte alignment
     usize size = DIR_ENTRY_MIN_SIZE + name_len;
     return static_cast<u16>((size + 7) & ~7);

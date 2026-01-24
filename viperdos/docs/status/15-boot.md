@@ -5,7 +5,8 @@
 
 ## Overview
 
-ViperDOS implements a complete UEFI boot infrastructure with a custom bootloader (VBoot) and a two-disk architecture for clean separation of system and user content.
+ViperDOS implements a complete UEFI boot infrastructure with a custom bootloader (VBoot) and a two-disk architecture for
+clean separation of system and user content.
 
 ---
 
@@ -13,7 +14,8 @@ ViperDOS implements a complete UEFI boot infrastructure with a custom bootloader
 
 ### Purpose
 
-VBoot is a custom UEFI bootloader that loads the ViperDOS kernel on AArch64 systems. It's implemented as a freestanding UEFI application with no external dependencies.
+VBoot is a custom UEFI bootloader that loads the ViperDOS kernel on AArch64 systems. It's implemented as a freestanding
+UEFI application with no external dependencies.
 
 ### Location
 
@@ -38,9 +40,9 @@ os/vboot/
 6. **Copy Segments** - Loads code/data to their target addresses
 7. **Cache Flush** - D$ flush + I$ invalidation (critical for AArch64)
 8. **Gather Boot Info**:
-   - UEFI memory map via `GetMemoryMap`
-   - GOP framebuffer info via `EFI_GRAPHICS_OUTPUT_PROTOCOL`
-   - Kernel physical base and size
+    - UEFI memory map via `GetMemoryMap`
+    - GOP framebuffer info via `EFI_GRAPHICS_OUTPUT_PROTOCOL`
+    - Kernel physical base and size
 9. **Exit Boot Services** - Calls `ExitBootServices` with retry logic
 10. **Jump to Kernel** - Disables interrupts, calls kernel entry with `VBootInfo*` in x0
 
@@ -80,16 +82,16 @@ struct VBootMemoryRegion {
 
 VBoot converts UEFI's detailed memory types into simplified categories:
 
-| UEFI Type | VBoot Type |
-|-----------|------------|
-| EfiConventionalMemory | USABLE_RAM |
-| EfiLoaderCode/Data | USABLE_RAM |
-| EfiBootServicesCode/Data | USABLE_RAM |
-| EfiACPIReclaimMemory | ACPI |
-| EfiACPIMemoryNVS | ACPI |
-| EfiMemoryMappedIO | MMIO |
-| EfiMemoryMappedIOPortSpace | MMIO |
-| All others | RESERVED |
+| UEFI Type                  | VBoot Type |
+|----------------------------|------------|
+| EfiConventionalMemory      | USABLE_RAM |
+| EfiLoaderCode/Data         | USABLE_RAM |
+| EfiBootServicesCode/Data   | USABLE_RAM |
+| EfiACPIReclaimMemory       | ACPI       |
+| EfiACPIMemoryNVS           | ACPI       |
+| EfiMemoryMappedIO          | MMIO       |
+| EfiMemoryMappedIOPortSpace | MMIO       |
+| All others                 | RESERVED   |
 
 ### Cache Coherency
 
@@ -279,34 +281,34 @@ Initialization sequence:
 1. **Serial Console** - First output for debugging
 2. **Boot Info Parsing** - Detect VBoot or DTB boot
 3. **Framebuffer Setup**:
-   - UEFI path: Use GOP framebuffer from VBootInfo
-   - QEMU path: Create ramfb via fw_cfg
+    - UEFI path: Use GOP framebuffer from VBootInfo
+    - QEMU path: Create ramfb via fw_cfg
 4. **Graphics Console** - Text rendering with font
 5. **Memory Management**:
-   - PMM initialization with memory map
-   - VMM page table setup
-   - Buddy allocator for page runs
-   - Slab allocator for kernel objects
-   - Kernel heap for dynamic allocation
+    - PMM initialization with memory map
+    - VMM page table setup
+    - Buddy allocator for page runs
+    - Slab allocator for kernel objects
+    - Kernel heap for dynamic allocation
 6. **Exceptions/Interrupts**:
-   - Install exception vectors
-   - GIC initialization (v2 or v3)
-   - Timer setup (1kHz tick)
+    - Install exception vectors
+    - GIC initialization (v2 or v3)
+    - Timer setup (1kHz tick)
 7. **Core Services**:
-   - Task subsystem initialization
-   - Scheduler with priority queues
-   - IPC channels
-   - Polling infrastructure
-   - Capability system
+    - Task subsystem initialization
+    - Scheduler with priority queues
+    - IPC channels
+    - Polling infrastructure
+    - Capability system
 8. **Device Discovery**:
-   - VirtIO MMIO device scan
-   - Block device detection
-   - Network device detection
+    - VirtIO MMIO device scan
+    - Block device detection
+    - Network device detection
 9. **Filesystem**:
-   - Block cache initialization
-   - VFS layer setup
-   - ViperFS mount (system disk)
-   - Assign system configuration
+    - Block cache initialization
+    - VFS layer setup
+    - ViperFS mount (system disk)
+    - Assign system configuration
 10. **User Space**:
     - Enable MMU for user mode
     - Create first process
@@ -340,11 +342,13 @@ void init(const void* boot_info) {
 ```
 
 Flow:
+
 ```
 QEMU → EDK2 Firmware → esp.img → VBoot → kernel.sys
 ```
 
 QEMU configuration:
+
 ```
 -drive file=esp.img,if=pflash,format=raw,index=0
 -drive file=sys.img,if=virtio,format=raw,index=1
@@ -358,11 +362,13 @@ QEMU configuration:
 ```
 
 Flow:
+
 ```
 QEMU → kernel.sys (loaded directly at 0x40000000)
 ```
 
 QEMU configuration:
+
 ```
 -kernel build/kernel.sys
 -drive file=sys.img,if=virtio,format=raw,index=0
@@ -376,11 +382,13 @@ QEMU configuration:
 ```
 
 Adds GDB server on port 1234:
+
 ```
 -s -S   # -s = GDB server, -S = pause on start
 ```
 
 Connect with:
+
 ```bash
 aarch64-elf-gdb build/kernel.sys
 (gdb) target remote :1234
@@ -421,11 +429,11 @@ Options:
 ### Build Steps
 
 1. **Check Prerequisites**:
-   - QEMU (qemu-system-aarch64)
-   - CMake
-   - Clang (LLVM, not Apple)
-   - AArch64 cross tools
-   - UEFI tools (sgdisk, mtools)
+    - QEMU (qemu-system-aarch64)
+    - CMake
+    - Clang (LLVM, not Apple)
+    - AArch64 cross tools
+    - UEFI tools (sgdisk, mtools)
 
 2. **CMake Configuration**:
    ```bash
@@ -439,10 +447,10 @@ Options:
    ```
 
 4. **Create Disk Images**:
-   - Generate TLS certificates
-   - Create sys.img with mkfs.ziafs
-   - Create user.img with mkfs.ziafs
-   - Create esp.img (UEFI mode)
+    - Generate TLS certificates
+    - Create sys.img with mkfs.ziafs
+    - Create user.img with mkfs.ziafs
+    - Create esp.img (UEFI mode)
 
 5. **Launch QEMU**:
    ```bash
@@ -462,17 +470,17 @@ Options:
 
 ## Key Files
 
-| File | Purpose |
-|------|---------|
-| `vboot/main.c` | UEFI bootloader implementation |
-| `vboot/efi.h` | Minimal UEFI protocol definitions |
-| `vboot/vboot.h` | Boot info structure |
-| `vboot/crt0.S` | UEFI entry point stub |
-| `kernel/arch/aarch64/boot.S` | Kernel entry point |
-| `kernel/boot/bootinfo.cpp` | Boot info parsing |
-| `kernel/include/vboot.hpp` | VBootInfo mirror for kernel |
-| `kernel/main.cpp` | Kernel initialization |
-| `scripts/build_viperdos.sh` | Build orchestration |
+| File                         | Purpose                           |
+|------------------------------|-----------------------------------|
+| `vboot/main.c`               | UEFI bootloader implementation    |
+| `vboot/efi.h`                | Minimal UEFI protocol definitions |
+| `vboot/vboot.h`              | Boot info structure               |
+| `vboot/crt0.S`               | UEFI entry point stub             |
+| `kernel/arch/aarch64/boot.S` | Kernel entry point                |
+| `kernel/boot/bootinfo.cpp`   | Boot info parsing                 |
+| `kernel/include/vboot.hpp`   | VBootInfo mirror for kernel       |
+| `kernel/main.cpp`            | Kernel initialization             |
+| `scripts/build_viperdos.sh`  | Build orchestration               |
 
 ---
 
@@ -497,7 +505,8 @@ Without this, the CPU may execute stale or garbage instructions.
 
 ### ExitBootServices Retry
 
-UEFI's `ExitBootServices` can fail if the memory map changed between `GetMemoryMap` and `ExitBootServices` calls. VBoot handles this with retry logic:
+UEFI's `ExitBootServices` can fail if the memory map changed between `GetMemoryMap` and `ExitBootServices` calls. VBoot
+handles this with retry logic:
 
 ```c
 do {
@@ -532,35 +541,45 @@ do {
 ## Priority Recommendations: Next 5 Steps
 
 ### 1. ACPI Table Parsing
+
 **Impact:** Hardware discovery on real systems
+
 - Parse RSDP from UEFI ConfigurationTable
 - Extract CPU count from MADT
 - Interrupt routing from MADT/GTDT
 - Foundation for power management
 
 ### 2. Secure Boot Support
+
 **Impact:** Boot chain integrity
+
 - Sign VBoot with Microsoft or custom key
 - Validate kernel signature before loading
 - Shim integration for distribution
 - Required for many real hardware deployments
 
 ### 3. Boot Menu (Multi-Boot)
+
 **Impact:** Kernel version selection
+
 - Simple text-mode menu in VBoot
 - List available kernel versions
 - Timeout with default selection
 - Useful for development and recovery
 
 ### 4. UEFI Runtime Services
+
 **Impact:** System integration features
+
 - Access UEFI variables (boot order, etc.)
 - Runtime memory mapping preservation
 - ResetSystem() for clean reboot
 - SetVirtualAddressMap() for kernel
 
 ### 5. Network Boot (PXE/HTTP)
+
 **Impact:** Diskless deployment
+
 - UEFI PXE network driver discovery
 - HTTP boot using UEFI SimpleNetwork
 - TFTP fallback for legacy servers

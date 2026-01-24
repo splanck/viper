@@ -24,8 +24,7 @@
  * dependencies. They are usable from user-mode code and from kernel-side test
  * code that intentionally exercises the syscall path.
  */
-namespace sys
-{
+namespace sys {
 
 // Low-level syscall invocation
 // Syscall number in x8, args in x0-x5, result in x0
@@ -39,8 +38,7 @@ namespace sys
  * @param num Syscall number (see @ref syscall::Number).
  * @return Result value in x0 (non-negative on success, negative on error).
  */
-inline i64 syscall0(u64 num)
-{
+inline i64 syscall0(u64 num) {
     register u64 x8 asm("x8") = num;
     register i64 x0 asm("x0");
     asm volatile("svc #0" : "=r"(x0) : "r"(x8) : "memory");
@@ -58,8 +56,7 @@ inline i64 syscall0(u64 num)
  * @param arg0 First argument (x0).
  * @return Result value in x0.
  */
-inline i64 syscall1(u64 num, u64 arg0)
-{
+inline i64 syscall1(u64 num, u64 arg0) {
     register u64 x8 asm("x8") = num;
     register u64 r0 asm("x0") = arg0;
     register i64 result asm("x0");
@@ -75,8 +72,7 @@ inline i64 syscall1(u64 num, u64 arg0)
  * @param arg1 Second argument (x1).
  * @return Result value in x0.
  */
-inline i64 syscall2(u64 num, u64 arg0, u64 arg1)
-{
+inline i64 syscall2(u64 num, u64 arg0, u64 arg1) {
     register u64 x8 asm("x8") = num;
     register u64 r0 asm("x0") = arg0;
     register u64 r1 asm("x1") = arg1;
@@ -94,8 +90,7 @@ inline i64 syscall2(u64 num, u64 arg0, u64 arg1)
  * @param arg2 Third argument (x2).
  * @return Result value in x0.
  */
-inline i64 syscall3(u64 num, u64 arg0, u64 arg1, u64 arg2)
-{
+inline i64 syscall3(u64 num, u64 arg0, u64 arg1, u64 arg2) {
     register u64 x8 asm("x8") = num;
     register u64 r0 asm("x0") = arg0;
     register u64 r1 asm("x1") = arg1;
@@ -116,8 +111,7 @@ inline i64 syscall3(u64 num, u64 arg0, u64 arg1, u64 arg2)
  *
  * @return Result code (usually @ref error::VOK on success).
  */
-inline i64 yield()
-{
+inline i64 yield() {
     return syscall0(syscall::TASK_YIELD);
 }
 
@@ -131,8 +125,7 @@ inline i64 yield()
  *
  * @param code Exit status code.
  */
-inline void exit(i64 code)
-{
+inline void exit(i64 code) {
     syscall1(syscall::TASK_EXIT, static_cast<u64>(code));
     // Never returns
     __builtin_unreachable();
@@ -146,8 +139,7 @@ inline void exit(i64 code)
  *
  * @return Task ID on success, or negative error code on failure.
  */
-inline i64 current_task_id()
-{
+inline i64 current_task_id() {
     return syscall0(syscall::TASK_CURRENT);
 }
 
@@ -163,8 +155,7 @@ inline i64 current_task_id()
  * @param msg Pointer to a NUL-terminated string.
  * @return Result code.
  */
-inline i64 debug_print(const char *msg)
-{
+inline i64 debug_print(const char *msg) {
     return syscall1(syscall::DEBUG_PRINT, reinterpret_cast<u64>(msg));
 }
 
@@ -178,8 +169,7 @@ inline i64 debug_print(const char *msg)
  *
  * @return Channel handle/ID on success, or negative error code on failure.
  */
-inline i64 channel_create()
-{
+inline i64 channel_create() {
     return syscall0(syscall::CHANNEL_CREATE);
 }
 
@@ -196,8 +186,7 @@ inline i64 channel_create()
  * @param size Number of bytes to send.
  * @return Result code (non-negative on success, negative on error).
  */
-inline i64 channel_send(u32 channel_id, const void *data, u32 size)
-{
+inline i64 channel_send(u32 channel_id, const void *data, u32 size) {
     return syscall3(syscall::CHANNEL_SEND,
                     static_cast<u64>(channel_id),
                     reinterpret_cast<u64>(data),
@@ -218,8 +207,7 @@ inline i64 channel_send(u32 channel_id, const void *data, u32 size)
  * @return Non-negative value on success (often bytes received), negative error
  *         code on failure.
  */
-inline i64 channel_recv(u32 channel_id, void *buffer, u32 buffer_size)
-{
+inline i64 channel_recv(u32 channel_id, void *buffer, u32 buffer_size) {
     return syscall3(syscall::CHANNEL_RECV,
                     static_cast<u64>(channel_id),
                     reinterpret_cast<u64>(buffer),
@@ -236,8 +224,7 @@ inline i64 channel_recv(u32 channel_id, void *buffer, u32 buffer_size)
  * @param channel_id Channel handle/ID.
  * @return Result code.
  */
-inline i64 channel_close(u32 channel_id)
-{
+inline i64 channel_close(u32 channel_id) {
     return syscall1(syscall::CHANNEL_CLOSE, static_cast<u64>(channel_id));
 }
 
@@ -251,8 +238,7 @@ inline i64 channel_close(u32 channel_id)
  *
  * @return Time value on success, or negative error code.
  */
-inline i64 time_now()
-{
+inline i64 time_now() {
     return syscall0(syscall::TIME_NOW);
 }
 
@@ -266,8 +252,7 @@ inline i64 time_now()
  * @param ms Duration to sleep in milliseconds.
  * @return Result code.
  */
-inline i64 sleep(u64 ms)
-{
+inline i64 sleep(u64 ms) {
     return syscall1(syscall::SLEEP, ms);
 }
 
@@ -283,8 +268,7 @@ inline i64 sleep(u64 ms)
  * @param flags Open flags bitmask.
  * @return File descriptor on success, or negative error code (cast to i32).
  */
-inline i32 open(const char *path, u32 flags)
-{
+inline i32 open(const char *path, u32 flags) {
     return static_cast<i32>(
         syscall2(syscall::OPEN, reinterpret_cast<u64>(path), static_cast<u64>(flags)));
 }
@@ -295,8 +279,7 @@ inline i32 open(const char *path, u32 flags)
  * @param fd File descriptor.
  * @return Result code (0 on success, negative on error).
  */
-inline i32 close(i32 fd)
-{
+inline i32 close(i32 fd) {
     return static_cast<i32>(syscall1(syscall::CLOSE, static_cast<u64>(fd)));
 }
 
@@ -309,8 +292,7 @@ inline i32 close(i32 fd)
  * @return Non-negative value on success (often bytes read), negative error code
  *         on failure.
  */
-inline i64 read(i32 fd, void *buf, usize len)
-{
+inline i64 read(i32 fd, void *buf, usize len) {
     return syscall3(
         syscall::READ, static_cast<u64>(fd), reinterpret_cast<u64>(buf), static_cast<u64>(len));
 }
@@ -324,8 +306,7 @@ inline i64 read(i32 fd, void *buf, usize len)
  * @return Non-negative value on success (often bytes written), negative error
  *         code on failure.
  */
-inline i64 write(i32 fd, const void *buf, usize len)
-{
+inline i64 write(i32 fd, const void *buf, usize len) {
     return syscall3(
         syscall::WRITE, static_cast<u64>(fd), reinterpret_cast<u64>(buf), static_cast<u64>(len));
 }
@@ -338,15 +319,13 @@ inline i64 write(i32 fd, const void *buf, usize len)
  * @param whence Seek base (implementation-defined, typically SEEK_SET/SEEK_CUR/SEEK_END).
  * @return New offset on success, or negative error code.
  */
-inline i64 lseek(i32 fd, i64 offset, i32 whence)
-{
+inline i64 lseek(i32 fd, i64 offset, i32 whence) {
     return syscall3(
         syscall::LSEEK, static_cast<u64>(fd), static_cast<u64>(offset), static_cast<u64>(whence));
 }
 
 // File open flags (for userspace)
-namespace file
-{
+namespace file {
 /** @brief Open read-only. */
 constexpr u32 O_RDONLY = 0x0000;
 /** @brief Open write-only. */
@@ -367,8 +346,7 @@ constexpr u32 O_APPEND = 0x0400;
  *
  * @return Socket descriptor/handle on success, or negative error code.
  */
-inline i32 socket_create()
-{
+inline i32 socket_create() {
     return static_cast<i32>(syscall0(syscall::SOCKET_CREATE));
 }
 
@@ -380,8 +358,7 @@ inline i32 socket_create()
  * @param port Remote port number in host byte order (ABI-defined).
  * @return Result code.
  */
-inline i32 socket_connect(i32 sock, u32 ip, u16 port)
-{
+inline i32 socket_connect(i32 sock, u32 ip, u16 port) {
     return static_cast<i32>(syscall3(syscall::SOCKET_CONNECT,
                                      static_cast<u64>(sock),
                                      static_cast<u64>(ip),
@@ -396,8 +373,7 @@ inline i32 socket_connect(i32 sock, u32 ip, u16 port)
  * @param len Number of bytes to send.
  * @return Non-negative value on success (often bytes sent), negative error code.
  */
-inline i64 socket_send(i32 sock, const void *data, usize len)
-{
+inline i64 socket_send(i32 sock, const void *data, usize len) {
     return syscall3(syscall::SOCKET_SEND,
                     static_cast<u64>(sock),
                     reinterpret_cast<u64>(data),
@@ -412,8 +388,7 @@ inline i64 socket_send(i32 sock, const void *data, usize len)
  * @param max_len Maximum number of bytes to receive.
  * @return Non-negative value on success (often bytes received), negative error code.
  */
-inline i64 socket_recv(i32 sock, void *buffer, usize max_len)
-{
+inline i64 socket_recv(i32 sock, void *buffer, usize max_len) {
     return syscall3(syscall::SOCKET_RECV,
                     static_cast<u64>(sock),
                     reinterpret_cast<u64>(buffer),
@@ -426,8 +401,7 @@ inline i64 socket_recv(i32 sock, void *buffer, usize max_len)
  * @param sock Socket descriptor.
  * @return Result code.
  */
-inline i32 socket_close(i32 sock)
-{
+inline i32 socket_close(i32 sock) {
     return static_cast<i32>(syscall1(syscall::SOCKET_CLOSE, static_cast<u64>(sock)));
 }
 
@@ -442,8 +416,7 @@ inline i32 socket_close(i32 sock)
  * @param ip_out Output pointer where the resolved packed IPv4 address is stored.
  * @return Result code.
  */
-inline i32 dns_resolve(const char *hostname, u32 *ip_out)
-{
+inline i32 dns_resolve(const char *hostname, u32 *ip_out) {
     return static_cast<i32>(syscall2(
         syscall::DNS_RESOLVE, reinterpret_cast<u64>(hostname), reinterpret_cast<u64>(ip_out)));
 }
@@ -462,8 +435,7 @@ inline i32 dns_resolve(const char *hostname, u32 *ip_out)
  * @param d Fourth octet.
  * @return Packed IPv4 address.
  */
-inline u32 ip_pack(u8 a, u8 b, u8 c, u8 d)
-{
+inline u32 ip_pack(u8 a, u8 b, u8 c, u8 d) {
     return (static_cast<u32>(a) << 24) | (static_cast<u32>(b) << 16) | (static_cast<u32>(c) << 8) |
            static_cast<u32>(d);
 }

@@ -6,16 +6,17 @@
 
 ## Overview
 
-ViperDOS follows a microkernel architecture where device drivers and system services run in user-space rather than in the kernel. This provides better fault isolation and security. Six user-space servers are implemented:
+ViperDOS follows a microkernel architecture where device drivers and system services run in user-space rather than in
+the kernel. This provides better fault isolation and security. Six user-space servers are implemented:
 
-| Server | Assign | SLOC | Purpose |
-|--------|--------|------|---------|
-| **netd** | NETD: | ~3,200 | TCP/IP network stack |
-| **fsd** | FSD: | ~3,100 | Filesystem operations |
-| **blkd** | BLKD: | ~700 | Block device access |
-| **consoled** | CONSOLED | ~1,600 | GUI terminal emulator |
-| **inputd** | INPUTD | ~1,000 | Keyboard/mouse input |
-| **displayd** | DISPLAY | ~1,700 | Window management, GUI |
+| Server       | Assign   | SLOC   | Purpose                |
+|--------------|----------|--------|------------------------|
+| **netd**     | NETD:    | ~3,200 | TCP/IP network stack   |
+| **fsd**      | FSD:     | ~3,100 | Filesystem operations  |
+| **blkd**     | BLKD:    | ~700   | Block device access    |
+| **consoled** | CONSOLED | ~1,600 | GUI terminal emulator  |
+| **inputd**   | INPUTD   | ~1,000 | Keyboard/mouse input   |
+| **displayd** | DISPLAY  | ~1,700 | Window management, GUI |
 
 ## Architecture
 
@@ -57,17 +58,17 @@ ViperDOS follows a microkernel architecture where device drivers and system serv
 
 The kernel provides syscalls for user-space drivers to access hardware:
 
-| Syscall | Number | Description |
-|---------|--------|-------------|
-| SYS_MAP_DEVICE | 0x100 | Map device MMIO into user address space |
-| SYS_IRQ_REGISTER | 0x101 | Register to receive a specific IRQ |
-| SYS_IRQ_WAIT | 0x102 | Wait for registered IRQ to fire |
-| SYS_IRQ_ACK | 0x103 | Acknowledge IRQ after handling |
-| SYS_DMA_ALLOC | 0x104 | Allocate physically contiguous DMA buffer |
-| SYS_DMA_FREE | 0x105 | Free DMA buffer |
-| SYS_VIRT_TO_PHYS | 0x106 | Get physical address for DMA programming |
-| SYS_DEVICE_ENUM | 0x107 | Enumerate available devices |
-| SYS_IRQ_UNREGISTER | 0x108 | Unregister from an IRQ |
+| Syscall            | Number | Description                               |
+|--------------------|--------|-------------------------------------------|
+| SYS_MAP_DEVICE     | 0x100  | Map device MMIO into user address space   |
+| SYS_IRQ_REGISTER   | 0x101  | Register to receive a specific IRQ        |
+| SYS_IRQ_WAIT       | 0x102  | Wait for registered IRQ to fire           |
+| SYS_IRQ_ACK        | 0x103  | Acknowledge IRQ after handling            |
+| SYS_DMA_ALLOC      | 0x104  | Allocate physically contiguous DMA buffer |
+| SYS_DMA_FREE       | 0x105  | Free DMA buffer                           |
+| SYS_VIRT_TO_PHYS   | 0x106  | Get physical address for DMA programming  |
+| SYS_DEVICE_ENUM    | 0x107  | Enumerate available devices               |
+| SYS_IRQ_UNREGISTER | 0x108  | Unregister from an IRQ                    |
 
 ---
 
@@ -79,11 +80,11 @@ The kernel provides syscalls for user-space drivers to access hardware:
 
 ### Files
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `main.cpp` | ~915 | Server entry point and main loop |
-| `net_protocol.hpp` | ~447 | IPC message definitions |
-| `netstack.hpp` | ~596 | TCP/IP stack implementation |
+| File               | Lines | Description                      |
+|--------------------|-------|----------------------------------|
+| `main.cpp`         | ~915  | Server entry point and main loop |
+| `net_protocol.hpp` | ~447  | IPC message definitions          |
+| `netstack.hpp`     | ~596  | TCP/IP stack implementation      |
 
 ### Features
 
@@ -165,13 +166,13 @@ u32 socket_id = reply.socket_id;
 
 ### Files
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `main.cpp` | ~968 | Server entry point, request handlers |
-| `fs_protocol.hpp` | ~455 | IPC message definitions |
-| `viperfs.hpp` | ~199 | ViperFS client implementation |
-| `blk_client.hpp` | ~363 | Client for blkd communication |
-| `format.hpp` | ~163 | ViperFS on-disk format |
+| File              | Lines | Description                          |
+|-------------------|-------|--------------------------------------|
+| `main.cpp`        | ~968  | Server entry point, request handlers |
+| `fs_protocol.hpp` | ~455  | IPC message definitions              |
+| `viperfs.hpp`     | ~199  | ViperFS client implementation        |
+| `blk_client.hpp`  | ~363  | Client for blkd communication        |
+| `format.hpp`      | ~163  | ViperFS on-disk format               |
 
 ### Features
 
@@ -242,10 +243,10 @@ static OpenFile g_open_files[64];
 
 ### Files
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `main.cpp` | ~546 | Server entry point and main loop |
-| `blk_protocol.hpp` | ~149 | IPC message definitions |
+| File               | Lines | Description                      |
+|--------------------|-------|----------------------------------|
+| `main.cpp`         | ~546  | Server entry point and main loop |
+| `blk_protocol.hpp` | ~149  | IPC message definitions          |
 
 ### Features
 
@@ -300,10 +301,10 @@ namespace blk {
 
 ### Files
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `main.cpp` | ~1,394 | GUI terminal emulator with ANSI support |
-| `console_protocol.hpp` | ~225 | IPC message definitions |
+| File                   | Lines  | Description                             |
+|------------------------|--------|-----------------------------------------|
+| `main.cpp`             | ~1,394 | GUI terminal emulator with ANSI support |
+| `console_protocol.hpp` | ~225   | IPC message definitions                 |
 
 ### Overview
 
@@ -317,13 +318,17 @@ Consoled is a GUI-based terminal emulator that runs as a window within displayd.
 ### Features
 
 **Terminal Emulation:**
+
 - 106x50 character grid (12x12 pixel cells at 1.5x font scaling)
-- Per-cell foreground and background colors with attributes (bold, dim, italic, underline, blink, reverse, hidden, strikethrough)
+- Per-cell foreground and background colors with attributes (bold, dim, italic, underline, blink, reverse, hidden,
+  strikethrough)
 - Block cursor with blinking animation (500ms interval)
 - ANSI escape sequence parsing (CSI sequences)
 
 **ANSI Escape Sequences Supported:**
-- `CSI n m` - SGR (Select Graphic Rendition): colors 0-7, bright 90-97/100-107, 256-color (38;5;n), 24-bit RGB (38;2;r;g;b)
+
+- `CSI n m` - SGR (Select Graphic Rendition): colors 0-7, bright 90-97/100-107, 256-color (38;5;n), 24-bit RGB (
+  38;2;r;g;b)
 - `CSI n A/B/C/D` - Cursor movement (up/down/forward/back)
 - `CSI n;m H` or `CSI n;m f` - Cursor positioning
 - `CSI n J` - Erase display (0=below, 1=above, 2=all)
@@ -332,6 +337,7 @@ Consoled is a GUI-based terminal emulator that runs as a window within displayd.
 - `CSI ?25h/l` - Show/hide cursor
 
 **Display:**
+
 - Creates GUI window via libgui (DISPLAY service)
 - 1.5x scaled font (12x12 pixels, half-unit scaling: scale=3)
 - Window positioned at (20, 20) for visibility
@@ -339,6 +345,7 @@ Consoled is a GUI-based terminal emulator that runs as a window within displayd.
 - Row-based damage coalescing
 
 **Bidirectional IPC:**
+
 - Clients connect via CON_CONNECT with a channel handle for receiving input
 - Text output via CON_WRITE with ANSI sequence processing
 - Keyboard input forwarded via CON_INPUT events
@@ -434,25 +441,26 @@ namespace console_protocol {
 4. Consoled stores the input channel for keyboard forwarding
 5. Consoled sends CON_CONNECT_REPLY with console dimensions
 6. Client can now:
-   - Send CON_WRITE to output text
-   - Receive CON_INPUT events for keyboard input
+    - Send CON_WRITE to output text
+    - Receive CON_INPUT events for keyboard input
 
 ### Keycode Translation
 
 Consoled translates Linux evdev keycodes to ASCII characters:
 
-| Keycode Range | Description |
-|---------------|-------------|
-| 2-11 | Number keys (1-9, 0) |
-| 16-25 | QWERTYUIOP row |
-| 30-38 | ASDFGHJKL row |
-| 44-50 | ZXCVBNM row |
-| 28 | Enter (→ '\n') |
-| 14 | Backspace (→ '\b') |
-| 57 | Space |
-| 15 | Tab (→ '\t') |
+| Keycode Range | Description          |
+|---------------|----------------------|
+| 2-11          | Number keys (1-9, 0) |
+| 16-25         | QWERTYUIOP row       |
+| 30-38         | ASDFGHJKL row        |
+| 44-50         | ZXCVBNM row          |
+| 28            | Enter (→ '\n')       |
+| 14            | Backspace (→ '\b')   |
+| 57            | Space                |
+| 15            | Tab (→ '\t')         |
 
-Shift modifier produces uppercase letters and symbols. Special keys (arrows, function keys) are passed as raw keycodes with `ch=0`.
+Shift modifier produces uppercase letters and symbols. Special keys (arrows, function keys) are passed as raw keycodes
+with `ch=0`.
 
 ---
 
@@ -464,11 +472,11 @@ Shift modifier produces uppercase letters and symbols. Special keys (arrows, fun
 
 ### Files
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `main.cpp` | ~751 | Server entry point, event processing |
-| `input_protocol.hpp` | ~159 | IPC message definitions |
-| `keycodes.hpp` | ~307 | Linux evdev keycode mappings |
+| File                 | Lines | Description                          |
+|----------------------|-------|--------------------------------------|
+| `main.cpp`           | ~751  | Server entry point, event processing |
+| `input_protocol.hpp` | ~159  | IPC message definitions              |
+| `keycodes.hpp`       | ~307  | Linux evdev keycode mappings         |
 
 ### Features
 
@@ -524,6 +532,7 @@ namespace input_protocol {
 **Registration:** `sys::assign_set("DISPLAY", channel_handle)`
 
 See [16-gui.md](16-gui.md) for complete GUI documentation including:
+
 - displayd architecture and IPC protocol
 - libgui client library API
 - Taskbar desktop shell
@@ -531,10 +540,10 @@ See [16-gui.md](16-gui.md) for complete GUI documentation including:
 
 ### Summary
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `main.cpp` | ~1,460 | Server entry, compositing, event handling |
-| `display_protocol.hpp` | ~260 | IPC message definitions |
+| File                   | Lines  | Description                               |
+|------------------------|--------|-------------------------------------------|
+| `main.cpp`             | ~1,460 | Server entry, compositing, event handling |
+| `display_protocol.hpp` | ~260   | IPC message definitions                   |
 
 ### Key Features
 
@@ -592,6 +601,7 @@ int fs_readdir_one(int dir_id, struct dirent *entry);
 See [16-gui.md](16-gui.md) for complete API documentation.
 
 Key functions:
+
 - `gui_init()` / `gui_shutdown()` - Initialization
 - `gui_create_window()` / `gui_create_window_ex()` - Window creation
 - `gui_get_pixels()` - Direct pixel buffer access
@@ -684,6 +694,7 @@ Sockets:    Routed to netd (separate namespace)
 ### IPC Overhead
 
 Each operation requires:
+
 1. Message copy to channel buffer
 2. Context switch to server
 3. Processing
@@ -699,46 +710,56 @@ Each operation requires:
 
 ### Measured Latency (Approximate)
 
-| Operation | In-Kernel | Via IPC Server |
-|-----------|-----------|----------------|
-| Block read (4KB) | ~50μs | ~150μs |
-| File stat | ~10μs | ~80μs |
-| Directory lookup | ~20μs | ~120μs |
-| Socket send (small) | ~30μs | ~100μs |
+| Operation           | In-Kernel | Via IPC Server |
+|---------------------|-----------|----------------|
+| Block read (4KB)    | ~50μs     | ~150μs         |
+| File stat           | ~10μs     | ~80μs          |
+| Directory lookup    | ~20μs     | ~120μs         |
+| Socket send (small) | ~30μs     | ~100μs         |
 
 ---
 
 ## Priority Recommendations: Next 5 Steps
 
 ### 1. displayd Window Move/Resize via Mouse
+
 **Impact:** Desktop-like window management
+
 - Title bar drag for window move
 - Edge/corner drag for resize
 - Minimum window size constraints
 - Live resize with damage tracking
 
 ### 2. displayd Keyboard Event Delivery
+
 **Impact:** Interactive text input in GUI apps
+
 - Route key events from inputd to displayd
 - Forward to focused window's event queue
 - Enable text editors and terminals in GUI
 
 ### 3. fsd Per-Process FD Tables
+
 **Impact:** Correct multi-process file handling
+
 - Move FD tracking to per-client state
 - Proper FD inheritance on fork notification
 - FD cleanup on client disconnect
 - Required for fork/exec workflow
 
 ### 4. netd Listen/Accept Improvements
+
 **Impact:** Server-side network applications
+
 - Multiple concurrent listening sockets
 - Accept queue depth configuration
 - Non-blocking accept with poll integration
 - Foundation for HTTP/SSH servers
 
 ### 5. Server Health Monitoring
+
 **Impact:** System reliability
+
 - Heartbeat protocol between servers
 - Automatic server restart on crash
 - Dependency-aware startup ordering

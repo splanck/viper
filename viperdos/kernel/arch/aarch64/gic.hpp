@@ -27,16 +27,10 @@
  *
  * On QEMU virt, GICv3 is available with `-M virt,gic-version=3`.
  */
-namespace gic
-{
+namespace gic {
 
 /// GIC version detected during initialization
-enum class Version
-{
-    UNKNOWN = 0,
-    V2 = 2,
-    V3 = 3
-};
+enum class Version { UNKNOWN = 0, V2 = 2, V3 = 3 };
 
 /**
  * @brief Function pointer type for IRQ handlers registered with the GIC layer.

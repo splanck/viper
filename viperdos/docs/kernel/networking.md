@@ -55,29 +55,29 @@ Applications communicate with netd via IPC channels using a message-based protoc
 
 ### Socket Operations
 
-| Message | Code | Description |
-|---------|------|-------------|
-| `NET_SOCKET_CREATE` | 0x01 | Create TCP/UDP socket |
-| `NET_SOCKET_CONNECT` | 0x02 | Connect to remote host |
-| `NET_SOCKET_BIND` | 0x03 | Bind to local address |
-| `NET_SOCKET_LISTEN` | 0x04 | Listen for connections |
-| `NET_SOCKET_ACCEPT` | 0x05 | Accept incoming connection |
-| `NET_SOCKET_SEND` | 0x06 | Send data |
-| `NET_SOCKET_RECV` | 0x07 | Receive data |
-| `NET_SOCKET_CLOSE` | 0x08 | Close socket |
-| `NET_SOCKET_POLL` | 0x09 | Poll socket for events |
+| Message              | Code | Description                |
+|----------------------|------|----------------------------|
+| `NET_SOCKET_CREATE`  | 0x01 | Create TCP/UDP socket      |
+| `NET_SOCKET_CONNECT` | 0x02 | Connect to remote host     |
+| `NET_SOCKET_BIND`    | 0x03 | Bind to local address      |
+| `NET_SOCKET_LISTEN`  | 0x04 | Listen for connections     |
+| `NET_SOCKET_ACCEPT`  | 0x05 | Accept incoming connection |
+| `NET_SOCKET_SEND`    | 0x06 | Send data                  |
+| `NET_SOCKET_RECV`    | 0x07 | Receive data               |
+| `NET_SOCKET_CLOSE`   | 0x08 | Close socket               |
+| `NET_SOCKET_POLL`    | 0x09 | Poll socket for events     |
 
 ### DNS Operations
 
-| Message | Code | Description |
-|---------|------|-------------|
+| Message           | Code | Description            |
+|-------------------|------|------------------------|
 | `NET_DNS_RESOLVE` | 0x14 | Resolve hostname to IP |
 
 ### Network Information
 
-| Message | Code | Description |
-|---------|------|-------------|
-| `NET_PING` | 0x28 | ICMP echo request |
+| Message        | Code | Description               |
+|----------------|------|---------------------------|
+| `NET_PING`     | 0x28 | ICMP echo request         |
 | `NET_GET_INFO` | 0x29 | Get interface information |
 
 ## Protocol Stack Layers
@@ -123,14 +123,17 @@ Applications communicate with netd via IPC channels using a message-based protoc
 The TLS library provides secure connections:
 
 **Supported cipher suites:**
+
 - TLS_AES_128_GCM_SHA256 (0x1301)
 - TLS_AES_256_GCM_SHA384 (0x1302)
 - TLS_CHACHA20_POLY1305_SHA256 (0x1303)
 
 **Key exchange:**
+
 - X25519 (Curve25519 ECDH)
 
 **Certificate verification:**
+
 - X.509 parsing
 - Chain validation
 - Built-in root CA store
@@ -147,14 +150,15 @@ The SSH library provides secure shell and file transfer:
 
 **Supported algorithms:**
 
-| Category | Algorithms |
-|----------|------------|
-| Key Exchange | curve25519-sha256 |
-| Host Key | ssh-ed25519, ssh-rsa |
-| Encryption | aes128-ctr, aes256-ctr |
-| MAC | hmac-sha256, hmac-sha1 |
+| Category     | Algorithms             |
+|--------------|------------------------|
+| Key Exchange | curve25519-sha256      |
+| Host Key     | ssh-ed25519, ssh-rsa   |
+| Encryption   | aes128-ctr, aes256-ctr |
+| MAC          | hmac-sha256, hmac-sha1 |
 
 **Features:**
+
 - Password and public key authentication
 - Interactive shell sessions
 - Command execution
@@ -171,25 +175,25 @@ Key files:
 
 The netd server uses device syscalls to access hardware:
 
-| Syscall | Number | Description |
-|---------|--------|-------------|
-| `map_device` | 0x100 | Map VirtIO MMIO into user space |
-| `irq_register` | 0x101 | Register for network IRQ |
-| `irq_wait` | 0x102 | Wait for network interrupt |
-| `irq_ack` | 0x103 | Acknowledge interrupt |
-| `dma_alloc` | 0x104 | Allocate DMA buffer |
-| `virt_to_phys` | 0x106 | Get physical address for DMA |
+| Syscall        | Number | Description                     |
+|----------------|--------|---------------------------------|
+| `map_device`   | 0x100  | Map VirtIO MMIO into user space |
+| `irq_register` | 0x101  | Register for network IRQ        |
+| `irq_wait`     | 0x102  | Wait for network interrupt      |
+| `irq_ack`      | 0x103  | Acknowledge interrupt           |
+| `dma_alloc`    | 0x104  | Allocate DMA buffer             |
+| `virt_to_phys` | 0x106  | Get physical address for DMA    |
 
 ## Network Configuration
 
 Default configuration for QEMU SLiRP networking:
 
-| Parameter | Value |
-|-----------|-------|
-| IP Address | 10.0.2.15 |
-| Netmask | 255.255.255.0 |
-| Gateway | 10.0.2.2 |
-| DNS Server | 10.0.2.3 |
+| Parameter  | Value         |
+|------------|---------------|
+| IP Address | 10.0.2.15     |
+| Netmask    | 255.255.255.0 |
+| Gateway    | 10.0.2.2      |
+| DNS Server | 10.0.2.3      |
 
 ## Current Limitations
 

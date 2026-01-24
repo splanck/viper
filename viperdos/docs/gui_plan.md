@@ -2,9 +2,13 @@
 
 ## Executive Summary
 
-ViperDOS has solid foundations for a GUI desktop: dual framebuffer support (ramfb + VirtIO-GPU), VirtIO-input devices, a mature microkernel IPC system, and an established userspace server pattern. This plan outlines the prerequisites, architecture, and implementation phases for building a windowed desktop environment.
+ViperDOS has solid foundations for a GUI desktop: dual framebuffer support (ramfb + VirtIO-GPU), VirtIO-input devices, a
+mature microkernel IPC system, and an established userspace server pattern. This plan outlines the prerequisites,
+architecture, and implementation phases for building a windowed desktop environment.
 
-> **Implementation Status (v0.3.1):** Core GUI infrastructure is now implemented. displayd server provides window compositing, libgui provides client API, and hello_gui demonstrates the system. Mouse event delivery to windows is the main remaining work.
+> **Implementation Status (v0.3.1):** Core GUI infrastructure is now implemented. displayd server provides window
+> compositing, libgui provides client API, and hello_gui demonstrates the system. Mouse event delivery to windows is the
+> main remaining work.
 
 ---
 
@@ -12,35 +16,35 @@ ViperDOS has solid foundations for a GUI desktop: dual framebuffer support (ramf
 
 ### What's Already Working
 
-| Component | Status | Location |
-|-----------|--------|----------|
-| Framebuffer (ramfb) | Stable | `kernel/drivers/ramfb.cpp` |
-| VirtIO-GPU 2D | Stable | `kernel/drivers/virtio/gpu.cpp` |
-| Graphics console | Stable | `kernel/console/gcon.cpp` |
-| Font rendering | Stable | `kernel/console/font.cpp` |
-| Keyboard input | Stable | `kernel/drivers/virtio/input.cpp` |
-| inputd server | Stable | `user/servers/inputd/` |
-| IPC channels | Stable | `kernel/ipc/channel.cpp` |
-| Shared memory | Stable | kernel cap system |
-| Userspace servers | Stable | blkd, netd, fsd, consoled, inputd |
+| Component           | Status | Location                          |
+|---------------------|--------|-----------------------------------|
+| Framebuffer (ramfb) | Stable | `kernel/drivers/ramfb.cpp`        |
+| VirtIO-GPU 2D       | Stable | `kernel/drivers/virtio/gpu.cpp`   |
+| Graphics console    | Stable | `kernel/console/gcon.cpp`         |
+| Font rendering      | Stable | `kernel/console/font.cpp`         |
+| Keyboard input      | Stable | `kernel/drivers/virtio/input.cpp` |
+| inputd server       | Stable | `user/servers/inputd/`            |
+| IPC channels        | Stable | `kernel/ipc/channel.cpp`          |
+| Shared memory       | Stable | kernel cap system                 |
+| Userspace servers   | Stable | blkd, netd, fsd, consoled, inputd |
 
 ### What's Implemented (v0.3.1)
 
-| Component | Status | Notes |
-|-----------|--------|-------|
-| Mouse input | **Implemented** | Events detected and delivered to inputd |
-| Cursor rendering | **Implemented** | Software cursor in displayd (16x16 arrow) |
-| Window surfaces | **Implemented** | Shared memory pixel buffers |
-| Display compositor | **Implemented** | displayd server with window compositing |
+| Component          | Status          | Notes                                      |
+|--------------------|-----------------|--------------------------------------------|
+| Mouse input        | **Implemented** | Events detected and delivered to inputd    |
+| Cursor rendering   | **Implemented** | Software cursor in displayd (16x16 arrow)  |
+| Window surfaces    | **Implemented** | Shared memory pixel buffers                |
+| Display compositor | **Implemented** | displayd server with window compositing    |
 | GUI client library | **Implemented** | libgui provides create/destroy/present API |
 
 ### What's Still Missing
 
-| Component | Status | Notes |
-|-----------|--------|-------|
+| Component               | Status      | Notes                                               |
+|-------------------------|-------------|-----------------------------------------------------|
 | Mouse events to windows | In Progress | Events detected but not delivered to focused window |
-| Window move/resize | Missing | Title bar drag, edge resize not implemented |
-| Alt+Tab switching | Missing | No keyboard-based window switching |
+| Window move/resize      | Missing     | Title bar drag, edge resize not implemented         |
+| Alt+Tab switching       | Missing     | No keyboard-based window switching                  |
 
 ---
 
@@ -48,16 +52,17 @@ ViperDOS has solid foundations for a GUI desktop: dual framebuffer support (ramf
 
 ### Recommendation: **100% Userspace Services**
 
-| Factor | Userspace | Kernel |
-|--------|-----------|--------|
-| Fault isolation | Crash doesn't take down system | Crash = system crash |
-| Development | Easier debugging, faster iteration | Requires kernel rebuild |
-| Security | Runs with minimal privileges | Full kernel access |
-| Performance | IPC overhead | Direct memory access |
-| Modularity | Can restart/upgrade independently | Tightly coupled |
-| ViperDOS pattern | Matches blkd/netd/fsd pattern | Goes against microkernel design |
+| Factor           | Userspace                          | Kernel                          |
+|------------------|------------------------------------|---------------------------------|
+| Fault isolation  | Crash doesn't take down system     | Crash = system crash            |
+| Development      | Easier debugging, faster iteration | Requires kernel rebuild         |
+| Security         | Runs with minimal privileges       | Full kernel access              |
+| Performance      | IPC overhead                       | Direct memory access            |
+| Modularity       | Can restart/upgrade independently  | Tightly coupled                 |
+| ViperDOS pattern | Matches blkd/netd/fsd pattern      | Goes against microkernel design |
 
 **Rationale:**
+
 1. ViperDOS is explicitly a microkernel - GUI belongs in userspace
 2. Shared memory handles eliminate most IPC overhead for pixel data
 3. Existing servers (blkd, netd, fsd) prove the pattern works
@@ -103,6 +108,7 @@ ViperDOS has solid foundations for a GUI desktop: dual framebuffer support (ramf
 ### Component Responsibilities
 
 #### displayd.sys (Display Server + Window Manager)
+
 - **Owns the framebuffer** via CAP_DEVICE_ACCESS
 - **Allocates surfaces** as shared memory regions
 - **Composites** all visible surfaces to framebuffer
@@ -112,6 +118,7 @@ ViperDOS has solid foundations for a GUI desktop: dual framebuffer support (ramf
 - Registers as `DISPLAY:` assign
 
 #### libgui.a (Client Library)
+
 - **Simple API** for creating windows
 - **Event loop** helper for processing input
 - **Basic drawing primitives** (fill_rect, draw_line, blit, text)
@@ -156,10 +163,12 @@ displayd uses `SYS_MAP_DEVICE` to map the framebuffer into its address space.
 ## Phase 3: Window Management - PARTIAL
 
 ### Step 3.1-3.2: Done
+
 - Window state tracking implemented in displayd
 - Window decorations with title bar, border, close button
 
 ### Step 3.3-3.4: In Progress
+
 - Focus tracking is implemented
 - **TODO:** Mouse click events not yet delivered to windows
 - **TODO:** Keyboard events not yet routed to focused window
@@ -169,6 +178,7 @@ displayd uses `SYS_MAP_DEVICE` to map the framebuffer into its address space.
 ## Phase 4: Client Library (libgui) - COMPLETED
 
 ### Public API - Implemented in `user/libgui/`
+
 ```c
 gui_window_t* gui_create_window(const char* title, uint32_t width, uint32_t height);
 void gui_destroy_window(gui_window_t* win);
@@ -185,45 +195,47 @@ Demo application: `user/hello_gui/` demonstrates window creation and pixel drawi
 ## Phase 5: Desktop Polish - TODO
 
 ### 5.1 Window Move/Resize via Mouse
+
 Drag title bar to move, drag edges to resize - **Not yet implemented**
 
 ### 5.2 Alt+Tab Window Switching
+
 Cycle focus through windows - **Not yet implemented**
 
 ---
 
 ## Implemented Files
 
-| Component | Location | Status |
-|-----------|----------|--------|
-| Display Server | `user/servers/displayd/` | Complete |
-| GUI Client Library | `user/libgui/` | Complete |
-| GUI Demo | `user/hello_gui/` | Complete |
-| Input Server | `user/servers/inputd/` | Complete |
-| Display Protocol | `user/include/display_protocol.hpp` | Complete |
+| Component          | Location                            | Status   |
+|--------------------|-------------------------------------|----------|
+| Display Server     | `user/servers/displayd/`            | Complete |
+| GUI Client Library | `user/libgui/`                      | Complete |
+| GUI Demo           | `user/hello_gui/`                   | Complete |
+| Input Server       | `user/servers/inputd/`              | Complete |
+| Display Protocol   | `user/include/display_protocol.hpp` | Complete |
 
 ---
 
 ## Testing
 
-| Test | Description | Status |
-|------|-------------|--------|
-| Visual cursor | Cursor visible and moves with mouse | Working |
-| `hello_gui.prg` | Full client using libgui | Working |
-| Window create/destroy | Create and close windows | Working |
-| Window move/resize | Drag title bar and edges | TODO |
-| Alt+Tab | Keyboard window switching | TODO |
+| Test                  | Description                         | Status  |
+|-----------------------|-------------------------------------|---------|
+| Visual cursor         | Cursor visible and moves with mouse | Working |
+| `hello_gui.prg`       | Full client using libgui            | Working |
+| Window create/destroy | Create and close windows            | Working |
+| Window move/resize    | Drag title bar and edges            | TODO    |
+| Alt+Tab               | Keyboard window switching           | TODO    |
 
 ---
 
 ## Design Decisions
 
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| Resolution | Dynamic | Query VirtIO-GPU `get_display_info()` at runtime |
-| Window style | Minimal | Thin border + small title bar, modern aesthetic |
-| Widget toolkit | Raw pixels only | Drawing primitives, defer widgets to later |
-| Desktop metaphor | Simple launcher | vinit shell launches GUI apps |
+| Decision         | Choice          | Rationale                                        |
+|------------------|-----------------|--------------------------------------------------|
+| Resolution       | Dynamic         | Query VirtIO-GPU `get_display_info()` at runtime |
+| Window style     | Minimal         | Thin border + small title bar, modern aesthetic  |
+| Widget toolkit   | Raw pixels only | Drawing primitives, defer widgets to later       |
+| Desktop metaphor | Simple launcher | vinit shell launches GUI apps                    |
 
 ---
 

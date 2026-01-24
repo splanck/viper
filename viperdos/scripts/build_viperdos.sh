@@ -417,10 +417,9 @@ if [[ -x "$TOOLS_DIR/mkfs.viperfs" ]]; then
     # user.img - User disk (8MB)
     # -------------------------------------------------------------------------
     USER_ARGS=("$BUILD_DIR/user.img" 8 --mkdir c --mkdir certs --mkdir s --mkdir t)
-    # Add user programs to /c/
-    for prg in hello fsd_smoke netd_smoke tls_smoke edit sftp ssh ping \
-               fsinfo netstat sysinfo devices mathtest faulttest_null \
-               faulttest_illegal hello_gui taskbar; do
+    # Add user programs to /c/ (only essential apps, no tests)
+    for prg in edit sftp ssh ping fsinfo netstat sysinfo devices prefs \
+               taskman guisysinfo; do
         [[ -f "$BUILD_DIR/${prg}.prg" ]] && USER_ARGS+=(--add "$BUILD_DIR/${prg}.prg:c/${prg}.prg")
     done
     # Add certificate bundle

@@ -46,7 +46,7 @@ class CodegenPipeline
         std::string output_asm_path; ///< Optional assembly output path when emit_asm is true.
         bool emit_asm = false;       ///< Emit assembly text to disk for inspection.
         int optimize = 1; ///< Optimization level: 0 = none, 1 = standard (peephole), 2+ reserved.
-        bool run_native = false; ///< Execute the produced binary after linking when true.
+        bool run_native = false;    ///< Execute the produced binary after linking when true.
         std::size_t stack_size = 0; ///< Stack size in bytes; 0 means use system default (8MB).
     };
 

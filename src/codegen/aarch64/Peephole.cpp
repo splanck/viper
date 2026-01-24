@@ -443,7 +443,8 @@ void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
 }
 
 /// @brief Get constant value for a register if known.
-[[nodiscard]] std::optional<long long> getConstValue(const MOperand &reg, const RegConstMap &knownConsts)
+[[nodiscard]] std::optional<long long> getConstValue(const MOperand &reg,
+                                                     const RegConstMap &knownConsts)
 {
     if (!isPhysReg(reg) || reg.reg.cls != RegClass::GPR)
         return std::nullopt;
@@ -463,7 +464,9 @@ void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
 /// @param knownConsts Map of registers to known constant values.
 /// @param stats Statistics to update.
 /// @return true if reduction was applied.
-[[nodiscard]] bool tryStrengthReduction(MInstr &instr, const RegConstMap &knownConsts, PeepholeStats &stats)
+[[nodiscard]] bool tryStrengthReduction(MInstr &instr,
+                                        const RegConstMap &knownConsts,
+                                        PeepholeStats &stats)
 {
     if (instr.opc != MOpcode::MulRRR)
         return false;
@@ -668,8 +671,10 @@ void removeMarkedInstructions(std::vector<MInstr> &instrs, const std::vector<boo
         case MOpcode::LsrRI:
         case MOpcode::AsrRI:
             // op dst, src, imm
-            if (idx == 0) return {false, true};
-            if (idx == 1) return {true, false};
+            if (idx == 0)
+                return {false, true};
+            if (idx == 1)
+                return {true, false};
             return {false, false}; // imm
 
         case MOpcode::CmpRR:
@@ -694,8 +699,10 @@ void removeMarkedInstructions(std::vector<MInstr> &instrs, const std::vector<boo
         case MOpcode::LdrRegBaseImm:
         case MOpcode::LdrFprBaseImm:
             // ldr dst, [base, #imm]
-            if (idx == 0) return {false, true};
-            if (idx == 1) return {true, false};
+            if (idx == 0)
+                return {false, true};
+            if (idx == 1)
+                return {true, false};
             return {false, false};
 
         case MOpcode::StrRegFpImm:
@@ -706,8 +713,10 @@ void removeMarkedInstructions(std::vector<MInstr> &instrs, const std::vector<boo
         case MOpcode::StrRegBaseImm:
         case MOpcode::StrFprBaseImm:
             // str src, [base, #imm]
-            if (idx == 0) return {true, false};
-            if (idx == 1) return {true, false};
+            if (idx == 0)
+                return {true, false};
+            if (idx == 1)
+                return {true, false};
             return {false, false};
 
         case MOpcode::SCvtF:
@@ -728,8 +737,10 @@ void removeMarkedInstructions(std::vector<MInstr> &instrs, const std::vector<boo
 
         case MOpcode::AddPageOff:
             // add dst, base, label
-            if (idx == 0) return {false, true};
-            if (idx == 1) return {true, false};
+            if (idx == 0)
+                return {false, true};
+            if (idx == 1)
+                return {true, false};
             return {false, false};
 
         case MOpcode::Cbz:
@@ -767,7 +778,8 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
     std::size_t propagated = 0;
 
     // Helper to invalidate all copies that depend on a register as their origin
-    auto invalidateDependents = [&copyOrigin](uint32_t originKey) {
+    auto invalidateDependents = [&copyOrigin](uint32_t originKey)
+    {
         // Collect keys to erase (can't erase while iterating)
         std::vector<uint32_t> toErase;
         for (const auto &[key, origin] : copyOrigin)
@@ -782,8 +794,8 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
     for (auto &instr : instrs)
     {
         // Skip non-register instructions
-        if (instr.opc == MOpcode::Br || instr.opc == MOpcode::BCond ||
-            instr.opc == MOpcode::Ret || instr.opc == MOpcode::Bl)
+        if (instr.opc == MOpcode::Br || instr.opc == MOpcode::BCond || instr.opc == MOpcode::Ret ||
+            instr.opc == MOpcode::Bl)
         {
             // Calls clobber caller-saved registers, invalidate all copy info
             if (instr.opc == MOpcode::Bl)
@@ -792,8 +804,8 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
         }
 
         // For MovRR (register-to-register move), track the copy relationship
-        if (instr.opc == MOpcode::MovRR && instr.ops.size() == 2 &&
-            isPhysReg(instr.ops[0]) && isPhysReg(instr.ops[1]))
+        if (instr.opc == MOpcode::MovRR && instr.ops.size() == 2 && isPhysReg(instr.ops[0]) &&
+            isPhysReg(instr.ops[1]))
         {
             const MOperand &dst = instr.ops[0];
             const MOperand &src = instr.ops[1];
@@ -827,8 +839,8 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
         }
 
         // For FMovRR (FP register move), same logic
-        if (instr.opc == MOpcode::FMovRR && instr.ops.size() == 2 &&
-            isPhysReg(instr.ops[0]) && isPhysReg(instr.ops[1]))
+        if (instr.opc == MOpcode::FMovRR && instr.ops.size() == 2 && isPhysReg(instr.ops[0]) &&
+            isPhysReg(instr.ops[1]))
         {
             const MOperand &dst = instr.ops[0];
             const MOperand &src = instr.ops[1];
@@ -1062,13 +1074,15 @@ std::size_t removeDeadInstructions(std::vector<MInstr> &instrs, PeepholeStats &s
     // They may be used by calls or the return value
     for (int i = 0; i <= 7; ++i)
     {
-        liveRegs.insert((static_cast<uint32_t>(RegClass::GPR) << 16) | static_cast<uint32_t>(PhysReg::X0) + i);
+        liveRegs.insert((static_cast<uint32_t>(RegClass::GPR) << 16) |
+                        static_cast<uint32_t>(PhysReg::X0) + i);
     }
 
     // Also mark FP argument registers as live
     for (int i = 0; i <= 7; ++i)
     {
-        liveRegs.insert((static_cast<uint32_t>(RegClass::FPR) << 16) | static_cast<uint32_t>(PhysReg::V0) + i);
+        liveRegs.insert((static_cast<uint32_t>(RegClass::FPR) << 16) |
+                        static_cast<uint32_t>(PhysReg::V0) + i);
     }
 
     // Backward scan to compute liveness and mark dead instructions

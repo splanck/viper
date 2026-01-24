@@ -185,22 +185,22 @@ Key files:
 
 ViperDOS supports POSIX-style process groups and sessions:
 
-| Field | Description |
-|-------|-------------|
-| `pgid` | Process group ID |
-| `sid` | Session ID |
+| Field               | Description                              |
+|---------------------|------------------------------------------|
+| `pgid`              | Process group ID                         |
+| `sid`               | Session ID                               |
 | `is_session_leader` | True if this process created the session |
 
 Syscalls:
 
-| Syscall | Number | Description |
-|---------|--------|-------------|
-| `getpid` | 0xA0 | Get process ID |
-| `getppid` | 0xA1 | Get parent process ID |
-| `getpgid` | 0xA2 | Get process group ID |
-| `setpgid` | 0xA3 | Set process group ID |
-| `getsid` | 0xA4 | Get session ID |
-| `setsid` | 0xA5 | Create new session |
+| Syscall   | Number | Description           |
+|-----------|--------|-----------------------|
+| `getpid`  | 0xA0   | Get process ID        |
+| `getppid` | 0xA1   | Get parent process ID |
+| `getpgid` | 0xA2   | Get process group ID  |
+| `setpgid` | 0xA3   | Set process group ID  |
+| `getsid`  | 0xA4   | Get session ID        |
+| `setsid`  | 0xA5   | Create new session    |
 
 ## Address space destruction
 

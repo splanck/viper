@@ -13,12 +13,10 @@
 /**
  * @brief Check if path is exactly "/sys" or starts with "/sys/".
  */
-static bool is_sys_path(const char *path)
-{
+static bool is_sys_path(const char *path) {
     if (!path || path[0] != '/')
         return false;
-    if (path[1] == 's' && path[2] == 'y' && path[3] == 's')
-    {
+    if (path[1] == 's' && path[2] == 'y' && path[3] == 's') {
         // /sys or /sys/...
         return path[4] == '\0' || path[4] == '/';
     }
@@ -28,8 +26,7 @@ static bool is_sys_path(const char *path)
 /**
  * @brief Check if path is the root directory "/".
  */
-static bool is_root_path(const char *path)
-{
+static bool is_root_path(const char *path) {
     return path && path[0] == '/' && path[1] == '\0';
 }
 
@@ -41,8 +38,7 @@ static bool is_root_path(const char *path)
  * @param out_size Size of output buffer.
  * @return true on success.
  */
-bool normalize_path(const char *path, const char *cwd, char *out, usize out_size)
-{
+bool normalize_path(const char *path, const char *cwd, char *out, usize out_size) {
     if (!path || !out || out_size < 2)
         return false;
 
@@ -50,28 +46,22 @@ bool normalize_path(const char *path, const char *cwd, char *out, usize out_size
     char buf[512];
     usize pos = 0;
 
-    if (path[0] == '/')
-    {
+    if (path[0] == '/') {
         // Absolute path
         buf[pos++] = '/';
         path++;
-    }
-    else
-    {
+    } else {
         // Relative path - start from cwd
-        for (usize i = 0; cwd[i] && pos < sizeof(buf) - 1; i++)
-        {
+        for (usize i = 0; cwd[i] && pos < sizeof(buf) - 1; i++) {
             buf[pos++] = cwd[i];
         }
-        if (pos > 0 && buf[pos - 1] != '/')
-        {
+        if (pos > 0 && buf[pos - 1] != '/') {
             buf[pos++] = '/';
         }
     }
 
     // Process path components
-    while (*path && pos < sizeof(buf) - 1)
-    {
+    while (*path && pos < sizeof(buf) - 1) {
         // Skip leading slashes
         while (*path == '/')
             path++;
@@ -84,30 +74,22 @@ bool normalize_path(const char *path, const char *cwd, char *out, usize out_size
             path++;
         usize len = path - start;
 
-        if (len == 1 && start[0] == '.')
-        {
+        if (len == 1 && start[0] == '.') {
             // "." - skip
             continue;
-        }
-        else if (len == 2 && start[0] == '.' && start[1] == '.')
-        {
+        } else if (len == 2 && start[0] == '.' && start[1] == '.') {
             // ".." - go up one level
-            if (pos > 1)
-            {
+            if (pos > 1) {
                 pos--; // Remove trailing slash
                 while (pos > 1 && buf[pos - 1] != '/')
                     pos--;
             }
-        }
-        else
-        {
+        } else {
             // Normal component
-            for (usize i = 0; i < len && pos < sizeof(buf) - 1; i++)
-            {
+            for (usize i = 0; i < len && pos < sizeof(buf) - 1; i++) {
                 buf[pos++] = start[i];
             }
-            if (pos < sizeof(buf) - 1)
-            {
+            if (pos < sizeof(buf) - 1) {
                 buf[pos++] = '/';
             }
         }
@@ -119,24 +101,21 @@ bool normalize_path(const char *path, const char *cwd, char *out, usize out_size
     buf[pos] = '\0';
 
     // Copy to output
-    for (usize i = 0; i <= pos && i < out_size; i++)
-    {
+    for (usize i = 0; i <= pos && i < out_size; i++) {
         out[i] = buf[i];
     }
     out[out_size - 1] = '\0';
     return true;
 }
 
-void cmd_cd(const char *args)
-{
+void cmd_cd(const char *args) {
     const char *path = "/";
     if (args && args[0])
         path = args;
 
     // Normalize the path first
     char normalized[256];
-    if (!normalize_path(path, current_dir, normalized, sizeof(normalized)))
-    {
+    if (!normalize_path(path, current_dir, normalized, sizeof(normalized))) {
         print_str("CD: invalid path\n");
         last_rc = RC_ERROR;
         last_error = "Invalid path";
@@ -144,12 +123,10 @@ void cmd_cd(const char *args)
     }
 
     // Validate directory exists using kernel VFS
-    if (is_sys_path(normalized))
-    {
+    if (is_sys_path(normalized)) {
         // /sys paths - use kernel chdir
         i32 result = sys::chdir(normalized);
-        if (result < 0)
-        {
+        if (result < 0) {
             print_str("CD: ");
             print_str(normalized);
             print_str(": No such directory\n");
@@ -158,31 +135,23 @@ void cmd_cd(const char *args)
             return;
         }
         refresh_current_dir();
-    }
-    else if (is_root_path(normalized))
-    {
+    } else if (is_root_path(normalized)) {
         // Root "/" - always valid
         current_dir[0] = '/';
         current_dir[1] = '\0';
-    }
-    else
-    {
+    } else {
         // User paths - use kernel VFS
         i32 fd = sys::open(normalized, sys::O_RDONLY);
-        if (fd >= 0)
-        {
+        if (fd >= 0) {
             sys::close(fd);
             // Update current_dir
             usize i = 0;
-            while (normalized[i] && i < MAX_PATH_LEN - 1)
-            {
+            while (normalized[i] && i < MAX_PATH_LEN - 1) {
                 current_dir[i] = normalized[i];
                 i++;
             }
             current_dir[i] = '\0';
-        }
-        else
-        {
+        } else {
             print_str("CD: ");
             print_str(normalized);
             print_str(": No such directory\n");
@@ -195,8 +164,7 @@ void cmd_cd(const char *args)
     last_rc = RC_OK;
 }
 
-void cmd_pwd()
-{
+void cmd_pwd() {
     print_str(current_dir);
     print_str("\n");
     last_rc = RC_OK;
@@ -205,8 +173,7 @@ void cmd_pwd()
 /**
  * @brief Print a single directory entry in compact format.
  */
-static void print_dir_entry(const char *name, bool is_dir, usize *col)
-{
+static void print_dir_entry(const char *name, bool is_dir, usize *col) {
     // Build entry in a buffer to send as one message
     char entry[32];
     char *p = entry;
@@ -218,22 +185,19 @@ static void print_dir_entry(const char *name, bool is_dir, usize *col)
     // Copy name
     const char *n = name;
     usize namelen = 0;
-    while (*n && namelen < 17)
-    {
+    while (*n && namelen < 17) {
         *p++ = *n++;
         namelen++;
     }
 
     // Add "/" for directories
-    if (is_dir && namelen < 17)
-    {
+    if (is_dir && namelen < 17) {
         *p++ = '/';
         namelen++;
     }
 
     // Pad to 18 chars
-    while (namelen < 18)
-    {
+    while (namelen < 18) {
         *p++ = ' ';
         namelen++;
     }
@@ -242,8 +206,7 @@ static void print_dir_entry(const char *name, bool is_dir, usize *col)
     print_str(entry);
 
     (*col)++;
-    if (*col >= 3)
-    {
+    if (*col >= 3) {
         print_str("\n");
         *col = 0;
     }
@@ -252,12 +215,10 @@ static void print_dir_entry(const char *name, bool is_dir, usize *col)
 /**
  * @brief List directory using kernel VFS.
  */
-static void dir_kernel_directory(const char *path, usize *count, usize *col)
-{
+static void dir_kernel_directory(const char *path, usize *count, usize *col) {
     // Open via kernel VFS
     i32 fd = sys::open(path, sys::O_RDONLY);
-    if (fd < 0)
-    {
+    if (fd < 0) {
         print_str("Dir: cannot open \"");
         print_str(path);
         print_str("\"\n");
@@ -268,19 +229,16 @@ static void dir_kernel_directory(const char *path, usize *count, usize *col)
     u8 buf[4096];
     i64 bytes;
 
-    while ((bytes = sys::readdir(fd, buf, sizeof(buf))) > 0)
-    {
+    while ((bytes = sys::readdir(fd, buf, sizeof(buf))) > 0) {
         usize offset = 0;
-        while (offset < static_cast<usize>(bytes))
-        {
+        while (offset < static_cast<usize>(bytes)) {
             sys::DirEnt *ent = reinterpret_cast<sys::DirEnt *>(buf + offset);
             if (ent->reclen == 0)
                 break;
 
             // Skip . and ..
-            if (!(ent->name[0] == '.' && (ent->name[1] == '\0' ||
-                                          (ent->name[1] == '.' && ent->name[2] == '\0'))))
-            {
+            if (!(ent->name[0] == '.' &&
+                  (ent->name[1] == '\0' || (ent->name[1] == '.' && ent->name[2] == '\0')))) {
                 bool is_dir = (ent->type == 2);
                 print_dir_entry(ent->name, is_dir, col);
                 (*count)++;
@@ -293,15 +251,13 @@ static void dir_kernel_directory(const char *path, usize *count, usize *col)
     sys::close(fd);
 }
 
-void cmd_dir(const char *path)
-{
+void cmd_dir(const char *path) {
     if (!path || *path == '\0')
         path = current_dir;
 
     // Normalize the path
     char normalized[256];
-    if (!normalize_path(path, current_dir, normalized, sizeof(normalized)))
-    {
+    if (!normalize_path(path, current_dir, normalized, sizeof(normalized))) {
         print_str("Dir: invalid path\n");
         last_rc = RC_ERROR;
         return;
@@ -310,17 +266,14 @@ void cmd_dir(const char *path)
     usize count = 0;
     usize col = 0;
 
-    if (is_root_path(normalized))
-    {
+    if (is_root_path(normalized)) {
         // Root "/" - show synthetic /sys plus user disk root contents
         print_dir_entry("sys", true, &col);
         count++;
 
         // Show user disk root contents via kernel VFS
         dir_kernel_directory("/", &count, &col);
-    }
-    else
-    {
+    } else {
         // All paths use kernel VFS
         dir_kernel_directory(normalized, &count, &col);
     }
@@ -336,8 +289,7 @@ void cmd_dir(const char *path)
 /**
  * @brief Print a single directory entry in detailed format.
  */
-static void print_list_entry(const char *name, bool is_dir, bool readonly)
-{
+static void print_list_entry(const char *name, bool is_dir, bool readonly) {
     // Build the entire line in a buffer to send as one message
     char line[128];
     char *p = line;
@@ -352,27 +304,27 @@ static void print_list_entry(const char *name, bool is_dir, bool readonly)
         *p++ = ' ';
 
     // Directory marker
-    if (is_dir)
-    {
+    if (is_dir) {
         const char *dir_marker = "  <dir>    ";
         while (*dir_marker)
             *p++ = *dir_marker++;
-    }
-    else
-    {
+    } else {
         const char *spaces = "           ";
         while (*spaces)
             *p++ = *spaces++;
     }
 
     // Permissions
-    if (readonly)
-    {
-        *p++ = 'r'; *p++ = '-'; *p++ = '-'; *p++ = 'e';
-    }
-    else
-    {
-        *p++ = 'r'; *p++ = 'w'; *p++ = 'e'; *p++ = 'd';
+    if (readonly) {
+        *p++ = 'r';
+        *p++ = '-';
+        *p++ = '-';
+        *p++ = 'e';
+    } else {
+        *p++ = 'r';
+        *p++ = 'w';
+        *p++ = 'e';
+        *p++ = 'd';
     }
 
     *p++ = '\n';
@@ -384,11 +336,12 @@ static void print_list_entry(const char *name, bool is_dir, bool readonly)
 /**
  * @brief List directory using kernel VFS (detailed format).
  */
-static void list_kernel_directory(const char *path, usize *file_count, usize *dir_count, bool readonly)
-{
+static void list_kernel_directory(const char *path,
+                                  usize *file_count,
+                                  usize *dir_count,
+                                  bool readonly) {
     i32 fd = sys::open(path, sys::O_RDONLY);
-    if (fd < 0)
-    {
+    if (fd < 0) {
         print_str("List: cannot open \"");
         print_str(path);
         print_str("\"\n");
@@ -398,19 +351,16 @@ static void list_kernel_directory(const char *path, usize *file_count, usize *di
     u8 buf[4096];
     i64 bytes;
 
-    while ((bytes = sys::readdir(fd, buf, sizeof(buf))) > 0)
-    {
+    while ((bytes = sys::readdir(fd, buf, sizeof(buf))) > 0) {
         usize offset = 0;
-        while (offset < static_cast<usize>(bytes))
-        {
+        while (offset < static_cast<usize>(bytes)) {
             sys::DirEnt *ent = reinterpret_cast<sys::DirEnt *>(buf + offset);
             if (ent->reclen == 0)
                 break;
 
             // Skip . and ..
-            if (!(ent->name[0] == '.' && (ent->name[1] == '\0' ||
-                                          (ent->name[1] == '.' && ent->name[2] == '\0'))))
-            {
+            if (!(ent->name[0] == '.' &&
+                  (ent->name[1] == '\0' || (ent->name[1] == '.' && ent->name[2] == '\0')))) {
                 bool is_dir = (ent->type == 2);
                 print_list_entry(ent->name, is_dir, readonly);
 
@@ -427,15 +377,13 @@ static void list_kernel_directory(const char *path, usize *file_count, usize *di
     sys::close(fd);
 }
 
-void cmd_list(const char *path)
-{
+void cmd_list(const char *path) {
     if (!path || *path == '\0')
         path = current_dir;
 
     // Normalize the path
     char normalized[256];
-    if (!normalize_path(path, current_dir, normalized, sizeof(normalized)))
-    {
+    if (!normalize_path(path, current_dir, normalized, sizeof(normalized))) {
         print_str("List: invalid path\n");
         last_rc = RC_ERROR;
         return;
@@ -448,22 +396,17 @@ void cmd_list(const char *path)
     usize file_count = 0;
     usize dir_count = 0;
 
-    if (is_root_path(normalized))
-    {
+    if (is_root_path(normalized)) {
         // Root "/" - show synthetic /sys plus user disk root contents
         print_list_entry("sys", true, true); // readonly system directory
         dir_count++;
 
         // Show user disk root contents via kernel VFS
         list_kernel_directory("/", &file_count, &dir_count, false);
-    }
-    else if (is_sys_path(normalized))
-    {
+    } else if (is_sys_path(normalized)) {
         // /sys paths are readonly
         list_kernel_directory(normalized, &file_count, &dir_count, true);
-    }
-    else
-    {
+    } else {
         // User paths
         list_kernel_directory(normalized, &file_count, &dir_count, false);
     }
@@ -485,10 +428,8 @@ void cmd_list(const char *path)
     last_rc = RC_OK;
 }
 
-void cmd_type(const char *path)
-{
-    if (!path || *path == '\0')
-    {
+void cmd_type(const char *path) {
+    if (!path || *path == '\0') {
         print_str("Type: missing file argument\n");
         last_rc = RC_ERROR;
         last_error = "Missing filename";
@@ -497,8 +438,7 @@ void cmd_type(const char *path)
 
     // Normalize path (handle relative paths)
     char normalized[256];
-    if (!normalize_path(path, current_dir, normalized, sizeof(normalized)))
-    {
+    if (!normalize_path(path, current_dir, normalized, sizeof(normalized))) {
         print_str("Type: invalid path\n");
         last_rc = RC_ERROR;
         last_error = "Invalid path";
@@ -507,8 +447,7 @@ void cmd_type(const char *path)
 
     // Use kernel VFS
     i32 fd = sys::open(normalized, sys::O_RDONLY);
-    if (fd < 0)
-    {
+    if (fd < 0) {
         print_str("Type: cannot open \"");
         print_str(normalized);
         print_str("\"\n");
@@ -518,8 +457,7 @@ void cmd_type(const char *path)
     }
 
     char buf[512];
-    while (true)
-    {
+    while (true) {
         i64 bytes = sys::read(fd, buf, sizeof(buf) - 1);
         if (bytes <= 0)
             break;
@@ -532,10 +470,8 @@ void cmd_type(const char *path)
     last_rc = RC_OK;
 }
 
-void cmd_copy(const char *args)
-{
-    if (!args || *args == '\0')
-    {
+void cmd_copy(const char *args) {
+    if (!args || *args == '\0') {
         print_str("Copy: missing arguments\n");
         print_str("Usage: Copy <source> <dest>\n");
         last_rc = RC_ERROR;
@@ -567,8 +503,7 @@ void cmd_copy(const char *args)
         dest[i++] = *p++;
     dest[i] = '\0';
 
-    if (dest[0] == '\0')
-    {
+    if (dest[0] == '\0') {
         print_str("Copy: missing destination\n");
         last_rc = RC_ERROR;
         return;
@@ -576,14 +511,12 @@ void cmd_copy(const char *args)
 
     // Normalize paths (handle relative paths)
     char norm_src[256], norm_dst[256];
-    if (!normalize_path(source, current_dir, norm_src, sizeof(norm_src)))
-    {
+    if (!normalize_path(source, current_dir, norm_src, sizeof(norm_src))) {
         print_str("Copy: invalid source path\n");
         last_rc = RC_ERROR;
         return;
     }
-    if (!normalize_path(dest, current_dir, norm_dst, sizeof(norm_dst)))
-    {
+    if (!normalize_path(dest, current_dir, norm_dst, sizeof(norm_dst))) {
         print_str("Copy: invalid destination path\n");
         last_rc = RC_ERROR;
         return;
@@ -591,8 +524,7 @@ void cmd_copy(const char *args)
 
     // Use kernel VFS
     i32 src_fd = sys::open(norm_src, sys::O_RDONLY);
-    if (src_fd < 0)
-    {
+    if (src_fd < 0) {
         print_str("Copy: cannot open \"");
         print_str(norm_src);
         print_str("\"\n");
@@ -601,8 +533,7 @@ void cmd_copy(const char *args)
     }
 
     i32 dst_fd = sys::open(norm_dst, sys::O_WRONLY | sys::O_CREAT | sys::O_TRUNC);
-    if (dst_fd < 0)
-    {
+    if (dst_fd < 0) {
         print_str("Copy: cannot create \"");
         print_str(norm_dst);
         print_str("\"\n");
@@ -614,15 +545,13 @@ void cmd_copy(const char *args)
     char buf[1024];
     i64 total = 0;
 
-    while (true)
-    {
+    while (true) {
         i64 bytes = sys::read(src_fd, buf, sizeof(buf));
         if (bytes <= 0)
             break;
 
         i64 written = sys::write(dst_fd, buf, static_cast<usize>(bytes));
-        if (written != bytes)
-        {
+        if (written != bytes) {
             print_str("Copy: write error\n");
             sys::close(src_fd);
             sys::close(dst_fd);
@@ -641,10 +570,8 @@ void cmd_copy(const char *args)
     last_rc = RC_OK;
 }
 
-void cmd_delete(const char *args)
-{
-    if (!args || *args == '\0')
-    {
+void cmd_delete(const char *args) {
+    if (!args || *args == '\0') {
         print_str("Delete: missing file argument\n");
         last_rc = RC_ERROR;
         return;
@@ -652,16 +579,14 @@ void cmd_delete(const char *args)
 
     // Normalize path (handle relative paths)
     char normalized[256];
-    if (!normalize_path(args, current_dir, normalized, sizeof(normalized)))
-    {
+    if (!normalize_path(args, current_dir, normalized, sizeof(normalized))) {
         print_str("Delete: invalid path\n");
         last_rc = RC_ERROR;
         return;
     }
 
     // Use kernel VFS
-    if (sys::unlink(normalized) != 0)
-    {
+    if (sys::unlink(normalized) != 0) {
         print_str("Delete: cannot delete \"");
         print_str(normalized);
         print_str("\"\n");
@@ -675,10 +600,8 @@ void cmd_delete(const char *args)
     last_rc = RC_OK;
 }
 
-void cmd_makedir(const char *args)
-{
-    if (!args || *args == '\0')
-    {
+void cmd_makedir(const char *args) {
+    if (!args || *args == '\0') {
         print_str("MakeDir: missing directory name\n");
         last_rc = RC_ERROR;
         return;
@@ -686,16 +609,14 @@ void cmd_makedir(const char *args)
 
     // Normalize path (handle relative paths)
     char normalized[256];
-    if (!normalize_path(args, current_dir, normalized, sizeof(normalized)))
-    {
+    if (!normalize_path(args, current_dir, normalized, sizeof(normalized))) {
         print_str("MakeDir: invalid path\n");
         last_rc = RC_ERROR;
         return;
     }
 
     // Use kernel VFS
-    if (sys::mkdir(normalized) != 0)
-    {
+    if (sys::mkdir(normalized) != 0) {
         print_str("MakeDir: cannot create \"");
         print_str(normalized);
         print_str("\"\n");
@@ -709,10 +630,8 @@ void cmd_makedir(const char *args)
     last_rc = RC_OK;
 }
 
-void cmd_rename(const char *args)
-{
-    if (!args || *args == '\0')
-    {
+void cmd_rename(const char *args) {
+    if (!args || *args == '\0') {
         print_str("Rename: missing arguments\n");
         print_str("Usage: Rename <old> <new>\n");
         last_rc = RC_ERROR;
@@ -739,8 +658,7 @@ void cmd_rename(const char *args)
         newname[i++] = *p++;
     newname[i] = '\0';
 
-    if (newname[0] == '\0')
-    {
+    if (newname[0] == '\0') {
         print_str("Rename: missing new name\n");
         last_rc = RC_ERROR;
         return;
@@ -748,22 +666,19 @@ void cmd_rename(const char *args)
 
     // Normalize paths (handle relative paths)
     char norm_old[256], norm_new[256];
-    if (!normalize_path(oldname, current_dir, norm_old, sizeof(norm_old)))
-    {
+    if (!normalize_path(oldname, current_dir, norm_old, sizeof(norm_old))) {
         print_str("Rename: invalid source path\n");
         last_rc = RC_ERROR;
         return;
     }
-    if (!normalize_path(newname, current_dir, norm_new, sizeof(norm_new)))
-    {
+    if (!normalize_path(newname, current_dir, norm_new, sizeof(norm_new))) {
         print_str("Rename: invalid destination path\n");
         last_rc = RC_ERROR;
         return;
     }
 
     // Use kernel VFS
-    if (sys::rename(norm_old, norm_new) != 0)
-    {
+    if (sys::rename(norm_old, norm_new) != 0) {
         print_str("Rename: failed\n");
         last_rc = RC_ERROR;
         return;

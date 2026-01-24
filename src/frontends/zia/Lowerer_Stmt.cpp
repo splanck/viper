@@ -632,7 +632,8 @@ void Lowerer::lowerReturnStmt(ReturnStmt *stmt)
             TypeRef valueType = sema_.typeOf(stmt->value.get());
             if (valueType && valueType->kind == TypeKindSem::Number)
             {
-                // Emit cast.fp_to_si.rte.chk to convert f64 -> i64 (rounds-to-nearest-even, overflow-checked)
+                // Emit cast.fp_to_si.rte.chk to convert f64 -> i64 (rounds-to-nearest-even,
+                // overflow-checked)
                 unsigned convId = nextTempId();
                 il::core::Instr convInstr;
                 convInstr.result = convId;

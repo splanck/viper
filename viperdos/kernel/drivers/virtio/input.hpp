@@ -37,13 +37,11 @@
  * Higher-level translation (keycodes to ASCII, escape sequences, etc.) is
  * handled by `kernel/input/input.cpp`.
  */
-namespace virtio
-{
+namespace virtio {
 
 // virtio-input config select values
 /** @brief Config-space selector values used by virtio-input. */
-namespace input_config
-{
+namespace input_config {
 constexpr u8 UNSET = 0x00;
 constexpr u8 ID_NAME = 0x01;
 constexpr u8 ID_SERIAL = 0x02;
@@ -60,8 +58,7 @@ constexpr u8 ABS_INFO = 0x12;
  * @details
  * These values match Linux `EV_*` types and are used by virtio-input devices.
  */
-namespace ev_type
-{
+namespace ev_type {
 constexpr u16 SYN = 0x00; // Synchronization
 constexpr u16 KEY = 0x01; // Key/button
 constexpr u16 REL = 0x02; // Relative axis (mouse movement)
@@ -78,8 +75,7 @@ constexpr u16 REP = 0x14; // Repeat
  * @details
  * These values match Linux `LED_*` codes and are used to control keyboard LEDs.
  */
-namespace led_code
-{
+namespace led_code {
 constexpr u16 NUML = 0x00;    // Num Lock LED
 constexpr u16 CAPSL = 0x01;   // Caps Lock LED
 constexpr u16 SCROLLL = 0x02; // Scroll Lock LED
@@ -96,8 +92,7 @@ constexpr u16 MAX = 0x0F;     // Maximum LED code
  * This is compatible with the Linux `struct input_event` payload used by
  * virtio-input.
  */
-struct InputEvent
-{
+struct InputEvent {
     u16 type;  // Event type (EV_KEY, EV_REL, etc.)
     u16 code;  // Event code (key code, axis, etc.)
     u32 value; // Event value (1=press, 0=release, movement delta)
@@ -111,20 +106,17 @@ struct InputEvent
  * The guest writes `select`/`subsel` to choose what data is exposed, then reads
  * `size` and the union payload.
  */
-struct InputConfig
-{
+struct InputConfig {
     u8 select;
     u8 subsel;
     u8 size;
     u8 reserved[5];
 
-    union
-    {
+    union {
         char string[128];
         u8 bitmap[128];
 
-        struct
-        {
+        struct {
             u16 bustype;
             u16 vendor;
             u16 product;
@@ -146,8 +138,7 @@ constexpr usize INPUT_EVENT_BUFFERS = 64;
  * - Queue 0 (eventq) for delivering input events into guest-provided buffers.
  * - Optional status queue (present in the spec; not fully used here).
  */
-class InputDevice : public Device
-{
+class InputDevice : public Device {
   public:
     /**
      * @brief Initialize the device at the given MMIO base.
@@ -184,22 +175,19 @@ class InputDevice : public Device
 
     // Get device name
     /** @brief Human-readable device name from config space. */
-    const char *name() const
-    {
+    const char *name() const {
         return name_;
     }
 
     // Is this a keyboard?
     /** @brief Whether the device appears to be a keyboard. */
-    bool is_keyboard() const
-    {
+    bool is_keyboard() const {
         return is_keyboard_;
     }
 
     // Is this a mouse?
     /** @brief Whether the device appears to be a mouse. */
-    bool is_mouse() const
-    {
+    bool is_mouse() const {
         return is_mouse_;
     }
 
@@ -221,8 +209,7 @@ class InputDevice : public Device
      *
      * @return true if LEDs can be controlled.
      */
-    bool has_led_support() const
-    {
+    bool has_led_support() const {
         return has_led_;
     }
 

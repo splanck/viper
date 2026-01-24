@@ -29,8 +29,8 @@ namespace il::tools::common
 ///          by the SourceManager. The fileId can be used for diagnostic reporting.
 struct LoadedSource
 {
-    std::string buffer;   ///< Full contents of the source file.
-    uint32_t fileId{0};   ///< Identifier assigned by SourceManager (0 indicates failure).
+    std::string buffer; ///< Full contents of the source file.
+    uint32_t fileId{0}; ///< Identifier assigned by SourceManager (0 indicates failure).
 };
 
 /// @brief Load a source file into memory and register it with the source manager.

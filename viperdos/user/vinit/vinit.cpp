@@ -34,8 +34,7 @@
 // Server State Tracking (for crash isolation and restart)
 // =============================================================================
 
-struct ServerInfo
-{
+struct ServerInfo {
     const char *name;   // Display name (e.g., "blkd")
     const char *path;   // Executable path
     const char *assign; // Assign name (e.g., "BLKD")
@@ -66,11 +65,9 @@ static bool g_have_device_root = false;
 /**
  * @brief User-space sbrk wrapper for startup malloc test.
  */
-static void *vinit_sbrk(long increment)
-{
+static void *vinit_sbrk(long increment) {
     sys::SyscallResult r = sys::syscall1(0x0A, static_cast<u64>(increment));
-    if (r.error < 0)
-    {
+    if (r.error < 0) {
         return reinterpret_cast<void *>(-1);
     }
     return reinterpret_cast<void *>(r.val0);
@@ -84,14 +81,12 @@ static void *vinit_sbrk(long increment)
  * @param out_bootstrap_send Output: parent bootstrap channel send handle (optional).
  * @return PID on success, negative error code on failure.
  */
-static i64 spawn_server(const char *path, const char *name, u32 *out_bootstrap_send = nullptr)
-{
+static i64 spawn_server(const char *path, const char *name, u32 *out_bootstrap_send = nullptr) {
     u64 pid = 0;
     u64 tid = 0;
     i64 err = sys::spawn(path, nullptr, &pid, &tid, nullptr, out_bootstrap_send);
 
-    if (err < 0)
-    {
+    if (err < 0) {
         print_str("[vinit] Failed to start ");
         print_str(name);
         print_str(": error ");
@@ -109,22 +104,18 @@ static i64 spawn_server(const char *path, const char *name, u32 *out_bootstrap_s
     return static_cast<i64>(pid);
 }
 
-static bool find_device_root_cap(u32 *out_handle)
-{
+static bool find_device_root_cap(u32 *out_handle) {
     if (!out_handle)
         return false;
 
     CapListEntry entries[32];
     i32 n = sys::cap_list(entries, 32);
-    if (n < 0)
-    {
+    if (n < 0) {
         return false;
     }
 
-    for (i32 i = 0; i < n; i++)
-    {
-        if (entries[i].kind == CAP_KIND_DEVICE)
-        {
+    for (i32 i = 0; i < n; i++) {
+        if (entries[i].kind == CAP_KIND_DEVICE) {
             *out_handle = entries[i].handle;
             return true;
         }
@@ -133,8 +124,7 @@ static bool find_device_root_cap(u32 *out_handle)
     return false;
 }
 
-static void send_server_device_caps(u32 bootstrap_send, u32 device_root)
-{
+static void send_server_device_caps(u32 bootstrap_send, u32 device_root) {
     if (bootstrap_send == 0xFFFFFFFFu)
         return;
 
@@ -142,25 +132,21 @@ static void send_server_device_caps(u32 bootstrap_send, u32 device_root)
     u32 rights =
         CAP_RIGHT_DEVICE_ACCESS | CAP_RIGHT_IRQ_ACCESS | CAP_RIGHT_DMA_ACCESS | CAP_RIGHT_TRANSFER;
     i32 derived = sys::cap_derive(device_root, rights);
-    if (derived < 0)
-    {
+    if (derived < 0) {
         return;
     }
 
     u32 handle_to_send = static_cast<u32>(derived);
     u8 dummy = 0;
     bool sent = false;
-    for (u32 i = 0; i < 2000; i++)
-    {
+    for (u32 i = 0; i < 2000; i++) {
         i64 err =
             sys::channel_send(static_cast<i32>(bootstrap_send), &dummy, 1, &handle_to_send, 1);
-        if (err == 0)
-        {
+        if (err == 0) {
             sent = true;
             break;
         }
-        if (err == VERR_WOULD_BLOCK)
-        {
+        if (err == VERR_WOULD_BLOCK) {
             sys::yield();
             continue;
         }
@@ -171,8 +157,7 @@ static void send_server_device_caps(u32 bootstrap_send, u32 device_root)
     sys::channel_close(static_cast<i32>(bootstrap_send));
 
     // If we failed to send, revoke the derived cap so we don't leak it in vinit.
-    if (!sent)
-    {
+    if (!sent) {
         sys::cap_revoke(handle_to_send);
     }
 }
@@ -184,16 +169,13 @@ static void send_server_device_caps(u32 bootstrap_send, u32 device_root)
  * @param timeout_ms Maximum time to wait in milliseconds.
  * @return true if service is available, false on timeout.
  */
-static bool wait_for_service(const char *name, u32 timeout_ms)
-{
+static bool wait_for_service(const char *name, u32 timeout_ms) {
     u32 waited = 0;
     const u32 interval = 10; // Check every 10ms
 
-    while (waited < timeout_ms)
-    {
+    while (waited < timeout_ms) {
         u32 handle = 0xFFFFFFFFu;
-        if (sys::assign_get(name, &handle) == 0 && handle != 0xFFFFFFFFu)
-        {
+        if (sys::assign_get(name, &handle) == 0 && handle != 0xFFFFFFFFu) {
             // Service is registered, close the handle we just got
             sys::channel_close(static_cast<i32>(handle));
             return true;
@@ -210,8 +192,7 @@ static bool wait_for_service(const char *name, u32 timeout_ms)
 /**
  * @brief Check if a server process is still running.
  */
-static bool is_server_running(i64 pid)
-{
+static bool is_server_running(i64 pid) {
     if (pid <= 0)
         return false;
 
@@ -220,10 +201,8 @@ static bool is_server_running(i64 pid)
     if (count < 0)
         return false;
 
-    for (i32 i = 0; i < count; i++)
-    {
-        if (tasks[i].id == static_cast<u32>(pid))
-        {
+    for (i32 i = 0; i < count; i++) {
+        if (tasks[i].id == static_cast<u32>(pid)) {
             return true;
         }
     }
@@ -234,8 +213,7 @@ static bool is_server_running(i64 pid)
  * @brief Start a specific server by index.
  * @return true if server started and registered successfully.
  */
-static bool start_server_by_index(usize idx)
-{
+static bool start_server_by_index(usize idx) {
     if (idx >= SERVER_COUNT)
         return false;
 
@@ -243,8 +221,7 @@ static bool start_server_by_index(usize idx)
 
     // Check if executable exists
     sys::Stat st;
-    if (sys::stat(srv.path, &st) != 0)
-    {
+    if (sys::stat(srv.path, &st) != 0) {
         print_str("[vinit] ");
         print_str(srv.name);
         print_str(": not found\n");
@@ -253,13 +230,11 @@ static bool start_server_by_index(usize idx)
 
     u32 bootstrap_send = 0xFFFFFFFFu;
     srv.pid = spawn_server(srv.path, srv.name, &bootstrap_send);
-    if (g_have_device_root)
-    {
+    if (g_have_device_root) {
         send_server_device_caps(bootstrap_send, g_device_root);
     }
 
-    if (srv.pid > 0 && wait_for_service(srv.assign, 1000))
-    {
+    if (srv.pid > 0 && wait_for_service(srv.assign, 1000)) {
         print_str("[vinit] ");
         print_str(srv.assign);
         print_str(": ready\n");
@@ -276,12 +251,9 @@ static bool start_server_by_index(usize idx)
  * @param name Server name ("blkd", "netd", "fsd").
  * @return true on success.
  */
-bool restart_server(const char *name)
-{
-    for (usize i = 0; i < SERVER_COUNT; i++)
-    {
-        if (streq(g_servers[i].name, name))
-        {
+bool restart_server(const char *name) {
+    for (usize i = 0; i < SERVER_COUNT; i++) {
+        if (streq(g_servers[i].name, name)) {
             g_servers[i].pid = 0;
             g_servers[i].available = false;
             return start_server_by_index(i);
@@ -294,8 +266,7 @@ bool restart_server(const char *name)
  * @brief Get server status for display.
  */
 void get_server_status(
-    usize idx, const char **name, const char **assign, i64 *pid, bool *running, bool *available)
-{
+    usize idx, const char **name, const char **assign, i64 *pid, bool *running, bool *available) {
     if (idx >= SERVER_COUNT)
         return;
 
@@ -307,14 +278,12 @@ void get_server_status(
     *available = srv.available;
 
     // Update availability if process died
-    if (!*running && srv.available)
-    {
+    if (!*running && srv.available) {
         g_servers[idx].available = false;
     }
 }
 
-usize get_server_count()
-{
+usize get_server_count() {
     return SERVER_COUNT;
 }
 
@@ -330,22 +299,18 @@ usize get_server_count()
  * Storage/network servers (blkd, netd, fsd) are disabled - libc routes
  * directly to kernel syscalls for file/network operations.
  */
-static void start_servers()
-{
+static void start_servers() {
     // Check if any server ELFs exist
     sys::Stat st;
     bool have_any = false;
-    for (usize i = 0; i < SERVER_COUNT; i++)
-    {
-        if (sys::stat(g_servers[i].path, &st) == 0)
-        {
+    for (usize i = 0; i < SERVER_COUNT; i++) {
+        if (sys::stat(g_servers[i].path, &st) == 0) {
             have_any = true;
             break;
         }
     }
 
-    if (!have_any)
-    {
+    if (!have_any) {
         print_str("[vinit] No display servers found\n\n");
         return;
     }
@@ -360,18 +325,15 @@ static void start_servers()
     // ==========================================================================
     // Store bootstrap send handles - servers wait for caps before initializing devices
     u32 bootstrap_sends[SERVER_COUNT];
-    for (usize i = 0; i < SERVER_COUNT; i++)
-    {
+    for (usize i = 0; i < SERVER_COUNT; i++) {
         bootstrap_sends[i] = 0xFFFFFFFFu;
     }
 
-    for (usize i = 0; i < SERVER_COUNT; i++)
-    {
+    for (usize i = 0; i < SERVER_COUNT; i++) {
         ServerInfo &srv = g_servers[i];
 
         // Check if executable exists
-        if (sys::stat(srv.path, &st) != 0)
-        {
+        if (sys::stat(srv.path, &st) != 0) {
             print_str("[vinit] ");
             print_str(srv.name);
             print_str(": not found\n");
@@ -383,8 +345,7 @@ static void start_servers()
         u64 tid = 0;
         i64 err = sys::spawn(srv.path, nullptr, &pid, &tid, nullptr, &bootstrap_sends[i]);
 
-        if (err < 0)
-        {
+        if (err < 0) {
             print_str("[vinit] Failed to spawn ");
             print_str(srv.name);
             print_str(": error ");
@@ -406,14 +367,10 @@ static void start_servers()
     // ==========================================================================
     // Now that all ELFs are loaded, send device caps to each server.
     // This unblocks blkd which will then reset the VirtIO block device.
-    for (usize i = 0; i < SERVER_COUNT; i++)
-    {
-        if (bootstrap_sends[i] != 0xFFFFFFFFu && g_have_device_root)
-        {
+    for (usize i = 0; i < SERVER_COUNT; i++) {
+        if (bootstrap_sends[i] != 0xFFFFFFFFu && g_have_device_root) {
             send_server_device_caps(bootstrap_sends[i], g_device_root);
-        }
-        else if (bootstrap_sends[i] != 0xFFFFFFFFu)
-        {
+        } else if (bootstrap_sends[i] != 0xFFFFFFFFu) {
             // No device root, just close the bootstrap channel
             sys::channel_close(static_cast<i32>(bootstrap_sends[i]));
         }
@@ -422,28 +379,23 @@ static void start_servers()
     // ==========================================================================
     // PHASE 3: WAIT FOR SERVERS TO REGISTER
     // ==========================================================================
-    for (usize i = 0; i < SERVER_COUNT; i++)
-    {
+    for (usize i = 0; i < SERVER_COUNT; i++) {
         ServerInfo &srv = g_servers[i];
         if (srv.pid <= 0)
             continue;
 
         u32 timeout = 2000;
-        if (wait_for_service(srv.assign, timeout))
-        {
+        if (wait_for_service(srv.assign, timeout)) {
             print_str("[vinit] ");
             print_str(srv.assign);
             print_str(": ready\n");
             srv.available = true;
 
             // When displayd is ready, disable kernel gcon to prevent interference
-            if (streq(srv.assign, "DISPLAY"))
-            {
+            if (streq(srv.assign, "DISPLAY")) {
                 sys::gcon_set_gui_mode(true);
             }
-        }
-        else
-        {
+        } else {
             print_str("[vinit] ");
             print_str(srv.assign);
             print_str(": timeout waiting for registration\n");
@@ -458,8 +410,7 @@ static void start_servers()
 /**
  * @brief Quick malloc test at startup.
  */
-static void test_malloc_at_startup()
-{
+static void test_malloc_at_startup() {
     print_str("[vinit] Testing malloc/sbrk...\n");
 
     void *brk = vinit_sbrk(0);
@@ -468,8 +419,7 @@ static void test_malloc_at_startup()
     print_str("\n");
 
     void *ptr = vinit_sbrk(1024);
-    if (ptr == reinterpret_cast<void *>(-1))
-    {
+    if (ptr == reinterpret_cast<void *>(-1)) {
         print_str("[vinit]   ERROR: sbrk(1024) failed!\n");
         return;
     }
@@ -479,27 +429,21 @@ static void test_malloc_at_startup()
     print_str("\n");
 
     char *cptr = static_cast<char *>(ptr);
-    for (int i = 0; i < 1024; i++)
-    {
+    for (int i = 0; i < 1024; i++) {
         cptr[i] = static_cast<char>(i & 0xFF);
     }
 
     bool ok = true;
-    for (int i = 0; i < 1024; i++)
-    {
-        if (cptr[i] != static_cast<char>(i & 0xFF))
-        {
+    for (int i = 0; i < 1024; i++) {
+        if (cptr[i] != static_cast<char>(i & 0xFF)) {
             ok = false;
             break;
         }
     }
 
-    if (ok)
-    {
+    if (ok) {
         print_str("[vinit]   Memory R/W test PASSED\n");
-    }
-    else
-    {
+    } else {
         print_str("[vinit]   ERROR: Memory verification FAILED!\n");
     }
 }
@@ -507,8 +451,7 @@ static void test_malloc_at_startup()
 /**
  * @brief User-space entry point for the init process.
  */
-extern "C" void _start()
-{
+extern "C" void _start() {
     // Reset console colors to white on blue at startup (from viper_colors.h)
     print_str(ANSI_RESET);
 
@@ -531,26 +474,32 @@ extern "C" void _start()
     // Start microkernel servers (blkd, netd, fsd)
     start_servers();
 
+    // Give displayd time to fully initialize before starting workbench
+    // This prevents race conditions where workbench connects before displayd is ready
+    sys::sleep(100);
+
     // Start the Workbench desktop environment
     print_str("[vinit] Starting Workbench desktop...\n");
     u64 wb_pid = 0;
     u64 wb_tid = 0;
     i64 wb_err = sys::spawn("/sys/workbench.sys", nullptr, &wb_pid, &wb_tid, nullptr, nullptr);
 
-    if (wb_err == 0)
-    {
+    if (wb_err == 0) {
         print_str("[vinit] Workbench started (pid=");
         put_hex(static_cast<u32>(wb_pid));
         print_str(")\n");
+
+        // Give workbench time to initialize and take over the display
+        // This prevents console text from flashing on screen
+        sys::sleep(200);
+
         print_str("[vinit] Desktop ready - click Shell icon to start console\n");
 
         // Wait for user to spawn consoled via workbench Shell icon
         // Then connect and run the shell
-        while (true)
-        {
+        while (true) {
             // Try to connect to consoled (spawned by workbench when user clicks Shell)
-            if (init_console())
-            {
+            if (init_console()) {
                 shell_loop();
                 // After shell exits, wait for next consoled instance
                 print_str("[vinit] Shell exited, waiting for next console...\n");
@@ -559,9 +508,7 @@ extern "C" void _start()
             // Sleep briefly before checking again
             sys::sleep(100);
         }
-    }
-    else
-    {
+    } else {
         print_str("[vinit] Workbench failed to start, falling back to shell\n");
         // Fall back to text shell
         shell_loop();

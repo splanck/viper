@@ -977,11 +977,13 @@ typedef void (*hash_fn_t)(const uint8_t *data, size_t len, uint8_t *digest);
 /// @param data Data to authenticate.
 /// @param data_len Length of data in bytes.
 /// @param out Output buffer (must be at least digest_size bytes).
-static void hmac_compute(
-    hash_fn_t hash_fn, size_t digest_size,
-    const uint8_t *key, size_t key_len,
-    const uint8_t *data, size_t data_len,
-    uint8_t *out)
+static void hmac_compute(hash_fn_t hash_fn,
+                         size_t digest_size,
+                         const uint8_t *key,
+                         size_t key_len,
+                         const uint8_t *data,
+                         size_t data_len,
+                         uint8_t *out)
 {
     uint8_t k_padded[HMAC_BLOCK_SIZE];
     uint8_t k_ipad[HMAC_BLOCK_SIZE];

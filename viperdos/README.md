@@ -1,10 +1,13 @@
 # ViperDOS
 
-**ViperDOS** is a capability-based operating system for AArch64 (ARM64), designed to explore microkernel architecture, capability-based security, and modern OS concepts. It runs on QEMU's `virt` machine and features a complete TCP/IP stack with TLS 1.3, a crash-consistent journaling filesystem, and a retro-style interactive shell.
+**ViperDOS** is a capability-based operating system for AArch64 (ARM64), designed to explore microkernel architecture,
+capability-based security, and modern OS concepts. It runs on QEMU's `virt` machine and features a complete TCP/IP stack
+with TLS 1.3, a crash-consistent journaling filesystem, and a retro-style interactive shell.
 
 > **Status:** Functional and actively developed. Suitable for experimentation and learning.
 >
-> **Microkernel status:** User-space servers operational (`netd`, `fsd`, `blkd`, `consoled`, `inputd`, `displayd`). Kernel retains fallback implementations for boot and development. Total: ~115,000 SLOC (kernel ~50K, user ~65K).
+> **Microkernel status:** User-space servers operational (`netd`, `fsd`, `blkd`, `consoled`, `inputd`, `displayd`).
+> Kernel retains fallback implementations for boot and development. Total: ~115,000 SLOC (kernel ~50K, user ~65K).
 
 ---
 
@@ -38,17 +41,20 @@ Build and run ViperDOS:
 ```
 
 The build script automatically:
+
 - Configures CMake with the Clang cross-compiler
 - Builds the VBoot UEFI bootloader, kernel, and all user programs
 - Creates disk images (ESP, system disk, user disk)
 - Launches QEMU with UEFI firmware
 
 **Two-Disk Architecture:**
+
 - **ESP (esp.img)**: EFI System Partition with VBoot bootloader and kernel
 - **System disk (sys.img)**: Core system servers (netd, fsd, blkd, etc.)
 - **User disk (user.img)**: User programs and data
 
 **Requirements:**
+
 - CMake 3.20+
 - Clang (Apple Clang on macOS, clang++ on Linux)
 - AArch64 cross-linker (`brew install aarch64-elf-binutils` on macOS)
@@ -60,13 +66,13 @@ The build script automatically:
 
 ViperDOS is a research operating system exploring:
 
-| Concept | Implementation |
-|---------|----------------|
-| **Capability-Based Security** | Handle-based access control with rights derivation and revocation |
-| **Microkernel Design** | Minimal kernel with user-space servers (netd, fsd, blkd, consoled, inputd, displayd) |
-| **Modern Memory Management** | Demand paging, copy-on-write, shared memory, buddy allocator |
-| **Full Network Stack** | TCP/IP, TLS 1.3, DNS, HTTP, SSH-2/SFTP (user-space) |
-| **Crash-Consistent Storage** | Write-ahead journaling filesystem (user-space fsd) |
+| Concept                       | Implementation                                                                       |
+|-------------------------------|--------------------------------------------------------------------------------------|
+| **Capability-Based Security** | Handle-based access control with rights derivation and revocation                    |
+| **Microkernel Design**        | Minimal kernel with user-space servers (netd, fsd, blkd, consoled, inputd, displayd) |
+| **Modern Memory Management**  | Demand paging, copy-on-write, shared memory, buddy allocator                         |
+| **Full Network Stack**        | TCP/IP, TLS 1.3, DNS, HTTP, SSH-2/SFTP (user-space)                                  |
+| **Crash-Consistent Storage**  | Write-ahead journaling filesystem (user-space fsd)                                   |
 
 ### Why ViperDOS?
 
@@ -81,28 +87,28 @@ ViperDOS is a research operating system exploring:
 
 ### Kernel (~50,000 SLOC)
 
-| Component | Features |
-|-----------|----------|
-| **Architecture** | AArch64 boot, UEFI via VBoot, 4-level MMU, GICv2/v3, ARM timer, exception handling |
-| **Memory** | PMM bitmap, buddy allocator, slab allocator, demand paging, COW, shared memory |
-| **Scheduler** | 8 priority queues, SMP with work stealing, per-CPU run queues, CPU affinity |
-| **IPC** | Synchronous channels (64 entries, 256-byte messages), poll sets, capability transfer |
-| **Filesystem** | VFS layer, ViperFS with journal, block/inode caches (kernel mode) |
-| **Drivers** | VirtIO (block, network, GPU, RNG, input), PL011 UART, ramfb |
-| **Console** | Serial UART + graphics console with ANSI escape codes |
+| Component        | Features                                                                             |
+|------------------|--------------------------------------------------------------------------------------|
+| **Architecture** | AArch64 boot, UEFI via VBoot, 4-level MMU, GICv2/v3, ARM timer, exception handling   |
+| **Memory**       | PMM bitmap, buddy allocator, slab allocator, demand paging, COW, shared memory       |
+| **Scheduler**    | 8 priority queues, SMP with work stealing, per-CPU run queues, CPU affinity          |
+| **IPC**          | Synchronous channels (64 entries, 256-byte messages), poll sets, capability transfer |
+| **Filesystem**   | VFS layer, ViperFS with journal, block/inode caches (kernel mode)                    |
+| **Drivers**      | VirtIO (block, network, GPU, RNG, input), PL011 UART, ramfb                          |
+| **Console**      | Serial UART + graphics console with ANSI escape codes                                |
 
 ### User Space (~65,000 SLOC)
 
-| Component | Features |
-|-----------|----------|
-| **libc** | POSIX-compatible C library (stdio, string, stdlib, unistd, socket, poll) |
-| **Servers** | netd (TCP/IP), fsd (filesystem), blkd (block), consoled, inputd, displayd (GUI) |
-| **libtls** | TLS 1.3 client with X.509 certificate verification |
-| **libssh** | SSH-2 client with SFTP, Ed25519/RSA authentication |
-| **libhttp** | HTTP/1.1 client library |
-| **libgui** | GUI client library for displayd |
-| **vinit Shell** | Interactive shell with line editing, history, tab completion |
-| **User Programs** | hello, fsinfo, sysinfo, netstat, ping, edit, devices, ssh, sftp, hello_gui |
+| Component         | Features                                                                        |
+|-------------------|---------------------------------------------------------------------------------|
+| **libc**          | POSIX-compatible C library (stdio, string, stdlib, unistd, socket, poll)        |
+| **Servers**       | netd (TCP/IP), fsd (filesystem), blkd (block), consoled, inputd, displayd (GUI) |
+| **libtls**        | TLS 1.3 client with X.509 certificate verification                              |
+| **libssh**        | SSH-2 client with SFTP, Ed25519/RSA authentication                              |
+| **libhttp**       | HTTP/1.1 client library                                                         |
+| **libgui**        | GUI client library for displayd                                                 |
+| **vinit Shell**   | Interactive shell with line editing, history, tab completion                    |
+| **User Programs** | hello, fsinfo, sysinfo, netstat, ping, edit, devices, ssh, sftp, hello_gui      |
 
 ---
 
@@ -110,17 +116,18 @@ ViperDOS is a research operating system exploring:
 
 The ViperDOS shell includes these commands:
 
-| Category | Commands |
-|----------|----------|
-| **Files** | `Dir`, `List`, `Type`, `Copy`, `Delete`, `MakeDir`, `Rename` |
-| **Navigation** | `chdir`, `cwd`, `Path`, `Assign` |
-| **Programs** | `Run <program>` |
-| **System** | `Version`, `Uptime`, `Avail`, `Status`, `Caps`, `Date`, `Time` |
-| **Network** | `Fetch <url>` (HTTP/HTTPS), `ssh <user@host>` (SSH-2) |
-| **Utility** | `Echo`, `Cls`, `History`, `Why`, `Help` |
-| **Session** | `EndShell` |
+| Category       | Commands                                                       |
+|----------------|----------------------------------------------------------------|
+| **Files**      | `Dir`, `List`, `Type`, `Copy`, `Delete`, `MakeDir`, `Rename`   |
+| **Navigation** | `chdir`, `cwd`, `Path`, `Assign`                               |
+| **Programs**   | `Run <program>`                                                |
+| **System**     | `Version`, `Uptime`, `Avail`, `Status`, `Caps`, `Date`, `Time` |
+| **Network**    | `Fetch <url>` (HTTP/HTTPS), `ssh <user@host>` (SSH-2)          |
+| **Utility**    | `Echo`, `Cls`, `History`, `Why`, `Help`                        |
+| **Session**    | `EndShell`                                                     |
 
 **Line Editing:**
+
 - Arrow keys for cursor movement and history
 - Tab for command completion
 - Ctrl+U to clear line, Ctrl+K to kill to end
@@ -234,12 +241,12 @@ os/
 
 ### Requirements
 
-| Tool | Version | Notes |
-|------|---------|-------|
-| CMake | 3.20+ | Build system |
-| Clang | 15+ | Cross-compiler (or Apple Clang) |
-| aarch64-elf-binutils | Any | Cross-linker and tools |
-| QEMU | 7.0+ | With `qemu-system-aarch64` |
+| Tool                 | Version | Notes                           |
+|----------------------|---------|---------------------------------|
+| CMake                | 3.20+   | Build system                    |
+| Clang                | 15+     | Cross-compiler (or Apple Clang) |
+| aarch64-elf-binutils | Any     | Cross-linker and tools          |
+| QEMU                 | 7.0+    | With `qemu-system-aarch64`      |
 
 ### macOS Setup
 
@@ -324,26 +331,26 @@ Content-Type: text/html; charset=UTF-8
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [docs/status/00-overview.md](docs/status/00-overview.md) | Implementation status and statistics |
-| [docs/status/01-architecture.md](docs/status/01-architecture.md) | AArch64 boot, MMU, GIC, timer |
-| [docs/status/02-memory-management.md](docs/status/02-memory-management.md) | PMM, VMM, slab, buddy, COW |
-| [docs/status/03-console.md](docs/status/03-console.md) | Serial and graphics console |
-| [docs/status/04-drivers.md](docs/status/04-drivers.md) | VirtIO and other drivers |
-| [docs/status/05-filesystem.md](docs/status/05-filesystem.md) | VFS and ViperFS |
-| [docs/status/06-ipc.md](docs/status/06-ipc.md) | Channels and poll sets |
-| [docs/status/07-networking.md](docs/status/07-networking.md) | TCP/IP, TLS, DNS, HTTP |
-| [docs/status/08-scheduler.md](docs/status/08-scheduler.md) | Tasks and scheduling |
-| [docs/status/09-viper-process.md](docs/status/09-viper-process.md) | Process model and capabilities |
-| [docs/status/10-userspace.md](docs/status/10-userspace.md) | User space and libc |
-| [docs/status/11-tools.md](docs/status/11-tools.md) | Build tools |
-| [docs/status/12-crypto.md](docs/status/12-crypto.md) | Cryptography |
-| [docs/status/13-servers.md](docs/status/13-servers.md) | Microkernel servers |
-| [docs/status/14-summary.md](docs/status/14-summary.md) | Summary and roadmap |
-| [docs/status/15-boot.md](docs/status/15-boot.md) | Boot infrastructure |
-| [docs/shell-commands.md](docs/shell-commands.md) | Shell command reference |
-| [docs/syscalls.md](docs/syscalls.md) | System call reference |
+| Document                                                                   | Description                          |
+|----------------------------------------------------------------------------|--------------------------------------|
+| [docs/status/00-overview.md](docs/status/00-overview.md)                   | Implementation status and statistics |
+| [docs/status/01-architecture.md](docs/status/01-architecture.md)           | AArch64 boot, MMU, GIC, timer        |
+| [docs/status/02-memory-management.md](docs/status/02-memory-management.md) | PMM, VMM, slab, buddy, COW           |
+| [docs/status/03-console.md](docs/status/03-console.md)                     | Serial and graphics console          |
+| [docs/status/04-drivers.md](docs/status/04-drivers.md)                     | VirtIO and other drivers             |
+| [docs/status/05-filesystem.md](docs/status/05-filesystem.md)               | VFS and ViperFS                      |
+| [docs/status/06-ipc.md](docs/status/06-ipc.md)                             | Channels and poll sets               |
+| [docs/status/07-networking.md](docs/status/07-networking.md)               | TCP/IP, TLS, DNS, HTTP               |
+| [docs/status/08-scheduler.md](docs/status/08-scheduler.md)                 | Tasks and scheduling                 |
+| [docs/status/09-viper-process.md](docs/status/09-viper-process.md)         | Process model and capabilities       |
+| [docs/status/10-userspace.md](docs/status/10-userspace.md)                 | User space and libc                  |
+| [docs/status/11-tools.md](docs/status/11-tools.md)                         | Build tools                          |
+| [docs/status/12-crypto.md](docs/status/12-crypto.md)                       | Cryptography                         |
+| [docs/status/13-servers.md](docs/status/13-servers.md)                     | Microkernel servers                  |
+| [docs/status/14-summary.md](docs/status/14-summary.md)                     | Summary and roadmap                  |
+| [docs/status/15-boot.md](docs/status/15-boot.md)                           | Boot infrastructure                  |
+| [docs/shell-commands.md](docs/shell-commands.md)                           | Shell command reference              |
+| [docs/syscalls.md](docs/syscalls.md)                                       | System call reference                |
 
 ---
 
@@ -351,13 +358,13 @@ Content-Type: text/html; charset=UTF-8
 
 ViperDOS uses a different design philosophy than Unix:
 
-| Concept | Unix | ViperDOS |
-|---------|------|---------|
-| **Device Names** | `/dev/sda` | `SYS:`, `C:` (logical assigns) |
-| **Path Separator** | `/` | `/` (with optional assign prefixes) |
-| **Return Codes** | 0 = success | 0=OK, 5=WARN, 10=ERROR, 20=FAIL |
-| **Commands** | `ls`, `cat`, `rm` | `Dir`, `Type`, `Delete` |
-| **Process Model** | Fork/exec | Spawn with capabilities |
+| Concept            | Unix              | ViperDOS                            |
+|--------------------|-------------------|-------------------------------------|
+| **Device Names**   | `/dev/sda`        | `SYS:`, `C:` (logical assigns)      |
+| **Path Separator** | `/`               | `/` (with optional assign prefixes) |
+| **Return Codes**   | 0 = success       | 0=OK, 5=WARN, 10=ERROR, 20=FAIL     |
+| **Commands**       | `ls`, `cat`, `rm` | `Dir`, `Type`, `Delete`             |
+| **Process Model**  | Fork/exec         | Spawn with capabilities             |
 
 ---
 
@@ -365,20 +372,20 @@ ViperDOS uses a different design philosophy than Unix:
 
 ViperDOS provides ~90 system calls organized by category:
 
-| Category | Syscalls |
-|----------|----------|
-| **Task** | yield, exit, sleep, spawn, wait, join, list, priority |
-| **Process** | fork, getpid, getppid, getpgid, setpgid, getsid, setsid, waitpid |
-| **Memory** | alloc, retain, release, get_len, set_len, brk |
-| **IPC** | channel_create, send, recv, close, poll |
-| **Shared Memory** | shm_create, shm_map, shm_unmap, shm_close |
-| **Timer** | create, set, cancel, close |
-| **Filesystem** | open, create, read, write, seek, close, stat, readdir, rename, delete, sync |
-| **Network** | socket, bind, connect, listen, accept, send, recv, close |
-| **Device** | map_device, irq_register, irq_wait, irq_ack, dma_alloc, virt_to_phys |
-| **Capability** | derive, revoke, query, list |
-| **Assign** | set, remove, get, list, resolve |
-| **Debug** | print, putchar, getchar, uptime |
+| Category          | Syscalls                                                                    |
+|-------------------|-----------------------------------------------------------------------------|
+| **Task**          | yield, exit, sleep, spawn, wait, join, list, priority                       |
+| **Process**       | fork, getpid, getppid, getpgid, setpgid, getsid, setsid, waitpid            |
+| **Memory**        | alloc, retain, release, get_len, set_len, brk                               |
+| **IPC**           | channel_create, send, recv, close, poll                                     |
+| **Shared Memory** | shm_create, shm_map, shm_unmap, shm_close                                   |
+| **Timer**         | create, set, cancel, close                                                  |
+| **Filesystem**    | open, create, read, write, seek, close, stat, readdir, rename, delete, sync |
+| **Network**       | socket, bind, connect, listen, accept, send, recv, close                    |
+| **Device**        | map_device, irq_register, irq_wait, irq_ack, dma_alloc, virt_to_phys        |
+| **Capability**    | derive, revoke, query, list                                                 |
+| **Assign**        | set, remove, get, list, resolve                                             |
+| **Debug**         | print, putchar, getchar, uptime                                             |
 
 See [docs/syscalls.md](docs/syscalls.md) for detailed documentation.
 

@@ -630,7 +630,8 @@ class Parser
     /// @brief Parse generic type parameters with optional constraints: [T, U: Comparable]
     /// @param[out] constraints Output vector for constraint names (parallel to returned names).
     /// @return Vector of type parameter names.
-    std::vector<std::string> parseGenericParamsWithConstraints(std::vector<std::string> &constraints);
+    std::vector<std::string> parseGenericParamsWithConstraints(
+        std::vector<std::string> &constraints);
 
     /// @brief Parse a field declaration within a type.
     /// @return The parsed FieldDecl.

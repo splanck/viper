@@ -17,16 +17,14 @@
 #include "../include/types.hpp"
 
 // Forward declare the C runtime functions
-extern "C"
-{
-    void *memcpy(void *dest, const void *src, usize n);
-    void *memset(void *dest, int c, usize n);
-    void *memmove(void *dest, const void *src, usize n);
-    int memcmp(const void *s1, const void *s2, usize n);
+extern "C" {
+void *memcpy(void *dest, const void *src, usize n);
+void *memset(void *dest, int c, usize n);
+void *memmove(void *dest, const void *src, usize n);
+int memcmp(const void *s1, const void *s2, usize n);
 }
 
-namespace lib
-{
+namespace lib {
 
 /**
  * @brief Copy `n` bytes from `src` to `dest`.
@@ -40,8 +38,7 @@ namespace lib
  * @param n Number of bytes to copy.
  * @return `dest`.
  */
-inline void *memcpy(void *dest, const void *src, usize n)
-{
+inline void *memcpy(void *dest, const void *src, usize n) {
     return ::memcpy(dest, src, n);
 }
 
@@ -53,8 +50,7 @@ inline void *memcpy(void *dest, const void *src, usize n)
  * @param n Number of bytes to write.
  * @return `dest`.
  */
-inline void *memset(void *dest, int c, usize n)
-{
+inline void *memset(void *dest, int c, usize n) {
     return ::memset(dest, c, n);
 }
 
@@ -70,8 +66,7 @@ inline void *memset(void *dest, int c, usize n)
  * @param n Number of bytes to copy.
  * @return `dest`.
  */
-inline void *memmove(void *dest, const void *src, usize n)
-{
+inline void *memmove(void *dest, const void *src, usize n) {
     return ::memmove(dest, src, n);
 }
 
@@ -83,8 +78,7 @@ inline void *memmove(void *dest, const void *src, usize n)
  * @param n Number of bytes to compare.
  * @return Negative/zero/positive depending on lexicographical ordering.
  */
-inline int memcmp(const void *s1, const void *s2, usize n)
-{
+inline int memcmp(const void *s1, const void *s2, usize n) {
     return ::memcmp(s1, s2, n);
 }
 

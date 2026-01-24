@@ -27,14 +27,12 @@
 #include "../../viper/viper.hpp"
 
 // Forward declaration for GIC handler
-namespace gic
-{
+namespace gic {
 void handle_irq();
 }
 
 // Forward declaration for syscall dispatcher
-namespace syscall
-{
+namespace syscall {
 void dispatch(exceptions::ExceptionFrame *frame);
 }
 
@@ -53,8 +51,9 @@ void dispatch(exceptions::ExceptionFrame *frame);
  * @param signum Signal number to deliver (SIGSEGV, SIGILL, etc.).
  * @param reason Human-readable description of the fault type (kind).
  */
-static void deliver_fault_to_task(exceptions::ExceptionFrame *frame, i32 signum, const char *reason)
-{
+static void deliver_fault_to_task(exceptions::ExceptionFrame *frame,
+                                  i32 signum,
+                                  const char *reason) {
     signal::FaultInfo info;
     info.fault_addr = frame->far;
     info.fault_pc = frame->elr;
@@ -70,32 +69,27 @@ static void deliver_fault_to_task(exceptions::ExceptionFrame *frame, i32 signum,
         asm volatile("wfi");
 }
 
-namespace exceptions
-{
+namespace exceptions {
 
 /** @copydoc exceptions::init */
-void init()
-{
+void init() {
     serial::puts("[exceptions] Installing exception vectors\n");
     exceptions_init_asm();
     serial::puts("[exceptions] Exception vectors installed\n");
 }
 
 /** @copydoc exceptions::enable_interrupts */
-void enable_interrupts()
-{
+void enable_interrupts() {
     asm volatile("msr daifclr, #0x2" ::: "memory"); // Clear IRQ mask
 }
 
 /** @copydoc exceptions::disable_interrupts */
-void disable_interrupts()
-{
+void disable_interrupts() {
     asm volatile("msr daifset, #0x2" ::: "memory"); // Set IRQ mask
 }
 
 /** @copydoc exceptions::interrupts_enabled */
-bool interrupts_enabled()
-{
+bool interrupts_enabled() {
     u64 daif;
     asm volatile("mrs %0, daif" : "=r"(daif));
     return (daif & (1 << 7)) == 0; // IRQ bit is bit 7
@@ -112,8 +106,7 @@ bool interrupts_enabled()
  *
  * @param frame Saved register state from the exception trampoline.
  */
-static void print_frame(ExceptionFrame *frame)
-{
+static void print_frame(ExceptionFrame *frame) {
     serial::puts("\n=== EXCEPTION FRAME ===\n");
 
     // Print special registers
@@ -137,8 +130,7 @@ static void print_frame(ExceptionFrame *frame)
     serial::puts("\n");
 
     // Print general registers
-    for (int i = 0; i < 30; i += 2)
-    {
+    for (int i = 0; i < 30; i += 2) {
         serial::puts("x");
         if (i < 10)
             serial::putc('0');
@@ -168,10 +160,8 @@ static void print_frame(ExceptionFrame *frame)
  * @param ec Exception class value (ESR_EL1.EC).
  * @return Constant string describing the exception class.
  */
-static const char *exception_class_name(u32 ec)
-{
-    switch (ec)
-    {
+static const char *exception_class_name(u32 ec) {
+    switch (ec) {
         case ec::UNKNOWN:
             return "Unknown";
         case ec::WFI_WFE:
@@ -199,211 +189,185 @@ static const char *exception_class_name(u32 ec)
 
 } // namespace exceptions
 
-extern "C"
-{
-    /** @copydoc handle_sync_exception */
-    void handle_sync_exception(exceptions::ExceptionFrame *frame)
-    {
-        u32 ec = (frame->esr >> 26) & 0x3F; // Exception class
+extern "C" {
+/** @copydoc handle_sync_exception */
+void handle_sync_exception(exceptions::ExceptionFrame *frame) {
+    u32 ec = (frame->esr >> 26) & 0x3F; // Exception class
 
-        // Check for SVC (syscall)
-        if (ec == exceptions::ec::SVC_A64)
-        {
-            // Route to syscall dispatcher
-            syscall::dispatch(frame);
-            return; // Return to caller after syscall
-        }
-
-        // Data abort from kernel - route to page fault handler (will panic)
-        if (ec == exceptions::ec::DATA_ABORT_SAME)
-        {
-            mm::handle_page_fault(frame, false /* is_instruction */);
-            // Never returns - handler panics for kernel faults
-        }
-
-        // Instruction abort from kernel - route to page fault handler (will panic)
-        if (ec == exceptions::ec::INST_ABORT_SAME)
-        {
-            mm::handle_page_fault(frame, true /* is_instruction */);
-            // Never returns - handler panics for kernel faults
-        }
-
-        // Other synchronous exceptions are errors
-        serial::puts("\n!!! SYNCHRONOUS EXCEPTION !!!\n");
-        serial::puts("Exception class: ");
-        serial::put_hex(ec);
-        serial::puts(" (");
-        serial::puts(exceptions::exception_class_name(ec));
-        serial::puts(")\n");
-
-        exceptions::print_frame(frame);
-
-        // Display on graphics console if available
-        if (gcon::is_available())
-        {
-            gcon::puts("\n\n  !!! KERNEL PANIC !!!\n");
-            gcon::puts("  Synchronous Exception\n");
-            gcon::puts("  EC: ");
-            // Simple hex output
-            const char hex[] = "0123456789ABCDEF";
-            gcon::putc(hex[(ec >> 4) & 0xF]);
-            gcon::putc(hex[ec & 0xF]);
-            gcon::puts(" - ");
-            gcon::puts(exceptions::exception_class_name(ec));
-            gcon::puts("\n");
-        }
-
-        // Halt
-        serial::puts("\nSystem halted.\n");
-        for (;;)
-        {
-            asm volatile("wfi");
-        }
+    // Check for SVC (syscall)
+    if (ec == exceptions::ec::SVC_A64) {
+        // Route to syscall dispatcher
+        syscall::dispatch(frame);
+        return; // Return to caller after syscall
     }
 
-    /** @copydoc handle_irq */
-    void handle_irq(exceptions::ExceptionFrame *frame)
-    {
-        (void)frame;
-        // Call GIC to handle the interrupt
-        gic::handle_irq();
+    // Data abort from kernel - route to page fault handler (will panic)
+    if (ec == exceptions::ec::DATA_ABORT_SAME) {
+        mm::handle_page_fault(frame, false /* is_instruction */);
+        // Never returns - handler panics for kernel faults
     }
 
-    /** @copydoc handle_fiq */
-    void handle_fiq(exceptions::ExceptionFrame *frame)
-    {
-        (void)frame;
-        serial::puts("\n!!! FIQ (unexpected) !!!\n");
-        // FIQs are not used
+    // Instruction abort from kernel - route to page fault handler (will panic)
+    if (ec == exceptions::ec::INST_ABORT_SAME) {
+        mm::handle_page_fault(frame, true /* is_instruction */);
+        // Never returns - handler panics for kernel faults
     }
 
-    /** @copydoc handle_serror */
-    void handle_serror(exceptions::ExceptionFrame *frame)
-    {
-        serial::puts("\n!!! SERROR (System Error) !!!\n");
-        exceptions::print_frame(frame);
+    // Other synchronous exceptions are errors
+    serial::puts("\n!!! SYNCHRONOUS EXCEPTION !!!\n");
+    serial::puts("Exception class: ");
+    serial::put_hex(ec);
+    serial::puts(" (");
+    serial::puts(exceptions::exception_class_name(ec));
+    serial::puts(")\n");
 
-        if (gcon::is_available())
-        {
-            gcon::puts("\n\n  !!! KERNEL PANIC !!!\n");
-            gcon::puts("  System Error (SError)\n");
-        }
+    exceptions::print_frame(frame);
 
-        // Halt
-        for (;;)
-        {
-            asm volatile("wfi");
-        }
+    // Display on graphics console if available
+    if (gcon::is_available()) {
+        gcon::puts("\n\n  !!! KERNEL PANIC !!!\n");
+        gcon::puts("  Synchronous Exception\n");
+        gcon::puts("  EC: ");
+        // Simple hex output
+        const char hex[] = "0123456789ABCDEF";
+        gcon::putc(hex[(ec >> 4) & 0xF]);
+        gcon::putc(hex[ec & 0xF]);
+        gcon::puts(" - ");
+        gcon::puts(exceptions::exception_class_name(ec));
+        gcon::puts("\n");
     }
 
-    /** @copydoc handle_invalid_exception */
-    void handle_invalid_exception(exceptions::ExceptionFrame *frame)
-    {
-        serial::puts("\n!!! INVALID EXCEPTION !!!\n");
-        serial::puts("This exception type should not occur.\n");
-        exceptions::print_frame(frame);
+    // Halt
+    serial::puts("\nSystem halted.\n");
+    for (;;) {
+        asm volatile("wfi");
+    }
+}
 
-        // Halt
-        for (;;)
-        {
-            asm volatile("wfi");
-        }
+/** @copydoc handle_irq */
+void handle_irq(exceptions::ExceptionFrame *frame) {
+    (void)frame;
+    // Call GIC to handle the interrupt
+    gic::handle_irq();
+}
+
+/** @copydoc handle_fiq */
+void handle_fiq(exceptions::ExceptionFrame *frame) {
+    (void)frame;
+    serial::puts("\n!!! FIQ (unexpected) !!!\n");
+    // FIQs are not used
+}
+
+/** @copydoc handle_serror */
+void handle_serror(exceptions::ExceptionFrame *frame) {
+    serial::puts("\n!!! SERROR (System Error) !!!\n");
+    exceptions::print_frame(frame);
+
+    if (gcon::is_available()) {
+        gcon::puts("\n\n  !!! KERNEL PANIC !!!\n");
+        gcon::puts("  System Error (SError)\n");
     }
 
-    // EL0 (user mode) exception handlers
+    // Halt
+    for (;;) {
+        asm volatile("wfi");
+    }
+}
 
-    /** @copydoc handle_el0_sync */
-    void handle_el0_sync(exceptions::ExceptionFrame *frame)
-    {
-        u32 ec = (frame->esr >> 26) & 0x3F; // Exception class
+/** @copydoc handle_invalid_exception */
+void handle_invalid_exception(exceptions::ExceptionFrame *frame) {
+    serial::puts("\n!!! INVALID EXCEPTION !!!\n");
+    serial::puts("This exception type should not occur.\n");
+    exceptions::print_frame(frame);
 
-        // Check for SVC (syscall from user space)
-        if (ec == exceptions::ec::SVC_A64)
-        {
-            // Route to centralized syscall dispatcher
-            syscall::dispatch(frame);
+    // Halt
+    for (;;) {
+        asm volatile("wfi");
+    }
+}
 
-            // Check for pending signals before returning to user mode
-            task::Task *t = task::current();
-            if (t && (t->signals.pending & ~t->signals.blocked))
-            {
-                signal::process_pending();
-            }
-            return;
+// EL0 (user mode) exception handlers
+
+/** @copydoc handle_el0_sync */
+void handle_el0_sync(exceptions::ExceptionFrame *frame) {
+    u32 ec = (frame->esr >> 26) & 0x3F; // Exception class
+
+    // Check for SVC (syscall from user space)
+    if (ec == exceptions::ec::SVC_A64) {
+        // Route to centralized syscall dispatcher
+        syscall::dispatch(frame);
+
+        // Check for pending signals before returning to user mode
+        task::Task *t = task::current();
+        if (t && (t->signals.pending & ~t->signals.blocked)) {
+            signal::process_pending();
         }
-
-        // Data abort from user space - route to page fault handler
-        if (ec == exceptions::ec::DATA_ABORT_LOWER)
-        {
-            mm::handle_page_fault(frame, false /* is_instruction */);
-            return; // Never reached - handler terminates task or panics
-        }
-
-        // Instruction abort from user space - route to page fault handler
-        if (ec == exceptions::ec::INST_ABORT_LOWER)
-        {
-            mm::handle_page_fault(frame, true /* is_instruction */);
-            return; // Never reached - handler terminates task or panics
-        }
-
-        // PC alignment fault from user space -> SIGBUS
-        if (ec == exceptions::ec::PC_ALIGN)
-        {
-            deliver_fault_to_task(frame, signal::sig::SIGBUS, "pc_alignment");
-            return; // Never reached
-        }
-
-        // SP alignment fault from user space -> SIGBUS
-        if (ec == exceptions::ec::SP_ALIGN)
-        {
-            deliver_fault_to_task(frame, signal::sig::SIGBUS, "sp_alignment");
-            return; // Never reached
-        }
-
-        // Illegal instruction / unknown instruction from user space -> SIGILL
-        // EC=0x00 is used for instructions that can't be decoded
-        if (ec == exceptions::ec::UNKNOWN)
-        {
-            deliver_fault_to_task(frame, signal::sig::SIGILL, "illegal_instruction");
-            return; // Never reached
-        }
-
-        // Illegal execution state (e.g., PSTATE.IL set) -> SIGILL
-        if (ec == exceptions::ec::ILLEGAL_STATE)
-        {
-            deliver_fault_to_task(frame, signal::sig::SIGILL, "illegal_state");
-            return; // Never reached
-        }
-
-        // BRK instruction (breakpoint) from user space -> SIGTRAP
-        if (ec == exceptions::ec::BRK_A64)
-        {
-            deliver_fault_to_task(frame, signal::sig::SIGTRAP, "breakpoint");
-            return; // Never reached
-        }
-
-        // Other user-mode exception - terminate with SIGILL
-        serial::puts("[fault] Unknown user exception EC=0x");
-        serial::put_hex(ec);
-        serial::puts(" (");
-        serial::puts(exceptions::exception_class_name(ec));
-        serial::puts(")\n");
-        deliver_fault_to_task(frame, signal::sig::SIGILL, "unknown");
+        return;
     }
 
-    /** @copydoc handle_el0_irq */
-    void handle_el0_irq(exceptions::ExceptionFrame *frame)
-    {
-        (void)frame;
-        // Handle IRQ while in user mode - same as kernel IRQ
-        gic::handle_irq();
+    // Data abort from user space - route to page fault handler
+    if (ec == exceptions::ec::DATA_ABORT_LOWER) {
+        mm::handle_page_fault(frame, false /* is_instruction */);
+        return; // Never reached - handler terminates task or panics
     }
 
-    /** @copydoc handle_el0_serror */
-    void handle_el0_serror(exceptions::ExceptionFrame *frame)
-    {
-        // User-mode SError - deliver SIGBUS instead of panicking
-        deliver_fault_to_task(frame, signal::sig::SIGBUS, "system_error");
+    // Instruction abort from user space - route to page fault handler
+    if (ec == exceptions::ec::INST_ABORT_LOWER) {
+        mm::handle_page_fault(frame, true /* is_instruction */);
+        return; // Never reached - handler terminates task or panics
     }
+
+    // PC alignment fault from user space -> SIGBUS
+    if (ec == exceptions::ec::PC_ALIGN) {
+        deliver_fault_to_task(frame, signal::sig::SIGBUS, "pc_alignment");
+        return; // Never reached
+    }
+
+    // SP alignment fault from user space -> SIGBUS
+    if (ec == exceptions::ec::SP_ALIGN) {
+        deliver_fault_to_task(frame, signal::sig::SIGBUS, "sp_alignment");
+        return; // Never reached
+    }
+
+    // Illegal instruction / unknown instruction from user space -> SIGILL
+    // EC=0x00 is used for instructions that can't be decoded
+    if (ec == exceptions::ec::UNKNOWN) {
+        deliver_fault_to_task(frame, signal::sig::SIGILL, "illegal_instruction");
+        return; // Never reached
+    }
+
+    // Illegal execution state (e.g., PSTATE.IL set) -> SIGILL
+    if (ec == exceptions::ec::ILLEGAL_STATE) {
+        deliver_fault_to_task(frame, signal::sig::SIGILL, "illegal_state");
+        return; // Never reached
+    }
+
+    // BRK instruction (breakpoint) from user space -> SIGTRAP
+    if (ec == exceptions::ec::BRK_A64) {
+        deliver_fault_to_task(frame, signal::sig::SIGTRAP, "breakpoint");
+        return; // Never reached
+    }
+
+    // Other user-mode exception - terminate with SIGILL
+    serial::puts("[fault] Unknown user exception EC=0x");
+    serial::put_hex(ec);
+    serial::puts(" (");
+    serial::puts(exceptions::exception_class_name(ec));
+    serial::puts(")\n");
+    deliver_fault_to_task(frame, signal::sig::SIGILL, "unknown");
+}
+
+/** @copydoc handle_el0_irq */
+void handle_el0_irq(exceptions::ExceptionFrame *frame) {
+    (void)frame;
+    // Handle IRQ while in user mode - same as kernel IRQ
+    gic::handle_irq();
+}
+
+/** @copydoc handle_el0_serror */
+void handle_el0_serror(exceptions::ExceptionFrame *frame) {
+    // User-mode SError - deliver SIGBUS instead of panicking
+    deliver_fault_to_task(frame, signal::sig::SIGBUS, "system_error");
+}
 
 } // extern "C"

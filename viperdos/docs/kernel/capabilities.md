@@ -1,6 +1,7 @@
 # Capabilities and Kernel Objects
 
-ViperDOS is designed around a capability-style security model: “a handle is authority”. In practice, the kernel currently
+ViperDOS is designed around a capability-style security model: “a handle is authority”. In practice, the kernel
+currently
 implements:
 
 - a per-Viper capability table (`cap::Table`)

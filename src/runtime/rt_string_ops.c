@@ -217,7 +217,8 @@ static rt_string rt_empty_string(void)
 {
     static rt_string empty = NULL;
 #if RT_COMPILER_MSVC
-    rt_string cached = (rt_string)rt_atomic_load_ptr((void *const volatile *)&empty, __ATOMIC_ACQUIRE);
+    rt_string cached =
+        (rt_string)rt_atomic_load_ptr((void *const volatile *)&empty, __ATOMIC_ACQUIRE);
 #else
     rt_string cached = __atomic_load_n(&empty, __ATOMIC_ACQUIRE);
 #endif
@@ -248,8 +249,11 @@ static rt_string rt_empty_string(void)
 
     rt_string expected = NULL;
 #if RT_COMPILER_MSVC
-    if (!rt_atomic_compare_exchange_ptr(
-            (void *volatile *)&empty, (void **)&expected, candidate, __ATOMIC_RELEASE, __ATOMIC_ACQUIRE))
+    if (!rt_atomic_compare_exchange_ptr((void *volatile *)&empty,
+                                        (void **)&expected,
+                                        candidate,
+                                        __ATOMIC_RELEASE,
+                                        __ATOMIC_ACQUIRE))
 #else
     if (!__atomic_compare_exchange_n(
             &empty, &expected, candidate, /*weak=*/0, __ATOMIC_RELEASE, __ATOMIC_ACQUIRE))
@@ -717,7 +721,8 @@ static int64_t rt_find(rt_string hay, int64_t start, rt_string needle)
     const char *pos = hay->data + start_idx;
     const char *end = hay->data + hay_len - needle_len + 1;
 
-    while (pos < end) {
+    while (pos < end)
+    {
         pos = memchr(pos, first, (size_t)(end - pos));
         if (!pos)
             return 0;

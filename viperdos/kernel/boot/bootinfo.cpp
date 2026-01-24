@@ -24,17 +24,14 @@
 #include "../include/vboot.hpp"
 
 // Linker-provided symbols
-extern "C"
-{
-    extern u8 __kernel_start[];
-    extern u8 __kernel_end[];
+extern "C" {
+extern u8 __kernel_start[];
+extern u8 __kernel_end[];
 }
 
-namespace boot
-{
+namespace boot {
 
-namespace
-{
+namespace {
 /**
  * @brief Parsed boot information snapshot.
  *
@@ -69,8 +66,7 @@ bool g_initialized = false;
  *
  * @param vboot Pointer to a validated boot info structure.
  */
-void parse_vboot(const viper::vboot::Info *vboot)
-{
+void parse_vboot(const viper::vboot::Info *vboot) {
     g_boot_info.method = Method::VBoot;
     g_boot_info.dtb = nullptr;
 
@@ -79,8 +75,7 @@ void parse_vboot(const viper::vboot::Info *vboot)
     g_boot_info.kernel_size = vboot->kernel_size;
 
     // Copy framebuffer info from GOP
-    if (vboot->framebuffer.base != 0)
-    {
+    if (vboot->framebuffer.base != 0) {
         g_boot_info.framebuffer.base = vboot->framebuffer.base;
         g_boot_info.framebuffer.width = vboot->framebuffer.width;
         g_boot_info.framebuffer.height = vboot->framebuffer.height;
@@ -92,13 +87,11 @@ void parse_vboot(const viper::vboot::Info *vboot)
 
     // Copy memory regions from UEFI memory map
     g_boot_info.memory_region_count = vboot->memory_region_count;
-    if (g_boot_info.memory_region_count > MAX_MEMORY_REGIONS)
-    {
+    if (g_boot_info.memory_region_count > MAX_MEMORY_REGIONS) {
         g_boot_info.memory_region_count = MAX_MEMORY_REGIONS;
     }
 
-    for (u32 i = 0; i < g_boot_info.memory_region_count; i++)
-    {
+    for (u32 i = 0; i < g_boot_info.memory_region_count; i++) {
         const auto &src = vboot->memory_regions[i];
         auto &dst = g_boot_info.memory_regions[i];
         dst.base = src.base;
@@ -123,8 +116,7 @@ void parse_vboot(const viper::vboot::Info *vboot)
  *
  * @param dtb Pointer to the device tree blob passed by the boot environment.
  */
-void setup_qemu_defaults(void *dtb)
-{
+void setup_qemu_defaults(void *dtb) {
     g_boot_info.method = Method::QemuDirect;
     g_boot_info.dtb = dtb;
 
@@ -138,14 +130,12 @@ void setup_qemu_defaults(void *dtb)
 
     // Try to parse memory layout from FDT
     fdt::MemoryLayout fdt_layout;
-    if (fdt::is_valid(dtb) && fdt::parse_memory(dtb, &fdt_layout))
-    {
+    if (fdt::is_valid(dtb) && fdt::parse_memory(dtb, &fdt_layout)) {
         serial::puts("[bootinfo] Using FDT memory layout\n");
 
         // Copy memory regions from FDT
         g_boot_info.memory_region_count = 0;
-        for (u32 i = 0; i < fdt_layout.region_count && i < MAX_MEMORY_REGIONS; i++)
-        {
+        for (u32 i = 0; i < fdt_layout.region_count && i < MAX_MEMORY_REGIONS; i++) {
             g_boot_info.memory_regions[i].base = fdt_layout.regions[i].base;
             g_boot_info.memory_regions[i].size = fdt_layout.regions[i].size;
             g_boot_info.memory_regions[i].type = MemoryType::Usable;
@@ -153,20 +143,16 @@ void setup_qemu_defaults(void *dtb)
         }
 
         // Mark reserved regions
-        for (u32 i = 0; i < fdt_layout.reserved_count; i++)
-        {
+        for (u32 i = 0; i < fdt_layout.reserved_count; i++) {
             // Add reserved regions as separate entries if we have room
-            if (g_boot_info.memory_region_count < MAX_MEMORY_REGIONS)
-            {
+            if (g_boot_info.memory_region_count < MAX_MEMORY_REGIONS) {
                 u32 idx = g_boot_info.memory_region_count++;
                 g_boot_info.memory_regions[idx].base = fdt_layout.reserved[i].base;
                 g_boot_info.memory_regions[idx].size = fdt_layout.reserved[i].size;
                 g_boot_info.memory_regions[idx].type = MemoryType::Reserved;
             }
         }
-    }
-    else
-    {
+    } else {
         // Fall back to QEMU virt machine defaults (from constants.hpp)
         serial::puts("[bootinfo] FDT parse failed, using QEMU defaults\n");
 
@@ -179,19 +165,15 @@ void setup_qemu_defaults(void *dtb)
 } // namespace
 
 /** @copydoc boot::init */
-void init(void *boot_info)
-{
+void init(void *boot_info) {
     // Clear boot info
     g_boot_info = {};
 
     // Check if this is a valid VBootInfo structure
-    if (viper::vboot::is_valid(boot_info))
-    {
+    if (viper::vboot::is_valid(boot_info)) {
         const auto *vboot = static_cast<const viper::vboot::Info *>(boot_info);
         parse_vboot(vboot);
-    }
-    else
-    {
+    } else {
         // Treat as DTB pointer, use QEMU defaults
         setup_qemu_defaults(boot_info);
     }
@@ -200,53 +182,43 @@ void init(void *boot_info)
 }
 
 /** @copydoc boot::get_info */
-const Info &get_info()
-{
+const Info &get_info() {
     return g_boot_info;
 }
 
 /** @copydoc boot::get_method */
-Method get_method()
-{
+Method get_method() {
     return g_boot_info.method;
 }
 
 /** @copydoc boot::get_framebuffer */
-const Framebuffer &get_framebuffer()
-{
+const Framebuffer &get_framebuffer() {
     return g_boot_info.framebuffer;
 }
 
 /** @copydoc boot::has_uefi_framebuffer */
-bool has_uefi_framebuffer()
-{
+bool has_uefi_framebuffer() {
     return g_boot_info.method == Method::VBoot && g_boot_info.framebuffer.is_valid();
 }
 
 /** @copydoc boot::get_memory_region_count */
-u32 get_memory_region_count()
-{
+u32 get_memory_region_count() {
     return g_boot_info.memory_region_count;
 }
 
 /** @copydoc boot::get_memory_region */
-const MemoryRegion *get_memory_region(u32 index)
-{
-    if (index >= g_boot_info.memory_region_count)
-    {
+const MemoryRegion *get_memory_region(u32 index) {
+    if (index >= g_boot_info.memory_region_count) {
         return nullptr;
     }
     return &g_boot_info.memory_regions[index];
 }
 
 /** @copydoc boot::get_total_usable_memory */
-u64 get_total_usable_memory()
-{
+u64 get_total_usable_memory() {
     u64 total = 0;
-    for (u32 i = 0; i < g_boot_info.memory_region_count; i++)
-    {
-        if (g_boot_info.memory_regions[i].type == MemoryType::Usable)
-        {
+    for (u32 i = 0; i < g_boot_info.memory_region_count; i++) {
+        if (g_boot_info.memory_regions[i].type == MemoryType::Usable) {
             total += g_boot_info.memory_regions[i].size;
         }
     }
@@ -254,8 +226,7 @@ u64 get_total_usable_memory()
 }
 
 /** @copydoc boot::get_ram_region */
-bool get_ram_region(u64 &out_base, u64 &out_size)
-{
+bool get_ram_region(u64 &out_base, u64 &out_size) {
     // For UEFI boot, memory is fragmented with gaps (UEFI reserved regions).
     // We need to find the largest CONTIGUOUS block of usable memory that
     // contains the kernel (at 0x40000000).
@@ -263,8 +234,7 @@ bool get_ram_region(u64 &out_base, u64 &out_size)
     // Strategy: Find all contiguous usable regions and pick the one containing
     // the kernel, or the largest one if kernel location unknown.
 
-    if (g_boot_info.memory_region_count == 0)
-    {
+    if (g_boot_info.memory_region_count == 0) {
         return false;
     }
 
@@ -274,17 +244,13 @@ bool get_ram_region(u64 &out_base, u64 &out_size)
     u64 block_end = 0;
     bool in_block = false;
 
-    for (u32 i = 0; i < g_boot_info.memory_region_count; i++)
-    {
+    for (u32 i = 0; i < g_boot_info.memory_region_count; i++) {
         const auto &region = g_boot_info.memory_regions[i];
-        if (region.type != MemoryType::Usable)
-        {
+        if (region.type != MemoryType::Usable) {
             // Non-usable region breaks contiguity
-            if (in_block)
-            {
+            if (in_block) {
                 // Check if this block contains the kernel
-                if (kernel_addr >= block_start && kernel_addr < block_end)
-                {
+                if (kernel_addr >= block_start && kernel_addr < block_end) {
                     out_base = block_start;
                     out_size = block_end - block_start;
                     return true;
@@ -296,23 +262,17 @@ bool get_ram_region(u64 &out_base, u64 &out_size)
 
         u64 region_end = region.base + region.size;
 
-        if (!in_block)
-        {
+        if (!in_block) {
             // Start new block
             block_start = region.base;
             block_end = region_end;
             in_block = true;
-        }
-        else if (region.base == block_end)
-        {
+        } else if (region.base == block_end) {
             // Extend current block (regions are contiguous)
             block_end = region_end;
-        }
-        else
-        {
+        } else {
             // Gap detected - check if previous block contains kernel
-            if (kernel_addr >= block_start && kernel_addr < block_end)
-            {
+            if (kernel_addr >= block_start && kernel_addr < block_end) {
                 out_base = block_start;
                 out_size = block_end - block_start;
                 return true;
@@ -324,10 +284,8 @@ bool get_ram_region(u64 &out_base, u64 &out_size)
     }
 
     // Check final block
-    if (in_block)
-    {
-        if (kernel_addr >= block_start && kernel_addr < block_end)
-        {
+    if (in_block) {
+        if (kernel_addr >= block_start && kernel_addr < block_end) {
             out_base = block_start;
             out_size = block_end - block_start;
             return true;
@@ -342,11 +300,9 @@ bool get_ram_region(u64 &out_base, u64 &out_size)
 }
 
 /** @copydoc boot::dump */
-void dump()
-{
+void dump() {
     serial::puts("[bootinfo] Boot method: ");
-    switch (g_boot_info.method)
-    {
+    switch (g_boot_info.method) {
         case Method::Unknown:
             serial::puts("Unknown\n");
             break;
@@ -368,8 +324,7 @@ void dump()
     serial::put_dec(static_cast<i64>(g_boot_info.kernel_size));
     serial::puts(" bytes\n");
 
-    if (g_boot_info.framebuffer.is_valid())
-    {
+    if (g_boot_info.framebuffer.is_valid()) {
         serial::puts("[bootinfo] Framebuffer: ");
         serial::put_dec(g_boot_info.framebuffer.width);
         serial::puts("x");
@@ -381,9 +336,7 @@ void dump()
         serial::puts(" (");
         serial::puts(g_boot_info.framebuffer.format == PixelFormat::BGR ? "BGR" : "RGB");
         serial::puts(")\n");
-    }
-    else
-    {
+    } else {
         serial::puts("[bootinfo] Framebuffer: none (will use ramfb)\n");
     }
 
@@ -391,8 +344,7 @@ void dump()
     serial::put_dec(g_boot_info.memory_region_count);
     serial::puts("\n");
 
-    for (u32 i = 0; i < g_boot_info.memory_region_count; i++)
-    {
+    for (u32 i = 0; i < g_boot_info.memory_region_count; i++) {
         const auto &region = g_boot_info.memory_regions[i];
         serial::puts("  [");
         serial::put_dec(i);
@@ -404,8 +356,7 @@ void dump()
         serial::put_dec(static_cast<i64>(region.size / (1024 * 1024)));
         serial::puts(" MB) ");
 
-        switch (region.type)
-        {
+        switch (region.type) {
             case MemoryType::Usable:
                 serial::puts("usable");
                 break;

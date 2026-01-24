@@ -92,7 +92,6 @@ extern int __viper_consoled_trygetchar(void);
 #define SYS_GETCHAR 0xF1
 #define SYS_TTY_WRITE 0x121
 
-
 /**
  * @brief Read data from a file descriptor.
  *
@@ -120,34 +119,28 @@ extern int __viper_consoled_trygetchar(void);
  * when it receives keyboard events. This blocking call uses tty_read()
  * which sleeps until a character is available.
  */
-static int stdin_getchar_blocking(void)
-{
+static int stdin_getchar_blocking(void) {
     /* Use kernel TTY buffer - blocking read */
     return __viper_consoled_getchar();
 }
 
-ssize_t read(int fd, void *buf, size_t count)
-{
+ssize_t read(int fd, void *buf, size_t count) {
     if (count == 0)
         return 0;
 
     /* stdin: implement minimal TTY line discipline in libc using termios. */
-    if (fd == STDIN_FILENO)
-    {
+    if (fd == STDIN_FILENO) {
         static char line_buf[1024];
         static size_t line_len = 0;
         static size_t line_pos = 0;
 
         struct termios t;
-        if (tcgetattr(STDIN_FILENO, &t) != 0)
-        {
+        if (tcgetattr(STDIN_FILENO, &t) != 0) {
             /* No termios - just read raw from consoled or kernel */
-            if (__viper_consoled_input_available())
-            {
+            if (__viper_consoled_input_available()) {
                 unsigned char *out = (unsigned char *)buf;
                 size_t nread = 0;
-                while (nread < count)
-                {
+                while (nread < count) {
                     int c = __viper_consoled_getchar();
                     if (c < 0)
                         break;
@@ -167,18 +160,14 @@ ssize_t read(int fd, void *buf, size_t count)
         const unsigned char v_kill = t.c_cc[VKILL];
 
         /* If canonical mode, fill a cooked line buffer (supports erase/kill + echo). */
-        if (is_canon)
-        {
-            if (line_pos >= line_len)
-            {
+        if (is_canon) {
+            if (line_pos >= line_len) {
                 line_len = 0;
                 line_pos = 0;
 
-                while (line_len < sizeof(line_buf) - 1)
-                {
+                while (line_len < sizeof(line_buf) - 1) {
                     int ch = stdin_getchar_blocking();
-                    if (ch < 0)
-                    {
+                    if (ch < 0) {
                         if (line_len == 0)
                             return 0;
                         break;
@@ -188,22 +177,17 @@ ssize_t read(int fd, void *buf, size_t count)
                     if (map_crnl && c == '\r')
                         c = '\n';
 
-                    if (c == v_eof)
-                    {
-                        if (line_len == 0)
-                        {
+                    if (c == v_eof) {
+                        if (line_len == 0) {
                             return 0;
                         }
                         break;
                     }
 
-                    if (c == v_erase || c == '\b')
-                    {
-                        if (line_len > 0)
-                        {
+                    if (c == v_erase || c == '\b') {
+                        if (line_len > 0) {
                             line_len--;
-                            if (do_echo)
-                            {
+                            if (do_echo) {
                                 const char bs[] = {'\b', ' ', '\b'};
                                 (void)__syscall3(SYS_WRITE, STDOUT_FILENO, (long)bs, 3);
                             }
@@ -211,29 +195,22 @@ ssize_t read(int fd, void *buf, size_t count)
                         continue;
                     }
 
-                    if (c == v_kill)
-                    {
-                        if (do_echo)
-                        {
-                            while (line_len > 0)
-                            {
+                    if (c == v_kill) {
+                        if (do_echo) {
+                            while (line_len > 0) {
                                 line_len--;
                                 const char bs[] = {'\b', ' ', '\b'};
                                 (void)__syscall3(SYS_WRITE, STDOUT_FILENO, (long)bs, 3);
                             }
-                        }
-                        else
-                        {
+                        } else {
                             line_len = 0;
                         }
                         continue;
                     }
 
-                    if (c == '\n')
-                    {
+                    if (c == '\n') {
                         line_buf[line_len++] = (char)c;
-                        if (do_echo)
-                        {
+                        if (do_echo) {
                             const char nl[] = {'\r', '\n'};
                             (void)__syscall3(SYS_WRITE, STDOUT_FILENO, (long)nl, 2);
                         }
@@ -241,8 +218,7 @@ ssize_t read(int fd, void *buf, size_t count)
                     }
 
                     line_buf[line_len++] = (char)c;
-                    if (do_echo)
-                    {
+                    if (do_echo) {
                         (void)__syscall3(SYS_WRITE, STDOUT_FILENO, (long)&c, 1);
                     }
                 }
@@ -251,8 +227,7 @@ ssize_t read(int fd, void *buf, size_t count)
             size_t avail = line_len - line_pos;
             size_t to_copy = (count < avail) ? count : avail;
             char *out = (char *)buf;
-            for (size_t i = 0; i < to_copy; i++)
-            {
+            for (size_t i = 0; i < to_copy; i++) {
                 out[i] = line_buf[line_pos + i];
             }
             line_pos += to_copy;
@@ -260,14 +235,12 @@ ssize_t read(int fd, void *buf, size_t count)
         }
 
         /* Non-canonical mode: return available bytes immediately if VMIN==0. */
-        if (t.c_cc[VMIN] == 0)
-        {
+        if (t.c_cc[VMIN] == 0) {
             unsigned char *out = (unsigned char *)buf;
             size_t nread = 0;
 
             /* If VTIME is non-zero, block until at least 1 byte arrives (ignore timeout). */
-            if (t.c_cc[VTIME] != 0 && nread < count)
-            {
+            if (t.c_cc[VTIME] != 0 && nread < count) {
                 int ch = stdin_getchar_blocking();
                 if (ch < 0)
                     return 0;
@@ -275,8 +248,7 @@ ssize_t read(int fd, void *buf, size_t count)
                 if (map_crnl && c == '\r')
                     c = '\n';
                 out[nread++] = c;
-                if (do_echo)
-                {
+                if (do_echo) {
                     (void)__syscall3(SYS_WRITE, STDOUT_FILENO, (long)&c, 1);
                 }
             }
@@ -284,21 +256,15 @@ ssize_t read(int fd, void *buf, size_t count)
             /* Try to get more chars non-blocking.
              * IMPORTANT: Only fall back to kernel if consoled is NOT in use.
              * If consoled is active, kernel's buffer has stale/duplicate input. */
-            while (nread < count)
-            {
+            while (nread < count) {
                 int ch;
-                if (__viper_consoled_input_available())
-                {
+                if (__viper_consoled_input_available()) {
                     ch = __viper_consoled_trygetchar();
-                }
-                else if (!__viper_consoled_is_available())
-                {
+                } else if (!__viper_consoled_is_available()) {
                     /* No consoled at all - use kernel (serial/pre-GUI mode) */
                     long rc = __syscall0(SYS_GETCHAR);
                     ch = (rc >= 0) ? (int)rc : -1;
-                }
-                else
-                {
+                } else {
                     /* Consoled is active but input not ready - don't use kernel */
                     ch = -1;
                 }
@@ -310,16 +276,13 @@ ssize_t read(int fd, void *buf, size_t count)
                     c = '\n';
                 out[nread++] = c;
 
-                if (do_echo)
-                {
+                if (do_echo) {
                     (void)__syscall3(SYS_WRITE, STDOUT_FILENO, (long)&c, 1);
                 }
             }
 
             return (ssize_t)nread;
-        }
-        else
-        {
+        } else {
             /* Non-canonical mode with VMIN > 0: block until at least VMIN bytes.
              * Route through consoled if available to avoid reading stale input
              * from the kernel's shared console buffer. */
@@ -330,11 +293,9 @@ ssize_t read(int fd, void *buf, size_t count)
             /* Block until we have at least VMIN bytes (or count, whichever is less) */
             size_t min_read = (vmin < count) ? vmin : count;
 
-            while (nread < min_read)
-            {
+            while (nread < min_read) {
                 int ch = stdin_getchar_blocking();
-                if (ch < 0)
-                {
+                if (ch < 0) {
                     if (nread > 0)
                         break;
                     continue; /* Keep blocking for first char */
@@ -343,8 +304,7 @@ ssize_t read(int fd, void *buf, size_t count)
                 if (map_crnl && c == '\r')
                     c = '\n';
                 out[nread++] = c;
-                if (do_echo)
-                {
+                if (do_echo) {
                     (void)__syscall3(SYS_WRITE, STDOUT_FILENO, (long)&c, 1);
                 }
             }
@@ -352,21 +312,15 @@ ssize_t read(int fd, void *buf, size_t count)
             /* Try to read more up to count (non-blocking).
              * IMPORTANT: Only fall back to kernel if consoled is NOT in use.
              * If consoled is active, kernel's buffer has stale/duplicate input. */
-            while (nread < count)
-            {
+            while (nread < count) {
                 int ch;
-                if (__viper_consoled_input_available())
-                {
+                if (__viper_consoled_input_available()) {
                     ch = __viper_consoled_trygetchar();
-                }
-                else if (!__viper_consoled_is_available())
-                {
+                } else if (!__viper_consoled_is_available()) {
                     /* No consoled at all - use kernel (serial/pre-GUI mode) */
                     long rc = __syscall0(SYS_GETCHAR);
                     ch = (rc >= 0) ? (int)rc : -1;
-                }
-                else
-                {
+                } else {
                     /* Consoled is active but input not ready - don't use kernel */
                     ch = -1;
                 }
@@ -377,8 +331,7 @@ ssize_t read(int fd, void *buf, size_t count)
                 if (map_crnl && c == '\r')
                     c = '\n';
                 out[nread++] = c;
-                if (do_echo)
-                {
+                if (do_echo) {
                     (void)__syscall3(SYS_WRITE, STDOUT_FILENO, (long)&c, 1);
                 }
             }
@@ -387,8 +340,7 @@ ssize_t read(int fd, void *buf, size_t count)
         }
     }
 
-    if (__viper_fsd_is_fd(fd))
-    {
+    if (__viper_fsd_is_fd(fd)) {
         return __viper_fsd_read(fd, buf, count);
     }
 
@@ -410,19 +362,15 @@ ssize_t read(int fd, void *buf, size_t count)
  * @param count Number of bytes to write.
  * @return Number of bytes written, or -1 on error.
  */
-ssize_t write(int fd, const void *buf, size_t count)
-{
-    if (__viper_fsd_is_fd(fd))
-    {
+ssize_t write(int fd, const void *buf, size_t count) {
+    if (__viper_fsd_is_fd(fd)) {
         return __viper_fsd_write(fd, buf, count);
     }
 
     /* For stdout/stderr, route through consoled for GUI display.
      * If consoled is not available, fall back to kernel TTY. */
-    if (fd == STDOUT_FILENO || fd == STDERR_FILENO)
-    {
-        if (__viper_consoled_is_available())
-        {
+    if (fd == STDOUT_FILENO || fd == STDERR_FILENO) {
+        if (__viper_consoled_is_available()) {
             return __viper_consoled_write(buf, count);
         }
         /* Fallback to kernel TTY if consoled not available */
@@ -442,14 +390,11 @@ ssize_t write(int fd, const void *buf, size_t count)
  * @param fd File descriptor to close.
  * @return 0 on success, -1 on error.
  */
-int close(int fd)
-{
-    if (__viper_fsd_is_fd(fd))
-    {
+int close(int fd) {
+    if (__viper_fsd_is_fd(fd)) {
         return __viper_fsd_close(fd);
     }
-    if (__viper_socket_is_fd(fd))
-    {
+    if (__viper_socket_is_fd(fd)) {
         return __viper_socket_close(fd);
     }
     return (int)__syscall1(SYS_CLOSE, fd);
@@ -470,10 +415,8 @@ int close(int fd)
  * @param whence How to interpret offset (SEEK_SET, SEEK_CUR, SEEK_END).
  * @return New file offset, or -1 on error.
  */
-long lseek(int fd, long offset, int whence)
-{
-    if (__viper_fsd_is_fd(fd))
-    {
+long lseek(int fd, long offset, int whence) {
+    if (__viper_fsd_is_fd(fd)) {
         return __viper_fsd_lseek(fd, offset, whence);
     }
     return __syscall3(SYS_LSEEK, fd, offset, whence);
@@ -489,14 +432,11 @@ long lseek(int fd, long offset, int whence)
  * @param oldfd File descriptor to duplicate.
  * @return New file descriptor, or -1 on error.
  */
-int dup(int oldfd)
-{
-    if (__viper_fsd_is_fd(oldfd))
-    {
+int dup(int oldfd) {
+    if (__viper_fsd_is_fd(oldfd)) {
         return __viper_fsd_dup(oldfd);
     }
-    if (__viper_socket_is_fd(oldfd))
-    {
+    if (__viper_socket_is_fd(oldfd)) {
         return __viper_socket_dup(oldfd);
     }
     return (int)__syscall1(SYS_DUP, oldfd);
@@ -514,22 +454,17 @@ int dup(int oldfd)
  * @param newfd Desired new file descriptor number.
  * @return newfd on success, or -1 on error.
  */
-int dup2(int oldfd, int newfd)
-{
-    if (__viper_fsd_is_fd(oldfd))
-    {
+int dup2(int oldfd, int newfd) {
+    if (__viper_fsd_is_fd(oldfd)) {
         return __viper_fsd_dup2(oldfd, newfd);
     }
-    if (__viper_socket_is_fd(oldfd))
-    {
+    if (__viper_socket_is_fd(oldfd)) {
         return __viper_socket_dup2(oldfd, newfd);
     }
-    if (__viper_fsd_is_fd(newfd))
-    {
+    if (__viper_fsd_is_fd(newfd)) {
         return -7; /* VERR_NOT_SUPPORTED */
     }
-    if (__viper_socket_is_fd(newfd))
-    {
+    if (__viper_socket_is_fd(newfd)) {
         return -7; /* VERR_NOT_SUPPORTED */
     }
     return (int)__syscall2(SYS_DUP2, oldfd, newfd);
@@ -545,11 +480,9 @@ int dup2(int oldfd, int newfd)
  * @param increment Number of bytes to add (or subtract if negative).
  * @return Previous program break on success, (void*)-1 on failure.
  */
-void *sbrk(long increment)
-{
+void *sbrk(long increment) {
     long result = __syscall1(SYS_SBRK, increment);
-    if (result < 0)
-    {
+    if (result < 0) {
         return (void *)-1;
     }
     return (void *)result;
@@ -565,8 +498,7 @@ void *sbrk(long increment)
  * @param seconds Number of seconds to sleep.
  * @return 0 if sleep completed, or remaining seconds if interrupted.
  */
-unsigned int sleep(unsigned int seconds)
-{
+unsigned int sleep(unsigned int seconds) {
     __syscall1(SYS_SLEEP, seconds * 1000);
     return 0;
 }
@@ -581,8 +513,7 @@ unsigned int sleep(unsigned int seconds)
  * @param usec Number of microseconds to sleep.
  * @return 0 on success, -1 on error.
  */
-int usleep(useconds_t usec)
-{
+int usleep(useconds_t usec) {
     /* Convert microseconds to milliseconds (rounded up) */
     unsigned long ms = (usec + 999) / 1000;
     if (ms == 0 && usec > 0)
@@ -600,8 +531,7 @@ int usleep(useconds_t usec)
  *
  * @return Process ID of the calling process.
  */
-pid_t getpid(void)
-{
+pid_t getpid(void) {
     return (pid_t)__syscall1(SYS_TASK_CURRENT, 0);
 }
 
@@ -614,8 +544,7 @@ pid_t getpid(void)
  *
  * @return Parent process ID (always 1 in current implementation).
  */
-pid_t getppid(void)
-{
+pid_t getppid(void) {
     /* ViperDOS doesn't track parent process yet, return 1 (init) */
     return 1;
 }
@@ -631,22 +560,18 @@ pid_t getppid(void)
  * @param size Size of the buffer in bytes.
  * @return buf on success, NULL on error.
  */
-char *getcwd(char *buf, size_t size)
-{
+char *getcwd(char *buf, size_t size) {
     /* Try fsd first if available */
-    if (__viper_fsd_is_available())
-    {
+    if (__viper_fsd_is_available()) {
         int result = __viper_fsd_getcwd(buf, size);
-        if (result >= 0)
-        {
+        if (result >= 0) {
             return buf;
         }
     }
 
     /* Fall back to kernel syscall */
     long result = __syscall2(SYS_GETCWD, (long)buf, (long)size);
-    if (result < 0)
-    {
+    if (result < 0) {
         return (char *)0;
     }
     return buf;
@@ -663,24 +588,20 @@ char *getcwd(char *buf, size_t size)
  * @param path Path to the new working directory.
  * @return 0 on success, -1 on error.
  */
-int chdir(const char *path)
-{
+int chdir(const char *path) {
     if (!path)
         return -1;
 
     /* Check if this is a /sys path (kernel VFS) */
     if (path[0] == '/' && path[1] == 's' && path[2] == 'y' && path[3] == 's' &&
-        (path[4] == '\0' || path[4] == '/'))
-    {
+        (path[4] == '\0' || path[4] == '/')) {
         return (int)__syscall1(SYS_CHDIR, (long)path);
     }
 
     /* Try fsd for user paths */
-    if (__viper_fsd_is_available())
-    {
+    if (__viper_fsd_is_available()) {
         int result = __viper_fsd_chdir(path);
-        if (result == 0)
-        {
+        if (result == 0) {
             return 0;
         }
         return -1;
@@ -700,8 +621,7 @@ int chdir(const char *path)
  * @param fd File descriptor to test.
  * @return 1 if terminal, 0 otherwise.
  */
-int isatty(int fd)
-{
+int isatty(int fd) {
     /* stdin, stdout, stderr are terminals */
     return (fd >= 0 && fd <= 2) ? 1 : 0;
 }
@@ -718,10 +638,8 @@ int isatty(int fd)
  * @param name Configuration option name.
  * @return Configuration value, or -1 if unsupported.
  */
-long sysconf(int name)
-{
-    switch (name)
-    {
+long sysconf(int name) {
+    switch (name) {
         case _SC_CLK_TCK:
             return 1000; /* 1000 ticks per second (millisecond resolution) */
         case _SC_PAGESIZE:
@@ -758,8 +676,7 @@ long sysconf(int name)
  * @param mode Access mode (F_OK, R_OK, W_OK, X_OK - currently ignored).
  * @return 0 if accessible, -1 if not.
  */
-int access(const char *pathname, int mode)
-{
+int access(const char *pathname, int mode) {
     /* Simple implementation: check if file exists by trying to stat it */
     /* ViperDOS doesn't have full permission model yet */
     (void)mode;
@@ -777,14 +694,11 @@ int access(const char *pathname, int mode)
  * @param pathname Path to the file to delete.
  * @return 0 on success, -1 on error.
  */
-int unlink(const char *pathname)
-{
-    if (__viper_fsd_is_available())
-    {
+int unlink(const char *pathname) {
+    if (__viper_fsd_is_available()) {
         char fsd_path[201];
         int route = __viper_fsd_prepare_path(pathname, fsd_path, sizeof(fsd_path));
-        if (route > 0)
-        {
+        if (route > 0) {
             return __viper_fsd_unlink(fsd_path);
         }
     }
@@ -801,14 +715,11 @@ int unlink(const char *pathname)
  * @param pathname Path to the directory to delete.
  * @return 0 on success, -1 on error.
  */
-int rmdir(const char *pathname)
-{
-    if (__viper_fsd_is_available())
-    {
+int rmdir(const char *pathname) {
+    if (__viper_fsd_is_available()) {
         char fsd_path[201];
         int route = __viper_fsd_prepare_path(pathname, fsd_path, sizeof(fsd_path));
-        if (route > 0)
-        {
+        if (route > 0) {
             return __viper_fsd_rmdir(fsd_path);
         }
     }
@@ -826,8 +737,7 @@ int rmdir(const char *pathname)
  * @param newpath New name for the link.
  * @return -1 (ENOSYS - not implemented).
  */
-int link(const char *oldpath, const char *newpath)
-{
+int link(const char *oldpath, const char *newpath) {
     /* Hard links not implemented yet */
     (void)oldpath;
     (void)newpath;
@@ -845,19 +755,16 @@ int link(const char *oldpath, const char *newpath)
  * @param newpath New pathname for the file.
  * @return 0 on success, -1 on error.
  */
-int rename(const char *oldpath, const char *newpath)
-{
+int rename(const char *oldpath, const char *newpath) {
     if (!oldpath || !newpath)
         return -1;
 
-    if (__viper_fsd_is_available())
-    {
+    if (__viper_fsd_is_available()) {
         char old_fsd[201];
         char new_fsd[201];
         int r0 = __viper_fsd_prepare_path(oldpath, old_fsd, sizeof(old_fsd));
         int r1 = __viper_fsd_prepare_path(newpath, new_fsd, sizeof(new_fsd));
-        if (r0 > 0 && r1 > 0)
-        {
+        if (r0 > 0 && r1 > 0) {
             return __viper_fsd_rename(old_fsd, new_fsd);
         }
     }
@@ -875,8 +782,7 @@ int rename(const char *oldpath, const char *newpath)
  * @param linkpath The path where the symlink will be created.
  * @return 0 on success, -1 on error.
  */
-int symlink(const char *target, const char *linkpath)
-{
+int symlink(const char *target, const char *linkpath) {
     return (int)__syscall2(SYS_SYMLINK, (long)target, (long)linkpath);
 }
 
@@ -892,8 +798,7 @@ int symlink(const char *target, const char *linkpath)
  * @param bufsiz Size of the buffer.
  * @return Number of bytes placed in buf, or -1 on error.
  */
-ssize_t readlink(const char *pathname, char *buf, size_t bufsiz)
-{
+ssize_t readlink(const char *pathname, char *buf, size_t bufsiz) {
     return __syscall3(SYS_READLINK, (long)pathname, (long)buf, (long)bufsiz);
 }
 
@@ -911,14 +816,12 @@ static char hostname_buf[256] = "viperdos";
  * @param len Size of the buffer.
  * @return 0 on success, -1 on error.
  */
-int gethostname(char *name, size_t len)
-{
+int gethostname(char *name, size_t len) {
     if (!name || len == 0)
         return -1;
 
     size_t i = 0;
-    while (i < len - 1 && hostname_buf[i])
-    {
+    while (i < len - 1 && hostname_buf[i]) {
         name[i] = hostname_buf[i];
         i++;
     }
@@ -937,14 +840,12 @@ int gethostname(char *name, size_t len)
  * @param len Length of the hostname (not including null terminator).
  * @return 0 on success, -1 on error.
  */
-int sethostname(const char *name, size_t len)
-{
+int sethostname(const char *name, size_t len) {
     if (!name)
         return -1;
 
     size_t i = 0;
-    while (i < len && i < sizeof(hostname_buf) - 1 && name[i])
-    {
+    while (i < len && i < sizeof(hostname_buf) - 1 && name[i]) {
         hostname_buf[i] = name[i];
         i++;
     }
@@ -965,8 +866,7 @@ int sethostname(const char *name, size_t len)
  * @brief Get real user ID.
  * @return Real user ID (always 0 in ViperDOS).
  */
-uid_t getuid(void)
-{
+uid_t getuid(void) {
     return 0;
 }
 
@@ -974,8 +874,7 @@ uid_t getuid(void)
  * @brief Get effective user ID.
  * @return Effective user ID (always 0 in ViperDOS).
  */
-uid_t geteuid(void)
-{
+uid_t geteuid(void) {
     return 0;
 }
 
@@ -983,8 +882,7 @@ uid_t geteuid(void)
  * @brief Get real group ID.
  * @return Real group ID (always 0 in ViperDOS).
  */
-gid_t getgid(void)
-{
+gid_t getgid(void) {
     return 0;
 }
 
@@ -992,8 +890,7 @@ gid_t getgid(void)
  * @brief Get effective group ID.
  * @return Effective group ID (always 0 in ViperDOS).
  */
-gid_t getegid(void)
-{
+gid_t getegid(void) {
     return 0;
 }
 
@@ -1002,8 +899,7 @@ gid_t getegid(void)
  * @param uid User ID to set (ignored in ViperDOS).
  * @return 0 (always succeeds in single-user system).
  */
-int setuid(uid_t uid)
-{
+int setuid(uid_t uid) {
     (void)uid;
     return 0; /* Always succeeds in single-user system */
 }
@@ -1013,8 +909,7 @@ int setuid(uid_t uid)
  * @param gid Group ID to set (ignored in ViperDOS).
  * @return 0 (always succeeds in single-user system).
  */
-int setgid(gid_t gid)
-{
+int setgid(gid_t gid) {
     (void)gid;
     return 0;
 }
@@ -1031,8 +926,7 @@ int setgid(gid_t gid)
  * @brief Get process group ID of calling process.
  * @return Process group ID.
  */
-pid_t getpgrp(void)
-{
+pid_t getpgrp(void) {
     return (pid_t)__syscall1(SYS_GETPGID, 0);
 }
 
@@ -1043,8 +937,7 @@ pid_t getpgrp(void)
  * @param pgid Process group ID to join (0 means use pid as pgid).
  * @return 0 on success, -1 on error.
  */
-int setpgid(pid_t pid, pid_t pgid)
-{
+int setpgid(pid_t pid, pid_t pgid) {
     return (int)__syscall2(SYS_SETPGID, pid, pgid);
 }
 
@@ -1057,8 +950,7 @@ int setpgid(pid_t pid, pid_t pgid)
  *
  * @return Session ID of the new session, or -1 on error.
  */
-pid_t setsid(void)
-{
+pid_t setsid(void) {
     return (pid_t)__syscall1(SYS_SETSID, 0);
 }
 
@@ -1073,8 +965,7 @@ pid_t setsid(void)
  * @param pipefd Array to receive the two file descriptors.
  * @return -1 (ENOSYS - not implemented).
  */
-int pipe(int pipefd[2])
-{
+int pipe(int pipefd[2]) {
     (void)pipefd;
     return -1; /* ENOSYS */
 }
@@ -1092,8 +983,7 @@ int pipe(int pipefd[2])
  * @param argv Argument vector (null-terminated).
  * @return -1 (ENOSYS - not implemented).
  */
-int execv(const char *pathname, char *const argv[])
-{
+int execv(const char *pathname, char *const argv[]) {
     (void)pathname;
     (void)argv;
     return -1; /* ENOSYS */
@@ -1107,8 +997,7 @@ int execv(const char *pathname, char *const argv[])
  * @param envp Environment vector (null-terminated).
  * @return -1 (ENOSYS - not implemented).
  */
-int execve(const char *pathname, char *const argv[], char *const envp[])
-{
+int execve(const char *pathname, char *const argv[], char *const envp[]) {
     (void)pathname;
     (void)argv;
     (void)envp;
@@ -1122,8 +1011,7 @@ int execve(const char *pathname, char *const argv[], char *const envp[])
  * @param argv Argument vector (null-terminated).
  * @return -1 (ENOSYS - not implemented).
  */
-int execvp(const char *file, char *const argv[])
-{
+int execvp(const char *file, char *const argv[]) {
     (void)file;
     (void)argv;
     return -1; /* ENOSYS */
@@ -1139,8 +1027,7 @@ int execvp(const char *file, char *const argv[])
  *
  * @return In parent: child's PID. In child: 0. On error: -1.
  */
-pid_t fork(void)
-{
+pid_t fork(void) {
     return (pid_t)__syscall1(SYS_FORK, 0);
 }
 
@@ -1151,8 +1038,7 @@ pid_t fork(void)
  * @param length New length in bytes.
  * @return -1 (ENOSYS - not implemented).
  */
-int truncate(const char *path, long length)
-{
+int truncate(const char *path, long length) {
     (void)path;
     (void)length;
     return -1; /* ENOSYS */
@@ -1165,8 +1051,7 @@ int truncate(const char *path, long length)
  * @param length New length in bytes.
  * @return -1 (ENOSYS - not implemented).
  */
-int ftruncate(int fd, long length)
-{
+int ftruncate(int fd, long length) {
     (void)fd;
     (void)length;
     return -1; /* ENOSYS */
@@ -1188,17 +1073,14 @@ extern int __viper_fsd_fsync(int fd);
  * @param fd File descriptor of an open file.
  * @return 0 on success, -1 on error.
  */
-int fsync(int fd)
-{
+int fsync(int fd) {
     /* Route fsd-managed file descriptors through the fsd backend */
-    if (__viper_fsd_is_fd(fd))
-    {
+    if (__viper_fsd_is_fd(fd)) {
         return __viper_fsd_fsync(fd);
     }
     /* For kernel-managed FDs, use the fsync syscall */
     long ret = __syscall1(SYS_FSYNC, fd);
-    if (ret < 0)
-    {
+    if (ret < 0) {
         return -1;
     }
     return 0;
@@ -1211,8 +1093,7 @@ int fsync(int fd)
  * @param name Configuration variable name.
  * @return -1 (ENOSYS - not implemented).
  */
-long pathconf(const char *path, int name)
-{
+long pathconf(const char *path, int name) {
     (void)path;
     (void)name;
     return -1; /* ENOSYS */
@@ -1225,8 +1106,7 @@ long pathconf(const char *path, int name)
  * @param name Configuration variable name.
  * @return -1 (ENOSYS - not implemented).
  */
-long fpathconf(int fd, int name)
-{
+long fpathconf(int fd, int name) {
     (void)fd;
     (void)name;
     return -1; /* ENOSYS */
@@ -1241,8 +1121,7 @@ long fpathconf(int fd, int name)
  * @param seconds Seconds until alarm (0 cancels pending alarm).
  * @return Time remaining from previous alarm (always 0).
  */
-unsigned int alarm(unsigned int seconds)
-{
+unsigned int alarm(unsigned int seconds) {
     (void)seconds;
     return 0; /* Not implemented */
 }
@@ -1255,8 +1134,7 @@ unsigned int alarm(unsigned int seconds)
  *
  * @return -1 (always, when interrupted by signal).
  */
-int pause(void)
-{
+int pause(void) {
     /* Block forever - in practice would wait for signal */
     __syscall1(SYS_SLEEP, 0x7FFFFFFF);
     return -1;

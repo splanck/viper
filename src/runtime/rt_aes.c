@@ -64,8 +64,7 @@ static const uint8_t sbox[256] = {
     0xba, 0x78, 0x25, 0x2e, 0x1c, 0xa6, 0xb4, 0xc6, 0xe8, 0xdd, 0x74, 0x1f, 0x4b, 0xbd, 0x8b, 0x8a,
     0x70, 0x3e, 0xb5, 0x66, 0x48, 0x03, 0xf6, 0x0e, 0x61, 0x35, 0x57, 0xb9, 0x86, 0xc1, 0x1d, 0x9e,
     0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf,
-    0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
-};
+    0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16};
 
 /// Inverse S-box substitution table
 static const uint8_t inv_sbox[256] = {
@@ -84,13 +83,10 @@ static const uint8_t inv_sbox[256] = {
     0x1f, 0xdd, 0xa8, 0x33, 0x88, 0x07, 0xc7, 0x31, 0xb1, 0x12, 0x10, 0x59, 0x27, 0x80, 0xec, 0x5f,
     0x60, 0x51, 0x7f, 0xa9, 0x19, 0xb5, 0x4a, 0x0d, 0x2d, 0xe5, 0x7a, 0x9f, 0x93, 0xc9, 0x9c, 0xef,
     0xa0, 0xe0, 0x3b, 0x4d, 0xae, 0x2a, 0xf5, 0xb0, 0xc8, 0xeb, 0xbb, 0x3c, 0x83, 0x53, 0x99, 0x61,
-    0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d
-};
+    0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d};
 
 /// Round constants for key expansion
-static const uint8_t rcon[11] = {
-    0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36
-};
+static const uint8_t rcon[11] = {0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36};
 
 //=============================================================================
 // AES Helper Functions
@@ -114,7 +110,7 @@ static inline uint8_t gf_mul(uint8_t a, uint8_t b)
         hi_bit = a & 0x80;
         a <<= 1;
         if (hi_bit)
-            a ^= 0x1b;  // Reduction polynomial
+            a ^= 0x1b; // Reduction polynomial
         b >>= 1;
     }
     return result;
@@ -133,14 +129,11 @@ static const uint32_t sha256_k[64] = {
     0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
     0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
     0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
-};
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
 
 /// SHA-256 initial hash values
 static const uint32_t sha256_h0[8] = {
-    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
-    0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
-};
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
 
 #define SHA256_ROTR(x, n) (((x) >> (n)) | ((x) << (32 - (n))))
 #define SHA256_CH(x, y, z) (((x) & (y)) ^ (~(x) & (z)))
@@ -163,7 +156,8 @@ static void local_sha256(const uint8_t *data, size_t len, uint8_t hash[32])
     // Pre-processing: adding padding bits
     size_t padded_len = ((len + 8) / 64 + 1) * 64;
     uint8_t *padded = (uint8_t *)calloc(padded_len, 1);
-    if (!padded) return;
+    if (!padded)
+        return;
 
     memcpy(padded, data, len);
     padded[len] = 0x80;
@@ -206,13 +200,25 @@ static void local_sha256(const uint8_t *data, size_t len, uint8_t hash[32])
         {
             uint32_t t1 = hh + SHA256_EP1(e) + SHA256_CH(e, f, g) + sha256_k[i] + w[i];
             uint32_t t2 = SHA256_EP0(a) + SHA256_MAJ(a, b, c);
-            hh = g; g = f; f = e; e = d + t1;
-            d = c; c = b; b = a; a = t1 + t2;
+            hh = g;
+            g = f;
+            f = e;
+            e = d + t1;
+            d = c;
+            c = b;
+            b = a;
+            a = t1 + t2;
         }
 
         // Add compressed chunk to current hash value
-        h[0] += a; h[1] += b; h[2] += c; h[3] += d;
-        h[4] += e; h[5] += f; h[6] += g; h[7] += hh;
+        h[0] += a;
+        h[1] += b;
+        h[2] += c;
+        h[3] += d;
+        h[4] += e;
+        h[5] += f;
+        h[6] += g;
+        h[7] += hh;
     }
 
     free(padded);
@@ -238,7 +244,7 @@ static void local_sha256(const uint8_t *data, size_t len, uint8_t hash[32])
 /// @param nr Number of rounds (10 for AES-128, 14 for AES-256)
 static void aes_key_expansion(const uint8_t *key, uint8_t *w, int nk, int nr)
 {
-    int nb = 4;  // Number of columns (always 4 for AES)
+    int nb = 4; // Number of columns (always 4 for AES)
     int i = 0;
 
     // First nk words are the original key
@@ -527,9 +533,13 @@ static int pkcs7_unpad(const uint8_t *data, size_t len, size_t *out_len)
 /// @param nr Number of rounds (10 for AES-128, 14 for AES-256)
 /// @param out_len Output: length of ciphertext
 /// @return Newly allocated ciphertext
-static uint8_t *aes_cbc_encrypt(const uint8_t *plaintext, size_t len,
-                                 const uint8_t *key, const uint8_t *iv,
-                                 int nk, int nr, size_t *out_len)
+static uint8_t *aes_cbc_encrypt(const uint8_t *plaintext,
+                                size_t len,
+                                const uint8_t *key,
+                                const uint8_t *iv,
+                                int nk,
+                                int nr,
+                                size_t *out_len)
 {
     // Expand key
     size_t w_size = (size_t)(16 * (nr + 1));
@@ -585,9 +595,13 @@ static uint8_t *aes_cbc_encrypt(const uint8_t *plaintext, size_t len,
 /// @param nr Number of rounds (10 for AES-128, 14 for AES-256)
 /// @param out_len Output: length of plaintext
 /// @return Newly allocated plaintext, or NULL on error
-static uint8_t *aes_cbc_decrypt(const uint8_t *ciphertext, size_t len,
-                                 const uint8_t *key, const uint8_t *iv,
-                                 int nk, int nr, size_t *out_len)
+static uint8_t *aes_cbc_decrypt(const uint8_t *ciphertext,
+                                size_t len,
+                                const uint8_t *key,
+                                const uint8_t *iv,
+                                int nk,
+                                int nr,
+                                size_t *out_len)
 {
     if (len == 0 || len % AES_BLOCK_SIZE != 0)
         return NULL;
@@ -633,7 +647,7 @@ static uint8_t *aes_cbc_decrypt(const uint8_t *ciphertext, size_t len,
     if (pkcs7_unpad(plaintext, len, &unpadded_len) != 0)
     {
         free(plaintext);
-        return NULL;  // Invalid padding
+        return NULL; // Invalid padding
     }
 
     *out_len = unpadded_len;
@@ -674,9 +688,12 @@ void *rt_aes_encrypt(void *data, void *key, void *iv)
     }
     else
     {
-        if (data_raw) free(data_raw);
-        if (key_raw) free(key_raw);
-        if (iv_raw) free(iv_raw);
+        if (data_raw)
+            free(data_raw);
+        if (key_raw)
+            free(key_raw);
+        if (iv_raw)
+            free(iv_raw);
         rt_trap("AES: key must be 16 bytes (AES-128) or 32 bytes (AES-256)");
         return NULL;
     }
@@ -684,9 +701,12 @@ void *rt_aes_encrypt(void *data, void *key, void *iv)
     // Validate IV length
     if (iv_len != AES_BLOCK_SIZE)
     {
-        if (data_raw) free(data_raw);
-        if (key_raw) free(key_raw);
-        if (iv_raw) free(iv_raw);
+        if (data_raw)
+            free(data_raw);
+        if (key_raw)
+            free(key_raw);
+        if (iv_raw)
+            free(iv_raw);
         rt_trap("AES: IV must be exactly 16 bytes");
         return NULL;
     }
@@ -745,9 +765,12 @@ void *rt_aes_decrypt(void *data, void *key, void *iv)
     }
     else
     {
-        if (data_raw) free(data_raw);
-        if (key_raw) free(key_raw);
-        if (iv_raw) free(iv_raw);
+        if (data_raw)
+            free(data_raw);
+        if (key_raw)
+            free(key_raw);
+        if (iv_raw)
+            free(iv_raw);
         rt_trap("AES: key must be 16 bytes (AES-128) or 32 bytes (AES-256)");
         return NULL;
     }
@@ -755,9 +778,12 @@ void *rt_aes_decrypt(void *data, void *key, void *iv)
     // Validate IV length
     if (iv_len != AES_BLOCK_SIZE)
     {
-        if (data_raw) free(data_raw);
-        if (key_raw) free(key_raw);
-        if (iv_raw) free(iv_raw);
+        if (data_raw)
+            free(data_raw);
+        if (key_raw)
+            free(key_raw);
+        if (iv_raw)
+            free(iv_raw);
         rt_trap("AES: IV must be exactly 16 bytes");
         return NULL;
     }
@@ -766,7 +792,8 @@ void *rt_aes_decrypt(void *data, void *key, void *iv)
     size_t plain_len;
     uint8_t *plain = aes_cbc_decrypt(data_raw, data_len, key_raw, iv_raw, nk, nr, &plain_len);
 
-    if (data_raw) free(data_raw);
+    if (data_raw)
+        free(data_raw);
     free(key_raw);
     free(iv_raw);
 
@@ -830,8 +857,10 @@ void *rt_aes_encrypt_str(rt_string data, rt_string password)
     const char *data_cstr = rt_string_cstr(data);
     const char *pass_cstr = rt_string_cstr(password);
 
-    if (!data_cstr) data_cstr = "";
-    if (!pass_cstr) pass_cstr = "";
+    if (!data_cstr)
+        data_cstr = "";
+    if (!pass_cstr)
+        pass_cstr = "";
 
     // Derive key from password
     uint8_t key[32];
@@ -844,8 +873,8 @@ void *rt_aes_encrypt_str(rt_string data, rt_string password)
     // Encrypt
     size_t plain_len = strlen(data_cstr);
     size_t cipher_len;
-    uint8_t *cipher = aes_cbc_encrypt((const uint8_t *)data_cstr, plain_len,
-                                       key, iv, 8, 14, &cipher_len);
+    uint8_t *cipher =
+        aes_cbc_encrypt((const uint8_t *)data_cstr, plain_len, key, iv, 8, 14, &cipher_len);
 
     // Create output: IV + ciphertext
     size_t total_len = 16 + cipher_len;
@@ -874,7 +903,8 @@ void *rt_aes_encrypt_str(rt_string data, rt_string password)
 rt_string rt_aes_decrypt_str(void *data, rt_string password)
 {
     const char *pass_cstr = rt_string_cstr(password);
-    if (!pass_cstr) pass_cstr = "";
+    if (!pass_cstr)
+        pass_cstr = "";
 
     // Get data length
     int64_t total_len = rt_bytes_len(data);

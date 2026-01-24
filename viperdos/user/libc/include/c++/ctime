@@ -3,8 +3,7 @@
 
 #include "../time.h"
 
-namespace std
-{
+namespace std {
 
 /* Types */
 using ::clock_t;

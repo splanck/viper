@@ -7,16 +7,13 @@
 // Freestanding offsetof
 #define OFFSETOF(type, member) __builtin_offsetof(type, member)
 
-namespace virtio
-{
+namespace virtio {
 
-bool BlkDevice::init(u64 mmio_phys, u32 irq)
-{
+bool BlkDevice::init(u64 mmio_phys, u32 irq) {
     irq_num_ = irq;
 
     // Initialize base device (maps MMIO)
-    if (!Device::init(mmio_phys))
-    {
+    if (!Device::init(mmio_phys)) {
         return false;
     }
 
@@ -24,8 +21,7 @@ bool BlkDevice::init(u64 mmio_phys, u32 irq)
     reset();
 
     // For legacy mode, set guest page size
-    if (is_legacy())
-    {
+    if (is_legacy()) {
         write32(reg::GUEST_PAGE_SIZE, 4096);
     }
 
@@ -43,23 +39,20 @@ bool BlkDevice::init(u64 mmio_phys, u32 irq)
     readonly_ = (features & blk_features::RO) != 0;
 
     // Negotiate features
-    if (!negotiate_features(0))
-    {
+    if (!negotiate_features(0)) {
         set_status(status::FAILED);
         return false;
     }
 
     // Initialize virtqueue
-    if (!vq_.init(this, 0, 128))
-    {
+    if (!vq_.init(this, 0, 128)) {
         set_status(status::FAILED);
         return false;
     }
 
     // Allocate DMA buffer for pending requests
     device::DmaBuffer req_buf;
-    if (device::dma_alloc(PAGE_SIZE, &req_buf) != 0)
-    {
+    if (device::dma_alloc(PAGE_SIZE, &req_buf) != 0) {
         set_status(status::FAILED);
         return false;
     }
@@ -69,8 +62,7 @@ bool BlkDevice::init(u64 mmio_phys, u32 irq)
 
     // Zero request buffer
     u8 *ptr = reinterpret_cast<u8 *>(requests_virt_);
-    for (usize i = 0; i < PAGE_SIZE; i++)
-    {
+    for (usize i = 0; i < PAGE_SIZE; i++) {
         ptr[i] = 0;
     }
 
@@ -78,70 +70,57 @@ bool BlkDevice::init(u64 mmio_phys, u32 irq)
     add_status(status::DRIVER_OK);
 
     // Register for IRQ
-    if (irq_num_ != 0)
-    {
+    if (irq_num_ != 0) {
         device::irq_register(irq_num_);
     }
 
     return true;
 }
 
-void BlkDevice::destroy()
-{
-    if (irq_num_ != 0)
-    {
+void BlkDevice::destroy() {
+    if (irq_num_ != 0) {
         device::irq_unregister(irq_num_);
     }
 
     vq_.destroy();
 
-    if (requests_virt_ != 0)
-    {
+    if (requests_virt_ != 0) {
         device::dma_free(requests_virt_);
     }
 
     Device::destroy();
 }
 
-void BlkDevice::handle_interrupt()
-{
+void BlkDevice::handle_interrupt() {
     u32 isr = read_isr();
-    if (isr & 0x1)
-    {
+    if (isr & 0x1) {
         ack_interrupt(0x1);
 
         i32 completed = vq_.poll_used();
-        if (completed >= 0)
-        {
+        if (completed >= 0) {
             completed_desc_ = completed;
             io_complete_ = true;
         }
     }
-    if (isr & 0x2)
-    {
+    if (isr & 0x2) {
         ack_interrupt(0x2);
     }
 }
 
-i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf)
-{
-    if (type == blk_type::OUT && readonly_)
-    {
+i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf) {
+    if (type == blk_type::OUT && readonly_) {
         return -1;
     }
 
     // Find a free request slot
     int req_idx = -1;
-    for (usize i = 0; i < MAX_PENDING; i++)
-    {
-        if (!slots_[i].in_use)
-        {
+    for (usize i = 0; i < MAX_PENDING; i++) {
+        if (!slots_[i].in_use) {
             req_idx = i;
             break;
         }
     }
-    if (req_idx < 0)
-    {
+    if (req_idx < 0) {
         return -1;
     }
 
@@ -166,8 +145,7 @@ i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf)
     i32 desc1 = vq_.alloc_desc();
     i32 desc2 = vq_.alloc_desc();
 
-    if (desc0 < 0 || desc1 < 0 || desc2 < 0)
-    {
+    if (desc0 < 0 || desc1 < 0 || desc2 < 0) {
         if (desc0 >= 0)
             vq_.free_desc(desc0);
         if (desc1 >= 0)
@@ -188,8 +166,7 @@ i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf)
 
     // Descriptor 1: Data buffer
     u16 data_flags = desc_flags::NEXT;
-    if (type == blk_type::IN)
-    {
+    if (type == blk_type::IN) {
         data_flags |= desc_flags::WRITE;
     }
     vq_.set_desc(desc1, buf_phys, buf_len, data_flags);
@@ -215,17 +192,14 @@ i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf)
     constexpr u32 POLL_TIMEOUT_ITERS = 10000000;
 
     // Try IRQ-based waiting first
-    for (u32 i = 0; i < IRQ_TIMEOUT_ITERS; i++)
-    {
+    for (u32 i = 0; i < IRQ_TIMEOUT_ITERS; i++) {
         // Wait for IRQ
         i64 err = device::irq_wait(irq_num_, 100); // 100ms timeout
-        if (err == 0)
-        {
+        if (err == 0) {
             handle_interrupt();
             device::irq_ack(irq_num_);
 
-            if (io_complete_ && completed_desc_ == desc0)
-            {
+            if (io_complete_ && completed_desc_ == desc0) {
                 got_completion = true;
                 break;
             }
@@ -233,13 +207,10 @@ i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf)
     }
 
     // Fallback to polling if IRQ failed
-    if (!got_completion)
-    {
-        for (u32 i = 0; i < POLL_TIMEOUT_ITERS; i++)
-        {
+    if (!got_completion) {
+        for (u32 i = 0; i < POLL_TIMEOUT_ITERS; i++) {
             i32 completed = vq_.poll_used();
-            if (completed == desc0)
-            {
+            if (completed == desc0) {
                 got_completion = true;
                 break;
             }
@@ -247,8 +218,7 @@ i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf)
         }
     }
 
-    if (!got_completion)
-    {
+    if (!got_completion) {
         vq_.free_desc(desc0);
         vq_.free_desc(desc1);
         vq_.free_desc(desc2);
@@ -267,8 +237,7 @@ i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf)
     return (result_status == blk_status::OK) ? 0 : -1;
 }
 
-i32 BlkDevice::read_sectors(u64 sector, u32 count, void *buf)
-{
+i32 BlkDevice::read_sectors(u64 sector, u32 count, void *buf) {
     if (!buf || count == 0)
         return -1;
     if (sector + count > capacity_)
@@ -277,8 +246,7 @@ i32 BlkDevice::read_sectors(u64 sector, u32 count, void *buf)
     return do_request(blk_type::IN, sector, count, buf);
 }
 
-i32 BlkDevice::write_sectors(u64 sector, u32 count, const void *buf)
-{
+i32 BlkDevice::write_sectors(u64 sector, u32 count, const void *buf) {
     if (!buf || count == 0)
         return -1;
     if (sector + count > capacity_)
@@ -287,13 +255,10 @@ i32 BlkDevice::write_sectors(u64 sector, u32 count, const void *buf)
     return do_request(blk_type::OUT, sector, count, const_cast<void *>(buf));
 }
 
-i32 BlkDevice::flush()
-{
+i32 BlkDevice::flush() {
     int req_idx = -1;
-    for (usize i = 0; i < MAX_PENDING; i++)
-    {
-        if (!slots_[i].in_use)
-        {
+    for (usize i = 0; i < MAX_PENDING; i++) {
+        if (!slots_[i].in_use) {
             req_idx = i;
             break;
         }
@@ -315,8 +280,7 @@ i32 BlkDevice::flush()
     i32 desc0 = vq_.alloc_desc();
     i32 desc1 = vq_.alloc_desc();
 
-    if (desc0 < 0 || desc1 < 0)
-    {
+    if (desc0 < 0 || desc1 < 0) {
         if (desc0 >= 0)
             vq_.free_desc(desc0);
         if (desc1 >= 0)
@@ -342,16 +306,13 @@ i32 BlkDevice::flush()
     // Wait for completion
     bool got_completion = false;
     constexpr u32 POLL_TIMEOUT_ITERS = 10000000;
-    for (u32 i = 0; i < 100; i++)
-    {
+    for (u32 i = 0; i < 100; i++) {
         i64 err = device::irq_wait(irq_num_, 100);
-        if (err == 0)
-        {
+        if (err == 0) {
             handle_interrupt();
             device::irq_ack(irq_num_);
 
-            if (io_complete_ && completed_desc_ == desc0)
-            {
+            if (io_complete_ && completed_desc_ == desc0) {
                 got_completion = true;
                 break;
             }
@@ -359,13 +320,10 @@ i32 BlkDevice::flush()
     }
 
     // Fallback to polling
-    if (!got_completion)
-    {
-        for (u32 i = 0; i < POLL_TIMEOUT_ITERS; i++)
-        {
+    if (!got_completion) {
+        for (u32 i = 0; i < POLL_TIMEOUT_ITERS; i++) {
             i32 completed = vq_.poll_used();
-            if (completed == desc0)
-            {
+            if (completed == desc0) {
                 got_completion = true;
                 break;
             }
@@ -373,8 +331,7 @@ i32 BlkDevice::flush()
         }
     }
 
-    if (!got_completion)
-    {
+    if (!got_completion) {
         vq_.free_desc(desc0);
         vq_.free_desc(desc1);
         slot.in_use = false;

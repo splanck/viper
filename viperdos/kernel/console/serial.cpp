@@ -21,15 +21,13 @@ namespace kc = kernel::constants;
  * - Terminal-friendly output: newline normalization to CRLF.
  * - SMP-safe: spinlock protects multi-character output operations.
  */
-namespace serial
-{
+namespace serial {
 
 // Spinlock for serializing output (prevents interleaved output from multiple CPUs)
 static Spinlock serial_lock;
 
 // PL011 UART registers for QEMU virt machine
-namespace
-{
+namespace {
 constexpr uintptr UART_BASE = kc::hw::UART_BASE;
 
 // Register offsets
@@ -52,25 +50,21 @@ constexpr u32 UART_FR_TXFF = (1 << 5); // Transmit FIFO Full
  * @param offset Byte offset from the UART base address.
  * @return Reference to the 32-bit register at `UART_BASE + offset`.
  */
-inline volatile u32 &reg(uintptr offset)
-{
+inline volatile u32 &reg(uintptr offset) {
     return *reinterpret_cast<volatile u32 *>(UART_BASE + offset);
 }
 } // namespace
 
 /** @copydoc serial::init */
-void init()
-{
+void init() {
     // QEMU's PL011 UART is already initialized by firmware
     // Nothing to do for basic serial output
 }
 
 /** @copydoc serial::putc */
-void putc(char c)
-{
+void putc(char c) {
     // Wait for transmit FIFO to have space
-    while (reg(UART_FR) & UART_FR_TXFF)
-    {
+    while (reg(UART_FR) & UART_FR_TXFF) {
         asm volatile("nop");
     }
 
@@ -79,18 +73,15 @@ void putc(char c)
 }
 
 /** @copydoc serial::has_char */
-bool has_char()
-{
+bool has_char() {
     // Check if receive FIFO has data
     return !(reg(UART_FR) & UART_FR_RXFE);
 }
 
 /** @copydoc serial::getc */
-char getc()
-{
+char getc() {
     // Wait for receive FIFO to have data
-    while (reg(UART_FR) & UART_FR_RXFE)
-    {
+    while (reg(UART_FR) & UART_FR_RXFE) {
         asm volatile("wfe"); // Wait for event (low power wait)
     }
 
@@ -99,23 +90,18 @@ char getc()
 }
 
 /** @copydoc serial::getc_nonblock */
-i32 getc_nonblock()
-{
+i32 getc_nonblock() {
     // Return character if available, -1 otherwise
-    if (reg(UART_FR) & UART_FR_RXFE)
-    {
+    if (reg(UART_FR) & UART_FR_RXFE) {
         return -1;
     }
     return static_cast<i32>(reg(UART_DR) & 0xFF);
 }
 
 // Internal puts without lock (caller must hold serial_lock)
-static void puts_unlocked(const char *s)
-{
-    while (*s)
-    {
-        if (*s == '\n')
-        {
+static void puts_unlocked(const char *s) {
+    while (*s) {
+        if (*s == '\n') {
             putc('\r');
         }
         putc(*s++);
@@ -123,15 +109,13 @@ static void puts_unlocked(const char *s)
 }
 
 /** @copydoc serial::puts */
-void puts(const char *s)
-{
+void puts(const char *s) {
     SpinlockGuard guard(serial_lock);
     puts_unlocked(s);
 }
 
 /** @copydoc serial::put_hex */
-void put_hex(u64 value)
-{
+void put_hex(u64 value) {
     SpinlockGuard guard(serial_lock);
 
     static const char hex[] = "0123456789abcdef";
@@ -139,8 +123,7 @@ void put_hex(u64 value)
     int i = 16;
     buf[i] = '\0';
 
-    do
-    {
+    do {
         buf[--i] = hex[value & 0xF];
         value >>= 4;
     } while (value && i > 0);
@@ -150,12 +133,10 @@ void put_hex(u64 value)
 }
 
 /** @copydoc serial::put_dec */
-void put_dec(i64 value)
-{
+void put_dec(i64 value) {
     SpinlockGuard guard(serial_lock);
 
-    if (value < 0)
-    {
+    if (value < 0) {
         putc('-');
         value = -value;
     }
@@ -164,8 +145,7 @@ void put_dec(i64 value)
     int i = 20;
     buf[i] = '\0';
 
-    do
-    {
+    do {
         buf[--i] = '0' + (value % 10);
         value /= 10;
     } while (value && i > 0);
@@ -174,41 +154,32 @@ void put_dec(i64 value)
 }
 
 /** @copydoc serial::put_ipv4 */
-void put_ipv4(const u8 *bytes)
-{
+void put_ipv4(const u8 *bytes) {
     SpinlockGuard guard(serial_lock);
-    for (int i = 0; i < 4; i++)
-    {
+    for (int i = 0; i < 4; i++) {
         if (i > 0)
             putc('.');
         // Inline decimal conversion for bytes (0-255)
         u8 val = bytes[i];
-        if (val >= 100)
-        {
+        if (val >= 100) {
             putc('0' + (val / 100));
             val %= 100;
             putc('0' + (val / 10));
             putc('0' + (val % 10));
-        }
-        else if (val >= 10)
-        {
+        } else if (val >= 10) {
             putc('0' + (val / 10));
             putc('0' + (val % 10));
-        }
-        else
-        {
+        } else {
             putc('0' + val);
         }
     }
 }
 
 /** @copydoc serial::put_mac */
-void put_mac(const u8 *bytes)
-{
+void put_mac(const u8 *bytes) {
     SpinlockGuard guard(serial_lock);
     static const char hex[] = "0123456789abcdef";
-    for (int i = 0; i < 6; i++)
-    {
+    for (int i = 0; i < 6; i++) {
         if (i > 0)
             putc(':');
         putc(hex[(bytes[i] >> 4) & 0xF]);
@@ -217,8 +188,7 @@ void put_mac(const u8 *bytes)
 }
 
 /** @copydoc serial::put_size_mb */
-void put_size_mb(u64 bytes)
-{
+void put_size_mb(u64 bytes) {
     SpinlockGuard guard(serial_lock);
     u64 mb = bytes / (1024 * 1024);
 
@@ -227,8 +197,7 @@ void put_size_mb(u64 bytes)
     int i = 20;
     buf[i] = '\0';
 
-    do
-    {
+    do {
         buf[--i] = '0' + (mb % 10);
         mb /= 10;
     } while (mb && i > 0);

@@ -2,20 +2,18 @@
 #define _POLL_H
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /* Type for number of file descriptors */
-    typedef unsigned int nfds_t;
+/* Type for number of file descriptors */
+typedef unsigned int nfds_t;
 
-    /* poll event structure */
-    struct pollfd
-    {
-        int fd;        /* File descriptor */
-        short events;  /* Requested events */
-        short revents; /* Returned events */
-    };
+/* poll event structure */
+struct pollfd {
+    int fd;        /* File descriptor */
+    short events;  /* Requested events */
+    short revents; /* Returned events */
+};
 
 /* Event types to poll for */
 #define POLLIN 0x0001   /* Data to read */
@@ -35,23 +33,20 @@ extern "C"
 #define POLLREMOVE 0x1000 /* Remove fd from poll set */
 #define POLLRDHUP 0x2000  /* Peer closed or shut down writing */
 
-    /*
-     * poll - Wait for events on file descriptors
-     * fds: array of pollfd structures
-     * nfds: number of elements in fds
-     * timeout: timeout in milliseconds (-1 for infinite, 0 for immediate return)
-     * Returns: number of fds with events, 0 on timeout, -1 on error
-     */
-    int poll(struct pollfd *fds, nfds_t nfds, int timeout);
+/*
+ * poll - Wait for events on file descriptors
+ * fds: array of pollfd structures
+ * nfds: number of elements in fds
+ * timeout: timeout in milliseconds (-1 for infinite, 0 for immediate return)
+ * Returns: number of fds with events, 0 on timeout, -1 on error
+ */
+int poll(struct pollfd *fds, nfds_t nfds, int timeout);
 
-    /*
-     * ppoll - poll with timeout precision and signal mask
-     */
-    struct timespec;
-    int ppoll(struct pollfd *fds,
-              nfds_t nfds,
-              const struct timespec *timeout_ts,
-              const void *sigmask);
+/*
+ * ppoll - poll with timeout precision and signal mask
+ */
+struct timespec;
+int ppoll(struct pollfd *fds, nfds_t nfds, const struct timespec *timeout_ts, const void *sigmask);
 
 #ifdef __cplusplus
 }

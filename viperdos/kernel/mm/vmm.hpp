@@ -30,8 +30,7 @@
  * presets appropriate for kernel mappings. The current kernel bring-up uses an
  * identity mapping, but this API is designed to evolve into a full MMU setup.
  */
-namespace vmm
-{
+namespace vmm {
 
 // Page table entry flags for AArch64
 /**
@@ -41,8 +40,7 @@ namespace vmm
  * These values match the AArch64 Long Descriptor format for 4KiB granule page
  * tables. They are composed into `PAGE_*` presets for common mappings.
  */
-namespace pte
-{
+namespace pte {
 constexpr u64 VALID = 1ULL << 0; // Entry is valid
 constexpr u64 TABLE = 1ULL << 1; // Points to next-level table (for L0-L2)
 constexpr u64 BLOCK = 0ULL << 1; // Block descriptor (for L1-L2)
@@ -67,8 +65,7 @@ constexpr u64 UXN = 1ULL << 54; // Unprivileged execute-never
 constexpr u64 PXN = 1ULL << 53; // Privileged execute-never
 
 // Memory attribute index (MAIR)
-constexpr u64 ATTR(u64 idx)
-{
+constexpr u64 ATTR(u64 idx) {
     return idx << 2;
 }
 

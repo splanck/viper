@@ -50,8 +50,8 @@ namespace
 
 static inline bool msvc_add_overflow(long long a, long long b, long long *result)
 {
-    *result = static_cast<long long>(
-        static_cast<unsigned long long>(a) + static_cast<unsigned long long>(b));
+    *result = static_cast<long long>(static_cast<unsigned long long>(a) +
+                                     static_cast<unsigned long long>(b));
     if (b >= 0)
         return *result < a;
     else
@@ -60,8 +60,8 @@ static inline bool msvc_add_overflow(long long a, long long b, long long *result
 
 static inline bool msvc_sub_overflow(long long a, long long b, long long *result)
 {
-    *result = static_cast<long long>(
-        static_cast<unsigned long long>(a) - static_cast<unsigned long long>(b));
+    *result = static_cast<long long>(static_cast<unsigned long long>(a) -
+                                     static_cast<unsigned long long>(b));
     if (b >= 0)
         return *result > a;
     else
@@ -89,8 +89,8 @@ static inline bool msvc_mul_overflow(long long a, long long b, long long *result
     long long abs_b = b < 0 ? -b : b;
     if (abs_a > (std::numeric_limits<long long>::max)() / abs_b)
     {
-        *result = static_cast<long long>(
-            static_cast<unsigned long long>(a) * static_cast<unsigned long long>(b));
+        *result = static_cast<long long>(static_cast<unsigned long long>(a) *
+                                         static_cast<unsigned long long>(b));
         return true;
     }
     *result = a * b;
@@ -181,7 +181,6 @@ static std::optional<long long> checkedMul(long long a, long long b)
         return std::nullopt;
     return result;
 }
-
 
 /// @brief Fold recognised math runtime calls into constants.
 /// @details Handles a curated set of runtime helpers (absolute value, rounding,

@@ -48,44 +48,36 @@
 #include "pmm.hpp"
 #include "vma.hpp"
 
-namespace mm
-{
+namespace mm {
 
 // ESR field extraction helpers
-namespace esr_fields
-{
+namespace esr_fields {
 
 /// Extract fault status code (DFSC/IFSC) from ESR
-constexpr u32 fault_status(u64 esr)
-{
+constexpr u32 fault_status(u64 esr) {
     return static_cast<u32>(esr & 0x3F);
 }
 
 /// Extract Write-not-Read bit (1=write, 0=read) - only valid for data aborts
-constexpr bool is_write(u64 esr)
-{
+constexpr bool is_write(u64 esr) {
     return (esr & (1 << 6)) != 0;
 }
 
 /// Extract FAR-not-Valid bit (1=FAR is invalid)
-constexpr bool far_not_valid(u64 esr)
-{
+constexpr bool far_not_valid(u64 esr) {
     return (esr & (1 << 10)) != 0;
 }
 
 /// Extract exception class from ESR
-constexpr u32 exception_class(u64 esr)
-{
+constexpr u32 exception_class(u64 esr) {
     return static_cast<u32>((esr >> 26) & 0x3F);
 }
 
 /// Extract page table level from fault status (for faults that include level)
-constexpr i8 fault_level(u32 fsc)
-{
+constexpr i8 fault_level(u32 fsc) {
     // Level is encoded in bits [1:0] for address/translation/access/permission faults
     u32 type = (fsc >> 2) & 0xF;
-    if (type <= 3)
-    {
+    if (type <= 3) {
         return static_cast<i8>(fsc & 0x3);
     }
     return -1; // Not applicable
@@ -93,10 +85,8 @@ constexpr i8 fault_level(u32 fsc)
 
 } // namespace esr_fields
 
-const char *fault_type_name(FaultType type)
-{
-    switch (type)
-    {
+const char *fault_type_name(FaultType type) {
+    switch (type) {
         case FaultType::ADDRESS_SIZE:
             return "address size fault";
         case FaultType::TRANSLATION:
@@ -121,13 +111,11 @@ const char *fault_type_name(FaultType type)
 /**
  * @brief Classify the fault type from the fault status code.
  */
-static FaultType classify_fault(u32 fsc)
-{
+static FaultType classify_fault(u32 fsc) {
     // Upper 4 bits of FSC determine the fault class
     u32 fault_class = (fsc >> 2) & 0xF;
 
-    switch (fault_class)
-    {
+    switch (fault_class) {
         case 0b0000: // Address size fault
             return FaultType::ADDRESS_SIZE;
         case 0b0001: // Translation fault
@@ -141,8 +129,7 @@ static FaultType classify_fault(u32 fsc)
     }
 
     // Check specific codes
-    switch (fsc)
-    {
+    switch (fsc) {
         case 0b010000: // Synchronous external abort, not on translation table walk
         case 0b010001: // Synchronous external abort on translation table walk, level 0-3
         case 0b010010:
@@ -170,8 +157,7 @@ static FaultType classify_fault(u32 fsc)
     }
 }
 
-FaultInfo parse_fault(u64 fault_addr, u64 esr, u64 elr, bool is_instruction, bool is_user)
-{
+FaultInfo parse_fault(u64 fault_addr, u64 esr, u64 elr, bool is_instruction, bool is_user) {
     FaultInfo info;
 
     info.fault_addr = fault_addr;
@@ -193,8 +179,7 @@ FaultInfo parse_fault(u64 fault_addr, u64 esr, u64 elr, bool is_instruction, boo
 /**
  * @brief Log fault details to serial and graphics console.
  */
-static void log_fault(const FaultInfo &info, const char *task_name)
-{
+static void log_fault(const FaultInfo &info, const char *task_name) {
     // Serial console output
     serial::puts("\n[page_fault] ");
     serial::puts(info.is_user ? "User" : "Kernel");
@@ -208,8 +193,7 @@ static void log_fault(const FaultInfo &info, const char *task_name)
 
     serial::puts("[page_fault] Type: ");
     serial::puts(fault_type_name(info.type));
-    if (info.level >= 0)
-    {
+    if (info.level >= 0) {
         serial::puts(" (level ");
         serial::put_dec(info.level);
         serial::puts(")");
@@ -224,8 +208,7 @@ static void log_fault(const FaultInfo &info, const char *task_name)
     serial::put_hex(info.pc);
     serial::puts("\n");
 
-    if (!info.is_instruction_fault)
-    {
+    if (!info.is_instruction_fault) {
         serial::puts("[page_fault] Access: ");
         serial::puts(info.is_write ? "write" : "read");
         serial::puts("\n");
@@ -236,8 +219,7 @@ static void log_fault(const FaultInfo &info, const char *task_name)
     serial::puts("\n");
 
     // Graphics console output
-    if (gcon::is_available())
-    {
+    if (gcon::is_available()) {
         gcon::puts("\n[page_fault] ");
         gcon::puts(info.is_user ? "User" : "Kernel");
         gcon::puts(" ");
@@ -247,8 +229,7 @@ static void log_fault(const FaultInfo &info, const char *task_name)
         // Simple hex output for graphics console
         const char hex[] = "0123456789ABCDEF";
         gcon::puts("0x");
-        for (int i = 60; i >= 0; i -= 4)
-        {
+        for (int i = 60; i >= 0; i -= 4) {
             gcon::putc(hex[(info.fault_addr >> i) & 0xF]);
         }
         gcon::puts("\n");
@@ -258,8 +239,7 @@ static void log_fault(const FaultInfo &info, const char *task_name)
 /**
  * @brief Kernel panic for unrecoverable faults.
  */
-[[noreturn]] static void kernel_panic(const FaultInfo &info)
-{
+[[noreturn]] static void kernel_panic(const FaultInfo &info) {
     // Disable interrupts to prevent further issues
     asm volatile("msr daifset, #0xf");
 
@@ -289,8 +269,7 @@ static void log_fault(const FaultInfo &info, const char *task_name)
     // Current task info
     task::Task *current = task::current();
     serial::puts("Current Task:\n");
-    if (current)
-    {
+    if (current) {
         serial::puts("  ID:       ");
         serial::put_dec(current->id);
         serial::puts("\n");
@@ -300,9 +279,7 @@ static void log_fault(const FaultInfo &info, const char *task_name)
         serial::puts("  Flags:    0x");
         serial::put_hex(current->flags);
         serial::puts("\n");
-    }
-    else
-    {
+    } else {
         serial::puts("  (none)\n");
     }
     serial::puts("\n");
@@ -318,8 +295,7 @@ static void log_fault(const FaultInfo &info, const char *task_name)
     serial::puts("\nBacktrace (frame pointer chain):\n");
     u64 *fp;
     asm volatile("mov %0, x29" : "=r"(fp));
-    for (int i = 0; i < 10 && fp != nullptr; i++)
-    {
+    for (int i = 0; i < 10 && fp != nullptr; i++) {
         u64 ret_addr = fp[1];
         u64 next_fp = fp[0];
         if (ret_addr == 0)
@@ -345,16 +321,14 @@ static void log_fault(const FaultInfo &info, const char *task_name)
     serial::puts(
         "================================================================================\n");
 
-    if (gcon::is_available())
-    {
+    if (gcon::is_available()) {
         gcon::puts("\n\n  !!! KERNEL PANIC !!!\n\n");
         gcon::puts("  ");
         gcon::puts(fault_type_name(info.type));
         gcon::puts(" at 0x");
         // Simple hex output for gcon
         u64 addr = info.fault_addr;
-        for (int i = 60; i >= 0; i -= 4)
-        {
+        for (int i = 60; i >= 0; i -= 4) {
             int digit = (addr >> i) & 0xF;
             gcon::putc(digit < 10 ? '0' + digit : 'a' + digit - 10);
         }
@@ -363,8 +337,7 @@ static void log_fault(const FaultInfo &info, const char *task_name)
         gcon::puts("  System halted.\n");
     }
 
-    for (;;)
-    {
+    for (;;) {
         asm volatile("wfi");
     }
 }
@@ -384,8 +357,7 @@ static void log_fault(const FaultInfo &info, const char *task_name)
  * @param fault_addr The faulting virtual address.
  * @return FaultResult indicating how the fault was handled.
  */
-static FaultResult handle_cow_fault(viper::Viper *proc, u64 fault_addr)
-{
+static FaultResult handle_cow_fault(viper::Viper *proc, u64 fault_addr) {
     // Align to page boundary
     u64 page_addr = fault_addr & ~0xFFFULL;
 
@@ -394,8 +366,7 @@ static FaultResult handle_cow_fault(viper::Viper *proc, u64 fault_addr)
 
     // Find the VMA containing this address (under lock)
     Vma *vma = proc->vma_list.find_locked(fault_addr);
-    if (!vma)
-    {
+    if (!vma) {
         proc->vma_list.release_lock(saved_daif);
         serial::puts("[cow] No VMA for address ");
         serial::put_hex(fault_addr);
@@ -404,16 +375,14 @@ static FaultResult handle_cow_fault(viper::Viper *proc, u64 fault_addr)
     }
 
     // Check if this VMA supports writes
-    if (!(vma->prot & vma_prot::WRITE))
-    {
+    if (!(vma->prot & vma_prot::WRITE)) {
         proc->vma_list.release_lock(saved_daif);
         serial::puts("[cow] VMA is not writable\n");
         return FaultResult::UNHANDLED;
     }
 
     // Check if this is a COW VMA
-    if (!(vma->flags & vma_flags::COW))
-    {
+    if (!(vma->flags & vma_flags::COW)) {
         proc->vma_list.release_lock(saved_daif);
         serial::puts("[cow] VMA is not marked COW\n");
         return FaultResult::UNHANDLED;
@@ -425,16 +394,14 @@ static FaultResult handle_cow_fault(viper::Viper *proc, u64 fault_addr)
 
     // Get the address space
     viper::AddressSpace *as = viper::get_address_space(proc);
-    if (!as)
-    {
+    if (!as) {
         serial::puts("[cow] No address space\n");
         return FaultResult::ERROR;
     }
 
     // Get the current physical page
     u64 old_phys = as->translate(page_addr);
-    if (old_phys == 0)
-    {
+    if (old_phys == 0) {
         serial::puts("[cow] Page not mapped\n");
         return FaultResult::UNHANDLED;
     }
@@ -450,8 +417,7 @@ static FaultResult handle_cow_fault(viper::Viper *proc, u64 fault_addr)
     serial::put_dec(refcount);
     serial::puts("\n");
 
-    if (refcount <= 1)
-    {
+    if (refcount <= 1) {
         // We're the only owner - just make writable
         // Unmap and remap with write permission
         as->unmap(page_addr, pmm::PAGE_SIZE);
@@ -465,8 +431,7 @@ static FaultResult handle_cow_fault(viper::Viper *proc, u64 fault_addr)
         if (vma_prot_copy & vma_prot::EXEC)
             as_prot |= viper::prot::EXEC;
 
-        if (!as->map(page_addr, old_phys, pmm::PAGE_SIZE, as_prot))
-        {
+        if (!as->map(page_addr, old_phys, pmm::PAGE_SIZE, as_prot)) {
             serial::puts("[cow] Failed to remap page as writable\n");
             return FaultResult::ERROR;
         }
@@ -480,8 +445,7 @@ static FaultResult handle_cow_fault(viper::Viper *proc, u64 fault_addr)
 
     // Multiple owners - must copy the page
     u64 new_phys = pmm::alloc_page();
-    if (new_phys == 0)
-    {
+    if (new_phys == 0) {
         serial::puts("[cow] Out of memory during COW copy\n");
         return FaultResult::ERROR;
     }
@@ -501,16 +465,14 @@ static FaultResult handle_cow_fault(viper::Viper *proc, u64 fault_addr)
     if (vma_prot_copy & vma_prot::EXEC)
         as_prot |= viper::prot::EXEC;
 
-    if (!as->map(page_addr, new_phys, pmm::PAGE_SIZE, as_prot))
-    {
+    if (!as->map(page_addr, new_phys, pmm::PAGE_SIZE, as_prot)) {
         serial::puts("[cow] Failed to map new page\n");
         pmm::free_page(new_phys);
         return FaultResult::ERROR;
     }
 
     // Decrement old page reference count
-    if (cow::cow_manager().dec_ref(old_phys))
-    {
+    if (cow::cow_manager().dec_ref(old_phys)) {
         // Refcount reached 0, free the old page
         pmm::free_page(old_phys);
         serial::puts("[cow] Freed old page (refcount 0)\n");
@@ -529,8 +491,7 @@ static FaultResult handle_cow_fault(viper::Viper *proc, u64 fault_addr)
 /**
  * @brief Map function for demand paging.
  */
-static bool demand_map_fn(u64 virt, u64 phys, u32 prot)
-{
+static bool demand_map_fn(u64 virt, u64 phys, u32 prot) {
     viper::Viper *v = viper::current();
     if (!v)
         return false;
@@ -553,16 +514,14 @@ static bool demand_map_fn(u64 virt, u64 phys, u32 prot)
  * @brief Try to handle a translation fault via demand paging.
  * @return true if fault was handled.
  */
-static bool try_demand_paging(viper::Viper *proc, const FaultInfo &info)
-{
+static bool try_demand_paging(viper::Viper *proc, const FaultInfo &info) {
     viper::AddressSpace *as = viper::get_address_space(proc);
     if (!as)
         return false;
 
-    FaultResult result = handle_demand_fault(&proc->vma_list, info.fault_addr,
-                                              info.is_write, demand_map_fn);
-    if (result == FaultResult::HANDLED || result == FaultResult::STACK_GROW)
-    {
+    FaultResult result =
+        handle_demand_fault(&proc->vma_list, info.fault_addr, info.is_write, demand_map_fn);
+    if (result == FaultResult::HANDLED || result == FaultResult::STACK_GROW) {
         serial::puts("[page_fault] Demand fault handled, resuming\n");
         return true;
     }
@@ -579,11 +538,9 @@ static bool try_demand_paging(viper::Viper *proc, const FaultInfo &info)
  * @brief Try to handle a permission fault via COW.
  * @return true if fault was handled.
  */
-static bool try_cow_handling(viper::Viper *proc, const FaultInfo &info)
-{
+static bool try_cow_handling(viper::Viper *proc, const FaultInfo &info) {
     FaultResult result = handle_cow_fault(proc, info.fault_addr);
-    if (result == FaultResult::HANDLED || result == FaultResult::STACK_GROW)
-    {
+    if (result == FaultResult::HANDLED || result == FaultResult::STACK_GROW) {
         serial::puts("[page_fault] COW fault handled, resuming\n");
         return true;
     }
@@ -599,8 +556,7 @@ static bool try_cow_handling(viper::Viper *proc, const FaultInfo &info)
 /**
  * @brief Deliver SIGSEGV for unhandled fault.
  */
-[[noreturn]] static void deliver_sigsegv(const FaultInfo &info)
-{
+[[noreturn]] static void deliver_sigsegv(const FaultInfo &info) {
     const char *kind = "page_fault";
     if (info.type == FaultType::TRANSLATION)
         kind = "translation_fault";
@@ -621,8 +577,7 @@ static bool try_cow_handling(viper::Viper *proc, const FaultInfo &info)
         asm volatile("wfi");
 }
 
-void handle_page_fault(exceptions::ExceptionFrame *frame, bool is_instruction)
-{
+void handle_page_fault(exceptions::ExceptionFrame *frame, bool is_instruction) {
     u32 spsr_el = (frame->spsr & 0xF);
     bool is_user = (spsr_el == 0);
 
@@ -634,8 +589,7 @@ void handle_page_fault(exceptions::ExceptionFrame *frame, bool is_instruction)
         kernel_panic(info);
 
     viper::Viper *proc = viper::current();
-    if (!proc)
-    {
+    if (!proc) {
         serial::puts("[page_fault] No current process\n");
         deliver_sigsegv(info);
     }

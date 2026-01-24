@@ -19,14 +19,12 @@
 
 #include "../console/serial.hpp"
 
-namespace log
-{
+namespace log {
 
 /**
  * @brief Log level enumeration.
  */
-enum class Level
-{
+enum class Level {
     Debug = 0, ///< Detailed debugging information
     Info = 1,  ///< General informational messages
     Warn = 2,  ///< Warning conditions
@@ -42,16 +40,14 @@ inline Level g_min_level = Level::Info;
  *
  * @param level Messages below this level will be suppressed.
  */
-inline void set_level(Level level)
-{
+inline void set_level(Level level) {
     g_min_level = level;
 }
 
 /**
  * @brief Get the current minimum log level.
  */
-inline Level get_level()
-{
+inline Level get_level() {
     return g_min_level;
 }
 
@@ -62,16 +58,13 @@ inline Level get_level()
  * @param subsystem Short subsystem name (e.g., "net", "vfs", "mm").
  * @param message Log message.
  */
-inline void log(Level level, const char *subsystem, const char *message)
-{
-    if (static_cast<int>(level) < static_cast<int>(g_min_level))
-    {
+inline void log(Level level, const char *subsystem, const char *message) {
+    if (static_cast<int>(level) < static_cast<int>(g_min_level)) {
         return;
     }
 
     // Print level prefix
-    switch (level)
-    {
+    switch (level) {
         case Level::Debug:
             serial::puts("[D]");
             break;
@@ -102,44 +95,38 @@ inline void log(Level level, const char *subsystem, const char *message)
 /**
  * @brief Log a debug message.
  */
-inline void debug(const char *subsystem, const char *message)
-{
+inline void debug(const char *subsystem, const char *message) {
     log(Level::Debug, subsystem, message);
 }
 
 /**
  * @brief Log an info message.
  */
-inline void info(const char *subsystem, const char *message)
-{
+inline void info(const char *subsystem, const char *message) {
     log(Level::Info, subsystem, message);
 }
 
 /**
  * @brief Log a warning message.
  */
-inline void warn(const char *subsystem, const char *message)
-{
+inline void warn(const char *subsystem, const char *message) {
     log(Level::Warn, subsystem, message);
 }
 
 /**
  * @brief Log an error message.
  */
-inline void error(const char *subsystem, const char *message)
-{
+inline void error(const char *subsystem, const char *message) {
     log(Level::Error, subsystem, message);
 }
 
 /**
  * @brief Log a fatal error and halt.
  */
-inline void fatal(const char *subsystem, const char *message)
-{
+inline void fatal(const char *subsystem, const char *message) {
     log(Level::Fatal, subsystem, message);
     serial::puts("FATAL ERROR - System halted\n");
-    for (;;)
-    {
+    for (;;) {
         asm volatile("wfi");
     }
 }

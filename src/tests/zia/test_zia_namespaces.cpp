@@ -369,7 +369,8 @@ func start() {
         {
             hasAdd = true;
         }
-        if (fn.name.find("Math") != std::string::npos && fn.name.find("multiply") != std::string::npos)
+        if (fn.name.find("Math") != std::string::npos &&
+            fn.name.find("multiply") != std::string::npos)
         {
             hasMultiply = true;
         }

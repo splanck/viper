@@ -18,11 +18,11 @@ with zero external dependencies (only OS-level audio APIs).
 
 ## Platform Support
 
-| Platform | Status          | Backend                                      |
-|----------|-----------------|----------------------------------------------|
-| macOS    | Complete        | AudioQueue (`src/vaud_platform_macos.m`)     |
-| Linux    | Complete        | ALSA (`src/vaud_platform_linux.c`)           |
-| Windows  | Complete        | WASAPI (`src/vaud_platform_win32.c`)         |
+| Platform | Status   | Backend                                  |
+|----------|----------|------------------------------------------|
+| macOS    | Complete | AudioQueue (`src/vaud_platform_macos.m`) |
+| Linux    | Complete | ALSA (`src/vaud_platform_linux.c`)       |
+| Windows  | Complete | WASAPI (`src/vaud_platform_win32.c`)     |
 
 ## Building Standalone
 
@@ -219,16 +219,18 @@ void vaud_clear_error(void);
 ## Audio Format
 
 ### Internal Format
+
 - **Sample rate**: 44100 Hz
 - **Bit depth**: 16-bit signed
 - **Channels**: Stereo (2 channels)
 
 ### Supported Input Formats
+
 - **WAV files** (RIFF format)
-  - 8-bit unsigned PCM
-  - 16-bit signed PCM
-  - Mono or stereo
-  - Any sample rate (automatically resampled)
+    - 8-bit unsigned PCM
+    - 16-bit signed PCM
+    - Mono or stereo
+    - Any sample rate (automatically resampled)
 
 ## Threading Model
 
@@ -269,6 +271,7 @@ The mixer combines up to 32 simultaneous voices plus active music streams:
 ### Voice Management
 
 When all voices are in use:
+
 1. First attempts to steal oldest non-looping voice
 2. If all voices are looping, steals absolute oldest voice
 3. New sound starts immediately on stolen voice
@@ -276,6 +279,7 @@ When all voices are in use:
 ### Music Streaming
 
 Music uses triple-buffering for gapless playback:
+
 1. Only a small portion is in memory at any time (~50ms buffer)
 2. Background refills as buffers are consumed
 3. Seamless looping with no audible gap
@@ -367,9 +371,9 @@ Viper.Sound.Audio.StopAllSounds()
 - **C99-compliant compiler** (GCC, Clang, or MSVC)
 - **CMake 3.10+**
 - **Platform SDK**:
-  - macOS: Xcode Command Line Tools (AudioToolbox framework)
-  - Linux: ALSA development libraries (`libasound2-dev`)
-  - Windows: Windows SDK (WASAPI, Windows Vista+)
+    - macOS: Xcode Command Line Tools (AudioToolbox framework)
+    - Linux: ALSA development libraries (`libasound2-dev`)
+    - Windows: Windows SDK (WASAPI, Windows Vista+)
 
 ### Runtime Requirements
 

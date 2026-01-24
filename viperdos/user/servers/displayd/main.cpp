@@ -1,33 +1,49 @@
 /**
  * @file main.cpp
- * @brief Display server (displayd) main entry point.
+ * @brief Display server (displayd) - window management and compositing.
  *
  * @details
- * This server provides display and window management services:
+ * Provides display and window management services:
  * - Maps the framebuffer into its address space
  * - Manages window surfaces (create, destroy, composite)
+ * - Renders window decorations (title bar, borders, scrollbars)
  * - Renders a mouse cursor
  * - Routes input events to focused windows
+ *
+ * @section Organization
+ * The code is organized into these sections:
+ * 1. Debug/Utility Functions
+ * 2. Global State (framebuffer, surfaces, cursor)
+ * 3. Data Tables (cursor bitmap, font glyphs)
+ * 4. Bootstrap/Initialization
+ * 5. Drawing Primitives (fill_rect, draw_char, etc.)
+ * 6. Cursor Management
+ * 7. Window Decorations (title bar, buttons, scrollbars)
+ * 8. Compositing (flip_buffers, composite)
+ * 9. Surface Management (find, create, destroy)
+ * 10. IPC Protocol Handlers
+ * 11. Event Queuing (mouse, key, focus, scroll)
+ * 12. Input Polling (keyboard, mouse)
+ * 13. Main Loop
  */
 
-#include "../../syscall.hpp"
 #include "../../include/viper_colors.h"
+#include "../../syscall.hpp"
 #include "display_protocol.hpp"
 
 using namespace display_protocol;
 
-// Debug output
-static void debug_print(const char *msg)
-{
+// ============================================================================
+// Section 1: Debug/Utility Functions
+// ============================================================================
+static void debug_print(const char *msg) {
     sys::print(msg);
 }
 
-static void debug_print_hex(uint64_t val)
-{
+static void debug_print_hex(uint64_t val) {
     char buf[17];
     const char *hex = "0123456789abcdef";
-    for (int i = 15; i >= 0; i--)
-    {
+    for (int i = 15; i >= 0; i--) {
         buf[i] = hex[val & 0xF];
         val >>= 4;
     }
@@ -35,31 +51,31 @@ static void debug_print_hex(uint64_t val)
     sys::print(buf);
 }
 
-static void debug_print_dec(int64_t val)
-{
-    if (val < 0)
-    {
+static void debug_print_dec(int64_t val) {
+    if (val < 0) {
         sys::print("-");
         val = -val;
     }
-    if (val == 0)
-    {
+    if (val == 0) {
         sys::print("0");
         return;
     }
     char buf[21];
     int i = 20;
     buf[i] = '\0';
-    while (val > 0 && i > 0)
-    {
+    while (val > 0 && i > 0) {
         buf[--i] = '0' + (val % 10);
         val /= 10;
     }
     sys::print(&buf[i]);
 }
 
+// ============================================================================
+// Section 2: Global State
+// ============================================================================
+
 // Framebuffer state
-static uint32_t *g_fb = nullptr;        // Front buffer (actual framebuffer)
+static uint32_t *g_fb = nullptr;          // Front buffer (actual framebuffer)
 static uint32_t *g_back_buffer = nullptr; // Back buffer for double buffering
 static uint32_t *g_draw_target = nullptr; // Current drawing target
 static uint32_t g_fb_width = 0;
@@ -72,11 +88,10 @@ static constexpr uint32_t MAX_SURFACES = 32;
 // Event queue for each surface
 static constexpr size_t EVENT_QUEUE_SIZE = 32;
 
-struct QueuedEvent
-{
-    uint32_t event_type;  // DISP_EVENT_KEY, DISP_EVENT_MOUSE, etc.
-    union
-    {
+struct QueuedEvent {
+    uint32_t event_type; // DISP_EVENT_KEY, DISP_EVENT_MOUSE, etc.
+
+    union {
         KeyEvent key;
         MouseEvent mouse;
         FocusEvent focus;
@@ -84,25 +99,21 @@ struct QueuedEvent
     };
 };
 
-struct EventQueue
-{
+struct EventQueue {
     QueuedEvent events[EVENT_QUEUE_SIZE];
     size_t head;
     size_t tail;
 
-    void init()
-    {
+    void init() {
         head = 0;
         tail = 0;
     }
 
-    bool empty() const
-    {
+    bool empty() const {
         return head == tail;
     }
 
-    bool push(const QueuedEvent &ev)
-    {
+    bool push(const QueuedEvent &ev) {
         size_t next = (tail + 1) % EVENT_QUEUE_SIZE;
         if (next == head)
             return false; // Queue full
@@ -111,8 +122,7 @@ struct EventQueue
         return true;
     }
 
-    bool pop(QueuedEvent *ev)
-    {
+    bool pop(QueuedEvent *ev) {
         if (head == tail)
             return false; // Queue empty
         *ev = events[head];
@@ -121,8 +131,7 @@ struct EventQueue
     }
 };
 
-struct Surface
-{
+struct Surface {
     uint32_t id;
     uint32_t width;
     uint32_t height;
@@ -134,10 +143,10 @@ struct Surface
     uint32_t shm_handle;
     uint32_t *pixels;
     char title[64];
-    int32_t event_channel;  // Channel for pushing events to client (-1 if not subscribed)
+    int32_t event_channel; // Channel for pushing events to client (-1 if not subscribed)
     EventQueue event_queue;
-    uint32_t z_order;       // Higher = on top
-    uint32_t flags;         // SurfaceFlags
+    uint32_t z_order; // Higher = on top
+    uint32_t flags;   // SurfaceFlags
 
     // Window state
     bool minimized;
@@ -148,6 +157,14 @@ struct Surface
     int32_t saved_y;
     uint32_t saved_width;
     uint32_t saved_height;
+
+    // Scrollbar state
+    struct {
+        bool enabled;
+        int32_t content_size;  // Total content size in pixels
+        int32_t viewport_size; // Visible area size
+        int32_t scroll_pos;    // Current scroll position
+    } vscroll, hscroll;
 };
 
 static Surface g_surfaces[MAX_SURFACES];
@@ -156,9 +173,9 @@ static uint32_t g_focused_surface = 0;
 static uint32_t g_next_z_order = 1;
 
 // Bring a surface to the front (highest z-order)
-static void bring_to_front(Surface *surf)
-{
-    if (!surf) return;
+static void bring_to_front(Surface *surf) {
+    if (!surf)
+        return;
     surf->z_order = g_next_z_order++;
 }
 
@@ -173,6 +190,13 @@ static constexpr uint32_t TITLE_BAR_HEIGHT = 24;
 static constexpr uint32_t BORDER_WIDTH = 2;
 static constexpr uint32_t CLOSE_BUTTON_SIZE = 16;
 
+// Scrollbar constants
+static constexpr uint32_t SCROLLBAR_WIDTH = 16;
+static constexpr uint32_t SCROLLBAR_MIN_THUMB = 20;
+static constexpr uint32_t COLOR_SCROLLBAR_TRACK = 0xFFCCCCCC;
+static constexpr uint32_t COLOR_SCROLLBAR_THUMB = 0xFF888888;
+static constexpr uint32_t COLOR_SCROLLBAR_ARROW = 0xFF666666;
+
 // Colors (from centralized viper_colors.h)
 static constexpr uint32_t COLOR_DESKTOP = VIPER_COLOR_DESKTOP;
 static constexpr uint32_t COLOR_TITLE_FOCUSED = VIPER_COLOR_TITLE_FOCUSED;
@@ -185,156 +209,151 @@ static constexpr uint32_t COLOR_SCREEN_BORDER = VIPER_COLOR_BORDER;
 // Screen border (matches kernel console)
 static constexpr uint32_t SCREEN_BORDER_WIDTH = 20;
 
+// ============================================================================
+// Section 3: Data Tables (Cursor, Font)
+// ============================================================================
+
 // 16x16 arrow cursor (1 = white, 2 = black outline)
 static const uint8_t g_cursor_data[16 * 16] = {
-    2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    2,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    2,1,2,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    2,1,1,2,0,0,0,0,0,0,0,0,0,0,0,0,
-    2,1,1,1,2,0,0,0,0,0,0,0,0,0,0,0,
-    2,1,1,1,1,2,0,0,0,0,0,0,0,0,0,0,
-    2,1,1,1,1,1,2,0,0,0,0,0,0,0,0,0,
-    2,1,1,1,1,1,1,2,0,0,0,0,0,0,0,0,
-    2,1,1,1,1,1,1,1,2,0,0,0,0,0,0,0,
-    2,1,1,1,1,1,2,2,2,2,0,0,0,0,0,0,
-    2,1,1,2,1,1,2,0,0,0,0,0,0,0,0,0,
-    2,1,2,0,2,1,1,2,0,0,0,0,0,0,0,0,
-    2,2,0,0,2,1,1,2,0,0,0,0,0,0,0,0,
-    2,0,0,0,0,2,1,1,2,0,0,0,0,0,0,0,
-    0,0,0,0,0,2,1,1,2,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,2,2,0,0,0,0,0,0,0,0,
+    2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    2, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    2, 1, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 1, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    2, 1, 1, 1, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 1, 1, 1, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0,
+    2, 1, 1, 1, 1, 1, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 2, 1, 1, 1, 1, 1, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0,
+    2, 1, 1, 2, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 2, 0, 2, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0,
+    2, 2, 0, 0, 2, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 2, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0,
 };
 
 // Simple font (8x8 bitmap for basic ASCII)
 static const uint8_t g_font[96][8] = {
     // Space (32)
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00},
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
     // ! (33)
-    {0x18,0x18,0x18,0x18,0x00,0x00,0x18,0x00},
+    {0x18, 0x18, 0x18, 0x18, 0x00, 0x00, 0x18, 0x00},
     // " through A... (simplified - just use blocks for now)
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // 34
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // 35
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // 36
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // 37
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // 38
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // 39
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // 40
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // 41
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // 42
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // 43
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // 44
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // 45
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // 46
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // 47
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // 34
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // 35
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // 36
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // 37
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // 38
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // 39
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // 40
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // 41
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // 42
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // 43
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // 44
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // 45
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // 46
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // 47
     // 0-9
-    {0x3C,0x66,0x6E,0x76,0x66,0x66,0x3C,0x00}, // 0
-    {0x18,0x38,0x18,0x18,0x18,0x18,0x7E,0x00}, // 1
-    {0x3C,0x66,0x06,0x0C,0x18,0x30,0x7E,0x00}, // 2
-    {0x3C,0x66,0x06,0x1C,0x06,0x66,0x3C,0x00}, // 3
-    {0x0C,0x1C,0x3C,0x6C,0x7E,0x0C,0x0C,0x00}, // 4
-    {0x7E,0x60,0x7C,0x06,0x06,0x66,0x3C,0x00}, // 5
-    {0x1C,0x30,0x60,0x7C,0x66,0x66,0x3C,0x00}, // 6
-    {0x7E,0x06,0x0C,0x18,0x30,0x30,0x30,0x00}, // 7
-    {0x3C,0x66,0x66,0x3C,0x66,0x66,0x3C,0x00}, // 8
-    {0x3C,0x66,0x66,0x3E,0x06,0x0C,0x38,0x00}, // 9
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // : 58
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // ; 59
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // < 60
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // = 61
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // > 62
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // ? 63
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // @ 64
+    {0x3C, 0x66, 0x6E, 0x76, 0x66, 0x66, 0x3C, 0x00}, // 0
+    {0x18, 0x38, 0x18, 0x18, 0x18, 0x18, 0x7E, 0x00}, // 1
+    {0x3C, 0x66, 0x06, 0x0C, 0x18, 0x30, 0x7E, 0x00}, // 2
+    {0x3C, 0x66, 0x06, 0x1C, 0x06, 0x66, 0x3C, 0x00}, // 3
+    {0x0C, 0x1C, 0x3C, 0x6C, 0x7E, 0x0C, 0x0C, 0x00}, // 4
+    {0x7E, 0x60, 0x7C, 0x06, 0x06, 0x66, 0x3C, 0x00}, // 5
+    {0x1C, 0x30, 0x60, 0x7C, 0x66, 0x66, 0x3C, 0x00}, // 6
+    {0x7E, 0x06, 0x0C, 0x18, 0x30, 0x30, 0x30, 0x00}, // 7
+    {0x3C, 0x66, 0x66, 0x3C, 0x66, 0x66, 0x3C, 0x00}, // 8
+    {0x3C, 0x66, 0x66, 0x3E, 0x06, 0x0C, 0x38, 0x00}, // 9
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // : 58
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // ; 59
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // < 60
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // = 61
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // > 62
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // ? 63
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // @ 64
     // A-Z (65-90)
-    {0x18,0x3C,0x66,0x66,0x7E,0x66,0x66,0x00}, // A
-    {0x7C,0x66,0x66,0x7C,0x66,0x66,0x7C,0x00}, // B
-    {0x3C,0x66,0x60,0x60,0x60,0x66,0x3C,0x00}, // C
-    {0x78,0x6C,0x66,0x66,0x66,0x6C,0x78,0x00}, // D
-    {0x7E,0x60,0x60,0x7C,0x60,0x60,0x7E,0x00}, // E
-    {0x7E,0x60,0x60,0x7C,0x60,0x60,0x60,0x00}, // F
-    {0x3C,0x66,0x60,0x6E,0x66,0x66,0x3E,0x00}, // G
-    {0x66,0x66,0x66,0x7E,0x66,0x66,0x66,0x00}, // H
-    {0x7E,0x18,0x18,0x18,0x18,0x18,0x7E,0x00}, // I
-    {0x3E,0x0C,0x0C,0x0C,0x0C,0x6C,0x38,0x00}, // J
-    {0x66,0x6C,0x78,0x70,0x78,0x6C,0x66,0x00}, // K
-    {0x60,0x60,0x60,0x60,0x60,0x60,0x7E,0x00}, // L
-    {0x63,0x77,0x7F,0x6B,0x63,0x63,0x63,0x00}, // M
-    {0x66,0x76,0x7E,0x7E,0x6E,0x66,0x66,0x00}, // N
-    {0x3C,0x66,0x66,0x66,0x66,0x66,0x3C,0x00}, // O
-    {0x7C,0x66,0x66,0x7C,0x60,0x60,0x60,0x00}, // P
-    {0x3C,0x66,0x66,0x66,0x6A,0x6C,0x36,0x00}, // Q
-    {0x7C,0x66,0x66,0x7C,0x6C,0x66,0x66,0x00}, // R
-    {0x3C,0x66,0x60,0x3C,0x06,0x66,0x3C,0x00}, // S
-    {0x7E,0x18,0x18,0x18,0x18,0x18,0x18,0x00}, // T
-    {0x66,0x66,0x66,0x66,0x66,0x66,0x3C,0x00}, // U
-    {0x66,0x66,0x66,0x66,0x66,0x3C,0x18,0x00}, // V
-    {0x63,0x63,0x63,0x6B,0x7F,0x77,0x63,0x00}, // W
-    {0x66,0x66,0x3C,0x18,0x3C,0x66,0x66,0x00}, // X
-    {0x66,0x66,0x66,0x3C,0x18,0x18,0x18,0x00}, // Y
-    {0x7E,0x06,0x0C,0x18,0x30,0x60,0x7E,0x00}, // Z
+    {0x18, 0x3C, 0x66, 0x66, 0x7E, 0x66, 0x66, 0x00}, // A
+    {0x7C, 0x66, 0x66, 0x7C, 0x66, 0x66, 0x7C, 0x00}, // B
+    {0x3C, 0x66, 0x60, 0x60, 0x60, 0x66, 0x3C, 0x00}, // C
+    {0x78, 0x6C, 0x66, 0x66, 0x66, 0x6C, 0x78, 0x00}, // D
+    {0x7E, 0x60, 0x60, 0x7C, 0x60, 0x60, 0x7E, 0x00}, // E
+    {0x7E, 0x60, 0x60, 0x7C, 0x60, 0x60, 0x60, 0x00}, // F
+    {0x3C, 0x66, 0x60, 0x6E, 0x66, 0x66, 0x3E, 0x00}, // G
+    {0x66, 0x66, 0x66, 0x7E, 0x66, 0x66, 0x66, 0x00}, // H
+    {0x7E, 0x18, 0x18, 0x18, 0x18, 0x18, 0x7E, 0x00}, // I
+    {0x3E, 0x0C, 0x0C, 0x0C, 0x0C, 0x6C, 0x38, 0x00}, // J
+    {0x66, 0x6C, 0x78, 0x70, 0x78, 0x6C, 0x66, 0x00}, // K
+    {0x60, 0x60, 0x60, 0x60, 0x60, 0x60, 0x7E, 0x00}, // L
+    {0x63, 0x77, 0x7F, 0x6B, 0x63, 0x63, 0x63, 0x00}, // M
+    {0x66, 0x76, 0x7E, 0x7E, 0x6E, 0x66, 0x66, 0x00}, // N
+    {0x3C, 0x66, 0x66, 0x66, 0x66, 0x66, 0x3C, 0x00}, // O
+    {0x7C, 0x66, 0x66, 0x7C, 0x60, 0x60, 0x60, 0x00}, // P
+    {0x3C, 0x66, 0x66, 0x66, 0x6A, 0x6C, 0x36, 0x00}, // Q
+    {0x7C, 0x66, 0x66, 0x7C, 0x6C, 0x66, 0x66, 0x00}, // R
+    {0x3C, 0x66, 0x60, 0x3C, 0x06, 0x66, 0x3C, 0x00}, // S
+    {0x7E, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x00}, // T
+    {0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x3C, 0x00}, // U
+    {0x66, 0x66, 0x66, 0x66, 0x66, 0x3C, 0x18, 0x00}, // V
+    {0x63, 0x63, 0x63, 0x6B, 0x7F, 0x77, 0x63, 0x00}, // W
+    {0x66, 0x66, 0x3C, 0x18, 0x3C, 0x66, 0x66, 0x00}, // X
+    {0x66, 0x66, 0x66, 0x3C, 0x18, 0x18, 0x18, 0x00}, // Y
+    {0x7E, 0x06, 0x0C, 0x18, 0x30, 0x60, 0x7E, 0x00}, // Z
     // Remaining chars (simplified)
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // [ 91
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // \ 92
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // ] 93
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // ^ 94
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // _ 95
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // ` 96
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // [ 91
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // \ 92
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // ] 93
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // ^ 94
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // _ 95
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // ` 96
     // a-z (97-122) - lowercase
-    {0x00,0x00,0x3C,0x06,0x3E,0x66,0x3E,0x00}, // a
-    {0x60,0x60,0x7C,0x66,0x66,0x66,0x7C,0x00}, // b
-    {0x00,0x00,0x3C,0x66,0x60,0x66,0x3C,0x00}, // c
-    {0x06,0x06,0x3E,0x66,0x66,0x66,0x3E,0x00}, // d
-    {0x00,0x00,0x3C,0x66,0x7E,0x60,0x3C,0x00}, // e
-    {0x1C,0x30,0x7C,0x30,0x30,0x30,0x30,0x00}, // f
-    {0x00,0x00,0x3E,0x66,0x66,0x3E,0x06,0x3C}, // g
-    {0x60,0x60,0x7C,0x66,0x66,0x66,0x66,0x00}, // h
-    {0x18,0x00,0x38,0x18,0x18,0x18,0x3C,0x00}, // i
-    {0x0C,0x00,0x1C,0x0C,0x0C,0x0C,0x6C,0x38}, // j
-    {0x60,0x60,0x66,0x6C,0x78,0x6C,0x66,0x00}, // k
-    {0x38,0x18,0x18,0x18,0x18,0x18,0x3C,0x00}, // l
-    {0x00,0x00,0x66,0x7F,0x7F,0x6B,0x63,0x00}, // m
-    {0x00,0x00,0x7C,0x66,0x66,0x66,0x66,0x00}, // n
-    {0x00,0x00,0x3C,0x66,0x66,0x66,0x3C,0x00}, // o
-    {0x00,0x00,0x7C,0x66,0x66,0x7C,0x60,0x60}, // p
-    {0x00,0x00,0x3E,0x66,0x66,0x3E,0x06,0x06}, // q
-    {0x00,0x00,0x7C,0x66,0x60,0x60,0x60,0x00}, // r
-    {0x00,0x00,0x3E,0x60,0x3C,0x06,0x7C,0x00}, // s
-    {0x30,0x30,0x7C,0x30,0x30,0x30,0x1C,0x00}, // t
-    {0x00,0x00,0x66,0x66,0x66,0x66,0x3E,0x00}, // u
-    {0x00,0x00,0x66,0x66,0x66,0x3C,0x18,0x00}, // v
-    {0x00,0x00,0x63,0x6B,0x7F,0x7F,0x36,0x00}, // w
-    {0x00,0x00,0x66,0x3C,0x18,0x3C,0x66,0x00}, // x
-    {0x00,0x00,0x66,0x66,0x66,0x3E,0x06,0x3C}, // y
-    {0x00,0x00,0x7E,0x0C,0x18,0x30,0x7E,0x00}, // z
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // { 123
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // | 124
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // } 125
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // ~ 126
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // DEL 127
+    {0x00, 0x00, 0x3C, 0x06, 0x3E, 0x66, 0x3E, 0x00}, // a
+    {0x60, 0x60, 0x7C, 0x66, 0x66, 0x66, 0x7C, 0x00}, // b
+    {0x00, 0x00, 0x3C, 0x66, 0x60, 0x66, 0x3C, 0x00}, // c
+    {0x06, 0x06, 0x3E, 0x66, 0x66, 0x66, 0x3E, 0x00}, // d
+    {0x00, 0x00, 0x3C, 0x66, 0x7E, 0x60, 0x3C, 0x00}, // e
+    {0x1C, 0x30, 0x7C, 0x30, 0x30, 0x30, 0x30, 0x00}, // f
+    {0x00, 0x00, 0x3E, 0x66, 0x66, 0x3E, 0x06, 0x3C}, // g
+    {0x60, 0x60, 0x7C, 0x66, 0x66, 0x66, 0x66, 0x00}, // h
+    {0x18, 0x00, 0x38, 0x18, 0x18, 0x18, 0x3C, 0x00}, // i
+    {0x0C, 0x00, 0x1C, 0x0C, 0x0C, 0x0C, 0x6C, 0x38}, // j
+    {0x60, 0x60, 0x66, 0x6C, 0x78, 0x6C, 0x66, 0x00}, // k
+    {0x38, 0x18, 0x18, 0x18, 0x18, 0x18, 0x3C, 0x00}, // l
+    {0x00, 0x00, 0x66, 0x7F, 0x7F, 0x6B, 0x63, 0x00}, // m
+    {0x00, 0x00, 0x7C, 0x66, 0x66, 0x66, 0x66, 0x00}, // n
+    {0x00, 0x00, 0x3C, 0x66, 0x66, 0x66, 0x3C, 0x00}, // o
+    {0x00, 0x00, 0x7C, 0x66, 0x66, 0x7C, 0x60, 0x60}, // p
+    {0x00, 0x00, 0x3E, 0x66, 0x66, 0x3E, 0x06, 0x06}, // q
+    {0x00, 0x00, 0x7C, 0x66, 0x60, 0x60, 0x60, 0x00}, // r
+    {0x00, 0x00, 0x3E, 0x60, 0x3C, 0x06, 0x7C, 0x00}, // s
+    {0x30, 0x30, 0x7C, 0x30, 0x30, 0x30, 0x1C, 0x00}, // t
+    {0x00, 0x00, 0x66, 0x66, 0x66, 0x66, 0x3E, 0x00}, // u
+    {0x00, 0x00, 0x66, 0x66, 0x66, 0x3C, 0x18, 0x00}, // v
+    {0x00, 0x00, 0x63, 0x6B, 0x7F, 0x7F, 0x36, 0x00}, // w
+    {0x00, 0x00, 0x66, 0x3C, 0x18, 0x3C, 0x66, 0x00}, // x
+    {0x00, 0x00, 0x66, 0x66, 0x66, 0x3E, 0x06, 0x3C}, // y
+    {0x00, 0x00, 0x7E, 0x0C, 0x18, 0x30, 0x7E, 0x00}, // z
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // { 123
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // | 124
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // } 125
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // ~ 126
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // DEL 127
 };
 
 // Service channel
 static int32_t g_service_channel = -1;
-static int32_t g_poll_set = -1;  // Poll set for service channel
+static int32_t g_poll_set = -1; // Poll set for service channel
 
-// Receive bootstrap capabilities
-static void recv_bootstrap_caps()
-{
+// ============================================================================
+// Section 4: Bootstrap/Initialization
+// ============================================================================
+
+static void recv_bootstrap_caps() {
     constexpr int32_t BOOTSTRAP_RECV = 0;
     uint8_t dummy[1];
     uint32_t handles[4];
     uint32_t handle_count = 4;
 
-    for (uint32_t i = 0; i < 2000; i++)
-    {
+    for (uint32_t i = 0; i < 2000; i++) {
         handle_count = 4;
         int64_t n = sys::channel_recv(BOOTSTRAP_RECV, dummy, sizeof(dummy), handles, &handle_count);
-        if (n >= 0)
-        {
+        if (n >= 0) {
             sys::channel_close(BOOTSTRAP_RECV);
             return;
         }
-        if (n == VERR_WOULD_BLOCK)
-        {
+        if (n == VERR_WOULD_BLOCK) {
             sys::yield();
             continue;
         }
@@ -342,60 +361,54 @@ static void recv_bootstrap_caps()
     }
 }
 
-// Drawing primitives - use g_draw_target for compositing, g_fb for cursor
-static inline void put_pixel(uint32_t x, uint32_t y, uint32_t color)
-{
-    if (x < g_fb_width && y < g_fb_height)
-    {
+// ============================================================================
+// Section 5: Drawing Primitives
+// ============================================================================
+
+static inline void put_pixel(uint32_t x, uint32_t y, uint32_t color) {
+    if (x < g_fb_width && y < g_fb_height) {
         g_draw_target[y * (g_fb_pitch / 4) + x] = color;
     }
 }
 
-static inline uint32_t get_pixel(uint32_t x, uint32_t y)
-{
-    if (x < g_fb_width && y < g_fb_height)
-    {
+static inline uint32_t get_pixel(uint32_t x, uint32_t y) {
+    if (x < g_fb_width && y < g_fb_height) {
         return g_draw_target[y * (g_fb_pitch / 4) + x];
     }
     return 0;
 }
 
-static void fill_rect(int32_t x, int32_t y, uint32_t w, uint32_t h, uint32_t color)
-{
+static void fill_rect(int32_t x, int32_t y, uint32_t w, uint32_t h, uint32_t color) {
     // Clamp to screen
     int32_t x1 = x < 0 ? 0 : x;
     int32_t y1 = y < 0 ? 0 : y;
     int32_t x2 = x + static_cast<int32_t>(w);
     int32_t y2 = y + static_cast<int32_t>(h);
-    if (x2 > static_cast<int32_t>(g_fb_width)) x2 = static_cast<int32_t>(g_fb_width);
-    if (y2 > static_cast<int32_t>(g_fb_height)) y2 = static_cast<int32_t>(g_fb_height);
+    if (x2 > static_cast<int32_t>(g_fb_width))
+        x2 = static_cast<int32_t>(g_fb_width);
+    if (y2 > static_cast<int32_t>(g_fb_height))
+        y2 = static_cast<int32_t>(g_fb_height);
 
-    for (int32_t py = y1; py < y2; py++)
-    {
-        for (int32_t px = x1; px < x2; px++)
-        {
+    for (int32_t py = y1; py < y2; py++) {
+        for (int32_t px = x1; px < x2; px++) {
             g_draw_target[py * (g_fb_pitch / 4) + px] = color;
         }
     }
 }
 
-static void draw_char(int32_t x, int32_t y, char c, uint32_t color)
-{
-    if (c < 32 || c > 127) return;
+static void draw_char(int32_t x, int32_t y, char c, uint32_t color) {
+    if (c < 32 || c > 127)
+        return;
     const uint8_t *glyph = g_font[c - 32];
 
-    for (int row = 0; row < 8; row++)
-    {
+    for (int row = 0; row < 8; row++) {
         uint8_t bits = glyph[row];
-        for (int col = 0; col < 8; col++)
-        {
-            if (bits & (0x80 >> col))
-            {
+        for (int col = 0; col < 8; col++) {
+            if (bits & (0x80 >> col)) {
                 int32_t px = x + col;
                 int32_t py = y + row;
-                if (px >= 0 && px < static_cast<int32_t>(g_fb_width) &&
-                    py >= 0 && py < static_cast<int32_t>(g_fb_height))
-                {
+                if (px >= 0 && px < static_cast<int32_t>(g_fb_width) && py >= 0 &&
+                    py < static_cast<int32_t>(g_fb_height)) {
                     put_pixel(static_cast<uint32_t>(px), static_cast<uint32_t>(py), color);
                 }
             }
@@ -403,69 +416,61 @@ static void draw_char(int32_t x, int32_t y, char c, uint32_t color)
     }
 }
 
-static void draw_text(int32_t x, int32_t y, const char *text, uint32_t color)
-{
-    while (*text)
-    {
+static void draw_text(int32_t x, int32_t y, const char *text, uint32_t color) {
+    while (*text) {
         draw_char(x, y, *text, color);
         x += 8;
         text++;
     }
 }
 
-// Cursor handling
-static void save_cursor_background()
-{
-    for (int dy = 0; dy < 16; dy++)
-    {
-        for (int dx = 0; dx < 16; dx++)
-        {
+// ============================================================================
+// Section 6: Cursor Management
+// ============================================================================
+
+static void save_cursor_background() {
+    for (int dy = 0; dy < 16; dy++) {
+        for (int dx = 0; dx < 16; dx++) {
             int32_t px = g_cursor_x + dx;
             int32_t py = g_cursor_y + dy;
-            if (px >= 0 && px < static_cast<int32_t>(g_fb_width) &&
-                py >= 0 && py < static_cast<int32_t>(g_fb_height))
-            {
-                g_cursor_saved[dy * 16 + dx] = get_pixel(static_cast<uint32_t>(px),
-                                                          static_cast<uint32_t>(py));
+            if (px >= 0 && px < static_cast<int32_t>(g_fb_width) && py >= 0 &&
+                py < static_cast<int32_t>(g_fb_height)) {
+                g_cursor_saved[dy * 16 + dx] =
+                    get_pixel(static_cast<uint32_t>(px), static_cast<uint32_t>(py));
             }
         }
     }
 }
 
-static void restore_cursor_background()
-{
-    for (int dy = 0; dy < 16; dy++)
-    {
-        for (int dx = 0; dx < 16; dx++)
-        {
+static void restore_cursor_background() {
+    for (int dy = 0; dy < 16; dy++) {
+        for (int dx = 0; dx < 16; dx++) {
             int32_t px = g_cursor_x + dx;
             int32_t py = g_cursor_y + dy;
-            if (px >= 0 && px < static_cast<int32_t>(g_fb_width) &&
-                py >= 0 && py < static_cast<int32_t>(g_fb_height))
-            {
-                put_pixel(static_cast<uint32_t>(px), static_cast<uint32_t>(py),
-                         g_cursor_saved[dy * 16 + dx]);
+            if (px >= 0 && px < static_cast<int32_t>(g_fb_width) && py >= 0 &&
+                py < static_cast<int32_t>(g_fb_height)) {
+                put_pixel(static_cast<uint32_t>(px),
+                          static_cast<uint32_t>(py),
+                          g_cursor_saved[dy * 16 + dx]);
             }
         }
     }
 }
 
-static void draw_cursor()
-{
-    if (!g_cursor_visible) return;
+static void draw_cursor() {
+    if (!g_cursor_visible)
+        return;
 
-    for (int dy = 0; dy < 16; dy++)
-    {
-        for (int dx = 0; dx < 16; dx++)
-        {
+    for (int dy = 0; dy < 16; dy++) {
+        for (int dx = 0; dx < 16; dx++) {
             uint8_t pixel = g_cursor_data[dy * 16 + dx];
-            if (pixel == 0) continue;
+            if (pixel == 0)
+                continue;
 
             int32_t px = g_cursor_x + dx;
             int32_t py = g_cursor_y + dy;
-            if (px >= 0 && px < static_cast<int32_t>(g_fb_width) &&
-                py >= 0 && py < static_cast<int32_t>(g_fb_height))
-            {
+            if (px >= 0 && px < static_cast<int32_t>(g_fb_width) && py >= 0 &&
+                py < static_cast<int32_t>(g_fb_height)) {
                 uint32_t color = (pixel == 1) ? COLOR_WHITE : 0xFF000000;
                 put_pixel(static_cast<uint32_t>(px), static_cast<uint32_t>(py), color);
             }
@@ -473,15 +478,19 @@ static void draw_cursor()
     }
 }
 
-// Button colors (from centralized viper_colors.h)
+// ============================================================================
+// Section 7: Window Decorations
+// ============================================================================
+
 static constexpr uint32_t COLOR_MIN_BTN = VIPER_COLOR_BTN_MIN;
 static constexpr uint32_t COLOR_MAX_BTN = VIPER_COLOR_BTN_MAX;
 
 // Window decoration drawing
-static void draw_window_decorations(Surface *surf)
-{
-    if (!surf || !surf->in_use || !surf->visible) return;
-    if (surf->flags & SURFACE_FLAG_NO_DECORATIONS) return;
+static void draw_window_decorations(Surface *surf) {
+    if (!surf || !surf->in_use || !surf->visible)
+        return;
+    if (surf->flags & SURFACE_FLAG_NO_DECORATIONS)
+        return;
 
     int32_t win_x = surf->x - static_cast<int32_t>(BORDER_WIDTH);
     int32_t win_y = surf->y - static_cast<int32_t>(TITLE_BAR_HEIGHT + BORDER_WIDTH);
@@ -495,8 +504,11 @@ static void draw_window_decorations(Surface *surf)
 
     // Title bar
     uint32_t title_color = focused ? COLOR_TITLE_FOCUSED : COLOR_TITLE_UNFOCUSED;
-    fill_rect(win_x + BORDER_WIDTH, win_y + BORDER_WIDTH,
-              win_w - BORDER_WIDTH * 2, TITLE_BAR_HEIGHT, title_color);
+    fill_rect(win_x + BORDER_WIDTH,
+              win_y + BORDER_WIDTH,
+              win_w - BORDER_WIDTH * 2,
+              TITLE_BAR_HEIGHT,
+              title_color);
 
     // Title text
     draw_text(win_x + BORDER_WIDTH + 8, win_y + BORDER_WIDTH + 8, surf->title, COLOR_WHITE);
@@ -513,13 +525,10 @@ static void draw_window_decorations(Surface *surf)
     int32_t max_x = close_x - btn_spacing;
     fill_rect(max_x, btn_y, CLOSE_BUTTON_SIZE, CLOSE_BUTTON_SIZE, COLOR_MAX_BTN);
     // Draw box symbol for maximize (or arrows if maximized)
-    if (surf->maximized)
-    {
+    if (surf->maximized) {
         // Draw restore symbol (two overlapping rectangles)
         draw_char(max_x + 4, btn_y + 4, 'R', COLOR_WHITE);
-    }
-    else
-    {
+    } else {
         // Draw maximize symbol (box outline)
         draw_char(max_x + 4, btn_y + 4, 'M', COLOR_WHITE);
     }
@@ -530,9 +539,110 @@ static void draw_window_decorations(Surface *surf)
     draw_char(min_x + 4, btn_y + 4, '_', COLOR_WHITE);
 }
 
-// Copy back buffer to front buffer (fast page flip)
-static void flip_buffers()
-{
+// Draw vertical scrollbar for a surface
+static void draw_vscrollbar(Surface *surf) {
+    if (!surf || !surf->vscroll.enabled)
+        return;
+    if (surf->vscroll.content_size <= surf->vscroll.viewport_size)
+        return;
+
+    // Scrollbar is drawn INSIDE the client area on the right edge
+    int32_t sb_x =
+        surf->x + static_cast<int32_t>(surf->width) - static_cast<int32_t>(SCROLLBAR_WIDTH);
+    int32_t sb_y = surf->y;
+    int32_t sb_h = static_cast<int32_t>(surf->height);
+
+    // Clamp to screen bounds
+    if (sb_x < 0 || sb_x >= static_cast<int32_t>(g_fb_width))
+        return;
+
+    // Draw track background
+    fill_rect(sb_x, sb_y, SCROLLBAR_WIDTH, static_cast<uint32_t>(sb_h), COLOR_SCROLLBAR_TRACK);
+
+    // Calculate thumb position and size
+    int32_t content = surf->vscroll.content_size;
+    int32_t viewport = surf->vscroll.viewport_size;
+    int32_t scroll_pos = surf->vscroll.scroll_pos;
+
+    // Thumb height proportional to viewport/content ratio
+    int32_t thumb_h = (viewport * sb_h) / content;
+    if (thumb_h < static_cast<int32_t>(SCROLLBAR_MIN_THUMB))
+        thumb_h = static_cast<int32_t>(SCROLLBAR_MIN_THUMB);
+
+    // Thumb position proportional to scroll position
+    int32_t scroll_range = content - viewport;
+    int32_t track_range = sb_h - thumb_h;
+    int32_t thumb_y = sb_y;
+    if (scroll_range > 0)
+        thumb_y = sb_y + (scroll_pos * track_range) / scroll_range;
+
+    // Draw thumb with 3D appearance
+    fill_rect(sb_x + 2,
+              thumb_y + 2,
+              SCROLLBAR_WIDTH - 4,
+              static_cast<uint32_t>(thumb_h - 4),
+              COLOR_SCROLLBAR_THUMB);
+
+    // Top highlight
+    fill_rect(sb_x + 2, thumb_y + 2, SCROLLBAR_WIDTH - 4, 1, COLOR_WHITE);
+    // Left highlight
+    fill_rect(sb_x + 2, thumb_y + 2, 1, static_cast<uint32_t>(thumb_h - 4), COLOR_WHITE);
+    // Bottom shadow
+    fill_rect(sb_x + 2, thumb_y + thumb_h - 3, SCROLLBAR_WIDTH - 4, 1, COLOR_SCROLLBAR_ARROW);
+    // Right shadow
+    fill_rect(sb_x + SCROLLBAR_WIDTH - 3,
+              thumb_y + 2,
+              1,
+              static_cast<uint32_t>(thumb_h - 4),
+              COLOR_SCROLLBAR_ARROW);
+}
+
+// Draw horizontal scrollbar for a surface
+static void draw_hscrollbar(Surface *surf) {
+    if (!surf || !surf->hscroll.enabled)
+        return;
+    if (surf->hscroll.content_size <= surf->hscroll.viewport_size)
+        return;
+
+    // Scrollbar is drawn INSIDE the client area on the bottom edge
+    int32_t sb_x = surf->x;
+    int32_t sb_y =
+        surf->y + static_cast<int32_t>(surf->height) - static_cast<int32_t>(SCROLLBAR_WIDTH);
+    int32_t sb_w = static_cast<int32_t>(surf->width);
+
+    // Draw track
+    fill_rect(sb_x, sb_y, static_cast<uint32_t>(sb_w), SCROLLBAR_WIDTH, COLOR_SCROLLBAR_TRACK);
+
+    // Calculate thumb position and size
+    int32_t content = surf->hscroll.content_size;
+    int32_t viewport = surf->hscroll.viewport_size;
+    int32_t scroll_pos = surf->hscroll.scroll_pos;
+
+    // Thumb width proportional to viewport/content ratio
+    int32_t thumb_w = (viewport * sb_w) / content;
+    if (thumb_w < static_cast<int32_t>(SCROLLBAR_MIN_THUMB))
+        thumb_w = static_cast<int32_t>(SCROLLBAR_MIN_THUMB);
+
+    // Thumb position proportional to scroll position
+    int32_t scroll_range = content - viewport;
+    int32_t track_range = sb_w - thumb_w;
+    int32_t thumb_x = sb_x;
+    if (scroll_range > 0)
+        thumb_x = sb_x + (scroll_pos * track_range) / scroll_range;
+
+    // Draw thumb
+    fill_rect(thumb_x + 2,
+              sb_y + 2,
+              static_cast<uint32_t>(thumb_w - 4),
+              SCROLLBAR_WIDTH - 4,
+              COLOR_SCROLLBAR_THUMB);
+}
+
+// ============================================================================
+// Section 8: Compositing
+// ============================================================================
+
+static void flip_buffers() {
     uint32_t pixels_per_row = g_fb_pitch / 4;
     uint32_t total_pixels = pixels_per_row * g_fb_height;
 
@@ -541,21 +651,18 @@ static void flip_buffers()
     uint64_t *src = reinterpret_cast<uint64_t *>(g_back_buffer);
     uint32_t count64 = total_pixels / 2;
 
-    for (uint32_t i = 0; i < count64; i++)
-    {
+    for (uint32_t i = 0; i < count64; i++) {
         dst[i] = src[i];
     }
 
     // Handle odd pixel if any
-    if (total_pixels & 1)
-    {
+    if (total_pixels & 1) {
         g_fb[total_pixels - 1] = g_back_buffer[total_pixels - 1];
     }
 }
 
 // Composite all surfaces to framebuffer (double-buffered)
-static void composite()
-{
+static void composite() {
     // Draw to back buffer to avoid flicker
     g_draw_target = g_back_buffer;
 
@@ -563,14 +670,17 @@ static void composite()
     // Top border
     fill_rect(0, 0, g_fb_width, SCREEN_BORDER_WIDTH, COLOR_SCREEN_BORDER);
     // Bottom border
-    fill_rect(0, g_fb_height - SCREEN_BORDER_WIDTH, g_fb_width, SCREEN_BORDER_WIDTH, COLOR_SCREEN_BORDER);
+    fill_rect(
+        0, g_fb_height - SCREEN_BORDER_WIDTH, g_fb_width, SCREEN_BORDER_WIDTH, COLOR_SCREEN_BORDER);
     // Left border
     fill_rect(0, 0, SCREEN_BORDER_WIDTH, g_fb_height, COLOR_SCREEN_BORDER);
     // Right border
-    fill_rect(g_fb_width - SCREEN_BORDER_WIDTH, 0, SCREEN_BORDER_WIDTH, g_fb_height, COLOR_SCREEN_BORDER);
+    fill_rect(
+        g_fb_width - SCREEN_BORDER_WIDTH, 0, SCREEN_BORDER_WIDTH, g_fb_height, COLOR_SCREEN_BORDER);
 
     // Clear inner desktop area
-    fill_rect(SCREEN_BORDER_WIDTH, SCREEN_BORDER_WIDTH,
+    fill_rect(SCREEN_BORDER_WIDTH,
+              SCREEN_BORDER_WIDTH,
               g_fb_width - 2 * SCREEN_BORDER_WIDTH,
               g_fb_height - 2 * SCREEN_BORDER_WIDTH,
               COLOR_DESKTOP);
@@ -579,21 +689,20 @@ static void composite()
     Surface *sorted[MAX_SURFACES];
     uint32_t count = 0;
 
-    for (uint32_t i = 0; i < MAX_SURFACES; i++)
-    {
+    for (uint32_t i = 0; i < MAX_SURFACES; i++) {
         Surface *surf = &g_surfaces[i];
-        if (!surf->in_use || !surf->visible || !surf->pixels) continue;
-        if (surf->minimized) continue;  // Don't draw minimized windows
+        if (!surf->in_use || !surf->visible || !surf->pixels)
+            continue;
+        if (surf->minimized)
+            continue; // Don't draw minimized windows
         sorted[count++] = surf;
     }
 
     // Simple insertion sort by z_order (small N, runs frequently)
-    for (uint32_t i = 1; i < count; i++)
-    {
+    for (uint32_t i = 1; i < count; i++) {
         Surface *key = sorted[i];
         int32_t j = static_cast<int32_t>(i) - 1;
-        while (j >= 0 && sorted[j]->z_order > key->z_order)
-        {
+        while (j >= 0 && sorted[j]->z_order > key->z_order) {
             sorted[j + 1] = sorted[j];
             j--;
         }
@@ -601,28 +710,31 @@ static void composite()
     }
 
     // Draw surfaces back to front (lower z-order first)
-    for (uint32_t i = 0; i < count; i++)
-    {
+    for (uint32_t i = 0; i < count; i++) {
         Surface *surf = sorted[i];
 
         // Draw decorations first
         draw_window_decorations(surf);
 
         // Blit surface content to back buffer
-        for (uint32_t sy = 0; sy < surf->height; sy++)
-        {
+        for (uint32_t sy = 0; sy < surf->height; sy++) {
             int32_t dst_y = surf->y + static_cast<int32_t>(sy);
-            if (dst_y < 0 || dst_y >= static_cast<int32_t>(g_fb_height)) continue;
+            if (dst_y < 0 || dst_y >= static_cast<int32_t>(g_fb_height))
+                continue;
 
-            for (uint32_t sx = 0; sx < surf->width; sx++)
-            {
+            for (uint32_t sx = 0; sx < surf->width; sx++) {
                 int32_t dst_x = surf->x + static_cast<int32_t>(sx);
-                if (dst_x < 0 || dst_x >= static_cast<int32_t>(g_fb_width)) continue;
+                if (dst_x < 0 || dst_x >= static_cast<int32_t>(g_fb_width))
+                    continue;
 
                 uint32_t pixel = surf->pixels[sy * (surf->stride / 4) + sx];
                 g_back_buffer[dst_y * (g_fb_pitch / 4) + dst_x] = pixel;
             }
         }
+
+        // Draw scrollbars on top of content
+        draw_vscrollbar(surf);
+        draw_hscrollbar(surf);
     }
 
     // Copy back buffer to front buffer in one operation
@@ -636,17 +748,19 @@ static void composite()
     draw_cursor();
 }
 
-// Find surface at screen coordinates (checks top-most first by z-order)
-static Surface *find_surface_at(int32_t x, int32_t y)
-{
+// ============================================================================
+// Section 9: Surface Management
+// ============================================================================
+
+static Surface *find_surface_at(int32_t x, int32_t y) {
     Surface *best = nullptr;
     uint32_t best_z = 0;
     bool found_any = false;
 
-    for (uint32_t i = 0; i < MAX_SURFACES; i++)
-    {
+    for (uint32_t i = 0; i < MAX_SURFACES; i++) {
         Surface *surf = &g_surfaces[i];
-        if (!surf->in_use || !surf->visible || surf->minimized) continue;
+        if (!surf->in_use || !surf->visible || surf->minimized)
+            continue;
 
         // Check if in window bounds (including decorations)
         int32_t win_x = surf->x - static_cast<int32_t>(BORDER_WIDTH);
@@ -654,12 +768,10 @@ static Surface *find_surface_at(int32_t x, int32_t y)
         int32_t win_x2 = surf->x + static_cast<int32_t>(surf->width + BORDER_WIDTH);
         int32_t win_y2 = surf->y + static_cast<int32_t>(surf->height + BORDER_WIDTH);
 
-        if (x >= win_x && x < win_x2 && y >= win_y && y < win_y2)
-        {
+        if (x >= win_x && x < win_x2 && y >= win_y && y < win_y2) {
             // Pick the one with highest z-order (top-most)
             // Use >= for first match to handle z_order = 0 (SYSTEM surfaces)
-            if (!found_any || surf->z_order > best_z)
-            {
+            if (!found_any || surf->z_order > best_z) {
                 best = surf;
                 best_z = surf->z_order;
                 found_any = true;
@@ -670,23 +782,26 @@ static Surface *find_surface_at(int32_t x, int32_t y)
 }
 
 // Find surface by ID
-static Surface *find_surface_by_id(uint32_t id)
-{
-    for (uint32_t i = 0; i < MAX_SURFACES; i++)
-    {
-        if (g_surfaces[i].in_use && g_surfaces[i].id == id)
-        {
+static Surface *find_surface_by_id(uint32_t id) {
+    for (uint32_t i = 0; i < MAX_SURFACES; i++) {
+        if (g_surfaces[i].in_use && g_surfaces[i].id == id) {
             return &g_surfaces[i];
         }
     }
     return nullptr;
 }
 
-// Handle surface creation
-static void handle_create_surface(int32_t client_channel, const uint8_t *data, size_t len,
-                                   const uint32_t * /*handles*/, uint32_t /*handle_count*/)
-{
-    if (len < sizeof(CreateSurfaceRequest)) return;
+// ============================================================================
+// Section 10: IPC Protocol Handlers
+// ============================================================================
+
+static void handle_create_surface(int32_t client_channel,
+                                  const uint8_t *data,
+                                  size_t len,
+                                  const uint32_t * /*handles*/,
+                                  uint32_t /*handle_count*/) {
+    if (len < sizeof(CreateSurfaceRequest))
+        return;
     auto *req = reinterpret_cast<const CreateSurfaceRequest *>(data);
 
     CreateSurfaceReply reply;
@@ -695,17 +810,14 @@ static void handle_create_surface(int32_t client_channel, const uint8_t *data, s
 
     // Find free surface slot
     Surface *surf = nullptr;
-    for (uint32_t i = 0; i < MAX_SURFACES; i++)
-    {
-        if (!g_surfaces[i].in_use)
-        {
+    for (uint32_t i = 0; i < MAX_SURFACES; i++) {
+        if (!g_surfaces[i].in_use) {
             surf = &g_surfaces[i];
             break;
         }
     }
 
-    if (!surf)
-    {
+    if (!surf) {
         reply.status = -1;
         reply.surface_id = 0;
         reply.stride = 0;
@@ -718,8 +830,7 @@ static void handle_create_surface(int32_t client_channel, const uint8_t *data, s
     uint64_t size = static_cast<uint64_t>(stride) * req->height;
 
     auto shm_result = sys::shm_create(size);
-    if (shm_result.error != 0)
-    {
+    if (shm_result.error != 0) {
         reply.status = -2;
         reply.surface_id = 0;
         reply.stride = 0;
@@ -740,21 +851,28 @@ static void handle_create_surface(int32_t client_channel, const uint8_t *data, s
     surf->in_use = true;
     surf->shm_handle = shm_result.handle;
     surf->pixels = reinterpret_cast<uint32_t *>(shm_result.virt_addr);
-    surf->event_channel = -1;  // No event channel until client subscribes
+    surf->event_channel = -1; // No event channel until client subscribes
     surf->event_queue.init();
     surf->flags = req->flags;
     // SYSTEM surfaces (like desktop/workbench) stay at z-order 0 (always behind)
     // Other windows get highest z-order (on top)
-    if (surf->flags & SURFACE_FLAG_SYSTEM)
-    {
+    if (surf->flags & SURFACE_FLAG_SYSTEM) {
         surf->z_order = 0;
-    }
-    else
-    {
+    } else {
         surf->z_order = g_next_z_order++;
     }
     surf->minimized = false;
     surf->maximized = false;
+
+    // Initialize scrollbar state
+    surf->vscroll.enabled = false;
+    surf->vscroll.content_size = 0;
+    surf->vscroll.viewport_size = 0;
+    surf->vscroll.scroll_pos = 0;
+    surf->hscroll.enabled = false;
+    surf->hscroll.content_size = 0;
+    surf->hscroll.viewport_size = 0;
+    surf->hscroll.scroll_pos = 0;
 
     debug_print("[displayd] Created surface id=");
     debug_print_dec(surf->id);
@@ -771,24 +889,20 @@ static void handle_create_surface(int32_t client_channel, const uint8_t *data, s
     surf->saved_height = surf->height;
 
     // Copy title
-    for (int i = 0; i < 63 && req->title[i]; i++)
-    {
+    for (int i = 0; i < 63 && req->title[i]; i++) {
         surf->title[i] = req->title[i];
     }
     surf->title[63] = '\0';
 
     // Clear surface to white
-    for (uint32_t y = 0; y < surf->height; y++)
-    {
-        for (uint32_t x = 0; x < surf->width; x++)
-        {
+    for (uint32_t y = 0; y < surf->height; y++) {
+        for (uint32_t x = 0; x < surf->width; x++) {
             surf->pixels[y * (stride / 4) + x] = COLOR_WHITE;
         }
     }
 
     // Set focus to new surface (unless it's a SYSTEM surface like desktop)
-    if (!(surf->flags & SURFACE_FLAG_SYSTEM))
-    {
+    if (!(surf->flags & SURFACE_FLAG_SYSTEM)) {
         g_focused_surface = surf->id;
     }
 
@@ -813,22 +927,24 @@ static void handle_create_surface(int32_t client_channel, const uint8_t *data, s
 }
 
 // Handle client request
-static void handle_request(int32_t client_channel, const uint8_t *data, size_t len,
-                            const uint32_t *handles, uint32_t handle_count)
-{
-    if (len < 4) return;
+static void handle_request(int32_t client_channel,
+                           const uint8_t *data,
+                           size_t len,
+                           const uint32_t *handles,
+                           uint32_t handle_count) {
+    if (len < 4)
+        return;
 
     uint32_t msg_type = *reinterpret_cast<const uint32_t *>(data);
 
-    switch (msg_type)
-    {
-        case DISP_GET_INFO:
-        {
+    switch (msg_type) {
+        case DISP_GET_INFO: {
             debug_print("[displayd] Handling DISP_GET_INFO, client_channel=");
             debug_print_dec(client_channel);
             debug_print("\n");
 
-            if (len < sizeof(GetInfoRequest)) return;
+            if (len < sizeof(GetInfoRequest))
+                return;
             auto *req = reinterpret_cast<const GetInfoRequest *>(data);
 
             GetInfoReply reply;
@@ -839,7 +955,8 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
             reply.height = g_fb_height;
             reply.format = 0x34325258; // XRGB8888
 
-            int64_t send_result = sys::channel_send(client_channel, &reply, sizeof(reply), nullptr, 0);
+            int64_t send_result =
+                sys::channel_send(client_channel, &reply, sizeof(reply), nullptr, 0);
             debug_print("[displayd] DISP_GET_INFO reply sent, result=");
             debug_print_dec(send_result);
             debug_print("\n");
@@ -850,9 +967,9 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
             handle_create_surface(client_channel, data, len, handles, handle_count);
             break;
 
-        case DISP_DESTROY_SURFACE:
-        {
-            if (len < sizeof(DestroySurfaceRequest)) return;
+        case DISP_DESTROY_SURFACE: {
+            if (len < sizeof(DestroySurfaceRequest))
+                return;
             auto *req = reinterpret_cast<const DestroySurfaceRequest *>(data);
 
             GenericReply reply;
@@ -860,14 +977,11 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
             reply.request_id = req->request_id;
             reply.status = -1;
 
-            for (uint32_t i = 0; i < MAX_SURFACES; i++)
-            {
-                if (g_surfaces[i].in_use && g_surfaces[i].id == req->surface_id)
-                {
+            for (uint32_t i = 0; i < MAX_SURFACES; i++) {
+                if (g_surfaces[i].in_use && g_surfaces[i].id == req->surface_id) {
                     sys::shm_close(g_surfaces[i].shm_handle);
                     // Close event channel if subscribed
-                    if (g_surfaces[i].event_channel >= 0)
-                    {
+                    if (g_surfaces[i].event_channel >= 0) {
                         sys::channel_close(g_surfaces[i].event_channel);
                         g_surfaces[i].event_channel = -1;
                     }
@@ -883,16 +997,15 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
             break;
         }
 
-        case DISP_PRESENT:
-        {
-            if (len < sizeof(PresentRequest)) return;
+        case DISP_PRESENT: {
+            if (len < sizeof(PresentRequest))
+                return;
 
             // Just recomposite
             composite();
 
             // Only send reply if client provided a reply channel
-            if (client_channel >= 0)
-            {
+            if (client_channel >= 0) {
                 auto *req = reinterpret_cast<const PresentRequest *>(data);
                 GenericReply reply;
                 reply.type = DISP_GENERIC_REPLY;
@@ -903,9 +1016,9 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
             break;
         }
 
-        case DISP_SET_GEOMETRY:
-        {
-            if (len < sizeof(SetGeometryRequest)) return;
+        case DISP_SET_GEOMETRY: {
+            if (len < sizeof(SetGeometryRequest))
+                return;
             auto *req = reinterpret_cast<const SetGeometryRequest *>(data);
 
             GenericReply reply;
@@ -913,10 +1026,8 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
             reply.request_id = req->request_id;
             reply.status = -1;
 
-            for (uint32_t i = 0; i < MAX_SURFACES; i++)
-            {
-                if (g_surfaces[i].in_use && g_surfaces[i].id == req->surface_id)
-                {
+            for (uint32_t i = 0; i < MAX_SURFACES; i++) {
+                if (g_surfaces[i].in_use && g_surfaces[i].id == req->surface_id) {
                     g_surfaces[i].x = req->x;
                     g_surfaces[i].y = req->y;
                     reply.status = 0;
@@ -929,9 +1040,9 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
             break;
         }
 
-        case DISP_SET_VISIBLE:
-        {
-            if (len < sizeof(SetVisibleRequest)) return;
+        case DISP_SET_VISIBLE: {
+            if (len < sizeof(SetVisibleRequest))
+                return;
             auto *req = reinterpret_cast<const SetVisibleRequest *>(data);
 
             GenericReply reply;
@@ -939,10 +1050,8 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
             reply.request_id = req->request_id;
             reply.status = -1;
 
-            for (uint32_t i = 0; i < MAX_SURFACES; i++)
-            {
-                if (g_surfaces[i].in_use && g_surfaces[i].id == req->surface_id)
-                {
+            for (uint32_t i = 0; i < MAX_SURFACES; i++) {
+                if (g_surfaces[i].in_use && g_surfaces[i].id == req->surface_id) {
                     g_surfaces[i].visible = (req->visible != 0);
                     reply.status = 0;
                     break;
@@ -954,9 +1063,9 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
             break;
         }
 
-        case DISP_SET_TITLE:
-        {
-            if (len < sizeof(SetTitleRequest)) return;
+        case DISP_SET_TITLE: {
+            if (len < sizeof(SetTitleRequest))
+                return;
             auto *req = reinterpret_cast<const SetTitleRequest *>(data);
 
             GenericReply reply;
@@ -965,11 +1074,9 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
             reply.status = -1;
 
             Surface *surf = find_surface_by_id(req->surface_id);
-            if (surf)
-            {
+            if (surf) {
                 // Copy new title (safely)
-                for (int i = 0; i < 63 && req->title[i]; i++)
-                {
+                for (int i = 0; i < 63 && req->title[i]; i++) {
                     surf->title[i] = req->title[i];
                 }
                 surf->title[63] = '\0';
@@ -981,9 +1088,9 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
             break;
         }
 
-        case DISP_SUBSCRIBE_EVENTS:
-        {
-            if (len < sizeof(SubscribeEventsRequest)) return;
+        case DISP_SUBSCRIBE_EVENTS: {
+            if (len < sizeof(SubscribeEventsRequest))
+                return;
             auto *req = reinterpret_cast<const SubscribeEventsRequest *>(data);
 
             GenericReply reply;
@@ -993,11 +1100,9 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
 
             // Find the surface and store the event channel
             Surface *surf = find_surface_by_id(req->surface_id);
-            if (surf && handle_count > 0)
-            {
+            if (surf && handle_count > 0) {
                 // Close old event channel if any
-                if (surf->event_channel >= 0)
-                {
+                if (surf->event_channel >= 0) {
                     sys::channel_close(surf->event_channel);
                 }
                 // Store the new event channel (write endpoint from client)
@@ -1015,9 +1120,9 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
             break;
         }
 
-        case DISP_POLL_EVENT:
-        {
-            if (len < sizeof(PollEventRequest)) return;
+        case DISP_POLL_EVENT: {
+            if (len < sizeof(PollEventRequest))
+                return;
             auto *req = reinterpret_cast<const PollEventRequest *>(data);
 
             PollEventReply reply;
@@ -1028,17 +1133,14 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
 
             // Find the surface and check for events
             Surface *surf = find_surface_by_id(req->surface_id);
-            if (surf)
-            {
+            if (surf) {
                 QueuedEvent ev;
-                if (surf->event_queue.pop(&ev))
-                {
+                if (surf->event_queue.pop(&ev)) {
                     reply.has_event = 1;
                     reply.event_type = ev.event_type;
 
                     // Copy event data based on type
-                    switch (ev.event_type)
-                    {
+                    switch (ev.event_type) {
                         case DISP_EVENT_KEY:
                             reply.key = ev.key;
                             break;
@@ -1059,9 +1161,9 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
             break;
         }
 
-        case DISP_LIST_WINDOWS:
-        {
-            if (len < sizeof(ListWindowsRequest)) return;
+        case DISP_LIST_WINDOWS: {
+            if (len < sizeof(ListWindowsRequest))
+                return;
             auto *req = reinterpret_cast<const ListWindowsRequest *>(data);
 
             ListWindowsReply reply;
@@ -1071,11 +1173,12 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
             reply.window_count = 0;
 
             // Collect all non-system windows
-            for (uint32_t i = 0; i < MAX_SURFACES && reply.window_count < 16; i++)
-            {
+            for (uint32_t i = 0; i < MAX_SURFACES && reply.window_count < 16; i++) {
                 Surface *surf = &g_surfaces[i];
-                if (!surf->in_use) continue;
-                if (surf->flags & SURFACE_FLAG_SYSTEM) continue;
+                if (!surf->in_use)
+                    continue;
+                if (surf->flags & SURFACE_FLAG_SYSTEM)
+                    continue;
 
                 WindowInfo &info = reply.windows[reply.window_count];
                 info.surface_id = surf->id;
@@ -1085,8 +1188,7 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
                 info.focused = (g_focused_surface == surf->id) ? 1 : 0;
 
                 // Copy title
-                for (int j = 0; j < 63 && surf->title[j]; j++)
-                {
+                for (int j = 0; j < 63 && surf->title[j]; j++) {
                     info.title[j] = surf->title[j];
                 }
                 info.title[63] = '\0';
@@ -1098,9 +1200,9 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
             break;
         }
 
-        case DISP_RESTORE_WINDOW:
-        {
-            if (len < sizeof(RestoreWindowRequest)) return;
+        case DISP_RESTORE_WINDOW: {
+            if (len < sizeof(RestoreWindowRequest))
+                return;
             auto *req = reinterpret_cast<const RestoreWindowRequest *>(data);
 
             GenericReply reply;
@@ -1109,11 +1211,41 @@ static void handle_request(int32_t client_channel, const uint8_t *data, size_t l
             reply.status = -1;
 
             Surface *surf = find_surface_by_id(req->surface_id);
-            if (surf)
-            {
+            if (surf) {
                 surf->minimized = false;
                 bring_to_front(surf);
                 g_focused_surface = surf->id;
+                composite();
+                reply.status = 0;
+            }
+
+            sys::channel_send(client_channel, &reply, sizeof(reply), nullptr, 0);
+            break;
+        }
+
+        case DISP_SET_SCROLLBAR: {
+            if (len < sizeof(SetScrollbarRequest))
+                return;
+            auto *req = reinterpret_cast<const SetScrollbarRequest *>(data);
+
+            GenericReply reply;
+            reply.type = DISP_GENERIC_REPLY;
+            reply.request_id = req->request_id;
+            reply.status = -1;
+
+            Surface *surf = find_surface_by_id(req->surface_id);
+            if (surf) {
+                if (req->vertical) {
+                    surf->vscroll.enabled = req->enabled != 0;
+                    surf->vscroll.content_size = req->content_size;
+                    surf->vscroll.viewport_size = req->viewport_size;
+                    surf->vscroll.scroll_pos = req->scroll_pos;
+                } else {
+                    surf->hscroll.enabled = req->enabled != 0;
+                    surf->hscroll.content_size = req->content_size;
+                    surf->hscroll.viewport_size = req->viewport_size;
+                    surf->hscroll.scroll_pos = req->scroll_pos;
+                }
                 composite();
                 reply.status = 0;
             }
@@ -1140,7 +1272,7 @@ static int32_t g_last_mouse_y = 0;
 
 // Resize state
 static uint32_t g_resize_surface_id = 0;
-static uint8_t g_resize_edge = 0;  // Bitmask: 1=left, 2=right, 4=top, 8=bottom
+static uint8_t g_resize_edge = 0; // Bitmask: 1=left, 2=right, 4=top, 8=bottom
 static int32_t g_resize_start_x = 0;
 static int32_t g_resize_start_y = 0;
 static int32_t g_resize_start_width = 0;
@@ -1148,15 +1280,24 @@ static int32_t g_resize_start_height = 0;
 static int32_t g_resize_start_surf_x = 0;
 static int32_t g_resize_start_surf_y = 0;
 
-static constexpr int32_t RESIZE_BORDER = 6;  // Width of resize handle area
+// Scrollbar drag state
+static uint32_t g_scrollbar_surface_id = 0;
+static bool g_scrollbar_vertical = true;
+static int32_t g_scrollbar_start_y = 0;
+static int32_t g_scrollbar_start_pos = 0;
+static int32_t g_scrollbar_last_sent_pos = 0;       // Throttle: last position we sent to client
+static constexpr int32_t SCROLL_THROTTLE_DELTA = 8; // Minimum change before sending event
+
+static constexpr int32_t RESIZE_BORDER = 6; // Width of resize handle area
 static constexpr uint32_t MIN_WINDOW_WIDTH = 100;
 static constexpr uint32_t MIN_WINDOW_HEIGHT = 60;
 
 // Check if point is on a resize edge of a surface, return edge mask
-static uint8_t get_resize_edge(Surface *surf, int32_t x, int32_t y)
-{
-    if (!surf) return 0;
-    if (surf->maximized) return 0;  // Can't resize maximized windows
+static uint8_t get_resize_edge(Surface *surf, int32_t x, int32_t y) {
+    if (!surf)
+        return 0;
+    if (surf->maximized)
+        return 0; // Can't resize maximized windows
 
     int32_t win_x1 = surf->x - static_cast<int32_t>(BORDER_WIDTH);
     int32_t win_y1 = surf->y - static_cast<int32_t>(TITLE_BAR_HEIGHT + BORDER_WIDTH);
@@ -1175,17 +1316,29 @@ static uint8_t get_resize_edge(Surface *surf, int32_t x, int32_t y)
     uint8_t edge = 0;
 
     // Check edges (only if in border area)
-    if (x < win_x1 + RESIZE_BORDER) edge |= 1;  // Left
-    if (x >= win_x2 - RESIZE_BORDER) edge |= 2; // Right
-    if (y >= win_y2 - RESIZE_BORDER) edge |= 8; // Bottom
+    if (x < win_x1 + RESIZE_BORDER)
+        edge |= 1; // Left
+    if (x >= win_x2 - RESIZE_BORDER)
+        edge |= 2; // Right
+    if (y >= win_y2 - RESIZE_BORDER)
+        edge |= 8; // Bottom
 
     return edge;
 }
 
+// ============================================================================
+// Section 11: Event Queuing
+// ============================================================================
+
 // Queue a mouse event to a surface
-static void queue_mouse_event(Surface *surf, uint8_t event_type, int32_t local_x, int32_t local_y,
-                               int32_t dx, int32_t dy, uint8_t buttons, uint8_t button)
-{
+static void queue_mouse_event(Surface *surf,
+                              uint8_t event_type,
+                              int32_t local_x,
+                              int32_t local_y,
+                              int32_t dx,
+                              int32_t dy,
+                              uint8_t buttons,
+                              uint8_t button) {
     QueuedEvent ev;
     ev.event_type = DISP_EVENT_MOUSE;
     ev.mouse.type = DISP_EVENT_MOUSE;
@@ -1200,23 +1353,81 @@ static void queue_mouse_event(Surface *surf, uint8_t event_type, int32_t local_x
     ev.mouse._pad = 0;
 
     // If client has event channel, send directly (preferred path)
-    if (surf->event_channel >= 0)
-    {
+    if (surf->event_channel >= 0) {
         sys::channel_send(surf->event_channel, &ev.mouse, sizeof(ev.mouse), nullptr, 0);
-    }
-    else
-    {
+    } else {
         // Fall back to queue for legacy poll-based clients
-        if (!surf->event_queue.push(ev))
-        {
+        if (!surf->event_queue.push(ev)) {
             // Overflow - event dropped (don't spam logs for mouse moves)
         }
     }
 }
 
+// Queue a scroll event to a surface
+static void queue_scroll_event(Surface *surf, int32_t new_position, bool vertical) {
+    ScrollEvent ev;
+    ev.type = DISP_EVENT_SCROLL;
+    ev.surface_id = surf->id;
+    ev.new_position = new_position;
+    ev.vertical = vertical ? 1 : 0;
+    ev._pad[0] = 0;
+    ev._pad[1] = 0;
+    ev._pad[2] = 0;
+
+    // Send scroll event to client
+    if (surf->event_channel >= 0) {
+        sys::channel_send(surf->event_channel, &ev, sizeof(ev), nullptr, 0);
+    }
+}
+
+// Check if point is on vertical scrollbar, return scroll position or -1
+static int32_t check_vscrollbar_click(Surface *surf, int32_t x, int32_t y) {
+    if (!surf || !surf->vscroll.enabled)
+        return -1;
+    if (surf->vscroll.content_size <= surf->vscroll.viewport_size)
+        return -1;
+
+    // Scrollbar bounds (inside client area on right edge)
+    int32_t sb_x =
+        surf->x + static_cast<int32_t>(surf->width) - static_cast<int32_t>(SCROLLBAR_WIDTH);
+    int32_t sb_y = surf->y;
+    int32_t sb_w = static_cast<int32_t>(SCROLLBAR_WIDTH);
+    int32_t sb_h = static_cast<int32_t>(surf->height);
+
+    // Check if click is in scrollbar area
+    if (x < sb_x || x >= sb_x + sb_w)
+        return -1;
+    if (y < sb_y || y >= sb_y + sb_h)
+        return -1;
+
+    // Calculate new scroll position based on click position
+    int32_t content = surf->vscroll.content_size;
+    int32_t viewport = surf->vscroll.viewport_size;
+    int32_t scroll_range = content - viewport;
+
+    // Calculate thumb size
+    int32_t thumb_h = (viewport * sb_h) / content;
+    if (thumb_h < static_cast<int32_t>(SCROLLBAR_MIN_THUMB))
+        thumb_h = static_cast<int32_t>(SCROLLBAR_MIN_THUMB);
+
+    int32_t track_range = sb_h - thumb_h;
+
+    // Map click position to scroll position
+    int32_t click_offset = y - sb_y - thumb_h / 2;
+    if (click_offset < 0)
+        click_offset = 0;
+    if (click_offset > track_range)
+        click_offset = track_range;
+
+    int32_t new_pos = 0;
+    if (track_range > 0)
+        new_pos = (click_offset * scroll_range) / track_range;
+
+    return new_pos;
+}
+
 // Queue a focus event to a surface
-static void queue_focus_event(Surface *surf, bool gained)
-{
+static void queue_focus_event(Surface *surf, bool gained) {
     QueuedEvent ev;
     ev.event_type = DISP_EVENT_FOCUS;
     ev.focus.type = DISP_EVENT_FOCUS;
@@ -1227,44 +1438,34 @@ static void queue_focus_event(Surface *surf, bool gained)
     ev.focus._pad[2] = 0;
 
     // If client has event channel, send directly
-    if (surf->event_channel >= 0)
-    {
+    if (surf->event_channel >= 0) {
         sys::channel_send(surf->event_channel, &ev.focus, sizeof(ev.focus), nullptr, 0);
-    }
-    else
-    {
-        if (!surf->event_queue.push(ev))
-        {
+    } else {
+        if (!surf->event_queue.push(ev)) {
             // Overflow - focus event dropped
         }
     }
 }
 
 // Queue a close event to a surface
-static void queue_close_event(Surface *surf)
-{
+static void queue_close_event(Surface *surf) {
     QueuedEvent ev;
     ev.event_type = DISP_EVENT_CLOSE;
     ev.close.type = DISP_EVENT_CLOSE;
     ev.close.surface_id = surf->id;
 
     // If client has event channel, send directly
-    if (surf->event_channel >= 0)
-    {
+    if (surf->event_channel >= 0) {
         sys::channel_send(surf->event_channel, &ev.close, sizeof(ev.close), nullptr, 0);
-    }
-    else
-    {
-        if (!surf->event_queue.push(ev))
-        {
+    } else {
+        if (!surf->event_queue.push(ev)) {
             // Overflow - close event dropped
         }
     }
 }
 
 // Queue a key event to a surface
-static void queue_key_event(Surface *surf, uint16_t keycode, uint8_t modifiers, bool pressed)
-{
+static void queue_key_event(Surface *surf, uint16_t keycode, uint8_t modifiers, bool pressed) {
     QueuedEvent ev;
     ev.event_type = DISP_EVENT_KEY;
     ev.key.type = DISP_EVENT_KEY;
@@ -1274,39 +1475,45 @@ static void queue_key_event(Surface *surf, uint16_t keycode, uint8_t modifiers, 
     ev.key.pressed = pressed ? 1 : 0;
 
     // If client has event channel, send directly
-    if (surf->event_channel >= 0)
-    {
+    if (surf->event_channel >= 0) {
         sys::channel_send(surf->event_channel, &ev.key, sizeof(ev.key), nullptr, 0);
-    }
-    else
-    {
-        if (!surf->event_queue.push(ev))
-        {
+    } else {
+        if (!surf->event_queue.push(ev)) {
             // Overflow - key event dropped
         }
     }
 }
 
-// Poll kernel for keyboard events and route to focused window
-static void poll_keyboard()
-{
+// ============================================================================
+// Section 12: Input Polling
+// ============================================================================
+
+// Complete a window resize by reallocating shared memory and notifying client
+// NOTE: Full resize with SHM reallocation is disabled due to a crash bug.
+// For now, resize is visual-only (frame changes but content stays same size).
+static bool complete_resize(Surface * /*surf*/, uint32_t /*new_width*/, uint32_t /*new_height*/) {
+    // TODO: Fix SHM reallocation crash before re-enabling
+    // The crash appears to be related to handle management after channel_send
+    return true;
+}
+
+static void poll_keyboard() {
     // Drain all pending events from the kernel queue (limit to 64 per call)
-    for (int i = 0; i < 64; i++)
-    {
+    for (int i = 0; i < 64; i++) {
         // Check if input is available from kernel
-        if (sys::input_has_event() == 0) return;
+        if (sys::input_has_event() == 0)
+            return;
 
         // Get the event from kernel
         sys::InputEvent ev;
-        if (sys::input_get_event(&ev) != 0) return;
+        if (sys::input_get_event(&ev) != 0)
+            return;
 
         // Route keyboard events to focused surface
         if (ev.type == sys::InputEventType::KeyPress ||
-            ev.type == sys::InputEventType::KeyRelease)
-        {
+            ev.type == sys::InputEventType::KeyRelease) {
             Surface *focused = find_surface_by_id(g_focused_surface);
-            if (focused)
-            {
+            if (focused) {
                 bool pressed = (ev.type == sys::InputEventType::KeyPress);
                 queue_key_event(focused, ev.code, ev.modifiers, pressed);
             }
@@ -1316,26 +1523,23 @@ static void poll_keyboard()
     }
 }
 
-static void poll_mouse()
-{
+static void poll_mouse() {
     sys::MouseState state;
-    if (sys::get_mouse_state(&state) != 0) return;
+    if (sys::get_mouse_state(&state) != 0)
+        return;
 
     bool cursor_moved = (state.x != g_last_mouse_x || state.y != g_last_mouse_y);
 
     // Update cursor position
-    if (cursor_moved)
-    {
+    if (cursor_moved) {
         restore_cursor_background();
         g_cursor_x = state.x;
         g_cursor_y = state.y;
 
         // Handle resizing
-        if (g_resize_surface_id != 0)
-        {
+        if (g_resize_surface_id != 0) {
             Surface *resize_surf = find_surface_by_id(g_resize_surface_id);
-            if (resize_surf)
-            {
+            if (resize_surf) {
                 int32_t dx = g_cursor_x - g_resize_start_x;
                 int32_t dy = g_cursor_y - g_resize_start_y;
 
@@ -1360,14 +1564,12 @@ static void poll_mouse()
                 }
 
                 // Clamp to minimum size
-                if (new_width < static_cast<int32_t>(MIN_WINDOW_WIDTH))
-                {
+                if (new_width < static_cast<int32_t>(MIN_WINDOW_WIDTH)) {
                     if (g_resize_edge & 1) // Left edge: adjust x
                         new_x = g_resize_start_surf_x + g_resize_start_width - MIN_WINDOW_WIDTH;
                     new_width = MIN_WINDOW_WIDTH;
                 }
-                if (new_height < static_cast<int32_t>(MIN_WINDOW_HEIGHT))
-                {
+                if (new_height < static_cast<int32_t>(MIN_WINDOW_HEIGHT)) {
                     new_height = MIN_WINDOW_HEIGHT;
                 }
 
@@ -1381,29 +1583,63 @@ static void poll_mouse()
             composite();
         }
         // Handle dragging
-        else if (g_drag_surface_id != 0)
-        {
+        else if (g_drag_surface_id != 0) {
             Surface *drag_surf = find_surface_by_id(g_drag_surface_id);
-            if (drag_surf)
-            {
+            if (drag_surf) {
                 drag_surf->x = g_cursor_x - g_drag_offset_x;
-                drag_surf->y = g_cursor_y - g_drag_offset_y + static_cast<int32_t>(TITLE_BAR_HEIGHT);
+                drag_surf->y =
+                    g_cursor_y - g_drag_offset_y + static_cast<int32_t>(TITLE_BAR_HEIGHT);
             }
             composite();
         }
-        else
-        {
+        // Handle scrollbar dragging
+        else if (g_scrollbar_surface_id != 0) {
+            Surface *scroll_surf = find_surface_by_id(g_scrollbar_surface_id);
+            if (scroll_surf && g_scrollbar_vertical && scroll_surf->vscroll.enabled) {
+                // Calculate scroll position based on cursor movement
+                int32_t track_height =
+                    static_cast<int32_t>(scroll_surf->height) - SCROLLBAR_MIN_THUMB;
+                if (track_height > 0) {
+                    int32_t dy = g_cursor_y - g_scrollbar_start_y;
+                    int32_t max_scroll =
+                        scroll_surf->vscroll.content_size - scroll_surf->vscroll.viewport_size;
+                    if (max_scroll > 0) {
+                        // Calculate new position: proportional to cursor movement
+                        int32_t new_pos = g_scrollbar_start_pos + (dy * max_scroll) / track_height;
+
+                        // Clamp to valid range
+                        if (new_pos < 0)
+                            new_pos = 0;
+                        if (new_pos > max_scroll)
+                            new_pos = max_scroll;
+
+                        if (new_pos != scroll_surf->vscroll.scroll_pos) {
+                            scroll_surf->vscroll.scroll_pos = new_pos;
+
+                            // Throttle: only send event if delta exceeds threshold
+                            int32_t delta = new_pos - g_scrollbar_last_sent_pos;
+                            if (delta < 0)
+                                delta = -delta;
+                            if (delta >= SCROLL_THROTTLE_DELTA) {
+                                queue_scroll_event(scroll_surf, new_pos, true);
+                                g_scrollbar_last_sent_pos = new_pos;
+                            }
+
+                            composite();
+                        }
+                    }
+                }
+            }
+        } else {
             // Queue mouse move event to focused surface if in client area
             Surface *focused = find_surface_by_id(g_focused_surface);
-            if (focused)
-            {
+            if (focused) {
                 int32_t local_x = g_cursor_x - focused->x;
                 int32_t local_y = g_cursor_y - focused->y;
 
                 // Only send move events within client area
                 if (local_x >= 0 && local_x < static_cast<int32_t>(focused->width) &&
-                    local_y >= 0 && local_y < static_cast<int32_t>(focused->height))
-                {
+                    local_y >= 0 && local_y < static_cast<int32_t>(focused->height)) {
                     int32_t dx = g_cursor_x - g_last_mouse_x;
                     int32_t dy = g_cursor_y - g_last_mouse_y;
                     queue_mouse_event(focused, 0, local_x, local_y, dx, dy, state.buttons, 0);
@@ -1419,25 +1655,20 @@ static void poll_mouse()
     }
 
     // Handle button changes
-    if (state.buttons != g_last_buttons)
-    {
+    if (state.buttons != g_last_buttons) {
         uint8_t pressed = state.buttons & ~g_last_buttons;
         uint8_t released = g_last_buttons & ~state.buttons;
 
         Surface *surf = find_surface_at(g_cursor_x, g_cursor_y);
 
-        if (pressed)
-        {
-            if (surf)
-            {
+        if (pressed) {
+            if (surf) {
                 // Handle focus change and bring to front
                 // Don't change focus to SYSTEM surfaces (like desktop/workbench)
                 // They should never receive focus or come to front
-                if (surf->id != g_focused_surface && !(surf->flags & SURFACE_FLAG_SYSTEM))
-                {
+                if (surf->id != g_focused_surface && !(surf->flags & SURFACE_FLAG_SYSTEM)) {
                     Surface *old_focused = find_surface_by_id(g_focused_surface);
-                    if (old_focused)
-                    {
+                    if (old_focused) {
                         queue_focus_event(old_focused, false);
                     }
                     g_focused_surface = surf->id;
@@ -1447,8 +1678,7 @@ static void poll_mouse()
 
                 // Check for resize edges first
                 uint8_t edge = get_resize_edge(surf, g_cursor_x, g_cursor_y);
-                if (edge != 0)
-                {
+                if (edge != 0) {
                     // Start resizing
                     g_resize_surface_id = surf->id;
                     g_resize_edge = edge;
@@ -1460,42 +1690,36 @@ static void poll_mouse()
                     g_resize_start_surf_y = surf->y;
                 }
                 // Check if clicked on title bar (for dragging/close)
-                else
-                {
-                    int32_t title_y1 = surf->y - static_cast<int32_t>(TITLE_BAR_HEIGHT + BORDER_WIDTH);
+                else {
+                    int32_t title_y1 =
+                        surf->y - static_cast<int32_t>(TITLE_BAR_HEIGHT + BORDER_WIDTH);
                     int32_t title_y2 = surf->y - static_cast<int32_t>(BORDER_WIDTH);
 
-                    if (g_cursor_y >= title_y1 && g_cursor_y < title_y2)
-                    {
+                    if (g_cursor_y >= title_y1 && g_cursor_y < title_y2) {
                         // Check for window control buttons
                         // Must match draw_window_decorations() calculation:
                         // close_x = win_x + win_w - BORDER_WIDTH - CLOSE_BUTTON_SIZE - 4
-                        // where win_x = surf->x - BORDER_WIDTH, win_w = surf->width + BORDER_WIDTH * 2
-                        // So: close_x = surf->x + surf->width - CLOSE_BUTTON_SIZE - 4
+                        // where win_x = surf->x - BORDER_WIDTH, win_w = surf->width + BORDER_WIDTH
+                        // * 2 So: close_x = surf->x + surf->width - CLOSE_BUTTON_SIZE - 4
                         int32_t btn_spacing = static_cast<int32_t>(CLOSE_BUTTON_SIZE + 4);
-                        int32_t close_x = surf->x + static_cast<int32_t>(surf->width) - static_cast<int32_t>(CLOSE_BUTTON_SIZE) - 4;
+                        int32_t close_x = surf->x + static_cast<int32_t>(surf->width) -
+                                          static_cast<int32_t>(CLOSE_BUTTON_SIZE) - 4;
                         int32_t max_x = close_x - btn_spacing;
                         int32_t min_x = max_x - btn_spacing;
                         int32_t btn_size = static_cast<int32_t>(CLOSE_BUTTON_SIZE);
 
-                        if (g_cursor_x >= close_x && g_cursor_x < close_x + btn_size)
-                        {
+                        if (g_cursor_x >= close_x && g_cursor_x < close_x + btn_size) {
                             // Close button clicked - queue close event
                             queue_close_event(surf);
-                        }
-                        else if (g_cursor_x >= max_x && g_cursor_x < max_x + btn_size)
-                        {
+                        } else if (g_cursor_x >= max_x && g_cursor_x < max_x + btn_size) {
                             // Maximize button clicked - move to top-left corner
                             // Note: True resize would require reallocating shared memory
-                            if (surf->maximized)
-                            {
+                            if (surf->maximized) {
                                 // Restore from maximized - move back to saved position
                                 surf->maximized = false;
                                 surf->x = surf->saved_x;
                                 surf->y = surf->saved_y;
-                            }
-                            else
-                            {
+                            } else {
                                 // Maximize - move to top-left corner
                                 surf->saved_x = surf->x;
                                 surf->saved_y = surf->y;
@@ -1505,56 +1729,65 @@ static void poll_mouse()
                                 surf->y = static_cast<int32_t>(TITLE_BAR_HEIGHT + BORDER_WIDTH);
                             }
                             composite();
-                        }
-                        else if (g_cursor_x >= min_x && g_cursor_x < min_x + btn_size)
-                        {
+                        } else if (g_cursor_x >= min_x && g_cursor_x < min_x + btn_size) {
                             // Minimize button clicked
                             surf->minimized = true;
                             // If this was focused, find next surface to focus
-                            if (g_focused_surface == surf->id)
-                            {
+                            if (g_focused_surface == surf->id) {
                                 g_focused_surface = 0;
                                 // Find highest z-order non-minimized surface
                                 uint32_t best_z = 0;
-                                for (uint32_t i = 0; i < MAX_SURFACES; i++)
-                                {
+                                for (uint32_t i = 0; i < MAX_SURFACES; i++) {
                                     if (g_surfaces[i].in_use && !g_surfaces[i].minimized &&
-                                        g_surfaces[i].z_order > best_z)
-                                    {
+                                        g_surfaces[i].z_order > best_z) {
                                         best_z = g_surfaces[i].z_order;
                                         g_focused_surface = g_surfaces[i].id;
                                     }
                                 }
                             }
                             composite();
-                        }
-                        else
-                        {
+                        } else {
                             // Start dragging (but not if maximized)
-                            if (!surf->maximized)
-                            {
+                            if (!surf->maximized) {
                                 g_drag_surface_id = surf->id;
                                 g_drag_offset_x = g_cursor_x - surf->x;
-                                g_drag_offset_y = g_cursor_y - surf->y + static_cast<int32_t>(TITLE_BAR_HEIGHT);
+                                g_drag_offset_y =
+                                    g_cursor_y - surf->y + static_cast<int32_t>(TITLE_BAR_HEIGHT);
                             }
                         }
-                    }
-                    else
-                    {
-                        // Clicked in client area - queue button down event
-                        int32_t local_x = g_cursor_x - surf->x;
-                        int32_t local_y = g_cursor_y - surf->y;
+                    } else {
+                        // Check for scrollbar click first
+                        int32_t scroll_pos = check_vscrollbar_click(surf, g_cursor_x, g_cursor_y);
+                        if (scroll_pos >= 0) {
+                            // Start scrollbar drag
+                            g_scrollbar_surface_id = surf->id;
+                            g_scrollbar_vertical = true;
+                            g_scrollbar_start_y = g_cursor_y;
+                            g_scrollbar_start_pos = surf->vscroll.scroll_pos;
+                            g_scrollbar_last_sent_pos = scroll_pos; // Init throttle tracking
 
-                        if (local_x >= 0 && local_x < static_cast<int32_t>(surf->width) &&
-                            local_y >= 0 && local_y < static_cast<int32_t>(surf->height))
-                        {
-                            // Determine which button (0=left, 1=right, 2=middle)
-                            uint8_t button = 0;
-                            if (pressed & 0x01) button = 0;      // Left
-                            else if (pressed & 0x02) button = 1; // Right
-                            else if (pressed & 0x04) button = 2; // Middle
+                            // Update scroll position and notify client
+                            surf->vscroll.scroll_pos = scroll_pos;
+                            queue_scroll_event(surf, scroll_pos, true);
+                        } else {
+                            // Clicked in client area - queue button down event
+                            int32_t local_x = g_cursor_x - surf->x;
+                            int32_t local_y = g_cursor_y - surf->y;
 
-                            queue_mouse_event(surf, 1, local_x, local_y, 0, 0, state.buttons, button);
+                            if (local_x >= 0 && local_x < static_cast<int32_t>(surf->width) &&
+                                local_y >= 0 && local_y < static_cast<int32_t>(surf->height)) {
+                                // Determine which button (0=left, 1=right, 2=middle)
+                                uint8_t button = 0;
+                                if (pressed & 0x01)
+                                    button = 0; // Left
+                                else if (pressed & 0x02)
+                                    button = 1; // Right
+                                else if (pressed & 0x04)
+                                    button = 2; // Middle
+
+                                queue_mouse_event(
+                                    surf, 1, local_x, local_y, 0, 0, state.buttons, button);
+                            }
                         }
                     }
                 }
@@ -1563,24 +1796,66 @@ static void poll_mouse()
             }
         }
 
-        if (released)
-        {
+        if (released) {
+            // Complete resize if we were resizing
+            if (g_resize_surface_id != 0) {
+                Surface *resize_surf = find_surface_by_id(g_resize_surface_id);
+                if (resize_surf) {
+                    // Calculate final dimensions
+                    int32_t dx = g_cursor_x - g_resize_start_x;
+                    int32_t dy = g_cursor_y - g_resize_start_y;
+
+                    int32_t new_width = g_resize_start_width;
+                    int32_t new_height = g_resize_start_height;
+
+                    if (g_resize_edge & 2) // Right
+                        new_width = g_resize_start_width + dx;
+                    if (g_resize_edge & 1) // Left
+                        new_width = g_resize_start_width - dx;
+                    if (g_resize_edge & 8) // Bottom
+                        new_height = g_resize_start_height + dy;
+
+                    // Clamp to minimum size
+                    if (new_width < static_cast<int32_t>(MIN_WINDOW_WIDTH))
+                        new_width = MIN_WINDOW_WIDTH;
+                    if (new_height < static_cast<int32_t>(MIN_WINDOW_HEIGHT))
+                        new_height = MIN_WINDOW_HEIGHT;
+
+                    // Complete the resize with new SHM
+                    complete_resize(resize_surf,
+                                    static_cast<uint32_t>(new_width),
+                                    static_cast<uint32_t>(new_height));
+                    composite();
+                }
+            }
+
+            // Send final scroll event if we were scrolling (ensure exact final position)
+            if (g_scrollbar_surface_id != 0) {
+                Surface *scroll_surf = find_surface_by_id(g_scrollbar_surface_id);
+                if (scroll_surf && scroll_surf->vscroll.scroll_pos != g_scrollbar_last_sent_pos) {
+                    queue_scroll_event(scroll_surf, scroll_surf->vscroll.scroll_pos, true);
+                }
+            }
+
             g_drag_surface_id = 0;
             g_resize_surface_id = 0;
             g_resize_edge = 0;
+            g_scrollbar_surface_id = 0;
 
             // Queue button up event to focused surface
             Surface *focused = find_surface_by_id(g_focused_surface);
-            if (focused)
-            {
+            if (focused) {
                 int32_t local_x = g_cursor_x - focused->x;
                 int32_t local_y = g_cursor_y - focused->y;
 
                 // Determine which button was released
                 uint8_t button = 0;
-                if (released & 0x01) button = 0;      // Left
-                else if (released & 0x02) button = 1; // Right
-                else if (released & 0x04) button = 2; // Middle
+                if (released & 0x01)
+                    button = 0; // Left
+                else if (released & 0x02)
+                    button = 1; // Right
+                else if (released & 0x04)
+                    button = 2; // Middle
 
                 queue_mouse_event(focused, 2, local_x, local_y, 0, 0, state.buttons, button);
             }
@@ -1590,9 +1865,11 @@ static void poll_mouse()
     }
 }
 
-// Main entry point
-extern "C" void _start()
-{
+// ============================================================================
+// Section 13: Main Entry Point
+// ============================================================================
+
+extern "C" void _start() {
     // Reset console colors to defaults (white on blue)
     sys::print("\033[0m");
 
@@ -1603,8 +1880,7 @@ extern "C" void _start()
 
     // Map framebuffer
     sys::FramebufferInfo fb_info;
-    if (sys::map_framebuffer(&fb_info) != 0)
-    {
+    if (sys::map_framebuffer(&fb_info) != 0) {
         debug_print("[displayd] Failed to map framebuffer\n");
         sys::exit(1);
     }
@@ -1625,13 +1901,12 @@ extern "C" void _start()
     // Allocate back buffer for double buffering (eliminates flicker)
     uint64_t back_buffer_size = static_cast<uint64_t>(g_fb_pitch) * g_fb_height;
     auto back_buffer_result = sys::shm_create(back_buffer_size);
-    if (back_buffer_result.error != 0)
-    {
+    if (back_buffer_result.error != 0) {
         debug_print("[displayd] Failed to allocate back buffer\n");
         sys::exit(1);
     }
     g_back_buffer = reinterpret_cast<uint32_t *>(back_buffer_result.virt_addr);
-    g_draw_target = g_fb;  // Default to front buffer
+    g_draw_target = g_fb; // Default to front buffer
 
     debug_print("[displayd] Double buffering enabled\n");
 
@@ -1643,8 +1918,7 @@ extern "C" void _start()
     g_cursor_y = static_cast<int32_t>(g_fb_height / 2);
 
     // Initialize surfaces
-    for (uint32_t i = 0; i < MAX_SURFACES; i++)
-    {
+    for (uint32_t i = 0; i < MAX_SURFACES; i++) {
         g_surfaces[i].in_use = false;
         g_surfaces[i].event_queue.init();
     }
@@ -1654,8 +1928,7 @@ extern "C" void _start()
 
     // Create service channel
     auto ch_result = sys::channel_create();
-    if (ch_result.error != 0)
-    {
+    if (ch_result.error != 0) {
         debug_print("[displayd] Failed to create service channel\n");
         sys::exit(1);
     }
@@ -1665,8 +1938,7 @@ extern "C" void _start()
 
     // Create poll set for efficient message waiting
     g_poll_set = sys::poll_create();
-    if (g_poll_set < 0)
-    {
+    if (g_poll_set < 0) {
         debug_print("[displayd] Failed to create poll set\n");
         sys::exit(1);
     }
@@ -1674,15 +1946,13 @@ extern "C" void _start()
     // Add service channel to poll set (wake when messages arrive)
     if (sys::poll_add(static_cast<uint32_t>(g_poll_set),
                       static_cast<uint32_t>(recv_ch),
-                      sys::POLL_CHANNEL_READ) != 0)
-    {
+                      sys::POLL_CHANNEL_READ) != 0) {
         debug_print("[displayd] Failed to add channel to poll set\n");
         sys::exit(1);
     }
 
     // Register as DISPLAY
-    if (sys::assign_set("DISPLAY", send_ch) < 0)
-    {
+    if (sys::assign_set("DISPLAY", send_ch) < 0) {
         debug_print("[displayd] Failed to register DISPLAY assign\n");
         sys::exit(1);
     }
@@ -1705,14 +1975,12 @@ extern "C" void _start()
     uint64_t loop_count = 0;
     uint64_t last_debug_time = 0;
 
-    while (true)
-    {
+    while (true) {
         loop_count++;
 
         // Print periodic heartbeat to show displayd is running
         uint64_t now = sys::uptime();
-        if (now - last_debug_time > 5000)
-        {
+        if (now - last_debug_time > 5000) {
             debug_print("[displayd] Heartbeat: loop=");
             debug_print_dec(static_cast<int64_t>(loop_count));
             debug_print("\n");
@@ -1722,20 +1990,18 @@ extern "C" void _start()
         // Wait for messages on service channel
         // - Wakes immediately when IPC message arrives
         // - Times out after 5ms to poll mouse/keyboard
-        int32_t poll_result = sys::poll_wait(static_cast<uint32_t>(g_poll_set),
-                                              poll_events, 1, POLL_TIMEOUT_MS);
+        int32_t poll_result =
+            sys::poll_wait(static_cast<uint32_t>(g_poll_set), poll_events, 1, POLL_TIMEOUT_MS);
 
         // Process messages if channel has data
         uint32_t messages_processed = 0;
 
-        while (messages_processed < MAX_MESSAGES_PER_BATCH)
-        {
+        while (messages_processed < MAX_MESSAGES_PER_BATCH) {
             uint32_t handle_count = 4;
-            int64_t n = sys::channel_recv(g_service_channel, msg_buf, sizeof(msg_buf),
-                                           handles, &handle_count);
+            int64_t n = sys::channel_recv(
+                g_service_channel, msg_buf, sizeof(msg_buf), handles, &handle_count);
 
-            if (n > 0)
-            {
+            if (n > 0) {
                 messages_processed++;
 
                 // Got a message - show message type
@@ -1748,26 +2014,21 @@ extern "C" void _start()
                 debug_print_dec(handle_count);
                 debug_print("\n");
 
-                if (handle_count > 0)
-                {
+                if (handle_count > 0) {
                     // Message with reply channel - handle and respond
                     int32_t client_ch = static_cast<int32_t>(handles[0]);
 
-                    handle_request(client_ch, msg_buf, static_cast<size_t>(n),
-                                  handles + 1, handle_count - 1);
+                    handle_request(
+                        client_ch, msg_buf, static_cast<size_t>(n), handles + 1, handle_count - 1);
 
                     // Close client reply channel after responding
                     sys::channel_close(client_ch);
-                }
-                else
-                {
+                } else {
                     // Fire-and-forget message (no reply channel) - process directly
                     handle_request(-1, msg_buf, static_cast<size_t>(n), nullptr, 0);
                 }
-            }
-            else
-            {
-                break;  // No more messages in this batch
+            } else {
+                break; // No more messages in this batch
             }
         }
 
@@ -1775,7 +2036,7 @@ extern "C" void _start()
         poll_mouse();
         poll_keyboard();
 
-        (void)poll_result;  // Suppress unused warning
+        (void)poll_result; // Suppress unused warning
     }
 
     sys::exit(0);

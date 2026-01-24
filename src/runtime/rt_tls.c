@@ -286,7 +286,10 @@ static void build_nonce(const uint8_t iv[12], uint64_t seq, uint8_t nonce[12])
 }
 
 // Send TLS record
-static int send_record(rt_tls_session_t *session, uint8_t content_type, const uint8_t *data, size_t len)
+static int send_record(rt_tls_session_t *session,
+                       uint8_t content_type,
+                       const uint8_t *data,
+                       size_t len)
 {
     uint8_t record[5 + TLS_MAX_CIPHERTEXT];
     size_t record_len;
@@ -328,7 +331,8 @@ static int send_record(rt_tls_session_t *session, uint8_t content_type, const ui
     size_t sent = 0;
     while (sent < record_len)
     {
-        int n = send(session->socket_fd, (const char *)(record + sent), (int)(record_len - sent), 0);
+        int n =
+            send(session->socket_fd, (const char *)(record + sent), (int)(record_len - sent), 0);
         if (n < 0)
         {
             if (EINTR_CHECK)
@@ -343,7 +347,10 @@ static int send_record(rt_tls_session_t *session, uint8_t content_type, const ui
 }
 
 // Receive TLS record
-static int recv_record(rt_tls_session_t *session, uint8_t *content_type, uint8_t *data, size_t *data_len)
+static int recv_record(rt_tls_session_t *session,
+                       uint8_t *content_type,
+                       uint8_t *data,
+                       size_t *data_len)
 {
     // Read header
     uint8_t header[5];
@@ -743,46 +750,46 @@ int rt_tls_handshake(rt_tls_session_t *session)
 
             switch (hs_type)
             {
-            case TLS_HS_SERVER_HELLO:
-                rc = process_server_hello(session, hs_data, hs_len);
-                if (rc != RT_TLS_OK)
-                    return rc;
-                break;
+                case TLS_HS_SERVER_HELLO:
+                    rc = process_server_hello(session, hs_data, hs_len);
+                    if (rc != RT_TLS_OK)
+                        return rc;
+                    break;
 
-            case TLS_HS_ENCRYPTED_EXTENSIONS:
-                // Skip - we don't process any extensions
-                session->state = TLS_STATE_WAIT_CERTIFICATE;
-                break;
+                case TLS_HS_ENCRYPTED_EXTENSIONS:
+                    // Skip - we don't process any extensions
+                    session->state = TLS_STATE_WAIT_CERTIFICATE;
+                    break;
 
-            case TLS_HS_CERTIFICATE:
-                // Skip certificate validation for now
-                session->state = TLS_STATE_WAIT_CERTIFICATE_VERIFY;
-                break;
+                case TLS_HS_CERTIFICATE:
+                    // Skip certificate validation for now
+                    session->state = TLS_STATE_WAIT_CERTIFICATE_VERIFY;
+                    break;
 
-            case TLS_HS_CERTIFICATE_VERIFY:
-                // Skip signature verification for now
-                session->state = TLS_STATE_WAIT_FINISHED;
-                break;
+                case TLS_HS_CERTIFICATE_VERIFY:
+                    // Skip signature verification for now
+                    session->state = TLS_STATE_WAIT_FINISHED;
+                    break;
 
-            case TLS_HS_FINISHED:
-                rc = verify_finished(session, hs_data, hs_len);
-                if (rc != RT_TLS_OK)
-                    return rc;
+                case TLS_HS_FINISHED:
+                    rc = verify_finished(session, hs_data, hs_len);
+                    if (rc != RT_TLS_OK)
+                        return rc;
 
-                // Derive application keys
-                derive_application_keys(session);
+                    // Derive application keys
+                    derive_application_keys(session);
 
-                // Send our Finished
-                rc = send_finished(session);
-                if (rc != RT_TLS_OK)
-                    return rc;
+                    // Send our Finished
+                    rc = send_finished(session);
+                    if (rc != RT_TLS_OK)
+                        return rc;
 
-                session->state = TLS_STATE_CONNECTED;
-                break;
+                    session->state = TLS_STATE_CONNECTED;
+                    break;
 
-            default:
-                // Skip unknown messages
-                break;
+                default:
+                    // Skip unknown messages
+                    break;
             }
 
             pos += 4 + hs_len;

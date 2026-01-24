@@ -49,8 +49,7 @@
 #define SFTP_MAX_PACKET_SIZE 34000
 #define SFTP_READ_SIZE 32768
 
-struct sftp_session
-{
+struct sftp_session {
     ssh_session_t *ssh;
     ssh_channel_t *channel;
     uint32_t version;
@@ -59,8 +58,7 @@ struct sftp_session
     uint8_t packet_buf[SFTP_MAX_PACKET_SIZE];
 };
 
-struct sftp_file
-{
+struct sftp_file {
     sftp_session_t *sftp;
     uint8_t handle[256];
     size_t handle_len;
@@ -68,8 +66,7 @@ struct sftp_file
     bool eof;
 };
 
-struct sftp_dir
-{
+struct sftp_dir {
     sftp_session_t *sftp;
     uint8_t handle[256];
     size_t handle_len;
@@ -84,8 +81,7 @@ struct sftp_dir
  * Packet I/O
  *===========================================================================*/
 
-static int sftp_send_packet(sftp_session_t *sftp, uint8_t type, const uint8_t *data, size_t len)
-{
+static int sftp_send_packet(sftp_session_t *sftp, uint8_t type, const uint8_t *data, size_t len) {
     uint8_t header[5];
     ssh_buf_write_u32(header, len + 1);
     header[4] = type;
@@ -94,8 +90,7 @@ static int sftp_send_packet(sftp_session_t *sftp, uint8_t type, const uint8_t *d
     if (rc < 0)
         return rc;
 
-    if (len > 0)
-    {
+    if (len > 0) {
         rc = ssh_channel_write(sftp->channel, data, len);
         if (rc < 0)
             return rc;
@@ -105,33 +100,28 @@ static int sftp_send_packet(sftp_session_t *sftp, uint8_t type, const uint8_t *d
 }
 
 /* Yield helper - sleep briefly to avoid busy-waiting */
-static inline void sftp_yield(void)
-{
+static inline void sftp_yield(void) {
     extern long __syscall1(long, long);
     /* Sleep 1ms instead of just yielding - gives network stack time to process */
     __syscall1(0x31 /* SYS_SLEEP */, 1);
 }
 
-static int sftp_recv_packet(sftp_session_t *sftp, uint8_t *type, uint8_t *data, size_t *len)
-{
+static int sftp_recv_packet(sftp_session_t *sftp, uint8_t *type, uint8_t *data, size_t *len) {
     uint8_t header[5];
     size_t total = 0;
     int is_stderr;
 
     /* Read length and type - skip any stderr data */
-    while (total < 5)
-    {
+    while (total < 5) {
         ssize_t rc = ssh_channel_read(sftp->channel, header + total, 5 - total, &is_stderr);
-        if (rc == SSH_AGAIN)
-        {
+        if (rc == SSH_AGAIN) {
             /* No data yet, yield briefly */
             sftp_yield();
             continue;
         }
         if (rc <= 0)
             return SFTP_CONNECTION_LOST;
-        if (is_stderr)
-        {
+        if (is_stderr) {
             /* Discard stderr data - don't add to total */
             continue;
         }
@@ -141,8 +131,7 @@ static int sftp_recv_packet(sftp_session_t *sftp, uint8_t *type, uint8_t *data, 
     uint32_t packet_len = ssh_buf_read_u32(header);
     *type = header[4];
 
-    if (packet_len < 1 || packet_len > SFTP_MAX_PACKET_SIZE)
-    {
+    if (packet_len < 1 || packet_len > SFTP_MAX_PACKET_SIZE) {
         return SFTP_BAD_MESSAGE;
     }
 
@@ -150,19 +139,16 @@ static int sftp_recv_packet(sftp_session_t *sftp, uint8_t *type, uint8_t *data, 
     *len = data_len;
 
     total = 0;
-    while (total < data_len)
-    {
+    while (total < data_len) {
         ssize_t rc = ssh_channel_read(sftp->channel, data + total, data_len - total, &is_stderr);
-        if (rc == SSH_AGAIN)
-        {
+        if (rc == SSH_AGAIN) {
             /* No data yet, yield briefly */
             sftp_yield();
             continue;
         }
         if (rc <= 0)
             return SFTP_CONNECTION_LOST;
-        if (is_stderr)
-        {
+        if (is_stderr) {
             /* Discard stderr data - don't add to total */
             continue;
         }
@@ -176,8 +162,7 @@ static int sftp_recv_packet(sftp_session_t *sftp, uint8_t *type, uint8_t *data, 
  * Session Management
  *===========================================================================*/
 
-sftp_session_t *sftp_new(ssh_session_t *ssh)
-{
+sftp_session_t *sftp_new(ssh_session_t *ssh) {
     if (!ssh)
         return NULL;
 
@@ -191,8 +176,7 @@ sftp_session_t *sftp_new(ssh_session_t *ssh)
     return sftp;
 }
 
-int sftp_init(sftp_session_t *sftp)
-{
+int sftp_init(sftp_session_t *sftp) {
     if (!sftp || !sftp->ssh)
         return SFTP_NO_CONNECTION;
 
@@ -202,8 +186,7 @@ int sftp_init(sftp_session_t *sftp)
         return SFTP_NO_CONNECTION;
 
     int rc = ssh_channel_open_session(sftp->channel);
-    if (rc < 0)
-    {
+    if (rc < 0) {
         ssh_channel_free(sftp->channel);
         sftp->channel = NULL;
         return SFTP_NO_CONNECTION;
@@ -211,8 +194,7 @@ int sftp_init(sftp_session_t *sftp)
 
     /* Request sftp subsystem */
     rc = ssh_channel_request_subsystem(sftp->channel, "sftp");
-    if (rc < 0)
-    {
+    if (rc < 0) {
         ssh_channel_close(sftp->channel);
         ssh_channel_free(sftp->channel);
         sftp->channel = NULL;
@@ -235,27 +217,23 @@ int sftp_init(sftp_session_t *sftp)
     if (rc != SFTP_OK)
         return rc;
 
-    if (type != SSH_FXP_VERSION || response_len < 4)
-    {
+    if (type != SSH_FXP_VERSION || response_len < 4) {
         return SFTP_BAD_MESSAGE;
     }
 
     sftp->version = ssh_buf_read_u32(response);
-    if (sftp->version < 3)
-    {
+    if (sftp->version < 3) {
         return SFTP_OP_UNSUPPORTED;
     }
 
     return SFTP_OK;
 }
 
-void sftp_free(sftp_session_t *sftp)
-{
+void sftp_free(sftp_session_t *sftp) {
     if (!sftp)
         return;
 
-    if (sftp->channel)
-    {
+    if (sftp->channel) {
         ssh_channel_close(sftp->channel);
         ssh_channel_free(sftp->channel);
     }
@@ -263,8 +241,7 @@ void sftp_free(sftp_session_t *sftp)
     free(sftp);
 }
 
-sftp_error_t sftp_get_error(sftp_session_t *sftp)
-{
+sftp_error_t sftp_get_error(sftp_session_t *sftp) {
     return sftp ? sftp->error : SFTP_NO_CONNECTION;
 }
 
@@ -272,8 +249,7 @@ sftp_error_t sftp_get_error(sftp_session_t *sftp)
  * File Operations
  *===========================================================================*/
 
-sftp_file_t *sftp_open(sftp_session_t *sftp, const char *path, int flags, mode_t mode)
-{
+sftp_file_t *sftp_open(sftp_session_t *sftp, const char *path, int flags, mode_t mode) {
     if (!sftp || !path)
         return NULL;
 
@@ -308,15 +284,12 @@ sftp_file_t *sftp_open(sftp_session_t *sftp, const char *path, int flags, mode_t
     pos += 4;
 
     /* attrs */
-    if (flags & SFTP_CREAT)
-    {
+    if (flags & SFTP_CREAT) {
         ssh_buf_write_u32(packet + pos, SFTP_ATTR_PERMISSIONS);
         pos += 4;
         ssh_buf_write_u32(packet + pos, mode);
         pos += 4;
-    }
-    else
-    {
+    } else {
         ssh_buf_write_u32(packet + pos, 0); /* no attrs */
         pos += 4;
     }
@@ -338,25 +311,21 @@ sftp_file_t *sftp_open(sftp_session_t *sftp, const char *path, int flags, mode_t
     if (response_len < 4)
         return NULL;
 
-    if (type == SSH_FXP_STATUS)
-    {
-        if (response_len >= 8)
-        {
+    if (type == SSH_FXP_STATUS) {
+        if (response_len >= 8) {
             sftp->error = ssh_buf_read_u32(response + 4);
         }
         return NULL;
     }
 
-    if (type != SSH_FXP_HANDLE || response_len < 8)
-    {
+    if (type != SSH_FXP_HANDLE || response_len < 8) {
         sftp->error = SFTP_BAD_MESSAGE;
         return NULL;
     }
 
     /* Parse handle */
     uint32_t handle_len = ssh_buf_read_u32(response + 4);
-    if (handle_len > 256 || 8 + handle_len > response_len)
-    {
+    if (handle_len > 256 || 8 + handle_len > response_len) {
         sftp->error = SFTP_BAD_MESSAGE;
         return NULL;
     }
@@ -372,8 +341,7 @@ sftp_file_t *sftp_open(sftp_session_t *sftp, const char *path, int flags, mode_t
     return file;
 }
 
-int sftp_close(sftp_file_t *file)
-{
+int sftp_close(sftp_file_t *file) {
     if (!file)
         return SFTP_INVALID_HANDLE;
 
@@ -390,8 +358,7 @@ int sftp_close(sftp_file_t *file)
     pos += 4 + file->handle_len;
 
     int rc = sftp_send_packet(sftp, SSH_FXP_CLOSE, packet, pos);
-    if (rc < 0)
-    {
+    if (rc < 0) {
         free(file);
         return rc;
     }
@@ -408,8 +375,7 @@ int sftp_close(sftp_file_t *file)
     if (rc != SFTP_OK)
         return rc;
 
-    if (type == SSH_FXP_STATUS && response_len >= 8)
-    {
+    if (type == SSH_FXP_STATUS && response_len >= 8) {
         uint32_t status = ssh_buf_read_u32(response + 4);
         return (status == 0) ? SFTP_OK : status;
     }
@@ -417,8 +383,7 @@ int sftp_close(sftp_file_t *file)
     return SFTP_OK;
 }
 
-ssize_t sftp_read(sftp_file_t *file, void *buffer, size_t count)
-{
+ssize_t sftp_read(sftp_file_t *file, void *buffer, size_t count) {
     if (!file || !buffer)
         return -1;
     if (file->eof)
@@ -462,13 +427,10 @@ ssize_t sftp_read(sftp_file_t *file, void *buffer, size_t count)
     if (rc != SFTP_OK)
         return rc;
 
-    if (type == SSH_FXP_STATUS)
-    {
-        if (response_len >= 8)
-        {
+    if (type == SSH_FXP_STATUS) {
+        if (response_len >= 8) {
             uint32_t status = ssh_buf_read_u32(response + 4);
-            if (status == SFTP_EOF)
-            {
+            if (status == SFTP_EOF) {
                 file->eof = true;
                 return 0;
             }
@@ -478,15 +440,13 @@ ssize_t sftp_read(sftp_file_t *file, void *buffer, size_t count)
         return -1;
     }
 
-    if (type != SSH_FXP_DATA || response_len < 8)
-    {
+    if (type != SSH_FXP_DATA || response_len < 8) {
         sftp->error = SFTP_BAD_MESSAGE;
         return -1;
     }
 
     uint32_t data_len = ssh_buf_read_u32(response + 4);
-    if (8 + data_len > response_len || data_len > count)
-    {
+    if (8 + data_len > response_len || data_len > count) {
         sftp->error = SFTP_BAD_MESSAGE;
         return -1;
     }
@@ -497,8 +457,7 @@ ssize_t sftp_read(sftp_file_t *file, void *buffer, size_t count)
     return data_len;
 }
 
-ssize_t sftp_write(sftp_file_t *file, const void *buffer, size_t count)
-{
+ssize_t sftp_write(sftp_file_t *file, const void *buffer, size_t count) {
     if (!file || !buffer)
         return -1;
 
@@ -541,11 +500,9 @@ ssize_t sftp_write(sftp_file_t *file, const void *buffer, size_t count)
     if (rc != SFTP_OK)
         return rc;
 
-    if (type == SSH_FXP_STATUS && response_len >= 8)
-    {
+    if (type == SSH_FXP_STATUS && response_len >= 8) {
         uint32_t status = ssh_buf_read_u32(response + 4);
-        if (status != 0)
-        {
+        if (status != 0) {
             sftp->error = status;
             return -1;
         }
@@ -555,8 +512,7 @@ ssize_t sftp_write(sftp_file_t *file, const void *buffer, size_t count)
     return count;
 }
 
-int sftp_seek(sftp_file_t *file, uint64_t offset)
-{
+int sftp_seek(sftp_file_t *file, uint64_t offset) {
     if (!file)
         return SFTP_INVALID_HANDLE;
     file->offset = offset;
@@ -564,15 +520,12 @@ int sftp_seek(sftp_file_t *file, uint64_t offset)
     return SFTP_OK;
 }
 
-uint64_t sftp_tell(sftp_file_t *file)
-{
+uint64_t sftp_tell(sftp_file_t *file) {
     return file ? file->offset : 0;
 }
 
-void sftp_rewind(sftp_file_t *file)
-{
-    if (file)
-    {
+void sftp_rewind(sftp_file_t *file) {
+    if (file) {
         file->offset = 0;
         file->eof = false;
     }
@@ -582,8 +535,7 @@ void sftp_rewind(sftp_file_t *file)
  * Stat Operations
  *===========================================================================*/
 
-static sftp_attributes_t *parse_attrs(const uint8_t *data, size_t len, size_t *consumed)
-{
+static sftp_attributes_t *parse_attrs(const uint8_t *data, size_t len, size_t *consumed) {
     if (len < 4)
         return NULL;
 
@@ -595,10 +547,8 @@ static sftp_attributes_t *parse_attrs(const uint8_t *data, size_t len, size_t *c
     attr->flags = ssh_buf_read_u32(data + pos);
     pos += 4;
 
-    if (attr->flags & SFTP_ATTR_SIZE)
-    {
-        if (pos + 8 > len)
-        {
+    if (attr->flags & SFTP_ATTR_SIZE) {
+        if (pos + 8 > len) {
             free(attr);
             return NULL;
         }
@@ -607,10 +557,8 @@ static sftp_attributes_t *parse_attrs(const uint8_t *data, size_t len, size_t *c
         pos += 8;
     }
 
-    if (attr->flags & SFTP_ATTR_UIDGID)
-    {
-        if (pos + 8 > len)
-        {
+    if (attr->flags & SFTP_ATTR_UIDGID) {
+        if (pos + 8 > len) {
             free(attr);
             return NULL;
         }
@@ -619,10 +567,8 @@ static sftp_attributes_t *parse_attrs(const uint8_t *data, size_t len, size_t *c
         pos += 8;
     }
 
-    if (attr->flags & SFTP_ATTR_PERMISSIONS)
-    {
-        if (pos + 4 > len)
-        {
+    if (attr->flags & SFTP_ATTR_PERMISSIONS) {
+        if (pos + 4 > len) {
             free(attr);
             return NULL;
         }
@@ -641,10 +587,8 @@ static sftp_attributes_t *parse_attrs(const uint8_t *data, size_t len, size_t *c
             attr->type = SFTP_TYPE_UNKNOWN;
     }
 
-    if (attr->flags & SFTP_ATTR_ACMODTIME)
-    {
-        if (pos + 8 > len)
-        {
+    if (attr->flags & SFTP_ATTR_ACMODTIME) {
+        if (pos + 8 > len) {
             free(attr);
             return NULL;
         }
@@ -658,8 +602,7 @@ static sftp_attributes_t *parse_attrs(const uint8_t *data, size_t len, size_t *c
     return attr;
 }
 
-sftp_attributes_t *sftp_stat(sftp_session_t *sftp, const char *path)
-{
+sftp_attributes_t *sftp_stat(sftp_session_t *sftp, const char *path) {
     if (!sftp || !path)
         return NULL;
 
@@ -686,17 +629,14 @@ sftp_attributes_t *sftp_stat(sftp_session_t *sftp, const char *path)
     if (rc != SFTP_OK)
         return NULL;
 
-    if (type == SSH_FXP_STATUS)
-    {
-        if (response_len >= 8)
-        {
+    if (type == SSH_FXP_STATUS) {
+        if (response_len >= 8) {
             sftp->error = ssh_buf_read_u32(response + 4);
         }
         return NULL;
     }
 
-    if (type != SSH_FXP_ATTRS || response_len < 8)
-    {
+    if (type != SSH_FXP_ATTRS || response_len < 8) {
         sftp->error = SFTP_BAD_MESSAGE;
         return NULL;
     }
@@ -704,8 +644,7 @@ sftp_attributes_t *sftp_stat(sftp_session_t *sftp, const char *path)
     return parse_attrs(response + 4, response_len - 4, NULL);
 }
 
-sftp_attributes_t *sftp_lstat(sftp_session_t *sftp, const char *path)
-{
+sftp_attributes_t *sftp_lstat(sftp_session_t *sftp, const char *path) {
     if (!sftp || !path)
         return NULL;
 
@@ -732,10 +671,8 @@ sftp_attributes_t *sftp_lstat(sftp_session_t *sftp, const char *path)
     if (rc != SFTP_OK)
         return NULL;
 
-    if (type == SSH_FXP_STATUS)
-    {
-        if (response_len >= 8)
-        {
+    if (type == SSH_FXP_STATUS) {
+        if (response_len >= 8) {
             sftp->error = ssh_buf_read_u32(response + 4);
         }
         return NULL;
@@ -747,8 +684,7 @@ sftp_attributes_t *sftp_lstat(sftp_session_t *sftp, const char *path)
     return parse_attrs(response + 4, response_len - 4, NULL);
 }
 
-sftp_attributes_t *sftp_fstat(sftp_file_t *file)
-{
+sftp_attributes_t *sftp_fstat(sftp_file_t *file) {
     if (!file)
         return NULL;
 
@@ -782,8 +718,7 @@ sftp_attributes_t *sftp_fstat(sftp_file_t *file)
     return parse_attrs(response + 4, response_len - 4, NULL);
 }
 
-void sftp_attributes_free(sftp_attributes_t *attr)
-{
+void sftp_attributes_free(sftp_attributes_t *attr) {
     if (!attr)
         return;
     free(attr->name);
@@ -795,8 +730,7 @@ void sftp_attributes_free(sftp_attributes_t *attr)
  * Directory Operations
  *===========================================================================*/
 
-sftp_dir_t *sftp_opendir(sftp_session_t *sftp, const char *path)
-{
+sftp_dir_t *sftp_opendir(sftp_session_t *sftp, const char *path) {
     if (!sftp || !path)
         return NULL;
 
@@ -823,10 +757,8 @@ sftp_dir_t *sftp_opendir(sftp_session_t *sftp, const char *path)
     if (rc != SFTP_OK)
         return NULL;
 
-    if (type == SSH_FXP_STATUS)
-    {
-        if (response_len >= 8)
-        {
+    if (type == SSH_FXP_STATUS) {
+        if (response_len >= 8) {
             sftp->error = ssh_buf_read_u32(response + 4);
         }
         return NULL;
@@ -859,8 +791,7 @@ sftp_dir_t *sftp_opendir(sftp_session_t *sftp, const char *path)
  */
 static sftp_attributes_t *parse_dir_entry(const uint8_t *response,
                                           size_t response_len,
-                                          size_t *offset)
-{
+                                          size_t *offset) {
     size_t pos = *offset;
 
     /* filename */
@@ -876,30 +807,26 @@ static sftp_attributes_t *parse_dir_entry(const uint8_t *response,
         return NULL;
 
     attr->name = malloc(name_len + 1);
-    if (attr->name)
-    {
+    if (attr->name) {
         memcpy(attr->name, response + pos, name_len);
         attr->name[name_len] = '\0';
     }
     pos += name_len;
 
     /* longname */
-    if (pos + 4 > response_len)
-    {
+    if (pos + 4 > response_len) {
         sftp_attributes_free(attr);
         return NULL;
     }
     uint32_t longname_len = ssh_buf_read_u32(response + pos);
     pos += 4;
-    if (pos + longname_len > response_len)
-    {
+    if (pos + longname_len > response_len) {
         sftp_attributes_free(attr);
         return NULL;
     }
 
     attr->longname = malloc(longname_len + 1);
-    if (attr->longname)
-    {
+    if (attr->longname) {
         memcpy(attr->longname, response + pos, longname_len);
         attr->longname[longname_len] = '\0';
     }
@@ -908,8 +835,7 @@ static sftp_attributes_t *parse_dir_entry(const uint8_t *response,
     /* attrs */
     size_t consumed;
     sftp_attributes_t *parsed = parse_attrs(response + pos, response_len - pos, &consumed);
-    if (parsed)
-    {
+    if (parsed) {
         attr->flags = parsed->flags;
         attr->size = parsed->size;
         attr->uid = parsed->uid;
@@ -929,12 +855,9 @@ static sftp_attributes_t *parse_dir_entry(const uint8_t *response,
 /**
  * @brief Free buffered directory entries.
  */
-static void free_dir_entries(sftp_dir_t *dir)
-{
-    if (dir->entries)
-    {
-        for (int i = 0; i < dir->entry_count; i++)
-        {
+static void free_dir_entries(sftp_dir_t *dir) {
+    if (dir->entries) {
+        for (int i = 0; i < dir->entry_count; i++) {
             free(dir->entries[i].name);
             free(dir->entries[i].longname);
         }
@@ -945,14 +868,12 @@ static void free_dir_entries(sftp_dir_t *dir)
     dir->entry_pos = 0;
 }
 
-sftp_attributes_t *sftp_readdir(sftp_dir_t *dir)
-{
+sftp_attributes_t *sftp_readdir(sftp_dir_t *dir) {
     if (!dir || dir->eof)
         return NULL;
 
     /* Return buffered entry if available */
-    if (dir->entries && dir->entry_pos < dir->entry_count)
-    {
+    if (dir->entries && dir->entry_pos < dir->entry_count) {
         sftp_attributes_t *src = &dir->entries[dir->entry_pos++];
         sftp_attributes_t *attr = calloc(1, sizeof(sftp_attributes_t));
         if (!attr)
@@ -1001,13 +922,10 @@ sftp_attributes_t *sftp_readdir(sftp_dir_t *dir)
     if (rc != SFTP_OK)
         return NULL;
 
-    if (type == SSH_FXP_STATUS)
-    {
-        if (response_len >= 8)
-        {
+    if (type == SSH_FXP_STATUS) {
+        if (response_len >= 8) {
             uint32_t status = ssh_buf_read_u32(response + 4);
-            if (status == SFTP_EOF)
-            {
+            if (status == SFTP_EOF) {
                 dir->eof = true;
                 return NULL;
             }
@@ -1020,8 +938,7 @@ sftp_attributes_t *sftp_readdir(sftp_dir_t *dir)
         return NULL;
 
     uint32_t count = ssh_buf_read_u32(response + 4);
-    if (count == 0)
-    {
+    if (count == 0) {
         dir->eof = true;
         return NULL;
     }
@@ -1033,11 +950,9 @@ sftp_attributes_t *sftp_readdir(sftp_dir_t *dir)
 
     /* Parse all entries from response */
     pos = 8;
-    for (uint32_t i = 0; i < count; i++)
-    {
+    for (uint32_t i = 0; i < count; i++) {
         sftp_attributes_t *entry = parse_dir_entry(response, response_len, &pos);
-        if (!entry)
-        {
+        if (!entry) {
             /* Parsing failed - keep what we have */
             break;
         }
@@ -1057,8 +972,7 @@ sftp_attributes_t *sftp_readdir(sftp_dir_t *dir)
         free(entry);
     }
 
-    if (dir->entry_count == 0)
-    {
+    if (dir->entry_count == 0) {
         free(dir->entries);
         dir->entries = NULL;
         return NULL;
@@ -1069,13 +983,11 @@ sftp_attributes_t *sftp_readdir(sftp_dir_t *dir)
     return sftp_readdir(dir); /* Recurse to use the buffered path */
 }
 
-int sftp_dir_eof(sftp_dir_t *dir)
-{
+int sftp_dir_eof(sftp_dir_t *dir) {
     return dir ? dir->eof : 1;
 }
 
-int sftp_closedir(sftp_dir_t *dir)
-{
+int sftp_closedir(sftp_dir_t *dir) {
     if (!dir)
         return SFTP_OK;
 
@@ -1105,8 +1017,7 @@ int sftp_closedir(sftp_dir_t *dir)
     return SFTP_OK;
 }
 
-int sftp_mkdir(sftp_session_t *sftp, const char *path, mode_t mode)
-{
+int sftp_mkdir(sftp_session_t *sftp, const char *path, mode_t mode) {
     if (!sftp || !path)
         return SFTP_FAILURE;
 
@@ -1139,16 +1050,14 @@ int sftp_mkdir(sftp_session_t *sftp, const char *path, mode_t mode)
     if (rc != SFTP_OK)
         return rc;
 
-    if (type == SSH_FXP_STATUS && response_len >= 8)
-    {
+    if (type == SSH_FXP_STATUS && response_len >= 8) {
         return ssh_buf_read_u32(response + 4);
     }
 
     return SFTP_OK;
 }
 
-int sftp_rmdir(sftp_session_t *sftp, const char *path)
-{
+int sftp_rmdir(sftp_session_t *sftp, const char *path) {
     if (!sftp || !path)
         return SFTP_FAILURE;
 
@@ -1175,8 +1084,7 @@ int sftp_rmdir(sftp_session_t *sftp, const char *path)
     if (rc != SFTP_OK)
         return rc;
 
-    if (type == SSH_FXP_STATUS && response_len >= 8)
-    {
+    if (type == SSH_FXP_STATUS && response_len >= 8) {
         return ssh_buf_read_u32(response + 4);
     }
 
@@ -1187,8 +1095,7 @@ int sftp_rmdir(sftp_session_t *sftp, const char *path)
  * File Management
  *===========================================================================*/
 
-int sftp_unlink(sftp_session_t *sftp, const char *path)
-{
+int sftp_unlink(sftp_session_t *sftp, const char *path) {
     if (!sftp || !path)
         return SFTP_FAILURE;
 
@@ -1215,16 +1122,14 @@ int sftp_unlink(sftp_session_t *sftp, const char *path)
     if (rc != SFTP_OK)
         return rc;
 
-    if (type == SSH_FXP_STATUS && response_len >= 8)
-    {
+    if (type == SSH_FXP_STATUS && response_len >= 8) {
         return ssh_buf_read_u32(response + 4);
     }
 
     return SFTP_OK;
 }
 
-int sftp_rename(sftp_session_t *sftp, const char *oldpath, const char *newpath)
-{
+int sftp_rename(sftp_session_t *sftp, const char *oldpath, const char *newpath) {
     if (!sftp || !oldpath || !newpath)
         return SFTP_FAILURE;
 
@@ -1256,16 +1161,14 @@ int sftp_rename(sftp_session_t *sftp, const char *oldpath, const char *newpath)
     if (rc != SFTP_OK)
         return rc;
 
-    if (type == SSH_FXP_STATUS && response_len >= 8)
-    {
+    if (type == SSH_FXP_STATUS && response_len >= 8) {
         return ssh_buf_read_u32(response + 4);
     }
 
     return SFTP_OK;
 }
 
-char *sftp_realpath(sftp_session_t *sftp, const char *path)
-{
+char *sftp_realpath(sftp_session_t *sftp, const char *path) {
     if (!sftp || !path)
         return NULL;
 
@@ -1306,8 +1209,7 @@ char *sftp_realpath(sftp_session_t *sftp, const char *path)
         return NULL;
 
     char *result = malloc(name_len + 1);
-    if (result)
-    {
+    if (result) {
         memcpy(result, response + pos, name_len);
         result[name_len] = '\0';
     }
@@ -1315,16 +1217,14 @@ char *sftp_realpath(sftp_session_t *sftp, const char *path)
     return result;
 }
 
-int sftp_chmod(sftp_session_t *sftp, const char *path, mode_t mode)
-{
+int sftp_chmod(sftp_session_t *sftp, const char *path, mode_t mode) {
     sftp_attributes_t attr = {0};
     attr.flags = SFTP_ATTR_PERMISSIONS;
     attr.permissions = mode;
     return sftp_setstat(sftp, path, &attr);
 }
 
-int sftp_setstat(sftp_session_t *sftp, const char *path, sftp_attributes_t *attr)
-{
+int sftp_setstat(sftp_session_t *sftp, const char *path, sftp_attributes_t *attr) {
     if (!sftp || !path || !attr)
         return SFTP_FAILURE;
 
@@ -1343,25 +1243,21 @@ int sftp_setstat(sftp_session_t *sftp, const char *path, sftp_attributes_t *attr
     ssh_buf_write_u32(packet + pos, attr->flags);
     pos += 4;
 
-    if (attr->flags & SFTP_ATTR_SIZE)
-    {
+    if (attr->flags & SFTP_ATTR_SIZE) {
         ssh_buf_write_u32(packet + pos, (attr->size >> 32) & 0xFFFFFFFF);
         ssh_buf_write_u32(packet + pos + 4, attr->size & 0xFFFFFFFF);
         pos += 8;
     }
-    if (attr->flags & SFTP_ATTR_UIDGID)
-    {
+    if (attr->flags & SFTP_ATTR_UIDGID) {
         ssh_buf_write_u32(packet + pos, attr->uid);
         ssh_buf_write_u32(packet + pos + 4, attr->gid);
         pos += 8;
     }
-    if (attr->flags & SFTP_ATTR_PERMISSIONS)
-    {
+    if (attr->flags & SFTP_ATTR_PERMISSIONS) {
         ssh_buf_write_u32(packet + pos, attr->permissions);
         pos += 4;
     }
-    if (attr->flags & SFTP_ATTR_ACMODTIME)
-    {
+    if (attr->flags & SFTP_ATTR_ACMODTIME) {
         ssh_buf_write_u32(packet + pos, attr->atime);
         ssh_buf_write_u32(packet + pos + 4, attr->mtime);
         pos += 8;
@@ -1379,16 +1275,14 @@ int sftp_setstat(sftp_session_t *sftp, const char *path, sftp_attributes_t *attr
     if (rc != SFTP_OK)
         return rc;
 
-    if (type == SSH_FXP_STATUS && response_len >= 8)
-    {
+    if (type == SSH_FXP_STATUS && response_len >= 8) {
         return ssh_buf_read_u32(response + 4);
     }
 
     return SFTP_OK;
 }
 
-int sftp_chown(sftp_session_t *sftp, const char *path, uid_t uid, gid_t gid)
-{
+int sftp_chown(sftp_session_t *sftp, const char *path, uid_t uid, gid_t gid) {
     sftp_attributes_t attr = {0};
     attr.flags = SFTP_ATTR_UIDGID;
     attr.uid = uid;
@@ -1396,8 +1290,7 @@ int sftp_chown(sftp_session_t *sftp, const char *path, uid_t uid, gid_t gid)
     return sftp_setstat(sftp, path, &attr);
 }
 
-int sftp_utimes(sftp_session_t *sftp, const char *path, uint32_t atime, uint32_t mtime)
-{
+int sftp_utimes(sftp_session_t *sftp, const char *path, uint32_t atime, uint32_t mtime) {
     sftp_attributes_t attr = {0};
     attr.flags = SFTP_ATTR_ACMODTIME;
     attr.atime = atime;
@@ -1405,8 +1298,7 @@ int sftp_utimes(sftp_session_t *sftp, const char *path, uint32_t atime, uint32_t
     return sftp_setstat(sftp, path, &attr);
 }
 
-int sftp_symlink(sftp_session_t *sftp, const char *target, const char *dest)
-{
+int sftp_symlink(sftp_session_t *sftp, const char *target, const char *dest) {
     if (!sftp || !target || !dest)
         return SFTP_FAILURE;
 
@@ -1438,16 +1330,14 @@ int sftp_symlink(sftp_session_t *sftp, const char *target, const char *dest)
     if (rc != SFTP_OK)
         return rc;
 
-    if (type == SSH_FXP_STATUS && response_len >= 8)
-    {
+    if (type == SSH_FXP_STATUS && response_len >= 8) {
         return ssh_buf_read_u32(response + 4);
     }
 
     return SFTP_OK;
 }
 
-char *sftp_readlink(sftp_session_t *sftp, const char *path)
-{
+char *sftp_readlink(sftp_session_t *sftp, const char *path) {
     if (!sftp || !path)
         return NULL;
 
@@ -1487,8 +1377,7 @@ char *sftp_readlink(sftp_session_t *sftp, const char *path)
         return NULL;
 
     char *result = malloc(name_len + 1);
-    if (result)
-    {
+    if (result) {
         memcpy(result, response + pos, name_len);
         result[name_len] = '\0';
     }
@@ -1496,12 +1385,10 @@ char *sftp_readlink(sftp_session_t *sftp, const char *path)
     return result;
 }
 
-char *sftp_getcwd(sftp_session_t *sftp)
-{
+char *sftp_getcwd(sftp_session_t *sftp) {
     return sftp_realpath(sftp, ".");
 }
 
-char *sftp_canonicalize_path(sftp_session_t *sftp, const char *path)
-{
+char *sftp_canonicalize_path(sftp_session_t *sftp, const char *path) {
     return sftp_realpath(sftp, path);
 }

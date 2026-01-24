@@ -14,13 +14,10 @@
 #include "scheduler.hpp"
 #include "task.hpp"
 
-namespace signal
-{
+namespace signal {
 
-char default_action(i32 signum)
-{
-    switch (signum)
-    {
+char default_action(i32 signum) {
+    switch (signum) {
         // Terminate (core dump in real UNIX)
         case sig::SIGQUIT:
         case sig::SIGILL:
@@ -70,10 +67,8 @@ char default_action(i32 signum)
     }
 }
 
-const char *signal_name(i32 signum)
-{
-    switch (signum)
-    {
+const char *signal_name(i32 signum) {
+    switch (signum) {
         case sig::SIGHUP:
             return "SIGHUP";
         case sig::SIGINT:
@@ -137,8 +132,7 @@ const char *signal_name(i32 signum)
     }
 }
 
-i32 send_signal(task::Task *t, i32 signum)
-{
+i32 send_signal(task::Task *t, i32 signum) {
     if (!t)
         return -1;
 
@@ -158,11 +152,9 @@ i32 send_signal(task::Task *t, i32 signum)
     u64 handler = t->signals.handlers[signum];
 
     // SIGKILL and SIGSTOP cannot be caught or ignored
-    if (signum == sig::SIGKILL || signum == sig::SIGSTOP)
-    {
+    if (signum == sig::SIGKILL || signum == sig::SIGSTOP) {
         // Immediate termination for SIGKILL
-        if (signum == sig::SIGKILL)
-        {
+        if (signum == sig::SIGKILL) {
             return task::kill(t->id, signum);
         }
         // SIGSTOP - not fully implemented
@@ -170,18 +162,15 @@ i32 send_signal(task::Task *t, i32 signum)
     }
 
     // SIG_IGN - ignore the signal
-    if (handler == 1)
-    {
+    if (handler == 1) {
         return 0;
     }
 
     // If there's a user handler (not SIG_DFL), set pending and wake if blocked
-    if (handler > 1)
-    {
+    if (handler > 1) {
         __atomic_fetch_or(&t->signals.pending, 1u << signum, __ATOMIC_SEQ_CST);
         // If task is blocked, wake it to deliver the signal
-        if (t->state == task::TaskState::Blocked)
-        {
+        if (t->state == task::TaskState::Blocked) {
             task::wakeup(t);
         }
         return 0;
@@ -190,8 +179,7 @@ i32 send_signal(task::Task *t, i32 signum)
     // SIG_DFL (handler == 0) - use default action
     char action = default_action(signum);
 
-    switch (action)
-    {
+    switch (action) {
         case 'T': // Terminate
             // Use existing kill mechanism
             return task::kill(t->id, signum);
@@ -212,11 +200,9 @@ i32 send_signal(task::Task *t, i32 signum)
     }
 }
 
-void deliver_fault_signal(i32 signum, const FaultInfo *info)
-{
+void deliver_fault_signal(i32 signum, const FaultInfo *info) {
     task::Task *current = task::current();
-    if (!current)
-    {
+    if (!current) {
         serial::puts("[signal] ERROR: No current task for fault signal\n");
         return;
     }
@@ -227,8 +213,7 @@ void deliver_fault_signal(i32 signum, const FaultInfo *info)
     const char *task_name = current->name;
 
     // If this is a user task with viper, use viper's id as pid
-    if (current->viper)
-    {
+    if (current->viper) {
         auto *v = reinterpret_cast<viper::Viper *>(current->viper);
         pid = static_cast<u32>(v->id);
     }
@@ -240,16 +225,14 @@ void deliver_fault_signal(i32 signum, const FaultInfo *info)
     serial::put_dec(tid);
     serial::puts(" signal=");
     serial::puts(signal_name(signum));
-    if (info)
-    {
+    if (info) {
         serial::puts(" pc=");
         serial::put_hex(info->fault_pc);
         serial::puts(" addr=");
         serial::put_hex(info->fault_addr);
         serial::puts(" esr=");
         serial::put_hex(info->fault_esr);
-        if (info->kind)
-        {
+        if (info->kind) {
             serial::puts(" kind=");
             serial::puts(info->kind);
         }
@@ -257,14 +240,12 @@ void deliver_fault_signal(i32 signum, const FaultInfo *info)
     serial::puts("\n");
 
     // Also display on graphics console
-    if (gcon::is_available())
-    {
+    if (gcon::is_available()) {
         gcon::puts("\n[signal] Task '");
         gcon::puts(task_name);
         gcon::puts("' received ");
         gcon::puts(signal_name(signum));
-        if (info && info->kind)
-        {
+        if (info && info->kind) {
             gcon::puts(" (");
             gcon::puts(info->kind);
             gcon::puts(")");
@@ -277,16 +258,14 @@ void deliver_fault_signal(i32 signum, const FaultInfo *info)
     task::exit(-(128 + signum)); // Exit code follows shell convention
 }
 
-bool has_pending(task::Task *t)
-{
+bool has_pending(task::Task *t) {
     if (!t)
         return false;
     // Check if any pending signals are not blocked
     return (t->signals.pending & ~t->signals.blocked) != 0;
 }
 
-void process_pending()
-{
+void process_pending() {
     task::Task *t = task::current();
     if (!t)
         return;
@@ -298,10 +277,8 @@ void process_pending()
 
     // Find the lowest numbered pending signal
     i32 signum = 0;
-    for (i32 i = 1; i < sig::NSIG; i++)
-    {
-        if (deliverable & (1u << i))
-        {
+    for (i32 i = 1; i < sig::NSIG; i++) {
+        if (deliverable & (1u << i)) {
             signum = i;
             break;
         }
@@ -316,11 +293,9 @@ void process_pending()
     u64 handler = t->signals.handlers[signum];
 
     // SIG_DFL (0) - apply default action
-    if (handler == 0)
-    {
+    if (handler == 0) {
         char action = default_action(signum);
-        if (action == 'T')
-        {
+        if (action == 'T') {
             serial::puts("[signal] Delivering ");
             serial::puts(signal_name(signum));
             serial::puts(" (default: terminate) to '");
@@ -333,8 +308,7 @@ void process_pending()
     }
 
     // SIG_IGN (1) - ignore
-    if (handler == 1)
-    {
+    if (handler == 1) {
         return;
     }
 
@@ -355,8 +329,7 @@ void process_pending()
 
     // Apply default action since we can't call user handlers yet
     char action = default_action(signum);
-    if (action == 'T')
-    {
+    if (action == 'T') {
         task::exit(-(128 + signum));
     }
 }

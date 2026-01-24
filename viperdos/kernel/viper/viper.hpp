@@ -28,18 +28,15 @@
 #include "../sched/wait.hpp"
 
 // Forward declarations
-namespace task
-{
+namespace task {
 struct Task;
 }
 
-namespace fs::vfs
-{
+namespace fs::vfs {
 struct FDTable;
 }
 
-namespace viper
-{
+namespace viper {
 
 /**
  * @brief Lifecycle state of a Viper process.
@@ -52,8 +49,7 @@ namespace viper
  * - @ref Exiting: process is shutting down (future use).
  * - @ref Zombie: exited but still present for parent inspection (future use).
  */
-enum class ViperState : u32
-{
+enum class ViperState : u32 {
     Invalid = 0,
     Creating,
     Running,
@@ -74,8 +70,7 @@ enum class ViperState : u32
  * fixed-size table; pointers to a Viper remain valid until @ref destroy marks
  * the slot invalid.
  */
-struct Viper
-{
+struct Viper {
     // Identity
     u64 id;         /**< Monotonically increasing process identifier. */
     char name[32];  /**< Human-readable name (NUL-terminated, 31 chars max). */
@@ -146,8 +141,7 @@ struct Viper
  * The layout values are used by the loader when choosing where to place PIE
  * binaries, heap/stack regions, and when defining default process limits.
  */
-namespace layout
-{
+namespace layout {
 // Code segment at 2GB (outside kernel's 1GB block region)
 constexpr u64 USER_CODE_BASE = 0x0000'0000'8000'0000ULL; // 2GB
 
@@ -175,8 +169,7 @@ constexpr u32 MAX_VIPERS = 64;
 /**
  * @brief Resource limit identifiers for get_rlimit/set_rlimit.
  */
-enum class ResourceLimit : u32
-{
+enum class ResourceLimit : u32 {
     Memory = 0,  /**< Memory usage in bytes. */
     Handles = 1, /**< Maximum capability handles. */
     Tasks = 2,   /**< Maximum tasks/threads. */

@@ -60,16 +60,16 @@ Key files:
 
 The scheduler in `kernel/sched/scheduler.cpp` maintains **8 priority queues**:
 
-| Queue | Priority Range | Time Slice | Use Case |
-|-------|----------------|------------|----------|
-| 0 | 0-31 (highest) | 5ms | Real-time, interrupt handlers |
-| 1 | 32-63 | 7ms | High-priority user tasks |
-| 2 | 64-95 | 10ms | Interactive tasks |
-| 3 | 96-127 | 12ms | Normal tasks |
-| 4 | 128-159 | 15ms | Background tasks |
-| 5 | 160-191 | 17ms | Low-priority batch |
-| 6 | 192-223 | 20ms | Idle-priority |
-| 7 | 224-255 (lowest) | 20ms | Best-effort |
+| Queue | Priority Range   | Time Slice | Use Case                      |
+|-------|------------------|------------|-------------------------------|
+| 0     | 0-31 (highest)   | 5ms        | Real-time, interrupt handlers |
+| 1     | 32-63            | 7ms        | High-priority user tasks      |
+| 2     | 64-95            | 10ms       | Interactive tasks             |
+| 3     | 96-127           | 12ms       | Normal tasks                  |
+| 4     | 128-159          | 15ms       | Background tasks              |
+| 5     | 160-191          | 17ms       | Low-priority batch            |
+| 6     | 192-223          | 20ms       | Idle-priority                 |
+| 7     | 224-255 (lowest) | 20ms       | Best-effort                   |
 
 Tasks are mapped to queues via `priority / 32`.
 

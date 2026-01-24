@@ -38,7 +38,7 @@ static LONG WINAPI stack_overflow_handler(EXCEPTION_POINTERS *ep)
                           "      Consider using --stack-size=SIZE to increase stack.\n";
         DWORD written;
         WriteFile(hStderr, msg, (DWORD)strlen(msg), &written, NULL);
-        
+
         // Terminate immediately - cannot recover from stack overflow
         ExitProcess(1);
     }
@@ -49,7 +49,7 @@ void rt_init_stack_safety(void)
 {
     if (g_stack_safety_initialized)
         return;
-    
+
     // Add vectored exception handler (called before structured handlers)
     // Use 1 to make it first in the handler chain
     AddVectoredExceptionHandler(1, stack_overflow_handler);
@@ -80,7 +80,7 @@ static void sigsegv_handler(int sig, siginfo_t *info, void *context)
 {
     (void)info;
     (void)context;
-    
+
     if (sig == SIGSEGV || sig == SIGBUS)
     {
         // Write directly to stderr using write() syscall
@@ -97,7 +97,7 @@ void rt_init_stack_safety(void)
 {
     if (g_stack_safety_initialized)
         return;
-    
+
     // Set up alternate signal stack
     stack_t ss;
     ss.ss_sp = g_alt_stack;
@@ -108,18 +108,18 @@ void rt_init_stack_safety(void)
         // Failed to set up alternate stack - continue without it
         return;
     }
-    
+
     // Set up signal handler with SA_ONSTACK to use alternate stack
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
     sa.sa_sigaction = sigsegv_handler;
     sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
     sigemptyset(&sa.sa_mask);
-    
+
     // Handle both SIGSEGV and SIGBUS (macOS uses SIGBUS for some stack faults)
     sigaction(SIGSEGV, &sa, NULL);
     sigaction(SIGBUS, &sa, NULL);
-    
+
     g_stack_safety_initialized = 1;
 }
 

@@ -787,8 +787,7 @@ int vgfx_clipboard_has_format(vgfx_clipboard_format_t format)
                 return cf_html ? IsClipboardFormatAvailable(cf_html) : 0;
             }
         case VGFX_CLIPBOARD_IMAGE:
-            return IsClipboardFormatAvailable(CF_BITMAP) ||
-                   IsClipboardFormatAvailable(CF_DIB);
+            return IsClipboardFormatAvailable(CF_BITMAP) || IsClipboardFormatAvailable(CF_DIB);
         case VGFX_CLIPBOARD_FILES:
             return IsClipboardFormatAvailable(CF_HDROP);
         default:
@@ -951,8 +950,8 @@ int vgfx_platform_set_fullscreen(struct vgfx_window *win, int fullscreen)
         SetWindowLong(w32->hwnd, GWL_STYLE, g_saved_state.style & ~(WS_CAPTION | WS_THICKFRAME));
         SetWindowLong(w32->hwnd,
                       GWL_EXSTYLE,
-                      g_saved_state.exStyle &
-                          ~(WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_STATICEDGE));
+                      g_saved_state.exStyle & ~(WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE |
+                                                WS_EX_CLIENTEDGE | WS_EX_STATICEDGE));
 
         SetWindowPos(w32->hwnd,
                      HWND_TOP,

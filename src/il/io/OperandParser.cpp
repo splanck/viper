@@ -63,7 +63,7 @@ class StringStateTracker
     bool inString_ = false;
     bool escape_ = false;
 
-public:
+  public:
     /// @brief Process a character and update string tracking state.
     /// @details Call this for each character in the input. Returns true if the
     ///          character is inside a string literal (including the opening/closing
@@ -98,7 +98,10 @@ public:
 
     /// @brief Check if an unfinished string or escape sequence remains.
     /// @return True if the string state is incomplete at end of input.
-    [[nodiscard]] bool hasUnfinishedString() const { return escape_ || inString_; }
+    [[nodiscard]] bool hasUnfinishedString() const
+    {
+        return escape_ || inString_;
+    }
 };
 
 // Shared scanners to reduce duplication across parser helpers.

@@ -29,18 +29,16 @@
  */
 
 #include "../../syscall.hpp"
-#include "../include/sys/types.h"
 #include "../include/stddef.h"
 #include "../include/stdint.h"
+#include "../include/sys/types.h"
 
-namespace
-{
+namespace {
 
 // Console protocol constants (from console_protocol.hpp)
 constexpr uint32_t CON_WRITE = 0x1001;
 
-struct WriteRequest
-{
+struct WriteRequest {
     uint32_t type;
     uint32_t request_id;
     uint32_t length;
@@ -48,8 +46,8 @@ struct WriteRequest
 };
 
 // Connection state for output only
-static int32_t g_consoled_channel = -1;   // Channel for sending output to consoled
-static bool g_output_ready = false;       // Can send CON_WRITE
+static int32_t g_consoled_channel = -1; // Channel for sending output to consoled
+static bool g_output_ready = false;     // Can send CON_WRITE
 static uint32_t g_request_id = 0;
 
 /**
@@ -59,8 +57,7 @@ static uint32_t g_request_id = 0;
  * Always attempts reconnection if not currently connected. This allows
  * recovery from temporary disconnection (e.g., after buffer overflow).
  */
-static void try_connect_consoled()
-{
+static void try_connect_consoled() {
     // Already connected for output
     if (g_output_ready && g_consoled_channel >= 0)
         return;
@@ -84,8 +81,7 @@ static void try_connect_consoled()
  * Uses retry with timeout on buffer-full (WOULD_BLOCK).
  * Only gives up on actual fatal channel errors (closed/invalid).
  */
-static bool send_to_consoled(const void *buf, size_t count)
-{
+static bool send_to_consoled(const void *buf, size_t count) {
     if (g_consoled_channel < 0)
         return false;
 
@@ -102,27 +98,23 @@ static bool send_to_consoled(const void *buf, size_t count)
 
     // Copy text after header
     const uint8_t *src = reinterpret_cast<const uint8_t *>(buf);
-    for (size_t i = 0; i < count; i++)
-    {
+    for (size_t i = 0; i < count; i++) {
         msg[sizeof(WriteRequest) + i] = src[i];
     }
 
     // Retry with timeout if buffer full (500ms max wait)
     size_t total_len = sizeof(WriteRequest) + count;
-    for (int retry = 0; retry < 500; retry++)
-    {
+    for (int retry = 0; retry < 500; retry++) {
         int64_t err = sys::channel_send(g_consoled_channel, msg, total_len, nullptr, 0);
         if (err == 0)
             return true;
-        if (err == -300 /* VERR_WOULD_BLOCK */)
-        {
+        if (err == -300 /* VERR_WOULD_BLOCK */) {
             // Buffer full - sleep 1ms to let consoled drain its queue
             sys::sleep(1);
             continue;
         }
         // Fatal channel error - mark disconnected but allow reconnection
-        if (err == -301 /* VERR_CHANNEL_CLOSED */ || err == -100 /* VERR_INVALID_HANDLE */)
-        {
+        if (err == -301 /* VERR_CHANNEL_CLOSED */ || err == -100 /* VERR_INVALID_HANDLE */) {
             g_output_ready = false;
             g_consoled_channel = -1;
         }
@@ -138,8 +130,7 @@ extern "C" {
 /**
  * @brief Check if consoled output is available.
  */
-int __viper_consoled_is_available(void)
-{
+int __viper_consoled_is_available(void) {
     try_connect_consoled();
     return g_output_ready ? 1 : 0;
 }
@@ -152,8 +143,7 @@ int __viper_consoled_is_available(void)
  * Sends data in chunks of up to ~4080 bytes (4096 - WriteRequest header).
  * This ensures large writes (e.g., SSH welcome banners) are fully transmitted.
  */
-ssize_t __viper_consoled_write(const void *buf, size_t count)
-{
+ssize_t __viper_consoled_write(const void *buf, size_t count) {
     try_connect_consoled();
 
     if (!g_output_ready)
@@ -167,12 +157,10 @@ ssize_t __viper_consoled_write(const void *buf, size_t count)
     size_t total_sent = 0;
 
     // Send in chunks to handle large writes (e.g., SSH welcome banners)
-    while (remaining > 0)
-    {
+    while (remaining > 0) {
         size_t chunk = (remaining > MAX_PAYLOAD) ? MAX_PAYLOAD : remaining;
 
-        if (!send_to_consoled(ptr, chunk))
-        {
+        if (!send_to_consoled(ptr, chunk)) {
             // If we sent some data before failing, return what we sent
             return (total_sent > 0) ? static_cast<ssize_t>(total_sent) : -1;
         }
@@ -188,8 +176,7 @@ ssize_t __viper_consoled_write(const void *buf, size_t count)
 /**
  * @brief Check if consoled input is available (now uses kernel TTY).
  */
-int __viper_consoled_input_available(void)
-{
+int __viper_consoled_input_available(void) {
     // Check if kernel TTY buffer has data waiting
     return sys::tty_has_input() ? 1 : 0;
 }
@@ -198,8 +185,7 @@ int __viper_consoled_input_available(void)
  * @brief Read a character from kernel TTY buffer (blocking).
  * @return Character code (0-255), or -1 on error.
  */
-int __viper_consoled_getchar(void)
-{
+int __viper_consoled_getchar(void) {
     char c;
     i64 result = sys::tty_read(&c, 1);
     if (result == 1)
@@ -211,8 +197,7 @@ int __viper_consoled_getchar(void)
  * @brief Try to read a character from kernel TTY (non-blocking).
  * @return Character code (0-255), or -1 if no input available.
  */
-int __viper_consoled_trygetchar(void)
-{
+int __viper_consoled_trygetchar(void) {
     if (!sys::tty_has_input())
         return -1;
 

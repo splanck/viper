@@ -80,12 +80,10 @@ extern long __syscall6(long num, long arg0, long arg1, long arg2, long arg3, lon
  *
  * @see munmap, mprotect, msync
  */
-void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
-{
+void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset) {
     long result = __syscall6(
         SYS_MMAP, (long)addr, (long)length, (long)prot, (long)flags, (long)fd, (long)offset);
-    if (result < 0 && result > -4096)
-    {
+    if (result < 0 && result > -4096) {
         errno = (int)(-result);
         return MAP_FAILED;
     }
@@ -112,11 +110,9 @@ void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
  *
  * @see mmap, msync
  */
-int munmap(void *addr, size_t length)
-{
+int munmap(void *addr, size_t length) {
     long result = __syscall3(SYS_MUNMAP, (long)addr, (long)length, 0);
-    if (result < 0)
-    {
+    if (result < 0) {
         errno = (int)(-result);
         return -1;
     }
@@ -147,11 +143,9 @@ int munmap(void *addr, size_t length)
  *
  * @see mmap, munmap
  */
-int mprotect(void *addr, size_t length, int prot)
-{
+int mprotect(void *addr, size_t length, int prot) {
     long result = __syscall3(SYS_MPROTECT, (long)addr, (long)length, (long)prot);
-    if (result < 0)
-    {
+    if (result < 0) {
         errno = (int)(-result);
         return -1;
     }
@@ -180,11 +174,9 @@ int mprotect(void *addr, size_t length, int prot)
  *
  * @see mmap, munmap
  */
-int msync(void *addr, size_t length, int flags)
-{
+int msync(void *addr, size_t length, int flags) {
     long result = __syscall3(SYS_MSYNC, (long)addr, (long)length, (long)flags);
-    if (result < 0)
-    {
+    if (result < 0) {
         errno = (int)(-result);
         return -1;
     }
@@ -212,11 +204,9 @@ int msync(void *addr, size_t length, int flags)
  *
  * @see posix_madvise, mmap
  */
-int madvise(void *addr, size_t length, int advice)
-{
+int madvise(void *addr, size_t length, int advice) {
     long result = __syscall3(SYS_MADVISE, (long)addr, (long)length, (long)advice);
-    if (result < 0)
-    {
+    if (result < 0) {
         errno = (int)(-result);
         return -1;
     }
@@ -245,12 +235,10 @@ int madvise(void *addr, size_t length, int advice)
  *
  * @see madvise
  */
-int posix_madvise(void *addr, size_t length, int advice)
-{
+int posix_madvise(void *addr, size_t length, int advice) {
     /* Same as madvise but returns error code instead of -1 */
     long result = __syscall3(SYS_MADVISE, (long)addr, (long)length, (long)advice);
-    if (result < 0)
-    {
+    if (result < 0) {
         return (int)(-result);
     }
     return 0;
@@ -275,11 +263,9 @@ int posix_madvise(void *addr, size_t length, int advice)
  *
  * @see munlock, mlockall, munlockall
  */
-int mlock(const void *addr, size_t length)
-{
+int mlock(const void *addr, size_t length) {
     long result = __syscall3(SYS_MLOCK, (long)addr, (long)length, 0);
-    if (result < 0)
-    {
+    if (result < 0) {
         errno = (int)(-result);
         return -1;
     }
@@ -300,11 +286,9 @@ int mlock(const void *addr, size_t length)
  *
  * @see mlock, mlockall, munlockall
  */
-int munlock(const void *addr, size_t length)
-{
+int munlock(const void *addr, size_t length) {
     long result = __syscall3(SYS_MUNLOCK, (long)addr, (long)length, 0);
-    if (result < 0)
-    {
+    if (result < 0) {
         errno = (int)(-result);
         return -1;
     }
@@ -329,8 +313,7 @@ int munlock(const void *addr, size_t length)
  *
  * @see munlockall, mlock, munlock
  */
-int mlockall(int flags)
-{
+int mlockall(int flags) {
     (void)flags;
     errno = ENOSYS;
     return -1;
@@ -349,8 +332,7 @@ int mlockall(int flags)
  *
  * @see mlockall, mlock, munlock
  */
-int munlockall(void)
-{
+int munlockall(void) {
     errno = ENOSYS;
     return -1;
 }
@@ -375,8 +357,7 @@ int munlockall(void)
  *
  * @see mlock, madvise
  */
-int mincore(void *addr, size_t length, unsigned char *vec)
-{
+int mincore(void *addr, size_t length, unsigned char *vec) {
     (void)addr;
     (void)length;
     (void)vec;
@@ -410,8 +391,7 @@ int mincore(void *addr, size_t length, unsigned char *vec)
  *
  * @see shm_unlink, mmap
  */
-int shm_open(const char *name, int oflag, mode_t mode)
-{
+int shm_open(const char *name, int oflag, mode_t mode) {
     (void)name;
     (void)oflag;
     (void)mode;
@@ -436,8 +416,7 @@ int shm_open(const char *name, int oflag, mode_t mode)
  *
  * @see shm_open, munmap
  */
-int shm_unlink(const char *name)
-{
+int shm_unlink(const char *name) {
     (void)name;
     errno = ENOSYS;
     return -1;

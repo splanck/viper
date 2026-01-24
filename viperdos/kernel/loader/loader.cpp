@@ -27,25 +27,20 @@
 #include "../viper/address_space.hpp"
 #include "elf.hpp"
 
-namespace loader
-{
+namespace loader {
 
-namespace
-{
+namespace {
 
 /**
  * @brief Flush instruction cache for executable segment.
  */
-void flush_icache(u64 phys, usize size)
-{
-    for (usize j = 0; j < size; j += 64)
-    {
+void flush_icache(u64 phys, usize size) {
+    for (usize j = 0; j < size; j += 64) {
         u64 addr = phys + j;
         asm volatile("dc cvau, %0" ::"r"(addr));
     }
     asm volatile("dsb ish");
-    for (usize j = 0; j < size; j += 64)
-    {
+    for (usize j = 0; j < size; j += 64) {
         u64 addr = phys + j;
         asm volatile("ic ivau, %0" ::"r"(addr));
     }
@@ -62,8 +57,7 @@ u64 load_segment(viper::AddressSpace *as,
                  const u8 *file_data,
                  usize elf_size,
                  u64 base_addr,
-                 u16 seg_idx)
-{
+                 u16 seg_idx) {
     u64 vaddr = base_addr + phdr->p_vaddr;
     u64 vaddr_aligned = vaddr & ~0xFFFULL;
     u64 offset_in_page = vaddr & 0xFFF;
@@ -84,15 +78,13 @@ u64 load_segment(viper::AddressSpace *as,
 
     u32 prot = elf::flags_to_prot(phdr->p_flags);
 
-    if (as->alloc_map(vaddr_aligned, pages * 4096, prot) == 0)
-    {
+    if (as->alloc_map(vaddr_aligned, pages * 4096, prot) == 0) {
         serial::puts("[loader] Failed to map segment\n");
         return 0;
     }
 
     u64 phys = as->translate(vaddr_aligned);
-    if (phys == 0)
-    {
+    if (phys == 0) {
         serial::puts("[loader] Failed to translate segment address\n");
         return 0;
     }
@@ -101,10 +93,8 @@ u64 load_segment(viper::AddressSpace *as,
     for (usize j = 0; j < pages * 4096; j++)
         dest[j] = 0;
 
-    if (phdr->p_filesz > 0)
-    {
-        if (phdr->p_offset + phdr->p_filesz > elf_size)
-        {
+    if (phdr->p_filesz > 0) {
+        if (phdr->p_offset + phdr->p_filesz > elf_size) {
             serial::puts("[loader] Segment extends beyond file\n");
             return 0;
         }
@@ -124,19 +114,16 @@ u64 load_segment(viper::AddressSpace *as,
 } // anonymous namespace
 
 /** @copydoc loader::load_elf */
-LoadResult load_elf(viper::Viper *v, const void *elf_data, usize elf_size)
-{
+LoadResult load_elf(viper::Viper *v, const void *elf_data, usize elf_size) {
     LoadResult result = {false, 0, 0, 0};
 
-    if (!v || !elf_data || elf_size < sizeof(elf::Elf64_Ehdr))
-    {
+    if (!v || !elf_data || elf_size < sizeof(elf::Elf64_Ehdr)) {
         serial::puts("[loader] Invalid parameters\n");
         return result;
     }
 
     const elf::Elf64_Ehdr *ehdr = static_cast<const elf::Elf64_Ehdr *>(elf_data);
-    if (!elf::validate_header(ehdr))
-    {
+    if (!elf::validate_header(ehdr)) {
         serial::puts("[loader] Invalid ELF header\n");
         return result;
     }
@@ -148,8 +135,7 @@ LoadResult load_elf(viper::Viper *v, const void *elf_data, usize elf_size)
     serial::puts("\n");
 
     viper::AddressSpace *as = viper::get_address_space(v);
-    if (!as || !as->is_valid())
-    {
+    if (!as || !as->is_valid()) {
         serial::puts("[loader] No valid address space\n");
         return result;
     }
@@ -158,8 +144,7 @@ LoadResult load_elf(viper::Viper *v, const void *elf_data, usize elf_size)
     u64 max_addr = 0;
     const u8 *file_data = static_cast<const u8 *>(elf_data);
 
-    for (u16 i = 0; i < ehdr->e_phnum; i++)
-    {
+    for (u16 i = 0; i < ehdr->e_phnum; i++) {
         const elf::Elf64_Phdr *phdr = elf::get_phdr(ehdr, i);
         if (!phdr || phdr->p_type != elf::PT_LOAD)
             continue;
@@ -187,18 +172,15 @@ LoadResult load_elf(viper::Viper *v, const void *elf_data, usize elf_size)
 }
 
 /** @copydoc loader::load_elf_from_blob */
-LoadResult load_elf_from_blob(viper::Viper *v, const void *data, usize size)
-{
+LoadResult load_elf_from_blob(viper::Viper *v, const void *data, usize size) {
     return load_elf(v, data, size);
 }
 
 /** @copydoc loader::load_elf_from_disk */
-LoadResult load_elf_from_disk(viper::Viper *v, const char *path)
-{
+LoadResult load_elf_from_disk(viper::Viper *v, const char *path) {
     LoadResult result = {false, 0, 0, 0};
 
-    if (!v || !path)
-    {
+    if (!v || !path) {
         serial::puts("[loader] Invalid parameters for disk load\n");
         return result;
     }
@@ -209,16 +191,14 @@ LoadResult load_elf_from_disk(viper::Viper *v, const char *path)
 
     // Open the file
     i32 fd = fs::vfs::open(path, fs::vfs::flags::O_RDONLY);
-    if (fd < 0)
-    {
+    if (fd < 0) {
         serial::puts("[loader] Failed to open file\n");
         return result;
     }
 
     // Get file size using stat
     fs::vfs::Stat st;
-    if (fs::vfs::fstat(fd, &st) < 0)
-    {
+    if (fs::vfs::fstat(fd, &st) < 0) {
         serial::puts("[loader] Failed to stat file\n");
         fs::vfs::close(fd);
         return result;
@@ -229,8 +209,7 @@ LoadResult load_elf_from_disk(viper::Viper *v, const char *path)
     serial::put_dec(file_size);
     serial::puts(" bytes\n");
 
-    if (file_size < sizeof(elf::Elf64_Ehdr))
-    {
+    if (file_size < sizeof(elf::Elf64_Ehdr)) {
         serial::puts("[loader] File too small to be an ELF\n");
         fs::vfs::close(fd);
         return result;
@@ -238,8 +217,7 @@ LoadResult load_elf_from_disk(viper::Viper *v, const char *path)
 
     // Allocate buffer for file contents
     void *buf = kheap::kmalloc(file_size);
-    if (!buf)
-    {
+    if (!buf) {
         serial::puts("[loader] Failed to allocate buffer\n");
         fs::vfs::close(fd);
         return result;
@@ -249,8 +227,7 @@ LoadResult load_elf_from_disk(viper::Viper *v, const char *path)
     i64 bytes_read = fs::vfs::read(fd, buf, file_size);
     fs::vfs::close(fd);
 
-    if (bytes_read < 0 || static_cast<usize>(bytes_read) != file_size)
-    {
+    if (bytes_read < 0 || static_cast<usize>(bytes_read) != file_size) {
         serial::puts("[loader] Failed to read file\n");
         kheap::kfree(buf);
         return result;
@@ -271,26 +248,22 @@ LoadResult load_elf_from_disk(viper::Viper *v, const char *path)
  * @param as The address space.
  * @return Stack top address, or 0 on failure.
  */
-static u64 setup_user_stack(viper::AddressSpace *as)
-{
+static u64 setup_user_stack(viper::AddressSpace *as) {
     // Allocate and map stack pages
     u64 stack_base = viper::layout::USER_STACK_TOP - viper::layout::USER_STACK_SIZE;
     u64 stack_size = viper::layout::USER_STACK_SIZE;
 
     u64 mapped = as->alloc_map(stack_base, stack_size, viper::prot::READ | viper::prot::WRITE);
-    if (mapped == 0)
-    {
+    if (mapped == 0) {
         serial::puts("[loader] Failed to map user stack\n");
         return 0;
     }
 
     // Zero the stack (convert physical to virtual address)
     u64 phys = as->translate(stack_base);
-    if (phys != 0)
-    {
+    if (phys != 0) {
         u8 *stack_mem = reinterpret_cast<u8 *>(pmm::phys_to_virt(phys));
-        for (usize i = 0; i < stack_size; i++)
-        {
+        for (usize i = 0; i < stack_size; i++) {
             stack_mem[i] = 0;
         }
     }
@@ -308,12 +281,12 @@ static u64 setup_user_stack(viper::AddressSpace *as)
 /**
  * @brief Internal helper to complete process spawn after ELF is loaded.
  */
-static SpawnResult complete_spawn(viper::Viper *v, const LoadResult &load_result, const char *name)
-{
+static SpawnResult complete_spawn(viper::Viper *v,
+                                  const LoadResult &load_result,
+                                  const char *name) {
     SpawnResult result = {false, nullptr, 0};
 
-    if (!load_result.success)
-    {
+    if (!load_result.success) {
         serial::puts("[loader] ELF load failed, destroying process\n");
         viper::destroy(v);
         return result;
@@ -321,8 +294,7 @@ static SpawnResult complete_spawn(viper::Viper *v, const LoadResult &load_result
 
     // Get address space
     viper::AddressSpace *as = viper::get_address_space(v);
-    if (!as)
-    {
+    if (!as) {
         serial::puts("[loader] No address space for process\n");
         viper::destroy(v);
         return result;
@@ -330,8 +302,7 @@ static SpawnResult complete_spawn(viper::Viper *v, const LoadResult &load_result
 
     // Set up user stack
     u64 stack_top = setup_user_stack(as);
-    if (stack_top == 0)
-    {
+    if (stack_top == 0) {
         viper::destroy(v);
         return result;
     }
@@ -342,8 +313,7 @@ static SpawnResult complete_spawn(viper::Viper *v, const LoadResult &load_result
 
     // Create user task
     task::Task *t = task::create_user_task(name, v, load_result.entry_point, stack_top);
-    if (!t)
-    {
+    if (!t) {
         serial::puts("[loader] Failed to create user task\n");
         viper::destroy(v);
         return result;
@@ -375,12 +345,10 @@ static SpawnResult complete_spawn(viper::Viper *v, const LoadResult &load_result
 }
 
 /** @copydoc loader::spawn_process */
-SpawnResult spawn_process(const char *path, const char *name, viper::Viper *parent)
-{
+SpawnResult spawn_process(const char *path, const char *name, viper::Viper *parent) {
     SpawnResult result = {false, nullptr, 0};
 
-    if (!path || !name)
-    {
+    if (!path || !name) {
         serial::puts("[loader] spawn_process: invalid parameters\n");
         return result;
     }
@@ -393,8 +361,7 @@ SpawnResult spawn_process(const char *path, const char *name, viper::Viper *pare
 
     // Create new process
     viper::Viper *v = viper::create(parent, name);
-    if (!v)
-    {
+    if (!v) {
         serial::puts("[loader] Failed to create Viper process\n");
         return result;
     }
@@ -409,12 +376,10 @@ SpawnResult spawn_process(const char *path, const char *name, viper::Viper *pare
 SpawnResult spawn_process_from_blob(const void *elf_data,
                                     usize elf_size,
                                     const char *name,
-                                    viper::Viper *parent)
-{
+                                    viper::Viper *parent) {
     SpawnResult result = {false, nullptr, 0};
 
-    if (!elf_data || elf_size == 0 || !name)
-    {
+    if (!elf_data || elf_size == 0 || !name) {
         serial::puts("[loader] spawn_process_from_blob: invalid parameters\n");
         return result;
     }
@@ -427,8 +392,7 @@ SpawnResult spawn_process_from_blob(const void *elf_data,
 
     // Create new process
     viper::Viper *v = viper::create(parent, name);
-    if (!v)
-    {
+    if (!v) {
         serial::puts("[loader] Failed to create Viper process\n");
         return result;
     }
@@ -442,20 +406,17 @@ SpawnResult spawn_process_from_blob(const void *elf_data,
 /** @copydoc loader::replace_process */
 ReplaceResult replace_process(const char *path,
                               const cap::Handle *preserve_handles,
-                              u32 preserve_count)
-{
+                              u32 preserve_count) {
     ReplaceResult result = {false, 0};
 
-    if (!path)
-    {
+    if (!path) {
         serial::puts("[loader] replace_process: invalid path\n");
         return result;
     }
 
     // Get current process
     viper::Viper *v = viper::current();
-    if (!v)
-    {
+    if (!v) {
         serial::puts("[loader] replace_process: no current process\n");
         return result;
     }
@@ -468,8 +429,7 @@ ReplaceResult replace_process(const char *path,
 
     // Get address space
     viper::AddressSpace *as = viper::get_address_space(v);
-    if (!as)
-    {
+    if (!as) {
         serial::puts("[loader] replace_process: no address space\n");
         return result;
     }
@@ -477,8 +437,7 @@ ReplaceResult replace_process(const char *path,
     // Clear VMA list and unmap all user pages
     // Walk through all VMAs and unmap them
     mm::Vma *vma = v->vma_list.head();
-    while (vma)
-    {
+    while (vma) {
         mm::Vma *next = vma->next;
         // Unmap the region
         as->unmap(vma->start, vma->end - vma->start);
@@ -490,45 +449,34 @@ ReplaceResult replace_process(const char *path,
 
     // Handle capability preservation
     cap::Table *ct = v->cap_table;
-    if (ct)
-    {
-        if (preserve_handles && preserve_count > 0)
-        {
+    if (ct) {
+        if (preserve_handles && preserve_count > 0) {
             // Build a set of handles to preserve
             // Then remove all others
-            for (usize i = 0; i < ct->capacity(); i++)
-            {
+            for (usize i = 0; i < ct->capacity(); i++) {
                 cap::Entry *e = ct->entry_at(i);
-                if (e && e->kind != cap::Kind::Invalid)
-                {
+                if (e && e->kind != cap::Kind::Invalid) {
                     cap::Handle h = cap::make_handle(static_cast<u32>(i), e->generation);
 
                     // Check if this handle should be preserved
                     bool preserve = false;
-                    for (u32 j = 0; j < preserve_count; j++)
-                    {
-                        if (preserve_handles[j] == h)
-                        {
+                    for (u32 j = 0; j < preserve_count; j++) {
+                        if (preserve_handles[j] == h) {
                             preserve = true;
                             break;
                         }
                     }
 
-                    if (!preserve)
-                    {
+                    if (!preserve) {
                         ct->remove(h);
                     }
                 }
             }
-        }
-        else
-        {
+        } else {
             // No preservation - remove all capabilities
-            for (usize i = 0; i < ct->capacity(); i++)
-            {
+            for (usize i = 0; i < ct->capacity(); i++) {
                 cap::Entry *e = ct->entry_at(i);
-                if (e && e->kind != cap::Kind::Invalid)
-                {
+                if (e && e->kind != cap::Kind::Invalid) {
                     cap::Handle h = cap::make_handle(static_cast<u32>(i), e->generation);
                     ct->remove(h);
                 }
@@ -550,16 +498,14 @@ ReplaceResult replace_process(const char *path,
 
     // Load the new ELF
     LoadResult load_result = load_elf_from_disk(v, path);
-    if (!load_result.success)
-    {
+    if (!load_result.success) {
         serial::puts("[loader] replace_process: ELF load failed\n");
         return result;
     }
 
     // Set up new user stack
     u64 stack_top = setup_user_stack(as);
-    if (stack_top == 0)
-    {
+    if (stack_top == 0) {
         serial::puts("[loader] replace_process: stack setup failed\n");
         return result;
     }
@@ -570,16 +516,13 @@ ReplaceResult replace_process(const char *path,
 
     // Update process name from path
     const char *name_start = path;
-    for (const char *p = path; *p; p++)
-    {
-        if (*p == '/')
-        {
+    for (const char *p = path; *p; p++) {
+        if (*p == '/') {
             name_start = p + 1;
         }
     }
     int i = 0;
-    while (name_start[i] && i < 31)
-    {
+    while (name_start[i] && i < 31) {
         v->name[i] = name_start[i];
         i++;
     }

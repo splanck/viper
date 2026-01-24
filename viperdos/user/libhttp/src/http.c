@@ -32,8 +32,7 @@
 #include <unistd.h>
 
 /* URL components */
-typedef struct
-{
+typedef struct {
     char scheme[16];
     char host[256];
     uint16_t port;
@@ -41,16 +40,14 @@ typedef struct
 } parsed_url_t;
 
 /* Connection state */
-typedef struct
-{
+typedef struct {
     int socket_fd;
     tls_session_t *tls;
     int use_tls;
 } http_connection_t;
 
 /* Parse URL into components */
-static int parse_url(const char *url, parsed_url_t *parsed)
-{
+static int parse_url(const char *url, parsed_url_t *parsed) {
     memset(parsed, 0, sizeof(*parsed));
 
     /* Default values */
@@ -60,8 +57,7 @@ static int parse_url(const char *url, parsed_url_t *parsed)
 
     /* Parse scheme */
     const char *p = strstr(url, "://");
-    if (p)
-    {
+    if (p) {
         size_t scheme_len = p - url;
         if (scheme_len >= sizeof(parsed->scheme))
             return HTTP_ERROR_PARSE;
@@ -77,8 +73,7 @@ static int parse_url(const char *url, parsed_url_t *parsed)
     const char *slash = strchr(url, '/');
     const char *colon = strchr(url, ':');
 
-    if (colon && (!slash || colon < slash))
-    {
+    if (colon && (!slash || colon < slash)) {
         /* Has port */
         size_t host_len = colon - url;
         if (host_len >= sizeof(parsed->host))
@@ -87,25 +82,20 @@ static int parse_url(const char *url, parsed_url_t *parsed)
         parsed->host[host_len] = '\0';
         parsed->port = (uint16_t)atoi(colon + 1);
         url = slash ? slash : colon + strlen(colon + 1) + 1;
-    }
-    else if (slash)
-    {
+    } else if (slash) {
         size_t host_len = slash - url;
         if (host_len >= sizeof(parsed->host))
             return HTTP_ERROR_PARSE;
         memcpy(parsed->host, url, host_len);
         parsed->host[host_len] = '\0';
         url = slash;
-    }
-    else
-    {
+    } else {
         strncpy(parsed->host, url, sizeof(parsed->host) - 1);
         url = "";
     }
 
     /* Parse path */
-    if (*url)
-    {
+    if (*url) {
         strncpy(parsed->path, url, sizeof(parsed->path) - 1);
     }
 
@@ -113,8 +103,7 @@ static int parse_url(const char *url, parsed_url_t *parsed)
 }
 
 /* Connect to server */
-static int http_connect(const parsed_url_t *url, http_connection_t *conn, int verify_tls)
-{
+static int http_connect(const parsed_url_t *url, http_connection_t *conn, int verify_tls) {
     memset(conn, 0, sizeof(*conn));
     conn->socket_fd = -1;
 
@@ -135,16 +124,14 @@ static int http_connect(const parsed_url_t *url, http_connection_t *conn, int ve
     addr.sin_port = htons(url->port);
     memcpy(&addr.sin_addr, he->h_addr_list[0], 4);
 
-    if (connect(conn->socket_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
-    {
+    if (connect(conn->socket_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         close(conn->socket_fd);
         conn->socket_fd = -1;
         return HTTP_ERROR_CONNECT;
     }
 
     /* Setup TLS if needed */
-    if (strcmp(url->scheme, "https") == 0)
-    {
+    if (strcmp(url->scheme, "https") == 0) {
         conn->use_tls = 1;
 
         tls_config_t tls_config;
@@ -153,16 +140,14 @@ static int http_connect(const parsed_url_t *url, http_connection_t *conn, int ve
         tls_config.verify_cert = verify_tls;
 
         conn->tls = tls_new(conn->socket_fd, &tls_config);
-        if (!conn->tls)
-        {
+        if (!conn->tls) {
             close(conn->socket_fd);
             conn->socket_fd = -1;
             return HTTP_ERROR_TLS;
         }
 
         int rc = tls_handshake(conn->tls);
-        if (rc != TLS_OK)
-        {
+        if (rc != TLS_OK) {
             tls_close(conn->tls);
             close(conn->socket_fd);
             conn->socket_fd = -1;
@@ -174,51 +159,38 @@ static int http_connect(const parsed_url_t *url, http_connection_t *conn, int ve
 }
 
 /* Close connection */
-static void http_disconnect(http_connection_t *conn)
-{
-    if (conn->tls)
-    {
+static void http_disconnect(http_connection_t *conn) {
+    if (conn->tls) {
         tls_close(conn->tls);
         conn->tls = NULL;
     }
-    if (conn->socket_fd >= 0)
-    {
+    if (conn->socket_fd >= 0) {
         close(conn->socket_fd);
         conn->socket_fd = -1;
     }
 }
 
 /* Send data */
-static long http_send(http_connection_t *conn, const void *data, size_t len)
-{
-    if (conn->use_tls)
-    {
+static long http_send(http_connection_t *conn, const void *data, size_t len) {
+    if (conn->use_tls) {
         return tls_send(conn->tls, data, len);
-    }
-    else
-    {
+    } else {
         return send(conn->socket_fd, data, len, 0);
     }
 }
 
 /* Receive data */
-static long http_recv(http_connection_t *conn, void *buffer, size_t len)
-{
-    if (conn->use_tls)
-    {
+static long http_recv(http_connection_t *conn, void *buffer, size_t len) {
+    if (conn->use_tls) {
         return tls_recv(conn->tls, buffer, len);
-    }
-    else
-    {
+    } else {
         return recv(conn->socket_fd, buffer, len, 0);
     }
 }
 
 /* Case-insensitive string compare */
-static int strcasecmp_local(const char *a, const char *b)
-{
-    while (*a && *b)
-    {
+static int strcasecmp_local(const char *a, const char *b) {
+    while (*a && *b) {
         int ca = tolower((unsigned char)*a);
         int cb = tolower((unsigned char)*b);
         if (ca != cb)
@@ -230,8 +202,7 @@ static int strcasecmp_local(const char *a, const char *b)
 }
 
 /* Parse HTTP response headers */
-static int parse_response(const char *data, size_t len, http_response_t *response)
-{
+static int parse_response(const char *data, size_t len, http_response_t *response) {
     const char *p = data;
     const char *end = data + len;
 
@@ -265,8 +236,7 @@ static int parse_response(const char *data, size_t len, http_response_t *respons
 
     /* Parse headers */
     response->header_count = 0;
-    while (p < end && *p != '\r' && *p != '\n')
-    {
+    while (p < end && *p != '\r' && *p != '\n') {
         const char *name_start = p;
         while (p < end && *p != ':')
             p++;
@@ -283,8 +253,7 @@ static int parse_response(const char *data, size_t len, http_response_t *respons
             p++;
         size_t value_len = p - value_start;
 
-        if (response->header_count < HTTP_MAX_HEADERS)
-        {
+        if (response->header_count < HTTP_MAX_HEADERS) {
             http_header_t *hdr = &response->headers[response->header_count];
             if (name_len >= sizeof(hdr->name))
                 name_len = sizeof(hdr->name) - 1;
@@ -297,16 +266,11 @@ static int parse_response(const char *data, size_t len, http_response_t *respons
             hdr->value[value_len] = '\0';
 
             /* Parse important headers */
-            if (strcasecmp_local(hdr->name, "Content-Length") == 0)
-            {
+            if (strcasecmp_local(hdr->name, "Content-Length") == 0) {
                 response->content_length = (size_t)atol(hdr->value);
-            }
-            else if (strcasecmp_local(hdr->name, "Content-Type") == 0)
-            {
+            } else if (strcasecmp_local(hdr->name, "Content-Type") == 0) {
                 strncpy(response->content_type, hdr->value, sizeof(response->content_type) - 1);
-            }
-            else if (strcasecmp_local(hdr->name, "Transfer-Encoding") == 0)
-            {
+            } else if (strcasecmp_local(hdr->name, "Transfer-Encoding") == 0) {
                 if (strstr(hdr->value, "chunked"))
                     response->chunked = 1;
             }
@@ -322,8 +286,7 @@ static int parse_response(const char *data, size_t len, http_response_t *respons
     return HTTP_OK;
 }
 
-void http_request_init(http_request_t *request)
-{
+void http_request_init(http_request_t *request) {
     memset(request, 0, sizeof(*request));
     request->method = HTTP_GET;
     request->timeout_ms = 10000;
@@ -332,8 +295,7 @@ void http_request_init(http_request_t *request)
     request->verify_tls = 0; /* Disabled by default for bring-up */
 }
 
-int http_request_add_header(http_request_t *request, const char *name, const char *value)
-{
+int http_request_add_header(http_request_t *request, const char *name, const char *value) {
     if (request->header_count >= HTTP_MAX_HEADERS)
         return HTTP_ERROR;
 
@@ -345,16 +307,14 @@ int http_request_add_header(http_request_t *request, const char *name, const cha
     return HTTP_OK;
 }
 
-int http_get(const char *url, http_response_t *response)
-{
+int http_get(const char *url, http_response_t *response) {
     http_request_t request;
     http_request_init(&request);
     request.url = url;
     return http_request(&request, response);
 }
 
-int http_request(const http_request_t *request, http_response_t *response)
-{
+int http_request(const http_request_t *request, http_response_t *response) {
     memset(response, 0, sizeof(*response));
 
     if (!request || !request->url)
@@ -375,8 +335,7 @@ int http_request(const http_request_t *request, http_response_t *response)
     /* Build request */
     char req_buf[4096];
     const char *method_str = "GET";
-    switch (request->method)
-    {
+    switch (request->method) {
         case HTTP_GET:
             method_str = "GET";
             break;
@@ -402,8 +361,7 @@ int http_request(const http_request_t *request, http_response_t *response)
                        url.host);
 
     /* Add custom headers */
-    for (int i = 0; i < request->header_count; i++)
-    {
+    for (int i = 0; i < request->header_count; i++) {
         len += snprintf(req_buf + len,
                         sizeof(req_buf) - len,
                         "%s: %s\r\n",
@@ -412,8 +370,7 @@ int http_request(const http_request_t *request, http_response_t *response)
     }
 
     /* Add content length for POST/PUT */
-    if (request->body && request->body_len > 0)
-    {
+    if (request->body && request->body_len > 0) {
         len += snprintf(
             req_buf + len, sizeof(req_buf) - len, "Content-Length: %zu\r\n", request->body_len);
     }
@@ -422,17 +379,14 @@ int http_request(const http_request_t *request, http_response_t *response)
     len += snprintf(req_buf + len, sizeof(req_buf) - len, "\r\n");
 
     /* Send request */
-    if (http_send(&conn, req_buf, len) < 0)
-    {
+    if (http_send(&conn, req_buf, len) < 0) {
         http_disconnect(&conn);
         return HTTP_ERROR_CONNECT;
     }
 
     /* Send body if present */
-    if (request->body && request->body_len > 0)
-    {
-        if (http_send(&conn, request->body, request->body_len) < 0)
-        {
+    if (request->body && request->body_len > 0) {
+        if (http_send(&conn, request->body, request->body_len) < 0) {
             http_disconnect(&conn);
             return HTTP_ERROR_CONNECT;
         }
@@ -440,8 +394,7 @@ int http_request(const http_request_t *request, http_response_t *response)
 
     /* Receive response */
     char *recv_buf = malloc(HTTP_MAX_BODY);
-    if (!recv_buf)
-    {
+    if (!recv_buf) {
         http_disconnect(&conn);
         return HTTP_ERROR_MEMORY;
     }
@@ -450,8 +403,7 @@ int http_request(const http_request_t *request, http_response_t *response)
     size_t header_end = 0;
 
     /* Read until we have headers */
-    while (recv_len < HTTP_MAX_BODY - 1)
-    {
+    while (recv_len < HTTP_MAX_BODY - 1) {
         long n = http_recv(&conn, recv_buf + recv_len, HTTP_MAX_BODY - 1 - recv_len);
         if (n <= 0)
             break;
@@ -460,15 +412,13 @@ int http_request(const http_request_t *request, http_response_t *response)
 
         /* Look for end of headers */
         char *hdr_end = strstr(recv_buf, "\r\n\r\n");
-        if (hdr_end)
-        {
+        if (hdr_end) {
             header_end = (hdr_end - recv_buf) + 4;
             break;
         }
     }
 
-    if (header_end == 0)
-    {
+    if (header_end == 0) {
         free(recv_buf);
         http_disconnect(&conn);
         return HTTP_ERROR_PARSE;
@@ -476,8 +426,7 @@ int http_request(const http_request_t *request, http_response_t *response)
 
     /* Parse headers */
     rc = parse_response(recv_buf, header_end, response);
-    if (rc != HTTP_OK)
-    {
+    if (rc != HTTP_OK) {
         free(recv_buf);
         http_disconnect(&conn);
         return rc;
@@ -487,23 +436,18 @@ int http_request(const http_request_t *request, http_response_t *response)
     size_t body_start = header_end;
     size_t body_len = recv_len - body_start;
 
-    if (response->content_length > 0)
-    {
+    if (response->content_length > 0) {
         /* Known content length */
-        while (body_len < response->content_length && recv_len < HTTP_MAX_BODY - 1)
-        {
+        while (body_len < response->content_length && recv_len < HTTP_MAX_BODY - 1) {
             long n = http_recv(&conn, recv_buf + recv_len, HTTP_MAX_BODY - 1 - recv_len);
             if (n <= 0)
                 break;
             recv_len += n;
             body_len = recv_len - body_start;
         }
-    }
-    else if (!response->chunked)
-    {
+    } else if (!response->chunked) {
         /* Read until connection close */
-        while (recv_len < HTTP_MAX_BODY - 1)
-        {
+        while (recv_len < HTTP_MAX_BODY - 1) {
             long n = http_recv(&conn, recv_buf + recv_len, HTTP_MAX_BODY - 1 - recv_len);
             if (n <= 0)
                 break;
@@ -513,11 +457,9 @@ int http_request(const http_request_t *request, http_response_t *response)
     }
 
     /* Copy body */
-    if (body_len > 0)
-    {
+    if (body_len > 0) {
         response->body = malloc(body_len + 1);
-        if (response->body)
-        {
+        if (response->body) {
             memcpy(response->body, recv_buf + body_start, body_len);
             response->body[body_len] = '\0';
             response->body_len = body_len;
@@ -530,25 +472,20 @@ int http_request(const http_request_t *request, http_response_t *response)
     return HTTP_OK;
 }
 
-void http_response_free(http_response_t *response)
-{
-    if (response && response->body)
-    {
+void http_response_free(http_response_t *response) {
+    if (response && response->body) {
         free(response->body);
         response->body = NULL;
         response->body_len = 0;
     }
 }
 
-const char *http_response_get_header(const http_response_t *response, const char *name)
-{
+const char *http_response_get_header(const http_response_t *response, const char *name) {
     if (!response || !name)
         return NULL;
 
-    for (int i = 0; i < response->header_count; i++)
-    {
-        if (strcasecmp_local(response->headers[i].name, name) == 0)
-        {
+    for (int i = 0; i < response->header_count; i++) {
+        if (strcasecmp_local(response->headers[i].name, name) == 0) {
             return response->headers[i].value;
         }
     }

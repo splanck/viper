@@ -6,15 +6,18 @@
 
 ## Overview
 
-User space consists of the `vinit` init process, user-space servers (netd, fsd, blkd, consoled, inputd), a complete freestanding C library (`libc`), networking/crypto libraries, and syscall wrappers.
+User space consists of the `vinit` init process, user-space servers (netd, fsd, blkd, consoled, inputd), a complete
+freestanding C library (`libc`), networking/crypto libraries, and syscall wrappers.
 
 In the microkernel architecture:
+
 - **vinit** spawns and manages the user-space servers
 - **libc** routes file operations to fsd, network operations to netd
 - **User-space libraries** (libtls, libhttp, libssh, libgui) build on libc and IPC
 - Applications use standard POSIX-like APIs
 
-The libc enables portable POSIX-like application development without external dependencies, routing to the appropriate user-space server via IPC.
+The libc enables portable POSIX-like application development without external dependencies, routing to the appropriate
+user-space server via IPC.
 
 ---
 
@@ -25,6 +28,7 @@ The libc enables portable POSIX-like application development without external de
 **Status:** Complete interactive shell for bring-up
 
 `vinit` is a freestanding user-space program that:
+
 - Runs as the first user-mode process (started by the kernel)
 - Provides an interactive command shell
 - Exercises kernel syscalls for filesystem, networking, TLS, and capabilities
@@ -34,49 +38,51 @@ The libc enables portable POSIX-like application development without external de
 
 **Shell Features:**
 
-| Feature | Description |
-|---------|-------------|
-| Line Editing | Left/right cursor, insert/delete |
-| History | 16-entry ring buffer with up/down navigation |
+| Feature        | Description                                   |
+|----------------|-----------------------------------------------|
+| Line Editing   | Left/right cursor, insert/delete              |
+| History        | 16-entry ring buffer with up/down navigation  |
 | Tab Completion | Command-name completion for built-in commands |
-| ANSI Terminal | Escape sequence handling for cursor control |
-| Return Codes | OK=0, WARN=5, ERROR=10, FAIL=20 |
+| ANSI Terminal  | Escape sequence handling for cursor control   |
+| Return Codes   | OK=0, WARN=5, ERROR=10, FAIL=20               |
 
 **Built-in Commands:**
 
-| Command | Description |
-|---------|-------------|
-| Help | Show available commands |
-| chdir \<path\> | Change current directory |
-| cwd | Print current working directory |
-| Dir [path] | Brief directory listing |
-| List [path] | Detailed directory listing |
-| Type \<file\> | Display file contents |
-| Copy \<src\> \<dst\> | Copy files |
-| Delete \<path\> | Delete file/directory |
-| MakeDir \<dir\> | Create directory |
-| Rename \<old\> \<new\> | Rename files |
-| Fetch \<url\> | HTTP/HTTPS GET request |
-| Run \<program\> | Execute user program |
-| Cls | Clear screen (ANSI) |
-| Echo [text] | Print text |
-| Version | Show OS version |
-| Uptime | Show system uptime |
-| Avail | Show memory availability |
-| Status | Show running tasks |
-| Caps [handle] | Show/test capabilities |
-| Assign | List logical device assigns |
-| Path [path] | Resolve assign-prefixed path |
-| History | Show command history |
-| Why | Explain last error |
-| Date / Time | (Placeholder - not yet implemented) |
-| EndShell | Exit shell |
+| Command                | Description                         |
+|------------------------|-------------------------------------|
+| Help                   | Show available commands             |
+| chdir \<path\>         | Change current directory            |
+| cwd                    | Print current working directory     |
+| Dir [path]             | Brief directory listing             |
+| List [path]            | Detailed directory listing          |
+| Type \<file\>          | Display file contents               |
+| Copy \<src\> \<dst\>   | Copy files                          |
+| Delete \<path\>        | Delete file/directory               |
+| MakeDir \<dir\>        | Create directory                    |
+| Rename \<old\> \<new\> | Rename files                        |
+| Fetch \<url\>          | HTTP/HTTPS GET request              |
+| Run \<program\>        | Execute user program                |
+| Cls                    | Clear screen (ANSI)                 |
+| Echo [text]            | Print text                          |
+| Version                | Show OS version                     |
+| Uptime                 | Show system uptime                  |
+| Avail                  | Show memory availability            |
+| Status                 | Show running tasks                  |
+| Caps [handle]          | Show/test capabilities              |
+| Assign                 | List logical device assigns         |
+| Path [path]            | Resolve assign-prefixed path        |
+| History                | Show command history                |
+| Why                    | Explain last error                  |
+| Date / Time            | (Placeholder - not yet implemented) |
+| EndShell               | Exit shell                          |
 
 **Networking Demo:**
 The `Fetch` command demonstrates the full networking stack:
+
 ```
 Fetch https://example.com
 ```
+
 1. Parses URL (scheme, host, port, path)
 2. Resolves hostname via DNS
 3. Creates TCP socket and connects
@@ -86,6 +92,7 @@ Fetch https://example.com
 
 **Minimal Runtime:**
 `vinit` implements minimal freestanding helpers:
+
 - `strlen()`, `streq()`, `strstart()` - string utilities
 - `memcpy()`, `memmove()` - memory operations
 - `puts()`, `putchar()`, `put_num()`, `put_hex()` - console output
@@ -98,6 +105,7 @@ Fetch https://example.com
 **Status:** Complete header-only syscall bindings
 
 A freestanding-friendly header providing:
+
 - Low-level `svc #0` inline assembly wrappers
 - Typed syscall wrappers for all kernel APIs
 - Shared ABI structures from `include/viperdos/`
@@ -111,6 +119,7 @@ A freestanding-friendly header providing:
 | x1-x3 | Result values (output) |
 
 **Syscall Invokers:**
+
 ```cpp
 SyscallResult syscall0(u64 num);
 SyscallResult syscall1(u64 num, u64 arg0);
@@ -225,7 +234,8 @@ SyscallResult syscall4(u64 num, u64 arg0, u64 arg1, u64 arg2, u64 arg3);
 
 **Status:** Full C standard library for freestanding environment
 
-A complete freestanding C library providing POSIX-like functionality for user-space programs. All functions work without external dependencies.
+A complete freestanding C library providing POSIX-like functionality for user-space programs. All functions work without
+external dependencies.
 
 **Implemented Headers:**
 
@@ -395,6 +405,7 @@ A complete freestanding C library providing POSIX-like functionality for user-sp
 | `sbrk(increment)` | Adjust program break |
 
 **`<errno.h>` - Error Handling:**
+
 - Thread-local `errno` variable
 - All standard POSIX error codes (ENOENT, EINVAL, ENOMEM, etc.)
 - Network error codes (ECONNREFUSED, ETIMEDOUT, etc.)
@@ -417,7 +428,9 @@ A complete freestanding C library providing POSIX-like functionality for user-sp
 | `strsignal(sig)` | Signal name string |
 | `psignal(sig, s)` | Print signal message |
 
-**Signals:** SIGHUP, SIGINT, SIGQUIT, SIGILL, SIGTRAP, SIGABRT, SIGBUS, SIGFPE, SIGKILL, SIGUSR1, SIGSEGV, SIGUSR2, SIGPIPE, SIGALRM, SIGTERM, SIGCHLD, SIGCONT, SIGSTOP, SIGTSTP, SIGTTIN, SIGTTOU, SIGURG, SIGXCPU, SIGXFSZ, SIGVTALRM, SIGPROF, SIGWINCH, SIGIO, SIGPWR, SIGSYS
+**Signals:** SIGHUP, SIGINT, SIGQUIT, SIGILL, SIGTRAP, SIGABRT, SIGBUS, SIGFPE, SIGKILL, SIGUSR1, SIGSEGV, SIGUSR2,
+SIGPIPE, SIGALRM, SIGTERM, SIGCHLD, SIGCONT, SIGSTOP, SIGTSTP, SIGTTIN, SIGTTOU, SIGURG, SIGXCPU, SIGXFSZ, SIGVTALRM,
+SIGPROF, SIGWINCH, SIGIO, SIGPWR, SIGSYS
 
 **Flags:** SA_NOCLDSTOP, SA_NOCLDWAIT, SA_SIGINFO, SA_ONSTACK, SA_RESTART, SA_NODEFER, SA_RESETHAND
 
@@ -431,7 +444,8 @@ A complete freestanding C library providing POSIX-like functionality for user-sp
 | `posix_fadvise(fd, off, len, adv)` | File access advisory |
 | `posix_fallocate(fd, off, len)` | Allocate space (stub) |
 
-**Open flags:** O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_EXCL, O_TRUNC, O_APPEND, O_NONBLOCK, O_DIRECTORY, O_NOFOLLOW, O_CLOEXEC
+**Open flags:** O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_EXCL, O_TRUNC, O_APPEND, O_NONBLOCK, O_DIRECTORY, O_NOFOLLOW,
+O_CLOEXEC
 
 **fcntl commands:** F_DUPFD, F_GETFD, F_SETFD, F_GETFL, F_SETFL, F_GETLK, F_SETLK, F_SETLKW
 
@@ -450,9 +464,11 @@ A complete freestanding C library providing POSIX-like functionality for user-sp
 
 **File type macros:** S_ISREG, S_ISDIR, S_ISCHR, S_ISBLK, S_ISFIFO, S_ISLNK, S_ISSOCK
 
-**Permission bits:** S_IRWXU, S_IRUSR, S_IWUSR, S_IXUSR, S_IRWXG, S_IRGRP, S_IWGRP, S_IXGRP, S_IRWXO, S_IROTH, S_IWOTH, S_IXOTH
+**Permission bits:** S_IRWXU, S_IRUSR, S_IWUSR, S_IXUSR, S_IRWXG, S_IRGRP, S_IWGRP, S_IXGRP, S_IRWXO, S_IROTH, S_IWOTH,
+S_IXOTH
 
 **`<sys/types.h>` - System Types:**
+
 - `ssize_t`, `size_t`, `off_t`, `pid_t`, `uid_t`, `gid_t`, `mode_t`
 - `dev_t`, `ino_t`, `nlink_t`, `blksize_t`, `blkcnt_t`, `time_t`
 - Fixed-width types: int8_t through int64_t, uint8_t through uint64_t
@@ -640,7 +656,8 @@ A complete freestanding C library providing POSIX-like functionality for user-sp
 | `getprotobynumber(proto)` | Protocol by number |
 | `herror(s)` / `hstrerror(err)` | Host error messages |
 
-**Error codes:** EAI_AGAIN, EAI_BADFLAGS, EAI_FAIL, EAI_FAMILY, EAI_MEMORY, EAI_NONAME, EAI_SERVICE, EAI_SOCKTYPE, EAI_SYSTEM, EAI_OVERFLOW
+**Error codes:** EAI_AGAIN, EAI_BADFLAGS, EAI_FAIL, EAI_FAMILY, EAI_MEMORY, EAI_NONAME, EAI_SERVICE, EAI_SOCKTYPE,
+EAI_SYSTEM, EAI_OVERFLOW
 **Flags:** AI_PASSIVE, AI_CANONNAME, AI_NUMERICHOST, AI_NUMERICSERV, NI_NUMERICHOST, NI_NUMERICSERV, NI_DGRAM
 
 **Static tables:** Known services (http, https, ftp, ssh, telnet, smtp, dns, ntp) and protocols (ip, icmp, tcp, udp)
@@ -827,7 +844,8 @@ A complete freestanding C library providing POSIX-like functionality for user-sp
 | `glob(pattern, flags, errfunc, pglob)` | Find pathnames matching pattern |
 | `globfree(pglob)` | Free glob results |
 
-**Flags:** GLOB_ERR, GLOB_MARK, GLOB_NOSORT, GLOB_DOOFFS, GLOB_NOCHECK, GLOB_APPEND, GLOB_NOESCAPE, GLOB_PERIOD, GLOB_TILDE, GLOB_ONLYDIR
+**Flags:** GLOB_ERR, GLOB_MARK, GLOB_NOSORT, GLOB_DOOFFS, GLOB_NOCHECK, GLOB_APPEND, GLOB_NOESCAPE, GLOB_PERIOD,
+GLOB_TILDE, GLOB_ONLYDIR
 
 **`<ftw.h>` - File Tree Walk:**
 | Function | Description |
@@ -835,7 +853,8 @@ A complete freestanding C library providing POSIX-like functionality for user-sp
 | `ftw(path, fn, nopenfd)` | Walk directory tree (legacy) |
 | `nftw(path, fn, nopenfd, flags)` | Walk directory tree (extended) |
 
-**Type flags:** FTW_F (file), FTW_D (directory), FTW_DNR (unreadable dir), FTW_DP (post-order dir), FTW_NS (stat failed), FTW_SL (symlink), FTW_SLN (dangling symlink)
+**Type flags:** FTW_F (file), FTW_D (directory), FTW_DNR (unreadable dir), FTW_DP (post-order dir), FTW_NS (stat
+failed), FTW_SL (symlink), FTW_SLN (dangling symlink)
 **Flags:** FTW_PHYS, FTW_MOUNT, FTW_DEPTH, FTW_CHDIR
 
 **`<spawn.h>` - POSIX Spawn:**
@@ -903,7 +922,8 @@ A complete freestanding C library providing POSIX-like functionality for user-sp
 | `strfmon_l(s, maxsize, locale, format, ...)` | Format with locale |
 
 **Format specifiers:** `%n` (national format), `%i` (international format)
-**Modifiers:** `=f` (fill char), `^` (no grouping), `(` (parentheses for negative), `+` (sign), `!` (no symbol), `-` (left justify)
+**Modifiers:** `=f` (fill char), `^` (no grouping), `(` (parentheses for negative), `+` (sign), `!` (no symbol), `-` (
+left justify)
 
 **`<iconv.h>` - Character Set Conversion:**
 | Function | Description |
@@ -964,7 +984,8 @@ A complete freestanding C library providing POSIX-like functionality for user-sp
 | `nl_langinfo(item)` | Get locale-specific string |
 | `nl_langinfo_l(item, locale)` | Get string for specific locale |
 
-**Items:** CODESET, D_T_FMT, D_FMT, T_FMT, AM_STR, PM_STR, DAY_1-DAY_7, ABDAY_1-ABDAY_7, MON_1-MON_12, ABMON_1-ABMON_12, RADIXCHAR, THOUSEP, YESEXPR, NOEXPR
+**Items:** CODESET, D_T_FMT, D_FMT, T_FMT, AM_STR, PM_STR, DAY_1-DAY_7, ABDAY_1-ABDAY_7, MON_1-MON_12, ABMON_1-ABMON_12,
+RADIXCHAR, THOUSEP, YESEXPR, NOEXPR
 
 **`<netinet/tcp.h>` - TCP Protocol Definitions:**
 | Type/Constant | Description |
@@ -1188,9 +1209,11 @@ A complete freestanding C library providing POSIX-like functionality for user-sp
 |----------|-------------|
 | `std::numeric_limits<T>` | Type limits traits |
 
-**Specializations:** bool, char, signed char, unsigned char, short, unsigned short, int, unsigned int, long, unsigned long, long long, unsigned long long, float, double, long double
+**Specializations:** bool, char, signed char, unsigned char, short, unsigned short, int, unsigned int, long, unsigned
+long, long long, unsigned long long, float, double, long double
 
-**Members:** min(), max(), lowest(), epsilon(), digits, digits10, is_signed, is_integer, is_exact, radix, infinity(), quiet_NaN(), signaling_NaN(), denorm_min(), is_iec559, has_infinity, has_quiet_NaN, round_style
+**Members:** min(), max(), lowest(), epsilon(), digits, digits10, is_signed, is_integer, is_exact, radix, infinity(),
+quiet_NaN(), signaling_NaN(), denorm_min(), is_iec559, has_infinity, has_quiet_NaN, round_style
 
 **`<memory>` - Smart Pointers:**
 | Type | Description |
@@ -1236,7 +1259,9 @@ A complete freestanding C library providing POSIX-like functionality for user-sp
 | `std::string_view` | Alias for basic_string_view<char> |
 | `std::wstring_view` | Alias for basic_string_view<wchar_t> |
 
-**Operations:** size(), length(), empty(), data(), substr(), compare(), starts_with(), ends_with(), contains(), find(), rfind(), find_first_of(), find_last_of(), find_first_not_of(), find_last_not_of(), remove_prefix(), remove_suffix(), copy()
+**Operations:** size(), length(), empty(), data(), substr(), compare(), starts_with(), ends_with(), contains(), find(),
+rfind(), find_first_of(), find_last_of(), find_first_not_of(), find_last_not_of(), remove_prefix(), remove_suffix(),
+copy()
 
 **Literal suffix:** "hello"_sv
 
@@ -1247,7 +1272,8 @@ A complete freestanding C library providing POSIX-like functionality for user-sp
 | `std::nullopt` | Empty optional marker |
 | `std::in_place` | In-place construction tag |
 
-**optional members:** has_value(), value(), value_or(default), operator*, operator->, operator bool, reset(), emplace(), swap()
+**optional members:** has_value(), value(), value_or(default), operator*, operator->, operator bool, reset(), emplace(),
+swap()
 
 **Additional utilities:** as_const(), to_underlying() (C++23), cmp_equal/cmp_less/etc. (C++20 integer comparison)
 
@@ -1281,9 +1307,12 @@ A complete freestanding C library providing POSIX-like functionality for user-sp
 | `std::wstring` | Alias for basic_string<wchar_t> |
 | `std::char_traits<CharT>` | Character traits |
 
-**Operations:** c_str(), data(), size(), length(), empty(), capacity(), reserve(), shrink_to_fit(), clear(), insert(), erase(), push_back(), pop_back(), append(), operator+=, compare(), substr(), copy(), resize(), swap(), find(), rfind(), find_first_of(), find_last_of(), find_first_not_of(), find_last_not_of(), starts_with(), ends_with(), contains()
+**Operations:** c_str(), data(), size(), length(), empty(), capacity(), reserve(), shrink_to_fit(), clear(), insert(),
+erase(), push_back(), pop_back(), append(), operator+=, compare(), substr(), copy(), resize(), swap(), find(), rfind(),
+find_first_of(), find_last_of(), find_first_not_of(), find_last_not_of(), starts_with(), ends_with(), contains()
 
-**Non-member:** operator+, comparison operators, std::swap, std::hash<std::string>, std::stoi/stol/stoll/stoul/stoull/stof/stod/stold, std::to_string
+**Non-member:** operator+, comparison operators, std::swap, std::hash<std::string>, std::
+stoi/stol/stoll/stoul/stoull/stof/stod/stold, std::to_string
 
 **Literal suffix:** "hello"_s
 
@@ -1620,7 +1649,8 @@ A complete freestanding C library providing POSIX-like functionality for user-sp
 | `atomic_thread_fence(order)` | Memory fence |
 | `atomic_signal_fence(order)` | Signal fence |
 
-**Operations:** load(), store(), exchange(), compare_exchange_weak(), compare_exchange_strong(), fetch_add(), fetch_sub(), fetch_and(), fetch_or(), fetch_xor(), ++, --, +=, -=, &=, |=, ^=
+**Operations:** load(), store(), exchange(), compare_exchange_weak(), compare_exchange_strong(), fetch_add(),
+fetch_sub(), fetch_and(), fetch_or(), fetch_xor(), ++, --, +=, -=, &=, |=, ^=
 
 **Memory orders:** relaxed, consume, acquire, release, acq_rel, seq_cst
 
@@ -1736,20 +1766,21 @@ A complete freestanding C library providing POSIX-like functionality for user-sp
 | `std::filesystem::file_status` | File type and permissions |
 | `std::filesystem::space_info` | Disk space information |
 
-| Function | Description |
-|----------|-------------|
-| `exists(p)` | Check if path exists |
-| `is_directory(p)` / `is_regular_file(p)` | Type checks |
-| `file_size(p)` | Get file size |
-| `create_directory(p)` | Create directory |
-| `remove(p)` / `remove_all(p)` | Remove file/directory |
-| `rename(old, new)` | Rename file |
-| `copy(from, to)` | Copy file/directory |
-| `current_path()` | Get/set current directory |
-| `absolute(p)` / `canonical(p)` | Path resolution |
-| `equivalent(p1, p2)` | Check if paths are same file |
+| Function                                 | Description                  |
+|------------------------------------------|------------------------------|
+| `exists(p)`                              | Check if path exists         |
+| `is_directory(p)` / `is_regular_file(p)` | Type checks                  |
+| `file_size(p)`                           | Get file size                |
+| `create_directory(p)`                    | Create directory             |
+| `remove(p)` / `remove_all(p)`            | Remove file/directory        |
+| `rename(old, new)`                       | Rename file                  |
+| `copy(from, to)`                         | Copy file/directory          |
+| `current_path()`                         | Get/set current directory    |
+| `absolute(p)` / `canonical(p)`           | Path resolution              |
+| `equivalent(p1, p2)`                     | Check if paths are same file |
 
-**Path operations:** root_name(), root_path(), parent_path(), filename(), stem(), extension(), is_absolute(), is_relative()
+**Path operations:** root_name(), root_path(), parent_path(), filename(), stem(), extension(), is_absolute(),
+is_relative()
 
 **`<stop_token>` - Cooperative Cancellation (C++20):**
 | Type | Description |
@@ -1879,7 +1910,8 @@ Variable templates: `e_v<T>`, `pi_v<T>`, etc. for float/double/long double
 | `<clocale>` | locale.h functions |
 
 **Build:**
-The libc is compiled as a static library (`libviperlibc.a`). User programs are automatically linked via the `add_user_program()` CMake function.
+The libc is compiled as a static library (`libviperlibc.a`). User programs are automatically linked via the
+`add_user_program()` CMake function.
 
 ---
 
@@ -1887,16 +1919,16 @@ The libc is compiled as a static library (`libviperlibc.a`). User programs are a
 
 User and kernel share type definitions:
 
-| Header | Contents |
-|--------|----------|
-| `types.hpp` | Basic types (u8, i64, usize, etc.) |
-| `syscall_nums.hpp` | Syscall number constants |
-| `syscall_abi.hpp` | SyscallResult structure |
-| `fs_types.hpp` | Stat, DirEnt, open flags, seek whence |
-| `mem_info.hpp` | MemInfo structure |
-| `task_info.hpp` | TaskInfo structure, task flags |
-| `cap_info.hpp` | CapInfo, CapListEntry, kind/rights |
-| `tls_info.hpp` | TLSInfo structure, version/cipher |
+| Header             | Contents                              |
+|--------------------|---------------------------------------|
+| `types.hpp`        | Basic types (u8, i64, usize, etc.)    |
+| `syscall_nums.hpp` | Syscall number constants              |
+| `syscall_abi.hpp`  | SyscallResult structure               |
+| `fs_types.hpp`     | Stat, DirEnt, open flags, seek whence |
+| `mem_info.hpp`     | MemInfo structure                     |
+| `task_info.hpp`    | TaskInfo structure, task flags        |
+| `cap_info.hpp`     | CapInfo, CapListEntry, kind/rights    |
+| `tls_info.hpp`     | TLSInfo structure, version/cipher     |
 
 ---
 
@@ -1949,6 +1981,7 @@ disk.img (8MB ViperFS):
 ## Testing
 
 User space is tested via:
+
 - `qemu_kernel_boot` - Verifies vinit starts and prints banner
 - Manual interactive testing via shell commands
 - All networking and capability tests use vinit shell
@@ -1959,154 +1992,156 @@ User space is tested via:
 
 ### libc Source Files (55 files, ~16,200 lines)
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `libc/src/stdio.c` | 1,225 | Standard I/O with FILE pool and buffering |
-| `libc/src/wchar.c` | 960 | Wide character functions |
-| `libc/src/stdlib.c` | 862 | Standard library with strtod, itoa |
-| `libc/src/math.c` | 714 | Complete math library |
-| `libc/src/search.c` | 612 | Hash table and binary tree search |
-| `libc/src/netdb.c` | 567 | Network database functions |
-| `libc/src/string.c` | 563 | String operations with strerror, strtok |
-| `libc/src/iconv.c` | 485 | Character set conversion |
-| `libc/src/socket.c` | 444 | BSD socket functions |
-| `libc/src/spawn.c` | 434 | POSIX spawn (stubs) |
-| `libc/src/pthread.c` | 431 | POSIX threads stubs |
-| `libc/src/monetary.c` | 426 | Monetary formatting |
-| `libc/src/wordexp.c` | 412 | Word expansion |
-| `libc/src/glob.c` | 395 | Filename globbing |
-| `libc/src/mqueue.c` | 379 | POSIX message queues |
-| `libc/src/regex.c` | 351 | POSIX regular expressions |
-| `libc/src/unistd.c` | 346 | POSIX functions with fork, access, symlink |
-| `libc/src/msg.c` | 342 | System V message queues |
-| `libc/src/getopt.c` | 334 | Command-line option parsing |
-| `libc/src/grp.c` | 331 | Group file access |
-| `libc/src/sem.c` | 331 | System V semaphores |
-| `libc/src/ftw.c` | 329 | File tree walk |
-| `libc/src/ndbm.c` | 281 | Database functions |
-| `libc/src/fenv.c` | 277 | Floating-point environment |
-| `libc/src/semaphore.c` | 269 | POSIX semaphores |
-| `libc/src/resource.c` | 241 | Resource limits |
-| `libc/src/aio.c` | 236 | Asynchronous I/O (sync fallback) |
-| `libc/src/pwd.c` | 228 | Password file access |
-| `libc/src/time.c` | 221 | Time functions with clock_gettime |
-| `libc/src/fnmatch.c` | 207 | Filename pattern matching |
-| `libc/src/signal.c` | 204 | Signal handling |
-| `libc/src/mman.c` | 188 | Memory mapping |
-| `libc/src/inttypes.c` | 186 | Integer format functions |
-| `libc/src/stat.c` | 185 | File status and fcntl operations |
-| `libc/src/syslog.c` | 174 | System logging |
-| `libc/src/termios.c` | 172 | Terminal control |
-| `libc/src/fmtmsg.c` | 167 | Message display |
-| `libc/src/dirent.c` | 155 | Directory operations |
-| `libc/src/sched.c` | 153 | Process scheduling |
-| `libc/src/utmpx.c` | 143 | User accounting |
-| `libc/src/wait.c` | 132 | Process wait functions |
-| `libc/src/poll.c` | 127 | I/O multiplexing |
-| `libc/src/nl_types.c` | 127 | Message catalogs (stubs) |
-| `libc/src/libgen.c` | 123 | Path manipulation (basename, dirname) |
-| `libc/src/locale.c` | 109 | Localization |
-| `libc/src/syscall.S` | 108 | AArch64 syscall entry |
-| `libc/src/new.cpp` | 98 | C++ new/delete |
-| `libc/src/setjmp.S` | 89 | Non-local jumps (AArch64 asm) |
-| `libc/src/ctype.c` | 79 | Character classification |
-| `libc/src/langinfo.c` | 71 | Locale information |
-| `libc/src/shm.c` | 69 | Shared memory (stubs) |
-| `libc/src/utsname.c` | 58 | System identification |
-| `libc/src/ipc.c` | 41 | IPC key generation |
-| `libc/src/setjmp.c` | 30 | setjmp/longjmp wrappers |
-| `libc/src/errno.c` | 23 | Error handling |
+| File                   | Lines | Description                                |
+|------------------------|-------|--------------------------------------------|
+| `libc/src/stdio.c`     | 1,225 | Standard I/O with FILE pool and buffering  |
+| `libc/src/wchar.c`     | 960   | Wide character functions                   |
+| `libc/src/stdlib.c`    | 862   | Standard library with strtod, itoa         |
+| `libc/src/math.c`      | 714   | Complete math library                      |
+| `libc/src/search.c`    | 612   | Hash table and binary tree search          |
+| `libc/src/netdb.c`     | 567   | Network database functions                 |
+| `libc/src/string.c`    | 563   | String operations with strerror, strtok    |
+| `libc/src/iconv.c`     | 485   | Character set conversion                   |
+| `libc/src/socket.c`    | 444   | BSD socket functions                       |
+| `libc/src/spawn.c`     | 434   | POSIX spawn (stubs)                        |
+| `libc/src/pthread.c`   | 431   | POSIX threads stubs                        |
+| `libc/src/monetary.c`  | 426   | Monetary formatting                        |
+| `libc/src/wordexp.c`   | 412   | Word expansion                             |
+| `libc/src/glob.c`      | 395   | Filename globbing                          |
+| `libc/src/mqueue.c`    | 379   | POSIX message queues                       |
+| `libc/src/regex.c`     | 351   | POSIX regular expressions                  |
+| `libc/src/unistd.c`    | 346   | POSIX functions with fork, access, symlink |
+| `libc/src/msg.c`       | 342   | System V message queues                    |
+| `libc/src/getopt.c`    | 334   | Command-line option parsing                |
+| `libc/src/grp.c`       | 331   | Group file access                          |
+| `libc/src/sem.c`       | 331   | System V semaphores                        |
+| `libc/src/ftw.c`       | 329   | File tree walk                             |
+| `libc/src/ndbm.c`      | 281   | Database functions                         |
+| `libc/src/fenv.c`      | 277   | Floating-point environment                 |
+| `libc/src/semaphore.c` | 269   | POSIX semaphores                           |
+| `libc/src/resource.c`  | 241   | Resource limits                            |
+| `libc/src/aio.c`       | 236   | Asynchronous I/O (sync fallback)           |
+| `libc/src/pwd.c`       | 228   | Password file access                       |
+| `libc/src/time.c`      | 221   | Time functions with clock_gettime          |
+| `libc/src/fnmatch.c`   | 207   | Filename pattern matching                  |
+| `libc/src/signal.c`    | 204   | Signal handling                            |
+| `libc/src/mman.c`      | 188   | Memory mapping                             |
+| `libc/src/inttypes.c`  | 186   | Integer format functions                   |
+| `libc/src/stat.c`      | 185   | File status and fcntl operations           |
+| `libc/src/syslog.c`    | 174   | System logging                             |
+| `libc/src/termios.c`   | 172   | Terminal control                           |
+| `libc/src/fmtmsg.c`    | 167   | Message display                            |
+| `libc/src/dirent.c`    | 155   | Directory operations                       |
+| `libc/src/sched.c`     | 153   | Process scheduling                         |
+| `libc/src/utmpx.c`     | 143   | User accounting                            |
+| `libc/src/wait.c`      | 132   | Process wait functions                     |
+| `libc/src/poll.c`      | 127   | I/O multiplexing                           |
+| `libc/src/nl_types.c`  | 127   | Message catalogs (stubs)                   |
+| `libc/src/libgen.c`    | 123   | Path manipulation (basename, dirname)      |
+| `libc/src/locale.c`    | 109   | Localization                               |
+| `libc/src/syscall.S`   | 108   | AArch64 syscall entry                      |
+| `libc/src/new.cpp`     | 98    | C++ new/delete                             |
+| `libc/src/setjmp.S`    | 89    | Non-local jumps (AArch64 asm)              |
+| `libc/src/ctype.c`     | 79    | Character classification                   |
+| `libc/src/langinfo.c`  | 71    | Locale information                         |
+| `libc/src/shm.c`       | 69    | Shared memory (stubs)                      |
+| `libc/src/utsname.c`   | 58    | System identification                      |
+| `libc/src/ipc.c`       | 41    | IPC key generation                         |
+| `libc/src/setjmp.c`    | 30    | setjmp/longjmp wrappers                    |
+| `libc/src/errno.c`     | 23    | Error handling                             |
 
 ### C++ Headers (66 files, ~25,000 lines)
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `map` | 998 | Sorted associative container |
-| `filesystem` | 954 | C++17 filesystem library |
-| `string` | 959 | Dynamic string container |
-| `memory` | 860 | Smart pointers and allocators |
-| `deque` | 847 | Double-ended queue |
-| `unordered_map` | 832 | Hash-based map |
-| `future` | 813 | Async result and promises |
-| `regex` | 805 | Regular expression library |
-| `set` | 783 | Sorted set container |
-| `list` | 772 | Doubly-linked list |
-| `unordered_set` | 767 | Hash-based set |
-| `complex` | 746 | Complex numbers |
-| `forward_list` | 744 | Singly-linked list |
-| `limits` | 633 | Numeric limits traits |
-| `vector` | 632 | Dynamic array container |
-| `atomic` | 627 | Atomic operations |
-| `chrono` | 563 | Time utilities |
-| `algorithm` | 562 | Generic algorithms |
-| `functional` | 561 | Function objects |
-| `tuple` | 570 | Heterogeneous collection |
-| `variant` | 536 | Type-safe union |
-| `type_traits` | 506 | Type traits library |
-| `string_view` | 471 | Non-owning string reference |
-| `numeric` | 463 | Numeric operations |
-| `iterator` | 459 | Iterator utilities |
-| `mutex` | 455 | Mutual exclusion |
-| `bitset` | 396 | Fixed-size bit array |
-| `charconv` | 363 | Character conversion (C++17) |
-| `array` | 341 | Fixed-size array |
-| `stop_token` | 323 | Cooperative cancellation (C++20) |
-| `queue` | 297 | Queue adaptor |
-| `any` | 294 | Type-safe any |
-| `concepts` | 256 | Concepts library (C++20) |
-| `shared_mutex` | 251 | Shared mutex |
-| `span` | 233 | Non-owning contiguous view |
-| `bit` | 217 | Bit manipulation (C++20) |
-| `cmath` | 206 | C math wrappers |
-| `thread` | 202 | Thread support |
-| `ratio` | 190 | Compile-time ratios |
-| `exception` | 186 | Exception handling |
-| `condition_variable` | 179 | Condition variables |
-| `numbers` | 128 | Math constants (C++20) |
-| `stack` | 128 | Stack adaptor |
-| `barrier` | 125 | Thread barrier (C++20) |
-| `semaphore` | 123 | Semaphores (C++20) |
-| `latch` | 90 | Single-use barrier (C++20) |
-| `source_location` | 86 | Source location (C++20) |
-| `new` | 73 | Dynamic memory |
-| `initializer_list` | 55 | Brace initialization |
+| File                 | Lines | Description                      |
+|----------------------|-------|----------------------------------|
+| `map`                | 998   | Sorted associative container     |
+| `filesystem`         | 954   | C++17 filesystem library         |
+| `string`             | 959   | Dynamic string container         |
+| `memory`             | 860   | Smart pointers and allocators    |
+| `deque`              | 847   | Double-ended queue               |
+| `unordered_map`      | 832   | Hash-based map                   |
+| `future`             | 813   | Async result and promises        |
+| `regex`              | 805   | Regular expression library       |
+| `set`                | 783   | Sorted set container             |
+| `list`               | 772   | Doubly-linked list               |
+| `unordered_set`      | 767   | Hash-based set                   |
+| `complex`            | 746   | Complex numbers                  |
+| `forward_list`       | 744   | Singly-linked list               |
+| `limits`             | 633   | Numeric limits traits            |
+| `vector`             | 632   | Dynamic array container          |
+| `atomic`             | 627   | Atomic operations                |
+| `chrono`             | 563   | Time utilities                   |
+| `algorithm`          | 562   | Generic algorithms               |
+| `functional`         | 561   | Function objects                 |
+| `tuple`              | 570   | Heterogeneous collection         |
+| `variant`            | 536   | Type-safe union                  |
+| `type_traits`        | 506   | Type traits library              |
+| `string_view`        | 471   | Non-owning string reference      |
+| `numeric`            | 463   | Numeric operations               |
+| `iterator`           | 459   | Iterator utilities               |
+| `mutex`              | 455   | Mutual exclusion                 |
+| `bitset`             | 396   | Fixed-size bit array             |
+| `charconv`           | 363   | Character conversion (C++17)     |
+| `array`              | 341   | Fixed-size array                 |
+| `stop_token`         | 323   | Cooperative cancellation (C++20) |
+| `queue`              | 297   | Queue adaptor                    |
+| `any`                | 294   | Type-safe any                    |
+| `concepts`           | 256   | Concepts library (C++20)         |
+| `shared_mutex`       | 251   | Shared mutex                     |
+| `span`               | 233   | Non-owning contiguous view       |
+| `bit`                | 217   | Bit manipulation (C++20)         |
+| `cmath`              | 206   | C math wrappers                  |
+| `thread`             | 202   | Thread support                   |
+| `ratio`              | 190   | Compile-time ratios              |
+| `exception`          | 186   | Exception handling               |
+| `condition_variable` | 179   | Condition variables              |
+| `numbers`            | 128   | Math constants (C++20)           |
+| `stack`              | 128   | Stack adaptor                    |
+| `barrier`            | 125   | Thread barrier (C++20)           |
+| `semaphore`          | 123   | Semaphores (C++20)               |
+| `latch`              | 90    | Single-use barrier (C++20)       |
+| `source_location`    | 86    | Source location (C++20)          |
+| `new`                | 73    | Dynamic memory                   |
+| `initializer_list`   | 55    | Brace initialization             |
 
 ### User Programs
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `vinit/vinit.cpp` | ~2,279 | Init process + shell (total across all vinit files) |
-| `syscall.hpp` | ~1,677 | Low-level syscall wrappers |
-| `hello/hello.cpp` | ~294 | Hello world test program |
-| `sysinfo/sysinfo.cpp` | ~392 | System info utility |
-| `ping/ping.cpp` | ~200 | ICMP ping utility |
-| `fsinfo/fsinfo.cpp` | ~150 | Filesystem info utility |
-| `netstat/netstat.cpp` | ~150 | Network statistics utility |
-| `devices/devices.cpp` | ~180 | Hardware device listing |
-| `mathtest/mathtest.cpp` | ~250 | Math library tests |
-| `edit/edit.cpp` | ~700 | Nano-like text editor |
-| `hello_gui/hello_gui.cpp` | ~150 | GUI demo with window creation |
-| `ssh/ssh.c` | ~400 | SSH-2 client |
-| `sftp/sftp.c` | ~800 | Interactive SFTP client |
+| File                      | Lines  | Description                                         |
+|---------------------------|--------|-----------------------------------------------------|
+| `vinit/vinit.cpp`         | ~2,279 | Init process + shell (total across all vinit files) |
+| `syscall.hpp`             | ~1,677 | Low-level syscall wrappers                          |
+| `hello/hello.cpp`         | ~294   | Hello world test program                            |
+| `sysinfo/sysinfo.cpp`     | ~392   | System info utility                                 |
+| `ping/ping.cpp`           | ~200   | ICMP ping utility                                   |
+| `fsinfo/fsinfo.cpp`       | ~150   | Filesystem info utility                             |
+| `netstat/netstat.cpp`     | ~150   | Network statistics utility                          |
+| `devices/devices.cpp`     | ~180   | Hardware device listing                             |
+| `mathtest/mathtest.cpp`   | ~250   | Math library tests                                  |
+| `edit/edit.cpp`           | ~700   | Nano-like text editor                               |
+| `hello_gui/hello_gui.cpp` | ~150   | GUI demo with window creation                       |
+| `ssh/ssh.c`               | ~400   | SSH-2 client                                        |
+| `sftp/sftp.c`             | ~800   | Interactive SFTP client                             |
 
 ### SSH/SFTP Clients
 
 **libssh** (`user/libssh/`) provides SSH-2 protocol support:
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `ssh.c` | ~900 | SSH transport layer |
-| `ssh_auth.c` | ~500 | Password/public key authentication |
-| `ssh_channel.c` | ~600 | Channel management (PTY, shell, exec) |
-| `ssh_crypto.c` | ~1,500 | User-space crypto primitives |
-| `sftp.c` | ~800 | SFTP v3 protocol |
+| File            | Lines  | Description                           |
+|-----------------|--------|---------------------------------------|
+| `ssh.c`         | ~900   | SSH transport layer                   |
+| `ssh_auth.c`    | ~500   | Password/public key authentication    |
+| `ssh_channel.c` | ~600   | Channel management (PTY, shell, exec) |
+| `ssh_crypto.c`  | ~1,500 | User-space crypto primitives          |
+| `sftp.c`        | ~800   | SFTP v3 protocol                      |
 
 **SSH Client** (`ssh.prg`):
+
 ```
 Usage: ssh [-p port] [-i identity] [-l user] user@host [command]
 ```
 
 Features:
+
 - Interactive shell mode with PTY
 - Remote command execution
 - Ed25519 and RSA public key authentication
@@ -2114,11 +2149,13 @@ Features:
 - OpenSSH private key format support
 
 **SFTP Client** (`sftp.prg`):
+
 ```
 Usage: sftp [-p port] user@host
 ```
 
 Interactive commands:
+
 - `ls [path]` - List directory
 - `cd <path>` - Change remote directory
 - `pwd` - Print remote directory
@@ -2159,35 +2196,45 @@ Interactive commands:
 ## Priority Recommendations: Next 5 Steps
 
 ### 1. Shell Scripting Support
+
 **Impact:** Automation and batch processing
+
 - Script file detection (shebang parsing)
 - Variable expansion ($VAR, ${VAR})
 - Control flow (if/then/else, while, for)
 - Command substitution (`command` or $(command))
 
 ### 2. Pipe Support for Command Chaining
+
 **Impact:** Enables powerful command composition
+
 - Kernel pipe implementation
 - Shell `|` operator parsing
 - Multiple pipes in single command line
 - Standard Unix workflow (`ls | grep | sort`)
 
 ### 3. Job Control (Background Processes)
+
 **Impact:** Multi-tasking from shell
+
 - `&` operator for background execution
 - jobs/fg/bg shell builtins
 - SIGTSTP (Ctrl+Z), SIGCONT handling
 - Process group management for job control
 
 ### 4. Shared Library Support
+
 **Impact:** Reduced memory and easier updates
+
 - ELF dynamic linking (DT_NEEDED)
 - PLT/GOT lazy binding
 - LD_LIBRARY_PATH search
 - Significant memory savings for libc
 
 ### 5. POSIX Threads (pthreads)
+
 **Impact:** Multi-threaded applications
+
 - pthread_create()/pthread_join()
 - Mutexes, condition variables
 - Thread-local storage (TLS)

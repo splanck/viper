@@ -3,12 +3,10 @@
 
 #include "cstddef"
 
-namespace std
-{
+namespace std {
 
 /* initializer_list - used for brace-enclosed initializer lists */
-template <class E> class initializer_list
-{
+template <class E> class initializer_list {
   public:
     using value_type = E;
     using reference = const E &;
@@ -28,31 +26,26 @@ template <class E> class initializer_list
     constexpr initializer_list() noexcept : _begin(nullptr), _size(0) {}
 
     /* Size */
-    constexpr size_type size() const noexcept
-    {
+    constexpr size_type size() const noexcept {
         return _size;
     }
 
     /* Iterators */
-    constexpr const_iterator begin() const noexcept
-    {
+    constexpr const_iterator begin() const noexcept {
         return _begin;
     }
 
-    constexpr const_iterator end() const noexcept
-    {
+    constexpr const_iterator end() const noexcept {
         return _begin + _size;
     }
 };
 
 /* Non-member functions */
-template <class E> constexpr const E *begin(initializer_list<E> il) noexcept
-{
+template <class E> constexpr const E *begin(initializer_list<E> il) noexcept {
     return il.begin();
 }
 
-template <class E> constexpr const E *end(initializer_list<E> il) noexcept
-{
+template <class E> constexpr const E *end(initializer_list<E> il) noexcept {
     return il.end();
 }
 

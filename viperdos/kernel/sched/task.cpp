@@ -30,11 +30,9 @@ extern "C" [[noreturn]] void enter_user_mode(u64 entry, u64 stack, u64 arg);
  * The current implementation assumes kernel-mode execution for tasks and uses
  * cooperative scheduling. Task exit marks the task Exited and reschedules.
  */
-namespace task
-{
+namespace task {
 
-namespace
-{
+namespace {
 /**
  * @brief Lock protecting task table and stack pool operations.
  *
@@ -68,10 +66,8 @@ Task *idle_task = nullptr;
  *
  * @param t Pointer to the task whose signal state should be initialized.
  */
-void init_signal_state(Task *t)
-{
-    for (int i = 0; i < 32; i++)
-    {
+void init_signal_state(Task *t) {
+    for (int i = 0; i < 32; i++) {
         t->signals.handlers[i] = 0; // SIG_DFL
         t->signals.handler_flags[i] = 0;
         t->signals.handler_mask[i] = 0;
@@ -88,12 +84,9 @@ void init_signal_state(Task *t)
  * @note Caller must hold task_lock.
  * @return Pointer to an Invalid task slot, or `nullptr` if table is full.
  */
-Task *allocate_task_locked()
-{
-    for (u32 i = 0; i < MAX_TASKS; i++)
-    {
-        if (tasks[i].state == TaskState::Invalid)
-        {
+Task *allocate_task_locked() {
+    for (u32 i = 0; i < MAX_TASKS; i++) {
+        if (tasks[i].state == TaskState::Invalid) {
             return &tasks[i];
         }
     }
@@ -107,8 +100,7 @@ constexpr usize STACK_SLOT_SIZE = KERNEL_STACK_SIZE + kc::limits::GUARD_PAGE_SIZ
 constexpr usize STACK_POOL_SIZE = STACK_SLOT_SIZE * MAX_TASKS;
 
 // Free stack list for recycling exited task stacks
-struct FreeStackNode
-{
+struct FreeStackNode {
     FreeStackNode *next;
 };
 
@@ -133,11 +125,9 @@ u32 free_stack_count = 0;
  * @note Caller must hold task_lock.
  * @return Pointer to the base of the usable stack, or `nullptr` on exhaustion.
  */
-u8 *allocate_kernel_stack_locked()
-{
+u8 *allocate_kernel_stack_locked() {
     // First try the free list
-    if (free_stack_list)
-    {
+    if (free_stack_list) {
         FreeStackNode *node = free_stack_list;
         free_stack_list = node->next;
         free_stack_count--;
@@ -148,14 +138,12 @@ u8 *allocate_kernel_stack_locked()
 
     // Fall back to bump allocator
     // First call: initialize pool location
-    if (stack_pool == nullptr)
-    {
+    if (stack_pool == nullptr) {
         stack_pool = reinterpret_cast<u8 *>(kc::mem::STACK_POOL_BASE);
         stack_pool_offset = 0;
     }
 
-    if (stack_pool_offset + STACK_SLOT_SIZE > STACK_POOL_SIZE)
-    {
+    if (stack_pool_offset + STACK_SLOT_SIZE > STACK_POOL_SIZE) {
         serial::puts("[task] ERROR: Stack pool exhausted\n");
         return nullptr;
     }
@@ -180,8 +168,7 @@ u8 *allocate_kernel_stack_locked()
  * @note Caller must hold task_lock.
  * @param stack Pointer to the usable stack base (as returned by allocate_kernel_stack).
  */
-void free_kernel_stack_locked(u8 *stack)
-{
+void free_kernel_stack_locked(u8 *stack) {
     if (!stack)
         return;
 
@@ -200,10 +187,8 @@ void free_kernel_stack_locked(u8 *stack)
  * Runs when no other task is runnable. It executes `wfi` in a loop to reduce
  * power usage and to wait for interrupts to deliver new work.
  */
-void idle_task_fn(void *)
-{
-    while (true)
-    {
+void idle_task_fn(void *) {
+    while (true) {
         u32 cpu_id = cpu::current_id();
         idle::enter(cpu_id);
         asm volatile("wfi");
@@ -213,13 +198,11 @@ void idle_task_fn(void *)
 } // namespace
 
 /** @copydoc task::init */
-void init()
-{
+void init() {
     serial::puts("[task] Initializing task subsystem\n");
 
     // Clear all task slots
-    for (u32 i = 0; i < MAX_TASKS; i++)
-    {
+    for (u32 i = 0; i < MAX_TASKS; i++) {
         tasks[i].state = TaskState::Invalid;
         tasks[i].id = 0;
     }
@@ -290,14 +273,12 @@ void init()
 }
 
 /** @copydoc task::create */
-Task *create(const char *name, TaskEntry entry, void *arg, u32 flags)
-{
+Task *create(const char *name, TaskEntry entry, void *arg, u32 flags) {
     // Acquire task_lock for allocation operations
     u64 saved_daif = task_lock.acquire();
 
     Task *t = allocate_task_locked();
-    if (!t)
-    {
+    if (!t) {
         task_lock.release(saved_daif);
         serial::puts("[task] ERROR: No free task slots\n");
         return nullptr;
@@ -305,8 +286,7 @@ Task *create(const char *name, TaskEntry entry, void *arg, u32 flags)
 
     // Allocate kernel stack
     t->kernel_stack = allocate_kernel_stack_locked();
-    if (!t->kernel_stack)
-    {
+    if (!t->kernel_stack) {
         // Release the task slot we just allocated
         t->state = TaskState::Invalid;
         t->id = 0;
@@ -393,12 +373,9 @@ Task *create(const char *name, TaskEntry entry, void *arg, u32 flags)
     // Initialize CWD - inherit from parent if exists, otherwise root
     {
         Task *curr = current();
-        if (curr && curr->cwd[0])
-        {
+        if (curr && curr->cwd[0]) {
             lib::strcpy_safe(t->cwd, curr->cwd, sizeof(t->cwd));
-        }
-        else
-        {
+        } else {
             t->cwd[0] = '/';
             t->cwd[1] = '\0';
         }
@@ -417,11 +394,9 @@ Task *create(const char *name, TaskEntry entry, void *arg, u32 flags)
  * This function is called when a user task is first scheduled. It switches
  * to the user's address space and enters user mode via eret.
  */
-static void user_task_entry_trampoline(void *)
-{
+static void user_task_entry_trampoline(void *) {
     Task *t = current();
-    if (!t || !t->viper)
-    {
+    if (!t || !t->viper) {
         serial::puts("[task] PANIC: user_task_entry_trampoline with invalid task/viper\n");
         for (;;)
             asm volatile("wfi");
@@ -455,14 +430,12 @@ static void user_task_entry_trampoline(void *)
 }
 
 /** @copydoc task::create_user_task */
-Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack)
-{
+Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack) {
     // Acquire task_lock for allocation operations
     u64 saved_daif = task_lock.acquire();
 
     Task *t = allocate_task_locked();
-    if (!t)
-    {
+    if (!t) {
         task_lock.release(saved_daif);
         serial::puts("[task] ERROR: No free task slots for user task\n");
         return nullptr;
@@ -470,8 +443,7 @@ Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack)
 
     // Allocate kernel stack (user tasks still need one for syscalls)
     t->kernel_stack = allocate_kernel_stack_locked();
-    if (!t->kernel_stack)
-    {
+    if (!t->kernel_stack) {
         // Release the task slot we just allocated
         t->state = TaskState::Invalid;
         t->id = 0;
@@ -519,12 +491,9 @@ Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack)
     // Initialize CWD - inherit from parent if exists, otherwise root
     {
         Task *curr = current();
-        if (curr && curr->cwd[0])
-        {
+        if (curr && curr->cwd[0]) {
             lib::strcpy_safe(t->cwd, curr->cwd, sizeof(t->cwd));
-        }
-        else
-        {
+        } else {
             t->cwd[0] = '/';
             t->cwd[1] = '\0';
         }
@@ -567,20 +536,17 @@ Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack)
 }
 
 /** @copydoc task::current */
-Task *current()
-{
+Task *current() {
     return static_cast<Task *>(cpu::current()->current_task);
 }
 
 /** @copydoc task::set_current */
-void set_current(Task *t)
-{
+void set_current(Task *t) {
     cpu::current()->current_task = t;
 }
 
 /** @copydoc task::exit */
-void exit(i32 code)
-{
+void exit(i32 code) {
     Task *t = current();
     if (!t)
         return;
@@ -596,8 +562,7 @@ void exit(i32 code)
 
     // If this is a user task with an associated viper process, exit the process
     // This marks it as a zombie and wakes any waiting parent
-    if (t->viper)
-    {
+    if (t->viper) {
         ::viper::exit(code);
     }
 
@@ -609,21 +574,18 @@ void exit(i32 code)
 
     // Should never get here
     serial::puts("[task] PANIC: exit() returned after schedule!\n");
-    while (true)
-    {
+    while (true) {
         asm volatile("wfi");
     }
 }
 
 /** @copydoc task::yield */
-void yield()
-{
+void yield() {
     scheduler::schedule();
 }
 
 /** @copydoc task::set_priority */
-i32 set_priority(Task *t, u8 priority)
-{
+i32 set_priority(Task *t, u8 priority) {
     if (!t)
         return -1;
 
@@ -636,41 +598,33 @@ i32 set_priority(Task *t, u8 priority)
 }
 
 /** @copydoc task::get_priority */
-u8 get_priority(Task *t)
-{
+u8 get_priority(Task *t) {
     if (!t)
         return PRIORITY_LOWEST;
     return t->priority;
 }
 
 /** @copydoc task::set_policy */
-i32 set_policy(Task *t, SchedPolicy policy)
-{
+i32 set_policy(Task *t, SchedPolicy policy) {
     if (!t)
         return -1;
 
     // Validate policy
     if (policy != SchedPolicy::SCHED_OTHER && policy != SchedPolicy::SCHED_FIFO &&
-        policy != SchedPolicy::SCHED_RR)
-    {
+        policy != SchedPolicy::SCHED_RR) {
         return -1;
     }
 
     t->policy = policy;
 
     // Adjust time slice based on policy
-    if (policy == SchedPolicy::SCHED_FIFO)
-    {
+    if (policy == SchedPolicy::SCHED_FIFO) {
         // SCHED_FIFO doesn't use time slicing - set max to indicate "run until yield"
         t->time_slice = 0xFFFFFFFF;
-    }
-    else if (policy == SchedPolicy::SCHED_RR)
-    {
+    } else if (policy == SchedPolicy::SCHED_RR) {
         // SCHED_RR uses a fixed RT time slice
         t->time_slice = RT_TIME_SLICE_DEFAULT;
-    }
-    else
-    {
+    } else {
         // SCHED_OTHER uses priority-based time slicing
         t->time_slice = time_slice_for_priority(t->priority);
     }
@@ -679,16 +633,14 @@ i32 set_policy(Task *t, SchedPolicy policy)
 }
 
 /** @copydoc task::get_policy */
-SchedPolicy get_policy(Task *t)
-{
+SchedPolicy get_policy(Task *t) {
     if (!t)
         return SchedPolicy::SCHED_OTHER;
     return t->policy;
 }
 
 /** @copydoc task::set_affinity */
-i32 set_affinity(Task *t, u32 mask)
-{
+i32 set_affinity(Task *t, u32 mask) {
     if (!t)
         return -1;
 
@@ -701,16 +653,14 @@ i32 set_affinity(Task *t, u32 mask)
 }
 
 /** @copydoc task::get_affinity */
-u32 get_affinity(Task *t)
-{
+u32 get_affinity(Task *t) {
     if (!t)
         return CPU_AFFINITY_ALL;
     return t->cpu_affinity;
 }
 
 /** @copydoc task::set_nice */
-i32 set_nice(Task *t, i8 nice)
-{
+i32 set_nice(Task *t, i8 nice) {
     if (!t)
         return -1;
 
@@ -725,20 +675,16 @@ i32 set_nice(Task *t, i8 nice)
 }
 
 /** @copydoc task::get_nice */
-i8 get_nice(Task *t)
-{
+i8 get_nice(Task *t) {
     if (!t)
         return 0;
     return t->nice;
 }
 
 /** @copydoc task::get_by_id */
-Task *get_by_id(u32 id)
-{
-    for (u32 i = 0; i < MAX_TASKS; i++)
-    {
-        if (tasks[i].id == id && tasks[i].state != TaskState::Invalid)
-        {
+Task *get_by_id(u32 id) {
+    for (u32 i = 0; i < MAX_TASKS; i++) {
+        if (tasks[i].id == id && tasks[i].state != TaskState::Invalid) {
             return &tasks[i];
         }
     }
@@ -746,10 +692,8 @@ Task *get_by_id(u32 id)
 }
 
 /** @copydoc task::print_info */
-void print_info(Task *t)
-{
-    if (!t)
-    {
+void print_info(Task *t) {
+    if (!t) {
         serial::puts("[task] (null task)\n");
         return;
     }
@@ -760,8 +704,7 @@ void print_info(Task *t)
     serial::puts(t->name);
     serial::puts("' state=");
 
-    switch (t->state)
-    {
+    switch (t->state) {
         case TaskState::Invalid:
             serial::puts("Invalid");
             break;
@@ -785,10 +728,8 @@ void print_info(Task *t)
 }
 
 /** @copydoc task::list_tasks */
-u32 list_tasks(TaskInfo *buffer, u32 max_count)
-{
-    if (!buffer || max_count == 0)
-    {
+u32 list_tasks(TaskInfo *buffer, u32 max_count) {
+    if (!buffer || max_count == 0) {
         return 0;
     }
 
@@ -801,8 +742,7 @@ u32 list_tasks(TaskInfo *buffer, u32 max_count)
     ::viper::Viper *curr_viper = ::viper::current();
     bool have_user_task = (curr && (curr->flags & TASK_FLAG_USER) && curr->viper);
 
-    if (curr_viper && !have_user_task && count < max_count)
-    {
+    if (curr_viper && !have_user_task && count < max_count) {
         // Legacy path: viper running without proper task integration
         TaskInfo &info = buffer[count];
         info.id = static_cast<u32>(curr_viper->id);
@@ -811,8 +751,7 @@ u32 list_tasks(TaskInfo *buffer, u32 max_count)
         info.priority = 128;
         info._pad0 = 0;
 
-        for (usize j = 0; j < 31 && curr_viper->name[j]; j++)
-        {
+        for (usize j = 0; j < 31 && curr_viper->name[j]; j++) {
             info.name[j] = curr_viper->name[j];
         }
         info.name[31] = '\0';
@@ -827,20 +766,15 @@ u32 list_tasks(TaskInfo *buffer, u32 max_count)
     }
 
     // Enumerate all tasks
-    for (u32 i = 0; i < MAX_TASKS && count < max_count; i++)
-    {
+    for (u32 i = 0; i < MAX_TASKS && count < max_count; i++) {
         Task &t = tasks[i];
-        if (t.state != TaskState::Invalid)
-        {
+        if (t.state != TaskState::Invalid) {
             TaskInfo &info = buffer[count];
             info.id = t.id;
             // If this is the current task and no viper is running, report it as Running
-            if (&t == curr && !curr_viper)
-            {
+            if (&t == curr && !curr_viper) {
                 info.state = static_cast<u8>(TaskState::Running);
-            }
-            else
-            {
+            } else {
                 info.state = static_cast<u8>(t.state);
             }
             info.flags = static_cast<u8>(t.flags);
@@ -848,8 +782,7 @@ u32 list_tasks(TaskInfo *buffer, u32 max_count)
             info._pad0 = 0;
 
             // Copy name
-            for (usize j = 0; j < 31 && t.name[j]; j++)
-            {
+            for (usize j = 0; j < 31 && t.name[j]; j++) {
                 info.name[j] = t.name[j];
             }
             info.name[31] = '\0';
@@ -880,12 +813,10 @@ u32 list_tasks(TaskInfo *buffer, u32 max_count)
  *
  * @return Number of tasks reaped.
  */
-u32 reap_exited()
-{
+u32 reap_exited() {
     u32 reaped = 0;
 
-    for (u32 i = 0; i < MAX_TASKS; i++)
-    {
+    for (u32 i = 0; i < MAX_TASKS; i++) {
         Task &t = tasks[i];
 
         // Don't reap idle task
@@ -896,8 +827,7 @@ u32 reap_exited()
         if (&t == current())
             continue;
 
-        if (t.state == TaskState::Exited)
-        {
+        if (t.state == TaskState::Exited) {
             serial::puts("[task] Reaping exited task '");
             serial::puts(t.name);
             serial::puts("' (id=");
@@ -905,8 +835,7 @@ u32 reap_exited()
             serial::puts(")\n");
 
             // Free kernel stack (must hold task_lock)
-            if (t.kernel_stack)
-            {
+            if (t.kernel_stack) {
                 u64 saved_daif = task_lock.acquire();
                 free_kernel_stack_locked(t.kernel_stack);
                 task_lock.release(saved_daif);
@@ -938,21 +867,18 @@ u32 reap_exited()
  *
  * @param t Task to destroy.
  */
-void destroy(Task *t)
-{
+void destroy(Task *t) {
     if (!t)
         return;
 
     // Can't destroy current task
-    if (t == current())
-    {
+    if (t == current()) {
         serial::puts("[task] ERROR: Cannot destroy current task\n");
         return;
     }
 
     // Can't destroy idle task
-    if (t->flags & TASK_FLAG_IDLE)
-    {
+    if (t->flags & TASK_FLAG_IDLE) {
         serial::puts("[task] ERROR: Cannot destroy idle task\n");
         return;
     }
@@ -964,8 +890,7 @@ void destroy(Task *t)
     serial::puts(")\n");
 
     // Free kernel stack (requires lock for pool access)
-    if (t->kernel_stack)
-    {
+    if (t->kernel_stack) {
         u64 saved_daif = task_lock.acquire();
         free_kernel_stack_locked(t->kernel_stack);
         task_lock.release(saved_daif);
@@ -983,8 +908,7 @@ void destroy(Task *t)
 }
 
 /** @copydoc task::wakeup */
-bool wakeup(Task *t)
-{
+bool wakeup(Task *t) {
     if (!t)
         return false;
 
@@ -992,8 +916,7 @@ bool wakeup(Task *t)
         return false;
 
     // Remove from any wait queue
-    if (t->wait_channel)
-    {
+    if (t->wait_channel) {
         // Try to dequeue from the wait queue
         sched::WaitQueue *wq = reinterpret_cast<sched::WaitQueue *>(t->wait_channel);
         sched::wait_dequeue(wq, t);
@@ -1007,27 +930,22 @@ bool wakeup(Task *t)
 }
 
 /** @copydoc task::kill */
-i32 kill(u32 pid, i32 signal)
-{
+i32 kill(u32 pid, i32 signal) {
     Task *t = get_by_id(pid);
-    if (!t)
-    {
+    if (!t) {
         return -1; // Task not found
     }
 
     // Can't kill idle task
-    if (t->flags & TASK_FLAG_IDLE)
-    {
+    if (t->flags & TASK_FLAG_IDLE) {
         serial::puts("[task] Cannot kill idle task\n");
         return -1;
     }
 
     // Handle signals
-    switch (signal)
-    {
+    switch (signal) {
         case signal::sig::SIGKILL:
-        case signal::sig::SIGTERM:
-        {
+        case signal::sig::SIGTERM: {
             serial::puts("[task] Killing task '");
             serial::puts(t->name);
             serial::puts("' (id=");
@@ -1039,18 +957,15 @@ i32 kill(u32 pid, i32 signal)
             // If blocked, remove from wait queue but DO NOT enqueue to ready queue.
             // This avoids the race where wakeup() enqueues, then we set state to Exited,
             // leaving an Exited task in the ready queue (RC-016).
-            if (t->state == TaskState::Blocked)
-            {
-                if (t->wait_channel)
-                {
+            if (t->state == TaskState::Blocked) {
+                if (t->wait_channel) {
                     sched::WaitQueue *wq = reinterpret_cast<sched::WaitQueue *>(t->wait_channel);
                     sched::wait_dequeue(wq, t);
                 }
             }
 
             // If this is the current task, call exit
-            if (t == current())
-            {
+            if (t == current()) {
                 exit(-signal); // Exit with negative signal as code
                 // exit() never returns
             }
@@ -1059,8 +974,7 @@ i32 kill(u32 pid, i32 signal)
             poll::clear_task_waiters(t);
 
             // If this is a user task with an associated viper process, mark it as zombie
-            if (t->viper)
-            {
+            if (t->viper) {
                 ::viper::Viper *v = reinterpret_cast<::viper::Viper *>(t->viper);
                 v->exit_code = -signal;
                 v->state = ::viper::ViperState::Zombie;
@@ -1068,12 +982,10 @@ i32 kill(u32 pid, i32 signal)
                 // Reparent children to init (viper ID 1)
                 ::viper::Viper *init = ::viper::find(1);
                 ::viper::Viper *child = v->first_child;
-                while (child)
-                {
+                while (child) {
                     ::viper::Viper *next = child->next_sibling;
                     child->parent = init;
-                    if (init)
-                    {
+                    if (init) {
                         child->next_sibling = init->first_child;
                         init->first_child = child;
                     }
@@ -1082,8 +994,7 @@ i32 kill(u32 pid, i32 signal)
                 v->first_child = nullptr;
 
                 // Wake parent if waiting for children to exit
-                if (v->parent)
-                {
+                if (v->parent) {
                     sched::wait_wake_one(&v->parent->child_waiters);
                 }
             }

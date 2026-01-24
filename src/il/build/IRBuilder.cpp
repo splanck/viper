@@ -179,10 +179,10 @@ il::core::BasicBlock &IRBuilder::createBlock(il::core::Function &fn,
 #ifndef NDEBUG
     // Block label must not be empty
     assert(!label.empty() && "block label cannot be empty");
-    // Block label must be unique within the function - O(1) hash set lookup instead of O(n) linear scan
+    // Block label must be unique within the function - O(1) hash set lookup instead of O(n) linear
+    // scan
     auto &funcLabels = usedBlockLabelsPerFunc_[fn.name];
-    assert(funcLabels.find(label) == funcLabels.end() &&
-           "block label already exists in function");
+    assert(funcLabels.find(label) == funcLabels.end() && "block label already exists in function");
     funcLabels.insert(label);
     // Validate block parameter types (no Void parameters allowed)
     assertValidParamTypes(params);
@@ -222,10 +222,10 @@ il::core::BasicBlock &IRBuilder::insertBlock(il::core::Function &fn,
 #ifndef NDEBUG
     // Block label must not be empty
     assert(!label.empty() && "block label cannot be empty");
-    // Block label must be unique within the function - O(1) hash set lookup instead of O(n) linear scan
+    // Block label must be unique within the function - O(1) hash set lookup instead of O(n) linear
+    // scan
     auto &funcLabels = usedBlockLabelsPerFunc_[fn.name];
-    assert(funcLabels.find(label) == funcLabels.end() &&
-           "block label already exists in function");
+    assert(funcLabels.find(label) == funcLabels.end() && "block label already exists in function");
     funcLabels.insert(label);
 #endif
 

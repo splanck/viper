@@ -101,8 +101,8 @@
 //===----------------------------------------------------------------------===//
 
 #if RT_COMPILER_MSVC
-#include <intrin.h>
 #include <immintrin.h>
+#include <intrin.h>
 
 // Memory ordering constants (matching GCC values for compatibility)
 #define __ATOMIC_RELAXED 0
@@ -285,7 +285,8 @@ static inline int rt_atomic_compare_exchange_ptr(
 #if defined(_M_X64) || defined(_M_ARM64)
     void *old = _InterlockedCompareExchangePointer(ptr, desired, *expected);
 #else
-    void *old = (void *)_InterlockedCompareExchange((volatile long *)ptr, (long)desired, (long)*expected);
+    void *old =
+        (void *)_InterlockedCompareExchange((volatile long *)ptr, (long)desired, (long)*expected);
 #endif
     if (old == *expected)
     {
@@ -377,6 +378,7 @@ static inline void rt_atomic_thread_fence(int order)
     _ReadWriteBarrier();
 #endif
 }
+
 #define __atomic_thread_fence(order) rt_atomic_thread_fence(order)
 
 #endif // RT_COMPILER_MSVC

@@ -3,8 +3,7 @@
 
 #include "../math.h"
 
-namespace std
-{
+namespace std {
 
 /* Basic functions */
 using ::fabs;
@@ -160,188 +159,151 @@ using ::tgammaf;
 } /* namespace std */
 
 /* C++ function overloads */
-namespace std
-{
+namespace std {
 
 /* Float overloads */
-inline float abs(float x)
-{
+inline float abs(float x) {
     return fabsf(x);
 }
 
-inline float fabs(float x)
-{
+inline float fabs(float x) {
     return fabsf(x);
 }
 
-inline float ceil(float x)
-{
+inline float ceil(float x) {
     return ceilf(x);
 }
 
-inline float floor(float x)
-{
+inline float floor(float x) {
     return floorf(x);
 }
 
-inline float trunc(float x)
-{
+inline float trunc(float x) {
     return truncf(x);
 }
 
-inline float round(float x)
-{
+inline float round(float x) {
     return roundf(x);
 }
 
-inline float sqrt(float x)
-{
+inline float sqrt(float x) {
     return sqrtf(x);
 }
 
-inline float pow(float x, float y)
-{
+inline float pow(float x, float y) {
     return powf(x, y);
 }
 
-inline float exp(float x)
-{
+inline float exp(float x) {
     return expf(x);
 }
 
-inline float log(float x)
-{
+inline float log(float x) {
     return logf(x);
 }
 
-inline float log10(float x)
-{
+inline float log10(float x) {
     return log10f(x);
 }
 
-inline float sin(float x)
-{
+inline float sin(float x) {
     return sinf(x);
 }
 
-inline float cos(float x)
-{
+inline float cos(float x) {
     return cosf(x);
 }
 
-inline float tan(float x)
-{
+inline float tan(float x) {
     return tanf(x);
 }
 
-inline float asin(float x)
-{
+inline float asin(float x) {
     return asinf(x);
 }
 
-inline float acos(float x)
-{
+inline float acos(float x) {
     return acosf(x);
 }
 
-inline float atan(float x)
-{
+inline float atan(float x) {
     return atanf(x);
 }
 
-inline float atan2(float y, float x)
-{
+inline float atan2(float y, float x) {
     return atan2f(y, x);
 }
 
 /* Long double overloads */
-inline long double abs(long double x)
-{
+inline long double abs(long double x) {
     return fabsl(x);
 }
 
-inline long double fabs(long double x)
-{
+inline long double fabs(long double x) {
     return fabsl(x);
 }
 
-inline long double ceil(long double x)
-{
+inline long double ceil(long double x) {
     return ceill(x);
 }
 
-inline long double floor(long double x)
-{
+inline long double floor(long double x) {
     return floorl(x);
 }
 
-inline long double trunc(long double x)
-{
+inline long double trunc(long double x) {
     return truncl(x);
 }
 
-inline long double round(long double x)
-{
+inline long double round(long double x) {
     return roundl(x);
 }
 
-inline long double sqrt(long double x)
-{
+inline long double sqrt(long double x) {
     return sqrtl(x);
 }
 
-inline long double pow(long double x, long double y)
-{
+inline long double pow(long double x, long double y) {
     return powl(x, y);
 }
 
-inline long double exp(long double x)
-{
+inline long double exp(long double x) {
     return expl(x);
 }
 
-inline long double log(long double x)
-{
+inline long double log(long double x) {
     return logl(x);
 }
 
-inline long double log10(long double x)
-{
+inline long double log10(long double x) {
     return log10l(x);
 }
 
-inline long double sin(long double x)
-{
+inline long double sin(long double x) {
     return sinl(x);
 }
 
-inline long double cos(long double x)
-{
+inline long double cos(long double x) {
     return cosl(x);
 }
 
-inline long double tan(long double x)
-{
+inline long double tan(long double x) {
     return tanl(x);
 }
 
-inline long double asin(long double x)
-{
+inline long double asin(long double x) {
     return asinl(x);
 }
 
-inline long double acos(long double x)
-{
+inline long double acos(long double x) {
     return acosl(x);
 }
 
-inline long double atan(long double x)
-{
+inline long double atan(long double x) {
     return atanl(x);
 }
 
-inline long double atan2(long double y, long double x)
-{
+inline long double atan2(long double y, long double x) {
     return atan2l(y, x);
 }
 

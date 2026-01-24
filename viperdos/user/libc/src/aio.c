@@ -43,10 +43,8 @@
  * Perform synchronous read as fallback for async read.
  * In a real implementation, this would submit to a worker thread.
  */
-int aio_read(struct aiocb *aiocbp)
-{
-    if (aiocbp == NULL)
-    {
+int aio_read(struct aiocb *aiocbp) {
+    if (aiocbp == NULL) {
         errno = EINVAL;
         return -1;
     }
@@ -55,14 +53,11 @@ int aio_read(struct aiocb *aiocbp)
     ssize_t result =
         pread(aiocbp->aio_fildes, (void *)aiocbp->aio_buf, aiocbp->aio_nbytes, aiocbp->aio_offset);
 
-    if (result < 0)
-    {
+    if (result < 0) {
         aiocbp->__aio_error = errno;
         aiocbp->__aio_return = -1;
         aiocbp->__aio_state = __AIO_ERROR;
-    }
-    else
-    {
+    } else {
         aiocbp->__aio_error = 0;
         aiocbp->__aio_return = result;
         aiocbp->__aio_state = __AIO_COMPLETE;
@@ -74,10 +69,8 @@ int aio_read(struct aiocb *aiocbp)
 /*
  * Perform synchronous write as fallback for async write.
  */
-int aio_write(struct aiocb *aiocbp)
-{
-    if (aiocbp == NULL)
-    {
+int aio_write(struct aiocb *aiocbp) {
+    if (aiocbp == NULL) {
         errno = EINVAL;
         return -1;
     }
@@ -86,14 +79,11 @@ int aio_write(struct aiocb *aiocbp)
     ssize_t result = pwrite(
         aiocbp->aio_fildes, (const void *)aiocbp->aio_buf, aiocbp->aio_nbytes, aiocbp->aio_offset);
 
-    if (result < 0)
-    {
+    if (result < 0) {
         aiocbp->__aio_error = errno;
         aiocbp->__aio_return = -1;
         aiocbp->__aio_state = __AIO_ERROR;
-    }
-    else
-    {
+    } else {
         aiocbp->__aio_error = 0;
         aiocbp->__aio_return = result;
         aiocbp->__aio_state = __AIO_COMPLETE;
@@ -105,27 +95,23 @@ int aio_write(struct aiocb *aiocbp)
 /*
  * Process a list of I/O requests.
  */
-int lio_listio(int mode, struct aiocb *const list[], int nent, struct sigevent *sig)
-{
+int lio_listio(int mode, struct aiocb *const list[], int nent, struct sigevent *sig) {
     (void)sig; /* Signal notification not supported */
 
-    if (list == NULL || nent <= 0)
-    {
+    if (list == NULL || nent <= 0) {
         errno = EINVAL;
         return -1;
     }
 
     int errors = 0;
 
-    for (int i = 0; i < nent; i++)
-    {
+    for (int i = 0; i < nent; i++) {
         struct aiocb *aio = list[i];
         if (aio == NULL)
             continue;
 
         int result = 0;
-        switch (aio->aio_lio_opcode)
-        {
+        switch (aio->aio_lio_opcode) {
             case LIO_READ:
                 result = aio_read(aio);
                 break;
@@ -145,19 +131,16 @@ int lio_listio(int mode, struct aiocb *const list[], int nent, struct sigevent *
                 continue;
         }
 
-        if (result < 0)
-        {
+        if (result < 0) {
             errors++;
         }
     }
 
-    if (mode == LIO_WAIT)
-    {
+    if (mode == LIO_WAIT) {
         /* Already completed synchronously */
     }
 
-    if (errors > 0)
-    {
+    if (errors > 0) {
         errno = EIO;
         return -1;
     }
@@ -168,15 +151,12 @@ int lio_listio(int mode, struct aiocb *const list[], int nent, struct sigevent *
 /*
  * Get the error status of an I/O request.
  */
-int aio_error(const struct aiocb *aiocbp)
-{
-    if (aiocbp == NULL)
-    {
+int aio_error(const struct aiocb *aiocbp) {
+    if (aiocbp == NULL) {
         return EINVAL;
     }
 
-    switch (aiocbp->__aio_state)
-    {
+    switch (aiocbp->__aio_state) {
         case __AIO_PENDING:
             return EINPROGRESS;
         case __AIO_COMPLETE:
@@ -192,10 +172,8 @@ int aio_error(const struct aiocb *aiocbp)
 /*
  * Get the return value of a completed I/O request.
  */
-ssize_t aio_return(struct aiocb *aiocbp)
-{
-    if (aiocbp == NULL)
-    {
+ssize_t aio_return(struct aiocb *aiocbp) {
+    if (aiocbp == NULL) {
         errno = EINVAL;
         return -1;
     }
@@ -215,12 +193,10 @@ ssize_t aio_return(struct aiocb *aiocbp)
  * Cancel an I/O request.
  * Since we execute synchronously, requests are always complete.
  */
-int aio_cancel(int fd, struct aiocb *aiocbp)
-{
+int aio_cancel(int fd, struct aiocb *aiocbp) {
     (void)fd;
 
-    if (aiocbp == NULL)
-    {
+    if (aiocbp == NULL) {
         /* Cancel all requests on fd - not supported */
         return AIO_ALLDONE;
     }
@@ -233,21 +209,17 @@ int aio_cancel(int fd, struct aiocb *aiocbp)
  * Suspend until one or more requests complete.
  * Since we execute synchronously, this always returns immediately.
  */
-int aio_suspend(const struct aiocb *const list[], int nent, const struct timespec *timeout)
-{
+int aio_suspend(const struct aiocb *const list[], int nent, const struct timespec *timeout) {
     (void)timeout;
 
-    if (list == NULL || nent <= 0)
-    {
+    if (list == NULL || nent <= 0) {
         errno = EINVAL;
         return -1;
     }
 
     /* All operations are synchronous, so already complete */
-    for (int i = 0; i < nent; i++)
-    {
-        if (list[i] != NULL && list[i]->__aio_state == __AIO_COMPLETE)
-        {
+    for (int i = 0; i < nent; i++) {
+        if (list[i] != NULL && list[i]->__aio_state == __AIO_COMPLETE) {
             return 0;
         }
     }
@@ -260,33 +232,25 @@ int aio_suspend(const struct aiocb *const list[], int nent, const struct timespe
 /*
  * Asynchronous file synchronization.
  */
-int aio_fsync(int op, struct aiocb *aiocbp)
-{
-    if (aiocbp == NULL)
-    {
+int aio_fsync(int op, struct aiocb *aiocbp) {
+    if (aiocbp == NULL) {
         errno = EINVAL;
         return -1;
     }
 
     /* Perform synchronous fsync */
     int result;
-    if (op == O_DSYNC)
-    {
+    if (op == O_DSYNC) {
         result = fdatasync(aiocbp->aio_fildes);
-    }
-    else
-    {
+    } else {
         result = fsync(aiocbp->aio_fildes);
     }
 
-    if (result < 0)
-    {
+    if (result < 0) {
         aiocbp->__aio_error = errno;
         aiocbp->__aio_return = -1;
         aiocbp->__aio_state = __AIO_ERROR;
-    }
-    else
-    {
+    } else {
         aiocbp->__aio_error = 0;
         aiocbp->__aio_return = 0;
         aiocbp->__aio_state = __AIO_COMPLETE;

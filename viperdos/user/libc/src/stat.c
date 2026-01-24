@@ -93,17 +93,14 @@ static mode_t current_umask = 022;
  *
  * @see fstat, lstat, chmod
  */
-int stat(const char *pathname, struct stat *statbuf)
-{
+int stat(const char *pathname, struct stat *statbuf) {
     if (!pathname || !statbuf)
         return -1;
 
-    if (__viper_fsd_is_available())
-    {
+    if (__viper_fsd_is_available()) {
         char fsd_path[201];
         int route = __viper_fsd_prepare_path(pathname, fsd_path, sizeof(fsd_path));
-        if (route > 0)
-        {
+        if (route > 0) {
             return __viper_fsd_stat(fsd_path, statbuf);
         }
     }
@@ -128,13 +125,11 @@ int stat(const char *pathname, struct stat *statbuf)
  *
  * @see stat, lstat
  */
-int fstat(int fd, struct stat *statbuf)
-{
+int fstat(int fd, struct stat *statbuf) {
     if (!statbuf)
         return -1;
 
-    if (__viper_fsd_is_fd(fd))
-    {
+    if (__viper_fsd_is_fd(fd)) {
         return __viper_fsd_fstat(fd, statbuf);
     }
 
@@ -158,8 +153,7 @@ int fstat(int fd, struct stat *statbuf)
  *
  * @see stat, fstat, readlink
  */
-int lstat(const char *pathname, struct stat *statbuf)
-{
+int lstat(const char *pathname, struct stat *statbuf) {
     /* ViperDOS doesn't distinguish lstat from stat yet */
     /* For symlinks, this should not follow the link */
     return stat(pathname, statbuf);
@@ -184,8 +178,7 @@ int lstat(const char *pathname, struct stat *statbuf)
  *
  * @see fchmod, stat, umask
  */
-int chmod(const char *pathname, mode_t mode)
-{
+int chmod(const char *pathname, mode_t mode) {
     if (!pathname)
         return -1;
     return (int)__syscall2(SYS_CHMOD, (long)pathname, mode);
@@ -205,8 +198,7 @@ int chmod(const char *pathname, mode_t mode)
  *
  * @see chmod, fstat
  */
-int fchmod(int fd, mode_t mode)
-{
+int fchmod(int fd, mode_t mode) {
     return (int)__syscall2(SYS_FCHMOD, fd, mode);
 }
 
@@ -228,19 +220,16 @@ int fchmod(int fd, mode_t mode)
  *
  * @see rmdir, umask, stat
  */
-int mkdir(const char *pathname, mode_t mode)
-{
+int mkdir(const char *pathname, mode_t mode) {
     if (!pathname)
         return -1;
     /* Apply umask to mode */
     mode_t effective_mode = mode & ~current_umask;
 
-    if (__viper_fsd_is_available())
-    {
+    if (__viper_fsd_is_available()) {
         char fsd_path[201];
         int route = __viper_fsd_prepare_path(pathname, fsd_path, sizeof(fsd_path));
-        if (route > 0)
-        {
+        if (route > 0) {
             (void)effective_mode; /* fsd currently ignores mode */
             return __viper_fsd_mkdir(fsd_path);
         }
@@ -269,8 +258,7 @@ int mkdir(const char *pathname, mode_t mode)
  *
  * @see open, mkdir, chmod
  */
-mode_t umask(mode_t mask)
-{
+mode_t umask(mode_t mask) {
     mode_t old = current_umask;
     current_umask = mask & 0777;
     return old;
@@ -295,8 +283,7 @@ mode_t umask(mode_t mask)
  *
  * @see pipe, mknod, open
  */
-int mkfifo(const char *pathname, mode_t mode)
-{
+int mkfifo(const char *pathname, mode_t mode) {
     if (!pathname)
         return -1;
     /* mkfifo is mknod with S_IFIFO type */
@@ -332,8 +319,7 @@ int mkfifo(const char *pathname, mode_t mode)
  *
  * @see mkfifo, mkdir, stat
  */
-int mknod(const char *pathname, mode_t mode, dev_t dev)
-{
+int mknod(const char *pathname, mode_t mode, dev_t dev) {
     if (!pathname)
         return -1;
     /* Apply umask to permission bits only */
@@ -378,8 +364,7 @@ int mknod(const char *pathname, mode_t mode, dev_t dev)
  *
  * @see close, read, write, creat
  */
-int open(const char *pathname, int flags, ...)
-{
+int open(const char *pathname, int flags, ...) {
     /* For simplicity, extract mode from varargs only if O_CREAT is set */
     /* In a full implementation, we'd use va_list */
     mode_t mode = 0666; /* Default mode if O_CREAT */
@@ -387,17 +372,14 @@ int open(const char *pathname, int flags, ...)
     if (!pathname)
         return -1;
 
-    if (flags & O_CREAT)
-    {
+    if (flags & O_CREAT) {
         mode = mode & ~current_umask;
     }
 
-    if (__viper_fsd_is_available())
-    {
+    if (__viper_fsd_is_available()) {
         char fsd_path[201];
         int route = __viper_fsd_prepare_path(pathname, fsd_path, sizeof(fsd_path));
-        if (route > 0)
-        {
+        if (route > 0) {
             (void)mode; /* fsd currently ignores mode */
             return __viper_fsd_open(fsd_path, flags);
         }
@@ -424,8 +406,7 @@ int open(const char *pathname, int flags, ...)
  *
  * @see open, close
  */
-int creat(const char *pathname, mode_t mode)
-{
+int creat(const char *pathname, mode_t mode) {
     return open(pathname, O_WRONLY | O_CREAT | O_TRUNC, mode);
 }
 
@@ -455,14 +436,12 @@ int creat(const char *pathname, mode_t mode)
  *
  * @see open, dup, dup2
  */
-int fcntl(int fd, int cmd, ...)
-{
+int fcntl(int fd, int cmd, ...) {
     (void)fd; /* TODO: use fd when implementing syscalls */
 
     /* Basic fcntl implementation */
     /* Most commands are stubs for now */
-    switch (cmd)
-    {
+    switch (cmd) {
         case F_DUPFD:
         case F_DUPFD_CLOEXEC:
             /* Would need to extract arg and call dup syscall */
@@ -519,11 +498,9 @@ int fcntl(int fd, int cmd, ...)
  *
  * @see open, fstatat
  */
-int openat(int dirfd, const char *pathname, int flags, ...)
-{
+int openat(int dirfd, const char *pathname, int flags, ...) {
     /* If dirfd is AT_FDCWD, behave like open() */
-    if (dirfd == AT_FDCWD)
-    {
+    if (dirfd == AT_FDCWD) {
         return open(pathname, flags);
     }
 
@@ -559,8 +536,7 @@ int openat(int dirfd, const char *pathname, int flags, ...)
  *
  * @see posix_fallocate, madvise
  */
-int posix_fadvise(int fd, off_t offset, off_t len, int advice)
-{
+int posix_fadvise(int fd, off_t offset, off_t len, int advice) {
     /* Advisory only - ignore */
     (void)fd;
     (void)offset;
@@ -590,8 +566,7 @@ int posix_fadvise(int fd, off_t offset, off_t len, int advice)
  *
  * @see posix_fadvise, ftruncate
  */
-int posix_fallocate(int fd, off_t offset, off_t len)
-{
+int posix_fallocate(int fd, off_t offset, off_t len) {
     /* Not implemented */
     (void)fd;
     (void)offset;

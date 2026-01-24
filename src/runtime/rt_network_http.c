@@ -78,9 +78,9 @@ void rt_net_init_wsa(void);
 /// @brief Parsed URL structure.
 typedef struct parsed_url
 {
-    char *host; // Allocated hostname
-    int port;   // Port number (default 80 for http, 443 for https)
-    char *path; // Path including query string (allocated)
+    char *host;  // Allocated hostname
+    int port;    // Port number (default 80 for http, 443 for https)
+    char *path;  // Path including query string (allocated)
     int use_tls; // 1 for https, 0 for http
 } parsed_url_t;
 
@@ -95,12 +95,12 @@ typedef struct http_header
 /// @brief HTTP connection context (TCP or TLS).
 typedef struct http_conn
 {
-    void *tcp;                  // TCP connection (for plain HTTP)
-    rt_tls_session_t *tls;      // TLS session (for HTTPS)
-    int use_tls;                // 1 if using TLS
-    uint8_t read_buf[4096];     // Read buffer
-    size_t read_buf_len;        // Bytes in buffer
-    size_t read_buf_pos;        // Current position in buffer
+    void *tcp;              // TCP connection (for plain HTTP)
+    rt_tls_session_t *tls;  // TLS session (for HTTPS)
+    int use_tls;            // 1 if using TLS
+    uint8_t read_buf[4096]; // Read buffer
+    size_t read_buf_len;    // Bytes in buffer
+    size_t read_buf_pos;    // Current position in buffer
 } http_conn_t;
 
 /// @brief Initialize HTTP connection for TCP.
@@ -620,7 +620,9 @@ static void parse_header_line(const char *line, void *headers_map)
 }
 
 /// @brief Read response body with Content-Length.
-static uint8_t *read_body_content_length_conn(http_conn_t *conn, size_t content_length, size_t *out_len)
+static uint8_t *read_body_content_length_conn(http_conn_t *conn,
+                                              size_t content_length,
+                                              size_t *out_len)
 {
     uint8_t *body = (uint8_t *)malloc(content_length);
     if (!body)

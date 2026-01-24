@@ -2,8 +2,7 @@
 #define _SIGNAL_H
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 /* Signal numbers */
@@ -43,19 +42,19 @@ extern "C"
 
 #define NSIG 32 /* Number of signals */
 
-    /* Signal handler type */
-    typedef void (*sighandler_t)(int);
+/* Signal handler type */
+typedef void (*sighandler_t)(int);
 
-    /* Atomic type safe for use in signal handlers */
-    typedef volatile int sig_atomic_t;
+/* Atomic type safe for use in signal handlers */
+typedef volatile int sig_atomic_t;
 
 /* Special signal handlers */
 #define SIG_DFL ((sighandler_t)0)    /* Default action */
 #define SIG_IGN ((sighandler_t)1)    /* Ignore signal */
 #define SIG_ERR ((sighandler_t) - 1) /* Error return */
 
-    /* Signal set type */
-    typedef unsigned long sigset_t;
+/* Signal set type */
+typedef unsigned long sigset_t;
 
 /* sigaction flags */
 #define SA_NOCLDSTOP 0x00000001 /* Don't send SIGCHLD when children stop */
@@ -71,58 +70,55 @@ extern "C"
 #define SIG_UNBLOCK 1 /* Unblock signals in set */
 #define SIG_SETMASK 2 /* Set signal mask to set */
 
-    /* sigaction structure */
-    struct sigaction
-    {
-        sighandler_t sa_handler;   /* Signal handler */
-        sigset_t sa_mask;          /* Signals to block during handler */
-        int sa_flags;              /* Flags */
-        void (*sa_restorer)(void); /* Restore function (internal) */
-    };
+/* sigaction structure */
+struct sigaction {
+    sighandler_t sa_handler;   /* Signal handler */
+    sigset_t sa_mask;          /* Signals to block during handler */
+    int sa_flags;              /* Flags */
+    void (*sa_restorer)(void); /* Restore function (internal) */
+};
 
-    /* sigevent for async notification */
-    union sigval
-    {
-        int sival_int;   /* Integer value */
-        void *sival_ptr; /* Pointer value */
-    };
+/* sigevent for async notification */
+union sigval {
+    int sival_int;   /* Integer value */
+    void *sival_ptr; /* Pointer value */
+};
 
 #define SIGEV_NONE 0   /* No notification */
 #define SIGEV_SIGNAL 1 /* Generate a signal */
 #define SIGEV_THREAD 2 /* Call a function in a new thread */
 
-    struct sigevent
-    {
-        int sigev_notify;                            /* Notification type */
-        int sigev_signo;                             /* Signal number */
-        union sigval sigev_value;                    /* Signal value */
-        void (*sigev_notify_function)(union sigval); /* Notify function */
-        void *sigev_notify_attributes;               /* Thread attributes */
-    };
+struct sigevent {
+    int sigev_notify;                            /* Notification type */
+    int sigev_signo;                             /* Signal number */
+    union sigval sigev_value;                    /* Signal value */
+    void (*sigev_notify_function)(union sigval); /* Notify function */
+    void *sigev_notify_attributes;               /* Thread attributes */
+};
 
-    /* Signal functions */
-    sighandler_t signal(int signum, sighandler_t handler);
-    int raise(int sig);
-    int kill(int pid, int sig);
+/* Signal functions */
+sighandler_t signal(int signum, sighandler_t handler);
+int raise(int sig);
+int kill(int pid, int sig);
 
-    /* sigaction */
-    int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
+/* sigaction */
+int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
 
-    /* Signal set operations */
-    int sigemptyset(sigset_t *set);
-    int sigfillset(sigset_t *set);
-    int sigaddset(sigset_t *set, int signum);
-    int sigdelset(sigset_t *set, int signum);
-    int sigismember(const sigset_t *set, int signum);
+/* Signal set operations */
+int sigemptyset(sigset_t *set);
+int sigfillset(sigset_t *set);
+int sigaddset(sigset_t *set, int signum);
+int sigdelset(sigset_t *set, int signum);
+int sigismember(const sigset_t *set, int signum);
 
-    /* Signal mask operations */
-    int sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
-    int sigpending(sigset_t *set);
-    int sigsuspend(const sigset_t *mask);
+/* Signal mask operations */
+int sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
+int sigpending(sigset_t *set);
+int sigsuspend(const sigset_t *mask);
 
-    /* String conversion */
-    const char *strsignal(int signum);
-    void psignal(int sig, const char *s);
+/* String conversion */
+const char *strsignal(int signum);
+void psignal(int sig, const char *s);
 
 #ifdef __cplusplus
 }

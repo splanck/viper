@@ -28,13 +28,11 @@
 #include "../include/types.hpp"
 
 // Forward declaration
-namespace fs::viperfs
-{
+namespace fs::viperfs {
 class ViperFS;
 }
 
-namespace viper::assign
-{
+namespace viper::assign {
 
 /**
  * @brief Handle type used by the Assign system.
@@ -58,8 +56,7 @@ constexpr int MAX_ASSIGN_NAME = 31;
  * mutable, how it is resolved, and whether multiple directories participate in
  * a search path.
  */
-enum AssignFlags : u32
-{
+enum AssignFlags : u32 {
     ASSIGN_NONE = 0,            /**< No special behavior. */
     ASSIGN_SYSTEM = (1 << 0),   /**< System assign (read-only, e.g., SYS:, D0:). */
     ASSIGN_DEFERRED = (1 << 1), /**< Deferred resolution (path-based; reserved for future). */
@@ -80,12 +77,10 @@ enum AssignFlags : u32
  * a fresh DirObject or FileObject is created and inserted into the caller's
  * cap_table.
  */
-struct AssignEntry
-{
+struct AssignEntry {
     char name[MAX_ASSIGN_NAME + 1]; /**< Assign name (without colon). */
 
-    union
-    {
+    union {
         u64 dir_inode;  /**< Inode number of the directory (for directory assigns). */
         u32 channel_id; /**< Global channel ID (for service assigns with ASSIGN_SERVICE). */
     };
@@ -103,8 +98,7 @@ struct AssignEntry
  * This structure is intended to match the syscall ABI representation for
  * listing assigns, so its size and field ordering should remain stable.
  */
-struct AssignInfo
-{
+struct AssignInfo {
     char name[32];    /**< Assign name (without colon). */
     u32 handle;       /**< Directory handle value (ABI-sized). */
     u32 flags;        /**< Flags (`ASSIGN_SYSTEM`, `ASSIGN_DEFERRED`, etc.). */
@@ -118,8 +112,7 @@ struct AssignInfo
  * Negative values are used to make it easy to forward errors through syscall
  * return paths while keeping `OK` at 0.
  */
-enum class AssignError
-{
+enum class AssignError {
     OK = 0,             /**< Operation completed successfully. */
     NotFound = -1,      /**< The requested assign name does not exist. */
     AlreadyExists = -2, /**< Name already exists (used by future APIs). */
@@ -167,7 +160,9 @@ void setup_standard_assigns();
  * @param fs Filesystem this inode belongs to (nullptr = system disk).
  * @return An @ref AssignError describing success/failure.
  */
-AssignError set(const char *name, u64 dir_inode, u32 flags = ASSIGN_NONE,
+AssignError set(const char *name,
+                u64 dir_inode,
+                u32 flags = ASSIGN_NONE,
                 ::fs::viperfs::ViperFS *fs = nullptr);
 
 /**

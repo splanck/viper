@@ -19,10 +19,10 @@
 
 #include "il/core/Instr.hpp"
 
-#include <string>
-#include <utility>
-#include <type_traits>
 #include <limits>
+#include <string>
+#include <type_traits>
+#include <utility>
 
 #ifdef _MSC_VER
 #include <intrin.h>
@@ -43,8 +43,8 @@ namespace ops
 
 /// @brief Perform checked signed addition with overflow detection for MSVC.
 template <typename T>
-[[nodiscard]] inline typename std::enable_if<std::is_signed<T>::value, bool>::type
-checked_add_impl(T lhs, T rhs, T *result)
+[[nodiscard]] inline typename std::enable_if<std::is_signed<T>::value, bool>::type checked_add_impl(
+    T lhs, T rhs, T *result)
 {
     // Signed overflow: if signs are the same but result sign differs
     *result = static_cast<T>(static_cast<typename std::make_unsigned<T>::type>(lhs) +
@@ -66,8 +66,8 @@ checked_add_impl(T lhs, T rhs, T *result)
 
 /// @brief Perform checked signed subtraction with overflow detection for MSVC.
 template <typename T>
-[[nodiscard]] inline typename std::enable_if<std::is_signed<T>::value, bool>::type
-checked_sub_impl(T lhs, T rhs, T *result)
+[[nodiscard]] inline typename std::enable_if<std::is_signed<T>::value, bool>::type checked_sub_impl(
+    T lhs, T rhs, T *result)
 {
     *result = static_cast<T>(static_cast<typename std::make_unsigned<T>::type>(lhs) -
                              static_cast<typename std::make_unsigned<T>::type>(rhs));
@@ -88,8 +88,8 @@ checked_sub_impl(T lhs, T rhs, T *result)
 
 /// @brief Perform checked signed multiplication with overflow detection for MSVC.
 template <typename T>
-[[nodiscard]] inline typename std::enable_if<std::is_signed<T>::value, bool>::type
-checked_mul_impl(T lhs, T rhs, T *result)
+[[nodiscard]] inline typename std::enable_if<std::is_signed<T>::value, bool>::type checked_mul_impl(
+    T lhs, T rhs, T *result)
 {
     using U = typename std::make_unsigned<T>::type;
     // Use double-width multiplication for 32-bit types

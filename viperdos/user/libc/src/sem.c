@@ -40,8 +40,7 @@
 #define MAX_SEMS_PER_SET 32
 
 /* Internal semaphore set structure */
-struct sem_set
-{
+struct sem_set {
     int in_use;
     key_t key;
     int nsems;
@@ -53,86 +52,69 @@ struct sem_set
 static struct sem_set sem_sets[MAX_SEM_SETS];
 static int sem_initialized = 0;
 
-static void init_semaphores(void)
-{
-    if (!sem_initialized)
-    {
+static void init_semaphores(void) {
+    if (!sem_initialized) {
         memset(sem_sets, 0, sizeof(sem_sets));
         sem_initialized = 1;
     }
 }
 
-static int find_by_key(key_t key)
-{
-    for (int i = 0; i < MAX_SEM_SETS; i++)
-    {
-        if (sem_sets[i].in_use && sem_sets[i].key == key)
-        {
+static int find_by_key(key_t key) {
+    for (int i = 0; i < MAX_SEM_SETS; i++) {
+        if (sem_sets[i].in_use && sem_sets[i].key == key) {
             return i;
         }
     }
     return -1;
 }
 
-static int find_free_slot(void)
-{
-    for (int i = 0; i < MAX_SEM_SETS; i++)
-    {
-        if (!sem_sets[i].in_use)
-        {
+static int find_free_slot(void) {
+    for (int i = 0; i < MAX_SEM_SETS; i++) {
+        if (!sem_sets[i].in_use) {
             return i;
         }
     }
     return -1;
 }
 
-int semget(key_t key, int nsems, int semflg)
-{
+int semget(key_t key, int nsems, int semflg) {
     init_semaphores();
 
-    if (nsems < 0 || nsems > MAX_SEMS_PER_SET)
-    {
+    if (nsems < 0 || nsems > MAX_SEMS_PER_SET) {
         errno = EINVAL;
         return -1;
     }
 
     /* Check for IPC_PRIVATE or existing key */
-    if (key != IPC_PRIVATE)
-    {
+    if (key != IPC_PRIVATE) {
         int existing = find_by_key(key);
-        if (existing >= 0)
-        {
-            if (semflg & IPC_CREAT && semflg & IPC_EXCL)
-            {
+        if (existing >= 0) {
+            if (semflg & IPC_CREAT && semflg & IPC_EXCL) {
                 errno = EEXIST;
                 return -1;
             }
             /* Return existing set */
-            if (nsems > 0 && nsems > sem_sets[existing].nsems)
-            {
+            if (nsems > 0 && nsems > sem_sets[existing].nsems) {
                 errno = EINVAL;
                 return -1;
             }
             return existing;
         }
 
-        if (!(semflg & IPC_CREAT))
-        {
+        if (!(semflg & IPC_CREAT)) {
             errno = ENOENT;
             return -1;
         }
     }
 
     /* Create new semaphore set */
-    if (nsems == 0)
-    {
+    if (nsems == 0) {
         errno = EINVAL;
         return -1;
     }
 
     int slot = find_free_slot();
-    if (slot < 0)
-    {
+    if (slot < 0) {
         errno = ENOSPC;
         return -1;
     }
@@ -149,33 +131,28 @@ int semget(key_t key, int nsems, int semflg)
     ss->ds.sem_nsems = nsems;
 
     /* Initialize all semaphore values to 0 */
-    for (int i = 0; i < nsems; i++)
-    {
+    for (int i = 0; i < nsems; i++) {
         ss->values[i] = 0;
     }
 
     return slot;
 }
 
-int semop(int semid, struct sembuf *sops, size_t nsops)
-{
+int semop(int semid, struct sembuf *sops, size_t nsops) {
     return semtimedop(semid, sops, nsops, NULL);
 }
 
-int semtimedop(int semid, struct sembuf *sops, size_t nsops, const struct timespec *timeout)
-{
+int semtimedop(int semid, struct sembuf *sops, size_t nsops, const struct timespec *timeout) {
     (void)timeout; /* Timeout not implemented */
 
     init_semaphores();
 
-    if (semid < 0 || semid >= MAX_SEM_SETS || !sem_sets[semid].in_use)
-    {
+    if (semid < 0 || semid >= MAX_SEM_SETS || !sem_sets[semid].in_use) {
         errno = EINVAL;
         return -1;
     }
 
-    if (sops == NULL || nsops == 0 || nsops > SEMOPM)
-    {
+    if (sops == NULL || nsops == 0 || nsops > SEMOPM) {
         errno = EINVAL;
         return -1;
     }
@@ -183,10 +160,8 @@ int semtimedop(int semid, struct sembuf *sops, size_t nsops, const struct timesp
     struct sem_set *ss = &sem_sets[semid];
 
     /* Validate all operations first */
-    for (size_t i = 0; i < nsops; i++)
-    {
-        if (sops[i].sem_num >= (unsigned short)ss->nsems)
-        {
+    for (size_t i = 0; i < nsops; i++) {
+        if (sops[i].sem_num >= (unsigned short)ss->nsems) {
             errno = EFBIG;
             return -1;
         }
@@ -195,31 +170,24 @@ int semtimedop(int semid, struct sembuf *sops, size_t nsops, const struct timesp
     /* Perform all operations atomically */
     /* Note: In a real implementation, this would need to handle blocking
      * when semval would go negative. For now, we do non-blocking only. */
-    for (size_t i = 0; i < nsops; i++)
-    {
+    for (size_t i = 0; i < nsops; i++) {
         unsigned short sem_num = sops[i].sem_num;
         short sem_op = sops[i].sem_op;
         short sem_flg = sops[i].sem_flg;
 
-        if (sem_op > 0)
-        {
+        if (sem_op > 0) {
             /* Add to semaphore value */
             int newval = ss->values[sem_num] + sem_op;
-            if (newval > SEMVMX)
-            {
+            if (newval > SEMVMX) {
                 errno = ERANGE;
                 return -1;
             }
             ss->values[sem_num] = newval;
-        }
-        else if (sem_op < 0)
-        {
+        } else if (sem_op < 0) {
             /* Subtract from semaphore value */
             int newval = ss->values[sem_num] + sem_op;
-            if (newval < 0)
-            {
-                if (sem_flg & IPC_NOWAIT)
-                {
+            if (newval < 0) {
+                if (sem_flg & IPC_NOWAIT) {
                     errno = EAGAIN;
                     return -1;
                 }
@@ -228,14 +196,10 @@ int semtimedop(int semid, struct sembuf *sops, size_t nsops, const struct timesp
                 return -1;
             }
             ss->values[sem_num] = newval;
-        }
-        else
-        {
+        } else {
             /* Wait for zero */
-            if (ss->values[sem_num] != 0)
-            {
-                if (sem_flg & IPC_NOWAIT)
-                {
+            if (ss->values[sem_num] != 0) {
+                if (sem_flg & IPC_NOWAIT) {
                     errno = EAGAIN;
                     return -1;
                 }
@@ -252,21 +216,17 @@ int semtimedop(int semid, struct sembuf *sops, size_t nsops, const struct timesp
     return 0;
 }
 
-int semctl(int semid, int semnum, int cmd, ...)
-{
+int semctl(int semid, int semnum, int cmd, ...) {
     init_semaphores();
 
-    if (semid < 0 || semid >= MAX_SEM_SETS)
-    {
+    if (semid < 0 || semid >= MAX_SEM_SETS) {
         errno = EINVAL;
         return -1;
     }
 
     /* IPC_RMID doesn't need a valid semid in some cases */
-    if (cmd != IPC_RMID && cmd != IPC_INFO && cmd != SEM_INFO)
-    {
-        if (!sem_sets[semid].in_use)
-        {
+    if (cmd != IPC_RMID && cmd != IPC_INFO && cmd != SEM_INFO) {
+        if (!sem_sets[semid].in_use) {
             errno = EINVAL;
             return -1;
         }
@@ -276,11 +236,9 @@ int semctl(int semid, int semnum, int cmd, ...)
     va_list ap;
     union semun arg;
 
-    switch (cmd)
-    {
+    switch (cmd) {
         case IPC_RMID:
-            if (!sem_sets[semid].in_use)
-            {
+            if (!sem_sets[semid].in_use) {
                 errno = EINVAL;
                 return -1;
             }
@@ -291,8 +249,7 @@ int semctl(int semid, int semnum, int cmd, ...)
             va_start(ap, cmd);
             arg = va_arg(ap, union semun);
             va_end(ap);
-            if (arg.buf == NULL)
-            {
+            if (arg.buf == NULL) {
                 errno = EFAULT;
                 return -1;
             }
@@ -303,8 +260,7 @@ int semctl(int semid, int semnum, int cmd, ...)
             va_start(ap, cmd);
             arg = va_arg(ap, union semun);
             va_end(ap);
-            if (arg.buf == NULL)
-            {
+            if (arg.buf == NULL) {
                 errno = EFAULT;
                 return -1;
             }
@@ -315,24 +271,21 @@ int semctl(int semid, int semnum, int cmd, ...)
             return 0;
 
         case GETVAL:
-            if (semnum < 0 || semnum >= ss->nsems)
-            {
+            if (semnum < 0 || semnum >= ss->nsems) {
                 errno = EINVAL;
                 return -1;
             }
             return ss->values[semnum];
 
         case SETVAL:
-            if (semnum < 0 || semnum >= ss->nsems)
-            {
+            if (semnum < 0 || semnum >= ss->nsems) {
                 errno = EINVAL;
                 return -1;
             }
             va_start(ap, cmd);
             arg = va_arg(ap, union semun);
             va_end(ap);
-            if (arg.val < 0 || arg.val > SEMVMX)
-            {
+            if (arg.val < 0 || arg.val > SEMVMX) {
                 errno = ERANGE;
                 return -1;
             }
@@ -344,13 +297,11 @@ int semctl(int semid, int semnum, int cmd, ...)
             va_start(ap, cmd);
             arg = va_arg(ap, union semun);
             va_end(ap);
-            if (arg.array == NULL)
-            {
+            if (arg.array == NULL) {
                 errno = EFAULT;
                 return -1;
             }
-            for (int i = 0; i < ss->nsems; i++)
-            {
+            for (int i = 0; i < ss->nsems; i++) {
                 arg.array[i] = ss->values[i];
             }
             return 0;
@@ -359,13 +310,11 @@ int semctl(int semid, int semnum, int cmd, ...)
             va_start(ap, cmd);
             arg = va_arg(ap, union semun);
             va_end(ap);
-            if (arg.array == NULL)
-            {
+            if (arg.array == NULL) {
                 errno = EFAULT;
                 return -1;
             }
-            for (int i = 0; i < ss->nsems; i++)
-            {
+            for (int i = 0; i < ss->nsems; i++) {
                 ss->values[i] = arg.array[i];
             }
             /* ss->ds.sem_ctime = time(NULL); */
@@ -385,8 +334,7 @@ int semctl(int semid, int semnum, int cmd, ...)
             va_start(ap, cmd);
             arg = va_arg(ap, union semun);
             va_end(ap);
-            if (arg.__buf == NULL)
-            {
+            if (arg.__buf == NULL) {
                 errno = EFAULT;
                 return -1;
             }

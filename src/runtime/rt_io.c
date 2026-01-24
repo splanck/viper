@@ -115,8 +115,7 @@ static inline size_t rt_string_safe_len(rt_string s)
 {
     if (!s || !s->data)
         return 0;
-    return (s->heap && s->heap != RT_SSO_SENTINEL) ? rt_heap_len(s->data)
-                                                   : s->literal_len;
+    return (s->heap && s->heap != RT_SSO_SENTINEL) ? rt_heap_len(s->data) : s->literal_len;
 }
 
 /// @brief Handle string builder errors with consistent trap messages.

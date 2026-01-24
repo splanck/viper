@@ -18,8 +18,7 @@
  * - Many fw_cfg structures and registers use big-endian encoding.
  * - Helper functions convert between CPU endianness and fw_cfg endianness.
  */
-namespace fwcfg
-{
+namespace fwcfg {
 
 // QEMU virt machine fw_cfg MMIO addresses (from constants.hpp)
 constexpr uintptr FWCFG_BASE = kc::hw::FWCFG_BASE;
@@ -37,8 +36,7 @@ constexpr u32 FW_CFG_DMA_CTL_SELECT = 0x08;
 constexpr u32 FW_CFG_DMA_CTL_WRITE = 0x10;
 
 // DMA access structure (must be naturally aligned)
-struct FWCfgDmaAccess
-{
+struct FWCfgDmaAccess {
     u32 control; // Big-endian
     u32 length;  // Big-endian
     u64 address; // Big-endian
@@ -53,8 +51,7 @@ constexpr u16 FW_CFG_FILE_DIR = 0x0019;
 constexpr u32 FWCFG_SIGNATURE_VALUE = kc::magic::FWCFG_QEMU;
 
 // File directory entry structure (as stored in fw_cfg)
-struct FWCfgFile
-{
+struct FWCfgFile {
     u32 size;   // Size of file in bytes (big-endian)
     u16 select; // Selector value (big-endian)
     u16 reserved;
@@ -65,16 +62,14 @@ struct FWCfgFile
 /**
  * @brief Convert a 16-bit value from big-endian to host order.
  */
-static inline u16 be16(u16 v)
-{
+static inline u16 be16(u16 v) {
     return (v >> 8) | (v << 8);
 }
 
 /**
  * @brief Convert a 32-bit value from big-endian to host order.
  */
-static inline u32 be32(u32 v)
-{
+static inline u32 be32(u32 v) {
     return ((v >> 24) & 0xFF) | ((v >> 8) & 0xFF00) | ((v << 8) & 0xFF0000) |
            ((v << 24) & 0xFF000000);
 }
@@ -90,10 +85,8 @@ static inline u32 be32(u32 v)
  * @param b Second string.
  * @return `true` if equal, otherwise `false`.
  */
-static bool str_equal(const char *a, const char *b)
-{
-    while (*a && *b)
-    {
+static bool str_equal(const char *a, const char *b) {
+    while (*a && *b) {
         if (*a != *b)
             return false;
         a++;
@@ -103,8 +96,7 @@ static bool str_equal(const char *a, const char *b)
 }
 
 /** @copydoc fwcfg::select */
-void select(u16 sel)
-{
+void select(u16 sel) {
     // fw_cfg selector is written in big-endian format
     volatile u16 *selector = reinterpret_cast<volatile u16 *>(FWCFG_BASE + FWCFG_SELECTOR);
     *selector = be16(sel);
@@ -112,23 +104,19 @@ void select(u16 sel)
 }
 
 /** @copydoc fwcfg::read */
-void read(void *buf, u32 size)
-{
+void read(void *buf, u32 size) {
     volatile u8 *data = reinterpret_cast<volatile u8 *>(FWCFG_BASE + FWCFG_DATA);
     u8 *p = static_cast<u8 *>(buf);
-    for (u32 i = 0; i < size; i++)
-    {
+    for (u32 i = 0; i < size; i++) {
         p[i] = *data;
     }
 }
 
 /** @copydoc fwcfg::write */
-void write(const void *buf, u32 size)
-{
+void write(const void *buf, u32 size) {
     volatile u8 *data = reinterpret_cast<volatile u8 *>(FWCFG_BASE + FWCFG_DATA);
     const u8 *p = static_cast<const u8 *>(buf);
-    for (u32 i = 0; i < size; i++)
-    {
+    for (u32 i = 0; i < size; i++) {
         *data = p[i];
     }
 }
@@ -140,16 +128,14 @@ void write(const void *buf, u32 size)
  * @param v Value in host order.
  * @return Value encoded as big-endian.
  */
-static inline u64 cpu_to_be64(u64 v)
-{
+static inline u64 cpu_to_be64(u64 v) {
     u32 hi = be32(v >> 32);
     u32 lo = be32(v & 0xFFFFFFFF);
     return (static_cast<u64>(lo) << 32) | hi;
 }
 
 /** @copydoc fwcfg::dma_write */
-void dma_write(u16 sel, const void *buf, u32 size)
-{
+void dma_write(u16 sel, const void *buf, u32 size) {
     // DMA access structure - must be in memory accessible by QEMU
     static FWCfgDmaAccess dma __attribute__((aligned(8)));
 
@@ -171,20 +157,17 @@ void dma_write(u16 sel, const void *buf, u32 size)
     asm volatile("dsb sy" ::: "memory");
 
     // Wait for DMA to complete (control word becomes 0 or has error bit)
-    while (be32(dma.control) & ~FW_CFG_DMA_CTL_ERROR)
-    {
+    while (be32(dma.control) & ~FW_CFG_DMA_CTL_ERROR) {
         asm volatile("dsb sy" ::: "memory");
     }
 
-    if (be32(dma.control) & FW_CFG_DMA_CTL_ERROR)
-    {
+    if (be32(dma.control) & FW_CFG_DMA_CTL_ERROR) {
         serial::puts("[fwcfg] DMA write error!\n");
     }
 }
 
 /** @copydoc fwcfg::init */
-void init()
-{
+void init() {
     serial::puts("[fwcfg] Checking fw_cfg at ");
     serial::put_hex(FWCFG_BASE);
     serial::puts("\n");
@@ -198,12 +181,9 @@ void init()
     serial::put_hex(sig);
     serial::puts("\n");
 
-    if (sig == FWCFG_SIGNATURE_VALUE)
-    {
+    if (sig == FWCFG_SIGNATURE_VALUE) {
         serial::puts("[fwcfg] QEMU fw_cfg detected\n");
-    }
-    else
-    {
+    } else {
         serial::puts("[fwcfg] Warning: fw_cfg not found or signature mismatch\n");
         return;
     }
@@ -216,22 +196,19 @@ void init()
     serial::put_hex(id);
     serial::puts("\n");
 
-    if (!(id & 1))
-    {
+    if (!(id & 1)) {
         serial::puts("[fwcfg] File interface not supported\n");
     }
 }
 
 /** @copydoc fwcfg::find_file */
-u32 find_file(const char *name, u16 *selector)
-{
+u32 find_file(const char *name, u16 *selector) {
     // Check ID first
     select(FW_CFG_ID);
     u32 id = 0;
     read(&id, 4);
 
-    if (!(id & 1))
-    {
+    if (!(id & 1)) {
         // File interface not supported
         return 0;
     }
@@ -245,13 +222,11 @@ u32 find_file(const char *name, u16 *selector)
     u32 count = be32(count_be);
 
     // Search for the file
-    for (u32 i = 0; i < count; i++)
-    {
+    for (u32 i = 0; i < count; i++) {
         FWCfgFile file;
         read(&file, sizeof(file));
 
-        if (str_equal(name, file.name))
-        {
+        if (str_equal(name, file.name)) {
             *selector = be16(file.select);
             return be32(file.size);
         }

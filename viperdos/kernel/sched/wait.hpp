@@ -52,8 +52,7 @@
  * @note The lock must be released BEFORE calling task::yield() but the task
  * must be enqueued BEFORE releasing the lock to avoid lost wakeups.
  */
-namespace sched
-{
+namespace sched {
 
 /**
  * @brief A wait queue for blocking/waking tasks.
@@ -63,8 +62,7 @@ namespace sched
  * only be on one wait queue OR the ready queue at a time (which is the
  * correct semantic - a blocked task shouldn't be on the ready queue).
  */
-struct WaitQueue
-{
+struct WaitQueue {
     task::Task *head; // First waiter (will be woken first)
     task::Task *tail; // Last waiter
     u32 count;        // Number of waiters
@@ -75,8 +73,7 @@ struct WaitQueue
  *
  * @param wq Wait queue to initialize.
  */
-inline void wait_init(WaitQueue *wq)
-{
+inline void wait_init(WaitQueue *wq) {
     wq->head = nullptr;
     wq->tail = nullptr;
     wq->count = 0;
@@ -93,8 +90,7 @@ inline void wait_init(WaitQueue *wq)
  * @param wq Wait queue to add to.
  * @param t Task to add.
  */
-inline void wait_enqueue(WaitQueue *wq, task::Task *t)
-{
+inline void wait_enqueue(WaitQueue *wq, task::Task *t) {
     if (!wq || !t)
         return;
 
@@ -106,12 +102,9 @@ inline void wait_enqueue(WaitQueue *wq, task::Task *t)
     t->next = nullptr;
     t->prev = wq->tail;
 
-    if (wq->tail)
-    {
+    if (wq->tail) {
         wq->tail->next = t;
-    }
-    else
-    {
+    } else {
         wq->head = t;
     }
     wq->tail = t;
@@ -129,33 +122,24 @@ inline void wait_enqueue(WaitQueue *wq, task::Task *t)
  * @param t Task to remove.
  * @return true if task was found and removed, false otherwise.
  */
-inline bool wait_dequeue(WaitQueue *wq, task::Task *t)
-{
+inline bool wait_dequeue(WaitQueue *wq, task::Task *t) {
     if (!wq || !t)
         return false;
 
     // Search for task in queue
     task::Task *curr = wq->head;
-    while (curr)
-    {
-        if (curr == t)
-        {
+    while (curr) {
+        if (curr == t) {
             // Found - remove from queue
-            if (curr->prev)
-            {
+            if (curr->prev) {
                 curr->prev->next = curr->next;
-            }
-            else
-            {
+            } else {
                 wq->head = curr->next;
             }
 
-            if (curr->next)
-            {
+            if (curr->next) {
                 curr->next->prev = curr->prev;
-            }
-            else
-            {
+            } else {
                 wq->tail = curr->prev;
             }
 
@@ -199,8 +183,7 @@ u32 wait_wake_all(WaitQueue *wq);
  * @param wq Wait queue to check.
  * @return true if empty, false if there are waiters.
  */
-inline bool wait_empty(const WaitQueue *wq)
-{
+inline bool wait_empty(const WaitQueue *wq) {
     return wq ? (wq->head == nullptr) : true;
 }
 
@@ -210,8 +193,7 @@ inline bool wait_empty(const WaitQueue *wq)
  * @param wq Wait queue to query.
  * @return Number of waiting tasks.
  */
-inline u32 wait_count(const WaitQueue *wq)
-{
+inline u32 wait_count(const WaitQueue *wq) {
     return wq ? wq->count : 0;
 }
 

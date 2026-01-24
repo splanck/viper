@@ -2,12 +2,11 @@
 #define _ERRNO_H
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /* Thread-local errno storage */
-    extern int *__errno_location(void);
+/* Thread-local errno storage */
+extern int *__errno_location(void);
 #define errno (*__errno_location())
 
 /* POSIX error codes */

@@ -3,12 +3,14 @@
 ## Vision
 
 Create a fully-featured Amiga-inspired Workbench desktop environment for ViperDOS that provides:
+
 - Intuitive graphical file system navigation
 - Application launching and management
 - System configuration utilities
 - A cohesive, retro-modern aesthetic
 
-The Workbench will serve as the primary GUI interface for ViperDOS, bringing the beloved Amiga desktop experience to a modern microkernel operating system.
+The Workbench will serve as the primary GUI interface for ViperDOS, bringing the beloved Amiga desktop experience to a
+modern microkernel operating system.
 
 ---
 
@@ -16,16 +18,19 @@ The Workbench will serve as the primary GUI interface for ViperDOS, bringing the
 
 ### Completed Infrastructure
 
-| Component | Status | Description |
-|-----------|--------|-------------|
-| displayd | **Complete** | Window compositor with double buffering, z-order management |
-| libgui | **Complete** | Client library for window creation, drawing, events |
-| consoled | **Complete** | GUI terminal emulator with ANSI support |
-| workbench | **Phase 2 Complete** | File browser, context menus, file ops, rename editor |
-| Event System | **Complete** | Mouse/keyboard events routed to windows |
-| Window Management | **Complete** | Focus, z-order, minimize/maximize, dragging |
-| Color System | **Complete** | Centralized in `user/include/viper_colors.h` |
-| Resolution | **Complete** | Updated to 1024x768 (from 800x600) |
+| Component         | Status               | Description                                                 |
+|-------------------|----------------------|-------------------------------------------------------------|
+| displayd          | **Complete**         | Window compositor with double buffering, z-order management |
+| libgui            | **Complete**         | Client library for window creation, drawing, events         |
+| consoled          | **Complete**         | GUI terminal emulator with ANSI support                     |
+| workbench         | **Phase 2 Complete** | File browser, context menus, file ops, rename editor        |
+| prefs             | **Phase 3 Complete** | GUI Preferences with Amiga-style category sidebar           |
+| guisysinfo        | **Phase 3 Complete** | GUI System Information utility                              |
+| taskman           | **Phase 3 Complete** | GUI Task Manager with process list                          |
+| Event System      | **Complete**         | Mouse/keyboard events routed to windows                     |
+| Window Management | **Complete**         | Focus, z-order, minimize/maximize, dragging                 |
+| Color System      | **Complete**         | Centralized in `user/include/viper_colors.h`                |
+| Resolution        | **Complete**         | Updated to 1024x768 (from 800x600)                          |
 
 ### Phase 1 Deliverables (COMPLETED)
 
@@ -134,6 +139,7 @@ void refresh_drives() {
 ```
 
 #### Drive Icon Features
+
 - Different icons for different drive types (floppy, hard disk, RAM disk)
 - Show volume name below icon
 - Double-click opens file browser window
@@ -166,16 +172,17 @@ When a drive or folder is opened, display contents in a new window.
 
 #### File Types and Icons
 
-| Type | Extension | Icon | Action |
-|------|-----------|------|--------|
-| Directory | (dir) | Folder | Open in new window |
-| Executable | .sys, .prg | Program | Execute |
-| Text | .txt, .md | Document | Open in editor |
-| Image | .bmp | Picture | Open in viewer |
-| Archive | .zip, .lha | Package | Show contents |
-| Unknown | * | Generic | Show properties |
+| Type       | Extension  | Icon     | Action             |
+|------------|------------|----------|--------------------|
+| Directory  | (dir)      | Folder   | Open in new window |
+| Executable | .sys, .prg | Program  | Execute            |
+| Text       | .txt, .md  | Document | Open in editor     |
+| Image      | .bmp       | Picture  | Open in viewer     |
+| Archive    | .zip, .lha | Package  | Show contents      |
+| Unknown    | *          | Generic  | Show properties    |
 
 #### Navigation Features
+
 - Parent directory button (↑)
 - Home button (returns to root)
 - Address bar with editable path
@@ -185,12 +192,14 @@ When a drive or folder is opened, display contents in a new window.
 ### 2.3 File Operations
 
 #### Drag and Drop
+
 - Drag files between windows to copy/move
 - Drag to Trash icon to delete
 - Visual feedback during drag (ghost icon)
 - Hold Shift while dragging to move instead of copy
 
 #### Context Menu (Right-Click)
+
 ```
 ┌──────────────────┐
 │ Open             │
@@ -208,16 +217,17 @@ When a drive or folder is opened, display contents in a new window.
 ```
 
 #### Keyboard Shortcuts
-| Key | Action |
-|-----|--------|
-| Enter | Open selected |
+
+| Key    | Action          |
+|--------|-----------------|
+| Enter  | Open selected   |
 | Delete | Delete selected |
-| Ctrl+C | Copy |
-| Ctrl+X | Cut |
-| Ctrl+V | Paste |
-| Ctrl+A | Select all |
-| F2 | Rename |
-| F5 | Refresh |
+| Ctrl+C | Copy            |
+| Ctrl+X | Cut             |
+| Ctrl+V | Paste           |
+| Ctrl+A | Select all      |
+| F2     | Rename          |
+| F5     | Refresh         |
 
 ### 2.4 File Type Associations
 
@@ -245,13 +255,13 @@ static filetype_t g_filetypes[] = {
 
 ### 2.5 Files to Create/Modify
 
-| File | Purpose |
-|------|---------|
-| `user/workbench/drives.c` | Drive discovery and management |
+| File                           | Purpose                            |
+|--------------------------------|------------------------------------|
+| `user/workbench/drives.c`      | Drive discovery and management     |
 | `user/workbench/filebrowser.c` | File browser window implementation |
-| `user/workbench/filetypes.c` | File type associations |
-| `user/workbench/fileops.c` | Copy, move, delete operations |
-| `user/workbench/icons/` | Additional file type icons |
+| `user/workbench/filetypes.c`   | File type associations             |
+| `user/workbench/fileops.c`     | Copy, move, delete operations      |
+| `user/workbench/icons/`        | Additional file type icons         |
 
 ---
 
@@ -291,6 +301,7 @@ A centralized preferences application similar to Amiga Prefs. Uses Amiga termino
 Note: The About icon uses an Amiga-style question mark "?" as was traditional on AmigaOS.
 
 #### 3.1.1 Screen Preferences
+
 - Screen resolution (query available modes)
 - Backdrop selection (solid color or pattern, Amiga-style)
 - Icon arrangement (grid size, auto-arrange)
@@ -299,29 +310,34 @@ Note: The About icon uses an Amiga-style question mark "?" as was traditional on
 #### 3.1.2 Input Preferences
 
 **Pointer:**
+
 - Pointer speed (acceleration)
 - Double-click delay
 - Left/right hand mode (swap buttons)
 - Scroll wheel speed
 
 **Input:**
+
 - Key repeat delay
 - Key repeat rate
 - Keyboard layout (future)
 
 #### 3.1.3 Locale Preferences
+
 - Set system date and time
 - Time zone selection
 - Clock format (12/24 hour)
 - Show clock in title bar
 
 #### 3.1.4 Network Preferences
+
 - View IP address
 - Configure network (DHCP/static)
 - DNS servers
 - Hostname
 
 #### 3.1.5 About (Question Mark "?" Icon)
+
 - ViperDOS version
 - Kernel version
 - Memory usage
@@ -420,16 +436,16 @@ swap_buttons=0
 
 ### 3.5 Files to Create
 
-| File | Purpose |
-|------|---------|
-| `user/prefs/main.c` | Preferences application |
-| `user/prefs/screen.c` | Screen preferences panel |
-| `user/prefs/input.c` | Pointer/input preferences |
-| `user/prefs/locale.c` | Locale/time preferences |
-| `user/prefs/network.c` | Network preferences |
-| `user/sysinfo/main.c` | System information utility |
-| `user/taskman/main.c` | Task manager |
-| `user/libprefs/prefs.c` | Preferences library |
+| File                    | Purpose                    |
+|-------------------------|----------------------------|
+| `user/prefs/main.c`     | Preferences application    |
+| `user/prefs/screen.c`   | Screen preferences panel   |
+| `user/prefs/input.c`    | Pointer/input preferences  |
+| `user/prefs/locale.c`   | Locale/time preferences    |
+| `user/prefs/network.c`  | Network preferences        |
+| `user/sysinfo/main.c`   | System information utility |
+| `user/taskman/main.c`   | Task manager               |
+| `user/libprefs/prefs.c` | Preferences library        |
 
 ---
 
@@ -501,6 +517,7 @@ void widget_set_focus(widget_t *w);
 ### 4.2 Standard Widgets
 
 #### Button
+
 ```c
 typedef struct {
     widget_t base;
@@ -515,6 +532,7 @@ void button_set_onclick(button_t *btn, void (*callback)(void*), void *data);
 ```
 
 #### Label
+
 ```c
 typedef struct {
     widget_t base;
@@ -528,6 +546,7 @@ void label_set_alignment(label_t *lbl, int align);
 ```
 
 #### TextBox
+
 ```c
 typedef struct {
     widget_t base;
@@ -549,6 +568,7 @@ void textbox_set_password_mode(textbox_t *tb, bool enabled);
 ```
 
 #### ListView
+
 ```c
 typedef struct {
     widget_t base;
@@ -569,6 +589,7 @@ int listview_get_selected(listview_t *lv);
 ```
 
 #### TreeView
+
 ```c
 typedef struct tree_node {
     char text[64];
@@ -589,6 +610,7 @@ typedef struct {
 ```
 
 #### Menu System
+
 ```c
 typedef struct menu_item {
     char text[64];
@@ -687,19 +709,19 @@ void draw_3d_sunken(gui_window_t *win, int x, int y, int w, int h,
 
 ### 4.6 Files to Create
 
-| File | Purpose |
-|------|---------|
-| `user/libwidget/include/widget.h` | Widget API header |
-| `user/libwidget/src/widget.c` | Core widget system |
-| `user/libwidget/src/button.c` | Button widget |
-| `user/libwidget/src/label.c` | Label widget |
-| `user/libwidget/src/textbox.c` | TextBox widget |
-| `user/libwidget/src/listview.c` | ListView widget |
-| `user/libwidget/src/treeview.c` | TreeView widget |
-| `user/libwidget/src/menu.c` | Menu system |
-| `user/libwidget/src/layout.c` | Layout managers |
-| `user/libwidget/src/dialog.c` | Dialog boxes |
-| `user/libwidget/src/draw3d.c` | 3D drawing effects |
+| File                              | Purpose            |
+|-----------------------------------|--------------------|
+| `user/libwidget/include/widget.h` | Widget API header  |
+| `user/libwidget/src/widget.c`     | Core widget system |
+| `user/libwidget/src/button.c`     | Button widget      |
+| `user/libwidget/src/label.c`      | Label widget       |
+| `user/libwidget/src/textbox.c`    | TextBox widget     |
+| `user/libwidget/src/listview.c`   | ListView widget    |
+| `user/libwidget/src/treeview.c`   | TreeView widget    |
+| `user/libwidget/src/menu.c`       | Menu system        |
+| `user/libwidget/src/layout.c`     | Layout managers    |
+| `user/libwidget/src/dialog.c`     | Dialog boxes       |
+| `user/libwidget/src/draw3d.c`     | 3D drawing effects |
 
 ---
 
@@ -716,6 +738,7 @@ void draw_3d_sunken(gui_window_t *win, int x, int y, int w, int h,
 Full-featured file manager application.
 
 #### Features
+
 - Dual-pane view (optional)
 - Icon view and list view modes
 - Thumbnail previews for images
@@ -728,9 +751,11 @@ Full-featured file manager application.
 
 **File:** `user/vedit/main.cpp`
 
-A GUI text editor inspired by classic Amiga editors (like ED and CygnusEd). Named "VEdit" following Amiga naming conventions.
+A GUI text editor inspired by classic Amiga editors (like ED and CygnusEd). Named "VEdit" following Amiga naming
+conventions.
 
 #### Features
+
 - Single document editing (multi-tab is Phase 6 polish)
 - Line numbers display
 - Find and replace (Amiga: Ctrl+F, Ctrl+R)
@@ -749,6 +774,7 @@ See **Appendix C: VEdit Detailed Specification** for complete implementation det
 View image files.
 
 #### Features
+
 - Support BMP format (native)
 - Zoom in/out
 - Fit to window
@@ -762,6 +788,7 @@ View image files.
 Simple calculator utility.
 
 #### Features
+
 - Basic arithmetic (+, -, *, /)
 - Memory functions (M+, M-, MR, MC)
 - Scientific mode (optional)
@@ -774,6 +801,7 @@ Simple calculator utility.
 Analog/digital clock with calendar.
 
 #### Features
+
 - Analog clock face
 - Digital time display
 - Monthly calendar view
@@ -784,6 +812,7 @@ Analog/digital clock with calendar.
 Enhanced terminal emulator beyond consoled.
 
 #### Features
+
 - Multiple terminal tabs
 - Scrollback history (configurable)
 - Copy/paste support
@@ -801,16 +830,19 @@ Enhanced terminal emulator beyond consoled.
 ### 6.1 Visual Polish
 
 #### Theme System
+
 - Configurable color schemes
 - Save/load themes from files
 - Built-in themes: Classic Amiga, ViperDOS Modern, Dark Mode
 
 #### Improved Icons
+
 - Higher resolution icons (32x32, 48x48)
 - Icon scaling for different DPI
 - Animated icons (optional, for loading states)
 
 #### Fonts
+
 - Multiple font sizes
 - Bold/italic support
 - Unicode support (extended character set)
@@ -818,16 +850,19 @@ Enhanced terminal emulator beyond consoled.
 ### 6.2 System Integration
 
 #### Startup Sequence
+
 1. Kernel boots, launches vinit
 2. vinit launches displayd and workbench
 3. Workbench becomes default GUI shell
 4. vinit shell available via Shell icon
 
 #### Auto-start Applications
+
 - `/sys/prefs/startup.prefs` lists apps to launch at boot
 - Workbench reads and launches startup apps
 
 #### Shutdown Sequence
+
 1. User clicks Shutdown in Workbench menu
 2. Workbench sends shutdown signal to all apps
 3. Apps save state and exit gracefully
@@ -871,6 +906,7 @@ int dnd_receive(void *buffer, size_t max_len, char *mime_type);
 ## Implementation Schedule
 
 ### Milestone 0: Infrastructure Improvements (Phase 1.5) - MOSTLY COMPLETE
+
 **Status:** 90% COMPLETE
 
 - [x] Increase resolution to 1024x768
@@ -895,14 +931,15 @@ int dnd_receive(void *buffer, size_t max_len, char *mime_type);
 - [x] Status bar with file info and hints
 - [ ] Rename with inline editor (placeholder)
 
-### Milestone 2: System Utilities (Phase 3)
+### Milestone 2: System Utilities (Phase 3) - MOSTLY COMPLETE
 
-- [ ] Preferences application (Amiga-style "Prefs")
-- [ ] System information utility
-- [ ] Task manager
-- [ ] Preferences library (libprefs)
+- [x] Preferences application (Amiga-style "Prefs") - `user/prefs/main.cpp`
+- [x] System information utility - `user/guisysinfo/main.cpp`
+- [x] Task manager - `user/taskman/main.cpp`
+- [ ] Preferences library (libprefs) - deferred to Phase 4
 
 ### Milestone 3: Widget Toolkit (Phase 4)
+
 **Duration:** 3-4 weeks
 
 - [ ] Core widget system
@@ -913,6 +950,7 @@ int dnd_receive(void *buffer, size_t max_len, char *mime_type);
 - [ ] Dialog boxes
 
 ### Milestone 4: Applications (Phase 5)
+
 **Duration:** 4+ weeks
 
 - [ ] File Manager
@@ -922,6 +960,7 @@ int dnd_receive(void *buffer, size_t max_len, char *mime_type);
 - [ ] Clock/Calendar
 
 ### Milestone 5: Polish (Phase 6)
+
 **Duration:** 2 weeks
 
 - [ ] Theme system
@@ -956,17 +995,14 @@ viperdos/
 │   │   ├── fileops.cpp          # File operations (Phase 2)
 │   │   └── icons/               # Icon resources
 │   │
-│   ├── prefs/                   # Amiga-style Preferences
-│   │   ├── main.cpp             # Prefs app (Phase 3)
-│   │   ├── screen.cpp           # Screen preferences
-│   │   ├── input.cpp            # Pointer/input preferences
-│   │   └── locale.cpp           # Locale/time preferences
+│   ├── prefs/                   # Amiga-style Preferences (DONE)
+│   │   └── main.cpp             # Prefs app with category sidebar
 │   │
-│   ├── sysinfo/
-│   │   └── main.c               # System info (Phase 3)
+│   ├── guisysinfo/              # GUI System Information (DONE)
+│   │   └── main.cpp             # System info utility
 │   │
-│   ├── taskman/
-│   │   └── main.c               # Task manager (Phase 3)
+│   ├── taskman/                 # GUI Task Manager (DONE)
+│   │   └── main.cpp             # Process viewer with selection
 │   │
 │   ├── libwidget/
 │   │   ├── include/widget.h     # Widget API (Phase 4)
@@ -1009,6 +1045,7 @@ viperdos/
 ## Testing Checklist
 
 ### Phase 2 Tests
+
 - [ ] Drive icons appear on desktop (dynamic detection)
 - [x] Double-click drive opens file browser
 - [x] Navigate into folders
@@ -1024,14 +1061,16 @@ viperdos/
 - [x] F5 refreshes directory
 
 ### Phase 3 Tests
-- [ ] Prefs app opens
-- [ ] Display settings apply correctly
-- [ ] Mouse speed changes take effect
-- [ ] System info shows correct values
-- [ ] Task manager lists processes
-- [ ] Preferences save and load
+
+- [x] Prefs app opens (read-only settings display)
+- [ ] Display settings apply correctly (read-only in v1)
+- [ ] Mouse speed changes take effect (read-only in v1)
+- [x] System info shows correct values (mem_info, task_list, uptime)
+- [x] Task manager lists processes (auto-refresh, selection, keyboard nav)
+- [ ] Preferences save and load (requires libprefs)
 
 ### Phase 4 Tests
+
 - [ ] Button click fires callback
 - [ ] TextBox accepts input
 - [ ] ListView selection works
@@ -1041,6 +1080,7 @@ viperdos/
 - [ ] Dialogs display modally
 
 ### Phase 5 Tests
+
 - [ ] File manager navigates filesystem
 - [ ] Text editor loads and saves files
 - [ ] Image viewer displays BMP files
@@ -1053,9 +1093,11 @@ viperdos/
 
 The ViperDOS Workbench will be considered complete when:
 
-1. **Functional Desktop**: Users can navigate the filesystem, launch applications, and manage windows entirely through the GUI.
+1. **Functional Desktop**: Users can navigate the filesystem, launch applications, and manage windows entirely through
+   the GUI.
 
-2. **Self-Hosting**: The desktop environment can be used to develop and build ViperDOS itself (edit source files, run compiler, etc.).
+2. **Self-Hosting**: The desktop environment can be used to develop and build ViperDOS itself (edit source files, run
+   compiler, etc.).
 
 3. **Stability**: The GUI runs without crashes for extended periods under normal use.
 
@@ -1092,6 +1134,7 @@ The original Amiga Workbench established several design principles we should fol
 **All colors are now centralized in `user/include/viper_colors.h`**
 
 ### Classic Workbench Colors
+
 ```c
 // From user/include/viper_colors.h
 #define VIPER_COLOR_DESKTOP      0xFF0055AA  // Primary backdrop (Amiga blue)
@@ -1105,12 +1148,14 @@ The original Amiga Workbench established several design principles we should fol
 ```
 
 ### Console/Terminal Colors
+
 ```c
 #define VIPER_COLOR_TEXT         0xFFFFFFFF  // Default text (white)
 #define VIPER_COLOR_CONSOLE_BG   0xFF0055AA  // Console background (matches desktop)
 ```
 
 ### ViperDOS Accent Colors
+
 ```c
 #define VIPER_COLOR_GREEN        0xFF00AA44  // System accent
 #define VIPER_COLOR_RED          0xFFFF4444  // Error/warning
@@ -1119,6 +1164,7 @@ The original Amiga Workbench established several design principles we should fol
 ```
 
 ### ANSI Color Palette
+
 The file also defines `ANSI_COLOR_*` macros for terminal emulation.
 
 ---
@@ -1151,41 +1197,58 @@ VEdit is the primary GUI text editor for ViperDOS, inspired by classic Amiga edi
 ### Menu Structure
 
 **File Menu:**
+
 - New (Ctrl+N)
 - Open... (Ctrl+O)
 - Save (Ctrl+S)
 - Save As... (Ctrl+Shift+S)
+
 - ---
+
 - Print... (future)
+
 - ---
+
 - Quit (Ctrl+Q)
 
 **Edit Menu:**
+
 - Undo (Ctrl+Z)
 - Redo (Ctrl+Y)
+
 - ---
+
 - Cut (Ctrl+X)
 - Copy (Ctrl+C)
 - Paste (Ctrl+V)
+
 - ---
+
 - Select All (Ctrl+A)
 
 **Search Menu:**
+
 - Find... (Ctrl+F)
 - Find Next (F3)
 - Find Previous (Shift+F3)
 - Replace... (Ctrl+R)
+
 - ---
+
 - Go to Line... (Ctrl+J)
 
 **Settings Menu:**
+
 - Word Wrap (toggle)
 - Show Line Numbers (toggle)
 - Tab Width: 4 (submenu)
+
 - ---
+
 - Font Size (submenu)
 
 **Help Menu:**
+
 - About VEdit...
 
 ### Core Implementation
@@ -1247,23 +1310,24 @@ private:
 
 ### Keyboard Handling
 
-| Key | Action |
-|-----|--------|
-| Arrow keys | Move cursor |
-| Home | Go to line start |
-| End | Go to line end |
-| Ctrl+Home | Go to file start |
-| Ctrl+End | Go to file end |
-| Page Up/Down | Scroll by page |
-| Insert | Toggle insert/overwrite |
-| Delete | Delete character at cursor |
-| Backspace | Delete character before cursor |
-| Enter | Insert newline |
-| Tab | Insert tab (or spaces) |
+| Key          | Action                         |
+|--------------|--------------------------------|
+| Arrow keys   | Move cursor                    |
+| Home         | Go to line start               |
+| End          | Go to line end                 |
+| Ctrl+Home    | Go to file start               |
+| Ctrl+End     | Go to file end                 |
+| Page Up/Down | Scroll by page                 |
+| Insert       | Toggle insert/overwrite        |
+| Delete       | Delete character at cursor     |
+| Backspace    | Delete character before cursor |
+| Enter        | Insert newline                 |
+| Tab          | Insert tab (or spaces)         |
 
 ### File Types
 
 VEdit should handle `.txt` and source files:
+
 - `.txt`, `.md` - Plain text
 - `.c`, `.cpp`, `.h`, `.hpp` - C/C++ source (syntax highlighting future)
 - `.sh` - Shell scripts
@@ -1272,6 +1336,7 @@ VEdit should handle `.txt` and source files:
 ### Dependencies
 
 VEdit requires:
+
 - libgui for window/drawing
 - libwidget (Phase 4) for menus and dialogs (or can use simple custom implementation initially)
 
@@ -1299,10 +1364,10 @@ VEdit requires:
 
 The following icon changes are needed for Amiga authenticity:
 
-| Current | New | Description |
-|---------|-----|-------------|
-| `settings_24` | `prefs_24` | Wrench/tool icon for Preferences |
-| `about_24` | `help_24` | Question mark "?" icon (Amiga-style) |
+| Current       | New        | Description                          |
+|---------------|------------|--------------------------------------|
+| `settings_24` | `prefs_24` | Wrench/tool icon for Preferences     |
+| `about_24`    | `help_24`  | Question mark "?" icon (Amiga-style) |
 
 ### Question Mark Icon Design (24x24)
 
@@ -1336,6 +1401,7 @@ Classic Amiga help icon is a bold "?" in a rounded rectangle or speech bubble:
 ```
 
 The icon should use:
+
 - White "?" glyph
 - Dark blue or gray background
 - 3D beveled edge (Amiga style)
@@ -1343,6 +1409,7 @@ The icon should use:
 ### Preferences Icon Design (24x24)
 
 A wrench or gear icon:
+
 - Gray metal wrench
 - 3D shading for depth
 - Matches Amiga Prefs drawer icon style
@@ -1350,10 +1417,12 @@ A wrench or gear icon:
 ### Implementation
 
 Update `user/workbench/src/icons.cpp` with new pixel arrays:
+
 - `const uint32_t help_24[24 * 24]` - Question mark icon
 - `const uint32_t prefs_24[24 * 24]` - Preferences/wrench icon
 
 Update `user/workbench/src/desktop.cpp`:
+
 ```cpp
 // Before:
 m_icons[2] = { 0, 0, "Settings", nullptr, icons::settings_24, ... };
@@ -1366,13 +1435,25 @@ m_icons[3] = { 0, 0, "Help",   nullptr, icons::help_24,  ... };
 
 ---
 
-*Document Version: 1.4*
+*Document Version: 1.5*
 *Last Updated: January 24, 2025*
 *Author: ViperDOS Development Team*
 
 ### Changelog
 
+**v1.5 (2025-01-24)**
+
+- Phase 3 MOSTLY COMPLETE: GUI system utilities implemented
+- Created guisysinfo (GUI System Information): displays memory, tasks, uptime
+- Created taskman (GUI Task Manager): process list with selection, auto-refresh
+- Created prefs (GUI Preferences): Amiga-style category sidebar (Screen, Input, Time, About)
+- All three utilities use syscalls: mem_info(), task_list(), uptime()
+- Programs added to user.img at c/guisysinfo.prg, c/taskman.prg, c/prefs.prg
+- Cleaned up user.img: removed test programs (faulttest, fsd_smoke, tls_smoke, mathtest, hello)
+- libprefs deferred to Phase 4 (not needed for read-only settings display)
+
 **v1.4 (2025-01-24)**
+
 - Phase 2 COMPLETE: All file system integration features implemented
 - Added dynamic drive discovery via assign_list() syscall
 - Implemented inline rename editor with full keyboard input
@@ -1382,6 +1463,7 @@ m_icons[3] = { 0, 0, "Help",   nullptr, icons::help_24,  ... };
 - Marked Phase 1.5 and Phase 2 as complete
 
 **v1.3 (2025-01-24)**
+
 - Phase 2 implementation: context menus, file operations, keyboard shortcuts
 - Implemented: delete, copy, paste, new folder operations
 - Added right-click context menu with file-specific options
@@ -1391,6 +1473,7 @@ m_icons[3] = { 0, 0, "Help",   nullptr, icons::help_24,  ... };
 - Updated Phase 2 testing checklist with completed items
 
 **v1.2 (2025-01-24)**
+
 - Updated Phase 1.5 status to reflect file browser is FUNCTIONAL (not skeleton)
 - Changed "Settings" to "Prefs" throughout (Amiga terminology)
 - Added question mark icon specification for Help/About (Amiga style)
@@ -1399,6 +1482,7 @@ m_icons[3] = { 0, 0, "Help",   nullptr, icons::help_24,  ... };
 - Renamed user/settings to user/prefs throughout
 
 **v1.1 (2025-01-23)**
+
 - Updated to reflect Phase 1.5 progress
 - Documented resolution change to 1024x768
 - Documented color centralization in `viper_colors.h`
@@ -1406,4 +1490,5 @@ m_icons[3] = { 0, 0, "Help",   nullptr, icons::help_24,  ... };
 - Added Phase 1.5 deliverables section
 
 **v1.0 (2025-01)**
+
 - Initial plan document

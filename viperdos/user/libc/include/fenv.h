@@ -7,8 +7,7 @@
 #define _FENV_H
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 /* Floating-point exception flags (AArch64 FPSR bits) */
@@ -27,77 +26,76 @@ extern "C"
 #define FE_DOWNWARD 0x00800000   /* Round toward -infinity */
 #define FE_TOWARDZERO 0x00C00000 /* Round toward zero */
 
-    /* Floating-point environment type */
-    typedef struct
-    {
-        unsigned int __fpcr; /* Floating-point control register */
-        unsigned int __fpsr; /* Floating-point status register */
-    } fenv_t;
+/* Floating-point environment type */
+typedef struct {
+    unsigned int __fpcr; /* Floating-point control register */
+    unsigned int __fpsr; /* Floating-point status register */
+} fenv_t;
 
-    /* Floating-point exception type */
-    typedef unsigned int fexcept_t;
+/* Floating-point exception type */
+typedef unsigned int fexcept_t;
 
-    /* Default floating-point environment */
-    extern const fenv_t __fe_dfl_env;
+/* Default floating-point environment */
+extern const fenv_t __fe_dfl_env;
 #define FE_DFL_ENV (&__fe_dfl_env)
 
-    /*
-     * Exception handling functions
-     */
+/*
+ * Exception handling functions
+ */
 
-    /* Clear the specified floating-point exception flags */
-    int feclearexcept(int excepts);
+/* Clear the specified floating-point exception flags */
+int feclearexcept(int excepts);
 
-    /* Get the current exception flags */
-    int fegetexceptflag(fexcept_t *flagp, int excepts);
+/* Get the current exception flags */
+int fegetexceptflag(fexcept_t *flagp, int excepts);
 
-    /* Raise the specified floating-point exceptions */
-    int feraiseexcept(int excepts);
+/* Raise the specified floating-point exceptions */
+int feraiseexcept(int excepts);
 
-    /* Set the exception flags from the saved state */
-    int fesetexceptflag(const fexcept_t *flagp, int excepts);
+/* Set the exception flags from the saved state */
+int fesetexceptflag(const fexcept_t *flagp, int excepts);
 
-    /* Test the specified exception flags */
-    int fetestexcept(int excepts);
+/* Test the specified exception flags */
+int fetestexcept(int excepts);
 
-    /*
-     * Rounding mode functions
-     */
+/*
+ * Rounding mode functions
+ */
 
-    /* Get the current rounding mode */
-    int fegetround(void);
+/* Get the current rounding mode */
+int fegetround(void);
 
-    /* Set the rounding mode */
-    int fesetround(int round);
+/* Set the rounding mode */
+int fesetround(int round);
 
-    /*
-     * Environment functions
-     */
+/*
+ * Environment functions
+ */
 
-    /* Get the current floating-point environment */
-    int fegetenv(fenv_t *envp);
+/* Get the current floating-point environment */
+int fegetenv(fenv_t *envp);
 
-    /* Establish a floating-point environment while saving exception state */
-    int feholdexcept(fenv_t *envp);
+/* Establish a floating-point environment while saving exception state */
+int feholdexcept(fenv_t *envp);
 
-    /* Set the floating-point environment */
-    int fesetenv(const fenv_t *envp);
+/* Set the floating-point environment */
+int fesetenv(const fenv_t *envp);
 
-    /* Set environment and raise saved exceptions */
-    int feupdateenv(const fenv_t *envp);
+/* Set environment and raise saved exceptions */
+int feupdateenv(const fenv_t *envp);
 
-    /*
-     * Non-standard extensions
-     */
+/*
+ * Non-standard extensions
+ */
 
-    /* Enable floating-point exception traps */
-    int feenableexcept(int excepts);
+/* Enable floating-point exception traps */
+int feenableexcept(int excepts);
 
-    /* Disable floating-point exception traps */
-    int fedisableexcept(int excepts);
+/* Disable floating-point exception traps */
+int fedisableexcept(int excepts);
 
-    /* Get enabled exceptions */
-    int fegetexcept(void);
+/* Get enabled exceptions */
+int fegetexcept(void);
 
 #ifdef __cplusplus
 }

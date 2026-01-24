@@ -40,44 +40,37 @@ static char slash[] = "/";
 /*
  * basename - Extract filename portion of path
  */
-char *basename(char *path)
-{
+char *basename(char *path) {
     char *p;
     char *last;
 
     /* Handle NULL or empty string */
-    if (path == NULL || path[0] == '\0')
-    {
+    if (path == NULL || path[0] == '\0') {
         return dot;
     }
 
     /* Find length and strip trailing slashes */
     size_t len = strlen(path);
-    while (len > 1 && path[len - 1] == '/')
-    {
+    while (len > 1 && path[len - 1] == '/') {
         path[len - 1] = '\0';
         len--;
     }
 
     /* Path is all slashes */
-    if (path[0] == '/' && path[1] == '\0')
-    {
+    if (path[0] == '/' && path[1] == '\0') {
         return slash;
     }
 
     /* Find last slash */
     last = NULL;
-    for (p = path; *p; p++)
-    {
-        if (*p == '/')
-        {
+    for (p = path; *p; p++) {
+        if (*p == '/') {
             last = p;
         }
     }
 
     /* No slash found - whole path is basename */
-    if (last == NULL)
-    {
+    if (last == NULL) {
         return path;
     }
 
@@ -88,52 +81,44 @@ char *basename(char *path)
 /*
  * dirname - Extract directory portion of path
  */
-char *dirname(char *path)
-{
+char *dirname(char *path) {
     char *p;
     char *last_slash;
 
     /* Handle NULL or empty string */
-    if (path == NULL || path[0] == '\0')
-    {
+    if (path == NULL || path[0] == '\0') {
         return dot;
     }
 
     /* Strip trailing slashes (but keep root slash) */
     size_t len = strlen(path);
-    while (len > 1 && path[len - 1] == '/')
-    {
+    while (len > 1 && path[len - 1] == '/') {
         len--;
         path[len] = '\0';
     }
 
     /* Find last slash */
     last_slash = NULL;
-    for (p = path; *p; p++)
-    {
-        if (*p == '/')
-        {
+    for (p = path; *p; p++) {
+        if (*p == '/') {
             last_slash = p;
         }
     }
 
     /* No slash - current directory */
-    if (last_slash == NULL)
-    {
+    if (last_slash == NULL) {
         return dot;
     }
 
     /* Root directory */
-    if (last_slash == path)
-    {
+    if (last_slash == path) {
         /* Preserve the root slash */
         path[1] = '\0';
         return path;
     }
 
     /* Strip trailing slashes from result */
-    while (last_slash > path && last_slash[-1] == '/')
-    {
+    while (last_slash > path && last_slash[-1] == '/') {
         last_slash--;
     }
 
@@ -141,8 +126,7 @@ char *dirname(char *path)
     *last_slash = '\0';
 
     /* If result is empty, return current directory */
-    if (path[0] == '\0')
-    {
+    if (path[0] == '\0') {
         return dot;
     }
 

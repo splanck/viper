@@ -7,8 +7,7 @@
 #define _FNMATCH_H
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 /* Flags for fnmatch() */
@@ -21,22 +20,22 @@ extern "C"
 /* Return value for no match */
 #define FNM_NOMATCH 1
 
-    /*
-     * fnmatch - Match filename or pathname against pattern
-     *
-     * Pattern matching syntax:
-     *   *      Matches any sequence of characters (except '/' if FNM_PATHNAME)
-     *   ?      Matches any single character (except '/' if FNM_PATHNAME)
-     *   [...]  Matches any character in the set
-     *   [!...] Matches any character not in the set
-     *   [^...] Same as [!...]
-     *   \c     Matches character c literally (if FNM_NOESCAPE not set)
-     *
-     * Returns:
-     *   0          Pattern matches string
-     *   FNM_NOMATCH Pattern does not match
-     */
-    int fnmatch(const char *pattern, const char *string, int flags);
+/*
+ * fnmatch - Match filename or pathname against pattern
+ *
+ * Pattern matching syntax:
+ *   *      Matches any sequence of characters (except '/' if FNM_PATHNAME)
+ *   ?      Matches any single character (except '/' if FNM_PATHNAME)
+ *   [...]  Matches any character in the set
+ *   [!...] Matches any character not in the set
+ *   [^...] Same as [!...]
+ *   \c     Matches character c literally (if FNM_NOESCAPE not set)
+ *
+ * Returns:
+ *   0          Pattern matches string
+ *   FNM_NOMATCH Pattern does not match
+ */
+int fnmatch(const char *pattern, const char *string, int flags);
 
 #ifdef __cplusplus
 }

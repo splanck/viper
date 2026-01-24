@@ -21,8 +21,7 @@
  * The object does not permanently pin the inode in memory; it loads the inode
  * from disk when required for operations such as lookup and enumeration.
  */
-namespace kobj
-{
+namespace kobj {
 
 /**
  * @brief Directory entry returned by FsReadDir.
@@ -38,8 +37,7 @@ namespace kobj
  * - `name_len`: length in bytes of `name` excluding the NUL terminator.
  * - `name`: NUL-terminated name; entries longer than 255 bytes are truncated.
  */
-struct FsDirEnt
-{
+struct FsDirEnt {
     u64 inode;      /**< Inode number of the entry. */
     u8 type;        /**< Entry type (filesystem-defined; typically 1=file, 2=dir). */
     u8 name_len;    /**< Name length in bytes excluding NUL. */
@@ -60,8 +58,7 @@ struct FsDirEnt
  * directory record stream. This keeps the user/kernel API stable even if the
  * on-disk directory record layout changes.
  */
-class DirObject : public Object
-{
+class DirObject : public Object {
   public:
     static constexpr cap::Kind KIND = cap::Kind::Directory;
 
@@ -82,8 +79,7 @@ class DirObject : public Object
      * This value is used internally when loading directory metadata. It is not
      * intended to be a stable user-space identifier.
      */
-    u64 inode_num() const
-    {
+    u64 inode_num() const {
         return inode_num_;
     }
 
@@ -94,8 +90,7 @@ class DirObject : public Object
      * The cursor is advanced by @ref read_next and can be manipulated by user
      * operations like rewind.
      */
-    u64 offset() const
-    {
+    u64 offset() const {
         return offset_;
     }
 
@@ -109,8 +104,7 @@ class DirObject : public Object
      *
      * @param off New cursor value.
      */
-    void set_offset(u64 off)
-    {
+    void set_offset(u64 off) {
         offset_ = off;
     }
 
@@ -120,8 +114,7 @@ class DirObject : public Object
      * @details
      * After calling this, the next @ref read_next returns the first entry again.
      */
-    void rewind()
-    {
+    void rewind() {
         offset_ = 0;
     }
 

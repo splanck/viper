@@ -33,8 +33,7 @@
  * - Stores entries in a fixed-size array per poll set.
  * - Implements waiting by repeatedly checking readiness and yielding.
  */
-namespace pollset
-{
+namespace pollset {
 
 /** @brief Maximum number of poll sets that can exist system-wide. */
 constexpr u32 MAX_POLL_SETS = 16;
@@ -45,8 +44,7 @@ constexpr u32 MAX_ENTRIES_PER_SET = 16;
 /**
  * @brief Internal entry describing one watched handle and its event mask.
  */
-struct PollEntry
-{
+struct PollEntry {
     u32 handle;                 // Channel ID or timer handle
     poll::EventType mask;       // Events to watch for
     poll::PollFlags flags;      // Polling mode flags (edge-triggered, oneshot)
@@ -61,8 +59,7 @@ struct PollEntry
  * Each poll set has an ID, an owning task ID, and a fixed-size array of entries.
  * Ownership is currently informational; policy enforcement can be added later.
  */
-struct PollSet
-{
+struct PollSet {
     u32 id;
     bool active;
     u32 owner_task_id; // Task that created this poll set

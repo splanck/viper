@@ -1138,8 +1138,8 @@ void rt_x25519(const uint8_t secret[32], const uint8_t peer_public[32], uint8_t 
 //=============================================================================
 
 #ifdef _WIN32
-#include <windows.h>
 #include <wincrypt.h>
+#include <windows.h>
 
 void rt_crypto_random_bytes(uint8_t *buf, size_t len)
 {

@@ -84,8 +84,8 @@ class LinearScanAllocator
     Spiller spiller_{};
 
     std::unordered_map<uint16_t, VirtualAllocation> states_{};
-    std::deque<PhysReg> freeGPR_{};   ///< O(1) pop_front for register allocation.
-    std::deque<PhysReg> freeXMM_{};   ///< O(1) pop_front for register allocation.
+    std::deque<PhysReg> freeGPR_{}; ///< O(1) pop_front for register allocation.
+    std::deque<PhysReg> freeXMM_{}; ///< O(1) pop_front for register allocation.
     /// @brief Active virtual registers in GPR class. Uses unordered_set for O(1) insert/erase.
     std::unordered_set<uint16_t> activeGPR_{};
     /// @brief Active virtual registers in XMM class. Uses unordered_set for O(1) insert/erase.

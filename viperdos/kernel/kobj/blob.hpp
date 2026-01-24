@@ -15,8 +15,7 @@
  * The blob owns its backing pages: it allocates pages on creation and frees
  * them when the blob object is destroyed (after the last reference is released).
  */
-namespace kobj
-{
+namespace kobj {
 
 // Blob - a reference-counted memory region
 // Can be shared between Vipers via capabilities
@@ -28,8 +27,7 @@ namespace kobj
  * virtual pointer for access (`data()`) and the physical base address (`phys()`)
  * for mapping into other address spaces.
  */
-class Blob : public Object
-{
+class Blob : public Object {
   public:
     static constexpr cap::Kind KIND = cap::Kind::Blob;
 
@@ -59,20 +57,17 @@ class Blob : public Object
      *
      * @return Pointer to the beginning of the blob buffer.
      */
-    void *data()
-    {
+    void *data() {
         return data_;
     }
 
     /** @brief Const overload of @ref data(). */
-    const void *data() const
-    {
+    const void *data() const {
         return data_;
     }
 
     /** @brief Size of the blob buffer in bytes (page-aligned). */
-    usize size() const
-    {
+    usize size() const {
         return size_;
     }
 
@@ -82,8 +77,7 @@ class Blob : public Object
      * @details
      * Used when mapping the blob into a user address space.
      */
-    u64 phys() const
-    {
+    u64 phys() const {
         return phys_;
     }
 
@@ -92,8 +86,7 @@ class Blob : public Object
      *
      * @return Page count.
      */
-    usize pages() const
-    {
+    usize pages() const {
         return (size_ + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE;
     }
 

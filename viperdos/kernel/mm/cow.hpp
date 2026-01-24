@@ -17,14 +17,12 @@
 #include "../include/types.hpp"
 #include "../lib/spinlock.hpp"
 
-namespace mm::cow
-{
+namespace mm::cow {
 
 /**
  * @brief Per-page metadata for COW tracking.
  */
-struct PageInfo
-{
+struct PageInfo {
     u16 refcount; ///< Number of address spaces sharing this page
     u16 flags;    ///< Page state flags
 };
@@ -32,8 +30,7 @@ struct PageInfo
 /**
  * @brief Page state flags.
  */
-namespace page_flags
-{
+namespace page_flags {
 constexpr u16 COW = (1 << 0);    ///< Page is copy-on-write
 constexpr u16 SHARED = (1 << 1); ///< Page is shared (don't COW)
 } // namespace page_flags
@@ -41,8 +38,7 @@ constexpr u16 SHARED = (1 << 1); ///< Page is shared (don't COW)
 /**
  * @brief VMA flags for COW tracking.
  */
-namespace vma_flags
-{
+namespace vma_flags {
 constexpr u8 COW = (1 << 0);    ///< This VMA has COW pages
 constexpr u8 SHARED = (1 << 1); ///< Shared mapping (not COW)
 } // namespace vma_flags
@@ -55,8 +51,7 @@ constexpr u8 SHARED = (1 << 1); ///< Shared mapping (not COW)
  * The array is allocated during init() and covers all physical pages in the
  * managed memory region.
  */
-class CowManager
-{
+class CowManager {
   public:
     CowManager() = default;
 
@@ -122,16 +117,14 @@ class CowManager
     /**
      * @brief Check if manager is initialized.
      */
-    bool is_initialized() const
-    {
+    bool is_initialized() const {
         return initialized_;
     }
 
     /**
      * @brief Get total pages managed.
      */
-    u64 total_pages() const
-    {
+    u64 total_pages() const {
         return total_pages_;
     }
 
@@ -146,16 +139,14 @@ class CowManager
     /**
      * @brief Convert physical address to page index.
      */
-    u64 phys_to_index(u64 phys) const
-    {
+    u64 phys_to_index(u64 phys) const {
         return (phys - mem_start_) >> 12; // PAGE_SHIFT = 12
     }
 
     /**
      * @brief Check if a physical address is within managed range.
      */
-    bool is_valid_page(u64 phys) const
-    {
+    bool is_valid_page(u64 phys) const {
         return phys >= mem_start_ && phys < mem_end_;
     }
 };
@@ -168,8 +159,7 @@ CowManager &cow_manager();
 /**
  * @brief Result of COW fault handling.
  */
-enum class CowResult
-{
+enum class CowResult {
     HANDLED,       ///< Page was copied or made writable
     ALREADY_OWNED, ///< Page already exclusively owned, just made writable
     OUT_OF_MEMORY, ///< Failed to allocate new page

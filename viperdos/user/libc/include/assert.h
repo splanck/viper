@@ -2,12 +2,11 @@
 #define _ASSERT_H
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /* Declaration for assert handler */
-    void __assert_fail(const char *expr, const char *file, int line, const char *func);
+/* Declaration for assert handler */
+void __assert_fail(const char *expr, const char *file, int line, const char *func);
 
 #ifdef NDEBUG
 /* Release build - assert does nothing */

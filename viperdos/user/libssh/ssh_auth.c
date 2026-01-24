@@ -13,12 +13,10 @@
  * Authentication
  *===========================================================================*/
 
-int ssh_get_auth_methods(ssh_session_t *session)
-{
+int ssh_get_auth_methods(ssh_session_t *session) {
     /* Try "none" auth to get list of available methods */
     int rc = ssh_auth_none(session);
-    if (rc == SSH_OK)
-    {
+    if (rc == SSH_OK) {
         return 0; /* No authentication needed */
     }
 
@@ -26,8 +24,7 @@ int ssh_get_auth_methods(ssh_session_t *session)
     return SSH_AUTH_PASSWORD | SSH_AUTH_PUBLICKEY;
 }
 
-int ssh_auth_none(ssh_session_t *session)
-{
+int ssh_auth_none(ssh_session_t *session) {
     if (!session || !session->username)
         return SSH_ERROR;
 
@@ -63,11 +60,9 @@ int ssh_auth_none(ssh_session_t *session)
     size_t response_len;
     uint8_t msg_type;
 
-    while (1)
-    {
+    while (1) {
         rc = ssh_packet_recv(session, &msg_type, response, &response_len);
-        if (rc == SSH_AGAIN)
-        {
+        if (rc == SSH_AGAIN) {
             extern long __syscall1(long, long);
             __syscall1(0x31 /* SYS_YIELD */, 0);
             continue;
@@ -77,8 +72,7 @@ int ssh_auth_none(ssh_session_t *session)
         break;
     }
 
-    if (msg_type == SSH_MSG_USERAUTH_SUCCESS)
-    {
+    if (msg_type == SSH_MSG_USERAUTH_SUCCESS) {
         session->state = SSH_STATE_AUTHENTICATED;
         return SSH_OK;
     }
@@ -86,13 +80,11 @@ int ssh_auth_none(ssh_session_t *session)
     return SSH_AUTH_DENIED;
 }
 
-int ssh_auth_password(ssh_session_t *session, const char *password)
-{
+int ssh_auth_password(ssh_session_t *session, const char *password) {
     if (!session || !session->username || !password)
         return SSH_ERROR;
 
-    if (session->verbose >= 1)
-    {
+    if (session->verbose >= 1) {
         printf(
             "[ssh] Password auth: user='%s' pass_len=%zu\n", session->username, strlen(password));
     }
@@ -140,43 +132,35 @@ int ssh_auth_password(ssh_session_t *session, const char *password)
 
     fprintf(stderr, "[ssh-auth] Waiting for auth response...\n");
     int wait_count = 0;
-    while (1)
-    {
+    while (1) {
         rc = ssh_packet_recv(session, &msg_type, response, &response_len);
-        if (rc == SSH_AGAIN)
-        {
+        if (rc == SSH_AGAIN) {
             /* No data yet, yield and retry */
             extern long __syscall1(long, long);
             __syscall1(0x31 /* SYS_YIELD */, 0);
             wait_count++;
-            if (wait_count % 10000 == 0)
-            {
+            if (wait_count % 10000 == 0) {
                 fprintf(stderr, "[ssh-auth] Still waiting... (count=%d)\n", wait_count);
             }
             continue;
         }
-        if (rc < 0)
-        {
+        if (rc < 0) {
             fprintf(stderr, "[ssh-auth] ssh_packet_recv returned error %d\n", rc);
             return rc;
         }
 
         fprintf(stderr, "[ssh-auth] Received msg_type=%d, len=%zu\n", msg_type, response_len);
 
-        if (msg_type == SSH_MSG_USERAUTH_SUCCESS)
-        {
+        if (msg_type == SSH_MSG_USERAUTH_SUCCESS) {
             session->state = SSH_STATE_AUTHENTICATED;
             return SSH_OK;
         }
 
-        if (msg_type == SSH_MSG_USERAUTH_FAILURE)
-        {
+        if (msg_type == SSH_MSG_USERAUTH_FAILURE) {
             /* Parse failure message to show available methods */
-            if (response_len >= 4 && session->verbose >= 1)
-            {
+            if (response_len >= 4 && session->verbose >= 1) {
                 uint32_t methods_len = ssh_buf_read_u32(response);
-                if (methods_len < response_len)
-                {
+                if (methods_len < response_len) {
                     char methods[256];
                     size_t copy_len = methods_len < 255 ? methods_len : 255;
                     memcpy(methods, response + 4, copy_len);
@@ -187,8 +171,7 @@ int ssh_auth_password(ssh_session_t *session, const char *password)
             return SSH_AUTH_DENIED;
         }
 
-        if (msg_type == SSH_MSG_USERAUTH_BANNER)
-        {
+        if (msg_type == SSH_MSG_USERAUTH_BANNER) {
             /* Just skip banner messages */
             continue;
         }
@@ -198,8 +181,7 @@ int ssh_auth_password(ssh_session_t *session, const char *password)
     }
 }
 
-int ssh_auth_try_publickey(ssh_session_t *session, ssh_key_t *key)
-{
+int ssh_auth_try_publickey(ssh_session_t *session, ssh_key_t *key) {
     if (!session || !session->username || !key)
         return SSH_ERROR;
 
@@ -231,16 +213,11 @@ int ssh_auth_try_publickey(ssh_session_t *session, ssh_key_t *key)
 
     /* public key algorithm name */
     const char *alg_name;
-    if (key->type == SSH_KEYTYPE_ED25519)
-    {
+    if (key->type == SSH_KEYTYPE_ED25519) {
         alg_name = "ssh-ed25519";
-    }
-    else if (key->type == SSH_KEYTYPE_RSA)
-    {
+    } else if (key->type == SSH_KEYTYPE_RSA) {
         alg_name = "ssh-rsa";
-    }
-    else
-    {
+    } else {
         return SSH_ERROR;
     }
     size_t alg_len = strlen(alg_name);
@@ -268,11 +245,9 @@ int ssh_auth_try_publickey(ssh_session_t *session, ssh_key_t *key)
     size_t response_len;
     uint8_t msg_type;
 
-    while (1)
-    {
+    while (1) {
         rc = ssh_packet_recv(session, &msg_type, response, &response_len);
-        if (rc == SSH_AGAIN)
-        {
+        if (rc == SSH_AGAIN) {
             extern long __syscall1(long, long);
             __syscall1(0x31 /* SYS_YIELD */, 0);
             continue;
@@ -282,23 +257,19 @@ int ssh_auth_try_publickey(ssh_session_t *session, ssh_key_t *key)
         break;
     }
 
-    if (msg_type == SSH_MSG_USERAUTH_PK_OK)
-    {
+    if (msg_type == SSH_MSG_USERAUTH_PK_OK) {
         return SSH_OK; /* Key is acceptable */
     }
 
-    if (msg_type == SSH_MSG_USERAUTH_FAILURE)
-    {
+    if (msg_type == SSH_MSG_USERAUTH_FAILURE) {
         return SSH_AUTH_DENIED;
     }
 
     return SSH_PROTOCOL_ERROR;
 }
 
-int ssh_auth_publickey(ssh_session_t *session, ssh_key_t *key)
-{
-    if (!session || !session->username || !key || !key->has_private)
-    {
+int ssh_auth_publickey(ssh_session_t *session, ssh_key_t *key) {
+    if (!session || !session->username || !key || !key->has_private) {
         return SSH_ERROR;
     }
 
@@ -330,16 +301,11 @@ int ssh_auth_publickey(ssh_session_t *session, ssh_key_t *key)
 
     /* public key algorithm name */
     const char *alg_name;
-    if (key->type == SSH_KEYTYPE_ED25519)
-    {
+    if (key->type == SSH_KEYTYPE_ED25519) {
         alg_name = "ssh-ed25519";
-    }
-    else if (key->type == SSH_KEYTYPE_RSA)
-    {
+    } else if (key->type == SSH_KEYTYPE_RSA) {
         alg_name = "ssh-rsa";
-    }
-    else
-    {
+    } else {
         return SSH_ERROR;
     }
     size_t alg_len = strlen(alg_name);
@@ -387,15 +353,11 @@ int ssh_auth_publickey(ssh_session_t *session, ssh_key_t *key)
     uint8_t signature[512];
     size_t sig_len = 0;
 
-    if (key->type == SSH_KEYTYPE_ED25519)
-    {
+    if (key->type == SSH_KEYTYPE_ED25519) {
         ssh_ed25519_sign(key->key.ed25519.secret_key, sign_data, sign_pos, signature);
         sig_len = 64;
-    }
-    else if (key->type == SSH_KEYTYPE_RSA)
-    {
-        if (!ssh_rsa_sign(key, sign_data, sign_pos, signature, &sig_len))
-        {
+    } else if (key->type == SSH_KEYTYPE_RSA) {
+        if (!ssh_rsa_sign(key, sign_data, sign_pos, signature, &sig_len)) {
             return SSH_ERROR;
         }
     }
@@ -426,11 +388,9 @@ int ssh_auth_publickey(ssh_session_t *session, ssh_key_t *key)
     size_t response_len;
     uint8_t msg_type;
 
-    while (1)
-    {
+    while (1) {
         rc = ssh_packet_recv(session, &msg_type, response, &response_len);
-        if (rc == SSH_AGAIN)
-        {
+        if (rc == SSH_AGAIN) {
             extern long __syscall1(long, long);
             __syscall1(0x31 /* SYS_YIELD */, 0);
             continue;
@@ -438,19 +398,16 @@ int ssh_auth_publickey(ssh_session_t *session, ssh_key_t *key)
         if (rc < 0)
             return rc;
 
-        if (msg_type == SSH_MSG_USERAUTH_SUCCESS)
-        {
+        if (msg_type == SSH_MSG_USERAUTH_SUCCESS) {
             session->state = SSH_STATE_AUTHENTICATED;
             return SSH_OK;
         }
 
-        if (msg_type == SSH_MSG_USERAUTH_FAILURE)
-        {
+        if (msg_type == SSH_MSG_USERAUTH_FAILURE) {
             return SSH_AUTH_DENIED;
         }
 
-        if (msg_type == SSH_MSG_USERAUTH_BANNER)
-        {
+        if (msg_type == SSH_MSG_USERAUTH_BANNER) {
             continue;
         }
 
@@ -462,8 +419,7 @@ int ssh_auth_publickey(ssh_session_t *session, ssh_key_t *key)
  * Key Management
  *===========================================================================*/
 
-ssh_key_t *ssh_key_load(const char *filename, const char *passphrase)
-{
+ssh_key_t *ssh_key_load(const char *filename, const char *passphrase) {
     (void)passphrase;
 
     /* Open and read file */
@@ -475,16 +431,14 @@ ssh_key_t *ssh_key_load(const char *filename, const char *passphrase)
     long size = ftell(f);
     fseek(f, 0, SEEK_SET);
 
-    if (size <= 0 || size > 16384)
-    {
+    if (size <= 0 || size > 16384) {
         fclose(f);
         return NULL;
     }
 
     /* Allocate one extra byte so text formats can be safely NUL-terminated. */
     uint8_t *data = malloc(size + 1);
-    if (!data)
-    {
+    if (!data) {
         fclose(f);
         return NULL;
     }
@@ -492,8 +446,7 @@ ssh_key_t *ssh_key_load(const char *filename, const char *passphrase)
     size_t nread = fread(data, 1, size, f);
     fclose(f);
 
-    if (nread != (size_t)size)
-    {
+    if (nread != (size_t)size) {
         free(data);
         return NULL;
     }
@@ -506,8 +459,7 @@ ssh_key_t *ssh_key_load(const char *filename, const char *passphrase)
 }
 
 /* Base64 decode helper */
-static int base64_decode_char(char c)
-{
+static int base64_decode_char(char c) {
     if (c >= 'A' && c <= 'Z')
         return c - 'A';
     if (c >= 'a' && c <= 'z')
@@ -521,25 +473,21 @@ static int base64_decode_char(char c)
     return -1;
 }
 
-static size_t base64_decode(const char *in, size_t in_len, uint8_t *out, size_t out_max)
-{
+static size_t base64_decode(const char *in, size_t in_len, uint8_t *out, size_t out_max) {
     size_t out_len = 0;
     uint32_t buf = 0;
     int bits = 0;
 
-    for (size_t i = 0; i < in_len && out_len < out_max; i++)
-    {
+    for (size_t i = 0; i < in_len && out_len < out_max; i++) {
         int v = base64_decode_char(in[i]);
-        if (v < 0)
-        {
+        if (v < 0) {
             if (in[i] == '=' || in[i] == '\n' || in[i] == '\r')
                 continue;
             break;
         }
         buf = (buf << 6) | v;
         bits += 6;
-        if (bits >= 8)
-        {
+        if (bits >= 8) {
             bits -= 8;
             out[out_len++] = (buf >> bits) & 0xFF;
         }
@@ -547,8 +495,7 @@ static size_t base64_decode(const char *in, size_t in_len, uint8_t *out, size_t 
     return out_len;
 }
 
-ssh_key_t *ssh_key_load_mem(const uint8_t *data, size_t len, const char *passphrase)
-{
+ssh_key_t *ssh_key_load_mem(const uint8_t *data, size_t len, const char *passphrase) {
     (void)passphrase;
 
     ssh_key_t *key = calloc(1, sizeof(ssh_key_t));
@@ -559,13 +506,11 @@ ssh_key_t *ssh_key_load_mem(const uint8_t *data, size_t len, const char *passphr
     const char *openssh_header = "-----BEGIN OPENSSH PRIVATE KEY-----";
     const char *openssh_footer = "-----END OPENSSH PRIVATE KEY-----";
 
-    if (len > strlen(openssh_header) && memcmp(data, openssh_header, strlen(openssh_header)) == 0)
-    {
+    if (len > strlen(openssh_header) && memcmp(data, openssh_header, strlen(openssh_header)) == 0) {
         /* Parse OpenSSH format */
         const char *start = (const char *)data + strlen(openssh_header);
         const char *end = strstr(start, openssh_footer);
-        if (!end)
-        {
+        if (!end) {
             free(key);
             return NULL;
         }
@@ -575,8 +520,7 @@ ssh_key_t *ssh_key_load_mem(const uint8_t *data, size_t len, const char *passphr
         size_t decoded_len = base64_decode(start, end - start, decoded, sizeof(decoded));
 
         /* Parse openssh-key-v1 format */
-        if (decoded_len < 15 || memcmp(decoded, "openssh-key-v1", 14) != 0)
-        {
+        if (decoded_len < 15 || memcmp(decoded, "openssh-key-v1", 14) != 0) {
             free(key);
             return NULL;
         }
@@ -584,8 +528,7 @@ ssh_key_t *ssh_key_load_mem(const uint8_t *data, size_t len, const char *passphr
         size_t pos = 15; /* After null terminator */
 
         /* cipher name */
-        if (pos + 4 > decoded_len)
-        {
+        if (pos + 4 > decoded_len) {
             free(key);
             return NULL;
         }
@@ -593,8 +536,7 @@ ssh_key_t *ssh_key_load_mem(const uint8_t *data, size_t len, const char *passphr
         pos += 4 + cipher_len;
 
         /* kdf name */
-        if (pos + 4 > decoded_len)
-        {
+        if (pos + 4 > decoded_len) {
             free(key);
             return NULL;
         }
@@ -602,8 +544,7 @@ ssh_key_t *ssh_key_load_mem(const uint8_t *data, size_t len, const char *passphr
         pos += 4 + kdf_len;
 
         /* kdf options */
-        if (pos + 4 > decoded_len)
-        {
+        if (pos + 4 > decoded_len) {
             free(key);
             return NULL;
         }
@@ -611,23 +552,20 @@ ssh_key_t *ssh_key_load_mem(const uint8_t *data, size_t len, const char *passphr
         pos += 4 + kdf_opts_len;
 
         /* number of keys */
-        if (pos + 4 > decoded_len)
-        {
+        if (pos + 4 > decoded_len) {
             free(key);
             return NULL;
         }
         uint32_t num_keys = ssh_buf_read_u32(decoded + pos);
         pos += 4;
 
-        if (num_keys != 1)
-        {
+        if (num_keys != 1) {
             free(key);
             return NULL;
         }
 
         /* public key blob (skip) */
-        if (pos + 4 > decoded_len)
-        {
+        if (pos + 4 > decoded_len) {
             free(key);
             return NULL;
         }
@@ -635,16 +573,14 @@ ssh_key_t *ssh_key_load_mem(const uint8_t *data, size_t len, const char *passphr
         pos += 4 + pubkey_len;
 
         /* private key blob */
-        if (pos + 4 > decoded_len)
-        {
+        if (pos + 4 > decoded_len) {
             free(key);
             return NULL;
         }
         uint32_t privkey_len = ssh_buf_read_u32(decoded + pos);
         pos += 4;
 
-        if (pos + privkey_len > decoded_len)
-        {
+        if (pos + privkey_len > decoded_len) {
             free(key);
             return NULL;
         }
@@ -652,15 +588,13 @@ ssh_key_t *ssh_key_load_mem(const uint8_t *data, size_t len, const char *passphr
 
         /* Parse private key blob */
         /* checkint (2x uint32) */
-        if (privkey_len < 8)
-        {
+        if (privkey_len < 8) {
             free(key);
             return NULL;
         }
         uint32_t check1 = ssh_buf_read_u32(privkey);
         uint32_t check2 = ssh_buf_read_u32(privkey + 4);
-        if (check1 != check2)
-        {
+        if (check1 != check2) {
             free(key);
             return NULL; /* Incorrect passphrase or corrupted */
         }
@@ -668,35 +602,30 @@ ssh_key_t *ssh_key_load_mem(const uint8_t *data, size_t len, const char *passphr
         size_t priv_pos = 8;
 
         /* key type */
-        if (priv_pos + 4 > privkey_len)
-        {
+        if (priv_pos + 4 > privkey_len) {
             free(key);
             return NULL;
         }
         uint32_t type_len = ssh_buf_read_u32(privkey + priv_pos);
         priv_pos += 4;
 
-        if (priv_pos + type_len > privkey_len)
-        {
+        if (priv_pos + type_len > privkey_len) {
             free(key);
             return NULL;
         }
 
-        if (type_len == 11 && memcmp(privkey + priv_pos, "ssh-ed25519", 11) == 0)
-        {
+        if (type_len == 11 && memcmp(privkey + priv_pos, "ssh-ed25519", 11) == 0) {
             key->type = SSH_KEYTYPE_ED25519;
             priv_pos += type_len;
 
             /* public key (32 bytes, with length prefix) */
-            if (priv_pos + 4 > privkey_len)
-            {
+            if (priv_pos + 4 > privkey_len) {
                 free(key);
                 return NULL;
             }
             uint32_t pub_len = ssh_buf_read_u32(privkey + priv_pos);
             priv_pos += 4;
-            if (pub_len != 32 || priv_pos + 32 > privkey_len)
-            {
+            if (pub_len != 32 || priv_pos + 32 > privkey_len) {
                 free(key);
                 return NULL;
             }
@@ -704,44 +633,37 @@ ssh_key_t *ssh_key_load_mem(const uint8_t *data, size_t len, const char *passphr
             priv_pos += 32;
 
             /* secret key (64 bytes: seed || public) */
-            if (priv_pos + 4 > privkey_len)
-            {
+            if (priv_pos + 4 > privkey_len) {
                 free(key);
                 return NULL;
             }
             uint32_t sec_len = ssh_buf_read_u32(privkey + priv_pos);
             priv_pos += 4;
-            if (sec_len != 64 || priv_pos + 64 > privkey_len)
-            {
+            if (sec_len != 64 || priv_pos + 64 > privkey_len) {
                 free(key);
                 return NULL;
             }
             memcpy(key->key.ed25519.secret_key, privkey + priv_pos, 64);
 
             key->has_private = true;
-        }
-        else if (type_len == 7 && memcmp(privkey + priv_pos, "ssh-rsa", 7) == 0)
-        {
+        } else if (type_len == 7 && memcmp(privkey + priv_pos, "ssh-rsa", 7) == 0) {
             key->type = SSH_KEYTYPE_RSA;
             priv_pos += type_len;
 
             /* n (modulus) */
-            if (priv_pos + 4 > privkey_len)
-            {
+            if (priv_pos + 4 > privkey_len) {
                 free(key);
                 return NULL;
             }
             uint32_t n_len = ssh_buf_read_u32(privkey + priv_pos);
             priv_pos += 4;
-            if (n_len > 512 || priv_pos + n_len > privkey_len)
-            {
+            if (n_len > 512 || priv_pos + n_len > privkey_len) {
                 free(key);
                 return NULL;
             }
             /* Skip leading zero */
             uint8_t *n_data = privkey + priv_pos;
-            if (n_len > 0 && n_data[0] == 0)
-            {
+            if (n_len > 0 && n_data[0] == 0) {
                 n_data++;
                 n_len--;
             }
@@ -750,15 +672,13 @@ ssh_key_t *ssh_key_load_mem(const uint8_t *data, size_t len, const char *passphr
             priv_pos += ssh_buf_read_u32(privkey + priv_pos - 4); /* original length */
 
             /* e (public exponent) */
-            if (priv_pos + 4 > privkey_len)
-            {
+            if (priv_pos + 4 > privkey_len) {
                 free(key);
                 return NULL;
             }
             uint32_t e_len = ssh_buf_read_u32(privkey + priv_pos);
             priv_pos += 4;
-            if (e_len > 8 || priv_pos + e_len > privkey_len)
-            {
+            if (e_len > 8 || priv_pos + e_len > privkey_len) {
                 free(key);
                 return NULL;
             }
@@ -767,21 +687,18 @@ ssh_key_t *ssh_key_load_mem(const uint8_t *data, size_t len, const char *passphr
             priv_pos += e_len;
 
             /* d (private exponent) */
-            if (priv_pos + 4 > privkey_len)
-            {
+            if (priv_pos + 4 > privkey_len) {
                 free(key);
                 return NULL;
             }
             uint32_t d_len = ssh_buf_read_u32(privkey + priv_pos);
             priv_pos += 4;
-            if (d_len > 512 || priv_pos + d_len > privkey_len)
-            {
+            if (d_len > 512 || priv_pos + d_len > privkey_len) {
                 free(key);
                 return NULL;
             }
             uint8_t *d_data = privkey + priv_pos;
-            if (d_len > 0 && d_data[0] == 0)
-            {
+            if (d_len > 0 && d_data[0] == 0) {
                 d_data++;
                 d_len--;
             }
@@ -789,9 +706,7 @@ ssh_key_t *ssh_key_load_mem(const uint8_t *data, size_t len, const char *passphr
             key->key.rsa.private_exp_len = d_len;
 
             key->has_private = true;
-        }
-        else
-        {
+        } else {
             free(key);
             return NULL;
         }
@@ -804,8 +719,7 @@ ssh_key_t *ssh_key_load_mem(const uint8_t *data, size_t len, const char *passphr
     return NULL;
 }
 
-void ssh_key_free(ssh_key_t *key)
-{
+void ssh_key_free(ssh_key_t *key) {
     if (!key)
         return;
     /* Clear sensitive data */
@@ -813,20 +727,17 @@ void ssh_key_free(ssh_key_t *key)
     free(key);
 }
 
-ssh_keytype_t ssh_key_type(ssh_key_t *key)
-{
+ssh_keytype_t ssh_key_type(ssh_key_t *key) {
     return key ? key->type : SSH_KEYTYPE_UNKNOWN;
 }
 
-int ssh_key_get_public_blob(ssh_key_t *key, uint8_t *blob, size_t *len)
-{
+int ssh_key_get_public_blob(ssh_key_t *key, uint8_t *blob, size_t *len) {
     if (!key || !blob || !len)
         return SSH_ERROR;
 
     size_t pos = 0;
 
-    if (key->type == SSH_KEYTYPE_ED25519)
-    {
+    if (key->type == SSH_KEYTYPE_ED25519) {
         /* Format: string "ssh-ed25519" || string pubkey */
         const char *alg = "ssh-ed25519";
         size_t alg_len = strlen(alg);
@@ -844,9 +755,7 @@ int ssh_key_get_public_blob(ssh_key_t *key, uint8_t *blob, size_t *len)
 
         *len = pos;
         return SSH_OK;
-    }
-    else if (key->type == SSH_KEYTYPE_RSA)
-    {
+    } else if (key->type == SSH_KEYTYPE_RSA) {
         /* Format: string "ssh-rsa" || mpint e || mpint n */
         const char *alg = "ssh-rsa";
         size_t alg_len = strlen(alg);

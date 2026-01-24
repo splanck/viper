@@ -71,7 +71,10 @@ class Spiller
     /// @param plan Spill plan to receive the slot assignment.
     /// @param start Start of the live interval (instruction index).
     /// @param end End of the live interval (instruction index, exclusive).
-    void ensureSpillSlotWithReuse(RegClass cls, SpillPlan &plan, std::size_t start, std::size_t end);
+    void ensureSpillSlotWithReuse(RegClass cls,
+                                  SpillPlan &plan,
+                                  std::size_t start,
+                                  std::size_t end);
 
     /// @brief Emit a load from @p plan into @p dst.
     [[nodiscard]] MInstr makeLoad(RegClass cls, PhysReg dst, const SpillPlan &plan) const;

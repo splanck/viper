@@ -31,8 +31,8 @@ static const char *opcodeName(il::core::Opcode op)
 {
     switch (op)
     {
-#define IL_OPCODE(NAME, MNEMONIC, ...) \
-    case il::core::Opcode::NAME:       \
+#define IL_OPCODE(NAME, MNEMONIC, ...)                                                             \
+    case il::core::Opcode::NAME:                                                                   \
         return MNEMONIC;
 #include "il/core/Opcode.def"
         default:
@@ -84,7 +84,8 @@ loop_exit:
     auto top = vm.topOpcodes(15);
     for (const auto &[idx, count] : top)
     {
-        std::cout << "  " << opcodeName(static_cast<il::core::Opcode>(idx)) << ": " << count << "\n";
+        std::cout << "  " << opcodeName(static_cast<il::core::Opcode>(idx)) << ": " << count
+                  << "\n";
     }
 }
 
@@ -139,7 +140,8 @@ done:
     auto top = vm.topOpcodes(15);
     for (const auto &[idx, count] : top)
     {
-        std::cout << "  " << opcodeName(static_cast<il::core::Opcode>(idx)) << ": " << count << "\n";
+        std::cout << "  " << opcodeName(static_cast<il::core::Opcode>(idx)) << ": " << count
+                  << "\n";
     }
 }
 
@@ -205,7 +207,8 @@ done:
     auto top = vm.topOpcodes(15);
     for (const auto &[idx, count] : top)
     {
-        std::cout << "  " << opcodeName(static_cast<il::core::Opcode>(idx)) << ": " << count << "\n";
+        std::cout << "  " << opcodeName(static_cast<il::core::Opcode>(idx)) << ": " << count
+                  << "\n";
     }
 }
 

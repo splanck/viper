@@ -7,11 +7,11 @@
 
 namespace workbench {
 
-class FileBrowser;  // Forward declaration
+class FileBrowser; // Forward declaration
 
 /// @brief Manages the desktop surface, icons, and menu bar.
 class Desktop {
-public:
+  public:
     Desktop();
     ~Desktop();
 
@@ -23,11 +23,18 @@ public:
     void run();
 
     /// @brief Get screen dimensions.
-    uint32_t width() const { return m_width; }
-    uint32_t height() const { return m_height; }
+    uint32_t width() const {
+        return m_width;
+    }
+
+    uint32_t height() const {
+        return m_height;
+    }
 
     /// @brief Get the desktop window handle.
-    gui_window_t *window() const { return m_window; }
+    gui_window_t *window() const {
+        return m_window;
+    }
 
     /// @brief Open a file browser for the given path.
     void openFileBrowser(const char *path);
@@ -38,7 +45,7 @@ public:
     /// @brief Spawn a program.
     void spawnProgram(const char *path);
 
-private:
+  private:
     void drawBackdrop();
     void drawMenuBar();
     void drawIcon(DesktopIcon &icon);
@@ -64,12 +71,12 @@ private:
     void showPrefsDialog();
     void handleDialogEvents();
 
-private:
+  private:
     gui_window_t *m_window = nullptr;
     uint32_t m_width = 1024;
     uint32_t m_height = 768;
 
-    DesktopIcon m_icons[16];  // Support up to 16 desktop icons
+    DesktopIcon m_icons[16]; // Support up to 16 desktop icons
     int m_iconCount = 0;
 
     // Double-click detection

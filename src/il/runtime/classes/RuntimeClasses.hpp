@@ -265,13 +265,13 @@ struct RuntimeClass
 /// @details Frontends map these to their native type systems.
 enum class ILScalarType : std::uint8_t
 {
-    Void,    ///< void return type
-    I64,     ///< 64-bit signed integer
-    F64,     ///< 64-bit floating point
-    Bool,    ///< Boolean (i1)
-    String,  ///< String reference (str)
-    Object,  ///< Object pointer (obj/ptr)
-    Unknown  ///< Unrecognized or parse error
+    Void,   ///< void return type
+    I64,    ///< 64-bit signed integer
+    F64,    ///< 64-bit floating point
+    Bool,   ///< Boolean (i1)
+    String, ///< String reference (str)
+    Object, ///< Object pointer (obj/ptr)
+    Unknown ///< Unrecognized or parse error
 };
 
 /// @brief Parsed signature with structured type information.
@@ -297,8 +297,8 @@ struct ParsedSignature
 /// @brief Extended method descriptor with parsed signature.
 struct ParsedMethod
 {
-    const char *name;      ///< Method name (e.g., "Substring").
-    const char *target;    ///< Canonical extern target.
+    const char *name;   ///< Method name (e.g., "Substring").
+    const char *target; ///< Canonical extern target.
     ParsedSignature signature;
 };
 

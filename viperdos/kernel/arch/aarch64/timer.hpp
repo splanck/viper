@@ -26,8 +26,7 @@
  * - Resolution: 16 ns per tick
  * - Overflow: ~2900 years (plenty for uptime)
  */
-namespace timer
-{
+namespace timer {
 
 /**
  * @brief High-resolution timestamp in raw timer ticks.
@@ -219,8 +218,7 @@ bool cancel_oneshot(u32 timer_id);
  * @param ns Duration in nanoseconds.
  * @return Timestamp representing now + ns.
  */
-inline Timestamp deadline_ns(u64 ns)
-{
+inline Timestamp deadline_ns(u64 ns) {
     return now() + ns_to_ticks(ns);
 }
 
@@ -230,8 +228,7 @@ inline Timestamp deadline_ns(u64 ns)
  * @param us Duration in microseconds.
  * @return Timestamp representing now + us.
  */
-inline Timestamp deadline_us(u64 us)
-{
+inline Timestamp deadline_us(u64 us) {
     return now() + ns_to_ticks(us * 1000);
 }
 
@@ -241,8 +238,7 @@ inline Timestamp deadline_us(u64 us)
  * @param ms Duration in milliseconds.
  * @return Timestamp representing now + ms.
  */
-inline Timestamp deadline_ms(u64 ms)
-{
+inline Timestamp deadline_ms(u64 ms) {
     return now() + ns_to_ticks(ms * 1000000);
 }
 

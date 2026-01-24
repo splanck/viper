@@ -10,14 +10,11 @@
  * resulting buffer, and constructs a heap-allocated `kobj::Blob` that owns the
  * pages. Destruction frees the backing pages.
  */
-namespace kobj
-{
+namespace kobj {
 
 /** @copydoc kobj::Blob::create */
-Blob *Blob::create(usize size)
-{
-    if (size == 0)
-    {
+Blob *Blob::create(usize size) {
+    if (size == 0) {
         return nullptr;
     }
 
@@ -27,8 +24,7 @@ Blob *Blob::create(usize size)
 
     // Allocate physical pages
     u64 phys = pmm::alloc_pages(pages);
-    if (phys == 0)
-    {
+    if (phys == 0) {
         serial::puts("[blob] Failed to allocate ");
         serial::put_dec(pages);
         serial::puts(" pages\n");
@@ -38,8 +34,7 @@ Blob *Blob::create(usize size)
     // Zero the memory
     void *data = pmm::phys_to_virt(phys);
     u8 *ptr = static_cast<u8 *>(data);
-    for (usize i = 0; i < aligned_size; i++)
-    {
+    for (usize i = 0; i < aligned_size; i++) {
         ptr[i] = 0;
     }
 
@@ -48,8 +43,7 @@ Blob *Blob::create(usize size)
     Blob *blob = new Blob(data, phys, aligned_size);
 
     // Check if allocation failed - if so, free the physical pages to avoid leak
-    if (!blob)
-    {
+    if (!blob) {
         serial::puts("[blob] Failed to allocate Blob object, freeing pages\n");
         pmm::free_pages(phys, pages);
         return nullptr;
@@ -65,10 +59,8 @@ Blob *Blob::create(usize size)
 }
 
 /** @copydoc kobj::Blob::~Blob */
-Blob::~Blob()
-{
-    if (phys_ != 0)
-    {
+Blob::~Blob() {
+    if (phys_ != 0) {
         usize pages = (size_ + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE;
         pmm::free_pages(phys_, pages);
 

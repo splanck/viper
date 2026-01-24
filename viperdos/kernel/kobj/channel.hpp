@@ -13,8 +13,7 @@
  * reference-counted `kobj::Object` so it can be stored in capability tables and
  * shared across domains using handles.
  */
-namespace kobj
-{
+namespace kobj {
 
 // Channel wrapper - wraps the low-level channel for capability system
 /**
@@ -24,13 +23,11 @@ namespace kobj
  * Owns a low-level channel ID. The destructor closes the underlying channel.
  * Channel operations are forwarded to the low-level channel subsystem.
  */
-class Channel : public Object
-{
+class Channel : public Object {
   public:
     static constexpr cap::Kind KIND = cap::Kind::Channel;
 
-    enum EndpointMask : u8
-    {
+    enum EndpointMask : u8 {
         ENDPOINT_SEND = 1u << 0,
         ENDPOINT_RECV = 1u << 1,
         ENDPOINT_BOTH = ENDPOINT_SEND | ENDPOINT_RECV,
@@ -83,8 +80,7 @@ class Channel : public Object
     ~Channel() override;
 
     /** @brief Get the underlying low-level channel ID. */
-    u32 id() const
-    {
+    u32 id() const {
         return channel_id_;
     }
 
@@ -102,9 +98,7 @@ class Channel : public Object
 
   private:
     Channel(u32 channel_id, u8 endpoints)
-        : Object(KIND), channel_id_(channel_id), endpoints_(endpoints)
-    {
-    }
+        : Object(KIND), channel_id_(channel_id), endpoints_(endpoints) {}
 
     u32 channel_id_;
     u8 endpoints_;

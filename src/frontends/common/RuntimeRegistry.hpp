@@ -72,18 +72,18 @@ enum class RuntimeArgKind
 /// @brief Full signature information for a runtime function.
 struct RuntimeFunctionInfo
 {
-    std::string_view canonicalName; ///< Viper.* canonical name
-    std::string_view runtimeSymbol; ///< C rt_* symbol
-    std::string_view signature;     ///< Signature string e.g., "i64(str,i64)"
-    RuntimeReturnKind returnKind;   ///< Parsed return type
+    std::string_view canonicalName;       ///< Viper.* canonical name
+    std::string_view runtimeSymbol;       ///< C rt_* symbol
+    std::string_view signature;           ///< Signature string e.g., "i64(str,i64)"
+    RuntimeReturnKind returnKind;         ///< Parsed return type
     std::vector<RuntimeArgKind> argKinds; ///< Parsed argument types
 };
 
 /// @brief Class information for OOP-style APIs.
 struct RuntimeClassInfo
 {
-    std::string_view name;                        ///< Class name (e.g., "Viper.String")
-    std::string_view constructor;                 ///< Constructor canonical name or empty
+    std::string_view name;                            ///< Class name (e.g., "Viper.String")
+    std::string_view constructor;                     ///< Constructor canonical name or empty
     std::vector<runtime::RuntimeProperty> properties; ///< Class properties
     std::vector<runtime::RuntimeMethod> methods;      ///< Class methods
 };

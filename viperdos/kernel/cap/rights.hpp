@@ -15,8 +15,7 @@
  * The rights are defined as bit flags so they can be combined and tested
  * efficiently.
  */
-namespace cap
-{
+namespace cap {
 
 // Capability rights flags
 /**
@@ -30,8 +29,7 @@ namespace cap
  * The enum values can be combined with bitwise operators. Helper presets for
  * common combinations are provided.
  */
-enum Rights : u32
-{
+enum Rights : u32 {
     CAP_NONE = 0,
     CAP_READ = 1 << 0,
     CAP_WRITE = 1 << 1,
@@ -62,8 +60,7 @@ enum Rights : u32
  * @param b Right mask.
  * @return Combined mask.
  */
-inline Rights operator|(Rights a, Rights b)
-{
+inline Rights operator|(Rights a, Rights b) {
     return static_cast<Rights>(static_cast<u32>(a) | static_cast<u32>(b));
 }
 
@@ -74,8 +71,7 @@ inline Rights operator|(Rights a, Rights b)
  * @param b Right mask.
  * @return Intersection mask.
  */
-inline Rights operator&(Rights a, Rights b)
-{
+inline Rights operator&(Rights a, Rights b) {
     return static_cast<Rights>(static_cast<u32>(a) & static_cast<u32>(b));
 }
 
@@ -85,8 +81,7 @@ inline Rights operator&(Rights a, Rights b)
  * @param a Mask to negate.
  * @return Negated mask.
  */
-inline Rights operator~(Rights a)
-{
+inline Rights operator~(Rights a) {
     return static_cast<Rights>(~static_cast<u32>(a));
 }
 
@@ -101,8 +96,7 @@ inline Rights operator~(Rights a)
  * @param required Rights required to perform an operation.
  * @return `true` if all required rights are present.
  */
-inline bool has_rights(u32 current, Rights required)
-{
+inline bool has_rights(u32 current, Rights required) {
     return (current & static_cast<u32>(required)) == static_cast<u32>(required);
 }
 

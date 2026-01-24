@@ -154,33 +154,33 @@ void RuntimeRegistry::buildFunctionIndex()
             std::string sigStr;
             switch (sig->retType.kind)
             {
-            case core::Type::Kind::Void:
-                sigStr = "void";
-                break;
-            case core::Type::Kind::I1:
-                sigStr = "i1";
-                break;
-            case core::Type::Kind::I16:
-                sigStr = "i16";
-                break;
-            case core::Type::Kind::I32:
-                sigStr = "i32";
-                break;
-            case core::Type::Kind::I64:
-                sigStr = "i64";
-                break;
-            case core::Type::Kind::F64:
-                sigStr = "f64";
-                break;
-            case core::Type::Kind::Ptr:
-                sigStr = "obj";
-                break;
-            case core::Type::Kind::Str:
-                sigStr = "str";
-                break;
-            default:
-                sigStr = "obj";
-                break;
+                case core::Type::Kind::Void:
+                    sigStr = "void";
+                    break;
+                case core::Type::Kind::I1:
+                    sigStr = "i1";
+                    break;
+                case core::Type::Kind::I16:
+                    sigStr = "i16";
+                    break;
+                case core::Type::Kind::I32:
+                    sigStr = "i32";
+                    break;
+                case core::Type::Kind::I64:
+                    sigStr = "i64";
+                    break;
+                case core::Type::Kind::F64:
+                    sigStr = "f64";
+                    break;
+                case core::Type::Kind::Ptr:
+                    sigStr = "obj";
+                    break;
+                case core::Type::Kind::Str:
+                    sigStr = "str";
+                    break;
+                default:
+                    sigStr = "obj";
+                    break;
             }
 
             info.returnKind = typeToReturnKind(sigStr);
@@ -191,26 +191,26 @@ void RuntimeRegistry::buildFunctionIndex()
                 std::string_view argStr;
                 switch (paramType.kind)
                 {
-                case core::Type::Kind::I1:
-                    argStr = "i1";
-                    break;
-                case core::Type::Kind::I16:
-                case core::Type::Kind::I32:
-                case core::Type::Kind::I64:
-                    argStr = "i64";
-                    break;
-                case core::Type::Kind::F64:
-                    argStr = "f64";
-                    break;
-                case core::Type::Kind::Ptr:
-                    argStr = "obj";
-                    break;
-                case core::Type::Kind::Str:
-                    argStr = "str";
-                    break;
-                default:
-                    argStr = "obj";
-                    break;
+                    case core::Type::Kind::I1:
+                        argStr = "i1";
+                        break;
+                    case core::Type::Kind::I16:
+                    case core::Type::Kind::I32:
+                    case core::Type::Kind::I64:
+                        argStr = "i64";
+                        break;
+                    case core::Type::Kind::F64:
+                        argStr = "f64";
+                        break;
+                    case core::Type::Kind::Ptr:
+                        argStr = "obj";
+                        break;
+                    case core::Type::Kind::Str:
+                        argStr = "str";
+                        break;
+                    default:
+                        argStr = "obj";
+                        break;
                 }
                 info.argKinds.push_back(typeToArgKind(argStr));
             }

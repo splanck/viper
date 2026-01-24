@@ -24,15 +24,15 @@
 /// @brief Tilemap implementation structure.
 typedef struct rt_tilemap_impl
 {
-    int64_t width;       ///< Width in tiles
-    int64_t height;      ///< Height in tiles
-    int64_t tile_width;  ///< Tile width in pixels
-    int64_t tile_height; ///< Tile height in pixels
-    int64_t tileset_cols;///< Number of columns in tileset
-    int64_t tileset_rows;///< Number of rows in tileset
-    int64_t tile_count;  ///< Total tiles in tileset
-    void *tileset;       ///< Tileset pixels
-    int64_t *tiles;      ///< Tile indices (row-major)
+    int64_t width;        ///< Width in tiles
+    int64_t height;       ///< Height in tiles
+    int64_t tile_width;   ///< Tile width in pixels
+    int64_t tile_height;  ///< Tile height in pixels
+    int64_t tileset_cols; ///< Number of columns in tileset
+    int64_t tileset_rows; ///< Number of rows in tileset
+    int64_t tile_count;   ///< Total tiles in tileset
+    void *tileset;        ///< Tileset pixels
+    int64_t *tiles;       ///< Tile indices (row-major)
 } rt_tilemap_impl;
 
 //=============================================================================

@@ -17,8 +17,7 @@
 
 #include "types.hpp"
 
-namespace syscall
-{
+namespace syscall {
 
 /**
  * @brief Syscall numbers used by the kernel syscall dispatcher.
@@ -28,8 +27,7 @@ namespace syscall
  * kernel and user-space agree on the syscall ABI. This enum simply re-exports
  * the shared values under kernel-friendly names and groups them by function.
  */
-enum Number : u64
-{
+enum Number : u64 {
     // Task management (0x00 - 0x0F)
     TASK_YIELD = SYS_TASK_YIELD,
     TASK_EXIT = SYS_TASK_EXIT,

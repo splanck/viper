@@ -9,21 +9,19 @@
 #include "sys/types.h"
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /* Glob result structure */
-    typedef struct
-    {
-        size_t gl_pathc; /* Count of paths matched */
-        char **gl_pathv; /* List of matched pathnames */
-        size_t gl_offs;  /* Slots to reserve in gl_pathv */
+/* Glob result structure */
+typedef struct {
+    size_t gl_pathc; /* Count of paths matched */
+    char **gl_pathv; /* List of matched pathnames */
+    size_t gl_offs;  /* Slots to reserve in gl_pathv */
 
-        /* Internal state */
-        size_t gl_pathalloc; /* Allocated size of gl_pathv */
-        int gl_flags;        /* Flags from glob() call */
-    } glob_t;
+    /* Internal state */
+    size_t gl_pathalloc; /* Allocated size of gl_pathv */
+    int gl_flags;        /* Flags from glob() call */
+} glob_t;
 
 /* Flags for glob() */
 #define GLOB_ERR (1 << 0)      /* Return on read error */
@@ -48,27 +46,27 @@ extern "C"
 #define GLOB_NOMATCH 3 /* No matches found */
 #define GLOB_NOSYS 4   /* Function not implemented */
 
-    /*
-     * glob - Find pathnames matching pattern
-     *
-     * Searches for files matching shell-style pattern.
-     * Results are stored in pglob.
-     * If GLOB_APPEND is set, adds to existing results.
-     * errfunc(path, errno) is called on read errors.
-     *
-     * Returns 0 on success, or GLOB_* error code.
-     */
-    int glob(const char *pattern,
-             int flags,
-             int (*errfunc)(const char *epath, int eerrno),
-             glob_t *pglob);
+/*
+ * glob - Find pathnames matching pattern
+ *
+ * Searches for files matching shell-style pattern.
+ * Results are stored in pglob.
+ * If GLOB_APPEND is set, adds to existing results.
+ * errfunc(path, errno) is called on read errors.
+ *
+ * Returns 0 on success, or GLOB_* error code.
+ */
+int glob(const char *pattern,
+         int flags,
+         int (*errfunc)(const char *epath, int eerrno),
+         glob_t *pglob);
 
-    /*
-     * globfree - Free glob results
-     *
-     * Frees memory allocated by glob().
-     */
-    void globfree(glob_t *pglob);
+/*
+ * globfree - Free glob results
+ *
+ * Frees memory allocated by glob().
+ */
+void globfree(glob_t *pglob);
 
 #ifdef __cplusplus
 }

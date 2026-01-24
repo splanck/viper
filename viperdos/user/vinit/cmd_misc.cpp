@@ -13,26 +13,23 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-extern "C"
-{
+extern "C" {
 #include "libtls/include/tls.h"
 }
 
 /**
  * @brief Check if path is a /sys path (system disk).
  */
-static bool is_sys_path(const char *path)
-{
-    return path && path[0] == '/' && path[1] == 's' && path[2] == 'y' &&
-           path[3] == 's' && path[4] == '/';
+static bool is_sys_path(const char *path) {
+    return path && path[0] == '/' && path[1] == 's' && path[2] == 'y' && path[3] == 's' &&
+           path[4] == '/';
 }
 
 /**
  * @brief Build args string with PWD prefix for spawned processes.
  * Format: "PWD=/current/dir;original_args" or "PWD=/current/dir" if no args.
  */
-static void build_spawn_args(const char *args, char *out, usize out_size)
-{
+static void build_spawn_args(const char *args, char *out, usize out_size) {
     usize pos = 0;
 
     // Add PWD= prefix
@@ -46,8 +43,7 @@ static void build_spawn_args(const char *args, char *out, usize out_size)
         out[pos++] = *cwd++;
 
     // Add separator and original args if present
-    if (args && *args)
-    {
+    if (args && *args) {
         if (pos < out_size - 1)
             out[pos++] = ';';
         while (*args && pos < out_size - 1)
@@ -60,8 +56,7 @@ static void build_spawn_args(const char *args, char *out, usize out_size)
 /**
  * @brief Run a program via kernel VFS.
  */
-static void run_via_kernel(const char *path, const char *args)
-{
+static void run_via_kernel(const char *path, const char *args) {
     // Build args with PWD prefix
     char spawn_args[512];
     build_spawn_args(args, spawn_args, sizeof(spawn_args));
@@ -71,8 +66,7 @@ static void run_via_kernel(const char *path, const char *args)
     u32 bootstrap_send = 0xFFFFFFFFu;
     i64 err = sys::spawn(path, nullptr, &pid, &tid, spawn_args, &bootstrap_send);
 
-    if (err < 0)
-    {
+    if (err < 0) {
         print_str("Run: failed to spawn \"");
         print_str(path);
         print_str("\" (error ");
@@ -83,8 +77,7 @@ static void run_via_kernel(const char *path, const char *args)
         return;
     }
 
-    if (bootstrap_send != 0xFFFFFFFFu)
-    {
+    if (bootstrap_send != 0xFFFFFFFFu) {
         sys::channel_close(static_cast<i32>(bootstrap_send));
     }
 
@@ -97,8 +90,7 @@ static void run_via_kernel(const char *path, const char *args)
     i32 status = 0;
     i64 exited_pid = sys::waitpid(pid, &status);
 
-    if (exited_pid < 0)
-    {
+    if (exited_pid < 0) {
         print_str("Run: wait failed (error ");
         put_num(exited_pid);
         print_str(")\n");
@@ -120,10 +112,8 @@ static void run_via_kernel(const char *path, const char *args)
 /**
  * @brief Run command - spawns a program via kernel VFS.
  */
-void cmd_run(const char *cmdline)
-{
-    if (!cmdline || *cmdline == '\0')
-    {
+void cmd_run(const char *cmdline) {
+    if (!cmdline || *cmdline == '\0') {
         print_str("Run: missing program path\n");
         last_rc = RC_ERROR;
         last_error = "No path specified";
@@ -159,8 +149,7 @@ void cmd_run(const char *cmdline)
     const char *args = args_len > 0 ? args_buf : nullptr;
 
     // Normalize path for non-absolute paths
-    if (!is_sys_path(path) && path[0] != '/')
-    {
+    if (!is_sys_path(path) && path[0] != '/') {
         // Try to find the program on the user disk
         char search_path[256];
 
@@ -170,8 +159,7 @@ void cmd_run(const char *cmdline)
 
         // Try normalized path first
         i32 fd = sys::open(normalized, sys::O_RDONLY);
-        if (fd >= 0)
-        {
+        if (fd >= 0) {
             sys::close(fd);
             run_via_kernel(normalized, args);
             return;
@@ -189,16 +177,14 @@ void cmd_run(const char *cmdline)
         search_path[i] = '\0';
 
         fd = sys::open(search_path, sys::O_RDONLY);
-        if (fd >= 0)
-        {
+        if (fd >= 0) {
             sys::close(fd);
             run_via_kernel(search_path, args);
             return;
         }
 
         // Try with .prg extension
-        if (i + 4 < 255)
-        {
+        if (i + 4 < 255) {
             search_path[i++] = '.';
             search_path[i++] = 'p';
             search_path[i++] = 'r';
@@ -206,8 +192,7 @@ void cmd_run(const char *cmdline)
             search_path[i] = '\0';
 
             fd = sys::open(search_path, sys::O_RDONLY);
-            if (fd >= 0)
-            {
+            if (fd >= 0) {
                 sys::close(fd);
                 run_via_kernel(search_path, args);
                 return;
@@ -223,17 +208,14 @@ void cmd_run(const char *cmdline)
     run_via_kernel(normalized, args);
 }
 
-void cmd_assign(const char *args)
-{
-    if (!args || *args == '\0')
-    {
+void cmd_assign(const char *args) {
+    if (!args || *args == '\0') {
         // List all assigns
         sys::AssignInfo assigns[16];
         usize count = 0;
 
         i32 result = sys::assign_list(assigns, 16, &count);
-        if (result < 0)
-        {
+        if (result < 0) {
             print_str("Assign: failed to list assigns\n");
             last_rc = RC_ERROR;
             return;
@@ -243,14 +225,12 @@ void cmd_assign(const char *args)
         print_str("  Name         Handle     Flags\n");
         print_str("  -----------  ---------  ------\n");
 
-        for (usize i = 0; i < count; i++)
-        {
+        for (usize i = 0; i < count; i++) {
             print_str("  ");
             print_str(assigns[i].name);
             print_str(":");
             usize namelen = strlen(assigns[i].name) + 1;
-            while (namelen < 11)
-            {
+            while (namelen < 11) {
                 print_char(' ');
                 namelen++;
             }
@@ -261,8 +241,7 @@ void cmd_assign(const char *args)
 
             if (assigns[i].flags & sys::ASSIGN_SYSTEM)
                 print_str("SYS");
-            if (assigns[i].flags & sys::ASSIGN_MULTI)
-            {
+            if (assigns[i].flags & sys::ASSIGN_MULTI) {
                 if (assigns[i].flags & sys::ASSIGN_SYSTEM)
                     print_str(",");
                 print_str("MULTI");
@@ -283,28 +262,21 @@ void cmd_assign(const char *args)
         print_str(" defined\n");
 
         last_rc = RC_OK;
-    }
-    else
-    {
+    } else {
         print_str("Usage: Assign           - List all assigns\n");
         print_str("       Assign NAME: DIR - Set assign (not yet implemented)\n");
         last_rc = RC_WARN;
     }
 }
 
-void cmd_path(const char *args)
-{
-    if (!args || *args == '\0')
-    {
+void cmd_path(const char *args) {
+    if (!args || *args == '\0') {
         print_str("Current path: SYS:\n");
         last_rc = RC_OK;
-    }
-    else
-    {
+    } else {
         u32 handle = 0;
         i32 result = sys::assign_resolve(args, &handle);
-        if (result < 0)
-        {
+        if (result < 0) {
             print_str("Path: cannot resolve \"");
             print_str(args);
             print_str("\" - not found or invalid assign\n");
@@ -320,8 +292,7 @@ void cmd_path(const char *args)
         print_str("\n");
 
         CapInfo cap_info;
-        if (sys::cap_query(handle, &cap_info) == 0)
-        {
+        if (sys::cap_query(handle, &cap_info) == 0) {
             print_str("  Kind:   ");
             print_str(sys::cap_kind_name(cap_info.kind));
             print_str("\n");
@@ -339,16 +310,14 @@ void cmd_path(const char *args)
 }
 
 // URL parsing helper
-struct ParsedUrl
-{
+struct ParsedUrl {
     char host[128];
     char path[256];
     u16 port;
     bool is_https;
 };
 
-static bool parse_url(const char *url, ParsedUrl *out)
-{
+static bool parse_url(const char *url, ParsedUrl *out) {
     out->host[0] = '\0';
     out->port = 80;
     out->path[0] = '/';
@@ -357,14 +326,11 @@ static bool parse_url(const char *url, ParsedUrl *out)
 
     const char *p = url;
 
-    if (strstart(p, "https://"))
-    {
+    if (strstart(p, "https://")) {
         out->is_https = true;
         out->port = 443;
         p += 8;
-    }
-    else if (strstart(p, "http://"))
-    {
+    } else if (strstart(p, "http://")) {
         p += 7;
     }
 
@@ -376,12 +342,10 @@ static bool parse_url(const char *url, ParsedUrl *out)
     if (host_len == 0)
         return false;
 
-    if (*p == ':')
-    {
+    if (*p == ':') {
         p++;
         u16 port = 0;
-        while (*p >= '0' && *p <= '9')
-        {
+        while (*p >= '0' && *p <= '9') {
             port = port * 10 + (*p - '0');
             p++;
         }
@@ -389,8 +353,7 @@ static bool parse_url(const char *url, ParsedUrl *out)
             out->port = port;
     }
 
-    if (*p == '/')
-    {
+    if (*p == '/') {
         usize path_len = 0;
         while (*p && path_len < 255)
             out->path[path_len++] = *p++;
@@ -400,10 +363,8 @@ static bool parse_url(const char *url, ParsedUrl *out)
     return true;
 }
 
-void cmd_fetch(const char *url)
-{
-    if (!url || *url == '\0')
-    {
+void cmd_fetch(const char *url) {
+    if (!url || *url == '\0') {
         print_str("Fetch: usage: Fetch <url>\n");
         print_str("  Examples:\n");
         print_str("    Fetch example.com\n");
@@ -416,11 +377,9 @@ void cmd_fetch(const char *url)
 
     ParsedUrl parsed;
 
-    if (!strstart(url, "http://") && !strstart(url, "https://"))
-    {
+    if (!strstart(url, "http://") && !strstart(url, "https://")) {
         usize i = 0;
-        while (url[i] && url[i] != '/' && i < 127)
-        {
+        while (url[i] && url[i] != '/' && i < 127) {
             parsed.host[i] = url[i];
             i++;
         }
@@ -429,11 +388,8 @@ void cmd_fetch(const char *url)
         parsed.path[0] = '/';
         parsed.path[1] = '\0';
         parsed.is_https = false;
-    }
-    else
-    {
-        if (!parse_url(url, &parsed))
-        {
+    } else {
+        if (!parse_url(url, &parsed)) {
             print_str("Fetch: invalid URL\n");
             last_rc = RC_ERROR;
             return;
@@ -446,8 +402,7 @@ void cmd_fetch(const char *url)
 
     // Use libc gethostbyname for DNS resolution
     struct hostent *he = gethostbyname(parsed.host);
-    if (!he || !he->h_addr_list || !he->h_addr_list[0])
-    {
+    if (!he || !he->h_addr_list || !he->h_addr_list[0]) {
         print_str("Fetch: DNS resolution failed\n");
         last_rc = RC_ERROR;
         return;
@@ -471,8 +426,7 @@ void cmd_fetch(const char *url)
 
     // Create socket via libc
     int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0)
-    {
+    if (sock < 0) {
         print_str("Fetch: failed to create socket\n");
         last_rc = RC_FAIL;
         return;
@@ -483,8 +437,7 @@ void cmd_fetch(const char *url)
     addr.sin_port = htons(static_cast<uint16_t>(parsed.port));
     addr.sin_addr.s_addr = ip_be;
 
-    if (connect(sock, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) != 0)
-    {
+    if (connect(sock, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) != 0) {
         print_str("Fetch: connection failed\n");
         close(sock);
         last_rc = RC_ERROR;
@@ -494,8 +447,7 @@ void cmd_fetch(const char *url)
     print_str("Connected!");
 
     tls_session_t *tls = nullptr;
-    if (parsed.is_https)
-    {
+    if (parsed.is_https) {
         print_str(" Starting TLS handshake...\n");
 
         tls_config_t config;
@@ -504,16 +456,14 @@ void cmd_fetch(const char *url)
         config.verify_cert = 1;
 
         tls = tls_new(sock, &config);
-        if (!tls)
-        {
+        if (!tls) {
             print_str("Fetch: TLS session creation failed\n");
             close(sock);
             last_rc = RC_ERROR;
             return;
         }
 
-        if (tls_handshake(tls) != TLS_OK)
-        {
+        if (tls_handshake(tls) != TLS_OK) {
             print_str("Fetch: TLS handshake failed: ");
             print_str(tls_get_error(tls));
             print_str("\n");
@@ -554,8 +504,7 @@ void cmd_fetch(const char *url)
     else
         sent = send(sock, request, pos, 0);
 
-    if (sent <= 0)
-    {
+    if (sent <= 0) {
         print_str("Fetch: send failed\n");
         if (tls)
             tls_close(tls);
@@ -568,22 +517,18 @@ void cmd_fetch(const char *url)
 
     char buf[512];
     usize total = 0;
-    for (int tries = 0; tries < 100; tries++)
-    {
+    for (int tries = 0; tries < 100; tries++) {
         long n;
         if (parsed.is_https)
             n = tls_recv(tls, buf, sizeof(buf) - 1);
         else
             n = recv(sock, buf, sizeof(buf) - 1, 0);
 
-        if (n > 0)
-        {
+        if (n > 0) {
             buf[n] = '\0';
             print_str(buf);
             total += static_cast<usize>(n);
-        }
-        else if (total > 0)
-        {
+        } else if (total > 0) {
             break;
         }
         for (int i = 0; i < 100000; i++)

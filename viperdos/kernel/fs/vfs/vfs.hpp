@@ -18,8 +18,7 @@
 #include "../../../include/viperdos/fs_types.hpp"
 #include "../../include/types.hpp"
 
-namespace fs::vfs
-{
+namespace fs::vfs {
 
 /**
  * @file vfs.hpp
@@ -49,16 +48,14 @@ using viper::Stat;
  * @details
  * These flags are re-exported from the shared fs_types.hpp for VFS use.
  */
-namespace flags
-{
+namespace flags {
 using namespace viper::open_flags;
 }
 
 /**
  * @brief Seek origin constants for @ref lseek.
  */
-namespace seek
-{
+namespace seek {
 using namespace viper::seek_whence;
 }
 
@@ -70,13 +67,11 @@ constexpr usize MAX_FDS = 32;
 } // namespace fs::vfs
 
 // Forward declaration for ViperFS (in fs::viperfs namespace)
-namespace fs::viperfs
-{
+namespace fs::viperfs {
 class ViperFS;
 }
 
-namespace fs::vfs
-{
+namespace fs::vfs {
 
 /**
  * @brief One open file descriptor entry.
@@ -85,12 +80,11 @@ namespace fs::vfs
  * Stores inode number, current file offset, open flags, and which
  * filesystem the file belongs to.
  */
-struct FileDesc
-{
+struct FileDesc {
     bool in_use;
-    u64 inode_num; // Inode number
-    u64 offset;    // Current file position
-    u32 flags;     // Open flags
+    u64 inode_num;            // Inode number
+    u64 offset;               // Current file position
+    u32 flags;                // Open flags
     fs::viperfs::ViperFS *fs; // Which filesystem this FD belongs to
 };
 
@@ -102,17 +96,14 @@ struct FileDesc
  * Provides allocation and lookup of file descriptor indices. The current kernel
  * uses a single global instance as a placeholder for per-process tables.
  */
-struct FDTable
-{
+struct FDTable {
     FileDesc fds[MAX_FDS];
 
     /**
      * @brief Initialize the table, marking all descriptors free.
      */
-    void init()
-    {
-        for (usize i = 0; i < MAX_FDS; i++)
-        {
+    void init() {
+        for (usize i = 0; i < MAX_FDS; i++) {
             fds[i].in_use = false;
         }
     }
@@ -122,13 +113,10 @@ struct FDTable
      *
      * @return File descriptor index on success, or -1 if table is full.
      */
-    i32 alloc()
-    {
+    i32 alloc() {
         // Reserve 0/1/2 for conventional stdin/stdout/stderr.
-        for (usize i = 3; i < MAX_FDS; i++)
-        {
-            if (!fds[i].in_use)
-            {
+        for (usize i = 3; i < MAX_FDS; i++) {
+            if (!fds[i].in_use) {
                 fds[i].in_use = true;
                 return static_cast<i32>(i);
             }
@@ -141,10 +129,8 @@ struct FDTable
      *
      * @param fd File descriptor index.
      */
-    void free(i32 fd)
-    {
-        if (fd >= 0 && static_cast<usize>(fd) < MAX_FDS)
-        {
+    void free(i32 fd) {
+        if (fd >= 0 && static_cast<usize>(fd) < MAX_FDS) {
             fds[fd].in_use = false;
         }
     }
@@ -155,10 +141,8 @@ struct FDTable
      * @param fd File descriptor index.
      * @return Pointer to entry if valid and in-use, otherwise `nullptr`.
      */
-    FileDesc *get(i32 fd)
-    {
-        if (fd >= 0 && static_cast<usize>(fd) < MAX_FDS && fds[fd].in_use)
-        {
+    FileDesc *get(i32 fd) {
+        if (fd >= 0 && static_cast<usize>(fd) < MAX_FDS && fds[fd].in_use) {
             return &fds[fd];
         }
         return nullptr;

@@ -6,8 +6,7 @@
 
 #include "../wchar.h"
 
-namespace std
-{
+namespace std {
 
 using ::FILE;
 using ::mbstate_t;

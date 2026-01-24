@@ -7,25 +7,24 @@
  * some basic graphics.
  */
 
+#include "../include/viper_colors.h"
 #include <gui.h>
 #include <stdio.h>
 #include <string.h>
-#include "../include/viper_colors.h"
 
 // Colors (aliases to centralized viper_colors.h)
-#define COLOR_BLUE      VIPER_COLOR_BLUE
-#define COLOR_WHITE     VIPER_COLOR_WHITE
-#define COLOR_BLACK     VIPER_COLOR_BLACK
-#define COLOR_GRAY      VIPER_COLOR_GRAY_MED
+#define COLOR_BLUE VIPER_COLOR_BLUE
+#define COLOR_WHITE VIPER_COLOR_WHITE
+#define COLOR_BLACK VIPER_COLOR_BLACK
+#define COLOR_GRAY VIPER_COLOR_GRAY_MED
 #define COLOR_LIGHTGRAY VIPER_COLOR_GRAY_LIGHT
-#define COLOR_RED       VIPER_COLOR_RED
-#define COLOR_GREEN     VIPER_COLOR_GREEN
-#define COLOR_YELLOW    VIPER_COLOR_YELLOW
+#define COLOR_RED VIPER_COLOR_RED
+#define COLOR_GREEN VIPER_COLOR_GREEN
+#define COLOR_YELLOW VIPER_COLOR_YELLOW
 
 // Draw a simple button
-static void draw_button(gui_window_t *win, int x, int y, int w, int h,
-                        const char *label, uint32_t bg_color)
-{
+static void draw_button(
+    gui_window_t *win, int x, int y, int w, int h, const char *label, uint32_t bg_color) {
     // Button background
     gui_fill_rect(win, x, y, w, h, bg_color);
 
@@ -47,14 +46,12 @@ static void draw_button(gui_window_t *win, int x, int y, int w, int h,
     gui_draw_text(win, label_x, label_y, label, COLOR_BLACK);
 }
 
-int main(void)
-{
+int main(void) {
     printf("Hello GUI - ViperDOS GUI Demo\n");
     printf("Initializing GUI...\n");
 
     // Initialize GUI
-    if (gui_init() != 0)
-    {
+    if (gui_init() != 0) {
         printf("ERROR: Failed to initialize GUI (displayd not running?)\n");
         return 1;
     }
@@ -62,16 +59,14 @@ int main(void)
 
     // Get display info
     gui_display_info_t info;
-    if (gui_get_display_info(&info) == 0)
-    {
+    if (gui_get_display_info(&info) == 0) {
         printf("Display: %ux%u, format=0x%08x\n", info.width, info.height, info.format);
     }
 
     // Create window
     printf("Creating window...\n");
     gui_window_t *win = gui_create_window("Hello GUI", 400, 300);
-    if (!win)
-    {
+    if (!win) {
         printf("ERROR: Failed to create window\n");
         gui_shutdown();
         return 1;
@@ -83,8 +78,7 @@ int main(void)
     uint32_t width = gui_get_width(win);
     uint32_t height = gui_get_height(win);
 
-    if (!pixels)
-    {
+    if (!pixels) {
         printf("ERROR: No pixel buffer\n");
         gui_destroy_window(win);
         gui_shutdown();
@@ -129,12 +123,10 @@ int main(void)
 
     printf("Entering event loop. Click in the window!\n");
 
-    while (running)
-    {
+    while (running) {
         // Poll for events
         gui_event_t event;
-        if (gui_poll_event(win, &event) == 0)
-        {
+        if (gui_poll_event(win, &event) == 0) {
             event_count++;
 
             // Clear event area and show event info
@@ -143,40 +135,44 @@ int main(void)
 
             char buf[64];
 
-            switch (event.type)
-            {
+            switch (event.type) {
                 case GUI_EVENT_MOUSE:
-                    if (event.mouse.event_type == 0)
-                    {
+                    if (event.mouse.event_type == 0) {
                         // Mouse move - show position
-                        snprintf(buf, sizeof(buf), "Mouse Move: %d, %d",
-                                 event.mouse.x, event.mouse.y);
-                    }
-                    else if (event.mouse.event_type == 1)
-                    {
+                        snprintf(
+                            buf, sizeof(buf), "Mouse Move: %d, %d", event.mouse.x, event.mouse.y);
+                    } else if (event.mouse.event_type == 1) {
                         // Button down
-                        snprintf(buf, sizeof(buf), "Mouse Down: btn=%d at %d,%d",
-                                 event.mouse.button, event.mouse.x, event.mouse.y);
-                    }
-                    else if (event.mouse.event_type == 2)
-                    {
+                        snprintf(buf,
+                                 sizeof(buf),
+                                 "Mouse Down: btn=%d at %d,%d",
+                                 event.mouse.button,
+                                 event.mouse.x,
+                                 event.mouse.y);
+                    } else if (event.mouse.event_type == 2) {
                         // Button up
-                        snprintf(buf, sizeof(buf), "Mouse Up: btn=%d at %d,%d",
-                                 event.mouse.button, event.mouse.x, event.mouse.y);
+                        snprintf(buf,
+                                 sizeof(buf),
+                                 "Mouse Up: btn=%d at %d,%d",
+                                 event.mouse.button,
+                                 event.mouse.x,
+                                 event.mouse.y);
                     }
                     gui_draw_text(win, 40, 235, buf, COLOR_WHITE);
                     break;
 
                 case GUI_EVENT_KEY:
-                    snprintf(buf, sizeof(buf), "Key %s: code=%d mod=0x%02x",
+                    snprintf(buf,
+                             sizeof(buf),
+                             "Key %s: code=%d mod=0x%02x",
                              event.key.pressed ? "Down" : "Up",
-                             event.key.keycode, event.key.modifiers);
+                             event.key.keycode,
+                             event.key.modifiers);
                     gui_draw_text(win, 40, 235, buf, COLOR_GREEN);
                     break;
 
                 case GUI_EVENT_FOCUS:
-                    snprintf(buf, sizeof(buf), "Focus: %s",
-                             event.focus.gained ? "gained" : "lost");
+                    snprintf(buf, sizeof(buf), "Focus: %s", event.focus.gained ? "gained" : "lost");
                     gui_draw_text(win, 40, 235, buf, COLOR_YELLOW);
                     break;
 
@@ -200,9 +196,9 @@ int main(void)
         }
 
         // Yield to other processes
-        __asm__ volatile("mov x8, #0x0E\n\t"  // SYS_YIELD
-                         "svc #0"
-                         ::: "x8");
+        __asm__ volatile("mov x8, #0x0E\n\t" // SYS_YIELD
+                         "svc #0" ::
+                             : "x8");
     }
 
     // Clean up

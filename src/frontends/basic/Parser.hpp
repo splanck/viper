@@ -220,13 +220,14 @@ class Parser
     static void registerIoParsers(StatementParserRegistry &registry);
     static void registerCoreParsers(StatementParserRegistry &registry);
     static void registerOopParsers(StatementParserRegistry &registry);
+
     /// @brief Result of processing an ADDFILE include.
     struct AddFileResult
     {
-        bool success{false};         ///< True if include succeeded.
-        std::unique_ptr<Program> subprog; ///< Parsed program from include.
-        std::unordered_set<std::string> arrays;    ///< Arrays from child parser.
-        std::unordered_map<std::string, int64_t> constInts;  ///< CONSTs from child.
+        bool success{false};                                    ///< True if include succeeded.
+        std::unique_ptr<Program> subprog;                       ///< Parsed program from include.
+        std::unordered_set<std::string> arrays;                 ///< Arrays from child parser.
+        std::unordered_map<std::string, int64_t> constInts;     ///< CONSTs from child.
         std::unordered_map<std::string, std::string> constStrs; ///< CONSTs from child.
     };
 

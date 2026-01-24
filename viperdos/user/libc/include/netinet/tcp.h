@@ -9,8 +9,7 @@
 #include <sys/types.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 /*
@@ -89,100 +88,98 @@ extern "C"
 #define TCPOLEN_SACK_PERMITTED 2
 #define TCPOLEN_TIMESTAMP 10
 
-    /* TCP header structure */
-    struct tcphdr
-    {
-        uint16_t th_sport; /* Source port */
-        uint16_t th_dport; /* Destination port */
-        uint32_t th_seq;   /* Sequence number */
-        uint32_t th_ack;   /* Acknowledgment number */
+/* TCP header structure */
+struct tcphdr {
+    uint16_t th_sport; /* Source port */
+    uint16_t th_dport; /* Destination port */
+    uint32_t th_seq;   /* Sequence number */
+    uint32_t th_ack;   /* Acknowledgment number */
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-        uint8_t th_x2 : 4;  /* Reserved */
-        uint8_t th_off : 4; /* Data offset (header length / 4) */
+    uint8_t th_x2 : 4;  /* Reserved */
+    uint8_t th_off : 4; /* Data offset (header length / 4) */
 #else
     uint8_t th_off : 4; /* Data offset */
     uint8_t th_x2 : 4;  /* Reserved */
 #endif
-        uint8_t th_flags; /* Flags */
-        uint16_t th_win;  /* Window size */
-        uint16_t th_sum;  /* Checksum */
-        uint16_t th_urp;  /* Urgent pointer */
-    };
+    uint8_t th_flags; /* Flags */
+    uint16_t th_win;  /* Window size */
+    uint16_t th_sum;  /* Checksum */
+    uint16_t th_urp;  /* Urgent pointer */
+};
 
 /* Alternative naming convention (BSD style) */
 #define tcp_seq uint32_t
 
-    /* TCP info structure for TCP_INFO socket option */
-    struct tcp_info
-    {
-        uint8_t tcpi_state;                         /* TCP state */
-        uint8_t tcpi_ca_state;                      /* Congestion avoidance state */
-        uint8_t tcpi_retransmits;                   /* Number of retransmits */
-        uint8_t tcpi_probes;                        /* Probes sent */
-        uint8_t tcpi_backoff;                       /* Backoff */
-        uint8_t tcpi_options;                       /* TCP options */
-        uint8_t tcpi_snd_wscale : 4;                /* Send window scale */
-        uint8_t tcpi_rcv_wscale : 4;                /* Receive window scale */
-        uint8_t tcpi_delivery_rate_app_limited : 1; /* Delivery rate limited */
+/* TCP info structure for TCP_INFO socket option */
+struct tcp_info {
+    uint8_t tcpi_state;                         /* TCP state */
+    uint8_t tcpi_ca_state;                      /* Congestion avoidance state */
+    uint8_t tcpi_retransmits;                   /* Number of retransmits */
+    uint8_t tcpi_probes;                        /* Probes sent */
+    uint8_t tcpi_backoff;                       /* Backoff */
+    uint8_t tcpi_options;                       /* TCP options */
+    uint8_t tcpi_snd_wscale : 4;                /* Send window scale */
+    uint8_t tcpi_rcv_wscale : 4;                /* Receive window scale */
+    uint8_t tcpi_delivery_rate_app_limited : 1; /* Delivery rate limited */
 
-        uint32_t tcpi_rto;     /* Retransmission timeout (usec) */
-        uint32_t tcpi_ato;     /* ACK timeout (usec) */
-        uint32_t tcpi_snd_mss; /* Send MSS */
-        uint32_t tcpi_rcv_mss; /* Receive MSS */
+    uint32_t tcpi_rto;     /* Retransmission timeout (usec) */
+    uint32_t tcpi_ato;     /* ACK timeout (usec) */
+    uint32_t tcpi_snd_mss; /* Send MSS */
+    uint32_t tcpi_rcv_mss; /* Receive MSS */
 
-        uint32_t tcpi_unacked; /* Unacked packets */
-        uint32_t tcpi_sacked;  /* SACKed packets */
-        uint32_t tcpi_lost;    /* Lost packets */
-        uint32_t tcpi_retrans; /* Retransmitted packets */
-        uint32_t tcpi_fackets; /* Forward ACKed packets */
+    uint32_t tcpi_unacked; /* Unacked packets */
+    uint32_t tcpi_sacked;  /* SACKed packets */
+    uint32_t tcpi_lost;    /* Lost packets */
+    uint32_t tcpi_retrans; /* Retransmitted packets */
+    uint32_t tcpi_fackets; /* Forward ACKed packets */
 
-        /* Times (msec) */
-        uint32_t tcpi_last_data_sent; /* Time since last data sent */
-        uint32_t tcpi_last_ack_sent;  /* Time since last ACK sent (unused) */
-        uint32_t tcpi_last_data_recv; /* Time since last data received */
-        uint32_t tcpi_last_ack_recv;  /* Time since last ACK received */
+    /* Times (msec) */
+    uint32_t tcpi_last_data_sent; /* Time since last data sent */
+    uint32_t tcpi_last_ack_sent;  /* Time since last ACK sent (unused) */
+    uint32_t tcpi_last_data_recv; /* Time since last data received */
+    uint32_t tcpi_last_ack_recv;  /* Time since last ACK received */
 
-        /* Metrics */
-        uint32_t tcpi_pmtu;         /* Path MTU */
-        uint32_t tcpi_rcv_ssthresh; /* Receive slow start threshold */
-        uint32_t tcpi_rtt;          /* Round trip time (usec) */
-        uint32_t tcpi_rttvar;       /* RTT variance (usec) */
-        uint32_t tcpi_snd_ssthresh; /* Send slow start threshold */
-        uint32_t tcpi_snd_cwnd;     /* Send congestion window */
-        uint32_t tcpi_advmss;       /* Advertised MSS */
-        uint32_t tcpi_reordering;   /* Reordering metric */
+    /* Metrics */
+    uint32_t tcpi_pmtu;         /* Path MTU */
+    uint32_t tcpi_rcv_ssthresh; /* Receive slow start threshold */
+    uint32_t tcpi_rtt;          /* Round trip time (usec) */
+    uint32_t tcpi_rttvar;       /* RTT variance (usec) */
+    uint32_t tcpi_snd_ssthresh; /* Send slow start threshold */
+    uint32_t tcpi_snd_cwnd;     /* Send congestion window */
+    uint32_t tcpi_advmss;       /* Advertised MSS */
+    uint32_t tcpi_reordering;   /* Reordering metric */
 
-        uint32_t tcpi_rcv_rtt;   /* Receive RTT (usec) */
-        uint32_t tcpi_rcv_space; /* Receive buffer space */
+    uint32_t tcpi_rcv_rtt;   /* Receive RTT (usec) */
+    uint32_t tcpi_rcv_space; /* Receive buffer space */
 
-        uint32_t tcpi_total_retrans; /* Total retransmissions */
+    uint32_t tcpi_total_retrans; /* Total retransmissions */
 
-        uint64_t tcpi_pacing_rate;     /* Pacing rate (bytes/sec) */
-        uint64_t tcpi_max_pacing_rate; /* Max pacing rate */
-        uint64_t tcpi_bytes_acked;     /* Bytes ACKed */
-        uint64_t tcpi_bytes_received;  /* Bytes received */
-        uint32_t tcpi_segs_out;        /* Segments sent */
-        uint32_t tcpi_segs_in;         /* Segments received */
+    uint64_t tcpi_pacing_rate;     /* Pacing rate (bytes/sec) */
+    uint64_t tcpi_max_pacing_rate; /* Max pacing rate */
+    uint64_t tcpi_bytes_acked;     /* Bytes ACKed */
+    uint64_t tcpi_bytes_received;  /* Bytes received */
+    uint32_t tcpi_segs_out;        /* Segments sent */
+    uint32_t tcpi_segs_in;         /* Segments received */
 
-        uint32_t tcpi_notsent_bytes; /* Bytes not yet sent */
-        uint32_t tcpi_min_rtt;       /* Minimum RTT (usec) */
-        uint32_t tcpi_data_segs_in;  /* Data segments received */
-        uint32_t tcpi_data_segs_out; /* Data segments sent */
+    uint32_t tcpi_notsent_bytes; /* Bytes not yet sent */
+    uint32_t tcpi_min_rtt;       /* Minimum RTT (usec) */
+    uint32_t tcpi_data_segs_in;  /* Data segments received */
+    uint32_t tcpi_data_segs_out; /* Data segments sent */
 
-        uint64_t tcpi_delivery_rate; /* Delivery rate (bytes/sec) */
+    uint64_t tcpi_delivery_rate; /* Delivery rate (bytes/sec) */
 
-        uint64_t tcpi_busy_time;      /* Busy time (usec) */
-        uint64_t tcpi_rwnd_limited;   /* Rwnd limited time (usec) */
-        uint64_t tcpi_sndbuf_limited; /* Sndbuf limited time (usec) */
+    uint64_t tcpi_busy_time;      /* Busy time (usec) */
+    uint64_t tcpi_rwnd_limited;   /* Rwnd limited time (usec) */
+    uint64_t tcpi_sndbuf_limited; /* Sndbuf limited time (usec) */
 
-        uint32_t tcpi_delivered;    /* Packets delivered */
-        uint32_t tcpi_delivered_ce; /* Packets delivered with CE */
+    uint32_t tcpi_delivered;    /* Packets delivered */
+    uint32_t tcpi_delivered_ce; /* Packets delivered with CE */
 
-        uint64_t tcpi_bytes_sent;    /* Bytes sent */
-        uint64_t tcpi_bytes_retrans; /* Bytes retransmitted */
-        uint32_t tcpi_dsack_dups;    /* Duplicate DSACKs */
-        uint32_t tcpi_reord_seen;    /* Reorderings seen */
-    };
+    uint64_t tcpi_bytes_sent;    /* Bytes sent */
+    uint64_t tcpi_bytes_retrans; /* Bytes retransmitted */
+    uint32_t tcpi_dsack_dups;    /* Duplicate DSACKs */
+    uint32_t tcpi_reord_seen;    /* Reorderings seen */
+};
 
 /* TCP congestion avoidance states */
 #define TCP_CA_Open 0
@@ -194,15 +191,14 @@ extern "C"
 /* TCP MD5 signature structure */
 #define TCP_MD5SIG_MAXKEYLEN 80
 
-    struct tcp_md5sig
-    {
-        struct sockaddr_storage tcpm_addr;      /* Address */
-        uint8_t tcpm_flags;                     /* Flags */
-        uint8_t tcpm_prefixlen;                 /* Address prefix length */
-        uint16_t tcpm_keylen;                   /* Key length */
-        uint32_t __tcpm_pad;                    /* Reserved */
-        uint8_t tcpm_key[TCP_MD5SIG_MAXKEYLEN]; /* Key */
-    };
+struct tcp_md5sig {
+    struct sockaddr_storage tcpm_addr;      /* Address */
+    uint8_t tcpm_flags;                     /* Flags */
+    uint8_t tcpm_prefixlen;                 /* Address prefix length */
+    uint16_t tcpm_keylen;                   /* Key length */
+    uint32_t __tcpm_pad;                    /* Reserved */
+    uint8_t tcpm_key[TCP_MD5SIG_MAXKEYLEN]; /* Key */
+};
 
 /* TCP repair queues */
 #define TCP_NO_QUEUE 0

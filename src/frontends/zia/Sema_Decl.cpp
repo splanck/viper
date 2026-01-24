@@ -179,8 +179,7 @@ void Sema::analyzeValueDecl(ValueDecl &decl)
     currentSelfType_ = nullptr;
 }
 
-template <typename T>
-void Sema::registerTypeMembers(T &decl, bool includeFields)
+template <typename T> void Sema::registerTypeMembers(T &decl, bool includeFields)
 {
     // Register field types (if applicable)
     if (includeFields)
@@ -190,7 +189,8 @@ void Sema::registerTypeMembers(T &decl, bool includeFields)
             if (member->kind == DeclKind::Field)
             {
                 auto *field = static_cast<FieldDecl *>(member.get());
-                TypeRef fieldType = field->type ? resolveTypeNode(field->type.get()) : types::unknown();
+                TypeRef fieldType =
+                    field->type ? resolveTypeNode(field->type.get()) : types::unknown();
                 std::string fieldKey = decl.name + "." + field->name;
                 fieldTypes_[fieldKey] = fieldType;
                 memberVisibility_[fieldKey] = field->visibility;

@@ -35,8 +35,7 @@
  *
  * Reference: https://www.qemu.org/docs/master/specs/fw_cfg.html
  */
-namespace fwcfg
-{
+namespace fwcfg {
 
 // QEMU fw_cfg interface for virt machine
 // Reference: https://www.qemu.org/docs/master/specs/fw_cfg.html

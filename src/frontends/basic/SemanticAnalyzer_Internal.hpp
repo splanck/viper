@@ -163,9 +163,9 @@ struct ExprRule
     /// @return The computed result type of the binary operation.
     using ResultTypeFn = SemanticAnalyzer::Type (*)(SemanticAnalyzer::Type, SemanticAnalyzer::Type);
 
-    BinaryExpr::Op op;           ///< The binary operator this rule applies to.
-    OperandValidator validator;  ///< Function to validate operand type compatibility.
-    ResultTypeFn result;         ///< Function to compute the result type.
+    BinaryExpr::Op op;             ///< The binary operator this rule applies to.
+    OperandValidator validator;    ///< Function to validate operand type compatibility.
+    ResultTypeFn result;           ///< Function to compute the result type.
     std::string_view mismatchDiag; ///< Diagnostic message template for type errors.
 };
 

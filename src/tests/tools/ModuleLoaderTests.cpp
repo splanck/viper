@@ -87,7 +87,8 @@ int main()
     }
     if (missingErrors.str() != "cannot open /definitely/not/present.il\n")
     {
-        std::cerr << "Expected 'cannot open /definitely/not/present.il\\n', got: '" << missingErrors.str() << "'\n";
+        std::cerr << "Expected 'cannot open /definitely/not/present.il\\n', got: '"
+                  << missingErrors.str() << "'\n";
         return 1;
     }
     std::cerr << "Missing file test passed\n";
@@ -97,8 +98,8 @@ int main()
     std::ostringstream parseErrors;
     const auto parseErrorPath = (root / "tests/il/parse/mismatched_paren.il").string();
     std::cerr << "Parse error path: " << parseErrorPath << "\n";
-    auto parseResult = il::tools::common::loadModuleFromFile(
-        parseErrorPath, parseModule, parseErrors);
+    auto parseResult =
+        il::tools::common::loadModuleFromFile(parseErrorPath, parseModule, parseErrors);
     if (parseResult.status != il::tools::common::LoadStatus::ParseError)
     {
         std::cerr << "Expected ParseError, got: " << parseResult.statusName() << "\n";
@@ -160,8 +161,11 @@ int main()
     }
     std::cerr << "Got diagnostic: " << diag << "\n";
     // Normalize paths for comparison (Windows: lowercase, forward slashes)
-    auto normalizePath = [](std::string path) {
-        std::transform(path.begin(), path.end(), path.begin(),
+    auto normalizePath = [](std::string path)
+    {
+        std::transform(path.begin(),
+                       path.end(),
+                       path.begin(),
                        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         std::replace(path.begin(), path.end(), '\\', '/');
         return path;

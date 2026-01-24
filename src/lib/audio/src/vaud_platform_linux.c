@@ -31,9 +31,9 @@
 #include "vaud_internal.h"
 #include <alsa/asoundlib.h>
 #include <pthread.h>
-#include <time.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 //===----------------------------------------------------------------------===//
 // Platform Data Structure
@@ -42,12 +42,12 @@
 /// @brief Linux ALSA platform data.
 typedef struct
 {
-    snd_pcm_t *pcm;        ///< ALSA PCM device handle
-    pthread_t thread;      ///< Audio thread
-    int running;           ///< Thread running flag
-    int paused;            ///< Pause state
-    pthread_mutex_t pause_mutex;   ///< Protects pause state
-    pthread_cond_t pause_cond;     ///< Signal for pause/resume
+    snd_pcm_t *pcm;              ///< ALSA PCM device handle
+    pthread_t thread;            ///< Audio thread
+    int running;                 ///< Thread running flag
+    int paused;                  ///< Pause state
+    pthread_mutex_t pause_mutex; ///< Protects pause state
+    pthread_cond_t pause_cond;   ///< Signal for pause/resume
 } vaud_linux_data;
 
 //===----------------------------------------------------------------------===//
@@ -151,14 +151,13 @@ int vaud_platform_init(vaud_context_t ctx)
     }
 
     /* Configure PCM parameters */
-    err = snd_pcm_set_params(
-        plat->pcm,
-        SND_PCM_FORMAT_S16_LE,           /* 16-bit signed little-endian */
-        SND_PCM_ACCESS_RW_INTERLEAVED,   /* Interleaved channels */
-        VAUD_CHANNELS,                    /* Stereo */
-        VAUD_SAMPLE_RATE,                 /* 44100 Hz */
-        1,                                /* Allow resampling */
-        50000                             /* Latency: 50ms in microseconds */
+    err = snd_pcm_set_params(plat->pcm,
+                             SND_PCM_FORMAT_S16_LE,         /* 16-bit signed little-endian */
+                             SND_PCM_ACCESS_RW_INTERLEAVED, /* Interleaved channels */
+                             VAUD_CHANNELS,                 /* Stereo */
+                             VAUD_SAMPLE_RATE,              /* 44100 Hz */
+                             1,                             /* Allow resampling */
+                             50000                          /* Latency: 50ms in microseconds */
     );
 
     if (err < 0)
@@ -200,7 +199,7 @@ void vaud_platform_shutdown(vaud_context_t ctx)
     /* Signal thread to stop */
     pthread_mutex_lock(&plat->pause_mutex);
     plat->running = 0;
-    plat->paused = 0;  /* Unpause to allow thread to exit */
+    plat->paused = 0; /* Unpause to allow thread to exit */
     pthread_cond_signal(&plat->pause_cond);
     pthread_mutex_unlock(&plat->pause_mutex);
 

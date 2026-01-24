@@ -16,8 +16,7 @@
 #include <string.h>
 
 // Device info structure (matches kernel definition)
-struct DeviceInfo
-{
+struct DeviceInfo {
     char name[32];
     char type[16];
     u32 flags;
@@ -29,8 +28,7 @@ constexpr u32 DEVICE_FLAG_ACTIVE = (1 << 0);
 constexpr u32 DEVICE_FLAG_VIRTUAL = (1 << 1);
 
 // Device list syscall wrapper
-static i32 get_device_list(DeviceInfo *devices, u32 max_count)
-{
+static i32 get_device_list(DeviceInfo *devices, u32 max_count) {
     auto r =
         sys::syscall2(SYS_DEVICE_LIST, reinterpret_cast<u64>(devices), static_cast<u64>(max_count));
     if (r.ok())
@@ -38,8 +36,7 @@ static i32 get_device_list(DeviceInfo *devices, u32 max_count)
     return static_cast<i32>(r.error);
 }
 
-extern "C" void _start()
-{
+extern "C" void _start() {
     printf("\n=== ViperDOS Hardware Devices ===\n\n");
 
     DeviceInfo devices[16];
@@ -47,14 +44,12 @@ extern "C" void _start()
 
     i32 count = get_device_list(devices, 16);
 
-    if (count < 0)
-    {
+    if (count < 0) {
         printf("Error: Failed to get device list (error %d)\n", count);
         sys::exit(1);
     }
 
-    if (count == 0)
-    {
+    if (count == 0) {
         printf("No devices detected.\n");
         sys::exit(0);
     }
@@ -64,8 +59,7 @@ extern "C" void _start()
     printf("%-20s %-12s %-8s %s\n", "--------------------", "------------", "--------", "------");
 
     // Print each device
-    for (i32 i = 0; i < count; i++)
-    {
+    for (i32 i = 0; i < count; i++) {
         DeviceInfo *dev = &devices[i];
 
         // Name column (20 chars)

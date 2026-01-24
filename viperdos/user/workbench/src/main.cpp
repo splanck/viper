@@ -3,8 +3,7 @@
 
 #include "../include/desktop.hpp"
 
-extern "C" int main()
-{
+extern "C" int main() {
     workbench::Desktop desktop;
 
     if (!desktop.init()) {

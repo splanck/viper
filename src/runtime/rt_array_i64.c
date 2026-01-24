@@ -172,6 +172,11 @@ void rt_arr_i64_copy_payload(int64_t *dst, const int64_t *src, size_t count)
 
 // Generate grow_in_place and resize functions using macros from rt_internal.h
 RT_ARR_DEFINE_GROW_IN_PLACE_FN(rt_arr_i64_grow_in_place, int64_t, rt_arr_i64_payload_bytes)
-RT_ARR_DEFINE_RESIZE_FN(rt_arr_i64_resize, int64_t, rt_arr_i64_hdr, rt_arr_i64_assert_header,
-                        rt_arr_i64_new, rt_arr_i64_copy_payload, rt_arr_i64_release,
+RT_ARR_DEFINE_RESIZE_FN(rt_arr_i64_resize,
+                        int64_t,
+                        rt_arr_i64_hdr,
+                        rt_arr_i64_assert_header,
+                        rt_arr_i64_new,
+                        rt_arr_i64_copy_payload,
+                        rt_arr_i64_release,
                         rt_arr_i64_grow_in_place)

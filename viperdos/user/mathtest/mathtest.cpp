@@ -7,8 +7,7 @@
 #include <stdio.h>
 
 /* Helper to check if two doubles are approximately equal */
-static int approx_equal(double a, double b, double epsilon)
-{
+static int approx_equal(double a, double b, double epsilon) {
     if (isnan(a) && isnan(b))
         return 1;
     if (isinf(a) && isinf(b))
@@ -17,24 +16,19 @@ static int approx_equal(double a, double b, double epsilon)
 }
 
 #define TEST(name, expr, expected, eps)                                                            \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         double result = (expr);                                                                    \
         double exp = (expected);                                                                   \
-        if (approx_equal(result, exp, eps))                                                        \
-        {                                                                                          \
+        if (approx_equal(result, exp, eps)) {                                                      \
             printf("[PASS] %s = %f\n", name, result);                                              \
             passed++;                                                                              \
-        }                                                                                          \
-        else                                                                                       \
-        {                                                                                          \
+        } else {                                                                                   \
             printf("[FAIL] %s = %f (expected %f)\n", name, result, exp);                           \
             failed++;                                                                              \
         }                                                                                          \
     } while (0)
 
-extern "C" void _start()
-{
+extern "C" void _start() {
     int passed = 0;
     int failed = 0;
 

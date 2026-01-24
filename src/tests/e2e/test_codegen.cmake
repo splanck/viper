@@ -8,11 +8,11 @@ set(LD_FLAGS "${LD_FLAGS} -no-pie")
 separate_arguments(LD_FLAGS_LIST NATIVE_COMMAND "${LD_FLAGS}")
 
 # .note.GNU-stack marks stack non-executable on Linux; omit on Windows
-if(WIN32)
+if (WIN32)
     file(WRITE out.s ".text\n.globl main\nmain:\n  mov $0, %eax\n  ret\n")
-else()
+else ()
     file(WRITE out.s ".text\n.globl main\nmain:\n  mov $0, %eax\n  ret\n.section .note.GNU-stack,\"\",@progbits\n")
-endif()
+endif ()
 
 if (MODE STREQUAL "syntax")
     execute_process(

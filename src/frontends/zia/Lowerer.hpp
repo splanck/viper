@@ -827,7 +827,8 @@ class Lowerer
     /// @param args The argument values.
     /// @param returnType The return type (handles void automatically).
     /// @return LowerResult with return value (or dummy for void).
-    LowerResult emitCallWithReturn(const std::string &callee, const std::vector<Value> &args,
+    LowerResult emitCallWithReturn(const std::string &callee,
+                                   const std::vector<Value> &args,
                                    Type returnType);
 
     /// @brief Convert a value to a string representation.
@@ -936,9 +937,9 @@ class Lowerer
     /// @param expr The call expression for arguments.
     /// @return The call result, or nullopt if method not recognized.
     std::optional<LowerResult> lowerListMethodCall(Value baseValue,
-                                                    TypeRef baseType,
-                                                    const std::string &methodName,
-                                                    CallExpr *expr);
+                                                   TypeRef baseType,
+                                                   const std::string &methodName,
+                                                   CallExpr *expr);
 
     /// @brief Lower a method call on a Map collection.
     /// @param baseValue The lowered map value.
@@ -947,9 +948,9 @@ class Lowerer
     /// @param expr The call expression for arguments.
     /// @return The call result, or nullopt if method not recognized.
     std::optional<LowerResult> lowerMapMethodCall(Value baseValue,
-                                                   TypeRef baseType,
-                                                   const std::string &methodName,
-                                                   CallExpr *expr);
+                                                  TypeRef baseType,
+                                                  const std::string &methodName,
+                                                  CallExpr *expr);
 
     /// @brief Lower a built-in function call (print, println, toString).
     /// @param name The function name.
@@ -961,13 +962,15 @@ class Lowerer
     /// @param typeName The value type name.
     /// @param expr The call expression with constructor arguments.
     /// @return The constructed value, or nullopt if not a value type.
-    std::optional<LowerResult> lowerValueTypeConstruction(const std::string &typeName, CallExpr *expr);
+    std::optional<LowerResult> lowerValueTypeConstruction(const std::string &typeName,
+                                                          CallExpr *expr);
 
     /// @brief Lower an entity type construction call (Entity(args) syntax).
     /// @param typeName The entity type name.
     /// @param expr The call expression with constructor arguments.
     /// @return The constructed entity pointer, or nullopt if not an entity type.
-    std::optional<LowerResult> lowerEntityTypeConstruction(const std::string &typeName, CallExpr *expr);
+    std::optional<LowerResult> lowerEntityTypeConstruction(const std::string &typeName,
+                                                           CallExpr *expr);
 
     /// @}
     //=========================================================================

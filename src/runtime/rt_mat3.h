@@ -30,9 +30,15 @@ extern "C"
     ///          | m00 m01 m02 |
     ///          | m10 m11 m12 |
     ///          | m20 m21 m22 |
-    void *rt_mat3_new(double m00, double m01, double m02,
-                      double m10, double m11, double m12,
-                      double m20, double m21, double m22);
+    void *rt_mat3_new(double m00,
+                      double m01,
+                      double m02,
+                      double m10,
+                      double m11,
+                      double m12,
+                      double m20,
+                      double m21,
+                      double m22);
 
     /// @brief Create a 3x3 identity matrix.
     void *rt_mat3_identity(void);

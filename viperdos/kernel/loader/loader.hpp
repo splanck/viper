@@ -22,8 +22,7 @@
 #include "../include/types.hpp"
 #include "../viper/viper.hpp"
 
-namespace loader
-{
+namespace loader {
 
 /**
  * @brief Result of loading an ELF image into an address space.
@@ -37,8 +36,7 @@ namespace loader
  * The caller typically uses this information to set up the initial user stack
  * and to configure a userspace `sbrk`/`brk` implementation.
  */
-struct LoadResult
-{
+struct LoadResult {
     bool success;    /**< Whether the load completed successfully. */
     u64 entry_point; /**< Final entry point virtual address. */
     u64 base_addr;   /**< Base address applied to PIE images (0 for ET_EXEC). */
@@ -103,8 +101,7 @@ LoadResult load_elf_from_disk(viper::Viper *v, const char *path);
 /**
  * @brief Result of spawning a new process.
  */
-struct SpawnResult
-{
+struct SpawnResult {
     bool success;        /**< Whether spawn completed successfully. */
     viper::Viper *viper; /**< The newly created process (nullptr on failure). */
     u64 task_id;         /**< The task ID of the main thread (0 on failure). */
@@ -151,8 +148,7 @@ SpawnResult spawn_process_from_blob(const void *elf_data,
 /**
  * @brief Result of replacing a process image.
  */
-struct ReplaceResult
-{
+struct ReplaceResult {
     bool success;    /**< Whether replace completed successfully. */
     u64 entry_point; /**< New entry point (for task reconfiguration). */
 };

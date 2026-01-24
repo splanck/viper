@@ -40,8 +40,7 @@
  * - They are inserted into the receiver's cap_table with their original rights
  * - The receiver gets new handle values for the transferred capabilities
  */
-namespace channel
-{
+namespace channel {
 
 /** @brief Maximum bytes stored in a single channel message. */
 constexpr u32 MAX_MSG_SIZE = 256;
@@ -62,8 +61,7 @@ constexpr u32 MAX_HANDLES_PER_MSG = 4;
  * recreate it in the receiver's cap_table. This includes the object pointer,
  * kind, and rights from the sender's entry.
  */
-struct TransferredHandle
-{
+struct TransferredHandle {
     void *object; // Kernel object pointer
     u16 kind;     // cap::Kind value
     u32 rights;   // Original rights
@@ -76,8 +74,7 @@ struct TransferredHandle
  * Messages are stored inline in the channel buffer to avoid dynamic allocation.
  * Each message can optionally carry up to 4 handles for transfer.
  */
-struct Message
-{
+struct Message {
     u8 data[MAX_MSG_SIZE];
     u32 size;
     u32 sender_id;                                  // Task ID of sender
@@ -88,12 +85,7 @@ struct Message
 /**
  * @brief Lifecycle state for a channel table entry.
  */
-enum class ChannelState : u32
-{
-    FREE = 0,
-    OPEN,
-    CLOSED
-};
+enum class ChannelState : u32 { FREE = 0, OPEN, CLOSED };
 
 /**
  * @brief In-kernel channel object.
@@ -106,8 +98,7 @@ enum class ChannelState : u32
  * - Reference counts for send and recv endpoints.
  * - Configurable capacity (1 to MAX_PENDING messages).
  */
-struct Channel
-{
+struct Channel {
     u32 id;
     ChannelState state;
 
@@ -133,8 +124,7 @@ struct Channel
 /**
  * @brief Result of channel creation containing both endpoint handles.
  */
-struct ChannelPair
-{
+struct ChannelPair {
     cap::Handle send_handle; // Handle with CAP_WRITE for sending
     cap::Handle recv_handle; // Handle with CAP_READ for receiving
 };
@@ -239,8 +229,8 @@ i64 try_send(u32 channel_id, const void *data, u32 size);
  * Looks up the channel by ID under the lock and performs the send atomically,
  * including handle transfer, avoiding TOCTOU races with channel closure.
  */
-i64 try_send(u32 channel_id, const void *data, u32 size,
-             const cap::Handle *handles, u32 handle_count);
+i64 try_send(
+    u32 channel_id, const void *data, u32 size, const cap::Handle *handles, u32 handle_count);
 
 /**
  * @brief Try recv using channel ID (TOCTOU-safe).
@@ -250,8 +240,8 @@ i64 try_recv(u32 channel_id, void *buffer, u32 buffer_size);
 /**
  * @brief Try recv with handle transfer using channel ID (TOCTOU-safe).
  */
-i64 try_recv(u32 channel_id, void *buffer, u32 buffer_size,
-             cap::Handle *out_handles, u32 *out_handle_count);
+i64 try_recv(
+    u32 channel_id, void *buffer, u32 buffer_size, cap::Handle *out_handles, u32 *out_handle_count);
 
 /**
  * @brief Blocking send (legacy interface).

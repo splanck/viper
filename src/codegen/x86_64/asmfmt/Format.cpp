@@ -114,7 +114,7 @@ std::string fmt_reg(int reg)
 
     const unsigned virt = static_cast<unsigned>(-reg - 1);
     std::string result;
-    result.reserve(16);  // Pre-size for typical virtual register names
+    result.reserve(16); // Pre-size for typical virtual register names
     result += "%v";
     result += std::to_string(virt);
     return result;
@@ -129,7 +129,7 @@ std::string fmt_reg(int reg)
 std::string format_mem(const MemAddr &a)
 {
     std::string result;
-    result.reserve(64);  // Pre-size for typical memory operand
+    result.reserve(64); // Pre-size for typical memory operand
 
     if (a.disp != 0)
     {

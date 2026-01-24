@@ -23,7 +23,7 @@
 
 | # | Section                                           | Description                                 |
 |---|---------------------------------------------------|---------------------------------------------|
-| 1 | [Overview](#1-overview)                           | What ViperDOS is, target platform, goals     |
+| 1 | [Overview](#1-overview)                           | What ViperDOS is, target platform, goals    |
 | 2 | [Design Principles](#2-design-principles)         | Viper-native, capability-based, async-first |
 | 3 | [Boot Architecture](#3-boot-architecture)         | UEFI boot, vboot, VBootInfo structure       |
 | 4 | [Graphics Console](#4-graphics-console)           | Framebuffer text, colors, splash, panic     |
@@ -52,7 +52,7 @@
 | 17 | [Installed System](#17-installed-system)         | Complete file listing for fresh install |
 | 18 | [Directory Layout](#18-directory-layout)         | Filesystem hierarchy, drive naming      |
 | 19 | [Standard Library](#19-standard-library)         | Viper.* namespace hierarchy             |
-| 20 | [Core Utilities](#20-core-utilities)             | Programs that ship with ViperDOS         |
+| 20 | [Core Utilities](#20-core-utilities)             | Programs that ship with ViperDOS        |
 | 21 | [Shell (vsh)](#21-shell-vsh)                     | Command shell, prompt, syntax           |
 | 22 | [Configuration Format](#22-configuration-format) | ViperConfig (.vcfg) syntax              |
 | 23 | [File Formats](#23-file-formats)                 | .vpr, .vlib, .vfont, .vcfg              |
@@ -70,7 +70,7 @@
 
 | # | Section                                        | Description                     |
 |---|------------------------------------------------|---------------------------------|
-| A | [Color Reference](#appendix-a-color-reference) | ViperDOS color palette           |
+| A | [Color Reference](#appendix-a-color-reference) | ViperDOS color palette          |
 | B | [Quick Reference](#appendix-b-quick-reference) | Syscalls, directories, commands |
 
 ---
@@ -367,7 +367,8 @@ typedef struct {
 
 ### 4.1 Overview
 
-ViperDOS boots directly into graphics mode. The graphical console provides text output from the earliest moments of boot.
+ViperDOS boots directly into graphics mode. The graphical console provides text output from the earliest moments of
+boot.
 Serial output is maintained in parallel for debugging.
 
 ### 4.2 Color Scheme
@@ -2214,7 +2215,8 @@ The ultimate vision:
 - **Development workflow** — edit, compile, run, debug without leaving ViperDOS
 - **Viper Computer** — ViperDOS ships as the default OS on Viper hardware
 
-At this point, ViperDOS becomes self-sustaining: you can develop Viper applications on ViperDOS, for ViperDOS, using tools
+At this point, ViperDOS becomes self-sustaining: you can develop Viper applications on ViperDOS, for ViperDOS, using
+tools
 written in Viper languages.
 
 ---
@@ -2226,7 +2228,7 @@ written in Viper languages.
 | Architecture         | **AArch64 exclusively**                 |
 | Heritage             | Clean-slate (not UNIX, not POSIX)       |
 | Boot display         | Graphics-first (framebuffer console)    |
-| Boot splash          | Simple ViperDOS logo                     |
+| Boot splash          | Simple ViperDOS logo                    |
 | Console colors       | Green on dark brown                     |
 | Panic colors         | Yellow on green                         |
 | Shell prompt         | `SYS:>` (device:path style)             |

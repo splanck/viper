@@ -30,11 +30,11 @@ extern "C"
     /// @brief Node type enumeration.
     typedef enum
     {
-        XML_NODE_ELEMENT = 1,   ///< Element node (has tag, attributes, children)
-        XML_NODE_TEXT = 2,      ///< Text content
-        XML_NODE_COMMENT = 3,   ///< Comment node (<!-- ... -->)
-        XML_NODE_CDATA = 4,     ///< CDATA section (<![CDATA[ ... ]]>)
-        XML_NODE_DOCUMENT = 5   ///< Document root
+        XML_NODE_ELEMENT = 1, ///< Element node (has tag, attributes, children)
+        XML_NODE_TEXT = 2,    ///< Text content
+        XML_NODE_COMMENT = 3, ///< Comment node (<!-- ... -->)
+        XML_NODE_CDATA = 4,   ///< CDATA section (<![CDATA[ ... ]]>)
+        XML_NODE_DOCUMENT = 5 ///< Document root
     } XmlNodeType;
 
     //=========================================================================

@@ -14,19 +14,16 @@
 #include <unistd.h>
 
 // Simple sbrk wrapper for direct testing
-static void *test_sbrk(long increment)
-{
+static void *test_sbrk(long increment) {
     sys::SyscallResult r = sys::syscall1(0x0A, static_cast<u64>(increment));
-    if (r.error < 0)
-    {
+    if (r.error < 0) {
         return reinterpret_cast<void *>(-1);
     }
     return reinterpret_cast<void *>(r.val0);
 }
 
 // Simple block header for our test malloc
-struct BlockHeader
-{
+struct BlockHeader {
     u64 size;
     BlockHeader *next;
     bool free;
@@ -34,8 +31,7 @@ struct BlockHeader
 
 static BlockHeader *free_list = nullptr;
 
-static void *test_malloc(u64 size)
-{
+static void *test_malloc(u64 size) {
     if (size == 0)
         return nullptr;
 
@@ -45,10 +41,8 @@ static void *test_malloc(u64 size)
     // Check free list first
     BlockHeader *prev = nullptr;
     BlockHeader *curr = free_list;
-    while (curr)
-    {
-        if (curr->free && curr->size >= size)
-        {
+    while (curr) {
+        if (curr->free && curr->size >= size) {
             curr->free = false;
             return reinterpret_cast<void *>(curr + 1);
         }
@@ -59,8 +53,7 @@ static void *test_malloc(u64 size)
     // Allocate new block from heap
     u64 total = sizeof(BlockHeader) + size;
     void *ptr = test_sbrk(static_cast<long>(total));
-    if (ptr == reinterpret_cast<void *>(-1))
-    {
+    if (ptr == reinterpret_cast<void *>(-1)) {
         return nullptr;
     }
 
@@ -70,20 +63,16 @@ static void *test_malloc(u64 size)
     block->free = false;
 
     // Add to list
-    if (prev)
-    {
+    if (prev) {
         prev->next = block;
-    }
-    else
-    {
+    } else {
         free_list = block;
     }
 
     return reinterpret_cast<void *>(block + 1);
 }
 
-static void test_free(void *ptr)
-{
+static void test_free(void *ptr) {
     if (!ptr)
         return;
 
@@ -94,18 +83,15 @@ static void test_free(void *ptr)
 /**
  * @brief Print a character to stdout.
  */
-static void putc_out(char c)
-{
+static void putc_out(char c) {
     write(STDOUT_FILENO, &c, 1);
 }
 
 /**
  * @brief Print a string to the console.
  */
-static void puts(const char *s)
-{
-    while (*s)
-    {
+static void puts(const char *s) {
+    while (*s) {
         putc_out(*s++);
     }
 }
@@ -113,15 +99,12 @@ static void puts(const char *s)
 /**
  * @brief Print an integer in decimal.
  */
-static void put_num(i64 n)
-{
-    if (n < 0)
-    {
+static void put_num(i64 n) {
+    if (n < 0) {
         putc_out('-');
         n = -n;
     }
-    if (n >= 10)
-    {
+    if (n >= 10) {
         put_num(n / 10);
     }
     putc_out('0' + (n % 10));
@@ -130,15 +113,12 @@ static void put_num(i64 n)
 /**
  * @brief Print a hex value.
  */
-static void put_hex(u64 n)
-{
+static void put_hex(u64 n) {
     puts("0x");
     bool started = false;
-    for (int i = 60; i >= 0; i -= 4)
-    {
+    for (int i = 60; i >= 0; i -= 4) {
         int digit = (n >> i) & 0xF;
-        if (digit != 0 || started || i == 0)
-        {
+        if (digit != 0 || started || i == 0) {
             started = true;
             if (digit < 10)
                 putc_out('0' + digit);
@@ -153,8 +133,7 @@ static void put_hex(u64 n)
  *
  * Tests malloc functionality.
  */
-extern "C" void _start()
-{
+extern "C" void _start() {
     puts("[malloc_test] Starting malloc/sbrk test...\n");
 
     // Test 1: Simple sbrk to get current break
@@ -167,8 +146,7 @@ extern "C" void _start()
     // Test 2: Single malloc
     puts("[malloc_test] Test 2: malloc(64)\n");
     char *ptr1 = static_cast<char *>(test_malloc(64));
-    if (ptr1 == nullptr)
-    {
+    if (ptr1 == nullptr) {
         puts("[malloc_test]   FAILED: malloc returned NULL\n");
         sys::exit(1);
     }
@@ -178,8 +156,7 @@ extern "C" void _start()
 
     // Test 3: Write to allocated memory
     puts("[malloc_test] Test 3: Write to allocated memory\n");
-    for (int i = 0; i < 64; i++)
-    {
+    for (int i = 0; i < 64; i++) {
         ptr1[i] = static_cast<char>(i);
     }
     puts("[malloc_test]   Write successful\n");
@@ -187,20 +164,15 @@ extern "C" void _start()
     // Test 4: Read back from memory
     puts("[malloc_test] Test 4: Read from allocated memory\n");
     bool read_ok = true;
-    for (int i = 0; i < 64; i++)
-    {
-        if (ptr1[i] != static_cast<char>(i))
-        {
+    for (int i = 0; i < 64; i++) {
+        if (ptr1[i] != static_cast<char>(i)) {
             read_ok = false;
             break;
         }
     }
-    if (read_ok)
-    {
+    if (read_ok) {
         puts("[malloc_test]   Read verification successful\n");
-    }
-    else
-    {
+    } else {
         puts("[malloc_test]   FAILED: Data mismatch\n");
         sys::exit(2);
     }
@@ -208,11 +180,9 @@ extern "C" void _start()
     // Test 5: Multiple allocations
     puts("[malloc_test] Test 5: Multiple allocations\n");
     char *ptrs[5];
-    for (int i = 0; i < 5; i++)
-    {
+    for (int i = 0; i < 5; i++) {
         ptrs[i] = static_cast<char *>(test_malloc(128));
-        if (ptrs[i] == nullptr)
-        {
+        if (ptrs[i] == nullptr) {
             puts("[malloc_test]   FAILED: malloc returned NULL\n");
             sys::exit(3);
         }
@@ -225,10 +195,8 @@ extern "C" void _start()
 
     // Test 6: Write to all allocations
     puts("[malloc_test] Test 6: Write to all allocations\n");
-    for (int i = 0; i < 5; i++)
-    {
-        for (int j = 0; j < 128; j++)
-        {
+    for (int i = 0; i < 5; i++) {
+        for (int j = 0; j < 128; j++) {
             ptrs[i][j] = static_cast<char>(i * 10 + j);
         }
     }
@@ -237,12 +205,9 @@ extern "C" void _start()
     // Test 7: Verify all allocations
     puts("[malloc_test] Test 7: Verify all allocations\n");
     bool verify_ok = true;
-    for (int i = 0; i < 5; i++)
-    {
-        for (int j = 0; j < 128; j++)
-        {
-            if (ptrs[i][j] != static_cast<char>(i * 10 + j))
-            {
+    for (int i = 0; i < 5; i++) {
+        for (int j = 0; j < 128; j++) {
+            if (ptrs[i][j] != static_cast<char>(i * 10 + j)) {
                 verify_ok = false;
                 break;
             }
@@ -250,12 +215,9 @@ extern "C" void _start()
         if (!verify_ok)
             break;
     }
-    if (verify_ok)
-    {
+    if (verify_ok) {
         puts("[malloc_test]   Verification successful\n");
-    }
-    else
-    {
+    } else {
         puts("[malloc_test]   FAILED: Data verification failed\n");
         sys::exit(4);
     }
@@ -268,8 +230,7 @@ extern "C" void _start()
     // Test 9: Large allocation (1KB)
     puts("[malloc_test] Test 9: Large allocation (1KB)\n");
     char *large = static_cast<char *>(test_malloc(1024));
-    if (large == nullptr)
-    {
+    if (large == nullptr) {
         puts("[malloc_test]   FAILED: Large malloc returned NULL\n");
         sys::exit(5);
     }
@@ -278,14 +239,11 @@ extern "C" void _start()
     puts("\n");
 
     // Write and verify large allocation
-    for (int i = 0; i < 1024; i++)
-    {
+    for (int i = 0; i < 1024; i++) {
         large[i] = static_cast<char>(i & 0xFF);
     }
-    for (int i = 0; i < 1024; i++)
-    {
-        if (large[i] != static_cast<char>(i & 0xFF))
-        {
+    for (int i = 0; i < 1024; i++) {
+        if (large[i] != static_cast<char>(i & 0xFF)) {
             puts("[malloc_test]   FAILED: Large allocation verification failed\n");
             sys::exit(6);
         }

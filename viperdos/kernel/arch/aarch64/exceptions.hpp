@@ -17,8 +17,7 @@
  * - Kernel-side helpers for installing vectors and controlling interrupts.
  * - C-linkage handler entry points called directly from assembly.
  */
-namespace exceptions
-{
+namespace exceptions {
 
 /**
  * @brief Saved register state for an exception.
@@ -34,8 +33,7 @@ namespace exceptions
  *   frame allocation.
  * - For exceptions taken from EL0, it stores SP_EL0 (the user stack pointer).
  */
-struct ExceptionFrame
-{
+struct ExceptionFrame {
     u64 x[30]; ///< General-purpose registers x0-x29.
     u64 lr;    ///< Saved x30 (link register).
     u64 sp;    ///< Saved interrupted SP (kernel SP or SP_EL0 depending on origin).
@@ -54,8 +52,7 @@ struct ExceptionFrame
  * (e.g. SVC, instruction abort, data abort). Handlers commonly use EC to
  * decide whether an exception is a syscall, a fault, or an unexpected event.
  */
-namespace ec
-{
+namespace ec {
 constexpr u32 UNKNOWN = 0x00;
 constexpr u32 WFI_WFE = 0x01;
 constexpr u32 CP15_MCR_MRC = 0x03;
@@ -126,66 +123,65 @@ bool interrupts_enabled();
 } // namespace exceptions
 
 // C linkage for assembly handlers
-extern "C"
-{
-    // Kernel (EL1) exception handlers
-    /**
-     * @brief Handle a synchronous exception taken at EL1.
-     *
-     * @param frame Pointer to the saved register frame.
-     */
-    void handle_sync_exception(exceptions::ExceptionFrame *frame);
-    /** @brief Handle an IRQ exception taken at EL1. */
-    void handle_irq(exceptions::ExceptionFrame *frame);
-    /** @brief Handle an FIQ exception taken at EL1 (currently unexpected). */
-    void handle_fiq(exceptions::ExceptionFrame *frame);
-    /** @brief Handle an SError exception taken at EL1. */
-    void handle_serror(exceptions::ExceptionFrame *frame);
-    /** @brief Handle an exception routed to an invalid vector. */
-    void handle_invalid_exception(exceptions::ExceptionFrame *frame);
+extern "C" {
+// Kernel (EL1) exception handlers
+/**
+ * @brief Handle a synchronous exception taken at EL1.
+ *
+ * @param frame Pointer to the saved register frame.
+ */
+void handle_sync_exception(exceptions::ExceptionFrame *frame);
+/** @brief Handle an IRQ exception taken at EL1. */
+void handle_irq(exceptions::ExceptionFrame *frame);
+/** @brief Handle an FIQ exception taken at EL1 (currently unexpected). */
+void handle_fiq(exceptions::ExceptionFrame *frame);
+/** @brief Handle an SError exception taken at EL1. */
+void handle_serror(exceptions::ExceptionFrame *frame);
+/** @brief Handle an exception routed to an invalid vector. */
+void handle_invalid_exception(exceptions::ExceptionFrame *frame);
 
-    // User (EL0) exception handlers
-    /**
-     * @brief Handle a synchronous exception taken from EL0 (user mode).
-     *
-     * @details
-     * This is used for user syscalls (SVC) as well as user-mode faults. The
-     * handler is responsible for returning results to the user via the saved
-     * register frame (typically by setting `x0`) or terminating the task on
-     * fatal faults.
-     *
-     * @param frame Pointer to the saved register frame.
-     */
-    void handle_el0_sync(exceptions::ExceptionFrame *frame);
-    /** @brief Handle an IRQ taken while executing in EL0. */
-    void handle_el0_irq(exceptions::ExceptionFrame *frame);
-    /** @brief Handle an SError taken while executing in EL0. */
-    void handle_el0_serror(exceptions::ExceptionFrame *frame);
+// User (EL0) exception handlers
+/**
+ * @brief Handle a synchronous exception taken from EL0 (user mode).
+ *
+ * @details
+ * This is used for user syscalls (SVC) as well as user-mode faults. The
+ * handler is responsible for returning results to the user via the saved
+ * register frame (typically by setting `x0`) or terminating the task on
+ * fatal faults.
+ *
+ * @param frame Pointer to the saved register frame.
+ */
+void handle_el0_sync(exceptions::ExceptionFrame *frame);
+/** @brief Handle an IRQ taken while executing in EL0. */
+void handle_el0_irq(exceptions::ExceptionFrame *frame);
+/** @brief Handle an SError taken while executing in EL0. */
+void handle_el0_serror(exceptions::ExceptionFrame *frame);
 
-    // Assembly functions
-    /**
-     * @brief Install the exception vector table by setting `VBAR_EL1`.
-     *
-     * @details
-     * Implemented in `exceptions.S`. This is separated so the C++ side does not
-     * need to embed address calculations or privileged register writes inline.
-     */
-    void exceptions_init_asm();
+// Assembly functions
+/**
+ * @brief Install the exception vector table by setting `VBAR_EL1`.
+ *
+ * @details
+ * Implemented in `exceptions.S`. This is separated so the C++ side does not
+ * need to embed address calculations or privileged register writes inline.
+ */
+void exceptions_init_asm();
 
-    // Enter user mode for the first time
-    /**
-     * @brief Transition from EL1 into EL0 and begin executing user code.
-     *
-     * @details
-     * Implemented in `exceptions.S`. Programs SP_EL0 (user stack pointer),
-     * ELR_EL1 (return address), and SPSR_EL1 (target EL/mode), sets the initial
-     * user argument in x0, clears remaining registers, and executes `eret`.
-     *
-     * This function does not return.
-     *
-     * @param entry User entry point virtual address.
-     * @param stack User stack pointer (typically top of user stack).
-     * @param arg Initial argument passed to user in x0.
-     */
-    [[noreturn]] void enter_user_mode(u64 entry, u64 stack, u64 arg);
+// Enter user mode for the first time
+/**
+ * @brief Transition from EL1 into EL0 and begin executing user code.
+ *
+ * @details
+ * Implemented in `exceptions.S`. Programs SP_EL0 (user stack pointer),
+ * ELR_EL1 (return address), and SPSR_EL1 (target EL/mode), sets the initial
+ * user argument in x0, clears remaining registers, and executes `eret`.
+ *
+ * This function does not return.
+ *
+ * @param entry User entry point virtual address.
+ * @param stack User stack pointer (typically top of user stack).
+ * @param arg Initial argument passed to user in x0.
+ */
+[[noreturn]] void enter_user_mode(u64 entry, u64 stack, u64 arg);
 }

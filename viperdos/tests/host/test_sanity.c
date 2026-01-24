@@ -10,8 +10,7 @@
 
 #include "test_framework.h"
 
-int main(void)
-{
+int main(void) {
     TEST_BEGIN("Host Sanity Tests");
 
     TEST_SECTION("Basic assertions");

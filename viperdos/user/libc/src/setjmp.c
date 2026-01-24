@@ -39,11 +39,9 @@
  * @param savemask If non-zero, save the current signal mask.
  * @return 0 on initial call, non-zero when returning from siglongjmp.
  */
-int sigsetjmp(sigjmp_buf env, int savemask)
-{
+int sigsetjmp(sigjmp_buf env, int savemask) {
     env->savemask = savemask;
-    if (savemask)
-    {
+    if (savemask) {
         /* Save current signal mask */
         sigprocmask(SIG_BLOCK, (void *)0, (sigset_t *)&env->sigmask);
     }
@@ -53,10 +51,8 @@ int sigsetjmp(sigjmp_buf env, int savemask)
 /*
  * siglongjmp - longjmp with optional signal mask restore
  */
-void siglongjmp(sigjmp_buf env, int val)
-{
-    if (env->savemask)
-    {
+void siglongjmp(sigjmp_buf env, int val) {
+    if (env->savemask) {
         /* Restore signal mask */
         sigset_t mask = (sigset_t)env->sigmask;
         sigprocmask(SIG_SETMASK, &mask, (void *)0);

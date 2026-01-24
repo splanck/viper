@@ -18,14 +18,12 @@
 
 #include "../../syscall.hpp"
 
-namespace device
-{
+namespace device {
 
 /**
  * @brief Device information returned by sys_device_enum.
  */
-struct DeviceInfo
-{
+struct DeviceInfo {
     char name[32]; ///< Device name string
     u64 phys_addr; ///< MMIO base physical address
     u64 size;      ///< MMIO region size
@@ -36,8 +34,7 @@ struct DeviceInfo
 /**
  * @brief DMA buffer allocation result.
  */
-struct DmaBuffer
-{
+struct DmaBuffer {
     u64 virt_addr; ///< Virtual address (user-accessible)
     u64 phys_addr; ///< Physical address (for DMA programming)
     u64 size;      ///< Allocated size in bytes
@@ -52,11 +49,9 @@ struct DmaBuffer
  *
  * @note Requires CAP_DEVICE_ACCESS capability.
  */
-inline u64 map_device(u64 phys_addr, u64 size)
-{
+inline u64 map_device(u64 phys_addr, u64 size) {
     auto result = sys::syscall3(SYS_MAP_DEVICE, phys_addr, size, 0);
-    if (result.error != 0)
-    {
+    if (result.error != 0) {
         return 0;
     }
     return result.val0;
@@ -71,8 +66,7 @@ inline u64 map_device(u64 phys_addr, u64 size)
  * @note Requires CAP_IRQ_ACCESS capability.
  * @note Only one task can register for each IRQ.
  */
-inline i64 irq_register(u32 irq)
-{
+inline i64 irq_register(u32 irq) {
     auto result = sys::syscall1(SYS_IRQ_REGISTER, irq);
     return result.error;
 }
@@ -86,8 +80,7 @@ inline i64 irq_register(u32 irq)
  *
  * @note Must have previously registered for this IRQ.
  */
-inline i64 irq_wait(u32 irq, u64 timeout_ms)
-{
+inline i64 irq_wait(u32 irq, u64 timeout_ms) {
     auto result = sys::syscall2(SYS_IRQ_WAIT, irq, timeout_ms);
     return result.error;
 }
@@ -100,8 +93,7 @@ inline i64 irq_wait(u32 irq, u64 timeout_ms)
  *
  * @note Must be called after handling an IRQ to re-enable it.
  */
-inline i64 irq_ack(u32 irq)
-{
+inline i64 irq_ack(u32 irq) {
     auto result = sys::syscall1(SYS_IRQ_ACK, irq);
     return result.error;
 }
@@ -112,8 +104,7 @@ inline i64 irq_ack(u32 irq)
  * @param irq IRQ number to unregister.
  * @return 0 on success, negative error code on failure.
  */
-inline i64 irq_unregister(u32 irq)
-{
+inline i64 irq_unregister(u32 irq) {
     auto result = sys::syscall1(SYS_IRQ_UNREGISTER, irq);
     return result.error;
 }
@@ -128,12 +119,10 @@ inline i64 irq_unregister(u32 irq)
  * @note Requires CAP_DMA_ACCESS capability.
  * @note Allocated memory is physically contiguous.
  */
-inline i64 dma_alloc(u64 size, DmaBuffer *buf)
-{
+inline i64 dma_alloc(u64 size, DmaBuffer *buf) {
     u64 phys_addr = 0;
     auto result = sys::syscall2(SYS_DMA_ALLOC, size, reinterpret_cast<u64>(&phys_addr));
-    if (result.error != 0)
-    {
+    if (result.error != 0) {
         return result.error;
     }
     buf->virt_addr = result.val0;
@@ -148,8 +137,7 @@ inline i64 dma_alloc(u64 size, DmaBuffer *buf)
  * @param virt_addr Virtual address of the buffer to free.
  * @return 0 on success, negative error code on failure.
  */
-inline i64 dma_free(u64 virt_addr)
-{
+inline i64 dma_free(u64 virt_addr) {
     auto result = sys::syscall1(SYS_DMA_FREE, virt_addr);
     return result.error;
 }
@@ -162,11 +150,9 @@ inline i64 dma_free(u64 virt_addr)
  *
  * @note Requires CAP_DMA_ACCESS capability.
  */
-inline u64 virt_to_phys(u64 virt_addr)
-{
+inline u64 virt_to_phys(u64 virt_addr) {
     auto result = sys::syscall1(SYS_VIRT_TO_PHYS, virt_addr);
-    if (result.error != 0)
-    {
+    if (result.error != 0) {
         return 0;
     }
     return result.val0;
@@ -179,11 +165,9 @@ inline u64 virt_to_phys(u64 virt_addr)
  * @param max_entries Maximum number of entries the buffer can hold.
  * @return Number of devices enumerated, or negative error code.
  */
-inline i64 enumerate(DeviceInfo *buf, usize max_entries)
-{
+inline i64 enumerate(DeviceInfo *buf, usize max_entries) {
     auto result = sys::syscall2(SYS_DEVICE_ENUM, reinterpret_cast<u64>(buf), max_entries);
-    if (result.error != 0)
-    {
+    if (result.error != 0) {
         return result.error;
     }
     return static_cast<i64>(result.val0);

@@ -27,12 +27,10 @@
  * - CPU Interface via ICC_* system registers
  * - Affinity-based routing
  */
-namespace gic
-{
+namespace gic {
 
 // QEMU virt machine GIC addresses
-namespace
-{
+namespace {
 // GIC Distributor (GICD) - same for v2 and v3
 constexpr uintptr GICD_BASE = 0x08000000;
 
@@ -95,80 +93,66 @@ constexpr u32 GICR_WAKER_ChildrenAsleep = 1 << 2;
 Version detected_version = Version::UNKNOWN;
 
 // Register access helpers
-inline volatile u32 &gicd(u32 offset)
-{
+inline volatile u32 &gicd(u32 offset) {
     return *reinterpret_cast<volatile u32 *>(GICD_BASE + offset);
 }
 
-inline volatile u64 &gicd64(u32 offset)
-{
+inline volatile u64 &gicd64(u32 offset) {
     return *reinterpret_cast<volatile u64 *>(GICD_BASE + offset);
 }
 
-inline volatile u32 &gicc(u32 offset)
-{
+inline volatile u32 &gicc(u32 offset) {
     return *reinterpret_cast<volatile u32 *>(GICC_BASE + offset);
 }
 
-inline volatile u32 &gicr(u32 cpu, u32 offset)
-{
+inline volatile u32 &gicr(u32 cpu, u32 offset) {
     return *reinterpret_cast<volatile u32 *>(GICR_BASE + cpu * GICR_STRIDE + offset);
 }
 
-inline volatile u64 &gicr64(u32 cpu, u32 offset)
-{
+inline volatile u64 &gicr64(u32 cpu, u32 offset) {
     return *reinterpret_cast<volatile u64 *>(GICR_BASE + cpu * GICR_STRIDE + offset);
 }
 
 // ICC system register access (GICv3)
-inline u64 read_icc_sre_el1()
-{
+inline u64 read_icc_sre_el1() {
     u64 val;
     asm volatile("mrs %0, S3_0_C12_C12_5" : "=r"(val)); // ICC_SRE_EL1
     return val;
 }
 
-inline void write_icc_sre_el1(u64 val)
-{
+inline void write_icc_sre_el1(u64 val) {
     asm volatile("msr S3_0_C12_C12_5, %0" ::"r"(val)); // ICC_SRE_EL1
     asm volatile("isb");
 }
 
-inline void write_icc_pmr_el1(u64 val)
-{
+inline void write_icc_pmr_el1(u64 val) {
     asm volatile("msr S3_0_C4_C6_0, %0" ::"r"(val)); // ICC_PMR_EL1
 }
 
-inline void write_icc_bpr1_el1(u64 val)
-{
+inline void write_icc_bpr1_el1(u64 val) {
     asm volatile("msr S3_0_C12_C12_3, %0" ::"r"(val)); // ICC_BPR1_EL1
 }
 
-inline void write_icc_ctlr_el1(u64 val)
-{
+inline void write_icc_ctlr_el1(u64 val) {
     asm volatile("msr S3_0_C12_C12_4, %0" ::"r"(val)); // ICC_CTLR_EL1
 }
 
-inline void write_icc_igrpen1_el1(u64 val)
-{
+inline void write_icc_igrpen1_el1(u64 val) {
     asm volatile("msr S3_0_C12_C12_7, %0" ::"r"(val)); // ICC_IGRPEN1_EL1
 }
 
-inline u64 read_icc_iar1_el1()
-{
+inline u64 read_icc_iar1_el1() {
     u64 val;
     asm volatile("mrs %0, S3_0_C12_C12_0" : "=r"(val)); // ICC_IAR1_EL1
     return val;
 }
 
-inline void write_icc_eoir1_el1(u64 val)
-{
+inline void write_icc_eoir1_el1(u64 val) {
     asm volatile("msr S3_0_C12_C12_1, %0" ::"r"(val)); // ICC_EOIR1_EL1
 }
 
 // Get current CPU ID from MPIDR
-inline u32 get_cpu_id()
-{
+inline u32 get_cpu_id() {
     u64 mpidr;
     asm volatile("mrs %0, mpidr_el1" : "=r"(mpidr));
     return mpidr & 0xFF; // Aff0 for QEMU virt
@@ -198,8 +182,7 @@ static void init_cpu_v3();
  *
  * QEMU virt GICv3 can be enabled with: -M virt,gic-version=3
  */
-static Version detect_version()
-{
+static Version detect_version() {
 #ifdef VIPER_GIC_V3
     serial::puts("[gic] GICv3 selected via compile flag\n");
     return Version::V3;
@@ -214,8 +197,7 @@ static Version detect_version()
 /**
  * @brief Initialize GICv2.
  */
-static void init_v2()
-{
+static void init_v2() {
     serial::puts("[gic] Initializing GICv2...\n");
 
     // Read GIC type
@@ -229,32 +211,27 @@ static void init_v2()
     gicd(GICD_CTLR) = 0;
 
     // Disable all interrupts
-    for (u32 i = 0; i < num_irqs / 32; i++)
-    {
+    for (u32 i = 0; i < num_irqs / 32; i++) {
         gicd(GICD_ICENABLER + i * 4) = 0xFFFFFFFF;
     }
 
     // Clear all pending interrupts
-    for (u32 i = 0; i < num_irqs / 32; i++)
-    {
+    for (u32 i = 0; i < num_irqs / 32; i++) {
         gicd(GICD_ICPENDR + i * 4) = 0xFFFFFFFF;
     }
 
     // Set all interrupts to lowest priority
-    for (u32 i = 0; i < num_irqs / 4; i++)
-    {
+    for (u32 i = 0; i < num_irqs / 4; i++) {
         gicd(GICD_IPRIORITYR + i * 4) = 0xA0A0A0A0;
     }
 
     // Set all SPIs to target CPU 0
-    for (u32 i = 8; i < num_irqs / 4; i++)
-    {
+    for (u32 i = 8; i < num_irqs / 4; i++) {
         gicd(GICD_ITARGETSR + i * 4) = 0x01010101;
     }
 
     // Configure all SPIs as level-triggered
-    for (u32 i = 2; i < num_irqs / 16; i++)
-    {
+    for (u32 i = 2; i < num_irqs / 16; i++) {
         gicd(GICD_ICFGR + i * 4) = 0x00000000;
     }
 
@@ -270,8 +247,7 @@ static void init_v2()
 /**
  * @brief Initialize GICv2 CPU interface.
  */
-static void init_cpu_v2()
-{
+static void init_cpu_v2() {
     gicc(GICC_PMR) = 0xFF; // Accept all priorities
     gicc(GICC_BPR) = 0;    // No priority grouping
     gicc(GICC_CTLR) = 1;   // Enable CPU interface
@@ -280,19 +256,16 @@ static void init_cpu_v2()
 /**
  * @brief Wake up a GICv3 redistributor.
  */
-static bool wake_redistributor(u32 cpu)
-{
+static bool wake_redistributor(u32 cpu) {
     // Clear ProcessorSleep bit
     u32 waker = gicr(cpu, GICR_WAKER);
     waker &= ~GICR_WAKER_ProcessorSleep;
     gicr(cpu, GICR_WAKER) = waker;
 
     // Wait for ChildrenAsleep to clear (with timeout)
-    for (int i = 0; i < 1000000; i++)
-    {
+    for (int i = 0; i < 1000000; i++) {
         waker = gicr(cpu, GICR_WAKER);
-        if (!(waker & GICR_WAKER_ChildrenAsleep))
-        {
+        if (!(waker & GICR_WAKER_ChildrenAsleep)) {
             return true;
         }
     }
@@ -306,8 +279,7 @@ static bool wake_redistributor(u32 cpu)
 /**
  * @brief Initialize GICv3.
  */
-static void init_v3()
-{
+static void init_v3() {
     serial::puts("[gic] Initializing GICv3...\n");
 
     // Read GIC type
@@ -325,33 +297,28 @@ static void init_v3()
         ;
 
     // Disable all SPIs (IRQs 32+)
-    for (u32 i = 1; i < num_irqs / 32; i++)
-    {
+    for (u32 i = 1; i < num_irqs / 32; i++) {
         gicd(GICD_ICENABLER + i * 4) = 0xFFFFFFFF;
     }
 
     // Clear all pending SPIs
-    for (u32 i = 1; i < num_irqs / 32; i++)
-    {
+    for (u32 i = 1; i < num_irqs / 32; i++) {
         gicd(GICD_ICPENDR + i * 4) = 0xFFFFFFFF;
     }
 
     // Set SPI priorities
-    for (u32 i = 8; i < num_irqs / 4; i++)
-    {
+    for (u32 i = 8; i < num_irqs / 4; i++) {
         gicd(GICD_IPRIORITYR + i * 4) = 0xA0A0A0A0;
     }
 
     // Configure SPI routing - route all to CPU 0 (affinity 0.0.0.0)
     // IROUTER format: Aff3.Aff2.Aff1.Aff0 in bits [39:32].[23:16].[15:8].[7:0]
-    for (u32 i = 32; i < num_irqs; i++)
-    {
+    for (u32 i = 32; i < num_irqs; i++) {
         gicd64(GICD_IROUTER + (i - 32) * 8) = 0; // Route to Aff0=0
     }
 
     // Configure all SPIs as level-triggered
-    for (u32 i = 2; i < num_irqs / 16; i++)
-    {
+    for (u32 i = 2; i < num_irqs / 16; i++) {
         gicd(GICD_ICFGR + i * 4) = 0x00000000;
     }
 
@@ -373,8 +340,7 @@ static void init_v3()
 /**
  * @brief Initialize GICv3 CPU interface (redistributor + ICC registers).
  */
-static void init_cpu_v3()
-{
+static void init_cpu_v3() {
     u32 cpu = get_cpu_id();
 
     serial::puts("[gic] Initializing GICv3 CPU interface for CPU ");
@@ -382,8 +348,7 @@ static void init_cpu_v3()
     serial::puts("\n");
 
     // Wake up the redistributor
-    if (!wake_redistributor(cpu))
-    {
+    if (!wake_redistributor(cpu)) {
         serial::puts("[gic] ERROR: Failed to wake redistributor\n");
         return;
     }
@@ -393,8 +358,7 @@ static void init_cpu_v3()
     gicr(cpu, GICR_ICENABLER0) = 0xFFFFFFFF;
 
     // Set SGI/PPI priorities
-    for (u32 i = 0; i < 8; i++)
-    {
+    for (u32 i = 0; i < 8; i++) {
         gicr(cpu, GICR_IPRIORITYR + i * 4) = 0xA0A0A0A0;
     }
 
@@ -420,15 +384,13 @@ static void init_cpu_v3()
 }
 
 /** @copydoc gic::init */
-void init()
-{
+void init() {
     serial::puts("[gic] Initializing GIC...\n");
 
     // Detect GIC version
     detected_version = detect_version();
 
-    switch (detected_version)
-    {
+    switch (detected_version) {
         case Version::V2:
             init_v2();
             break;
@@ -444,52 +406,43 @@ void init()
 }
 
 /** @copydoc gic::enable_irq */
-void enable_irq(u32 irq)
-{
+void enable_irq(u32 irq) {
     if (irq >= MAX_IRQS)
         return;
 
     u32 reg = irq / 32;
     u32 bit = irq % 32;
 
-    if (irq < 32 && detected_version == Version::V3)
-    {
+    if (irq < 32 && detected_version == Version::V3) {
         // SGIs and PPIs (0-31) use redistributor in GICv3
         u32 cpu = get_cpu_id();
         gicr(cpu, GICR_ISENABLER0) = (1 << bit);
-    }
-    else
-    {
+    } else {
         // SPIs (32+) and all v2 IRQs use distributor
         gicd(GICD_ISENABLER + reg * 4) = (1 << bit);
     }
 }
 
 /** @copydoc gic::disable_irq */
-void disable_irq(u32 irq)
-{
+void disable_irq(u32 irq) {
     if (irq >= MAX_IRQS)
         return;
 
     u32 reg = irq / 32;
     u32 bit = irq % 32;
 
-    if (irq < 32 && detected_version == Version::V3)
-    {
+    if (irq < 32 && detected_version == Version::V3) {
         // SGIs and PPIs (0-31) use redistributor in GICv3
         u32 cpu = get_cpu_id();
         gicr(cpu, GICR_ICENABLER0) = (1 << bit);
-    }
-    else
-    {
+    } else {
         // SPIs (32+) and all v2 IRQs use distributor
         gicd(GICD_ICENABLER + reg * 4) = (1 << bit);
     }
 }
 
 /** @copydoc gic::set_priority */
-void set_priority(u32 irq, u8 priority)
-{
+void set_priority(u32 irq, u8 priority) {
     if (irq >= MAX_IRQS)
         return;
 
@@ -503,49 +456,40 @@ void set_priority(u32 irq, u8 priority)
 }
 
 /** @copydoc gic::register_handler */
-void register_handler(u32 irq, IrqHandler handler)
-{
-    if (irq < MAX_IRQS)
-    {
+void register_handler(u32 irq, IrqHandler handler) {
+    if (irq < MAX_IRQS) {
         handlers[irq] = handler;
     }
 }
 
 /** @copydoc gic::has_handler */
-bool has_handler(u32 irq)
-{
+bool has_handler(u32 irq) {
     return irq < MAX_IRQS && handlers[irq] != nullptr;
 }
 
 /** @copydoc gic::handle_irq */
-void handle_irq()
-{
+void handle_irq() {
     u32 irq;
 
-    if (detected_version == Version::V3)
-    {
+    if (detected_version == Version::V3) {
         // GICv3: Read interrupt ID from ICC_IAR1_EL1
         u64 iar = read_icc_iar1_el1();
         irq = iar & 0xFFFFFF; // 24-bit interrupt ID
 
         // Check for spurious interrupt (1023 = no pending interrupt)
-        if (irq >= 1020)
-        {
+        if (irq >= 1020) {
             return;
         }
 
         // End of interrupt BEFORE calling handler
         write_icc_eoir1_el1(irq);
-    }
-    else
-    {
+    } else {
         // GICv2: Read interrupt ID from GICC_IAR
         u32 iar = gicc(GICC_IAR);
         irq = iar & 0x3FF;
 
         // Check for spurious interrupt (1023)
-        if (irq >= 1020)
-        {
+        if (irq >= 1020) {
             return;
         }
 
@@ -554,12 +498,9 @@ void handle_irq()
     }
 
     // Call handler if registered
-    if (irq < MAX_IRQS && handlers[irq])
-    {
+    if (irq < MAX_IRQS && handlers[irq]) {
         handlers[irq](irq);
-    }
-    else
-    {
+    } else {
         serial::puts("[gic] Unhandled IRQ: ");
         serial::put_dec(irq);
         serial::puts("\n");
@@ -567,33 +508,24 @@ void handle_irq()
 }
 
 /** @copydoc gic::eoi */
-void eoi(u32 irq)
-{
-    if (detected_version == Version::V3)
-    {
+void eoi(u32 irq) {
+    if (detected_version == Version::V3) {
         write_icc_eoir1_el1(irq);
-    }
-    else
-    {
+    } else {
         gicc(GICC_EOIR) = irq;
     }
 }
 
 /** @copydoc gic::get_version */
-Version get_version()
-{
+Version get_version() {
     return detected_version;
 }
 
 /** @copydoc gic::init_cpu */
-void init_cpu()
-{
-    if (detected_version == Version::V3)
-    {
+void init_cpu() {
+    if (detected_version == Version::V3) {
         init_cpu_v3();
-    }
-    else
-    {
+    } else {
         init_cpu_v2();
     }
 }

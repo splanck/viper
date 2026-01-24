@@ -21,8 +21,7 @@
  * // Inode is automatically released when guard goes out of scope
  * @endcode
  */
-namespace fs::viperfs
-{
+namespace fs::viperfs {
 
 /**
  * @brief RAII guard for ViperFS inode pointers.
@@ -31,8 +30,7 @@ namespace fs::viperfs
  * Takes ownership of an Inode* and calls release_inode() on destruction.
  * Non-copyable, move-only semantics.
  */
-class InodeGuard
-{
+class InodeGuard {
   public:
     /// Default constructor - creates null guard
     InodeGuard() : inode_(nullptr) {}
@@ -41,16 +39,13 @@ class InodeGuard
     explicit InodeGuard(Inode *inode) : inode_(inode) {}
 
     /// Move constructor
-    InodeGuard(InodeGuard &&other) noexcept : inode_(other.inode_)
-    {
+    InodeGuard(InodeGuard &&other) noexcept : inode_(other.inode_) {
         other.inode_ = nullptr;
     }
 
     /// Destructor - releases the inode
-    ~InodeGuard()
-    {
-        if (inode_)
-        {
+    ~InodeGuard() {
+        if (inode_) {
             viperfs().release_inode(inode_);
         }
     }
@@ -60,12 +55,9 @@ class InodeGuard
     InodeGuard &operator=(const InodeGuard &) = delete;
 
     /// Move assignment
-    InodeGuard &operator=(InodeGuard &&other) noexcept
-    {
-        if (this != &other)
-        {
-            if (inode_)
-            {
+    InodeGuard &operator=(InodeGuard &&other) noexcept {
+        if (this != &other) {
+            if (inode_) {
                 viperfs().release_inode(inode_);
             }
             inode_ = other.inode_;
@@ -75,43 +67,36 @@ class InodeGuard
     }
 
     /// Reset to a new inode (releases old)
-    void reset(Inode *inode = nullptr)
-    {
-        if (inode_)
-        {
+    void reset(Inode *inode = nullptr) {
+        if (inode_) {
             viperfs().release_inode(inode_);
         }
         inode_ = inode;
     }
 
     /// Release ownership and return raw pointer
-    Inode *release()
-    {
+    Inode *release() {
         Inode *ptr = inode_;
         inode_ = nullptr;
         return ptr;
     }
 
     /// Dereference operators
-    Inode *operator->() const
-    {
+    Inode *operator->() const {
         return inode_;
     }
 
-    Inode &operator*() const
-    {
+    Inode &operator*() const {
         return *inode_;
     }
 
     /// Get raw pointer
-    Inode *get() const
-    {
+    Inode *get() const {
         return inode_;
     }
 
     /// Boolean conversion
-    explicit operator bool() const
-    {
+    explicit operator bool() const {
         return inode_ != nullptr;
     }
 

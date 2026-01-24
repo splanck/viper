@@ -18,8 +18,7 @@
 namespace il::tools::common
 {
 
-VMExecutorResult executeBytecodeVM(const il::core::Module &module,
-                                   const VMExecutorConfig &config)
+VMExecutorResult executeBytecodeVM(const il::core::Module &module, const VMExecutorConfig &config)
 {
     VMExecutorResult result;
 

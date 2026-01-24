@@ -426,7 +426,12 @@ rt_string rt_bigint_to_str_base(void *a, int64_t base)
         return rt_str_empty();
 
     // Estimate size: log_base(2^32) * num_digits + sign + null
-    int64_t max_chars = (bi->len * 32 * 10 / (base <= 2 ? 10 : base <= 8 ? 33 : base <= 16 ? 25 : 21)) + 2;
+    int64_t max_chars = (bi->len * 32 * 10 /
+                         (base <= 2    ? 10
+                          : base <= 8  ? 33
+                          : base <= 16 ? 25
+                                       : 21)) +
+                        2;
     char *buf = malloc((size_t)max_chars);
     int64_t pos = max_chars - 1;
     buf[pos--] = '\0';
@@ -936,7 +941,8 @@ void *rt_bigint_divmod(void *a, void *b, void **remainder)
                     uint64_t carry = 0;
                     for (int64_t i = 0; i < n; i++)
                     {
-                        uint64_t sum = (j + i < rem->len ? rem->digits[j + i] : 0) + d->digits[i] + carry;
+                        uint64_t sum =
+                            (j + i < rem->len ? rem->digits[j + i] : 0) + d->digits[i] + carry;
                         if (j + i < rem->len)
                             rem->digits[j + i] = (uint32_t)(sum & 0xFFFFFFFF);
                         carry = sum >> 32;
@@ -1018,7 +1024,8 @@ void *rt_bigint_divmod(void *a, void *b, void **remainder)
                     uint64_t carry = 0;
                     for (int64_t i = 0; i < n; i++)
                     {
-                        uint64_t sum = (j + i < rem->len ? rem->digits[j + i] : 0) + bi_b->digits[i] + carry;
+                        uint64_t sum =
+                            (j + i < rem->len ? rem->digits[j + i] : 0) + bi_b->digits[i] + carry;
                         if (j + i < rem->len)
                             rem->digits[j + i] = (uint32_t)(sum & 0xFFFFFFFF);
                         carry = sum >> 32;
@@ -1563,7 +1570,8 @@ void *rt_bigint_set_bit(void *a, int64_t n)
     bigint_ensure_capacity(result, word + 1);
     if (result->len <= word)
     {
-        memset(result->digits + result->len, 0, (size_t)(word + 1 - result->len) * sizeof(uint32_t));
+        memset(
+            result->digits + result->len, 0, (size_t)(word + 1 - result->len) * sizeof(uint32_t));
         result->len = word + 1;
     }
 

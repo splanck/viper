@@ -39,16 +39,16 @@ Type::Type(Kind k) : kind(k) {}
 /// @details Uses O(1) array indexing instead of switch statement branching.
 ///          Index order must match Type::Kind enum values exactly.
 static constexpr std::array<std::string_view, 10> kTypeKindNames = {{
-    "void",       // Kind::Void = 0
-    "i1",         // Kind::I1 = 1
-    "i16",        // Kind::I16 = 2
-    "i32",        // Kind::I32 = 3
-    "i64",        // Kind::I64 = 4
-    "f64",        // Kind::F64 = 5
-    "ptr",        // Kind::Ptr = 6
-    "str",        // Kind::Str = 7
-    "error",      // Kind::Error = 8
-    "resume_tok"  // Kind::ResumeTok = 9
+    "void",      // Kind::Void = 0
+    "i1",        // Kind::I1 = 1
+    "i16",       // Kind::I16 = 2
+    "i32",       // Kind::I32 = 3
+    "i64",       // Kind::I64 = 4
+    "f64",       // Kind::F64 = 5
+    "ptr",       // Kind::Ptr = 6
+    "str",       // Kind::Str = 7
+    "error",     // Kind::Error = 8
+    "resume_tok" // Kind::ResumeTok = 9
 }};
 
 /// @brief Render an IL type enumerator to its canonical textual spelling.

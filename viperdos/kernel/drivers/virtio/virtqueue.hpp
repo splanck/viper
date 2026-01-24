@@ -35,8 +35,7 @@
  * - Provides methods to submit work, notify ("kick") the device, and poll for
  *   completions.
  */
-namespace virtio
-{
+namespace virtio {
 
 // Descriptor flags
 /**
@@ -46,8 +45,7 @@ namespace virtio
  * These flags are written into `VringDesc::flags` and describe chaining and
  * directionality.
  */
-namespace desc_flags
-{
+namespace desc_flags {
 constexpr u16 NEXT = 1;     // Buffer continues via next field
 constexpr u16 WRITE = 2;    // Device writes (vs reads)
 constexpr u16 INDIRECT = 4; // Data is list of buffer descriptors
@@ -61,8 +59,7 @@ constexpr u16 INDIRECT = 4; // Data is list of buffer descriptors
  * Descriptors describe a buffer by physical address and length. Descriptor
  * chains are built by setting NEXT and using the `next` field.
  */
-struct VringDesc
-{
+struct VringDesc {
     u64 addr;  // Physical address of buffer
     u32 len;   // Length of buffer
     u16 flags; // NEXT, WRITE, INDIRECT
@@ -77,8 +74,7 @@ struct VringDesc
  * The `ring[]` array contains descriptor chain heads (indices into the
  * descriptor table). The driver increments `idx` after publishing new entries.
  */
-struct VringAvail
-{
+struct VringAvail {
     u16 flags;
     u16 idx;
     u16 ring[]; // Array of descriptor chain heads
@@ -93,8 +89,7 @@ struct VringAvail
  * `id` identifies the head descriptor index of a completed chain and `len`
  * provides the number of bytes written/used by the device.
  */
-struct VringUsedElem
-{
+struct VringUsedElem {
     u32 id;  // Descriptor chain head
     u32 len; // Bytes written by device
 };
@@ -106,8 +101,7 @@ struct VringUsedElem
  * @details
  * The device increments `idx` when it posts new used elements.
  */
-struct VringUsed
-{
+struct VringUsed {
     u16 flags;
     u16 idx;
     VringUsedElem ring[];
@@ -126,8 +120,7 @@ struct VringUsed
  * Completion handling is polling-based: drivers call @ref poll_used to check
  * whether the device has produced any used-ring entries.
  */
-class Virtqueue
-{
+class Virtqueue {
   public:
     // Initialize virtqueue for a device
     /**
@@ -253,32 +246,27 @@ class Virtqueue
 
     // Queue properties
     /** @brief Number of descriptors in the queue. */
-    u32 size() const
-    {
+    u32 size() const {
         return size_;
     }
 
     /** @brief Number of currently free descriptors. */
-    u32 num_free() const
-    {
+    u32 num_free() const {
         return num_free_;
     }
 
     /** @brief Current avail ring index value. */
-    u16 avail_idx() const
-    {
+    u16 avail_idx() const {
         return avail_->idx;
     }
 
     /** @brief Current used ring index value. */
-    u16 used_idx() const
-    {
+    u16 used_idx() const {
         return used_->idx;
     }
 
     /** @brief Last used index observed by @ref poll_used. */
-    u16 last_used() const
-    {
+    u16 last_used() const {
         return last_used_idx_;
     }
 

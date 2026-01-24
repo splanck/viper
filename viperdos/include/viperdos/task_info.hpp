@@ -89,14 +89,13 @@
  * returns. User-space should not assume the list is consistent with other
  * observations (e.g., a task might exit between listing and querying it).
  */
-struct TaskInfo
-{
-    unsigned int id;         /**< Kernel task identifier. */
-    unsigned char state;     /**< Task state (`TASK_STATE_*`). */
-    unsigned char flags;     /**< Task flags (`TASK_FLAG_*`). */
-    unsigned char priority;  /**< Scheduler priority (0–255, lower is higher). */
-    unsigned char _pad0;     /**< Padding for alignment. */
-    char name[32];           /**< NUL-terminated task name for display. */
+struct TaskInfo {
+    unsigned int id;        /**< Kernel task identifier. */
+    unsigned char state;    /**< Task state (`TASK_STATE_*`). */
+    unsigned char flags;    /**< Task flags (`TASK_FLAG_*`). */
+    unsigned char priority; /**< Scheduler priority (0–255, lower is higher). */
+    unsigned char _pad0;    /**< Padding for alignment. */
+    char name[32];          /**< NUL-terminated task name for display. */
 
     /* Extended fields (v2) */
     unsigned long long cpu_ticks;    /**< Total CPU ticks consumed. */

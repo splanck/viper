@@ -9,26 +9,26 @@
  * - Visual feedback for minimized/focused state
  */
 
+#include "../include/viper_colors.h"
 #include <gui.h>
 #include <stdio.h>
 #include <string.h>
-#include "../include/viper_colors.h"
 
 // Colors (using centralized viper_colors.h where applicable)
-#define COLOR_TASKBAR_BG    0xFF303050  // Dark blue-gray (taskbar-specific)
-#define COLOR_BUTTON_BG     0xFF404060  // Lighter gray (taskbar-specific)
-#define COLOR_BUTTON_ACTIVE 0xFF5060A0  // Blue highlight for focused
-#define COLOR_BUTTON_MIN    0xFF505070  // Dimmer for minimized
-#define COLOR_TEXT          VIPER_COLOR_WHITE
-#define COLOR_TEXT_DIM      VIPER_COLOR_GRAY_LIGHT
-#define COLOR_BORDER        0xFF202030  // Dark border (taskbar-specific)
+#define COLOR_TASKBAR_BG 0xFF303050    // Dark blue-gray (taskbar-specific)
+#define COLOR_BUTTON_BG 0xFF404060     // Lighter gray (taskbar-specific)
+#define COLOR_BUTTON_ACTIVE 0xFF5060A0 // Blue highlight for focused
+#define COLOR_BUTTON_MIN 0xFF505070    // Dimmer for minimized
+#define COLOR_TEXT VIPER_COLOR_WHITE
+#define COLOR_TEXT_DIM VIPER_COLOR_GRAY_LIGHT
+#define COLOR_BORDER 0xFF202030 // Dark border (taskbar-specific)
 
 // Layout
-#define TASKBAR_HEIGHT      32
-#define BUTTON_HEIGHT       24
-#define BUTTON_MARGIN       4
-#define BUTTON_WIDTH        120
-#define BUTTON_SPACING      4
+#define TASKBAR_HEIGHT 32
+#define BUTTON_HEIGHT 24
+#define BUTTON_MARGIN 4
+#define BUTTON_WIDTH 120
+#define BUTTON_SPACING 4
 
 // State
 static gui_window_t *g_taskbar = NULL;
@@ -47,11 +47,9 @@ static TaskbarButton g_buttons[16];
 static uint32_t g_button_count = 0;
 
 // Draw a taskbar button
-static void draw_button(int x, int y, int w, int h, const char *label,
-                        int minimized, int focused)
-{
-    uint32_t bg_color = focused ? COLOR_BUTTON_ACTIVE :
-                        (minimized ? COLOR_BUTTON_MIN : COLOR_BUTTON_BG);
+static void draw_button(int x, int y, int w, int h, const char *label, int minimized, int focused) {
+    uint32_t bg_color =
+        focused ? COLOR_BUTTON_ACTIVE : (minimized ? COLOR_BUTTON_MIN : COLOR_BUTTON_BG);
     uint32_t text_color = minimized ? COLOR_TEXT_DIM : COLOR_TEXT;
 
     // Button background
@@ -62,8 +60,9 @@ static void draw_button(int x, int y, int w, int h, const char *label,
 
     // Truncate label to fit
     char truncated[16];
-    int max_chars = (w - 8) / 8;  // 8 pixels per char
-    if (max_chars > 15) max_chars = 15;
+    int max_chars = (w - 8) / 8; // 8 pixels per char
+    if (max_chars > 15)
+        max_chars = 15;
 
     int len = 0;
     while (label[len] && len < max_chars) {
@@ -79,8 +78,7 @@ static void draw_button(int x, int y, int w, int h, const char *label,
 }
 
 // Redraw the taskbar
-static void redraw_taskbar(void)
-{
+static void redraw_taskbar(void) {
     if (!g_taskbar) {
         printf("[taskbar] redraw: g_taskbar is NULL!\n");
         return;
@@ -88,7 +86,9 @@ static void redraw_taskbar(void)
 
     uint32_t *pixels = gui_get_pixels(g_taskbar);
     printf("[taskbar] redraw: pixels=%p, w=%u, h=%u\n",
-           (void*)pixels, gui_get_width(g_taskbar), gui_get_height(g_taskbar));
+           (void *)pixels,
+           gui_get_width(g_taskbar),
+           gui_get_height(g_taskbar));
 
     // Clear background
     gui_fill_rect(g_taskbar, 0, 0, g_screen_width, TASKBAR_HEIGHT, COLOR_TASKBAR_BG);
@@ -113,11 +113,12 @@ static void redraw_taskbar(void)
         int btn_w = BUTTON_WIDTH;
         if (x + btn_w > (int)g_screen_width - BUTTON_MARGIN) {
             btn_w = g_screen_width - BUTTON_MARGIN - x;
-            if (btn_w < 40) break;  // Too small
+            if (btn_w < 40)
+                break; // Too small
         }
 
-        draw_button(x, BUTTON_MARGIN, btn_w, BUTTON_HEIGHT,
-                    info->title, info->minimized, info->focused);
+        draw_button(
+            x, BUTTON_MARGIN, btn_w, BUTTON_HEIGHT, info->title, info->minimized, info->focused);
 
         // Track button position for click handling
         g_buttons[g_button_count].surface_id = info->surface_id;
@@ -132,9 +133,8 @@ static void redraw_taskbar(void)
 }
 
 // Handle click on taskbar
-static void handle_click(int32_t x, int32_t y)
-{
-    (void)y;  // Only care about x position
+static void handle_click(int32_t x, int32_t y) {
+    (void)y; // Only care about x position
 
     for (uint32_t i = 0; i < g_button_count; i++) {
         if (x >= g_buttons[i].x && x < g_buttons[i].x + g_buttons[i].w) {
@@ -142,9 +142,9 @@ static void handle_click(int32_t x, int32_t y)
             gui_restore_window(g_buttons[i].surface_id);
             // Redraw after a short delay to show updated state
             for (int j = 0; j < 100; j++) {
-                __asm__ volatile("mov x8, #0x0E\n\t"  // SYS_YIELD
-                                 "svc #0"
-                                 ::: "x8");
+                __asm__ volatile("mov x8, #0x0E\n\t" // SYS_YIELD
+                                 "svc #0" ::
+                                     : "x8");
             }
             redraw_taskbar();
             return;
@@ -152,8 +152,7 @@ static void handle_click(int32_t x, int32_t y)
     }
 }
 
-int main(void)
-{
+int main(void) {
     printf("[taskbar] Starting ViperDOS Taskbar\n");
 
     // Initialize GUI
@@ -172,8 +171,8 @@ int main(void)
     printf("[taskbar] Display: %ux%u\n", g_screen_width, g_screen_height);
 
     // Create taskbar surface (system window, no decorations)
-    g_taskbar = gui_create_window_ex("Taskbar", g_screen_width, TASKBAR_HEIGHT,
-                                      GUI_FLAG_SYSTEM | GUI_FLAG_NO_DECORATIONS);
+    g_taskbar = gui_create_window_ex(
+        "Taskbar", g_screen_width, TASKBAR_HEIGHT, GUI_FLAG_SYSTEM | GUI_FLAG_NO_DECORATIONS);
     if (!g_taskbar) {
         printf("[taskbar] Failed to create taskbar window\n");
         gui_shutdown();
@@ -197,7 +196,7 @@ int main(void)
         if (gui_poll_event(g_taskbar, &event) == 0) {
             switch (event.type) {
                 case GUI_EVENT_MOUSE:
-                    if (event.mouse.event_type == 1) {  // Button down
+                    if (event.mouse.event_type == 1) { // Button down
                         handle_click(event.mouse.x, event.mouse.y);
                     }
                     break;
@@ -213,15 +212,15 @@ int main(void)
 
         // Periodically refresh the window list
         update_counter++;
-        if (update_counter >= 500) {  // Every ~500 yields (reduced frequency)
+        if (update_counter >= 500) { // Every ~500 yields (reduced frequency)
             redraw_taskbar();
             update_counter = 0;
         }
 
         // Yield to other processes
-        __asm__ volatile("mov x8, #0x0E\n\t"  // SYS_YIELD
-                         "svc #0"
-                         ::: "x8");
+        __asm__ volatile("mov x8, #0x0E\n\t" // SYS_YIELD
+                         "svc #0" ::
+                             : "x8");
     }
 
     gui_destroy_window(g_taskbar);

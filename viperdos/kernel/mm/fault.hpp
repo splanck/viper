@@ -17,8 +17,7 @@
 #include "../arch/aarch64/exceptions.hpp"
 #include "../include/types.hpp"
 
-namespace mm
-{
+namespace mm {
 
 /**
  * @brief Classification of page fault types.
@@ -28,8 +27,7 @@ namespace mm
  * Fault Status Code) fields. These codes help determine the appropriate
  * response to a fault.
  */
-enum class FaultType : u8
-{
+enum class FaultType : u8 {
     /// Address size fault (virtual address too large for configured levels)
     ADDRESS_SIZE = 0,
 
@@ -63,8 +61,7 @@ enum class FaultType : u8
 /**
  * @brief Additional information about a page fault.
  */
-struct FaultInfo
-{
+struct FaultInfo {
     /// Virtual address that caused the fault (from FAR_EL1)
     u64 fault_addr;
 

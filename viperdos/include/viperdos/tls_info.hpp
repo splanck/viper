@@ -88,8 +88,7 @@
  * - `hostname` is the session hostname as known to the TLS layer (SNI / verify
  *   target).
  */
-struct TLSInfo
-{
+struct TLSInfo {
     unsigned short protocol_version;      /**< Negotiated TLS version (e.g., `TLS_VERSION_1_3`). */
     unsigned short cipher_suite;          /**< Negotiated cipher suite ID (`TLS_CIPHER_*`). */
     unsigned char verified;               /**< Non-zero if the peer was verified for `hostname`. */

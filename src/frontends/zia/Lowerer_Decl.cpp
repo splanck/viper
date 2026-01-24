@@ -328,8 +328,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
     currentReturnType_ = nullptr;
 }
 
-void Lowerer::lowerGenericFunctionInstantiation(const std::string &mangledName,
-                                                 FunctionDecl *decl)
+void Lowerer::lowerGenericFunctionInstantiation(const std::string &mangledName, FunctionDecl *decl)
 {
     // Push substitution context so type parameters resolve correctly
     bool pushedContext = sema_.pushSubstitutionContext(mangledName);
@@ -894,7 +893,8 @@ void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, boo
         if (i + 1 < blockParams.size())
         {
             // Use cached param type if available
-            TypeRef paramType = (i < cachedParamTypes.size()) ? cachedParamTypes[i] : types::unknown();
+            TypeRef paramType =
+                (i < cachedParamTypes.size()) ? cachedParamTypes[i] : types::unknown();
             Type ilParamType = mapType(paramType);
 
             createSlot(decl.params[i].name, ilParamType);

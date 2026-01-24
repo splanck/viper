@@ -428,8 +428,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
                 }
 
                 // Instantiate the generic function with the type arguments
-                TypeRef funcType =
-                    instantiateGenericFunction(identExpr->name, typeArgs, expr->loc);
+                TypeRef funcType = instantiateGenericFunction(identExpr->name, typeArgs, expr->loc);
 
                 // Store the mangled name for the lowerer
                 std::string mangledName = mangleGenericName(identExpr->name, typeArgs);
@@ -502,7 +501,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
                                     {
                                         error(expr->args[i].value->loc,
                                               "Type mismatch in generic function call: "
-                                              "cannot infer consistent type for " + typeParamName);
+                                              "cannot infer consistent type for " +
+                                                  typeParamName);
                                         return types::unknown();
                                     }
                                 }
@@ -526,8 +526,9 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
                     }
                     else
                     {
-                        error(expr->loc, "Cannot infer type argument for '" + paramName +
-                                             "' in generic function call");
+                        error(expr->loc,
+                              "Cannot infer type argument for '" + paramName +
+                                  "' in generic function call");
                         return types::unknown();
                     }
                 }
@@ -948,7 +949,8 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
             return sym->type;
         }
         // If not found in global scope, report error
-        error(expr->loc, "Module '" + baseType->name + "' has no exported symbol '" + expr->field + "'");
+        error(expr->loc,
+              "Module '" + baseType->name + "' has no exported symbol '" + expr->field + "'");
         return types::unknown();
     }
 
@@ -1438,15 +1440,16 @@ TypeRef Sema::analyzeNew(NewExpr *expr)
         auto methodIt = methodTypes_.find(initMethodKey);
         if (methodIt != methodTypes_.end() && methodIt->second)
         {
-            // methodTypes_ stores just the declared params (self is added at codegen, not stored here)
+            // methodTypes_ stores just the declared params (self is added at codegen, not stored
+            // here)
             auto params = methodIt->second->paramTypes();
             size_t expectedArgs = params.size();
             size_t providedArgs = expr->args.size();
             if (providedArgs != expectedArgs)
             {
-                error(expr->loc, "Entity '" + type->name + "' init() expects " +
-                                     std::to_string(expectedArgs) + " argument(s) but got " +
-                                     std::to_string(providedArgs));
+                error(expr->loc,
+                      "Entity '" + type->name + "' init() expects " + std::to_string(expectedArgs) +
+                          " argument(s) but got " + std::to_string(providedArgs));
             }
         }
     }

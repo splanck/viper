@@ -1,8 +1,7 @@
 #ifndef _LIBCPP_CSTDINT
 #define _LIBCPP_CSTDINT
 
-namespace std
-{
+namespace std {
 
 /* Fixed-width integer types */
 using int8_t = signed char;

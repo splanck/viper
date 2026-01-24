@@ -81,8 +81,7 @@ Lowerer::Value Lowerer::widenByteToInteger(Value value)
     // Load as i64 - the upper 32 bits will be whatever was in memory (likely zero from alloca)
     // To ensure zeroing, we mask after loading
     Value loaded = emitLoad(slot, Type(Type::Kind::I64));
-    return emitBinary(
-        Opcode::And, Type(Type::Kind::I64), loaded, Value::constInt(0xFFFFFFFFLL));
+    return emitBinary(Opcode::And, Type(Type::Kind::I64), loaded, Value::constInt(0xFFFFFFFFLL));
 }
 
 Lowerer::Value Lowerer::emitCallRet(Type retTy,
@@ -146,8 +145,8 @@ Lowerer::Value Lowerer::emitCallIndirectRet(Type retTy,
 }
 
 LowerResult Lowerer::emitCallWithReturn(const std::string &callee,
-                                         const std::vector<Value> &args,
-                                         Type returnType)
+                                        const std::vector<Value> &args,
+                                        Type returnType)
 {
     if (returnType.kind == Type::Kind::Void)
     {

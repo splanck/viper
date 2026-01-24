@@ -859,10 +859,14 @@ void *rt_pixels_rotate(void *pixels, double angle_degrees)
             uint8_t r11 = (c11 >> 0) & 0xFF, g11 = (c11 >> 8) & 0xFF;
             uint8_t b11 = (c11 >> 16) & 0xFF, a11 = (c11 >> 24) & 0xFF;
 
-            double r = r00 * (1 - fx) * (1 - fy) + r10 * fx * (1 - fy) + r01 * (1 - fx) * fy + r11 * fx * fy;
-            double g = g00 * (1 - fx) * (1 - fy) + g10 * fx * (1 - fy) + g01 * (1 - fx) * fy + g11 * fx * fy;
-            double b = b00 * (1 - fx) * (1 - fy) + b10 * fx * (1 - fy) + b01 * (1 - fx) * fy + b11 * fx * fy;
-            double a = a00 * (1 - fx) * (1 - fy) + a10 * fx * (1 - fy) + a01 * (1 - fx) * fy + a11 * fx * fy;
+            double r = r00 * (1 - fx) * (1 - fy) + r10 * fx * (1 - fy) + r01 * (1 - fx) * fy +
+                       r11 * fx * fy;
+            double g = g00 * (1 - fx) * (1 - fy) + g10 * fx * (1 - fy) + g01 * (1 - fx) * fy +
+                       g11 * fx * fy;
+            double b = b00 * (1 - fx) * (1 - fy) + b10 * fx * (1 - fy) + b01 * (1 - fx) * fy +
+                       b11 * fx * fy;
+            double a = a00 * (1 - fx) * (1 - fy) + a10 * fx * (1 - fy) + a01 * (1 - fx) * fy +
+                       a11 * fx * fy;
 
             uint8_t ri = (uint8_t)(r > 255 ? 255 : (r < 0 ? 0 : r));
             uint8_t gi = (uint8_t)(g > 255 ? 255 : (g < 0 ? 0 : g));
@@ -983,7 +987,8 @@ void *rt_pixels_grayscale(void *pixels)
 
         // Standard grayscale formula: 0.299*R + 0.587*G + 0.114*B
         uint8_t gray = (uint8_t)((r * 77 + g * 150 + b * 29) >> 8);
-        result->data[i] = ((uint32_t)a << 24) | ((uint32_t)gray << 16) | ((uint32_t)gray << 8) | gray;
+        result->data[i] =
+            ((uint32_t)a << 24) | ((uint32_t)gray << 16) | ((uint32_t)gray << 8) | gray;
     }
 
     return result;
@@ -1168,22 +1173,18 @@ void *rt_pixels_resize(void *pixels, int64_t new_width, int64_t new_height)
             int64_t inv_frac_x = 256 - frac_x;
             int64_t inv_frac_y = 256 - frac_y;
 
-            int64_t a =
-                (a00 * inv_frac_x * inv_frac_y + a10 * frac_x * inv_frac_y +
-                 a01 * inv_frac_x * frac_y + a11 * frac_x * frac_y) >>
-                16;
-            int64_t r =
-                (r00 * inv_frac_x * inv_frac_y + r10 * frac_x * inv_frac_y +
-                 r01 * inv_frac_x * frac_y + r11 * frac_x * frac_y) >>
-                16;
-            int64_t g =
-                (g00 * inv_frac_x * inv_frac_y + g10 * frac_x * inv_frac_y +
-                 g01 * inv_frac_x * frac_y + g11 * frac_x * frac_y) >>
-                16;
-            int64_t b =
-                (b00 * inv_frac_x * inv_frac_y + b10 * frac_x * inv_frac_y +
-                 b01 * inv_frac_x * frac_y + b11 * frac_x * frac_y) >>
-                16;
+            int64_t a = (a00 * inv_frac_x * inv_frac_y + a10 * frac_x * inv_frac_y +
+                         a01 * inv_frac_x * frac_y + a11 * frac_x * frac_y) >>
+                        16;
+            int64_t r = (r00 * inv_frac_x * inv_frac_y + r10 * frac_x * inv_frac_y +
+                         r01 * inv_frac_x * frac_y + r11 * frac_x * frac_y) >>
+                        16;
+            int64_t g = (g00 * inv_frac_x * inv_frac_y + g10 * frac_x * inv_frac_y +
+                         g01 * inv_frac_x * frac_y + g11 * frac_x * frac_y) >>
+                        16;
+            int64_t b = (b00 * inv_frac_x * inv_frac_y + b10 * frac_x * inv_frac_y +
+                         b01 * inv_frac_x * frac_y + b11 * frac_x * frac_y) >>
+                        16;
 
             result->data[y * new_width + x] = ((uint32_t)(a & 0xFF) << 24) |
                                               ((uint32_t)(r & 0xFF) << 16) |

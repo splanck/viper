@@ -20,8 +20,7 @@
  * Objects derived from `kobj::Object` are intended to be allocated on the heap
  * (e.g. via `new`) and released via @ref kobj::release.
  */
-namespace kobj
-{
+namespace kobj {
 
 // Base class for all kernel objects
 // Provides reference counting and type identification
@@ -35,8 +34,7 @@ namespace kobj
  * The `kind_` tag is used by the capability layer and by the `as<T>()` helper
  * to safely downcast without relying on RTTI.
  */
-class Object
-{
+class Object {
   public:
     /**
      * @brief Construct an object with a specific kind tag.
@@ -55,8 +53,7 @@ class Object
      * Call this when creating a new reference to the object (e.g. duplicating
      * a capability).
      */
-    void ref()
-    {
+    void ref() {
         ++ref_count_;
     }
 
@@ -69,25 +66,21 @@ class Object
      *
      * @return `true` if the count reached zero and the object should be deleted.
      */
-    bool unref()
-    {
-        if (--ref_count_ == 0)
-        {
+    bool unref() {
+        if (--ref_count_ == 0) {
             return true; // Caller should delete
         }
         return false;
     }
 
     /** @brief Return the current reference count. */
-    u32 ref_count() const
-    {
+    u32 ref_count() const {
         return ref_count_;
     }
 
     // Type identification
     /** @brief Return the capability kind tag for this object. */
-    cap::Kind kind() const
-    {
+    cap::Kind kind() const {
         return kind_;
     }
 
@@ -98,10 +91,8 @@ class Object
      * @tparam T Derived object type with a static `KIND` constant.
      * @return Pointer to `T` on success, or `nullptr` if kind does not match.
      */
-    template <typename T> T *as()
-    {
-        if (kind_ == T::KIND)
-        {
+    template <typename T> T *as() {
+        if (kind_ == T::KIND) {
             return static_cast<T *>(this);
         }
         return nullptr;
@@ -113,10 +104,8 @@ class Object
      * @tparam T Derived object type with a static `KIND` constant.
      * @return Pointer to `const T` on success, or `nullptr` if kind does not match.
      */
-    template <typename T> const T *as() const
-    {
-        if (kind_ == T::KIND)
-        {
+    template <typename T> const T *as() const {
+        if (kind_ == T::KIND) {
             return static_cast<const T *>(this);
         }
         return nullptr;
@@ -138,10 +127,8 @@ class Object
  *
  * @param obj Object pointer (may be `nullptr`).
  */
-inline void release(Object *obj)
-{
-    if (obj && obj->unref())
-    {
+inline void release(Object *obj) {
+    if (obj && obj->unref()) {
         delete obj;
     }
 }
@@ -164,8 +151,7 @@ inline void release(Object *obj)
  *
  * @tparam T Type derived from kobj::Object.
  */
-template <typename T> class Ref
-{
+template <typename T> class Ref {
   public:
     /// Default constructor - creates a null reference
     Ref() : ptr_(nullptr) {}
@@ -174,30 +160,25 @@ template <typename T> class Ref
     explicit Ref(T *ptr) : ptr_(ptr) {}
 
     /// Copy constructor - increments reference count
-    Ref(const Ref &other) : ptr_(other.ptr_)
-    {
+    Ref(const Ref &other) : ptr_(other.ptr_) {
         if (ptr_)
             ptr_->ref();
     }
 
     /// Move constructor - steals the reference
-    Ref(Ref &&other) noexcept : ptr_(other.ptr_)
-    {
+    Ref(Ref &&other) noexcept : ptr_(other.ptr_) {
         other.ptr_ = nullptr;
     }
 
     /// Destructor - releases the reference
-    ~Ref()
-    {
+    ~Ref() {
         if (ptr_)
             release(ptr_);
     }
 
     /// Copy assignment
-    Ref &operator=(const Ref &other)
-    {
-        if (this != &other)
-        {
+    Ref &operator=(const Ref &other) {
+        if (this != &other) {
             if (ptr_)
                 release(ptr_);
             ptr_ = other.ptr_;
@@ -208,10 +189,8 @@ template <typename T> class Ref
     }
 
     /// Move assignment
-    Ref &operator=(Ref &&other) noexcept
-    {
-        if (this != &other)
-        {
+    Ref &operator=(Ref &&other) noexcept {
+        if (this != &other) {
             if (ptr_)
                 release(ptr_);
             ptr_ = other.ptr_;
@@ -221,52 +200,44 @@ template <typename T> class Ref
     }
 
     /// Reset to a new pointer (releases old reference)
-    void reset(T *ptr = nullptr)
-    {
+    void reset(T *ptr = nullptr) {
         if (ptr_)
             release(ptr_);
         ptr_ = ptr;
     }
 
     /// Release ownership and return raw pointer
-    T *release_ptr()
-    {
+    T *release_ptr() {
         T *ptr = ptr_;
         ptr_ = nullptr;
         return ptr;
     }
 
     /// Dereference operators
-    T *operator->() const
-    {
+    T *operator->() const {
         return ptr_;
     }
 
-    T &operator*() const
-    {
+    T &operator*() const {
         return *ptr_;
     }
 
     /// Get raw pointer
-    T *get() const
-    {
+    T *get() const {
         return ptr_;
     }
 
     /// Boolean conversion
-    explicit operator bool() const
-    {
+    explicit operator bool() const {
         return ptr_ != nullptr;
     }
 
     /// Comparison
-    bool operator==(const Ref &other) const
-    {
+    bool operator==(const Ref &other) const {
         return ptr_ == other.ptr_;
     }
 
-    bool operator!=(const Ref &other) const
-    {
+    bool operator!=(const Ref &other) const {
         return ptr_ != other.ptr_;
     }
 
@@ -275,8 +246,7 @@ template <typename T> class Ref
 };
 
 /// Helper to create a Ref from a raw pointer
-template <typename T> Ref<T> make_ref(T *ptr)
-{
+template <typename T> Ref<T> make_ref(T *ptr) {
     return Ref<T>(ptr);
 }
 

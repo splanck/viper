@@ -6,13 +6,10 @@
 #include "shm.hpp"
 #include "../mm/pmm.hpp"
 
-namespace kobj
-{
+namespace kobj {
 
-SharedMemory *SharedMemory::create(u64 size)
-{
-    if (size == 0)
-    {
+SharedMemory *SharedMemory::create(u64 size) {
+    if (size == 0) {
         return nullptr;
     }
 
@@ -22,16 +19,14 @@ SharedMemory *SharedMemory::create(u64 size)
 
     // Allocate contiguous physical pages
     u64 phys_addr = pmm::alloc_pages(num_pages);
-    if (phys_addr == 0)
-    {
+    if (phys_addr == 0) {
         return nullptr;
     }
 
     // Zero the memory
     void *virt = pmm::phys_to_virt(phys_addr);
     u8 *ptr = static_cast<u8 *>(virt);
-    for (u64 i = 0; i < aligned_size; i++)
-    {
+    for (u64 i = 0; i < aligned_size; i++) {
         ptr[i] = 0;
     }
 
@@ -39,11 +34,9 @@ SharedMemory *SharedMemory::create(u64 size)
     return new SharedMemory(phys_addr, aligned_size, num_pages);
 }
 
-SharedMemory::~SharedMemory()
-{
+SharedMemory::~SharedMemory() {
     // Free the physical pages
-    if (phys_addr_ != 0 && num_pages_ > 0)
-    {
+    if (phys_addr_ != 0 && num_pages_ > 0) {
         pmm::free_pages(phys_addr_, num_pages_);
     }
 }

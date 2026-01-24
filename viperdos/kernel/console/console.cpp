@@ -18,8 +18,7 @@
  * characters. Characters from both virtio keyboard and serial UART are
  * pushed into this buffer during poll_input().
  */
-namespace console
-{
+namespace console {
 
 // Input ring buffer
 static char input_buffer[INPUT_BUFFER_SIZE];
@@ -32,11 +31,9 @@ static volatile usize input_tail = 0; // Write position
  * @param c Character to push.
  * @return true if character was buffered, false if buffer is full.
  */
-static bool push_char(char c)
-{
+static bool push_char(char c) {
     usize next = (input_tail + 1) % INPUT_BUFFER_SIZE;
-    if (next == input_head)
-    {
+    if (next == input_head) {
         return false; // Buffer full
     }
     input_buffer[input_tail] = c;
@@ -45,47 +42,39 @@ static bool push_char(char c)
 }
 
 /** @copydoc console::init_input */
-void init_input()
-{
+void init_input() {
     input_head = 0;
     input_tail = 0;
     serial::puts("[console] Input buffer initialized (1024 bytes)\n");
 }
 
 /** @copydoc console::poll_input */
-void poll_input()
-{
+void poll_input() {
     // Poll keyboard input (this also polls the virtio device)
-    if (virtio::keyboard)
-    {
+    if (virtio::keyboard) {
         input::poll();
         // Drain keyboard character buffer into console buffer
         i32 c;
-        while ((c = input::getchar()) >= 0)
-        {
+        while ((c = input::getchar()) >= 0) {
             push_char(static_cast<char>(c));
         }
     }
 
     // Poll serial input
-    while (serial::has_char())
-    {
+    while (serial::has_char()) {
         char c = serial::getc();
         push_char(c);
     }
 }
 
 /** @copydoc console::has_input */
-bool has_input()
-{
+bool has_input() {
     return input_head != input_tail;
 }
 
 /** @copydoc console::getchar */
-i32 getchar()
-{
-    if (input_head == input_tail)
-    {
+i32 getchar() {
+    if (input_head == input_tail) {
         return -1;
     }
     char c = input_buffer[input_head];
@@ -94,29 +83,24 @@ i32 getchar()
 }
 
 /** @copydoc console::input_available */
-usize input_available()
-{
-    if (input_tail >= input_head)
-    {
+usize input_available() {
+    if (input_tail >= input_head) {
         return input_tail - input_head;
     }
     return INPUT_BUFFER_SIZE - input_head + input_tail;
 }
 
 /** @copydoc console::readline */
-i32 readline(char *buf, usize maxlen)
-{
+i32 readline(char *buf, usize maxlen) {
     if (!buf || maxlen < 2)
         return -1;
 
     usize pos = 0;
     maxlen--; // Reserve space for NUL terminator
 
-    while (pos < maxlen)
-    {
+    while (pos < maxlen) {
         // Wait for input
-        while (!has_input())
-        {
+        while (!has_input()) {
             poll_input();
             asm volatile("wfe");
         }
@@ -128,8 +112,7 @@ i32 readline(char *buf, usize maxlen)
         char ch = static_cast<char>(c);
 
         // Handle special characters
-        switch (ch)
-        {
+        switch (ch) {
             case '\n':
             case '\r':
                 // End of line
@@ -142,8 +125,7 @@ i32 readline(char *buf, usize maxlen)
             case '\b':
             case 0x7F: // DEL
                 // Backspace
-                if (pos > 0)
-                {
+                if (pos > 0) {
                     pos--;
                     // Erase character on terminal
                     serial::puts("\b \b");
@@ -167,8 +149,7 @@ i32 readline(char *buf, usize maxlen)
 
             case 0x15: // Ctrl+U
                 // Clear line
-                while (pos > 0)
-                {
+                while (pos > 0) {
                     pos--;
                     serial::puts("\b \b");
                     if (gcon::is_available())
@@ -178,8 +159,7 @@ i32 readline(char *buf, usize maxlen)
 
             default:
                 // Regular printable character
-                if (ch >= 0x20 && ch < 0x7F)
-                {
+                if (ch >= 0x20 && ch < 0x7F) {
                     buf[pos++] = ch;
                     serial::putc(ch);
                     if (gcon::is_available())
@@ -195,20 +175,17 @@ i32 readline(char *buf, usize maxlen)
 }
 
 /** @copydoc console::print */
-void print(const char *s)
-{
+void print(const char *s) {
     serial::puts(s);
 }
 
 /** @copydoc console::print_dec */
-void print_dec(i64 value)
-{
+void print_dec(i64 value) {
     serial::put_dec(value);
 }
 
 /** @copydoc console::print_hex */
-void print_hex(u64 value)
-{
+void print_hex(u64 value) {
     serial::put_hex(value);
 }
 

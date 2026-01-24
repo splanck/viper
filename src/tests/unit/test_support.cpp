@@ -212,8 +212,10 @@ int main()
         {
             int a;
             double b;
+
             TestStruct(int x, double y) : a(x), b(y) {}
         };
+
         auto *ts = growArena.create<TestStruct>(42, 3.14);
         assert(ts != nullptr);
         assert(ts->a == 42);
@@ -226,11 +228,17 @@ int main()
     // GrowingArena destructor tracking
     {
         static int destructorCount = 0;
+
         struct TrackedObj
         {
             int *counter;
+
             TrackedObj(int *c) : counter(c) {}
-            ~TrackedObj() { ++(*counter); }
+
+            ~TrackedObj()
+            {
+                ++(*counter);
+            }
         };
 
         {

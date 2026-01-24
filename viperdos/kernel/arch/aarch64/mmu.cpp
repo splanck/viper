@@ -27,12 +27,10 @@
  * This is a bring-up implementation and does not yet configure TTBR1 (higher
  * half) or ASIDs beyond a minimal configuration.
  */
-namespace mmu
-{
+namespace mmu {
 
 // TCR_EL1 bit fields
-namespace tcr
-{
+namespace tcr {
 // T0SZ: Size of TTBR0 region (VA bits = 64 - T0SZ)
 // 16 means 48-bit VA (0x0 to 0x0000_FFFF_FFFF_FFFF)
 constexpr u64 T0SZ_48BIT = 16ULL << 0;
@@ -78,8 +76,7 @@ constexpr u64 AS_8BIT = 0ULL << 36;
 } // namespace tcr
 
 // MAIR_EL1 attribute indices
-namespace mair
-{
+namespace mair {
 // Attr0: Device-nGnRnE (strongly ordered)
 constexpr u64 ATTR0_DEVICE = 0x00ULL << 0;
 
@@ -91,8 +88,7 @@ constexpr u64 ATTR2_NC = 0x44ULL << 16;
 } // namespace mair
 
 // Page table entry bits (for kernel identity mapping)
-namespace pte
-{
+namespace pte {
 constexpr u64 VALID = 1ULL << 0;
 constexpr u64 TABLE = 1ULL << 1;       // For L0/L1/L2 table entries
 constexpr u64 BLOCK = 0ULL << 1;       // For L1/L2 block entries (1GB/2MB)
@@ -107,11 +103,11 @@ constexpr u64 PXN = 0ULL << 53;        // Privileged execute allowed
 
 static bool initialized = false;
 static bool ttbr1_enabled = false;
-static u64 kernel_ttbr0 = 0;  // Root of kernel page tables (identity-mapped)
-static u64 kernel_ttbr1 = 0;  // Root of kernel higher-half tables
-static u64 kernel_mair = 0;   // MAIR_EL1 value for secondary CPUs
-static u64 kernel_tcr = 0;    // TCR_EL1 value for secondary CPUs
-static u64 kernel_sctlr = 0;  // SCTLR_EL1 value for secondary CPUs
+static u64 kernel_ttbr0 = 0; // Root of kernel page tables (identity-mapped)
+static u64 kernel_ttbr1 = 0; // Root of kernel higher-half tables
+static u64 kernel_mair = 0;  // MAIR_EL1 value for secondary CPUs
+static u64 kernel_tcr = 0;   // TCR_EL1 value for secondary CPUs
+static u64 kernel_sctlr = 0; // SCTLR_EL1 value for secondary CPUs
 
 // Create kernel page tables with identity mapping
 // Maps 0x00000000-0x80000000 (first 2GB) using 1GB blocks
@@ -128,29 +124,25 @@ static u64 kernel_sctlr = 0;  // SCTLR_EL1 value for secondary CPUs
  *
  * @return `true` on success, `false` if page-table allocation fails.
  */
-static bool create_kernel_page_tables()
-{
+static bool create_kernel_page_tables() {
     serial::puts("[mmu] Creating kernel identity-mapped page tables...\n");
 
     // Allocate L0 table (one page)
     u64 l0_phys = pmm::alloc_page();
-    if (l0_phys == 0)
-    {
+    if (l0_phys == 0) {
         serial::puts("[mmu] ERROR: Failed to allocate L0 table\n");
         return false;
     }
 
     // Zero the L0 table
     u64 *l0 = reinterpret_cast<u64 *>(l0_phys);
-    for (int i = 0; i < 512; i++)
-    {
+    for (int i = 0; i < 512; i++) {
         l0[i] = 0;
     }
 
     // Allocate L1 table for first 512GB (entry 0 of L0)
     u64 l1_phys = pmm::alloc_page();
-    if (l1_phys == 0)
-    {
+    if (l1_phys == 0) {
         serial::puts("[mmu] ERROR: Failed to allocate L1 table\n");
         pmm::free_page(l0_phys);
         return false;
@@ -158,8 +150,7 @@ static bool create_kernel_page_tables()
 
     // Zero the L1 table
     u64 *l1 = reinterpret_cast<u64 *>(l1_phys);
-    for (int i = 0; i < 512; i++)
-    {
+    for (int i = 0; i < 512; i++) {
         l1[i] = 0;
     }
 
@@ -214,30 +205,26 @@ static bool create_kernel_page_tables()
  *
  * @return `true` on success, `false` if page-table allocation fails.
  */
-static bool create_kernel_ttbr1_tables()
-{
+static bool create_kernel_ttbr1_tables() {
     serial::puts("[mmu] Creating kernel higher-half page tables (TTBR1)...\n");
 
     // Allocate L0 table (one page)
     u64 l0_phys = pmm::alloc_page();
-    if (l0_phys == 0)
-    {
+    if (l0_phys == 0) {
         serial::puts("[mmu] ERROR: Failed to allocate TTBR1 L0 table\n");
         return false;
     }
 
     // Zero the L0 table
     u64 *l0 = reinterpret_cast<u64 *>(l0_phys);
-    for (int i = 0; i < 512; i++)
-    {
+    for (int i = 0; i < 512; i++) {
         l0[i] = 0;
     }
 
     // Allocate L1 table for first 512GB virtual (entry 0 of L0)
     // Virtual 0xFFFF_0000_0000_0000 uses L0[0] since bits [47:39] = 0
     u64 l1_phys = pmm::alloc_page();
-    if (l1_phys == 0)
-    {
+    if (l1_phys == 0) {
         serial::puts("[mmu] ERROR: Failed to allocate TTBR1 L1 table\n");
         pmm::free_page(l0_phys);
         return false;
@@ -245,8 +232,7 @@ static bool create_kernel_ttbr1_tables()
 
     // Zero the L1 table
     u64 *l1 = reinterpret_cast<u64 *>(l1_phys);
-    for (int i = 0; i < 512; i++)
-    {
+    for (int i = 0; i < 512; i++) {
         l1[i] = 0;
     }
 
@@ -282,8 +268,7 @@ static bool create_kernel_ttbr1_tables()
 }
 
 /** @copydoc mmu::init */
-void init()
-{
+void init() {
     serial::puts("[mmu] Configuring MMU for user space support...\n");
 
     // Read current SCTLR_EL1 to check MMU state
@@ -296,22 +281,20 @@ void init()
     serial::puts(")\n");
 
     // Create kernel page tables FIRST (before enabling MMU)
-    if (!create_kernel_page_tables())
-    {
+    if (!create_kernel_page_tables()) {
         serial::puts("[mmu] ERROR: Failed to create kernel page tables!\n");
         return;
     }
 
     // Create TTBR1 page tables for kernel higher-half
-    if (!create_kernel_ttbr1_tables())
-    {
+    if (!create_kernel_ttbr1_tables()) {
         serial::puts("[mmu] WARNING: Failed to create TTBR1 tables, continuing with TTBR0 only\n");
         // Continue without TTBR1 - kernel will work with identity mapping only
     }
 
     // Configure MAIR_EL1 for memory attributes
     u64 mair_val = mair::ATTR0_DEVICE | mair::ATTR1_NORMAL | mair::ATTR2_NC;
-    kernel_mair = mair_val;  // Save for secondary CPUs
+    kernel_mair = mair_val; // Save for secondary CPUs
     asm volatile("msr mair_el1, %0" ::"r"(mair_val) : "memory");
 
     serial::puts("[mmu] MAIR_EL1 configured: ");
@@ -330,16 +313,13 @@ void init()
     // to high addresses, but enabling translations now would cause faults
     // since the kernel code/data aren't at high addresses yet.
     tcr_val |= tcr::EPD1_DISABLE;
-    if (kernel_ttbr1 != 0)
-    {
+    if (kernel_ttbr1 != 0) {
         serial::puts("[mmu] TTBR1 tables ready (translations disabled until kernel relocation)\n");
-    }
-    else
-    {
+    } else {
         serial::puts("[mmu] TTBR1 disabled in TCR\n");
     }
 
-    kernel_tcr = tcr_val;  // Save for secondary CPUs
+    kernel_tcr = tcr_val; // Save for secondary CPUs
     asm volatile("msr tcr_el1, %0" ::"r"(tcr_val) : "memory");
     asm volatile("isb");
 
@@ -356,8 +336,7 @@ void init()
     serial::puts("\n");
 
     // Set TTBR1 to kernel higher-half tables if available
-    if (kernel_ttbr1 != 0)
-    {
+    if (kernel_ttbr1 != 0) {
         asm volatile("msr ttbr1_el1, %0" ::"r"(kernel_ttbr1) : "memory");
         asm volatile("isb");
 
@@ -382,7 +361,7 @@ void init()
 
     serial::puts("[mmu] Enabling MMU...\n");
 
-    kernel_sctlr = sctlr;  // Save for secondary CPUs
+    kernel_sctlr = sctlr; // Save for secondary CPUs
 
     // This is the critical moment - enable MMU with identity-mapped kernel
     asm volatile("msr sctlr_el1, %0  \n"
@@ -396,37 +375,31 @@ void init()
 }
 
 /** @copydoc mmu::get_kernel_ttbr0 */
-u64 get_kernel_ttbr0()
-{
+u64 get_kernel_ttbr0() {
     return kernel_ttbr0;
 }
 
 /** @copydoc mmu::get_kernel_ttbr1 */
-u64 get_kernel_ttbr1()
-{
+u64 get_kernel_ttbr1() {
     return kernel_ttbr1;
 }
 
 /** @copydoc mmu::is_user_space_enabled */
-bool is_user_space_enabled()
-{
+bool is_user_space_enabled() {
     return initialized;
 }
 
 /** @copydoc mmu::is_ttbr1_enabled */
-bool is_ttbr1_enabled()
-{
+bool is_ttbr1_enabled() {
     return ttbr1_enabled;
 }
 
 /** @copydoc mmu::init_secondary */
-void init_secondary()
-{
+void init_secondary() {
     // Secondary CPUs wake from PSCI with MMU disabled. Apply the same
     // configuration the boot CPU established during mmu::init().
 
-    if (!initialized)
-    {
+    if (!initialized) {
         // Boot CPU hasn't finished MMU init yet - this shouldn't happen
         // but handle it gracefully by returning early
         return;
@@ -444,8 +417,7 @@ void init_secondary()
     asm volatile("isb");
 
     // Program TTBR1_EL1 if available
-    if (kernel_ttbr1 != 0)
-    {
+    if (kernel_ttbr1 != 0) {
         asm volatile("msr ttbr1_el1, %0" ::"r"(kernel_ttbr1) : "memory");
         asm volatile("isb");
     }

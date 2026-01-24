@@ -26,8 +26,7 @@
 
 #include "../include/types.hpp"
 
-namespace boot
-{
+namespace boot {
 
 /**
  * @brief Maximum number of memory regions stored in @ref Info.
@@ -47,8 +46,7 @@ constexpr int MAX_MEMORY_REGIONS = 64;
  * there is a UEFI framebuffer) and how reliable the memory map is (UEFI memory
  * map vs hardcoded defaults).
  */
-enum class Method
-{
+enum class Method {
     Unknown,    ///< Could not determine boot method
     QemuDirect, ///< Booted via QEMU -kernel (DTB in x0)
     VBoot,      ///< Booted via VBoot UEFI loader (VBootInfo in x0)
@@ -61,8 +59,7 @@ enum class Method
  * Values mirror the bootloader's view of the UEFI memory map and are used by
  * early kernel memory initialization (PMM) to decide which regions are usable.
  */
-enum class MemoryType : u32
-{
+enum class MemoryType : u32 {
     Usable = 1,   ///< Available for general use
     Reserved = 2, ///< Reserved by firmware
     Acpi = 3,     ///< ACPI tables/data
@@ -76,8 +73,7 @@ enum class MemoryType : u32
  * Encodes the byte order of 32-bit pixels as reported by UEFI GOP. This is
  * used by the early graphics console to interpret framebuffer memory.
  */
-enum class PixelFormat : u32
-{
+enum class PixelFormat : u32 {
     BGR = 0, ///< Blue-Green-Red (typical for UEFI GOP)
     RGB = 1, ///< Red-Green-Blue
 };
@@ -91,8 +87,7 @@ enum class PixelFormat : u32
  * QEMU, the framebuffer may be configured later using a RAM framebuffer device
  * (ramfb), in which case this structure may be empty during early boot.
  */
-struct Framebuffer
-{
+struct Framebuffer {
     u64 base;           ///< Physical address of framebuffer
     u32 width;          ///< Width in pixels
     u32 height;         ///< Height in pixels
@@ -108,8 +103,7 @@ struct Framebuffer
      * does not guarantee the memory is mapped yet; it only indicates that the
      * bootloader supplied plausible values.
      */
-    bool is_valid() const
-    {
+    bool is_valid() const {
         return base != 0 && width > 0 && height > 0;
     }
 };
@@ -121,8 +115,7 @@ struct Framebuffer
  * Regions are described in physical address space. Early memory initialization
  * uses these ranges to seed the physical page allocator.
  */
-struct MemoryRegion
-{
+struct MemoryRegion {
     u64 base;        ///< Physical base address
     u64 size;        ///< Size in bytes
     MemoryType type; ///< Region type
@@ -136,8 +129,7 @@ struct MemoryRegion
  * read-only. It contains the information the kernel needs to bootstrap memory
  * management and early I/O.
  */
-struct Info
-{
+struct Info {
     Method method; ///< How kernel was booted
 
     // Framebuffer (from GOP or ramfb)

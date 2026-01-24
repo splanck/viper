@@ -4,8 +4,7 @@
  */
 #include "vinit.hpp"
 
-void cmd_help()
-{
+void cmd_help() {
     print_str("\nViperDOS Shell Commands:\n\n");
     print_str("  chdir [path]   - Change directory (default: /)\n");
     print_str("  cwd            - Print current working directory\n");
@@ -44,13 +43,10 @@ void cmd_help()
     print_str("  Ctrl+K         - Kill to end\n\n");
 }
 
-void cmd_history()
-{
-    for (usize i = 0; i < HISTORY_SIZE; i++)
-    {
+void cmd_history() {
+    for (usize i = 0; i < HISTORY_SIZE; i++) {
         const char *hist = history_get(i);
-        if (hist)
-        {
+        if (hist) {
             print_str("  ");
             put_num(static_cast<i64>(i + 1));
             print_str("  ");
@@ -60,29 +56,25 @@ void cmd_history()
     }
 }
 
-void cmd_cls()
-{
+void cmd_cls() {
     print_str("\033[2J\033[H");
     last_rc = RC_OK;
 }
 
-void cmd_echo(const char *args)
-{
+void cmd_echo(const char *args) {
     if (args)
         print_str(args);
     print_str("\n");
     last_rc = RC_OK;
 }
 
-void cmd_version()
-{
+void cmd_version() {
     print_str("ViperDOS 0.2.0 (December 2025)\n");
     print_str("Platform: AArch64\n");
     last_rc = RC_OK;
 }
 
-void cmd_uptime()
-{
+void cmd_uptime() {
     u64 ms = sys::uptime();
     u64 secs = ms / 1000;
     u64 mins = secs / 60;
@@ -90,16 +82,14 @@ void cmd_uptime()
     u64 days = hours / 24;
 
     print_str("Uptime: ");
-    if (days > 0)
-    {
+    if (days > 0) {
         put_num(static_cast<i64>(days));
         print_str(" day");
         if (days != 1)
             print_str("s");
         print_str(", ");
     }
-    if (hours > 0 || days > 0)
-    {
+    if (hours > 0 || days > 0) {
         put_num(static_cast<i64>(hours % 24));
         print_str(" hour");
         if ((hours % 24) != 1)
@@ -119,18 +109,13 @@ void cmd_uptime()
     last_rc = RC_OK;
 }
 
-void cmd_why()
-{
-    if (last_rc == RC_OK)
-    {
+void cmd_why() {
+    if (last_rc == RC_OK) {
         print_str("No error.\n");
-    }
-    else
-    {
+    } else {
         print_str("Last return code: ");
         put_num(last_rc);
-        if (last_error)
-        {
+        if (last_error) {
             print_str(" - ");
             print_str(last_error);
         }
@@ -138,11 +123,9 @@ void cmd_why()
     }
 }
 
-void cmd_avail()
-{
+void cmd_avail() {
     MemInfo info;
-    if (sys::mem_info(&info) != 0)
-    {
+    if (sys::mem_info(&info) != 0) {
         print_str("AVAIL: Failed to get memory info\n");
         last_rc = RC_ERROR;
         last_error = "Memory info syscall failed";
@@ -175,13 +158,11 @@ void cmd_avail()
     last_rc = RC_OK;
 }
 
-void cmd_status()
-{
+void cmd_status() {
     TaskInfo tasks[16];
     i32 count = sys::task_list(tasks, 16);
 
-    if (count < 0)
-    {
+    if (count < 0) {
         print_str("STATUS: Failed to get task list\n");
         last_rc = RC_ERROR;
         last_error = "Task list syscall failed";
@@ -192,8 +173,7 @@ void cmd_status()
     print_str("  ID  State     Pri  Name\n");
     print_str("  --  --------  ---  --------------------------------\n");
 
-    for (i32 i = 0; i < count; i++)
-    {
+    for (i32 i = 0; i < count; i++) {
         TaskInfo &t = tasks[i];
 
         print_str("  ");
@@ -204,8 +184,7 @@ void cmd_status()
         put_num(t.id);
         print_str("  ");
 
-        switch (t.state)
-        {
+        switch (t.state) {
             case TASK_STATE_READY:
                 print_str("Ready   ");
                 break;
@@ -250,20 +229,17 @@ void cmd_status()
     last_rc = RC_OK;
 }
 
-void cmd_caps(const char *args)
-{
+void cmd_caps(const char *args) {
     (void)args; // Reserved for future filtering
     i32 count = sys::cap_list(nullptr, 0);
-    if (count < 0)
-    {
+    if (count < 0) {
         print_str("CAPS: Failed to get capability list\n");
         last_rc = RC_ERROR;
         last_error = "Capability list syscall failed";
         return;
     }
 
-    if (count == 0)
-    {
+    if (count == 0) {
         print_str("No capabilities registered.\n");
         last_rc = RC_OK;
         return;
@@ -272,8 +248,7 @@ void cmd_caps(const char *args)
     CapListEntry caps[32];
     i32 actual = sys::cap_list(caps, 32);
 
-    if (actual < 0)
-    {
+    if (actual < 0) {
         print_str("CAPS: Failed to list capabilities\n");
         last_rc = RC_ERROR;
         return;
@@ -283,8 +258,7 @@ void cmd_caps(const char *args)
     print_str("  Handle   Kind        Rights       Gen\n");
     print_str("  ------   ---------   ---------    ---\n");
 
-    for (i32 i = 0; i < actual; i++)
-    {
+    for (i32 i = 0; i < actual; i++) {
         CapListEntry &c = caps[i];
 
         print_str("  ");
@@ -294,8 +268,7 @@ void cmd_caps(const char *args)
         const char *kind_name = sys::cap_kind_name(c.kind);
         print_str(kind_name);
         usize klen = strlen(kind_name);
-        while (klen < 10)
-        {
+        while (klen < 10) {
             print_char(' ');
             klen++;
         }
@@ -322,34 +295,27 @@ void cmd_caps(const char *args)
     last_rc = RC_OK;
 }
 
-void cmd_date()
-{
+void cmd_date() {
     print_str("DATE: Date/time not yet available\n");
     last_rc = RC_OK;
 }
 
-void cmd_time()
-{
+void cmd_time() {
     print_str("TIME: Date/time not yet available\n");
     last_rc = RC_OK;
 }
 
-void cmd_servers(const char *args)
-{
+void cmd_servers(const char *args) {
     // If argument provided, restart that server
-    if (args && *args)
-    {
+    if (args && *args) {
         print_str("Restarting server: ");
         print_str(args);
         print_str("...\n");
 
-        if (restart_server(args))
-        {
+        if (restart_server(args)) {
             print_str("Server restarted successfully.\n");
             last_rc = RC_OK;
-        }
-        else
-        {
+        } else {
             print_str("SERVERS: Failed to restart server\n");
             last_rc = RC_ERROR;
             last_error = "Server restart failed";
@@ -363,8 +329,7 @@ void cmd_servers(const char *args)
     print_str("  -----  ------  -----  -------  ---------\n");
 
     usize count = get_server_count();
-    for (usize i = 0; i < count; i++)
-    {
+    for (usize i = 0; i < count; i++) {
         const char *name = nullptr;
         const char *assign = nullptr;
         i64 pid = 0;
@@ -383,8 +348,7 @@ void cmd_servers(const char *args)
         print_str(assign);
         print_str("   ");
 
-        if (pid > 0)
-        {
+        if (pid > 0) {
             if (pid < 10)
                 print_str("    ");
             else if (pid < 100)
@@ -394,9 +358,7 @@ void cmd_servers(const char *args)
             else if (pid < 10000)
                 print_str(" ");
             put_num(pid);
-        }
-        else
-        {
+        } else {
             print_str("    -");
         }
         print_str("  ");

@@ -15,8 +15,7 @@
  * Glyphs are stored as 1-bit-per-pixel rows (MSB first). The lookup routine
  * maps an ASCII character into a pointer to `BASE_HEIGHT` rows of glyph data.
  */
-namespace font
-{
+namespace font {
 
 // Base font dimensions (before scaling)
 constexpr u32 BASE_WIDTH = 8;

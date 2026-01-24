@@ -38,18 +38,15 @@
  * This is a simple implementation that combines the inode number,
  * device number, and project ID to create a unique key.
  */
-key_t ftok(const char *pathname, int proj_id)
-{
+key_t ftok(const char *pathname, int proj_id) {
     struct stat st;
 
-    if (!pathname)
-    {
+    if (!pathname) {
         errno = EINVAL;
         return (key_t)-1;
     }
 
-    if (stat(pathname, &st) < 0)
-    {
+    if (stat(pathname, &st) < 0) {
         /* errno set by stat() */
         return (key_t)-1;
     }

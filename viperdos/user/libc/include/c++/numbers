@@ -9,10 +9,8 @@
 
 #include "type_traits"
 
-namespace std
-{
-namespace numbers
-{
+namespace std {
+namespace numbers {
 
 /*
  * ===========================================================================

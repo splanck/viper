@@ -420,8 +420,8 @@ std::string RuntimeRegistry::toLower(std::string_view s)
 /// @return The hash key string.
 ///
 std::string RuntimeRegistry::methodKey(std::string_view cls,
-                                        std::string_view method,
-                                        std::size_t arity)
+                                       std::string_view method,
+                                       std::size_t arity)
 {
     std::string key;
     key.reserve(cls.size() + method.size() + 16);
@@ -601,8 +601,8 @@ const RuntimeRegistry &RuntimeRegistry::instance()
 /// @return The parsed method info if found, std::nullopt otherwise.
 ///
 std::optional<ParsedMethod> RuntimeRegistry::findMethod(std::string_view classQName,
-                                                         std::string_view methodName,
-                                                         std::size_t arity) const
+                                                        std::string_view methodName,
+                                                        std::size_t arity) const
 {
     auto it = methodIndex_.find(methodKey(classQName, methodName, arity));
     if (it == methodIndex_.end())
@@ -632,7 +632,7 @@ std::optional<ParsedMethod> RuntimeRegistry::findMethod(std::string_view classQN
 /// @return The parsed property info if found, std::nullopt otherwise.
 ///
 std::optional<ParsedProperty> RuntimeRegistry::findProperty(std::string_view classQName,
-                                                             std::string_view propertyName) const
+                                                            std::string_view propertyName) const
 {
     auto it = propertyIndex_.find(propertyKey(classQName, propertyName));
     if (it == propertyIndex_.end())

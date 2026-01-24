@@ -22,8 +22,7 @@
 #include "dispatch.hpp"
 #include "table.hpp"
 
-namespace syscall
-{
+namespace syscall {
 
 /**
  * @brief Dispatch the syscall described by the exception frame.
@@ -35,8 +34,7 @@ namespace syscall
  *
  * @param frame Exception frame captured at the SVC instruction.
  */
-void dispatch(exceptions::ExceptionFrame *frame)
-{
+void dispatch(exceptions::ExceptionFrame *frame) {
     // Get syscall number from x8
     u32 syscall_num = static_cast<u32>(frame->x[8]);
 

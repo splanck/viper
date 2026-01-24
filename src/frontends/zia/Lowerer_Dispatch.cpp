@@ -15,9 +15,9 @@
 namespace il::frontends::zia
 {
 
-using il::core::Value;
-using il::core::Type;
 using il::core::Opcode;
+using il::core::Type;
+using il::core::Value;
 
 /// Dispatch table entry: (classId, qualifiedMethodName)
 using DispatchEntry = std::pair<int, std::string>;
@@ -27,10 +27,10 @@ using DispatchEntry = std::pair<int, std::string>;
 //=============================================================================
 
 LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
-                                             const std::string &methodName,
-                                             size_t /*vtableSlot*/,
-                                             Value selfValue,
-                                             CallExpr *expr)
+                                            const std::string &methodName,
+                                            size_t /*vtableSlot*/,
+                                            Value selfValue,
+                                            CallExpr *expr)
 {
     // Get return type from cached method type - search up inheritance chain if needed
     TypeRef returnType = types::voidType();
@@ -44,7 +44,8 @@ LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
             break;
         }
         auto it = entityTypes_.find(searchType);
-        if (it == entityTypes_.end()) break;
+        if (it == entityTypes_.end())
+            break;
         searchType = it->second.baseClass;
     }
     Type ilReturnType = mapType(returnType);
@@ -58,7 +59,8 @@ LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
 
     // Build dispatch table
     std::vector<DispatchEntry> dispatchTable;
-    auto addEntry = [&](const EntityTypeInfo &info) {
+    auto addEntry = [&](const EntityTypeInfo &info)
+    {
         auto vtIt = info.vtableIndex.find(methodName);
         if (vtIt != info.vtableIndex.end())
             dispatchTable.emplace_back(info.classId, info.vtable[vtIt->second]);
@@ -67,13 +69,19 @@ LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
     addEntry(entityInfo);
     for (const auto &[name, info] : entityTypes_)
     {
-        if (name == entityInfo.name) continue;
+        if (name == entityInfo.name)
+            continue;
         std::string parent = info.baseClass;
         while (!parent.empty())
         {
-            if (parent == entityInfo.name) { addEntry(info); break; }
+            if (parent == entityInfo.name)
+            {
+                addEntry(info);
+                break;
+            }
             auto it = entityTypes_.find(parent);
-            if (it == entityTypes_.end()) break;
+            if (it == entityTypes_.end())
+                break;
             parent = it->second.baseClass;
         }
     }
@@ -84,9 +92,8 @@ LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
     // Single implementation - direct call
     if (dispatchTable.size() <= 1)
     {
-        std::string target = dispatchTable.empty()
-            ? entityInfo.name + "." + methodName
-            : dispatchTable[0].second;
+        std::string target =
+            dispatchTable.empty() ? entityInfo.name + "." + methodName : dispatchTable[0].second;
         // Handle void return types correctly
         if (ilReturnType.kind == Type::Kind::Void)
         {
@@ -129,9 +136,12 @@ LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
             size_t nextCheck = createBlock("vdispatch_check_" + std::to_string(i + 1));
             size_t callBlock = createBlock("vdispatch_call_" + std::to_string(i));
 
-            emitCBr(emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), classIdVal,
+            emitCBr(emitBinary(Opcode::ICmpEq,
+                               Type(Type::Kind::I1),
+                               classIdVal,
                                Value::constInt(static_cast<int64_t>(classId))),
-                    callBlock, nextCheck);
+                    callBlock,
+                    nextCheck);
 
             setBlock(callBlock);
             if (ilReturnType.kind == Type::Kind::Void)
@@ -154,10 +164,10 @@ LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
 //=============================================================================
 
 LowerResult Lowerer::lowerInterfaceMethodCall(const InterfaceTypeInfo &ifaceInfo,
-                                               const std::string &methodName,
-                                               MethodDecl * /*method*/,
-                                               Value selfValue,
-                                               CallExpr *expr)
+                                              const std::string &methodName,
+                                              MethodDecl * /*method*/,
+                                              Value selfValue,
+                                              CallExpr *expr)
 {
     // Get return type from cached interface method type
     TypeRef returnType = types::voidType();
@@ -236,9 +246,12 @@ LowerResult Lowerer::lowerInterfaceMethodCall(const InterfaceTypeInfo &ifaceInfo
             size_t nextCheck = createBlock("iface_dispatch_check_" + std::to_string(i + 1));
             size_t callBlock = createBlock("iface_dispatch_call_" + std::to_string(i));
 
-            emitCBr(emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), classIdVal,
+            emitCBr(emitBinary(Opcode::ICmpEq,
+                               Type(Type::Kind::I1),
+                               classIdVal,
                                Value::constInt(static_cast<int64_t>(classId))),
-                    callBlock, nextCheck);
+                    callBlock,
+                    nextCheck);
 
             setBlock(callBlock);
             if (ilReturnType.kind == Type::Kind::Void)

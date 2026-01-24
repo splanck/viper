@@ -11,28 +11,26 @@
 #include <time.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /*
-     * Asynchronous I/O control block
-     */
-    struct aiocb
-    {
-        int aio_fildes;               /* File descriptor */
-        off_t aio_offset;             /* File offset */
-        volatile void *aio_buf;       /* Buffer location */
-        size_t aio_nbytes;            /* Number of bytes */
-        int aio_reqprio;              /* Request priority offset */
-        struct sigevent aio_sigevent; /* Signal event */
-        int aio_lio_opcode;           /* List I/O operation code */
+/*
+ * Asynchronous I/O control block
+ */
+struct aiocb {
+    int aio_fildes;               /* File descriptor */
+    off_t aio_offset;             /* File offset */
+    volatile void *aio_buf;       /* Buffer location */
+    size_t aio_nbytes;            /* Number of bytes */
+    int aio_reqprio;              /* Request priority offset */
+    struct sigevent aio_sigevent; /* Signal event */
+    int aio_lio_opcode;           /* List I/O operation code */
 
-        /* Implementation-specific fields */
-        int __aio_error;      /* Error code */
-        ssize_t __aio_return; /* Return value */
-        int __aio_state;      /* Operation state */
-    };
+    /* Implementation-specific fields */
+    int __aio_error;      /* Error code */
+    ssize_t __aio_return; /* Return value */
+    int __aio_state;      /* Operation state */
+};
 
 /*
  * lio_listio() operation codes
@@ -62,53 +60,53 @@ extern "C"
 #define __AIO_CANCELED 2 /* Operation canceled */
 #define __AIO_ERROR 3    /* Operation failed */
 
-    /*
-     * Submit an asynchronous read request.
-     * Returns 0 on success, -1 on error.
-     */
-    int aio_read(struct aiocb *aiocbp);
+/*
+ * Submit an asynchronous read request.
+ * Returns 0 on success, -1 on error.
+ */
+int aio_read(struct aiocb *aiocbp);
 
-    /*
-     * Submit an asynchronous write request.
-     * Returns 0 on success, -1 on error.
-     */
-    int aio_write(struct aiocb *aiocbp);
+/*
+ * Submit an asynchronous write request.
+ * Returns 0 on success, -1 on error.
+ */
+int aio_write(struct aiocb *aiocbp);
 
-    /*
-     * Submit a list of I/O requests.
-     * Returns 0 on success, -1 on error.
-     */
-    int lio_listio(int mode, struct aiocb *const list[], int nent, struct sigevent *sig);
+/*
+ * Submit a list of I/O requests.
+ * Returns 0 on success, -1 on error.
+ */
+int lio_listio(int mode, struct aiocb *const list[], int nent, struct sigevent *sig);
 
-    /*
-     * Get the error status of an asynchronous I/O operation.
-     * Returns the error status (0 if complete, EINPROGRESS if pending).
-     */
-    int aio_error(const struct aiocb *aiocbp);
+/*
+ * Get the error status of an asynchronous I/O operation.
+ * Returns the error status (0 if complete, EINPROGRESS if pending).
+ */
+int aio_error(const struct aiocb *aiocbp);
 
-    /*
-     * Get the return status of an asynchronous I/O operation.
-     * Returns the bytes transferred, or -1 on error.
-     */
-    ssize_t aio_return(struct aiocb *aiocbp);
+/*
+ * Get the return status of an asynchronous I/O operation.
+ * Returns the bytes transferred, or -1 on error.
+ */
+ssize_t aio_return(struct aiocb *aiocbp);
 
-    /*
-     * Cancel an asynchronous I/O request.
-     * Returns AIO_CANCELED, AIO_NOTCANCELED, or AIO_ALLDONE.
-     */
-    int aio_cancel(int fd, struct aiocb *aiocbp);
+/*
+ * Cancel an asynchronous I/O request.
+ * Returns AIO_CANCELED, AIO_NOTCANCELED, or AIO_ALLDONE.
+ */
+int aio_cancel(int fd, struct aiocb *aiocbp);
 
-    /*
-     * Wait for asynchronous I/O request completion.
-     * Returns 0 on success, -1 on error or timeout.
-     */
-    int aio_suspend(const struct aiocb *const list[], int nent, const struct timespec *timeout);
+/*
+ * Wait for asynchronous I/O request completion.
+ * Returns 0 on success, -1 on error or timeout.
+ */
+int aio_suspend(const struct aiocb *const list[], int nent, const struct timespec *timeout);
 
-    /*
-     * Asynchronous file synchronization.
-     * Returns 0 on success, -1 on error.
-     */
-    int aio_fsync(int op, struct aiocb *aiocbp);
+/*
+ * Asynchronous file synchronization.
+ * Returns 0 on success, -1 on error.
+ */
+int aio_fsync(int op, struct aiocb *aiocbp);
 
 #ifdef __cplusplus
 }

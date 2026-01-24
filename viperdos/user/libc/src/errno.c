@@ -51,8 +51,7 @@ static int __errno_value = 0;
  *
  * @return Pointer to the errno integer for the current thread.
  */
-int *__errno_location(void)
-{
+int *__errno_location(void) {
     return &__errno_value;
 }
 
@@ -72,11 +71,9 @@ int *__errno_location(void)
  * @param line Line number where assertion failed.
  * @param func Function name where assertion failed (may be NULL).
  */
-void __assert_fail(const char *expr, const char *file, int line, const char *func)
-{
+void __assert_fail(const char *expr, const char *file, int line, const char *func) {
     fprintf(stderr, "Assertion failed: %s, file %s, line %d", expr, file, line);
-    if (func)
-    {
+    if (func) {
         fprintf(stderr, ", function %s", func);
     }
     fprintf(stderr, "\n");

@@ -49,8 +49,7 @@ int main()
     il::vm::VM vm(module);
 
     // Use a string longer than RT_SSO_MAX_LEN (32) to ensure heap allocation
-    static const char *long_str =
-        "this_is_a_temp_string_for_testing_heap_refcount_behavior";
+    static const char *long_str = "this_is_a_temp_string_for_testing_heap_refcount_behavior";
     rt_string incoming = rt_string_from_bytes(long_str, 57);
     if (!incoming)
         return 1;

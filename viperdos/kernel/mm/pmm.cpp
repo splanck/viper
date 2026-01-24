@@ -19,11 +19,9 @@
  *
  * Diagnostic messages are printed via the serial console to aid bring-up.
  */
-namespace pmm
-{
+namespace pmm {
 
-namespace
-{
+namespace {
 // Spinlock protecting all PMM state
 Spinlock pmm_lock;
 
@@ -51,8 +49,7 @@ u64 bitmap_size = 0; // Size in u64 words
  *
  * @param page_idx Zero-based page index within the managed RAM range.
  */
-inline void set_bit(u64 page_idx)
-{
+inline void set_bit(u64 page_idx) {
     u64 word = page_idx / 64;
     u64 bit = page_idx % 64;
     bitmap[word] |= (1ULL << bit);
@@ -64,8 +61,7 @@ inline void set_bit(u64 page_idx)
  *
  * @param page_idx Zero-based page index within the managed RAM range.
  */
-inline void clear_bit(u64 page_idx)
-{
+inline void clear_bit(u64 page_idx) {
     u64 word = page_idx / 64;
     u64 bit = page_idx % 64;
     bitmap[word] &= ~(1ULL << bit);
@@ -78,8 +74,7 @@ inline void clear_bit(u64 page_idx)
  * @param page_idx Zero-based page index within the managed RAM range.
  * @return `true` if the page is used/reserved, `false` if free.
  */
-inline bool test_bit(u64 page_idx)
-{
+inline bool test_bit(u64 page_idx) {
     u64 word = page_idx / 64;
     u64 bit = page_idx % 64;
     return (bitmap[word] & (1ULL << bit)) != 0;
@@ -92,8 +87,7 @@ inline bool test_bit(u64 page_idx)
  * @param addr Physical address in the managed RAM window.
  * @return Zero-based page index.
  */
-inline u64 addr_to_page(u64 addr)
-{
+inline u64 addr_to_page(u64 addr) {
     return (addr - mem_start) >> PAGE_SHIFT;
 }
 
@@ -104,18 +98,15 @@ inline u64 addr_to_page(u64 addr)
  * @param page_idx Zero-based page index.
  * @return Physical base address of the page.
  */
-inline u64 page_to_addr(u64 page_idx)
-{
+inline u64 page_to_addr(u64 page_idx) {
     return mem_start + (page_idx << PAGE_SHIFT);
 }
 
 /**
  * @brief Internal free_page without locking (caller must hold pmm_lock).
  */
-void free_page_unlocked(u64 phys_addr)
-{
-    if (phys_addr < mem_start || phys_addr >= mem_end)
-    {
+void free_page_unlocked(u64 phys_addr) {
+    if (phys_addr < mem_start || phys_addr >= mem_end) {
         serial::puts("[pmm] WARNING: Freeing invalid address ");
         serial::put_hex(phys_addr);
         serial::puts("\n");
@@ -123,8 +114,7 @@ void free_page_unlocked(u64 phys_addr)
     }
 
     u64 page = addr_to_page(phys_addr);
-    if (!test_bit(page))
-    {
+    if (!test_bit(page)) {
         serial::puts("[pmm] WARNING: Double-free at ");
         serial::put_hex(phys_addr);
         serial::puts("\n");
@@ -138,16 +128,13 @@ void free_page_unlocked(u64 phys_addr)
 /**
  * @brief Initialize buddy allocator for post-framebuffer memory region.
  */
-void init_buddy_region(u64 fb_end)
-{
-    if (fb_end >= mem_end)
-    {
+void init_buddy_region(u64 fb_end) {
+    if (fb_end >= mem_end) {
         serial::puts("[pmm] fb_end >= mem_end, skipping buddy\n");
         return;
     }
 
-    if (mm::buddy::get_allocator().init(fb_end, mem_end, fb_end))
-    {
+    if (mm::buddy::get_allocator().init(fb_end, mem_end, fb_end)) {
         buddy_available = true;
         buddy_region_start = fb_end;
         buddy_region_end = mem_end;
@@ -160,9 +147,7 @@ void init_buddy_region(u64 fb_end)
         serial::puts(" MB, ");
         serial::put_dec(mm::buddy::get_allocator().free_pages_count());
         serial::puts(" pages)\n");
-    }
-    else
-    {
+    } else {
         serial::puts("[pmm] Buddy allocator init failed\n");
     }
 }
@@ -170,19 +155,16 @@ void init_buddy_region(u64 fb_end)
 /**
  * @brief Initialize bitmap allocator for pre-framebuffer memory region.
  */
-void init_bitmap_region(u64 bitmap_addr, u64 usable_start, u64 fb_start)
-{
+void init_bitmap_region(u64 bitmap_addr, u64 usable_start, u64 fb_start) {
     bitmap = reinterpret_cast<u64 *>(bitmap_addr);
 
     for (u64 i = 0; i < bitmap_size; i++)
         bitmap[i] = ~0ULL;
     free_count = 0;
 
-    for (u64 addr = usable_start; addr < fb_start; addr += PAGE_SIZE)
-    {
+    for (u64 addr = usable_start; addr < fb_start; addr += PAGE_SIZE) {
         u64 page = addr_to_page(addr);
-        if (page < total_pages)
-        {
+        if (page < total_pages) {
             clear_bit(page);
             free_count++;
         }
@@ -198,8 +180,7 @@ void init_bitmap_region(u64 bitmap_addr, u64 usable_start, u64 fb_start)
 /**
  * @brief Print PMM summary statistics.
  */
-void print_summary()
-{
+void print_summary() {
     serial::puts("[pmm] Total: ");
     serial::put_dec(get_free_pages());
     serial::puts(" free / ");
@@ -212,8 +193,7 @@ void print_summary()
 } // namespace
 
 /** @copydoc pmm::init */
-void init(u64 ram_start, u64 ram_size, u64 kernel_end, u64 fb_base, u64 fb_size_param)
-{
+void init(u64 ram_start, u64 ram_size, u64 kernel_end, u64 fb_base, u64 fb_size_param) {
     serial::puts("[pmm] Initializing physical memory manager\n");
 
     mem_start = ram_start;
@@ -249,14 +229,11 @@ void init(u64 ram_start, u64 ram_size, u64 kernel_end, u64 fb_base, u64 fb_size_
 }
 
 /** @copydoc pmm::alloc_page */
-u64 alloc_page()
-{
+u64 alloc_page() {
     // Try buddy allocator first (larger region)
-    if (buddy_available)
-    {
+    if (buddy_available) {
         u64 addr = mm::buddy::get_allocator().alloc_page();
-        if (addr != 0)
-        {
+        if (addr != 0) {
             return addr;
         }
         // Buddy is exhausted, fall through to bitmap
@@ -265,19 +242,15 @@ u64 alloc_page()
     // Fall back to bitmap allocator (pre-framebuffer region)
     SpinlockGuard guard(pmm_lock);
 
-    for (u64 word = 0; word < bitmap_size; word++)
-    {
-        if (bitmap[word] != ~0ULL)
-        {
+    for (u64 word = 0; word < bitmap_size; word++) {
+        if (bitmap[word] != ~0ULL) {
             // Found a word with at least one free bit
-            for (u64 bit = 0; bit < 64; bit++)
-            {
+            for (u64 bit = 0; bit < 64; bit++) {
                 u64 page = word * 64 + bit;
                 if (page >= total_pages)
                     break;
 
-                if (!test_bit(page))
-                {
+                if (!test_bit(page)) {
                     set_bit(page);
                     free_count--;
                     return page_to_addr(page);
@@ -291,20 +264,17 @@ u64 alloc_page()
 }
 
 /** @copydoc pmm::alloc_pages */
-u64 alloc_pages(u64 count)
-{
+u64 alloc_pages(u64 count) {
     if (count == 0)
         return 0;
     if (count == 1)
         return alloc_page();
 
     // Try buddy allocator first (larger region, O(log n) for contiguous)
-    if (buddy_available)
-    {
+    if (buddy_available) {
         u32 order = mm::buddy::pages_to_order(count);
         u64 addr = mm::buddy::get_allocator().alloc_pages(order);
-        if (addr != 0)
-        {
+        if (addr != 0) {
             return addr;
         }
         // Buddy is exhausted, fall through to bitmap
@@ -316,29 +286,22 @@ u64 alloc_pages(u64 count)
     u64 run_start = 0;
     u64 run_length = 0;
 
-    for (u64 page = 0; page < total_pages; page++)
-    {
-        if (!test_bit(page))
-        {
-            if (run_length == 0)
-            {
+    for (u64 page = 0; page < total_pages; page++) {
+        if (!test_bit(page)) {
+            if (run_length == 0) {
                 run_start = page;
             }
             run_length++;
 
-            if (run_length == count)
-            {
+            if (run_length == count) {
                 // Found enough contiguous pages
-                for (u64 i = 0; i < count; i++)
-                {
+                for (u64 i = 0; i < count; i++) {
                     set_bit(run_start + i);
                 }
                 free_count -= count;
                 return page_to_addr(run_start);
             }
-        }
-        else
-        {
+        } else {
             run_length = 0;
         }
     }
@@ -350,11 +313,9 @@ u64 alloc_pages(u64 count)
 }
 
 /** @copydoc pmm::free_page */
-void free_page(u64 phys_addr)
-{
+void free_page(u64 phys_addr) {
     // Determine which allocator owns this page based on address
-    if (buddy_available && phys_addr >= buddy_region_start && phys_addr < buddy_region_end)
-    {
+    if (buddy_available && phys_addr >= buddy_region_start && phys_addr < buddy_region_end) {
         mm::buddy::get_allocator().free_page(phys_addr);
         return;
     }
@@ -365,18 +326,15 @@ void free_page(u64 phys_addr)
 }
 
 /** @copydoc pmm::free_pages */
-void free_pages(u64 phys_addr, u64 count)
-{
+void free_pages(u64 phys_addr, u64 count) {
     // For simplicity, we determine ownership of the first page
     // and assume all pages in the range belong to the same allocator
     // (This is safe as long as allocations don't cross regions)
 
-    if (buddy_available && phys_addr >= buddy_region_start && phys_addr < buddy_region_end)
-    {
+    if (buddy_available && phys_addr >= buddy_region_start && phys_addr < buddy_region_end) {
         // Pages from buddy allocator - free one at a time
         // (We don't track allocation order, so can't coalesce efficiently)
-        for (u64 i = 0; i < count; i++)
-        {
+        for (u64 i = 0; i < count; i++) {
             mm::buddy::get_allocator().free_page(phys_addr + i * PAGE_SIZE);
         }
         return;
@@ -385,15 +343,13 @@ void free_pages(u64 phys_addr, u64 count)
     // Pages from bitmap allocator
     SpinlockGuard guard(pmm_lock);
 
-    for (u64 i = 0; i < count; i++)
-    {
+    for (u64 i = 0; i < count; i++) {
         free_page_unlocked(phys_addr + i * PAGE_SIZE);
     }
 }
 
 /** @copydoc pmm::get_total_pages */
-u64 get_total_pages()
-{
+u64 get_total_pages() {
     // Always return the full RAM page count for "total memory" reporting.
     // This gives a consistent and accurate number for sysinfo.
     // The individual allocators (buddy + bitmap) manage different regions,
@@ -403,14 +359,12 @@ u64 get_total_pages()
 }
 
 /** @copydoc pmm::get_free_pages */
-u64 get_free_pages()
-{
+u64 get_free_pages() {
     SpinlockGuard guard(pmm_lock);
 
     u64 total_free = 0;
 
-    if (buddy_available)
-    {
+    if (buddy_available) {
         total_free += mm::buddy::get_allocator().free_pages_count();
     }
 
@@ -421,14 +375,12 @@ u64 get_free_pages()
 }
 
 /** @copydoc pmm::get_used_pages */
-u64 get_used_pages()
-{
+u64 get_used_pages() {
     SpinlockGuard guard(pmm_lock);
 
     u64 total_used = 0;
 
-    if (buddy_available)
-    {
+    if (buddy_available) {
         auto &alloc = mm::buddy::get_allocator();
         total_used += alloc.total_pages() - alloc.free_pages_count();
     }

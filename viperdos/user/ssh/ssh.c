@@ -22,19 +22,15 @@
 static struct termios orig_termios;
 static int raw_mode = 0;
 
-static void disable_raw_mode(void)
-{
-    if (raw_mode)
-    {
+static void disable_raw_mode(void) {
+    if (raw_mode) {
         tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
         raw_mode = 0;
     }
 }
 
-static void enable_raw_mode(void)
-{
-    if (tcgetattr(STDIN_FILENO, &orig_termios) < 0)
-    {
+static void enable_raw_mode(void) {
+    if (tcgetattr(STDIN_FILENO, &orig_termios) < 0) {
         return;
     }
 
@@ -46,8 +42,7 @@ static void enable_raw_mode(void)
     raw.c_cc[VMIN] = 0;
     raw.c_cc[VTIME] = 1;
 
-    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) < 0)
-    {
+    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) < 0) {
         return;
     }
 
@@ -60,8 +55,7 @@ static int hostkey_callback(ssh_session_t *session,
                             const uint8_t *key,
                             size_t key_len,
                             ssh_keytype_t keytype,
-                            void *userdata)
-{
+                            void *userdata) {
     (void)session;
     (void)key;
     (void)key_len;
@@ -80,8 +74,7 @@ static int hostkey_callback(ssh_session_t *session,
     return 0; /* Accept */
 }
 
-static void usage(const char *prog)
-{
+static void usage(const char *prog) {
     fprintf(stderr, "Usage: %s [-p port] [-i identity] [-l user] host [command]\n", prog);
     fprintf(stderr, "       %s [-p port] [-i identity] user@host [command]\n", prog);
     fprintf(stderr, "\nOptions:\n");
@@ -91,8 +84,7 @@ static void usage(const char *prog)
     fprintf(stderr, "  -v, -vv      Verbose mode (use -vv for packet-level tracing)\n");
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     const char *hostname = NULL;
     const char *username = NULL;
     const char *identity = NULL;
@@ -102,10 +94,8 @@ int main(int argc, char *argv[])
     int opt;
 
     /* Parse options */
-    while ((opt = getopt(argc, argv, "p:i:l:vh")) != -1)
-    {
-        switch (opt)
-        {
+    while ((opt = getopt(argc, argv, "p:i:l:vh")) != -1) {
+        switch (opt) {
             case 'p':
                 port = atoi(optarg);
                 break;
@@ -126,8 +116,7 @@ int main(int argc, char *argv[])
     }
 
     /* Get hostname (and possibly user@host) */
-    if (optind >= argc)
-    {
+    if (optind >= argc) {
         usage(argv[0]);
         return 1;
     }
@@ -136,25 +125,20 @@ int main(int argc, char *argv[])
 
     /* Parse user@host */
     char *at = strchr(hostarg, '@');
-    if (at)
-    {
+    if (at) {
         *at = '\0';
         username = hostarg;
         hostname = at + 1;
-    }
-    else
-    {
+    } else {
         hostname = hostarg;
     }
 
     /* Get command if specified */
-    if (optind < argc)
-    {
+    if (optind < argc) {
         /* Build command from remaining args */
         static char cmdbuf[4096];
         cmdbuf[0] = '\0';
-        for (int i = optind; i < argc; i++)
-        {
+        for (int i = optind; i < argc; i++) {
             if (i > optind)
                 strcat(cmdbuf, " ");
             strcat(cmdbuf, argv[i]);
@@ -163,22 +147,19 @@ int main(int argc, char *argv[])
     }
 
     /* Get username if not specified */
-    if (!username)
-    {
+    if (!username) {
         username = getenv("USER");
         if (!username)
             username = "root";
     }
 
-    if (verbose)
-    {
+    if (verbose) {
         printf("Connecting to %s@%s:%d\n", username, hostname, port);
     }
 
     /* Create SSH session */
     ssh_session_t *session = ssh_new();
-    if (!session)
-    {
+    if (!session) {
         fprintf(stderr, "Failed to create SSH session\n");
         return 1;
     }
@@ -191,57 +172,46 @@ int main(int argc, char *argv[])
 
     /* Connect */
     int rc = ssh_connect(session);
-    if (rc != SSH_OK)
-    {
+    if (rc != SSH_OK) {
         fprintf(stderr, "Connection failed: %s\n", ssh_get_error(session));
         ssh_free(session);
         return 1;
     }
 
-    if (verbose)
-    {
+    if (verbose) {
         printf("Connected. Authenticating...\n");
     }
 
     /* Try public key authentication first */
     int authenticated = 0;
 
-    if (identity)
-    {
+    if (identity) {
         ssh_key_t *key = ssh_key_load(identity, NULL);
-        if (key)
-        {
+        if (key) {
             rc = ssh_auth_publickey(session, key);
-            if (rc == SSH_OK)
-            {
+            if (rc == SSH_OK) {
                 authenticated = 1;
                 if (verbose)
                     printf("Public key authentication successful\n");
             }
             ssh_key_free(key);
-        }
-        else
-        {
+        } else {
             fprintf(stderr, "Warning: Could not load identity file %s\n", identity);
         }
     }
 
     /* Try default identity files */
-    if (!authenticated)
-    {
+    if (!authenticated) {
         const char *home = getenv("HOME");
-        if (home)
-        {
+        if (home) {
             static char keypath[256];
 
             /* Try Ed25519 key */
             snprintf(keypath, sizeof(keypath), "%s/.ssh/id_ed25519", home);
             ssh_key_t *key = ssh_key_load(keypath, NULL);
-            if (key)
-            {
+            if (key) {
                 rc = ssh_auth_publickey(session, key);
-                if (rc == SSH_OK)
-                {
+                if (rc == SSH_OK) {
                     authenticated = 1;
                     if (verbose)
                         printf("Ed25519 key authentication successful\n");
@@ -250,15 +220,12 @@ int main(int argc, char *argv[])
             }
 
             /* Try RSA key */
-            if (!authenticated)
-            {
+            if (!authenticated) {
                 snprintf(keypath, sizeof(keypath), "%s/.ssh/id_rsa", home);
                 key = ssh_key_load(keypath, NULL);
-                if (key)
-                {
+                if (key) {
                     rc = ssh_auth_publickey(session, key);
-                    if (rc == SSH_OK)
-                    {
+                    if (rc == SSH_OK) {
                         authenticated = 1;
                         if (verbose)
                             printf("RSA key authentication successful\n");
@@ -270,8 +237,7 @@ int main(int argc, char *argv[])
     }
 
     /* Fall back to password authentication */
-    if (!authenticated)
-    {
+    if (!authenticated) {
         char password[256];
         password[0] = '\0';
         printf("%s@%s's password: ", username, hostname);
@@ -280,15 +246,13 @@ int main(int argc, char *argv[])
         /* Disable echo for password input */
         struct termios old_term, new_term;
         int have_old_term = (tcgetattr(STDIN_FILENO, &old_term) == 0);
-        if (have_old_term)
-        {
+        if (have_old_term) {
             new_term = old_term;
             new_term.c_lflag &= ~ECHO;
             (void)tcsetattr(STDIN_FILENO, TCSANOW, &new_term);
         }
 
-        if (!fgets(password, sizeof(password), stdin))
-        {
+        if (!fgets(password, sizeof(password), stdin)) {
             fprintf(stderr, "\nFailed to read password from stdin\n");
             ssh_disconnect(session);
             ssh_free(session);
@@ -297,30 +261,24 @@ int main(int argc, char *argv[])
 
         /* Remove newline / carriage return */
         size_t len = strlen(password);
-        while (len > 0 && (password[len - 1] == '\n' || password[len - 1] == '\r'))
-        {
+        while (len > 0 && (password[len - 1] == '\n' || password[len - 1] == '\r')) {
             password[len - 1] = '\0';
             len--;
         }
 
-        if (have_old_term)
-        {
+        if (have_old_term) {
             (void)tcsetattr(STDIN_FILENO, TCSANOW, &old_term);
         }
         printf("\n");
 
-        if (verbose)
-        {
+        if (verbose) {
             printf("[ssh] Read password: len=%zu\n", strlen(password));
         }
 
         rc = ssh_auth_password(session, password);
-        if (rc == SSH_OK)
-        {
+        if (rc == SSH_OK) {
             authenticated = 1;
-        }
-        else
-        {
+        } else {
             fprintf(stderr, "Authentication failed\n");
             ssh_disconnect(session);
             ssh_free(session);
@@ -330,8 +288,7 @@ int main(int argc, char *argv[])
 
     /* Open channel */
     ssh_channel_t *channel = ssh_channel_new(session);
-    if (!channel)
-    {
+    if (!channel) {
         fprintf(stderr, "Failed to create channel\n");
         ssh_disconnect(session);
         ssh_free(session);
@@ -339,8 +296,7 @@ int main(int argc, char *argv[])
     }
 
     rc = ssh_channel_open_session(channel);
-    if (rc != SSH_OK)
-    {
+    if (rc != SSH_OK) {
         fprintf(stderr, "Failed to open session: %s\n", ssh_get_error(session));
         ssh_channel_free(channel);
         ssh_disconnect(session);
@@ -348,12 +304,10 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    if (command)
-    {
+    if (command) {
         /* Execute command */
         rc = ssh_channel_request_exec(channel, command);
-        if (rc != SSH_OK)
-        {
+        if (rc != SSH_OK) {
             fprintf(stderr, "Failed to execute command: %s\n", ssh_get_error(session));
             ssh_channel_close(channel);
             ssh_channel_free(channel);
@@ -367,14 +321,10 @@ int main(int argc, char *argv[])
         int is_stderr;
         ssize_t nread;
 
-        while ((nread = ssh_channel_read(channel, buf, sizeof(buf), &is_stderr)) > 0)
-        {
-            if (is_stderr)
-            {
+        while ((nread = ssh_channel_read(channel, buf, sizeof(buf), &is_stderr)) > 0) {
+            if (is_stderr) {
                 fwrite(buf, 1, nread, stderr);
-            }
-            else
-            {
+            } else {
                 fwrite(buf, 1, nread, stdout);
             }
         }
@@ -389,8 +339,7 @@ int main(int argc, char *argv[])
 
     /* Interactive shell */
     rc = ssh_channel_request_pty(channel, "xterm", 80, 24);
-    if (rc != SSH_OK)
-    {
+    if (rc != SSH_OK) {
         fprintf(stderr, "Failed to request PTY: %s\n", ssh_get_error(session));
         ssh_channel_close(channel);
         ssh_channel_free(channel);
@@ -400,8 +349,7 @@ int main(int argc, char *argv[])
     }
 
     rc = ssh_channel_request_shell(channel);
-    if (rc != SSH_OK)
-    {
+    if (rc != SSH_OK) {
         fprintf(stderr, "Failed to start shell: %s\n", ssh_get_error(session));
         ssh_channel_close(channel);
         ssh_channel_free(channel);
@@ -416,14 +364,12 @@ int main(int argc, char *argv[])
     /* Main loop */
     char buf[64 * 1024];
     int sockfd = ssh_get_socket_fd(session);
-    if (sockfd < 0)
-    {
+    if (sockfd < 0) {
         fprintf(stderr, "Failed to get session socket fd\n");
         goto done;
     }
 
-    while (ssh_channel_is_open(channel) && !ssh_channel_is_eof(channel))
-    {
+    while (ssh_channel_is_open(channel) && !ssh_channel_is_eof(channel)) {
         struct pollfd pfds[2];
         pfds[0].fd = STDIN_FILENO;
         pfds[0].events = POLLIN;
@@ -436,40 +382,30 @@ int main(int argc, char *argv[])
          * even if one is more active than the other. */
         int pr = poll(pfds, 2, 100);
 
-        if (pr < 0)
-        {
+        if (pr < 0) {
             continue;
         }
 
-        if (pfds[0].revents & POLLIN)
-        {
+        if (pfds[0].revents & POLLIN) {
             ssize_t nread = read(STDIN_FILENO, buf, sizeof(buf));
-            if (nread > 0)
-            {
+            if (nread > 0) {
                 ssh_channel_write(channel, buf, nread);
             }
         }
 
-        if (pfds[1].revents & (POLLIN | POLLERR | POLLHUP))
-        {
+        if (pfds[1].revents & (POLLIN | POLLERR | POLLHUP)) {
             /* Read one chunk of data per poll iteration.
              * ssh_channel_read may block inside recv(), so we avoid
              * looping to ensure stdin gets checked regularly. */
             int is_stderr;
             ssize_t nread = ssh_channel_read(channel, buf, sizeof(buf), &is_stderr);
-            if (nread > 0)
-            {
-                if (is_stderr)
-                {
+            if (nread > 0) {
+                if (is_stderr) {
                     write(STDERR_FILENO, buf, nread);
-                }
-                else
-                {
+                } else {
                     write(STDOUT_FILENO, buf, nread);
                 }
-            }
-            else if (nread != SSH_AGAIN)
-            {
+            } else if (nread != SSH_AGAIN) {
                 /* EOF or error */
                 goto done;
             }

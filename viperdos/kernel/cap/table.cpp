@@ -15,15 +15,12 @@
  * in each entry and encoded into the public handle. When a slot is removed, the
  * generation is incremented so older handles can no longer resolve.
  */
-namespace cap
-{
+namespace cap {
 
 /** @copydoc cap::Table::init */
-bool Table::init(usize capacity)
-{
+bool Table::init(usize capacity) {
     entries_ = static_cast<Entry *>(kheap::kzalloc(capacity * sizeof(Entry)));
-    if (!entries_)
-    {
+    if (!entries_) {
         serial::puts("[cap] ERROR: Failed to allocate capability table\n");
         return false;
     }
@@ -33,8 +30,7 @@ bool Table::init(usize capacity)
 
     // Build free list using object pointer as next index
     // Use 0xFFFFFFFF to mark end of free list
-    for (usize i = 0; i < capacity - 1; i++)
-    {
+    for (usize i = 0; i < capacity - 1; i++) {
         entries_[i].object = reinterpret_cast<void *>(i + 1);
         entries_[i].kind = Kind::Invalid;
         entries_[i].generation = 0;
@@ -54,10 +50,8 @@ bool Table::init(usize capacity)
 }
 
 /** @copydoc cap::Table::destroy */
-void Table::destroy()
-{
-    if (entries_)
-    {
+void Table::destroy() {
+    if (entries_) {
         kheap::kfree(entries_);
         entries_ = nullptr;
     }
@@ -67,12 +61,10 @@ void Table::destroy()
 }
 
 /** @copydoc cap::Table::insert */
-Handle Table::insert(void *object, Kind kind, Rights rights)
-{
+Handle Table::insert(void *object, Kind kind, Rights rights) {
     SpinlockGuard guard(lock_);
 
-    if (free_head_ == 0xFFFFFFFF)
-    {
+    if (free_head_ == 0xFFFFFFFF) {
         serial::puts("[cap] ERROR: Capability table full\n");
         return HANDLE_INVALID;
     }
@@ -96,16 +88,14 @@ Handle Table::insert(void *object, Kind kind, Rights rights)
 }
 
 /** @copydoc cap::Table::insert_bounded */
-Handle Table::insert_bounded(void *object, Kind kind, Rights rights, u32 bounding_set)
-{
+Handle Table::insert_bounded(void *object, Kind kind, Rights rights, u32 bounding_set) {
     // Mask requested rights by the process's capability bounding set
     Rights bounded_rights = static_cast<Rights>(static_cast<u32>(rights) & bounding_set);
     return insert(object, kind, bounded_rights);
 }
 
 // Internal unlocked get - caller must hold lock_
-static Entry *get_unlocked(Entry *entries, usize capacity, Handle h)
-{
+static Entry *get_unlocked(Entry *entries, usize capacity, Handle h) {
     if (h == HANDLE_INVALID)
         return nullptr;
 
@@ -125,15 +115,13 @@ static Entry *get_unlocked(Entry *entries, usize capacity, Handle h)
 }
 
 /** @copydoc cap::Table::get */
-Entry *Table::get(Handle h)
-{
+Entry *Table::get(Handle h) {
     SpinlockGuard guard(lock_);
     return get_unlocked(entries_, capacity_, h);
 }
 
 /** @copydoc cap::Table::get_checked */
-Entry *Table::get_checked(Handle h, Kind expected_kind)
-{
+Entry *Table::get_checked(Handle h, Kind expected_kind) {
     SpinlockGuard guard(lock_);
     Entry *e = get_unlocked(entries_, capacity_, h);
     if (!e)
@@ -144,24 +132,21 @@ Entry *Table::get_checked(Handle h, Kind expected_kind)
 }
 
 /** @copydoc cap::Table::get_with_rights */
-Entry *Table::get_with_rights(Handle h, Kind kind, Rights required)
-{
+Entry *Table::get_with_rights(Handle h, Kind kind, Rights required) {
     SpinlockGuard guard(lock_);
     Entry *e = get_unlocked(entries_, capacity_, h);
     if (!e)
         return nullptr;
     if (e->kind != kind)
         return nullptr;
-    if (!has_rights(e->rights, required))
-    {
+    if (!has_rights(e->rights, required)) {
         return nullptr;
     }
     return e;
 }
 
 /** @copydoc cap::Table::remove */
-void Table::remove(Handle h)
-{
+void Table::remove(Handle h) {
     SpinlockGuard guard(lock_);
 
     if (h == HANDLE_INVALID)
@@ -188,19 +173,16 @@ void Table::remove(Handle h)
 }
 
 /** @copydoc cap::Table::derive */
-Handle Table::derive(Handle h, Rights new_rights)
-{
+Handle Table::derive(Handle h, Rights new_rights) {
     SpinlockGuard guard(lock_);
 
     Entry *e = get_unlocked(entries_, capacity_, h);
-    if (!e)
-    {
+    if (!e) {
         return HANDLE_INVALID;
     }
 
     // Must have DERIVE right on original handle
-    if (!has_rights(e->rights, CAP_DERIVE))
-    {
+    if (!has_rights(e->rights, CAP_DERIVE)) {
         return HANDLE_INVALID;
     }
 
@@ -211,8 +193,7 @@ Handle Table::derive(Handle h, Rights new_rights)
     u32 parent_idx = handle_index(h);
 
     // Allocate a new slot
-    if (free_head_ == 0xFFFFFFFF)
-    {
+    if (free_head_ == 0xFFFFFFFF) {
         serial::puts("[cap] ERROR: Capability table full\n");
         return HANDLE_INVALID;
     }
@@ -235,8 +216,7 @@ Handle Table::derive(Handle h, Rights new_rights)
 }
 
 // Internal recursive revoke helper - caller must hold lock_
-static u32 revoke_unlocked(Entry *entries, usize capacity, u32 &free_head, usize &count, Handle h)
-{
+static u32 revoke_unlocked(Entry *entries, usize capacity, u32 &free_head, usize &count, Handle h) {
     if (h == HANDLE_INVALID)
         return 0;
 
@@ -254,10 +234,8 @@ static u32 revoke_unlocked(Entry *entries, usize capacity, u32 &free_head, usize
 
     // Recursively revoke all children first
     u32 revoked = 0;
-    for (usize i = 0; i < capacity; i++)
-    {
-        if (entries[i].kind != Kind::Invalid && entries[i].parent_index == index)
-        {
+    for (usize i = 0; i < capacity; i++) {
+        if (entries[i].kind != Kind::Invalid && entries[i].parent_index == index) {
             // This entry was derived from the handle we're revoking
             Handle child_handle = make_handle(static_cast<u32>(i), entries[i].generation);
             revoked += revoke_unlocked(entries, capacity, free_head, count, child_handle);
@@ -281,15 +259,13 @@ static u32 revoke_unlocked(Entry *entries, usize capacity, u32 &free_head, usize
 }
 
 /** @copydoc cap::Table::revoke */
-u32 Table::revoke(Handle h)
-{
+u32 Table::revoke(Handle h) {
     SpinlockGuard guard(lock_);
     return revoke_unlocked(entries_, capacity_, free_head_, count_, h);
 }
 
 /** @copydoc cap::Table::entry_at */
-Entry *Table::entry_at(usize index)
-{
+Entry *Table::entry_at(usize index) {
     SpinlockGuard guard(lock_);
 
     if (index >= capacity_)
@@ -298,8 +274,7 @@ Entry *Table::entry_at(usize index)
 }
 
 /** @copydoc cap::Table::generation_at */
-u8 Table::generation_at(usize index) const
-{
+u8 Table::generation_at(usize index) const {
     SpinlockGuard guard(lock_);
 
     if (index >= capacity_)

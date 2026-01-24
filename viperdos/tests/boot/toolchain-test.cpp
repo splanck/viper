@@ -44,14 +44,12 @@ constexpr uint32_t UART_FR_TXFF = (1 << 5);     /**< Transmit FIFO full flag. */
  *
  * @param c Character to transmit.
  */
-static void uart_putc(char c)
-{
+static void uart_putc(char c) {
     auto *dr = reinterpret_cast<volatile uint32_t *>(UART_DR);
     auto *fr = reinterpret_cast<volatile uint32_t *>(UART_FR);
 
     // Wait for TX FIFO to have space
-    while (*fr & UART_FR_TXFF)
-    {
+    while (*fr & UART_FR_TXFF) {
         asm volatile("nop");
     }
     *dr = static_cast<uint32_t>(c);
@@ -66,12 +64,9 @@ static void uart_putc(char c)
  *
  * @param s NUL-terminated string to transmit.
  */
-static void uart_puts(const char *s)
-{
-    while (*s)
-    {
-        if (*s == '\n')
-        {
+static void uart_puts(const char *s) {
+    while (*s) {
+        if (*s == '\n') {
             uart_putc('\r');
         }
         uart_putc(*s++);
@@ -89,8 +84,7 @@ static void uart_puts(const char *s)
  *
  * The function never returns; it halts the CPU in an infinite loop.
  */
-extern "C" void test_main()
-{
+extern "C" void test_main() {
     uart_puts("\n");
     uart_puts("=================================\n");
     uart_puts("  ViperDOS Toolchain Test\n");
@@ -102,8 +96,7 @@ extern "C" void test_main()
     uart_puts("Halting...\n");
 
     // Halt
-    for (;;)
-    {
+    for (;;) {
         asm volatile("wfi");
     }
 }

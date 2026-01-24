@@ -55,11 +55,9 @@ extern long __syscall2(long num, long arg0, long arg1);
  * @param increment Number of bytes to add to the data segment.
  * @return Previous program break on success, (void*)-1 on failure.
  */
-static void *sbrk(long increment)
-{
+static void *sbrk(long increment) {
     long result = __syscall1(SYS_SBRK, increment);
-    if (result < 0)
-    {
+    if (result < 0) {
         return (void *)-1;
     }
     return (void *)result;
@@ -73,11 +71,10 @@ static void *sbrk(long increment)
  * the usable size (excluding header), a pointer to the next block in
  * the free list, and whether this block is currently free.
  */
-struct block_header
-{
-    size_t size;                 /**< Usable size of this block (excluding header). */
-    struct block_header *next;   /**< Next block in the free list chain. */
-    int free;                    /**< Non-zero if block is free, 0 if allocated. */
+struct block_header {
+    size_t size;               /**< Usable size of this block (excluding header). */
+    struct block_header *next; /**< Next block in the free list chain. */
+    int free;                  /**< Non-zero if block is free, 0 if allocated. */
 };
 
 /** @brief Head of the malloc free list. */
@@ -95,8 +92,7 @@ static struct block_header *free_list = NULL;
  * @param size Number of bytes to allocate.
  * @return Pointer to allocated memory, or NULL if allocation fails.
  */
-void *malloc(size_t size)
-{
+void *malloc(size_t size) {
     if (size == 0)
         return NULL;
 
@@ -106,10 +102,8 @@ void *malloc(size_t size)
     /* First check free list */
     struct block_header *prev = NULL;
     struct block_header *curr = free_list;
-    while (curr)
-    {
-        if (curr->free && curr->size >= size)
-        {
+    while (curr) {
+        if (curr->free && curr->size >= size) {
             curr->free = 0;
             return (void *)(curr + 1);
         }
@@ -120,8 +114,7 @@ void *malloc(size_t size)
     /* Need to allocate new block from heap */
     size_t total = sizeof(struct block_header) + size;
     struct block_header *block = (struct block_header *)sbrk(total);
-    if (block == (void *)-1)
-    {
+    if (block == (void *)-1) {
         return NULL;
     }
 
@@ -130,12 +123,9 @@ void *malloc(size_t size)
     block->free = 0;
 
     /* Add to list */
-    if (prev)
-    {
+    if (prev) {
         prev->next = block;
-    }
-    else
-    {
+    } else {
         free_list = block;
     }
 
@@ -152,8 +142,7 @@ void *malloc(size_t size)
  *
  * @param ptr Pointer previously returned by malloc, calloc, or realloc.
  */
-void free(void *ptr)
-{
+void free(void *ptr) {
     if (!ptr)
         return;
 
@@ -174,12 +163,10 @@ void free(void *ptr)
  * @param size Size of each element in bytes.
  * @return Pointer to zero-initialized memory, or NULL on failure.
  */
-void *calloc(size_t nmemb, size_t size)
-{
+void *calloc(size_t nmemb, size_t size) {
     size_t total = nmemb * size;
     void *ptr = malloc(total);
-    if (ptr)
-    {
+    if (ptr) {
         memset(ptr, 0, total);
     }
     return ptr;
@@ -201,25 +188,21 @@ void *calloc(size_t nmemb, size_t size)
  * @param size New size in bytes.
  * @return Pointer to resized block, or NULL on failure.
  */
-void *realloc(void *ptr, size_t size)
-{
+void *realloc(void *ptr, size_t size) {
     if (!ptr)
         return malloc(size);
-    if (size == 0)
-    {
+    if (size == 0) {
         free(ptr);
         return NULL;
     }
 
     struct block_header *block = ((struct block_header *)ptr) - 1;
-    if (block->size >= size)
-    {
+    if (block->size >= size) {
         return ptr;
     }
 
     void *new_ptr = malloc(size);
-    if (new_ptr)
-    {
+    if (new_ptr) {
         memcpy(new_ptr, ptr, block->size);
         free(ptr);
     }
@@ -242,8 +225,7 @@ static int atexit_count = 0;
  * @param function Function pointer to register.
  * @return 0 on success, -1 if registration fails.
  */
-int atexit(void (*function)(void))
-{
+int atexit(void (*function)(void)) {
     if (atexit_count >= ATEXIT_MAX || !function)
         return -1;
 
@@ -264,11 +246,9 @@ int atexit(void (*function)(void))
  *
  * @param status Exit status code (0 indicates success).
  */
-void exit(int status)
-{
+void exit(int status) {
     /* Call atexit handlers in reverse order of registration */
-    while (atexit_count > 0)
-    {
+    while (atexit_count > 0) {
         atexit_count--;
         if (atexit_handlers[atexit_count])
             atexit_handlers[atexit_count]();
@@ -294,8 +274,7 @@ void exit(int status)
  *
  * @param status Exit status code.
  */
-void _Exit(int status)
-{
+void _Exit(int status) {
     /* Exit immediately without cleanup */
     __syscall1(SYS_TASK_EXIT, status);
     while (1)
@@ -313,8 +292,7 @@ void _Exit(int status)
  *
  * @param status Exit status code.
  */
-void _exit(int status)
-{
+void _exit(int status) {
     /* POSIX _exit - exit immediately without cleanup */
     __syscall1(SYS_TASK_EXIT, status);
     while (1)
@@ -330,8 +308,7 @@ void _exit(int status)
  *
  * This function does not return.
  */
-void abort(void)
-{
+void abort(void) {
     exit(134); /* SIGABRT-like exit code */
 }
 
@@ -346,8 +323,7 @@ void abort(void)
  * @param nptr String to convert.
  * @return Converted integer value.
  */
-int atoi(const char *nptr)
-{
+int atoi(const char *nptr) {
     return (int)atol(nptr);
 }
 
@@ -362,26 +338,21 @@ int atoi(const char *nptr)
  * @param nptr String to convert.
  * @return Converted long integer value.
  */
-long atol(const char *nptr)
-{
+long atol(const char *nptr) {
     long result = 0;
     int neg = 0;
 
     while (*nptr == ' ' || *nptr == '\t')
         nptr++;
 
-    if (*nptr == '-')
-    {
+    if (*nptr == '-') {
         neg = 1;
         nptr++;
-    }
-    else if (*nptr == '+')
-    {
+    } else if (*nptr == '+') {
         nptr++;
     }
 
-    while (*nptr >= '0' && *nptr <= '9')
-    {
+    while (*nptr >= '0' && *nptr <= '9') {
         result = result * 10 + (*nptr - '0');
         nptr++;
     }
@@ -400,26 +371,21 @@ long atol(const char *nptr)
  * @param nptr String to convert.
  * @return Converted long long integer value.
  */
-long long atoll(const char *nptr)
-{
+long long atoll(const char *nptr) {
     long long result = 0;
     int neg = 0;
 
     while (*nptr == ' ' || *nptr == '\t')
         nptr++;
 
-    if (*nptr == '-')
-    {
+    if (*nptr == '-') {
         neg = 1;
         nptr++;
-    }
-    else if (*nptr == '+')
-    {
+    } else if (*nptr == '+') {
         nptr++;
     }
 
-    while (*nptr >= '0' && *nptr <= '9')
-    {
+    while (*nptr >= '0' && *nptr <= '9') {
         result = result * 10 + (*nptr - '0');
         nptr++;
     }
@@ -439,23 +405,15 @@ long long atoll(const char *nptr)
  * @param base Numeric base (2-36).
  * @return Digit value if valid, -1 if character is not a valid digit.
  */
-static int char_to_digit(char c, int base)
-{
+static int char_to_digit(char c, int base) {
     int val;
-    if (c >= '0' && c <= '9')
-    {
+    if (c >= '0' && c <= '9') {
         val = c - '0';
-    }
-    else if (c >= 'a' && c <= 'z')
-    {
+    } else if (c >= 'a' && c <= 'z') {
         val = c - 'a' + 10;
-    }
-    else if (c >= 'A' && c <= 'Z')
-    {
+    } else if (c >= 'A' && c <= 'Z') {
         val = c - 'A' + 10;
-    }
-    else
-    {
+    } else {
         return -1;
     }
     return (val < base) ? val : -1;
@@ -479,8 +437,7 @@ static int char_to_digit(char c, int base)
  * @param base Numeric base (0 for auto-detect, or 2-36).
  * @return Converted long integer value.
  */
-long strtol(const char *nptr, char **endptr, int base)
-{
+long strtol(const char *nptr, char **endptr, int base) {
     const char *s = nptr;
     long result = 0;
     int neg = 0;
@@ -490,45 +447,32 @@ long strtol(const char *nptr, char **endptr, int base)
         s++;
 
     /* Handle sign */
-    if (*s == '-')
-    {
+    if (*s == '-') {
         neg = 1;
         s++;
-    }
-    else if (*s == '+')
-    {
+    } else if (*s == '+') {
         s++;
     }
 
     /* Handle base prefix */
-    if (base == 0)
-    {
-        if (*s == '0')
-        {
-            if (s[1] == 'x' || s[1] == 'X')
-            {
+    if (base == 0) {
+        if (*s == '0') {
+            if (s[1] == 'x' || s[1] == 'X') {
                 base = 16;
                 s += 2;
-            }
-            else
-            {
+            } else {
                 base = 8;
                 s++;
             }
-        }
-        else
-        {
+        } else {
             base = 10;
         }
-    }
-    else if (base == 16 && *s == '0' && (s[1] == 'x' || s[1] == 'X'))
-    {
+    } else if (base == 16 && *s == '0' && (s[1] == 'x' || s[1] == 'X')) {
         s += 2;
     }
 
     /* Convert */
-    while (*s)
-    {
+    while (*s) {
         int digit = char_to_digit(*s, base);
         if (digit < 0)
             break;
@@ -555,8 +499,7 @@ long strtol(const char *nptr, char **endptr, int base)
  * @param base Numeric base (0 for auto-detect, or 2-36).
  * @return Converted unsigned long integer value.
  */
-unsigned long strtoul(const char *nptr, char **endptr, int base)
-{
+unsigned long strtoul(const char *nptr, char **endptr, int base) {
     const char *s = nptr;
     unsigned long result = 0;
 
@@ -569,34 +512,24 @@ unsigned long strtoul(const char *nptr, char **endptr, int base)
         s++;
 
     /* Handle base prefix */
-    if (base == 0)
-    {
-        if (*s == '0')
-        {
-            if (s[1] == 'x' || s[1] == 'X')
-            {
+    if (base == 0) {
+        if (*s == '0') {
+            if (s[1] == 'x' || s[1] == 'X') {
                 base = 16;
                 s += 2;
-            }
-            else
-            {
+            } else {
                 base = 8;
                 s++;
             }
-        }
-        else
-        {
+        } else {
             base = 10;
         }
-    }
-    else if (base == 16 && *s == '0' && (s[1] == 'x' || s[1] == 'X'))
-    {
+    } else if (base == 16 && *s == '0' && (s[1] == 'x' || s[1] == 'X')) {
         s += 2;
     }
 
     /* Convert */
-    while (*s)
-    {
+    while (*s) {
         int digit = char_to_digit(*s, base);
         if (digit < 0)
             break;
@@ -622,8 +555,7 @@ unsigned long strtoul(const char *nptr, char **endptr, int base)
  * @param base Numeric base (0 for auto-detect, or 2-36).
  * @return Converted long long integer value.
  */
-long long strtoll(const char *nptr, char **endptr, int base)
-{
+long long strtoll(const char *nptr, char **endptr, int base) {
     return (long long)strtol(nptr, endptr, base);
 }
 
@@ -638,8 +570,7 @@ long long strtoll(const char *nptr, char **endptr, int base)
  * @param base Numeric base (0 for auto-detect, or 2-36).
  * @return Converted unsigned long long integer value.
  */
-unsigned long long strtoull(const char *nptr, char **endptr, int base)
-{
+unsigned long long strtoull(const char *nptr, char **endptr, int base) {
     return (unsigned long long)strtoul(nptr, endptr, base);
 }
 
@@ -649,8 +580,7 @@ unsigned long long strtoull(const char *nptr, char **endptr, int base)
  * @param n Integer value.
  * @return Absolute value of n.
  */
-int abs(int n)
-{
+int abs(int n) {
     return (n < 0) ? -n : n;
 }
 
@@ -660,8 +590,7 @@ int abs(int n)
  * @param n Long integer value.
  * @return Absolute value of n.
  */
-long labs(long n)
-{
+long labs(long n) {
     return (n < 0) ? -n : n;
 }
 
@@ -671,8 +600,7 @@ long labs(long n)
  * @param n Long long integer value.
  * @return Absolute value of n.
  */
-long long llabs(long long n)
-{
+long long llabs(long long n) {
     return (n < 0) ? -n : n;
 }
 
@@ -687,8 +615,7 @@ long long llabs(long long n)
  * @param denom Denominator (divisor).
  * @return div_t structure containing quot (quotient) and rem (remainder).
  */
-div_t div(int numer, int denom)
-{
+div_t div(int numer, int denom) {
     div_t result;
     result.quot = numer / denom;
     result.rem = numer % denom;
@@ -702,8 +629,7 @@ div_t div(int numer, int denom)
  * @param denom Denominator (divisor).
  * @return ldiv_t structure containing quot and rem.
  */
-ldiv_t ldiv(long numer, long denom)
-{
+ldiv_t ldiv(long numer, long denom) {
     ldiv_t result;
     result.quot = numer / denom;
     result.rem = numer % denom;
@@ -717,8 +643,7 @@ ldiv_t ldiv(long numer, long denom)
  * @param denom Denominator (divisor).
  * @return lldiv_t structure containing quot and rem.
  */
-lldiv_t lldiv(long long numer, long long denom)
-{
+lldiv_t lldiv(long long numer, long long denom) {
     lldiv_t result;
     result.quot = numer / denom;
     result.rem = numer % denom;
@@ -736,12 +661,10 @@ lldiv_t lldiv(long long numer, long long denom)
  * @param b Second memory location.
  * @param size Number of bytes to swap.
  */
-static void swap_bytes(void *a, void *b, size_t size)
-{
+static void swap_bytes(void *a, void *b, size_t size) {
     unsigned char *pa = (unsigned char *)a;
     unsigned char *pb = (unsigned char *)b;
-    while (size--)
-    {
+    while (size--) {
         unsigned char tmp = *pa;
         *pa++ = *pb;
         *pb++ = tmp;
@@ -766,16 +689,13 @@ static void swap_bytes(void *a, void *b, size_t size)
  * @param size Size of each element in bytes.
  * @param compar Comparison function.
  */
-void qsort(void *base, size_t nmemb, size_t size, int (*compar)(const void *, const void *))
-{
+void qsort(void *base, size_t nmemb, size_t size, int (*compar)(const void *, const void *)) {
     /* Simple insertion sort for now - works well for small arrays */
     unsigned char *arr = (unsigned char *)base;
 
-    for (size_t i = 1; i < nmemb; i++)
-    {
+    for (size_t i = 1; i < nmemb; i++) {
         size_t j = i;
-        while (j > 0 && compar(arr + (j - 1) * size, arr + j * size) > 0)
-        {
+        while (j > 0 && compar(arr + (j - 1) * size, arr + j * size) > 0) {
             swap_bytes(arr + (j - 1) * size, arr + j * size, size);
             j--;
         }
@@ -801,26 +721,19 @@ void *bsearch(const void *key,
               const void *base,
               size_t nmemb,
               size_t size,
-              int (*compar)(const void *, const void *))
-{
+              int (*compar)(const void *, const void *)) {
     const unsigned char *arr = (const unsigned char *)base;
     size_t lo = 0;
     size_t hi = nmemb;
 
-    while (lo < hi)
-    {
+    while (lo < hi) {
         size_t mid = lo + (hi - lo) / 2;
         int cmp = compar(key, arr + mid * size);
-        if (cmp < 0)
-        {
+        if (cmp < 0) {
             hi = mid;
-        }
-        else if (cmp > 0)
-        {
+        } else if (cmp > 0) {
             lo = mid + 1;
-        }
-        else
-        {
+        } else {
             return (void *)(arr + mid * size);
         }
     }
@@ -841,8 +754,7 @@ static unsigned int rand_seed = 1;
  *
  * @return Pseudo-random integer between 0 and RAND_MAX.
  */
-int rand(void)
-{
+int rand(void) {
     rand_seed = rand_seed * 1103515245 + 12345;
     return (int)((rand_seed / 65536) % 32768);
 }
@@ -857,8 +769,7 @@ int rand(void)
  *
  * @param seed Seed value for the random number generator.
  */
-void srand(unsigned int seed)
-{
+void srand(unsigned int seed) {
     rand_seed = seed;
 }
 
@@ -879,27 +790,22 @@ static int env_initialized = 0;
 /* Global environ pointer (required by POSIX) */
 char **environ = environ_ptrs;
 
-static void init_environ(void)
-{
-    if (!env_initialized)
-    {
+static void init_environ(void) {
+    if (!env_initialized) {
         for (int i = 0; i <= ENV_MAX; i++)
             environ_ptrs[i] = NULL;
         env_initialized = 1;
     }
 }
 
-static int env_find(const char *name)
-{
+static int env_find(const char *name) {
     size_t len = 0;
     while (name[len] && name[len] != '=')
         len++;
 
-    for (int i = 0; i < env_count; i++)
-    {
+    for (int i = 0; i < env_count; i++) {
         if (environ_ptrs[i] && strncmp(environ_ptrs[i], name, len) == 0 &&
-            environ_ptrs[i][len] == '=')
-        {
+            environ_ptrs[i][len] == '=') {
             return i;
         }
     }
@@ -917,8 +823,7 @@ static int env_find(const char *name)
  * @param name Name of the environment variable.
  * @return Pointer to value string, or NULL if not found.
  */
-char *getenv(const char *name)
-{
+char *getenv(const char *name) {
     if (!name)
         return NULL;
 
@@ -950,21 +855,17 @@ char *getenv(const char *name)
  * @param overwrite If non-zero, replace existing value.
  * @return 0 on success, -1 on failure.
  */
-int setenv(const char *name, const char *value, int overwrite)
-{
+int setenv(const char *name, const char *value, int overwrite) {
     if (!name || !*name || strchr(name, '='))
         return -1;
 
     init_environ();
 
     int idx = env_find(name);
-    if (idx >= 0)
-    {
+    if (idx >= 0) {
         if (!overwrite)
             return 0;
-    }
-    else
-    {
+    } else {
         if (env_count >= ENV_MAX)
             return -1;
         idx = env_count++;
@@ -998,8 +899,7 @@ int setenv(const char *name, const char *value, int overwrite)
  * @param name Variable name to remove (must not contain '=').
  * @return 0 on success, -1 on failure.
  */
-int unsetenv(const char *name)
-{
+int unsetenv(const char *name) {
     if (!name || !*name || strchr(name, '='))
         return -1;
 
@@ -1010,8 +910,7 @@ int unsetenv(const char *name)
         return 0; /* Not found is not an error */
 
     /* Shift remaining entries down */
-    for (int i = idx; i < env_count - 1; i++)
-    {
+    for (int i = idx; i < env_count - 1; i++) {
         memcpy(env_storage[i], env_storage[i + 1], ENV_ENTRY_MAX);
         environ_ptrs[i] = env_storage[i];
     }
@@ -1031,8 +930,7 @@ int unsetenv(const char *name)
  * @param string String in "NAME=value" format.
  * @return 0 on success, -1 on failure.
  */
-int putenv(char *string)
-{
+int putenv(char *string) {
     if (!string)
         return -1;
 
@@ -1056,8 +954,7 @@ int putenv(char *string)
  */
 
 /* Helper: check if character is whitespace */
-static int is_space(char c)
-{
+static int is_space(char c) {
     return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f';
 }
 
@@ -1077,8 +974,7 @@ static int is_space(char c)
  * @param endptr If non-NULL, receives pointer to first unconverted char.
  * @return Converted double value.
  */
-double strtod(const char *nptr, char **endptr)
-{
+double strtod(const char *nptr, char **endptr) {
     const char *s = nptr;
     double result = 0.0;
     int sign = 1;
@@ -1091,25 +987,20 @@ double strtod(const char *nptr, char **endptr)
         s++;
 
     /* Handle sign */
-    if (*s == '-')
-    {
+    if (*s == '-') {
         sign = -1;
         s++;
-    }
-    else if (*s == '+')
-    {
+    } else if (*s == '+') {
         s++;
     }
 
     /* Handle special values */
     if ((s[0] == 'i' || s[0] == 'I') && (s[1] == 'n' || s[1] == 'N') &&
-        (s[2] == 'f' || s[2] == 'F'))
-    {
+        (s[2] == 'f' || s[2] == 'F')) {
         s += 3;
         if ((s[0] == 'i' || s[0] == 'I') && (s[1] == 'n' || s[1] == 'N') &&
             (s[2] == 'i' || s[2] == 'I') && (s[3] == 't' || s[3] == 'T') &&
-            (s[4] == 'y' || s[4] == 'Y'))
-        {
+            (s[4] == 'y' || s[4] == 'Y')) {
             s += 5;
         }
         if (endptr)
@@ -1118,8 +1009,7 @@ double strtod(const char *nptr, char **endptr)
     }
 
     if ((s[0] == 'n' || s[0] == 'N') && (s[1] == 'a' || s[1] == 'A') &&
-        (s[2] == 'n' || s[2] == 'N'))
-    {
+        (s[2] == 'n' || s[2] == 'N')) {
         s += 3;
         if (endptr)
             *endptr = (char *)s;
@@ -1127,20 +1017,17 @@ double strtod(const char *nptr, char **endptr)
     }
 
     /* Parse integer part */
-    while (*s >= '0' && *s <= '9')
-    {
+    while (*s >= '0' && *s <= '9') {
         result = result * 10.0 + (*s - '0');
         s++;
         has_digits = 1;
     }
 
     /* Parse fractional part */
-    if (*s == '.')
-    {
+    if (*s == '.') {
         s++;
         double fraction = 0.1;
-        while (*s >= '0' && *s <= '9')
-        {
+        while (*s >= '0' && *s <= '9') {
             result += (*s - '0') * fraction;
             fraction *= 0.1;
             s++;
@@ -1149,29 +1036,23 @@ double strtod(const char *nptr, char **endptr)
     }
 
     /* Parse exponent */
-    if (has_digits && (*s == 'e' || *s == 'E'))
-    {
+    if (has_digits && (*s == 'e' || *s == 'E')) {
         s++;
-        if (*s == '-')
-        {
+        if (*s == '-') {
             exp_sign = -1;
             s++;
-        }
-        else if (*s == '+')
-        {
+        } else if (*s == '+') {
             s++;
         }
 
-        while (*s >= '0' && *s <= '9')
-        {
+        while (*s >= '0' && *s <= '9') {
             exponent = exponent * 10 + (*s - '0');
             s++;
         }
 
         /* Apply exponent */
         double exp_mult = 1.0;
-        while (exponent > 0)
-        {
+        while (exponent > 0) {
             exp_mult *= 10.0;
             exponent--;
         }
@@ -1198,8 +1079,7 @@ double strtod(const char *nptr, char **endptr)
  * @param endptr If non-NULL, receives pointer to first unconverted char.
  * @return Converted float value.
  */
-float strtof(const char *nptr, char **endptr)
-{
+float strtof(const char *nptr, char **endptr) {
     return (float)strtod(nptr, endptr);
 }
 
@@ -1209,8 +1089,7 @@ float strtof(const char *nptr, char **endptr)
  * This implementation uses a union to avoid the compiler generating
  * a call to the soft-float conversion routine.
  */
-long double strtold(const char *nptr, char **endptr)
-{
+long double strtold(const char *nptr, char **endptr) {
     /* Parse as double - same precision we'll output */
     double result = strtod(nptr, endptr);
 
@@ -1220,8 +1099,7 @@ long double strtold(const char *nptr, char **endptr)
      * value in the low 64 bits of the long double return register.
      * This is imprecise but avoids missing symbol errors.
      */
-    union
-    {
+    union {
         double d;
         long double ld;
     } u = {0};
@@ -1240,8 +1118,7 @@ long double strtold(const char *nptr, char **endptr)
  * @param nptr String to convert.
  * @return Converted double value.
  */
-double atof(const char *nptr)
-{
+double atof(const char *nptr) {
     return strtod(nptr, (char **)0);
 }
 
@@ -1249,21 +1126,18 @@ double atof(const char *nptr)
  * Integer to string conversion
  */
 
-static char *unsigned_to_str(unsigned long value, char *str, int base, int is_negative)
-{
+static char *unsigned_to_str(unsigned long value, char *str, int base, int is_negative) {
     static const char digits[] = "0123456789abcdefghijklmnopqrstuvwxyz";
     char *p = str;
     char *start;
 
-    if (base < 2 || base > 36)
-    {
+    if (base < 2 || base > 36) {
         *p = '\0';
         return str;
     }
 
     /* Handle zero */
-    if (value == 0 && !is_negative)
-    {
+    if (value == 0 && !is_negative) {
         *p++ = '0';
         *p = '\0';
         return str;
@@ -1275,8 +1149,7 @@ static char *unsigned_to_str(unsigned long value, char *str, int base, int is_ne
         p++; /* Reserve space for sign */
 
     char *digit_start = p;
-    while (value > 0)
-    {
+    while (value > 0) {
         *p++ = digits[value % base];
         value /= base;
     }
@@ -1284,8 +1157,7 @@ static char *unsigned_to_str(unsigned long value, char *str, int base, int is_ne
 
     /* Reverse the digits */
     char *end = p - 1;
-    while (digit_start < end)
-    {
+    while (digit_start < end) {
         char tmp = *digit_start;
         *digit_start = *end;
         *end = tmp;
@@ -1313,10 +1185,8 @@ static char *unsigned_to_str(unsigned long value, char *str, int base, int is_ne
  * @param base Numeric base (2-36).
  * @return Pointer to str.
  */
-char *itoa(int value, char *str, int base)
-{
-    if (value < 0 && base == 10)
-    {
+char *itoa(int value, char *str, int base) {
+    if (value < 0 && base == 10) {
         return unsigned_to_str((unsigned long)(-(long)value), str, base, 1);
     }
     return unsigned_to_str((unsigned long)(unsigned int)value, str, base, 0);
@@ -1334,10 +1204,8 @@ char *itoa(int value, char *str, int base)
  * @param base Numeric base (2-36).
  * @return Pointer to str.
  */
-char *ltoa(long value, char *str, int base)
-{
-    if (value < 0 && base == 10)
-    {
+char *ltoa(long value, char *str, int base) {
+    if (value < 0 && base == 10) {
         return unsigned_to_str((unsigned long)(-value), str, base, 1);
     }
     return unsigned_to_str((unsigned long)value, str, base, 0);
@@ -1355,7 +1223,6 @@ char *ltoa(long value, char *str, int base)
  * @param base Numeric base (2-36).
  * @return Pointer to str.
  */
-char *ultoa(unsigned long value, char *str, int base)
-{
+char *ultoa(unsigned long value, char *str, int base) {
     return unsigned_to_str(value, str, base, 0);
 }

@@ -62,10 +62,8 @@ static struct termios default_termios = {
 static struct termios current_termios;
 static int termios_initialized = 0;
 
-static void init_termios(void)
-{
-    if (!termios_initialized)
-    {
+static void init_termios(void) {
+    if (!termios_initialized) {
         memcpy(&current_termios, &default_termios, sizeof(struct termios));
         termios_initialized = 1;
     }
@@ -93,8 +91,7 @@ static void init_termios(void)
  *
  * @see tcsetattr, cfmakeraw
  */
-int tcgetattr(int fd, struct termios *termios_p)
-{
+int tcgetattr(int fd, struct termios *termios_p) {
     if (!termios_p)
         return -1;
 
@@ -127,8 +124,7 @@ int tcgetattr(int fd, struct termios *termios_p)
  *
  * @see tcgetattr, cfmakeraw
  */
-int tcsetattr(int fd, int optional_actions, const struct termios *termios_p)
-{
+int tcsetattr(int fd, int optional_actions, const struct termios *termios_p) {
     (void)optional_actions; /* We apply immediately regardless */
 
     if (!termios_p)
@@ -158,8 +154,7 @@ int tcsetattr(int fd, int optional_actions, const struct termios *termios_p)
  *
  * @see tcdrain, tcflush, tcflow
  */
-int tcsendbreak(int fd, int duration)
-{
+int tcsendbreak(int fd, int duration) {
     (void)fd;
     (void)duration;
     /* No-op: break not supported */
@@ -181,8 +176,7 @@ int tcsendbreak(int fd, int duration)
  *
  * @see tcsendbreak, tcflush, tcsetattr
  */
-int tcdrain(int fd)
-{
+int tcdrain(int fd) {
     (void)fd;
     /* No buffering, so nothing to drain */
     return 0;
@@ -205,8 +199,7 @@ int tcdrain(int fd)
  *
  * @see tcdrain, tcsendbreak
  */
-int tcflush(int fd, int queue_selector)
-{
+int tcflush(int fd, int queue_selector) {
     (void)fd;
     (void)queue_selector;
     /* No kernel buffers to flush */
@@ -231,8 +224,7 @@ int tcflush(int fd, int queue_selector)
  *
  * @see tcflush, tcsendbreak
  */
-int tcflow(int fd, int action)
-{
+int tcflow(int fd, int action) {
     (void)fd;
     (void)action;
     /* Flow control not supported */
@@ -251,8 +243,7 @@ int tcflow(int fd, int action)
  *
  * @see cfsetispeed, cfgetospeed
  */
-speed_t cfgetispeed(const struct termios *termios_p)
-{
+speed_t cfgetispeed(const struct termios *termios_p) {
     if (!termios_p)
         return B0;
     return termios_p->c_ispeed;
@@ -270,8 +261,7 @@ speed_t cfgetispeed(const struct termios *termios_p)
  *
  * @see cfsetospeed, cfgetispeed
  */
-speed_t cfgetospeed(const struct termios *termios_p)
-{
+speed_t cfgetospeed(const struct termios *termios_p) {
     if (!termios_p)
         return B0;
     return termios_p->c_ospeed;
@@ -293,8 +283,7 @@ speed_t cfgetospeed(const struct termios *termios_p)
  *
  * @see cfgetispeed, cfsetospeed
  */
-int cfsetispeed(struct termios *termios_p, speed_t speed)
-{
+int cfsetispeed(struct termios *termios_p, speed_t speed) {
     if (!termios_p)
         return -1;
     termios_p->c_ispeed = speed;
@@ -314,8 +303,7 @@ int cfsetispeed(struct termios *termios_p, speed_t speed)
  *
  * @see cfgetospeed, cfsetispeed
  */
-int cfsetospeed(struct termios *termios_p, speed_t speed)
-{
+int cfsetospeed(struct termios *termios_p, speed_t speed) {
     if (!termios_p)
         return -1;
     termios_p->c_ospeed = speed;
@@ -344,8 +332,7 @@ int cfsetospeed(struct termios *termios_p, speed_t speed)
  *
  * @see tcsetattr, tcgetattr
  */
-void cfmakeraw(struct termios *termios_p)
-{
+void cfmakeraw(struct termios *termios_p) {
     if (!termios_p)
         return;
 
@@ -381,8 +368,7 @@ static char ttyname_buf[16];
  *
  * @see isatty, tcgetattr
  */
-char *ttyname(int fd)
-{
+char *ttyname(int fd) {
     if (fd < 0 || fd > 2)
         return (char *)0;
 

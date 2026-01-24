@@ -33,34 +33,33 @@
  * are cumulative since boot (or network init). User-space can periodically query
  * these to compute rates.
  */
-struct NetStats
-{
+struct NetStats {
     /* Ethernet layer */
-    unsigned long long eth_rx_packets;  /**< Ethernet frames received. */
-    unsigned long long eth_tx_packets;  /**< Ethernet frames transmitted. */
-    unsigned long long eth_rx_bytes;    /**< Ethernet bytes received. */
-    unsigned long long eth_tx_bytes;    /**< Ethernet bytes transmitted. */
-    unsigned long long eth_rx_errors;   /**< Receive errors (CRC, too short, etc). */
-    unsigned long long eth_tx_errors;   /**< Transmit errors. */
-    unsigned long long eth_rx_dropped;  /**< Dropped due to no buffer space. */
+    unsigned long long eth_rx_packets; /**< Ethernet frames received. */
+    unsigned long long eth_tx_packets; /**< Ethernet frames transmitted. */
+    unsigned long long eth_rx_bytes;   /**< Ethernet bytes received. */
+    unsigned long long eth_tx_bytes;   /**< Ethernet bytes transmitted. */
+    unsigned long long eth_rx_errors;  /**< Receive errors (CRC, too short, etc). */
+    unsigned long long eth_tx_errors;  /**< Transmit errors. */
+    unsigned long long eth_rx_dropped; /**< Dropped due to no buffer space. */
 
     /* ARP layer */
-    unsigned long long arp_requests;    /**< ARP requests sent. */
-    unsigned long long arp_replies;     /**< ARP replies received. */
+    unsigned long long arp_requests; /**< ARP requests sent. */
+    unsigned long long arp_replies;  /**< ARP replies received. */
 
     /* IPv4 layer */
-    unsigned long long ip_rx_packets;   /**< IP packets received. */
-    unsigned long long ip_tx_packets;   /**< IP packets transmitted. */
-    unsigned long long ip_rx_bytes;     /**< IP payload bytes received. */
-    unsigned long long ip_tx_bytes;     /**< IP payload bytes transmitted. */
+    unsigned long long ip_rx_packets; /**< IP packets received. */
+    unsigned long long ip_tx_packets; /**< IP packets transmitted. */
+    unsigned long long ip_rx_bytes;   /**< IP payload bytes received. */
+    unsigned long long ip_tx_bytes;   /**< IP payload bytes transmitted. */
 
     /* ICMP layer */
-    unsigned long long icmp_rx;         /**< ICMP messages received. */
-    unsigned long long icmp_tx;         /**< ICMP messages transmitted. */
+    unsigned long long icmp_rx; /**< ICMP messages received. */
+    unsigned long long icmp_tx; /**< ICMP messages transmitted. */
 
     /* UDP layer */
-    unsigned long long udp_rx_packets;  /**< UDP datagrams received. */
-    unsigned long long udp_tx_packets;  /**< UDP datagrams transmitted. */
+    unsigned long long udp_rx_packets; /**< UDP datagrams received. */
+    unsigned long long udp_tx_packets; /**< UDP datagrams transmitted. */
 
     /* TCP layer */
     unsigned long long tcp_rx_segments; /**< TCP segments received. */
@@ -70,13 +69,13 @@ struct NetStats
     unsigned int tcp_listen_sockets;    /**< TCP sockets in LISTEN state. */
 
     /* DNS layer */
-    unsigned long long dns_queries;     /**< DNS queries sent. */
-    unsigned long long dns_responses;   /**< DNS responses received. */
+    unsigned long long dns_queries;   /**< DNS queries sent. */
+    unsigned long long dns_responses; /**< DNS responses received. */
 
     /* TLS layer */
-    unsigned long long tls_handshakes;  /**< TLS handshakes completed. */
-    unsigned long long tls_rx_records;  /**< TLS records received. */
-    unsigned long long tls_tx_records;  /**< TLS records transmitted. */
+    unsigned long long tls_handshakes; /**< TLS handshakes completed. */
+    unsigned long long tls_rx_records; /**< TLS records received. */
+    unsigned long long tls_tx_records; /**< TLS records transmitted. */
 
-    unsigned int _reserved[8];          /**< Reserved for future use. */
+    unsigned int _reserved[8]; /**< Reserved for future use. */
 };

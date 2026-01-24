@@ -51,8 +51,7 @@
  * linear framebuffer and mode details. The kernel can use this information to
  * draw an early console before higher-level graphics drivers are available.
  */
-typedef struct
-{
+typedef struct {
     uint64_t base;         /**< Physical address of the framebuffer base. */
     uint32_t width;        /**< Width in pixels. */
     uint32_t height;       /**< Height in pixels. */
@@ -71,8 +70,7 @@ typedef struct
  * - Usable RAM regions can be fed into the physical memory manager.
  * - Reserved/MMIO regions must be excluded from allocation.
  */
-typedef struct
-{
+typedef struct {
     uint64_t base; /**< Physical base address of the region. */
     uint64_t size; /**< Size of the region in bytes. */
     uint32_t type; /**< Region type (`VBOOT_MEMORY_*`). */
@@ -95,8 +93,7 @@ typedef struct
  * - `framebuffer`: GOP framebuffer details for early graphics.
  * - `memory_regions`: simplified memory map.
  */
-typedef struct
-{
+typedef struct {
     uint64_t magic;               /**< Must equal @ref VBOOT_MAGIC. */
     uint64_t hhdm_base;           /**< Higher-half direct map base address. */
     uint64_t kernel_phys_base;    /**< Kernel physical load address. */

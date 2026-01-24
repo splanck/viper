@@ -130,8 +130,8 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx);
 ///          validation succeeds, allowing callers to avoid repeated lookups.
 struct SingleBlockFastPathSetup
 {
-    const il::core::BasicBlock &bb;  ///< Reference to the single block.
-    MBasicBlock &bbMir;              ///< Reference to the output MIR block.
+    const il::core::BasicBlock &bb; ///< Reference to the single block.
+    MBasicBlock &bbMir;             ///< Reference to the output MIR block.
 };
 
 /// @brief Validate context for single-block fast-path patterns.
@@ -142,8 +142,8 @@ struct SingleBlockFastPathSetup
 /// @param minInstrs Minimum required instruction count (default: 2).
 /// @param requireParams If true, block must have at least one parameter.
 /// @return Setup struct if valid, nullopt otherwise.
-[[nodiscard]] inline std::optional<SingleBlockFastPathSetup>
-validateSingleBlockFastPath(FastPathContext &ctx, std::size_t minInstrs = 2, bool requireParams = true)
+[[nodiscard]] inline std::optional<SingleBlockFastPathSetup> validateSingleBlockFastPath(
+    FastPathContext &ctx, std::size_t minInstrs = 2, bool requireParams = true)
 {
     if (ctx.fn.blocks.empty())
         return std::nullopt;

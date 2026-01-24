@@ -32,30 +32,24 @@ static int tests_passed = 0;
 static int tests_failed = 0;
 
 #define TEST(name, cond)                                                                           \
-    do                                                                                             \
-    {                                                                                              \
-        if (cond)                                                                                  \
-        {                                                                                          \
+    do {                                                                                           \
+        if (cond) {                                                                                \
             printf("  [PASS] %s\n", name);                                                         \
             tests_passed++;                                                                        \
-        }                                                                                          \
-        else                                                                                       \
-        {                                                                                          \
+        } else {                                                                                   \
             printf("  [FAIL] %s\n", name);                                                         \
             tests_failed++;                                                                        \
         }                                                                                          \
     } while (0)
 
 // Format uptime nicely
-static void format_uptime(u64 ms, char *buf, size_t bufsize)
-{
+static void format_uptime(u64 ms, char *buf, size_t bufsize) {
     u64 seconds = ms / 1000;
     u64 minutes = seconds / 60;
     u64 hours = minutes / 60;
     u64 days = hours / 24;
 
-    if (days > 0)
-    {
+    if (days > 0) {
         snprintf(buf,
                  bufsize,
                  "%llud %lluh %llum %llus",
@@ -63,32 +57,25 @@ static void format_uptime(u64 ms, char *buf, size_t bufsize)
                  (unsigned long long)(hours % 24),
                  (unsigned long long)(minutes % 60),
                  (unsigned long long)(seconds % 60));
-    }
-    else if (hours > 0)
-    {
+    } else if (hours > 0) {
         snprintf(buf,
                  bufsize,
                  "%lluh %llum %llus",
                  (unsigned long long)hours,
                  (unsigned long long)(minutes % 60),
                  (unsigned long long)(seconds % 60));
-    }
-    else if (minutes > 0)
-    {
+    } else if (minutes > 0) {
         snprintf(buf,
                  bufsize,
                  "%llum %llus",
                  (unsigned long long)minutes,
                  (unsigned long long)(seconds % 60));
-    }
-    else
-    {
+    } else {
         snprintf(buf, bufsize, "%llus", (unsigned long long)seconds);
     }
 }
 
-static void test_string_functions()
-{
+static void test_string_functions() {
     printf("\nString Function Tests\n");
     printf("---------------------------------------------\n");
 
@@ -135,8 +122,7 @@ static void test_string_functions()
     TEST("strstr returns NULL", strstr("hello world", "xyz") == NULL);
 }
 
-static void test_memory_allocation()
-{
+static void test_memory_allocation() {
     printf("\nMemory Allocation Tests\n");
     printf("---------------------------------------------\n");
 
@@ -144,15 +130,12 @@ static void test_memory_allocation()
     char *p1 = (char *)malloc(64);
     TEST("malloc(64) returns non-NULL", p1 != NULL);
 
-    if (p1)
-    {
+    if (p1) {
         // Write and read back
         memset(p1, 0xAA, 64);
         int all_correct = 1;
-        for (int i = 0; i < 64; i++)
-        {
-            if ((unsigned char)p1[i] != 0xAA)
-            {
+        for (int i = 0; i < 64; i++) {
+            if ((unsigned char)p1[i] != 0xAA) {
                 all_correct = 0;
                 break;
             }
@@ -164,19 +147,16 @@ static void test_memory_allocation()
     // Multiple allocations
     void *ptrs[10];
     int all_non_null = 1;
-    for (int i = 0; i < 10; i++)
-    {
+    for (int i = 0; i < 10; i++) {
         ptrs[i] = malloc(128);
-        if (ptrs[i] == NULL)
-        {
+        if (ptrs[i] == NULL) {
             all_non_null = 0;
         }
     }
     TEST("10 consecutive mallocs succeed", all_non_null);
 
     // Free all
-    for (int i = 0; i < 10; i++)
-    {
+    for (int i = 0; i < 10; i++) {
         free(ptrs[i]);
     }
     TEST("10 frees complete", 1); // If we get here, frees worked
@@ -190,13 +170,10 @@ static void test_memory_allocation()
     // calloc test
     int *arr = (int *)calloc(10, sizeof(int));
     TEST("calloc returns non-NULL", arr != NULL);
-    if (arr)
-    {
+    if (arr) {
         int all_zero = 1;
-        for (int i = 0; i < 10; i++)
-        {
-            if (arr[i] != 0)
-            {
+        for (int i = 0; i < 10; i++) {
+            if (arr[i] != 0) {
                 all_zero = 0;
                 break;
             }
@@ -206,8 +183,7 @@ static void test_memory_allocation()
     }
 }
 
-static void test_ctype_functions()
-{
+static void test_ctype_functions() {
     printf("\nCharacter Type Tests\n");
     printf("---------------------------------------------\n");
 
@@ -233,8 +209,7 @@ static void test_ctype_functions()
     TEST("tolower('A') == 'a'", tolower('A') == 'a');
 }
 
-static void test_stdlib_functions()
-{
+static void test_stdlib_functions() {
     printf("\nStandard Library Tests\n");
     printf("---------------------------------------------\n");
 
@@ -256,8 +231,7 @@ static void test_stdlib_functions()
     TEST("abs(5) == 5", abs(5) == 5);
 }
 
-static void test_snprintf()
-{
+static void test_snprintf() {
     printf("\nPrintf Formatting Tests\n");
     printf("---------------------------------------------\n");
 
@@ -285,8 +259,7 @@ static void test_snprintf()
     TEST("snprintf %%-10s works", strcmp(buf, "hi        |") == 0);
 }
 
-static void show_system_info()
-{
+static void show_system_info() {
     printf("\n=== System Information ===\n");
     printf("=============================================\n");
 
@@ -298,8 +271,7 @@ static void show_system_info()
 
     // Current working directory
     char cwd[256];
-    if (sys::getcwd(cwd, sizeof(cwd)) > 0)
-    {
+    if (sys::getcwd(cwd, sizeof(cwd)) > 0) {
         printf("  CWD:           %s\n", cwd);
     }
 
@@ -309,8 +281,7 @@ static void show_system_info()
 
     // Memory info
     MemInfo mem;
-    if (sys::mem_info(&mem) == 0)
-    {
+    if (sys::mem_info(&mem) == 0) {
         u64 total_kb = (mem.total_pages * mem.page_size) / 1024;
         u64 free_kb = (mem.free_pages * mem.page_size) / 1024;
         u64 used_kb = total_kb - free_kb;
@@ -325,16 +296,14 @@ static void show_system_info()
     }
 }
 
-static void show_task_info()
-{
+static void show_task_info() {
     printf("\n=== Running Tasks ===\n");
     printf("=============================================\n");
 
     TaskInfo tasks[16];
     int count = sys::task_list(tasks, 16);
 
-    if (count < 0)
-    {
+    if (count < 0) {
         printf("  (Failed to get task list)\n");
         return;
     }
@@ -342,11 +311,9 @@ static void show_task_info()
     printf("  %-4s  %-12s  %-8s  %s\n", "ID", "Name", "State", "Priority");
     printf("  %-4s  %-12s  %-8s  %s\n", "--", "----", "-----", "--------");
 
-    for (int i = 0; i < count; i++)
-    {
+    for (int i = 0; i < count; i++) {
         const char *state_str;
-        switch (tasks[i].state)
-        {
+        switch (tasks[i].state) {
             case 1:
                 state_str = "Ready";
                 break;
@@ -374,8 +341,7 @@ static void show_task_info()
     printf("\n  Total: %d tasks\n", count);
 }
 
-extern "C" void _start()
-{
+extern "C" void _start() {
     printf("\n");
     printf("=============================================\n");
     printf("   ViperDOS System Information & Test Suite\n");
@@ -400,12 +366,9 @@ extern "C" void _start()
     printf("  Tests Failed:  %d\n", tests_failed);
     printf("  Total:         %d\n", tests_passed + tests_failed);
 
-    if (tests_failed == 0)
-    {
+    if (tests_failed == 0) {
         printf("\n  Result: ALL TESTS PASSED!\n");
-    }
-    else
-    {
+    } else {
         printf("\n  Result: SOME TESTS FAILED\n");
     }
 

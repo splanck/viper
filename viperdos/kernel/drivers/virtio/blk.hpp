@@ -35,15 +35,13 @@
  *
  * The driver uses interrupt-driven I/O with polling fallback for robustness.
  */
-namespace virtio
-{
+namespace virtio {
 
 // Block request types
 /**
  * @brief Virtio-blk request type values.
  */
-namespace blk_type
-{
+namespace blk_type {
 constexpr u32 IN = 0;    // Read from device
 constexpr u32 OUT = 1;   // Write to device
 constexpr u32 FLUSH = 4; // Flush buffers
@@ -53,8 +51,7 @@ constexpr u32 FLUSH = 4; // Flush buffers
 /**
  * @brief Completion status values written by the device.
  */
-namespace blk_status
-{
+namespace blk_status {
 constexpr u8 OK = 0;
 constexpr u8 IOERR = 1;
 constexpr u8 UNSUPP = 2;
@@ -68,8 +65,7 @@ constexpr u8 UNSUPP = 2;
  * The driver currently does not rely on most optional features; it primarily
  * checks for read-only capability.
  */
-namespace blk_features
-{
+namespace blk_features {
 constexpr u64 SIZE_MAX = 1 << 1;
 constexpr u64 SEG_MAX = 1 << 2;
 constexpr u64 GEOMETRY = 1 << 4;
@@ -91,14 +87,12 @@ constexpr u64 WRITE_ZEROES = 1 << 14;
  * The config space contains capacity and optional properties like block size.
  * Only a subset is represented here.
  */
-struct BlkConfig
-{
+struct BlkConfig {
     u64 capacity; // Number of 512-byte sectors
     u32 size_max; // Max size of single segment
     u32 seg_max;  // Max number of segments
 
-    struct
-    {
+    struct {
         u16 cylinders;
         u8 heads;
         u8 sectors;
@@ -112,8 +106,7 @@ struct BlkConfig
 /**
  * @brief Virtio-blk request header placed at the start of a request chain.
  */
-struct BlkReqHeader
-{
+struct BlkReqHeader {
     u32 type; // blk_type::IN or blk_type::OUT
     u32 reserved;
     u64 sector; // Starting sector
@@ -134,8 +127,7 @@ struct BlkReqHeader
  * 2) Data buffer (device reads for write requests, writes for read requests).
  * 3) Status byte (device writes).
  */
-class BlkDevice : public Device
-{
+class BlkDevice : public Device {
   public:
     // Initialize the block device
     /**
@@ -285,26 +277,22 @@ class BlkDevice : public Device
 
     // Device info
     /** @brief Total number of sectors on the device. */
-    u64 capacity() const
-    {
+    u64 capacity() const {
         return capacity_;
     }
 
     /** @brief Sector size in bytes (defaults to 512). */
-    u32 sector_size() const
-    {
+    u32 sector_size() const {
         return sector_size_;
     }
 
     /** @brief Total device size in bytes. */
-    u64 size_bytes() const
-    {
+    u64 size_bytes() const {
         return capacity_ * sector_size_;
     }
 
     /** @brief Whether the device is read-only. */
-    bool is_readonly() const
-    {
+    bool is_readonly() const {
         return readonly_;
     }
 
@@ -322,8 +310,7 @@ class BlkDevice : public Device
      *
      * @return Device index in the virtio MMIO range.
      */
-    u32 device_index() const
-    {
+    u32 device_index() const {
         return device_index_;
     }
 
@@ -343,16 +330,14 @@ class BlkDevice : public Device
     static constexpr usize MAX_PENDING = 8;
 
     // DMA-accessible request data (packed for device access)
-    struct PendingRequest
-    {
+    struct PendingRequest {
         BlkReqHeader header;
         u8 status;
         u8 _pad[3]; // Alignment padding
     } __attribute__((packed));
 
     // Async request tracking (not DMA-accessible)
-    struct AsyncRequest
-    {
+    struct AsyncRequest {
         bool in_use{false};
         bool completed{false};
         i32 result{0};

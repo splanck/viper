@@ -20,15 +20,13 @@
 #include "../../syscall.hpp"
 #include "device.hpp"
 
-namespace virtio
-{
+namespace virtio {
 
 // MMIO register offsets (shared between legacy v1 and modern v2)
 /**
  * @brief Virtio-MMIO register offsets.
  */
-namespace reg
-{
+namespace reg {
 constexpr u32 MAGIC = 0x000;
 constexpr u32 VERSION = 0x004;
 constexpr u32 DEVICE_ID = 0x008;
@@ -65,8 +63,7 @@ constexpr u32 CONFIG = 0x100;
 /**
  * @brief Status bits written to/read from the `STATUS` register.
  */
-namespace status
-{
+namespace status {
 constexpr u32 ACKNOWLEDGE = 1;
 constexpr u32 DRIVER = 2;
 constexpr u32 DRIVER_OK = 4;
@@ -78,8 +75,7 @@ constexpr u32 FAILED = 128;
 /**
  * @brief Virtio device IDs as reported by `DEVICE_ID`.
  */
-namespace device_type
-{
+namespace device_type {
 constexpr u32 NET = 1;
 constexpr u32 BLK = 2;
 constexpr u32 CONSOLE = 3;
@@ -92,8 +88,7 @@ constexpr u32 INPUT = 18;
 constexpr u32 MAGIC_VALUE = 0x74726976;
 
 // Common feature bits
-namespace features
-{
+namespace features {
 constexpr u64 VERSION_1 = 1ULL << 32;
 }
 
@@ -113,8 +108,7 @@ constexpr u64 PAGE_SIZE = 4096;
  * User-space drivers inherit from `Device` and configure queues and device-
  * specific configuration space.
  */
-class Device
-{
+class Device {
   public:
     /**
      * @brief Initialize this object to represent a virtio-mmio device.
@@ -145,33 +139,27 @@ class Device
     u64 read_config64(u32 offset);
 
     // Device info
-    u32 device_id() const
-    {
+    u32 device_id() const {
         return device_id_;
     }
 
-    u64 phys_base() const
-    {
+    u64 phys_base() const {
         return phys_base_;
     }
 
-    u64 virt_base() const
-    {
+    u64 virt_base() const {
         return virt_base_;
     }
 
-    bool is_legacy() const
-    {
+    bool is_legacy() const {
         return version_ == 1;
     }
 
-    u32 version() const
-    {
+    u32 version() const {
         return version_;
     }
 
-    u32 irq() const
-    {
+    u32 irq() const {
         return irq_;
     }
 
@@ -207,8 +195,7 @@ class Device
 constexpr usize MAX_DEVICES = 8;
 
 // Device registry
-struct DeviceInfo
-{
+struct DeviceInfo {
     u64 base;
     u32 type;
     bool in_use;

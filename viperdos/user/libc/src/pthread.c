@@ -44,8 +44,7 @@ static pthread_t main_thread_id = 1;
 int pthread_create(pthread_t *thread,
                    const pthread_attr_t *attr,
                    void *(*start_routine)(void *),
-                   void *arg)
-{
+                   void *arg) {
     (void)thread;
     (void)attr;
     (void)start_routine;
@@ -54,35 +53,30 @@ int pthread_create(pthread_t *thread,
     return ENOSYS;
 }
 
-int pthread_join(pthread_t thread, void **retval)
-{
+int pthread_join(pthread_t thread, void **retval) {
     (void)thread;
     (void)retval;
     /* No other threads to join */
     return EINVAL;
 }
 
-void pthread_exit(void *retval)
-{
+void pthread_exit(void *retval) {
     (void)retval;
     /* In single-threaded mode, this is equivalent to exit() */
     extern void exit(int);
     exit(0);
 }
 
-int pthread_detach(pthread_t thread)
-{
+int pthread_detach(pthread_t thread) {
     (void)thread;
     return 0;
 }
 
-pthread_t pthread_self(void)
-{
+pthread_t pthread_self(void) {
     return main_thread_id;
 }
 
-int pthread_equal(pthread_t t1, pthread_t t2)
-{
+int pthread_equal(pthread_t t1, pthread_t t2) {
     return t1 == t2;
 }
 
@@ -90,44 +84,38 @@ int pthread_equal(pthread_t t1, pthread_t t2)
  * Thread attributes
  */
 
-int pthread_attr_init(pthread_attr_t *attr)
-{
+int pthread_attr_init(pthread_attr_t *attr) {
     if (!attr)
         return EINVAL;
     memset(attr, 0, sizeof(*attr));
     return 0;
 }
 
-int pthread_attr_destroy(pthread_attr_t *attr)
-{
+int pthread_attr_destroy(pthread_attr_t *attr) {
     (void)attr;
     return 0;
 }
 
-int pthread_attr_setdetachstate(pthread_attr_t *attr, int detachstate)
-{
+int pthread_attr_setdetachstate(pthread_attr_t *attr, int detachstate) {
     (void)attr;
     (void)detachstate;
     return 0;
 }
 
-int pthread_attr_getdetachstate(const pthread_attr_t *attr, int *detachstate)
-{
+int pthread_attr_getdetachstate(const pthread_attr_t *attr, int *detachstate) {
     (void)attr;
     if (detachstate)
         *detachstate = PTHREAD_CREATE_JOINABLE;
     return 0;
 }
 
-int pthread_attr_setstacksize(pthread_attr_t *attr, size_t stacksize)
-{
+int pthread_attr_setstacksize(pthread_attr_t *attr, size_t stacksize) {
     (void)attr;
     (void)stacksize;
     return 0;
 }
 
-int pthread_attr_getstacksize(const pthread_attr_t *attr, size_t *stacksize)
-{
+int pthread_attr_getstacksize(const pthread_attr_t *attr, size_t *stacksize) {
     (void)attr;
     if (stacksize)
         *stacksize = 8192; /* Default stack size */
@@ -138,8 +126,7 @@ int pthread_attr_getstacksize(const pthread_attr_t *attr, size_t *stacksize)
  * Mutex functions
  */
 
-int pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr)
-{
+int pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr) {
     if (!mutex)
         return EINVAL;
     mutex->locked = 0;
@@ -147,8 +134,7 @@ int pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr)
     return 0;
 }
 
-int pthread_mutex_destroy(pthread_mutex_t *mutex)
-{
+int pthread_mutex_destroy(pthread_mutex_t *mutex) {
     if (!mutex)
         return EINVAL;
     if (mutex->locked)
@@ -156,20 +142,17 @@ int pthread_mutex_destroy(pthread_mutex_t *mutex)
     return 0;
 }
 
-int pthread_mutex_lock(pthread_mutex_t *mutex)
-{
+int pthread_mutex_lock(pthread_mutex_t *mutex) {
     if (!mutex)
         return EINVAL;
 
     /* Check for deadlock in error-checking mode */
-    if (mutex->type == PTHREAD_MUTEX_ERRORCHECK && mutex->locked)
-    {
+    if (mutex->type == PTHREAD_MUTEX_ERRORCHECK && mutex->locked) {
         return EDEADLK;
     }
 
     /* Recursive mutex: allow multiple locks */
-    if (mutex->type == PTHREAD_MUTEX_RECURSIVE)
-    {
+    if (mutex->type == PTHREAD_MUTEX_RECURSIVE) {
         mutex->locked++;
         return 0;
     }
@@ -179,13 +162,11 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
     return 0;
 }
 
-int pthread_mutex_trylock(pthread_mutex_t *mutex)
-{
+int pthread_mutex_trylock(pthread_mutex_t *mutex) {
     if (!mutex)
         return EINVAL;
 
-    if (mutex->locked && mutex->type != PTHREAD_MUTEX_RECURSIVE)
-    {
+    if (mutex->locked && mutex->type != PTHREAD_MUTEX_RECURSIVE) {
         return EBUSY;
     }
 
@@ -193,24 +174,19 @@ int pthread_mutex_trylock(pthread_mutex_t *mutex)
     return 0;
 }
 
-int pthread_mutex_unlock(pthread_mutex_t *mutex)
-{
+int pthread_mutex_unlock(pthread_mutex_t *mutex) {
     if (!mutex)
         return EINVAL;
 
-    if (!mutex->locked)
-    {
+    if (!mutex->locked) {
         if (mutex->type == PTHREAD_MUTEX_ERRORCHECK)
             return EPERM;
         return 0;
     }
 
-    if (mutex->type == PTHREAD_MUTEX_RECURSIVE)
-    {
+    if (mutex->type == PTHREAD_MUTEX_RECURSIVE) {
         mutex->locked--;
-    }
-    else
-    {
+    } else {
         mutex->locked = 0;
     }
     return 0;
@@ -220,22 +196,19 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
  * Mutex attributes
  */
 
-int pthread_mutexattr_init(pthread_mutexattr_t *attr)
-{
+int pthread_mutexattr_init(pthread_mutexattr_t *attr) {
     if (!attr)
         return EINVAL;
     attr->type = PTHREAD_MUTEX_NORMAL;
     return 0;
 }
 
-int pthread_mutexattr_destroy(pthread_mutexattr_t *attr)
-{
+int pthread_mutexattr_destroy(pthread_mutexattr_t *attr) {
     (void)attr;
     return 0;
 }
 
-int pthread_mutexattr_settype(pthread_mutexattr_t *attr, int type)
-{
+int pthread_mutexattr_settype(pthread_mutexattr_t *attr, int type) {
     if (!attr)
         return EINVAL;
     if (type < PTHREAD_MUTEX_NORMAL || type > PTHREAD_MUTEX_ERRORCHECK)
@@ -244,8 +217,7 @@ int pthread_mutexattr_settype(pthread_mutexattr_t *attr, int type)
     return 0;
 }
 
-int pthread_mutexattr_gettype(const pthread_mutexattr_t *attr, int *type)
-{
+int pthread_mutexattr_gettype(const pthread_mutexattr_t *attr, int *type) {
     if (!attr || !type)
         return EINVAL;
     *type = attr->type;
@@ -256,8 +228,7 @@ int pthread_mutexattr_gettype(const pthread_mutexattr_t *attr, int *type)
  * Condition variable functions
  */
 
-int pthread_cond_init(pthread_cond_t *cond, const pthread_condattr_t *attr)
-{
+int pthread_cond_init(pthread_cond_t *cond, const pthread_condattr_t *attr) {
     (void)attr;
     if (!cond)
         return EINVAL;
@@ -265,14 +236,12 @@ int pthread_cond_init(pthread_cond_t *cond, const pthread_condattr_t *attr)
     return 0;
 }
 
-int pthread_cond_destroy(pthread_cond_t *cond)
-{
+int pthread_cond_destroy(pthread_cond_t *cond) {
     (void)cond;
     return 0;
 }
 
-int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex)
-{
+int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex) {
     (void)cond;
     (void)mutex;
     /* In single-threaded mode, waiting would block forever */
@@ -282,22 +251,19 @@ int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex)
 
 int pthread_cond_timedwait(pthread_cond_t *cond,
                            pthread_mutex_t *mutex,
-                           const struct timespec *abstime)
-{
+                           const struct timespec *abstime) {
     (void)cond;
     (void)mutex;
     (void)abstime;
     return 0;
 }
 
-int pthread_cond_signal(pthread_cond_t *cond)
-{
+int pthread_cond_signal(pthread_cond_t *cond) {
     (void)cond;
     return 0;
 }
 
-int pthread_cond_broadcast(pthread_cond_t *cond)
-{
+int pthread_cond_broadcast(pthread_cond_t *cond) {
     (void)cond;
     return 0;
 }
@@ -306,16 +272,14 @@ int pthread_cond_broadcast(pthread_cond_t *cond)
  * Condition variable attributes
  */
 
-int pthread_condattr_init(pthread_condattr_t *attr)
-{
+int pthread_condattr_init(pthread_condattr_t *attr) {
     if (!attr)
         return EINVAL;
     memset(attr, 0, sizeof(*attr));
     return 0;
 }
 
-int pthread_condattr_destroy(pthread_condattr_t *attr)
-{
+int pthread_condattr_destroy(pthread_condattr_t *attr) {
     (void)attr;
     return 0;
 }
@@ -324,8 +288,7 @@ int pthread_condattr_destroy(pthread_condattr_t *attr)
  * Read-write lock functions
  */
 
-int pthread_rwlock_init(pthread_rwlock_t *rwlock, const pthread_rwlockattr_t *attr)
-{
+int pthread_rwlock_init(pthread_rwlock_t *rwlock, const pthread_rwlockattr_t *attr) {
     (void)attr;
     if (!rwlock)
         return EINVAL;
@@ -334,8 +297,7 @@ int pthread_rwlock_init(pthread_rwlock_t *rwlock, const pthread_rwlockattr_t *at
     return 0;
 }
 
-int pthread_rwlock_destroy(pthread_rwlock_t *rwlock)
-{
+int pthread_rwlock_destroy(pthread_rwlock_t *rwlock) {
     if (!rwlock)
         return EINVAL;
     if (rwlock->readers || rwlock->writer)
@@ -343,16 +305,14 @@ int pthread_rwlock_destroy(pthread_rwlock_t *rwlock)
     return 0;
 }
 
-int pthread_rwlock_rdlock(pthread_rwlock_t *rwlock)
-{
+int pthread_rwlock_rdlock(pthread_rwlock_t *rwlock) {
     if (!rwlock)
         return EINVAL;
     rwlock->readers++;
     return 0;
 }
 
-int pthread_rwlock_tryrdlock(pthread_rwlock_t *rwlock)
-{
+int pthread_rwlock_tryrdlock(pthread_rwlock_t *rwlock) {
     if (!rwlock)
         return EINVAL;
     if (rwlock->writer)
@@ -361,16 +321,14 @@ int pthread_rwlock_tryrdlock(pthread_rwlock_t *rwlock)
     return 0;
 }
 
-int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock)
-{
+int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock) {
     if (!rwlock)
         return EINVAL;
     rwlock->writer = 1;
     return 0;
 }
 
-int pthread_rwlock_trywrlock(pthread_rwlock_t *rwlock)
-{
+int pthread_rwlock_trywrlock(pthread_rwlock_t *rwlock) {
     if (!rwlock)
         return EINVAL;
     if (rwlock->readers || rwlock->writer)
@@ -379,16 +337,12 @@ int pthread_rwlock_trywrlock(pthread_rwlock_t *rwlock)
     return 0;
 }
 
-int pthread_rwlock_unlock(pthread_rwlock_t *rwlock)
-{
+int pthread_rwlock_unlock(pthread_rwlock_t *rwlock) {
     if (!rwlock)
         return EINVAL;
-    if (rwlock->writer)
-    {
+    if (rwlock->writer) {
         rwlock->writer = 0;
-    }
-    else if (rwlock->readers)
-    {
+    } else if (rwlock->readers) {
         rwlock->readers--;
     }
     return 0;
@@ -398,13 +352,11 @@ int pthread_rwlock_unlock(pthread_rwlock_t *rwlock)
  * Once control
  */
 
-int pthread_once(pthread_once_t *once_control, void (*init_routine)(void))
-{
+int pthread_once(pthread_once_t *once_control, void (*init_routine)(void)) {
     if (!once_control || !init_routine)
         return EINVAL;
 
-    if (*once_control == 0)
-    {
+    if (*once_control == 0) {
         *once_control = 1;
         init_routine();
     }
@@ -421,16 +373,13 @@ static void (*tls_destructors[TLS_KEYS_MAX])(void *);
 static int tls_key_used[TLS_KEYS_MAX];
 static int tls_next_key = 0;
 
-int pthread_key_create(pthread_key_t *key, void (*destructor)(void *))
-{
+int pthread_key_create(pthread_key_t *key, void (*destructor)(void *)) {
     if (!key)
         return EINVAL;
 
-    for (int i = 0; i < TLS_KEYS_MAX; i++)
-    {
+    for (int i = 0; i < TLS_KEYS_MAX; i++) {
         int k = (tls_next_key + i) % TLS_KEYS_MAX;
-        if (!tls_key_used[k])
-        {
+        if (!tls_key_used[k]) {
             tls_key_used[k] = 1;
             tls_destructors[k] = destructor;
             tls_values[k] = 0;
@@ -442,8 +391,7 @@ int pthread_key_create(pthread_key_t *key, void (*destructor)(void *))
     return EAGAIN;
 }
 
-int pthread_key_delete(pthread_key_t key)
-{
+int pthread_key_delete(pthread_key_t key) {
     if (key >= TLS_KEYS_MAX || !tls_key_used[key])
         return EINVAL;
 
@@ -453,15 +401,13 @@ int pthread_key_delete(pthread_key_t key)
     return 0;
 }
 
-void *pthread_getspecific(pthread_key_t key)
-{
+void *pthread_getspecific(pthread_key_t key) {
     if (key >= TLS_KEYS_MAX || !tls_key_used[key])
         return 0;
     return tls_values[key];
 }
 
-int pthread_setspecific(pthread_key_t key, const void *value)
-{
+int pthread_setspecific(pthread_key_t key, const void *value) {
     if (key >= TLS_KEYS_MAX || !tls_key_used[key])
         return EINVAL;
     tls_values[key] = (void *)value;
@@ -472,29 +418,25 @@ int pthread_setspecific(pthread_key_t key, const void *value)
  * Cancellation (not supported)
  */
 
-int pthread_cancel(pthread_t thread)
-{
+int pthread_cancel(pthread_t thread) {
     (void)thread;
     return ENOSYS;
 }
 
-int pthread_setcancelstate(int state, int *oldstate)
-{
+int pthread_setcancelstate(int state, int *oldstate) {
     (void)state;
     if (oldstate)
         *oldstate = PTHREAD_CANCEL_DISABLE;
     return 0;
 }
 
-int pthread_setcanceltype(int type, int *oldtype)
-{
+int pthread_setcanceltype(int type, int *oldtype) {
     (void)type;
     if (oldtype)
         *oldtype = PTHREAD_CANCEL_DEFERRED;
     return 0;
 }
 
-void pthread_testcancel(void)
-{
+void pthread_testcancel(void) {
     /* No cancellation in single-threaded mode */
 }

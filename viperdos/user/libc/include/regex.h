@@ -9,29 +9,26 @@
 #include <sys/types.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /* Offset type for regex matches */
-    typedef ssize_t regoff_t;
+/* Offset type for regex matches */
+typedef ssize_t regoff_t;
 
-    /* Size of compiled regex (opaque) */
-    typedef struct
-    {
-        size_t re_nsub; /* Number of parenthesized subexpressions */
-        /* Implementation-specific fields */
-        void *__re_comp;  /* Compiled pattern */
-        size_t __re_size; /* Size of compiled pattern */
-        int __re_cflags;  /* Compilation flags */
-    } regex_t;
+/* Size of compiled regex (opaque) */
+typedef struct {
+    size_t re_nsub; /* Number of parenthesized subexpressions */
+    /* Implementation-specific fields */
+    void *__re_comp;  /* Compiled pattern */
+    size_t __re_size; /* Size of compiled pattern */
+    int __re_cflags;  /* Compilation flags */
+} regex_t;
 
-    /* Subexpression match */
-    typedef struct
-    {
-        regoff_t rm_so; /* Start offset of match */
-        regoff_t rm_eo; /* End offset of match */
-    } regmatch_t;
+/* Subexpression match */
+typedef struct {
+    regoff_t rm_so; /* Start offset of match */
+    regoff_t rm_eo; /* End offset of match */
+} regmatch_t;
 
 /*
  * Compilation flags (cflags)
@@ -64,29 +61,29 @@ extern "C"
 #define REG_ESPACE 12  /* Out of memory */
 #define REG_BADRPT 13  /* Invalid use of repetition operators */
 
-    /*
-     * Compile a regular expression.
-     * Returns 0 on success, error code on failure.
-     */
-    int regcomp(regex_t *preg, const char *regex, int cflags);
+/*
+ * Compile a regular expression.
+ * Returns 0 on success, error code on failure.
+ */
+int regcomp(regex_t *preg, const char *regex, int cflags);
 
-    /*
-     * Execute a compiled regular expression.
-     * Returns 0 if match found, REG_NOMATCH if not, error code on failure.
-     */
-    int regexec(
-        const regex_t *preg, const char *string, size_t nmatch, regmatch_t pmatch[], int eflags);
+/*
+ * Execute a compiled regular expression.
+ * Returns 0 if match found, REG_NOMATCH if not, error code on failure.
+ */
+int regexec(
+    const regex_t *preg, const char *string, size_t nmatch, regmatch_t pmatch[], int eflags);
 
-    /*
-     * Free memory allocated by regcomp().
-     */
-    void regfree(regex_t *preg);
+/*
+ * Free memory allocated by regcomp().
+ */
+void regfree(regex_t *preg);
 
-    /*
-     * Get error message for error code.
-     * Returns number of bytes required for full message.
-     */
-    size_t regerror(int errcode, const regex_t *preg, char *errbuf, size_t errbuf_size);
+/*
+ * Get error message for error code.
+ * Returns number of bytes required for full message.
+ */
+size_t regerror(int errcode, const regex_t *preg, char *errbuf, size_t errbuf_size);
 
 #ifdef __cplusplus
 }

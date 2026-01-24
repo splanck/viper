@@ -43,8 +43,7 @@ inline float clampRatio(float r)
 /// @tparam Derived CRTP derived class type for static polymorphism.
 /// @details Provides shared ratio management, child painting, and event bridging.
 ///          Derived classes implement axis-specific layout and key handling.
-template <typename Derived>
-class SplitterBase : public ui::Widget
+template <typename Derived> class SplitterBase : public ui::Widget
 {
   public:
     /// @brief Paint both child widgets into the provided screen buffer.

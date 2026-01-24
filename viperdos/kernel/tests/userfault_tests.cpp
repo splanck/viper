@@ -22,23 +22,20 @@
 #include "../viper/viper.hpp"
 #include "tests.hpp"
 
-namespace tests
-{
+namespace tests {
 
 // Test state tracking
 static int userfault_tests_passed = 0;
 static int userfault_tests_failed = 0;
 
-static void test_pass(const char *name)
-{
+static void test_pass(const char *name) {
     serial::puts("  [PASS] ");
     serial::puts(name);
     serial::puts("\n");
     userfault_tests_passed++;
 }
 
-static void test_fail(const char *name, const char *reason)
-{
+static void test_fail(const char *name, const char *reason) {
     serial::puts("  [FAIL] ");
     serial::puts(name);
     serial::puts(" - ");
@@ -54,16 +51,14 @@ static void test_fail(const char *name, const char *reason)
  * @param name Human-readable test name.
  * @return true if test passed, false otherwise.
  */
-static bool run_fault_test(const char *path, const char *name)
-{
+static bool run_fault_test(const char *path, const char *name) {
     serial::puts("\n[userfault_test] Running ");
     serial::puts(name);
     serial::puts("...\n");
 
     // Spawn the fault test program (no parent - we'll poll its state directly)
     loader::SpawnResult result = loader::spawn_process(path, name, nullptr);
-    if (!result.success)
-    {
+    if (!result.success) {
         test_fail(name, "failed to spawn process");
         return false;
     }
@@ -78,20 +73,17 @@ static bool run_fault_test(const char *path, const char *name)
     // Give it up to 5 seconds to complete
     i32 status = 0;
     bool found_zombie = false;
-    for (int i = 0; i < 50; i++)
-    {
+    for (int i = 0; i < 50; i++) {
         poll::sleep_ms(100);
 
-        if (result.viper->state == viper::ViperState::Zombie)
-        {
+        if (result.viper->state == viper::ViperState::Zombie) {
             status = result.viper->exit_code;
             found_zombie = true;
             break;
         }
     }
 
-    if (!found_zombie)
-    {
+    if (!found_zombie) {
         test_fail(name, "process did not terminate within timeout");
         return false;
     }
@@ -104,20 +96,16 @@ static bool run_fault_test(const char *path, const char *name)
     viper::reap(result.viper);
 
     // Fault exits should use exit code -1
-    if (status == -1)
-    {
+    if (status == -1) {
         test_pass(name);
         return true;
-    }
-    else
-    {
+    } else {
         test_fail(name, "unexpected exit code (expected -1)");
         return false;
     }
 }
 
-void run_userfault_tests()
-{
+void run_userfault_tests() {
     serial::puts("\n========================================\n");
     serial::puts("  User Fault Recovery Tests\n");
     serial::puts("========================================\n");
@@ -146,12 +134,9 @@ void run_userfault_tests()
     serial::put_dec(userfault_tests_failed);
     serial::puts("\n========================================\n");
 
-    if (userfault_tests_failed == 0)
-    {
+    if (userfault_tests_failed == 0) {
         serial::puts("[RESULT] ALL USERFAULT TESTS PASSED\n");
-    }
-    else
-    {
+    } else {
         serial::puts("[RESULT] USERFAULT TESTS FAILED\n");
     }
 }
@@ -159,8 +144,7 @@ void run_userfault_tests()
 /**
  * @brief Kernel task entry point for user fault tests.
  */
-static void userfault_test_task_entry(void *)
-{
+static void userfault_test_task_entry(void *) {
     // Small delay to let other init tasks complete
     poll::sleep_ms(100);
 
@@ -170,22 +154,18 @@ static void userfault_test_task_entry(void *)
     task::exit(0);
 }
 
-void create_userfault_test_task()
-{
+void create_userfault_test_task() {
     serial::puts("[kernel] Creating user fault test task...\n");
 
     task::Task *test_task = task::create("userfault_test", userfault_test_task_entry, nullptr);
-    if (test_task)
-    {
+    if (test_task) {
         // Set lower priority so other init tasks run first
         test_task->priority = 2;
         scheduler::enqueue(test_task);
         serial::puts("[kernel] User fault test task created (tid=");
         serial::put_dec(test_task->id);
         serial::puts(")\n");
-    }
-    else
-    {
+    } else {
         serial::puts("[kernel] Failed to create user fault test task\n");
     }
 }

@@ -57,264 +57,264 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/codegen/x86_64)
 
 # ARM64/AArch64 tests - skip on Windows (x86_64)
 if (NOT WIN32)
-add_executable(test_target_aarch64 ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_target_aarch64.cpp)
-target_link_libraries(test_target_aarch64 PRIVATE viper_testing il_codegen_aarch64)
-viper_add_ctest(test_target_aarch64 $<TARGET_FILE:test_target_aarch64>)
+    add_executable(test_target_aarch64 ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_target_aarch64.cpp)
+    target_link_libraries(test_target_aarch64 PRIVATE viper_testing il_codegen_aarch64)
+    viper_add_ctest(test_target_aarch64 $<TARGET_FILE:test_target_aarch64>)
 
-# Minimal AArch64 emission smoke test
-add_executable(test_emit_aarch64_minimal ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_aarch64_minimal.cpp)
-target_link_libraries(test_emit_aarch64_minimal PRIVATE viper_testing il_codegen_aarch64)
-viper_add_ctest(test_emit_aarch64_minimal $<TARGET_FILE:test_emit_aarch64_minimal>)
+    # Minimal AArch64 emission smoke test
+    add_executable(test_emit_aarch64_minimal ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_aarch64_minimal.cpp)
+    target_link_libraries(test_emit_aarch64_minimal PRIVATE viper_testing il_codegen_aarch64)
+    viper_add_ctest(test_emit_aarch64_minimal $<TARGET_FILE:test_emit_aarch64_minimal>)
 
-# Minimal AArch64 MIR emission smoke test
-add_executable(test_emit_aarch64_mir_minimal ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_aarch64_mir_minimal.cpp)
-target_link_libraries(test_emit_aarch64_mir_minimal PRIVATE viper_testing il_codegen_aarch64)
-viper_add_ctest(test_emit_aarch64_mir_minimal $<TARGET_FILE:test_emit_aarch64_mir_minimal>)
+    # Minimal AArch64 MIR emission smoke test
+    add_executable(test_emit_aarch64_mir_minimal ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_aarch64_mir_minimal.cpp)
+    target_link_libraries(test_emit_aarch64_mir_minimal PRIVATE viper_testing il_codegen_aarch64)
+    viper_add_ctest(test_emit_aarch64_mir_minimal $<TARGET_FILE:test_emit_aarch64_mir_minimal>)
 
-# FramePlan emission test
-add_executable(test_emit_aarch64_frameplan ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_aarch64_frameplan.cpp)
-target_link_libraries(test_emit_aarch64_frameplan PRIVATE viper_testing il_codegen_aarch64)
-viper_add_ctest(test_emit_aarch64_frameplan $<TARGET_FILE:test_emit_aarch64_frameplan>)
+    # FramePlan emission test
+    add_executable(test_emit_aarch64_frameplan ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_aarch64_frameplan.cpp)
+    target_link_libraries(test_emit_aarch64_frameplan PRIVATE viper_testing il_codegen_aarch64)
+    viper_add_ctest(test_emit_aarch64_frameplan $<TARGET_FILE:test_emit_aarch64_frameplan>)
 
-# MIR bitwise rr emission test
-add_executable(test_emit_aarch64_mir_bitwise ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_aarch64_mir_bitwise.cpp)
-target_link_libraries(test_emit_aarch64_mir_bitwise PRIVATE viper_testing il_codegen_aarch64)
-viper_add_ctest(test_emit_aarch64_mir_bitwise $<TARGET_FILE:test_emit_aarch64_mir_bitwise>)
+    # MIR bitwise rr emission test
+    add_executable(test_emit_aarch64_mir_bitwise ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_aarch64_mir_bitwise.cpp)
+    target_link_libraries(test_emit_aarch64_mir_bitwise PRIVATE viper_testing il_codegen_aarch64)
+    viper_add_ctest(test_emit_aarch64_mir_bitwise $<TARGET_FILE:test_emit_aarch64_mir_bitwise>)
 
-# MIR branches emission test
-add_executable(test_emit_aarch64_mir_branches ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_aarch64_mir_branches.cpp)
-target_link_libraries(test_emit_aarch64_mir_branches PRIVATE viper_testing il_codegen_aarch64)
-viper_add_ctest(test_emit_aarch64_mir_branches $<TARGET_FILE:test_emit_aarch64_mir_branches>)
+    # MIR branches emission test
+    add_executable(test_emit_aarch64_mir_branches ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_aarch64_mir_branches.cpp)
+    target_link_libraries(test_emit_aarch64_mir_branches PRIVATE viper_testing il_codegen_aarch64)
+    viper_add_ctest(test_emit_aarch64_mir_branches $<TARGET_FILE:test_emit_aarch64_mir_branches>)
 
-# MIR frame plan emission through emitFunction
-add_executable(test_emit_aarch64_mir_frameplan ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_aarch64_mir_frameplan.cpp)
-target_link_libraries(test_emit_aarch64_mir_frameplan PRIVATE viper_testing il_codegen_aarch64)
-viper_add_ctest(test_emit_aarch64_mir_frameplan $<TARGET_FILE:test_emit_aarch64_mir_frameplan>)
+    # MIR frame plan emission through emitFunction
+    add_executable(test_emit_aarch64_mir_frameplan ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_aarch64_mir_frameplan.cpp)
+    target_link_libraries(test_emit_aarch64_mir_frameplan PRIVATE viper_testing il_codegen_aarch64)
+    viper_add_ctest(test_emit_aarch64_mir_frameplan $<TARGET_FILE:test_emit_aarch64_mir_frameplan>)
 
-# AArch64 peephole optimization tests
-add_executable(test_codegen_arm64_peephole ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_peephole.cpp)
-target_link_libraries(test_codegen_arm64_peephole PRIVATE viper_testing il_codegen_aarch64)
-viper_add_ctest(test_codegen_arm64_peephole $<TARGET_FILE:test_codegen_arm64_peephole>)
+    # AArch64 peephole optimization tests
+    add_executable(test_codegen_arm64_peephole ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_peephole.cpp)
+    target_link_libraries(test_codegen_arm64_peephole PRIVATE viper_testing il_codegen_aarch64)
+    viper_add_ctest(test_codegen_arm64_peephole $<TARGET_FILE:test_codegen_arm64_peephole>)
 
-# AArch64 rodata pool test
-add_executable(test_aarch64_rodata_pool ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_aarch64_rodata_pool.cpp)
-target_link_libraries(test_aarch64_rodata_pool PRIVATE viper_testing il_codegen_aarch64)
-viper_add_ctest(test_aarch64_rodata_pool $<TARGET_FILE:test_aarch64_rodata_pool>)
+    # AArch64 rodata pool test
+    add_executable(test_aarch64_rodata_pool ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_aarch64_rodata_pool.cpp)
+    target_link_libraries(test_aarch64_rodata_pool PRIVATE viper_testing il_codegen_aarch64)
+    viper_add_ctest(test_aarch64_rodata_pool $<TARGET_FILE:test_aarch64_rodata_pool>)
 
-# CLI smoke for arm64 -S (ret 0)
-add_executable(test_codegen_arm64_cli ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_cli.cpp)
-target_link_libraries(test_codegen_arm64_cli PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_cli $<TARGET_FILE:test_codegen_arm64_cli>)
+    # CLI smoke for arm64 -S (ret 0)
+    add_executable(test_codegen_arm64_cli ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_cli.cpp)
+    target_link_libraries(test_codegen_arm64_cli PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_cli $<TARGET_FILE:test_codegen_arm64_cli>)
 
-add_executable(test_codegen_arm64_add_params ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_add_params.cpp)
-target_link_libraries(test_codegen_arm64_add_params PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_add_params $<TARGET_FILE:test_codegen_arm64_add_params>)
+    add_executable(test_codegen_arm64_add_params ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_add_params.cpp)
+    target_link_libraries(test_codegen_arm64_add_params PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_add_params $<TARGET_FILE:test_codegen_arm64_add_params>)
 
-add_executable(test_codegen_arm64_ret_param ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_ret_param.cpp)
-target_link_libraries(test_codegen_arm64_ret_param PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_ret_param $<TARGET_FILE:test_codegen_arm64_ret_param>)
+    add_executable(test_codegen_arm64_ret_param ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_ret_param.cpp)
+    target_link_libraries(test_codegen_arm64_ret_param PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_ret_param $<TARGET_FILE:test_codegen_arm64_ret_param>)
 
-add_executable(test_codegen_arm64_add_imm ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_add_imm.cpp)
-target_link_libraries(test_codegen_arm64_add_imm PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_add_imm $<TARGET_FILE:test_codegen_arm64_add_imm>)
+    add_executable(test_codegen_arm64_add_imm ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_add_imm.cpp)
+    target_link_libraries(test_codegen_arm64_add_imm PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_add_imm $<TARGET_FILE:test_codegen_arm64_add_imm>)
 
-add_executable(test_codegen_arm64_bitwise ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_bitwise.cpp)
-target_link_libraries(test_codegen_arm64_bitwise PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_bitwise $<TARGET_FILE:test_codegen_arm64_bitwise>)
+    add_executable(test_codegen_arm64_bitwise ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_bitwise.cpp)
+    target_link_libraries(test_codegen_arm64_bitwise PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_bitwise $<TARGET_FILE:test_codegen_arm64_bitwise>)
 
-add_executable(test_codegen_arm64_params_wide ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_params_wide.cpp)
-target_link_libraries(test_codegen_arm64_params_wide PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_params_wide $<TARGET_FILE:test_codegen_arm64_params_wide>)
+    add_executable(test_codegen_arm64_params_wide ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_params_wide.cpp)
+    target_link_libraries(test_codegen_arm64_params_wide PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_params_wide $<TARGET_FILE:test_codegen_arm64_params_wide>)
 
-add_executable(test_codegen_arm64_ovf ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_ovf.cpp)
-target_link_libraries(test_codegen_arm64_ovf PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_ovf $<TARGET_FILE:test_codegen_arm64_ovf>)
+    add_executable(test_codegen_arm64_ovf ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_ovf.cpp)
+    target_link_libraries(test_codegen_arm64_ovf PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_ovf $<TARGET_FILE:test_codegen_arm64_ovf>)
 
-add_executable(test_codegen_arm64_shift_imm ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_shift_imm.cpp)
-target_link_libraries(test_codegen_arm64_shift_imm PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_shift_imm $<TARGET_FILE:test_codegen_arm64_shift_imm>)
+    add_executable(test_codegen_arm64_shift_imm ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_shift_imm.cpp)
+    target_link_libraries(test_codegen_arm64_shift_imm PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_shift_imm $<TARGET_FILE:test_codegen_arm64_shift_imm>)
 
-add_executable(test_codegen_arm64_stack_locals ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_stack_locals.cpp)
-target_link_libraries(test_codegen_arm64_stack_locals PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_stack_locals $<TARGET_FILE:test_codegen_arm64_stack_locals>)
+    add_executable(test_codegen_arm64_stack_locals ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_stack_locals.cpp)
+    target_link_libraries(test_codegen_arm64_stack_locals PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_stack_locals $<TARGET_FILE:test_codegen_arm64_stack_locals>)
 
-# CLI variant: ensure ilc -S path emits FP-relative local accesses
-add_executable(test_codegen_arm64_stack_locals_cli ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_stack_locals_cli.cpp)
-target_link_libraries(test_codegen_arm64_stack_locals_cli PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_stack_locals_cli $<TARGET_FILE:test_codegen_arm64_stack_locals_cli>)
+    # CLI variant: ensure ilc -S path emits FP-relative local accesses
+    add_executable(test_codegen_arm64_stack_locals_cli ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_stack_locals_cli.cpp)
+    target_link_libraries(test_codegen_arm64_stack_locals_cli PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_stack_locals_cli $<TARGET_FILE:test_codegen_arm64_stack_locals_cli>)
 
-add_executable(test_codegen_arm64_gep_load_store ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_gep_load_store.cpp)
-target_link_libraries(test_codegen_arm64_gep_load_store PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_gep_load_store $<TARGET_FILE:test_codegen_arm64_gep_load_store>)
+    add_executable(test_codegen_arm64_gep_load_store ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_gep_load_store.cpp)
+    target_link_libraries(test_codegen_arm64_gep_load_store PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_gep_load_store $<TARGET_FILE:test_codegen_arm64_gep_load_store>)
 
-add_executable(test_codegen_arm64_array_access ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_array_access.cpp)
-target_link_libraries(test_codegen_arm64_array_access PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_array_access $<TARGET_FILE:test_codegen_arm64_array_access>)
+    add_executable(test_codegen_arm64_array_access ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_array_access.cpp)
+    target_link_libraries(test_codegen_arm64_array_access PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_array_access $<TARGET_FILE:test_codegen_arm64_array_access>)
 
-add_executable(test_codegen_arm64_const_str_addr ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_const_str_addr.cpp)
-target_link_libraries(test_codegen_arm64_const_str_addr PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_const_str_addr $<TARGET_FILE:test_codegen_arm64_const_str_addr>)
+    add_executable(test_codegen_arm64_const_str_addr ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_const_str_addr.cpp)
+    target_link_libraries(test_codegen_arm64_const_str_addr PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_const_str_addr $<TARGET_FILE:test_codegen_arm64_const_str_addr>)
 
-add_executable(test_codegen_arm64_mir_dump ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_mir_dump.cpp)
-target_link_libraries(test_codegen_arm64_mir_dump PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_mir_dump $<TARGET_FILE:test_codegen_arm64_mir_dump>)
+    add_executable(test_codegen_arm64_mir_dump ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_mir_dump.cpp)
+    target_link_libraries(test_codegen_arm64_mir_dump PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_mir_dump $<TARGET_FILE:test_codegen_arm64_mir_dump>)
 
-add_executable(test_codegen_arm64_ra_many_temps ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_ra_many_temps.cpp)
-target_link_libraries(test_codegen_arm64_ra_many_temps PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_ra_many_temps $<TARGET_FILE:test_codegen_arm64_ra_many_temps>)
+    add_executable(test_codegen_arm64_ra_many_temps ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_ra_many_temps.cpp)
+    target_link_libraries(test_codegen_arm64_ra_many_temps PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_ra_many_temps $<TARGET_FILE:test_codegen_arm64_ra_many_temps>)
 
-add_executable(test_codegen_arm64_icmp ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_icmp.cpp)
-target_link_libraries(test_codegen_arm64_icmp PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_icmp $<TARGET_FILE:test_codegen_arm64_icmp>)
+    add_executable(test_codegen_arm64_icmp ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_icmp.cpp)
+    target_link_libraries(test_codegen_arm64_icmp PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_icmp $<TARGET_FILE:test_codegen_arm64_icmp>)
 
-add_executable(test_codegen_arm64_large_imm ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_large_imm.cpp)
-target_link_libraries(test_codegen_arm64_large_imm PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_large_imm $<TARGET_FILE:test_codegen_arm64_large_imm>)
+    add_executable(test_codegen_arm64_large_imm ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_large_imm.cpp)
+    target_link_libraries(test_codegen_arm64_large_imm PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_large_imm $<TARGET_FILE:test_codegen_arm64_large_imm>)
 
-add_executable(test_codegen_arm64_icmp_imm ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_icmp_imm.cpp)
-target_link_libraries(test_codegen_arm64_icmp_imm PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_icmp_imm $<TARGET_FILE:test_codegen_arm64_icmp_imm>)
+    add_executable(test_codegen_arm64_icmp_imm ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_icmp_imm.cpp)
+    target_link_libraries(test_codegen_arm64_icmp_imm PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_icmp_imm $<TARGET_FILE:test_codegen_arm64_icmp_imm>)
 
-# switch lowering tests for arm64 CLI
-add_executable(test_codegen_arm64_switch ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_switch.cpp)
-target_link_libraries(test_codegen_arm64_switch PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_switch $<TARGET_FILE:test_codegen_arm64_switch>)
+    # switch lowering tests for arm64 CLI
+    add_executable(test_codegen_arm64_switch ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_switch.cpp)
+    target_link_libraries(test_codegen_arm64_switch PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_switch $<TARGET_FILE:test_codegen_arm64_switch>)
 
-# trap and EH lowering tests for arm64 CLI
-add_executable(test_codegen_arm64_trap_eh ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_trap_eh.cpp)
-target_link_libraries(test_codegen_arm64_trap_eh PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_trap_eh $<TARGET_FILE:test_codegen_arm64_trap_eh>)
+    # trap and EH lowering tests for arm64 CLI
+    add_executable(test_codegen_arm64_trap_eh ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_trap_eh.cpp)
+    target_link_libraries(test_codegen_arm64_trap_eh PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_trap_eh $<TARGET_FILE:test_codegen_arm64_trap_eh>)
 
-# run-native test for arm64 CLI
-add_executable(test_codegen_arm64_run_native ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_run_native.cpp)
-target_link_libraries(test_codegen_arm64_run_native PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_run_native $<TARGET_FILE:test_codegen_arm64_run_native>)
+    # run-native test for arm64 CLI
+    add_executable(test_codegen_arm64_run_native ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_run_native.cpp)
+    target_link_libraries(test_codegen_arm64_run_native PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_run_native $<TARGET_FILE:test_codegen_arm64_run_native>)
 
-# Environment.IsNative should distinguish VM vs native paths
-add_executable(test_codegen_env_is_native ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_env_is_native.cpp)
-target_link_libraries(test_codegen_env_is_native PRIVATE viper_test_common il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_env_is_native $<TARGET_FILE:test_codegen_env_is_native>)
+    # Environment.IsNative should distinguish VM vs native paths
+    add_executable(test_codegen_env_is_native ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_env_is_native.cpp)
+    target_link_libraries(test_codegen_env_is_native PRIVATE viper_test_common il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_env_is_native $<TARGET_FILE:test_codegen_env_is_native>)
 
-# Property-based differential testing: VM vs ARM64 native
-# This test must run alone (RUN_SERIAL) to avoid resource contention with other
-# codegen tests that use the same assembler/linker toolchain.
-add_executable(test_diff_vm_native_property ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_diff_vm_native_property.cpp)
-target_link_libraries(test_diff_vm_native_property PRIVATE viper_test_common il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_diff_vm_native_property $<TARGET_FILE:test_diff_vm_native_property>)
-set_tests_properties(test_diff_vm_native_property PROPERTIES RUN_SERIAL TRUE TIMEOUT 120 LABELS "slow")
+    # Property-based differential testing: VM vs ARM64 native
+    # This test must run alone (RUN_SERIAL) to avoid resource contention with other
+    # codegen tests that use the same assembler/linker toolchain.
+    add_executable(test_diff_vm_native_property ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_diff_vm_native_property.cpp)
+    target_link_libraries(test_diff_vm_native_property PRIVATE viper_test_common il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_diff_vm_native_property $<TARGET_FILE:test_diff_vm_native_property>)
+    set_tests_properties(test_diff_vm_native_property PROPERTIES RUN_SERIAL TRUE TIMEOUT 120 LABELS "slow")
 
-add_executable(test_emit_x86_runtime_map ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_x86_runtime_map.cpp)
-target_link_libraries(test_emit_x86_runtime_map PRIVATE viper_test_common viper_codegen_x86_64)
-viper_add_ctest(test_emit_x86_runtime_map $<TARGET_FILE:test_emit_x86_runtime_map>)
+    add_executable(test_emit_x86_runtime_map ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_x86_runtime_map.cpp)
+    target_link_libraries(test_emit_x86_runtime_map PRIVATE viper_test_common viper_codegen_x86_64)
+    viper_add_ctest(test_emit_x86_runtime_map $<TARGET_FILE:test_emit_x86_runtime_map>)
 
-# Optimizer pipeline differential testing (VM baseline vs O0/O1/O2)
-add_executable(test_il_opt_equivalence ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_il_opt_equivalence.cpp)
-target_link_libraries(test_il_opt_equivalence PRIVATE viper_test_common il_transform viper::il_verify)
-viper_add_ctest(test_il_opt_equivalence $<TARGET_FILE:test_il_opt_equivalence>)
+    # Optimizer pipeline differential testing (VM baseline vs O0/O1/O2)
+    add_executable(test_il_opt_equivalence ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_il_opt_equivalence.cpp)
+    target_link_libraries(test_il_opt_equivalence PRIVATE viper_test_common il_transform viper::il_verify)
+    viper_add_ctest(test_il_opt_equivalence $<TARGET_FILE:test_il_opt_equivalence>)
 
-# cbr lowering tests for arm64 CLI
-add_executable(test_codegen_arm64_cbr ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_cbr.cpp)
-target_link_libraries(test_codegen_arm64_cbr PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_cbr $<TARGET_FILE:test_codegen_arm64_cbr>)
+    # cbr lowering tests for arm64 CLI
+    add_executable(test_codegen_arm64_cbr ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_cbr.cpp)
+    target_link_libraries(test_codegen_arm64_cbr PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_cbr $<TARGET_FILE:test_codegen_arm64_cbr>)
 
-# call lowering smoke test for arm64 CLI (bl callee)
-add_executable(test_codegen_arm64_call ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call.cpp)
-target_link_libraries(test_codegen_arm64_call PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_call $<TARGET_FILE:test_codegen_arm64_call>)
+    # call lowering smoke test for arm64 CLI (bl callee)
+    add_executable(test_codegen_arm64_call ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call.cpp)
+    target_link_libraries(test_codegen_arm64_call PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_call $<TARGET_FILE:test_codegen_arm64_call>)
 
-# call arg marshalling tests
-add_executable(test_codegen_arm64_call_args ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call_args.cpp)
-target_link_libraries(test_codegen_arm64_call_args PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_call_args $<TARGET_FILE:test_codegen_arm64_call_args>)
+    # call arg marshalling tests
+    add_executable(test_codegen_arm64_call_args ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call_args.cpp)
+    target_link_libraries(test_codegen_arm64_call_args PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_call_args $<TARGET_FILE:test_codegen_arm64_call_args>)
 
-add_executable(test_codegen_arm64_call_mid_block ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call_mid_block.cpp)
-target_link_libraries(test_codegen_arm64_call_mid_block PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_call_mid_block $<TARGET_FILE:test_codegen_arm64_call_mid_block>)
+    add_executable(test_codegen_arm64_call_mid_block ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call_mid_block.cpp)
+    target_link_libraries(test_codegen_arm64_call_mid_block PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_call_mid_block $<TARGET_FILE:test_codegen_arm64_call_mid_block>)
 
-add_executable(test_codegen_arm64_cf_if_else_phi ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_cf_if_else_phi.cpp)
-target_link_libraries(test_codegen_arm64_cf_if_else_phi PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_cf_if_else_phi $<TARGET_FILE:test_codegen_arm64_cf_if_else_phi>)
+    add_executable(test_codegen_arm64_cf_if_else_phi ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_cf_if_else_phi.cpp)
+    target_link_libraries(test_codegen_arm64_cf_if_else_phi PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_cf_if_else_phi $<TARGET_FILE:test_codegen_arm64_cf_if_else_phi>)
 
-# select-like cbr + join patterns
-add_executable(test_codegen_arm64_select ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_select.cpp)
-target_link_libraries(test_codegen_arm64_select PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_select $<TARGET_FILE:test_codegen_arm64_select>)
+    # select-like cbr + join patterns
+    add_executable(test_codegen_arm64_select ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_select.cpp)
+    target_link_libraries(test_codegen_arm64_select PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_select $<TARGET_FILE:test_codegen_arm64_select>)
 
-add_executable(test_codegen_arm64_cf_loop_phi ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_cf_loop_phi.cpp)
-target_link_libraries(test_codegen_arm64_cf_loop_phi PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_cf_loop_phi $<TARGET_FILE:test_codegen_arm64_cf_loop_phi>)
-# call args with a single non-entry temp
-add_executable(test_codegen_arm64_call_temp_args ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call_temp_args.cpp)
-target_link_libraries(test_codegen_arm64_call_temp_args PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_call_temp_args $<TARGET_FILE:test_codegen_arm64_call_temp_args>)
+    add_executable(test_codegen_arm64_cf_loop_phi ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_cf_loop_phi.cpp)
+    target_link_libraries(test_codegen_arm64_cf_loop_phi PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_cf_loop_phi $<TARGET_FILE:test_codegen_arm64_cf_loop_phi>)
+    # call args with a single non-entry temp
+    add_executable(test_codegen_arm64_call_temp_args ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call_temp_args.cpp)
+    target_link_libraries(test_codegen_arm64_call_temp_args PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_call_temp_args $<TARGET_FILE:test_codegen_arm64_call_temp_args>)
 
-# integer/FP casts lowering tests for arm64
-# Temporarily disabled: flaky on some environments while AArch64 cast tests
-# also covered by VM and IL suites.
-# add_executable(test_codegen_arm64_casts ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_casts.cpp)
-# target_link_libraries(test_codegen_arm64_casts PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-# viper_add_ctest(test_codegen_arm64_casts $<TARGET_FILE:test_codegen_arm64_casts>)
+    # integer/FP casts lowering tests for arm64
+    # Temporarily disabled: flaky on some environments while AArch64 cast tests
+    # also covered by VM and IL suites.
+    # add_executable(test_codegen_arm64_casts ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_casts.cpp)
+    # target_link_libraries(test_codegen_arm64_casts PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    # viper_add_ctest(test_codegen_arm64_casts $<TARGET_FILE:test_codegen_arm64_casts>)
 
-add_executable(test_codegen_arm64_print_str ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_print_str.cpp)
-target_link_libraries(test_codegen_arm64_print_str PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_print_str $<TARGET_FILE:test_codegen_arm64_print_str>)
+    add_executable(test_codegen_arm64_print_str ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_print_str.cpp)
+    target_link_libraries(test_codegen_arm64_print_str PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_print_str $<TARGET_FILE:test_codegen_arm64_print_str>)
 
-add_executable(test_codegen_arm64_dead_strip ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_dead_strip.cpp)
-target_link_libraries(test_codegen_arm64_dead_strip PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_dead_strip $<TARGET_FILE:test_codegen_arm64_dead_strip>)
+    add_executable(test_codegen_arm64_dead_strip ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_dead_strip.cpp)
+    target_link_libraries(test_codegen_arm64_dead_strip PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_dead_strip $<TARGET_FILE:test_codegen_arm64_dead_strip>)
 
-add_executable(test_codegen_arm64_modvar_addr ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_modvar_addr.cpp)
-target_link_libraries(test_codegen_arm64_modvar_addr PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_modvar_addr $<TARGET_FILE:test_codegen_arm64_modvar_addr>)
+    add_executable(test_codegen_arm64_modvar_addr ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_modvar_addr.cpp)
+    target_link_libraries(test_codegen_arm64_modvar_addr PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_modvar_addr $<TARGET_FILE:test_codegen_arm64_modvar_addr>)
 
-# CLI run-native should return user exit code
-# Note: run-native exit code coverage exists in other tests; keep CI stable.
-# add_executable(test_codegen_arm64_run_ret42 ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_run_ret42.cpp)
-# target_link_libraries(test_codegen_arm64_run_ret42 PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-# viper_add_ctest(test_codegen_arm64_run_ret42 $<TARGET_FILE:test_codegen_arm64_run_ret42>)
+    # CLI run-native should return user exit code
+    # Note: run-native exit code coverage exists in other tests; keep CI stable.
+    # add_executable(test_codegen_arm64_run_ret42 ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_run_ret42.cpp)
+    # target_link_libraries(test_codegen_arm64_run_ret42 PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    # viper_add_ctest(test_codegen_arm64_run_ret42 $<TARGET_FILE:test_codegen_arm64_run_ret42>)
 
-# CLI -S and -o path flows
-add_executable(test_codegen_arm64_emit_and_link ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_emit_and_link.cpp)
-target_link_libraries(test_codegen_arm64_emit_and_link PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_emit_and_link $<TARGET_FILE:test_codegen_arm64_emit_and_link>)
+    # CLI -S and -o path flows
+    add_executable(test_codegen_arm64_emit_and_link ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_emit_and_link.cpp)
+    target_link_libraries(test_codegen_arm64_emit_and_link PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_emit_and_link $<TARGET_FILE:test_codegen_arm64_emit_and_link>)
 
-# arrays/objects tests for arm64 CLI
-add_executable(test_codegen_arm64_arr_obj_len ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_arr_obj_len.cpp)
-target_link_libraries(test_codegen_arm64_arr_obj_len PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_arr_obj_len $<TARGET_FILE:test_codegen_arm64_arr_obj_len>)
+    # arrays/objects tests for arm64 CLI
+    add_executable(test_codegen_arm64_arr_obj_len ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_arr_obj_len.cpp)
+    target_link_libraries(test_codegen_arm64_arr_obj_len PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_arr_obj_len $<TARGET_FILE:test_codegen_arm64_arr_obj_len>)
 
-add_executable(test_codegen_arm64_obj_field_gep ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_obj_field_gep.cpp)
-target_link_libraries(test_codegen_arm64_obj_field_gep PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_obj_field_gep $<TARGET_FILE:test_codegen_arm64_obj_field_gep>)
+    add_executable(test_codegen_arm64_obj_field_gep ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_obj_field_gep.cpp)
+    target_link_libraries(test_codegen_arm64_obj_field_gep PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_obj_field_gep $<TARGET_FILE:test_codegen_arm64_obj_field_gep>)
 
-add_executable(test_codegen_arm64_arr_obj_put_get ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_arr_obj_put_get.cpp)
-target_link_libraries(test_codegen_arm64_arr_obj_put_get PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_arr_obj_put_get $<TARGET_FILE:test_codegen_arm64_arr_obj_put_get>)
+    add_executable(test_codegen_arm64_arr_obj_put_get ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_arr_obj_put_get.cpp)
+    target_link_libraries(test_codegen_arm64_arr_obj_put_get PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_arr_obj_put_get $<TARGET_FILE:test_codegen_arm64_arr_obj_put_get>)
 
-# ARM64 end-to-end demo tests
-add_executable(test_arm64_demos ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_arm64_demos.cpp)
-target_link_libraries(test_arm64_demos PRIVATE viper_testing viper_common)
-viper_add_ctest(test_arm64_demos $<TARGET_FILE:test_arm64_demos>)
+    # ARM64 end-to-end demo tests
+    add_executable(test_arm64_demos ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_arm64_demos.cpp)
+    target_link_libraries(test_arm64_demos PRIVATE viper_testing viper_common)
+    viper_add_ctest(test_arm64_demos $<TARGET_FILE:test_arm64_demos>)
 
-# Opt-in run-native demos (guarded by host/ENV inside the test)
-add_executable(test_arm64_demos_run ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_arm64_demos_run.cpp)
-target_link_libraries(test_arm64_demos_run PRIVATE viper_testing viper_common)
-viper_add_ctest(test_arm64_demos_run $<TARGET_FILE:test_arm64_demos_run>)
+    # Opt-in run-native demos (guarded by host/ENV inside the test)
+    add_executable(test_arm64_demos_run ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_arm64_demos_run.cpp)
+    target_link_libraries(test_arm64_demos_run PRIVATE viper_testing viper_common)
+    viper_add_ctest(test_arm64_demos_run $<TARGET_FILE:test_arm64_demos_run>)
 
-## call with >8 integer args uses stack area
-add_executable(test_codegen_arm64_call_stack_args ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call_stack_args.cpp)
-target_link_libraries(test_codegen_arm64_call_stack_args PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_call_stack_args $<TARGET_FILE:test_codegen_arm64_call_stack_args>)
+    ## call with >8 integer args uses stack area
+    add_executable(test_codegen_arm64_call_stack_args ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call_stack_args.cpp)
+    target_link_libraries(test_codegen_arm64_call_stack_args PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_call_stack_args $<TARGET_FILE:test_codegen_arm64_call_stack_args>)
 
-## Comprehensive calling convention tests
-add_executable(test_codegen_arm64_call_convention ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call_convention.cpp)
-target_link_libraries(test_codegen_arm64_call_convention PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_call_convention $<TARGET_FILE:test_codegen_arm64_call_convention>)
+    ## Comprehensive calling convention tests
+    add_executable(test_codegen_arm64_call_convention ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call_convention.cpp)
+    target_link_libraries(test_codegen_arm64_call_convention PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_call_convention $<TARGET_FILE:test_codegen_arm64_call_convention>)
 
-## Floating-point support tests
-add_executable(test_codegen_arm64_fp ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_fp.cpp)
-target_link_libraries(test_codegen_arm64_fp PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_fp $<TARGET_FILE:test_codegen_arm64_fp>)
+    ## Floating-point support tests
+    add_executable(test_codegen_arm64_fp ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_fp.cpp)
+    target_link_libraries(test_codegen_arm64_fp PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_fp $<TARGET_FILE:test_codegen_arm64_fp>)
 endif () # NOT WIN32 - ARM64 tests
 
 viper_add_ctest(NoAssertFalseGuard
@@ -502,272 +502,272 @@ if (NOT WIN32)
 endif ()
 
 if (VIPER_ENABLE_PASCAL)
-# =============================================================================
-# Pascal Frontend Tests
-# =============================================================================
+    # =============================================================================
+    # Pascal Frontend Tests
+    # =============================================================================
 
-# Pascal compiler unit tests
-add_executable(test_pascal_compiler ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalCompilerTests.cpp)
-target_link_libraries(test_pascal_compiler PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_compiler COMMAND test_pascal_compiler)
-set_tests_properties(test_pascal_compiler PROPERTIES LABELS pascal)
+    # Pascal compiler unit tests
+    add_executable(test_pascal_compiler ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalCompilerTests.cpp)
+    target_link_libraries(test_pascal_compiler PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_compiler COMMAND test_pascal_compiler)
+    set_tests_properties(test_pascal_compiler PROPERTIES LABELS pascal)
 
-# Pascal casts tests
-add_executable(test_pascal_casts ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalCastsTests.cpp)
-target_link_libraries(test_pascal_casts PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_casts COMMAND test_pascal_casts)
-set_tests_properties(test_pascal_casts PROPERTIES LABELS pascal)
+    # Pascal casts tests
+    add_executable(test_pascal_casts ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalCastsTests.cpp)
+    target_link_libraries(test_pascal_casts PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_casts COMMAND test_pascal_casts)
+    set_tests_properties(test_pascal_casts PROPERTIES LABELS pascal)
 
-# Pascal 'is' operator tests
-add_executable(test_pascal_is ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalIsTests.cpp)
-target_link_libraries(test_pascal_is PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_is COMMAND test_pascal_is)
-set_tests_properties(test_pascal_is PROPERTIES LABELS pascal)
+    # Pascal 'is' operator tests
+    add_executable(test_pascal_is ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalIsTests.cpp)
+    target_link_libraries(test_pascal_is PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_is COMMAND test_pascal_is)
+    set_tests_properties(test_pascal_is PROPERTIES LABELS pascal)
 
-# Pascal inherited calls tests
-add_executable(test_pascal_inherited ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalInheritedTests.cpp)
-target_link_libraries(test_pascal_inherited PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_inherited COMMAND test_pascal_inherited)
-set_tests_properties(test_pascal_inherited PROPERTIES LABELS pascal)
+    # Pascal inherited calls tests
+    add_executable(test_pascal_inherited ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalInheritedTests.cpp)
+    target_link_libraries(test_pascal_inherited PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_inherited COMMAND test_pascal_inherited)
+    set_tests_properties(test_pascal_inherited PROPERTIES LABELS pascal)
 
-# Pascal abstract enforcement tests
-add_executable(test_pascal_abstract ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalAbstractTests.cpp)
-target_link_libraries(test_pascal_abstract PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_abstract COMMAND test_pascal_abstract)
-set_tests_properties(test_pascal_abstract PROPERTIES LABELS pascal)
+    # Pascal abstract enforcement tests
+    add_executable(test_pascal_abstract ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalAbstractTests.cpp)
+    target_link_libraries(test_pascal_abstract PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_abstract COMMAND test_pascal_abstract)
+    set_tests_properties(test_pascal_abstract PROPERTIES LABELS pascal)
 
-# Pascal constructor chaining tests
-add_executable(test_pascal_ctor_chain ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalCtorChainTests.cpp)
-target_link_libraries(test_pascal_ctor_chain PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_ctor_chain COMMAND test_pascal_ctor_chain)
-set_tests_properties(test_pascal_ctor_chain PROPERTIES LABELS pascal)
+    # Pascal constructor chaining tests
+    add_executable(test_pascal_ctor_chain ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalCtorChainTests.cpp)
+    target_link_libraries(test_pascal_ctor_chain PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_ctor_chain COMMAND test_pascal_ctor_chain)
+    set_tests_properties(test_pascal_ctor_chain PROPERTIES LABELS pascal)
 
-# Pascal lexer unit tests
-add_executable(test_pascal_lexer ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/LexerTests.cpp)
-target_link_libraries(test_pascal_lexer PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_lexer COMMAND test_pascal_lexer)
-set_tests_properties(test_pascal_lexer PROPERTIES LABELS pascal)
+    # Pascal lexer unit tests
+    add_executable(test_pascal_lexer ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/LexerTests.cpp)
+    target_link_libraries(test_pascal_lexer PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_lexer COMMAND test_pascal_lexer)
+    set_tests_properties(test_pascal_lexer PROPERTIES LABELS pascal)
 
-# Pascal AST unit tests
-add_executable(test_pascal_ast ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/ASTTests.cpp)
-target_link_libraries(test_pascal_ast PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_ast COMMAND test_pascal_ast)
-set_tests_properties(test_pascal_ast PROPERTIES LABELS pascal)
+    # Pascal AST unit tests
+    add_executable(test_pascal_ast ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/ASTTests.cpp)
+    target_link_libraries(test_pascal_ast PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_ast COMMAND test_pascal_ast)
+    set_tests_properties(test_pascal_ast PROPERTIES LABELS pascal)
 
-# Pascal parser unit tests (expressions and statements)
-add_executable(test_pascal_parser ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/ParserExprStmtTests.cpp)
-target_link_libraries(test_pascal_parser PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_parser COMMAND test_pascal_parser)
-set_tests_properties(test_pascal_parser PROPERTIES LABELS pascal)
+    # Pascal parser unit tests (expressions and statements)
+    add_executable(test_pascal_parser ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/ParserExprStmtTests.cpp)
+    target_link_libraries(test_pascal_parser PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_parser COMMAND test_pascal_parser)
+    set_tests_properties(test_pascal_parser PROPERTIES LABELS pascal)
 
-# Pascal parser unit tests (declarations and types)
-add_executable(test_pascal_parser_decl ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/ParserDeclTypeTests.cpp)
-target_link_libraries(test_pascal_parser_decl PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_parser_decl COMMAND test_pascal_parser_decl)
-set_tests_properties(test_pascal_parser_decl PROPERTIES LABELS pascal)
+    # Pascal parser unit tests (declarations and types)
+    add_executable(test_pascal_parser_decl ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/ParserDeclTypeTests.cpp)
+    target_link_libraries(test_pascal_parser_decl PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_parser_decl COMMAND test_pascal_parser_decl)
+    set_tests_properties(test_pascal_parser_decl PROPERTIES LABELS pascal)
 
-add_executable(test_pascal_parser_method_qual ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/ParserMethodQualDebug.cpp)
-target_link_libraries(test_pascal_parser_method_qual PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_parser_method_qual COMMAND test_pascal_parser_method_qual)
-set_tests_properties(test_pascal_parser_method_qual PROPERTIES LABELS pascal)
+    add_executable(test_pascal_parser_method_qual ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/ParserMethodQualDebug.cpp)
+    target_link_libraries(test_pascal_parser_method_qual PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_parser_method_qual COMMAND test_pascal_parser_method_qual)
+    set_tests_properties(test_pascal_parser_method_qual PROPERTIES LABELS pascal)
 
-# Pascal OOP grammar coverage tests
-add_executable(test_pascal_parser_oop ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/ParserOOPTests.cpp)
-target_link_libraries(test_pascal_parser_oop PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_parser_oop COMMAND test_pascal_parser_oop)
-set_tests_properties(test_pascal_parser_oop PROPERTIES LABELS pascal)
+    # Pascal OOP grammar coverage tests
+    add_executable(test_pascal_parser_oop ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/ParserOOPTests.cpp)
+    target_link_libraries(test_pascal_parser_oop PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_parser_oop COMMAND test_pascal_parser_oop)
+    set_tests_properties(test_pascal_parser_oop PROPERTIES LABELS pascal)
 
-# Pascal OOP symbol table tests
-add_executable(test_pascal_symbol_table_oop ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SymbolTableOOPTests.cpp)
-target_link_libraries(test_pascal_symbol_table_oop PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_symbol_table_oop COMMAND test_pascal_symbol_table_oop)
-set_tests_properties(test_pascal_symbol_table_oop PROPERTIES LABELS pascal)
+    # Pascal OOP symbol table tests
+    add_executable(test_pascal_symbol_table_oop ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SymbolTableOOPTests.cpp)
+    target_link_libraries(test_pascal_symbol_table_oop PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_symbol_table_oop COMMAND test_pascal_symbol_table_oop)
+    set_tests_properties(test_pascal_symbol_table_oop PROPERTIES LABELS pascal)
 
-# Pascal semantic analyzer unit tests
-add_executable(test_pascal_semantic ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticBasicTests.cpp)
-target_link_libraries(test_pascal_semantic PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_semantic COMMAND test_pascal_semantic)
-set_tests_properties(test_pascal_semantic PROPERTIES LABELS pascal)
+    # Pascal semantic analyzer unit tests
+    add_executable(test_pascal_semantic ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticBasicTests.cpp)
+    target_link_libraries(test_pascal_semantic PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_semantic COMMAND test_pascal_semantic)
+    set_tests_properties(test_pascal_semantic PROPERTIES LABELS pascal)
 
-# Pascal semantic analyzer optional type tests
-add_executable(test_pascal_semantic_optional ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticOptionalTests.cpp)
-target_link_libraries(test_pascal_semantic_optional PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_semantic_optional COMMAND test_pascal_semantic_optional)
-set_tests_properties(test_pascal_semantic_optional PROPERTIES LABELS pascal)
+    # Pascal semantic analyzer optional type tests
+    add_executable(test_pascal_semantic_optional ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticOptionalTests.cpp)
+    target_link_libraries(test_pascal_semantic_optional PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_semantic_optional COMMAND test_pascal_semantic_optional)
+    set_tests_properties(test_pascal_semantic_optional PROPERTIES LABELS pascal)
 
-# Pascal value-type optional lowering tests
-add_executable(test_pascal_value_type_optional ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/ValueTypeOptionalTests.cpp)
-target_link_libraries(test_pascal_value_type_optional PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_value_type_optional COMMAND test_pascal_value_type_optional)
-set_tests_properties(test_pascal_value_type_optional PROPERTIES LABELS pascal)
+    # Pascal value-type optional lowering tests
+    add_executable(test_pascal_value_type_optional ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/ValueTypeOptionalTests.cpp)
+    target_link_libraries(test_pascal_value_type_optional PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_value_type_optional COMMAND test_pascal_value_type_optional)
+    set_tests_properties(test_pascal_value_type_optional PROPERTIES LABELS pascal)
 
-# Pascal weak reference lowering tests
-add_executable(test_pascal_weak_reference ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/WeakReferenceTests.cpp)
-target_link_libraries(test_pascal_weak_reference PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_weak_reference COMMAND test_pascal_weak_reference)
-set_tests_properties(test_pascal_weak_reference PROPERTIES LABELS pascal)
+    # Pascal weak reference lowering tests
+    add_executable(test_pascal_weak_reference ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/WeakReferenceTests.cpp)
+    target_link_libraries(test_pascal_weak_reference PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_weak_reference COMMAND test_pascal_weak_reference)
+    set_tests_properties(test_pascal_weak_reference PROPERTIES LABELS pascal)
 
-# Pascal default parameter lowering tests
-add_executable(test_pascal_default_param_lowering ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/DefaultParamLoweringTests.cpp)
-target_link_libraries(test_pascal_default_param_lowering PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_default_param_lowering COMMAND test_pascal_default_param_lowering)
-set_tests_properties(test_pascal_default_param_lowering PROPERTIES LABELS pascal)
+    # Pascal default parameter lowering tests
+    add_executable(test_pascal_default_param_lowering ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/DefaultParamLoweringTests.cpp)
+    target_link_libraries(test_pascal_default_param_lowering PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_default_param_lowering COMMAND test_pascal_default_param_lowering)
+    set_tests_properties(test_pascal_default_param_lowering PROPERTIES LABELS pascal)
 
-# Pascal for-in typed array lowering tests
-add_executable(test_pascal_forin_typed_array ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/ForInTypedArrayTests.cpp)
-target_link_libraries(test_pascal_forin_typed_array PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_forin_typed_array COMMAND test_pascal_forin_typed_array)
-set_tests_properties(test_pascal_forin_typed_array PROPERTIES LABELS pascal)
+    # Pascal for-in typed array lowering tests
+    add_executable(test_pascal_forin_typed_array ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/ForInTypedArrayTests.cpp)
+    target_link_libraries(test_pascal_forin_typed_array PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_forin_typed_array COMMAND test_pascal_forin_typed_array)
+    set_tests_properties(test_pascal_forin_typed_array PROPERTIES LABELS pascal)
 
-# Pascal semantic analyzer class/interface tests
-add_executable(test_pascal_semantic_class ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticClassTests.cpp)
-target_link_libraries(test_pascal_semantic_class PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_semantic_class COMMAND test_pascal_semantic_class)
-set_tests_properties(test_pascal_semantic_class PROPERTIES LABELS pascal)
+    # Pascal semantic analyzer class/interface tests
+    add_executable(test_pascal_semantic_class ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticClassTests.cpp)
+    target_link_libraries(test_pascal_semantic_class PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_semantic_class COMMAND test_pascal_semantic_class)
+    set_tests_properties(test_pascal_semantic_class PROPERTIES LABELS pascal)
 
-# Pascal OOP diagnostics tests
-add_executable(test_pascal_oop_diagnostics ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/PascalOOPDiagnosticsTests.cpp)
-target_link_libraries(test_pascal_oop_diagnostics PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_oop_diagnostics COMMAND test_pascal_oop_diagnostics)
-set_tests_properties(test_pascal_oop_diagnostics PROPERTIES LABELS pascal)
+    # Pascal OOP diagnostics tests
+    add_executable(test_pascal_oop_diagnostics ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/PascalOOPDiagnosticsTests.cpp)
+    target_link_libraries(test_pascal_oop_diagnostics PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_oop_diagnostics COMMAND test_pascal_oop_diagnostics)
+    set_tests_properties(test_pascal_oop_diagnostics PROPERTIES LABELS pascal)
 
-# Pascal semantic analyzer unit tests
-add_executable(test_pascal_semantic_unit ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticUnitTests.cpp)
-target_link_libraries(test_pascal_semantic_unit PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_semantic_unit COMMAND test_pascal_semantic_unit)
-set_tests_properties(test_pascal_semantic_unit PROPERTIES LABELS pascal)
+    # Pascal semantic analyzer unit tests
+    add_executable(test_pascal_semantic_unit ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticUnitTests.cpp)
+    target_link_libraries(test_pascal_semantic_unit PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_semantic_unit COMMAND test_pascal_semantic_unit)
+    set_tests_properties(test_pascal_semantic_unit PROPERTIES LABELS pascal)
 
-# Pascal exception handling semantic tests
-add_executable(test_pascal_semantic_exception ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticExceptionTests.cpp)
-target_link_libraries(test_pascal_semantic_exception PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_semantic_exception COMMAND test_pascal_semantic_exception)
-set_tests_properties(test_pascal_semantic_exception PROPERTIES LABELS pascal)
+    # Pascal exception handling semantic tests
+    add_executable(test_pascal_semantic_exception ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticExceptionTests.cpp)
+    target_link_libraries(test_pascal_semantic_exception PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_semantic_exception COMMAND test_pascal_semantic_exception)
+    set_tests_properties(test_pascal_semantic_exception PROPERTIES LABELS pascal)
 
-add_executable(test_pascal_semantic_array ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticArrayTests.cpp)
-target_link_libraries(test_pascal_semantic_array PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_semantic_array COMMAND test_pascal_semantic_array)
-set_tests_properties(test_pascal_semantic_array PROPERTIES LABELS pascal)
+    add_executable(test_pascal_semantic_array ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticArrayTests.cpp)
+    target_link_libraries(test_pascal_semantic_array PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_semantic_array COMMAND test_pascal_semantic_array)
+    set_tests_properties(test_pascal_semantic_array PROPERTIES LABELS pascal)
 
-add_executable(test_pascal_semantic_builtin ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticBuiltinTests.cpp)
-target_link_libraries(test_pascal_semantic_builtin PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_semantic_builtin COMMAND test_pascal_semantic_builtin)
-set_tests_properties(test_pascal_semantic_builtin PROPERTIES LABELS pascal)
+    add_executable(test_pascal_semantic_builtin ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticBuiltinTests.cpp)
+    target_link_libraries(test_pascal_semantic_builtin PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_semantic_builtin COMMAND test_pascal_semantic_builtin)
+    set_tests_properties(test_pascal_semantic_builtin PROPERTIES LABELS pascal)
 
-# Pascal Self and With statement tests
-add_executable(test_pascal_self_and_with ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SelfAndWithTests.cpp)
-target_link_libraries(test_pascal_self_and_with PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_self_and_with COMMAND test_pascal_self_and_with)
-set_tests_properties(test_pascal_self_and_with PROPERTIES LABELS pascal)
+    # Pascal Self and With statement tests
+    add_executable(test_pascal_self_and_with ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SelfAndWithTests.cpp)
+    target_link_libraries(test_pascal_self_and_with PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_self_and_with COMMAND test_pascal_self_and_with)
+    set_tests_properties(test_pascal_self_and_with PROPERTIES LABELS pascal)
 
-# Pascal v0.1 feature rejection tests
-add_executable(test_pascal_semantic_v01_rejection ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticV01RejectionTests.cpp)
-target_link_libraries(test_pascal_semantic_v01_rejection PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_semantic_v01_rejection COMMAND test_pascal_semantic_v01_rejection)
-set_tests_properties(test_pascal_semantic_v01_rejection PROPERTIES LABELS pascal)
+    # Pascal v0.1 feature rejection tests
+    add_executable(test_pascal_semantic_v01_rejection ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticV01RejectionTests.cpp)
+    target_link_libraries(test_pascal_semantic_v01_rejection PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_semantic_v01_rejection COMMAND test_pascal_semantic_v01_rejection)
+    set_tests_properties(test_pascal_semantic_v01_rejection PROPERTIES LABELS pascal)
 
-# Pascal non-nullable reference tests
-add_executable(test_pascal_semantic_nonnullable ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticNonNullableTests.cpp)
-target_link_libraries(test_pascal_semantic_nonnullable PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_semantic_nonnullable COMMAND test_pascal_semantic_nonnullable)
-set_tests_properties(test_pascal_semantic_nonnullable PROPERTIES LABELS pascal)
+    # Pascal non-nullable reference tests
+    add_executable(test_pascal_semantic_nonnullable ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticNonNullableTests.cpp)
+    target_link_libraries(test_pascal_semantic_nonnullable PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_semantic_nonnullable COMMAND test_pascal_semantic_nonnullable)
+    set_tests_properties(test_pascal_semantic_nonnullable PROPERTIES LABELS pascal)
 
-# Pascal default parameters and call-only statement tests
-add_executable(test_pascal_semantic_default_param ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticDefaultParamTests.cpp)
-target_link_libraries(test_pascal_semantic_default_param PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_semantic_default_param COMMAND test_pascal_semantic_default_param)
-set_tests_properties(test_pascal_semantic_default_param PROPERTIES LABELS pascal)
+    # Pascal default parameters and call-only statement tests
+    add_executable(test_pascal_semantic_default_param ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticDefaultParamTests.cpp)
+    target_link_libraries(test_pascal_semantic_default_param PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_semantic_default_param COMMAND test_pascal_semantic_default_param)
+    set_tests_properties(test_pascal_semantic_default_param PROPERTIES LABELS pascal)
 
-# Pascal 'with' statement tests
-add_executable(test_pascal_semantic_with ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticWithTests.cpp)
-target_link_libraries(test_pascal_semantic_with PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_semantic_with COMMAND test_pascal_semantic_with)
-set_tests_properties(test_pascal_semantic_with PROPERTIES LABELS pascal)
+    # Pascal 'with' statement tests
+    add_executable(test_pascal_semantic_with ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticWithTests.cpp)
+    target_link_libraries(test_pascal_semantic_with PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_semantic_with COMMAND test_pascal_semantic_with)
+    set_tests_properties(test_pascal_semantic_with PROPERTIES LABELS pascal)
 
-# Pascal implicit upcast tests
-add_executable(test_pascal_semantic_upcast ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticUpcastTests.cpp)
-target_link_libraries(test_pascal_semantic_upcast PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_semantic_upcast COMMAND test_pascal_semantic_upcast)
-set_tests_properties(test_pascal_semantic_upcast PROPERTIES LABELS pascal)
+    # Pascal implicit upcast tests
+    add_executable(test_pascal_semantic_upcast ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticUpcastTests.cpp)
+    target_link_libraries(test_pascal_semantic_upcast PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_semantic_upcast COMMAND test_pascal_semantic_upcast)
+    set_tests_properties(test_pascal_semantic_upcast PROPERTIES LABELS pascal)
 
-# Pascal builtin shadowing tests
-add_executable(test_pascal_semantic_shadow ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticShadowTests.cpp)
-target_link_libraries(test_pascal_semantic_shadow PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_semantic_shadow COMMAND test_pascal_semantic_shadow)
-set_tests_properties(test_pascal_semantic_shadow PROPERTIES LABELS pascal)
+    # Pascal builtin shadowing tests
+    add_executable(test_pascal_semantic_shadow ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticShadowTests.cpp)
+    target_link_libraries(test_pascal_semantic_shadow PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_semantic_shadow COMMAND test_pascal_semantic_shadow)
+    set_tests_properties(test_pascal_semantic_shadow PROPERTIES LABELS pascal)
 
-# Pascal destructor tests
-add_executable(test_pascal_semantic_destructor ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticDestructorTests.cpp)
-target_link_libraries(test_pascal_semantic_destructor PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_semantic_destructor COMMAND test_pascal_semantic_destructor)
-set_tests_properties(test_pascal_semantic_destructor PROPERTIES LABELS pascal)
+    # Pascal destructor tests
+    add_executable(test_pascal_semantic_destructor ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticDestructorTests.cpp)
+    target_link_libraries(test_pascal_semantic_destructor PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_semantic_destructor COMMAND test_pascal_semantic_destructor)
+    set_tests_properties(test_pascal_semantic_destructor PROPERTIES LABELS pascal)
 
-# Pascal frontend smoke test (emit IL)
-add_test(NAME pascal_skeleton_emit_il
-        COMMAND $<TARGET_FILE:viper> front pascal -emit-il ${CMAKE_CURRENT_SOURCE_DIR}/data/pascal/hello.pas)
-set_tests_properties(pascal_skeleton_emit_il PROPERTIES LABELS pascal)
+    # Pascal frontend smoke test (emit IL)
+    add_test(NAME pascal_skeleton_emit_il
+            COMMAND $<TARGET_FILE:viper> front pascal -emit-il ${CMAKE_CURRENT_SOURCE_DIR}/data/pascal/hello.pas)
+    set_tests_properties(pascal_skeleton_emit_il PROPERTIES LABELS pascal)
 
-# Pascal frontend smoke test (run)
-add_test(NAME pascal_skeleton_run
-        COMMAND $<TARGET_FILE:viper> front pascal -run ${CMAKE_CURRENT_SOURCE_DIR}/data/pascal/hello.pas)
-set_tests_properties(pascal_skeleton_run PROPERTIES LABELS pascal)
+    # Pascal frontend smoke test (run)
+    add_test(NAME pascal_skeleton_run
+            COMMAND $<TARGET_FILE:viper> front pascal -run ${CMAKE_CURRENT_SOURCE_DIR}/data/pascal/hello.pas)
+    set_tests_properties(pascal_skeleton_run PROPERTIES LABELS pascal)
 
-# Pascal exception handling emit IL test
-add_test(NAME pascal_eh_emit_il
-        COMMAND $<TARGET_FILE:viper> front pascal -emit-il ${CMAKE_CURRENT_SOURCE_DIR}/data/pascal/exception_handling.pas)
-set_tests_properties(pascal_eh_emit_il PROPERTIES LABELS pascal)
+    # Pascal exception handling emit IL test
+    add_test(NAME pascal_eh_emit_il
+            COMMAND $<TARGET_FILE:viper> front pascal -emit-il ${CMAKE_CURRENT_SOURCE_DIR}/data/pascal/exception_handling.pas)
+    set_tests_properties(pascal_eh_emit_il PROPERTIES LABELS pascal)
 
-# Pascal properties tests
-add_executable(test_pascal_properties ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalPropertyTests.cpp)
-target_link_libraries(test_pascal_properties PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_properties COMMAND test_pascal_properties)
-set_tests_properties(test_pascal_properties PROPERTIES LABELS pascal)
+    # Pascal properties tests
+    add_executable(test_pascal_properties ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalPropertyTests.cpp)
+    target_link_libraries(test_pascal_properties PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_properties COMMAND test_pascal_properties)
+    set_tests_properties(test_pascal_properties PROPERTIES LABELS pascal)
 
-add_executable(test_pascal_field_debug ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalFieldAccessDebug.cpp)
-target_link_libraries(test_pascal_field_debug PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_field_debug COMMAND test_pascal_field_debug)
-set_tests_properties(test_pascal_field_debug PROPERTIES LABELS pascal)
+    add_executable(test_pascal_field_debug ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalFieldAccessDebug.cpp)
+    target_link_libraries(test_pascal_field_debug PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_field_debug COMMAND test_pascal_field_debug)
+    set_tests_properties(test_pascal_field_debug PROPERTIES LABELS pascal)
 
-# Pascal bugfix tests (BUG-001, BUG-002, BUG-004)
-add_executable(test_pascal_bugfixes ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalBugfixTests.cpp)
-target_link_libraries(test_pascal_bugfixes PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_bugfixes COMMAND test_pascal_bugfixes)
-set_tests_properties(test_pascal_bugfixes PROPERTIES LABELS pascal)
+    # Pascal bugfix tests (BUG-001, BUG-002, BUG-004)
+    add_executable(test_pascal_bugfixes ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalBugfixTests.cpp)
+    target_link_libraries(test_pascal_bugfixes PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_bugfixes COMMAND test_pascal_bugfixes)
+    set_tests_properties(test_pascal_bugfixes PROPERTIES LABELS pascal)
 
-# Pascal OOP status tests (tracks working vs blocked features per roadmap)
-add_executable(test_pascal_oop_status ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalOOPStatusTests.cpp)
-target_link_libraries(test_pascal_oop_status PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_oop_status COMMAND test_pascal_oop_status)
-set_tests_properties(test_pascal_oop_status PROPERTIES LABELS pascal)
+    # Pascal OOP status tests (tracks working vs blocked features per roadmap)
+    add_executable(test_pascal_oop_status ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalOOPStatusTests.cpp)
+    target_link_libraries(test_pascal_oop_status PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_oop_status COMMAND test_pascal_oop_status)
+    set_tests_properties(test_pascal_oop_status PROPERTIES LABELS pascal)
 
-# Pascal OOP IL lowering tests (vtables, allocation, dispatch)
-add_executable(test_pascal_oop_lowering ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalOOPLoweringTests.cpp)
-target_link_libraries(test_pascal_oop_lowering PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_oop_lowering COMMAND test_pascal_oop_lowering)
-set_tests_properties(test_pascal_oop_lowering PROPERTIES LABELS pascal)
+    # Pascal OOP IL lowering tests (vtables, allocation, dispatch)
+    add_executable(test_pascal_oop_lowering ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalOOPLoweringTests.cpp)
+    target_link_libraries(test_pascal_oop_lowering PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_oop_lowering COMMAND test_pascal_oop_lowering)
+    set_tests_properties(test_pascal_oop_lowering PROPERTIES LABELS pascal)
 
-# Pascal-BASIC interoperability tests (common OOP ABI)
-add_executable(test_pascal_basic_interop ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalBasicInteropTests.cpp)
-target_link_libraries(test_pascal_basic_interop PRIVATE viper_testing fe_pascal fe_basic)
-add_test(NAME test_pascal_basic_interop COMMAND test_pascal_basic_interop)
-set_tests_properties(test_pascal_basic_interop PROPERTIES LABELS "pascal;interop")
+    # Pascal-BASIC interoperability tests (common OOP ABI)
+    add_executable(test_pascal_basic_interop ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalBasicInteropTests.cpp)
+    target_link_libraries(test_pascal_basic_interop PRIVATE viper_testing fe_pascal fe_basic)
+    add_test(NAME test_pascal_basic_interop COMMAND test_pascal_basic_interop)
+    set_tests_properties(test_pascal_basic_interop PROPERTIES LABELS "pascal;interop")
 
-# Pascal-BASIC OOP ABI compatibility tests
-add_executable(test_oop_interop_abi ${CMAKE_CURRENT_SOURCE_DIR}/oop_interop/PascalBasicABITests.cpp)
-target_link_libraries(test_oop_interop_abi PRIVATE viper_testing fe_pascal fe_basic)
-add_test(NAME test_oop_interop_abi COMMAND test_oop_interop_abi)
-set_tests_properties(test_oop_interop_abi PROPERTIES LABELS "interop;oop")
+    # Pascal-BASIC OOP ABI compatibility tests
+    add_executable(test_oop_interop_abi ${CMAKE_CURRENT_SOURCE_DIR}/oop_interop/PascalBasicABITests.cpp)
+    target_link_libraries(test_oop_interop_abi PRIVATE viper_testing fe_pascal fe_basic)
+    add_test(NAME test_oop_interop_abi COMMAND test_oop_interop_abi)
+    set_tests_properties(test_oop_interop_abi PROPERTIES LABELS "interop;oop")
 
-# Pascal OOP visibility semantic tests
-add_executable(test_pascal_semantic_visibility ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticVisibilityTests.cpp)
-target_link_libraries(test_pascal_semantic_visibility PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_semantic_visibility COMMAND test_pascal_semantic_visibility)
-set_tests_properties(test_pascal_semantic_visibility PROPERTIES LABELS pascal)
+    # Pascal OOP visibility semantic tests
+    add_executable(test_pascal_semantic_visibility ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticVisibilityTests.cpp)
+    target_link_libraries(test_pascal_semantic_visibility PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_semantic_visibility COMMAND test_pascal_semantic_visibility)
+    set_tests_properties(test_pascal_semantic_visibility PROPERTIES LABELS pascal)
 
-# Pascal OOP inheritance semantic tests
-add_executable(test_pascal_semantic_inheritance ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticInheritanceTests.cpp)
-target_link_libraries(test_pascal_semantic_inheritance PRIVATE viper_testing fe_pascal)
-add_test(NAME test_pascal_semantic_inheritance COMMAND test_pascal_semantic_inheritance)
-set_tests_properties(test_pascal_semantic_inheritance PROPERTIES LABELS pascal)
+    # Pascal OOP inheritance semantic tests
+    add_executable(test_pascal_semantic_inheritance ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticInheritanceTests.cpp)
+    target_link_libraries(test_pascal_semantic_inheritance PRIVATE viper_testing fe_pascal)
+    add_test(NAME test_pascal_semantic_inheritance COMMAND test_pascal_semantic_inheritance)
+    set_tests_properties(test_pascal_semantic_inheritance PROPERTIES LABELS pascal)
 
 endif () # VIPER_ENABLE_PASCAL
 
@@ -860,46 +860,46 @@ if (CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "
 
     # BASIC demos
     set(BASIC_DEMOS
-        "chess:${DEMOS_DIR}/basic/chess/chess.bas"
-        "vtris:${DEMOS_DIR}/basic/vtris/vtris.bas"
-        "frogger:${DEMOS_DIR}/basic/frogger/frogger.bas"
-        "centipede:${DEMOS_DIR}/basic/centipede/centipede.bas"
-        "pacman:${DEMOS_DIR}/basic/pacman/pacman.bas"
+            "chess:${DEMOS_DIR}/basic/chess/chess.bas"
+            "vtris:${DEMOS_DIR}/basic/vtris/vtris.bas"
+            "frogger:${DEMOS_DIR}/basic/frogger/frogger.bas"
+            "centipede:${DEMOS_DIR}/basic/centipede/centipede.bas"
+            "pacman:${DEMOS_DIR}/basic/pacman/pacman.bas"
     )
 
-    foreach(demo IN LISTS BASIC_DEMOS)
+    foreach (demo IN LISTS BASIC_DEMOS)
         string(REPLACE ":" ";" demo_parts "${demo}")
         list(GET demo_parts 0 demo_name)
         list(GET demo_parts 1 demo_source)
-        if(EXISTS "${demo_source}")
+        if (EXISTS "${demo_source}")
             add_test(NAME demo_basic_${demo_name}
-                COMMAND "${DEMO_TEST_SCRIPT}" "basic" "${demo_source}"
-                WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+                    COMMAND "${DEMO_TEST_SCRIPT}" "basic" "${demo_source}"
+                    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
             set_tests_properties(demo_basic_${demo_name} PROPERTIES
-                LABELS "demos;ARM64;NativeLink"
-                TIMEOUT 60)
-        endif()
-    endforeach()
+                    LABELS "demos;ARM64;NativeLink"
+                    TIMEOUT 60)
+        endif ()
+    endforeach ()
 
     # Zia demos
     set(ZIA_DEMOS
-        "paint:${DEMOS_DIR}/zia/paint/main.zia"
+            "paint:${DEMOS_DIR}/zia/paint/main.zia"
     )
 
-    foreach(demo IN LISTS ZIA_DEMOS)
+    foreach (demo IN LISTS ZIA_DEMOS)
         string(REPLACE ":" ";" demo_parts "${demo}")
         list(GET demo_parts 0 demo_name)
         list(GET demo_parts 1 demo_source)
-        if(EXISTS "${demo_source}")
+        if (EXISTS "${demo_source}")
             add_test(NAME demo_zia_${demo_name}
-                COMMAND "${DEMO_TEST_SCRIPT}" "zia" "${demo_source}"
-                WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+                    COMMAND "${DEMO_TEST_SCRIPT}" "zia" "${demo_source}"
+                    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
             set_tests_properties(demo_zia_${demo_name} PROPERTIES
-                LABELS "demos;ARM64;NativeLink"
-                TIMEOUT 60)
-        endif()
-    endforeach()
-endif()
+                    LABELS "demos;ARM64;NativeLink"
+                    TIMEOUT 60)
+        endif ()
+    endforeach ()
+endif ()
 
 # =============================================================================
 # Zia Runtime Tests
@@ -908,33 +908,33 @@ endif()
 # =============================================================================
 set(ZIA_RUNTIME_TESTS_DIR "${CMAKE_SOURCE_DIR}/tests/runtime")
 set(ZIA_RUNTIME_TESTS
-    test_math
-    test_string
-    test_bits
-    test_list
-    test_map
-    test_collections
-    test_bytes
-    test_datetime
-    test_random
-    test_crypto
-    test_graphics
-    test_terminal
-    test_environment
-    test_diagnostics
-    test_file
-    test_gui
+        test_math
+        test_string
+        test_bits
+        test_list
+        test_map
+        test_collections
+        test_bytes
+        test_datetime
+        test_random
+        test_crypto
+        test_graphics
+        test_terminal
+        test_environment
+        test_diagnostics
+        test_file
+        test_gui
 )
 
-foreach(test_name IN LISTS ZIA_RUNTIME_TESTS)
+foreach (test_name IN LISTS ZIA_RUNTIME_TESTS)
     set(test_file "${ZIA_RUNTIME_TESTS_DIR}/${test_name}.zia")
-    if(EXISTS "${test_file}")
+    if (EXISTS "${test_file}")
         add_test(NAME zia_runtime_${test_name}
-            COMMAND $<TARGET_FILE:zia> "${test_file}"
-            WORKING_DIRECTORY "${ZIA_RUNTIME_TESTS_DIR}")
+                COMMAND $<TARGET_FILE:zia> "${test_file}"
+                WORKING_DIRECTORY "${ZIA_RUNTIME_TESTS_DIR}")
         set_tests_properties(zia_runtime_${test_name} PROPERTIES
-            PASS_REGULAR_EXPRESSION "RESULT: ok"
-            LABELS "runtime;zia"
-            TIMEOUT 30)
-    endif()
-endforeach()
+                PASS_REGULAR_EXPRESSION "RESULT: ok"
+                LABELS "runtime;zia"
+                TIMEOUT 30)
+    endif ()
+endforeach ()

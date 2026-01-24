@@ -33,10 +33,10 @@
 
 #define WIN32_LEAN_AND_MEAN
 #define COBJMACROS
-#include <windows.h>
-#include <mmdeviceapi.h>
 #include <audioclient.h>
+#include <mmdeviceapi.h>
 #include <stdlib.h>
+#include <windows.h>
 
 //===----------------------------------------------------------------------===//
 // COM GUIDs
@@ -44,24 +44,16 @@
 
 /* Define GUIDs we need (to avoid linking with uuid.lib) */
 static const GUID VAUD_CLSID_MMDeviceEnumerator = {
-    0xBCDE0395, 0xE52F, 0x467C,
-    {0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E}
-};
+    0xBCDE0395, 0xE52F, 0x467C, {0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E}};
 
 static const GUID VAUD_IID_IMMDeviceEnumerator = {
-    0xA95664D2, 0x9614, 0x4F35,
-    {0xA7, 0x46, 0xDE, 0x8D, 0xB6, 0x36, 0x17, 0xE6}
-};
+    0xA95664D2, 0x9614, 0x4F35, {0xA7, 0x46, 0xDE, 0x8D, 0xB6, 0x36, 0x17, 0xE6}};
 
 static const GUID VAUD_IID_IAudioClient = {
-    0x1CB9AD4C, 0xDBFA, 0x4C32,
-    {0xB1, 0x78, 0xC2, 0xF5, 0x68, 0xA7, 0x03, 0xB2}
-};
+    0x1CB9AD4C, 0xDBFA, 0x4C32, {0xB1, 0x78, 0xC2, 0xF5, 0x68, 0xA7, 0x03, 0xB2}};
 
 static const GUID VAUD_IID_IAudioRenderClient = {
-    0xF294ACFC, 0x3146, 0x4483,
-    {0xA7, 0xBF, 0xAD, 0xDC, 0xA7, 0xC2, 0x60, 0xE2}
-};
+    0xF294ACFC, 0x3146, 0x4483, {0xA7, 0xBF, 0xAD, 0xDC, 0xA7, 0xC2, 0x60, 0xE2}};
 
 //===----------------------------------------------------------------------===//
 // Platform Data Structure
@@ -70,16 +62,16 @@ static const GUID VAUD_IID_IAudioRenderClient = {
 /// @brief Windows WASAPI platform data.
 typedef struct
 {
-    IMMDevice *device;              ///< Audio endpoint device
-    IAudioClient *client;           ///< Audio client interface
-    IAudioRenderClient *render;     ///< Render client for buffer access
-    HANDLE thread;                  ///< Audio thread handle
-    HANDLE event;                   ///< Buffer event
-    HANDLE stop_event;              ///< Stop signal event
-    UINT32 buffer_frames;           ///< Total buffer size in frames
-    int running;                    ///< Thread running flag
-    int paused;                     ///< Pause state
-    CRITICAL_SECTION pause_cs;      ///< Protects pause state
+    IMMDevice *device;          ///< Audio endpoint device
+    IAudioClient *client;       ///< Audio client interface
+    IAudioRenderClient *render; ///< Render client for buffer access
+    HANDLE thread;              ///< Audio thread handle
+    HANDLE event;               ///< Buffer event
+    HANDLE stop_event;          ///< Stop signal event
+    UINT32 buffer_frames;       ///< Total buffer size in frames
+    int running;                ///< Thread running flag
+    int paused;                 ///< Pause state
+    CRITICAL_SECTION pause_cs;  ///< Protects pause state
 } vaud_win32_data;
 
 //===----------------------------------------------------------------------===//
@@ -96,7 +88,7 @@ static DWORD WINAPI audio_thread_func(LPVOID arg)
     HRESULT hr;
 
     /* Events to wait on */
-    HANDLE events[2] = { plat->event, plat->stop_event };
+    HANDLE events[2] = {plat->event, plat->stop_event};
 
     while (plat->running)
     {
@@ -200,13 +192,11 @@ int vaud_platform_init(vaud_context_t ctx)
 
     /* Create device enumerator */
     IMMDeviceEnumerator *enumerator = NULL;
-    hr = CoCreateInstance(
-        &VAUD_CLSID_MMDeviceEnumerator,
-        NULL,
-        CLSCTX_ALL,
-        &VAUD_IID_IMMDeviceEnumerator,
-        (void **)&enumerator
-    );
+    hr = CoCreateInstance(&VAUD_CLSID_MMDeviceEnumerator,
+                          NULL,
+                          CLSCTX_ALL,
+                          &VAUD_IID_IMMDeviceEnumerator,
+                          (void **)&enumerator);
 
     if (FAILED(hr))
     {
@@ -218,12 +208,7 @@ int vaud_platform_init(vaud_context_t ctx)
     }
 
     /* Get default audio endpoint */
-    hr = IMMDeviceEnumerator_GetDefaultAudioEndpoint(
-        enumerator,
-        eRender,
-        eConsole,
-        &plat->device
-    );
+    hr = IMMDeviceEnumerator_GetDefaultAudioEndpoint(enumerator, eRender, eConsole, &plat->device);
 
     IMMDeviceEnumerator_Release(enumerator);
 
@@ -238,12 +223,7 @@ int vaud_platform_init(vaud_context_t ctx)
 
     /* Activate audio client */
     hr = IMMDevice_Activate(
-        plat->device,
-        &VAUD_IID_IAudioClient,
-        CLSCTX_ALL,
-        NULL,
-        (void **)&plat->client
-    );
+        plat->device, &VAUD_IID_IAudioClient, CLSCTX_ALL, NULL, (void **)&plat->client);
 
     if (FAILED(hr))
     {
@@ -266,17 +246,16 @@ int vaud_platform_init(vaud_context_t ctx)
     format.cbSize = 0;
 
     /* Initialize audio client in shared mode with event callback */
-    REFERENCE_TIME buffer_duration = 500000;  /* 50ms in 100ns units */
+    REFERENCE_TIME buffer_duration = 500000; /* 50ms in 100ns units */
 
-    hr = IAudioClient_Initialize(
-        plat->client,
-        AUDCLNT_SHAREMODE_SHARED,
-        AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM,
-        buffer_duration,
-        0,
-        &format,
-        NULL
-    );
+    hr = IAudioClient_Initialize(plat->client,
+                                 AUDCLNT_SHAREMODE_SHARED,
+                                 AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
+                                     AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM,
+                                 buffer_duration,
+                                 0,
+                                 &format,
+                                 NULL);
 
     if (FAILED(hr))
     {
@@ -308,8 +287,10 @@ int vaud_platform_init(vaud_context_t ctx)
 
     if (!plat->event || !plat->stop_event)
     {
-        if (plat->event) CloseHandle(plat->event);
-        if (plat->stop_event) CloseHandle(plat->stop_event);
+        if (plat->event)
+            CloseHandle(plat->event);
+        if (plat->stop_event)
+            CloseHandle(plat->stop_event);
         IAudioClient_Release(plat->client);
         IMMDevice_Release(plat->device);
         DeleteCriticalSection(&plat->pause_cs);
@@ -335,11 +316,8 @@ int vaud_platform_init(vaud_context_t ctx)
     }
 
     /* Get render client */
-    hr = IAudioClient_GetService(
-        plat->client,
-        &VAUD_IID_IAudioRenderClient,
-        (void **)&plat->render
-    );
+    hr =
+        IAudioClient_GetService(plat->client, &VAUD_IID_IAudioRenderClient, (void **)&plat->render);
 
     if (FAILED(hr))
     {
@@ -421,13 +399,18 @@ void vaud_platform_shutdown(vaud_context_t ctx)
     }
 
     /* Release interfaces */
-    if (plat->render) IAudioRenderClient_Release(plat->render);
-    if (plat->client) IAudioClient_Release(plat->client);
-    if (plat->device) IMMDevice_Release(plat->device);
+    if (plat->render)
+        IAudioRenderClient_Release(plat->render);
+    if (plat->client)
+        IAudioClient_Release(plat->client);
+    if (plat->device)
+        IMMDevice_Release(plat->device);
 
     /* Close handles */
-    if (plat->event) CloseHandle(plat->event);
-    if (plat->stop_event) CloseHandle(plat->stop_event);
+    if (plat->event)
+        CloseHandle(plat->event);
+    if (plat->stop_event)
+        CloseHandle(plat->stop_event);
 
     DeleteCriticalSection(&plat->pause_cs);
     free(plat);

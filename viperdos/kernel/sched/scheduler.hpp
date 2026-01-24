@@ -38,8 +38,7 @@
  * Within each priority level, tasks are scheduled FIFO with time-slice
  * preemption. Higher-priority tasks always preempt lower-priority ones.
  */
-namespace scheduler
-{
+namespace scheduler {
 
 /**
  * @brief Initialize the scheduler.
@@ -120,8 +119,7 @@ u64 get_context_switches();
 /**
  * @brief Scheduler statistics structure.
  */
-struct Stats
-{
+struct Stats {
     u64 context_switches; // Total context switches
     u32 queue_lengths[8]; // Current length of each priority queue
     u32 total_ready;      // Total tasks in all ready queues
@@ -132,8 +130,7 @@ struct Stats
 /**
  * @brief Per-CPU scheduler statistics.
  */
-struct PerCpuStats
-{
+struct PerCpuStats {
     u64 context_switches; // Context switches on this CPU
     u32 queue_length;     // Tasks in this CPU's local queue
     u32 steals;           // Tasks stolen from other CPUs

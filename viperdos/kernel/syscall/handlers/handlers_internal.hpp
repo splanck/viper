@@ -15,11 +15,10 @@
 
 #pragma once
 
-#include "../table.hpp"
 #include "../../cap/table.hpp"
+#include "../table.hpp"
 
-namespace syscall
-{
+namespace syscall {
 
 // =============================================================================
 // Common Utilities

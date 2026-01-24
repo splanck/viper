@@ -28,8 +28,7 @@ namespace kc = kernel::constants;
 // Expected capacity for system disk (2MB = 4096 sectors)
 constexpr u64 SYSTEM_DISK_SECTORS = 4096;
 
-namespace virtio
-{
+namespace virtio {
 
 /**
  * @brief Probe a block device's capacity without claiming it.
@@ -37,8 +36,7 @@ namespace virtio
  * @param base MMIO base address of the device.
  * @return Capacity in sectors, or 0 if not a valid block device.
  */
-static u64 probe_blk_capacity(u64 base)
-{
+static u64 probe_blk_capacity(u64 base) {
     volatile u32 *mmio = reinterpret_cast<volatile u32 *>(base);
 
     // Check magic
@@ -64,14 +62,11 @@ static u64 probe_blk_capacity(u64 base)
  * @param expected_sectors Expected capacity in sectors.
  * @return MMIO base address of matching device, or 0 if not found.
  */
-static u64 find_blk_by_capacity(u64 expected_sectors)
-{
+static u64 find_blk_by_capacity(u64 expected_sectors) {
     // Scan virtio MMIO range for block devices
-    for (u64 addr = 0x0a000000; addr < 0x0a004000; addr += 0x200)
-    {
+    for (u64 addr = 0x0a000000; addr < 0x0a004000; addr += 0x200) {
         u64 capacity = probe_blk_capacity(addr);
-        if (capacity == expected_sectors)
-        {
+        if (capacity == expected_sectors) {
             return addr;
         }
     }
@@ -92,47 +87,41 @@ constexpr u32 VIRTIO_IRQ_BASE = kernel::constants::hw::VIRTIO_IRQ_BASE;
  * Called by the GIC when a virtio-blk interrupt fires. Delegates to the
  * device's handle_interrupt() method.
  */
-static void blk_irq_handler(u32)
-{
-    if (g_blk_initialized)
-    {
+static void blk_irq_handler(u32) {
+    if (g_blk_initialized) {
         g_blk_device.handle_interrupt();
     }
 }
 
 /** @copydoc virtio::blk_device */
-BlkDevice *blk_device()
-{
+BlkDevice *blk_device() {
     return g_blk_initialized ? &g_blk_device : nullptr;
 }
 
 /** @copydoc virtio::BlkDevice::init */
-bool BlkDevice::init()
-{
+bool BlkDevice::init() {
     // Two-disk architecture: find the SYSTEM disk (2MB = 4096 sectors)
     // The larger USER disk (8MB) is handled by userspace blkd
     u64 base = find_blk_by_capacity(SYSTEM_DISK_SECTORS);
-    if (!base)
-    {
+    if (!base) {
         // Fallback: try any block device (for single-disk setups)
         serial::puts("[virtio-blk] System disk (2MB) not found, trying first available\n");
         base = find_device(device_type::BLK);
     }
-    if (!base)
-    {
+    if (!base) {
         serial::puts("[virtio-blk] No block device found\n");
         return false;
     }
 
     // Use common init sequence (init, reset, legacy page size, acknowledge, driver)
-    if (!basic_init(base))
-    {
+    if (!basic_init(base)) {
         serial::puts("[virtio-blk] Device init failed\n");
         return false;
     }
 
     // Calculate device index for IRQ (device base - VIRTIO_BASE) / VIRTIO_STRIDE
-    device_index_ = static_cast<u32>((base - kernel::constants::hw::VIRTIO_MMIO_BASE) / kernel::constants::hw::VIRTIO_DEVICE_STRIDE);
+    device_index_ = static_cast<u32>((base - kernel::constants::hw::VIRTIO_MMIO_BASE) /
+                                     kernel::constants::hw::VIRTIO_DEVICE_STRIDE);
     irq_num_ = VIRTIO_IRQ_BASE + device_index_;
 
     serial::puts("[virtio-blk] Initializing block device at ");
@@ -159,22 +148,19 @@ bool BlkDevice::init()
     serial::put_dec((capacity_ * sector_size_) / (1024 * 1024));
     serial::puts(" MB)\n");
 
-    if (readonly_)
-    {
+    if (readonly_) {
         serial::puts("[virtio-blk] Device is read-only\n");
     }
 
     // Negotiate features - we just need basic read/write
-    if (!negotiate_features(0))
-    {
+    if (!negotiate_features(0)) {
         serial::puts("[virtio-blk] Feature negotiation failed\n");
         set_status(status::FAILED);
         return false;
     }
 
     // Initialize virtqueue
-    if (!vq_.init(this, 0, 128))
-    {
+    if (!vq_.init(this, 0, 128)) {
         serial::puts("[virtio-blk] Virtqueue init failed\n");
         set_status(status::FAILED);
         return false;
@@ -182,8 +168,7 @@ bool BlkDevice::init()
 
     // Allocate request buffer (page for pending requests)
     requests_phys_ = pmm::alloc_page();
-    if (!requests_phys_)
-    {
+    if (!requests_phys_) {
         serial::puts("[virtio-blk] Failed to allocate request buffer\n");
         set_status(status::FAILED);
         return false;
@@ -191,8 +176,7 @@ bool BlkDevice::init()
     requests_ = reinterpret_cast<PendingRequest *>(pmm::phys_to_virt(requests_phys_));
 
     // Zero request buffer
-    for (usize i = 0; i < pmm::PAGE_SIZE / sizeof(u64); i++)
-    {
+    for (usize i = 0; i < pmm::PAGE_SIZE / sizeof(u64); i++) {
         reinterpret_cast<u64 *>(requests_)[i] = 0;
     }
 
@@ -214,8 +198,7 @@ bool BlkDevice::init()
  * Acknowledges the interrupt, checks the used ring for completions,
  * and signals the waiting request.
  */
-void BlkDevice::handle_interrupt()
-{
+void BlkDevice::handle_interrupt() {
     // Read and acknowledge interrupt status
     u32 isr = read_isr();
     if (isr & 0x1) // Used buffer notification
@@ -224,8 +207,7 @@ void BlkDevice::handle_interrupt()
 
         // Check for completed requests
         i32 completed = vq_.poll_used();
-        if (completed >= 0)
-        {
+        if (completed >= 0) {
             completed_desc_ = completed;
             io_complete_ = true;
         }
@@ -240,39 +222,31 @@ void BlkDevice::handle_interrupt()
 // Block Request Helpers
 // =============================================================================
 
-i32 BlkDevice::find_free_request_slot()
-{
-    for (usize i = 0; i < MAX_PENDING; i++)
-    {
-        if (!async_requests_[i].in_use)
-        {
+i32 BlkDevice::find_free_request_slot() {
+    for (usize i = 0; i < MAX_PENDING; i++) {
+        if (!async_requests_[i].in_use) {
             return static_cast<i32>(i);
         }
     }
     return -1;
 }
 
-bool BlkDevice::wait_for_completion_internal(i32 desc_head)
-{
+bool BlkDevice::wait_for_completion_internal(i32 desc_head) {
     constexpr u32 INTERRUPT_TIMEOUT = 100000;
     constexpr u32 POLL_TIMEOUT = 10000000;
 
     // First, try to wait for interrupt
-    for (u32 i = 0; i < INTERRUPT_TIMEOUT; i++)
-    {
-        if (io_complete_ && completed_desc_ == desc_head)
-        {
+    for (u32 i = 0; i < INTERRUPT_TIMEOUT; i++) {
+        if (io_complete_ && completed_desc_ == desc_head) {
             return true;
         }
         asm volatile("wfi" ::: "memory");
     }
 
     // Fallback to polling if interrupt didn't fire
-    for (u32 i = 0; i < POLL_TIMEOUT; i++)
-    {
+    for (u32 i = 0; i < POLL_TIMEOUT; i++) {
         i32 completed = vq_.poll_used();
-        if (completed == desc_head)
-        {
+        if (completed == desc_head) {
             return true;
         }
         asm volatile("yield" ::: "memory");
@@ -286,17 +260,14 @@ bool BlkDevice::wait_for_completion_internal(i32 desc_head)
 // =============================================================================
 
 /** @copydoc virtio::BlkDevice::do_request */
-i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf)
-{
-    if (type == blk_type::OUT && readonly_)
-    {
+i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf) {
+    if (type == blk_type::OUT && readonly_) {
         serial::puts("[virtio-blk] Write to read-only device\n");
         return -1;
     }
 
     i32 req_idx = find_free_request_slot();
-    if (req_idx < 0)
-    {
+    if (req_idx < 0) {
         serial::puts("[virtio-blk] No free request slots\n");
         return -1;
     }
@@ -324,8 +295,7 @@ i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf)
     i32 desc1 = vq_.alloc_desc();
     i32 desc2 = vq_.alloc_desc();
 
-    if (desc0 < 0 || desc1 < 0 || desc2 < 0)
-    {
+    if (desc0 < 0 || desc1 < 0 || desc2 < 0) {
         if (desc0 >= 0)
             vq_.free_desc(desc0);
         if (desc1 >= 0)
@@ -346,8 +316,7 @@ i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf)
     vq_.chain_desc(desc0, desc1);
 
     u16 data_flags = desc_flags::NEXT;
-    if (type == blk_type::IN)
-    {
+    if (type == blk_type::IN) {
         data_flags |= desc_flags::WRITE;
     }
     vq_.set_desc(desc1, buf_phys, buf_len, data_flags);
@@ -363,8 +332,7 @@ i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf)
     vq_.kick();
 
     // Wait for completion
-    if (!wait_for_completion_internal(desc0))
-    {
+    if (!wait_for_completion_internal(desc0)) {
         serial::puts("[virtio-blk] Request timed out!\n");
         vq_.free_desc(desc0);
         vq_.free_desc(desc1);
@@ -381,8 +349,7 @@ i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf)
     u8 status = req.status;
     async.in_use = false;
 
-    if (status != blk_status::OK)
-    {
+    if (status != blk_status::OK) {
         serial::puts("[virtio-blk] Request failed, status=");
         serial::put_dec(status);
         serial::puts("\n");
@@ -393,12 +360,10 @@ i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf)
 }
 
 /** @copydoc virtio::BlkDevice::read_sectors */
-i32 BlkDevice::read_sectors(u64 sector, u32 count, void *buf)
-{
+i32 BlkDevice::read_sectors(u64 sector, u32 count, void *buf) {
     if (!buf || count == 0)
         return -1;
-    if (sector + count > capacity_)
-    {
+    if (sector + count > capacity_) {
         serial::puts("[virtio-blk] Read past end of disk\n");
         return -1;
     }
@@ -407,12 +372,10 @@ i32 BlkDevice::read_sectors(u64 sector, u32 count, void *buf)
 }
 
 /** @copydoc virtio::BlkDevice::write_sectors */
-i32 BlkDevice::write_sectors(u64 sector, u32 count, const void *buf)
-{
+i32 BlkDevice::write_sectors(u64 sector, u32 count, const void *buf) {
     if (!buf || count == 0)
         return -1;
-    if (sector + count > capacity_)
-    {
+    if (sector + count > capacity_) {
         serial::puts("[virtio-blk] Write past end of disk\n");
         return -1;
     }
@@ -421,8 +384,7 @@ i32 BlkDevice::write_sectors(u64 sector, u32 count, const void *buf)
 }
 
 /** @copydoc virtio::BlkDevice::flush */
-i32 BlkDevice::flush()
-{
+i32 BlkDevice::flush() {
     i32 req_idx = find_free_request_slot();
     if (req_idx < 0)
         return -1;
@@ -444,8 +406,7 @@ i32 BlkDevice::flush()
     i32 desc0 = vq_.alloc_desc();
     i32 desc1 = vq_.alloc_desc();
 
-    if (desc0 < 0 || desc1 < 0)
-    {
+    if (desc0 < 0 || desc1 < 0) {
         if (desc0 >= 0)
             vq_.free_desc(desc0);
         if (desc1 >= 0)
@@ -467,8 +428,7 @@ i32 BlkDevice::flush()
     vq_.submit(desc0);
     vq_.kick();
 
-    if (!wait_for_completion_internal(desc0))
-    {
+    if (!wait_for_completion_internal(desc0)) {
         serial::puts("[virtio-blk] Flush timeout\n");
         vq_.free_desc(desc0);
         vq_.free_desc(desc1);
@@ -491,26 +451,21 @@ i32 BlkDevice::flush()
 
 /** @copydoc virtio::BlkDevice::submit_async */
 BlkDevice::RequestHandle BlkDevice::submit_async(
-    u32 type, u64 sector, u32 count, void *buf, CompletionCallback callback, void *user_data)
-{
-    if (type == blk_type::OUT && readonly_)
-    {
+    u32 type, u64 sector, u32 count, void *buf, CompletionCallback callback, void *user_data) {
+    if (type == blk_type::OUT && readonly_) {
         serial::puts("[virtio-blk] Write to read-only device\n");
         return INVALID_HANDLE;
     }
 
     // Find a free request slot
     int req_idx = -1;
-    for (usize i = 0; i < MAX_PENDING; i++)
-    {
-        if (!async_requests_[i].in_use)
-        {
+    for (usize i = 0; i < MAX_PENDING; i++) {
+        if (!async_requests_[i].in_use) {
             req_idx = i;
             break;
         }
     }
-    if (req_idx < 0)
-    {
+    if (req_idx < 0) {
         serial::puts("[virtio-blk] No free request slots\n");
         return INVALID_HANDLE;
     }
@@ -540,8 +495,7 @@ BlkDevice::RequestHandle BlkDevice::submit_async(
     i32 desc1 = vq_.alloc_desc();
     i32 desc2 = vq_.alloc_desc();
 
-    if (desc0 < 0 || desc1 < 0 || desc2 < 0)
-    {
+    if (desc0 < 0 || desc1 < 0 || desc2 < 0) {
         if (desc0 >= 0)
             vq_.free_desc(desc0);
         if (desc1 >= 0)
@@ -564,8 +518,7 @@ BlkDevice::RequestHandle BlkDevice::submit_async(
 
     // Descriptor 1: Data buffer
     u16 data_flags = desc_flags::NEXT;
-    if (type == blk_type::IN)
-    {
+    if (type == blk_type::IN) {
         data_flags |= desc_flags::WRITE; // Device writes to this buffer
     }
     vq_.set_desc(desc1, buf_phys, buf_len, data_flags);
@@ -586,12 +539,10 @@ BlkDevice::RequestHandle BlkDevice::submit_async(
 
 /** @copydoc virtio::BlkDevice::read_async */
 BlkDevice::RequestHandle BlkDevice::read_async(
-    u64 sector, u32 count, void *buf, CompletionCallback callback, void *user_data)
-{
+    u64 sector, u32 count, void *buf, CompletionCallback callback, void *user_data) {
     if (!buf || count == 0)
         return INVALID_HANDLE;
-    if (sector + count > capacity_)
-    {
+    if (sector + count > capacity_) {
         serial::puts("[virtio-blk] Read past end of disk\n");
         return INVALID_HANDLE;
     }
@@ -601,12 +552,10 @@ BlkDevice::RequestHandle BlkDevice::read_async(
 
 /** @copydoc virtio::BlkDevice::write_async */
 BlkDevice::RequestHandle BlkDevice::write_async(
-    u64 sector, u32 count, const void *buf, CompletionCallback callback, void *user_data)
-{
+    u64 sector, u32 count, const void *buf, CompletionCallback callback, void *user_data) {
     if (!buf || count == 0)
         return INVALID_HANDLE;
-    if (sector + count > capacity_)
-    {
+    if (sector + count > capacity_) {
         serial::puts("[virtio-blk] Write past end of disk\n");
         return INVALID_HANDLE;
     }
@@ -615,8 +564,7 @@ BlkDevice::RequestHandle BlkDevice::write_async(
 }
 
 /** @copydoc virtio::BlkDevice::is_complete */
-bool BlkDevice::is_complete(RequestHandle handle)
-{
+bool BlkDevice::is_complete(RequestHandle handle) {
     if (handle < 0 || handle >= static_cast<i32>(MAX_PENDING))
         return false;
     if (!async_requests_[handle].in_use)
@@ -626,8 +574,7 @@ bool BlkDevice::is_complete(RequestHandle handle)
 }
 
 /** @copydoc virtio::BlkDevice::get_result */
-i32 BlkDevice::get_result(RequestHandle handle)
-{
+i32 BlkDevice::get_result(RequestHandle handle) {
     if (handle < 0 || handle >= static_cast<i32>(MAX_PENDING))
         return -1;
     if (!async_requests_[handle].in_use)
@@ -639,8 +586,7 @@ i32 BlkDevice::get_result(RequestHandle handle)
 }
 
 /** @copydoc virtio::BlkDevice::wait_complete */
-i32 BlkDevice::wait_complete(RequestHandle handle)
-{
+i32 BlkDevice::wait_complete(RequestHandle handle) {
     if (handle < 0 || handle >= static_cast<i32>(MAX_PENDING))
         return -1;
     if (!async_requests_[handle].in_use)
@@ -654,11 +600,9 @@ i32 BlkDevice::wait_complete(RequestHandle handle)
     constexpr u32 POLL_TIMEOUT = 10000000;
 
     // First, try to wait for interrupt
-    for (u32 i = 0; i < INTERRUPT_TIMEOUT && !async.completed; i++)
-    {
+    for (u32 i = 0; i < INTERRUPT_TIMEOUT && !async.completed; i++) {
         // Check if interrupt handler marked it complete
-        if (io_complete_ && completed_desc_ == async.desc_head)
-        {
+        if (io_complete_ && completed_desc_ == async.desc_head) {
             // Mark this specific request as completed
             async.completed = true;
             async.result = (req.status == blk_status::OK) ? 0 : -1;
@@ -668,13 +612,10 @@ i32 BlkDevice::wait_complete(RequestHandle handle)
     }
 
     // Fallback to polling if not yet completed
-    if (!async.completed)
-    {
-        for (u32 i = 0; i < POLL_TIMEOUT && !async.completed; i++)
-        {
+    if (!async.completed) {
+        for (u32 i = 0; i < POLL_TIMEOUT && !async.completed; i++) {
             i32 completed = vq_.poll_used();
-            if (completed == async.desc_head)
-            {
+            if (completed == async.desc_head) {
                 async.completed = true;
                 async.result = (req.status == blk_status::OK) ? 0 : -1;
                 break;
@@ -683,8 +624,7 @@ i32 BlkDevice::wait_complete(RequestHandle handle)
         }
     }
 
-    if (!async.completed)
-    {
+    if (!async.completed) {
         serial::puts("[virtio-blk] Async request timed out\n");
         // Free descriptors
         vq_.free_desc(async.desc_head);
@@ -706,23 +646,19 @@ i32 BlkDevice::wait_complete(RequestHandle handle)
 }
 
 /** @copydoc virtio::BlkDevice::process_completions */
-u32 BlkDevice::process_completions()
-{
+u32 BlkDevice::process_completions() {
     u32 processed = 0;
 
     // Poll the used ring for completions
-    while (true)
-    {
+    while (true) {
         i32 completed_desc = vq_.poll_used();
         if (completed_desc < 0)
             break;
 
         // Find which async request this belongs to
-        for (usize i = 0; i < MAX_PENDING; i++)
-        {
+        for (usize i = 0; i < MAX_PENDING; i++) {
             AsyncRequest &async = async_requests_[i];
-            if (async.in_use && !async.completed && async.desc_head == completed_desc)
-            {
+            if (async.in_use && !async.completed && async.desc_head == completed_desc) {
                 PendingRequest &req = requests_[i];
 
                 // Mark as completed
@@ -730,8 +666,7 @@ u32 BlkDevice::process_completions()
                 async.result = (req.status == blk_status::OK) ? 0 : -1;
 
                 // Invoke callback if registered
-                if (async.callback)
-                {
+                if (async.callback) {
                     async.callback(static_cast<RequestHandle>(i), async.result, async.user_data);
                 }
 
@@ -753,10 +688,8 @@ u32 BlkDevice::process_completions()
 }
 
 /** @copydoc virtio::blk_init */
-void blk_init()
-{
-    if (g_blk_device.init())
-    {
+void blk_init() {
+    if (g_blk_device.init()) {
         g_blk_initialized = true;
     }
 }
@@ -775,17 +708,14 @@ static bool g_user_blk_initialized = false;
 /**
  * @brief IRQ handler for user disk virtio-blk interrupts.
  */
-static void user_blk_irq_handler(u32)
-{
-    if (g_user_blk_initialized)
-    {
+static void user_blk_irq_handler(u32) {
+    if (g_user_blk_initialized) {
         g_user_blk_device.handle_interrupt();
     }
 }
 
 /** @copydoc virtio::user_blk_device */
-BlkDevice *user_blk_device()
-{
+BlkDevice *user_blk_device() {
     return g_user_blk_initialized ? &g_user_blk_device : nullptr;
 }
 
@@ -796,26 +726,23 @@ BlkDevice *user_blk_device()
  * Finds and initializes the 8MB user disk (16384 sectors).
  * This is separate from the system disk to support the two-disk architecture.
  */
-bool BlkDevice::init_user_disk()
-{
+bool BlkDevice::init_user_disk() {
     // Find the USER disk (8MB = 16384 sectors)
     u64 base = find_blk_by_capacity(USER_DISK_SECTORS);
-    if (!base)
-    {
+    if (!base) {
         serial::puts("[virtio-blk] User disk (8MB) not found\n");
         return false;
     }
 
     // Use common init sequence
-    if (!basic_init(base))
-    {
+    if (!basic_init(base)) {
         serial::puts("[virtio-blk] User disk init failed\n");
         return false;
     }
 
     // Calculate device index for IRQ
     device_index_ = static_cast<u32>((base - kernel::constants::hw::VIRTIO_MMIO_BASE) /
-                                      kernel::constants::hw::VIRTIO_DEVICE_STRIDE);
+                                     kernel::constants::hw::VIRTIO_DEVICE_STRIDE);
     irq_num_ = VIRTIO_IRQ_BASE + device_index_;
 
     serial::puts("[virtio-blk] Initializing user disk at ");
@@ -840,16 +767,14 @@ bool BlkDevice::init_user_disk()
     serial::puts(" MB)\n");
 
     // Negotiate features
-    if (!negotiate_features(0))
-    {
+    if (!negotiate_features(0)) {
         serial::puts("[virtio-blk] User disk feature negotiation failed\n");
         set_status(status::FAILED);
         return false;
     }
 
     // Initialize virtqueue
-    if (!vq_.init(this, 0, 128))
-    {
+    if (!vq_.init(this, 0, 128)) {
         serial::puts("[virtio-blk] User disk virtqueue init failed\n");
         set_status(status::FAILED);
         return false;
@@ -857,8 +782,7 @@ bool BlkDevice::init_user_disk()
 
     // Allocate request buffer
     requests_phys_ = pmm::alloc_page();
-    if (!requests_phys_)
-    {
+    if (!requests_phys_) {
         serial::puts("[virtio-blk] Failed to allocate user disk request buffer\n");
         set_status(status::FAILED);
         return false;
@@ -866,8 +790,7 @@ bool BlkDevice::init_user_disk()
     requests_ = reinterpret_cast<PendingRequest *>(pmm::phys_to_virt(requests_phys_));
 
     // Zero request buffer
-    for (usize i = 0; i < pmm::PAGE_SIZE / sizeof(u64); i++)
-    {
+    for (usize i = 0; i < pmm::PAGE_SIZE / sizeof(u64); i++) {
         reinterpret_cast<u64 *>(requests_)[i] = 0;
     }
 
@@ -883,10 +806,8 @@ bool BlkDevice::init_user_disk()
 }
 
 /** @copydoc virtio::user_blk_init */
-void user_blk_init()
-{
-    if (g_user_blk_device.init_user_disk())
-    {
+void user_blk_init() {
+    if (g_user_blk_device.init_user_disk()) {
         g_user_blk_initialized = true;
     }
 }

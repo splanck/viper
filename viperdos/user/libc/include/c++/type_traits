@@ -1,23 +1,19 @@
 #ifndef _LIBCPP_TYPE_TRAITS
 #define _LIBCPP_TYPE_TRAITS
 
-namespace std
-{
+namespace std {
 
 /* Integral constant */
-template <class T, T v> struct integral_constant
-{
+template <class T, T v> struct integral_constant {
     static constexpr T value = v;
     using value_type = T;
     using type = integral_constant;
 
-    constexpr operator value_type() const noexcept
-    {
+    constexpr operator value_type() const noexcept {
         return value;
     }
 
-    constexpr value_type operator()() const noexcept
-    {
+    constexpr value_type operator()() const noexcept {
         return value;
     }
 };
@@ -26,372 +22,261 @@ using true_type = integral_constant<bool, true>;
 using false_type = integral_constant<bool, false>;
 
 /* Primary type categories */
-template <class T> struct is_void : false_type
-{
-};
+template <class T> struct is_void : false_type {};
 
-template <> struct is_void<void> : true_type
-{
-};
+template <> struct is_void<void> : true_type {};
 
-template <> struct is_void<const void> : true_type
-{
-};
+template <> struct is_void<const void> : true_type {};
 
-template <> struct is_void<volatile void> : true_type
-{
-};
+template <> struct is_void<volatile void> : true_type {};
 
-template <> struct is_void<const volatile void> : true_type
-{
-};
+template <> struct is_void<const volatile void> : true_type {};
 
 template <class T> inline constexpr bool is_void_v = is_void<T>::value;
 
-template <class T> struct is_null_pointer : false_type
-{
-};
+template <class T> struct is_null_pointer : false_type {};
 
-template <> struct is_null_pointer<decltype(nullptr)> : true_type
-{
-};
+template <> struct is_null_pointer<decltype(nullptr)> : true_type {};
 
-template <> struct is_null_pointer<const decltype(nullptr)> : true_type
-{
-};
+template <> struct is_null_pointer<const decltype(nullptr)> : true_type {};
 
 template <class T> inline constexpr bool is_null_pointer_v = is_null_pointer<T>::value;
 
 /* is_same */
-template <class T, class U> struct is_same : false_type
-{
-};
+template <class T, class U> struct is_same : false_type {};
 
-template <class T> struct is_same<T, T> : true_type
-{
-};
+template <class T> struct is_same<T, T> : true_type {};
 
 template <class T, class U> inline constexpr bool is_same_v = is_same<T, U>::value;
 
 /* is_integral */
-template <class T> struct is_integral : false_type
-{
-};
+template <class T> struct is_integral : false_type {};
 
-template <> struct is_integral<bool> : true_type
-{
-};
+template <> struct is_integral<bool> : true_type {};
 
-template <> struct is_integral<char> : true_type
-{
-};
+template <> struct is_integral<char> : true_type {};
 
-template <> struct is_integral<signed char> : true_type
-{
-};
+template <> struct is_integral<signed char> : true_type {};
 
-template <> struct is_integral<unsigned char> : true_type
-{
-};
+template <> struct is_integral<unsigned char> : true_type {};
 
-template <> struct is_integral<short> : true_type
-{
-};
+template <> struct is_integral<short> : true_type {};
 
-template <> struct is_integral<unsigned short> : true_type
-{
-};
+template <> struct is_integral<unsigned short> : true_type {};
 
-template <> struct is_integral<int> : true_type
-{
-};
+template <> struct is_integral<int> : true_type {};
 
-template <> struct is_integral<unsigned int> : true_type
-{
-};
+template <> struct is_integral<unsigned int> : true_type {};
 
-template <> struct is_integral<long> : true_type
-{
-};
+template <> struct is_integral<long> : true_type {};
 
-template <> struct is_integral<unsigned long> : true_type
-{
-};
+template <> struct is_integral<unsigned long> : true_type {};
 
-template <> struct is_integral<long long> : true_type
-{
-};
+template <> struct is_integral<long long> : true_type {};
 
-template <> struct is_integral<unsigned long long> : true_type
-{
-};
+template <> struct is_integral<unsigned long long> : true_type {};
 
 template <class T> inline constexpr bool is_integral_v = is_integral<T>::value;
 
 /* is_floating_point */
-template <class T> struct is_floating_point : false_type
-{
-};
+template <class T> struct is_floating_point : false_type {};
 
-template <> struct is_floating_point<float> : true_type
-{
-};
+template <> struct is_floating_point<float> : true_type {};
 
-template <> struct is_floating_point<double> : true_type
-{
-};
+template <> struct is_floating_point<double> : true_type {};
 
-template <> struct is_floating_point<long double> : true_type
-{
-};
+template <> struct is_floating_point<long double> : true_type {};
 
 template <class T> inline constexpr bool is_floating_point_v = is_floating_point<T>::value;
 
 /* is_array */
-template <class T> struct is_array : false_type
-{
-};
+template <class T> struct is_array : false_type {};
 
-template <class T> struct is_array<T[]> : true_type
-{
-};
+template <class T> struct is_array<T[]> : true_type {};
 
-template <class T, unsigned long N> struct is_array<T[N]> : true_type
-{
-};
+template <class T, unsigned long N> struct is_array<T[N]> : true_type {};
 
 template <class T> inline constexpr bool is_array_v = is_array<T>::value;
 
 /* is_pointer */
-template <class T> struct is_pointer_helper : false_type
-{
-};
+template <class T> struct is_pointer_helper : false_type {};
 
-template <class T> struct is_pointer_helper<T *> : true_type
-{
-};
+template <class T> struct is_pointer_helper<T *> : true_type {};
 
-template <class T> struct is_pointer : is_pointer_helper<typename std::is_same<T, T>::type>
-{
-};
+template <class T> struct is_pointer : is_pointer_helper<typename std::is_same<T, T>::type> {};
 
 template <class T> inline constexpr bool is_pointer_v = is_pointer<T>::value;
 
 /* is_reference */
-template <class T> struct is_lvalue_reference : false_type
-{
-};
+template <class T> struct is_lvalue_reference : false_type {};
 
-template <class T> struct is_lvalue_reference<T &> : true_type
-{
-};
+template <class T> struct is_lvalue_reference<T &> : true_type {};
 
-template <class T> struct is_rvalue_reference : false_type
-{
-};
+template <class T> struct is_rvalue_reference : false_type {};
 
-template <class T> struct is_rvalue_reference<T &&> : true_type
-{
-};
+template <class T> struct is_rvalue_reference<T &&> : true_type {};
 
 template <class T>
 struct is_reference
-    : integral_constant<bool, is_lvalue_reference<T>::value || is_rvalue_reference<T>::value>
-{
-};
+    : integral_constant<bool, is_lvalue_reference<T>::value || is_rvalue_reference<T>::value> {};
 
 template <class T> inline constexpr bool is_lvalue_reference_v = is_lvalue_reference<T>::value;
 template <class T> inline constexpr bool is_rvalue_reference_v = is_rvalue_reference<T>::value;
 template <class T> inline constexpr bool is_reference_v = is_reference<T>::value;
 
 /* is_const */
-template <class T> struct is_const : false_type
-{
-};
+template <class T> struct is_const : false_type {};
 
-template <class T> struct is_const<const T> : true_type
-{
-};
+template <class T> struct is_const<const T> : true_type {};
 
 template <class T> inline constexpr bool is_const_v = is_const<T>::value;
 
 /* is_volatile */
-template <class T> struct is_volatile : false_type
-{
-};
+template <class T> struct is_volatile : false_type {};
 
-template <class T> struct is_volatile<volatile T> : true_type
-{
-};
+template <class T> struct is_volatile<volatile T> : true_type {};
 
 template <class T> inline constexpr bool is_volatile_v = is_volatile<T>::value;
 
 /* remove_const */
-template <class T> struct remove_const
-{
+template <class T> struct remove_const {
     using type = T;
 };
 
-template <class T> struct remove_const<const T>
-{
+template <class T> struct remove_const<const T> {
     using type = T;
 };
 
 template <class T> using remove_const_t = typename remove_const<T>::type;
 
 /* remove_volatile */
-template <class T> struct remove_volatile
-{
+template <class T> struct remove_volatile {
     using type = T;
 };
 
-template <class T> struct remove_volatile<volatile T>
-{
+template <class T> struct remove_volatile<volatile T> {
     using type = T;
 };
 
 template <class T> using remove_volatile_t = typename remove_volatile<T>::type;
 
 /* remove_cv */
-template <class T> struct remove_cv
-{
+template <class T> struct remove_cv {
     using type = typename remove_volatile<typename remove_const<T>::type>::type;
 };
 
 template <class T> using remove_cv_t = typename remove_cv<T>::type;
 
 /* add_const */
-template <class T> struct add_const
-{
+template <class T> struct add_const {
     using type = const T;
 };
 
 template <class T> using add_const_t = typename add_const<T>::type;
 
 /* add_volatile */
-template <class T> struct add_volatile
-{
+template <class T> struct add_volatile {
     using type = volatile T;
 };
 
 template <class T> using add_volatile_t = typename add_volatile<T>::type;
 
 /* add_cv */
-template <class T> struct add_cv
-{
+template <class T> struct add_cv {
     using type = const volatile T;
 };
 
 template <class T> using add_cv_t = typename add_cv<T>::type;
 
 /* remove_reference */
-template <class T> struct remove_reference
-{
+template <class T> struct remove_reference {
     using type = T;
 };
 
-template <class T> struct remove_reference<T &>
-{
+template <class T> struct remove_reference<T &> {
     using type = T;
 };
 
-template <class T> struct remove_reference<T &&>
-{
+template <class T> struct remove_reference<T &&> {
     using type = T;
 };
 
 template <class T> using remove_reference_t = typename remove_reference<T>::type;
 
 /* add_lvalue_reference */
-template <class T> struct add_lvalue_reference
-{
+template <class T> struct add_lvalue_reference {
     using type = T &;
 };
 
-template <> struct add_lvalue_reference<void>
-{
+template <> struct add_lvalue_reference<void> {
     using type = void;
 };
 
 template <class T> using add_lvalue_reference_t = typename add_lvalue_reference<T>::type;
 
 /* add_rvalue_reference */
-template <class T> struct add_rvalue_reference
-{
+template <class T> struct add_rvalue_reference {
     using type = T &&;
 };
 
-template <> struct add_rvalue_reference<void>
-{
+template <> struct add_rvalue_reference<void> {
     using type = void;
 };
 
 template <class T> using add_rvalue_reference_t = typename add_rvalue_reference<T>::type;
 
 /* remove_pointer */
-template <class T> struct remove_pointer
-{
+template <class T> struct remove_pointer {
     using type = T;
 };
 
-template <class T> struct remove_pointer<T *>
-{
+template <class T> struct remove_pointer<T *> {
     using type = T;
 };
 
-template <class T> struct remove_pointer<T *const>
-{
+template <class T> struct remove_pointer<T *const> {
     using type = T;
 };
 
-template <class T> struct remove_pointer<T *volatile>
-{
+template <class T> struct remove_pointer<T *volatile> {
     using type = T;
 };
 
-template <class T> struct remove_pointer<T *const volatile>
-{
+template <class T> struct remove_pointer<T *const volatile> {
     using type = T;
 };
 
 template <class T> using remove_pointer_t = typename remove_pointer<T>::type;
 
 /* add_pointer */
-template <class T> struct add_pointer
-{
+template <class T> struct add_pointer {
     using type = typename remove_reference<T>::type *;
 };
 
 template <class T> using add_pointer_t = typename add_pointer<T>::type;
 
 /* conditional */
-template <bool B, class T, class F> struct conditional
-{
+template <bool B, class T, class F> struct conditional {
     using type = T;
 };
 
-template <class T, class F> struct conditional<false, T, F>
-{
+template <class T, class F> struct conditional<false, T, F> {
     using type = F;
 };
 
 template <bool B, class T, class F> using conditional_t = typename conditional<B, T, F>::type;
 
 /* enable_if */
-template <bool B, class T = void> struct enable_if
-{
-};
+template <bool B, class T = void> struct enable_if {};
 
-template <class T> struct enable_if<true, T>
-{
+template <class T> struct enable_if<true, T> {
     using type = T;
 };
 
 template <bool B, class T = void> using enable_if_t = typename enable_if<B, T>::type;
 
 /* decay */
-template <class T> struct decay
-{
+template <class T> struct decay {
   private:
     using U = typename remove_reference<T>::type;
 
@@ -406,8 +291,7 @@ template <class T> using decay_t = typename decay<T>::type;
 
 /* is_function - simplified check */
 template <class T>
-struct is_function : integral_constant<bool, !is_const<const T>::value && !is_reference<T>::value>
-{
+struct is_function : integral_constant<bool, !is_const<const T>::value && !is_reference<T>::value> {
 };
 
 template <class T> inline constexpr bool is_function_v = is_function<T>::value;
@@ -416,10 +300,8 @@ template <class T> inline constexpr bool is_function_v = is_function<T>::value;
 template <class...> using void_t = void;
 
 /* invoke_result - simplified implementation for callables */
-namespace detail
-{
-template <class T> struct type_identity
-{
+namespace detail {
+template <class T> struct type_identity {
     using type = T;
 };
 
@@ -431,8 +313,7 @@ auto invoke_impl(F &&f, Args &&...args)
     -> decltype(static_cast<F &&>(f)(static_cast<Args &&>(args)...));
 } // namespace detail
 
-template <class F, class... Args> struct invoke_result
-{
+template <class F, class... Args> struct invoke_result {
     using type = decltype(detail::invoke_impl(static_cast<F>(*(F *)nullptr),
                                               static_cast<Args>(*(Args *)nullptr)...));
 };
@@ -440,9 +321,7 @@ template <class F, class... Args> struct invoke_result
 template <class F, class... Args> using invoke_result_t = typename invoke_result<F, Args...>::type;
 
 /* is_invocable - check if F can be invoked with Args */
-template <class F, class... Args> struct is_invocable : false_type
-{
-};
+template <class F, class... Args> struct is_invocable : false_type {};
 
 template <class F, class... Args>
 inline constexpr bool is_invocable_v = is_invocable<F, Args...>::value;
@@ -450,27 +329,23 @@ inline constexpr bool is_invocable_v = is_invocable<F, Args...>::value;
 /* common_type - simplified */
 template <class... T> struct common_type;
 
-template <class T> struct common_type<T>
-{
+template <class T> struct common_type<T> {
     using type = decay_t<T>;
 };
 
-template <class T, class U> struct common_type<T, U>
-{
+template <class T, class U> struct common_type<T, U> {
     using type =
         decay_t<decltype(true ? static_cast<T>(*(T *)nullptr) : static_cast<U>(*(U *)nullptr))>;
 };
 
-template <class T, class U, class... V> struct common_type<T, U, V...>
-{
+template <class T, class U, class... V> struct common_type<T, U, V...> {
     using type = typename common_type<typename common_type<T, U>::type, V...>::type;
 };
 
 template <class... T> using common_type_t = typename common_type<T...>::type;
 
 /* is_convertible - simplified */
-namespace detail
-{
+namespace detail {
 template <class From, class To>
 auto test_convertible(int)
     -> decltype(static_cast<void>(static_cast<To>(static_cast<From>(*(From *)nullptr))),
@@ -479,33 +354,21 @@ template <class, class> auto test_convertible(...) -> false_type;
 } // namespace detail
 
 template <class From, class To>
-struct is_convertible : decltype(detail::test_convertible<From, To>(0))
-{
-};
+struct is_convertible : decltype(detail::test_convertible<From, To>(0)) {};
 
 template <class From, class To>
 inline constexpr bool is_convertible_v = is_convertible<From, To>::value;
 
 /* is_constructible - simplified */
-template <class T, class... Args> struct is_constructible : false_type
-{
-};
+template <class T, class... Args> struct is_constructible : false_type {};
 
-template <class T> struct is_constructible<T> : true_type
-{
-};
+template <class T> struct is_constructible<T> : true_type {};
 
-template <class T> struct is_default_constructible : is_constructible<T>
-{
-};
+template <class T> struct is_default_constructible : is_constructible<T> {};
 
-template <class T> struct is_copy_constructible : is_constructible<T, const T &>
-{
-};
+template <class T> struct is_copy_constructible : is_constructible<T, const T &> {};
 
-template <class T> struct is_move_constructible : is_constructible<T, T &&>
-{
-};
+template <class T> struct is_move_constructible : is_constructible<T, T &&> {};
 
 template <class T>
 inline constexpr bool is_default_constructible_v = is_default_constructible<T>::value;
@@ -513,75 +376,53 @@ template <class T> inline constexpr bool is_copy_constructible_v = is_copy_const
 template <class T> inline constexpr bool is_move_constructible_v = is_move_constructible<T>::value;
 
 /* is_assignable */
-template <class T, class U> struct is_assignable : false_type
-{
-};
+template <class T, class U> struct is_assignable : false_type {};
 
-template <class T> struct is_copy_assignable : is_assignable<T &, const T &>
-{
-};
+template <class T> struct is_copy_assignable : is_assignable<T &, const T &> {};
 
-template <class T> struct is_move_assignable : is_assignable<T &, T &&>
-{
-};
+template <class T> struct is_move_assignable : is_assignable<T &, T &&> {};
 
 template <class T> inline constexpr bool is_copy_assignable_v = is_copy_assignable<T>::value;
 template <class T> inline constexpr bool is_move_assignable_v = is_move_assignable<T>::value;
 
 /* extent - array dimension */
-template <class T, unsigned N = 0> struct extent : integral_constant<unsigned long, 0>
-{
-};
+template <class T, unsigned N = 0> struct extent : integral_constant<unsigned long, 0> {};
 
-template <class T> struct extent<T[], 0> : integral_constant<unsigned long, 0>
-{
-};
+template <class T> struct extent<T[], 0> : integral_constant<unsigned long, 0> {};
 
-template <class T, unsigned N> struct extent<T[], N> : extent<T, N - 1>
-{
-};
+template <class T, unsigned N> struct extent<T[], N> : extent<T, N - 1> {};
 
-template <class T, unsigned long I> struct extent<T[I], 0> : integral_constant<unsigned long, I>
-{
-};
+template <class T, unsigned long I> struct extent<T[I], 0> : integral_constant<unsigned long, I> {};
 
-template <class T, unsigned long I, unsigned N> struct extent<T[I], N> : extent<T, N - 1>
-{
-};
+template <class T, unsigned long I, unsigned N> struct extent<T[I], N> : extent<T, N - 1> {};
 
 template <class T, unsigned N = 0> inline constexpr unsigned long extent_v = extent<T, N>::value;
 
 /* remove_extent */
-template <class T> struct remove_extent
-{
+template <class T> struct remove_extent {
     using type = T;
 };
 
-template <class T> struct remove_extent<T[]>
-{
+template <class T> struct remove_extent<T[]> {
     using type = T;
 };
 
-template <class T, unsigned long N> struct remove_extent<T[N]>
-{
+template <class T, unsigned long N> struct remove_extent<T[N]> {
     using type = T;
 };
 
 template <class T> using remove_extent_t = typename remove_extent<T>::type;
 
 /* remove_all_extents */
-template <class T> struct remove_all_extents
-{
+template <class T> struct remove_all_extents {
     using type = T;
 };
 
-template <class T> struct remove_all_extents<T[]>
-{
+template <class T> struct remove_all_extents<T[]> {
     using type = typename remove_all_extents<T>::type;
 };
 
-template <class T, unsigned long N> struct remove_all_extents<T[N]>
-{
+template <class T, unsigned long N> struct remove_all_extents<T[N]> {
     using type = typename remove_all_extents<T>::type;
 };
 

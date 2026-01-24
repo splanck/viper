@@ -10,7 +10,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "handlers_internal.hpp"
 #include "../../cap/handle.hpp"
 #include "../../console/gcon.hpp"
 #include "../../drivers/ramfb.hpp"
@@ -18,90 +17,73 @@
 #include "../../mm/pmm.hpp"
 #include "../../viper/address_space.hpp"
 #include "../../viper/viper.hpp"
+#include "handlers_internal.hpp"
 
-namespace syscall
-{
+namespace syscall {
 
-SyscallResult sys_get_mouse_state(u64 a0, u64, u64, u64, u64, u64)
-{
+SyscallResult sys_get_mouse_state(u64 a0, u64, u64, u64, u64, u64) {
     input::MouseState *out = reinterpret_cast<input::MouseState *>(a0);
 
-    if (!validate_user_write(out, sizeof(input::MouseState)))
-    {
-        return SyscallResult::err(error::VERR_INVALID_ARG);
-    }
+    VALIDATE_USER_WRITE(out, sizeof(input::MouseState));
 
     *out = input::get_mouse_state();
     return SyscallResult::ok();
 }
 
-SyscallResult sys_map_framebuffer(u64, u64, u64, u64, u64, u64)
-{
+SyscallResult sys_map_framebuffer(u64, u64, u64, u64, u64, u64) {
     viper::Viper *v = viper::current();
-    if (!v)
-    {
-        return SyscallResult::err(error::VERR_NOT_FOUND);
+    if (!v) {
+        return err_not_found();
     }
 
     // Security check: only allow framebuffer mapping for privileged processes
-    if (v->id > 10)
-    {
+    if (v->id > 10) {
         cap::Table *ct = v->cap_table;
         bool has_device_cap = false;
-        if (ct)
-        {
-            for (usize i = 0; i < ct->capacity(); i++)
-            {
+        if (ct) {
+            for (usize i = 0; i < ct->capacity(); i++) {
                 cap::Entry *e = ct->entry_at(i);
-                if (e && e->kind == cap::Kind::Device)
-                {
+                if (e && e->kind == cap::Kind::Device) {
                     has_device_cap = true;
                     break;
                 }
             }
         }
-        if (!has_device_cap)
-        {
-            return SyscallResult::err(error::VERR_PERMISSION);
+        if (!has_device_cap) {
+            return err_permission();
         }
     }
 
     const ramfb::FramebufferInfo &fb = ramfb::get_info();
-    if (fb.address == 0 || fb.width == 0 || fb.height == 0)
-    {
-        return SyscallResult::err(error::VERR_NOT_FOUND);
+    if (fb.address == 0 || fb.width == 0 || fb.height == 0) {
+        return err_not_found();
     }
 
     u64 fb_size = static_cast<u64>(fb.pitch) * fb.height;
     fb_size = (fb_size + 0xFFF) & ~0xFFFULL;
 
     viper::AddressSpace *as = viper::get_address_space(v);
-    if (!as)
-    {
-        return SyscallResult::err(error::VERR_NOT_FOUND);
+    if (!as) {
+        return err_not_found();
     }
 
     u64 virt_base = 0x6000000000ULL;
     u64 user_virt = 0;
 
-    for (u64 try_addr = virt_base; try_addr < 0x7000000000ULL; try_addr += fb_size)
-    {
-        if (as->translate(try_addr) == 0)
-        {
+    for (u64 try_addr = virt_base; try_addr < 0x7000000000ULL; try_addr += fb_size) {
+        if (as->translate(try_addr) == 0) {
             user_virt = try_addr;
             break;
         }
     }
 
-    if (user_virt == 0)
-    {
-        return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
+    if (user_virt == 0) {
+        return err_out_of_memory();
     }
 
     u64 phys_addr = fb.address;
-    if (!as->map(user_virt, phys_addr, fb_size, viper::prot::RW))
-    {
-        return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
+    if (!as->map(user_virt, phys_addr, fb_size, viper::prot::RW)) {
+        return err_out_of_memory();
     }
 
     SyscallResult result;
@@ -112,47 +94,38 @@ SyscallResult sys_map_framebuffer(u64, u64, u64, u64, u64, u64)
     return result;
 }
 
-SyscallResult sys_set_mouse_bounds(u64 a0, u64 a1, u64, u64, u64, u64)
-{
+SyscallResult sys_set_mouse_bounds(u64 a0, u64 a1, u64, u64, u64, u64) {
     u32 width = static_cast<u32>(a0);
     u32 height = static_cast<u32>(a1);
 
-    if (width == 0 || height == 0 || width > 8192 || height > 8192)
-    {
-        return SyscallResult::err(error::VERR_INVALID_ARG);
+    if (width == 0 || height == 0 || width > 8192 || height > 8192) {
+        return err_invalid_arg();
     }
 
     input::set_mouse_bounds(width, height);
     return SyscallResult::ok();
 }
 
-SyscallResult sys_input_has_event(u64, u64, u64, u64, u64, u64)
-{
+SyscallResult sys_input_has_event(u64, u64, u64, u64, u64, u64) {
     bool has = input::has_event();
     return SyscallResult::ok(has ? 1ULL : 0ULL);
 }
 
-SyscallResult sys_input_get_event(u64 a0, u64, u64, u64, u64, u64)
-{
+SyscallResult sys_input_get_event(u64 a0, u64, u64, u64, u64, u64) {
     input::Event *out = reinterpret_cast<input::Event *>(a0);
 
-    if (!validate_user_write(out, sizeof(input::Event)))
-    {
-        return SyscallResult::err(error::VERR_INVALID_ARG);
-    }
+    VALIDATE_USER_WRITE(out, sizeof(input::Event));
 
     input::Event ev;
-    if (input::get_event(&ev))
-    {
+    if (input::get_event(&ev)) {
         *out = ev;
         return SyscallResult::ok();
     }
 
-    return SyscallResult::err(error::VERR_WOULD_BLOCK);
+    return err_would_block();
 }
 
-SyscallResult sys_gcon_set_gui_mode(u64 a0, u64, u64, u64, u64, u64)
-{
+SyscallResult sys_gcon_set_gui_mode(u64 a0, u64, u64, u64, u64, u64) {
     gcon::set_gui_mode(a0 != 0);
     return SyscallResult::ok();
 }

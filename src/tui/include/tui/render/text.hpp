@@ -33,8 +33,8 @@ namespace viper::tui::render
 /// @param maxWidth Maximum number of columns to render.
 /// @param text Text to render.
 /// @param style Style to apply to each character cell.
-inline void renderText(ScreenBuffer &sb, int y, int x, int maxWidth,
-                       std::string_view text, const Style &style)
+inline void renderText(
+    ScreenBuffer &sb, int y, int x, int maxWidth, std::string_view text, const Style &style)
 {
     int len = std::min(static_cast<int>(text.size()), maxWidth);
     for (int i = 0; i < len; ++i)
@@ -54,8 +54,8 @@ inline void renderText(ScreenBuffer &sb, int y, int x, int maxWidth,
 /// @param width Total width of the region.
 /// @param text Text to render.
 /// @param style Style to apply to each character cell.
-inline void renderTextRight(ScreenBuffer &sb, int y, int x, int width,
-                            std::string_view text, const Style &style)
+inline void renderTextRight(
+    ScreenBuffer &sb, int y, int x, int width, std::string_view text, const Style &style)
 {
     int textLen = static_cast<int>(text.size());
     int start = x + width - textLen;
@@ -78,8 +78,8 @@ inline void renderTextRight(ScreenBuffer &sb, int y, int x, int width,
 /// @param width Total width of the region.
 /// @param text Text to render.
 /// @param style Style to apply to each character cell.
-inline void renderTextCentered(ScreenBuffer &sb, int y, int x, int width,
-                               std::string_view text, const Style &style)
+inline void renderTextCentered(
+    ScreenBuffer &sb, int y, int x, int width, std::string_view text, const Style &style)
 {
     int textLen = static_cast<int>(text.size());
     int renderLen = std::min(textLen, width);

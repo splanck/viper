@@ -577,9 +577,9 @@ void ISel::foldSibAddressing(MFunction &func) const
 
     for (auto &block : func.blocks)
     {
-        std::unordered_map<uint16_t, ShlInfo> shlDefs;  // result vreg -> info
-        std::unordered_map<uint16_t, AddInfo> addDefs;  // result vreg -> info
-        std::unordered_map<uint16_t, MovInfo> movDefs;  // dest vreg -> info (for O(1) lookup)
+        std::unordered_map<uint16_t, ShlInfo> shlDefs; // result vreg -> info
+        std::unordered_map<uint16_t, AddInfo> addDefs; // result vreg -> info
+        std::unordered_map<uint16_t, MovInfo> movDefs; // dest vreg -> info (for O(1) lookup)
         std::unordered_map<uint16_t, std::size_t> useCount;
 
         // First pass: record SHL, ADD, and MOVrr definitions, count uses

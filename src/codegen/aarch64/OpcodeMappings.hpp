@@ -76,8 +76,8 @@ struct BinaryOpMapping
 /// - Emit: `CMP Xa, Xb; CSET Xr, lt`
 struct CompareMapping
 {
-    il::core::Opcode ilOp;  ///< The IL comparison opcode.
-    const char *condition;  ///< The AArch64 condition code string (e.g., "eq", "lt").
+    il::core::Opcode ilOp; ///< The IL comparison opcode.
+    const char *condition; ///< The AArch64 condition code string (e.g., "eq", "lt").
 };
 
 /// @brief Mapping entry for unary IL operations to AArch64 instructions.
@@ -86,8 +86,8 @@ struct CompareMapping
 /// corresponding AArch64 machine instructions.
 struct UnaryOpMapping
 {
-    il::core::Opcode ilOp;  ///< The IL unary opcode.
-    MOpcode mirOp;          ///< The MIR opcode for this unary operation.
+    il::core::Opcode ilOp; ///< The IL unary opcode.
+    MOpcode mirOp;         ///< The MIR opcode for this unary operation.
 };
 
 /// @brief Mapping table for integer binary arithmetic operations.
@@ -220,22 +220,26 @@ inline const BinaryOpMapping *lookupBinaryOp(il::core::Opcode op)
         // Floating-point operations
         case Opc::FAdd:
         {
-            static constexpr BinaryOpMapping m{Opc::FAdd, MOpcode::FAddRRR, false, MOpcode::FAddRRR};
+            static constexpr BinaryOpMapping m{
+                Opc::FAdd, MOpcode::FAddRRR, false, MOpcode::FAddRRR};
             return &m;
         }
         case Opc::FSub:
         {
-            static constexpr BinaryOpMapping m{Opc::FSub, MOpcode::FSubRRR, false, MOpcode::FSubRRR};
+            static constexpr BinaryOpMapping m{
+                Opc::FSub, MOpcode::FSubRRR, false, MOpcode::FSubRRR};
             return &m;
         }
         case Opc::FMul:
         {
-            static constexpr BinaryOpMapping m{Opc::FMul, MOpcode::FMulRRR, false, MOpcode::FMulRRR};
+            static constexpr BinaryOpMapping m{
+                Opc::FMul, MOpcode::FMulRRR, false, MOpcode::FMulRRR};
             return &m;
         }
         case Opc::FDiv:
         {
-            static constexpr BinaryOpMapping m{Opc::FDiv, MOpcode::FDivRRR, false, MOpcode::FDivRRR};
+            static constexpr BinaryOpMapping m{
+                Opc::FDiv, MOpcode::FDivRRR, false, MOpcode::FDivRRR};
             return &m;
         }
         default:

@@ -62,7 +62,8 @@ extern "C"
 
     /// @brief Get the YAML type of a parsed value.
     /// @param obj Parsed YAML value.
-    /// @return String describing the type: "null", "bool", "int", "float", "string", "sequence", "mapping".
+    /// @return String describing the type: "null", "bool", "int", "float", "string", "sequence",
+    /// "mapping".
     rt_string rt_yaml_type_of(void *obj);
 
 #ifdef __cplusplus

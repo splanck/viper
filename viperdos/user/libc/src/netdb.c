@@ -97,18 +97,15 @@ static const char *gai_errmsgs[] = {
  *
  * @see gethostbyaddr, gethostbyname_r, getaddrinfo
  */
-struct hostent *gethostbyname(const char *name)
-{
-    if (!name)
-    {
+struct hostent *gethostbyname(const char *name) {
+    if (!name) {
         h_errno = HOST_NOT_FOUND;
         return (void *)0;
     }
 
     /* Try to parse as numeric address first */
     struct in_addr addr;
-    if (inet_aton(name, &addr))
-    {
+    if (inet_aton(name, &addr)) {
         static_addr = addr;
         static_addr_list[0] = (char *)&static_addr;
         static_addr_list[1] = (void *)0;
@@ -131,8 +128,7 @@ struct hostent *gethostbyname(const char *name)
     unsigned int ip = 0;
     int rc = (int)__syscall2(SYS_DNS_RESOLVE, (long)name, (long)&ip);
 
-    if (rc != 0)
-    {
+    if (rc != 0) {
         h_errno = HOST_NOT_FOUND;
         return (void *)0;
     }
@@ -173,8 +169,7 @@ struct hostent *gethostbyname(const char *name)
  *
  * @see gethostbyname, getnameinfo
  */
-struct hostent *gethostbyaddr(const void *addr, socklen_t len, int type)
-{
+struct hostent *gethostbyaddr(const void *addr, socklen_t len, int type) {
     /* Reverse DNS not implemented */
     (void)addr;
     (void)len;
@@ -196,8 +191,7 @@ struct hostent *gethostbyaddr(const void *addr, socklen_t len, int type)
  *
  * @see sethostent, endhostent
  */
-struct hostent *gethostent(void)
-{
+struct hostent *gethostent(void) {
     return (void *)0;
 }
 
@@ -215,8 +209,7 @@ struct hostent *gethostent(void)
  *
  * @see gethostent, endhostent
  */
-void sethostent(int stayopen)
-{
+void sethostent(int stayopen) {
     (void)stayopen;
 }
 
@@ -258,12 +251,10 @@ int gethostbyname_r(const char *name,
                     char *buf,
                     size_t buflen,
                     struct hostent **result,
-                    int *h_errnop)
-{
+                    int *h_errnop) {
     /* Simplified implementation - use gethostbyname and copy */
     struct hostent *he = gethostbyname(name);
-    if (!he)
-    {
+    if (!he) {
         if (h_errnop)
             *h_errnop = h_errno;
         *result = (void *)0;
@@ -273,8 +264,7 @@ int gethostbyname_r(const char *name,
     /* Check buffer size */
     size_t name_len = strlen(he->h_name) + 1;
     size_t needed = name_len + sizeof(struct in_addr) + 2 * sizeof(char *);
-    if (buflen < needed)
-    {
+    if (buflen < needed) {
         *result = (void *)0;
         return ERANGE;
     }
@@ -307,8 +297,7 @@ int gethostbyname_r(const char *name,
 }
 
 /* Service lookup - simplified static table */
-static struct
-{
+static struct {
     const char *name;
     int port;
     const char *proto;
@@ -353,12 +342,9 @@ static char *static_serv_aliases[1] = {(void *)0};
  *
  * @see getservbyport, getaddrinfo
  */
-struct servent *getservbyname(const char *name, const char *proto)
-{
-    for (int i = 0; known_services[i].name; i++)
-    {
-        if (strcmp(known_services[i].name, name) == 0)
-        {
+struct servent *getservbyname(const char *name, const char *proto) {
+    for (int i = 0; known_services[i].name; i++) {
+        if (strcmp(known_services[i].name, name) == 0) {
             if (proto && strcmp(known_services[i].proto, proto) != 0)
                 continue;
 
@@ -393,13 +379,10 @@ struct servent *getservbyname(const char *name, const char *proto)
  *
  * @see getservbyname, getnameinfo
  */
-struct servent *getservbyport(int port, const char *proto)
-{
+struct servent *getservbyport(int port, const char *proto) {
     int host_port = ntohs(port);
-    for (int i = 0; known_services[i].name; i++)
-    {
-        if (known_services[i].port == host_port)
-        {
+    for (int i = 0; known_services[i].name; i++) {
+        if (known_services[i].port == host_port) {
             if (proto && strcmp(known_services[i].proto, proto) != 0)
                 continue;
 
@@ -430,8 +413,7 @@ struct servent *getservbyport(int port, const char *proto)
  *
  * @see setservent, endservent
  */
-struct servent *getservent(void)
-{
+struct servent *getservent(void) {
     return (void *)0;
 }
 
@@ -448,8 +430,7 @@ struct servent *getservent(void)
  *
  * @see getservent, endservent
  */
-void setservent(int stayopen)
-{
+void setservent(int stayopen) {
     (void)stayopen;
 }
 
@@ -469,8 +450,7 @@ void endservent(void) {}
  * @brief Functions for mapping protocol names to numbers.
  * @{
  */
-static struct
-{
+static struct {
     const char *name;
     int number;
 } known_protos[] = {{"ip", 0}, {"icmp", 1}, {"tcp", 6}, {"udp", 17}, {(void *)0, 0}};
@@ -495,12 +475,9 @@ static char *static_proto_aliases[1] = {(void *)0};
  *
  * @see getprotobynumber
  */
-struct protoent *getprotobyname(const char *name)
-{
-    for (int i = 0; known_protos[i].name; i++)
-    {
-        if (strcmp(known_protos[i].name, name) == 0)
-        {
+struct protoent *getprotobyname(const char *name) {
+    for (int i = 0; known_protos[i].name; i++) {
+        if (strcmp(known_protos[i].name, name) == 0) {
             strncpy(static_protoname, name, sizeof(static_protoname) - 1);
             static_protoent.p_name = static_protoname;
             static_protoent.p_aliases = static_proto_aliases;
@@ -530,12 +507,9 @@ struct protoent *getprotobyname(const char *name)
  *
  * @see getprotobyname
  */
-struct protoent *getprotobynumber(int proto)
-{
-    for (int i = 0; known_protos[i].name; i++)
-    {
-        if (known_protos[i].number == proto)
-        {
+struct protoent *getprotobynumber(int proto) {
+    for (int i = 0; known_protos[i].name; i++) {
+        if (known_protos[i].number == proto) {
             strncpy(static_protoname, known_protos[i].name, sizeof(static_protoname) - 1);
             static_protoent.p_name = static_protoname;
             static_protoent.p_aliases = static_proto_aliases;
@@ -559,8 +533,7 @@ struct protoent *getprotobynumber(int proto)
  *
  * @see setprotoent, endprotoent
  */
-struct protoent *getprotoent(void)
-{
+struct protoent *getprotoent(void) {
     return (void *)0;
 }
 
@@ -577,8 +550,7 @@ struct protoent *getprotoent(void)
  *
  * @see getprotoent, endprotoent
  */
-void setprotoent(int stayopen)
-{
+void setprotoent(int stayopen) {
     (void)stayopen;
 }
 
@@ -636,15 +608,13 @@ void endprotoent(void) {}
 int getaddrinfo(const char *node,
                 const char *service,
                 const struct addrinfo *hints,
-                struct addrinfo **res)
-{
+                struct addrinfo **res) {
     int family = AF_UNSPEC;
     int socktype = 0;
     int protocol = 0;
     int flags = 0;
 
-    if (hints)
-    {
+    if (hints) {
         family = hints->ai_family;
         socktype = hints->ai_socktype;
         protocol = hints->ai_protocol;
@@ -653,29 +623,20 @@ int getaddrinfo(const char *node,
 
     /* Get port from service */
     in_port_t port = 0;
-    if (service)
-    {
+    if (service) {
         /* Try numeric first */
         char *endp;
         long p = strtol(service, &endp, 10);
-        if (*endp == '\0' && p >= 0 && p <= 65535)
-        {
+        if (*endp == '\0' && p >= 0 && p <= 65535) {
             port = htons((unsigned short)p);
-        }
-        else if (!(flags & AI_NUMERICSERV))
-        {
+        } else if (!(flags & AI_NUMERICSERV)) {
             struct servent *se = getservbyname(service, (void *)0);
-            if (se)
-            {
+            if (se) {
                 port = se->s_port;
-            }
-            else
-            {
+            } else {
                 return EAI_SERVICE;
             }
-        }
-        else
-        {
+        } else {
             return EAI_SERVICE;
         }
     }
@@ -685,57 +646,42 @@ int getaddrinfo(const char *node,
     addr.s_addr = INADDR_ANY;
     char *canonname = (void *)0;
 
-    if (node)
-    {
+    if (node) {
         /* Try numeric first */
-        if (inet_aton(node, &addr))
-        {
+        if (inet_aton(node, &addr)) {
             /* Numeric address */
-        }
-        else if (!(flags & AI_NUMERICHOST))
-        {
+        } else if (!(flags & AI_NUMERICHOST)) {
             /* DNS lookup */
             struct hostent *he = gethostbyname(node);
-            if (!he)
-            {
+            if (!he) {
                 return EAI_NONAME;
             }
             memcpy(&addr, he->h_addr, sizeof(addr));
-            if (flags & AI_CANONNAME)
-            {
+            if (flags & AI_CANONNAME) {
                 canonname = he->h_name;
             }
-        }
-        else
-        {
+        } else {
             return EAI_NONAME;
         }
-    }
-    else if (flags & AI_PASSIVE)
-    {
+    } else if (flags & AI_PASSIVE) {
         addr.s_addr = INADDR_ANY;
-    }
-    else
-    {
+    } else {
         addr.s_addr = htonl(INADDR_LOOPBACK);
     }
 
     /* IPv4 only for now */
-    if (family != AF_UNSPEC && family != AF_INET)
-    {
+    if (family != AF_UNSPEC && family != AF_INET) {
         return EAI_FAMILY;
     }
 
     /* Allocate result */
     struct addrinfo *ai = (struct addrinfo *)malloc(sizeof(struct addrinfo));
-    if (!ai)
-    {
+    if (!ai) {
         return EAI_MEMORY;
     }
 
     struct sockaddr_in *sin = (struct sockaddr_in *)malloc(sizeof(struct sockaddr_in));
-    if (!sin)
-    {
+    if (!sin) {
         free(ai);
         return EAI_MEMORY;
     }
@@ -754,12 +700,10 @@ int getaddrinfo(const char *node,
     ai->ai_canonname = (void *)0;
     ai->ai_next = (void *)0;
 
-    if (canonname)
-    {
+    if (canonname) {
         size_t len = strlen(canonname) + 1;
         ai->ai_canonname = (char *)malloc(len);
-        if (ai->ai_canonname)
-        {
+        if (ai->ai_canonname) {
             memcpy(ai->ai_canonname, canonname, len);
         }
     }
@@ -781,10 +725,8 @@ int getaddrinfo(const char *node,
  *
  * @see getaddrinfo
  */
-void freeaddrinfo(struct addrinfo *res)
-{
-    while (res)
-    {
+void freeaddrinfo(struct addrinfo *res) {
+    while (res) {
         struct addrinfo *next = res->ai_next;
         if (res->ai_addr)
             free(res->ai_addr);
@@ -833,28 +775,22 @@ int getnameinfo(const struct sockaddr *addr,
                 socklen_t hostlen,
                 char *serv,
                 socklen_t servlen,
-                int flags)
-{
+                int flags) {
     (void)addrlen;
 
-    if (addr->sa_family != AF_INET)
-    {
+    if (addr->sa_family != AF_INET) {
         return EAI_FAMILY;
     }
 
     const struct sockaddr_in *sin = (const struct sockaddr_in *)addr;
 
     /* Host */
-    if (host && hostlen > 0)
-    {
-        if (flags & NI_NUMERICHOST)
-        {
+    if (host && hostlen > 0) {
+        if (flags & NI_NUMERICHOST) {
             const char *result = inet_ntop(AF_INET, &sin->sin_addr, host, hostlen);
             if (!result)
                 return EAI_OVERFLOW;
-        }
-        else
-        {
+        } else {
             /* Reverse DNS not implemented, fall back to numeric */
             const char *result = inet_ntop(AF_INET, &sin->sin_addr, host, hostlen);
             if (!result)
@@ -863,22 +799,15 @@ int getnameinfo(const struct sockaddr *addr,
     }
 
     /* Service */
-    if (serv && servlen > 0)
-    {
-        if (flags & NI_NUMERICSERV)
-        {
+    if (serv && servlen > 0) {
+        if (flags & NI_NUMERICSERV) {
             snprintf(serv, servlen, "%d", ntohs(sin->sin_port));
-        }
-        else
-        {
+        } else {
             struct servent *se = getservbyport(sin->sin_port, (flags & NI_DGRAM) ? "udp" : "tcp");
-            if (se)
-            {
+            if (se) {
                 strncpy(serv, se->s_name, servlen - 1);
                 serv[servlen - 1] = '\0';
-            }
-            else
-            {
+            } else {
                 snprintf(serv, servlen, "%d", ntohs(sin->sin_port));
             }
         }
@@ -915,8 +844,7 @@ int getnameinfo(const struct sockaddr *addr,
  *
  * @see getaddrinfo, getnameinfo
  */
-const char *gai_strerror(int errcode)
-{
+const char *gai_strerror(int errcode) {
     if (errcode >= 0)
         return gai_errmsgs[0];
     int idx = -errcode;
@@ -940,10 +868,8 @@ const char *gai_strerror(int errcode)
  *
  * @see hstrerror, perror, gethostbyname
  */
-void herror(const char *s)
-{
-    if (s && *s)
-    {
+void herror(const char *s) {
+    if (s && *s) {
         fputs(s, stderr);
         fputs(": ", stderr);
     }
@@ -970,10 +896,8 @@ void herror(const char *s)
  *
  * @see herror, gethostbyname, gethostbyaddr
  */
-const char *hstrerror(int err)
-{
-    switch (err)
-    {
+const char *hstrerror(int err) {
+    switch (err) {
         case 0:
             return "No error";
         case HOST_NOT_FOUND:

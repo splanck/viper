@@ -3,8 +3,7 @@
 
 #include "../stdlib.h"
 
-namespace std
-{
+namespace std {
 
 /* Memory allocation */
 using ::calloc;
@@ -61,26 +60,21 @@ using ::size_t;
 } /* namespace std */
 
 /* Additional C++ overloads */
-namespace std
-{
+namespace std {
 
-inline long abs(long n)
-{
+inline long abs(long n) {
     return labs(n);
 }
 
-inline long long abs(long long n)
-{
+inline long long abs(long long n) {
     return llabs(n);
 }
 
-inline ldiv_t div(long n, long d)
-{
+inline ldiv_t div(long n, long d) {
     return ldiv(n, d);
 }
 
-inline lldiv_t div(long long n, long long d)
-{
+inline lldiv_t div(long long n, long long d) {
     return lldiv(n, d);
 }
 

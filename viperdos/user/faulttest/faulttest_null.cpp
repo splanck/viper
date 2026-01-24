@@ -15,10 +15,8 @@
 /**
  * @brief Print a string to the console.
  */
-static void puts(const char *s)
-{
-    while (*s)
-    {
+static void puts(const char *s) {
+    while (*s) {
         sys::putchar(*s++);
     }
 }
@@ -28,8 +26,7 @@ static void puts(const char *s)
  *
  * Triggers a null pointer dereference fault.
  */
-extern "C" void _start()
-{
+extern "C" void _start() {
     puts("[faulttest_null] About to dereference NULL...\n");
 
     // Intentionally dereference a null pointer

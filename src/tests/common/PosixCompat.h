@@ -29,8 +29,7 @@
 
 // Disable Windows abort dialog so tests exit cleanly on assertion failures
 // Call VIPER_DISABLE_ABORT_DIALOG() at the start of main() in test executables
-#define VIPER_DISABLE_ABORT_DIALOG()                                                               \
-    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT)
+#define VIPER_DISABLE_ABORT_DIALOG() _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT)
 
 // Standard file descriptors
 #ifndef STDIN_FILENO

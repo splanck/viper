@@ -19,10 +19,8 @@
 #include "virtio.hpp"
 #include "virtqueue.hpp"
 
-namespace virtio
-{
-namespace rng
-{
+namespace virtio {
+namespace rng {
 
 /**
  * @file rng.hpp

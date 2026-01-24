@@ -4,13 +4,13 @@
 #include "bytecode/BytecodeVM.hpp"
 #include "il/core/Module.hpp"
 #include "il/runtime/signatures/Registry.hpp"
+#include "rt_threads.h"
+#include "support/small_vector.hpp"
+#include "viper/runtime/rt.h"
+#include "vm/OpHandlerAccess.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VM.hpp"
 #include "vm/VMContext.hpp"
-#include "vm/OpHandlerAccess.hpp"
-#include "viper/runtime/rt.h"
-#include "rt_threads.h"
-#include "support/small_vector.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -19,8 +19,10 @@
 #include <limits>
 #include <vector>
 
-namespace viper {
-namespace bytecode {
+namespace viper
+{
+namespace bytecode
+{
 
 //===----------------------------------------------------------------------===//
 // Thread-local active BytecodeVM tracking
@@ -29,40 +31,38 @@ namespace bytecode {
 /// Thread-local pointer to the currently active BytecodeVM.
 /// This enables runtime handlers (like Thread.Start) to detect when they're
 /// being called from bytecode execution and handle threading correctly.
-thread_local BytecodeVM* tlsActiveBytecodeVM = nullptr;
+thread_local BytecodeVM *tlsActiveBytecodeVM = nullptr;
 
 /// Thread-local pointer to the current BytecodeModule (for thread spawning).
-thread_local const BytecodeModule* tlsActiveBytecodeModule = nullptr;
+thread_local const BytecodeModule *tlsActiveBytecodeModule = nullptr;
 
-BytecodeVM* activeBytecodeVMInstance() {
+BytecodeVM *activeBytecodeVMInstance()
+{
     return tlsActiveBytecodeVM;
 }
 
-const BytecodeModule* activeBytecodeModule() {
+const BytecodeModule *activeBytecodeModule()
+{
     return tlsActiveBytecodeModule;
 }
 
-ActiveBytecodeVMGuard::ActiveBytecodeVMGuard(BytecodeVM* vm)
+ActiveBytecodeVMGuard::ActiveBytecodeVMGuard(BytecodeVM *vm)
     : previous_(tlsActiveBytecodeVM), current_(vm)
 {
     tlsActiveBytecodeVM = vm;
 }
 
-ActiveBytecodeVMGuard::~ActiveBytecodeVMGuard() {
+ActiveBytecodeVMGuard::~ActiveBytecodeVMGuard()
+{
     tlsActiveBytecodeVM = previous_;
 }
 
 BytecodeVM::BytecodeVM()
-    : module_(nullptr)
-    , state_(VMState::Ready)
-    , trapKind_(TrapKind::None)
-    , sp_(nullptr)
-    , fp_(nullptr)
-    , instrCount_(0)
-    , runtimeBridgeEnabled_(false)
-    , useThreadedDispatch_(true)  // Default to faster threaded dispatch
-    , allocaTop_(0)
-    , singleStep_(false)
+    : module_(nullptr), state_(VMState::Ready), trapKind_(TrapKind::None), sp_(nullptr),
+      fp_(nullptr), instrCount_(0), runtimeBridgeEnabled_(false),
+      useThreadedDispatch_(true) // Default to faster threaded dispatch
+      ,
+      allocaTop_(0), singleStep_(false)
 {
     // Pre-allocate reasonable stack size
     valueStack_.resize(kMaxStackSize * kMaxCallDepth);
@@ -72,10 +72,13 @@ BytecodeVM::BytecodeVM()
     allocaBuffer_.resize(64 * 1024);
 }
 
-BytecodeVM::~BytecodeVM() {
+BytecodeVM::~BytecodeVM()
+{
     // Release all cached rt_string objects
-    for (rt_string s : stringCache_) {
-        if (s) {
+    for (rt_string s : stringCache_)
+    {
+        if (s)
+        {
             rt_string_unref(s);
         }
     }
@@ -88,21 +91,26 @@ BytecodeVM::~BytecodeVM() {
 /// This is necessary because the runtime expects managed string pointers,
 /// not raw C strings. The cache is reference-counted and released on
 /// destruction or when a new module is loaded.
-void BytecodeVM::initStringCache() {
+void BytecodeVM::initStringCache()
+{
     // Release any existing cache
-    for (rt_string s : stringCache_) {
-        if (s) {
+    for (rt_string s : stringCache_)
+    {
+        if (s)
+        {
             rt_string_unref(s);
         }
     }
     stringCache_.clear();
 
-    if (!module_) return;
+    if (!module_)
+        return;
 
     // Pre-create rt_string objects for all strings in the pool
     // The runtime expects rt_string (pointer to rt_string_impl), not raw C strings
     stringCache_.reserve(module_->stringPool.size());
-    for (const auto& str : module_->stringPool) {
+    for (const auto &str : module_->stringPool)
+    {
         // Use rt_const_cstr to create a proper runtime string object
         // This matches what the standard VM does in VMInit.cpp
         rt_string rtStr = rt_const_cstr(str.c_str());
@@ -110,11 +118,13 @@ void BytecodeVM::initStringCache() {
     }
 }
 
-void BytecodeVM::registerNativeHandler(const std::string& name, NativeHandler handler) {
+void BytecodeVM::registerNativeHandler(const std::string &name, NativeHandler handler)
+{
     nativeHandlers_[name] = std::move(handler);
 }
 
-void BytecodeVM::load(const BytecodeModule* module) {
+void BytecodeVM::load(const BytecodeModule *module)
+{
     module_ = module;
     state_ = VMState::Ready;
     trapKind_ = TrapKind::None;
@@ -128,15 +138,17 @@ void BytecodeVM::load(const BytecodeModule* module) {
     initStringCache();
 }
 
-BCSlot BytecodeVM::exec(const std::string& funcName,
-                        const std::vector<BCSlot>& args) {
-    if (!module_) {
+BCSlot BytecodeVM::exec(const std::string &funcName, const std::vector<BCSlot> &args)
+{
+    if (!module_)
+    {
         trap(TrapKind::RuntimeError, "No module loaded");
         return BCSlot{};
     }
 
-    const BytecodeFunction* func = module_->findFunction(funcName);
-    if (!func) {
+    const BytecodeFunction *func = module_->findFunction(funcName);
+    if (!func)
+    {
         trap(TrapKind::RuntimeError, "Function not found");
         return BCSlot{};
     }
@@ -144,16 +156,17 @@ BCSlot BytecodeVM::exec(const std::string& funcName,
     return exec(func, args);
 }
 
-BCSlot BytecodeVM::exec(const BytecodeFunction* func,
-                        const std::vector<BCSlot>& args) {
-    if (!module_) {
+BCSlot BytecodeVM::exec(const BytecodeFunction *func, const std::vector<BCSlot> &args)
+{
+    if (!module_)
+    {
         trap(TrapKind::RuntimeError, "No module loaded");
         return BCSlot{};
     }
 
     // Set up thread-local context so Thread.Start handler can find us
     ActiveBytecodeVMGuard vmGuard(this);
-    const BytecodeModule* prevModule = tlsActiveBytecodeModule;
+    const BytecodeModule *prevModule = tlsActiveBytecodeModule;
     tlsActiveBytecodeModule = module_;
 
     // Reset state
@@ -161,10 +174,11 @@ BCSlot BytecodeVM::exec(const BytecodeFunction* func,
     trapKind_ = TrapKind::None;
     callStack_.clear();
     sp_ = valueStack_.data();
-    allocaTop_ = 0;  // Reset alloca stack
+    allocaTop_ = 0; // Reset alloca stack
 
     // Push arguments onto stack as initial locals
-    for (const auto& arg : args) {
+    for (const auto &arg : args)
+    {
         *sp_++ = arg;
     }
 
@@ -172,8 +186,10 @@ BCSlot BytecodeVM::exec(const BytecodeFunction* func,
     call(func);
 
     // Check if call setup failed (e.g., stack overflow in first call)
-    if (state_ == VMState::Trapped || !fp_) {
-        if (!fp_ && state_ != VMState::Trapped) {
+    if (state_ == VMState::Trapped || !fp_)
+    {
+        if (!fp_ && state_ != VMState::Trapped)
+        {
             trap(TrapKind::RuntimeError, "Frame setup failed");
         }
         tlsActiveBytecodeModule = prevModule;
@@ -182,9 +198,12 @@ BCSlot BytecodeVM::exec(const BytecodeFunction* func,
 
     // Run interpreter - use threaded dispatch if available and enabled
 #if defined(__GNUC__) || defined(__clang__)
-    if (useThreadedDispatch_) {
+    if (useThreadedDispatch_)
+    {
         runThreaded();
-    } else {
+    }
+    else
+    {
         run();
     }
 #else
@@ -195,23 +214,27 @@ BCSlot BytecodeVM::exec(const BytecodeFunction* func,
     tlsActiveBytecodeModule = prevModule;
 
     // Return result
-    if (state_ == VMState::Halted && sp_ > valueStack_.data()) {
+    if (state_ == VMState::Halted && sp_ > valueStack_.data())
+    {
         return *(sp_ - 1);
     }
     return BCSlot{};
 }
 
-void BytecodeVM::run() {
+void BytecodeVM::run()
+{
     state_ = VMState::Running;
 
-    while (state_ == VMState::Running) {
+    while (state_ == VMState::Running)
+    {
         // Fetch instruction
         uint32_t instr = fp_->func->code[fp_->pc++];
         BCOpcode op = decodeOpcode(instr);
 
         ++instrCount_;
 
-        switch (op) {
+        switch (op)
+        {
             //==================================================================
             // Stack Operations
             //==================================================================
@@ -237,14 +260,16 @@ void BytecodeVM::run() {
                 sp_ -= 2;
                 break;
 
-            case BCOpcode::SWAP: {
+            case BCOpcode::SWAP:
+            {
                 BCSlot tmp = sp_[-1];
                 sp_[-1] = sp_[-2];
                 sp_[-2] = tmp;
                 break;
             }
 
-            case BCOpcode::ROT3: {
+            case BCOpcode::ROT3:
+            {
                 BCSlot tmp = sp_[-1];
                 sp_[-1] = sp_[-2];
                 sp_[-2] = sp_[-3];
@@ -255,37 +280,43 @@ void BytecodeVM::run() {
             //==================================================================
             // Local Variable Operations
             //==================================================================
-            case BCOpcode::LOAD_LOCAL: {
+            case BCOpcode::LOAD_LOCAL:
+            {
                 uint8_t idx = decodeArg8_0(instr);
                 *sp_++ = fp_->locals[idx];
                 break;
             }
 
-            case BCOpcode::STORE_LOCAL: {
+            case BCOpcode::STORE_LOCAL:
+            {
                 uint8_t idx = decodeArg8_0(instr);
                 fp_->locals[idx] = *--sp_;
                 break;
             }
 
-            case BCOpcode::LOAD_LOCAL_W: {
+            case BCOpcode::LOAD_LOCAL_W:
+            {
                 uint16_t idx = decodeArg16(instr);
                 *sp_++ = fp_->locals[idx];
                 break;
             }
 
-            case BCOpcode::STORE_LOCAL_W: {
+            case BCOpcode::STORE_LOCAL_W:
+            {
                 uint16_t idx = decodeArg16(instr);
                 fp_->locals[idx] = *--sp_;
                 break;
             }
 
-            case BCOpcode::INC_LOCAL: {
+            case BCOpcode::INC_LOCAL:
+            {
                 uint8_t idx = decodeArg8_0(instr);
                 fp_->locals[idx].i64++;
                 break;
             }
 
-            case BCOpcode::DEC_LOCAL: {
+            case BCOpcode::DEC_LOCAL:
+            {
                 uint8_t idx = decodeArg8_0(instr);
                 fp_->locals[idx].i64--;
                 break;
@@ -294,28 +325,32 @@ void BytecodeVM::run() {
             //==================================================================
             // Constant Loading
             //==================================================================
-            case BCOpcode::LOAD_I8: {
+            case BCOpcode::LOAD_I8:
+            {
                 int8_t val = decodeArgI8_0(instr);
                 sp_->i64 = val;
                 sp_++;
                 break;
             }
 
-            case BCOpcode::LOAD_I16: {
+            case BCOpcode::LOAD_I16:
+            {
                 int16_t val = decodeArgI16(instr);
                 sp_->i64 = val;
                 sp_++;
                 break;
             }
 
-            case BCOpcode::LOAD_I64: {
+            case BCOpcode::LOAD_I64:
+            {
                 uint16_t idx = decodeArg16(instr);
                 sp_->i64 = module_->i64Pool[idx];
                 sp_++;
                 break;
             }
 
-            case BCOpcode::LOAD_F64: {
+            case BCOpcode::LOAD_F64:
+            {
                 uint16_t idx = decodeArg16(instr);
                 sp_->f64 = module_->f64Pool[idx];
                 sp_++;
@@ -361,9 +396,8 @@ void BytecodeVM::run() {
                 break;
 
             case BCOpcode::UDIV_I64:
-                sp_[-2].i64 = static_cast<int64_t>(
-                    static_cast<uint64_t>(sp_[-2].i64) /
-                    static_cast<uint64_t>(sp_[-1].i64));
+                sp_[-2].i64 = static_cast<int64_t>(static_cast<uint64_t>(sp_[-2].i64) /
+                                                   static_cast<uint64_t>(sp_[-1].i64));
                 sp_--;
                 break;
 
@@ -373,9 +407,8 @@ void BytecodeVM::run() {
                 break;
 
             case BCOpcode::UREM_I64:
-                sp_[-2].i64 = static_cast<int64_t>(
-                    static_cast<uint64_t>(sp_[-2].i64) %
-                    static_cast<uint64_t>(sp_[-1].i64));
+                sp_[-2].i64 = static_cast<int64_t>(static_cast<uint64_t>(sp_[-2].i64) %
+                                                   static_cast<uint64_t>(sp_[-1].i64));
                 sp_--;
                 break;
 
@@ -383,13 +416,15 @@ void BytecodeVM::run() {
                 sp_[-1].i64 = -sp_[-1].i64;
                 break;
 
-            case BCOpcode::ADD_I64_OVF: {
+            case BCOpcode::ADD_I64_OVF:
+            {
                 // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
                 uint8_t targetType = decodeArg8_0(instr);
                 int64_t a = sp_[-2].i64, b = sp_[-1].i64;
                 int64_t result = a + b;
                 bool overflow = false;
-                switch (targetType) {
+                switch (targetType)
+                {
                     case 1: // I16
                         overflow = (result < INT16_MIN || result > INT16_MAX);
                         break;
@@ -400,8 +435,10 @@ void BytecodeVM::run() {
                         overflow = addOverflow(a, b, result);
                         break;
                 }
-                if (overflow) {
-                    if (!dispatchTrap(TrapKind::Overflow)) {
+                if (overflow)
+                {
+                    if (!dispatchTrap(TrapKind::Overflow))
+                    {
                         trap(TrapKind::Overflow, "Overflow: integer overflow in add");
                     }
                     break;
@@ -411,13 +448,15 @@ void BytecodeVM::run() {
                 break;
             }
 
-            case BCOpcode::SUB_I64_OVF: {
+            case BCOpcode::SUB_I64_OVF:
+            {
                 // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
                 uint8_t targetType = decodeArg8_0(instr);
                 int64_t a = sp_[-2].i64, b = sp_[-1].i64;
                 int64_t result = a - b;
                 bool overflow = false;
-                switch (targetType) {
+                switch (targetType)
+                {
                     case 1: // I16
                         overflow = (result < INT16_MIN || result > INT16_MAX);
                         break;
@@ -428,8 +467,10 @@ void BytecodeVM::run() {
                         overflow = subOverflow(a, b, result);
                         break;
                 }
-                if (overflow) {
-                    if (!dispatchTrap(TrapKind::Overflow)) {
+                if (overflow)
+                {
+                    if (!dispatchTrap(TrapKind::Overflow))
+                    {
                         trap(TrapKind::Overflow, "Overflow: integer overflow in sub");
                     }
                     break;
@@ -439,13 +480,15 @@ void BytecodeVM::run() {
                 break;
             }
 
-            case BCOpcode::MUL_I64_OVF: {
+            case BCOpcode::MUL_I64_OVF:
+            {
                 // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
                 uint8_t targetType = decodeArg8_0(instr);
                 int64_t a = sp_[-2].i64, b = sp_[-1].i64;
                 int64_t result = a * b;
                 bool overflow = false;
-                switch (targetType) {
+                switch (targetType)
+                {
                     case 1: // I16
                         overflow = (result < INT16_MIN || result > INT16_MAX);
                         break;
@@ -456,8 +499,10 @@ void BytecodeVM::run() {
                         overflow = mulOverflow(a, b, result);
                         break;
                 }
-                if (overflow) {
-                    if (!dispatchTrap(TrapKind::Overflow)) {
+                if (overflow)
+                {
+                    if (!dispatchTrap(TrapKind::Overflow))
+                    {
                         trap(TrapKind::Overflow, "Overflow: integer overflow in mul");
                     }
                     break;
@@ -468,8 +513,10 @@ void BytecodeVM::run() {
             }
 
             case BCOpcode::SDIV_I64_CHK:
-                if (sp_[-1].i64 == 0) {
-                    if (!dispatchTrap(TrapKind::DivisionByZero)) {
+                if (sp_[-1].i64 == 0)
+                {
+                    if (!dispatchTrap(TrapKind::DivisionByZero))
+                    {
                         trap(TrapKind::DivisionByZero, "division by zero");
                     }
                     break;
@@ -479,21 +526,24 @@ void BytecodeVM::run() {
                 break;
 
             case BCOpcode::UDIV_I64_CHK:
-                if (sp_[-1].i64 == 0) {
-                    if (!dispatchTrap(TrapKind::DivisionByZero)) {
+                if (sp_[-1].i64 == 0)
+                {
+                    if (!dispatchTrap(TrapKind::DivisionByZero))
+                    {
                         trap(TrapKind::DivisionByZero, "division by zero");
                     }
                     break;
                 }
-                sp_[-2].i64 = static_cast<int64_t>(
-                    static_cast<uint64_t>(sp_[-2].i64) /
-                    static_cast<uint64_t>(sp_[-1].i64));
+                sp_[-2].i64 = static_cast<int64_t>(static_cast<uint64_t>(sp_[-2].i64) /
+                                                   static_cast<uint64_t>(sp_[-1].i64));
                 sp_--;
                 break;
 
             case BCOpcode::SREM_I64_CHK:
-                if (sp_[-1].i64 == 0) {
-                    if (!dispatchTrap(TrapKind::DivisionByZero)) {
+                if (sp_[-1].i64 == 0)
+                {
+                    if (!dispatchTrap(TrapKind::DivisionByZero))
+                    {
                         trap(TrapKind::DivisionByZero, "division by zero");
                     }
                     break;
@@ -503,30 +553,34 @@ void BytecodeVM::run() {
                 break;
 
             case BCOpcode::UREM_I64_CHK:
-                if (sp_[-1].i64 == 0) {
-                    if (!dispatchTrap(TrapKind::DivisionByZero)) {
+                if (sp_[-1].i64 == 0)
+                {
+                    if (!dispatchTrap(TrapKind::DivisionByZero))
+                    {
                         trap(TrapKind::DivisionByZero, "division by zero");
                     }
                     break;
                 }
-                sp_[-2].i64 = static_cast<int64_t>(
-                    static_cast<uint64_t>(sp_[-2].i64) %
-                    static_cast<uint64_t>(sp_[-1].i64));
+                sp_[-2].i64 = static_cast<int64_t>(static_cast<uint64_t>(sp_[-2].i64) %
+                                                   static_cast<uint64_t>(sp_[-1].i64));
                 sp_--;
                 break;
 
-            case BCOpcode::IDX_CHK: {
+            case BCOpcode::IDX_CHK:
+            {
                 // Stack: [idx, lo, hi]
                 int64_t hi = sp_[-1].i64;
                 int64_t lo = sp_[-2].i64;
                 int64_t idx = sp_[-3].i64;
-                if (idx < lo || idx >= hi) {
-                    if (!dispatchTrap(TrapKind::IndexOutOfBounds)) {
+                if (idx < lo || idx >= hi)
+                {
+                    if (!dispatchTrap(TrapKind::IndexOutOfBounds))
+                    {
                         trap(TrapKind::IndexOutOfBounds, "index out of bounds");
                     }
                     break;
                 }
-                sp_ -= 2;  // Pop lo, hi; keep idx
+                sp_ -= 2; // Pop lo, hi; keep idx
                 break;
             }
 
@@ -585,8 +639,8 @@ void BytecodeVM::run() {
                 break;
 
             case BCOpcode::LSHR_I64:
-                sp_[-2].i64 = static_cast<int64_t>(
-                    static_cast<uint64_t>(sp_[-2].i64) >> (sp_[-1].i64 & 63));
+                sp_[-2].i64 =
+                    static_cast<int64_t>(static_cast<uint64_t>(sp_[-2].i64) >> (sp_[-1].i64 & 63));
                 sp_--;
                 break;
 
@@ -629,26 +683,30 @@ void BytecodeVM::run() {
                 break;
 
             case BCOpcode::CMP_ULT_I64:
-                sp_[-2].i64 = (static_cast<uint64_t>(sp_[-2].i64) <
-                              static_cast<uint64_t>(sp_[-1].i64)) ? 1 : 0;
+                sp_[-2].i64 =
+                    (static_cast<uint64_t>(sp_[-2].i64) < static_cast<uint64_t>(sp_[-1].i64)) ? 1
+                                                                                              : 0;
                 sp_--;
                 break;
 
             case BCOpcode::CMP_ULE_I64:
-                sp_[-2].i64 = (static_cast<uint64_t>(sp_[-2].i64) <=
-                              static_cast<uint64_t>(sp_[-1].i64)) ? 1 : 0;
+                sp_[-2].i64 =
+                    (static_cast<uint64_t>(sp_[-2].i64) <= static_cast<uint64_t>(sp_[-1].i64)) ? 1
+                                                                                               : 0;
                 sp_--;
                 break;
 
             case BCOpcode::CMP_UGT_I64:
-                sp_[-2].i64 = (static_cast<uint64_t>(sp_[-2].i64) >
-                              static_cast<uint64_t>(sp_[-1].i64)) ? 1 : 0;
+                sp_[-2].i64 =
+                    (static_cast<uint64_t>(sp_[-2].i64) > static_cast<uint64_t>(sp_[-1].i64)) ? 1
+                                                                                              : 0;
                 sp_--;
                 break;
 
             case BCOpcode::CMP_UGE_I64:
-                sp_[-2].i64 = (static_cast<uint64_t>(sp_[-2].i64) >=
-                              static_cast<uint64_t>(sp_[-1].i64)) ? 1 : 0;
+                sp_[-2].i64 =
+                    (static_cast<uint64_t>(sp_[-2].i64) >= static_cast<uint64_t>(sp_[-1].i64)) ? 1
+                                                                                               : 0;
                 sp_--;
                 break;
 
@@ -693,20 +751,22 @@ void BytecodeVM::run() {
                 break;
 
             case BCOpcode::U64_TO_F64:
-                sp_[-1].f64 = static_cast<double>(
-                    static_cast<uint64_t>(sp_[-1].i64));
+                sp_[-1].f64 = static_cast<double>(static_cast<uint64_t>(sp_[-1].i64));
                 break;
 
             case BCOpcode::F64_TO_I64:
                 sp_[-1].i64 = static_cast<int64_t>(sp_[-1].f64);
                 break;
 
-            case BCOpcode::F64_TO_I64_CHK: {
+            case BCOpcode::F64_TO_I64_CHK:
+            {
                 // Float to signed int64 with overflow check and round-to-even
                 double val = sp_[-1].f64;
                 // Check for NaN
-                if (val != val) {
-                    if (!dispatchTrap(TrapKind::InvalidCast)) {
+                if (val != val)
+                {
+                    if (!dispatchTrap(TrapKind::InvalidCast))
+                    {
                         trap(TrapKind::InvalidCast, "InvalidCast: float to int conversion of NaN");
                     }
                     break;
@@ -716,9 +776,12 @@ void BytecodeVM::run() {
                 // Check for out of range (INT64_MIN to INT64_MAX)
                 constexpr double maxI64 = 9223372036854775807.0;
                 constexpr double minI64 = -9223372036854775808.0;
-                if (rounded > maxI64 || rounded < minI64) {
-                    if (!dispatchTrap(TrapKind::InvalidCast)) {
-                        trap(TrapKind::InvalidCast, "InvalidCast: float to int conversion overflow");
+                if (rounded > maxI64 || rounded < minI64)
+                {
+                    if (!dispatchTrap(TrapKind::InvalidCast))
+                    {
+                        trap(TrapKind::InvalidCast,
+                             "InvalidCast: float to int conversion overflow");
                     }
                     break;
                 }
@@ -726,12 +789,15 @@ void BytecodeVM::run() {
                 break;
             }
 
-            case BCOpcode::F64_TO_U64_CHK: {
+            case BCOpcode::F64_TO_U64_CHK:
+            {
                 // Float to unsigned int64 with overflow check and round-to-even
                 double val = sp_[-1].f64;
                 // Check for NaN
-                if (val != val) {
-                    if (!dispatchTrap(TrapKind::InvalidCast)) {
+                if (val != val)
+                {
+                    if (!dispatchTrap(TrapKind::InvalidCast))
+                    {
                         trap(TrapKind::InvalidCast, "InvalidCast: float to uint conversion of NaN");
                     }
                     break;
@@ -740,9 +806,12 @@ void BytecodeVM::run() {
                 double rounded = std::rint(val);
                 // Check for out of range (0 to UINT64_MAX)
                 constexpr double maxU64 = 18446744073709551615.0;
-                if (rounded < 0.0 || rounded > maxU64) {
-                    if (!dispatchTrap(TrapKind::InvalidCast)) {
-                        trap(TrapKind::InvalidCast, "InvalidCast: float to uint conversion overflow");
+                if (rounded < 0.0 || rounded > maxU64)
+                {
+                    if (!dispatchTrap(TrapKind::InvalidCast))
+                    {
+                        trap(TrapKind::InvalidCast,
+                             "InvalidCast: float to uint conversion overflow");
                     }
                     break;
                 }
@@ -750,13 +819,15 @@ void BytecodeVM::run() {
                 break;
             }
 
-            case BCOpcode::I64_NARROW_CHK: {
+            case BCOpcode::I64_NARROW_CHK:
+            {
                 // Signed narrow conversion with overflow check
                 // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
                 uint8_t targetType = decodeArg8_0(instr);
                 int64_t val = sp_[-1].i64;
                 bool inRange = true;
-                switch (targetType) {
+                switch (targetType)
+                {
                     case 0: // I1 (boolean)
                         inRange = (val == 0 || val == 1);
                         break;
@@ -769,8 +840,10 @@ void BytecodeVM::run() {
                     default: // I64 - always in range
                         break;
                 }
-                if (!inRange) {
-                    if (!dispatchTrap(TrapKind::Overflow)) {
+                if (!inRange)
+                {
+                    if (!dispatchTrap(TrapKind::Overflow))
+                    {
                         trap(TrapKind::Overflow, "Overflow: signed narrow conversion overflow");
                     }
                     break;
@@ -779,13 +852,15 @@ void BytecodeVM::run() {
                 break;
             }
 
-            case BCOpcode::U64_NARROW_CHK: {
+            case BCOpcode::U64_NARROW_CHK:
+            {
                 // Unsigned narrow conversion with overflow check
                 // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
                 uint8_t targetType = decodeArg8_0(instr);
                 uint64_t val = static_cast<uint64_t>(sp_[-1].i64);
                 bool inRange = true;
-                switch (targetType) {
+                switch (targetType)
+                {
                     case 0: // I1 (boolean)
                         inRange = (val <= 1);
                         break;
@@ -798,8 +873,10 @@ void BytecodeVM::run() {
                     default: // I64 - always in range
                         break;
                 }
-                if (!inRange) {
-                    if (!dispatchTrap(TrapKind::Overflow)) {
+                if (!inRange)
+                {
+                    if (!dispatchTrap(TrapKind::Overflow))
+                    {
                         trap(TrapKind::Overflow, "Overflow: unsigned narrow conversion overflow");
                     }
                     break;
@@ -819,41 +896,48 @@ void BytecodeVM::run() {
             //==================================================================
             // Control Flow
             //==================================================================
-            case BCOpcode::JUMP: {
+            case BCOpcode::JUMP:
+            {
                 int16_t offset = decodeArgI16(instr);
                 fp_->pc += offset;
                 break;
             }
 
-            case BCOpcode::JUMP_IF_TRUE: {
+            case BCOpcode::JUMP_IF_TRUE:
+            {
                 int16_t offset = decodeArgI16(instr);
-                if ((--sp_)->i64 != 0) {
+                if ((--sp_)->i64 != 0)
+                {
                     fp_->pc += offset;
                 }
                 break;
             }
 
-            case BCOpcode::JUMP_IF_FALSE: {
+            case BCOpcode::JUMP_IF_FALSE:
+            {
                 int16_t offset = decodeArgI16(instr);
-                if ((--sp_)->i64 == 0) {
+                if ((--sp_)->i64 == 0)
+                {
                     fp_->pc += offset;
                 }
                 break;
             }
 
-            case BCOpcode::JUMP_LONG: {
+            case BCOpcode::JUMP_LONG:
+            {
                 int32_t offset = decodeArgI24(instr);
                 fp_->pc += offset;
                 break;
             }
 
-            case BCOpcode::SWITCH: {
+            case BCOpcode::SWITCH:
+            {
                 // Format: SWITCH [numCases:u32] [defaultOffset:i32] [caseVal:i32 caseOffset:i32]...
                 // Pop scrutinee from stack
                 int32_t scrutinee = static_cast<int32_t>((--sp_)->i64);
 
                 // pc currently points to the word after SWITCH opcode (numCases)
-                const uint32_t* code = fp_->func->code.data();
+                const uint32_t *code = fp_->func->code.data();
                 uint32_t numCases = code[fp_->pc++];
 
                 // Position of default offset word
@@ -861,11 +945,13 @@ void BytecodeVM::run() {
 
                 // Search for matching case
                 bool found = false;
-                for (uint32_t i = 0; i < numCases; ++i) {
+                for (uint32_t i = 0; i < numCases; ++i)
+                {
                     int32_t caseVal = static_cast<int32_t>(code[fp_->pc++]);
                     uint32_t caseOffsetPos = fp_->pc++;
 
-                    if (caseVal == scrutinee) {
+                    if (caseVal == scrutinee)
+                    {
                         // Found matching case - jump to its target
                         // Offset is relative to the offset word position
                         int32_t caseOffset = static_cast<int32_t>(code[caseOffsetPos]);
@@ -875,7 +961,8 @@ void BytecodeVM::run() {
                     }
                 }
 
-                if (!found) {
+                if (!found)
+                {
                     // No match - use default offset
                     int32_t defaultOffset = static_cast<int32_t>(code[defaultOffsetPos]);
                     fp_->pc = defaultOffsetPos + defaultOffset;
@@ -883,19 +970,25 @@ void BytecodeVM::run() {
                 break;
             }
 
-            case BCOpcode::CALL: {
+            case BCOpcode::CALL:
+            {
                 uint16_t funcIdx = decodeArg16(instr);
-                if (funcIdx < module_->functions.size()) {
+                if (funcIdx < module_->functions.size())
+                {
                     call(&module_->functions[funcIdx]);
-                } else {
+                }
+                else
+                {
                     trap(TrapKind::RuntimeError, "Invalid function index");
                 }
                 break;
             }
 
-            case BCOpcode::RETURN: {
+            case BCOpcode::RETURN:
+            {
                 BCSlot result = *--sp_;
-                if (!popFrame()) {
+                if (!popFrame())
+                {
                     // Return from main function
                     *sp_++ = result;
                     state_ = VMState::Halted;
@@ -905,46 +998,53 @@ void BytecodeVM::run() {
                 break;
             }
 
-            case BCOpcode::RETURN_VOID: {
-                if (!popFrame()) {
+            case BCOpcode::RETURN_VOID:
+            {
+                if (!popFrame())
+                {
                     state_ = VMState::Halted;
                     return;
                 }
                 break;
             }
 
-            case BCOpcode::CALL_NATIVE: {
+            case BCOpcode::CALL_NATIVE:
+            {
                 // Instruction format: CALL_NATIVE nativeIdx, argCount
                 uint8_t nativeIdx = decodeArg8_0(instr);
                 uint8_t argCount = decodeArg8_1(instr);
 
-                if (nativeIdx >= module_->nativeFuncs.size()) {
+                if (nativeIdx >= module_->nativeFuncs.size())
+                {
                     trap(TrapKind::RuntimeError, "Invalid native function index");
                     break;
                 }
 
-                const NativeFuncRef& ref = module_->nativeFuncs[nativeIdx];
+                const NativeFuncRef &ref = module_->nativeFuncs[nativeIdx];
 
                 // Set up arguments (they're on the stack)
-                BCSlot* args = sp_ - argCount;
+                BCSlot *args = sp_ - argCount;
                 BCSlot result{};
 
-                if (runtimeBridgeEnabled_) {
+                if (runtimeBridgeEnabled_)
+                {
                     // Use RuntimeBridge for native function calls
                     // Convert BCSlot* to il::vm::Slot* (same layout)
-                    il::vm::Slot* vmArgs = reinterpret_cast<il::vm::Slot*>(args);
+                    il::vm::Slot *vmArgs = reinterpret_cast<il::vm::Slot *>(args);
                     std::vector<il::vm::Slot> argVec(vmArgs, vmArgs + argCount);
 
                     il::vm::RuntimeCallContext ctx;
                     il::vm::Slot vmResult = il::vm::RuntimeBridge::call(
-                        ctx, ref.name, argVec,
-                        il::support::SourceLoc{}, "", "");
+                        ctx, ref.name, argVec, il::support::SourceLoc{}, "", "");
 
                     result.i64 = vmResult.i64;
-                } else {
+                }
+                else
+                {
                     // Look up handler in local registry
                     auto it = nativeHandlers_.find(ref.name);
-                    if (it == nativeHandlers_.end()) {
+                    if (it == nativeHandlers_.end())
+                    {
                         trap(TrapKind::RuntimeError, "Native function not registered");
                         break;
                     }
@@ -956,45 +1056,54 @@ void BytecodeVM::run() {
                 sp_ -= argCount;
 
                 // Push result if function returns a value
-                if (ref.hasReturn) {
+                if (ref.hasReturn)
+                {
                     *sp_++ = result;
                 }
                 break;
             }
 
-            case BCOpcode::CALL_INDIRECT: {
+            case BCOpcode::CALL_INDIRECT:
+            {
                 // Indirect call through function pointer
                 // Stack layout: [callee][arg0][arg1]...[argN] <- sp
                 uint8_t argCount = decodeArg8_0(instr);
 
                 // Get callee from below the arguments
-                BCSlot* callee = sp_ - argCount - 1;
-                BCSlot* args = sp_ - argCount;
+                BCSlot *callee = sp_ - argCount - 1;
+                BCSlot *args = sp_ - argCount;
 
                 // Check if callee is a tagged function pointer (high bit set)
                 constexpr uint64_t kFuncPtrTag = 0x8000000000000000ULL;
                 uint64_t calleeVal = static_cast<uint64_t>(callee->i64);
 
-                if (calleeVal & kFuncPtrTag) {
+                if (calleeVal & kFuncPtrTag)
+                {
                     // Tagged function index - extract and call
                     uint32_t funcIdx = static_cast<uint32_t>(calleeVal & 0x7FFFFFFFULL);
-                    if (funcIdx >= module_->functions.size()) {
+                    if (funcIdx >= module_->functions.size())
+                    {
                         trap(TrapKind::RuntimeError, "Invalid indirect function index");
                         break;
                     }
 
                     // Shift arguments down to overwrite the callee slot
-                    for (int i = 0; i < argCount; ++i) {
+                    for (int i = 0; i < argCount; ++i)
+                    {
                         callee[i] = args[i];
                     }
-                    sp_ = callee + argCount;  // Adjust stack pointer
+                    sp_ = callee + argCount; // Adjust stack pointer
 
                     call(&module_->functions[funcIdx]);
-                } else if (calleeVal == 0) {
+                }
+                else if (calleeVal == 0)
+                {
                     // Null function pointer
                     trap(TrapKind::NullPointer, "Null indirect callee");
                     break;
-                } else {
+                }
+                else
+                {
                     // Unknown pointer format
                     trap(TrapKind::RuntimeError, "Invalid indirect call target");
                     break;
@@ -1005,7 +1114,8 @@ void BytecodeVM::run() {
             //==================================================================
             // Memory Operations (basic support)
             //==================================================================
-            case BCOpcode::ALLOCA: {
+            case BCOpcode::ALLOCA:
+            {
                 // Allocate from the separate alloca buffer (not operand stack)
                 // This ensures alloca'd memory survives across function calls
                 int64_t size = (--sp_)->i64;
@@ -1013,10 +1123,12 @@ void BytecodeVM::run() {
                 size = (size + 7) & ~7;
 
                 // Check for alloca overflow
-                if (allocaTop_ + static_cast<size_t>(size) > allocaBuffer_.size()) {
+                if (allocaTop_ + static_cast<size_t>(size) > allocaBuffer_.size())
+                {
                     // Grow buffer if needed (up to 1MB limit)
                     size_t newSize = allocaBuffer_.size() * 2;
-                    if (newSize > 1024 * 1024 || allocaTop_ + static_cast<size_t>(size) > newSize) {
+                    if (newSize > 1024 * 1024 || allocaTop_ + static_cast<size_t>(size) > newSize)
+                    {
                         trap(TrapKind::StackOverflow, "alloca stack overflow");
                         break;
                     }
@@ -1024,105 +1136,118 @@ void BytecodeVM::run() {
                 }
 
                 // Return pointer to allocated memory
-                void* ptr = allocaBuffer_.data() + allocaTop_;
+                void *ptr = allocaBuffer_.data() + allocaTop_;
                 allocaTop_ += static_cast<size_t>(size);
                 sp_->ptr = ptr;
                 sp_++;
                 break;
             }
 
-            case BCOpcode::GEP: {
+            case BCOpcode::GEP:
+            {
                 int64_t offset = (--sp_)->i64;
-                uint8_t* ptr = static_cast<uint8_t*>(sp_[-1].ptr);
+                uint8_t *ptr = static_cast<uint8_t *>(sp_[-1].ptr);
                 sp_[-1].ptr = ptr + offset;
                 break;
             }
 
-            case BCOpcode::LOAD_I64_MEM: {
-                void* ptr = sp_[-1].ptr;
+            case BCOpcode::LOAD_I64_MEM:
+            {
+                void *ptr = sp_[-1].ptr;
                 int64_t val;
                 std::memcpy(&val, ptr, sizeof(val));
                 sp_[-1].i64 = val;
                 break;
             }
 
-            case BCOpcode::STORE_I64_MEM: {
+            case BCOpcode::STORE_I64_MEM:
+            {
                 int64_t val = (--sp_)->i64;
-                void* ptr = (--sp_)->ptr;
+                void *ptr = (--sp_)->ptr;
                 std::memcpy(ptr, &val, sizeof(val));
                 break;
             }
 
-            case BCOpcode::LOAD_I8_MEM: {
-                void* ptr = sp_[-1].ptr;
+            case BCOpcode::LOAD_I8_MEM:
+            {
+                void *ptr = sp_[-1].ptr;
                 int8_t val;
                 std::memcpy(&val, ptr, sizeof(val));
-                sp_[-1].i64 = val;  // Sign extend
+                sp_[-1].i64 = val; // Sign extend
                 break;
             }
 
-            case BCOpcode::LOAD_I16_MEM: {
-                void* ptr = sp_[-1].ptr;
+            case BCOpcode::LOAD_I16_MEM:
+            {
+                void *ptr = sp_[-1].ptr;
                 int16_t val;
                 std::memcpy(&val, ptr, sizeof(val));
-                sp_[-1].i64 = val;  // Sign extend
+                sp_[-1].i64 = val; // Sign extend
                 break;
             }
 
-            case BCOpcode::LOAD_I32_MEM: {
-                void* ptr = sp_[-1].ptr;
+            case BCOpcode::LOAD_I32_MEM:
+            {
+                void *ptr = sp_[-1].ptr;
                 int32_t val;
                 std::memcpy(&val, ptr, sizeof(val));
-                sp_[-1].i64 = val;  // Sign extend
+                sp_[-1].i64 = val; // Sign extend
                 break;
             }
 
-            case BCOpcode::LOAD_F64_MEM: {
-                void* ptr = sp_[-1].ptr;
+            case BCOpcode::LOAD_F64_MEM:
+            {
+                void *ptr = sp_[-1].ptr;
                 double val;
                 std::memcpy(&val, ptr, sizeof(val));
                 sp_[-1].f64 = val;
                 break;
             }
 
-            case BCOpcode::LOAD_PTR_MEM: {
-                void* val;
+            case BCOpcode::LOAD_PTR_MEM:
+            {
+                void *val;
                 std::memcpy(&val, sp_[-1].ptr, sizeof(val));
                 sp_[-1].ptr = val;
                 break;
             }
 
-            case BCOpcode::STORE_I8_MEM: {
+            case BCOpcode::STORE_I8_MEM:
+            {
                 int8_t val = static_cast<int8_t>((--sp_)->i64);
-                void* ptr = (--sp_)->ptr;
+                void *ptr = (--sp_)->ptr;
                 std::memcpy(ptr, &val, sizeof(val));
                 break;
             }
 
-            case BCOpcode::STORE_I16_MEM: {
+            case BCOpcode::STORE_I16_MEM:
+            {
                 int16_t val = static_cast<int16_t>((--sp_)->i64);
-                void* ptr = (--sp_)->ptr;
+                void *ptr = (--sp_)->ptr;
                 std::memcpy(ptr, &val, sizeof(val));
                 break;
             }
 
-            case BCOpcode::STORE_I32_MEM: {
+            case BCOpcode::STORE_I32_MEM:
+            {
                 int32_t val = static_cast<int32_t>((--sp_)->i64);
-                void* ptr = (--sp_)->ptr;
+                void *ptr = (--sp_)->ptr;
                 std::memcpy(ptr, &val, sizeof(val));
                 break;
             }
 
-            case BCOpcode::STORE_F64_MEM: {
+            case BCOpcode::STORE_F64_MEM:
+            {
                 double val = (--sp_)->f64;
-                void* ptr = (--sp_)->ptr;
+                void *ptr = (--sp_)->ptr;
                 std::memcpy(ptr, &val, sizeof(val));
                 break;
             }
 
-            case BCOpcode::STORE_PTR_MEM: {
-                void* val = (--sp_)->ptr;
-                void* ptr = (--sp_)->ptr;
+            case BCOpcode::STORE_PTR_MEM:
+            {
+                void *val = (--sp_)->ptr;
+                void *ptr = (--sp_)->ptr;
                 std::memcpy(ptr, &val, sizeof(val));
                 break;
             }
@@ -1130,14 +1255,16 @@ void BytecodeVM::run() {
             //==================================================================
             // Global Variables
             //==================================================================
-            case BCOpcode::LOAD_GLOBAL: {
+            case BCOpcode::LOAD_GLOBAL:
+            {
                 // TODO: Implement global variable storage
                 sp_->ptr = nullptr;
                 sp_++;
                 break;
             }
 
-            case BCOpcode::STORE_GLOBAL: {
+            case BCOpcode::STORE_GLOBAL:
+            {
                 // TODO: Implement global variable storage
                 sp_--;
                 break;
@@ -1146,7 +1273,8 @@ void BytecodeVM::run() {
             //==================================================================
             // String Operations
             //==================================================================
-            case BCOpcode::LOAD_STR: {
+            case BCOpcode::LOAD_STR:
+            {
                 uint16_t idx = decodeArg16(instr);
                 // Use the cached rt_string object (not raw C string!)
                 // The runtime expects rt_string (pointer to rt_string_impl struct)
@@ -1167,11 +1295,13 @@ void BytecodeVM::run() {
             //==================================================================
             // Exception Handling
             //==================================================================
-            case BCOpcode::EH_PUSH: {
+            case BCOpcode::EH_PUSH:
+            {
                 // Handler offset is in the next code word (raw i32 offset)
-                const uint32_t* code = fp_->func->code.data();
+                const uint32_t *code = fp_->func->code.data();
                 int32_t offset = static_cast<int32_t>(code[fp_->pc++]);
-                uint32_t handlerPc = static_cast<uint32_t>(static_cast<int32_t>(fp_->pc - 1) + offset);
+                uint32_t handlerPc =
+                    static_cast<uint32_t>(static_cast<int32_t>(fp_->pc - 1) + offset);
                 pushExceptionHandler(handlerPc);
                 break;
             }
@@ -1184,30 +1314,35 @@ void BytecodeVM::run() {
                 // Handler entry marker - no-op, execution continues
                 break;
 
-            case BCOpcode::TRAP: {
+            case BCOpcode::TRAP:
+            {
                 uint8_t kind = decodeArg8_0(instr);
                 TrapKind trapKind = static_cast<TrapKind>(kind);
-                if (!dispatchTrap(trapKind)) {
+                if (!dispatchTrap(trapKind))
+                {
                     trap(trapKind, "Unhandled trap");
                 }
                 break;
             }
 
-            case BCOpcode::TRAP_FROM_ERR: {
+            case BCOpcode::TRAP_FROM_ERR:
+            {
                 // Pop error code from stack and use as trap kind
                 int64_t code = (--sp_)->i64;
                 TrapKind trapKind = static_cast<TrapKind>(code);
-                if (!dispatchTrap(trapKind)) {
+                if (!dispatchTrap(trapKind))
+                {
                     trap(trapKind, "Unhandled trap from error");
                 }
                 break;
             }
 
-            case BCOpcode::ERR_GET_KIND: {
+            case BCOpcode::ERR_GET_KIND:
+            {
                 // Pop error object from stack and return its kind
                 // In our simple model, the error object IS the trap kind
                 int64_t errVal = (--sp_)->i64;
-                sp_->i64 = errVal;  // Push the kind (same as error value)
+                sp_->i64 = errVal; // Push the kind (same as error value)
                 sp_++;
                 break;
             }
@@ -1241,9 +1376,10 @@ void BytecodeVM::run() {
                 // Similar to RESUME_SAME but skips the instruction
                 break;
 
-            case BCOpcode::RESUME_LABEL: {
+            case BCOpcode::RESUME_LABEL:
+            {
                 // Resume at a specific label (offset is in next code word)
-                const uint32_t* code = fp_->func->code.data();
+                const uint32_t *code = fp_->func->code.data();
                 int32_t offset = static_cast<int32_t>(code[fp_->pc++]);
                 fp_->pc = static_cast<uint32_t>(static_cast<int32_t>(fp_->pc - 1) + offset);
                 break;
@@ -1264,9 +1400,11 @@ void BytecodeVM::run() {
 ///
 /// Creates a new call frame with the function's parameters taken from the
 /// operand stack. Non-parameter locals are zero-initialized.
-void BytecodeVM::call(const BytecodeFunction* func) {
+void BytecodeVM::call(const BytecodeFunction *func)
+{
     // Check stack overflow
-    if (callStack_.size() >= kMaxCallDepth) {
+    if (callStack_.size() >= kMaxCallDepth)
+    {
         trap(TrapKind::StackOverflow, "call stack overflow");
         return;
     }
@@ -1275,23 +1413,21 @@ void BytecodeVM::call(const BytecodeFunction* func) {
     uint32_t callSitePc = fp_ ? fp_->pc - 1 : 0;
 
     // Arguments are already on stack - they become first N locals
-    BCSlot* localsStart = sp_ - func->numParams;
+    BCSlot *localsStart = sp_ - func->numParams;
 
     // Push new frame
     callStack_.push_back({});
-    BCFrame& frame = callStack_.back();
+    BCFrame &frame = callStack_.back();
     frame.func = func;
     frame.pc = 0;
     frame.locals = localsStart;
     frame.stackBase = localsStart + func->numLocals;
     frame.ehStackDepth = static_cast<uint32_t>(ehStack_.size());
     frame.callSitePc = callSitePc;
-    frame.allocaBase = allocaTop_;  // Save alloca position for cleanup on return
+    frame.allocaBase = allocaTop_; // Save alloca position for cleanup on return
 
     // Zero non-parameter locals
-    std::fill(localsStart + func->numParams,
-              localsStart + func->numLocals,
-              BCSlot{});
+    std::fill(localsStart + func->numParams, localsStart + func->numLocals, BCSlot{});
 
     // Update stack pointer past locals
     sp_ = frame.stackBase;
@@ -1305,7 +1441,8 @@ void BytecodeVM::call(const BytecodeFunction* func) {
 ///
 /// Restores the previous frame's state including stack pointer and alloca
 /// position. Any stack-allocated memory from the popped frame is released.
-bool BytecodeVM::popFrame() {
+bool BytecodeVM::popFrame()
+{
     // Restore alloca stack to the base of the popped frame
     // This releases all alloca'd memory from this function call
     allocaTop_ = callStack_.back().allocaBase;
@@ -1313,7 +1450,8 @@ bool BytecodeVM::popFrame() {
     // Pop frame
     callStack_.pop_back();
 
-    if (callStack_.empty()) {
+    if (callStack_.empty())
+    {
         fp_ = nullptr;
         return false;
     }
@@ -1328,7 +1466,8 @@ bool BytecodeVM::popFrame() {
 /// @brief Raise a trap, halting execution with an error.
 /// @param kind The type of error that occurred.
 /// @param message Human-readable description of the error.
-void BytecodeVM::trap(TrapKind kind, const char* message) {
+void BytecodeVM::trap(TrapKind kind, const char *message)
+{
     trapKind_ = kind;
     trapMessage_ = message;
     state_ = VMState::Trapped;
@@ -1337,12 +1476,14 @@ void BytecodeVM::trap(TrapKind kind, const char* message) {
 /// @brief Check for signed addition overflow.
 /// @return true if overflow would occur, false if safe.
 /// Uses compiler builtins when available for efficiency.
-bool BytecodeVM::addOverflow(int64_t a, int64_t b, int64_t& result) {
+bool BytecodeVM::addOverflow(int64_t a, int64_t b, int64_t &result)
+{
 #if defined(__GNUC__) || defined(__clang__)
     return __builtin_add_overflow(a, b, &result);
 #else
     if ((b > 0 && a > std::numeric_limits<int64_t>::max() - b) ||
-        (b < 0 && a < std::numeric_limits<int64_t>::min() - b)) {
+        (b < 0 && a < std::numeric_limits<int64_t>::min() - b))
+    {
         return true;
     }
     result = a + b;
@@ -1352,12 +1493,14 @@ bool BytecodeVM::addOverflow(int64_t a, int64_t b, int64_t& result) {
 
 /// @brief Check for signed subtraction overflow.
 /// @return true if overflow would occur, false if safe.
-bool BytecodeVM::subOverflow(int64_t a, int64_t b, int64_t& result) {
+bool BytecodeVM::subOverflow(int64_t a, int64_t b, int64_t &result)
+{
 #if defined(__GNUC__) || defined(__clang__)
     return __builtin_sub_overflow(a, b, &result);
 #else
     if ((b < 0 && a > std::numeric_limits<int64_t>::max() + b) ||
-        (b > 0 && a < std::numeric_limits<int64_t>::min() + b)) {
+        (b > 0 && a < std::numeric_limits<int64_t>::min() + b))
+    {
         return true;
     }
     result = a - b;
@@ -1367,21 +1510,35 @@ bool BytecodeVM::subOverflow(int64_t a, int64_t b, int64_t& result) {
 
 /// @brief Check for signed multiplication overflow.
 /// @return true if overflow would occur, false if safe.
-bool BytecodeVM::mulOverflow(int64_t a, int64_t b, int64_t& result) {
+bool BytecodeVM::mulOverflow(int64_t a, int64_t b, int64_t &result)
+{
 #if defined(__GNUC__) || defined(__clang__)
     return __builtin_mul_overflow(a, b, &result);
 #else
-    if (a > 0) {
-        if (b > 0) {
-            if (a > std::numeric_limits<int64_t>::max() / b) return true;
-        } else {
-            if (b < std::numeric_limits<int64_t>::min() / a) return true;
+    if (a > 0)
+    {
+        if (b > 0)
+        {
+            if (a > std::numeric_limits<int64_t>::max() / b)
+                return true;
         }
-    } else {
-        if (b > 0) {
-            if (a < std::numeric_limits<int64_t>::min() / b) return true;
-        } else {
-            if (a != 0 && b < std::numeric_limits<int64_t>::max() / a) return true;
+        else
+        {
+            if (b < std::numeric_limits<int64_t>::min() / a)
+                return true;
+        }
+    }
+    else
+    {
+        if (b > 0)
+        {
+            if (a < std::numeric_limits<int64_t>::min() / b)
+                return true;
+        }
+        else
+        {
+            if (a != 0 && b < std::numeric_limits<int64_t>::max() / a)
+                return true;
         }
     }
     result = a * b;
@@ -1395,8 +1552,10 @@ bool BytecodeVM::mulOverflow(int64_t a, int64_t b, int64_t& result) {
 
 /// @brief Get the source line number at the current execution point.
 /// @return The source line number, or 0 if not available.
-uint32_t BytecodeVM::currentSourceLine() const {
-    if (!fp_ || !fp_->func) return 0;
+uint32_t BytecodeVM::currentSourceLine() const
+{
+    if (!fp_ || !fp_->func)
+        return 0;
     return getSourceLine(fp_->func, fp_->pc);
 }
 
@@ -1407,9 +1566,12 @@ uint32_t BytecodeVM::currentSourceLine() const {
 ///
 /// Uses the function's line table to map bytecode offsets back to
 /// source locations for debugging and error reporting.
-uint32_t BytecodeVM::getSourceLine(const BytecodeFunction* func, uint32_t pc) {
-    if (!func || func->lineTable.empty()) return 0;
-    if (pc >= func->lineTable.size()) return 0;
+uint32_t BytecodeVM::getSourceLine(const BytecodeFunction *func, uint32_t pc)
+{
+    if (!func || func->lineTable.empty())
+        return 0;
+    if (pc >= func->lineTable.size())
+        return 0;
     return func->lineTable[pc];
 }
 
@@ -1422,7 +1584,8 @@ uint32_t BytecodeVM::getSourceLine(const BytecodeFunction* func, uint32_t pc) {
 ///
 /// Captures the current frame index and stack pointer so the VM can unwind
 /// to this state if a trap occurs within the protected region.
-void BytecodeVM::pushExceptionHandler(uint32_t handlerPc) {
+void BytecodeVM::pushExceptionHandler(uint32_t handlerPc)
+{
     BCExceptionHandler eh;
     eh.handlerPc = handlerPc;
     eh.frameIndex = static_cast<uint32_t>(callStack_.size() - 1);
@@ -1433,8 +1596,10 @@ void BytecodeVM::pushExceptionHandler(uint32_t handlerPc) {
 /// @brief Pop the most recently pushed exception handler.
 ///
 /// Called when exiting a protected region normally (no exception occurred).
-void BytecodeVM::popExceptionHandler() {
-    if (!ehStack_.empty()) {
+void BytecodeVM::popExceptionHandler()
+{
+    if (!ehStack_.empty())
+    {
         ehStack_.pop_back();
     }
 }
@@ -1447,30 +1612,45 @@ void BytecodeVM::popExceptionHandler() {
 /// If found, restores the stack to the handler's saved state, pushes
 /// error information onto the operand stack, and transfers control
 /// to the handler. Returns false if the trap propagates to the top level.
-bool BytecodeVM::dispatchTrap(TrapKind kind) {
+bool BytecodeVM::dispatchTrap(TrapKind kind)
+{
     // Search for a handler
-    while (!ehStack_.empty()) {
+    while (!ehStack_.empty())
+    {
         BCExceptionHandler eh = ehStack_.back();
         ehStack_.pop_back();
 
         // Unwind call stack to the frame where handler was registered
-        while (callStack_.size() > eh.frameIndex + 1) {
+        while (callStack_.size() > eh.frameIndex + 1)
+        {
             callStack_.pop_back();
         }
 
-        if (!callStack_.empty()) {
+        if (!callStack_.empty())
+        {
             fp_ = &callStack_.back();
             sp_ = eh.stackPointer;
 
             // Store trap info for err.get_* introspection
             trapKind_ = kind;
             // Map trap kind to BASIC error code
-            switch (kind) {
-                case TrapKind::DivisionByZero: currentErrorCode_ = 11; break;  // BASIC: Division by zero
-                case TrapKind::Overflow: currentErrorCode_ = 6; break;  // BASIC: Overflow
-                case TrapKind::IndexOutOfBounds: currentErrorCode_ = 9; break;  // BASIC: Subscript out of range
-                case TrapKind::NullPointer: currentErrorCode_ = 91; break;  // BASIC: Object variable not set
-                default: currentErrorCode_ = 0; break;
+            switch (kind)
+            {
+                case TrapKind::DivisionByZero:
+                    currentErrorCode_ = 11;
+                    break; // BASIC: Division by zero
+                case TrapKind::Overflow:
+                    currentErrorCode_ = 6;
+                    break; // BASIC: Overflow
+                case TrapKind::IndexOutOfBounds:
+                    currentErrorCode_ = 9;
+                    break; // BASIC: Subscript out of range
+                case TrapKind::NullPointer:
+                    currentErrorCode_ = 91;
+                    break; // BASIC: Object variable not set
+                default:
+                    currentErrorCode_ = 0;
+                    break;
             }
 
             // Push trap kind onto stack for handler to inspect (as error token)
@@ -1498,25 +1678,30 @@ bool BytecodeVM::dispatchTrap(TrapKind kind) {
 /// @brief Set a breakpoint at a specific location.
 /// @param funcName The name of the function containing the breakpoint.
 /// @param pc The program counter offset within the function.
-void BytecodeVM::setBreakpoint(const std::string& funcName, uint32_t pc) {
+void BytecodeVM::setBreakpoint(const std::string &funcName, uint32_t pc)
+{
     breakpoints_[funcName].insert(pc);
 }
 
 /// @brief Clear a breakpoint at a specific location.
 /// @param funcName The name of the function containing the breakpoint.
 /// @param pc The program counter offset to clear.
-void BytecodeVM::clearBreakpoint(const std::string& funcName, uint32_t pc) {
+void BytecodeVM::clearBreakpoint(const std::string &funcName, uint32_t pc)
+{
     auto it = breakpoints_.find(funcName);
-    if (it != breakpoints_.end()) {
+    if (it != breakpoints_.end())
+    {
         it->second.erase(pc);
-        if (it->second.empty()) {
+        if (it->second.empty())
+        {
             breakpoints_.erase(it);
         }
     }
 }
 
 /// @brief Clear all breakpoints in all functions.
-void BytecodeVM::clearAllBreakpoints() {
+void BytecodeVM::clearAllBreakpoints()
+{
     breakpoints_.clear();
 }
 
@@ -1525,21 +1710,26 @@ void BytecodeVM::clearAllBreakpoints() {
 ///
 /// Called at the start of each instruction. Invokes the debug callback
 /// if a breakpoint is hit or single-step mode is enabled.
-bool BytecodeVM::checkBreakpoint() {
-    if (!fp_ || !fp_->func) return false;
+bool BytecodeVM::checkBreakpoint()
+{
+    if (!fp_ || !fp_->func)
+        return false;
 
     bool isBreakpoint = false;
     auto it = breakpoints_.find(fp_->func->name);
-    if (it != breakpoints_.end()) {
+    if (it != breakpoints_.end())
+    {
         isBreakpoint = it->second.count(fp_->pc) > 0;
     }
 
     // Check if we should pause (breakpoint hit or single-stepping)
-    if (isBreakpoint || singleStep_) {
-        if (debugCallback_) {
+    if (isBreakpoint || singleStep_)
+    {
+        if (debugCallback_)
+        {
             return !debugCallback_(*this, fp_->func, fp_->pc, isBreakpoint);
         }
-        return true;  // Pause if no callback but breakpoint/step triggered
+        return true; // Pause if no callback but breakpoint/step triggered
     }
     return false;
 }
@@ -1550,9 +1740,10 @@ bool BytecodeVM::checkBreakpoint() {
 
 #if defined(__GNUC__) || defined(__clang__)
 
-void BytecodeVM::runThreaded() {
+void BytecodeVM::runThreaded()
+{
     // Dispatch table for computed goto
-    static void* dispatchTable[256] = {
+    static void *dispatchTable[256] = {
         // Stack Operations (0x00-0x0F)
         [0x00] = &&L_NOP,
         [0x01] = &&L_DUP,
@@ -1575,7 +1766,7 @@ void BytecodeVM::runThreaded() {
         // Constant Loading (0x20-0x2F)
         [0x20] = &&L_LOAD_I8,
         [0x21] = &&L_LOAD_I16,
-        [0x22] = &&L_DEFAULT,  // LOAD_I32 - not implemented
+        [0x22] = &&L_DEFAULT, // LOAD_I32 - not implemented
         [0x23] = &&L_LOAD_I64,
         [0x24] = &&L_LOAD_F64,
         [0x25] = &&L_LOAD_STR,
@@ -1659,14 +1850,14 @@ void BytecodeVM::runThreaded() {
         [0xA5] = &&L_LOAD_I64_MEM,
         [0xA6] = &&L_LOAD_F64_MEM,
         [0xA7] = &&L_LOAD_PTR_MEM,
-        [0xA8] = &&L_DEFAULT,  // LOAD_STR_MEM
+        [0xA8] = &&L_DEFAULT, // LOAD_STR_MEM
         [0xA9] = &&L_STORE_I8_MEM,
         [0xAA] = &&L_STORE_I16_MEM,
         [0xAB] = &&L_STORE_I32_MEM,
         [0xAC] = &&L_STORE_I64_MEM,
         [0xAD] = &&L_STORE_F64_MEM,
         [0xAE] = &&L_STORE_PTR_MEM,
-        [0xAF] = &&L_DEFAULT,  // STORE_STR_MEM
+        [0xAF] = &&L_DEFAULT, // STORE_STR_MEM
 
         // Control Flow (0xB0-0xBF)
         [0xB0] = &&L_JUMP,
@@ -1679,7 +1870,7 @@ void BytecodeVM::runThreaded() {
         [0xB7] = &&L_CALL_INDIRECT,
         [0xB8] = &&L_RETURN,
         [0xB9] = &&L_RETURN_VOID,
-        [0xBA] = &&L_DEFAULT,  // TAIL_CALL
+        [0xBA] = &&L_DEFAULT, // TAIL_CALL
 
         // Exception Handling (0xC0-0xCF)
         [0xC0] = &&L_EH_PUSH,
@@ -1698,9 +1889,12 @@ void BytecodeVM::runThreaded() {
 
     // Fill uninitialized entries with default handler (once only)
     static bool tableInitialized = false;
-    if (!tableInitialized) {
-        for (int i = 0; i < 256; i++) {
-            if (dispatchTable[i] == nullptr) {
+    if (!tableInitialized)
+    {
+        for (int i = 0; i < 256; i++)
+        {
+            if (dispatchTable[i] == nullptr)
+            {
                 dispatchTable[i] = &&L_DEFAULT;
             }
         }
@@ -1710,30 +1904,36 @@ void BytecodeVM::runThreaded() {
     state_ = VMState::Running;
 
     // Local copies for performance
-    const uint32_t* code = fp_->func->code.data();
+    const uint32_t *code = fp_->func->code.data();
     uint32_t pc = fp_->pc;
-    BCSlot* sp = sp_;
-    BCSlot* locals = fp_->locals;
+    BCSlot *sp = sp_;
+    BCSlot *locals = fp_->locals;
 
     uint32_t instr;
 
-    #define DISPATCH() do {                     \
-        instr = code[pc++];                     \
-        ++instrCount_;                          \
-        goto *dispatchTable[instr & 0xFF];      \
-    } while(0)
+#define DISPATCH()                                                                                 \
+    do                                                                                             \
+    {                                                                                              \
+        instr = code[pc++];                                                                        \
+        ++instrCount_;                                                                             \
+        goto *dispatchTable[instr & 0xFF];                                                         \
+    } while (0)
 
-    #define SYNC_STATE() do {                   \
-        fp_->pc = pc;                           \
-        sp_ = sp;                               \
-    } while(0)
+#define SYNC_STATE()                                                                               \
+    do                                                                                             \
+    {                                                                                              \
+        fp_->pc = pc;                                                                              \
+        sp_ = sp;                                                                                  \
+    } while (0)
 
-    #define RELOAD_STATE() do {                 \
-        code = fp_->func->code.data();          \
-        pc = fp_->pc;                           \
-        sp = sp_;                               \
-        locals = fp_->locals;                   \
-    } while(0)
+#define RELOAD_STATE()                                                                             \
+    do                                                                                             \
+    {                                                                                              \
+        code = fp_->func->code.data();                                                             \
+        pc = fp_->pc;                                                                              \
+        sp = sp_;                                                                                  \
+        locals = fp_->locals;                                                                      \
+    } while (0)
 
     DISPATCH();
 
@@ -1760,14 +1960,16 @@ L_POP2:
     sp -= 2;
     DISPATCH();
 
-L_SWAP: {
+L_SWAP:
+{
     BCSlot tmp = sp[-1];
     sp[-1] = sp[-2];
     sp[-2] = tmp;
     DISPATCH();
 }
 
-L_ROT3: {
+L_ROT3:
+{
     BCSlot tmp = sp[-1];
     sp[-1] = sp[-2];
     sp[-2] = sp[-3];
@@ -1821,7 +2023,8 @@ L_LOAD_F64:
     sp++;
     DISPATCH();
 
-L_LOAD_STR: {
+L_LOAD_STR:
+{
     uint16_t idx = decodeArg16(instr);
     // Use the cached rt_string object (not raw C string!)
     // The runtime expects rt_string (pointer to rt_string_impl struct)
@@ -1846,12 +2049,12 @@ L_LOAD_ONE:
     DISPATCH();
 
 L_LOAD_GLOBAL:
-    sp->ptr = nullptr;  // TODO
+    sp->ptr = nullptr; // TODO
     sp++;
     DISPATCH();
 
 L_STORE_GLOBAL:
-    sp--;  // TODO
+    sp--; // TODO
     DISPATCH();
 
     // Integer Arithmetic
@@ -1876,9 +2079,8 @@ L_SDIV_I64:
     DISPATCH();
 
 L_UDIV_I64:
-    sp[-2].i64 = static_cast<int64_t>(
-        static_cast<uint64_t>(sp[-2].i64) /
-        static_cast<uint64_t>(sp[-1].i64));
+    sp[-2].i64 =
+        static_cast<int64_t>(static_cast<uint64_t>(sp[-2].i64) / static_cast<uint64_t>(sp[-1].i64));
     sp--;
     DISPATCH();
 
@@ -1888,9 +2090,8 @@ L_SREM_I64:
     DISPATCH();
 
 L_UREM_I64:
-    sp[-2].i64 = static_cast<int64_t>(
-        static_cast<uint64_t>(sp[-2].i64) %
-        static_cast<uint64_t>(sp[-1].i64));
+    sp[-2].i64 =
+        static_cast<int64_t>(static_cast<uint64_t>(sp[-2].i64) % static_cast<uint64_t>(sp[-1].i64));
     sp--;
     DISPATCH();
 
@@ -1898,13 +2099,15 @@ L_NEG_I64:
     sp[-1].i64 = -sp[-1].i64;
     DISPATCH();
 
-L_ADD_I64_OVF: {
+L_ADD_I64_OVF:
+{
     // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
     uint8_t targetType = decodeArg8_0(instr);
     int64_t a = sp[-2].i64, b = sp[-1].i64;
     int64_t result = a + b;
     bool overflow = false;
-    switch (targetType) {
+    switch (targetType)
+    {
         case 1: // I16
             overflow = (result < INT16_MIN || result > INT16_MAX);
             break;
@@ -1915,7 +2118,8 @@ L_ADD_I64_OVF: {
             overflow = addOverflow(a, b, result);
             break;
     }
-    if (overflow) {
+    if (overflow)
+    {
         SYNC_STATE();
         trap(TrapKind::Overflow, "Overflow: integer overflow in add");
         return;
@@ -1925,13 +2129,15 @@ L_ADD_I64_OVF: {
     DISPATCH();
 }
 
-L_SUB_I64_OVF: {
+L_SUB_I64_OVF:
+{
     // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
     uint8_t targetType = decodeArg8_0(instr);
     int64_t a = sp[-2].i64, b = sp[-1].i64;
     int64_t result = a - b;
     bool overflow = false;
-    switch (targetType) {
+    switch (targetType)
+    {
         case 1: // I16
             overflow = (result < INT16_MIN || result > INT16_MAX);
             break;
@@ -1942,7 +2148,8 @@ L_SUB_I64_OVF: {
             overflow = subOverflow(a, b, result);
             break;
     }
-    if (overflow) {
+    if (overflow)
+    {
         SYNC_STATE();
         trap(TrapKind::Overflow, "Overflow: integer overflow in sub");
         return;
@@ -1952,13 +2159,15 @@ L_SUB_I64_OVF: {
     DISPATCH();
 }
 
-L_MUL_I64_OVF: {
+L_MUL_I64_OVF:
+{
     // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
     uint8_t targetType = decodeArg8_0(instr);
     int64_t a = sp[-2].i64, b = sp[-1].i64;
     int64_t result = a * b;
     bool overflow = false;
-    switch (targetType) {
+    switch (targetType)
+    {
         case 1: // I16
             overflow = (result < INT16_MIN || result > INT16_MAX);
             break;
@@ -1969,7 +2178,8 @@ L_MUL_I64_OVF: {
             overflow = mulOverflow(a, b, result);
             break;
     }
-    if (overflow) {
+    if (overflow)
+    {
         SYNC_STATE();
         trap(TrapKind::Overflow, "Overflow: integer overflow in mul");
         return;
@@ -1980,10 +2190,12 @@ L_MUL_I64_OVF: {
 }
 
 L_SDIV_I64_CHK:
-    if (sp[-1].i64 == 0) {
+    if (sp[-1].i64 == 0)
+    {
         SYNC_STATE();
         sp_ = sp;
-        if (!dispatchTrap(TrapKind::DivisionByZero)) {
+        if (!dispatchTrap(TrapKind::DivisionByZero))
+        {
             trap(TrapKind::DivisionByZero, "division by zero");
             return;
         }
@@ -1995,27 +2207,30 @@ L_SDIV_I64_CHK:
     DISPATCH();
 
 L_UDIV_I64_CHK:
-    if (sp[-1].i64 == 0) {
+    if (sp[-1].i64 == 0)
+    {
         SYNC_STATE();
         sp_ = sp;
-        if (!dispatchTrap(TrapKind::DivisionByZero)) {
+        if (!dispatchTrap(TrapKind::DivisionByZero))
+        {
             trap(TrapKind::DivisionByZero, "division by zero");
             return;
         }
         RELOAD_STATE();
         DISPATCH();
     }
-    sp[-2].i64 = static_cast<int64_t>(
-        static_cast<uint64_t>(sp[-2].i64) /
-        static_cast<uint64_t>(sp[-1].i64));
+    sp[-2].i64 =
+        static_cast<int64_t>(static_cast<uint64_t>(sp[-2].i64) / static_cast<uint64_t>(sp[-1].i64));
     sp--;
     DISPATCH();
 
 L_SREM_I64_CHK:
-    if (sp[-1].i64 == 0) {
+    if (sp[-1].i64 == 0)
+    {
         SYNC_STATE();
         sp_ = sp;
-        if (!dispatchTrap(TrapKind::DivisionByZero)) {
+        if (!dispatchTrap(TrapKind::DivisionByZero))
+        {
             trap(TrapKind::DivisionByZero, "division by zero");
             return;
         }
@@ -2027,27 +2242,30 @@ L_SREM_I64_CHK:
     DISPATCH();
 
 L_UREM_I64_CHK:
-    if (sp[-1].i64 == 0) {
+    if (sp[-1].i64 == 0)
+    {
         SYNC_STATE();
         sp_ = sp;
-        if (!dispatchTrap(TrapKind::DivisionByZero)) {
+        if (!dispatchTrap(TrapKind::DivisionByZero))
+        {
             trap(TrapKind::DivisionByZero, "division by zero");
             return;
         }
         RELOAD_STATE();
         DISPATCH();
     }
-    sp[-2].i64 = static_cast<int64_t>(
-        static_cast<uint64_t>(sp[-2].i64) %
-        static_cast<uint64_t>(sp[-1].i64));
+    sp[-2].i64 =
+        static_cast<int64_t>(static_cast<uint64_t>(sp[-2].i64) % static_cast<uint64_t>(sp[-1].i64));
     sp--;
     DISPATCH();
 
-L_IDX_CHK: {
+L_IDX_CHK:
+{
     int64_t hi = sp[-1].i64;
     int64_t lo = sp[-2].i64;
     int64_t idx = sp[-3].i64;
-    if (idx < lo || idx >= hi) {
+    if (idx < lo || idx >= hi)
+    {
         SYNC_STATE();
         trap(TrapKind::IndexOutOfBounds, "index out of bounds");
         return;
@@ -2107,8 +2325,7 @@ L_SHL_I64:
     DISPATCH();
 
 L_LSHR_I64:
-    sp[-2].i64 = static_cast<int64_t>(
-        static_cast<uint64_t>(sp[-2].i64) >> (sp[-1].i64 & 63));
+    sp[-2].i64 = static_cast<int64_t>(static_cast<uint64_t>(sp[-2].i64) >> (sp[-1].i64 & 63));
     sp--;
     DISPATCH();
 
@@ -2149,26 +2366,22 @@ L_CMP_SGE_I64:
     DISPATCH();
 
 L_CMP_ULT_I64:
-    sp[-2].i64 = (static_cast<uint64_t>(sp[-2].i64) <
-                  static_cast<uint64_t>(sp[-1].i64)) ? 1 : 0;
+    sp[-2].i64 = (static_cast<uint64_t>(sp[-2].i64) < static_cast<uint64_t>(sp[-1].i64)) ? 1 : 0;
     sp--;
     DISPATCH();
 
 L_CMP_ULE_I64:
-    sp[-2].i64 = (static_cast<uint64_t>(sp[-2].i64) <=
-                  static_cast<uint64_t>(sp[-1].i64)) ? 1 : 0;
+    sp[-2].i64 = (static_cast<uint64_t>(sp[-2].i64) <= static_cast<uint64_t>(sp[-1].i64)) ? 1 : 0;
     sp--;
     DISPATCH();
 
 L_CMP_UGT_I64:
-    sp[-2].i64 = (static_cast<uint64_t>(sp[-2].i64) >
-                  static_cast<uint64_t>(sp[-1].i64)) ? 1 : 0;
+    sp[-2].i64 = (static_cast<uint64_t>(sp[-2].i64) > static_cast<uint64_t>(sp[-1].i64)) ? 1 : 0;
     sp--;
     DISPATCH();
 
 L_CMP_UGE_I64:
-    sp[-2].i64 = (static_cast<uint64_t>(sp[-2].i64) >=
-                  static_cast<uint64_t>(sp[-1].i64)) ? 1 : 0;
+    sp[-2].i64 = (static_cast<uint64_t>(sp[-2].i64) >= static_cast<uint64_t>(sp[-1].i64)) ? 1 : 0;
     sp--;
     DISPATCH();
 
@@ -2217,19 +2430,21 @@ L_F64_TO_I64:
     DISPATCH();
 
 L_BOOL_TO_I64:
-    DISPATCH();  // No-op, already i64
+    DISPATCH(); // No-op, already i64
 
 L_I64_TO_BOOL:
     sp[-1].i64 = (sp[-1].i64 != 0) ? 1 : 0;
     DISPATCH();
 
-L_I64_NARROW_CHK: {
+L_I64_NARROW_CHK:
+{
     // Signed narrow conversion with overflow check
     // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
     uint8_t targetType = decodeArg8_0(instr);
     int64_t val = sp[-1].i64;
     bool inRange = true;
-    switch (targetType) {
+    switch (targetType)
+    {
         case 0: // I1 (boolean)
             inRange = (val == 0 || val == 1);
             break;
@@ -2242,7 +2457,8 @@ L_I64_NARROW_CHK: {
         default: // I64 - always in range
             break;
     }
-    if (!inRange) {
+    if (!inRange)
+    {
         SYNC_STATE();
         trap(TrapKind::Overflow, "Overflow: signed narrow conversion overflow");
         return;
@@ -2251,13 +2467,15 @@ L_I64_NARROW_CHK: {
     DISPATCH();
 }
 
-L_U64_NARROW_CHK: {
+L_U64_NARROW_CHK:
+{
     // Unsigned narrow conversion with overflow check
     // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
     uint8_t targetType = decodeArg8_0(instr);
     uint64_t val = static_cast<uint64_t>(sp[-1].i64);
     bool inRange = true;
-    switch (targetType) {
+    switch (targetType)
+    {
         case 0: // I1 (boolean)
             inRange = (val <= 1);
             break;
@@ -2270,7 +2488,8 @@ L_U64_NARROW_CHK: {
         default: // I64 - always in range
             break;
     }
-    if (!inRange) {
+    if (!inRange)
+    {
         SYNC_STATE();
         trap(TrapKind::Overflow, "Overflow: unsigned narrow conversion overflow");
         return;
@@ -2279,11 +2498,13 @@ L_U64_NARROW_CHK: {
     DISPATCH();
 }
 
-L_F64_TO_I64_CHK: {
+L_F64_TO_I64_CHK:
+{
     // Float to signed int64 with overflow check and round-to-even
     double val = sp[-1].f64;
     // Check for NaN
-    if (val != val) {
+    if (val != val)
+    {
         SYNC_STATE();
         trap(TrapKind::InvalidCast, "InvalidCast: float to int conversion of NaN");
         return;
@@ -2294,7 +2515,8 @@ L_F64_TO_I64_CHK: {
     // Note: comparing doubles, so we use slightly wider bounds
     constexpr double maxI64 = 9223372036854775807.0;  // INT64_MAX as double
     constexpr double minI64 = -9223372036854775808.0; // INT64_MIN as double
-    if (rounded > maxI64 || rounded < minI64) {
+    if (rounded > maxI64 || rounded < minI64)
+    {
         SYNC_STATE();
         trap(TrapKind::InvalidCast, "InvalidCast: float to int conversion overflow");
         return;
@@ -2303,11 +2525,13 @@ L_F64_TO_I64_CHK: {
     DISPATCH();
 }
 
-L_F64_TO_U64_CHK: {
+L_F64_TO_U64_CHK:
+{
     // Float to unsigned int64 with overflow check and round-to-even
     double val = sp[-1].f64;
     // Check for NaN
-    if (val != val) {
+    if (val != val)
+    {
         SYNC_STATE();
         trap(TrapKind::InvalidCast, "InvalidCast: float to uint conversion of NaN");
         return;
@@ -2315,8 +2539,9 @@ L_F64_TO_U64_CHK: {
     // Round to nearest, ties to even (banker's rounding)
     double rounded = std::rint(val);
     // Check for out of range (0 to UINT64_MAX)
-    constexpr double maxU64 = 18446744073709551615.0;  // UINT64_MAX as double
-    if (rounded < 0.0 || rounded > maxU64) {
+    constexpr double maxU64 = 18446744073709551615.0; // UINT64_MAX as double
+    if (rounded < 0.0 || rounded > maxU64)
+    {
         SYNC_STATE();
         trap(TrapKind::InvalidCast, "InvalidCast: float to uint conversion overflow");
         return;
@@ -2326,116 +2551,132 @@ L_F64_TO_U64_CHK: {
 }
 
     // Memory Operations
-L_ALLOCA: {
+L_ALLOCA:
+{
     // Allocate from the separate alloca buffer (not operand stack)
     int64_t size = (--sp)->i64;
     // Align to 8 bytes
     size = (size + 7) & ~7;
 
     // Check for alloca overflow
-    if (allocaTop_ + static_cast<size_t>(size) > allocaBuffer_.size()) {
+    if (allocaTop_ + static_cast<size_t>(size) > allocaBuffer_.size())
+    {
         size_t newSize = allocaBuffer_.size() * 2;
-        if (newSize > 1024 * 1024 || allocaTop_ + static_cast<size_t>(size) > newSize) {
+        if (newSize > 1024 * 1024 || allocaTop_ + static_cast<size_t>(size) > newSize)
+        {
             trap(TrapKind::StackOverflow, "alloca stack overflow");
             return;
         }
         allocaBuffer_.resize(newSize);
     }
 
-    void* ptr = allocaBuffer_.data() + allocaTop_;
+    void *ptr = allocaBuffer_.data() + allocaTop_;
     allocaTop_ += static_cast<size_t>(size);
     sp->ptr = ptr;
     sp++;
     DISPATCH();
 }
 
-L_GEP: {
+L_GEP:
+{
     int64_t offset = (--sp)->i64;
-    uint8_t* ptr = static_cast<uint8_t*>(sp[-1].ptr);
+    uint8_t *ptr = static_cast<uint8_t *>(sp[-1].ptr);
     sp[-1].ptr = ptr + offset;
     DISPATCH();
 }
 
-L_LOAD_I8_MEM: {
+L_LOAD_I8_MEM:
+{
     int8_t val;
     std::memcpy(&val, sp[-1].ptr, sizeof(val));
     sp[-1].i64 = val;
     DISPATCH();
 }
 
-L_LOAD_I16_MEM: {
+L_LOAD_I16_MEM:
+{
     int16_t val;
     std::memcpy(&val, sp[-1].ptr, sizeof(val));
     sp[-1].i64 = val;
     DISPATCH();
 }
 
-L_LOAD_I32_MEM: {
+L_LOAD_I32_MEM:
+{
     int32_t val;
     std::memcpy(&val, sp[-1].ptr, sizeof(val));
     sp[-1].i64 = val;
     DISPATCH();
 }
 
-L_LOAD_I64_MEM: {
+L_LOAD_I64_MEM:
+{
     int64_t val;
     std::memcpy(&val, sp[-1].ptr, sizeof(val));
     sp[-1].i64 = val;
     DISPATCH();
 }
 
-L_LOAD_F64_MEM: {
+L_LOAD_F64_MEM:
+{
     double val;
     std::memcpy(&val, sp[-1].ptr, sizeof(val));
     sp[-1].f64 = val;
     DISPATCH();
 }
 
-L_LOAD_PTR_MEM: {
-    void* val;
+L_LOAD_PTR_MEM:
+{
+    void *val;
     std::memcpy(&val, sp[-1].ptr, sizeof(val));
     sp[-1].ptr = val;
     DISPATCH();
 }
 
-L_STORE_I8_MEM: {
+L_STORE_I8_MEM:
+{
     int8_t val = static_cast<int8_t>((--sp)->i64);
-    void* ptr = (--sp)->ptr;
+    void *ptr = (--sp)->ptr;
     std::memcpy(ptr, &val, sizeof(val));
     DISPATCH();
 }
 
-L_STORE_I16_MEM: {
+L_STORE_I16_MEM:
+{
     int16_t val = static_cast<int16_t>((--sp)->i64);
-    void* ptr = (--sp)->ptr;
+    void *ptr = (--sp)->ptr;
     std::memcpy(ptr, &val, sizeof(val));
     DISPATCH();
 }
 
-L_STORE_I32_MEM: {
+L_STORE_I32_MEM:
+{
     int32_t val = static_cast<int32_t>((--sp)->i64);
-    void* ptr = (--sp)->ptr;
+    void *ptr = (--sp)->ptr;
     std::memcpy(ptr, &val, sizeof(val));
     DISPATCH();
 }
 
-L_STORE_I64_MEM: {
+L_STORE_I64_MEM:
+{
     int64_t val = (--sp)->i64;
-    void* ptr = (--sp)->ptr;
+    void *ptr = (--sp)->ptr;
     std::memcpy(ptr, &val, sizeof(val));
     DISPATCH();
 }
 
-L_STORE_F64_MEM: {
+L_STORE_F64_MEM:
+{
     double val = (--sp)->f64;
-    void* ptr = (--sp)->ptr;
+    void *ptr = (--sp)->ptr;
     std::memcpy(ptr, &val, sizeof(val));
     DISPATCH();
 }
 
-L_STORE_PTR_MEM: {
-    void* val = (--sp)->ptr;
-    void* ptr = (--sp)->ptr;
+L_STORE_PTR_MEM:
+{
+    void *val = (--sp)->ptr;
+    void *ptr = (--sp)->ptr;
     std::memcpy(ptr, &val, sizeof(val));
     DISPATCH();
 }
@@ -2446,13 +2687,15 @@ L_JUMP:
     DISPATCH();
 
 L_JUMP_IF_TRUE:
-    if ((--sp)->i64 != 0) {
+    if ((--sp)->i64 != 0)
+    {
         pc += decodeArgI16(instr);
     }
     DISPATCH();
 
 L_JUMP_IF_FALSE:
-    if ((--sp)->i64 == 0) {
+    if ((--sp)->i64 == 0)
+    {
         pc += decodeArgI16(instr);
     }
     DISPATCH();
@@ -2461,7 +2704,8 @@ L_JUMP_LONG:
     pc += decodeArgI24(instr);
     DISPATCH();
 
-L_SWITCH: {
+L_SWITCH:
+{
     // Format: SWITCH [numCases:u32] [defaultOffset:i32] [caseVal:i32 caseOffset:i32]...
     // Pop scrutinee from stack
     int32_t scrutinee = static_cast<int32_t>((--sp)->i64);
@@ -2474,11 +2718,13 @@ L_SWITCH: {
 
     // Search for matching case
     bool found = false;
-    for (uint32_t i = 0; i < numCases; ++i) {
+    for (uint32_t i = 0; i < numCases; ++i)
+    {
         int32_t caseVal = static_cast<int32_t>(code[pc++]);
         uint32_t caseOffsetPos = pc++;
 
-        if (caseVal == scrutinee) {
+        if (caseVal == scrutinee)
+        {
             // Found matching case - jump to its target
             // Offset is relative to the offset word position (same as EH_PUSH)
             int32_t caseOffset = static_cast<int32_t>(code[caseOffsetPos]);
@@ -2488,7 +2734,8 @@ L_SWITCH: {
         }
     }
 
-    if (!found) {
+    if (!found)
+    {
         // No match - use default offset
         int32_t defaultOffset = static_cast<int32_t>(code[defaultOffsetPos]);
         pc = defaultOffsetPos + defaultOffset;
@@ -2497,9 +2744,11 @@ L_SWITCH: {
     DISPATCH();
 }
 
-L_CALL: {
+L_CALL:
+{
     uint16_t funcIdx = decodeArg16(instr);
-    if (funcIdx >= module_->functions.size()) {
+    if (funcIdx >= module_->functions.size())
+    {
         SYNC_STATE();
         trap(TrapKind::RuntimeError, "Invalid function index");
         return;
@@ -2512,34 +2761,39 @@ L_CALL: {
     DISPATCH();
 }
 
-L_CALL_NATIVE: {
+L_CALL_NATIVE:
+{
     uint8_t nativeIdx = decodeArg8_0(instr);
     uint8_t argCount = decodeArg8_1(instr);
 
-    if (nativeIdx >= module_->nativeFuncs.size()) {
+    if (nativeIdx >= module_->nativeFuncs.size())
+    {
         SYNC_STATE();
         trap(TrapKind::RuntimeError, "Invalid native function index");
         return;
     }
 
-    const NativeFuncRef& ref = module_->nativeFuncs[nativeIdx];
-    BCSlot* args = sp - argCount;
+    const NativeFuncRef &ref = module_->nativeFuncs[nativeIdx];
+    BCSlot *args = sp - argCount;
     BCSlot result{};
 
-    if (runtimeBridgeEnabled_) {
+    if (runtimeBridgeEnabled_)
+    {
         // Use RuntimeBridge for native function calls
-        il::vm::Slot* vmArgs = reinterpret_cast<il::vm::Slot*>(args);
+        il::vm::Slot *vmArgs = reinterpret_cast<il::vm::Slot *>(args);
         std::vector<il::vm::Slot> argVec(vmArgs, vmArgs + argCount);
 
         il::vm::RuntimeCallContext ctx;
-        il::vm::Slot vmResult = il::vm::RuntimeBridge::call(
-            ctx, ref.name, argVec,
-            il::support::SourceLoc{}, "", "");
+        il::vm::Slot vmResult =
+            il::vm::RuntimeBridge::call(ctx, ref.name, argVec, il::support::SourceLoc{}, "", "");
 
         result.i64 = vmResult.i64;
-    } else {
+    }
+    else
+    {
         auto it = nativeHandlers_.find(ref.name);
-        if (it == nativeHandlers_.end()) {
+        if (it == nativeHandlers_.end())
+        {
             SYNC_STATE();
             trap(TrapKind::RuntimeError, "Native function not registered");
             return;
@@ -2548,29 +2802,33 @@ L_CALL_NATIVE: {
     }
 
     sp -= argCount;
-    if (ref.hasReturn) {
+    if (ref.hasReturn)
+    {
         *sp++ = result;
     }
     DISPATCH();
 }
 
-L_CALL_INDIRECT: {
+L_CALL_INDIRECT:
+{
     // Indirect call through function pointer
     // Stack layout: [callee][arg0][arg1]...[argN] <- sp
     uint8_t argCount = decodeArg8_0(instr);
 
     // Get callee from below the arguments
-    BCSlot* callee = sp - argCount - 1;
-    BCSlot* args = sp - argCount;
+    BCSlot *callee = sp - argCount - 1;
+    BCSlot *args = sp - argCount;
 
     // Check if callee is a tagged function pointer (high bit set)
     constexpr uint64_t kFuncPtrTag = 0x8000000000000000ULL;
     uint64_t calleeVal = static_cast<uint64_t>(callee->i64);
 
-    if (calleeVal & kFuncPtrTag) {
+    if (calleeVal & kFuncPtrTag)
+    {
         // Tagged function index - extract and call
         uint32_t funcIdx = static_cast<uint32_t>(calleeVal & 0x7FFFFFFFULL);
-        if (funcIdx >= module_->functions.size()) {
+        if (funcIdx >= module_->functions.size())
+        {
             SYNC_STATE();
             trap(TrapKind::RuntimeError, "Invalid indirect function index");
             return;
@@ -2578,22 +2836,27 @@ L_CALL_INDIRECT: {
 
         // Shift arguments down to overwrite the callee slot
         // This is needed because call() expects args at the top of stack
-        for (int i = 0; i < argCount; ++i) {
+        for (int i = 0; i < argCount; ++i)
+        {
             callee[i] = args[i];
         }
-        sp = callee + argCount;  // Adjust stack pointer
+        sp = callee + argCount; // Adjust stack pointer
 
         SYNC_STATE();
         sp_ = sp;
         fp_->pc = pc;
         call(&module_->functions[funcIdx]);
         RELOAD_STATE();
-    } else if (calleeVal == 0) {
+    }
+    else if (calleeVal == 0)
+    {
         // Null function pointer
         SYNC_STATE();
         trap(TrapKind::NullPointer, "Null indirect callee");
         return;
-    } else {
+    }
+    else
+    {
         // Unknown pointer format - try runtime bridge
         // (This handles cases where the function pointer came from runtime)
         SYNC_STATE();
@@ -2603,11 +2866,13 @@ L_CALL_INDIRECT: {
     DISPATCH();
 }
 
-L_RETURN: {
+L_RETURN:
+{
     BCSlot result = *--sp;
     SYNC_STATE();
     sp_ = sp;
-    if (!popFrame()) {
+    if (!popFrame())
+    {
         *sp_++ = result;
         state_ = VMState::Halted;
         return;
@@ -2617,10 +2882,12 @@ L_RETURN: {
     DISPATCH();
 }
 
-L_RETURN_VOID: {
+L_RETURN_VOID:
+{
     SYNC_STATE();
     sp_ = sp;
-    if (!popFrame()) {
+    if (!popFrame())
+    {
         state_ = VMState::Halted;
         return;
     }
@@ -2628,11 +2895,12 @@ L_RETURN_VOID: {
     DISPATCH();
 }
 
-//==========================================================================
-// Exception Handling
-//==========================================================================
+    //==========================================================================
+    // Exception Handling
+    //==========================================================================
 
-L_EH_PUSH: {
+L_EH_PUSH:
+{
     // Handler offset is in the next code word (raw i32 offset)
     int32_t offset = static_cast<int32_t>(code[pc++]);
     uint32_t handlerPc = static_cast<uint32_t>(static_cast<int32_t>(pc - 1) + offset);
@@ -2642,19 +2910,22 @@ L_EH_PUSH: {
     DISPATCH();
 }
 
-L_EH_POP: {
+L_EH_POP:
+{
     SYNC_STATE();
     popExceptionHandler();
     DISPATCH();
 }
 
-L_EH_ENTRY: {
+L_EH_ENTRY:
+{
     // Handler entry marker - no-op
     // The error and resume token are already on the stack from dispatchTrap
     DISPATCH();
 }
 
-L_ERR_GET_KIND: {
+L_ERR_GET_KIND:
+{
     // Get trap kind from error object on stack (or use current trap kind)
     // If there's an operand, it's on the stack; otherwise use current
     // For simplicity, always return the current trap kind
@@ -2663,37 +2934,41 @@ L_ERR_GET_KIND: {
     DISPATCH();
 }
 
-L_ERR_GET_CODE: {
+L_ERR_GET_CODE:
+{
     // Get error code - maps trap kind to BASIC error code
     sp->i64 = static_cast<int64_t>(currentErrorCode_);
     sp++;
     DISPATCH();
 }
 
-L_ERR_GET_IP: {
+L_ERR_GET_IP:
+{
     // Get fault instruction pointer - return current PC
     sp->i64 = static_cast<int64_t>(fp_->pc);
     sp++;
     DISPATCH();
 }
 
-L_ERR_GET_LINE: {
+L_ERR_GET_LINE:
+{
     // Get source line - we don't track this in bytecode VM, return -1
     sp->i64 = -1;
     sp++;
     DISPATCH();
 }
 
-L_TRAP: {
+L_TRAP:
+{
     uint8_t kind = decodeArg8_0(instr);
     TrapKind trapKind = static_cast<TrapKind>(kind);
     SYNC_STATE();
     sp_ = sp;
-    if (!dispatchTrap(trapKind)) {
+    if (!dispatchTrap(trapKind))
+    {
         // Include trap kind name in message
-        const char* msg = (trapKind == TrapKind::Overflow)
-            ? "Overflow: unhandled trap"
-            : "Trap: unhandled trap";
+        const char *msg =
+            (trapKind == TrapKind::Overflow) ? "Overflow: unhandled trap" : "Trap: unhandled trap";
         trap(trapKind, msg);
         return;
     }
@@ -2701,12 +2976,14 @@ L_TRAP: {
     DISPATCH();
 }
 
-L_TRAP_FROM_ERR: {
+L_TRAP_FROM_ERR:
+{
     int64_t errCode = (--sp)->i64;
     TrapKind trapKind = static_cast<TrapKind>(errCode);
     SYNC_STATE();
     sp_ = sp;
-    if (!dispatchTrap(trapKind)) {
+    if (!dispatchTrap(trapKind))
+    {
         trap(trapKind, "Unhandled trap from error");
         return;
     }
@@ -2714,17 +2991,20 @@ L_TRAP_FROM_ERR: {
     DISPATCH();
 }
 
-L_RESUME_SAME: {
+L_RESUME_SAME:
+{
     // Resume at fault point - for now just continue
     DISPATCH();
 }
 
-L_RESUME_NEXT: {
+L_RESUME_NEXT:
+{
     // Resume after fault - for now just continue
     DISPATCH();
 }
 
-L_RESUME_LABEL: {
+L_RESUME_LABEL:
+{
     // Target offset is in the next code word (raw i32 offset)
     int32_t offset = static_cast<int32_t>(code[pc++]);
     pc = static_cast<uint32_t>(static_cast<int32_t>(pc - 1) + offset);
@@ -2736,9 +3016,9 @@ L_DEFAULT:
     trap(TrapKind::InvalidOpcode, "Unknown opcode");
     return;
 
-    #undef DISPATCH
-    #undef SYNC_STATE
-    #undef RELOAD_STATE
+#undef DISPATCH
+#undef SYNC_STATE
+#undef RELOAD_STATE
 }
 
 #endif // __GNUC__ || __clang__
@@ -2747,20 +3027,24 @@ L_DEFAULT:
 // Bytecode VM Thread.Start Handler
 //===----------------------------------------------------------------------===//
 
-namespace {
+namespace
+{
 
 /// Payload for spawning a new bytecode VM thread.
-struct BytecodeThreadPayload {
-    const BytecodeModule* module;
-    const BytecodeFunction* entry;
-    void* arg;
+struct BytecodeThreadPayload
+{
+    const BytecodeModule *module;
+    const BytecodeFunction *entry;
+    void *arg;
     bool runtimeBridgeEnabled;
 };
 
 /// Thread entry trampoline for bytecode VM threads.
-extern "C" void bytecode_thread_entry_trampoline(void* raw) {
-    BytecodeThreadPayload* payload = static_cast<BytecodeThreadPayload*>(raw);
-    if (!payload || !payload->module || !payload->entry) {
+extern "C" void bytecode_thread_entry_trampoline(void *raw)
+{
+    BytecodeThreadPayload *payload = static_cast<BytecodeThreadPayload *>(raw);
+    if (!payload || !payload->module || !payload->entry)
+    {
         delete payload;
         rt_abort("Thread.Start: invalid bytecode entry");
         return;
@@ -2773,7 +3057,8 @@ extern "C" void bytecode_thread_entry_trampoline(void* raw) {
 
     // Set up argument
     std::vector<BCSlot> args;
-    if (payload->entry->numParams > 0) {
+    if (payload->entry->numParams > 0)
+    {
         BCSlot argSlot{};
         argSlot.ptr = payload->arg;
         args.push_back(argSlot);
@@ -2787,26 +3072,32 @@ extern "C" void bytecode_thread_entry_trampoline(void* raw) {
 
 /// Resolve a bytecode function by pointer value.
 /// The bytecode VM uses tagged function pointers: high bit set, lower bits are function index.
-static const BytecodeFunction* resolveBytecodeEntry(const BytecodeModule* module, void* entry) {
-    if (!entry || !module) return nullptr;
+static const BytecodeFunction *resolveBytecodeEntry(const BytecodeModule *module, void *entry)
+{
+    if (!entry || !module)
+        return nullptr;
 
     // Check if this is a tagged function pointer (high bit set)
     constexpr uint64_t kFuncPtrTag = 0x8000000000000000ULL;
     uint64_t val = reinterpret_cast<uint64_t>(entry);
 
-    if (val & kFuncPtrTag) {
+    if (val & kFuncPtrTag)
+    {
         // Extract function index from tagged pointer
         uint64_t funcIdx = val & ~kFuncPtrTag;
-        if (funcIdx < module->functions.size()) {
+        if (funcIdx < module->functions.size())
+        {
             return &module->functions[funcIdx];
         }
         return nullptr;
     }
 
     // Fallback: try to match as a raw pointer (for compatibility)
-    const auto* candidate = static_cast<const BytecodeFunction*>(entry);
-    for (const auto& fn : module->functions) {
-        if (&fn == candidate) {
+    const auto *candidate = static_cast<const BytecodeFunction *>(entry);
+    for (const auto &fn : module->functions)
+    {
+        if (&fn == candidate)
+        {
             return &fn;
         }
     }
@@ -2814,124 +3105,143 @@ static const BytecodeFunction* resolveBytecodeEntry(const BytecodeModule* module
 }
 
 /// Payload for standard VM thread spawning (duplicate of ThreadsRuntime.cpp)
-struct VmThreadStartPayload {
-    const il::core::Module* module = nullptr;
+struct VmThreadStartPayload
+{
+    const il::core::Module *module = nullptr;
     std::shared_ptr<il::vm::VM::ProgramState> program;
-    const il::core::Function* entry = nullptr;
-    void* arg = nullptr;
+    const il::core::Function *entry = nullptr;
+    void *arg = nullptr;
 };
 
 /// Standard VM thread entry trampoline
-extern "C" void vm_thread_entry_trampoline_bc(void* raw) {
-    VmThreadStartPayload* payload = static_cast<VmThreadStartPayload*>(raw);
-    if (!payload || !payload->module || !payload->entry) {
+extern "C" void vm_thread_entry_trampoline_bc(void *raw)
+{
+    VmThreadStartPayload *payload = static_cast<VmThreadStartPayload *>(raw);
+    if (!payload || !payload->module || !payload->entry)
+    {
         delete payload;
         rt_abort("Thread.Start: invalid entry");
         return;
     }
 
-    try {
+    try
+    {
         il::vm::VM vm(*payload->module, payload->program);
         il::support::SmallVector<il::vm::Slot, 2> args;
-        if (payload->entry->params.size() == 1) {
+        if (payload->entry->params.size() == 1)
+        {
             il::vm::Slot s{};
             s.ptr = payload->arg;
             args.push_back(s);
         }
         il::vm::detail::VMAccess::callFunction(vm, *payload->entry, args);
-    } catch (...) {
+    }
+    catch (...)
+    {
         rt_abort("Thread.Start: unhandled exception");
     }
     delete payload;
 }
 
 /// Resolve IL function pointer to module function
-static const il::core::Function* resolveILEntry(const il::core::Module& module, void* entry) {
-    if (!entry) return nullptr;
-    const auto* candidate = static_cast<const il::core::Function*>(entry);
-    for (const auto& fn : module.functions) {
-        if (&fn == candidate) return &fn;
+static const il::core::Function *resolveILEntry(const il::core::Module &module, void *entry)
+{
+    if (!entry)
+        return nullptr;
+    const auto *candidate = static_cast<const il::core::Function *>(entry);
+    for (const auto &fn : module.functions)
+    {
+        if (&fn == candidate)
+            return &fn;
     }
     return nullptr;
 }
 
 /// Validate thread entry signature for standard VM
-static void validateEntrySignature(const il::core::Function& fn) {
+static void validateEntrySignature(const il::core::Function &fn)
+{
     using Kind = il::core::Type::Kind;
     if (fn.retType.kind != Kind::Void)
         rt_trap("Thread.Start: invalid entry signature");
-    if (fn.params.empty()) return;
-    if (fn.params.size() == 1 && fn.params[0].type.kind == Kind::Ptr) return;
+    if (fn.params.empty())
+        return;
+    if (fn.params.size() == 1 && fn.params[0].type.kind == Kind::Ptr)
+        return;
     rt_trap("Thread.Start: invalid entry signature");
 }
 
 /// Handler for Viper.Threads.Thread.Start - handles both standard VM and BytecodeVM.
-static void unified_thread_start_handler(void** args, void* result) {
-    void* entry = nullptr;
-    void* arg = nullptr;
+static void unified_thread_start_handler(void **args, void *result)
+{
+    void *entry = nullptr;
+    void *arg = nullptr;
     if (args && args[0])
-        entry = *reinterpret_cast<void**>(args[0]);
+        entry = *reinterpret_cast<void **>(args[0]);
     if (args && args[1])
-        arg = *reinterpret_cast<void**>(args[1]);
+        arg = *reinterpret_cast<void **>(args[1]);
 
     if (!entry)
         rt_trap("Thread.Start: null entry");
 
     // Check for standard VM first
-    il::vm::VM* stdVm = il::vm::activeVMInstance();
-    if (stdVm) {
+    il::vm::VM *stdVm = il::vm::activeVMInstance();
+    if (stdVm)
+    {
         std::shared_ptr<il::vm::VM::ProgramState> program = stdVm->programState();
         if (!program)
             rt_trap("Thread.Start: invalid runtime state");
 
-        const il::core::Module& module = stdVm->module();
-        const il::core::Function* entryFn = resolveILEntry(module, entry);
+        const il::core::Module &module = stdVm->module();
+        const il::core::Function *entryFn = resolveILEntry(module, entry);
         if (!entryFn)
             rt_trap("Thread.Start: invalid entry");
         validateEntrySignature(*entryFn);
 
-        auto* payload = new VmThreadStartPayload{&module, std::move(program), entryFn, arg};
-        void* thread = rt_thread_start(
-            reinterpret_cast<void*>(&vm_thread_entry_trampoline_bc), payload);
+        auto *payload = new VmThreadStartPayload{&module, std::move(program), entryFn, arg};
+        void *thread =
+            rt_thread_start(reinterpret_cast<void *>(&vm_thread_entry_trampoline_bc), payload);
         if (result)
-            *reinterpret_cast<void**>(result) = thread;
+            *reinterpret_cast<void **>(result) = thread;
         return;
     }
 
     // Check for BytecodeVM
-    BytecodeVM* bcVm = activeBytecodeVMInstance();
-    const BytecodeModule* bcModule = activeBytecodeModule();
-    if (bcVm && bcModule) {
-        const BytecodeFunction* entryFn = resolveBytecodeEntry(bcModule, entry);
+    BytecodeVM *bcVm = activeBytecodeVMInstance();
+    const BytecodeModule *bcModule = activeBytecodeModule();
+    if (bcVm && bcModule)
+    {
+        const BytecodeFunction *entryFn = resolveBytecodeEntry(bcModule, entry);
         if (!entryFn)
             rt_trap("Thread.Start: invalid bytecode entry");
 
-        auto* payload = new BytecodeThreadPayload{
-            bcModule, entryFn, arg, bcVm->runtimeBridgeEnabled()};
-        void* thread = rt_thread_start(
-            reinterpret_cast<void*>(&bytecode_thread_entry_trampoline), payload);
+        auto *payload =
+            new BytecodeThreadPayload{bcModule, entryFn, arg, bcVm->runtimeBridgeEnabled()};
+        void *thread =
+            rt_thread_start(reinterpret_cast<void *>(&bytecode_thread_entry_trampoline), payload);
         if (result)
-            *reinterpret_cast<void**>(result) = thread;
+            *reinterpret_cast<void **>(result) = thread;
         return;
     }
 
     // No VM active - direct call (native code path)
-    void* thread = rt_thread_start(entry, arg);
+    void *thread = rt_thread_start(entry, arg);
     if (result)
-        *reinterpret_cast<void**>(result) = thread;
+        *reinterpret_cast<void **>(result) = thread;
 }
 
 /// Static initializer to register the unified Thread.Start handler.
 /// This overrides the standard VM handler when BytecodeVM is linked.
-struct UnifiedThreadHandlerRegistrar {
-    UnifiedThreadHandlerRegistrar() {
+struct UnifiedThreadHandlerRegistrar
+{
+    UnifiedThreadHandlerRegistrar()
+    {
         using il::runtime::signatures::make_signature;
         using il::runtime::signatures::SigParam;
 
         il::vm::ExternDesc ext;
         ext.name = "Viper.Threads.Thread.Start";
         ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
-        ext.fn = reinterpret_cast<void*>(&unified_thread_start_handler);
+        ext.fn = reinterpret_cast<void *>(&unified_thread_start_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
 };

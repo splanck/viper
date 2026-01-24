@@ -22,8 +22,7 @@
  * inode from disk as needed to perform I/O operations and releases it
  * afterwards.
  */
-namespace kobj
-{
+namespace kobj {
 
 /** @name Open flags
  *  @brief File open flags used by the handle-based API.
@@ -33,8 +32,7 @@ namespace kobj
  *  share constants between the descriptor-based and handle-based APIs.
  *  @{
  */
-namespace file_flags
-{
+namespace file_flags {
 constexpr u32 O_RDONLY = 0x0000;
 constexpr u32 O_WRONLY = 0x0001;
 constexpr u32 O_RDWR = 0x0002;
@@ -52,8 +50,7 @@ constexpr u32 O_APPEND = 0x0400;
  *  These values are designed to match conventional POSIX semantics.
  *  @{
  */
-namespace seek_origin
-{
+namespace seek_origin {
 constexpr i32 SET = 0; // Absolute position
 constexpr i32 CUR = 1; // Relative to current
 constexpr i32 END = 2; // Relative to end
@@ -74,8 +71,7 @@ constexpr i32 END = 2; // Relative to end
  * - Read operations are rejected when opened write-only.
  * - Write operations are rejected when opened read-only.
  */
-class FileObject : public Object
-{
+class FileObject : public Object {
   public:
     static constexpr cap::Kind KIND = cap::Kind::File;
 
@@ -97,8 +93,7 @@ class FileObject : public Object
      * This value is used internally when reading/writing file data and is not
      * intended as a stable user-space identifier.
      */
-    u64 inode_num() const
-    {
+    u64 inode_num() const {
         return inode_num_;
     }
 
@@ -108,8 +103,7 @@ class FileObject : public Object
      * @details
      * The position is updated by reads/writes/seeks.
      */
-    u64 offset() const
-    {
+    u64 offset() const {
         return offset_;
     }
 
@@ -118,8 +112,7 @@ class FileObject : public Object
      *
      * @param off New offset value in bytes.
      */
-    void set_offset(u64 off)
-    {
+    void set_offset(u64 off) {
         offset_ = off;
     }
 
@@ -129,8 +122,7 @@ class FileObject : public Object
      * @details
      * The flags influence access checks and initial offset behavior (append).
      */
-    u32 flags() const
-    {
+    u32 flags() const {
         return flags_;
     }
 
@@ -184,8 +176,7 @@ class FileObject : public Object
     /**
      * @brief Return whether the file was opened with read permission.
      */
-    bool can_read() const
-    {
+    bool can_read() const {
         u32 access = flags_ & 0x3;
         return access != file_flags::O_WRONLY;
     }
@@ -193,17 +184,14 @@ class FileObject : public Object
     /**
      * @brief Return whether the file was opened with write permission.
      */
-    bool can_write() const
-    {
+    bool can_write() const {
         u32 access = flags_ & 0x3;
         return access != file_flags::O_RDONLY;
     }
 
   private:
     FileObject(u64 inode_num, u32 flags)
-        : Object(KIND), inode_num_(inode_num), offset_(0), flags_(flags)
-    {
-    }
+        : Object(KIND), inode_num_(inode_num), offset_(0), flags_(flags) {}
 
     u64 inode_num_; // Inode number on disk
     u64 offset_;    // Current read/write position

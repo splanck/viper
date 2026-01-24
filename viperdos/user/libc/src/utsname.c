@@ -48,10 +48,8 @@ extern long __syscall1(long num, long arg0);
  * Fills in the utsname structure with system information.
  * If the kernel syscall fails, provides default values.
  */
-int uname(struct utsname *buf)
-{
-    if (!buf)
-    {
+int uname(struct utsname *buf) {
+    if (!buf) {
         errno = EFAULT;
         return -1;
     }
@@ -59,8 +57,7 @@ int uname(struct utsname *buf)
     /* Try the kernel syscall first */
     long result = __syscall1(SYS_UNAME, (long)buf);
 
-    if (result < 0)
-    {
+    if (result < 0) {
         /* Kernel syscall not implemented, provide static values */
         strncpy(buf->sysname, "ViperDOS", _UTSNAME_LENGTH - 1);
         buf->sysname[_UTSNAME_LENGTH - 1] = '\0';

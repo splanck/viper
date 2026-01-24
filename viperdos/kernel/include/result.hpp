@@ -46,24 +46,21 @@
  * ```
  */
 
-namespace kernel
-{
+namespace kernel {
 
 /**
  * @brief Result type carrying either a success value or an error code.
  *
  * @tparam T The success value type. Use `void` for operations with no return value.
  */
-template <typename T> class Result
-{
+template <typename T> class Result {
   public:
     /**
      * @brief Create a successful result with a value.
      * @param val The success value.
      * @return Result containing the value.
      */
-    static Result ok(T val)
-    {
+    static Result ok(T val) {
         Result r;
         r.value_ = val;
         r.error_ = error::VOK;
@@ -76,8 +73,7 @@ template <typename T> class Result
      * @param code The error code (must be negative).
      * @return Result containing the error.
      */
-    static Result err(error::Code code)
-    {
+    static Result err(error::Code code) {
         Result r;
         r.error_ = code;
         r.has_value_ = false;
@@ -89,8 +85,7 @@ template <typename T> class Result
      * @param code The error code (must be negative).
      * @return Result containing the error.
      */
-    static Result err(i64 code)
-    {
+    static Result err(i64 code) {
         Result r;
         r.error_ = static_cast<error::Code>(code);
         r.has_value_ = false;
@@ -101,8 +96,7 @@ template <typename T> class Result
      * @brief Check if the result is successful.
      * @return true if result contains a value, false if it contains an error.
      */
-    bool ok() const
-    {
+    bool ok() const {
         return has_value_;
     }
 
@@ -110,8 +104,7 @@ template <typename T> class Result
      * @brief Check if the result is an error.
      * @return true if result contains an error, false if it contains a value.
      */
-    bool failed() const
-    {
+    bool failed() const {
         return !has_value_;
     }
 
@@ -120,8 +113,7 @@ template <typename T> class Result
      * @warning Only valid if ok() returns true.
      * @return The success value.
      */
-    T value() const
-    {
+    T value() const {
         return value_;
     }
 
@@ -130,8 +122,7 @@ template <typename T> class Result
      * @param default_val Value to return if this is an error result.
      * @return The success value or default_val.
      */
-    T value_or(T default_val) const
-    {
+    T value_or(T default_val) const {
         return has_value_ ? value_ : default_val;
     }
 
@@ -140,8 +131,7 @@ template <typename T> class Result
      * @warning Only meaningful if failed() returns true.
      * @return The error code.
      */
-    error::Code error() const
-    {
+    error::Code error() const {
         return error_;
     }
 
@@ -149,8 +139,7 @@ template <typename T> class Result
      * @brief Get the error code as i64 for syscall returns.
      * @return The error code as i64.
      */
-    i64 error_code() const
-    {
+    i64 error_code() const {
         return static_cast<i64>(error_);
     }
 
@@ -158,8 +147,7 @@ template <typename T> class Result
      * @brief Implicit conversion to bool for if-statement use.
      * @return true if successful, false if error.
      */
-    explicit operator bool() const
-    {
+    explicit operator bool() const {
         return has_value_;
     }
 
@@ -174,15 +162,13 @@ template <typename T> class Result
 /**
  * @brief Specialization of Result for void (operations with no return value).
  */
-template <> class Result<void>
-{
+template <> class Result<void> {
   public:
     /**
      * @brief Create a successful void result.
      * @return Successful result.
      */
-    static Result success()
-    {
+    static Result success() {
         Result r;
         r.error_ = error::VOK;
         r.is_ok_ = true;
@@ -194,8 +180,7 @@ template <> class Result<void>
      * @param code The error code.
      * @return Result containing the error.
      */
-    static Result err(error::Code code)
-    {
+    static Result err(error::Code code) {
         Result r;
         r.error_ = code;
         r.is_ok_ = false;
@@ -207,8 +192,7 @@ template <> class Result<void>
      * @param code The error code (must be negative).
      * @return Result containing the error.
      */
-    static Result err(i64 code)
-    {
+    static Result err(i64 code) {
         Result r;
         r.error_ = static_cast<error::Code>(code);
         r.is_ok_ = false;
@@ -218,40 +202,35 @@ template <> class Result<void>
     /**
      * @brief Check if the result is successful.
      */
-    bool ok() const
-    {
+    bool ok() const {
         return is_ok_;
     }
 
     /**
      * @brief Check if the result is an error.
      */
-    bool failed() const
-    {
+    bool failed() const {
         return !is_ok_;
     }
 
     /**
      * @brief Get the error code.
      */
-    error::Code error() const
-    {
+    error::Code error() const {
         return error_;
     }
 
     /**
      * @brief Get the error code as i64 for syscall returns.
      */
-    i64 error_code() const
-    {
+    i64 error_code() const {
         return static_cast<i64>(error_);
     }
 
     /**
      * @brief Implicit conversion to bool.
      */
-    explicit operator bool() const
-    {
+    explicit operator bool() const {
         return is_ok_;
     }
 
@@ -283,8 +262,7 @@ using VoidResult = Result<void>;
 #define TRY(expr)                                                                                  \
     ({                                                                                             \
         auto _result = (expr);                                                                     \
-        if (_result.failed())                                                                      \
-        {                                                                                          \
+        if (_result.failed()) {                                                                    \
             return decltype(_result)::err(_result.error());                                        \
         }                                                                                          \
         _result.value();                                                                           \
@@ -294,11 +272,9 @@ using VoidResult = Result<void>;
  * @brief Helper macro to propagate errors in void-returning functions.
  */
 #define TRY_VOID(expr)                                                                             \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         auto _result = (expr);                                                                     \
-        if (_result.failed())                                                                      \
-        {                                                                                          \
+        if (_result.failed()) {                                                                    \
             return kernel::VoidResult::err(_result.error());                                       \
         }                                                                                          \
     } while (0)

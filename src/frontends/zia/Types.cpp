@@ -352,7 +352,7 @@ bool isSubclassOf(const std::string &childName, const std::string &parentName)
         if (it == g_entity_parents.end())
             return false; // No parent, not a subclass
         if (it->second == parentName)
-            return true; // Found the parent
+            return true;      // Found the parent
         current = it->second; // Check grandparent
     }
     return false;

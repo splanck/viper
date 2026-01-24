@@ -36,8 +36,7 @@
  * scheduling during bring-up; user-mode trap frames are present for future
  * expansion.
  */
-namespace task
-{
+namespace task {
 
 // Task states
 /**
@@ -49,14 +48,7 @@ namespace task
  * - `Blocked`: waiting on an event (IPC, timer, etc.).
  * - `Exited`: terminated; resources may be reclaimed.
  */
-enum class TaskState : u8
-{
-    Invalid = 0,
-    Ready,
-    Running,
-    Blocked,
-    Exited
-};
+enum class TaskState : u8 { Invalid = 0, Ready, Running, Blocked, Exited };
 
 // Task flags
 /** @brief Task runs in kernel privilege level (bring-up default). */
@@ -89,12 +81,11 @@ constexpr u8 PRIORITIES_PER_QUEUE = 32;
  * Real-time tasks (SCHED_FIFO/SCHED_RR) always have priority over
  * SCHED_OTHER tasks regardless of priority level.
  */
-enum class SchedPolicy : u8
-{
-    SCHED_OTHER = 0,    ///< Normal time-sharing (default)
-    SCHED_FIFO = 1,     ///< Real-time FIFO (run until yield/block)
-    SCHED_RR = 2,       ///< Real-time round-robin (time sliced)
-    SCHED_DEADLINE = 3  ///< Deadline scheduler (EDF)
+enum class SchedPolicy : u8 {
+    SCHED_OTHER = 0,   ///< Normal time-sharing (default)
+    SCHED_FIFO = 1,    ///< Real-time FIFO (run until yield/block)
+    SCHED_RR = 2,      ///< Real-time round-robin (time sliced)
+    SCHED_DEADLINE = 3 ///< Deadline scheduler (EDF)
 };
 
 /** @brief Default real-time time slice in ticks (100ms for SCHED_RR). */
@@ -108,8 +99,7 @@ constexpr u32 CPU_AFFINITY_ALL = 0xFFFFFFFF;
 // Include shared TaskInfo struct after defining flags (avoids macro conflict)
 #include "../../include/viperdos/task_info.hpp"
 
-namespace task
-{
+namespace task {
 
 // Stack sizes
 /** @brief Size of each kernel stack in bytes. */
@@ -148,8 +138,7 @@ constexpr u32 TIME_SLICE_BY_QUEUE[NUM_PRIORITY_QUEUES] = {
  * @param priority Task priority (0-255).
  * @return Time slice in timer ticks.
  */
-inline u32 time_slice_for_priority(u8 priority)
-{
+inline u32 time_slice_for_priority(u8 priority) {
     u8 queue = priority / PRIORITIES_PER_QUEUE;
     if (queue >= NUM_PRIORITY_QUEUES)
         queue = NUM_PRIORITY_QUEUES - 1;
@@ -172,8 +161,7 @@ constexpr u32 MAX_TASKS = 64;
  *
  * This structure's layout must match the offsets used in `context.S`.
  */
-struct TaskContext
-{
+struct TaskContext {
     u64 x19;
     u64 x20;
     u64 x21;
@@ -200,8 +188,7 @@ struct TaskContext
  * kernel-mode tasks, but the structure is defined here to support future EL0
  * execution and syscall return paths.
  */
-struct TrapFrame
-{
+struct TrapFrame {
     u64 x[31]; // x0-x30
     u64 sp;    // Stack pointer (SP_EL0 for user tasks)
     u64 elr;   // Exception Link Register (return address)
@@ -236,8 +223,7 @@ using TaskEntry = void (*)(void *arg);
  * The task subsystem stores tasks in a fixed-size array; pointers remain stable
  * for the lifetime of the task slot.
  */
-struct Task
-{
+struct Task {
     u32 id;          // Unique task ID
     char name[32];   // Task name for debugging
     TaskState state; // Current state
@@ -255,13 +241,13 @@ struct Task
     u32 cpu_affinity;   // CPU affinity mask (bit N = can run on CPU N)
 
     // CFS (Completely Fair Scheduler) fields
-    u64 vruntime;  // Virtual runtime for CFS (nanoseconds, scaled by weight)
-    i8 nice;       // Nice value (-20 to +19, default 0)
+    u64 vruntime; // Virtual runtime for CFS (nanoseconds, scaled by weight)
+    i8 nice;      // Nice value (-20 to +19, default 0)
 
     // SCHED_DEADLINE fields (EDF - Earliest Deadline First)
-    u64 dl_runtime;   // Maximum runtime per period (nanoseconds)
-    u64 dl_deadline;  // Relative deadline (nanoseconds)
-    u64 dl_period;    // Period length (nanoseconds)
+    u64 dl_runtime;      // Maximum runtime per period (nanoseconds)
+    u64 dl_deadline;     // Relative deadline (nanoseconds)
+    u64 dl_period;       // Period length (nanoseconds)
     u64 dl_abs_deadline; // Absolute deadline (timer tick when deadline expires)
 
     Task *next; // Next task in queue (ready/wait queue)
@@ -284,8 +270,7 @@ struct Task
     char cwd[256];
 
     // Signal state (for user tasks with signal handlers)
-    struct
-    {
+    struct {
         u64 handlers[32];       ///< Signal handler addresses (0=SIG_DFL, 1=SIG_IGN)
         u32 handler_flags[32];  ///< Flags for each handler (SA_*)
         u32 handler_mask[32];   ///< Mask for each handler
@@ -545,29 +530,28 @@ bool wakeup(Task *t);
 } // namespace task
 
 // Assembly functions (extern "C" linkage)
-extern "C"
-{
-    // Context switch: saves old context, loads new context
-    /**
-     * @brief Save the current task context and restore the next task context.
-     *
-     * @details
-     * Implemented in `context.S`. Saves callee-saved registers and SP into
-     * `old_ctx` and restores them from `new_ctx`, returning into the new task's
-     * continuation address stored in x30.
-     *
-     * @param old_ctx Destination for the outgoing context.
-     * @param new_ctx Source for the incoming context.
-     */
-    void context_switch(task::TaskContext *old_ctx, task::TaskContext *new_ctx);
+extern "C" {
+// Context switch: saves old context, loads new context
+/**
+ * @brief Save the current task context and restore the next task context.
+ *
+ * @details
+ * Implemented in `context.S`. Saves callee-saved registers and SP into
+ * `old_ctx` and restores them from `new_ctx`, returning into the new task's
+ * continuation address stored in x30.
+ *
+ * @param old_ctx Destination for the outgoing context.
+ * @param new_ctx Source for the incoming context.
+ */
+void context_switch(task::TaskContext *old_ctx, task::TaskContext *new_ctx);
 
-    // Task entry trampoline
-    /**
-     * @brief Assembly trampoline that starts newly created tasks.
-     *
-     * @details
-     * Implemented in `context.S`. Loads the entry function pointer and argument
-     * from the new task's stack, calls it, and terminates the task if it returns.
-     */
-    void task_entry_trampoline();
+// Task entry trampoline
+/**
+ * @brief Assembly trampoline that starts newly created tasks.
+ *
+ * @details
+ * Implemented in `context.S`. Loads the entry function pointer and argument
+ * from the new task's stack, calls it, and terminates the task if it returns.
+ */
+void task_entry_trampoline();
 }

@@ -19,8 +19,7 @@
 
 #include "../include/types.hpp"
 
-namespace viper
-{
+namespace viper {
 
 /**
  * @brief Protection flags used when mapping pages in a user address space.
@@ -32,8 +31,7 @@ namespace viper
  * The flags express desired access at EL0. The kernel still retains access via
  * its own mappings and exception handling context.
  */
-namespace prot
-{
+namespace prot {
 /** @brief No access (rarely used; typically map with explicit permissions). */
 constexpr u32 NONE = 0;
 /** @brief Page is readable at EL0. */
@@ -63,8 +61,7 @@ constexpr u32 RWX = READ | WRITE | EXEC;
  * Only the bits required by the current kernel are defined here. Memory
  * attribute indices refer to entries in MAIR_EL1 configured by the MMU setup.
  */
-namespace pte
-{
+namespace pte {
 /** @brief Entry is valid. */
 constexpr u64 VALID = 1ULL << 0; // Entry is valid
 /** @brief Entry points to the next-level table (non-leaf). */
@@ -155,8 +152,7 @@ void asid_free(u16 asid);
  * user's table so that exceptions taken from EL0 can execute kernel code
  * reliably.
  */
-class AddressSpace
-{
+class AddressSpace {
   public:
     /**
      * @brief Initialize a new address space.
@@ -245,20 +241,17 @@ class AddressSpace
     u64 translate(u64 virt);
 
     /** @brief Get the physical address of the root translation table. */
-    u64 root() const
-    {
+    u64 root() const {
         return root_;
     }
 
     /** @brief Get the ASID associated with this address space. */
-    u16 asid() const
-    {
+    u16 asid() const {
         return asid_;
     }
 
     /** @brief Whether this address space has a valid root and ASID. */
-    bool is_valid() const
-    {
+    bool is_valid() const {
         return asid_ != ASID_INVALID && root_ != 0;
     }
 

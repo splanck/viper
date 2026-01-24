@@ -37,59 +37,49 @@
  * Buffer Utilities
  *===========================================================================*/
 
-void ssh_buf_write_u32(uint8_t *buf, uint32_t val)
-{
+void ssh_buf_write_u32(uint8_t *buf, uint32_t val) {
     buf[0] = (val >> 24) & 0xFF;
     buf[1] = (val >> 16) & 0xFF;
     buf[2] = (val >> 8) & 0xFF;
     buf[3] = val & 0xFF;
 }
 
-void ssh_buf_write_u8(uint8_t *buf, uint8_t val)
-{
+void ssh_buf_write_u8(uint8_t *buf, uint8_t val) {
     buf[0] = val;
 }
 
-void ssh_buf_write_string(uint8_t *buf, const void *data, size_t len)
-{
+void ssh_buf_write_string(uint8_t *buf, const void *data, size_t len) {
     ssh_buf_write_u32(buf, len);
-    if (data && len > 0)
-    {
+    if (data && len > 0) {
         memcpy(buf + 4, data, len);
     }
 }
 
-uint32_t ssh_buf_read_u32(const uint8_t *buf)
-{
+uint32_t ssh_buf_read_u32(const uint8_t *buf) {
     return ((uint32_t)buf[0] << 24) | ((uint32_t)buf[1] << 16) | ((uint32_t)buf[2] << 8) |
            (uint32_t)buf[3];
 }
 
-uint8_t ssh_buf_read_u8(const uint8_t *buf)
-{
+uint8_t ssh_buf_read_u8(const uint8_t *buf) {
     return buf[0];
 }
 
-size_t ssh_buf_read_string(const uint8_t *buf, size_t buf_len, uint8_t *out, size_t out_max)
-{
+size_t ssh_buf_read_string(const uint8_t *buf, size_t buf_len, uint8_t *out, size_t out_max) {
     if (buf_len < 4)
         return 0;
     uint32_t len = ssh_buf_read_u32(buf);
     if (len > buf_len - 4 || len > out_max)
         return 0;
-    if (out && len > 0)
-    {
+    if (out && len > 0) {
         memcpy(out, buf + 4, len);
     }
     return len;
 }
 
 /* Write mpint (big integer) to buffer */
-static size_t ssh_buf_write_mpint(uint8_t *buf, const uint8_t *data, size_t len)
-{
+static size_t ssh_buf_write_mpint(uint8_t *buf, const uint8_t *data, size_t len) {
     /* Skip leading zeros */
-    while (len > 0 && *data == 0)
-    {
+    while (len > 0 && *data == 0) {
         data++;
         len--;
     }
@@ -99,19 +89,14 @@ static size_t ssh_buf_write_mpint(uint8_t *buf, const uint8_t *data, size_t len)
     uint32_t total_len = len + (need_zero ? 1 : 0);
 
     ssh_buf_write_u32(buf, total_len);
-    if (need_zero)
-    {
+    if (need_zero) {
         buf[4] = 0;
         memcpy(buf + 5, data, len);
         return 4 + total_len;
-    }
-    else if (len > 0)
-    {
+    } else if (len > 0) {
         memcpy(buf + 4, data, len);
         return 4 + total_len;
-    }
-    else
-    {
+    } else {
         return 4; /* Zero value */
     }
 }
@@ -120,8 +105,7 @@ static size_t ssh_buf_write_mpint(uint8_t *buf, const uint8_t *data, size_t len)
  * Session Management
  *===========================================================================*/
 
-ssh_session_t *ssh_new(void)
-{
+ssh_session_t *ssh_new(void) {
     ssh_session_t *session = calloc(1, sizeof(ssh_session_t));
     if (!session)
         return NULL;
@@ -134,13 +118,11 @@ ssh_session_t *ssh_new(void)
     return session;
 }
 
-void ssh_free(ssh_session_t *session)
-{
+void ssh_free(ssh_session_t *session) {
     if (!session)
         return;
 
-    if (session->socket_fd >= 0)
-    {
+    if (session->socket_fd >= 0) {
         close(session->socket_fd);
     }
 
@@ -150,10 +132,8 @@ void ssh_free(ssh_session_t *session)
     free(session->kex_init_remote);
 
     /* Free channels */
-    for (int i = 0; i < SSH_MAX_CHANNELS; i++)
-    {
-        if (session->channels[i])
-        {
+    for (int i = 0; i < SSH_MAX_CHANNELS; i++) {
+        if (session->channels[i]) {
             ssh_channel_free(session->channels[i]);
         }
     }
@@ -163,8 +143,7 @@ void ssh_free(ssh_session_t *session)
     free(session);
 }
 
-int ssh_set_host(ssh_session_t *session, const char *hostname)
-{
+int ssh_set_host(ssh_session_t *session, const char *hostname) {
     if (!session || !hostname)
         return SSH_ERROR;
     free(session->hostname);
@@ -172,16 +151,14 @@ int ssh_set_host(ssh_session_t *session, const char *hostname)
     return session->hostname ? SSH_OK : SSH_ERROR;
 }
 
-int ssh_set_port(ssh_session_t *session, uint16_t port)
-{
+int ssh_set_port(ssh_session_t *session, uint16_t port) {
     if (!session)
         return SSH_ERROR;
     session->port = port;
     return SSH_OK;
 }
 
-int ssh_set_user(ssh_session_t *session, const char *username)
-{
+int ssh_set_user(ssh_session_t *session, const char *username) {
     if (!session || !username)
         return SSH_ERROR;
     free(session->username);
@@ -191,8 +168,7 @@ int ssh_set_user(ssh_session_t *session, const char *username)
 
 int ssh_set_hostkey_callback(ssh_session_t *session,
                              ssh_hostkey_callback_t callback,
-                             void *userdata)
-{
+                             void *userdata) {
     if (!session)
         return SSH_ERROR;
     session->hostkey_cb = callback;
@@ -200,8 +176,7 @@ int ssh_set_hostkey_callback(ssh_session_t *session,
     return SSH_OK;
 }
 
-int ssh_set_verbose(ssh_session_t *session, int verbose)
-{
+int ssh_set_verbose(ssh_session_t *session, int verbose) {
     if (!session)
         return SSH_ERROR;
     if (verbose < 0)
@@ -212,15 +187,13 @@ int ssh_set_verbose(ssh_session_t *session, int verbose)
     return SSH_OK;
 }
 
-int ssh_get_socket_fd(ssh_session_t *session)
-{
+int ssh_get_socket_fd(ssh_session_t *session) {
     if (!session)
         return -1;
     return session->socket_fd;
 }
 
-const char *ssh_get_error(ssh_session_t *session)
-{
+const char *ssh_get_error(ssh_session_t *session) {
     if (!session)
         return "Invalid session";
     if (session->error_msg[0] == '\0')
@@ -228,8 +201,7 @@ const char *ssh_get_error(ssh_session_t *session)
     return session->error_msg;
 }
 
-static void ssh_set_error(ssh_session_t *session, const char *fmt, ...)
-{
+static void ssh_set_error(ssh_session_t *session, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
     vsnprintf(session->error_msg, sizeof(session->error_msg), fmt, args);
@@ -240,23 +212,19 @@ static void ssh_set_error(ssh_session_t *session, const char *fmt, ...)
  * Low-level I/O
  *===========================================================================*/
 
-static ssize_t ssh_socket_send(ssh_session_t *session, const void *data, size_t len)
-{
+static ssize_t ssh_socket_send(ssh_session_t *session, const void *data, size_t len) {
     const uint8_t *ptr = data;
     size_t remaining = len;
 
-    while (remaining > 0)
-    {
+    while (remaining > 0) {
         ssize_t sent = send(session->socket_fd, ptr, remaining, 0);
-        if (sent < 0)
-        {
+        if (sent < 0) {
             if (errno == EINTR)
                 continue;
             ssh_set_error(session, "send failed: %d", errno);
             return SSH_ERROR;
         }
-        if (sent == 0)
-        {
+        if (sent == 0) {
             ssh_set_error(session, "connection closed");
             return SSH_EOF;
         }
@@ -267,25 +235,20 @@ static ssize_t ssh_socket_send(ssh_session_t *session, const void *data, size_t 
     return len;
 }
 
-static ssize_t ssh_socket_recv(ssh_session_t *session, void *data, size_t len)
-{
+static ssize_t ssh_socket_recv(ssh_session_t *session, void *data, size_t len) {
     uint8_t *ptr = data;
     size_t remaining = len;
 
-    while (remaining > 0)
-    {
+    while (remaining > 0) {
         ssize_t recvd = recv(session->socket_fd, ptr, remaining, 0);
-        if (recvd < 0)
-        {
+        if (recvd < 0) {
             if (errno == EINTR)
                 continue;
             /* Non-blocking: return SSH_AGAIN only if no data received yet.
              * If we've started receiving a packet, we must complete it to avoid
              * losing partial data and breaking the SSH protocol framing. */
-            if (errno == EAGAIN || errno == EWOULDBLOCK)
-            {
-                if (remaining == len)
-                {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                if (remaining == len) {
                     /* No data received at all - tell caller to try again later.
                      * This allows the SSH client to poll() for other events. */
                     return SSH_AGAIN;
@@ -298,10 +261,8 @@ static ssize_t ssh_socket_recv(ssh_session_t *session, void *data, size_t len)
             ssh_set_error(session, "recv failed: %d", errno);
             return SSH_ERROR;
         }
-        if (recvd == 0)
-        {
-            if (remaining == len)
-            {
+        if (recvd == 0) {
+            if (remaining == len) {
                 return SSH_EOF; /* Connection closed cleanly */
             }
             ssh_set_error(session, "connection closed unexpectedly");
@@ -321,8 +282,7 @@ static ssize_t ssh_socket_recv(ssh_session_t *session, void *data, size_t len)
 int ssh_packet_send(ssh_session_t *session,
                     uint8_t msg_type,
                     const uint8_t *payload,
-                    size_t payload_len)
-{
+                    size_t payload_len) {
     uint8_t packet[SSH_MAX_PACKET_SIZE];
     size_t packet_len = 0;
 
@@ -339,8 +299,7 @@ int ssh_packet_send(ssh_session_t *session,
     ssh_buf_write_u32(packet, packet_length);
     packet[4] = padding_len;
     packet[5] = msg_type;
-    if (payload && payload_len > 0)
-    {
+    if (payload && payload_len > 0) {
         memcpy(packet + 6, payload, payload_len);
     }
 
@@ -350,10 +309,8 @@ int ssh_packet_send(ssh_session_t *session,
     packet_len = 4 + packet_length;
 
     /* Encrypt if needed */
-    if (session->encrypted)
-    {
-        if (session->verbose >= 2)
-        {
+    if (session->encrypted) {
+        if (session->verbose >= 2) {
             printf("[ssh] TX encrypted: seq=%u len=%u msg=%u\n",
                    session->seq_out,
                    (unsigned)packet_len,
@@ -375,15 +332,13 @@ int ssh_packet_send(ssh_session_t *session,
         ssh_buf_write_u32(mac_data, session->seq_out);
         memcpy(mac_data + 4, packet, packet_len);
 
-        if (session->mac_out.algo == SSH_MAC_HMAC_SHA256)
-        {
+        if (session->mac_out.algo == SSH_MAC_HMAC_SHA256) {
             ssh_hmac_sha256(session->mac_out.key,
                             session->mac_out.key_len,
                             mac_data,
                             4 + packet_len,
                             packet + packet_len);
-            if (session->verbose >= 2)
-            {
+            if (session->verbose >= 2) {
                 printf("[ssh] TX MAC[0..7]: %02x %02x %02x %02x %02x %02x %02x %02x\n",
                        packet[packet_len],
                        packet[packet_len + 1],
@@ -395,9 +350,7 @@ int ssh_packet_send(ssh_session_t *session,
                        packet[packet_len + 7]);
             }
             packet_len += 32;
-        }
-        else if (session->mac_out.algo == SSH_MAC_HMAC_SHA1)
-        {
+        } else if (session->mac_out.algo == SSH_MAC_HMAC_SHA1) {
             ssh_hmac_sha1(session->mac_out.key,
                           session->mac_out.key_len,
                           mac_data,
@@ -409,8 +362,7 @@ int ssh_packet_send(ssh_session_t *session,
         /* Encrypt full packet AFTER computing MAC (including packet length) */
         ssh_aes_ctr_process(&session->cipher_out, packet, packet, 4 + packet_length);
 
-        if (session->verbose >= 2)
-        {
+        if (session->verbose >= 2) {
             printf("[ssh] TX cipher[0..7]: %02x %02x %02x %02x %02x %02x %02x %02x\n",
                    packet[0],
                    packet[1],
@@ -431,8 +383,7 @@ int ssh_packet_send(ssh_session_t *session,
 int ssh_packet_recv(ssh_session_t *session,
                     uint8_t *msg_type,
                     uint8_t *payload,
-                    size_t *payload_len)
-{
+                    size_t *payload_len) {
     uint8_t header[4];
     uint8_t packet[SSH_MAX_PACKET_SIZE];
 
@@ -444,14 +395,12 @@ int ssh_packet_recv(ssh_session_t *session,
     memcpy(packet, header, 4);
 
     /* Decrypt header if needed */
-    if (session->encrypted)
-    {
+    if (session->encrypted) {
         ssh_aes_ctr_process(&session->cipher_in, packet, packet, 4);
     }
 
     uint32_t packet_length = ssh_buf_read_u32(packet);
-    if (packet_length > SSH_MAX_PACKET_SIZE - 4)
-    {
+    if (packet_length > SSH_MAX_PACKET_SIZE - 4) {
         ssh_set_error(session, "packet too large: %u", packet_length);
         return SSH_PROTOCOL_ERROR;
     }
@@ -462,8 +411,7 @@ int ssh_packet_recv(ssh_session_t *session,
         return rc;
 
     /* Decrypt packet body and verify MAC */
-    if (session->encrypted)
-    {
+    if (session->encrypted) {
         /* Decrypt the body */
         ssh_aes_ctr_process(&session->cipher_in, packet + 4, packet + 4, packet_length);
 
@@ -481,16 +429,13 @@ int ssh_packet_recv(ssh_session_t *session,
         ssh_buf_write_u32(mac_data, session->seq_in);
         memcpy(mac_data + 4, packet, 4 + packet_length); /* Full decrypted packet */
 
-        if (session->mac_in.algo == SSH_MAC_HMAC_SHA256)
-        {
+        if (session->mac_in.algo == SSH_MAC_HMAC_SHA256) {
             ssh_hmac_sha256(session->mac_in.key,
                             session->mac_in.key_len,
                             mac_data,
                             4 + 4 + packet_length,
                             mac_expected);
-        }
-        else
-        {
+        } else {
             ssh_hmac_sha1(session->mac_in.key,
                           session->mac_in.key_len,
                           mac_data,
@@ -499,8 +444,7 @@ int ssh_packet_recv(ssh_session_t *session,
         }
 
         /* Verify MAC */
-        if (memcmp(mac_received, mac_expected, mac_len) != 0)
-        {
+        if (memcmp(mac_received, mac_expected, mac_len) != 0) {
             ssh_set_error(session, "MAC verification failed");
             return SSH_PROTOCOL_ERROR;
         }
@@ -512,8 +456,7 @@ int ssh_packet_recv(ssh_session_t *session,
     *msg_type = packet[5];
     *payload_len = packet_length - 1 - padding_len - 1;
 
-    if (*payload_len > 0 && payload)
-    {
+    if (*payload_len > 0 && payload) {
         memcpy(payload, packet + 6, *payload_len);
     }
 
@@ -523,16 +466,13 @@ int ssh_packet_recv(ssh_session_t *session,
 int ssh_packet_wait(ssh_session_t *session,
                     uint8_t expected_type,
                     uint8_t *payload,
-                    size_t *payload_len)
-{
+                    size_t *payload_len) {
     uint8_t msg_type;
     int rc;
 
-    while (1)
-    {
+    while (1) {
         rc = ssh_packet_recv(session, &msg_type, payload, payload_len);
-        if (rc == SSH_AGAIN)
-        {
+        if (rc == SSH_AGAIN) {
             /* No data yet, yield and retry */
             extern long __syscall1(long, long);
             __syscall1(0x31 /* SYS_YIELD */, 0);
@@ -541,17 +481,14 @@ int ssh_packet_wait(ssh_session_t *session,
         if (rc < 0)
             return rc;
 
-        if (msg_type == expected_type)
-        {
+        if (msg_type == expected_type) {
             return SSH_OK;
         }
 
         /* Handle unexpected messages */
-        if (msg_type == SSH_MSG_DISCONNECT)
-        {
+        if (msg_type == SSH_MSG_DISCONNECT) {
             uint32_t reason = 0;
-            if (*payload_len >= 4)
-            {
+            if (*payload_len >= 4) {
                 reason = ssh_buf_read_u32(payload);
             }
             ssh_set_error(session, "disconnected by server: %u", reason);
@@ -559,8 +496,7 @@ int ssh_packet_wait(ssh_session_t *session,
             return SSH_EOF;
         }
 
-        if (msg_type == SSH_MSG_IGNORE || msg_type == SSH_MSG_DEBUG)
-        {
+        if (msg_type == SSH_MSG_IGNORE || msg_type == SSH_MSG_DEBUG) {
             continue; /* Ignore these */
         }
 
@@ -575,8 +511,7 @@ int ssh_packet_wait(ssh_session_t *session,
  * Version Exchange
  *===========================================================================*/
 
-static int ssh_version_exchange(ssh_session_t *session)
-{
+static int ssh_version_exchange(ssh_session_t *session) {
     /* Send our version */
     char version_line[256];
     int len = snprintf(version_line, sizeof(version_line), "%s\r\n", SSH_VERSION_STRING);
@@ -589,12 +524,10 @@ static int ssh_version_exchange(ssh_session_t *session)
     char server_version[256];
     int pos = 0;
 
-    while (pos < (int)sizeof(server_version) - 1)
-    {
+    while (pos < (int)sizeof(server_version) - 1) {
         char c;
         rc = ssh_socket_recv(session, &c, 1);
-        if (rc == SSH_AGAIN)
-        {
+        if (rc == SSH_AGAIN) {
             /* No data yet, yield and retry */
             extern long __syscall1(long, long);
             __syscall1(0x31 /* SYS_YIELD */, 0);
@@ -603,12 +536,10 @@ static int ssh_version_exchange(ssh_session_t *session)
         if (rc < 0)
             return rc;
 
-        if (c == '\n')
-        {
+        if (c == '\n') {
             server_version[pos] = '\0';
             /* Remove trailing \r if present */
-            if (pos > 0 && server_version[pos - 1] == '\r')
-            {
+            if (pos > 0 && server_version[pos - 1] == '\r') {
                 server_version[pos - 1] = '\0';
             }
             break;
@@ -617,8 +548,7 @@ static int ssh_version_exchange(ssh_session_t *session)
     }
 
     /* Verify it starts with SSH-2.0 */
-    if (strncmp(server_version, "SSH-2.0-", 8) != 0)
-    {
+    if (strncmp(server_version, "SSH-2.0-", 8) != 0) {
         ssh_set_error(session, "unsupported protocol: %s", server_version);
         return SSH_PROTOCOL_ERROR;
     }
@@ -639,8 +569,7 @@ static const char *CIPHER_ALGORITHMS = "aes256-ctr,aes128-ctr";
 static const char *MAC_ALGORITHMS = "hmac-sha2-256,hmac-sha1";
 static const char *COMPRESSION = "none";
 
-int ssh_kex_start(ssh_session_t *session)
-{
+int ssh_kex_start(ssh_session_t *session) {
     uint8_t payload[2048];
     size_t pos = 0;
 
@@ -711,8 +640,7 @@ int ssh_kex_start(ssh_session_t *session)
 
     /* Save for exchange hash */
     session->kex_init_local = malloc(pos);
-    if (session->kex_init_local)
-    {
+    if (session->kex_init_local) {
         memcpy(session->kex_init_local, payload, pos);
         session->kex_init_local_len = pos;
     }
@@ -721,12 +649,10 @@ int ssh_kex_start(ssh_session_t *session)
 }
 
 /* Parse KEXINIT and select algorithms */
-static int ssh_kex_parse_init(ssh_session_t *session, const uint8_t *payload, size_t len)
-{
+static int ssh_kex_parse_init(ssh_session_t *session, const uint8_t *payload, size_t len) {
     /* Save server's KEXINIT for exchange hash */
     session->kex_init_remote = malloc(len);
-    if (session->kex_init_remote)
-    {
+    if (session->kex_init_remote) {
         memcpy(session->kex_init_remote, payload, len);
         session->kex_init_remote_len = len;
     }
@@ -742,12 +668,9 @@ static int ssh_kex_parse_init(ssh_session_t *session, const uint8_t *payload, si
         return SSH_PROTOCOL_ERROR;
 
     /* Check for curve25519-sha256 */
-    if (memmem(payload + pos, kex_len, "curve25519-sha256", 17))
-    {
+    if (memmem(payload + pos, kex_len, "curve25519-sha256", 17)) {
         session->kex_algo = SSH_KEX_CURVE25519_SHA256;
-    }
-    else
-    {
+    } else {
         ssh_set_error(session, "no common kex algorithm");
         return SSH_PROTOCOL_ERROR;
     }
@@ -761,16 +684,11 @@ static int ssh_kex_parse_init(ssh_session_t *session, const uint8_t *payload, si
     if (pos + hostkey_len > len)
         return SSH_PROTOCOL_ERROR;
 
-    if (memmem(payload + pos, hostkey_len, "ssh-ed25519", 11))
-    {
+    if (memmem(payload + pos, hostkey_len, "ssh-ed25519", 11)) {
         session->hostkey_algo = SSH_KEYTYPE_ED25519;
-    }
-    else if (memmem(payload + pos, hostkey_len, "ssh-rsa", 7))
-    {
+    } else if (memmem(payload + pos, hostkey_len, "ssh-rsa", 7)) {
         session->hostkey_algo = SSH_KEYTYPE_RSA;
-    }
-    else
-    {
+    } else {
         ssh_set_error(session, "no common hostkey algorithm");
         return SSH_PROTOCOL_ERROR;
     }
@@ -784,16 +702,11 @@ static int ssh_kex_parse_init(ssh_session_t *session, const uint8_t *payload, si
     if (pos + cipher_len > len)
         return SSH_PROTOCOL_ERROR;
 
-    if (memmem(payload + pos, cipher_len, "aes256-ctr", 10))
-    {
+    if (memmem(payload + pos, cipher_len, "aes256-ctr", 10)) {
         session->cipher_c2s = SSH_CIPHER_AES256_CTR;
-    }
-    else if (memmem(payload + pos, cipher_len, "aes128-ctr", 10))
-    {
+    } else if (memmem(payload + pos, cipher_len, "aes128-ctr", 10)) {
         session->cipher_c2s = SSH_CIPHER_AES128_CTR;
-    }
-    else
-    {
+    } else {
         ssh_set_error(session, "no common cipher");
         return SSH_PROTOCOL_ERROR;
     }
@@ -807,12 +720,9 @@ static int ssh_kex_parse_init(ssh_session_t *session, const uint8_t *payload, si
     if (pos + cipher_len > len)
         return SSH_PROTOCOL_ERROR;
 
-    if (memmem(payload + pos, cipher_len, "aes256-ctr", 10))
-    {
+    if (memmem(payload + pos, cipher_len, "aes256-ctr", 10)) {
         session->cipher_s2c = SSH_CIPHER_AES256_CTR;
-    }
-    else if (memmem(payload + pos, cipher_len, "aes128-ctr", 10))
-    {
+    } else if (memmem(payload + pos, cipher_len, "aes128-ctr", 10)) {
         session->cipher_s2c = SSH_CIPHER_AES128_CTR;
     }
     pos += cipher_len;
@@ -825,12 +735,9 @@ static int ssh_kex_parse_init(ssh_session_t *session, const uint8_t *payload, si
     if (pos + mac_len > len)
         return SSH_PROTOCOL_ERROR;
 
-    if (memmem(payload + pos, mac_len, "hmac-sha2-256", 13))
-    {
+    if (memmem(payload + pos, mac_len, "hmac-sha2-256", 13)) {
         session->mac_c2s = SSH_MAC_HMAC_SHA256;
-    }
-    else if (memmem(payload + pos, mac_len, "hmac-sha1", 9))
-    {
+    } else if (memmem(payload + pos, mac_len, "hmac-sha1", 9)) {
         session->mac_c2s = SSH_MAC_HMAC_SHA1;
     }
     pos += mac_len;
@@ -843,12 +750,9 @@ static int ssh_kex_parse_init(ssh_session_t *session, const uint8_t *payload, si
     if (pos + mac_len > len)
         return SSH_PROTOCOL_ERROR;
 
-    if (memmem(payload + pos, mac_len, "hmac-sha2-256", 13))
-    {
+    if (memmem(payload + pos, mac_len, "hmac-sha2-256", 13)) {
         session->mac_s2c = SSH_MAC_HMAC_SHA256;
-    }
-    else if (memmem(payload + pos, mac_len, "hmac-sha1", 9))
-    {
+    } else if (memmem(payload + pos, mac_len, "hmac-sha1", 9)) {
         session->mac_s2c = SSH_MAC_HMAC_SHA1;
     }
 
@@ -856,8 +760,7 @@ static int ssh_kex_parse_init(ssh_session_t *session, const uint8_t *payload, si
 }
 
 /* Perform curve25519-sha256 key exchange */
-static int ssh_kex_curve25519(ssh_session_t *session)
-{
+static int ssh_kex_curve25519(ssh_session_t *session) {
     uint8_t payload[1024];
     size_t len;
     int rc;
@@ -885,8 +788,7 @@ static int ssh_kex_curve25519(ssh_session_t *session)
         return SSH_PROTOCOL_ERROR;
     uint32_t hostkey_len = ssh_buf_read_u32(reply + pos);
     pos += 4;
-    if (pos + hostkey_len > reply_len || hostkey_len > sizeof(session->server_hostkey))
-    {
+    if (pos + hostkey_len > reply_len || hostkey_len > sizeof(session->server_hostkey)) {
         return SSH_PROTOCOL_ERROR;
     }
     memcpy(session->server_hostkey, reply + pos, hostkey_len);
@@ -915,16 +817,13 @@ static int ssh_kex_curve25519(ssh_session_t *session)
      * the reinterpretation.
      */
     int all_zero = 1;
-    for (size_t i = 0; i < 32; i++)
-    {
-        if (session->kex_shared[i] != 0)
-        {
+    for (size_t i = 0; i < 32; i++) {
+        if (session->kex_shared[i] != 0) {
             all_zero = 0;
             break;
         }
     }
-    if (all_zero)
-    {
+    if (all_zero) {
         ssh_set_error(session, "key exchange failed (all-zero shared secret)");
         return SSH_PROTOCOL_ERROR;
     }
@@ -988,8 +887,7 @@ static int ssh_kex_curve25519(ssh_session_t *session)
     uint8_t H[32];
     ssh_sha256(hash_input, hash_pos, H);
 
-    if (session->verbose >= 2)
-    {
+    if (session->verbose >= 2) {
         printf("[ssh] H[0..7]: %02x %02x %02x %02x %02x %02x %02x %02x\n",
                H[0],
                H[1],
@@ -1021,8 +919,7 @@ static int ssh_kex_curve25519(ssh_session_t *session)
     uint32_t sig_data_len = ssh_buf_read_u32(signature + 4 + sig_type_len);
     uint8_t *sig_data = signature + 4 + sig_type_len + 4;
 
-    if (session->hostkey_algo == SSH_KEYTYPE_ED25519)
-    {
+    if (session->hostkey_algo == SSH_KEYTYPE_ED25519) {
         /* Parse Ed25519 public key from K_S */
         /* Format: string "ssh-ed25519" || string pubkey */
         if (hostkey_len < 4 + 11 + 4 + 32)
@@ -1032,8 +929,7 @@ static int ssh_kex_curve25519(ssh_session_t *session)
 
         if (sig_data_len != 64)
             return SSH_PROTOCOL_ERROR;
-        if (!ssh_ed25519_verify(pubkey, H, 32, sig_data))
-        {
+        if (!ssh_ed25519_verify(pubkey, H, 32, sig_data)) {
             ssh_set_error(session, "host key signature verification failed");
             return SSH_HOST_KEY_MISMATCH;
         }
@@ -1041,16 +937,14 @@ static int ssh_kex_curve25519(ssh_session_t *session)
     }
 
     /* Call host key verification callback if set */
-    if (session->hostkey_cb)
-    {
+    if (session->hostkey_cb) {
         rc = session->hostkey_cb(session,
                                  session->hostname,
                                  session->server_hostkey,
                                  session->server_hostkey_len,
                                  session->server_hostkey_type,
                                  session->hostkey_cb_data);
-        if (rc != 0)
-        {
+        if (rc != 0) {
             ssh_set_error(session, "host key rejected by user");
             return SSH_HOST_KEY_MISMATCH;
         }
@@ -1062,8 +956,7 @@ static int ssh_kex_curve25519(ssh_session_t *session)
         return rc;
 
     /* Session ID is first H */
-    if (session->keys.session_id_len == 0)
-    {
+    if (session->keys.session_id_len == 0) {
         memcpy(session->keys.session_id, H, 32);
         session->keys.session_id_len = 32;
     }
@@ -1072,8 +965,7 @@ static int ssh_kex_curve25519(ssh_session_t *session)
 }
 
 int ssh_kex_derive_keys(
-    ssh_session_t *session, const uint8_t *K, size_t K_len, const uint8_t *H, size_t H_len)
-{
+    ssh_session_t *session, const uint8_t *K, size_t K_len, const uint8_t *H, size_t H_len) {
     /* Key derivation: key = HASH(K || H || "X" || session_id) */
     /* where X is 'A', 'B', 'C', 'D', 'E', 'F' for different keys */
 
@@ -1082,8 +974,7 @@ int ssh_kex_derive_keys(
 
     /* K as mpint */
     base_len = ssh_buf_write_mpint(hash_input, K, K_len);
-    if (session->verbose >= 2)
-    {
+    if (session->verbose >= 2) {
         printf("[ssh] derive_keys: K_mpint_len=%lu\n", (unsigned long)base_len);
     }
 
@@ -1102,21 +993,18 @@ int ssh_kex_derive_keys(
 
     uint8_t *session_id = session->keys.session_id;
     size_t session_id_len = session->keys.session_id_len;
-    if (session_id_len == 0)
-    {
+    if (session_id_len == 0) {
         session_id = (uint8_t *)H;
         session_id_len = H_len;
     }
 
-    for (int i = 0; i < 6; i++)
-    {
+    for (int i = 0; i < 6; i++) {
         hash_input[base_len] = letters[i];
         memcpy(hash_input + base_len + 1, session_id, session_id_len);
         ssh_sha256(hash_input, base_len + 1 + session_id_len, key_ptrs[i]);
 
         /* For longer keys, hash again with previous hash appended */
-        if (i >= 2)
-        { /* Keys need to be longer than IVs */
+        if (i >= 2) { /* Keys need to be longer than IVs */
             memcpy(hash_input + base_len + 1 + session_id_len, key_ptrs[i], 32);
             ssh_sha256(hash_input, base_len + 1 + session_id_len + 32, key_ptrs[i] + 32);
         }
@@ -1125,8 +1013,7 @@ int ssh_kex_derive_keys(
     return SSH_OK;
 }
 
-int ssh_kex_process(ssh_session_t *session)
-{
+int ssh_kex_process(ssh_session_t *session) {
     uint8_t payload[2048];
     size_t payload_len;
     int rc;
@@ -1142,14 +1029,11 @@ int ssh_kex_process(ssh_session_t *session)
         return rc;
 
     /* Perform key exchange based on selected algorithm */
-    if (session->kex_algo == SSH_KEX_CURVE25519_SHA256)
-    {
+    if (session->kex_algo == SSH_KEX_CURVE25519_SHA256) {
         rc = ssh_kex_curve25519(session);
         if (rc < 0)
             return rc;
-    }
-    else
-    {
+    } else {
         ssh_set_error(session, "unsupported kex algorithm");
         return SSH_PROTOCOL_ERROR;
     }
@@ -1166,14 +1050,12 @@ int ssh_kex_process(ssh_session_t *session)
 
     /* Activate encryption */
     uint32_t key_len = (session->cipher_c2s == SSH_CIPHER_AES256_CTR) ? 32 : 16;
-    if (session->verbose >= 1)
-    {
+    if (session->verbose >= 1) {
         printf("[ssh] Activating encryption: cipher=%s key_len=%u\n",
                key_len == 32 ? "aes256-ctr" : "aes128-ctr",
                key_len);
     }
-    if (session->verbose >= 2)
-    {
+    if (session->verbose >= 2) {
         printf("[ssh] IV_c2s[0..7]: %02x %02x %02x %02x %02x %02x %02x %02x\n",
                session->keys.iv_c2s[0],
                session->keys.iv_c2s[1],
@@ -1217,8 +1099,7 @@ int ssh_kex_process(ssh_session_t *session)
     session->mac_in.mac_len = session->mac_in.key_len;
     memcpy(session->mac_in.key, session->keys.mac_s2c, session->mac_in.key_len);
 
-    if (session->verbose >= 1)
-    {
+    if (session->verbose >= 1) {
         printf("[ssh] MAC algo: %s\n",
                session->mac_c2s == SSH_MAC_HMAC_SHA256 ? "hmac-sha2-256" : "hmac-sha1");
     }
@@ -1232,12 +1113,10 @@ int ssh_kex_process(ssh_session_t *session)
  * Connection
  *===========================================================================*/
 
-int ssh_connect(ssh_session_t *session)
-{
+int ssh_connect(ssh_session_t *session) {
     int rc;
 
-    if (!session || !session->hostname)
-    {
+    if (!session || !session->hostname) {
         return SSH_ERROR;
     }
 
@@ -1245,8 +1124,7 @@ int ssh_connect(ssh_session_t *session)
 
     /* Create socket */
     session->socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (session->socket_fd < 0)
-    {
+    if (session->socket_fd < 0) {
         ssh_set_error(session, "socket creation failed");
         return SSH_ERROR;
     }
@@ -1258,12 +1136,10 @@ int ssh_connect(ssh_session_t *session)
     addr.sin_port = htons(session->port);
 
     /* Try IP address first, then DNS resolution */
-    if (inet_pton(AF_INET, session->hostname, &addr.sin_addr) <= 0)
-    {
+    if (inet_pton(AF_INET, session->hostname, &addr.sin_addr) <= 0) {
         /* Not a numeric IP, try DNS resolution */
         struct hostent *he = gethostbyname(session->hostname);
-        if (!he || he->h_addrtype != AF_INET || !he->h_addr_list[0])
-        {
+        if (!he || he->h_addrtype != AF_INET || !he->h_addr_list[0]) {
             ssh_set_error(session, "hostname resolution failed for '%s'", session->hostname);
             close(session->socket_fd);
             session->socket_fd = -1;
@@ -1273,8 +1149,7 @@ int ssh_connect(ssh_session_t *session)
     }
 
     rc = connect(session->socket_fd, (struct sockaddr *)&addr, sizeof(addr));
-    if (rc < 0)
-    {
+    if (rc < 0) {
         ssh_set_error(session, "connect failed: %d", errno);
         close(session->socket_fd);
         session->socket_fd = -1;
@@ -1321,13 +1196,11 @@ int ssh_connect(ssh_session_t *session)
     return SSH_OK;
 }
 
-int ssh_disconnect(ssh_session_t *session)
-{
+int ssh_disconnect(ssh_session_t *session) {
     if (!session)
         return SSH_ERROR;
 
-    if (session->socket_fd >= 0 && session->state != SSH_STATE_DISCONNECTED)
-    {
+    if (session->socket_fd >= 0 && session->state != SSH_STATE_DISCONNECTED) {
         /* Send disconnect message */
         uint8_t payload[256];
         size_t pos = 0;
@@ -1356,13 +1229,11 @@ int ssh_disconnect(ssh_session_t *session)
 int ssh_get_server_hostkey(ssh_session_t *session,
                            uint8_t *key,
                            size_t *key_len,
-                           ssh_keytype_t *keytype)
-{
+                           ssh_keytype_t *keytype) {
     if (!session || session->server_hostkey_len == 0)
         return SSH_ERROR;
 
-    if (key && *key_len >= session->server_hostkey_len)
-    {
+    if (key && *key_len >= session->server_hostkey_len) {
         memcpy(key, session->server_hostkey, session->server_hostkey_len);
     }
     *key_len = session->server_hostkey_len;

@@ -16,8 +16,7 @@
 #include "../lib/spinlock.hpp"
 #include "task.hpp"
 
-namespace pi
-{
+namespace pi {
 
 /**
  * @brief Priority inheritance mutex.
@@ -27,8 +26,7 @@ namespace pi
  * When a high-priority task blocks on a mutex held by a low-priority task,
  * the low-priority task temporarily inherits the high priority.
  */
-struct PiMutex
-{
+struct PiMutex {
     Spinlock lock;              ///< Protects mutex state
     task::Task *owner;          ///< Current owner (nullptr if unlocked)
     u8 owner_original_priority; ///< Owner's priority before any boost

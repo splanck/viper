@@ -10,27 +10,22 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "handlers_internal.hpp"
 #include "../../include/config.hpp"
 #include "../../include/viperdos/mem_info.hpp"
 #include "../../include/viperdos/net_stats.hpp"
 #include "../../mm/pmm.hpp"
+#include "handlers_internal.hpp"
 
 #if VIPER_KERNEL_ENABLE_NET
 #include "../../net/netstack.hpp"
 #endif
 
-namespace syscall
-{
+namespace syscall {
 
-SyscallResult sys_mem_info(u64 a0, u64, u64, u64, u64, u64)
-{
+SyscallResult sys_mem_info(u64 a0, u64, u64, u64, u64, u64) {
     MemInfo *info = reinterpret_cast<MemInfo *>(a0);
 
-    if (!validate_user_write(info, sizeof(MemInfo)))
-    {
-        return SyscallResult::err(error::VERR_INVALID_ARG);
-    }
+    VALIDATE_USER_WRITE(info, sizeof(MemInfo));
 
     info->total_pages = pmm::get_total_pages();
     info->free_pages = pmm::get_free_pages();
@@ -46,21 +41,16 @@ SyscallResult sys_mem_info(u64 a0, u64, u64, u64, u64, u64)
 }
 
 #if VIPER_KERNEL_ENABLE_NET
-SyscallResult sys_net_stats(u64 a0, u64, u64, u64, u64, u64)
-{
+SyscallResult sys_net_stats(u64 a0, u64, u64, u64, u64, u64) {
     NetStats *stats = reinterpret_cast<NetStats *>(a0);
 
-    if (!validate_user_write(stats, sizeof(NetStats)))
-    {
-        return SyscallResult::err(error::VERR_INVALID_ARG);
-    }
+    VALIDATE_USER_WRITE(stats, sizeof(NetStats));
 
     net::get_stats(stats);
     return SyscallResult::ok();
 }
 
-SyscallResult sys_ping(u64 a0, u64 a1, u64, u64, u64, u64)
-{
+SyscallResult sys_ping(u64 a0, u64 a1, u64, u64, u64, u64) {
     u32 ip_be = static_cast<u32>(a0);
     u32 timeout_ms = static_cast<u32>(a1);
 
@@ -75,28 +65,23 @@ SyscallResult sys_ping(u64 a0, u64 a1, u64, u64, u64, u64)
     dst.bytes[3] = ip_be & 0xFF;
 
     i32 rtt = net::icmp::ping(dst, timeout_ms);
-    if (rtt < 0)
-    {
+    if (rtt < 0) {
         return SyscallResult::err(rtt);
     }
     return SyscallResult::ok(static_cast<u64>(rtt));
 }
 #else
-SyscallResult sys_net_stats(u64, u64, u64, u64, u64, u64)
-{
-    return SyscallResult::err(error::VERR_NOT_SUPPORTED);
+SyscallResult sys_net_stats(u64, u64, u64, u64, u64, u64) {
+    return err_not_supported();
 }
 
-SyscallResult sys_ping(u64, u64, u64, u64, u64, u64)
-{
-    return SyscallResult::err(error::VERR_NOT_SUPPORTED);
+SyscallResult sys_ping(u64, u64, u64, u64, u64, u64) {
+    return err_not_supported();
 }
 #endif
 
-SyscallResult sys_device_list(u64 a0, u64 a1, u64, u64, u64, u64)
-{
-    struct DeviceInfo
-    {
+SyscallResult sys_device_list(u64 a0, u64 a1, u64, u64, u64, u64) {
+    struct DeviceInfo {
         char name[32];
         char type[16];
         u32 flags;
@@ -104,11 +89,9 @@ SyscallResult sys_device_list(u64 a0, u64 a1, u64, u64, u64, u64)
     };
 
     // Helper to copy a string into a fixed-size buffer
-    auto copy_str = [](char *dst, const char *src, usize max)
-    {
+    auto copy_str = [](char *dst, const char *src, usize max) {
         usize i = 0;
-        while (i < max - 1 && src[i])
-        {
+        while (i < max - 1 && src[i]) {
             dst[i] = src[i];
             i++;
         }
@@ -118,22 +101,19 @@ SyscallResult sys_device_list(u64 a0, u64 a1, u64, u64, u64, u64)
     DeviceInfo *buf = reinterpret_cast<DeviceInfo *>(a0);
     usize max_count = static_cast<usize>(a1);
 
-    if (max_count == 0)
-    {
+    if (max_count == 0) {
         // Just return the count
         return SyscallResult::ok(3); // RAM, timer, serial
     }
 
-    if (!validate_user_write(buf, max_count * sizeof(DeviceInfo)))
-    {
-        return SyscallResult::err(error::VERR_INVALID_ARG);
+    if (!validate_user_write(buf, max_count * sizeof(DeviceInfo))) {
+        return err_invalid_arg();
     }
 
     usize count = 0;
 
     // System RAM
-    if (count < max_count)
-    {
+    if (count < max_count) {
         copy_str(buf[count].name, "System RAM", sizeof(buf[count].name));
         copy_str(buf[count].type, "memory", sizeof(buf[count].type));
         buf[count].flags = 1;
@@ -142,8 +122,7 @@ SyscallResult sys_device_list(u64 a0, u64 a1, u64, u64, u64, u64)
     }
 
     // ARM timer
-    if (count < max_count)
-    {
+    if (count < max_count) {
         copy_str(buf[count].name, "ARM Timer", sizeof(buf[count].name));
         copy_str(buf[count].type, "timer", sizeof(buf[count].type));
         buf[count].flags = 1;
@@ -152,8 +131,7 @@ SyscallResult sys_device_list(u64 a0, u64 a1, u64, u64, u64, u64)
     }
 
     // PL011 UART
-    if (count < max_count)
-    {
+    if (count < max_count) {
         copy_str(buf[count].name, "PL011 UART", sizeof(buf[count].name));
         copy_str(buf[count].type, "serial", sizeof(buf[count].type));
         buf[count].flags = 1;

@@ -18,8 +18,7 @@
 #define SSH_MAX_CHANNELS 10
 
 /* SSH message types */
-enum ssh_msg_type
-{
+enum ssh_msg_type {
     /* Transport layer (1-49) */
     SSH_MSG_DISCONNECT = 1,
     SSH_MSG_IGNORE = 2,
@@ -63,8 +62,7 @@ enum ssh_msg_type
 };
 
 /* Disconnect reason codes */
-enum ssh_disconnect_reason
-{
+enum ssh_disconnect_reason {
     SSH_DISCONNECT_HOST_NOT_ALLOWED_TO_CONNECT = 1,
     SSH_DISCONNECT_PROTOCOL_ERROR = 2,
     SSH_DISCONNECT_KEY_EXCHANGE_FAILED = 3,
@@ -83,8 +81,7 @@ enum ssh_disconnect_reason
 };
 
 /* Channel open failure reasons */
-enum ssh_channel_open_failure
-{
+enum ssh_channel_open_failure {
     SSH_OPEN_ADMINISTRATIVELY_PROHIBITED = 1,
     SSH_OPEN_CONNECT_FAILED = 2,
     SSH_OPEN_UNKNOWN_CHANNEL_TYPE = 3,
@@ -92,8 +89,7 @@ enum ssh_channel_open_failure
 };
 
 /* Session states */
-typedef enum
-{
+typedef enum {
     SSH_STATE_NONE = 0,
     SSH_STATE_CONNECTING,
     SSH_STATE_VERSION_EXCHANGE,
@@ -108,8 +104,7 @@ typedef enum
 } ssh_state_t;
 
 /* Cipher algorithm */
-typedef enum
-{
+typedef enum {
     SSH_CIPHER_NONE = 0,
     SSH_CIPHER_AES128_CTR,
     SSH_CIPHER_AES256_CTR,
@@ -117,8 +112,7 @@ typedef enum
 } ssh_cipher_t;
 
 /* MAC algorithm */
-typedef enum
-{
+typedef enum {
     SSH_MAC_NONE = 0,
     SSH_MAC_HMAC_SHA1,
     SSH_MAC_HMAC_SHA256,
@@ -126,16 +120,14 @@ typedef enum
 } ssh_mac_t;
 
 /* Key exchange algorithm */
-typedef enum
-{
+typedef enum {
     SSH_KEX_NONE = 0,
     SSH_KEX_CURVE25519_SHA256,
     SSH_KEX_DH_GROUP14_SHA256,
 } ssh_kex_t;
 
 /* Cipher context */
-typedef struct
-{
+typedef struct {
     ssh_cipher_t algo;
     uint8_t key[32]; /* Cipher key */
     uint8_t iv[16];  /* IV/counter */
@@ -148,8 +140,7 @@ typedef struct
 } ssh_cipher_ctx_t;
 
 /* MAC context */
-typedef struct
-{
+typedef struct {
     ssh_mac_t algo;
     uint8_t key[32];
     uint32_t key_len;
@@ -157,8 +148,7 @@ typedef struct
 } ssh_mac_ctx_t;
 
 /* Session key material */
-typedef struct
-{
+typedef struct {
     uint8_t iv_c2s[64];     /* Initial IV client to server */
     uint8_t iv_s2c[64];     /* Initial IV server to client */
     uint8_t key_c2s[64];    /* Encryption key client to server */
@@ -170,8 +160,7 @@ typedef struct
 } ssh_keys_t;
 
 /* SSH channel structure */
-struct ssh_channel
-{
+struct ssh_channel {
     ssh_session_t *session;
     uint32_t local_channel;
     uint32_t remote_channel;
@@ -197,20 +186,16 @@ struct ssh_channel
 };
 
 /* SSH key structure */
-struct ssh_key
-{
+struct ssh_key {
     ssh_keytype_t type;
 
-    union
-    {
-        struct
-        {
+    union {
+        struct {
             uint8_t public_key[32];
             uint8_t secret_key[64];
         } ed25519;
 
-        struct
-        {
+        struct {
             uint8_t modulus[512];
             size_t modulus_len;
             uint8_t public_exp[8];
@@ -224,8 +209,7 @@ struct ssh_key
 };
 
 /* SSH session structure */
-struct ssh_session
-{
+struct ssh_session {
     int socket_fd;
     ssh_state_t state;
     int verbose;

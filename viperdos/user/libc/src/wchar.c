@@ -50,75 +50,61 @@
 /*
  * Wide character classification
  */
-int iswalnum(wint_t wc)
-{
+int iswalnum(wint_t wc) {
     return iswalpha(wc) || iswdigit(wc);
 }
 
-int iswalpha(wint_t wc)
-{
+int iswalpha(wint_t wc) {
     return (wc >= 'A' && wc <= 'Z') || (wc >= 'a' && wc <= 'z');
 }
 
-int iswblank(wint_t wc)
-{
+int iswblank(wint_t wc) {
     return wc == ' ' || wc == '\t';
 }
 
-int iswcntrl(wint_t wc)
-{
+int iswcntrl(wint_t wc) {
     return wc < 0x20 || wc == 0x7F;
 }
 
-int iswdigit(wint_t wc)
-{
+int iswdigit(wint_t wc) {
     return wc >= '0' && wc <= '9';
 }
 
-int iswgraph(wint_t wc)
-{
+int iswgraph(wint_t wc) {
     return wc > 0x20 && wc != 0x7F;
 }
 
-int iswlower(wint_t wc)
-{
+int iswlower(wint_t wc) {
     return wc >= 'a' && wc <= 'z';
 }
 
-int iswprint(wint_t wc)
-{
+int iswprint(wint_t wc) {
     return wc >= 0x20 && wc != 0x7F;
 }
 
-int iswpunct(wint_t wc)
-{
+int iswpunct(wint_t wc) {
     return iswgraph(wc) && !iswalnum(wc);
 }
 
-int iswspace(wint_t wc)
-{
+int iswspace(wint_t wc) {
     return wc == ' ' || wc == '\t' || wc == '\n' || wc == '\r' || wc == '\f' || wc == '\v';
 }
 
-int iswupper(wint_t wc)
-{
+int iswupper(wint_t wc) {
     return wc >= 'A' && wc <= 'Z';
 }
 
-int iswxdigit(wint_t wc)
-{
+int iswxdigit(wint_t wc) {
     return iswdigit(wc) || (wc >= 'A' && wc <= 'F') || (wc >= 'a' && wc <= 'f');
 }
 
-wint_t towlower(wint_t wc)
-{
+wint_t towlower(wint_t wc) {
     if (wc >= 'A' && wc <= 'Z')
         return wc + ('a' - 'A');
     return wc;
 }
 
-wint_t towupper(wint_t wc)
-{
+wint_t towupper(wint_t wc) {
     if (wc >= 'a' && wc <= 'z')
         return wc - ('a' - 'A');
     return wc;
@@ -127,16 +113,14 @@ wint_t towupper(wint_t wc)
 /*
  * Wide string functions
  */
-wchar_t *wcscpy(wchar_t *dest, const wchar_t *src)
-{
+wchar_t *wcscpy(wchar_t *dest, const wchar_t *src) {
     wchar_t *d = dest;
     while ((*d++ = *src++))
         ;
     return dest;
 }
 
-wchar_t *wcsncpy(wchar_t *dest, const wchar_t *src, size_t n)
-{
+wchar_t *wcsncpy(wchar_t *dest, const wchar_t *src, size_t n) {
     wchar_t *d = dest;
     while (n && (*d++ = *src++))
         n--;
@@ -145,8 +129,7 @@ wchar_t *wcsncpy(wchar_t *dest, const wchar_t *src, size_t n)
     return dest;
 }
 
-wchar_t *wcscat(wchar_t *dest, const wchar_t *src)
-{
+wchar_t *wcscat(wchar_t *dest, const wchar_t *src) {
     wchar_t *d = dest;
     while (*d)
         d++;
@@ -155,8 +138,7 @@ wchar_t *wcscat(wchar_t *dest, const wchar_t *src)
     return dest;
 }
 
-wchar_t *wcsncat(wchar_t *dest, const wchar_t *src, size_t n)
-{
+wchar_t *wcsncat(wchar_t *dest, const wchar_t *src, size_t n) {
     wchar_t *d = dest;
     while (*d)
         d++;
@@ -167,48 +149,40 @@ wchar_t *wcsncat(wchar_t *dest, const wchar_t *src, size_t n)
     return dest;
 }
 
-size_t wcslen(const wchar_t *s)
-{
+size_t wcslen(const wchar_t *s) {
     const wchar_t *p = s;
     while (*p)
         p++;
     return p - s;
 }
 
-int wcscmp(const wchar_t *s1, const wchar_t *s2)
-{
-    while (*s1 && *s1 == *s2)
-    {
+int wcscmp(const wchar_t *s1, const wchar_t *s2) {
+    while (*s1 && *s1 == *s2) {
         s1++;
         s2++;
     }
     return *s1 - *s2;
 }
 
-int wcsncmp(const wchar_t *s1, const wchar_t *s2, size_t n)
-{
+int wcsncmp(const wchar_t *s1, const wchar_t *s2, size_t n) {
     if (n == 0)
         return 0;
-    while (--n && *s1 && *s1 == *s2)
-    {
+    while (--n && *s1 && *s1 == *s2) {
         s1++;
         s2++;
     }
     return *s1 - *s2;
 }
 
-int wcscoll(const wchar_t *s1, const wchar_t *s2)
-{
+int wcscoll(const wchar_t *s1, const wchar_t *s2) {
     /* In C locale, wcscoll is the same as wcscmp */
     return wcscmp(s1, s2);
 }
 
-size_t wcsxfrm(wchar_t *dest, const wchar_t *src, size_t n)
-{
+size_t wcsxfrm(wchar_t *dest, const wchar_t *src, size_t n) {
     /* In C locale, wcsxfrm just copies */
     size_t len = wcslen(src);
-    if (n > 0)
-    {
+    if (n > 0) {
         size_t copy = (len < n - 1) ? len : n - 1;
         wmemcpy(dest, src, copy);
         dest[copy] = L'\0';
@@ -216,10 +190,8 @@ size_t wcsxfrm(wchar_t *dest, const wchar_t *src, size_t n)
     return len;
 }
 
-wchar_t *wcschr(const wchar_t *s, wchar_t c)
-{
-    while (*s)
-    {
+wchar_t *wcschr(const wchar_t *s, wchar_t c) {
+    while (*s) {
         if (*s == c)
             return (wchar_t *)s;
         s++;
@@ -227,11 +199,9 @@ wchar_t *wcschr(const wchar_t *s, wchar_t c)
     return c == L'\0' ? (wchar_t *)s : (wchar_t *)0;
 }
 
-wchar_t *wcsrchr(const wchar_t *s, wchar_t c)
-{
+wchar_t *wcsrchr(const wchar_t *s, wchar_t c) {
     const wchar_t *last = (wchar_t *)0;
-    while (*s)
-    {
+    while (*s) {
         if (*s == c)
             last = s;
         s++;
@@ -239,14 +209,11 @@ wchar_t *wcsrchr(const wchar_t *s, wchar_t c)
     return c == L'\0' ? (wchar_t *)s : (wchar_t *)last;
 }
 
-size_t wcscspn(const wchar_t *s, const wchar_t *reject)
-{
+size_t wcscspn(const wchar_t *s, const wchar_t *reject) {
     const wchar_t *p = s;
-    while (*p)
-    {
+    while (*p) {
         const wchar_t *r = reject;
-        while (*r)
-        {
+        while (*r) {
             if (*p == *r)
                 return p - s;
             r++;
@@ -256,11 +223,9 @@ size_t wcscspn(const wchar_t *s, const wchar_t *reject)
     return p - s;
 }
 
-size_t wcsspn(const wchar_t *s, const wchar_t *accept)
-{
+size_t wcsspn(const wchar_t *s, const wchar_t *accept) {
     const wchar_t *p = s;
-    while (*p)
-    {
+    while (*p) {
         const wchar_t *a = accept;
         while (*a && *a != *p)
             a++;
@@ -271,13 +236,10 @@ size_t wcsspn(const wchar_t *s, const wchar_t *accept)
     return p - s;
 }
 
-wchar_t *wcspbrk(const wchar_t *s, const wchar_t *accept)
-{
-    while (*s)
-    {
+wchar_t *wcspbrk(const wchar_t *s, const wchar_t *accept) {
+    while (*s) {
         const wchar_t *a = accept;
-        while (*a)
-        {
+        while (*a) {
             if (*s == *a)
                 return (wchar_t *)s;
             a++;
@@ -287,14 +249,12 @@ wchar_t *wcspbrk(const wchar_t *s, const wchar_t *accept)
     return (wchar_t *)0;
 }
 
-wchar_t *wcsstr(const wchar_t *haystack, const wchar_t *needle)
-{
+wchar_t *wcsstr(const wchar_t *haystack, const wchar_t *needle) {
     if (!*needle)
         return (wchar_t *)haystack;
 
     size_t needle_len = wcslen(needle);
-    while (*haystack)
-    {
+    while (*haystack) {
         if (wcsncmp(haystack, needle, needle_len) == 0)
             return (wchar_t *)haystack;
         haystack++;
@@ -302,8 +262,7 @@ wchar_t *wcsstr(const wchar_t *haystack, const wchar_t *needle)
     return (wchar_t *)0;
 }
 
-wchar_t *wcstok(wchar_t *str, const wchar_t *delim, wchar_t **saveptr)
-{
+wchar_t *wcstok(wchar_t *str, const wchar_t *delim, wchar_t **saveptr) {
     wchar_t *start;
 
     if (str == (wchar_t *)0)
@@ -313,8 +272,7 @@ wchar_t *wcstok(wchar_t *str, const wchar_t *delim, wchar_t **saveptr)
     while (*str && wcschr(delim, *str))
         str++;
 
-    if (!*str)
-    {
+    if (!*str) {
         *saveptr = str;
         return (wchar_t *)0;
     }
@@ -325,13 +283,10 @@ wchar_t *wcstok(wchar_t *str, const wchar_t *delim, wchar_t **saveptr)
     while (*str && !wcschr(delim, *str))
         str++;
 
-    if (*str)
-    {
+    if (*str) {
         *str = L'\0';
         *saveptr = str + 1;
-    }
-    else
-    {
+    } else {
         *saveptr = str;
     }
 
@@ -341,22 +296,17 @@ wchar_t *wcstok(wchar_t *str, const wchar_t *delim, wchar_t **saveptr)
 /*
  * Wide memory functions
  */
-wchar_t *wmemcpy(wchar_t *dest, const wchar_t *src, size_t n)
-{
+wchar_t *wmemcpy(wchar_t *dest, const wchar_t *src, size_t n) {
     wchar_t *d = dest;
     while (n--)
         *d++ = *src++;
     return dest;
 }
 
-wchar_t *wmemmove(wchar_t *dest, const wchar_t *src, size_t n)
-{
-    if (dest < src)
-    {
+wchar_t *wmemmove(wchar_t *dest, const wchar_t *src, size_t n) {
+    if (dest < src) {
         return wmemcpy(dest, src, n);
-    }
-    else if (dest > src)
-    {
+    } else if (dest > src) {
         wchar_t *d = dest + n;
         const wchar_t *s = src + n;
         while (n--)
@@ -365,18 +315,15 @@ wchar_t *wmemmove(wchar_t *dest, const wchar_t *src, size_t n)
     return dest;
 }
 
-wchar_t *wmemset(wchar_t *s, wchar_t c, size_t n)
-{
+wchar_t *wmemset(wchar_t *s, wchar_t c, size_t n) {
     wchar_t *p = s;
     while (n--)
         *p++ = c;
     return s;
 }
 
-int wmemcmp(const wchar_t *s1, const wchar_t *s2, size_t n)
-{
-    while (n--)
-    {
+int wmemcmp(const wchar_t *s1, const wchar_t *s2, size_t n) {
+    while (n--) {
         if (*s1 != *s2)
             return *s1 - *s2;
         s1++;
@@ -385,10 +332,8 @@ int wmemcmp(const wchar_t *s1, const wchar_t *s2, size_t n)
     return 0;
 }
 
-wchar_t *wmemchr(const wchar_t *s, wchar_t c, size_t n)
-{
-    while (n--)
-    {
+wchar_t *wmemchr(const wchar_t *s, wchar_t c, size_t n) {
+    while (n--) {
         if (*s == c)
             return (wchar_t *)s;
         s++;
@@ -399,27 +344,23 @@ wchar_t *wmemchr(const wchar_t *s, wchar_t c, size_t n)
 /*
  * Multibyte/wide character conversion (UTF-8)
  */
-int mbsinit(const mbstate_t *ps)
-{
+int mbsinit(const mbstate_t *ps) {
     return ps == (mbstate_t *)0 || ps->__count == 0;
 }
 
-size_t mbrlen(const char *s, size_t n, mbstate_t *ps)
-{
+size_t mbrlen(const char *s, size_t n, mbstate_t *ps) {
     static mbstate_t internal_state = {0, 0};
     if (ps == (mbstate_t *)0)
         ps = &internal_state;
     return mbrtowc((wchar_t *)0, s, n, ps);
 }
 
-size_t mbrtowc(wchar_t *pwc, const char *s, size_t n, mbstate_t *ps)
-{
+size_t mbrtowc(wchar_t *pwc, const char *s, size_t n, mbstate_t *ps) {
     static mbstate_t internal_state = {0, 0};
     if (ps == (mbstate_t *)0)
         ps = &internal_state;
 
-    if (s == (char *)0)
-    {
+    if (s == (char *)0) {
         ps->__count = 0;
         ps->__value = 0;
         return 0;
@@ -431,16 +372,14 @@ size_t mbrtowc(wchar_t *pwc, const char *s, size_t n, mbstate_t *ps)
     unsigned char c = (unsigned char)*s;
 
     /* ASCII */
-    if (c < 0x80)
-    {
+    if (c < 0x80) {
         if (pwc)
             *pwc = c;
         return c ? 1 : 0;
     }
 
     /* Continuation byte without start byte */
-    if (c < 0xC0)
-    {
+    if (c < 0xC0) {
         errno = EILSEQ;
         return (size_t)-1;
     }
@@ -449,23 +388,16 @@ size_t mbrtowc(wchar_t *pwc, const char *s, size_t n, mbstate_t *ps)
     int count;
     wchar_t wc;
 
-    if (c < 0xE0)
-    {
+    if (c < 0xE0) {
         count = 2;
         wc = c & 0x1F;
-    }
-    else if (c < 0xF0)
-    {
+    } else if (c < 0xF0) {
         count = 3;
         wc = c & 0x0F;
-    }
-    else if (c < 0xF8)
-    {
+    } else if (c < 0xF8) {
         count = 4;
         wc = c & 0x07;
-    }
-    else
-    {
+    } else {
         errno = EILSEQ;
         return (size_t)-1;
     }
@@ -473,11 +405,9 @@ size_t mbrtowc(wchar_t *pwc, const char *s, size_t n, mbstate_t *ps)
     if (n < (size_t)count)
         return (size_t)-2;
 
-    for (int i = 1; i < count; i++)
-    {
+    for (int i = 1; i < count; i++) {
         c = (unsigned char)s[i];
-        if ((c & 0xC0) != 0x80)
-        {
+        if ((c & 0xC0) != 0x80) {
             errno = EILSEQ;
             return (size_t)-1;
         }
@@ -489,8 +419,7 @@ size_t mbrtowc(wchar_t *pwc, const char *s, size_t n, mbstate_t *ps)
     return wc ? count : 0;
 }
 
-size_t wcrtomb(char *s, wchar_t wc, mbstate_t *ps)
-{
+size_t wcrtomb(char *s, wchar_t wc, mbstate_t *ps) {
     static mbstate_t internal_state = {0, 0};
     if (ps == (mbstate_t *)0)
         ps = &internal_state;
@@ -499,23 +428,20 @@ size_t wcrtomb(char *s, wchar_t wc, mbstate_t *ps)
         return 1;
 
     /* ASCII */
-    if (wc < 0x80)
-    {
+    if (wc < 0x80) {
         *s = (char)wc;
         return 1;
     }
 
     /* 2-byte sequence */
-    if (wc < 0x800)
-    {
+    if (wc < 0x800) {
         s[0] = (char)(0xC0 | (wc >> 6));
         s[1] = (char)(0x80 | (wc & 0x3F));
         return 2;
     }
 
     /* 3-byte sequence */
-    if (wc < 0x10000)
-    {
+    if (wc < 0x10000) {
         s[0] = (char)(0xE0 | (wc >> 12));
         s[1] = (char)(0x80 | ((wc >> 6) & 0x3F));
         s[2] = (char)(0x80 | (wc & 0x3F));
@@ -523,8 +449,7 @@ size_t wcrtomb(char *s, wchar_t wc, mbstate_t *ps)
     }
 
     /* 4-byte sequence */
-    if (wc < 0x110000)
-    {
+    if (wc < 0x110000) {
         s[0] = (char)(0xF0 | (wc >> 18));
         s[1] = (char)(0x80 | ((wc >> 12) & 0x3F));
         s[2] = (char)(0x80 | ((wc >> 6) & 0x3F));
@@ -536,8 +461,7 @@ size_t wcrtomb(char *s, wchar_t wc, mbstate_t *ps)
     return (size_t)-1;
 }
 
-size_t mbsrtowcs(wchar_t *dest, const char **src, size_t len, mbstate_t *ps)
-{
+size_t mbsrtowcs(wchar_t *dest, const char **src, size_t len, mbstate_t *ps) {
     static mbstate_t internal_state = {0, 0};
     if (ps == (mbstate_t *)0)
         ps = &internal_state;
@@ -545,21 +469,18 @@ size_t mbsrtowcs(wchar_t *dest, const char **src, size_t len, mbstate_t *ps)
     size_t written = 0;
     const char *s = *src;
 
-    while (len > 0)
-    {
+    while (len > 0) {
         wchar_t wc;
         size_t ret = mbrtowc(&wc, s, MB_LEN_MAX, ps);
 
-        if (ret == 0)
-        {
+        if (ret == 0) {
             if (dest)
                 *dest = L'\0';
             *src = (char *)0;
             return written;
         }
 
-        if (ret == (size_t)-1 || ret == (size_t)-2)
-        {
+        if (ret == (size_t)-1 || ret == (size_t)-2) {
             *src = s;
             return ret;
         }
@@ -575,8 +496,7 @@ size_t mbsrtowcs(wchar_t *dest, const char **src, size_t len, mbstate_t *ps)
     return written;
 }
 
-size_t wcsrtombs(char *dest, const wchar_t **src, size_t len, mbstate_t *ps)
-{
+size_t wcsrtombs(char *dest, const wchar_t **src, size_t len, mbstate_t *ps) {
     static mbstate_t internal_state = {0, 0};
     if (ps == (mbstate_t *)0)
         ps = &internal_state;
@@ -585,18 +505,15 @@ size_t wcsrtombs(char *dest, const wchar_t **src, size_t len, mbstate_t *ps)
     const wchar_t *s = *src;
     char buf[MB_LEN_MAX];
 
-    while (len > 0)
-    {
+    while (len > 0) {
         size_t ret = wcrtomb(buf, *s, ps);
 
-        if (ret == (size_t)-1)
-        {
+        if (ret == (size_t)-1) {
             *src = s;
             return ret;
         }
 
-        if (*s == L'\0')
-        {
+        if (*s == L'\0') {
             if (dest && len >= ret)
                 memcpy(dest, buf, ret);
             *src = (wchar_t *)0;
@@ -606,8 +523,7 @@ size_t wcsrtombs(char *dest, const wchar_t **src, size_t len, mbstate_t *ps)
         if (len < ret)
             break;
 
-        if (dest)
-        {
+        if (dest) {
             memcpy(dest, buf, ret);
             dest += ret;
         }
@@ -621,11 +537,9 @@ size_t wcsrtombs(char *dest, const wchar_t **src, size_t len, mbstate_t *ps)
 }
 
 /* Non-restartable versions */
-int mbtowc(wchar_t *pwc, const char *s, size_t n)
-{
+int mbtowc(wchar_t *pwc, const char *s, size_t n) {
     static mbstate_t state = {0, 0};
-    if (s == (char *)0)
-    {
+    if (s == (char *)0) {
         state.__count = 0;
         state.__value = 0;
         return 0;
@@ -636,11 +550,9 @@ int mbtowc(wchar_t *pwc, const char *s, size_t n)
     return (int)ret;
 }
 
-int wctomb(char *s, wchar_t wc)
-{
+int wctomb(char *s, wchar_t wc) {
     static mbstate_t state = {0, 0};
-    if (s == (char *)0)
-    {
+    if (s == (char *)0) {
         state.__count = 0;
         state.__value = 0;
         return 0;
@@ -651,26 +563,22 @@ int wctomb(char *s, wchar_t wc)
     return (int)ret;
 }
 
-size_t mbstowcs(wchar_t *dest, const char *src, size_t n)
-{
+size_t mbstowcs(wchar_t *dest, const char *src, size_t n) {
     return mbsrtowcs(dest, &src, n, (mbstate_t *)0);
 }
 
-size_t wcstombs(char *dest, const wchar_t *src, size_t n)
-{
+size_t wcstombs(char *dest, const wchar_t *src, size_t n) {
     return wcsrtombs(dest, &src, n, (mbstate_t *)0);
 }
 
-int mblen(const char *s, size_t n)
-{
+int mblen(const char *s, size_t n) {
     return mbtowc((wchar_t *)0, s, n);
 }
 
 /*
  * Wide character numeric conversions
  */
-long wcstol(const wchar_t *nptr, wchar_t **endptr, int base)
-{
+long wcstol(const wchar_t *nptr, wchar_t **endptr, int base) {
     /* Convert to narrow string and use strtol */
     char buf[64];
     size_t i = 0;
@@ -684,30 +592,22 @@ long wcstol(const wchar_t *nptr, wchar_t **endptr, int base)
     if (*p == L'+' || *p == L'-')
         buf[i++] = (char)*p++;
 
-    if (base == 0 || base == 16)
-    {
-        if (*p == L'0')
-        {
+    if (base == 0 || base == 16) {
+        if (*p == L'0') {
             buf[i++] = (char)*p++;
-            if (*p == L'x' || *p == L'X')
-            {
+            if (*p == L'x' || *p == L'X') {
                 buf[i++] = (char)*p++;
                 if (base == 0)
                     base = 16;
-            }
-            else if (base == 0)
-            {
+            } else if (base == 0) {
                 base = 8;
             }
-        }
-        else if (base == 0)
-        {
+        } else if (base == 0) {
             base = 10;
         }
     }
 
-    while (i < sizeof(buf) - 1)
-    {
+    while (i < sizeof(buf) - 1) {
         wchar_t c = *p;
         if (iswdigit(c))
             buf[i++] = (char)c;
@@ -730,23 +630,19 @@ long wcstol(const wchar_t *nptr, wchar_t **endptr, int base)
     return result;
 }
 
-unsigned long wcstoul(const wchar_t *nptr, wchar_t **endptr, int base)
-{
+unsigned long wcstoul(const wchar_t *nptr, wchar_t **endptr, int base) {
     return (unsigned long)wcstol(nptr, endptr, base);
 }
 
-long long wcstoll(const wchar_t *nptr, wchar_t **endptr, int base)
-{
+long long wcstoll(const wchar_t *nptr, wchar_t **endptr, int base) {
     return (long long)wcstol(nptr, endptr, base);
 }
 
-unsigned long long wcstoull(const wchar_t *nptr, wchar_t **endptr, int base)
-{
+unsigned long long wcstoull(const wchar_t *nptr, wchar_t **endptr, int base) {
     return (unsigned long long)wcstoul(nptr, endptr, base);
 }
 
-double wcstod(const wchar_t *nptr, wchar_t **endptr)
-{
+double wcstod(const wchar_t *nptr, wchar_t **endptr) {
     /* Convert to narrow string and use strtod */
     char buf[128];
     size_t i = 0;
@@ -755,8 +651,7 @@ double wcstod(const wchar_t *nptr, wchar_t **endptr)
     while (iswspace(*p))
         p++;
 
-    while (i < sizeof(buf) - 1 && *p && !iswspace(*p))
-    {
+    while (i < sizeof(buf) - 1 && *p && !iswspace(*p)) {
         if (*p < 128)
             buf[i++] = (char)*p;
         p++;
@@ -772,21 +667,18 @@ double wcstod(const wchar_t *nptr, wchar_t **endptr)
     return result;
 }
 
-float wcstof(const wchar_t *nptr, wchar_t **endptr)
-{
+float wcstof(const wchar_t *nptr, wchar_t **endptr) {
     return (float)wcstod(nptr, endptr);
 }
 
-long double wcstold(const wchar_t *nptr, wchar_t **endptr)
-{
+long double wcstold(const wchar_t *nptr, wchar_t **endptr) {
     return (long double)wcstod(nptr, endptr);
 }
 
 /*
  * Wide character I/O (simplified)
  */
-wint_t fgetwc(FILE *stream)
-{
+wint_t fgetwc(FILE *stream) {
     int c = fgetc(stream);
     if (c == EOF)
         return WEOF;
@@ -808,8 +700,7 @@ wint_t fgetwc(FILE *stream)
     else
         count = 4;
 
-    for (int i = 1; i < count; i++)
-    {
+    for (int i = 1; i < count; i++) {
         c = fgetc(stream);
         if (c == EOF)
             return WEOF;
@@ -820,26 +711,22 @@ wint_t fgetwc(FILE *stream)
     return (wint_t)wc;
 }
 
-wint_t getwc(FILE *stream)
-{
+wint_t getwc(FILE *stream) {
     return fgetwc(stream);
 }
 
-wint_t getwchar(void)
-{
+wint_t getwchar(void) {
     return fgetwc(stdin);
 }
 
-wint_t fputwc(wchar_t wc, FILE *stream)
-{
+wint_t fputwc(wchar_t wc, FILE *stream) {
     char buf[MB_LEN_MAX];
     size_t n = wcrtomb(buf, wc, (mbstate_t *)0);
 
     if (n == (size_t)-1)
         return WEOF;
 
-    for (size_t i = 0; i < n; i++)
-    {
+    for (size_t i = 0; i < n; i++) {
         if (fputc(buf[i], stream) == EOF)
             return WEOF;
     }
@@ -847,29 +734,24 @@ wint_t fputwc(wchar_t wc, FILE *stream)
     return (wint_t)wc;
 }
 
-wint_t putwc(wchar_t wc, FILE *stream)
-{
+wint_t putwc(wchar_t wc, FILE *stream) {
     return fputwc(wc, stream);
 }
 
-wint_t putwchar(wchar_t wc)
-{
+wint_t putwchar(wchar_t wc) {
     return fputwc(wc, stdout);
 }
 
-wchar_t *fgetws(wchar_t *s, int n, FILE *stream)
-{
+wchar_t *fgetws(wchar_t *s, int n, FILE *stream) {
     if (n <= 0)
         return (wchar_t *)0;
 
     wchar_t *p = s;
     n--; /* Leave room for null terminator */
 
-    while (n > 0)
-    {
+    while (n > 0) {
         wint_t wc = fgetwc(stream);
-        if (wc == WEOF)
-        {
+        if (wc == WEOF) {
             if (p == s)
                 return (wchar_t *)0;
             break;
@@ -884,24 +766,20 @@ wchar_t *fgetws(wchar_t *s, int n, FILE *stream)
     return s;
 }
 
-int fputws(const wchar_t *s, FILE *stream)
-{
-    while (*s)
-    {
+int fputws(const wchar_t *s, FILE *stream) {
+    while (*s) {
         if (fputwc(*s++, stream) == WEOF)
             return -1;
     }
     return 0;
 }
 
-wint_t ungetwc(wint_t wc, FILE *stream)
-{
+wint_t ungetwc(wint_t wc, FILE *stream) {
     if (wc == WEOF)
         return WEOF;
 
     /* For simplicity, only support ASCII unget */
-    if (wc < 0x80)
-    {
+    if (wc < 0x80) {
         if (ungetc((int)wc, stream) == EOF)
             return WEOF;
         return wc;
@@ -911,8 +789,7 @@ wint_t ungetwc(wint_t wc, FILE *stream)
     return WEOF;
 }
 
-int fwide(FILE *stream, int mode)
-{
+int fwide(FILE *stream, int mode) {
     (void)stream;
     (void)mode;
     /* Always return 0 (no orientation) */
@@ -922,23 +799,20 @@ int fwide(FILE *stream, int mode)
 /*
  * Wide character formatted I/O stubs
  */
-int fwprintf(FILE *stream, const wchar_t *format, ...)
-{
+int fwprintf(FILE *stream, const wchar_t *format, ...) {
     (void)stream;
     (void)format;
     errno = ENOTSUP;
     return -1;
 }
 
-int wprintf(const wchar_t *format, ...)
-{
+int wprintf(const wchar_t *format, ...) {
     (void)format;
     errno = ENOTSUP;
     return -1;
 }
 
-int swprintf(wchar_t *s, size_t n, const wchar_t *format, ...)
-{
+int swprintf(wchar_t *s, size_t n, const wchar_t *format, ...) {
     (void)s;
     (void)n;
     (void)format;
@@ -946,23 +820,20 @@ int swprintf(wchar_t *s, size_t n, const wchar_t *format, ...)
     return -1;
 }
 
-int fwscanf(FILE *stream, const wchar_t *format, ...)
-{
+int fwscanf(FILE *stream, const wchar_t *format, ...) {
     (void)stream;
     (void)format;
     errno = ENOTSUP;
     return -1;
 }
 
-int wscanf(const wchar_t *format, ...)
-{
+int wscanf(const wchar_t *format, ...) {
     (void)format;
     errno = ENOTSUP;
     return -1;
 }
 
-int swscanf(const wchar_t *s, const wchar_t *format, ...)
-{
+int swscanf(const wchar_t *s, const wchar_t *format, ...) {
     (void)s;
     (void)format;
     errno = ENOTSUP;
@@ -972,8 +843,7 @@ int swscanf(const wchar_t *s, const wchar_t *format, ...)
 /*
  * Wide character time formatting stub
  */
-size_t wcsftime(wchar_t *s, size_t maxsize, const wchar_t *format, const struct tm *timeptr)
-{
+size_t wcsftime(wchar_t *s, size_t maxsize, const wchar_t *format, const struct tm *timeptr) {
     (void)s;
     (void)maxsize;
     (void)format;
@@ -985,8 +855,7 @@ size_t wcsftime(wchar_t *s, size_t maxsize, const wchar_t *format, const struct 
 /*
  * Wide character duplication
  */
-wchar_t *wcsdup(const wchar_t *s)
-{
+wchar_t *wcsdup(const wchar_t *s) {
     size_t len = wcslen(s) + 1;
     wchar_t *dup = (wchar_t *)malloc(len * sizeof(wchar_t));
     if (dup)

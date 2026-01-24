@@ -11,8 +11,7 @@
  * characters into the buffer, and clients read them via blocking syscalls.
  * This eliminates the need for complex IPC channel handoffs between processes.
  */
-namespace tty
-{
+namespace tty {
 
 /**
  * @brief Initialize the TTY subsystem.

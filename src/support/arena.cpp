@@ -148,9 +148,8 @@ GrowingArena::~GrowingArena()
 }
 
 GrowingArena::GrowingArena(GrowingArena &&other) noexcept
-    : chunks_(std::move(other.chunks_))
-    , destructors_(std::move(other.destructors_))
-    , growthChunkSize_(other.growthChunkSize_)
+    : chunks_(std::move(other.chunks_)), destructors_(std::move(other.destructors_)),
+      growthChunkSize_(other.growthChunkSize_)
 {
 }
 

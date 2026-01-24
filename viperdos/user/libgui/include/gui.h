@@ -10,8 +10,8 @@
 #ifndef VIPERDOS_GUI_H
 #define VIPERDOS_GUI_H
 
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -25,31 +25,29 @@ typedef struct gui_window gui_window_t;
 /**
  * @brief Event types returned by gui_poll_event/gui_wait_event.
  */
-typedef enum
-{
+typedef enum {
     GUI_EVENT_NONE = 0,
     GUI_EVENT_KEY,
     GUI_EVENT_MOUSE,
     GUI_EVENT_FOCUS,
     GUI_EVENT_RESIZE,
     GUI_EVENT_CLOSE,
+    GUI_EVENT_SCROLL,
 } gui_event_type_t;
 
 /**
  * @brief Keyboard event data.
  */
-typedef struct
-{
-    uint16_t keycode;   ///< Linux evdev keycode
-    uint8_t modifiers;  ///< Modifier keys (Shift=1, Ctrl=2, Alt=4)
-    uint8_t pressed;    ///< 1 = key down, 0 = key up
+typedef struct {
+    uint16_t keycode;  ///< Linux evdev keycode
+    uint8_t modifiers; ///< Modifier keys (Shift=1, Ctrl=2, Alt=4)
+    uint8_t pressed;   ///< 1 = key down, 0 = key up
 } gui_key_event_t;
 
 /**
  * @brief Mouse event data.
  */
-typedef struct
-{
+typedef struct {
     int32_t x;          ///< X position relative to window
     int32_t y;          ///< Y position relative to window
     int32_t dx;         ///< X movement delta
@@ -63,51 +61,56 @@ typedef struct
 /**
  * @brief Focus event data.
  */
-typedef struct
-{
-    uint8_t gained;     ///< 1 = gained focus, 0 = lost focus
+typedef struct {
+    uint8_t gained; ///< 1 = gained focus, 0 = lost focus
     uint8_t _pad[3];
 } gui_focus_event_t;
 
 /**
  * @brief Resize event data.
  */
-typedef struct
-{
+typedef struct {
     uint32_t width;
     uint32_t height;
 } gui_resize_event_t;
 
 /**
+ * @brief Scroll event data.
+ */
+typedef struct {
+    int32_t position; ///< New scroll position in pixels
+    uint8_t vertical; ///< 1 = vertical, 0 = horizontal
+    uint8_t _pad[3];
+} gui_scroll_event_t;
+
+/**
  * @brief Event union structure.
  */
-typedef struct
-{
+typedef struct {
     gui_event_type_t type;
-    union
-    {
+
+    union {
         gui_key_event_t key;
         gui_mouse_event_t mouse;
         gui_focus_event_t focus;
         gui_resize_event_t resize;
+        gui_scroll_event_t scroll;
     };
 } gui_event_t;
 
 /**
  * @brief Display information.
  */
-typedef struct
-{
+typedef struct {
     uint32_t width;
     uint32_t height;
-    uint32_t format;    ///< Pixel format (XRGB8888 = 0x34325258)
+    uint32_t format; ///< Pixel format (XRGB8888 = 0x34325258)
 } gui_display_info_t;
 
 /**
  * @brief Window information for window list.
  */
-typedef struct
-{
+typedef struct {
     uint32_t surface_id;
     uint8_t minimized;
     uint8_t maximized;
@@ -119,8 +122,7 @@ typedef struct
 /**
  * @brief Window list structure.
  */
-typedef struct
-{
+typedef struct {
     uint32_t count;
     gui_window_info_t windows[16];
 } gui_window_list_t;
@@ -128,11 +130,10 @@ typedef struct
 /**
  * @brief Surface creation flags.
  */
-typedef enum
-{
+typedef enum {
     GUI_FLAG_NONE = 0,
-    GUI_FLAG_SYSTEM = 1,           ///< System surface (taskbar) - not in window list
-    GUI_FLAG_NO_DECORATIONS = 2,   ///< No title bar or borders
+    GUI_FLAG_SYSTEM = 1,         ///< System surface (taskbar) - not in window list
+    GUI_FLAG_NO_DECORATIONS = 2, ///< No title bar or borders
 } gui_surface_flags_t;
 
 // =============================================================================
@@ -178,8 +179,10 @@ gui_window_t *gui_create_window(const char *title, uint32_t width, uint32_t heig
  * @param flags Surface creation flags.
  * @return Window handle on success, NULL on failure.
  */
-gui_window_t *gui_create_window_ex(const char *title, uint32_t width, uint32_t height,
-                                    uint32_t flags);
+gui_window_t *gui_create_window_ex(const char *title,
+                                   uint32_t width,
+                                   uint32_t height,
+                                   uint32_t flags);
 
 /**
  * @brief Destroy a window and release its resources.
@@ -222,6 +225,38 @@ int gui_restore_window(uint32_t surface_id);
  * @param y Y position.
  */
 void gui_set_position(gui_window_t *win, int32_t x, int32_t y);
+
+// =============================================================================
+// Scrollbar Support
+// =============================================================================
+
+/**
+ * @brief Configure vertical scrollbar for a window.
+ * @param win Window handle.
+ * @param content_height Total content height in pixels.
+ * @param viewport_height Visible area height in pixels.
+ * @param scroll_pos Current scroll position (0 = top).
+ *
+ * Set content_height to 0 to disable the scrollbar.
+ */
+void gui_set_vscrollbar(gui_window_t *win,
+                        int32_t content_height,
+                        int32_t viewport_height,
+                        int32_t scroll_pos);
+
+/**
+ * @brief Configure horizontal scrollbar for a window.
+ * @param win Window handle.
+ * @param content_width Total content width in pixels.
+ * @param viewport_width Visible area width in pixels.
+ * @param scroll_pos Current scroll position (0 = left).
+ *
+ * Set content_width to 0 to disable the scrollbar.
+ */
+void gui_set_hscrollbar(gui_window_t *win,
+                        int32_t content_width,
+                        int32_t viewport_width,
+                        int32_t scroll_pos);
 
 // =============================================================================
 // Pixel Buffer Access
@@ -322,8 +357,8 @@ int gui_wait_event(gui_window_t *win, gui_event_t *event);
  * @param h Height.
  * @param color XRGB8888 color value.
  */
-void gui_fill_rect(gui_window_t *win, uint32_t x, uint32_t y,
-                   uint32_t w, uint32_t h, uint32_t color);
+void gui_fill_rect(
+    gui_window_t *win, uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color);
 
 /**
  * @brief Draw a rectangle outline.
@@ -334,8 +369,8 @@ void gui_fill_rect(gui_window_t *win, uint32_t x, uint32_t y,
  * @param h Height.
  * @param color XRGB8888 color value.
  */
-void gui_draw_rect(gui_window_t *win, uint32_t x, uint32_t y,
-                   uint32_t w, uint32_t h, uint32_t color);
+void gui_draw_rect(
+    gui_window_t *win, uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color);
 
 /**
  * @brief Draw text at position.
@@ -347,8 +382,7 @@ void gui_draw_rect(gui_window_t *win, uint32_t x, uint32_t y,
  *
  * Uses built-in 8x8 bitmap font.
  */
-void gui_draw_text(gui_window_t *win, uint32_t x, uint32_t y,
-                   const char *text, uint32_t color);
+void gui_draw_text(gui_window_t *win, uint32_t x, uint32_t y, const char *text, uint32_t color);
 
 /**
  * @brief Draw a single character with foreground and background colors.
@@ -361,8 +395,7 @@ void gui_draw_text(gui_window_t *win, uint32_t x, uint32_t y,
  *
  * Uses built-in 8x8 bitmap font. Draws an 8x8 pixel cell.
  */
-void gui_draw_char(gui_window_t *win, uint32_t x, uint32_t y,
-                   char c, uint32_t fg, uint32_t bg);
+void gui_draw_char(gui_window_t *win, uint32_t x, uint32_t y, char c, uint32_t fg, uint32_t bg);
 
 /**
  * @brief Draw a scaled character from the built-in 8x8 font.
@@ -376,8 +409,8 @@ void gui_draw_char(gui_window_t *win, uint32_t x, uint32_t y,
  *
  * Uses built-in 8x8 bitmap font scaled by the given factor.
  */
-void gui_draw_char_scaled(gui_window_t *win, uint32_t x, uint32_t y,
-                          char c, uint32_t fg, uint32_t bg, uint32_t scale);
+void gui_draw_char_scaled(
+    gui_window_t *win, uint32_t x, uint32_t y, char c, uint32_t fg, uint32_t bg, uint32_t scale);
 
 /**
  * @brief Draw a horizontal line.
@@ -387,8 +420,7 @@ void gui_draw_char_scaled(gui_window_t *win, uint32_t x, uint32_t y,
  * @param y Y position.
  * @param color XRGB8888 color value.
  */
-void gui_draw_hline(gui_window_t *win, uint32_t x1, uint32_t x2,
-                    uint32_t y, uint32_t color);
+void gui_draw_hline(gui_window_t *win, uint32_t x1, uint32_t x2, uint32_t y, uint32_t color);
 
 /**
  * @brief Draw a vertical line.
@@ -398,8 +430,7 @@ void gui_draw_hline(gui_window_t *win, uint32_t x1, uint32_t x2,
  * @param y2 End Y position.
  * @param color XRGB8888 color value.
  */
-void gui_draw_vline(gui_window_t *win, uint32_t x, uint32_t y1,
-                    uint32_t y2, uint32_t color);
+void gui_draw_vline(gui_window_t *win, uint32_t x, uint32_t y1, uint32_t y2, uint32_t color);
 
 #ifdef __cplusplus
 }

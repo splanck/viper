@@ -35,8 +35,7 @@
 #include "../include/types.hpp"
 #include "../lib/spinlock.hpp"
 
-namespace mm::buddy
-{
+namespace mm::buddy {
 
 /** @brief Maximum order (2^MAX_ORDER pages = 2MB max block). */
 constexpr u32 MAX_ORDER = 10;
@@ -54,8 +53,7 @@ constexpr u32 PAGE_SHIFT = 12;
  * When a block is free, we store metadata in the block itself. This is safe
  * because the block isn't being used for anything else.
  */
-struct FreeBlock
-{
+struct FreeBlock {
     FreeBlock *next; ///< Next free block in this order's list
     u32 order;       ///< Block order (for verification)
     u32 _pad;
@@ -64,8 +62,7 @@ struct FreeBlock
 /**
  * @brief Per-order free list and statistics.
  */
-struct FreeArea
-{
+struct FreeArea {
     FreeBlock *free_list; ///< Head of free block list for this order
     u64 count;            ///< Number of free blocks at this order
 };
@@ -73,8 +70,7 @@ struct FreeArea
 /**
  * @brief Buddy allocator state.
  */
-class BuddyAllocator
-{
+class BuddyAllocator {
   public:
     BuddyAllocator() = default;
 
@@ -111,24 +107,21 @@ class BuddyAllocator
     /**
      * @brief Allocate a single page (order 0).
      */
-    u64 alloc_page()
-    {
+    u64 alloc_page() {
         return alloc_pages(0);
     }
 
     /**
      * @brief Free a single page.
      */
-    void free_page(u64 addr)
-    {
+    void free_page(u64 addr) {
         free_pages(addr, 0);
     }
 
     /**
      * @brief Get total number of pages managed.
      */
-    u64 total_pages() const
-    {
+    u64 total_pages() const {
         return total_pages_;
     }
 
@@ -140,8 +133,7 @@ class BuddyAllocator
     /**
      * @brief Check if allocator is initialized.
      */
-    bool is_initialized() const
-    {
+    bool is_initialized() const {
         return initialized_;
     }
 
@@ -161,24 +153,21 @@ class BuddyAllocator
     /**
      * @brief Convert physical address to page frame number.
      */
-    u64 addr_to_pfn(u64 addr) const
-    {
+    u64 addr_to_pfn(u64 addr) const {
         return (addr - mem_start_) >> PAGE_SHIFT;
     }
 
     /**
      * @brief Convert page frame number to physical address.
      */
-    u64 pfn_to_addr(u64 pfn) const
-    {
+    u64 pfn_to_addr(u64 pfn) const {
         return mem_start_ + (pfn << PAGE_SHIFT);
     }
 
     /**
      * @brief Get buddy address for a block.
      */
-    u64 get_buddy_addr(u64 addr, u32 order) const
-    {
+    u64 get_buddy_addr(u64 addr, u32 order) const {
         u64 block_size = PAGE_SIZE << order;
         return addr ^ block_size;
     }
@@ -217,15 +206,13 @@ BuddyAllocator &get_allocator();
 /**
  * @brief Calculate order needed for a given page count.
  */
-inline u32 pages_to_order(u64 pages)
-{
+inline u32 pages_to_order(u64 pages) {
     if (pages <= 1)
         return 0;
 
     u32 order = 0;
     u64 size = 1;
-    while (size < pages && order < MAX_ORDER - 1)
-    {
+    while (size < pages && order < MAX_ORDER - 1) {
         order++;
         size <<= 1;
     }

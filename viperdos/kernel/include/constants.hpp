@@ -97,18 +97,18 @@ constexpr u64 UART_BASE = 0x09000000;
 constexpr u32 UART_IRQ = 33;
 
 // GIC (Generic Interrupt Controller)
-constexpr u64 GICD_BASE = 0x08000000;   // Distributor
-constexpr u64 GICC_BASE = 0x08010000;   // CPU Interface (GICv2)
-constexpr u64 GICR_BASE = 0x080A0000;   // Redistributor (GICv3)
-constexpr u64 GICR_STRIDE = 0x20000;    // 128KB per CPU
+constexpr u64 GICD_BASE = 0x08000000; // Distributor
+constexpr u64 GICC_BASE = 0x08010000; // CPU Interface (GICv2)
+constexpr u64 GICR_BASE = 0x080A0000; // Redistributor (GICv3)
+constexpr u64 GICR_STRIDE = 0x20000;  // 128KB per CPU
 
 // Firmware Config (QEMU fw_cfg)
 constexpr u64 FWCFG_BASE = 0x09020000;
 
 // VirtIO MMIO region
 constexpr u64 VIRTIO_MMIO_BASE = 0x0a000000;
-constexpr u64 VIRTIO_DEVICE_STRIDE = 0x200;     // Spacing between devices
-constexpr u32 VIRTIO_IRQ_BASE = 48;             // IRQs 48-79 for devices
+constexpr u64 VIRTIO_DEVICE_STRIDE = 0x200; // Spacing between devices
+constexpr u32 VIRTIO_IRQ_BASE = 48;         // IRQs 48-79 for devices
 constexpr u32 VIRTIO_MAX_DEVICES = 32;
 
 // RTC (PL031)
@@ -359,7 +359,7 @@ constexpr u32 VIPER_DARK_BROWN = 0xFF1A1208;
 constexpr u32 VIPER_YELLOW = 0xFFFFDD00;
 constexpr u32 VIPER_RED = 0xFFCC3333;
 constexpr u32 VIPER_WHITE = 0xFFEEEEEE;
-constexpr u32 VIPER_BLUE = 0xFF0055AA;   // Workbench blue (matches desktop)
+constexpr u32 VIPER_BLUE = 0xFF0055AA; // Workbench blue (matches desktop)
 
 } // namespace color
 
@@ -493,10 +493,10 @@ constexpr u8 MOD_CAPS_LOCK = 0x10;
 // =============================================================================
 namespace signal {
 
-constexpr i32 SIGKILL = 9;   // Kill (cannot be caught)
-constexpr i32 SIGTERM = 15;  // Termination
-constexpr i32 SIGCONT = 18;  // Continue if stopped
-constexpr i32 SIGSTOP = 19;  // Stop (cannot be caught)
+constexpr i32 SIGKILL = 9;  // Kill (cannot be caught)
+constexpr i32 SIGTERM = 15; // Termination
+constexpr i32 SIGCONT = 18; // Continue if stopped
+constexpr i32 SIGSTOP = 19; // Stop (cannot be caught)
 
 } // namespace signal
 
@@ -581,31 +581,31 @@ constexpr const char *KEY_PAGE_DOWN = "\033[6~";
 namespace mount {
 
 /// System disk mount point prefix
-constexpr const char* SYS_PREFIX = "/sys/";
+constexpr const char *SYS_PREFIX = "/sys/";
 
 /// Length of system prefix (including trailing slash)
 constexpr usize SYS_PREFIX_LEN = 5;
 
 /// Path to vinit on system disk
-constexpr const char* VINIT_PATH = "/sys/vinit.sys";
+constexpr const char *VINIT_PATH = "/sys/vinit.sys";
 
 /// Path to blkd server on system disk
-constexpr const char* BLKD_PATH = "/sys/blkd.sys";
+constexpr const char *BLKD_PATH = "/sys/blkd.sys";
 
 /// Path to fsd server on system disk
-constexpr const char* FSD_PATH = "/sys/fsd.sys";
+constexpr const char *FSD_PATH = "/sys/fsd.sys";
 
 /// Path to netd server on system disk
-constexpr const char* NETD_PATH = "/sys/netd.sys";
+constexpr const char *NETD_PATH = "/sys/netd.sys";
 
 /// Path to consoled server on system disk
-constexpr const char* CONSOLED_PATH = "/sys/consoled.sys";
+constexpr const char *CONSOLED_PATH = "/sys/consoled.sys";
 
 /// Path to inputd server on system disk
-constexpr const char* INPUTD_PATH = "/sys/inputd.sys";
+constexpr const char *INPUTD_PATH = "/sys/inputd.sys";
 
 /// Path to displayd server on system disk
-constexpr const char* DISPLAYD_PATH = "/sys/displayd.sys";
+constexpr const char *DISPLAYD_PATH = "/sys/displayd.sys";
 
 } // namespace mount
 

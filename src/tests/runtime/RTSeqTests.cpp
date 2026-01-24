@@ -600,7 +600,7 @@ static void test_sort_single()
 
 static void test_sort_null()
 {
-    rt_seq_sort(nullptr); // Should not crash
+    rt_seq_sort(nullptr);      // Should not crash
     rt_seq_sort_desc(nullptr); // Should not crash
 }
 
@@ -837,9 +837,9 @@ static void test_all_any_none()
 
     // Empty sequence
     void *empty = rt_seq_new();
-    assert(rt_seq_all(empty, always_true) == 1);   // vacuous truth
-    assert(rt_seq_any(empty, always_true) == 0);   // no elements
-    assert(rt_seq_none(empty, always_true) == 1);  // no elements
+    assert(rt_seq_all(empty, always_true) == 1);  // vacuous truth
+    assert(rt_seq_any(empty, always_true) == 0);  // no elements
+    assert(rt_seq_none(empty, always_true) == 1); // no elements
 
     // Null handling
     assert(rt_seq_all(nullptr, always_true) == 1);

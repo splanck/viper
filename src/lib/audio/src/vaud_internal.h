@@ -42,14 +42,15 @@ extern "C"
     typedef HANDLE vaud_event_t;
 #else
 #include <pthread.h>
-    typedef pthread_mutex_t vaud_mutex_t;
-    typedef pthread_t vaud_thread_t;
-    typedef struct
-    {
-        pthread_mutex_t mutex;
-        pthread_cond_t cond;
-        int signaled;
-    } vaud_event_t;
+typedef pthread_mutex_t vaud_mutex_t;
+typedef pthread_t vaud_thread_t;
+
+typedef struct
+{
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+    int signaled;
+} vaud_event_t;
 #endif
 
     //===----------------------------------------------------------------------===//
@@ -113,13 +114,13 @@ extern "C"
     /// @details Manages file I/O, buffering, and playback state for streamed audio.
     struct vaud_music
     {
-        vaud_context_t ctx;   ///< Owning context
-        void *file;           ///< FILE pointer for streaming
-        int64_t data_offset;  ///< Offset to PCM data in file
-        int64_t data_size;    ///< Total PCM data size in bytes
-        int64_t frame_count;  ///< Total frames in file
-        int32_t sample_rate;  ///< File sample rate
-        int32_t channels;     ///< File channel count
+        vaud_context_t ctx;      ///< Owning context
+        void *file;              ///< FILE pointer for streaming
+        int64_t data_offset;     ///< Offset to PCM data in file
+        int64_t data_size;       ///< Total PCM data size in bytes
+        int64_t frame_count;     ///< Total frames in file
+        int32_t sample_rate;     ///< File sample rate
+        int32_t channels;        ///< File channel count
         int32_t bits_per_sample; ///< Bits per sample in file
 
         vaud_music_state state; ///< Current playback state
@@ -128,10 +129,10 @@ extern "C"
         float volume;           ///< Playback volume
 
         // Streaming buffers
-        int16_t *buffers[VAUD_MUSIC_BUFFER_COUNT]; ///< Decoded audio buffers
+        int16_t *buffers[VAUD_MUSIC_BUFFER_COUNT];      ///< Decoded audio buffers
         int32_t buffer_frames[VAUD_MUSIC_BUFFER_COUNT]; ///< Frames in each buffer
-        int32_t current_buffer;  ///< Index of buffer being played
-        int32_t buffer_position; ///< Frame position within current buffer
+        int32_t current_buffer;                         ///< Index of buffer being played
+        int32_t buffer_position;                        ///< Frame position within current buffer
     };
 
     //===----------------------------------------------------------------------===//
@@ -145,19 +146,19 @@ extern "C"
     struct vaud_context
     {
         // Mixer state
-        float master_volume;                 ///< Master volume (0.0 to 1.0)
-        vaud_voice voices[VAUD_MAX_VOICES];  ///< Voice pool
-        int32_t next_voice_id;               ///< Counter for unique voice IDs
-        int64_t frame_counter;               ///< Total frames rendered (for timing)
+        float master_volume;                ///< Master volume (0.0 to 1.0)
+        vaud_voice voices[VAUD_MAX_VOICES]; ///< Voice pool
+        int32_t next_voice_id;              ///< Counter for unique voice IDs
+        int64_t frame_counter;              ///< Total frames rendered (for timing)
 
         // Music (single active music stream for simplicity)
         vaud_music_t active_music[VAUD_MAX_MUSIC]; ///< Active music streams
         int32_t music_count;                       ///< Number of active music streams
 
         // Thread synchronization
-        vaud_mutex_t mutex;   ///< Protects voice and music state
-        int running;          ///< Audio thread running flag
-        int paused;           ///< Global pause flag
+        vaud_mutex_t mutex; ///< Protects voice and music state
+        int running;        ///< Audio thread running flag
+        int paused;         ///< Global pause flag
 
         // Platform-specific data
         void *platform_data; ///< Platform backend state (AudioQueue, ALSA, WASAPI)
@@ -198,8 +199,11 @@ extern "C"
     /// @param out_sample_rate Output: sample rate.
     /// @param out_channels Output: channel count.
     /// @return 1 on success, 0 on failure.
-    int vaud_wav_load_file(const char *path, int16_t **out_samples, int64_t *out_frames,
-                           int32_t *out_sample_rate, int32_t *out_channels);
+    int vaud_wav_load_file(const char *path,
+                           int16_t **out_samples,
+                           int64_t *out_frames,
+                           int32_t *out_sample_rate,
+                           int32_t *out_channels);
 
     /// @brief Parse WAV file from memory.
     /// @param data Pointer to WAV data.
@@ -209,8 +213,12 @@ extern "C"
     /// @param out_sample_rate Output: sample rate.
     /// @param out_channels Output: channel count.
     /// @return 1 on success, 0 on failure.
-    int vaud_wav_load_mem(const void *data, size_t size, int16_t **out_samples,
-                          int64_t *out_frames, int32_t *out_sample_rate, int32_t *out_channels);
+    int vaud_wav_load_mem(const void *data,
+                          size_t size,
+                          int16_t **out_samples,
+                          int64_t *out_frames,
+                          int32_t *out_sample_rate,
+                          int32_t *out_channels);
 
     /// @brief Open WAV file for streaming (music).
     /// @param path File path.
@@ -222,9 +230,14 @@ extern "C"
     /// @param out_channels Output: channel count.
     /// @param out_bits Output: bits per sample.
     /// @return 1 on success, 0 on failure.
-    int vaud_wav_open_stream(const char *path, void **out_file, int64_t *out_data_offset,
-                             int64_t *out_data_size, int64_t *out_frames,
-                             int32_t *out_sample_rate, int32_t *out_channels, int32_t *out_bits);
+    int vaud_wav_open_stream(const char *path,
+                             void **out_file,
+                             int64_t *out_data_offset,
+                             int64_t *out_data_size,
+                             int64_t *out_frames,
+                             int32_t *out_sample_rate,
+                             int32_t *out_channels,
+                             int32_t *out_bits);
 
     /// @brief Read frames from a streaming WAV file.
     /// @param file File handle from vaud_wav_open_stream.
@@ -233,8 +246,8 @@ extern "C"
     /// @param channels Channel count.
     /// @param bits_per_sample Bits per sample.
     /// @return Number of frames actually read.
-    int32_t vaud_wav_read_frames(void *file, int16_t *samples, int32_t frames,
-                                 int32_t channels, int32_t bits_per_sample);
+    int32_t vaud_wav_read_frames(
+        void *file, int16_t *samples, int32_t frames, int32_t channels, int32_t bits_per_sample);
 
     //===----------------------------------------------------------------------===//
     // Resampling Functions
@@ -249,8 +262,13 @@ extern "C"
     /// @param out_frames Expected output frame count.
     /// @param out_rate Output sample rate (VAUD_SAMPLE_RATE).
     /// @param channels Number of channels.
-    void vaud_resample(const int16_t *input, int64_t in_frames, int32_t in_rate,
-                       int16_t *output, int64_t out_frames, int32_t out_rate, int32_t channels);
+    void vaud_resample(const int16_t *input,
+                       int64_t in_frames,
+                       int32_t in_rate,
+                       int16_t *output,
+                       int64_t out_frames,
+                       int32_t out_rate,
+                       int32_t channels);
 
     /// @brief Calculate output frame count after resampling.
     /// @param in_frames Input frame count.

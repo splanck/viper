@@ -117,29 +117,14 @@ PassManager::PassManager()
     // Run SCCP both before (to simplify callees) and after inline
     // (to propagate constants through inlined code from call sites).
     registerPipeline("O2",
-                     {"loop-simplify",
-                      "indvars",
-                      "loop-unroll",
+                     {"loop-simplify", "indvars",  "loop-unroll",  "simplify-cfg", "mem2reg",
                       "simplify-cfg",
-                      "mem2reg",
-                      "simplify-cfg",
-                      "sccp",           // Pre-inline SCCP: simplify callees
-                      "check-opt",
-                      "dce",
-                      "simplify-cfg",
-                      "inline",
-                      "simplify-cfg",
-                      "sccp",           // Post-inline SCCP: propagate call-site constants
-                      "dce",            // Clean up after second SCCP
-                      "simplify-cfg",
-                      "licm",
-                      "simplify-cfg",
-                      "gvn",
-                      "earlycse",
-                      "dse",
-                      "peephole",
-                      "dce",
-                      "late-cleanup"});
+                      "sccp", // Pre-inline SCCP: simplify callees
+                      "check-opt",     "dce",      "simplify-cfg", "inline",       "simplify-cfg",
+                      "sccp", // Post-inline SCCP: propagate call-site constants
+                      "dce",  // Clean up after second SCCP
+                      "simplify-cfg",  "licm",     "simplify-cfg", "gvn",          "earlycse",
+                      "dse",           "peephole", "dce",          "late-cleanup"});
 }
 
 /// @brief Register the SimplifyCFG transform in the function pass registry.

@@ -204,8 +204,8 @@ TEST(Arm64CallConv, CallResultInCondition)
     const std::string asmText = readFile(out);
     EXPECT_NE(asmText.find(blSym("check")), std::string::npos);
     // After the call, the result is compared (may use cmp or tst if comparing against 0)
-    const bool hasCompare = asmText.find("cmp x") != std::string::npos ||
-                            asmText.find("tst x") != std::string::npos;
+    const bool hasCompare =
+        asmText.find("cmp x") != std::string::npos || asmText.find("tst x") != std::string::npos;
     EXPECT_TRUE(hasCompare);
 }
 

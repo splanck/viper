@@ -19,8 +19,7 @@
 #include "../cache.hpp"
 #include "format.hpp"
 
-namespace fs::viperfs
-{
+namespace fs::viperfs {
 
 // ============================================================================
 // Inode Cache
@@ -42,8 +41,7 @@ class ViperFS;
  * Wraps an on-disk Inode with caching metadata including reference count,
  * dirty flag, and LRU/hash chain pointers.
  */
-struct CachedInode
-{
+struct CachedInode {
     Inode inode;            // Copy of on-disk inode
     u32 refcount;           // Reference count
     bool valid;             // Entry is valid
@@ -60,8 +58,7 @@ struct CachedInode
  * Caches recently accessed inodes to reduce disk I/O and provide
  * consistent inode views across multiple references.
  */
-class InodeCache
-{
+class InodeCache {
   public:
     /**
      * @brief Initialize the inode cache.
@@ -109,7 +106,9 @@ class InodeCache
     void dump_stats();
 
     /** @brief Set the parent ViperFS instance. */
-    void set_parent(ViperFS *parent) { parent_ = parent; }
+    void set_parent(ViperFS *parent) {
+        parent_ = parent;
+    }
 
   private:
     CachedInode entries_[INODE_CACHE_SIZE];
@@ -162,8 +161,7 @@ class InodeCache
  * block cache to buffer disk I/O. Inodes returned by @ref read_inode are heap
  * allocated and must be released by callers via @ref release_inode.
  */
-class ViperFS
-{
+class ViperFS {
   public:
     /**
      * @brief Mount the filesystem using default cache.
@@ -199,33 +197,28 @@ class ViperFS
     void unmount();
 
     /** @brief Whether the filesystem is currently mounted. */
-    bool is_mounted() const
-    {
+    bool is_mounted() const {
         return mounted_;
     }
 
     // Filesystem info
     /** @brief Volume label from the superblock. */
-    const char *label() const
-    {
+    const char *label() const {
         return sb_.label;
     }
 
     /** @brief Total number of blocks on disk. */
-    u64 total_blocks() const
-    {
+    u64 total_blocks() const {
         return sb_.total_blocks;
     }
 
     /** @brief Current free block count (tracked in superblock). */
-    u64 free_blocks() const
-    {
+    u64 free_blocks() const {
         return sb_.free_blocks;
     }
 
     /** @brief Root directory inode number. */
-    u64 root_inode() const
-    {
+    u64 root_inode() const {
         return sb_.root_inode;
     }
 
@@ -548,18 +541,16 @@ class ViperFS
 
     Superblock sb_;
     bool mounted_{false};
-    InodeCache inode_cache_; // Inode cache instance
+    InodeCache inode_cache_;     // Inode cache instance
     BlockCache *cache_{nullptr}; // Block cache (nullptr = use default cache())
 
   public:
     /** @brief Get the appropriate block cache. */
-    BlockCache &get_cache()
-    {
+    BlockCache &get_cache() {
         return cache_ ? *cache_ : cache();
     }
 
   private:
-
     // Thread safety: protects all filesystem metadata operations
     // This lock is held during:
     // - Block allocation/deallocation (bitmap updates)
@@ -612,8 +603,7 @@ bool viperfs_init();
  * // inode automatically released when guard goes out of scope
  * @endcode
  */
-class InodeGuard
-{
+class InodeGuard {
   public:
     /**
      * @brief Construct guard and take ownership of inode.
@@ -624,10 +614,8 @@ class InodeGuard
     /**
      * @brief Destruct guard and release inode.
      */
-    ~InodeGuard()
-    {
-        if (inode_)
-        {
+    ~InodeGuard() {
+        if (inode_) {
             viperfs().release_inode(inode_);
         }
     }
@@ -640,19 +628,25 @@ class InodeGuard
      * @brief Get the guarded inode.
      * @return Pointer to the inode.
      */
-    Inode *get() const { return inode_; }
+    Inode *get() const {
+        return inode_;
+    }
 
     /**
      * @brief Check if a valid inode is held.
      * @return true if inode is non-null.
      */
-    operator bool() const { return inode_ != nullptr; }
+    operator bool() const {
+        return inode_ != nullptr;
+    }
 
     /**
      * @brief Access inode members via arrow operator.
      * @return Pointer to the inode.
      */
-    Inode *operator->() const { return inode_; }
+    Inode *operator->() const {
+        return inode_;
+    }
 
     /**
      * @brief Release ownership of the inode without freeing.
@@ -663,8 +657,7 @@ class InodeGuard
      *
      * @return The inode pointer (may be nullptr).
      */
-    Inode *release()
-    {
+    Inode *release() {
         Inode *tmp = inode_;
         inode_ = nullptr;
         return tmp;

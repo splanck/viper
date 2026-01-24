@@ -10,8 +10,7 @@
 #include "../time.h"
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 /* Resource usage who values */
@@ -52,79 +51,77 @@ extern "C"
 #define PRIO_PGRP 1    /* Process group */
 #define PRIO_USER 2    /* User */
 
-    /* Resource limit type */
-    typedef unsigned long rlim_t;
+/* Resource limit type */
+typedef unsigned long rlim_t;
 
-    /* Resource limit structure */
-    struct rlimit
-    {
-        rlim_t rlim_cur; /* Soft limit (current) */
-        rlim_t rlim_max; /* Hard limit (maximum) */
-    };
+/* Resource limit structure */
+struct rlimit {
+    rlim_t rlim_cur; /* Soft limit (current) */
+    rlim_t rlim_max; /* Hard limit (maximum) */
+};
 
-    /* Resource usage structure */
-    struct rusage
-    {
-        struct timeval ru_utime; /* User CPU time used */
-        struct timeval ru_stime; /* System CPU time used */
-        long ru_maxrss;          /* Maximum resident set size */
-        long ru_ixrss;           /* Integral shared memory size */
-        long ru_idrss;           /* Integral unshared data size */
-        long ru_isrss;           /* Integral unshared stack size */
-        long ru_minflt;          /* Page reclaims (soft page faults) */
-        long ru_majflt;          /* Page faults (hard page faults) */
-        long ru_nswap;           /* Swaps */
-        long ru_inblock;         /* Block input operations */
-        long ru_oublock;         /* Block output operations */
-        long ru_msgsnd;          /* IPC messages sent */
-        long ru_msgrcv;          /* IPC messages received */
-        long ru_nsignals;        /* Signals received */
-        long ru_nvcsw;           /* Voluntary context switches */
-        long ru_nivcsw;          /* Involuntary context switches */
-    };
+/* Resource usage structure */
+struct rusage {
+    struct timeval ru_utime; /* User CPU time used */
+    struct timeval ru_stime; /* System CPU time used */
+    long ru_maxrss;          /* Maximum resident set size */
+    long ru_ixrss;           /* Integral shared memory size */
+    long ru_idrss;           /* Integral unshared data size */
+    long ru_isrss;           /* Integral unshared stack size */
+    long ru_minflt;          /* Page reclaims (soft page faults) */
+    long ru_majflt;          /* Page faults (hard page faults) */
+    long ru_nswap;           /* Swaps */
+    long ru_inblock;         /* Block input operations */
+    long ru_oublock;         /* Block output operations */
+    long ru_msgsnd;          /* IPC messages sent */
+    long ru_msgrcv;          /* IPC messages received */
+    long ru_nsignals;        /* Signals received */
+    long ru_nvcsw;           /* Voluntary context switches */
+    long ru_nivcsw;          /* Involuntary context switches */
+};
 
-    /*
-     * getrlimit - Get resource limits
-     *
-     * Returns 0 on success, -1 on error with errno set.
-     */
-    int getrlimit(int resource, struct rlimit *rlim);
+/*
+ * getrlimit - Get resource limits
+ *
+ * Returns 0 on success, -1 on error with errno set.
+ */
+int getrlimit(int resource, struct rlimit *rlim);
 
-    /*
-     * setrlimit - Set resource limits
-     *
-     * Returns 0 on success, -1 on error with errno set.
-     */
-    int setrlimit(int resource, const struct rlimit *rlim);
+/*
+ * setrlimit - Set resource limits
+ *
+ * Returns 0 on success, -1 on error with errno set.
+ */
+int setrlimit(int resource, const struct rlimit *rlim);
 
-    /*
-     * prlimit - Get and set resource limits (Linux extension)
-     *
-     * Returns 0 on success, -1 on error with errno set.
-     */
-    int prlimit(pid_t pid, int resource, const struct rlimit *new_limit, struct rlimit *old_limit);
+/*
+ * prlimit - Get and set resource limits (Linux extension)
+ *
+ * Returns 0 on success, -1 on error with errno set.
+ */
+int prlimit(pid_t pid, int resource, const struct rlimit *new_limit, struct rlimit *old_limit);
 
-    /*
-     * getrusage - Get resource usage
-     *
-     * Returns 0 on success, -1 on error with errno set.
-     */
-    int getrusage(int who, struct rusage *usage);
+/*
+ * getrusage - Get resource usage
+ *
+ * Returns 0 on success, -1 on error with errno set.
+ */
+int getrusage(int who, struct rusage *usage);
 
-    /*
-     * getpriority - Get process priority
-     *
-     * Returns the priority on success, -1 on error with errno set.
-     * Note: Can return -1 as a valid priority, so check errno.
-     */
-    int getpriority(int which, id_t who);
+/*
+ * getpriority - Get process priority
+ *
+ * Returns the priority on success, -1 on error with errno set.
+ * Note: Can return -1 as a valid priority, so check errno.
+ */
+int getpriority(int which, id_t who);
 
-    /*
-     * setpriority - Set process priority
-     *
-     * Returns 0 on success, -1 on error with errno set.
-     */
-    int setpriority(int which, id_t who, int prio);
+/*
+ * setpriority - Set process priority
+ *
+ * Returns 0 on success, -1 on error with errno set.
+ */
+int setpriority(int which, id_t who, int prio);
 
 #ifdef __cplusplus
 }

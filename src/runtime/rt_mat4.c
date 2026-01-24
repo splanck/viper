@@ -51,19 +51,43 @@ typedef struct mat4_impl
 // Construction
 //=============================================================================
 
-void *rt_mat4_new(double m00, double m01, double m02, double m03,
-                  double m10, double m11, double m12, double m13,
-                  double m20, double m21, double m22, double m23,
-                  double m30, double m31, double m32, double m33)
+void *rt_mat4_new(double m00,
+                  double m01,
+                  double m02,
+                  double m03,
+                  double m10,
+                  double m11,
+                  double m12,
+                  double m13,
+                  double m20,
+                  double m21,
+                  double m22,
+                  double m23,
+                  double m30,
+                  double m31,
+                  double m32,
+                  double m33)
 {
     mat4_impl *mat = (mat4_impl *)rt_obj_new_i64(0, sizeof(mat4_impl));
     if (!mat)
         return NULL;
 
-    mat->m[0]  = m00; mat->m[1]  = m01; mat->m[2]  = m02; mat->m[3]  = m03;
-    mat->m[4]  = m10; mat->m[5]  = m11; mat->m[6]  = m12; mat->m[7]  = m13;
-    mat->m[8]  = m20; mat->m[9]  = m21; mat->m[10] = m22; mat->m[11] = m23;
-    mat->m[12] = m30; mat->m[13] = m31; mat->m[14] = m32; mat->m[15] = m33;
+    mat->m[0] = m00;
+    mat->m[1] = m01;
+    mat->m[2] = m02;
+    mat->m[3] = m03;
+    mat->m[4] = m10;
+    mat->m[5] = m11;
+    mat->m[6] = m12;
+    mat->m[7] = m13;
+    mat->m[8] = m20;
+    mat->m[9] = m21;
+    mat->m[10] = m22;
+    mat->m[11] = m23;
+    mat->m[12] = m30;
+    mat->m[13] = m31;
+    mat->m[14] = m32;
+    mat->m[15] = m33;
 
     return mat;
 }
@@ -71,19 +95,13 @@ void *rt_mat4_new(double m00, double m01, double m02, double m03,
 void *rt_mat4_identity(void)
 {
     return rt_mat4_new(
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0,
-        0.0, 0.0, 0.0, 1.0);
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
 }
 
 void *rt_mat4_zero(void)
 {
     return rt_mat4_new(
-        0.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 0.0);
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
 }
 
 //=============================================================================
@@ -92,20 +110,12 @@ void *rt_mat4_zero(void)
 
 void *rt_mat4_translate(double tx, double ty, double tz)
 {
-    return rt_mat4_new(
-        1.0, 0.0, 0.0, tx,
-        0.0, 1.0, 0.0, ty,
-        0.0, 0.0, 1.0, tz,
-        0.0, 0.0, 0.0, 1.0);
+    return rt_mat4_new(1.0, 0.0, 0.0, tx, 0.0, 1.0, 0.0, ty, 0.0, 0.0, 1.0, tz, 0.0, 0.0, 0.0, 1.0);
 }
 
 void *rt_mat4_scale(double sx, double sy, double sz)
 {
-    return rt_mat4_new(
-        sx,  0.0, 0.0, 0.0,
-        0.0, sy,  0.0, 0.0,
-        0.0, 0.0, sz,  0.0,
-        0.0, 0.0, 0.0, 1.0);
+    return rt_mat4_new(sx, 0.0, 0.0, 0.0, 0.0, sy, 0.0, 0.0, 0.0, 0.0, sz, 0.0, 0.0, 0.0, 0.0, 1.0);
 }
 
 void *rt_mat4_scale_uniform(double s)
@@ -117,33 +127,21 @@ void *rt_mat4_rotate_x(double angle)
 {
     double c = cos(angle);
     double s = sin(angle);
-    return rt_mat4_new(
-        1.0, 0.0, 0.0, 0.0,
-        0.0, c,   -s,  0.0,
-        0.0, s,    c,  0.0,
-        0.0, 0.0, 0.0, 1.0);
+    return rt_mat4_new(1.0, 0.0, 0.0, 0.0, 0.0, c, -s, 0.0, 0.0, s, c, 0.0, 0.0, 0.0, 0.0, 1.0);
 }
 
 void *rt_mat4_rotate_y(double angle)
 {
     double c = cos(angle);
     double s = sin(angle);
-    return rt_mat4_new(
-        c,   0.0, s,   0.0,
-        0.0, 1.0, 0.0, 0.0,
-        -s,  0.0, c,   0.0,
-        0.0, 0.0, 0.0, 1.0);
+    return rt_mat4_new(c, 0.0, s, 0.0, 0.0, 1.0, 0.0, 0.0, -s, 0.0, c, 0.0, 0.0, 0.0, 0.0, 1.0);
 }
 
 void *rt_mat4_rotate_z(double angle)
 {
     double c = cos(angle);
     double s = sin(angle);
-    return rt_mat4_new(
-        c,   -s,  0.0, 0.0,
-        s,    c,  0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0,
-        0.0, 0.0, 0.0, 1.0);
+    return rt_mat4_new(c, -s, 0.0, 0.0, s, c, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
 }
 
 void *rt_mat4_rotate_axis(void *axis, double angle)
@@ -167,11 +165,22 @@ void *rt_mat4_rotate_axis(void *axis, double angle)
     double s = sin(angle);
     double t = 1.0 - c;
 
-    return rt_mat4_new(
-        t*x*x + c,     t*x*y - s*z,   t*x*z + s*y,   0.0,
-        t*x*y + s*z,   t*y*y + c,     t*y*z - s*x,   0.0,
-        t*x*z - s*y,   t*y*z + s*x,   t*z*z + c,     0.0,
-        0.0,           0.0,           0.0,           1.0);
+    return rt_mat4_new(t * x * x + c,
+                       t * x * y - s * z,
+                       t * x * z + s * y,
+                       0.0,
+                       t * x * y + s * z,
+                       t * y * y + c,
+                       t * y * z - s * x,
+                       0.0,
+                       t * x * z - s * y,
+                       t * y * z + s * x,
+                       t * z * z + c,
+                       0.0,
+                       0.0,
+                       0.0,
+                       0.0,
+                       1.0);
 }
 
 //=============================================================================
@@ -184,25 +193,46 @@ void *rt_mat4_perspective(double fov, double aspect, double near, double far)
     double f = 1.0 / tanHalfFov;
     double nf = 1.0 / (near - far);
 
-    return rt_mat4_new(
-        f / aspect, 0.0, 0.0,                    0.0,
-        0.0,        f,   0.0,                    0.0,
-        0.0,        0.0, (far + near) * nf,     -1.0,
-        0.0,        0.0, 2.0 * far * near * nf,  0.0);
+    return rt_mat4_new(f / aspect,
+                       0.0,
+                       0.0,
+                       0.0,
+                       0.0,
+                       f,
+                       0.0,
+                       0.0,
+                       0.0,
+                       0.0,
+                       (far + near) * nf,
+                       -1.0,
+                       0.0,
+                       0.0,
+                       2.0 * far * near * nf,
+                       0.0);
 }
 
-void *rt_mat4_ortho(double left, double right, double bottom, double top,
-                    double near, double far)
+void *rt_mat4_ortho(double left, double right, double bottom, double top, double near, double far)
 {
     double rl = 1.0 / (right - left);
     double tb = 1.0 / (top - bottom);
     double fn = 1.0 / (far - near);
 
-    return rt_mat4_new(
-        2.0 * rl,          0.0,               0.0,              0.0,
-        0.0,               2.0 * tb,          0.0,              0.0,
-        0.0,               0.0,              -2.0 * fn,         0.0,
-        -(right + left) * rl, -(top + bottom) * tb, -(far + near) * fn, 1.0);
+    return rt_mat4_new(2.0 * rl,
+                       0.0,
+                       0.0,
+                       0.0,
+                       0.0,
+                       2.0 * tb,
+                       0.0,
+                       0.0,
+                       0.0,
+                       0.0,
+                       -2.0 * fn,
+                       0.0,
+                       -(right + left) * rl,
+                       -(top + bottom) * tb,
+                       -(far + near) * fn,
+                       1.0);
 }
 
 void *rt_mat4_look_at(void *eye, void *target, void *up)
@@ -249,11 +279,22 @@ void *rt_mat4_look_at(void *eye, void *target, void *up)
     double uY = rZ * fX - rX * fZ;
     double uZ = rX * fY - rY * fX;
 
-    return rt_mat4_new(
-        rX, rY, rZ, -(rX * eyeX + rY * eyeY + rZ * eyeZ),
-        uX, uY, uZ, -(uX * eyeX + uY * eyeY + uZ * eyeZ),
-        -fX, -fY, -fZ, fX * eyeX + fY * eyeY + fZ * eyeZ,
-        0.0, 0.0, 0.0, 1.0);
+    return rt_mat4_new(rX,
+                       rY,
+                       rZ,
+                       -(rX * eyeX + rY * eyeY + rZ * eyeZ),
+                       uX,
+                       uY,
+                       uZ,
+                       -(uX * eyeX + uY * eyeY + uZ * eyeZ),
+                       -fX,
+                       -fY,
+                       -fZ,
+                       fX * eyeX + fY * eyeY + fZ * eyeZ,
+                       0.0,
+                       0.0,
+                       0.0,
+                       1.0);
 }
 
 //=============================================================================
@@ -285,11 +326,22 @@ void *rt_mat4_add(void *a, void *b)
     for (int i = 0; i < 16; i++)
         r[i] = ma->m[i] + mb->m[i];
 
-    return rt_mat4_new(
-        r[0],  r[1],  r[2],  r[3],
-        r[4],  r[5],  r[6],  r[7],
-        r[8],  r[9],  r[10], r[11],
-        r[12], r[13], r[14], r[15]);
+    return rt_mat4_new(r[0],
+                       r[1],
+                       r[2],
+                       r[3],
+                       r[4],
+                       r[5],
+                       r[6],
+                       r[7],
+                       r[8],
+                       r[9],
+                       r[10],
+                       r[11],
+                       r[12],
+                       r[13],
+                       r[14],
+                       r[15]);
 }
 
 void *rt_mat4_sub(void *a, void *b)
@@ -304,11 +356,22 @@ void *rt_mat4_sub(void *a, void *b)
     for (int i = 0; i < 16; i++)
         r[i] = ma->m[i] - mb->m[i];
 
-    return rt_mat4_new(
-        r[0],  r[1],  r[2],  r[3],
-        r[4],  r[5],  r[6],  r[7],
-        r[8],  r[9],  r[10], r[11],
-        r[12], r[13], r[14], r[15]);
+    return rt_mat4_new(r[0],
+                       r[1],
+                       r[2],
+                       r[3],
+                       r[4],
+                       r[5],
+                       r[6],
+                       r[7],
+                       r[8],
+                       r[9],
+                       r[10],
+                       r[11],
+                       r[12],
+                       r[13],
+                       r[14],
+                       r[15]);
 }
 
 void *rt_mat4_mul(void *a, void *b)
@@ -325,18 +388,27 @@ void *rt_mat4_mul(void *a, void *b)
         for (int j = 0; j < 4; j++)
         {
             r[i * 4 + j] =
-                ma->m[i * 4 + 0] * mb->m[0 * 4 + j] +
-                ma->m[i * 4 + 1] * mb->m[1 * 4 + j] +
-                ma->m[i * 4 + 2] * mb->m[2 * 4 + j] +
-                ma->m[i * 4 + 3] * mb->m[3 * 4 + j];
+                ma->m[i * 4 + 0] * mb->m[0 * 4 + j] + ma->m[i * 4 + 1] * mb->m[1 * 4 + j] +
+                ma->m[i * 4 + 2] * mb->m[2 * 4 + j] + ma->m[i * 4 + 3] * mb->m[3 * 4 + j];
         }
     }
 
-    return rt_mat4_new(
-        r[0],  r[1],  r[2],  r[3],
-        r[4],  r[5],  r[6],  r[7],
-        r[8],  r[9],  r[10], r[11],
-        r[12], r[13], r[14], r[15]);
+    return rt_mat4_new(r[0],
+                       r[1],
+                       r[2],
+                       r[3],
+                       r[4],
+                       r[5],
+                       r[6],
+                       r[7],
+                       r[8],
+                       r[9],
+                       r[10],
+                       r[11],
+                       r[12],
+                       r[13],
+                       r[14],
+                       r[15]);
 }
 
 void *rt_mat4_mul_scalar(void *m, double s)
@@ -350,11 +422,22 @@ void *rt_mat4_mul_scalar(void *m, double s)
     for (int i = 0; i < 16; i++)
         r[i] = mat->m[i] * s;
 
-    return rt_mat4_new(
-        r[0],  r[1],  r[2],  r[3],
-        r[4],  r[5],  r[6],  r[7],
-        r[8],  r[9],  r[10], r[11],
-        r[12], r[13], r[14], r[15]);
+    return rt_mat4_new(r[0],
+                       r[1],
+                       r[2],
+                       r[3],
+                       r[4],
+                       r[5],
+                       r[6],
+                       r[7],
+                       r[8],
+                       r[9],
+                       r[10],
+                       r[11],
+                       r[12],
+                       r[13],
+                       r[14],
+                       r[15]);
 }
 
 void *rt_mat4_transform_point(void *m, void *v)
@@ -368,8 +451,8 @@ void *rt_mat4_transform_point(void *m, void *v)
     double z = rt_vec3_z(v);
 
     // Transform as [x, y, z, 1]
-    double rx = mat->m[0] * x + mat->m[1] * y + mat->m[2]  * z + mat->m[3];
-    double ry = mat->m[4] * x + mat->m[5] * y + mat->m[6]  * z + mat->m[7];
+    double rx = mat->m[0] * x + mat->m[1] * y + mat->m[2] * z + mat->m[3];
+    double ry = mat->m[4] * x + mat->m[5] * y + mat->m[6] * z + mat->m[7];
     double rz = mat->m[8] * x + mat->m[9] * y + mat->m[10] * z + mat->m[11];
     double rw = mat->m[12] * x + mat->m[13] * y + mat->m[14] * z + mat->m[15];
 
@@ -413,11 +496,22 @@ void *rt_mat4_transpose(void *m)
 
     mat4_impl *mat = (mat4_impl *)m;
 
-    return rt_mat4_new(
-        mat->m[0],  mat->m[4],  mat->m[8],  mat->m[12],
-        mat->m[1],  mat->m[5],  mat->m[9],  mat->m[13],
-        mat->m[2],  mat->m[6],  mat->m[10], mat->m[14],
-        mat->m[3],  mat->m[7],  mat->m[11], mat->m[15]);
+    return rt_mat4_new(mat->m[0],
+                       mat->m[4],
+                       mat->m[8],
+                       mat->m[12],
+                       mat->m[1],
+                       mat->m[5],
+                       mat->m[9],
+                       mat->m[13],
+                       mat->m[2],
+                       mat->m[6],
+                       mat->m[10],
+                       mat->m[14],
+                       mat->m[3],
+                       mat->m[7],
+                       mat->m[11],
+                       mat->m[15]);
 }
 
 double rt_mat4_det(void *m)
@@ -478,31 +572,42 @@ void *rt_mat4_inverse(void *m)
 
     double r[16];
 
-    r[0]  = ( a[5] * c5 - a[6] * c4 + a[7] * c3) * invDet;
-    r[1]  = (-a[1] * c5 + a[2] * c4 - a[3] * c3) * invDet;
-    r[2]  = ( a[13] * s5 - a[14] * s4 + a[15] * s3) * invDet;
-    r[3]  = (-a[9] * s5 + a[10] * s4 - a[11] * s3) * invDet;
+    r[0] = (a[5] * c5 - a[6] * c4 + a[7] * c3) * invDet;
+    r[1] = (-a[1] * c5 + a[2] * c4 - a[3] * c3) * invDet;
+    r[2] = (a[13] * s5 - a[14] * s4 + a[15] * s3) * invDet;
+    r[3] = (-a[9] * s5 + a[10] * s4 - a[11] * s3) * invDet;
 
-    r[4]  = (-a[4] * c5 + a[6] * c2 - a[7] * c1) * invDet;
-    r[5]  = ( a[0] * c5 - a[2] * c2 + a[3] * c1) * invDet;
-    r[6]  = (-a[12] * s5 + a[14] * s2 - a[15] * s1) * invDet;
-    r[7]  = ( a[8] * s5 - a[10] * s2 + a[11] * s1) * invDet;
+    r[4] = (-a[4] * c5 + a[6] * c2 - a[7] * c1) * invDet;
+    r[5] = (a[0] * c5 - a[2] * c2 + a[3] * c1) * invDet;
+    r[6] = (-a[12] * s5 + a[14] * s2 - a[15] * s1) * invDet;
+    r[7] = (a[8] * s5 - a[10] * s2 + a[11] * s1) * invDet;
 
-    r[8]  = ( a[4] * c4 - a[5] * c2 + a[7] * c0) * invDet;
-    r[9]  = (-a[0] * c4 + a[1] * c2 - a[3] * c0) * invDet;
-    r[10] = ( a[12] * s4 - a[13] * s2 + a[15] * s0) * invDet;
+    r[8] = (a[4] * c4 - a[5] * c2 + a[7] * c0) * invDet;
+    r[9] = (-a[0] * c4 + a[1] * c2 - a[3] * c0) * invDet;
+    r[10] = (a[12] * s4 - a[13] * s2 + a[15] * s0) * invDet;
     r[11] = (-a[8] * s4 + a[9] * s2 - a[11] * s0) * invDet;
 
     r[12] = (-a[4] * c3 + a[5] * c1 - a[6] * c0) * invDet;
-    r[13] = ( a[0] * c3 - a[1] * c1 + a[2] * c0) * invDet;
+    r[13] = (a[0] * c3 - a[1] * c1 + a[2] * c0) * invDet;
     r[14] = (-a[12] * s3 + a[13] * s1 - a[14] * s0) * invDet;
-    r[15] = ( a[8] * s3 - a[9] * s1 + a[10] * s0) * invDet;
+    r[15] = (a[8] * s3 - a[9] * s1 + a[10] * s0) * invDet;
 
-    return rt_mat4_new(
-        r[0],  r[1],  r[2],  r[3],
-        r[4],  r[5],  r[6],  r[7],
-        r[8],  r[9],  r[10], r[11],
-        r[12], r[13], r[14], r[15]);
+    return rt_mat4_new(r[0],
+                       r[1],
+                       r[2],
+                       r[3],
+                       r[4],
+                       r[5],
+                       r[6],
+                       r[7],
+                       r[8],
+                       r[9],
+                       r[10],
+                       r[11],
+                       r[12],
+                       r[13],
+                       r[14],
+                       r[15]);
 }
 
 void *rt_mat4_neg(void *m)
@@ -516,11 +621,22 @@ void *rt_mat4_neg(void *m)
     for (int i = 0; i < 16; i++)
         r[i] = -mat->m[i];
 
-    return rt_mat4_new(
-        r[0],  r[1],  r[2],  r[3],
-        r[4],  r[5],  r[6],  r[7],
-        r[8],  r[9],  r[10], r[11],
-        r[12], r[13], r[14], r[15]);
+    return rt_mat4_new(r[0],
+                       r[1],
+                       r[2],
+                       r[3],
+                       r[4],
+                       r[5],
+                       r[6],
+                       r[7],
+                       r[8],
+                       r[9],
+                       r[10],
+                       r[11],
+                       r[12],
+                       r[13],
+                       r[14],
+                       r[15]);
 }
 
 //=============================================================================

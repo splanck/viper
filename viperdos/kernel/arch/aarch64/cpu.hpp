@@ -12,8 +12,7 @@
 
 #include <types.hpp>
 
-namespace cpu
-{
+namespace cpu {
 
 /// Maximum supported CPUs (QEMU virt default is 4)
 constexpr u32 MAX_CPUS = 4;
@@ -27,8 +26,7 @@ constexpr u64 CPU_STACK_SIZE = 16384;
  * Each CPU has its own instance of this structure, containing
  * CPU-local state that doesn't need locking.
  */
-struct CpuData
-{
+struct CpuData {
     u32 id;              ///< CPU ID (0 = boot CPU)
     u32 online;          ///< 1 if CPU is online and running
     u64 stack_top;       ///< Top of this CPU's kernel stack
@@ -111,8 +109,7 @@ void send_ipi(u32 target_cpu, u32 ipi_type);
 void broadcast_ipi(u32 ipi_type);
 
 /// IPI types
-namespace ipi
-{
+namespace ipi {
 constexpr u32 RESCHEDULE = 0; ///< Ask CPU to reschedule
 constexpr u32 STOP = 1;       ///< Ask CPU to stop (for panic)
 constexpr u32 TLB_FLUSH = 2;  ///< Ask CPU to flush TLB

@@ -32,8 +32,7 @@
  *   0xFFFF_0000_0000_0000 - 0xFFFF_0000_3FFF_FFFF: Device MMIO
  *   0xFFFF_0000_4000_0000 - 0xFFFF_0000_7FFF_FFFF: RAM
  */
-namespace mmu
-{
+namespace mmu {
 
 /// Kernel virtual base address (upper half)
 constexpr u64 KERNEL_VIRT_BASE = 0xFFFF000000000000ULL;
@@ -42,20 +41,17 @@ constexpr u64 KERNEL_VIRT_BASE = 0xFFFF000000000000ULL;
 constexpr u64 PHYS_MEM_BASE = 0x40000000ULL;
 
 /// Convert physical address to kernel virtual address
-inline u64 phys_to_virt(u64 phys)
-{
+inline u64 phys_to_virt(u64 phys) {
     return phys + KERNEL_VIRT_BASE;
 }
 
 /// Convert kernel virtual address to physical address
-inline u64 virt_to_phys(u64 virt)
-{
+inline u64 virt_to_phys(u64 virt) {
     return virt - KERNEL_VIRT_BASE;
 }
 
 /// Check if an address is in the kernel virtual range
-inline bool is_kernel_addr(u64 addr)
-{
+inline bool is_kernel_addr(u64 addr) {
     return (addr >> 48) == 0xFFFF;
 }
 

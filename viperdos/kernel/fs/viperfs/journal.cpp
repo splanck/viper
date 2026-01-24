@@ -23,38 +23,31 @@
 #include "../../console/serial.hpp"
 #include "../cache.hpp"
 
-namespace fs::viperfs
-{
+namespace fs::viperfs {
 
 // Global journal instance
 static Journal g_journal;
 
-Journal &journal()
-{
+Journal &journal() {
     return g_journal;
 }
 
-bool journal_init(u64 journal_start, u64 num_blocks)
-{
+bool journal_init(u64 journal_start, u64 num_blocks) {
     return g_journal.init(journal_start, num_blocks);
 }
 
-u64 Journal::checksum(const void *data, usize len)
-{
+u64 Journal::checksum(const void *data, usize len) {
     const u8 *bytes = static_cast<const u8 *>(data);
     u64 sum = 0;
-    for (usize i = 0; i < len; i++)
-    {
+    for (usize i = 0; i < len; i++) {
         sum = (sum << 5) + sum + bytes[i]; // Simple hash
     }
     return sum;
 }
 
-bool Journal::read_header()
-{
+bool Journal::read_header() {
     CacheBlock *block = cache().get(journal_start_);
-    if (!block)
-    {
+    if (!block) {
         serial::puts("[journal] Failed to read header block\n");
         return false;
     }
@@ -66,11 +59,9 @@ bool Journal::read_header()
     return true;
 }
 
-bool Journal::write_header()
-{
+bool Journal::write_header() {
     CacheBlock *block = cache().get(journal_start_);
-    if (!block)
-    {
+    if (!block) {
         serial::puts("[journal] Failed to get header block for write\n");
         return false;
     }
@@ -78,16 +69,14 @@ bool Journal::write_header()
     JournalHeader *hdr = reinterpret_cast<JournalHeader *>(block->data);
     *hdr = header_;
     block->dirty = true;
-    cache().sync_block(block);  // Sync before release to avoid use-after-free
+    cache().sync_block(block); // Sync before release to avoid use-after-free
     cache().release(block);
 
     return true;
 }
 
-bool Journal::init(u64 journal_start, u64 num_blocks)
-{
-    if (num_blocks < 4)
-    {
+bool Journal::init(u64 journal_start, u64 num_blocks) {
+    if (num_blocks < 4) {
         serial::puts("[journal] Journal too small (need at least 4 blocks)\n");
         return false;
     }
@@ -97,16 +86,14 @@ bool Journal::init(u64 journal_start, u64 num_blocks)
 
     // Try to read existing journal header
     CacheBlock *block = cache().get(journal_start);
-    if (!block)
-    {
+    if (!block) {
         serial::puts("[journal] Failed to read journal area\n");
         return false;
     }
 
     const JournalHeader *existing = reinterpret_cast<const JournalHeader *>(block->data);
 
-    if (existing->magic == JOURNAL_MAGIC && existing->version == 1)
-    {
+    if (existing->magic == JOURNAL_MAGIC && existing->version == 1) {
         // Existing valid journal - load it
         header_ = *existing;
         cache().release(block);
@@ -114,9 +101,7 @@ bool Journal::init(u64 journal_start, u64 num_blocks)
         serial::puts("[journal] Found existing journal (seq=");
         serial::put_dec(header_.sequence);
         serial::puts(")\n");
-    }
-    else
-    {
+    } else {
         // Initialize new journal
         cache().release(block);
 
@@ -128,8 +113,7 @@ bool Journal::init(u64 journal_start, u64 num_blocks)
         header_.head = 0;
         header_.tail = 0;
 
-        if (!write_header())
-        {
+        if (!write_header()) {
             return false;
         }
 
@@ -151,8 +135,7 @@ bool Journal::init(u64 journal_start, u64 num_blocks)
 /**
  * @brief Verify commit record exists and matches transaction.
  */
-bool Journal::verify_commit_record(u64 commit_block_num, u32 expected_seq)
-{
+bool Journal::verify_commit_record(u64 commit_block_num, u32 expected_seq) {
     CacheBlock *commit_block = cache().get(commit_block_num);
     if (!commit_block)
         return false;
@@ -161,8 +144,7 @@ bool Journal::verify_commit_record(u64 commit_block_num, u32 expected_seq)
     bool valid = (commit->magic == JOURNAL_MAGIC && commit->sequence == expected_seq);
     cache().release(commit_block);
 
-    if (!valid)
-    {
+    if (!valid) {
         serial::puts("[journal] Commit record invalid for seq=");
         serial::put_dec(expected_seq);
         serial::putc('\n');
@@ -173,14 +155,11 @@ bool Journal::verify_commit_record(u64 commit_block_num, u32 expected_seq)
 /**
  * @brief Verify all data block checksums in a transaction.
  */
-bool Journal::verify_transaction_checksums(u64 block_num, const JournalTransaction *txn)
-{
-    for (u8 i = 0; i < txn->num_blocks; i++)
-    {
+bool Journal::verify_transaction_checksums(u64 block_num, const JournalTransaction *txn) {
+    for (u8 i = 0; i < txn->num_blocks; i++) {
         u64 data_block = block_num + 1 + i;
         CacheBlock *src = cache().get(data_block);
-        if (!src)
-        {
+        if (!src) {
             serial::puts("[journal] Failed to read data block\n");
             return false;
         }
@@ -189,8 +168,7 @@ bool Journal::verify_transaction_checksums(u64 block_num, const JournalTransacti
         u64 expected = txn->blocks[i].checksum;
         cache().release(src);
 
-        if (computed != expected)
-        {
+        if (computed != expected) {
             serial::puts("[journal] Checksum mismatch for block ");
             serial::put_dec(i);
             serial::putc('\n');
@@ -203,10 +181,8 @@ bool Journal::verify_transaction_checksums(u64 block_num, const JournalTransacti
 /**
  * @brief Apply a transaction's data blocks to their destinations.
  */
-void Journal::apply_transaction_blocks(u64 block_num, const JournalTransaction *txn)
-{
-    for (u8 i = 0; i < txn->num_blocks; i++)
-    {
+void Journal::apply_transaction_blocks(u64 block_num, const JournalTransaction *txn) {
+    for (u8 i = 0; i < txn->num_blocks; i++) {
         u64 data_block = block_num + 1 + i;
         u64 dest_block = txn->blocks[i].block_num;
 
@@ -215,8 +191,7 @@ void Journal::apply_transaction_blocks(u64 block_num, const JournalTransaction *
             continue;
 
         CacheBlock *dst = cache().get_for_write(dest_block);
-        if (!dst)
-        {
+        if (!dst) {
             cache().release(src);
             continue;
         }
@@ -233,10 +208,8 @@ void Journal::apply_transaction_blocks(u64 block_num, const JournalTransaction *
 /**
  * @brief Validate transaction header fields.
  */
-bool Journal::validate_transaction_header(const JournalTransaction *txn, u64 pos)
-{
-    if (txn->magic != JOURNAL_MAGIC)
-    {
+bool Journal::validate_transaction_header(const JournalTransaction *txn, u64 pos) {
+    if (txn->magic != JOURNAL_MAGIC) {
         serial::puts("[journal] Invalid transaction magic at pos ");
         serial::put_dec(pos);
         serial::putc('\n');
@@ -244,8 +217,7 @@ bool Journal::validate_transaction_header(const JournalTransaction *txn, u64 pos
     }
     if (txn->state == txn_state::TXN_INVALID)
         return false;
-    if (txn->num_blocks > MAX_JOURNAL_BLOCKS)
-    {
+    if (txn->num_blocks > MAX_JOURNAL_BLOCKS) {
         serial::puts("[journal] Invalid block count\n");
         return false;
     }
@@ -256,8 +228,7 @@ bool Journal::validate_transaction_header(const JournalTransaction *txn, u64 pos
 // Journal Replay
 // =============================================================================
 
-bool Journal::replay()
-{
+bool Journal::replay() {
     if (!enabled_)
         return true;
 
@@ -267,8 +238,7 @@ bool Journal::replay()
     u64 replayed = 0;
     u64 skipped = 0;
 
-    while (pos != header_.tail && pos < header_.num_blocks)
-    {
+    while (pos != header_.tail && pos < header_.num_blocks) {
         u64 block_num = header_.start_block + pos;
         CacheBlock *block = cache().get(block_num);
         if (!block)
@@ -276,18 +246,15 @@ bool Journal::replay()
 
         const JournalTransaction *txn = reinterpret_cast<const JournalTransaction *>(block->data);
 
-        if (!validate_transaction_header(txn, pos))
-        {
+        if (!validate_transaction_header(txn, pos)) {
             cache().release(block);
             break;
         }
 
-        if (txn->state == txn_state::TXN_COMMITTED)
-        {
+        if (txn->state == txn_state::TXN_COMMITTED) {
             u64 commit_block_num = block_num + 1 + txn->num_blocks;
 
-            if (!verify_commit_record(commit_block_num, txn->sequence))
-            {
+            if (!verify_commit_record(commit_block_num, txn->sequence)) {
                 pos += txn->num_blocks + 2;
                 cache().release(block);
                 skipped++;
@@ -298,8 +265,7 @@ bool Journal::replay()
             serial::put_dec(txn->sequence);
             serial::putc('\n');
 
-            if (!verify_transaction_checksums(block_num, txn))
-            {
+            if (!verify_transaction_checksums(block_num, txn)) {
                 pos += txn->num_blocks + 2;
                 cache().release(block);
                 skipped++;
@@ -314,8 +280,7 @@ bool Journal::replay()
         cache().release(block);
     }
 
-    if (replayed > 0 || skipped > 0)
-    {
+    if (replayed > 0 || skipped > 0) {
         serial::puts("[journal] Replay complete: ");
         serial::put_dec(replayed);
         serial::puts(" applied, ");
@@ -326,24 +291,20 @@ bool Journal::replay()
         header_.head = 0;
         header_.tail = 0;
         write_header();
-    }
-    else
-    {
+    } else {
         serial::puts("[journal] No transactions to replay\n");
     }
 
     return true;
 }
 
-Transaction *Journal::begin()
-{
+Transaction *Journal::begin() {
     if (!enabled_)
         return nullptr;
 
     SpinlockGuard guard(txn_lock_);
 
-    if (current_txn_.active)
-    {
+    if (current_txn_.active) {
         serial::puts("[journal] Transaction already active\n");
         return nullptr;
     }
@@ -355,28 +316,23 @@ Transaction *Journal::begin()
     return &current_txn_;
 }
 
-bool Journal::log_block(Transaction *txn, u64 block_num, const void *data)
-{
+bool Journal::log_block(Transaction *txn, u64 block_num, const void *data) {
     if (!txn || !txn->active)
         return false;
 
     SpinlockGuard guard(txn_lock_);
 
-    if (txn->num_blocks >= MAX_JOURNAL_BLOCKS)
-    {
+    if (txn->num_blocks >= MAX_JOURNAL_BLOCKS) {
         serial::puts("[journal] Transaction full\n");
         return false;
     }
 
     // Check if this block is already logged in this transaction
-    for (u8 i = 0; i < txn->num_blocks; i++)
-    {
-        if (txn->blocks[i] == block_num)
-        {
+    for (u8 i = 0; i < txn->num_blocks; i++) {
+        if (txn->blocks[i] == block_num) {
             // Update existing entry
             const u8 *src = static_cast<const u8 *>(data);
-            for (usize j = 0; j < BLOCK_SIZE; j++)
-            {
+            for (usize j = 0; j < BLOCK_SIZE; j++) {
                 txn->data[i][j] = src[j];
             }
             return true;
@@ -388,8 +344,7 @@ bool Journal::log_block(Transaction *txn, u64 block_num, const void *data)
     txn->blocks[idx] = block_num;
 
     const u8 *src = static_cast<const u8 *>(data);
-    for (usize i = 0; i < BLOCK_SIZE; i++)
-    {
+    for (usize i = 0; i < BLOCK_SIZE; i++) {
         txn->data[idx][i] = src[i];
     }
 
@@ -397,8 +352,7 @@ bool Journal::log_block(Transaction *txn, u64 block_num, const void *data)
     return true;
 }
 
-bool Journal::write_transaction(Transaction *txn, u64 *journal_pos)
-{
+bool Journal::write_transaction(Transaction *txn, u64 *journal_pos) {
     if (!txn || txn->num_blocks == 0)
         return false;
 
@@ -406,14 +360,12 @@ bool Journal::write_transaction(Transaction *txn, u64 *journal_pos)
     u64 space_needed = txn->num_blocks + 2; // descriptor + data + commit
     u64 available = header_.num_blocks - header_.tail;
 
-    if (available < space_needed)
-    {
+    if (available < space_needed) {
         // Journal is full - need to checkpoint and reclaim space
         // Before resetting, ensure all cached data is written to main storage
         // and that there are no uncommitted transactions.
 
-        if (header_.head != header_.tail)
-        {
+        if (header_.head != header_.tail) {
             // There are transactions in the journal - they need to be checkpointed.
             // The transactions between head and tail have been committed to the journal
             // but we need to ensure their destination blocks are synced to main storage.
@@ -446,8 +398,7 @@ bool Journal::write_transaction(Transaction *txn, u64 *journal_pos)
     desc->sequence = txn->sequence;
     desc->timestamp = timer::get_ticks();
 
-    for (u8 i = 0; i < txn->num_blocks; i++)
-    {
+    for (u8 i = 0; i < txn->num_blocks; i++) {
         desc->blocks[i].block_num = txn->blocks[i];
         desc->blocks[i].checksum = checksum(txn->data[i], BLOCK_SIZE);
     }
@@ -457,14 +408,12 @@ bool Journal::write_transaction(Transaction *txn, u64 *journal_pos)
     cache().release(desc_block);
 
     // Write data blocks
-    for (u8 i = 0; i < txn->num_blocks; i++)
-    {
+    for (u8 i = 0; i < txn->num_blocks; i++) {
         CacheBlock *data_block = cache().get_for_write(block_num + 1 + i);
         if (!data_block)
             return false;
 
-        for (usize j = 0; j < BLOCK_SIZE; j++)
-        {
+        for (usize j = 0; j < BLOCK_SIZE; j++) {
             data_block->data[j] = txn->data[i][j];
         }
         data_block->dirty = true;
@@ -477,8 +426,7 @@ bool Journal::write_transaction(Transaction *txn, u64 *journal_pos)
     return true;
 }
 
-bool Journal::write_commit(Transaction *txn, u64 journal_pos)
-{
+bool Journal::write_commit(Transaction *txn, u64 journal_pos) {
     u64 commit_block = header_.start_block + header_.tail;
 
     CacheBlock *block = cache().get_for_write(commit_block);
@@ -499,8 +447,7 @@ bool Journal::write_commit(Transaction *txn, u64 journal_pos)
     // Update transaction state to committed
     u64 desc_block_num = header_.start_block + journal_pos;
     CacheBlock *desc_block = cache().get_for_write(desc_block_num);
-    if (desc_block)
-    {
+    if (desc_block) {
         JournalTransaction *desc = reinterpret_cast<JournalTransaction *>(desc_block->data);
         desc->state = txn_state::TXN_COMMITTED;
         desc_block->dirty = true;
@@ -511,15 +458,13 @@ bool Journal::write_commit(Transaction *txn, u64 journal_pos)
     return true;
 }
 
-bool Journal::commit(Transaction *txn)
-{
+bool Journal::commit(Transaction *txn) {
     if (!txn || !txn->active)
         return false;
 
     SpinlockGuard guard(txn_lock_);
 
-    if (txn->num_blocks == 0)
-    {
+    if (txn->num_blocks == 0) {
         // Empty transaction - just close it
         txn->active = false;
         return true;
@@ -528,16 +473,14 @@ bool Journal::commit(Transaction *txn)
     u64 journal_pos = 0;
 
     // Write transaction data to journal
-    if (!write_transaction(txn, &journal_pos))
-    {
+    if (!write_transaction(txn, &journal_pos)) {
         serial::puts("[journal] Failed to write transaction\n");
         abort_unlocked(txn);
         return false;
     }
 
     // Write commit record
-    if (!write_commit(txn, journal_pos))
-    {
+    if (!write_commit(txn, journal_pos)) {
         serial::puts("[journal] Failed to write commit\n");
         abort_unlocked(txn);
         return false;
@@ -551,23 +494,19 @@ bool Journal::commit(Transaction *txn)
     return true;
 }
 
-void Journal::abort_unlocked(Transaction *txn)
-{
-    if (txn)
-    {
+void Journal::abort_unlocked(Transaction *txn) {
+    if (txn) {
         txn->active = false;
         txn->num_blocks = 0;
     }
 }
 
-void Journal::abort(Transaction *txn)
-{
+void Journal::abort(Transaction *txn) {
     SpinlockGuard guard(txn_lock_);
     abort_unlocked(txn);
 }
 
-bool Journal::complete(Transaction *txn)
-{
+bool Journal::complete(Transaction *txn) {
     // Mark transaction as complete (can be reclaimed)
     // In this simple implementation, we don't track completion separately
     // The journal is reset when it fills up
@@ -576,10 +515,8 @@ bool Journal::complete(Transaction *txn)
     return true;
 }
 
-void Journal::sync()
-{
-    if (enabled_)
-    {
+void Journal::sync() {
+    if (enabled_) {
         SpinlockGuard guard(txn_lock_);
         write_header();
     }

@@ -118,13 +118,13 @@ Key files:
 
 The graphics console now supports a subset of ANSI escape sequences:
 
-| Sequence | Description |
-|----------|-------------|
-| `ESC[H` / `ESC[n;mH` | Cursor position |
-| `ESC[nA/B/C/D` | Cursor movement |
-| `ESC[J` / `ESC[K` | Erase display/line |
-| `ESC[nm` | Set graphics rendition (colors) |
-| `ESC[?25h/l` | Show/hide cursor |
+| Sequence             | Description                     |
+|----------------------|---------------------------------|
+| `ESC[H` / `ESC[n;mH` | Cursor position                 |
+| `ESC[nA/B/C/D`       | Cursor movement                 |
+| `ESC[J` / `ESC[K`    | Erase display/line              |
+| `ESC[nm`             | Set graphics rendition (colors) |
+| `ESC[?25h/l`         | Show/hide cursor                |
 
 Color codes 30-37, 40-47, 90-97, 100-107 are supported for foreground and background.
 

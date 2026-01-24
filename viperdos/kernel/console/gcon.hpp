@@ -20,8 +20,7 @@
  * by the framebuffer driver (typically XRGB8888/ARGB8888 depending on the
  * platform configuration).
  */
-namespace gcon
-{
+namespace gcon {
 
 /**
  * @brief Convenience color constants used by the boot UI.
@@ -32,14 +31,13 @@ namespace gcon
  * `ramfb::put_pixel`, but the values are chosen to look reasonable on the
  * QEMU virt RAM framebuffer configuration.
  */
-namespace colors
-{
+namespace colors {
 constexpr u32 VIPER_GREEN = 0xFF00AA44;
 constexpr u32 VIPER_DARK_BROWN = 0xFF1A1208;
 constexpr u32 VIPER_YELLOW = 0xFFFFDD00;
 constexpr u32 VIPER_WHITE = 0xFFEEEEEE;
 constexpr u32 VIPER_RED = 0xFFCC3333;
-constexpr u32 VIPER_BLUE = 0xFF0055AA;   // Workbench blue
+constexpr u32 VIPER_BLUE = 0xFF0055AA; // Workbench blue
 constexpr u32 BLACK = 0xFF000000;
 constexpr u32 WHITE = 0xFFFFFFFF;
 } // namespace colors

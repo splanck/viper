@@ -10,8 +10,7 @@
 #include "types.h"
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 /* Protection flags */
@@ -65,70 +64,70 @@ extern "C"
 #define MCL_FUTURE 2  /* Lock all future mappings */
 #define MCL_ONFAULT 4 /* Lock pages as they are faulted in */
 
-    /*
-     * mmap - Map files or devices into memory
-     */
-    void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset);
+/*
+ * mmap - Map files or devices into memory
+ */
+void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset);
 
-    /*
-     * munmap - Unmap a mapped region
-     */
-    int munmap(void *addr, size_t length);
+/*
+ * munmap - Unmap a mapped region
+ */
+int munmap(void *addr, size_t length);
 
-    /*
-     * mprotect - Set protection on a region of memory
-     */
-    int mprotect(void *addr, size_t length, int prot);
+/*
+ * mprotect - Set protection on a region of memory
+ */
+int mprotect(void *addr, size_t length, int prot);
 
-    /*
-     * msync - Synchronize a mapped region
-     */
-    int msync(void *addr, size_t length, int flags);
+/*
+ * msync - Synchronize a mapped region
+ */
+int msync(void *addr, size_t length, int flags);
 
-    /*
-     * madvise - Give advice about use of memory
-     */
-    int madvise(void *addr, size_t length, int advice);
+/*
+ * madvise - Give advice about use of memory
+ */
+int madvise(void *addr, size_t length, int advice);
 
-    /*
-     * posix_madvise - POSIX memory advice
-     */
-    int posix_madvise(void *addr, size_t length, int advice);
+/*
+ * posix_madvise - POSIX memory advice
+ */
+int posix_madvise(void *addr, size_t length, int advice);
 
-    /*
-     * mlock - Lock a range of memory
-     */
-    int mlock(const void *addr, size_t length);
+/*
+ * mlock - Lock a range of memory
+ */
+int mlock(const void *addr, size_t length);
 
-    /*
-     * munlock - Unlock a range of memory
-     */
-    int munlock(const void *addr, size_t length);
+/*
+ * munlock - Unlock a range of memory
+ */
+int munlock(const void *addr, size_t length);
 
-    /*
-     * mlockall - Lock all pages of a process
-     */
-    int mlockall(int flags);
+/*
+ * mlockall - Lock all pages of a process
+ */
+int mlockall(int flags);
 
-    /*
-     * munlockall - Unlock all pages of a process
-     */
-    int munlockall(void);
+/*
+ * munlockall - Unlock all pages of a process
+ */
+int munlockall(void);
 
-    /*
-     * mincore - Determine whether pages are resident in memory
-     */
-    int mincore(void *addr, size_t length, unsigned char *vec);
+/*
+ * mincore - Determine whether pages are resident in memory
+ */
+int mincore(void *addr, size_t length, unsigned char *vec);
 
-    /*
-     * shm_open - Open a shared memory object
-     */
-    int shm_open(const char *name, int oflag, mode_t mode);
+/*
+ * shm_open - Open a shared memory object
+ */
+int shm_open(const char *name, int oflag, mode_t mode);
 
-    /*
-     * shm_unlink - Remove a shared memory object
-     */
-    int shm_unlink(const char *name);
+/*
+ * shm_unlink - Remove a shared memory object
+ */
+int shm_unlink(const char *name);
 
 #ifdef __cplusplus
 }

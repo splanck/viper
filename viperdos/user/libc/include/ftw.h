@@ -10,8 +10,7 @@
 #include "sys/types.h"
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 /* Type flags for callback */
@@ -29,44 +28,43 @@ extern "C"
 #define FTW_DEPTH (1 << 2) /* Post-order traversal */
 #define FTW_CHDIR (1 << 3) /* chdir to each directory */
 
-    /* Structure passed to nftw callback */
-    struct FTW
-    {
-        int base;  /* Offset of basename in pathname */
-        int level; /* Depth relative to start directory */
-    };
+/* Structure passed to nftw callback */
+struct FTW {
+    int base;  /* Offset of basename in pathname */
+    int level; /* Depth relative to start directory */
+};
 
-    /*
-     * ftw - File tree walk (legacy)
-     *
-     * Walks directory tree rooted at 'path', calling 'fn' for each entry.
-     * 'nopenfd' is max number of directories to hold open.
-     *
-     * fn(path, sb, type) returns:
-     *   0 to continue walking
-     *   non-zero to stop and return that value
-     *
-     * Returns 0 on success, -1 on error, or value from fn.
-     */
-    int ftw(const char *path,
-            int (*fn)(const char *fpath, const struct stat *sb, int typeflag),
-            int nopenfd);
+/*
+ * ftw - File tree walk (legacy)
+ *
+ * Walks directory tree rooted at 'path', calling 'fn' for each entry.
+ * 'nopenfd' is max number of directories to hold open.
+ *
+ * fn(path, sb, type) returns:
+ *   0 to continue walking
+ *   non-zero to stop and return that value
+ *
+ * Returns 0 on success, -1 on error, or value from fn.
+ */
+int ftw(const char *path,
+        int (*fn)(const char *fpath, const struct stat *sb, int typeflag),
+        int nopenfd);
 
-    /*
-     * nftw - Extended file tree walk
-     *
-     * Like ftw, but with additional flags and FTW structure.
-     *
-     * fn(path, sb, type, ftwbuf) returns:
-     *   0 to continue walking
-     *   non-zero to stop and return that value
-     *
-     * Returns 0 on success, -1 on error, or value from fn.
-     */
-    int nftw(const char *path,
-             int (*fn)(const char *fpath, const struct stat *sb, int typeflag, struct FTW *ftwbuf),
-             int nopenfd,
-             int flags);
+/*
+ * nftw - Extended file tree walk
+ *
+ * Like ftw, but with additional flags and FTW structure.
+ *
+ * fn(path, sb, type, ftwbuf) returns:
+ *   0 to continue walking
+ *   non-zero to stop and return that value
+ *
+ * Returns 0 on success, -1 on error, or value from fn.
+ */
+int nftw(const char *path,
+         int (*fn)(const char *fpath, const struct stat *sb, int typeflag, struct FTW *ftwbuf),
+         int nopenfd,
+         int flags);
 
 #ifdef __cplusplus
 }

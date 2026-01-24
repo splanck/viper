@@ -100,8 +100,7 @@ const std::unordered_map<std::string, CollectionMethod> &getMethodDispatchTable(
         {"haskey", CollectionMethod::HasKey},
         {"setifmissing", CollectionMethod::SetIfMissing},
         {"keys", CollectionMethod::Keys},
-        {"values", CollectionMethod::Values}
-    };
+        {"values", CollectionMethod::Values}};
     return table;
 }
 
@@ -126,9 +125,9 @@ CollectionMethod lookupMethod(const std::string &methodName)
 //=============================================================================
 
 std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
-                                                         TypeRef baseType,
-                                                         const std::string &methodName,
-                                                         CallExpr *expr)
+                                                        TypeRef baseType,
+                                                        const std::string &methodName,
+                                                        CallExpr *expr)
 {
     // Use O(1) dispatch table lookup instead of sequential string comparisons
     const CollectionMethod method = lookupMethod(methodName);
@@ -139,8 +138,8 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
             if (expr->args.size() >= 1)
             {
                 auto indexResult = lowerExpr(expr->args[0].value.get());
-                Value boxed = emitCallRet(
-                    Type(Type::Kind::Ptr), kListGet, {baseValue, indexResult.value});
+                Value boxed =
+                    emitCallRet(Type(Type::Kind::Ptr), kListGet, {baseValue, indexResult.value});
                 TypeRef elemType = baseType->elementType();
                 if (elemType)
                 {
@@ -165,8 +164,8 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
             {
                 auto valueResult = lowerExpr(expr->args[0].value.get());
                 Value boxedValue = emitBox(valueResult.value, valueResult.type);
-                Value result = emitCallRet(
-                    Type(Type::Kind::I1), kListRemove, {baseValue, boxedValue});
+                Value result =
+                    emitCallRet(Type(Type::Kind::I1), kListRemove, {baseValue, boxedValue});
                 return LowerResult{result, Type(Type::Kind::I1)};
             }
             break;
@@ -188,8 +187,8 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
             {
                 auto valueResult = lowerExpr(expr->args[0].value.get());
                 Value boxedValue = emitBox(valueResult.value, valueResult.type);
-                Value result = emitCallRet(
-                    Type(Type::Kind::I64), kListFind, {baseValue, boxedValue});
+                Value result =
+                    emitCallRet(Type(Type::Kind::I64), kListFind, {baseValue, boxedValue});
                 return LowerResult{result, Type(Type::Kind::I64)};
             }
             break;
@@ -200,8 +199,8 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
             {
                 auto valueResult = lowerExpr(expr->args[0].value.get());
                 Value boxedValue = emitBox(valueResult.value, valueResult.type);
-                Value result = emitCallRet(
-                    Type(Type::Kind::I1), kListContains, {baseValue, boxedValue});
+                Value result =
+                    emitCallRet(Type(Type::Kind::I1), kListContains, {baseValue, boxedValue});
                 return LowerResult{result, Type(Type::Kind::I1)};
             }
             break;
@@ -261,9 +260,9 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
 //=============================================================================
 
 std::optional<LowerResult> Lowerer::lowerMapMethodCall(Value baseValue,
-                                                        TypeRef baseType,
-                                                        const std::string &methodName,
-                                                        CallExpr *expr)
+                                                       TypeRef baseType,
+                                                       const std::string &methodName,
+                                                       CallExpr *expr)
 {
     TypeRef valType = baseType->typeArgs.size() > 1 ? baseType->typeArgs[1] : nullptr;
 
@@ -288,8 +287,8 @@ std::optional<LowerResult> Lowerer::lowerMapMethodCall(Value baseValue,
             if (expr->args.size() >= 1)
             {
                 auto keyResult = lowerExpr(expr->args[0].value.get());
-                Value boxed = emitCallRet(
-                    Type(Type::Kind::Ptr), kMapGet, {baseValue, keyResult.value});
+                Value boxed =
+                    emitCallRet(Type(Type::Kind::Ptr), kMapGet, {baseValue, keyResult.value});
                 if (valType)
                 {
                     Type ilValueType = mapType(valType);
@@ -305,9 +304,8 @@ std::optional<LowerResult> Lowerer::lowerMapMethodCall(Value baseValue,
                 auto keyResult = lowerExpr(expr->args[0].value.get());
                 auto defaultResult = lowerExpr(expr->args[1].value.get());
                 Value boxedDefault = emitBox(defaultResult.value, defaultResult.type);
-                Value boxed = emitCallRet(Type(Type::Kind::Ptr),
-                                          kMapGetOr,
-                                          {baseValue, keyResult.value, boxedDefault});
+                Value boxed = emitCallRet(
+                    Type(Type::Kind::Ptr), kMapGetOr, {baseValue, keyResult.value, boxedDefault});
                 if (valType)
                 {
                     Type ilValueType = mapType(valType);
@@ -323,9 +321,8 @@ std::optional<LowerResult> Lowerer::lowerMapMethodCall(Value baseValue,
             if (expr->args.size() >= 1)
             {
                 auto keyResult = lowerExpr(expr->args[0].value.get());
-                Value result = emitCallRet(Type(Type::Kind::I1),
-                                           kMapContainsKey,
-                                           {baseValue, keyResult.value});
+                Value result = emitCallRet(
+                    Type(Type::Kind::I1), kMapContainsKey, {baseValue, keyResult.value});
                 return LowerResult{result, Type(Type::Kind::I1)};
             }
             break;
@@ -342,8 +339,8 @@ std::optional<LowerResult> Lowerer::lowerMapMethodCall(Value baseValue,
             if (expr->args.size() >= 1)
             {
                 auto keyResult = lowerExpr(expr->args[0].value.get());
-                Value result = emitCallRet(
-                    Type(Type::Kind::I1), kMapRemove, {baseValue, keyResult.value});
+                Value result =
+                    emitCallRet(Type(Type::Kind::I1), kMapRemove, {baseValue, keyResult.value});
                 return LowerResult{result, Type(Type::Kind::I1)};
             }
             break;
@@ -467,7 +464,7 @@ std::optional<LowerResult> Lowerer::lowerBuiltinCall(const std::string &name, Ca
 //=============================================================================
 
 std::optional<LowerResult> Lowerer::lowerValueTypeConstruction(const std::string &typeName,
-                                                                CallExpr *expr)
+                                                               CallExpr *expr)
 {
     const ValueTypeInfo *infoPtr = getOrCreateValueTypeInfo(typeName);
     if (!infoPtr)
@@ -541,7 +538,7 @@ std::optional<LowerResult> Lowerer::lowerValueTypeConstruction(const std::string
 //=============================================================================
 
 std::optional<LowerResult> Lowerer::lowerEntityTypeConstruction(const std::string &typeName,
-                                                                 CallExpr *expr)
+                                                                CallExpr *expr)
 {
     const EntityTypeInfo *infoPtr = getOrCreateEntityTypeInfo(typeName);
     if (!infoPtr)
@@ -700,7 +697,8 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
         {
             // Unwrap Optional types for method resolution
             // This handles the case where a variable was assigned from an optional
-            // after a null check (e.g., `var table = maybeTable;` after `if maybeTable == null { return; }`)
+            // after a null check (e.g., `var table = maybeTable;` after `if maybeTable == null {
+            // return; }`)
             if (baseType->kind == TypeKindSem::Optional && baseType->innerType())
             {
                 baseType = baseType->innerType();
@@ -765,9 +763,11 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                     if (methodIt != ifaceIt->second.methodMap.end())
                     {
                         auto baseResult = lowerExpr(fieldExpr->base.get());
-                        return lowerInterfaceMethodCall(
-                            ifaceIt->second, fieldExpr->field, methodIt->second, baseResult.value,
-                            expr);
+                        return lowerInterfaceMethodCall(ifaceIt->second,
+                                                        fieldExpr->field,
+                                                        methodIt->second,
+                                                        baseResult.value,
+                                                        expr);
                     }
                 }
             }
@@ -805,8 +805,8 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 if (equalsIgnoreCase(fieldExpr->field, "length"))
                 {
                     auto baseResult = lowerExpr(fieldExpr->base.get());
-                    Value result =
-                        emitCallRet(Type(Type::Kind::I64), "Viper.String.Length", {baseResult.value});
+                    Value result = emitCallRet(
+                        Type(Type::Kind::I64), "Viper.String.Length", {baseResult.value});
                     return {result, Type(Type::Kind::I64)};
                 }
             }
@@ -841,7 +841,8 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
             if (baseType->kind == TypeKindSem::List)
             {
                 auto baseResult = lowerExpr(fieldExpr->base.get());
-                auto listResult = lowerListMethodCall(baseResult.value, baseType, fieldExpr->field, expr);
+                auto listResult =
+                    lowerListMethodCall(baseResult.value, baseType, fieldExpr->field, expr);
                 if (listResult)
                     return *listResult;
             }
@@ -850,7 +851,8 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
             if (baseType->kind == TypeKindSem::Map)
             {
                 auto baseResult = lowerExpr(fieldExpr->base.get());
-                auto mapResult = lowerMapMethodCall(baseResult.value, baseType, fieldExpr->field, expr);
+                auto mapResult =
+                    lowerMapMethodCall(baseResult.value, baseType, fieldExpr->field, expr);
                 if (mapResult)
                     return *mapResult;
             }
@@ -896,8 +898,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
             if (expectedParamTypes && (paramOffset + i) < expectedParamTypes->size())
             {
                 Type expectedType = (*expectedParamTypes)[paramOffset + i];
-                if (expectedType.kind == Type::Kind::Ptr &&
-                    result.type.kind != Type::Kind::Ptr &&
+                if (expectedType.kind == Type::Kind::Ptr && result.type.kind != Type::Kind::Ptr &&
                     result.type.kind != Type::Kind::Void)
                 {
                     // Primitive passed where object expected - auto-box
@@ -1000,8 +1001,8 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
     }
     else if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get()))
     {
-        // Check if this is a namespace-qualified function call (e.g., Math.add or Outer.Inner.getValue)
-        // Recursively build the qualified name from nested FieldExpr nodes
+        // Check if this is a namespace-qualified function call (e.g., Math.add or
+        // Outer.Inner.getValue) Recursively build the qualified name from nested FieldExpr nodes
         std::string qualifiedName;
         std::function<bool(Expr *)> buildQualifiedName = [&](Expr *e) -> bool
         {
@@ -1023,7 +1024,8 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
         buildQualifiedName(expr->callee.get());
 
         // Check if the qualified name is a defined function
-        if (!qualifiedName.empty() && definedFunctions_.find(qualifiedName) != definedFunctions_.end())
+        if (!qualifiedName.empty() &&
+            definedFunctions_.find(qualifiedName) != definedFunctions_.end())
         {
             // This is a namespace-qualified function call - emit as direct call
             calleeName = qualifiedName;

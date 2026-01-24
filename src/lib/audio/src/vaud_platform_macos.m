@@ -44,10 +44,10 @@
 /// @details Stores AudioQueue state and buffer references.
 typedef struct
 {
-    AudioQueueRef queue;                           ///< The audio queue
+    AudioQueueRef queue;                                 ///< The audio queue
     AudioQueueBufferRef buffers[VAUD_MACOS_NUM_BUFFERS]; ///< Audio buffers
-    AudioStreamBasicDescription format;            ///< Audio format description
-    int paused;                                    ///< Pause state
+    AudioStreamBasicDescription format;                  ///< Audio format description
+    int paused;                                          ///< Pause state
 } vaud_macos_data;
 
 //===----------------------------------------------------------------------===//
@@ -107,8 +107,7 @@ int vaud_platform_init(vaud_context_t ctx)
     /* Configure audio format: 16-bit stereo PCM at 44.1kHz */
     plat->format.mSampleRate = (Float64)VAUD_SAMPLE_RATE;
     plat->format.mFormatID = kAudioFormatLinearPCM;
-    plat->format.mFormatFlags = kLinearPCMFormatFlagIsSignedInteger |
-                                 kLinearPCMFormatFlagIsPacked;
+    plat->format.mFormatFlags = kLinearPCMFormatFlagIsSignedInteger | kLinearPCMFormatFlagIsPacked;
     plat->format.mBitsPerChannel = 16;
     plat->format.mChannelsPerFrame = VAUD_CHANNELS;
     plat->format.mFramesPerPacket = 1;
@@ -116,15 +115,13 @@ int vaud_platform_init(vaud_context_t ctx)
     plat->format.mBytesPerPacket = plat->format.mBytesPerFrame;
 
     /* Create the audio queue */
-    OSStatus status = AudioQueueNewOutput(
-        &plat->format,
-        audio_callback,
-        ctx,            /* User data - our context */
-        NULL,           /* Run loop (NULL = internal) */
-        NULL,           /* Run loop mode */
-        0,              /* Flags */
-        &plat->queue
-    );
+    OSStatus status = AudioQueueNewOutput(&plat->format,
+                                          audio_callback,
+                                          ctx,  /* User data - our context */
+                                          NULL, /* Run loop (NULL = internal) */
+                                          NULL, /* Run loop mode */
+                                          0,    /* Flags */
+                                          &plat->queue);
 
     if (status != noErr)
     {
@@ -188,7 +185,7 @@ void vaud_platform_shutdown(vaud_context_t ctx)
     vaud_macos_data *plat = (vaud_macos_data *)ctx->platform_data;
 
     /* Stop and dispose the queue (this also frees buffers) */
-    AudioQueueStop(plat->queue, true);  /* true = immediate stop */
+    AudioQueueStop(plat->queue, true); /* true = immediate stop */
     AudioQueueDispose(plat->queue, true);
 
     free(plat);

@@ -6,13 +6,16 @@
 
 ## Overview
 
-The Viper subsystem provides ViperDOS's user-space process abstraction. In the microkernel architecture, this is a core kernel component that provides:
+The Viper subsystem provides ViperDOS's user-space process abstraction. In the microkernel architecture, this is a core
+kernel component that provides:
 
 - Process management (create, fork, wait, exit)
 - Per-process address spaces with demand paging and COW
 - Capability tables for handle-based access control
 
-Each "Viper" is an in-kernel process representation that owns an address space, a capability table, and a set of tasks. The capability system provides fine-grained access control to kernel objects and enables secure delegation between user-space servers.
+Each "Viper" is an in-kernel process representation that owns an address space, a capability table, and a set of tasks.
+The capability system provides fine-grained access control to kernel objects and enables secure delegation between
+user-space servers.
 
 ---
 
@@ -23,6 +26,7 @@ Each "Viper" is an in-kernel process representation that owns an address space, 
 **Status:** Complete process management
 
 **Implemented:**
+
 - Fixed-size process table (64 processes)
 - Process lifecycle states
 - Parent/child process hierarchy
@@ -89,6 +93,7 @@ Each "Viper" is an in-kernel process representation that owns an address space, 
 | `setsid()` | Create new session |
 
 **Constants:**
+
 - `MAX_VIPERS`: 64 processes
 - `DEFAULT_MEMORY_LIMIT`: 64MB
 - `DEFAULT_HANDLE_LIMIT`: 1024
@@ -100,6 +105,7 @@ Each "Viper" is an in-kernel process representation that owns an address space, 
 **Status:** Complete per-process virtual memory with COW support
 
 **Implemented:**
+
 - ASID allocator (256 ASIDs, 0 reserved)
 - L0-L3 4-level page table management
 - Page mapping with protection flags
@@ -136,6 +142,7 @@ Each "Viper" is an in-kernel process representation that owns an address space, 
 | `asid()` | Get ASID |
 
 **User Address Layout:**
+
 ```
 0x0000'7FFF'FFFF'0000  ┌─────────────────────────┐
                        │     User Stack          │
@@ -158,6 +165,7 @@ Each "Viper" is an in-kernel process representation that owns an address space, 
 **Status:** Complete handle-based access control
 
 **Implemented:**
+
 - Fixed-capacity entry array (256 default)
 - Free list for slot management
 - Handle encoding (24-bit index + 8-bit generation)
@@ -168,6 +176,7 @@ Each "Viper" is an in-kernel process representation that owns an address space, 
 - Typed and rights-checked lookups
 
 **Handle Format:**
+
 ```
 ┌────────────────────────────────────┐
 │  Generation (8 bits) │ Index (24 bits) │
@@ -220,6 +229,7 @@ Each "Viper" is an in-kernel process representation that owns an address space, 
 **Status:** Complete rights bitmask system
 
 **Implemented:**
+
 - Rights as bitmask flags
 - Common right combinations
 - Rights checking helper
@@ -249,6 +259,7 @@ Each "Viper" is an in-kernel process representation that owns an address space, 
 **Status:** Complete handle utilities
 
 **Implemented:**
+
 - 32-bit opaque handle type
 - Index extraction (bits 0-23)
 - Generation extraction (bits 24-31)
@@ -256,6 +267,7 @@ Each "Viper" is an in-kernel process representation that owns an address space, 
 - Invalid handle sentinel
 
 **Constants:**
+
 - `HANDLE_INVALID`: 0xFFFFFFFF
 - `INDEX_MASK`: 0x00FFFFFF (16M entries max)
 - `GEN_SHIFT`: 24
@@ -325,52 +337,52 @@ Result: New handle with read-only access (plus ability to further derive)
 
 Capability syscalls:
 
-| Syscall | Number | Description |
-|---------|--------|-------------|
-| cap_derive | 0x70 | Derive with reduced rights |
-| cap_revoke | 0x71 | Revoke capability |
-| cap_query | 0x72 | Query capability info |
-| cap_list | 0x73 | List all capabilities |
+| Syscall    | Number | Description                |
+|------------|--------|----------------------------|
+| cap_derive | 0x70   | Derive with reduced rights |
+| cap_revoke | 0x71   | Revoke capability          |
+| cap_query  | 0x72   | Query capability info      |
+| cap_list   | 0x73   | List all capabilities      |
 
 Process syscalls:
 
-| Syscall | Number | Description |
-|---------|--------|-------------|
-| fork | 0x0B | Fork process with COW |
-| getpid | 0xA0 | Get process ID |
-| getppid | 0xA1 | Get parent process ID |
-| getpgid | 0xA2 | Get process group ID |
-| setpgid | 0xA3 | Set process group ID |
-| getsid | 0xA4 | Get session ID |
-| setsid | 0xA5 | Create new session |
+| Syscall | Number | Description           |
+|---------|--------|-----------------------|
+| fork    | 0x0B   | Fork process with COW |
+| getpid  | 0xA0   | Get process ID        |
+| getppid | 0xA1   | Get parent process ID |
+| getpgid | 0xA2   | Get process group ID  |
+| setpgid | 0xA3   | Set process group ID  |
+| getsid  | 0xA4   | Get session ID        |
+| setsid  | 0xA5   | Create new session    |
 
 Handle-based file syscalls:
 
-| Syscall | Number | Description |
-|---------|--------|-------------|
-| fs_open_root | 0x80 | Get root directory handle |
-| fs_open | 0x81 | Open relative to handle |
-| io_read | 0x82 | Read from file handle |
-| io_write | 0x83 | Write to file handle |
-| io_seek | 0x84 | Seek in file handle |
-| fs_readdir | 0x85 | Read directory entry |
-| fs_close | 0x86 | Close handle |
-| fs_rewinddir | 0x87 | Reset directory |
+| Syscall      | Number | Description               |
+|--------------|--------|---------------------------|
+| fs_open_root | 0x80   | Get root directory handle |
+| fs_open      | 0x81   | Open relative to handle   |
+| io_read      | 0x82   | Read from file handle     |
+| io_write     | 0x83   | Write to file handle      |
+| io_seek      | 0x84   | Seek in file handle       |
+| fs_readdir   | 0x85   | Read directory entry      |
+| fs_close     | 0x86   | Close handle              |
+| fs_rewinddir | 0x87   | Reset directory           |
 
 ---
 
 ## Files
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `viper/viper.cpp` | ~717 | Process management + wait/exit |
-| `viper/viper.hpp` | ~342 | Process interface |
-| `viper/address_space.cpp` | ~640 | Address space impl + COW |
-| `viper/address_space.hpp` | ~357 | Address space interface |
-| `cap/table.cpp` | ~202 | Capability table |
-| `cap/table.hpp` | ~230 | Table interface |
-| `cap/rights.hpp` | ~104 | Rights definitions |
-| `cap/handle.hpp` | ~73 | Handle encoding |
+| File                      | Lines | Description                    |
+|---------------------------|-------|--------------------------------|
+| `viper/viper.cpp`         | ~717  | Process management + wait/exit |
+| `viper/viper.hpp`         | ~342  | Process interface              |
+| `viper/address_space.cpp` | ~640  | Address space impl + COW       |
+| `viper/address_space.hpp` | ~357  | Address space interface        |
+| `cap/table.cpp`           | ~202  | Capability table               |
+| `cap/table.hpp`           | ~230  | Table interface                |
+| `cap/rights.hpp`          | ~104  | Rights definitions             |
+| `cap/handle.hpp`          | ~73   | Handle encoding                |
 
 ---
 
@@ -384,8 +396,10 @@ Handle-based file syscalls:
 ## Recent Additions
 
 - **Per-CPU current process**: CpuData now has current_viper field for SMP support
-- **Process groups/sessions**: Added pgid, sid, is_session_leader fields; syscalls getpid, getppid, getpgid, setpgid, getsid, setsid (0xA0-0xA5)
-- **Capability revocation propagation**: Entry now has parent_index field; revoke() recursively invalidates derived handles
+- **Process groups/sessions**: Added pgid, sid, is_session_leader fields; syscalls getpid, getppid, getpgid, setpgid,
+  getsid, setsid (0xA0-0xA5)
+- **Capability revocation propagation**: Entry now has parent_index field; revoke() recursively invalidates derived
+  handles
 - **Fork syscall**: SYS_FORK (0x0B) creates child process with COW page sharing
 - **Current working directory**: Per-process CWD tracking for spawned processes and relative path support
 - **Relative path resolution**: Paths without assign prefix resolve relative to CWD
@@ -395,35 +409,45 @@ Handle-based file syscalls:
 ## Priority Recommendations: Next 5 Steps
 
 ### 1. exec() Family Implementation
+
 **Impact:** Standard process replacement
+
 - Replace current process image with new program
 - Keep PID, open FDs, current directory
 - Close FD_CLOEXEC descriptors
 - execve(), execvp(), execl() variants
 
 ### 2. Environment Variables
+
 **Impact:** Standard Unix environment handling
+
 - Per-process environment array
 - getenv()/setenv()/unsetenv() support
 - Environment inheritance on fork()
 - PATH-based executable search in execvp()
 
 ### 3. Resource Limits (setrlimit)
+
 **Impact:** Per-process resource control
+
 - Memory limit enforcement (RLIMIT_AS)
 - Open file limit (RLIMIT_NOFILE)
 - CPU time limit (RLIMIT_CPU)
 - Stack size limit (RLIMIT_STACK)
 
 ### 4. Process Credentials (UID/GID)
+
 **Impact:** Foundation for permission system
+
 - Per-process uid, euid, gid, egid
 - getuid()/setuid() family of syscalls
 - Supplementary groups support
 - Required for permission enforcement
 
 ### 5. Capability Bounding Set
+
 **Impact:** Privilege restriction for security
+
 - Maximum capabilities for process tree
 - Irrevocable capability restrictions
 - Used by setuid programs for privilege drop

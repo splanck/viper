@@ -6,22 +6,18 @@
 #include "../include/net.hpp"
 #include "../include/device.hpp"
 
-namespace virtio
-{
+namespace virtio {
 
-bool NetDevice::init(u64 mmio_phys, u32 irq)
-{
+bool NetDevice::init(u64 mmio_phys, u32 irq) {
     irq_num_ = irq;
 
     // Initialize base device (maps MMIO)
-    if (!Device::init(mmio_phys))
-    {
+    if (!Device::init(mmio_phys)) {
         return false;
     }
 
     // Verify device type
-    if (device_id() != device_type::NET)
-    {
+    if (device_id() != device_type::NET) {
         return false;
     }
 
@@ -29,8 +25,7 @@ bool NetDevice::init(u64 mmio_phys, u32 irq)
     reset();
 
     // For legacy mode, set guest page size
-    if (is_legacy())
-    {
+    if (is_legacy()) {
         write32(reg::GUEST_PAGE_SIZE, 4096);
     }
 
@@ -44,22 +39,17 @@ bool NetDevice::init(u64 mmio_phys, u32 irq)
     bool has_mac = (features_low & (1 << 5)) != 0; // MAC feature bit
 
     // Negotiate features
-    if (!negotiate_features(0))
-    {
+    if (!negotiate_features(0)) {
         set_status(status::FAILED);
         return false;
     }
 
     // Read MAC address from config
-    if (has_mac)
-    {
-        for (int i = 0; i < 6; i++)
-        {
+    if (has_mac) {
+        for (int i = 0; i < 6; i++) {
             mac_[i] = read_config8(i);
         }
-    }
-    else
-    {
+    } else {
         // Use default MAC
         mac_[0] = 0x52;
         mac_[1] = 0x54;
@@ -70,15 +60,13 @@ bool NetDevice::init(u64 mmio_phys, u32 irq)
     }
 
     // Initialize RX virtqueue (queue 0)
-    if (!rx_vq_.init(this, 0, 128))
-    {
+    if (!rx_vq_.init(this, 0, 128)) {
         set_status(status::FAILED);
         return false;
     }
 
     // Initialize TX virtqueue (queue 1)
-    if (!tx_vq_.init(this, 1, 128))
-    {
+    if (!tx_vq_.init(this, 1, 128)) {
         set_status(status::FAILED);
         return false;
     }
@@ -86,8 +74,7 @@ bool NetDevice::init(u64 mmio_phys, u32 irq)
     // Allocate RX buffers
     usize rx_pool_size = RX_BUFFER_COUNT * sizeof(RxBuffer);
     device::DmaBuffer rx_dma;
-    if (device::dma_alloc(rx_pool_size, &rx_dma) != 0)
-    {
+    if (device::dma_alloc(rx_pool_size, &rx_dma) != 0) {
         set_status(status::FAILED);
         return false;
     }
@@ -96,21 +83,18 @@ bool NetDevice::init(u64 mmio_phys, u32 irq)
     rx_buffers_virt_ = rx_dma.virt_addr;
 
     // Initialize RX buffers
-    for (usize i = 0; i < RX_BUFFER_COUNT; i++)
-    {
+    for (usize i = 0; i < RX_BUFFER_COUNT; i++) {
         rx_buffers_[i].in_use = false;
         rx_buffers_[i].desc_idx = 0;
         // Zero the data
-        for (usize j = 0; j < RX_BUFFER_SIZE; j++)
-        {
+        for (usize j = 0; j < RX_BUFFER_SIZE; j++) {
             rx_buffers_[i].data[j] = 0;
         }
     }
 
     // Allocate TX header buffer
     device::DmaBuffer tx_dma;
-    if (device::dma_alloc(sizeof(NetHeader), &tx_dma) != 0)
-    {
+    if (device::dma_alloc(sizeof(NetHeader), &tx_dma) != 0) {
         set_status(status::FAILED);
         return false;
     }
@@ -119,8 +103,7 @@ bool NetDevice::init(u64 mmio_phys, u32 irq)
     tx_header_virt_ = tx_dma.virt_addr;
 
     // Initialize received packet queue
-    for (usize i = 0; i < RX_QUEUE_SIZE; i++)
-    {
+    for (usize i = 0; i < RX_QUEUE_SIZE; i++) {
         rx_queue_[i].data = nullptr;
         rx_queue_[i].len = 0;
         rx_queue_[i].valid = false;
@@ -133,18 +116,15 @@ bool NetDevice::init(u64 mmio_phys, u32 irq)
     add_status(status::DRIVER_OK);
 
     // Register for IRQ
-    if (irq_num_ != 0)
-    {
+    if (irq_num_ != 0) {
         device::irq_register(irq_num_);
     }
 
     return true;
 }
 
-void NetDevice::destroy()
-{
-    if (irq_num_ != 0)
-    {
+void NetDevice::destroy() {
+    if (irq_num_ != 0) {
         device::irq_unregister(irq_num_);
     }
 
@@ -152,15 +132,13 @@ void NetDevice::destroy()
     tx_vq_.destroy();
 
     // Free DMA buffers
-    if (rx_buffers_virt_ != 0)
-    {
+    if (rx_buffers_virt_ != 0) {
         device::dma_free(rx_buffers_virt_);
         rx_buffers_ = nullptr;
         rx_buffers_virt_ = 0;
     }
 
-    if (tx_header_virt_ != 0)
-    {
+    if (tx_header_virt_ != 0) {
         device::dma_free(tx_header_virt_);
         tx_header_ = nullptr;
         tx_header_virt_ = 0;
@@ -169,16 +147,13 @@ void NetDevice::destroy()
     Device::destroy();
 }
 
-void NetDevice::get_mac(u8 *mac_out) const
-{
-    for (int i = 0; i < 6; i++)
-    {
+void NetDevice::get_mac(u8 *mac_out) const {
+    for (int i = 0; i < 6; i++) {
         mac_out[i] = mac_[i];
     }
 }
 
-void NetDevice::queue_rx_buffer(usize idx)
-{
+void NetDevice::queue_rx_buffer(usize idx) {
     if (idx >= RX_BUFFER_COUNT)
         return;
 
@@ -204,37 +179,30 @@ void NetDevice::queue_rx_buffer(usize idx)
     rx_vq_.submit(desc);
 }
 
-void NetDevice::refill_rx_buffers()
-{
-    for (usize i = 0; i < RX_BUFFER_COUNT; i++)
-    {
-        if (!rx_buffers_[i].in_use)
-        {
+void NetDevice::refill_rx_buffers() {
+    for (usize i = 0; i < RX_BUFFER_COUNT; i++) {
+        if (!rx_buffers_[i].in_use) {
             queue_rx_buffer(i);
         }
     }
     rx_vq_.kick();
 }
 
-bool NetDevice::transmit(const void *data, usize len)
-{
-    if (len > 1514)
-    { // Max Ethernet frame size
+bool NetDevice::transmit(const void *data, usize len) {
+    if (len > 1514) { // Max Ethernet frame size
         return false;
     }
 
     // Allocate DMA buffer for the frame
     device::DmaBuffer frame_dma;
-    if (device::dma_alloc(len, &frame_dma) != 0)
-    {
+    if (device::dma_alloc(len, &frame_dma) != 0) {
         return false;
     }
 
     // Copy frame data
     u8 *frame_buf = reinterpret_cast<u8 *>(frame_dma.virt_addr);
     const u8 *src = static_cast<const u8 *>(data);
-    for (usize i = 0; i < len; i++)
-    {
+    for (usize i = 0; i < len; i++) {
         frame_buf[i] = src[i];
     }
 
@@ -250,8 +218,7 @@ bool NetDevice::transmit(const void *data, usize len)
     i32 desc_hdr = tx_vq_.alloc_desc();
     i32 desc_data = tx_vq_.alloc_desc();
 
-    if (desc_hdr < 0 || desc_data < 0)
-    {
+    if (desc_hdr < 0 || desc_data < 0) {
         if (desc_hdr >= 0)
             tx_vq_.free_desc(desc_hdr);
         if (desc_data >= 0)
@@ -272,8 +239,7 @@ bool NetDevice::transmit(const void *data, usize len)
     tx_vq_.kick();
 
     // Poll for completion
-    while (tx_vq_.poll_used() < 0)
-    {
+    while (tx_vq_.poll_used() < 0) {
         // Busy wait - could yield in a real implementation
         asm volatile("yield");
     }
@@ -292,10 +258,8 @@ bool NetDevice::transmit(const void *data, usize len)
     return true;
 }
 
-void NetDevice::poll_rx()
-{
-    while (true)
-    {
+void NetDevice::poll_rx() {
+    while (true) {
         i32 desc = rx_vq_.poll_used();
         if (desc < 0)
             break;
@@ -304,20 +268,16 @@ void NetDevice::poll_rx()
         u32 len = rx_vq_.get_used_len(desc);
 
         // Find which buffer this descriptor belongs to
-        for (usize i = 0; i < RX_BUFFER_COUNT; i++)
-        {
-            if (rx_buffers_[i].in_use && rx_buffers_[i].desc_idx == static_cast<u16>(desc))
-            {
+        for (usize i = 0; i < RX_BUFFER_COUNT; i++) {
+            if (rx_buffers_[i].in_use && rx_buffers_[i].desc_idx == static_cast<u16>(desc)) {
                 // Skip virtio header
-                if (len > sizeof(NetHeader))
-                {
+                if (len > sizeof(NetHeader)) {
                     u16 frame_len = static_cast<u16>(len - sizeof(NetHeader));
                     u8 *frame_data = rx_buffers_[i].data + sizeof(NetHeader);
 
                     // Add to received queue if space available
                     usize next_tail = (rx_queue_tail_ + 1) % RX_QUEUE_SIZE;
-                    if (next_tail != rx_queue_head_)
-                    {
+                    if (next_tail != rx_queue_head_) {
                         rx_queue_[rx_queue_tail_].data = frame_data;
                         rx_queue_[rx_queue_tail_].len = frame_len;
                         rx_queue_[rx_queue_tail_].valid = true;
@@ -340,25 +300,21 @@ void NetDevice::poll_rx()
     refill_rx_buffers();
 }
 
-i32 NetDevice::receive(void *buf, usize max_len)
-{
+i32 NetDevice::receive(void *buf, usize max_len) {
     // Check if we have received packets
-    if (rx_queue_head_ == rx_queue_tail_ || !rx_queue_[rx_queue_head_].valid)
-    {
+    if (rx_queue_head_ == rx_queue_tail_ || !rx_queue_[rx_queue_head_].valid) {
         return 0;
     }
 
     ReceivedPacket *pkt = &rx_queue_[rx_queue_head_];
     u16 copy_len = pkt->len;
-    if (copy_len > max_len)
-    {
+    if (copy_len > max_len) {
         copy_len = static_cast<u16>(max_len);
     }
 
     // Copy data
     u8 *dst = static_cast<u8 *>(buf);
-    for (u16 i = 0; i < copy_len; i++)
-    {
+    for (u16 i = 0; i < copy_len; i++) {
         dst[i] = pkt->data[i];
     }
 
@@ -369,29 +325,24 @@ i32 NetDevice::receive(void *buf, usize max_len)
     return copy_len;
 }
 
-void NetDevice::handle_interrupt()
-{
+void NetDevice::handle_interrupt() {
     // Acknowledge interrupt
     u32 isr = read_isr();
-    if (isr & 0x1)
-    {
+    if (isr & 0x1) {
         ack_interrupt(0x1);
         // Process received packets
         poll_rx();
     }
-    if (isr & 0x2)
-    {
+    if (isr & 0x2) {
         ack_interrupt(0x2);
     }
 }
 
-bool NetDevice::has_rx_data() const
-{
+bool NetDevice::has_rx_data() const {
     return rx_queue_head_ != rx_queue_tail_ && rx_queue_[rx_queue_head_].valid;
 }
 
-bool NetDevice::link_up() const
-{
+bool NetDevice::link_up() const {
     // Read status from config if STATUS feature was negotiated
     // For simplicity, assume link is always up
     return true;

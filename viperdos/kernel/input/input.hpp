@@ -20,15 +20,13 @@
  * devices; consumers can then query for available events/characters without
  * directly interacting with the device drivers.
  */
-namespace input
-{
+namespace input {
 
 // Input event types
 /**
  * @brief High-level input event categories.
  */
-enum class EventType : u8
-{
+enum class EventType : u8 {
     None = 0,
     KeyPress = 1,
     KeyRelease = 2,
@@ -44,8 +42,7 @@ enum class EventType : u8
  * The modifier mask is updated as modifier key press/release events are
  * processed and is attached to each emitted @ref Event.
  */
-namespace modifier
-{
+namespace modifier {
 constexpr u8 SHIFT = 0x01;
 constexpr u8 CTRL = 0x02;
 constexpr u8 ALT = 0x04;
@@ -62,8 +59,7 @@ constexpr u8 CAPS_LOCK = 0x10;
  * events (see `keycodes.hpp`). For other devices it may represent button IDs or
  * other device-specific codes.
  */
-struct Event
-{
+struct Event {
     EventType type;
     u8 modifiers; // Current modifier state
     u16 code;     // HID key code or mouse button
@@ -153,14 +149,13 @@ bool has_char();
  * Tracks absolute cursor position (clamped to screen bounds), accumulated
  * deltas since last query, and current button state.
  */
-struct MouseState
-{
-    i32 x;       ///< Absolute X position (clamped to screen bounds)
-    i32 y;       ///< Absolute Y position (clamped to screen bounds)
-    i32 dx;      ///< X movement delta since last query
-    i32 dy;      ///< Y movement delta since last query
-    u8 buttons;  ///< Button bitmask: BIT0=left, BIT1=right, BIT2=middle
-    u8 _pad[3];  ///< Padding for alignment
+struct MouseState {
+    i32 x;      ///< Absolute X position (clamped to screen bounds)
+    i32 y;      ///< Absolute Y position (clamped to screen bounds)
+    i32 dx;     ///< X movement delta since last query
+    i32 dy;     ///< Y movement delta since last query
+    u8 buttons; ///< Button bitmask: BIT0=left, BIT1=right, BIT2=middle
+    u8 _pad[3]; ///< Padding for alignment
 };
 
 /**

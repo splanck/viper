@@ -46,8 +46,7 @@ const fenv_t __fe_dfl_env = {.__fpcr = 0, .__fpsr = 0};
 #define FPCR_EXCEPT_MASK 0x00001F00
 
 /* Map exception flags to FPCR enable bits */
-static unsigned int except_to_enable(int excepts)
-{
+static unsigned int except_to_enable(int excepts) {
     unsigned int result = 0;
     if (excepts & FE_INVALID)
         result |= (1 << 8);
@@ -63,8 +62,7 @@ static unsigned int except_to_enable(int excepts)
 }
 
 /* Map FPCR enable bits to exception flags */
-static int enable_to_except(unsigned int enables)
-{
+static int enable_to_except(unsigned int enables) {
     int result = 0;
     if (enables & (1 << 8))
         result |= FE_INVALID;
@@ -80,31 +78,27 @@ static int enable_to_except(unsigned int enables)
 }
 
 /* Read FPCR register */
-static inline unsigned int read_fpcr(void)
-{
+static inline unsigned int read_fpcr(void) {
     unsigned long fpcr;
     __asm__ volatile("mrs %0, fpcr" : "=r"(fpcr));
     return (unsigned int)fpcr;
 }
 
 /* Write FPCR register */
-static inline void write_fpcr(unsigned int fpcr)
-{
+static inline void write_fpcr(unsigned int fpcr) {
     unsigned long val = fpcr;
     __asm__ volatile("msr fpcr, %0" : : "r"(val));
 }
 
 /* Read FPSR register */
-static inline unsigned int read_fpsr(void)
-{
+static inline unsigned int read_fpsr(void) {
     unsigned long fpsr;
     __asm__ volatile("mrs %0, fpsr" : "=r"(fpsr));
     return (unsigned int)fpsr;
 }
 
 /* Write FPSR register */
-static inline void write_fpsr(unsigned int fpsr)
-{
+static inline void write_fpsr(unsigned int fpsr) {
     unsigned long val = fpsr;
     __asm__ volatile("msr fpsr, %0" : : "r"(val));
 }
@@ -112,8 +106,7 @@ static inline void write_fpsr(unsigned int fpsr)
 /*
  * feclearexcept - Clear floating-point exception flags
  */
-int feclearexcept(int excepts)
-{
+int feclearexcept(int excepts) {
     unsigned int fpsr = read_fpsr();
     fpsr &= ~(excepts & FE_ALL_EXCEPT);
     write_fpsr(fpsr);
@@ -123,8 +116,7 @@ int feclearexcept(int excepts)
 /*
  * fegetexceptflag - Get exception flags
  */
-int fegetexceptflag(fexcept_t *flagp, int excepts)
-{
+int fegetexceptflag(fexcept_t *flagp, int excepts) {
     if (!flagp)
         return -1;
 
@@ -136,8 +128,7 @@ int fegetexceptflag(fexcept_t *flagp, int excepts)
 /*
  * feraiseexcept - Raise floating-point exceptions
  */
-int feraiseexcept(int excepts)
-{
+int feraiseexcept(int excepts) {
     unsigned int fpsr = read_fpsr();
     fpsr |= (excepts & FE_ALL_EXCEPT);
     write_fpsr(fpsr);
@@ -150,8 +141,7 @@ int feraiseexcept(int excepts)
 /*
  * fesetexceptflag - Set exception flags from saved state
  */
-int fesetexceptflag(const fexcept_t *flagp, int excepts)
-{
+int fesetexceptflag(const fexcept_t *flagp, int excepts) {
     if (!flagp)
         return -1;
 
@@ -165,8 +155,7 @@ int fesetexceptflag(const fexcept_t *flagp, int excepts)
 /*
  * fetestexcept - Test exception flags
  */
-int fetestexcept(int excepts)
-{
+int fetestexcept(int excepts) {
     unsigned int fpsr = read_fpsr();
     return fpsr & (excepts & FE_ALL_EXCEPT);
 }
@@ -174,8 +163,7 @@ int fetestexcept(int excepts)
 /*
  * fegetround - Get current rounding mode
  */
-int fegetround(void)
-{
+int fegetround(void) {
     unsigned int fpcr = read_fpcr();
     return fpcr & FPCR_RMODE_MASK;
 }
@@ -183,8 +171,7 @@ int fegetround(void)
 /*
  * fesetround - Set rounding mode
  */
-int fesetround(int round)
-{
+int fesetround(int round) {
     /* Validate rounding mode */
     if ((round & ~FPCR_RMODE_MASK) != 0)
         return -1;
@@ -199,8 +186,7 @@ int fesetround(int round)
 /*
  * fegetenv - Get current floating-point environment
  */
-int fegetenv(fenv_t *envp)
-{
+int fegetenv(fenv_t *envp) {
     if (!envp)
         return -1;
 
@@ -212,8 +198,7 @@ int fegetenv(fenv_t *envp)
 /*
  * feholdexcept - Save environment and clear exceptions
  */
-int feholdexcept(fenv_t *envp)
-{
+int feholdexcept(fenv_t *envp) {
     if (!envp)
         return -1;
 
@@ -235,18 +220,14 @@ int feholdexcept(fenv_t *envp)
 /*
  * fesetenv - Set floating-point environment
  */
-int fesetenv(const fenv_t *envp)
-{
+int fesetenv(const fenv_t *envp) {
     if (!envp)
         return -1;
 
-    if (envp == FE_DFL_ENV)
-    {
+    if (envp == FE_DFL_ENV) {
         write_fpcr(0);
         write_fpsr(0);
-    }
-    else
-    {
+    } else {
         write_fpcr(envp->__fpcr);
         write_fpsr(envp->__fpsr);
     }
@@ -256,8 +237,7 @@ int fesetenv(const fenv_t *envp)
 /*
  * feupdateenv - Set environment and raise saved exceptions
  */
-int feupdateenv(const fenv_t *envp)
-{
+int feupdateenv(const fenv_t *envp) {
     if (!envp)
         return -1;
 
@@ -269,8 +249,7 @@ int feupdateenv(const fenv_t *envp)
     fesetenv(envp);
 
     /* Raise saved exceptions */
-    if (excepts)
-    {
+    if (excepts) {
         feraiseexcept(excepts);
     }
 
@@ -280,8 +259,7 @@ int feupdateenv(const fenv_t *envp)
 /*
  * feenableexcept - Enable exception traps
  */
-int feenableexcept(int excepts)
-{
+int feenableexcept(int excepts) {
     unsigned int fpcr = read_fpcr();
     int prev = enable_to_except(fpcr & FPCR_EXCEPT_MASK);
 
@@ -294,8 +272,7 @@ int feenableexcept(int excepts)
 /*
  * fedisableexcept - Disable exception traps
  */
-int fedisableexcept(int excepts)
-{
+int fedisableexcept(int excepts) {
     unsigned int fpcr = read_fpcr();
     int prev = enable_to_except(fpcr & FPCR_EXCEPT_MASK);
 
@@ -308,8 +285,7 @@ int fedisableexcept(int excepts)
 /*
  * fegetexcept - Get enabled exceptions
  */
-int fegetexcept(void)
-{
+int fegetexcept(void) {
     unsigned int fpcr = read_fpcr();
     return enable_to_except(fpcr & FPCR_EXCEPT_MASK);
 }

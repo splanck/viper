@@ -24,8 +24,7 @@
 #include "../sched/task.hpp"
 #include "address_space.hpp"
 
-namespace viper
-{
+namespace viper {
 
 // Viper table
 static Viper vipers[MAX_VIPERS];
@@ -43,16 +42,14 @@ static cap::Table cap_tables[MAX_VIPERS];
 static fs::vfs::FDTable fd_tables[MAX_VIPERS];
 
 /** @copydoc viper::init */
-void init()
-{
+void init() {
     serial::puts("[viper] Initializing Viper subsystem\n");
 
     // Initialize ASID allocator
     asid_init();
 
     // Clear all Viper slots
-    for (u32 i = 0; i < MAX_VIPERS; i++)
-    {
+    for (u32 i = 0; i < MAX_VIPERS; i++) {
         vipers[i].id = 0;
         vipers[i].state = ViperState::Invalid;
         vipers[i].name[0] = '\0';
@@ -99,12 +96,9 @@ void init()
  *
  * @return Pointer to a free Viper slot, or `nullptr` if the table is full.
  */
-static Viper *alloc_viper()
-{
-    for (u32 i = 0; i < MAX_VIPERS; i++)
-    {
-        if (vipers[i].state == ViperState::Invalid)
-        {
+static Viper *alloc_viper() {
+    for (u32 i = 0; i < MAX_VIPERS; i++) {
+        if (vipers[i].state == ViperState::Invalid) {
             return &vipers[i];
         }
     }
@@ -126,8 +120,7 @@ static Viper *alloc_viper()
  * @param v Pointer to a Viper (expected to be within the `vipers` array).
  * @return Zero-based index on success, or -1 if `v` is `nullptr`.
  */
-static int viper_index(Viper *v)
-{
+static int viper_index(Viper *v) {
     if (!v)
         return -1;
     uintptr offset = reinterpret_cast<uintptr>(v) - reinterpret_cast<uintptr>(&vipers[0]);
@@ -137,34 +130,35 @@ static int viper_index(Viper *v)
 /**
  * @brief Initialize heap and VMA regions for a new process.
  */
-static void init_memory_regions(Viper *v)
-{
+static void init_memory_regions(Viper *v) {
     v->heap_start = layout::USER_HEAP_BASE;
     v->heap_break = layout::USER_HEAP_BASE;
     v->heap_max = layout::USER_HEAP_BASE + (64 * 1024 * 1024);
 
     v->vma_list.init();
-    v->vma_list.add(layout::USER_HEAP_BASE, v->heap_max,
-                    mm::vma_prot::READ | mm::vma_prot::WRITE, mm::VmaType::ANONYMOUS);
+    v->vma_list.add(layout::USER_HEAP_BASE,
+                    v->heap_max,
+                    mm::vma_prot::READ | mm::vma_prot::WRITE,
+                    mm::VmaType::ANONYMOUS);
 
     u64 stack_bottom = layout::USER_STACK_TOP - layout::USER_STACK_SIZE;
-    v->vma_list.add(stack_bottom, layout::USER_STACK_TOP,
-                    mm::vma_prot::READ | mm::vma_prot::WRITE, mm::VmaType::STACK);
+    v->vma_list.add(stack_bottom,
+                    layout::USER_STACK_TOP,
+                    mm::vma_prot::READ | mm::vma_prot::WRITE,
+                    mm::VmaType::STACK);
 }
 
 /**
  * @brief Initialize resource limits and process groups from parent.
  */
-static void init_from_parent(Viper *v, Viper *parent)
-{
+static void init_from_parent(Viper *v, Viper *parent) {
     v->memory_used = 0;
     v->task_list = nullptr;
     v->task_count = 0;
     sched::wait_init(&v->child_waiters);
     v->exit_code = 0;
 
-    if (parent)
-    {
+    if (parent) {
         v->memory_limit = parent->memory_limit;
         v->handle_limit = parent->handle_limit;
         v->task_limit = parent->task_limit;
@@ -174,9 +168,7 @@ static void init_from_parent(Viper *v, Viper *parent)
         v->is_session_leader = false;
         v->next_sibling = parent->first_child;
         parent->first_child = v;
-    }
-    else
-    {
+    } else {
         v->memory_limit = DEFAULT_MEMORY_LIMIT;
         v->handle_limit = DEFAULT_HANDLE_LIMIT;
         v->task_limit = DEFAULT_TASK_LIMIT;
@@ -193,8 +185,7 @@ static void init_from_parent(Viper *v, Viper *parent)
 /**
  * @brief Add viper to global tracking list.
  */
-static void add_to_global_list(Viper *v)
-{
+static void add_to_global_list(Viper *v) {
     v->next_all = all_vipers_head;
     v->prev_all = nullptr;
     if (all_vipers_head)
@@ -203,11 +194,9 @@ static void add_to_global_list(Viper *v)
 }
 
 /** @copydoc viper::create */
-Viper *create(Viper *parent, const char *name)
-{
+Viper *create(Viper *parent, const char *name) {
     Viper *v = alloc_viper();
-    if (!v)
-    {
+    if (!v) {
         serial::puts("[viper] ERROR: No free Viper slots!\n");
         return nullptr;
     }
@@ -224,8 +213,7 @@ Viper *create(Viper *parent, const char *name)
     v->name[31] = '\0';
 
     AddressSpace &as = address_spaces[idx];
-    if (!as.init())
-    {
+    if (!as.init()) {
         serial::puts("[viper] ERROR: Failed to create address space!\n");
         v->state = ViperState::Invalid;
         v->id = 0;
@@ -238,8 +226,7 @@ Viper *create(Viper *parent, const char *name)
     init_memory_regions(v);
 
     cap::Table &ct = cap_tables[idx];
-    if (!ct.init())
-    {
+    if (!ct.init()) {
         serial::puts("[viper] ERROR: Failed to create capability table!\n");
         as.destroy();
         v->state = ViperState::Invalid;
@@ -248,12 +235,12 @@ Viper *create(Viper *parent, const char *name)
     }
     v->cap_table = &ct;
 
-    if (!parent)
-    {
+    if (!parent) {
         static u32 device_root_token = 0;
-        (void)ct.insert(&device_root_token, cap::Kind::Device,
-                        cap::CAP_DEVICE_ACCESS | cap::CAP_IRQ_ACCESS |
-                        cap::CAP_DMA_ACCESS | cap::CAP_TRANSFER | cap::CAP_DERIVE);
+        (void)ct.insert(&device_root_token,
+                        cap::Kind::Device,
+                        cap::CAP_DEVICE_ACCESS | cap::CAP_IRQ_ACCESS | cap::CAP_DMA_ACCESS |
+                            cap::CAP_TRANSFER | cap::CAP_DERIVE);
     }
 
     fs::vfs::FDTable &fdt = fd_tables[idx];
@@ -277,8 +264,7 @@ Viper *create(Viper *parent, const char *name)
 }
 
 /** @copydoc viper::destroy */
-void destroy(Viper *v)
-{
+void destroy(Viper *v) {
     if (!v || v->state == ViperState::Invalid)
         return;
 
@@ -289,8 +275,7 @@ void destroy(Viper *v)
     serial::puts("\n");
 
     int idx = viper_index(v);
-    if (idx >= 0)
-    {
+    if (idx >= 0) {
         // Close all open file descriptors
         fs::vfs::close_all_fds(&fd_tables[idx]);
         v->fd_table = nullptr;
@@ -303,29 +288,22 @@ void destroy(Viper *v)
     }
 
     // Remove from global list
-    if (v->prev_all)
-    {
+    if (v->prev_all) {
         v->prev_all->next_all = v->next_all;
-    }
-    else
-    {
+    } else {
         all_vipers_head = v->next_all;
     }
-    if (v->next_all)
-    {
+    if (v->next_all) {
         v->next_all->prev_all = v->prev_all;
     }
 
     // Remove from parent's child list
-    if (v->parent)
-    {
+    if (v->parent) {
         Viper **pp = &v->parent->first_child;
-        while (*pp && *pp != v)
-        {
+        while (*pp && *pp != v) {
             pp = &(*pp)->next_sibling;
         }
-        if (*pp == v)
-        {
+        if (*pp == v) {
             *pp = v->next_sibling;
         }
     }
@@ -339,18 +317,15 @@ void destroy(Viper *v)
 }
 
 /** @copydoc viper::current */
-Viper *current()
-{
+Viper *current() {
     // First check if the current task has an associated viper
     task::Task *t = task::current();
-    if (t && t->viper)
-    {
+    if (t && t->viper) {
         return reinterpret_cast<Viper *>(t->viper);
     }
     // Fall back to per-CPU current_viper
     cpu::CpuData *cpu = cpu::current();
-    if (cpu && cpu->current_viper)
-    {
+    if (cpu && cpu->current_viper) {
         return reinterpret_cast<Viper *>(cpu->current_viper);
     }
     // Last resort: global (for early boot before per-CPU is set up)
@@ -358,12 +333,10 @@ Viper *current()
 }
 
 /** @copydoc viper::set_current */
-void set_current(Viper *v)
-{
+void set_current(Viper *v) {
     // Update per-CPU current viper
     cpu::CpuData *cpu = cpu::current();
-    if (cpu)
-    {
+    if (cpu) {
         cpu->current_viper = v;
     }
     // Also keep global for backward compatibility during boot
@@ -371,12 +344,9 @@ void set_current(Viper *v)
 }
 
 /** @copydoc viper::find */
-Viper *find(u64 id)
-{
-    for (Viper *v = all_vipers_head; v; v = v->next_all)
-    {
-        if (v->id == id && v->state != ViperState::Invalid)
-        {
+Viper *find(u64 id) {
+    for (Viper *v = all_vipers_head; v; v = v->next_all) {
+        if (v->id == id && v->state != ViperState::Invalid) {
             return v;
         }
     }
@@ -384,10 +354,8 @@ Viper *find(u64 id)
 }
 
 /** @copydoc viper::print_info */
-void print_info(Viper *v)
-{
-    if (!v)
-    {
+void print_info(Viper *v) {
+    if (!v) {
         serial::puts("[viper] (null)\n");
         return;
     }
@@ -399,8 +367,7 @@ void print_info(Viper *v)
     serial::put_dec(v->id);
     serial::puts("\n");
     serial::puts("  State: ");
-    switch (v->state)
-    {
+    switch (v->state) {
         case ViperState::Invalid:
             serial::puts("Invalid");
             break;
@@ -435,16 +402,14 @@ void print_info(Viper *v)
 }
 
 /** @copydoc viper::current_cap_table */
-cap::Table *current_cap_table()
-{
+cap::Table *current_cap_table() {
     Viper *v = current();
     return v ? v->cap_table : nullptr;
 }
 
 // Get address space for a Viper
 /** @copydoc viper::get_address_space */
-AddressSpace *get_address_space(Viper *v)
-{
+AddressSpace *get_address_space(Viper *v) {
     if (!v)
         return nullptr;
     int idx = viper_index(v);
@@ -454,8 +419,7 @@ AddressSpace *get_address_space(Viper *v)
 }
 
 /** @copydoc viper::exit */
-void exit(i32 code)
-{
+void exit(i32 code) {
     Viper *v = current();
     if (!v)
         return;
@@ -473,12 +437,10 @@ void exit(i32 code)
     // Reparent children to init (viper ID 1)
     Viper *init = find(1);
     Viper *child = v->first_child;
-    while (child)
-    {
+    while (child) {
         Viper *next = child->next_sibling;
         child->parent = init;
-        if (init)
-        {
+        if (init) {
             child->next_sibling = init->first_child;
             init->first_child = child;
         }
@@ -487,8 +449,7 @@ void exit(i32 code)
     v->first_child = nullptr;
 
     // Wake parent if waiting for children to exit
-    if (v->parent)
-    {
+    if (v->parent) {
         sched::wait_wake_one(&v->parent->child_waiters);
     }
 
@@ -497,21 +458,16 @@ void exit(i32 code)
 }
 
 /** @copydoc viper::wait */
-i64 wait(i64 child_id, i32 *status)
-{
+i64 wait(i64 child_id, i32 *status) {
     Viper *v = current();
     if (!v)
         return error::VERR_NOT_SUPPORTED;
 
-    while (true)
-    {
+    while (true) {
         // Look for a matching zombie child
-        for (Viper *child = v->first_child; child; child = child->next_sibling)
-        {
-            if (child->state == ViperState::Zombie)
-            {
-                if (child_id == -1 || static_cast<u64>(child_id) == child->id)
-                {
+        for (Viper *child = v->first_child; child; child = child->next_sibling) {
+            if (child->state == ViperState::Zombie) {
+                if (child_id == -1 || static_cast<u64>(child_id) == child->id) {
                     // Found a zombie to reap
                     i64 pid = static_cast<i64>(child->id);
                     if (status)
@@ -523,8 +479,7 @@ i64 wait(i64 child_id, i32 *status)
         }
 
         // Check if we have any children at all
-        if (!v->first_child)
-        {
+        if (!v->first_child) {
             return error::VERR_NOT_FOUND;
         }
 
@@ -542,8 +497,7 @@ i64 wait(i64 child_id, i32 *status)
 }
 
 /** @copydoc viper::reap */
-void reap(Viper *child)
-{
+void reap(Viper *child) {
     if (!child || child->state != ViperState::Zombie)
         return;
 
@@ -552,15 +506,12 @@ void reap(Viper *child)
     serial::puts("'\n");
 
     // Remove from parent's child list
-    if (child->parent)
-    {
+    if (child->parent) {
         Viper **pp = &child->parent->first_child;
-        while (*pp && *pp != child)
-        {
+        while (*pp && *pp != child) {
             pp = &(*pp)->next_sibling;
         }
-        if (*pp == child)
-        {
+        if (*pp == child) {
             *pp = child->next_sibling;
         }
     }
@@ -570,11 +521,9 @@ void reap(Viper *child)
 }
 
 /** @copydoc viper::fork */
-Viper *fork()
-{
+Viper *fork() {
     Viper *parent = current();
-    if (!parent)
-    {
+    if (!parent) {
         serial::puts("[viper] fork: no current process\n");
         return nullptr;
     }
@@ -585,8 +534,7 @@ Viper *fork()
 
     // Create child process
     Viper *child = create(parent, parent->name);
-    if (!child)
-    {
+    if (!child) {
         serial::puts("[viper] fork: failed to create child process\n");
         return nullptr;
     }
@@ -595,35 +543,30 @@ Viper *fork()
     AddressSpace *parent_as = get_address_space(parent);
     AddressSpace *child_as = get_address_space(child);
 
-    if (!parent_as || !child_as)
-    {
+    if (!parent_as || !child_as) {
         serial::puts("[viper] fork: failed to get address spaces\n");
         destroy(child);
         return nullptr;
     }
 
     // Clone VMAs from parent to child with COW flag
-    for (mm::Vma *vma = parent->vma_list.head(); vma != nullptr; vma = vma->next)
-    {
+    for (mm::Vma *vma = parent->vma_list.head(); vma != nullptr; vma = vma->next) {
         mm::Vma *child_vma = child->vma_list.add(vma->start, vma->end, vma->prot, vma->type);
-        if (!child_vma)
-        {
+        if (!child_vma) {
             serial::puts("[viper] fork: failed to copy VMA\n");
             destroy(child);
             return nullptr;
         }
 
         // Mark both VMAs as COW for anonymous/stack regions
-        if (vma->type == mm::VmaType::ANONYMOUS || vma->type == mm::VmaType::STACK)
-        {
+        if (vma->type == mm::VmaType::ANONYMOUS || vma->type == mm::VmaType::STACK) {
             vma->flags |= mm::vma_flags::COW;
             child_vma->flags |= mm::vma_flags::COW;
         }
     }
 
     // Clone address space with COW
-    if (!child_as->clone_cow_from(parent_as))
-    {
+    if (!child_as->clone_cow_from(parent_as)) {
         serial::puts("[viper] fork: failed to clone address space\n");
         destroy(child);
         return nullptr;
@@ -634,7 +577,8 @@ Viper *fork()
     child->heap_break = parent->heap_break;
     child->heap_max = parent->heap_max;
 
-    // Copy capability bounding set and resource limits (already inherited via create(), but be explicit)
+    // Copy capability bounding set and resource limits (already inherited via create(), but be
+    // explicit)
     child->cap_bounding_set = parent->cap_bounding_set;
     child->memory_limit = parent->memory_limit;
     child->handle_limit = parent->handle_limit;
@@ -648,30 +592,24 @@ Viper *fork()
 }
 
 /** @copydoc viper::do_sbrk */
-i64 do_sbrk(Viper *v, i64 increment)
-{
+i64 do_sbrk(Viper *v, i64 increment) {
     if (!v)
         return -1;
 
     u64 old_break = v->heap_break;
 
     // If increment is 0, just return current break
-    if (increment == 0)
-    {
+    if (increment == 0) {
         return static_cast<i64>(old_break);
     }
 
     u64 new_break;
-    if (increment > 0)
-    {
+    if (increment > 0) {
         new_break = old_break + static_cast<u64>(increment);
-    }
-    else
-    {
+    } else {
         // increment is negative
         u64 decrement = static_cast<u64>(-increment);
-        if (decrement > old_break - v->heap_start)
-        {
+        if (decrement > old_break - v->heap_start) {
             // Would shrink below heap_start
             return error::VERR_INVALID_ARG;
         }
@@ -679,31 +617,26 @@ i64 do_sbrk(Viper *v, i64 increment)
     }
 
     // Check heap limit
-    if (new_break > v->heap_max)
-    {
+    if (new_break > v->heap_max) {
         serial::puts("[viper] sbrk: heap limit exceeded\n");
         return error::VERR_OUT_OF_MEMORY;
     }
 
     // Get the process address space
     AddressSpace *as = get_address_space(v);
-    if (!as)
-    {
+    if (!as) {
         return error::VERR_NOT_SUPPORTED;
     }
 
-    if (increment > 0)
-    {
+    if (increment > 0) {
         // Allocate and map new pages
         u64 old_page = pmm::page_align_up(old_break);
         u64 new_page = pmm::page_align_up(new_break);
 
-        for (u64 addr = old_page; addr < new_page; addr += pmm::PAGE_SIZE)
-        {
+        for (u64 addr = old_page; addr < new_page; addr += pmm::PAGE_SIZE) {
             // Allocate physical page
             u64 phys = pmm::alloc_page();
-            if (phys == 0)
-            {
+            if (phys == 0) {
                 serial::puts("[viper] sbrk: out of physical memory\n");
                 // TODO: unmap pages we already mapped
                 return error::VERR_OUT_OF_MEMORY;
@@ -711,14 +644,12 @@ i64 do_sbrk(Viper *v, i64 increment)
 
             // Zero the page
             void *page_ptr = pmm::phys_to_virt(phys);
-            for (usize i = 0; i < pmm::PAGE_SIZE; i++)
-            {
+            for (usize i = 0; i < pmm::PAGE_SIZE; i++) {
                 static_cast<u8 *>(page_ptr)[i] = 0;
             }
 
             // Map into user address space with RW permissions
-            if (!as->map(addr, phys, pmm::PAGE_SIZE, prot::RW))
-            {
+            if (!as->map(addr, phys, pmm::PAGE_SIZE, prot::RW)) {
                 serial::puts("[viper] sbrk: failed to map page\n");
                 pmm::free_page(phys);
                 return error::VERR_OUT_OF_MEMORY;
@@ -726,19 +657,15 @@ i64 do_sbrk(Viper *v, i64 increment)
         }
 
         v->memory_used += static_cast<u64>(increment);
-    }
-    else
-    {
+    } else {
         // Shrinking: unmap pages
         u64 old_page = pmm::page_align_up(old_break);
         u64 new_page = pmm::page_align_up(new_break);
 
-        for (u64 addr = new_page; addr < old_page; addr += pmm::PAGE_SIZE)
-        {
+        for (u64 addr = new_page; addr < old_page; addr += pmm::PAGE_SIZE) {
             // Translate to get physical address
             u64 phys = as->translate(addr);
-            if (phys != 0)
-            {
+            if (phys != 0) {
                 // Unmap and free
                 as->unmap(addr, pmm::PAGE_SIZE);
                 pmm::free_page(phys);
@@ -753,20 +680,15 @@ i64 do_sbrk(Viper *v, i64 increment)
 }
 
 /** @copydoc viper::getpgid */
-i64 getpgid(u64 pid)
-{
+i64 getpgid(u64 pid) {
     Viper *v;
-    if (pid == 0)
-    {
+    if (pid == 0) {
         v = current();
-    }
-    else
-    {
+    } else {
         v = find(pid);
     }
 
-    if (!v)
-    {
+    if (!v) {
         return error::VERR_NOT_FOUND;
     }
 
@@ -774,52 +696,42 @@ i64 getpgid(u64 pid)
 }
 
 /** @copydoc viper::setpgid */
-i64 setpgid(u64 pid, u64 pgid)
-{
+i64 setpgid(u64 pid, u64 pgid) {
     Viper *caller = current();
-    if (!caller)
-    {
+    if (!caller) {
         return error::VERR_PERMISSION;
     }
 
     Viper *v;
-    if (pid == 0)
-    {
+    if (pid == 0) {
         v = caller;
-    }
-    else
-    {
+    } else {
         v = find(pid);
     }
 
-    if (!v)
-    {
+    if (!v) {
         return error::VERR_NOT_FOUND;
     }
 
     // Permission check: caller can only change pgid of self or child
-    if (v != caller && v->parent != caller)
-    {
+    if (v != caller && v->parent != caller) {
         return error::VERR_PERMISSION;
     }
 
     // Can't change process group of a session leader
-    if (v->is_session_leader)
-    {
+    if (v->is_session_leader) {
         return error::VERR_PERMISSION;
     }
 
     // If pgid is 0, use the target process's pid
-    if (pgid == 0)
-    {
+    if (pgid == 0) {
         pgid = v->id;
     }
 
     // Must be in the same session
     // Find the target process group leader
     Viper *pgl = find(pgid);
-    if (pgl && pgl->sid != v->sid)
-    {
+    if (pgl && pgl->sid != v->sid) {
         return error::VERR_PERMISSION;
     }
 
@@ -828,20 +740,15 @@ i64 setpgid(u64 pid, u64 pgid)
 }
 
 /** @copydoc viper::getsid */
-i64 getsid(u64 pid)
-{
+i64 getsid(u64 pid) {
     Viper *v;
-    if (pid == 0)
-    {
+    if (pid == 0) {
         v = current();
-    }
-    else
-    {
+    } else {
         v = find(pid);
     }
 
-    if (!v)
-    {
+    if (!v) {
         return error::VERR_NOT_FOUND;
     }
 
@@ -849,17 +756,14 @@ i64 getsid(u64 pid)
 }
 
 /** @copydoc viper::setsid */
-i64 setsid()
-{
+i64 setsid() {
     Viper *v = current();
-    if (!v)
-    {
+    if (!v) {
         return error::VERR_NOT_SUPPORTED;
     }
 
     // Cannot create session if already a process group leader
-    if (v->pgid == v->id)
-    {
+    if (v->pgid == v->id) {
         return error::VERR_PERMISSION;
     }
 
@@ -872,20 +776,16 @@ i64 setsid()
 }
 
 /** @copydoc viper::get_cap_bounding_set */
-u32 get_cap_bounding_set(Viper *v)
-{
-    if (!v)
-    {
+u32 get_cap_bounding_set(Viper *v) {
+    if (!v) {
         return 0;
     }
     return v->cap_bounding_set;
 }
 
 /** @copydoc viper::drop_cap_bounding_set */
-i64 drop_cap_bounding_set(Viper *v, u32 rights_to_drop)
-{
-    if (!v)
-    {
+i64 drop_cap_bounding_set(Viper *v, u32 rights_to_drop) {
+    if (!v) {
         return error::VERR_INVALID_ARG;
     }
 
@@ -902,16 +802,13 @@ i64 drop_cap_bounding_set(Viper *v, u32 rights_to_drop)
 }
 
 /** @copydoc viper::get_rlimit */
-i64 get_rlimit(ResourceLimit resource)
-{
+i64 get_rlimit(ResourceLimit resource) {
     Viper *v = current();
-    if (!v)
-    {
+    if (!v) {
         return error::VERR_NOT_FOUND;
     }
 
-    switch (resource)
-    {
+    switch (resource) {
         case ResourceLimit::Memory:
             return static_cast<i64>(v->memory_limit);
         case ResourceLimit::Handles:
@@ -924,34 +821,28 @@ i64 get_rlimit(ResourceLimit resource)
 }
 
 /** @copydoc viper::set_rlimit */
-i64 set_rlimit(ResourceLimit resource, u64 new_limit)
-{
+i64 set_rlimit(ResourceLimit resource, u64 new_limit) {
     Viper *v = current();
-    if (!v)
-    {
+    if (!v) {
         return error::VERR_NOT_FOUND;
     }
 
     // Limits can only be reduced, not increased (privilege dropping)
-    switch (resource)
-    {
+    switch (resource) {
         case ResourceLimit::Memory:
-            if (new_limit > v->memory_limit)
-            {
+            if (new_limit > v->memory_limit) {
                 return error::VERR_PERMISSION;
             }
             v->memory_limit = new_limit;
             break;
         case ResourceLimit::Handles:
-            if (new_limit > v->handle_limit)
-            {
+            if (new_limit > v->handle_limit) {
                 return error::VERR_PERMISSION;
             }
             v->handle_limit = static_cast<u32>(new_limit);
             break;
         case ResourceLimit::Tasks:
-            if (new_limit > v->task_limit)
-            {
+            if (new_limit > v->task_limit) {
                 return error::VERR_PERMISSION;
             }
             v->task_limit = static_cast<u32>(new_limit);
@@ -964,16 +855,13 @@ i64 set_rlimit(ResourceLimit resource, u64 new_limit)
 }
 
 /** @copydoc viper::get_rusage */
-i64 get_rusage(ResourceLimit resource)
-{
+i64 get_rusage(ResourceLimit resource) {
     Viper *v = current();
-    if (!v)
-    {
+    if (!v) {
         return error::VERR_NOT_FOUND;
     }
 
-    switch (resource)
-    {
+    switch (resource) {
         case ResourceLimit::Memory:
             return static_cast<i64>(v->memory_used);
         case ResourceLimit::Handles:
@@ -986,22 +874,18 @@ i64 get_rusage(ResourceLimit resource)
 }
 
 /** @copydoc viper::would_exceed_rlimit */
-bool would_exceed_rlimit(Viper *v, ResourceLimit resource, u64 amount)
-{
-    if (!v)
-    {
+bool would_exceed_rlimit(Viper *v, ResourceLimit resource, u64 amount) {
+    if (!v) {
         return true;
     }
 
-    switch (resource)
-    {
+    switch (resource) {
         case ResourceLimit::Memory:
             return (v->memory_used + amount) > v->memory_limit;
-        case ResourceLimit::Handles:
-            {
-                u64 current_handles = v->cap_table ? v->cap_table->count() : 0;
-                return (current_handles + amount) > v->handle_limit;
-            }
+        case ResourceLimit::Handles: {
+            u64 current_handles = v->cap_table ? v->cap_table->count() : 0;
+            return (current_handles + amount) > v->handle_limit;
+        }
         case ResourceLimit::Tasks:
             return (v->task_count + amount) > v->task_limit;
         default:

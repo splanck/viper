@@ -18,6 +18,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).parent
 TABLE_CPP = SCRIPT_DIR.parent.parent / "kernel" / "syscall" / "table.cpp"
 
+
 def parse_syscall_table(source_path):
     """Parse the syscall table from table.cpp and return list of entries."""
     content = source_path.read_text()
@@ -50,6 +51,7 @@ def parse_syscall_table(source_path):
 
     return entries
 
+
 def test_unique_numbers(entries):
     """Test that syscall constants are unique."""
     passed = 0
@@ -71,6 +73,7 @@ def test_unique_numbers(entries):
 
     return passed, failed
 
+
 def test_no_null_handlers(entries):
     """Test that no handlers are nullptr."""
     passed = 0
@@ -88,6 +91,7 @@ def test_no_null_handlers(entries):
         print(f"  [PASS] All {passed} handlers are non-NULL")
 
     return passed, failed
+
 
 def test_nonempty_names(entries):
     """Test that all syscall names are non-empty."""
@@ -107,6 +111,7 @@ def test_nonempty_names(entries):
 
     return passed, failed
 
+
 def test_argcount_valid(entries):
     """Test that argcount is between 0 and 6."""
     passed = 0
@@ -124,6 +129,7 @@ def test_argcount_valid(entries):
         print(f"  [PASS] All {passed} argcounts are valid (0-6)")
 
     return passed, failed
+
 
 def test_microkernel_critical_abi(entries):
     """Test that microkernel-critical syscalls exist with expected argcounts."""
@@ -181,6 +187,7 @@ def test_microkernel_critical_abi(entries):
 
     return passed, failed
 
+
 def main():
     print("=== Syscall Table Invariant Tests ===")
 
@@ -225,6 +232,7 @@ def main():
     else:
         print("FAILED")
         return 1
+
 
 if __name__ == '__main__':
     sys.exit(main())

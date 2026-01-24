@@ -192,8 +192,7 @@ static const u8 gts_root_r1_pubkey[] = {
     0xf5, 0xfe, 0x81, 0x41, 0xd8, 0x00, 0x98, 0x3d, 0x3a, 0xc8, 0xae, 0x7a, 0x98, 0x37, 0x18, 0x05,
     0x95, 0x02, 0x03, 0x01, 0x00, 0x01};
 
-struct CaEntry
-{
+struct CaEntry {
     const char *name;
     const u8 *pubkey;
     size_t len;
@@ -230,17 +229,14 @@ static CaEntry root_cas[] = {
  * @param argv Argument vector; `argv[1]` is the output file path.
  * @return 0 on success, non-zero on error.
  */
-int main(int argc, char **argv)
-{
-    if (argc != 2)
-    {
+int main(int argc, char **argv) {
+    if (argc != 2) {
         fprintf(stderr, "Usage: %s <output.der>\n", argv[0]);
         return 1;
     }
 
     FILE *f = fopen(argv[1], "wb");
-    if (!f)
-    {
+    if (!f) {
         perror(argv[1]);
         return 1;
     }
@@ -250,8 +246,7 @@ int main(int argc, char **argv)
     fwrite(&count, sizeof(u32), 1, f);
 
     // Write each CA entry: [u32 len][DER data]
-    for (u32 i = 0; i < count; i++)
-    {
+    for (u32 i = 0; i < count; i++) {
         u32 len = root_cas[i].len;
         fwrite(&len, sizeof(u32), 1, f);
         fwrite(root_cas[i].pubkey, 1, len, f);

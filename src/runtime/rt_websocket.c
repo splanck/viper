@@ -72,16 +72,16 @@ typedef int socklen_t;
 /// @brief WebSocket connection implementation.
 typedef struct rt_ws_impl
 {
-    void **vptr;              ///< Vtable pointer placeholder.
-    int socket_fd;            ///< TCP socket file descriptor.
-    rt_tls_session_t *tls;    ///< TLS session (NULL for ws://).
-    char *url;                ///< Original connection URL.
-    int8_t is_open;           ///< Connection state.
-    int64_t close_code;       ///< Close status code.
-    char *close_reason;       ///< Close reason string.
-    uint8_t *recv_buffer;     ///< Buffer for receiving frames.
-    size_t recv_buffer_size;  ///< Size of receive buffer.
-    size_t recv_buffer_len;   ///< Bytes currently in buffer.
+    void **vptr;             ///< Vtable pointer placeholder.
+    int socket_fd;           ///< TCP socket file descriptor.
+    rt_tls_session_t *tls;   ///< TLS session (NULL for ws://).
+    char *url;               ///< Original connection URL.
+    int8_t is_open;          ///< Connection state.
+    int64_t close_code;      ///< Close status code.
+    char *close_reason;      ///< Close reason string.
+    uint8_t *recv_buffer;    ///< Buffer for receiving frames.
+    size_t recv_buffer_size; ///< Size of receive buffer.
+    size_t recv_buffer_len;  ///< Bytes currently in buffer.
 } rt_ws_impl;
 
 /// @brief Generate a random WebSocket key (16 random bytes, base64 encoded).
@@ -224,7 +224,8 @@ static int ws_handshake(rt_ws_impl *ws, const char *host, int port, const char *
 
     // Build handshake request
     char request[2048];
-    int req_len = snprintf(request, sizeof(request),
+    int req_len = snprintf(request,
+                           sizeof(request),
                            "GET %s HTTP/1.1\r\n"
                            "Host: %s:%d\r\n"
                            "Upgrade: websocket\r\n"
@@ -232,7 +233,10 @@ static int ws_handshake(rt_ws_impl *ws, const char *host, int port, const char *
                            "Sec-WebSocket-Key: %s\r\n"
                            "Sec-WebSocket-Version: 13\r\n"
                            "\r\n",
-                           path, host, port, key_cstr);
+                           path,
+                           host,
+                           port,
+                           key_cstr);
 
     rt_string_unref(ws_key);
 
@@ -375,8 +379,8 @@ static int ws_recv_frame(rt_ws_impl *ws, uint8_t *opcode_out, uint8_t **data_out
         uint8_t ext[8];
         if (!ws_recv_exact(ws, ext, 8))
             return 0;
-        payload_len = ((size_t)ext[4] << 24) | ((size_t)ext[5] << 16) |
-                      ((size_t)ext[6] << 8) | ext[7];
+        payload_len =
+            ((size_t)ext[4] << 24) | ((size_t)ext[5] << 16) | ((size_t)ext[6] << 8) | ext[7];
     }
 
     // Masking key (servers should not mask, but handle it anyway)
@@ -416,38 +420,38 @@ static void ws_handle_control(rt_ws_impl *ws, uint8_t opcode, uint8_t *data, siz
 {
     switch (opcode)
     {
-    case WS_OP_PING:
-        // Respond with pong
-        ws_send_frame(ws, WS_OP_PONG, data, len);
-        break;
+        case WS_OP_PING:
+            // Respond with pong
+            ws_send_frame(ws, WS_OP_PONG, data, len);
+            break;
 
-    case WS_OP_PONG:
-        // Ignore pongs
-        break;
+        case WS_OP_PONG:
+            // Ignore pongs
+            break;
 
-    case WS_OP_CLOSE:
-        // Parse close code and reason
-        ws->is_open = 0;
-        if (len >= 2)
-        {
-            ws->close_code = ((int64_t)data[0] << 8) | data[1];
-            if (len > 2)
+        case WS_OP_CLOSE:
+            // Parse close code and reason
+            ws->is_open = 0;
+            if (len >= 2)
             {
-                ws->close_reason = malloc(len - 1);
-                if (ws->close_reason)
+                ws->close_code = ((int64_t)data[0] << 8) | data[1];
+                if (len > 2)
                 {
-                    memcpy(ws->close_reason, data + 2, len - 2);
-                    ws->close_reason[len - 2] = '\0';
+                    ws->close_reason = malloc(len - 1);
+                    if (ws->close_reason)
+                    {
+                        memcpy(ws->close_reason, data + 2, len - 2);
+                        ws->close_reason[len - 2] = '\0';
+                    }
                 }
             }
-        }
-        else
-        {
-            ws->close_code = WS_CLOSE_NO_STATUS;
-        }
-        // Send close response
-        ws_send_frame(ws, WS_OP_CLOSE, data, len);
-        break;
+            else
+            {
+                ws->close_code = WS_CLOSE_NO_STATUS;
+            }
+            // Send close response
+            ws_send_frame(ws, WS_OP_CLOSE, data, len);
+            break;
     }
 }
 

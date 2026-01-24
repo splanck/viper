@@ -11,8 +11,7 @@
 #include "chrono"
 #include "limits"
 
-namespace std
-{
+namespace std {
 
 /*
  * ===========================================================================
@@ -25,12 +24,10 @@ namespace std
  * ===========================================================================
  */
 
-template <ptrdiff_t LeastMaxValue = numeric_limits<ptrdiff_t>::max()> class counting_semaphore
-{
+template <ptrdiff_t LeastMaxValue = numeric_limits<ptrdiff_t>::max()> class counting_semaphore {
   public:
     // Maximum value of the internal counter
-    static constexpr ptrdiff_t max() noexcept
-    {
+    static constexpr ptrdiff_t max() noexcept {
         return LeastMaxValue;
     }
 
@@ -48,8 +45,7 @@ template <ptrdiff_t LeastMaxValue = numeric_limits<ptrdiff_t>::max()> class coun
      * Atomically increment the internal counter.
      * If there are threads blocked on acquire(), one or more will be unblocked.
      */
-    void release(ptrdiff_t update = 1) noexcept
-    {
+    void release(ptrdiff_t update = 1) noexcept {
         counter_.fetch_add(update, memory_order_release);
         // In a real implementation, would notify waiting threads
     }
@@ -58,22 +54,16 @@ template <ptrdiff_t LeastMaxValue = numeric_limits<ptrdiff_t>::max()> class coun
      * Atomically decrement the internal counter.
      * Blocks if counter is zero until it becomes positive.
      */
-    void acquire() noexcept
-    {
+    void acquire() noexcept {
         // Spin until we can decrement
-        while (true)
-        {
+        while (true) {
             ptrdiff_t old = counter_.load(memory_order_acquire);
-            if (old > 0)
-            {
+            if (old > 0) {
                 if (counter_.compare_exchange_weak(
-                        old, old - 1, memory_order_acq_rel, memory_order_relaxed))
-                {
+                        old, old - 1, memory_order_acq_rel, memory_order_relaxed)) {
                     return;
                 }
-            }
-            else
-            {
+            } else {
                 // In a real implementation, would block here
                 // Single-threaded: if 0, can't acquire without release
                 break;
@@ -85,14 +75,11 @@ template <ptrdiff_t LeastMaxValue = numeric_limits<ptrdiff_t>::max()> class coun
      * Try to atomically decrement the internal counter without blocking.
      * Returns true if successful, false if counter was zero.
      */
-    bool try_acquire() noexcept
-    {
+    bool try_acquire() noexcept {
         ptrdiff_t old = counter_.load(memory_order_acquire);
-        while (old > 0)
-        {
+        while (old > 0) {
             if (counter_.compare_exchange_weak(
-                    old, old - 1, memory_order_acq_rel, memory_order_relaxed))
-            {
+                    old, old - 1, memory_order_acq_rel, memory_order_relaxed)) {
                 return true;
             }
         }
@@ -103,8 +90,7 @@ template <ptrdiff_t LeastMaxValue = numeric_limits<ptrdiff_t>::max()> class coun
      * Try to acquire with timeout.
      */
     template <class Rep, class Period>
-    bool try_acquire_for(const chrono::duration<Rep, Period> &rel_time)
-    {
+    bool try_acquire_for(const chrono::duration<Rep, Period> &rel_time) {
         (void)rel_time; // Timeout not implemented
         return try_acquire();
     }
@@ -113,8 +99,7 @@ template <ptrdiff_t LeastMaxValue = numeric_limits<ptrdiff_t>::max()> class coun
      * Try to acquire until time point.
      */
     template <class Clock, class Duration>
-    bool try_acquire_until(const chrono::time_point<Clock, Duration> &abs_time)
-    {
+    bool try_acquire_until(const chrono::time_point<Clock, Duration> &abs_time) {
         (void)abs_time; // Timeout not implemented
         return try_acquire();
     }

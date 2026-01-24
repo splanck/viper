@@ -108,10 +108,8 @@ static const char *const langinfo_strings[] = {
     /* _DATE_FMT */ "%a %b %e %H:%M:%S %Z %Y",
 };
 
-char *nl_langinfo(nl_item item)
-{
-    if (item < 0 || item >= _NL_ITEM_MAX)
-    {
+char *nl_langinfo(nl_item item) {
+    if (item < 0 || item >= _NL_ITEM_MAX) {
         return (char *)"";
     }
 
@@ -120,8 +118,7 @@ char *nl_langinfo(nl_item item)
 
 #ifdef _POSIX_C_SOURCE
 #if _POSIX_C_SOURCE >= 200809L
-char *nl_langinfo_l(nl_item item, locale_t locale)
-{
+char *nl_langinfo_l(nl_item item, locale_t locale) {
     (void)locale; /* We only support C locale */
     return nl_langinfo(item);
 }

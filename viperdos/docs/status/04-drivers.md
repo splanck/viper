@@ -6,14 +6,17 @@
 
 ## Overview
 
-The drivers subsystem provides device drivers for VirtIO paravirtual devices, QEMU firmware configuration, and the RAM framebuffer.
+The drivers subsystem provides device drivers for VirtIO paravirtual devices, QEMU firmware configuration, and the RAM
+framebuffer.
 
 In microkernel mode, some drivers run in user-space servers:
+
 - **netd server**: Contains VirtIO-net driver in user-space
 - **blkd server**: Contains VirtIO-blk driver in user-space
 - **inputd server**: Contains VirtIO-input driver in user-space
 
 User-space drivers use kernel device primitives:
+
 - `SYS_MAP_DEVICE`: Map MMIO regions into user address space
 - `SYS_IRQ_REGISTER`: Register for device interrupts
 - `SYS_IRQ_WAIT`: Wait for interrupt notification
@@ -31,17 +34,18 @@ The kernel still contains full drivers for boot-time initialization and fallback
 **Status:** Complete device discovery and base support
 
 **Implemented:**
+
 - VirtIO-MMIO device scanning at `0x0a000000-0x0a004000`
 - Magic value (`0x74726976` = "virt") verification
 - Version detection (legacy v1, modern v2)
 - Device ID identification and registry
 - Device claiming mechanism (prevents double-init)
 - Base `Device` class with:
-  - MMIO register read/write
-  - Configuration space access (8/16/32/64-bit)
-  - Status management (ACKNOWLEDGE, DRIVER, DRIVER_OK, FEATURES_OK)
-  - Feature negotiation for legacy and modern modes
-  - Interrupt status read and acknowledgment
+    - MMIO register read/write
+    - Configuration space access (8/16/32/64-bit)
+    - Status management (ACKNOWLEDGE, DRIVER, DRIVER_OK, FEATURES_OK)
+    - Feature negotiation for legacy and modern modes
+    - Interrupt status read and acknowledgment
 
 **Supported Device Types:**
 | Type ID | Name | Status |
@@ -68,10 +72,12 @@ The kernel still contains full drivers for boot-time initialization and fallback
 | 0x100 | CONFIG | Device-specific config |
 
 **Not Implemented:**
+
 - VirtIO-PCI transport
 - Multiple device instances per type
 
 **Recommendations:**
+
 - Add VirtIO-GPU 3D support (virgl) for hardware acceleration
 - Add VirtIO-console for console I/O
 
@@ -82,6 +88,7 @@ The kernel still contains full drivers for boot-time initialization and fallback
 **Status:** Complete implementation for both legacy and modern virtio
 
 **Implemented:**
+
 - Vring data structures (descriptor table, avail ring, used ring)
 - Legacy mode contiguous vring allocation
 - Modern mode separate ring allocations
@@ -100,6 +107,7 @@ The kernel still contains full drivers for boot-time initialization and fallback
 | INDIRECT | 4 | Indirect descriptor list |
 
 **Vring Structure:**
+
 ```
 ┌─────────────────────────────────────┐
 │       Descriptor Table              │
@@ -114,6 +122,7 @@ The kernel still contains full drivers for boot-time initialization and fallback
 ```
 
 **Not Implemented:**
+
 - Indirect descriptor support
 - Event suppression (VIRTIO_F_EVENT_IDX)
 
@@ -124,6 +133,7 @@ The kernel still contains full drivers for boot-time initialization and fallback
 **Status:** Complete with interrupt-driven and async I/O support
 
 **Implemented:**
+
 - Device discovery and initialization
 - Capacity and sector size detection
 - Read-only device detection
@@ -134,12 +144,12 @@ The kernel still contains full drivers for boot-time initialization and fallback
 - Descriptor chain construction (header → data → status)
 - **Interrupt-driven I/O with polling fallback**
 - **Async I/O API with callbacks:**
-  - `read_async(sector, count, buf, callback, user_data)`
-  - `write_async(sector, count, buf, callback, user_data)`
-  - `is_complete(handle)` - Check completion status
-  - `get_result(handle)` - Get operation result
-  - `wait_complete(handle)` - Blocking wait
-  - `process_completions()` - Process callbacks
+    - `read_async(sector, count, buf, callback, user_data)`
+    - `write_async(sector, count, buf, callback, user_data)`
+    - `is_complete(handle)` - Check completion status
+    - `get_result(handle)` - Get operation result
+    - `wait_complete(handle)` - Blocking wait
+    - `process_completions()` - Process callbacks
 - Single global device instance
 
 **Block Request Types:**
@@ -157,18 +167,21 @@ The kernel still contains full drivers for boot-time initialization and fallback
 | UNSUPP | 2 | Unsupported operation |
 
 **Configuration:**
+
 - Sector size: 512 bytes
 - Max pending requests: 8
 - Queue size: 128 descriptors
 - IRQ: Registered with GIC for completion notifications
 
 **Not Implemented:**
+
 - Discard/TRIM operations
 - Write zeroes
 - Multi-queue support
 - SCSI passthrough
 
 **Recommendations:**
+
 - Implement request batching
 - Add I/O scheduler integration
 
@@ -179,6 +192,7 @@ The kernel still contains full drivers for boot-time initialization and fallback
 **Status:** Complete with interrupt-driven receive and checksum offload
 
 **Implemented:**
+
 - Device discovery and initialization
 - MAC address reading from config space
 - Feature negotiation (VERSION_1 for modern, CSUM, GUEST_CSUM)
@@ -194,12 +208,13 @@ The kernel still contains full drivers for boot-time initialization and fallback
 - **RX wait queue for blocking receive**
 - **IRQ handler with automatic buffer refill**
 - **TX checksum offload support:**
-  - `transmit_csum(data, len, csum_start, csum_offset)` - Transmit with HW checksum
-  - `has_tx_csum()` - Check if TX offload available
-  - `has_rx_csum()` - Check if RX validation available
-  - Software fallback if hardware offload unavailable
+    - `transmit_csum(data, len, csum_start, csum_offset)` - Transmit with HW checksum
+    - `has_tx_csum()` - Check if TX offload available
+    - `has_rx_csum()` - Check if RX validation available
+    - Software fallback if hardware offload unavailable
 
 **Network Header:**
+
 ```cpp
 struct NetHeader {
     u8 flags;         // NEEDS_CSUM, DATA_VALID
@@ -212,6 +227,7 @@ struct NetHeader {
 ```
 
 **Configuration:**
+
 - RX buffer pool: 32 buffers × 2048 bytes
 - RX packet queue: 16 entries
 - TX/RX virtqueue size: 64 descriptors
@@ -219,6 +235,7 @@ struct NetHeader {
 - IRQ: Registered with GIC for used buffer notifications
 
 **Not Implemented:**
+
 - GSO/TSO (segmentation offload)
 - Multiqueue
 - Control virtqueue
@@ -226,6 +243,7 @@ struct NetHeader {
 - Mergeable RX buffers
 
 **Recommendations:**
+
 - Add multiqueue for SMP scalability
 - Implement GSO for large packet handling
 
@@ -236,6 +254,7 @@ struct NetHeader {
 **Status:** Fully functional entropy source
 
 **Implemented:**
+
 - Device discovery and initialization
 - Single virtqueue setup
 - DMA buffer allocation (256 bytes)
@@ -252,11 +271,13 @@ struct NetHeader {
 
 **Usage:**
 Primary entropy source for:
+
 - TLS random number generation
 - TCP sequence numbers
 - Protocol nonces
 
 **Not Implemented:**
+
 - Multiple RNG device support
 - Entropy pool with kernel mixing
 - Non-blocking interface with backpressure
@@ -268,6 +289,7 @@ Primary entropy source for:
 **Status:** Basic 2D framebuffer support
 
 **Implemented:**
+
 - Device discovery and initialization
 - Feature negotiation (VERSION_1 for modern)
 - Control virtqueue for commands
@@ -311,11 +333,13 @@ Primary entropy source for:
 | X8B8G8R8_UNORM | 68 | 32-bit XBGR |
 
 **Configuration:**
+
 - Control queue size: 64 descriptors
 - Cursor queue size: 16 descriptors
 - Command/response buffers: 4KB each
 
 **Not Implemented:**
+
 - 3D rendering (virgl)
 - EDID parsing
 - Cursor plane operations
@@ -323,6 +347,7 @@ Primary entropy source for:
 - Fence synchronization
 
 **Recommendations:**
+
 - Add cursor support for mouse pointer
 - Implement 3D virgl for hardware acceleration
 - Add EDID parsing for display detection
@@ -334,6 +359,7 @@ Primary entropy source for:
 **Status:** Complete with keyboard, mouse, and LED control
 
 **Implemented:**
+
 - Device discovery and initialization
 - Device name reading from config
 - Event type capability detection (EV_KEY, EV_REL, EV_LED)
@@ -344,11 +370,12 @@ Primary entropy source for:
 - Global keyboard and mouse pointers
 - Feature negotiation (VERSION_1 for modern)
 - **LED control via status queue:**
-  - `set_led(led, on)` - Set LED state
-  - `has_led_support()` - Check if LEDs available
-  - Supports Num Lock, Caps Lock, Scroll Lock
+    - `set_led(led, on)` - Set LED state
+    - `has_led_support()` - Check if LEDs available
+    - Supports Num Lock, Caps Lock, Scroll Lock
 
 **Input Event Structure:**
+
 ```cpp
 struct InputEvent {
     u16 type;   // EV_KEY, EV_REL, EV_ABS, EV_LED, etc.
@@ -374,17 +401,20 @@ struct InputEvent {
 | SCROLLL | 0x02 | Scroll Lock LED |
 
 **Configuration:**
+
 - Event buffer count: 64
 - Event size: 8 bytes
 - Status queue size: 8 (for LED control)
 
 **Not Implemented:**
+
 - Absolute positioning (touchscreen)
 - Force feedback
 - Multiple keyboards/mice
 - Event coalescing
 
 **Recommendations:**
+
 - Implement touchscreen support (EV_ABS)
 - Add force feedback for game controllers
 
@@ -395,6 +425,7 @@ struct InputEvent {
 **Status:** Complete interface for firmware configuration
 
 **Implemented:**
+
 - MMIO interface at `0x09020000`
 - Signature verification ("QEMU" = `0x554D4551`)
 - File directory interface
@@ -427,12 +458,14 @@ struct InputEvent {
 | 4 | WRITE | Write operation |
 
 **Not Implemented:**
+
 - DMA read interface
 - ACPI table access
 - SMBIOS table access
 - Kernel/initrd loading
 
 **Recommendations:**
+
 - Add device tree reading for dynamic memory detection
 
 ---
@@ -442,18 +475,20 @@ struct InputEvent {
 **Status:** Fully functional framebuffer driver
 
 **Implemented:**
+
 - Framebuffer configuration via fw_cfg DMA
 - Fixed framebuffer address at `0x41000000`
 - 32-bit XRGB8888 pixel format
 - Resolution configuration (default 1024×768)
 - Basic drawing primitives:
-  - `put_pixel(x, y, color)`
-  - `fill_rect(x, y, w, h, color)`
-  - `clear(color)`
+    - `put_pixel(x, y, color)`
+    - `fill_rect(x, y, w, h, color)`
+    - `clear(color)`
 - External framebuffer initialization (for UEFI GOP)
 - Framebuffer info structure
 
 **RAMFBCfg Structure (big-endian):**
+
 ```cpp
 struct RAMFBCfg {
     u64 addr;     // Framebuffer physical address
@@ -466,12 +501,14 @@ struct RAMFBCfg {
 ```
 
 **Configuration:**
+
 - Framebuffer base: `0x41000000`
 - Maximum size: 8MB
 - Bits per pixel: 32
 - FourCC code: `0x34325258` ("XR24")
 
 **Not Implemented:**
+
 - Hardware acceleration
 - Multiple display support
 - Mode enumeration
@@ -479,6 +516,7 @@ struct RAMFBCfg {
 - Cursor plane
 
 **Recommendations:**
+
 - Add VirtIO-GPU support for acceleration
 - Implement mode switching
 
@@ -526,6 +564,7 @@ struct RAMFBCfg {
 ## Device Initialization Sequence
 
 ### VirtIO Device:
+
 ```
 1. Device probing (scan MMIO range)
 2. Read magic/version/device_id
@@ -540,6 +579,7 @@ struct RAMFBCfg {
 ```
 
 ### VirtIO Operation:
+
 ```
 1. Allocate descriptors
 2. Fill descriptor chain (addr, len, flags)
@@ -555,6 +595,7 @@ struct RAMFBCfg {
 ## Testing
 
 The drivers subsystem is tested via:
+
 - `qemu_kernel_boot` - Verifies virtio discovery and RNG init
 - `qemu_storage_tests` - Tests block device read/write
 - Network tests use virtio-net for packet I/O
@@ -564,61 +605,71 @@ The drivers subsystem is tested via:
 
 ## Files
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `virtio/virtio.cpp` | ~292 | Core device discovery |
-| `virtio/virtio.hpp` | ~294 | Core definitions |
-| `virtio/virtqueue.cpp` | ~390 | Vring implementation |
-| `virtio/virtqueue.hpp` | ~299 | Vring structures |
-| `virtio/blk.cpp` | ~745 | Block device driver |
-| `virtio/blk.hpp` | ~379 | Block device interface |
-| `virtio/gpu.cpp` | ~390 | GPU device driver |
-| `virtio/gpu.hpp` | ~260 | GPU device interface |
-| `virtio/net.cpp` | ~750 | Network device driver |
-| `virtio/net.hpp` | ~395 | Network device interface |
-| `virtio/rng.cpp` | ~189 | RNG device driver |
-| `virtio/rng.hpp` | ~56 | RNG interface |
-| `virtio/input.cpp` | ~435 | Input device driver |
-| `virtio/input.hpp` | ~256 | Input device interface |
-| `fwcfg.cpp` | ~259 | fw_cfg implementation |
-| `fwcfg.hpp` | ~97 | fw_cfg interface |
-| `ramfb.cpp` | ~234 | RAM framebuffer |
-| `ramfb.hpp` | ~119 | Framebuffer interface |
+| File                   | Lines | Description              |
+|------------------------|-------|--------------------------|
+| `virtio/virtio.cpp`    | ~292  | Core device discovery    |
+| `virtio/virtio.hpp`    | ~294  | Core definitions         |
+| `virtio/virtqueue.cpp` | ~390  | Vring implementation     |
+| `virtio/virtqueue.hpp` | ~299  | Vring structures         |
+| `virtio/blk.cpp`       | ~745  | Block device driver      |
+| `virtio/blk.hpp`       | ~379  | Block device interface   |
+| `virtio/gpu.cpp`       | ~390  | GPU device driver        |
+| `virtio/gpu.hpp`       | ~260  | GPU device interface     |
+| `virtio/net.cpp`       | ~750  | Network device driver    |
+| `virtio/net.hpp`       | ~395  | Network device interface |
+| `virtio/rng.cpp`       | ~189  | RNG device driver        |
+| `virtio/rng.hpp`       | ~56   | RNG interface            |
+| `virtio/input.cpp`     | ~435  | Input device driver      |
+| `virtio/input.hpp`     | ~256  | Input device interface   |
+| `fwcfg.cpp`            | ~259  | fw_cfg implementation    |
+| `fwcfg.hpp`            | ~97   | fw_cfg interface         |
+| `ramfb.cpp`            | ~234  | RAM framebuffer          |
+| `ramfb.hpp`            | ~119  | Framebuffer interface    |
 
 ---
 
 ## Priority Recommendations: Next 5 Steps
 
 ### 1. VirtIO-GPU 3D Support (virgl)
+
 **Impact:** Hardware-accelerated 3D graphics
+
 - Virgl command submission via control virtqueue
 - OpenGL ES 2.0+ rendering commands
 - 3D resource management (textures, buffers)
 - Foundation for accelerated GUI compositing
 
 ### 2. VirtIO-Net Multiqueue for SMP
+
 **Impact:** Network scalability on multi-core systems
+
 - Separate TX/RX queues per CPU core
 - Reduce cross-CPU lock contention
 - RSS-based receive queue steering
 - Linear network throughput scaling
 
 ### 3. VirtIO-Net GSO/TSO Offload
+
 **Impact:** Improved network throughput for large transfers
+
 - TCP Segmentation Offload (TSO)
 - UDP Fragmentation Offload (UFO)
 - Larger effective MTU per operation
 - Reduced CPU overhead for bulk transfers
 
 ### 4. VirtIO-Console Driver
+
 **Impact:** Alternative console path through VirtIO
+
 - Console virtqueue for input/output
 - Multiple console ports support
 - Direct VM console access without serial
 - Better integration with hypervisor consoles
 
 ### 5. Device Tree Parsing
+
 **Impact:** Dynamic device discovery
+
 - Parse DTB for memory regions
 - Discover VirtIO devices from FDT
 - Interrupt routing from device tree

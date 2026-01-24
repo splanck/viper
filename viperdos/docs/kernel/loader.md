@@ -1,6 +1,7 @@
 # Program Loading: ELF Loader
 
-ViperDOS loads user programs from disk as ELF64 images and maps them into a Viper’s address space. This page explains the
+ViperDOS loads user programs from disk as ELF64 images and maps them into a Viper’s address space. This page explains
+the
 end-to-end “load an ELF and run it” story.
 
 ## The main entrypoints

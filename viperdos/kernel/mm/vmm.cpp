@@ -22,11 +22,9 @@
  * - The invalidation must be ordered with DSB/ISB barriers as required by the
  *   architecture to ensure the update is observed.
  */
-namespace vmm
-{
+namespace vmm {
 
-namespace
-{
+namespace {
 // Page table root (TTBR0 for identity mapping)
 u64 *pgt_root = nullptr;
 
@@ -47,23 +45,19 @@ constexpr u64 L2_SHIFT = 21;
 constexpr u64 L3_SHIFT = 12;
 constexpr u64 INDEX_MASK = 0x1FF; // 9 bits
 
-inline u64 l0_index(u64 va)
-{
+inline u64 l0_index(u64 va) {
     return (va >> L0_SHIFT) & INDEX_MASK;
 }
 
-inline u64 l1_index(u64 va)
-{
+inline u64 l1_index(u64 va) {
     return (va >> L1_SHIFT) & INDEX_MASK;
 }
 
-inline u64 l2_index(u64 va)
-{
+inline u64 l2_index(u64 va) {
     return (va >> L2_SHIFT) & INDEX_MASK;
 }
 
-inline u64 l3_index(u64 va)
-{
+inline u64 l3_index(u64 va) {
     return (va >> L3_SHIFT) & INDEX_MASK;
 }
 
@@ -78,23 +72,19 @@ constexpr u64 PHYS_MASK = 0x0000FFFFFFFFF000ULL;
  * tables (L1, L2, L3). If allocation fails partway through, we need to free
  * any tables we already allocated to avoid memory leaks.
  */
-struct TableAllocation
-{
+struct TableAllocation {
     u64 tables[3]; ///< Physical addresses of allocated tables
     u32 count;     ///< Number of tables allocated
 
-    TableAllocation() : count(0)
-    {
+    TableAllocation() : count(0) {
         tables[0] = tables[1] = tables[2] = 0;
     }
 
     /**
      * @brief Record a newly allocated table.
      */
-    void add(u64 table_phys)
-    {
-        if (count < 3)
-        {
+    void add(u64 table_phys) {
+        if (count < 3) {
             tables[count++] = table_phys;
         }
     }
@@ -102,12 +92,9 @@ struct TableAllocation
     /**
      * @brief Free all recorded tables (rollback).
      */
-    void rollback()
-    {
-        for (u32 i = 0; i < count; i++)
-        {
-            if (tables[i] != 0)
-            {
+    void rollback() {
+        for (u32 i = 0; i < count; i++) {
+            if (tables[i] != 0) {
                 pmm::free_page(tables[i]);
             }
         }
@@ -127,8 +114,7 @@ struct TableAllocation
  * @param target_level Target level: 1=L1, 2=L2, 3=L3.
  * @return Pointer to the table at target_level, or nullptr if path invalid.
  */
-u64 *walk_tables_readonly(u64 virt, int target_level)
-{
+u64 *walk_tables_readonly(u64 virt, int target_level) {
     if (!pgt_root || target_level < 1 || target_level > 3)
         return nullptr;
 
@@ -174,20 +160,17 @@ u64 *walk_tables_readonly(u64 virt, int target_level)
  * @param allocated Tracking structure for newly allocated tables.
  * @return Next-level table pointer, or `nullptr` if allocation fails.
  */
-u64 *get_or_create_table(u64 *table, u64 index, TableAllocation &allocated)
-{
+u64 *get_or_create_table(u64 *table, u64 index, TableAllocation &allocated) {
     u64 entry = table[index];
 
-    if (entry & pte::VALID)
-    {
+    if (entry & pte::VALID) {
         // Table already exists - no allocation needed
         return reinterpret_cast<u64 *>(entry & PHYS_MASK);
     }
 
     // Allocate new table
     u64 new_table = pmm::alloc_page();
-    if (new_table == 0)
-    {
+    if (new_table == 0) {
         serial::puts("[vmm] ERROR: Failed to allocate page table!\n");
         return nullptr;
     }
@@ -197,8 +180,7 @@ u64 *get_or_create_table(u64 *table, u64 index, TableAllocation &allocated)
 
     // Zero the new table
     u64 *ptr = reinterpret_cast<u64 *>(new_table);
-    for (u64 i = 0; i < ENTRIES_PER_TABLE; i++)
-    {
+    for (u64 i = 0; i < ENTRIES_PER_TABLE; i++) {
         ptr[i] = 0;
     }
 
@@ -210,14 +192,12 @@ u64 *get_or_create_table(u64 *table, u64 index, TableAllocation &allocated)
 } // namespace
 
 /** @copydoc vmm::init */
-void init()
-{
+void init() {
     serial::puts("[vmm] Initializing virtual memory manager\n");
 
     // Allocate root page table
     u64 root_phys = pmm::alloc_page();
-    if (root_phys == 0)
-    {
+    if (root_phys == 0) {
         serial::puts("[vmm] ERROR: Failed to allocate root page table!\n");
         return;
     }
@@ -225,8 +205,7 @@ void init()
     pgt_root = reinterpret_cast<u64 *>(root_phys);
 
     // Zero the root table
-    for (u64 i = 0; i < ENTRIES_PER_TABLE; i++)
-    {
+    for (u64 i = 0; i < ENTRIES_PER_TABLE; i++) {
         pgt_root[i] = 0;
     }
 
@@ -242,10 +221,8 @@ void init()
 }
 
 // Internal unlocked version for use when lock is already held
-static bool map_page_unlocked(u64 virt, u64 phys, u64 flags)
-{
-    if (!pgt_root)
-    {
+static bool map_page_unlocked(u64 virt, u64 phys, u64 flags) {
+    if (!pgt_root) {
         serial::puts("[vmm] ERROR: VMM not initialized!\n");
         return false;
     }
@@ -256,22 +233,19 @@ static bool map_page_unlocked(u64 virt, u64 phys, u64 flags)
     // Walk/create page tables with rollback support
     u64 *l0 = pgt_root;
     u64 *l1 = get_or_create_table(l0, l0_index(virt), allocated);
-    if (!l1)
-    {
+    if (!l1) {
         allocated.rollback();
         return false;
     }
 
     u64 *l2 = get_or_create_table(l1, l1_index(virt), allocated);
-    if (!l2)
-    {
+    if (!l2) {
         allocated.rollback();
         return false;
     }
 
     u64 *l3 = get_or_create_table(l2, l2_index(virt), allocated);
-    if (!l3)
-    {
+    if (!l3) {
         allocated.rollback();
         return false;
     }
@@ -290,26 +264,21 @@ static bool map_page_unlocked(u64 virt, u64 phys, u64 flags)
 static void unmap_page_unlocked(u64 virt);
 
 /** @copydoc vmm::map_page */
-bool map_page(u64 virt, u64 phys, u64 flags)
-{
+bool map_page(u64 virt, u64 phys, u64 flags) {
     SpinlockGuard guard(vmm_lock);
     return map_page_unlocked(virt, phys, flags);
 }
 
 /** @copydoc vmm::map_range */
-bool map_range(u64 virt, u64 phys, u64 size, u64 flags)
-{
+bool map_range(u64 virt, u64 phys, u64 size, u64 flags) {
     SpinlockGuard guard(vmm_lock);
 
     u64 pages = (size + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE;
 
-    for (u64 i = 0; i < pages; i++)
-    {
-        if (!map_page_unlocked(virt + i * pmm::PAGE_SIZE, phys + i * pmm::PAGE_SIZE, flags))
-        {
+    for (u64 i = 0; i < pages; i++) {
+        if (!map_page_unlocked(virt + i * pmm::PAGE_SIZE, phys + i * pmm::PAGE_SIZE, flags)) {
             // Rollback: unmap all pages we successfully mapped
-            for (u64 j = 0; j < i; j++)
-            {
+            for (u64 j = 0; j < i; j++) {
                 unmap_page_unlocked(virt + j * pmm::PAGE_SIZE);
             }
             return false;
@@ -320,27 +289,23 @@ bool map_range(u64 virt, u64 phys, u64 size, u64 flags)
 }
 
 /** @copydoc vmm::map_block_2mb */
-bool map_block_2mb(u64 virt, u64 phys, u64 flags)
-{
+bool map_block_2mb(u64 virt, u64 phys, u64 flags) {
     SpinlockGuard guard(vmm_lock);
 
-    if (!pgt_root)
-    {
+    if (!pgt_root) {
         serial::puts("[vmm] ERROR: VMM not initialized!\n");
         return false;
     }
 
     // Alignment checks - both addresses must be 2MB aligned
-    if ((virt & (pte::BLOCK_2MB - 1)) != 0)
-    {
+    if ((virt & (pte::BLOCK_2MB - 1)) != 0) {
         serial::puts("[vmm] ERROR: Virtual address not 2MB aligned: ");
         serial::put_hex(virt);
         serial::puts("\n");
         return false;
     }
 
-    if ((phys & (pte::BLOCK_2MB - 1)) != 0)
-    {
+    if ((phys & (pte::BLOCK_2MB - 1)) != 0) {
         serial::puts("[vmm] ERROR: Physical address not 2MB aligned: ");
         serial::put_hex(phys);
         serial::puts("\n");
@@ -353,15 +318,13 @@ bool map_block_2mb(u64 virt, u64 phys, u64 flags)
     // Walk/create page tables down to L2 (not L3 - we install block there)
     u64 *l0 = pgt_root;
     u64 *l1 = get_or_create_table(l0, l0_index(virt), allocated);
-    if (!l1)
-    {
+    if (!l1) {
         allocated.rollback();
         return false;
     }
 
     u64 *l2 = get_or_create_table(l1, l1_index(virt), allocated);
-    if (!l2)
-    {
+    if (!l2) {
         allocated.rollback();
         return false;
     }
@@ -381,8 +344,7 @@ bool map_block_2mb(u64 virt, u64 phys, u64 flags)
 }
 
 /** @copydoc vmm::unmap_block_2mb */
-void unmap_block_2mb(u64 virt)
-{
+void unmap_block_2mb(u64 virt) {
     SpinlockGuard guard(vmm_lock);
 
     // Alignment check
@@ -402,8 +364,7 @@ void unmap_block_2mb(u64 virt)
 }
 
 // Internal unlocked unmap implementation
-static void unmap_page_unlocked(u64 virt)
-{
+static void unmap_page_unlocked(u64 virt) {
     // Walk page tables to L3
     u64 *l3 = walk_tables_readonly(virt, 3);
     if (!l3)
@@ -417,19 +378,16 @@ static void unmap_page_unlocked(u64 virt)
 }
 
 /** @copydoc vmm::unmap_page */
-void unmap_page(u64 virt)
-{
+void unmap_page(u64 virt) {
     SpinlockGuard guard(vmm_lock);
     unmap_page_unlocked(virt);
 }
 
 /** @copydoc vmm::virt_to_phys */
-u64 virt_to_phys(u64 virt)
-{
+u64 virt_to_phys(u64 virt) {
     SpinlockGuard guard(vmm_lock);
 
-    if (!pgt_root)
-    {
+    if (!pgt_root) {
         // Identity mapping fallback
         return virt;
     }
@@ -446,8 +404,7 @@ u64 virt_to_phys(u64 virt)
         return 0;
 
     // Check for 1GB block
-    if (!(l1e & pte::TABLE))
-    {
+    if (!(l1e & pte::TABLE)) {
         return (l1e & PHYS_MASK) | (virt & ((1ULL << L1_SHIFT) - 1));
     }
 
@@ -457,8 +414,7 @@ u64 virt_to_phys(u64 virt)
         return 0;
 
     // Check for 2MB block
-    if (!(l2e & pte::TABLE))
-    {
+    if (!(l2e & pte::TABLE)) {
         return (l2e & PHYS_MASK) | (virt & ((1ULL << L2_SHIFT) - 1));
     }
 
@@ -471,16 +427,14 @@ u64 virt_to_phys(u64 virt)
 }
 
 /** @copydoc vmm::invalidate_page */
-void invalidate_page(u64 virt)
-{
+void invalidate_page(u64 virt) {
     asm volatile("tlbi vaae1is, %0" : : "r"(virt >> 12));
     asm volatile("dsb sy");
     asm volatile("isb");
 }
 
 /** @copydoc vmm::invalidate_all */
-void invalidate_all()
-{
+void invalidate_all() {
     asm volatile("tlbi vmalle1is");
     asm volatile("dsb sy");
     asm volatile("isb");

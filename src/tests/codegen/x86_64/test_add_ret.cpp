@@ -72,8 +72,7 @@ namespace
     // 2. An add instruction exists (the actual register allocation may vary)
     // 3. Result ends up in RAX for return
     // 4. Function returns
-    constexpr std::string_view kPatterns[] = {
-        ".globl add", "addq", "movq %rdx, %rax", "ret"};
+    constexpr std::string_view kPatterns[] = {".globl add", "addq", "movq %rdx, %rax", "ret"};
 
     for (const std::string_view pattern : kPatterns)
     {

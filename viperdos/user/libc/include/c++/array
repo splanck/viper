@@ -8,12 +8,10 @@
 #include "cstddef"
 #include "iterator"
 
-namespace std
-{
+namespace std {
 
 // array - fixed-size sequence container
-template <typename T, size_t N> struct array
-{
+template <typename T, size_t N> struct array {
     // Types
     using value_type = T;
     using size_type = size_t;
@@ -33,147 +31,118 @@ template <typename T, size_t N> struct array
     // No explicit construct/copy/destroy for aggregate type
 
     // Element access
-    reference at(size_type pos)
-    {
+    reference at(size_type pos) {
         // In a real implementation, this would throw on out-of-bounds
         return elems_[pos];
     }
 
-    const_reference at(size_type pos) const
-    {
+    const_reference at(size_type pos) const {
         return elems_[pos];
     }
 
-    reference operator[](size_type pos)
-    {
+    reference operator[](size_type pos) {
         return elems_[pos];
     }
 
-    const_reference operator[](size_type pos) const
-    {
+    const_reference operator[](size_type pos) const {
         return elems_[pos];
     }
 
-    reference front()
-    {
+    reference front() {
         return elems_[0];
     }
 
-    const_reference front() const
-    {
+    const_reference front() const {
         return elems_[0];
     }
 
-    reference back()
-    {
+    reference back() {
         return elems_[N - 1];
     }
 
-    const_reference back() const
-    {
+    const_reference back() const {
         return elems_[N - 1];
     }
 
-    pointer data() noexcept
-    {
+    pointer data() noexcept {
         return elems_;
     }
 
-    const_pointer data() const noexcept
-    {
+    const_pointer data() const noexcept {
         return elems_;
     }
 
     // Iterators
-    iterator begin() noexcept
-    {
+    iterator begin() noexcept {
         return elems_;
     }
 
-    const_iterator begin() const noexcept
-    {
+    const_iterator begin() const noexcept {
         return elems_;
     }
 
-    const_iterator cbegin() const noexcept
-    {
+    const_iterator cbegin() const noexcept {
         return elems_;
     }
 
-    iterator end() noexcept
-    {
+    iterator end() noexcept {
         return elems_ + N;
     }
 
-    const_iterator end() const noexcept
-    {
+    const_iterator end() const noexcept {
         return elems_ + N;
     }
 
-    const_iterator cend() const noexcept
-    {
+    const_iterator cend() const noexcept {
         return elems_ + N;
     }
 
-    reverse_iterator rbegin() noexcept
-    {
+    reverse_iterator rbegin() noexcept {
         return reverse_iterator(end());
     }
 
-    const_reverse_iterator rbegin() const noexcept
-    {
+    const_reverse_iterator rbegin() const noexcept {
         return const_reverse_iterator(end());
     }
 
-    const_reverse_iterator crbegin() const noexcept
-    {
+    const_reverse_iterator crbegin() const noexcept {
         return const_reverse_iterator(end());
     }
 
-    reverse_iterator rend() noexcept
-    {
+    reverse_iterator rend() noexcept {
         return reverse_iterator(begin());
     }
 
-    const_reverse_iterator rend() const noexcept
-    {
+    const_reverse_iterator rend() const noexcept {
         return const_reverse_iterator(begin());
     }
 
-    const_reverse_iterator crend() const noexcept
-    {
+    const_reverse_iterator crend() const noexcept {
         return const_reverse_iterator(begin());
     }
 
     // Capacity
-    constexpr bool empty() const noexcept
-    {
+    constexpr bool empty() const noexcept {
         return N == 0;
     }
 
-    constexpr size_type size() const noexcept
-    {
+    constexpr size_type size() const noexcept {
         return N;
     }
 
-    constexpr size_type max_size() const noexcept
-    {
+    constexpr size_type max_size() const noexcept {
         return N;
     }
 
     // Operations
-    void fill(const T &value)
-    {
-        for (size_type i = 0; i < N; ++i)
-        {
+    void fill(const T &value) {
+        for (size_type i = 0; i < N; ++i) {
             elems_[i] = value;
         }
     }
 
-    void swap(array &other) noexcept
-    {
-        for (size_type i = 0; i < N; ++i)
-        {
+    void swap(array &other) noexcept {
+        for (size_type i = 0; i < N; ++i) {
             T tmp = static_cast<T &&>(elems_[i]);
             elems_[i] = static_cast<T &&>(other.elems_[i]);
             other.elems_[i] = static_cast<T &&>(tmp);
@@ -182,8 +151,7 @@ template <typename T, size_t N> struct array
 };
 
 // Zero-sized array specialization
-template <typename T> struct array<T, 0>
-{
+template <typename T> struct array<T, 0> {
     using value_type = T;
     using size_type = size_t;
     using difference_type = ptrdiff_t;
@@ -197,135 +165,108 @@ template <typename T> struct array<T, 0>
     using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
     // No storage for zero-size array
-    struct empty_type
-    {
-    };
+    struct empty_type {};
 
     empty_type elems_[1];
 
-    reference at(size_type)
-    {
+    reference at(size_type) {
         // Undefined behavior for zero-size array
         return *static_cast<T *>(nullptr);
     }
 
-    const_reference at(size_type) const
-    {
+    const_reference at(size_type) const {
         return *static_cast<const T *>(nullptr);
     }
 
-    reference operator[](size_type)
-    {
+    reference operator[](size_type) {
         return *static_cast<T *>(nullptr);
     }
 
-    const_reference operator[](size_type) const
-    {
+    const_reference operator[](size_type) const {
         return *static_cast<const T *>(nullptr);
     }
 
-    reference front()
-    {
+    reference front() {
         return *static_cast<T *>(nullptr);
     }
 
-    const_reference front() const
-    {
+    const_reference front() const {
         return *static_cast<const T *>(nullptr);
     }
 
-    reference back()
-    {
+    reference back() {
         return *static_cast<T *>(nullptr);
     }
 
-    const_reference back() const
-    {
+    const_reference back() const {
         return *static_cast<const T *>(nullptr);
     }
 
-    pointer data() noexcept
-    {
+    pointer data() noexcept {
         return nullptr;
     }
 
-    const_pointer data() const noexcept
-    {
+    const_pointer data() const noexcept {
         return nullptr;
     }
 
-    iterator begin() noexcept
-    {
+    iterator begin() noexcept {
         return nullptr;
     }
 
-    const_iterator begin() const noexcept
-    {
+    const_iterator begin() const noexcept {
         return nullptr;
     }
 
-    const_iterator cbegin() const noexcept
-    {
+    const_iterator cbegin() const noexcept {
         return nullptr;
     }
 
-    iterator end() noexcept
-    {
+    iterator end() noexcept {
         return nullptr;
     }
 
-    const_iterator end() const noexcept
-    {
+    const_iterator end() const noexcept {
         return nullptr;
     }
 
-    const_iterator cend() const noexcept
-    {
+    const_iterator cend() const noexcept {
         return nullptr;
     }
 
-    reverse_iterator rbegin() noexcept
-    {
+    reverse_iterator rbegin() noexcept {
         return reverse_iterator(nullptr);
     }
 
-    const_reverse_iterator rbegin() const noexcept
-    {
+    const_reverse_iterator rbegin() const noexcept {
         return const_reverse_iterator(nullptr);
     }
 
-    const_reverse_iterator crbegin() const noexcept
-    {
+    const_reverse_iterator crbegin() const noexcept {
         return const_reverse_iterator(nullptr);
     }
 
-    reverse_iterator rend() noexcept
-    {
+    reverse_iterator rend() noexcept {
         return reverse_iterator(nullptr);
     }
 
-    const_reverse_iterator rend() const noexcept
-    {
+    const_reverse_iterator rend() const noexcept {
         return const_reverse_iterator(nullptr);
     }
 
-    const_reverse_iterator crend() const noexcept
-    {
+    const_reverse_iterator crend() const noexcept {
         return const_reverse_iterator(nullptr);
     }
 
-    constexpr bool empty() const noexcept
-    {
+    constexpr bool empty() const noexcept {
         return true;
     }
 
-    constexpr size_type size() const noexcept
-    {
+    constexpr size_type size() const noexcept {
         return 0;
     }
 
-    constexpr size_type max_size() const noexcept
-    {
+    constexpr size_type max_size() const noexcept {
         return 0;
     }
 
@@ -335,25 +276,20 @@ template <typename T> struct array<T, 0>
 };
 
 // Comparison operators
-template <typename T, size_t N> bool operator==(const array<T, N> &a, const array<T, N> &b)
-{
-    for (size_t i = 0; i < N; ++i)
-    {
+template <typename T, size_t N> bool operator==(const array<T, N> &a, const array<T, N> &b) {
+    for (size_t i = 0; i < N; ++i) {
         if (!(a[i] == b[i]))
             return false;
     }
     return true;
 }
 
-template <typename T, size_t N> bool operator!=(const array<T, N> &a, const array<T, N> &b)
-{
+template <typename T, size_t N> bool operator!=(const array<T, N> &a, const array<T, N> &b) {
     return !(a == b);
 }
 
-template <typename T, size_t N> bool operator<(const array<T, N> &a, const array<T, N> &b)
-{
-    for (size_t i = 0; i < N; ++i)
-    {
+template <typename T, size_t N> bool operator<(const array<T, N> &a, const array<T, N> &b) {
+    for (size_t i = 0; i < N; ++i) {
         if (a[i] < b[i])
             return true;
         if (b[i] < a[i])
@@ -362,85 +298,69 @@ template <typename T, size_t N> bool operator<(const array<T, N> &a, const array
     return false;
 }
 
-template <typename T, size_t N> bool operator<=(const array<T, N> &a, const array<T, N> &b)
-{
+template <typename T, size_t N> bool operator<=(const array<T, N> &a, const array<T, N> &b) {
     return !(b < a);
 }
 
-template <typename T, size_t N> bool operator>(const array<T, N> &a, const array<T, N> &b)
-{
+template <typename T, size_t N> bool operator>(const array<T, N> &a, const array<T, N> &b) {
     return b < a;
 }
 
-template <typename T, size_t N> bool operator>=(const array<T, N> &a, const array<T, N> &b)
-{
+template <typename T, size_t N> bool operator>=(const array<T, N> &a, const array<T, N> &b) {
     return !(a < b);
 }
 
 // Non-member functions
-template <typename T, size_t N> void swap(array<T, N> &a, array<T, N> &b) noexcept
-{
+template <typename T, size_t N> void swap(array<T, N> &a, array<T, N> &b) noexcept {
     a.swap(b);
 }
 
 // get for structured bindings
-template <size_t I, typename T, size_t N> T &get(array<T, N> &a) noexcept
-{
+template <size_t I, typename T, size_t N> T &get(array<T, N> &a) noexcept {
     static_assert(I < N, "array index out of bounds");
     return a.elems_[I];
 }
 
-template <size_t I, typename T, size_t N> const T &get(const array<T, N> &a) noexcept
-{
+template <size_t I, typename T, size_t N> const T &get(const array<T, N> &a) noexcept {
     static_assert(I < N, "array index out of bounds");
     return a.elems_[I];
 }
 
-template <size_t I, typename T, size_t N> T &&get(array<T, N> &&a) noexcept
-{
+template <size_t I, typename T, size_t N> T &&get(array<T, N> &&a) noexcept {
     static_assert(I < N, "array index out of bounds");
     return static_cast<T &&>(a.elems_[I]);
 }
 
-template <size_t I, typename T, size_t N> const T &&get(const array<T, N> &&a) noexcept
-{
+template <size_t I, typename T, size_t N> const T &&get(const array<T, N> &&a) noexcept {
     static_assert(I < N, "array index out of bounds");
     return static_cast<const T &&>(a.elems_[I]);
 }
 
 // tuple_size and tuple_element for structured bindings
-template <typename T, size_t N> struct tuple_size<array<T, N>> : integral_constant<size_t, N>
-{
-};
+template <typename T, size_t N> struct tuple_size<array<T, N>> : integral_constant<size_t, N> {};
 
-template <size_t I, typename T, size_t N> struct tuple_element<I, array<T, N>>
-{
+template <size_t I, typename T, size_t N> struct tuple_element<I, array<T, N>> {
     using type = T;
 };
 
 // to_array (C++20)
-namespace detail
-{
+namespace detail {
 template <typename T, size_t N, size_t... I>
-constexpr array<remove_cv_t<T>, N> to_array_impl(T (&a)[N], index_sequence<I...>)
-{
+constexpr array<remove_cv_t<T>, N> to_array_impl(T (&a)[N], index_sequence<I...>) {
     return {{a[I]...}};
 }
 
 template <typename T, size_t N, size_t... I>
-constexpr array<remove_cv_t<T>, N> to_array_impl(T (&&a)[N], index_sequence<I...>)
-{
+constexpr array<remove_cv_t<T>, N> to_array_impl(T (&&a)[N], index_sequence<I...>) {
     return {{static_cast<T &&>(a[I])...}};
 }
 } // namespace detail
 
-template <typename T, size_t N> constexpr array<remove_cv_t<T>, N> to_array(T (&a)[N])
-{
+template <typename T, size_t N> constexpr array<remove_cv_t<T>, N> to_array(T (&a)[N]) {
     return detail::to_array_impl(a, make_index_sequence<N>{});
 }
 
-template <typename T, size_t N> constexpr array<remove_cv_t<T>, N> to_array(T (&&a)[N])
-{
+template <typename T, size_t N> constexpr array<remove_cv_t<T>, N> to_array(T (&&a)[N]) {
     return detail::to_array_impl(static_cast<T(&&)[N]>(a), make_index_sequence<N>{});
 }
 

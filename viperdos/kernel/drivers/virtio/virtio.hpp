@@ -36,8 +36,7 @@
  * base class that provides register access, feature negotiation, and status
  * management shared by specific device drivers (net, block, input, rng).
  */
-namespace virtio
-{
+namespace virtio {
 
 // MMIO register offsets (shared between legacy v1 and modern v2)
 /**
@@ -48,8 +47,7 @@ namespace virtio
  * used for both legacy and modern devices, but some registers only apply to
  * one mode (e.g. QUEUE_PFN for legacy, QUEUE_DESC_* for modern).
  */
-namespace reg
-{
+namespace reg {
 constexpr u32 MAGIC = 0x000;
 constexpr u32 VERSION = 0x004;
 constexpr u32 DEVICE_ID = 0x008;
@@ -91,8 +89,7 @@ constexpr u32 CONFIG = 0x100;
  * ACKNOWLEDGE -> DRIVER -> FEATURES_OK -> DRIVER_OK, with FAILED indicating an
  * unrecoverable error.
  */
-namespace status
-{
+namespace status {
 constexpr u32 ACKNOWLEDGE = 1;
 constexpr u32 DRIVER = 2;
 constexpr u32 DRIVER_OK = 4;
@@ -107,8 +104,7 @@ constexpr u32 FAILED = 128;
  * @details
  * These numeric IDs identify the device class (net, block, rng, input, etc.).
  */
-namespace device_type
-{
+namespace device_type {
 constexpr u32 NET = 1;
 constexpr u32 BLK = 2;
 constexpr u32 CONSOLE = 3;
@@ -128,8 +124,7 @@ constexpr u32 MAGIC_VALUE = 0x74726976;
  * @details
  * Modern virtio devices require negotiating `VIRTIO_F_VERSION_1` (bit 32).
  */
-namespace features
-{
+namespace features {
 constexpr u64 VERSION_1 = 1ULL << 32; // Modern virtio (required for v2)
 }
 
@@ -147,8 +142,7 @@ constexpr u64 VERSION_1 = 1ULL << 32; // Modern virtio (required for v2)
  * Concrete drivers inherit from `Device` and then configure queues and device-
  * specific configuration space.
  */
-class Device
-{
+class Device {
   public:
     /**
      * @brief Initialize this object to represent a virtio-mmio device.
@@ -188,26 +182,22 @@ class Device
 
     // Device info
     /** @brief Virtio device ID (`DEVICE_ID`). */
-    u32 device_id() const
-    {
+    u32 device_id() const {
         return device_id_;
     }
 
     /** @brief MMIO base address of the device. */
-    u64 base() const
-    {
+    u64 base() const {
         return base_;
     }
 
     /** @brief Whether the device is legacy mode (version 1). */
-    bool is_legacy() const
-    {
+    bool is_legacy() const {
         return version_ == 1;
     }
 
     /** @brief Virtio MMIO version value (1 = legacy, 2 = modern). */
-    u32 version() const
-    {
+    u32 version() const {
         return version_;
     }
 
@@ -282,8 +272,7 @@ constexpr usize MAX_DEVICES = 8;
  * `in_use` is set when a driver claims a device so subsequent lookups do not
  * return the same base address twice.
  */
-struct DeviceInfo
-{
+struct DeviceInfo {
     u64 base;
     u32 type;
     bool in_use;

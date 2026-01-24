@@ -66,11 +66,11 @@
 /// @brief Internal XML node structure.
 typedef struct xml_node
 {
-    XmlNodeType type;     ///< Node type
-    rt_string tag;        ///< Tag name (elements only)
-    rt_string content;    ///< Text content (text/comment/cdata)
-    void *attributes;     ///< Map of attributes (elements only)
-    void *children;       ///< Seq of child nodes
+    XmlNodeType type;        ///< Node type
+    rt_string tag;           ///< Tag name (elements only)
+    rt_string content;       ///< Text content (text/comment/cdata)
+    void *attributes;        ///< Map of attributes (elements only)
+    void *children;          ///< Seq of child nodes
     struct xml_node *parent; ///< Parent node (weak reference)
 } xml_node;
 
@@ -727,8 +727,8 @@ static void *parse_element(xml_parser *p)
             if (strcmp(start_tag_str, end_tag_str) != 0)
             {
                 char err[128];
-                snprintf(err, sizeof(err), "Mismatched tags: <%s> vs </%s>",
-                         start_tag_str, end_tag_str);
+                snprintf(
+                    err, sizeof(err), "Mismatched tags: <%s> vs </%s>", start_tag_str, end_tag_str);
                 set_error(err);
                 if (rt_obj_release_check0((void *)end_tag))
                     rt_obj_free((void *)end_tag);
@@ -1543,35 +1543,36 @@ static void buf_append_escaped(char **buf, size_t *cap, size_t *len, const char 
     {
         switch (str[i])
         {
-        case '&':
-            buf_append(buf, cap, len, "&amp;");
-            break;
-        case '<':
-            buf_append(buf, cap, len, "&lt;");
-            break;
-        case '>':
-            buf_append(buf, cap, len, "&gt;");
-            break;
-        case '"':
-            if (for_attr)
-                buf_append(buf, cap, len, "&quot;");
-            else
-                buf_append_char(buf, cap, len, '"');
-            break;
-        case '\'':
-            if (for_attr)
-                buf_append(buf, cap, len, "&apos;");
-            else
-                buf_append_char(buf, cap, len, '\'');
-            break;
-        default:
-            buf_append_char(buf, cap, len, str[i]);
-            break;
+            case '&':
+                buf_append(buf, cap, len, "&amp;");
+                break;
+            case '<':
+                buf_append(buf, cap, len, "&lt;");
+                break;
+            case '>':
+                buf_append(buf, cap, len, "&gt;");
+                break;
+            case '"':
+                if (for_attr)
+                    buf_append(buf, cap, len, "&quot;");
+                else
+                    buf_append_char(buf, cap, len, '"');
+                break;
+            case '\'':
+                if (for_attr)
+                    buf_append(buf, cap, len, "&apos;");
+                else
+                    buf_append_char(buf, cap, len, '\'');
+                break;
+            default:
+                buf_append_char(buf, cap, len, str[i]);
+                break;
         }
     }
 }
 
-static void format_element(xml_node *elem, int indent, int level, char **buf, size_t *cap, size_t *len)
+static void format_element(
+    xml_node *elem, int indent, int level, char **buf, size_t *cap, size_t *len)
 {
     // Indentation
     if (indent > 0 && level > 0)
@@ -1660,46 +1661,46 @@ static void format_node(void *node, int indent, int level, char **buf, size_t *c
 
     switch (n->type)
     {
-    case XML_NODE_ELEMENT:
-        format_element(n, indent, level, buf, cap, len);
-        break;
+        case XML_NODE_ELEMENT:
+            format_element(n, indent, level, buf, cap, len);
+            break;
 
-    case XML_NODE_TEXT:
-        if (n->content)
-            buf_append_escaped(buf, cap, len, rt_string_cstr(n->content), 0);
-        break;
+        case XML_NODE_TEXT:
+            if (n->content)
+                buf_append_escaped(buf, cap, len, rt_string_cstr(n->content), 0);
+            break;
 
-    case XML_NODE_COMMENT:
-        if (indent > 0 && level > 0)
-            buf_append_indent(buf, cap, len, indent * level);
-        buf_append(buf, cap, len, "<!--");
-        if (n->content)
-            buf_append(buf, cap, len, rt_string_cstr(n->content));
-        buf_append(buf, cap, len, "-->");
-        if (indent > 0)
-            buf_append_char(buf, cap, len, '\n');
-        break;
+        case XML_NODE_COMMENT:
+            if (indent > 0 && level > 0)
+                buf_append_indent(buf, cap, len, indent * level);
+            buf_append(buf, cap, len, "<!--");
+            if (n->content)
+                buf_append(buf, cap, len, rt_string_cstr(n->content));
+            buf_append(buf, cap, len, "-->");
+            if (indent > 0)
+                buf_append_char(buf, cap, len, '\n');
+            break;
 
-    case XML_NODE_CDATA:
-        buf_append(buf, cap, len, "<![CDATA[");
-        if (n->content)
-            buf_append(buf, cap, len, rt_string_cstr(n->content));
-        buf_append(buf, cap, len, "]]>");
-        break;
+        case XML_NODE_CDATA:
+            buf_append(buf, cap, len, "<![CDATA[");
+            if (n->content)
+                buf_append(buf, cap, len, rt_string_cstr(n->content));
+            buf_append(buf, cap, len, "]]>");
+            break;
 
-    case XML_NODE_DOCUMENT:
-        if (n->children)
-        {
-            int64_t count = rt_seq_len(n->children);
-            for (int64_t i = 0; i < count; i++)
+        case XML_NODE_DOCUMENT:
+            if (n->children)
             {
-                void *child = rt_seq_get(n->children, i);
-                format_node(child, indent, 0, buf, cap, len);
-                if (rt_obj_release_check0(child))
-                    rt_obj_free(child);
+                int64_t count = rt_seq_len(n->children);
+                for (int64_t i = 0; i < count; i++)
+                {
+                    void *child = rt_seq_get(n->children, i);
+                    format_node(child, indent, 0, buf, cap, len);
+                    if (rt_obj_release_check0(child))
+                        rt_obj_free(child);
+                }
             }
-        }
-        break;
+            break;
     }
 }
 

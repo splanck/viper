@@ -48,8 +48,7 @@
 static int ftw_walk(const char *path,
                     int (*fn)(const char *, const struct stat *, int),
                     int nopenfd,
-                    int depth)
-{
+                    int depth) {
     struct stat sb;
     int type;
     int result;
@@ -59,56 +58,44 @@ static int ftw_walk(const char *path,
     (void)nopenfd; /* Not strictly enforced in this implementation */
 
     /* Get file info */
-    if (lstat(path, &sb) != 0)
-    {
+    if (lstat(path, &sb) != 0) {
         type = FTW_NS;
         /* Call function even on stat failure */
         return fn(path, &sb, type);
     }
 
     /* Determine type */
-    if (S_ISDIR(sb.st_mode))
-    {
+    if (S_ISDIR(sb.st_mode)) {
         type = FTW_D;
-    }
-    else if (S_ISLNK(sb.st_mode))
-    {
+    } else if (S_ISLNK(sb.st_mode)) {
         type = FTW_SL;
-    }
-    else
-    {
+    } else {
         type = FTW_F;
     }
 
     /* Call function for non-directory or pre-order directory */
-    if (type != FTW_D)
-    {
+    if (type != FTW_D) {
         return fn(path, &sb, type);
     }
 
     /* It's a directory - call function first (pre-order) */
     result = fn(path, &sb, type);
-    if (result != 0)
-    {
+    if (result != 0) {
         return result;
     }
 
     /* Open directory */
     dir = opendir(path);
-    if (!dir)
-    {
+    if (!dir) {
         /* Can't read directory */
         return fn(path, &sb, FTW_DNR);
     }
 
     /* Walk directory entries */
-    while ((entry = readdir(dir)) != NULL)
-    {
+    while ((entry = readdir(dir)) != NULL) {
         /* Skip . and .. */
-        if (entry->d_name[0] == '.')
-        {
-            if (entry->d_name[1] == '\0' || (entry->d_name[1] == '.' && entry->d_name[2] == '\0'))
-            {
+        if (entry->d_name[0] == '.') {
+            if (entry->d_name[1] == '\0' || (entry->d_name[1] == '.' && entry->d_name[2] == '\0')) {
                 continue;
             }
         }
@@ -118,22 +105,19 @@ static int ftw_walk(const char *path,
         size_t pathlen = strlen(path);
         size_t namelen = strlen(entry->d_name);
 
-        if (pathlen + 1 + namelen >= PATH_MAX_FTW)
-        {
+        if (pathlen + 1 + namelen >= PATH_MAX_FTW) {
             continue; /* Path too long, skip */
         }
 
         memcpy(fullpath, path, pathlen);
-        if (pathlen > 0 && path[pathlen - 1] != '/')
-        {
+        if (pathlen > 0 && path[pathlen - 1] != '/') {
             fullpath[pathlen++] = '/';
         }
         memcpy(fullpath + pathlen, entry->d_name, namelen + 1);
 
         /* Recurse */
         result = ftw_walk(fullpath, fn, nopenfd, depth + 1);
-        if (result != 0)
-        {
+        if (result != 0) {
             closedir(dir);
             return result;
         }
@@ -148,10 +132,8 @@ static int ftw_walk(const char *path,
  */
 int ftw(const char *path,
         int (*fn)(const char *fpath, const struct stat *sb, int typeflag),
-        int nopenfd)
-{
-    if (!path || !fn)
-    {
+        int nopenfd) {
+    if (!path || !fn) {
         errno = EINVAL;
         return -1;
     }
@@ -167,8 +149,7 @@ static int nftw_walk(const char *path,
                      int nopenfd,
                      int flags,
                      int depth,
-                     int base)
-{
+                     int base) {
     struct stat sb;
     int type;
     int result;
@@ -183,76 +164,58 @@ static int nftw_walk(const char *path,
 
     /* Get file info */
     int stat_result;
-    if (flags & FTW_PHYS)
-    {
+    if (flags & FTW_PHYS) {
         stat_result = lstat(path, &sb);
-    }
-    else
-    {
+    } else {
         stat_result = stat(path, &sb);
     }
 
-    if (stat_result != 0)
-    {
+    if (stat_result != 0) {
         type = FTW_NS;
         return fn(path, &sb, type, &ftwbuf);
     }
 
     /* Determine type */
-    if (S_ISDIR(sb.st_mode))
-    {
+    if (S_ISDIR(sb.st_mode)) {
         type = FTW_D;
-    }
-    else if (S_ISLNK(sb.st_mode))
-    {
+    } else if (S_ISLNK(sb.st_mode)) {
         /* Check if symlink target exists */
         struct stat target_sb;
-        if (stat(path, &target_sb) != 0)
-        {
+        if (stat(path, &target_sb) != 0) {
             type = FTW_SLN;
-        }
-        else
-        {
+        } else {
             type = FTW_SL;
         }
-    }
-    else
-    {
+    } else {
         type = FTW_F;
     }
 
     /* Call function for non-directory */
-    if (type != FTW_D)
-    {
+    if (type != FTW_D) {
         return fn(path, &sb, type, &ftwbuf);
     }
 
     /* It's a directory */
 
     /* Pre-order: call function before descending */
-    if (!(flags & FTW_DEPTH))
-    {
+    if (!(flags & FTW_DEPTH)) {
         result = fn(path, &sb, FTW_D, &ftwbuf);
-        if (result != 0)
-        {
+        if (result != 0) {
             return result;
         }
     }
 
     /* Open directory */
     dir = opendir(path);
-    if (!dir)
-    {
+    if (!dir) {
         return fn(path, &sb, FTW_DNR, &ftwbuf);
     }
 
     /* Change directory if requested */
     char *saved_cwd = NULL;
-    if (flags & FTW_CHDIR)
-    {
+    if (flags & FTW_CHDIR) {
         saved_cwd = getcwd(NULL, 0);
-        if (chdir(path) != 0)
-        {
+        if (chdir(path) != 0) {
             free(saved_cwd);
             closedir(dir);
             return fn(path, &sb, FTW_DNR, &ftwbuf);
@@ -260,13 +223,10 @@ static int nftw_walk(const char *path,
     }
 
     /* Walk directory entries */
-    while ((entry = readdir(dir)) != NULL)
-    {
+    while ((entry = readdir(dir)) != NULL) {
         /* Skip . and .. */
-        if (entry->d_name[0] == '.')
-        {
-            if (entry->d_name[1] == '\0' || (entry->d_name[1] == '.' && entry->d_name[2] == '\0'))
-            {
+        if (entry->d_name[0] == '.') {
+            if (entry->d_name[1] == '\0' || (entry->d_name[1] == '.' && entry->d_name[2] == '\0')) {
                 continue;
             }
         }
@@ -276,14 +236,12 @@ static int nftw_walk(const char *path,
         size_t pathlen = strlen(path);
         size_t namelen = strlen(entry->d_name);
 
-        if (pathlen + 1 + namelen >= PATH_MAX_FTW)
-        {
+        if (pathlen + 1 + namelen >= PATH_MAX_FTW) {
             continue;
         }
 
         memcpy(fullpath, path, pathlen);
-        if (pathlen > 0 && path[pathlen - 1] != '/')
-        {
+        if (pathlen > 0 && path[pathlen - 1] != '/') {
             fullpath[pathlen++] = '/';
         }
         memcpy(fullpath + pathlen, entry->d_name, namelen + 1);
@@ -293,10 +251,8 @@ static int nftw_walk(const char *path,
 
         /* Recurse */
         result = nftw_walk(fullpath, fn, nopenfd, flags, depth + 1, child_base);
-        if (result != 0)
-        {
-            if (flags & FTW_CHDIR && saved_cwd)
-            {
+        if (result != 0) {
+            if (flags & FTW_CHDIR && saved_cwd) {
                 chdir(saved_cwd);
                 free(saved_cwd);
             }
@@ -306,8 +262,7 @@ static int nftw_walk(const char *path,
     }
 
     /* Restore directory if we changed it */
-    if (flags & FTW_CHDIR && saved_cwd)
-    {
+    if (flags & FTW_CHDIR && saved_cwd) {
         chdir(saved_cwd);
         free(saved_cwd);
     }
@@ -315,13 +270,11 @@ static int nftw_walk(const char *path,
     closedir(dir);
 
     /* Post-order: call function after descending */
-    if (flags & FTW_DEPTH)
-    {
+    if (flags & FTW_DEPTH) {
         ftwbuf.base = base;
         ftwbuf.level = depth;
         result = fn(path, &sb, FTW_DP, &ftwbuf);
-        if (result != 0)
-        {
+        if (result != 0) {
             return result;
         }
     }
@@ -335,10 +288,8 @@ static int nftw_walk(const char *path,
 int nftw(const char *path,
          int (*fn)(const char *fpath, const struct stat *sb, int typeflag, struct FTW *ftwbuf),
          int nopenfd,
-         int flags)
-{
-    if (!path || !fn)
-    {
+         int flags) {
+    if (!path || !fn) {
         errno = EINVAL;
         return -1;
     }
@@ -346,10 +297,8 @@ int nftw(const char *path,
     /* Find base offset in path */
     int base = 0;
     size_t len = strlen(path);
-    for (size_t i = len; i > 0; i--)
-    {
-        if (path[i - 1] == '/')
-        {
+    for (size_t i = len; i > 0; i--) {
+        if (path[i - 1] == '/') {
             base = (int)i;
             break;
         }

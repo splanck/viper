@@ -60,8 +60,7 @@ static char g_progname[] = "program";
  * @brief Make a syscall with 2 arguments.
  * Returns x1 (result) if x0 (error) is 0, otherwise returns negative error.
  */
-static inline long syscall2(long num, long a0, long a1)
-{
+static inline long syscall2(long num, long a0, long a1) {
     register long x8 __asm__("x8") = num;
     register long x0 __asm__("x0") = a0;
     register long x1 __asm__("x1") = a1;
@@ -75,10 +74,8 @@ static inline long syscall2(long num, long a0, long a1)
 /**
  * @brief Clear BSS section.
  */
-static void clear_bss(void)
-{
-    for (char *p = __bss_start; p < __bss_end; p++)
-    {
+static void clear_bss(void) {
+    for (char *p = __bss_start; p < __bss_end; p++) {
         *p = 0;
     }
 }
@@ -95,8 +92,7 @@ static void clear_bss(void)
  *
  * @return argc (number of arguments including program name)
  */
-static int parse_args(void)
-{
+static int parse_args(void) {
     int argc = 0;
 
     /* argv[0] is always the program name */
@@ -104,8 +100,7 @@ static int parse_args(void)
 
     /* Get args from kernel */
     long result = syscall2(SYS_GET_ARGS, (long)g_args_buf, ARGS_BUF_SIZE - 1);
-    if (result <= 0)
-    {
+    if (result <= 0) {
         /* No args or error */
         g_argv[argc] = (char *)0;
         return argc;
@@ -118,28 +113,23 @@ static int parse_args(void)
     char *p = g_args_buf;
 
     /* Strip PWD=/path; prefix if present (added by vinit for cwd tracking) */
-    if (result > 4 && p[0] == 'P' && p[1] == 'W' && p[2] == 'D' && p[3] == '=')
-    {
+    if (result > 4 && p[0] == 'P' && p[1] == 'W' && p[2] == 'D' && p[3] == '=') {
         /* Find the semicolon separator */
         char *semi = p + 4;
         while (*semi && *semi != ';')
             semi++;
 
-        if (*semi == ';')
-        {
+        if (*semi == ';') {
             /* Skip past the PWD prefix */
             p = semi + 1;
-        }
-        else
-        {
+        } else {
             /* No semicolon means no actual args, just PWD */
             g_argv[argc] = (char *)0;
             return argc;
         }
     }
 
-    while (*p && argc < MAX_ARGS)
-    {
+    while (*p && argc < MAX_ARGS) {
         /* Skip leading spaces */
         while (*p == ' ')
             p++;
@@ -155,8 +145,7 @@ static int parse_args(void)
             p++;
 
         /* Null-terminate this argument */
-        if (*p)
-        {
+        if (*p) {
             *p++ = '\0';
         }
     }
@@ -176,8 +165,7 @@ static int parse_args(void)
  * This is a weak symbol so programs can provide their own _start
  * (e.g., servers like consoled that don't use argc/argv).
  */
-__attribute__((weak)) void _start(void)
-{
+__attribute__((weak)) void _start(void) {
     /* Clear BSS */
     clear_bss();
 

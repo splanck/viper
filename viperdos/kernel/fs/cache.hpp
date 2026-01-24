@@ -18,13 +18,11 @@
 #include "../include/types.hpp"
 
 // Forward declaration for block device
-namespace virtio
-{
+namespace virtio {
 class BlkDevice;
 }
 
-namespace fs
-{
+namespace fs {
 
 /**
  * @file cache.hpp
@@ -64,8 +62,7 @@ constexpr usize READ_AHEAD_BLOCKS = 4;
  * - LRU pointers for eviction ordering.
  * - Hash chain pointer for fast lookup.
  */
-struct CacheBlock
-{
+struct CacheBlock {
     u64 block_num;         // Block number on disk (sector / 8)
     u8 data[BLOCK_SIZE];   // Block data
     bool valid;            // Data is valid
@@ -89,8 +86,7 @@ struct CacheBlock
  * Dirty blocks are written back via @ref sync or opportunistically before
  * eviction. The cache does not currently flush on every write for performance.
  */
-class BlockCache
-{
+class BlockCache {
   public:
     /**
      * @brief Initialize the cache structures (uses default system blk_device).
@@ -183,20 +179,17 @@ class BlockCache
 
     // Statistics
     /** @brief Number of cache hits since initialization. */
-    u64 hits() const
-    {
+    u64 hits() const {
         return hits_;
     }
 
     /** @brief Number of cache misses since initialization. */
-    u64 misses() const
-    {
+    u64 misses() const {
         return misses_;
     }
 
     /** @brief Number of read-ahead blocks loaded. */
-    u64 readahead_count() const
-    {
+    u64 readahead_count() const {
         return readahead_count_;
     }
 

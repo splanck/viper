@@ -23,8 +23,7 @@
 
 #include "../include/types.hpp"
 
-namespace lib
-{
+namespace lib {
 
 /**
  * @brief Compute the length of a NUL-terminated string.
@@ -32,8 +31,7 @@ namespace lib
  * @param s Pointer to a NUL-terminated string.
  * @return Number of characters before the first NUL byte.
  */
-inline usize strlen(const char *s)
-{
+inline usize strlen(const char *s) {
     usize len = 0;
     while (s[len])
         len++;
@@ -53,10 +51,8 @@ inline usize strlen(const char *s)
  * @param s2 Second string.
  * @return Comparison result: negative, zero, or positive.
  */
-inline int strcmp(const char *s1, const char *s2)
-{
-    while (*s1 && *s1 == *s2)
-    {
+inline int strcmp(const char *s1, const char *s2) {
+    while (*s1 && *s1 == *s2) {
         s1++;
         s2++;
     }
@@ -76,10 +72,8 @@ inline int strcmp(const char *s1, const char *s2)
  * @param n Maximum number of characters to compare.
  * @return Comparison result: negative, zero, or positive.
  */
-inline int strncmp(const char *s1, const char *s2, usize n)
-{
-    while (n && *s1 && *s1 == *s2)
-    {
+inline int strncmp(const char *s1, const char *s2, usize n) {
+    while (n && *s1 && *s1 == *s2) {
         s1++;
         s2++;
         n--;
@@ -101,8 +95,7 @@ inline int strncmp(const char *s1, const char *s2, usize n)
  * @param src Source NUL-terminated string.
  * @return `dest`.
  */
-inline char *strcpy(char *dest, const char *src)
-{
+inline char *strcpy(char *dest, const char *src) {
     char *d = dest;
     while ((*d++ = *src++))
         ;
@@ -122,8 +115,7 @@ inline char *strcpy(char *dest, const char *src)
  * @param n Maximum number of bytes to write to `dest`.
  * @return `dest`.
  */
-inline char *strncpy(char *dest, const char *src, usize n)
-{
+inline char *strncpy(char *dest, const char *src, usize n) {
     char *d = dest;
     while (n && (*d++ = *src++))
         n--;
@@ -145,13 +137,11 @@ inline char *strncpy(char *dest, const char *src, usize n)
  * @param max Maximum size of destination buffer including NUL terminator.
  * @return `dest`.
  */
-inline char *strcpy_safe(char *dest, const char *src, usize max)
-{
+inline char *strcpy_safe(char *dest, const char *src, usize max) {
     if (max == 0)
         return dest;
     usize i = 0;
-    while (src[i] && i < max - 1)
-    {
+    while (src[i] && i < max - 1) {
         dest[i] = src[i];
         i++;
     }

@@ -583,12 +583,11 @@ bool Parser::handleAddFileInto(std::vector<StmtPtr> &dst)
 // Error Reporting Helpers
 // ============================================================================
 
-void Parser::emitDiagnostic(
-    il::support::Severity sev,
-    std::string_view code,
-    il::support::SourceLoc loc,
-    uint32_t len,
-    std::string message)
+void Parser::emitDiagnostic(il::support::Severity sev,
+                            std::string_view code,
+                            il::support::SourceLoc loc,
+                            uint32_t len,
+                            std::string message)
 {
     if (emitter_)
     {

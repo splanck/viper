@@ -307,12 +307,12 @@ static bool isMemSt(MOpcode opc)
 /// victim selection heuristics).
 struct VState
 {
-    bool hasPhys{false};       ///< True if currently in a physical register.
-    PhysReg phys{PhysReg::X0}; ///< Physical register (valid when hasPhys).
-    bool spilled{false};       ///< True if value is on the stack.
-    bool dirty{false};         ///< True if register value is newer than spill slot.
-    int fpOffset{0};           ///< FP-relative offset of spill slot.
-    unsigned lastUse{0};       ///< Instruction index of last use (for LRU).
+    bool hasPhys{false};        ///< True if currently in a physical register.
+    PhysReg phys{PhysReg::X0};  ///< Physical register (valid when hasPhys).
+    bool spilled{false};        ///< True if value is on the stack.
+    bool dirty{false};          ///< True if register value is newer than spill slot.
+    int fpOffset{0};            ///< FP-relative offset of spill slot.
+    unsigned lastUse{0};        ///< Instruction index of last use (for LRU).
     unsigned nextUse{UINT_MAX}; ///< Instruction index of next use (for furthest-end-point).
 };
 
@@ -476,8 +476,10 @@ class LinearAllocator
     std::unordered_map<uint16_t, VState> gprStates_;
     std::unordered_map<uint16_t, VState> fprStates_;
     unsigned currentInstrIdx_{0}; ///< Current instruction index for LRU tracking.
-    std::unordered_map<uint16_t, std::vector<unsigned>> usePositionsGPR_; ///< All use positions for GPR vregs.
-    std::unordered_map<uint16_t, std::vector<unsigned>> usePositionsFPR_; ///< All use positions for FPR vregs.
+    std::unordered_map<uint16_t, std::vector<unsigned>>
+        usePositionsGPR_; ///< All use positions for GPR vregs.
+    std::unordered_map<uint16_t, std::vector<unsigned>>
+        usePositionsFPR_;                 ///< All use positions for FPR vregs.
     std::vector<unsigned> callPositions_; ///< Positions of call instructions in current block.
     // CFG + liveness (conservative cross-block)
     std::unordered_map<std::string, std::size_t> blockIndex_;

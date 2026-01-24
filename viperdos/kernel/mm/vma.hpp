@@ -18,8 +18,7 @@
 #include "../include/types.hpp"
 #include "../lib/spinlock.hpp"
 
-namespace mm
-{
+namespace mm {
 
 /**
  * @file vma.hpp
@@ -41,8 +40,7 @@ namespace mm
 /**
  * @brief VMA backing type.
  */
-enum class VmaType : u8
-{
+enum class VmaType : u8 {
     ANONYMOUS = 0, // Zero-filled memory
     FILE = 1,      // File-backed mapping
     STACK = 2,     // Growable stack
@@ -52,8 +50,7 @@ enum class VmaType : u8
 /**
  * @brief VMA protection flags (matches prot:: namespace).
  */
-namespace vma_prot
-{
+namespace vma_prot {
 constexpr u32 NONE = 0;
 constexpr u32 READ = 1;
 constexpr u32 WRITE = 2;
@@ -63,8 +60,7 @@ constexpr u32 EXEC = 4;
 /**
  * @brief VMA flags for COW and sharing.
  */
-namespace vma_flags
-{
+namespace vma_flags {
 constexpr u8 NONE = 0;
 constexpr u8 COW = (1 << 0);    ///< This VMA has COW pages
 constexpr u8 SHARED = (1 << 1); ///< Shared mapping (don't COW on fork)
@@ -77,8 +73,7 @@ constexpr u8 SHARED = (1 << 1); ///< Shared mapping (don't COW on fork)
  * Describes a contiguous region of virtual address space with uniform
  * permissions and backing. VMAs are stored in a linked list per address space.
  */
-struct Vma
-{
+struct Vma {
     u64 start;    // Start address (page-aligned)
     u64 end;      // End address (exclusive, page-aligned)
     u32 prot;     // Protection flags (vma_prot)
@@ -96,16 +91,14 @@ struct Vma
     /**
      * @brief Check if this VMA contains an address.
      */
-    bool contains(u64 addr) const
-    {
+    bool contains(u64 addr) const {
         return addr >= start && addr < end;
     }
 
     /**
      * @brief Get the size of this VMA in bytes.
      */
-    u64 size() const
-    {
+    u64 size() const {
         return end - start;
     }
 };
@@ -131,8 +124,7 @@ constexpr u64 MAX_STACK_SIZE = 8 * 1024 * 1024;
  * Maintains a sorted list of VMAs for efficient lookup. Supports
  * insertion, removal, and lookup operations.
  */
-class VmaList
-{
+class VmaList {
   public:
     /**
      * @brief Initialize the VMA list.
@@ -195,24 +187,21 @@ class VmaList
      * @brief Get the head of the VMA list.
      * @warning Returns unlocked pointer - use head_locked() for concurrent access.
      */
-    Vma *head()
-    {
+    Vma *head() {
         return head_;
     }
 
     /**
      * @brief Get the head of the VMA list (caller must hold lock).
      */
-    Vma *head_locked()
-    {
+    Vma *head_locked() {
         return head_;
     }
 
     /**
      * @brief Get the number of VMAs.
      */
-    usize count() const
-    {
+    usize count() const {
         return count_;
     }
 
@@ -220,8 +209,7 @@ class VmaList
      * @brief Acquire the VMA list lock.
      * @return Saved DAIF value for release.
      */
-    u64 acquire_lock()
-    {
+    u64 acquire_lock() {
         return lock_.acquire();
     }
 
@@ -229,8 +217,7 @@ class VmaList
      * @brief Release the VMA list lock.
      * @param saved_daif Value returned by acquire_lock().
      */
-    void release_lock(u64 saved_daif)
-    {
+    void release_lock(u64 saved_daif) {
         lock_.release(saved_daif);
     }
 
@@ -247,11 +234,11 @@ class VmaList
     void clear();
 
   private:
-    Vma pool_[MAX_VMAS];      // Static pool of VMA structures
-    bool used_[MAX_VMAS];     // Which pool entries are in use
-    Vma *head_{nullptr};      // Head of sorted linked list
-    usize count_{0};          // Number of active VMAs
-    mutable Spinlock lock_;   // Protects all VmaList operations
+    Vma pool_[MAX_VMAS];    // Static pool of VMA structures
+    bool used_[MAX_VMAS];   // Which pool entries are in use
+    Vma *head_{nullptr};    // Head of sorted linked list
+    usize count_{0};        // Number of active VMAs
+    mutable Spinlock lock_; // Protects all VmaList operations
 
     /**
      * @brief Allocate a VMA from the pool.
@@ -272,8 +259,7 @@ class VmaList
 /**
  * @brief Flags for demand fault handling result.
  */
-enum class FaultResult
-{
+enum class FaultResult {
     HANDLED,    // Fault was handled, resume execution
     UNHANDLED,  // Fault was not in a VMA, terminate process
     STACK_GROW, // Stack was grown, resume execution

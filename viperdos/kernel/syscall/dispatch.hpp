@@ -34,8 +34,7 @@
  * Results are returned by writing back to the saved register frame (typically
  * `x0` for the primary return value).
  */
-namespace syscall
-{
+namespace syscall {
 
 /**
  * @brief Dispatch a syscall based on the supplied exception frame.

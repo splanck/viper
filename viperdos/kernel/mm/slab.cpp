@@ -30,11 +30,9 @@
  * Free objects are linked through their first pointer-sized word:
  * free_list -> [obj0] -> [obj5] -> [obj2] -> nullptr
  */
-namespace slab
-{
+namespace slab {
 
-namespace
-{
+namespace {
 
 // Global cache table
 SlabCache caches[MAX_CACHES];
@@ -51,8 +49,7 @@ SlabCache *g_inode_cache = nullptr;
  * Since slabs are page-aligned, we can find the slab header by masking
  * the object address to the page boundary.
  */
-Slab *find_slab_for_object(void *ptr)
-{
+Slab *find_slab_for_object(void *ptr) {
     u64 addr = reinterpret_cast<u64>(ptr);
     u64 page_addr = addr & ~(pmm::PAGE_SIZE - 1);
     return reinterpret_cast<Slab *>(page_addr);
@@ -61,8 +58,7 @@ Slab *find_slab_for_object(void *ptr)
 /**
  * @brief Calculate where objects start in a slab.
  */
-void *slab_objects_start(Slab *slab)
-{
+void *slab_objects_start(Slab *slab) {
     // Align to 8 bytes after the header
     u64 header_end = reinterpret_cast<u64>(slab) + sizeof(Slab);
     u64 aligned = (header_end + 7) & ~7ULL;
@@ -72,12 +68,10 @@ void *slab_objects_start(Slab *slab)
 /**
  * @brief Allocate a new slab for a cache.
  */
-Slab *allocate_slab(SlabCache *cache)
-{
+Slab *allocate_slab(SlabCache *cache) {
     // Allocate a page from PMM
     u64 phys = pmm::alloc_page();
-    if (!phys)
-    {
+    if (!phys) {
         serial::puts("[slab] Failed to allocate page for slab\n");
         return nullptr;
     }
@@ -94,17 +88,13 @@ Slab *allocate_slab(SlabCache *cache)
     u8 *obj_start = static_cast<u8 *>(slab_objects_start(slab));
     slab->free_list = obj_start;
 
-    for (u32 i = 0; i < cache->objects_per_slab; i++)
-    {
+    for (u32 i = 0; i < cache->objects_per_slab; i++) {
         u8 *obj = obj_start + i * cache->object_size;
         void **next_ptr = reinterpret_cast<void **>(obj);
 
-        if (i + 1 < cache->objects_per_slab)
-        {
+        if (i + 1 < cache->objects_per_slab) {
             *next_ptr = obj_start + (i + 1) * cache->object_size;
-        }
-        else
-        {
+        } else {
             *next_ptr = nullptr;
         }
     }
@@ -115,8 +105,7 @@ Slab *allocate_slab(SlabCache *cache)
 /**
  * @brief Free a slab back to the PMM.
  */
-void free_slab(Slab *slab)
-{
+void free_slab(Slab *slab) {
     u64 phys = pmm::virt_to_phys(slab);
     pmm::free_page(phys);
 }
@@ -124,12 +113,9 @@ void free_slab(Slab *slab)
 /**
  * @brief Find a free cache slot.
  */
-SlabCache *find_free_cache_slot()
-{
-    for (usize i = 0; i < MAX_CACHES; i++)
-    {
-        if (!caches[i].active)
-        {
+SlabCache *find_free_cache_slot() {
+    for (usize i = 0; i < MAX_CACHES; i++) {
+        if (!caches[i].active) {
             return &caches[i];
         }
     }
@@ -139,15 +125,13 @@ SlabCache *find_free_cache_slot()
 } // namespace
 
 /** @copydoc slab::init */
-void init()
-{
+void init() {
     serial::puts("[slab] Initializing slab allocator\n");
 
     SpinlockGuard guard(slab_lock);
 
     // Clear all cache slots
-    for (usize i = 0; i < MAX_CACHES; i++)
-    {
+    for (usize i = 0; i < MAX_CACHES; i++) {
         caches[i].active = false;
         caches[i].slab_list = nullptr;
         caches[i].partial_list = nullptr;
@@ -160,19 +144,16 @@ void init()
 }
 
 /** @copydoc slab::cache_create */
-SlabCache *cache_create(const char *name, u32 object_size)
-{
+SlabCache *cache_create(const char *name, u32 object_size) {
     SpinlockGuard guard(slab_lock);
 
-    if (!initialized)
-    {
+    if (!initialized) {
         serial::puts("[slab] ERROR: Slab allocator not initialized\n");
         return nullptr;
     }
 
     // Minimum object size is pointer size (for free list)
-    if (object_size < sizeof(void *))
-    {
+    if (object_size < sizeof(void *)) {
         object_size = sizeof(void *);
     }
 
@@ -180,8 +161,7 @@ SlabCache *cache_create(const char *name, u32 object_size)
     object_size = (object_size + 7) & ~7U;
 
     SlabCache *cache = find_free_cache_slot();
-    if (!cache)
-    {
+    if (!cache) {
         serial::puts("[slab] ERROR: No free cache slots\n");
         return nullptr;
     }
@@ -192,8 +172,7 @@ SlabCache *cache_create(const char *name, u32 object_size)
     u64 available = pmm::PAGE_SIZE - header_size;
     u32 objects_per_slab = static_cast<u32>(available / object_size);
 
-    if (objects_per_slab == 0)
-    {
+    if (objects_per_slab == 0) {
         serial::puts("[slab] ERROR: Object too large for slab\n");
         return nullptr;
     }
@@ -220,10 +199,8 @@ SlabCache *cache_create(const char *name, u32 object_size)
 }
 
 /** @copydoc slab::cache_destroy */
-void cache_destroy(SlabCache *cache)
-{
-    if (!cache || !cache->active)
-    {
+void cache_destroy(SlabCache *cache) {
+    if (!cache || !cache->active) {
         return;
     }
 
@@ -233,8 +210,7 @@ void cache_destroy(SlabCache *cache)
 
     // Free all slabs
     Slab *slab = cache->slab_list;
-    while (slab)
-    {
+    while (slab) {
         Slab *next = slab->next;
         free_slab(slab);
         slab = next;
@@ -250,10 +226,8 @@ void cache_destroy(SlabCache *cache)
 }
 
 /** @copydoc slab::alloc */
-void *alloc(SlabCache *cache)
-{
-    if (!cache || !cache->active)
-    {
+void *alloc(SlabCache *cache) {
+    if (!cache || !cache->active) {
         return nullptr;
     }
 
@@ -262,12 +236,10 @@ void *alloc(SlabCache *cache)
     // Try to find a slab with free objects (check partial list first)
     Slab *slab = cache->partial_list;
 
-    if (!slab)
-    {
+    if (!slab) {
         // No partial slabs - need a new slab
         slab = allocate_slab(cache);
-        if (!slab)
-        {
+        if (!slab) {
             return nullptr;
         }
 
@@ -281,8 +253,7 @@ void *alloc(SlabCache *cache)
 
     // Allocate from this slab's free list
     void *obj = slab->free_list;
-    if (!obj)
-    {
+    if (!obj) {
         // This shouldn't happen if partial_list is managed correctly
         serial::puts("[slab] ERROR: Slab in partial list has no free objects!\n");
         return nullptr;
@@ -294,17 +265,13 @@ void *alloc(SlabCache *cache)
     cache->alloc_count++;
 
     // If slab is now full, remove from partial list
-    if (!slab->free_list)
-    {
+    if (!slab->free_list) {
         // Find and remove from partial list
-        if (cache->partial_list == slab)
-        {
+        if (cache->partial_list == slab) {
             cache->partial_list = nullptr;
             // Find another partial slab
-            for (Slab *s = cache->slab_list; s; s = s->next)
-            {
-                if (s->free_list)
-                {
+            for (Slab *s = cache->slab_list; s; s = s->next) {
+                if (s->free_list) {
                     cache->partial_list = s;
                     break;
                 }
@@ -316,21 +283,17 @@ void *alloc(SlabCache *cache)
 }
 
 /** @copydoc slab::zalloc */
-void *zalloc(SlabCache *cache)
-{
+void *zalloc(SlabCache *cache) {
     void *obj = alloc(cache);
-    if (obj)
-    {
+    if (obj) {
         lib::memset(obj, 0, cache->object_size);
     }
     return obj;
 }
 
 /** @copydoc slab::free */
-void free(SlabCache *cache, void *ptr)
-{
-    if (!cache || !cache->active || !ptr)
-    {
+void free(SlabCache *cache, void *ptr) {
+    if (!cache || !cache->active || !ptr) {
         return;
     }
 
@@ -340,17 +303,14 @@ void free(SlabCache *cache, void *ptr)
     Slab *slab = find_slab_for_object(ptr);
 
     // O(1) ownership verification using the slab's cache pointer
-    if (slab->cache != cache)
-    {
+    if (slab->cache != cache) {
         serial::puts("[slab] ERROR: Object does not belong to this cache!\n");
         return;
     }
 
     // Double-free detection: check if pointer is already in the free list
-    for (void *p = slab->free_list; p != nullptr; p = *reinterpret_cast<void **>(p))
-    {
-        if (p == ptr)
-        {
+    for (void *p = slab->free_list; p != nullptr; p = *reinterpret_cast<void **>(p)) {
+        if (p == ptr) {
             serial::puts("[slab] ERROR: Double-free detected! ptr=");
             serial::put_hex(reinterpret_cast<u64>(ptr));
             serial::puts(" cache=");
@@ -370,8 +330,7 @@ void free(SlabCache *cache, void *ptr)
     cache->free_count++;
 
     // If slab was full, add to partial list
-    if (was_full)
-    {
+    if (was_full) {
         // Just set as partial list head for simplicity
         // (could be smarter about ordering)
         cache->partial_list = slab;
@@ -383,10 +342,8 @@ void free(SlabCache *cache, void *ptr)
 }
 
 /** @copydoc slab::cache_stats */
-void cache_stats(SlabCache *cache, u32 *out_slabs, u32 *out_objects_used, u32 *out_objects_total)
-{
-    if (!cache || !cache->active)
-    {
+void cache_stats(SlabCache *cache, u32 *out_slabs, u32 *out_objects_used, u32 *out_objects_total) {
+    if (!cache || !cache->active) {
         if (out_slabs)
             *out_slabs = 0;
         if (out_objects_used)
@@ -402,8 +359,7 @@ void cache_stats(SlabCache *cache, u32 *out_slabs, u32 *out_objects_used, u32 *o
     u32 used = 0;
     u32 total = 0;
 
-    for (Slab *s = cache->slab_list; s; s = s->next)
-    {
+    for (Slab *s = cache->slab_list; s; s = s->next) {
         slabs++;
         used += s->in_use;
         total += s->total;
@@ -418,25 +374,21 @@ void cache_stats(SlabCache *cache, u32 *out_slabs, u32 *out_objects_used, u32 *o
 }
 
 /** @copydoc slab::dump_stats */
-void dump_stats()
-{
+void dump_stats() {
     serial::puts("[slab] === Slab Allocator Statistics ===\n");
 
     // Global lock to iterate cache table, per-cache lock for stats
     SpinlockGuard global_guard(slab_lock);
 
-    for (usize i = 0; i < MAX_CACHES; i++)
-    {
-        if (caches[i].active)
-        {
+    for (usize i = 0; i < MAX_CACHES; i++) {
+        if (caches[i].active) {
             SlabCache *cache = &caches[i];
             SpinlockGuard cache_guard(cache->lock);
 
             u32 slabs = 0;
             u32 used = 0;
             u32 total = 0;
-            for (Slab *s = cache->slab_list; s; s = s->next)
-            {
+            for (Slab *s = cache->slab_list; s; s = s->next) {
                 slabs++;
                 used += s->in_use;
                 total += s->total;
@@ -462,21 +414,18 @@ void dump_stats()
 }
 
 /** @copydoc slab::inode_cache */
-SlabCache *inode_cache()
-{
+SlabCache *inode_cache() {
     return g_inode_cache;
 }
 
 /** @copydoc slab::init_object_caches */
-void init_object_caches()
-{
+void init_object_caches() {
     serial::puts("[slab] Creating standard object caches\n");
 
     // Inode cache - 256 bytes per object
     g_inode_cache = cache_create("inode", 256);
 
-    if (!g_inode_cache)
-    {
+    if (!g_inode_cache) {
         serial::puts("[slab] WARNING: Failed to create inode cache\n");
     }
 

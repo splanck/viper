@@ -48,6 +48,7 @@ The kernel console is used during boot and can be disabled when the GUI terminal
 **Status:** Complete PL011 UART driver
 
 **Implemented:**
+
 - PL011 UART at 0x09000000 (QEMU virt machine)
 - Polling-based transmit and receive
 - Non-blocking character availability check
@@ -75,6 +76,7 @@ The kernel console is used during boot and can be disabled when the GUI terminal
 | 0x18 | UART_FR | Status flags |
 
 **Not Implemented:**
+
 - Interrupt-driven I/O
 - Hardware flow control (RTS/CTS)
 - Baud rate configuration (uses QEMU defaults)
@@ -87,19 +89,21 @@ The kernel console is used during boot and can be disabled when the GUI terminal
 
 **Status:** Fully functional text mode console with ANSI support
 
-**Purpose:** Kernel-level text console for boot messages and fallback output. Can be disabled when GUI terminal takes over.
+**Purpose:** Kernel-level text console for boot messages and fallback output. Can be disabled when GUI terminal takes
+over.
 
 **Implemented:**
+
 - Text rendering to framebuffer (via ramfb driver)
 - 8x16 base font with 5/4 scaling (10x20 effective)
 - Dynamic character grid based on resolution (e.g., 152x48 at 1600x1024)
 - **Decorative green border** (4px border + 4px padding = 8px total inset)
 - Foreground/background color control
 - Terminal control characters:
-  - `\n` - Newline with scroll
-  - `\r` - Carriage return
-  - `\t` - Tab (8-column alignment)
-  - `\b` - Backspace
+    - `\n` - Newline with scroll
+    - `\r` - Carriage return
+    - `\t` - Tab (8-column alignment)
+    - `\b` - Backspace
 - Automatic line wrapping
 - Smooth scrolling (pixel copy, respects border region)
 - Cursor position tracking
@@ -111,7 +115,8 @@ The kernel console is used during boot and can be disabled when the GUI terminal
 
 **GUI Mode Control:**
 
-When the user-space GUI terminal (consoled) connects, it calls `gcon_set_gui_mode(true)` to disable kernel framebuffer output. This prevents visual conflicts between kernel console and GUI window rendering.
+When the user-space GUI terminal (consoled) connects, it calls `gcon_set_gui_mode(true)` to disable kernel framebuffer
+output. This prevents visual conflicts between kernel console and GUI window rendering.
 
 ```cpp
 // In vinit after connecting to consoled:
@@ -120,29 +125,29 @@ sys::gcon_set_gui_mode(true);  // Disable kernel gcon output
 
 **ANSI Escape Sequences Supported:**
 
-| Sequence | Name | Description |
-|----------|------|-------------|
-| `ESC[H` | CUP | Move cursor to home (0,0) |
-| `ESC[n;mH` | CUP | Move cursor to row n, column m |
-| `ESC[nA` | CUU | Move cursor up n lines |
-| `ESC[nB` | CUD | Move cursor down n lines |
-| `ESC[nC` | CUF | Move cursor forward n columns |
-| `ESC[nD` | CUB | Move cursor back n columns |
-| `ESC[J` | ED | Erase display (0=to end, 1=to start, 2=all) |
-| `ESC[K` | EL | Erase line (0=to end, 1=to start, 2=all) |
-| `ESC[nm` | SGR | Set graphics rendition (colors) |
-| `ESC[?25h` | DECTCEM | Show cursor |
-| `ESC[?25l` | DECTCEM | Hide cursor |
+| Sequence   | Name    | Description                                 |
+|------------|---------|---------------------------------------------|
+| `ESC[H`    | CUP     | Move cursor to home (0,0)                   |
+| `ESC[n;mH` | CUP     | Move cursor to row n, column m              |
+| `ESC[nA`   | CUU     | Move cursor up n lines                      |
+| `ESC[nB`   | CUD     | Move cursor down n lines                    |
+| `ESC[nC`   | CUF     | Move cursor forward n columns               |
+| `ESC[nD`   | CUB     | Move cursor back n columns                  |
+| `ESC[J`    | ED      | Erase display (0=to end, 1=to start, 2=all) |
+| `ESC[K`    | EL      | Erase line (0=to end, 1=to start, 2=all)    |
+| `ESC[nm`   | SGR     | Set graphics rendition (colors)             |
+| `ESC[?25h` | DECTCEM | Show cursor                                 |
+| `ESC[?25l` | DECTCEM | Hide cursor                                 |
 
 **SGR Color Codes:**
 
-| Range | Meaning |
-|-------|---------|
-| 30-37 | Standard foreground colors |
-| 40-47 | Standard background colors |
-| 90-97 | Bright foreground colors |
-| 100-107 | Bright background colors |
-| 0 | Reset to default colors |
+| Range   | Meaning                    |
+|---------|----------------------------|
+| 30-37   | Standard foreground colors |
+| 40-47   | Standard background colors |
+| 90-97   | Bright foreground colors   |
+| 100-107 | Bright background colors   |
+| 0       | Reset to default colors    |
 
 **API:**
 | Function | Description |
@@ -178,17 +183,19 @@ sys::gcon_set_gui_mode(true);  // Disable kernel gcon output
 **Location:** `user/servers/consoled/`
 **SLOC:** ~1,400
 
-**Purpose:** User-space terminal emulator that runs the vinit shell in a GUI window. Provides bidirectional IPC for text output and keyboard input.
+**Purpose:** User-space terminal emulator that runs the vinit shell in a GUI window. Provides bidirectional IPC for text
+output and keyboard input.
 
 **Implemented:**
+
 - **GUI window** via libgui/displayd
 - **1.5x scaled font** (12x12 pixels from 8x8 base)
 - **Window positioning** at top-left corner (20, 20)
 - **Full ANSI escape sequence support** (colors, cursor, clearing)
 - **Bidirectional IPC** with vinit:
-  - `CON_WRITE`: Text output from client
-  - `CON_INPUT`: Keyboard input to client
-  - `CON_CONNECT`: Client connection with input channel exchange
+    - `CON_WRITE`: Text output from client
+    - `CON_INPUT`: Keyboard input to client
+    - `CON_CONNECT`: Client connection with input channel exchange
 - **Keyboard forwarding**: Receives key events from displayd, forwards to client
 - **Message draining**: Processes all pending messages before presenting (prevents output lag)
 - **Cursor rendering**: Visible cursor with blink support
@@ -265,12 +272,12 @@ namespace console_protocol {
 
 consoled implements a complete ANSI escape sequence parser supporting:
 
-| Category | Sequences |
-|----------|-----------|
-| Cursor Movement | `ESC[H`, `ESC[nA/B/C/D`, `ESC[n;mH`, `ESC[s`, `ESC[u` |
-| Erasing | `ESC[J`, `ESC[K`, `ESC[2J` |
-| Colors (SGR) | `ESC[0m` (reset), `ESC[30-37m`, `ESC[40-47m`, `ESC[90-97m`, `ESC[7m` (reverse) |
-| Cursor Visibility | `ESC[?25h` (show), `ESC[?25l` (hide) |
+| Category          | Sequences                                                                      |
+|-------------------|--------------------------------------------------------------------------------|
+| Cursor Movement   | `ESC[H`, `ESC[nA/B/C/D`, `ESC[n;mH`, `ESC[s`, `ESC[u`                          |
+| Erasing           | `ESC[J`, `ESC[K`, `ESC[2J`                                                     |
+| Colors (SGR)      | `ESC[0m` (reset), `ESC[30-37m`, `ESC[40-47m`, `ESC[90-97m`, `ESC[7m` (reverse) |
+| Cursor Visibility | `ESC[?25h` (show), `ESC[?25l` (hide)                                           |
 
 **Font Rendering:**
 
@@ -317,6 +324,7 @@ while (true) {
 **Status:** Complete 8x16 bitmap font with scaling
 
 **Implemented:**
+
 - Full ASCII printable character set (32-126)
 - 8x16 pixel base glyphs
 - 1-bit-per-pixel bitmap format (MSB first)
@@ -339,19 +347,21 @@ while (true) {
 **Status:** Unified console interface with buffered input
 
 **Purpose:** Provides a single interface for console I/O in the kernel:
+
 - Output routing to both serial and graphics console
 - Unified input buffer merging keyboard and serial input
 - Canonical mode line editing
 
 **Implemented:**
+
 - 1KB ring buffer for input characters
 - Merged input from virtio-keyboard and serial UART
 - Non-blocking character retrieval
 - Line editing with:
-  - Backspace/Delete handling
-  - Ctrl+C (cancel line)
-  - Ctrl+D (EOF)
-  - Ctrl+U (clear line)
+    - Backspace/Delete handling
+    - Ctrl+C (cancel line)
+    - Ctrl+D (EOF)
+    - Ctrl+U (clear line)
 - Automatic echo to both consoles
 
 **API:**
@@ -375,11 +385,11 @@ vinit (`user/vinit/`) integrates with consoled for GUI terminal support:
 
 ### Files
 
-| File | Description |
-|------|-------------|
-| `io.cpp` | Console connection, output/input functions |
-| `readline.cpp` | Line editing with console input |
-| `vinit.hpp` | Console function declarations |
+| File           | Description                                |
+|----------------|--------------------------------------------|
+| `io.cpp`       | Console connection, output/input functions |
+| `readline.cpp` | Line editing with console input            |
+| `vinit.hpp`    | Console function declarations              |
 
 ### Key Functions
 
@@ -419,19 +429,20 @@ static void console_write(const char *s, usize len) {
 
 User space accesses the console through these syscalls:
 
-| Syscall | Number | Description |
-|---------|--------|-------------|
-| debug_print | 0xF0 | Print string to kernel console (serial + gcon) |
-| getchar | 0xF1 | Read character from kernel input buffer |
-| putchar | 0xF2 | Write single character to kernel console |
-| sleep | 0x31 | Sleep for milliseconds (used for console timing) |
-| gcon_set_gui_mode | 0xF4 | Enable/disable kernel gcon output |
+| Syscall           | Number | Description                                      |
+|-------------------|--------|--------------------------------------------------|
+| debug_print       | 0xF0   | Print string to kernel console (serial + gcon)   |
+| getchar           | 0xF1   | Read character from kernel input buffer          |
+| putchar           | 0xF2   | Write single character to kernel console         |
+| sleep             | 0x31   | Sleep for milliseconds (used for console timing) |
+| gcon_set_gui_mode | 0xF4   | Enable/disable kernel gcon output                |
 
 ---
 
 ## Testing
 
 The console subsystem is tested via:
+
 - `qemu_kernel_boot` - Boot banner appears on serial and graphics
 - `qemu_toolchain_test` - "Toolchain works!" output verification
 - GUI console testing - vinit shell runs in consoled window
@@ -441,20 +452,20 @@ The console subsystem is tested via:
 
 ## Files
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `kernel/console/serial.cpp` | ~89 | PL011 UART driver |
-| `kernel/console/serial.hpp` | ~13 | Serial interface |
-| `kernel/console/gcon.cpp` | ~700 | Graphics console with GUI mode |
-| `kernel/console/gcon.hpp` | ~30 | Graphics console interface |
-| `kernel/console/font.cpp` | ~1550 | Bitmap font data |
-| `kernel/console/font.hpp` | ~12 | Font metrics and API |
-| `kernel/console/console.cpp` | ~147 | Unified console with input buffer |
-| `kernel/console/console.hpp` | ~16 | Console interface |
-| `user/servers/consoled/main.cpp` | ~1,400 | GUI terminal emulator |
-| `user/servers/consoled/console_protocol.hpp` | ~200 | IPC protocol definitions |
-| `user/vinit/io.cpp` | ~540 | Console I/O for vinit |
-| `user/vinit/readline.cpp` | ~300 | Line editing |
+| File                                         | Lines  | Description                       |
+|----------------------------------------------|--------|-----------------------------------|
+| `kernel/console/serial.cpp`                  | ~89    | PL011 UART driver                 |
+| `kernel/console/serial.hpp`                  | ~13    | Serial interface                  |
+| `kernel/console/gcon.cpp`                    | ~700   | Graphics console with GUI mode    |
+| `kernel/console/gcon.hpp`                    | ~30    | Graphics console interface        |
+| `kernel/console/font.cpp`                    | ~1550  | Bitmap font data                  |
+| `kernel/console/font.hpp`                    | ~12    | Font metrics and API              |
+| `kernel/console/console.cpp`                 | ~147   | Unified console with input buffer |
+| `kernel/console/console.hpp`                 | ~16    | Console interface                 |
+| `user/servers/consoled/main.cpp`             | ~1,400 | GUI terminal emulator             |
+| `user/servers/consoled/console_protocol.hpp` | ~200   | IPC protocol definitions          |
+| `user/vinit/io.cpp`                          | ~540   | Console I/O for vinit             |
+| `user/vinit/readline.cpp`                    | ~300   | Line editing                      |
 
 ---
 
@@ -499,35 +510,45 @@ The following features have been implemented:
 ## Priority Recommendations: Next 5 Steps
 
 ### 1. Double-Buffered Graphics Console
+
 **Impact:** Flicker-free console updates
+
 - Allocate back buffer in memory
 - Render all changes to back buffer
 - Swap buffers on vsync or frame complete
 - Eliminates visible tearing during scrolling
 
 ### 2. UTF-8/Unicode Text Support
+
 **Impact:** International character display
+
 - Decode UTF-8 byte sequences in putc()
 - Extend font to cover Latin-1 (128-255)
 - Add common Unicode ranges (Latin Extended)
 - Required for proper internationalization
 
 ### 3. Multiple Virtual Consoles (VTs)
+
 **Impact:** Multiple terminal sessions
+
 - Alt+F1/F2/F3 console switching
 - Separate scrollback buffer per console
 - Independent cursor position and colors
 - Background process output capture
 
 ### 4. Console Resize Support
+
 **Impact:** Dynamic window resizing
+
 - Handle GUI_EVENT_RESIZE in consoled
 - Reallocate text buffer for new size
 - Reflow text content
 - Update vinit with new dimensions
 
 ### 5. Text Attributes (Bold, Underline)
+
 **Impact:** Richer terminal display
+
 - Parse SGR sequences for bold (1), underline (4)
 - Render bold as brighter color or wider stroke
 - Underline via extra scanline

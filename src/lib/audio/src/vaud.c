@@ -139,7 +139,7 @@ vaud_context_t vaud_create(void)
 
     /* Initialize state */
     ctx->master_volume = VAUD_DEFAULT_MASTER_VOLUME;
-    ctx->next_voice_id = 1;  /* Start at 1 so 0 is never valid */
+    ctx->next_voice_id = 1; /* Start at 1 so 0 is never valid */
     ctx->frame_counter = 0;
     ctx->running = 1;
     ctx->paused = 0;
@@ -212,8 +212,10 @@ void vaud_set_master_volume(vaud_context_t ctx, float volume)
 {
     if (!ctx)
         return;
-    if (volume < 0.0f) volume = 0.0f;
-    if (volume > 1.0f) volume = 1.0f;
+    if (volume < 0.0f)
+        volume = 0.0f;
+    if (volume > 1.0f)
+        volume = 1.0f;
 
     vaud_mutex_lock(&ctx->mutex);
     ctx->master_volume = volume;
@@ -289,8 +291,8 @@ vaud_sound_t vaud_load_sound(vaud_context_t ctx, const char *path)
             return NULL;
         }
 
-        vaud_resample(samples, frames, sample_rate, final_samples, final_frames,
-                      VAUD_SAMPLE_RATE, 2);
+        vaud_resample(
+            samples, frames, sample_rate, final_samples, final_frames, VAUD_SAMPLE_RATE, 2);
         free(samples);
     }
 
@@ -347,8 +349,8 @@ vaud_sound_t vaud_load_sound_mem(vaud_context_t ctx, const void *data, size_t si
             return NULL;
         }
 
-        vaud_resample(samples, frames, sample_rate, final_samples, final_frames,
-                      VAUD_SAMPLE_RATE, 2);
+        vaud_resample(
+            samples, frames, sample_rate, final_samples, final_frames, VAUD_SAMPLE_RATE, 2);
         free(samples);
     }
 
@@ -542,8 +544,8 @@ vaud_music_t vaud_load_music(vaud_context_t ctx, const char *path)
     int32_t channels = 0;
     int32_t bits = 0;
 
-    if (!vaud_wav_open_stream(path, &file, &data_offset, &data_size, &frames,
-                              &sample_rate, &channels, &bits))
+    if (!vaud_wav_open_stream(
+            path, &file, &data_offset, &data_size, &frames, &sample_rate, &channels, &bits))
     {
         return NULL;
     }
@@ -588,8 +590,8 @@ vaud_music_t vaud_load_music(vaud_context_t ctx, const char *path)
     music->buffer_position = 0;
 
     /* Pre-fill first buffer */
-    int32_t read = vaud_wav_read_frames(file, music->buffers[0], VAUD_MUSIC_BUFFER_FRAMES,
-                                        channels, bits);
+    int32_t read =
+        vaud_wav_read_frames(file, music->buffers[0], VAUD_MUSIC_BUFFER_FRAMES, channels, bits);
     music->buffer_frames[0] = read;
 
     /* Add to context's music list */
@@ -664,9 +666,11 @@ void vaud_music_play(vaud_music_t music, int loop)
         music->buffer_position = 0;
 
         /* Pre-fill first buffer */
-        int32_t read = vaud_wav_read_frames(music->file, music->buffers[0],
+        int32_t read = vaud_wav_read_frames(music->file,
+                                            music->buffers[0],
                                             VAUD_MUSIC_BUFFER_FRAMES,
-                                            music->channels, music->bits_per_sample);
+                                            music->channels,
+                                            music->bits_per_sample);
         music->buffer_frames[0] = read;
     }
 
@@ -725,8 +729,10 @@ void vaud_music_set_volume(vaud_music_t music, float volume)
     if (!music)
         return;
 
-    if (volume < 0.0f) volume = 0.0f;
-    if (volume > 1.0f) volume = 1.0f;
+    if (volume < 0.0f)
+        volume = 0.0f;
+    if (volume > 1.0f)
+        volume = 1.0f;
 
     if (music->ctx)
     {
@@ -762,8 +768,10 @@ void vaud_music_seek(vaud_music_t music, float seconds)
     vaud_mutex_lock(&music->ctx->mutex);
 
     int64_t target_frame = (int64_t)(seconds * music->sample_rate);
-    if (target_frame < 0) target_frame = 0;
-    if (target_frame >= music->frame_count) target_frame = music->frame_count - 1;
+    if (target_frame < 0)
+        target_frame = 0;
+    if (target_frame >= music->frame_count)
+        target_frame = music->frame_count - 1;
 
     int32_t bytes_per_frame = (music->bits_per_sample / 8) * music->channels;
     int64_t byte_offset = music->data_offset + target_frame * bytes_per_frame;
@@ -774,9 +782,11 @@ void vaud_music_seek(vaud_music_t music, float seconds)
     music->buffer_position = 0;
 
     /* Refill buffer */
-    int32_t read = vaud_wav_read_frames(music->file, music->buffers[0],
+    int32_t read = vaud_wav_read_frames(music->file,
+                                        music->buffers[0],
                                         VAUD_MUSIC_BUFFER_FRAMES,
-                                        music->channels, music->bits_per_sample);
+                                        music->channels,
+                                        music->bits_per_sample);
     music->buffer_frames[0] = read;
 
     vaud_mutex_unlock(&music->ctx->mutex);

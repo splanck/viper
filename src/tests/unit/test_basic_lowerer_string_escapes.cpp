@@ -30,8 +30,8 @@ int main()
     // In standard BASIC, backslash is a regular character, not an escape.
     // So "HELLO\nWORLD" should be 12 characters: H E L L O \ n W O R L D
     const std::string src = "10 PRINT \"PATH\\TO\\FILE\"\n"
-                             "20 PRINT \"BACKSLASH:\\\\\"\n"
-                             "30 END\n";
+                            "20 PRINT \"BACKSLASH:\\\\\"\n"
+                            "30 END\n";
 
     SourceManager sm;
     uint32_t fid = sm.addFile("string_escapes.bas");

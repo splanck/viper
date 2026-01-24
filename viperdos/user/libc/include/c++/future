@@ -15,8 +15,7 @@
 #include "stdexcept"
 #include "type_traits"
 
-namespace std
-{
+namespace std {
 
 /*
  * ===========================================================================
@@ -24,29 +23,21 @@ namespace std
  * ===========================================================================
  */
 
-enum class future_errc
-{
+enum class future_errc {
     broken_promise = 1,
     future_already_retrieved = 2,
     promise_already_satisfied = 3,
     no_state = 4
 };
 
-enum class future_status
-{
-    ready,
-    timeout,
-    deferred
-};
+enum class future_status { ready, timeout, deferred };
 
 // future_error exception
-class future_error : public logic_error
-{
+class future_error : public logic_error {
   public:
     explicit future_error(future_errc ec) : logic_error("future_error"), code_(ec) {}
 
-    future_errc code() const noexcept
-    {
+    future_errc code() const noexcept {
         return code_;
     }
 
@@ -60,19 +51,16 @@ class future_error : public logic_error
  * ===========================================================================
  */
 
-namespace detail
-{
+namespace detail {
 
-template <class T> struct shared_state
-{
+template <class T> struct shared_state {
     bool ready = false;
     bool has_value = false;
     bool retrieved = false;
     exception_ptr exception;
     typename aligned_storage<sizeof(T), alignof(T)>::type storage;
 
-    void set_value(const T &val)
-    {
+    void set_value(const T &val) {
         if (has_value)
             throw future_error(future_errc::promise_already_satisfied);
         new (&storage) T(val);
@@ -80,8 +68,7 @@ template <class T> struct shared_state
         ready = true;
     }
 
-    void set_value(T &&val)
-    {
+    void set_value(T &&val) {
         if (has_value)
             throw future_error(future_errc::promise_already_satisfied);
         new (&storage) T(move(val));
@@ -89,70 +76,60 @@ template <class T> struct shared_state
         ready = true;
     }
 
-    void set_exception(exception_ptr p)
-    {
+    void set_exception(exception_ptr p) {
         if (has_value || exception)
             throw future_error(future_errc::promise_already_satisfied);
         exception = p;
         ready = true;
     }
 
-    T &get()
-    {
+    T &get() {
         if (exception)
             rethrow_exception(exception);
         return *reinterpret_cast<T *>(&storage);
     }
 
-    ~shared_state()
-    {
-        if (has_value)
-        {
+    ~shared_state() {
+        if (has_value) {
             reinterpret_cast<T *>(&storage)->~T();
         }
     }
 };
 
-template <> struct shared_state<void>
-{
+template <> struct shared_state<void> {
     bool ready = false;
     bool has_value = false;
     bool retrieved = false;
     exception_ptr exception;
 
-    void set_value()
-    {
+    void set_value() {
         if (has_value)
             throw future_error(future_errc::promise_already_satisfied);
         has_value = true;
         ready = true;
     }
 
-    void set_exception(exception_ptr p)
-    {
+    void set_exception(exception_ptr p) {
         if (has_value || exception)
             throw future_error(future_errc::promise_already_satisfied);
         exception = p;
         ready = true;
     }
 
-    void get()
-    {
+    void get() {
         if (exception)
             rethrow_exception(exception);
     }
 };
 
-template <class T> struct shared_state<T &>
-{
+template <class T> struct shared_state<T &> {
     bool ready = false;
     bool has_value = false;
     bool retrieved = false;
     exception_ptr exception;
     T *value_ptr = nullptr;
 
-    void set_value(T &val)
-    {
+    void set_value(T &val) {
         if (has_value)
             throw future_error(future_errc::promise_already_satisfied);
         value_ptr = &val;
@@ -160,16 +137,14 @@ template <class T> struct shared_state<T &>
         ready = true;
     }
 
-    void set_exception(exception_ptr p)
-    {
+    void set_exception(exception_ptr p) {
         if (has_value || exception)
             throw future_error(future_errc::promise_already_satisfied);
         exception = p;
         ready = true;
     }
 
-    T &get()
-    {
+    T &get() {
         if (exception)
             rethrow_exception(exception);
         return *value_ptr;
@@ -190,21 +165,18 @@ template <class T> class shared_future;
 
 template <class T> class promise;
 
-template <class T> class future
-{
+template <class T> class future {
   public:
     future() noexcept : state_(nullptr) {}
 
-    future(future &&other) noexcept : state_(move(other.state_))
-    {
+    future(future &&other) noexcept : state_(move(other.state_)) {
         other.state_ = nullptr;
     }
 
     future(const future &) = delete;
     future &operator=(const future &) = delete;
 
-    future &operator=(future &&other) noexcept
-    {
+    future &operator=(future &&other) noexcept {
         state_ = move(other.state_);
         other.state_ = nullptr;
         return *this;
@@ -213,8 +185,7 @@ template <class T> class future
     ~future() = default;
 
     // Retrieving the value
-    T get()
-    {
+    T get() {
         if (!state_)
             throw future_error(future_errc::no_state);
         if (state_->retrieved)
@@ -224,30 +195,26 @@ template <class T> class future
     }
 
     // State checking
-    bool valid() const noexcept
-    {
+    bool valid() const noexcept {
         return state_ != nullptr;
     }
 
     // Waiting
-    void wait() const
-    {
+    void wait() const {
         if (!state_)
             throw future_error(future_errc::no_state);
         // Single-threaded: already ready
     }
 
     template <class Rep, class Period>
-    future_status wait_for(const chrono::duration<Rep, Period> &) const
-    {
+    future_status wait_for(const chrono::duration<Rep, Period> &) const {
         if (!state_)
             throw future_error(future_errc::no_state);
         return state_->ready ? future_status::ready : future_status::timeout;
     }
 
     template <class Clock, class Duration>
-    future_status wait_until(const chrono::time_point<Clock, Duration> &) const
-    {
+    future_status wait_until(const chrono::time_point<Clock, Duration> &) const {
         if (!state_)
             throw future_error(future_errc::no_state);
         return state_->ready ? future_status::ready : future_status::timeout;
@@ -266,21 +233,18 @@ template <class T> class future
 };
 
 // Specialization for void
-template <> class future<void>
-{
+template <> class future<void> {
   public:
     future() noexcept : state_(nullptr) {}
 
-    future(future &&other) noexcept : state_(move(other.state_))
-    {
+    future(future &&other) noexcept : state_(move(other.state_)) {
         other.state_ = nullptr;
     }
 
     future(const future &) = delete;
     future &operator=(const future &) = delete;
 
-    future &operator=(future &&other) noexcept
-    {
+    future &operator=(future &&other) noexcept {
         state_ = move(other.state_);
         other.state_ = nullptr;
         return *this;
@@ -288,8 +252,7 @@ template <> class future<void>
 
     ~future() = default;
 
-    void get()
-    {
+    void get() {
         if (!state_)
             throw future_error(future_errc::no_state);
         if (state_->retrieved)
@@ -298,28 +261,24 @@ template <> class future<void>
         state_->get();
     }
 
-    bool valid() const noexcept
-    {
+    bool valid() const noexcept {
         return state_ != nullptr;
     }
 
-    void wait() const
-    {
+    void wait() const {
         if (!state_)
             throw future_error(future_errc::no_state);
     }
 
     template <class Rep, class Period>
-    future_status wait_for(const chrono::duration<Rep, Period> &) const
-    {
+    future_status wait_for(const chrono::duration<Rep, Period> &) const {
         if (!state_)
             throw future_error(future_errc::no_state);
         return state_->ready ? future_status::ready : future_status::timeout;
     }
 
     template <class Clock, class Duration>
-    future_status wait_until(const chrono::time_point<Clock, Duration> &) const
-    {
+    future_status wait_until(const chrono::time_point<Clock, Duration> &) const {
         if (!state_)
             throw future_error(future_errc::no_state);
         return state_->ready ? future_status::ready : future_status::timeout;
@@ -337,21 +296,18 @@ template <> class future<void>
 };
 
 // Specialization for T&
-template <class T> class future<T &>
-{
+template <class T> class future<T &> {
   public:
     future() noexcept : state_(nullptr) {}
 
-    future(future &&other) noexcept : state_(move(other.state_))
-    {
+    future(future &&other) noexcept : state_(move(other.state_)) {
         other.state_ = nullptr;
     }
 
     future(const future &) = delete;
     future &operator=(const future &) = delete;
 
-    future &operator=(future &&other) noexcept
-    {
+    future &operator=(future &&other) noexcept {
         state_ = move(other.state_);
         other.state_ = nullptr;
         return *this;
@@ -359,8 +315,7 @@ template <class T> class future<T &>
 
     ~future() = default;
 
-    T &get()
-    {
+    T &get() {
         if (!state_)
             throw future_error(future_errc::no_state);
         if (state_->retrieved)
@@ -369,28 +324,24 @@ template <class T> class future<T &>
         return state_->get();
     }
 
-    bool valid() const noexcept
-    {
+    bool valid() const noexcept {
         return state_ != nullptr;
     }
 
-    void wait() const
-    {
+    void wait() const {
         if (!state_)
             throw future_error(future_errc::no_state);
     }
 
     template <class Rep, class Period>
-    future_status wait_for(const chrono::duration<Rep, Period> &) const
-    {
+    future_status wait_for(const chrono::duration<Rep, Period> &) const {
         if (!state_)
             throw future_error(future_errc::no_state);
         return state_->ready ? future_status::ready : future_status::timeout;
     }
 
     template <class Clock, class Duration>
-    future_status wait_until(const chrono::time_point<Clock, Duration> &) const
-    {
+    future_status wait_until(const chrono::time_point<Clock, Duration> &) const {
         if (!state_)
             throw future_error(future_errc::no_state);
         return state_->ready ? future_status::ready : future_status::timeout;
@@ -413,67 +364,57 @@ template <class T> class future<T &>
  * ===========================================================================
  */
 
-template <class T> class shared_future
-{
+template <class T> class shared_future {
   public:
     shared_future() noexcept : state_(nullptr) {}
 
     shared_future(const shared_future &other) : state_(other.state_) {}
 
-    shared_future(shared_future &&other) noexcept : state_(move(other.state_))
-    {
+    shared_future(shared_future &&other) noexcept : state_(move(other.state_)) {
         other.state_ = nullptr;
     }
 
-    shared_future(future<T> &&f) noexcept : state_(move(f.state_))
-    {
+    shared_future(future<T> &&f) noexcept : state_(move(f.state_)) {
         f.state_ = nullptr;
     }
 
     ~shared_future() = default;
 
-    shared_future &operator=(const shared_future &other)
-    {
+    shared_future &operator=(const shared_future &other) {
         state_ = other.state_;
         return *this;
     }
 
-    shared_future &operator=(shared_future &&other) noexcept
-    {
+    shared_future &operator=(shared_future &&other) noexcept {
         state_ = move(other.state_);
         other.state_ = nullptr;
         return *this;
     }
 
-    const T &get() const
-    {
+    const T &get() const {
         if (!state_)
             throw future_error(future_errc::no_state);
         return state_->get();
     }
 
-    bool valid() const noexcept
-    {
+    bool valid() const noexcept {
         return state_ != nullptr;
     }
 
-    void wait() const
-    {
+    void wait() const {
         if (!state_)
             throw future_error(future_errc::no_state);
     }
 
     template <class Rep, class Period>
-    future_status wait_for(const chrono::duration<Rep, Period> &) const
-    {
+    future_status wait_for(const chrono::duration<Rep, Period> &) const {
         if (!state_)
             throw future_error(future_errc::no_state);
         return state_->ready ? future_status::ready : future_status::timeout;
     }
 
     template <class Clock, class Duration>
-    future_status wait_until(const chrono::time_point<Clock, Duration> &) const
-    {
+    future_status wait_until(const chrono::time_point<Clock, Duration> &) const {
         if (!state_)
             throw future_error(future_errc::no_state);
         return state_->ready ? future_status::ready : future_status::timeout;
@@ -483,8 +424,7 @@ template <class T> class shared_future
     shared_ptr<detail::shared_state<T>> state_;
 };
 
-template <> class shared_future<void>
-{
+template <> class shared_future<void> {
   public:
     shared_future() noexcept : state_(nullptr) {}
 
@@ -496,45 +436,38 @@ template <> class shared_future<void>
 
     ~shared_future() = default;
 
-    shared_future &operator=(const shared_future &other)
-    {
+    shared_future &operator=(const shared_future &other) {
         state_ = other.state_;
         return *this;
     }
 
-    shared_future &operator=(shared_future &&other) noexcept
-    {
+    shared_future &operator=(shared_future &&other) noexcept {
         state_ = move(other.state_);
         return *this;
     }
 
-    void get() const
-    {
+    void get() const {
         if (!state_)
             throw future_error(future_errc::no_state);
         state_->get();
     }
 
-    bool valid() const noexcept
-    {
+    bool valid() const noexcept {
         return state_ != nullptr;
     }
 
-    void wait() const
-    {
+    void wait() const {
         if (!state_)
             throw future_error(future_errc::no_state);
     }
 
     template <class Rep, class Period>
-    future_status wait_for(const chrono::duration<Rep, Period> &) const
-    {
+    future_status wait_for(const chrono::duration<Rep, Period> &) const {
         return state_ && state_->ready ? future_status::ready : future_status::timeout;
     }
 
     template <class Clock, class Duration>
-    future_status wait_until(const chrono::time_point<Clock, Duration> &) const
-    {
+    future_status wait_until(const chrono::time_point<Clock, Duration> &) const {
         return state_ && state_->ready ? future_status::ready : future_status::timeout;
     }
 
@@ -543,18 +476,15 @@ template <> class shared_future<void>
 };
 
 // future::share() implementations
-template <class T> shared_future<T> future<T>::share() noexcept
-{
+template <class T> shared_future<T> future<T>::share() noexcept {
     return shared_future<T>(move(*this));
 }
 
-inline shared_future<void> future<void>::share() noexcept
-{
+inline shared_future<void> future<void>::share() noexcept {
     return shared_future<void>(move(*this));
 }
 
-template <class T> shared_future<T &> future<T &>::share() noexcept
-{
+template <class T> shared_future<T &> future<T &>::share() noexcept {
     return shared_future<T &>(move(*this));
 }
 
@@ -564,41 +494,34 @@ template <class T> shared_future<T &> future<T &>::share() noexcept
  * ===========================================================================
  */
 
-template <class T> class promise
-{
+template <class T> class promise {
   public:
     promise() : state_(make_shared<detail::shared_state<T>>()) {}
 
-    promise(promise &&other) noexcept : state_(move(other.state_))
-    {
+    promise(promise &&other) noexcept : state_(move(other.state_)) {
         other.state_ = nullptr;
     }
 
     promise(const promise &) = delete;
     promise &operator=(const promise &) = delete;
 
-    promise &operator=(promise &&other) noexcept
-    {
+    promise &operator=(promise &&other) noexcept {
         state_ = move(other.state_);
         other.state_ = nullptr;
         return *this;
     }
 
-    ~promise()
-    {
-        if (state_ && !state_->ready)
-        {
+    ~promise() {
+        if (state_ && !state_->ready) {
             state_->set_exception(make_exception_ptr(future_error(future_errc::broken_promise)));
         }
     }
 
-    void swap(promise &other) noexcept
-    {
+    void swap(promise &other) noexcept {
         state_.swap(other.state_);
     }
 
-    future<T> get_future()
-    {
+    future<T> get_future() {
         if (!state_)
             throw future_error(future_errc::no_state);
         if (state_->retrieved)
@@ -606,22 +529,19 @@ template <class T> class promise
         return future<T>(state_);
     }
 
-    void set_value(const T &value)
-    {
+    void set_value(const T &value) {
         if (!state_)
             throw future_error(future_errc::no_state);
         state_->set_value(value);
     }
 
-    void set_value(T &&value)
-    {
+    void set_value(T &&value) {
         if (!state_)
             throw future_error(future_errc::no_state);
         state_->set_value(move(value));
     }
 
-    void set_exception(exception_ptr p)
-    {
+    void set_exception(exception_ptr p) {
         if (!state_)
             throw future_error(future_errc::no_state);
         state_->set_exception(p);
@@ -632,41 +552,34 @@ template <class T> class promise
 };
 
 // Specialization for void
-template <> class promise<void>
-{
+template <> class promise<void> {
   public:
     promise() : state_(make_shared<detail::shared_state<void>>()) {}
 
-    promise(promise &&other) noexcept : state_(move(other.state_))
-    {
+    promise(promise &&other) noexcept : state_(move(other.state_)) {
         other.state_ = nullptr;
     }
 
     promise(const promise &) = delete;
     promise &operator=(const promise &) = delete;
 
-    promise &operator=(promise &&other) noexcept
-    {
+    promise &operator=(promise &&other) noexcept {
         state_ = move(other.state_);
         other.state_ = nullptr;
         return *this;
     }
 
-    ~promise()
-    {
-        if (state_ && !state_->ready)
-        {
+    ~promise() {
+        if (state_ && !state_->ready) {
             state_->set_exception(make_exception_ptr(future_error(future_errc::broken_promise)));
         }
     }
 
-    void swap(promise &other) noexcept
-    {
+    void swap(promise &other) noexcept {
         state_.swap(other.state_);
     }
 
-    future<void> get_future()
-    {
+    future<void> get_future() {
         if (!state_)
             throw future_error(future_errc::no_state);
         if (state_->retrieved)
@@ -674,15 +587,13 @@ template <> class promise<void>
         return future<void>(state_);
     }
 
-    void set_value()
-    {
+    void set_value() {
         if (!state_)
             throw future_error(future_errc::no_state);
         state_->set_value();
     }
 
-    void set_exception(exception_ptr p)
-    {
+    void set_exception(exception_ptr p) {
         if (!state_)
             throw future_error(future_errc::no_state);
         state_->set_exception(p);
@@ -693,41 +604,34 @@ template <> class promise<void>
 };
 
 // Specialization for T&
-template <class T> class promise<T &>
-{
+template <class T> class promise<T &> {
   public:
     promise() : state_(make_shared<detail::shared_state<T &>>()) {}
 
-    promise(promise &&other) noexcept : state_(move(other.state_))
-    {
+    promise(promise &&other) noexcept : state_(move(other.state_)) {
         other.state_ = nullptr;
     }
 
     promise(const promise &) = delete;
     promise &operator=(const promise &) = delete;
 
-    promise &operator=(promise &&other) noexcept
-    {
+    promise &operator=(promise &&other) noexcept {
         state_ = move(other.state_);
         other.state_ = nullptr;
         return *this;
     }
 
-    ~promise()
-    {
-        if (state_ && !state_->ready)
-        {
+    ~promise() {
+        if (state_ && !state_->ready) {
             state_->set_exception(make_exception_ptr(future_error(future_errc::broken_promise)));
         }
     }
 
-    void swap(promise &other) noexcept
-    {
+    void swap(promise &other) noexcept {
         state_.swap(other.state_);
     }
 
-    future<T &> get_future()
-    {
+    future<T &> get_future() {
         if (!state_)
             throw future_error(future_errc::no_state);
         if (state_->retrieved)
@@ -735,15 +639,13 @@ template <class T> class promise<T &>
         return future<T &>(state_);
     }
 
-    void set_value(T &value)
-    {
+    void set_value(T &value) {
         if (!state_)
             throw future_error(future_errc::no_state);
         state_->set_value(value);
     }
 
-    void set_exception(exception_ptr p)
-    {
+    void set_exception(exception_ptr p) {
         if (!state_)
             throw future_error(future_errc::no_state);
         state_->set_exception(p);
@@ -753,8 +655,7 @@ template <class T> class promise<T &>
     shared_ptr<detail::shared_state<T &>> state_;
 };
 
-template <class T> void swap(promise<T> &lhs, promise<T> &rhs) noexcept
-{
+template <class T> void swap(promise<T> &lhs, promise<T> &rhs) noexcept {
     lhs.swap(rhs);
 }
 
@@ -765,46 +666,35 @@ template <class T> void swap(promise<T> &lhs, promise<T> &rhs) noexcept
  */
 
 // Launch policy
-enum class launch
-{
-    async = 1,
-    deferred = 2
-};
+enum class launch { async = 1, deferred = 2 };
 
-inline constexpr launch operator|(launch x, launch y)
-{
+inline constexpr launch operator|(launch x, launch y) {
     return static_cast<launch>(static_cast<int>(x) | static_cast<int>(y));
 }
 
-inline constexpr launch operator&(launch x, launch y)
-{
+inline constexpr launch operator&(launch x, launch y) {
     return static_cast<launch>(static_cast<int>(x) & static_cast<int>(y));
 }
 
 // packaged_task
 template <class> class packaged_task; // Not defined
 
-template <class R, class... Args> class packaged_task<R(Args...)>
-{
+template <class R, class... Args> class packaged_task<R(Args...)> {
   public:
     packaged_task() noexcept : valid_(false) {}
 
     template <class F>
-    explicit packaged_task(F &&f) : func_(forward<F>(f)), promise_(), valid_(true)
-    {
-    }
+    explicit packaged_task(F &&f) : func_(forward<F>(f)), promise_(), valid_(true) {}
 
     packaged_task(packaged_task &&other) noexcept
-        : func_(move(other.func_)), promise_(move(other.promise_)), valid_(other.valid_)
-    {
+        : func_(move(other.func_)), promise_(move(other.promise_)), valid_(other.valid_) {
         other.valid_ = false;
     }
 
     packaged_task(const packaged_task &) = delete;
     packaged_task &operator=(const packaged_task &) = delete;
 
-    packaged_task &operator=(packaged_task &&other) noexcept
-    {
+    packaged_task &operator=(packaged_task &&other) noexcept {
         func_ = move(other.func_);
         promise_ = move(other.promise_);
         valid_ = other.valid_;
@@ -814,37 +704,29 @@ template <class R, class... Args> class packaged_task<R(Args...)>
 
     ~packaged_task() = default;
 
-    bool valid() const noexcept
-    {
+    bool valid() const noexcept {
         return valid_;
     }
 
-    future<R> get_future()
-    {
+    future<R> get_future() {
         return promise_.get_future();
     }
 
-    void operator()(Args... args)
-    {
+    void operator()(Args... args) {
         if (!valid_)
             throw future_error(future_errc::no_state);
-        try
-        {
+        try {
             promise_.set_value(func_(forward<Args>(args)...));
-        }
-        catch (...)
-        {
+        } catch (...) {
             promise_.set_exception(current_exception());
         }
     }
 
-    void reset()
-    {
+    void reset() {
         promise_ = promise<R>();
     }
 
-    void swap(packaged_task &other) noexcept
-    {
+    void swap(packaged_task &other) noexcept {
         using std::swap;
         swap(func_, other.func_);
         swap(promise_, other.promise_);
@@ -858,27 +740,22 @@ template <class R, class... Args> class packaged_task<R(Args...)>
 };
 
 // Specialization for void return
-template <class... Args> class packaged_task<void(Args...)>
-{
+template <class... Args> class packaged_task<void(Args...)> {
   public:
     packaged_task() noexcept : valid_(false) {}
 
     template <class F>
-    explicit packaged_task(F &&f) : func_(forward<F>(f)), promise_(), valid_(true)
-    {
-    }
+    explicit packaged_task(F &&f) : func_(forward<F>(f)), promise_(), valid_(true) {}
 
     packaged_task(packaged_task &&other) noexcept
-        : func_(move(other.func_)), promise_(move(other.promise_)), valid_(other.valid_)
-    {
+        : func_(move(other.func_)), promise_(move(other.promise_)), valid_(other.valid_) {
         other.valid_ = false;
     }
 
     packaged_task(const packaged_task &) = delete;
     packaged_task &operator=(const packaged_task &) = delete;
 
-    packaged_task &operator=(packaged_task &&other) noexcept
-    {
+    packaged_task &operator=(packaged_task &&other) noexcept {
         func_ = move(other.func_);
         promise_ = move(other.promise_);
         valid_ = other.valid_;
@@ -886,38 +763,30 @@ template <class... Args> class packaged_task<void(Args...)>
         return *this;
     }
 
-    bool valid() const noexcept
-    {
+    bool valid() const noexcept {
         return valid_;
     }
 
-    future<void> get_future()
-    {
+    future<void> get_future() {
         return promise_.get_future();
     }
 
-    void operator()(Args... args)
-    {
+    void operator()(Args... args) {
         if (!valid_)
             throw future_error(future_errc::no_state);
-        try
-        {
+        try {
             func_(forward<Args>(args)...);
             promise_.set_value();
-        }
-        catch (...)
-        {
+        } catch (...) {
             promise_.set_exception(current_exception());
         }
     }
 
-    void reset()
-    {
+    void reset() {
         promise_ = promise<void>();
     }
 
-    void swap(packaged_task &other) noexcept
-    {
+    void swap(packaged_task &other) noexcept {
         using std::swap;
         swap(func_, other.func_);
         swap(promise_, other.promise_);
@@ -931,34 +800,26 @@ template <class... Args> class packaged_task<void(Args...)>
 };
 
 template <class R, class... Args>
-void swap(packaged_task<R(Args...)> &lhs, packaged_task<R(Args...)> &rhs) noexcept
-{
+void swap(packaged_task<R(Args...)> &lhs, packaged_task<R(Args...)> &rhs) noexcept {
     lhs.swap(rhs);
 }
 
 // async - simplified implementation (deferred only)
 template <class F, class... Args>
 auto async(F &&f, Args &&...args)
-    -> future<typename invoke_result<decay_t<F>, decay_t<Args>...>::type>
-{
+    -> future<typename invoke_result<decay_t<F>, decay_t<Args>...>::type> {
     using R = typename invoke_result<decay_t<F>, decay_t<Args>...>::type;
     promise<R> p;
     future<R> fut = p.get_future();
 
-    try
-    {
-        if constexpr (is_void_v<R>)
-        {
+    try {
+        if constexpr (is_void_v<R>) {
             invoke(forward<F>(f), forward<Args>(args)...);
             p.set_value();
-        }
-        else
-        {
+        } else {
             p.set_value(invoke(forward<F>(f), forward<Args>(args)...));
         }
-    }
-    catch (...)
-    {
+    } catch (...) {
         p.set_exception(current_exception());
     }
 
@@ -967,8 +828,7 @@ auto async(F &&f, Args &&...args)
 
 template <class F, class... Args>
 auto async(launch policy, F &&f, Args &&...args)
-    -> future<typename invoke_result<decay_t<F>, decay_t<Args>...>::type>
-{
+    -> future<typename invoke_result<decay_t<F>, decay_t<Args>...>::type> {
     (void)policy; // In single-threaded environment, always execute synchronously
     return async(forward<F>(f), forward<Args>(args)...);
 }

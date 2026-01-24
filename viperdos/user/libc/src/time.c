@@ -49,8 +49,7 @@ extern long __syscall1(long num, long arg0);
  *
  * @return Time in milliseconds since boot (CLOCKS_PER_SEC = 1000).
  */
-clock_t clock(void)
-{
+clock_t clock(void) {
     /* Returns time in milliseconds since boot */
     return (clock_t)__syscall1(SYS_TIME_NOW, 0);
 }
@@ -65,8 +64,7 @@ clock_t clock(void)
  * @param tloc If non-NULL, receives the time value.
  * @return Current time in seconds since boot.
  */
-time_t time(time_t *tloc)
-{
+time_t time(time_t *tloc) {
     /* ViperDOS doesn't have real-time clock yet, return uptime in seconds */
     clock_t ms = clock();
     time_t t = ms / 1000;
@@ -87,8 +85,7 @@ time_t time(time_t *tloc)
  * @param time0 Earlier time value.
  * @return Difference (time1 - time0) in seconds.
  */
-long difftime(time_t time1, time_t time0)
-{
+long difftime(time_t time1, time_t time0) {
     return (long)(time1 - time0);
 }
 
@@ -105,8 +102,7 @@ long difftime(time_t time1, time_t time0)
  * @param rem If non-NULL, receives remaining time on interruption.
  * @return 0 on success, -1 on error.
  */
-int nanosleep(const struct timespec *req, struct timespec *rem)
-{
+int nanosleep(const struct timespec *req, struct timespec *rem) {
     if (!req)
         return -1;
 
@@ -118,8 +114,7 @@ int nanosleep(const struct timespec *req, struct timespec *rem)
     __syscall1(SYS_SLEEP, ms);
 
     /* We don't support interruption, so remaining time is always 0 */
-    if (rem)
-    {
+    if (rem) {
         rem->tv_sec = 0;
         rem->tv_nsec = 0;
     }
@@ -139,8 +134,7 @@ int nanosleep(const struct timespec *req, struct timespec *rem)
  * @param tp Structure to receive the time value.
  * @return 0 on success, -1 on error (invalid clock or NULL tp).
  */
-int clock_gettime(clockid_t clk_id, struct timespec *tp)
-{
+int clock_gettime(clockid_t clk_id, struct timespec *tp) {
     if (!tp)
         return -1;
 
@@ -169,13 +163,11 @@ int clock_gettime(clockid_t clk_id, struct timespec *tp)
  * @param res If non-NULL, receives the clock resolution.
  * @return 0 on success, -1 on invalid clock ID.
  */
-int clock_getres(clockid_t clk_id, struct timespec *res)
-{
+int clock_getres(clockid_t clk_id, struct timespec *res) {
     if (clk_id != CLOCK_REALTIME && clk_id != CLOCK_MONOTONIC)
         return -1;
 
-    if (res)
-    {
+    if (res) {
         /* Resolution is 1 millisecond */
         res->tv_sec = 0;
         res->tv_nsec = 1000000L;
@@ -196,8 +188,7 @@ int clock_getres(clockid_t clk_id, struct timespec *res)
  * @param tz Timezone (ignored, pass NULL).
  * @return 0 on success, -1 if tv is NULL.
  */
-int gettimeofday(struct timeval *tv, void *tz)
-{
+int gettimeofday(struct timeval *tv, void *tz) {
     (void)tz; /* Timezone not supported */
 
     if (!tv)
@@ -232,8 +223,7 @@ static struct tm _tm_result;
  *
  * @note Not thread-safe; use gmtime_r() for reentrant version (if available).
  */
-struct tm *gmtime(const time_t *timep)
-{
+struct tm *gmtime(const time_t *timep) {
     if (!timep)
         return (struct tm *)0;
 
@@ -271,8 +261,7 @@ struct tm *gmtime(const time_t *timep)
  *
  * @note Not thread-safe.
  */
-struct tm *localtime(const time_t *timep)
-{
+struct tm *localtime(const time_t *timep) {
     /* No timezone support, just use gmtime */
     return gmtime(timep);
 }
@@ -290,8 +279,7 @@ struct tm *localtime(const time_t *timep)
  * @param tm Pointer to struct tm to convert.
  * @return time_t representation, or -1 if tm is NULL.
  */
-time_t mktime(struct tm *tm)
-{
+time_t mktime(struct tm *tm) {
     if (!tm)
         return -1;
 
@@ -329,24 +317,20 @@ time_t mktime(struct tm *tm)
  * @param tm Broken-down time to format.
  * @return Number of bytes written (excluding null terminator), or 0 on error.
  */
-size_t strftime(char *s, size_t max, const char *format, const struct tm *tm)
-{
+size_t strftime(char *s, size_t max, const char *format, const struct tm *tm) {
     /* Minimal implementation - just copy format with some substitutions */
     if (!s || max == 0 || !format || !tm)
         return 0;
 
     size_t written = 0;
-    while (*format && written < max - 1)
-    {
-        if (*format == '%' && format[1])
-        {
+    while (*format && written < max - 1) {
+        if (*format == '%' && format[1]) {
             format++;
             char buf[16];
             const char *insert = buf;
             int len = 0;
 
-            switch (*format)
-            {
+            switch (*format) {
                 case 'H':
                     len = 2;
                     buf[0] = '0' + (tm->tm_hour / 10);
@@ -379,14 +363,11 @@ size_t strftime(char *s, size_t max, const char *format, const struct tm *tm)
                     continue;
             }
 
-            for (int i = 0; i < len && written < max - 1; i++)
-            {
+            for (int i = 0; i < len && written < max - 1; i++) {
                 s[written++] = insert[i];
             }
             format++;
-        }
-        else
-        {
+        } else {
             s[written++] = *format++;
         }
     }

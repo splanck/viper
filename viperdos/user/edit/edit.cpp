@@ -55,39 +55,32 @@ static bool show_help = false;
 // Utility Functions
 // =============================================================================
 
-static int strlen(const char *s)
-{
+static int strlen(const char *s) {
     int len = 0;
     while (s[len])
         len++;
     return len;
 }
 
-static void strcpy(char *dst, const char *src)
-{
+static void strcpy(char *dst, const char *src) {
     while (*src)
         *dst++ = *src++;
     *dst = '\0';
 }
 
-static void strncpy(char *dst, const char *src, int n)
-{
+static void strncpy(char *dst, const char *src, int n) {
     while (n-- > 0 && *src)
         *dst++ = *src++;
     *dst = '\0';
 }
 
-static void memmove(void *dst, const void *src, int n)
-{
+static void memmove(void *dst, const void *src, int n) {
     char *d = static_cast<char *>(dst);
     const char *s = static_cast<const char *>(src);
-    if (d < s)
-    {
+    if (d < s) {
         while (n--)
             *d++ = *s++;
-    }
-    else if (d > s)
-    {
+    } else if (d > s) {
         d += n;
         s += n;
         while (n--)
@@ -95,25 +88,19 @@ static void memmove(void *dst, const void *src, int n)
     }
 }
 
-static void itoa(int n, char *buf)
-{
+static void itoa(int n, char *buf) {
     char tmp[16];
     int i = 0;
     bool neg = false;
 
-    if (n < 0)
-    {
+    if (n < 0) {
         neg = true;
         n = -n;
     }
-    if (n == 0)
-    {
+    if (n == 0) {
         tmp[i++] = '0';
-    }
-    else
-    {
-        while (n > 0)
-        {
+    } else {
+        while (n > 0) {
             tmp[i++] = '0' + (n % 10);
             n /= 10;
         }
@@ -131,39 +118,33 @@ static void itoa(int n, char *buf)
 // Terminal I/O
 // =============================================================================
 
-static void term_write(const char *s)
-{
+static void term_write(const char *s) {
     int len = 0;
     while (s[len])
         len++;
     write(STDOUT_FILENO, s, len);
 }
 
-static void term_write_char(char c)
-{
+static void term_write_char(char c) {
     write(STDOUT_FILENO, &c, 1);
 }
 
-static char term_getchar()
-{
+static char term_getchar() {
     // Use libc read() to route through consoled for GUI input
     char c = 0;
     read(STDIN_FILENO, &c, 1);
     return c;
 }
 
-static void term_clear()
-{
+static void term_clear() {
     term_write("\033[2J");
 }
 
-static void term_home()
-{
+static void term_home() {
     term_write("\033[H");
 }
 
-static void term_goto(int row, int col)
-{
+static void term_goto(int row, int col) {
     char buf[32];
     term_write("\033[");
     itoa(row + 1, buf);
@@ -174,28 +155,23 @@ static void term_goto(int row, int col)
     term_write("H");
 }
 
-static void term_clear_line()
-{
+static void term_clear_line() {
     term_write("\033[K");
 }
 
-static void term_reverse_on()
-{
+static void term_reverse_on() {
     term_write("\033[7m");
 }
 
-static void term_reverse_off()
-{
+static void term_reverse_off() {
     term_write("\033[0m");
 }
 
-static void term_hide_cursor()
-{
+static void term_hide_cursor() {
     term_write("\033[?25l");
 }
 
-static void term_show_cursor()
-{
+static void term_show_cursor() {
     term_write("\033[?25h");
 }
 
@@ -203,10 +179,8 @@ static void term_show_cursor()
 static struct termios orig_termios;
 static bool termios_saved = false;
 
-static void term_enable_raw_mode()
-{
-    if (tcgetattr(STDIN_FILENO, &orig_termios) == 0)
-    {
+static void term_enable_raw_mode() {
+    if (tcgetattr(STDIN_FILENO, &orig_termios) == 0) {
         termios_saved = true;
         struct termios raw = orig_termios;
         cfmakeraw(&raw);
@@ -214,10 +188,8 @@ static void term_enable_raw_mode()
     }
 }
 
-static void term_restore_mode()
-{
-    if (termios_saved)
-    {
+static void term_restore_mode() {
+    if (termios_saved) {
         tcsetattr(STDIN_FILENO, TCSANOW, &orig_termios);
     }
 }
@@ -233,15 +205,13 @@ static void term_restore_mode()
  * @param bufsize Size of buffer
  * @return true if user entered text, false if cancelled (Escape/Ctrl+C)
  */
-static bool prompt_string(const char *prompt, char *buf, int bufsize)
-{
+static bool prompt_string(const char *prompt, char *buf, int bufsize) {
     int len = 0;
     buf[0] = '\0';
 
     term_show_cursor();
 
-    while (true)
-    {
+    while (true) {
         // Draw prompt line
         term_goto(TEXT_ROWS + 1, 0);
         term_clear_line();
@@ -257,26 +227,20 @@ static bool prompt_string(const char *prompt, char *buf, int bufsize)
         {
             buf[0] = '\0';
             return false;
-        }
-        else if (c == 3) // Ctrl+C - cancel
+        } else if (c == 3) // Ctrl+C - cancel
         {
             buf[0] = '\0';
             return false;
-        }
-        else if (c == '\r' || c == '\n') // Enter - confirm
+        } else if (c == '\r' || c == '\n') // Enter - confirm
         {
             return len > 0;
-        }
-        else if (c == 127 || c == '\b') // Backspace
+        } else if (c == 127 || c == '\b') // Backspace
         {
-            if (len > 0)
-            {
+            if (len > 0) {
                 len--;
                 buf[len] = '\0';
             }
-        }
-        else if (c >= 32 && c < 127 && len < bufsize - 1)
-        {
+        } else if (c >= 32 && c < 127 && len < bufsize - 1) {
             buf[len++] = c;
             buf[len] = '\0';
         }
@@ -287,13 +251,11 @@ static bool prompt_string(const char *prompt, char *buf, int bufsize)
 // Editor Display
 // =============================================================================
 
-static void draw_line(int screen_row, int file_row)
-{
+static void draw_line(int screen_row, int file_row) {
     term_goto(screen_row, 0);
     term_clear_line();
 
-    if (file_row >= line_count)
-    {
+    if (file_row >= line_count) {
         term_write("~");
         return;
     }
@@ -303,26 +265,19 @@ static void draw_line(int screen_row, int file_row)
     int start = view_col;
     int end = view_col + SCREEN_COLS - 1;
 
-    for (int i = start; i < end && i < len; i++)
-    {
+    for (int i = start; i < end && i < len; i++) {
         char c = line[i];
-        if (c == '\t')
-        {
+        if (c == '\t') {
             term_write_char(' ');
-        }
-        else if (c >= 32 && c < 127)
-        {
+        } else if (c >= 32 && c < 127) {
             term_write_char(c);
-        }
-        else
-        {
+        } else {
             term_write_char('?');
         }
     }
 }
 
-static void draw_status_bar()
-{
+static void draw_status_bar() {
     term_goto(TEXT_ROWS, 0);
     term_reverse_on();
 
@@ -330,21 +285,17 @@ static void draw_status_bar()
     char status[SCREEN_COLS + 1];
     int pos = 0;
 
-    if (filename[0])
-    {
+    if (filename[0]) {
         const char *f = filename;
         while (*f && pos < 40)
             status[pos++] = *f++;
-    }
-    else
-    {
+    } else {
         const char *f = "[New File]";
         while (*f && pos < 40)
             status[pos++] = *f++;
     }
 
-    if (modified)
-    {
+    if (modified) {
         const char *m = " [Modified]";
         while (*m && pos < 52)
             status[pos++] = *m++;
@@ -385,28 +336,21 @@ static void draw_status_bar()
     term_reverse_off();
 }
 
-static void draw_help_bar()
-{
+static void draw_help_bar() {
     term_goto(TEXT_ROWS + 1, 0);
     term_clear_line();
 
-    if (show_help)
-    {
+    if (show_help) {
         term_write("^O Open  ^S Save  ^Q Quit  ^G Help  Arrows  Home/End  Bksp/Del");
-    }
-    else if (message[0])
-    {
+    } else if (message[0]) {
         term_write(message);
         message[0] = '\0';
-    }
-    else
-    {
+    } else {
         term_write("^G Help");
     }
 }
 
-static void refresh_screen()
-{
+static void refresh_screen() {
     term_hide_cursor();
 
     // Adjust view to keep cursor visible
@@ -420,8 +364,7 @@ static void refresh_screen()
         view_col = cursor_col - SCREEN_COLS + 2;
 
     // Draw text lines
-    for (int i = 0; i < TEXT_ROWS; i++)
-    {
+    for (int i = 0; i < TEXT_ROWS; i++) {
         draw_line(i, view_row + i);
     }
 
@@ -434,8 +377,7 @@ static void refresh_screen()
     term_show_cursor();
 }
 
-static void set_message(const char *msg)
-{
+static void set_message(const char *msg) {
     strncpy(message, msg, sizeof(message) - 1);
     message[sizeof(message) - 1] = '\0';
 }
@@ -444,11 +386,9 @@ static void set_message(const char *msg)
 // File Operations
 // =============================================================================
 
-static bool load_file(const char *path)
-{
+static bool load_file(const char *path) {
     int fd = open(path, O_RDONLY);
-    if (fd < 0)
-    {
+    if (fd < 0) {
         // New file
         line_count = 1;
         lines[0][0] = '\0';
@@ -461,17 +401,14 @@ static bool load_file(const char *path)
     line_count = 0;
     int col = 0;
 
-    while (true)
-    {
+    while (true) {
         ssize_t n = read(fd, buf, sizeof(buf));
         if (n <= 0)
             break;
 
-        for (int i = 0; i < n; i++)
-        {
+        for (int i = 0; i < n; i++) {
             char c = buf[i];
-            if (c == '\n' || c == '\r')
-            {
+            if (c == '\n' || c == '\r') {
                 lines[line_count][col] = '\0';
                 line_count++;
                 col = 0;
@@ -480,9 +417,7 @@ static bool load_file(const char *path)
                 // Skip \r\n as single newline
                 if (c == '\r' && i + 1 < n && buf[i + 1] == '\n')
                     i++;
-            }
-            else if (col < MAX_LINE_LEN - 1)
-            {
+            } else if (col < MAX_LINE_LEN - 1) {
                 lines[line_count][col++] = c;
             }
         }
@@ -491,8 +426,7 @@ static bool load_file(const char *path)
     }
 
     // Handle last line without newline
-    if (col > 0 || line_count == 0)
-    {
+    if (col > 0 || line_count == 0) {
         lines[line_count][col] = '\0';
         line_count++;
     }
@@ -516,14 +450,11 @@ static bool load_file(const char *path)
     return true;
 }
 
-static bool save_file()
-{
+static bool save_file() {
     // Prompt for filename if not set
-    if (!filename[0])
-    {
+    if (!filename[0]) {
         char new_name[MAX_FILENAME];
-        if (!prompt_string("Save as: ", new_name, MAX_FILENAME))
-        {
+        if (!prompt_string("Save as: ", new_name, MAX_FILENAME)) {
             set_message("Save cancelled");
             return false;
         }
@@ -531,23 +462,19 @@ static bool save_file()
     }
 
     int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (fd < 0)
-    {
+    if (fd < 0) {
         set_message("Error: Cannot open file for writing");
         return false;
     }
 
     int total_bytes = 0;
-    for (int i = 0; i < line_count; i++)
-    {
+    for (int i = 0; i < line_count; i++) {
         int len = strlen(lines[i]);
-        if (len > 0)
-        {
+        if (len > 0) {
             write(fd, lines[i], len);
             total_bytes += len;
         }
-        if (i < line_count - 1)
-        {
+        if (i < line_count - 1) {
             write(fd, "\n", 1);
             total_bytes++;
         }
@@ -573,19 +500,16 @@ static bool save_file()
     return true;
 }
 
-static void open_file()
-{
+static void open_file() {
     // Warn about unsaved changes
-    if (modified)
-    {
+    if (modified) {
         set_message("Unsaved changes! Save first or press Ctrl+O again.");
         modified = false; // Allow open on second press
         return;
     }
 
     char new_name[MAX_FILENAME];
-    if (!prompt_string("Open file: ", new_name, MAX_FILENAME))
-    {
+    if (!prompt_string("Open file: ", new_name, MAX_FILENAME)) {
         set_message("Open cancelled");
         return;
     }
@@ -603,13 +527,11 @@ static void open_file()
 // Editing Operations
 // =============================================================================
 
-static int current_line_len()
-{
+static int current_line_len() {
     return strlen(lines[cursor_row]);
 }
 
-static void insert_char(char c)
-{
+static void insert_char(char c) {
     int len = current_line_len();
     if (len >= MAX_LINE_LEN - 1)
         return;
@@ -622,14 +544,12 @@ static void insert_char(char c)
     modified = true;
 }
 
-static void insert_newline()
-{
+static void insert_newline() {
     if (line_count >= MAX_LINES)
         return;
 
     // Shift lines down
-    for (int i = line_count; i > cursor_row + 1; i--)
-    {
+    for (int i = line_count; i > cursor_row + 1; i--) {
         strcpy(lines[i], lines[i - 1]);
     }
     line_count++;
@@ -643,26 +563,20 @@ static void insert_newline()
     modified = true;
 }
 
-static void delete_char()
-{
+static void delete_char() {
     int len = current_line_len();
-    if (cursor_col < len)
-    {
+    if (cursor_col < len) {
         // Delete character at cursor
         memmove(
             &lines[cursor_row][cursor_col], &lines[cursor_row][cursor_col + 1], len - cursor_col);
         modified = true;
-    }
-    else if (cursor_row < line_count - 1)
-    {
+    } else if (cursor_row < line_count - 1) {
         // Join with next line
         int next_len = strlen(lines[cursor_row + 1]);
-        if (len + next_len < MAX_LINE_LEN - 1)
-        {
+        if (len + next_len < MAX_LINE_LEN - 1) {
             strcpy(&lines[cursor_row][len], lines[cursor_row + 1]);
             // Shift lines up
-            for (int i = cursor_row + 1; i < line_count - 1; i++)
-            {
+            for (int i = cursor_row + 1; i < line_count - 1; i++) {
                 strcpy(lines[i], lines[i + 1]);
             }
             line_count--;
@@ -671,15 +585,11 @@ static void delete_char()
     }
 }
 
-static void backspace()
-{
-    if (cursor_col > 0)
-    {
+static void backspace() {
+    if (cursor_col > 0) {
         cursor_col--;
         delete_char();
-    }
-    else if (cursor_row > 0)
-    {
+    } else if (cursor_row > 0) {
         // Join with previous line
         int prev_len = strlen(lines[cursor_row - 1]);
         cursor_col = prev_len;
@@ -692,10 +602,8 @@ static void backspace()
 // Cursor Movement
 // =============================================================================
 
-static void move_up()
-{
-    if (cursor_row > 0)
-    {
+static void move_up() {
+    if (cursor_row > 0) {
         cursor_row--;
         int len = current_line_len();
         if (cursor_col > len)
@@ -703,10 +611,8 @@ static void move_up()
     }
 }
 
-static void move_down()
-{
-    if (cursor_row < line_count - 1)
-    {
+static void move_down() {
+    if (cursor_row < line_count - 1) {
         cursor_row++;
         int len = current_line_len();
         if (cursor_col > len)
@@ -714,47 +620,35 @@ static void move_down()
     }
 }
 
-static void move_left()
-{
-    if (cursor_col > 0)
-    {
+static void move_left() {
+    if (cursor_col > 0) {
         cursor_col--;
-    }
-    else if (cursor_row > 0)
-    {
+    } else if (cursor_row > 0) {
         cursor_row--;
         cursor_col = current_line_len();
     }
 }
 
-static void move_right()
-{
+static void move_right() {
     int len = current_line_len();
-    if (cursor_col < len)
-    {
+    if (cursor_col < len) {
         cursor_col++;
-    }
-    else if (cursor_row < line_count - 1)
-    {
+    } else if (cursor_row < line_count - 1) {
         cursor_row++;
         cursor_col = 0;
     }
 }
 
-static void move_home()
-{
+static void move_home() {
     cursor_col = 0;
 }
 
-static void move_end()
-{
+static void move_end() {
     cursor_col = current_line_len();
 }
 
-static void page_up()
-{
-    for (int i = 0; i < TEXT_ROWS - 1 && cursor_row > 0; i++)
-    {
+static void page_up() {
+    for (int i = 0; i < TEXT_ROWS - 1 && cursor_row > 0; i++) {
         cursor_row--;
     }
     int len = current_line_len();
@@ -762,10 +656,8 @@ static void page_up()
         cursor_col = len;
 }
 
-static void page_down()
-{
-    for (int i = 0; i < TEXT_ROWS - 1 && cursor_row < line_count - 1; i++)
-    {
+static void page_down() {
+    for (int i = 0; i < TEXT_ROWS - 1 && cursor_row < line_count - 1; i++) {
         cursor_row++;
     }
     int len = current_line_len();
@@ -777,15 +669,13 @@ static void page_down()
 // Input Handling
 // =============================================================================
 
-static void handle_escape_sequence()
-{
+static void handle_escape_sequence() {
     char c2 = term_getchar();
     if (c2 != '[')
         return;
 
     char c3 = term_getchar();
-    switch (c3)
-    {
+    switch (c3) {
         case 'A':
             move_up();
             break;
@@ -819,18 +709,15 @@ static void handle_escape_sequence()
     }
 }
 
-static void process_key()
-{
+static void process_key() {
     char c = term_getchar();
 
-    if (c == '\033')
-    {
+    if (c == '\033') {
         handle_escape_sequence();
         return;
     }
 
-    switch (c)
-    {
+    switch (c) {
         case 7: // Ctrl+G - Help toggle
             show_help = !show_help;
             break;
@@ -840,13 +727,10 @@ static void process_key()
             break;
 
         case 17: // Ctrl+Q - Quit
-            if (modified)
-            {
+            if (modified) {
                 set_message("Unsaved changes! Press Ctrl+Q again to quit without saving.");
                 modified = false; // Allow quit on second press
-            }
-            else
-            {
+            } else {
                 running = false;
             }
             break;
@@ -872,8 +756,7 @@ static void process_key()
             break;
 
         default:
-            if (c >= 32 && c < 127)
-            {
+            if (c >= 32 && c < 127) {
                 insert_char(c);
             }
             break;
@@ -884,8 +767,7 @@ static void process_key()
 // Main
 // =============================================================================
 
-extern "C" int main(int argc, char **argv)
-{
+extern "C" int main(int argc, char **argv) {
     // Enable raw terminal mode for character-by-character input
     term_enable_raw_mode();
 
@@ -894,12 +776,9 @@ extern "C" int main(int argc, char **argv)
     lines[0][0] = '\0';
 
     // Load file if specified
-    if (argc > 1)
-    {
+    if (argc > 1) {
         load_file(argv[1]);
-    }
-    else
-    {
+    } else {
         set_message("New file. ^O Open  ^S Save  ^Q Quit  ^G Help");
     }
 
@@ -908,8 +787,7 @@ extern "C" int main(int argc, char **argv)
     term_home();
 
     // Main loop
-    while (running)
-    {
+    while (running) {
         refresh_screen();
         process_key();
     }

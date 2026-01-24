@@ -34,8 +34,7 @@
  * The framebuffer is currently placed at a fixed physical address and assumed
  * to be directly accessible (identity-mapped).
  */
-namespace ramfb
-{
+namespace ramfb {
 
 // Framebuffer information
 /**
@@ -46,8 +45,7 @@ namespace ramfb
  * implementation uses a fixed address and treats it as both physical and
  * virtual under the identity map.
  */
-struct FramebufferInfo
-{
+struct FramebufferInfo {
     u64 address; // Physical/virtual address of framebuffer
     u32 width;   // Width in pixels
     u32 height;  // Height in pixels

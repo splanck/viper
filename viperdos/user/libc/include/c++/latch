@@ -10,8 +10,7 @@
 #include "atomic"
 #include "limits"
 
-namespace std
-{
+namespace std {
 
 /*
  * ===========================================================================
@@ -25,12 +24,10 @@ namespace std
  * ===========================================================================
  */
 
-class latch
-{
+class latch {
   public:
     // Maximum value of the internal counter
-    static constexpr ptrdiff_t max() noexcept
-    {
+    static constexpr ptrdiff_t max() noexcept {
         return numeric_limits<ptrdiff_t>::max();
     }
 
@@ -48,8 +45,7 @@ class latch
      * Decrement the counter without blocking.
      * If the counter reaches zero, all threads blocked on wait() are released.
      */
-    void count_down(ptrdiff_t n = 1)
-    {
+    void count_down(ptrdiff_t n = 1) {
         ptrdiff_t old = counter_.fetch_sub(n, memory_order_acq_rel);
         // In a real implementation, if old - n <= 0, notify waiting threads
         (void)old;
@@ -58,8 +54,7 @@ class latch
     /*
      * Decrement and return true if the counter reached zero.
      */
-    bool try_wait() const noexcept
-    {
+    bool try_wait() const noexcept {
         return counter_.load(memory_order_acquire) <= 0;
     }
 
@@ -68,10 +63,8 @@ class latch
      * In this single-threaded stub, if counter > 0, it cannot become 0
      * without another thread, so this would deadlock. We just return.
      */
-    void wait() const
-    {
-        while (counter_.load(memory_order_acquire) > 0)
-        {
+    void wait() const {
+        while (counter_.load(memory_order_acquire) > 0) {
             // In a real implementation: wait on condition variable
             // Single-threaded: break to avoid infinite loop
             break;
@@ -82,8 +75,7 @@ class latch
      * Decrement the counter and block until it reaches zero.
      * Equivalent to count_down(n); wait();
      */
-    void arrive_and_wait(ptrdiff_t n = 1)
-    {
+    void arrive_and_wait(ptrdiff_t n = 1) {
         count_down(n);
         wait();
     }

@@ -50,6 +50,7 @@ struct PeepholeStats
     std::size_t deadCodeEliminated{0};
     std::size_t coldBlocksMoved{0};
 };
+
 /// @brief Test whether an operand is the immediate integer zero.
 ///
 /// @details Peephole rewrites often recognise the canonical pattern of moving
@@ -231,7 +232,8 @@ void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
 }
 
 /// @brief Get constant value for a register if known.
-[[nodiscard]] std::optional<int64_t> getConstValue(const Operand &operand, const RegConstMap &knownConsts)
+[[nodiscard]] std::optional<int64_t> getConstValue(const Operand &operand,
+                                                   const RegConstMap &knownConsts)
 {
     const auto *reg = std::get_if<OpReg>(&operand);
     if (!reg || !reg->isPhys || reg->cls != RegClass::GPR)
@@ -376,8 +378,8 @@ void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
     if (!reg || !reg->isPhys || reg->cls != RegClass::GPR)
         return false;
     const auto pr = static_cast<PhysReg>(reg->idOrPhys);
-    return pr == PhysReg::RDI || pr == PhysReg::RSI || pr == PhysReg::RDX ||
-           pr == PhysReg::RCX || pr == PhysReg::R8 || pr == PhysReg::R9;
+    return pr == PhysReg::RDI || pr == PhysReg::RSI || pr == PhysReg::RDX || pr == PhysReg::RCX ||
+           pr == PhysReg::R8 || pr == PhysReg::R9;
 }
 
 /// @brief Check if an instruction is an unconditional jump to a specific label.
@@ -474,7 +476,9 @@ void rewriteToTest(MInstr &instr, Operand regOperand)
 /// @param knownConsts Map of registers to known constant values.
 /// @param stats Statistics to update.
 /// @return true if reduction was applied.
-[[nodiscard]] bool tryStrengthReduction(MInstr &instr, const RegConstMap &knownConsts, PeepholeStats &stats)
+[[nodiscard]] bool tryStrengthReduction(MInstr &instr,
+                                        const RegConstMap &knownConsts,
+                                        PeepholeStats &stats)
 {
     if (instr.opcode != MOpcode::IMULrr)
         return false;

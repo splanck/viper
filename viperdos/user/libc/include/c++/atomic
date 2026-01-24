@@ -11,8 +11,7 @@
 #include "cstdint"
 #include "type_traits"
 
-namespace std
-{
+namespace std {
 
 /*
  * ===========================================================================
@@ -20,8 +19,7 @@ namespace std
  * ===========================================================================
  */
 
-enum class memory_order : int
-{
+enum class memory_order : int {
     relaxed = 0,
     consume = 1,
     acquire = 2,
@@ -43,8 +41,7 @@ inline constexpr memory_order memory_order_seq_cst = memory_order::seq_cst;
  * ===========================================================================
  */
 
-inline void atomic_thread_fence(memory_order order) noexcept
-{
+inline void atomic_thread_fence(memory_order order) noexcept {
     (void)order;
     // Compiler barrier - prevent reordering
     asm volatile("" ::: "memory");
@@ -54,8 +51,7 @@ inline void atomic_thread_fence(memory_order order) noexcept
 #endif
 }
 
-inline void atomic_signal_fence(memory_order order) noexcept
-{
+inline void atomic_signal_fence(memory_order order) noexcept {
     (void)order;
     // Just a compiler barrier for signal handlers
     asm volatile("" ::: "memory");
@@ -67,8 +63,7 @@ inline void atomic_signal_fence(memory_order order) noexcept
  * ===========================================================================
  */
 
-struct atomic_flag
-{
+struct atomic_flag {
     bool value_;
 
     atomic_flag() noexcept = default;
@@ -79,42 +74,36 @@ struct atomic_flag
     atomic_flag &operator=(const atomic_flag &) = delete;
     atomic_flag &operator=(const atomic_flag &) volatile = delete;
 
-    bool test_and_set(memory_order order = memory_order_seq_cst) noexcept
-    {
+    bool test_and_set(memory_order order = memory_order_seq_cst) noexcept {
         (void)order;
         bool old = value_;
         value_ = true;
         return old;
     }
 
-    bool test_and_set(memory_order order = memory_order_seq_cst) volatile noexcept
-    {
+    bool test_and_set(memory_order order = memory_order_seq_cst) volatile noexcept {
         (void)order;
         bool old = value_;
         value_ = true;
         return old;
     }
 
-    void clear(memory_order order = memory_order_seq_cst) noexcept
-    {
+    void clear(memory_order order = memory_order_seq_cst) noexcept {
         (void)order;
         value_ = false;
     }
 
-    void clear(memory_order order = memory_order_seq_cst) volatile noexcept
-    {
+    void clear(memory_order order = memory_order_seq_cst) volatile noexcept {
         (void)order;
         value_ = false;
     }
 
-    bool test(memory_order order = memory_order_seq_cst) const noexcept
-    {
+    bool test(memory_order order = memory_order_seq_cst) const noexcept {
         (void)order;
         return value_;
     }
 
-    bool test(memory_order order = memory_order_seq_cst) const volatile noexcept
-    {
+    bool test(memory_order order = memory_order_seq_cst) const volatile noexcept {
         (void)order;
         return value_;
     }
@@ -122,33 +111,27 @@ struct atomic_flag
 
 #define ATOMIC_FLAG_INIT {false}
 
-inline bool atomic_flag_test_and_set(atomic_flag *flag) noexcept
-{
+inline bool atomic_flag_test_and_set(atomic_flag *flag) noexcept {
     return flag->test_and_set();
 }
 
-inline bool atomic_flag_test_and_set(volatile atomic_flag *flag) noexcept
-{
+inline bool atomic_flag_test_and_set(volatile atomic_flag *flag) noexcept {
     return flag->test_and_set();
 }
 
-inline bool atomic_flag_test_and_set_explicit(atomic_flag *flag, memory_order order) noexcept
-{
+inline bool atomic_flag_test_and_set_explicit(atomic_flag *flag, memory_order order) noexcept {
     return flag->test_and_set(order);
 }
 
-inline void atomic_flag_clear(atomic_flag *flag) noexcept
-{
+inline void atomic_flag_clear(atomic_flag *flag) noexcept {
     flag->clear();
 }
 
-inline void atomic_flag_clear(volatile atomic_flag *flag) noexcept
-{
+inline void atomic_flag_clear(volatile atomic_flag *flag) noexcept {
     flag->clear();
 }
 
-inline void atomic_flag_clear_explicit(atomic_flag *flag, memory_order order) noexcept
-{
+inline void atomic_flag_clear_explicit(atomic_flag *flag, memory_order order) noexcept {
     flag->clear(order);
 }
 
@@ -158,8 +141,7 @@ inline void atomic_flag_clear_explicit(atomic_flag *flag, memory_order order) no
  * ===========================================================================
  */
 
-template <class T> struct atomic
-{
+template <class T> struct atomic {
     static_assert(is_trivially_copyable<T>::value, "atomic requires trivially copyable type");
 
     using value_type = T;
@@ -174,72 +156,60 @@ template <class T> struct atomic
     atomic &operator=(const atomic &) = delete;
     atomic &operator=(const atomic &) volatile = delete;
 
-    T operator=(T desired) noexcept
-    {
+    T operator=(T desired) noexcept {
         store(desired);
         return desired;
     }
 
-    T operator=(T desired) volatile noexcept
-    {
+    T operator=(T desired) volatile noexcept {
         store(desired);
         return desired;
     }
 
-    bool is_lock_free() const noexcept
-    {
+    bool is_lock_free() const noexcept {
         return sizeof(T) <= sizeof(void *);
     }
 
-    bool is_lock_free() const volatile noexcept
-    {
+    bool is_lock_free() const volatile noexcept {
         return sizeof(T) <= sizeof(void *);
     }
 
-    void store(T desired, memory_order order = memory_order_seq_cst) noexcept
-    {
+    void store(T desired, memory_order order = memory_order_seq_cst) noexcept {
         (void)order;
         value_ = desired;
     }
 
-    void store(T desired, memory_order order = memory_order_seq_cst) volatile noexcept
-    {
+    void store(T desired, memory_order order = memory_order_seq_cst) volatile noexcept {
         (void)order;
         value_ = desired;
     }
 
-    T load(memory_order order = memory_order_seq_cst) const noexcept
-    {
+    T load(memory_order order = memory_order_seq_cst) const noexcept {
         (void)order;
         return value_;
     }
 
-    T load(memory_order order = memory_order_seq_cst) const volatile noexcept
-    {
+    T load(memory_order order = memory_order_seq_cst) const volatile noexcept {
         (void)order;
         return value_;
     }
 
-    operator T() const noexcept
-    {
+    operator T() const noexcept {
         return load();
     }
 
-    operator T() const volatile noexcept
-    {
+    operator T() const volatile noexcept {
         return load();
     }
 
-    T exchange(T desired, memory_order order = memory_order_seq_cst) noexcept
-    {
+    T exchange(T desired, memory_order order = memory_order_seq_cst) noexcept {
         (void)order;
         T old = value_;
         value_ = desired;
         return old;
     }
 
-    T exchange(T desired, memory_order order = memory_order_seq_cst) volatile noexcept
-    {
+    T exchange(T desired, memory_order order = memory_order_seq_cst) volatile noexcept {
         (void)order;
         T old = value_;
         value_ = desired;
@@ -249,12 +219,10 @@ template <class T> struct atomic
     bool compare_exchange_weak(T &expected,
                                T desired,
                                memory_order success,
-                               memory_order failure) noexcept
-    {
+                               memory_order failure) noexcept {
         (void)success;
         (void)failure;
-        if (value_ == expected)
-        {
+        if (value_ == expected) {
             value_ = desired;
             return true;
         }
@@ -264,40 +232,34 @@ template <class T> struct atomic
 
     bool compare_exchange_weak(T &expected,
                                T desired,
-                               memory_order order = memory_order_seq_cst) noexcept
-    {
+                               memory_order order = memory_order_seq_cst) noexcept {
         return compare_exchange_weak(expected, desired, order, order);
     }
 
     bool compare_exchange_strong(T &expected,
                                  T desired,
                                  memory_order success,
-                                 memory_order failure) noexcept
-    {
+                                 memory_order failure) noexcept {
         return compare_exchange_weak(expected, desired, success, failure);
     }
 
     bool compare_exchange_strong(T &expected,
                                  T desired,
-                                 memory_order order = memory_order_seq_cst) noexcept
-    {
+                                 memory_order order = memory_order_seq_cst) noexcept {
         return compare_exchange_weak(expected, desired, order, order);
     }
 
-    void wait(T old, memory_order order = memory_order_seq_cst) const noexcept
-    {
+    void wait(T old, memory_order order = memory_order_seq_cst) const noexcept {
         (void)old;
         (void)order;
         // Spin wait - in single-threaded environment, just return
     }
 
-    void notify_one() noexcept
-    {
+    void notify_one() noexcept {
         // No-op in single-threaded environment
     }
 
-    void notify_all() noexcept
-    {
+    void notify_all() noexcept {
         // No-op in single-threaded environment
     }
 };
@@ -308,239 +270,197 @@ template <class T> struct atomic
  * ===========================================================================
  */
 
-template <class T> struct atomic_integral_base : atomic<T>
-{
+template <class T> struct atomic_integral_base : atomic<T> {
     using atomic<T>::atomic;
     using atomic<T>::operator=;
 
-    T fetch_add(T arg, memory_order order = memory_order_seq_cst) noexcept
-    {
+    T fetch_add(T arg, memory_order order = memory_order_seq_cst) noexcept {
         (void)order;
         T old = this->value_;
         this->value_ += arg;
         return old;
     }
 
-    T fetch_add(T arg, memory_order order = memory_order_seq_cst) volatile noexcept
-    {
+    T fetch_add(T arg, memory_order order = memory_order_seq_cst) volatile noexcept {
         (void)order;
         T old = this->value_;
         this->value_ += arg;
         return old;
     }
 
-    T fetch_sub(T arg, memory_order order = memory_order_seq_cst) noexcept
-    {
+    T fetch_sub(T arg, memory_order order = memory_order_seq_cst) noexcept {
         (void)order;
         T old = this->value_;
         this->value_ -= arg;
         return old;
     }
 
-    T fetch_sub(T arg, memory_order order = memory_order_seq_cst) volatile noexcept
-    {
+    T fetch_sub(T arg, memory_order order = memory_order_seq_cst) volatile noexcept {
         (void)order;
         T old = this->value_;
         this->value_ -= arg;
         return old;
     }
 
-    T fetch_and(T arg, memory_order order = memory_order_seq_cst) noexcept
-    {
+    T fetch_and(T arg, memory_order order = memory_order_seq_cst) noexcept {
         (void)order;
         T old = this->value_;
         this->value_ &= arg;
         return old;
     }
 
-    T fetch_and(T arg, memory_order order = memory_order_seq_cst) volatile noexcept
-    {
+    T fetch_and(T arg, memory_order order = memory_order_seq_cst) volatile noexcept {
         (void)order;
         T old = this->value_;
         this->value_ &= arg;
         return old;
     }
 
-    T fetch_or(T arg, memory_order order = memory_order_seq_cst) noexcept
-    {
+    T fetch_or(T arg, memory_order order = memory_order_seq_cst) noexcept {
         (void)order;
         T old = this->value_;
         this->value_ |= arg;
         return old;
     }
 
-    T fetch_or(T arg, memory_order order = memory_order_seq_cst) volatile noexcept
-    {
+    T fetch_or(T arg, memory_order order = memory_order_seq_cst) volatile noexcept {
         (void)order;
         T old = this->value_;
         this->value_ |= arg;
         return old;
     }
 
-    T fetch_xor(T arg, memory_order order = memory_order_seq_cst) noexcept
-    {
+    T fetch_xor(T arg, memory_order order = memory_order_seq_cst) noexcept {
         (void)order;
         T old = this->value_;
         this->value_ ^= arg;
         return old;
     }
 
-    T fetch_xor(T arg, memory_order order = memory_order_seq_cst) volatile noexcept
-    {
+    T fetch_xor(T arg, memory_order order = memory_order_seq_cst) volatile noexcept {
         (void)order;
         T old = this->value_;
         this->value_ ^= arg;
         return old;
     }
 
-    T operator++() noexcept
-    {
+    T operator++() noexcept {
         return fetch_add(1) + 1;
     }
 
-    T operator++() volatile noexcept
-    {
+    T operator++() volatile noexcept {
         return fetch_add(1) + 1;
     }
 
-    T operator++(int) noexcept
-    {
+    T operator++(int) noexcept {
         return fetch_add(1);
     }
 
-    T operator++(int) volatile noexcept
-    {
+    T operator++(int) volatile noexcept {
         return fetch_add(1);
     }
 
-    T operator--() noexcept
-    {
+    T operator--() noexcept {
         return fetch_sub(1) - 1;
     }
 
-    T operator--() volatile noexcept
-    {
+    T operator--() volatile noexcept {
         return fetch_sub(1) - 1;
     }
 
-    T operator--(int) noexcept
-    {
+    T operator--(int) noexcept {
         return fetch_sub(1);
     }
 
-    T operator--(int) volatile noexcept
-    {
+    T operator--(int) volatile noexcept {
         return fetch_sub(1);
     }
 
-    T operator+=(T arg) noexcept
-    {
+    T operator+=(T arg) noexcept {
         return fetch_add(arg) + arg;
     }
 
-    T operator+=(T arg) volatile noexcept
-    {
+    T operator+=(T arg) volatile noexcept {
         return fetch_add(arg) + arg;
     }
 
-    T operator-=(T arg) noexcept
-    {
+    T operator-=(T arg) noexcept {
         return fetch_sub(arg) - arg;
     }
 
-    T operator-=(T arg) volatile noexcept
-    {
+    T operator-=(T arg) volatile noexcept {
         return fetch_sub(arg) - arg;
     }
 
-    T operator&=(T arg) noexcept
-    {
+    T operator&=(T arg) noexcept {
         return fetch_and(arg) & arg;
     }
 
-    T operator&=(T arg) volatile noexcept
-    {
+    T operator&=(T arg) volatile noexcept {
         return fetch_and(arg) & arg;
     }
 
-    T operator|=(T arg) noexcept
-    {
+    T operator|=(T arg) noexcept {
         return fetch_or(arg) | arg;
     }
 
-    T operator|=(T arg) volatile noexcept
-    {
+    T operator|=(T arg) volatile noexcept {
         return fetch_or(arg) | arg;
     }
 
-    T operator^=(T arg) noexcept
-    {
+    T operator^=(T arg) noexcept {
         return fetch_xor(arg) ^ arg;
     }
 
-    T operator^=(T arg) volatile noexcept
-    {
+    T operator^=(T arg) volatile noexcept {
         return fetch_xor(arg) ^ arg;
     }
 };
 
 // Specializations for integral types
-template <> struct atomic<bool> : atomic<bool>
-{
-};
+template <> struct atomic<bool> : atomic<bool> {};
 
-template <> struct atomic<char> : atomic_integral_base<char>
-{
+template <> struct atomic<char> : atomic_integral_base<char> {
     using atomic_integral_base<char>::atomic_integral_base;
 };
 
-template <> struct atomic<signed char> : atomic_integral_base<signed char>
-{
+template <> struct atomic<signed char> : atomic_integral_base<signed char> {
     using atomic_integral_base<signed char>::atomic_integral_base;
 };
 
-template <> struct atomic<unsigned char> : atomic_integral_base<unsigned char>
-{
+template <> struct atomic<unsigned char> : atomic_integral_base<unsigned char> {
     using atomic_integral_base<unsigned char>::atomic_integral_base;
 };
 
-template <> struct atomic<short> : atomic_integral_base<short>
-{
+template <> struct atomic<short> : atomic_integral_base<short> {
     using atomic_integral_base<short>::atomic_integral_base;
 };
 
-template <> struct atomic<unsigned short> : atomic_integral_base<unsigned short>
-{
+template <> struct atomic<unsigned short> : atomic_integral_base<unsigned short> {
     using atomic_integral_base<unsigned short>::atomic_integral_base;
 };
 
-template <> struct atomic<int> : atomic_integral_base<int>
-{
+template <> struct atomic<int> : atomic_integral_base<int> {
     using atomic_integral_base<int>::atomic_integral_base;
 };
 
-template <> struct atomic<unsigned int> : atomic_integral_base<unsigned int>
-{
+template <> struct atomic<unsigned int> : atomic_integral_base<unsigned int> {
     using atomic_integral_base<unsigned int>::atomic_integral_base;
 };
 
-template <> struct atomic<long> : atomic_integral_base<long>
-{
+template <> struct atomic<long> : atomic_integral_base<long> {
     using atomic_integral_base<long>::atomic_integral_base;
 };
 
-template <> struct atomic<unsigned long> : atomic_integral_base<unsigned long>
-{
+template <> struct atomic<unsigned long> : atomic_integral_base<unsigned long> {
     using atomic_integral_base<unsigned long>::atomic_integral_base;
 };
 
-template <> struct atomic<long long> : atomic_integral_base<long long>
-{
+template <> struct atomic<long long> : atomic_integral_base<long long> {
     using atomic_integral_base<long long>::atomic_integral_base;
 };
 
-template <> struct atomic<unsigned long long> : atomic_integral_base<unsigned long long>
-{
+template <> struct atomic<unsigned long long> : atomic_integral_base<unsigned long long> {
     using atomic_integral_base<unsigned long long>::atomic_integral_base;
 };
 
@@ -550,8 +470,7 @@ template <> struct atomic<unsigned long long> : atomic_integral_base<unsigned lo
  * ===========================================================================
  */
 
-template <class T> struct atomic<T *>
-{
+template <class T> struct atomic<T *> {
     using value_type = T *;
     using difference_type = ptrdiff_t;
 
@@ -564,64 +483,53 @@ template <class T> struct atomic<T *>
     atomic(const atomic &) = delete;
     atomic &operator=(const atomic &) = delete;
 
-    T *operator=(T *desired) noexcept
-    {
+    T *operator=(T *desired) noexcept {
         store(desired);
         return desired;
     }
 
-    T *operator=(T *desired) volatile noexcept
-    {
+    T *operator=(T *desired) volatile noexcept {
         store(desired);
         return desired;
     }
 
-    bool is_lock_free() const noexcept
-    {
+    bool is_lock_free() const noexcept {
         return true;
     }
 
-    bool is_lock_free() const volatile noexcept
-    {
+    bool is_lock_free() const volatile noexcept {
         return true;
     }
 
-    void store(T *desired, memory_order order = memory_order_seq_cst) noexcept
-    {
+    void store(T *desired, memory_order order = memory_order_seq_cst) noexcept {
         (void)order;
         value_ = desired;
     }
 
-    void store(T *desired, memory_order order = memory_order_seq_cst) volatile noexcept
-    {
+    void store(T *desired, memory_order order = memory_order_seq_cst) volatile noexcept {
         (void)order;
         value_ = desired;
     }
 
-    T *load(memory_order order = memory_order_seq_cst) const noexcept
-    {
+    T *load(memory_order order = memory_order_seq_cst) const noexcept {
         (void)order;
         return value_;
     }
 
-    T *load(memory_order order = memory_order_seq_cst) const volatile noexcept
-    {
+    T *load(memory_order order = memory_order_seq_cst) const volatile noexcept {
         (void)order;
         return value_;
     }
 
-    operator T *() const noexcept
-    {
+    operator T *() const noexcept {
         return load();
     }
 
-    operator T *() const volatile noexcept
-    {
+    operator T *() const volatile noexcept {
         return load();
     }
 
-    T *exchange(T *desired, memory_order order = memory_order_seq_cst) noexcept
-    {
+    T *exchange(T *desired, memory_order order = memory_order_seq_cst) noexcept {
         (void)order;
         T *old = value_;
         value_ = desired;
@@ -631,12 +539,10 @@ template <class T> struct atomic<T *>
     bool compare_exchange_weak(T *&expected,
                                T *desired,
                                memory_order success,
-                               memory_order failure) noexcept
-    {
+                               memory_order failure) noexcept {
         (void)success;
         (void)failure;
-        if (value_ == expected)
-        {
+        if (value_ == expected) {
             value_ = desired;
             return true;
         }
@@ -646,69 +552,58 @@ template <class T> struct atomic<T *>
 
     bool compare_exchange_weak(T *&expected,
                                T *desired,
-                               memory_order order = memory_order_seq_cst) noexcept
-    {
+                               memory_order order = memory_order_seq_cst) noexcept {
         return compare_exchange_weak(expected, desired, order, order);
     }
 
     bool compare_exchange_strong(T *&expected,
                                  T *desired,
                                  memory_order success,
-                                 memory_order failure) noexcept
-    {
+                                 memory_order failure) noexcept {
         return compare_exchange_weak(expected, desired, success, failure);
     }
 
     bool compare_exchange_strong(T *&expected,
                                  T *desired,
-                                 memory_order order = memory_order_seq_cst) noexcept
-    {
+                                 memory_order order = memory_order_seq_cst) noexcept {
         return compare_exchange_weak(expected, desired, order, order);
     }
 
-    T *fetch_add(ptrdiff_t arg, memory_order order = memory_order_seq_cst) noexcept
-    {
+    T *fetch_add(ptrdiff_t arg, memory_order order = memory_order_seq_cst) noexcept {
         (void)order;
         T *old = value_;
         value_ += arg;
         return old;
     }
 
-    T *fetch_sub(ptrdiff_t arg, memory_order order = memory_order_seq_cst) noexcept
-    {
+    T *fetch_sub(ptrdiff_t arg, memory_order order = memory_order_seq_cst) noexcept {
         (void)order;
         T *old = value_;
         value_ -= arg;
         return old;
     }
 
-    T *operator++() noexcept
-    {
+    T *operator++() noexcept {
         return fetch_add(1) + 1;
     }
 
-    T *operator++(int) noexcept
-    {
+    T *operator++(int) noexcept {
         return fetch_add(1);
     }
 
-    T *operator--() noexcept
-    {
+    T *operator--() noexcept {
         return fetch_sub(1) - 1;
     }
 
-    T *operator--(int) noexcept
-    {
+    T *operator--(int) noexcept {
         return fetch_sub(1);
     }
 
-    T *operator+=(ptrdiff_t arg) noexcept
-    {
+    T *operator+=(ptrdiff_t arg) noexcept {
         return fetch_add(arg) + arg;
     }
 
-    T *operator-=(ptrdiff_t arg) noexcept
-    {
+    T *operator-=(ptrdiff_t arg) noexcept {
         return fetch_sub(arg) - arg;
     }
 };
@@ -754,65 +649,56 @@ using atomic_uintmax_t = atomic<uintmax_t>;
  * ===========================================================================
  */
 
-template <class T> bool atomic_is_lock_free(const atomic<T> *obj) noexcept
-{
+template <class T> bool atomic_is_lock_free(const atomic<T> *obj) noexcept {
     return obj->is_lock_free();
 }
 
 template <class T>
-void atomic_store(atomic<T> *obj, typename atomic<T>::value_type desired) noexcept
-{
+void atomic_store(atomic<T> *obj, typename atomic<T>::value_type desired) noexcept {
     obj->store(desired);
 }
 
 template <class T>
 void atomic_store_explicit(atomic<T> *obj,
                            typename atomic<T>::value_type desired,
-                           memory_order order) noexcept
-{
+                           memory_order order) noexcept {
     obj->store(desired, order);
 }
 
-template <class T> typename atomic<T>::value_type atomic_load(const atomic<T> *obj) noexcept
-{
+template <class T> typename atomic<T>::value_type atomic_load(const atomic<T> *obj) noexcept {
     return obj->load();
 }
 
 template <class T>
 typename atomic<T>::value_type atomic_load_explicit(const atomic<T> *obj,
-                                                    memory_order order) noexcept
-{
+                                                    memory_order order) noexcept {
     return obj->load(order);
 }
 
 template <class T>
 typename atomic<T>::value_type atomic_exchange(atomic<T> *obj,
-                                               typename atomic<T>::value_type desired) noexcept
-{
+                                               typename atomic<T>::value_type desired) noexcept {
     return obj->exchange(desired);
 }
 
 template <class T>
 typename atomic<T>::value_type atomic_exchange_explicit(atomic<T> *obj,
                                                         typename atomic<T>::value_type desired,
-                                                        memory_order order) noexcept
-{
+                                                        memory_order order) noexcept {
     return obj->exchange(desired, order);
 }
 
 template <class T>
 bool atomic_compare_exchange_weak(atomic<T> *obj,
                                   typename atomic<T>::value_type *expected,
-                                  typename atomic<T>::value_type desired) noexcept
-{
+                                  typename atomic<T>::value_type desired) noexcept {
     return obj->compare_exchange_weak(*expected, desired);
 }
 
 template <class T>
 bool atomic_compare_exchange_strong(atomic<T> *obj,
                                     typename atomic<T>::value_type *expected,
-                                    typename atomic<T>::value_type desired) noexcept
-{
+                                    typename atomic<T>::value_type desired) noexcept {
     return obj->compare_exchange_strong(*expected, desired);
 }
 
@@ -841,8 +727,8 @@ bool atomic_compare_exchange_strong(atomic<T> *obj,
 
 #define ATOMIC_VAR_INIT(value) (value)
 
-template <class T> void atomic_init(atomic<T> *obj, typename atomic<T>::value_type desired) noexcept
-{
+template <class T>
+void atomic_init(atomic<T> *obj, typename atomic<T>::value_type desired) noexcept {
     obj->store(desired, memory_order_relaxed);
 }
 
@@ -852,8 +738,7 @@ template <class T> void atomic_init(atomic<T> *obj, typename atomic<T>::value_ty
  * ===========================================================================
  */
 
-template <class T> T kill_dependency(T y) noexcept
-{
+template <class T> T kill_dependency(T y) noexcept {
     return y;
 }
 

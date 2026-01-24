@@ -4,8 +4,7 @@
 #include "types.h"
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 /* Socket types */
@@ -75,56 +74,50 @@ extern "C"
 #define MSG_WAITALL 0x100   /* Wait for full request */
 #define MSG_NOSIGNAL 0x4000 /* Don't generate SIGPIPE */
 
-    /* sockaddr size */
-    typedef unsigned int socklen_t;
+/* sockaddr size */
+typedef unsigned int socklen_t;
 
-    /* Generic socket address structure */
-    struct sockaddr
-    {
-        unsigned short sa_family; /* Address family */
-        char sa_data[14];         /* Address data */
-    };
+/* Generic socket address structure */
+struct sockaddr {
+    unsigned short sa_family; /* Address family */
+    char sa_data[14];         /* Address data */
+};
 
-    /* Storage for any socket address */
-    struct sockaddr_storage
-    {
-        unsigned short ss_family; /* Address family */
-        char __ss_padding[126];   /* Padding to 128 bytes */
-    };
+/* Storage for any socket address */
+struct sockaddr_storage {
+    unsigned short ss_family; /* Address family */
+    char __ss_padding[126];   /* Padding to 128 bytes */
+};
 
-    /* Linger structure */
-    struct linger
-    {
-        int l_onoff;  /* Linger on/off */
-        int l_linger; /* Linger time in seconds */
-    };
+/* Linger structure */
+struct linger {
+    int l_onoff;  /* Linger on/off */
+    int l_linger; /* Linger time in seconds */
+};
 
-    /* Message header for sendmsg/recvmsg */
-    struct iovec
-    {
-        void *iov_base; /* Base address */
-        size_t iov_len; /* Length */
-    };
+/* Message header for sendmsg/recvmsg */
+struct iovec {
+    void *iov_base; /* Base address */
+    size_t iov_len; /* Length */
+};
 
-    struct msghdr
-    {
-        void *msg_name;        /* Optional address */
-        socklen_t msg_namelen; /* Size of address */
-        struct iovec *msg_iov; /* Scatter/gather array */
-        size_t msg_iovlen;     /* # elements in msg_iov */
-        void *msg_control;     /* Ancillary data */
-        size_t msg_controllen; /* Ancillary data length */
-        int msg_flags;         /* Flags on received message */
-    };
+struct msghdr {
+    void *msg_name;        /* Optional address */
+    socklen_t msg_namelen; /* Size of address */
+    struct iovec *msg_iov; /* Scatter/gather array */
+    size_t msg_iovlen;     /* # elements in msg_iov */
+    void *msg_control;     /* Ancillary data */
+    size_t msg_controllen; /* Ancillary data length */
+    int msg_flags;         /* Flags on received message */
+};
 
-    /* Control message header */
-    struct cmsghdr
-    {
-        size_t cmsg_len; /* Data length including header */
-        int cmsg_level;  /* Originating protocol */
-        int cmsg_type;   /* Protocol-specific type */
-        /* followed by unsigned char cmsg_data[] */
-    };
+/* Control message header */
+struct cmsghdr {
+    size_t cmsg_len; /* Data length including header */
+    int cmsg_level;  /* Originating protocol */
+    int cmsg_type;   /* Protocol-specific type */
+    /* followed by unsigned char cmsg_data[] */
+};
 
 /* Control message macros */
 #define CMSG_ALIGN(len) (((len) + sizeof(size_t) - 1) & ~(sizeof(size_t) - 1))
@@ -142,45 +135,41 @@ extern "C"
 #define CMSG_SPACE(len) (CMSG_ALIGN(sizeof(struct cmsghdr)) + CMSG_ALIGN(len))
 #define CMSG_LEN(len) (CMSG_ALIGN(sizeof(struct cmsghdr)) + (len))
 
-    /* Socket functions */
-    int socket(int domain, int type, int protocol);
-    int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
-    int listen(int sockfd, int backlog);
-    int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
-    int accept4(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags);
-    int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
+/* Socket functions */
+int socket(int domain, int type, int protocol);
+int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
+int listen(int sockfd, int backlog);
+int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
+int accept4(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags);
+int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
 
-    /* Data transfer */
-    ssize_t send(int sockfd, const void *buf, size_t len, int flags);
-    ssize_t recv(int sockfd, void *buf, size_t len, int flags);
-    ssize_t sendto(int sockfd,
-                   const void *buf,
-                   size_t len,
-                   int flags,
-                   const struct sockaddr *dest_addr,
-                   socklen_t addrlen);
-    ssize_t recvfrom(int sockfd,
-                     void *buf,
-                     size_t len,
-                     int flags,
-                     struct sockaddr *src_addr,
-                     socklen_t *addrlen);
-    ssize_t sendmsg(int sockfd, const struct msghdr *msg, int flags);
-    ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags);
+/* Data transfer */
+ssize_t send(int sockfd, const void *buf, size_t len, int flags);
+ssize_t recv(int sockfd, void *buf, size_t len, int flags);
+ssize_t sendto(int sockfd,
+               const void *buf,
+               size_t len,
+               int flags,
+               const struct sockaddr *dest_addr,
+               socklen_t addrlen);
+ssize_t recvfrom(
+    int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen);
+ssize_t sendmsg(int sockfd, const struct msghdr *msg, int flags);
+ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags);
 
-    /* Socket options */
-    int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optlen);
-    int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t optlen);
+/* Socket options */
+int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optlen);
+int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t optlen);
 
-    /* Socket address */
-    int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
-    int getpeername(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
+/* Socket address */
+int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
+int getpeername(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
 
-    /* Shutdown */
-    int shutdown(int sockfd, int how);
+/* Shutdown */
+int shutdown(int sockfd, int how);
 
-    /* Socket pair */
-    int socketpair(int domain, int type, int protocol, int sv[2]);
+/* Socket pair */
+int socketpair(int domain, int type, int protocol, int sv[2]);
 
 #ifdef __cplusplus
 }

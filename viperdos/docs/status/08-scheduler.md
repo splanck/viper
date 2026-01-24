@@ -1,12 +1,14 @@
 # Scheduler and Task Management
 
-**Status:** Complete priority-based preemptive scheduler with SMP support, CFS fair scheduling, deadline scheduling (EDF), and priority inheritance
+**Status:** Complete priority-based preemptive scheduler with SMP support, CFS fair scheduling, deadline scheduling (
+EDF), and priority inheritance
 **Location:** `kernel/sched/`
 **SLOC:** ~4,500
 
 ## Overview
 
-The scheduler subsystem provides priority-based preemptive scheduling for both kernel and user-mode tasks. It implements:
+The scheduler subsystem provides priority-based preemptive scheduling for both kernel and user-mode tasks. It
+implements:
 
 - **8 priority queues** with configurable time slices per priority level
 - **CFS (Completely Fair Scheduler)** with vruntime tracking and nice values for SCHED_OTHER tasks
@@ -57,16 +59,16 @@ The scheduler subsystem provides priority-based preemptive scheduling for both k
 
 ### 8 Priority Queues
 
-| Queue | Priority Range | Time Slice | Description |
-|-------|----------------|------------|-------------|
-| 0 | 0-31 | 20ms | Highest priority (system tasks) |
-| 1 | 32-63 | 18ms | High priority |
-| 2 | 64-95 | 15ms | Above normal |
-| 3 | 96-127 | 12ms | Normal-high |
-| 4 | 128-159 | 10ms | **Default** (normal tasks) |
-| 5 | 160-191 | 8ms | Below normal |
-| 6 | 192-223 | 5ms | Low priority |
-| 7 | 224-255 | 5ms | Lowest (idle task) |
+| Queue | Priority Range | Time Slice | Description                     |
+|-------|----------------|------------|---------------------------------|
+| 0     | 0-31           | 20ms       | Highest priority (system tasks) |
+| 1     | 32-63          | 18ms       | High priority                   |
+| 2     | 64-95          | 15ms       | Above normal                    |
+| 3     | 96-127         | 12ms       | Normal-high                     |
+| 4     | 128-159        | 10ms       | **Default** (normal tasks)      |
+| 5     | 160-191        | 8ms        | Below normal                    |
+| 6     | 192-223        | 5ms        | Low priority                    |
+| 7     | 224-255        | 5ms        | Lowest (idle task)              |
 
 ### Priority Constants
 
@@ -153,21 +155,21 @@ enum class SchedPolicy : u8 {
 
 ### Task States
 
-| State | Value | Description |
-|-------|-------|-------------|
-| Invalid | 0 | Slot not in use |
-| Ready | 1 | Runnable, in queue |
-| Running | 2 | Currently executing |
-| Blocked | 3 | Waiting on event |
-| Exited | 4 | Terminated |
+| State   | Value | Description         |
+|---------|-------|---------------------|
+| Invalid | 0     | Slot not in use     |
+| Ready   | 1     | Runnable, in queue  |
+| Running | 2     | Currently executing |
+| Blocked | 3     | Waiting on event    |
+| Exited  | 4     | Terminated          |
 
 ### Task Flags
 
-| Flag | Bit | Description |
-|------|-----|-------------|
-| TASK_FLAG_KERNEL | 0 | Runs in kernel mode (EL1) |
-| TASK_FLAG_IDLE | 1 | Idle task |
-| TASK_FLAG_USER | 2 | Runs in user mode (EL0) |
+| Flag             | Bit | Description               |
+|------------------|-----|---------------------------|
+| TASK_FLAG_KERNEL | 0   | Runs in kernel mode (EL1) |
+| TASK_FLAG_IDLE   | 1   | Idle task                 |
+| TASK_FLAG_USER   | 2   | Runs in user mode (EL0)   |
 
 ### Task Structure (Key Fields)
 
@@ -312,9 +314,9 @@ struct Context {
 1. Save current task's context (x19-x30, sp)
 2. Update current task pointer
 3. If switching to user task:
-   - Switch TTBR0 to user page table
-   - Update ASID for TLB isolation
-   - Issue TLB invalidation if needed
+    - Switch TTBR0 to user page table
+    - Update ASID for TLB isolation
+    - Issue TLB invalidation if needed
 4. Restore new task's context
 5. Return to new task's execution point
 
@@ -389,7 +391,8 @@ void channel_send(Channel *ch, const void *data) {
 
 ## CFS Fair Scheduling
 
-The CFS (Completely Fair Scheduler) implementation provides fair CPU time distribution for SCHED_OTHER tasks based on virtual runtime tracking.
+The CFS (Completely Fair Scheduler) implementation provides fair CPU time distribution for SCHED_OTHER tasks based on
+virtual runtime tracking.
 
 ### Virtual Runtime (vruntime)
 
@@ -407,13 +410,13 @@ Tasks with **lower vruntime** are selected first, ensuring fair CPU distribution
 
 Nice values range from -20 (highest priority) to +19 (lowest priority):
 
-| Nice | Weight | Effect |
-|------|--------|--------|
-| -20 | 88761 | Runs ~15x more than nice 0 |
-| -10 | 9548 | Runs ~9x more than nice 0 |
-| 0 | 1024 | Default weight |
-| +10 | 110 | Runs ~9x less than nice 0 |
-| +19 | 15 | Runs ~68x less than nice 0 |
+| Nice | Weight | Effect                     |
+|------|--------|----------------------------|
+| -20  | 88761  | Runs ~15x more than nice 0 |
+| -10  | 9548   | Runs ~9x more than nice 0  |
+| 0    | 1024   | Default weight             |
+| +10  | 110    | Runs ~9x less than nice 0  |
+| +19  | 15     | Runs ~68x less than nice 0 |
 
 ### Weight Tables
 
@@ -566,7 +569,8 @@ u32 task::get_affinity(Task *t);            // Returns mask (CPU_AFFINITY_ALL if
 
 ## Priority Inheritance
 
-Priority inheritance (PI) mutexes prevent priority inversion by temporarily boosting the priority of a mutex holder when a higher-priority task is waiting.
+Priority inheritance (PI) mutexes prevent priority inversion by temporarily boosting the priority of a mutex holder when
+a higher-priority task is waiting.
 
 ### PI Mutex Structure
 
@@ -669,44 +673,44 @@ namespace idle {
 
 ## Syscalls
 
-| Syscall | Number | Description |
-|---------|--------|-------------|
-| SYS_TASK_YIELD | 0x00 | Yield CPU to scheduler |
-| SYS_TASK_EXIT | 0x01 | Terminate with exit code |
-| SYS_TASK_CURRENT | 0x02 | Get current task ID |
-| SYS_TASK_SPAWN | 0x03 | Create new task |
-| SYS_TASK_JOIN | 0x04 | Wait for task completion |
-| SYS_TASK_LIST | 0x05 | List all tasks |
-| SYS_TASK_SET_PRIORITY | 0x06 | Set task priority |
-| SYS_TASK_GET_PRIORITY | 0x07 | Get task priority |
-| SYS_WAIT | 0x08 | Wait for any child |
-| SYS_WAITPID | 0x09 | Wait for specific child |
-| SYS_SCHED_SETAFFINITY | 0x0D | Set CPU affinity mask |
-| SYS_SCHED_GETAFFINITY | 0x0E | Get CPU affinity mask |
-| SYS_SLEEP | 0x31 | Sleep for duration |
+| Syscall               | Number | Description              |
+|-----------------------|--------|--------------------------|
+| SYS_TASK_YIELD        | 0x00   | Yield CPU to scheduler   |
+| SYS_TASK_EXIT         | 0x01   | Terminate with exit code |
+| SYS_TASK_CURRENT      | 0x02   | Get current task ID      |
+| SYS_TASK_SPAWN        | 0x03   | Create new task          |
+| SYS_TASK_JOIN         | 0x04   | Wait for task completion |
+| SYS_TASK_LIST         | 0x05   | List all tasks           |
+| SYS_TASK_SET_PRIORITY | 0x06   | Set task priority        |
+| SYS_TASK_GET_PRIORITY | 0x07   | Get task priority        |
+| SYS_WAIT              | 0x08   | Wait for any child       |
+| SYS_WAITPID           | 0x09   | Wait for specific child  |
+| SYS_SCHED_SETAFFINITY | 0x0D   | Set CPU affinity mask    |
+| SYS_SCHED_GETAFFINITY | 0x0E   | Get CPU affinity mask    |
+| SYS_SLEEP             | 0x31   | Sleep for duration       |
 
 ---
 
 ## Implementation Files
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `task.hpp` | ~550 | Task structures, constants, affinity/nice APIs |
-| `task.cpp` | ~900 | Task management, affinity, nice value handling |
-| `scheduler.hpp` | ~200 | Scheduler interface |
+| File            | Lines | Description                                         |
+|-----------------|-------|-----------------------------------------------------|
+| `task.hpp`      | ~550  | Task structures, constants, affinity/nice APIs      |
+| `task.cpp`      | ~900  | Task management, affinity, nice value handling      |
+| `scheduler.hpp` | ~200  | Scheduler interface                                 |
 | `scheduler.cpp` | ~1100 | Priority queues, CFS vruntime, EDF, affinity checks |
-| `context.S` | ~150 | Context switch assembly |
-| `wait.hpp` | ~100 | Wait queue interface |
-| `wait.cpp` | ~200 | Wait queue implementation |
-| `signal.hpp` | ~150 | Signal definitions |
-| `signal.cpp` | ~400 | Signal handling |
-| `cfs.hpp` | ~120 | CFS weight tables and vruntime calculation |
-| `deadline.hpp` | ~130 | Deadline parameters and EDF utilities |
-| `deadline.cpp` | ~90 | Deadline admission control and replenishment |
-| `pi.hpp` | ~110 | Priority inheritance mutex interface |
-| `pi.cpp` | ~170 | PI mutex implementation |
-| `idle.hpp` | ~60 | Idle state tracking interface |
-| `idle.cpp` | ~70 | Per-CPU idle statistics |
+| `context.S`     | ~150  | Context switch assembly                             |
+| `wait.hpp`      | ~100  | Wait queue interface                                |
+| `wait.cpp`      | ~200  | Wait queue implementation                           |
+| `signal.hpp`    | ~150  | Signal definitions                                  |
+| `signal.cpp`    | ~400  | Signal handling                                     |
+| `cfs.hpp`       | ~120  | CFS weight tables and vruntime calculation          |
+| `deadline.hpp`  | ~130  | Deadline parameters and EDF utilities               |
+| `deadline.cpp`  | ~90   | Deadline admission control and replenishment        |
+| `pi.hpp`        | ~110  | Priority inheritance mutex interface                |
+| `pi.cpp`        | ~170  | PI mutex implementation                             |
+| `idle.hpp`      | ~60   | Idle state tracking interface                       |
+| `idle.cpp`      | ~70   | Per-CPU idle statistics                             |
 
 ---
 
@@ -714,12 +718,12 @@ namespace idle {
 
 ### Context Switch Timing
 
-| Operation | Typical Time |
-|-----------|-------------|
-| Register save/restore | ~200ns |
-| Page table switch | ~300ns |
-| TLB invalidation | ~500ns |
-| Full context switch | ~1-2μs |
+| Operation             | Typical Time |
+|-----------------------|--------------|
+| Register save/restore | ~200ns       |
+| Page table switch     | ~300ns       |
+| TLB invalidation      | ~500ns       |
+| Full context switch   | ~1-2μs       |
 
 ### Scheduler Overhead
 
@@ -929,7 +933,9 @@ void dump_smp_stats();
 All five priority scheduler enhancements have been implemented and are fully operational:
 
 ### 1. CPU Affinity ✅
+
 **Status:** Complete
+
 - Bitmask-based CPU affinity per task (`cpu_affinity` field)
 - `SYS_SCHED_SETAFFINITY` (0x0D) / `SYS_SCHED_GETAFFINITY` (0x0E) syscalls
 - Scheduler respects affinity in both `dequeue_locked()` and `dequeue_percpu_locked()`
@@ -937,7 +943,9 @@ All five priority scheduler enhancements have been implemented and are fully ope
 - **Files:** `task.hpp`, `task.cpp`, `scheduler.cpp`
 
 ### 2. Deadline Scheduler (SCHED_DEADLINE) ✅
+
 **Status:** Complete
+
 - EDF (Earliest Deadline First) scheduling via `dl_abs_deadline`
 - Bandwidth reservation parameters: `dl_runtime`, `dl_deadline`, `dl_period`
 - Admission control with 95% max bandwidth cap
@@ -945,7 +953,9 @@ All five priority scheduler enhancements have been implemented and are fully ope
 - **Files:** `deadline.hpp`, `deadline.cpp`, `scheduler.cpp`
 
 ### 3. CFS Fair Scheduling ✅
+
 **Status:** Complete
+
 - Virtual runtime tracking (`vruntime` field, nanoseconds)
 - Nice value support (-20 to +19) with weight tables
 - `tick()` updates vruntime using `cfs::calc_vruntime_delta()`
@@ -953,14 +963,18 @@ All five priority scheduler enhancements have been implemented and are fully ope
 - **Files:** `cfs.hpp`, `scheduler.cpp`
 
 ### 4. CPU Idle State Tracking ✅
+
 **Status:** Complete
+
 - WFI enter/exit tracking in idle task via `idle::enter()`/`idle::exit()`
 - Per-CPU idle statistics (WFI count, wakeup count)
 - Integrated with idle_task_fn in task.cpp
 - **Files:** `idle.hpp`, `idle.cpp`, `task.cpp`
 
 ### 5. Priority Inheritance Mutexes ✅
+
 **Status:** Complete
+
 - `PiMutex` structure with owner tracking and priority storage
 - `pi::contend()` boosts owner when high-priority task waits
 - `pi::unlock()` restores original priority

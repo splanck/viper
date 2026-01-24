@@ -48,8 +48,7 @@
 #define MAX_NAMED_SEMS 16
 #define MAX_SEM_NAME 32
 
-struct named_sem
-{
+struct named_sem {
     int in_use;
     char name[MAX_SEM_NAME];
     sem_t sem;
@@ -59,49 +58,38 @@ struct named_sem
 static struct named_sem named_sems[MAX_NAMED_SEMS];
 static int named_sems_initialized = 0;
 
-static void init_named_sems(void)
-{
-    if (!named_sems_initialized)
-    {
+static void init_named_sems(void) {
+    if (!named_sems_initialized) {
         memset(named_sems, 0, sizeof(named_sems));
         named_sems_initialized = 1;
     }
 }
 
-static struct named_sem *find_named_sem(const char *name)
-{
-    for (int i = 0; i < MAX_NAMED_SEMS; i++)
-    {
-        if (named_sems[i].in_use && strcmp(named_sems[i].name, name) == 0)
-        {
+static struct named_sem *find_named_sem(const char *name) {
+    for (int i = 0; i < MAX_NAMED_SEMS; i++) {
+        if (named_sems[i].in_use && strcmp(named_sems[i].name, name) == 0) {
             return &named_sems[i];
         }
     }
     return NULL;
 }
 
-static struct named_sem *alloc_named_sem(void)
-{
-    for (int i = 0; i < MAX_NAMED_SEMS; i++)
-    {
-        if (!named_sems[i].in_use)
-        {
+static struct named_sem *alloc_named_sem(void) {
+    for (int i = 0; i < MAX_NAMED_SEMS; i++) {
+        if (!named_sems[i].in_use) {
             return &named_sems[i];
         }
     }
     return NULL;
 }
 
-int sem_init(sem_t *sem, int pshared, unsigned int value)
-{
-    if (sem == NULL)
-    {
+int sem_init(sem_t *sem, int pshared, unsigned int value) {
+    if (sem == NULL) {
         errno = EINVAL;
         return -1;
     }
 
-    if (value > SEM_VALUE_MAX)
-    {
+    if (value > SEM_VALUE_MAX) {
         errno = EINVAL;
         return -1;
     }
@@ -112,10 +100,8 @@ int sem_init(sem_t *sem, int pshared, unsigned int value)
     return 0;
 }
 
-int sem_destroy(sem_t *sem)
-{
-    if (sem == NULL)
-    {
+int sem_destroy(sem_t *sem) {
+    if (sem == NULL) {
         errno = EINVAL;
         return -1;
     }
@@ -125,31 +111,26 @@ int sem_destroy(sem_t *sem)
     return 0;
 }
 
-sem_t *sem_open(const char *name, int oflag, ...)
-{
+sem_t *sem_open(const char *name, int oflag, ...) {
     init_named_sems();
 
-    if (name == NULL || name[0] != '/')
-    {
+    if (name == NULL || name[0] != '/') {
         errno = EINVAL;
         return SEM_FAILED;
     }
 
     /* Skip leading slash for storage */
     const char *short_name = name + 1;
-    if (strlen(short_name) >= MAX_SEM_NAME)
-    {
+    if (strlen(short_name) >= MAX_SEM_NAME) {
         errno = ENAMETOOLONG;
         return SEM_FAILED;
     }
 
     struct named_sem *ns = find_named_sem(short_name);
 
-    if (ns != NULL)
-    {
+    if (ns != NULL) {
         /* Semaphore exists */
-        if ((oflag & O_CREAT) && (oflag & O_EXCL))
-        {
+        if ((oflag & O_CREAT) && (oflag & O_EXCL)) {
             errno = EEXIST;
             return SEM_FAILED;
         }
@@ -158,16 +139,14 @@ sem_t *sem_open(const char *name, int oflag, ...)
     }
 
     /* Semaphore doesn't exist */
-    if (!(oflag & O_CREAT))
-    {
+    if (!(oflag & O_CREAT)) {
         errno = ENOENT;
         return SEM_FAILED;
     }
 
     /* Create new named semaphore */
     ns = alloc_named_sem();
-    if (ns == NULL)
-    {
+    if (ns == NULL) {
         errno = EMFILE;
         return SEM_FAILED;
     }
@@ -181,8 +160,7 @@ sem_t *sem_open(const char *name, int oflag, ...)
 
     (void)mode; /* Mode not used in this implementation */
 
-    if (value > SEM_VALUE_MAX)
-    {
+    if (value > SEM_VALUE_MAX) {
         errno = EINVAL;
         return SEM_FAILED;
     }
@@ -197,22 +175,17 @@ sem_t *sem_open(const char *name, int oflag, ...)
     return &ns->sem;
 }
 
-int sem_close(sem_t *sem)
-{
-    if (sem == NULL)
-    {
+int sem_close(sem_t *sem) {
+    if (sem == NULL) {
         errno = EINVAL;
         return -1;
     }
 
     /* Find which named semaphore this is */
-    for (int i = 0; i < MAX_NAMED_SEMS; i++)
-    {
-        if (named_sems[i].in_use && &named_sems[i].sem == sem)
-        {
+    for (int i = 0; i < MAX_NAMED_SEMS; i++) {
+        if (named_sems[i].in_use && &named_sems[i].sem == sem) {
             named_sems[i].refcount--;
-            if (named_sems[i].refcount <= 0 && !named_sems[i].in_use)
-            {
+            if (named_sems[i].refcount <= 0 && !named_sems[i].in_use) {
                 /* Marked for removal and no more references */
                 memset(&named_sems[i], 0, sizeof(struct named_sem));
             }
@@ -225,12 +198,10 @@ int sem_close(sem_t *sem)
     return -1;
 }
 
-int sem_unlink(const char *name)
-{
+int sem_unlink(const char *name) {
     init_named_sems();
 
-    if (name == NULL || name[0] != '/')
-    {
+    if (name == NULL || name[0] != '/') {
         errno = EINVAL;
         return -1;
     }
@@ -238,8 +209,7 @@ int sem_unlink(const char *name)
     const char *short_name = name + 1;
     struct named_sem *ns = find_named_sem(short_name);
 
-    if (ns == NULL)
-    {
+    if (ns == NULL) {
         errno = ENOENT;
         return -1;
     }
@@ -248,8 +218,7 @@ int sem_unlink(const char *name)
     ns->in_use = 0;
     ns->name[0] = '\0';
 
-    if (ns->refcount <= 0)
-    {
+    if (ns->refcount <= 0) {
         /* No open references, free immediately */
         memset(ns, 0, sizeof(struct named_sem));
     }
@@ -257,17 +226,14 @@ int sem_unlink(const char *name)
     return 0;
 }
 
-int sem_wait(sem_t *sem)
-{
-    if (sem == NULL)
-    {
+int sem_wait(sem_t *sem) {
+    if (sem == NULL) {
         errno = EINVAL;
         return -1;
     }
 
     /* In a real implementation, this would block if value is 0 */
-    if (sem->value == 0)
-    {
+    if (sem->value == 0) {
         /* Single-process: can't block, return EAGAIN */
         errno = EAGAIN;
         return -1;
@@ -277,16 +243,13 @@ int sem_wait(sem_t *sem)
     return 0;
 }
 
-int sem_trywait(sem_t *sem)
-{
-    if (sem == NULL)
-    {
+int sem_trywait(sem_t *sem) {
+    if (sem == NULL) {
         errno = EINVAL;
         return -1;
     }
 
-    if (sem->value == 0)
-    {
+    if (sem->value == 0) {
         errno = EAGAIN;
         return -1;
     }
@@ -295,18 +258,15 @@ int sem_trywait(sem_t *sem)
     return 0;
 }
 
-int sem_timedwait(sem_t *sem, const struct timespec *abs_timeout)
-{
+int sem_timedwait(sem_t *sem, const struct timespec *abs_timeout) {
     (void)abs_timeout; /* Timeout not implemented */
 
-    if (sem == NULL)
-    {
+    if (sem == NULL) {
         errno = EINVAL;
         return -1;
     }
 
-    if (sem->value == 0)
-    {
+    if (sem->value == 0) {
         /* Would block - in real impl, would wait until timeout */
         errno = ETIMEDOUT;
         return -1;
@@ -316,16 +276,13 @@ int sem_timedwait(sem_t *sem, const struct timespec *abs_timeout)
     return 0;
 }
 
-int sem_post(sem_t *sem)
-{
-    if (sem == NULL)
-    {
+int sem_post(sem_t *sem) {
+    if (sem == NULL) {
         errno = EINVAL;
         return -1;
     }
 
-    if (sem->value >= SEM_VALUE_MAX)
-    {
+    if (sem->value >= SEM_VALUE_MAX) {
         errno = EOVERFLOW;
         return -1;
     }
@@ -335,10 +292,8 @@ int sem_post(sem_t *sem)
     return 0;
 }
 
-int sem_getvalue(sem_t *sem, int *sval)
-{
-    if (sem == NULL || sval == NULL)
-    {
+int sem_getvalue(sem_t *sem, int *sval) {
+    if (sem == NULL || sval == NULL) {
         errno = EINVAL;
         return -1;
     }

@@ -9,8 +9,7 @@
 #include <stdarg.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 /* Syslog priority levels */
@@ -71,39 +70,39 @@ extern "C"
 #define LOG_MASK(pri) (1 << (pri))
 #define LOG_UPTO(pri) ((1 << ((pri) + 1)) - 1)
 
-    /*
-     * openlog - Open connection to system logger
-     *
-     * ident: String prepended to every message
-     * option: Logging options (LOG_PID, LOG_CONS, etc.)
-     * facility: Default facility for messages
-     */
-    void openlog(const char *ident, int option, int facility);
+/*
+ * openlog - Open connection to system logger
+ *
+ * ident: String prepended to every message
+ * option: Logging options (LOG_PID, LOG_CONS, etc.)
+ * facility: Default facility for messages
+ */
+void openlog(const char *ident, int option, int facility);
 
-    /*
-     * syslog - Generate a log message
-     *
-     * priority: Message priority (LOG_ERR, LOG_INFO, etc.)
-     * format: printf-style format string
-     */
-    void syslog(int priority, const char *format, ...);
+/*
+ * syslog - Generate a log message
+ *
+ * priority: Message priority (LOG_ERR, LOG_INFO, etc.)
+ * format: printf-style format string
+ */
+void syslog(int priority, const char *format, ...);
 
-    /*
-     * vsyslog - Generate a log message (va_list version)
-     */
-    void vsyslog(int priority, const char *format, va_list ap);
+/*
+ * vsyslog - Generate a log message (va_list version)
+ */
+void vsyslog(int priority, const char *format, va_list ap);
 
-    /*
-     * closelog - Close connection to system logger
-     */
-    void closelog(void);
+/*
+ * closelog - Close connection to system logger
+ */
+void closelog(void);
 
-    /*
-     * setlogmask - Set the log priority mask
-     *
-     * Returns the previous mask value.
-     */
-    int setlogmask(int mask);
+/*
+ * setlogmask - Set the log priority mask
+ *
+ * Returns the previous mask value.
+ */
+int setlogmask(int mask);
 
 #ifdef __cplusplus
 }

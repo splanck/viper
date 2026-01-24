@@ -55,22 +55,22 @@ typedef struct pool_task
 /// @brief Worker thread state.
 typedef struct pool_worker
 {
-    void *thread;             ///< Thread handle.
-    struct pool_impl *pool;   ///< Back-reference to pool.
+    void *thread;           ///< Thread handle.
+    struct pool_impl *pool; ///< Back-reference to pool.
 } pool_worker;
 
 /// @brief Thread pool implementation.
 typedef struct pool_impl
 {
-    void *monitor;            ///< Monitor for synchronization.
-    pool_task *queue_head;    ///< Head of task queue.
-    pool_task *queue_tail;    ///< Tail of task queue.
-    pool_worker *workers;     ///< Array of workers.
-    int64_t worker_count;     ///< Number of workers.
-    int64_t pending_count;    ///< Number of tasks in queue.
-    int64_t active_count;     ///< Number of tasks running.
-    int8_t shutdown;          ///< Shutdown flag.
-    int8_t shutdown_now;      ///< Immediate shutdown flag.
+    void *monitor;         ///< Monitor for synchronization.
+    pool_task *queue_head; ///< Head of task queue.
+    pool_task *queue_tail; ///< Tail of task queue.
+    pool_worker *workers;  ///< Array of workers.
+    int64_t worker_count;  ///< Number of workers.
+    int64_t pending_count; ///< Number of tasks in queue.
+    int64_t active_count;  ///< Number of tasks running.
+    int8_t shutdown;       ///< Shutdown flag.
+    int8_t shutdown_now;   ///< Immediate shutdown flag.
 } pool_impl;
 
 //=============================================================================

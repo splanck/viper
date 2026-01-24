@@ -10,8 +10,7 @@
  * before the system enters normal operation.
  */
 
-namespace tests
-{
+namespace tests {
 
 /**
  * @brief Run block device and filesystem tests.

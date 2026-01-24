@@ -15,20 +15,17 @@
 
 #include "virtio.hpp"
 
-namespace virtio
-{
+namespace virtio {
 
 // Descriptor flags
-namespace desc_flags
-{
+namespace desc_flags {
 constexpr u16 NEXT = 1;     // Buffer continues via next field
 constexpr u16 WRITE = 2;    // Device writes (vs reads)
 constexpr u16 INDIRECT = 4; // Data is list of buffer descriptors
 } // namespace desc_flags
 
 // Virtqueue descriptor
-struct VringDesc
-{
+struct VringDesc {
     u64 addr;  // Physical address of buffer
     u32 len;   // Length of buffer
     u16 flags; // NEXT, WRITE, INDIRECT
@@ -36,23 +33,20 @@ struct VringDesc
 };
 
 // Available ring header
-struct VringAvail
-{
+struct VringAvail {
     u16 flags;
     u16 idx;
     u16 ring[];
 };
 
 // Used ring element
-struct VringUsedElem
-{
+struct VringUsedElem {
     u32 id;  // Descriptor chain head
     u32 len; // Bytes written by device
 };
 
 // Used ring header
-struct VringUsed
-{
+struct VringUsed {
     u16 flags;
     u16 idx;
     VringUsedElem ring[];
@@ -66,8 +60,7 @@ struct VringUsed
  * vring memory using the DMA allocation syscall, initializes the device queue
  * registers, and keeps a simple descriptor free list for building chains.
  */
-class Virtqueue
-{
+class Virtqueue {
   public:
     /**
      * @brief Initialize a virtqueue for a device and queue index.
@@ -139,28 +132,23 @@ class Virtqueue
     u32 get_used_len(u32 idx);
 
     // Queue properties
-    u32 size() const
-    {
+    u32 size() const {
         return size_;
     }
 
-    u32 num_free() const
-    {
+    u32 num_free() const {
         return num_free_;
     }
 
-    u16 avail_idx() const
-    {
+    u16 avail_idx() const {
         return avail_->idx;
     }
 
-    u16 used_idx() const
-    {
+    u16 used_idx() const {
         return used_->idx;
     }
 
-    u16 last_used() const
-    {
+    u16 last_used() const {
         return last_used_idx_;
     }
 

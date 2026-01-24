@@ -27,19 +27,19 @@
 /// @brief Sprite implementation structure.
 typedef struct rt_sprite_impl
 {
-    int64_t x;                         ///< X position
-    int64_t y;                         ///< Y position
-    int64_t scale_x;                   ///< Horizontal scale (100 = 100%)
-    int64_t scale_y;                   ///< Vertical scale (100 = 100%)
-    int64_t rotation;                  ///< Rotation in degrees
-    int64_t visible;                   ///< Visibility flag
-    int64_t origin_x;                  ///< Origin X for rotation/scaling
-    int64_t origin_y;                  ///< Origin Y for rotation/scaling
-    int64_t current_frame;             ///< Current animation frame
-    int64_t frame_count;               ///< Number of frames
-    int64_t frame_delay_ms;            ///< Delay between frames
-    int64_t last_frame_time;           ///< Last frame update time
-    void *frames[MAX_SPRITE_FRAMES];   ///< Frame pixel buffers
+    int64_t x;                       ///< X position
+    int64_t y;                       ///< Y position
+    int64_t scale_x;                 ///< Horizontal scale (100 = 100%)
+    int64_t scale_y;                 ///< Vertical scale (100 = 100%)
+    int64_t rotation;                ///< Rotation in degrees
+    int64_t visible;                 ///< Visibility flag
+    int64_t origin_x;                ///< Origin X for rotation/scaling
+    int64_t origin_y;                ///< Origin Y for rotation/scaling
+    int64_t current_frame;           ///< Current animation frame
+    int64_t frame_count;             ///< Number of frames
+    int64_t frame_delay_ms;          ///< Delay between frames
+    int64_t last_frame_time;         ///< Last frame update time
+    void *frames[MAX_SPRITE_FRAMES]; ///< Frame pixel buffers
 } rt_sprite_impl;
 
 // Forward declaration for time function

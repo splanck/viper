@@ -26,10 +26,22 @@ extern "C"
     //=========================================================================
 
     /// @brief Create a 4x4 matrix with specified elements (row-major).
-    void *rt_mat4_new(double m00, double m01, double m02, double m03,
-                      double m10, double m11, double m12, double m13,
-                      double m20, double m21, double m22, double m23,
-                      double m30, double m31, double m32, double m33);
+    void *rt_mat4_new(double m00,
+                      double m01,
+                      double m02,
+                      double m03,
+                      double m10,
+                      double m11,
+                      double m12,
+                      double m13,
+                      double m20,
+                      double m21,
+                      double m22,
+                      double m23,
+                      double m30,
+                      double m31,
+                      double m32,
+                      double m33);
 
     /// @brief Create a 4x4 identity matrix.
     void *rt_mat4_identity(void);
@@ -79,8 +91,8 @@ extern "C"
     void *rt_mat4_perspective(double fov, double aspect, double near, double far);
 
     /// @brief Create an orthographic projection matrix.
-    void *rt_mat4_ortho(double left, double right, double bottom, double top,
-                        double near, double far);
+    void *rt_mat4_ortho(
+        double left, double right, double bottom, double top, double near, double far);
 
     /// @brief Create a look-at view matrix.
     /// @param eye Camera position (Vec3).

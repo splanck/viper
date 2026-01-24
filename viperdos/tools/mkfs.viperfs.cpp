@@ -64,8 +64,7 @@ constexpr u64 ROOT_INODE = 2;
  * Fields are written in little-endian host order (the tool targets typical
  * little-endian systems used for development).
  */
-struct __attribute__((packed)) Superblock
-{
+struct __attribute__((packed)) Superblock {
     u32 magic;
     u32 version;
     u64 block_size;
@@ -92,8 +91,7 @@ static_assert(sizeof(Superblock) == 4096, "Superblock must be 4096 bytes");
  * This is a small, filesystem-local permission/type model. The kernel may map
  * these into higher-level VFS permissions.
  */
-namespace mode
-{
+namespace mode {
 constexpr u32 TYPE_FILE = 0x8000;
 constexpr u32 TYPE_DIR = 0x4000;
 constexpr u32 PERM_READ = 0x0004;
@@ -111,8 +109,7 @@ constexpr u32 PERM_EXEC = 0x0001;
  * - One single-indirect block pointer.
  * - Double/triple indirect pointers are reserved for future use.
  */
-struct __attribute__((packed)) Inode
-{
+struct __attribute__((packed)) Inode {
     u64 inode_num;
     u32 mode;
     u32 flags;
@@ -132,8 +129,7 @@ struct __attribute__((packed)) Inode
 static_assert(sizeof(Inode) == 256, "Inode must be 256 bytes");
 
 /** @brief Directory entry type values stored in @ref DirEntry::file_type. */
-namespace file_type
-{
+namespace file_type {
 constexpr u8 FILE = 1;
 constexpr u8 DIR = 2;
 } // namespace file_type
@@ -148,8 +144,7 @@ constexpr u8 DIR = 2;
  * `rec_len` specifies the total size of the record, allowing the reader to
  * skip to the next entry. Records are aligned to 8 bytes.
  */
-struct __attribute__((packed)) DirEntry
-{
+struct __attribute__((packed)) DirEntry {
     u64 inode;
     u16 rec_len;
     u8 name_len;
@@ -167,8 +162,7 @@ static_assert(sizeof(DirEntry) == 12, "DirEntry header must be 12 bytes");
  * provides helpers to allocate blocks/inodes and to write the final metadata
  * structures back to disk.
  */
-class DiskImage
-{
+class DiskImage {
   public:
     FILE *fp;
     u64 total_blocks;
@@ -195,11 +189,9 @@ class DiskImage
      * @param size_mb Image size in megabytes.
      * @return True on success, false on error opening/writing the file.
      */
-    bool create(const char *path, u64 size_mb)
-    {
+    bool create(const char *path, u64 size_mb) {
         fp = fopen(path, "w+b");
-        if (!fp)
-        {
+        if (!fp) {
             perror("fopen");
             return false;
         }
@@ -239,8 +231,7 @@ class DiskImage
         memset(inodes.data(), 0, inodes.size() * sizeof(Inode));
 
         // Mark system blocks as used
-        for (u64 i = 0; i < data_start; i++)
-        {
+        for (u64 i = 0; i < data_start; i++) {
             mark_block_used(i);
         }
 
@@ -264,8 +255,7 @@ class DiskImage
         strncpy(sb.label, "ViperDOS", sizeof(sb.label) - 1);
 
         // Generate random UUID
-        for (int i = 0; i < 16; i++)
-        {
+        for (int i = 0; i < 16; i++) {
             sb.uuid[i] = rand() & 0xFF;
         }
 
@@ -284,8 +274,7 @@ class DiskImage
      *
      * @param block Block index to mark used.
      */
-    void mark_block_used(u64 block)
-    {
+    void mark_block_used(u64 block) {
         bitmap[block / 8] |= (1 << (block % 8));
     }
 
@@ -300,14 +289,11 @@ class DiskImage
      *
      * @return Allocated block number.
      */
-    u64 alloc_block()
-    {
-        while (next_free_block < total_blocks)
-        {
+    u64 alloc_block() {
+        while (next_free_block < total_blocks) {
             u64 byte = next_free_block / 8;
             u64 bit = next_free_block % 8;
-            if (!(bitmap[byte] & (1 << bit)))
-            {
+            if (!(bitmap[byte] & (1 << bit))) {
                 bitmap[byte] |= (1 << bit);
                 return next_free_block++;
             }
@@ -327,11 +313,9 @@ class DiskImage
      *
      * @return Allocated inode number.
      */
-    u64 alloc_inode()
-    {
+    u64 alloc_inode() {
         u64 ino = next_free_inode++;
-        if (ino >= inodes.size())
-        {
+        if (ino >= inodes.size()) {
             fprintf(stderr, "Out of inodes!\n");
             exit(1);
         }
@@ -344,8 +328,7 @@ class DiskImage
      * @param block Block index to write.
      * @param data Pointer to 4 KiB of data to write.
      */
-    void write_block(u64 block, const void *data)
-    {
+    void write_block(u64 block, const void *data) {
         fseek(fp, block * BLOCK_SIZE, SEEK_SET);
         fwrite(data, BLOCK_SIZE, 1, fp);
     }
@@ -359,12 +342,10 @@ class DiskImage
      * @param block Block index to read.
      * @param data Output buffer (must be at least 4 KiB).
      */
-    void read_block(u64 block, void *data)
-    {
+    void read_block(u64 block, void *data) {
         fseek(fp, block * BLOCK_SIZE, SEEK_SET);
         size_t r = fread(data, BLOCK_SIZE, 1, fp);
-        if (r != 1)
-        {
+        if (r != 1) {
             memset(data, 0, BLOCK_SIZE);
         }
     }
@@ -379,18 +360,15 @@ class DiskImage
      * @param bitmap_start First bitmap block index.
      * @param inode_table_start First inode table block index.
      */
-    void finalize(u64 bitmap_start, u64 inode_table_start)
-    {
+    void finalize(u64 bitmap_start, u64 inode_table_start) {
         // Write bitmap
-        for (size_t i = 0; i < bitmap.size() / BLOCK_SIZE; i++)
-        {
+        for (size_t i = 0; i < bitmap.size() / BLOCK_SIZE; i++) {
             write_block(bitmap_start + i, &bitmap[i * BLOCK_SIZE]);
         }
 
         // Write inode table
         u8 inode_block[BLOCK_SIZE];
-        for (size_t i = 0; i < inodes.size() / INODES_PER_BLOCK; i++)
-        {
+        for (size_t i = 0; i < inodes.size() / INODES_PER_BLOCK; i++) {
             memcpy(inode_block, &inodes[i * INODES_PER_BLOCK], BLOCK_SIZE);
             write_block(inode_table_start + i, inode_block);
         }
@@ -425,17 +403,14 @@ std::map<std::string, u64> dir_inode_map;
  * @param path Input path.
  * @return Normalized path.
  */
-std::string normalize_path(const std::string &path)
-{
+std::string normalize_path(const std::string &path) {
     std::string result = path;
     // Remove leading slashes
-    while (!result.empty() && result[0] == '/')
-    {
+    while (!result.empty() && result[0] == '/') {
         result = result.substr(1);
     }
     // Remove trailing slashes
-    while (!result.empty() && result.back() == '/')
-    {
+    while (!result.empty() && result.back() == '/') {
         result.pop_back();
     }
     return result;
@@ -451,11 +426,9 @@ std::string normalize_path(const std::string &path)
  * @param path Normalized path.
  * @return Parent path (may be empty for root).
  */
-std::string get_parent_path(const std::string &path)
-{
+std::string get_parent_path(const std::string &path) {
     size_t pos = path.rfind('/');
-    if (pos == std::string::npos)
-    {
+    if (pos == std::string::npos) {
         return ""; // Root directory
     }
     return path.substr(0, pos);
@@ -467,11 +440,9 @@ std::string get_parent_path(const std::string &path)
  * @param path Normalized path.
  * @return Basename component.
  */
-std::string get_basename(const std::string &path)
-{
+std::string get_basename(const std::string &path) {
     size_t pos = path.rfind('/');
-    if (pos == std::string::npos)
-    {
+    if (pos == std::string::npos) {
         return path;
     }
     return path.substr(pos + 1);
@@ -507,8 +478,7 @@ u64 add_directory(DiskImage &img, u64 parent_ino, const char *name);
  * @param ftype Entry type (see @ref file_type).
  * @return True on success, false if there is no space in the directory block.
  */
-bool add_dir_entry(DiskImage &img, u64 parent_ino, u64 child_ino, const char *name, u8 ftype)
-{
+bool add_dir_entry(DiskImage &img, u64 parent_ino, u64 child_ino, const char *name, u8 ftype) {
     Inode &parent = img.inodes[parent_ino];
     u64 dir_block_num = parent.direct[0];
 
@@ -517,8 +487,7 @@ bool add_dir_entry(DiskImage &img, u64 parent_ino, u64 child_ino, const char *na
 
     // Find last entry and add new one
     size_t pos = 0;
-    while (pos < BLOCK_SIZE)
-    {
+    while (pos < BLOCK_SIZE) {
         DirEntry *entry = reinterpret_cast<DirEntry *>(dir_block + pos);
         if (entry->rec_len == 0)
             break;
@@ -527,16 +496,14 @@ bool add_dir_entry(DiskImage &img, u64 parent_ino, u64 child_ino, const char *na
         size_t actual_size = sizeof(DirEntry) + entry->name_len;
         actual_size = (actual_size + 7) & ~7; // Align to 8
 
-        if (entry->rec_len > actual_size)
-        {
+        if (entry->rec_len > actual_size) {
             // Split this entry
             size_t name_len = strlen(name);
             size_t new_entry_size = sizeof(DirEntry) + name_len;
             new_entry_size = (new_entry_size + 7) & ~7;
 
             size_t remaining = entry->rec_len - actual_size;
-            if (remaining >= new_entry_size)
-            {
+            if (remaining >= new_entry_size) {
                 // Create new entry
                 DirEntry *new_entry = reinterpret_cast<DirEntry *>(dir_block + pos + actual_size);
                 new_entry->inode = child_ino;
@@ -573,8 +540,7 @@ bool add_dir_entry(DiskImage &img, u64 parent_ino, u64 child_ino, const char *na
  * @param name Directory name (single path component).
  * @return New directory inode number on success, or 0 on failure.
  */
-u64 add_directory(DiskImage &img, u64 parent_ino, const char *name)
-{
+u64 add_directory(DiskImage &img, u64 parent_ino, const char *name) {
     u64 now = time(nullptr);
 
     // Allocate inode for directory
@@ -614,8 +580,7 @@ u64 add_directory(DiskImage &img, u64 parent_ino, const char *name)
     inode.blocks = 1;
 
     // Add entry to parent directory
-    if (!add_dir_entry(img, parent_ino, ino, name, file_type::DIR))
-    {
+    if (!add_dir_entry(img, parent_ino, ino, name, file_type::DIR)) {
         return 0;
     }
 
@@ -638,35 +603,30 @@ u64 add_directory(DiskImage &img, u64 parent_ino, const char *name)
  * @param path Directory path inside the image (may include `/` separators).
  * @return Inode number of the directory on success, or 0 on failure.
  */
-u64 ensure_directory_exists(DiskImage &img, const std::string &path)
-{
+u64 ensure_directory_exists(DiskImage &img, const std::string &path) {
     std::string normalized = normalize_path(path);
 
-    if (normalized.empty())
-    {
+    if (normalized.empty()) {
         return ROOT_INODE;
     }
 
     // Check if already created
     auto it = dir_inode_map.find(normalized);
-    if (it != dir_inode_map.end())
-    {
+    if (it != dir_inode_map.end()) {
         return it->second;
     }
 
     // Ensure parent exists first
     std::string parent_path = get_parent_path(normalized);
     u64 parent_ino = ensure_directory_exists(img, parent_path);
-    if (parent_ino == 0)
-    {
+    if (parent_ino == 0) {
         return 0;
     }
 
     // Create this directory
     std::string name = get_basename(normalized);
     u64 ino = add_directory(img, parent_ino, name.c_str());
-    if (ino == 0)
-    {
+    if (ino == 0) {
         return 0;
     }
 
@@ -685,8 +645,7 @@ u64 ensure_directory_exists(DiskImage &img, const std::string &path)
  *
  * @param img Disk image being constructed.
  */
-void create_root_dir(DiskImage &img)
-{
+void create_root_dir(DiskImage &img) {
     u64 now = time(nullptr);
 
     // Allocate root inode
@@ -748,8 +707,7 @@ void create_root_dir(DiskImage &img)
  * @param size File size in bytes.
  * @return New file inode number on success, or 0 on failure.
  */
-u64 add_file(DiskImage &img, u64 parent_ino, const char *name, const void *data, size_t size)
-{
+u64 add_file(DiskImage &img, u64 parent_ino, const char *name, const void *data, size_t size) {
     u64 now = time(nullptr);
 
     // Allocate inode for file
@@ -770,8 +728,7 @@ u64 add_file(DiskImage &img, u64 parent_ino, const char *name, const void *data,
     constexpr u64 PTRS_PER_BLOCK = BLOCK_SIZE / sizeof(u64);
 
     // Direct blocks (0-11)
-    for (u64 i = 0; i < blocks_needed && i < 12; i++)
-    {
+    for (u64 i = 0; i < blocks_needed && i < 12; i++) {
         u64 block = img.alloc_block();
         inode.direct[i] = block;
 
@@ -784,8 +741,7 @@ u64 add_file(DiskImage &img, u64 parent_ino, const char *name, const void *data,
     }
 
     // Single indirect blocks (12 to 12+511)
-    if (blocks_needed > 12)
-    {
+    if (blocks_needed > 12) {
         // Allocate indirect block
         u64 indirect_block = img.alloc_block();
         inode.indirect = indirect_block;
@@ -795,8 +751,7 @@ u64 add_file(DiskImage &img, u64 parent_ino, const char *name, const void *data,
         if (indirect_count > PTRS_PER_BLOCK)
             indirect_count = PTRS_PER_BLOCK;
 
-        for (u64 i = 0; i < indirect_count; i++)
-        {
+        for (u64 i = 0; i < indirect_count; i++) {
             u64 block = img.alloc_block();
             indirect_ptrs[i] = block;
 
@@ -816,8 +771,7 @@ u64 add_file(DiskImage &img, u64 parent_ino, const char *name, const void *data,
     }
 
     // Add directory entry to parent
-    if (!add_dir_entry(img, parent_ino, ino, name, file_type::FILE))
-    {
+    if (!add_dir_entry(img, parent_ino, ino, name, file_type::FILE)) {
         return 0;
     }
 
@@ -837,11 +791,9 @@ u64 add_file(DiskImage &img, u64 parent_ino, const char *name, const void *data,
  * @param path Host filesystem path to read.
  * @return New file inode number on success, or 0 on failure.
  */
-u64 add_file_from_disk(DiskImage &img, u64 parent_ino, const char *path)
-{
+u64 add_file_from_disk(DiskImage &img, u64 parent_ino, const char *path) {
     FILE *f = fopen(path, "rb");
-    if (!f)
-    {
+    if (!f) {
         perror(path);
         return 0;
     }
@@ -851,11 +803,9 @@ u64 add_file_from_disk(DiskImage &img, u64 parent_ino, const char *path)
     fseek(f, 0, SEEK_SET);
 
     std::vector<u8> data(size);
-    if (size > 0)
-    {
+    if (size > 0) {
         size_t r = fread(data.data(), 1, size, f);
-        if (r != size)
-        {
+        if (r != size) {
             fprintf(stderr, "Short read from %s\n", path);
         }
     }
@@ -886,11 +836,9 @@ u64 add_file_from_disk(DiskImage &img, u64 parent_ino, const char *path)
  * @param dest_path Destination path inside the image (e.g., `SYS/certs/roots.der`).
  * @return New file inode number on success, or 0 on failure.
  */
-u64 add_file_to_path(DiskImage &img, const char *src_path, const char *dest_path)
-{
+u64 add_file_to_path(DiskImage &img, const char *src_path, const char *dest_path) {
     FILE *f = fopen(src_path, "rb");
-    if (!f)
-    {
+    if (!f) {
         perror(src_path);
         return 0;
     }
@@ -900,11 +848,9 @@ u64 add_file_to_path(DiskImage &img, const char *src_path, const char *dest_path
     fseek(f, 0, SEEK_SET);
 
     std::vector<u8> data(size);
-    if (size > 0)
-    {
+    if (size > 0) {
         size_t r = fread(data.data(), 1, size, f);
-        if (r != size)
-        {
+        if (r != size) {
             fprintf(stderr, "Short read from %s\n", src_path);
         }
     }
@@ -917,8 +863,7 @@ u64 add_file_to_path(DiskImage &img, const char *src_path, const char *dest_path
 
     // Ensure parent directory exists
     u64 parent_ino = ensure_directory_exists(img, parent_path);
-    if (parent_ino == 0)
-    {
+    if (parent_ino == 0) {
         fprintf(stderr, "Failed to create parent directory for %s\n", dest_path);
         return 0;
     }
@@ -932,8 +877,7 @@ u64 add_file_to_path(DiskImage &img, const char *src_path, const char *dest_path
  *
  * @param prog Program name (argv[0]).
  */
-void print_usage(const char *prog)
-{
+void print_usage(const char *prog) {
     fprintf(stderr, "Usage: %s <image> <size_mb> [options...] [files...]\n", prog);
     fprintf(stderr, "\n");
     fprintf(stderr, "Options:\n");
@@ -964,10 +908,8 @@ void print_usage(const char *prog)
  * @param argv Argument vector.
  * @return 0 on success, non-zero on error.
  */
-int main(int argc, char **argv)
-{
-    if (argc < 3)
-    {
+int main(int argc, char **argv) {
+    if (argc < 3) {
         print_usage(argv[0]);
         return 1;
     }
@@ -977,15 +919,13 @@ int main(int argc, char **argv)
     const char *image_path = argv[1];
     u64 size_mb = atoi(argv[2]);
 
-    if (size_mb < 1)
-    {
+    if (size_mb < 1) {
         fprintf(stderr, "Size must be at least 1 MB\n");
         return 1;
     }
 
     DiskImage img;
-    if (!img.create(image_path, size_mb))
-    {
+    if (!img.create(image_path, size_mb)) {
         return 1;
     }
 
@@ -996,30 +936,23 @@ int main(int argc, char **argv)
     dir_inode_map[""] = ROOT_INODE;
 
     // Process arguments
-    for (int i = 3; i < argc; i++)
-    {
-        if (strcmp(argv[i], "--mkdir") == 0)
-        {
+    for (int i = 3; i < argc; i++) {
+        if (strcmp(argv[i], "--mkdir") == 0) {
             // Create directory
-            if (i + 1 >= argc)
-            {
+            if (i + 1 >= argc) {
                 fprintf(stderr, "Error: --mkdir requires a path argument\n");
                 return 1;
             }
             i++;
             std::string path = normalize_path(argv[i]);
             printf("Creating directory: %s\n", path.c_str());
-            if (ensure_directory_exists(img, path) == 0)
-            {
+            if (ensure_directory_exists(img, path) == 0) {
                 fprintf(stderr, "Failed to create directory: %s\n", argv[i]);
                 return 1;
             }
-        }
-        else if (strcmp(argv[i], "--add") == 0)
-        {
+        } else if (strcmp(argv[i], "--add") == 0) {
             // Add file to specific path
-            if (i + 1 >= argc)
-            {
+            if (i + 1 >= argc) {
                 fprintf(stderr, "Error: --add requires a src:dest argument\n");
                 return 1;
             }
@@ -1028,8 +961,7 @@ int main(int argc, char **argv)
             // Parse src:dest
             const char *arg = argv[i];
             const char *colon = strchr(arg, ':');
-            if (!colon)
-            {
+            if (!colon) {
                 fprintf(stderr, "Error: --add argument must be src:dest format\n");
                 return 1;
             }
@@ -1037,19 +969,14 @@ int main(int argc, char **argv)
             std::string src(arg, colon - arg);
             std::string dest(colon + 1);
 
-            if (add_file_to_path(img, src.c_str(), dest.c_str()) == 0)
-            {
+            if (add_file_to_path(img, src.c_str(), dest.c_str()) == 0) {
                 fprintf(stderr, "Failed to add file: %s -> %s\n", src.c_str(), dest.c_str());
                 return 1;
             }
-        }
-        else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0)
-        {
+        } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             print_usage(argv[0]);
             return 0;
-        }
-        else
-        {
+        } else {
             // Legacy mode: add file to root directory
             add_file_from_disk(img, ROOT_INODE, argv[i]);
         }
@@ -1066,10 +993,8 @@ int main(int argc, char **argv)
 
     // Count actual free blocks from bitmap
     u64 used_blocks = 0;
-    for (u64 i = 0; i < img.total_blocks; i++)
-    {
-        if (img.bitmap[i / 8] & (1 << (i % 8)))
-        {
+    for (u64 i = 0; i < img.total_blocks; i++) {
+        if (img.bitmap[i / 8] & (1 << (i % 8))) {
             used_blocks++;
         }
     }
@@ -1095,6 +1020,9 @@ int main(int argc, char **argv)
     img.finalize(bitmap_start, inode_table_start);
 
     printf("Created %s (%lu MB, %lu blocks used, %lu free)\n",
-           image_path, size_mb, used_blocks, actual_free_blocks);
+           image_path,
+           size_mb,
+           used_blocks,
+           actual_free_blocks);
     return 0;
 }

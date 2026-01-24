@@ -39,8 +39,7 @@
 #include <string.h>
 
 /* Hash table entry */
-struct dbm_entry
-{
+struct dbm_entry {
     datum key;
     datum value;
     struct dbm_entry *next;
@@ -49,8 +48,7 @@ struct dbm_entry
 /* Database structure */
 #define DBM_HASH_SIZE 256
 
-struct __ndbm
-{
+struct __ndbm {
     struct dbm_entry *buckets[DBM_HASH_SIZE];
     struct dbm_entry *iter_entry; /* Current iteration entry */
     int iter_bucket;              /* Current iteration bucket */
@@ -59,46 +57,39 @@ struct __ndbm
 };
 
 /* Simple hash function */
-static unsigned int dbm_hash(datum key)
-{
+static unsigned int dbm_hash(datum key) {
     unsigned int hash = 0;
     const unsigned char *p = key.dptr;
-    for (size_t i = 0; i < key.dsize; i++)
-    {
+    for (size_t i = 0; i < key.dsize; i++) {
         hash = hash * 31 + p[i];
     }
     return hash % DBM_HASH_SIZE;
 }
 
 /* Compare two datums */
-static int datum_eq(datum a, datum b)
-{
+static int datum_eq(datum a, datum b) {
     if (a.dsize != b.dsize)
         return 0;
     return memcmp(a.dptr, b.dptr, a.dsize) == 0;
 }
 
 /* Duplicate a datum */
-static datum datum_dup(datum d)
-{
+static datum datum_dup(datum d) {
     datum result;
     result.dsize = d.dsize;
     result.dptr = malloc(d.dsize);
-    if (result.dptr && d.dptr)
-    {
+    if (result.dptr && d.dptr) {
         memcpy(result.dptr, d.dptr, d.dsize);
     }
     return result;
 }
 
-DBM *dbm_open(const char *file, int open_flags, mode_t mode)
-{
+DBM *dbm_open(const char *file, int open_flags, mode_t mode) {
     (void)file; /* In-memory implementation doesn't use files */
     (void)mode;
 
     DBM *db = calloc(1, sizeof(DBM));
-    if (!db)
-    {
+    if (!db) {
         errno = ENOMEM;
         return NULL;
     }
@@ -111,17 +102,14 @@ DBM *dbm_open(const char *file, int open_flags, mode_t mode)
     return db;
 }
 
-void dbm_close(DBM *db)
-{
+void dbm_close(DBM *db) {
     if (!db)
         return;
 
     /* Free all entries */
-    for (int i = 0; i < DBM_HASH_SIZE; i++)
-    {
+    for (int i = 0; i < DBM_HASH_SIZE; i++) {
         struct dbm_entry *e = db->buckets[i];
-        while (e)
-        {
+        while (e) {
             struct dbm_entry *next = e->next;
             free(e->key.dptr);
             free(e->value.dptr);
@@ -133,22 +121,18 @@ void dbm_close(DBM *db)
     free(db);
 }
 
-datum dbm_fetch(DBM *db, datum key)
-{
+datum dbm_fetch(DBM *db, datum key) {
     datum result = {NULL, 0};
 
-    if (!db || !key.dptr)
-    {
+    if (!db || !key.dptr) {
         return result;
     }
 
     unsigned int bucket = dbm_hash(key);
     struct dbm_entry *e = db->buckets[bucket];
 
-    while (e)
-    {
-        if (datum_eq(e->key, key))
-        {
+    while (e) {
+        if (datum_eq(e->key, key)) {
             /* Return pointer to stored data (not a copy) */
             result.dptr = e->value.dptr;
             result.dsize = e->value.dsize;
@@ -160,17 +144,14 @@ datum dbm_fetch(DBM *db, datum key)
     return result;
 }
 
-int dbm_store(DBM *db, datum key, datum content, int store_mode)
-{
-    if (!db || !key.dptr)
-    {
+int dbm_store(DBM *db, datum key, datum content, int store_mode) {
+    if (!db || !key.dptr) {
         errno = EINVAL;
         db->error = 1;
         return -1;
     }
 
-    if (db->flags == O_RDONLY)
-    {
+    if (db->flags == O_RDONLY) {
         errno = EACCES;
         db->error = 1;
         return -1;
@@ -181,19 +162,15 @@ int dbm_store(DBM *db, datum key, datum content, int store_mode)
     struct dbm_entry *prev = NULL;
 
     /* Look for existing entry */
-    while (e)
-    {
-        if (datum_eq(e->key, key))
-        {
-            if (store_mode == DBM_INSERT)
-            {
+    while (e) {
+        if (datum_eq(e->key, key)) {
+            if (store_mode == DBM_INSERT) {
                 return 1; /* Key exists */
             }
             /* Replace value */
             free(e->value.dptr);
             e->value = datum_dup(content);
-            if (!e->value.dptr && content.dsize > 0)
-            {
+            if (!e->value.dptr && content.dsize > 0) {
                 db->error = 1;
                 return -1;
             }
@@ -205,8 +182,7 @@ int dbm_store(DBM *db, datum key, datum content, int store_mode)
 
     /* Insert new entry */
     e = malloc(sizeof(struct dbm_entry));
-    if (!e)
-    {
+    if (!e) {
         db->error = 1;
         return -1;
     }
@@ -215,8 +191,7 @@ int dbm_store(DBM *db, datum key, datum content, int store_mode)
     e->value = datum_dup(content);
     e->next = NULL;
 
-    if (!e->key.dptr || (!e->value.dptr && content.dsize > 0))
-    {
+    if (!e->key.dptr || (!e->value.dptr && content.dsize > 0)) {
         free(e->key.dptr);
         free(e->value.dptr);
         free(e);
@@ -224,28 +199,22 @@ int dbm_store(DBM *db, datum key, datum content, int store_mode)
         return -1;
     }
 
-    if (prev)
-    {
+    if (prev) {
         prev->next = e;
-    }
-    else
-    {
+    } else {
         db->buckets[bucket] = e;
     }
 
     return 0;
 }
 
-int dbm_delete(DBM *db, datum key)
-{
-    if (!db || !key.dptr)
-    {
+int dbm_delete(DBM *db, datum key) {
+    if (!db || !key.dptr) {
         errno = EINVAL;
         return -1;
     }
 
-    if (db->flags == O_RDONLY)
-    {
+    if (db->flags == O_RDONLY) {
         errno = EACCES;
         return -1;
     }
@@ -254,16 +223,11 @@ int dbm_delete(DBM *db, datum key)
     struct dbm_entry *e = db->buckets[bucket];
     struct dbm_entry *prev = NULL;
 
-    while (e)
-    {
-        if (datum_eq(e->key, key))
-        {
-            if (prev)
-            {
+    while (e) {
+        if (datum_eq(e->key, key)) {
+            if (prev) {
                 prev->next = e->next;
-            }
-            else
-            {
+            } else {
                 db->buckets[bucket] = e->next;
             }
             free(e->key.dptr);
@@ -278,8 +242,7 @@ int dbm_delete(DBM *db, datum key)
     return -1; /* Key not found */
 }
 
-datum dbm_firstkey(DBM *db)
-{
+datum dbm_firstkey(DBM *db) {
     datum result = {NULL, 0};
 
     if (!db)
@@ -290,10 +253,8 @@ datum dbm_firstkey(DBM *db)
     db->iter_entry = NULL;
 
     /* Find first non-empty bucket */
-    while (db->iter_bucket < DBM_HASH_SIZE)
-    {
-        if (db->buckets[db->iter_bucket])
-        {
+    while (db->iter_bucket < DBM_HASH_SIZE) {
+        if (db->buckets[db->iter_bucket]) {
             db->iter_entry = db->buckets[db->iter_bucket];
             result.dptr = db->iter_entry->key.dptr;
             result.dsize = db->iter_entry->key.dsize;
@@ -305,28 +266,24 @@ datum dbm_firstkey(DBM *db)
     return result;
 }
 
-datum dbm_nextkey(DBM *db)
-{
+datum dbm_nextkey(DBM *db) {
     datum result = {NULL, 0};
 
     if (!db || db->iter_bucket < 0)
         return result;
 
     /* Move to next entry */
-    if (db->iter_entry)
-    {
+    if (db->iter_entry) {
         db->iter_entry = db->iter_entry->next;
     }
 
     /* If no next entry, move to next bucket */
-    while (!db->iter_entry && db->iter_bucket < DBM_HASH_SIZE - 1)
-    {
+    while (!db->iter_entry && db->iter_bucket < DBM_HASH_SIZE - 1) {
         db->iter_bucket++;
         db->iter_entry = db->buckets[db->iter_bucket];
     }
 
-    if (db->iter_entry)
-    {
+    if (db->iter_entry) {
         result.dptr = db->iter_entry->key.dptr;
         result.dsize = db->iter_entry->key.dsize;
     }
@@ -334,31 +291,26 @@ datum dbm_nextkey(DBM *db)
     return result;
 }
 
-int dbm_error(DBM *db)
-{
+int dbm_error(DBM *db) {
     return db ? db->error : 1;
 }
 
-int dbm_clearerr(DBM *db)
-{
+int dbm_clearerr(DBM *db) {
     if (db)
         db->error = 0;
     return 0;
 }
 
-int dbm_dirfno(DBM *db)
-{
+int dbm_dirfno(DBM *db) {
     (void)db;
     return -1; /* Not using files */
 }
 
-int dbm_pagfno(DBM *db)
-{
+int dbm_pagfno(DBM *db) {
     (void)db;
     return -1; /* Not using files */
 }
 
-int dbm_rdonly(DBM *db)
-{
+int dbm_rdonly(DBM *db) {
     return (db && db->flags == O_RDONLY) ? 1 : 0;
 }

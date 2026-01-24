@@ -9,12 +9,11 @@
 #include <nl_types.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /* nl_item type for nl_langinfo() argument */
-    typedef int nl_item;
+/* nl_item type for nl_langinfo() argument */
+typedef int nl_item;
 
 /* LC_CTYPE category */
 #define CODESET 0 /* Coded character set name (e.g., "UTF-8") */
@@ -95,12 +94,12 @@ extern "C"
 #define _DATE_FMT 57 /* strftime format for date(1) */
 #define _NL_ITEM_MAX 58
 
-    /*
-     * Get locale-specific information.
-     * Returns a pointer to a string for the specified item.
-     * The returned string should not be modified or freed.
-     */
-    char *nl_langinfo(nl_item item);
+/*
+ * Get locale-specific information.
+ * Returns a pointer to a string for the specified item.
+ * The returned string should not be modified or freed.
+ */
+char *nl_langinfo(nl_item item);
 
 /*
  * Get locale-specific information for specified locale.
@@ -109,7 +108,7 @@ extern "C"
 #ifdef _POSIX_C_SOURCE
 #if _POSIX_C_SOURCE >= 200809L
 #include <locale.h>
-    char *nl_langinfo_l(nl_item item, locale_t locale);
+char *nl_langinfo_l(nl_item item, locale_t locale);
 #endif
 #endif
 

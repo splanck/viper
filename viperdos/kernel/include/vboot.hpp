@@ -15,8 +15,7 @@
 
 #include "types.hpp"
 
-namespace viper::vboot
-{
+namespace viper::vboot {
 
 /// Magic number to validate boot info: "VIPER\0" as uint64
 constexpr u64 VBOOT_MAGIC = 0x564950455200ULL;
@@ -25,8 +24,7 @@ constexpr u64 VBOOT_MAGIC = 0x564950455200ULL;
 constexpr int MAX_MEMORY_REGIONS = 64;
 
 /// Memory region types
-enum MemoryType : u32
-{
+enum MemoryType : u32 {
     MEMORY_USABLE = 1,
     MEMORY_RESERVED = 2,
     MEMORY_ACPI = 3,
@@ -34,8 +32,7 @@ enum MemoryType : u32
 };
 
 /// Framebuffer information from GOP
-struct Framebuffer
-{
+struct Framebuffer {
     u64 base;         ///< Physical address of framebuffer
     u32 width;        ///< Width in pixels
     u32 height;       ///< Height in pixels
@@ -46,8 +43,7 @@ struct Framebuffer
 };
 
 /// Memory region descriptor
-struct MemoryRegion
-{
+struct MemoryRegion {
     u64 base; ///< Physical base address
     u64 size; ///< Size in bytes
     u32 type; ///< MemoryType
@@ -55,8 +51,7 @@ struct MemoryRegion
 };
 
 /// Boot information structure passed from VBoot to kernel
-struct Info
-{
+struct Info {
     u64 magic;               ///< VBOOT_MAGIC
     u64 hhdm_base;           ///< Higher-half direct map base
     u64 kernel_phys_base;    ///< Kernel physical load address
@@ -76,8 +71,7 @@ struct Info
  * @param ptr Pointer to check.
  * @return true if ptr points to a valid VBootInfo structure.
  */
-inline bool is_valid(const void *ptr)
-{
+inline bool is_valid(const void *ptr) {
     if (!ptr)
         return false;
     const Info *info = static_cast<const Info *>(ptr);

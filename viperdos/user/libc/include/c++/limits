@@ -3,12 +3,10 @@
 
 #include "../limits.h"
 
-namespace std
-{
+namespace std {
 
 /* Float representation */
-enum float_round_style
-{
+enum float_round_style {
     round_indeterminate = -1,
     round_toward_zero = 0,
     round_to_nearest = 1,
@@ -16,31 +14,22 @@ enum float_round_style
     round_toward_neg_infinity = 3
 };
 
-enum float_denorm_style
-{
-    denorm_indeterminate = -1,
-    denorm_absent = 0,
-    denorm_present = 1
-};
+enum float_denorm_style { denorm_indeterminate = -1, denorm_absent = 0, denorm_present = 1 };
 
 /* Base template - undefined for unsupported types */
-template <class T> class numeric_limits
-{
+template <class T> class numeric_limits {
   public:
     static constexpr bool is_specialized = false;
 
-    static constexpr T min() noexcept
-    {
+    static constexpr T min() noexcept {
         return T();
     }
 
-    static constexpr T max() noexcept
-    {
+    static constexpr T max() noexcept {
         return T();
     }
 
-    static constexpr T lowest() noexcept
-    {
+    static constexpr T lowest() noexcept {
         return T();
     }
 
@@ -52,13 +41,11 @@ template <class T> class numeric_limits
     static constexpr bool is_exact = false;
     static constexpr int radix = 0;
 
-    static constexpr T epsilon() noexcept
-    {
+    static constexpr T epsilon() noexcept {
         return T();
     }
 
-    static constexpr T round_error() noexcept
-    {
+    static constexpr T round_error() noexcept {
         return T();
     }
 
@@ -72,23 +59,19 @@ template <class T> class numeric_limits
     static constexpr float_denorm_style has_denorm = denorm_absent;
     static constexpr bool has_denorm_loss = false;
 
-    static constexpr T infinity() noexcept
-    {
+    static constexpr T infinity() noexcept {
         return T();
     }
 
-    static constexpr T quiet_NaN() noexcept
-    {
+    static constexpr T quiet_NaN() noexcept {
         return T();
     }
 
-    static constexpr T signaling_NaN() noexcept
-    {
+    static constexpr T signaling_NaN() noexcept {
         return T();
     }
 
-    static constexpr T denorm_min() noexcept
-    {
+    static constexpr T denorm_min() noexcept {
         return T();
     }
 
@@ -101,23 +84,19 @@ template <class T> class numeric_limits
 };
 
 /* bool specialization */
-template <> class numeric_limits<bool>
-{
+template <> class numeric_limits<bool> {
   public:
     static constexpr bool is_specialized = true;
 
-    static constexpr bool min() noexcept
-    {
+    static constexpr bool min() noexcept {
         return false;
     }
 
-    static constexpr bool max() noexcept
-    {
+    static constexpr bool max() noexcept {
         return true;
     }
 
-    static constexpr bool lowest() noexcept
-    {
+    static constexpr bool lowest() noexcept {
         return false;
     }
 
@@ -129,13 +108,11 @@ template <> class numeric_limits<bool>
     static constexpr bool is_exact = true;
     static constexpr int radix = 2;
 
-    static constexpr bool epsilon() noexcept
-    {
+    static constexpr bool epsilon() noexcept {
         return false;
     }
 
-    static constexpr bool round_error() noexcept
-    {
+    static constexpr bool round_error() noexcept {
         return false;
     }
 
@@ -149,23 +126,19 @@ template <> class numeric_limits<bool>
     static constexpr float_denorm_style has_denorm = denorm_absent;
     static constexpr bool has_denorm_loss = false;
 
-    static constexpr bool infinity() noexcept
-    {
+    static constexpr bool infinity() noexcept {
         return false;
     }
 
-    static constexpr bool quiet_NaN() noexcept
-    {
+    static constexpr bool quiet_NaN() noexcept {
         return false;
     }
 
-    static constexpr bool signaling_NaN() noexcept
-    {
+    static constexpr bool signaling_NaN() noexcept {
         return false;
     }
 
-    static constexpr bool denorm_min() noexcept
-    {
+    static constexpr bool denorm_min() noexcept {
         return false;
     }
 
@@ -178,23 +151,19 @@ template <> class numeric_limits<bool>
 };
 
 /* char specialization */
-template <> class numeric_limits<char>
-{
+template <> class numeric_limits<char> {
   public:
     static constexpr bool is_specialized = true;
 
-    static constexpr char min() noexcept
-    {
+    static constexpr char min() noexcept {
         return CHAR_MIN;
     }
 
-    static constexpr char max() noexcept
-    {
+    static constexpr char max() noexcept {
         return CHAR_MAX;
     }
 
-    static constexpr char lowest() noexcept
-    {
+    static constexpr char lowest() noexcept {
         return CHAR_MIN;
     }
 
@@ -206,13 +175,11 @@ template <> class numeric_limits<char>
     static constexpr bool is_exact = true;
     static constexpr int radix = 2;
 
-    static constexpr char epsilon() noexcept
-    {
+    static constexpr char epsilon() noexcept {
         return 0;
     }
 
-    static constexpr char round_error() noexcept
-    {
+    static constexpr char round_error() noexcept {
         return 0;
     }
 
@@ -226,23 +193,19 @@ template <> class numeric_limits<char>
     static constexpr float_denorm_style has_denorm = denorm_absent;
     static constexpr bool has_denorm_loss = false;
 
-    static constexpr char infinity() noexcept
-    {
+    static constexpr char infinity() noexcept {
         return 0;
     }
 
-    static constexpr char quiet_NaN() noexcept
-    {
+    static constexpr char quiet_NaN() noexcept {
         return 0;
     }
 
-    static constexpr char signaling_NaN() noexcept
-    {
+    static constexpr char signaling_NaN() noexcept {
         return 0;
     }
 
-    static constexpr char denorm_min() noexcept
-    {
+    static constexpr char denorm_min() noexcept {
         return 0;
     }
 
@@ -255,23 +218,19 @@ template <> class numeric_limits<char>
 };
 
 /* signed char specialization */
-template <> class numeric_limits<signed char>
-{
+template <> class numeric_limits<signed char> {
   public:
     static constexpr bool is_specialized = true;
 
-    static constexpr signed char min() noexcept
-    {
+    static constexpr signed char min() noexcept {
         return SCHAR_MIN;
     }
 
-    static constexpr signed char max() noexcept
-    {
+    static constexpr signed char max() noexcept {
         return SCHAR_MAX;
     }
 
-    static constexpr signed char lowest() noexcept
-    {
+    static constexpr signed char lowest() noexcept {
         return SCHAR_MIN;
     }
 
@@ -283,13 +242,11 @@ template <> class numeric_limits<signed char>
     static constexpr bool is_exact = true;
     static constexpr int radix = 2;
 
-    static constexpr signed char epsilon() noexcept
-    {
+    static constexpr signed char epsilon() noexcept {
         return 0;
     }
 
-    static constexpr signed char round_error() noexcept
-    {
+    static constexpr signed char round_error() noexcept {
         return 0;
     }
 
@@ -303,23 +260,19 @@ template <> class numeric_limits<signed char>
     static constexpr float_denorm_style has_denorm = denorm_absent;
     static constexpr bool has_denorm_loss = false;
 
-    static constexpr signed char infinity() noexcept
-    {
+    static constexpr signed char infinity() noexcept {
         return 0;
     }
 
-    static constexpr signed char quiet_NaN() noexcept
-    {
+    static constexpr signed char quiet_NaN() noexcept {
         return 0;
     }
 
-    static constexpr signed char signaling_NaN() noexcept
-    {
+    static constexpr signed char signaling_NaN() noexcept {
         return 0;
     }
 
-    static constexpr signed char denorm_min() noexcept
-    {
+    static constexpr signed char denorm_min() noexcept {
         return 0;
     }
 
@@ -332,23 +285,19 @@ template <> class numeric_limits<signed char>
 };
 
 /* unsigned char specialization */
-template <> class numeric_limits<unsigned char>
-{
+template <> class numeric_limits<unsigned char> {
   public:
     static constexpr bool is_specialized = true;
 
-    static constexpr unsigned char min() noexcept
-    {
+    static constexpr unsigned char min() noexcept {
         return 0;
     }
 
-    static constexpr unsigned char max() noexcept
-    {
+    static constexpr unsigned char max() noexcept {
         return UCHAR_MAX;
     }
 
-    static constexpr unsigned char lowest() noexcept
-    {
+    static constexpr unsigned char lowest() noexcept {
         return 0;
     }
 
@@ -360,13 +309,11 @@ template <> class numeric_limits<unsigned char>
     static constexpr bool is_exact = true;
     static constexpr int radix = 2;
 
-    static constexpr unsigned char epsilon() noexcept
-    {
+    static constexpr unsigned char epsilon() noexcept {
         return 0;
     }
 
-    static constexpr unsigned char round_error() noexcept
-    {
+    static constexpr unsigned char round_error() noexcept {
         return 0;
     }
 
@@ -380,23 +327,19 @@ template <> class numeric_limits<unsigned char>
     static constexpr float_denorm_style has_denorm = denorm_absent;
     static constexpr bool has_denorm_loss = false;
 
-    static constexpr unsigned char infinity() noexcept
-    {
+    static constexpr unsigned char infinity() noexcept {
         return 0;
     }
 
-    static constexpr unsigned char quiet_NaN() noexcept
-    {
+    static constexpr unsigned char quiet_NaN() noexcept {
         return 0;
     }
 
-    static constexpr unsigned char signaling_NaN() noexcept
-    {
+    static constexpr unsigned char signaling_NaN() noexcept {
         return 0;
     }
 
-    static constexpr unsigned char denorm_min() noexcept
-    {
+    static constexpr unsigned char denorm_min() noexcept {
         return 0;
     }
 
@@ -409,23 +352,19 @@ template <> class numeric_limits<unsigned char>
 };
 
 /* short specialization */
-template <> class numeric_limits<short>
-{
+template <> class numeric_limits<short> {
   public:
     static constexpr bool is_specialized = true;
 
-    static constexpr short min() noexcept
-    {
+    static constexpr short min() noexcept {
         return SHRT_MIN;
     }
 
-    static constexpr short max() noexcept
-    {
+    static constexpr short max() noexcept {
         return SHRT_MAX;
     }
 
-    static constexpr short lowest() noexcept
-    {
+    static constexpr short lowest() noexcept {
         return SHRT_MIN;
     }
 
@@ -437,13 +376,11 @@ template <> class numeric_limits<short>
     static constexpr bool is_exact = true;
     static constexpr int radix = 2;
 
-    static constexpr short epsilon() noexcept
-    {
+    static constexpr short epsilon() noexcept {
         return 0;
     }
 
-    static constexpr short round_error() noexcept
-    {
+    static constexpr short round_error() noexcept {
         return 0;
     }
 
@@ -457,23 +394,19 @@ template <> class numeric_limits<short>
     static constexpr float_denorm_style has_denorm = denorm_absent;
     static constexpr bool has_denorm_loss = false;
 
-    static constexpr short infinity() noexcept
-    {
+    static constexpr short infinity() noexcept {
         return 0;
     }
 
-    static constexpr short quiet_NaN() noexcept
-    {
+    static constexpr short quiet_NaN() noexcept {
         return 0;
     }
 
-    static constexpr short signaling_NaN() noexcept
-    {
+    static constexpr short signaling_NaN() noexcept {
         return 0;
     }
 
-    static constexpr short denorm_min() noexcept
-    {
+    static constexpr short denorm_min() noexcept {
         return 0;
     }
 
@@ -486,23 +419,19 @@ template <> class numeric_limits<short>
 };
 
 /* unsigned short specialization */
-template <> class numeric_limits<unsigned short>
-{
+template <> class numeric_limits<unsigned short> {
   public:
     static constexpr bool is_specialized = true;
 
-    static constexpr unsigned short min() noexcept
-    {
+    static constexpr unsigned short min() noexcept {
         return 0;
     }
 
-    static constexpr unsigned short max() noexcept
-    {
+    static constexpr unsigned short max() noexcept {
         return USHRT_MAX;
     }
 
-    static constexpr unsigned short lowest() noexcept
-    {
+    static constexpr unsigned short lowest() noexcept {
         return 0;
     }
 
@@ -514,13 +443,11 @@ template <> class numeric_limits<unsigned short>
     static constexpr bool is_exact = true;
     static constexpr int radix = 2;
 
-    static constexpr unsigned short epsilon() noexcept
-    {
+    static constexpr unsigned short epsilon() noexcept {
         return 0;
     }
 
-    static constexpr unsigned short round_error() noexcept
-    {
+    static constexpr unsigned short round_error() noexcept {
         return 0;
     }
 
@@ -534,23 +461,19 @@ template <> class numeric_limits<unsigned short>
     static constexpr float_denorm_style has_denorm = denorm_absent;
     static constexpr bool has_denorm_loss = false;
 
-    static constexpr unsigned short infinity() noexcept
-    {
+    static constexpr unsigned short infinity() noexcept {
         return 0;
     }
 
-    static constexpr unsigned short quiet_NaN() noexcept
-    {
+    static constexpr unsigned short quiet_NaN() noexcept {
         return 0;
     }
 
-    static constexpr unsigned short signaling_NaN() noexcept
-    {
+    static constexpr unsigned short signaling_NaN() noexcept {
         return 0;
     }
 
-    static constexpr unsigned short denorm_min() noexcept
-    {
+    static constexpr unsigned short denorm_min() noexcept {
         return 0;
     }
 
@@ -563,23 +486,19 @@ template <> class numeric_limits<unsigned short>
 };
 
 /* int specialization */
-template <> class numeric_limits<int>
-{
+template <> class numeric_limits<int> {
   public:
     static constexpr bool is_specialized = true;
 
-    static constexpr int min() noexcept
-    {
+    static constexpr int min() noexcept {
         return INT_MIN;
     }
 
-    static constexpr int max() noexcept
-    {
+    static constexpr int max() noexcept {
         return INT_MAX;
     }
 
-    static constexpr int lowest() noexcept
-    {
+    static constexpr int lowest() noexcept {
         return INT_MIN;
     }
 
@@ -591,13 +510,11 @@ template <> class numeric_limits<int>
     static constexpr bool is_exact = true;
     static constexpr int radix = 2;
 
-    static constexpr int epsilon() noexcept
-    {
+    static constexpr int epsilon() noexcept {
         return 0;
     }
 
-    static constexpr int round_error() noexcept
-    {
+    static constexpr int round_error() noexcept {
         return 0;
     }
 
@@ -611,23 +528,19 @@ template <> class numeric_limits<int>
     static constexpr float_denorm_style has_denorm = denorm_absent;
     static constexpr bool has_denorm_loss = false;
 
-    static constexpr int infinity() noexcept
-    {
+    static constexpr int infinity() noexcept {
         return 0;
     }
 
-    static constexpr int quiet_NaN() noexcept
-    {
+    static constexpr int quiet_NaN() noexcept {
         return 0;
     }
 
-    static constexpr int signaling_NaN() noexcept
-    {
+    static constexpr int signaling_NaN() noexcept {
         return 0;
     }
 
-    static constexpr int denorm_min() noexcept
-    {
+    static constexpr int denorm_min() noexcept {
         return 0;
     }
 
@@ -640,23 +553,19 @@ template <> class numeric_limits<int>
 };
 
 /* unsigned int specialization */
-template <> class numeric_limits<unsigned int>
-{
+template <> class numeric_limits<unsigned int> {
   public:
     static constexpr bool is_specialized = true;
 
-    static constexpr unsigned int min() noexcept
-    {
+    static constexpr unsigned int min() noexcept {
         return 0;
     }
 
-    static constexpr unsigned int max() noexcept
-    {
+    static constexpr unsigned int max() noexcept {
         return UINT_MAX;
     }
 
-    static constexpr unsigned int lowest() noexcept
-    {
+    static constexpr unsigned int lowest() noexcept {
         return 0;
     }
 
@@ -668,13 +577,11 @@ template <> class numeric_limits<unsigned int>
     static constexpr bool is_exact = true;
     static constexpr int radix = 2;
 
-    static constexpr unsigned int epsilon() noexcept
-    {
+    static constexpr unsigned int epsilon() noexcept {
         return 0;
     }
 
-    static constexpr unsigned int round_error() noexcept
-    {
+    static constexpr unsigned int round_error() noexcept {
         return 0;
     }
 
@@ -688,23 +595,19 @@ template <> class numeric_limits<unsigned int>
     static constexpr float_denorm_style has_denorm = denorm_absent;
     static constexpr bool has_denorm_loss = false;
 
-    static constexpr unsigned int infinity() noexcept
-    {
+    static constexpr unsigned int infinity() noexcept {
         return 0;
     }
 
-    static constexpr unsigned int quiet_NaN() noexcept
-    {
+    static constexpr unsigned int quiet_NaN() noexcept {
         return 0;
     }
 
-    static constexpr unsigned int signaling_NaN() noexcept
-    {
+    static constexpr unsigned int signaling_NaN() noexcept {
         return 0;
     }
 
-    static constexpr unsigned int denorm_min() noexcept
-    {
+    static constexpr unsigned int denorm_min() noexcept {
         return 0;
     }
 
@@ -717,23 +620,19 @@ template <> class numeric_limits<unsigned int>
 };
 
 /* long specialization */
-template <> class numeric_limits<long>
-{
+template <> class numeric_limits<long> {
   public:
     static constexpr bool is_specialized = true;
 
-    static constexpr long min() noexcept
-    {
+    static constexpr long min() noexcept {
         return LONG_MIN;
     }
 
-    static constexpr long max() noexcept
-    {
+    static constexpr long max() noexcept {
         return LONG_MAX;
     }
 
-    static constexpr long lowest() noexcept
-    {
+    static constexpr long lowest() noexcept {
         return LONG_MIN;
     }
 
@@ -745,13 +644,11 @@ template <> class numeric_limits<long>
     static constexpr bool is_exact = true;
     static constexpr int radix = 2;
 
-    static constexpr long epsilon() noexcept
-    {
+    static constexpr long epsilon() noexcept {
         return 0;
     }
 
-    static constexpr long round_error() noexcept
-    {
+    static constexpr long round_error() noexcept {
         return 0;
     }
 
@@ -765,23 +662,19 @@ template <> class numeric_limits<long>
     static constexpr float_denorm_style has_denorm = denorm_absent;
     static constexpr bool has_denorm_loss = false;
 
-    static constexpr long infinity() noexcept
-    {
+    static constexpr long infinity() noexcept {
         return 0;
     }
 
-    static constexpr long quiet_NaN() noexcept
-    {
+    static constexpr long quiet_NaN() noexcept {
         return 0;
     }
 
-    static constexpr long signaling_NaN() noexcept
-    {
+    static constexpr long signaling_NaN() noexcept {
         return 0;
     }
 
-    static constexpr long denorm_min() noexcept
-    {
+    static constexpr long denorm_min() noexcept {
         return 0;
     }
 
@@ -794,23 +687,19 @@ template <> class numeric_limits<long>
 };
 
 /* unsigned long specialization */
-template <> class numeric_limits<unsigned long>
-{
+template <> class numeric_limits<unsigned long> {
   public:
     static constexpr bool is_specialized = true;
 
-    static constexpr unsigned long min() noexcept
-    {
+    static constexpr unsigned long min() noexcept {
         return 0;
     }
 
-    static constexpr unsigned long max() noexcept
-    {
+    static constexpr unsigned long max() noexcept {
         return ULONG_MAX;
     }
 
-    static constexpr unsigned long lowest() noexcept
-    {
+    static constexpr unsigned long lowest() noexcept {
         return 0;
     }
 
@@ -822,13 +711,11 @@ template <> class numeric_limits<unsigned long>
     static constexpr bool is_exact = true;
     static constexpr int radix = 2;
 
-    static constexpr unsigned long epsilon() noexcept
-    {
+    static constexpr unsigned long epsilon() noexcept {
         return 0;
     }
 
-    static constexpr unsigned long round_error() noexcept
-    {
+    static constexpr unsigned long round_error() noexcept {
         return 0;
     }
 
@@ -842,23 +729,19 @@ template <> class numeric_limits<unsigned long>
     static constexpr float_denorm_style has_denorm = denorm_absent;
     static constexpr bool has_denorm_loss = false;
 
-    static constexpr unsigned long infinity() noexcept
-    {
+    static constexpr unsigned long infinity() noexcept {
         return 0;
     }
 
-    static constexpr unsigned long quiet_NaN() noexcept
-    {
+    static constexpr unsigned long quiet_NaN() noexcept {
         return 0;
     }
 
-    static constexpr unsigned long signaling_NaN() noexcept
-    {
+    static constexpr unsigned long signaling_NaN() noexcept {
         return 0;
     }
 
-    static constexpr unsigned long denorm_min() noexcept
-    {
+    static constexpr unsigned long denorm_min() noexcept {
         return 0;
     }
 
@@ -871,23 +754,19 @@ template <> class numeric_limits<unsigned long>
 };
 
 /* long long specialization */
-template <> class numeric_limits<long long>
-{
+template <> class numeric_limits<long long> {
   public:
     static constexpr bool is_specialized = true;
 
-    static constexpr long long min() noexcept
-    {
+    static constexpr long long min() noexcept {
         return LLONG_MIN;
     }
 
-    static constexpr long long max() noexcept
-    {
+    static constexpr long long max() noexcept {
         return LLONG_MAX;
     }
 
-    static constexpr long long lowest() noexcept
-    {
+    static constexpr long long lowest() noexcept {
         return LLONG_MIN;
     }
 
@@ -899,13 +778,11 @@ template <> class numeric_limits<long long>
     static constexpr bool is_exact = true;
     static constexpr int radix = 2;
 
-    static constexpr long long epsilon() noexcept
-    {
+    static constexpr long long epsilon() noexcept {
         return 0;
     }
 
-    static constexpr long long round_error() noexcept
-    {
+    static constexpr long long round_error() noexcept {
         return 0;
     }
 
@@ -919,23 +796,19 @@ template <> class numeric_limits<long long>
     static constexpr float_denorm_style has_denorm = denorm_absent;
     static constexpr bool has_denorm_loss = false;
 
-    static constexpr long long infinity() noexcept
-    {
+    static constexpr long long infinity() noexcept {
         return 0;
     }
 
-    static constexpr long long quiet_NaN() noexcept
-    {
+    static constexpr long long quiet_NaN() noexcept {
         return 0;
     }
 
-    static constexpr long long signaling_NaN() noexcept
-    {
+    static constexpr long long signaling_NaN() noexcept {
         return 0;
     }
 
-    static constexpr long long denorm_min() noexcept
-    {
+    static constexpr long long denorm_min() noexcept {
         return 0;
     }
 
@@ -948,23 +821,19 @@ template <> class numeric_limits<long long>
 };
 
 /* unsigned long long specialization */
-template <> class numeric_limits<unsigned long long>
-{
+template <> class numeric_limits<unsigned long long> {
   public:
     static constexpr bool is_specialized = true;
 
-    static constexpr unsigned long long min() noexcept
-    {
+    static constexpr unsigned long long min() noexcept {
         return 0;
     }
 
-    static constexpr unsigned long long max() noexcept
-    {
+    static constexpr unsigned long long max() noexcept {
         return ULLONG_MAX;
     }
 
-    static constexpr unsigned long long lowest() noexcept
-    {
+    static constexpr unsigned long long lowest() noexcept {
         return 0;
     }
 
@@ -976,13 +845,11 @@ template <> class numeric_limits<unsigned long long>
     static constexpr bool is_exact = true;
     static constexpr int radix = 2;
 
-    static constexpr unsigned long long epsilon() noexcept
-    {
+    static constexpr unsigned long long epsilon() noexcept {
         return 0;
     }
 
-    static constexpr unsigned long long round_error() noexcept
-    {
+    static constexpr unsigned long long round_error() noexcept {
         return 0;
     }
 
@@ -996,23 +863,19 @@ template <> class numeric_limits<unsigned long long>
     static constexpr float_denorm_style has_denorm = denorm_absent;
     static constexpr bool has_denorm_loss = false;
 
-    static constexpr unsigned long long infinity() noexcept
-    {
+    static constexpr unsigned long long infinity() noexcept {
         return 0;
     }
 
-    static constexpr unsigned long long quiet_NaN() noexcept
-    {
+    static constexpr unsigned long long quiet_NaN() noexcept {
         return 0;
     }
 
-    static constexpr unsigned long long signaling_NaN() noexcept
-    {
+    static constexpr unsigned long long signaling_NaN() noexcept {
         return 0;
     }
 
-    static constexpr unsigned long long denorm_min() noexcept
-    {
+    static constexpr unsigned long long denorm_min() noexcept {
         return 0;
     }
 
@@ -1025,23 +888,19 @@ template <> class numeric_limits<unsigned long long>
 };
 
 /* float specialization */
-template <> class numeric_limits<float>
-{
+template <> class numeric_limits<float> {
   public:
     static constexpr bool is_specialized = true;
 
-    static constexpr float min() noexcept
-    {
+    static constexpr float min() noexcept {
         return 1.17549435e-38f;
     }
 
-    static constexpr float max() noexcept
-    {
+    static constexpr float max() noexcept {
         return 3.40282347e+38f;
     }
 
-    static constexpr float lowest() noexcept
-    {
+    static constexpr float lowest() noexcept {
         return -3.40282347e+38f;
     }
 
@@ -1053,13 +912,11 @@ template <> class numeric_limits<float>
     static constexpr bool is_exact = false;
     static constexpr int radix = 2;
 
-    static constexpr float epsilon() noexcept
-    {
+    static constexpr float epsilon() noexcept {
         return 1.19209290e-07f;
     }
 
-    static constexpr float round_error() noexcept
-    {
+    static constexpr float round_error() noexcept {
         return 0.5f;
     }
 
@@ -1073,23 +930,19 @@ template <> class numeric_limits<float>
     static constexpr float_denorm_style has_denorm = denorm_present;
     static constexpr bool has_denorm_loss = false;
 
-    static constexpr float infinity() noexcept
-    {
+    static constexpr float infinity() noexcept {
         return __builtin_huge_valf();
     }
 
-    static constexpr float quiet_NaN() noexcept
-    {
+    static constexpr float quiet_NaN() noexcept {
         return __builtin_nanf("");
     }
 
-    static constexpr float signaling_NaN() noexcept
-    {
+    static constexpr float signaling_NaN() noexcept {
         return __builtin_nansf("");
     }
 
-    static constexpr float denorm_min() noexcept
-    {
+    static constexpr float denorm_min() noexcept {
         return 1.40129846e-45f;
     }
 
@@ -1102,23 +955,19 @@ template <> class numeric_limits<float>
 };
 
 /* double specialization */
-template <> class numeric_limits<double>
-{
+template <> class numeric_limits<double> {
   public:
     static constexpr bool is_specialized = true;
 
-    static constexpr double min() noexcept
-    {
+    static constexpr double min() noexcept {
         return 2.2250738585072014e-308;
     }
 
-    static constexpr double max() noexcept
-    {
+    static constexpr double max() noexcept {
         return 1.7976931348623157e+308;
     }
 
-    static constexpr double lowest() noexcept
-    {
+    static constexpr double lowest() noexcept {
         return -1.7976931348623157e+308;
     }
 
@@ -1130,13 +979,11 @@ template <> class numeric_limits<double>
     static constexpr bool is_exact = false;
     static constexpr int radix = 2;
 
-    static constexpr double epsilon() noexcept
-    {
+    static constexpr double epsilon() noexcept {
         return 2.2204460492503131e-16;
     }
 
-    static constexpr double round_error() noexcept
-    {
+    static constexpr double round_error() noexcept {
         return 0.5;
     }
 
@@ -1150,23 +997,19 @@ template <> class numeric_limits<double>
     static constexpr float_denorm_style has_denorm = denorm_present;
     static constexpr bool has_denorm_loss = false;
 
-    static constexpr double infinity() noexcept
-    {
+    static constexpr double infinity() noexcept {
         return __builtin_huge_val();
     }
 
-    static constexpr double quiet_NaN() noexcept
-    {
+    static constexpr double quiet_NaN() noexcept {
         return __builtin_nan("");
     }
 
-    static constexpr double signaling_NaN() noexcept
-    {
+    static constexpr double signaling_NaN() noexcept {
         return __builtin_nans("");
     }
 
-    static constexpr double denorm_min() noexcept
-    {
+    static constexpr double denorm_min() noexcept {
         return 4.9406564584124654e-324;
     }
 
@@ -1179,23 +1022,19 @@ template <> class numeric_limits<double>
 };
 
 /* long double specialization (same as double on many platforms) */
-template <> class numeric_limits<long double>
-{
+template <> class numeric_limits<long double> {
   public:
     static constexpr bool is_specialized = true;
 
-    static constexpr long double min() noexcept
-    {
+    static constexpr long double min() noexcept {
         return 2.2250738585072014e-308L;
     }
 
-    static constexpr long double max() noexcept
-    {
+    static constexpr long double max() noexcept {
         return 1.7976931348623157e+308L;
     }
 
-    static constexpr long double lowest() noexcept
-    {
+    static constexpr long double lowest() noexcept {
         return -1.7976931348623157e+308L;
     }
 
@@ -1207,13 +1046,11 @@ template <> class numeric_limits<long double>
     static constexpr bool is_exact = false;
     static constexpr int radix = 2;
 
-    static constexpr long double epsilon() noexcept
-    {
+    static constexpr long double epsilon() noexcept {
         return 2.2204460492503131e-16L;
     }
 
-    static constexpr long double round_error() noexcept
-    {
+    static constexpr long double round_error() noexcept {
         return 0.5L;
     }
 
@@ -1227,23 +1064,19 @@ template <> class numeric_limits<long double>
     static constexpr float_denorm_style has_denorm = denorm_present;
     static constexpr bool has_denorm_loss = false;
 
-    static constexpr long double infinity() noexcept
-    {
+    static constexpr long double infinity() noexcept {
         return __builtin_huge_vall();
     }
 
-    static constexpr long double quiet_NaN() noexcept
-    {
+    static constexpr long double quiet_NaN() noexcept {
         return __builtin_nanl("");
     }
 
-    static constexpr long double signaling_NaN() noexcept
-    {
+    static constexpr long double signaling_NaN() noexcept {
         return __builtin_nansl("");
     }
 
-    static constexpr long double denorm_min() noexcept
-    {
+    static constexpr long double denorm_min() noexcept {
         return 4.9406564584124654e-324L;
     }
 

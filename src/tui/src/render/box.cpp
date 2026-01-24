@@ -24,7 +24,11 @@
 namespace viper::tui::render
 {
 
-void drawBox(ScreenBuffer &sb, int x, int y, int w, int h,
+void drawBox(ScreenBuffer &sb,
+             int x,
+             int y,
+             int w,
+             int h,
              const Style *borderStyle,
              const Style *fillStyle,
              bool fill)

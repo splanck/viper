@@ -6,9 +6,12 @@
 
 ## Overview
 
-The memory management subsystem is a core kernel service in the ViperDOS microkernel. It provides physical page allocation, virtual memory mapping, kernel heap services, slab allocation, demand paging, copy-on-write page sharing, and shared memory for IPC.
+The memory management subsystem is a core kernel service in the ViperDOS microkernel. It provides physical page
+allocation, virtual memory mapping, kernel heap services, slab allocation, demand paging, copy-on-write page sharing,
+and shared memory for IPC.
 
-In microkernel mode, memory management remains in the kernel while user-space servers use shared memory for efficient large data transfers.
+In microkernel mode, memory management remains in the kernel while user-space servers use shared memory for efficient
+large data transfers.
 
 ## Components
 
@@ -17,6 +20,7 @@ In microkernel mode, memory management remains in the kernel while user-space se
 **Status:** Fully functional bitmap allocator
 
 **Implemented:**
+
 - Bitmap-based page tracking (1 bit per 4KB page)
 - Single contiguous RAM region support
 - First-fit page allocation
@@ -27,6 +31,7 @@ In microkernel mode, memory management remains in the kernel while user-space se
 - Framebuffer region reservation (8MB at 0x41000000)
 
 **Memory Layout (QEMU virt with 128MB):**
+
 ```
 0x40000000 ┌──────────────────────┐
            │     Kernel Image     │
@@ -42,6 +47,7 @@ In microkernel mode, memory management remains in the kernel while user-space se
 ```
 
 **Not Implemented:**
+
 - Multiple memory regions (only single contiguous range)
 - NUMA awareness
 - Memory zones (DMA, normal, high)
@@ -49,6 +55,7 @@ In microkernel mode, memory management remains in the kernel while user-space se
 - Memory hotplug
 
 **Recommendations:**
+
 - Add memory zone support for device DMA requirements
 - Support multiple memory regions from DTB/UEFI
 
@@ -59,6 +66,7 @@ In microkernel mode, memory management remains in the kernel while user-space se
 **Status:** Complete O(log n) page allocator
 
 **Implemented:**
+
 - Binary buddy allocation algorithm
 - Order-based allocation (2^order pages)
 - Orders 0-9 supported (4KB to 2MB)
@@ -81,6 +89,7 @@ In microkernel mode, memory management remains in the kernel while user-space se
 | `total_pages_count()` | Get total managed pages |
 
 **Buddy Algorithm:**
+
 ```
 Allocation:
 1. Find smallest order with free blocks >= requested
@@ -94,6 +103,7 @@ Deallocation:
 ```
 
 **Performance:**
+
 - Allocation: O(log n) worst case
 - Deallocation: O(log n) with coalescing
 - No external fragmentation for power-of-2 sizes
@@ -105,6 +115,7 @@ Deallocation:
 **Status:** Complete fixed-size object allocator
 
 **Implemented:**
+
 - Object caches for common sizes
 - Per-cache slab lists (full, partial, empty)
 - Object freelist within slabs
@@ -134,6 +145,7 @@ Deallocation:
 | `slab_cache_shrink(cache)` | Release empty slabs |
 
 **Performance:**
+
 - Allocation: O(1) from partial slab
 - Deallocation: O(1)
 - No internal fragmentation for cached sizes
@@ -145,6 +157,7 @@ Deallocation:
 **Status:** Complete 4-level page table support with COW
 
 **Implemented:**
+
 - 4KB page granule with 4-level tables (L0→L3)
 - 48-bit virtual address space
 - Page table allocation from PMM
@@ -172,16 +185,19 @@ Deallocation:
 | PXN | bit 53 | Privileged execute never |
 
 **Not Implemented:**
+
 - Shared memory mappings (beyond COW)
 - Memory-mapped files
 - Large page (2MB, 1GB) mapping creation
 - Page table deallocation on unmap
 
 **Known Limitations:**
+
 - Intermediate tables not freed when mappings removed
 - Identity mapping assumed (no kernel higher-half)
 
 **Recommendations:**
+
 - Add page table garbage collection
 - Support large page mapping for performance
 
@@ -192,6 +208,7 @@ Deallocation:
 **Status:** Complete VMA tracking for demand paging
 
 **Implemented:**
+
 - Per-process VMA list (linked list, sorted by address)
 - VMA types: Anonymous, Stack, Heap, File-backed
 - Protection flags (read, write, execute)
@@ -233,6 +250,7 @@ Deallocation:
 **Status:** Complete demand paging and COW implementation
 
 **Implemented:**
+
 - AArch64 data abort and instruction abort handling
 - ESR parsing (fault status code, write/read, level)
 - Fault classification (translation, permission, alignment, etc.)
@@ -255,6 +273,7 @@ Deallocation:
 | ADDRESS_SIZE | Invalid address bits | Terminate task |
 
 **Demand Paging Flow:**
+
 ```
 1. Page fault occurs (data abort at EL0)
 2. Parse ESR to get fault type and address
@@ -269,6 +288,7 @@ Deallocation:
 ```
 
 **COW Fault Flow:**
+
 ```
 1. Permission fault on write to read-only page
 2. Check if page is marked COW
@@ -282,6 +302,7 @@ Deallocation:
 ```
 
 **Handled Scenarios:**
+
 - Heap access before sbrk extends region
 - Stack growth into guard area
 - First access to anonymous memory
@@ -295,6 +316,7 @@ Deallocation:
 **Status:** Fully functional with coalescing
 
 **Implemented:**
+
 - Free-list allocator with first-fit strategy
 - Immediate coalescing of adjacent free blocks
 - Block splitting when allocation leaves sufficient space
@@ -305,14 +327,15 @@ Deallocation:
 - Reallocation (`krealloc`)
 - Heap statistics and debugging dump
 - Enhanced debug mode with:
-  - Magic number validation (CAFEBABE for allocated, DEADBEEF for freed)
-  - Double-free detection with detailed reporting
-  - Bounds checking (pointer within heap range)
-  - Alignment validation (16-byte boundaries)
-  - Block poisoning on double-free (FEEDFACE pattern)
-  - Use-after-free detection via poison patterns
+    - Magic number validation (CAFEBABE for allocated, DEADBEEF for freed)
+    - Double-free detection with detailed reporting
+    - Bounds checking (pointer within heap range)
+    - Alignment validation (16-byte boundaries)
+    - Block poisoning on double-free (FEEDFACE pattern)
+    - Use-after-free detection via poison patterns
 
 **Block Header Structure:**
+
 ```
 +----------------+
 | magic          |  <- 4-byte magic number for validation
@@ -327,6 +350,7 @@ Deallocation:
 ```
 
 **Configuration:**
+
 - Initial size: 64KB (16 pages)
 - Maximum size: 64MB
 - Minimum block: 24 bytes (header + next pointer)
@@ -345,12 +369,14 @@ Deallocation:
 | `dump()` | Print heap state to serial |
 
 **Not Implemented:**
+
 - Memory pools for specific subsystems
 - Memory pressure callbacks
 - Memory leak detection
 - Per-CPU caches for reduced contention
 
 **Recommendations:**
+
 - Implement memory pressure notification
 - Consider per-CPU free lists for scalability
 
@@ -361,6 +387,7 @@ Deallocation:
 **Status:** Complete page sharing with reference counting
 
 **Implemented:**
+
 - Per-page reference counting
 - COW page metadata tracking
 - Reference increment/decrement with atomic safety
@@ -380,10 +407,12 @@ Deallocation:
 | `is_cow(phys)` | Check if page is COW |
 
 **Memory Overhead:**
+
 - 4 bytes per physical page (2-byte refcount + 2-byte flags)
 - ~64KB for 128MB RAM (32K pages)
 
 **Use Cases:**
+
 - Efficient fork() implementation
 - Shared read-only pages between processes
 - Deferred copy semantics
@@ -439,11 +468,13 @@ Device Region (Identity Mapped):
 ## Testing
 
 The memory management subsystem is tested via:
+
 - `qemu_kernel_boot` - Verifies kernel starts (PMM/heap working)
 - `qemu_storage_tests` - File operations require heap allocations
 - All tests implicitly exercise memory allocation
 
 **Test functions in `storage_tests.cpp`:**
+
 - File creation/deletion exercises heap
 - Directory operations use dynamic allocation
 
@@ -451,30 +482,31 @@ The memory management subsystem is tested via:
 
 ## Files
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `pmm.cpp` | ~305 | Physical page allocator (bitmap) |
-| `pmm.hpp` | ~31 | PMM interface |
-| `buddy.cpp` | ~258 | Buddy allocator |
-| `buddy.hpp` | ~87 | Buddy interface |
-| `slab.cpp` | ~334 | Slab allocator |
-| `slab.hpp` | ~35 | Slab interface |
-| `vmm.cpp` | ~272 | Virtual memory manager |
-| `vmm.hpp` | ~53 | VMM interface and PTE flags |
-| `vma.cpp` | ~296 | Virtual memory areas |
-| `vma.hpp` | ~85 | VMA interface |
-| `fault.cpp` | ~462 | Page fault handler |
-| `fault.hpp` | ~32 | Fault interface |
-| `cow.cpp` | ~145 | Copy-on-write manager |
-| `cow.hpp` | ~67 | COW interface |
-| `kheap.cpp` | ~517 | Kernel heap allocator |
-| `kheap.hpp` | ~86 | Heap interface |
+| File        | Lines | Description                      |
+|-------------|-------|----------------------------------|
+| `pmm.cpp`   | ~305  | Physical page allocator (bitmap) |
+| `pmm.hpp`   | ~31   | PMM interface                    |
+| `buddy.cpp` | ~258  | Buddy allocator                  |
+| `buddy.hpp` | ~87   | Buddy interface                  |
+| `slab.cpp`  | ~334  | Slab allocator                   |
+| `slab.hpp`  | ~35   | Slab interface                   |
+| `vmm.cpp`   | ~272  | Virtual memory manager           |
+| `vmm.hpp`   | ~53   | VMM interface and PTE flags      |
+| `vma.cpp`   | ~296  | Virtual memory areas             |
+| `vma.hpp`   | ~85   | VMA interface                    |
+| `fault.cpp` | ~462  | Page fault handler               |
+| `fault.hpp` | ~32   | Fault interface                  |
+| `cow.cpp`   | ~145  | Copy-on-write manager            |
+| `cow.hpp`   | ~67   | COW interface                    |
+| `kheap.cpp` | ~517  | Kernel heap allocator            |
+| `kheap.hpp` | ~86   | Heap interface                   |
 
 ---
 
 ## Statistics API
 
 **Physical Memory:**
+
 ```cpp
 u64 pmm::get_total_pages();  // Total RAM pages
 u64 pmm::get_free_pages();   // Available pages
@@ -482,6 +514,7 @@ u64 pmm::get_used_pages();   // Allocated pages
 ```
 
 **Kernel Heap:**
+
 ```cpp
 u64 kheap::get_used();       // Allocated bytes
 u64 kheap::get_available();  // Free bytes in heap
@@ -489,6 +522,7 @@ void kheap::get_stats(&total, &used, &free, &blocks);
 ```
 
 **Syscall Access:**
+
 - `mem_info` (0xE0) - Returns `MemInfo` struct to user space
 
 ---
@@ -502,21 +536,21 @@ Shared memory provides efficient large data transfer between user-space processe
 
 ### Syscalls
 
-| Syscall | Number | Description |
-|---------|--------|-------------|
-| shm_create | 0x110 | Create shared memory region |
-| shm_map | 0x111 | Map SHM into address space |
-| shm_unmap | 0x112 | Unmap SHM from address space |
-| shm_close | 0x113 | Close SHM handle |
+| Syscall    | Number | Description                  |
+|------------|--------|------------------------------|
+| shm_create | 0x110  | Create shared memory region  |
+| shm_map    | 0x111  | Map SHM into address space   |
+| shm_unmap  | 0x112  | Unmap SHM from address space |
+| shm_close  | 0x113  | Close SHM handle             |
 
 ### ShmRegion Structure
 
-| Field | Type | Description |
-|-------|------|-------------|
-| id | u32 | Unique region ID |
-| phys_addr | u64 | Physical memory address |
-| size | u64 | Region size (page-aligned) |
-| refcount | u32 | Reference count |
+| Field     | Type | Description                |
+|-----------|------|----------------------------|
+| id        | u32  | Unique region ID           |
+| phys_addr | u64  | Physical memory address    |
+| size      | u64  | Region size (page-aligned) |
+| refcount  | u32  | Reference count            |
 
 ### Usage Pattern (Server IPC)
 
@@ -542,35 +576,45 @@ sys::shm_close(client_shm);
 ## Priority Recommendations: Next 5 Steps
 
 ### 1. mmap() for File-Backed Mappings
+
 **Impact:** Standard POSIX memory-mapped I/O
+
 - Map file contents directly into virtual memory
 - VMA tracking with file inode and offset
 - Page fault handler reads from file on demand
 - Enables memory-mapped file I/O for databases and large files
 
 ### 2. Multiple Memory Regions from Device Tree/UEFI
+
 **Impact:** Correct memory management on real hardware
+
 - Parse multiple USABLE_RAM regions from boot info
 - Non-contiguous memory support in PMM
 - Proper handling of holes in physical address space
 - Required for systems with memory above 4GB
 
 ### 3. Page Table Garbage Collection
+
 **Impact:** Memory efficiency for long-running processes
+
 - Track empty intermediate page tables (L1/L2/L3)
 - Free unused tables when all entries unmapped
 - Reclaim memory from destroyed address spaces
 - Reduces memory fragmentation over time
 
 ### 4. Large Page Support (2MB, 1GB)
+
 **Impact:** Performance improvement for large allocations
+
 - Block descriptor mapping at L1 (1GB) and L2 (2MB)
 - Reduced TLB pressure for large regions
 - Use for framebuffer, DMA buffers, kernel direct map
 - Significant performance gain for memory-intensive workloads
 
 ### 5. Memory Pressure Notifications
+
 **Impact:** Graceful handling of low memory conditions
+
 - Callback system when free pages below threshold
 - Cache trimming (block cache, inode cache, slab)
 - OOM killer for memory exhaustion

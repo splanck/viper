@@ -39,23 +39,20 @@
 #include "../include/string.h"
 
 /* Helper to fold case if FNM_CASEFOLD is set */
-static inline int fold_case(int c, int flags)
-{
+static inline int fold_case(int c, int flags) {
     if (flags & FNM_CASEFOLD)
         return tolower(c);
     return c;
 }
 
 /* Helper to check if a character matches a bracket expression */
-static int match_bracket(const char **pattern, int c, int flags)
-{
+static int match_bracket(const char **pattern, int c, int flags) {
     const char *p = *pattern;
     int negated = 0;
     int matched = 0;
 
     /* Check for negation */
-    if (*p == '!' || *p == '^')
-    {
+    if (*p == '!' || *p == '^') {
         negated = 1;
         p++;
     }
@@ -64,31 +61,26 @@ static int match_bracket(const char **pattern, int c, int flags)
     c = fold_case(c, flags);
 
     /* Empty bracket expression is invalid, treat ] as literal */
-    if (*p == ']')
-    {
+    if (*p == ']') {
         if (c == ']')
             matched = 1;
         p++;
     }
 
-    while (*p && *p != ']')
-    {
+    while (*p && *p != ']') {
         int start = (unsigned char)*p++;
 
         /* Handle escape */
-        if (start == '\\' && !(flags & FNM_NOESCAPE) && *p)
-        {
+        if (start == '\\' && !(flags & FNM_NOESCAPE) && *p) {
             start = (unsigned char)*p++;
         }
 
         /* Handle range */
-        if (*p == '-' && *(p + 1) && *(p + 1) != ']')
-        {
+        if (*p == '-' && *(p + 1) && *(p + 1) != ']') {
             p++; /* Skip '-' */
             int end = (unsigned char)*p++;
 
-            if (end == '\\' && !(flags & FNM_NOESCAPE) && *p)
-            {
+            if (end == '\\' && !(flags & FNM_NOESCAPE) && *p) {
                 end = (unsigned char)*p++;
             }
 
@@ -97,9 +89,7 @@ static int match_bracket(const char **pattern, int c, int flags)
 
             if (c >= start && c <= end)
                 matched = 1;
-        }
-        else
-        {
+        } else {
             start = fold_case(start, flags);
             if (c == start)
                 matched = 1;
@@ -115,14 +105,11 @@ static int match_bracket(const char **pattern, int c, int flags)
 }
 
 /* Recursive fnmatch implementation */
-static int fnmatch_internal(const char *pattern, const char *string, int flags, int at_start)
-{
-    while (*pattern)
-    {
+static int fnmatch_internal(const char *pattern, const char *string, int flags, int at_start) {
+    while (*pattern) {
         char c = *pattern++;
 
-        switch (c)
-        {
+        switch (c) {
             case '?':
                 /* Match any single character */
                 if (*string == '\0')
@@ -145,10 +132,8 @@ static int fnmatch_internal(const char *pattern, const char *string, int flags, 
                     return FNM_NOMATCH;
 
                 /* Empty pattern after * matches everything */
-                if (*pattern == '\0')
-                {
-                    if (flags & FNM_PATHNAME)
-                    {
+                if (*pattern == '\0') {
+                    if (flags & FNM_PATHNAME) {
                         /* Must not match across '/' */
                         return strchr(string, '/') ? FNM_NOMATCH : 0;
                     }
@@ -156,8 +141,7 @@ static int fnmatch_internal(const char *pattern, const char *string, int flags, 
                 }
 
                 /* Try matching * against increasing prefixes */
-                while (*string)
-                {
+                while (*string) {
                     if (fnmatch_internal(pattern, string, flags, 0) == 0)
                         return 0;
 
@@ -186,8 +170,7 @@ static int fnmatch_internal(const char *pattern, const char *string, int flags, 
 
             case '\\':
                 /* Escape character */
-                if (!(flags & FNM_NOESCAPE))
-                {
+                if (!(flags & FNM_NOESCAPE)) {
                     if (*pattern == '\0')
                         return FNM_NOMATCH;
                     c = *pattern++;
@@ -228,8 +211,7 @@ static int fnmatch_internal(const char *pattern, const char *string, int flags, 
 /*
  * fnmatch - Match filename or pathname against pattern
  */
-int fnmatch(const char *pattern, const char *string, int flags)
-{
+int fnmatch(const char *pattern, const char *string, int flags) {
     if (!pattern || !string)
         return FNM_NOMATCH;
 

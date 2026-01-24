@@ -45,8 +45,7 @@
  * slab::free(cache, obj);
  * @endcode
  */
-namespace slab
-{
+namespace slab {
 
 // Forward declaration for Slab struct
 struct SlabCache;
@@ -65,13 +64,12 @@ constexpr usize MAX_CACHES = 16;
  * The header maintains a free list of objects within this slab and links to
  * other slabs in the same cache.
  */
-struct Slab
-{
-    Slab *next;        ///< Next slab in the cache's slab list
-    SlabCache *cache;  ///< Owning cache (for O(1) ownership verification)
-    void *free_list;   ///< Head of free object list within this slab
-    u32 in_use;        ///< Number of objects currently allocated
-    u32 total;         ///< Total number of objects in this slab
+struct Slab {
+    Slab *next;       ///< Next slab in the cache's slab list
+    SlabCache *cache; ///< Owning cache (for O(1) ownership verification)
+    void *free_list;  ///< Head of free object list within this slab
+    u32 in_use;       ///< Number of objects currently allocated
+    u32 total;        ///< Total number of objects in this slab
 };
 
 /**
@@ -81,8 +79,7 @@ struct Slab
  * Each cache manages objects of a single size. When the cache runs out of
  * free objects, it allocates a new slab (4KB page) from the PMM.
  */
-struct SlabCache
-{
+struct SlabCache {
     char name[MAX_CACHE_NAME]; ///< Cache name for debugging
     u32 object_size;           ///< Size of each object in bytes
     u32 objects_per_slab;      ///< Number of objects per 4KB slab

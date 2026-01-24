@@ -31,8 +31,7 @@
 #include "../include/error.hpp"
 #include "../include/types.hpp"
 
-namespace syscall
-{
+namespace syscall {
 
 /**
  * @brief Result structure returned by syscall handlers.
@@ -42,46 +41,39 @@ namespace syscall
  * - verr: Error code (0 = success, negative = error)
  * - res0-res2: Up to 3 result values
  */
-struct SyscallResult
-{
+struct SyscallResult {
     i64 verr; ///< Error code (VError)
     u64 res0; ///< Result value 0
     u64 res1; ///< Result value 1
     u64 res2; ///< Result value 2
 
     /// Construct a success result with no values
-    static SyscallResult ok()
-    {
+    static SyscallResult ok() {
         return {error::VOK, 0, 0, 0};
     }
 
     /// Construct a success result with one value
-    static SyscallResult ok(u64 r0)
-    {
+    static SyscallResult ok(u64 r0) {
         return {error::VOK, r0, 0, 0};
     }
 
     /// Construct a success result with two values
-    static SyscallResult ok(u64 r0, u64 r1)
-    {
+    static SyscallResult ok(u64 r0, u64 r1) {
         return {error::VOK, r0, r1, 0};
     }
 
     /// Construct a success result with three values
-    static SyscallResult ok(u64 r0, u64 r1, u64 r2)
-    {
+    static SyscallResult ok(u64 r0, u64 r1, u64 r2) {
         return {error::VOK, r0, r1, r2};
     }
 
     /// Construct an error result
-    static SyscallResult err(i64 verr)
-    {
+    static SyscallResult err(i64 verr) {
         return {verr, 0, 0, 0};
     }
 
     /// Construct an error result with partial results
-    static SyscallResult err_with(i64 verr, u64 r0)
-    {
+    static SyscallResult err_with(i64 verr, u64 r0) {
         return {verr, r0, 0, 0};
     }
 };
@@ -105,8 +97,7 @@ using SyscallHandler = SyscallResult (*)(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4,
  * - name: Human-readable name for tracing/debugging
  * - argcount: Number of arguments (0-6)
  */
-struct SyscallEntry
-{
+struct SyscallEntry {
     u32 number;             ///< Syscall number
     SyscallHandler handler; ///< Handler function (null if unimplemented)
     const char *name;       ///< Syscall name (e.g., "task_yield")
@@ -201,5 +192,124 @@ bool validate_user_write(void *ptr, usize size, bool null_ok = false);
  * @return String length, or -1 if invalid.
  */
 i64 validate_user_string(const char *str, usize max_len);
+
+// =============================================================================
+// Validation Macros (reduce boilerplate in handlers)
+// =============================================================================
+
+/**
+ * @brief Validate user pointer for reading; return VERR_INVALID_ARG on failure.
+ *
+ * @details
+ * Use in syscall handlers to validate a user-provided read buffer.
+ * Automatically returns SyscallResult::err(error::VERR_INVALID_ARG) if invalid.
+ *
+ * @param ptr User pointer to validate.
+ * @param size Size of the buffer in bytes.
+ */
+#define VALIDATE_USER_READ(ptr, size)                                                              \
+    do {                                                                                           \
+        if (!validate_user_read((ptr), (size))) {                                                  \
+            return SyscallResult::err(error::VERR_INVALID_ARG);                                    \
+        }                                                                                          \
+    } while (0)
+
+/**
+ * @brief Validate user pointer for writing; return VERR_INVALID_ARG on failure.
+ *
+ * @details
+ * Use in syscall handlers to validate a user-provided write buffer.
+ * Automatically returns SyscallResult::err(error::VERR_INVALID_ARG) if invalid.
+ *
+ * @param ptr User pointer to validate.
+ * @param size Size of the buffer in bytes.
+ */
+#define VALIDATE_USER_WRITE(ptr, size)                                                             \
+    do {                                                                                           \
+        if (!validate_user_write((ptr), (size))) {                                                 \
+            return SyscallResult::err(error::VERR_INVALID_ARG);                                    \
+        }                                                                                          \
+    } while (0)
+
+/**
+ * @brief Validate user string pointer; return VERR_INVALID_ARG on failure.
+ *
+ * @details
+ * Use in syscall handlers to validate a user-provided string.
+ * Automatically returns SyscallResult::err(error::VERR_INVALID_ARG) if invalid.
+ *
+ * @param ptr User string pointer to validate.
+ * @param max_len Maximum allowed string length.
+ */
+#define VALIDATE_USER_STRING(ptr, max_len)                                                         \
+    do {                                                                                           \
+        if (validate_user_string((ptr), (max_len)) < 0) {                                          \
+            return SyscallResult::err(error::VERR_INVALID_ARG);                                    \
+        }                                                                                          \
+    } while (0)
+
+// =============================================================================
+// Result Helper Functions (reduce boilerplate in handlers)
+// =============================================================================
+
+/// Return success with a u64 value
+inline SyscallResult ok_u64(u64 val) {
+    return SyscallResult::ok(val);
+}
+
+/// Return success with a u32 value (cast to u64)
+inline SyscallResult ok_u32(u32 val) {
+    return SyscallResult::ok(static_cast<u64>(val));
+}
+
+/// Return success with an i64 value (cast to u64)
+inline SyscallResult ok_i64(i64 val) {
+    return SyscallResult::ok(static_cast<u64>(val));
+}
+
+/// Return error with VERR_INVALID_ARG
+inline SyscallResult err_invalid_arg() {
+    return SyscallResult::err(error::VERR_INVALID_ARG);
+}
+
+/// Return error with VERR_INVALID_HANDLE
+inline SyscallResult err_invalid_handle() {
+    return SyscallResult::err(error::VERR_INVALID_HANDLE);
+}
+
+/// Return error with VERR_NOT_FOUND
+inline SyscallResult err_not_found() {
+    return SyscallResult::err(error::VERR_NOT_FOUND);
+}
+
+/// Return error with VERR_OUT_OF_MEMORY
+inline SyscallResult err_out_of_memory() {
+    return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
+}
+
+/// Return error with VERR_PERMISSION
+inline SyscallResult err_permission() {
+    return SyscallResult::err(error::VERR_PERMISSION);
+}
+
+/// Return error with a specific error code
+inline SyscallResult err_code(i64 code) {
+    return SyscallResult::err(code);
+}
+
+/// Return error with VERR_IO
+inline SyscallResult err_io() {
+    return SyscallResult::err(error::VERR_IO);
+}
+
+/// Return error with VERR_NOT_SUPPORTED
+inline SyscallResult err_not_supported() {
+    return SyscallResult::err(error::VERR_NOT_SUPPORTED);
+}
+
+/// Return error with VERR_WOULD_BLOCK
+inline SyscallResult err_would_block() {
+    return SyscallResult::err(error::VERR_WOULD_BLOCK);
+}
 
 } // namespace syscall

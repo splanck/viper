@@ -37,8 +37,7 @@
 #include <sys/msg.h>
 
 /* Internal message structure */
-struct msg_node
-{
+struct msg_node {
     long mtype;
     size_t msize;
     struct msg_node *next;
@@ -46,8 +45,7 @@ struct msg_node
 };
 
 /* Internal message queue structure */
-struct msg_queue
-{
+struct msg_queue {
     int in_use;
     key_t key;
     struct msqid_ds ds;
@@ -60,59 +58,46 @@ struct msg_queue
 static struct msg_queue msg_queues[MAX_MSG_QUEUES];
 static int msg_initialized = 0;
 
-static void init_msg_queues(void)
-{
-    if (!msg_initialized)
-    {
+static void init_msg_queues(void) {
+    if (!msg_initialized) {
         memset(msg_queues, 0, sizeof(msg_queues));
         msg_initialized = 1;
     }
 }
 
-static int find_by_key(key_t key)
-{
-    for (int i = 0; i < MAX_MSG_QUEUES; i++)
-    {
-        if (msg_queues[i].in_use && msg_queues[i].key == key)
-        {
+static int find_by_key(key_t key) {
+    for (int i = 0; i < MAX_MSG_QUEUES; i++) {
+        if (msg_queues[i].in_use && msg_queues[i].key == key) {
             return i;
         }
     }
     return -1;
 }
 
-static int find_free_slot(void)
-{
-    for (int i = 0; i < MAX_MSG_QUEUES; i++)
-    {
-        if (!msg_queues[i].in_use)
-        {
+static int find_free_slot(void) {
+    for (int i = 0; i < MAX_MSG_QUEUES; i++) {
+        if (!msg_queues[i].in_use) {
             return i;
         }
     }
     return -1;
 }
 
-int msgget(key_t key, int msgflg)
-{
+int msgget(key_t key, int msgflg) {
     init_msg_queues();
 
     /* Check for IPC_PRIVATE or existing key */
-    if (key != IPC_PRIVATE)
-    {
+    if (key != IPC_PRIVATE) {
         int existing = find_by_key(key);
-        if (existing >= 0)
-        {
-            if (msgflg & IPC_CREAT && msgflg & IPC_EXCL)
-            {
+        if (existing >= 0) {
+            if (msgflg & IPC_CREAT && msgflg & IPC_EXCL) {
                 errno = EEXIST;
                 return -1;
             }
             return existing;
         }
 
-        if (!(msgflg & IPC_CREAT))
-        {
+        if (!(msgflg & IPC_CREAT)) {
             errno = ENOENT;
             return -1;
         }
@@ -120,8 +105,7 @@ int msgget(key_t key, int msgflg)
 
     /* Create new message queue */
     int slot = find_free_slot();
-    if (slot < 0)
-    {
+    if (slot < 0) {
         errno = ENOSPC;
         return -1;
     }
@@ -146,31 +130,26 @@ int msgget(key_t key, int msgflg)
     return slot;
 }
 
-int msgsnd(int msqid, const void *msgp, size_t msgsz, int msgflg)
-{
+int msgsnd(int msqid, const void *msgp, size_t msgsz, int msgflg) {
     init_msg_queues();
 
-    if (msqid < 0 || msqid >= MAX_MSG_QUEUES || !msg_queues[msqid].in_use)
-    {
+    if (msqid < 0 || msqid >= MAX_MSG_QUEUES || !msg_queues[msqid].in_use) {
         errno = EINVAL;
         return -1;
     }
 
-    if (msgp == NULL)
-    {
+    if (msgp == NULL) {
         errno = EFAULT;
         return -1;
     }
 
-    if (msgsz > MSGMAX)
-    {
+    if (msgsz > MSGMAX) {
         errno = EINVAL;
         return -1;
     }
 
     const struct msgbuf *msg = (const struct msgbuf *)msgp;
-    if (msg->mtype <= 0)
-    {
+    if (msg->mtype <= 0) {
         errno = EINVAL;
         return -1;
     }
@@ -178,10 +157,8 @@ int msgsnd(int msqid, const void *msgp, size_t msgsz, int msgflg)
     struct msg_queue *mq = &msg_queues[msqid];
 
     /* Check if queue is full */
-    if (mq->ds.msg_cbytes + msgsz > mq->ds.msg_qbytes)
-    {
-        if (msgflg & IPC_NOWAIT)
-        {
+    if (mq->ds.msg_cbytes + msgsz > mq->ds.msg_qbytes) {
+        if (msgflg & IPC_NOWAIT) {
             errno = EAGAIN;
             return -1;
         }
@@ -192,8 +169,7 @@ int msgsnd(int msqid, const void *msgp, size_t msgsz, int msgflg)
 
     /* Allocate message node */
     struct msg_node *node = (struct msg_node *)malloc(sizeof(struct msg_node) + msgsz);
-    if (node == NULL)
-    {
+    if (node == NULL) {
         errno = ENOMEM;
         return -1;
     }
@@ -204,13 +180,10 @@ int msgsnd(int msqid, const void *msgp, size_t msgsz, int msgflg)
     memcpy(node->mtext, msg->mtext, msgsz);
 
     /* Add to queue */
-    if (mq->tail == NULL)
-    {
+    if (mq->tail == NULL) {
         mq->head = node;
         mq->tail = node;
-    }
-    else
-    {
+    } else {
         mq->tail->next = node;
         mq->tail = node;
     }
@@ -223,18 +196,15 @@ int msgsnd(int msqid, const void *msgp, size_t msgsz, int msgflg)
     return 0;
 }
 
-ssize_t msgrcv(int msqid, void *msgp, size_t msgsz, long msgtyp, int msgflg)
-{
+ssize_t msgrcv(int msqid, void *msgp, size_t msgsz, long msgtyp, int msgflg) {
     init_msg_queues();
 
-    if (msqid < 0 || msqid >= MAX_MSG_QUEUES || !msg_queues[msqid].in_use)
-    {
+    if (msqid < 0 || msqid >= MAX_MSG_QUEUES || !msg_queues[msqid].in_use) {
         errno = EINVAL;
         return -1;
     }
 
-    if (msgp == NULL)
-    {
+    if (msgp == NULL) {
         errno = EFAULT;
         return -1;
     }
@@ -248,38 +218,28 @@ ssize_t msgrcv(int msqid, void *msgp, size_t msgsz, long msgtyp, int msgflg)
     struct msg_node *found = NULL;
     struct msg_node *found_prev = NULL;
 
-    while (node != NULL)
-    {
+    while (node != NULL) {
         int match = 0;
 
-        if (msgtyp == 0)
-        {
+        if (msgtyp == 0) {
             /* First message in queue */
             match = 1;
-        }
-        else if (msgtyp > 0)
-        {
+        } else if (msgtyp > 0) {
             /* First message of type msgtyp */
-            if (node->mtype == msgtyp)
-            {
+            if (node->mtype == msgtyp) {
                 match = 1;
             }
-        }
-        else
-        {
+        } else {
             /* First message with type <= |msgtyp| */
-            if (node->mtype <= -msgtyp)
-            {
-                if (found == NULL || node->mtype < found->mtype)
-                {
+            if (node->mtype <= -msgtyp) {
+                if (found == NULL || node->mtype < found->mtype) {
                     found = node;
                     found_prev = prev;
                 }
             }
         }
 
-        if (match && msgtyp >= 0)
-        {
+        if (match && msgtyp >= 0) {
             found = node;
             found_prev = prev;
             break;
@@ -289,10 +249,8 @@ ssize_t msgrcv(int msqid, void *msgp, size_t msgsz, long msgtyp, int msgflg)
         node = node->next;
     }
 
-    if (found == NULL)
-    {
-        if (msgflg & IPC_NOWAIT)
-        {
+    if (found == NULL) {
+        if (msgflg & IPC_NOWAIT) {
             errno = ENOMSG;
             return -1;
         }
@@ -303,10 +261,8 @@ ssize_t msgrcv(int msqid, void *msgp, size_t msgsz, long msgtyp, int msgflg)
 
     /* Check message size */
     size_t actual_size = found->msize;
-    if (actual_size > msgsz)
-    {
-        if (!(msgflg & MSG_NOERROR))
-        {
+    if (actual_size > msgsz) {
+        if (!(msgflg & MSG_NOERROR)) {
             errno = E2BIG;
             return -1;
         }
@@ -318,18 +274,13 @@ ssize_t msgrcv(int msqid, void *msgp, size_t msgsz, long msgtyp, int msgflg)
     memcpy(msg->mtext, found->mtext, actual_size);
 
     /* Remove from queue (unless MSG_COPY) */
-    if (!(msgflg & MSG_COPY))
-    {
-        if (found_prev == NULL)
-        {
+    if (!(msgflg & MSG_COPY)) {
+        if (found_prev == NULL) {
             mq->head = found->next;
-        }
-        else
-        {
+        } else {
             found_prev->next = found->next;
         }
-        if (found == mq->tail)
-        {
+        if (found == mq->tail) {
             mq->tail = found_prev;
         }
 
@@ -344,14 +295,11 @@ ssize_t msgrcv(int msqid, void *msgp, size_t msgsz, long msgtyp, int msgflg)
     return (ssize_t)actual_size;
 }
 
-int msgctl(int msqid, int cmd, struct msqid_ds *buf)
-{
+int msgctl(int msqid, int cmd, struct msqid_ds *buf) {
     init_msg_queues();
 
-    if (cmd != IPC_INFO && cmd != MSG_INFO)
-    {
-        if (msqid < 0 || msqid >= MAX_MSG_QUEUES || !msg_queues[msqid].in_use)
-        {
+    if (cmd != IPC_INFO && cmd != MSG_INFO) {
+        if (msqid < 0 || msqid >= MAX_MSG_QUEUES || !msg_queues[msqid].in_use) {
             errno = EINVAL;
             return -1;
         }
@@ -359,14 +307,11 @@ int msgctl(int msqid, int cmd, struct msqid_ds *buf)
 
     struct msg_queue *mq = &msg_queues[msqid];
 
-    switch (cmd)
-    {
-        case IPC_RMID:
-        {
+    switch (cmd) {
+        case IPC_RMID: {
             /* Free all messages */
             struct msg_node *node = mq->head;
-            while (node != NULL)
-            {
+            while (node != NULL) {
                 struct msg_node *next = node->next;
                 free(node);
                 node = next;
@@ -378,8 +323,7 @@ int msgctl(int msqid, int cmd, struct msqid_ds *buf)
         }
 
         case IPC_STAT:
-            if (buf == NULL)
-            {
+            if (buf == NULL) {
                 errno = EFAULT;
                 return -1;
             }
@@ -387,27 +331,23 @@ int msgctl(int msqid, int cmd, struct msqid_ds *buf)
             return 0;
 
         case IPC_SET:
-            if (buf == NULL)
-            {
+            if (buf == NULL) {
                 errno = EFAULT;
                 return -1;
             }
             mq->ds.msg_perm.uid = buf->msg_perm.uid;
             mq->ds.msg_perm.gid = buf->msg_perm.gid;
             mq->ds.msg_perm.mode = buf->msg_perm.mode & 0777;
-            if (buf->msg_qbytes > 0 && buf->msg_qbytes <= MSGMNB)
-            {
+            if (buf->msg_qbytes > 0 && buf->msg_qbytes <= MSGMNB) {
                 mq->ds.msg_qbytes = buf->msg_qbytes;
             }
             /* mq->ds.msg_ctime = time(NULL); */
             return 0;
 
         case IPC_INFO:
-        case MSG_INFO:
-        {
+        case MSG_INFO: {
             struct msginfo *info = (struct msginfo *)buf;
-            if (info == NULL)
-            {
+            if (info == NULL) {
                 errno = EFAULT;
                 return -1;
             }

@@ -2,8 +2,7 @@
 #define _FCNTL_H
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 #include "sys/types.h"
@@ -43,15 +42,14 @@ extern "C"
 /* File descriptor flags */
 #define FD_CLOEXEC 1 /* Close on exec */
 
-    /* flock structure for record locking */
-    struct flock
-    {
-        short l_type;   /* Type of lock: F_RDLCK, F_WRLCK, F_UNLCK */
-        short l_whence; /* How to interpret l_start: SEEK_SET, SEEK_CUR, SEEK_END */
-        off_t l_start;  /* Starting offset */
-        off_t l_len;    /* Length; 0 means lock to EOF */
-        pid_t l_pid;    /* Process ID holding lock (F_GETLK only) */
-    };
+/* flock structure for record locking */
+struct flock {
+    short l_type;   /* Type of lock: F_RDLCK, F_WRLCK, F_UNLCK */
+    short l_whence; /* How to interpret l_start: SEEK_SET, SEEK_CUR, SEEK_END */
+    off_t l_start;  /* Starting offset */
+    off_t l_len;    /* Length; 0 means lock to EOF */
+    pid_t l_pid;    /* Process ID holding lock (F_GETLK only) */
+};
 
 /* Lock types */
 #define F_RDLCK 0 /* Read lock */
@@ -73,15 +71,15 @@ extern "C"
 #define AT_SYMLINK_FOLLOW 0x400   /* Follow symbolic links */
 #define AT_EACCESS 0x200          /* Use effective IDs for access check */
 
-    /* Functions */
-    int open(const char *pathname, int flags, ...);
-    int creat(const char *pathname, mode_t mode);
-    int fcntl(int fd, int cmd, ...);
-    int openat(int dirfd, const char *pathname, int flags, ...);
+/* Functions */
+int open(const char *pathname, int flags, ...);
+int creat(const char *pathname, mode_t mode);
+int fcntl(int fd, int cmd, ...);
+int openat(int dirfd, const char *pathname, int flags, ...);
 
-    /* Advisory locking */
-    int posix_fadvise(int fd, off_t offset, off_t len, int advice);
-    int posix_fallocate(int fd, off_t offset, off_t len);
+/* Advisory locking */
+int posix_fadvise(int fd, off_t offset, off_t len, int advice);
+int posix_fallocate(int fd, off_t offset, off_t len);
 
 #ifdef __cplusplus
 }

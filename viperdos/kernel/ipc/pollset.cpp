@@ -28,8 +28,7 @@
  * - Oneshot mode for auto-removal
  * - Event-driven wakeup via poll::register_wait/notify_handle
  */
-namespace pollset
-{
+namespace pollset {
 
 // Spinlock for poll set table access
 static Spinlock pollset_lock;
@@ -39,17 +38,14 @@ static PollSet poll_sets[MAX_POLL_SETS];
 static u32 next_poll_set_id = 1;
 
 /** @copydoc pollset::init */
-void init()
-{
+void init() {
     serial::puts("[pollset] Initializing pollset subsystem\n");
 
-    for (u32 i = 0; i < MAX_POLL_SETS; i++)
-    {
+    for (u32 i = 0; i < MAX_POLL_SETS; i++) {
         poll_sets[i].id = 0;
         poll_sets[i].active = false;
         poll_sets[i].entry_count = 0;
-        for (u32 j = 0; j < MAX_ENTRIES_PER_SET; j++)
-        {
+        for (u32 j = 0; j < MAX_ENTRIES_PER_SET; j++) {
             poll_sets[i].entries[j].active = false;
         }
     }
@@ -58,12 +54,9 @@ void init()
 }
 
 /** @copydoc pollset::get */
-PollSet *get(u32 poll_id)
-{
-    for (u32 i = 0; i < MAX_POLL_SETS; i++)
-    {
-        if (poll_sets[i].active && poll_sets[i].id == poll_id)
-        {
+PollSet *get(u32 poll_id) {
+    for (u32 i = 0; i < MAX_POLL_SETS; i++) {
+        if (poll_sets[i].active && poll_sets[i].id == poll_id) {
             return &poll_sets[i];
         }
     }
@@ -75,12 +68,9 @@ PollSet *get(u32 poll_id)
  *
  * @return Pointer to an inactive poll set entry, or `nullptr` if table is full.
  */
-static PollSet *alloc_poll_set()
-{
-    for (u32 i = 0; i < MAX_POLL_SETS; i++)
-    {
-        if (!poll_sets[i].active)
-        {
+static PollSet *alloc_poll_set() {
+    for (u32 i = 0; i < MAX_POLL_SETS; i++) {
+        if (!poll_sets[i].active) {
             return &poll_sets[i];
         }
     }
@@ -88,11 +78,9 @@ static PollSet *alloc_poll_set()
 }
 
 /** @copydoc pollset::create */
-i64 create()
-{
+i64 create() {
     PollSet *ps = alloc_poll_set();
-    if (!ps)
-    {
+    if (!ps) {
         return error::VERR_OUT_OF_MEMORY;
     }
 
@@ -101,8 +89,7 @@ i64 create()
     ps->owner_task_id = task::current() ? task::current()->id : 0;
     ps->entry_count = 0;
 
-    for (u32 i = 0; i < MAX_ENTRIES_PER_SET; i++)
-    {
+    for (u32 i = 0; i < MAX_ENTRIES_PER_SET; i++) {
         ps->entries[i].active = false;
     }
 
@@ -110,12 +97,10 @@ i64 create()
 }
 
 /** @copydoc pollset::is_owner */
-bool is_owner(u32 poll_id)
-{
+bool is_owner(u32 poll_id) {
     SpinlockGuard guard(pollset_lock);
     PollSet *ps = get(poll_id);
-    if (!ps)
-    {
+    if (!ps) {
         return false;
     }
     task::Task *current = task::current();
@@ -123,28 +108,23 @@ bool is_owner(u32 poll_id)
 }
 
 /** @copydoc pollset::add */
-i64 add(u32 poll_id, u32 handle, u32 mask, poll::PollFlags flags)
-{
+i64 add(u32 poll_id, u32 handle, u32 mask, poll::PollFlags flags) {
     SpinlockGuard guard(pollset_lock);
 
     PollSet *ps = get(poll_id);
-    if (!ps)
-    {
+    if (!ps) {
         return error::VERR_NOT_FOUND;
     }
 
     // Enforce per-task isolation
     task::Task *current = task::current();
-    if (current && ps->owner_task_id != current->id)
-    {
+    if (current && ps->owner_task_id != current->id) {
         return error::VERR_PERMISSION;
     }
 
     // Check if handle already exists
-    for (u32 i = 0; i < MAX_ENTRIES_PER_SET; i++)
-    {
-        if (ps->entries[i].active && ps->entries[i].handle == handle)
-        {
+    for (u32 i = 0; i < MAX_ENTRIES_PER_SET; i++) {
+        if (ps->entries[i].active && ps->entries[i].handle == handle) {
             // Update mask and flags for existing entry
             ps->entries[i].mask = static_cast<poll::EventType>(mask);
             ps->entries[i].flags = flags;
@@ -153,10 +133,8 @@ i64 add(u32 poll_id, u32 handle, u32 mask, poll::PollFlags flags)
     }
 
     // Find free slot
-    for (u32 i = 0; i < MAX_ENTRIES_PER_SET; i++)
-    {
-        if (!ps->entries[i].active)
-        {
+    for (u32 i = 0; i < MAX_ENTRIES_PER_SET; i++) {
+        if (!ps->entries[i].active) {
             ps->entries[i].handle = handle;
             ps->entries[i].mask = static_cast<poll::EventType>(mask);
             ps->entries[i].flags = flags;
@@ -171,18 +149,14 @@ i64 add(u32 poll_id, u32 handle, u32 mask, poll::PollFlags flags)
 }
 
 /** @copydoc pollset::remove */
-i64 remove(u32 poll_id, u32 handle)
-{
+i64 remove(u32 poll_id, u32 handle) {
     PollSet *ps = get(poll_id);
-    if (!ps)
-    {
+    if (!ps) {
         return error::VERR_NOT_FOUND;
     }
 
-    for (u32 i = 0; i < MAX_ENTRIES_PER_SET; i++)
-    {
-        if (ps->entries[i].active && ps->entries[i].handle == handle)
-        {
+    for (u32 i = 0; i < MAX_ENTRIES_PER_SET; i++) {
+        if (ps->entries[i].active && ps->entries[i].handle == handle) {
             ps->entries[i].active = false;
             ps->entry_count--;
             return error::VOK;
@@ -211,15 +185,12 @@ i64 remove(u32 poll_id, u32 handle)
  * @param mask Requested event mask.
  * @return Mask of triggered events (may be NONE).
  */
-static poll::EventType check_readiness(u32 handle, poll::EventType mask)
-{
+static poll::EventType check_readiness(u32 handle, poll::EventType mask) {
     poll::EventType triggered = poll::EventType::NONE;
 
     // Check console input readiness (special pseudo-handle)
-    if (handle == poll::HANDLE_CONSOLE_INPUT)
-    {
-        if (poll::has_event(mask, poll::EventType::CONSOLE_INPUT))
-        {
+    if (handle == poll::HANDLE_CONSOLE_INPUT) {
+        if (poll::has_event(mask, poll::EventType::CONSOLE_INPUT)) {
             // Poll input devices and check for characters
             input::poll();
             // Check all possible input sources:
@@ -228,8 +199,7 @@ static poll::EventType check_readiness(u32 handle, poll::EventType mask)
             // - console::input_buffer (already drained from input subsystem)
             // - tty::input_buffer (in GUI mode, timer ISR drains input to TTY)
             if (input::has_char() || serial::has_char() || console::has_input() ||
-                tty::has_input())
-            {
+                tty::has_input()) {
                 triggered = triggered | poll::EventType::CONSOLE_INPUT;
             }
         }
@@ -237,8 +207,7 @@ static poll::EventType check_readiness(u32 handle, poll::EventType mask)
     }
 
     // Network RX pseudo-handle removed - use netd user-space server instead
-    if (handle == poll::HANDLE_NETWORK_RX)
-    {
+    if (handle == poll::HANDLE_NETWORK_RX) {
         return triggered; // No kernel networking
     }
 
@@ -248,51 +217,39 @@ static poll::EventType check_readiness(u32 handle, poll::EventType mask)
     cap::Table *ct = viper::current_cap_table();
 
     if (poll::has_event(mask, poll::EventType::CHANNEL_READ) ||
-        poll::has_event(mask, poll::EventType::CHANNEL_WRITE))
-    {
-        if (ct)
-        {
+        poll::has_event(mask, poll::EventType::CHANNEL_WRITE)) {
+        if (ct) {
             // Userspace context: handle is a cap_table index, look up channel ID
             cap::Entry *entry = ct->get(handle);
-            if (entry && entry->kind == cap::Kind::Channel)
-            {
+            if (entry && entry->kind == cap::Kind::Channel) {
                 kobj::Channel *kch = static_cast<kobj::Channel *>(entry->object);
-                if (kch)
-                {
+                if (kch) {
                     channel_id = kch->id();
                 }
             }
-        }
-        else
-        {
+        } else {
             // Kernel test context: no viper, handle IS the channel ID directly
             channel_id = handle;
         }
     }
 
     // Check channel read readiness (recv endpoint) using TOCTOU-safe ID lookup
-    if (poll::has_event(mask, poll::EventType::CHANNEL_READ))
-    {
-        if (channel_id != 0 && channel::has_message(channel_id))
-        {
+    if (poll::has_event(mask, poll::EventType::CHANNEL_READ)) {
+        if (channel_id != 0 && channel::has_message(channel_id)) {
             triggered = triggered | poll::EventType::CHANNEL_READ;
         }
     }
 
     // Check channel write readiness (send endpoint) using TOCTOU-safe ID lookup
-    if (poll::has_event(mask, poll::EventType::CHANNEL_WRITE))
-    {
-        if (channel_id != 0 && channel::has_space(channel_id))
-        {
+    if (poll::has_event(mask, poll::EventType::CHANNEL_WRITE)) {
+        if (channel_id != 0 && channel::has_space(channel_id)) {
             triggered = triggered | poll::EventType::CHANNEL_WRITE;
         }
     }
 
     // Check timer expiry
-    if (poll::has_event(mask, poll::EventType::TIMER))
-    {
-        if (poll::timer_expired(handle))
-        {
+    if (poll::has_event(mask, poll::EventType::TIMER)) {
+        if (poll::timer_expired(handle)) {
             triggered = triggered | poll::EventType::TIMER;
         }
     }
@@ -306,13 +263,11 @@ static poll::EventType check_readiness(u32 handle, poll::EventType mask)
  * @param entry Poll entry to check.
  * @return Triggered events (accounting for edge-triggered mode).
  */
-static poll::EventType check_entry_readiness(PollEntry &entry)
-{
+static poll::EventType check_entry_readiness(PollEntry &entry) {
     poll::EventType current_state = check_readiness(entry.handle, entry.mask);
 
     // For level-triggered (default), return current state
-    if (!poll::has_flag(entry.flags, poll::PollFlags::EDGE_TRIGGERED))
-    {
+    if (!poll::has_flag(entry.flags, poll::PollFlags::EDGE_TRIGGERED)) {
         return current_state;
     }
 
@@ -332,63 +287,53 @@ static poll::EventType check_entry_readiness(PollEntry &entry)
 }
 
 /** @copydoc pollset::wait */
-i64 wait(u32 poll_id, poll::PollEvent *out_events, u32 max_events, i64 timeout_ms)
-{
+i64 wait(u32 poll_id, poll::PollEvent *out_events, u32 max_events, i64 timeout_ms) {
     PollSet *ps = get(poll_id);
-    if (!ps)
-    {
+    if (!ps) {
         return error::VERR_NOT_FOUND;
     }
 
-    if (!out_events || max_events == 0)
-    {
+    if (!out_events || max_events == 0) {
         return error::VERR_INVALID_ARG;
     }
 
     // Enforce per-task isolation
     task::Task *current = task::current();
-    if (current && ps->owner_task_id != current->id)
-    {
+    if (current && ps->owner_task_id != current->id) {
         return error::VERR_PERMISSION;
     }
 
     u64 deadline = 0;
-    if (timeout_ms > 0)
-    {
+    if (timeout_ms > 0) {
         deadline = poll::time_now_ms() + static_cast<u64>(timeout_ms);
     }
 
     // Event-driven wait loop
-    while (true)
-    {
+    while (true) {
         u32 ready_count = 0;
         bool has_pseudo_handles = false;
 
         // Check each entry in the poll set
-        for (u32 i = 0; i < MAX_ENTRIES_PER_SET && ready_count < max_events; i++)
-        {
+        for (u32 i = 0; i < MAX_ENTRIES_PER_SET && ready_count < max_events; i++) {
             if (!ps->entries[i].active)
                 continue;
 
             // Track if we have pseudo-handles that need polling
             if (ps->entries[i].handle == poll::HANDLE_CONSOLE_INPUT ||
-                ps->entries[i].handle == poll::HANDLE_NETWORK_RX)
-            {
+                ps->entries[i].handle == poll::HANDLE_NETWORK_RX) {
                 has_pseudo_handles = true;
             }
 
             poll::EventType triggered = check_entry_readiness(ps->entries[i]);
 
-            if (triggered != poll::EventType::NONE)
-            {
+            if (triggered != poll::EventType::NONE) {
                 out_events[ready_count].handle = ps->entries[i].handle;
                 out_events[ready_count].events = ps->entries[i].mask;
                 out_events[ready_count].triggered = triggered;
                 ready_count++;
 
                 // Handle oneshot mode - deactivate entry after trigger
-                if (poll::has_flag(ps->entries[i].flags, poll::PollFlags::ONESHOT))
-                {
+                if (poll::has_flag(ps->entries[i].flags, poll::PollFlags::ONESHOT)) {
                     ps->entries[i].active = false;
                     ps->entry_count--;
                 }
@@ -396,20 +341,17 @@ i64 wait(u32 poll_id, poll::PollEvent *out_events, u32 max_events, i64 timeout_m
         }
 
         // Return if any events are ready
-        if (ready_count > 0)
-        {
+        if (ready_count > 0) {
             return static_cast<i64>(ready_count);
         }
 
         // Non-blocking mode: return immediately
-        if (timeout_ms == 0)
-        {
+        if (timeout_ms == 0) {
             return 0;
         }
 
         // Check timeout
-        if (timeout_ms > 0 && poll::time_now_ms() >= deadline)
-        {
+        if (timeout_ms > 0 && poll::time_now_ms() >= deadline) {
             return 0;
         }
 
@@ -417,8 +359,7 @@ i64 wait(u32 poll_id, poll::PollEvent *out_events, u32 max_events, i64 timeout_m
         // We always register channel handles so notify_handle() can wake us,
         // even when pseudo-handles are present.
         bool has_channel_handles = false;
-        for (u32 i = 0; i < MAX_ENTRIES_PER_SET; i++)
-        {
+        for (u32 i = 0; i < MAX_ENTRIES_PER_SET; i++) {
             if (!ps->entries[i].active)
                 continue;
 
@@ -426,8 +367,7 @@ i64 wait(u32 poll_id, poll::PollEvent *out_events, u32 max_events, i64 timeout_m
             poll::EventType mask = ps->entries[i].mask;
 
             // Only register for real handles, not pseudo-handles
-            if (handle != poll::HANDLE_CONSOLE_INPUT && handle != poll::HANDLE_NETWORK_RX)
-            {
+            if (handle != poll::HANDLE_CONSOLE_INPUT && handle != poll::HANDLE_NETWORK_RX) {
                 poll::register_wait(handle, mask);
                 has_channel_handles = true;
             }
@@ -439,52 +379,40 @@ i64 wait(u32 poll_id, poll::PollEvent *out_events, u32 max_events, i64 timeout_m
         // - check_timers() when the poll interval expires (for timeout/pseudo-handles)
         u32 poll_timer_id = 0;
 
-        if (has_pseudo_handles)
-        {
+        if (has_pseudo_handles) {
             // When pseudo-handles are present, create a timer for periodic polling
             // while also being wakeable by channel events via notify_handle().
             // This enables dual-wake: both timer expiry and channel events wake us.
             constexpr u64 PSEUDO_POLL_INTERVAL_MS = 10;
             i64 timer_result = poll::timer_create(PSEUDO_POLL_INTERVAL_MS);
 
-            if (timer_result >= 0)
-            {
+            if (timer_result >= 0) {
                 poll_timer_id = static_cast<u32>(timer_result);
                 // Register as timer waiter and set state to Blocked atomically.
                 // This enables dual-wake: check_timers() wakes on timer expiry,
                 // notify_handle() wakes on channel events.
                 poll::register_timer_wait_and_block(poll_timer_id);
-            }
-            else if (current)
-            {
+            } else if (current) {
                 // Fallback if timer creation fails - just block
                 current->state = task::TaskState::Blocked;
             }
-        }
-        else if (has_channel_handles)
-        {
+        } else if (has_channel_handles) {
             // No pseudo-handles but have channel handles.
             // If a timeout is specified, create a timer to honor it.
             // Otherwise block until a channel event wakes us.
-            if (timeout_ms > 0)
-            {
+            if (timeout_ms > 0) {
                 // Calculate remaining time until deadline
                 u64 now = poll::time_now_ms();
                 u64 remaining = (deadline > now) ? (deadline - now) : 1;
                 i64 timer_result = poll::timer_create(remaining);
 
-                if (timer_result >= 0)
-                {
+                if (timer_result >= 0) {
                     poll_timer_id = static_cast<u32>(timer_result);
                     poll::register_timer_wait_and_block(poll_timer_id);
-                }
-                else if (current)
-                {
+                } else if (current) {
                     current->state = task::TaskState::Blocked;
                 }
-            }
-            else if (current)
-            {
+            } else if (current) {
                 // No timeout (wait indefinitely) - block until channel event
                 current->state = task::TaskState::Blocked;
             }
@@ -494,8 +422,7 @@ i64 wait(u32 poll_id, poll::PollEvent *out_events, u32 max_events, i64 timeout_m
         task::yield();
 
         // Clean up: cancel timer and unregister waits
-        if (poll_timer_id != 0)
-        {
+        if (poll_timer_id != 0) {
             poll::timer_cancel(poll_timer_id);
         }
         poll::unregister_wait();
@@ -503,11 +430,9 @@ i64 wait(u32 poll_id, poll::PollEvent *out_events, u32 max_events, i64 timeout_m
 }
 
 /** @copydoc pollset::destroy */
-i64 destroy(u32 poll_id)
-{
+i64 destroy(u32 poll_id) {
     PollSet *ps = get(poll_id);
-    if (!ps)
-    {
+    if (!ps) {
         return error::VERR_NOT_FOUND;
     }
 
@@ -515,8 +440,7 @@ i64 destroy(u32 poll_id)
     ps->id = 0;
     ps->entry_count = 0;
 
-    for (u32 i = 0; i < MAX_ENTRIES_PER_SET; i++)
-    {
+    for (u32 i = 0; i < MAX_ENTRIES_PER_SET; i++) {
         ps->entries[i].active = false;
     }
 
@@ -524,14 +448,12 @@ i64 destroy(u32 poll_id)
 }
 
 /** @copydoc pollset::test_pollset */
-void test_pollset()
-{
+void test_pollset() {
     serial::puts("[pollset] Testing pollset functionality...\n");
 
     // Create a poll set
     i64 ps_result = create();
-    if (ps_result < 0)
-    {
+    if (ps_result < 0) {
         serial::puts("[pollset] Failed to create poll set\n");
         return;
     }
@@ -542,8 +464,7 @@ void test_pollset()
 
     // Create a test channel
     i64 ch_result = channel::create();
-    if (ch_result < 0)
-    {
+    if (ch_result < 0) {
         serial::puts("[pollset] Failed to create channel\n");
         destroy(ps_id);
         return;
@@ -555,8 +476,7 @@ void test_pollset()
                          ch_id,
                          static_cast<u32>(poll::EventType::CHANNEL_READ) |
                              static_cast<u32>(poll::EventType::CHANNEL_WRITE));
-    if (add_result < 0)
-    {
+    if (add_result < 0) {
         serial::puts("[pollset] Failed to add channel to poll set\n");
         channel::close(ch_id);
         destroy(ps_id);
@@ -569,19 +489,15 @@ void test_pollset()
 
     serial::puts("[pollset] Test 1 (empty channel): wait returned ");
     serial::put_dec(ready);
-    if (ready > 0)
-    {
+    if (ready > 0) {
         serial::puts(", triggered=");
         serial::put_hex(static_cast<u32>(events[0].triggered));
     }
     serial::puts("\n");
 
-    if (ready == 1 && poll::has_event(events[0].triggered, poll::EventType::CHANNEL_WRITE))
-    {
+    if (ready == 1 && poll::has_event(events[0].triggered, poll::EventType::CHANNEL_WRITE)) {
         serial::puts("[pollset] Test 1 PASSED: channel writable\n");
-    }
-    else
-    {
+    } else {
         serial::puts("[pollset] Test 1 FAILED\n");
     }
 
@@ -593,19 +509,15 @@ void test_pollset()
     ready = wait(ps_id, events, 1, 0);
     serial::puts("[pollset] Test 2 (message queued): wait returned ");
     serial::put_dec(ready);
-    if (ready > 0)
-    {
+    if (ready > 0) {
         serial::puts(", triggered=");
         serial::put_hex(static_cast<u32>(events[0].triggered));
     }
     serial::puts("\n");
 
-    if (ready >= 1 && poll::has_event(events[0].triggered, poll::EventType::CHANNEL_READ))
-    {
+    if (ready >= 1 && poll::has_event(events[0].triggered, poll::EventType::CHANNEL_READ)) {
         serial::puts("[pollset] Test 2 PASSED: channel readable\n");
-    }
-    else
-    {
+    } else {
         serial::puts("[pollset] Test 2 FAILED\n");
     }
 

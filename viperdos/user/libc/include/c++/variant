@@ -9,8 +9,7 @@
 #include "type_traits"
 #include "utility"
 
-namespace std
-{
+namespace std {
 
 // Forward declarations
 template <typename... Types> class variant;
@@ -20,64 +19,51 @@ class bad_variant_access;
 inline constexpr size_t variant_npos = static_cast<size_t>(-1);
 
 // bad_variant_access exception
-class bad_variant_access
-{
+class bad_variant_access {
   public:
-    const char *what() const noexcept
-    {
+    const char *what() const noexcept {
         return "bad variant access";
     }
 };
 
 // monostate - empty type for default constructible variants
-struct monostate
-{
-};
+struct monostate {};
 
-constexpr bool operator==(monostate, monostate) noexcept
-{
+constexpr bool operator==(monostate, monostate) noexcept {
     return true;
 }
 
-constexpr bool operator!=(monostate, monostate) noexcept
-{
+constexpr bool operator!=(monostate, monostate) noexcept {
     return false;
 }
 
-constexpr bool operator<(monostate, monostate) noexcept
-{
+constexpr bool operator<(monostate, monostate) noexcept {
     return false;
 }
 
-constexpr bool operator>(monostate, monostate) noexcept
-{
+constexpr bool operator>(monostate, monostate) noexcept {
     return false;
 }
 
-constexpr bool operator<=(monostate, monostate) noexcept
-{
+constexpr bool operator<=(monostate, monostate) noexcept {
     return true;
 }
 
-constexpr bool operator>=(monostate, monostate) noexcept
-{
+constexpr bool operator>=(monostate, monostate) noexcept {
     return true;
 }
 
-namespace detail
-{
+namespace detail {
 
 // Find index of type in type list
 template <typename T, typename... Types> struct type_index;
 
-template <typename T, typename First, typename... Rest> struct type_index<T, First, Rest...>
-{
+template <typename T, typename First, typename... Rest> struct type_index<T, First, Rest...> {
     static constexpr size_t value =
         is_same<T, First>::value ? 0 : 1 + type_index<T, Rest...>::value;
 };
 
-template <typename T> struct type_index<T>
-{
+template <typename T> struct type_index<T> {
     static constexpr size_t value = 0; // Not found
 };
 
@@ -85,12 +71,9 @@ template <typename T> struct type_index<T>
 template <size_t I, typename... Types> struct type_at;
 
 template <size_t I, typename First, typename... Rest>
-struct type_at<I, First, Rest...> : type_at<I - 1, Rest...>
-{
-};
+struct type_at<I, First, Rest...> : type_at<I - 1, Rest...> {};
 
-template <typename First, typename... Rest> struct type_at<0, First, Rest...>
-{
+template <typename First, typename... Rest> struct type_at<0, First, Rest...> {
     using type = First;
 };
 
@@ -99,13 +82,11 @@ template <size_t I, typename... Types> using type_at_t = typename type_at<I, Typ
 // Maximum sizeof
 template <typename... Types> struct max_size;
 
-template <typename T> struct max_size<T>
-{
+template <typename T> struct max_size<T> {
     static constexpr size_t value = sizeof(T);
 };
 
-template <typename First, typename... Rest> struct max_size<First, Rest...>
-{
+template <typename First, typename... Rest> struct max_size<First, Rest...> {
     static constexpr size_t value = sizeof(First) > max_size<Rest...>::value
                                         ? sizeof(First)
                                         : max_size<Rest...>::value;
@@ -114,42 +95,33 @@ template <typename First, typename... Rest> struct max_size<First, Rest...>
 // Maximum alignof
 template <typename... Types> struct max_align;
 
-template <typename T> struct max_align<T>
-{
+template <typename T> struct max_align<T> {
     static constexpr size_t value = alignof(T);
 };
 
-template <typename First, typename... Rest> struct max_align<First, Rest...>
-{
+template <typename First, typename... Rest> struct max_align<First, Rest...> {
     static constexpr size_t value = alignof(First) > max_align<Rest...>::value
                                         ? alignof(First)
                                         : max_align<Rest...>::value;
 };
 
 // Storage type
-template <typename... Types> struct variant_storage
-{
+template <typename... Types> struct variant_storage {
     alignas(max_align<Types...>::value) unsigned char data[max_size<Types...>::value];
 };
 
 // Destructor helper
 template <size_t I, typename... Types> struct variant_destructor;
 
-template <size_t I> struct variant_destructor<I>
-{
+template <size_t I> struct variant_destructor<I> {
     static void destroy(size_t, void *) {}
 };
 
-template <size_t I, typename First, typename... Rest> struct variant_destructor<I, First, Rest...>
-{
-    static void destroy(size_t index, void *storage)
-    {
-        if (index == I)
-        {
+template <size_t I, typename First, typename... Rest> struct variant_destructor<I, First, Rest...> {
+    static void destroy(size_t index, void *storage) {
+        if (index == I) {
             static_cast<First *>(storage)->~First();
-        }
-        else
-        {
+        } else {
             variant_destructor<I + 1, Rest...>::destroy(index, storage);
         }
     }
@@ -158,21 +130,15 @@ template <size_t I, typename First, typename... Rest> struct variant_destructor<
 // Copy helper
 template <size_t I, typename... Types> struct variant_copy;
 
-template <size_t I> struct variant_copy<I>
-{
+template <size_t I> struct variant_copy<I> {
     static void copy(size_t, const void *, void *) {}
 };
 
-template <size_t I, typename First, typename... Rest> struct variant_copy<I, First, Rest...>
-{
-    static void copy(size_t index, const void *src, void *dst)
-    {
-        if (index == I)
-        {
+template <size_t I, typename First, typename... Rest> struct variant_copy<I, First, Rest...> {
+    static void copy(size_t index, const void *src, void *dst) {
+        if (index == I) {
             new (dst) First(*static_cast<const First *>(src));
-        }
-        else
-        {
+        } else {
             variant_copy<I + 1, Rest...>::copy(index, src, dst);
         }
     }
@@ -181,21 +147,15 @@ template <size_t I, typename First, typename... Rest> struct variant_copy<I, Fir
 // Move helper
 template <size_t I, typename... Types> struct variant_move;
 
-template <size_t I> struct variant_move<I>
-{
+template <size_t I> struct variant_move<I> {
     static void move(size_t, void *, void *) {}
 };
 
-template <size_t I, typename First, typename... Rest> struct variant_move<I, First, Rest...>
-{
-    static void move(size_t index, void *src, void *dst)
-    {
-        if (index == I)
-        {
+template <size_t I, typename First, typename... Rest> struct variant_move<I, First, Rest...> {
+    static void move(size_t index, void *src, void *dst) {
+        if (index == I) {
             new (dst) First(std::move(*static_cast<First *>(src)));
-        }
-        else
-        {
+        } else {
             variant_move<I + 1, Rest...>::move(index, src, dst);
         }
     }
@@ -207,44 +167,32 @@ template <size_t I, typename First, typename... Rest> struct variant_move<I, Fir
 template <typename T> struct variant_size;
 
 template <typename... Types>
-struct variant_size<variant<Types...>> : integral_constant<size_t, sizeof...(Types)>
-{
-};
+struct variant_size<variant<Types...>> : integral_constant<size_t, sizeof...(Types)> {};
 
-template <typename T> struct variant_size<const T> : variant_size<T>
-{
-};
+template <typename T> struct variant_size<const T> : variant_size<T> {};
 
-template <typename T> struct variant_size<volatile T> : variant_size<T>
-{
-};
+template <typename T> struct variant_size<volatile T> : variant_size<T> {};
 
-template <typename T> struct variant_size<const volatile T> : variant_size<T>
-{
-};
+template <typename T> struct variant_size<const volatile T> : variant_size<T> {};
 
 template <typename T> inline constexpr size_t variant_size_v = variant_size<T>::value;
 
 // variant_alternative
 template <size_t I, typename T> struct variant_alternative;
 
-template <size_t I, typename... Types> struct variant_alternative<I, variant<Types...>>
-{
+template <size_t I, typename... Types> struct variant_alternative<I, variant<Types...>> {
     using type = detail::type_at_t<I, Types...>;
 };
 
-template <size_t I, typename T> struct variant_alternative<I, const T>
-{
+template <size_t I, typename T> struct variant_alternative<I, const T> {
     using type = const typename variant_alternative<I, T>::type;
 };
 
-template <size_t I, typename T> struct variant_alternative<I, volatile T>
-{
+template <size_t I, typename T> struct variant_alternative<I, volatile T> {
     using type = volatile typename variant_alternative<I, T>::type;
 };
 
-template <size_t I, typename T> struct variant_alternative<I, const volatile T>
-{
+template <size_t I, typename T> struct variant_alternative<I, const volatile T> {
     using type = const volatile typename variant_alternative<I, T>::type;
 };
 
@@ -252,8 +200,7 @@ template <size_t I, typename T>
 using variant_alternative_t = typename variant_alternative<I, T>::type;
 
 // in_place_index_t
-template <size_t I> struct in_place_index_t
-{
+template <size_t I> struct in_place_index_t {
     explicit in_place_index_t() = default;
 };
 
@@ -263,8 +210,7 @@ template <size_t I> inline constexpr in_place_index_t<I> in_place_index{};
 // variant - Type-safe union
 // =============================================================================
 
-template <typename... Types> class variant
-{
+template <typename... Types> class variant {
     static_assert(sizeof...(Types) > 0, "variant must have at least one type");
 
   private:
@@ -289,10 +235,8 @@ template <typename... Types> class variant
     friend constexpr const variant_alternative_t<I, variant<Ts...>> *get_if(
         const variant<Ts...> *) noexcept;
 
-    void destroy()
-    {
-        if (index_ != variant_npos)
-        {
+    void destroy() {
+        if (index_ != variant_npos) {
             detail::variant_destructor<0, Types...>::destroy(index_, &storage_.data);
         }
     }
@@ -301,26 +245,21 @@ template <typename... Types> class variant
     // Default constructor - constructs first alternative
     constexpr variant() noexcept(
         is_nothrow_default_constructible<detail::type_at_t<0, Types...>>::value)
-        : index_(0)
-    {
+        : index_(0) {
         using T = detail::type_at_t<0, Types...>;
         new (&storage_.data) T();
     }
 
     // Copy constructor
-    variant(const variant &other) : index_(other.index_)
-    {
-        if (index_ != variant_npos)
-        {
+    variant(const variant &other) : index_(other.index_) {
+        if (index_ != variant_npos) {
             detail::variant_copy<0, Types...>::copy(index_, &other.storage_.data, &storage_.data);
         }
     }
 
     // Move constructor
-    variant(variant &&other) noexcept : index_(other.index_)
-    {
-        if (index_ != variant_npos)
-        {
+    variant(variant &&other) noexcept : index_(other.index_) {
+        if (index_ != variant_npos) {
             detail::variant_move<0, Types...>::move(index_, &other.storage_.data, &storage_.data);
         }
     }
@@ -329,8 +268,7 @@ template <typename... Types> class variant
     template <
         typename T,
         typename = typename enable_if<!is_same<typename decay<T>::type, variant>::value>::type>
-    variant(T &&value)
-    {
+    variant(T &&value) {
         using DecayT = typename decay<T>::type;
         static constexpr size_t I = detail::type_index<DecayT, Types...>::value;
         static_assert(I < sizeof...(Types), "Type not in variant");
@@ -340,35 +278,29 @@ template <typename... Types> class variant
 
     // In-place construction by index
     template <size_t I, typename... Args>
-    explicit variant(in_place_index_t<I>, Args &&...args) : index_(I)
-    {
+    explicit variant(in_place_index_t<I>, Args &&...args) : index_(I) {
         using T = detail::type_at_t<I, Types...>;
         new (&storage_.data) T(std::forward<Args>(args)...);
     }
 
     // In-place construction by type
-    template <typename T, typename... Args> explicit variant(in_place_type_t<T>, Args &&...args)
-    {
+    template <typename T, typename... Args> explicit variant(in_place_type_t<T>, Args &&...args) {
         static constexpr size_t I = detail::type_index<T, Types...>::value;
         static_assert(I < sizeof...(Types), "Type not in variant");
         index_ = I;
         new (&storage_.data) T(std::forward<Args>(args)...);
     }
 
-    ~variant()
-    {
+    ~variant() {
         destroy();
     }
 
     // Copy assignment
-    variant &operator=(const variant &other)
-    {
-        if (this != &other)
-        {
+    variant &operator=(const variant &other) {
+        if (this != &other) {
             destroy();
             index_ = other.index_;
-            if (index_ != variant_npos)
-            {
+            if (index_ != variant_npos) {
                 detail::variant_copy<0, Types...>::copy(
                     index_, &other.storage_.data, &storage_.data);
             }
@@ -377,14 +309,11 @@ template <typename... Types> class variant
     }
 
     // Move assignment
-    variant &operator=(variant &&other) noexcept
-    {
-        if (this != &other)
-        {
+    variant &operator=(variant &&other) noexcept {
+        if (this != &other) {
             destroy();
             index_ = other.index_;
-            if (index_ != variant_npos)
-            {
+            if (index_ != variant_npos) {
                 detail::variant_move<0, Types...>::move(
                     index_, &other.storage_.data, &storage_.data);
             }
@@ -396,8 +325,7 @@ template <typename... Types> class variant
     template <
         typename T,
         typename = typename enable_if<!is_same<typename decay<T>::type, variant>::value>::type>
-    variant &operator=(T &&value)
-    {
+    variant &operator=(T &&value) {
         using DecayT = typename decay<T>::type;
         static constexpr size_t I = detail::type_index<DecayT, Types...>::value;
         static_assert(I < sizeof...(Types), "Type not in variant");
@@ -409,26 +337,23 @@ template <typename... Types> class variant
     }
 
     // Observers
-    constexpr size_t index() const noexcept
-    {
+    constexpr size_t index() const noexcept {
         return index_;
     }
 
-    constexpr bool valueless_by_exception() const noexcept
-    {
+    constexpr bool valueless_by_exception() const noexcept {
         return index_ == variant_npos;
     }
 
     // Modifiers
-    template <typename T, typename... Args> T &emplace(Args &&...args)
-    {
+    template <typename T, typename... Args> T &emplace(Args &&...args) {
         static constexpr size_t I = detail::type_index<T, Types...>::value;
         static_assert(I < sizeof...(Types), "Type not in variant");
         return emplace<I>(std::forward<Args>(args)...);
     }
 
-    template <size_t I, typename... Args> variant_alternative_t<I, variant> &emplace(Args &&...args)
-    {
+    template <size_t I, typename... Args>
+    variant_alternative_t<I, variant> &emplace(Args &&...args) {
         using T = detail::type_at_t<I, Types...>;
         destroy();
         index_ = I;
@@ -436,18 +361,14 @@ template <typename... Types> class variant
         return *ptr;
     }
 
-    void swap(variant &other) noexcept
-    {
-        if (index_ == other.index_)
-        {
+    void swap(variant &other) noexcept {
+        if (index_ == other.index_) {
             // Same type, swap values in place
             // For simplicity, use move through temporaries
             variant temp(std::move(*this));
             *this = std::move(other);
             other = std::move(temp);
-        }
-        else
-        {
+        } else {
             std::swap(*this, other);
         }
     }
@@ -455,10 +376,8 @@ template <typename... Types> class variant
 
 // get<I> accessors
 template <size_t I, typename... Types>
-constexpr variant_alternative_t<I, variant<Types...>> &get(variant<Types...> &v)
-{
-    if (v.index() != I)
-    {
+constexpr variant_alternative_t<I, variant<Types...>> &get(variant<Types...> &v) {
+    if (v.index() != I) {
         // Would throw bad_variant_access
         static variant_alternative_t<I, variant<Types...>> dummy{};
         return dummy;
@@ -467,10 +386,8 @@ constexpr variant_alternative_t<I, variant<Types...>> &get(variant<Types...> &v)
 }
 
 template <size_t I, typename... Types>
-constexpr const variant_alternative_t<I, variant<Types...>> &get(const variant<Types...> &v)
-{
-    if (v.index() != I)
-    {
+constexpr const variant_alternative_t<I, variant<Types...>> &get(const variant<Types...> &v) {
+    if (v.index() != I) {
         static variant_alternative_t<I, variant<Types...>> dummy{};
         return dummy;
     }
@@ -478,46 +395,39 @@ constexpr const variant_alternative_t<I, variant<Types...>> &get(const variant<T
 }
 
 template <size_t I, typename... Types>
-constexpr variant_alternative_t<I, variant<Types...>> &&get(variant<Types...> &&v)
-{
+constexpr variant_alternative_t<I, variant<Types...>> &&get(variant<Types...> &&v) {
     return std::move(get<I>(v));
 }
 
 template <size_t I, typename... Types>
-constexpr const variant_alternative_t<I, variant<Types...>> &&get(const variant<Types...> &&v)
-{
+constexpr const variant_alternative_t<I, variant<Types...>> &&get(const variant<Types...> &&v) {
     return std::move(get<I>(v));
 }
 
 // get<T> accessors
-template <typename T, typename... Types> constexpr T &get(variant<Types...> &v)
-{
+template <typename T, typename... Types> constexpr T &get(variant<Types...> &v) {
     static constexpr size_t I = detail::type_index<T, Types...>::value;
     return get<I>(v);
 }
 
-template <typename T, typename... Types> constexpr const T &get(const variant<Types...> &v)
-{
+template <typename T, typename... Types> constexpr const T &get(const variant<Types...> &v) {
     static constexpr size_t I = detail::type_index<T, Types...>::value;
     return get<I>(v);
 }
 
-template <typename T, typename... Types> constexpr T &&get(variant<Types...> &&v)
-{
+template <typename T, typename... Types> constexpr T &&get(variant<Types...> &&v) {
     static constexpr size_t I = detail::type_index<T, Types...>::value;
     return get<I>(std::move(v));
 }
 
-template <typename T, typename... Types> constexpr const T &&get(const variant<Types...> &&v)
-{
+template <typename T, typename... Types> constexpr const T &&get(const variant<Types...> &&v) {
     static constexpr size_t I = detail::type_index<T, Types...>::value;
     return get<I>(std::move(v));
 }
 
 // get_if<I>
 template <size_t I, typename... Types>
-constexpr variant_alternative_t<I, variant<Types...>> *get_if(variant<Types...> *v) noexcept
-{
+constexpr variant_alternative_t<I, variant<Types...>> *get_if(variant<Types...> *v) noexcept {
     if (!v || v->index() != I)
         return nullptr;
     return reinterpret_cast<variant_alternative_t<I, variant<Types...>> *>(&v->storage_.data);
@@ -525,39 +435,34 @@ constexpr variant_alternative_t<I, variant<Types...>> *get_if(variant<Types...> 
 
 template <size_t I, typename... Types>
 constexpr const variant_alternative_t<I, variant<Types...>> *get_if(
-    const variant<Types...> *v) noexcept
-{
+    const variant<Types...> *v) noexcept {
     if (!v || v->index() != I)
         return nullptr;
     return reinterpret_cast<const variant_alternative_t<I, variant<Types...>> *>(&v->storage_.data);
 }
 
 // get_if<T>
-template <typename T, typename... Types> constexpr T *get_if(variant<Types...> *v) noexcept
-{
+template <typename T, typename... Types> constexpr T *get_if(variant<Types...> *v) noexcept {
     static constexpr size_t I = detail::type_index<T, Types...>::value;
     return get_if<I>(v);
 }
 
 template <typename T, typename... Types>
-constexpr const T *get_if(const variant<Types...> *v) noexcept
-{
+constexpr const T *get_if(const variant<Types...> *v) noexcept {
     static constexpr size_t I = detail::type_index<T, Types...>::value;
     return get_if<I>(v);
 }
 
 // holds_alternative
 template <typename T, typename... Types>
-constexpr bool holds_alternative(const variant<Types...> &v) noexcept
-{
+constexpr bool holds_alternative(const variant<Types...> &v) noexcept {
     static constexpr size_t I = detail::type_index<T, Types...>::value;
     return v.index() == I;
 }
 
 // Comparison operators
 template <typename... Types>
-constexpr bool operator==(const variant<Types...> &lhs, const variant<Types...> &rhs)
-{
+constexpr bool operator==(const variant<Types...> &lhs, const variant<Types...> &rhs) {
     if (lhs.index() != rhs.index())
         return false;
     if (lhs.valueless_by_exception())
@@ -567,13 +472,11 @@ constexpr bool operator==(const variant<Types...> &lhs, const variant<Types...> 
 }
 
 template <typename... Types>
-constexpr bool operator!=(const variant<Types...> &lhs, const variant<Types...> &rhs)
-{
+constexpr bool operator!=(const variant<Types...> &lhs, const variant<Types...> &rhs) {
     return !(lhs == rhs);
 }
 
-template <typename... Types> void swap(variant<Types...> &lhs, variant<Types...> &rhs) noexcept
-{
+template <typename... Types> void swap(variant<Types...> &lhs, variant<Types...> &rhs) noexcept {
     lhs.swap(rhs);
 }
 
@@ -581,17 +484,16 @@ template <typename... Types> void swap(variant<Types...> &lhs, variant<Types...>
 template <typename Visitor, typename... Types>
 decltype(auto) visit(Visitor &&vis, variant<Types...> &v);
 
-namespace detail
-{
+namespace detail {
 
 template <typename Visitor, typename Variant, size_t... Is>
-decltype(auto) visit_impl(Visitor &&vis, Variant &v, index_sequence<Is...>)
-{
+decltype(auto) visit_impl(Visitor &&vis, Variant &v, index_sequence<Is...>) {
     using result_type = decltype(vis(get<0>(v)));
     using fn_type = result_type (*)(Visitor &&, Variant &);
 
-    static constexpr fn_type vtable[] = {[](Visitor &&vis, Variant &v) -> result_type
-                                         { return std::forward<Visitor>(vis)(get<Is>(v)); }...};
+    static constexpr fn_type vtable[] = {[](Visitor &&vis, Variant &v) -> result_type {
+        return std::forward<Visitor>(vis)(get<Is>(v));
+    }...};
 
     return vtable[v.index()](std::forward<Visitor>(vis), v);
 }
@@ -599,10 +501,8 @@ decltype(auto) visit_impl(Visitor &&vis, Variant &v, index_sequence<Is...>)
 } // namespace detail
 
 template <typename Visitor, typename... Types>
-decltype(auto) visit(Visitor &&vis, variant<Types...> &v)
-{
-    if (v.valueless_by_exception())
-    {
+decltype(auto) visit(Visitor &&vis, variant<Types...> &v) {
+    if (v.valueless_by_exception()) {
         // Would throw bad_variant_access
     }
     return detail::visit_impl(
@@ -610,10 +510,8 @@ decltype(auto) visit(Visitor &&vis, variant<Types...> &v)
 }
 
 template <typename Visitor, typename... Types>
-decltype(auto) visit(Visitor &&vis, const variant<Types...> &v)
-{
-    if (v.valueless_by_exception())
-    {
+decltype(auto) visit(Visitor &&vis, const variant<Types...> &v) {
+    if (v.valueless_by_exception()) {
         // Would throw bad_variant_access
     }
     return detail::visit_impl(

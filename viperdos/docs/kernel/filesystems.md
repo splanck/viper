@@ -56,29 +56,29 @@ Applications communicate with fsd via IPC channels:
 
 ### File Operations
 
-| Message | Code | Description |
-|---------|------|-------------|
-| `FS_OPEN` | 0x01 | Open file by path |
-| `FS_CLOSE` | 0x02 | Close file handle |
-| `FS_READ` | 0x03 | Read from file |
-| `FS_WRITE` | 0x04 | Write to file |
-| `FS_SEEK` | 0x05 | Seek to position |
-| `FS_STAT` | 0x06 | Get file metadata |
-| `FS_FSTAT` | 0x07 | Get metadata by handle |
-| `FS_TRUNCATE` | 0x08 | Truncate file |
-| `FS_SYNC` | 0x09 | Sync to disk |
+| Message       | Code | Description            |
+|---------------|------|------------------------|
+| `FS_OPEN`     | 0x01 | Open file by path      |
+| `FS_CLOSE`    | 0x02 | Close file handle      |
+| `FS_READ`     | 0x03 | Read from file         |
+| `FS_WRITE`    | 0x04 | Write to file          |
+| `FS_SEEK`     | 0x05 | Seek to position       |
+| `FS_STAT`     | 0x06 | Get file metadata      |
+| `FS_FSTAT`    | 0x07 | Get metadata by handle |
+| `FS_TRUNCATE` | 0x08 | Truncate file          |
+| `FS_SYNC`     | 0x09 | Sync to disk           |
 
 ### Directory Operations
 
-| Message | Code | Description |
-|---------|------|-------------|
-| `FS_OPENDIR` | 0x10 | Open directory |
-| `FS_READDIR` | 0x11 | Read directory entry |
-| `FS_CLOSEDIR` | 0x12 | Close directory |
-| `FS_MKDIR` | 0x13 | Create directory |
-| `FS_RMDIR` | 0x14 | Remove directory |
-| `FS_UNLINK` | 0x15 | Delete file |
-| `FS_RENAME` | 0x16 | Rename file/directory |
+| Message       | Code | Description           |
+|---------------|------|-----------------------|
+| `FS_OPENDIR`  | 0x10 | Open directory        |
+| `FS_READDIR`  | 0x11 | Read directory entry  |
+| `FS_CLOSEDIR` | 0x12 | Close directory       |
+| `FS_MKDIR`    | 0x13 | Create directory      |
+| `FS_RMDIR`    | 0x14 | Remove directory      |
+| `FS_UNLINK`   | 0x15 | Delete file           |
+| `FS_RENAME`   | 0x16 | Rename file/directory |
 
 ## Filesystem Layers
 
@@ -120,37 +120,37 @@ ViperFS is the native filesystem with these features:
 
 **Superblock (Block 0):**
 
-| Field | Size | Description |
-|-------|------|-------------|
-| magic | 4 | 0x53465056 ("VPFS") |
-| version | 4 | Format version |
-| block_size | 4 | Always 4096 |
-| total_blocks | 8 | Filesystem size |
-| inode_count | 4 | Number of inodes |
-| free_blocks | 4 | Free block count |
-| root_inode | 4 | Root directory inode |
+| Field        | Size | Description          |
+|--------------|------|----------------------|
+| magic        | 4    | 0x53465056 ("VPFS")  |
+| version      | 4    | Format version       |
+| block_size   | 4    | Always 4096          |
+| total_blocks | 8    | Filesystem size      |
+| inode_count  | 4    | Number of inodes     |
+| free_blocks  | 4    | Free block count     |
+| root_inode   | 4    | Root directory inode |
 
 **Inode structure:**
 
-| Field | Description |
-|-------|-------------|
-| mode | File type and permissions |
-| size | File size in bytes |
-| blocks | Block count |
-| direct[12] | Direct block pointers |
-| indirect | Single indirect pointer |
-| double_indirect | Double indirect pointer |
-| mtime/ctime/atime | Timestamps |
+| Field             | Description               |
+|-------------------|---------------------------|
+| mode              | File type and permissions |
+| size              | File size in bytes        |
+| blocks            | Block count               |
+| direct[12]        | Direct block pointers     |
+| indirect          | Single indirect pointer   |
+| double_indirect   | Double indirect pointer   |
+| mtime/ctime/atime | Timestamps                |
 
 **Directory entries:**
 
-| Field | Size | Description |
-|-------|------|-------------|
-| inode | 4 | Inode number |
-| rec_len | 2 | Record length |
-| name_len | 1 | Name length |
-| file_type | 1 | Entry type |
-| name | variable | Filename |
+| Field     | Size     | Description   |
+|-----------|----------|---------------|
+| inode     | 4        | Inode number  |
+| rec_len   | 2        | Record length |
+| name_len  | 1        | Name length   |
+| file_type | 1        | Entry type    |
+| name      | variable | Filename      |
 
 Key files:
 
@@ -212,25 +212,25 @@ Key files:
 
 The blkd server uses device syscalls:
 
-| Syscall | Number | Description |
-|---------|--------|-------------|
-| `map_device` | 0x100 | Map VirtIO MMIO |
-| `irq_register` | 0x101 | Register for block IRQ |
-| `irq_wait` | 0x102 | Wait for I/O completion |
-| `irq_ack` | 0x103 | Acknowledge interrupt |
-| `dma_alloc` | 0x104 | Allocate DMA buffer |
-| `virt_to_phys` | 0x106 | Get physical address |
+| Syscall        | Number | Description             |
+|----------------|--------|-------------------------|
+| `map_device`   | 0x100  | Map VirtIO MMIO         |
+| `irq_register` | 0x101  | Register for block IRQ  |
+| `irq_wait`     | 0x102  | Wait for I/O completion |
+| `irq_ack`      | 0x103  | Acknowledge interrupt   |
+| `dma_alloc`    | 0x104  | Allocate DMA buffer     |
+| `virt_to_phys` | 0x106  | Get physical address    |
 
 ## blkd Server Protocol
 
 fsd communicates with blkd via IPC:
 
-| Message | Code | Description |
-|---------|------|-------------|
-| `BLK_READ` | 0x01 | Read sectors |
+| Message     | Code | Description   |
+|-------------|------|---------------|
+| `BLK_READ`  | 0x01 | Read sectors  |
 | `BLK_WRITE` | 0x02 | Write sectors |
 | `BLK_FLUSH` | 0x03 | Flush to disk |
-| `BLK_INFO` | 0x04 | Get disk info |
+| `BLK_INFO`  | 0x04 | Get disk info |
 
 ## Current Limitations
 

@@ -8,13 +8,13 @@
 
 ViperDOS provides a complete user-space GUI subsystem consisting of:
 
-| Component | Location | SLOC | Purpose |
-|-----------|----------|------|---------|
-| **displayd** | `user/servers/displayd/` | ~1,500 | Display server and window compositor |
-| **consoled** | `user/servers/consoled/` | ~1,600 | GUI terminal emulator |
-| **libgui** | `user/libgui/` | ~1,300 | Client library for GUI applications |
-| **taskbar** | `user/taskbar/` | ~230 | Desktop shell taskbar |
-| **hello_gui** | `user/hello_gui/` | ~100 | Demo GUI application |
+| Component     | Location                 | SLOC   | Purpose                              |
+|---------------|--------------------------|--------|--------------------------------------|
+| **displayd**  | `user/servers/displayd/` | ~1,500 | Display server and window compositor |
+| **consoled**  | `user/servers/consoled/` | ~1,600 | GUI terminal emulator                |
+| **libgui**    | `user/libgui/`           | ~1,300 | Client library for GUI applications  |
+| **taskbar**   | `user/taskbar/`          | ~230   | Desktop shell taskbar                |
+| **hello_gui** | `user/hello_gui/`        | ~100   | Demo GUI application                 |
 
 ## Architecture
 
@@ -58,20 +58,22 @@ forwards them to connected clients via IPC.
 
 ### Files
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `main.cpp` | ~1,460 | Server entry, compositing, event handling |
-| `display_protocol.hpp` | ~260 | IPC message definitions |
+| File                   | Lines  | Description                               |
+|------------------------|--------|-------------------------------------------|
+| `main.cpp`             | ~1,460 | Server entry, compositing, event handling |
+| `display_protocol.hpp` | ~260   | IPC message definitions                   |
 
 ### Features
 
 #### Surface Management
+
 - Up to 32 concurrent surfaces
 - Shared memory pixel buffers (zero-copy rendering)
 - XRGB8888 pixel format (32-bit color)
 - Cascade positioning for new windows
 
 #### Window Decorations
+
 - 24px title bar with window title
 - 2px border around content area
 - Minimize button (blue `_`)
@@ -80,12 +82,14 @@ forwards them to connected clients via IPC.
 - Focused/unfocused color states
 
 #### Compositing
+
 - Back-to-front z-order sorting
 - Blue desktop background (#2D5A88) with green Viper border
 - Full-surface compositing on present
 - Software cursor with background save/restore
 
 #### Event System
+
 - Per-surface event queues (32 events each)
 - Event types: key, mouse, focus, close
 - Keyboard events routed from inputd to focused window
@@ -93,17 +97,20 @@ forwards them to connected clients via IPC.
 - Click detection for decoration buttons
 
 #### Window States
+
 - Visible/hidden
 - Minimized (excluded from compositing)
 - Maximized (moves to top-left corner)
 - Focused (highlighted title bar)
 
 #### Window Interactions
+
 - Title bar drag to move windows
 - Resize handles on edges/corners (visual only - buffer not reallocated)
 - Click to focus and bring to front
 
 #### Surface Flags
+
 ```cpp
 enum SurfaceFlags : uint32_t {
     SURFACE_FLAG_NONE = 0,
@@ -223,10 +230,10 @@ static uint32_t g_next_z_order;
 
 ### Files
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `include/gui.h` | ~400 | Public API declarations |
-| `src/gui.cpp` | ~940 | Implementation with built-in 8x8 font |
+| File            | Lines | Description                           |
+|-----------------|-------|---------------------------------------|
+| `include/gui.h` | ~400  | Public API declarations               |
+| `src/gui.cpp`   | ~940  | Implementation with built-in 8x8 font |
 
 ### Initialization
 
@@ -312,14 +319,15 @@ void gui_draw_char_scaled(gui_window_t *win, uint32_t x, uint32_t y,
 
 The `gui_draw_char_scaled()` function uses a half-unit scaling system to support fractional font sizes:
 
-| Scale Value | Multiplier | Cell Size | Use Case |
-|-------------|------------|-----------|----------|
-| 2 | 1x | 8x8 | Small text, dense displays |
-| 3 | 1.5x | 12x12 | Console terminal (default) |
-| 4 | 2x | 16x16 | Large text, high-DPI |
-| 6 | 3x | 24x24 | Very large text |
+| Scale Value | Multiplier | Cell Size | Use Case                   |
+|-------------|------------|-----------|----------------------------|
+| 2           | 1x         | 8x8       | Small text, dense displays |
+| 3           | 1.5x       | 12x12     | Console terminal (default) |
+| 4           | 2x         | 16x16     | Large text, high-DPI       |
+| 6           | 3x         | 24x24     | Very large text            |
 
 Scaling uses nearest-neighbor interpolation with source pixel lookup:
+
 ```cpp
 uint32_t dest_size = 8 * scale / 2;  // Destination cell size
 for (uint32_t dy = 0; dy < dest_size; dy++) {
@@ -375,9 +383,9 @@ typedef enum {
 - Lists all non-system windows
 - Click to restore/focus windows
 - Visual feedback:
-  - Blue highlight for focused window
-  - Dimmer color for minimized windows
-  - White text (gray for minimized)
+    - Blue highlight for focused window
+    - Dimmer color for minimized windows
+    - White text (gray for minimized)
 - Periodic refresh of window list
 
 ### Implementation
@@ -552,6 +560,7 @@ add_gui_program(taskbar taskbar/taskbar.c)
 ## Current Limitations
 
 ### Not Yet Implemented
+
 - True window resize (buffer reallocation on resize)
 - Alt+Tab window switching
 - Desktop icons
@@ -561,6 +570,7 @@ add_gui_program(taskbar taskbar/taskbar.c)
 - Damage region tracking (partial compositing)
 
 ### Known Issues
+
 - Maximize only moves window (doesn't resize buffer to fill screen)
 - Window resize is visual-only (frame moves but buffer stays same size)
 - No window minimum size constraints exposed to clients
@@ -571,26 +581,34 @@ add_gui_program(taskbar taskbar/taskbar.c)
 ## Priority Recommendations: Next 5 Steps
 
 ### 1. True Window Resize
+
 **Impact:** User-adjustable window sizes
+
 - Add DISP_RESIZE_SURFACE message type
 - Reallocate shared memory for new size
 - Send GUI_EVENT_RESIZE to client
 - Client remaps buffer and redraws
 
 ### 3. Application Launcher
+
 **Impact:** Program launching from GUI
+
 - Add launcher button to taskbar
 - Show menu of available programs from filesystem
 - Spawn selected program via vinit
 
 ### 4. Desktop Background Image
+
 **Impact:** Visual polish
+
 - Load image from filesystem
 - Scale/tile to screen size
 - Draw before windows in compositor
 
 ### 5. Cursor Type Changes
+
 **Impact:** Visual feedback for resize handles
+
 - Define resize cursor bitmaps (arrows)
 - Change cursor when over window edges
 - Indicate draggable regions to user
@@ -600,35 +618,35 @@ add_gui_program(taskbar taskbar/taskbar.c)
 ## Version History
 
 - **January 2026**: Consoled GUI terminal and font scaling
-  - Added `gui_draw_char()` for character drawing with fg/bg colors
-  - Added `gui_draw_char_scaled()` with half-unit fractional scaling (1.5x, 2x, etc.)
-  - Consoled now runs as a GUI window (via libgui/displayd)
-  - Consoled uses 1.5x font scaling (12x12 pixels) for better readability
-  - Full ANSI escape sequence support in consoled terminal
-  - Bidirectional IPC: consoled forwards keyboard events to connected clients
+    - Added `gui_draw_char()` for character drawing with fg/bg colors
+    - Added `gui_draw_char_scaled()` with half-unit fractional scaling (1.5x, 2x, etc.)
+    - Consoled now runs as a GUI window (via libgui/displayd)
+    - Consoled uses 1.5x font scaling (12x12 pixels) for better readability
+    - Full ANSI escape sequence support in consoled terminal
+    - Bidirectional IPC: consoled forwards keyboard events to connected clients
 
 - **January 2026**: GUI improvements
-  - Implemented keyboard event routing (inputd → displayd → focused window)
-  - Implemented DISP_SET_TITLE handler (window title updates at runtime)
-  - Added event queue overflow detection
-  - Improved window cascade positioning (10 positions before repeating)
-  - Added green Viper border around desktop (matches console theme)
-  - Updated hello_gui to display key events
+    - Implemented keyboard event routing (inputd → displayd → focused window)
+    - Implemented DISP_SET_TITLE handler (window title updates at runtime)
+    - Added event queue overflow detection
+    - Improved window cascade positioning (10 positions before repeating)
+    - Added green Viper border around desktop (matches console theme)
+    - Updated hello_gui to display key events
 
 - **January 2026**: Desktop shell framework
-  - Taskbar with window list
-  - Per-surface event queues
-  - Minimize/maximize/close buttons
-  - Z-ordering for window stacking
-  - Surface flags (SYSTEM, NO_DECORATIONS)
-  - Window list protocol for taskbar
-  - Title bar drag for window moving
-  - Resize handles (visual only)
+    - Taskbar with window list
+    - Per-surface event queues
+    - Minimize/maximize/close buttons
+    - Z-ordering for window stacking
+    - Surface flags (SYSTEM, NO_DECORATIONS)
+    - Window list protocol for taskbar
+    - Title bar drag for window moving
+    - Resize handles (visual only)
 
 - **January 2026**: Initial GUI implementation
-  - displayd server with compositing
-  - libgui client library
-  - Shared memory pixel buffers
-  - Window decorations
-  - Mouse cursor
-  - hello_gui demo application
+    - displayd server with compositing
+    - libgui client library
+    - Shared memory pixel buffers
+    - Window decorations
+    - Mouse cursor
+    - hello_gui demo application

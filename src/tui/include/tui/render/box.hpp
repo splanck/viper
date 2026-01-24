@@ -35,7 +35,11 @@ namespace viper::tui::render
 /// @param borderStyle Optional style for border cells (corners and edges).
 /// @param fillStyle Optional style for interior cells (when fill is true).
 /// @param fill Whether to clear interior cells to spaces.
-void drawBox(ScreenBuffer &sb, int x, int y, int w, int h,
+void drawBox(ScreenBuffer &sb,
+             int x,
+             int y,
+             int w,
+             int h,
              const Style *borderStyle = nullptr,
              const Style *fillStyle = nullptr,
              bool fill = true);

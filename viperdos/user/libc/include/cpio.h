@@ -8,8 +8,7 @@
 #define _CPIO_H
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 /*
@@ -31,11 +30,11 @@ extern "C"
 #define CPIO_NEWC_MAGIC "070701"
 #define CPIO_CRC_MAGIC "070702"
 
-    /*
-     * File type constants for c_mode field
-     * These are the same as the S_IF* constants from <sys/stat.h>
-     * masked with C_ISMT
-     */
+/*
+ * File type constants for c_mode field
+ * These are the same as the S_IF* constants from <sys/stat.h>
+ * masked with C_ISMT
+ */
 
 #define C_IRUSR 0000400 /* Read by owner */
 #define C_IWUSR 0000200 /* Write by owner */
@@ -63,25 +62,24 @@ extern "C"
 /* Mask for extracting file type */
 #define C_ISMT 0170000
 
-    /*
-     * Binary cpio header structure (old format)
-     * Note: This format is machine-dependent due to byte ordering
-     */
-    struct cpio_binary_header
-    {
-        unsigned short c_magic;       /* Magic number */
-        unsigned short c_dev;         /* Device number */
-        unsigned short c_ino;         /* Inode number */
-        unsigned short c_mode;        /* File mode */
-        unsigned short c_uid;         /* User ID */
-        unsigned short c_gid;         /* Group ID */
-        unsigned short c_nlink;       /* Number of links */
-        unsigned short c_rdev;        /* Device type (if special file) */
-        unsigned short c_mtime[2];    /* Modification time */
-        unsigned short c_namesize;    /* Length of pathname */
-        unsigned short c_filesize[2]; /* File size */
-        /* Followed by pathname and file data */
-    };
+/*
+ * Binary cpio header structure (old format)
+ * Note: This format is machine-dependent due to byte ordering
+ */
+struct cpio_binary_header {
+    unsigned short c_magic;       /* Magic number */
+    unsigned short c_dev;         /* Device number */
+    unsigned short c_ino;         /* Inode number */
+    unsigned short c_mode;        /* File mode */
+    unsigned short c_uid;         /* User ID */
+    unsigned short c_gid;         /* Group ID */
+    unsigned short c_nlink;       /* Number of links */
+    unsigned short c_rdev;        /* Device type (if special file) */
+    unsigned short c_mtime[2];    /* Modification time */
+    unsigned short c_namesize;    /* Length of pathname */
+    unsigned short c_filesize[2]; /* File size */
+    /* Followed by pathname and file data */
+};
 
 /*
  * ASCII (odc) cpio header - portable format

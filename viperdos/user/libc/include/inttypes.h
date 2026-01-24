@@ -2,8 +2,7 @@
 #define _INTTYPES_H
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 #include "sys/types.h"
@@ -11,16 +10,15 @@ extern "C"
 /* intmax_t and uintmax_t - must be defined before use */
 #ifndef _INTMAX_T_DEFINED
 #define _INTMAX_T_DEFINED
-    typedef long long intmax_t;
-    typedef unsigned long long uintmax_t;
+typedef long long intmax_t;
+typedef unsigned long long uintmax_t;
 #endif
 
-    /* imaxdiv_t */
-    typedef struct
-    {
-        long long quot;
-        long long rem;
-    } imaxdiv_t;
+/* imaxdiv_t */
+typedef struct {
+    long long quot;
+    long long rem;
+} imaxdiv_t;
 
 /* Format specifiers for fprintf */
 /* Signed integers */
@@ -231,11 +229,11 @@ extern "C"
 #define SCNxMAX "llx"
 #define SCNxPTR "lx"
 
-    /* Functions */
-    intmax_t imaxabs(intmax_t j);
-    imaxdiv_t imaxdiv(intmax_t numer, intmax_t denom);
-    intmax_t strtoimax(const char *restrict nptr, char **restrict endptr, int base);
-    uintmax_t strtoumax(const char *restrict nptr, char **restrict endptr, int base);
+/* Functions */
+intmax_t imaxabs(intmax_t j);
+imaxdiv_t imaxdiv(intmax_t numer, intmax_t denom);
+intmax_t strtoimax(const char *restrict nptr, char **restrict endptr, int base);
+uintmax_t strtoumax(const char *restrict nptr, char **restrict endptr, int base);
 
 #ifdef __cplusplus
 }

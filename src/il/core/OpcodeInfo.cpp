@@ -127,7 +127,8 @@ const OpcodeInfo &getOpcodeInfo(Opcode op)
 /// @return Const reference to vector populated with every opcode value.
 const std::vector<Opcode> &all_opcodes()
 {
-    static const std::vector<Opcode> ops = []() {
+    static const std::vector<Opcode> ops = []()
+    {
         std::vector<Opcode> v;
         v.reserve(kNumOpcodes);
         for (size_t index = 0; index < kNumOpcodes; ++index)

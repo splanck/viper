@@ -21,8 +21,7 @@
  * // Block is automatically released when guard goes out of scope
  * @endcode
  */
-namespace fs
-{
+namespace fs {
 
 /**
  * @brief RAII guard for cache block pointers.
@@ -31,8 +30,7 @@ namespace fs
  * Takes ownership of a CacheBlock* and calls cache().release() on destruction.
  * Non-copyable, move-only semantics.
  */
-class CacheBlockGuard
-{
+class CacheBlockGuard {
   public:
     /// Default constructor - creates null guard
     CacheBlockGuard() : block_(nullptr) {}
@@ -41,16 +39,13 @@ class CacheBlockGuard
     explicit CacheBlockGuard(CacheBlock *block) : block_(block) {}
 
     /// Move constructor
-    CacheBlockGuard(CacheBlockGuard &&other) noexcept : block_(other.block_)
-    {
+    CacheBlockGuard(CacheBlockGuard &&other) noexcept : block_(other.block_) {
         other.block_ = nullptr;
     }
 
     /// Destructor - releases the block
-    ~CacheBlockGuard()
-    {
-        if (block_)
-        {
+    ~CacheBlockGuard() {
+        if (block_) {
             cache().release(block_);
         }
     }
@@ -60,12 +55,9 @@ class CacheBlockGuard
     CacheBlockGuard &operator=(const CacheBlockGuard &) = delete;
 
     /// Move assignment
-    CacheBlockGuard &operator=(CacheBlockGuard &&other) noexcept
-    {
-        if (this != &other)
-        {
-            if (block_)
-            {
+    CacheBlockGuard &operator=(CacheBlockGuard &&other) noexcept {
+        if (this != &other) {
+            if (block_) {
                 cache().release(block_);
             }
             block_ = other.block_;
@@ -75,56 +67,47 @@ class CacheBlockGuard
     }
 
     /// Reset to a new block (releases old)
-    void reset(CacheBlock *block = nullptr)
-    {
-        if (block_)
-        {
+    void reset(CacheBlock *block = nullptr) {
+        if (block_) {
             cache().release(block_);
         }
         block_ = block;
     }
 
     /// Release ownership and return raw pointer
-    CacheBlock *release()
-    {
+    CacheBlock *release() {
         CacheBlock *ptr = block_;
         block_ = nullptr;
         return ptr;
     }
 
     /// Dereference operators
-    CacheBlock *operator->() const
-    {
+    CacheBlock *operator->() const {
         return block_;
     }
 
-    CacheBlock &operator*() const
-    {
+    CacheBlock &operator*() const {
         return *block_;
     }
 
     /// Get raw pointer
-    CacheBlock *get() const
-    {
+    CacheBlock *get() const {
         return block_;
     }
 
     /// Get block data directly
-    u8 *data() const
-    {
+    u8 *data() const {
         return block_ ? block_->data : nullptr;
     }
 
     /// Mark block as dirty
-    void mark_dirty()
-    {
+    void mark_dirty() {
         if (block_)
             block_->dirty = true;
     }
 
     /// Boolean conversion
-    explicit operator bool() const
-    {
+    explicit operator bool() const {
         return block_ != nullptr;
     }
 

@@ -48,8 +48,7 @@ EFI_HANDLE gImageHandle = NULL;
  * header table via `e_phoff`/`e_phnum`. Only a subset of fields are used by the
  * bootloader.
  */
-typedef struct
-{
+typedef struct {
     UINT8 e_ident[16];
     UINT16 e_type;
     UINT16 e_machine;
@@ -73,8 +72,7 @@ typedef struct
  * Each program header describes one loadable segment. The bootloader iterates
  * the program headers and loads only `PT_LOAD` segments.
  */
-typedef struct
-{
+typedef struct {
     UINT32 p_type;
     UINT32 p_flags;
     UINT64 p_offset;
@@ -106,10 +104,8 @@ typedef struct
  *
  * @param str NUL-terminated UTF-16 string to print.
  */
-static void print(const CHAR16 *str)
-{
-    if (gST && gST->ConOut)
-    {
+static void print(const CHAR16 *str) {
+    if (gST && gST->ConOut) {
         gST->ConOut->OutputString(gST->ConOut, (CHAR16 *)str);
     }
 }
@@ -122,8 +118,7 @@ static void print(const CHAR16 *str)
  *
  * @param str NUL-terminated UTF-16 string to print.
  */
-static void println(const CHAR16 *str)
-{
+static void println(const CHAR16 *str) {
     print(str);
     print(L"\r\n");
 }
@@ -137,13 +132,11 @@ static void println(const CHAR16 *str)
  *
  * @param value Value to print.
  */
-static void print_hex(UINT64 value)
-{
+static void print_hex(UINT64 value) {
     CHAR16 buf[17];
     static const CHAR16 hex[] = L"0123456789ABCDEF";
 
-    for (int i = 15; i >= 0; i--)
-    {
+    for (int i = 15; i >= 0; i--) {
         buf[i] = hex[value & 0xF];
         value >>= 4;
     }
@@ -161,20 +154,17 @@ static void print_hex(UINT64 value)
  *
  * @param value Value to print.
  */
-static void print_dec(UINT64 value)
-{
+static void print_dec(UINT64 value) {
     CHAR16 buf[21];
     int i = 20;
     buf[i] = 0;
 
-    if (value == 0)
-    {
+    if (value == 0) {
         print(L"0");
         return;
     }
 
-    while (value > 0 && i > 0)
-    {
+    while (value > 0 && i > 0) {
         buf[--i] = L'0' + (value % 10);
         value /= 10;
     }
@@ -190,8 +180,7 @@ static void print_dec(UINT64 value)
  *
  * @param status Status code to display.
  */
-static void print_status(EFI_STATUS status)
-{
+static void print_status(EFI_STATUS status) {
     print(L"Status: ");
     print_hex(status);
     println(L"");
@@ -214,8 +203,7 @@ static void print_status(EFI_STATUS status)
  * @param val Byte value to write.
  * @param size Number of bytes to set.
  */
-static void memset8(void *dst, UINT8 val, UINTN size)
-{
+static void memset8(void *dst, UINT8 val, UINTN size) {
     UINT8 *d = (UINT8 *)dst;
     while (size--)
         *d++ = val;
@@ -232,8 +220,7 @@ static void memset8(void *dst, UINT8 val, UINTN size)
  * @param src Source buffer.
  * @param size Number of bytes to copy.
  */
-static void memcpy8(void *dst, const void *src, UINTN size)
-{
+static void memcpy8(void *dst, const void *src, UINTN size) {
     UINT8 *d = (UINT8 *)dst;
     const UINT8 *s = (const UINT8 *)src;
     while (size--)
@@ -263,8 +250,7 @@ static void memcpy8(void *dst, const void *src, UINTN size)
  * @param root Output pointer receiving the volume root directory handle.
  * @return `EFI_SUCCESS` on success, or an error `EFI_STATUS` on failure.
  */
-static EFI_STATUS open_volume(EFI_FILE_PROTOCOL **root)
-{
+static EFI_STATUS open_volume(EFI_FILE_PROTOCOL **root) {
     EFI_STATUS status;
     EFI_GUID lip_guid = EFI_LOADED_IMAGE_PROTOCOL_GUID;
     EFI_GUID sfsp_guid = EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID;
@@ -275,8 +261,7 @@ static EFI_STATUS open_volume(EFI_FILE_PROTOCOL **root)
     // BUG FIX: Was using LocateProtocol which returns any instance.
     // We need HandleProtocol to get the specific instance for our image.
     status = gBS->HandleProtocol(gImageHandle, &lip_guid, (void **)&loaded_image);
-    if (EFI_ERROR(status))
-    {
+    if (EFI_ERROR(status)) {
         println(L"[!] Failed to get Loaded Image Protocol");
         print_status(status);
         return status;
@@ -290,8 +275,7 @@ static EFI_STATUS open_volume(EFI_FILE_PROTOCOL **root)
     // BUG FIX: Was using LocateProtocol which might return wrong filesystem.
     // We need the filesystem from the device we booted from.
     status = gBS->HandleProtocol(loaded_image->DeviceHandle, &sfsp_guid, (void **)&fs);
-    if (EFI_ERROR(status))
-    {
+    if (EFI_ERROR(status)) {
         println(L"[!] Failed to get Simple File System Protocol from boot device");
         print_status(status);
         return status;
@@ -299,8 +283,7 @@ static EFI_STATUS open_volume(EFI_FILE_PROTOCOL **root)
 
     // Open root volume
     status = fs->OpenVolume(fs, root);
-    if (EFI_ERROR(status))
-    {
+    if (EFI_ERROR(status)) {
         println(L"[!] Failed to open volume");
         print_status(status);
         return status;
@@ -328,8 +311,10 @@ static EFI_STATUS open_volume(EFI_FILE_PROTOCOL **root)
  * @param size Output pointer receiving the number of bytes read.
  * @return `EFI_SUCCESS` on success, or an error `EFI_STATUS` on failure.
  */
-static EFI_STATUS load_file(EFI_FILE_PROTOCOL *root, const CHAR16 *path, void **buffer, UINTN *size)
-{
+static EFI_STATUS load_file(EFI_FILE_PROTOCOL *root,
+                            const CHAR16 *path,
+                            void **buffer,
+                            UINTN *size) {
     EFI_STATUS status;
     EFI_FILE_PROTOCOL *file;
 
@@ -338,8 +323,7 @@ static EFI_STATUS load_file(EFI_FILE_PROTOCOL *root, const CHAR16 *path, void **
 
     // Open file
     status = root->Open(root, &file, (CHAR16 *)path, EFI_FILE_MODE_READ, 0);
-    if (EFI_ERROR(status))
-    {
+    if (EFI_ERROR(status)) {
         print(L"[!] Failed to open file: ");
         println(path);
         return status;
@@ -353,8 +337,7 @@ static EFI_STATUS load_file(EFI_FILE_PROTOCOL *root, const CHAR16 *path, void **
     // Allocate initial buffer (4MB should be enough for kernel)
     UINTN buf_size = 4 * 1024 * 1024;
     status = gBS->AllocatePool(EfiLoaderData, buf_size, buffer);
-    if (EFI_ERROR(status))
-    {
+    if (EFI_ERROR(status)) {
         println(L"[!] Failed to allocate file buffer");
         file->Close(file);
         return status;
@@ -363,8 +346,7 @@ static EFI_STATUS load_file(EFI_FILE_PROTOCOL *root, const CHAR16 *path, void **
     // Read file
     UINTN read_size = buf_size;
     status = file->Read(file, &read_size, *buffer);
-    if (EFI_ERROR(status))
-    {
+    if (EFI_ERROR(status)) {
         println(L"[!] Failed to read file");
         gBS->FreePool(*buffer);
         file->Close(file);
@@ -415,20 +397,17 @@ static EFI_STATUS load_elf(void *elf_data,
                            UINTN elf_size __attribute__((unused)),
                            UINT64 *entry_point,
                            UINT64 *kernel_base,
-                           UINT64 *kernel_end)
-{
+                           UINT64 *kernel_end) {
     Elf64_Ehdr *ehdr = (Elf64_Ehdr *)elf_data;
 
     // Verify ELF magic
-    if (*(UINT32 *)ehdr->e_ident != ELF_MAGIC)
-    {
+    if (*(UINT32 *)ehdr->e_ident != ELF_MAGIC) {
         println(L"[!] Invalid ELF magic");
         return EFI_LOAD_ERROR;
     }
 
     // Verify AArch64
-    if (ehdr->e_machine != EM_AARCH64)
-    {
+    if (ehdr->e_machine != EM_AARCH64) {
         println(L"[!] Not an AArch64 ELF");
         return EFI_LOAD_ERROR;
     }
@@ -448,8 +427,7 @@ static EFI_STATUS load_elf(void *elf_data,
     // Process program headers
     Elf64_Phdr *phdr = (Elf64_Phdr *)((UINT8 *)elf_data + ehdr->e_phoff);
 
-    for (UINT16 i = 0; i < ehdr->e_phnum; i++)
-    {
+    for (UINT16 i = 0; i < ehdr->e_phnum; i++) {
         if (phdr[i].p_type != PT_LOAD)
             continue;
 
@@ -473,8 +451,7 @@ static EFI_STATUS load_elf(void *elf_data,
         EFI_STATUS status =
             gBS->AllocatePages(AllocateAddress, EfiLoaderData, pages, &segment_addr);
 
-        if (EFI_ERROR(status))
-        {
+        if (EFI_ERROR(status)) {
             // Try allocating anywhere if specific address fails
             print(L"    [!] AllocateAddress at ");
             print_hex(phdr[i].p_paddr);
@@ -486,8 +463,7 @@ static EFI_STATUS load_elf(void *elf_data,
             segment_addr = 0; // Let UEFI pick
             status = gBS->AllocatePages(AllocateAnyPages, EfiLoaderData, pages, &segment_addr);
 
-            if (EFI_ERROR(status))
-            {
+            if (EFI_ERROR(status)) {
                 println(L"    [!] Failed to allocate segment pages at any address");
                 return status;
             }
@@ -498,8 +474,7 @@ static EFI_STATUS load_elf(void *elf_data,
         memset8((void *)segment_addr, 0, pages * 4096);
 
         // Copy segment data
-        if (phdr[i].p_filesz > 0)
-        {
+        if (phdr[i].p_filesz > 0) {
             memcpy8((void *)segment_addr, (UINT8 *)elf_data + phdr[i].p_offset, phdr[i].p_filesz);
         }
 
@@ -518,11 +493,10 @@ static EFI_STATUS load_elf(void *elf_data,
     // After writing code to memory, we must ensure the instruction cache
     // sees the new data. AArch64 has separate I$ and D$ that aren't coherent.
     println(L"[*] Flushing caches...");
-    __asm__ volatile(
-        "dsb sy\n"           // Data synchronization barrier - complete all memory ops
-        "ic ialluis\n"       // Invalidate all instruction caches to PoU Inner Shareable
-        "dsb sy\n"           // Ensure IC invalidation completes
-        "isb\n"              // Instruction synchronization barrier
+    __asm__ volatile("dsb sy\n"     // Data synchronization barrier - complete all memory ops
+                     "ic ialluis\n" // Invalidate all instruction caches to PoU Inner Shareable
+                     "dsb sy\n"     // Ensure IC invalidation completes
+                     "isb\n"        // Instruction synchronization barrier
     );
 
     *entry_point = ehdr->e_entry;
@@ -551,14 +525,14 @@ static const struct {
     UINT32 width;
     UINT32 height;
 } preferred_resolutions[] = {
-    { 1024, 768 },
-    { 1280, 1024 },
-    { 1280, 800 },
-    { 1280, 720 },
-    { 1440, 900 },
-    { 1600, 900 },
-    { 1680, 1050 },
-    { 1920, 1080 },
+    {1024, 768},
+    {1280, 1024},
+    {1280, 800},
+    {1280, 720},
+    {1440, 900},
+    {1600, 900},
+    {1680, 1050},
+    {1920, 1080},
 };
 
 /**
@@ -578,15 +552,13 @@ static const struct {
  * @param fb Output framebuffer structure to fill.
  * @return `EFI_SUCCESS` on success, or an error `EFI_STATUS` if a fatal error occurs.
  */
-static EFI_STATUS get_framebuffer(VBootFramebuffer *fb)
-{
+static EFI_STATUS get_framebuffer(VBootFramebuffer *fb) {
     EFI_STATUS status;
     EFI_GUID gop_guid = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
     EFI_GRAPHICS_OUTPUT_PROTOCOL *gop;
 
     status = gBS->LocateProtocol(&gop_guid, NULL, (void **)&gop);
-    if (EFI_ERROR(status))
-    {
+    if (EFI_ERROR(status)) {
         println(L"[!] GOP not available");
         // Not fatal - kernel can work without framebuffer
         fb->base = 0;
@@ -598,14 +570,13 @@ static EFI_STATUS get_framebuffer(VBootFramebuffer *fb)
     print_dec(gop->Mode->MaxMode);
     println(L"");
 
-    UINT32 best_mode = gop->Mode->Mode;  // Current mode as fallback
+    UINT32 best_mode = gop->Mode->Mode; // Current mode as fallback
     UINT32 best_width = gop->Mode->Info->HorizontalResolution;
     UINT32 best_height = gop->Mode->Info->VerticalResolution;
-    int best_pref = -1;  // Index in preferred_resolutions, -1 = not found
+    int best_pref = -1; // Index in preferred_resolutions, -1 = not found
 
     // Enumerate all modes to find the best match
-    for (UINT32 mode = 0; mode < gop->Mode->MaxMode; mode++)
-    {
+    for (UINT32 mode = 0; mode < gop->Mode->MaxMode; mode++) {
         EFI_GRAPHICS_OUTPUT_MODE_INFORMATION *mode_info;
         UINTN info_size;
         status = gop->QueryMode(gop, mode, &info_size, &mode_info);
@@ -620,14 +591,12 @@ static EFI_STATUS get_framebuffer(VBootFramebuffer *fb)
             continue;
 
         // Check if this matches a preferred resolution
-        for (UINTN pref = 0; pref < sizeof(preferred_resolutions)/sizeof(preferred_resolutions[0]); pref++)
-        {
-            if (w == preferred_resolutions[pref].width &&
-                h == preferred_resolutions[pref].height)
-            {
+        for (UINTN pref = 0;
+             pref < sizeof(preferred_resolutions) / sizeof(preferred_resolutions[0]);
+             pref++) {
+            if (w == preferred_resolutions[pref].width && h == preferred_resolutions[pref].height) {
                 // Found a match - is it better than what we have?
-                if (best_pref < 0 || pref < (UINTN)best_pref)
-                {
+                if (best_pref < 0 || pref < (UINTN)best_pref) {
                     best_mode = mode;
                     best_width = w;
                     best_height = h;
@@ -638,8 +607,7 @@ static EFI_STATUS get_framebuffer(VBootFramebuffer *fb)
         }
 
         // If no preferred match yet, track largest resolution as fallback
-        if (best_pref < 0 && (w * h > best_width * best_height))
-        {
+        if (best_pref < 0 && (w * h > best_width * best_height)) {
             best_mode = mode;
             best_width = w;
             best_height = h;
@@ -647,8 +615,7 @@ static EFI_STATUS get_framebuffer(VBootFramebuffer *fb)
     }
 
     // Set the best mode if different from current
-    if (best_mode != gop->Mode->Mode)
-    {
+    if (best_mode != gop->Mode->Mode) {
         print(L"    Switching to mode ");
         print_dec(best_mode);
         print(L" (");
@@ -658,8 +625,7 @@ static EFI_STATUS get_framebuffer(VBootFramebuffer *fb)
         println(L")");
 
         status = gop->SetMode(gop, best_mode);
-        if (EFI_ERROR(status))
-        {
+        if (EFI_ERROR(status)) {
             print(L"    [!] SetMode failed: ");
             print_status(status);
             // Continue with current mode
@@ -673,8 +639,7 @@ static EFI_STATUS get_framebuffer(VBootFramebuffer *fb)
     fb->bpp = 32;
 
     // Determine pixel format
-    switch (gop->Mode->Info->PixelFormat)
-    {
+    switch (gop->Mode->Info->PixelFormat) {
         case PixelRedGreenBlueReserved8BitPerColor:
             fb->pixel_format = 1; // RGB
             break;
@@ -715,10 +680,8 @@ static EFI_STATUS get_framebuffer(VBootFramebuffer *fb)
  * @param efi_type `EFI_MEMORY_DESCRIPTOR::Type` value.
  * @return One of the `VBOOT_MEMORY_*` constants.
  */
-static UINT32 convert_memory_type(UINT32 efi_type)
-{
-    switch (efi_type)
-    {
+static UINT32 convert_memory_type(UINT32 efi_type) {
+    switch (efi_type) {
         case EfiConventionalMemory:
         case EfiLoaderCode:
         case EfiLoaderData:
@@ -764,8 +727,7 @@ static UINT32 convert_memory_type(UINT32 efi_type)
 static EFI_STATUS get_memory_map(VBootInfo *info,
                                  UINTN *map_key,
                                  EFI_MEMORY_DESCRIPTOR **map_out,
-                                 UINTN *map_size_out)
-{
+                                 UINTN *map_size_out) {
     EFI_STATUS status;
     UINTN map_size = 0;
     UINTN desc_size;
@@ -774,8 +736,7 @@ static EFI_STATUS get_memory_map(VBootInfo *info,
 
     // Get required size
     status = gBS->GetMemoryMap(&map_size, NULL, map_key, &desc_size, &desc_version);
-    if (status != EFI_BUFFER_TOO_SMALL)
-    {
+    if (status != EFI_BUFFER_TOO_SMALL) {
         println(L"[!] GetMemoryMap failed to return size");
         return status;
     }
@@ -785,16 +746,14 @@ static EFI_STATUS get_memory_map(VBootInfo *info,
 
     // Allocate buffer for memory map
     status = gBS->AllocatePool(EfiLoaderData, map_size, (void **)&map);
-    if (EFI_ERROR(status))
-    {
+    if (EFI_ERROR(status)) {
         println(L"[!] Failed to allocate memory map buffer");
         return status;
     }
 
     // Get actual memory map
     status = gBS->GetMemoryMap(&map_size, map, map_key, &desc_size, &desc_version);
-    if (EFI_ERROR(status))
-    {
+    if (EFI_ERROR(status)) {
         println(L"[!] GetMemoryMap failed");
         gBS->FreePool(map);
         return status;
@@ -808,14 +767,12 @@ static EFI_STATUS get_memory_map(VBootInfo *info,
     print_dec(num_entries);
     println(L" entries");
 
-    for (UINTN i = 0; i < num_entries && region_count < VBOOT_MAX_MEMORY_REGIONS; i++)
-    {
+    for (UINTN i = 0; i < num_entries && region_count < VBOOT_MAX_MEMORY_REGIONS; i++) {
         EFI_MEMORY_DESCRIPTOR *desc = (EFI_MEMORY_DESCRIPTOR *)((UINT8 *)map + i * desc_size);
 
         // Only include usable memory in simplified map
         UINT32 type = convert_memory_type(desc->Type);
-        if (type == VBOOT_MEMORY_USABLE || type == VBOOT_MEMORY_ACPI)
-        {
+        if (type == VBOOT_MEMORY_USABLE || type == VBOOT_MEMORY_ACPI) {
             info->memory_regions[region_count].base = desc->PhysicalStart;
             info->memory_regions[region_count].size = desc->NumberOfPages * 4096;
             info->memory_regions[region_count].type = type;
@@ -884,8 +841,7 @@ typedef void (*KernelEntry)(VBootInfo *);
  * @param SystemTable Pointer to the UEFI system table.
  * @return `EFI_LOAD_ERROR` if boot fails (unreachable on success).
  */
-EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
-{
+EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     EFI_STATUS status;
 
     // Store global pointers
@@ -894,8 +850,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     gImageHandle = ImageHandle;
 
     // Clear screen
-    if (gST->ConOut && gST->ConOut->ClearScreen)
-    {
+    if (gST->ConOut && gST->ConOut->ClearScreen) {
         gST->ConOut->ClearScreen(gST->ConOut);
     }
 
@@ -908,12 +863,9 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
 
     // Print system info
     print(L"Firmware Vendor: ");
-    if (gST->FirmwareVendor)
-    {
+    if (gST->FirmwareVendor) {
         println(gST->FirmwareVendor);
-    }
-    else
-    {
+    } else {
         println(L"(unknown)");
     }
     println(L"");
@@ -926,8 +878,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     println(L"[*] Opening ESP volume...");
     EFI_FILE_PROTOCOL *root;
     status = open_volume(&root);
-    if (EFI_ERROR(status))
-    {
+    if (EFI_ERROR(status)) {
         println(L"[!] Failed to open ESP volume");
         goto halt;
     }
@@ -939,15 +890,12 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     void *kernel_data;
     UINTN kernel_size;
     status = load_file(root, L"\\viperdos\\kernel.sys", &kernel_data, &kernel_size);
-    if (EFI_ERROR(status))
-    {
+    if (EFI_ERROR(status)) {
         // Try alternate paths
         status = load_file(root, L"\\EFI\\BOOT\\kernel.sys", &kernel_data, &kernel_size);
-        if (EFI_ERROR(status))
-        {
+        if (EFI_ERROR(status)) {
             status = load_file(root, L"\\kernel.sys", &kernel_data, &kernel_size);
-            if (EFI_ERROR(status))
-            {
+            if (EFI_ERROR(status)) {
                 println(L"[!] Failed to load kernel.sys");
                 goto halt;
             }
@@ -964,8 +912,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     UINT64 kernel_base;
     UINT64 kernel_end;
     status = load_elf(kernel_data, kernel_size, &kernel_entry, &kernel_base, &kernel_end);
-    if (EFI_ERROR(status))
-    {
+    if (EFI_ERROR(status)) {
         println(L"[!] Failed to load ELF");
         goto halt;
     }
@@ -991,8 +938,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     EFI_MEMORY_DESCRIPTOR *memory_map = NULL;
     UINTN memory_map_size = 0;
     status = get_memory_map(&boot_info, &map_key, &memory_map, &memory_map_size);
-    if (EFI_ERROR(status))
-    {
+    if (EFI_ERROR(status)) {
         println(L"[!] Failed to get memory map");
         goto halt;
     }
@@ -1003,11 +949,9 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
 
     // We may need to retry GetMemoryMap + ExitBootServices
     // because the map can change between calls
-    for (int retry = 0; retry < 3; retry++)
-    {
+    for (int retry = 0; retry < 3; retry++) {
         status = gBS->ExitBootServices(gImageHandle, map_key);
-        if (!EFI_ERROR(status))
-        {
+        if (!EFI_ERROR(status)) {
             break;
         }
 
@@ -1016,15 +960,13 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
         UINTN desc_size;
         UINT32 desc_version;
         status = gBS->GetMemoryMap(&new_size, memory_map, &map_key, &desc_size, &desc_version);
-        if (EFI_ERROR(status))
-        {
+        if (EFI_ERROR(status)) {
             break;
         }
         memory_map_size = new_size;
     }
 
-    if (EFI_ERROR(status))
-    {
+    if (EFI_ERROR(status)) {
         // Can't print anymore after attempting ExitBootServices
         goto halt;
     }
@@ -1047,8 +989,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
 halt:
     println(L"");
     println(L"[!] Boot failed - halting");
-    for (;;)
-    {
+    for (;;) {
         __asm__ volatile("wfi");
     }
 

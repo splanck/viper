@@ -46,8 +46,7 @@ extern long __syscall4(long num, long arg0, long arg1, long arg2, long arg3);
 /*
  * wait - Wait for any child process
  */
-pid_t wait(int *wstatus)
-{
+pid_t wait(int *wstatus) {
     return waitpid(-1, wstatus, 0);
 }
 
@@ -58,11 +57,9 @@ pid_t wait(int *wstatus)
  * pid == 0: wait for any child in same process group
  * pid < -1: wait for any child in process group |pid|
  */
-pid_t waitpid(pid_t pid, int *wstatus, int options)
-{
+pid_t waitpid(pid_t pid, int *wstatus, int options) {
     long result = __syscall4(SYS_WAIT4, pid, (long)wstatus, options, 0);
-    if (result < 0)
-    {
+    if (result < 0) {
         errno = (int)(-result);
         return -1;
     }
@@ -72,25 +69,21 @@ pid_t waitpid(pid_t pid, int *wstatus, int options)
 /*
  * wait3 - Wait with resource usage (any child)
  */
-pid_t wait3(int *wstatus, int options, struct rusage *rusage)
-{
+pid_t wait3(int *wstatus, int options, struct rusage *rusage) {
     return wait4(-1, wstatus, options, rusage);
 }
 
 /*
  * wait4 - Wait with resource usage
  */
-pid_t wait4(pid_t pid, int *wstatus, int options, struct rusage *rusage)
-{
+pid_t wait4(pid_t pid, int *wstatus, int options, struct rusage *rusage) {
     /* Clear rusage if provided */
-    if (rusage)
-    {
+    if (rusage) {
         memset(rusage, 0, sizeof(struct rusage));
     }
 
     long result = __syscall4(SYS_WAIT4, pid, (long)wstatus, options, (long)rusage);
-    if (result < 0)
-    {
+    if (result < 0) {
         errno = (int)(-result);
         return -1;
     }
@@ -100,14 +93,12 @@ pid_t wait4(pid_t pid, int *wstatus, int options, struct rusage *rusage)
 /*
  * waitid - ID-based wait
  */
-int waitid(idtype_t idtype, pid_t id, siginfo_t *infop, int options)
-{
+int waitid(idtype_t idtype, pid_t id, siginfo_t *infop, int options) {
     pid_t pid;
     int wstatus = 0;
 
     /* Convert idtype to waitpid-style pid */
-    switch (idtype)
-    {
+    switch (idtype) {
         case P_ALL:
             pid = -1;
             break;
@@ -123,37 +114,28 @@ int waitid(idtype_t idtype, pid_t id, siginfo_t *infop, int options)
     }
 
     pid_t result = waitpid(pid, &wstatus, options);
-    if (result < 0)
-    {
+    if (result < 0) {
         return -1;
     }
 
     /* Fill in siginfo_t if provided */
-    if (infop)
-    {
+    if (infop) {
         infop->si_pid = result;
         infop->si_uid = 0; /* ViperDOS is single-user */
 
-        if (WIFEXITED(wstatus))
-        {
+        if (WIFEXITED(wstatus)) {
             infop->si_signo = 17; /* SIGCHLD */
             infop->si_code = 1;   /* CLD_EXITED */
             infop->si_status = WEXITSTATUS(wstatus);
-        }
-        else if (WIFSIGNALED(wstatus))
-        {
+        } else if (WIFSIGNALED(wstatus)) {
             infop->si_signo = 17; /* SIGCHLD */
             infop->si_code = 2;   /* CLD_KILLED */
             infop->si_status = WTERMSIG(wstatus);
-        }
-        else if (WIFSTOPPED(wstatus))
-        {
+        } else if (WIFSTOPPED(wstatus)) {
             infop->si_signo = 17; /* SIGCHLD */
             infop->si_code = 5;   /* CLD_STOPPED */
             infop->si_status = WSTOPSIG(wstatus);
-        }
-        else if (WIFCONTINUED(wstatus))
-        {
+        } else if (WIFCONTINUED(wstatus)) {
             infop->si_signo = 17;  /* SIGCHLD */
             infop->si_code = 6;    /* CLD_CONTINUED */
             infop->si_status = 18; /* SIGCONT */

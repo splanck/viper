@@ -106,8 +106,7 @@ typedef UINTN EFI_TPL;
  * these values when interpreting the firmware-provided map and deciding which
  * regions are usable RAM vs reserved/firmware memory.
  */
-typedef enum
-{
+typedef enum {
     EfiReservedMemoryType,
     EfiLoaderCode,
     EfiLoaderData,
@@ -133,8 +132,7 @@ typedef enum
  * These values select how UEFI chooses the physical address for a page
  * allocation request.
  */
-typedef enum
-{
+typedef enum {
     AllocateAnyPages,
     AllocateMaxAddress,
     AllocateAddress,
@@ -149,8 +147,7 @@ typedef enum
  * array of these descriptors. Each descriptor describes a contiguous region of
  * memory with a type and attributes.
  */
-typedef struct
-{
+typedef struct {
     UINT32 Type;
     EFI_PHYSICAL_ADDRESS PhysicalStart;
     EFI_VIRTUAL_ADDRESS VirtualStart;
@@ -165,8 +162,7 @@ typedef struct
  * Protocols and other UEFI objects are identified by GUIDs. Bootloaders pass
  * these GUIDs to services like `LocateProtocol`.
  */
-typedef struct
-{
+typedef struct {
     UINT32 Data1;
     UINT16 Data2;
     UINT16 Data3;
@@ -180,8 +176,7 @@ typedef struct
  * Used by the system table and boot services tables. Includes signature,
  * revision, header size, and CRC.
  */
-typedef struct
-{
+typedef struct {
     UINT64 Signature;
     UINT32 Revision;
     UINT32 HeaderSize;
@@ -236,8 +231,7 @@ typedef EFI_STATUS(EFIAPI *EFI_TEXT_CLEAR_SCREEN)(struct _EFI_SIMPLE_TEXT_OUTPUT
  * `vboot` treats most entries as opaque and only relies on the subset it
  * actively calls.
  */
-typedef struct _EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL
-{
+typedef struct _EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL {
     void *Reset;
     EFI_TEXT_STRING OutputString;
     void *TestString;
@@ -300,8 +294,8 @@ typedef EFI_STATUS(EFIAPI *EFI_EXIT_BOOT_SERVICES)(EFI_HANDLE ImageHandle, UINTN
 
 /** @brief Retrieve a protocol interface from a handle. */
 typedef EFI_STATUS(EFIAPI *EFI_HANDLE_PROTOCOL)(EFI_HANDLE Handle,
-                                                 EFI_GUID *Protocol,
-                                                 VOID **Interface);
+                                                EFI_GUID *Protocol,
+                                                VOID **Interface);
 
 /**
  * @brief UEFI Boot Services table (partial).
@@ -311,8 +305,7 @@ typedef EFI_STATUS(EFIAPI *EFI_HANDLE_PROTOCOL)(EFI_HANDLE Handle,
  * on a small subset, so unused fields are left as `void*` placeholders to keep
  * the structure layout roughly aligned for the functions we do use.
  */
-typedef struct _EFI_BOOT_SERVICES
-{
+typedef struct _EFI_BOOT_SERVICES {
     EFI_TABLE_HEADER Hdr;
 
     // Task Priority Services
@@ -396,8 +389,7 @@ typedef struct _EFI_BOOT_SERVICES
  *
  * `vboot` stores the pointer in a global (`gST`) for convenience.
  */
-typedef struct
-{
+typedef struct {
     EFI_TABLE_HEADER Hdr;
     CHAR16 *FirmwareVendor;
     UINT32 FirmwareRevision;
@@ -423,8 +415,7 @@ typedef struct
  */
 
 /** @brief Color component bitmask used when `PixelFormat == PixelBitMask`. */
-typedef struct
-{
+typedef struct {
     UINT32 RedMask;
     UINT32 GreenMask;
     UINT32 BlueMask;
@@ -432,8 +423,7 @@ typedef struct
 } EFI_PIXEL_BITMASK;
 
 /** @brief Pixel format identifiers used by GOP. */
-typedef enum
-{
+typedef enum {
     PixelRedGreenBlueReserved8BitPerColor,
     PixelBlueGreenRedReserved8BitPerColor,
     PixelBitMask,
@@ -442,8 +432,7 @@ typedef enum
 } EFI_GRAPHICS_PIXEL_FORMAT;
 
 /** @brief GOP mode information describing the current display mode. */
-typedef struct
-{
+typedef struct {
     UINT32 Version;
     UINT32 HorizontalResolution;
     UINT32 VerticalResolution;
@@ -453,8 +442,7 @@ typedef struct
 } EFI_GRAPHICS_OUTPUT_MODE_INFORMATION;
 
 /** @brief GOP protocol mode state (selected mode + framebuffer address/size). */
-typedef struct
-{
+typedef struct {
     UINT32 MaxMode;
     UINT32 Mode;
     EFI_GRAPHICS_OUTPUT_MODE_INFORMATION *Info;
@@ -483,8 +471,7 @@ typedef EFI_STATUS(EFIAPI *EFI_GRAPHICS_OUTPUT_PROTOCOL_SET_MODE)(
  * Provides function pointers to query/set modes and a pointer to the current
  * mode information, including framebuffer base and size.
  */
-typedef struct _EFI_GRAPHICS_OUTPUT_PROTOCOL
-{
+typedef struct _EFI_GRAPHICS_OUTPUT_PROTOCOL {
     EFI_GRAPHICS_OUTPUT_PROTOCOL_QUERY_MODE QueryMode;
     EFI_GRAPHICS_OUTPUT_PROTOCOL_SET_MODE SetMode;
     void *Blt;
@@ -532,8 +519,7 @@ typedef EFI_STATUS(EFIAPI *EFI_FILE_SET_POSITION)(struct _EFI_FILE_PROTOCOL *Thi
  * This structure is used both for directories (volumes) and files. `vboot`
  * models only the fields required for opening and reading files.
  */
-typedef struct _EFI_FILE_PROTOCOL
-{
+typedef struct _EFI_FILE_PROTOCOL {
     UINT64 Revision;
     EFI_FILE_OPEN Open;
     EFI_FILE_CLOSE Close;
@@ -560,8 +546,7 @@ typedef EFI_STATUS(EFIAPI *EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_OPEN_VOLUME)(
  * Used to open the volume root. From there, `EFI_FILE_PROTOCOL` handles are
  * used to traverse directories and read files.
  */
-typedef struct _EFI_SIMPLE_FILE_SYSTEM_PROTOCOL
-{
+typedef struct _EFI_SIMPLE_FILE_SYSTEM_PROTOCOL {
     UINT64 Revision;
     EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_OPEN_VOLUME OpenVolume;
 } EFI_SIMPLE_FILE_SYSTEM_PROTOCOL;
@@ -582,8 +567,7 @@ typedef struct _EFI_SIMPLE_FILE_SYSTEM_PROTOCOL
  */
 
 /** @brief Loaded image protocol structure (minimal). */
-typedef struct
-{
+typedef struct {
     UINT32 Revision;
     EFI_HANDLE ParentHandle;
     EFI_SYSTEM_TABLE *SystemTable;

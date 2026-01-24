@@ -41,8 +41,7 @@ extern long __syscall1(long num, long arg0);
 #define SYS_PUTCHAR 0xF2
 
 /* Minimal FILE structure for freestanding environment */
-struct _FILE
-{
+struct _FILE {
     int fd;
     int error;
     int eof;
@@ -109,24 +108,19 @@ FILE *stderr = &_stderr_file;
  *
  * @see snprintf, sprintf, printf, vsnprintf
  */
-static int vsnprintf_internal(char *str, size_t size, const char *format, va_list ap)
-{
+static int vsnprintf_internal(char *str, size_t size, const char *format, va_list ap) {
     size_t written = 0;
 
 #define PUTC(c)                                                                                    \
-    do                                                                                             \
-    {                                                                                              \
-        if (written < size - 1)                                                                    \
-        {                                                                                          \
+    do {                                                                                           \
+        if (written < size - 1) {                                                                  \
             str[written] = (c);                                                                    \
         }                                                                                          \
         written++;                                                                                 \
     } while (0)
 
-    while (*format && written < size)
-    {
-        if (*format != '%')
-        {
+    while (*format && written < size) {
+        if (*format != '%') {
             PUTC(*format++);
             continue;
         }
@@ -138,20 +132,17 @@ static int vsnprintf_internal(char *str, size_t size, const char *format, va_lis
         int width = 0;
         int left_justify = 0;
 
-        if (*format == '-')
-        {
+        if (*format == '-') {
             left_justify = 1;
             format++;
         }
-        if (*format == '0')
-        {
+        if (*format == '0') {
             zero_pad = 1;
             format++;
         }
 
         /* Parse width */
-        while (*format >= '0' && *format <= '9')
-        {
+        while (*format >= '0' && *format <= '9') {
             width = width * 10 + (*format - '0');
             format++;
         }
@@ -161,22 +152,18 @@ static int vsnprintf_internal(char *str, size_t size, const char *format, va_lis
         const char *s;
         int len;
 
-        switch (*format)
-        {
+        switch (*format) {
             case 'd':
-            case 'i':
-            {
+            case 'i': {
                 int val = va_arg(ap, int);
                 int neg = 0;
-                if (val < 0)
-                {
+                if (val < 0) {
                     neg = 1;
                     val = -val;
                 }
                 char *p = buf + sizeof(buf) - 1;
                 *p = '\0';
-                do
-                {
+                do {
                     *--p = '0' + (val % 10);
                     val /= 10;
                 } while (val);
@@ -187,13 +174,11 @@ static int vsnprintf_internal(char *str, size_t size, const char *format, va_lis
                 goto output_string;
             }
 
-            case 'u':
-            {
+            case 'u': {
                 unsigned int val = va_arg(ap, unsigned int);
                 char *p = buf + sizeof(buf) - 1;
                 *p = '\0';
-                do
-                {
+                do {
                     *--p = '0' + (val % 10);
                     val /= 10;
                 } while (val);
@@ -203,14 +188,12 @@ static int vsnprintf_internal(char *str, size_t size, const char *format, va_lis
             }
 
             case 'x':
-            case 'X':
-            {
+            case 'X': {
                 unsigned int val = va_arg(ap, unsigned int);
                 char *p = buf + sizeof(buf) - 1;
                 *p = '\0';
                 const char *digits = (*format == 'X') ? "0123456789ABCDEF" : "0123456789abcdef";
-                do
-                {
+                do {
                     *--p = digits[val & 0xF];
                     val >>= 4;
                 } while (val);
@@ -219,13 +202,11 @@ static int vsnprintf_internal(char *str, size_t size, const char *format, va_lis
                 goto output_string;
             }
 
-            case 'p':
-            {
+            case 'p': {
                 unsigned long val = (unsigned long)va_arg(ap, void *);
                 char *p = buf + sizeof(buf) - 1;
                 *p = '\0';
-                do
-                {
+                do {
                     *--p = "0123456789abcdef"[val & 0xF];
                     val >>= 4;
                 } while (val);
@@ -236,46 +217,38 @@ static int vsnprintf_internal(char *str, size_t size, const char *format, va_lis
                 goto output_string;
             }
 
-            case 'l':
-            {
+            case 'l': {
                 format++;
                 /* Check for 'll' (long long) */
                 int is_longlong = 0;
-                if (*format == 'l')
-                {
+                if (*format == 'l') {
                     is_longlong = 1;
                     format++;
                 }
 
-                if (*format == 'x' || *format == 'X')
-                {
+                if (*format == 'x' || *format == 'X') {
                     unsigned long long val =
                         is_longlong ? va_arg(ap, unsigned long long) : va_arg(ap, unsigned long);
                     char *p = buf + sizeof(buf) - 1;
                     *p = '\0';
                     const char *digits = (*format == 'X') ? "0123456789ABCDEF" : "0123456789abcdef";
-                    do
-                    {
+                    do {
                         *--p = digits[val & 0xF];
                         val >>= 4;
                     } while (val);
                     s = p;
                     len = (buf + sizeof(buf) - 1) - p;
                     goto output_string;
-                }
-                else if (*format == 'd' || *format == 'i')
-                {
+                } else if (*format == 'd' || *format == 'i') {
                     long long val = is_longlong ? va_arg(ap, long long) : va_arg(ap, long);
                     int neg = 0;
-                    if (val < 0)
-                    {
+                    if (val < 0) {
                         neg = 1;
                         val = -val;
                     }
                     char *p = buf + sizeof(buf) - 1;
                     *p = '\0';
-                    do
-                    {
+                    do {
                         *--p = '0' + (val % 10);
                         val /= 10;
                     } while (val);
@@ -284,15 +257,12 @@ static int vsnprintf_internal(char *str, size_t size, const char *format, va_lis
                     s = p;
                     len = (buf + sizeof(buf) - 1) - p;
                     goto output_string;
-                }
-                else if (*format == 'u')
-                {
+                } else if (*format == 'u') {
                     unsigned long long val =
                         is_longlong ? va_arg(ap, unsigned long long) : va_arg(ap, unsigned long);
                     char *p = buf + sizeof(buf) - 1;
                     *p = '\0';
-                    do
-                    {
+                    do {
                         *--p = '0' + (val % 10);
                         val /= 10;
                     } while (val);
@@ -303,8 +273,7 @@ static int vsnprintf_internal(char *str, size_t size, const char *format, va_lis
                 break;
             }
 
-            case 's':
-            {
+            case 's': {
                 s = va_arg(ap, const char *);
                 if (!s)
                     s = "(null)";
@@ -312,8 +281,7 @@ static int vsnprintf_internal(char *str, size_t size, const char *format, va_lis
                 goto output_string;
             }
 
-            case 'c':
-            {
+            case 'c': {
                 buf[0] = (char)va_arg(ap, int);
                 buf[1] = '\0';
                 s = buf;
@@ -325,18 +293,15 @@ static int vsnprintf_internal(char *str, size_t size, const char *format, va_lis
                 PUTC('%');
                 break;
 
-            output_string:
-            {
+            output_string: {
                 int pad = width - len;
-                if (!left_justify)
-                {
+                if (!left_justify) {
                     while (pad-- > 0)
                         PUTC(zero_pad ? '0' : ' ');
                 }
                 while (len--)
                     PUTC(*s++);
-                if (left_justify)
-                {
+                if (left_justify) {
                     while (pad-- > 0)
                         PUTC(' ');
                 }
@@ -352,8 +317,7 @@ static int vsnprintf_internal(char *str, size_t size, const char *format, va_lis
         format++;
     }
 
-    if (size > 0)
-    {
+    if (size > 0) {
         str[written < size ? written : size - 1] = '\0';
     }
 
@@ -386,8 +350,7 @@ static int vsnprintf_internal(char *str, size_t size, const char *format, va_lis
  *
  * @see sprintf, printf, vsnprintf
  */
-int snprintf(char *str, size_t size, const char *format, ...)
-{
+int snprintf(char *str, size_t size, const char *format, ...) {
     va_list ap;
     va_start(ap, format);
     int result = vsnprintf_internal(str, size, format, ap);
@@ -417,8 +380,7 @@ int snprintf(char *str, size_t size, const char *format, ...)
  *
  * @see snprintf (preferred), printf, vsprintf
  */
-int sprintf(char *str, const char *format, ...)
-{
+int sprintf(char *str, const char *format, ...) {
     va_list ap;
     va_start(ap, format);
     int result = vsnprintf_internal(str, 0x7FFFFFFF, format, ap);
@@ -451,16 +413,14 @@ int sprintf(char *str, const char *format, ...)
  *
  * @see fprintf, sprintf, puts, putchar
  */
-int printf(const char *format, ...)
-{
+int printf(const char *format, ...) {
     char buf[512];
     va_list ap;
     va_start(ap, format);
     int result = vsnprintf_internal(buf, sizeof(buf), format, ap);
     va_end(ap);
 
-    if (result > 0)
-    {
+    if (result > 0) {
         write(STDOUT_FILENO, buf, result);
     }
 
@@ -488,8 +448,7 @@ int printf(const char *format, ...)
  *
  * @see fputs, printf, putchar
  */
-int puts(const char *s)
-{
+int puts(const char *s) {
     size_t len = strlen(s);
     write(STDOUT_FILENO, s, len);
     write(STDOUT_FILENO, "\n", 1);
@@ -513,8 +472,7 @@ int puts(const char *s)
  *
  * @see fputc, putc, puts, getchar
  */
-int putchar(int c)
-{
+int putchar(int c) {
     char ch = (char)c;
     write(STDOUT_FILENO, &ch, 1);
     return c;
@@ -539,8 +497,7 @@ int putchar(int c)
  *
  * @see fgetc, getc, putchar, fgets
  */
-int getchar(void)
-{
+int getchar(void) {
     unsigned char c = 0;
     long n = read(STDIN_FILENO, &c, 1);
     if (n <= 0)
@@ -570,8 +527,7 @@ int getchar(void)
  *
  * @see snprintf, vsprintf, vprintf
  */
-int vsnprintf(char *str, size_t size, const char *format, va_list ap)
-{
+int vsnprintf(char *str, size_t size, const char *format, va_list ap) {
     return vsnprintf_internal(str, size, format, ap);
 }
 
@@ -592,8 +548,7 @@ int vsnprintf(char *str, size_t size, const char *format, va_list ap)
  *
  * @see vsnprintf (preferred), sprintf, vprintf
  */
-int vsprintf(char *str, const char *format, va_list ap)
-{
+int vsprintf(char *str, const char *format, va_list ap) {
     return vsnprintf_internal(str, 0x7FFFFFFF, format, ap);
 }
 
@@ -614,12 +569,10 @@ int vsprintf(char *str, const char *format, va_list ap)
  *
  * @see printf, vfprintf, vsnprintf
  */
-int vprintf(const char *format, va_list ap)
-{
+int vprintf(const char *format, va_list ap) {
     char buf[512];
     int result = vsnprintf_internal(buf, sizeof(buf), format, ap);
-    if (result > 0)
-    {
+    if (result > 0) {
         write(STDOUT_FILENO, buf, result);
     }
     return result;
@@ -645,15 +598,12 @@ int vprintf(const char *format, va_list ap)
  *
  * @see fprintf, vprintf, vsnprintf
  */
-int vfprintf(FILE *stream, const char *format, va_list ap)
-{
+int vfprintf(FILE *stream, const char *format, va_list ap) {
     char buf[512];
     int result = vsnprintf_internal(buf, sizeof(buf), format, ap);
-    if (result > 0)
-    {
+    if (result > 0) {
         long written = write(stream->fd, buf, result);
-        if (written < 0 || written != result)
-        {
+        if (written < 0 || written != result) {
             stream->error = 1;
             return -1;
         }
@@ -683,8 +633,7 @@ int vfprintf(FILE *stream, const char *format, va_list ap)
  *
  * @see printf, sprintf, vfprintf, fputs
  */
-int fprintf(FILE *stream, const char *format, ...)
-{
+int fprintf(FILE *stream, const char *format, ...) {
     va_list ap;
     va_start(ap, format);
     int result = vfprintf(stream, format, ap);
@@ -709,12 +658,10 @@ int fprintf(FILE *stream, const char *format, ...)
  *
  * @see fputc, putc
  */
-static int fputc_unbuffered(int c, FILE *stream)
-{
+static int fputc_unbuffered(int c, FILE *stream) {
     char ch = (char)c;
     long result = write(stream->fd, &ch, 1);
-    if (result < 0)
-    {
+    if (result < 0) {
         stream->error = 1;
         return EOF;
     }
@@ -745,11 +692,9 @@ static int fputc_unbuffered(int c, FILE *stream)
  *
  * @see putc (equivalent macro/function), putchar, fputs, fflush
  */
-int fputc(int c, FILE *stream)
-{
+int fputc(int c, FILE *stream) {
     /* No buffering or no buffer - write directly */
-    if (stream->buf_mode == _IONBF || stream->buf == NULL)
-    {
+    if (stream->buf_mode == _IONBF || stream->buf == NULL) {
         return fputc_unbuffered(c, stream);
     }
 
@@ -759,19 +704,15 @@ int fputc(int c, FILE *stream)
     /* Check if we need to flush */
     int should_flush = 0;
 
-    if (stream->buf_pos >= stream->buf_size)
-    {
+    if (stream->buf_pos >= stream->buf_size) {
         /* Buffer full */
         should_flush = 1;
-    }
-    else if (stream->buf_mode == _IOLBF && c == '\n')
-    {
+    } else if (stream->buf_mode == _IOLBF && c == '\n') {
         /* Line buffered and got newline */
         should_flush = 1;
     }
 
-    if (should_flush)
-    {
+    if (should_flush) {
         if (fflush(stream) == EOF)
             return EOF;
     }
@@ -793,8 +734,7 @@ int fputc(int c, FILE *stream)
  *
  * @see fputc, putchar, getc
  */
-int putc(int c, FILE *stream)
-{
+int putc(int c, FILE *stream) {
     return fputc(c, stream);
 }
 
@@ -819,12 +759,10 @@ int putc(int c, FILE *stream)
  *
  * @see puts, fputc, fprintf, fwrite
  */
-int fputs(const char *s, FILE *stream)
-{
+int fputs(const char *s, FILE *stream) {
     size_t len = strlen(s);
     long result = write(stream->fd, s, len);
-    if (result < 0)
-    {
+    if (result < 0) {
         stream->error = 1;
         return EOF;
     }
@@ -854,12 +792,10 @@ int fputs(const char *s, FILE *stream)
  *
  * @see getc (equivalent), getchar, fgets, fread, ungetc
  */
-int fgetc(FILE *stream)
-{
+int fgetc(FILE *stream) {
     char c;
     long result = read(stream->fd, &c, 1);
-    if (result <= 0)
-    {
+    if (result <= 0) {
         if (result == 0)
             stream->eof = 1;
         else
@@ -883,8 +819,7 @@ int fgetc(FILE *stream)
  *
  * @see fgetc, getchar, putc
  */
-int getc(FILE *stream)
-{
+int getc(FILE *stream) {
     return fgetc(stream);
 }
 
@@ -924,17 +859,14 @@ int getc(FILE *stream)
  *
  * @see fgetc, getline, fputs, fread
  */
-char *fgets(char *s, int size, FILE *stream)
-{
+char *fgets(char *s, int size, FILE *stream) {
     if (size <= 0)
         return NULL;
 
     int i = 0;
-    while (i < size - 1)
-    {
+    while (i < size - 1) {
         int c = fgetc(stream);
-        if (c == EOF)
-        {
+        if (c == EOF) {
             if (i == 0)
                 return NULL;
             break;
@@ -971,8 +903,7 @@ char *fgets(char *s, int size, FILE *stream)
  *
  * @see clearerr, feof, perror
  */
-int ferror(FILE *stream)
-{
+int ferror(FILE *stream) {
     return stream->error;
 }
 
@@ -993,8 +924,7 @@ int ferror(FILE *stream)
  *
  * @see ferror, feof, rewind
  */
-void clearerr(FILE *stream)
-{
+void clearerr(FILE *stream) {
     stream->error = 0;
     stream->eof = 0;
 }
@@ -1021,8 +951,7 @@ void clearerr(FILE *stream)
  *
  * @see ferror, clearerr, rewind
  */
-int feof(FILE *stream)
-{
+int feof(FILE *stream) {
     return stream->eof;
 }
 
@@ -1053,21 +982,17 @@ int feof(FILE *stream)
  *
  * @see setvbuf, fclose, setbuf
  */
-int fflush(FILE *stream)
-{
-    if (stream == NULL)
-    {
+int fflush(FILE *stream) {
+    if (stream == NULL) {
         /* Flush all streams - just stdout for now */
         fflush(stdout);
         return 0;
     }
 
     /* If there's buffered data, write it out */
-    if (stream->buf && stream->buf_pos > 0)
-    {
+    if (stream->buf && stream->buf_pos > 0) {
         long result = write(stream->fd, stream->buf, stream->buf_pos);
-        if (result < 0)
-        {
+        if (result < 0) {
             stream->error = 1;
             return EOF;
         }
@@ -1107,8 +1032,7 @@ int fflush(FILE *stream)
  *
  * @see setbuf, setlinebuf, fflush
  */
-int setvbuf(FILE *stream, char *buf, int mode, size_t size)
-{
+int setvbuf(FILE *stream, char *buf, int mode, size_t size) {
     /* Flush any existing buffer first */
     fflush(stream);
 
@@ -1119,24 +1043,18 @@ int setvbuf(FILE *stream, char *buf, int mode, size_t size)
     /* If we owned the old buffer, we would free it here (but we don't malloc) */
     stream->buf_owned = 0;
 
-    if (mode == _IONBF)
-    {
+    if (mode == _IONBF) {
         /* No buffering */
         stream->buf = NULL;
         stream->buf_size = 0;
         stream->buf_pos = 0;
-    }
-    else
-    {
-        if (buf != NULL)
-        {
+    } else {
+        if (buf != NULL) {
             /* Use provided buffer */
             stream->buf = buf;
             stream->buf_size = size;
             stream->buf_owned = 0;
-        }
-        else if (size > 0)
-        {
+        } else if (size > 0) {
             /* Caller wants us to allocate, but we can't in freestanding */
             /* Fall back to unbuffered */
             stream->buf = NULL;
@@ -1169,8 +1087,7 @@ int setvbuf(FILE *stream, char *buf, int mode, size_t size)
  *
  * @see setvbuf, setlinebuf
  */
-void setbuf(FILE *stream, char *buf)
-{
+void setbuf(FILE *stream, char *buf) {
     if (buf != NULL)
         setvbuf(stream, buf, _IOFBF, BUFSIZ);
     else
@@ -1199,8 +1116,7 @@ void setbuf(FILE *stream, char *buf)
  *
  * @see setvbuf, setbuf
  */
-void setlinebuf(FILE *stream)
-{
+void setlinebuf(FILE *stream) {
     /* Line buffering with default buffer */
     setvbuf(stream, NULL, _IOLBF, 0);
 }
@@ -1219,11 +1135,9 @@ void setlinebuf(FILE *stream)
  *
  * @note This is a static internal function, not part of the public API.
  */
-static int skip_whitespace(const char **str)
-{
+static int skip_whitespace(const char **str) {
     int count = 0;
-    while (**str == ' ' || **str == '\t' || **str == '\n')
-    {
+    while (**str == ' ' || **str == '\t' || **str == '\n') {
         (*str)++;
         count++;
     }
@@ -1261,12 +1175,10 @@ static int file_pool_init = 0;
  *
  * @note This is a static internal function, not part of the public API.
  */
-static void init_file_pool(void)
-{
+static void init_file_pool(void) {
     if (file_pool_init)
         return;
-    for (int i = 0; i < FILE_POOL_SIZE; i++)
-    {
+    for (int i = 0; i < FILE_POOL_SIZE; i++) {
         file_pool[i].fd = -1;
     }
     file_pool_init = 1;
@@ -1287,13 +1199,10 @@ static void init_file_pool(void)
  *
  * @see init_file_pool, fclose (which returns structures to the pool)
  */
-static struct _FILE *alloc_file(void)
-{
+static struct _FILE *alloc_file(void) {
     init_file_pool();
-    for (int i = 0; i < FILE_POOL_SIZE; i++)
-    {
-        if (file_pool[i].fd == -1)
-        {
+    for (int i = 0; i < FILE_POOL_SIZE; i++) {
+        if (file_pool[i].fd == -1) {
             return &file_pool[i];
         }
     }
@@ -1326,20 +1235,17 @@ static struct _FILE *alloc_file(void)
  *
  * @note This is a static internal function, not part of the public API.
  */
-static int parse_mode(const char *mode)
-{
+static int parse_mode(const char *mode) {
     int flags = 0;
     int has_plus = 0;
 
     /* Check for '+' anywhere in mode string */
-    for (const char *p = mode; *p; p++)
-    {
+    for (const char *p = mode; *p; p++) {
         if (*p == '+')
             has_plus = 1;
     }
 
-    switch (mode[0])
-    {
+    switch (mode[0]) {
         case 'r':
             flags = has_plus ? O_RDWR : O_RDONLY;
             break;
@@ -1392,8 +1298,7 @@ static int parse_mode(const char *mode)
  *
  * @see fclose, freopen, fdopen, fread, fwrite
  */
-FILE *fopen(const char *pathname, const char *mode)
-{
+FILE *fopen(const char *pathname, const char *mode) {
     if (!pathname || !mode)
         return (FILE *)0;
 
@@ -1406,8 +1311,7 @@ FILE *fopen(const char *pathname, const char *mode)
         return (FILE *)0;
 
     struct _FILE *f = alloc_file();
-    if (!f)
-    {
+    if (!f) {
         close(fd);
         return (FILE *)0;
     }
@@ -1453,8 +1357,7 @@ FILE *fopen(const char *pathname, const char *mode)
  *
  * @see fopen, fclose, fileno
  */
-FILE *fdopen(int fd, const char *mode)
-{
+FILE *fdopen(int fd, const char *mode) {
     if (fd < 0 || !mode)
         return (FILE *)0;
 
@@ -1505,20 +1408,17 @@ FILE *fdopen(int fd, const char *mode)
  *
  * @see fopen, fclose
  */
-FILE *freopen(const char *pathname, const char *mode, FILE *stream)
-{
+FILE *freopen(const char *pathname, const char *mode, FILE *stream) {
     if (!stream)
         return (FILE *)0;
 
     /* Close existing file */
     fflush(stream);
-    if (stream->fd >= 0 && stream != stdin && stream != stdout && stream != stderr)
-    {
+    if (stream->fd >= 0 && stream != stdin && stream != stdout && stream != stderr) {
         close(stream->fd);
     }
 
-    if (!pathname)
-    {
+    if (!pathname) {
         /* Just change mode - not fully supported */
         return stream;
     }
@@ -1564,16 +1464,14 @@ FILE *freopen(const char *pathname, const char *mode, FILE *stream)
  *
  * @see fopen, fflush, fileno
  */
-int fclose(FILE *stream)
-{
+int fclose(FILE *stream) {
     if (!stream)
         return EOF;
 
     fflush(stream);
 
     int result = 0;
-    if (stream->fd >= 0 && stream != stdin && stream != stdout && stream != stderr)
-    {
+    if (stream->fd >= 0 && stream != stdin && stream != stdout && stream != stderr) {
         result = close(stream->fd);
         stream->fd = -1;
     }
@@ -1604,8 +1502,7 @@ int fclose(FILE *stream)
  *
  * @see fdopen, fflush
  */
-int fileno(FILE *stream)
-{
+int fileno(FILE *stream) {
     if (!stream)
         return -1;
     return stream->fd;
@@ -1649,21 +1546,18 @@ int fileno(FILE *stream)
  *
  * @see fwrite, fgetc, fgets, read
  */
-size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream)
-{
+size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
     if (!stream || !ptr || size == 0 || nmemb == 0)
         return 0;
 
     size_t total = size * nmemb;
     ssize_t bytes_read = read(stream->fd, ptr, total);
 
-    if (bytes_read < 0)
-    {
+    if (bytes_read < 0) {
         stream->error = 1;
         return 0;
     }
-    if (bytes_read == 0)
-    {
+    if (bytes_read == 0) {
         stream->eof = 1;
         return 0;
     }
@@ -1705,16 +1599,14 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream)
  *
  * @see fread, fputs, fputc, write
  */
-size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
-{
+size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream) {
     if (!stream || !ptr || size == 0 || nmemb == 0)
         return 0;
 
     size_t total = size * nmemb;
     ssize_t bytes_written = write(stream->fd, ptr, total);
 
-    if (bytes_written < 0)
-    {
+    if (bytes_written < 0) {
         stream->error = 1;
         return 0;
     }
@@ -1755,8 +1647,7 @@ size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
  *
  * @see ftell, rewind, fsetpos, fgetpos
  */
-int fseek(FILE *stream, long offset, int whence)
-{
+int fseek(FILE *stream, long offset, int whence) {
     if (!stream)
         return -1;
 
@@ -1794,8 +1685,7 @@ int fseek(FILE *stream, long offset, int whence)
  *
  * @see fseek, fgetpos, rewind
  */
-long ftell(FILE *stream)
-{
+long ftell(FILE *stream) {
     if (!stream)
         return -1L;
 
@@ -1822,10 +1712,8 @@ long ftell(FILE *stream)
  *
  * @see fseek, clearerr, fsetpos
  */
-void rewind(FILE *stream)
-{
-    if (stream)
-    {
+void rewind(FILE *stream) {
+    if (stream) {
         fseek(stream, 0L, SEEK_SET);
         stream->error = 0;
     }
@@ -1859,8 +1747,7 @@ void rewind(FILE *stream)
  *
  * @see fsetpos, ftell, fseek
  */
-int fgetpos(FILE *stream, fpos_t *pos)
-{
+int fgetpos(FILE *stream, fpos_t *pos) {
     if (!stream || !pos)
         return -1;
 
@@ -1890,8 +1777,7 @@ int fgetpos(FILE *stream, fpos_t *pos)
  *
  * @see fgetpos, fseek, ftell
  */
-int fsetpos(FILE *stream, const fpos_t *pos)
-{
+int fsetpos(FILE *stream, const fpos_t *pos) {
     if (!stream || !pos)
         return -1;
 
@@ -1932,16 +1818,14 @@ static int ungetc_buf[FILE_POOL_SIZE + 3] = {EOF, EOF, EOF};
  *
  * @note This is a static internal function, not part of the public API.
  */
-static int get_stream_index(FILE *stream)
-{
+static int get_stream_index(FILE *stream) {
     if (stream == stdin)
         return 0;
     if (stream == stdout)
         return 1;
     if (stream == stderr)
         return 2;
-    for (int i = 0; i < FILE_POOL_SIZE; i++)
-    {
+    for (int i = 0; i < FILE_POOL_SIZE; i++) {
         if (stream == &file_pool[i])
             return i + 3;
     }
@@ -1987,8 +1871,7 @@ static int get_stream_index(FILE *stream)
  *
  * @see fgetc, getc, fgets
  */
-int ungetc(int c, FILE *stream)
-{
+int ungetc(int c, FILE *stream) {
     if (!stream || c == EOF)
         return EOF;
 
@@ -2035,10 +1918,8 @@ extern int *__errno_location(void);
  *
  * @see strerror, errno, fprintf
  */
-void perror(const char *s)
-{
-    if (s && *s)
-    {
+void perror(const char *s) {
+    if (s && *s) {
         fputs(s, stderr);
         fputs(": ", stderr);
     }
@@ -2065,8 +1946,7 @@ void perror(const char *s)
  *
  * @see rename, unlink, fopen
  */
-int remove(const char *pathname)
-{
+int remove(const char *pathname) {
     if (!pathname)
         return -1;
     return unlink(pathname);
@@ -2092,8 +1972,7 @@ int remove(const char *pathname)
  *
  * @see remove, fopen
  */
-int rename_file(const char *oldpath, const char *newpath)
-{
+int rename_file(const char *oldpath, const char *newpath) {
     if (!oldpath || !newpath)
         return -1;
     return rename(oldpath, newpath);
@@ -2131,8 +2010,7 @@ static unsigned int tmpnam_counter = 0;
  *
  * @see tmpfile (preferred), L_tmpnam
  */
-char *tmpnam(char *s)
-{
+char *tmpnam(char *s) {
     static char tmpbuf[L_tmpnam];
     char *buf = s ? s : tmpbuf;
 
@@ -2143,8 +2021,7 @@ char *tmpnam(char *s)
         *p++ = *prefix++;
 
     unsigned int n = tmpnam_counter++;
-    for (int i = 0; i < 6; i++)
-    {
+    for (int i = 0; i < 6; i++) {
         *p++ = 'A' + (n % 26);
         n /= 26;
     }
@@ -2170,8 +2047,7 @@ char *tmpnam(char *s)
  *
  * @see tmpnam, fopen
  */
-FILE *tmpfile(void)
-{
+FILE *tmpfile(void) {
     char name[L_tmpnam];
     tmpnam(name);
     return fopen(name, "w+");
@@ -2229,13 +2105,11 @@ extern void *realloc(void *ptr, size_t size);
  *
  * @see getline, fgets
  */
-ssize_t getdelim(char **lineptr, size_t *n, int delim, FILE *stream)
-{
+ssize_t getdelim(char **lineptr, size_t *n, int delim, FILE *stream) {
     if (!lineptr || !n || !stream)
         return -1;
 
-    if (*lineptr == (char *)0 || *n == 0)
-    {
+    if (*lineptr == (char *)0 || *n == 0) {
         *n = 128;
         *lineptr = (char *)malloc(*n);
         if (!*lineptr)
@@ -2245,11 +2119,9 @@ ssize_t getdelim(char **lineptr, size_t *n, int delim, FILE *stream)
     size_t pos = 0;
     int c;
 
-    while ((c = fgetc(stream)) != EOF)
-    {
+    while ((c = fgetc(stream)) != EOF) {
         /* Ensure space for char + null terminator */
-        if (pos + 2 > *n)
-        {
+        if (pos + 2 > *n) {
             size_t new_size = *n * 2;
             char *new_ptr = (char *)realloc(*lineptr, new_size);
             if (!new_ptr)
@@ -2304,8 +2176,7 @@ ssize_t getdelim(char **lineptr, size_t *n, int delim, FILE *stream)
  *
  * @see getdelim, fgets
  */
-ssize_t getline(char **lineptr, size_t *n, FILE *stream)
-{
+ssize_t getline(char **lineptr, size_t *n, FILE *stream) {
     return getdelim(lineptr, n, '\n', stream);
 }
 
@@ -2361,24 +2232,20 @@ ssize_t getline(char **lineptr, size_t *n, FILE *stream)
  *
  * @see sprintf, fscanf, strtol
  */
-int sscanf(const char *str, const char *format, ...)
-{
+int sscanf(const char *str, const char *format, ...) {
     va_list ap;
     va_start(ap, format);
     int matched = 0;
     const char *s = str;
 
-    while (*format)
-    {
-        if (*format == ' ' || *format == '\t' || *format == '\n')
-        {
+    while (*format) {
+        if (*format == ' ' || *format == '\t' || *format == '\n') {
             skip_whitespace(&s);
             format++;
             continue;
         }
 
-        if (*format != '%')
-        {
+        if (*format != '%') {
             if (*s != *format)
                 break;
             s++;
@@ -2390,30 +2257,24 @@ int sscanf(const char *str, const char *format, ...)
 
         /* Parse width (optional) */
         int width = 0;
-        while (*format >= '0' && *format <= '9')
-        {
+        while (*format >= '0' && *format <= '9') {
             width = width * 10 + (*format - '0');
             format++;
         }
 
         /* Handle format specifier */
-        switch (*format)
-        {
+        switch (*format) {
             case 'd':
-            case 'i':
-            {
+            case 'i': {
                 skip_whitespace(&s);
                 int *ptr = va_arg(ap, int *);
                 int neg = 0;
                 long val = 0;
 
-                if (*s == '-')
-                {
+                if (*s == '-') {
                     neg = 1;
                     s++;
-                }
-                else if (*s == '+')
-                {
+                } else if (*s == '+') {
                     s++;
                 }
 
@@ -2421,8 +2282,7 @@ int sscanf(const char *str, const char *format, ...)
                     goto done;
 
                 int digits = 0;
-                while (*s >= '0' && *s <= '9')
-                {
+                while (*s >= '0' && *s <= '9') {
                     val = val * 10 + (*s - '0');
                     s++;
                     digits++;
@@ -2435,8 +2295,7 @@ int sscanf(const char *str, const char *format, ...)
                 break;
             }
 
-            case 'u':
-            {
+            case 'u': {
                 skip_whitespace(&s);
                 unsigned int *ptr = va_arg(ap, unsigned int *);
                 unsigned long val = 0;
@@ -2445,8 +2304,7 @@ int sscanf(const char *str, const char *format, ...)
                     goto done;
 
                 int digits = 0;
-                while (*s >= '0' && *s <= '9')
-                {
+                while (*s >= '0' && *s <= '9') {
                     val = val * 10 + (*s - '0');
                     s++;
                     digits++;
@@ -2460,8 +2318,7 @@ int sscanf(const char *str, const char *format, ...)
             }
 
             case 'x':
-            case 'X':
-            {
+            case 'X': {
                 skip_whitespace(&s);
                 unsigned int *ptr = va_arg(ap, unsigned int *);
                 unsigned long val = 0;
@@ -2471,8 +2328,7 @@ int sscanf(const char *str, const char *format, ...)
                     s += 2;
 
                 int digits = 0;
-                while (1)
-                {
+                while (1) {
                     int digit;
                     if (*s >= '0' && *s <= '9')
                         digit = *s - '0';
@@ -2498,14 +2354,12 @@ int sscanf(const char *str, const char *format, ...)
                 break;
             }
 
-            case 's':
-            {
+            case 's': {
                 skip_whitespace(&s);
                 char *ptr = va_arg(ap, char *);
                 int len = 0;
 
-                while (*s && *s != ' ' && *s != '\t' && *s != '\n')
-                {
+                while (*s && *s != ' ' && *s != '\t' && *s != '\n') {
                     if (width > 0 && len >= width)
                         break;
                     *ptr++ = *s++;
@@ -2520,8 +2374,7 @@ int sscanf(const char *str, const char *format, ...)
                 break;
             }
 
-            case 'c':
-            {
+            case 'c': {
                 char *ptr = va_arg(ap, char *);
                 if (!*s)
                     goto done;
@@ -2530,8 +2383,7 @@ int sscanf(const char *str, const char *format, ...)
                 break;
             }
 
-            case 'n':
-            {
+            case 'n': {
                 int *ptr = va_arg(ap, int *);
                 *ptr = (int)(s - str);
                 /* %n doesn't count as a matched item */

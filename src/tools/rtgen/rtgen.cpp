@@ -1032,7 +1032,8 @@ static std::string buildDirectHandlerExpr(const std::string &c_symbol, const CSi
     return "&DirectHandler<" + args + ">::invoke";
 }
 
-static std::string buildConsumingStringHandlerExpr(const std::string &c_symbol, const CSignature &sig)
+static std::string buildConsumingStringHandlerExpr(const std::string &c_symbol,
+                                                   const CSignature &sig)
 {
     std::string args = "&" + c_symbol + ", " + sig.returnType;
     for (const auto &arg : sig.argTypes)

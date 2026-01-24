@@ -16,21 +16,17 @@
 #include "dir.hpp"
 #include "../console/serial.hpp"
 
-namespace kobj
-{
+namespace kobj {
 
 /** @copydoc kobj::DirObject::create */
-DirObject *DirObject::create(u64 inode_num)
-{
+DirObject *DirObject::create(u64 inode_num) {
     // Verify the inode exists and is a directory
     fs::viperfs::Inode *inode = fs::viperfs::viperfs().read_inode(inode_num);
-    if (!inode)
-    {
+    if (!inode) {
         return nullptr;
     }
 
-    if (!fs::viperfs::is_directory(inode))
-    {
+    if (!fs::viperfs::is_directory(inode)) {
         fs::viperfs::viperfs().release_inode(inode);
         return nullptr;
     }
@@ -39,8 +35,7 @@ DirObject *DirObject::create(u64 inode_num)
 
     // Allocate the directory object
     DirObject *dir = new DirObject(inode_num);
-    if (!dir)
-    {
+    if (!dir) {
         return nullptr;
     }
 
@@ -52,21 +47,17 @@ DirObject *DirObject::create(u64 inode_num)
 }
 
 /** @copydoc kobj::DirObject::lookup */
-bool DirObject::lookup(const char *name, usize name_len, u64 *out_inode, u8 *out_type)
-{
-    if (!name || name_len == 0 || !out_inode)
-    {
+bool DirObject::lookup(const char *name, usize name_len, u64 *out_inode, u8 *out_type) {
+    if (!name || name_len == 0 || !out_inode) {
         return false;
     }
 
     fs::viperfs::Inode *inode = fs::viperfs::viperfs().read_inode(inode_num_);
-    if (!inode)
-    {
+    if (!inode) {
         return false;
     }
 
-    if (!fs::viperfs::is_directory(inode))
-    {
+    if (!fs::viperfs::is_directory(inode)) {
         fs::viperfs::viperfs().release_inode(inode);
         return false;
     }
@@ -75,24 +66,19 @@ bool DirObject::lookup(const char *name, usize name_len, u64 *out_inode, u8 *out
     u64 child_ino = fs::viperfs::viperfs().lookup(inode, name, name_len);
     fs::viperfs::viperfs().release_inode(inode);
 
-    if (child_ino == 0)
-    {
+    if (child_ino == 0) {
         return false;
     }
 
     *out_inode = child_ino;
 
     // Determine the type of the child
-    if (out_type)
-    {
+    if (out_type) {
         fs::viperfs::Inode *child = fs::viperfs::viperfs().read_inode(child_ino);
-        if (child)
-        {
+        if (child) {
             *out_type = fs::viperfs::mode_to_file_type(child->mode);
             fs::viperfs::viperfs().release_inode(child);
-        }
-        else
-        {
+        } else {
             *out_type = fs::viperfs::file_type::UNKNOWN;
         }
     }
@@ -113,8 +99,7 @@ bool DirObject::lookup(const char *name, usize name_len, u64 *out_inode, u8 *out
  * This context structure tracks the current scan position and whether a
  * suitable entry has been found.
  */
-struct ReadNextCtx
-{
+struct ReadNextCtx {
     u64 target_offset;  // Offset we're looking for
     u64 current_offset; // Current position in enumeration
     FsDirEnt *out_ent;  // Where to write the result
@@ -142,26 +127,22 @@ struct ReadNextCtx
  * @param file_type Entry type tag.
  * @param ctx Opaque pointer to a @ref ReadNextCtx structure.
  */
-static void read_next_callback(const char *name, usize name_len, u64 ino, u8 file_type, void *ctx)
-{
+static void read_next_callback(const char *name, usize name_len, u64 ino, u8 file_type, void *ctx) {
     auto *rctx = static_cast<ReadNextCtx *>(ctx);
 
     // Skip until we reach or pass the target offset
-    if (rctx->found)
-    {
+    if (rctx->found) {
         // We already found one entry; record offset for next iteration
         return;
     }
 
-    if (rctx->current_offset >= rctx->target_offset)
-    {
+    if (rctx->current_offset >= rctx->target_offset) {
         // This is the entry we want
         rctx->out_ent->inode = ino;
         rctx->out_ent->type = file_type;
         rctx->out_ent->name_len = static_cast<u8>(name_len > 255 ? 255 : name_len);
 
-        for (usize i = 0; i < rctx->out_ent->name_len; i++)
-        {
+        for (usize i = 0; i < rctx->out_ent->name_len; i++) {
             rctx->out_ent->name[i] = name[i];
         }
         rctx->out_ent->name[rctx->out_ent->name_len] = '\0';
@@ -174,21 +155,17 @@ static void read_next_callback(const char *name, usize name_len, u64 ino, u8 fil
 }
 
 /** @copydoc kobj::DirObject::read_next */
-bool DirObject::read_next(FsDirEnt *out_ent)
-{
-    if (!out_ent)
-    {
+bool DirObject::read_next(FsDirEnt *out_ent) {
+    if (!out_ent) {
         return false;
     }
 
     fs::viperfs::Inode *inode = fs::viperfs::viperfs().read_inode(inode_num_);
-    if (!inode)
-    {
+    if (!inode) {
         return false;
     }
 
-    if (!fs::viperfs::is_directory(inode))
-    {
+    if (!fs::viperfs::is_directory(inode)) {
         fs::viperfs::viperfs().release_inode(inode);
         return false;
     }
@@ -206,8 +183,7 @@ bool DirObject::read_next(FsDirEnt *out_ent)
 
     fs::viperfs::viperfs().release_inode(inode);
 
-    if (ctx.found)
-    {
+    if (ctx.found) {
         offset_ = ctx.next_offset;
         return true;
     }
@@ -216,11 +192,9 @@ bool DirObject::read_next(FsDirEnt *out_ent)
 }
 
 /** @copydoc kobj::DirObject::is_valid_dir */
-bool DirObject::is_valid_dir()
-{
+bool DirObject::is_valid_dir() {
     fs::viperfs::Inode *inode = fs::viperfs::viperfs().read_inode(inode_num_);
-    if (!inode)
-    {
+    if (!inode) {
         return false;
     }
 

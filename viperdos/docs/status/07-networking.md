@@ -80,11 +80,11 @@ Applications use standard socket APIs (via libc), which route requests to netd v
 
 ### Components
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `main.cpp` | ~920 | Server entry point, IPC message handling |
-| `netstack.hpp` | ~600 | Network stack structures and API |
-| `netstack.cpp` | ~1,700 | TCP/IP stack implementation |
+| File           | Lines  | Description                              |
+|----------------|--------|------------------------------------------|
+| `main.cpp`     | ~920   | Server entry point, IPC message handling |
+| `netstack.hpp` | ~600   | Network stack structures and API         |
+| `netstack.cpp` | ~1,700 | TCP/IP stack implementation              |
 
 ### Initialization Sequence
 
@@ -99,12 +99,12 @@ Applications use standard socket APIs (via libc), which route requests to netd v
 
 QEMU virt default configuration:
 
-| Parameter | Value |
-|-----------|-------|
-| IP Address | 10.0.2.15 |
-| Netmask | 255.255.255.0 |
-| Gateway | 10.0.2.2 |
-| DNS Server | 10.0.2.3 |
+| Parameter  | Value         |
+|------------|---------------|
+| IP Address | 10.0.2.15     |
+| Netmask    | 255.255.255.0 |
+| Gateway    | 10.0.2.2      |
+| DNS Server | 10.0.2.3      |
 
 ### IPC Protocol
 
@@ -113,35 +113,37 @@ QEMU virt default configuration:
 
 #### Socket Operations
 
-| Message Type | Value | Description |
-|--------------|-------|-------------|
-| NET_SOCKET_CREATE | 1 | Create socket (TCP/UDP) |
-| NET_SOCKET_CONNECT | 2 | Connect to remote host |
-| NET_SOCKET_BIND | 3 | Bind to local port |
-| NET_SOCKET_LISTEN | 4 | Listen for connections |
-| NET_SOCKET_ACCEPT | 5 | Accept incoming connection |
-| NET_SOCKET_SEND | 6 | Send data (inline or SHM) |
-| NET_SOCKET_RECV | 7 | Receive data |
-| NET_SOCKET_CLOSE | 8 | Close socket |
-| NET_SOCKET_STATUS | 10 | Query socket readiness |
+| Message Type       | Value | Description                |
+|--------------------|-------|----------------------------|
+| NET_SOCKET_CREATE  | 1     | Create socket (TCP/UDP)    |
+| NET_SOCKET_CONNECT | 2     | Connect to remote host     |
+| NET_SOCKET_BIND    | 3     | Bind to local port         |
+| NET_SOCKET_LISTEN  | 4     | Listen for connections     |
+| NET_SOCKET_ACCEPT  | 5     | Accept incoming connection |
+| NET_SOCKET_SEND    | 6     | Send data (inline or SHM)  |
+| NET_SOCKET_RECV    | 7     | Receive data               |
+| NET_SOCKET_CLOSE   | 8     | Close socket               |
+| NET_SOCKET_STATUS  | 10    | Query socket readiness     |
 
 #### DNS and Diagnostics
 
-| Message Type | Value | Description |
-|--------------|-------|-------------|
-| NET_DNS_RESOLVE | 20 | Resolve hostname to IPv4 |
-| NET_PING | 40 | ICMP echo request |
-| NET_STATS | 41 | Get network statistics |
-| NET_INFO | 42 | Get network configuration |
-| NET_SUBSCRIBE_EVENTS | 43 | Subscribe to socket events |
+| Message Type         | Value | Description                |
+|----------------------|-------|----------------------------|
+| NET_DNS_RESOLVE      | 20    | Resolve hostname to IPv4   |
+| NET_PING             | 40    | ICMP echo request          |
+| NET_STATS            | 41    | Get network statistics     |
+| NET_INFO             | 42    | Get network configuration  |
+| NET_SUBSCRIBE_EVENTS | 43    | Subscribe to socket events |
 
 #### Data Transfer Modes
 
 **Inline Data (≤200 bytes):**
+
 - Data included directly in message payload
 - Used for most small transfers
 
 **Shared Memory (>200 bytes):**
+
 - SHM handle transferred with message
 - netd maps SHM, reads/writes, unmaps
 - Efficient for large transfers
@@ -191,6 +193,7 @@ QEMU virt default configuration:
 **Connections:** 32 maximum
 
 **Features:**
+
 - Full state machine (CLOSED through TIME_WAIT)
 - Active open (connect)
 - Passive open (listen/accept)
@@ -204,18 +207,18 @@ QEMU virt default configuration:
 
 **TCP States:**
 
-| State | Description |
-|-------|-------------|
-| CLOSED | No connection |
-| LISTEN | Waiting for SYN |
-| SYN_SENT | SYN sent, awaiting SYN-ACK |
-| SYN_RECEIVED | SYN received, SYN-ACK sent |
-| ESTABLISHED | Data transfer active |
-| FIN_WAIT_1/2 | Active close in progress |
-| CLOSE_WAIT | Remote closed, local pending |
-| CLOSING | Both sides closing |
-| LAST_ACK | Awaiting final ACK |
-| TIME_WAIT | Waiting before reuse |
+| State        | Description                  |
+|--------------|------------------------------|
+| CLOSED       | No connection                |
+| LISTEN       | Waiting for SYN              |
+| SYN_SENT     | SYN sent, awaiting SYN-ACK   |
+| SYN_RECEIVED | SYN received, SYN-ACK sent   |
+| ESTABLISHED  | Data transfer active         |
+| FIN_WAIT_1/2 | Active close in progress     |
+| CLOSE_WAIT   | Remote closed, local pending |
+| CLOSING      | Both sides closing           |
+| LAST_ACK     | Awaiting final ACK           |
+| TIME_WAIT    | Waiting before reuse         |
 
 ### DNS
 
@@ -242,10 +245,10 @@ QEMU virt default configuration:
 
 ### Crypto Components
 
-| File | Lines | Description |
-|------|-------|-------------|
+| File       | Lines  | Description                         |
+|------------|--------|-------------------------------------|
 | `crypto.c` | ~1,170 | ChaCha20, Poly1305, X25519, SHA-256 |
-| `tls.c` | ~980 | TLS handshake, record layer |
+| `tls.c`    | ~980   | TLS handshake, record layer         |
 
 ### API
 
@@ -341,23 +344,23 @@ typedef struct http_response {
 
 ### Components
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `ssh.c` | ~1,370 | SSH connection, handshake |
-| `ssh_auth.c` | ~860 | Authentication methods |
-| `ssh_channel.c` | ~740 | Channel management |
-| `ssh_crypto.c` | ~1,300 | Crypto (AES-CTR, SHA-1, Ed25519) |
-| `sftp.c` | ~1,500 | SFTP protocol |
+| File            | Lines  | Description                      |
+|-----------------|--------|----------------------------------|
+| `ssh.c`         | ~1,370 | SSH connection, handshake        |
+| `ssh_auth.c`    | ~860   | Authentication methods           |
+| `ssh_channel.c` | ~740   | Channel management               |
+| `ssh_crypto.c`  | ~1,300 | Crypto (AES-CTR, SHA-1, Ed25519) |
+| `sftp.c`        | ~1,500 | SFTP protocol                    |
 
 ### Crypto Algorithms
 
-| Algorithm | Usage |
-|-----------|-------|
-| AES-128-CTR | Bulk encryption |
-| SHA-1 | Legacy hashing |
-| SHA-256 | Key exchange hash |
-| Ed25519 | Host key verification |
-| Curve25519 | Key exchange |
+| Algorithm   | Usage                 |
+|-------------|-----------------------|
+| AES-128-CTR | Bulk encryption       |
+| SHA-1       | Legacy hashing        |
+| SHA-256     | Key exchange hash     |
+| Ed25519     | Host key verification |
+| Curve25519  | Key exchange          |
 
 ### SFTP Operations
 
@@ -380,17 +383,17 @@ The libc socket functions route to netd via IPC:
 
 ### Socket API Mapping
 
-| libc Function | netd Message |
-|---------------|--------------|
-| socket() | NET_SOCKET_CREATE |
-| connect() | NET_SOCKET_CONNECT |
-| bind() | NET_SOCKET_BIND |
-| listen() | NET_SOCKET_LISTEN |
-| accept() | NET_SOCKET_ACCEPT |
-| send()/write() | NET_SOCKET_SEND |
-| recv()/read() | NET_SOCKET_RECV |
-| close() | NET_SOCKET_CLOSE |
-| poll() | NET_SOCKET_STATUS |
+| libc Function  | netd Message       |
+|----------------|--------------------|
+| socket()       | NET_SOCKET_CREATE  |
+| connect()      | NET_SOCKET_CONNECT |
+| bind()         | NET_SOCKET_BIND    |
+| listen()       | NET_SOCKET_LISTEN  |
+| accept()       | NET_SOCKET_ACCEPT  |
+| send()/write() | NET_SOCKET_SEND    |
+| recv()/read()  | NET_SOCKET_RECV    |
+| close()        | NET_SOCKET_CLOSE   |
+| poll()         | NET_SOCKET_STATUS  |
 
 ### Connection Flow
 
@@ -406,14 +409,14 @@ The libc socket functions route to netd via IPC:
 
 netd tracks and reports:
 
-| Counter | Description |
-|---------|-------------|
-| tx_packets | Packets transmitted |
-| rx_packets | Packets received |
-| tx_bytes | Bytes transmitted |
-| rx_bytes | Bytes received |
-| tcp_conns | Active TCP connections |
-| udp_sockets | Active UDP sockets |
+| Counter     | Description            |
+|-------------|------------------------|
+| tx_packets  | Packets transmitted    |
+| rx_packets  | Packets received       |
+| tx_bytes    | Bytes transmitted      |
+| rx_bytes    | Bytes received         |
+| tcp_conns   | Active TCP connections |
+| udp_sockets | Active UDP sockets     |
 
 ---
 
@@ -421,25 +424,25 @@ netd tracks and reports:
 
 ### Latency (QEMU)
 
-| Operation | Typical Time |
-|-----------|-------------|
-| Socket create (IPC) | ~50μs |
-| TCP connect (local) | ~1-5ms |
-| DNS resolution | ~10-50ms |
-| TLS handshake | ~50-200ms |
-| Socket send/recv | ~100μs |
+| Operation           | Typical Time |
+|---------------------|--------------|
+| Socket create (IPC) | ~50μs        |
+| TCP connect (local) | ~1-5ms       |
+| DNS resolution      | ~10-50ms     |
+| TLS handshake       | ~50-200ms    |
+| Socket send/recv    | ~100μs       |
 
 ### Limitations
 
-| Resource | Limit |
-|----------|-------|
-| TCP connections | 32 |
-| UDP sockets | 16 |
-| ARP cache entries | 16 |
+| Resource            | Limit     |
+|---------------------|-----------|
+| TCP connections     | 32        |
+| UDP sockets         | 16        |
+| ARP cache entries   | 16        |
 | Inline message data | 200 bytes |
-| TCP RX buffer | 8KB |
-| TCP TX buffer | 8KB |
-| UDP RX buffer | 4KB |
+| TCP RX buffer       | 8KB       |
+| TCP TX buffer       | 8KB       |
+| UDP RX buffer       | 4KB       |
 
 ---
 
@@ -453,18 +456,21 @@ netd tracks and reports:
 ## Not Implemented
 
 ### High Priority
+
 - ~~TCP window scaling (RFC 7323)~~ ✓ Basic flow control implemented
 - ~~TCP congestion control (RFC 5681)~~ ✓ Basic implementation
 - TCP SACK (RFC 2018)
 - IP fragmentation/reassembly
 
 ### Medium Priority
+
 - IPv6
 - ~~TCP retransmission with backoff~~ ✓ Implemented
 - TCP TIME_WAIT with 2MSL
 - Keep-alive
 
 ### Low Priority
+
 - Raw sockets
 - Multicast
 - DHCP client
@@ -476,35 +482,45 @@ netd tracks and reports:
 ## Priority Recommendations: Next 5 Steps
 
 ### 1. IPv6 Support
+
 **Impact:** Modern network compatibility
+
 - IPv6 header parsing and generation
 - ICMPv6 for neighbor discovery (NDP)
 - Stateless address autoconfiguration (SLAAC)
 - Dual-stack operation (IPv4 + IPv6)
 
 ### 2. TCP SACK (Selective Acknowledgment)
+
 **Impact:** Better performance on lossy networks
+
 - RFC 2018 SACK option parsing
 - Selective retransmission of lost segments
 - Improved throughput on high-latency links
 - Required for modern TCP performance
 
 ### 3. DHCP Client
+
 **Impact:** Automatic network configuration
+
 - DHCP discover/offer/request/ack
 - Obtain IP, gateway, DNS automatically
 - Lease renewal handling
 - Zero-config network setup
 
 ### 4. TLS Session Resumption
+
 **Impact:** Faster subsequent HTTPS connections
+
 - Session ID caching for resumption
 - 0-RTT data with early data
 - Reduced handshake latency
 - Better user experience for web access
 
 ### 5. SO_RCVBUF/SO_SNDBUF Socket Options
+
 **Impact:** Application-controlled buffer sizing
+
 - Per-socket buffer configuration
 - setsockopt()/getsockopt() support
 - Better memory utilization

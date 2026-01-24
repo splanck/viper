@@ -92,18 +92,15 @@ extern int __viper_netd_socket_status(int socket_id,
 #define NETD_SOCK_WRITABLE (1u << 1)
 #define NETD_SOCK_EOF (1u << 2)
 
-struct viper_poll_event
-{
+struct viper_poll_event {
     unsigned int handle;
     unsigned int events;
     unsigned int triggered;
 };
 
-static void drain_event_channel(unsigned int ch)
-{
+static void drain_event_channel(unsigned int ch) {
     unsigned char buf[16];
-    for (;;)
-    {
+    for (;;) {
         unsigned int handles[4];
         unsigned int handle_count = 4;
         long n = __syscall5(SYS_CHANNEL_RECV,
@@ -116,25 +113,21 @@ static void drain_event_channel(unsigned int ch)
         {
             break;
         }
-        if (n < 0)
-        {
+        if (n < 0) {
             break;
         }
-        for (unsigned int i = 0; i < handle_count; i++)
-        {
+        for (unsigned int i = 0; i < handle_count; i++) {
             if (handles[i] == 0)
                 continue;
             long cerr = __syscall1(SYS_SHM_CLOSE, (long)handles[i]);
-            if (cerr != 0)
-            {
+            if (cerr != 0) {
                 (void)__syscall1(SYS_CAP_REVOKE, (long)handles[i]);
             }
         }
     }
 }
 
-static long get_poll_set_id(void)
-{
+static long get_poll_set_id(void) {
     static long poll_set = -1;
     if (poll_set >= 0)
         return poll_set;
@@ -148,47 +141,39 @@ static long get_poll_set_id(void)
 }
 
 static int poll_set_configure(
-    long poll_set, int want_console, int want_kernel_net, int want_netd, unsigned int netd_handle)
-{
+    long poll_set, int want_console, int want_kernel_net, int want_netd, unsigned int netd_handle) {
     static int configured_console = 0;
     static int configured_kernel_net = 0;
     static int configured_netd = 0;
     static unsigned int configured_netd_handle = 0;
 
-    if (want_console && !configured_console)
-    {
+    if (want_console && !configured_console) {
         long rc = __syscall3(
             SYS_POLL_ADD, poll_set, (long)VIPER_HANDLE_CONSOLE_INPUT, VIPER_POLL_CONSOLE_INPUT);
         if (rc < 0)
             return (int)rc;
         configured_console = 1;
     }
-    if (!want_console && configured_console)
-    {
+    if (!want_console && configured_console) {
         (void)__syscall2(SYS_POLL_REMOVE, poll_set, (long)VIPER_HANDLE_CONSOLE_INPUT);
         configured_console = 0;
     }
 
-    if (want_kernel_net && !configured_kernel_net)
-    {
+    if (want_kernel_net && !configured_kernel_net) {
         long rc = __syscall3(
             SYS_POLL_ADD, poll_set, (long)VIPER_HANDLE_NETWORK_RX, VIPER_POLL_NETWORK_RX);
         if (rc < 0)
             return (int)rc;
         configured_kernel_net = 1;
     }
-    if (!want_kernel_net && configured_kernel_net)
-    {
+    if (!want_kernel_net && configured_kernel_net) {
         (void)__syscall2(SYS_POLL_REMOVE, poll_set, (long)VIPER_HANDLE_NETWORK_RX);
         configured_kernel_net = 0;
     }
 
-    if (want_netd)
-    {
-        if (!configured_netd || configured_netd_handle != netd_handle)
-        {
-            if (configured_netd)
-            {
+    if (want_netd) {
+        if (!configured_netd || configured_netd_handle != netd_handle) {
+            if (configured_netd) {
                 (void)__syscall2(SYS_POLL_REMOVE, poll_set, (long)configured_netd_handle);
             }
             long rc =
@@ -198,9 +183,7 @@ static int poll_set_configure(
             configured_netd = 1;
             configured_netd_handle = netd_handle;
         }
-    }
-    else if (configured_netd)
-    {
+    } else if (configured_netd) {
         (void)__syscall2(SYS_POLL_REMOVE, poll_set, (long)configured_netd_handle);
         configured_netd = 0;
         configured_netd_handle = 0;
@@ -244,25 +227,18 @@ static int poll_set_configure(
  *
  * @see ppoll, select, pselect
  */
-int poll(struct pollfd *fds, nfds_t nfds, int timeout)
-{
-    if (!fds && nfds > 0)
-    {
+int poll(struct pollfd *fds, nfds_t nfds, int timeout) {
+    if (!fds && nfds > 0) {
         errno = EFAULT;
         return -1;
     }
 
-    if (nfds == 0)
-    {
-        if (timeout > 0)
-        {
+    if (nfds == 0) {
+        if (timeout > 0) {
             (void)__syscall1(SYS_SLEEP, timeout);
-        }
-        else if (timeout < 0)
-        {
+        } else if (timeout < 0) {
             // Poll forever with no fds: yield in a loop.
-            for (;;)
-            {
+            for (;;) {
                 (void)__syscall1(SYS_SLEEP, 1000);
             }
         }
@@ -276,23 +252,19 @@ int poll(struct pollfd *fds, nfds_t nfds, int timeout)
     int any_ready = 0;
 
     // First pass: clear revents and handle "always ready" cases.
-    for (nfds_t i = 0; i < nfds; i++)
-    {
+    for (nfds_t i = 0; i < nfds; i++) {
         fds[i].revents = 0;
 
         int fd = fds[i].fd;
         short ev = fds[i].events;
 
-        if (fd < 0)
-        {
+        if (fd < 0) {
             continue; // ignored
         }
 
         // stdin: map POLLIN to console input.
-        if (fd == 0)
-        {
-            if (ev & (POLLIN | POLLPRI | POLLRDNORM | POLLRDBAND))
-            {
+        if (fd == 0) {
+            if (ev & (POLLIN | POLLPRI | POLLRDNORM | POLLRDBAND)) {
                 want_console = 1;
             }
             continue;
@@ -300,63 +272,46 @@ int poll(struct pollfd *fds, nfds_t nfds, int timeout)
 
         // Virtual sockets: kernel sockets use the kernel NETWORK_RX pseudo-handle,
         // netd sockets use a real event channel plus NET_SOCKET_STATUS checks.
-        if (__viper_socket_is_fd(fd))
-        {
+        if (__viper_socket_is_fd(fd)) {
             int backend = 0;
             int sock_id = 0;
             int b_rc = __viper_socket_get_backend(fd, &backend, &sock_id);
-            if (b_rc < 0)
-            {
+            if (b_rc < 0) {
                 fds[i].revents |= POLLNVAL;
                 any_ready = 1;
                 continue;
             }
 
-            if (backend == VIPER_SOCKET_BACKEND_NETD)
-            {
+            if (backend == VIPER_SOCKET_BACKEND_NETD) {
                 unsigned int flags = 0;
                 unsigned int rx_avail = 0;
                 int st_rc = -1;
 
-                if (ev & (POLLIN | POLLPRI | POLLRDNORM | POLLRDBAND))
-                {
+                if (ev & (POLLIN | POLLPRI | POLLRDNORM | POLLRDBAND)) {
                     st_rc = __viper_netd_socket_status(sock_id, &flags, &rx_avail);
-                    if (st_rc == 0)
-                    {
-                        if (flags & NETD_SOCK_EOF)
-                        {
+                    if (st_rc == 0) {
+                        if (flags & NETD_SOCK_EOF) {
                             fds[i].revents |= (POLLIN | POLLHUP);
                             any_ready = 1;
-                        }
-                        else if (flags & NETD_SOCK_READABLE)
-                        {
+                        } else if (flags & NETD_SOCK_READABLE) {
                             fds[i].revents |= POLLIN;
                             any_ready = 1;
-                        }
-                        else
-                        {
+                        } else {
                             want_netd = 1;
                         }
-                    }
-                    else
-                    {
+                    } else {
                         fds[i].revents |= POLLERR;
                         any_ready = 1;
                     }
                 }
 
-                if (ev & (POLLOUT | POLLWRNORM | POLLWRBAND))
-                {
-                    if (st_rc == 0)
-                    {
-                        if (flags & NETD_SOCK_WRITABLE)
-                        {
+                if (ev & (POLLOUT | POLLWRNORM | POLLWRBAND)) {
+                    if (st_rc == 0) {
+                        if (flags & NETD_SOCK_WRITABLE) {
                             fds[i].revents |= POLLOUT;
                             any_ready = 1;
                         }
-                    }
-                    else
-                    {
+                    } else {
                         // Best-effort: treat as writable to preserve existing assumptions.
                         fds[i].revents |= POLLOUT;
                         any_ready = 1;
@@ -369,38 +324,30 @@ int poll(struct pollfd *fds, nfds_t nfds, int timeout)
             {
                 unsigned int flags = 0;
                 unsigned int rx_avail = 0;
-                long poll_rc = __syscall3(SYS_SOCKET_POLL, (long)sock_id, (long)&flags, (long)&rx_avail);
+                long poll_rc =
+                    __syscall3(SYS_SOCKET_POLL, (long)sock_id, (long)&flags, (long)&rx_avail);
 
-                if (poll_rc < 0)
-                {
+                if (poll_rc < 0) {
                     fds[i].revents |= POLLERR;
                     any_ready = 1;
                     continue;
                 }
 
-                if (ev & (POLLIN | POLLPRI | POLLRDNORM | POLLRDBAND))
-                {
-                    if (flags & KERN_SOCK_EOF)
-                    {
+                if (ev & (POLLIN | POLLPRI | POLLRDNORM | POLLRDBAND)) {
+                    if (flags & KERN_SOCK_EOF) {
                         fds[i].revents |= (POLLIN | POLLHUP);
                         any_ready = 1;
-                    }
-                    else if (flags & KERN_SOCK_READABLE)
-                    {
+                    } else if (flags & KERN_SOCK_READABLE) {
                         fds[i].revents |= POLLIN;
                         any_ready = 1;
-                    }
-                    else
-                    {
+                    } else {
                         /* No data yet - we'll need to wait and re-check */
                         want_kernel_net = 1;
                     }
                 }
 
-                if (ev & (POLLOUT | POLLWRNORM | POLLWRBAND))
-                {
-                    if (flags & KERN_SOCK_WRITABLE)
-                    {
+                if (ev & (POLLOUT | POLLWRNORM | POLLWRBAND)) {
+                    if (flags & KERN_SOCK_WRITABLE) {
                         fds[i].revents |= POLLOUT;
                         any_ready = 1;
                     }
@@ -411,18 +358,15 @@ int poll(struct pollfd *fds, nfds_t nfds, int timeout)
 
         // Default: treat non-socket fds as always-ready for read/write.
         short rw = (short)(ev & (POLLIN | POLLOUT | POLLRDNORM | POLLWRNORM));
-        if (rw)
-        {
+        if (rw) {
             fds[i].revents |= rw;
             any_ready = 1;
         }
     }
 
-    if (want_netd)
-    {
+    if (want_netd) {
         netd_handle = __viper_netd_poll_handle();
-        if (netd_handle == 0xFFFFFFFFu)
-        {
+        if (netd_handle == 0xFFFFFFFFu) {
             errno = ENOSYS;
             return -1;
         }
@@ -430,11 +374,9 @@ int poll(struct pollfd *fds, nfds_t nfds, int timeout)
 
     // Set up console polling if needed (do this once before the loop)
     long poll_set = -1;
-    if (want_console || want_netd)
-    {
+    if (want_console || want_netd) {
         poll_set = get_poll_set_id();
-        if (poll_set >= 0)
-        {
+        if (poll_set >= 0) {
             int cfg = poll_set_configure(poll_set, want_console, 0, want_netd, netd_handle);
             if (cfg < 0)
                 poll_set = -1;
@@ -443,21 +385,16 @@ int poll(struct pollfd *fds, nfds_t nfds, int timeout)
 
     // Combined polling loop: check kernel sockets AND console together.
     // This handles the case where we're polling both stdin and a kernel socket (like SSH).
-    if ((want_kernel_net || want_console || want_netd) && !any_ready && timeout != 0)
-    {
+    if ((want_kernel_net || want_console || want_netd) && !any_ready && timeout != 0) {
         unsigned long deadline = 0;
-        if (timeout > 0)
-        {
+        if (timeout > 0) {
             deadline = (unsigned long)__syscall0(SYS_TIME_NOW) + (unsigned long)timeout;
         }
 
-        while (!any_ready)
-        {
+        while (!any_ready) {
             // Check all kernel socket fds
-            if (want_kernel_net)
-            {
-                for (nfds_t i = 0; i < nfds; i++)
-                {
+            if (want_kernel_net) {
+                for (nfds_t i = 0; i < nfds; i++) {
                     int fd = fds[i].fd;
                     short ev = fds[i].events;
 
@@ -473,28 +410,23 @@ int poll(struct pollfd *fds, nfds_t nfds, int timeout)
 
                     unsigned int flags = 0;
                     unsigned int rx_avail = 0;
-                    long poll_rc = __syscall3(SYS_SOCKET_POLL, (long)sock_id, (long)&flags, (long)&rx_avail);
+                    long poll_rc =
+                        __syscall3(SYS_SOCKET_POLL, (long)sock_id, (long)&flags, (long)&rx_avail);
                     if (poll_rc < 0)
                         continue;
 
-                    if (ev & (POLLIN | POLLPRI | POLLRDNORM | POLLRDBAND))
-                    {
-                        if (flags & KERN_SOCK_EOF)
-                        {
+                    if (ev & (POLLIN | POLLPRI | POLLRDNORM | POLLRDBAND)) {
+                        if (flags & KERN_SOCK_EOF) {
                             fds[i].revents |= (POLLIN | POLLHUP);
                             any_ready = 1;
-                        }
-                        else if (flags & KERN_SOCK_READABLE)
-                        {
+                        } else if (flags & KERN_SOCK_READABLE) {
                             fds[i].revents |= POLLIN;
                             any_ready = 1;
                         }
                     }
 
-                    if (ev & (POLLOUT | POLLWRNORM | POLLWRBAND))
-                    {
-                        if (flags & KERN_SOCK_WRITABLE)
-                        {
+                    if (ev & (POLLOUT | POLLWRNORM | POLLWRBAND)) {
+                        if (flags & KERN_SOCK_WRITABLE) {
                             fds[i].revents |= POLLOUT;
                             any_ready = 1;
                         }
@@ -503,55 +435,46 @@ int poll(struct pollfd *fds, nfds_t nfds, int timeout)
             }
 
             // Check console input with a short non-blocking poll
-            if ((want_console || want_netd) && poll_set >= 0)
-            {
+            if ((want_console || want_netd) && poll_set >= 0) {
                 struct viper_poll_event events[2];
                 unsigned int n = 0;
 
-                if (want_console)
-                {
+                if (want_console) {
                     events[n].handle = VIPER_HANDLE_CONSOLE_INPUT;
                     events[n].events = VIPER_POLL_CONSOLE_INPUT;
                     events[n].triggered = 0;
                     n++;
                 }
-                if (want_netd)
-                {
+                if (want_netd) {
                     events[n].handle = netd_handle;
                     events[n].events = VIPER_POLL_CHANNEL_READ;
                     events[n].triggered = 0;
                     n++;
                 }
 
-                if (n > 0)
-                {
+                if (n > 0) {
                     // Use short timeout (10ms) to check console while also checking sockets
-                    int wait_ms = want_kernel_net ? 10 : (timeout > 0 ? (timeout < 10 ? timeout : 10) : 10);
+                    int wait_ms =
+                        want_kernel_net ? 10 : (timeout > 0 ? (timeout < 10 ? timeout : 10) : 10);
                     long rc = __syscall4(SYS_POLL_WAIT, poll_set, (long)events, n, wait_ms);
 
-                    for (long j = 0; j < rc; j++)
-                    {
+                    for (long j = 0; j < rc; j++) {
                         if (events[j].handle == VIPER_HANDLE_CONSOLE_INPUT &&
-                            (events[j].triggered & VIPER_POLL_CONSOLE_INPUT))
-                        {
+                            (events[j].triggered & VIPER_POLL_CONSOLE_INPUT)) {
                             // Mark stdin as ready
-                            for (nfds_t i = 0; i < nfds; i++)
-                            {
-                                if (fds[i].fd == 0 &&
-                                    (fds[i].events & (POLLIN | POLLPRI | POLLRDNORM | POLLRDBAND)))
-                                {
+                            for (nfds_t i = 0; i < nfds; i++) {
+                                if (fds[i].fd == 0 && (fds[i].events & (POLLIN | POLLPRI |
+                                                                        POLLRDNORM | POLLRDBAND))) {
                                     fds[i].revents |= POLLIN;
                                     any_ready = 1;
                                 }
                             }
                         }
                         if (want_netd && events[j].handle == netd_handle &&
-                            (events[j].triggered & VIPER_POLL_CHANNEL_READ))
-                        {
+                            (events[j].triggered & VIPER_POLL_CHANNEL_READ)) {
                             drain_event_channel(netd_handle);
                             // Re-check netd sockets
-                            for (nfds_t i = 0; i < nfds; i++)
-                            {
+                            for (nfds_t i = 0; i < nfds; i++) {
                                 int fd = fds[i].fd;
                                 short ev = fds[i].events;
                                 if (!__viper_socket_is_fd(fd))
@@ -564,20 +487,16 @@ int poll(struct pollfd *fds, nfds_t nfds, int timeout)
                                 if (backend != VIPER_SOCKET_BACKEND_NETD)
                                     continue;
 
-                                if (ev & (POLLIN | POLLPRI | POLLRDNORM | POLLRDBAND))
-                                {
+                                if (ev & (POLLIN | POLLPRI | POLLRDNORM | POLLRDBAND)) {
                                     unsigned int flags = 0;
                                     unsigned int rx_avail = 0;
-                                    int st_rc = __viper_netd_socket_status(sock_id, &flags, &rx_avail);
-                                    if (st_rc == 0)
-                                    {
-                                        if (flags & NETD_SOCK_EOF)
-                                        {
+                                    int st_rc =
+                                        __viper_netd_socket_status(sock_id, &flags, &rx_avail);
+                                    if (st_rc == 0) {
+                                        if (flags & NETD_SOCK_EOF) {
                                             fds[i].revents |= (POLLIN | POLLHUP);
                                             any_ready = 1;
-                                        }
-                                        else if (flags & NETD_SOCK_READABLE)
-                                        {
+                                        } else if (flags & NETD_SOCK_READABLE) {
                                             fds[i].revents |= POLLIN;
                                             any_ready = 1;
                                         }
@@ -593,71 +512,58 @@ int poll(struct pollfd *fds, nfds_t nfds, int timeout)
                 break;
 
             // Check timeout
-            if (timeout > 0)
-            {
+            if (timeout > 0) {
                 unsigned long now = (unsigned long)__syscall0(SYS_TIME_NOW);
                 if (now >= deadline)
                     break;
             }
 
             // If we only have kernel sockets (no console), sleep briefly
-            if (want_kernel_net && !want_console && !want_netd)
-            {
+            if (want_kernel_net && !want_console && !want_netd) {
                 (void)__syscall1(SYS_SLEEP, 10);
             }
         }
     }
 
     // Handle console-only or netd-only polling (no kernel sockets)
-    if ((want_console || want_netd) && !want_kernel_net && !any_ready && poll_set >= 0)
-    {
+    if ((want_console || want_netd) && !want_kernel_net && !any_ready && poll_set >= 0) {
         struct viper_poll_event events[2];
         unsigned int n = 0;
 
-        if (want_console)
-        {
+        if (want_console) {
             events[n].handle = VIPER_HANDLE_CONSOLE_INPUT;
             events[n].events = VIPER_POLL_CONSOLE_INPUT;
             events[n].triggered = 0;
             n++;
         }
-        if (want_netd)
-        {
+        if (want_netd) {
             events[n].handle = netd_handle;
             events[n].events = VIPER_POLL_CHANNEL_READ;
             events[n].triggered = 0;
             n++;
         }
 
-        if (n > 0)
-        {
+        if (n > 0) {
             long rc = __syscall4(SYS_POLL_WAIT, poll_set, (long)events, n, timeout);
-            if (rc < 0)
-            {
+            if (rc < 0) {
                 errno = (int)(-rc);
                 return -1;
             }
 
-            for (long j = 0; j < rc; j++)
-            {
+            for (long j = 0; j < rc; j++) {
                 if (events[j].handle == VIPER_HANDLE_CONSOLE_INPUT &&
-                    (events[j].triggered & VIPER_POLL_CONSOLE_INPUT))
-                {
-                    for (nfds_t i = 0; i < nfds; i++)
-                    {
+                    (events[j].triggered & VIPER_POLL_CONSOLE_INPUT)) {
+                    for (nfds_t i = 0; i < nfds; i++) {
                         if (fds[i].fd == 0 &&
-                            (fds[i].events & (POLLIN | POLLPRI | POLLRDNORM | POLLRDBAND)))
-                        {
+                            (fds[i].events & (POLLIN | POLLPRI | POLLRDNORM | POLLRDBAND))) {
                             fds[i].revents |= POLLIN;
                         }
                     }
                 }
                 if (want_netd && events[j].handle == netd_handle &&
-                    (events[j].triggered & VIPER_POLL_CHANNEL_READ))
-                {
+                    (events[j].triggered & VIPER_POLL_CHANNEL_READ)) {
                     drain_event_channel(netd_handle);
-                    for (nfds_t i = 0; i < nfds; i++)
-                    {
+                    for (nfds_t i = 0; i < nfds; i++) {
                         int fd = fds[i].fd;
                         short ev = fds[i].events;
                         if (!__viper_socket_is_fd(fd))
@@ -670,19 +576,14 @@ int poll(struct pollfd *fds, nfds_t nfds, int timeout)
                         if (backend != VIPER_SOCKET_BACKEND_NETD)
                             continue;
 
-                        if (ev & (POLLIN | POLLPRI | POLLRDNORM | POLLRDBAND))
-                        {
+                        if (ev & (POLLIN | POLLPRI | POLLRDNORM | POLLRDBAND)) {
                             unsigned int flags = 0;
                             unsigned int rx_avail = 0;
                             int st_rc = __viper_netd_socket_status(sock_id, &flags, &rx_avail);
-                            if (st_rc == 0)
-                            {
-                                if (flags & NETD_SOCK_EOF)
-                                {
+                            if (st_rc == 0) {
+                                if (flags & NETD_SOCK_EOF) {
                                     fds[i].revents |= (POLLIN | POLLHUP);
-                                }
-                                else if (flags & NETD_SOCK_READABLE)
-                                {
+                                } else if (flags & NETD_SOCK_READABLE) {
                                     fds[i].revents |= POLLIN;
                                 }
                             }
@@ -691,8 +592,7 @@ int poll(struct pollfd *fds, nfds_t nfds, int timeout)
                 }
             }
 
-            if (rc == 0)
-            {
+            if (rc == 0) {
                 return 0; // Timeout
             }
         }
@@ -700,10 +600,8 @@ int poll(struct pollfd *fds, nfds_t nfds, int timeout)
 
     // Count fds with any revents.
     int count = 0;
-    for (nfds_t i = 0; i < nfds; i++)
-    {
-        if (fds[i].fd >= 0 && fds[i].revents != 0)
-        {
+    for (nfds_t i = 0; i < nfds; i++) {
+        if (fds[i].fd >= 0 && fds[i].revents != 0) {
             count++;
         }
     }
@@ -730,17 +628,13 @@ int poll(struct pollfd *fds, nfds_t nfds, int timeout)
  *
  * @see poll, pselect
  */
-int ppoll(struct pollfd *fds, nfds_t nfds, const struct timespec *timeout_ts, const void *sigmask)
-{
+int ppoll(struct pollfd *fds, nfds_t nfds, const struct timespec *timeout_ts, const void *sigmask) {
     int timeout_ms;
 
     /* Convert timespec to milliseconds */
-    if (timeout_ts == (void *)0)
-    {
+    if (timeout_ts == (void *)0) {
         timeout_ms = -1; /* Infinite */
-    }
-    else
-    {
+    } else {
         timeout_ms = (int)(timeout_ts->tv_sec * 1000 + timeout_ts->tv_nsec / 1000000);
     }
 
@@ -780,27 +674,22 @@ int ppoll(struct pollfd *fds, nfds_t nfds, const struct timespec *timeout_ts, co
  *
  * @see pselect, poll, ppoll
  */
-int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout)
-{
-    if (nfds < 0 || nfds > FD_SETSIZE)
-    {
+int select(
+    int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout) {
+    if (nfds < 0 || nfds > FD_SETSIZE) {
         errno = EINVAL;
         return -1;
     }
 
     // Ignore exceptfds for now (no exceptional conditions exposed).
-    if (exceptfds)
-    {
+    if (exceptfds) {
         FD_ZERO(exceptfds);
     }
 
     int timeout_ms;
-    if (timeout == (void *)0)
-    {
+    if (timeout == (void *)0) {
         timeout_ms = -1;
-    }
-    else
-    {
+    } else {
         timeout_ms = (int)(timeout->tv_sec * 1000 + timeout->tv_usec / 1000);
     }
 
@@ -812,18 +701,15 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struc
 
     // Worst case could exceed stack_fds; fall back to heap allocation.
     // We cap to FD_SETSIZE, so allocation is bounded.
-    if (nfds > (int)(sizeof(stack_fds) / sizeof(stack_fds[0])))
-    {
+    if (nfds > (int)(sizeof(stack_fds) / sizeof(stack_fds[0]))) {
         pfds = (struct pollfd *)malloc((unsigned long)nfds * sizeof(struct pollfd));
-        if (!pfds)
-        {
+        if (!pfds) {
             errno = ENOMEM;
             return -1;
         }
     }
 
-    for (int fd = 0; fd < nfds; fd++)
-    {
+    for (int fd = 0; fd < nfds; fd++) {
         short ev = 0;
         if (readfds && FD_ISSET(fd, readfds))
             ev |= POLLIN;
@@ -839,10 +725,8 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struc
     }
 
     // select() with no fds behaves like a timed sleep.
-    if (pcount == 0)
-    {
-        if (timeout_ms > 0)
-        {
+    if (pcount == 0) {
+        if (timeout_ms > 0) {
             (void)__syscall1(SYS_SLEEP, timeout_ms);
         }
         if (readfds)
@@ -851,8 +735,7 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struc
             FD_ZERO(writefds);
         if (pfds != stack_fds)
             free(pfds);
-        if (timeout)
-        {
+        if (timeout) {
             timeout->tv_sec = 0;
             timeout->tv_usec = 0;
         }
@@ -860,35 +743,28 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struc
     }
 
     int rc = poll(pfds, (nfds_t)pcount, timeout_ms);
-    if (rc < 0)
-    {
+    if (rc < 0) {
         if (pfds != stack_fds)
             free(pfds);
         return -1;
     }
 
     // Update fd_sets to only contain ready fds.
-    if (readfds)
-    {
+    if (readfds) {
         fd_set in = *readfds;
         FD_ZERO(readfds);
-        for (int i = 0; i < pcount; i++)
-        {
-            if ((pfds[i].revents & POLLIN) && FD_ISSET(pfds[i].fd, &in))
-            {
+        for (int i = 0; i < pcount; i++) {
+            if ((pfds[i].revents & POLLIN) && FD_ISSET(pfds[i].fd, &in)) {
                 FD_SET(pfds[i].fd, readfds);
             }
         }
     }
 
-    if (writefds)
-    {
+    if (writefds) {
         fd_set in = *writefds;
         FD_ZERO(writefds);
-        for (int i = 0; i < pcount; i++)
-        {
-            if ((pfds[i].revents & POLLOUT) && FD_ISSET(pfds[i].fd, &in))
-            {
+        for (int i = 0; i < pcount; i++) {
+            if ((pfds[i].revents & POLLOUT) && FD_ISSET(pfds[i].fd, &in)) {
                 FD_SET(pfds[i].fd, writefds);
             }
         }
@@ -897,8 +773,7 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struc
     if (pfds != stack_fds)
         free(pfds);
 
-    if (timeout != (void *)0)
-    {
+    if (timeout != (void *)0) {
         timeout->tv_sec = 0;
         timeout->tv_usec = 0;
     }
@@ -937,8 +812,7 @@ int pselect(int nfds,
             fd_set *writefds,
             fd_set *exceptfds,
             const struct timespec *timeout,
-            const void *sigmask)
-{
+            const void *sigmask) {
     struct timeval tv;
     struct timeval *tv_ptr = (void *)0;
 
@@ -946,8 +820,7 @@ int pselect(int nfds,
     (void)sigmask;
 
     /* Convert timespec to timeval */
-    if (timeout != (void *)0)
-    {
+    if (timeout != (void *)0) {
         tv.tv_sec = timeout->tv_sec;
         tv.tv_usec = timeout->tv_nsec / 1000;
         tv_ptr = &tv;

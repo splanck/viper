@@ -12,7 +12,9 @@
 
 ## Executive Summary
 
-This document provides a comprehensive plan to migrate ViperDOS from its current monolithic architecture (~50k kernel lines) to a true microkernel architecture (~8k kernel lines). The migration moves device drivers, filesystem, and network stack to user-space servers while preserving the existing capability-based IPC infrastructure.
+This document provides a comprehensive plan to migrate ViperDOS from its current monolithic architecture (~50k kernel
+lines) to a true microkernel architecture (~8k kernel lines). The migration moves device drivers, filesystem, and
+network stack to user-space servers while preserving the existing capability-based IPC infrastructure.
 
 **Current State:** Monolithic kernel with all services in EL1
 **Target State:** Microkernel with user-space servers communicating via IPC
@@ -41,19 +43,19 @@ This document provides a comprehensive plan to migrate ViperDOS from its current
 
 ### 1.1 Kernel Size Breakdown
 
-| Subsystem | Lines | Location | Target |
-|-----------|-------|----------|--------|
-| Network Stack | 14,649 | `kernel/net/` | User-space |
-| Drivers (VirtIO) | 5,268 | `kernel/drivers/virtio/` | User-space |
-| Filesystem | 5,328 | `kernel/fs/` | User-space |
-| Memory Management | 5,323 | `kernel/mm/` | **Keep in kernel** |
-| Console | 3,544 | `kernel/console/` | User-space (optional) |
-| Architecture | 3,039 | `kernel/arch/` | **Keep in kernel** |
-| Syscall | 2,847 | `kernel/syscall/` | **Keep in kernel** |
-| Scheduler | 2,870 | `kernel/sched/` | **Keep in kernel** |
-| IPC | 2,507 | `kernel/ipc/` | **Keep in kernel** |
-| Viper/Caps | 2,946 | `kernel/viper/`, `kernel/cap/` | **Keep in kernel** |
-| **Total** | **~50,000** | | **~8,000 remain** |
+| Subsystem         | Lines       | Location                       | Target                |
+|-------------------|-------------|--------------------------------|-----------------------|
+| Network Stack     | 14,649      | `kernel/net/`                  | User-space            |
+| Drivers (VirtIO)  | 5,268       | `kernel/drivers/virtio/`       | User-space            |
+| Filesystem        | 5,328       | `kernel/fs/`                   | User-space            |
+| Memory Management | 5,323       | `kernel/mm/`                   | **Keep in kernel**    |
+| Console           | 3,544       | `kernel/console/`              | User-space (optional) |
+| Architecture      | 3,039       | `kernel/arch/`                 | **Keep in kernel**    |
+| Syscall           | 2,847       | `kernel/syscall/`              | **Keep in kernel**    |
+| Scheduler         | 2,870       | `kernel/sched/`                | **Keep in kernel**    |
+| IPC               | 2,507       | `kernel/ipc/`                  | **Keep in kernel**    |
+| Viper/Caps        | 2,946       | `kernel/viper/`, `kernel/cap/` | **Keep in kernel**    |
+| **Total**         | **~50,000** |                                | **~8,000 remain**     |
 
 ### 1.2 Current Monolithic Flow
 
@@ -76,24 +78,24 @@ This document provides a comprehensive plan to migrate ViperDOS from its current
 ### 1.3 What Works Well (Keep These)
 
 1. **IPC Channels** - Already support capability transfer
-   - 64 channels, 256-byte messages, 4 handles/message
-   - Non-blocking with `VERR_WOULD_BLOCK`
-   - Per-task capability tables
+    - 64 channels, 256-byte messages, 4 handles/message
+    - Non-blocking with `VERR_WOULD_BLOCK`
+    - Per-task capability tables
 
 2. **Address Spaces** - Per-process isolation ready
-   - ASID-tagged page tables (256 ASIDs)
-   - Full 4-level page table management
-   - COW support for fork()
+    - ASID-tagged page tables (256 ASIDs)
+    - Full 4-level page table management
+    - COW support for fork()
 
 3. **Capability System** - Handle-based access control
-   - Rights checking (READ, WRITE, DERIVE, TRANSFER)
-   - Handle derivation with reduced rights
-   - Revocation support
+    - Rights checking (READ, WRITE, DERIVE, TRANSFER)
+    - Handle derivation with reduced rights
+    - Revocation support
 
 4. **Syscall Interface** - Clean table-driven dispatch
-   - 50+ syscalls already defined
-   - User pointer validation
-   - Multi-value returns
+    - 50+ syscalls already defined
+    - User pointer validation
+    - Multi-value returns
 
 ---
 
@@ -132,11 +134,11 @@ This document provides a comprehensive plan to migrate ViperDOS from its current
 
 ### 2.2 Server Responsibilities
 
-| Server | Responsibilities |
-|--------|------------------|
-| **Block Server** | VirtIO-blk driver, block I/O requests |
-| **Net Server** | VirtIO-net driver, Ethernet, IP, TCP, UDP, DNS, TLS |
-| **FS Server** | ViperFS, VFS, path resolution, file descriptors |
+| Server             | Responsibilities                                            |
+|--------------------|-------------------------------------------------------------|
+| **Block Server**   | VirtIO-blk driver, block I/O requests                       |
+| **Net Server**     | VirtIO-net driver, Ethernet, IP, TCP, UDP, DNS, TLS         |
+| **FS Server**      | ViperFS, VFS, path resolution, file descriptors             |
 | **Console Server** | Serial I/O, graphics console (optional, can stay in kernel) |
 
 ### 2.3 IPC Flow Example (File Read)
@@ -182,6 +184,7 @@ i64 sys_map_device(u64 phys_addr, u64 size, u64 virt_hint);
 ```
 
 **Implementation:**
+
 ```cpp
 // kernel/syscall/device.cpp
 SyscallResult sys_map_device(u64 phys, u64 size, u64 hint, u64, u64, u64) {
@@ -215,6 +218,7 @@ SyscallResult sys_map_device(u64 phys, u64 size, u64 hint, u64, u64, u64) {
 ```
 
 **Device Region Table:**
+
 ```cpp
 // Known device MMIO regions for QEMU virt machine
 struct DeviceRegion {
@@ -280,6 +284,7 @@ i64 sys_irq_ack(u32 irq);
 ```
 
 **Implementation:**
+
 ```cpp
 // kernel/syscall/irq.cpp
 
@@ -406,6 +411,7 @@ i64 sys_dma_free(u64 virt_addr);
 ```
 
 **Implementation:**
+
 ```cpp
 SyscallResult sys_dma_alloc(u64 size, u64 flags, u64, u64, u64, u64) {
     if (!current_has_cap(CAP_DEVICE_ACCESS))
@@ -507,30 +513,30 @@ SYS_DEVICE_ENUM     = 0x107,  // Enumerate devices
 ### Tasks
 
 1. **Add new capability rights** (`kernel/cap/rights.hpp`)
-   - Add `CAP_DEVICE_ACCESS`, `CAP_IRQ_ACCESS`, `CAP_DMA_ACCESS`
+    - Add `CAP_DEVICE_ACCESS`, `CAP_IRQ_ACCESS`, `CAP_DMA_ACCESS`
 
 2. **Implement SYS_MAP_DEVICE** (`kernel/syscall/device.cpp`)
-   - Device region validation
-   - Address space mapping with ATTR_DEVICE
-   - VMA tracking
+    - Device region validation
+    - Address space mapping with ATTR_DEVICE
+    - VMA tracking
 
 3. **Implement IRQ syscalls** (`kernel/syscall/irq.cpp`)
-   - IRQ ownership table
-   - Wait queue per IRQ
-   - Handler registration
+    - IRQ ownership table
+    - Wait queue per IRQ
+    - Handler registration
 
 4. **Implement DMA syscalls** (`kernel/syscall/dma.cpp`)
-   - Contiguous allocation
-   - DMA mapping attributes
-   - Physical address return
+    - Contiguous allocation
+    - DMA mapping attributes
+    - Physical address return
 
 5. **Add SYS_VIRT_TO_PHYS** (`kernel/syscall/mem.cpp`)
-   - Page table walk
-   - Security checks
+    - Page table walk
+    - Security checks
 
 6. **Update syscall table** (`kernel/syscall/table.cpp`)
-   - Add new handlers
-   - Update syscall_nums.hpp
+    - Add new handlers
+    - Update syscall_nums.hpp
 
 ### Validation
 
@@ -1551,20 +1557,20 @@ kernel/fs/vfs/       → VFS layer (keep minimal shim)
 ### 6.2 Optimizations
 
 1. **Fast-path IPC for small messages**
-   - Copy small messages directly instead of using shared memory
-   - Inline data in channel messages for < 240 bytes
+    - Copy small messages directly instead of using shared memory
+    - Inline data in channel messages for < 240 bytes
 
 2. **Zero-copy for large transfers**
-   - Map shared memory directly into receiver's address space
-   - Use COW for read-only data sharing
+    - Map shared memory directly into receiver's address space
+    - Use COW for read-only data sharing
 
 3. **IRQ coalescing**
-   - Batch interrupt notifications
-   - Use interrupt moderation in VirtIO devices
+    - Batch interrupt notifications
+    - Use interrupt moderation in VirtIO devices
 
 4. **Connection pooling in FS server**
-   - Reuse block server connections
-   - Cache inode lookups
+    - Reuse block server connections
+    - Cache inode lookups
 
 ---
 
@@ -1592,12 +1598,14 @@ All IPC messages follow this general format:
 ### Error Handling
 
 All replies include a `status` field:
+
 - `0`: Success
 - `< 0`: Error code (matches kernel error codes)
 
 ### Async vs Sync Operations
 
 Most operations are **synchronous** (request-reply):
+
 1. Client creates reply channel
 2. Client sends request with reply channel handle
 3. Client blocks on reply channel
@@ -1605,6 +1613,7 @@ Most operations are **synchronous** (request-reply):
 5. Client receives reply and closes reply channel
 
 **Async operations** (notifications):
+
 - Server can send unsolicited messages on client's event channel
 - Used for: connection close, data arrival, etc.
 
@@ -1613,6 +1622,7 @@ Most operations are **synchronous** (request-reply):
 ## Migration Checklist
 
 ### Phase 1: Kernel Infrastructure
+
 - [ ] Add CAP_DEVICE_ACCESS, CAP_IRQ_ACCESS, CAP_DMA_ACCESS to rights.hpp
 - [ ] Implement sys_map_device()
 - [ ] Implement sys_irq_register(), sys_irq_wait(), sys_irq_ack()
@@ -1622,6 +1632,7 @@ Most operations are **synchronous** (request-reply):
 - [ ] Test device mapping from user space
 
 ### Phase 2: Device Driver Framework
+
 - [ ] Create user/libvirtio/ directory
 - [ ] Port virtio.hpp/cpp to user-space
 - [ ] Port virtqueue.hpp/cpp to user-space
@@ -1629,6 +1640,7 @@ Most operations are **synchronous** (request-reply):
 - [ ] Test basic VirtIO device probe from user space
 
 ### Phase 3: Block Device Server
+
 - [ ] Create user/servers/blkd/
 - [ ] Port virtio-blk driver to user space
 - [ ] Implement BLK protocol messages
@@ -1637,6 +1649,7 @@ Most operations are **synchronous** (request-reply):
 - [ ] Remove kernel virtio-blk code
 
 ### Phase 4: Filesystem Server
+
 - [ ] Create user/servers/fsd/
 - [ ] Port ViperFS to user space
 - [ ] Port VFS path resolution to user space
@@ -1647,6 +1660,7 @@ Most operations are **synchronous** (request-reply):
 - [ ] Remove kernel ViperFS/VFS code
 
 ### Phase 5: Network Server
+
 - [ ] Create user/servers/netd/
 - [ ] Port virtio-net driver to user space
 - [ ] Port TCP/IP stack to user space
@@ -1659,6 +1673,7 @@ Most operations are **synchronous** (request-reply):
 - [ ] Remove kernel network code
 
 ### Phase 6: Cleanup
+
 - [ ] Remove all dead kernel code
 - [ ] Update documentation
 - [ ] Performance testing
@@ -1701,6 +1716,7 @@ os/
 ### IPC Overhead
 
 Expected overhead per IPC round-trip:
+
 - Channel send: ~200 cycles
 - Context switch: ~500 cycles
 - Channel recv: ~200 cycles
@@ -1729,6 +1745,7 @@ Expected overhead per IPC round-trip:
 ### Capability-Based Access Control
 
 All server access is capability-controlled:
+
 - Applications receive service handles from init process
 - Handles can be derived with reduced rights
 - Revocation propagates to derived handles
@@ -1736,19 +1753,20 @@ All server access is capability-controlled:
 ### Server Isolation
 
 Each server runs in separate address space:
+
 - Cannot directly access other servers' memory
 - Cannot access device memory without explicit grant
 - Cannot handle IRQs without registration
 
 ### Privilege Levels
 
-| Component | Privilege | Device Access | IRQ Access |
-|-----------|-----------|---------------|------------|
-| Kernel | EL1 | Full | Full |
-| blkd | EL0 + CAP | VirtIO-blk MMIO | VirtIO-blk IRQ |
-| netd | EL0 + CAP | VirtIO-net MMIO | VirtIO-net IRQ |
-| fsd | EL0 | None | None |
-| Applications | EL0 | None | None |
+| Component    | Privilege | Device Access   | IRQ Access     |
+|--------------|-----------|-----------------|----------------|
+| Kernel       | EL1       | Full            | Full           |
+| blkd         | EL0 + CAP | VirtIO-blk MMIO | VirtIO-blk IRQ |
+| netd         | EL0 + CAP | VirtIO-net MMIO | VirtIO-net IRQ |
+| fsd          | EL0       | None            | None           |
+| Applications | EL0       | None            | None           |
 
 ---
 

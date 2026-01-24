@@ -173,30 +173,30 @@ static inline int rt_hex_digit_value(char c)
 /// @code
 ///   RT_ARR_DEFINE_GROW_IN_PLACE_FN(rt_arr_i32_grow_in_place, int32_t, rt_arr_i32_payload_bytes)
 /// @endcode
-#define RT_ARR_DEFINE_GROW_IN_PLACE_FN(fn_name, elem_type, payload_bytes_fn)                        \
-    static int fn_name(rt_heap_hdr_t **hdr_inout, elem_type **payload_inout, size_t new_len)        \
-    {                                                                                               \
-        rt_heap_hdr_t *hdr = *hdr_inout;                                                            \
-        size_t old_len = hdr ? hdr->len : 0;                                                        \
-        size_t new_cap = new_len;                                                                   \
-        size_t payload_bytes = payload_bytes_fn(new_cap);                                           \
-        if (new_cap > 0 && payload_bytes == 0)                                                      \
-            return -1;                                                                              \
-        size_t total_bytes = sizeof(rt_heap_hdr_t) + payload_bytes;                                 \
-        rt_heap_hdr_t *resized = (rt_heap_hdr_t *)realloc(hdr, total_bytes);                        \
-        if (!resized)                                                                               \
-            return -1;                                                                              \
-        elem_type *payload = (elem_type *)rt_heap_data(resized);                                    \
-        if (new_len > old_len)                                                                      \
-        {                                                                                           \
-            size_t grow = new_len - old_len;                                                        \
-            memset(payload + old_len, 0, grow * sizeof(elem_type));                                 \
-        }                                                                                           \
-        resized->cap = new_cap;                                                                     \
-        resized->len = new_len;                                                                     \
-        *hdr_inout = resized;                                                                       \
-        *payload_inout = payload;                                                                   \
-        return 0;                                                                                   \
+#define RT_ARR_DEFINE_GROW_IN_PLACE_FN(fn_name, elem_type, payload_bytes_fn)                       \
+    static int fn_name(rt_heap_hdr_t **hdr_inout, elem_type **payload_inout, size_t new_len)       \
+    {                                                                                              \
+        rt_heap_hdr_t *hdr = *hdr_inout;                                                           \
+        size_t old_len = hdr ? hdr->len : 0;                                                       \
+        size_t new_cap = new_len;                                                                  \
+        size_t payload_bytes = payload_bytes_fn(new_cap);                                          \
+        if (new_cap > 0 && payload_bytes == 0)                                                     \
+            return -1;                                                                             \
+        size_t total_bytes = sizeof(rt_heap_hdr_t) + payload_bytes;                                \
+        rt_heap_hdr_t *resized = (rt_heap_hdr_t *)realloc(hdr, total_bytes);                       \
+        if (!resized)                                                                              \
+            return -1;                                                                             \
+        elem_type *payload = (elem_type *)rt_heap_data(resized);                                   \
+        if (new_len > old_len)                                                                     \
+        {                                                                                          \
+            size_t grow = new_len - old_len;                                                       \
+            memset(payload + old_len, 0, grow * sizeof(elem_type));                                \
+        }                                                                                          \
+        resized->cap = new_cap;                                                                    \
+        resized->len = new_len;                                                                    \
+        *hdr_inout = resized;                                                                      \
+        *payload_inout = payload;                                                                  \
+        return 0;                                                                                  \
     }
 
 /// @brief Generate an array resize function with copy-on-write semantics.
@@ -208,49 +208,49 @@ static inline int rt_hex_digit_value(char c)
 /// @param copy_fn Payload copy function (e.g., rt_arr_i32_copy_payload).
 /// @param release_fn Release function (e.g., rt_arr_i32_release).
 /// @param grow_fn In-place grow function (e.g., rt_arr_i32_grow_in_place).
-#define RT_ARR_DEFINE_RESIZE_FN(fn_name, elem_type, hdr_fn, assert_header_fn, new_fn, copy_fn,      \
-                                release_fn, grow_fn)                                                \
-    int fn_name(elem_type **a_inout, size_t new_len)                                                \
-    {                                                                                               \
-        if (!a_inout)                                                                               \
-            return -1;                                                                              \
-        elem_type *arr = *a_inout;                                                                  \
-        if (!arr)                                                                                   \
-        {                                                                                           \
-            elem_type *fresh = new_fn(new_len);                                                     \
-            if (!fresh)                                                                             \
-                return -1;                                                                          \
-            *a_inout = fresh;                                                                       \
-            return 0;                                                                               \
-        }                                                                                           \
-        rt_heap_hdr_t *hdr = hdr_fn(arr);                                                           \
-        assert_header_fn(hdr);                                                                      \
-        size_t old_len = hdr->len;                                                                  \
-        size_t cap = hdr->cap;                                                                      \
-        if (new_len <= cap)                                                                         \
-        {                                                                                           \
-            if (new_len > old_len)                                                                  \
-                memset(arr + old_len, 0, (new_len - old_len) * sizeof(elem_type));                  \
-            rt_heap_set_len(arr, new_len);                                                          \
-            return 0;                                                                               \
-        }                                                                                           \
-        if (__atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) > 1)                                    \
-        {                                                                                           \
-            elem_type *fresh = new_fn(new_len);                                                     \
-            if (!fresh)                                                                             \
-                return -1;                                                                          \
-            size_t copy_len = old_len < new_len ? old_len : new_len;                                \
-            copy_fn(fresh, arr, copy_len);                                                          \
-            release_fn(arr);                                                                        \
-            *a_inout = fresh;                                                                       \
-            return 0;                                                                               \
-        }                                                                                           \
-        rt_heap_hdr_t *hdr_mut = hdr;                                                               \
-        elem_type *payload = arr;                                                                   \
-        if (grow_fn(&hdr_mut, &payload, new_len) != 0)                                              \
-            return -1;                                                                              \
-        *a_inout = payload;                                                                         \
-        return 0;                                                                                   \
+#define RT_ARR_DEFINE_RESIZE_FN(                                                                   \
+    fn_name, elem_type, hdr_fn, assert_header_fn, new_fn, copy_fn, release_fn, grow_fn)            \
+    int fn_name(elem_type **a_inout, size_t new_len)                                               \
+    {                                                                                              \
+        if (!a_inout)                                                                              \
+            return -1;                                                                             \
+        elem_type *arr = *a_inout;                                                                 \
+        if (!arr)                                                                                  \
+        {                                                                                          \
+            elem_type *fresh = new_fn(new_len);                                                    \
+            if (!fresh)                                                                            \
+                return -1;                                                                         \
+            *a_inout = fresh;                                                                      \
+            return 0;                                                                              \
+        }                                                                                          \
+        rt_heap_hdr_t *hdr = hdr_fn(arr);                                                          \
+        assert_header_fn(hdr);                                                                     \
+        size_t old_len = hdr->len;                                                                 \
+        size_t cap = hdr->cap;                                                                     \
+        if (new_len <= cap)                                                                        \
+        {                                                                                          \
+            if (new_len > old_len)                                                                 \
+                memset(arr + old_len, 0, (new_len - old_len) * sizeof(elem_type));                 \
+            rt_heap_set_len(arr, new_len);                                                         \
+            return 0;                                                                              \
+        }                                                                                          \
+        if (__atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) > 1)                                   \
+        {                                                                                          \
+            elem_type *fresh = new_fn(new_len);                                                    \
+            if (!fresh)                                                                            \
+                return -1;                                                                         \
+            size_t copy_len = old_len < new_len ? old_len : new_len;                               \
+            copy_fn(fresh, arr, copy_len);                                                         \
+            release_fn(arr);                                                                       \
+            *a_inout = fresh;                                                                      \
+            return 0;                                                                              \
+        }                                                                                          \
+        rt_heap_hdr_t *hdr_mut = hdr;                                                              \
+        elem_type *payload = arr;                                                                  \
+        if (grow_fn(&hdr_mut, &payload, new_len) != 0)                                             \
+            return -1;                                                                             \
+        *a_inout = payload;                                                                        \
+        return 0;                                                                                  \
     }
 
 //=============================================================================

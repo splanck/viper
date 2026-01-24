@@ -41,8 +41,7 @@
  * - No priority inheritance or fairness guarantees
  */
 
-namespace kernel
-{
+namespace kernel {
 
 /**
  * @brief Simple ticket spinlock for mutual exclusion.
@@ -51,8 +50,7 @@ namespace kernel
  * Ticket locks provide fairness: threads acquire the lock in FIFO order.
  * This prevents starvation under contention.
  */
-class Spinlock
-{
+class Spinlock {
   public:
     Spinlock() : next_ticket_(0), now_serving_(0) {}
 
@@ -69,8 +67,7 @@ class Spinlock
      *
      * @return The saved DAIF (interrupt state) to pass to release().
      */
-    u64 acquire()
-    {
+    u64 acquire() {
         // Save and disable interrupts (prevent interrupt handler deadlock)
         u64 saved_daif;
         asm volatile("mrs %0, daif" : "=r"(saved_daif));
@@ -89,12 +86,10 @@ class Spinlock
                      : "memory");
 
         // Spin until it's our turn
-        while (true)
-        {
+        while (true) {
             u32 serving;
             asm volatile("ldar %w0, [%1]" : "=r"(serving) : "r"(&now_serving_));
-            if (serving == my_ticket)
-            {
+            if (serving == my_ticket) {
                 break;
             }
             // Yield hint to save power while spinning
@@ -113,8 +108,7 @@ class Spinlock
      *
      * @param saved_daif The saved interrupt state returned from acquire().
      */
-    void release(u64 saved_daif)
-    {
+    void release(u64 saved_daif) {
         // Increment now_serving atomically with release semantics
         u32 val;
         asm volatile("ldr    %w0, [%1]        \n"
@@ -134,8 +128,7 @@ class Spinlock
      * @param[out] saved_daif If successful, receives the saved interrupt state.
      * @return true if lock was acquired, false if already held.
      */
-    bool try_acquire(u64 &saved_daif)
-    {
+    bool try_acquire(u64 &saved_daif) {
         // Save and disable interrupts
         u64 daif;
         asm volatile("mrs %0, daif" : "=r"(daif));
@@ -146,8 +139,7 @@ class Spinlock
         asm volatile("ldar %w0, [%1]" : "=r"(next) : "r"(&next_ticket_));
         asm volatile("ldar %w0, [%1]" : "=r"(serving) : "r"(&now_serving_));
 
-        if (next != serving)
-        {
+        if (next != serving) {
             // Lock is held, restore interrupts and return false
             asm volatile("msr daif, %0" ::"r"(daif) : "memory");
             return false;
@@ -173,8 +165,7 @@ class Spinlock
                      : "r"(next), "r"(&next_ticket_)
                      : "memory", "cc");
 
-        if (status != 0)
-        {
+        if (status != 0) {
             // Failed to acquire, restore interrupts
             asm volatile("msr daif, %0" ::"r"(daif) : "memory");
             return false;
@@ -190,8 +181,7 @@ class Spinlock
      * @note This is only useful for debugging/assertions, not for
      * synchronization decisions (TOCTOU race).
      */
-    bool is_locked() const
-    {
+    bool is_locked() const {
         u32 next, serving;
         asm volatile("ldr %w0, [%1]" : "=r"(next) : "r"(&next_ticket_));
         asm volatile("ldr %w0, [%1]" : "=r"(serving) : "r"(&now_serving_));
@@ -212,23 +202,20 @@ class Spinlock
  * The guard stores the saved interrupt state (DAIF) to correctly restore
  * interrupts on release, even under SMP contention.
  */
-class SpinlockGuard
-{
+class SpinlockGuard {
   public:
     /**
      * @brief Construct guard and acquire lock.
      * @param lock The spinlock to guard.
      */
-    explicit SpinlockGuard(Spinlock &lock) : lock_(lock)
-    {
+    explicit SpinlockGuard(Spinlock &lock) : lock_(lock) {
         saved_daif_ = lock_.acquire();
     }
 
     /**
      * @brief Destruct guard and release lock.
      */
-    ~SpinlockGuard()
-    {
+    ~SpinlockGuard() {
         lock_.release(saved_daif_);
     }
 
@@ -258,8 +245,7 @@ class SpinlockGuard
  *
  * For general-purpose kernel synchronization, prefer Spinlock or SpinlockGuard.
  */
-class AtomicFlag
-{
+class AtomicFlag {
   public:
     AtomicFlag() : flag_(0) {}
 
@@ -267,8 +253,7 @@ class AtomicFlag
      * @brief Test and set the flag atomically.
      * @return Previous value (false if we acquired, true if already set).
      */
-    bool test_and_set()
-    {
+    bool test_and_set() {
         u32 old_val;
         u32 status;
         asm volatile("1: ldaxr   %w0, [%3]       \n"
@@ -283,18 +268,15 @@ class AtomicFlag
     /**
      * @brief Clear the flag.
      */
-    void clear()
-    {
+    void clear() {
         asm volatile("stlr wzr, [%0]" ::"r"(&flag_) : "memory");
     }
 
     /**
      * @brief Spin until flag is clear, then set it.
      */
-    void acquire()
-    {
-        while (test_and_set())
-        {
+    void acquire() {
+        while (test_and_set()) {
             asm volatile("yield");
         }
     }
@@ -302,8 +284,7 @@ class AtomicFlag
     /**
      * @brief Release by clearing the flag.
      */
-    void release()
-    {
+    void release() {
         clear();
     }
 

@@ -67,8 +67,10 @@ static inline int16_t soft_clip(int32_t sample)
     }
 
     /* Hard clamp as final safety */
-    if (sample > 32767) return 32767;
-    if (sample < -32768) return -32768;
+    if (sample > 32767)
+        return 32767;
+    if (sample < -32768)
+        return -32768;
     return (int16_t)sample;
 }
 
@@ -79,12 +81,14 @@ static inline int16_t soft_clip(int32_t sample)
 static void calculate_pan_gains(float pan, float *left_gain, float *right_gain)
 {
     /* Constant power panning law */
-    if (pan < -1.0f) pan = -1.0f;
-    if (pan > 1.0f) pan = 1.0f;
+    if (pan < -1.0f)
+        pan = -1.0f;
+    if (pan > 1.0f)
+        pan = 1.0f;
 
     /* Simple linear pan for efficiency (close enough for games) */
-    *left_gain = 1.0f - (pan + 1.0f) * 0.5f * 0.5f;   /* 1.0 at left, 0.5 at right */
-    *right_gain = 0.5f + (pan + 1.0f) * 0.5f * 0.5f;  /* 0.5 at left, 1.0 at right */
+    *left_gain = 1.0f - (pan + 1.0f) * 0.5f * 0.5f;  /* 1.0 at left, 0.5 at right */
+    *right_gain = 0.5f + (pan + 1.0f) * 0.5f * 0.5f; /* 0.5 at left, 1.0 at right */
 }
 
 //===----------------------------------------------------------------------===//
@@ -182,8 +186,11 @@ static void mix_music(vaud_music_t music, int32_t *output, int32_t frames, float
             if (music->file)
             {
                 int16_t *buf = music->buffers[music->current_buffer];
-                int32_t read = vaud_wav_read_frames(music->file, buf, VAUD_MUSIC_BUFFER_FRAMES,
-                                                    music->channels, music->bits_per_sample);
+                int32_t read = vaud_wav_read_frames(music->file,
+                                                    buf,
+                                                    VAUD_MUSIC_BUFFER_FRAMES,
+                                                    music->channels,
+                                                    music->bits_per_sample);
 
                 if (read == 0)
                 {
@@ -192,8 +199,11 @@ static void mix_music(vaud_music_t music, int32_t *output, int32_t frames, float
                         /* Seek to beginning of data */
                         fseek((FILE *)music->file, (long)music->position, SEEK_SET);
                         music->position = 0;
-                        read = vaud_wav_read_frames(music->file, buf, VAUD_MUSIC_BUFFER_FRAMES,
-                                                    music->channels, music->bits_per_sample);
+                        read = vaud_wav_read_frames(music->file,
+                                                    buf,
+                                                    VAUD_MUSIC_BUFFER_FRAMES,
+                                                    music->channels,
+                                                    music->bits_per_sample);
                     }
 
                     if (read == 0)
@@ -215,7 +225,7 @@ static void mix_music(vaud_music_t music, int32_t *output, int32_t frames, float
         int32_t available = music->buffer_frames[music->current_buffer] - music->buffer_position;
         int32_t to_mix = (frames_remaining < available) ? frames_remaining : available;
 
-        int32_t src_offset = music->buffer_position * 2;  /* Stereo */
+        int32_t src_offset = music->buffer_position * 2; /* Stereo */
         for (int32_t i = 0; i < to_mix; i++)
         {
             int16_t left = src[src_offset + i * 2];

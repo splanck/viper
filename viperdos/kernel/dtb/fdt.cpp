@@ -10,11 +10,9 @@
 #include "fdt.hpp"
 #include "../console/serial.hpp"
 
-namespace fdt
-{
+namespace fdt {
 
-namespace
-{
+namespace {
 
 // FDT structure block tokens
 constexpr u32 FDT_BEGIN_NODE = 0x00000001;
@@ -26,8 +24,7 @@ constexpr u32 FDT_END = 0x00000009;
 /**
  * @brief FDT header structure (all fields big-endian).
  */
-struct FdtHeader
-{
+struct FdtHeader {
     u32 magic;
     u32 totalsize;
     u32 off_dt_struct;
@@ -43,8 +40,7 @@ struct FdtHeader
 /**
  * @brief Convert big-endian u32 to host byte order.
  */
-inline u32 be32_to_cpu(u32 val)
-{
+inline u32 be32_to_cpu(u32 val) {
     return ((val & 0xFF000000) >> 24) | ((val & 0x00FF0000) >> 8) | ((val & 0x0000FF00) << 8) |
            ((val & 0x000000FF) << 24);
 }
@@ -52,8 +48,7 @@ inline u32 be32_to_cpu(u32 val)
 /**
  * @brief Convert big-endian u64 to host byte order.
  */
-inline u64 be64_to_cpu(u64 val)
-{
+inline u64 be64_to_cpu(u64 val) {
     u32 hi = be32_to_cpu(static_cast<u32>(val >> 32));
     u32 lo = be32_to_cpu(static_cast<u32>(val & 0xFFFFFFFF));
     return (static_cast<u64>(lo) << 32) | hi;
@@ -62,34 +57,29 @@ inline u64 be64_to_cpu(u64 val)
 /**
  * @brief Read a big-endian u32 from memory.
  */
-inline u32 read_be32(const void *ptr)
-{
+inline u32 read_be32(const void *ptr) {
     return be32_to_cpu(*static_cast<const u32 *>(ptr));
 }
 
 /**
  * @brief Read a big-endian u64 from memory.
  */
-inline u64 read_be64(const void *ptr)
-{
+inline u64 read_be64(const void *ptr) {
     return be64_to_cpu(*static_cast<const u64 *>(ptr));
 }
 
 /**
  * @brief Align offset up to 4-byte boundary.
  */
-inline u32 align4(u32 offset)
-{
+inline u32 align4(u32 offset) {
     return (offset + 3) & ~3u;
 }
 
 /**
  * @brief String comparison.
  */
-bool str_eq(const char *a, const char *b)
-{
-    while (*a && *b)
-    {
+bool str_eq(const char *a, const char *b) {
+    while (*a && *b) {
         if (*a++ != *b++)
             return false;
     }
@@ -99,8 +89,7 @@ bool str_eq(const char *a, const char *b)
 /**
  * @brief String length.
  */
-u32 str_len(const char *s)
-{
+u32 str_len(const char *s) {
     u32 len = 0;
     while (*s++)
         len++;
@@ -110,11 +99,9 @@ u32 str_len(const char *s)
 /**
  * @brief Check if path component matches.
  */
-bool path_match(const char *node_name, const char *component)
-{
+bool path_match(const char *node_name, const char *component) {
     // Node names can have @address suffix which we ignore
-    while (*component)
-    {
+    while (*component) {
         if (*node_name == '\0' || *node_name == '@')
             return *component == '\0';
         if (*node_name++ != *component++)
@@ -127,16 +114,14 @@ bool path_match(const char *node_name, const char *component)
 /**
  * @brief Get header from FDT.
  */
-const FdtHeader *get_header(const void *fdt_base)
-{
+const FdtHeader *get_header(const void *fdt_base) {
     return static_cast<const FdtHeader *>(fdt_base);
 }
 
 /**
  * @brief Get strings block pointer.
  */
-const char *get_strings(const void *fdt_base)
-{
+const char *get_strings(const void *fdt_base) {
     const auto *hdr = get_header(fdt_base);
     return static_cast<const char *>(fdt_base) + be32_to_cpu(hdr->off_dt_strings);
 }
@@ -144,8 +129,7 @@ const char *get_strings(const void *fdt_base)
 /**
  * @brief Get structure block pointer.
  */
-const u8 *get_struct(const void *fdt_base)
-{
+const u8 *get_struct(const void *fdt_base) {
     const auto *hdr = get_header(fdt_base);
     return static_cast<const u8 *>(fdt_base) + be32_to_cpu(hdr->off_dt_struct);
 }
@@ -153,8 +137,7 @@ const u8 *get_struct(const void *fdt_base)
 /**
  * @brief Parse state for walking the FDT.
  */
-struct ParseState
-{
+struct ParseState {
     const u8 *struct_base;
     const char *strings;
     u32 offset;
@@ -165,8 +148,7 @@ struct ParseState
 /**
  * @brief Read next token from structure block.
  */
-u32 next_token(ParseState &state)
-{
+u32 next_token(ParseState &state) {
     if (state.offset >= state.struct_size)
         return FDT_END;
 
@@ -174,8 +156,7 @@ u32 next_token(ParseState &state)
     state.offset += 4;
 
     // Skip NOP tokens
-    while (token == FDT_NOP && state.offset < state.struct_size)
-    {
+    while (token == FDT_NOP && state.offset < state.struct_size) {
         token = read_be32(state.struct_base + state.offset);
         state.offset += 4;
     }
@@ -186,8 +167,7 @@ u32 next_token(ParseState &state)
 /**
  * @brief Get node name after FDT_BEGIN_NODE.
  */
-const char *get_node_name(ParseState &state)
-{
+const char *get_node_name(ParseState &state) {
     const char *name = reinterpret_cast<const char *>(state.struct_base + state.offset);
     u32 len = str_len(name);
     state.offset = align4(state.offset + len + 1);
@@ -197,8 +177,7 @@ const char *get_node_name(ParseState &state)
 /**
  * @brief Get property info after FDT_PROP.
  */
-void get_property(ParseState &state, const char **out_name, const void **out_data, u32 *out_len)
-{
+void get_property(ParseState &state, const char **out_name, const void **out_data, u32 *out_len) {
     u32 len = read_be32(state.struct_base + state.offset);
     u32 nameoff = read_be32(state.struct_base + state.offset + 4);
     state.offset += 8;
@@ -213,8 +192,7 @@ void get_property(ParseState &state, const char **out_name, const void **out_dat
 } // namespace
 
 /** @copydoc fdt::is_valid */
-bool is_valid(const void *fdt_base)
-{
+bool is_valid(const void *fdt_base) {
     if (!fdt_base)
         return false;
 
@@ -225,8 +203,7 @@ bool is_valid(const void *fdt_base)
 }
 
 /** @copydoc fdt::get_size */
-u32 get_size(const void *fdt_base)
-{
+u32 get_size(const void *fdt_base) {
     if (!is_valid(fdt_base))
         return 0;
 
@@ -236,8 +213,7 @@ u32 get_size(const void *fdt_base)
 
 /** @copydoc fdt::find_property */
 bool find_property(
-    const void *fdt_base, const char *path, const char *prop, const void **out_data, u32 *out_len)
-{
+    const void *fdt_base, const char *path, const char *prop, const void **out_data, u32 *out_len) {
     if (!is_valid(fdt_base) || !path || !prop)
         return false;
 
@@ -260,39 +236,32 @@ bool find_property(
     bool in_target = false;
 
     // Count target depth
-    for (const char *p = path; *p; p++)
-    {
+    for (const char *p = path; *p; p++) {
         if (*p == '/')
             target_depth++;
     }
     if (*path)
         target_depth++; // Non-empty path has at least one component
 
-    while (true)
-    {
+    while (true) {
         u32 token = next_token(state);
 
-        switch (token)
-        {
-            case FDT_BEGIN_NODE:
-            {
+        switch (token) {
+            case FDT_BEGIN_NODE: {
                 const char *name = get_node_name(state);
                 state.depth++;
 
                 // Check if this node is on our path
-                if (state.depth <= target_depth)
-                {
+                if (state.depth <= target_depth) {
                     // Get current path component
                     const char *component = path_ptr;
                     while (*path_ptr && *path_ptr != '/')
                         path_ptr++;
 
-                    if (path_match(name, component))
-                    {
+                    if (path_match(name, component)) {
                         if (*path_ptr == '/')
                             path_ptr++;
-                        if (state.depth == target_depth)
-                        {
+                        if (state.depth == target_depth) {
                             in_target = true;
                         }
                     }
@@ -301,23 +270,20 @@ bool find_property(
             }
 
             case FDT_END_NODE:
-                if (in_target && state.depth == target_depth)
-                {
+                if (in_target && state.depth == target_depth) {
                     // Left target node without finding property
                     return false;
                 }
                 state.depth--;
                 break;
 
-            case FDT_PROP:
-            {
+            case FDT_PROP: {
                 const char *pname;
                 const void *pdata;
                 u32 plen;
                 get_property(state, &pname, &pdata, &plen);
 
-                if (in_target && str_eq(pname, prop))
-                {
+                if (in_target && str_eq(pname, prop)) {
                     *out_data = pdata;
                     *out_len = plen;
                     return true;
@@ -336,24 +302,20 @@ bool find_property(
 }
 
 /** @copydoc fdt::get_string_prop */
-const char *get_string_prop(const void *fdt_base, const char *path, const char *prop)
-{
+const char *get_string_prop(const void *fdt_base, const char *path, const char *prop) {
     const void *data;
     u32 len;
-    if (find_property(fdt_base, path, prop, &data, &len))
-    {
+    if (find_property(fdt_base, path, prop, &data, &len)) {
         return static_cast<const char *>(data);
     }
     return nullptr;
 }
 
 /** @copydoc fdt::get_u32_prop */
-u32 get_u32_prop(const void *fdt_base, const char *path, const char *prop, u32 default_val)
-{
+u32 get_u32_prop(const void *fdt_base, const char *path, const char *prop, u32 default_val) {
     const void *data;
     u32 len;
-    if (find_property(fdt_base, path, prop, &data, &len) && len >= 4)
-    {
+    if (find_property(fdt_base, path, prop, &data, &len) && len >= 4) {
         return read_be32(data);
     }
     return default_val;
@@ -369,13 +331,11 @@ u32 get_u32_prop(const void *fdt_base, const char *path, const char *prop, u32 d
  * @param fdt_base FDT base pointer.
  * @param out Output memory layout structure.
  */
-static void parse_reserved_regions(const void *fdt_base, MemoryLayout *out)
-{
+static void parse_reserved_regions(const void *fdt_base, MemoryLayout *out) {
     const auto *hdr = get_header(fdt_base);
     const u8 *rsvmap = static_cast<const u8 *>(fdt_base) + be32_to_cpu(hdr->off_mem_rsvmap);
 
-    while (out->reserved_count < MAX_RESERVED_REGIONS)
-    {
+    while (out->reserved_count < MAX_RESERVED_REGIONS) {
         u64 addr = read_be64(rsvmap);
         u64 size = read_be64(rsvmap + 8);
         rsvmap += 16;
@@ -399,37 +359,29 @@ static void parse_reserved_regions(const void *fdt_base, MemoryLayout *out)
  * @param out Output memory layout structure.
  */
 static void parse_reg_property(
-    const void *pdata, u32 plen, u32 address_cells, u32 size_cells, MemoryLayout *out)
-{
+    const void *pdata, u32 plen, u32 address_cells, u32 size_cells, MemoryLayout *out) {
     u32 cell_size = (address_cells + size_cells) * 4;
     u32 entries = plen / cell_size;
 
     const u8 *ptr = static_cast<const u8 *>(pdata);
-    for (u32 i = 0; i < entries && out->region_count < MAX_MEMORY_REGIONS; i++)
-    {
+    for (u32 i = 0; i < entries && out->region_count < MAX_MEMORY_REGIONS; i++) {
         u64 base = 0;
         u64 size = 0;
 
         // Read address (1 or 2 cells)
-        if (address_cells == 2)
-        {
+        if (address_cells == 2) {
             base = read_be64(ptr);
             ptr += 8;
-        }
-        else
-        {
+        } else {
             base = read_be32(ptr);
             ptr += 4;
         }
 
         // Read size (1 or 2 cells)
-        if (size_cells == 2)
-        {
+        if (size_cells == 2) {
             size = read_be64(ptr);
             ptr += 8;
-        }
-        else
-        {
+        } else {
             size = read_be32(ptr);
             ptr += 4;
         }
@@ -448,14 +400,13 @@ static void parse_reg_property(
  * @param plen Property length.
  * @param out Output memory layout structure.
  */
-static void parse_initrd_property(const char *pname, const void *pdata, u32 plen, MemoryLayout *out)
-{
-    if (str_eq(pname, "linux,initrd-start") && plen >= 4)
-    {
+static void parse_initrd_property(const char *pname,
+                                  const void *pdata,
+                                  u32 plen,
+                                  MemoryLayout *out) {
+    if (str_eq(pname, "linux,initrd-start") && plen >= 4) {
         out->initrd_start = (plen >= 8) ? read_be64(pdata) : read_be32(pdata);
-    }
-    else if (str_eq(pname, "linux,initrd-end") && plen >= 4)
-    {
+    } else if (str_eq(pname, "linux,initrd-end") && plen >= 4) {
         out->initrd_end = (plen >= 8) ? read_be64(pdata) : read_be32(pdata);
     }
 }
@@ -465,8 +416,7 @@ static void parse_initrd_property(const char *pname, const void *pdata, u32 plen
 // =============================================================================
 
 /** @copydoc fdt::parse_memory */
-bool parse_memory(const void *fdt_base, MemoryLayout *out)
-{
+bool parse_memory(const void *fdt_base, MemoryLayout *out) {
     if (!is_valid(fdt_base) || !out)
         return false;
 
@@ -493,18 +443,14 @@ bool parse_memory(const void *fdt_base, MemoryLayout *out)
     u32 address_cells = 2;
     u32 size_cells = 1;
 
-    while (true)
-    {
+    while (true) {
         u32 token = next_token(state);
 
-        switch (token)
-        {
-            case FDT_BEGIN_NODE:
-            {
+        switch (token) {
+            case FDT_BEGIN_NODE: {
                 const char *name = get_node_name(state);
                 state.depth++;
-                if (state.depth == 1)
-                {
+                if (state.depth == 1) {
                     in_memory = path_match(name, "memory");
                     in_chosen = path_match(name, "chosen");
                 }
@@ -512,24 +458,21 @@ bool parse_memory(const void *fdt_base, MemoryLayout *out)
             }
 
             case FDT_END_NODE:
-                if (state.depth == 1)
-                {
+                if (state.depth == 1) {
                     in_memory = false;
                     in_chosen = false;
                 }
                 state.depth--;
                 break;
 
-            case FDT_PROP:
-            {
+            case FDT_PROP: {
                 const char *pname;
                 const void *pdata;
                 u32 plen;
                 get_property(state, &pname, &pdata, &plen);
 
                 // Root node cell properties
-                if (state.depth == 1)
-                {
+                if (state.depth == 1) {
                     if (str_eq(pname, "#address-cells") && plen >= 4)
                         address_cells = read_be32(pdata);
                     else if (str_eq(pname, "#size-cells") && plen >= 4)
@@ -537,14 +480,12 @@ bool parse_memory(const void *fdt_base, MemoryLayout *out)
                 }
 
                 // Memory node reg property
-                if (in_memory && str_eq(pname, "reg"))
-                {
+                if (in_memory && str_eq(pname, "reg")) {
                     parse_reg_property(pdata, plen, address_cells, size_cells, out);
                 }
 
                 // Chosen node initrd properties
-                if (in_chosen)
-                {
+                if (in_chosen) {
                     parse_initrd_property(pname, pdata, plen, out);
                 }
                 break;
@@ -569,10 +510,8 @@ done:
 }
 
 /** @copydoc fdt::dump */
-void dump(const void *fdt_base)
-{
-    if (!is_valid(fdt_base))
-    {
+void dump(const void *fdt_base) {
+    if (!is_valid(fdt_base)) {
         serial::puts("[fdt] Invalid FDT\n");
         return;
     }

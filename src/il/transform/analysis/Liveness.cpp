@@ -196,7 +196,8 @@ class ChunkedBitset
     /// @brief Compute liveIn = uses | (liveOut & ~defs) efficiently.
     /// @details Performs the data-flow transfer function in a single pass
     ///          over the chunks, avoiding multiple iterations.
-    void computeLiveIn(const ChunkedBitset &uses, const ChunkedBitset &defs,
+    void computeLiveIn(const ChunkedBitset &uses,
+                       const ChunkedBitset &defs,
                        const ChunkedBitset &liveOut)
     {
         assert(chunks_.size() == uses.chunks_.size());

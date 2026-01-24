@@ -47,8 +47,7 @@
  * ============================================================ */
 
 /* Hash entry for table */
-typedef struct hash_entry
-{
+typedef struct hash_entry {
     int used;
     ENTRY entry;
 } hash_entry;
@@ -59,13 +58,11 @@ static size_t global_size = 0;
 static size_t global_filled = 0;
 
 /* Simple string hash function */
-static unsigned long hash_string(const char *key)
-{
+static unsigned long hash_string(const char *key) {
     unsigned long h = 5381;
     int c;
 
-    while ((c = (unsigned char)*key++))
-    {
+    while ((c = (unsigned char)*key++)) {
         h = ((h << 5) + h) + c; /* h * 33 + c */
     }
 
@@ -75,11 +72,9 @@ static unsigned long hash_string(const char *key)
 /*
  * hcreate - Create global hash table
  */
-int hcreate(size_t nel)
-{
+int hcreate(size_t nel) {
     /* Free existing table */
-    if (global_table)
-    {
+    if (global_table) {
         free(global_table);
     }
 
@@ -90,8 +85,7 @@ int hcreate(size_t nel)
         size = 7;
 
     global_table = (hash_entry *)calloc(size, sizeof(hash_entry));
-    if (!global_table)
-    {
+    if (!global_table) {
         return 0;
     }
 
@@ -103,10 +97,8 @@ int hcreate(size_t nel)
 /*
  * hdestroy - Destroy global hash table
  */
-void hdestroy(void)
-{
-    if (global_table)
-    {
+void hdestroy(void) {
+    if (global_table) {
         free(global_table);
         global_table = NULL;
         global_size = 0;
@@ -117,10 +109,8 @@ void hdestroy(void)
 /*
  * hsearch - Search global hash table
  */
-ENTRY *hsearch(ENTRY item, ACTION action)
-{
-    if (!global_table || !item.key)
-    {
+ENTRY *hsearch(ENTRY item, ACTION action) {
+    if (!global_table || !item.key) {
         return NULL;
     }
 
@@ -129,20 +119,16 @@ ENTRY *hsearch(ENTRY item, ACTION action)
     size_t start = idx;
 
     /* Linear probing */
-    do
-    {
+    do {
         hash_entry *ent = &global_table[idx];
 
-        if (!ent->used)
-        {
+        if (!ent->used) {
             /* Empty slot */
-            if (action == FIND)
-            {
+            if (action == FIND) {
                 return NULL;
             }
             /* ENTER - check if table is full */
-            if (global_filled >= global_size)
-            {
+            if (global_filled >= global_size) {
                 return NULL;
             }
             ent->used = 1;
@@ -152,8 +138,7 @@ ENTRY *hsearch(ENTRY item, ACTION action)
         }
 
         /* Check if key matches */
-        if (strcmp(ent->entry.key, item.key) == 0)
-        {
+        if (strcmp(ent->entry.key, item.key) == 0) {
             return &ent->entry;
         }
 
@@ -166,10 +151,8 @@ ENTRY *hsearch(ENTRY item, ACTION action)
 /*
  * hcreate_r - Create reentrant hash table
  */
-int hcreate_r(size_t nel, struct hsearch_data *htab)
-{
-    if (!htab)
-    {
+int hcreate_r(size_t nel, struct hsearch_data *htab) {
+    if (!htab) {
         return 0;
     }
 
@@ -178,8 +161,7 @@ int hcreate_r(size_t nel, struct hsearch_data *htab)
         size = 7;
 
     htab->table = calloc(size, sizeof(hash_entry));
-    if (!htab->table)
-    {
+    if (!htab->table) {
         return 0;
     }
 
@@ -191,10 +173,8 @@ int hcreate_r(size_t nel, struct hsearch_data *htab)
 /*
  * hdestroy_r - Destroy reentrant hash table
  */
-void hdestroy_r(struct hsearch_data *htab)
-{
-    if (htab && htab->table)
-    {
+void hdestroy_r(struct hsearch_data *htab) {
+    if (htab && htab->table) {
         free(htab->table);
         htab->table = NULL;
         htab->size = 0;
@@ -205,10 +185,8 @@ void hdestroy_r(struct hsearch_data *htab)
 /*
  * hsearch_r - Search reentrant hash table
  */
-int hsearch_r(ENTRY item, ACTION action, ENTRY **retval, struct hsearch_data *htab)
-{
-    if (!htab || !htab->table || !item.key || !retval)
-    {
+int hsearch_r(ENTRY item, ACTION action, ENTRY **retval, struct hsearch_data *htab) {
+    if (!htab || !htab->table || !item.key || !retval) {
         if (retval)
             *retval = NULL;
         return 0;
@@ -219,19 +197,15 @@ int hsearch_r(ENTRY item, ACTION action, ENTRY **retval, struct hsearch_data *ht
     size_t idx = h % htab->size;
     size_t start = idx;
 
-    do
-    {
+    do {
         hash_entry *ent = &table[idx];
 
-        if (!ent->used)
-        {
-            if (action == FIND)
-            {
+        if (!ent->used) {
+            if (action == FIND) {
                 *retval = NULL;
                 return 0;
             }
-            if (htab->filled >= htab->size)
-            {
+            if (htab->filled >= htab->size) {
                 *retval = NULL;
                 return 0;
             }
@@ -242,8 +216,7 @@ int hsearch_r(ENTRY item, ACTION action, ENTRY **retval, struct hsearch_data *ht
             return 1;
         }
 
-        if (strcmp(ent->entry.key, item.key) == 0)
-        {
+        if (strcmp(ent->entry.key, item.key) == 0) {
             *retval = &ent->entry;
             return 1;
         }
@@ -260,8 +233,7 @@ int hsearch_r(ENTRY item, ACTION action, ENTRY **retval, struct hsearch_data *ht
  * ============================================================ */
 
 /* Tree node structure */
-typedef struct tree_node
-{
+typedef struct tree_node {
     const void *key;
     struct tree_node *left;
     struct tree_node *right;
@@ -270,40 +242,32 @@ typedef struct tree_node
 /*
  * tsearch - Insert element in tree
  */
-void *tsearch(const void *key, void **rootp, int (*compar)(const void *, const void *))
-{
+void *tsearch(const void *key, void **rootp, int (*compar)(const void *, const void *)) {
     tree_node **node;
     tree_node *new_node;
 
-    if (!rootp || !compar)
-    {
+    if (!rootp || !compar) {
         return NULL;
     }
 
     node = (tree_node **)rootp;
 
-    while (*node)
-    {
+    while (*node) {
         int cmp = compar(key, (*node)->key);
-        if (cmp == 0)
-        {
+        if (cmp == 0) {
             /* Found - return pointer to node */
             return *node;
         }
-        if (cmp < 0)
-        {
+        if (cmp < 0) {
             node = &(*node)->left;
-        }
-        else
-        {
+        } else {
             node = &(*node)->right;
         }
     }
 
     /* Not found - insert new node */
     new_node = (tree_node *)malloc(sizeof(tree_node));
-    if (!new_node)
-    {
+    if (!new_node) {
         return NULL;
     }
 
@@ -318,30 +282,23 @@ void *tsearch(const void *key, void **rootp, int (*compar)(const void *, const v
 /*
  * tfind - Find element in tree
  */
-void *tfind(const void *key, void *const *rootp, int (*compar)(const void *, const void *))
-{
+void *tfind(const void *key, void *const *rootp, int (*compar)(const void *, const void *)) {
     tree_node *const *node;
 
-    if (!rootp || !compar)
-    {
+    if (!rootp || !compar) {
         return NULL;
     }
 
     node = (tree_node *const *)rootp;
 
-    while (*node)
-    {
+    while (*node) {
         int cmp = compar(key, (*node)->key);
-        if (cmp == 0)
-        {
+        if (cmp == 0) {
             return (void *)*node;
         }
-        if (cmp < 0)
-        {
+        if (cmp < 0) {
             node = &(*node)->left;
-        }
-        else
-        {
+        } else {
             node = &(*node)->right;
         }
     }
@@ -352,60 +309,46 @@ void *tfind(const void *key, void *const *rootp, int (*compar)(const void *, con
 /*
  * tdelete - Delete element from tree
  */
-void *tdelete(const void *key, void **rootp, int (*compar)(const void *, const void *))
-{
+void *tdelete(const void *key, void **rootp, int (*compar)(const void *, const void *)) {
     tree_node **node;
     tree_node *parent = NULL;
 
-    if (!rootp || !compar)
-    {
+    if (!rootp || !compar) {
         return NULL;
     }
 
     node = (tree_node **)rootp;
 
     /* Find the node */
-    while (*node)
-    {
+    while (*node) {
         int cmp = compar(key, (*node)->key);
-        if (cmp == 0)
-        {
+        if (cmp == 0) {
             break;
         }
         parent = *node;
-        if (cmp < 0)
-        {
+        if (cmp < 0) {
             node = &(*node)->left;
-        }
-        else
-        {
+        } else {
             node = &(*node)->right;
         }
     }
 
-    if (!*node)
-    {
+    if (!*node) {
         return NULL; /* Not found */
     }
 
     tree_node *to_delete = *node;
 
-    if (!to_delete->left)
-    {
+    if (!to_delete->left) {
         /* No left child - replace with right child */
         *node = to_delete->right;
-    }
-    else if (!to_delete->right)
-    {
+    } else if (!to_delete->right) {
         /* No right child - replace with left child */
         *node = to_delete->left;
-    }
-    else
-    {
+    } else {
         /* Two children - find in-order successor */
         tree_node **succ = &to_delete->right;
-        while ((*succ)->left)
-        {
+        while ((*succ)->left) {
             succ = &(*succ)->left;
         }
 
@@ -424,20 +367,17 @@ void *tdelete(const void *key, void **rootp, int (*compar)(const void *, const v
 /*
  * twalk_helper - Recursive tree walk
  */
-static void twalk_helper(const tree_node *node, void (*action)(const void *, VISIT, int), int depth)
-{
-    if (!node)
-    {
+static void twalk_helper(const tree_node *node,
+                         void (*action)(const void *, VISIT, int),
+                         int depth) {
+    if (!node) {
         return;
     }
 
-    if (!node->left && !node->right)
-    {
+    if (!node->left && !node->right) {
         /* Leaf node */
         action(node, leaf, depth);
-    }
-    else
-    {
+    } else {
         /* Internal node */
         action(node, preorder, depth);
         twalk_helper(node->left, action, depth + 1);
@@ -450,10 +390,8 @@ static void twalk_helper(const tree_node *node, void (*action)(const void *, VIS
 /*
  * twalk - Walk tree in-order
  */
-void twalk(const void *root, void (*action)(const void *nodep, VISIT which, int depth))
-{
-    if (root && action)
-    {
+void twalk(const void *root, void (*action)(const void *nodep, VISIT which, int depth)) {
+    if (root && action) {
         twalk_helper((const tree_node *)root, action, 0);
     }
 }
@@ -464,21 +402,16 @@ void twalk(const void *root, void (*action)(const void *nodep, VISIT which, int 
 static void twalk_r_helper(const tree_node *node,
                            void (*action)(const void *, VISIT, void *),
                            void *closure,
-                           int depth)
-{
+                           int depth) {
     (void)depth;
 
-    if (!node)
-    {
+    if (!node) {
         return;
     }
 
-    if (!node->left && !node->right)
-    {
+    if (!node->left && !node->right) {
         action(node, leaf, closure);
-    }
-    else
-    {
+    } else {
         action(node, preorder, closure);
         twalk_r_helper(node->left, action, closure, depth + 1);
         action(node, postorder, closure);
@@ -492,10 +425,8 @@ static void twalk_r_helper(const tree_node *node,
  */
 void twalk_r(const void *root,
              void (*action)(const void *nodep, VISIT which, void *closure),
-             void *closure)
-{
-    if (root && action)
-    {
+             void *closure) {
+    if (root && action) {
         twalk_r_helper((const tree_node *)root, action, closure, 0);
     }
 }
@@ -503,20 +434,17 @@ void twalk_r(const void *root,
 /*
  * tdestroy - Destroy tree
  */
-void tdestroy(void *root, void (*free_node)(void *nodep))
-{
+void tdestroy(void *root, void (*free_node)(void *nodep)) {
     tree_node *node = (tree_node *)root;
 
-    if (!node)
-    {
+    if (!node) {
         return;
     }
 
     tdestroy(node->left, free_node);
     tdestroy(node->right, free_node);
 
-    if (free_node)
-    {
+    if (free_node) {
         free_node((void *)node->key);
     }
     free(node);
@@ -533,18 +461,14 @@ void *lfind(const void *key,
             const void *base,
             size_t *nmemb,
             size_t size,
-            int (*compar)(const void *, const void *))
-{
-    if (!key || !base || !nmemb || !compar || size == 0)
-    {
+            int (*compar)(const void *, const void *)) {
+    if (!key || !base || !nmemb || !compar || size == 0) {
         return NULL;
     }
 
     const char *p = (const char *)base;
-    for (size_t i = 0; i < *nmemb; i++)
-    {
-        if (compar(key, p) == 0)
-        {
+    for (size_t i = 0; i < *nmemb; i++) {
+        if (compar(key, p) == 0) {
             return (void *)p;
         }
         p += size;
@@ -560,11 +484,9 @@ void *lsearch(const void *key,
               void *base,
               size_t *nmemb,
               size_t size,
-              int (*compar)(const void *, const void *))
-{
+              int (*compar)(const void *, const void *)) {
     void *found = lfind(key, base, nmemb, size, compar);
-    if (found)
-    {
+    if (found) {
         return found;
     }
 
@@ -581,8 +503,7 @@ void *lsearch(const void *key,
  * ============================================================ */
 
 /* Queue element structure for insque/remque */
-struct qelem
-{
+struct qelem {
     struct qelem *q_forw;
     struct qelem *q_back;
 };
@@ -590,29 +511,23 @@ struct qelem
 /*
  * insque - Insert element in queue
  */
-void insque(void *element, void *pred)
-{
+void insque(void *element, void *pred) {
     struct qelem *elem = (struct qelem *)element;
     struct qelem *p = (struct qelem *)pred;
 
-    if (!elem)
-    {
+    if (!elem) {
         return;
     }
 
-    if (!p)
-    {
+    if (!p) {
         /* Create new circular list */
         elem->q_forw = elem;
         elem->q_back = elem;
-    }
-    else
-    {
+    } else {
         /* Insert after pred */
         elem->q_forw = p->q_forw;
         elem->q_back = p;
-        if (p->q_forw)
-        {
+        if (p->q_forw) {
             p->q_forw->q_back = elem;
         }
         p->q_forw = elem;
@@ -622,21 +537,17 @@ void insque(void *element, void *pred)
 /*
  * remque - Remove element from queue
  */
-void remque(void *element)
-{
+void remque(void *element) {
     struct qelem *elem = (struct qelem *)element;
 
-    if (!elem)
-    {
+    if (!elem) {
         return;
     }
 
-    if (elem->q_back)
-    {
+    if (elem->q_back) {
         elem->q_back->q_forw = elem->q_forw;
     }
-    if (elem->q_forw)
-    {
+    if (elem->q_forw) {
         elem->q_forw->q_back = elem->q_back;
     }
 

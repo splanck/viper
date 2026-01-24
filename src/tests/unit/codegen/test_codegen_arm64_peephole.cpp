@@ -281,14 +281,11 @@ TEST(AArch64Peephole, CmpZeroToTst)
     auto &bb = fn.blocks.back();
 
     // cmp x0, #0 (should become tst x0, x0)
-    bb.instrs.push_back(
-        MInstr{MOpcode::CmpRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
+    bb.instrs.push_back(MInstr{MOpcode::CmpRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
     // cmp x1, #5 (should NOT be changed - not zero)
-    bb.instrs.push_back(
-        MInstr{MOpcode::CmpRI, {MOperand::regOp(PhysReg::X1), MOperand::immOp(5)}});
+    bb.instrs.push_back(MInstr{MOpcode::CmpRI, {MOperand::regOp(PhysReg::X1), MOperand::immOp(5)}});
     // cmp x2, #0 (should become tst x2, x2)
-    bb.instrs.push_back(
-        MInstr{MOpcode::CmpRI, {MOperand::regOp(PhysReg::X2), MOperand::immOp(0)}});
+    bb.instrs.push_back(MInstr{MOpcode::CmpRI, {MOperand::regOp(PhysReg::X2), MOperand::immOp(0)}});
     // ret
     bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
 
@@ -323,20 +320,17 @@ TEST(AArch64Peephole, ArithmeticIdentityAddSub)
     auto &bb = fn.blocks.back();
 
     // add x0, x1, #0 (should become mov x0, x1)
-    bb.instrs.push_back(MInstr{MOpcode::AddRI,
-                               {MOperand::regOp(PhysReg::X0),
-                                MOperand::regOp(PhysReg::X1),
-                                MOperand::immOp(0)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::AddRI,
+               {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X1), MOperand::immOp(0)}});
     // sub x2, x3, #0 (should become mov x2, x3)
-    bb.instrs.push_back(MInstr{MOpcode::SubRI,
-                               {MOperand::regOp(PhysReg::X2),
-                                MOperand::regOp(PhysReg::X3),
-                                MOperand::immOp(0)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::SubRI,
+               {MOperand::regOp(PhysReg::X2), MOperand::regOp(PhysReg::X3), MOperand::immOp(0)}});
     // add x4, x5, #10 (should NOT be changed - not zero)
-    bb.instrs.push_back(MInstr{MOpcode::AddRI,
-                               {MOperand::regOp(PhysReg::X4),
-                                MOperand::regOp(PhysReg::X5),
-                                MOperand::immOp(10)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::AddRI,
+               {MOperand::regOp(PhysReg::X4), MOperand::regOp(PhysReg::X5), MOperand::immOp(10)}});
     // ret
     bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
 
@@ -370,25 +364,21 @@ TEST(AArch64Peephole, ArithmeticIdentityShift)
     auto &bb = fn.blocks.back();
 
     // lsl x0, x1, #0 (should become mov x0, x1)
-    bb.instrs.push_back(MInstr{MOpcode::LslRI,
-                               {MOperand::regOp(PhysReg::X0),
-                                MOperand::regOp(PhysReg::X1),
-                                MOperand::immOp(0)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::LslRI,
+               {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X1), MOperand::immOp(0)}});
     // lsr x2, x3, #0 (should become mov x2, x3)
-    bb.instrs.push_back(MInstr{MOpcode::LsrRI,
-                               {MOperand::regOp(PhysReg::X2),
-                                MOperand::regOp(PhysReg::X3),
-                                MOperand::immOp(0)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::LsrRI,
+               {MOperand::regOp(PhysReg::X2), MOperand::regOp(PhysReg::X3), MOperand::immOp(0)}});
     // asr x4, x5, #0 (should become mov x4, x5)
-    bb.instrs.push_back(MInstr{MOpcode::AsrRI,
-                               {MOperand::regOp(PhysReg::X4),
-                                MOperand::regOp(PhysReg::X5),
-                                MOperand::immOp(0)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::AsrRI,
+               {MOperand::regOp(PhysReg::X4), MOperand::regOp(PhysReg::X5), MOperand::immOp(0)}});
     // lsl x6, x7, #2 (should NOT be changed - not zero)
-    bb.instrs.push_back(MInstr{MOpcode::LslRI,
-                               {MOperand::regOp(PhysReg::X6),
-                                MOperand::regOp(PhysReg::X7),
-                                MOperand::immOp(2)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::LslRI,
+               {MOperand::regOp(PhysReg::X6), MOperand::regOp(PhysReg::X7), MOperand::immOp(2)}});
     // ret
     bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
 
@@ -421,8 +411,7 @@ TEST(AArch64Peephole, TstEmitsCorrectly)
     auto &bb = fn.blocks.back();
 
     // cmp x0, #0 (will become tst x0, x0)
-    bb.instrs.push_back(
-        MInstr{MOpcode::CmpRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
+    bb.instrs.push_back(MInstr{MOpcode::CmpRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
     // cset x1, eq
     bb.instrs.push_back(
         MInstr{MOpcode::Cset, {MOperand::regOp(PhysReg::X1), MOperand::condOp("eq")}});

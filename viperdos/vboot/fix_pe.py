@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Fix PE headers for UEFI executable after objcopy conversion."""
-import sys
 import struct
+import sys
+
 
 def fix_pe_headers(input_file, output_file):
     with open(input_file, 'rb') as f:
@@ -11,7 +12,7 @@ def fix_pe_headers(input_file, output_file):
     pe_offset = struct.unpack_from('<I', data, 0x3C)[0]
 
     # Verify PE signature
-    if data[pe_offset:pe_offset+4] != b'PE\x00\x00':
+    if data[pe_offset:pe_offset + 4] != b'PE\x00\x00':
         print(f"Error: No PE signature at offset {pe_offset}")
         sys.exit(1)
 
@@ -44,7 +45,7 @@ def fix_pe_headers(input_file, output_file):
 
     for i in range(num_sections):
         sec_offset = sections_offset + i * 40
-        name = data[sec_offset:sec_offset+8].rstrip(b'\x00').decode('ascii', errors='ignore')
+        name = data[sec_offset:sec_offset + 8].rstrip(b'\x00').decode('ascii', errors='ignore')
         virtual_size = struct.unpack_from('<I', data, sec_offset + 8)[0]
         virtual_addr = struct.unpack_from('<I', data, sec_offset + 12)[0]
         raw_size = struct.unpack_from('<I', data, sec_offset + 16)[0]
@@ -64,7 +65,7 @@ def fix_pe_headers(input_file, output_file):
 
     # Section alignment
     section_alignment = 0x1000  # 4KB
-    file_alignment = 0x200      # 512 bytes
+    file_alignment = 0x200  # 512 bytes
 
     # Fix PE32+ optional header fields
     # Offset from opt_offset:
@@ -138,6 +139,7 @@ def fix_pe_headers(input_file, output_file):
     print(f"  Header size: 0x{header_size:X}")
     print(f"  Sections: {num_sections}")
     print(f"  Subsystem: EFI_APPLICATION (10)")
+
 
 if __name__ == '__main__':
     if len(sys.argv) != 3:

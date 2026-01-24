@@ -292,7 +292,7 @@ PhysReg LinearScanAllocator::takeRegister(RegClass cls, std::vector<MInstr> &pre
     }
     assert(!pool.empty() && "register pool exhausted");
     const PhysReg reg = pool.front();
-    pool.pop_front();  // O(1) instead of O(n) erase(begin())
+    pool.pop_front(); // O(1) instead of O(n) erase(begin())
     return reg;
 }
 
@@ -339,8 +339,8 @@ void LinearScanAllocator::spillOne(RegClass cls, std::vector<MInstr> &prefix)
     const auto *interval = intervals_.lookup(victimId);
     if (interval)
     {
-        spiller_.spillValueWithReuse(cls, victimId, victim, poolFor(cls), prefix, result_,
-                                     interval->start, interval->end);
+        spiller_.spillValueWithReuse(
+            cls, victimId, victim, poolFor(cls), prefix, result_, interval->start, interval->end);
     }
     else
     {
@@ -488,8 +488,8 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
                                 // Use lifetime-based slot reuse when interval is available
                                 if (interval)
                                 {
-                                    spiller_.ensureSpillSlotWithReuse(RegClass::GPR, state.spill,
-                                                                      interval->start, interval->end);
+                                    spiller_.ensureSpillSlotWithReuse(
+                                        RegClass::GPR, state.spill, interval->start, interval->end);
                                 }
                                 else
                                 {
@@ -557,7 +557,7 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
                 const auto *interval = intervals_.lookup(vreg);
                 if (interval && interval->end <= currentInstrIdx_ + 1)
                 {
-                    continue;  // Only skip if interval confirms value is dead after call
+                    continue; // Only skip if interval confirms value is dead after call
                 }
                 gprToSpill.push_back(vreg);
             }
@@ -579,7 +579,7 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
                 const auto *interval = intervals_.lookup(vreg);
                 if (interval && interval->end <= currentInstrIdx_ + 1)
                 {
-                    continue;  // Only skip if interval confirms value is dead after call
+                    continue; // Only skip if interval confirms value is dead after call
                 }
                 xmmToSpill.push_back(vreg);
             }
@@ -591,8 +591,8 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
                 const auto *interval = intervals_.lookup(vreg);
                 if (interval)
                 {
-                    spiller_.ensureSpillSlotWithReuse(RegClass::GPR, state.spill,
-                                                      interval->start, interval->end);
+                    spiller_.ensureSpillSlotWithReuse(
+                        RegClass::GPR, state.spill, interval->start, interval->end);
                 }
                 else
                 {
@@ -611,8 +611,8 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
                 const auto *interval = intervals_.lookup(vreg);
                 if (interval)
                 {
-                    spiller_.ensureSpillSlotWithReuse(RegClass::XMM, state.spill,
-                                                      interval->start, interval->end);
+                    spiller_.ensureSpillSlotWithReuse(
+                        RegClass::XMM, state.spill, interval->start, interval->end);
                 }
                 else
                 {

@@ -9,8 +9,7 @@
 
 #include "type_traits"
 
-namespace std
-{
+namespace std {
 
 /*
  * ===========================================================================
@@ -107,8 +106,7 @@ concept copy_constructible =
  * ===========================================================================
  */
 
-namespace __detail
-{
+namespace __detail {
 // Helper for boolean testability
 template <class T>
 concept __boolean_testable_impl = convertible_to<T, bool>;

@@ -29,8 +29,8 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
-#include "tools/common/module_loader.hpp"
 #include "tools/common/ArgvView.hpp"
+#include "tools/common/module_loader.hpp"
 
 #include <cctype>
 #include <filesystem>

@@ -219,8 +219,7 @@ static void *parse_scalar(const char *str, size_t len)
 
     // Null
     if (is_special_value(str, len, "null") || is_special_value(str, len, "~") ||
-        (len == 4 && strncmp(str, "Null", 4) == 0) ||
-        (len == 4 && strncmp(str, "NULL", 4) == 0))
+        (len == 4 && strncmp(str, "Null", 4) == 0) || (len == 4 && strncmp(str, "NULL", 4) == 0))
     {
         return NULL;
     }
@@ -329,14 +328,29 @@ static rt_string parse_quoted_string(yaml_parser *p, char quote)
             c = parser_advance(p);
             switch (c)
             {
-            case 'n': c = '\n'; break;
-            case 't': c = '\t'; break;
-            case 'r': c = '\r'; break;
-            case '\\': c = '\\'; break;
-            case '"': c = '"'; break;
-            case '\'': c = '\''; break;
-            case '0': c = '\0'; break;
-            default: break;
+                case 'n':
+                    c = '\n';
+                    break;
+                case 't':
+                    c = '\t';
+                    break;
+                case 'r':
+                    c = '\r';
+                    break;
+                case '\\':
+                    c = '\\';
+                    break;
+                case '"':
+                    c = '"';
+                    break;
+                case '\'':
+                    c = '\'';
+                    break;
+                case '0':
+                    c = '\0';
+                    break;
+                default:
+                    break;
             }
         }
         else
@@ -591,8 +605,7 @@ static void *parse_value(yaml_parser *p, int base_indent)
     size_t start = p->pos;
     while (!parser_eof(p) && parser_peek(p) != '\n' && parser_peek(p) != '#')
     {
-        if (parser_peek(p) == ':' &&
-            (parser_peek_at(p, 1) == ' ' || parser_peek_at(p, 1) == '\n'))
+        if (parser_peek(p) == ':' && (parser_peek_at(p, 1) == ' ' || parser_peek_at(p, 1) == '\n'))
             break;
         parser_advance(p);
     }
@@ -690,16 +703,15 @@ static bool needs_quoting(const char *str)
         return true;
 
     // Check for special values
-    if (strcmp(str, "true") == 0 || strcmp(str, "false") == 0 ||
-        strcmp(str, "null") == 0 || strcmp(str, "~") == 0 ||
-        strcmp(str, "yes") == 0 || strcmp(str, "no") == 0)
+    if (strcmp(str, "true") == 0 || strcmp(str, "false") == 0 || strcmp(str, "null") == 0 ||
+        strcmp(str, "~") == 0 || strcmp(str, "yes") == 0 || strcmp(str, "no") == 0)
         return true;
 
     // Check first char
     char c = str[0];
-    if (c == '-' || c == ':' || c == '[' || c == ']' || c == '{' || c == '}' ||
-        c == '#' || c == '&' || c == '*' || c == '!' || c == '|' || c == '>' ||
-        c == '\'' || c == '"' || c == '%' || c == '@' || c == '`')
+    if (c == '-' || c == ':' || c == '[' || c == ']' || c == '{' || c == '}' || c == '#' ||
+        c == '&' || c == '*' || c == '!' || c == '|' || c == '>' || c == '\'' || c == '"' ||
+        c == '%' || c == '@' || c == '`')
         return true;
 
     // Check for special chars
@@ -762,12 +774,24 @@ static void format_string(const char *str, char **buf, size_t *cap, size_t *len)
     {
         switch (*p)
         {
-        case '"': buf_append(buf, cap, len, "\\\""); break;
-        case '\\': buf_append(buf, cap, len, "\\\\"); break;
-        case '\n': buf_append(buf, cap, len, "\\n"); break;
-        case '\t': buf_append(buf, cap, len, "\\t"); break;
-        case '\r': buf_append(buf, cap, len, "\\r"); break;
-        default: buf_append_char(buf, cap, len, *p); break;
+            case '"':
+                buf_append(buf, cap, len, "\\\"");
+                break;
+            case '\\':
+                buf_append(buf, cap, len, "\\\\");
+                break;
+            case '\n':
+                buf_append(buf, cap, len, "\\n");
+                break;
+            case '\t':
+                buf_append(buf, cap, len, "\\t");
+                break;
+            case '\r':
+                buf_append(buf, cap, len, "\\r");
+                break;
+            default:
+                buf_append_char(buf, cap, len, *p);
+                break;
         }
     }
     buf_append_char(buf, cap, len, '"');
@@ -896,8 +920,8 @@ static void format_value(void *obj, int indent, int level, char **buf, size_t *c
 
             // Check if value needs newline (sequences and maps are complex)
             int64_t val_type = rt_box_type(val);
-            bool complex_value = (val_type < 0 && rt_seq_len(val) > 0) ||
-                                 (rt_map_keys(val) != NULL);
+            bool complex_value =
+                (val_type < 0 && rt_seq_len(val) > 0) || (rt_map_keys(val) != NULL);
 
             if (complex_value)
             {

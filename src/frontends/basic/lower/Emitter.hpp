@@ -37,7 +37,7 @@ namespace il::frontends::basic
 {
 class Lowerer;
 struct SymbolInfo;
-}
+} // namespace il::frontends::basic
 
 namespace il::frontends::basic::lower
 {
@@ -158,8 +158,10 @@ class Emitter
     /// @param state Tracks which runtime helpers have been requested.
     /// @param skipObjectArrays If true, return false for object arrays without emitting.
     /// @return True if release was emitted, false if skipped.
-    bool emitArrayRelease(Value handle, const SymbolInfo &info,
-                          ArrayReleaseState &state, bool skipObjectArrays);
+    bool emitArrayRelease(Value handle,
+                          const SymbolInfo &info,
+                          ArrayReleaseState &state,
+                          bool skipObjectArrays);
 
     struct TempRelease
     {

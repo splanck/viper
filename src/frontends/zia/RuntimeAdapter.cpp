@@ -56,42 +56,42 @@ TypeRef toZiaType(il::runtime::ILScalarType t)
     // ILScalarType values are added but not handled here.
     switch (t)
     {
-    case il::runtime::ILScalarType::I64:
-        // 64-bit signed integer. This is the only integer width at the IL
-        // level; Zia's Integer type is semantically equivalent.
-        return types::integer();
+        case il::runtime::ILScalarType::I64:
+            // 64-bit signed integer. This is the only integer width at the IL
+            // level; Zia's Integer type is semantically equivalent.
+            return types::integer();
 
-    case il::runtime::ILScalarType::F64:
-        // 64-bit IEEE 754 floating point. Zia calls this "Number" to match
-        // its high-level semantics (no distinction between float/double).
-        return types::number();
+        case il::runtime::ILScalarType::F64:
+            // 64-bit IEEE 754 floating point. Zia calls this "Number" to match
+            // its high-level semantics (no distinction between float/double).
+            return types::number();
 
-    case il::runtime::ILScalarType::Bool:
-        // Boolean type (i1 in IL). Maps directly to Zia's Boolean type.
-        return types::boolean();
+        case il::runtime::ILScalarType::Bool:
+            // Boolean type (i1 in IL). Maps directly to Zia's Boolean type.
+            return types::boolean();
 
-    case il::runtime::ILScalarType::String:
-        // Immutable string reference. IL strings are reference-counted
-        // internally by the runtime; Zia treats them as value-like.
-        return types::string();
+        case il::runtime::ILScalarType::String:
+            // Immutable string reference. IL strings are reference-counted
+            // internally by the runtime; Zia treats them as value-like.
+            return types::string();
 
-    case il::runtime::ILScalarType::Void:
-        // No return value. Used for procedures and setters.
-        return types::voidType();
+        case il::runtime::ILScalarType::Void:
+            // No return value. Used for procedures and setters.
+            return types::voidType();
 
-    case il::runtime::ILScalarType::Object:
-        // Opaque object pointer. Used for runtime class instances (like
-        // Viper.File, Viper.Graphics.Canvas) where the actual type is
-        // tracked separately in Zia's type registry.
-        return types::ptr();
+        case il::runtime::ILScalarType::Object:
+            // Opaque object pointer. Used for runtime class instances (like
+            // Viper.File, Viper.Graphics.Canvas) where the actual type is
+            // tracked separately in Zia's type registry.
+            return types::ptr();
 
-    case il::runtime::ILScalarType::Unknown:
-    default:
-        // Unknown type indicates a parse error or unrecognized type token
-        // in the signature. Return unknown() to signal the error; the
-        // caller should check isValid() on the signature and not register
-        // functions with unknown types.
-        return types::unknown();
+        case il::runtime::ILScalarType::Unknown:
+        default:
+            // Unknown type indicates a parse error or unrecognized type token
+            // in the signature. Return unknown() to signal the error; the
+            // caller should check isValid() on the signature and not register
+            // functions with unknown types.
+            return types::unknown();
     }
 }
 

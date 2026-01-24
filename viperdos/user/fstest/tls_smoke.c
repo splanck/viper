@@ -9,15 +9,13 @@
 #include <string.h>
 #include <tls.h>
 
-int main(void)
-{
+int main(void) {
     printf("TLS smoke test starting...\n");
 
     /* Test 1: Config initialization */
     tls_config_t config;
     tls_config_init(&config);
-    if (config.verify_cert != 1)
-    {
+    if (config.verify_cert != 1) {
         printf("FAIL: config init failed\n");
         return 1;
     }
@@ -32,8 +30,7 @@ int main(void)
     /* Note: tls_new with invalid fd won't fail immediately,
        failure happens at handshake */
     tls_session_t *session = tls_new(-1, &config);
-    if (!session)
-    {
+    if (!session) {
         printf("FAIL: tls_new returned NULL\n");
         return 1;
     }
@@ -42,14 +39,12 @@ int main(void)
     /* Test 3: Get info on unconnected session */
     tls_info_t info;
     int rc = tls_get_info(session, &info);
-    if (rc != 0)
-    {
+    if (rc != 0) {
         printf("FAIL: tls_get_info failed\n");
         tls_close(session);
         return 1;
     }
-    if (info.connected != 0)
-    {
+    if (info.connected != 0) {
         printf("FAIL: unconnected session reports connected\n");
         tls_close(session);
         return 1;
@@ -58,8 +53,7 @@ int main(void)
 
     /* Test 4: Get error message */
     const char *err = tls_get_error(session);
-    if (!err)
-    {
+    if (!err) {
         printf("FAIL: tls_get_error returned NULL\n");
         tls_close(session);
         return 1;

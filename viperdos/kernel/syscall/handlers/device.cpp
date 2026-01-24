@@ -10,7 +10,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "handlers_internal.hpp"
 #include "../../arch/aarch64/gic.hpp"
 #include "../../cap/handle.hpp"
 #include "../../cap/rights.hpp"
@@ -21,19 +20,18 @@
 #include "../../sched/task.hpp"
 #include "../../viper/address_space.hpp"
 #include "../../viper/viper.hpp"
+#include "handlers_internal.hpp"
 
 using kernel::Spinlock;
 using kernel::SpinlockGuard;
 
-namespace syscall
-{
+namespace syscall {
 
 // =============================================================================
 // IRQ State Management
 // =============================================================================
 
-struct IrqState
-{
+struct IrqState {
     u32 owner_task_id;
     u32 owner_viper_id;
     sched::WaitQueue waiters;
@@ -45,13 +43,11 @@ struct IrqState
 static IrqState irq_states[gic::MAX_IRQS];
 static bool irq_states_initialized = false;
 
-static void init_irq_states()
-{
+static void init_irq_states() {
     if (irq_states_initialized)
         return;
 
-    for (u32 i = 0; i < gic::MAX_IRQS; i++)
-    {
+    for (u32 i = 0; i < gic::MAX_IRQS; i++) {
         irq_states[i].owner_task_id = 0;
         irq_states[i].owner_viper_id = 0;
         sched::wait_init(&irq_states[i].waiters);
@@ -61,13 +57,11 @@ static void init_irq_states()
     irq_states_initialized = true;
 }
 
-static void user_irq_handler(u32 irq)
-{
+static void user_irq_handler(u32 irq) {
     if (irq >= gic::MAX_IRQS)
         return;
 
-    if (!irq_states_initialized)
-    {
+    if (!irq_states_initialized) {
         gic::disable_irq(irq);
         return;
     }
@@ -75,8 +69,7 @@ static void user_irq_handler(u32 irq)
     IrqState *state = &irq_states[irq];
     SpinlockGuard guard(state->lock);
 
-    if (state->owner_task_id == 0)
-    {
+    if (state->owner_task_id == 0) {
         gic::disable_irq(irq);
         state->enabled = false;
         return;
@@ -92,8 +85,7 @@ static void user_irq_handler(u32 irq)
 // Known Device Regions
 // =============================================================================
 
-struct DeviceMmioRegion
-{
+struct DeviceMmioRegion {
     const char *name;
     u64 phys_base;
     u64 size;
@@ -122,13 +114,11 @@ static const DeviceMmioRegion known_devices[] = {
 };
 static constexpr u32 KNOWN_DEVICE_COUNT = sizeof(known_devices) / sizeof(known_devices[0]);
 
-static bool has_device_cap(viper::Viper *v, cap::Rights required)
-{
+static bool has_device_cap(viper::Viper *v, cap::Rights required) {
     if (!v || !v->cap_table)
         return false;
 
-    for (usize i = 0; i < v->cap_table->capacity(); i++)
-    {
+    for (usize i = 0; i < v->cap_table->capacity(); i++) {
         cap::Entry *e = v->cap_table->entry_at(i);
         if (!e || e->kind == cap::Kind::Invalid)
             continue;
@@ -145,8 +135,7 @@ static bool has_device_cap(viper::Viper *v, cap::Rights required)
 // DMA Allocation Tracking
 // =============================================================================
 
-struct DmaAllocation
-{
+struct DmaAllocation {
     u64 phys_addr;
     u64 virt_addr;
     u64 size;
@@ -159,12 +148,10 @@ static DmaAllocation dma_allocations[MAX_DMA_ALLOCATIONS];
 static Spinlock dma_lock;
 static bool dma_initialized = false;
 
-static void init_dma_allocations()
-{
+static void init_dma_allocations() {
     if (dma_initialized)
         return;
-    for (u32 i = 0; i < MAX_DMA_ALLOCATIONS; i++)
-    {
+    for (u32 i = 0; i < MAX_DMA_ALLOCATIONS; i++) {
         dma_allocations[i].in_use = false;
     }
     dma_initialized = true;
@@ -174,8 +161,7 @@ static void init_dma_allocations()
 // Shared Memory Tracking
 // =============================================================================
 
-struct ShmMapping
-{
+struct ShmMapping {
     u32 owner_viper_id;
     u64 virt_addr;
     u64 size;
@@ -188,12 +174,10 @@ static ShmMapping shm_mappings[MAX_SHM_MAPPINGS];
 static Spinlock shm_lock;
 static bool shm_mappings_initialized = false;
 
-static void init_shm_mappings()
-{
+static void init_shm_mappings() {
     if (shm_mappings_initialized)
         return;
-    for (u32 i = 0; i < MAX_SHM_MAPPINGS; i++)
-    {
+    for (u32 i = 0; i < MAX_SHM_MAPPINGS; i++) {
         shm_mappings[i].in_use = false;
         shm_mappings[i].owner_viper_id = 0;
         shm_mappings[i].virt_addr = 0;
@@ -203,24 +187,19 @@ static void init_shm_mappings()
     shm_mappings_initialized = true;
 }
 
-static bool track_shm_mapping(u32 viper_id, u64 virt_addr, u64 size, kobj::SharedMemory *shm)
-{
+static bool track_shm_mapping(u32 viper_id, u64 virt_addr, u64 size, kobj::SharedMemory *shm) {
     init_shm_mappings();
     SpinlockGuard guard(shm_lock);
 
-    for (u32 i = 0; i < MAX_SHM_MAPPINGS; i++)
-    {
+    for (u32 i = 0; i < MAX_SHM_MAPPINGS; i++) {
         if (shm_mappings[i].in_use && shm_mappings[i].owner_viper_id == viper_id &&
-            shm_mappings[i].virt_addr == virt_addr)
-        {
+            shm_mappings[i].virt_addr == virt_addr) {
             return false;
         }
     }
 
-    for (u32 i = 0; i < MAX_SHM_MAPPINGS; i++)
-    {
-        if (!shm_mappings[i].in_use)
-        {
+    for (u32 i = 0; i < MAX_SHM_MAPPINGS; i++) {
+        if (!shm_mappings[i].in_use) {
             shm_mappings[i].in_use = true;
             shm_mappings[i].owner_viper_id = viper_id;
             shm_mappings[i].virt_addr = virt_addr;
@@ -236,13 +215,11 @@ static bool track_shm_mapping(u32 viper_id, u64 virt_addr, u64 size, kobj::Share
 static bool untrack_shm_mapping(u32 viper_id,
                                 u64 virt_addr,
                                 u64 *out_size,
-                                kobj::SharedMemory **out_shm)
-{
+                                kobj::SharedMemory **out_shm) {
     init_shm_mappings();
     SpinlockGuard guard(shm_lock);
 
-    for (u32 i = 0; i < MAX_SHM_MAPPINGS; i++)
-    {
+    for (u32 i = 0; i < MAX_SHM_MAPPINGS; i++) {
         if (!shm_mappings[i].in_use)
             continue;
         if (shm_mappings[i].owner_viper_id != viper_id)
@@ -270,52 +247,43 @@ static bool untrack_shm_mapping(u32 viper_id,
 // Device Syscall Handlers
 // =============================================================================
 
-SyscallResult sys_map_device(u64 a0, u64 a1, u64 a2, u64, u64, u64)
-{
+SyscallResult sys_map_device(u64 a0, u64 a1, u64 a2, u64, u64, u64) {
     u64 phys_addr = a0;
     u64 size = a1;
     u64 user_virt = a2;
 
-    if (size == 0 || size > 16 * 1024 * 1024)
-    {
-        return SyscallResult::err(error::VERR_INVALID_ARG);
+    if (size == 0 || size > 16 * 1024 * 1024) {
+        return err_invalid_arg();
     }
 
     viper::Viper *v = viper::current();
-    if (!v || !v->cap_table)
-    {
-        return SyscallResult::err(error::VERR_NOT_FOUND);
+    if (!v || !v->cap_table) {
+        return err_not_found();
     }
 
-    if (!has_device_cap(v, cap::CAP_DEVICE_ACCESS))
-    {
-        return SyscallResult::err(error::VERR_PERMISSION);
+    if (!has_device_cap(v, cap::CAP_DEVICE_ACCESS)) {
+        return err_permission();
     }
 
     bool valid_device = false;
-    for (u32 i = 0; i < KNOWN_DEVICE_COUNT; i++)
-    {
+    for (u32 i = 0; i < KNOWN_DEVICE_COUNT; i++) {
         if (phys_addr >= known_devices[i].phys_base &&
-            phys_addr + size <= known_devices[i].phys_base + known_devices[i].size)
-        {
+            phys_addr + size <= known_devices[i].phys_base + known_devices[i].size) {
             valid_device = true;
             break;
         }
     }
 
-    if (!valid_device)
-    {
-        return SyscallResult::err(error::VERR_PERMISSION);
+    if (!valid_device) {
+        return err_permission();
     }
 
     viper::AddressSpace *as = viper::get_address_space(v);
-    if (!as)
-    {
-        return SyscallResult::err(error::VERR_NOT_FOUND);
+    if (!as) {
+        return err_not_found();
     }
 
-    if (user_virt == 0)
-    {
+    if (user_virt == 0) {
         user_virt = 0x100000000ULL + (phys_addr & 0x0FFFFFFFULL);
     }
 
@@ -323,33 +291,28 @@ SyscallResult sys_map_device(u64 a0, u64 a1, u64 a2, u64, u64, u64)
     u64 virt_aligned = pmm::page_align_down(user_virt);
     u64 size_aligned = pmm::page_align_up(size + (phys_addr - phys_aligned));
 
-    if (!as->map(virt_aligned, phys_aligned, size_aligned, viper::prot::RW))
-    {
-        return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
+    if (!as->map(virt_aligned, phys_aligned, size_aligned, viper::prot::RW)) {
+        return err_out_of_memory();
     }
 
-    return SyscallResult::ok(virt_aligned + (phys_addr - phys_aligned));
+    return ok_u64(virt_aligned + (phys_addr - phys_aligned));
 }
 
-SyscallResult sys_irq_register(u64 a0, u64, u64, u64, u64, u64)
-{
+SyscallResult sys_irq_register(u64 a0, u64, u64, u64, u64, u64) {
     u32 irq = static_cast<u32>(a0);
 
-    if (irq < 32 || irq >= gic::MAX_IRQS)
-    {
-        return SyscallResult::err(error::VERR_INVALID_ARG);
+    if (irq < 32 || irq >= gic::MAX_IRQS) {
+        return err_invalid_arg();
     }
 
     viper::Viper *v = viper::current();
     task::Task *t = task::current();
-    if (!v || !t)
-    {
-        return SyscallResult::err(error::VERR_NOT_FOUND);
+    if (!v || !t) {
+        return err_not_found();
     }
 
-    if (!has_device_cap(v, cap::CAP_IRQ_ACCESS))
-    {
-        return SyscallResult::err(error::VERR_PERMISSION);
+    if (!has_device_cap(v, cap::CAP_IRQ_ACCESS)) {
+        return err_permission();
     }
 
     init_irq_states();
@@ -357,14 +320,12 @@ SyscallResult sys_irq_register(u64 a0, u64, u64, u64, u64, u64)
     IrqState *state = &irq_states[irq];
     SpinlockGuard guard(state->lock);
 
-    if (gic::has_handler(irq))
-    {
-        return SyscallResult::err(error::VERR_BUSY);
+    if (gic::has_handler(irq)) {
+        return err_code(error::VERR_BUSY);
     }
 
-    if (state->owner_task_id != 0)
-    {
-        return SyscallResult::err(error::VERR_BUSY);
+    if (state->owner_task_id != 0) {
+        return err_code(error::VERR_BUSY);
     }
 
     state->owner_task_id = t->id;
@@ -378,22 +339,19 @@ SyscallResult sys_irq_register(u64 a0, u64, u64, u64, u64, u64)
     return SyscallResult::ok();
 }
 
-SyscallResult sys_irq_wait(u64 a0, u64 a1, u64, u64, u64, u64)
-{
+SyscallResult sys_irq_wait(u64 a0, u64 a1, u64, u64, u64, u64) {
     u32 irq = static_cast<u32>(a0);
     u64 timeout_ms = a1;
     (void)timeout_ms;
 
-    if (irq < 32 || irq >= gic::MAX_IRQS)
-    {
-        return SyscallResult::err(error::VERR_INVALID_ARG);
+    if (irq < 32 || irq >= gic::MAX_IRQS) {
+        return err_invalid_arg();
     }
 
     task::Task *t = task::current();
     viper::Viper *v = viper::current();
-    if (!t || !v)
-    {
-        return SyscallResult::err(error::VERR_NOT_FOUND);
+    if (!t || !v) {
+        return err_not_found();
     }
 
     init_irq_states();
@@ -402,13 +360,11 @@ SyscallResult sys_irq_wait(u64 a0, u64 a1, u64, u64, u64, u64)
 
     {
         SpinlockGuard guard(state->lock);
-        if (state->owner_task_id != t->id)
-        {
-            return SyscallResult::err(error::VERR_PERMISSION);
+        if (state->owner_task_id != t->id) {
+            return err_permission();
         }
 
-        if (state->pending)
-        {
+        if (state->pending) {
             state->pending = false;
             return SyscallResult::ok();
         }
@@ -420,8 +376,7 @@ SyscallResult sys_irq_wait(u64 a0, u64 a1, u64, u64, u64, u64)
 
     {
         SpinlockGuard guard(state->lock);
-        if (state->pending)
-        {
+        if (state->pending) {
             state->pending = false;
             return SyscallResult::ok();
         }
@@ -430,19 +385,16 @@ SyscallResult sys_irq_wait(u64 a0, u64 a1, u64, u64, u64, u64)
     return SyscallResult::ok();
 }
 
-SyscallResult sys_irq_ack(u64 a0, u64, u64, u64, u64, u64)
-{
+SyscallResult sys_irq_ack(u64 a0, u64, u64, u64, u64, u64) {
     u32 irq = static_cast<u32>(a0);
 
-    if (irq < 32 || irq >= gic::MAX_IRQS)
-    {
-        return SyscallResult::err(error::VERR_INVALID_ARG);
+    if (irq < 32 || irq >= gic::MAX_IRQS) {
+        return err_invalid_arg();
     }
 
     task::Task *t = task::current();
-    if (!t)
-    {
-        return SyscallResult::err(error::VERR_NOT_FOUND);
+    if (!t) {
+        return err_not_found();
     }
 
     init_irq_states();
@@ -450,9 +402,8 @@ SyscallResult sys_irq_ack(u64 a0, u64, u64, u64, u64, u64)
     IrqState *state = &irq_states[irq];
     SpinlockGuard guard(state->lock);
 
-    if (state->owner_task_id != t->id)
-    {
-        return SyscallResult::err(error::VERR_PERMISSION);
+    if (state->owner_task_id != t->id) {
+        return err_permission();
     }
 
     state->enabled = true;
@@ -461,19 +412,16 @@ SyscallResult sys_irq_ack(u64 a0, u64, u64, u64, u64, u64)
     return SyscallResult::ok();
 }
 
-SyscallResult sys_irq_unregister(u64 a0, u64, u64, u64, u64, u64)
-{
+SyscallResult sys_irq_unregister(u64 a0, u64, u64, u64, u64, u64) {
     u32 irq = static_cast<u32>(a0);
 
-    if (irq < 32 || irq >= gic::MAX_IRQS)
-    {
-        return SyscallResult::err(error::VERR_INVALID_ARG);
+    if (irq < 32 || irq >= gic::MAX_IRQS) {
+        return err_invalid_arg();
     }
 
     task::Task *t = task::current();
-    if (!t)
-    {
-        return SyscallResult::err(error::VERR_NOT_FOUND);
+    if (!t) {
+        return err_not_found();
     }
 
     init_irq_states();
@@ -481,9 +429,8 @@ SyscallResult sys_irq_unregister(u64 a0, u64, u64, u64, u64, u64)
     IrqState *state = &irq_states[irq];
     SpinlockGuard guard(state->lock);
 
-    if (state->owner_task_id != t->id)
-    {
-        return SyscallResult::err(error::VERR_PERMISSION);
+    if (state->owner_task_id != t->id) {
+        return err_permission();
     }
 
     gic::disable_irq(irq);
@@ -499,75 +446,63 @@ SyscallResult sys_irq_unregister(u64 a0, u64, u64, u64, u64, u64)
     return SyscallResult::ok();
 }
 
-SyscallResult sys_dma_alloc(u64 a0, u64 a1, u64, u64, u64, u64)
-{
+SyscallResult sys_dma_alloc(u64 a0, u64 a1, u64, u64, u64, u64) {
     u64 size = a0;
     u64 *phys_out = reinterpret_cast<u64 *>(a1);
 
-    if (size == 0 || size > 16 * 1024 * 1024)
-    {
-        return SyscallResult::err(error::VERR_INVALID_ARG);
+    if (size == 0 || size > 16 * 1024 * 1024) {
+        return err_invalid_arg();
     }
 
-    if (phys_out && !validate_user_write(phys_out, sizeof(u64)))
-    {
-        return SyscallResult::err(error::VERR_INVALID_ARG);
+    if (phys_out && !validate_user_write(phys_out, sizeof(u64))) {
+        return err_invalid_arg();
     }
 
     viper::Viper *v = viper::current();
-    if (!v)
-    {
-        return SyscallResult::err(error::VERR_NOT_FOUND);
+    if (!v) {
+        return err_not_found();
     }
 
-    if (!has_device_cap(v, cap::CAP_DMA_ACCESS))
-    {
-        return SyscallResult::err(error::VERR_PERMISSION);
+    if (!has_device_cap(v, cap::CAP_DMA_ACCESS)) {
+        return err_permission();
     }
 
     init_dma_allocations();
 
     u64 num_pages = (size + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE;
     u64 phys_addr = pmm::alloc_pages(num_pages);
-    if (phys_addr == 0)
-    {
-        return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
+    if (phys_addr == 0) {
+        return err_out_of_memory();
     }
 
     viper::AddressSpace *as = viper::get_address_space(v);
-    if (!as)
-    {
+    if (!as) {
         pmm::free_pages(phys_addr, num_pages);
-        return SyscallResult::err(error::VERR_NOT_FOUND);
+        return err_not_found();
     }
 
     u64 virt_addr = 0x200000000ULL;
 
     SpinlockGuard guard(dma_lock);
     u32 slot = MAX_DMA_ALLOCATIONS;
-    for (u32 i = 0; i < MAX_DMA_ALLOCATIONS; i++)
-    {
-        if (!dma_allocations[i].in_use)
-        {
+    for (u32 i = 0; i < MAX_DMA_ALLOCATIONS; i++) {
+        if (!dma_allocations[i].in_use) {
             slot = i;
             break;
         }
-        if (dma_allocations[i].virt_addr + dma_allocations[i].size > virt_addr)
-        {
+        if (dma_allocations[i].virt_addr + dma_allocations[i].size > virt_addr) {
             virt_addr = pmm::page_align_up(dma_allocations[i].virt_addr + dma_allocations[i].size);
         }
     }
 
-    if (slot == MAX_DMA_ALLOCATIONS)
-    {
+    if (slot == MAX_DMA_ALLOCATIONS) {
         pmm::free_pages(phys_addr, num_pages);
-        return SyscallResult::err(error::VERR_NO_RESOURCE);
+        return err_code(error::VERR_NO_RESOURCE);
     }
 
-    if (!as->map(virt_addr, phys_addr, num_pages * pmm::PAGE_SIZE, viper::prot::RW))
-    {
+    if (!as->map(virt_addr, phys_addr, num_pages * pmm::PAGE_SIZE, viper::prot::RW)) {
         pmm::free_pages(phys_addr, num_pages);
-        return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
+        return err_out_of_memory();
     }
 
     dma_allocations[slot].phys_addr = phys_addr;
@@ -576,22 +511,19 @@ SyscallResult sys_dma_alloc(u64 a0, u64 a1, u64, u64, u64, u64)
     dma_allocations[slot].owner_viper_id = v->id;
     dma_allocations[slot].in_use = true;
 
-    if (phys_out)
-    {
+    if (phys_out) {
         *phys_out = phys_addr;
     }
 
-    return SyscallResult::ok(virt_addr);
+    return ok_u64(virt_addr);
 }
 
-SyscallResult sys_dma_free(u64 a0, u64, u64, u64, u64, u64)
-{
+SyscallResult sys_dma_free(u64 a0, u64, u64, u64, u64, u64) {
     u64 virt_addr = a0;
 
     viper::Viper *v = viper::current();
-    if (!v)
-    {
-        return SyscallResult::err(error::VERR_NOT_FOUND);
+    if (!v) {
+        return err_not_found();
     }
 
     init_dma_allocations();
@@ -599,24 +531,20 @@ SyscallResult sys_dma_free(u64 a0, u64, u64, u64, u64, u64)
     SpinlockGuard guard(dma_lock);
 
     u32 slot = MAX_DMA_ALLOCATIONS;
-    for (u32 i = 0; i < MAX_DMA_ALLOCATIONS; i++)
-    {
+    for (u32 i = 0; i < MAX_DMA_ALLOCATIONS; i++) {
         if (dma_allocations[i].in_use && dma_allocations[i].virt_addr == virt_addr &&
-            dma_allocations[i].owner_viper_id == v->id)
-        {
+            dma_allocations[i].owner_viper_id == v->id) {
             slot = i;
             break;
         }
     }
 
-    if (slot == MAX_DMA_ALLOCATIONS)
-    {
-        return SyscallResult::err(error::VERR_NOT_FOUND);
+    if (slot == MAX_DMA_ALLOCATIONS) {
+        return err_not_found();
     }
 
     viper::AddressSpace *as = viper::get_address_space(v);
-    if (as)
-    {
+    if (as) {
         as->unmap(virt_addr, dma_allocations[slot].size);
     }
 
@@ -628,40 +556,33 @@ SyscallResult sys_dma_free(u64 a0, u64, u64, u64, u64, u64)
     return SyscallResult::ok();
 }
 
-SyscallResult sys_virt_to_phys(u64 a0, u64, u64, u64, u64, u64)
-{
+SyscallResult sys_virt_to_phys(u64 a0, u64, u64, u64, u64, u64) {
     u64 virt_addr = a0;
 
     viper::Viper *v = viper::current();
-    if (!v)
-    {
-        return SyscallResult::err(error::VERR_NOT_FOUND);
+    if (!v) {
+        return err_not_found();
     }
 
-    if (!has_device_cap(v, cap::CAP_DMA_ACCESS))
-    {
-        return SyscallResult::err(error::VERR_PERMISSION);
+    if (!has_device_cap(v, cap::CAP_DMA_ACCESS)) {
+        return err_permission();
     }
 
     viper::AddressSpace *as = viper::get_address_space(v);
-    if (!as)
-    {
-        return SyscallResult::err(error::VERR_NOT_FOUND);
+    if (!as) {
+        return err_not_found();
     }
 
     u64 phys_addr = as->translate(virt_addr);
-    if (phys_addr == 0)
-    {
-        return SyscallResult::err(error::VERR_NOT_FOUND);
+    if (phys_addr == 0) {
+        return err_not_found();
     }
 
-    return SyscallResult::ok(phys_addr);
+    return ok_u64(phys_addr);
 }
 
-SyscallResult sys_device_enum(u64 a0, u64 a1, u64, u64, u64, u64)
-{
-    struct DeviceEnumInfo
-    {
+SyscallResult sys_device_enum(u64 a0, u64 a1, u64, u64, u64, u64) {
+    struct DeviceEnumInfo {
         char name[32];
         u64 phys_addr;
         u64 size;
@@ -672,31 +593,26 @@ SyscallResult sys_device_enum(u64 a0, u64 a1, u64, u64, u64, u64)
     DeviceEnumInfo *devices = reinterpret_cast<DeviceEnumInfo *>(a0);
     u32 max_count = static_cast<u32>(a1);
 
-    if (max_count > 0)
-    {
+    if (max_count > 0) {
         usize byte_size;
-        if (__builtin_mul_overflow(static_cast<usize>(max_count), sizeof(DeviceEnumInfo), &byte_size))
-        {
-            return SyscallResult::err(error::VERR_INVALID_ARG);
+        if (__builtin_mul_overflow(
+                static_cast<usize>(max_count), sizeof(DeviceEnumInfo), &byte_size)) {
+            return err_invalid_arg();
         }
-        if (!validate_user_write(devices, byte_size))
-        {
-            return SyscallResult::err(error::VERR_INVALID_ARG);
+        if (!validate_user_write(devices, byte_size)) {
+            return err_invalid_arg();
         }
     }
 
-    if (!devices)
-    {
-        return SyscallResult::ok(KNOWN_DEVICE_COUNT);
+    if (!devices) {
+        return ok_u32(KNOWN_DEVICE_COUNT);
     }
 
     u32 count = 0;
-    for (u32 i = 0; i < KNOWN_DEVICE_COUNT && count < max_count; i++)
-    {
+    for (u32 i = 0; i < KNOWN_DEVICE_COUNT && count < max_count; i++) {
         const char *src = known_devices[i].name;
         usize j = 0;
-        while (j < 31 && src[j])
-        {
+        while (j < 31 && src[j]) {
             devices[count].name[j] = src[j];
             j++;
         }
@@ -709,83 +625,72 @@ SyscallResult sys_device_enum(u64 a0, u64 a1, u64, u64, u64, u64)
         count++;
     }
 
-    return SyscallResult::ok(count);
+    return ok_u32(count);
 }
 
 // =============================================================================
 // Shared Memory Syscalls
 // =============================================================================
 
-SyscallResult sys_shm_create(u64 a0, u64, u64, u64, u64, u64)
-{
+SyscallResult sys_shm_create(u64 a0, u64, u64, u64, u64, u64) {
     u64 size = a0;
 
-    if (size == 0 || size > 64 * 1024 * 1024)
-    {
-        return SyscallResult::err(error::VERR_INVALID_ARG);
+    if (size == 0 || size > 64 * 1024 * 1024) {
+        return err_invalid_arg();
     }
 
     viper::Viper *v = viper::current();
-    if (!v || !v->cap_table)
-    {
-        return SyscallResult::err(error::VERR_NOT_FOUND);
+    if (!v || !v->cap_table) {
+        return err_not_found();
     }
 
     kobj::SharedMemory *shm = kobj::SharedMemory::create(size);
-    if (!shm)
-    {
-        return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
+    if (!shm) {
+        return err_out_of_memory();
     }
 
     viper::AddressSpace *as = viper::get_address_space(v);
-    if (!as)
-    {
+    if (!as) {
         delete shm;
-        return SyscallResult::err(error::VERR_NOT_FOUND);
+        return err_not_found();
     }
 
     u64 virt_base = 0x7000000000ULL;
     u64 virt_addr = 0;
     u64 aligned_size = pmm::page_align_up(size);
 
-    for (u64 try_addr = virt_base; try_addr < 0x8000000000ULL; try_addr += aligned_size)
-    {
-        if (as->translate(try_addr) == 0)
-        {
+    for (u64 try_addr = virt_base; try_addr < 0x8000000000ULL; try_addr += aligned_size) {
+        if (as->translate(try_addr) == 0) {
             virt_addr = try_addr;
             break;
         }
     }
 
-    if (virt_addr == 0)
-    {
+    if (virt_addr == 0) {
         delete shm;
-        return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
+        return err_out_of_memory();
     }
 
-    if (!as->map(virt_addr, shm->phys_addr(), aligned_size, viper::prot::RW))
-    {
+    if (!as->map(virt_addr, shm->phys_addr(), aligned_size, viper::prot::RW)) {
         delete shm;
-        return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
+        return err_out_of_memory();
     }
 
     shm->set_creator_virt(virt_addr);
 
     cap::Handle handle = v->cap_table->insert(
         shm, cap::Kind::SharedMemory, cap::CAP_READ | cap::CAP_WRITE | cap::CAP_TRANSFER);
-    if (handle == cap::HANDLE_INVALID)
-    {
+    if (handle == cap::HANDLE_INVALID) {
         as->unmap(virt_addr, aligned_size);
         delete shm;
-        return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
+        return err_out_of_memory();
     }
 
-    if (!track_shm_mapping(v->id, virt_addr, aligned_size, shm))
-    {
+    if (!track_shm_mapping(v->id, virt_addr, aligned_size, shm)) {
         v->cap_table->remove(handle);
         as->unmap(virt_addr, aligned_size);
         delete shm;
-        return SyscallResult::err(error::VERR_NO_RESOURCE);
+        return err_code(error::VERR_NO_RESOURCE);
     }
     shm->ref();
 
@@ -797,72 +702,60 @@ SyscallResult sys_shm_create(u64 a0, u64, u64, u64, u64, u64)
     return result;
 }
 
-SyscallResult sys_shm_map(u64 a0, u64, u64, u64, u64, u64)
-{
+SyscallResult sys_shm_map(u64 a0, u64, u64, u64, u64, u64) {
     cap::Handle handle = static_cast<cap::Handle>(a0);
 
     viper::Viper *v = viper::current();
-    if (!v || !v->cap_table)
-    {
-        return SyscallResult::err(error::VERR_NOT_FOUND);
+    if (!v || !v->cap_table) {
+        return err_not_found();
     }
 
     cap::Entry *entry = v->cap_table->get_checked(handle, cap::Kind::SharedMemory);
-    if (!entry)
-    {
-        return SyscallResult::err(error::VERR_INVALID_HANDLE);
+    if (!entry) {
+        return err_invalid_handle();
     }
 
-    if (!cap::has_rights(entry->rights, cap::CAP_READ))
-    {
-        return SyscallResult::err(error::VERR_PERMISSION);
+    if (!cap::has_rights(entry->rights, cap::CAP_READ)) {
+        return err_permission();
     }
 
     kobj::SharedMemory *shm = static_cast<kobj::SharedMemory *>(entry->object);
-    if (!shm)
-    {
-        return SyscallResult::err(error::VERR_NOT_FOUND);
+    if (!shm) {
+        return err_not_found();
     }
 
     viper::AddressSpace *as = viper::get_address_space(v);
-    if (!as)
-    {
-        return SyscallResult::err(error::VERR_NOT_FOUND);
+    if (!as) {
+        return err_not_found();
     }
 
     u64 virt_base = 0x7000000000ULL;
     u64 virt_addr = 0;
     u64 aligned_size = shm->size();
 
-    for (u64 try_addr = virt_base; try_addr < 0x8000000000ULL; try_addr += aligned_size)
-    {
-        if (as->translate(try_addr) == 0)
-        {
+    for (u64 try_addr = virt_base; try_addr < 0x8000000000ULL; try_addr += aligned_size) {
+        if (as->translate(try_addr) == 0) {
             virt_addr = try_addr;
             break;
         }
     }
 
-    if (virt_addr == 0)
-    {
-        return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
+    if (virt_addr == 0) {
+        return err_out_of_memory();
     }
 
     u32 prot = viper::prot::READ;
-    if (cap::has_rights(entry->rights, cap::CAP_WRITE))
-    {
+    if (cap::has_rights(entry->rights, cap::CAP_WRITE)) {
         prot |= viper::prot::WRITE;
     }
 
-    if (!as->map(virt_addr, shm->phys_addr(), aligned_size, prot))
-    {
-        return SyscallResult::err(error::VERR_OUT_OF_MEMORY);
+    if (!as->map(virt_addr, shm->phys_addr(), aligned_size, prot)) {
+        return err_out_of_memory();
     }
 
-    if (!track_shm_mapping(v->id, virt_addr, aligned_size, shm))
-    {
+    if (!track_shm_mapping(v->id, virt_addr, aligned_size, shm)) {
         as->unmap(virt_addr, aligned_size);
-        return SyscallResult::err(error::VERR_NO_RESOURCE);
+        return err_code(error::VERR_NO_RESOURCE);
     }
 
     shm->ref();
@@ -874,27 +767,23 @@ SyscallResult sys_shm_map(u64 a0, u64, u64, u64, u64, u64)
     return result;
 }
 
-SyscallResult sys_shm_unmap(u64 a0, u64, u64, u64, u64, u64)
-{
+SyscallResult sys_shm_unmap(u64 a0, u64, u64, u64, u64, u64) {
     u64 virt_addr = a0;
 
     viper::Viper *v = viper::current();
-    if (!v)
-    {
-        return SyscallResult::err(error::VERR_NOT_FOUND);
+    if (!v) {
+        return err_not_found();
     }
 
     viper::AddressSpace *as = viper::get_address_space(v);
-    if (!as)
-    {
-        return SyscallResult::err(error::VERR_NOT_FOUND);
+    if (!as) {
+        return err_not_found();
     }
 
     u64 size = 0;
     kobj::SharedMemory *shm = nullptr;
-    if (!untrack_shm_mapping(v->id, virt_addr, &size, &shm) || size == 0 || !shm)
-    {
-        return SyscallResult::err(error::VERR_NOT_FOUND);
+    if (!untrack_shm_mapping(v->id, virt_addr, &size, &shm) || size == 0 || !shm) {
+        return err_not_found();
     }
 
     as->unmap(virt_addr, size);
@@ -903,20 +792,17 @@ SyscallResult sys_shm_unmap(u64 a0, u64, u64, u64, u64, u64)
     return SyscallResult::ok();
 }
 
-SyscallResult sys_shm_close(u64 a0, u64, u64, u64, u64, u64)
-{
+SyscallResult sys_shm_close(u64 a0, u64, u64, u64, u64, u64) {
     cap::Handle handle = static_cast<cap::Handle>(a0);
 
     viper::Viper *v = viper::current();
-    if (!v || !v->cap_table)
-    {
-        return SyscallResult::err(error::VERR_NOT_FOUND);
+    if (!v || !v->cap_table) {
+        return err_not_found();
     }
 
     cap::Entry *entry = v->cap_table->get_checked(handle, cap::Kind::SharedMemory);
-    if (!entry)
-    {
-        return SyscallResult::err(error::VERR_INVALID_HANDLE);
+    if (!entry) {
+        return err_invalid_handle();
     }
 
     kobj::SharedMemory *shm = static_cast<kobj::SharedMemory *>(entry->object);

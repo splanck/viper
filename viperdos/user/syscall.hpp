@@ -68,8 +68,7 @@
  * to the kernel with minimal transformation, and return the kernel result
  * directly so callers can handle negative error codes as needed.
  */
-namespace sys
-{
+namespace sys {
 
 /**
  * @brief Seek origin selector for @ref lseek and @ref io_seek.
@@ -117,8 +116,7 @@ constexpr u32 O_TRUNC = viper::open_flags::O_TRUNC;
  * The meanings mirror the kernel assign subsystem and are primarily used for
  * introspection (`assign_list`) and future policy decisions.
  */
-enum AssignFlags : u32
-{
+enum AssignFlags : u32 {
     ASSIGN_NONE = 0,            /**< No special behavior. */
     ASSIGN_SYSTEM = (1 << 0),   /**< System assign (treated as read-only/pinned by kernel). */
     ASSIGN_DEFERRED = (1 << 1), /**< Deferred/path-based assign resolved on access. */
@@ -133,8 +131,7 @@ enum AssignFlags : u32
  * `name` is the assign name without the trailing colon. `handle` is a directory
  * capability handle suitable for use with handle-based filesystem syscalls.
  */
-struct AssignInfo
-{
+struct AssignInfo {
     char name[32];    /**< Assign name (without trailing ':'). */
     u32 handle;       /**< Directory handle backing this assign. */
     u32 flags;        /**< Bitmask of @ref AssignFlags values. */
@@ -151,8 +148,7 @@ struct AssignInfo
  * @param s Pointer to a NUL-terminated string.
  * @return Number of bytes before the terminating NUL.
  */
-inline usize strlen(const char *s)
-{
+inline usize strlen(const char *s) {
     usize len = 0;
     while (s[len])
         len++;
@@ -190,8 +186,7 @@ using SyscallResult = viper::SyscallResult;
 /**
  * @brief Invoke a syscall with no arguments.
  */
-inline SyscallResult syscall0(u64 num)
-{
+inline SyscallResult syscall0(u64 num) {
     register u64 x8 asm("x8") = num;
     register i64 r0 asm("x0");
     register u64 r1 asm("x1");
@@ -204,8 +199,7 @@ inline SyscallResult syscall0(u64 num)
 /**
  * @brief Invoke a syscall with one argument.
  */
-inline SyscallResult syscall1(u64 num, u64 arg0)
-{
+inline SyscallResult syscall1(u64 num, u64 arg0) {
     register u64 x8 asm("x8") = num;
     register u64 a0 asm("x0") = arg0;
     register i64 r0 asm("x0");
@@ -219,8 +213,7 @@ inline SyscallResult syscall1(u64 num, u64 arg0)
 /**
  * @brief Invoke a syscall with two arguments.
  */
-inline SyscallResult syscall2(u64 num, u64 arg0, u64 arg1)
-{
+inline SyscallResult syscall2(u64 num, u64 arg0, u64 arg1) {
     register u64 x8 asm("x8") = num;
     register u64 a0 asm("x0") = arg0;
     register u64 a1 asm("x1") = arg1;
@@ -238,8 +231,7 @@ inline SyscallResult syscall2(u64 num, u64 arg0, u64 arg1)
 /**
  * @brief Invoke a syscall with three arguments.
  */
-inline SyscallResult syscall3(u64 num, u64 arg0, u64 arg1, u64 arg2)
-{
+inline SyscallResult syscall3(u64 num, u64 arg0, u64 arg1, u64 arg2) {
     register u64 x8 asm("x8") = num;
     register u64 a0 asm("x0") = arg0;
     register u64 a1 asm("x1") = arg1;
@@ -258,8 +250,7 @@ inline SyscallResult syscall3(u64 num, u64 arg0, u64 arg1, u64 arg2)
 /**
  * @brief Invoke a syscall with four arguments.
  */
-inline SyscallResult syscall4(u64 num, u64 arg0, u64 arg1, u64 arg2, u64 arg3)
-{
+inline SyscallResult syscall4(u64 num, u64 arg0, u64 arg1, u64 arg2, u64 arg3) {
     register u64 x8 asm("x8") = num;
     register u64 a0 asm("x0") = arg0;
     register u64 a1 asm("x1") = arg1;
@@ -279,8 +270,7 @@ inline SyscallResult syscall4(u64 num, u64 arg0, u64 arg1, u64 arg2, u64 arg3)
 /**
  * @brief Invoke a syscall with five arguments.
  */
-inline SyscallResult syscall5(u64 num, u64 arg0, u64 arg1, u64 arg2, u64 arg3, u64 arg4)
-{
+inline SyscallResult syscall5(u64 num, u64 arg0, u64 arg1, u64 arg2, u64 arg3, u64 arg4) {
     register u64 x8 asm("x8") = num;
     register u64 a0 asm("x0") = arg0;
     register u64 a1 asm("x1") = arg1;
@@ -313,8 +303,7 @@ inline SyscallResult syscall5(u64 num, u64 arg0, u64 arg1, u64 arg2, u64 arg3, u
  * This is a voluntary preemption point. The kernel will run the scheduler
  * and may resume this task immediately if no other tasks are runnable.
  */
-inline void yield()
-{
+inline void yield() {
     (void)syscall0(SYS_TASK_YIELD);
 }
 
@@ -327,8 +316,7 @@ inline void yield()
  *
  * @param ms Duration to sleep in milliseconds.
  */
-inline void sleep(u64 ms)
-{
+inline void sleep(u64 ms) {
     (void)syscall1(SYS_SLEEP, ms);
 }
 
@@ -343,8 +331,7 @@ inline void sleep(u64 ms)
  *
  * @param code Exit status for diagnostics and potential join/wait mechanisms.
  */
-[[noreturn]] inline void exit(i32 code)
-{
+[[noreturn]] inline void exit(i32 code) {
     (void)syscall1(SYS_TASK_EXIT, static_cast<u64>(code));
     __builtin_unreachable();
 }
@@ -369,14 +356,12 @@ inline i64 spawn(const char *path,
                  u64 *out_pid = nullptr,
                  u64 *out_tid = nullptr,
                  const char *args = nullptr,
-                 u32 *out_bootstrap_send = nullptr)
-{
+                 u32 *out_bootstrap_send = nullptr) {
     SyscallResult r = syscall3(SYS_TASK_SPAWN,
                                reinterpret_cast<u64>(path),
                                reinterpret_cast<u64>(name),
                                reinterpret_cast<u64>(args));
-    if (r.error == 0)
-    {
+    if (r.error == 0) {
         if (out_pid)
             *out_pid = r.val0;
         if (out_tid)
@@ -414,16 +399,14 @@ inline i64 spawn_shm(u32 shm_handle,
                      u64 *out_pid = nullptr,
                      u64 *out_tid = nullptr,
                      const char *args = nullptr,
-                     u32 *out_bootstrap_send = nullptr)
-{
+                     u32 *out_bootstrap_send = nullptr) {
     SyscallResult r = syscall5(SYS_TASK_SPAWN_SHM,
                                static_cast<u64>(shm_handle),
                                offset,
                                length,
                                reinterpret_cast<u64>(name),
                                reinterpret_cast<u64>(args));
-    if (r.error == 0)
-    {
+    if (r.error == 0) {
         if (out_pid)
             *out_pid = r.val0;
         if (out_tid)
@@ -444,8 +427,7 @@ inline i64 spawn_shm(u32 shm_handle,
  * @param bufsize Size of the buffer.
  * @return Length of arguments (not including NUL) on success, negative error on failure.
  */
-inline i64 get_args(char *buf, usize bufsize)
-{
+inline i64 get_args(char *buf, usize bufsize) {
     SyscallResult r = syscall2(SYS_GET_ARGS, reinterpret_cast<u64>(buf), static_cast<u64>(bufsize));
     return r.ok() ? static_cast<i64>(r.val0) : r.error;
 }
@@ -459,11 +441,9 @@ inline i64 get_args(char *buf, usize bufsize)
  * @param status Output: Exit status of the child (optional).
  * @return Process ID of the exited child on success, negative error on failure.
  */
-inline i64 wait(i32 *status = nullptr)
-{
+inline i64 wait(i32 *status = nullptr) {
     SyscallResult r = syscall1(SYS_WAIT, reinterpret_cast<u64>(status));
-    if (r.error == 0)
-    {
+    if (r.error == 0) {
         return static_cast<i64>(r.val0); // Return PID
     }
     return r.error;
@@ -476,11 +456,9 @@ inline i64 wait(i32 *status = nullptr)
  * @param status Output: Exit status of the child (optional).
  * @return Process ID of the exited child on success, negative error on failure.
  */
-inline i64 waitpid(u64 pid, i32 *status = nullptr)
-{
+inline i64 waitpid(u64 pid, i32 *status = nullptr) {
     SyscallResult r = syscall2(SYS_WAITPID, pid, reinterpret_cast<u64>(status));
-    if (r.error == 0)
-    {
+    if (r.error == 0) {
         return static_cast<i64>(r.val0);
     }
     return r.error;
@@ -502,8 +480,7 @@ inline i64 waitpid(u64 pid, i32 *status = nullptr)
  * The same mask is used both as an input (requested events) and output
  * (triggered events).
  */
-enum PollEventType : u32
-{
+enum PollEventType : u32 {
     POLL_NONE = 0,
     POLL_CHANNEL_READ = (1 << 0),  /**< Channel has data available to read. */
     POLL_CHANNEL_WRITE = (1 << 1), /**< Channel has space available for writing. */
@@ -529,8 +506,7 @@ constexpr u32 HANDLE_CONSOLE_INPUT = 0xFFFF0001;
  * - Set `events` to the requested event mask.
  * - The kernel writes `triggered` to indicate what happened.
  */
-struct PollEvent
-{
+struct PollEvent {
     u32 handle;    /**< Handle/pseudo-handle being waited on. */
     u32 events;    /**< Requested events mask (input). */
     u32 triggered; /**< Triggered events mask (output). */
@@ -545,8 +521,7 @@ struct PollEvent
  *
  * @return Non-negative poll set ID on success, or negative error code on failure.
  */
-inline i32 poll_create()
-{
+inline i32 poll_create() {
     auto r = syscall0(SYS_POLL_CREATE);
     return r.ok() ? static_cast<i32>(r.val0) : static_cast<i32>(r.error);
 }
@@ -563,8 +538,7 @@ inline i32 poll_create()
  * @param mask Bitmask of @ref PollEventType values to request.
  * @return `0` on success, or negative error code on failure.
  */
-inline i32 poll_add(u32 poll_id, u32 handle, u32 mask)
-{
+inline i32 poll_add(u32 poll_id, u32 handle, u32 mask) {
     auto r = syscall3(
         SYS_POLL_ADD, static_cast<u64>(poll_id), static_cast<u64>(handle), static_cast<u64>(mask));
     return static_cast<i32>(r.error);
@@ -581,8 +555,7 @@ inline i32 poll_add(u32 poll_id, u32 handle, u32 mask)
  * @param handle Handle/pseudo-handle to remove.
  * @return `0` on success, or negative error code on failure.
  */
-inline i32 poll_remove(u32 poll_id, u32 handle)
-{
+inline i32 poll_remove(u32 poll_id, u32 handle) {
     auto r = syscall2(SYS_POLL_REMOVE, static_cast<u64>(poll_id), static_cast<u64>(handle));
     return static_cast<i32>(r.error);
 }
@@ -606,8 +579,7 @@ inline i32 poll_remove(u32 poll_id, u32 handle)
  * @param timeout_ms Timeout in milliseconds, or negative to wait forever.
  * @return Number of events written on success (may be 0), or negative error code on failure.
  */
-inline i32 poll_wait(u32 poll_id, PollEvent *events, u32 max_events, i64 timeout_ms)
-{
+inline i32 poll_wait(u32 poll_id, PollEvent *events, u32 max_events, i64 timeout_ms) {
     auto r = syscall4(SYS_POLL_WAIT,
                       static_cast<u64>(poll_id),
                       reinterpret_cast<u64>(events),
@@ -635,8 +607,7 @@ inline i32 poll_wait(u32 poll_id, PollEvent *events, u32 max_events, i64 timeout
  *
  * @return SyscallResult with endpoint handles in `val0`/`val1` on success.
  */
-inline SyscallResult channel_create()
-{
+inline SyscallResult channel_create() {
     return syscall0(SYS_CHANNEL_CREATE);
 }
 
@@ -656,8 +627,7 @@ inline SyscallResult channel_create()
  * @return 0 on success, negative error code on failure.
  */
 inline i64 channel_send(
-    i32 channel, const void *data, usize len, const u32 *handles = nullptr, u32 handle_count = 0)
-{
+    i32 channel, const void *data, usize len, const u32 *handles = nullptr, u32 handle_count = 0) {
     auto r = syscall5(SYS_CHANNEL_SEND,
                       static_cast<u64>(channel),
                       reinterpret_cast<u64>(data),
@@ -682,16 +652,14 @@ inline i64 channel_send(
  * @return Number of bytes received on success, negative error code on failure.
  */
 inline i64 channel_recv(
-    i32 channel, void *buf, usize buf_len, u32 *handles = nullptr, u32 *handle_count = nullptr)
-{
+    i32 channel, void *buf, usize buf_len, u32 *handles = nullptr, u32 *handle_count = nullptr) {
     auto r = syscall5(SYS_CHANNEL_RECV,
                       static_cast<u64>(channel),
                       reinterpret_cast<u64>(buf),
                       buf_len,
                       reinterpret_cast<u64>(handles),
                       reinterpret_cast<u64>(handle_count));
-    if (r.ok())
-    {
+    if (r.ok()) {
         if (handle_count)
             *handle_count = static_cast<u32>(r.val1);
         return static_cast<i64>(r.val0);
@@ -709,8 +677,7 @@ inline i64 channel_recv(
  * @param channel Channel handle.
  * @return 0 on success, negative error code on failure.
  */
-inline i32 channel_close(i32 channel)
-{
+inline i32 channel_close(i32 channel) {
     auto r = syscall1(SYS_CHANNEL_CLOSE, static_cast<u64>(channel));
     return static_cast<i32>(r.error);
 }
@@ -728,8 +695,7 @@ inline i32 channel_close(i32 channel)
  *
  * @param msg Pointer to a NUL-terminated message string.
  */
-inline void print(const char *msg)
-{
+inline void print(const char *msg) {
     (void)syscall1(SYS_DEBUG_PRINT, reinterpret_cast<u64>(msg));
 }
 
@@ -747,8 +713,7 @@ inline void print(const char *msg)
  *
  * @return Character value (0–255) on success, or negative error code on failure.
  */
-inline i32 try_getchar()
-{
+inline i32 try_getchar() {
     auto r = syscall0(SYS_GETCHAR);
     return r.ok() ? static_cast<i32>(r.val0) : static_cast<i32>(r.error);
 }
@@ -767,27 +732,22 @@ inline i32 try_getchar()
  *
  * @return The next character read from the console.
  */
-inline char getchar()
-{
+inline char getchar() {
     // Static poll set - created once, reused for all getchar calls
     static i32 console_poll_set = -1;
     static bool poll_initialized = false;
 
-    if (!poll_initialized)
-    {
+    if (!poll_initialized) {
         console_poll_set = poll_create();
-        if (console_poll_set >= 0)
-        {
+        if (console_poll_set >= 0) {
             poll_add(static_cast<u32>(console_poll_set), HANDLE_CONSOLE_INPUT, POLL_CONSOLE_INPUT);
         }
         poll_initialized = true;
     }
 
-    if (console_poll_set < 0)
-    {
+    if (console_poll_set < 0) {
         // Fallback to busy-wait if poll unavailable
-        while (true)
-        {
+        while (true) {
             i32 c = try_getchar();
             if (c >= 0)
                 return static_cast<char>(c);
@@ -795,15 +755,13 @@ inline char getchar()
     }
 
     PollEvent ev;
-    while (true)
-    {
+    while (true) {
         // Wait for console input (infinite timeout)
         poll_wait(static_cast<u32>(console_poll_set), &ev, 1, -1);
 
         // Try to read character
         i32 c = try_getchar();
-        if (c >= 0)
-        {
+        if (c >= 0) {
             return static_cast<char>(c);
         }
         // Spurious wakeup, wait again
@@ -815,8 +773,7 @@ inline char getchar()
  *
  * @param c Character to write.
  */
-inline void putchar(char c)
-{
+inline void putchar(char c) {
     (void)syscall1(SYS_PUTCHAR, static_cast<u64>(static_cast<u8>(c)));
 }
 
@@ -839,8 +796,7 @@ inline void putchar(char c)
  * @param flags Open flags bitmask.
  * @return Non-negative file descriptor on success, or negative error code on failure.
  */
-inline i32 open(const char *path, u32 flags)
-{
+inline i32 open(const char *path, u32 flags) {
     auto r = syscall2(SYS_OPEN, reinterpret_cast<u64>(path), flags);
     return r.ok() ? static_cast<i32>(r.val0) : static_cast<i32>(r.error);
 }
@@ -854,8 +810,7 @@ inline i32 open(const char *path, u32 flags)
  * @param fd File descriptor returned by @ref open.
  * @return `0` on success, or negative error code on failure.
  */
-inline i32 close(i32 fd)
-{
+inline i32 close(i32 fd) {
     auto r = syscall1(SYS_CLOSE, static_cast<u64>(fd));
     return static_cast<i32>(r.error);
 }
@@ -873,8 +828,7 @@ inline i32 close(i32 fd)
  * @param len Maximum number of bytes to read.
  * @return Number of bytes read on success, or negative error code on failure.
  */
-inline i64 read(i32 fd, void *buf, usize len)
-{
+inline i64 read(i32 fd, void *buf, usize len) {
     auto r = syscall3(SYS_READ, static_cast<u64>(fd), reinterpret_cast<u64>(buf), len);
     return r.ok() ? static_cast<i64>(r.val0) : r.error;
 }
@@ -891,8 +845,7 @@ inline i64 read(i32 fd, void *buf, usize len)
  * @param len Number of bytes to write.
  * @return Number of bytes written on success, or negative error code on failure.
  */
-inline i64 write(i32 fd, const void *buf, usize len)
-{
+inline i64 write(i32 fd, const void *buf, usize len) {
     auto r = syscall3(SYS_WRITE, static_cast<u64>(fd), reinterpret_cast<u64>(buf), len);
     return r.ok() ? static_cast<i64>(r.val0) : r.error;
 }
@@ -908,8 +861,7 @@ inline i64 write(i32 fd, const void *buf, usize len)
  * @param whence One of @ref SeekWhence values (`SEEK_SET`, `SEEK_CUR`, `SEEK_END`).
  * @return New file position on success, or negative error code on failure.
  */
-inline i64 lseek(i32 fd, i64 offset, i32 whence)
-{
+inline i64 lseek(i32 fd, i64 offset, i32 whence) {
     auto r = syscall3(
         SYS_LSEEK, static_cast<u64>(fd), static_cast<u64>(offset), static_cast<u64>(whence));
     return r.ok() ? static_cast<i64>(r.val0) : r.error;
@@ -925,8 +877,7 @@ inline i64 lseek(i32 fd, i64 offset, i32 whence)
  * @param st Output pointer to receive metadata.
  * @return `0` on success, or negative error code on failure.
  */
-inline i32 stat(const char *path, Stat *st)
-{
+inline i32 stat(const char *path, Stat *st) {
     auto r = syscall2(SYS_STAT, reinterpret_cast<u64>(path), reinterpret_cast<u64>(st));
     return static_cast<i32>(r.error);
 }
@@ -941,8 +892,7 @@ inline i32 stat(const char *path, Stat *st)
  * @param st Output pointer to receive metadata.
  * @return `0` on success, or negative error code on failure.
  */
-inline i32 fstat(i32 fd, Stat *st)
-{
+inline i32 fstat(i32 fd, Stat *st) {
     auto r = syscall2(SYS_FSTAT, static_cast<u64>(fd), reinterpret_cast<u64>(st));
     return static_cast<i32>(r.error);
 }
@@ -960,8 +910,7 @@ inline i32 fstat(i32 fd, Stat *st)
  * @param len Buffer size in bytes.
  * @return Number of bytes written on success, or negative error code on failure.
  */
-inline i64 readdir(i32 fd, void *buf, usize len)
-{
+inline i64 readdir(i32 fd, void *buf, usize len) {
     auto r = syscall3(SYS_READDIR, static_cast<u64>(fd), reinterpret_cast<u64>(buf), len);
     return r.ok() ? static_cast<i64>(r.val0) : r.error;
 }
@@ -972,8 +921,7 @@ inline i64 readdir(i32 fd, void *buf, usize len)
  * @param path NUL-terminated directory path.
  * @return `0` on success, or negative error code on failure.
  */
-inline i32 mkdir(const char *path)
-{
+inline i32 mkdir(const char *path) {
     auto r = syscall1(SYS_MKDIR, reinterpret_cast<u64>(path));
     return static_cast<i32>(r.error);
 }
@@ -984,8 +932,7 @@ inline i32 mkdir(const char *path)
  * @param path NUL-terminated directory path.
  * @return `0` on success, or negative error code on failure.
  */
-inline i32 rmdir(const char *path)
-{
+inline i32 rmdir(const char *path) {
     auto r = syscall1(SYS_RMDIR, reinterpret_cast<u64>(path));
     return static_cast<i32>(r.error);
 }
@@ -996,8 +943,7 @@ inline i32 rmdir(const char *path)
  * @param path NUL-terminated file path.
  * @return `0` on success, or negative error code on failure.
  */
-inline i32 unlink(const char *path)
-{
+inline i32 unlink(const char *path) {
     auto r = syscall1(SYS_UNLINK, reinterpret_cast<u64>(path));
     return static_cast<i32>(r.error);
 }
@@ -1013,8 +959,7 @@ inline i32 unlink(const char *path)
  * @param new_path New path for the object.
  * @return `0` on success, or negative error code on failure.
  */
-inline i32 rename(const char *old_path, const char *new_path)
-{
+inline i32 rename(const char *old_path, const char *new_path) {
     auto r = syscall2(SYS_RENAME, reinterpret_cast<u64>(old_path), reinterpret_cast<u64>(new_path));
     return static_cast<i32>(r.error);
 }
@@ -1031,8 +976,7 @@ inline i32 rename(const char *old_path, const char *new_path)
  * @return Length of the path on success (not including terminating NUL),
  *         or negative error code on failure.
  */
-inline i64 getcwd(char *buf, usize size)
-{
+inline i64 getcwd(char *buf, usize size) {
     auto r = syscall2(SYS_GETCWD, reinterpret_cast<u64>(buf), size);
     return r.ok() ? static_cast<i64>(r.val0) : r.error;
 }
@@ -1048,8 +992,7 @@ inline i64 getcwd(char *buf, usize size)
  * @param path Path to the new working directory.
  * @return `0` on success, or negative error code on failure.
  */
-inline i32 chdir(const char *path)
-{
+inline i32 chdir(const char *path) {
     auto r = syscall1(SYS_CHDIR, reinterpret_cast<u64>(path));
     return static_cast<i32>(r.error);
 }
@@ -1072,8 +1015,7 @@ inline i32 chdir(const char *path)
  *
  * @return Uptime/tick count as an unsigned 64-bit value.
  */
-inline u64 uptime()
-{
+inline u64 uptime() {
     auto r = syscall0(SYS_UPTIME);
     return r.ok() ? r.val0 : 0;
 }
@@ -1091,8 +1033,7 @@ inline u64 uptime()
  *
  * @return Non-negative socket descriptor on success, or negative error code on failure.
  */
-inline i32 socket_create()
-{
+inline i32 socket_create() {
     auto r = syscall0(SYS_SOCKET_CREATE);
     return r.ok() ? static_cast<i32>(r.val0) : static_cast<i32>(r.error);
 }
@@ -1109,8 +1050,7 @@ inline i32 socket_create()
  * @param port TCP port number (host byte order).
  * @return `0` on success, or negative error code on failure.
  */
-inline i32 socket_connect(i32 sock, u32 ip, u16 port)
-{
+inline i32 socket_connect(i32 sock, u32 ip, u16 port) {
     auto r = syscall3(
         SYS_SOCKET_CONNECT, static_cast<u64>(sock), static_cast<u64>(ip), static_cast<u64>(port));
     return static_cast<i32>(r.error);
@@ -1124,8 +1064,7 @@ inline i32 socket_connect(i32 sock, u32 ip, u16 port)
  * @param len Number of bytes to send.
  * @return Number of bytes sent on success, or negative error code on failure.
  */
-inline i64 socket_send(i32 sock, const void *data, usize len)
-{
+inline i64 socket_send(i32 sock, const void *data, usize len) {
     auto r = syscall3(SYS_SOCKET_SEND, static_cast<u64>(sock), reinterpret_cast<u64>(data), len);
     return r.ok() ? static_cast<i64>(r.val0) : r.error;
 }
@@ -1142,8 +1081,7 @@ inline i64 socket_send(i32 sock, const void *data, usize len)
  * @param len Maximum number of bytes to read.
  * @return Number of bytes received on success, or negative error code on failure.
  */
-inline i64 socket_recv(i32 sock, void *buf, usize len)
-{
+inline i64 socket_recv(i32 sock, void *buf, usize len) {
     auto r = syscall3(SYS_SOCKET_RECV, static_cast<u64>(sock), reinterpret_cast<u64>(buf), len);
     return r.ok() ? static_cast<i64>(r.val0) : r.error;
 }
@@ -1154,8 +1092,7 @@ inline i64 socket_recv(i32 sock, void *buf, usize len)
  * @param sock Socket descriptor.
  * @return `0` on success, or negative error code on failure.
  */
-inline i32 socket_close(i32 sock)
-{
+inline i32 socket_close(i32 sock) {
     auto r = syscall1(SYS_SOCKET_CLOSE, static_cast<u64>(sock));
     return static_cast<i32>(r.error);
 }
@@ -1171,8 +1108,7 @@ inline i32 socket_close(i32 sock)
  * @param ip_out Output pointer to receive packed IPv4 address.
  * @return `0` on success, or negative error code on failure.
  */
-inline i32 dns_resolve(const char *hostname, u32 *ip_out)
-{
+inline i32 dns_resolve(const char *hostname, u32 *ip_out) {
     auto r =
         syscall2(SYS_DNS_RESOLVE, reinterpret_cast<u64>(hostname), reinterpret_cast<u64>(ip_out));
     return static_cast<i32>(r.error);
@@ -1191,8 +1127,7 @@ inline i32 dns_resolve(const char *hostname, u32 *ip_out)
  * @param d Fourth octet.
  * @return Packed IPv4 address value in network byte order.
  */
-inline u32 ip_pack(u8 a, u8 b, u8 c, u8 d)
-{
+inline u32 ip_pack(u8 a, u8 b, u8 c, u8 d) {
     return (static_cast<u32>(a) << 24) | (static_cast<u32>(b) << 16) | (static_cast<u32>(c) << 8) |
            static_cast<u32>(d);
 }
@@ -1222,8 +1157,7 @@ inline u32 ip_pack(u8 a, u8 b, u8 c, u8 d)
  * @param verify Whether to verify the server certificate chain and hostname.
  * @return Non-negative TLS session ID on success, or negative error code on failure.
  */
-inline i32 tls_create(i32 sock, const char *hostname, bool verify = true)
-{
+inline i32 tls_create(i32 sock, const char *hostname, bool verify = true) {
     auto r = syscall3(SYS_TLS_CREATE,
                       static_cast<u64>(sock),
                       reinterpret_cast<u64>(hostname),
@@ -1242,8 +1176,7 @@ inline i32 tls_create(i32 sock, const char *hostname, bool verify = true)
  * @param tls_session Session ID returned by @ref tls_create.
  * @return `0` on success, or negative error code on failure.
  */
-inline i32 tls_handshake(i32 tls_session)
-{
+inline i32 tls_handshake(i32 tls_session) {
     auto r = syscall1(SYS_TLS_HANDSHAKE, static_cast<u64>(tls_session));
     return static_cast<i32>(r.error);
 }
@@ -1260,8 +1193,7 @@ inline i32 tls_handshake(i32 tls_session)
  * @param len Number of bytes to send.
  * @return Number of bytes sent on success, or negative error code on failure.
  */
-inline i64 tls_send(i32 tls_session, const void *data, usize len)
-{
+inline i64 tls_send(i32 tls_session, const void *data, usize len) {
     auto r =
         syscall3(SYS_TLS_SEND, static_cast<u64>(tls_session), reinterpret_cast<u64>(data), len);
     return r.ok() ? static_cast<i64>(r.val0) : r.error;
@@ -1280,8 +1212,7 @@ inline i64 tls_send(i32 tls_session, const void *data, usize len)
  * @param len Maximum number of bytes to read.
  * @return Number of bytes received on success, or negative error code on failure.
  */
-inline i64 tls_recv(i32 tls_session, void *buf, usize len)
-{
+inline i64 tls_recv(i32 tls_session, void *buf, usize len) {
     auto r = syscall3(SYS_TLS_RECV, static_cast<u64>(tls_session), reinterpret_cast<u64>(buf), len);
     return r.ok() ? static_cast<i64>(r.val0) : r.error;
 }
@@ -1296,8 +1227,7 @@ inline i64 tls_recv(i32 tls_session, void *buf, usize len)
  * @param tls_session Session ID.
  * @return `0` on success, or negative error code on failure.
  */
-inline i32 tls_close(i32 tls_session)
-{
+inline i32 tls_close(i32 tls_session) {
     auto r = syscall1(SYS_TLS_CLOSE, static_cast<u64>(tls_session));
     return static_cast<i32>(r.error);
 }
@@ -1313,8 +1243,7 @@ inline i32 tls_close(i32 tls_session)
  * @param info Output pointer to receive session information.
  * @return `0` on success, or negative error code on failure.
  */
-inline i32 tls_info(i32 tls_session, ::TLSInfo *info)
-{
+inline i32 tls_info(i32 tls_session, ::TLSInfo *info) {
     auto r = syscall2(SYS_TLS_INFO, static_cast<u64>(tls_session), reinterpret_cast<u64>(info));
     return static_cast<i32>(r.error);
 }
@@ -1332,8 +1261,7 @@ inline i32 tls_info(i32 tls_session, ::TLSInfo *info)
  * @param info Output pointer to receive memory statistics.
  * @return `0` on success, or negative error code on failure.
  */
-inline i32 mem_info(::MemInfo *info)
-{
+inline i32 mem_info(::MemInfo *info) {
     auto r = syscall1(SYS_MEM_INFO, reinterpret_cast<u64>(info));
     return static_cast<i32>(r.error);
 }
@@ -1352,8 +1280,7 @@ inline i32 mem_info(::MemInfo *info)
  * @param max_count Maximum number of entries the buffer can hold.
  * @return Number of tasks written on success, or negative error code on failure.
  */
-inline i32 task_list(::TaskInfo *buffer, u32 max_count)
-{
+inline i32 task_list(::TaskInfo *buffer, u32 max_count) {
     auto r = syscall2(SYS_TASK_LIST, reinterpret_cast<u64>(buffer), static_cast<u64>(max_count));
     return r.ok() ? static_cast<i32>(r.val0) : static_cast<i32>(r.error);
 }
@@ -1375,8 +1302,7 @@ inline i32 task_list(::TaskInfo *buffer, u32 max_count)
  * @param dir_handle Directory handle to associate with the name.
  * @return `0` on success, or negative error code on failure.
  */
-inline i32 assign_set(const char *name, u32 dir_handle)
-{
+inline i32 assign_set(const char *name, u32 dir_handle) {
     auto r = syscall3(SYS_ASSIGN_SET,
                       reinterpret_cast<u64>(name),
                       static_cast<u64>(dir_handle),
@@ -1391,15 +1317,12 @@ inline i32 assign_set(const char *name, u32 dir_handle)
  * @param out_handle Output pointer to receive the resolved directory handle.
  * @return `0` on success, or negative error code on failure.
  */
-inline i32 assign_get(const char *name, u32 *out_handle)
-{
+inline i32 assign_get(const char *name, u32 *out_handle) {
     auto r = syscall1(SYS_ASSIGN_GET, reinterpret_cast<u64>(name));
-    if (!r.ok())
-    {
+    if (!r.ok()) {
         return static_cast<i32>(r.error);
     }
-    if (out_handle)
-    {
+    if (out_handle) {
         *out_handle = static_cast<u32>(r.val0);
     }
     return 0;
@@ -1411,8 +1334,7 @@ inline i32 assign_get(const char *name, u32 *out_handle)
  * @param name NUL-terminated assign name (without colon).
  * @return `0` on success, or negative error code on failure.
  */
-inline i32 assign_remove(const char *name)
-{
+inline i32 assign_remove(const char *name) {
     auto r = syscall1(SYS_ASSIGN_REMOVE, reinterpret_cast<u64>(name));
     return static_cast<i32>(r.error);
 }
@@ -1429,15 +1351,12 @@ inline i32 assign_remove(const char *name)
  * @param out_count Output pointer receiving the number of entries written.
  * @return `0` on success, or negative error code on failure.
  */
-inline i32 assign_list(AssignInfo *buf, u32 max, usize *out_count)
-{
+inline i32 assign_list(AssignInfo *buf, u32 max, usize *out_count) {
     auto r = syscall2(SYS_ASSIGN_LIST, reinterpret_cast<u64>(buf), static_cast<u64>(max));
-    if (!r.ok())
-    {
+    if (!r.ok()) {
         return static_cast<i32>(r.error);
     }
-    if (out_count)
-    {
+    if (out_count) {
         *out_count = static_cast<usize>(r.val0);
     }
     return 0;
@@ -1457,15 +1376,12 @@ inline i32 assign_list(AssignInfo *buf, u32 max, usize *out_count)
  * @param out_handle Output pointer receiving the resolved handle.
  * @return `0` on success, or negative error code on failure.
  */
-inline i32 assign_resolve(const char *path, u32 *out_handle)
-{
+inline i32 assign_resolve(const char *path, u32 *out_handle) {
     auto r = syscall2(SYS_ASSIGN_RESOLVE, reinterpret_cast<u64>(path), 0);
-    if (!r.ok())
-    {
+    if (!r.ok()) {
         return static_cast<i32>(r.error);
     }
-    if (out_handle)
-    {
+    if (out_handle) {
         *out_handle = static_cast<u32>(r.val0);
     }
     return 0;
@@ -1497,8 +1413,7 @@ inline i32 assign_resolve(const char *path, u32 *out_handle)
  * @param new_rights Rights mask for the derived handle.
  * @return New handle on success, or negative error code on failure.
  */
-inline i32 cap_derive(u32 parent_handle, u32 new_rights)
-{
+inline i32 cap_derive(u32 parent_handle, u32 new_rights) {
     auto r =
         syscall2(SYS_CAP_DERIVE, static_cast<u64>(parent_handle), static_cast<u64>(new_rights));
     return r.ok() ? static_cast<i32>(r.val0) : static_cast<i32>(r.error);
@@ -1514,8 +1429,7 @@ inline i32 cap_derive(u32 parent_handle, u32 new_rights)
  * @param handle Handle to revoke.
  * @return `0` on success, or negative error code on failure.
  */
-inline i32 cap_revoke(u32 handle)
-{
+inline i32 cap_revoke(u32 handle) {
     auto r = syscall1(SYS_CAP_REVOKE, static_cast<u64>(handle));
     return static_cast<i32>(r.error);
 }
@@ -1531,8 +1445,7 @@ inline i32 cap_revoke(u32 handle)
  * @param info Output pointer to receive metadata.
  * @return `0` on success, or negative error code on failure.
  */
-inline i32 cap_query(u32 handle, ::CapInfo *info)
-{
+inline i32 cap_query(u32 handle, ::CapInfo *info) {
     auto r = syscall2(SYS_CAP_QUERY, static_cast<u64>(handle), reinterpret_cast<u64>(info));
     return static_cast<i32>(r.error);
 }
@@ -1551,8 +1464,7 @@ inline i32 cap_query(u32 handle, ::CapInfo *info)
  * @param max_count Maximum number of entries `buffer` can hold.
  * @return Non-negative count on success, or negative error code on failure.
  */
-inline i32 cap_list(::CapListEntry *buffer, u32 max_count)
-{
+inline i32 cap_list(::CapListEntry *buffer, u32 max_count) {
     auto r = syscall2(SYS_CAP_LIST, reinterpret_cast<u64>(buffer), static_cast<u64>(max_count));
     return r.ok() ? static_cast<i32>(r.val0) : static_cast<i32>(r.error);
 }
@@ -1567,8 +1479,7 @@ inline i32 cap_list(::CapListEntry *buffer, u32 max_count)
  *
  * @return Bounding set bitmask on success, or 0 if no process context.
  */
-inline u32 cap_get_bounding_set()
-{
+inline u32 cap_get_bounding_set() {
     auto r = syscall0(SYS_CAP_GET_BOUND);
     return r.ok() ? static_cast<u32>(r.val0) : 0;
 }
@@ -1584,8 +1495,7 @@ inline u32 cap_get_bounding_set()
  * @param rights_to_drop Bitmask of CAP_RIGHT_* values to remove.
  * @return 0 on success, or negative error code on failure.
  */
-inline i32 cap_drop_bounding_set(u32 rights_to_drop)
-{
+inline i32 cap_drop_bounding_set(u32 rights_to_drop) {
     auto r = syscall1(SYS_CAP_DROP_BOUND, static_cast<u64>(rights_to_drop));
     return static_cast<i32>(r.error);
 }
@@ -1601,8 +1511,7 @@ constexpr u32 RLIMIT_TASKS = 2;   /**< Maximum tasks/threads. */
  * @param resource Which resource limit to query (RLIMIT_*).
  * @return Limit value on success, or negative error code on failure.
  */
-inline i64 getrlimit(u32 resource)
-{
+inline i64 getrlimit(u32 resource) {
     auto r = syscall1(SYS_GETRLIMIT, static_cast<u64>(resource));
     return r.ok() ? static_cast<i64>(r.val0) : static_cast<i64>(r.error);
 }
@@ -1617,8 +1526,7 @@ inline i64 getrlimit(u32 resource)
  * @param new_limit New limit value.
  * @return 0 on success, or negative error code on failure.
  */
-inline i32 setrlimit(u32 resource, u64 new_limit)
-{
+inline i32 setrlimit(u32 resource, u64 new_limit) {
     auto r = syscall2(SYS_SETRLIMIT, static_cast<u64>(resource), new_limit);
     return static_cast<i32>(r.error);
 }
@@ -1629,8 +1537,7 @@ inline i32 setrlimit(u32 resource, u64 new_limit)
  * @param resource Which resource to query usage for (RLIMIT_*).
  * @return Current usage value on success, or negative error code on failure.
  */
-inline i64 getrusage(u32 resource)
-{
+inline i64 getrusage(u32 resource) {
     auto r = syscall1(SYS_GETRUSAGE, static_cast<u64>(resource));
     return r.ok() ? static_cast<i64>(r.val0) : static_cast<i64>(r.error);
 }
@@ -1651,8 +1558,9 @@ inline i64 getrusage(u32 resource)
  * @param preserve_count Number of handles to preserve.
  * @return This function does not return on success. On failure, returns negative error.
  */
-inline i64 replace(const char *path, const u32 *preserve_handles = nullptr, u32 preserve_count = 0)
-{
+inline i64 replace(const char *path,
+                   const u32 *preserve_handles = nullptr,
+                   u32 preserve_count = 0) {
     auto r = syscall3(SYS_REPLACE,
                       reinterpret_cast<u64>(path),
                       reinterpret_cast<u64>(preserve_handles),
@@ -1671,10 +1579,8 @@ inline i64 replace(const char *path, const u32 *preserve_handles = nullptr, u32 
  * @param kind One of `CAP_KIND_*` values.
  * @return Pointer to a static string literal.
  */
-inline const char *cap_kind_name(u16 kind)
-{
-    switch (kind)
-    {
+inline const char *cap_kind_name(u16 kind) {
+    switch (kind) {
         case CAP_KIND_INVALID:
             return "Invalid";
         case CAP_KIND_STRING:
@@ -1725,8 +1631,7 @@ inline const char *cap_kind_name(u16 kind)
  * @param buf Destination buffer.
  * @param buf_size Size of the destination buffer in bytes.
  */
-inline void cap_rights_str(u32 rights, char *buf, usize buf_size)
-{
+inline void cap_rights_str(u32 rights, char *buf, usize buf_size) {
     if (buf_size < 10)
         return;
     usize i = 0;
@@ -1767,8 +1672,7 @@ inline void cap_rights_str(u32 rights, char *buf, usize buf_size)
  * Unlike @ref DirEnt (used by the path-based `readdir`), this structure is
  * returned one entry at a time by the handle-based API.
  */
-struct FsDirEnt
-{
+struct FsDirEnt {
     u64 inode;      /**< Inode number for the entry. */
     u8 type;        /**< Entry type (implementation-defined; commonly 1=file, 2=dir). */
     u8 name_len;    /**< Length of @ref name in bytes (excluding NUL). */
@@ -1784,8 +1688,7 @@ struct FsDirEnt
  *
  * @return Directory handle on success, or negative error code on failure.
  */
-inline i32 fs_open_root()
-{
+inline i32 fs_open_root() {
     auto r = syscall0(SYS_FS_OPEN_ROOT);
     return r.ok() ? static_cast<i32>(r.val0) : static_cast<i32>(r.error);
 }
@@ -1804,8 +1707,7 @@ inline i32 fs_open_root()
  * @param flags Open flags (subset of @ref OpenFlags).
  * @return File/directory handle on success, or negative error code on failure.
  */
-inline i32 fs_open(u32 dir_handle, const char *name, usize name_len, u32 flags)
-{
+inline i32 fs_open(u32 dir_handle, const char *name, usize name_len, u32 flags) {
     auto r = syscall4(SYS_FS_OPEN,
                       static_cast<u64>(dir_handle),
                       reinterpret_cast<u64>(name),
@@ -1822,8 +1724,7 @@ inline i32 fs_open(u32 dir_handle, const char *name, usize name_len, u32 flags)
  * @param flags Open flags.
  * @return File/directory handle on success, or negative error code on failure.
  */
-inline i32 fs_open(u32 dir_handle, const char *name, u32 flags)
-{
+inline i32 fs_open(u32 dir_handle, const char *name, u32 flags) {
     return fs_open(dir_handle, name, strlen(name), flags);
 }
 
@@ -1839,8 +1740,7 @@ inline i32 fs_open(u32 dir_handle, const char *name, u32 flags)
  * @param len Maximum number of bytes to read.
  * @return Number of bytes read on success, 0 at EOF, or negative error code on failure.
  */
-inline i64 io_read(u32 file_handle, void *buffer, usize len)
-{
+inline i64 io_read(u32 file_handle, void *buffer, usize len) {
     auto r = syscall3(SYS_IO_READ,
                       static_cast<u64>(file_handle),
                       reinterpret_cast<u64>(buffer),
@@ -1860,8 +1760,7 @@ inline i64 io_read(u32 file_handle, void *buffer, usize len)
  * @param len Number of bytes to write.
  * @return Number of bytes written on success, or negative error code on failure.
  */
-inline i64 io_write(u32 file_handle, const void *buffer, usize len)
-{
+inline i64 io_write(u32 file_handle, const void *buffer, usize len) {
     auto r = syscall3(SYS_IO_WRITE,
                       static_cast<u64>(file_handle),
                       reinterpret_cast<u64>(buffer),
@@ -1881,8 +1780,7 @@ inline i64 io_write(u32 file_handle, const void *buffer, usize len)
  * @param whence One of @ref SeekWhence values.
  * @return New position on success, or negative error code on failure.
  */
-inline i64 io_seek(u32 file_handle, i64 offset, i32 whence)
-{
+inline i64 io_seek(u32 file_handle, i64 offset, i32 whence) {
     auto r = syscall3(SYS_IO_SEEK,
                       static_cast<u64>(file_handle),
                       static_cast<u64>(offset),
@@ -1902,8 +1800,7 @@ inline i64 io_seek(u32 file_handle, i64 offset, i32 whence)
  * @param entry Output pointer to receive a directory entry record.
  * @return 1 if an entry was returned, 0 on end-of-directory, or negative error code on failure.
  */
-inline i32 fs_read_dir(u32 dir_handle, FsDirEnt *entry)
-{
+inline i32 fs_read_dir(u32 dir_handle, FsDirEnt *entry) {
     auto r = syscall2(SYS_FS_READ_DIR, static_cast<u64>(dir_handle), reinterpret_cast<u64>(entry));
     return r.ok() ? static_cast<i32>(r.val0) : static_cast<i32>(r.error);
 }
@@ -1918,8 +1815,7 @@ inline i32 fs_read_dir(u32 dir_handle, FsDirEnt *entry)
  * @param dir_handle Directory handle.
  * @return `0` on success, or negative error code on failure.
  */
-inline i32 fs_rewind_dir(u32 dir_handle)
-{
+inline i32 fs_rewind_dir(u32 dir_handle) {
     auto r = syscall1(SYS_FS_REWIND_DIR, static_cast<u64>(dir_handle));
     return static_cast<i32>(r.error);
 }
@@ -1934,8 +1830,7 @@ inline i32 fs_rewind_dir(u32 dir_handle)
  * @param handle File or directory handle.
  * @return `0` on success, or negative error code on failure.
  */
-inline i32 fs_close(u32 handle)
-{
+inline i32 fs_close(u32 handle) {
     auto r = syscall1(SYS_FS_CLOSE, static_cast<u64>(handle));
     return static_cast<i32>(r.error);
 }
@@ -1958,8 +1853,7 @@ inline i32 fs_close(u32 handle)
  * @param flags Open flags for the final component.
  * @return Handle for the final component on success, or negative error code on failure.
  */
-inline i32 fs_open_path(const char *path, u32 flags)
-{
+inline i32 fs_open_path(const char *path, u32 flags) {
     // Start from root
     i32 result = fs_open_root();
     if (result < 0)
@@ -1971,16 +1865,14 @@ inline i32 fs_open_path(const char *path, u32 flags)
         path++;
 
     // Parse path components
-    while (*path)
-    {
+    while (*path) {
         // Find end of component
         const char *start = path;
         while (*path && *path != '/')
             path++;
         usize len = path - start;
 
-        if (len == 0)
-        {
+        if (len == 0) {
             // Skip multiple slashes
             while (*path == '/')
                 path++;
@@ -2019,8 +1911,7 @@ inline i32 fs_open_path(const char *path, u32 flags)
 /**
  * @brief Result of shm_create syscall.
  */
-struct ShmCreateResult
-{
+struct ShmCreateResult {
     i64 error;     /**< Error code (0 on success). */
     u32 handle;    /**< Shared memory handle. */
     u64 virt_addr; /**< Virtual address of mapped region. */
@@ -2038,19 +1929,15 @@ struct ShmCreateResult
  * @param size Size of the shared memory region in bytes.
  * @return ShmCreateResult with handle, virtual address, and size on success.
  */
-inline ShmCreateResult shm_create(u64 size)
-{
+inline ShmCreateResult shm_create(u64 size) {
     auto r = syscall1(SYS_SHM_CREATE, size);
     ShmCreateResult result;
     result.error = r.error;
-    if (r.ok())
-    {
+    if (r.ok()) {
         result.handle = static_cast<u32>(r.val0);
         result.virt_addr = r.val1;
         result.size = r.val2;
-    }
-    else
-    {
+    } else {
         result.handle = 0;
         result.virt_addr = 0;
         result.size = 0;
@@ -2061,8 +1948,7 @@ inline ShmCreateResult shm_create(u64 size)
 /**
  * @brief Result of shm_map syscall.
  */
-struct ShmMapResult
-{
+struct ShmMapResult {
     i64 error;     /**< Error code (0 on success). */
     u64 virt_addr; /**< Virtual address of mapped region. */
     u64 size;      /**< Size of the region. */
@@ -2078,18 +1964,14 @@ struct ShmMapResult
  * @param handle Shared memory handle.
  * @return ShmMapResult with virtual address and size on success.
  */
-inline ShmMapResult shm_map(u32 handle)
-{
+inline ShmMapResult shm_map(u32 handle) {
     auto r = syscall1(SYS_SHM_MAP, static_cast<u64>(handle));
     ShmMapResult result;
     result.error = r.error;
-    if (r.ok())
-    {
+    if (r.ok()) {
         result.virt_addr = r.val0;
         result.size = r.val1;
-    }
-    else
-    {
+    } else {
         result.virt_addr = 0;
         result.size = 0;
     }
@@ -2106,8 +1988,7 @@ inline ShmMapResult shm_map(u32 handle)
  * @param virt_addr Virtual address of the mapped region.
  * @return 0 on success, negative error code on failure.
  */
-inline i32 shm_unmap(u64 virt_addr)
-{
+inline i32 shm_unmap(u64 virt_addr) {
     auto r = syscall1(SYS_SHM_UNMAP, virt_addr);
     return static_cast<i32>(r.error);
 }
@@ -2122,8 +2003,7 @@ inline i32 shm_unmap(u64 virt_addr)
  * @param handle Shared memory handle.
  * @return 0 on success, negative error code on failure.
  */
-inline i32 shm_close(u32 handle)
-{
+inline i32 shm_close(u32 handle) {
     auto r = syscall1(SYS_SHM_CLOSE, static_cast<u64>(handle));
     return static_cast<i32>(r.error);
 }
@@ -2137,21 +2017,19 @@ inline i32 shm_close(u32 handle)
 /**
  * @brief Mouse state structure returned by get_mouse_state.
  */
-struct MouseState
-{
-    i32 x;       ///< Absolute X position
-    i32 y;       ///< Absolute Y position
-    i32 dx;      ///< X movement delta since last query
-    i32 dy;      ///< Y movement delta since last query
-    u8 buttons;  ///< Button bitmask: BIT0=left, BIT1=right, BIT2=middle
+struct MouseState {
+    i32 x;      ///< Absolute X position
+    i32 y;      ///< Absolute Y position
+    i32 dx;     ///< X movement delta since last query
+    i32 dy;     ///< Y movement delta since last query
+    u8 buttons; ///< Button bitmask: BIT0=left, BIT1=right, BIT2=middle
     u8 _pad[3];
 };
 
 /**
  * @brief Framebuffer info returned by map_framebuffer.
  */
-struct FramebufferInfo
-{
+struct FramebufferInfo {
     u64 address; ///< Virtual address of framebuffer
     u32 width;   ///< Width in pixels
     u32 height;  ///< Height in pixels
@@ -2165,8 +2043,7 @@ struct FramebufferInfo
  * @param state Output pointer for mouse state.
  * @return 0 on success, negative error on failure.
  */
-inline i32 get_mouse_state(MouseState *state)
-{
+inline i32 get_mouse_state(MouseState *state) {
     auto r = syscall1(SYS_GET_MOUSE_STATE, reinterpret_cast<u64>(state));
     return static_cast<i32>(r.error);
 }
@@ -2177,11 +2054,9 @@ inline i32 get_mouse_state(MouseState *state)
  * @param info Output pointer for framebuffer info.
  * @return 0 on success, negative error on failure.
  */
-inline i32 map_framebuffer(FramebufferInfo *info)
-{
+inline i32 map_framebuffer(FramebufferInfo *info) {
     auto r = syscall0(SYS_MAP_FRAMEBUFFER);
-    if (r.error != 0)
-    {
+    if (r.error != 0) {
         return static_cast<i32>(r.error);
     }
 
@@ -2200,8 +2075,7 @@ inline i32 map_framebuffer(FramebufferInfo *info)
  * @param height Screen height in pixels.
  * @return 0 on success, negative error on failure.
  */
-inline i32 set_mouse_bounds(u32 width, u32 height)
-{
+inline i32 set_mouse_bounds(u32 width, u32 height) {
     auto r = syscall2(SYS_SET_MOUSE_BOUNDS, static_cast<u64>(width), static_cast<u64>(height));
     return static_cast<i32>(r.error);
 }
@@ -2209,8 +2083,7 @@ inline i32 set_mouse_bounds(u32 width, u32 height)
 /**
  * @brief Input event type.
  */
-enum class InputEventType : u8
-{
+enum class InputEventType : u8 {
     None = 0,
     KeyPress = 1,
     KeyRelease = 2,
@@ -2221,12 +2094,11 @@ enum class InputEventType : u8
 /**
  * @brief Input event structure.
  */
-struct InputEvent
-{
+struct InputEvent {
     InputEventType type;
-    u8 modifiers;  ///< Current modifier state (Shift=1, Ctrl=2, Alt=4)
-    u16 code;      ///< Evdev key code or mouse button
-    i32 value;     ///< 1=press, 0=release, or mouse delta
+    u8 modifiers; ///< Current modifier state (Shift=1, Ctrl=2, Alt=4)
+    u16 code;     ///< Evdev key code or mouse button
+    i32 value;    ///< 1=press, 0=release, or mouse delta
 };
 
 /**
@@ -2234,8 +2106,7 @@ struct InputEvent
  *
  * @return 1 if event available, 0 otherwise.
  */
-inline i32 input_has_event()
-{
+inline i32 input_has_event() {
     auto r = syscall0(SYS_INPUT_HAS_EVENT);
     return static_cast<i32>(r.val0);
 }
@@ -2246,8 +2117,7 @@ inline i32 input_has_event()
  * @param event Output pointer for event data.
  * @return 0 on success, VERR_WOULD_BLOCK if no event.
  */
-inline i32 input_get_event(InputEvent *event)
-{
+inline i32 input_get_event(InputEvent *event) {
     auto r = syscall1(SYS_INPUT_GET_EVENT, reinterpret_cast<u64>(event));
     return static_cast<i32>(r.error);
 }
@@ -2262,8 +2132,7 @@ inline i32 input_get_event(InputEvent *event)
  *
  * @param active true to enable GUI mode, false to disable.
  */
-inline void gcon_set_gui_mode(bool active)
-{
+inline void gcon_set_gui_mode(bool active) {
     syscall1(SYS_GCON_SET_GUI_MODE, active ? 1 : 0);
 }
 
@@ -2283,8 +2152,7 @@ inline void gcon_set_gui_mode(bool active)
  * @param size Maximum bytes to read.
  * @return Number of bytes read, or negative error code.
  */
-inline i64 tty_read(void *buf, u32 size)
-{
+inline i64 tty_read(void *buf, u32 size) {
     auto r = syscall2(SYS_TTY_READ, reinterpret_cast<u64>(buf), size);
     if (r.error < 0)
         return r.error;
@@ -2298,8 +2166,7 @@ inline i64 tty_read(void *buf, u32 size)
  * @param size Number of bytes to write.
  * @return Number of bytes written, or negative error code.
  */
-inline i64 tty_write(const void *buf, u32 size)
-{
+inline i64 tty_write(const void *buf, u32 size) {
     auto r = syscall2(SYS_TTY_WRITE, reinterpret_cast<u64>(buf), size);
     if (r.error < 0)
         return r.error;
@@ -2314,8 +2181,7 @@ inline i64 tty_write(const void *buf, u32 size)
  *
  * @param c Character to push.
  */
-inline void tty_push_input(char c)
-{
+inline void tty_push_input(char c) {
     syscall1(SYS_TTY_PUSH_INPUT, static_cast<u64>(static_cast<unsigned char>(c)));
 }
 
@@ -2324,8 +2190,7 @@ inline void tty_push_input(char c)
  *
  * @return true if at least one character is available.
  */
-inline bool tty_has_input()
-{
+inline bool tty_has_input() {
     auto r = syscall0(SYS_TTY_HAS_INPUT);
     return r.val0 != 0;
 }

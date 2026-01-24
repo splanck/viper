@@ -279,7 +279,8 @@ int invokeLinker(const std::filesystem::path &asmPath,
 
     // Try multiple paths for runtime libraries: Release, Debug, and direct path
     // MSVC multi-config builds put outputs in Release/ or Debug/ subdirectories
-    auto findRuntimeArchive = [&](std::string_view libBaseName) -> std::optional<std::filesystem::path>
+    auto findRuntimeArchive =
+        [&](std::string_view libBaseName) -> std::optional<std::filesystem::path>
     {
         const std::string libFile = std::string(libBaseName) + ".lib";
         if (!buildDir.empty())

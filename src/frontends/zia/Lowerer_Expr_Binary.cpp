@@ -17,9 +17,9 @@ namespace il::frontends::zia
 {
 
 using namespace runtime;
-using il::core::Value;
-using il::core::Type;
 using il::core::Opcode;
+using il::core::Type;
+using il::core::Value;
 
 //=============================================================================
 // Helper Functions
@@ -97,7 +97,8 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
 
             Value assignValue = wrapValueForOptionalField(right.value, targetType, rightType);
             Type assignType = (targetType && targetType->kind == TypeKindSem::Optional)
-                              ? Type(Type::Kind::Ptr) : right.type;
+                                  ? Type(Type::Kind::Ptr)
+                                  : right.type;
 
             // Check if this is a slot-based variable
             auto slotIt = slots_.find(ident->name);
@@ -116,7 +117,8 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                     Value selfPtr;
                     if (getSelfPtr(selfPtr))
                     {
-                        Value fieldValue = wrapValueForOptionalField(right.value, field->type, rightType);
+                        Value fieldValue =
+                            wrapValueForOptionalField(right.value, field->type, rightType);
                         emitFieldStore(field, selfPtr, fieldValue);
                         return right;
                     }
@@ -132,7 +134,8 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                     Value selfPtr;
                     if (getSelfPtr(selfPtr))
                     {
-                        Value fieldValue = wrapValueForOptionalField(right.value, field->type, rightType);
+                        Value fieldValue =
+                            wrapValueForOptionalField(right.value, field->type, rightType);
                         emitFieldStore(field, selfPtr, fieldValue);
                         return right;
                     }
@@ -198,7 +201,8 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                     const FieldLayout *field = valueInfo->findField(fieldExpr->field);
                     if (field)
                     {
-                        Value fieldValue = wrapValueForOptionalField(right.value, field->type, rightType);
+                        Value fieldValue =
+                            wrapValueForOptionalField(right.value, field->type, rightType);
                         emitFieldStore(field, base.value, fieldValue);
                         return right;
                     }
@@ -211,7 +215,8 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                     const FieldLayout *field = entityInfoPtr->findField(fieldExpr->field);
                     if (field)
                     {
-                        Value fieldValue = wrapValueForOptionalField(right.value, field->type, rightType);
+                        Value fieldValue =
+                            wrapValueForOptionalField(right.value, field->type, rightType);
                         emitFieldStore(field, base.value, fieldValue);
                         return right;
                     }
@@ -276,7 +281,8 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                 else if (rightType && rightType->kind == TypeKindSem::Boolean)
                     rightStr = emitCallRet(Type(Type::Kind::Str), kStringFromInt, {right.value});
 
-                Value result = emitCallRet(Type(Type::Kind::Str), kStringConcat, {left.value, rightStr});
+                Value result =
+                    emitCallRet(Type(Type::Kind::Str), kStringConcat, {left.value, rightStr});
                 return {result, Type(Type::Kind::Str)};
             }
             op = isFloat ? Opcode::FAdd : (options_.overflowChecks ? Opcode::IAddOvf : Opcode::Add);
@@ -291,7 +297,8 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             break;
 
         case BinaryOp::Div:
-            op = isFloat ? Opcode::FDiv : (options_.overflowChecks ? Opcode::SDivChk0 : Opcode::SDiv);
+            op = isFloat ? Opcode::FDiv
+                         : (options_.overflowChecks ? Opcode::SDivChk0 : Opcode::SDiv);
             break;
 
         case BinaryOp::Mod:
@@ -302,8 +309,10 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             if (leftType && leftType->kind == TypeKindSem::String)
             {
                 // String equality: rt_str_eq returns i64 (0 or 1), convert to boolean
-                Value result = emitCallRet(Type(Type::Kind::I64), kStringEquals, {left.value, right.value});
-                Value boolResult = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), result, Value::constInt(0));
+                Value result =
+                    emitCallRet(Type(Type::Kind::I64), kStringEquals, {left.value, right.value});
+                Value boolResult =
+                    emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), result, Value::constInt(0));
                 return {boolResult, Type(Type::Kind::I1)};
             }
             if (isFloat)
@@ -324,8 +333,10 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             if (leftType && leftType->kind == TypeKindSem::String)
             {
                 // String inequality: rt_str_eq returns i64 (0 or 1), invert for !=
-                Value eqResult = emitCallRet(Type(Type::Kind::I64), kStringEquals, {left.value, right.value});
-                Value result = emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), eqResult, Value::constInt(0));
+                Value eqResult =
+                    emitCallRet(Type(Type::Kind::I64), kStringEquals, {left.value, right.value});
+                Value result =
+                    emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), eqResult, Value::constInt(0));
                 return {result, Type(Type::Kind::I1)};
             }
             if (isFloat)
@@ -346,8 +357,10 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             if (leftType && leftType->kind == TypeKindSem::String)
             {
                 // Bug #003 fix: Use runtime string comparison for <
-                Value result = emitCallRet(Type(Type::Kind::I64), "rt_str_lt", {left.value, right.value});
-                Value boolResult = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), result, Value::constInt(0));
+                Value result =
+                    emitCallRet(Type(Type::Kind::I64), "rt_str_lt", {left.value, right.value});
+                Value boolResult =
+                    emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), result, Value::constInt(0));
                 return {boolResult, Type(Type::Kind::I1)};
             }
             op = isFloat ? Opcode::FCmpLT : Opcode::SCmpLT;
@@ -358,8 +371,10 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             if (leftType && leftType->kind == TypeKindSem::String)
             {
                 // Bug #003 fix: Use runtime string comparison for <=
-                Value result = emitCallRet(Type(Type::Kind::I64), "rt_str_le", {left.value, right.value});
-                Value boolResult = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), result, Value::constInt(0));
+                Value result =
+                    emitCallRet(Type(Type::Kind::I64), "rt_str_le", {left.value, right.value});
+                Value boolResult =
+                    emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), result, Value::constInt(0));
                 return {boolResult, Type(Type::Kind::I1)};
             }
             op = isFloat ? Opcode::FCmpLE : Opcode::SCmpLE;
@@ -370,8 +385,10 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             if (leftType && leftType->kind == TypeKindSem::String)
             {
                 // Bug #003 fix: Use runtime string comparison for >
-                Value result = emitCallRet(Type(Type::Kind::I64), "rt_str_gt", {left.value, right.value});
-                Value boolResult = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), result, Value::constInt(0));
+                Value result =
+                    emitCallRet(Type(Type::Kind::I64), "rt_str_gt", {left.value, right.value});
+                Value boolResult =
+                    emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), result, Value::constInt(0));
                 return {boolResult, Type(Type::Kind::I1)};
             }
             op = isFloat ? Opcode::FCmpGT : Opcode::SCmpGT;
@@ -382,8 +399,10 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             if (leftType && leftType->kind == TypeKindSem::String)
             {
                 // Bug #003 fix: Use runtime string comparison for >=
-                Value result = emitCallRet(Type(Type::Kind::I64), "rt_str_ge", {left.value, right.value});
-                Value boolResult = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), result, Value::constInt(0));
+                Value result =
+                    emitCallRet(Type(Type::Kind::I64), "rt_str_ge", {left.value, right.value});
+                Value boolResult =
+                    emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), result, Value::constInt(0));
                 return {boolResult, Type(Type::Kind::I1)};
             }
             op = isFloat ? Opcode::FCmpGE : Opcode::SCmpGE;
@@ -393,9 +412,11 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
         case BinaryOp::And:
         {
             Value lhsExt = (left.type.kind == Type::Kind::I1)
-                           ? emitUnary(Opcode::Zext1, Type(Type::Kind::I64), left.value) : left.value;
+                               ? emitUnary(Opcode::Zext1, Type(Type::Kind::I64), left.value)
+                               : left.value;
             Value rhsExt = (right.type.kind == Type::Kind::I1)
-                           ? emitUnary(Opcode::Zext1, Type(Type::Kind::I64), right.value) : right.value;
+                               ? emitUnary(Opcode::Zext1, Type(Type::Kind::I64), right.value)
+                               : right.value;
             Value andResult = emitBinary(Opcode::And, Type(Type::Kind::I64), lhsExt, rhsExt);
             Value truncResult = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), andResult);
             return {truncResult, Type(Type::Kind::I1)};
@@ -404,9 +425,11 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
         case BinaryOp::Or:
         {
             Value lhsExt = (left.type.kind == Type::Kind::I1)
-                           ? emitUnary(Opcode::Zext1, Type(Type::Kind::I64), left.value) : left.value;
+                               ? emitUnary(Opcode::Zext1, Type(Type::Kind::I64), left.value)
+                               : left.value;
             Value rhsExt = (right.type.kind == Type::Kind::I1)
-                           ? emitUnary(Opcode::Zext1, Type(Type::Kind::I64), right.value) : right.value;
+                               ? emitUnary(Opcode::Zext1, Type(Type::Kind::I64), right.value)
+                               : right.value;
             Value orResult = emitBinary(Opcode::Or, Type(Type::Kind::I64), lhsExt, rhsExt);
             Value truncResult = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), orResult);
             return {truncResult, Type(Type::Kind::I1)};
@@ -449,7 +472,8 @@ LowerResult Lowerer::lowerUnary(UnaryExpr *expr)
         {
             if (isFloat)
             {
-                Value result = emitBinary(Opcode::FSub, operand.type, Value::constFloat(0.0), operand.value);
+                Value result =
+                    emitBinary(Opcode::FSub, operand.type, Value::constFloat(0.0), operand.value);
                 return {result, operand.type};
             }
             else
@@ -465,13 +489,15 @@ LowerResult Lowerer::lowerUnary(UnaryExpr *expr)
             Value opVal = operand.value;
             if (operand.type.kind == Type::Kind::I1)
                 opVal = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), operand.value);
-            Value result = emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), opVal, Value::constInt(0));
+            Value result =
+                emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), opVal, Value::constInt(0));
             return {result, Type(Type::Kind::I1)};
         }
 
         case UnaryOp::BitNot:
         {
-            Value result = emitBinary(Opcode::Xor, operand.type, operand.value, Value::constInt(-1));
+            Value result =
+                emitBinary(Opcode::Xor, operand.type, operand.value, Value::constInt(-1));
             return {result, operand.type};
         }
 

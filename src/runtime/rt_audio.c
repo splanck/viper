@@ -47,8 +47,8 @@ static volatile int g_audio_init_lock = 0;
 /// @details Contains the vptr (for future OOP support) and the vaud sound handle.
 typedef struct
 {
-    void *vptr;          ///< VTable pointer (reserved for future use)
-    vaud_sound_t sound;  ///< ViperAUD sound handle
+    void *vptr;         ///< VTable pointer (reserved for future use)
+    vaud_sound_t sound; ///< ViperAUD sound handle
 } rt_sound;
 
 /// @brief Finalizer for sound objects.
@@ -73,8 +73,8 @@ static void rt_sound_finalize(void *obj)
 /// @details Contains the vptr (for future OOP support) and the vaud music handle.
 typedef struct
 {
-    void *vptr;          ///< VTable pointer (reserved for future use)
-    vaud_music_t music;  ///< ViperAUD music handle
+    void *vptr;         ///< VTable pointer (reserved for future use)
+    vaud_music_t music; ///< ViperAUD music handle
 } rt_music;
 
 /// @brief Finalizer for music objects.
@@ -179,8 +179,10 @@ void rt_audio_set_master_volume(int64_t volume)
         return;
 
     /* Clamp to 0-100 range and convert to 0.0-1.0 */
-    if (volume < 0) volume = 0;
-    if (volume > 100) volume = 100;
+    if (volume < 0)
+        volume = 0;
+    if (volume > 100)
+        volume = 100;
 
     vaud_set_master_volume(g_audio_ctx, (float)volume / 100.0f);
 }
@@ -280,13 +282,17 @@ int64_t rt_sound_play_ex(void *sound, int64_t volume, int64_t pan)
         return -1;
 
     /* Convert from 0-100 to 0.0-1.0 */
-    if (volume < 0) volume = 0;
-    if (volume > 100) volume = 100;
+    if (volume < 0)
+        volume = 0;
+    if (volume > 100)
+        volume = 100;
     float vol = (float)volume / 100.0f;
 
     /* Convert from -100 to 100 to -1.0 to 1.0 */
-    if (pan < -100) pan = -100;
-    if (pan > 100) pan = 100;
+    if (pan < -100)
+        pan = -100;
+    if (pan > 100)
+        pan = 100;
     float p = (float)pan / 100.0f;
 
     vaud_voice_id voice = vaud_play_ex(snd->sound, vol, p);
@@ -303,13 +309,17 @@ int64_t rt_sound_play_loop(void *sound, int64_t volume, int64_t pan)
         return -1;
 
     /* Convert from 0-100 to 0.0-1.0 */
-    if (volume < 0) volume = 0;
-    if (volume > 100) volume = 100;
+    if (volume < 0)
+        volume = 0;
+    if (volume > 100)
+        volume = 100;
     float vol = (float)volume / 100.0f;
 
     /* Convert from -100 to 100 to -1.0 to 1.0 */
-    if (pan < -100) pan = -100;
-    if (pan > 100) pan = 100;
+    if (pan < -100)
+        pan = -100;
+    if (pan > 100)
+        pan = 100;
     float p = (float)pan / 100.0f;
 
     vaud_voice_id voice = vaud_play_loop(snd->sound, vol, p);
@@ -329,8 +339,10 @@ void rt_voice_set_volume(int64_t voice_id, int64_t volume)
     if (!g_audio_ctx || voice_id < 0)
         return;
 
-    if (volume < 0) volume = 0;
-    if (volume > 100) volume = 100;
+    if (volume < 0)
+        volume = 0;
+    if (volume > 100)
+        volume = 100;
     float vol = (float)volume / 100.0f;
 
     vaud_set_voice_volume(g_audio_ctx, (vaud_voice_id)voice_id, vol);
@@ -341,8 +353,10 @@ void rt_voice_set_pan(int64_t voice_id, int64_t pan)
     if (!g_audio_ctx || voice_id < 0)
         return;
 
-    if (pan < -100) pan = -100;
-    if (pan > 100) pan = 100;
+    if (pan < -100)
+        pan = -100;
+    if (pan > 100)
+        pan = 100;
     float p = (float)pan / 100.0f;
 
     vaud_set_voice_pan(g_audio_ctx, (vaud_voice_id)voice_id, p);
@@ -452,8 +466,10 @@ void rt_music_set_volume(void *music, int64_t volume)
     if (!mus->music)
         return;
 
-    if (volume < 0) volume = 0;
-    if (volume > 100) volume = 100;
+    if (volume < 0)
+        volume = 0;
+    if (volume > 100)
+        volume = 100;
     float vol = (float)volume / 100.0f;
 
     vaud_music_set_volume(mus->music, vol);
@@ -493,7 +509,8 @@ void rt_music_seek(void *music, int64_t position_ms)
     if (!mus->music)
         return;
 
-    if (position_ms < 0) position_ms = 0;
+    if (position_ms < 0)
+        position_ms = 0;
     float seconds = (float)position_ms / 1000.0f;
 
     vaud_music_seek(mus->music, seconds);
@@ -536,9 +553,7 @@ int64_t rt_audio_init(void)
     return 0;
 }
 
-void rt_audio_shutdown(void)
-{
-}
+void rt_audio_shutdown(void) {}
 
 void rt_audio_set_master_volume(int64_t volume)
 {
@@ -550,17 +565,11 @@ int64_t rt_audio_get_master_volume(void)
     return 0;
 }
 
-void rt_audio_pause_all(void)
-{
-}
+void rt_audio_pause_all(void) {}
 
-void rt_audio_resume_all(void)
-{
-}
+void rt_audio_resume_all(void) {}
 
-void rt_audio_stop_all_sounds(void)
-{
-}
+void rt_audio_stop_all_sounds(void) {}
 
 void *rt_sound_load(rt_string path)
 {

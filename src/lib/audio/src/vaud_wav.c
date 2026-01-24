@@ -44,10 +44,10 @@
 // WAV File Constants
 //===----------------------------------------------------------------------===//
 
-#define WAV_RIFF_ID 0x46464952  /* "RIFF" in little-endian */
-#define WAV_WAVE_ID 0x45564157  /* "WAVE" in little-endian */
-#define WAV_FMT_ID  0x20746D66  /* "fmt " in little-endian */
-#define WAV_DATA_ID 0x61746164  /* "data" in little-endian */
+#define WAV_RIFF_ID 0x46464952 /* "RIFF" in little-endian */
+#define WAV_WAVE_ID 0x45564157 /* "WAVE" in little-endian */
+#define WAV_FMT_ID 0x20746D66  /* "fmt " in little-endian */
+#define WAV_DATA_ID 0x61746164 /* "data" in little-endian */
 #define WAV_FORMAT_PCM 1
 
 //===----------------------------------------------------------------------===//
@@ -63,8 +63,7 @@ static inline uint16_t read_u16_le(const uint8_t *p)
 /// @brief Read a 32-bit little-endian value from a buffer.
 static inline uint32_t read_u32_le(const uint8_t *p)
 {
-    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
-           ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
 /// @brief Convert 8-bit unsigned sample to 16-bit signed.
@@ -81,8 +80,8 @@ static inline int16_t u8_to_s16(uint8_t sample)
 /// @param channels Number of channels in source (1 or 2).
 /// @param left Output: left channel sample.
 /// @param right Output: right channel sample.
-static inline void decode_pcm_frame(const uint8_t *src, int32_t bits_per_sample,
-                                     int32_t channels, int16_t *left, int16_t *right)
+static inline void decode_pcm_frame(
+    const uint8_t *src, int32_t bits_per_sample, int32_t channels, int16_t *left, int16_t *right)
 {
     if (bits_per_sample == 8)
     {
@@ -106,8 +105,8 @@ typedef struct
     int32_t sample_rate;
     int32_t channels;
     int32_t bits_per_sample;
-    int64_t data_offset;  /* Byte offset to PCM data */
-    int64_t data_size;    /* Size of PCM data in bytes */
+    int64_t data_offset; /* Byte offset to PCM data */
+    int64_t data_size;   /* Size of PCM data in bytes */
 } vaud_wav_info;
 
 /// @brief Parse WAV header from memory buffer.
@@ -192,7 +191,7 @@ static int parse_wav_header(const uint8_t *data, size_t size, vaud_wav_info *inf
         /* Move to next chunk (chunks are word-aligned) */
         offset += 8 + chunk_size;
         if (chunk_size & 1)
-            offset++;  /* Pad byte */
+            offset++; /* Pad byte */
 
         if (found_fmt && found_data)
             break;
@@ -223,8 +222,10 @@ static int parse_wav_header(const uint8_t *data, size_t size, vaud_wav_info *inf
 /// @param out_samples Output: allocated stereo 16-bit samples.
 /// @param out_frames Output: number of frames.
 /// @return 1 on success, 0 on failure.
-static int convert_pcm_to_stereo_s16(const uint8_t *data, const vaud_wav_info *info,
-                                      int16_t **out_samples, int64_t *out_frames)
+static int convert_pcm_to_stereo_s16(const uint8_t *data,
+                                     const vaud_wav_info *info,
+                                     int16_t **out_samples,
+                                     int64_t *out_frames)
 {
     int32_t bytes_per_sample = info->bits_per_sample / 8;
     int32_t bytes_per_frame = bytes_per_sample * info->channels;
@@ -259,8 +260,11 @@ static int convert_pcm_to_stereo_s16(const uint8_t *data, const vaud_wav_info *i
 // Public Functions
 //===----------------------------------------------------------------------===//
 
-int vaud_wav_load_file(const char *path, int16_t **out_samples, int64_t *out_frames,
-                       int32_t *out_sample_rate, int32_t *out_channels)
+int vaud_wav_load_file(const char *path,
+                       int16_t **out_samples,
+                       int64_t *out_frames,
+                       int32_t *out_sample_rate,
+                       int32_t *out_channels)
 {
     if (!path || !out_samples || !out_frames || !out_sample_rate || !out_channels)
     {
@@ -281,7 +285,7 @@ int vaud_wav_load_file(const char *path, int16_t **out_samples, int64_t *out_fra
     long file_size = ftell(file);
     fseek(file, 0, SEEK_SET);
 
-    if (file_size <= 0 || file_size > 100 * 1024 * 1024)  /* Max 100MB for sound effects */
+    if (file_size <= 0 || file_size > 100 * 1024 * 1024) /* Max 100MB for sound effects */
     {
         fclose(file);
         vaud_set_error(VAUD_ERR_FILE, "Invalid file size");
@@ -308,14 +312,18 @@ int vaud_wav_load_file(const char *path, int16_t **out_samples, int64_t *out_fra
     }
 
     /* Parse and convert */
-    int result = vaud_wav_load_mem(data, (size_t)file_size, out_samples, out_frames,
-                                   out_sample_rate, out_channels);
+    int result = vaud_wav_load_mem(
+        data, (size_t)file_size, out_samples, out_frames, out_sample_rate, out_channels);
     free(data);
     return result;
 }
 
-int vaud_wav_load_mem(const void *data, size_t size, int16_t **out_samples,
-                      int64_t *out_frames, int32_t *out_sample_rate, int32_t *out_channels)
+int vaud_wav_load_mem(const void *data,
+                      size_t size,
+                      int16_t **out_samples,
+                      int64_t *out_frames,
+                      int32_t *out_sample_rate,
+                      int32_t *out_channels)
 {
     if (!data || !out_samples || !out_frames || !out_sample_rate || !out_channels)
     {
@@ -348,12 +356,17 @@ int vaud_wav_load_mem(const void *data, size_t size, int16_t **out_samples,
     return 1;
 }
 
-int vaud_wav_open_stream(const char *path, void **out_file, int64_t *out_data_offset,
-                         int64_t *out_data_size, int64_t *out_frames,
-                         int32_t *out_sample_rate, int32_t *out_channels, int32_t *out_bits)
+int vaud_wav_open_stream(const char *path,
+                         void **out_file,
+                         int64_t *out_data_offset,
+                         int64_t *out_data_size,
+                         int64_t *out_frames,
+                         int32_t *out_sample_rate,
+                         int32_t *out_channels,
+                         int32_t *out_bits)
 {
-    if (!path || !out_file || !out_data_offset || !out_data_size ||
-        !out_frames || !out_sample_rate || !out_channels || !out_bits)
+    if (!path || !out_file || !out_data_offset || !out_data_size || !out_frames ||
+        !out_sample_rate || !out_channels || !out_bits)
     {
         vaud_set_error(VAUD_ERR_INVALID_PARAM, "NULL parameter");
         return 0;
@@ -404,8 +417,8 @@ int vaud_wav_open_stream(const char *path, void **out_file, int64_t *out_data_of
     return 1;
 }
 
-int32_t vaud_wav_read_frames(void *file, int16_t *samples, int32_t frames,
-                             int32_t channels, int32_t bits_per_sample)
+int32_t vaud_wav_read_frames(
+    void *file, int16_t *samples, int32_t frames, int32_t channels, int32_t bits_per_sample)
 {
     if (!file || !samples || frames <= 0)
         return 0;
@@ -451,8 +464,13 @@ int64_t vaud_resample_output_frames(int64_t in_frames, int32_t in_rate, int32_t 
     return (in_frames * out_rate + in_rate - 1) / in_rate;
 }
 
-void vaud_resample(const int16_t *input, int64_t in_frames, int32_t in_rate,
-                   int16_t *output, int64_t out_frames, int32_t out_rate, int32_t channels)
+void vaud_resample(const int16_t *input,
+                   int64_t in_frames,
+                   int32_t in_rate,
+                   int16_t *output,
+                   int64_t out_frames,
+                   int32_t out_rate,
+                   int32_t channels)
 {
     if (!input || !output || in_frames <= 0 || out_frames <= 0)
         return;
@@ -481,8 +499,10 @@ void vaud_resample(const int16_t *input, int64_t in_frames, int32_t in_rate,
             int32_t interp = (int32_t)(s0 * (1.0 - frac) + s1 * frac);
 
             /* Clamp to 16-bit range */
-            if (interp > 32767) interp = 32767;
-            if (interp < -32768) interp = -32768;
+            if (interp > 32767)
+                interp = 32767;
+            if (interp < -32768)
+                interp = -32768;
 
             output[out_idx * channels + ch] = (int16_t)interp;
         }

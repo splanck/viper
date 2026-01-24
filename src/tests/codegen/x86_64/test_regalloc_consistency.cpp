@@ -51,8 +51,9 @@ void addSimpleFunction(MFunction &func)
 {
     // Create an instruction that uses all source vregs - ADD dst, src
     // We'll add them one at a time to create dependencies
-    return MInstr::make(MOpcode::ADDrr,
-                        {makeVRegOperand(RegClass::GPR, dst), makeVRegOperand(RegClass::GPR, srcs[0])});
+    return MInstr::make(
+        MOpcode::ADDrr,
+        {makeVRegOperand(RegClass::GPR, dst), makeVRegOperand(RegClass::GPR, srcs[0])});
 }
 
 void addPressureFunction(MFunction &func)

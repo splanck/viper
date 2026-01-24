@@ -209,11 +209,12 @@ extern "C"
     } vgfx_key_t;
 
     /// @brief Keyboard modifier flags
-    typedef enum {
+    typedef enum
+    {
         VGFX_MOD_SHIFT = 1 << 0,
-        VGFX_MOD_CTRL  = 1 << 1,
-        VGFX_MOD_ALT   = 1 << 2,
-        VGFX_MOD_CMD   = 1 << 3   // macOS Command key
+        VGFX_MOD_CTRL = 1 << 1,
+        VGFX_MOD_ALT = 1 << 2,
+        VGFX_MOD_CMD = 1 << 3 // macOS Command key
     } vgfx_mod_t;
 
     /// @brief Mouse button identifiers.
@@ -625,11 +626,12 @@ extern "C"
     //===----------------------------------------------------------------------===//
 
     /// @brief Clipboard format types
-    typedef enum {
-        VGFX_CLIPBOARD_TEXT,     ///< Plain text (UTF-8)
-        VGFX_CLIPBOARD_HTML,     ///< HTML formatted text
-        VGFX_CLIPBOARD_IMAGE,    ///< Image data (not yet supported)
-        VGFX_CLIPBOARD_FILES     ///< File paths (not yet supported)
+    typedef enum
+    {
+        VGFX_CLIPBOARD_TEXT,  ///< Plain text (UTF-8)
+        VGFX_CLIPBOARD_HTML,  ///< HTML formatted text
+        VGFX_CLIPBOARD_IMAGE, ///< Image data (not yet supported)
+        VGFX_CLIPBOARD_FILES  ///< File paths (not yet supported)
     } vgfx_clipboard_format_t;
 
     /// @brief Check if the clipboard contains data in the specified format.

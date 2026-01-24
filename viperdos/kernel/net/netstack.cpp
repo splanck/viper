@@ -4,19 +4,17 @@
  */
 
 #include "netstack.hpp"
+#include "../../include/viperdos/net_stats.hpp"
 #include "../arch/aarch64/timer.hpp"
 #include "../console/serial.hpp"
 #include "../include/constants.hpp"
-#include "../../include/viperdos/net_stats.hpp"
 
 namespace kc = kernel::constants;
 
-namespace net
-{
+namespace net {
 
 // Simple memory operations
-static void memcpy_net(void *dst, const void *src, usize n)
-{
+static void memcpy_net(void *dst, const void *src, usize n) {
     u8 *d = static_cast<u8 *>(dst);
     const u8 *s = static_cast<const u8 *>(src);
     while (n--)
@@ -41,11 +39,9 @@ static void memcpy_net(void *dst, const void *src, usize n)
  * decisions for outbound packets. The current implementation assumes QEMU
  * user-mode networking defaults (10.0.2.x subnet).
  */
-class NetIf
-{
+class NetIf {
   public:
-    void init(virtio::NetDevice *dev)
-    {
+    void init(virtio::NetDevice *dev) {
         dev_ = dev;
         dev->get_mac(mac_.bytes);
 
@@ -56,25 +52,39 @@ class NetIf
         dns_ = {{10, 0, 2, 3}};
     }
 
-    MacAddr mac() const { return mac_; }
-    Ipv4Addr ip() const { return ip_; }
-    Ipv4Addr netmask() const { return netmask_; }
-    Ipv4Addr gateway() const { return gateway_; }
-    Ipv4Addr dns() const { return dns_; }
+    MacAddr mac() const {
+        return mac_;
+    }
 
-    bool is_local(const Ipv4Addr &addr) const
-    {
+    Ipv4Addr ip() const {
+        return ip_;
+    }
+
+    Ipv4Addr netmask() const {
+        return netmask_;
+    }
+
+    Ipv4Addr gateway() const {
+        return gateway_;
+    }
+
+    Ipv4Addr dns() const {
+        return dns_;
+    }
+
+    bool is_local(const Ipv4Addr &addr) const {
         return ip_.same_subnet(addr, netmask_);
     }
 
-    Ipv4Addr next_hop(const Ipv4Addr &dest) const
-    {
+    Ipv4Addr next_hop(const Ipv4Addr &dest) const {
         if (is_local(dest))
             return dest;
         return gateway_;
     }
 
-    virtio::NetDevice *device() { return dev_; }
+    virtio::NetDevice *device() {
+        return dev_;
+    }
 
   private:
     virtio::NetDevice *dev_{nullptr};
@@ -103,37 +113,30 @@ class NetIf
  * the caller can initiate an ARP request and poll for resolution. Entries are
  * stored without timeout (simple implementation suitable for embedded use).
  */
-class ArpCache
-{
+class ArpCache {
   public:
-    void init(NetIf *netif) { netif_ = netif; }
+    void init(NetIf *netif) {
+        netif_ = netif;
+    }
 
-    MacAddr lookup(const Ipv4Addr &ip)
-    {
-        for (usize i = 0; i < CACHE_SIZE; i++)
-        {
-            if (entries_[i].valid && entries_[i].ip == ip)
-            {
+    MacAddr lookup(const Ipv4Addr &ip) {
+        for (usize i = 0; i < CACHE_SIZE; i++) {
+            if (entries_[i].valid && entries_[i].ip == ip) {
                 return entries_[i].mac;
             }
         }
         return MacAddr::zero();
     }
 
-    void add(const Ipv4Addr &ip, const MacAddr &mac)
-    {
-        for (usize i = 0; i < CACHE_SIZE; i++)
-        {
-            if (entries_[i].valid && entries_[i].ip == ip)
-            {
+    void add(const Ipv4Addr &ip, const MacAddr &mac) {
+        for (usize i = 0; i < CACHE_SIZE; i++) {
+            if (entries_[i].valid && entries_[i].ip == ip) {
                 entries_[i].mac = mac;
                 return;
             }
         }
-        for (usize i = 0; i < CACHE_SIZE; i++)
-        {
-            if (!entries_[i].valid)
-            {
+        for (usize i = 0; i < CACHE_SIZE; i++) {
+            if (!entries_[i].valid) {
                 entries_[i].ip = ip;
                 entries_[i].mac = mac;
                 entries_[i].valid = true;
@@ -144,8 +147,7 @@ class ArpCache
         entries_[0].mac = mac;
     }
 
-    void send_request(const Ipv4Addr &ip)
-    {
+    void send_request(const Ipv4Addr &ip) {
         u8 frame[kc::net::ARP_FRAME_SIZE];
         EthHeader *eth = reinterpret_cast<EthHeader *>(frame);
         ArpHeader *arp = reinterpret_cast<ArpHeader *>(frame + sizeof(EthHeader));
@@ -167,8 +169,7 @@ class ArpCache
         netif_->device()->transmit(frame, sizeof(EthHeader) + sizeof(ArpHeader));
     }
 
-    void handle_arp(const ArpHeader *arp, usize len)
-    {
+    void handle_arp(const ArpHeader *arp, usize len) {
         (void)len;
 
         if (ntohs(arp->hw_type) != ARP_HW_ETHERNET)
@@ -180,8 +181,7 @@ class ArpCache
         (void)op;
         add(arp->sender_ip, arp->sender_mac);
 
-        if (op == ARP_OP_REQUEST && arp->target_ip == netif_->ip())
-        {
+        if (op == ARP_OP_REQUEST && arp->target_ip == netif_->ip()) {
             u8 frame[kc::net::ARP_FRAME_SIZE];
             EthHeader *eth_reply = reinterpret_cast<EthHeader *>(frame);
             ArpHeader *arp_reply = reinterpret_cast<ArpHeader *>(frame + sizeof(EthHeader));
@@ -207,8 +207,7 @@ class ArpCache
   private:
     static constexpr usize CACHE_SIZE = kc::net::ARP_CACHE_SIZE;
 
-    struct Entry
-    {
+    struct Entry {
         Ipv4Addr ip;
         MacAddr mac;
         bool valid{false};
@@ -254,7 +253,8 @@ static bool g_icmp_received = false;
 static bool send_frame(const MacAddr &dst, u16 ethertype, const void *data, usize len);
 static bool send_ip_packet(const Ipv4Addr &dst, u8 protocol, const void *data, usize len);
 static bool send_tcp_segment(TcpConnection *conn, u8 flags, const void *data, usize len);
-static bool send_udp_datagram(const Ipv4Addr &dst, u16 src_port, u16 dst_port, const void *data, usize len);
+static bool send_udp_datagram(
+    const Ipv4Addr &dst, u16 src_port, u16 dst_port, const void *data, usize len);
 static void handle_arp(const u8 *data, usize len);
 static void handle_ipv4(const u8 *data, usize len);
 static void handle_icmp(const Ipv4Header *ip, const u8 *data, usize len);
@@ -268,20 +268,17 @@ static u16 alloc_port();
 // Public API Implementation
 // =============================================================================
 
-void network_init()
-{
+void network_init() {
     serial::puts("[netstack] network_init() called\n");
 
-    if (g_initialized)
-    {
+    if (g_initialized) {
         serial::puts("[netstack] Already initialized\n");
         return;
     }
 
     virtio::net_init();
     virtio::NetDevice *dev = virtio::net_device();
-    if (!dev)
-    {
+    if (!dev) {
         serial::puts("[netstack] No network device available\n");
         return;
     }
@@ -289,12 +286,10 @@ void network_init()
     g_netif.init(dev);
     g_arp.init(&g_netif);
 
-    for (usize i = 0; i < MAX_TCP_CONNS; i++)
-    {
+    for (usize i = 0; i < MAX_TCP_CONNS; i++) {
         g_tcp_conns[i].in_use = false;
     }
-    for (usize i = 0; i < MAX_UDP_SOCKETS; i++)
-    {
+    for (usize i = 0; i < MAX_UDP_SOCKETS; i++) {
         g_udp_sockets[i].in_use = false;
     }
 
@@ -302,8 +297,7 @@ void network_init()
     serial::puts("[netstack] Network stack initialized\n");
 }
 
-void network_poll()
-{
+void network_poll() {
     if (!g_initialized)
         return;
 
@@ -314,8 +308,7 @@ void network_poll()
     dev->poll_rx();
 
     u8 buf[kc::net::RX_BUFFER_SIZE];
-    while (true)
-    {
+    while (true) {
         i32 len = dev->receive(buf, sizeof(buf));
         if (len <= 0)
             break;
@@ -332,8 +325,7 @@ void network_poll()
         const u8 *payload = buf + sizeof(EthHeader);
         usize payload_len = len - sizeof(EthHeader);
 
-        switch (ethertype)
-        {
+        switch (ethertype) {
             case ETH_TYPE_ARP:
                 handle_arp(payload, payload_len);
                 break;
@@ -344,8 +336,7 @@ void network_poll()
     }
 }
 
-bool is_available()
-{
+bool is_available() {
     return g_initialized;
 }
 
@@ -367,8 +358,7 @@ bool is_available()
 // Sockets are identified by integer IDs (0 to MAX_TCP_CONNS-1).
 // =============================================================================
 
-namespace tcp
-{
+namespace tcp {
 
 /**
  * @brief Create a new TCP socket for a process.
@@ -380,12 +370,9 @@ namespace tcp
  * @param process_id The owning process ID for access control.
  * @return Socket ID (>= 0) on success, or negative error code (VERR_NO_RESOURCE).
  */
-i64 socket_create(u32 process_id)
-{
-    for (usize i = 0; i < MAX_TCP_CONNS; i++)
-    {
-        if (!g_tcp_conns[i].in_use)
-        {
+i64 socket_create(u32 process_id) {
+    for (usize i = 0; i < MAX_TCP_CONNS; i++) {
+        if (!g_tcp_conns[i].in_use) {
             TcpConnection *conn = &g_tcp_conns[i];
             conn->in_use = true;
             conn->owner_pid = process_id;
@@ -422,8 +409,7 @@ i64 socket_create(u32 process_id)
  * @param port   Remote TCP port number.
  * @return true if connection established, false on timeout or error.
  */
-bool socket_connect(i32 sock, const Ipv4Addr &ip, u16 port)
-{
+bool socket_connect(i32 sock, const Ipv4Addr &ip, u16 port) {
     serial::puts("[tcp] connect: sock=");
     serial::put_dec(sock);
     serial::puts(" ip=");
@@ -432,15 +418,13 @@ bool socket_connect(i32 sock, const Ipv4Addr &ip, u16 port)
     serial::put_dec(port);
     serial::putc('\n');
 
-    if (sock < 0 || static_cast<usize>(sock) >= MAX_TCP_CONNS)
-    {
+    if (sock < 0 || static_cast<usize>(sock) >= MAX_TCP_CONNS) {
         serial::puts("[tcp] connect: invalid socket\n");
         return false;
     }
 
     TcpConnection *conn = &g_tcp_conns[sock];
-    if (!conn->in_use || conn->state != TcpState::CLOSED)
-    {
+    if (!conn->in_use || conn->state != TcpState::CLOSED) {
         serial::puts("[tcp] connect: socket not in valid state\n");
         return false;
     }
@@ -466,17 +450,14 @@ bool socket_connect(i32 sock, const Ipv4Addr &ip, u16 port)
     u64 timeout_ticks = kc::net::TCP_CONNECT_TIMEOUT_MS;
     int syn_retries = 0;
 
-    while (timer::get_ticks() - start_ticks < timeout_ticks)
-    {
+    while (timer::get_ticks() - start_ticks < timeout_ticks) {
         network_poll();
-        if (conn->state == TcpState::ESTABLISHED)
-        {
+        if (conn->state == TcpState::ESTABLISHED) {
             serial::puts("[tcp] connect: ESTABLISHED\n");
             return true;
         }
 
-        if (!syn_sent && syn_retries < static_cast<int>(kc::net::CONNECT_RETRY_COUNT))
-        {
+        if (!syn_sent && syn_retries < static_cast<int>(kc::net::CONNECT_RETRY_COUNT)) {
             conn->snd_nxt = conn->snd_una;
             syn_sent = send_tcp_segment(conn, TCP_SYN, nullptr, 0);
             syn_retries++;
@@ -516,8 +497,7 @@ bool socket_connect(i32 sock, const Ipv4Addr &ip, u16 port)
  * @param len  Number of bytes to send.
  * @return Number of bytes sent on success, or negative error code.
  */
-i64 socket_send(i32 sock, const void *buf, usize len)
-{
+i64 socket_send(i32 sock, const void *buf, usize len) {
     if (sock < 0 || static_cast<usize>(sock) >= MAX_TCP_CONNS)
         return VERR_INVALID_HANDLE;
 
@@ -528,8 +508,7 @@ i64 socket_send(i32 sock, const void *buf, usize len)
     const u8 *ptr = static_cast<const u8 *>(buf);
     usize sent = 0;
 
-    while (sent < len)
-    {
+    while (sent < len) {
         usize chunk = len - sent;
         if (chunk > kc::net::TCP_MAX_CHUNK)
             chunk = kc::net::TCP_MAX_CHUNK;
@@ -556,8 +535,7 @@ i64 socket_send(i32 sock, const void *buf, usize len)
  * @param len  Maximum number of bytes to read.
  * @return Number of bytes read, 0 for EOF, or negative error code.
  */
-i64 socket_recv(i32 sock, void *buf, usize len)
-{
+i64 socket_recv(i32 sock, void *buf, usize len) {
     if (sock < 0 || static_cast<usize>(sock) >= MAX_TCP_CONNS)
         return VERR_INVALID_HANDLE;
 
@@ -567,8 +545,7 @@ i64 socket_recv(i32 sock, void *buf, usize len)
 
     usize available = conn->rx_available();
 
-    if (available == 0)
-    {
+    if (available == 0) {
         if (conn->state == TcpState::CLOSE_WAIT || conn->state == TcpState::CLOSED)
             return 0; // EOF
         return VERR_WOULD_BLOCK;
@@ -579,8 +556,7 @@ i64 socket_recv(i32 sock, void *buf, usize len)
         to_read = len;
 
     u8 *dst = static_cast<u8 *>(buf);
-    for (usize i = 0; i < to_read; i++)
-    {
+    for (usize i = 0; i < to_read; i++) {
         dst[i] = conn->rx_buf[conn->rx_head];
         conn->rx_head = (conn->rx_head + 1) % TcpConnection::RX_BUF_SIZE;
     }
@@ -599,8 +575,7 @@ i64 socket_recv(i32 sock, void *buf, usize len)
  *
  * @param sock Socket ID to close.
  */
-void socket_close(i32 sock)
-{
+void socket_close(i32 sock) {
     if (sock < 0 || static_cast<usize>(sock) >= MAX_TCP_CONNS)
         return;
 
@@ -608,13 +583,11 @@ void socket_close(i32 sock)
     if (!conn->in_use)
         return;
 
-    if (conn->state == TcpState::ESTABLISHED)
-    {
+    if (conn->state == TcpState::ESTABLISHED) {
         conn->state = TcpState::FIN_WAIT_1;
         send_tcp_segment(conn, TCP_FIN | TCP_ACK, nullptr, 0);
 
-        for (u32 i = 0; i < kc::net::TCP_CLOSE_POLL_ITERATIONS; i++)
-        {
+        for (u32 i = 0; i < kc::net::TCP_CLOSE_POLL_ITERATIONS; i++) {
             network_poll();
             if (conn->state == TcpState::CLOSED)
                 break;
@@ -638,8 +611,7 @@ void socket_close(i32 sock)
  * @param process_id Process ID to verify ownership against.
  * @return true if socket exists and is owned by process, false otherwise.
  */
-bool socket_owned_by(i32 sock, u32 process_id)
-{
+bool socket_owned_by(i32 sock, u32 process_id) {
     if (sock < 0 || static_cast<usize>(sock) >= MAX_TCP_CONNS)
         return false;
 
@@ -664,8 +636,7 @@ bool socket_owned_by(i32 sock, u32 process_id)
  * @param out_rx_available Output: Number of bytes available to read.
  * @return 0 on success, negative error code on failure.
  */
-i32 socket_status(i32 sock, u32 *out_flags, u32 *out_rx_available)
-{
+i32 socket_status(i32 sock, u32 *out_flags, u32 *out_rx_available) {
     if (!out_flags || !out_rx_available)
         return VERR_INVALID_ARG;
 
@@ -680,21 +651,18 @@ i32 socket_status(i32 sock, u32 *out_flags, u32 *out_rx_available)
         return VERR_INVALID_HANDLE;
 
     usize avail = conn->rx_available();
-    if (avail > 0)
-    {
+    if (avail > 0) {
         *out_flags |= SOCK_READABLE;
         if (avail > 0xFFFFFFFFu)
             avail = 0xFFFFFFFFu;
         *out_rx_available = static_cast<u32>(avail);
     }
 
-    if (conn->state == TcpState::ESTABLISHED)
-    {
+    if (conn->state == TcpState::ESTABLISHED) {
         *out_flags |= SOCK_WRITABLE;
     }
 
-    if ((conn->state == TcpState::CLOSE_WAIT || conn->state == TcpState::CLOSED) && avail == 0)
-    {
+    if ((conn->state == TcpState::CLOSE_WAIT || conn->state == TcpState::CLOSED) && avail == 0) {
         *out_flags |= SOCK_EOF;
         *out_flags |= SOCK_READABLE;
     }
@@ -708,20 +676,16 @@ i32 socket_status(i32 sock, u32 *out_flags, u32 *out_rx_available)
 // DNS API
 // =============================================================================
 
-namespace dns
-{
+namespace dns {
 
-bool resolve(const char *hostname, Ipv4Addr *out, u32 timeout_ms)
-{
+bool resolve(const char *hostname, Ipv4Addr *out, u32 timeout_ms) {
     (void)timeout_ms;
 
-    if (!g_initialized)
-    {
+    if (!g_initialized) {
         serial::puts("[dns] resolve failed: network not initialized\n");
         return false;
     }
-    if (!out)
-    {
+    if (!out) {
         serial::puts("[dns] resolve failed: null output pointer\n");
         return false;
     }
@@ -750,8 +714,7 @@ bool resolve(const char *hostname, Ipv4Addr *out, u32 timeout_ms)
 
     // Encode hostname
     const char *ptr = hostname;
-    while (*ptr)
-    {
+    while (*ptr) {
         const char *dot = ptr;
         while (*dot && *dot != '.')
             dot++;
@@ -777,13 +740,10 @@ bool resolve(const char *hostname, Ipv4Addr *out, u32 timeout_ms)
     u16 src_port = alloc_port();
 
     bool sent = false;
-    for (u32 attempt = 0; attempt < kc::net::CONNECT_RETRY_COUNT && !sent; attempt++)
-    {
+    for (u32 attempt = 0; attempt < kc::net::CONNECT_RETRY_COUNT && !sent; attempt++) {
         sent = send_udp_datagram(g_netif.dns(), src_port, kc::net::DNS_PORT, query, pos);
-        if (!sent)
-        {
-            for (int j = 0; j < 20; j++)
-            {
+        if (!sent) {
+            for (int j = 0; j < 20; j++) {
                 network_poll();
                 for (volatile u32 k = 0; k < kc::net::BUSY_WAIT_ITERATIONS; k = k + 1)
                     ;
@@ -791,8 +751,7 @@ bool resolve(const char *hostname, Ipv4Addr *out, u32 timeout_ms)
         }
     }
 
-    if (!sent)
-    {
+    if (!sent) {
         g_dns_pending = false;
         return false;
     }
@@ -801,11 +760,9 @@ bool resolve(const char *hostname, Ipv4Addr *out, u32 timeout_ms)
     u64 start_ticks = timer::get_ticks();
     u64 timeout_ticks = timeout_ms; // timer runs at 1kHz so ticks ~= ms
 
-    while (timer::get_ticks() - start_ticks < timeout_ticks)
-    {
+    while (timer::get_ticks() - start_ticks < timeout_ticks) {
         network_poll();
-        if (!g_dns_pending)
-        {
+        if (!g_dns_pending) {
             *out = g_dns_result;
             return true;
         }
@@ -824,11 +781,9 @@ bool resolve(const char *hostname, Ipv4Addr *out, u32 timeout_ms)
 // ICMP API
 // =============================================================================
 
-namespace icmp
-{
+namespace icmp {
 
-i32 ping(const Ipv4Addr &ip, u32 timeout_ms)
-{
+i32 ping(const Ipv4Addr &ip, u32 timeout_ms) {
     (void)timeout_ms;
 
     if (!g_initialized)
@@ -842,8 +797,7 @@ i32 ping(const Ipv4Addr &ip, u32 timeout_ms)
     icmp->seq = htons(g_icmp_seq++);
     icmp->checksum = 0;
 
-    for (u32 i = 0; i < kc::net::ICMP_DATA_SIZE; i++)
-    {
+    for (u32 i = 0; i < kc::net::ICMP_DATA_SIZE; i++) {
         icmp_data[sizeof(IcmpHeader) + i] = static_cast<u8>(i);
     }
 
@@ -854,11 +808,9 @@ i32 ping(const Ipv4Addr &ip, u32 timeout_ms)
 
     send_ip_packet(ip, IP_PROTO_ICMP, icmp_data, sizeof(IcmpHeader) + kc::net::ICMP_DATA_SIZE);
 
-    for (u32 i = 0; i < kc::net::ICMP_POLL_ITERATIONS; i++)
-    {
+    for (u32 i = 0; i < kc::net::ICMP_POLL_ITERATIONS; i++) {
         network_poll();
-        if (g_icmp_received)
-        {
+        if (g_icmp_received) {
             return 0;
         }
         for (volatile u32 j = 0; j < kc::net::BUSY_WAIT_ITERATIONS; j = j + 1)
@@ -875,16 +827,14 @@ i32 ping(const Ipv4Addr &ip, u32 timeout_ms)
 // Internal Implementation
 // =============================================================================
 
-static u16 alloc_port()
-{
+static u16 alloc_port() {
     u16 port = g_next_ephemeral_port++;
     if (g_next_ephemeral_port > kc::net::EPHEMERAL_PORT_MAX)
         g_next_ephemeral_port = kc::net::EPHEMERAL_PORT_START;
     return port;
 }
 
-static bool send_frame(const MacAddr &dst, u16 ethertype, const void *data, usize len)
-{
+static bool send_frame(const MacAddr &dst, u16 ethertype, const void *data, usize len) {
     u8 frame[kc::net::FRAME_MAX_SIZE];
     if (len + sizeof(EthHeader) > sizeof(frame))
         return false;
@@ -901,16 +851,14 @@ static bool send_frame(const MacAddr &dst, u16 ethertype, const void *data, usiz
         return false;
 
     bool ok = dev->transmit(frame, sizeof(EthHeader) + len);
-    if (ok)
-    {
+    if (ok) {
         g_tx_packets++;
         g_tx_bytes += sizeof(EthHeader) + len;
     }
     return ok;
 }
 
-static bool send_ip_packet(const Ipv4Addr &dst, u8 protocol, const void *data, usize len)
-{
+static bool send_ip_packet(const Ipv4Addr &dst, u8 protocol, const void *data, usize len) {
     u8 packet[kc::net::IP_PACKET_MAX];
     if (len + sizeof(Ipv4Header) > sizeof(packet))
         return false;
@@ -933,20 +881,17 @@ static bool send_ip_packet(const Ipv4Addr &dst, u8 protocol, const void *data, u
     Ipv4Addr next_hop = g_netif.next_hop(dst);
     MacAddr dst_mac = g_arp.lookup(next_hop);
 
-    if (dst_mac == MacAddr::zero())
-    {
+    if (dst_mac == MacAddr::zero()) {
         serial::puts("[ip] ARP lookup miss for ");
         serial::put_ipv4(next_hop.bytes);
         serial::puts(", sending ARP request\n");
 
         g_arp.send_request(next_hop);
 
-        for (u32 i = 0; i < kc::net::ARP_REQUEST_POLL_ITERATIONS; i++)
-        {
+        for (u32 i = 0; i < kc::net::ARP_REQUEST_POLL_ITERATIONS; i++) {
             network_poll();
             dst_mac = g_arp.lookup(next_hop);
-            if (dst_mac != MacAddr::zero())
-            {
+            if (dst_mac != MacAddr::zero()) {
                 serial::puts("[ip] ARP resolved after ");
                 serial::put_dec(i);
                 serial::puts(" polls\n");
@@ -956,8 +901,7 @@ static bool send_ip_packet(const Ipv4Addr &dst, u8 protocol, const void *data, u
                 ;
         }
 
-        if (dst_mac == MacAddr::zero())
-        {
+        if (dst_mac == MacAddr::zero()) {
             serial::puts("[ip] ARP resolution FAILED\n");
             return false;
         }
@@ -966,8 +910,7 @@ static bool send_ip_packet(const Ipv4Addr &dst, u8 protocol, const void *data, u
     return send_frame(dst_mac, ETH_TYPE_IPV4, packet, sizeof(Ipv4Header) + len);
 }
 
-static bool send_tcp_segment(TcpConnection *conn, u8 flags, const void *data, usize len)
-{
+static bool send_tcp_segment(TcpConnection *conn, u8 flags, const void *data, usize len) {
     u8 segment[kc::net::TCP_SEGMENT_MAX];
     TcpHeader *tcp = reinterpret_cast<TcpHeader *>(segment);
 
@@ -981,14 +924,12 @@ static bool send_tcp_segment(TcpConnection *conn, u8 flags, const void *data, us
     tcp->checksum = 0;
     tcp->urgent = 0;
 
-    if (data && len > 0)
-    {
+    if (data && len > 0) {
         memcpy_net(segment + sizeof(TcpHeader), data, len);
     }
 
     // Calculate TCP checksum
-    struct PseudoHeader
-    {
+    struct PseudoHeader {
         Ipv4Addr src;
         Ipv4Addr dst;
         u8 zero;
@@ -1014,8 +955,7 @@ static bool send_tcp_segment(TcpConnection *conn, u8 flags, const void *data, us
     conn->snd_nxt += static_cast<u32>(len);
 
     bool ok = send_ip_packet(conn->remote_ip, IP_PROTO_TCP, segment, sizeof(TcpHeader) + len);
-    if (flags & TCP_SYN)
-    {
+    if (flags & TCP_SYN) {
         serial::puts("[tcp] send_tcp_segment SYN to ");
         serial::put_ipv4(conn->remote_ip.bytes);
         serial::putc(':');
@@ -1027,8 +967,8 @@ static bool send_tcp_segment(TcpConnection *conn, u8 flags, const void *data, us
     return ok;
 }
 
-static bool send_udp_datagram(const Ipv4Addr &dst, u16 src_port, u16 dst_port, const void *data, usize len)
-{
+static bool send_udp_datagram(
+    const Ipv4Addr &dst, u16 src_port, u16 dst_port, const void *data, usize len) {
     u8 datagram[kc::net::UDP_DATAGRAM_MAX];
     if (len + sizeof(UdpHeader) > sizeof(datagram))
         return false;
@@ -1039,23 +979,20 @@ static bool send_udp_datagram(const Ipv4Addr &dst, u16 src_port, u16 dst_port, c
     udp->length = htons(static_cast<u16>(sizeof(UdpHeader) + len));
     udp->checksum = 0;
 
-    if (data && len > 0)
-    {
+    if (data && len > 0) {
         memcpy_net(datagram + sizeof(UdpHeader), data, len);
     }
 
     return send_ip_packet(dst, IP_PROTO_UDP, datagram, sizeof(UdpHeader) + len);
 }
 
-static void handle_arp(const u8 *data, usize len)
-{
+static void handle_arp(const u8 *data, usize len) {
     if (len < sizeof(ArpHeader))
         return;
     g_arp.handle_arp(reinterpret_cast<const ArpHeader *>(data), len);
 }
 
-static void handle_ipv4(const u8 *data, usize len)
-{
+static void handle_ipv4(const u8 *data, usize len) {
     if (len < sizeof(Ipv4Header))
         return;
 
@@ -1072,8 +1009,7 @@ static void handle_ipv4(const u8 *data, usize len)
     const u8 *payload = data + ihl;
     usize payload_len = ntohs(ip->total_len) - ihl;
 
-    switch (ip->protocol)
-    {
+    switch (ip->protocol) {
         case IP_PROTO_ICMP:
             handle_icmp(ip, payload, payload_len);
             break;
@@ -1086,15 +1022,13 @@ static void handle_ipv4(const u8 *data, usize len)
     }
 }
 
-static void handle_icmp(const Ipv4Header *ip, const u8 *data, usize len)
-{
+static void handle_icmp(const Ipv4Header *ip, const u8 *data, usize len) {
     if (len < sizeof(IcmpHeader))
         return;
 
     const IcmpHeader *icmp = reinterpret_cast<const IcmpHeader *>(data);
 
-    if (icmp->type == ICMP_ECHO_REQUEST)
-    {
+    if (icmp->type == ICMP_ECHO_REQUEST) {
         u8 reply[kc::net::ICMP_BUFFER_SIZE];
         IcmpHeader *reply_icmp = reinterpret_cast<IcmpHeader *>(reply);
 
@@ -1112,19 +1046,15 @@ static void handle_icmp(const Ipv4Header *ip, const u8 *data, usize len)
         reply_icmp->checksum = checksum(reply, sizeof(IcmpHeader) + data_len);
 
         send_ip_packet(ip->src, IP_PROTO_ICMP, reply, sizeof(IcmpHeader) + data_len);
-    }
-    else if (icmp->type == ICMP_ECHO_REPLY)
-    {
-        if (g_icmp_pending)
-        {
+    } else if (icmp->type == ICMP_ECHO_REPLY) {
+        if (g_icmp_pending) {
             g_icmp_received = true;
             g_icmp_pending = false;
         }
     }
 }
 
-static void handle_udp(const Ipv4Header *ip, const u8 *data, usize len)
-{
+static void handle_udp(const Ipv4Header *ip, const u8 *data, usize len) {
     if (len < sizeof(UdpHeader))
         return;
 
@@ -1133,25 +1063,20 @@ static void handle_udp(const Ipv4Header *ip, const u8 *data, usize len)
     u16 udp_len = ntohs(udp->length);
 
     // Check for DNS reply
-    if (src_port == kc::net::DNS_PORT && g_dns_pending)
-    {
+    if (src_port == kc::net::DNS_PORT && g_dns_pending) {
         const u8 *dns_data = data + sizeof(UdpHeader);
         usize dns_len = udp_len - sizeof(UdpHeader);
 
-        if (dns_len >= 12)
-        {
+        if (dns_len >= 12) {
             u16 txid = (static_cast<u16>(dns_data[0]) << 8) | dns_data[1];
             u16 flags = (static_cast<u16>(dns_data[2]) << 8) | dns_data[3];
             u16 ancount = (static_cast<u16>(dns_data[6]) << 8) | dns_data[7];
 
-            if (txid == g_dns_txid && (flags & 0x8000) && ancount > 0)
-            {
+            if (txid == g_dns_txid && (flags & 0x8000) && ancount > 0) {
                 usize pos = 12;
                 // Skip query name
-                while (pos < dns_len && dns_data[pos] != 0)
-                {
-                    if ((dns_data[pos] & 0xc0) == 0xc0)
-                    {
+                while (pos < dns_len && dns_data[pos] != 0) {
+                    if ((dns_data[pos] & 0xc0) == 0xc0) {
                         pos += 2;
                         break;
                     }
@@ -1161,24 +1086,20 @@ static void handle_udp(const Ipv4Header *ip, const u8 *data, usize len)
                     pos++;
                 pos += 4;
 
-                if (pos + 12 <= dns_len)
-                {
+                if (pos + 12 <= dns_len) {
                     if ((dns_data[pos] & 0xc0) == 0xc0)
                         pos += 2;
-                    else
-                    {
+                    else {
                         while (pos < dns_len && dns_data[pos] != 0)
                             pos += dns_data[pos] + 1;
                         pos++;
                     }
 
-                    if (pos + 10 <= dns_len)
-                    {
+                    if (pos + 10 <= dns_len) {
                         u16 rtype = (static_cast<u16>(dns_data[pos]) << 8) | dns_data[pos + 1];
                         u16 rdlen = (static_cast<u16>(dns_data[pos + 8]) << 8) | dns_data[pos + 9];
 
-                        if (rtype == 1 && rdlen == 4 && pos + 10 + 4 <= dns_len)
-                        {
+                        if (rtype == 1 && rdlen == 4 && pos + 10 + 4 <= dns_len) {
                             g_dns_result.bytes[0] = dns_data[pos + 10];
                             g_dns_result.bytes[1] = dns_data[pos + 11];
                             g_dns_result.bytes[2] = dns_data[pos + 12];
@@ -1194,16 +1115,13 @@ static void handle_udp(const Ipv4Header *ip, const u8 *data, usize len)
 
     // Find matching UDP socket
     u16 dst_port = ntohs(udp->dst_port);
-    for (usize i = 0; i < MAX_UDP_SOCKETS; i++)
-    {
-        if (g_udp_sockets[i].in_use && g_udp_sockets[i].local_port == dst_port)
-        {
+    for (usize i = 0; i < MAX_UDP_SOCKETS; i++) {
+        if (g_udp_sockets[i].in_use && g_udp_sockets[i].local_port == dst_port) {
             UdpSocket *sock = &g_udp_sockets[i];
             const u8 *payload = data + sizeof(UdpHeader);
             usize payload_len = udp_len - sizeof(UdpHeader);
 
-            if (payload_len <= UdpSocket::RX_BUF_SIZE)
-            {
+            if (payload_len <= UdpSocket::RX_BUF_SIZE) {
                 memcpy_net(sock->rx_buf, payload, payload_len);
                 sock->rx_len = payload_len;
                 sock->rx_src_ip = ip->src;
@@ -1215,27 +1133,21 @@ static void handle_udp(const Ipv4Header *ip, const u8 *data, usize len)
     }
 }
 
-static TcpConnection *find_tcp_conn(const Ipv4Addr &remote_ip, u16 remote_port, u16 local_port)
-{
-    for (usize i = 0; i < MAX_TCP_CONNS; i++)
-    {
+static TcpConnection *find_tcp_conn(const Ipv4Addr &remote_ip, u16 remote_port, u16 local_port) {
+    for (usize i = 0; i < MAX_TCP_CONNS; i++) {
         TcpConnection *c = &g_tcp_conns[i];
         if (c->in_use && c->state != TcpState::LISTEN && c->local_port == local_port &&
-            c->remote_port == remote_port && c->remote_ip == remote_ip)
-        {
+            c->remote_port == remote_port && c->remote_ip == remote_ip) {
             return c;
         }
     }
     return nullptr;
 }
 
-static TcpConnection *find_listening_socket(u16 local_port)
-{
-    for (usize i = 0; i < MAX_TCP_CONNS; i++)
-    {
+static TcpConnection *find_listening_socket(u16 local_port) {
+    for (usize i = 0; i < MAX_TCP_CONNS; i++) {
         if (g_tcp_conns[i].in_use && g_tcp_conns[i].state == TcpState::LISTEN &&
-            g_tcp_conns[i].local_port == local_port)
-        {
+            g_tcp_conns[i].local_port == local_port) {
             return &g_tcp_conns[i];
         }
     }
@@ -1246,27 +1158,24 @@ static TcpConnection *find_listening_socket(u16 local_port)
 // TCP State Handlers
 // =============================================================================
 
-static void handle_tcp_syn_sent(TcpConnection *conn, u8 flags, u32 seq, u32 ack)
-{
-    if ((flags & TCP_SYN) && (flags & TCP_ACK))
-    {
+static void handle_tcp_syn_sent(TcpConnection *conn, u8 flags, u32 seq, u32 ack) {
+    if ((flags & TCP_SYN) && (flags & TCP_ACK)) {
         serial::puts("[tcp] got SYN-ACK, transitioning to ESTABLISHED\n");
         conn->rcv_nxt = seq + 1;
         conn->snd_una = ack;
         conn->state = TcpState::ESTABLISHED;
         send_tcp_segment(conn, TCP_ACK, nullptr, 0);
-    }
-    else if (flags & TCP_RST)
-    {
+    } else if (flags & TCP_RST) {
         serial::puts("[tcp] got RST, connection refused\n");
         conn->state = TcpState::CLOSED;
     }
 }
 
-static void handle_tcp_established_data(TcpConnection *conn, u32 seq, const u8 *payload, usize payload_len)
-{
-    if (seq != conn->rcv_nxt)
-    {
+static void handle_tcp_established_data(TcpConnection *conn,
+                                        u32 seq,
+                                        const u8 *payload,
+                                        usize payload_len) {
+    if (seq != conn->rcv_nxt) {
         serial::puts("[tcp] DROP: seq mismatch, got=");
         serial::put_hex(seq);
         serial::puts(" expect=");
@@ -1275,14 +1184,12 @@ static void handle_tcp_established_data(TcpConnection *conn, u32 seq, const u8 *
         return;
     }
 
-    usize space = TcpConnection::RX_BUF_SIZE -
-                  ((conn->rx_tail - conn->rx_head + TcpConnection::RX_BUF_SIZE) %
-                   TcpConnection::RX_BUF_SIZE);
+    usize space =
+        TcpConnection::RX_BUF_SIZE -
+        ((conn->rx_tail - conn->rx_head + TcpConnection::RX_BUF_SIZE) % TcpConnection::RX_BUF_SIZE);
 
-    if (payload_len <= space)
-    {
-        for (usize i = 0; i < payload_len; i++)
-        {
+    if (payload_len <= space) {
+        for (usize i = 0; i < payload_len; i++) {
             conn->rx_buf[conn->rx_tail] = payload[i];
             conn->rx_tail = (conn->rx_tail + 1) % TcpConnection::RX_BUF_SIZE;
         }
@@ -1290,40 +1197,30 @@ static void handle_tcp_established_data(TcpConnection *conn, u32 seq, const u8 *
         serial::puts("[tcp] copied ");
         serial::put_dec(payload_len);
         serial::puts(" bytes to rx_buf\n");
-    }
-    else
-    {
+    } else {
         serial::puts("[tcp] DROP: no space\n");
     }
 }
 
-static void handle_tcp_established(TcpConnection *conn, u8 flags, u32 seq, u32 ack,
-                                   const u8 *payload, usize payload_len)
-{
+static void handle_tcp_established(
+    TcpConnection *conn, u8 flags, u32 seq, u32 ack, const u8 *payload, usize payload_len) {
     if (flags & TCP_ACK)
         conn->snd_una = ack;
 
-    if (flags & TCP_FIN)
-    {
+    if (flags & TCP_FIN) {
         conn->rcv_nxt = seq + 1;
         conn->state = TcpState::CLOSE_WAIT;
         send_tcp_segment(conn, TCP_ACK, nullptr, 0);
-    }
-    else if (payload_len > 0)
-    {
+    } else if (payload_len > 0) {
         handle_tcp_established_data(conn, seq, payload, payload_len);
         send_tcp_segment(conn, TCP_ACK, nullptr, 0);
     }
 }
 
-static void handle_tcp_fin_wait(TcpConnection *conn, u8 flags, u32 seq)
-{
-    if (conn->state == TcpState::FIN_WAIT_1 && (flags & TCP_ACK))
-    {
+static void handle_tcp_fin_wait(TcpConnection *conn, u8 flags, u32 seq) {
+    if (conn->state == TcpState::FIN_WAIT_1 && (flags & TCP_ACK)) {
         conn->state = TcpState::FIN_WAIT_2;
-    }
-    else if (conn->state == TcpState::FIN_WAIT_2 && (flags & TCP_FIN))
-    {
+    } else if (conn->state == TcpState::FIN_WAIT_2 && (flags & TCP_FIN)) {
         conn->rcv_nxt = seq + 1;
         send_tcp_segment(conn, TCP_ACK, nullptr, 0);
         conn->state = TcpState::CLOSED;
@@ -1331,11 +1228,9 @@ static void handle_tcp_fin_wait(TcpConnection *conn, u8 flags, u32 seq)
     }
 }
 
-static void handle_tcp_incoming_syn(u16 dst_port, const Ipv4Addr &src_ip, u16 src_port, u32 seq)
-{
+static void handle_tcp_incoming_syn(u16 dst_port, const Ipv4Addr &src_ip, u16 src_port, u32 seq) {
     TcpConnection *listener = find_listening_socket(dst_port);
-    if (listener && listener->backlog_count < TcpConnection::MAX_BACKLOG)
-    {
+    if (listener && listener->backlog_count < TcpConnection::MAX_BACKLOG) {
         auto &pending = listener->backlog[listener->backlog_count++];
         pending.valid = true;
         pending.ip = src_ip;
@@ -1348,8 +1243,7 @@ static void handle_tcp_incoming_syn(u16 dst_port, const Ipv4Addr &src_ip, u16 sr
 // TCP Packet Handler
 // =============================================================================
 
-static void handle_tcp(const Ipv4Header *ip, const u8 *data, usize len)
-{
+static void handle_tcp(const Ipv4Header *ip, const u8 *data, usize len) {
     if (len < sizeof(TcpHeader))
         return;
 
@@ -1376,10 +1270,8 @@ static void handle_tcp(const Ipv4Header *ip, const u8 *data, usize len)
 
     TcpConnection *conn = find_tcp_conn(ip->src, src_port, dst_port);
 
-    if (conn)
-    {
-        switch (conn->state)
-        {
+    if (conn) {
+        switch (conn->state) {
             case TcpState::SYN_SENT:
                 handle_tcp_syn_sent(conn, flags, seq, ack);
                 break;
@@ -1393,9 +1285,7 @@ static void handle_tcp(const Ipv4Header *ip, const u8 *data, usize len)
             default:
                 break;
         }
-    }
-    else if ((flags & TCP_SYN) && !(flags & TCP_ACK))
-    {
+    } else if ((flags & TCP_SYN) && !(flags & TCP_ACK)) {
         handle_tcp_incoming_syn(dst_port, ip->src, src_port, seq);
     }
 }
@@ -1404,11 +1294,9 @@ static void handle_tcp(const Ipv4Header *ip, const u8 *data, usize len)
 // Network Statistics
 // =============================================================================
 
-void get_stats(::NetStats *out)
-{
+void get_stats(::NetStats *out) {
     // Zero-initialize the structure
-    for (usize i = 0; i < sizeof(::NetStats); i++)
-    {
+    for (usize i = 0; i < sizeof(::NetStats); i++) {
         reinterpret_cast<u8 *>(out)[i] = 0;
     }
 

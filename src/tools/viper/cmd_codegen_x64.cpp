@@ -37,8 +37,8 @@ namespace viper::tools::ilc
 namespace
 {
 
-constexpr std::string_view kUsage =
-    "usage: ilc codegen x64 <file.il> [-S <file.s>] [-o <a.out>] [-run-native] [--stack-size=SIZE]\n";
+constexpr std::string_view kUsage = "usage: ilc codegen x64 <file.il> [-S <file.s>] [-o <a.out>] "
+                                    "[-run-native] [--stack-size=SIZE]\n";
 
 // Use shared ArgvView from tools/common
 using viper::tools::ArgvView;

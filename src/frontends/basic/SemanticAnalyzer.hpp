@@ -593,8 +593,9 @@ class SemanticAnalyzer
     std::unique_ptr<TypeResolver> resolver_; ///< Type resolver (constructed after declare pass).
     bool sawDecl_{false}; ///< Track if any declarations seen (for USING placement).
     std::unordered_set<std::string> symbols_;
-    std::unordered_set<std::string> constants_;                  ///< Constant names declared with CONST.
-    std::unordered_map<std::string, long long> constantValues_; ///< Integer values of CONST declarations.
+    std::unordered_set<std::string> constants_; ///< Constant names declared with CONST.
+    std::unordered_map<std::string, long long>
+        constantValues_; ///< Integer values of CONST declarations.
     std::unordered_map<std::string, Type> varTypes_;
     std::unordered_map<std::string, std::string> objectClassTypes_;
     std::unordered_map<std::string, ArrayMetadata>

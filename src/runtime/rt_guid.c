@@ -71,8 +71,8 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <windows.h>
 #include <wincrypt.h>
+#include <windows.h>
 #else
 #include <fcntl.h>
 #include <time.h>

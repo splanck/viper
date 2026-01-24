@@ -7,11 +7,11 @@
 
 namespace workbench {
 
-class Desktop;  // Forward declaration
+class Desktop; // Forward declaration
 
 /// @brief Manages a file browser window for navigating directories.
 class FileBrowser {
-public:
+  public:
     FileBrowser(Desktop *desktop, const char *initialPath);
     ~FileBrowser();
 
@@ -20,10 +20,14 @@ public:
     bool init();
 
     /// @brief Get the browser window handle.
-    gui_window_t *window() const { return m_window; }
+    gui_window_t *window() const {
+        return m_window;
+    }
 
     /// @brief Check if this browser is still open.
-    bool isOpen() const { return m_window != nullptr; }
+    bool isOpen() const {
+        return m_window != nullptr;
+    }
 
     /// @brief Handle an event for this browser.
     /// @return true if the event was consumed.
@@ -36,15 +40,19 @@ public:
     void navigateUp();
 
     /// @brief Get the current path.
-    const char *currentPath() const { return m_currentPath; }
+    const char *currentPath() const {
+        return m_currentPath;
+    }
 
-private:
+  private:
     void loadDirectory();
     void redraw();
     void drawToolbar();
     void drawFileList();
     void drawStatusBar();
     void drawFileIcon(int x, int y, FileType type);
+    void updateScrollbar();
+    int calculateContentHeight();
 
     int findFileAt(int x, int y);
     void handleClick(int x, int y, int button);
@@ -77,7 +85,7 @@ private:
     void handleRenameKey(int keycode, bool shift);
     void drawRenameEditor();
 
-private:
+  private:
     Desktop *m_desktop;
     gui_window_t *m_window = nullptr;
 
@@ -98,7 +106,7 @@ private:
 
     // Context menu state
     ContextMenu m_contextMenu = {};
-    int m_contextMenuFile = -1;  // File index the menu was opened for
+    int m_contextMenuFile = -1; // File index the menu was opened for
 
     // Inline rename editor state
     RenameEditor m_renameEditor = {};

@@ -4,8 +4,7 @@
 #include "types.h"
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 /* File type masks */
@@ -52,34 +51,33 @@ extern "C"
 #define ALLPERMS (S_ISUID | S_ISGID | S_ISVTX | S_IRWXU | S_IRWXG | S_IRWXO)
 #define DEFFILEMODE (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)
 
-    /* stat structure */
-    struct stat
-    {
-        dev_t st_dev;         /* Device ID */
-        ino_t st_ino;         /* Inode number */
-        mode_t st_mode;       /* File mode */
-        nlink_t st_nlink;     /* Number of hard links */
-        uid_t st_uid;         /* Owner user ID */
-        gid_t st_gid;         /* Owner group ID */
-        dev_t st_rdev;        /* Device ID (if special file) */
-        off_t st_size;        /* Total size in bytes */
-        blksize_t st_blksize; /* Block size for I/O */
-        blkcnt_t st_blocks;   /* Number of 512B blocks allocated */
-        time_t st_atime;      /* Time of last access */
-        time_t st_mtime;      /* Time of last modification */
-        time_t st_ctime;      /* Time of last status change */
-    };
+/* stat structure */
+struct stat {
+    dev_t st_dev;         /* Device ID */
+    ino_t st_ino;         /* Inode number */
+    mode_t st_mode;       /* File mode */
+    nlink_t st_nlink;     /* Number of hard links */
+    uid_t st_uid;         /* Owner user ID */
+    gid_t st_gid;         /* Owner group ID */
+    dev_t st_rdev;        /* Device ID (if special file) */
+    off_t st_size;        /* Total size in bytes */
+    blksize_t st_blksize; /* Block size for I/O */
+    blkcnt_t st_blocks;   /* Number of 512B blocks allocated */
+    time_t st_atime;      /* Time of last access */
+    time_t st_mtime;      /* Time of last modification */
+    time_t st_ctime;      /* Time of last status change */
+};
 
-    /* Functions */
-    int stat(const char *pathname, struct stat *statbuf);
-    int fstat(int fd, struct stat *statbuf);
-    int lstat(const char *pathname, struct stat *statbuf);
-    int chmod(const char *pathname, mode_t mode);
-    int fchmod(int fd, mode_t mode);
-    int mkdir(const char *pathname, mode_t mode);
-    mode_t umask(mode_t mask);
-    int mkfifo(const char *pathname, mode_t mode);
-    int mknod(const char *pathname, mode_t mode, dev_t dev);
+/* Functions */
+int stat(const char *pathname, struct stat *statbuf);
+int fstat(int fd, struct stat *statbuf);
+int lstat(const char *pathname, struct stat *statbuf);
+int chmod(const char *pathname, mode_t mode);
+int fchmod(int fd, mode_t mode);
+int mkdir(const char *pathname, mode_t mode);
+mode_t umask(mode_t mask);
+int mkfifo(const char *pathname, mode_t mode);
+int mknod(const char *pathname, mode_t mode, dev_t dev);
 
 #ifdef __cplusplus
 }

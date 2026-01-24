@@ -11,26 +11,21 @@
 #include "../console/serial.hpp"
 #include "pmm.hpp"
 
-namespace mm::cow
-{
+namespace mm::cow {
 
-namespace
-{
+namespace {
 // Global COW manager instance
 CowManager g_cow_manager;
 } // namespace
 
-CowManager &cow_manager()
-{
+CowManager &cow_manager() {
     return g_cow_manager;
 }
 
-bool CowManager::init(u64 mem_start, u64 mem_end, PageInfo *page_info_array)
-{
+bool CowManager::init(u64 mem_start, u64 mem_end, PageInfo *page_info_array) {
     SpinlockGuard guard(lock_);
 
-    if (initialized_)
-    {
+    if (initialized_) {
         serial::puts("[cow] Already initialized\n");
         return false;
     }
@@ -40,8 +35,7 @@ bool CowManager::init(u64 mem_start, u64 mem_end, PageInfo *page_info_array)
     mem_start_ = (mem_start + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
     mem_end_ = mem_end & ~(PAGE_SIZE - 1);
 
-    if (mem_end_ <= mem_start_)
-    {
+    if (mem_end_ <= mem_start_) {
         serial::puts("[cow] Invalid memory range\n");
         return false;
     }
@@ -66,17 +60,13 @@ bool CowManager::init(u64 mem_start, u64 mem_end, PageInfo *page_info_array)
     serial::put_dec(info_pages);
     serial::puts(" pages)\n");
 
-    if (page_info_array != nullptr)
-    {
+    if (page_info_array != nullptr) {
         // Use provided array
         page_info_ = page_info_array;
-    }
-    else
-    {
+    } else {
         // Allocate page info array from PMM
         u64 info_phys = pmm::alloc_pages(info_pages);
-        if (info_phys == 0)
-        {
+        if (info_phys == 0) {
             serial::puts("[cow] Failed to allocate page info array\n");
             return false;
         }
@@ -88,8 +78,7 @@ bool CowManager::init(u64 mem_start, u64 mem_end, PageInfo *page_info_array)
     }
 
     // Initialize all page info to zero
-    for (u64 i = 0; i < total_pages_; i++)
-    {
+    for (u64 i = 0; i < total_pages_; i++) {
         page_info_[i].refcount = 0;
         page_info_[i].flags = 0;
     }
@@ -100,8 +89,7 @@ bool CowManager::init(u64 mem_start, u64 mem_end, PageInfo *page_info_array)
     return true;
 }
 
-void CowManager::inc_ref(u64 phys_page)
-{
+void CowManager::inc_ref(u64 phys_page) {
     if (!initialized_)
         return;
 
@@ -114,14 +102,12 @@ void CowManager::inc_ref(u64 phys_page)
     SpinlockGuard guard(lock_);
 
     u64 idx = phys_to_index(phys_page);
-    if (page_info_[idx].refcount < 0xFFFF)
-    {
+    if (page_info_[idx].refcount < 0xFFFF) {
         page_info_[idx].refcount++;
     }
 }
 
-bool CowManager::dec_ref(u64 phys_page)
-{
+bool CowManager::dec_ref(u64 phys_page) {
     if (!initialized_)
         return false;
 
@@ -134,8 +120,7 @@ bool CowManager::dec_ref(u64 phys_page)
     SpinlockGuard guard(lock_);
 
     u64 idx = phys_to_index(phys_page);
-    if (page_info_[idx].refcount > 0)
-    {
+    if (page_info_[idx].refcount > 0) {
         page_info_[idx].refcount--;
         return page_info_[idx].refcount == 0;
     }
@@ -143,8 +128,7 @@ bool CowManager::dec_ref(u64 phys_page)
     return false;
 }
 
-u16 CowManager::get_ref(u64 phys_page) const
-{
+u16 CowManager::get_ref(u64 phys_page) const {
     if (!initialized_)
         return 0;
 
@@ -160,8 +144,7 @@ u16 CowManager::get_ref(u64 phys_page) const
     return page_info_[idx].refcount;
 }
 
-void CowManager::mark_cow(u64 phys_page)
-{
+void CowManager::mark_cow(u64 phys_page) {
     if (!initialized_)
         return;
 
@@ -176,8 +159,7 @@ void CowManager::mark_cow(u64 phys_page)
     page_info_[idx].flags |= page_flags::COW;
 }
 
-void CowManager::clear_cow(u64 phys_page)
-{
+void CowManager::clear_cow(u64 phys_page) {
     if (!initialized_)
         return;
 
@@ -192,8 +174,7 @@ void CowManager::clear_cow(u64 phys_page)
     page_info_[idx].flags &= ~page_flags::COW;
 }
 
-bool CowManager::is_cow(u64 phys_page) const
-{
+bool CowManager::is_cow(u64 phys_page) const {
     if (!initialized_)
         return false;
 

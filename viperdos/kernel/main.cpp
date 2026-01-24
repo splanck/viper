@@ -60,7 +60,6 @@
 #include "include/syscall.hpp"
 #include "include/vboot.hpp"
 #include "input/input.hpp"
-#include "tty/tty.hpp"
 #include "ipc/channel.hpp"
 #include "ipc/poll.hpp"
 #include "ipc/pollset.hpp"
@@ -74,6 +73,7 @@
 #include "sched/scheduler.hpp"
 #include "sched/task.hpp"
 #include "tests/tests.hpp"
+#include "tty/tty.hpp"
 #include "types.hpp"
 #include "viper/address_space.hpp"
 #include "viper/viper.hpp"
@@ -85,49 +85,44 @@
 
 
 // Linker-provided symbols
-extern "C"
-{
-    extern u8 __kernel_end[];
+extern "C" {
+extern u8 __kernel_end[];
 }
 
 // C++ runtime support - needed for global constructors
-extern "C"
-{
-    // These are called by GCC for global object construction/destruction
-    /**
-     * @brief Handler for "pure virtual function call" runtime errors.
-     *
-     * @details
-     * The C++ runtime calls `__cxa_pure_virtual` if a pure virtual function is
-     * invoked (typically due to calling a virtual method from a constructor or
-     * destructor before the most-derived object is fully formed, or due to
-     * corruption/use-after-free).
-     *
-     * In a kernel environment this is always a fatal programming error. The
-     * implementation prints a panic message to the serial console and halts the
-     * CPU in an infinite low-power wait loop.
-     */
-    void __cxa_pure_virtual()
-    {
-        // Pure virtual function called - should never happen
-        serial::puts("PANIC: Pure virtual function called!\n");
-        for (;;)
-            asm volatile("wfi");
-    }
+extern "C" {
+// These are called by GCC for global object construction/destruction
+/**
+ * @brief Handler for "pure virtual function call" runtime errors.
+ *
+ * @details
+ * The C++ runtime calls `__cxa_pure_virtual` if a pure virtual function is
+ * invoked (typically due to calling a virtual method from a constructor or
+ * destructor before the most-derived object is fully formed, or due to
+ * corruption/use-after-free).
+ *
+ * In a kernel environment this is always a fatal programming error. The
+ * implementation prints a panic message to the serial console and halts the
+ * CPU in an infinite low-power wait loop.
+ */
+void __cxa_pure_virtual() {
+    // Pure virtual function called - should never happen
+    serial::puts("PANIC: Pure virtual function called!\n");
+    for (;;)
+        asm volatile("wfi");
+}
 }
 
 // =============================================================================
 // SUBSYSTEM INITIALIZATION HELPERS
 // =============================================================================
 
-namespace
-{
+namespace {
 
 /**
  * @brief Print the boot banner to serial console.
  */
-void print_boot_banner()
-{
+void print_boot_banner() {
     serial::puts("\n");
     serial::puts("=========================================\n");
     serial::puts("  ViperDOS v0.3.1 - AArch64\n");
@@ -146,16 +141,14 @@ void print_boot_banner()
 /**
  * @brief Initialize memory management subsystems (PMM, VMM, heap, slab).
  */
-void init_memory_subsystem()
-{
+void init_memory_subsystem() {
     serial::puts("\n[kernel] Initializing memory management...\n");
 
     // Get RAM region from boot info (supports both UEFI and QEMU direct boot)
     u64 ram_base = kc::mem::RAM_BASE;
     u64 ram_size = kc::mem::RAM_SIZE;
 
-    if (boot::get_ram_region(ram_base, ram_size))
-    {
+    if (boot::get_ram_region(ram_base, ram_size)) {
         serial::puts("[kernel] Using boot info RAM region: ");
         serial::put_hex(ram_base);
         serial::puts(" - ");
@@ -163,9 +156,7 @@ void init_memory_subsystem()
         serial::puts(" (");
         serial::put_dec(ram_size / (1024 * 1024));
         serial::puts(" MB)\n");
-    }
-    else
-    {
+    } else {
         serial::puts("[kernel] Using default RAM region (128 MB)\n");
     }
 
@@ -173,8 +164,7 @@ void init_memory_subsystem()
     u64 fb_base = 0;
     u64 fb_size = 0;
 
-    if (boot::has_uefi_framebuffer())
-    {
+    if (boot::has_uefi_framebuffer()) {
         const auto &fb = boot::get_framebuffer();
         fb_base = fb.base;
         // Calculate framebuffer size: pitch * height, rounded up to 8MB for safety
@@ -215,8 +205,7 @@ void init_memory_subsystem()
     slab::init_object_caches();
 
     // Show high-level progress on display
-    if (gcon::is_available())
-    {
+    if (gcon::is_available()) {
         gcon::puts("  Memory...OK\n");
     }
     // Brief pause for readability
@@ -226,8 +215,7 @@ void init_memory_subsystem()
 /**
  * @brief Initialize exception handlers, GIC, timer, and enable interrupts.
  */
-void init_interrupts()
-{
+void init_interrupts() {
     serial::puts("\n[kernel] Initializing exceptions and interrupts...\n");
     exceptions::init();
     gic::init();
@@ -243,8 +231,7 @@ void init_interrupts()
     serial::puts("[kernel] Interrupts enabled\n");
 
     // Show high-level progress on display
-    if (gcon::is_available())
-    {
+    if (gcon::is_available()) {
         gcon::puts("  Interrupts...OK\n");
     }
     // Brief pause for readability
@@ -254,8 +241,7 @@ void init_interrupts()
 /**
  * @brief Initialize task, scheduler, channel, and poll subsystems.
  */
-void init_task_subsystem()
-{
+void init_task_subsystem() {
     serial::puts("\n[kernel] Initializing task subsystem...\n");
     task::init();
     scheduler::init();
@@ -275,14 +261,12 @@ void init_task_subsystem()
 /**
  * @brief Initialize virtio subsystem and device drivers.
  */
-void init_virtio_subsystem()
-{
+void init_virtio_subsystem() {
     serial::puts("\n[kernel] Initializing virtio subsystem...\n");
     virtio::init();
 
     // Initialize virtio-rng driver (entropy source for TLS)
-    if (!virtio::rng::init())
-    {
+    if (!virtio::rng::init()) {
         serial::puts("[kernel] WARNING: virtio-rng not available (TCP ISN will use fallback)\n");
     }
 
@@ -309,8 +293,7 @@ void init_virtio_subsystem()
 /**
  * @brief Initialize network stack and run connectivity tests.
  */
-void init_network_subsystem()
-{
+void init_network_subsystem() {
     // Initialize virtio-net driver
     virtio::net_init();
 
@@ -318,30 +301,24 @@ void init_network_subsystem()
     net::network_init();
 
     // Give QEMU's network stack time to initialize
-    if (virtio::net_device())
-    {
+    if (virtio::net_device()) {
         u64 start = timer::get_ticks();
-        while (timer::get_ticks() - start < 500)
-        {
+        while (timer::get_ticks() - start < 500) {
             net::network_poll();
             asm volatile("wfi");
         }
     }
 
     // Test ping
-    if (virtio::net_device())
-    {
+    if (virtio::net_device()) {
         serial::puts("[kernel] Testing ping to gateway (10.0.2.2)...\n");
         net::Ipv4Addr gateway = {{10, 0, 2, 2}};
         i32 rtt = net::icmp::ping(gateway, 3000); // 3 second timeout
-        if (rtt >= 0)
-        {
+        if (rtt >= 0) {
             serial::puts("[kernel] Ping successful! RTT: ");
             serial::put_dec(rtt);
             serial::puts(" ms\n");
-        }
-        else
-        {
+        } else {
             serial::puts("[kernel] Ping failed (code ");
             serial::put_dec(-rtt);
             serial::puts(")\n");
@@ -350,14 +327,11 @@ void init_network_subsystem()
         // Test DNS resolution
         serial::puts("[kernel] Testing DNS resolution (example.com)...\n");
         net::Ipv4Addr resolved_ip;
-        if (net::dns::resolve("example.com", &resolved_ip, 5000))
-        {
+        if (net::dns::resolve("example.com", &resolved_ip, 5000)) {
             serial::puts("[kernel] DNS resolved: ");
             serial::put_ipv4(resolved_ip.bytes);
             serial::puts("\n");
-        }
-        else
-        {
+        } else {
             serial::puts("[kernel] DNS resolution failed\n");
         }
     }
@@ -368,12 +342,10 @@ void init_network_subsystem()
  * @brief Initialize framebuffer (UEFI GOP or ramfb fallback).
  * @return true if framebuffer was initialized.
  */
-bool init_framebuffer()
-{
+bool init_framebuffer() {
     bool fb_initialized = false;
 
-    if (boot::has_uefi_framebuffer())
-    {
+    if (boot::has_uefi_framebuffer()) {
         const auto &fb = boot::get_framebuffer();
         serial::puts("[kernel] UEFI GOP framebuffer: ");
         serial::put_dec(fb.width);
@@ -381,32 +353,25 @@ bool init_framebuffer()
         serial::put_dec(fb.height);
         serial::puts("\n");
 
-        if (fb.width >= kc::display::DEFAULT_WIDTH && fb.height >= kc::display::DEFAULT_HEIGHT)
-        {
-            if (ramfb::init_external(fb.base, fb.width, fb.height, fb.pitch, fb.bpp))
-            {
+        if (fb.width >= kc::display::DEFAULT_WIDTH && fb.height >= kc::display::DEFAULT_HEIGHT) {
+            if (ramfb::init_external(fb.base, fb.width, fb.height, fb.pitch, fb.bpp)) {
                 serial::puts("[kernel] Framebuffer initialized (UEFI GOP)\n");
                 fb_initialized = true;
             }
-        }
-        else
-        {
+        } else {
             serial::puts("[kernel] GOP resolution too small, trying ramfb\n");
         }
     }
 
-    if (!fb_initialized)
-    {
+    if (!fb_initialized) {
         fwcfg::init();
-        if (ramfb::init(kc::display::DEFAULT_WIDTH, kc::display::DEFAULT_HEIGHT))
-        {
+        if (ramfb::init(kc::display::DEFAULT_WIDTH, kc::display::DEFAULT_HEIGHT)) {
             serial::puts("[kernel] Framebuffer initialized (ramfb)\n");
             fb_initialized = true;
         }
     }
 
-    if (fb_initialized && gcon::init())
-    {
+    if (fb_initialized && gcon::init()) {
         serial::puts("[kernel] Graphics console initialized\n");
         gcon::puts("\n");
         gcon::puts("  =========================================\n");
@@ -422,9 +387,7 @@ bool init_framebuffer()
         gcon::puts("\n");
         gcon::puts("  Booting...\n");
         gcon::puts("\n");
-    }
-    else if (!fb_initialized)
-    {
+    } else if (!fb_initialized) {
         serial::puts("[kernel] Running in serial-only mode\n");
     }
 
@@ -434,8 +397,7 @@ bool init_framebuffer()
 /**
  * @brief Test block device read/write operations.
  */
-void test_block_device()
-{
+void test_block_device() {
     serial::puts("[kernel] Block device ready: ");
     serial::put_dec(virtio::blk_device()->size_bytes() / (1024 * 1024));
     serial::puts(" MB\n");
@@ -459,21 +421,17 @@ void test_block_device()
     sector_buf[3] = 'e';
     sector_buf[4] = 'r';
 
-    if (virtio::blk_device()->write_sectors(1, 1, sector_buf) == 0)
-    {
+    if (virtio::blk_device()->write_sectors(1, 1, sector_buf) == 0) {
         serial::puts("[kernel] Write sector 1 OK\n");
         u8 read_buf[512] = {};
-        if (virtio::blk_device()->read_sectors(1, 1, read_buf) == 0 &&
-            read_buf[0] == 'V' && read_buf[1] == 'i')
-        {
+        if (virtio::blk_device()->read_sectors(1, 1, read_buf) == 0 && read_buf[0] == 'V' &&
+            read_buf[1] == 'i') {
             serial::puts("[kernel] Read-back verified: ");
             for (int i = 0; i < 5; i++)
                 serial::putc(read_buf[i]);
             serial::puts("\n");
         }
-    }
-    else
-    {
+    } else {
         serial::puts("[kernel] Write sector 1 FAILED\n");
     }
 }
@@ -481,18 +439,15 @@ void test_block_device()
 /**
  * @brief Test block cache operations.
  */
-void test_block_cache()
-{
+void test_block_cache() {
     serial::puts("[kernel] Initializing block cache...\n");
     fs::cache_init();
 
     serial::puts("[kernel] Testing block cache...\n");
     fs::CacheBlock *blk0 = fs::cache().get(0);
-    if (blk0)
-    {
+    if (blk0) {
         serial::puts("[kernel] Cache block 0 OK, first bytes: ");
-        for (int i = 0; i < 4; i++)
-        {
+        for (int i = 0; i < 4; i++) {
             serial::put_hex(blk0->data[i]);
             serial::puts(" ");
         }
@@ -515,8 +470,7 @@ void test_block_cache()
 /**
  * @brief Test ViperFS root directory and file operations.
  */
-void test_viperfs_root(fs::viperfs::Inode *root)
-{
+void test_viperfs_root(fs::viperfs::Inode *root) {
     serial::puts("[kernel] Root inode: size=");
     serial::put_dec(root->size);
     serial::puts(", mode=");
@@ -525,9 +479,9 @@ void test_viperfs_root(fs::viperfs::Inode *root)
 
     serial::puts("[kernel] Directory contents:\n");
     fs::viperfs::viperfs().readdir(
-        root, 0,
-        [](const char *name, usize name_len, u64 ino, u8 type, void *)
-        {
+        root,
+        0,
+        [](const char *name, usize name_len, u64 ino, u8 type, void *) {
             serial::puts("  ");
             for (usize i = 0; i < name_len; i++)
                 serial::putc(name[i]);
@@ -541,27 +495,22 @@ void test_viperfs_root(fs::viperfs::Inode *root)
 
     // Look for hello.txt
     u64 hello_ino = fs::viperfs::viperfs().lookup(root, "hello.txt", 9);
-    if (hello_ino != 0)
-    {
+    if (hello_ino != 0) {
         serial::puts("[kernel] Found hello.txt at inode ");
         serial::put_dec(hello_ino);
         serial::puts("\n");
 
         fs::viperfs::Inode *hello = fs::viperfs::viperfs().read_inode(hello_ino);
-        if (hello)
-        {
+        if (hello) {
             char buf[256] = {};
             i64 bytes = fs::viperfs::viperfs().read_data(hello, 0, buf, sizeof(buf) - 1);
-            if (bytes > 0)
-            {
+            if (bytes > 0) {
                 serial::puts("[kernel] hello.txt contents: ");
                 serial::puts(buf);
             }
             fs::viperfs::viperfs().release_inode(hello);
         }
-    }
-    else
-    {
+    } else {
         serial::puts("[kernel] hello.txt not found\n");
     }
 }
@@ -569,8 +518,7 @@ void test_viperfs_root(fs::viperfs::Inode *root)
 /**
  * @brief Test file creation and writing on ViperFS.
  */
-void test_viperfs_write(fs::viperfs::Inode *root)
-{
+void test_viperfs_write(fs::viperfs::Inode *root) {
     serial::puts("[kernel] Testing file creation...\n");
     u64 test_ino = fs::viperfs::viperfs().create_file(root, "test.txt", 8);
     if (test_ino == 0)
@@ -581,8 +529,7 @@ void test_viperfs_write(fs::viperfs::Inode *root)
     serial::puts("\n");
 
     fs::viperfs::Inode *test_file = fs::viperfs::viperfs().read_inode(test_ino);
-    if (test_file)
-    {
+    if (test_file) {
         const char *test_data = "Written by ViperDOS kernel!";
         i64 written = fs::viperfs::viperfs().write_data(test_file, 0, test_data, 27);
         serial::puts("[kernel] Wrote ");
@@ -593,8 +540,7 @@ void test_viperfs_write(fs::viperfs::Inode *root)
 
         char verify[64] = {};
         i64 read_back = fs::viperfs::viperfs().read_data(test_file, 0, verify, sizeof(verify) - 1);
-        if (read_back > 0)
-        {
+        if (read_back > 0) {
             serial::puts("[kernel] Read back: ");
             serial::puts(verify);
             serial::puts("\n");
@@ -604,9 +550,9 @@ void test_viperfs_write(fs::viperfs::Inode *root)
 
     serial::puts("[kernel] Updated directory contents:\n");
     fs::viperfs::viperfs().readdir(
-        root, 0,
-        [](const char *name, usize name_len, u64 ino, u8, void *)
-        {
+        root,
+        0,
+        [](const char *name, usize name_len, u64 ino, u8, void *) {
             serial::puts("  ");
             for (usize i = 0; i < name_len; i++)
                 serial::putc(name[i]);
@@ -623,13 +569,11 @@ void test_viperfs_write(fs::viperfs::Inode *root)
 /**
  * @brief Initialize user disk and mount user filesystem.
  */
-void init_user_disk()
-{
+void init_user_disk() {
     serial::puts("[kernel] Initializing user disk...\n");
     virtio::user_blk_init();
 
-    if (!virtio::user_blk_device())
-    {
+    if (!virtio::user_blk_device()) {
         serial::puts("[kernel] User disk not found\n");
         return;
     }
@@ -639,21 +583,15 @@ void init_user_disk()
     serial::puts(" MB\n");
 
     fs::user_cache_init();
-    if (fs::user_cache_available())
-    {
-        if (fs::viperfs::user_viperfs_init())
-        {
+    if (fs::user_cache_available()) {
+        if (fs::viperfs::user_viperfs_init()) {
             serial::puts("[kernel] User filesystem mounted: ");
             serial::puts(fs::viperfs::user_viperfs().label());
             serial::puts("\n");
-        }
-        else
-        {
+        } else {
             serial::puts("[kernel] User filesystem mount failed\n");
         }
-    }
-    else
-    {
+    } else {
         serial::puts("[kernel] User cache init failed\n");
     }
 }
@@ -661,24 +599,20 @@ void init_user_disk()
 /**
  * @brief Test VFS operations (open, read, write).
  */
-void test_vfs_operations()
-{
+void test_vfs_operations() {
     serial::puts("[kernel] Testing VFS operations...\n");
 
     i32 fd = fs::vfs::open("/c/hello.prg", fs::vfs::flags::O_RDONLY);
-    if (fd >= 0)
-    {
+    if (fd >= 0) {
         serial::puts("[kernel] Opened /c/hello.prg as fd ");
         serial::put_dec(fd);
         serial::puts("\n");
 
         char buf[8] = {};
         i64 bytes = fs::vfs::read(fd, buf, 4);
-        if (bytes > 0)
-        {
+        if (bytes > 0) {
             serial::puts("[kernel] Read ELF header: ");
-            for (int i = 0; i < 4; i++)
-            {
+            for (int i = 0; i < 4; i++) {
                 serial::put_hex(static_cast<u8>(buf[i]));
                 serial::puts(" ");
             }
@@ -686,15 +620,12 @@ void test_vfs_operations()
         }
         fs::vfs::close(fd);
         serial::puts("[kernel] Closed fd\n");
-    }
-    else
-    {
+    } else {
         serial::puts("[kernel] VFS open /c/hello.prg failed\n");
     }
 
     fd = fs::vfs::open("/t/t/vfs_test.txt", fs::vfs::flags::O_RDWR | fs::vfs::flags::O_CREAT);
-    if (fd >= 0)
-    {
+    if (fd >= 0) {
         serial::puts("[kernel] Created /t/vfs_test.txt as fd ");
         serial::put_dec(fd);
         serial::puts("\n");
@@ -708,8 +639,7 @@ void test_vfs_operations()
         fs::vfs::lseek(fd, 0, fs::vfs::seek::SET);
         char buf[32] = {};
         i64 rd = fs::vfs::read(fd, buf, sizeof(buf) - 1);
-        if (rd > 0)
-        {
+        if (rd > 0) {
             serial::puts("[kernel] VFS read back: ");
             serial::puts(buf);
             serial::puts("\n");
@@ -723,8 +653,7 @@ void test_vfs_operations()
 /**
  * @brief Initialize Assign system and test assign resolution.
  */
-void init_assign_system()
-{
+void init_assign_system() {
     serial::puts("[kernel] Initializing Assign system...\n");
     viper::assign::init();
     viper::assign::setup_standard_assigns();
@@ -744,15 +673,12 @@ void init_assign_system()
 
     i32 vinit_fd = fs::vfs::open("/sys/vinit.sys", fs::vfs::flags::O_RDONLY);
     serial::puts("  /sys/vinit.sys -> ");
-    if (vinit_fd >= 0)
-    {
+    if (vinit_fd >= 0) {
         serial::puts("fd ");
         serial::put_dec(vinit_fd);
         serial::puts(" OK\n");
         fs::vfs::close(vinit_fd);
-    }
-    else
-    {
+    } else {
         serial::puts("FAIL (not found)\n");
     }
 
@@ -764,8 +690,7 @@ void init_assign_system()
 /**
  * @brief Initialize filesystems and run storage tests.
  */
-void init_filesystem_subsystem()
-{
+void init_filesystem_subsystem() {
     if (!virtio::blk_device())
         return;
 
@@ -773,8 +698,7 @@ void init_filesystem_subsystem()
     test_block_cache();
 
     serial::puts("[kernel] Initializing ViperFS...\n");
-    if (!fs::viperfs::viperfs_init())
-    {
+    if (!fs::viperfs::viperfs_init()) {
         serial::puts("[kernel] ViperFS mount failed\n");
         return;
     }
@@ -785,8 +709,7 @@ void init_filesystem_subsystem()
 
     serial::puts("[kernel] Reading root directory...\n");
     fs::viperfs::Inode *root = fs::viperfs::viperfs().read_inode(fs::viperfs::ROOT_INODE);
-    if (root)
-    {
+    if (root) {
         test_viperfs_root(root);
         test_viperfs_write(root);
         fs::viperfs::viperfs().release_inode(root);
@@ -803,8 +726,7 @@ void init_filesystem_subsystem()
 /**
  * @brief Test capability table operations.
  */
-void test_cap_table(cap::Table *ct)
-{
+void test_cap_table(cap::Table *ct) {
     serial::puts("[kernel] Testing capability table...\n");
 
     int dummy_object = 42;
@@ -828,11 +750,10 @@ void test_cap_table(cap::Table *ct)
     if (h2 == cap::HANDLE_INVALID)
         serial::puts("[kernel] Derive failed (expected - no CAP_DERIVE)\n");
 
-    cap::Handle h3 = ct->insert(&dummy_object, cap::Kind::Blob,
-                                 static_cast<cap::Rights>(cap::CAP_RW | cap::CAP_DERIVE));
+    cap::Handle h3 = ct->insert(
+        &dummy_object, cap::Kind::Blob, static_cast<cap::Rights>(cap::CAP_RW | cap::CAP_DERIVE));
     cap::Handle h4 = ct->derive(h3, cap::CAP_READ);
-    if (h4 != cap::HANDLE_INVALID)
-    {
+    if (h4 != cap::HANDLE_INVALID) {
         serial::puts("[kernel] Derived handle ");
         serial::put_hex(h4);
         serial::puts(" with CAP_READ only\n");
@@ -850,11 +771,9 @@ void test_cap_table(cap::Table *ct)
 
     serial::puts("[kernel] Testing KObj blob...\n");
     kobj::Blob *blob = kobj::Blob::create(4096);
-    if (blob)
-    {
+    if (blob) {
         cap::Handle blob_h = ct->insert(blob, cap::Kind::Blob, cap::CAP_RW);
-        if (blob_h != cap::HANDLE_INVALID)
-        {
+        if (blob_h != cap::HANDLE_INVALID) {
             serial::puts("[kernel] Blob handle: ");
             serial::put_hex(blob_h);
             serial::puts(", size=");
@@ -869,8 +788,7 @@ void test_cap_table(cap::Table *ct)
         }
 
         kobj::Channel *kch = kobj::Channel::create();
-        if (kch)
-        {
+        if (kch) {
             cap::Handle ch_h = ct->insert(kch, cap::Kind::Channel, cap::CAP_RW);
             serial::puts("[kernel] KObj channel handle: ");
             serial::put_hex(ch_h);
@@ -884,8 +802,7 @@ void test_cap_table(cap::Table *ct)
 /**
  * @brief Test sbrk syscall implementation.
  */
-void test_sbrk(viper::Viper *vp)
-{
+void test_sbrk(viper::Viper *vp) {
     serial::puts("[kernel] Testing sbrk...\n");
 
     u64 initial_break = vp->heap_break;
@@ -900,19 +817,16 @@ void test_sbrk(viper::Viper *vp)
         serial::puts("[kernel]   ERROR: sbrk(0) returned wrong value\n");
 
     result = viper::do_sbrk(vp, 4096);
-    if (result == static_cast<i64>(initial_break))
-    {
+    if (result == static_cast<i64>(initial_break)) {
         serial::puts("[kernel]   sbrk(4096) returned old break\n");
         serial::puts("[kernel]   New heap break: ");
         serial::put_hex(vp->heap_break);
         serial::puts("\n");
 
         viper::AddressSpace *as = viper::get_address_space(vp);
-        if (as)
-        {
+        if (as) {
             u64 phys = as->translate(initial_break);
-            if (phys != 0)
-            {
+            if (phys != 0) {
                 serial::puts("[kernel]   Heap page mapped to phys: ");
                 serial::put_hex(phys);
                 serial::puts("\n");
@@ -923,23 +837,18 @@ void test_sbrk(viper::Viper *vp)
                     serial::puts("[kernel]   Heap memory R/W test PASSED\n");
                 else
                     serial::puts("[kernel]   ERROR: Heap memory R/W test FAILED\n");
-            }
-            else
-            {
+            } else {
                 serial::puts("[kernel]   ERROR: Heap page not mapped!\n");
             }
         }
-    }
-    else
-    {
+    } else {
         serial::puts("[kernel]   ERROR: sbrk(4096) failed with ");
         serial::put_dec(result);
         serial::puts("\n");
     }
 
     result = viper::do_sbrk(vp, 8192);
-    if (result > 0)
-    {
+    if (result > 0) {
         serial::puts("[kernel]   sbrk(8192) succeeded, new break: ");
         serial::put_hex(vp->heap_break);
         serial::puts("\n");
@@ -951,16 +860,14 @@ void test_sbrk(viper::Viper *vp)
 /**
  * @brief Test address space mapping operations.
  */
-void test_address_space(viper::Viper *vp)
-{
+void test_address_space(viper::Viper *vp) {
     viper::AddressSpace *as = viper::get_address_space(vp);
     if (!as || !as->is_valid())
         return;
 
     u64 test_vaddr = viper::layout::USER_HEAP_BASE;
     u64 test_page = as->alloc_map(test_vaddr, 4096, viper::prot::RW);
-    if (test_page)
-    {
+    if (test_page) {
         serial::puts("[kernel] Mapped test page at ");
         serial::put_hex(test_vaddr);
         serial::puts("\n");
@@ -979,13 +886,11 @@ void test_address_space(viper::Viper *vp)
  * @brief Load and start vinit process.
  * @return true if vinit was loaded and enqueued successfully.
  */
-bool load_and_start_vinit(viper::Viper *vp)
-{
+bool load_and_start_vinit(viper::Viper *vp) {
     serial::puts("[kernel] Loading vinit from disk...\n");
 
     loader::LoadResult load_result = loader::load_elf_from_disk(vp, "/sys/vinit.sys");
-    if (!load_result.success)
-    {
+    if (!load_result.success) {
         serial::puts("[kernel] Failed to load vinit\n");
         return false;
     }
@@ -995,8 +900,7 @@ bool load_and_start_vinit(viper::Viper *vp)
     viper::AddressSpace *as = viper::get_address_space(vp);
     u64 stack_base = viper::layout::USER_STACK_TOP - viper::layout::USER_STACK_SIZE;
     u64 stack_page = as->alloc_map(stack_base, viper::layout::USER_STACK_SIZE, viper::prot::RW);
-    if (!stack_page)
-    {
+    if (!stack_page) {
         serial::puts("[kernel] Failed to map user stack\n");
         return false;
     }
@@ -1017,17 +921,14 @@ bool load_and_start_vinit(viper::Viper *vp)
     enter_user_mode(load_result.entry_point, viper::layout::USER_STACK_TOP, 0);
     return true;
 #else
-    task::Task *vinit_task = task::create_user_task(
-        "vinit", vp, load_result.entry_point, viper::layout::USER_STACK_TOP);
+    task::Task *vinit_task =
+        task::create_user_task("vinit", vp, load_result.entry_point, viper::layout::USER_STACK_TOP);
 
-    if (vinit_task)
-    {
+    if (vinit_task) {
         serial::puts("[kernel] vinit task created, will run under scheduler\n");
         scheduler::enqueue(vinit_task);
         return true;
-    }
-    else
-    {
+    } else {
         serial::puts("[kernel] Failed to create vinit task\n");
         return false;
     }
@@ -1037,8 +938,7 @@ bool load_and_start_vinit(viper::Viper *vp)
 /**
  * @brief Initialize Viper subsystem and create/test vinit process.
  */
-void init_viper_subsystem()
-{
+void init_viper_subsystem() {
     serial::puts("\n[kernel] Configuring MMU for user space...\n");
     mmu::init();
 
@@ -1047,8 +947,7 @@ void init_viper_subsystem()
 
     tests::run_storage_tests();
 
-    if (fs::viperfs::viperfs().is_mounted())
-    {
+    if (fs::viperfs::viperfs().is_mounted()) {
         fs::viperfs::viperfs().sync();
         serial::puts("[kernel] Filesystem synced after storage tests\n");
     }
@@ -1059,8 +958,7 @@ void init_viper_subsystem()
 
     serial::puts("[kernel] Testing Viper creation...\n");
     viper::Viper *vp = viper::create(nullptr, "test_viper");
-    if (!vp)
-    {
+    if (!vp) {
         serial::puts("[kernel] Failed to create test Viper!\n");
         return;
     }
@@ -1087,8 +985,7 @@ void init_viper_subsystem()
  * @brief Kernel main entry point invoked from the assembly boot stub.
  * @param boot_info_ptr Boot environment information pointer (DTB or VBootInfo).
  */
-extern "C" void kernel_main(void *boot_info_ptr)
-{
+extern "C" void kernel_main(void *boot_info_ptr) {
     serial::init();
     print_boot_banner();
     boot::init(boot_info_ptr);
@@ -1109,16 +1006,14 @@ extern "C" void kernel_main(void *boot_info_ptr)
 
     init_filesystem_subsystem();
 
-    if (gcon::is_available())
-    {
+    if (gcon::is_available()) {
         gcon::puts("  Devices...OK\n");
         timer::delay_ms(50);
     }
 
     init_viper_subsystem();
 
-    if (gcon::is_available())
-    {
+    if (gcon::is_available()) {
         gcon::puts("  Kernel...OK\n");
         gcon::puts("\n");
         timer::delay_ms(100);
@@ -1130,8 +1025,7 @@ extern "C" void kernel_main(void *boot_info_ptr)
     cpu::boot_secondaries();
 
     serial::puts("Starting scheduler...\n");
-    if (gcon::is_available())
-    {
+    if (gcon::is_available()) {
         gcon::puts("  Starting...\n");
         timer::delay_ms(200);
     }

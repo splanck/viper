@@ -43,8 +43,7 @@
  * code can use `new`/`delete` while routing allocations through the kernel
  * heap implementation.
  */
-namespace kheap
-{
+namespace kheap {
 
 /**
  * @brief Initialize the kernel heap allocator.
@@ -169,8 +168,7 @@ void operator delete[](void *ptr, size_t size) noexcept;
 // RAII Wrappers for Heap Memory
 // =============================================================================
 
-namespace kheap
-{
+namespace kheap {
 
 /**
  * @brief Simple unique pointer for kernel heap allocations.
@@ -190,8 +188,7 @@ namespace kheap
  *
  * @tparam T Type of the pointed-to object.
  */
-template <typename T> class UniquePtr
-{
+template <typename T> class UniquePtr {
   public:
     /// Default constructor - creates a null pointer
     UniquePtr() : ptr_(nullptr) {}
@@ -200,14 +197,12 @@ template <typename T> class UniquePtr
     explicit UniquePtr(T *ptr) : ptr_(ptr) {}
 
     /// Move constructor - steals ownership
-    UniquePtr(UniquePtr &&other) noexcept : ptr_(other.ptr_)
-    {
+    UniquePtr(UniquePtr &&other) noexcept : ptr_(other.ptr_) {
         other.ptr_ = nullptr;
     }
 
     /// Destructor - frees the memory
-    ~UniquePtr()
-    {
+    ~UniquePtr() {
         if (ptr_)
             kfree(ptr_);
     }
@@ -217,10 +212,8 @@ template <typename T> class UniquePtr
     UniquePtr &operator=(const UniquePtr &) = delete;
 
     /// Move assignment
-    UniquePtr &operator=(UniquePtr &&other) noexcept
-    {
-        if (this != &other)
-        {
+    UniquePtr &operator=(UniquePtr &&other) noexcept {
+        if (this != &other) {
             if (ptr_)
                 kfree(ptr_);
             ptr_ = other.ptr_;
@@ -230,41 +223,35 @@ template <typename T> class UniquePtr
     }
 
     /// Reset to a new pointer (frees old memory)
-    void reset(T *ptr = nullptr)
-    {
+    void reset(T *ptr = nullptr) {
         if (ptr_)
             kfree(ptr_);
         ptr_ = ptr;
     }
 
     /// Release ownership and return raw pointer
-    T *release()
-    {
+    T *release() {
         T *ptr = ptr_;
         ptr_ = nullptr;
         return ptr;
     }
 
     /// Dereference operators
-    T *operator->() const
-    {
+    T *operator->() const {
         return ptr_;
     }
 
-    T &operator*() const
-    {
+    T &operator*() const {
         return *ptr_;
     }
 
     /// Get raw pointer
-    T *get() const
-    {
+    T *get() const {
         return ptr_;
     }
 
     /// Boolean conversion
-    explicit operator bool() const
-    {
+    explicit operator bool() const {
         return ptr_ != nullptr;
     }
 
@@ -279,8 +266,7 @@ template <typename T> class UniquePtr
  * @param size Size in bytes (defaults to sizeof(T)).
  * @return UniquePtr owning the allocation, or null on failure.
  */
-template <typename T> UniquePtr<T> make_unique(u64 size = sizeof(T))
-{
+template <typename T> UniquePtr<T> make_unique(u64 size = sizeof(T)) {
     return UniquePtr<T>(static_cast<T *>(kzalloc(size)));
 }
 

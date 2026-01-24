@@ -32,8 +32,8 @@
 /// @details Uses NSWindow, NSView, and Core Graphics to provide window
 ///          management and framebuffer presentation on macOS.
 
-#include "vgfx_internal.h"
 #include "../include/vgfx.h"
+#include "vgfx_internal.h"
 
 #ifdef __APPLE__
 
@@ -261,9 +261,13 @@ static vgfx_key_t translate_keycode(unsigned short keycode, NSString *chars)
 
     /* Debug: log dimension mismatch once */
     static int debug_logged = 0;
-    if (!debug_logged && (view_width != _vgfxWindow->width || view_height != _vgfxWindow->height)) {
-        NSLog(@"vgfx: View bounds (%.0f x %.0f) differ from framebuffer (%d x %d)",
-              view_width, view_height, _vgfxWindow->width, _vgfxWindow->height);
+    if (!debug_logged && (view_width != _vgfxWindow->width || view_height != _vgfxWindow->height))
+    {
+        NSLog(@ "vgfx: View bounds (%.0f x %.0f) differ from framebuffer (%d x %d)",
+              view_width,
+              view_height,
+              _vgfxWindow->width,
+              _vgfxWindow->height);
         debug_logged = 1;
     }
 
@@ -855,13 +859,19 @@ int vgfx_clipboard_has_format(vgfx_clipboard_format_t format)
         switch (format)
         {
             case VGFX_CLIPBOARD_TEXT:
-                return [pasteboard availableTypeFromArray:@[NSPasteboardTypeString]] != nil ? 1 : 0;
+                return [pasteboard availableTypeFromArray:@[ NSPasteboardTypeString ]] != nil ? 1
+                                                                                              : 0;
             case VGFX_CLIPBOARD_HTML:
-                return [pasteboard availableTypeFromArray:@[NSPasteboardTypeHTML]] != nil ? 1 : 0;
+                return [pasteboard availableTypeFromArray:@[ NSPasteboardTypeHTML ]] != nil ? 1 : 0;
             case VGFX_CLIPBOARD_IMAGE:
-                return [pasteboard availableTypeFromArray:@[NSPasteboardTypePNG, NSPasteboardTypeTIFF]] != nil ? 1 : 0;
+                return [pasteboard
+                           availableTypeFromArray:@[ NSPasteboardTypePNG, NSPasteboardTypeTIFF ]] !=
+                               nil
+                           ? 1
+                           : 0;
             case VGFX_CLIPBOARD_FILES:
-                return [pasteboard availableTypeFromArray:@[NSPasteboardTypeFileURL]] != nil ? 1 : 0;
+                return [pasteboard availableTypeFromArray:@[ NSPasteboardTypeFileURL ]] != nil ? 1
+                                                                                               : 0;
             default:
                 return 0;
         }

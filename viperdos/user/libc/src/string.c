@@ -45,12 +45,10 @@
  * @param n Number of bytes to copy.
  * @return Pointer to dest.
  */
-void *memcpy(void *dest, const void *src, size_t n)
-{
+void *memcpy(void *dest, const void *src, size_t n) {
     unsigned char *d = (unsigned char *)dest;
     const unsigned char *s = (const unsigned char *)src;
-    while (n--)
-    {
+    while (n--) {
         *d++ = *s++;
     }
     return dest;
@@ -78,11 +76,9 @@ void *memcpy(void *dest, const void *src, size_t n)
  * @note For zeroing memory that may be optimized away, use explicit_bzero()
  *       or volatile pointers when clearing sensitive data.
  */
-void *memset(void *s, int c, size_t n)
-{
+void *memset(void *s, int c, size_t n) {
     unsigned char *p = (unsigned char *)s;
-    while (n--)
-    {
+    while (n--) {
         *p++ = (unsigned char)c;
     }
     return s;
@@ -110,24 +106,18 @@ void *memset(void *s, int c, size_t n)
  * @note For non-overlapping memory regions, memcpy() may be faster.
  * @note The implementation copies forward if dest < src, backward otherwise.
  */
-void *memmove(void *dest, const void *src, size_t n)
-{
+void *memmove(void *dest, const void *src, size_t n) {
     unsigned char *d = (unsigned char *)dest;
     const unsigned char *s = (const unsigned char *)src;
 
-    if (d < s)
-    {
-        while (n--)
-        {
+    if (d < s) {
+        while (n--) {
             *d++ = *s++;
         }
-    }
-    else
-    {
+    } else {
         d += n;
         s += n;
-        while (n--)
-        {
+        while (n--) {
             *--d = *--s;
         }
     }
@@ -152,15 +142,12 @@ void *memmove(void *dest, const void *src, size_t n)
  * @note Returns 0 if n is 0 (zero-length comparison always succeeds).
  * @note Not suitable for comparing strings (use strcmp() for that).
  */
-int memcmp(const void *s1, const void *s2, size_t n)
-{
+int memcmp(const void *s1, const void *s2, size_t n) {
     const unsigned char *p1 = (const unsigned char *)s1;
     const unsigned char *p2 = (const unsigned char *)s2;
 
-    while (n--)
-    {
-        if (*p1 != *p2)
-        {
+    while (n--) {
+        if (*p1 != *p2) {
             return *p1 - *p2;
         }
         p1++;
@@ -185,11 +172,9 @@ int memcmp(const void *s1, const void *s2, size_t n)
  *
  * @see strnlen, sizeof
  */
-size_t strlen(const char *s)
-{
+size_t strlen(const char *s) {
     size_t len = 0;
-    while (*s++)
-    {
+    while (*s++) {
         len++;
     }
     return len;
@@ -213,8 +198,7 @@ size_t strlen(const char *s)
  *
  * @see strncpy, strlcpy (safer alternatives)
  */
-char *strcpy(char *dest, const char *src)
-{
+char *strcpy(char *dest, const char *src) {
     char *d = dest;
     while ((*d++ = *src++))
         ;
@@ -243,15 +227,12 @@ char *strcpy(char *dest, const char *src)
  *
  * @see strlcpy (safer alternative with guaranteed null-termination)
  */
-char *strncpy(char *dest, const char *src, size_t n)
-{
+char *strncpy(char *dest, const char *src, size_t n) {
     char *d = dest;
-    while (n && (*d++ = *src++))
-    {
+    while (n && (*d++ = *src++)) {
         n--;
     }
-    while (n--)
-    {
+    while (n--) {
         *d++ = '\0';
     }
     return dest;
@@ -278,10 +259,8 @@ char *strncpy(char *dest, const char *src, size_t n)
  *
  * @see strncmp, strcasecmp
  */
-int strcmp(const char *s1, const char *s2)
-{
-    while (*s1 && *s1 == *s2)
-    {
+int strcmp(const char *s1, const char *s2) {
+    while (*s1 && *s1 == *s2) {
         s1++;
         s2++;
     }
@@ -312,10 +291,8 @@ int strcmp(const char *s1, const char *s2)
  *
  * @see strcmp, strncasecmp
  */
-int strncmp(const char *s1, const char *s2, size_t n)
-{
-    while (n && *s1 && *s1 == *s2)
-    {
+int strncmp(const char *s1, const char *s2, size_t n) {
+    while (n && *s1 && *s1 == *s2) {
         s1++;
         s2++;
         n--;
@@ -344,11 +321,9 @@ int strncmp(const char *s1, const char *s2, size_t n)
  *
  * @see strncat, strlcat (safer alternatives)
  */
-char *strcat(char *dest, const char *src)
-{
+char *strcat(char *dest, const char *src) {
     char *d = dest;
-    while (*d)
-    {
+    while (*d) {
         d++;
     }
     while ((*d++ = *src++))
@@ -373,12 +348,9 @@ char *strcat(char *dest, const char *src)
  *
  * @see strrchr, memchr, strstr
  */
-char *strchr(const char *s, int c)
-{
-    while (*s)
-    {
-        if (*s == (char)c)
-        {
+char *strchr(const char *s, int c) {
+    while (*s) {
+        if (*s == (char)c) {
             return (char *)s;
         }
         s++;
@@ -408,13 +380,10 @@ char *strchr(const char *s, int c)
  *
  * @see strchr, memrchr
  */
-char *strrchr(const char *s, int c)
-{
+char *strrchr(const char *s, int c) {
     const char *last = (char *)0;
-    while (*s)
-    {
-        if (*s == (char)c)
-        {
+    while (*s) {
+        if (*s == (char)c) {
             last = s;
         }
         s++;
@@ -440,13 +409,10 @@ char *strrchr(const char *s, int c)
  *
  * @see strchr, memrchr, memmem
  */
-void *memchr(const void *s, int c, size_t n)
-{
+void *memchr(const void *s, int c, size_t n) {
     const unsigned char *p = (const unsigned char *)s;
-    while (n--)
-    {
-        if (*p == (unsigned char)c)
-        {
+    while (n--) {
+        if (*p == (unsigned char)c) {
             return (void *)p;
         }
         p++;
@@ -472,11 +438,9 @@ void *memchr(const void *s, int c, size_t n)
  *
  * @see strlen
  */
-size_t strnlen(const char *s, size_t maxlen)
-{
+size_t strnlen(const char *s, size_t maxlen) {
     size_t len = 0;
-    while (len < maxlen && s[len])
-    {
+    while (len < maxlen && s[len]) {
         len++;
     }
     return len;
@@ -511,11 +475,9 @@ size_t strnlen(const char *s, size_t maxlen)
  * @note BSD extension, not part of standard C.
  * @note If size is 0, dest is not modified and strlen(src) is returned.
  */
-size_t strlcpy(char *dest, const char *src, size_t size)
-{
+size_t strlcpy(char *dest, const char *src, size_t size) {
     size_t src_len = strlen(src);
-    if (size > 0)
-    {
+    if (size > 0) {
         size_t copy_len = (src_len >= size) ? size - 1 : src_len;
         memcpy(dest, src, copy_len);
         dest[copy_len] = '\0';
@@ -541,14 +503,11 @@ size_t strlcpy(char *dest, const char *src, size_t size)
  *
  * @see strncasecmp, strcmp
  */
-int strcasecmp(const char *s1, const char *s2)
-{
-    while (*s1 && *s2)
-    {
+int strcasecmp(const char *s1, const char *s2) {
+    while (*s1 && *s2) {
         char c1 = (*s1 >= 'A' && *s1 <= 'Z') ? (*s1 + 32) : *s1;
         char c2 = (*s2 >= 'A' && *s2 <= 'Z') ? (*s2 + 32) : *s2;
-        if (c1 != c2)
-        {
+        if (c1 != c2) {
             return (unsigned char)c1 - (unsigned char)c2;
         }
         s1++;
@@ -579,14 +538,11 @@ int strcasecmp(const char *s1, const char *s2)
  *
  * @see strcasecmp, strncmp
  */
-int strncasecmp(const char *s1, const char *s2, size_t n)
-{
-    while (n && *s1 && *s2)
-    {
+int strncasecmp(const char *s1, const char *s2, size_t n) {
+    while (n && *s1 && *s2) {
         char c1 = (*s1 >= 'A' && *s1 <= 'Z') ? (*s1 + 32) : *s1;
         char c2 = (*s2 >= 'A' && *s2 <= 'Z') ? (*s2 + 32) : *s2;
-        if (c1 != c2)
-        {
+        if (c1 != c2) {
             return (unsigned char)c1 - (unsigned char)c2;
         }
         s1++;
@@ -622,15 +578,12 @@ int strncasecmp(const char *s1, const char *s2, size_t n)
  *
  * @see strlcat, strcat
  */
-char *strncat(char *dest, const char *src, size_t n)
-{
+char *strncat(char *dest, const char *src, size_t n) {
     char *d = dest;
-    while (*d)
-    {
+    while (*d) {
         d++;
     }
-    while (n-- && *src)
-    {
+    while (n-- && *src) {
         *d++ = *src++;
     }
     *d = '\0';
@@ -665,13 +618,11 @@ char *strncat(char *dest, const char *src, size_t n)
  * @note BSD extension.
  * @note If size <= strlen(dest), nothing is appended and size + strlen(src) is returned.
  */
-size_t strlcat(char *dest, const char *src, size_t size)
-{
+size_t strlcat(char *dest, const char *src, size_t size) {
     size_t dest_len = strnlen(dest, size);
     size_t src_len = strlen(src);
 
-    if (dest_len >= size)
-    {
+    if (dest_len >= size) {
         return size + src_len;
     }
 
@@ -700,20 +651,15 @@ size_t strlcat(char *dest, const char *src, size_t size)
  *
  * @see strchr, memmem
  */
-char *strstr(const char *haystack, const char *needle)
-{
-    if (*needle == '\0')
-    {
+char *strstr(const char *haystack, const char *needle) {
+    if (*needle == '\0') {
         return (char *)haystack;
     }
 
     size_t needle_len = strlen(needle);
-    while (*haystack)
-    {
-        if (*haystack == *needle)
-        {
-            if (strncmp(haystack, needle, needle_len) == 0)
-            {
+    while (*haystack) {
+        if (*haystack == *needle) {
+            if (strncmp(haystack, needle, needle_len) == 0) {
                 return (char *)haystack;
             }
         }
@@ -741,15 +687,11 @@ char *strstr(const char *haystack, const char *needle)
  *
  * @see strchr, strspn, strcspn
  */
-char *strpbrk(const char *s, const char *accept)
-{
-    while (*s)
-    {
+char *strpbrk(const char *s, const char *accept) {
+    while (*s) {
         const char *a = accept;
-        while (*a)
-        {
-            if (*s == *a)
-            {
+        while (*a) {
+            if (*s == *a) {
                 return (char *)s;
             }
             a++;
@@ -779,24 +721,19 @@ char *strpbrk(const char *s, const char *accept)
  *
  * @see strcspn, strpbrk
  */
-size_t strspn(const char *s, const char *accept)
-{
+size_t strspn(const char *s, const char *accept) {
     size_t count = 0;
-    while (*s)
-    {
+    while (*s) {
         const char *a = accept;
         int found = 0;
-        while (*a)
-        {
-            if (*s == *a)
-            {
+        while (*a) {
+            if (*s == *a) {
                 found = 1;
                 break;
             }
             a++;
         }
-        if (!found)
-        {
+        if (!found) {
             break;
         }
         count++;
@@ -826,16 +763,12 @@ size_t strspn(const char *s, const char *accept)
  *
  * @see strspn, strpbrk, strtok
  */
-size_t strcspn(const char *s, const char *reject)
-{
+size_t strcspn(const char *s, const char *reject) {
     size_t count = 0;
-    while (*s)
-    {
+    while (*s) {
         const char *r = reject;
-        while (*r)
-        {
-            if (*s == *r)
-            {
+        while (*r) {
+            if (*s == *r) {
                 return count;
             }
             r++;
@@ -879,19 +812,16 @@ size_t strcspn(const char *s, const char *reject)
  *
  * @see strtok (non-reentrant version), strpbrk, strspn
  */
-char *strtok_r(char *str, const char *delim, char **saveptr)
-{
+char *strtok_r(char *str, const char *delim, char **saveptr) {
     char *token;
 
-    if (str == (char *)0)
-    {
+    if (str == (char *)0) {
         str = *saveptr;
     }
 
     /* Skip leading delimiters */
     str += strspn(str, delim);
-    if (*str == '\0')
-    {
+    if (*str == '\0') {
         *saveptr = str;
         return (char *)0;
     }
@@ -899,13 +829,10 @@ char *strtok_r(char *str, const char *delim, char **saveptr)
     /* Find end of token */
     token = str;
     str = strpbrk(token, delim);
-    if (str == (char *)0)
-    {
+    if (str == (char *)0) {
         /* No more delimiters */
         *saveptr = token + strlen(token);
-    }
-    else
-    {
+    } else {
         *str = '\0';
         *saveptr = str + 1;
     }
@@ -933,12 +860,10 @@ extern void *malloc(size_t size);
  *
  * @see strndup, malloc, free
  */
-char *strdup(const char *s)
-{
+char *strdup(const char *s) {
     size_t len = strlen(s) + 1;
     char *dup = (char *)malloc(len);
-    if (dup)
-    {
+    if (dup) {
         memcpy(dup, s, len);
     }
     return dup;
@@ -967,12 +892,10 @@ char *strdup(const char *s)
  *
  * @see strdup, malloc, free
  */
-char *strndup(const char *s, size_t n)
-{
+char *strndup(const char *s, size_t n) {
     size_t len = strnlen(s, n);
     char *dup = (char *)malloc(len + 1);
-    if (dup)
-    {
+    if (dup) {
         memcpy(dup, s, len);
         dup[len] = '\0';
     }
@@ -1063,10 +986,8 @@ static char unknown_error_buf[32];
  *
  * @see perror, errno
  */
-char *strerror(int errnum)
-{
-    if (errnum >= 0 && (size_t)errnum < NUM_ERROR_MESSAGES)
-    {
+char *strerror(int errnum) {
+    if (errnum >= 0 && (size_t)errnum < NUM_ERROR_MESSAGES) {
         return (char *)error_messages[errnum];
     }
 
@@ -1078,15 +999,13 @@ char *strerror(int errnum)
 
     /* Convert number to string */
     int n = errnum;
-    if (n < 0)
-    {
+    if (n < 0) {
         *p++ = '-';
         n = -n;
     }
     char digits[12];
     int i = 0;
-    do
-    {
+    do {
         digits[i++] = '0' + (n % 10);
         n /= 10;
     } while (n > 0);
@@ -1111,8 +1030,7 @@ char *strerror(int errnum)
  *
  * @see strerror
  */
-size_t strerrorlen_s(int errnum)
-{
+size_t strerrorlen_s(int errnum) {
     return strlen(strerror(errnum));
 }
 
@@ -1140,8 +1058,7 @@ static char *strtok_saveptr = (char *)0;
  *
  * @see strtok_r (thread-safe, reentrant version)
  */
-char *strtok(char *str, const char *delim)
-{
+char *strtok(char *str, const char *delim) {
     return strtok_r(str, delim, &strtok_saveptr);
 }
 
@@ -1162,14 +1079,11 @@ char *strtok(char *str, const char *delim)
  *
  * @see memchr, strrchr
  */
-void *memrchr(const void *s, int c, size_t n)
-{
+void *memrchr(const void *s, int c, size_t n) {
     const unsigned char *p = (const unsigned char *)s + n;
-    while (n--)
-    {
+    while (n--) {
         --p;
-        if (*p == (unsigned char)c)
-        {
+        if (*p == (unsigned char)c) {
             return (void *)p;
         }
     }
@@ -1199,8 +1113,7 @@ void *memrchr(const void *s, int c, size_t n)
  *
  * @see strstr, memchr
  */
-void *memmem(const void *haystack, size_t haystacklen, const void *needle, size_t needlelen)
-{
+void *memmem(const void *haystack, size_t haystacklen, const void *needle, size_t needlelen) {
     if (needlelen == 0)
         return (void *)haystack;
     if (haystacklen < needlelen)
@@ -1210,10 +1123,8 @@ void *memmem(const void *haystack, size_t haystacklen, const void *needle, size_
     const unsigned char *n = (const unsigned char *)needle;
     const unsigned char *end = h + haystacklen - needlelen + 1;
 
-    while (h < end)
-    {
-        if (*h == *n && memcmp(h, n, needlelen) == 0)
-        {
+    while (h < end) {
+        if (*h == *n && memcmp(h, n, needlelen) == 0) {
             return (void *)h;
         }
         h++;
@@ -1238,16 +1149,14 @@ void *memmem(const void *haystack, size_t haystacklen, const void *needle, size_
  *
  * @see strlen
  */
-char *strrev(char *str)
-{
+char *strrev(char *str) {
     if (!str || !*str)
         return str;
 
     char *start = str;
     char *end = str + strlen(str) - 1;
 
-    while (start < end)
-    {
+    while (start < end) {
         char tmp = *start;
         *start = *end;
         *end = tmp;

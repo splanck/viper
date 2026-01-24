@@ -6,7 +6,9 @@
 
 ## Overview
 
-The tools directory contains host-side utilities for building ViperDOS disk images, and the cmake directory contains cross-compilation toolchain files. These are compiled for the development machine (macOS/Linux) and generate artifacts used by the kernel at boot time.
+The tools directory contains host-side utilities for building ViperDOS disk images, and the cmake directory contains
+cross-compilation toolchain files. These are compiled for the development machine (macOS/Linux) and generate artifacts
+used by the kernel at boot time.
 
 ---
 
@@ -16,9 +18,11 @@ The tools directory contains host-side utilities for building ViperDOS disk imag
 
 **Status:** Complete filesystem image builder
 
-A host-side utility that creates ViperFS filesystem images from a set of input files. The tool outputs a complete, bootable disk image.
+A host-side utility that creates ViperFS filesystem images from a set of input files. The tool outputs a complete,
+bootable disk image.
 
 **Usage:**
+
 ```
 mkfs.ziafs <image> <size_mb> [options...] [files...]
 
@@ -29,6 +33,7 @@ Options:
 ```
 
 **Examples:**
+
 ```bash
 # Create 8MB image with vinit and certificates
 mkfs.ziafs disk.img 8 vinit.sys \
@@ -37,6 +42,7 @@ mkfs.ziafs disk.img 8 vinit.sys \
 ```
 
 **Implemented:**
+
 - Superblock initialization (magic, version, layout)
 - Block allocation bitmap
 - Inode table (256-byte inodes)
@@ -48,6 +54,7 @@ mkfs.ziafs disk.img 8 vinit.sys \
 - Layout calculation and metadata finalization
 
 **Filesystem Layout:**
+
 ```
 Block 0:        Superblock
 Blocks 1-N:     Block bitmap (1 bit per block)
@@ -80,6 +87,7 @@ Blocks M+1-end: Data blocks
 | name | variable | Entry name |
 
 **Limitations:**
+
 - Single indirect blocks only (max ~2MB files without double indirect)
 - Single data block per directory
 - No error handling for very large files
@@ -93,11 +101,13 @@ Blocks M+1-end: Data blocks
 Generates a `roots.der` bundle containing trusted root CA public keys for TLS certificate verification.
 
 **Usage:**
+
 ```
 gen_roots_der <output.der>
 ```
 
 **Output Format:**
+
 ```
 [u32 count]              - Number of CA entries
 For each entry:
@@ -119,6 +129,7 @@ For each entry:
 
 **Purpose:**
 The kernel TLS stack uses this bundle for:
+
 - Server certificate chain validation
 - Trust anchor comparison
 - RSA signature verification during handshake
@@ -132,11 +143,13 @@ The kernel TLS stack uses this bundle for:
 A host-side utility that validates ViperFS filesystem images for consistency errors.
 
 **Usage:**
+
 ```
 fsck.ziafs <image>
 ```
 
 **Checks Performed:**
+
 - Superblock magic number and version validation
 - Block size and layout verification
 - Block bitmap consistency (allocated vs referenced)
@@ -147,6 +160,7 @@ fsck.ziafs <image>
 - File size vs allocated blocks consistency
 
 **Output:**
+
 ```
 [fsck] ViperFS Filesystem Check
 [fsck] Checking disk.img (16777216 bytes)
@@ -181,12 +195,14 @@ fsck.ziafs <image>
 The Clang toolchain provides cross-compilation support using LLVM's Clang compiler with GNU binutils for linking.
 
 **Configuration:**
+
 - **Target Triple:** `aarch64-none-elf`
 - **Compilers:** clang, clang++
 - **Linker:** aarch64-elf-ld (GNU ld via `--ld-path`)
 - **Archiver:** aarch64-elf-ar
 
 **Key Features:**
+
 - Uses `find_program()` for portable tool discovery
 - Automatic target triple for all compilation units
 - Compatible with macOS (Apple Clang or Homebrew LLVM)
@@ -194,6 +210,7 @@ The Clang toolchain provides cross-compilation support using LLVM's Clang compil
 - Generates SIMD instructions for memory operations (requires FPU enable in kernel)
 
 **Compiler Flags:**
+
 ```
 -ffreestanding -nostdlib -mcpu=cortex-a72
 -Wall -Wextra -Werror
@@ -203,6 +220,7 @@ The Clang toolchain provides cross-compilation support using LLVM's Clang compil
 ```
 
 **Requirements:**
+
 - macOS: `brew install llvm aarch64-elf-binutils`
 - Linux: `apt install clang lld` (or use system Clang)
 
@@ -215,11 +233,13 @@ The Clang toolchain provides cross-compilation support using LLVM's Clang compil
 The GCC toolchain uses the aarch64-elf-gcc cross-compiler.
 
 **Configuration:**
+
 - **Compiler:** aarch64-elf-gcc, aarch64-elf-g++
 - **Linker:** aarch64-elf-ld
 - **Standard:** C11, C++17
 
 **Requirements:**
+
 - macOS: `brew install aarch64-elf-gcc`
 - Linux: `apt install gcc-aarch64-linux-gnu`
 
@@ -234,6 +254,7 @@ These tools are built automatically by `build_viperdos.sh`:
 ### UEFI Build Requirements
 
 For UEFI boot mode, additional tools are needed:
+
 - `sgdisk` - GPT partition management (from gdisk package)
 - `mtools` - FAT filesystem manipulation (mmd, mcopy)
 - `qemu-img` - Disk image creation
@@ -266,48 +287,58 @@ fi
 
 ## Files
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `tools/mkfs.ziafs.cpp` | ~1,070 | Filesystem image builder |
-| `tools/gen_roots_der.cpp` | ~264 | CA bundle generator |
-| `tools/fsck.ziafs.cpp` | ~400 | Filesystem consistency checker |
-| `cmake/aarch64-clang-toolchain.cmake` | ~62 | Clang cross-compilation (default) |
-| `cmake/aarch64-toolchain.cmake` | ~50 | GCC cross-compilation (legacy) |
+| File                                  | Lines  | Description                       |
+|---------------------------------------|--------|-----------------------------------|
+| `tools/mkfs.ziafs.cpp`                | ~1,070 | Filesystem image builder          |
+| `tools/gen_roots_der.cpp`             | ~264   | CA bundle generator               |
+| `tools/fsck.ziafs.cpp`                | ~400   | Filesystem consistency checker    |
+| `cmake/aarch64-clang-toolchain.cmake` | ~62    | Clang cross-compilation (default) |
+| `cmake/aarch64-toolchain.cmake`       | ~50    | GCC cross-compilation (legacy)    |
 
 ---
 
 ## Priority Recommendations: Next 5 Steps
 
 ### 1. Double/Triple Indirect Block Support
+
 **Impact:** Support for larger files
+
 - Implement double indirect block allocation in mkfs
 - Enable files larger than ~2MB
 - Match kernel ViperFS capabilities
 - Required for disk images and databases
 
 ### 2. Filesystem Image Dump Tool
+
 **Impact:** Debugging and analysis
+
 - `dumpfs.ziafs` for inode/block inspection
 - Human-readable superblock/bitmap display
 - Directory tree visualization
 - Useful for debugging corruption
 
 ### 3. Incremental Disk Update Tool
+
 **Impact:** Faster development iteration
+
 - Add/remove files without full rebuild
 - `viperfs-add`, `viperfs-rm` commands
 - Preserve existing content
 - Faster build times during development
 
 ### 4. Mozilla CA Bundle Auto-Update
+
 **Impact:** Up-to-date TLS trust anchors
+
 - Script to download Mozilla certdata.txt
 - Parse and extract root CA certificates
 - Generate roots.der bundle automatically
 - Ensure TLS compatibility with current sites
 
 ### 5. Bootable ISO Creation
+
 **Impact:** Standard distribution format
+
 - ISO 9660 filesystem generation
 - El Torito boot catalog for UEFI
 - Include ESP, system, and user images

@@ -11,16 +11,15 @@
  * Individual syscall handlers are implemented in handlers/ subdirectory.
  */
 #include "table.hpp"
-#include "handlers/handlers_internal.hpp"
 #include "../cap/table.hpp"
 #include "../console/serial.hpp"
 #include "../include/error.hpp"
 #include "../include/syscall_nums.hpp"
 #include "../sched/task.hpp"
 #include "../viper/viper.hpp"
+#include "handlers/handlers_internal.hpp"
 
-namespace syscall
-{
+namespace syscall {
 
 // =============================================================================
 // Configuration
@@ -29,18 +28,15 @@ namespace syscall
 #ifdef CONFIG_SYSCALL_TRACE
 static bool g_tracing_enabled = false;
 
-void set_tracing(bool enabled)
-{
+void set_tracing(bool enabled) {
     g_tracing_enabled = enabled;
 }
 
-bool is_tracing()
-{
+bool is_tracing() {
     return g_tracing_enabled;
 }
 
-static void trace_entry(const SyscallEntry *entry, u64 a0, u64 a1, u64 a2)
-{
+static void trace_entry(const SyscallEntry *entry, u64 a0, u64 a1, u64 a2) {
     if (!g_tracing_enabled || !entry)
         return;
 
@@ -51,21 +47,18 @@ static void trace_entry(const SyscallEntry *entry, u64 a0, u64 a1, u64 a2)
     serial::puts(entry->name);
     serial::puts("(");
     serial::put_hex(a0);
-    if (entry->argcount > 1)
-    {
+    if (entry->argcount > 1) {
         serial::puts(", ");
         serial::put_hex(a1);
     }
-    if (entry->argcount > 2)
-    {
+    if (entry->argcount > 2) {
         serial::puts(", ");
         serial::put_hex(a2);
     }
     serial::puts(")\n");
 }
 
-static void trace_exit(const SyscallEntry *entry, const SyscallResult &result)
-{
+static void trace_exit(const SyscallEntry *entry, const SyscallResult &result) {
     if (!g_tracing_enabled || !entry)
         return;
 
@@ -83,86 +76,69 @@ static void trace_exit(const SyscallEntry *entry, const SyscallResult &result)
 // User Pointer Validation
 // =============================================================================
 
-static bool is_valid_user_address(u64 addr, usize size)
-{
-    if (addr + size < addr)
-    {
+static bool is_valid_user_address(u64 addr, usize size) {
+    if (addr + size < addr) {
         return false;
     }
 
-    if (addr < 0x1000)
-    {
+    if (addr < 0x1000) {
         return false;
     }
 
-    if (addr >= 0xFFFF000000000000ULL)
-    {
+    if (addr >= 0xFFFF000000000000ULL) {
         return false;
     }
 
     u64 top_bits = addr >> 48;
     u64 bit47 = (addr >> 47) & 1;
-    if (bit47 == 0 && top_bits != 0)
-    {
+    if (bit47 == 0 && top_bits != 0) {
         return false;
     }
-    if (bit47 == 1 && top_bits != 0xFFFF)
-    {
+    if (bit47 == 1 && top_bits != 0xFFFF) {
         return false;
     }
 
     return true;
 }
 
-bool validate_user_read(const void *ptr, usize size, bool null_ok)
-{
-    if (!ptr)
-    {
+bool validate_user_read(const void *ptr, usize size, bool null_ok) {
+    if (!ptr) {
         return null_ok && size == 0;
     }
 
     u64 addr = reinterpret_cast<u64>(ptr);
-    if (!is_valid_user_address(addr, size))
-    {
+    if (!is_valid_user_address(addr, size)) {
         return false;
     }
 
     return true;
 }
 
-bool validate_user_write(void *ptr, usize size, bool null_ok)
-{
-    if (!ptr)
-    {
+bool validate_user_write(void *ptr, usize size, bool null_ok) {
+    if (!ptr) {
         return null_ok && size == 0;
     }
 
     u64 addr = reinterpret_cast<u64>(ptr);
-    if (!is_valid_user_address(addr, size))
-    {
+    if (!is_valid_user_address(addr, size)) {
         return false;
     }
 
     return true;
 }
 
-i64 validate_user_string(const char *str, usize max_len)
-{
-    if (!str)
-    {
+i64 validate_user_string(const char *str, usize max_len) {
+    if (!str) {
         return -1;
     }
 
     u64 addr = reinterpret_cast<u64>(str);
-    if (!is_valid_user_address(addr, 1))
-    {
+    if (!is_valid_user_address(addr, 1)) {
         return -1;
     }
 
-    for (usize i = 0; i <= max_len; i++)
-    {
-        if (str[i] == '\0')
-        {
+    for (usize i = 0; i <= max_len; i++) {
+        if (str[i] == '\0') {
             return static_cast<i64>(i);
         }
     }
@@ -174,8 +150,7 @@ i64 validate_user_string(const char *str, usize max_len)
 // Capability Table Helper
 // =============================================================================
 
-cap::Table *get_current_cap_table()
-{
+cap::Table *get_current_cap_table() {
     task::Task *t = task::current();
     if (!t || !t->viper)
         return nullptr;
@@ -353,34 +328,27 @@ static constexpr usize SYSCALL_TABLE_SIZE = sizeof(syscall_table) / sizeof(sysca
 // Table Access Functions
 // =============================================================================
 
-const SyscallEntry *get_table()
-{
+const SyscallEntry *get_table() {
     return syscall_table;
 }
 
-usize get_table_size()
-{
+usize get_table_size() {
     return SYSCALL_TABLE_SIZE;
 }
 
-const SyscallEntry *lookup(u32 number)
-{
-    for (usize i = 0; i < SYSCALL_TABLE_SIZE; i++)
-    {
-        if (syscall_table[i].number == number)
-        {
+const SyscallEntry *lookup(u32 number) {
+    for (usize i = 0; i < SYSCALL_TABLE_SIZE; i++) {
+        if (syscall_table[i].number == number) {
             return &syscall_table[i];
         }
     }
     return nullptr;
 }
 
-SyscallResult dispatch_syscall(u32 number, u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u64 a5)
-{
+SyscallResult dispatch_syscall(u32 number, u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u64 a5) {
     const SyscallEntry *entry = lookup(number);
 
-    if (!entry || !entry->handler)
-    {
+    if (!entry || !entry->handler) {
         return SyscallResult::err(error::VERR_NOT_SUPPORTED);
     }
 

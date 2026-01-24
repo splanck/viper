@@ -13,8 +13,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "viper/runtime/rt.h"
 #include "tests/common/PosixCompat.h"
+#include "viper/runtime/rt.h"
 
 #ifdef NDEBUG
 #undef NDEBUG

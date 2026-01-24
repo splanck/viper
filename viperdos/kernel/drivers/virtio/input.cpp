@@ -14,8 +14,7 @@
  * consuming events and translating them into characters; this driver only
  * retrieves raw virtio input events.
  */
-namespace virtio
-{
+namespace virtio {
 
 // Global input device pointers
 InputDevice *keyboard = nullptr;
@@ -25,8 +24,7 @@ InputDevice *mouse = nullptr;
 // InputDevice Initialization Helpers
 // =============================================================================
 
-void InputDevice::read_device_name()
-{
+void InputDevice::read_device_name() {
     volatile u8 *config = reinterpret_cast<volatile u8 *>(base() + reg::CONFIG);
 
     config[0] = input_config::ID_NAME;
@@ -37,8 +35,7 @@ void InputDevice::read_device_name()
     if (name_size > 127)
         name_size = 127;
 
-    for (u8 i = 0; i < name_size; i++)
-    {
+    for (u8 i = 0; i < name_size; i++) {
         name_[i] = static_cast<char>(config[8 + i]);
     }
     name_[name_size] = '\0';
@@ -48,8 +45,7 @@ void InputDevice::read_device_name()
     serial::puts("\n");
 }
 
-void InputDevice::detect_device_type()
-{
+void InputDevice::detect_device_type() {
     volatile u8 *config = reinterpret_cast<volatile u8 *>(base() + reg::CONFIG);
 
     // EV_BITS query for EV_REL (mouse movement - definitive for mouse)
@@ -81,8 +77,7 @@ void InputDevice::detect_device_type()
         serial::puts("[virtio-input] Device supports LED control\n");
 }
 
-bool InputDevice::negotiate_features()
-{
+bool InputDevice::negotiate_features() {
     if (is_legacy())
         return true;
 
@@ -99,20 +94,17 @@ bool InputDevice::negotiate_features()
     write32(reg::DRIVER_FEATURES, features::VERSION_1 >> 32);
 
     add_status(status::FEATURES_OK);
-    if (!(get_status() & status::FEATURES_OK))
-    {
+    if (!(get_status() & status::FEATURES_OK)) {
         serial::puts("[virtio-input] Failed to set FEATURES_OK\n");
         return false;
     }
     return true;
 }
 
-bool InputDevice::setup_event_queue()
-{
+bool InputDevice::setup_event_queue() {
     write32(reg::QUEUE_SEL, 0);
     u32 max_queue_size = read32(reg::QUEUE_NUM_MAX);
-    if (max_queue_size == 0)
-    {
+    if (max_queue_size == 0) {
         serial::puts("[virtio-input] Invalid queue size\n");
         return false;
     }
@@ -121,39 +113,34 @@ bool InputDevice::setup_event_queue()
     if (queue_size > INPUT_EVENT_BUFFERS)
         queue_size = INPUT_EVENT_BUFFERS;
 
-    if (!eventq_.init(this, 0, queue_size))
-    {
+    if (!eventq_.init(this, 0, queue_size)) {
         serial::puts("[virtio-input] Failed to init eventq\n");
         return false;
     }
     return true;
 }
 
-bool InputDevice::setup_status_queue()
-{
+bool InputDevice::setup_status_queue() {
     if (!has_led_)
         return true;
 
     write32(reg::QUEUE_SEL, 1);
     u32 status_queue_size = read32(reg::QUEUE_NUM_MAX);
-    if (status_queue_size == 0)
-    {
+    if (status_queue_size == 0) {
         serial::puts("[virtio-input] No status queue available\n");
         has_led_ = false;
         return true;
     }
 
     u32 sq_size = status_queue_size > 8 ? 8 : status_queue_size;
-    if (!statusq_.init(this, 1, sq_size))
-    {
+    if (!statusq_.init(this, 1, sq_size)) {
         serial::puts("[virtio-input] Failed to init statusq (LED control disabled)\n");
         has_led_ = false;
         return true;
     }
 
     status_event_phys_ = pmm::alloc_page();
-    if (status_event_phys_ == 0)
-    {
+    if (status_event_phys_ == 0) {
         serial::puts("[virtio-input] Failed to allocate status buffer\n");
         has_led_ = false;
         return true;
@@ -164,20 +151,17 @@ bool InputDevice::setup_status_queue()
     return true;
 }
 
-bool InputDevice::allocate_event_buffers()
-{
+bool InputDevice::allocate_event_buffers() {
     usize events_size = sizeof(InputEvent) * INPUT_EVENT_BUFFERS;
     usize pages_needed = (events_size + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE;
     events_phys_ = pmm::alloc_pages(pages_needed);
-    if (events_phys_ == 0)
-    {
+    if (events_phys_ == 0) {
         serial::puts("[virtio-input] Failed to allocate event buffers\n");
         return false;
     }
 
     InputEvent *virt_events = reinterpret_cast<InputEvent *>(pmm::phys_to_virt(events_phys_));
-    for (usize i = 0; i < INPUT_EVENT_BUFFERS; i++)
-    {
+    for (usize i = 0; i < INPUT_EVENT_BUFFERS; i++) {
         events_[i] = virt_events[i];
     }
     return true;
@@ -188,13 +172,11 @@ bool InputDevice::allocate_event_buffers()
 // =============================================================================
 
 /** @copydoc virtio::InputDevice::init */
-bool InputDevice::init(u64 base_addr)
-{
+bool InputDevice::init(u64 base_addr) {
     if (!Device::init(base_addr))
         return false;
 
-    if (device_id() != device_type::INPUT)
-    {
+    if (device_id() != device_type::INPUT) {
         serial::puts("[virtio-input] Not an input device\n");
         return false;
     }
@@ -241,11 +223,9 @@ bool InputDevice::init(u64 base_addr)
 }
 
 /** @copydoc virtio::InputDevice::refill_eventq */
-void InputDevice::refill_eventq()
-{
+void InputDevice::refill_eventq() {
     // Add as many buffers as we can to the eventq
-    while (eventq_.num_free() > 0)
-    {
+    while (eventq_.num_free() > 0) {
         i32 desc_idx = eventq_.alloc_desc();
         if (desc_idx < 0)
             break;
@@ -261,21 +241,18 @@ void InputDevice::refill_eventq()
 }
 
 /** @copydoc virtio::InputDevice::has_event */
-bool InputDevice::has_event()
-{
+bool InputDevice::has_event() {
     return eventq_.poll_used() >= 0;
 }
 
 /** @copydoc virtio::InputDevice::get_event */
-bool InputDevice::get_event(InputEvent *event)
-{
+bool InputDevice::get_event(InputEvent *event) {
     // Debug disabled - was flooding output
     // static u32 poll_count = 0;
     // if (++poll_count % 10000 == 0) { ... }
 
     i32 used_idx = eventq_.poll_used();
-    if (used_idx < 0)
-    {
+    if (used_idx < 0) {
         return false;
     }
 
@@ -296,16 +273,14 @@ bool InputDevice::get_event(InputEvent *event)
 }
 
 /** @copydoc virtio::input_init */
-void input_init()
-{
+void input_init() {
     serial::puts("[virtio-input] Scanning for input devices...\n");
     serial::puts("[virtio-input] Total virtio devices: ");
     serial::put_dec(device_count());
     serial::puts("\n");
 
     // Look for keyboard and mouse devices
-    for (usize i = 0; i < device_count(); i++)
-    {
+    for (usize i = 0; i < device_count(); i++) {
         const DeviceInfo *info = get_device_info(i);
         if (!info)
             continue;
@@ -318,8 +293,7 @@ void input_init()
         serial::put_dec(device_type::INPUT);
         serial::puts(")\n");
 
-        if (info->type != device_type::INPUT || info->in_use)
-        {
+        if (info->type != device_type::INPUT || info->in_use) {
             continue;
         }
 
@@ -327,8 +301,7 @@ void input_init()
 
         // Try to initialize as input device
         InputDevice *dev = new InputDevice();
-        if (!dev->init(info->base))
-        {
+        if (!dev->init(info->base)) {
             serial::puts("[virtio-input] Init failed!\n");
             delete dev;
             continue;
@@ -343,25 +316,19 @@ void input_init()
         serial::puts("\n");
 
         // Assign to keyboard or mouse based on capabilities
-        if (dev->is_keyboard() && !keyboard)
-        {
+        if (dev->is_keyboard() && !keyboard) {
             keyboard = dev;
             serial::puts("[virtio-input] *** KEYBOARD ASSIGNED ***\n");
-        }
-        else if (dev->is_mouse() && !mouse)
-        {
+        } else if (dev->is_mouse() && !mouse) {
             mouse = dev;
             serial::puts("[virtio-input] *** MOUSE ASSIGNED ***\n");
-        }
-        else
-        {
+        } else {
             serial::puts("[virtio-input] Device not assigned (duplicate or unknown)\n");
             delete dev;
         }
     }
 
-    if (!keyboard && !mouse)
-    {
+    if (!keyboard && !mouse) {
         serial::puts("[virtio-input] WARNING: No input devices found!\n");
     }
 }
@@ -370,15 +337,12 @@ void input_init()
 // which is called from the timer interrupt handler. Do NOT consume events here.
 
 /** @copydoc virtio::InputDevice::set_led */
-bool InputDevice::set_led(u16 led, bool on)
-{
-    if (!has_led_ || !status_event_)
-    {
+bool InputDevice::set_led(u16 led, bool on) {
+    if (!has_led_ || !status_event_) {
         return false;
     }
 
-    if (led > led_code::MAX)
-    {
+    if (led > led_code::MAX) {
         return false;
     }
 
@@ -392,8 +356,7 @@ bool InputDevice::set_led(u16 led, bool on)
 
     // Allocate a descriptor
     i32 desc = statusq_.alloc_desc();
-    if (desc < 0)
-    {
+    if (desc < 0) {
         serial::puts("[virtio-input] No free status descriptors\n");
         return false;
     }
@@ -407,11 +370,9 @@ bool InputDevice::set_led(u16 led, bool on)
 
     // Wait for completion (blocking with timeout)
     bool completed = false;
-    for (u32 i = 0; i < 100000; i++)
-    {
+    for (u32 i = 0; i < 100000; i++) {
         i32 used = statusq_.poll_used();
-        if (used == desc)
-        {
+        if (used == desc) {
             completed = true;
             break;
         }
@@ -421,8 +382,7 @@ bool InputDevice::set_led(u16 led, bool on)
     // Free the descriptor
     statusq_.free_desc(desc);
 
-    if (!completed)
-    {
+    if (!completed) {
         serial::puts("[virtio-input] LED set timed out\n");
         return false;
     }

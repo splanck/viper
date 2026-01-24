@@ -11,31 +11,26 @@
  * The driver supports resource creation, backing memory attachment,
  * scanout configuration, and 2D transfers/flushes.
  */
-namespace virtio
-{
+namespace virtio {
 
 // Global GPU device instance
 static GpuDevice g_gpu_device;
 static bool g_gpu_initialized = false;
 
-GpuDevice *gpu_device()
-{
+GpuDevice *gpu_device() {
     return g_gpu_initialized ? &g_gpu_device : nullptr;
 }
 
-bool GpuDevice::init()
-{
+bool GpuDevice::init() {
     // Find virtio-gpu device
     u64 base = find_device(device_type::GPU);
-    if (!base)
-    {
+    if (!base) {
         serial::puts("[virtio-gpu] No GPU device found\n");
         return false;
     }
 
     // Use common init sequence (init, reset, legacy page size, acknowledge, driver)
-    if (!basic_init(base))
-    {
+    if (!basic_init(base)) {
         serial::puts("[virtio-gpu] Device init failed\n");
         return false;
     }
@@ -54,21 +49,18 @@ bool GpuDevice::init()
 
     // Negotiate features - we only need basic 2D
     u64 required = 0;
-    if (!is_legacy())
-    {
+    if (!is_legacy()) {
         required |= features::VERSION_1;
     }
 
-    if (!negotiate_features(required))
-    {
+    if (!negotiate_features(required)) {
         serial::puts("[virtio-gpu] Feature negotiation failed\n");
         set_status(status::FAILED);
         return false;
     }
 
     // Initialize control virtqueue (queue 0)
-    if (!controlq_.init(this, 0, 64))
-    {
+    if (!controlq_.init(this, 0, 64)) {
         serial::puts("[virtio-gpu] Failed to init controlq\n");
         set_status(status::FAILED);
         return false;
@@ -77,10 +69,8 @@ bool GpuDevice::init()
     // Initialize cursor virtqueue (queue 1) - optional
     write32(reg::QUEUE_SEL, 1);
     u32 cursor_queue_size = read32(reg::QUEUE_NUM_MAX);
-    if (cursor_queue_size > 0)
-    {
-        if (!cursorq_.init(this, 1, cursor_queue_size > 16 ? 16 : cursor_queue_size))
-        {
+    if (cursor_queue_size > 0) {
+        if (!cursorq_.init(this, 1, cursor_queue_size > 16 ? 16 : cursor_queue_size)) {
             serial::puts("[virtio-gpu] Warning: cursor queue init failed\n");
             // Not fatal - cursor is optional
         }
@@ -88,8 +78,7 @@ bool GpuDevice::init()
 
     // Allocate command buffer
     cmd_buf_phys_ = pmm::alloc_page();
-    if (!cmd_buf_phys_)
-    {
+    if (!cmd_buf_phys_) {
         serial::puts("[virtio-gpu] Failed to allocate command buffer\n");
         set_status(status::FAILED);
         return false;
@@ -98,8 +87,7 @@ bool GpuDevice::init()
 
     // Allocate response buffer
     resp_buf_phys_ = pmm::alloc_page();
-    if (!resp_buf_phys_)
-    {
+    if (!resp_buf_phys_) {
         serial::puts("[virtio-gpu] Failed to allocate response buffer\n");
         pmm::free_page(cmd_buf_phys_);
         set_status(status::FAILED);
@@ -109,8 +97,7 @@ bool GpuDevice::init()
 
     // Allocate memory entries buffer
     mem_entries_phys_ = pmm::alloc_page();
-    if (!mem_entries_phys_)
-    {
+    if (!mem_entries_phys_) {
         serial::puts("[virtio-gpu] Failed to allocate mem entries buffer\n");
         pmm::free_page(cmd_buf_phys_);
         pmm::free_page(resp_buf_phys_);
@@ -120,8 +107,7 @@ bool GpuDevice::init()
     mem_entries_ = reinterpret_cast<GpuMemEntry *>(pmm::phys_to_virt(mem_entries_phys_));
 
     // Zero buffers
-    for (usize i = 0; i < pmm::PAGE_SIZE; i++)
-    {
+    for (usize i = 0; i < pmm::PAGE_SIZE; i++) {
         cmd_buf_[i] = 0;
         resp_buf_[i] = 0;
     }
@@ -134,14 +120,12 @@ bool GpuDevice::init()
     return true;
 }
 
-bool GpuDevice::send_command(usize cmd_size, usize resp_size)
-{
+bool GpuDevice::send_command(usize cmd_size, usize resp_size) {
     // Allocate descriptors
     i32 cmd_desc = controlq_.alloc_desc();
     i32 resp_desc = controlq_.alloc_desc();
 
-    if (cmd_desc < 0 || resp_desc < 0)
-    {
+    if (cmd_desc < 0 || resp_desc < 0) {
         if (cmd_desc >= 0)
             controlq_.free_desc(cmd_desc);
         if (resp_desc >= 0)
@@ -166,11 +150,9 @@ bool GpuDevice::send_command(usize cmd_size, usize resp_size)
 
     // Wait for completion (polling)
     bool completed = false;
-    for (u32 i = 0; i < 1000000; i++)
-    {
+    for (u32 i = 0; i < 1000000; i++) {
         i32 used = controlq_.poll_used();
-        if (used == cmd_desc)
-        {
+        if (used == cmd_desc) {
             completed = true;
             break;
         }
@@ -181,16 +163,14 @@ bool GpuDevice::send_command(usize cmd_size, usize resp_size)
     controlq_.free_desc(cmd_desc);
     controlq_.free_desc(resp_desc);
 
-    if (!completed)
-    {
+    if (!completed) {
         serial::puts("[virtio-gpu] Command timeout\n");
         return false;
     }
 
     // Check response type
     GpuCtrlHdr *resp = reinterpret_cast<GpuCtrlHdr *>(resp_buf_);
-    if (resp->type >= gpu_cmd::RESP_ERR_UNSPEC)
-    {
+    if (resp->type >= gpu_cmd::RESP_ERR_UNSPEC) {
         serial::puts("[virtio-gpu] Command error: 0x");
         serial::put_hex(resp->type);
         serial::puts("\n");
@@ -200,8 +180,7 @@ bool GpuDevice::send_command(usize cmd_size, usize resp_size)
     return true;
 }
 
-bool GpuDevice::get_display_info(u32 *width, u32 *height)
-{
+bool GpuDevice::get_display_info(u32 *width, u32 *height) {
     if (!initialized_)
         return false;
 
@@ -213,24 +192,20 @@ bool GpuDevice::get_display_info(u32 *width, u32 *height)
     cmd->ctx_id = 0;
     cmd->padding = 0;
 
-    if (!send_command(sizeof(GpuCtrlHdr), sizeof(GpuRespDisplayInfo)))
-    {
+    if (!send_command(sizeof(GpuCtrlHdr), sizeof(GpuRespDisplayInfo))) {
         return false;
     }
 
     // Parse response
     GpuRespDisplayInfo *resp = reinterpret_cast<GpuRespDisplayInfo *>(resp_buf_);
-    if (resp->hdr.type != gpu_cmd::RESP_OK_DISPLAY_INFO)
-    {
+    if (resp->hdr.type != gpu_cmd::RESP_OK_DISPLAY_INFO) {
         serial::puts("[virtio-gpu] Unexpected response type\n");
         return false;
     }
 
     // Find first enabled display
-    for (u32 i = 0; i < GPU_MAX_SCANOUTS && i < num_scanouts_; i++)
-    {
-        if (resp->pmodes[i].enabled)
-        {
+    for (u32 i = 0; i < GPU_MAX_SCANOUTS && i < num_scanouts_; i++) {
+        if (resp->pmodes[i].enabled) {
             *width = resp->pmodes[i].r.width;
             *height = resp->pmodes[i].r.height;
             serial::puts("[virtio-gpu] Display ");
@@ -248,8 +223,7 @@ bool GpuDevice::get_display_info(u32 *width, u32 *height)
     return false;
 }
 
-bool GpuDevice::create_resource_2d(u32 resource_id, u32 width, u32 height, u32 format)
-{
+bool GpuDevice::create_resource_2d(u32 resource_id, u32 width, u32 height, u32 format) {
     if (!initialized_)
         return false;
 
@@ -264,8 +238,7 @@ bool GpuDevice::create_resource_2d(u32 resource_id, u32 width, u32 height, u32 f
     cmd->width = width;
     cmd->height = height;
 
-    if (!send_command(sizeof(GpuResourceCreate2d), sizeof(GpuCtrlHdr)))
-    {
+    if (!send_command(sizeof(GpuResourceCreate2d), sizeof(GpuCtrlHdr))) {
         serial::puts("[virtio-gpu] Failed to create resource\n");
         return false;
     }
@@ -280,8 +253,7 @@ bool GpuDevice::create_resource_2d(u32 resource_id, u32 width, u32 height, u32 f
     return true;
 }
 
-bool GpuDevice::attach_backing(u32 resource_id, u64 addr, u32 size)
-{
+bool GpuDevice::attach_backing(u32 resource_id, u64 addr, u32 size) {
     if (!initialized_)
         return false;
 
@@ -308,8 +280,7 @@ bool GpuDevice::attach_backing(u32 resource_id, u64 addr, u32 size)
     entry->padding = 0;
 
     usize cmd_size = sizeof(GpuResourceAttachBacking) + sizeof(GpuMemEntry);
-    if (!send_command(cmd_size, sizeof(GpuCtrlHdr)))
-    {
+    if (!send_command(cmd_size, sizeof(GpuCtrlHdr))) {
         serial::puts("[virtio-gpu] Failed to attach backing\n");
         return false;
     }
@@ -320,8 +291,7 @@ bool GpuDevice::attach_backing(u32 resource_id, u64 addr, u32 size)
     return true;
 }
 
-bool GpuDevice::set_scanout(u32 scanout_id, u32 resource_id, u32 width, u32 height)
-{
+bool GpuDevice::set_scanout(u32 scanout_id, u32 resource_id, u32 width, u32 height) {
     if (!initialized_)
         return false;
 
@@ -338,8 +308,7 @@ bool GpuDevice::set_scanout(u32 scanout_id, u32 resource_id, u32 width, u32 heig
     cmd->scanout_id = scanout_id;
     cmd->resource_id = resource_id;
 
-    if (!send_command(sizeof(GpuSetScanout), sizeof(GpuCtrlHdr)))
-    {
+    if (!send_command(sizeof(GpuSetScanout), sizeof(GpuCtrlHdr))) {
         serial::puts("[virtio-gpu] Failed to set scanout\n");
         return false;
     }
@@ -352,8 +321,7 @@ bool GpuDevice::set_scanout(u32 scanout_id, u32 resource_id, u32 width, u32 heig
     return true;
 }
 
-bool GpuDevice::transfer_to_host_2d(u32 resource_id, u32 x, u32 y, u32 width, u32 height)
-{
+bool GpuDevice::transfer_to_host_2d(u32 resource_id, u32 x, u32 y, u32 width, u32 height) {
     if (!initialized_)
         return false;
 
@@ -374,8 +342,7 @@ bool GpuDevice::transfer_to_host_2d(u32 resource_id, u32 x, u32 y, u32 width, u3
     return send_command(sizeof(GpuTransferToHost2d), sizeof(GpuCtrlHdr));
 }
 
-bool GpuDevice::flush(u32 resource_id, u32 x, u32 y, u32 width, u32 height)
-{
+bool GpuDevice::flush(u32 resource_id, u32 x, u32 y, u32 width, u32 height) {
     if (!initialized_)
         return false;
 
@@ -395,8 +362,7 @@ bool GpuDevice::flush(u32 resource_id, u32 x, u32 y, u32 width, u32 height)
     return send_command(sizeof(GpuResourceFlush), sizeof(GpuCtrlHdr));
 }
 
-bool GpuDevice::unref_resource(u32 resource_id)
-{
+bool GpuDevice::unref_resource(u32 resource_id) {
     if (!initialized_)
         return false;
 
@@ -412,16 +378,12 @@ bool GpuDevice::unref_resource(u32 resource_id)
     return send_command(sizeof(GpuResourceUnref), sizeof(GpuCtrlHdr));
 }
 
-void gpu_init()
-{
+void gpu_init() {
     serial::puts("[virtio-gpu] Starting gpu_init()...\n");
-    if (g_gpu_device.init())
-    {
+    if (g_gpu_device.init()) {
         g_gpu_initialized = true;
         serial::puts("[virtio-gpu] GPU device ready\n");
-    }
-    else
-    {
+    } else {
         serial::puts("[virtio-gpu] GPU device initialization failed or not present\n");
     }
 }

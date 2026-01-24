@@ -33,12 +33,10 @@
  * - controlq (queue 0): Command/response for configuration
  * - cursorq (queue 1): Cursor updates (optional)
  */
-namespace virtio
-{
+namespace virtio {
 
 // VirtIO-GPU feature bits
-namespace gpu_features
-{
+namespace gpu_features {
 constexpr u64 VIRGL = 1ULL << 0; // 3D support (virgl)
 constexpr u64 EDID = 1ULL << 1;  // EDID support
 constexpr u64 RESOURCE_UUID = 1ULL << 2;
@@ -47,8 +45,7 @@ constexpr u64 CONTEXT_INIT = 1ULL << 4;
 } // namespace gpu_features
 
 // VirtIO-GPU command types
-namespace gpu_cmd
-{
+namespace gpu_cmd {
 // 2D commands
 constexpr u32 GET_DISPLAY_INFO = 0x0100;
 constexpr u32 RESOURCE_CREATE_2D = 0x0101;
@@ -83,8 +80,7 @@ constexpr u32 RESP_ERR_INVALID_PARAMETER = 0x1205;
 } // namespace gpu_cmd
 
 // Pixel formats
-namespace gpu_format
-{
+namespace gpu_format {
 constexpr u32 B8G8R8A8_UNORM = 1;
 constexpr u32 B8G8R8X8_UNORM = 2;
 constexpr u32 A8R8G8B8_UNORM = 3;
@@ -99,8 +95,7 @@ constexpr u32 R8G8B8X8_UNORM = 134;
 constexpr u32 GPU_MAX_SCANOUTS = 16;
 
 // Control header (all commands start with this)
-struct GpuCtrlHdr
-{
+struct GpuCtrlHdr {
     u32 type;
     u32 flags;
     u64 fence_id;
@@ -109,8 +104,7 @@ struct GpuCtrlHdr
 } __attribute__((packed));
 
 // Rectangle structure
-struct GpuRect
-{
+struct GpuRect {
     u32 x;
     u32 y;
     u32 width;
@@ -118,23 +112,20 @@ struct GpuRect
 } __attribute__((packed));
 
 // Display info for one scanout
-struct GpuDisplayOne
-{
+struct GpuDisplayOne {
     GpuRect r;
     u32 enabled;
     u32 flags;
 } __attribute__((packed));
 
 // GET_DISPLAY_INFO response
-struct GpuRespDisplayInfo
-{
+struct GpuRespDisplayInfo {
     GpuCtrlHdr hdr;
     GpuDisplayOne pmodes[GPU_MAX_SCANOUTS];
 } __attribute__((packed));
 
 // RESOURCE_CREATE_2D command
-struct GpuResourceCreate2d
-{
+struct GpuResourceCreate2d {
     GpuCtrlHdr hdr;
     u32 resource_id;
     u32 format;
@@ -143,16 +134,14 @@ struct GpuResourceCreate2d
 } __attribute__((packed));
 
 // RESOURCE_UNREF command
-struct GpuResourceUnref
-{
+struct GpuResourceUnref {
     GpuCtrlHdr hdr;
     u32 resource_id;
     u32 padding;
 } __attribute__((packed));
 
 // SET_SCANOUT command
-struct GpuSetScanout
-{
+struct GpuSetScanout {
     GpuCtrlHdr hdr;
     GpuRect r;
     u32 scanout_id;
@@ -160,8 +149,7 @@ struct GpuSetScanout
 } __attribute__((packed));
 
 // RESOURCE_FLUSH command
-struct GpuResourceFlush
-{
+struct GpuResourceFlush {
     GpuCtrlHdr hdr;
     GpuRect r;
     u32 resource_id;
@@ -169,8 +157,7 @@ struct GpuResourceFlush
 } __attribute__((packed));
 
 // TRANSFER_TO_HOST_2D command
-struct GpuTransferToHost2d
-{
+struct GpuTransferToHost2d {
     GpuCtrlHdr hdr;
     GpuRect r;
     u64 offset;
@@ -179,16 +166,14 @@ struct GpuTransferToHost2d
 } __attribute__((packed));
 
 // Memory entry for RESOURCE_ATTACH_BACKING
-struct GpuMemEntry
-{
+struct GpuMemEntry {
     u64 addr;
     u32 length;
     u32 padding;
 } __attribute__((packed));
 
 // RESOURCE_ATTACH_BACKING command
-struct GpuResourceAttachBacking
-{
+struct GpuResourceAttachBacking {
     GpuCtrlHdr hdr;
     u32 resource_id;
     u32 nr_entries;
@@ -196,8 +181,7 @@ struct GpuResourceAttachBacking
 } __attribute__((packed));
 
 // VirtIO-GPU configuration space
-struct GpuConfig
-{
+struct GpuConfig {
     u32 events_read;
     u32 events_clear;
     u32 num_scanouts;
@@ -215,8 +199,7 @@ struct GpuConfig
  * - Scanout configuration
  * - 2D transfers and flushes
  */
-class GpuDevice : public Device
-{
+class GpuDevice : public Device {
   public:
     /**
      * @brief Initialize the VirtIO-GPU device.
@@ -301,16 +284,14 @@ class GpuDevice : public Device
     /**
      * @brief Get number of scanouts (displays).
      */
-    u32 num_scanouts() const
-    {
+    u32 num_scanouts() const {
         return num_scanouts_;
     }
 
     /**
      * @brief Check if device is initialized.
      */
-    bool is_initialized() const
-    {
+    bool is_initialized() const {
         return initialized_;
     }
 

@@ -5,11 +5,9 @@
  * @file wait.cpp
  * @brief Wait queue implementation.
  */
-namespace sched
-{
+namespace sched {
 
-task::Task *wait_wake_one(WaitQueue *wq)
-{
+task::Task *wait_wake_one(WaitQueue *wq) {
     if (!wq || !wq->head)
         return nullptr;
 
@@ -17,12 +15,9 @@ task::Task *wait_wake_one(WaitQueue *wq)
     task::Task *t = wq->head;
     wq->head = t->next;
 
-    if (wq->head)
-    {
+    if (wq->head) {
         wq->head->prev = nullptr;
-    }
-    else
-    {
+    } else {
         wq->tail = nullptr;
     }
 
@@ -38,15 +33,13 @@ task::Task *wait_wake_one(WaitQueue *wq)
     return t;
 }
 
-u32 wait_wake_all(WaitQueue *wq)
-{
+u32 wait_wake_all(WaitQueue *wq) {
     if (!wq)
         return 0;
 
     u32 count = 0;
 
-    while (wq->head)
-    {
+    while (wq->head) {
         task::Task *t = wq->head;
         wq->head = t->next;
 

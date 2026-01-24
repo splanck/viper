@@ -20,9 +20,9 @@
 ///          wired into the driver so new flags can be added consistently.
 
 #include "break_spec.hpp"
-#include "cli.hpp"
 #include "bytecode/BytecodeCompiler.hpp"
 #include "bytecode/BytecodeVM.hpp"
+#include "cli.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Module.hpp"
 #include "support/source_manager.hpp"

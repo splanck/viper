@@ -9,19 +9,17 @@
 #include "sys/types.h"
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /*
-     * Word expansion result structure
-     */
-    typedef struct
-    {
-        size_t we_wordc; /* Count of words matched */
-        char **we_wordv; /* Pointer to list of words */
-        size_t we_offs;  /* Slots to reserve at beginning of we_wordv */
-    } wordexp_t;
+/*
+ * Word expansion result structure
+ */
+typedef struct {
+    size_t we_wordc; /* Count of words matched */
+    char **we_wordv; /* Pointer to list of words */
+    size_t we_offs;  /* Slots to reserve at beginning of we_wordv */
+} wordexp_t;
 
 /*
  * Flags for wordexp()
@@ -42,28 +40,28 @@ extern "C"
 #define WRDE_NOSPACE 4 /* Out of memory */
 #define WRDE_SYNTAX 5  /* Shell syntax error */
 
-    /*
-     * wordexp - Perform word expansion
-     *
-     * Expands shell-style words with tilde expansion, parameter expansion,
-     * command substitution (if allowed), and field splitting.
-     *
-     * @words: The string to expand
-     * @pwordexp: Where to store expansion results
-     * @flags: Expansion flags
-     *
-     * Returns 0 on success, error code on failure.
-     */
-    int wordexp(const char *words, wordexp_t *pwordexp, int flags);
+/*
+ * wordexp - Perform word expansion
+ *
+ * Expands shell-style words with tilde expansion, parameter expansion,
+ * command substitution (if allowed), and field splitting.
+ *
+ * @words: The string to expand
+ * @pwordexp: Where to store expansion results
+ * @flags: Expansion flags
+ *
+ * Returns 0 on success, error code on failure.
+ */
+int wordexp(const char *words, wordexp_t *pwordexp, int flags);
 
-    /*
-     * wordfree - Free word expansion results
-     *
-     * Frees memory allocated by wordexp().
-     *
-     * @pwordexp: The wordexp_t structure to free
-     */
-    void wordfree(wordexp_t *pwordexp);
+/*
+ * wordfree - Free word expansion results
+ *
+ * Frees memory allocated by wordexp().
+ *
+ * @pwordexp: The wordexp_t structure to free
+ */
+void wordfree(wordexp_t *pwordexp);
 
 #ifdef __cplusplus
 }

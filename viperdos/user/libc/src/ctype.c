@@ -39,8 +39,7 @@
  * @param c Character to test (as unsigned char cast to int, or EOF).
  * @return Non-zero if alphabetic, 0 otherwise.
  */
-int isalpha(int c)
-{
+int isalpha(int c) {
     return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
 }
 
@@ -53,8 +52,7 @@ int isalpha(int c)
  * @param c Character to test.
  * @return Non-zero if digit, 0 otherwise.
  */
-int isdigit(int c)
-{
+int isdigit(int c) {
     return c >= '0' && c <= '9';
 }
 
@@ -68,8 +66,7 @@ int isdigit(int c)
  * @param c Character to test.
  * @return Non-zero if alphanumeric, 0 otherwise.
  */
-int isalnum(int c)
-{
+int isalnum(int c) {
     return isalpha(c) || isdigit(c);
 }
 
@@ -83,8 +80,7 @@ int isalnum(int c)
  * @param c Character to test.
  * @return Non-zero if blank, 0 otherwise.
  */
-int isblank(int c)
-{
+int isblank(int c) {
     return c == ' ' || c == '\t';
 }
 
@@ -98,8 +94,7 @@ int isblank(int c)
  * @param c Character to test.
  * @return Non-zero if control character, 0 otherwise.
  */
-int iscntrl(int c)
-{
+int iscntrl(int c) {
     return (c >= 0 && c < 32) || c == 127;
 }
 
@@ -113,8 +108,7 @@ int iscntrl(int c)
  * @param c Character to test.
  * @return Non-zero if graphic character, 0 otherwise.
  */
-int isgraph(int c)
-{
+int isgraph(int c) {
     return c > 32 && c < 127;
 }
 
@@ -127,8 +121,7 @@ int isgraph(int c)
  * @param c Character to test.
  * @return Non-zero if lowercase, 0 otherwise.
  */
-int islower(int c)
-{
+int islower(int c) {
     return c >= 'a' && c <= 'z';
 }
 
@@ -141,8 +134,7 @@ int islower(int c)
  * @param c Character to test.
  * @return Non-zero if uppercase, 0 otherwise.
  */
-int isupper(int c)
-{
+int isupper(int c) {
     return c >= 'A' && c <= 'Z';
 }
 
@@ -156,8 +148,7 @@ int isupper(int c)
  * @param c Character to test.
  * @return Non-zero if printable, 0 otherwise.
  */
-int isprint(int c)
-{
+int isprint(int c) {
     return c >= 32 && c < 127;
 }
 
@@ -171,8 +162,7 @@ int isprint(int c)
  * @param c Character to test.
  * @return Non-zero if punctuation, 0 otherwise.
  */
-int ispunct(int c)
-{
+int ispunct(int c) {
     return isgraph(c) && !isalnum(c);
 }
 
@@ -187,8 +177,7 @@ int ispunct(int c)
  * @param c Character to test.
  * @return Non-zero if whitespace, 0 otherwise.
  */
-int isspace(int c)
-{
+int isspace(int c) {
     return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f' || c == '\r';
 }
 
@@ -201,8 +190,7 @@ int isspace(int c)
  * @param c Character to test.
  * @return Non-zero if hex digit, 0 otherwise.
  */
-int isxdigit(int c)
-{
+int isxdigit(int c) {
     return isdigit(c) || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f');
 }
 
@@ -216,10 +204,8 @@ int isxdigit(int c)
  * @param c Character to convert.
  * @return Lowercase equivalent or original character.
  */
-int tolower(int c)
-{
-    if (c >= 'A' && c <= 'Z')
-    {
+int tolower(int c) {
+    if (c >= 'A' && c <= 'Z') {
         return c + 32;
     }
     return c;
@@ -235,10 +221,8 @@ int tolower(int c)
  * @param c Character to convert.
  * @return Uppercase equivalent or original character.
  */
-int toupper(int c)
-{
-    if (c >= 'a' && c <= 'z')
-    {
+int toupper(int c) {
+    if (c >= 'a' && c <= 'z') {
         return c - 32;
     }
     return c;

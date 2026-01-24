@@ -24,32 +24,27 @@
 #include "../../viper/viper.hpp"
 #include "../viperfs/viperfs.hpp"
 
-namespace fs::vfs
-{
+namespace fs::vfs {
 
 // Global FD table for kernel-mode operations and backward compatibility
 static FDTable g_kernel_fdt;
 
 /** @copydoc fs::vfs::init */
-void init()
-{
+void init() {
     g_kernel_fdt.init();
     serial::puts("[vfs] VFS initialized\n");
 }
 
 /** @copydoc fs::vfs::kernel_fdt */
-FDTable *kernel_fdt()
-{
+FDTable *kernel_fdt() {
     return &g_kernel_fdt;
 }
 
 /** @copydoc fs::vfs::current_fdt */
-FDTable *current_fdt()
-{
+FDTable *current_fdt() {
     // Get current process's FD table if available
     viper::Viper *v = viper::current();
-    if (v && v->fd_table)
-    {
+    if (v && v->fd_table) {
         return v->fd_table;
     }
 
@@ -58,15 +53,12 @@ FDTable *current_fdt()
 }
 
 /** @copydoc fs::vfs::close_all_fds */
-void close_all_fds(FDTable *fdt)
-{
+void close_all_fds(FDTable *fdt) {
     if (!fdt)
         return;
 
-    for (usize i = 0; i < MAX_FDS; i++)
-    {
-        if (fdt->fds[i].in_use)
-        {
+    for (usize i = 0; i < MAX_FDS; i++) {
+        if (fdt->fds[i].in_use) {
             fdt->free(static_cast<i32>(i));
         }
     }
@@ -84,22 +76,19 @@ void close_all_fds(FDTable *fdt)
  * @param stripped Output: pointer to the path after /sys prefix.
  * @return true if path starts with /sys/, false otherwise.
  */
-static bool is_sys_path(const char *path, const char **stripped)
-{
+static bool is_sys_path(const char *path, const char **stripped) {
     if (!path || path[0] != '/')
         return false;
 
     // Check for /sys/ prefix (5 chars: /sys/)
-    if (path[1] == 's' && path[2] == 'y' && path[3] == 's' && path[4] == '/')
-    {
+    if (path[1] == 's' && path[2] == 'y' && path[3] == 's' && path[4] == '/') {
         // Strip /sys, keep the / after it -> /filename becomes /filename on disk
         *stripped = path + 4;
         return true;
     }
 
     // Check for /sys alone (maps to root of system disk)
-    if (path[1] == 's' && path[2] == 'y' && path[3] == 's' && path[4] == '\0')
-    {
+    if (path[1] == 's' && path[2] == 'y' && path[3] == 's' && path[4] == '\0') {
         *stripped = "/";
         return true;
     }
@@ -118,16 +107,14 @@ static bool is_sys_path(const char *path, const char **stripped)
  * @param stripped Output: pointer to the effective path on user disk.
  * @return true if path is a user disk path, false otherwise.
  */
-static bool is_user_path(const char *path, const char **stripped)
-{
+static bool is_user_path(const char *path, const char **stripped) {
     if (!path || path[0] != '/')
         return false;
 
     // All non-/sys paths go to user disk (user disk root = /)
     // The user disk contains: /c, /certs, /s, /t directories
     const char *effective_path = nullptr;
-    if (!is_sys_path(path, &effective_path))
-    {
+    if (!is_sys_path(path, &effective_path)) {
         *stripped = path; // Use path as-is on user disk
         return true;
     }
@@ -137,8 +124,7 @@ static bool is_user_path(const char *path, const char **stripped)
 
 // Resolve path to inode number
 /** @copydoc fs::vfs::resolve_path */
-u64 resolve_path(const char *path)
-{
+u64 resolve_path(const char *path) {
     if (!path)
         return 0;
 
@@ -146,22 +132,17 @@ u64 resolve_path(const char *path)
     const char *effective_path = nullptr;
     ::fs::viperfs::ViperFS *fs = nullptr;
 
-    if (is_sys_path(path, &effective_path))
-    {
+    if (is_sys_path(path, &effective_path)) {
         // /sys path -> system disk
         if (!::fs::viperfs::viperfs().is_mounted())
             return 0;
         fs = &::fs::viperfs::viperfs();
-    }
-    else if (is_user_path(path, &effective_path))
-    {
+    } else if (is_user_path(path, &effective_path)) {
         // User path -> user disk
         if (!::fs::viperfs::user_viperfs_available())
             return 0;
         fs = &::fs::viperfs::user_viperfs();
-    }
-    else
-    {
+    } else {
         return 0;
     }
 
@@ -178,16 +159,14 @@ u64 resolve_path(const char *path)
         path++;
 
     // Empty path means root
-    if (*path == '\0')
-    {
+    if (*path == '\0') {
         u64 ino = current->inode_num;
         fs->release_inode(current);
         return ino;
     }
 
     // Parse path components
-    while (*path)
-    {
+    while (*path) {
         // Skip slashes
         while (*path == '/')
             path++;
@@ -201,8 +180,7 @@ u64 resolve_path(const char *path)
         usize len = path - start;
 
         // Lookup component
-        if (!::fs::viperfs::is_directory(current))
-        {
+        if (!::fs::viperfs::is_directory(current)) {
             fs->release_inode(current);
             return 0; // Not a directory
         }
@@ -230,10 +208,8 @@ u64 resolve_path(const char *path)
 /**
  * @brief Get absolute path from relative or absolute input.
  */
-static bool get_absolute_path(const char *path, char *abs_path, usize abs_size)
-{
-    if (path[0] == '/')
-    {
+static bool get_absolute_path(const char *path, char *abs_path, usize abs_size) {
+    if (path[0] == '/') {
         usize len = lib::strlen(path);
         if (len >= abs_size)
             return false;
@@ -253,8 +229,7 @@ static bool get_absolute_path(const char *path, char *abs_path, usize abs_size)
 /**
  * @brief Filesystem selection result.
  */
-struct FsSelection
-{
+struct FsSelection {
     ::fs::viperfs::ViperFS *fs;
     bool writable;
 };
@@ -262,17 +237,13 @@ struct FsSelection
 /**
  * @brief Select filesystem based on path prefix.
  */
-static FsSelection select_filesystem(const char *abs_path)
-{
+static FsSelection select_filesystem(const char *abs_path) {
     const char *effective_path = nullptr;
 
-    if (is_sys_path(abs_path, &effective_path))
-    {
+    if (is_sys_path(abs_path, &effective_path)) {
         if (::fs::viperfs::viperfs().is_mounted())
             return {&::fs::viperfs::viperfs(), false};
-    }
-    else if (is_user_path(abs_path, &effective_path))
-    {
+    } else if (is_user_path(abs_path, &effective_path)) {
         if (::fs::viperfs::user_viperfs_available())
             return {&::fs::viperfs::user_viperfs(), true};
     }
@@ -282,23 +253,18 @@ static FsSelection select_filesystem(const char *abs_path)
 /**
  * @brief Split path into parent directory and filename.
  */
-static void split_path(const char *path, char *parent, char *filename)
-{
+static void split_path(const char *path, char *parent, char *filename) {
     usize path_len = lib::strlen(path);
     usize last_slash = 0;
-    for (usize i = 0; i < path_len; i++)
-    {
+    for (usize i = 0; i < path_len; i++) {
         if (path[i] == '/')
             last_slash = i;
     }
 
-    if (last_slash == 0)
-    {
+    if (last_slash == 0) {
         parent[0] = '/';
         parent[1] = '\0';
-    }
-    else
-    {
+    } else {
         for (usize i = 0; i < last_slash; i++)
             parent[i] = path[i];
         parent[last_slash] = '\0';
@@ -312,8 +278,7 @@ static void split_path(const char *path, char *parent, char *filename)
 /**
  * @brief Create file if O_CREAT and file doesn't exist.
  */
-static u64 create_file_if_needed(::fs::viperfs::ViperFS *fs, const char *abs_path)
-{
+static u64 create_file_if_needed(::fs::viperfs::ViperFS *fs, const char *abs_path) {
     char parent_path[MAX_PATH];
     char filename[256];
     split_path(abs_path, parent_path, filename);
@@ -336,8 +301,7 @@ static u64 create_file_if_needed(::fs::viperfs::ViperFS *fs, const char *abs_pat
 // =============================================================================
 
 /** @copydoc fs::vfs::open */
-i32 open(const char *path, u32 oflags)
-{
+i32 open(const char *path, u32 oflags) {
     if (!path)
         return -1;
 
@@ -360,8 +324,7 @@ i32 open(const char *path, u32 oflags)
 
     u64 ino = resolve_path(abs_path);
 
-    if (ino == 0 && (oflags & flags::O_CREAT))
-    {
+    if (ino == 0 && (oflags & flags::O_CREAT)) {
         ino = create_file_if_needed(sel.fs, abs_path);
     }
 
@@ -378,11 +341,9 @@ i32 open(const char *path, u32 oflags)
     desc->flags = oflags;
     desc->fs = sel.fs;
 
-    if (oflags & flags::O_APPEND)
-    {
+    if (oflags & flags::O_APPEND) {
         ::fs::viperfs::Inode *inode = sel.fs->read_inode(ino);
-        if (inode)
-        {
+        if (inode) {
             desc->offset = inode->size;
             sel.fs->release_inode(inode);
         }
@@ -392,8 +353,7 @@ i32 open(const char *path, u32 oflags)
 }
 
 /** @copydoc fs::vfs::dup */
-i32 dup(i32 oldfd)
-{
+i32 dup(i32 oldfd) {
     FDTable *fdt = current_fdt();
     if (!fdt)
         return -1;
@@ -417,8 +377,7 @@ i32 dup(i32 oldfd)
 }
 
 /** @copydoc fs::vfs::dup2 */
-i32 dup2(i32 oldfd, i32 newfd)
-{
+i32 dup2(i32 oldfd, i32 newfd) {
     FDTable *fdt = current_fdt();
     if (!fdt)
         return -1;
@@ -437,8 +396,7 @@ i32 dup2(i32 oldfd, i32 newfd)
         return newfd;
 
     // Close newfd if it's open
-    if (fdt->fds[newfd].in_use)
-    {
+    if (fdt->fds[newfd].in_use) {
         fdt->free(newfd);
     }
 
@@ -452,8 +410,7 @@ i32 dup2(i32 oldfd, i32 newfd)
 }
 
 /** @copydoc fs::vfs::close */
-i32 close(i32 fd)
-{
+i32 close(i32 fd) {
     FDTable *fdt = current_fdt();
     if (!fdt)
         return -1;
@@ -467,34 +424,28 @@ i32 close(i32 fd)
 }
 
 /** @copydoc fs::vfs::read */
-i64 read(i32 fd, void *buf, usize len)
-{
+i64 read(i32 fd, void *buf, usize len) {
     FDTable *fdt = current_fdt();
     if (!fdt)
         return -1;
 
     FileDesc *desc = fdt->get(fd);
-    if (!desc)
-    {
+    if (!desc) {
         // Special handling for stdin - read from console
-        if (fd == 0)
-        {
+        if (fd == 0) {
             char *s = static_cast<char *>(buf);
             usize count = 0;
-            if (len == 0)
-            {
+            if (len == 0) {
                 return 0;
             }
 
             // Block until at least one character is available.
-            while (!console::has_input())
-            {
+            while (!console::has_input()) {
                 console::poll_input();
                 task::yield();
             }
 
-            while (count < len)
-            {
+            while (count < len) {
                 console::poll_input();
                 i32 c = console::getchar();
                 if (c < 0)
@@ -524,8 +475,7 @@ i64 read(i32 fd, void *buf, usize len)
         return -1;
 
     i64 bytes = fs->read_data(inode, desc->offset, buf, len);
-    if (bytes > 0)
-    {
+    if (bytes > 0) {
         desc->offset += bytes;
     }
 
@@ -534,18 +484,14 @@ i64 read(i32 fd, void *buf, usize len)
 }
 
 /** @copydoc fs::vfs::write */
-i64 write(i32 fd, const void *buf, usize len)
-{
+i64 write(i32 fd, const void *buf, usize len) {
     // Special handling for stdout/stderr - write to console
     // This is always allowed regardless of filesystem state
-    if (fd == 1 || fd == 2)
-    {
+    if (fd == 1 || fd == 2) {
         const char *s = static_cast<const char *>(buf);
-        for (usize i = 0; i < len; i++)
-        {
+        for (usize i = 0; i < len; i++) {
             serial::putc(s[i]);
-            if (gcon::is_available())
-            {
+            if (gcon::is_available()) {
                 gcon::putc(s[i]);
             }
         }
@@ -563,8 +509,7 @@ i64 write(i32 fd, const void *buf, usize len)
     // Check if write is permitted (file must be on user disk)
     // System disk (/sys) FDs have fs pointing to system viperfs
     // User disk FDs have fs pointing to user viperfs
-    if (!desc->fs || desc->fs == &::fs::viperfs::viperfs())
-    {
+    if (!desc->fs || desc->fs == &::fs::viperfs::viperfs()) {
         // System disk is read-only
         return -1;
     }
@@ -579,8 +524,7 @@ i64 write(i32 fd, const void *buf, usize len)
         return -1;
 
     i64 written = fs->write_data(inode, desc->offset, buf, len);
-    if (written > 0)
-    {
+    if (written > 0) {
         desc->offset += static_cast<u64>(written);
     }
 
@@ -592,8 +536,7 @@ i64 write(i32 fd, const void *buf, usize len)
 }
 
 /** @copydoc fs::vfs::lseek */
-i64 lseek(i32 fd, i64 offset, i32 whence)
-{
+i64 lseek(i32 fd, i64 offset, i32 whence) {
     FDTable *fdt = current_fdt();
     if (!fdt)
         return -1;
@@ -604,16 +547,14 @@ i64 lseek(i32 fd, i64 offset, i32 whence)
 
     i64 new_offset;
 
-    switch (whence)
-    {
+    switch (whence) {
         case seek::SET:
             new_offset = offset;
             break;
         case seek::CUR:
             new_offset = static_cast<i64>(desc->offset) + offset;
             break;
-        case seek::END:
-        {
+        case seek::END: {
             ::fs::viperfs::ViperFS *fs = desc->fs ? desc->fs : &::fs::viperfs::viperfs();
             ::fs::viperfs::Inode *inode = fs->read_inode(desc->inode_num);
             if (!inode)
@@ -636,16 +577,12 @@ i64 lseek(i32 fd, i64 offset, i32 whence)
 /**
  * @brief Get the appropriate filesystem for a path.
  */
-static ::fs::viperfs::ViperFS *get_fs_for_path(const char *path)
-{
+static ::fs::viperfs::ViperFS *get_fs_for_path(const char *path) {
     const char *effective_path = nullptr;
-    if (is_sys_path(path, &effective_path))
-    {
+    if (is_sys_path(path, &effective_path)) {
         if (::fs::viperfs::viperfs().is_mounted())
             return &::fs::viperfs::viperfs();
-    }
-    else if (is_user_path(path, &effective_path))
-    {
+    } else if (is_user_path(path, &effective_path)) {
         if (::fs::viperfs::user_viperfs_available())
             return &::fs::viperfs::user_viperfs();
     }
@@ -653,8 +590,7 @@ static ::fs::viperfs::ViperFS *get_fs_for_path(const char *path)
 }
 
 /** @copydoc fs::vfs::stat */
-i32 stat(const char *path, Stat *st)
-{
+i32 stat(const char *path, Stat *st) {
     if (!path || !st)
         return -1;
 
@@ -684,8 +620,7 @@ i32 stat(const char *path, Stat *st)
 }
 
 /** @copydoc fs::vfs::fstat */
-i32 fstat(i32 fd, Stat *st)
-{
+i32 fstat(i32 fd, Stat *st) {
     if (!st)
         return -1;
 
@@ -715,8 +650,7 @@ i32 fstat(i32 fd, Stat *st)
 }
 
 /** @copydoc fs::vfs::fsync */
-i32 fsync(i32 fd)
-{
+i32 fsync(i32 fd) {
     FDTable *fdt = current_fdt();
     if (!fdt)
         return -1;
@@ -746,14 +680,13 @@ i32 fsync(i32 fd)
  * buffer and tracks whether the buffer has overflowed. Uses entry-count-based
  * offset tracking to support reading directories larger than one buffer.
  */
-struct GetdentsCtx
-{
+struct GetdentsCtx {
     u8 *buf;
     usize buf_len;
     usize bytes_written;
-    usize entries_to_skip;  ///< Entries to skip (from previous reads)
-    usize entries_seen;     ///< Total entries seen during this scan
-    usize entries_written;  ///< Entries successfully written to buffer
+    usize entries_to_skip; ///< Entries to skip (from previous reads)
+    usize entries_seen;    ///< Total entries seen during this scan
+    usize entries_written; ///< Entries successfully written to buffer
     bool overflow;
 };
 
@@ -767,8 +700,7 @@ struct GetdentsCtx
  * @param file_type Entry file type code.
  * @param ctx Pointer to @ref GetdentsCtx.
  */
-static void getdents_callback(const char *name, usize name_len, u64 ino, u8 file_type, void *ctx)
-{
+static void getdents_callback(const char *name, usize name_len, u64 ino, u8 file_type, void *ctx) {
     auto *gctx = static_cast<GetdentsCtx *>(ctx);
 
     // Track all entries seen
@@ -785,8 +717,7 @@ static void getdents_callback(const char *name, usize name_len, u64 ino, u8 file
     usize reclen = sizeof(DirEnt);
 
     // Check if we have space
-    if (gctx->bytes_written + reclen > gctx->buf_len)
-    {
+    if (gctx->bytes_written + reclen > gctx->buf_len) {
         gctx->overflow = true;
         return;
     }
@@ -799,8 +730,7 @@ static void getdents_callback(const char *name, usize name_len, u64 ino, u8 file
     ent->namelen = static_cast<u8>(name_len > 255 ? 255 : name_len);
 
     // Copy name
-    for (usize i = 0; i < ent->namelen; i++)
-    {
+    for (usize i = 0; i < ent->namelen; i++) {
         ent->name[i] = name[i];
     }
     ent->name[ent->namelen] = '\0';
@@ -810,8 +740,7 @@ static void getdents_callback(const char *name, usize name_len, u64 ino, u8 file
 }
 
 /** @copydoc fs::vfs::getdents */
-i64 getdents(i32 fd, void *buf, usize len)
-{
+i64 getdents(i32 fd, void *buf, usize len) {
     if (!buf || len == 0)
         return -1;
 
@@ -829,8 +758,7 @@ i64 getdents(i32 fd, void *buf, usize len)
         return -1;
 
     // Check if it's a directory
-    if (!::fs::viperfs::is_directory(inode))
-    {
+    if (!::fs::viperfs::is_directory(inode)) {
         fs->release_inode(inode);
         return -1;
     }
@@ -857,23 +785,19 @@ i64 getdents(i32 fd, void *buf, usize len)
 }
 
 /** @copydoc fs::vfs::mkdir */
-i32 mkdir(const char *path)
-{
+i32 mkdir(const char *path) {
     if (!path)
         return -1;
 
     // Normalize path
     char abs_path[MAX_PATH];
-    if (path[0] == '/')
-    {
+    if (path[0] == '/') {
         usize len = lib::strlen(path);
         if (len >= MAX_PATH)
             return -1;
         for (usize i = 0; i <= len; i++)
             abs_path[i] = path[i];
-    }
-    else
-    {
+    } else {
         const char *cwd = "/";
         task::Task *t = task::current();
         if (t && t->cwd[0])
@@ -900,19 +824,15 @@ i32 mkdir(const char *path)
     char dirname[256];
     usize path_len = lib::strlen(abs_path);
     usize last_slash = 0;
-    for (usize i = 0; i < path_len; i++)
-    {
+    for (usize i = 0; i < path_len; i++) {
         if (abs_path[i] == '/')
             last_slash = i;
     }
 
-    if (last_slash == 0)
-    {
+    if (last_slash == 0) {
         parent_path[0] = '/';
         parent_path[1] = '\0';
-    }
-    else
-    {
+    } else {
         for (usize i = 0; i < last_slash; i++)
             parent_path[i] = abs_path[i];
         parent_path[last_slash] = '\0';
@@ -938,23 +858,19 @@ i32 mkdir(const char *path)
 }
 
 /** @copydoc fs::vfs::rmdir */
-i32 rmdir(const char *path)
-{
+i32 rmdir(const char *path) {
     if (!path)
         return -1;
 
     // Normalize path
     char abs_path[MAX_PATH];
-    if (path[0] == '/')
-    {
+    if (path[0] == '/') {
         usize len = lib::strlen(path);
         if (len >= MAX_PATH)
             return -1;
         for (usize i = 0; i <= len; i++)
             abs_path[i] = path[i];
-    }
-    else
-    {
+    } else {
         const char *cwd = "/";
         task::Task *t = task::current();
         if (t && t->cwd[0])
@@ -981,19 +897,15 @@ i32 rmdir(const char *path)
     char dirname[256];
     usize path_len = lib::strlen(abs_path);
     usize last_slash = 0;
-    for (usize i = 0; i < path_len; i++)
-    {
+    for (usize i = 0; i < path_len; i++) {
         if (abs_path[i] == '/')
             last_slash = i;
     }
 
-    if (last_slash == 0)
-    {
+    if (last_slash == 0) {
         parent_path[0] = '/';
         parent_path[1] = '\0';
-    }
-    else
-    {
+    } else {
         for (usize i = 0; i < last_slash; i++)
             parent_path[i] = abs_path[i];
         parent_path[last_slash] = '\0';
@@ -1018,23 +930,19 @@ i32 rmdir(const char *path)
 }
 
 /** @copydoc fs::vfs::unlink */
-i32 unlink(const char *path)
-{
+i32 unlink(const char *path) {
     if (!path)
         return -1;
 
     // Normalize path
     char abs_path[MAX_PATH];
-    if (path[0] == '/')
-    {
+    if (path[0] == '/') {
         usize len = lib::strlen(path);
         if (len >= MAX_PATH)
             return -1;
         for (usize i = 0; i <= len; i++)
             abs_path[i] = path[i];
-    }
-    else
-    {
+    } else {
         const char *cwd = "/";
         task::Task *t = task::current();
         if (t && t->cwd[0])
@@ -1061,19 +969,15 @@ i32 unlink(const char *path)
     char filename[256];
     usize path_len = lib::strlen(abs_path);
     usize last_slash = 0;
-    for (usize i = 0; i < path_len; i++)
-    {
+    for (usize i = 0; i < path_len; i++) {
         if (abs_path[i] == '/')
             last_slash = i;
     }
 
-    if (last_slash == 0)
-    {
+    if (last_slash == 0) {
         parent_path[0] = '/';
         parent_path[1] = '\0';
-    }
-    else
-    {
+    } else {
         for (usize i = 0; i < last_slash; i++)
             parent_path[i] = abs_path[i];
         parent_path[last_slash] = '\0';
@@ -1098,23 +1002,19 @@ i32 unlink(const char *path)
 }
 
 /** @copydoc fs::vfs::symlink */
-i32 symlink(const char *target, const char *linkpath)
-{
+i32 symlink(const char *target, const char *linkpath) {
     if (!target || !linkpath)
         return -1;
 
     // Normalize linkpath
     char abs_path[MAX_PATH];
-    if (linkpath[0] == '/')
-    {
+    if (linkpath[0] == '/') {
         usize len = lib::strlen(linkpath);
         if (len >= MAX_PATH)
             return -1;
         for (usize i = 0; i <= len; i++)
             abs_path[i] = linkpath[i];
-    }
-    else
-    {
+    } else {
         const char *cwd = "/";
         task::Task *t = task::current();
         if (t && t->cwd[0])
@@ -1141,19 +1041,15 @@ i32 symlink(const char *target, const char *linkpath)
     char linkname[256];
     usize path_len = lib::strlen(abs_path);
     usize last_slash = 0;
-    for (usize i = 0; i < path_len; i++)
-    {
+    for (usize i = 0; i < path_len; i++) {
         if (abs_path[i] == '/')
             last_slash = i;
     }
 
-    if (last_slash == 0)
-    {
+    if (last_slash == 0) {
         parent_path[0] = '/';
         parent_path[1] = '\0';
-    }
-    else
-    {
+    } else {
         for (usize i = 0; i < last_slash; i++)
             parent_path[i] = abs_path[i];
         parent_path[last_slash] = '\0';
@@ -1178,8 +1074,7 @@ i32 symlink(const char *target, const char *linkpath)
 }
 
 /** @copydoc fs::vfs::readlink */
-i64 readlink(const char *path, char *buf, usize bufsiz)
-{
+i64 readlink(const char *path, char *buf, usize bufsiz) {
     if (!path || !buf || bufsiz == 0)
         return -1;
 
@@ -1202,8 +1097,7 @@ i64 readlink(const char *path, char *buf, usize bufsiz)
 }
 
 /** @copydoc fs::vfs::rename */
-i32 rename(const char *old_path, const char *new_path)
-{
+i32 rename(const char *old_path, const char *new_path) {
     // Two-disk architecture: kernel VFS (/sys) is read-only
     // File renaming is rejected - userspace uses fsd for writable storage
     (void)old_path;
@@ -1211,28 +1105,22 @@ i32 rename(const char *old_path, const char *new_path)
     return -1;
 }
 
-namespace
-{
+namespace {
 
 /**
  * @brief Build combined path from CWD and relative path.
  * @return Position in buffer after building.
  */
-usize build_combined_path(const char *path, const char *cwd, char *combined)
-{
+usize build_combined_path(const char *path, const char *cwd, char *combined) {
     usize pos = 0;
 
-    if (path[0] != '/')
-    {
-        if (cwd && cwd[0])
-        {
+    if (path[0] != '/') {
+        if (cwd && cwd[0]) {
             for (usize i = 0; cwd[i] && pos < MAX_PATH - 1; i++)
                 combined[pos++] = cwd[i];
             if (pos > 0 && combined[pos - 1] != '/' && pos < MAX_PATH - 1)
                 combined[pos++] = '/';
-        }
-        else
-        {
+        } else {
             combined[pos++] = '/';
         }
     }
@@ -1248,8 +1136,7 @@ usize build_combined_path(const char *path, const char *cwd, char *combined)
  * @brief Process path components and write normalized result.
  * @return true on success.
  */
-bool process_path_components(char *src, char *out, usize out_size)
-{
+bool process_path_components(char *src, char *out, usize out_size) {
     usize out_pos = 0;
     usize component_starts[64];
     usize stack_depth = 0;
@@ -1257,8 +1144,7 @@ bool process_path_components(char *src, char *out, usize out_size)
     if (out_size > 0)
         out[out_pos++] = '/';
 
-    while (*src)
-    {
+    while (*src) {
         while (*src == '/')
             src++;
         if (*src == '\0')
@@ -1272,8 +1158,7 @@ bool process_path_components(char *src, char *out, usize out_size)
         if (comp_len == 1 && comp_start[0] == '.')
             continue;
 
-        if (comp_len == 2 && comp_start[0] == '.' && comp_start[1] == '.')
-        {
+        if (comp_len == 2 && comp_start[0] == '.' && comp_start[1] == '.') {
             if (stack_depth > 0)
                 out_pos = component_starts[--stack_depth];
             continue;
@@ -1300,8 +1185,7 @@ bool process_path_components(char *src, char *out, usize out_size)
 } // anonymous namespace
 
 /** @copydoc fs::vfs::normalize_path */
-bool normalize_path(const char *path, const char *cwd, char *out, usize out_size)
-{
+bool normalize_path(const char *path, const char *cwd, char *out, usize out_size) {
     if (!path || !out || out_size < 2)
         return false;
 
@@ -1311,15 +1195,13 @@ bool normalize_path(const char *path, const char *cwd, char *out, usize out_size
 }
 
 /** @copydoc fs::vfs::resolve_path_cwd */
-u64 resolve_path_cwd(const char *path)
-{
+u64 resolve_path_cwd(const char *path) {
     if (!path)
         return 0;
 
     // Two-disk architecture: kernel VFS only handles absolute /sys/* paths
     // Relative paths cannot access kernel filesystem - userspace handles via fsd
-    if (path[0] != '/')
-    {
+    if (path[0] != '/') {
         return 0;
     }
 

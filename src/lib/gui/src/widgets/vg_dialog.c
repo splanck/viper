@@ -1,10 +1,10 @@
 // vg_dialog.c - Dialog widget implementation
+#include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
-#include "../../include/vg_event.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
 
 //=============================================================================
 // Constants
@@ -27,66 +27,59 @@
 // Forward Declarations
 //=============================================================================
 
-static void dialog_destroy(vg_widget_t* widget);
-static void dialog_measure(vg_widget_t* widget, float available_width, float available_height);
-static void dialog_arrange(vg_widget_t* widget, float x, float y, float width, float height);
-static void dialog_paint(vg_widget_t* widget, void* canvas);
-static bool dialog_handle_event(vg_widget_t* widget, vg_event_t* event);
+static void dialog_destroy(vg_widget_t *widget);
+static void dialog_measure(vg_widget_t *widget, float available_width, float available_height);
+static void dialog_arrange(vg_widget_t *widget, float x, float y, float width, float height);
+static void dialog_paint(vg_widget_t *widget, void *canvas);
+static bool dialog_handle_event(vg_widget_t *widget, vg_event_t *event);
 
 //=============================================================================
 // Dialog VTable
 //=============================================================================
 
-static vg_widget_vtable_t g_dialog_vtable = {
-    .destroy = dialog_destroy,
-    .measure = dialog_measure,
-    .arrange = dialog_arrange,
-    .paint = dialog_paint,
-    .handle_event = dialog_handle_event,
-    .can_focus = NULL,
-    .on_focus = NULL
-};
+static vg_widget_vtable_t g_dialog_vtable = {.destroy = dialog_destroy,
+                                             .measure = dialog_measure,
+                                             .arrange = dialog_arrange,
+                                             .paint = dialog_paint,
+                                             .handle_event = dialog_handle_event,
+                                             .can_focus = NULL,
+                                             .on_focus = NULL};
 
 //=============================================================================
 // Helper Functions
 //=============================================================================
 
-typedef struct {
-    const char* label;
+typedef struct
+{
+    const char *label;
     vg_dialog_result_t result;
     bool is_default;
     bool is_cancel;
 } preset_button_t;
 
-static const preset_button_t g_ok_buttons[] = {
-    {"OK", VG_DIALOG_RESULT_OK, true, false}
-};
+static const preset_button_t g_ok_buttons[] = {{"OK", VG_DIALOG_RESULT_OK, true, false}};
 
 static const preset_button_t g_ok_cancel_buttons[] = {
-    {"OK", VG_DIALOG_RESULT_OK, true, false},
-    {"Cancel", VG_DIALOG_RESULT_CANCEL, false, true}
-};
+    {"OK", VG_DIALOG_RESULT_OK, true, false}, {"Cancel", VG_DIALOG_RESULT_CANCEL, false, true}};
 
-static const preset_button_t g_yes_no_buttons[] = {
-    {"Yes", VG_DIALOG_RESULT_YES, true, false},
-    {"No", VG_DIALOG_RESULT_NO, false, true}
-};
+static const preset_button_t g_yes_no_buttons[] = {{"Yes", VG_DIALOG_RESULT_YES, true, false},
+                                                   {"No", VG_DIALOG_RESULT_NO, false, true}};
 
 static const preset_button_t g_yes_no_cancel_buttons[] = {
     {"Yes", VG_DIALOG_RESULT_YES, true, false},
     {"No", VG_DIALOG_RESULT_NO, false, false},
-    {"Cancel", VG_DIALOG_RESULT_CANCEL, false, true}
-};
+    {"Cancel", VG_DIALOG_RESULT_CANCEL, false, true}};
 
 static const preset_button_t g_retry_cancel_buttons[] = {
     {"Retry", VG_DIALOG_RESULT_RETRY, true, false},
-    {"Cancel", VG_DIALOG_RESULT_CANCEL, false, true}
-};
+    {"Cancel", VG_DIALOG_RESULT_CANCEL, false, true}};
 
 static void get_preset_buttons(vg_dialog_buttons_t preset,
-                                const preset_button_t** buttons,
-                                size_t* count) {
-    switch (preset) {
+                               const preset_button_t **buttons,
+                               size_t *count)
+{
+    switch (preset)
+    {
         case VG_DIALOG_BUTTONS_OK:
             *buttons = g_ok_buttons;
             *count = 1;
@@ -114,26 +107,36 @@ static void get_preset_buttons(vg_dialog_buttons_t preset,
     }
 }
 
-static float get_button_width(vg_dialog_t* dlg, const char* label) {
+static float get_button_width(vg_dialog_t *dlg, const char *label)
+{
     float width = DIALOG_BUTTON_MIN_WIDTH;
-    if (dlg->font && label) {
+    if (dlg->font && label)
+    {
         vg_text_metrics_t metrics;
         vg_font_measure_text(dlg->font, dlg->font_size, label, &metrics);
         width = metrics.width + DIALOG_BUTTON_PADDING * 4;
-        if (width < DIALOG_BUTTON_MIN_WIDTH) {
+        if (width < DIALOG_BUTTON_MIN_WIDTH)
+        {
             width = DIALOG_BUTTON_MIN_WIDTH;
         }
     }
     return width;
 }
 
-static const char* get_icon_glyph(vg_dialog_icon_t icon) {
-    switch (icon) {
-        case VG_DIALOG_ICON_INFO:     return "ℹ";
-        case VG_DIALOG_ICON_WARNING:  return "⚠";
-        case VG_DIALOG_ICON_ERROR:    return "✗";
-        case VG_DIALOG_ICON_QUESTION: return "?";
-        default:                       return NULL;
+static const char *get_icon_glyph(vg_dialog_icon_t icon)
+{
+    switch (icon)
+    {
+        case VG_DIALOG_ICON_INFO:
+            return "ℹ";
+        case VG_DIALOG_ICON_WARNING:
+            return "⚠";
+        case VG_DIALOG_ICON_ERROR:
+            return "✗";
+        case VG_DIALOG_ICON_QUESTION:
+            return "?";
+        default:
+            return NULL;
     }
 }
 
@@ -141,15 +144,17 @@ static const char* get_icon_glyph(vg_dialog_icon_t icon) {
 // Dialog Implementation
 //=============================================================================
 
-vg_dialog_t* vg_dialog_create(const char* title) {
-    vg_dialog_t* dlg = calloc(1, sizeof(vg_dialog_t));
-    if (!dlg) return NULL;
+vg_dialog_t *vg_dialog_create(const char *title)
+{
+    vg_dialog_t *dlg = calloc(1, sizeof(vg_dialog_t));
+    if (!dlg)
+        return NULL;
 
     // Initialize base widget
     vg_widget_init(&dlg->base, VG_WIDGET_DIALOG, &g_dialog_vtable);
 
     // Get theme
-    vg_theme_t* theme = vg_theme_get_current();
+    vg_theme_t *theme = vg_theme_get_current();
 
     // Title bar
     dlg->title = title ? strdup(title) : NULL;
@@ -190,7 +195,7 @@ vg_dialog_t* vg_dialog_create(const char* title) {
     dlg->text_color = theme->colors.fg_primary;
     dlg->button_bg_color = theme->colors.bg_secondary;
     dlg->button_hover_color = theme->colors.bg_hover;
-    dlg->overlay_color = 0x80000000;  // Semi-transparent black
+    dlg->overlay_color = 0x80000000; // Semi-transparent black
 
     // State
     dlg->result = VG_DIALOG_RESULT_NONE;
@@ -212,23 +217,27 @@ vg_dialog_t* vg_dialog_create(const char* title) {
     return dlg;
 }
 
-static void dialog_destroy(vg_widget_t* widget) {
-    vg_dialog_t* dlg = (vg_dialog_t*)widget;
+static void dialog_destroy(vg_widget_t *widget)
+{
+    vg_dialog_t *dlg = (vg_dialog_t *)widget;
 
     free(dlg->title);
     free(dlg->message);
     vg_icon_destroy(&dlg->custom_icon);
 
-    if (dlg->custom_buttons) {
-        for (size_t i = 0; i < dlg->custom_button_count; i++) {
+    if (dlg->custom_buttons)
+    {
+        for (size_t i = 0; i < dlg->custom_button_count; i++)
+        {
             free(dlg->custom_buttons[i].label);
         }
         free(dlg->custom_buttons);
     }
 }
 
-static void dialog_measure(vg_widget_t* widget, float available_width, float available_height) {
-    vg_dialog_t* dlg = (vg_dialog_t*)widget;
+static void dialog_measure(vg_widget_t *widget, float available_width, float available_height)
+{
+    vg_dialog_t *dlg = (vg_dialog_t *)widget;
     (void)available_width;
     (void)available_height;
 
@@ -236,13 +245,18 @@ static void dialog_measure(vg_widget_t* widget, float available_width, float ava
     float content_width = 0;
     float content_height = 0;
 
-    if (dlg->content) {
+    if (dlg->content)
+    {
         // Measure content widget
-        vg_widget_measure(dlg->content, dlg->max_width - DIALOG_CONTENT_PADDING * 2,
-                          dlg->max_height - DIALOG_TITLE_BAR_HEIGHT - DIALOG_BUTTON_BAR_HEIGHT - DIALOG_CONTENT_PADDING * 2);
+        vg_widget_measure(dlg->content,
+                          dlg->max_width - DIALOG_CONTENT_PADDING * 2,
+                          dlg->max_height - DIALOG_TITLE_BAR_HEIGHT - DIALOG_BUTTON_BAR_HEIGHT -
+                              DIALOG_CONTENT_PADDING * 2);
         content_width = dlg->content->measured_width;
         content_height = dlg->content->measured_height;
-    } else if (dlg->message && dlg->font) {
+    }
+    else if (dlg->message && dlg->font)
+    {
         // Measure message text
         vg_text_metrics_t metrics;
         vg_font_measure_text(dlg->font, dlg->font_size, dlg->message, &metrics);
@@ -250,49 +264,61 @@ static void dialog_measure(vg_widget_t* widget, float available_width, float ava
         content_height = metrics.height;
 
         // Add space for icon if present
-        if (dlg->icon != VG_DIALOG_ICON_NONE || dlg->custom_icon.type != VG_ICON_NONE) {
+        if (dlg->icon != VG_DIALOG_ICON_NONE || dlg->custom_icon.type != VG_ICON_NONE)
+        {
             content_width += DIALOG_ICON_SIZE + DIALOG_CONTENT_PADDING;
         }
     }
 
     // Calculate button bar width
     float buttons_width = 0;
-    const preset_button_t* preset_buttons;
+    const preset_button_t *preset_buttons;
     size_t button_count;
     get_preset_buttons(dlg->button_preset, &preset_buttons, &button_count);
 
-    if (dlg->button_preset == VG_DIALOG_BUTTONS_CUSTOM && dlg->custom_buttons) {
-        for (size_t i = 0; i < dlg->custom_button_count; i++) {
-            buttons_width += get_button_width(dlg, dlg->custom_buttons[i].label) + DIALOG_BUTTON_PADDING;
+    if (dlg->button_preset == VG_DIALOG_BUTTONS_CUSTOM && dlg->custom_buttons)
+    {
+        for (size_t i = 0; i < dlg->custom_button_count; i++)
+        {
+            buttons_width +=
+                get_button_width(dlg, dlg->custom_buttons[i].label) + DIALOG_BUTTON_PADDING;
         }
-    } else if (preset_buttons) {
-        for (size_t i = 0; i < button_count; i++) {
+    }
+    else if (preset_buttons)
+    {
+        for (size_t i = 0; i < button_count; i++)
+        {
             buttons_width += get_button_width(dlg, preset_buttons[i].label) + DIALOG_BUTTON_PADDING;
         }
     }
 
     // Calculate total size
     float total_width = content_width + DIALOG_CONTENT_PADDING * 2;
-    if (buttons_width + DIALOG_CONTENT_PADDING * 2 > total_width) {
+    if (buttons_width + DIALOG_CONTENT_PADDING * 2 > total_width)
+    {
         total_width = buttons_width + DIALOG_CONTENT_PADDING * 2;
     }
 
-    float total_height = DIALOG_TITLE_BAR_HEIGHT +
-                         content_height + DIALOG_CONTENT_PADDING * 2 +
+    float total_height = DIALOG_TITLE_BAR_HEIGHT + content_height + DIALOG_CONTENT_PADDING * 2 +
                          DIALOG_BUTTON_BAR_HEIGHT;
 
     // Apply constraints
-    if (total_width < dlg->min_width) total_width = (float)dlg->min_width;
-    if (total_width > dlg->max_width) total_width = (float)dlg->max_width;
-    if (total_height < dlg->min_height) total_height = (float)dlg->min_height;
-    if (total_height > dlg->max_height) total_height = (float)dlg->max_height;
+    if (total_width < dlg->min_width)
+        total_width = (float)dlg->min_width;
+    if (total_width > dlg->max_width)
+        total_width = (float)dlg->max_width;
+    if (total_height < dlg->min_height)
+        total_height = (float)dlg->min_height;
+    if (total_height > dlg->max_height)
+        total_height = (float)dlg->max_height;
 
     widget->measured_width = total_width;
     widget->measured_height = total_height;
 }
 
-static void dialog_arrange(vg_widget_t* widget, float x, float y, float width, float height) {
-    vg_dialog_t* dlg = (vg_dialog_t*)widget;
+static void dialog_arrange(vg_widget_t *widget, float x, float y, float width, float height)
+{
+    vg_dialog_t *dlg = (vg_dialog_t *)widget;
 
     widget->x = x;
     widget->y = y;
@@ -300,14 +326,17 @@ static void dialog_arrange(vg_widget_t* widget, float x, float y, float width, f
     widget->height = height;
 
     // Arrange content widget if present
-    if (dlg->content) {
+    if (dlg->content)
+    {
         float content_x = x + DIALOG_CONTENT_PADDING;
         float content_y = y + DIALOG_TITLE_BAR_HEIGHT + DIALOG_CONTENT_PADDING;
         float content_w = width - DIALOG_CONTENT_PADDING * 2;
-        float content_h = height - DIALOG_TITLE_BAR_HEIGHT - DIALOG_BUTTON_BAR_HEIGHT - DIALOG_CONTENT_PADDING * 2;
+        float content_h = height - DIALOG_TITLE_BAR_HEIGHT - DIALOG_BUTTON_BAR_HEIGHT -
+                          DIALOG_CONTENT_PADDING * 2;
 
         // Account for icon space
-        if (dlg->icon != VG_DIALOG_ICON_NONE || dlg->custom_icon.type != VG_ICON_NONE) {
+        if (dlg->icon != VG_DIALOG_ICON_NONE || dlg->custom_icon.type != VG_ICON_NONE)
+        {
             content_x += DIALOG_ICON_SIZE + DIALOG_CONTENT_PADDING;
             content_w -= DIALOG_ICON_SIZE + DIALOG_CONTENT_PADDING;
         }
@@ -316,13 +345,16 @@ static void dialog_arrange(vg_widget_t* widget, float x, float y, float width, f
     }
 }
 
-static void dialog_paint(vg_widget_t* widget, void* canvas) {
-    vg_dialog_t* dlg = (vg_dialog_t*)widget;
+static void dialog_paint(vg_widget_t *widget, void *canvas)
+{
+    vg_dialog_t *dlg = (vg_dialog_t *)widget;
 
-    if (!dlg->is_open) return;
+    if (!dlg->is_open)
+        return;
 
     // Draw modal overlay if modal
-    if (dlg->modal && dlg->modal_parent) {
+    if (dlg->modal && dlg->modal_parent)
+    {
         // Draw semi-transparent overlay over parent
         // (placeholder - would use vgfx)
         (void)dlg->overlay_color;
@@ -341,15 +373,22 @@ static void dialog_paint(vg_widget_t* widget, void* canvas) {
     // Draw title bar
     (void)dlg->title_bg_color;
 
-    if (dlg->title && dlg->font) {
+    if (dlg->title && dlg->font)
+    {
         float title_x = x + DIALOG_CONTENT_PADDING;
         float title_y = y + DIALOG_TITLE_BAR_HEIGHT / 2 + dlg->title_font_size / 3;
-        vg_font_draw_text(canvas, dlg->font, dlg->title_font_size,
-                          title_x, title_y, dlg->title, dlg->title_text_color);
+        vg_font_draw_text(canvas,
+                          dlg->font,
+                          dlg->title_font_size,
+                          title_x,
+                          title_y,
+                          dlg->title,
+                          dlg->title_text_color);
     }
 
     // Draw close button
-    if (dlg->show_close_button) {
+    if (dlg->show_close_button)
+    {
         float close_x = x + w - DIALOG_CLOSE_BUTTON_SIZE - 4;
         float close_y = y + (DIALOG_TITLE_BAR_HEIGHT - DIALOG_CLOSE_BUTTON_SIZE) / 2;
         // Draw X glyph (placeholder)
@@ -362,78 +401,100 @@ static void dialog_paint(vg_widget_t* widget, void* canvas) {
     float content_y = y + DIALOG_TITLE_BAR_HEIGHT + DIALOG_CONTENT_PADDING;
 
     // Draw icon if present
-    if (dlg->icon != VG_DIALOG_ICON_NONE) {
-        const char* glyph = get_icon_glyph(dlg->icon);
-        if (glyph && dlg->font) {
-            vg_font_draw_text(canvas, dlg->font, DIALOG_ICON_SIZE,
-                              content_x, content_y + DIALOG_ICON_SIZE * 0.8f,
-                              glyph, dlg->text_color);
+    if (dlg->icon != VG_DIALOG_ICON_NONE)
+    {
+        const char *glyph = get_icon_glyph(dlg->icon);
+        if (glyph && dlg->font)
+        {
+            vg_font_draw_text(canvas,
+                              dlg->font,
+                              DIALOG_ICON_SIZE,
+                              content_x,
+                              content_y + DIALOG_ICON_SIZE * 0.8f,
+                              glyph,
+                              dlg->text_color);
         }
         content_x += DIALOG_ICON_SIZE + DIALOG_CONTENT_PADDING;
     }
 
     // Draw message text if present
-    if (dlg->message && dlg->font) {
-        vg_font_draw_text(canvas, dlg->font, dlg->font_size,
-                          content_x, content_y + dlg->font_size,
-                          dlg->message, dlg->text_color);
+    if (dlg->message && dlg->font)
+    {
+        vg_font_draw_text(canvas,
+                          dlg->font,
+                          dlg->font_size,
+                          content_x,
+                          content_y + dlg->font_size,
+                          dlg->message,
+                          dlg->text_color);
     }
 
     // Draw content widget if present
-    if (dlg->content) {
+    if (dlg->content)
+    {
         vg_widget_paint(dlg->content, canvas);
     }
 
     // Draw button bar
-    float button_y = y + h - DIALOG_BUTTON_BAR_HEIGHT + (DIALOG_BUTTON_BAR_HEIGHT - DIALOG_BUTTON_HEIGHT) / 2;
+    float button_y =
+        y + h - DIALOG_BUTTON_BAR_HEIGHT + (DIALOG_BUTTON_BAR_HEIGHT - DIALOG_BUTTON_HEIGHT) / 2;
     float button_x = x + w - DIALOG_CONTENT_PADDING;
 
-    const preset_button_t* buttons;
+    const preset_button_t *buttons;
     size_t button_count;
     get_preset_buttons(dlg->button_preset, &buttons, &button_count);
 
-    if (dlg->button_preset == VG_DIALOG_BUTTONS_CUSTOM && dlg->custom_buttons) {
+    if (dlg->button_preset == VG_DIALOG_BUTTONS_CUSTOM && dlg->custom_buttons)
+    {
         // Draw custom buttons right-to-left
-        for (int i = (int)dlg->custom_button_count - 1; i >= 0; i--) {
-            vg_dialog_button_def_t* btn = &dlg->custom_buttons[i];
+        for (int i = (int)dlg->custom_button_count - 1; i >= 0; i--)
+        {
+            vg_dialog_button_def_t *btn = &dlg->custom_buttons[i];
             float btn_w = get_button_width(dlg, btn->label);
             button_x -= btn_w;
 
             // Button background
-            uint32_t btn_bg = (dlg->hovered_button == i) ? dlg->button_hover_color : dlg->button_bg_color;
+            uint32_t btn_bg =
+                (dlg->hovered_button == i) ? dlg->button_hover_color : dlg->button_bg_color;
             (void)btn_bg;
 
             // Button text
-            if (btn->label && dlg->font) {
+            if (btn->label && dlg->font)
+            {
                 vg_text_metrics_t metrics;
                 vg_font_measure_text(dlg->font, dlg->font_size, btn->label, &metrics);
                 float text_x = button_x + (btn_w - metrics.width) / 2;
                 float text_y = button_y + DIALOG_BUTTON_HEIGHT / 2 + dlg->font_size / 3;
-                vg_font_draw_text(canvas, dlg->font, dlg->font_size,
-                                  text_x, text_y, btn->label, dlg->text_color);
+                vg_font_draw_text(
+                    canvas, dlg->font, dlg->font_size, text_x, text_y, btn->label, dlg->text_color);
             }
 
             button_x -= DIALOG_BUTTON_PADDING;
         }
-    } else if (buttons) {
+    }
+    else if (buttons)
+    {
         // Draw preset buttons right-to-left
-        for (int i = (int)button_count - 1; i >= 0; i--) {
-            const preset_button_t* btn = &buttons[i];
+        for (int i = (int)button_count - 1; i >= 0; i--)
+        {
+            const preset_button_t *btn = &buttons[i];
             float btn_w = get_button_width(dlg, btn->label);
             button_x -= btn_w;
 
             // Button background
-            uint32_t btn_bg = (dlg->hovered_button == i) ? dlg->button_hover_color : dlg->button_bg_color;
+            uint32_t btn_bg =
+                (dlg->hovered_button == i) ? dlg->button_hover_color : dlg->button_bg_color;
             (void)btn_bg;
 
             // Button text
-            if (btn->label && dlg->font) {
+            if (btn->label && dlg->font)
+            {
                 vg_text_metrics_t metrics;
                 vg_font_measure_text(dlg->font, dlg->font_size, btn->label, &metrics);
                 float text_x = button_x + (btn_w - metrics.width) / 2;
                 float text_y = button_y + DIALOG_BUTTON_HEIGHT / 2 + dlg->font_size / 3;
-                vg_font_draw_text(canvas, dlg->font, dlg->font_size,
-                                  text_x, text_y, btn->label, dlg->text_color);
+                vg_font_draw_text(
+                    canvas, dlg->font, dlg->font_size, text_x, text_y, btn->label, dlg->text_color);
             }
 
             button_x -= DIALOG_BUTTON_PADDING;
@@ -441,7 +502,8 @@ static void dialog_paint(vg_widget_t* widget, void* canvas) {
     }
 }
 
-static int find_button_at(vg_dialog_t* dlg, float px, float py) {
+static int find_button_at(vg_dialog_t *dlg, float px, float py)
+{
     float x = dlg->base.x;
     float y = dlg->base.y;
     float w = dlg->base.width;
@@ -449,35 +511,43 @@ static int find_button_at(vg_dialog_t* dlg, float px, float py) {
 
     // Check if in button bar area
     float button_bar_y = y + h - DIALOG_BUTTON_BAR_HEIGHT;
-    if (py < button_bar_y || py > y + h) return -1;
+    if (py < button_bar_y || py > y + h)
+        return -1;
 
     // Calculate button positions right-to-left
     float button_y = button_bar_y + (DIALOG_BUTTON_BAR_HEIGHT - DIALOG_BUTTON_HEIGHT) / 2;
     float button_x = x + w - DIALOG_CONTENT_PADDING;
 
-    const preset_button_t* buttons;
+    const preset_button_t *buttons;
     size_t button_count;
     get_preset_buttons(dlg->button_preset, &buttons, &button_count);
 
-    if (dlg->button_preset == VG_DIALOG_BUTTONS_CUSTOM && dlg->custom_buttons) {
-        for (int i = (int)dlg->custom_button_count - 1; i >= 0; i--) {
+    if (dlg->button_preset == VG_DIALOG_BUTTONS_CUSTOM && dlg->custom_buttons)
+    {
+        for (int i = (int)dlg->custom_button_count - 1; i >= 0; i--)
+        {
             float btn_w = get_button_width(dlg, dlg->custom_buttons[i].label);
             button_x -= btn_w;
 
-            if (px >= button_x && px < button_x + btn_w &&
-                py >= button_y && py < button_y + DIALOG_BUTTON_HEIGHT) {
+            if (px >= button_x && px < button_x + btn_w && py >= button_y &&
+                py < button_y + DIALOG_BUTTON_HEIGHT)
+            {
                 return i;
             }
 
             button_x -= DIALOG_BUTTON_PADDING;
         }
-    } else if (buttons) {
-        for (int i = (int)button_count - 1; i >= 0; i--) {
+    }
+    else if (buttons)
+    {
+        for (int i = (int)button_count - 1; i >= 0; i--)
+        {
             float btn_w = get_button_width(dlg, buttons[i].label);
             button_x -= btn_w;
 
-            if (px >= button_x && px < button_x + btn_w &&
-                py >= button_y && py < button_y + DIALOG_BUTTON_HEIGHT) {
+            if (px >= button_x && px < button_x + btn_w && py >= button_y &&
+                py < button_y + DIALOG_BUTTON_HEIGHT)
+            {
                 return i;
             }
 
@@ -488,58 +558,72 @@ static int find_button_at(vg_dialog_t* dlg, float px, float py) {
     return -1;
 }
 
-static bool is_in_title_bar(vg_dialog_t* dlg, float px, float py) {
+static bool is_in_title_bar(vg_dialog_t *dlg, float px, float py)
+{
     float x = dlg->base.x;
     float y = dlg->base.y;
     float w = dlg->base.width;
 
-    return px >= x && px < x + w &&
-           py >= y && py < y + DIALOG_TITLE_BAR_HEIGHT;
+    return px >= x && px < x + w && py >= y && py < y + DIALOG_TITLE_BAR_HEIGHT;
 }
 
-static bool is_on_close_button(vg_dialog_t* dlg, float px, float py) {
-    if (!dlg->show_close_button) return false;
+static bool is_on_close_button(vg_dialog_t *dlg, float px, float py)
+{
+    if (!dlg->show_close_button)
+        return false;
 
     float x = dlg->base.x + dlg->base.width - DIALOG_CLOSE_BUTTON_SIZE - 4;
     float y = dlg->base.y + (DIALOG_TITLE_BAR_HEIGHT - DIALOG_CLOSE_BUTTON_SIZE) / 2;
 
-    return px >= x && px < x + DIALOG_CLOSE_BUTTON_SIZE &&
-           py >= y && py < y + DIALOG_CLOSE_BUTTON_SIZE;
+    return px >= x && px < x + DIALOG_CLOSE_BUTTON_SIZE && py >= y &&
+           py < y + DIALOG_CLOSE_BUTTON_SIZE;
 }
 
-static void trigger_button_click(vg_dialog_t* dlg, int button_index) {
+static void trigger_button_click(vg_dialog_t *dlg, int button_index)
+{
     vg_dialog_result_t result = VG_DIALOG_RESULT_NONE;
 
-    if (dlg->button_preset == VG_DIALOG_BUTTONS_CUSTOM && dlg->custom_buttons) {
-        if (button_index >= 0 && button_index < (int)dlg->custom_button_count) {
+    if (dlg->button_preset == VG_DIALOG_BUTTONS_CUSTOM && dlg->custom_buttons)
+    {
+        if (button_index >= 0 && button_index < (int)dlg->custom_button_count)
+        {
             result = dlg->custom_buttons[button_index].result;
         }
-    } else {
-        const preset_button_t* buttons;
+    }
+    else
+    {
+        const preset_button_t *buttons;
         size_t button_count;
         get_preset_buttons(dlg->button_preset, &buttons, &button_count);
-        if (buttons && button_index >= 0 && button_index < (int)button_count) {
+        if (buttons && button_index >= 0 && button_index < (int)button_count)
+        {
             result = buttons[button_index].result;
         }
     }
 
-    if (result != VG_DIALOG_RESULT_NONE) {
+    if (result != VG_DIALOG_RESULT_NONE)
+    {
         vg_dialog_close(dlg, result);
     }
 }
 
-static bool dialog_handle_event(vg_widget_t* widget, vg_event_t* event) {
-    vg_dialog_t* dlg = (vg_dialog_t*)widget;
+static bool dialog_handle_event(vg_widget_t *widget, vg_event_t *event)
+{
+    vg_dialog_t *dlg = (vg_dialog_t *)widget;
 
-    if (!dlg->is_open) return false;
+    if (!dlg->is_open)
+        return false;
 
-    switch (event->type) {
-        case VG_EVENT_MOUSE_MOVE: {
+    switch (event->type)
+    {
+        case VG_EVENT_MOUSE_MOVE:
+        {
             float px = event->mouse.x;
             float py = event->mouse.y;
 
             // Handle dragging
-            if (dlg->is_dragging) {
+            if (dlg->is_dragging)
+            {
                 widget->x = px - dlg->drag_offset_x;
                 widget->y = py - dlg->drag_offset_y;
                 widget->needs_paint = true;
@@ -548,33 +632,38 @@ static bool dialog_handle_event(vg_widget_t* widget, vg_event_t* event) {
 
             // Update hovered button
             int new_hovered = find_button_at(dlg, px, py);
-            if (new_hovered != dlg->hovered_button) {
+            if (new_hovered != dlg->hovered_button)
+            {
                 dlg->hovered_button = new_hovered;
                 widget->needs_paint = true;
             }
 
-            return dlg->modal;  // Consume if modal
+            return dlg->modal; // Consume if modal
         }
 
-        case VG_EVENT_MOUSE_DOWN: {
+        case VG_EVENT_MOUSE_DOWN:
+        {
             float px = event->mouse.x;
             float py = event->mouse.y;
 
             // Check close button
-            if (is_on_close_button(dlg, px, py)) {
+            if (is_on_close_button(dlg, px, py))
+            {
                 vg_dialog_close(dlg, VG_DIALOG_RESULT_CANCEL);
                 return true;
             }
 
             // Check button click
             int button = find_button_at(dlg, px, py);
-            if (button >= 0) {
+            if (button >= 0)
+            {
                 trigger_button_click(dlg, button);
                 return true;
             }
 
             // Start dragging
-            if (dlg->draggable && is_in_title_bar(dlg, px, py)) {
+            if (dlg->draggable && is_in_title_bar(dlg, px, py))
+            {
                 dlg->is_dragging = true;
                 dlg->drag_offset_x = (int)(px - widget->x);
                 dlg->drag_offset_y = (int)(py - widget->y);
@@ -590,44 +679,63 @@ static bool dialog_handle_event(vg_widget_t* widget, vg_event_t* event) {
 
         case VG_EVENT_KEY_DOWN:
             // Handle Enter (default button) and Escape (cancel button)
-            if (event->key.key == VG_KEY_ENTER) {
+            if (event->key.key == VG_KEY_ENTER)
+            {
                 // Find default button
-                if (dlg->button_preset == VG_DIALOG_BUTTONS_CUSTOM && dlg->custom_buttons) {
-                    for (size_t i = 0; i < dlg->custom_button_count; i++) {
-                        if (dlg->custom_buttons[i].is_default) {
+                if (dlg->button_preset == VG_DIALOG_BUTTONS_CUSTOM && dlg->custom_buttons)
+                {
+                    for (size_t i = 0; i < dlg->custom_button_count; i++)
+                    {
+                        if (dlg->custom_buttons[i].is_default)
+                        {
                             trigger_button_click(dlg, (int)i);
                             return true;
                         }
                     }
-                } else {
-                    const preset_button_t* buttons;
+                }
+                else
+                {
+                    const preset_button_t *buttons;
                     size_t button_count;
                     get_preset_buttons(dlg->button_preset, &buttons, &button_count);
-                    if (buttons) {
-                        for (size_t i = 0; i < button_count; i++) {
-                            if (buttons[i].is_default) {
+                    if (buttons)
+                    {
+                        for (size_t i = 0; i < button_count; i++)
+                        {
+                            if (buttons[i].is_default)
+                            {
                                 trigger_button_click(dlg, (int)i);
                                 return true;
                             }
                         }
                     }
                 }
-            } else if (event->key.key == VG_KEY_ESCAPE) {
+            }
+            else if (event->key.key == VG_KEY_ESCAPE)
+            {
                 // Find cancel button
-                if (dlg->button_preset == VG_DIALOG_BUTTONS_CUSTOM && dlg->custom_buttons) {
-                    for (size_t i = 0; i < dlg->custom_button_count; i++) {
-                        if (dlg->custom_buttons[i].is_cancel) {
+                if (dlg->button_preset == VG_DIALOG_BUTTONS_CUSTOM && dlg->custom_buttons)
+                {
+                    for (size_t i = 0; i < dlg->custom_button_count; i++)
+                    {
+                        if (dlg->custom_buttons[i].is_cancel)
+                        {
                             trigger_button_click(dlg, (int)i);
                             return true;
                         }
                     }
-                } else {
-                    const preset_button_t* buttons;
+                }
+                else
+                {
+                    const preset_button_t *buttons;
                     size_t button_count;
                     get_preset_buttons(dlg->button_preset, &buttons, &button_count);
-                    if (buttons) {
-                        for (size_t i = 0; i < button_count; i++) {
-                            if (buttons[i].is_cancel) {
+                    if (buttons)
+                    {
+                        for (size_t i = 0; i < button_count; i++)
+                        {
+                            if (buttons[i].is_cancel)
+                            {
                                 trigger_button_click(dlg, (int)i);
                                 return true;
                             }
@@ -649,53 +757,69 @@ static bool dialog_handle_event(vg_widget_t* widget, vg_event_t* event) {
 // Dialog API
 //=============================================================================
 
-void vg_dialog_set_title(vg_dialog_t* dialog, const char* title) {
-    if (!dialog) return;
+void vg_dialog_set_title(vg_dialog_t *dialog, const char *title)
+{
+    if (!dialog)
+        return;
     free(dialog->title);
     dialog->title = title ? strdup(title) : NULL;
     dialog->base.needs_paint = true;
 }
 
-void vg_dialog_set_content(vg_dialog_t* dialog, vg_widget_t* content) {
-    if (!dialog) return;
+void vg_dialog_set_content(vg_dialog_t *dialog, vg_widget_t *content)
+{
+    if (!dialog)
+        return;
     dialog->content = content;
     dialog->base.needs_layout = true;
 }
 
-void vg_dialog_set_message(vg_dialog_t* dialog, const char* message) {
-    if (!dialog) return;
+void vg_dialog_set_message(vg_dialog_t *dialog, const char *message)
+{
+    if (!dialog)
+        return;
     free(dialog->message);
     dialog->message = message ? strdup(message) : NULL;
     dialog->base.needs_layout = true;
 }
 
-void vg_dialog_set_icon(vg_dialog_t* dialog, vg_dialog_icon_t icon) {
-    if (!dialog) return;
+void vg_dialog_set_icon(vg_dialog_t *dialog, vg_dialog_icon_t icon)
+{
+    if (!dialog)
+        return;
     dialog->icon = icon;
     dialog->base.needs_layout = true;
 }
 
-void vg_dialog_set_custom_icon(vg_dialog_t* dialog, vg_icon_t icon) {
-    if (!dialog) return;
+void vg_dialog_set_custom_icon(vg_dialog_t *dialog, vg_icon_t icon)
+{
+    if (!dialog)
+        return;
     vg_icon_destroy(&dialog->custom_icon);
     dialog->custom_icon = icon;
     dialog->base.needs_layout = true;
 }
 
-void vg_dialog_set_buttons(vg_dialog_t* dialog, vg_dialog_buttons_t buttons) {
-    if (!dialog) return;
+void vg_dialog_set_buttons(vg_dialog_t *dialog, vg_dialog_buttons_t buttons)
+{
+    if (!dialog)
+        return;
     dialog->button_preset = buttons;
     dialog->base.needs_layout = true;
 }
 
-void vg_dialog_set_custom_buttons(vg_dialog_t* dialog,
-                                   vg_dialog_button_def_t* buttons,
-                                   size_t count) {
-    if (!dialog) return;
+void vg_dialog_set_custom_buttons(vg_dialog_t *dialog,
+                                  vg_dialog_button_def_t *buttons,
+                                  size_t count)
+{
+    if (!dialog)
+        return;
 
     // Free existing custom buttons
-    if (dialog->custom_buttons) {
-        for (size_t i = 0; i < dialog->custom_button_count; i++) {
+    if (dialog->custom_buttons)
+    {
+        for (size_t i = 0; i < dialog->custom_button_count; i++)
+        {
             free(dialog->custom_buttons[i].label);
         }
         free(dialog->custom_buttons);
@@ -703,8 +827,10 @@ void vg_dialog_set_custom_buttons(vg_dialog_t* dialog,
 
     // Copy new buttons
     dialog->custom_buttons = calloc(count, sizeof(vg_dialog_button_def_t));
-    if (dialog->custom_buttons) {
-        for (size_t i = 0; i < count; i++) {
+    if (dialog->custom_buttons)
+    {
+        for (size_t i = 0; i < count; i++)
+        {
             dialog->custom_buttons[i].label = buttons[i].label ? strdup(buttons[i].label) : NULL;
             dialog->custom_buttons[i].result = buttons[i].result;
             dialog->custom_buttons[i].is_default = buttons[i].is_default;
@@ -717,15 +843,18 @@ void vg_dialog_set_custom_buttons(vg_dialog_t* dialog,
     dialog->base.needs_layout = true;
 }
 
-void vg_dialog_set_resizable(vg_dialog_t* dialog, bool resizable) {
-    if (!dialog) return;
+void vg_dialog_set_resizable(vg_dialog_t *dialog, bool resizable)
+{
+    if (!dialog)
+        return;
     dialog->resizable = resizable;
 }
 
-void vg_dialog_set_size_constraints(vg_dialog_t* dialog,
-                                     uint32_t min_w, uint32_t min_h,
-                                     uint32_t max_w, uint32_t max_h) {
-    if (!dialog) return;
+void vg_dialog_set_size_constraints(
+    vg_dialog_t *dialog, uint32_t min_w, uint32_t min_h, uint32_t max_w, uint32_t max_h)
+{
+    if (!dialog)
+        return;
     dialog->min_width = min_w;
     dialog->min_height = min_h;
     dialog->max_width = max_w;
@@ -735,22 +864,28 @@ void vg_dialog_set_size_constraints(vg_dialog_t* dialog,
     dialog->base.needs_layout = true;
 }
 
-void vg_dialog_set_modal(vg_dialog_t* dialog, bool modal, vg_widget_t* parent) {
-    if (!dialog) return;
+void vg_dialog_set_modal(vg_dialog_t *dialog, bool modal, vg_widget_t *parent)
+{
+    if (!dialog)
+        return;
     dialog->modal = modal;
     dialog->modal_parent = parent;
 }
 
-void vg_dialog_show(vg_dialog_t* dialog) {
-    if (!dialog) return;
+void vg_dialog_show(vg_dialog_t *dialog)
+{
+    if (!dialog)
+        return;
     dialog->is_open = true;
     dialog->result = VG_DIALOG_RESULT_NONE;
     dialog->base.needs_layout = true;
     dialog->base.needs_paint = true;
 }
 
-void vg_dialog_show_centered(vg_dialog_t* dialog, vg_widget_t* relative_to) {
-    if (!dialog) return;
+void vg_dialog_show_centered(vg_dialog_t *dialog, vg_widget_t *relative_to)
+{
+    if (!dialog)
+        return;
 
     vg_dialog_show(dialog);
 
@@ -759,10 +894,13 @@ void vg_dialog_show_centered(vg_dialog_t* dialog, vg_widget_t* relative_to) {
 
     // Center on relative widget
     float center_x, center_y;
-    if (relative_to) {
+    if (relative_to)
+    {
         center_x = relative_to->x + relative_to->width / 2;
         center_y = relative_to->y + relative_to->height / 2;
-    } else {
+    }
+    else
+    {
         // Center on screen (assume 800x600 default)
         center_x = 400;
         center_y = 300;
@@ -771,60 +909,80 @@ void vg_dialog_show_centered(vg_dialog_t* dialog, vg_widget_t* relative_to) {
     dialog->base.x = center_x - dialog->base.measured_width / 2;
     dialog->base.y = center_y - dialog->base.measured_height / 2;
 
-    vg_widget_arrange(&dialog->base, dialog->base.x, dialog->base.y,
-                      dialog->base.measured_width, dialog->base.measured_height);
+    vg_widget_arrange(&dialog->base,
+                      dialog->base.x,
+                      dialog->base.y,
+                      dialog->base.measured_width,
+                      dialog->base.measured_height);
 }
 
-void vg_dialog_hide(vg_dialog_t* dialog) {
-    if (!dialog) return;
+void vg_dialog_hide(vg_dialog_t *dialog)
+{
+    if (!dialog)
+        return;
     dialog->is_open = false;
 }
 
-void vg_dialog_close(vg_dialog_t* dialog, vg_dialog_result_t result) {
-    if (!dialog) return;
+void vg_dialog_close(vg_dialog_t *dialog, vg_dialog_result_t result)
+{
+    if (!dialog)
+        return;
 
     dialog->result = result;
     dialog->is_open = false;
 
-    if (dialog->on_result) {
+    if (dialog->on_result)
+    {
         dialog->on_result(dialog, result, dialog->user_data);
     }
 
-    if (dialog->on_close) {
+    if (dialog->on_close)
+    {
         dialog->on_close(dialog, dialog->user_data);
     }
 }
 
-vg_dialog_result_t vg_dialog_get_result(vg_dialog_t* dialog) {
-    if (!dialog) return VG_DIALOG_RESULT_NONE;
+vg_dialog_result_t vg_dialog_get_result(vg_dialog_t *dialog)
+{
+    if (!dialog)
+        return VG_DIALOG_RESULT_NONE;
     return dialog->result;
 }
 
-bool vg_dialog_is_open(vg_dialog_t* dialog) {
-    if (!dialog) return false;
+bool vg_dialog_is_open(vg_dialog_t *dialog)
+{
+    if (!dialog)
+        return false;
     return dialog->is_open;
 }
 
-void vg_dialog_set_on_result(vg_dialog_t* dialog,
-                              void (*callback)(vg_dialog_t*, vg_dialog_result_t, void*),
-                              void* user_data) {
-    if (!dialog) return;
+void vg_dialog_set_on_result(vg_dialog_t *dialog,
+                             void (*callback)(vg_dialog_t *, vg_dialog_result_t, void *),
+                             void *user_data)
+{
+    if (!dialog)
+        return;
     dialog->on_result = callback;
     dialog->user_data = user_data;
 }
 
-void vg_dialog_set_on_close(vg_dialog_t* dialog,
-                             void (*callback)(vg_dialog_t*, void*),
-                             void* user_data) {
-    if (!dialog) return;
+void vg_dialog_set_on_close(vg_dialog_t *dialog,
+                            void (*callback)(vg_dialog_t *, void *),
+                            void *user_data)
+{
+    if (!dialog)
+        return;
     dialog->on_close = callback;
-    if (!dialog->on_result) {
+    if (!dialog->on_result)
+    {
         dialog->user_data = user_data;
     }
 }
 
-void vg_dialog_set_font(vg_dialog_t* dialog, vg_font_t* font, float size) {
-    if (!dialog) return;
+void vg_dialog_set_font(vg_dialog_t *dialog, vg_font_t *font, float size)
+{
+    if (!dialog)
+        return;
     dialog->font = font;
     dialog->font_size = size > 0 ? size : vg_theme_get_current()->typography.size_normal;
     dialog->title_font_size = dialog->font_size;
@@ -835,10 +993,14 @@ void vg_dialog_set_font(vg_dialog_t* dialog, vg_font_t* font, float size) {
 // Convenience Constructors
 //=============================================================================
 
-vg_dialog_t* vg_dialog_message(const char* title, const char* message,
-                                vg_dialog_icon_t icon, vg_dialog_buttons_t buttons) {
-    vg_dialog_t* dlg = vg_dialog_create(title);
-    if (!dlg) return NULL;
+vg_dialog_t *vg_dialog_message(const char *title,
+                               const char *message,
+                               vg_dialog_icon_t icon,
+                               vg_dialog_buttons_t buttons)
+{
+    vg_dialog_t *dlg = vg_dialog_create(title);
+    if (!dlg)
+        return NULL;
 
     vg_dialog_set_message(dlg, message);
     vg_dialog_set_icon(dlg, icon);
@@ -847,32 +1009,40 @@ vg_dialog_t* vg_dialog_message(const char* title, const char* message,
     return dlg;
 }
 
-typedef struct {
-    void (*callback)(void*);
-    void* user_data;
+typedef struct
+{
+    void (*callback)(void *);
+    void *user_data;
 } confirm_data_t;
 
-static void confirm_result_handler(vg_dialog_t* dialog, vg_dialog_result_t result, void* data) {
-    confirm_data_t* cd = (confirm_data_t*)data;
-    if (result == VG_DIALOG_RESULT_YES && cd && cd->callback) {
+static void confirm_result_handler(vg_dialog_t *dialog, vg_dialog_result_t result, void *data)
+{
+    confirm_data_t *cd = (confirm_data_t *)data;
+    if (result == VG_DIALOG_RESULT_YES && cd && cd->callback)
+    {
         cd->callback(cd->user_data);
     }
     free(cd);
     (void)dialog;
 }
 
-vg_dialog_t* vg_dialog_confirm(const char* title, const char* message,
-                                void (*on_confirm)(void*), void* user_data) {
-    vg_dialog_t* dlg = vg_dialog_create(title);
-    if (!dlg) return NULL;
+vg_dialog_t *vg_dialog_confirm(const char *title,
+                               const char *message,
+                               void (*on_confirm)(void *),
+                               void *user_data)
+{
+    vg_dialog_t *dlg = vg_dialog_create(title);
+    if (!dlg)
+        return NULL;
 
     vg_dialog_set_message(dlg, message);
     vg_dialog_set_icon(dlg, VG_DIALOG_ICON_QUESTION);
     vg_dialog_set_buttons(dlg, VG_DIALOG_BUTTONS_YES_NO);
 
     // Set up callback wrapper
-    confirm_data_t* cd = malloc(sizeof(confirm_data_t));
-    if (cd) {
+    confirm_data_t *cd = malloc(sizeof(confirm_data_t));
+    if (cd)
+    {
         cd->callback = on_confirm;
         cd->user_data = user_data;
         vg_dialog_set_on_result(dlg, confirm_result_handler, cd);

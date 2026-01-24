@@ -25,26 +25,27 @@ using il::core::BasicBlock;
 ///   entry:
 ///     %result = add %a, %b
 ///     ret %result
-static Module createAddModule() {
+static Module createAddModule()
+{
     Module m;
     IRBuilder b(m);
 
     // func @add(i64 %a, i64 %b) -> i64
-    auto& fn = b.startFunction("add", Type(Type::Kind::I64), {
-        Param{"a", Type(Type::Kind::I64), 0},
-        Param{"b", Type(Type::Kind::I64), 1}
-    });
+    auto &fn = b.startFunction(
+        "add",
+        Type(Type::Kind::I64),
+        {Param{"a", Type(Type::Kind::I64), 0}, Param{"b", Type(Type::Kind::I64), 1}});
 
-    auto& entry = b.addBlock(fn, "entry");
+    auto &entry = b.addBlock(fn, "entry");
     b.setInsertPoint(entry);
 
     // %result = add %a, %b
     Instr addInstr;
-    addInstr.result = b.reserveTempId();  // temp 2 (after params 0 and 1)
+    addInstr.result = b.reserveTempId(); // temp 2 (after params 0 and 1)
     addInstr.op = Opcode::Add;
     addInstr.type = Type(Type::Kind::I64);
-    addInstr.operands.push_back(Value::temp(0));  // param a
-    addInstr.operands.push_back(Value::temp(1));  // param b
+    addInstr.operands.push_back(Value::temp(0)); // param a
+    addInstr.operands.push_back(Value::temp(1)); // param b
     addInstr.loc = {1, 1, 1};
     entry.instructions.push_back(addInstr);
 
@@ -69,13 +70,13 @@ static Module createAddModule() {
 ///     ret %neg
 ///   positive:
 ///     ret %n
-static Module createAbsModule() {
+static Module createAbsModule()
+{
     Module m;
     IRBuilder b(m);
 
-    auto& fn = b.startFunction("abs", Type(Type::Kind::I64), {
-        Param{"n", Type(Type::Kind::I64), 0}
-    });
+    auto &fn =
+        b.startFunction("abs", Type(Type::Kind::I64), {Param{"n", Type(Type::Kind::I64), 0}});
 
     // Create all blocks first to avoid reference invalidation from vector reallocation
     b.addBlock(fn, "entry");
@@ -83,9 +84,9 @@ static Module createAbsModule() {
     b.addBlock(fn, "positive");
 
     // Get fresh references after all blocks are added
-    BasicBlock& entry = fn.blocks[0];
-    BasicBlock& negative = fn.blocks[1];
-    BasicBlock& positive = fn.blocks[2];
+    BasicBlock &entry = fn.blocks[0];
+    BasicBlock &negative = fn.blocks[1];
+    BasicBlock &positive = fn.blocks[2];
 
     // Entry block
     b.setInsertPoint(entry);
@@ -147,13 +148,13 @@ static Module createAbsModule() {
 ///     %fib2 = call @fib(%nm2)
 ///     %result = add %fib1, %fib2
 ///     ret %result
-static Module createFibModule() {
+static Module createFibModule()
+{
     Module m;
     IRBuilder b(m);
 
-    auto& fn = b.startFunction("fib", Type(Type::Kind::I64), {
-        Param{"n", Type(Type::Kind::I64), 0}
-    });
+    auto &fn =
+        b.startFunction("fib", Type(Type::Kind::I64), {Param{"n", Type(Type::Kind::I64), 0}});
 
     // Create all blocks first to avoid reference invalidation from vector reallocation
     b.addBlock(fn, "entry");
@@ -161,19 +162,19 @@ static Module createFibModule() {
     b.addBlock(fn, "recurse");
 
     // Get fresh references after all blocks are added
-    BasicBlock& entry = fn.blocks[0];
-    BasicBlock& base = fn.blocks[1];
-    BasicBlock& recurse = fn.blocks[2];
+    BasicBlock &entry = fn.blocks[0];
+    BasicBlock &base = fn.blocks[1];
+    BasicBlock &recurse = fn.blocks[2];
 
     // Entry block: check if n <= 1
     b.setInsertPoint(entry);
 
     // %cmp = scmp_le %n, 1
     Instr cmpInstr;
-    cmpInstr.result = b.reserveTempId();  // temp 1
+    cmpInstr.result = b.reserveTempId(); // temp 1
     cmpInstr.op = Opcode::SCmpLE;
     cmpInstr.type = Type(Type::Kind::I1);
-    cmpInstr.operands.push_back(Value::temp(0));  // param n
+    cmpInstr.operands.push_back(Value::temp(0)); // param n
     cmpInstr.operands.push_back(Value::constInt(1));
     cmpInstr.loc = {1, 1, 1};
     entry.instructions.push_back(cmpInstr);
@@ -186,7 +187,7 @@ static Module createFibModule() {
     Instr retBase;
     retBase.op = Opcode::Ret;
     retBase.type = Type(Type::Kind::Void);
-    retBase.operands.push_back(Value::temp(0));  // Return param n
+    retBase.operands.push_back(Value::temp(0)); // Return param n
     retBase.loc = {1, 1, 1};
     base.instructions.push_back(retBase);
 
@@ -255,7 +256,8 @@ static Module createFibModule() {
 }
 
 /// Test basic bytecode encoding/decoding
-static void test_bytecode_encoding() {
+static void test_bytecode_encoding()
+{
     std::cout << "  test_bytecode_encoding: ";
 
     // Test encodeOp8 / decodeArg8_0
@@ -282,7 +284,8 @@ static void test_bytecode_encoding() {
 }
 
 /// Test basic addition function
-static void test_add_function() {
+static void test_add_function()
+{
     std::cout << "  test_add_function: ";
 
     // Create IL module with add function
@@ -313,7 +316,8 @@ static void test_add_function() {
 }
 
 /// Test absolute value function (conditional branching)
-static void test_abs_function() {
+static void test_abs_function()
+{
     std::cout << "  test_abs_function: ";
 
     // Create IL module with abs function
@@ -350,7 +354,8 @@ static void test_abs_function() {
 }
 
 /// Test fibonacci function (small values)
-static void test_fib_small() {
+static void test_fib_small()
+{
     std::cout << "  test_fib_small: ";
 
     // Create IL module with fib function
@@ -373,16 +378,18 @@ static void test_fib_small() {
     // fib(6) = 8, fib(7) = 13, fib(8) = 21, fib(9) = 34, fib(10) = 55
     int64_t expected[] = {0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55};
 
-    for (int i = 0; i <= 10; ++i) {
+    for (int i = 0; i <= 10; ++i)
+    {
         BCSlot result = vm.exec("fib", {BCSlot::fromInt(i)});
-        if (vm.state() != VMState::Halted) {
-            std::cerr << "fib(" << i << ") failed with trap: "
-                      << vm.trapMessage() << "\n";
+        if (vm.state() != VMState::Halted)
+        {
+            std::cerr << "fib(" << i << ") failed with trap: " << vm.trapMessage() << "\n";
             assert(false);
         }
-        if (result.i64 != expected[i]) {
-            std::cerr << "fib(" << i << ") = " << result.i64
-                      << ", expected " << expected[i] << "\n";
+        if (result.i64 != expected[i])
+        {
+            std::cerr << "fib(" << i << ") = " << result.i64 << ", expected " << expected[i]
+                      << "\n";
             assert(false);
         }
     }
@@ -391,7 +398,8 @@ static void test_fib_small() {
 }
 
 /// Benchmark fibonacci function
-static void test_fib_benchmark() {
+static void test_fib_benchmark()
+{
     std::cout << "  test_fib_benchmark: ";
 
     // Create IL module with fib function
@@ -413,17 +421,17 @@ static void test_fib_benchmark() {
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
 
     assert(vm.state() == VMState::Halted);
-    assert(result.i64 == 6765);  // fib(20) = 6765
+    assert(result.i64 == 6765); // fib(20) = 6765
 
-    std::cout << "fib(20)=" << result.i64
-              << " in " << duration.count() << "ms"
+    std::cout << "fib(20)=" << result.i64 << " in " << duration.count() << "ms"
               << " (" << vm.instrCount() << " instructions)"
               << " PASSED\n";
 }
 
 /// Test native function calls
 /// Creates a function that calls a native "square" function
-static void test_native_calls() {
+static void test_native_calls()
+{
     std::cout << "  test_native_calls: ";
 
     // Build bytecode module manually
@@ -443,7 +451,7 @@ static void test_native_calls() {
     BytecodeFunction func;
     func.name = "call_square";
     func.numParams = 1;
-    func.numLocals = 2;  // 1 param + 1 result
+    func.numLocals = 2; // 1 param + 1 result
     func.maxStack = 2;
 
     // LOAD_LOCAL 0       ; push %n
@@ -462,30 +470,33 @@ static void test_native_calls() {
 
     // Create VM and register native handler
     BytecodeVM vm;
-    vm.registerNativeHandler("square", [](BCSlot* args, uint32_t argCount, BCSlot* result) {
-        assert(argCount == 1);
-        int64_t n = args[0].i64;
-        result->i64 = n * n;
-    });
+    vm.registerNativeHandler("square",
+                             [](BCSlot *args, uint32_t argCount, BCSlot *result)
+                             {
+                                 assert(argCount == 1);
+                                 int64_t n = args[0].i64;
+                                 result->i64 = n * n;
+                             });
 
     vm.load(&bcModule);
 
     // Test with several values
     BCSlot result = vm.exec("call_square", {BCSlot::fromInt(5)});
     assert(vm.state() == VMState::Halted);
-    assert(result.i64 == 25);  // 5^2 = 25
+    assert(result.i64 == 25); // 5^2 = 25
 
     result = vm.exec("call_square", {BCSlot::fromInt(10)});
-    assert(result.i64 == 100);  // 10^2 = 100
+    assert(result.i64 == 100); // 10^2 = 100
 
     result = vm.exec("call_square", {BCSlot::fromInt(-7)});
-    assert(result.i64 == 49);  // (-7)^2 = 49
+    assert(result.i64 == 49); // (-7)^2 = 49
 
     std::cout << "PASSED\n";
 }
 
 /// Benchmark comparing switch vs threaded dispatch
-static void test_dispatch_benchmark() {
+static void test_dispatch_benchmark()
+{
     std::cout << "  test_dispatch_benchmark:\n";
 
     // Create IL module with fib function
@@ -507,10 +518,9 @@ static void test_dispatch_benchmark() {
 
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
         assert(vm.state() == VMState::Halted);
-        assert(result.i64 == 75025);  // fib(25) = 75025
+        assert(result.i64 == 75025); // fib(25) = 75025
 
-        std::cout << "    threaded: fib(25)=" << result.i64
-                  << " in " << duration.count() << "us"
+        std::cout << "    threaded: fib(25)=" << result.i64 << " in " << duration.count() << "us"
                   << " (" << vm.instrCount() << " instrs)\n";
     }
 
@@ -526,10 +536,9 @@ static void test_dispatch_benchmark() {
 
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
         assert(vm.state() == VMState::Halted);
-        assert(result.i64 == 75025);  // fib(25) = 75025
+        assert(result.i64 == 75025); // fib(25) = 75025
 
-        std::cout << "    switch:   fib(25)=" << result.i64
-                  << " in " << duration.count() << "us"
+        std::cout << "    switch:   fib(25)=" << result.i64 << " in " << duration.count() << "us"
                   << " (" << vm.instrCount() << " instrs)\n";
     }
 
@@ -537,7 +546,8 @@ static void test_dispatch_benchmark() {
 }
 
 /// Test a native function that takes multiple arguments
-static void test_native_multi_args() {
+static void test_native_multi_args()
+{
     std::cout << "  test_native_multi_args: ";
 
     BytecodeModule bcModule;
@@ -555,13 +565,13 @@ static void test_native_multi_args() {
     BytecodeFunction func;
     func.name = "call_add3";
     func.numParams = 3;
-    func.numLocals = 4;  // 3 params + 1 result
+    func.numLocals = 4; // 3 params + 1 result
     func.maxStack = 4;
 
     // Push args in order
-    func.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 0));  // push %a
-    func.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 1));  // push %b
-    func.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 2));  // push %c
+    func.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 0)); // push %a
+    func.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 1)); // push %b
+    func.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 2)); // push %c
     // CALL_NATIVE 0, 3
     func.code.push_back(encodeOp88(BCOpcode::CALL_NATIVE, 0, 3));
     // RET (result is on stack)
@@ -571,16 +581,19 @@ static void test_native_multi_args() {
     bcModule.functionIndex["call_add3"] = 0;
 
     BytecodeVM vm;
-    vm.registerNativeHandler("add3", [](BCSlot* args, uint32_t argCount, BCSlot* result) {
-        assert(argCount == 3);
-        result->i64 = args[0].i64 + args[1].i64 + args[2].i64;
-    });
+    vm.registerNativeHandler("add3",
+                             [](BCSlot *args, uint32_t argCount, BCSlot *result)
+                             {
+                                 assert(argCount == 3);
+                                 result->i64 = args[0].i64 + args[1].i64 + args[2].i64;
+                             });
 
     vm.load(&bcModule);
 
-    BCSlot result = vm.exec("call_add3", {BCSlot::fromInt(10), BCSlot::fromInt(20), BCSlot::fromInt(30)});
+    BCSlot result =
+        vm.exec("call_add3", {BCSlot::fromInt(10), BCSlot::fromInt(20), BCSlot::fromInt(30)});
     assert(vm.state() == VMState::Halted);
-    assert(result.i64 == 60);  // 10 + 20 + 30
+    assert(result.i64 == 60); // 10 + 20 + 30
 
     result = vm.exec("call_add3", {BCSlot::fromInt(1), BCSlot::fromInt(2), BCSlot::fromInt(3)});
     assert(result.i64 == 6);
@@ -589,7 +602,8 @@ static void test_native_multi_args() {
 }
 
 /// Test exception handling with EH_PUSH, TRAP, and handler dispatch
-static void test_exception_handling() {
+static void test_exception_handling()
+{
     std::cout << "  test_exception_handling: ";
 #ifdef _WIN32
     // Skip on Windows: bytecode VM exception handling has issues (to be investigated)
@@ -621,7 +635,7 @@ static void test_exception_handling() {
     BytecodeFunction func;
     func.name = "test_trap";
     func.numParams = 0;
-    func.numLocals = 2;  // Need 2 locals for handler params
+    func.numLocals = 2; // Need 2 locals for handler params
     func.maxStack = 4;
 
     // eh_push with raw offset to handler in next word
@@ -629,7 +643,7 @@ static void test_exception_handling() {
     // Handler will be at pc=5
     // Offset = handler_pc - offset_word_pc = 5 - 1 = 4
     func.code.push_back(encodeOp(BCOpcode::EH_PUSH));
-    func.code.push_back(static_cast<uint32_t>(4));  // Raw offset to handler
+    func.code.push_back(static_cast<uint32_t>(4)); // Raw offset to handler
     // trap RuntimeError
     func.code.push_back(encodeOp8(BCOpcode::TRAP, static_cast<uint8_t>(TrapKind::RuntimeError)));
     // These should be unreachable:
@@ -637,8 +651,8 @@ static void test_exception_handling() {
     func.code.push_back(encodeOp(BCOpcode::RETURN));
     // handler: (pc = 6)
     // dispatchTrap pushes trap kind and resume token, handler stores them to locals
-    func.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 1));  // Store resume token to local 1
-    func.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 0));  // Store trap kind to local 0
+    func.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 1)); // Store resume token to local 1
+    func.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 0)); // Store trap kind to local 0
     func.code.push_back(encodeOp(BCOpcode::EH_ENTRY));
     // Load 42 as the return value
     func.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 42));
@@ -652,13 +666,14 @@ static void test_exception_handling() {
 
     BCSlot result = vm.exec("test_trap", {});
     assert(vm.state() == VMState::Halted);
-    assert(result.i64 == 42);  // Handler returned 42
+    assert(result.i64 == 42); // Handler returned 42
 
     std::cout << "PASSED\n";
 }
 
 /// Test unhandled trap
-static void test_unhandled_trap() {
+static void test_unhandled_trap()
+{
     std::cout << "  test_unhandled_trap: ";
 
     BytecodeModule bcModule;
@@ -695,7 +710,8 @@ static void test_unhandled_trap() {
 }
 
 /// Test EH_POP (handler unregistration)
-static void test_eh_pop() {
+static void test_eh_pop()
+{
     std::cout << "  test_eh_pop: ";
 
     BytecodeModule bcModule;
@@ -724,13 +740,14 @@ static void test_eh_pop() {
     // Handler at pc=5
     // Offset = 5 - 1 = 4
     func.code.push_back(encodeOp(BCOpcode::EH_PUSH));
-    func.code.push_back(static_cast<uint32_t>(4));  // Raw offset to handler
-    func.code.push_back(encodeOp(BCOpcode::EH_POP));        // unregister
-    func.code.push_back(encodeOp8(BCOpcode::TRAP, static_cast<uint8_t>(TrapKind::RuntimeError)));  // should be unhandled
+    func.code.push_back(static_cast<uint32_t>(4));   // Raw offset to handler
+    func.code.push_back(encodeOp(BCOpcode::EH_POP)); // unregister
+    func.code.push_back(encodeOp8(
+        BCOpcode::TRAP, static_cast<uint8_t>(TrapKind::RuntimeError))); // should be unhandled
     func.code.push_back(encodeOp(BCOpcode::RETURN));
     // handler (unreachable):
-    func.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 1));  // Store resume token
-    func.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 0));  // Store trap kind
+    func.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 1)); // Store resume token
+    func.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 0)); // Store trap kind
     func.code.push_back(encodeOp(BCOpcode::EH_ENTRY));
     func.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 42));
     func.code.push_back(encodeOp(BCOpcode::RETURN));
@@ -742,7 +759,7 @@ static void test_eh_pop() {
     vm.load(&bcModule);
 
     vm.exec("test_eh_pop", {});
-    assert(vm.state() == VMState::Trapped);  // Should be unhandled
+    assert(vm.state() == VMState::Trapped); // Should be unhandled
     assert(vm.trapKind() == TrapKind::RuntimeError);
 
     std::cout << "PASSED\n";
@@ -750,7 +767,8 @@ static void test_eh_pop() {
 
 /// Test debug API (breakpoints, single-step)
 /// Note: Actual breakpoint interception requires debug-enabled execution mode
-static void test_debug_api() {
+static void test_debug_api()
+{
     std::cout << "  test_debug_api: ";
 
     BytecodeVM vm;
@@ -774,20 +792,23 @@ static void test_debug_api() {
 
     // Test debug callback
     bool callbackCalled = false;
-    vm.setDebugCallback([&](BytecodeVM&, const BytecodeFunction*, uint32_t, bool) {
-        callbackCalled = true;
-        return true;
-    });
+    vm.setDebugCallback(
+        [&](BytecodeVM &, const BytecodeFunction *, uint32_t, bool)
+        {
+            callbackCalled = true;
+            return true;
+        });
 
     // Test getter methods
-    assert(vm.currentPc() == 0);  // No function running
+    assert(vm.currentPc() == 0); // No function running
     assert(vm.currentFunction() == nullptr);
     assert(vm.exceptionHandlerDepth() == 0);
 
     std::cout << "PASSED\n";
 }
 
-int main() {
+int main()
+{
     VIPER_DISABLE_ABORT_DIALOG();
     std::cout << "Running bytecode VM tests...\n";
 

@@ -108,8 +108,7 @@ static sighandler_t signal_handlers[NSIG] __attribute__((unused));
  *
  * @see sigaction, raise, kill
  */
-sighandler_t signal(int signum, sighandler_t handler)
-{
+sighandler_t signal(int signum, sighandler_t handler) {
     if (signum < 1 || signum >= NSIG)
         return SIG_ERR;
 
@@ -142,8 +141,7 @@ sighandler_t signal(int signum, sighandler_t handler)
  *
  * @see kill, signal, sigaction
  */
-int raise(int sig)
-{
+int raise(int sig) {
     long pid = __syscall1(SYS_TASK_CURRENT, 0);
     return kill((int)pid, sig);
 }
@@ -167,8 +165,7 @@ int raise(int sig)
  *
  * @see raise, sigaction, signal
  */
-int kill(int pid, int sig)
-{
+int kill(int pid, int sig) {
     return (int)__syscall2(SYS_KILL, pid, sig);
 }
 
@@ -199,8 +196,7 @@ int kill(int pid, int sig)
  *
  * @see signal, kill, sigprocmask
  */
-int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact)
-{
+int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact) {
     if (signum < 1 || signum >= NSIG)
         return -1;
 
@@ -234,8 +230,7 @@ int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact)
  *
  * @see sigfillset, sigaddset, sigdelset, sigismember
  */
-int sigemptyset(sigset_t *set)
-{
+int sigemptyset(sigset_t *set) {
     if (!set)
         return -1;
     *set = 0;
@@ -258,8 +253,7 @@ int sigemptyset(sigset_t *set)
  *
  * @see sigemptyset, sigaddset, sigdelset, sigismember
  */
-int sigfillset(sigset_t *set)
-{
+int sigfillset(sigset_t *set) {
     if (!set)
         return -1;
     *set = ~(sigset_t)0;
@@ -280,8 +274,7 @@ int sigfillset(sigset_t *set)
  *
  * @see sigemptyset, sigfillset, sigdelset, sigismember
  */
-int sigaddset(sigset_t *set, int signum)
-{
+int sigaddset(sigset_t *set, int signum) {
     if (!set || signum < 1 || signum >= NSIG)
         return -1;
     *set |= (1UL << signum);
@@ -302,8 +295,7 @@ int sigaddset(sigset_t *set, int signum)
  *
  * @see sigemptyset, sigfillset, sigaddset, sigismember
  */
-int sigdelset(sigset_t *set, int signum)
-{
+int sigdelset(sigset_t *set, int signum) {
     if (!set || signum < 1 || signum >= NSIG)
         return -1;
     *set &= ~(1UL << signum);
@@ -323,8 +315,7 @@ int sigdelset(sigset_t *set, int signum)
  *
  * @see sigemptyset, sigfillset, sigaddset, sigdelset
  */
-int sigismember(const sigset_t *set, int signum)
-{
+int sigismember(const sigset_t *set, int signum) {
     if (!set || signum < 1 || signum >= NSIG)
         return -1;
     return (*set & (1UL << signum)) ? 1 : 0;
@@ -366,8 +357,7 @@ int sigismember(const sigset_t *set, int signum)
  *
  * @see sigpending, sigsuspend, sigaction
  */
-int sigprocmask(int how, const sigset_t *set, sigset_t *oldset)
-{
+int sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
     return (int)__syscall3(SYS_SIGPROCMASK, how, (long)set, (long)oldset);
 }
 
@@ -387,8 +377,7 @@ int sigprocmask(int how, const sigset_t *set, sigset_t *oldset)
  *
  * @see sigprocmask, sigsuspend
  */
-int sigpending(sigset_t *set)
-{
+int sigpending(sigset_t *set) {
     if (!set)
         return -1;
     return (int)__syscall1(SYS_SIGPENDING, (long)set);
@@ -417,8 +406,7 @@ int sigpending(sigset_t *set)
  *
  * @see sigprocmask, pause, sigwait
  */
-int sigsuspend(const sigset_t *mask)
-{
+int sigsuspend(const sigset_t *mask) {
     /* Not implemented - would require atomic mask change + wait */
     (void)mask;
     return -1;
@@ -442,8 +430,7 @@ int sigsuspend(const sigset_t *mask)
  *
  * @see psignal, strerror
  */
-const char *strsignal(int signum)
-{
+const char *strsignal(int signum) {
     static char unknown_buf[32];
 
     if (signum >= 0 && (size_t)signum < NUM_SIGNAL_NAMES)
@@ -456,15 +443,13 @@ const char *strsignal(int signum)
         *p++ = *prefix++;
 
     int n = signum;
-    if (n < 0)
-    {
+    if (n < 0) {
         *p++ = '-';
         n = -n;
     }
     char digits[12];
     int i = 0;
-    do
-    {
+    do {
         digits[i++] = '0' + (n % 10);
         n /= 10;
     } while (n > 0);
@@ -492,10 +477,8 @@ const char *strsignal(int signum)
  *
  * @see strsignal, perror
  */
-void psignal(int sig, const char *s)
-{
-    if (s && *s)
-    {
+void psignal(int sig, const char *s) {
+    if (s && *s) {
         fputs(s, stderr);
         fputs(": ", stderr);
     }

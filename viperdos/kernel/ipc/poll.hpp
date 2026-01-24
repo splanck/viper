@@ -19,8 +19,7 @@
 #include "../include/types.hpp"
 
 // Forward declaration
-namespace task
-{
+namespace task {
 struct Task;
 }
 
@@ -39,8 +38,7 @@ struct Task;
  * - Timers are stored in a fixed-size table.
  * - Time is measured in milliseconds using the system tick counter.
  */
-namespace poll
-{
+namespace poll {
 
 /** @brief Maximum number of events that can be polled in a single call. */
 constexpr u32 MAX_POLL_EVENTS = 16;
@@ -72,8 +70,7 @@ constexpr u32 HANDLE_NETWORK_RX = 0xFFFF0002;
  * mask (events that are currently ready). It is treated as a bitfield; helper
  * operators are provided for combining and testing flags.
  */
-enum class EventType : u32
-{
+enum class EventType : u32 {
     NONE = 0,
     CHANNEL_READ = (1 << 0),  // Channel has data to read
     CHANNEL_WRITE = (1 << 1), // Channel has space to write
@@ -85,8 +82,7 @@ enum class EventType : u32
 /**
  * @brief Polling mode flags for entries.
  */
-enum class PollFlags : u32
-{
+enum class PollFlags : u32 {
     NONE = 0,
     EDGE_TRIGGERED = (1 << 0), // Only report edge transitions, not level
     ONESHOT = (1 << 1),        // Auto-remove after first trigger
@@ -99,8 +95,7 @@ enum class PollFlags : u32
  * @param b Second mask.
  * @return Combined mask.
  */
-inline EventType operator|(EventType a, EventType b)
-{
+inline EventType operator|(EventType a, EventType b) {
     return static_cast<EventType>(static_cast<u32>(a) | static_cast<u32>(b));
 }
 
@@ -111,8 +106,7 @@ inline EventType operator|(EventType a, EventType b)
  * @param b Second mask.
  * @return Intersection mask.
  */
-inline EventType operator&(EventType a, EventType b)
-{
+inline EventType operator&(EventType a, EventType b) {
     return static_cast<EventType>(static_cast<u32>(a) & static_cast<u32>(b));
 }
 
@@ -123,24 +117,21 @@ inline EventType operator&(EventType a, EventType b)
  * @param check Flag(s) to check for.
  * @return `true` if any checked bits are set in `events`.
  */
-inline bool has_event(EventType events, EventType check)
-{
+inline bool has_event(EventType events, EventType check) {
     return (static_cast<u32>(events) & static_cast<u32>(check)) != 0;
 }
 
 /**
  * @brief Combine two poll flags with bitwise OR.
  */
-inline PollFlags operator|(PollFlags a, PollFlags b)
-{
+inline PollFlags operator|(PollFlags a, PollFlags b) {
     return static_cast<PollFlags>(static_cast<u32>(a) | static_cast<u32>(b));
 }
 
 /**
  * @brief Test whether poll flags contain a particular flag.
  */
-inline bool has_flag(PollFlags flags, PollFlags check)
-{
+inline bool has_flag(PollFlags flags, PollFlags check) {
     return (static_cast<u32>(flags) & static_cast<u32>(check)) != 0;
 }
 
@@ -152,8 +143,7 @@ inline bool has_flag(PollFlags flags, PollFlags check)
  * Callers fill in `handle` and `events` as the request. The poll implementation
  * preserves `events` and writes readiness results into `triggered`.
  */
-struct PollEvent
-{
+struct PollEvent {
     u32 handle;          // Channel ID or timer handle
     EventType events;    // Requested events (input) - preserved
     EventType triggered; // Triggered events (output) - set by poll()

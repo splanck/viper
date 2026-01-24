@@ -2483,7 +2483,8 @@ void rt_canvas_windowed(void *canvas)
     (void)canvas;
 }
 
-void rt_canvas_gradient_h(void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t c1, int64_t c2)
+void rt_canvas_gradient_h(
+    void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t c1, int64_t c2)
 {
     (void)canvas;
     (void)x;
@@ -2494,7 +2495,8 @@ void rt_canvas_gradient_h(void *canvas, int64_t x, int64_t y, int64_t w, int64_t
     (void)c2;
 }
 
-void rt_canvas_gradient_v(void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t c1, int64_t c2)
+void rt_canvas_gradient_v(
+    void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t c1, int64_t c2)
 {
     (void)canvas;
     (void)x;

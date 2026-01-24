@@ -56,18 +56,17 @@
 #pragma once
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /**
-     * @brief VError type - syscall error code.
-     *
-     * @details
-     * Always returned in x0. Zero indicates success, negative values indicate
-     * an error from the kernel error namespace.
-     */
-    typedef long long VError;
+/**
+ * @brief VError type - syscall error code.
+ *
+ * @details
+ * Always returned in x0. Zero indicates success, negative values indicate
+ * an error from the kernel error namespace.
+ */
+typedef long long VError;
 
 /**
  * @name Standard VError codes
@@ -111,8 +110,7 @@ extern "C"
 #ifdef __cplusplus
 }
 
-namespace viper
-{
+namespace viper {
 
 /**
  * @brief Syscall result structure for user-space.
@@ -121,8 +119,7 @@ namespace viper
  * This structure captures all output registers from a syscall.
  * User-space syscall stubs fill this from x0-x3 after `svc #0`.
  */
-struct SyscallResult
-{
+struct SyscallResult {
     VError error;            ///< x0: Error code (0 = success)
     unsigned long long val0; ///< x1: First result value
     unsigned long long val1; ///< x2: Second result value
@@ -131,40 +128,35 @@ struct SyscallResult
     /**
      * @brief Check if the syscall succeeded.
      */
-    bool ok() const
-    {
+    bool ok() const {
         return error == 0;
     }
 
     /**
      * @brief Check if the syscall failed.
      */
-    bool failed() const
-    {
+    bool failed() const {
         return error < 0;
     }
 
     /**
      * @brief Get val0 as a signed value.
      */
-    long long sval0() const
-    {
+    long long sval0() const {
         return static_cast<long long>(val0);
     }
 
     /**
      * @brief Get val0 as i32 (for handles/fds).
      */
-    int handle() const
-    {
+    int handle() const {
         return static_cast<int>(val0);
     }
 
     /**
      * @brief Get val0 as size_t (for counts/sizes).
      */
-    unsigned long long size() const
-    {
+    unsigned long long size() const {
         return val0;
     }
 };
@@ -172,16 +164,14 @@ struct SyscallResult
 /**
  * @brief Helper to check VError success.
  */
-inline bool is_ok(VError e)
-{
+inline bool is_ok(VError e) {
     return e == 0;
 }
 
 /**
  * @brief Helper to check VError failure.
  */
-inline bool is_err(VError e)
-{
+inline bool is_err(VError e) {
     return e < 0;
 }
 

@@ -506,8 +506,7 @@ class Sema
     /// @tparam T Decl type (EntityDecl, ValueDecl, or InterfaceDecl)
     /// @param decl The type declaration.
     /// @param includeFields Whether to register field types (false for interfaces).
-    template <typename T>
-    void registerTypeMembers(T &decl, bool includeFields = true);
+    template <typename T> void registerTypeMembers(T &decl, bool includeFields = true);
 
     /// @brief Register entity member signatures for cross-module resolution.
     void registerEntityMembers(EntityDecl &decl);
@@ -851,7 +850,7 @@ class Sema
 
     /// @}
 
-public:
+  public:
     //=========================================================================
     /// @name Generic Type Parameter Management
     /// @brief Methods for managing type parameter substitutions in generic contexts.
@@ -889,8 +888,7 @@ public:
     /// @param base The base type name (e.g., "Box").
     /// @param args The type arguments (e.g., [Integer]).
     /// @return The mangled name (e.g., "Box$Integer").
-    static std::string mangleGenericName(const std::string &base,
-                                         const std::vector<TypeRef> &args);
+    static std::string mangleGenericName(const std::string &base, const std::vector<TypeRef> &args);
 
     /// @brief Register a generic type declaration for later instantiation.
     /// @param name The type name (e.g., "Box").

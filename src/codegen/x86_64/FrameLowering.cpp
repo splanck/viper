@@ -142,7 +142,7 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
     std::unordered_set<PhysReg> usedCalleeSaved{};
     std::set<int> gprSpillSlots{};
     std::set<int> xmmSpillSlots{};
-    int maxAllocaSlotIndex = -1;  // Track the highest alloca slot index
+    int maxAllocaSlotIndex = -1; // Track the highest alloca slot index
 
     // The Spiller uses a 1000 offset to distinguish spill slots from alloca slots:
     // - Alloca slots: slotIndex = resultId (0, 1, 2, ...)
@@ -213,9 +213,8 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
 
     // Compute the alloca area size (number of 8-byte alloca slots)
     // +1 because slotIndex is 0-based and we need space for slots 0..maxAllocaSlotIndex
-    const int allocaAreaBytes = (maxAllocaSlotIndex >= 0)
-        ? (maxAllocaSlotIndex + 1) * kSlotSizeBytes
-        : 0;
+    const int allocaAreaBytes =
+        (maxAllocaSlotIndex >= 0) ? (maxAllocaSlotIndex + 1) * kSlotSizeBytes : 0;
 
     frame.usedCalleeSaved.clear();
     for (auto reg : target.calleeSavedGPR)
@@ -370,8 +369,7 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
             const auto raxOperand = makePhysOperand(RegClass::GPR, PhysReg::RAX);
             prologue.push_back(
                 MInstr::make(MOpcode::MOVri, {raxOperand, makeImmOperand(frame.frameSize)}));
-            prologue.push_back(
-                MInstr::make(MOpcode::CALL, {makeLabelOperand("__chkstk")}));
+            prologue.push_back(MInstr::make(MOpcode::CALL, {makeLabelOperand("__chkstk")}));
             // __chkstk subtracts RAX from RSP, so we just need to copy
             prologue.push_back(MInstr::make(MOpcode::MOVrr, {rspOperand, raxOperand}));
             // Actually, __chkstk on MSVC doesn't modify RSP - it just probes.
@@ -431,8 +429,7 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
     const bool isMain = (func.name == "main" || func.name == "@main");
     if (isMain)
     {
-        prologue.push_back(
-            MInstr::make(MOpcode::CALL, {makeLabelOperand("rt_init_stack_safety")}));
+        prologue.push_back(MInstr::make(MOpcode::CALL, {makeLabelOperand("rt_init_stack_safety")}));
     }
 
     auto &entry = func.blocks.front();

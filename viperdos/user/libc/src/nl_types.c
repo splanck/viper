@@ -39,8 +39,7 @@
 /*
  * Message catalog entry
  */
-struct cat_message
-{
+struct cat_message {
     int set_id;
     int msg_id;
     char *message;
@@ -50,8 +49,7 @@ struct cat_message
 /*
  * Message catalog structure
  */
-struct cat_descriptor
-{
+struct cat_descriptor {
     struct cat_message *messages;
     int refcount;
 };
@@ -62,14 +60,12 @@ struct cat_descriptor
  * ViperDOS simplified implementation - returns stub catalog.
  * Full implementation would load .cat files from NLSPATH.
  */
-nl_catd catopen(const char *name, int flag)
-{
+nl_catd catopen(const char *name, int flag) {
     (void)name;
     (void)flag;
 
     struct cat_descriptor *desc = (struct cat_descriptor *)malloc(sizeof(struct cat_descriptor));
-    if (!desc)
-    {
+    if (!desc) {
         errno = ENOMEM;
         return (nl_catd)-1;
     }
@@ -96,10 +92,8 @@ nl_catd catopen(const char *name, int flag)
  *
  * Retrieves a message from an open message catalog.
  */
-char *catgets(nl_catd catd, int set_id, int msg_id, const char *s)
-{
-    if (catd == (nl_catd)-1 || !catd)
-    {
+char *catgets(nl_catd catd, int set_id, int msg_id, const char *s) {
+    if (catd == (nl_catd)-1 || !catd) {
         return (char *)s;
     }
 
@@ -107,10 +101,8 @@ char *catgets(nl_catd catd, int set_id, int msg_id, const char *s)
 
     /* Search for the message */
     struct cat_message *msg = desc->messages;
-    while (msg)
-    {
-        if (msg->set_id == set_id && msg->msg_id == msg_id)
-        {
+    while (msg) {
+        if (msg->set_id == set_id && msg->msg_id == msg_id) {
             return msg->message;
         }
         msg = msg->next;
@@ -123,10 +115,8 @@ char *catgets(nl_catd catd, int set_id, int msg_id, const char *s)
 /*
  * catclose - Close a message catalog
  */
-int catclose(nl_catd catd)
-{
-    if (catd == (nl_catd)-1 || !catd)
-    {
+int catclose(nl_catd catd) {
+    if (catd == (nl_catd)-1 || !catd) {
         errno = EBADF;
         return -1;
     }
@@ -135,15 +125,13 @@ int catclose(nl_catd catd)
 
     /* Decrement reference count */
     desc->refcount--;
-    if (desc->refcount > 0)
-    {
+    if (desc->refcount > 0) {
         return 0;
     }
 
     /* Free all messages */
     struct cat_message *msg = desc->messages;
-    while (msg)
-    {
+    while (msg) {
         struct cat_message *next = msg->next;
         free(msg->message);
         free(msg);

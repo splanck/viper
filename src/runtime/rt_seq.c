@@ -1258,11 +1258,8 @@ static void seq_merge(void **items,
 /// @param left Start index.
 /// @param right End index (inclusive).
 /// @param cmp Comparison function.
-static void seq_merge_sort(void **items,
-                           void **temp,
-                           int64_t left,
-                           int64_t right,
-                           int64_t (*cmp)(void *, void *))
+static void seq_merge_sort(
+    void **items, void **temp, int64_t left, int64_t right, int64_t (*cmp)(void *, void *))
 {
     if (left >= right)
         return;

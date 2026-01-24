@@ -49,15 +49,15 @@
 /// @brief Channel implementation.
 typedef struct channel_impl
 {
-    void *monitor;            ///< Monitor for synchronization.
-    void **buffer;            ///< Ring buffer for items.
-    int64_t capacity;         ///< Buffer capacity.
-    int64_t count;            ///< Number of items in buffer.
-    int64_t head;             ///< Index of next read.
-    int64_t tail;             ///< Index of next write.
-    int64_t waiting_senders;  ///< Number of blocked senders.
-    int64_t waiting_receivers;///< Number of blocked receivers.
-    int8_t closed;            ///< Closed flag.
+    void *monitor;             ///< Monitor for synchronization.
+    void **buffer;             ///< Ring buffer for items.
+    int64_t capacity;          ///< Buffer capacity.
+    int64_t count;             ///< Number of items in buffer.
+    int64_t head;              ///< Index of next read.
+    int64_t tail;              ///< Index of next write.
+    int64_t waiting_senders;   ///< Number of blocked senders.
+    int64_t waiting_receivers; ///< Number of blocked receivers.
+    int8_t closed;             ///< Closed flag.
 } channel_impl;
 
 //=============================================================================

@@ -11,28 +11,24 @@
 #include "virtio.hpp"
 #include "virtqueue.hpp"
 
-namespace virtio
-{
+namespace virtio {
 
 // Block request types
-namespace blk_type
-{
+namespace blk_type {
 constexpr u32 IN = 0;    // Read from device
 constexpr u32 OUT = 1;   // Write to device
 constexpr u32 FLUSH = 4; // Flush buffers
 } // namespace blk_type
 
 // Block request status
-namespace blk_status
-{
+namespace blk_status {
 constexpr u8 OK = 0;
 constexpr u8 IOERR = 1;
 constexpr u8 UNSUPP = 2;
 } // namespace blk_status
 
 // Block feature bits
-namespace blk_features
-{
+namespace blk_features {
 constexpr u64 SIZE_MAX = 1 << 1;
 constexpr u64 SEG_MAX = 1 << 2;
 constexpr u64 GEOMETRY = 1 << 4;
@@ -45,8 +41,7 @@ constexpr u64 MQ = 1 << 12;
 } // namespace blk_features
 
 // Block request header
-struct BlkReqHeader
-{
+struct BlkReqHeader {
     u32 type;
     u32 reserved;
     u64 sector;
@@ -55,8 +50,7 @@ struct BlkReqHeader
 /**
  * @brief User-space VirtIO block device driver.
  */
-class BlkDevice : public Device
-{
+class BlkDevice : public Device {
   public:
     /**
      * @brief Initialize the block device.
@@ -107,23 +101,19 @@ class BlkDevice : public Device
     void handle_interrupt();
 
     // Device info
-    u64 capacity() const
-    {
+    u64 capacity() const {
         return capacity_;
     }
 
-    u32 sector_size() const
-    {
+    u32 sector_size() const {
         return sector_size_;
     }
 
-    u64 size_bytes() const
-    {
+    u64 size_bytes() const {
         return capacity_ * sector_size_;
     }
 
-    bool is_readonly() const
-    {
+    bool is_readonly() const {
         return readonly_;
     }
 
@@ -141,15 +131,13 @@ class BlkDevice : public Device
     // Pre-allocated request buffer (DMA-accessible)
     static constexpr usize MAX_PENDING = 8;
 
-    struct PendingRequest
-    {
+    struct PendingRequest {
         BlkReqHeader header;
         u8 status;
         u8 _pad[3];
     } __attribute__((packed));
 
-    struct RequestSlot
-    {
+    struct RequestSlot {
         bool in_use{false};
         i32 desc_head{-1};
         i32 desc_data{-1};

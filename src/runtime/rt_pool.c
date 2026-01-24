@@ -87,13 +87,15 @@ static inline uint16_t unpack_version(uint64_t tagged)
 static inline int atomic_cas_u64(volatile uint64_t *ptr, uint64_t *expected, uint64_t desired)
 {
 #if RT_COMPILER_MSVC
-    uint64_t old = _InterlockedCompareExchange64((volatile long long *)ptr, (long long)desired, (long long)*expected);
+    uint64_t old = _InterlockedCompareExchange64(
+        (volatile long long *)ptr, (long long)desired, (long long)*expected);
     if (old == *expected)
         return 1;
     *expected = old;
     return 0;
 #else
-    return __atomic_compare_exchange_n(ptr, expected, desired, 1, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
+    return __atomic_compare_exchange_n(
+        ptr, expected, desired, 1, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
 #endif
 }
 
@@ -132,10 +134,10 @@ static inline void atomic_store_u64(volatile uint64_t *ptr, uint64_t value)
 /// @brief Per-size-class pool state.
 typedef struct rt_pool_state
 {
-    volatile uint64_t freelist_tagged;   ///< Lock-free freelist head (tagged pointer)
-    rt_pool_slab_t *volatile slabs;      ///< List of slabs (atomic for thread-safe insertion)
-    volatile size_t allocated;           ///< Count of blocks currently allocated
-    volatile size_t free_count;          ///< Count of blocks on freelist
+    volatile uint64_t freelist_tagged; ///< Lock-free freelist head (tagged pointer)
+    rt_pool_slab_t *volatile slabs;    ///< List of slabs (atomic for thread-safe insertion)
+    volatile size_t allocated;         ///< Count of blocks currently allocated
+    volatile size_t free_count;        ///< Count of blocks on freelist
 } rt_pool_state_t;
 
 /// @brief Global pool state for each size class.
@@ -314,17 +316,18 @@ void *rt_pool_alloc(size_t size)
         do
         {
             slab->next = expected;
-        } while (!rt_atomic_compare_exchange_ptr(
-            (void *volatile *)&pool->slabs, (void **)&expected, slab,
-            __ATOMIC_RELEASE, __ATOMIC_RELAXED));
+        } while (!rt_atomic_compare_exchange_ptr((void *volatile *)&pool->slabs,
+                                                 (void **)&expected,
+                                                 slab,
+                                                 __ATOMIC_RELEASE,
+                                                 __ATOMIC_RELAXED));
 #else
         rt_pool_slab_t *expected = __atomic_load_n(&pool->slabs, __ATOMIC_RELAXED);
         do
         {
             slab->next = expected;
         } while (!__atomic_compare_exchange_n(
-            &pool->slabs, &expected, slab, 1,
-            __ATOMIC_RELEASE, __ATOMIC_RELAXED));
+            &pool->slabs, &expected, slab, 1, __ATOMIC_RELEASE, __ATOMIC_RELAXED));
 #endif
 
         // Push all blocks to freelist

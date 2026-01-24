@@ -53,8 +53,7 @@ static int pwd_index = 0;
 /*
  * fill_passwd - Fill a passwd structure with default values
  */
-static int fill_passwd(struct passwd *pwd, char *buf, size_t buflen, uid_t uid, const char *name)
-{
+static int fill_passwd(struct passwd *pwd, char *buf, size_t buflen, uid_t uid, const char *name) {
     /* Calculate required buffer size */
     size_t name_len = strlen(name) + 1;
     size_t passwd_len = strlen(default_passwd) + 1;
@@ -63,8 +62,7 @@ static int fill_passwd(struct passwd *pwd, char *buf, size_t buflen, uid_t uid, 
     size_t shell_len = strlen(default_shell) + 1;
     size_t total = name_len + passwd_len + gecos_len + dir_len + shell_len;
 
-    if (buflen < total)
-    {
+    if (buflen < total) {
         return ERANGE;
     }
 
@@ -124,12 +122,10 @@ static int fill_passwd(struct passwd *pwd, char *buf, size_t buflen, uid_t uid, 
  *
  * @see getpwnam_r, getpwuid, getpwent
  */
-struct passwd *getpwnam(const char *name)
-{
+struct passwd *getpwnam(const char *name) {
     struct passwd *result;
 
-    if (getpwnam_r(name, &static_pwd, static_buf, sizeof(static_buf), &result) != 0)
-    {
+    if (getpwnam_r(name, &static_pwd, static_buf, sizeof(static_buf), &result) != 0) {
         return NULL;
     }
 
@@ -157,12 +153,10 @@ struct passwd *getpwnam(const char *name)
  *
  * @see getpwuid_r, getpwnam, getpwent
  */
-struct passwd *getpwuid(uid_t uid)
-{
+struct passwd *getpwuid(uid_t uid) {
     struct passwd *result;
 
-    if (getpwuid_r(uid, &static_pwd, static_buf, sizeof(static_buf), &result) != 0)
-    {
+    if (getpwuid_r(uid, &static_pwd, static_buf, sizeof(static_buf), &result) != 0) {
         return NULL;
     }
 
@@ -191,10 +185,8 @@ struct passwd *getpwuid(uid_t uid)
  * @see getpwnam, getpwuid_r
  */
 int getpwnam_r(
-    const char *name, struct passwd *pwd, char *buf, size_t buflen, struct passwd **result)
-{
-    if (!name || !pwd || !buf || !result)
-    {
+    const char *name, struct passwd *pwd, char *buf, size_t buflen, struct passwd **result) {
+    if (!name || !pwd || !buf || !result) {
         if (result)
             *result = NULL;
         return EINVAL;
@@ -203,16 +195,13 @@ int getpwnam_r(
     *result = NULL;
 
     /* ViperDOS is single-user - only "viper" and "root" exist */
-    if (strcmp(name, "viper") == 0)
-    {
+    if (strcmp(name, "viper") == 0) {
         int err = fill_passwd(pwd, buf, buflen, 1000, "viper");
         if (err != 0)
             return err;
         *result = pwd;
         return 0;
-    }
-    else if (strcmp(name, "root") == 0)
-    {
+    } else if (strcmp(name, "root") == 0) {
         int err = fill_passwd(pwd, buf, buflen, 0, "root");
         if (err != 0)
             return err;
@@ -241,10 +230,8 @@ int getpwnam_r(
  *
  * @see getpwuid, getpwnam_r
  */
-int getpwuid_r(uid_t uid, struct passwd *pwd, char *buf, size_t buflen, struct passwd **result)
-{
-    if (!pwd || !buf || !result)
-    {
+int getpwuid_r(uid_t uid, struct passwd *pwd, char *buf, size_t buflen, struct passwd **result) {
+    if (!pwd || !buf || !result) {
         if (result)
             *result = NULL;
         return EINVAL;
@@ -253,16 +240,13 @@ int getpwuid_r(uid_t uid, struct passwd *pwd, char *buf, size_t buflen, struct p
     *result = NULL;
 
     /* ViperDOS has uid 0 = root, uid 1000 = viper */
-    if (uid == 0)
-    {
+    if (uid == 0) {
         int err = fill_passwd(pwd, buf, buflen, 0, "root");
         if (err != 0)
             return err;
         *result = pwd;
         return 0;
-    }
-    else if (uid == 1000 || uid == (uid_t)-1)
-    {
+    } else if (uid == 1000 || uid == (uid_t)-1) {
         /* Treat any other uid as viper for compatibility */
         int err = fill_passwd(pwd, buf, buflen, 1000, "viper");
         if (err != 0)
@@ -288,8 +272,7 @@ int getpwuid_r(uid_t uid, struct passwd *pwd, char *buf, size_t buflen, struct p
  *
  * @see endpwent, getpwent
  */
-void setpwent(void)
-{
+void setpwent(void) {
     pwd_index = 0;
 }
 
@@ -305,8 +288,7 @@ void setpwent(void)
  *
  * @see setpwent, getpwent
  */
-void endpwent(void)
-{
+void endpwent(void) {
     pwd_index = 0;
 }
 
@@ -328,24 +310,20 @@ void endpwent(void)
  *
  * @see setpwent, endpwent, getpwnam, getpwuid
  */
-struct passwd *getpwent(void)
-{
+struct passwd *getpwent(void) {
     struct passwd *result = NULL;
 
-    switch (pwd_index)
-    {
+    switch (pwd_index) {
         case 0:
             /* Return root entry */
-            if (fill_passwd(&static_pwd, static_buf, sizeof(static_buf), 0, "root") == 0)
-            {
+            if (fill_passwd(&static_pwd, static_buf, sizeof(static_buf), 0, "root") == 0) {
                 result = &static_pwd;
             }
             break;
 
         case 1:
             /* Return viper entry */
-            if (fill_passwd(&static_pwd, static_buf, sizeof(static_buf), 1000, "viper") == 0)
-            {
+            if (fill_passwd(&static_pwd, static_buf, sizeof(static_buf), 1000, "viper") == 0) {
                 result = &static_pwd;
             }
             break;

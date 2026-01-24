@@ -7,8 +7,7 @@
 #define _FMTMSG_H
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 /*
@@ -66,40 +65,40 @@ extern "C"
 #define MM_NOMSG 1    /* Unable to generate message on stderr */
 #define MM_NOCON 2    /* Unable to generate message on console */
 
-    /*
-     * Display a formatted message.
-     *
-     * classification - Identifies source and handling
-     * label - Identifies message source (max 10 chars)
-     * severity - Indicates urgency
-     * text - Describes the condition
-     * action - Describes action to take
-     * tag - Unique identifier (e.g., "PROJ:msgid")
-     *
-     * Returns:
-     *   MM_OK     - Success
-     *   MM_NOTOK  - Complete failure
-     *   MM_NOMSG  - Failed to write to stderr
-     *   MM_NOCON  - Failed to write to console
-     */
-    int fmtmsg(long classification,
-               const char *label,
-               int severity,
-               const char *text,
-               const char *action,
-               const char *tag);
+/*
+ * Display a formatted message.
+ *
+ * classification - Identifies source and handling
+ * label - Identifies message source (max 10 chars)
+ * severity - Indicates urgency
+ * text - Describes the condition
+ * action - Describes action to take
+ * tag - Unique identifier (e.g., "PROJ:msgid")
+ *
+ * Returns:
+ *   MM_OK     - Success
+ *   MM_NOTOK  - Complete failure
+ *   MM_NOMSG  - Failed to write to stderr
+ *   MM_NOCON  - Failed to write to console
+ */
+int fmtmsg(long classification,
+           const char *label,
+           int severity,
+           const char *text,
+           const char *action,
+           const char *tag);
 
-    /*
-     * Add a severity level.
-     *
-     * severity - Severity value
-     * string - Text to display for this severity
-     *
-     * Returns:
-     *   MM_OK     - Success
-     *   MM_NOTOK  - Failure
-     */
-    int addseverity(int severity, const char *string);
+/*
+ * Add a severity level.
+ *
+ * severity - Severity value
+ * string - Text to display for this severity
+ *
+ * Returns:
+ *   MM_OK     - Success
+ *   MM_NOTOK  - Failure
+ */
+int addseverity(int severity, const char *string);
 
 #ifdef __cplusplus
 }

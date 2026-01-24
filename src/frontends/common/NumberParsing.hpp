@@ -77,8 +77,7 @@ struct ParsedNumber
         // The value 9223372036854775808 overflows int64_t but is exactly -INT64_MIN,
         // which is valid when negated (e.g., "-9223372036854775808").
         uint64_t unsignedValue = 0;
-        auto parseResult =
-            std::from_chars(text.data(), text.data() + text.size(), unsignedValue);
+        auto parseResult = std::from_chars(text.data(), text.data() + text.size(), unsignedValue);
 
         if (parseResult.ec == std::errc::result_out_of_range)
         {
@@ -137,8 +136,7 @@ struct ParsedNumber
     // Hex literals are treated as bit patterns, so values like 0x8000000000000000
     // become negative when interpreted as signed (INT64_MIN).
     uint64_t unsignedValue = 0;
-    auto parseResult =
-        std::from_chars(text.data(), text.data() + text.size(), unsignedValue, 16);
+    auto parseResult = std::from_chars(text.data(), text.data() + text.size(), unsignedValue, 16);
 
     if (parseResult.ec == std::errc::result_out_of_range)
     {

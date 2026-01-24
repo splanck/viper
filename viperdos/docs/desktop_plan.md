@@ -2,7 +2,8 @@
 
 ## Overview
 
-This document outlines the complete implementation plan for transforming ViperDOS's existing GUI infrastructure into a fully functional desktop environment with interactive applications.
+This document outlines the complete implementation plan for transforming ViperDOS's existing GUI infrastructure into a
+fully functional desktop environment with interactive applications.
 
 **Current State**: Windows display, mouse cursor works, but apps cannot receive input events.
 
@@ -1235,6 +1236,7 @@ public:
 `user/terminal/main.cpp`:
 
 Features:
+
 - VT100/ANSI escape sequence parsing
 - Scrollback buffer (reuse gcon logic)
 - Copy/paste support
@@ -1246,6 +1248,7 @@ Features:
 `user/gui_edit/main.cpp`:
 
 Features:
+
 - Syntax highlighting (optional)
 - Line numbers
 - Find/replace
@@ -1257,6 +1260,7 @@ Features:
 `user/files/main.cpp`:
 
 Features:
+
 - Directory listing (ListView)
 - Icon view (future)
 - File operations (copy, move, delete)
@@ -1269,6 +1273,7 @@ Features:
 `user/settings/main.cpp`:
 
 Features:
+
 - Display settings (resolution, wallpaper)
 - Sound settings (future)
 - Network settings
@@ -1314,37 +1319,38 @@ Week 9+: Phase 5 (Applications)
 
 ### New Files
 
-| File | Purpose |
-|------|---------|
-| `user/taskbar/main.cpp` | Taskbar application |
-| `user/taskbar/CMakeLists.txt` | Build config |
-| `user/libwidget/widget.hpp` | Widget base class |
-| `user/libwidget/widget.cpp` | Widget implementation |
-| `user/libwidget/button.cpp` | Button widget |
-| `user/libwidget/textbox.cpp` | TextBox widget |
-| `user/libwidget/listview.cpp` | ListView widget |
-| `user/libwidget/layout.cpp` | Layout system |
-| `user/libwidget/dialog.cpp` | Dialog boxes |
-| `user/terminal/main.cpp` | Terminal emulator |
-| `user/files/main.cpp` | File manager |
-| `user/settings/main.cpp` | Settings app |
-| `user/gui_edit/main.cpp` | GUI text editor |
+| File                          | Purpose               |
+|-------------------------------|-----------------------|
+| `user/taskbar/main.cpp`       | Taskbar application   |
+| `user/taskbar/CMakeLists.txt` | Build config          |
+| `user/libwidget/widget.hpp`   | Widget base class     |
+| `user/libwidget/widget.cpp`   | Widget implementation |
+| `user/libwidget/button.cpp`   | Button widget         |
+| `user/libwidget/textbox.cpp`  | TextBox widget        |
+| `user/libwidget/listview.cpp` | ListView widget       |
+| `user/libwidget/layout.cpp`   | Layout system         |
+| `user/libwidget/dialog.cpp`   | Dialog boxes          |
+| `user/terminal/main.cpp`      | Terminal emulator     |
+| `user/files/main.cpp`         | File manager          |
+| `user/settings/main.cpp`      | Settings app          |
+| `user/gui_edit/main.cpp`      | GUI text editor       |
 
 ### Modified Files
 
-| File | Changes |
-|------|---------|
-| `user/servers/displayd/main.cpp` | Event queues, routing, z-order |
-| `user/servers/displayd/display_protocol.hpp` | Event protocol |
-| `user/libgui/include/gui.h` | Event API |
-| `user/libgui/src/gui.cpp` | Event implementation |
-| `CMakeLists.txt` | New build targets |
+| File                                         | Changes                        |
+|----------------------------------------------|--------------------------------|
+| `user/servers/displayd/main.cpp`             | Event queues, routing, z-order |
+| `user/servers/displayd/display_protocol.hpp` | Event protocol                 |
+| `user/libgui/include/gui.h`                  | Event API                      |
+| `user/libgui/src/gui.cpp`                    | Event implementation           |
+| `CMakeLists.txt`                             | New build targets              |
 
 ---
 
 ## Testing Checklist
 
 ### Phase 1
+
 - [ ] Mouse click events delivered to windows
 - [ ] Mouse move events delivered to focused window
 - [ ] Keyboard events delivered to focused window
@@ -1353,6 +1359,7 @@ Week 9+: Phase 5 (Applications)
 - [ ] Multiple windows receive independent events
 
 ### Phase 2
+
 - [ ] Click on window brings to front
 - [ ] Window dragging works
 - [ ] Window resizing works from all edges
@@ -1361,6 +1368,7 @@ Week 9+: Phase 5 (Applications)
 - [ ] Restore returns to previous size
 
 ### Phase 3
+
 - [ ] Taskbar displays running windows
 - [ ] Clicking taskbar button activates window
 - [ ] Start menu opens on click
@@ -1369,6 +1377,7 @@ Week 9+: Phase 5 (Applications)
 - [ ] Desktop background displays
 
 ### Phase 4
+
 - [ ] Button click callback fires
 - [ ] TextBox accepts keyboard input
 - [ ] ListView selection works
@@ -1376,6 +1385,7 @@ Week 9+: Phase 5 (Applications)
 - [ ] Dialogs display modally
 
 ### Phase 5
+
 - [ ] Terminal runs shell commands
 - [ ] File manager lists directories
 - [ ] Settings changes persist

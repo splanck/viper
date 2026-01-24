@@ -58,10 +58,8 @@
 /*
  * posix_spawnattr_init - Initialize spawn attributes
  */
-int posix_spawnattr_init(posix_spawnattr_t *attr)
-{
-    if (!attr)
-    {
+int posix_spawnattr_init(posix_spawnattr_t *attr) {
+    if (!attr) {
         return EINVAL;
     }
 
@@ -78,10 +76,8 @@ int posix_spawnattr_init(posix_spawnattr_t *attr)
 /*
  * posix_spawnattr_destroy - Destroy spawn attributes
  */
-int posix_spawnattr_destroy(posix_spawnattr_t *attr)
-{
-    if (!attr)
-    {
+int posix_spawnattr_destroy(posix_spawnattr_t *attr) {
+    if (!attr) {
         return EINVAL;
     }
     /* Nothing to free */
@@ -91,10 +87,8 @@ int posix_spawnattr_destroy(posix_spawnattr_t *attr)
 /*
  * posix_spawnattr_getflags - Get spawn attribute flags
  */
-int posix_spawnattr_getflags(const posix_spawnattr_t *attr, short *flags)
-{
-    if (!attr || !flags)
-    {
+int posix_spawnattr_getflags(const posix_spawnattr_t *attr, short *flags) {
+    if (!attr || !flags) {
         return EINVAL;
     }
     *flags = attr->flags;
@@ -104,10 +98,8 @@ int posix_spawnattr_getflags(const posix_spawnattr_t *attr, short *flags)
 /*
  * posix_spawnattr_setflags - Set spawn attribute flags
  */
-int posix_spawnattr_setflags(posix_spawnattr_t *attr, short flags)
-{
-    if (!attr)
-    {
+int posix_spawnattr_setflags(posix_spawnattr_t *attr, short flags) {
+    if (!attr) {
         return EINVAL;
     }
     attr->flags = flags;
@@ -117,10 +109,8 @@ int posix_spawnattr_setflags(posix_spawnattr_t *attr, short flags)
 /*
  * posix_spawnattr_getpgroup - Get process group
  */
-int posix_spawnattr_getpgroup(const posix_spawnattr_t *attr, pid_t *pgroup)
-{
-    if (!attr || !pgroup)
-    {
+int posix_spawnattr_getpgroup(const posix_spawnattr_t *attr, pid_t *pgroup) {
+    if (!attr || !pgroup) {
         return EINVAL;
     }
     *pgroup = attr->pgroup;
@@ -130,10 +120,8 @@ int posix_spawnattr_getpgroup(const posix_spawnattr_t *attr, pid_t *pgroup)
 /*
  * posix_spawnattr_setpgroup - Set process group
  */
-int posix_spawnattr_setpgroup(posix_spawnattr_t *attr, pid_t pgroup)
-{
-    if (!attr)
-    {
+int posix_spawnattr_setpgroup(posix_spawnattr_t *attr, pid_t pgroup) {
+    if (!attr) {
         return EINVAL;
     }
     attr->pgroup = pgroup;
@@ -143,10 +131,8 @@ int posix_spawnattr_setpgroup(posix_spawnattr_t *attr, pid_t pgroup)
 /*
  * posix_spawnattr_getsigdefault - Get default signals
  */
-int posix_spawnattr_getsigdefault(const posix_spawnattr_t *attr, sigset_t *sigdefault)
-{
-    if (!attr || !sigdefault)
-    {
+int posix_spawnattr_getsigdefault(const posix_spawnattr_t *attr, sigset_t *sigdefault) {
+    if (!attr || !sigdefault) {
         return EINVAL;
     }
     *sigdefault = attr->sigdefault;
@@ -156,10 +142,8 @@ int posix_spawnattr_getsigdefault(const posix_spawnattr_t *attr, sigset_t *sigde
 /*
  * posix_spawnattr_setsigdefault - Set default signals
  */
-int posix_spawnattr_setsigdefault(posix_spawnattr_t *attr, const sigset_t *sigdefault)
-{
-    if (!attr || !sigdefault)
-    {
+int posix_spawnattr_setsigdefault(posix_spawnattr_t *attr, const sigset_t *sigdefault) {
+    if (!attr || !sigdefault) {
         return EINVAL;
     }
     attr->sigdefault = *sigdefault;
@@ -169,10 +153,8 @@ int posix_spawnattr_setsigdefault(posix_spawnattr_t *attr, const sigset_t *sigde
 /*
  * posix_spawnattr_getsigmask - Get signal mask
  */
-int posix_spawnattr_getsigmask(const posix_spawnattr_t *attr, sigset_t *sigmask)
-{
-    if (!attr || !sigmask)
-    {
+int posix_spawnattr_getsigmask(const posix_spawnattr_t *attr, sigset_t *sigmask) {
+    if (!attr || !sigmask) {
         return EINVAL;
     }
     *sigmask = attr->sigmask;
@@ -182,10 +164,8 @@ int posix_spawnattr_getsigmask(const posix_spawnattr_t *attr, sigset_t *sigmask)
 /*
  * posix_spawnattr_setsigmask - Set signal mask
  */
-int posix_spawnattr_setsigmask(posix_spawnattr_t *attr, const sigset_t *sigmask)
-{
-    if (!attr || !sigmask)
-    {
+int posix_spawnattr_setsigmask(posix_spawnattr_t *attr, const sigset_t *sigmask) {
+    if (!attr || !sigmask) {
         return EINVAL;
     }
     attr->sigmask = *sigmask;
@@ -195,10 +175,8 @@ int posix_spawnattr_setsigmask(posix_spawnattr_t *attr, const sigset_t *sigmask)
 /*
  * posix_spawnattr_getschedpolicy - Get scheduling policy
  */
-int posix_spawnattr_getschedpolicy(const posix_spawnattr_t *attr, int *policy)
-{
-    if (!attr || !policy)
-    {
+int posix_spawnattr_getschedpolicy(const posix_spawnattr_t *attr, int *policy) {
+    if (!attr || !policy) {
         return EINVAL;
     }
     *policy = attr->schedpolicy;
@@ -208,10 +186,8 @@ int posix_spawnattr_getschedpolicy(const posix_spawnattr_t *attr, int *policy)
 /*
  * posix_spawnattr_setschedpolicy - Set scheduling policy
  */
-int posix_spawnattr_setschedpolicy(posix_spawnattr_t *attr, int policy)
-{
-    if (!attr)
-    {
+int posix_spawnattr_setschedpolicy(posix_spawnattr_t *attr, int policy) {
+    if (!attr) {
         return EINVAL;
     }
     attr->schedpolicy = policy;
@@ -221,10 +197,8 @@ int posix_spawnattr_setschedpolicy(posix_spawnattr_t *attr, int policy)
 /*
  * posix_spawnattr_getschedparam - Get scheduling parameters
  */
-int posix_spawnattr_getschedparam(const posix_spawnattr_t *attr, struct sched_param *param)
-{
-    if (!attr || !param)
-    {
+int posix_spawnattr_getschedparam(const posix_spawnattr_t *attr, struct sched_param *param) {
+    if (!attr || !param) {
         return EINVAL;
     }
     *param = attr->schedparam;
@@ -234,10 +208,8 @@ int posix_spawnattr_getschedparam(const posix_spawnattr_t *attr, struct sched_pa
 /*
  * posix_spawnattr_setschedparam - Set scheduling parameters
  */
-int posix_spawnattr_setschedparam(posix_spawnattr_t *attr, const struct sched_param *param)
-{
-    if (!attr || !param)
-    {
+int posix_spawnattr_setschedparam(posix_spawnattr_t *attr, const struct sched_param *param) {
+    if (!attr || !param) {
         return EINVAL;
     }
     attr->schedparam = *param;
@@ -251,10 +223,8 @@ int posix_spawnattr_setschedparam(posix_spawnattr_t *attr, const struct sched_pa
 /*
  * posix_spawn_file_actions_init - Initialize file actions
  */
-int posix_spawn_file_actions_init(posix_spawn_file_actions_t *file_actions)
-{
-    if (!file_actions)
-    {
+int posix_spawn_file_actions_init(posix_spawn_file_actions_t *file_actions) {
+    if (!file_actions) {
         return EINVAL;
     }
 
@@ -268,18 +238,14 @@ int posix_spawn_file_actions_init(posix_spawn_file_actions_t *file_actions)
 /*
  * posix_spawn_file_actions_destroy - Destroy file actions
  */
-int posix_spawn_file_actions_destroy(posix_spawn_file_actions_t *file_actions)
-{
-    if (!file_actions)
-    {
+int posix_spawn_file_actions_destroy(posix_spawn_file_actions_t *file_actions) {
+    if (!file_actions) {
         return EINVAL;
     }
 
     /* Free any open action paths */
-    for (int i = 0; i < file_actions->used; i++)
-    {
-        if (file_actions->actions[i].type == SPAWN_ACTION_OPEN)
-        {
+    for (int i = 0; i < file_actions->used; i++) {
+        if (file_actions->actions[i].type == SPAWN_ACTION_OPEN) {
             free(file_actions->actions[i].open_action.path);
         }
     }
@@ -295,15 +261,12 @@ int posix_spawn_file_actions_destroy(posix_spawn_file_actions_t *file_actions)
 /*
  * add_action - Add an action to the list
  */
-static int add_action(posix_spawn_file_actions_t *file_actions)
-{
-    if (file_actions->used >= file_actions->allocated)
-    {
+static int add_action(posix_spawn_file_actions_t *file_actions) {
+    if (file_actions->used >= file_actions->allocated) {
         int new_size = file_actions->allocated ? file_actions->allocated * 2 : 8;
         struct spawn_action *new_actions = (struct spawn_action *)realloc(
             file_actions->actions, new_size * sizeof(struct spawn_action));
-        if (!new_actions)
-        {
+        if (!new_actions) {
             return ENOMEM;
         }
         file_actions->actions = new_actions;
@@ -315,16 +278,13 @@ static int add_action(posix_spawn_file_actions_t *file_actions)
 /*
  * posix_spawn_file_actions_addclose - Add close action
  */
-int posix_spawn_file_actions_addclose(posix_spawn_file_actions_t *file_actions, int fd)
-{
-    if (!file_actions || fd < 0)
-    {
+int posix_spawn_file_actions_addclose(posix_spawn_file_actions_t *file_actions, int fd) {
+    if (!file_actions || fd < 0) {
         return EINVAL;
     }
 
     int err = add_action(file_actions);
-    if (err)
-    {
+    if (err) {
         return err;
     }
 
@@ -338,16 +298,13 @@ int posix_spawn_file_actions_addclose(posix_spawn_file_actions_t *file_actions, 
 /*
  * posix_spawn_file_actions_adddup2 - Add dup2 action
  */
-int posix_spawn_file_actions_adddup2(posix_spawn_file_actions_t *file_actions, int fd, int newfd)
-{
-    if (!file_actions || fd < 0 || newfd < 0)
-    {
+int posix_spawn_file_actions_adddup2(posix_spawn_file_actions_t *file_actions, int fd, int newfd) {
+    if (!file_actions || fd < 0 || newfd < 0) {
         return EINVAL;
     }
 
     int err = add_action(file_actions);
-    if (err)
-    {
+    if (err) {
         return err;
     }
 
@@ -363,22 +320,18 @@ int posix_spawn_file_actions_adddup2(posix_spawn_file_actions_t *file_actions, i
  * posix_spawn_file_actions_addopen - Add open action
  */
 int posix_spawn_file_actions_addopen(
-    posix_spawn_file_actions_t *file_actions, int fd, const char *path, int oflag, mode_t mode)
-{
-    if (!file_actions || fd < 0 || !path)
-    {
+    posix_spawn_file_actions_t *file_actions, int fd, const char *path, int oflag, mode_t mode) {
+    if (!file_actions || fd < 0 || !path) {
         return EINVAL;
     }
 
     int err = add_action(file_actions);
-    if (err)
-    {
+    if (err) {
         return err;
     }
 
     char *path_copy = strdup(path);
-    if (!path_copy)
-    {
+    if (!path_copy) {
         return ENOMEM;
     }
 
@@ -395,8 +348,8 @@ int posix_spawn_file_actions_addopen(
 /*
  * posix_spawn_file_actions_addchdir_np - Add chdir action (extension)
  */
-int posix_spawn_file_actions_addchdir_np(posix_spawn_file_actions_t *file_actions, const char *path)
-{
+int posix_spawn_file_actions_addchdir_np(posix_spawn_file_actions_t *file_actions,
+                                         const char *path) {
     (void)file_actions;
     (void)path;
     /* Not implemented in ViperDOS */
@@ -406,8 +359,7 @@ int posix_spawn_file_actions_addchdir_np(posix_spawn_file_actions_t *file_action
 /*
  * posix_spawn_file_actions_addfchdir_np - Add fchdir action (extension)
  */
-int posix_spawn_file_actions_addfchdir_np(posix_spawn_file_actions_t *file_actions, int fd)
-{
+int posix_spawn_file_actions_addfchdir_np(posix_spawn_file_actions_t *file_actions, int fd) {
     (void)file_actions;
     (void)fd;
     /* Not implemented in ViperDOS */
@@ -428,8 +380,7 @@ int posix_spawn(pid_t *pid,
                 const posix_spawn_file_actions_t *file_actions,
                 const posix_spawnattr_t *attrp,
                 char *const argv[],
-                char *const envp[])
-{
+                char *const envp[]) {
     (void)pid;
     (void)path;
     (void)file_actions;
@@ -449,8 +400,7 @@ int posix_spawnp(pid_t *pid,
                  const posix_spawn_file_actions_t *file_actions,
                  const posix_spawnattr_t *attrp,
                  char *const argv[],
-                 char *const envp[])
-{
+                 char *const envp[]) {
     (void)pid;
     (void)file;
     (void)file_actions;

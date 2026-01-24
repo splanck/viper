@@ -56,8 +56,7 @@ static const char *facility_names[] __attribute__((unused)) = {
 /*
  * openlog - Open connection to system logger
  */
-void openlog(const char *ident, int option, int facility)
-{
+void openlog(const char *ident, int option, int facility) {
     log_ident = ident;
     log_option = option;
     log_facility = facility & LOG_FACMASK;
@@ -69,8 +68,7 @@ void openlog(const char *ident, int option, int facility)
 /*
  * closelog - Close connection to system logger
  */
-void closelog(void)
-{
+void closelog(void) {
     log_ident = NULL;
     log_option = 0;
     log_facility = LOG_USER;
@@ -79,11 +77,9 @@ void closelog(void)
 /*
  * setlogmask - Set the log priority mask
  */
-int setlogmask(int mask)
-{
+int setlogmask(int mask) {
     int old_mask = log_mask;
-    if (mask != 0)
-    {
+    if (mask != 0) {
         log_mask = mask;
     }
     return old_mask;
@@ -92,20 +88,17 @@ int setlogmask(int mask)
 /*
  * vsyslog - Generate a log message (va_list version)
  */
-void vsyslog(int priority, const char *format, va_list ap)
-{
+void vsyslog(int priority, const char *format, va_list ap) {
     int pri = LOG_PRI(priority);
     int fac = priority & LOG_FACMASK;
 
     /* If no facility specified, use default */
-    if (fac == 0)
-    {
+    if (fac == 0) {
         fac = log_facility;
     }
 
     /* Check if this priority is enabled */
-    if (!(log_mask & LOG_MASK(pri)))
-    {
+    if (!(log_mask & LOG_MASK(pri))) {
         return;
     }
 
@@ -117,8 +110,7 @@ void vsyslog(int priority, const char *format, va_list ap)
     /* Add timestamp */
     time_t now = time(NULL);
     struct tm *tm = localtime(&now);
-    if (tm)
-    {
+    if (tm) {
         static const char *months[] = {
             "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
         int len = snprintf(p,
@@ -134,15 +126,13 @@ void vsyslog(int priority, const char *format, va_list ap)
     }
 
     /* Add ident if set */
-    if (log_ident)
-    {
+    if (log_ident) {
         int len = snprintf(p, end - p, "%s", log_ident);
         if (len > 0)
             p += len;
 
         /* Add PID if requested */
-        if (log_option & LOG_PID)
-        {
+        if (log_option & LOG_PID) {
             len = snprintf(p, end - p, "[%d]", (int)getpid());
             if (len > 0)
                 p += len;
@@ -155,8 +145,7 @@ void vsyslog(int priority, const char *format, va_list ap)
     }
 
     /* Add priority prefix */
-    if (pri >= 0 && pri <= LOG_DEBUG)
-    {
+    if (pri >= 0 && pri <= LOG_DEBUG) {
         int len = snprintf(p, end - p, "<%s> ", priority_names[pri]);
         if (len > 0)
             p += len;
@@ -164,8 +153,7 @@ void vsyslog(int priority, const char *format, va_list ap)
 
     /* Format the message */
     int remaining = end - p;
-    if (remaining > 0)
-    {
+    if (remaining > 0) {
         /* Handle %m for errno message */
         /* For simplicity, just format directly */
         int len = vsnprintf(p, remaining, format, ap);
@@ -174,8 +162,7 @@ void vsyslog(int priority, const char *format, va_list ap)
     }
 
     /* Ensure newline */
-    if (p > buffer && *(p - 1) != '\n')
-    {
+    if (p > buffer && *(p - 1) != '\n') {
         if (p < end)
             *p++ = '\n';
     }
@@ -194,8 +181,7 @@ void vsyslog(int priority, const char *format, va_list ap)
 /*
  * syslog - Generate a log message
  */
-void syslog(int priority, const char *format, ...)
-{
+void syslog(int priority, const char *format, ...) {
     va_list ap;
     va_start(ap, format);
     vsyslog(priority, format, ap);

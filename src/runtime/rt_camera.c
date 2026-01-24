@@ -18,17 +18,17 @@
 /// @brief Camera implementation structure.
 typedef struct rt_camera_impl
 {
-    int64_t x;           ///< Camera X position (world coordinates)
-    int64_t y;           ///< Camera Y position (world coordinates)
-    int64_t width;       ///< Viewport width
-    int64_t height;      ///< Viewport height
-    int64_t zoom;        ///< Zoom level (100 = 100%)
-    int64_t rotation;    ///< Rotation in degrees
-    int64_t has_bounds;  ///< Whether bounds are set
-    int64_t min_x;       ///< Minimum X bound
-    int64_t min_y;       ///< Minimum Y bound
-    int64_t max_x;       ///< Maximum X bound
-    int64_t max_y;       ///< Maximum Y bound
+    int64_t x;          ///< Camera X position (world coordinates)
+    int64_t y;          ///< Camera Y position (world coordinates)
+    int64_t width;      ///< Viewport width
+    int64_t height;     ///< Viewport height
+    int64_t zoom;       ///< Zoom level (100 = 100%)
+    int64_t rotation;   ///< Rotation in degrees
+    int64_t has_bounds; ///< Whether bounds are set
+    int64_t min_x;      ///< Minimum X bound
+    int64_t min_y;      ///< Minimum Y bound
+    int64_t max_x;      ///< Maximum X bound
+    int64_t max_y;      ///< Maximum Y bound
 } rt_camera_impl;
 
 /// @brief Clamp camera position to bounds.

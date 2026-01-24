@@ -29,27 +29,24 @@
  */
 
 #include "../include/desktop.hpp"
-#include "../include/filebrowser.hpp"
+#include "../../../syscall.hpp" // For assign_list()
 #include "../include/colors.hpp"
+#include "../include/filebrowser.hpp"
 #include "../include/icons.hpp"
 #include "../include/utils.hpp"
 #include <gui.h>
-#include <string.h>
 #include <stdint.h>
 #include <stdio.h>
-#include "../../../syscall.hpp"  // For assign_list()
+#include <string.h>
 
-using sys::AssignInfo;
 using sys::assign_list;
+using sys::AssignInfo;
 
 namespace workbench {
 
-Desktop::Desktop()
-{
-}
+Desktop::Desktop() {}
 
-Desktop::~Desktop()
-{
+Desktop::~Desktop() {
     // Close any open file browsers
     for (int i = 0; i < m_browserCount; i++) {
         if (m_browsers[i]) {
@@ -71,8 +68,7 @@ Desktop::~Desktop()
     gui_shutdown();
 }
 
-bool Desktop::init()
-{
+bool Desktop::init() {
     // Initialize GUI
     if (gui_init() != 0) {
         return false;
@@ -86,8 +82,8 @@ bool Desktop::init()
     }
 
     // Create full-screen desktop surface
-    m_window = gui_create_window_ex("Workbench", m_width, m_height,
-                                     GUI_FLAG_SYSTEM | GUI_FLAG_NO_DECORATIONS);
+    m_window = gui_create_window_ex(
+        "Workbench", m_width, m_height, GUI_FLAG_SYSTEM | GUI_FLAG_NO_DECORATIONS);
     if (!m_window) {
         gui_shutdown();
         return false;
@@ -100,9 +96,12 @@ bool Desktop::init()
     discoverVolumes();
 
     // Add system icons after volumes
-    m_icons[m_iconCount++] = { 0, 0, "Shell", "/sys/consoled.sys", icons::shell_24, IconAction::LaunchProgram, false };
-    m_icons[m_iconCount++] = { 0, 0, "Prefs", nullptr, icons::settings_24, IconAction::ShowDialog, false };
-    m_icons[m_iconCount++] = { 0, 0, "Help", nullptr, icons::about_24, IconAction::ShowDialog, false };
+    m_icons[m_iconCount++] = {
+        0, 0, "Shell", "/sys/consoled.sys", icons::shell_24, IconAction::LaunchProgram, false};
+    m_icons[m_iconCount++] = {
+        0, 0, "Prefs", "/c/prefs.prg", icons::settings_24, IconAction::LaunchProgram, false};
+    m_icons[m_iconCount++] = {
+        0, 0, "Help", nullptr, icons::about_24, IconAction::ShowDialog, false};
 
     // Layout and draw
     layoutIcons();
@@ -111,8 +110,7 @@ bool Desktop::init()
     return true;
 }
 
-void Desktop::run()
-{
+void Desktop::run() {
     while (true) {
         // Handle desktop events
         gui_event_t event;
@@ -128,13 +126,12 @@ void Desktop::run()
 
         // Yield to other processes
         __asm__ volatile("mov x8, #0x0E\n\t"
-                         "svc #0"
-                         ::: "x8");
+                         "svc #0" ::
+                             : "x8");
     }
 }
 
-void Desktop::openFileBrowser(const char *path)
-{
+void Desktop::openFileBrowser(const char *path) {
     // Check if we have room for another browser
     if (m_browserCount >= MAX_BROWSERS) {
         debug_serial("[workbench] Max browsers reached\n");
@@ -154,8 +151,7 @@ void Desktop::openFileBrowser(const char *path)
     debug_serial("[workbench] Opened file browser\n");
 }
 
-void Desktop::closeFileBrowser(FileBrowser *browser)
-{
+void Desktop::closeFileBrowser(FileBrowser *browser) {
     // Find and remove from our list
     for (int i = 0; i < m_browserCount; i++) {
         if (m_browsers[i] == browser) {
@@ -171,8 +167,7 @@ void Desktop::closeFileBrowser(FileBrowser *browser)
     }
 }
 
-void Desktop::spawnProgram(const char *path)
-{
+void Desktop::spawnProgram(const char *path) {
     debug_serial("[workbench] Spawning: ");
     debug_serial(path);
     debug_serial("\n");
@@ -182,33 +177,28 @@ void Desktop::spawnProgram(const char *path)
     uint64_t pid = 0, tid = 0;
     int64_t result;
 
-    __asm__ volatile(
-        "mov x0, %[path]\n\t"
-        "mov x1, xzr\n\t"       // name = NULL
-        "mov x2, xzr\n\t"       // args = NULL
-        "mov x8, #0x03\n\t"     // SYS_TASK_SPAWN
-        "svc #0\n\t"
-        "mov %[result], x0\n\t"
-        "mov %[pid], x1\n\t"
-        "mov %[tid], x2\n\t"
-        : [result] "=r" (result), [pid] "=r" (pid), [tid] "=r" (tid)
-        : [path] "r" (path)
-        : "x0", "x1", "x2", "x8", "memory"
-    );
+    __asm__ volatile("mov x0, %[path]\n\t"
+                     "mov x1, xzr\n\t"   // name = NULL
+                     "mov x2, xzr\n\t"   // args = NULL
+                     "mov x8, #0x03\n\t" // SYS_TASK_SPAWN
+                     "svc #0\n\t"
+                     "mov %[result], x0\n\t"
+                     "mov %[pid], x1\n\t"
+                     "mov %[tid], x2\n\t"
+                     : [result] "=r"(result), [pid] "=r"(pid), [tid] "=r"(tid)
+                     : [path] "r"(path)
+                     : "x0", "x1", "x2", "x8", "memory");
 
     (void)pid;
     (void)tid;
 }
 
-void Desktop::drawBackdrop()
-{
+void Desktop::drawBackdrop() {
     // Solid Workbench blue
-    gui_fill_rect(m_window, 0, MENU_BAR_HEIGHT, m_width,
-                  m_height - MENU_BAR_HEIGHT, WB_BLUE);
+    gui_fill_rect(m_window, 0, MENU_BAR_HEIGHT, m_width, m_height - MENU_BAR_HEIGHT, WB_BLUE);
 }
 
-void Desktop::drawMenuBar()
-{
+void Desktop::drawMenuBar() {
     // Menu bar background
     gui_fill_rect(m_window, 0, 0, m_width, MENU_BAR_HEIGHT, WB_GRAY_LIGHT);
 
@@ -227,19 +217,18 @@ void Desktop::drawMenuBar()
     gui_draw_text(m_window, m_width - 80, 6, "ViperDOS", WB_GRAY_DARK);
 }
 
-void Desktop::drawIconPixels(int x, int y, const uint32_t *pixels)
-{
+void Desktop::drawIconPixels(int x, int y, const uint32_t *pixels) {
     uint32_t *fb = gui_get_pixels(m_window);
     uint32_t stride = gui_get_stride(m_window) / 4;
 
     for (int py = 0; py < ICON_SIZE; py++) {
         for (int px = 0; px < ICON_SIZE; px++) {
             uint32_t color = pixels[py * ICON_SIZE + px];
-            if (color != 0) {  // 0 = transparent
+            if (color != 0) { // 0 = transparent
                 int dx = x + px;
                 int dy = y + py;
-                if (dx >= 0 && dx < static_cast<int>(m_width) &&
-                    dy >= 0 && dy < static_cast<int>(m_height)) {
+                if (dx >= 0 && dx < static_cast<int>(m_width) && dy >= 0 &&
+                    dy < static_cast<int>(m_height)) {
                     fb[dy * stride + dx] = color;
                 }
             }
@@ -247,8 +236,7 @@ void Desktop::drawIconPixels(int x, int y, const uint32_t *pixels)
     }
 }
 
-void Desktop::drawIcon(DesktopIcon &icon)
-{
+void Desktop::drawIcon(DesktopIcon &icon) {
     // Draw selection highlight if selected
     if (icon.selected) {
         // Orange highlight box behind icon
@@ -260,13 +248,12 @@ void Desktop::drawIcon(DesktopIcon &icon)
 
     // Draw label below icon (centered)
     int label_len = strlen(icon.label);
-    int label_x = icon.x + 12 - (label_len * 4);  // Center under 24px icon
+    int label_x = icon.x + 12 - (label_len * 4); // Center under 24px icon
     int label_y = icon.y + ICON_LABEL_OFFSET;
 
     // Label background for readability (if selected)
     if (icon.selected) {
-        gui_fill_rect(m_window, label_x - 2, label_y - 1,
-                      label_len * 8 + 4, 10, WB_ORANGE);
+        gui_fill_rect(m_window, label_x - 2, label_y - 1, label_len * 8 + 4, 10, WB_ORANGE);
         gui_draw_text(m_window, label_x, label_y, icon.label, WB_WHITE);
     } else {
         // Draw text with shadow for visibility on blue
@@ -275,23 +262,20 @@ void Desktop::drawIcon(DesktopIcon &icon)
     }
 }
 
-void Desktop::drawAllIcons()
-{
+void Desktop::drawAllIcons() {
     for (int i = 0; i < m_iconCount; i++) {
         drawIcon(m_icons[i]);
     }
 }
 
-void Desktop::redraw()
-{
+void Desktop::redraw() {
     drawBackdrop();
     drawMenuBar();
     drawAllIcons();
     gui_present(m_window);
 }
 
-void Desktop::layoutIcons()
-{
+void Desktop::layoutIcons() {
     int x = ICON_START_X;
     int y = ICON_START_Y;
 
@@ -307,8 +291,7 @@ void Desktop::layoutIcons()
     }
 }
 
-void Desktop::discoverVolumes()
-{
+void Desktop::discoverVolumes() {
     // Query available assigns (volumes) from the kernel
     AssignInfo assigns[16];
     usize count = 0;
@@ -319,7 +302,8 @@ void Desktop::discoverVolumes()
         // Fallback: add default SYS: icon
         static const char *sysLabel = "SYS:";
         static const char *sysTarget = "/";
-        m_icons[m_iconCount++] = { 0, 0, sysLabel, sysTarget, icons::disk_24, IconAction::OpenFileBrowser, false };
+        m_icons[m_iconCount++] = {
+            0, 0, sysLabel, sysTarget, icons::disk_24, IconAction::OpenFileBrowser, false};
         return;
     }
 
@@ -331,7 +315,7 @@ void Desktop::discoverVolumes()
 
     // Add volume icons for user-visible filesystem assigns
     // We store labels statically since DesktopIcon expects const char*
-    static char volumeLabels[12][32];  // Up to 12 volumes
+    static char volumeLabels[12][32]; // Up to 12 volumes
     static char volumePaths[12][MAX_PATH_LEN];
     int volumeIdx = 0;
 
@@ -345,14 +329,12 @@ void Desktop::discoverVolumes()
         }
 
         // Skip D0: (duplicate of SYS:) and internal assigns like CERTS:
-        if (strcmp(assigns[i].name, "D0") == 0 ||
-            strcmp(assigns[i].name, "CERTS") == 0) {
+        if (strcmp(assigns[i].name, "D0") == 0 || strcmp(assigns[i].name, "CERTS") == 0) {
             continue;
         }
 
         // Create label with colon suffix
-        snprintf(volumeLabels[volumeIdx], sizeof(volumeLabels[volumeIdx]),
-                 "%s:", assigns[i].name);
+        snprintf(volumeLabels[volumeIdx], sizeof(volumeLabels[volumeIdx]), "%s:", assigns[i].name);
 
         // Map common assigns to their paths
         if (strcmp(assigns[i].name, "SYS") == 0) {
@@ -367,8 +349,8 @@ void Desktop::discoverVolumes()
             strncpy(volumePaths[volumeIdx], "/t", sizeof(volumePaths[volumeIdx]) - 1);
         } else {
             // Default: use /name for the path (lowercase)
-            snprintf(volumePaths[volumeIdx], sizeof(volumePaths[volumeIdx]),
-                     "/%s", assigns[i].name);
+            snprintf(
+                volumePaths[volumeIdx], sizeof(volumePaths[volumeIdx]), "/%s", assigns[i].name);
             for (char *p = volumePaths[volumeIdx] + 1; *p; p++) {
                 if (*p >= 'A' && *p <= 'Z') {
                     *p = *p - 'A' + 'a';
@@ -383,14 +365,13 @@ void Desktop::discoverVolumes()
         debug_serial("\n");
 
         // Add icon - use disk icon for all volumes
-        m_icons[m_iconCount++] = {
-            0, 0,
-            volumeLabels[volumeIdx],
-            volumePaths[volumeIdx],
-            icons::disk_24,
-            IconAction::OpenFileBrowser,
-            false
-        };
+        m_icons[m_iconCount++] = {0,
+                                  0,
+                                  volumeLabels[volumeIdx],
+                                  volumePaths[volumeIdx],
+                                  icons::disk_24,
+                                  IconAction::OpenFileBrowser,
+                                  false};
 
         volumeIdx++;
     }
@@ -399,12 +380,12 @@ void Desktop::discoverVolumes()
     if (volumeIdx == 0) {
         static const char *sysLabel = "SYS:";
         static const char *sysTarget = "/";
-        m_icons[m_iconCount++] = { 0, 0, sysLabel, sysTarget, icons::disk_24, IconAction::OpenFileBrowser, false };
+        m_icons[m_iconCount++] = {
+            0, 0, sysLabel, sysTarget, icons::disk_24, IconAction::OpenFileBrowser, false};
     }
 }
 
-int Desktop::findIconAt(int x, int y)
-{
+int Desktop::findIconAt(int x, int y) {
     for (int i = 0; i < m_iconCount; i++) {
         DesktopIcon &icon = m_icons[i];
         // Icon clickable area: 24x24 icon + label below
@@ -413,23 +394,20 @@ int Desktop::findIconAt(int x, int y)
         int icon_right = icon.x + 28;
         int icon_bottom = icon.y + ICON_LABEL_OFFSET + 12;
 
-        if (x >= icon_left && x < icon_right &&
-            y >= icon_top && y < icon_bottom) {
+        if (x >= icon_left && x < icon_right && y >= icon_top && y < icon_bottom) {
             return i;
         }
     }
     return -1;
 }
 
-void Desktop::deselectAll()
-{
+void Desktop::deselectAll() {
     for (int i = 0; i < m_iconCount; i++) {
         m_icons[i].selected = false;
     }
 }
 
-void Desktop::selectIcon(int index)
-{
+void Desktop::selectIcon(int index) {
     deselectAll();
     if (index >= 0 && index < m_iconCount) {
         m_icons[index].selected = true;
@@ -437,9 +415,9 @@ void Desktop::selectIcon(int index)
     redraw();
 }
 
-void Desktop::handleClick(int x, int y, int button)
-{
-    if (button != 0) return;  // Only handle left button
+void Desktop::handleClick(int x, int y, int button) {
+    if (button != 0)
+        return; // Only handle left button
 
     int icon_idx = findIconAt(x, y);
 
@@ -493,11 +471,10 @@ void Desktop::handleClick(int x, int y, int button)
     }
 }
 
-void Desktop::handleDesktopEvent(const gui_event_t &event)
-{
+void Desktop::handleDesktopEvent(const gui_event_t &event) {
     switch (event.type) {
         case GUI_EVENT_MOUSE:
-            if (event.mouse.event_type == 1) {  // Button down
+            if (event.mouse.event_type == 1) { // Button down
                 handleClick(event.mouse.x, event.mouse.y, event.mouse.button);
             }
             break;
@@ -515,8 +492,7 @@ void Desktop::handleDesktopEvent(const gui_event_t &event)
     }
 }
 
-void Desktop::handleBrowserEvents()
-{
+void Desktop::handleBrowserEvents() {
     // Poll events from all open file browser windows
     // Iterate backwards so we can safely remove closed browsers
     for (int i = m_browserCount - 1; i >= 0; i--) {
@@ -532,8 +508,7 @@ void Desktop::handleBrowserEvents()
     }
 }
 
-void Desktop::showAboutDialog()
-{
+void Desktop::showAboutDialog() {
     // Close existing dialog if open
     if (m_aboutDialog) {
         gui_destroy_window(m_aboutDialog);
@@ -570,8 +545,7 @@ void Desktop::showAboutDialog()
     debug_serial("[workbench] Opened About dialog\n");
 }
 
-void Desktop::showPrefsDialog()
-{
+void Desktop::showPrefsDialog() {
     // Close existing dialog if open
     if (m_prefsDialog) {
         gui_destroy_window(m_prefsDialog);
@@ -610,8 +584,7 @@ void Desktop::showPrefsDialog()
     debug_serial("[workbench] Opened Prefs dialog\n");
 }
 
-void Desktop::handleDialogEvents()
-{
+void Desktop::handleDialogEvents() {
     // Handle About dialog events
     if (m_aboutDialog) {
         gui_event_t event;

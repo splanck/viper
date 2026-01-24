@@ -74,34 +74,34 @@ BasicType toBasicType(il::runtime::ILScalarType t)
 {
     switch (t)
     {
-    case il::runtime::ILScalarType::I64:
-        // BASIC uses "Int" terminology for integers
-        return BasicType::Int;
+        case il::runtime::ILScalarType::I64:
+            // BASIC uses "Int" terminology for integers
+            return BasicType::Int;
 
-    case il::runtime::ILScalarType::F64:
-        // BASIC uses "Float" terminology for floating point
-        return BasicType::Float;
+        case il::runtime::ILScalarType::F64:
+            // BASIC uses "Float" terminology for floating point
+            return BasicType::Float;
 
-    case il::runtime::ILScalarType::Bool:
-        // Direct mapping - boolean type
-        return BasicType::Bool;
+        case il::runtime::ILScalarType::Bool:
+            // Direct mapping - boolean type
+            return BasicType::Bool;
 
-    case il::runtime::ILScalarType::String:
-        // Direct mapping - string reference type
-        return BasicType::String;
+        case il::runtime::ILScalarType::String:
+            // Direct mapping - string reference type
+            return BasicType::String;
 
-    case il::runtime::ILScalarType::Void:
-        // Direct mapping - no return value (SUBs)
-        return BasicType::Void;
+        case il::runtime::ILScalarType::Void:
+            // Direct mapping - no return value (SUBs)
+            return BasicType::Void;
 
-    case il::runtime::ILScalarType::Object:
-        // Opaque pointer to runtime class instance
-        return BasicType::Object;
+        case il::runtime::ILScalarType::Object:
+            // Opaque pointer to runtime class instance
+            return BasicType::Object;
 
-    case il::runtime::ILScalarType::Unknown:
-    default:
-        // Fallback for unrecognized types or parse errors
-        return BasicType::Unknown;
+        case il::runtime::ILScalarType::Unknown:
+        default:
+            // Fallback for unrecognized types or parse errors
+            return BasicType::Unknown;
     }
 }
 

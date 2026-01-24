@@ -181,3 +181,23 @@ target_include_directories(workbench.sys PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/workbench/include
 )
 target_link_libraries(workbench.sys PRIVATE vipergui viperlibc)
+
+# Phase 3: System Utilities (GUI versions)
+
+# guisysinfo - GUI system information utility
+add_gui_program(guisysinfo guisysinfo/main.cpp)
+target_include_directories(guisysinfo.prg PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+)
+
+# taskman - GUI task manager
+add_gui_program(taskman taskman/main.cpp)
+target_include_directories(taskman.prg PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+)
+
+# prefs - GUI preferences application (Amiga-style)
+add_gui_program(prefs prefs/main.cpp)
+target_include_directories(prefs.prg PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+)

@@ -15,8 +15,7 @@
 #include "../include/types.hpp"
 #include "task.hpp"
 
-namespace deadline
-{
+namespace deadline {
 
 /**
  * @brief Minimum bandwidth fraction (1/1000 = 0.1%).
@@ -39,11 +38,10 @@ extern u64 total_bandwidth;
 /**
  * @brief Deadline task parameters for sched_setattr.
  */
-struct DeadlineParams
-{
-    u64 runtime;   ///< Maximum runtime per period (nanoseconds)
-    u64 deadline;  ///< Relative deadline (nanoseconds)
-    u64 period;    ///< Period length (nanoseconds)
+struct DeadlineParams {
+    u64 runtime;  ///< Maximum runtime per period (nanoseconds)
+    u64 deadline; ///< Relative deadline (nanoseconds)
+    u64 period;   ///< Period length (nanoseconds)
 };
 
 /**
@@ -58,8 +56,7 @@ struct DeadlineParams
  * @param params Deadline parameters to validate.
  * @return true if valid, false otherwise.
  */
-inline bool validate_params(const DeadlineParams *params)
-{
+inline bool validate_params(const DeadlineParams *params) {
     if (!params)
         return false;
     if (params->runtime == 0)
@@ -77,8 +74,7 @@ inline bool validate_params(const DeadlineParams *params)
  * @param params Deadline parameters.
  * @return Bandwidth in parts per thousand.
  */
-inline u64 calc_bandwidth(const DeadlineParams *params)
-{
+inline u64 calc_bandwidth(const DeadlineParams *params) {
     if (!params || params->period == 0)
         return 0;
     return (params->runtime * MIN_BANDWIDTH_FRACTION) / params->period;
@@ -93,8 +89,7 @@ inline u64 calc_bandwidth(const DeadlineParams *params)
  * @param new_bandwidth Bandwidth of new task.
  * @return true if task can be admitted, false otherwise.
  */
-inline bool can_admit(u64 new_bandwidth)
-{
+inline bool can_admit(u64 new_bandwidth) {
     return (total_bandwidth + new_bandwidth) <= MAX_TOTAL_BANDWIDTH;
 }
 
@@ -129,8 +124,7 @@ void replenish(task::Task *t, u64 current_time);
  * @param b Second task.
  * @return true if a has earlier deadline than b.
  */
-inline bool earlier_deadline(const task::Task *a, const task::Task *b)
-{
+inline bool earlier_deadline(const task::Task *a, const task::Task *b) {
     if (!a)
         return false;
     if (!b)

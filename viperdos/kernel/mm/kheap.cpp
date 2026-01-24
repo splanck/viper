@@ -34,11 +34,9 @@
  * ```
  */
 
-namespace kheap
-{
+namespace kheap {
 
-namespace
-{
+namespace {
 // Debug configuration
 #ifdef KHEAP_DEBUG
 constexpr bool DEBUG_MODE = true;
@@ -52,70 +50,58 @@ constexpr u32 BLOCK_MAGIC_FREE = kc::magic::HEAP_FREED;
 constexpr u32 BLOCK_MAGIC_POISON = kc::magic::HEAP_POISONED;
 
 // Block header structure with magic number for validation
-struct BlockHeader
-{
+struct BlockHeader {
     u32 magic;          // Magic number for corruption detection
     u32 _pad;           // Padding for alignment
     u64 size_and_flags; // Size in bytes (including header), bit 0 = in_use
 
-    bool is_free() const
-    {
+    bool is_free() const {
         return (size_and_flags & 1) == 0;
     }
 
-    void set_free()
-    {
+    void set_free() {
         size_and_flags &= ~1ULL;
         magic = BLOCK_MAGIC_FREE;
     }
 
-    void set_used()
-    {
+    void set_used() {
         size_and_flags |= 1;
         magic = BLOCK_MAGIC_ALLOC;
     }
 
-    bool is_valid() const
-    {
+    bool is_valid() const {
         return magic == BLOCK_MAGIC_ALLOC || magic == BLOCK_MAGIC_FREE;
     }
 
-    bool is_poisoned() const
-    {
+    bool is_poisoned() const {
         return magic == BLOCK_MAGIC_POISON;
     }
 
-    void poison()
-    {
+    void poison() {
         magic = BLOCK_MAGIC_POISON;
     }
 
-    u64 size() const
-    {
+    u64 size() const {
         return size_and_flags & ~1ULL;
     }
 
-    void set_size(u64 s)
-    {
+    void set_size(u64 s) {
         size_and_flags = (size_and_flags & 1) | (s & ~1ULL);
     }
 
     // Get pointer to user data
-    void *data()
-    {
+    void *data() {
         return reinterpret_cast<u8 *>(this) + sizeof(BlockHeader);
     }
 
     // Get next block in memory (based on size)
-    BlockHeader *next_in_memory()
-    {
+    BlockHeader *next_in_memory() {
         return reinterpret_cast<BlockHeader *>(reinterpret_cast<u8 *>(this) + size());
     }
 };
 
 // Free block has a next pointer stored in the data area
-struct FreeBlock
-{
+struct FreeBlock {
     BlockHeader header;
     FreeBlock *next; // Next in free list
 };
@@ -127,8 +113,7 @@ constexpr u64 ALIGNMENT = 16;
 constexpr u64 MAX_HEAP_SIZE = 64 * 1024 * 1024; // 64 MB max
 
 // Heap region tracking for non-contiguous allocations
-struct HeapRegion
-{
+struct HeapRegion {
     u64 start;
     u64 end;
 };
@@ -152,12 +137,9 @@ Spinlock heap_lock;
 /**
  * @brief Check if an address falls within any heap region.
  */
-bool is_in_heap(u64 addr)
-{
-    for (usize i = 0; i < heap_region_count; i++)
-    {
-        if (addr >= heap_regions[i].start && addr < heap_regions[i].end)
-        {
+bool is_in_heap(u64 addr) {
+    for (usize i = 0; i < heap_region_count; i++) {
+        if (addr >= heap_regions[i].start && addr < heap_regions[i].end) {
             return true;
         }
     }
@@ -167,10 +149,8 @@ bool is_in_heap(u64 addr)
 /**
  * @brief Add a new heap region to the tracking array.
  */
-bool add_heap_region(u64 start, u64 end)
-{
-    if (heap_region_count >= MAX_HEAP_REGIONS)
-    {
+bool add_heap_region(u64 start, u64 end) {
+    if (heap_region_count >= MAX_HEAP_REGIONS) {
         serial::puts("[kheap] ERROR: Too many heap regions\n");
         return false;
     }
@@ -183,26 +163,22 @@ bool add_heap_region(u64 start, u64 end)
 /**
  * @brief Align a value up to the next multiple of ALIGNMENT.
  */
-inline u64 align_up(u64 value)
-{
+inline u64 align_up(u64 value) {
     return (value + ALIGNMENT - 1) & ~(ALIGNMENT - 1);
 }
 
 /**
  * @brief Convert a user pointer to its block header.
  */
-inline BlockHeader *ptr_to_header(void *ptr)
-{
+inline BlockHeader *ptr_to_header(void *ptr) {
     return reinterpret_cast<BlockHeader *>(reinterpret_cast<u8 *>(ptr) - HEADER_SIZE);
 }
 
 /**
  * @brief Expand the heap by allocating more pages.
  */
-bool expand_heap(u64 needed)
-{
-    if (heap_size + needed > MAX_HEAP_SIZE)
-    {
+bool expand_heap(u64 needed) {
+    if (heap_size + needed > MAX_HEAP_SIZE) {
         serial::puts("[kheap] ERROR: Would exceed maximum heap size\n");
         return false;
     }
@@ -210,8 +186,7 @@ bool expand_heap(u64 needed)
     u64 pages_needed = (needed + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE;
     u64 new_pages = pmm::alloc_pages(pages_needed);
 
-    if (new_pages == 0)
-    {
+    if (new_pages == 0) {
         serial::puts("[kheap] ERROR: Failed to allocate pages for heap expansion\n");
         return false;
     }
@@ -219,15 +194,13 @@ bool expand_heap(u64 needed)
     u64 expansion_size = pages_needed * pmm::PAGE_SIZE;
 
     // Check if contiguous with existing heap
-    if (new_pages == heap_end)
-    {
+    if (new_pages == heap_end) {
         // Contiguous - extend the last region
         heap_end += expansion_size;
         heap_size += expansion_size;
 
         // Update the last heap region's end
-        if (heap_region_count > 0)
-        {
+        if (heap_region_count > 0) {
             heap_regions[heap_region_count - 1].end = heap_end;
         }
 
@@ -242,9 +215,7 @@ bool expand_heap(u64 needed)
         free_block_count++;
 
         return true;
-    }
-    else
-    {
+    } else {
         // Non-contiguous - create new heap region
         serial::puts("[kheap] Non-contiguous heap expansion at ");
         serial::put_hex(new_pages);
@@ -253,8 +224,7 @@ bool expand_heap(u64 needed)
         serial::puts(" KB)\n");
 
         // Register this as a new heap region
-        if (!add_heap_region(new_pages, new_pages + expansion_size))
-        {
+        if (!add_heap_region(new_pages, new_pages + expansion_size)) {
             // Failed to add region - free the allocated pages to prevent leak
             pmm::free_pages(new_pages, pages_needed);
             serial::puts("[kheap] ERROR: Failed to track heap region\n");
@@ -280,14 +250,12 @@ bool expand_heap(u64 needed)
 /**
  * @brief Add a block to the free list (sorted by address for coalescing).
  */
-void add_to_free_list(FreeBlock *block)
-{
+void add_to_free_list(FreeBlock *block) {
     block->header.set_free();
 
     // Insert sorted by address for easier coalescing
     FreeBlock **pp = &free_list;
-    while (*pp != nullptr && *pp < block)
-    {
+    while (*pp != nullptr && *pp < block) {
         pp = &((*pp)->next);
     }
     block->next = *pp;
@@ -298,15 +266,12 @@ void add_to_free_list(FreeBlock *block)
 /**
  * @brief Coalesce adjacent free blocks.
  */
-void coalesce()
-{
+void coalesce() {
     FreeBlock *current = free_list;
-    while (current != nullptr && current->next != nullptr)
-    {
+    while (current != nullptr && current->next != nullptr) {
         // Check if current and next are adjacent in memory
         u8 *current_end = reinterpret_cast<u8 *>(current) + current->header.size();
-        if (current_end == reinterpret_cast<u8 *>(current->next))
-        {
+        if (current_end == reinterpret_cast<u8 *>(current->next)) {
             // Merge current with next
             u64 combined_size = current->header.size() + current->next->header.size();
             FreeBlock *absorbed = current->next;
@@ -314,25 +279,21 @@ void coalesce()
             current->next = absorbed->next;
             free_block_count--;
             // Don't advance - check if we can merge again
-        }
-        else
-        {
+        } else {
             current = current->next;
         }
     }
 }
 } // namespace
 
-void init()
-{
+void init() {
     serial::puts("[kheap] Initializing kernel heap with free list allocator\n");
 
     // Allocate initial heap pages (64KB)
     u64 initial_pages = 16;
     u64 first_page = pmm::alloc_pages(initial_pages);
 
-    if (first_page == 0)
-    {
+    if (first_page == 0) {
         serial::puts("[kheap] ERROR: Failed to allocate initial heap!\n");
         return;
     }
@@ -365,8 +326,7 @@ void init()
     serial::puts(" KB)\n");
 }
 
-void *kmalloc(u64 size)
-{
+void *kmalloc(u64 size) {
     if (size == 0)
         return nullptr;
 
@@ -374,8 +334,7 @@ void *kmalloc(u64 size)
 
     // Calculate required block size (header + aligned user size)
     u64 required = align_up(size + HEADER_SIZE);
-    if (required < MIN_BLOCK_SIZE)
-    {
+    if (required < MIN_BLOCK_SIZE) {
         required = MIN_BLOCK_SIZE;
     }
 
@@ -384,10 +343,8 @@ void *kmalloc(u64 size)
     FreeBlock **best_prev = nullptr;
     FreeBlock **pp = &free_list;
 
-    while (*pp != nullptr)
-    {
-        if ((*pp)->header.size() >= required)
-        {
+    while (*pp != nullptr) {
+        if ((*pp)->header.size() >= required) {
             best = *pp;
             best_prev = pp;
             break; // First fit
@@ -396,26 +353,21 @@ void *kmalloc(u64 size)
     }
 
     // Need to expand heap?
-    if (best == nullptr)
-    {
-        if (!expand_heap(required))
-        {
+    if (best == nullptr) {
+        if (!expand_heap(required)) {
             return nullptr;
         }
         // Try again after expansion
         pp = &free_list;
-        while (*pp != nullptr)
-        {
-            if ((*pp)->header.size() >= required)
-            {
+        while (*pp != nullptr) {
+            if ((*pp)->header.size() >= required) {
                 best = *pp;
                 best_prev = pp;
                 break;
             }
             pp = &((*pp)->next);
         }
-        if (best == nullptr)
-        {
+        if (best == nullptr) {
             return nullptr;
         }
     }
@@ -429,8 +381,7 @@ void *kmalloc(u64 size)
     total_free -= block_size;
 
     // Split if remaining space is large enough for a free block
-    if (remaining >= MIN_BLOCK_SIZE)
-    {
+    if (remaining >= MIN_BLOCK_SIZE) {
         // Shrink this block
         best->header.set_size(required);
         best->header.set_used();
@@ -445,9 +396,7 @@ void *kmalloc(u64 size)
         total_free += remaining;
 
         total_allocated += required;
-    }
-    else
-    {
+    } else {
         // Use entire block
         best->header.set_used();
         total_allocated += block_size;
@@ -456,28 +405,22 @@ void *kmalloc(u64 size)
     return best->header.data();
 }
 
-void *kzalloc(u64 size)
-{
+void *kzalloc(u64 size) {
     void *ptr = kmalloc(size);
-    if (ptr)
-    {
+    if (ptr) {
         u8 *p = static_cast<u8 *>(ptr);
-        for (u64 i = 0; i < size; i++)
-        {
+        for (u64 i = 0; i < size; i++) {
             p[i] = 0;
         }
     }
     return ptr;
 }
 
-void *krealloc(void *ptr, u64 new_size)
-{
-    if (ptr == nullptr)
-    {
+void *krealloc(void *ptr, u64 new_size) {
+    if (ptr == nullptr) {
         return kmalloc(new_size);
     }
-    if (new_size == 0)
-    {
+    if (new_size == 0) {
         kfree(ptr);
         return nullptr;
     }
@@ -487,8 +430,7 @@ void *krealloc(void *ptr, u64 new_size)
     {
         SpinlockGuard guard(heap_lock);
         BlockHeader *header = ptr_to_header(ptr);
-        if (header->magic != BLOCK_MAGIC_ALLOC)
-        {
+        if (header->magic != BLOCK_MAGIC_ALLOC) {
             serial::puts("[kheap] ERROR: krealloc on invalid/freed block\n");
             return nullptr;
         }
@@ -496,23 +438,20 @@ void *krealloc(void *ptr, u64 new_size)
     }
 
     // If new size fits in current block, just return
-    if (new_size <= old_size)
-    {
+    if (new_size <= old_size) {
         return ptr;
     }
 
     // Allocate new block (kmalloc handles its own locking)
     void *new_ptr = kmalloc(new_size);
-    if (new_ptr == nullptr)
-    {
+    if (new_ptr == nullptr) {
         return nullptr;
     }
 
     // Copy old data
     u8 *src = static_cast<u8 *>(ptr);
     u8 *dst = static_cast<u8 *>(new_ptr);
-    for (u64 i = 0; i < old_size; i++)
-    {
+    for (u64 i = 0; i < old_size; i++) {
         dst[i] = src[i];
     }
 
@@ -522,8 +461,7 @@ void *krealloc(void *ptr, u64 new_size)
     return new_ptr;
 }
 
-void kfree(void *ptr)
-{
+void kfree(void *ptr) {
     if (ptr == nullptr)
         return;
 
@@ -531,8 +469,7 @@ void kfree(void *ptr)
 
     // Bounds check: verify pointer is within any heap region
     u64 addr = reinterpret_cast<u64>(ptr);
-    if (!is_in_heap(addr))
-    {
+    if (!is_in_heap(addr)) {
         serial::puts("[kheap] ERROR: kfree() on invalid pointer ");
         serial::put_hex(addr);
         serial::puts(" (outside all heap regions)\n");
@@ -542,8 +479,7 @@ void kfree(void *ptr)
     BlockHeader *header = ptr_to_header(ptr);
 
     // Alignment check
-    if ((reinterpret_cast<u64>(header) % ALIGNMENT) != 0)
-    {
+    if ((reinterpret_cast<u64>(header) % ALIGNMENT) != 0) {
         serial::puts("[kheap] ERROR: kfree() on misaligned pointer ");
         serial::put_hex(addr);
         serial::puts("\n");
@@ -551,16 +487,12 @@ void kfree(void *ptr)
     }
 
     // Check for corrupted magic number
-    if (!header->is_valid())
-    {
-        if (header->is_poisoned())
-        {
+    if (!header->is_valid()) {
+        if (header->is_poisoned()) {
             serial::puts("[kheap] ERROR: Triple-free or use-after-free at ");
             serial::put_hex(addr);
             serial::puts(" (block was already poisoned)\n");
-        }
-        else
-        {
+        } else {
             serial::puts("[kheap] ERROR: Heap corruption at ");
             serial::put_hex(addr);
             serial::puts(" (invalid magic 0x");
@@ -571,8 +503,7 @@ void kfree(void *ptr)
     }
 
     // Double-free check
-    if (header->is_free())
-    {
+    if (header->is_free()) {
         serial::puts("[kheap] ERROR: Double-free detected at ");
         serial::put_hex(addr);
         serial::puts(" (size=");
@@ -586,8 +517,7 @@ void kfree(void *ptr)
     u64 block_size = header->size();
 
     // Size sanity check
-    if (block_size < MIN_BLOCK_SIZE || block_size > heap_size)
-    {
+    if (block_size < MIN_BLOCK_SIZE || block_size > heap_size) {
         serial::puts("[kheap] ERROR: Invalid block size ");
         serial::put_dec(block_size);
         serial::puts(" at ");
@@ -607,20 +537,17 @@ void kfree(void *ptr)
     coalesce();
 }
 
-u64 get_used()
-{
+u64 get_used() {
     SpinlockGuard guard(heap_lock);
     return total_allocated;
 }
 
-u64 get_available()
-{
+u64 get_available() {
     SpinlockGuard guard(heap_lock);
     return total_free;
 }
 
-void get_stats(u64 *out_total_size, u64 *out_used, u64 *out_free, u64 *out_free_blocks)
-{
+void get_stats(u64 *out_total_size, u64 *out_used, u64 *out_free, u64 *out_free_blocks) {
     SpinlockGuard guard(heap_lock);
     if (out_total_size)
         *out_total_size = heap_size;
@@ -632,16 +559,14 @@ void get_stats(u64 *out_total_size, u64 *out_used, u64 *out_free, u64 *out_free_
         *out_free_blocks = free_block_count;
 }
 
-void dump()
-{
+void dump() {
     SpinlockGuard guard(heap_lock);
 
     serial::puts("[kheap] Heap dump:\n");
     serial::puts("  Regions: ");
     serial::put_dec(heap_region_count);
     serial::puts("\n");
-    for (usize i = 0; i < heap_region_count; i++)
-    {
+    for (usize i = 0; i < heap_region_count; i++) {
         serial::puts("    [");
         serial::put_dec(i);
         serial::puts("] ");
@@ -667,8 +592,7 @@ void dump()
     serial::puts("  Free list:\n");
     FreeBlock *block = free_list;
     int count = 0;
-    while (block != nullptr && count < 10)
-    {
+    while (block != nullptr && count < 10) {
         serial::puts("    ");
         serial::put_hex(reinterpret_cast<u64>(block));
         serial::puts(" size=");
@@ -677,8 +601,7 @@ void dump()
         block = block->next;
         count++;
     }
-    if (block != nullptr)
-    {
+    if (block != nullptr) {
         serial::puts("    ... (more blocks)\n");
     }
 }
@@ -686,33 +609,27 @@ void dump()
 } // namespace kheap
 
 // C++ operators
-void *operator new(size_t size)
-{
+void *operator new(size_t size) {
     return kheap::kmalloc(size);
 }
 
-void *operator new[](size_t size)
-{
+void *operator new[](size_t size) {
     return kheap::kmalloc(size);
 }
 
-void operator delete(void *ptr) noexcept
-{
+void operator delete(void *ptr) noexcept {
     kheap::kfree(ptr);
 }
 
-void operator delete[](void *ptr) noexcept
-{
+void operator delete[](void *ptr) noexcept {
     kheap::kfree(ptr);
 }
 
-void operator delete(void *ptr, size_t) noexcept
-{
+void operator delete(void *ptr, size_t) noexcept {
     kheap::kfree(ptr);
 }
 
-void operator delete[](void *ptr, size_t) noexcept
-{
+void operator delete[](void *ptr, size_t) noexcept {
     kheap::kfree(ptr);
 }
 

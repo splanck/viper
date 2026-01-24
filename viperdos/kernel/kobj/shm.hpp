@@ -16,8 +16,7 @@
  * into process address spaces via SYS_SHM_MAP. When the last reference
  * is released, the physical pages are freed.
  */
-namespace kobj
-{
+namespace kobj {
 
 /**
  * @brief Reference-counted shared memory object.
@@ -27,8 +26,7 @@ namespace kobj
  * map the same region into their address spaces for efficient data
  * sharing.
  */
-class SharedMemory : public Object
-{
+class SharedMemory : public Object {
   public:
     static constexpr cap::Kind KIND = cap::Kind::SharedMemory;
 
@@ -46,20 +44,17 @@ class SharedMemory : public Object
     ~SharedMemory() override;
 
     /** @brief Get the physical address of the region. */
-    u64 phys_addr() const
-    {
+    u64 phys_addr() const {
         return phys_addr_;
     }
 
     /** @brief Get the size of the region in bytes. */
-    u64 size() const
-    {
+    u64 size() const {
         return size_;
     }
 
     /** @brief Get the number of pages. */
-    u64 num_pages() const
-    {
+    u64 num_pages() const {
         return num_pages_;
     }
 
@@ -71,24 +66,20 @@ class SharedMemory : public Object
      * mapped into the creator's address space. This returns that
      * virtual address.
      */
-    u64 creator_virt() const
-    {
+    u64 creator_virt() const {
         return creator_virt_;
     }
 
     /**
      * @brief Set the creator's virtual mapping.
      */
-    void set_creator_virt(u64 virt)
-    {
+    void set_creator_virt(u64 virt) {
         creator_virt_ = virt;
     }
 
   private:
     SharedMemory(u64 phys, u64 size, u64 pages)
-        : Object(KIND), phys_addr_(phys), size_(size), num_pages_(pages), creator_virt_(0)
-    {
-    }
+        : Object(KIND), phys_addr_(phys), size_(size), num_pages_(pages), creator_virt_(0) {}
 
     u64 phys_addr_;    // Physical address of the region
     u64 size_;         // Size in bytes (page-aligned)

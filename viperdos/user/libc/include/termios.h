@@ -2,8 +2,7 @@
 #define _TERMIOS_H
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 /* Terminal control characters */
@@ -102,44 +101,43 @@ extern "C"
 #define TCIOFF 2 /* Transmit STOP character */
 #define TCION 3  /* Transmit START character */
 
-    typedef unsigned int tcflag_t;
-    typedef unsigned char cc_t;
-    typedef unsigned int speed_t;
+typedef unsigned int tcflag_t;
+typedef unsigned char cc_t;
+typedef unsigned int speed_t;
 
-    /* Terminal attributes structure */
-    struct termios
-    {
-        tcflag_t c_iflag; /* Input modes */
-        tcflag_t c_oflag; /* Output modes */
-        tcflag_t c_cflag; /* Control modes */
-        tcflag_t c_lflag; /* Local modes */
-        cc_t c_cc[NCCS];  /* Control characters */
-        speed_t c_ispeed; /* Input baud rate */
-        speed_t c_ospeed; /* Output baud rate */
-    };
+/* Terminal attributes structure */
+struct termios {
+    tcflag_t c_iflag; /* Input modes */
+    tcflag_t c_oflag; /* Output modes */
+    tcflag_t c_cflag; /* Control modes */
+    tcflag_t c_lflag; /* Local modes */
+    cc_t c_cc[NCCS];  /* Control characters */
+    speed_t c_ispeed; /* Input baud rate */
+    speed_t c_ospeed; /* Output baud rate */
+};
 
-    /* Terminal control functions */
-    int tcgetattr(int fd, struct termios *termios_p);
-    int tcsetattr(int fd, int optional_actions, const struct termios *termios_p);
-    int tcsendbreak(int fd, int duration);
-    int tcdrain(int fd);
-    int tcflush(int fd, int queue_selector);
-    int tcflow(int fd, int action);
+/* Terminal control functions */
+int tcgetattr(int fd, struct termios *termios_p);
+int tcsetattr(int fd, int optional_actions, const struct termios *termios_p);
+int tcsendbreak(int fd, int duration);
+int tcdrain(int fd);
+int tcflush(int fd, int queue_selector);
+int tcflow(int fd, int action);
 
-    /* Baud rate functions */
-    speed_t cfgetispeed(const struct termios *termios_p);
-    speed_t cfgetospeed(const struct termios *termios_p);
-    int cfsetispeed(struct termios *termios_p, speed_t speed);
-    int cfsetospeed(struct termios *termios_p, speed_t speed);
+/* Baud rate functions */
+speed_t cfgetispeed(const struct termios *termios_p);
+speed_t cfgetospeed(const struct termios *termios_p);
+int cfsetispeed(struct termios *termios_p, speed_t speed);
+int cfsetospeed(struct termios *termios_p, speed_t speed);
 
-    /* Raw mode helper */
-    void cfmakeraw(struct termios *termios_p);
+/* Raw mode helper */
+void cfmakeraw(struct termios *termios_p);
 
-    /* Check if fd is a terminal */
-    int isatty(int fd);
+/* Check if fd is a terminal */
+int isatty(int fd);
 
-    /* Get terminal name */
-    char *ttyname(int fd);
+/* Get terminal name */
+char *ttyname(int fd);
 
 #ifdef __cplusplus
 }

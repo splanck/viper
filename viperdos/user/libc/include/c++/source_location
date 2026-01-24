@@ -9,8 +9,7 @@
 
 #include "cstdint"
 
-namespace std
-{
+namespace std {
 
 /*
  * ===========================================================================
@@ -23,13 +22,11 @@ namespace std
  * ===========================================================================
  */
 
-class source_location
-{
+class source_location {
   public:
     // Construct with default (unknown) location
-    constexpr source_location() noexcept : file_("unknown"), func_("unknown"), line_(0), column_(0)
-    {
-    }
+    constexpr source_location() noexcept
+        : file_("unknown"), func_("unknown"), line_(0), column_(0) {}
 
     // Factory function to capture current source location
     // Uses compiler built-ins when available
@@ -45,8 +42,7 @@ class source_location
         uint_least32_t line = 0,
         uint_least32_t column = 0
 #endif
-            ) noexcept
-    {
+            ) noexcept {
         source_location loc;
         loc.file_ = file;
         loc.func_ = func;
@@ -56,26 +52,22 @@ class source_location
     }
 
     // Line number in source file (1-based, or 0 if unknown)
-    constexpr uint_least32_t line() const noexcept
-    {
+    constexpr uint_least32_t line() const noexcept {
         return line_;
     }
 
     // Column number in source line (1-based, or 0 if unknown)
-    constexpr uint_least32_t column() const noexcept
-    {
+    constexpr uint_least32_t column() const noexcept {
         return column_;
     }
 
     // Source file name
-    constexpr const char *file_name() const noexcept
-    {
+    constexpr const char *file_name() const noexcept {
         return file_;
     }
 
     // Function name (implementation-defined format)
-    constexpr const char *function_name() const noexcept
-    {
+    constexpr const char *function_name() const noexcept {
         return func_;
     }
 

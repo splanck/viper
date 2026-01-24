@@ -6,7 +6,8 @@
 
 ## Overview
 
-The IPC subsystem provides message-passing primitives for inter-process communication in the ViperDOS microkernel. It consists of two main components:
+The IPC subsystem provides message-passing primitives for inter-process communication in the ViperDOS microkernel. It
+consists of two main components:
 
 - **Channels**: Bidirectional message-passing with capability transfer
 - **Poll**: Multiplexing and timer management for waiting on multiple events
@@ -54,10 +55,12 @@ This is the primary mechanism for communication between user-space servers and c
 ### Design
 
 Channels are bidirectional message queues with two endpoints:
+
 - **Send endpoint**: Has `CAP_WRITE` right, used for sending messages
 - **Recv endpoint**: Has `CAP_READ` right, used for receiving messages
 
 Each channel maintains:
+
 - A circular buffer of messages (default 16, max 64)
 - Wait queues for blocked senders and receivers
 - Reference counts for each endpoint
@@ -120,6 +123,7 @@ struct Channel {
 ### Capability Transfer
 
 When handles are included in a message:
+
 1. Handles are validated in sender's cap_table
 2. Entries are removed from sender's cap_table
 3. Object pointers, kinds, and rights are stored in message
@@ -127,6 +131,7 @@ When handles are included in a message:
 5. Receiver gets new handle values for the transferred capabilities
 
 This enables:
+
 - Passing file/socket handles between processes
 - Delegating access rights (service discovery)
 - Capability-based security model
@@ -160,12 +165,12 @@ i64 close(Channel *ch, bool is_send_endpoint);
 
 ### Syscalls
 
-| Syscall | Number | Description |
-|---------|--------|-------------|
-| SYS_CHANNEL_CREATE | 0x10 | Create channel, return both endpoints |
-| SYS_CHANNEL_SEND | 0x11 | Send message with optional handles |
-| SYS_CHANNEL_RECV | 0x12 | Receive message with optional handles |
-| SYS_CHANNEL_CLOSE | 0x13 | Close endpoint |
+| Syscall            | Number | Description                           |
+|--------------------|--------|---------------------------------------|
+| SYS_CHANNEL_CREATE | 0x10   | Create channel, return both endpoints |
+| SYS_CHANNEL_SEND   | 0x11   | Send message with optional handles    |
+| SYS_CHANNEL_RECV   | 0x12   | Receive message with optional handles |
+| SYS_CHANNEL_CLOSE  | 0x13   | Close endpoint                        |
 
 ---
 
@@ -174,6 +179,7 @@ i64 close(Channel *ch, bool is_send_endpoint);
 ### Design
 
 The poll subsystem provides:
+
 - Multiplexed waiting on multiple handles (channels, timers)
 - Timer creation and management
 - Pseudo-handles for console input and network events
@@ -245,16 +251,16 @@ void unregister_wait();
 
 ### Syscalls
 
-| Syscall | Number | Description |
-|---------|--------|-------------|
-| SYS_POLL_CREATE | 0x20 | Create poll set |
-| SYS_POLL_ADD | 0x21 | Add handle to poll set |
-| SYS_POLL_REMOVE | 0x22 | Remove handle from poll set |
-| SYS_POLL_WAIT | 0x23 | Wait on poll set |
-| SYS_TIME_NOW | 0x30 | Get current time in ms |
-| SYS_SLEEP | 0x31 | Sleep for duration |
-| SYS_TIMER_CREATE | 0x32 | Create timer |
-| SYS_TIMER_CANCEL | 0x33 | Cancel timer |
+| Syscall          | Number | Description                 |
+|------------------|--------|-----------------------------|
+| SYS_POLL_CREATE  | 0x20   | Create poll set             |
+| SYS_POLL_ADD     | 0x21   | Add handle to poll set      |
+| SYS_POLL_REMOVE  | 0x22   | Remove handle from poll set |
+| SYS_POLL_WAIT    | 0x23   | Wait on poll set            |
+| SYS_TIME_NOW     | 0x30   | Get current time in ms      |
+| SYS_SLEEP        | 0x31   | Sleep for duration          |
+| SYS_TIMER_CREATE | 0x32   | Create timer                |
+| SYS_TIMER_CANCEL | 0x33   | Cancel timer                |
 
 ---
 
@@ -344,18 +350,19 @@ u32 connect_to_server(const char *name) {
 
 ### Files
 
-| File | Lines | Description |
-|------|-------|-------------|
-| `channel.hpp` | ~300 | Channel structures and API |
-| `channel.cpp` | ~650 | Channel implementation |
-| `poll.hpp` | ~300 | Poll structures and API |
-| `poll.cpp` | ~450 | Poll implementation |
-| `pollset.hpp` | ~150 | Poll set management |
-| `pollset.cpp` | ~200 | Poll set implementation |
+| File          | Lines | Description                |
+|---------------|-------|----------------------------|
+| `channel.hpp` | ~300  | Channel structures and API |
+| `channel.cpp` | ~650  | Channel implementation     |
+| `poll.hpp`    | ~300  | Poll structures and API    |
+| `poll.cpp`    | ~450  | Poll implementation        |
+| `pollset.hpp` | ~150  | Poll set management        |
+| `pollset.cpp` | ~200  | Poll set implementation    |
 
 ### Blocking Behavior
 
 When a channel operation would block:
+
 1. Task is added to the channel's wait queue
 2. Task state is set to BLOCKED
 3. Scheduler runs other tasks
@@ -373,12 +380,12 @@ When a channel operation would block:
 
 ### Message Passing Latency
 
-| Operation | Typical Latency |
-|-----------|-----------------|
-| Non-blocking send (buffer not full) | ~500ns |
-| Non-blocking recv (message available) | ~600ns |
-| Blocking send/recv (no contention) | ~2-5μs |
-| Round-trip (request + reply) | ~10-15μs |
+| Operation                             | Typical Latency |
+|---------------------------------------|-----------------|
+| Non-blocking send (buffer not full)   | ~500ns          |
+| Non-blocking recv (message available) | ~600ns          |
+| Blocking send/recv (no contention)    | ~2-5μs          |
+| Round-trip (request + reply)          | ~10-15μs        |
 
 ### Optimizations
 
@@ -401,35 +408,45 @@ When a channel operation would block:
 ## Priority Recommendations: Next 5 Steps
 
 ### 1. Pipe Object Implementation
+
 **Impact:** Enables shell pipelines and stream-based IPC
+
 - Create pipe() syscall returning read/write FD pair
 - Integrate with FD table for read()/write() access
 - Blocking semantics with fixed buffer size
 - Foundation for `|` shell operator
 
 ### 2. Channel Buffer Resizing
+
 **Impact:** Better performance for high-throughput scenarios
+
 - Dynamic buffer expansion based on demand
 - Shrink buffers when underutilized
 - Per-channel capacity configuration
 - Reduces message drops under load
 
 ### 3. Priority Message Queues
+
 **Impact:** Quality of service for IPC messages
+
 - Priority field in message header
 - High-priority messages bypass queue
 - Useful for interrupt/signal notifications
 - Better real-time response guarantees
 
 ### 4. Scatter-Gather Channel Operations
+
 **Impact:** Efficient multi-buffer message assembly
+
 - sendv()/recvv() with iovec arrays
 - Avoid buffer copies for fragmented data
 - Protocol headers + payload in single operation
 - Performance improvement for complex messages
 
 ### 5. Channel Debugging and Tracing
+
 **Impact:** Easier IPC debugging
+
 - Optional message logging per channel
 - Statistics: message counts, sizes, latency
 - Deadlock detection (circular wait chains)

@@ -85,8 +85,8 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#include "frontends/zia/Sema.hpp"
 #include "frontends/zia/RuntimeAdapter.hpp"
+#include "frontends/zia/Sema.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
 namespace il::frontends::zia

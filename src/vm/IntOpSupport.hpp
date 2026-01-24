@@ -26,8 +26,8 @@
 
 #include <cstdint>
 #include <limits>
-#include <utility>
 #include <type_traits>
+#include <utility>
 
 // Note: MSVC overflow checking is handled by OpHandlerUtils.hpp
 // which provides ops::checked_add/sub/mul that work on all platforms.

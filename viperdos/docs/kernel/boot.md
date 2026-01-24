@@ -1,6 +1,7 @@
 # Boot and Early Initialization
 
-This page walks through the “first seconds” of ViperDOS: how the CPU enters the kernel, how `kernel_main()` brings up the
+This page walks through the “first seconds” of ViperDOS: how the CPU enters the kernel, how `kernel_main()` brings up
+the
 minimum viable platform, and where each subsystem gets its first foothold.
 
 If you want the single best starting point in code, open `kernel/main.cpp` and read `kernel_main()` top-to-bottom.

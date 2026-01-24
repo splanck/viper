@@ -15,8 +15,7 @@
  * unrelated compilation units and makes it explicit that the glyph table is a
  * static resource embedded in the kernel image.
  */
-namespace font
-{
+namespace font {
 
 // 8x16 bitmap font (VGA-style)
 // Each character is 16 bytes (one byte per row, 8 bits per pixel)
@@ -1658,11 +1657,9 @@ static const u8 font_data[96][16] = {
 };
 
 /** @copydoc font::get_glyph */
-const u8 *get_glyph(char c)
-{
+const u8 *get_glyph(char c) {
     // Handle characters outside our range
-    if (c < 32 || c > 127)
-    {
+    if (c < 32 || c > 127) {
         c = '?'; // Use question mark for unknown chars
     }
     return font_data[c - 32];

@@ -32,8 +32,7 @@
  * codes used across subsystems, and helper functions are provided to test
  * whether a result represents success or failure.
  */
-namespace error
-{
+namespace error {
 
 // Error codes returned by syscalls
 // 0 = success, negative = error
@@ -48,8 +47,7 @@ namespace error
  * Values are chosen to be stable across kernel and user components so that
  * user-space code can interpret syscall results consistently.
  */
-enum Code : i64
-{
+enum Code : i64 {
     VOK = 0, // Success
 
     // General errors (-1 to -99)
@@ -106,8 +104,7 @@ enum Code : i64
  * @param code Result code.
  * @return `true` if `code >= 0`, otherwise `false`.
  */
-inline bool is_ok(i64 code)
-{
+inline bool is_ok(i64 code) {
     return code >= 0;
 }
 
@@ -117,8 +114,7 @@ inline bool is_ok(i64 code)
  * @param code Result code.
  * @return `true` if `code < 0`, otherwise `false`.
  */
-inline bool is_err(i64 code)
-{
+inline bool is_err(i64 code) {
     return code < 0;
 }
 

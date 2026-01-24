@@ -37,8 +37,7 @@
  *
  * ViperDOS stub - shared memory not yet implemented.
  */
-int shmget(key_t key, size_t size, int shmflg)
-{
+int shmget(key_t key, size_t size, int shmflg) {
     (void)key;
     (void)size;
     (void)shmflg;
@@ -53,8 +52,7 @@ int shmget(key_t key, size_t size, int shmflg)
  *
  * ViperDOS stub - shared memory not yet implemented.
  */
-void *shmat(int shmid, const void *shmaddr, int shmflg)
-{
+void *shmat(int shmid, const void *shmaddr, int shmflg) {
     (void)shmid;
     (void)shmaddr;
     (void)shmflg;
@@ -69,8 +67,7 @@ void *shmat(int shmid, const void *shmaddr, int shmflg)
  *
  * ViperDOS stub - shared memory not yet implemented.
  */
-int shmdt(const void *shmaddr)
-{
+int shmdt(const void *shmaddr) {
     (void)shmaddr;
 
     /* Shared memory not supported in ViperDOS */
@@ -83,8 +80,7 @@ int shmdt(const void *shmaddr)
  *
  * ViperDOS stub - shared memory not yet implemented.
  */
-int shmctl(int shmid, int cmd, struct shmid_ds *buf)
-{
+int shmctl(int shmid, int cmd, struct shmid_ds *buf) {
     (void)shmid;
     (void)cmd;
     (void)buf;

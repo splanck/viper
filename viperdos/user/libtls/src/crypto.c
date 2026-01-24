@@ -30,24 +30,20 @@ static const uint32_t sha256_k[64] = {
 #define SIG0(x) (ROTR32(x, 7) ^ ROTR32(x, 18) ^ ((x) >> 3))
 #define SIG1(x) (ROTR32(x, 17) ^ ROTR32(x, 19) ^ ((x) >> 10))
 
-typedef struct
-{
+typedef struct {
     uint32_t state[8];
     uint64_t count;
     uint8_t buffer[64];
 } sha256_ctx;
 
-static void sha256_transform(sha256_ctx *ctx, const uint8_t data[64])
-{
+static void sha256_transform(sha256_ctx *ctx, const uint8_t data[64]) {
     uint32_t a, b, c, d, e, f, g, h, t1, t2, w[64];
 
-    for (int i = 0; i < 16; i++)
-    {
+    for (int i = 0; i < 16; i++) {
         w[i] = ((uint32_t)data[i * 4] << 24) | ((uint32_t)data[i * 4 + 1] << 16) |
                ((uint32_t)data[i * 4 + 2] << 8) | data[i * 4 + 3];
     }
-    for (int i = 16; i < 64; i++)
-    {
+    for (int i = 16; i < 64; i++) {
         w[i] = SIG1(w[i - 2]) + w[i - 7] + SIG0(w[i - 15]) + w[i - 16];
     }
 
@@ -60,8 +56,7 @@ static void sha256_transform(sha256_ctx *ctx, const uint8_t data[64])
     g = ctx->state[6];
     h = ctx->state[7];
 
-    for (int i = 0; i < 64; i++)
-    {
+    for (int i = 0; i < 64; i++) {
         t1 = h + EP1(e) + CH(e, f, g) + sha256_k[i] + w[i];
         t2 = EP0(a) + MAJ(a, b, c);
         h = g;
@@ -84,8 +79,7 @@ static void sha256_transform(sha256_ctx *ctx, const uint8_t data[64])
     ctx->state[7] += h;
 }
 
-void tls_sha256_init(sha256_ctx *ctx)
-{
+void tls_sha256_init(sha256_ctx *ctx) {
     ctx->state[0] = 0x6a09e667;
     ctx->state[1] = 0xbb67ae85;
     ctx->state[2] = 0x3c6ef372;
@@ -97,15 +91,13 @@ void tls_sha256_init(sha256_ctx *ctx)
     ctx->count = 0;
 }
 
-void tls_sha256_update(sha256_ctx *ctx, const void *data, size_t len)
-{
+void tls_sha256_update(sha256_ctx *ctx, const void *data, size_t len) {
     const uint8_t *ptr = data;
     size_t idx = (ctx->count / 8) % 64;
 
     ctx->count += len * 8;
 
-    while (len > 0)
-    {
+    while (len > 0) {
         size_t copy = 64 - idx;
         if (copy > len)
             copy = len;
@@ -114,16 +106,14 @@ void tls_sha256_update(sha256_ctx *ctx, const void *data, size_t len)
         ptr += copy;
         len -= copy;
 
-        if (idx == 64)
-        {
+        if (idx == 64) {
             sha256_transform(ctx, ctx->buffer);
             idx = 0;
         }
     }
 }
 
-void tls_sha256_final(sha256_ctx *ctx, uint8_t digest[32])
-{
+void tls_sha256_final(sha256_ctx *ctx, uint8_t digest[32]) {
     uint64_t bits = ctx->count;
     uint8_t pad[64];
     size_t idx = (ctx->count / 8) % 64;
@@ -143,8 +133,7 @@ void tls_sha256_final(sha256_ctx *ctx, uint8_t digest[32])
     pad[7] = bits & 0xFF;
     tls_sha256_update(ctx, pad, 8);
 
-    for (int i = 0; i < 8; i++)
-    {
+    for (int i = 0; i < 8; i++) {
         digest[i * 4] = (ctx->state[i] >> 24) & 0xFF;
         digest[i * 4 + 1] = (ctx->state[i] >> 16) & 0xFF;
         digest[i * 4 + 2] = (ctx->state[i] >> 8) & 0xFF;
@@ -152,8 +141,7 @@ void tls_sha256_final(sha256_ctx *ctx, uint8_t digest[32])
     }
 }
 
-void tls_sha256(const void *data, size_t len, uint8_t digest[32])
-{
+void tls_sha256(const void *data, size_t len, uint8_t digest[32]) {
     sha256_ctx ctx;
     tls_sha256_init(&ctx);
     tls_sha256_update(&ctx, data, len);
@@ -165,23 +153,18 @@ void tls_sha256(const void *data, size_t len, uint8_t digest[32])
  *===========================================================================*/
 
 void tls_hmac_sha256(
-    const uint8_t *key, size_t key_len, const void *data, size_t data_len, uint8_t mac[32])
-{
+    const uint8_t *key, size_t key_len, const void *data, size_t data_len, uint8_t mac[32]) {
     uint8_t k[64], ipad[64], opad[64];
 
-    if (key_len > 64)
-    {
+    if (key_len > 64) {
         tls_sha256(key, key_len, k);
         key_len = 32;
-    }
-    else
-    {
+    } else {
         memcpy(k, key, key_len);
     }
     memset(k + key_len, 0, 64 - key_len);
 
-    for (int i = 0; i < 64; i++)
-    {
+    for (int i = 0; i < 64; i++) {
         ipad[i] = k[i] ^ 0x36;
         opad[i] = k[i] ^ 0x5c;
     }
@@ -203,29 +186,23 @@ void tls_hmac_sha256(
  *===========================================================================*/
 
 void tls_hkdf_extract(
-    const uint8_t *salt, size_t salt_len, const uint8_t *ikm, size_t ikm_len, uint8_t prk[32])
-{
-    if (salt == NULL || salt_len == 0)
-    {
+    const uint8_t *salt, size_t salt_len, const uint8_t *ikm, size_t ikm_len, uint8_t prk[32]) {
+    if (salt == NULL || salt_len == 0) {
         uint8_t zero_salt[32] = {0};
         tls_hmac_sha256(zero_salt, 32, ikm, ikm_len, prk);
-    }
-    else
-    {
+    } else {
         tls_hmac_sha256(salt, salt_len, ikm, ikm_len, prk);
     }
 }
 
 void tls_hkdf_expand(
-    const uint8_t prk[32], const uint8_t *info, size_t info_len, uint8_t *okm, size_t okm_len)
-{
+    const uint8_t prk[32], const uint8_t *info, size_t info_len, uint8_t *okm, size_t okm_len) {
     uint8_t t[32] = {0};
     size_t t_len = 0;
     uint8_t counter = 1;
     size_t pos = 0;
 
-    while (pos < okm_len)
-    {
+    while (pos < okm_len) {
         sha256_ctx ctx;
         uint8_t temp[32];
 
@@ -234,8 +211,7 @@ void tls_hkdf_expand(
         memcpy(k, prk, 32);
         memset(k + 32, 0, 32);
 
-        for (int i = 0; i < 64; i++)
-        {
+        for (int i = 0; i < 64; i++) {
             ipad[i] = k[i] ^ 0x36;
             opad[i] = k[i] ^ 0x5c;
         }
@@ -269,8 +245,7 @@ void tls_hkdf_expand_label(const uint8_t secret[32],
                            const uint8_t *context,
                            size_t context_len,
                            uint8_t *out,
-                           size_t out_len)
-{
+                           size_t out_len) {
     /* TLS 1.3 HkdfLabel structure */
     uint8_t hkdf_label[512];
     size_t pos = 0;
@@ -291,8 +266,7 @@ void tls_hkdf_expand_label(const uint8_t secret[32],
 
     /* Context */
     hkdf_label[pos++] = (uint8_t)context_len;
-    if (context_len > 0)
-    {
+    if (context_len > 0) {
         memcpy(hkdf_label + pos, context, context_len);
         pos += context_len;
     }
@@ -307,8 +281,7 @@ void tls_hkdf_expand_label(const uint8_t secret[32],
 #define ROTL32(x, n) (((x) << (n)) | ((x) >> (32 - (n))))
 
 #define QUARTERROUND(a, b, c, d)                                                                   \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         a += b;                                                                                    \
         d ^= a;                                                                                    \
         d = ROTL32(d, 16);                                                                         \
@@ -323,13 +296,11 @@ void tls_hkdf_expand_label(const uint8_t secret[32],
         b = ROTL32(b, 7);                                                                          \
     } while (0)
 
-static void chacha20_block(const uint32_t state[16], uint8_t out[64])
-{
+static void chacha20_block(const uint32_t state[16], uint8_t out[64]) {
     uint32_t x[16];
     memcpy(x, state, 64);
 
-    for (int i = 0; i < 10; i++)
-    {
+    for (int i = 0; i < 10; i++) {
         /* Column rounds */
         QUARTERROUND(x[0], x[4], x[8], x[12]);
         QUARTERROUND(x[1], x[5], x[9], x[13]);
@@ -346,8 +317,7 @@ static void chacha20_block(const uint32_t state[16], uint8_t out[64])
         x[i] += state[i];
 
     /* Output little-endian */
-    for (int i = 0; i < 16; i++)
-    {
+    for (int i = 0; i < 16; i++) {
         out[i * 4 + 0] = x[i] & 0xFF;
         out[i * 4 + 1] = (x[i] >> 8) & 0xFF;
         out[i * 4 + 2] = (x[i] >> 16) & 0xFF;
@@ -358,8 +328,7 @@ static void chacha20_block(const uint32_t state[16], uint8_t out[64])
 static void chacha20_init(uint32_t state[16],
                           const uint8_t key[32],
                           const uint8_t nonce[12],
-                          uint32_t counter)
-{
+                          uint32_t counter) {
     /* "expand 32-byte k" */
     state[0] = 0x61707865;
     state[1] = 0x3320646e;
@@ -367,8 +336,7 @@ static void chacha20_init(uint32_t state[16],
     state[3] = 0x6b206574;
 
     /* Key (little-endian) */
-    for (int i = 0; i < 8; i++)
-    {
+    for (int i = 0; i < 8; i++) {
         state[4 + i] = ((uint32_t)key[i * 4 + 0]) | ((uint32_t)key[i * 4 + 1] << 8) |
                        ((uint32_t)key[i * 4 + 2] << 16) | ((uint32_t)key[i * 4 + 3] << 24);
     }
@@ -377,8 +345,7 @@ static void chacha20_init(uint32_t state[16],
     state[12] = counter;
 
     /* Nonce (little-endian) */
-    for (int i = 0; i < 3; i++)
-    {
+    for (int i = 0; i < 3; i++) {
         state[13 + i] = ((uint32_t)nonce[i * 4 + 0]) | ((uint32_t)nonce[i * 4 + 1] << 8) |
                         ((uint32_t)nonce[i * 4 + 2] << 16) | ((uint32_t)nonce[i * 4 + 3] << 24);
     }
@@ -389,15 +356,13 @@ void tls_chacha20_crypt(const uint8_t key[32],
                         uint32_t counter,
                         const uint8_t *in,
                         uint8_t *out,
-                        size_t len)
-{
+                        size_t len) {
     uint32_t state[16];
     uint8_t keystream[64];
 
     chacha20_init(state, key, nonce, counter);
 
-    while (len > 0)
-    {
+    while (len > 0) {
         chacha20_block(state, keystream);
         size_t use = len > 64 ? 64 : len;
         for (size_t i = 0; i < use; i++)
@@ -413,8 +378,7 @@ void tls_chacha20_crypt(const uint8_t key[32],
  * Poly1305
  *===========================================================================*/
 
-typedef struct
-{
+typedef struct {
     uint32_t r[5];
     uint32_t h[5];
     uint32_t pad[4];
@@ -422,8 +386,7 @@ typedef struct
     size_t buffer_len;
 } poly1305_ctx;
 
-static void poly1305_init(poly1305_ctx *ctx, const uint8_t key[32])
-{
+static void poly1305_init(poly1305_ctx *ctx, const uint8_t key[32]) {
     /* r (first 16 bytes, clamped) */
     ctx->r[0] = ((uint32_t)key[0] | ((uint32_t)key[1] << 8) | ((uint32_t)key[2] << 16) |
                  ((uint32_t)key[3] << 24)) &
@@ -457,15 +420,13 @@ static void poly1305_init(poly1305_ctx *ctx, const uint8_t key[32])
     ctx->buffer_len = 0;
 }
 
-static void poly1305_blocks(poly1305_ctx *ctx, const uint8_t *data, size_t len, int final)
-{
+static void poly1305_blocks(poly1305_ctx *ctx, const uint8_t *data, size_t len, int final) {
     uint32_t r0 = ctx->r[0], r1 = ctx->r[1], r2 = ctx->r[2], r3 = ctx->r[3], r4 = ctx->r[4];
     uint32_t s1 = r1 * 5, s2 = r2 * 5, s3 = r3 * 5, s4 = r4 * 5;
     uint32_t h0 = ctx->h[0], h1 = ctx->h[1], h2 = ctx->h[2], h3 = ctx->h[3], h4 = ctx->h[4];
     uint32_t hibit = final ? 0 : (1 << 24);
 
-    while (len >= 16)
-    {
+    while (len >= 16) {
         /* h += m[i] */
         h0 += ((uint32_t)data[0] | ((uint32_t)data[1] << 8) | ((uint32_t)data[2] << 16) |
                ((uint32_t)data[3] << 24)) &
@@ -527,15 +488,12 @@ static void poly1305_blocks(poly1305_ctx *ctx, const uint8_t *data, size_t len, 
     ctx->h[4] = h4;
 }
 
-static void poly1305_update(poly1305_ctx *ctx, const void *data, size_t len)
-{
+static void poly1305_update(poly1305_ctx *ctx, const void *data, size_t len) {
     const uint8_t *ptr = data;
 
-    if (ctx->buffer_len > 0)
-    {
+    if (ctx->buffer_len > 0) {
         size_t need = 16 - ctx->buffer_len;
-        if (len < need)
-        {
+        if (len < need) {
             memcpy(ctx->buffer + ctx->buffer_len, ptr, len);
             ctx->buffer_len += len;
             return;
@@ -547,26 +505,22 @@ static void poly1305_update(poly1305_ctx *ctx, const void *data, size_t len)
         ctx->buffer_len = 0;
     }
 
-    if (len >= 16)
-    {
+    if (len >= 16) {
         size_t blocks = len & ~15;
         poly1305_blocks(ctx, ptr, blocks, 0);
         ptr += blocks;
         len -= blocks;
     }
 
-    if (len > 0)
-    {
+    if (len > 0) {
         memcpy(ctx->buffer, ptr, len);
         ctx->buffer_len = len;
     }
 }
 
-static void poly1305_final(poly1305_ctx *ctx, uint8_t tag[16])
-{
+static void poly1305_final(poly1305_ctx *ctx, uint8_t tag[16]) {
     /* Process remaining bytes */
-    if (ctx->buffer_len > 0)
-    {
+    if (ctx->buffer_len > 0) {
         ctx->buffer[ctx->buffer_len++] = 1;
         while (ctx->buffer_len < 16)
             ctx->buffer[ctx->buffer_len++] = 0;
@@ -649,8 +603,7 @@ static void poly1305_final(poly1305_ctx *ctx, uint8_t tag[16])
  * ChaCha20-Poly1305 AEAD
  *===========================================================================*/
 
-static void pad16(poly1305_ctx *ctx, size_t len)
-{
+static void pad16(poly1305_ctx *ctx, size_t len) {
     size_t pad = (16 - (len & 15)) & 15;
     uint8_t zeros[16] = {0};
     if (pad > 0)
@@ -663,8 +616,7 @@ size_t tls_chacha20_poly1305_encrypt(const uint8_t key[32],
                                      size_t aad_len,
                                      const void *plaintext,
                                      size_t plaintext_len,
-                                     uint8_t *ciphertext)
-{
+                                     uint8_t *ciphertext) {
     /* Generate Poly1305 key (block 0) */
     uint8_t poly_key[64];
     tls_chacha20_crypt(key,
@@ -713,8 +665,7 @@ long tls_chacha20_poly1305_decrypt(const uint8_t key[32],
                                    size_t aad_len,
                                    const void *ciphertext,
                                    size_t ciphertext_len,
-                                   uint8_t *plaintext)
-{
+                                   uint8_t *plaintext) {
     if (ciphertext_len < 16)
         return -1;
 
@@ -776,39 +727,33 @@ long tls_chacha20_poly1305_decrypt(const uint8_t key[32],
 
 typedef int64_t fe[10];
 
-static void fe_copy(fe h, const fe f)
-{
+static void fe_copy(fe h, const fe f) {
     for (int i = 0; i < 10; i++)
         h[i] = f[i];
 }
 
-static void fe_0(fe h)
-{
+static void fe_0(fe h) {
     for (int i = 0; i < 10; i++)
         h[i] = 0;
 }
 
-static void fe_1(fe h)
-{
+static void fe_1(fe h) {
     h[0] = 1;
     for (int i = 1; i < 10; i++)
         h[i] = 0;
 }
 
-static void fe_add(fe h, const fe f, const fe g)
-{
+static void fe_add(fe h, const fe f, const fe g) {
     for (int i = 0; i < 10; i++)
         h[i] = f[i] + g[i];
 }
 
-static void fe_sub(fe h, const fe f, const fe g)
-{
+static void fe_sub(fe h, const fe f, const fe g) {
     for (int i = 0; i < 10; i++)
         h[i] = f[i] - g[i];
 }
 
-static void fe_mul(fe h, const fe f, const fe g)
-{
+static void fe_mul(fe h, const fe f, const fe g) {
     int64_t f0 = f[0], f1 = f[1], f2 = f[2], f3 = f[3], f4 = f[4];
     int64_t f5 = f[5], f6 = f[6], f7 = f[7], f8 = f[8], f9 = f[9];
     int64_t g0 = g[0], g1 = g[1], g2 = g[2], g3 = g[3], g4 = g[4];
@@ -890,13 +835,11 @@ static void fe_mul(fe h, const fe f, const fe g)
     h[9] = h9;
 }
 
-static void fe_sq(fe h, const fe f)
-{
+static void fe_sq(fe h, const fe f) {
     fe_mul(h, f, f);
 }
 
-static void fe_invert(fe out, const fe z)
-{
+static void fe_invert(fe out, const fe z) {
     fe t0, t1, t2, t3;
 
     fe_sq(t0, z);
@@ -940,8 +883,7 @@ static void fe_invert(fe out, const fe z)
     fe_mul(out, t1, t0);
 }
 
-static void fe_from_bytes(fe h, const uint8_t s[32])
-{
+static void fe_from_bytes(fe h, const uint8_t s[32]) {
     h[0] = ((int64_t)s[0] | ((int64_t)s[1] << 8) | ((int64_t)s[2] << 16) |
             (((int64_t)s[3] & 0x03) << 24)) &
            0x3ffffff;
@@ -974,8 +916,7 @@ static void fe_from_bytes(fe h, const uint8_t s[32])
            0x1ffffff;
 }
 
-static void fe_to_bytes(uint8_t s[32], const fe h)
-{
+static void fe_to_bytes(uint8_t s[32], const fe h) {
     int64_t h0 = h[0], h1 = h[1], h2 = h[2], h3 = h[3], h4 = h[4];
     int64_t h5 = h[5], h6 = h[6], h7 = h[7], h8 = h[8], h9 = h[9];
 
@@ -1057,8 +998,7 @@ static void fe_to_bytes(uint8_t s[32], const fe h)
     s[31] = (uint8_t)(h9 >> 18);
 }
 
-static void x25519_scalarmult(uint8_t out[32], const uint8_t scalar[32], const uint8_t point[32])
-{
+static void x25519_scalarmult(uint8_t out[32], const uint8_t scalar[32], const uint8_t point[32]) {
     fe x1, x2, z2, x3, z3, tmp0, tmp1;
     uint8_t e[32];
 
@@ -1074,12 +1014,10 @@ static void x25519_scalarmult(uint8_t out[32], const uint8_t scalar[32], const u
     fe_1(z3);
 
     int swap = 0;
-    for (int pos = 254; pos >= 0; pos--)
-    {
+    for (int pos = 254; pos >= 0; pos--) {
         int b = (e[pos / 8] >> (pos & 7)) & 1;
         swap ^= b;
-        for (int i = 0; i < 10; i++)
-        {
+        for (int i = 0; i < 10; i++) {
             int64_t dummy = swap * (x2[i] ^ x3[i]);
             x2[i] ^= dummy;
             x3[i] ^= dummy;
@@ -1110,8 +1048,7 @@ static void x25519_scalarmult(uint8_t out[32], const uint8_t scalar[32], const u
         fe_mul(z2, tmp1, tmp0);
     }
 
-    for (int i = 0; i < 10; i++)
-    {
+    for (int i = 0; i < 10; i++) {
         int64_t dummy = swap * (x2[i] ^ x3[i]);
         x2[i] ^= dummy;
         x3[i] ^= dummy;
@@ -1127,16 +1064,14 @@ static void x25519_scalarmult(uint8_t out[32], const uint8_t scalar[32], const u
 
 static const uint8_t x25519_basepoint[32] = {9};
 
-void tls_x25519_keygen(uint8_t secret[32], uint8_t public_key[32])
-{
+void tls_x25519_keygen(uint8_t secret[32], uint8_t public_key[32]) {
     /* Random bytes for secret key */
     extern void tls_random_bytes(uint8_t *buf, size_t len);
     tls_random_bytes(secret, 32);
     x25519_scalarmult(public_key, secret, x25519_basepoint);
 }
 
-void tls_x25519(const uint8_t secret[32], const uint8_t peer_public[32], uint8_t shared[32])
-{
+void tls_x25519(const uint8_t secret[32], const uint8_t peer_public[32], uint8_t shared[32]) {
     x25519_scalarmult(shared, secret, peer_public);
 }
 
@@ -1147,11 +1082,9 @@ void tls_x25519(const uint8_t secret[32], const uint8_t peer_public[32], uint8_t
 #include <fcntl.h>
 #include <unistd.h>
 
-void tls_random_bytes(uint8_t *buf, size_t len)
-{
+void tls_random_bytes(uint8_t *buf, size_t len) {
     int fd = open("/dev/urandom", O_RDONLY);
-    if (fd >= 0)
-    {
+    if (fd >= 0) {
         read(fd, buf, len);
         close(fd);
         return;
@@ -1162,8 +1095,7 @@ void tls_random_bytes(uint8_t *buf, size_t len)
     if (state == 0x123456789ABCDEF0ULL)
         state ^= (uint64_t)(uintptr_t)buf;
 
-    for (size_t i = 0; i < len; i++)
-    {
+    for (size_t i = 0; i < len; i++) {
         state = state * 6364136223846793005ULL + 1442695040888963407ULL;
         buf[i] = (state >> 32) & 0xFF;
     }

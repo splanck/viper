@@ -17,8 +17,7 @@
  * pointing to a recycled slot will have a mismatched generation and will be
  * rejected by the capability table lookup.
  */
-namespace cap
-{
+namespace cap {
 
 // Handle = 24-bit index + 8-bit generation
 // Generation detects use-after-free (ABA problem)
@@ -42,8 +41,7 @@ constexpr u32 GEN_MASK = 0xFF;
  * @param h Handle value.
  * @return 24-bit index.
  */
-inline u32 handle_index(Handle h)
-{
+inline u32 handle_index(Handle h) {
     return h & INDEX_MASK;
 }
 
@@ -53,8 +51,7 @@ inline u32 handle_index(Handle h)
  * @param h Handle value.
  * @return 8-bit generation.
  */
-inline u8 handle_gen(Handle h)
-{
+inline u8 handle_gen(Handle h) {
     return (h >> GEN_SHIFT) & GEN_MASK;
 }
 
@@ -65,8 +62,7 @@ inline u8 handle_gen(Handle h)
  * @param gen Generation counter.
  * @return Encoded handle.
  */
-inline Handle make_handle(u32 index, u8 gen)
-{
+inline Handle make_handle(u32 index, u8 gen) {
     return (index & INDEX_MASK) | (static_cast<u32>(gen) << GEN_SHIFT);
 }
 

@@ -14,8 +14,7 @@
 
 #include "../include/types.hpp"
 
-namespace fdt
-{
+namespace fdt {
 
 /** @brief FDT magic number (big-endian: 0xD00DFEED). */
 constexpr u32 FDT_MAGIC = 0xD00DFEED;
@@ -29,8 +28,7 @@ constexpr u32 MAX_RESERVED_REGIONS = 16;
 /**
  * @brief A memory region extracted from the FDT.
  */
-struct MemoryRegion
-{
+struct MemoryRegion {
     u64 base; ///< Physical base address
     u64 size; ///< Size in bytes
 };
@@ -38,8 +36,7 @@ struct MemoryRegion
 /**
  * @brief Parsed memory layout from FDT.
  */
-struct MemoryLayout
-{
+struct MemoryLayout {
     MemoryRegion regions[MAX_MEMORY_REGIONS];
     u32 region_count;
 

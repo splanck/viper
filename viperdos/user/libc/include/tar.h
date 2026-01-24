@@ -8,8 +8,7 @@
 #define _TAR_H
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 /*
@@ -40,9 +39,9 @@ extern "C"
 /* Old (pre-POSIX) tar magic - for compatibility */
 #define OLDMAGIC "ustar  "
 
-    /*
-     * File type flags (for typeflag field)
-     */
+/*
+ * File type flags (for typeflag field)
+ */
 
 #define REGTYPE '0'   /* Regular file */
 #define AREGTYPE '\0' /* Regular file (old format, null byte) */
@@ -69,9 +68,9 @@ extern "C"
 /* Solaris tar extensions */
 #define SOLARIS_XHDTYPE 'X' /* Solaris extended header */
 
-    /*
-     * Mode field bits (permission bits, same as stat.h)
-     */
+/*
+ * Mode field bits (permission bits, same as stat.h)
+ */
 
 #define TSUID 04000 /* Set UID on execution */
 #define TSGID 02000 /* Set GID on execution */
@@ -92,9 +91,9 @@ extern "C"
 #define TOWRITE 00002 /* Write by others */
 #define TOEXEC 00001  /* Execute/search by others */
 
-    /*
-     * Field sizes in USTAR header
-     */
+/*
+ * Field sizes in USTAR header
+ */
 
 #define TNAMELEN 100   /* Name field length */
 #define TMODELEN 8     /* Mode field length */
@@ -111,30 +110,29 @@ extern "C"
 #define TDEVLEN 8      /* Device major/minor field length */
 #define TPREFIXLEN 155 /* Prefix field length */
 
-    /*
-     * POSIX USTAR header structure
-     * Total size is exactly 512 bytes
-     */
-    struct posix_header
-    {
-        char name[100];     /* File name (NUL-terminated) */
-        char mode[8];       /* File mode (octal, ASCII) */
-        char uid[8];        /* User ID (octal, ASCII) */
-        char gid[8];        /* Group ID (octal, ASCII) */
-        char size[12];      /* File size (octal, ASCII) */
-        char mtime[12];     /* Modification time (octal, ASCII) */
-        char chksum[8];     /* Header checksum (octal, ASCII) */
-        char typeflag;      /* File type flag */
-        char linkname[100]; /* Link target name */
-        char magic[6];      /* "ustar\0" */
-        char version[2];    /* "00" */
-        char uname[32];     /* User name (NUL-terminated) */
-        char gname[32];     /* Group name (NUL-terminated) */
-        char devmajor[8];   /* Device major number (octal) */
-        char devminor[8];   /* Device minor number (octal) */
-        char prefix[155];   /* Prefix for long names */
-        char padding[12];   /* Padding to 512 bytes */
-    };
+/*
+ * POSIX USTAR header structure
+ * Total size is exactly 512 bytes
+ */
+struct posix_header {
+    char name[100];     /* File name (NUL-terminated) */
+    char mode[8];       /* File mode (octal, ASCII) */
+    char uid[8];        /* User ID (octal, ASCII) */
+    char gid[8];        /* Group ID (octal, ASCII) */
+    char size[12];      /* File size (octal, ASCII) */
+    char mtime[12];     /* Modification time (octal, ASCII) */
+    char chksum[8];     /* Header checksum (octal, ASCII) */
+    char typeflag;      /* File type flag */
+    char linkname[100]; /* Link target name */
+    char magic[6];      /* "ustar\0" */
+    char version[2];    /* "00" */
+    char uname[32];     /* User name (NUL-terminated) */
+    char gname[32];     /* Group name (NUL-terminated) */
+    char devmajor[8];   /* Device major number (octal) */
+    char devminor[8];   /* Device minor number (octal) */
+    char prefix[155];   /* Prefix for long names */
+    char padding[12];   /* Padding to 512 bytes */
+};
 
 /*
  * Checksum calculation

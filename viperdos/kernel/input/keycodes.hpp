@@ -14,8 +14,7 @@
  * - Determining whether a key code represents a modifier key.
  * - Mapping modifier key codes to modifier mask bits.
  */
-namespace input
-{
+namespace input {
 
 // Linux evdev keycodes (from linux/input-event-codes.h)
 // These are what QEMU's virtio-keyboard sends
@@ -26,8 +25,7 @@ namespace input
  * The values are chosen to match the evdev codes used by virtio input so that
  * the input subsystem can interpret raw key events.
  */
-namespace key
-{
+namespace key {
 constexpr u16 NONE = 0;
 
 // Row 1: ESC, F1-F12

@@ -57,7 +57,6 @@ struct VMExecutorResult
 /// @param module The IL module to execute.
 /// @param config Execution configuration (arguments, trap output, etc.).
 /// @return Execution result including exit code and trap information.
-VMExecutorResult executeBytecodeVM(const il::core::Module &module,
-                                   const VMExecutorConfig &config);
+VMExecutorResult executeBytecodeVM(const il::core::Module &module, const VMExecutorConfig &config);
 
 } // namespace il::tools::common

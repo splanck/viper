@@ -11,8 +11,7 @@ extern void paging_disable();
 // ANSI escape to reset to default colors (from centralized viper_colors.h)
 static constexpr const char *SHELL_COLOR = ANSI_RESET;
 
-void shell_loop()
-{
+void shell_loop() {
     char line[256];
 
     // Set shell text color to white
@@ -25,15 +24,11 @@ void shell_loop()
     // Initialize current_dir from kernel's CWD
     refresh_current_dir();
 
-    while (true)
-    {
+    while (true) {
         // Shell prompt
-        if (current_dir[0] == '/' && current_dir[1] == '\0')
-        {
+        if (current_dir[0] == '/' && current_dir[1] == '\0') {
             print_str("SYS:");
-        }
-        else
-        {
+        } else {
             print_str("SYS:");
             print_str(current_dir);
         }
@@ -50,12 +45,10 @@ void shell_loop()
         // Check for "read" prefix for paging
         bool do_paging = false;
         char *cmd_line = line;
-        if (strcasestart(line, "read "))
-        {
+        if (strcasestart(line, "read ")) {
             do_paging = true;
             cmd_line = const_cast<char *>(get_args(line, 5));
-            if (!cmd_line || *cmd_line == '\0')
-            {
+            if (!cmd_line || *cmd_line == '\0') {
                 print_str("Read: missing command\n");
                 last_rc = RC_ERROR;
                 continue;
@@ -64,154 +57,86 @@ void shell_loop()
         }
 
         // Parse and execute command (case-insensitive)
-        if (strcaseeq(cmd_line, "help") || strcaseeq(cmd_line, "?"))
-        {
+        if (strcaseeq(cmd_line, "help") || strcaseeq(cmd_line, "?")) {
             cmd_help();
-        }
-        else if (strcaseeq(cmd_line, "cls") || strcaseeq(cmd_line, "clear"))
-        {
+        } else if (strcaseeq(cmd_line, "cls") || strcaseeq(cmd_line, "clear")) {
             cmd_cls();
-        }
-        else if (strcasestart(cmd_line, "echo ") || strcaseeq(cmd_line, "echo"))
-        {
+        } else if (strcasestart(cmd_line, "echo ") || strcaseeq(cmd_line, "echo")) {
             cmd_echo(get_args(cmd_line, 5));
-        }
-        else if (strcaseeq(cmd_line, "version"))
-        {
+        } else if (strcaseeq(cmd_line, "version")) {
             cmd_version();
-        }
-        else if (strcaseeq(cmd_line, "uptime"))
-        {
+        } else if (strcaseeq(cmd_line, "uptime")) {
             cmd_uptime();
-        }
-        else if (strcaseeq(cmd_line, "history"))
-        {
+        } else if (strcaseeq(cmd_line, "history")) {
             cmd_history();
-        }
-        else if (strcaseeq(cmd_line, "why"))
-        {
+        } else if (strcaseeq(cmd_line, "why")) {
             cmd_why();
-        }
-        else if (strcaseeq(cmd_line, "chdir") || strcasestart(cmd_line, "chdir "))
-        {
+        } else if (strcaseeq(cmd_line, "chdir") || strcasestart(cmd_line, "chdir ")) {
             cmd_cd(get_args(cmd_line, 6));
-        }
-        else if (strcaseeq(cmd_line, "cd") || strcasestart(cmd_line, "cd "))
-        {
+        } else if (strcaseeq(cmd_line, "cd") || strcasestart(cmd_line, "cd ")) {
             cmd_cd(get_args(cmd_line, 3));
-        }
-        else if (strcaseeq(cmd_line, "cwd") || strcaseeq(cmd_line, "pwd"))
-        {
+        } else if (strcaseeq(cmd_line, "cwd") || strcaseeq(cmd_line, "pwd")) {
             cmd_pwd();
-        }
-        else if (strcaseeq(cmd_line, "avail"))
-        {
+        } else if (strcaseeq(cmd_line, "avail")) {
             cmd_avail();
-        }
-        else if (strcaseeq(cmd_line, "status"))
-        {
+        } else if (strcaseeq(cmd_line, "status")) {
             cmd_status();
-        }
-        else if (strcaseeq(cmd_line, "servers"))
-        {
+        } else if (strcaseeq(cmd_line, "servers")) {
             cmd_servers(nullptr);
-        }
-        else if (strcasestart(cmd_line, "servers "))
-        {
+        } else if (strcasestart(cmd_line, "servers ")) {
             cmd_servers(get_args(cmd_line, 8));
-        }
-        else if (strcasestart(cmd_line, "run "))
-        {
+        } else if (strcasestart(cmd_line, "run ")) {
             cmd_run(get_args(cmd_line, 4));
-        }
-        else if (strcaseeq(cmd_line, "run"))
-        {
+        } else if (strcaseeq(cmd_line, "run")) {
             print_str("Run: missing program path\n");
             last_rc = RC_ERROR;
-        }
-        else if (strcaseeq(cmd_line, "caps") || strcasestart(cmd_line, "caps "))
-        {
+        } else if (strcaseeq(cmd_line, "caps") || strcasestart(cmd_line, "caps ")) {
             cmd_caps(get_args(cmd_line, 5));
-        }
-        else if (strcaseeq(cmd_line, "date"))
-        {
+        } else if (strcaseeq(cmd_line, "date")) {
             cmd_date();
-        }
-        else if (strcaseeq(cmd_line, "time"))
-        {
+        } else if (strcaseeq(cmd_line, "time")) {
             cmd_time();
-        }
-        else if (strcasestart(cmd_line, "assign ") || strcaseeq(cmd_line, "assign"))
-        {
+        } else if (strcasestart(cmd_line, "assign ") || strcaseeq(cmd_line, "assign")) {
             cmd_assign(get_args(cmd_line, 7));
-        }
-        else if (strcasestart(cmd_line, "path ") || strcaseeq(cmd_line, "path"))
-        {
+        } else if (strcasestart(cmd_line, "path ") || strcaseeq(cmd_line, "path")) {
             cmd_path(get_args(cmd_line, 5));
-        }
-        else if (strcaseeq(cmd_line, "dir") || strcasestart(cmd_line, "dir "))
-        {
+        } else if (strcaseeq(cmd_line, "dir") || strcasestart(cmd_line, "dir ")) {
             cmd_dir(get_args(cmd_line, 4));
-        }
-        else if (strcaseeq(cmd_line, "list") || strcasestart(cmd_line, "list "))
-        {
+        } else if (strcaseeq(cmd_line, "list") || strcasestart(cmd_line, "list ")) {
             cmd_list(get_args(cmd_line, 5));
-        }
-        else if (strcasestart(cmd_line, "type "))
-        {
+        } else if (strcasestart(cmd_line, "type ")) {
             cmd_type(get_args(cmd_line, 5));
-        }
-        else if (strcaseeq(cmd_line, "type"))
-        {
+        } else if (strcaseeq(cmd_line, "type")) {
             print_str("Type: missing file argument\n");
             last_rc = RC_ERROR;
-        }
-        else if (strcasestart(cmd_line, "copy ") || strcaseeq(cmd_line, "copy"))
-        {
+        } else if (strcasestart(cmd_line, "copy ") || strcaseeq(cmd_line, "copy")) {
             cmd_copy(get_args(cmd_line, 5));
-        }
-        else if (strcasestart(cmd_line, "delete ") || strcaseeq(cmd_line, "delete"))
-        {
+        } else if (strcasestart(cmd_line, "delete ") || strcaseeq(cmd_line, "delete")) {
             cmd_delete(get_args(cmd_line, 7));
-        }
-        else if (strcasestart(cmd_line, "makedir ") || strcaseeq(cmd_line, "makedir"))
-        {
+        } else if (strcasestart(cmd_line, "makedir ") || strcaseeq(cmd_line, "makedir")) {
             cmd_makedir(get_args(cmd_line, 8));
-        }
-        else if (strcasestart(cmd_line, "rename ") || strcaseeq(cmd_line, "rename"))
-        {
+        } else if (strcasestart(cmd_line, "rename ") || strcaseeq(cmd_line, "rename")) {
             cmd_rename(get_args(cmd_line, 7));
-        }
-        else if (strcasestart(cmd_line, "fetch "))
-        {
+        } else if (strcasestart(cmd_line, "fetch ")) {
             cmd_fetch(get_args(cmd_line, 6));
-        }
-        else if (strcaseeq(cmd_line, "fetch"))
-        {
+        } else if (strcaseeq(cmd_line, "fetch")) {
             print_str("Fetch: usage: Fetch <hostname>\n");
             last_rc = RC_ERROR;
-        }
-        else if (strcaseeq(cmd_line, "endshell") || strcaseeq(cmd_line, "exit") ||
-                 strcaseeq(cmd_line, "quit"))
-        {
+        } else if (strcaseeq(cmd_line, "endshell") || strcaseeq(cmd_line, "exit") ||
+                   strcaseeq(cmd_line, "quit")) {
             print_str("Goodbye!\n");
             if (do_paging)
                 paging_disable();
             break;
         }
         // Legacy command aliases
-        else if (strcaseeq(cmd_line, "ls") || strcasestart(cmd_line, "ls "))
-        {
+        else if (strcaseeq(cmd_line, "ls") || strcasestart(cmd_line, "ls ")) {
             print_str("Note: Use 'Dir' or 'List' instead of 'ls'\n");
             cmd_dir(get_args(cmd_line, 3));
-        }
-        else if (strcasestart(cmd_line, "cat "))
-        {
+        } else if (strcasestart(cmd_line, "cat ")) {
             print_str("Note: Use 'Type' instead of 'cat'\n");
             cmd_type(get_args(cmd_line, 4));
-        }
-        else
-        {
+        } else {
             print_str("Unknown command: ");
             print_str(cmd_line);
             print_str("\nType 'Help' for available commands.\n");
@@ -219,8 +144,7 @@ void shell_loop()
             last_error = "Unknown command";
         }
 
-        if (do_paging)
-        {
+        if (do_paging) {
             paging_disable();
         }
     }

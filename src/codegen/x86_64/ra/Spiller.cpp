@@ -119,7 +119,10 @@ void Spiller::ensureSpillSlot(RegClass cls, SpillPlan &plan)
 /// @param plan Spill plan to receive the slot assignment.
 /// @param start Start of the live interval (instruction index).
 /// @param end End of the live interval (instruction index, exclusive).
-void Spiller::ensureSpillSlotWithReuse(RegClass cls, SpillPlan &plan, std::size_t start, std::size_t end)
+void Spiller::ensureSpillSlotWithReuse(RegClass cls,
+                                       SpillPlan &plan,
+                                       std::size_t start,
+                                       std::size_t end)
 {
     if (plan.slot >= 0)
     {

@@ -34,18 +34,20 @@ namespace il::support
 ///
 /// @tparam T Element type (must be trivially copyable for optimal performance).
 /// @tparam N Number of elements to store inline (default: 8).
-template <typename T, size_t N = 8>
-class SmallVector
+template <typename T, size_t N = 8> class SmallVector
 {
     static_assert(N > 0, "SmallVector inline capacity must be positive");
 
     // Private members declared first so they can be used in inline methods
-    T inlineStorage_[N]{};  ///< Inline storage for small vectors.
-    T *heap_{nullptr};      ///< Heap storage when size > N.
-    size_t capacity_{0};    ///< Heap capacity (0 when using inline).
-    size_t size_{0};        ///< Current element count.
+    T inlineStorage_[N]{}; ///< Inline storage for small vectors.
+    T *heap_{nullptr};     ///< Heap storage when size > N.
+    size_t capacity_{0};   ///< Heap capacity (0 when using inline).
+    size_t size_{0};       ///< Current element count.
 
-    [[nodiscard]] bool isHeap() const noexcept { return heap_ != nullptr; }
+    [[nodiscard]] bool isHeap() const noexcept
+    {
+        return heap_ != nullptr;
+    }
 
   public:
     using value_type = T;
@@ -184,8 +186,7 @@ class SmallVector
     }
 
     /// @brief Construct an element in place at the end.
-    template <typename... Args>
-    reference emplace_back(Args &&...args)
+    template <typename... Args> reference emplace_back(Args &&...args)
     {
         if (size_ >= capacity())
             reserve(capacity() == 0 ? N : capacity() * 2);
@@ -202,7 +203,10 @@ class SmallVector
     }
 
     /// @brief Clear all elements.
-    void clear() noexcept { size_ = 0; }
+    void clear() noexcept
+    {
+        size_ = 0;
+    }
 
     /// @brief Resize to n elements.
     void resize(size_t n)
@@ -225,25 +229,41 @@ class SmallVector
     // Accessors
 
     /// @brief Return the number of elements in the vector.
-    [[nodiscard]] size_t size() const noexcept { return size_; }
+    [[nodiscard]] size_t size() const noexcept
+    {
+        return size_;
+    }
 
     /// @brief Return the total capacity (inline or heap).
-    [[nodiscard]] size_t capacity() const noexcept { return isHeap() ? capacity_ : N; }
+    [[nodiscard]] size_t capacity() const noexcept
+    {
+        return isHeap() ? capacity_ : N;
+    }
 
     /// @brief Return true if the vector contains no elements.
-    [[nodiscard]] bool empty() const noexcept { return size_ == 0; }
+    [[nodiscard]] bool empty() const noexcept
+    {
+        return size_ == 0;
+    }
 
     /// @brief Return a pointer to the underlying element storage.
-    [[nodiscard]] T *data() noexcept { return isHeap() ? heap_ : inlineStorage_; }
+    [[nodiscard]] T *data() noexcept
+    {
+        return isHeap() ? heap_ : inlineStorage_;
+    }
 
     /// @brief Return a const pointer to the underlying element storage.
-    [[nodiscard]] const T *data() const noexcept { return isHeap() ? heap_ : inlineStorage_; }
+    [[nodiscard]] const T *data() const noexcept
+    {
+        return isHeap() ? heap_ : inlineStorage_;
+    }
 
     [[nodiscard]] reference operator[](size_t i) noexcept
     {
         assert(i < size_);
         return data()[i];
     }
+
     [[nodiscard]] const_reference operator[](size_t i) const noexcept
     {
         assert(i < size_);
@@ -255,6 +275,7 @@ class SmallVector
         assert(size_ > 0);
         return data()[0];
     }
+
     [[nodiscard]] const_reference front() const noexcept
     {
         assert(size_ > 0);
@@ -266,6 +287,7 @@ class SmallVector
         assert(size_ > 0);
         return data()[size_ - 1];
     }
+
     [[nodiscard]] const_reference back() const noexcept
     {
         assert(size_ > 0);
@@ -274,20 +296,52 @@ class SmallVector
 
     // Iterators
 
-    [[nodiscard]] iterator begin() noexcept { return data(); }
-    [[nodiscard]] const_iterator begin() const noexcept { return data(); }
-    [[nodiscard]] const_iterator cbegin() const noexcept { return data(); }
+    [[nodiscard]] iterator begin() noexcept
+    {
+        return data();
+    }
 
-    [[nodiscard]] iterator end() noexcept { return data() + size_; }
-    [[nodiscard]] const_iterator end() const noexcept { return data() + size_; }
-    [[nodiscard]] const_iterator cend() const noexcept { return data() + size_; }
+    [[nodiscard]] const_iterator begin() const noexcept
+    {
+        return data();
+    }
+
+    [[nodiscard]] const_iterator cbegin() const noexcept
+    {
+        return data();
+    }
+
+    [[nodiscard]] iterator end() noexcept
+    {
+        return data() + size_;
+    }
+
+    [[nodiscard]] const_iterator end() const noexcept
+    {
+        return data() + size_;
+    }
+
+    [[nodiscard]] const_iterator cend() const noexcept
+    {
+        return data() + size_;
+    }
 
     /// @brief Implicit conversion to span for API compatibility.
-    [[nodiscard]] operator std::span<const T>() const noexcept { return {data(), size_}; }
+    [[nodiscard]] operator std::span<const T>() const noexcept
+    {
+        return {data(), size_};
+    }
 
     /// @brief Explicit conversion to span.
-    [[nodiscard]] std::span<T> span() noexcept { return {data(), size_}; }
-    [[nodiscard]] std::span<const T> span() const noexcept { return {data(), size_}; }
+    [[nodiscard]] std::span<T> span() noexcept
+    {
+        return {data(), size_};
+    }
+
+    [[nodiscard]] std::span<const T> span() const noexcept
+    {
+        return {data(), size_};
+    }
 };
 
 } // namespace il::support

@@ -177,14 +177,16 @@ static AllocaMap collectAllocas(Function &F)
                 if (I.op == Opcode::Store && oi == 0)
                 {
                     AI.hasStore = true;
-                    // Check type consistency: if type was already set and differs, mark inconsistent
+                    // Check type consistency: if type was already set and differs, mark
+                    // inconsistent
                     if (AI.type.kind != Type::Kind::Void && AI.type.kind != I.type.kind)
                         AI.typeConsistent = false;
                     AI.type = I.type;
                 }
                 else if (I.op == Opcode::Load && oi == 0)
                 {
-                    // Check type consistency: if type was already set and differs, mark inconsistent
+                    // Check type consistency: if type was already set and differs, mark
+                    // inconsistent
                     if (AI.type.kind != Type::Kind::Void && AI.type.kind != I.type.kind)
                         AI.typeConsistent = false;
                     AI.type = I.type;

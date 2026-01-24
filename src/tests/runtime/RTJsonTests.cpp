@@ -91,9 +91,9 @@ static void test_is_valid_basic()
     assert(rt_json_is_valid(make_str("")) == 0);
 
     // Invalid JSON - wrong first character (not { [ " digit - t f n)
-    assert(rt_json_is_valid(make_str("'single'")) == 0);  // single quotes
-    assert(rt_json_is_valid(make_str("abc")) == 0);       // random word
-    assert(rt_json_is_valid(make_str("@invalid")) == 0);  // special char
+    assert(rt_json_is_valid(make_str("'single'")) == 0); // single quotes
+    assert(rt_json_is_valid(make_str("abc")) == 0);      // random word
+    assert(rt_json_is_valid(make_str("@invalid")) == 0); // special char
 
     // Note: rt_json_is_valid does basic first-character check only.
     // Full validation happens during parsing.

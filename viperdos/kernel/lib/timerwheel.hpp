@@ -19,8 +19,7 @@
  * This is based on the classic timer wheel algorithm described in:
  * "Hashed and Hierarchical Timing Wheels" by Varghese & Lauck (1987)
  */
-namespace timerwheel
-{
+namespace timerwheel {
 
 /// Timer callback function type
 using TimerCallback = void (*)(void *context);
@@ -48,8 +47,7 @@ constexpr u64 MAX_TIMEOUT_MS = WHEEL0_SIZE * WHEEL1_SIZE;
  * Each timer entry contains the expiration time, callback, context,
  * and linkage for the doubly-linked list in each wheel slot.
  */
-struct TimerEntry
-{
+struct TimerEntry {
     u64 expire_time;        ///< Absolute expiration time in ms
     TimerCallback callback; ///< Function to call on expiration
     void *context;          ///< User context passed to callback
@@ -67,8 +65,7 @@ struct TimerEntry
  * @details
  * Provides O(1) insertion, O(1) deletion, and amortized O(1) tick processing.
  */
-class TimerWheel
-{
+class TimerWheel {
   public:
     /**
      * @brief Initialize the timer wheel.
@@ -109,8 +106,7 @@ class TimerWheel
     /**
      * @brief Get count of active timers.
      */
-    u32 active_count() const
-    {
+    u32 active_count() const {
         return active_count_;
     }
 
