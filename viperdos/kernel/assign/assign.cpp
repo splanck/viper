@@ -631,93 +631,79 @@ static inline bool is_separator(char c)
     return c == '/' || c == '\\';
 }
 
-// Resolve a path with assigns
-/** @copydoc viper::assign::resolve_path */
-Handle resolve_path(const char *path, u32 flags)
+// =============================================================================
+// Path Resolution Helpers
+// =============================================================================
+
+/**
+ * @brief Create a directory handle and insert into capability table.
+ *
+ * @param ct Capability table to insert into.
+ * @param inode Directory inode number.
+ * @return Valid handle on success, HANDLE_INVALID on failure.
+ */
+static Handle create_dir_handle(cap::Table *ct, u64 inode)
 {
-    if (!path)
+    kobj::DirObject *dir = kobj::DirObject::create(inode);
+    if (!dir)
         return cap::HANDLE_INVALID;
 
-    char assign_name[MAX_ASSIGN_NAME + 1];
-    const char *remainder = nullptr;
-
-    if (!parse_assign(path, assign_name, &remainder))
+    cap::Rights rights = cap::CAP_READ | cap::CAP_TRAVERSE;
+    cap::Handle h = ct->insert(dir, cap::Kind::Directory, rights);
+    if (h == cap::HANDLE_INVALID)
     {
-        // No assign prefix - would need current directory
-        // For now, return invalid
+        delete dir;
+    }
+    return h;
+}
+
+/**
+ * @brief Create a file handle and insert into capability table.
+ *
+ * @param ct Capability table to insert into.
+ * @param inode File inode number.
+ * @param flags Open flags (O_RDONLY, O_WRONLY, O_RDWR, etc.).
+ * @return Valid handle on success, HANDLE_INVALID on failure.
+ */
+static Handle create_file_handle(cap::Table *ct, u64 inode, u32 flags)
+{
+    kobj::FileObject *file = kobj::FileObject::create(inode, flags);
+    if (!file)
         return cap::HANDLE_INVALID;
-    }
 
-    // Look up the assign entry to get both inode and filesystem
-    AssignEntry *entry = find_assign(assign_name);
-    if (!entry)
+    // Determine rights based on open flags
+    cap::Rights rights = cap::CAP_NONE;
+    u32 access = flags & 0x3;
+    if (access == kobj::file_flags::O_RDONLY || access == kobj::file_flags::O_RDWR)
     {
-        return cap::HANDLE_INVALID;
+        rights = rights | cap::CAP_READ;
     }
-
-    u64 base_inode = entry->dir_inode;
-    if (base_inode == 0)
+    if (access == kobj::file_flags::O_WRONLY || access == kobj::file_flags::O_RDWR)
     {
-        return cap::HANDLE_INVALID;
+        rights = rights | cap::CAP_WRITE;
     }
 
-    // Get the filesystem for this assign (nullptr = system disk)
-    fs::viperfs::ViperFS *fs = entry->fs;
-    if (!fs)
+    cap::Handle h = ct->insert(file, cap::Kind::File, rights);
+    if (h == cap::HANDLE_INVALID)
     {
-        fs = &fs::viperfs::viperfs();
+        delete file;
     }
+    return h;
+}
 
-    // Get current viper's cap_table
-    cap::Table *ct = viper::current_cap_table();
-    if (!ct)
-    {
-        return cap::HANDLE_INVALID;
-    }
+/**
+ * @brief Walk path components to resolve final inode.
+ *
+ * @param fs Filesystem to use for lookups.
+ * @param start_inode Starting directory inode.
+ * @param path Path string to walk (separator-delimited components).
+ * @return Final inode number, or 0 on failure.
+ */
+static u64 walk_path_components(fs::viperfs::ViperFS *fs, u64 start_inode, const char *path)
+{
+    u64 current_ino = start_inode;
+    const char *p = path;
 
-    // If no remainder or empty remainder, return the assign directory itself
-    if (!remainder || *remainder == '\0')
-    {
-        kobj::DirObject *dir = kobj::DirObject::create(base_inode);
-        if (!dir)
-            return cap::HANDLE_INVALID;
-
-        cap::Rights rights = cap::CAP_READ | cap::CAP_TRAVERSE;
-        cap::Handle h = ct->insert(dir, cap::Kind::Directory, rights);
-        if (h == cap::HANDLE_INVALID)
-        {
-            delete dir;
-        }
-        return h;
-    }
-
-    // Skip any leading separators
-    while (*remainder && is_separator(*remainder))
-    {
-        remainder++;
-    }
-
-    // If only separators, return base directory
-    if (*remainder == '\0')
-    {
-        kobj::DirObject *dir = kobj::DirObject::create(base_inode);
-        if (!dir)
-            return cap::HANDLE_INVALID;
-
-        cap::Rights rights = cap::CAP_READ | cap::CAP_TRAVERSE;
-        cap::Handle h = ct->insert(dir, cap::Kind::Directory, rights);
-        if (h == cap::HANDLE_INVALID)
-        {
-            delete dir;
-        }
-        return h;
-    }
-
-    // Current inode we're traversing from
-    u64 current_ino = base_inode;
-
-    // Walk path components using the correct filesystem
-    const char *p = remainder;
     while (*p)
     {
         // Skip separators
@@ -739,18 +725,18 @@ Handle resolve_path(const char *path, u32 flags)
         if (comp_len == 0)
             continue;
 
-        // Read current directory inode from the correct filesystem
+        // Read current directory inode
         fs::viperfs::Inode *dir_inode = fs->read_inode(current_ino);
         if (!dir_inode)
         {
-            return cap::HANDLE_INVALID;
+            return 0;
         }
 
         // Check that current inode is a directory
         if (!fs::viperfs::is_directory(dir_inode))
         {
             fs->release_inode(dir_inode);
-            return cap::HANDLE_INVALID;
+            return 0;
         }
 
         // Lookup the component in this directory
@@ -759,15 +745,82 @@ Handle resolve_path(const char *path, u32 flags)
 
         if (next_ino == 0)
         {
-            // Component not found
-            return cap::HANDLE_INVALID;
+            return 0;
         }
 
         current_ino = next_ino;
     }
 
-    // Create a handle for the final inode
-    fs::viperfs::Inode *final_inode = fs->read_inode(current_ino);
+    return current_ino;
+}
+
+// =============================================================================
+// Path Resolution Main Entry Point
+// =============================================================================
+
+// Resolve a path with assigns
+/** @copydoc viper::assign::resolve_path */
+Handle resolve_path(const char *path, u32 flags)
+{
+    if (!path)
+        return cap::HANDLE_INVALID;
+
+    char assign_name[MAX_ASSIGN_NAME + 1];
+    const char *remainder = nullptr;
+
+    if (!parse_assign(path, assign_name, &remainder))
+    {
+        return cap::HANDLE_INVALID;
+    }
+
+    // Look up the assign entry
+    AssignEntry *entry = find_assign(assign_name);
+    if (!entry || entry->dir_inode == 0)
+    {
+        return cap::HANDLE_INVALID;
+    }
+
+    // Get the filesystem for this assign (nullptr = system disk)
+    fs::viperfs::ViperFS *fs = entry->fs;
+    if (!fs)
+    {
+        fs = &fs::viperfs::viperfs();
+    }
+
+    // Get current viper's cap_table
+    cap::Table *ct = viper::current_cap_table();
+    if (!ct)
+    {
+        return cap::HANDLE_INVALID;
+    }
+
+    // If no remainder or empty remainder, return the assign directory itself
+    if (!remainder || *remainder == '\0')
+    {
+        return create_dir_handle(ct, entry->dir_inode);
+    }
+
+    // Skip any leading separators
+    while (*remainder && is_separator(*remainder))
+    {
+        remainder++;
+    }
+
+    // If only separators, return base directory
+    if (*remainder == '\0')
+    {
+        return create_dir_handle(ct, entry->dir_inode);
+    }
+
+    // Walk path components to find final inode
+    u64 final_ino = walk_path_components(fs, entry->dir_inode, remainder);
+    if (final_ino == 0)
+    {
+        return cap::HANDLE_INVALID;
+    }
+
+    // Check if final inode is directory or file
+    fs::viperfs::Inode *final_inode = fs->read_inode(final_ino);
     if (!final_inode)
     {
         return cap::HANDLE_INVALID;
@@ -778,44 +831,11 @@ Handle resolve_path(const char *path, u32 flags)
 
     if (is_dir)
     {
-        // Create a DirObject
-        kobj::DirObject *dir = kobj::DirObject::create(current_ino);
-        if (!dir)
-            return cap::HANDLE_INVALID;
-
-        cap::Rights rights = cap::CAP_READ | cap::CAP_TRAVERSE;
-        cap::Handle h = ct->insert(dir, cap::Kind::Directory, rights);
-        if (h == cap::HANDLE_INVALID)
-        {
-            delete dir;
-        }
-        return h;
+        return create_dir_handle(ct, final_ino);
     }
     else
     {
-        // Create a FileObject
-        kobj::FileObject *file = kobj::FileObject::create(current_ino, flags);
-        if (!file)
-            return cap::HANDLE_INVALID;
-
-        // Determine rights based on open flags
-        cap::Rights rights = cap::CAP_NONE;
-        u32 access = flags & 0x3;
-        if (access == kobj::file_flags::O_RDONLY || access == kobj::file_flags::O_RDWR)
-        {
-            rights = rights | cap::CAP_READ;
-        }
-        if (access == kobj::file_flags::O_WRONLY || access == kobj::file_flags::O_RDWR)
-        {
-            rights = rights | cap::CAP_WRITE;
-        }
-
-        cap::Handle h = ct->insert(file, cap::Kind::File, rights);
-        if (h == cap::HANDLE_INVALID)
-        {
-            delete file;
-        }
-        return h;
+        return create_file_handle(ct, final_ino, flags);
     }
 }
 

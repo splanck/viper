@@ -283,6 +283,11 @@ class Virtqueue
     }
 
   private:
+    // Initialization helpers
+    bool init_legacy_vring();
+    bool init_modern_vring();
+    void init_free_list();
+
     Device *dev_{nullptr};
     u32 queue_idx_{0};
     u32 size_{0};

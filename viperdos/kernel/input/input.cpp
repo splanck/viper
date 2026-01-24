@@ -144,192 +144,225 @@ static void push_escape_seq(const char *seq)
     }
 }
 
+// =============================================================================
+// Input Polling Helpers
+// =============================================================================
+
+/**
+ * @brief Handle a single keyboard key event.
+ *
+ * @details
+ * Processes key press/release, updates modifiers, emits events, and translates
+ * to ASCII or escape sequences for special keys.
+ *
+ * @param code Linux evdev keycode.
+ * @param pressed True if key pressed, false if released.
+ */
+static void handle_key_event(u16 code, bool pressed)
+{
+    // Update modifier state
+    if (is_modifier(code))
+    {
+        u8 mod_bit = modifier_bit(code);
+        if (pressed)
+            current_modifiers |= mod_bit;
+        else
+            current_modifiers &= ~mod_bit;
+        return;
+    }
+
+    // Handle caps lock toggle
+    if (code == key::CAPS_LOCK && pressed)
+    {
+        caps_lock_on = !caps_lock_on;
+        if (caps_lock_on)
+            current_modifiers |= modifier::CAPS_LOCK;
+        else
+            current_modifiers &= ~modifier::CAPS_LOCK;
+        return;
+    }
+
+    // Create and push event
+    Event ev;
+    ev.type = pressed ? EventType::KeyPress : EventType::KeyRelease;
+    ev.modifiers = current_modifiers;
+    ev.code = code;
+    ev.value = pressed ? 1 : 0;
+    push_event(ev);
+
+    // Translate to ASCII/escape sequences for key presses
+    if (!pressed)
+        return;
+
+    switch (code)
+    {
+        case key::UP:
+            if (current_modifiers & modifier::SHIFT)
+                push_escape_seq("\033[1;2A");
+            else
+                push_escape_seq("\033[A");
+            break;
+        case key::DOWN:
+            if (current_modifiers & modifier::SHIFT)
+                push_escape_seq("\033[1;2B");
+            else
+                push_escape_seq("\033[B");
+            break;
+        case key::RIGHT:
+            push_escape_seq("\033[C");
+            break;
+        case key::LEFT:
+            push_escape_seq("\033[D");
+            break;
+        case key::HOME:
+            push_escape_seq("\033[H");
+            break;
+        case key::END:
+            push_escape_seq("\033[F");
+            break;
+        case key::DELETE:
+            push_escape_seq("\033[3~");
+            break;
+        case key::PAGE_UP:
+            push_escape_seq("\033[5~");
+            break;
+        case key::PAGE_DOWN:
+            push_escape_seq("\033[6~");
+            break;
+        default: {
+            char c = key_to_ascii(code, current_modifiers);
+            if (c != 0)
+                push_char(c);
+            break;
+        }
+    }
+}
+
+/**
+ * @brief Poll the keyboard for pending events.
+ */
+static void poll_keyboard()
+{
+    if (!virtio::keyboard)
+        return;
+
+    virtio::InputEvent vev;
+    while (virtio::keyboard->get_event(&vev))
+    {
+        if (vev.type == virtio::ev_type::KEY)
+        {
+            handle_key_event(vev.code, vev.value != 0);
+        }
+    }
+}
+
+/**
+ * @brief Handle a mouse relative movement event.
+ *
+ * @param code REL_X or REL_Y axis code.
+ * @param value Movement delta.
+ */
+static void handle_mouse_move(u16 code, i32 value)
+{
+    constexpr u16 REL_X = 0x00;
+    constexpr u16 REL_Y = 0x01;
+
+    if (code == REL_X)
+    {
+        g_mouse.dx += value;
+        g_mouse.x += value;
+        if (g_mouse.x < 0)
+            g_mouse.x = 0;
+        if (g_mouse.x >= static_cast<i32>(g_screen_width))
+            g_mouse.x = static_cast<i32>(g_screen_width) - 1;
+    }
+    else if (code == REL_Y)
+    {
+        g_mouse.dy += value;
+        g_mouse.y += value;
+        if (g_mouse.y < 0)
+            g_mouse.y = 0;
+        if (g_mouse.y >= static_cast<i32>(g_screen_height))
+            g_mouse.y = static_cast<i32>(g_screen_height) - 1;
+    }
+
+    Event ev;
+    ev.type = EventType::MouseMove;
+    ev.modifiers = current_modifiers;
+    ev.code = 0;
+    ev.value = 0;
+    push_event(ev);
+}
+
+/**
+ * @brief Handle a mouse button event.
+ *
+ * @param code Button code (BTN_LEFT, BTN_RIGHT, BTN_MIDDLE).
+ * @param pressed True if button pressed, false if released.
+ */
+static void handle_mouse_button(u16 code, bool pressed)
+{
+    constexpr u16 BTN_LEFT = 0x110;
+    constexpr u16 BTN_RIGHT = 0x111;
+    constexpr u16 BTN_MIDDLE = 0x112;
+
+    u8 button_bit = 0;
+    if (code == BTN_LEFT)
+        button_bit = 0x01;
+    else if (code == BTN_RIGHT)
+        button_bit = 0x02;
+    else if (code == BTN_MIDDLE)
+        button_bit = 0x04;
+
+    if (button_bit == 0)
+        return;
+
+    if (pressed)
+        g_mouse.buttons |= button_bit;
+    else
+        g_mouse.buttons &= ~button_bit;
+
+    Event ev;
+    ev.type = EventType::MouseButton;
+    ev.modifiers = current_modifiers;
+    ev.code = code;
+    ev.value = pressed ? 1 : 0;
+    push_event(ev);
+}
+
+/**
+ * @brief Poll the mouse for pending events.
+ */
+static void poll_mouse()
+{
+    if (!virtio::mouse)
+        return;
+
+    virtio::InputEvent vev;
+    while (virtio::mouse->get_event(&vev))
+    {
+        SpinlockGuard guard(mouse_lock);
+
+        if (vev.type == virtio::ev_type::REL)
+        {
+            handle_mouse_move(vev.code, static_cast<i32>(vev.value));
+        }
+        else if (vev.type == virtio::ev_type::KEY)
+        {
+            handle_mouse_button(vev.code, vev.value != 0);
+        }
+    }
+}
+
+// =============================================================================
+// Input Polling Main Entry Point
+// =============================================================================
+
 /** @copydoc input::poll */
 void poll()
 {
-    // Poll keyboard
-    if (virtio::keyboard)
-    {
-        virtio::InputEvent vev;
-        while (virtio::keyboard->get_event(&vev))
-        {
-            // Only process key events
-            if (vev.type != virtio::ev_type::KEY)
-            {
-                continue;
-            }
-
-            u16 code = vev.code;
-            bool pressed = (vev.value != 0);
-
-            // Update modifier state
-            if (is_modifier(code))
-            {
-                u8 mod_bit = modifier_bit(code);
-                if (pressed)
-                {
-                    current_modifiers |= mod_bit;
-                }
-                else
-                {
-                    current_modifiers &= ~mod_bit;
-                }
-                continue;
-            }
-
-            // Handle caps lock toggle
-            if (code == key::CAPS_LOCK && pressed)
-            {
-                caps_lock_on = !caps_lock_on;
-                if (caps_lock_on)
-                {
-                    current_modifiers |= modifier::CAPS_LOCK;
-                }
-                else
-                {
-                    current_modifiers &= ~modifier::CAPS_LOCK;
-                }
-                continue;
-            }
-
-            // Create event
-            Event ev;
-            ev.type = pressed ? EventType::KeyPress : EventType::KeyRelease;
-            ev.modifiers = current_modifiers;
-            ev.code = code;
-            ev.value = pressed ? 1 : 0;
-            push_event(ev);
-
-            // Translate to ASCII for key presses
-            if (pressed)
-            {
-                // Handle special keys that generate escape sequences
-                switch (code)
-                {
-                    case key::UP:
-                        if (current_modifiers & modifier::SHIFT)
-                            push_escape_seq("\033[1;2A");  // Shift+Up for scroll
-                        else
-                            push_escape_seq("\033[A");
-                        break;
-                    case key::DOWN:
-                        if (current_modifiers & modifier::SHIFT)
-                            push_escape_seq("\033[1;2B");  // Shift+Down for scroll
-                        else
-                            push_escape_seq("\033[B");
-                        break;
-                    case key::RIGHT:
-                        push_escape_seq("\033[C");
-                        break;
-                    case key::LEFT:
-                        push_escape_seq("\033[D");
-                        break;
-                    case key::HOME:
-                        push_escape_seq("\033[H");
-                        break;
-                    case key::END:
-                        push_escape_seq("\033[F");
-                        break;
-                    case key::DELETE:
-                        push_escape_seq("\033[3~");
-                        break;
-                    case key::PAGE_UP:
-                        push_escape_seq("\033[5~");
-                        break;
-                    case key::PAGE_DOWN:
-                        push_escape_seq("\033[6~");
-                        break;
-                    default:
-                        // Regular ASCII translation
-                        char c = key_to_ascii(code, current_modifiers);
-                        if (c != 0)
-                        {
-                            push_char(c);
-                        }
-                        break;
-                }
-            }
-        }
-    }
-
-    // Poll mouse
-    if (virtio::mouse)
-    {
-        virtio::InputEvent vev;
-        while (virtio::mouse->get_event(&vev))
-        {
-            SpinlockGuard guard(mouse_lock);
-
-            if (vev.type == virtio::ev_type::REL)
-            {
-                // Relative movement event
-                constexpr u16 REL_X = 0x00;
-                constexpr u16 REL_Y = 0x01;
-
-                if (vev.code == REL_X)
-                {
-                    i32 delta = static_cast<i32>(vev.value);
-                    g_mouse.dx += delta;
-                    g_mouse.x += delta;
-                    // Clamp to screen bounds
-                    if (g_mouse.x < 0)
-                        g_mouse.x = 0;
-                    if (g_mouse.x >= static_cast<i32>(g_screen_width))
-                        g_mouse.x = static_cast<i32>(g_screen_width) - 1;
-                }
-                else if (vev.code == REL_Y)
-                {
-                    i32 delta = static_cast<i32>(vev.value);
-                    g_mouse.dy += delta;
-                    g_mouse.y += delta;
-                    // Clamp to screen bounds
-                    if (g_mouse.y < 0)
-                        g_mouse.y = 0;
-                    if (g_mouse.y >= static_cast<i32>(g_screen_height))
-                        g_mouse.y = static_cast<i32>(g_screen_height) - 1;
-                }
-
-                // Enqueue mouse move event
-                Event ev;
-                ev.type = EventType::MouseMove;
-                ev.modifiers = current_modifiers;
-                ev.code = 0;
-                ev.value = 0;
-                push_event(ev);
-            }
-            else if (vev.type == virtio::ev_type::KEY)
-            {
-                // Mouse button event (BTN_LEFT=0x110, BTN_RIGHT=0x111, BTN_MIDDLE=0x112)
-                constexpr u16 BTN_LEFT = 0x110;
-                constexpr u16 BTN_RIGHT = 0x111;
-                constexpr u16 BTN_MIDDLE = 0x112;
-
-                u8 button_bit = 0;
-                if (vev.code == BTN_LEFT)
-                    button_bit = 0x01;
-                else if (vev.code == BTN_RIGHT)
-                    button_bit = 0x02;
-                else if (vev.code == BTN_MIDDLE)
-                    button_bit = 0x04;
-
-                if (button_bit != 0)
-                {
-                    if (vev.value != 0)
-                        g_mouse.buttons |= button_bit;
-                    else
-                        g_mouse.buttons &= ~button_bit;
-
-                    // Enqueue mouse button event
-                    Event ev;
-                    ev.type = EventType::MouseButton;
-                    ev.modifiers = current_modifiers;
-                    ev.code = vev.code;
-                    ev.value = static_cast<i32>(vev.value);
-                    push_event(ev);
-                }
-            }
-        }
-    }
+    poll_keyboard();
+    poll_mouse();
 }
 
 /** @copydoc input::has_event */
@@ -382,28 +415,59 @@ i32 getchar()
     return static_cast<i32>(static_cast<u8>(c));
 }
 
+// =============================================================================
+// Key-to-ASCII Translation Tables
+// =============================================================================
+
+namespace
+{
+
+// Keycode to lowercase letter lookup (0 = not a letter)
+// Index is evdev keycode, value is lowercase ASCII letter
+constexpr char keycode_to_letter[128] = {
+    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   // 0-15
+    'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', 0,   0,   0,   0,   'a', 's', // 16-31
+    'd', 'f', 'g', 'h', 'j', 'k', 'l', 0,   0,   0,   0,   0,   'z', 'x', 'c', 'v', // 32-47
+    'b', 'n', 'm', 0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   // 48-63
+    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   // 64-79
+    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   // 80-95
+    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   // 96-111
+    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   // 112-127
+};
+
+// Number row: unshifted and shifted characters
+// Keys 2-13 map to 1,2,3,4,5,6,7,8,9,0,-,=
+constexpr char number_unshifted[12] = {'1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '='};
+constexpr char number_shifted[12] = {'!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+'};
+
+// Symbol keys: keycode -> (unshifted, shifted)
+struct SymbolEntry
+{
+    u16 code;
+    char unshifted;
+    char shifted;
+};
+
+constexpr SymbolEntry symbol_table[] = {
+    {key::LEFT_BRACKET, '[', '{'},
+    {key::RIGHT_BRACKET, ']', '}'},
+    {key::BACKSLASH, '\\', '|'},
+    {key::SEMICOLON, ';', ':'},
+    {key::APOSTROPHE, '\'', '"'},
+    {key::GRAVE, '`', '~'},
+    {key::COMMA, ',', '<'},
+    {key::DOT, '.', '>'},
+    {key::SLASH, '/', '?'},
+};
+
+} // namespace
+
 /**
- * @brief Translate an evdev keycode into an ASCII byte (if representable).
+ * @brief Translate an evdev keycode into an ASCII byte.
  *
- * @details
- * This helper performs the final step of keyboard translation for the console
- * character buffer:
- * - Determines whether Shift, Caps Lock, and Ctrl are active based on the
- *   provided modifier mask.
- * - Maps a subset of Linux evdev keycodes (see `keycodes.hpp`) to printable
- *   ASCII characters.
- * - Applies simple modifier rules:
- *   - For letters: `Shift` and `Caps Lock` combine via XOR to decide case.
- *   - For `Ctrl+letter`: returns control codes 1–26 (`^A`..`^Z`).
- *   - For number row and punctuation: `Shift` selects the shifted symbol.
- *
- * Keys that do not have a single-byte ASCII representation (e.g., function
- * keys) are not translated here; higher-level code may represent them as ANSI
- * escape sequences instead.
- *
- * @param code Linux evdev keycode (e.g., @ref key::A).
- * @param modifiers Current modifier bitmask (see `modifier::*`).
- * @return ASCII character byte, or 0 if the key is not representable as ASCII.
+ * @param code Linux evdev keycode.
+ * @param modifiers Current modifier bitmask.
+ * @return ASCII character byte, or 0 if not representable.
  */
 char key_to_ascii(u16 code, u8 modifiers)
 {
@@ -411,120 +475,36 @@ char key_to_ascii(u16 code, u8 modifiers)
     bool caps = (modifiers & modifier::CAPS_LOCK) != 0;
     bool ctrl = (modifiers & modifier::CTRL) != 0;
 
-    // Letters (A-Z are evdev codes 30-38, 44-50, 16-25)
-    char letter = 0;
-    if (code == key::A)
-        letter = 'a';
-    else if (code == key::B)
-        letter = 'b';
-    else if (code == key::C)
-        letter = 'c';
-    else if (code == key::D)
-        letter = 'd';
-    else if (code == key::E)
-        letter = 'e';
-    else if (code == key::F)
-        letter = 'f';
-    else if (code == key::G)
-        letter = 'g';
-    else if (code == key::H)
-        letter = 'h';
-    else if (code == key::I)
-        letter = 'i';
-    else if (code == key::J)
-        letter = 'j';
-    else if (code == key::K)
-        letter = 'k';
-    else if (code == key::L)
-        letter = 'l';
-    else if (code == key::M)
-        letter = 'm';
-    else if (code == key::N)
-        letter = 'n';
-    else if (code == key::O)
-        letter = 'o';
-    else if (code == key::P)
-        letter = 'p';
-    else if (code == key::Q)
-        letter = 'q';
-    else if (code == key::R)
-        letter = 'r';
-    else if (code == key::S)
-        letter = 's';
-    else if (code == key::T)
-        letter = 't';
-    else if (code == key::U)
-        letter = 'u';
-    else if (code == key::V)
-        letter = 'v';
-    else if (code == key::W)
-        letter = 'w';
-    else if (code == key::X)
-        letter = 'x';
-    else if (code == key::Y)
-        letter = 'y';
-    else if (code == key::Z)
-        letter = 'z';
-
-    if (letter != 0)
+    // Check letter keys via lookup table
+    if (code < 128)
     {
-        // Handle Ctrl+letter
-        if (ctrl)
+        char letter = keycode_to_letter[code];
+        if (letter != 0)
         {
-            return static_cast<char>(letter - 'a' + 1);
+            if (ctrl)
+                return static_cast<char>(letter - 'a' + 1);
+            bool uppercase = shift ^ caps;
+            return uppercase ? static_cast<char>(letter - 32) : letter;
         }
-        // Handle shift/caps
-        bool uppercase = shift ^ caps;
-        return uppercase ? (letter - 32) : letter;
     }
 
-    // Numbers and symbols
+    // Number row (keycodes 2-13)
+    if (code >= 2 && code <= 13)
+    {
+        u16 idx = code - 2;
+        return shift ? number_shifted[idx] : number_unshifted[idx];
+    }
+
+    // Symbol keys
+    for (const auto &sym : symbol_table)
+    {
+        if (code == sym.code)
+            return shift ? sym.shifted : sym.unshifted;
+    }
+
+    // Special keys
     switch (code)
     {
-        case key::_1:
-            return shift ? '!' : '1';
-        case key::_2:
-            return shift ? '@' : '2';
-        case key::_3:
-            return shift ? '#' : '3';
-        case key::_4:
-            return shift ? '$' : '4';
-        case key::_5:
-            return shift ? '%' : '5';
-        case key::_6:
-            return shift ? '^' : '6';
-        case key::_7:
-            return shift ? '&' : '7';
-        case key::_8:
-            return shift ? '*' : '8';
-        case key::_9:
-            return shift ? '(' : '9';
-        case key::_0:
-            return shift ? ')' : '0';
-
-        case key::MINUS:
-            return shift ? '_' : '-';
-        case key::EQUAL:
-            return shift ? '+' : '=';
-        case key::LEFT_BRACKET:
-            return shift ? '{' : '[';
-        case key::RIGHT_BRACKET:
-            return shift ? '}' : ']';
-        case key::BACKSLASH:
-            return shift ? '|' : '\\';
-        case key::SEMICOLON:
-            return shift ? ':' : ';';
-        case key::APOSTROPHE:
-            return shift ? '"' : '\'';
-        case key::GRAVE:
-            return shift ? '~' : '`';
-        case key::COMMA:
-            return shift ? '<' : ',';
-        case key::DOT:
-            return shift ? '>' : '.';
-        case key::SLASH:
-            return shift ? '?' : '/';
-
         case key::SPACE:
             return ' ';
         case key::ENTER:
@@ -535,7 +515,6 @@ char key_to_ascii(u16 code, u8 modifiers)
             return '\b';
         case key::ESCAPE:
             return '\033';
-
         default:
             return 0;
     }

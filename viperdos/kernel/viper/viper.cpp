@@ -134,6 +134,74 @@ static int viper_index(Viper *v)
     return static_cast<int>(offset / sizeof(Viper));
 }
 
+/**
+ * @brief Initialize heap and VMA regions for a new process.
+ */
+static void init_memory_regions(Viper *v)
+{
+    v->heap_start = layout::USER_HEAP_BASE;
+    v->heap_break = layout::USER_HEAP_BASE;
+    v->heap_max = layout::USER_HEAP_BASE + (64 * 1024 * 1024);
+
+    v->vma_list.init();
+    v->vma_list.add(layout::USER_HEAP_BASE, v->heap_max,
+                    mm::vma_prot::READ | mm::vma_prot::WRITE, mm::VmaType::ANONYMOUS);
+
+    u64 stack_bottom = layout::USER_STACK_TOP - layout::USER_STACK_SIZE;
+    v->vma_list.add(stack_bottom, layout::USER_STACK_TOP,
+                    mm::vma_prot::READ | mm::vma_prot::WRITE, mm::VmaType::STACK);
+}
+
+/**
+ * @brief Initialize resource limits and process groups from parent.
+ */
+static void init_from_parent(Viper *v, Viper *parent)
+{
+    v->memory_used = 0;
+    v->task_list = nullptr;
+    v->task_count = 0;
+    sched::wait_init(&v->child_waiters);
+    v->exit_code = 0;
+
+    if (parent)
+    {
+        v->memory_limit = parent->memory_limit;
+        v->handle_limit = parent->handle_limit;
+        v->task_limit = parent->task_limit;
+        v->cap_bounding_set = parent->cap_bounding_set;
+        v->pgid = parent->pgid;
+        v->sid = parent->sid;
+        v->is_session_leader = false;
+        v->next_sibling = parent->first_child;
+        parent->first_child = v;
+    }
+    else
+    {
+        v->memory_limit = DEFAULT_MEMORY_LIMIT;
+        v->handle_limit = DEFAULT_HANDLE_LIMIT;
+        v->task_limit = DEFAULT_TASK_LIMIT;
+        v->cap_bounding_set = cap::CAP_ALL;
+        v->pgid = v->id;
+        v->sid = v->id;
+        v->is_session_leader = true;
+    }
+
+    v->parent = parent;
+    v->first_child = nullptr;
+}
+
+/**
+ * @brief Add viper to global tracking list.
+ */
+static void add_to_global_list(Viper *v)
+{
+    v->next_all = all_vipers_head;
+    v->prev_all = nullptr;
+    if (all_vipers_head)
+        all_vipers_head->prev_all = v;
+    all_vipers_head = v;
+}
+
 /** @copydoc viper::create */
 Viper *create(Viper *parent, const char *name)
 {
@@ -146,24 +214,15 @@ Viper *create(Viper *parent, const char *name)
 
     int idx = viper_index(v);
     if (idx < 0)
-    {
         return nullptr;
-    }
 
-    // Mark as creating
     v->state = ViperState::Creating;
     v->id = next_viper_id++;
 
-    // Copy name
-    int i = 0;
-    while (name[i] && i < 31)
-    {
+    for (int i = 0; i < 31 && name[i]; i++)
         v->name[i] = name[i];
-        i++;
-    }
-    v->name[i] = '\0';
+    v->name[31] = '\0';
 
-    // Initialize address space
     AddressSpace &as = address_spaces[idx];
     if (!as.init())
     {
@@ -172,87 +231,12 @@ Viper *create(Viper *parent, const char *name)
         v->id = 0;
         return nullptr;
     }
-
     v->ttbr0 = as.root();
     v->asid = as.asid();
 
-    // Set up parent relationship
-    v->parent = parent;
-    v->first_child = nullptr;
-    v->next_sibling = nullptr;
+    init_from_parent(v, parent);
+    init_memory_regions(v);
 
-    if (parent)
-    {
-        // Add to parent's child list
-        v->next_sibling = parent->first_child;
-        parent->first_child = v;
-    }
-
-    // Initialize heap
-    v->heap_start = layout::USER_HEAP_BASE;
-    v->heap_break = layout::USER_HEAP_BASE;
-    v->heap_max = layout::USER_HEAP_BASE + (64 * 1024 * 1024); // 64MB heap limit
-
-    // Initialize VMA list
-    v->vma_list.init();
-
-    // Add initial VMAs for heap and stack regions
-    // Heap VMA (will grow as sbrk is called)
-    v->vma_list.add(layout::USER_HEAP_BASE,
-                    v->heap_max,
-                    mm::vma_prot::READ | mm::vma_prot::WRITE,
-                    mm::VmaType::ANONYMOUS);
-
-    // Stack VMA (grows downward from USER_STACK_TOP)
-    u64 stack_bottom = layout::USER_STACK_TOP - layout::USER_STACK_SIZE;
-    v->vma_list.add(stack_bottom,
-                    layout::USER_STACK_TOP,
-                    mm::vma_prot::READ | mm::vma_prot::WRITE,
-                    mm::VmaType::STACK);
-
-    // Initialize resource tracking - inherit limits from parent or use defaults
-    v->memory_used = 0;
-    if (parent)
-    {
-        v->memory_limit = parent->memory_limit;
-        v->handle_limit = parent->handle_limit;
-        v->task_limit = parent->task_limit;
-        v->cap_bounding_set = parent->cap_bounding_set;
-    }
-    else
-    {
-        v->memory_limit = DEFAULT_MEMORY_LIMIT;
-        v->handle_limit = DEFAULT_HANDLE_LIMIT;
-        v->task_limit = DEFAULT_TASK_LIMIT;
-        v->cap_bounding_set = cap::CAP_ALL;
-    }
-
-    // No tasks yet
-    v->task_list = nullptr;
-    v->task_count = 0;
-
-    // Initialize wait queue for waitpid
-    sched::wait_init(&v->child_waiters);
-    v->exit_code = 0;
-
-    // Initialize process groups and sessions
-    // By default, new processes inherit parent's pgid/sid
-    // If no parent (init process), use own pid
-    if (parent)
-    {
-        v->pgid = parent->pgid;
-        v->sid = parent->sid;
-        v->is_session_leader = false;
-    }
-    else
-    {
-        // Root process starts its own session/group
-        v->pgid = v->id;
-        v->sid = v->id;
-        v->is_session_leader = true;
-    }
-
-    // Initialize capability table
     cap::Table &ct = cap_tables[idx];
     if (!ct.init())
     {
@@ -264,35 +248,19 @@ Viper *create(Viper *parent, const char *name)
     }
     v->cap_table = &ct;
 
-    // Bootstrap device capabilities for the init process only.
-    //
-    // Microkernel user-space drivers (blkd/netd/fsd) are expected to receive
-    // delegated device capabilities from vinit via IPC, but vinit itself needs
-    // an initial "root" device capability to start that delegation chain.
     if (!parent)
     {
         static u32 device_root_token = 0;
-        (void)ct.insert(&device_root_token,
-                        cap::Kind::Device,
-                        cap::CAP_DEVICE_ACCESS | cap::CAP_IRQ_ACCESS | cap::CAP_DMA_ACCESS |
-                            cap::CAP_TRANSFER | cap::CAP_DERIVE);
+        (void)ct.insert(&device_root_token, cap::Kind::Device,
+                        cap::CAP_DEVICE_ACCESS | cap::CAP_IRQ_ACCESS |
+                        cap::CAP_DMA_ACCESS | cap::CAP_TRANSFER | cap::CAP_DERIVE);
     }
 
-    // Initialize file descriptor table
     fs::vfs::FDTable &fdt = fd_tables[idx];
     fdt.init();
     v->fd_table = &fdt;
 
-    // Add to global list
-    v->next_all = all_vipers_head;
-    v->prev_all = nullptr;
-    if (all_vipers_head)
-    {
-        all_vipers_head->prev_all = v;
-    }
-    all_vipers_head = v;
-
-    // Mark as running
+    add_to_global_list(v);
     v->state = ViperState::Running;
 
     serial::puts("[viper] Created Viper '");

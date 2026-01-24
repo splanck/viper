@@ -70,55 +70,19 @@ void net_init()
     }
 }
 
-bool NetDevice::init()
+// =============================================================================
+// NetDevice Initialization Helpers
+// =============================================================================
+
+bool NetDevice::init_mac_address(bool has_mac)
 {
-    // Find a network device
-    u64 base = find_device(device_type::NET);
-    if (!base)
-    {
-        return false;
-    }
-
-    // Use common init sequence
-    if (!basic_init(base))
-    {
-        serial::puts("[virtio-net] Device init failed\n");
-        return false;
-    }
-
-    // Calculate device index for IRQ
-    device_index_ = static_cast<u32>((base - kc::hw::VIRTIO_MMIO_BASE) / kc::hw::VIRTIO_DEVICE_STRIDE);
-    irq_num_ = VIRTIO_IRQ_BASE + device_index_;
-
-    serial::puts("[virtio-net] Initializing at ");
-    serial::put_hex(base);
-    serial::puts(" (IRQ ");
-    serial::put_dec(irq_num_);
-    serial::puts(")\n");
-
-    // Read device features to check for MAC
-    write32(reg::DEVICE_FEATURES_SEL, 0);
-    u32 features_low = read32(reg::DEVICE_FEATURES);
-    bool has_mac = (features_low & (1 << 5)) != 0;
-
-    // Negotiate features (accept minimal set)
-    if (!negotiate_features(0))
-    {
-        set_status(status::FAILED);
-        return false;
-    }
-
-    // Read MAC address from config
     if (has_mac)
     {
         for (int i = 0; i < 6; i++)
-        {
             mac_[i] = read_config8(i);
-        }
     }
     else
     {
-        // Use default MAC
         mac_[0] = 0x52;
         mac_[1] = 0x54;
         mac_[2] = 0x00;
@@ -128,35 +92,28 @@ bool NetDevice::init()
     }
 
     serial::puts("[virtio-net] MAC: ");
-    for (int i = 0; i < 6; i++)
-    {
-        // Print each byte as 2 hex digits
-        u8 byte = mac_[i];
-        char hex[3];
-        hex[0] = "0123456789abcdef"[(byte >> 4) & 0xf];
-        hex[1] = "0123456789abcdef"[byte & 0xf];
-        hex[2] = '\0';
-        serial::puts(hex);
-        if (i < 5)
-            serial::putc(':');
-    }
+    serial::put_mac(mac_);
     serial::putc('\n');
+    return true;
+}
 
-    // Initialize RX virtqueue (queue 0)
+bool NetDevice::init_virtqueues()
+{
     if (!rx_vq_.init(this, 0, kc::virtio::NET_VIRTQUEUE_SIZE))
     {
         set_status(status::FAILED);
         return false;
     }
-
-    // Initialize TX virtqueue (queue 1)
     if (!tx_vq_.init(this, 1, kc::virtio::NET_VIRTQUEUE_SIZE))
     {
         set_status(status::FAILED);
         return false;
     }
+    return true;
+}
 
-    // Allocate RX buffers
+bool NetDevice::init_rx_buffers()
+{
     usize rx_pool_size = RX_BUFFER_COUNT * sizeof(RxBuffer);
     rx_buffers_phys_ = pmm::alloc_pages((rx_pool_size + 4095) / 4096);
     if (!rx_buffers_phys_)
@@ -166,18 +123,26 @@ bool NetDevice::init()
     }
     rx_buffers_ = reinterpret_cast<RxBuffer *>(pmm::phys_to_virt(rx_buffers_phys_));
 
-    // Initialize RX buffers
     for (usize i = 0; i < RX_BUFFER_COUNT; i++)
     {
         rx_buffers_[i].in_use = false;
         rx_buffers_[i].desc_idx = 0;
         for (usize j = 0; j < RX_BUFFER_SIZE; j++)
-        {
             rx_buffers_[i].data[j] = 0;
-        }
     }
 
-    // Allocate TX header buffer
+    for (usize i = 0; i < RX_QUEUE_SIZE; i++)
+    {
+        rx_queue_[i].data = nullptr;
+        rx_queue_[i].len = 0;
+        rx_queue_[i].valid = false;
+    }
+
+    return true;
+}
+
+bool NetDevice::init_tx_buffers()
+{
     tx_header_phys_ = pmm::alloc_pages(1);
     if (!tx_header_phys_)
     {
@@ -186,7 +151,6 @@ bool NetDevice::init()
     }
     tx_header_ = reinterpret_cast<NetHeader *>(pmm::phys_to_virt(tx_header_phys_));
 
-    // Allocate TX data buffer (for frame data - 2KB is enough for Ethernet)
     tx_data_phys_ = pmm::alloc_pages(1);
     if (!tx_data_phys_)
     {
@@ -195,21 +159,57 @@ bool NetDevice::init()
     }
     tx_data_buf_ = reinterpret_cast<u8 *>(pmm::phys_to_virt(tx_data_phys_));
 
-    // Initialize received packet queue
-    for (usize i = 0; i < RX_QUEUE_SIZE; i++)
+    return true;
+}
+
+// =============================================================================
+// NetDevice Main Initialization
+// =============================================================================
+
+bool NetDevice::init()
+{
+    u64 base = find_device(device_type::NET);
+    if (!base)
+        return false;
+
+    if (!basic_init(base))
     {
-        rx_queue_[i].data = nullptr;
-        rx_queue_[i].len = 0;
-        rx_queue_[i].valid = false;
+        serial::puts("[virtio-net] Device init failed\n");
+        return false;
     }
 
-    // Post RX buffers to device
-    refill_rx_buffers();
+    device_index_ = static_cast<u32>((base - kc::hw::VIRTIO_MMIO_BASE) / kc::hw::VIRTIO_DEVICE_STRIDE);
+    irq_num_ = VIRTIO_IRQ_BASE + device_index_;
 
-    // Device is ready
+    serial::puts("[virtio-net] Initializing at ");
+    serial::put_hex(base);
+    serial::puts(" (IRQ ");
+    serial::put_dec(irq_num_);
+    serial::puts(")\n");
+
+    // Check for MAC feature
+    write32(reg::DEVICE_FEATURES_SEL, 0);
+    u32 features_low = read32(reg::DEVICE_FEATURES);
+    bool has_mac = (features_low & (1 << 5)) != 0;
+
+    if (!negotiate_features(0))
+    {
+        set_status(status::FAILED);
+        return false;
+    }
+
+    if (!init_mac_address(has_mac))
+        return false;
+    if (!init_virtqueues())
+        return false;
+    if (!init_rx_buffers())
+        return false;
+    if (!init_tx_buffers())
+        return false;
+
+    refill_rx_buffers();
     add_status(status::DRIVER_OK);
 
-    // Register IRQ handler
     gic::register_handler(irq_num_, net_irq_handler);
     gic::enable_irq(irq_num_);
 

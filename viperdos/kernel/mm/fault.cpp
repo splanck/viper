@@ -526,125 +526,81 @@ static FaultResult handle_cow_fault(viper::Viper *proc, u64 fault_addr)
     return FaultResult::HANDLED;
 }
 
-void handle_page_fault(exceptions::ExceptionFrame *frame, bool is_instruction)
+/**
+ * @brief Map function for demand paging.
+ */
+static bool demand_map_fn(u64 virt, u64 phys, u32 prot)
 {
-    // Determine if fault is from user mode by checking SPSR.M[3:0]
-    // EL0 = 0b0000, EL1 = 0b0100/0b0101
-    u32 spsr_el = (frame->spsr & 0xF);
-    bool is_user = (spsr_el == 0);
+    viper::Viper *v = viper::current();
+    if (!v)
+        return false;
+    viper::AddressSpace *addr_space = viper::get_address_space(v);
+    if (!addr_space)
+        return false;
 
-    // Parse the fault information
-    FaultInfo info = parse_fault(frame->far, frame->esr, frame->elr, is_instruction, is_user);
+    u32 as_prot = 0;
+    if (prot & vma_prot::READ)
+        as_prot |= viper::prot::READ;
+    if (prot & vma_prot::WRITE)
+        as_prot |= viper::prot::WRITE;
+    if (prot & vma_prot::EXEC)
+        as_prot |= viper::prot::EXEC;
 
-    // Get task name for logging
-    task::Task *current = task::current();
-    const char *task_name = current ? current->name : "<unknown>";
+    return addr_space->map(virt, phys, 4096, as_prot);
+}
 
-    // Log the fault
-    log_fault(info, task_name);
+/**
+ * @brief Try to handle a translation fault via demand paging.
+ * @return true if fault was handled.
+ */
+static bool try_demand_paging(viper::Viper *proc, const FaultInfo &info)
+{
+    viper::AddressSpace *as = viper::get_address_space(proc);
+    if (!as)
+        return false;
 
-    // Demand paging implementation
-    // =============================
-
-    if (!is_user)
+    FaultResult result = handle_demand_fault(&proc->vma_list, info.fault_addr,
+                                              info.is_write, demand_map_fn);
+    if (result == FaultResult::HANDLED || result == FaultResult::STACK_GROW)
     {
-        // Kernel fault - panic
-        kernel_panic(info);
+        serial::puts("[page_fault] Demand fault handled, resuming\n");
+        return true;
     }
 
-    // Get the current process for VMA checking
-    viper::Viper *proc = viper::current();
-    if (!proc)
+    if (result == FaultResult::ERROR)
+        serial::puts("[page_fault] Demand fault error\n");
+    else
+        serial::puts("[page_fault] Address not in valid VMA\n");
+
+    return false;
+}
+
+/**
+ * @brief Try to handle a permission fault via COW.
+ * @return true if fault was handled.
+ */
+static bool try_cow_handling(viper::Viper *proc, const FaultInfo &info)
+{
+    FaultResult result = handle_cow_fault(proc, info.fault_addr);
+    if (result == FaultResult::HANDLED || result == FaultResult::STACK_GROW)
     {
-        serial::puts("[page_fault] No current process, delivering SIGSEGV\n");
-        signal::FaultInfo sig_info;
-        sig_info.fault_addr = info.fault_addr;
-        sig_info.fault_pc = info.pc;
-        sig_info.fault_esr = static_cast<u32>(info.esr);
-        sig_info.kind = "no_process";
-        signal::deliver_fault_signal(signal::sig::SIGSEGV, &sig_info);
-        // deliver_fault_signal doesn't return, but just in case:
-        for (;;)
-            asm volatile("wfi");
+        serial::puts("[page_fault] COW fault handled, resuming\n");
+        return true;
     }
 
-    // Only handle translation faults with demand paging
-    if (info.type == FaultType::TRANSLATION)
-    {
-        // Define the map callback for demand paging
-        viper::AddressSpace *as = viper::get_address_space(proc);
-        if (as)
-        {
-            // Lambda to map a page in the current address space
-            auto map_fn = [](u64 virt, u64 phys, u32 prot) -> bool
-            {
-                viper::Viper *v = viper::current();
-                if (!v)
-                    return false;
-                viper::AddressSpace *addr_space = viper::get_address_space(v);
-                if (!addr_space)
-                    return false;
+    if (result == FaultResult::ERROR)
+        serial::puts("[page_fault] COW fault error\n");
+    else
+        serial::puts("[page_fault] Permission fault not COW\n");
 
-                // Convert VMA prot to address space prot
-                u32 as_prot = 0;
-                if (prot & vma_prot::READ)
-                    as_prot |= viper::prot::READ;
-                if (prot & vma_prot::WRITE)
-                    as_prot |= viper::prot::WRITE;
-                if (prot & vma_prot::EXEC)
-                    as_prot |= viper::prot::EXEC;
+    return false;
+}
 
-                return addr_space->map(virt, phys, 4096, as_prot);
-            };
-
-            FaultResult result =
-                handle_demand_fault(&proc->vma_list, info.fault_addr, info.is_write, map_fn);
-
-            switch (result)
-            {
-                case FaultResult::HANDLED:
-                case FaultResult::STACK_GROW:
-                    serial::puts("[page_fault] Demand fault handled, resuming\n");
-                    return; // Resume execution
-
-                case FaultResult::ERROR:
-                    serial::puts("[page_fault] Demand fault error, terminating\n");
-                    break;
-
-                case FaultResult::UNHANDLED:
-                    serial::puts("[page_fault] Address not in valid VMA\n");
-                    break;
-            }
-        }
-    }
-
-    // Handle permission faults (Copy-on-Write)
-    if (info.type == FaultType::PERMISSION && info.is_write)
-    {
-        FaultResult result = handle_cow_fault(proc, info.fault_addr);
-
-        switch (result)
-        {
-            case FaultResult::HANDLED:
-                serial::puts("[page_fault] COW fault handled, resuming\n");
-                return; // Resume execution
-
-            case FaultResult::ERROR:
-                serial::puts("[page_fault] COW fault error, terminating\n");
-                break;
-
-            case FaultResult::UNHANDLED:
-                serial::puts("[page_fault] Permission fault not COW\n");
-                break;
-
-            case FaultResult::STACK_GROW:
-                // Not expected for COW, but handle it
-                return;
-        }
-    }
-
-    // Fault could not be handled - deliver SIGSEGV to the task
-    // Determine fault kind based on type
+/**
+ * @brief Deliver SIGSEGV for unhandled fault.
+ */
+[[noreturn]] static void deliver_sigsegv(const FaultInfo &info)
+{
     const char *kind = "page_fault";
     if (info.type == FaultType::TRANSLATION)
         kind = "translation_fault";
@@ -653,22 +609,44 @@ void handle_page_fault(exceptions::ExceptionFrame *frame, bool is_instruction)
     else if (info.type == FaultType::ALIGNMENT)
         kind = "alignment_fault";
 
-    // Build fault info for signal delivery
     signal::FaultInfo sig_info;
     sig_info.fault_addr = info.fault_addr;
     sig_info.fault_pc = info.pc;
     sig_info.fault_esr = static_cast<u32>(info.esr);
     sig_info.kind = kind;
 
-    // Deliver SIGSEGV - this will terminate the task and log USERFAULT
     signal::deliver_fault_signal(signal::sig::SIGSEGV, &sig_info);
 
-    // Should never reach here - deliver_fault_signal calls task::exit()
-    serial::puts("[page_fault] PANIC: signal delivery returned!\n");
     for (;;)
-    {
         asm volatile("wfi");
+}
+
+void handle_page_fault(exceptions::ExceptionFrame *frame, bool is_instruction)
+{
+    u32 spsr_el = (frame->spsr & 0xF);
+    bool is_user = (spsr_el == 0);
+
+    FaultInfo info = parse_fault(frame->far, frame->esr, frame->elr, is_instruction, is_user);
+    task::Task *current = task::current();
+    log_fault(info, current ? current->name : "<unknown>");
+
+    if (!is_user)
+        kernel_panic(info);
+
+    viper::Viper *proc = viper::current();
+    if (!proc)
+    {
+        serial::puts("[page_fault] No current process\n");
+        deliver_sigsegv(info);
     }
+
+    if (info.type == FaultType::TRANSLATION && try_demand_paging(proc, info))
+        return;
+
+    if (info.type == FaultType::PERMISSION && info.is_write && try_cow_handling(proc, info))
+        return;
+
+    deliver_sigsegv(info);
 }
 
 } // namespace mm

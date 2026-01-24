@@ -236,6 +236,55 @@ void BlkDevice::handle_interrupt()
     }
 }
 
+// =============================================================================
+// Block Request Helpers
+// =============================================================================
+
+i32 BlkDevice::find_free_request_slot()
+{
+    for (usize i = 0; i < MAX_PENDING; i++)
+    {
+        if (!async_requests_[i].in_use)
+        {
+            return static_cast<i32>(i);
+        }
+    }
+    return -1;
+}
+
+bool BlkDevice::wait_for_completion_internal(i32 desc_head)
+{
+    constexpr u32 INTERRUPT_TIMEOUT = 100000;
+    constexpr u32 POLL_TIMEOUT = 10000000;
+
+    // First, try to wait for interrupt
+    for (u32 i = 0; i < INTERRUPT_TIMEOUT; i++)
+    {
+        if (io_complete_ && completed_desc_ == desc_head)
+        {
+            return true;
+        }
+        asm volatile("wfi" ::: "memory");
+    }
+
+    // Fallback to polling if interrupt didn't fire
+    for (u32 i = 0; i < POLL_TIMEOUT; i++)
+    {
+        i32 completed = vq_.poll_used();
+        if (completed == desc_head)
+        {
+            return true;
+        }
+        asm volatile("yield" ::: "memory");
+    }
+
+    return false;
+}
+
+// =============================================================================
+// Block Request Implementation
+// =============================================================================
+
 /** @copydoc virtio::BlkDevice::do_request */
 i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf)
 {
@@ -245,16 +294,7 @@ i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf)
         return -1;
     }
 
-    // Find a free request slot
-    int req_idx = -1;
-    for (usize i = 0; i < MAX_PENDING; i++)
-    {
-        if (!async_requests_[i].in_use)
-        {
-            req_idx = i;
-            break;
-        }
-    }
+    i32 req_idx = find_free_request_slot();
     if (req_idx < 0)
     {
         serial::puts("[virtio-blk] No free request slots\n");
@@ -271,14 +311,11 @@ i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf)
     req.header.type = type;
     req.header.reserved = 0;
     req.header.sector = sector;
-    req.status = 0xFF; // Invalid/pending
+    req.status = 0xFF;
 
     // Calculate physical addresses
     u64 header_phys = requests_phys_ + req_idx * sizeof(PendingRequest);
     u64 status_phys = header_phys + OFFSETOF(PendingRequest, status);
-
-    // Get physical address of data buffer
-    // Assuming buf is in kernel identity-mapped region
     u64 buf_phys = pmm::virt_to_phys(buf);
     u32 buf_len = count * sector_size_;
 
@@ -300,74 +337,33 @@ i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf)
         return -1;
     }
 
-    // Store descriptor indices for later cleanup
     async.desc_head = desc0;
     async.desc_data = desc1;
     async.desc_status = desc2;
 
-    // Descriptor 0: Request header (device reads)
+    // Setup descriptor chain
     vq_.set_desc(desc0, header_phys, sizeof(BlkReqHeader), desc_flags::NEXT);
     vq_.chain_desc(desc0, desc1);
 
-    // Descriptor 1: Data buffer
     u16 data_flags = desc_flags::NEXT;
     if (type == blk_type::IN)
     {
-        data_flags |= desc_flags::WRITE; // Device writes to this buffer
+        data_flags |= desc_flags::WRITE;
     }
     vq_.set_desc(desc1, buf_phys, buf_len, data_flags);
     vq_.chain_desc(desc1, desc2);
 
-    // Descriptor 2: Status (device writes)
     vq_.set_desc(desc2, status_phys, 1, desc_flags::WRITE);
 
-    // Clear completion state before submitting
+    // Clear completion state and submit
     io_complete_ = false;
     completed_desc_ = -1;
-
-    // Memory barrier before submitting
     asm volatile("dsb sy" ::: "memory");
-
-    // Submit and notify
     vq_.submit(desc0);
     vq_.kick();
 
-    // Wait for completion: interrupt-driven with polling fallback
-    bool got_completion = false;
-    constexpr u32 INTERRUPT_TIMEOUT = 100000; // Iterations to wait for interrupt
-    constexpr u32 POLL_TIMEOUT = 10000000;    // Total polling iterations (fallback)
-
-    // First, try to wait for interrupt
-    for (u32 i = 0; i < INTERRUPT_TIMEOUT; i++)
-    {
-        // Check if interrupt signaled completion
-        if (io_complete_ && completed_desc_ == desc0)
-        {
-            got_completion = true;
-            break;
-        }
-
-        // Wait for interrupt (low power)
-        asm volatile("wfi" ::: "memory");
-    }
-
-    // Fallback to polling if interrupt didn't fire
-    if (!got_completion)
-    {
-        for (u32 i = 0; i < POLL_TIMEOUT; i++)
-        {
-            i32 completed = vq_.poll_used();
-            if (completed == desc0)
-            {
-                got_completion = true;
-                break;
-            }
-            // Yield CPU while polling
-            asm volatile("yield" ::: "memory");
-        }
-    }
-
-    if (!got_completion)
+    // Wait for completion
+    if (!wait_for_completion_internal(desc0))
     {
         serial::puts("[virtio-blk] Request timed out!\n");
         vq_.free_desc(desc0);
@@ -377,12 +373,11 @@ i32 BlkDevice::do_request(u32 type, u64 sector, u32 count, void *buf)
         return -1;
     }
 
-    // Free descriptors
+    // Free descriptors and check status
     vq_.free_desc(desc0);
     vq_.free_desc(desc1);
     vq_.free_desc(desc2);
 
-    // Check status
     u8 status = req.status;
     async.in_use = false;
 
@@ -428,16 +423,7 @@ i32 BlkDevice::write_sectors(u64 sector, u32 count, const void *buf)
 /** @copydoc virtio::BlkDevice::flush */
 i32 BlkDevice::flush()
 {
-    // Find a free request slot
-    int req_idx = -1;
-    for (usize i = 0; i < MAX_PENDING; i++)
-    {
-        if (!async_requests_[i].in_use)
-        {
-            req_idx = i;
-            break;
-        }
-    }
+    i32 req_idx = find_free_request_slot();
     if (req_idx < 0)
         return -1;
 
@@ -454,7 +440,7 @@ i32 BlkDevice::flush()
     u64 header_phys = requests_phys_ + req_idx * sizeof(PendingRequest);
     u64 status_phys = header_phys + OFFSETOF(PendingRequest, status);
 
-    // Flush only needs header and status
+    // Flush only needs header and status (no data descriptor)
     i32 desc0 = vq_.alloc_desc();
     i32 desc1 = vq_.alloc_desc();
 
@@ -468,59 +454,26 @@ i32 BlkDevice::flush()
         return -1;
     }
 
-    // Track descriptors
     async.desc_head = desc0;
-    async.desc_data = -1; // Flush has no data descriptor
+    async.desc_data = -1;
     async.desc_status = desc1;
 
     vq_.set_desc(desc0, header_phys, sizeof(BlkReqHeader), desc_flags::NEXT);
     vq_.chain_desc(desc0, desc1);
     vq_.set_desc(desc1, status_phys, 1, desc_flags::WRITE);
 
-    // Clear completion state before submitting
     io_complete_ = false;
     completed_desc_ = -1;
-
     vq_.submit(desc0);
     vq_.kick();
 
-    // Wait for completion: interrupt-driven with polling fallback
-    bool got_completion = false;
-    constexpr u32 INTERRUPT_TIMEOUT = 100000;
-
-    // First, try to wait for interrupt
-    for (u32 i = 0; i < INTERRUPT_TIMEOUT; i++)
+    if (!wait_for_completion_internal(desc0))
     {
-        if (io_complete_ && completed_desc_ == desc0)
-        {
-            got_completion = true;
-            break;
-        }
-        asm volatile("wfi" ::: "memory");
-    }
-
-    // Fallback to polling with timeout
-    if (!got_completion)
-    {
-        constexpr u32 POLLING_TIMEOUT = 10000000; // ~10 million iterations
-        for (u32 poll_count = 0; poll_count < POLLING_TIMEOUT; poll_count++)
-        {
-            i32 completed = vq_.poll_used();
-            if (completed == desc0)
-            {
-                got_completion = true;
-                break;
-            }
-            asm volatile("yield" ::: "memory");
-        }
-        if (!got_completion)
-        {
-            serial::puts("[virtio-blk] Flush timeout in polling fallback\n");
-            vq_.free_desc(desc0);
-            vq_.free_desc(desc1);
-            async.in_use = false;
-            return -1;
-        }
+        serial::puts("[virtio-blk] Flush timeout\n");
+        vq_.free_desc(desc0);
+        vq_.free_desc(desc1);
+        async.in_use = false;
+        return -1;
     }
 
     vq_.free_desc(desc0);

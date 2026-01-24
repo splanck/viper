@@ -359,22 +359,21 @@ u32 get_u32_prop(const void *fdt_base, const char *path, const char *prop, u32 d
     return default_val;
 }
 
-/** @copydoc fdt::parse_memory */
-bool parse_memory(const void *fdt_base, MemoryLayout *out)
+// =============================================================================
+// Memory Parsing Helpers
+// =============================================================================
+
+/**
+ * @brief Parse memory reservation block.
+ *
+ * @param fdt_base FDT base pointer.
+ * @param out Output memory layout structure.
+ */
+static void parse_reserved_regions(const void *fdt_base, MemoryLayout *out)
 {
-    if (!is_valid(fdt_base) || !out)
-        return false;
-
-    // Initialize output
-    out->region_count = 0;
-    out->reserved_count = 0;
-    out->initrd_start = 0;
-    out->initrd_end = 0;
-
     const auto *hdr = get_header(fdt_base);
-
-    // Parse memory reservation block first
     const u8 *rsvmap = static_cast<const u8 *>(fdt_base) + be32_to_cpu(hdr->off_mem_rsvmap);
+
     while (out->reserved_count < MAX_RESERVED_REGIONS)
     {
         u64 addr = read_be64(rsvmap);
@@ -388,8 +387,100 @@ bool parse_memory(const void *fdt_base, MemoryLayout *out)
         out->reserved[out->reserved_count].size = size;
         out->reserved_count++;
     }
+}
 
-    // Now walk structure to find /memory nodes
+/**
+ * @brief Parse a memory "reg" property into memory regions.
+ *
+ * @param pdata Property data.
+ * @param plen Property length.
+ * @param address_cells Number of address cells.
+ * @param size_cells Number of size cells.
+ * @param out Output memory layout structure.
+ */
+static void parse_reg_property(
+    const void *pdata, u32 plen, u32 address_cells, u32 size_cells, MemoryLayout *out)
+{
+    u32 cell_size = (address_cells + size_cells) * 4;
+    u32 entries = plen / cell_size;
+
+    const u8 *ptr = static_cast<const u8 *>(pdata);
+    for (u32 i = 0; i < entries && out->region_count < MAX_MEMORY_REGIONS; i++)
+    {
+        u64 base = 0;
+        u64 size = 0;
+
+        // Read address (1 or 2 cells)
+        if (address_cells == 2)
+        {
+            base = read_be64(ptr);
+            ptr += 8;
+        }
+        else
+        {
+            base = read_be32(ptr);
+            ptr += 4;
+        }
+
+        // Read size (1 or 2 cells)
+        if (size_cells == 2)
+        {
+            size = read_be64(ptr);
+            ptr += 8;
+        }
+        else
+        {
+            size = read_be32(ptr);
+            ptr += 4;
+        }
+
+        out->regions[out->region_count].base = base;
+        out->regions[out->region_count].size = size;
+        out->region_count++;
+    }
+}
+
+/**
+ * @brief Parse initrd properties from /chosen node.
+ *
+ * @param pname Property name.
+ * @param pdata Property data.
+ * @param plen Property length.
+ * @param out Output memory layout structure.
+ */
+static void parse_initrd_property(const char *pname, const void *pdata, u32 plen, MemoryLayout *out)
+{
+    if (str_eq(pname, "linux,initrd-start") && plen >= 4)
+    {
+        out->initrd_start = (plen >= 8) ? read_be64(pdata) : read_be32(pdata);
+    }
+    else if (str_eq(pname, "linux,initrd-end") && plen >= 4)
+    {
+        out->initrd_end = (plen >= 8) ? read_be64(pdata) : read_be32(pdata);
+    }
+}
+
+// =============================================================================
+// Memory Parsing Main Entry Point
+// =============================================================================
+
+/** @copydoc fdt::parse_memory */
+bool parse_memory(const void *fdt_base, MemoryLayout *out)
+{
+    if (!is_valid(fdt_base) || !out)
+        return false;
+
+    // Initialize output
+    out->region_count = 0;
+    out->reserved_count = 0;
+    out->initrd_start = 0;
+    out->initrd_end = 0;
+
+    // Parse memory reservation block
+    parse_reserved_regions(fdt_base, out);
+
+    // Walk structure to find /memory nodes
+    const auto *hdr = get_header(fdt_base);
     ParseState state;
     state.struct_base = get_struct(fdt_base);
     state.strings = get_strings(fdt_base);
@@ -399,8 +490,8 @@ bool parse_memory(const void *fdt_base, MemoryLayout *out)
 
     bool in_memory = false;
     bool in_chosen = false;
-    u32 address_cells = 2; // Default #address-cells
-    u32 size_cells = 1;    // Default #size-cells
+    u32 address_cells = 2;
+    u32 size_cells = 1;
 
     while (true)
     {
@@ -412,8 +503,6 @@ bool parse_memory(const void *fdt_base, MemoryLayout *out)
             {
                 const char *name = get_node_name(state);
                 state.depth++;
-
-                // Check for memory node at depth 1
                 if (state.depth == 1)
                 {
                     in_memory = path_match(name, "memory");
@@ -438,72 +527,25 @@ bool parse_memory(const void *fdt_base, MemoryLayout *out)
                 u32 plen;
                 get_property(state, &pname, &pdata, &plen);
 
-                // Root node properties
+                // Root node cell properties
                 if (state.depth == 1)
                 {
                     if (str_eq(pname, "#address-cells") && plen >= 4)
-                    {
                         address_cells = read_be32(pdata);
-                    }
                     else if (str_eq(pname, "#size-cells") && plen >= 4)
-                    {
                         size_cells = read_be32(pdata);
-                    }
                 }
 
                 // Memory node reg property
                 if (in_memory && str_eq(pname, "reg"))
                 {
-                    u32 cell_size = (address_cells + size_cells) * 4;
-                    u32 entries = plen / cell_size;
-
-                    const u8 *ptr = static_cast<const u8 *>(pdata);
-                    for (u32 i = 0; i < entries && out->region_count < MAX_MEMORY_REGIONS; i++)
-                    {
-                        u64 base = 0;
-                        u64 size = 0;
-
-                        // Read address (1 or 2 cells)
-                        if (address_cells == 2)
-                        {
-                            base = read_be64(ptr);
-                            ptr += 8;
-                        }
-                        else
-                        {
-                            base = read_be32(ptr);
-                            ptr += 4;
-                        }
-
-                        // Read size (1 or 2 cells)
-                        if (size_cells == 2)
-                        {
-                            size = read_be64(ptr);
-                            ptr += 8;
-                        }
-                        else
-                        {
-                            size = read_be32(ptr);
-                            ptr += 4;
-                        }
-
-                        out->regions[out->region_count].base = base;
-                        out->regions[out->region_count].size = size;
-                        out->region_count++;
-                    }
+                    parse_reg_property(pdata, plen, address_cells, size_cells, out);
                 }
 
-                // Chosen node properties (initrd)
+                // Chosen node initrd properties
                 if (in_chosen)
                 {
-                    if (str_eq(pname, "linux,initrd-start") && plen >= 4)
-                    {
-                        out->initrd_start = (plen >= 8) ? read_be64(pdata) : read_be32(pdata);
-                    }
-                    else if (str_eq(pname, "linux,initrd-end") && plen >= 4)
-                    {
-                        out->initrd_end = (plen >= 8) ? read_be64(pdata) : read_be32(pdata);
-                    }
+                    parse_initrd_property(pname, pdata, plen, out);
                 }
                 break;
             }

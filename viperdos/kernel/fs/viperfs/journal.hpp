@@ -210,6 +210,12 @@ class Journal
      * @brief Abort without acquiring lock (caller must hold txn_lock_).
      */
     void abort_unlocked(Transaction *txn);
+
+    // Replay helper methods
+    bool verify_commit_record(u64 commit_block_num, u32 expected_seq);
+    bool verify_transaction_checksums(u64 block_num, const JournalTransaction *txn);
+    void apply_transaction_blocks(u64 block_num, const JournalTransaction *txn);
+    bool validate_transaction_header(const JournalTransaction *txn, u64 pos);
 };
 
 /**

@@ -135,6 +135,80 @@ void free_page_unlocked(u64 phys_addr)
     free_count++;
 }
 
+/**
+ * @brief Initialize buddy allocator for post-framebuffer memory region.
+ */
+void init_buddy_region(u64 fb_end)
+{
+    if (fb_end >= mem_end)
+    {
+        serial::puts("[pmm] fb_end >= mem_end, skipping buddy\n");
+        return;
+    }
+
+    if (mm::buddy::get_allocator().init(fb_end, mem_end, fb_end))
+    {
+        buddy_available = true;
+        buddy_region_start = fb_end;
+        buddy_region_end = mem_end;
+        serial::puts("[pmm] Buddy region: ");
+        serial::put_hex(fb_end);
+        serial::puts(" - ");
+        serial::put_hex(mem_end);
+        serial::puts(" (");
+        serial::put_dec((mem_end - fb_end) / (1024 * 1024));
+        serial::puts(" MB, ");
+        serial::put_dec(mm::buddy::get_allocator().free_pages_count());
+        serial::puts(" pages)\n");
+    }
+    else
+    {
+        serial::puts("[pmm] Buddy allocator init failed\n");
+    }
+}
+
+/**
+ * @brief Initialize bitmap allocator for pre-framebuffer memory region.
+ */
+void init_bitmap_region(u64 bitmap_addr, u64 usable_start, u64 fb_start)
+{
+    bitmap = reinterpret_cast<u64 *>(bitmap_addr);
+
+    for (u64 i = 0; i < bitmap_size; i++)
+        bitmap[i] = ~0ULL;
+    free_count = 0;
+
+    for (u64 addr = usable_start; addr < fb_start; addr += PAGE_SIZE)
+    {
+        u64 page = addr_to_page(addr);
+        if (page < total_pages)
+        {
+            clear_bit(page);
+            free_count++;
+        }
+    }
+
+    serial::puts("[pmm] Bitmap: ");
+    serial::put_dec(free_count);
+    serial::puts(" pages (");
+    serial::put_dec((free_count * PAGE_SIZE) / 1024);
+    serial::puts(" KB)\n");
+}
+
+/**
+ * @brief Print PMM summary statistics.
+ */
+void print_summary()
+{
+    serial::puts("[pmm] Total: ");
+    serial::put_dec(get_free_pages());
+    serial::puts(" free / ");
+    serial::put_dec(get_total_pages());
+    serial::puts(" total pages (");
+    serial::put_dec((get_free_pages() * PAGE_SIZE) / (1024 * 1024));
+    serial::puts(" MB free)\n");
+}
+
 } // namespace
 
 /** @copydoc pmm::init */
@@ -152,145 +226,26 @@ void init(u64 ram_start, u64 ram_size, u64 kernel_end, u64 fb_base, u64 fb_size_
     serial::put_hex(mem_end);
     serial::puts(" (");
     serial::put_dec(ram_size / (1024 * 1024));
-    serial::puts(" MB, ");
-    serial::put_dec(total_pages);
-    serial::puts(" pages)\n");
+    serial::puts(" MB)\n");
 
-    // Calculate bitmap size for fallback (one bit per page, rounded up to u64)
     bitmap_size = (total_pages + 63) / 64;
     u64 bitmap_bytes = bitmap_size * sizeof(u64);
-
-    // Place bitmap right after kernel (for fallback)
     u64 bitmap_addr = page_align_up(kernel_end);
-
-    // Calculate where usable memory starts (after bitmap)
     u64 usable_start = page_align_up(bitmap_addr + bitmap_bytes);
 
-    serial::puts("[pmm] kernel_end: ");
-    serial::put_hex(kernel_end);
-    serial::puts(" usable_start: ");
-    serial::put_hex(usable_start);
-    serial::puts("\n");
-
-    // Framebuffer reservation - use passed parameters or defaults
     u64 fb_start = (fb_base != 0) ? fb_base : kc::mem::FB_BASE;
     u64 fb_size = (fb_size_param != 0) ? fb_size_param : kc::mem::FB_SIZE;
     u64 fb_end = fb_start + fb_size;
 
-    serial::puts("[pmm] Framebuffer reserved: ");
+    serial::puts("[pmm] Framebuffer: ");
     serial::put_hex(fb_start);
-    serial::puts(" - ");
-    serial::put_hex(fb_end);
     serial::puts(" (");
     serial::put_dec(fb_size / (1024 * 1024));
     serial::puts(" MB)\n");
 
-    // Try to initialize buddy allocator first
-    // Note: buddy allocator handles its own locking
-    //
-    // The RAM layout is:
-    //   [ram_start, kernel_end)    - kernel image
-    //   [kernel_end, usable_start) - PMM bitmap
-    //   [usable_start, fb_start)   - usable memory before framebuffer
-    //   [fb_start, fb_end)         - framebuffer (reserved)
-    //   [fb_end, mem_end)          - usable memory after framebuffer
-    //
-    // We initialize the buddy allocator with the POST-framebuffer region
-    // since it's much larger (97MB vs ~15MB before framebuffer).
-    // The pre-framebuffer region is managed by the bitmap allocator fallback.
-
-    serial::puts("[pmm] fb_end: ");
-    serial::put_hex(fb_end);
-    serial::puts(" mem_end: ");
-    serial::put_hex(mem_end);
-    serial::puts("\n");
-
-    if (fb_end < mem_end)
-    {
-        serial::puts("[pmm] Attempting buddy allocator init...\n");
-        // Initialize buddy allocator for the post-framebuffer region
-        // This region starts at fb_end and has no reserved area at the start
-        if (mm::buddy::get_allocator().init(fb_end, mem_end, fb_end))
-        {
-            buddy_available = true;
-            buddy_region_start = fb_end;
-            buddy_region_end = mem_end;
-            serial::puts("[pmm] Buddy allocator for post-framebuffer region\n");
-            serial::puts("[pmm] Buddy region: ");
-            serial::put_hex(fb_end);
-            serial::puts(" - ");
-            serial::put_hex(mem_end);
-            serial::puts(" (");
-            serial::put_dec((mem_end - fb_end) / (1024 * 1024));
-            serial::puts(" MB)\n");
-            serial::puts("[pmm] Buddy free pages: ");
-            serial::put_dec(mm::buddy::get_allocator().free_pages_count());
-            serial::puts("\n");
-        }
-        else
-        {
-            serial::puts("[pmm] Buddy allocator init failed\n");
-        }
-    }
-    else
-    {
-        serial::puts("[pmm] fb_end >= mem_end, skipping buddy\n");
-    }
-
-    // Also initialize bitmap allocator for the pre-framebuffer region as fallback
-    // This gives us ~15MB - kernel - bitmap of additional memory
-    bitmap = reinterpret_cast<u64 *>(bitmap_addr);
-
-    serial::puts("[pmm] Bitmap at ");
-    serial::put_hex(bitmap_addr);
-    serial::puts(" (");
-    serial::put_dec(bitmap_bytes);
-    serial::puts(" bytes)\n");
-
-    // Initialize all pages as used
-    for (u64 i = 0; i < bitmap_size; i++)
-    {
-        bitmap[i] = ~0ULL;
-    }
-    free_count = 0;
-
-    // Mark pre-framebuffer pages as free (between usable_start and fb_start)
-    // The post-framebuffer region is managed by buddy allocator if available
-    for (u64 addr = usable_start; addr < fb_start; addr += PAGE_SIZE)
-    {
-        u64 page = addr_to_page(addr);
-        if (page < total_pages)
-        {
-            clear_bit(page);
-            free_count++;
-        }
-    }
-
-    serial::puts("[pmm] Bitmap free pages (pre-FB): ");
-    serial::put_dec(free_count);
-    serial::puts(" (");
-    serial::put_dec((free_count * PAGE_SIZE) / 1024);
-    serial::puts(" KB)\n");
-
-    serial::puts("[pmm] === PMM SUMMARY ===\n");
-    serial::puts("[pmm] total_pages: ");
-    serial::put_dec(total_pages);
-    serial::puts("\n");
-    serial::puts("[pmm] buddy_available: ");
-    serial::puts(buddy_available ? "true" : "false");
-    serial::puts("\n");
-    serial::puts("[pmm] bitmap free_count: ");
-    serial::put_dec(free_count);
-    serial::puts("\n");
-    serial::puts("[pmm] get_free_pages(): ");
-    serial::put_dec(get_free_pages());
-    serial::puts(" (");
-    serial::put_dec((get_free_pages() * PAGE_SIZE) / (1024 * 1024));
-    serial::puts(" MB)\n");
-    serial::puts("[pmm] get_total_pages(): ");
-    serial::put_dec(get_total_pages());
-    serial::puts("\n");
-    serial::puts("[pmm] Reserved: kernel + bitmap + framebuffer\n");
+    init_buddy_region(fb_end);
+    init_bitmap_region(bitmap_addr, usable_start, fb_start);
+    print_summary();
 }
 
 /** @copydoc pmm::alloc_page */

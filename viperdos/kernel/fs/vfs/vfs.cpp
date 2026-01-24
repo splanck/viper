@@ -223,7 +223,117 @@ u64 resolve_path(const char *path)
     return result;
 }
 
-// Note: resolve_parent() was removed - no longer needed since kernel VFS is read-only
+// =============================================================================
+// VFS Open Helpers
+// =============================================================================
+
+/**
+ * @brief Get absolute path from relative or absolute input.
+ */
+static bool get_absolute_path(const char *path, char *abs_path, usize abs_size)
+{
+    if (path[0] == '/')
+    {
+        usize len = lib::strlen(path);
+        if (len >= abs_size)
+            return false;
+        for (usize i = 0; i <= len; i++)
+            abs_path[i] = path[i];
+        return true;
+    }
+
+    const char *cwd = "/";
+    task::Task *t = task::current();
+    if (t && t->cwd[0])
+        cwd = t->cwd;
+
+    return normalize_path(path, cwd, abs_path, abs_size);
+}
+
+/**
+ * @brief Filesystem selection result.
+ */
+struct FsSelection
+{
+    ::fs::viperfs::ViperFS *fs;
+    bool writable;
+};
+
+/**
+ * @brief Select filesystem based on path prefix.
+ */
+static FsSelection select_filesystem(const char *abs_path)
+{
+    const char *effective_path = nullptr;
+
+    if (is_sys_path(abs_path, &effective_path))
+    {
+        if (::fs::viperfs::viperfs().is_mounted())
+            return {&::fs::viperfs::viperfs(), false};
+    }
+    else if (is_user_path(abs_path, &effective_path))
+    {
+        if (::fs::viperfs::user_viperfs_available())
+            return {&::fs::viperfs::user_viperfs(), true};
+    }
+    return {nullptr, false};
+}
+
+/**
+ * @brief Split path into parent directory and filename.
+ */
+static void split_path(const char *path, char *parent, char *filename)
+{
+    usize path_len = lib::strlen(path);
+    usize last_slash = 0;
+    for (usize i = 0; i < path_len; i++)
+    {
+        if (path[i] == '/')
+            last_slash = i;
+    }
+
+    if (last_slash == 0)
+    {
+        parent[0] = '/';
+        parent[1] = '\0';
+    }
+    else
+    {
+        for (usize i = 0; i < last_slash; i++)
+            parent[i] = path[i];
+        parent[last_slash] = '\0';
+    }
+
+    usize fn_len = path_len - last_slash - 1;
+    for (usize i = 0; i <= fn_len; i++)
+        filename[i] = path[last_slash + 1 + i];
+}
+
+/**
+ * @brief Create file if O_CREAT and file doesn't exist.
+ */
+static u64 create_file_if_needed(::fs::viperfs::ViperFS *fs, const char *abs_path)
+{
+    char parent_path[MAX_PATH];
+    char filename[256];
+    split_path(abs_path, parent_path, filename);
+
+    u64 parent_ino = resolve_path(parent_path);
+    if (parent_ino == 0)
+        return 0;
+
+    ::fs::viperfs::Inode *parent = fs->read_inode(parent_ino);
+    if (!parent)
+        return 0;
+
+    u64 ino = fs->create_file(parent, filename, lib::strlen(filename));
+    fs->release_inode(parent);
+    return ino;
+}
+
+// =============================================================================
+// VFS Open
+// =============================================================================
 
 /** @copydoc fs::vfs::open */
 i32 open(const char *path, u32 oflags)
@@ -235,123 +345,29 @@ i32 open(const char *path, u32 oflags)
     if (!fdt)
         return -1;
 
-    // Normalize path with CWD for relative paths
     char abs_path[MAX_PATH];
-    if (path[0] == '/')
-    {
-        // Already absolute
-        usize len = lib::strlen(path);
-        if (len >= MAX_PATH)
-            return -1;
-        for (usize i = 0; i <= len; i++)
-            abs_path[i] = path[i];
-    }
-    else
-    {
-        // Relative path - build absolute using CWD
-        const char *cwd = "/";
-        task::Task *t = task::current();
-        if (t && t->cwd[0])
-        {
-            cwd = t->cwd;
-        }
-        if (!normalize_path(path, cwd, abs_path, sizeof(abs_path)))
-        {
-            return -1;
-        }
-    }
-
-    // Determine which filesystem to use
-    const char *effective_path = nullptr;
-    ::fs::viperfs::ViperFS *fs = nullptr;
-    bool is_writable = false;
-
-    if (is_sys_path(abs_path, &effective_path))
-    {
-        if (!::fs::viperfs::viperfs().is_mounted())
-            return -1;
-        fs = &::fs::viperfs::viperfs();
-        is_writable = false; // System disk is read-only
-    }
-    else if (is_user_path(abs_path, &effective_path))
-    {
-        if (!::fs::viperfs::user_viperfs_available())
-            return -1;
-        fs = &::fs::viperfs::user_viperfs();
-        is_writable = true; // User disk is writable
-    }
-    else
-    {
+    if (!get_absolute_path(path, abs_path, sizeof(abs_path)))
         return -1;
-    }
 
-    // Check write permissions
+    FsSelection sel = select_filesystem(abs_path);
+    if (!sel.fs)
+        return -1;
+
     bool wants_write = (oflags & flags::O_WRONLY) || (oflags & flags::O_RDWR) ||
                        (oflags & flags::O_CREAT) || (oflags & flags::O_TRUNC);
-    if (wants_write && !is_writable)
-    {
-        return -1; // Read-only filesystem
-    }
+    if (wants_write && !sel.writable)
+        return -1;
 
-    // Use the absolute path for resolution
     u64 ino = resolve_path(abs_path);
 
-    // Handle O_CREAT - create file if it doesn't exist
     if (ino == 0 && (oflags & flags::O_CREAT))
     {
-        // Find parent directory
-        char parent_path[MAX_PATH];
-        char filename[256];
-
-        // Find last slash to split path
-        usize path_len = lib::strlen(abs_path);
-        usize last_slash = 0;
-        for (usize i = 0; i < path_len; i++)
-        {
-            if (abs_path[i] == '/')
-                last_slash = i;
-        }
-
-        // Copy parent path
-        if (last_slash == 0)
-        {
-            parent_path[0] = '/';
-            parent_path[1] = '\0';
-        }
-        else
-        {
-            for (usize i = 0; i < last_slash; i++)
-                parent_path[i] = abs_path[i];
-            parent_path[last_slash] = '\0';
-        }
-
-        // Copy filename
-        usize fn_len = path_len - last_slash - 1;
-        for (usize i = 0; i <= fn_len; i++)
-            filename[i] = abs_path[last_slash + 1 + i];
-
-        // Resolve parent directory
-        u64 parent_ino = resolve_path(parent_path);
-        if (parent_ino == 0)
-            return -1; // Parent directory not found
-
-        // Get parent inode
-        ::fs::viperfs::Inode *parent = fs->read_inode(parent_ino);
-        if (!parent)
-            return -1;
-
-        // Create the file
-        ino = fs->create_file(parent, filename, fn_len);
-        fs->release_inode(parent);
-
-        if (ino == 0)
-            return -1; // Failed to create file
+        ino = create_file_if_needed(sel.fs, abs_path);
     }
 
     if (ino == 0)
-        return -1; // File not found
+        return -1;
 
-    // Allocate file descriptor
     i32 fd = fdt->alloc();
     if (fd < 0)
         return -1;
@@ -360,22 +376,15 @@ i32 open(const char *path, u32 oflags)
     desc->inode_num = ino;
     desc->offset = 0;
     desc->flags = oflags;
-    desc->fs = fs; // Store filesystem pointer
+    desc->fs = sel.fs;
 
-    // Handle O_TRUNC
-    if (oflags & flags::O_TRUNC)
-    {
-        // TODO: Truncate file
-    }
-
-    // Handle O_APPEND
     if (oflags & flags::O_APPEND)
     {
-        ::fs::viperfs::Inode *inode = fs->read_inode(ino);
+        ::fs::viperfs::Inode *inode = sel.fs->read_inode(ino);
         if (inode)
         {
             desc->offset = inode->size;
-            fs->release_inode(inode);
+            sel.fs->release_inode(inode);
         }
     }
 
@@ -1202,122 +1211,103 @@ i32 rename(const char *old_path, const char *new_path)
     return -1;
 }
 
+namespace
+{
+
+/**
+ * @brief Build combined path from CWD and relative path.
+ * @return Position in buffer after building.
+ */
+usize build_combined_path(const char *path, const char *cwd, char *combined)
+{
+    usize pos = 0;
+
+    if (path[0] != '/')
+    {
+        if (cwd && cwd[0])
+        {
+            for (usize i = 0; cwd[i] && pos < MAX_PATH - 1; i++)
+                combined[pos++] = cwd[i];
+            if (pos > 0 && combined[pos - 1] != '/' && pos < MAX_PATH - 1)
+                combined[pos++] = '/';
+        }
+        else
+        {
+            combined[pos++] = '/';
+        }
+    }
+
+    for (usize i = 0; path[i] && pos < MAX_PATH - 1; i++)
+        combined[pos++] = path[i];
+    combined[pos] = '\0';
+
+    return pos;
+}
+
+/**
+ * @brief Process path components and write normalized result.
+ * @return true on success.
+ */
+bool process_path_components(char *src, char *out, usize out_size)
+{
+    usize out_pos = 0;
+    usize component_starts[64];
+    usize stack_depth = 0;
+
+    if (out_size > 0)
+        out[out_pos++] = '/';
+
+    while (*src)
+    {
+        while (*src == '/')
+            src++;
+        if (*src == '\0')
+            break;
+
+        const char *comp_start = src;
+        while (*src && *src != '/')
+            src++;
+        usize comp_len = static_cast<usize>(src - comp_start);
+
+        if (comp_len == 1 && comp_start[0] == '.')
+            continue;
+
+        if (comp_len == 2 && comp_start[0] == '.' && comp_start[1] == '.')
+        {
+            if (stack_depth > 0)
+                out_pos = component_starts[--stack_depth];
+            continue;
+        }
+
+        if (out_pos + comp_len + 1 >= out_size)
+            return false;
+
+        if (stack_depth < 64)
+            component_starts[stack_depth++] = out_pos;
+
+        for (usize i = 0; i < comp_len; i++)
+            out[out_pos++] = comp_start[i];
+        out[out_pos++] = '/';
+    }
+
+    if (out_pos > 1 && out[out_pos - 1] == '/')
+        out_pos--;
+
+    out[out_pos] = '\0';
+    return true;
+}
+
+} // anonymous namespace
+
 /** @copydoc fs::vfs::normalize_path */
 bool normalize_path(const char *path, const char *cwd, char *out, usize out_size)
 {
     if (!path || !out || out_size < 2)
         return false;
 
-    // Buffer to build the combined path
     char combined[MAX_PATH];
-    usize pos = 0;
-
-    // If path is relative, start with CWD
-    if (path[0] != '/')
-    {
-        if (cwd && cwd[0])
-        {
-            // Copy CWD
-            for (usize i = 0; cwd[i] && pos < MAX_PATH - 1; i++)
-            {
-                combined[pos++] = cwd[i];
-            }
-            // Ensure there's a slash between CWD and path
-            if (pos > 0 && combined[pos - 1] != '/' && pos < MAX_PATH - 1)
-            {
-                combined[pos++] = '/';
-            }
-        }
-        else
-        {
-            // No CWD, treat as root
-            combined[pos++] = '/';
-        }
-    }
-
-    // Append the input path
-    for (usize i = 0; path[i] && pos < MAX_PATH - 1; i++)
-    {
-        combined[pos++] = path[i];
-    }
-    combined[pos] = '\0';
-
-    // Now normalize the combined path
-    // We process components and build the result
-    char *src = combined;
-    usize out_pos = 0;
-
-    // Start with root slash
-    if (out_size > 0)
-    {
-        out[out_pos++] = '/';
-    }
-
-    // Track component start positions for handling ".."
-    usize component_starts[64]; // Stack of component start positions
-    usize stack_depth = 0;
-
-    while (*src)
-    {
-        // Skip leading slashes
-        while (*src == '/')
-            src++;
-        if (*src == '\0')
-            break;
-
-        // Find end of component
-        const char *comp_start = src;
-        while (*src && *src != '/')
-            src++;
-        usize comp_len = src - comp_start;
-
-        // Handle "." - skip it
-        if (comp_len == 1 && comp_start[0] == '.')
-        {
-            continue;
-        }
-
-        // Handle ".." - go up one directory
-        if (comp_len == 2 && comp_start[0] == '.' && comp_start[1] == '.')
-        {
-            if (stack_depth > 0)
-            {
-                // Pop the last component
-                stack_depth--;
-                out_pos = component_starts[stack_depth];
-            }
-            // If at root, stay at root
-            continue;
-        }
-
-        // Regular component - add it
-        if (out_pos + comp_len + 1 >= out_size)
-        {
-            return false; // Buffer too small
-        }
-
-        // Record where this component starts (after the slash)
-        if (stack_depth < 64)
-        {
-            component_starts[stack_depth++] = out_pos;
-        }
-
-        // Copy component
-        for (usize i = 0; i < comp_len; i++)
-        {
-            out[out_pos++] = comp_start[i];
-        }
-        out[out_pos++] = '/';
-    }
-
-    // Remove trailing slash (unless root)
-    if (out_pos > 1 && out[out_pos - 1] == '/')
-    {
-        out_pos--;
-    }
-
-    out[out_pos] = '\0';
-    return true;
+    build_combined_path(path, cwd, combined);
+    return process_path_components(combined, out, out_size);
 }
 
 /** @copydoc fs::vfs::resolve_path_cwd */

@@ -396,6 +396,21 @@ class BlkDevice : public Device
      */
     RequestHandle submit_async(
         u32 type, u64 sector, u32 count, void *buf, CompletionCallback callback, void *user_data);
+
+    /**
+     * @brief Find an unused request slot.
+     *
+     * @return Slot index on success, -1 if none available.
+     */
+    i32 find_free_request_slot();
+
+    /**
+     * @brief Wait for a descriptor to complete.
+     *
+     * @param desc_head Head descriptor to wait for.
+     * @return true if completed, false on timeout.
+     */
+    bool wait_for_completion_internal(i32 desc_head);
 };
 
 // Global block device initialization and access

@@ -1242,6 +1242,112 @@ static TcpConnection *find_listening_socket(u16 local_port)
     return nullptr;
 }
 
+// =============================================================================
+// TCP State Handlers
+// =============================================================================
+
+static void handle_tcp_syn_sent(TcpConnection *conn, u8 flags, u32 seq, u32 ack)
+{
+    if ((flags & TCP_SYN) && (flags & TCP_ACK))
+    {
+        serial::puts("[tcp] got SYN-ACK, transitioning to ESTABLISHED\n");
+        conn->rcv_nxt = seq + 1;
+        conn->snd_una = ack;
+        conn->state = TcpState::ESTABLISHED;
+        send_tcp_segment(conn, TCP_ACK, nullptr, 0);
+    }
+    else if (flags & TCP_RST)
+    {
+        serial::puts("[tcp] got RST, connection refused\n");
+        conn->state = TcpState::CLOSED;
+    }
+}
+
+static void handle_tcp_established_data(TcpConnection *conn, u32 seq, const u8 *payload, usize payload_len)
+{
+    if (seq != conn->rcv_nxt)
+    {
+        serial::puts("[tcp] DROP: seq mismatch, got=");
+        serial::put_hex(seq);
+        serial::puts(" expect=");
+        serial::put_hex(conn->rcv_nxt);
+        serial::putc('\n');
+        return;
+    }
+
+    usize space = TcpConnection::RX_BUF_SIZE -
+                  ((conn->rx_tail - conn->rx_head + TcpConnection::RX_BUF_SIZE) %
+                   TcpConnection::RX_BUF_SIZE);
+
+    if (payload_len <= space)
+    {
+        for (usize i = 0; i < payload_len; i++)
+        {
+            conn->rx_buf[conn->rx_tail] = payload[i];
+            conn->rx_tail = (conn->rx_tail + 1) % TcpConnection::RX_BUF_SIZE;
+        }
+        conn->rcv_nxt += static_cast<u32>(payload_len);
+        serial::puts("[tcp] copied ");
+        serial::put_dec(payload_len);
+        serial::puts(" bytes to rx_buf\n");
+    }
+    else
+    {
+        serial::puts("[tcp] DROP: no space\n");
+    }
+}
+
+static void handle_tcp_established(TcpConnection *conn, u8 flags, u32 seq, u32 ack,
+                                   const u8 *payload, usize payload_len)
+{
+    if (flags & TCP_ACK)
+        conn->snd_una = ack;
+
+    if (flags & TCP_FIN)
+    {
+        conn->rcv_nxt = seq + 1;
+        conn->state = TcpState::CLOSE_WAIT;
+        send_tcp_segment(conn, TCP_ACK, nullptr, 0);
+    }
+    else if (payload_len > 0)
+    {
+        handle_tcp_established_data(conn, seq, payload, payload_len);
+        send_tcp_segment(conn, TCP_ACK, nullptr, 0);
+    }
+}
+
+static void handle_tcp_fin_wait(TcpConnection *conn, u8 flags, u32 seq)
+{
+    if (conn->state == TcpState::FIN_WAIT_1 && (flags & TCP_ACK))
+    {
+        conn->state = TcpState::FIN_WAIT_2;
+    }
+    else if (conn->state == TcpState::FIN_WAIT_2 && (flags & TCP_FIN))
+    {
+        conn->rcv_nxt = seq + 1;
+        send_tcp_segment(conn, TCP_ACK, nullptr, 0);
+        conn->state = TcpState::CLOSED;
+        conn->in_use = false;
+    }
+}
+
+static void handle_tcp_incoming_syn(u16 dst_port, const Ipv4Addr &src_ip, u16 src_port, u32 seq)
+{
+    TcpConnection *listener = find_listening_socket(dst_port);
+    if (listener && listener->backlog_count < TcpConnection::MAX_BACKLOG)
+    {
+        auto &pending = listener->backlog[listener->backlog_count++];
+        pending.valid = true;
+        pending.ip = src_ip;
+        pending.port = src_port;
+        pending.seq = seq;
+    }
+}
+
+// =============================================================================
+// TCP Packet Handler
+// =============================================================================
+
 static void handle_tcp(const Ipv4Header *ip, const u8 *data, usize len)
 {
     if (len < sizeof(TcpHeader))
@@ -1272,119 +1378,25 @@ static void handle_tcp(const Ipv4Header *ip, const u8 *data, usize len)
 
     if (conn)
     {
-        serial::puts("[tcp] matched conn, state=");
-        serial::put_dec(static_cast<u32>(conn->state));
-        serial::putc('\n');
-
         switch (conn->state)
         {
             case TcpState::SYN_SENT:
-                if ((flags & TCP_SYN) && (flags & TCP_ACK))
-                {
-                    serial::puts("[tcp] got SYN-ACK, transitioning to ESTABLISHED\n");
-                    conn->rcv_nxt = seq + 1;
-                    conn->snd_una = ack;
-                    conn->state = TcpState::ESTABLISHED;
-                    send_tcp_segment(conn, TCP_ACK, nullptr, 0);
-                }
-                else if (flags & TCP_RST)
-                {
-                    serial::puts("[tcp] got RST, connection refused\n");
-                    conn->state = TcpState::CLOSED;
-                }
+                handle_tcp_syn_sent(conn, flags, seq, ack);
                 break;
-
             case TcpState::ESTABLISHED:
-                if (flags & TCP_ACK)
-                {
-                    conn->snd_una = ack;
-                }
-
-                if (flags & TCP_FIN)
-                {
-                    conn->rcv_nxt = seq + 1;
-                    conn->state = TcpState::CLOSE_WAIT;
-                    send_tcp_segment(conn, TCP_ACK, nullptr, 0);
-                }
-                else if (payload_len > 0)
-                {
-                    if (seq == conn->rcv_nxt)
-                    {
-                        usize space =
-                            TcpConnection::RX_BUF_SIZE -
-                            ((conn->rx_tail - conn->rx_head + TcpConnection::RX_BUF_SIZE) %
-                             TcpConnection::RX_BUF_SIZE);
-                        if (payload_len <= space)
-                        {
-                            for (usize i = 0; i < payload_len; i++)
-                            {
-                                conn->rx_buf[conn->rx_tail] = payload[i];
-                                conn->rx_tail = (conn->rx_tail + 1) % TcpConnection::RX_BUF_SIZE;
-                            }
-                            conn->rcv_nxt += static_cast<u32>(payload_len);
-                            serial::puts("[tcp] copied ");
-                            serial::put_dec(payload_len);
-                            serial::puts(" bytes to rx_buf, avail=");
-                            serial::put_dec(conn->rx_available());
-                            serial::putc('\n');
-                        }
-                        else
-                        {
-                            serial::puts("[tcp] DROP: no space, need=");
-                            serial::put_dec(payload_len);
-                            serial::puts(" have=");
-                            serial::put_dec(space);
-                            serial::putc('\n');
-                        }
-                    }
-                    else
-                    {
-                        serial::puts("[tcp] DROP: seq mismatch, got=");
-                        serial::put_hex(seq);
-                        serial::puts(" expect=");
-                        serial::put_hex(conn->rcv_nxt);
-                        serial::putc('\n');
-                    }
-                    send_tcp_segment(conn, TCP_ACK, nullptr, 0);
-                }
+                handle_tcp_established(conn, flags, seq, ack, payload, payload_len);
                 break;
-
             case TcpState::FIN_WAIT_1:
-                if (flags & TCP_ACK)
-                {
-                    conn->state = TcpState::FIN_WAIT_2;
-                }
-                break;
-
             case TcpState::FIN_WAIT_2:
-                if (flags & TCP_FIN)
-                {
-                    conn->rcv_nxt = seq + 1;
-                    send_tcp_segment(conn, TCP_ACK, nullptr, 0);
-                    conn->state = TcpState::TIME_WAIT;
-                    conn->state = TcpState::CLOSED;
-                    conn->in_use = false;
-                }
+                handle_tcp_fin_wait(conn, flags, seq);
                 break;
-
             default:
                 break;
         }
     }
-    else
+    else if ((flags & TCP_SYN) && !(flags & TCP_ACK))
     {
-        TcpConnection *listener = find_listening_socket(dst_port);
-        if (listener && (flags & TCP_SYN) && !(flags & TCP_ACK))
-        {
-            if (listener->backlog_count < TcpConnection::MAX_BACKLOG)
-            {
-                auto &pending = listener->backlog[listener->backlog_count++];
-                pending.valid = true;
-                pending.ip = ip->src;
-                pending.port = src_port;
-                pending.seq = seq;
-            }
-        }
+        handle_tcp_incoming_syn(dst_port, ip->src, src_port, seq);
     }
 }
 

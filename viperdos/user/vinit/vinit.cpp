@@ -551,7 +551,6 @@ extern "C" void _start()
             // Try to connect to consoled (spawned by workbench when user clicks Shell)
             if (init_console())
             {
-                print_str("[vinit] Connected to console - starting shell\n");
                 shell_loop();
                 // After shell exits, wait for next consoled instance
                 print_str("[vinit] Shell exited, waiting for next console...\n");

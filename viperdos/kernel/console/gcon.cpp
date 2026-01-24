@@ -632,6 +632,127 @@ void handle_sgr()
     }
 }
 
+// =============================================================================
+// CSI Command Handlers
+// =============================================================================
+
+static void csi_cursor_position(u32 p1, u32 p2)
+{
+    u32 row = (p1 > 0) ? p1 - 1 : 0;
+    u32 col = (p2 > 0) ? p2 - 1 : 0;
+    if (row >= rows)
+        row = rows - 1;
+    if (col >= cols)
+        col = cols - 1;
+    cursor_y = row;
+    cursor_x = col;
+}
+
+static void csi_erase_display(u32 mode)
+{
+    if (mode == 0)
+    {
+        clear_to_end_of_screen();
+    }
+    else if (mode == 2 || mode == 3)
+    {
+        const auto &fb_info = ramfb::get_info();
+        fill_rect(TEXT_INSET, TEXT_INSET, fb_info.width - 2 * TEXT_INSET,
+                  fb_info.height - 2 * TEXT_INSET, bg_color);
+        cursor_x = 0;
+        cursor_y = 0;
+    }
+}
+
+static void csi_erase_line(u32 mode)
+{
+    if (mode == 0)
+    {
+        clear_to_end_of_line();
+    }
+    else if (mode == 2)
+    {
+        u32 saved_x = cursor_x;
+        cursor_x = 0;
+        clear_to_end_of_line();
+        cursor_x = saved_x;
+    }
+}
+
+static void csi_cursor_up(u32 p1, u32 p2)
+{
+    if (p2 == 2)
+    {
+        scroll_up();
+    }
+    else
+    {
+        u32 n = (p1 > 0) ? p1 : 1;
+        cursor_y = (cursor_y >= n) ? cursor_y - n : 0;
+    }
+}
+
+static void csi_cursor_down(u32 p1, u32 p2)
+{
+    if (p2 == 2)
+    {
+        scroll_down();
+    }
+    else
+    {
+        u32 n = (p1 > 0) ? p1 : 1;
+        cursor_y += n;
+        if (cursor_y >= rows)
+            cursor_y = rows - 1;
+    }
+}
+
+static void csi_cursor_forward(u32 p1)
+{
+    u32 n = (p1 > 0) ? p1 : 1;
+    cursor_x += n;
+    if (cursor_x >= cols)
+        cursor_x = cols - 1;
+}
+
+static void csi_cursor_back(u32 p1)
+{
+    u32 n = (p1 > 0) ? p1 : 1;
+    cursor_x = (cursor_x >= n) ? cursor_x - n : 0;
+}
+
+static void csi_set_mode(u32 p1)
+{
+    if (ansi_private_mode && p1 == 25)
+    {
+        cursor_visible = true;
+        cursor_blink_state = true;
+        draw_cursor_if_visible();
+    }
+}
+
+static void csi_reset_mode(u32 p1)
+{
+    if (ansi_private_mode && p1 == 25)
+    {
+        erase_cursor_if_drawn();
+        cursor_visible = false;
+        cursor_blink_state = false;
+    }
+}
+
+static void csi_function_key(u32 p1)
+{
+    if (p1 == 23)
+        scroll_up();
+    else if (p1 == 24)
+        scroll_down();
+}
+
+// =============================================================================
+// CSI Dispatcher
+// =============================================================================
+
 /**
  * @brief Handle CSI (Control Sequence Introducer) final character.
  *
@@ -639,168 +760,51 @@ void handle_sgr()
  */
 void handle_csi(char final)
 {
-    // Get parameters (with defaults)
     u32 p1 = (ansi_param_count > 0) ? ansi_params[0] : 0;
     u32 p2 = (ansi_param_count > 1) ? ansi_params[1] : 0;
 
-    // Erase cursor before any operation that might move it
     erase_cursor_if_drawn();
 
     switch (final)
     {
-        case 'H': // CUP - Cursor Position
-        case 'f': // HVP - Horizontal and Vertical Position
-            // ESC[H = home, ESC[row;colH = position (1-based)
-            {
-                u32 row = (p1 > 0) ? p1 - 1 : 0;
-                u32 col = (p2 > 0) ? p2 - 1 : 0;
-                if (row >= rows)
-                    row = rows - 1;
-                if (col >= cols)
-                    col = cols - 1;
-                cursor_y = row;
-                cursor_x = col;
-            }
+        case 'H':
+        case 'f':
+            csi_cursor_position(p1, p2);
             break;
-
-        case 'J': // ED - Erase in Display
-            if (p1 == 0)
-            {
-                // Clear from cursor to end of screen
-                clear_to_end_of_screen();
-            }
-            else if (p1 == 2 || p1 == 3)
-            {
-                // Clear entire screen (preserve border)
-                const auto &fb_info = ramfb::get_info();
-                fill_rect(TEXT_INSET,
-                          TEXT_INSET,
-                          fb_info.width - 2 * TEXT_INSET,
-                          fb_info.height - 2 * TEXT_INSET,
-                          bg_color);
-                cursor_x = 0;
-                cursor_y = 0;
-            }
+        case 'J':
+            csi_erase_display(p1);
             break;
-
-        case 'K': // EL - Erase in Line
-            if (p1 == 0)
-            {
-                // Clear from cursor to end of line
-                clear_to_end_of_line();
-            }
-            else if (p1 == 2)
-            {
-                // Clear entire line
-                u32 saved_x = cursor_x;
-                cursor_x = 0;
-                clear_to_end_of_line();
-                cursor_x = saved_x;
-            }
+        case 'K':
+            csi_erase_line(p1);
             break;
-
-        case 'm': // SGR - Select Graphic Rendition
+        case 'm':
             handle_sgr();
             break;
-
-        case 'A': // CUU - Cursor Up (or Shift+Up = scroll if p2==2)
-        {
-            if (p2 == 2)
-            {
-                // xterm Shift+Up: scroll console up
-                scroll_up();
-            }
-            else
-            {
-                u32 n = (p1 > 0) ? p1 : 1;
-                if (cursor_y >= n)
-                    cursor_y -= n;
-                else
-                    cursor_y = 0;
-            }
-        }
-        break;
-
-        case 'B': // CUD - Cursor Down (or Shift+Down = scroll if p2==2)
-        {
-            if (p2 == 2)
-            {
-                // xterm Shift+Down: scroll console down
-                scroll_down();
-            }
-            else
-            {
-                u32 n = (p1 > 0) ? p1 : 1;
-                cursor_y += n;
-                if (cursor_y >= rows)
-                    cursor_y = rows - 1;
-            }
-        }
-        break;
-
-        case 'C': // CUF - Cursor Forward
-        {
-            u32 n = (p1 > 0) ? p1 : 1;
-            cursor_x += n;
-            if (cursor_x >= cols)
-                cursor_x = cols - 1;
-        }
-        break;
-
-        case 'D': // CUB - Cursor Back
-        {
-            u32 n = (p1 > 0) ? p1 : 1;
-            if (cursor_x >= n)
-                cursor_x -= n;
-            else
-                cursor_x = 0;
-        }
-        break;
-
-        case 'h': // SM - Set Mode
-            if (ansi_private_mode && p1 == 25)
-            {
-                // ESC[?25h - Show cursor (DECTCEM)
-                cursor_visible = true;
-                cursor_blink_state = true;
-                draw_cursor_if_visible();
-            }
+        case 'A':
+            csi_cursor_up(p1, p2);
             break;
-
-        case 'l': // RM - Reset Mode
-            if (ansi_private_mode && p1 == 25)
-            {
-                // ESC[?25l - Hide cursor (DECTCEM)
-                erase_cursor_if_drawn();
-                cursor_visible = false;
-                cursor_blink_state = false;
-            }
+        case 'B':
+            csi_cursor_down(p1, p2);
             break;
-
-        case '~': // Function key / special sequences
-        {
-            if (p1 == 23)
-            {
-                // CSI 23~ (Shift+Up): scroll console up (view older content)
-                scroll_up();
-            }
-            else if (p1 == 24)
-            {
-                // CSI 24~ (Shift+Down): scroll console down (view newer content)
-                scroll_down();
-            }
-            // Other sequences (PageUp=5, PageDown=6, etc) pass through
-        }
-        break;
-
-        case 's': // SCP - Save Cursor Position (not implemented, ignore)
-        case 'u': // RCP - Restore Cursor Position (not implemented, ignore)
+        case 'C':
+            csi_cursor_forward(p1);
+            break;
+        case 'D':
+            csi_cursor_back(p1);
+            break;
+        case 'h':
+            csi_set_mode(p1);
+            break;
+        case 'l':
+            csi_reset_mode(p1);
+            break;
+        case '~':
+            csi_function_key(p1);
+            break;
         default:
-            // Unknown sequence - ignore
             break;
     }
 
-    // Redraw cursor at new position (if visible)
     draw_cursor_if_visible();
 }
 

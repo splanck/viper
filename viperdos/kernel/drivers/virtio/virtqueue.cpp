@@ -49,6 +49,144 @@ static usize vring_size(u32 num, usize align)
     return size;
 }
 
+// =============================================================================
+// Virtqueue Initialization Helpers
+// =============================================================================
+
+bool Virtqueue::init_legacy_vring()
+{
+    constexpr usize VRING_ALIGN = 4096;
+    usize total_size = vring_size(size_, VRING_ALIGN);
+    usize total_pages = (total_size + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE;
+    legacy_alloc_pages_ = total_pages;
+
+    desc_phys_ = pmm::alloc_pages(total_pages);
+    if (!desc_phys_)
+    {
+        serial::puts("[virtqueue] Failed to allocate vring\n");
+        return false;
+    }
+
+    // Zero entire region
+    u8 *vring_mem = reinterpret_cast<u8 *>(pmm::phys_to_virt(desc_phys_));
+    for (usize i = 0; i < total_pages * pmm::PAGE_SIZE; i++)
+    {
+        vring_mem[i] = 0;
+    }
+
+    // Set up pointers within the contiguous region
+    desc_ = reinterpret_cast<VringDesc *>(vring_mem);
+
+    usize avail_offset = size_ * sizeof(VringDesc);
+    avail_ = reinterpret_cast<VringAvail *>(vring_mem + avail_offset);
+    avail_phys_ = desc_phys_ + avail_offset;
+
+    usize used_offset = avail_offset + sizeof(VringAvail) + size_ * sizeof(u16) + sizeof(u16);
+    used_offset = (used_offset + VRING_ALIGN - 1) & ~(VRING_ALIGN - 1);
+    used_ = reinterpret_cast<VringUsed *>(vring_mem + used_offset);
+    used_phys_ = desc_phys_ + used_offset;
+
+    // Set guest page size (required for legacy virtio-mmio)
+    dev_->write32(reg::GUEST_PAGE_SIZE, 4096);
+
+    // Set queue size and page frame number
+    dev_->write32(reg::QUEUE_NUM, size_);
+    dev_->write32(reg::QUEUE_ALIGN, VRING_ALIGN);
+    dev_->write32(reg::QUEUE_PFN, desc_phys_ >> 12);
+
+    return true;
+}
+
+bool Virtqueue::init_modern_vring()
+{
+    // Allocate descriptor table (16 bytes per entry, page aligned)
+    usize desc_bytes = size_ * sizeof(VringDesc);
+    usize desc_pages = (desc_bytes + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE;
+    desc_phys_ = pmm::alloc_pages(desc_pages);
+    if (!desc_phys_)
+    {
+        serial::puts("[virtqueue] Failed to allocate descriptor table\n");
+        return false;
+    }
+    desc_ = reinterpret_cast<VringDesc *>(pmm::phys_to_virt(desc_phys_));
+
+    // Zero descriptor table
+    for (usize i = 0; i < desc_pages * pmm::PAGE_SIZE / sizeof(u64); i++)
+    {
+        reinterpret_cast<u64 *>(desc_)[i] = 0;
+    }
+
+    // Allocate available ring (6 + 2*size bytes, page aligned)
+    usize avail_bytes = sizeof(VringAvail) + size_ * sizeof(u16) + sizeof(u16);
+    usize avail_pages = (avail_bytes + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE;
+    avail_phys_ = pmm::alloc_pages(avail_pages);
+    if (!avail_phys_)
+    {
+        pmm::free_pages(desc_phys_, desc_pages);
+        serial::puts("[virtqueue] Failed to allocate available ring\n");
+        return false;
+    }
+    avail_ = reinterpret_cast<VringAvail *>(pmm::phys_to_virt(avail_phys_));
+
+    // Zero available ring
+    for (usize i = 0; i < avail_pages * pmm::PAGE_SIZE / sizeof(u64); i++)
+    {
+        reinterpret_cast<u64 *>(avail_)[i] = 0;
+    }
+
+    // Allocate used ring (6 + 8*size bytes, page aligned)
+    usize used_bytes = sizeof(VringUsed) + size_ * sizeof(VringUsedElem) + sizeof(u16);
+    usize used_pages = (used_bytes + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE;
+    used_phys_ = pmm::alloc_pages(used_pages);
+    if (!used_phys_)
+    {
+        pmm::free_pages(desc_phys_, desc_pages);
+        pmm::free_pages(avail_phys_, avail_pages);
+        serial::puts("[virtqueue] Failed to allocate used ring\n");
+        return false;
+    }
+    used_ = reinterpret_cast<VringUsed *>(pmm::phys_to_virt(used_phys_));
+
+    // Zero used ring
+    for (usize i = 0; i < used_pages * pmm::PAGE_SIZE / sizeof(u64); i++)
+    {
+        reinterpret_cast<u64 *>(used_)[i] = 0;
+    }
+
+    // Set queue size
+    dev_->write32(reg::QUEUE_NUM, size_);
+
+    // Set queue addresses
+    dev_->write32(reg::QUEUE_DESC_LOW, desc_phys_ & 0xFFFFFFFF);
+    dev_->write32(reg::QUEUE_DESC_HIGH, desc_phys_ >> 32);
+    dev_->write32(reg::QUEUE_AVAIL_LOW, avail_phys_ & 0xFFFFFFFF);
+    dev_->write32(reg::QUEUE_AVAIL_HIGH, avail_phys_ >> 32);
+    dev_->write32(reg::QUEUE_USED_LOW, used_phys_ & 0xFFFFFFFF);
+    dev_->write32(reg::QUEUE_USED_HIGH, used_phys_ >> 32);
+
+    // Enable queue
+    dev_->write32(reg::QUEUE_READY, 1);
+
+    return true;
+}
+
+void Virtqueue::init_free_list()
+{
+    for (u32 i = 0; i < size_ - 1; i++)
+    {
+        desc_[i].next = i + 1;
+        desc_[i].flags = desc_flags::NEXT;
+    }
+    desc_[size_ - 1].next = 0xFFFF; // End of list
+    desc_[size_ - 1].flags = 0;
+    free_head_ = 0;
+    num_free_ = size_;
+}
+
+// =============================================================================
+// Virtqueue Main Initialization
+// =============================================================================
+
 /** @copydoc virtio::Virtqueue::init */
 bool Virtqueue::init(Device *dev, u32 queue_idx, u32 queue_size)
 {
@@ -62,7 +200,6 @@ bool Virtqueue::init(Device *dev, u32 queue_idx, u32 queue_size)
     // Check queue isn't already in use
     if (legacy_)
     {
-        // Legacy: check if QUEUE_PFN is non-zero
         if (dev->read32(reg::QUEUE_PFN) != 0)
         {
             serial::puts("[virtqueue] Queue ");
@@ -99,130 +236,19 @@ bool Virtqueue::init(Device *dev, u32 queue_idx, u32 queue_size)
     }
     size_ = queue_size;
 
+    // Allocate vring based on device mode
     if (legacy_)
     {
-        // Legacy mode: allocate contiguous vring
-        constexpr usize VRING_ALIGN = 4096;
-        usize total_size = vring_size(size_, VRING_ALIGN);
-        usize total_pages = (total_size + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE;
-        legacy_alloc_pages_ = total_pages;  // Track for destroy()
-
-        desc_phys_ = pmm::alloc_pages(total_pages);
-        if (!desc_phys_)
-        {
-            serial::puts("[virtqueue] Failed to allocate vring\n");
+        if (!init_legacy_vring())
             return false;
-        }
-
-        // Zero entire region
-        u8 *vring_mem = reinterpret_cast<u8 *>(pmm::phys_to_virt(desc_phys_));
-        for (usize i = 0; i < total_pages * pmm::PAGE_SIZE; i++)
-        {
-            vring_mem[i] = 0;
-        }
-
-        // Set up pointers within the contiguous region
-        desc_ = reinterpret_cast<VringDesc *>(vring_mem);
-
-        usize avail_offset = size_ * sizeof(VringDesc);
-        avail_ = reinterpret_cast<VringAvail *>(vring_mem + avail_offset);
-        avail_phys_ = desc_phys_ + avail_offset;
-
-        usize used_offset = avail_offset + sizeof(VringAvail) + size_ * sizeof(u16) + sizeof(u16);
-        used_offset = (used_offset + VRING_ALIGN - 1) & ~(VRING_ALIGN - 1);
-        used_ = reinterpret_cast<VringUsed *>(vring_mem + used_offset);
-        used_phys_ = desc_phys_ + used_offset;
-
-        // Set guest page size (required for legacy virtio-mmio)
-        dev->write32(reg::GUEST_PAGE_SIZE, 4096);
-
-        // Set queue size and page frame number
-        dev->write32(reg::QUEUE_NUM, size_);
-        dev->write32(reg::QUEUE_ALIGN, VRING_ALIGN);
-        dev->write32(reg::QUEUE_PFN, desc_phys_ >> 12); // Page frame number
     }
     else
     {
-        // Modern mode: separate allocations
-        // Allocate descriptor table (16 bytes per entry, page aligned)
-        usize desc_bytes = size_ * sizeof(VringDesc);
-        usize desc_pages = (desc_bytes + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE;
-        desc_phys_ = pmm::alloc_pages(desc_pages);
-        if (!desc_phys_)
-        {
-            serial::puts("[virtqueue] Failed to allocate descriptor table\n");
+        if (!init_modern_vring())
             return false;
-        }
-        desc_ = reinterpret_cast<VringDesc *>(pmm::phys_to_virt(desc_phys_));
-
-        // Zero descriptor table
-        for (usize i = 0; i < desc_pages * pmm::PAGE_SIZE / sizeof(u64); i++)
-        {
-            reinterpret_cast<u64 *>(desc_)[i] = 0;
-        }
-
-        // Allocate available ring (6 + 2*size bytes, page aligned)
-        usize avail_bytes = sizeof(VringAvail) + size_ * sizeof(u16) + sizeof(u16);
-        usize avail_pages = (avail_bytes + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE;
-        avail_phys_ = pmm::alloc_pages(avail_pages);
-        if (!avail_phys_)
-        {
-            pmm::free_pages(desc_phys_, desc_pages);
-            serial::puts("[virtqueue] Failed to allocate available ring\n");
-            return false;
-        }
-        avail_ = reinterpret_cast<VringAvail *>(pmm::phys_to_virt(avail_phys_));
-
-        // Zero available ring
-        for (usize i = 0; i < avail_pages * pmm::PAGE_SIZE / sizeof(u64); i++)
-        {
-            reinterpret_cast<u64 *>(avail_)[i] = 0;
-        }
-
-        // Allocate used ring (6 + 8*size bytes, page aligned)
-        usize used_bytes = sizeof(VringUsed) + size_ * sizeof(VringUsedElem) + sizeof(u16);
-        usize used_pages = (used_bytes + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE;
-        used_phys_ = pmm::alloc_pages(used_pages);
-        if (!used_phys_)
-        {
-            pmm::free_pages(desc_phys_, desc_pages);
-            pmm::free_pages(avail_phys_, avail_pages);
-            serial::puts("[virtqueue] Failed to allocate used ring\n");
-            return false;
-        }
-        used_ = reinterpret_cast<VringUsed *>(pmm::phys_to_virt(used_phys_));
-
-        // Zero used ring
-        for (usize i = 0; i < used_pages * pmm::PAGE_SIZE / sizeof(u64); i++)
-        {
-            reinterpret_cast<u64 *>(used_)[i] = 0;
-        }
-
-        // Set queue size
-        dev->write32(reg::QUEUE_NUM, size_);
-
-        // Set queue addresses
-        dev->write32(reg::QUEUE_DESC_LOW, desc_phys_ & 0xFFFFFFFF);
-        dev->write32(reg::QUEUE_DESC_HIGH, desc_phys_ >> 32);
-        dev->write32(reg::QUEUE_AVAIL_LOW, avail_phys_ & 0xFFFFFFFF);
-        dev->write32(reg::QUEUE_AVAIL_HIGH, avail_phys_ >> 32);
-        dev->write32(reg::QUEUE_USED_LOW, used_phys_ & 0xFFFFFFFF);
-        dev->write32(reg::QUEUE_USED_HIGH, used_phys_ >> 32);
-
-        // Enable queue
-        dev->write32(reg::QUEUE_READY, 1);
     }
 
-    // Initialize free list (all descriptors chained)
-    for (u32 i = 0; i < size_ - 1; i++)
-    {
-        desc_[i].next = i + 1;
-        desc_[i].flags = desc_flags::NEXT;
-    }
-    desc_[size_ - 1].next = 0xFFFF; // End of list
-    desc_[size_ - 1].flags = 0;
-    free_head_ = 0;
-    num_free_ = size_;
+    init_free_list();
 
     serial::puts("[virtqueue] Initialized queue ");
     serial::put_dec(queue_idx);

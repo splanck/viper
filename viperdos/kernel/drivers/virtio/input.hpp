@@ -227,6 +227,14 @@ class InputDevice : public Device
     }
 
   private:
+    // Initialization helpers
+    void read_device_name();
+    void detect_device_type();
+    bool negotiate_features();
+    bool setup_event_queue();
+    bool setup_status_queue();
+    bool allocate_event_buffers();
+
     // Refill the event queue with buffers
     /**
      * @brief Submit receive buffers to the event virtqueue.

@@ -21,14 +21,177 @@ namespace virtio
 InputDevice *keyboard = nullptr;
 InputDevice *mouse = nullptr;
 
+// =============================================================================
+// InputDevice Initialization Helpers
+// =============================================================================
+
+void InputDevice::read_device_name()
+{
+    volatile u8 *config = reinterpret_cast<volatile u8 *>(base() + reg::CONFIG);
+
+    config[0] = input_config::ID_NAME;
+    config[1] = 0;
+    asm volatile("dsb sy" ::: "memory");
+
+    u8 name_size = config[2];
+    if (name_size > 127)
+        name_size = 127;
+
+    for (u8 i = 0; i < name_size; i++)
+    {
+        name_[i] = static_cast<char>(config[8 + i]);
+    }
+    name_[name_size] = '\0';
+
+    serial::puts("[virtio-input] Device name: ");
+    serial::puts(name_);
+    serial::puts("\n");
+}
+
+void InputDevice::detect_device_type()
+{
+    volatile u8 *config = reinterpret_cast<volatile u8 *>(base() + reg::CONFIG);
+
+    // EV_BITS query for EV_REL (mouse movement - definitive for mouse)
+    config[0] = input_config::EV_BITS;
+    config[1] = ev_type::REL;
+    asm volatile("dsb sy" ::: "memory");
+    u8 ev_rel_size = config[2];
+    is_mouse_ = (ev_rel_size > 0);
+
+    // EV_BITS query for EV_KEY
+    config[0] = input_config::EV_BITS;
+    config[1] = ev_type::KEY;
+    asm volatile("dsb sy" ::: "memory");
+    u8 ev_key_size = config[2];
+    is_keyboard_ = (ev_key_size > 0 && !is_mouse_);
+
+    // EV_BITS query for EV_LED (LED support)
+    config[0] = input_config::EV_BITS;
+    config[1] = ev_type::LED;
+    asm volatile("dsb sy" ::: "memory");
+    u8 ev_led_size = config[2];
+    has_led_ = (ev_led_size > 0);
+
+    if (is_keyboard_)
+        serial::puts("[virtio-input] Device is a keyboard\n");
+    if (is_mouse_)
+        serial::puts("[virtio-input] Device is a mouse\n");
+    if (has_led_)
+        serial::puts("[virtio-input] Device supports LED control\n");
+}
+
+bool InputDevice::negotiate_features()
+{
+    if (is_legacy())
+        return true;
+
+    write32(reg::DEVICE_FEATURES_SEL, 1);
+    u32 features_hi = read32(reg::DEVICE_FEATURES);
+
+    serial::puts("[virtio-input] Device features_hi: ");
+    serial::put_hex(features_hi);
+    serial::puts("\n");
+
+    write32(reg::DRIVER_FEATURES_SEL, 0);
+    write32(reg::DRIVER_FEATURES, 0);
+    write32(reg::DRIVER_FEATURES_SEL, 1);
+    write32(reg::DRIVER_FEATURES, features::VERSION_1 >> 32);
+
+    add_status(status::FEATURES_OK);
+    if (!(get_status() & status::FEATURES_OK))
+    {
+        serial::puts("[virtio-input] Failed to set FEATURES_OK\n");
+        return false;
+    }
+    return true;
+}
+
+bool InputDevice::setup_event_queue()
+{
+    write32(reg::QUEUE_SEL, 0);
+    u32 max_queue_size = read32(reg::QUEUE_NUM_MAX);
+    if (max_queue_size == 0)
+    {
+        serial::puts("[virtio-input] Invalid queue size\n");
+        return false;
+    }
+
+    u32 queue_size = max_queue_size;
+    if (queue_size > INPUT_EVENT_BUFFERS)
+        queue_size = INPUT_EVENT_BUFFERS;
+
+    if (!eventq_.init(this, 0, queue_size))
+    {
+        serial::puts("[virtio-input] Failed to init eventq\n");
+        return false;
+    }
+    return true;
+}
+
+bool InputDevice::setup_status_queue()
+{
+    if (!has_led_)
+        return true;
+
+    write32(reg::QUEUE_SEL, 1);
+    u32 status_queue_size = read32(reg::QUEUE_NUM_MAX);
+    if (status_queue_size == 0)
+    {
+        serial::puts("[virtio-input] No status queue available\n");
+        has_led_ = false;
+        return true;
+    }
+
+    u32 sq_size = status_queue_size > 8 ? 8 : status_queue_size;
+    if (!statusq_.init(this, 1, sq_size))
+    {
+        serial::puts("[virtio-input] Failed to init statusq (LED control disabled)\n");
+        has_led_ = false;
+        return true;
+    }
+
+    status_event_phys_ = pmm::alloc_page();
+    if (status_event_phys_ == 0)
+    {
+        serial::puts("[virtio-input] Failed to allocate status buffer\n");
+        has_led_ = false;
+        return true;
+    }
+
+    status_event_ = reinterpret_cast<InputEvent *>(pmm::phys_to_virt(status_event_phys_));
+    serial::puts("[virtio-input] Status queue initialized for LED control\n");
+    return true;
+}
+
+bool InputDevice::allocate_event_buffers()
+{
+    usize events_size = sizeof(InputEvent) * INPUT_EVENT_BUFFERS;
+    usize pages_needed = (events_size + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE;
+    events_phys_ = pmm::alloc_pages(pages_needed);
+    if (events_phys_ == 0)
+    {
+        serial::puts("[virtio-input] Failed to allocate event buffers\n");
+        return false;
+    }
+
+    InputEvent *virt_events = reinterpret_cast<InputEvent *>(pmm::phys_to_virt(events_phys_));
+    for (usize i = 0; i < INPUT_EVENT_BUFFERS; i++)
+    {
+        events_[i] = virt_events[i];
+    }
+    return true;
+}
+
+// =============================================================================
+// InputDevice Main Initialization
+// =============================================================================
+
 /** @copydoc virtio::InputDevice::init */
 bool InputDevice::init(u64 base_addr)
 {
-    // Initialize base device
     if (!Device::init(base_addr))
-    {
         return false;
-    }
 
     if (device_id() != device_type::INPUT)
     {
@@ -42,189 +205,27 @@ bool InputDevice::init(u64 base_addr)
     serial::put_dec(version());
     serial::puts(is_legacy() ? " (legacy)\n" : " (modern)\n");
 
-    // Reset device
     reset();
     serial::puts("[virtio-input] After reset, status=");
     serial::put_hex(get_status());
     serial::puts("\n");
 
-    // Acknowledge device
     add_status(status::ACKNOWLEDGE);
     add_status(status::DRIVER);
 
-    // Read device name from config space
-    // Config layout: select(1) + subsel(1) + size(1) + reserved(5) + data(128)
-    volatile u8 *config = reinterpret_cast<volatile u8 *>(base() + reg::CONFIG);
+    read_device_name();
+    detect_device_type();
 
-    // Select ID_NAME
-    config[0] = input_config::ID_NAME; // select
-    config[1] = 0;                     // subsel
-    asm volatile("dsb sy" ::: "memory");
-
-    u8 name_size = config[2]; // size field
-    if (name_size > 127)
-        name_size = 127;
-
-    for (u8 i = 0; i < name_size; i++)
-    {
-        name_[i] = static_cast<char>(config[8 + i]);
-    }
-    name_[name_size] = '\0';
-
-    serial::puts("[virtio-input] Device name: ");
-    serial::puts(name_);
-    serial::puts("\n");
-
-    // Check what event types are supported
-    // EV_BITS query for EV_REL (mouse movement - definitive for mouse)
-    config[0] = input_config::EV_BITS;
-    config[1] = ev_type::REL;
-    asm volatile("dsb sy" ::: "memory");
-
-    u8 ev_rel_size = config[2];
-    is_mouse_ = (ev_rel_size > 0);
-
-    // EV_BITS query for EV_KEY
-    config[0] = input_config::EV_BITS;
-    config[1] = ev_type::KEY;
-    asm volatile("dsb sy" ::: "memory");
-
-    u8 ev_key_size = config[2];
-    // If device has EV_KEY but NOT EV_REL, it's a keyboard
-    // (mice also have EV_KEY for buttons, but they have EV_REL too)
-    is_keyboard_ = (ev_key_size > 0 && !is_mouse_);
-
-    // EV_BITS query for EV_LED (LED support)
-    config[0] = input_config::EV_BITS;
-    config[1] = ev_type::LED;
-    asm volatile("dsb sy" ::: "memory");
-
-    u8 ev_led_size = config[2];
-    has_led_ = (ev_led_size > 0);
-
-    if (is_keyboard_)
-    {
-        serial::puts("[virtio-input] Device is a keyboard\n");
-    }
-    if (is_mouse_)
-    {
-        serial::puts("[virtio-input] Device is a mouse\n");
-    }
-    if (has_led_)
-    {
-        serial::puts("[virtio-input] Device supports LED control\n");
-    }
-
-    // For virtio-input, negotiate features
-    if (!is_legacy())
-    {
-        // Modern device - MUST negotiate VIRTIO_F_VERSION_1
-        // Read device features (high 32 bits to check for VERSION_1)
-        write32(reg::DEVICE_FEATURES_SEL, 1);
-        u32 features_hi = read32(reg::DEVICE_FEATURES);
-
-        serial::puts("[virtio-input] Device features_hi: ");
-        serial::put_hex(features_hi);
-        serial::puts("\n");
-
-        // Accept VERSION_1 feature (required for modern virtio)
-        write32(reg::DRIVER_FEATURES_SEL, 0);
-        write32(reg::DRIVER_FEATURES, 0); // No low features needed
-        write32(reg::DRIVER_FEATURES_SEL, 1);
-        write32(reg::DRIVER_FEATURES, features::VERSION_1 >> 32); // Accept VERSION_1
-
-        // Set FEATURES_OK
-        add_status(status::FEATURES_OK);
-        if (!(get_status() & status::FEATURES_OK))
-        {
-            serial::puts("[virtio-input] Failed to set FEATURES_OK\n");
-            return false;
-        }
-    }
-
-    // Get max queue size for eventq (queue 0)
-    write32(reg::QUEUE_SEL, 0);
-    u32 max_queue_size = read32(reg::QUEUE_NUM_MAX);
-    if (max_queue_size == 0)
-    {
-        serial::puts("[virtio-input] Invalid queue size\n");
+    if (!negotiate_features())
         return false;
-    }
-
-    // Use smaller of max size or our buffer count
-    u32 queue_size = max_queue_size;
-    if (queue_size > INPUT_EVENT_BUFFERS)
-    {
-        queue_size = INPUT_EVENT_BUFFERS;
-    }
-
-    // Initialize eventq (queue 0)
-    if (!eventq_.init(this, 0, queue_size))
-    {
-        serial::puts("[virtio-input] Failed to init eventq\n");
+    if (!setup_event_queue())
         return false;
-    }
-
-    // Initialize statusq (queue 1) for LED control if supported
-    if (has_led_)
-    {
-        write32(reg::QUEUE_SEL, 1);
-        u32 status_queue_size = read32(reg::QUEUE_NUM_MAX);
-        if (status_queue_size > 0)
-        {
-            // Use small queue size for status events
-            u32 sq_size = status_queue_size > 8 ? 8 : status_queue_size;
-            if (!statusq_.init(this, 1, sq_size))
-            {
-                serial::puts("[virtio-input] Failed to init statusq (LED control disabled)\n");
-                has_led_ = false;
-            }
-            else
-            {
-                // Allocate status event buffer
-                status_event_phys_ = pmm::alloc_page();
-                if (status_event_phys_ == 0)
-                {
-                    serial::puts("[virtio-input] Failed to allocate status buffer\n");
-                    has_led_ = false;
-                }
-                else
-                {
-                    status_event_ =
-                        reinterpret_cast<InputEvent *>(pmm::phys_to_virt(status_event_phys_));
-                    serial::puts("[virtio-input] Status queue initialized for LED control\n");
-                }
-            }
-        }
-        else
-        {
-            serial::puts("[virtio-input] No status queue available\n");
-            has_led_ = false;
-        }
-    }
-
-    // Allocate physical memory for event buffers
-    usize events_size = sizeof(InputEvent) * INPUT_EVENT_BUFFERS;
-    usize pages_needed = (events_size + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE;
-    events_phys_ = pmm::alloc_pages(pages_needed);
-    if (events_phys_ == 0)
-    {
-        serial::puts("[virtio-input] Failed to allocate event buffers\n");
+    if (!setup_status_queue())
         return false;
-    }
+    if (!allocate_event_buffers())
+        return false;
 
-    // Convert physical address to virtual address for kernel access
-    InputEvent *virt_events = reinterpret_cast<InputEvent *>(pmm::phys_to_virt(events_phys_));
-    for (usize i = 0; i < INPUT_EVENT_BUFFERS; i++)
-    {
-        events_[i] = virt_events[i];
-    }
-
-    // Set DRIVER_OK to indicate driver is ready
-    // NOTE: Must set DRIVER_OK before submitting buffers per VirtIO spec
     add_status(status::DRIVER_OK);
-
-    // Fill eventq with receive buffers
     refill_eventq();
 
     serial::puts("[virtio-input] Final status=");

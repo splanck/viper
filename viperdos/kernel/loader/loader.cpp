@@ -30,6 +30,99 @@
 namespace loader
 {
 
+namespace
+{
+
+/**
+ * @brief Flush instruction cache for executable segment.
+ */
+void flush_icache(u64 phys, usize size)
+{
+    for (usize j = 0; j < size; j += 64)
+    {
+        u64 addr = phys + j;
+        asm volatile("dc cvau, %0" ::"r"(addr));
+    }
+    asm volatile("dsb ish");
+    for (usize j = 0; j < size; j += 64)
+    {
+        u64 addr = phys + j;
+        asm volatile("ic ivau, %0" ::"r"(addr));
+    }
+    asm volatile("dsb ish");
+    asm volatile("isb");
+}
+
+/**
+ * @brief Load a single PT_LOAD segment into the address space.
+ * @return Segment end address on success, 0 on failure.
+ */
+u64 load_segment(viper::AddressSpace *as,
+                 const elf::Elf64_Phdr *phdr,
+                 const u8 *file_data,
+                 usize elf_size,
+                 u64 base_addr,
+                 u16 seg_idx)
+{
+    u64 vaddr = base_addr + phdr->p_vaddr;
+    u64 vaddr_aligned = vaddr & ~0xFFFULL;
+    u64 offset_in_page = vaddr & 0xFFF;
+    usize mem_size = phdr->p_memsz + offset_in_page;
+    usize pages = (mem_size + 0xFFF) >> 12;
+
+    serial::puts("[loader] Segment ");
+    serial::put_dec(seg_idx);
+    serial::puts(": vaddr=");
+    serial::put_hex(vaddr);
+    serial::puts(", filesz=");
+    serial::put_dec(phdr->p_filesz);
+    serial::puts(", memsz=");
+    serial::put_dec(phdr->p_memsz);
+    serial::puts(", pages=");
+    serial::put_dec(pages);
+    serial::puts("\n");
+
+    u32 prot = elf::flags_to_prot(phdr->p_flags);
+
+    if (as->alloc_map(vaddr_aligned, pages * 4096, prot) == 0)
+    {
+        serial::puts("[loader] Failed to map segment\n");
+        return 0;
+    }
+
+    u64 phys = as->translate(vaddr_aligned);
+    if (phys == 0)
+    {
+        serial::puts("[loader] Failed to translate segment address\n");
+        return 0;
+    }
+
+    u8 *dest = reinterpret_cast<u8 *>(pmm::phys_to_virt(phys));
+    for (usize j = 0; j < pages * 4096; j++)
+        dest[j] = 0;
+
+    if (phdr->p_filesz > 0)
+    {
+        if (phdr->p_offset + phdr->p_filesz > elf_size)
+        {
+            serial::puts("[loader] Segment extends beyond file\n");
+            return 0;
+        }
+        const u8 *src = file_data + phdr->p_offset;
+        for (usize j = 0; j < phdr->p_filesz; j++)
+            dest[offset_in_page + j] = src[j];
+    }
+
+    serial::puts("[loader] Segment loaded OK\n");
+
+    if (prot & viper::prot::EXEC)
+        flush_icache(phys, pages * 4096);
+
+    return vaddr + phdr->p_memsz;
+}
+
+} // anonymous namespace
+
 /** @copydoc loader::load_elf */
 LoadResult load_elf(viper::Viper *v, const void *elf_data, usize elf_size)
 {
@@ -42,8 +135,6 @@ LoadResult load_elf(viper::Viper *v, const void *elf_data, usize elf_size)
     }
 
     const elf::Elf64_Ehdr *ehdr = static_cast<const elf::Elf64_Ehdr *>(elf_data);
-
-    // Validate ELF header
     if (!elf::validate_header(ehdr))
     {
         serial::puts("[loader] Invalid ELF header\n");
@@ -56,7 +147,6 @@ LoadResult load_elf(viper::Viper *v, const void *elf_data, usize elf_size)
     serial::put_dec(ehdr->e_phnum);
     serial::puts("\n");
 
-    // Get address space
     viper::AddressSpace *as = viper::get_address_space(v);
     if (!as || !as->is_valid())
     {
@@ -64,122 +154,28 @@ LoadResult load_elf(viper::Viper *v, const void *elf_data, usize elf_size)
         return result;
     }
 
-    // For PIE binaries, we need a base address
-    // Use USER_CODE_BASE as the load base
-    u64 base_addr = 0;
-    if (ehdr->e_type == elf::ET_DYN)
-    {
-        base_addr = viper::layout::USER_CODE_BASE;
-    }
-
+    u64 base_addr = (ehdr->e_type == elf::ET_DYN) ? viper::layout::USER_CODE_BASE : 0;
     u64 max_addr = 0;
     const u8 *file_data = static_cast<const u8 *>(elf_data);
 
-    // Load each PT_LOAD segment
     for (u16 i = 0; i < ehdr->e_phnum; i++)
     {
         const elf::Elf64_Phdr *phdr = elf::get_phdr(ehdr, i);
         if (!phdr || phdr->p_type != elf::PT_LOAD)
-        {
             continue;
-        }
 
-        // Calculate virtual address (with potential base offset for PIE)
-        u64 vaddr = base_addr + phdr->p_vaddr;
-        u64 vaddr_aligned = vaddr & ~0xFFFULL; // Page-align down
-        u64 offset_in_page = vaddr & 0xFFF;
-
-        // Calculate size needed (including offset and rounding up)
-        usize mem_size = phdr->p_memsz + offset_in_page;
-        usize pages = (mem_size + 0xFFF) >> 12;
-
-        serial::puts("[loader] Segment ");
-        serial::put_dec(i);
-        serial::puts(": vaddr=");
-        serial::put_hex(vaddr);
-        serial::puts(", filesz=");
-        serial::put_dec(phdr->p_filesz);
-        serial::puts(", memsz=");
-        serial::put_dec(phdr->p_memsz);
-        serial::puts(", pages=");
-        serial::put_dec(pages);
-        serial::puts("\n");
-
-        // Convert flags to protection
-        u32 prot = elf::flags_to_prot(phdr->p_flags);
-
-        // Allocate and map pages
-        u64 mapped = as->alloc_map(vaddr_aligned, pages * 4096, prot);
-        if (mapped == 0)
-        {
-            serial::puts("[loader] Failed to map segment\n");
+        u64 segment_end = load_segment(as, phdr, file_data, elf_size, base_addr, i);
+        if (segment_end == 0)
             return result;
-        }
 
-        // Get physical address for copying
-        u64 phys = as->translate(vaddr_aligned);
-        if (phys == 0)
-        {
-            serial::puts("[loader] Failed to translate segment address\n");
-            return result;
-        }
-
-        // Zero the entire region first (for BSS) - convert physical to virtual address
-        u8 *dest = reinterpret_cast<u8 *>(pmm::phys_to_virt(phys));
-        for (usize j = 0; j < pages * 4096; j++)
-        {
-            dest[j] = 0;
-        }
-
-        // Copy file data if any
-        if (phdr->p_filesz > 0)
-        {
-            if (phdr->p_offset + phdr->p_filesz > elf_size)
-            {
-                serial::puts("[loader] Segment extends beyond file\n");
-                return result;
-            }
-
-            const u8 *src = file_data + phdr->p_offset;
-            for (usize j = 0; j < phdr->p_filesz; j++)
-            {
-                dest[offset_in_page + j] = src[j];
-            }
-        }
-
-        serial::puts("[loader] Segment loaded OK\n");
-
-        // Clean data cache and invalidate instruction cache for code segments
-        if (prot & viper::prot::EXEC)
-        {
-            for (usize j = 0; j < pages * 4096; j += 64)
-            {
-                u64 addr = phys + j;
-                asm volatile("dc cvau, %0" ::"r"(addr));
-            }
-            asm volatile("dsb ish");
-            for (usize j = 0; j < pages * 4096; j += 64)
-            {
-                u64 addr = phys + j;
-                asm volatile("ic ivau, %0" ::"r"(addr));
-            }
-            asm volatile("dsb ish");
-            asm volatile("isb");
-        }
-
-        // Track max address for brk
-        u64 segment_end = vaddr + phdr->p_memsz;
         if (segment_end > max_addr)
-        {
             max_addr = segment_end;
-        }
     }
 
-    // Success!
     result.success = true;
     result.entry_point = base_addr + ehdr->e_entry;
     result.base_addr = base_addr;
-    result.brk = (max_addr + 0xFFF) & ~0xFFFULL; // Page-align up
+    result.brk = (max_addr + 0xFFF) & ~0xFFFULL;
 
     serial::puts("[loader] ELF loaded: entry=");
     serial::put_hex(result.entry_point);

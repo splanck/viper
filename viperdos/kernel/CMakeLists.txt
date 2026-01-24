@@ -53,6 +53,24 @@ set(KERNEL_SOURCES
         sched/deadline.cpp
         syscall/dispatch.cpp
         syscall/table.cpp
+        syscall/handlers/task.cpp
+        syscall/handlers/channel.cpp
+        syscall/handlers/poll.cpp
+        syscall/handlers/time.cpp
+        syscall/handlers/file.cpp
+        syscall/handlers/dir.cpp
+        syscall/handlers/net.cpp
+        syscall/handlers/cap.cpp
+        syscall/handlers/handle_fs.cpp
+        syscall/handlers/signal.cpp
+        syscall/handlers/procgroup.cpp
+        syscall/handlers/assign.cpp
+        syscall/handlers/tls.cpp
+        syscall/handlers/sysinfo.cpp
+        syscall/handlers/debug.cpp
+        syscall/handlers/device.cpp
+        syscall/handlers/gui.cpp
+        syscall/handlers/tty.cpp
         ipc/channel.cpp
         ipc/poll.cpp
         ipc/pollset.cpp

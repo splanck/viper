@@ -195,6 +195,10 @@ class NetDevice : public Device
     // Internal methods
     void queue_rx_buffer(usize idx);
     void refill_rx_buffers();
+    bool init_mac_address(bool has_mac);
+    bool init_virtqueues();
+    bool init_rx_buffers();
+    bool init_tx_buffers();
 };
 
 // Global network device initialization and access
