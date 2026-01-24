@@ -69,6 +69,55 @@ struct DesktopIcon {
     bool selected;
 };
 
+/// @brief Pulldown menu actions for menu bar.
+enum class PulldownAction {
+    None,
+    // Workbench menu
+    Backdrop,
+    ExecuteCommand,
+    Redraw,
+    UpdateAll,
+    LastMessage,
+    AboutWorkbench,
+    QuitWorkbench,
+    // Window menu
+    NewDrawer,
+    OpenParent,
+    CloseWindow,
+    Update,
+    SelectContents,
+    CleanUp,
+    // Tools menu
+    ResetWB,
+    Prefs,
+    Shell,
+    SysInfo,
+    TaskMan,
+    // Theme switching
+    ThemeClassic,
+    ThemeDark,
+    ThemeModern,
+    ThemeHighContrast
+};
+
+/// @brief Pulldown menu item.
+struct PulldownItem {
+    const char *label;
+    const char *shortcut; // e.g., "Ctrl+O"
+    PulldownAction action;
+    bool separator;
+    bool enabled;
+};
+
+/// @brief Pulldown menu definition.
+struct PulldownMenu {
+    const char *title;
+    int titleX;
+    int titleWidth;
+    PulldownItem items[12];
+    int itemCount;
+};
+
 /// @brief Context menu item actions.
 enum class MenuAction { None, Open, Delete, Rename, Copy, Paste, NewFolder, Properties };
 

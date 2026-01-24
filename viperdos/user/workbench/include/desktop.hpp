@@ -48,9 +48,17 @@ class Desktop {
   private:
     void drawBackdrop();
     void drawMenuBar();
+    void drawPulldownMenu();
     void drawIcon(DesktopIcon &icon);
     void drawAllIcons();
     void redraw();
+
+    // Menu handling
+    int findMenuAt(int x, int y);
+    int findMenuItemAt(int x, int y);
+    void handleMenuAction(PulldownAction action);
+    void openMenu(int menuIdx);
+    void closeMenu();
 
     void layoutIcons();
     int findIconAt(int x, int y);
@@ -90,6 +98,12 @@ class Desktop {
     // Dialog windows
     gui_window_t *m_aboutDialog = nullptr;
     gui_window_t *m_prefsDialog = nullptr;
+
+    // Pulldown menu state
+    int m_activeMenu = -1;    // Currently open menu (-1 = none)
+    int m_hoveredItem = -1;   // Currently hovered item in open menu
+    PulldownMenu m_menus[3];  // Workbench, Window, Tools
+    int m_menuCount = 3;
 };
 
 } // namespace workbench

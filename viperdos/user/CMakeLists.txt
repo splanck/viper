@@ -188,6 +188,7 @@ add_executable(workbench.sys
         workbench/src/desktop.cpp
         workbench/src/filebrowser.cpp
         workbench/src/icons.cpp
+        workbench/src/theme.cpp
 )
 target_compile_options(workbench.sys PRIVATE ${USER_COMPILE_OPTIONS})
 target_link_options(workbench.sys PRIVATE ${USER_LINK_OPTIONS})

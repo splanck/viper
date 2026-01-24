@@ -204,8 +204,8 @@ void FileBrowser::redraw() {
     if (!m_window)
         return;
 
-    // Clear background
-    gui_fill_rect(m_window, 0, 0, m_width, m_height, WB_GRAY_LIGHT);
+    // Clear background using theme
+    gui_fill_rect(m_window, 0, 0, m_width, m_height, themeWindowBg());
 
     drawToolbar();
     drawFileList();
@@ -221,27 +221,27 @@ void FileBrowser::redraw() {
 }
 
 void FileBrowser::drawToolbar() {
-    // Toolbar background
-    gui_fill_rect(m_window, 0, 0, m_width, FB_TOOLBAR_HEIGHT, WB_GRAY_LIGHT);
+    // Toolbar background using theme
+    gui_fill_rect(m_window, 0, 0, m_width, FB_TOOLBAR_HEIGHT, themeMenuBg());
 
     // Parent button
-    gui_fill_rect(m_window, 4, 2, 20, 20, WB_WHITE);
-    gui_draw_rect(m_window, 4, 2, 20, 20, WB_BLACK);
-    gui_draw_text(m_window, 9, 6, "^", WB_BLACK);
+    gui_fill_rect(m_window, 4, 2, 20, 20, themeBorderLight());
+    gui_draw_rect(m_window, 4, 2, 20, 20, themeText());
+    gui_draw_text(m_window, 9, 6, "^", themeText());
 
     // Path display
-    gui_draw_text(m_window, 30, 6, m_currentPath, WB_BLACK);
+    gui_draw_text(m_window, 30, 6, m_currentPath, themeText());
 
     // Bottom border
-    gui_draw_hline(m_window, 0, m_width - 1, FB_TOOLBAR_HEIGHT - 1, WB_GRAY_DARK);
+    gui_draw_hline(m_window, 0, m_width - 1, FB_TOOLBAR_HEIGHT - 1, themeBorderDark());
 }
 
 void FileBrowser::drawFileList() {
     int listTop = FB_TOOLBAR_HEIGHT;
     int listHeight = m_height - FB_TOOLBAR_HEIGHT - FB_STATUSBAR_HEIGHT;
 
-    // List background - dark blue like desktop
-    gui_fill_rect(m_window, 0, listTop, m_width, listHeight, WB_BLUE);
+    // List background using theme desktop color
+    gui_fill_rect(m_window, 0, listTop, m_width, listHeight, themeDesktop());
 
     // Draw files in grid
     int x = FB_PADDING;
@@ -249,10 +249,10 @@ void FileBrowser::drawFileList() {
 
     for (int i = 0; i < m_fileCount; i++) {
         if (y + FB_ICON_GRID_Y > listTop && y < listTop + listHeight) {
-            // Selection highlight
+            // Selection highlight using theme
             if (m_files[i].selected) {
                 gui_fill_rect(
-                    m_window, x - 2, y - 2, FB_ICON_GRID_X - 4, FB_ICON_GRID_Y - 4, WB_ORANGE);
+                    m_window, x - 2, y - 2, FB_ICON_GRID_X - 4, FB_ICON_GRID_Y - 4, themeHighlight());
             }
 
             // Draw icon
@@ -265,9 +265,9 @@ void FileBrowser::drawFileList() {
 
             int textX = x + (FB_ICON_GRID_X - strlen(displayName) * 8) / 2;
             int textY = y + ICON_SIZE + 4;
-            // Draw text with shadow for visibility on blue background
-            gui_draw_text(m_window, textX + 1, textY + 1, displayName, WB_BLACK);
-            gui_draw_text(m_window, textX, textY, displayName, WB_WHITE);
+            // Draw text with shadow for visibility
+            gui_draw_text(m_window, textX + 1, textY + 1, displayName, themeIconShadow());
+            gui_draw_text(m_window, textX, textY, displayName, themeIconText());
         }
 
         x += FB_ICON_GRID_X;
@@ -300,11 +300,11 @@ void FileBrowser::drawFileIcon(int x, int y, FileType type) {
 void FileBrowser::drawStatusBar() {
     int y = m_height - FB_STATUSBAR_HEIGHT;
 
-    // Status bar background
-    gui_fill_rect(m_window, 0, y, m_width, FB_STATUSBAR_HEIGHT, WB_GRAY_LIGHT);
+    // Status bar background using theme
+    gui_fill_rect(m_window, 0, y, m_width, FB_STATUSBAR_HEIGHT, themeMenuBg());
 
     // Top border
-    gui_draw_hline(m_window, 0, m_width - 1, y, WB_GRAY_DARK);
+    gui_draw_hline(m_window, 0, m_width - 1, y, themeBorderDark());
 
     // Show selected file info or item count
     char status[128];
@@ -337,10 +337,10 @@ void FileBrowser::drawStatusBar() {
     } else {
         snprintf(status, sizeof(status), "%d items", m_fileCount);
     }
-    gui_draw_text(m_window, 8, y + 4, status, WB_BLACK);
+    gui_draw_text(m_window, 8, y + 4, status, themeText());
 
     // Show keyboard hints on the right
-    gui_draw_text(m_window, m_width - 160, y + 4, "Del:Delete F5:Refresh", WB_GRAY_MED);
+    gui_draw_text(m_window, m_width - 160, y + 4, "Del:Delete F5:Refresh", themeTextDisabled());
 }
 
 int FileBrowser::findFileAt(int x, int y) {
@@ -730,35 +730,35 @@ void FileBrowser::drawContextMenu() {
     int x = m_contextMenu.x;
     int y = m_contextMenu.y;
 
-    // Draw menu background with 3D border
-    gui_fill_rect(m_window, x, y, MENU_WIDTH, menuHeight, WB_GRAY_LIGHT);
+    // Draw menu background with 3D border using theme
+    gui_fill_rect(m_window, x, y, MENU_WIDTH, menuHeight, themeMenuBg());
 
     // Top/left highlight
-    gui_draw_hline(m_window, x, x + MENU_WIDTH - 1, y, WB_WHITE);
-    gui_draw_vline(m_window, x, y, y + menuHeight - 1, WB_WHITE);
+    gui_draw_hline(m_window, x, x + MENU_WIDTH - 1, y, themeBorderLight());
+    gui_draw_vline(m_window, x, y, y + menuHeight - 1, themeBorderLight());
 
     // Bottom/right shadow
-    gui_draw_hline(m_window, x, x + MENU_WIDTH - 1, y + menuHeight - 1, WB_GRAY_DARK);
-    gui_draw_vline(m_window, x + MENU_WIDTH - 1, y, y + menuHeight - 1, WB_GRAY_DARK);
+    gui_draw_hline(m_window, x, x + MENU_WIDTH - 1, y + menuHeight - 1, themeBorderDark());
+    gui_draw_vline(m_window, x + MENU_WIDTH - 1, y, y + menuHeight - 1, themeBorderDark());
 
     // Draw items
     int itemY = y + 2;
     for (int i = 0; i < m_contextMenu.itemCount; i++) {
         MenuItem &item = m_contextMenu.items[i];
 
-        // Hover highlight (if enabled)
+        // Hover highlight (if enabled) using theme
         if (i == m_contextMenu.hoveredItem && item.enabled) {
-            gui_fill_rect(m_window, x + 2, itemY, MENU_WIDTH - 4, MENU_ITEM_HEIGHT, WB_BLUE);
-            gui_draw_text(m_window, x + 8, itemY + 4, item.label, WB_WHITE);
+            gui_fill_rect(m_window, x + 2, itemY, MENU_WIDTH - 4, MENU_ITEM_HEIGHT, themeMenuHighlight());
+            gui_draw_text(m_window, x + 8, itemY + 4, item.label, themeMenuHighlightText());
         } else {
-            uint32_t textColor = item.enabled ? WB_BLACK : WB_GRAY_MED;
+            uint32_t textColor = item.enabled ? themeMenuText() : themeTextDisabled();
             gui_draw_text(m_window, x + 8, itemY + 4, item.label, textColor);
         }
 
         // Draw separator line after this item if specified
         if (item.separator) {
             int sepY = itemY + MENU_ITEM_HEIGHT - 1;
-            gui_draw_hline(m_window, x + 4, x + MENU_WIDTH - 5, sepY, WB_GRAY_DARK);
+            gui_draw_hline(m_window, x + 4, x + MENU_WIDTH - 5, sepY, themeBorderDark());
         }
 
         itemY += MENU_ITEM_HEIGHT;

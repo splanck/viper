@@ -92,6 +92,41 @@ bool Desktop::init() {
     // Position at 0,0 (behind all other windows)
     gui_set_position(m_window, 0, 0);
 
+    // Initialize pulldown menus
+    // Workbench menu
+    m_menus[0].title = "Workbench";
+    m_menus[0].titleX = 8;
+    m_menus[0].titleWidth = 80;
+    m_menus[0].itemCount = 4;
+    m_menus[0].items[0] = {"About...", nullptr, PulldownAction::AboutWorkbench, false, true};
+    m_menus[0].items[1] = {"Execute Command...", nullptr, PulldownAction::ExecuteCommand, true, false};
+    m_menus[0].items[2] = {"Redraw All", nullptr, PulldownAction::Redraw, false, true};
+    m_menus[0].items[3] = {"Quit", "Ctrl+Q", PulldownAction::QuitWorkbench, false, true};
+
+    // Window menu
+    m_menus[1].title = "Window";
+    m_menus[1].titleX = 96;
+    m_menus[1].titleWidth = 64;
+    m_menus[1].itemCount = 3;
+    m_menus[1].items[0] = {"New Drawer", "Ctrl+N", PulldownAction::NewDrawer, false, false};
+    m_menus[1].items[1] = {"Close Window", "Ctrl+W", PulldownAction::CloseWindow, false, false};
+    m_menus[1].items[2] = {"Clean Up", nullptr, PulldownAction::CleanUp, false, false};
+
+    // Tools menu
+    m_menus[2].title = "Tools";
+    m_menus[2].titleX = 168;
+    m_menus[2].titleWidth = 48;
+    m_menus[2].itemCount = 9;
+    m_menus[2].items[0] = {"Shell", nullptr, PulldownAction::Shell, false, true};
+    m_menus[2].items[1] = {"Preferences", nullptr, PulldownAction::Prefs, true, true};
+    m_menus[2].items[2] = {"System Info", nullptr, PulldownAction::SysInfo, false, true};
+    m_menus[2].items[3] = {"Task Manager", nullptr, PulldownAction::TaskMan, true, true};
+    // Theme options
+    m_menus[2].items[4] = {"Classic Amiga", nullptr, PulldownAction::ThemeClassic, false, true};
+    m_menus[2].items[5] = {"Dark Mode", nullptr, PulldownAction::ThemeDark, false, true};
+    m_menus[2].items[6] = {"Modern Blue", nullptr, PulldownAction::ThemeModern, false, true};
+    m_menus[2].items[7] = {"High Contrast", nullptr, PulldownAction::ThemeHighContrast, false, true};
+
     // Discover mounted volumes dynamically
     discoverVolumes();
 
@@ -194,27 +229,211 @@ void Desktop::spawnProgram(const char *path) {
 }
 
 void Desktop::drawBackdrop() {
-    // Solid Workbench blue
-    gui_fill_rect(m_window, 0, MENU_BAR_HEIGHT, m_width, m_height - MENU_BAR_HEIGHT, WB_BLUE);
+    // Solid backdrop using current theme
+    gui_fill_rect(m_window, 0, MENU_BAR_HEIGHT, m_width, m_height - MENU_BAR_HEIGHT, themeDesktop());
 }
 
 void Desktop::drawMenuBar() {
-    // Menu bar background
-    gui_fill_rect(m_window, 0, 0, m_width, MENU_BAR_HEIGHT, WB_GRAY_LIGHT);
+    // Menu bar background using theme
+    gui_fill_rect(m_window, 0, 0, m_width, MENU_BAR_HEIGHT, themeMenuBg());
 
     // Bottom border
-    gui_draw_hline(m_window, 0, m_width - 1, MENU_BAR_HEIGHT - 1, WB_GRAY_DARK);
+    gui_draw_hline(m_window, 0, m_width - 1, MENU_BAR_HEIGHT - 1, themeBorderDark());
 
     // Top highlight
-    gui_draw_hline(m_window, 0, m_width - 1, 0, WB_WHITE);
+    gui_draw_hline(m_window, 0, m_width - 1, 0, themeBorderLight());
 
-    // Menu titles
-    gui_draw_text(m_window, 8, 6, "Workbench", WB_BLACK);
-    gui_draw_text(m_window, 96, 6, "Window", WB_BLACK);
-    gui_draw_text(m_window, 168, 6, "Tools", WB_BLACK);
+    // Draw menu titles with highlight for active menu
+    for (int i = 0; i < m_menuCount; i++) {
+        if (i == m_activeMenu) {
+            // Highlight active menu title
+            gui_fill_rect(m_window, m_menus[i].titleX - 4, 0,
+                         m_menus[i].titleWidth, MENU_BAR_HEIGHT - 1, themeMenuHighlight());
+            gui_draw_text(m_window, m_menus[i].titleX, 6, m_menus[i].title, themeMenuHighlightText());
+        } else {
+            gui_draw_text(m_window, m_menus[i].titleX, 6, m_menus[i].title, themeMenuText());
+        }
+    }
 
     // Right side: ViperDOS branding
-    gui_draw_text(m_window, m_width - 80, 6, "ViperDOS", WB_GRAY_DARK);
+    gui_draw_text(m_window, m_width - 80, 6, "ViperDOS", themeTextDisabled());
+}
+
+void Desktop::drawPulldownMenu() {
+    if (m_activeMenu < 0 || m_activeMenu >= m_menuCount) {
+        return;
+    }
+
+    const PulldownMenu &menu = m_menus[m_activeMenu];
+
+    // Calculate menu dimensions
+    int maxWidth = 0;
+    for (int i = 0; i < menu.itemCount; i++) {
+        int itemWidth = static_cast<int>(strlen(menu.items[i].label)) * 8;
+        if (menu.items[i].shortcut) {
+            itemWidth += static_cast<int>(strlen(menu.items[i].shortcut)) * 8 + 40;
+        }
+        if (itemWidth > maxWidth) {
+            maxWidth = itemWidth;
+        }
+    }
+
+    int menuWidth = maxWidth + 20;
+    int menuHeight = menu.itemCount * MENU_ITEM_HEIGHT + 4;
+    int menuX = menu.titleX - 4;
+    int menuY = MENU_BAR_HEIGHT;
+
+    // Menu background with border using theme
+    gui_fill_rect(m_window, menuX, menuY, menuWidth, menuHeight, themeMenuBg());
+
+    // 3D border
+    gui_draw_hline(m_window, menuX, menuX + menuWidth - 1, menuY, themeBorderLight());
+    gui_draw_vline(m_window, menuX, menuY, menuY + menuHeight - 1, themeBorderLight());
+    gui_draw_hline(m_window, menuX, menuX + menuWidth - 1, menuY + menuHeight - 1, themeBorderDark());
+    gui_draw_vline(m_window, menuX + menuWidth - 1, menuY, menuY + menuHeight - 1, themeBorderDark());
+
+    // Draw menu items
+    int itemY = menuY + 2;
+    for (int i = 0; i < menu.itemCount; i++) {
+        const PulldownItem &item = menu.items[i];
+
+        // Highlight hovered item
+        uint32_t textColor = item.enabled ? themeMenuText() : themeTextDisabled();
+        if (i == m_hoveredItem && item.enabled) {
+            gui_fill_rect(m_window, menuX + 2, itemY, menuWidth - 4, MENU_ITEM_HEIGHT - 2, themeMenuHighlight());
+            textColor = themeMenuHighlightText();
+        }
+
+        // Draw label
+        gui_draw_text(m_window, menuX + 8, itemY + 4, item.label, textColor);
+
+        // Draw shortcut (right-aligned)
+        if (item.shortcut) {
+            int shortcutX = menuX + menuWidth - static_cast<int>(strlen(item.shortcut)) * 8 - 10;
+            gui_draw_text(m_window, shortcutX, itemY + 4, item.shortcut,
+                         i == m_hoveredItem && item.enabled ? themeMenuHighlightText() : themeTextDisabled());
+        }
+
+        // Draw separator after this item
+        if (item.separator && i < menu.itemCount - 1) {
+            int sepY = itemY + MENU_ITEM_HEIGHT - 1;
+            gui_draw_hline(m_window, menuX + 4, menuX + menuWidth - 5, sepY, themeBorderDark());
+        }
+
+        itemY += MENU_ITEM_HEIGHT;
+    }
+}
+
+int Desktop::findMenuAt(int x, int y) {
+    if (y >= MENU_BAR_HEIGHT) {
+        return -1;
+    }
+
+    for (int i = 0; i < m_menuCount; i++) {
+        int menuLeft = m_menus[i].titleX - 4;
+        int menuRight = menuLeft + m_menus[i].titleWidth;
+        if (x >= menuLeft && x < menuRight) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+int Desktop::findMenuItemAt(int x, int y) {
+    if (m_activeMenu < 0) {
+        return -1;
+    }
+
+    const PulldownMenu &menu = m_menus[m_activeMenu];
+    int menuX = menu.titleX - 4;
+    int menuY = MENU_BAR_HEIGHT;
+
+    // Calculate menu width
+    int maxWidth = 0;
+    for (int i = 0; i < menu.itemCount; i++) {
+        int itemWidth = static_cast<int>(strlen(menu.items[i].label)) * 8;
+        if (menu.items[i].shortcut) {
+            itemWidth += static_cast<int>(strlen(menu.items[i].shortcut)) * 8 + 40;
+        }
+        if (itemWidth > maxWidth) {
+            maxWidth = itemWidth;
+        }
+    }
+    int menuWidth = maxWidth + 20;
+
+    // Check if in menu bounds
+    if (x < menuX || x >= menuX + menuWidth) {
+        return -1;
+    }
+
+    int itemY = menuY + 2;
+    for (int i = 0; i < menu.itemCount; i++) {
+        if (y >= itemY && y < itemY + MENU_ITEM_HEIGHT) {
+            return i;
+        }
+        itemY += MENU_ITEM_HEIGHT;
+    }
+    return -1;
+}
+
+void Desktop::openMenu(int menuIdx) {
+    m_activeMenu = menuIdx;
+    m_hoveredItem = -1;
+    redraw();
+}
+
+void Desktop::closeMenu() {
+    m_activeMenu = -1;
+    m_hoveredItem = -1;
+    redraw();
+}
+
+void Desktop::handleMenuAction(PulldownAction action) {
+    closeMenu();
+
+    switch (action) {
+    case PulldownAction::AboutWorkbench:
+        showAboutDialog();
+        break;
+    case PulldownAction::Redraw:
+        redraw();
+        break;
+    case PulldownAction::QuitWorkbench:
+        // In a real OS, we might trigger shutdown
+        // For now, just do nothing or show a message
+        break;
+    case PulldownAction::Shell:
+        spawnProgram("/sys/consoled.sys");
+        break;
+    case PulldownAction::Prefs:
+        spawnProgram("/c/prefs.prg");
+        break;
+    case PulldownAction::SysInfo:
+        spawnProgram("/c/guisysinfo.prg");
+        break;
+    case PulldownAction::TaskMan:
+        spawnProgram("/c/taskman.prg");
+        break;
+    // Theme switching
+    case PulldownAction::ThemeClassic:
+        setTheme(&themes::ClassicAmiga);
+        redraw();
+        break;
+    case PulldownAction::ThemeDark:
+        setTheme(&themes::DarkMode);
+        redraw();
+        break;
+    case PulldownAction::ThemeModern:
+        setTheme(&themes::ModernBlue);
+        redraw();
+        break;
+    case PulldownAction::ThemeHighContrast:
+        setTheme(&themes::HighContrast);
+        redraw();
+        break;
+    default:
+        break;
+    }
 }
 
 void Desktop::drawIconPixels(int x, int y, const uint32_t *pixels) {
@@ -239,8 +458,8 @@ void Desktop::drawIconPixels(int x, int y, const uint32_t *pixels) {
 void Desktop::drawIcon(DesktopIcon &icon) {
     // Draw selection highlight if selected
     if (icon.selected) {
-        // Orange highlight box behind icon
-        gui_fill_rect(m_window, icon.x - 4, icon.y - 4, 32, 32, WB_ORANGE);
+        // Highlight box behind icon using theme
+        gui_fill_rect(m_window, icon.x - 4, icon.y - 4, 32, 32, themeIconBg());
     }
 
     // Draw the icon pixels (centered in a 24x24 area)
@@ -253,12 +472,12 @@ void Desktop::drawIcon(DesktopIcon &icon) {
 
     // Label background for readability (if selected)
     if (icon.selected) {
-        gui_fill_rect(m_window, label_x - 2, label_y - 1, label_len * 8 + 4, 10, WB_ORANGE);
-        gui_draw_text(m_window, label_x, label_y, icon.label, WB_WHITE);
+        gui_fill_rect(m_window, label_x - 2, label_y - 1, label_len * 8 + 4, 10, themeIconBg());
+        gui_draw_text(m_window, label_x, label_y, icon.label, themeIconText());
     } else {
-        // Draw text with shadow for visibility on blue
-        gui_draw_text(m_window, label_x + 1, label_y + 1, icon.label, WB_BLACK);
-        gui_draw_text(m_window, label_x, label_y, icon.label, WB_WHITE);
+        // Draw text with shadow for visibility
+        gui_draw_text(m_window, label_x + 1, label_y + 1, icon.label, themeIconShadow());
+        gui_draw_text(m_window, label_x, label_y, icon.label, themeIconText());
     }
 }
 
@@ -272,6 +491,10 @@ void Desktop::redraw() {
     drawBackdrop();
     drawMenuBar();
     drawAllIcons();
+    // Draw pulldown menu on top if active
+    if (m_activeMenu >= 0) {
+        drawPulldownMenu();
+    }
     gui_present(m_window);
 }
 
@@ -419,6 +642,39 @@ void Desktop::handleClick(int x, int y, int button) {
     if (button != 0)
         return; // Only handle left button
 
+    // Check for menu bar click first
+    if (y < MENU_BAR_HEIGHT) {
+        int menuIdx = findMenuAt(x, y);
+        if (menuIdx >= 0) {
+            if (m_activeMenu == menuIdx) {
+                // Toggle: clicking same menu closes it
+                closeMenu();
+            } else {
+                // Open the clicked menu
+                openMenu(menuIdx);
+            }
+        } else {
+            // Clicked in menu bar but not on a title
+            closeMenu();
+        }
+        return;
+    }
+
+    // If a menu is open, check if click is on a menu item
+    if (m_activeMenu >= 0) {
+        int itemIdx = findMenuItemAt(x, y);
+        if (itemIdx >= 0) {
+            const PulldownItem &item = m_menus[m_activeMenu].items[itemIdx];
+            if (item.enabled) {
+                handleMenuAction(item.action);
+            }
+        } else {
+            // Click outside menu - close it
+            closeMenu();
+        }
+        return;
+    }
+
     int icon_idx = findIconAt(x, y);
 
     // Check for double-click using real time
@@ -476,11 +732,52 @@ void Desktop::handleDesktopEvent(const gui_event_t &event) {
         case GUI_EVENT_MOUSE:
             if (event.mouse.event_type == 1) { // Button down
                 handleClick(event.mouse.x, event.mouse.y, event.mouse.button);
+            } else if (event.mouse.event_type == 0) { // Mouse move
+                // Handle menu hover when menu is open
+                if (m_activeMenu >= 0) {
+                    int x = event.mouse.x;
+                    int y = event.mouse.y;
+
+                    // Check if mouse moved to a different menu title
+                    if (y < MENU_BAR_HEIGHT) {
+                        int menuIdx = findMenuAt(x, y);
+                        if (menuIdx >= 0 && menuIdx != m_activeMenu) {
+                            // Switch to hovered menu
+                            m_activeMenu = menuIdx;
+                            m_hoveredItem = -1;
+                            redraw();
+                        }
+                    } else {
+                        // Check if hovering over a menu item
+                        int itemIdx = findMenuItemAt(x, y);
+                        if (itemIdx != m_hoveredItem) {
+                            m_hoveredItem = itemIdx;
+                            redraw();
+                        }
+                    }
+                }
             }
             break;
 
         case GUI_EVENT_KEY:
-            // Could handle keyboard shortcuts here
+            // Handle keyboard shortcuts
+            if (event.key.pressed) {
+                // Check for Ctrl key modifier (modifier bit 2)
+                bool ctrl = (event.key.modifiers & 0x04) != 0;
+                if (ctrl) {
+                    switch (event.key.keycode) {
+                        case 16: // Q key
+                            // Ctrl+Q: Quit (no-op for now, would trigger shutdown)
+                            break;
+                        default:
+                            break;
+                    }
+                }
+                // Escape key closes menu
+                if (event.key.keycode == 1 && m_activeMenu >= 0) { // ESC
+                    closeMenu();
+                }
+            }
             break;
 
         case GUI_EVENT_CLOSE:
@@ -522,24 +819,24 @@ void Desktop::showAboutDialog() {
         return;
     }
 
-    // Draw dialog content
-    gui_fill_rect(m_aboutDialog, 0, 0, 300, 200, WB_GRAY_LIGHT);
+    // Draw dialog content using theme colors
+    gui_fill_rect(m_aboutDialog, 0, 0, 300, 200, themeWindowBg());
 
     // Title
-    gui_draw_text(m_aboutDialog, 80, 20, "ViperDOS Workbench", WB_BLACK);
+    gui_draw_text(m_aboutDialog, 80, 20, "ViperDOS Workbench", themeText());
 
     // Version info
-    gui_draw_text(m_aboutDialog, 100, 50, "Version 0.5.0", WB_GRAY_DARK);
+    gui_draw_text(m_aboutDialog, 100, 50, "Version 0.5.0", themeTextDisabled());
 
     // Description
-    gui_draw_text(m_aboutDialog, 40, 80, "An Amiga-inspired desktop", WB_BLACK);
-    gui_draw_text(m_aboutDialog, 30, 100, "for the Viper microkernel OS", WB_BLACK);
+    gui_draw_text(m_aboutDialog, 40, 80, "An Amiga-inspired desktop", themeText());
+    gui_draw_text(m_aboutDialog, 30, 100, "for the Viper microkernel OS", themeText());
 
     // Copyright
-    gui_draw_text(m_aboutDialog, 60, 140, "(C) 2025 ViperDOS Team", WB_GRAY_DARK);
+    gui_draw_text(m_aboutDialog, 60, 140, "(C) 2025 ViperDOS Team", themeTextDisabled());
 
     // Close hint
-    gui_draw_text(m_aboutDialog, 70, 170, "Click [X] to close", WB_GRAY_MED);
+    gui_draw_text(m_aboutDialog, 70, 170, "Click [X] to close", themeTextDisabled());
 
     gui_present(m_aboutDialog);
     debug_serial("[workbench] Opened About dialog\n");
@@ -559,26 +856,26 @@ void Desktop::showPrefsDialog() {
         return;
     }
 
-    // Draw dialog content
-    gui_fill_rect(m_prefsDialog, 0, 0, 350, 250, WB_GRAY_LIGHT);
+    // Draw dialog content using theme colors
+    gui_fill_rect(m_prefsDialog, 0, 0, 350, 250, themeWindowBg());
 
     // Title
-    gui_draw_text(m_prefsDialog, 100, 20, "Workbench Preferences", WB_BLACK);
+    gui_draw_text(m_prefsDialog, 100, 20, "Workbench Preferences", themeText());
 
     // Placeholder content
-    gui_draw_text(m_prefsDialog, 20, 60, "Screen:", WB_BLACK);
-    gui_draw_text(m_prefsDialog, 100, 60, "1024 x 768", WB_GRAY_DARK);
+    gui_draw_text(m_prefsDialog, 20, 60, "Screen:", themeText());
+    gui_draw_text(m_prefsDialog, 100, 60, "1024 x 768", themeTextDisabled());
 
-    gui_draw_text(m_prefsDialog, 20, 90, "Backdrop:", WB_BLACK);
-    gui_draw_text(m_prefsDialog, 100, 90, "Workbench Blue", WB_GRAY_DARK);
+    gui_draw_text(m_prefsDialog, 20, 90, "Backdrop:", themeText());
+    gui_draw_text(m_prefsDialog, 100, 90, "Workbench Blue", themeTextDisabled());
 
-    gui_draw_text(m_prefsDialog, 20, 120, "Icons:", WB_BLACK);
-    gui_draw_text(m_prefsDialog, 100, 120, "4 desktop icons", WB_GRAY_DARK);
+    gui_draw_text(m_prefsDialog, 20, 120, "Theme:", themeText());
+    gui_draw_text(m_prefsDialog, 100, 120, currentTheme().name, themeTextDisabled());
 
-    // Note about future functionality
-    gui_fill_rect(m_prefsDialog, 20, 160, 310, 50, WB_BLUE);
-    gui_draw_text(m_prefsDialog, 40, 175, "Full preferences editor", WB_WHITE);
-    gui_draw_text(m_prefsDialog, 40, 195, "coming in Phase 3!", WB_WHITE);
+    // Note about theme switching
+    gui_fill_rect(m_prefsDialog, 20, 160, 310, 50, themeHighlight());
+    gui_draw_text(m_prefsDialog, 40, 175, "Theme: Use Tools > Prefs", themeMenuHighlightText());
+    gui_draw_text(m_prefsDialog, 40, 195, "for more options", themeMenuHighlightText());
 
     gui_present(m_prefsDialog);
     debug_serial("[workbench] Opened Prefs dialog\n");
