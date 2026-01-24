@@ -173,4 +173,68 @@ void put_dec(i64 value)
     puts_unlocked(&buf[i]);
 }
 
+/** @copydoc serial::put_ipv4 */
+void put_ipv4(const u8 *bytes)
+{
+    SpinlockGuard guard(serial_lock);
+    for (int i = 0; i < 4; i++)
+    {
+        if (i > 0)
+            putc('.');
+        // Inline decimal conversion for bytes (0-255)
+        u8 val = bytes[i];
+        if (val >= 100)
+        {
+            putc('0' + (val / 100));
+            val %= 100;
+            putc('0' + (val / 10));
+            putc('0' + (val % 10));
+        }
+        else if (val >= 10)
+        {
+            putc('0' + (val / 10));
+            putc('0' + (val % 10));
+        }
+        else
+        {
+            putc('0' + val);
+        }
+    }
+}
+
+/** @copydoc serial::put_mac */
+void put_mac(const u8 *bytes)
+{
+    SpinlockGuard guard(serial_lock);
+    static const char hex[] = "0123456789abcdef";
+    for (int i = 0; i < 6; i++)
+    {
+        if (i > 0)
+            putc(':');
+        putc(hex[(bytes[i] >> 4) & 0xF]);
+        putc(hex[bytes[i] & 0xF]);
+    }
+}
+
+/** @copydoc serial::put_size_mb */
+void put_size_mb(u64 bytes)
+{
+    SpinlockGuard guard(serial_lock);
+    u64 mb = bytes / (1024 * 1024);
+
+    // Convert to decimal string
+    char buf[21];
+    int i = 20;
+    buf[i] = '\0';
+
+    do
+    {
+        buf[--i] = '0' + (mb % 10);
+        mb /= 10;
+    } while (mb && i > 0);
+
+    puts_unlocked(&buf[i]);
+    puts_unlocked(" MB");
+}
+
 } // namespace serial

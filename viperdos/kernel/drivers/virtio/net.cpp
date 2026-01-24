@@ -1,6 +1,18 @@
 /**
  * @file net.cpp
  * @brief Kernel VirtIO network device driver implementation.
+ *
+ * @details
+ * Implements the VirtIO network device driver for kernel-space networking.
+ * The driver manages two virtqueues:
+ * - RX queue (0): Receives incoming Ethernet frames
+ * - TX queue (1): Transmits outgoing Ethernet frames
+ *
+ * Packets are processed using the kernel network stack (netstack.cpp) which
+ * handles ARP, IP, TCP, UDP, ICMP, and DNS protocols.
+ *
+ * The driver uses interrupt-driven I/O with the GIC for efficient packet
+ * processing without polling.
  */
 
 #include "net.hpp"

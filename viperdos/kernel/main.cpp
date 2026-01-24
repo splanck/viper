@@ -353,13 +353,7 @@ void init_network_subsystem()
         if (net::dns::resolve("example.com", &resolved_ip, 5000))
         {
             serial::puts("[kernel] DNS resolved: ");
-            serial::put_dec(resolved_ip.bytes[0]);
-            serial::putc('.');
-            serial::put_dec(resolved_ip.bytes[1]);
-            serial::putc('.');
-            serial::put_dec(resolved_ip.bytes[2]);
-            serial::putc('.');
-            serial::put_dec(resolved_ip.bytes[3]);
+            serial::put_ipv4(resolved_ip.bytes);
             serial::puts("\n");
         }
         else

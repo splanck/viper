@@ -127,4 +127,41 @@ void put_hex(u64 value);
  */
 void put_dec(i64 value);
 
+/**
+ * @brief Print an IPv4 address in dotted decimal notation.
+ *
+ * @details
+ * Formats a 4-byte IPv4 address as "a.b.c.d" and prints it to the serial
+ * console. This is a convenience wrapper that eliminates repetitive
+ * put_dec/putc sequences when logging network addresses.
+ *
+ * @param bytes Pointer to 4 bytes representing the IPv4 address in
+ *              network byte order (big-endian, e.g., 192.168.1.1 is
+ *              stored as {192, 168, 1, 1}).
+ */
+void put_ipv4(const u8 *bytes);
+
+/**
+ * @brief Print a MAC address in hexadecimal notation.
+ *
+ * @details
+ * Formats a 6-byte MAC address as "xx:xx:xx:xx:xx:xx" and prints it to the
+ * serial console. Each byte is printed as two lowercase hex digits.
+ *
+ * @param bytes Pointer to 6 bytes representing the MAC address.
+ */
+void put_mac(const u8 *bytes);
+
+/**
+ * @brief Print a byte size in megabytes.
+ *
+ * @details
+ * Converts a byte count to megabytes (dividing by 1024*1024) and prints
+ * the result followed by " MB". This is useful for logging memory sizes
+ * during boot and diagnostics.
+ *
+ * @param bytes The size in bytes to convert and print.
+ */
+void put_size_mb(u64 bytes);
+
 } // namespace serial

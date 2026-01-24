@@ -19,6 +19,7 @@
  */
 
 #include "journal.hpp"
+#include "../../arch/aarch64/timer.hpp"
 #include "../../console/serial.hpp"
 #include "../cache.hpp"
 
@@ -457,7 +458,7 @@ bool Journal::write_transaction(Transaction *txn, u64 *journal_pos)
     desc->state = txn_state::TXN_ACTIVE;
     desc->num_blocks = txn->num_blocks;
     desc->sequence = txn->sequence;
-    desc->timestamp = 0; // TODO: add timestamp
+    desc->timestamp = timer::get_ticks();
 
     for (u8 i = 0; i < txn->num_blocks; i++)
     {

@@ -1,10 +1,39 @@
-/// @file filebrowser.cpp
-/// @brief File browser window implementation.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/workbench/src/filebrowser.cpp
+// Purpose: File browser window for ViperDOS Workbench.
+// Key invariants: Each browser maintains independent path state.
+// Ownership/Lifetime: Created by Desktop, destroyed when window closes.
+// Links: user/workbench/include/filebrowser.hpp, user/workbench/src/desktop.cpp
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file filebrowser.cpp
+ * @brief File browser window implementation for ViperDOS Workbench.
+ *
+ * @details
+ * The FileBrowser class provides a graphical file browser window that displays
+ * directory contents with icons. Features include:
+ * - Directory navigation via double-click
+ * - File/folder icon rendering with appropriate icons per type
+ * - Selection highlighting and multi-select support
+ * - Parent directory navigation ("..") support
+ *
+ * Each FileBrowser window maintains its own path state and can display
+ * independent views of the filesystem.
+ */
 
 #include "../include/filebrowser.hpp"
 #include "../include/desktop.hpp"
 #include "../include/colors.hpp"
 #include "../include/icons.hpp"
+#include "../include/utils.hpp"
 #include <gui.h>
 #include <string.h>
 #include <stdio.h>
@@ -13,21 +42,6 @@
 #include <sys/stat.h>
 
 namespace workbench {
-
-// Get system uptime in milliseconds (SYS_TIME_UPTIME = 0xA2)
-static uint64_t get_uptime_ms()
-{
-    uint64_t result;
-    __asm__ volatile(
-        "mov x8, #0xA2\n\t"
-        "svc #0\n\t"
-        "mov %[result], x1"
-        : [result] "=r" (result)
-        :
-        : "x0", "x1", "x8", "memory"
-    );
-    return result;
-}
 
 FileBrowser::FileBrowser(Desktop *desktop, const char *initialPath)
     : m_desktop(desktop)
@@ -94,7 +108,16 @@ void FileBrowser::loadDirectory()
         // Determine file type
         bool isDir = (entry->d_type == DT_DIR);
         m_files[m_fileCount].type = determineFileType(entry->d_name, isDir);
-        m_files[m_fileCount].size = 0;  // TODO: get actual size via stat()
+
+        // Get actual file size via stat()
+        char fullPath[MAX_PATH_LEN];
+        snprintf(fullPath, sizeof(fullPath), "%s/%s", m_currentPath, entry->d_name);
+        struct stat st;
+        if (stat(fullPath, &st) == 0) {
+            m_files[m_fileCount].size = st.st_size;
+        } else {
+            m_files[m_fileCount].size = 0;
+        }
         m_files[m_fileCount].selected = false;
 
         m_fileCount++;

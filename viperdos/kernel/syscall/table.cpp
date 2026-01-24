@@ -1365,13 +1365,7 @@ static SyscallResult sys_socket_connect(u64 a0, u64 a1, u64 a2, u64, u64, u64)
         serial::puts("[syscall] socket_connect: sock=");
         serial::put_dec(sock);
         serial::puts(" ip=");
-        serial::put_dec(ip.bytes[0]);
-        serial::putc('.');
-        serial::put_dec(ip.bytes[1]);
-        serial::putc('.');
-        serial::put_dec(ip.bytes[2]);
-        serial::putc('.');
-        serial::put_dec(ip.bytes[3]);
+        serial::put_ipv4(ip.bytes);
         serial::puts(" port=");
         serial::put_dec(port);
         serial::putc('\n');

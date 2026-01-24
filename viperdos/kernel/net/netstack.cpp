@@ -26,7 +26,21 @@ static void memcpy_net(void *dst, const void *src, usize n)
 // =============================================================================
 // Network Interface
 // =============================================================================
+//
+// The NetIf class encapsulates the network interface configuration and provides
+// access to the underlying VirtIO network device. It stores the IP configuration
+// (address, netmask, gateway, DNS) and determines routing for outbound packets.
+// =============================================================================
 
+/**
+ * @class NetIf
+ * @brief Network interface abstraction for IP configuration and routing.
+ *
+ * @details
+ * Manages the network interface's IP configuration and provides routing
+ * decisions for outbound packets. The current implementation assumes QEMU
+ * user-mode networking defaults (10.0.2.x subnet).
+ */
 class NetIf
 {
   public:
@@ -74,7 +88,21 @@ class NetIf
 // =============================================================================
 // ARP Cache
 // =============================================================================
+//
+// The ArpCache class manages IP-to-MAC address resolution using the Address
+// Resolution Protocol. It maintains a fixed-size cache of resolved addresses
+// and handles ARP request/response packets.
+// =============================================================================
 
+/**
+ * @class ArpCache
+ * @brief ARP cache for IP-to-MAC address resolution.
+ *
+ * @details
+ * Implements ARP caching with a simple fixed-size table. When a lookup misses,
+ * the caller can initiate an ARP request and poll for resolution. Entries are
+ * stored without timeout (simple implementation suitable for embedded use).
+ */
 class ArpCache
 {
   public:
@@ -322,12 +350,36 @@ bool is_available()
 }
 
 // =============================================================================
+// =============================================================================
 // TCP Socket API
+// =============================================================================
+//
+// The TCP socket API provides a BSD-style socket interface for user processes
+// to establish TCP connections. Each socket is associated with an owner process
+// and tracks connection state according to the TCP state machine.
+//
+// Socket lifecycle:
+//   1. socket_create() - Allocate a socket slot, returns socket ID
+//   2. socket_connect() - Initiate TCP 3-way handshake to remote host
+//   3. socket_send()/socket_recv() - Transfer data on established connection
+//   4. socket_close() - Initiate connection teardown
+//
+// Sockets are identified by integer IDs (0 to MAX_TCP_CONNS-1).
 // =============================================================================
 
 namespace tcp
 {
 
+/**
+ * @brief Create a new TCP socket for a process.
+ *
+ * @details
+ * Allocates an unused TCP connection slot and initializes it for the specified
+ * process. The socket starts in the CLOSED state, ready for a connect() call.
+ *
+ * @param process_id The owning process ID for access control.
+ * @return Socket ID (>= 0) on success, or negative error code (VERR_NO_RESOURCE).
+ */
 i64 socket_create(u32 process_id)
 {
     for (usize i = 0; i < MAX_TCP_CONNS; i++)
@@ -356,18 +408,26 @@ i64 socket_create(u32 process_id)
     return VERR_NO_RESOURCE;
 }
 
+/**
+ * @brief Initiate a TCP connection to a remote host.
+ *
+ * @details
+ * Performs the TCP 3-way handshake (SYN, SYN-ACK, ACK) with the specified
+ * remote address. This function blocks until the connection is established
+ * or the timeout expires. On success, the socket transitions to ESTABLISHED
+ * state and is ready for data transfer.
+ *
+ * @param sock   Socket ID returned by socket_create().
+ * @param ip     Remote IPv4 address to connect to.
+ * @param port   Remote TCP port number.
+ * @return true if connection established, false on timeout or error.
+ */
 bool socket_connect(i32 sock, const Ipv4Addr &ip, u16 port)
 {
     serial::puts("[tcp] connect: sock=");
     serial::put_dec(sock);
     serial::puts(" ip=");
-    serial::put_dec(ip.bytes[0]);
-    serial::putc('.');
-    serial::put_dec(ip.bytes[1]);
-    serial::putc('.');
-    serial::put_dec(ip.bytes[2]);
-    serial::putc('.');
-    serial::put_dec(ip.bytes[3]);
+    serial::put_ipv4(ip.bytes);
     serial::puts(" port=");
     serial::put_dec(port);
     serial::putc('\n');
@@ -442,6 +502,20 @@ bool socket_connect(i32 sock, const Ipv4Addr &ip, u16 port)
     return false;
 }
 
+/**
+ * @brief Send data on an established TCP connection.
+ *
+ * @details
+ * Transmits data to the remote peer over an established connection. Data is
+ * segmented according to TCP_MAX_CHUNK and sent with PSH flag to encourage
+ * immediate delivery. This is a synchronous operation that returns after all
+ * data has been queued for transmission.
+ *
+ * @param sock Socket ID of an ESTABLISHED connection.
+ * @param buf  Pointer to data to send.
+ * @param len  Number of bytes to send.
+ * @return Number of bytes sent on success, or negative error code.
+ */
 i64 socket_send(i32 sock, const void *buf, usize len)
 {
     if (sock < 0 || static_cast<usize>(sock) >= MAX_TCP_CONNS)
@@ -467,6 +541,21 @@ i64 socket_send(i32 sock, const void *buf, usize len)
     return static_cast<i64>(sent);
 }
 
+/**
+ * @brief Receive data from a TCP connection.
+ *
+ * @details
+ * Reads available data from the socket's receive buffer. This is a non-blocking
+ * operation that returns immediately with whatever data is available:
+ * - Returns data count if data is available
+ * - Returns VERR_WOULD_BLOCK if no data and connection is open
+ * - Returns 0 (EOF) if connection is closing/closed
+ *
+ * @param sock Socket ID.
+ * @param buf  Buffer to receive data into.
+ * @param len  Maximum number of bytes to read.
+ * @return Number of bytes read, 0 for EOF, or negative error code.
+ */
 i64 socket_recv(i32 sock, void *buf, usize len)
 {
     if (sock < 0 || static_cast<usize>(sock) >= MAX_TCP_CONNS)
@@ -499,6 +588,17 @@ i64 socket_recv(i32 sock, void *buf, usize len)
     return static_cast<i64>(to_read);
 }
 
+/**
+ * @brief Close a TCP socket and release its resources.
+ *
+ * @details
+ * Initiates graceful connection teardown by sending FIN and waiting for
+ * acknowledgment. If the socket is in ESTABLISHED state, performs the
+ * TCP 4-way close handshake. The socket slot is marked as unused and can
+ * be reused by subsequent socket_create() calls.
+ *
+ * @param sock Socket ID to close.
+ */
 void socket_close(i32 sock)
 {
     if (sock < 0 || static_cast<usize>(sock) >= MAX_TCP_CONNS)
@@ -527,6 +627,17 @@ void socket_close(i32 sock)
     conn->state = TcpState::CLOSED;
 }
 
+/**
+ * @brief Check if a socket is owned by a specific process.
+ *
+ * @details
+ * Verifies that the specified socket exists and belongs to the given process.
+ * Used by syscall handlers to enforce process isolation for socket operations.
+ *
+ * @param sock       Socket ID to check.
+ * @param process_id Process ID to verify ownership against.
+ * @return true if socket exists and is owned by process, false otherwise.
+ */
 bool socket_owned_by(i32 sock, u32 process_id)
 {
     if (sock < 0 || static_cast<usize>(sock) >= MAX_TCP_CONNS)
@@ -536,6 +647,23 @@ bool socket_owned_by(i32 sock, u32 process_id)
     return conn->in_use && conn->owner_pid == process_id;
 }
 
+/**
+ * @brief Query socket status for poll/select operations.
+ *
+ * @details
+ * Returns the current readiness state of a socket. This is used by the poll
+ * syscall to determine which sockets have pending data or are ready for I/O.
+ *
+ * Flags returned in out_flags:
+ * - SOCK_READABLE (1): Data available in receive buffer
+ * - SOCK_WRITABLE (2): Socket can accept data for sending
+ * - SOCK_EOF (4): Connection has been closed by peer
+ *
+ * @param sock             Socket ID to query.
+ * @param out_flags        Output: Bitmask of socket status flags.
+ * @param out_rx_available Output: Number of bytes available to read.
+ * @return 0 on success, negative error code on failure.
+ */
 i32 socket_status(i32 sock, u32 *out_flags, u32 *out_rx_available)
 {
     if (!out_flags || !out_rx_available)
@@ -808,13 +936,7 @@ static bool send_ip_packet(const Ipv4Addr &dst, u8 protocol, const void *data, u
     if (dst_mac == MacAddr::zero())
     {
         serial::puts("[ip] ARP lookup miss for ");
-        serial::put_dec(next_hop.bytes[0]);
-        serial::putc('.');
-        serial::put_dec(next_hop.bytes[1]);
-        serial::putc('.');
-        serial::put_dec(next_hop.bytes[2]);
-        serial::putc('.');
-        serial::put_dec(next_hop.bytes[3]);
+        serial::put_ipv4(next_hop.bytes);
         serial::puts(", sending ARP request\n");
 
         g_arp.send_request(next_hop);
@@ -895,13 +1017,7 @@ static bool send_tcp_segment(TcpConnection *conn, u8 flags, const void *data, us
     if (flags & TCP_SYN)
     {
         serial::puts("[tcp] send_tcp_segment SYN to ");
-        serial::put_dec(conn->remote_ip.bytes[0]);
-        serial::putc('.');
-        serial::put_dec(conn->remote_ip.bytes[1]);
-        serial::putc('.');
-        serial::put_dec(conn->remote_ip.bytes[2]);
-        serial::putc('.');
-        serial::put_dec(conn->remote_ip.bytes[3]);
+        serial::put_ipv4(conn->remote_ip.bytes);
         serial::putc(':');
         serial::put_dec(conn->remote_port);
         serial::puts(" result=");
@@ -1145,13 +1261,7 @@ static void handle_tcp(const Ipv4Header *ip, const u8 *data, usize len)
     serial::puts("[tcp] rx: flags=");
     serial::put_hex(flags);
     serial::puts(" src=");
-    serial::put_dec(ip->src.bytes[0]);
-    serial::putc('.');
-    serial::put_dec(ip->src.bytes[1]);
-    serial::putc('.');
-    serial::put_dec(ip->src.bytes[2]);
-    serial::putc('.');
-    serial::put_dec(ip->src.bytes[3]);
+    serial::put_ipv4(ip->src.bytes);
     serial::putc(':');
     serial::put_dec(src_port);
     serial::puts(" dst=:");

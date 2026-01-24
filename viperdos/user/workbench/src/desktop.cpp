@@ -1,42 +1,43 @@
-/// @file desktop.cpp
-/// @brief Desktop class implementation.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: user/workbench/src/desktop.cpp
+// Purpose: Desktop class implementation for ViperDOS Workbench GUI.
+// Key invariants: Single desktop instance manages all windows.
+// Ownership/Lifetime: Created by main(), lives for application lifetime.
+// Links: user/workbench/include/desktop.hpp, user/workbench/src/filebrowser.cpp
+//
+//===----------------------------------------------------------------------===//
+
+/**
+ * @file desktop.cpp
+ * @brief Desktop class implementation for the ViperDOS Workbench GUI.
+ *
+ * @details
+ * The Desktop class manages the main graphical desktop environment, including:
+ * - Desktop icon grid (drives, disk images, trash)
+ * - Window management for file browser windows
+ * - Mouse input handling and icon selection
+ * - Drag and drop operations
+ *
+ * The desktop uses the GUI library (gui.h) for low-level window and event
+ * management. Icons are rendered using predefined pixel art from icons.hpp.
+ */
 
 #include "../include/desktop.hpp"
 #include "../include/filebrowser.hpp"
 #include "../include/colors.hpp"
 #include "../include/icons.hpp"
+#include "../include/utils.hpp"
 #include <gui.h>
 #include <string.h>
 #include <stdint.h>
 
 namespace workbench {
-
-// Get system uptime in milliseconds (SYS_TIME_UPTIME = 0xA2)
-static uint64_t get_uptime_ms()
-{
-    uint64_t result;
-    __asm__ volatile(
-        "mov x8, #0xA2\n\t"  // SYS_TIME_UPTIME
-        "svc #0\n\t"
-        "mov %[result], x1"  // Result is in x1 after syscall
-        : [result] "=r" (result)
-        :
-        : "x0", "x1", "x8", "memory"
-    );
-    return result;
-}
-
-// Direct serial debug output (bypasses consoled)
-static void debug_serial(const char *msg)
-{
-    __asm__ volatile(
-        "mov x0, %[msg]\n\t"
-        "mov x8, #0xF0\n\t"  // SYS_DEBUG_PRINT
-        "svc #0"
-        :: [msg] "r" (msg)
-        : "x0", "x8", "memory"
-    );
-}
 
 Desktop::Desktop()
 {
