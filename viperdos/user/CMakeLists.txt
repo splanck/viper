@@ -41,6 +41,9 @@ add_subdirectory(libhttp)
 # Build the GUI client library
 add_subdirectory(libgui)
 
+# Build the Widget toolkit library
+add_subdirectory(libwidget)
+
 # Helper function to create user programs with libc (.prg extension)
 function(add_user_program name)
     add_executable(${name}.prg ${ARGN})
@@ -158,6 +161,21 @@ function(add_gui_program name)
     target_link_libraries(${name}.prg PRIVATE vipergui viperlibc)
 endfunction()
 
+# Helper function for Widget-based GUI programs (.prg extension)
+function(add_widget_program name)
+    add_executable(${name}.prg ${ARGN})
+    target_compile_options(${name}.prg PRIVATE ${USER_COMPILE_OPTIONS})
+    target_link_options(${name}.prg PRIVATE ${USER_LINK_OPTIONS})
+    target_include_directories(${name}.prg PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}/libc/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/libc/include/c++
+            ${CMAKE_CURRENT_SOURCE_DIR}/libgui/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/libwidget/include
+    )
+    target_link_libraries(${name}.prg PRIVATE viperwidget vipergui viperlibc)
+endfunction()
+
 # hello_gui - GUI test program
 add_gui_program(hello_gui hello_gui/hello_gui.c)
 
@@ -201,3 +219,17 @@ add_gui_program(prefs prefs/main.cpp)
 target_include_directories(prefs.prg PRIVATE
         ${CMAKE_SOURCE_DIR}/include
 )
+
+# Phase 5: Desktop Applications
+
+# calc - Calculator application
+add_subdirectory(calc)
+
+# vedit - Text editor
+add_subdirectory(vedit)
+
+# clock - Analog/digital clock
+add_subdirectory(clock)
+
+# viewer - Image viewer
+add_subdirectory(viewer)

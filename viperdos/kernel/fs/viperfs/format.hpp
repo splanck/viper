@@ -33,6 +33,52 @@ namespace fs::viperfs {
  * All structures are designed to fit cleanly into the filesystem block size
  * (4KiB) and are laid out explicitly using fixed-width types so the format is
  * stable across builds.
+ *
+ * ## On-Disk Layout
+ *
+ * @verbatim
+ * +------------------+  Block 0
+ * |   Superblock     |  (4KB) - Magic, version, pointers to regions
+ * +------------------+  Block 1
+ * |                  |
+ * |  Block Bitmap    |  N blocks - 1 bit per data block (0=free, 1=used)
+ * |                  |
+ * +------------------+  Block 1+N
+ * |                  |
+ * |  Inode Table     |  M blocks - 16 inodes per block (256 bytes each)
+ * |                  |
+ * +------------------+  Block 1+N+M
+ * |                  |
+ * |                  |
+ * |   Data Blocks    |  Remainder - File/directory contents
+ * |                  |
+ * |                  |
+ * +------------------+  Last 16 blocks (optional)
+ * |    Journal       |  Crash recovery log (if enabled)
+ * +------------------+
+ * @endverbatim
+ *
+ * ## Inode Block Pointer Layout
+ *
+ * Each inode can address up to ~4GB of file data:
+ * - 12 direct pointers:         12 * 4KB = 48KB
+ * - 1 indirect (512 ptrs):      512 * 4KB = 2MB
+ * - 1 double indirect:          512 * 512 * 4KB = 1GB
+ * - 1 triple indirect:          512^3 * 4KB = 512GB (not implemented)
+ *
+ * @verbatim
+ * Inode
+ * +------------+
+ * | direct[0]  |----> Data Block
+ * | direct[1]  |----> Data Block
+ * |   ...      |
+ * | direct[11] |----> Data Block
+ * +------------+
+ * | indirect   |----> [Ptr Block]----> Data Blocks (512 entries)
+ * +------------+
+ * | double_ind |----> [Ptr Block]----> [Ptr Blocks]----> Data Blocks
+ * +------------+
+ * @endverbatim
  */
 
 /** @brief ViperFS magic number ("VPFS"). */

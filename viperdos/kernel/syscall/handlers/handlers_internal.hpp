@@ -28,6 +28,66 @@ namespace syscall {
 cap::Table *get_current_cap_table();
 
 // =============================================================================
+// Handle Lookup Helpers (reduce boilerplate in handlers)
+// =============================================================================
+
+/**
+ * @brief Get capability table or return VERR_NOT_FOUND.
+ *
+ * @details
+ * Use at the start of syscall handlers that need the capability table.
+ * Declares a local variable `table` of type `cap::Table*`.
+ */
+#define GET_CAP_TABLE_OR_RETURN()                                                                  \
+    cap::Table *table = get_current_cap_table();                                                   \
+    if (!table) {                                                                                  \
+        return err_not_found();                                                                    \
+    }
+
+/**
+ * @brief Look up a handle with rights check and cast to typed object.
+ *
+ * @details
+ * Validates the handle, checks kind and rights, then casts to the target type.
+ * Declares a local variable with the given name of type T*.
+ * Returns VERR_INVALID_HANDLE on failure.
+ *
+ * @param var_name Name for the local variable to declare.
+ * @param T Target object type (e.g., kobj::Channel).
+ * @param table Capability table pointer.
+ * @param handle Handle to look up.
+ * @param kind Expected object kind (e.g., cap::Kind::Channel).
+ * @param rights Required rights mask.
+ */
+#define GET_OBJECT_WITH_RIGHTS(var_name, T, table, handle, kind, rights)                           \
+    cap::Entry *var_name##_entry_ = (table)->get_with_rights((handle), (kind), (rights));          \
+    if (!var_name##_entry_) {                                                                      \
+        return err_invalid_handle();                                                               \
+    }                                                                                              \
+    T *var_name = static_cast<T *>(var_name##_entry_->object)
+
+/**
+ * @brief Look up a handle with kind check only and cast to typed object.
+ *
+ * @details
+ * Validates the handle and checks kind, then casts to the target type.
+ * Declares a local variable with the given name of type T*.
+ * Returns VERR_INVALID_HANDLE on failure.
+ *
+ * @param var_name Name for the local variable to declare.
+ * @param T Target object type (e.g., kobj::DirObject).
+ * @param table Capability table pointer.
+ * @param handle Handle to look up.
+ * @param kind Expected object kind (e.g., cap::Kind::Directory).
+ */
+#define GET_OBJECT_CHECKED(var_name, T, table, handle, kind)                                       \
+    cap::Entry *var_name##_entry_ = (table)->get_checked((handle), (kind));                        \
+    if (!var_name##_entry_) {                                                                      \
+        return err_invalid_handle();                                                               \
+    }                                                                                              \
+    T *var_name = static_cast<T *>(var_name##_entry_->object)
+
+// =============================================================================
 // Task Management (0x00-0x0F)
 // =============================================================================
 

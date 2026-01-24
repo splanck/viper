@@ -312,4 +312,33 @@ inline SyscallResult err_would_block() {
     return SyscallResult::err(error::VERR_WOULD_BLOCK);
 }
 
+// =============================================================================
+// File Descriptor Helpers (reduce boilerplate for pseudo-FD handling)
+// =============================================================================
+
+/// Check if fd is stdin (fd 0)
+inline bool is_stdin(i32 fd) {
+    return fd == 0;
+}
+
+/// Check if fd is stdout (fd 1)
+inline bool is_stdout(i32 fd) {
+    return fd == 1;
+}
+
+/// Check if fd is stderr (fd 2)
+inline bool is_stderr(i32 fd) {
+    return fd == 2;
+}
+
+/// Check if fd is a console pseudo-FD (stdin/stdout/stderr)
+inline bool is_console_fd(i32 fd) {
+    return fd >= 0 && fd <= 2;
+}
+
+/// Check if fd is an output pseudo-FD (stdout or stderr)
+inline bool is_output_fd(i32 fd) {
+    return fd == 1 || fd == 2;
+}
+
 } // namespace syscall

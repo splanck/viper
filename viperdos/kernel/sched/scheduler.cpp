@@ -145,6 +145,53 @@ void enqueue_locked(task::Task *t) {
     t->state = task::TaskState::Ready;
 }
 
+// =============================================================================
+// Task Selection Algorithm
+// =============================================================================
+//
+// The scheduler selects the next task to run using a multi-level priority
+// scheme with three scheduling classes:
+//
+// 1. SCHED_DEADLINE (Earliest Deadline First)
+//    - Tasks with explicit deadlines are always considered first
+//    - The task with the earliest deadline wins (regardless of queue)
+//    - Used for hard real-time requirements
+//
+// 2. SCHED_FIFO / SCHED_RR (Real-Time)
+//    - After deadline tasks, RT tasks in higher priority queues run first
+//    - SCHED_FIFO: Runs until it blocks or yields (no time slicing)
+//    - SCHED_RR: Runs for one time slice, then round-robins with peers
+//    - Within a queue, tasks are selected in FIFO order
+//
+// 3. SCHED_OTHER (Completely Fair Scheduler)
+//    - For normal time-sharing tasks
+//    - Selects the task with the lowest "virtual runtime" (vruntime)
+//    - vruntime increases as a task runs, ensuring fairness
+//    - Nice values affect vruntime accumulation rate
+//
+// Task Selection Flow:
+//
+//   dequeue_locked()
+//         |
+//         v
+//   [Scan all queues for SCHED_DEADLINE tasks]
+//         |
+//         +--> Found? Return task with earliest deadline
+//         |
+//         v
+//   [Scan queues 0-7 in priority order]
+//         |
+//         +--> For each queue:
+//                 |
+//                 +--> RT task found? Return it (FIFO)
+//                 |
+//                 +--> SCHED_OTHER? Track lowest vruntime
+//         |
+//         v
+//   Return best SCHED_OTHER task (or nullptr if all queues empty)
+//
+// =============================================================================
+
 /**
  * @brief Internal dequeue without lock (caller must hold sched_lock).
  */
@@ -709,6 +756,42 @@ void schedule() {
         context_switch(&next->context, &next->context);
     }
 }
+
+// =============================================================================
+// Preemption Logic
+// =============================================================================
+//
+// Preemption occurs when a running task is interrupted to allow another task
+// to run. The scheduler supports two types of preemption:
+//
+// 1. Priority Preemption
+//    - A higher-priority task becomes ready (e.g., woken from sleep)
+//    - Real-time tasks always preempt non-real-time tasks
+//    - Checked on every timer tick by scanning higher-priority queues
+//
+// 2. Time Slice Preemption
+//    - A task's time quantum expires
+//    - Behavior depends on scheduling policy:
+//      - SCHED_FIFO: Never preempted by time slice (runs until yield/block)
+//      - SCHED_RR: Preempted when slice expires, moves to end of queue
+//      - SCHED_OTHER: Preempted when slice expires, CFS selects next task
+//
+// Preemption Flow (on timer tick):
+//
+//   tick()
+//     |
+//     +--> Is current task idle? --> Yes --> Any ready task? --> Preempt
+//     |
+//     +--> Check queues 0 to (current_queue - 1) for ready tasks
+//              |
+//              +--> RT task ready & current is non-RT? --> Preempt
+//              +--> Higher priority task ready? --> Preempt
+//     |
+//     +--> Decrement time_slice (unless SCHED_FIFO)
+//              |
+//              +--> time_slice == 0? --> Preempt (unless SCHED_FIFO)
+//
+// =============================================================================
 
 /** @copydoc scheduler::tick */
 void tick() {

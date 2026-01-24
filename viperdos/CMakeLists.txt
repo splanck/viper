@@ -37,6 +37,28 @@ set(SYS_IMAGE "${CMAKE_BINARY_DIR}/sys.img")
 set(USER_IMAGE "${CMAKE_BINARY_DIR}/user.img")
 
 # -----------------------------------------------------------------------------
+# Read user programs list from single source of truth
+# -----------------------------------------------------------------------------
+file(STRINGS "${CMAKE_SOURCE_DIR}/user/programs.txt" USER_PROGRAMS_RAW)
+set(USER_PROGRAMS "")
+foreach(line ${USER_PROGRAMS_RAW})
+    # Skip comments and empty lines
+    string(REGEX MATCH "^#" is_comment "${line}")
+    string(STRIP "${line}" line_stripped)
+    if(NOT is_comment AND NOT "${line_stripped}" STREQUAL "")
+        list(APPEND USER_PROGRAMS "${line_stripped}")
+    endif()
+endforeach()
+
+# Build the --add arguments and DEPENDS list for user.img
+set(USER_ADD_ARGS "")
+set(USER_DEPENDS "")
+foreach(prg ${USER_PROGRAMS})
+    list(APPEND USER_ADD_ARGS "--add" "${CMAKE_BINARY_DIR}/${prg}.prg:c/${prg}.prg")
+    list(APPEND USER_DEPENDS "${prg}.prg")
+endforeach()
+
+# -----------------------------------------------------------------------------
 # sys.img - System disk (2MB)
 # -----------------------------------------------------------------------------
 # Contains system files accessible via kernel VFS at /sys/*
@@ -61,28 +83,14 @@ add_custom_target(sys_image ALL DEPENDS ${SYS_IMAGE})
 # user.img - User disk (8MB)
 # -----------------------------------------------------------------------------
 # Contains user files accessible via fsd
+# Programs are read from user/programs.txt (single source of truth)
 add_custom_command(
         OUTPUT ${USER_IMAGE}
         COMMAND ${CMAKE_COMMAND} -E echo "Creating user.img (user disk)..."
         COMMAND ${MKFS_TOOL} ${USER_IMAGE} 8
         --mkdir c --mkdir certs --mkdir s --mkdir t
-        # Core utilities
-        --add ${CMAKE_BINARY_DIR}/edit.prg:c/edit.prg
-        --add ${CMAKE_BINARY_DIR}/ssh.prg:c/ssh.prg
-        --add ${CMAKE_BINARY_DIR}/sftp.prg:c/sftp.prg
-        --add ${CMAKE_BINARY_DIR}/ping.prg:c/ping.prg
-        --add ${CMAKE_BINARY_DIR}/fsinfo.prg:c/fsinfo.prg
-        --add ${CMAKE_BINARY_DIR}/netstat.prg:c/netstat.prg
-        --add ${CMAKE_BINARY_DIR}/sysinfo.prg:c/sysinfo.prg
-        --add ${CMAKE_BINARY_DIR}/devices.prg:c/devices.prg
-        # GUI utilities (Phase 3)
-        --add ${CMAKE_BINARY_DIR}/taskbar.prg:c/taskbar.prg
-        --add ${CMAKE_BINARY_DIR}/guisysinfo.prg:c/guisysinfo.prg
-        --add ${CMAKE_BINARY_DIR}/taskman.prg:c/taskman.prg
-        --add ${CMAKE_BINARY_DIR}/prefs.prg:c/prefs.prg
-        DEPENDS
-        edit.prg ssh.prg sftp.prg ping.prg fsinfo.prg netstat.prg
-        sysinfo.prg devices.prg taskbar.prg guisysinfo.prg taskman.prg prefs.prg
+        ${USER_ADD_ARGS}
+        DEPENDS ${USER_DEPENDS}
         COMMENT "Creating user.img with user programs"
         VERBATIM
 )
@@ -105,4 +113,3 @@ add_custom_target(disk_image ALL DEPENDS ${DISK_IMAGE})
 # Testing
 enable_testing()
 add_subdirectory(tests)
-

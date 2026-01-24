@@ -37,7 +37,7 @@ SyscallResult sys_close(u64 a0, u64, u64, u64, u64, u64) {
     i32 fd = static_cast<i32>(a0);
 
     // stdin/stdout/stderr are pseudo-FDs backed by the console.
-    if (fd >= 0 && fd <= 2) {
+    if (is_console_fd(fd)) {
         return SyscallResult::ok();
     }
 
@@ -51,7 +51,7 @@ SyscallResult sys_close(u64 a0, u64, u64, u64, u64, u64) {
 SyscallResult sys_fsync(u64 a0, u64, u64, u64, u64, u64) {
     i32 fd = static_cast<i32>(a0);
 
-    if (fd >= 0 && fd <= 2) {
+    if (is_console_fd(fd)) {
         return SyscallResult::ok();
     }
 
@@ -74,7 +74,7 @@ SyscallResult sys_read(u64 a0, u64 a1, u64 a2, u64, u64, u64) {
     VALIDATE_USER_WRITE(buf, count);
 
     // stdin: read from console input (blocking until at least 1 byte).
-    if (fd == 0) {
+    if (is_stdin(fd)) {
         char *out = reinterpret_cast<char *>(buf);
         usize n = 0;
         while (n < count) {
@@ -111,7 +111,7 @@ SyscallResult sys_write(u64 a0, u64 a1, u64 a2, u64, u64, u64) {
     VALIDATE_USER_READ(buf, count);
 
     // stdout/stderr: write to console output.
-    if (fd == 1 || fd == 2) {
+    if (is_output_fd(fd)) {
         const char *p = reinterpret_cast<const char *>(buf);
         for (usize i = 0; i < count; i++) {
             serial::putc(p[i]);

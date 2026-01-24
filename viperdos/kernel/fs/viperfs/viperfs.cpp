@@ -767,7 +767,30 @@ i32 ViperFS::readdir(Inode *dir, u64 offset, ReaddirCallback cb, void *ctx) {
     return count;
 }
 
-// Allocation functions (internal unlocked versions - caller must hold fs_lock_)
+// =============================================================================
+// Block Allocation Algorithm
+// =============================================================================
+//
+// The block allocator uses a bitmap where each bit represents one data block.
+// Bit 0 = free, Bit 1 = allocated. The bitmap is stored starting at
+// sb_.bitmap_start and spans sb_.bitmap_blocks blocks.
+//
+// Allocation Strategy (First-Fit):
+// 1. Scan bitmap blocks sequentially from the beginning
+// 2. Within each block, scan bytes for any byte != 0xFF (has free bit)
+// 3. Within the byte, find the first 0 bit using a linear scan
+// 4. Mark the bit as 1 (allocated) and return the block number
+//
+// Block number calculation:
+//   block_num = (bitmap_block_index * BLOCK_SIZE * 8) + (byte_index * 8) + bit_index
+//
+// Performance: O(n) worst case where n = total blocks. Could be improved with:
+// - Free block hints (last allocation position)
+// - Block groups with per-group free counts
+// - Buddy allocator for contiguous allocations
+//
+// =============================================================================
+
 /** @copydoc fs::viperfs::ViperFS::alloc_block_unlocked */
 u64 ViperFS::alloc_block_unlocked() {
     if (!mounted_)
@@ -776,7 +799,7 @@ u64 ViperFS::alloc_block_unlocked() {
     if (sb_.free_blocks == 0)
         return 0;
 
-    // Scan bitmap for free block
+    // Scan bitmap for free block (first-fit algorithm)
     for (u64 bitmap_block = 0; bitmap_block < sb_.bitmap_blocks; bitmap_block++) {
         CacheBlock *block = get_cache().get(sb_.bitmap_start + bitmap_block);
         if (!block)

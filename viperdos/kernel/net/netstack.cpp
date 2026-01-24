@@ -1,6 +1,68 @@
 /**
  * @file netstack.cpp
  * @brief Kernel TCP/IP network stack implementation.
+ *
+ * @details
+ * This file implements a minimal TCP/IP stack for ViperDOS, supporting:
+ * - IPv4 packet routing and transmission
+ * - ARP (Address Resolution Protocol) for MAC address lookup
+ * - ICMP echo (ping) for diagnostics
+ * - UDP for connectionless datagrams (DNS)
+ * - TCP for reliable streams (HTTP, SSH)
+ *
+ * ## Packet Flow - Receive Path
+ *
+ * @verbatim
+ * VirtIO NIC rx_queue
+ *       |
+ *       v
+ * network_poll() - polls device, dequeues frames
+ *       |
+ *       v
+ * EthHeader parsing - check ethertype
+ *       |
+ *   +---+---+
+ *   |       |
+ *   v       v
+ * ARP     IPv4
+ *   |       |
+ *   v       +---+---+---+
+ * ArpCache  |   |   |
+ * update    v   v   v
+ *         ICMP UDP TCP
+ *           |   |   |
+ *           v   v   v
+ *         echo DNS socket
+ *         reply buf  rx_buf
+ * @endverbatim
+ *
+ * ## Packet Flow - Transmit Path
+ *
+ * @verbatim
+ * Application (socket_send, dns_resolve, etc.)
+ *       |
+ *       v
+ * Protocol layer (send_tcp_segment, send_udp_datagram)
+ *       |
+ *       v
+ * send_ip_packet() - add IPv4 header, compute checksum
+ *       |
+ *       v
+ * ARP resolution (g_arp.lookup or send_request + wait)
+ *       |
+ *       v
+ * send_frame() - add Ethernet header
+ *       |
+ *       v
+ * NetDevice::transmit() - enqueue to VirtIO tx_queue
+ * @endverbatim
+ *
+ * ## Key Data Structures
+ *
+ * - NetIf: Network interface configuration (IP, MAC, gateway, DNS)
+ * - ArpCache: IP-to-MAC address mapping cache
+ * - TcpConnection: Per-socket state (sequence numbers, buffers, state machine)
+ * - UdpSocket: Connectionless UDP socket state
  */
 
 #include "netstack.hpp"
@@ -1155,7 +1217,48 @@ static TcpConnection *find_listening_socket(u16 local_port) {
 }
 
 // =============================================================================
-// TCP State Handlers
+// TCP State Machine
+// =============================================================================
+//
+// The TCP state machine implements RFC 793 connection state transitions.
+// This implementation supports a simplified subset of states for client
+// connections and passive listening.
+//
+// State Transition Diagram:
+//
+//   CLOSED ----[socket_connect: send SYN]----> SYN_SENT
+//                                                  |
+//                                        [recv SYN-ACK, send ACK]
+//                                                  |
+//                                                  v
+//   LISTEN <---[socket_listen]---- CLOSED ---> ESTABLISHED
+//      |                                           |
+//   [recv SYN]                            [recv FIN, send ACK]
+//      |                                           |
+//      v                                           v
+//   SYN_RCVD --[send SYN-ACK]-->         CLOSE_WAIT
+//      |                                           |
+//   [recv ACK]                            [socket_close: send FIN]
+//      |                                           |
+//      v                                           v
+//   ESTABLISHED <-----------------         LAST_ACK
+//      |                                           |
+//   [socket_close: send FIN]               [recv ACK]
+//      |                                           |
+//      v                                           v
+//   FIN_WAIT_1 ----[recv ACK]----> FIN_WAIT_2    CLOSED
+//      |                               |
+//   [recv FIN, send ACK]          [recv FIN, send ACK]
+//      |                               |
+//      v                               v
+//   CLOSING ----[recv ACK]---->    CLOSED
+//
+// Buffer Management:
+// - Each connection has a fixed-size receive buffer (RX_BUF_SIZE)
+// - Data is copied to rx_buf in handle_tcp_established_data()
+// - User reads from rx_buf via socket_recv()
+// - Flow control is not implemented; excess data is dropped
+//
 // =============================================================================
 
 static void handle_tcp_syn_sent(TcpConnection *conn, u8 flags, u32 seq, u32 ack) {

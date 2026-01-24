@@ -1,0 +1,25 @@
+# User programs to include in user.img
+# Format: program_name (without .prg extension)
+# Lines starting with # are comments
+
+# CLI utilities
+edit
+ssh
+sftp
+ping
+fsinfo
+netstat
+sysinfo
+devices
+
+# GUI utilities (Phase 3)
+taskbar
+guisysinfo
+taskman
+prefs
+
+# Desktop applications (Phase 5)
+calc
+vedit
+clock
+viewer

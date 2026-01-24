@@ -23,6 +23,50 @@ namespace kc = kernel::constants;
  * text line and clearing the last line to the current background color. This
  * is simple and adequate for early boot output but is not optimized for high
  * throughput.
+ *
+ * ## Rendering Architecture
+ *
+ * @verbatim
+ * Character Input (putc)
+ *       |
+ *       v
+ * ANSI Parser -----> State Machine (NORMAL/ESC/CSI/PARAM)
+ *       |                   |
+ *       |                   v
+ *       |           Process escape sequence (cursor move, clear, color)
+ *       v
+ * buffer_put_char() -----> Scrollback Buffer (circular)
+ *       |
+ *       v
+ * draw_char() -----> Font Lookup (get_glyph)
+ *       |                   |
+ *       |                   v
+ *       |           8x16 bitmap scaled to display resolution
+ *       v
+ * ramfb::put_pixel() -----> Direct Framebuffer Write
+ * @endverbatim
+ *
+ * ## Design Notes
+ *
+ * - **No double buffering**: Writes go directly to the visible framebuffer.
+ *   This simplifies the implementation but may cause visible tearing on
+ *   fast output. Acceptable for boot console / debug output.
+ *
+ * - **No dirty rectangle tracking**: Every character write updates all pixels
+ *   in that cell. A dirty-rect system would track changed regions and batch
+ *   updates, but adds complexity not needed for a boot console.
+ *
+ * - **Font scaling**: The 8x16 base font is scaled using integer ratios
+ *   (SCALE_NUM/SCALE_DEN) to accommodate higher display resolutions while
+ *   maintaining readable text size.
+ *
+ * - **Scrollback buffer**: A circular buffer of Cell structures stores
+ *   historical output for scroll-back viewing. The buffer is separate from
+ *   the framebuffer and redrawn on demand.
+ *
+ * - **GUI mode**: When displayd takes over the framebuffer (gui_mode_active),
+ *   output is redirected to serial only. The console can be restored when
+ *   GUI mode ends.
  */
 namespace gcon {
 

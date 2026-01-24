@@ -417,11 +417,22 @@ if [[ -x "$TOOLS_DIR/mkfs.viperfs" ]]; then
     # user.img - User disk (8MB)
     # -------------------------------------------------------------------------
     USER_ARGS=("$BUILD_DIR/user.img" 8 --mkdir c --mkdir certs --mkdir s --mkdir t)
-    # Add user programs to /c/ (only essential apps, no tests)
-    for prg in edit sftp ssh ping fsinfo netstat sysinfo devices prefs \
-               taskman guisysinfo; do
-        [[ -f "$BUILD_DIR/${prg}.prg" ]] && USER_ARGS+=(--add "$BUILD_DIR/${prg}.prg:c/${prg}.prg")
-    done
+    # Add user programs from single source of truth (user/programs.txt)
+    PROGRAMS_FILE="$PROJECT_DIR/user/programs.txt"
+    if [[ -f "$PROGRAMS_FILE" ]]; then
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            # Skip comments and empty lines
+            [[ "$line" =~ ^# ]] && continue
+            [[ -z "${line// }" ]] && continue
+            prg="${line// }"
+            [[ -f "$BUILD_DIR/${prg}.prg" ]] && USER_ARGS+=(--add "$BUILD_DIR/${prg}.prg:c/${prg}.prg")
+        done < "$PROGRAMS_FILE"
+    else
+        print_warning "user/programs.txt not found, using fallback list"
+        for prg in edit sftp ssh ping fsinfo netstat sysinfo devices prefs taskman guisysinfo; do
+            [[ -f "$BUILD_DIR/${prg}.prg" ]] && USER_ARGS+=(--add "$BUILD_DIR/${prg}.prg:c/${prg}.prg")
+        done
+    fi
     # Add certificate bundle
     [[ -f "$BUILD_DIR/roots.der" ]] && USER_ARGS+=(--add "$BUILD_DIR/roots.der:certs/roots.der")
     "$TOOLS_DIR/mkfs.viperfs" "${USER_ARGS[@]}"

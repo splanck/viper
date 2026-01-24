@@ -26,10 +26,7 @@ namespace syscall {
 // =============================================================================
 
 SyscallResult sys_channel_create(u64, u64, u64, u64, u64, u64) {
-    cap::Table *table = get_current_cap_table();
-    if (!table) {
-        return err_not_found();
-    }
+    GET_CAP_TABLE_OR_RETURN();
 
     i64 channel_id = channel::create();
     if (channel_id < 0) {
@@ -83,17 +80,8 @@ SyscallResult sys_channel_send(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u64) {
         VALIDATE_USER_READ(handles, handle_count * sizeof(cap::Handle));
     }
 
-    cap::Table *table = get_current_cap_table();
-    if (!table) {
-        return err_not_found();
-    }
-
-    cap::Entry *entry = table->get_with_rights(handle, cap::Kind::Channel, cap::CAP_WRITE);
-    if (!entry) {
-        return err_invalid_handle();
-    }
-
-    kobj::Channel *ch = static_cast<kobj::Channel *>(entry->object);
+    GET_CAP_TABLE_OR_RETURN();
+    GET_OBJECT_WITH_RIGHTS(ch, kobj::Channel, table, handle, cap::Kind::Channel, cap::CAP_WRITE);
 
     i64 result = channel::try_send(ch->id(), data, size, handles, handle_count);
     if (result < 0) {
@@ -126,17 +114,8 @@ SyscallResult sys_channel_recv(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u64) {
         VALIDATE_USER_WRITE(handles, max_handles * sizeof(cap::Handle));
     }
 
-    cap::Table *table = get_current_cap_table();
-    if (!table) {
-        return err_not_found();
-    }
-
-    cap::Entry *entry = table->get_with_rights(handle, cap::Kind::Channel, cap::CAP_READ);
-    if (!entry) {
-        return err_invalid_handle();
-    }
-
-    kobj::Channel *ch = static_cast<kobj::Channel *>(entry->object);
+    GET_CAP_TABLE_OR_RETURN();
+    GET_OBJECT_WITH_RIGHTS(ch, kobj::Channel, table, handle, cap::Kind::Channel, cap::CAP_READ);
 
     cap::Handle tmp_handles[channel::MAX_HANDLES_PER_MSG];
     u32 tmp_handle_count = 0;
@@ -163,19 +142,10 @@ SyscallResult sys_channel_recv(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u64) {
 SyscallResult sys_channel_close(u64 a0, u64, u64, u64, u64, u64) {
     cap::Handle handle = static_cast<cap::Handle>(a0);
 
-    cap::Table *table = get_current_cap_table();
-    if (!table) {
-        return err_not_found();
-    }
+    GET_CAP_TABLE_OR_RETURN();
+    GET_OBJECT_CHECKED(ch, kobj::Channel, table, handle, cap::Kind::Channel);
 
-    cap::Entry *entry = table->get_checked(handle, cap::Kind::Channel);
-    if (!entry) {
-        return err_invalid_handle();
-    }
-
-    kobj::Channel *ch = static_cast<kobj::Channel *>(entry->object);
     delete ch;
-
     table->remove(handle);
     return SyscallResult::ok();
 }

@@ -22,10 +22,7 @@ SyscallResult sys_cap_derive(u64 a0, u64 a1, u64, u64, u64, u64) {
     cap::Handle src = static_cast<cap::Handle>(a0);
     cap::Rights new_rights = static_cast<cap::Rights>(a1);
 
-    cap::Table *table = get_current_cap_table();
-    if (!table) {
-        return err_not_found();
-    }
+    GET_CAP_TABLE_OR_RETURN();
 
     cap::Handle new_handle = table->derive(src, new_rights);
     if (new_handle == cap::HANDLE_INVALID) {
@@ -38,10 +35,7 @@ SyscallResult sys_cap_derive(u64 a0, u64 a1, u64, u64, u64, u64) {
 SyscallResult sys_cap_revoke(u64 a0, u64, u64, u64, u64, u64) {
     cap::Handle handle = static_cast<cap::Handle>(a0);
 
-    cap::Table *table = get_current_cap_table();
-    if (!table) {
-        return err_not_found();
-    }
+    GET_CAP_TABLE_OR_RETURN();
 
     cap::Entry *entry = table->get(handle);
     if (!entry) {
@@ -58,10 +52,7 @@ SyscallResult sys_cap_query(u64 a0, u64 a1, u64, u64, u64, u64) {
 
     VALIDATE_USER_WRITE(info, sizeof(CapInfo));
 
-    cap::Table *table = get_current_cap_table();
-    if (!table) {
-        return err_not_found();
-    }
+    GET_CAP_TABLE_OR_RETURN();
 
     cap::Entry *entry = table->get(handle);
     if (!entry) {
@@ -81,10 +72,7 @@ SyscallResult sys_cap_list(u64 a0, u64 a1, u64, u64, u64, u64) {
 
     VALIDATE_USER_WRITE(entries, max_entries * sizeof(CapListEntry));
 
-    cap::Table *table = get_current_cap_table();
-    if (!table) {
-        return err_not_found();
-    }
+    GET_CAP_TABLE_OR_RETURN();
 
     u32 count = 0;
     for (usize i = 0; i < table->capacity() && count < max_entries; i++) {

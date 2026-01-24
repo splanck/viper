@@ -19,10 +19,7 @@
 namespace syscall {
 
 SyscallResult sys_fs_open_root(u64, u64, u64, u64, u64, u64) {
-    cap::Table *table = get_current_cap_table();
-    if (!table) {
-        return err_not_found();
-    }
+    GET_CAP_TABLE_OR_RETURN();
 
     kobj::DirObject *dir = kobj::DirObject::create(2);
     if (!dir) {
@@ -47,17 +44,8 @@ SyscallResult sys_fs_open(u64 a0, u64 a1, u64 a2, u64 a3, u64, u64) {
 
     VALIDATE_USER_READ(name, name_len);
 
-    cap::Table *table = get_current_cap_table();
-    if (!table) {
-        return err_not_found();
-    }
-
-    cap::Entry *entry = table->get_checked(dir_handle, cap::Kind::Directory);
-    if (!entry) {
-        return err_invalid_handle();
-    }
-
-    kobj::DirObject *dir = static_cast<kobj::DirObject *>(entry->object);
+    GET_CAP_TABLE_OR_RETURN();
+    GET_OBJECT_CHECKED(dir, kobj::DirObject, table, dir_handle, cap::Kind::Directory);
 
     u64 child_inode = 0;
     u8 child_type = 0;
@@ -95,17 +83,9 @@ SyscallResult sys_io_read(u64 a0, u64 a1, u64 a2, u64, u64, u64) {
 
     VALIDATE_USER_WRITE(buf, count);
 
-    cap::Table *table = get_current_cap_table();
-    if (!table) {
-        return err_not_found();
-    }
+    GET_CAP_TABLE_OR_RETURN();
+    GET_OBJECT_WITH_RIGHTS(file, kobj::FileObject, table, handle, cap::Kind::File, cap::CAP_READ);
 
-    cap::Entry *entry = table->get_with_rights(handle, cap::Kind::File, cap::CAP_READ);
-    if (!entry) {
-        return err_invalid_handle();
-    }
-
-    kobj::FileObject *file = static_cast<kobj::FileObject *>(entry->object);
     i64 result = file->read(buf, count);
     if (result < 0) {
         return err_code(result);
@@ -120,17 +100,9 @@ SyscallResult sys_io_write(u64 a0, u64 a1, u64 a2, u64, u64, u64) {
 
     VALIDATE_USER_READ(buf, count);
 
-    cap::Table *table = get_current_cap_table();
-    if (!table) {
-        return err_not_found();
-    }
+    GET_CAP_TABLE_OR_RETURN();
+    GET_OBJECT_WITH_RIGHTS(file, kobj::FileObject, table, handle, cap::Kind::File, cap::CAP_WRITE);
 
-    cap::Entry *entry = table->get_with_rights(handle, cap::Kind::File, cap::CAP_WRITE);
-    if (!entry) {
-        return err_invalid_handle();
-    }
-
-    kobj::FileObject *file = static_cast<kobj::FileObject *>(entry->object);
     i64 result = file->write(buf, count);
     if (result < 0) {
         return err_code(result);
@@ -143,17 +115,9 @@ SyscallResult sys_io_seek(u64 a0, u64 a1, u64 a2, u64, u64, u64) {
     i64 offset = static_cast<i64>(a1);
     i32 whence = static_cast<i32>(a2);
 
-    cap::Table *table = get_current_cap_table();
-    if (!table) {
-        return err_not_found();
-    }
+    GET_CAP_TABLE_OR_RETURN();
+    GET_OBJECT_CHECKED(file, kobj::FileObject, table, handle, cap::Kind::File);
 
-    cap::Entry *entry = table->get_checked(handle, cap::Kind::File);
-    if (!entry) {
-        return err_invalid_handle();
-    }
-
-    kobj::FileObject *file = static_cast<kobj::FileObject *>(entry->object);
     i64 result = file->seek(offset, whence);
     if (result < 0) {
         return err_code(result);
@@ -167,17 +131,9 @@ SyscallResult sys_fs_read_dir(u64 a0, u64 a1, u64, u64, u64, u64) {
 
     VALIDATE_USER_WRITE(ent, sizeof(kobj::FsDirEnt));
 
-    cap::Table *table = get_current_cap_table();
-    if (!table) {
-        return err_not_found();
-    }
+    GET_CAP_TABLE_OR_RETURN();
+    GET_OBJECT_WITH_RIGHTS(dir, kobj::DirObject, table, handle, cap::Kind::Directory, cap::CAP_READ);
 
-    cap::Entry *entry = table->get_with_rights(handle, cap::Kind::Directory, cap::CAP_READ);
-    if (!entry) {
-        return err_invalid_handle();
-    }
-
-    kobj::DirObject *dir = static_cast<kobj::DirObject *>(entry->object);
     if (!dir->read_next(ent)) {
         return SyscallResult::ok(0);
     }
@@ -187,10 +143,7 @@ SyscallResult sys_fs_read_dir(u64 a0, u64 a1, u64, u64, u64, u64) {
 SyscallResult sys_fs_close(u64 a0, u64, u64, u64, u64, u64) {
     cap::Handle handle = static_cast<cap::Handle>(a0);
 
-    cap::Table *table = get_current_cap_table();
-    if (!table) {
-        return err_not_found();
-    }
+    GET_CAP_TABLE_OR_RETURN();
 
     cap::Entry *entry = table->get(handle);
     if (!entry) {
@@ -204,17 +157,9 @@ SyscallResult sys_fs_close(u64 a0, u64, u64, u64, u64, u64) {
 SyscallResult sys_fs_rewind_dir(u64 a0, u64, u64, u64, u64, u64) {
     cap::Handle handle = static_cast<cap::Handle>(a0);
 
-    cap::Table *table = get_current_cap_table();
-    if (!table) {
-        return err_not_found();
-    }
+    GET_CAP_TABLE_OR_RETURN();
+    GET_OBJECT_CHECKED(dir, kobj::DirObject, table, handle, cap::Kind::Directory);
 
-    cap::Entry *entry = table->get_checked(handle, cap::Kind::Directory);
-    if (!entry) {
-        return err_invalid_handle();
-    }
-
-    kobj::DirObject *dir = static_cast<kobj::DirObject *>(entry->object);
     dir->rewind();
     return SyscallResult::ok();
 }
