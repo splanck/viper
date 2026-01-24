@@ -56,12 +56,20 @@ private:
 
     void drawIconPixels(int x, int y, const uint32_t *pixels);
 
+    // Volume discovery
+    void discoverVolumes();
+
+    // Dialog support
+    void showAboutDialog();
+    void showPrefsDialog();
+    void handleDialogEvents();
+
 private:
     gui_window_t *m_window = nullptr;
     uint32_t m_width = 1024;
     uint32_t m_height = 768;
 
-    DesktopIcon m_icons[8];
+    DesktopIcon m_icons[16];  // Support up to 16 desktop icons
     int m_iconCount = 0;
 
     // Double-click detection
@@ -71,6 +79,10 @@ private:
     // File browser windows
     FileBrowser *m_browsers[MAX_BROWSERS] = {};
     int m_browserCount = 0;
+
+    // Dialog windows
+    gui_window_t *m_aboutDialog = nullptr;
+    gui_window_t *m_prefsDialog = nullptr;
 };
 
 } // namespace workbench

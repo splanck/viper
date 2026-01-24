@@ -36,6 +36,11 @@
 #include <gui.h>
 #include <string.h>
 #include <stdint.h>
+#include <stdio.h>
+#include "../../../syscall.hpp"  // For assign_list()
+
+using sys::AssignInfo;
+using sys::assign_list;
 
 namespace workbench {
 
@@ -50,6 +55,14 @@ Desktop::~Desktop()
         if (m_browsers[i]) {
             closeFileBrowser(m_browsers[i]);
         }
+    }
+
+    // Close any open dialogs
+    if (m_aboutDialog) {
+        gui_destroy_window(m_aboutDialog);
+    }
+    if (m_prefsDialog) {
+        gui_destroy_window(m_prefsDialog);
     }
 
     if (m_window) {
@@ -83,12 +96,13 @@ bool Desktop::init()
     // Position at 0,0 (behind all other windows)
     gui_set_position(m_window, 0, 0);
 
-    // Set up desktop icons
-    m_icons[0] = { 0, 0, "SYS:",     "/",                  icons::disk_24,     IconAction::OpenFileBrowser, false };
-    m_icons[1] = { 0, 0, "Shell",    "/sys/consoled.sys",  icons::shell_24,    IconAction::LaunchProgram,   false };
-    m_icons[2] = { 0, 0, "Settings", nullptr,              icons::settings_24, IconAction::ShowDialog,      false };
-    m_icons[3] = { 0, 0, "About",    nullptr,              icons::about_24,    IconAction::ShowDialog,      false };
-    m_iconCount = 4;
+    // Discover mounted volumes dynamically
+    discoverVolumes();
+
+    // Add system icons after volumes
+    m_icons[m_iconCount++] = { 0, 0, "Shell", "/sys/consoled.sys", icons::shell_24, IconAction::LaunchProgram, false };
+    m_icons[m_iconCount++] = { 0, 0, "Prefs", nullptr, icons::settings_24, IconAction::ShowDialog, false };
+    m_icons[m_iconCount++] = { 0, 0, "Help", nullptr, icons::about_24, IconAction::ShowDialog, false };
 
     // Layout and draw
     layoutIcons();
@@ -108,6 +122,9 @@ void Desktop::run()
 
         // Handle file browser events
         handleBrowserEvents();
+
+        // Handle dialog events
+        handleDialogEvents();
 
         // Yield to other processes
         __asm__ volatile("mov x8, #0x0E\n\t"
@@ -290,6 +307,102 @@ void Desktop::layoutIcons()
     }
 }
 
+void Desktop::discoverVolumes()
+{
+    // Query available assigns (volumes) from the kernel
+    AssignInfo assigns[16];
+    usize count = 0;
+
+    int result = assign_list(assigns, 16, &count);
+    if (result != 0) {
+        debug_serial("[workbench] Failed to list assigns, using defaults\n");
+        // Fallback: add default SYS: icon
+        static const char *sysLabel = "SYS:";
+        static const char *sysTarget = "/";
+        m_icons[m_iconCount++] = { 0, 0, sysLabel, sysTarget, icons::disk_24, IconAction::OpenFileBrowser, false };
+        return;
+    }
+
+    debug_serial("[workbench] Found ");
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d", static_cast<int>(count));
+    debug_serial(buf);
+    debug_serial(" assigns\n");
+
+    // Add volume icons for user-visible filesystem assigns
+    // We store labels statically since DesktopIcon expects const char*
+    static char volumeLabels[12][32];  // Up to 12 volumes
+    static char volumePaths[12][MAX_PATH_LEN];
+    int volumeIdx = 0;
+
+    // Maximum volumes to show (leave room for Shell, Prefs, Help)
+    constexpr int MAX_VOLUME_ICONS = 12;
+
+    for (usize i = 0; i < count && volumeIdx < MAX_VOLUME_ICONS; i++) {
+        // Skip service assigns (ASSIGN_SERVICE flag = 0x08)
+        if (assigns[i].flags & 0x08) {
+            continue;
+        }
+
+        // Skip D0: (duplicate of SYS:) and internal assigns like CERTS:
+        if (strcmp(assigns[i].name, "D0") == 0 ||
+            strcmp(assigns[i].name, "CERTS") == 0) {
+            continue;
+        }
+
+        // Create label with colon suffix
+        snprintf(volumeLabels[volumeIdx], sizeof(volumeLabels[volumeIdx]),
+                 "%s:", assigns[i].name);
+
+        // Map common assigns to their paths
+        if (strcmp(assigns[i].name, "SYS") == 0) {
+            strncpy(volumePaths[volumeIdx], "/", sizeof(volumePaths[volumeIdx]) - 1);
+        } else if (strcmp(assigns[i].name, "C") == 0) {
+            strncpy(volumePaths[volumeIdx], "/c", sizeof(volumePaths[volumeIdx]) - 1);
+        } else if (strcmp(assigns[i].name, "S") == 0) {
+            strncpy(volumePaths[volumeIdx], "/s", sizeof(volumePaths[volumeIdx]) - 1);
+        } else if (strcmp(assigns[i].name, "L") == 0) {
+            strncpy(volumePaths[volumeIdx], "/libs", sizeof(volumePaths[volumeIdx]) - 1);
+        } else if (strcmp(assigns[i].name, "T") == 0) {
+            strncpy(volumePaths[volumeIdx], "/t", sizeof(volumePaths[volumeIdx]) - 1);
+        } else {
+            // Default: use /name for the path (lowercase)
+            snprintf(volumePaths[volumeIdx], sizeof(volumePaths[volumeIdx]),
+                     "/%s", assigns[i].name);
+            for (char *p = volumePaths[volumeIdx] + 1; *p; p++) {
+                if (*p >= 'A' && *p <= 'Z') {
+                    *p = *p - 'A' + 'a';
+                }
+            }
+        }
+
+        debug_serial("[workbench] Volume: ");
+        debug_serial(volumeLabels[volumeIdx]);
+        debug_serial(" -> ");
+        debug_serial(volumePaths[volumeIdx]);
+        debug_serial("\n");
+
+        // Add icon - use disk icon for all volumes
+        m_icons[m_iconCount++] = {
+            0, 0,
+            volumeLabels[volumeIdx],
+            volumePaths[volumeIdx],
+            icons::disk_24,
+            IconAction::OpenFileBrowser,
+            false
+        };
+
+        volumeIdx++;
+    }
+
+    // If no volumes were found, add default SYS:
+    if (volumeIdx == 0) {
+        static const char *sysLabel = "SYS:";
+        static const char *sysTarget = "/";
+        m_icons[m_iconCount++] = { 0, 0, sysLabel, sysTarget, icons::disk_24, IconAction::OpenFileBrowser, false };
+    }
+}
+
 int Desktop::findIconAt(int x, int y)
 {
     for (int i = 0; i < m_iconCount; i++) {
@@ -357,7 +470,12 @@ void Desktop::handleClick(int x, int y, int button)
                 }
                 break;
             case IconAction::ShowDialog:
-                // TODO: Implement dialogs
+                // Show appropriate dialog based on icon label
+                if (strcmp(icon.label, "Help") == 0) {
+                    showAboutDialog();
+                } else if (strcmp(icon.label, "Prefs") == 0) {
+                    showPrefsDialog();
+                }
                 break;
             case IconAction::None:
                 break;
@@ -410,6 +528,111 @@ void Desktop::handleBrowserEvents()
         gui_event_t event;
         if (gui_poll_event(browser->window(), &event) == 0) {
             browser->handleEvent(event);
+        }
+    }
+}
+
+void Desktop::showAboutDialog()
+{
+    // Close existing dialog if open
+    if (m_aboutDialog) {
+        gui_destroy_window(m_aboutDialog);
+        m_aboutDialog = nullptr;
+    }
+
+    // Create the About dialog
+    m_aboutDialog = gui_create_window("About ViperDOS", 300, 200);
+    if (!m_aboutDialog) {
+        debug_serial("[workbench] Failed to create About dialog\n");
+        return;
+    }
+
+    // Draw dialog content
+    gui_fill_rect(m_aboutDialog, 0, 0, 300, 200, WB_GRAY_LIGHT);
+
+    // Title
+    gui_draw_text(m_aboutDialog, 80, 20, "ViperDOS Workbench", WB_BLACK);
+
+    // Version info
+    gui_draw_text(m_aboutDialog, 100, 50, "Version 0.5.0", WB_GRAY_DARK);
+
+    // Description
+    gui_draw_text(m_aboutDialog, 40, 80, "An Amiga-inspired desktop", WB_BLACK);
+    gui_draw_text(m_aboutDialog, 30, 100, "for the Viper microkernel OS", WB_BLACK);
+
+    // Copyright
+    gui_draw_text(m_aboutDialog, 60, 140, "(C) 2025 ViperDOS Team", WB_GRAY_DARK);
+
+    // Close hint
+    gui_draw_text(m_aboutDialog, 70, 170, "Click [X] to close", WB_GRAY_MED);
+
+    gui_present(m_aboutDialog);
+    debug_serial("[workbench] Opened About dialog\n");
+}
+
+void Desktop::showPrefsDialog()
+{
+    // Close existing dialog if open
+    if (m_prefsDialog) {
+        gui_destroy_window(m_prefsDialog);
+        m_prefsDialog = nullptr;
+    }
+
+    // Create the Prefs dialog
+    m_prefsDialog = gui_create_window("Preferences", 350, 250);
+    if (!m_prefsDialog) {
+        debug_serial("[workbench] Failed to create Prefs dialog\n");
+        return;
+    }
+
+    // Draw dialog content
+    gui_fill_rect(m_prefsDialog, 0, 0, 350, 250, WB_GRAY_LIGHT);
+
+    // Title
+    gui_draw_text(m_prefsDialog, 100, 20, "Workbench Preferences", WB_BLACK);
+
+    // Placeholder content
+    gui_draw_text(m_prefsDialog, 20, 60, "Screen:", WB_BLACK);
+    gui_draw_text(m_prefsDialog, 100, 60, "1024 x 768", WB_GRAY_DARK);
+
+    gui_draw_text(m_prefsDialog, 20, 90, "Backdrop:", WB_BLACK);
+    gui_draw_text(m_prefsDialog, 100, 90, "Workbench Blue", WB_GRAY_DARK);
+
+    gui_draw_text(m_prefsDialog, 20, 120, "Icons:", WB_BLACK);
+    gui_draw_text(m_prefsDialog, 100, 120, "4 desktop icons", WB_GRAY_DARK);
+
+    // Note about future functionality
+    gui_fill_rect(m_prefsDialog, 20, 160, 310, 50, WB_BLUE);
+    gui_draw_text(m_prefsDialog, 40, 175, "Full preferences editor", WB_WHITE);
+    gui_draw_text(m_prefsDialog, 40, 195, "coming in Phase 3!", WB_WHITE);
+
+    gui_present(m_prefsDialog);
+    debug_serial("[workbench] Opened Prefs dialog\n");
+}
+
+void Desktop::handleDialogEvents()
+{
+    // Handle About dialog events
+    if (m_aboutDialog) {
+        gui_event_t event;
+        if (gui_poll_event(m_aboutDialog, &event) == 0) {
+            if (event.type == GUI_EVENT_CLOSE) {
+                gui_destroy_window(m_aboutDialog);
+                m_aboutDialog = nullptr;
+                debug_serial("[workbench] Closed About dialog\n");
+            }
+        }
+    }
+
+    // Handle Prefs dialog events
+    if (m_prefsDialog) {
+        gui_event_t event;
+        if (gui_poll_event(m_prefsDialog, &event) == 0) {
+            if (event.type == GUI_EVENT_CLOSE) {
+                gui_destroy_window(m_prefsDialog);
+                m_prefsDialog = nullptr;
+                debug_serial("[workbench] Closed Prefs dialog\n");
+            }
         }
     }
 }

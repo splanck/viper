@@ -40,8 +40,12 @@
 #include <stdint.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 namespace workbench {
+
+// Global clipboard instance
+FileClipboard g_clipboard = { "", ClipboardOp::None, false };
 
 FileBrowser::FileBrowser(Desktop *desktop, const char *initialPath)
     : m_desktop(desktop)
@@ -178,6 +182,12 @@ void FileBrowser::redraw()
     drawFileList();
     drawStatusBar();
 
+    // Draw rename editor on top of file list if active
+    drawRenameEditor();
+
+    // Draw context menu on top if visible
+    drawContextMenu();
+
     gui_present(m_window);
 }
 
@@ -271,10 +281,32 @@ void FileBrowser::drawStatusBar()
     // Top border
     gui_draw_hline(m_window, 0, m_width - 1, y, WB_GRAY_DARK);
 
-    // File count
-    char status[64];
-    snprintf(status, sizeof(status), "%d items", m_fileCount);
+    // Show selected file info or item count
+    char status[128];
+    if (m_selectedFile >= 0 && m_selectedFile < m_fileCount) {
+        FileEntry &file = m_files[m_selectedFile];
+        if (file.type == FileType::Directory) {
+            snprintf(status, sizeof(status), "'%s' - Directory", file.name);
+        } else {
+            // Show file size in human-readable format
+            if (file.size < 1024) {
+                snprintf(status, sizeof(status), "'%s' - %llu bytes",
+                         file.name, (unsigned long long)file.size);
+            } else if (file.size < 1024 * 1024) {
+                snprintf(status, sizeof(status), "'%s' - %llu KB",
+                         file.name, (unsigned long long)(file.size / 1024));
+            } else {
+                snprintf(status, sizeof(status), "'%s' - %llu MB",
+                         file.name, (unsigned long long)(file.size / (1024 * 1024)));
+            }
+        }
+    } else {
+        snprintf(status, sizeof(status), "%d items", m_fileCount);
+    }
     gui_draw_text(m_window, 8, y + 4, status, WB_BLACK);
+
+    // Show keyboard hints on the right
+    gui_draw_text(m_window, m_width - 160, y + 4, "Del:Delete F5:Refresh", WB_GRAY_MED);
 }
 
 int FileBrowser::findFileAt(int x, int y)
@@ -310,7 +342,23 @@ bool FileBrowser::handleEvent(const gui_event_t &event)
     switch (event.type) {
         case GUI_EVENT_MOUSE:
             if (event.mouse.event_type == 1) {  // Button down
+                // Check if clicking on context menu first
+                if (m_contextMenu.visible) {
+                    if (event.mouse.button == 0) {  // Left click
+                        handleMenuClick(event.mouse.x, event.mouse.y);
+                    } else {
+                        hideContextMenu();
+                    }
+                    return true;
+                }
                 handleClick(event.mouse.x, event.mouse.y, event.mouse.button);
+                return true;
+            }
+            break;
+
+        case GUI_EVENT_KEY:
+            if (event.key.pressed) {
+                handleKeyPress(event.key.keycode);
                 return true;
             }
             break;
@@ -329,7 +377,32 @@ bool FileBrowser::handleEvent(const gui_event_t &event)
 
 void FileBrowser::handleClick(int x, int y, int button)
 {
-    if (button != 0) return;  // Only handle left button
+    // Hide context menu if clicking elsewhere
+    if (m_contextMenu.visible) {
+        hideContextMenu();
+    }
+
+    // Cancel rename if clicking elsewhere
+    if (m_renameEditor.active) {
+        cancelRename();
+    }
+
+    // Right-click: show context menu
+    if (button == 1) {
+        int fileIdx = findFileAt(x, y);
+        // Select the file if clicking on one
+        if (fileIdx >= 0) {
+            for (int i = 0; i < m_fileCount; i++) {
+                m_files[i].selected = (i == fileIdx);
+            }
+            m_selectedFile = fileIdx;
+        }
+        showContextMenu(x, y, fileIdx);
+        return;
+    }
+
+    // Left click only below
+    if (button != 0) return;
 
     // Check toolbar clicks
     if (y < FB_TOOLBAR_HEIGHT) {
@@ -383,30 +456,51 @@ void FileBrowser::handleDoubleClick(int fileIndex)
 
     FileEntry &file = m_files[fileIndex];
 
-    if (file.type == FileType::Directory) {
-        // Navigate into directory
-        if (strcmp(file.name, "..") == 0) {
-            navigateUp();
-        } else {
-            char newPath[MAX_PATH_LEN];
-            if (strcmp(m_currentPath, "/") == 0) {
-                snprintf(newPath, sizeof(newPath), "/%s", file.name);
-            } else {
-                snprintf(newPath, sizeof(newPath), "%s/%s", m_currentPath, file.name);
-            }
-            navigateTo(newPath);
-        }
-    } else if (file.type == FileType::Executable) {
-        // Launch executable
-        char fullPath[MAX_PATH_LEN];
-        if (strcmp(m_currentPath, "/") == 0) {
-            snprintf(fullPath, sizeof(fullPath), "/%s", file.name);
-        } else {
-            snprintf(fullPath, sizeof(fullPath), "%s/%s", m_currentPath, file.name);
-        }
-        m_desktop->spawnProgram(fullPath);
+    // Build full path for non-directory actions
+    char fullPath[MAX_PATH_LEN];
+    if (strcmp(m_currentPath, "/") == 0) {
+        snprintf(fullPath, sizeof(fullPath), "/%s", file.name);
+    } else {
+        snprintf(fullPath, sizeof(fullPath), "%s/%s", m_currentPath, file.name);
     }
-    // TODO: Open text files in editor, images in viewer, etc.
+
+    switch (file.type) {
+        case FileType::Directory:
+            // Navigate into directory
+            if (strcmp(file.name, "..") == 0) {
+                navigateUp();
+            } else {
+                navigateTo(fullPath);
+            }
+            break;
+
+        case FileType::Executable:
+            // Launch executable
+            m_desktop->spawnProgram(fullPath);
+            break;
+
+        case FileType::Text:
+            // TODO: Open in VEdit when available
+            debug_serial("[filebrowser] Text file: ");
+            debug_serial(fullPath);
+            debug_serial(" (VEdit not yet available)\n");
+            break;
+
+        case FileType::Image:
+            // TODO: Open in image viewer when available
+            debug_serial("[filebrowser] Image file: ");
+            debug_serial(fullPath);
+            debug_serial(" (Viewer not yet available)\n");
+            break;
+
+        case FileType::Unknown:
+        default:
+            // Unknown file type - just log it
+            debug_serial("[filebrowser] Unknown file type: ");
+            debug_serial(fullPath);
+            debug_serial("\n");
+            break;
+    }
 }
 
 void FileBrowser::navigateTo(const char *path)
@@ -440,6 +534,877 @@ void FileBrowser::navigateUp()
         *lastSlash = '\0';
         navigateTo(m_currentPath);
     }
+}
+
+void FileBrowser::handleKeyPress(int keycode)
+{
+    // If rename editor is active, route all keys there
+    if (m_renameEditor.active) {
+        // Note: shift state is not easily available here, we'll assume false for now
+        // A more complete implementation would track modifier state
+        handleRenameKey(keycode, false);
+        return;
+    }
+
+    // Key codes (from keyboard driver)
+    // Note: These are HID usage codes
+    constexpr int KEY_ENTER = 0x28;     // Enter key
+    constexpr int KEY_DELETE = 0x4C;    // Delete key
+    constexpr int KEY_BACKSPACE = 0x2A;
+    constexpr int KEY_F5 = 0x3E;        // F5 key
+    constexpr int KEY_C = 0x06;         // 'C' key (with Ctrl modifier for copy)
+    constexpr int KEY_V = 0x19;         // 'V' key (with Ctrl modifier for paste)
+    constexpr int KEY_N = 0x11;         // 'N' key (with Ctrl modifier for new folder)
+    constexpr int KEY_F2 = 0x3B;        // F2 key (rename)
+
+    switch (keycode) {
+        case KEY_ENTER:
+            // Open/launch selected file
+            if (m_selectedFile >= 0 && m_selectedFile < m_fileCount) {
+                handleDoubleClick(m_selectedFile);
+            }
+            break;
+
+        case KEY_DELETE:
+        case KEY_BACKSPACE:
+            // Delete selected file
+            if (m_selectedFile >= 0 && m_selectedFile < m_fileCount) {
+                if (deleteFile(m_selectedFile)) {
+                    refreshDirectory();
+                }
+            }
+            break;
+
+        case KEY_F2:
+            // Rename selected file
+            if (m_selectedFile >= 0 && m_selectedFile < m_fileCount) {
+                startRename(m_selectedFile);
+            }
+            break;
+
+        case KEY_F5:
+            // Refresh directory
+            refreshDirectory();
+            break;
+
+        case KEY_C:
+            // Copy (Ctrl+C) - for now just copy without modifier check
+            if (m_selectedFile >= 0 && m_selectedFile < m_fileCount) {
+                copyFile(m_selectedFile);
+            }
+            break;
+
+        case KEY_V:
+            // Paste (Ctrl+V) - for now just paste without modifier check
+            if (pasteFile()) {
+                refreshDirectory();
+            }
+            break;
+
+        case KEY_N:
+            // New Folder (Ctrl+N)
+            if (createNewFolder()) {
+                refreshDirectory();
+            }
+            break;
+
+        default:
+            break;
+    }
+}
+
+void FileBrowser::showContextMenu(int x, int y, int fileIndex)
+{
+    m_contextMenuFile = fileIndex;
+    m_contextMenu.x = x;
+    m_contextMenu.y = y;
+    m_contextMenu.itemCount = 0;
+    m_contextMenu.hoveredItem = -1;
+    m_contextMenu.visible = true;
+
+    // Build menu based on context
+    if (fileIndex >= 0 && fileIndex < m_fileCount) {
+        FileEntry &file = m_files[fileIndex];
+
+        // "Open" option
+        m_contextMenu.items[m_contextMenu.itemCount++] = {
+            "Open", MenuAction::Open, false, true
+        };
+
+        // Separator after Open
+        m_contextMenu.items[m_contextMenu.itemCount - 1].separator = true;
+
+        // Copy option (not for "..")
+        if (strcmp(file.name, "..") != 0) {
+            m_contextMenu.items[m_contextMenu.itemCount++] = {
+                "Copy", MenuAction::Copy, false, true
+            };
+        }
+
+        // "Rename" option (not for "..")
+        if (strcmp(file.name, "..") != 0) {
+            m_contextMenu.items[m_contextMenu.itemCount++] = {
+                "Rename", MenuAction::Rename, false, true
+            };
+        }
+
+        // "Delete" option (not for "..")
+        if (strcmp(file.name, "..") != 0) {
+            m_contextMenu.items[m_contextMenu.itemCount++] = {
+                "Delete", MenuAction::Delete, false, true
+            };
+        }
+
+        // Separator before properties
+        if (m_contextMenu.itemCount > 0) {
+            m_contextMenu.items[m_contextMenu.itemCount - 1].separator = true;
+        }
+
+        // "Properties" option
+        m_contextMenu.items[m_contextMenu.itemCount++] = {
+            "Properties", MenuAction::Properties, false, true
+        };
+    } else {
+        // Clicked on empty area - show "New Folder" option
+        m_contextMenu.items[m_contextMenu.itemCount++] = {
+            "New Folder", MenuAction::NewFolder, false, true
+        };
+
+        // Paste option (enabled if clipboard has content)
+        m_contextMenu.items[m_contextMenu.itemCount++] = {
+            "Paste", MenuAction::Paste, false, g_clipboard.hasContent
+        };
+    }
+
+    // Ensure menu stays within window bounds
+    int menuHeight = m_contextMenu.itemCount * MENU_ITEM_HEIGHT + 4;
+    if (m_contextMenu.x + MENU_WIDTH > m_width) {
+        m_contextMenu.x = m_width - MENU_WIDTH - 4;
+    }
+    if (m_contextMenu.y + menuHeight > m_height) {
+        m_contextMenu.y = m_height - menuHeight - 4;
+    }
+
+    redraw();
+}
+
+void FileBrowser::hideContextMenu()
+{
+    if (m_contextMenu.visible) {
+        m_contextMenu.visible = false;
+        m_contextMenuFile = -1;
+        redraw();
+    }
+}
+
+void FileBrowser::drawContextMenu()
+{
+    if (!m_contextMenu.visible) return;
+
+    int menuHeight = m_contextMenu.itemCount * MENU_ITEM_HEIGHT + 4;
+    int x = m_contextMenu.x;
+    int y = m_contextMenu.y;
+
+    // Draw menu background with 3D border
+    gui_fill_rect(m_window, x, y, MENU_WIDTH, menuHeight, WB_GRAY_LIGHT);
+
+    // Top/left highlight
+    gui_draw_hline(m_window, x, x + MENU_WIDTH - 1, y, WB_WHITE);
+    gui_draw_vline(m_window, x, y, y + menuHeight - 1, WB_WHITE);
+
+    // Bottom/right shadow
+    gui_draw_hline(m_window, x, x + MENU_WIDTH - 1, y + menuHeight - 1, WB_GRAY_DARK);
+    gui_draw_vline(m_window, x + MENU_WIDTH - 1, y, y + menuHeight - 1, WB_GRAY_DARK);
+
+    // Draw items
+    int itemY = y + 2;
+    for (int i = 0; i < m_contextMenu.itemCount; i++) {
+        MenuItem &item = m_contextMenu.items[i];
+
+        // Hover highlight (if enabled)
+        if (i == m_contextMenu.hoveredItem && item.enabled) {
+            gui_fill_rect(m_window, x + 2, itemY, MENU_WIDTH - 4, MENU_ITEM_HEIGHT, WB_BLUE);
+            gui_draw_text(m_window, x + 8, itemY + 4, item.label, WB_WHITE);
+        } else {
+            uint32_t textColor = item.enabled ? WB_BLACK : WB_GRAY_MED;
+            gui_draw_text(m_window, x + 8, itemY + 4, item.label, textColor);
+        }
+
+        // Draw separator line after this item if specified
+        if (item.separator) {
+            int sepY = itemY + MENU_ITEM_HEIGHT - 1;
+            gui_draw_hline(m_window, x + 4, x + MENU_WIDTH - 5, sepY, WB_GRAY_DARK);
+        }
+
+        itemY += MENU_ITEM_HEIGHT;
+    }
+}
+
+void FileBrowser::handleMenuClick(int x, int y)
+{
+    if (!m_contextMenu.visible) return;
+
+    // Check if click is within menu bounds
+    int menuHeight = m_contextMenu.itemCount * MENU_ITEM_HEIGHT + 4;
+    if (x < m_contextMenu.x || x >= m_contextMenu.x + MENU_WIDTH ||
+        y < m_contextMenu.y || y >= m_contextMenu.y + menuHeight) {
+        hideContextMenu();
+        return;
+    }
+
+    // Find which item was clicked
+    int itemY = m_contextMenu.y + 2;
+    for (int i = 0; i < m_contextMenu.itemCount; i++) {
+        if (y >= itemY && y < itemY + MENU_ITEM_HEIGHT) {
+            MenuItem &item = m_contextMenu.items[i];
+            if (item.enabled) {
+                hideContextMenu();
+                executeMenuAction(item.action);
+            }
+            return;
+        }
+        itemY += MENU_ITEM_HEIGHT;
+    }
+
+    hideContextMenu();
+}
+
+void FileBrowser::executeMenuAction(MenuAction action)
+{
+    switch (action) {
+        case MenuAction::Open:
+            if (m_contextMenuFile >= 0) {
+                handleDoubleClick(m_contextMenuFile);
+            }
+            break;
+
+        case MenuAction::Delete:
+            if (m_contextMenuFile >= 0) {
+                if (deleteFile(m_contextMenuFile)) {
+                    refreshDirectory();
+                }
+            }
+            break;
+
+        case MenuAction::Rename:
+            if (m_contextMenuFile >= 0) {
+                startRename(m_contextMenuFile);
+            }
+            break;
+
+        case MenuAction::NewFolder:
+            if (createNewFolder()) {
+                refreshDirectory();
+            }
+            break;
+
+        case MenuAction::Properties:
+            // TODO: Show file properties dialog
+            debug_serial("[filebrowser] Properties not yet implemented\n");
+            break;
+
+        case MenuAction::Copy:
+            if (m_contextMenuFile >= 0) {
+                copyFile(m_contextMenuFile);
+            }
+            break;
+
+        case MenuAction::Paste:
+            if (pasteFile()) {
+                refreshDirectory();
+            }
+            break;
+
+        default:
+            break;
+    }
+}
+
+bool FileBrowser::deleteFile(int fileIndex)
+{
+    if (fileIndex < 0 || fileIndex >= m_fileCount) {
+        return false;
+    }
+
+    FileEntry &file = m_files[fileIndex];
+
+    // Don't delete ".." entry
+    if (strcmp(file.name, "..") == 0) {
+        return false;
+    }
+
+    // Build full path
+    char fullPath[MAX_PATH_LEN];
+    if (strcmp(m_currentPath, "/") == 0) {
+        snprintf(fullPath, sizeof(fullPath), "/%s", file.name);
+    } else {
+        snprintf(fullPath, sizeof(fullPath), "%s/%s", m_currentPath, file.name);
+    }
+
+    debug_serial("[filebrowser] Deleting: ");
+    debug_serial(fullPath);
+    debug_serial("\n");
+
+    // Use unlink syscall for files, rmdir for directories
+    int result;
+    if (file.type == FileType::Directory) {
+        result = rmdir(fullPath);
+    } else {
+        result = unlink(fullPath);
+    }
+
+    if (result == 0) {
+        debug_serial("[filebrowser] Delete successful\n");
+        return true;
+    } else {
+        debug_serial("[filebrowser] Delete failed\n");
+        return false;
+    }
+}
+
+bool FileBrowser::renameFile(int fileIndex, const char *newName)
+{
+    if (fileIndex < 0 || fileIndex >= m_fileCount || !newName) {
+        return false;
+    }
+
+    FileEntry &file = m_files[fileIndex];
+
+    // Don't rename ".." entry
+    if (strcmp(file.name, "..") == 0) {
+        return false;
+    }
+
+    // Build full paths
+    char oldPath[MAX_PATH_LEN];
+    char newPath[MAX_PATH_LEN];
+
+    if (strcmp(m_currentPath, "/") == 0) {
+        snprintf(oldPath, sizeof(oldPath), "/%s", file.name);
+        snprintf(newPath, sizeof(newPath), "/%s", newName);
+    } else {
+        snprintf(oldPath, sizeof(oldPath), "%s/%s", m_currentPath, file.name);
+        snprintf(newPath, sizeof(newPath), "%s/%s", m_currentPath, newName);
+    }
+
+    debug_serial("[filebrowser] Renaming: ");
+    debug_serial(oldPath);
+    debug_serial(" -> ");
+    debug_serial(newPath);
+    debug_serial("\n");
+
+    int result = rename(oldPath, newPath);
+    return result == 0;
+}
+
+void FileBrowser::refreshDirectory()
+{
+    // Remember selection if possible
+    char selectedName[MAX_FILENAME_LEN] = "";
+    if (m_selectedFile >= 0 && m_selectedFile < m_fileCount) {
+        strncpy(selectedName, m_files[m_selectedFile].name, MAX_FILENAME_LEN - 1);
+    }
+
+    // Reload directory
+    loadDirectory();
+
+    // Try to restore selection
+    m_selectedFile = -1;
+    if (selectedName[0] != '\0') {
+        for (int i = 0; i < m_fileCount; i++) {
+            if (strcmp(m_files[i].name, selectedName) == 0) {
+                m_files[i].selected = true;
+                m_selectedFile = i;
+                break;
+            }
+        }
+    }
+
+    redraw();
+}
+
+void FileBrowser::copyFile(int fileIndex)
+{
+    if (fileIndex < 0 || fileIndex >= m_fileCount) {
+        return;
+    }
+
+    FileEntry &file = m_files[fileIndex];
+
+    // Don't copy ".." entry
+    if (strcmp(file.name, "..") == 0) {
+        return;
+    }
+
+    // Build full path and store in clipboard
+    if (strcmp(m_currentPath, "/") == 0) {
+        snprintf(g_clipboard.path, MAX_PATH_LEN, "/%s", file.name);
+    } else {
+        snprintf(g_clipboard.path, MAX_PATH_LEN, "%s/%s", m_currentPath, file.name);
+    }
+
+    g_clipboard.operation = ClipboardOp::Copy;
+    g_clipboard.hasContent = true;
+
+    debug_serial("[filebrowser] Copied to clipboard: ");
+    debug_serial(g_clipboard.path);
+    debug_serial("\n");
+}
+
+void FileBrowser::cutFile(int fileIndex)
+{
+    if (fileIndex < 0 || fileIndex >= m_fileCount) {
+        return;
+    }
+
+    FileEntry &file = m_files[fileIndex];
+
+    // Don't cut ".." entry
+    if (strcmp(file.name, "..") == 0) {
+        return;
+    }
+
+    // Build full path and store in clipboard
+    if (strcmp(m_currentPath, "/") == 0) {
+        snprintf(g_clipboard.path, MAX_PATH_LEN, "/%s", file.name);
+    } else {
+        snprintf(g_clipboard.path, MAX_PATH_LEN, "%s/%s", m_currentPath, file.name);
+    }
+
+    g_clipboard.operation = ClipboardOp::Cut;
+    g_clipboard.hasContent = true;
+
+    debug_serial("[filebrowser] Cut to clipboard: ");
+    debug_serial(g_clipboard.path);
+    debug_serial("\n");
+}
+
+bool FileBrowser::pasteFile()
+{
+    if (!g_clipboard.hasContent) {
+        return false;
+    }
+
+    // Extract filename from clipboard path
+    const char *srcFilename = strrchr(g_clipboard.path, '/');
+    if (!srcFilename) {
+        return false;
+    }
+    srcFilename++;  // Skip the '/'
+
+    // Build destination path
+    char destPath[MAX_PATH_LEN];
+    if (strcmp(m_currentPath, "/") == 0) {
+        snprintf(destPath, MAX_PATH_LEN, "/%s", srcFilename);
+    } else {
+        snprintf(destPath, MAX_PATH_LEN, "%s/%s", m_currentPath, srcFilename);
+    }
+
+    // Don't paste to same location
+    if (strcmp(g_clipboard.path, destPath) == 0) {
+        debug_serial("[filebrowser] Cannot paste to same location\n");
+        return false;
+    }
+
+    debug_serial("[filebrowser] Pasting: ");
+    debug_serial(g_clipboard.path);
+    debug_serial(" -> ");
+    debug_serial(destPath);
+    debug_serial("\n");
+
+    // Open source file
+    FILE *src = fopen(g_clipboard.path, "rb");
+    if (!src) {
+        debug_serial("[filebrowser] Failed to open source file\n");
+        return false;
+    }
+
+    // Create destination file
+    FILE *dst = fopen(destPath, "wb");
+    if (!dst) {
+        fclose(src);
+        debug_serial("[filebrowser] Failed to create destination file\n");
+        return false;
+    }
+
+    // Copy data in chunks
+    char buffer[4096];
+    size_t bytesRead;
+    bool success = true;
+
+    while ((bytesRead = fread(buffer, 1, sizeof(buffer), src)) > 0) {
+        if (fwrite(buffer, 1, bytesRead, dst) != bytesRead) {
+            success = false;
+            break;
+        }
+    }
+
+    fclose(src);
+    fclose(dst);
+
+    if (!success) {
+        unlink(destPath);  // Clean up partial file
+        debug_serial("[filebrowser] Copy failed\n");
+        return false;
+    }
+
+    // If it was a cut operation, delete the source
+    if (g_clipboard.operation == ClipboardOp::Cut) {
+        unlink(g_clipboard.path);
+        g_clipboard.hasContent = false;
+    }
+
+    debug_serial("[filebrowser] Paste successful\n");
+    return true;
+}
+
+bool FileBrowser::createNewFolder()
+{
+    // Generate a unique folder name
+    char folderName[MAX_FILENAME_LEN];
+    char fullPath[MAX_PATH_LEN];
+    int counter = 1;
+
+    while (counter < 100) {
+        if (counter == 1) {
+            strcpy(folderName, "New Folder");
+        } else {
+            snprintf(folderName, sizeof(folderName), "New Folder %d", counter);
+        }
+
+        // Build full path
+        if (strcmp(m_currentPath, "/") == 0) {
+            snprintf(fullPath, MAX_PATH_LEN, "/%s", folderName);
+        } else {
+            snprintf(fullPath, MAX_PATH_LEN, "%s/%s", m_currentPath, folderName);
+        }
+
+        // Check if it already exists
+        struct stat st;
+        if (stat(fullPath, &st) != 0) {
+            // Doesn't exist, we can use this name
+            break;
+        }
+        counter++;
+    }
+
+    debug_serial("[filebrowser] Creating folder: ");
+    debug_serial(fullPath);
+    debug_serial("\n");
+
+    int result = mkdir(fullPath, 0755);
+    if (result == 0) {
+        debug_serial("[filebrowser] Folder created successfully\n");
+        return true;
+    } else {
+        debug_serial("[filebrowser] Failed to create folder\n");
+        return false;
+    }
+}
+
+//------------------------------------------------------------------------------
+// Inline Rename Editor
+//------------------------------------------------------------------------------
+
+void FileBrowser::startRename(int fileIndex)
+{
+    if (fileIndex < 0 || fileIndex >= m_fileCount) {
+        return;
+    }
+
+    FileEntry &file = m_files[fileIndex];
+
+    // Don't allow renaming ".."
+    if (strcmp(file.name, "..") == 0) {
+        return;
+    }
+
+    // Initialize rename editor
+    m_renameEditor.fileIndex = fileIndex;
+    strncpy(m_renameEditor.buffer, file.name, MAX_FILENAME_LEN - 1);
+    m_renameEditor.buffer[MAX_FILENAME_LEN - 1] = '\0';
+    m_renameEditor.cursorPos = static_cast<int>(strlen(m_renameEditor.buffer));
+    m_renameEditor.selStart = 0;  // Select all initially
+    m_renameEditor.active = true;
+
+    debug_serial("[filebrowser] Started rename for: ");
+    debug_serial(file.name);
+    debug_serial("\n");
+
+    redraw();
+}
+
+void FileBrowser::cancelRename()
+{
+    if (!m_renameEditor.active) {
+        return;
+    }
+
+    m_renameEditor.active = false;
+    m_renameEditor.fileIndex = -1;
+    debug_serial("[filebrowser] Rename cancelled\n");
+    redraw();
+}
+
+void FileBrowser::commitRename()
+{
+    if (!m_renameEditor.active) {
+        return;
+    }
+
+    int fileIndex = m_renameEditor.fileIndex;
+    m_renameEditor.active = false;
+
+    // Validate the new name
+    if (m_renameEditor.buffer[0] == '\0') {
+        debug_serial("[filebrowser] Empty name, rename cancelled\n");
+        redraw();
+        return;
+    }
+
+    // Check if name actually changed
+    if (strcmp(m_files[fileIndex].name, m_renameEditor.buffer) == 0) {
+        debug_serial("[filebrowser] Name unchanged\n");
+        redraw();
+        return;
+    }
+
+    // Perform the rename
+    if (renameFile(fileIndex, m_renameEditor.buffer)) {
+        // Update the file entry with new name
+        strncpy(m_files[fileIndex].name, m_renameEditor.buffer, MAX_FILENAME_LEN - 1);
+        m_files[fileIndex].name[MAX_FILENAME_LEN - 1] = '\0';
+        debug_serial("[filebrowser] Rename committed\n");
+    } else {
+        debug_serial("[filebrowser] Rename failed\n");
+    }
+
+    redraw();
+}
+
+void FileBrowser::handleRenameKey(int keycode, bool shift)
+{
+    if (!m_renameEditor.active) {
+        return;
+    }
+
+    // Key codes (HID usage codes)
+    constexpr int KEY_ENTER = 0x28;
+    constexpr int KEY_ESCAPE = 0x29;
+    constexpr int KEY_BACKSPACE = 0x2A;
+    constexpr int KEY_DELETE = 0x4C;
+    constexpr int KEY_LEFT = 0x50;
+    constexpr int KEY_RIGHT = 0x4F;
+    constexpr int KEY_HOME = 0x4A;
+    constexpr int KEY_END = 0x4D;
+
+    int len = static_cast<int>(strlen(m_renameEditor.buffer));
+
+    switch (keycode) {
+        case KEY_ENTER:
+            commitRename();
+            return;
+
+        case KEY_ESCAPE:
+            cancelRename();
+            return;
+
+        case KEY_BACKSPACE:
+            // Delete selection if any, else delete char before cursor
+            if (m_renameEditor.selStart >= 0 && m_renameEditor.selStart != m_renameEditor.cursorPos) {
+                // Delete selection
+                int start = m_renameEditor.selStart < m_renameEditor.cursorPos ?
+                            m_renameEditor.selStart : m_renameEditor.cursorPos;
+                int end = m_renameEditor.selStart > m_renameEditor.cursorPos ?
+                          m_renameEditor.selStart : m_renameEditor.cursorPos;
+                memmove(&m_renameEditor.buffer[start], &m_renameEditor.buffer[end], len - end + 1);
+                m_renameEditor.cursorPos = start;
+                m_renameEditor.selStart = -1;
+            } else if (m_renameEditor.cursorPos > 0) {
+                memmove(&m_renameEditor.buffer[m_renameEditor.cursorPos - 1],
+                        &m_renameEditor.buffer[m_renameEditor.cursorPos],
+                        len - m_renameEditor.cursorPos + 1);
+                m_renameEditor.cursorPos--;
+            }
+            m_renameEditor.selStart = -1;
+            break;
+
+        case KEY_DELETE:
+            if (m_renameEditor.selStart >= 0 && m_renameEditor.selStart != m_renameEditor.cursorPos) {
+                // Delete selection
+                int start = m_renameEditor.selStart < m_renameEditor.cursorPos ?
+                            m_renameEditor.selStart : m_renameEditor.cursorPos;
+                int end = m_renameEditor.selStart > m_renameEditor.cursorPos ?
+                          m_renameEditor.selStart : m_renameEditor.cursorPos;
+                memmove(&m_renameEditor.buffer[start], &m_renameEditor.buffer[end], len - end + 1);
+                m_renameEditor.cursorPos = start;
+            } else if (m_renameEditor.cursorPos < len) {
+                memmove(&m_renameEditor.buffer[m_renameEditor.cursorPos],
+                        &m_renameEditor.buffer[m_renameEditor.cursorPos + 1],
+                        len - m_renameEditor.cursorPos);
+            }
+            m_renameEditor.selStart = -1;
+            break;
+
+        case KEY_LEFT:
+            if (m_renameEditor.cursorPos > 0) {
+                if (shift && m_renameEditor.selStart < 0) {
+                    m_renameEditor.selStart = m_renameEditor.cursorPos;
+                }
+                m_renameEditor.cursorPos--;
+                if (!shift) {
+                    m_renameEditor.selStart = -1;
+                }
+            }
+            break;
+
+        case KEY_RIGHT:
+            if (m_renameEditor.cursorPos < len) {
+                if (shift && m_renameEditor.selStart < 0) {
+                    m_renameEditor.selStart = m_renameEditor.cursorPos;
+                }
+                m_renameEditor.cursorPos++;
+                if (!shift) {
+                    m_renameEditor.selStart = -1;
+                }
+            }
+            break;
+
+        case KEY_HOME:
+            if (shift && m_renameEditor.selStart < 0) {
+                m_renameEditor.selStart = m_renameEditor.cursorPos;
+            }
+            m_renameEditor.cursorPos = 0;
+            if (!shift) {
+                m_renameEditor.selStart = -1;
+            }
+            break;
+
+        case KEY_END:
+            if (shift && m_renameEditor.selStart < 0) {
+                m_renameEditor.selStart = m_renameEditor.cursorPos;
+            }
+            m_renameEditor.cursorPos = len;
+            if (!shift) {
+                m_renameEditor.selStart = -1;
+            }
+            break;
+
+        default:
+            // Check for printable character input (A-Z, a-z, 0-9, etc.)
+            // HID key codes: A=0x04, Z=0x1D, 1=0x1E, 0=0x27
+            char ch = 0;
+            if (keycode >= 0x04 && keycode <= 0x1D) {
+                // A-Z
+                ch = shift ? ('A' + keycode - 0x04) : ('a' + keycode - 0x04);
+            } else if (keycode >= 0x1E && keycode <= 0x26) {
+                // 1-9
+                ch = '1' + keycode - 0x1E;
+            } else if (keycode == 0x27) {
+                // 0
+                ch = '0';
+            } else if (keycode == 0x2D) {
+                // - or _
+                ch = shift ? '_' : '-';
+            } else if (keycode == 0x2E) {
+                // = or +
+                ch = shift ? '+' : '=';
+            } else if (keycode == 0x36) {
+                // , or <
+                ch = shift ? '<' : ',';
+            } else if (keycode == 0x37) {
+                // . or >
+                ch = shift ? '>' : '.';
+            } else if (keycode == 0x2C) {
+                // space
+                ch = ' ';
+            }
+
+            if (ch != 0 && len < MAX_FILENAME_LEN - 1) {
+                // Delete selection first if any
+                if (m_renameEditor.selStart >= 0 && m_renameEditor.selStart != m_renameEditor.cursorPos) {
+                    int start = m_renameEditor.selStart < m_renameEditor.cursorPos ?
+                                m_renameEditor.selStart : m_renameEditor.cursorPos;
+                    int end = m_renameEditor.selStart > m_renameEditor.cursorPos ?
+                              m_renameEditor.selStart : m_renameEditor.cursorPos;
+                    memmove(&m_renameEditor.buffer[start], &m_renameEditor.buffer[end], len - end + 1);
+                    m_renameEditor.cursorPos = start;
+                    len = static_cast<int>(strlen(m_renameEditor.buffer));
+                }
+                m_renameEditor.selStart = -1;
+
+                // Insert character
+                if (len < MAX_FILENAME_LEN - 1) {
+                    memmove(&m_renameEditor.buffer[m_renameEditor.cursorPos + 1],
+                            &m_renameEditor.buffer[m_renameEditor.cursorPos],
+                            len - m_renameEditor.cursorPos + 1);
+                    m_renameEditor.buffer[m_renameEditor.cursorPos++] = ch;
+                }
+            }
+            break;
+    }
+
+    redraw();
+}
+
+void FileBrowser::drawRenameEditor()
+{
+    if (!m_renameEditor.active) {
+        return;
+    }
+
+    // Calculate the position of the file icon being renamed
+    int contentY = FB_TOOLBAR_HEIGHT;
+    int iconsPerRow = (m_width - 2 * FB_PADDING) / FB_ICON_GRID_X;
+
+    int fileIdx = m_renameEditor.fileIndex;
+    int row = fileIdx / iconsPerRow;
+    int col = fileIdx % iconsPerRow;
+
+    int iconX = FB_PADDING + col * FB_ICON_GRID_X + FB_ICON_GRID_X / 2;
+    int iconY = contentY + FB_PADDING + (row - m_scrollOffset) * FB_ICON_GRID_Y;
+
+    // Position the text editor below the icon
+    int editorX = iconX - 50;  // Center roughly
+    int editorY = iconY + ICON_SIZE + 4;
+    int editorW = 100;
+    int editorH = 16;
+
+    // Keep editor within window bounds
+    if (editorX < 4) editorX = 4;
+    if (editorX + editorW > m_width - 4) editorX = m_width - 4 - editorW;
+
+    // Draw editor background
+    gui_fill_rect(m_window, editorX, editorY, editorW, editorH, WB_WHITE);
+
+    // Draw border
+    gui_draw_hline(m_window, editorX, editorX + editorW - 1, editorY, WB_GRAY_DARK);
+    gui_draw_hline(m_window, editorX, editorX + editorW - 1, editorY + editorH - 1, WB_GRAY_DARK);
+    gui_draw_vline(m_window, editorX, editorY, editorY + editorH - 1, WB_GRAY_DARK);
+    gui_draw_vline(m_window, editorX + editorW - 1, editorY, editorY + editorH - 1, WB_GRAY_DARK);
+
+    // Draw selection highlight if any
+    int textX = editorX + 4;
+    int textY = editorY + 3;
+
+    if (m_renameEditor.selStart >= 0 && m_renameEditor.selStart != m_renameEditor.cursorPos) {
+        int selStartPx = m_renameEditor.selStart * 8;
+        int selEndPx = m_renameEditor.cursorPos * 8;
+        if (selStartPx > selEndPx) {
+            int tmp = selStartPx;
+            selStartPx = selEndPx;
+            selEndPx = tmp;
+        }
+        gui_fill_rect(m_window, textX + selStartPx, editorY + 2,
+                      selEndPx - selStartPx, editorH - 4, WB_BLUE);
+    }
+
+    // Draw text
+    gui_draw_text(m_window, textX, textY, m_renameEditor.buffer, WB_BLACK);
+
+    // Draw cursor (blinking could be added later)
+    int cursorX = textX + m_renameEditor.cursorPos * 8;
+    gui_draw_vline(m_window, cursorX, editorY + 2, editorY + editorH - 3, WB_BLACK);
 }
 
 } // namespace workbench

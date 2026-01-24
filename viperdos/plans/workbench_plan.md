@@ -21,7 +21,7 @@ The Workbench will serve as the primary GUI interface for ViperDOS, bringing the
 | displayd | **Complete** | Window compositor with double buffering, z-order management |
 | libgui | **Complete** | Client library for window creation, drawing, events |
 | consoled | **Complete** | GUI terminal emulator with ANSI support |
-| workbench | **Phase 1.5 In Progress** | Refactored to C++, modular architecture |
+| workbench | **Phase 2 Complete** | File browser, context menus, file ops, rename editor |
 | Event System | **Complete** | Mouse/keyboard events routed to windows |
 | Window Management | **Complete** | Focus, z-order, minimize/maximize, dragging |
 | Color System | **Complete** | Centralized in `user/include/viper_colors.h` |
@@ -31,7 +31,7 @@ The Workbench will serve as the primary GUI interface for ViperDOS, bringing the
 
 - [x] Amiga-style blue backdrop (`#0055AA`)
 - [x] Menu bar with Workbench/Window/Tools menus
-- [x] Desktop icons with pixel art (SYS:, Shell, Settings, About)
+- [x] Desktop icons with pixel art (SYS:, Shell, Prefs, About)
 - [x] Single-click selection with orange highlight
 - [x] Double-click to launch applications
 - [x] Shell icon launches consoled on demand
@@ -39,16 +39,32 @@ The Workbench will serve as the primary GUI interface for ViperDOS, bringing the
 - [x] Double buffering eliminates visual flicker
 - [x] Window decorations (title bar, close/min/max buttons)
 
-### Phase 1.5 Deliverables (IN PROGRESS)
+### Phase 1.5 Deliverables (COMPLETE)
 
 - [x] Resolution increased to 1024x768
 - [x] Centralized color definitions (`user/include/viper_colors.h`)
 - [x] Consistent white-on-blue color scheme throughout boot
 - [x] Workbench refactored from C to C++ with modular architecture
 - [x] Separated into modules: desktop.cpp, icons.cpp, filebrowser.cpp
-- [ ] File browser window implementation (skeleton exists)
-- [ ] Drive icons showing mounted volumes
-- [ ] Basic file/folder navigation
+- [x] File browser window implementation (FUNCTIONAL - not just skeleton)
+- [x] Directory listing via opendir/readdir/stat
+- [x] File type detection (Directory, Executable, Text, Image, Unknown)
+- [x] Icon rendering per file type
+- [x] Double-click navigation into directories
+- [x] Double-click launches executables
+- [x] Parent directory navigation
+- [x] Dynamic drive icons showing mounted volumes (via assign_list syscall)
+- [x] Amiga-style icon updates (Prefs, question mark About)
+
+### Phase 2 Deliverables (COMPLETE)
+
+- [x] Right-click context menus
+- [x] File operations: delete, copy, cut, paste
+- [x] Create new folder
+- [x] Keyboard shortcuts: Enter, Delete, F5, C, V, N, F2
+- [x] Enhanced status bar with file info and hints
+- [x] Inline rename editor with text input
+- [x] Dynamic drive discovery via assign_list syscall
 
 ---
 
@@ -58,7 +74,7 @@ The Workbench will serve as the primary GUI interface for ViperDOS, bringing the
 ┌─────────────────────────────────────────────────────────────────┐
 │                      Desktop Applications                        │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐            │
-│  │Workbench │ │ FileMgr  │ │ Settings │ │  Editor  │ ...        │
+│  │Workbench │ │ FileMgr  │ │  Prefs   │ │  VEdit   │ ...        │
 │  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘            │
 ├───────┴────────────┴────────────┴────────────┴──────────────────┤
 │                     libwidget (Phase 4)                          │
@@ -239,71 +255,73 @@ static filetype_t g_filetypes[] = {
 
 ---
 
-## Phase 3: Settings and System Utilities
+## Phase 3: Preferences and System Utilities
 
 **Priority:** MEDIUM
 **Estimated Effort:** Medium
 **Dependencies:** Phase 2
 
-### 3.1 Settings Application
+### 3.1 Preferences Application (Amiga-style "Prefs")
 
-**File:** `user/settings/main.c`
+**File:** `user/prefs/main.c`
 
-A centralized preferences application similar to Amiga Prefs.
+A centralized preferences application similar to Amiga Prefs. Uses Amiga terminology and design patterns.
 
-#### Settings Categories
+#### Preferences Categories
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ ≡ Settings                                      _ □ X  │
+│ ≡ Preferences                                   _ □ X  │
 ├─────────────────────────────────────────────────────────┤
 │ ┌─────────────┐                                         │
-│ │ [🖥] Display │  Display Settings                      │
-│ │ [🎨] Colors  │  ─────────────────                     │
-│ │ [🖱] Mouse   │                                        │
-│ │ [⌨] Keyboard│  Resolution: [1024x768 ▼]              │
+│ │ [🖥] Screen  │  Screen Preferences                    │
+│ │ [🎨] Palette │  ──────────────────                    │
+│ │ [🖱] Pointer │                                        │
+│ │ [⌨] Input   │  Resolution: [1024x768 ▼]              │
 │ │ [🔊] Sound  │                                        │
-│ │ [🌐] Network│  Wallpaper:  [None ▼] [Browse...]      │
-│ │ [📅] DateTime│                                        │
-│ │ [ℹ] About   │  □ Show desktop icons                  │
+│ │ [🌐] Network│  Backdrop:   [Solid Blue ▼] [Choose...] │
+│ │ [📅] Time   │                                        │
+│ │ [?] About   │  □ Show icons on desktop               │
 │ └─────────────┘  □ Double-click to open                │
 │                                                         │
-│                  [Apply]  [Cancel]  [Save]              │
+│                  [Use]  [Cancel]  [Save]                │
 └─────────────────────────────────────────────────────────┘
 ```
 
-#### 3.1.1 Display Settings
+Note: The About icon uses an Amiga-style question mark "?" as was traditional on AmigaOS.
+
+#### 3.1.1 Screen Preferences
 - Screen resolution (query available modes)
-- Wallpaper selection (solid color or image)
+- Backdrop selection (solid color or pattern, Amiga-style)
 - Icon arrangement (grid size, auto-arrange)
-- Window theme (colors for title bars, borders)
+- Workbench palette (window colors)
 
-#### 3.1.2 Input Settings
+#### 3.1.2 Input Preferences
 
-**Mouse:**
+**Pointer:**
 - Pointer speed (acceleration)
-- Double-click speed
+- Double-click delay
 - Left/right hand mode (swap buttons)
 - Scroll wheel speed
 
-**Keyboard:**
-- Repeat delay
-- Repeat rate
+**Input:**
+- Key repeat delay
+- Key repeat rate
 - Keyboard layout (future)
 
-#### 3.1.3 Date/Time Settings
+#### 3.1.3 Locale Preferences
 - Set system date and time
 - Time zone selection
 - Clock format (12/24 hour)
-- Show clock in menu bar
+- Show clock in title bar
 
-#### 3.1.4 Network Settings
+#### 3.1.4 Network Preferences
 - View IP address
 - Configure network (DHCP/static)
 - DNS servers
 - Hostname
 
-#### 3.1.5 About System
+#### 3.1.5 About (Question Mark "?" Icon)
 - ViperDOS version
 - Kernel version
 - Memory usage
@@ -404,11 +422,11 @@ swap_buttons=0
 
 | File | Purpose |
 |------|---------|
-| `user/settings/main.c` | Settings application |
-| `user/settings/display.c` | Display settings panel |
-| `user/settings/input.c` | Mouse/keyboard settings |
-| `user/settings/datetime.c` | Date/time settings |
-| `user/settings/network.c` | Network settings |
+| `user/prefs/main.c` | Preferences application |
+| `user/prefs/screen.c` | Screen preferences panel |
+| `user/prefs/input.c` | Pointer/input preferences |
+| `user/prefs/locale.c` | Locale/time preferences |
+| `user/prefs/network.c` | Network preferences |
 | `user/sysinfo/main.c` | System information utility |
 | `user/taskman/main.c` | Task manager |
 | `user/libprefs/prefs.c` | Preferences library |
@@ -706,20 +724,23 @@ Full-featured file manager application.
 - Archive support (view/extract .zip, .lha)
 - FTP/SFTP integration (via netd)
 
-### 5.2 Text Editor (Edit)
+### 5.2 Text Editor (VEdit - "Viper Edit")
 
-**File:** `user/edit/main.c`
+**File:** `user/vedit/main.cpp`
 
-Simple but functional text editor.
+A GUI text editor inspired by classic Amiga editors (like ED and CygnusEd). Named "VEdit" following Amiga naming conventions.
 
 #### Features
-- Multiple file tabs
-- Syntax highlighting (optional, for .c, .h files)
-- Line numbers
-- Find and replace (Ctrl+F, Ctrl+H)
-- Go to line (Ctrl+G)
+- Single document editing (multi-tab is Phase 6 polish)
+- Line numbers display
+- Find and replace (Amiga: Ctrl+F, Ctrl+R)
+- Go to line (Amiga: Ctrl+J for "Jump")
 - Word wrap toggle
-- Recent files list
+- Status bar with line/column info
+- File changed indicator (asterisk in title)
+- Recent files menu
+
+See **Appendix C: VEdit Detailed Specification** for complete implementation details.
 
 ### 5.3 Image Viewer (Viewer)
 
@@ -843,37 +864,43 @@ int dnd_receive(void *buffer, size_t max_len, char *mime_type);
 
 - System sounds for events (click, error, notification)
 - Audio playback API
-- Volume control in Settings
+- Volume control in Prefs
 
 ---
 
 ## Implementation Schedule
 
-### Milestone 0: Infrastructure Improvements (Phase 1.5) - CURRENT
-**Status:** IN PROGRESS
+### Milestone 0: Infrastructure Improvements (Phase 1.5) - MOSTLY COMPLETE
+**Status:** 90% COMPLETE
 
 - [x] Increase resolution to 1024x768
 - [x] Centralize color definitions
 - [x] Remove scattered color changes for consistent boot appearance
 - [x] Refactor workbench to C++ with modular architecture
-- [ ] Complete file browser window skeleton
-- [ ] Integrate with VFS for directory listing
+- [x] File browser window (FUNCTIONAL - directory navigation works)
+- [x] Integrate with VFS for directory listing
+- [x] File type detection and icons
+- [x] Double-click to navigate/launch
+- [ ] Amiga-style icon updates (Prefs icon, question mark About)
+- [ ] Dynamic drive discovery
 
-### Milestone 1: File System Desktop (Phase 2)
+### Milestone 1: File System Desktop (Phase 2) - MOSTLY COMPLETE
 
-- [ ] Drive discovery and icons
-- [ ] File browser window
-- [ ] Basic file operations (open, copy, delete)
-- [ ] File type associations
-- [ ] Context menus
+- [ ] Drive discovery and icons on desktop (dynamic mount detection)
+- [x] File browser window (DONE)
+- [x] Basic file operations (copy, paste, delete, new folder)
+- [x] File type associations (infrastructure ready, apps TBD)
+- [x] Context menus (right-click with Open, Copy, Delete, Rename, Properties)
+- [x] Keyboard shortcuts (Enter, Delete, F5, C, V, N)
+- [x] Status bar with file info and hints
+- [ ] Rename with inline editor (placeholder)
 
 ### Milestone 2: System Utilities (Phase 3)
-**Duration:** 2 weeks
 
-- [ ] Settings application (basic panels)
+- [ ] Preferences application (Amiga-style "Prefs")
 - [ ] System information utility
 - [ ] Task manager
-- [ ] Preferences library
+- [ ] Preferences library (libprefs)
 
 ### Milestone 3: Widget Toolkit (Phase 4)
 **Duration:** 3-4 weeks
@@ -922,18 +949,18 @@ viperdos/
 │   │   ├── src/
 │   │   │   ├── main.cpp         # Entry point (DONE)
 │   │   │   ├── desktop.cpp      # Desktop implementation (DONE)
-│   │   │   ├── filebrowser.cpp  # File browser (IN PROGRESS)
+│   │   │   ├── filebrowser.cpp  # File browser (FUNCTIONAL)
 │   │   │   └── icons.cpp        # Icon rendering (DONE)
-│   │   ├── drives.c             # Drive management (Phase 2)
-│   │   ├── filetypes.c          # File associations (Phase 2)
-│   │   ├── fileops.c            # File operations (Phase 2)
+│   │   ├── drives.cpp           # Drive management (Phase 2)
+│   │   ├── filetypes.cpp        # File associations (Phase 2)
+│   │   ├── fileops.cpp          # File operations (Phase 2)
 │   │   └── icons/               # Icon resources
 │   │
-│   ├── settings/
-│   │   ├── main.c               # Settings app (Phase 3)
-│   │   ├── display.c
-│   │   ├── input.c
-│   │   └── datetime.c
+│   ├── prefs/                   # Amiga-style Preferences
+│   │   ├── main.cpp             # Prefs app (Phase 3)
+│   │   ├── screen.cpp           # Screen preferences
+│   │   ├── input.cpp            # Pointer/input preferences
+│   │   └── locale.cpp           # Locale/time preferences
 │   │
 │   ├── sysinfo/
 │   │   └── main.c               # System info (Phase 3)
@@ -982,18 +1009,22 @@ viperdos/
 ## Testing Checklist
 
 ### Phase 2 Tests
-- [ ] Drive icons appear on desktop
-- [ ] Double-click drive opens file browser
-- [ ] Navigate into folders
-- [ ] Navigate to parent directory
-- [ ] Double-click file launches associated app
-- [ ] Copy file between windows
-- [ ] Delete file to trash
-- [ ] Rename file
-- [ ] Context menu appears on right-click
+- [ ] Drive icons appear on desktop (dynamic detection)
+- [x] Double-click drive opens file browser
+- [x] Navigate into folders
+- [x] Navigate to parent directory
+- [x] Double-click file launches associated app (.sys/.prg)
+- [x] Copy file (via context menu or keyboard)
+- [x] Paste file to current directory
+- [x] Delete file (via context menu or Delete key)
+- [x] Create new folder (via context menu)
+- [ ] Rename file (inline editor TBD)
+- [x] Context menu appears on right-click
+- [x] Status bar shows selected file info
+- [x] F5 refreshes directory
 
 ### Phase 3 Tests
-- [ ] Settings app opens
+- [ ] Prefs app opens
 - [ ] Display settings apply correctly
 - [ ] Mouse speed changes take effect
 - [ ] System info shows correct values
@@ -1092,11 +1123,280 @@ The file also defines `ANSI_COLOR_*` macros for terminal emulation.
 
 ---
 
-*Document Version: 1.1*
-*Last Updated: January 23, 2025*
+## Appendix C: VEdit (GUI Text Editor) Detailed Specification
+
+VEdit is the primary GUI text editor for ViperDOS, inspired by classic Amiga editors.
+
+### Window Layout
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ ≡ VEdit: untitled.txt                           _ □ X  │
+├─────────────────────────────────────────────────────────┤
+│ File  Edit  Search  Settings  Help                      │
+├─────────────────────────────────────────────────────────┤
+│   1│ This is line one                                   │
+│   2│ This is line two with more text                    │
+│   3│ Cursor is here: █                                  │
+│   4│                                                    │
+│   5│                                                    │
+│    │                                                    │
+│    │                                                    │
+│    │                                                    │
+├─────────────────────────────────────────────────────────┤
+│ Line: 3  Col: 17  │ Modified │ INS │ UTF-8             │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Menu Structure
+
+**File Menu:**
+- New (Ctrl+N)
+- Open... (Ctrl+O)
+- Save (Ctrl+S)
+- Save As... (Ctrl+Shift+S)
+- ---
+- Print... (future)
+- ---
+- Quit (Ctrl+Q)
+
+**Edit Menu:**
+- Undo (Ctrl+Z)
+- Redo (Ctrl+Y)
+- ---
+- Cut (Ctrl+X)
+- Copy (Ctrl+C)
+- Paste (Ctrl+V)
+- ---
+- Select All (Ctrl+A)
+
+**Search Menu:**
+- Find... (Ctrl+F)
+- Find Next (F3)
+- Find Previous (Shift+F3)
+- Replace... (Ctrl+R)
+- ---
+- Go to Line... (Ctrl+J)
+
+**Settings Menu:**
+- Word Wrap (toggle)
+- Show Line Numbers (toggle)
+- Tab Width: 4 (submenu)
+- ---
+- Font Size (submenu)
+
+**Help Menu:**
+- About VEdit...
+
+### Core Implementation
+
+**File:** `user/vedit/`
+
+```
+user/vedit/
+├── CMakeLists.txt
+├── include/
+│   ├── buffer.hpp      # Text buffer with gap buffer implementation
+│   ├── editor.hpp      # Main editor class
+│   ├── view.hpp        # Viewport/rendering
+│   └── commands.hpp    # Edit commands
+└── src/
+    ├── main.cpp        # Entry point
+    ├── buffer.cpp      # Gap buffer text storage
+    ├── editor.cpp      # Editor logic
+    ├── view.cpp        # Rendering to GUI window
+    └── commands.cpp    # Command handlers
+```
+
+### Text Buffer (Gap Buffer)
+
+```cpp
+class TextBuffer {
+public:
+    bool load(const char *path);
+    bool save(const char *path);
+
+    void insert(char ch);
+    void insert(const char *text);
+    void deleteChar();       // Delete at cursor (Del)
+    void backspace();        // Delete before cursor (Backspace)
+
+    void moveCursor(int delta);
+    void moveLine(int delta);
+    void moveToLineStart();
+    void moveToLineEnd();
+    void moveToStart();
+    void moveToEnd();
+
+    int lineCount() const;
+    int currentLine() const;
+    int currentColumn() const;
+    const char *lineAt(int line) const;
+
+    bool isModified() const;
+    void clearModified();
+
+private:
+    char *m_buffer;
+    size_t m_bufferSize;
+    size_t m_gapStart;
+    size_t m_gapEnd;
+    bool m_modified;
+};
+```
+
+### Keyboard Handling
+
+| Key | Action |
+|-----|--------|
+| Arrow keys | Move cursor |
+| Home | Go to line start |
+| End | Go to line end |
+| Ctrl+Home | Go to file start |
+| Ctrl+End | Go to file end |
+| Page Up/Down | Scroll by page |
+| Insert | Toggle insert/overwrite |
+| Delete | Delete character at cursor |
+| Backspace | Delete character before cursor |
+| Enter | Insert newline |
+| Tab | Insert tab (or spaces) |
+
+### File Types
+
+VEdit should handle `.txt` and source files:
+- `.txt`, `.md` - Plain text
+- `.c`, `.cpp`, `.h`, `.hpp` - C/C++ source (syntax highlighting future)
+- `.sh` - Shell scripts
+- `.conf`, `.ini` - Config files
+
+### Dependencies
+
+VEdit requires:
+- libgui for window/drawing
+- libwidget (Phase 4) for menus and dialogs (or can use simple custom implementation initially)
+
+### Testing Checklist
+
+- [ ] Create new empty document
+- [ ] Open existing file
+- [ ] Edit text (insert, delete, backspace)
+- [ ] Save file
+- [ ] Save As new filename
+- [ ] Modified indicator (*) in title
+- [ ] Line/column display updates
+- [ ] Word wrap toggle works
+- [ ] Find text
+- [ ] Find and replace
+- [ ] Go to line number
+- [ ] Handle large files (1MB+)
+- [ ] Undo/redo basic operations
+
+---
+
+## Appendix D: Amiga-Style Icon Specifications
+
+### Desktop Icons Update
+
+The following icon changes are needed for Amiga authenticity:
+
+| Current | New | Description |
+|---------|-----|-------------|
+| `settings_24` | `prefs_24` | Wrench/tool icon for Preferences |
+| `about_24` | `help_24` | Question mark "?" icon (Amiga-style) |
+
+### Question Mark Icon Design (24x24)
+
+Classic Amiga help icon is a bold "?" in a rounded rectangle or speech bubble:
+
+```
+........????????........
+......??........??......
+.....?..........???.....
+....??...........??.....
+....??...........??.....
+....??..........????.....
+.....??........???......
+......??......???........
+.......??.....??........
+........??...??..........
+.........??.??...........
+..........???............
+...........??.............
+..........???............
+.........????.............
+.........????.............
+..........???............
+...........??...........
+............??...........
+...........???...........
+...........???...........
+...........???...........
+............??...........
+..........................
+```
+
+The icon should use:
+- White "?" glyph
+- Dark blue or gray background
+- 3D beveled edge (Amiga style)
+
+### Preferences Icon Design (24x24)
+
+A wrench or gear icon:
+- Gray metal wrench
+- 3D shading for depth
+- Matches Amiga Prefs drawer icon style
+
+### Implementation
+
+Update `user/workbench/src/icons.cpp` with new pixel arrays:
+- `const uint32_t help_24[24 * 24]` - Question mark icon
+- `const uint32_t prefs_24[24 * 24]` - Preferences/wrench icon
+
+Update `user/workbench/src/desktop.cpp`:
+```cpp
+// Before:
+m_icons[2] = { 0, 0, "Settings", nullptr, icons::settings_24, ... };
+m_icons[3] = { 0, 0, "About",    nullptr, icons::about_24,    ... };
+
+// After:
+m_icons[2] = { 0, 0, "Prefs",  nullptr, icons::prefs_24, ... };
+m_icons[3] = { 0, 0, "Help",   nullptr, icons::help_24,  ... };
+```
+
+---
+
+*Document Version: 1.4*
+*Last Updated: January 24, 2025*
 *Author: ViperDOS Development Team*
 
 ### Changelog
+
+**v1.4 (2025-01-24)**
+- Phase 2 COMPLETE: All file system integration features implemented
+- Added dynamic drive discovery via assign_list() syscall
+- Implemented inline rename editor with full keyboard input
+- Desktop dynamically populates volume icons from kernel assigns
+- F2 key initiates rename for selected files
+- RenameEditor struct tracks cursor, selection, and edit buffer
+- Marked Phase 1.5 and Phase 2 as complete
+
+**v1.3 (2025-01-24)**
+- Phase 2 implementation: context menus, file operations, keyboard shortcuts
+- Implemented: delete, copy, paste, new folder operations
+- Added right-click context menu with file-specific options
+- Added keyboard shortcuts: Enter (open), Delete, F5 (refresh), C (copy), V (paste), N (new folder)
+- Enhanced status bar with file size info and keyboard hints
+- File type associations infrastructure (ready for VEdit, Viewer)
+- Updated Phase 2 testing checklist with completed items
+
+**v1.2 (2025-01-24)**
+- Updated Phase 1.5 status to reflect file browser is FUNCTIONAL (not skeleton)
+- Changed "Settings" to "Prefs" throughout (Amiga terminology)
+- Added question mark icon specification for Help/About (Amiga style)
+- Added Appendix C: VEdit GUI Text Editor detailed specification
+- Added Appendix D: Amiga-Style Icon Specifications
+- Renamed user/settings to user/prefs throughout
 
 **v1.1 (2025-01-23)**
 - Updated to reflect Phase 1.5 progress

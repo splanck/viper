@@ -49,9 +49,33 @@ private:
     int findFileAt(int x, int y);
     void handleClick(int x, int y, int button);
     void handleDoubleClick(int fileIndex);
+    void handleKeyPress(int keycode);
 
     FileType determineFileType(const char *name, bool isDir);
     const uint32_t *getIconForType(FileType type);
+
+    // Context menu
+    void showContextMenu(int x, int y, int fileIndex);
+    void hideContextMenu();
+    void drawContextMenu();
+    void handleMenuClick(int x, int y);
+    void executeMenuAction(MenuAction action);
+
+    // File operations
+    bool deleteFile(int fileIndex);
+    bool renameFile(int fileIndex, const char *newName);
+    void refreshDirectory();
+    void copyFile(int fileIndex);
+    void cutFile(int fileIndex);
+    bool pasteFile();
+    bool createNewFolder();
+
+    // Inline rename editor
+    void startRename(int fileIndex);
+    void cancelRename();
+    void commitRename();
+    void handleRenameKey(int keycode, bool shift);
+    void drawRenameEditor();
 
 private:
     Desktop *m_desktop;
@@ -71,6 +95,13 @@ private:
     // Double-click detection
     int m_lastClickFile = -1;
     uint64_t m_lastClickTime = 0;
+
+    // Context menu state
+    ContextMenu m_contextMenu = {};
+    int m_contextMenuFile = -1;  // File index the menu was opened for
+
+    // Inline rename editor state
+    RenameEditor m_renameEditor = {};
 };
 
 } // namespace workbench

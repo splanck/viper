@@ -29,6 +29,11 @@ constexpr int MAX_FILENAME_LEN  = 64;
 constexpr int MAX_FILES_PER_DIR = 128;
 constexpr int MAX_BROWSERS      = 8;
 
+// Context menu constants
+constexpr int MENU_ITEM_HEIGHT  = 20;
+constexpr int MENU_WIDTH        = 120;
+constexpr int MAX_MENU_ITEMS    = 8;
+
 /// @brief File entry type.
 enum class FileType {
     Directory,
@@ -62,6 +67,61 @@ struct DesktopIcon {
     const uint32_t *pixels;        // 24x24 icon pixel data
     IconAction action;             // What to do on double-click
     bool selected;
+};
+
+/// @brief Context menu item actions.
+enum class MenuAction {
+    None,
+    Open,
+    Delete,
+    Rename,
+    Copy,
+    Paste,
+    NewFolder,
+    Properties
+};
+
+/// @brief Context menu item.
+struct MenuItem {
+    const char *label;
+    MenuAction action;
+    bool separator;   // Draw a separator line after this item
+    bool enabled;
+};
+
+/// @brief Context menu state.
+struct ContextMenu {
+    int x, y;                           // Screen position
+    MenuItem items[MAX_MENU_ITEMS];
+    int itemCount;
+    int hoveredItem;
+    bool visible;
+};
+
+/// @brief Clipboard operation type.
+enum class ClipboardOp {
+    None,
+    Copy,
+    Cut
+};
+
+/// @brief Simple file clipboard for copy/paste operations.
+struct FileClipboard {
+    char path[MAX_PATH_LEN];
+    ClipboardOp operation;
+    bool hasContent;
+};
+
+// Global clipboard (shared across all file browsers)
+extern FileClipboard g_clipboard;
+
+/// @brief Inline rename editor state.
+struct RenameEditor {
+    int fileIndex;                      // Index of file being renamed
+    char buffer[MAX_FILENAME_LEN];      // Edit buffer
+    int cursorPos;                      // Cursor position in buffer
+    int selStart;                       // Selection start (-1 if no selection)
+    bool active;                        // Whether rename is in progress
 };
 
 } // namespace workbench
