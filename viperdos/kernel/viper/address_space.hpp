@@ -256,6 +256,32 @@ class AddressSpace {
     }
 
     /**
+     * @brief Read the raw PTE value for a virtual address.
+     *
+     * @details
+     * Walks the page tables and returns the raw L3 entry value, which may be
+     * a valid mapping, a swap entry, or zero (unmapped). This is used by the
+     * swap subsystem to detect swap entries.
+     *
+     * @param virt Virtual address to look up.
+     * @return Raw PTE value, or 0 if not mapped at L3.
+     */
+    u64 read_pte(u64 virt);
+
+    /**
+     * @brief Write a raw PTE value for a virtual address.
+     *
+     * @details
+     * Walks (and allocates if needed) page tables to L3 and writes the given
+     * entry value. Used to store swap entries or update mappings directly.
+     *
+     * @param virt Virtual address to update.
+     * @param entry PTE value to write.
+     * @return true on success, false if table allocation fails.
+     */
+    bool write_pte(u64 virt, u64 entry);
+
+    /**
      * @brief Clone mappings from another address space for COW fork.
      *
      * @details

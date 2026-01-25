@@ -19,6 +19,7 @@
 #include "../lib/spinlock.hpp"
 #include "../mm/cow.hpp"
 #include "../mm/pmm.hpp"
+#include "../mm/swap.hpp"
 
 namespace viper {
 
@@ -210,7 +211,7 @@ void AddressSpace::destroy() {
                         if (l2_entry & pte::TABLE) {
                             u64 l3_addr = l2_entry & pte::ADDR_MASK;
 
-                            // Walk L3 and free user pages
+                            // Walk L3 and free user pages (or swap entries)
                             u64 *l3 = phys_to_virt(l3_addr);
                             for (int l = 0; l < 512; l++) {
                                 u64 l3_entry = l3[l];
@@ -230,6 +231,9 @@ void AddressSpace::destroy() {
                                         // refcount == 0: page wasn't COW-tracked, just free it
                                         pmm::free_page(page_addr);
                                     }
+                                } else if (mm::swap::is_swap_entry(l3_entry)) {
+                                    // Page is swapped out - free the swap slot
+                                    mm::swap::free_slot(l3_entry);
                                 }
                             }
 
@@ -452,6 +456,68 @@ void tlb_flush_page(u64 virt, u16 asid) {
     asm volatile("tlbi   vae1is, %0      \n"
                  "dsb    sy              \n"
                  "isb                    \n" ::"r"(val));
+}
+
+/** @copydoc viper::AddressSpace::read_pte */
+u64 AddressSpace::read_pte(u64 virt) {
+    if (root_ == 0)
+        return 0;
+
+    u64 *l0 = phys_to_virt(root_);
+
+    int i0 = (virt >> 39) & 0x1FF;
+    int i1 = (virt >> 30) & 0x1FF;
+    int i2 = (virt >> 21) & 0x1FF;
+    int i3 = (virt >> 12) & 0x1FF;
+
+    if (!(l0[i0] & pte::VALID))
+        return 0;
+    u64 *l1 = phys_to_virt(l0[i0] & pte::ADDR_MASK);
+
+    if (!(l1[i1] & pte::VALID))
+        return 0;
+    u64 *l2 = phys_to_virt(l1[i1] & pte::ADDR_MASK);
+
+    if (!(l2[i2] & pte::VALID))
+        return 0;
+    u64 *l3 = phys_to_virt(l2[i2] & pte::ADDR_MASK);
+
+    // Return raw PTE value (may be valid, swap entry, or zero)
+    return l3[i3];
+}
+
+/** @copydoc viper::AddressSpace::write_pte */
+bool AddressSpace::write_pte(u64 virt, u64 entry) {
+    if (root_ == 0)
+        return false;
+
+    u64 *l0 = phys_to_virt(root_);
+
+    int i0 = (virt >> 39) & 0x1FF;
+    int i1 = (virt >> 30) & 0x1FF;
+    int i2 = (virt >> 21) & 0x1FF;
+    int i3 = (virt >> 12) & 0x1FF;
+
+    // Walk/create page tables
+    u64 *l1 = get_or_alloc_table(l0, i0);
+    if (!l1)
+        return false;
+
+    u64 *l2 = get_or_alloc_table(l1, i1);
+    if (!l2)
+        return false;
+
+    u64 *l3 = get_or_alloc_table(l2, i2);
+    if (!l3)
+        return false;
+
+    // Write the entry
+    l3[i3] = entry;
+
+    // Invalidate TLB for this page
+    tlb_flush_page(virt, asid_);
+
+    return true;
 }
 
 /** @copydoc viper::AddressSpace::clone_cow_from */

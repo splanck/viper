@@ -85,6 +85,47 @@ constexpr u64 STACK_TOP = 0x0000'7FFF'FFFF'0000ULL;
 /// Default user stack size (1MB)
 constexpr u64 STACK_SIZE = 1 * 1024 * 1024;
 
+/// Maximum valid user address (bit 47 must be 0 for user space in AArch64)
+constexpr u64 USER_ADDR_MAX = 0x0000'7FFF'FFFF'FFFFULL;
+
+/**
+ * @brief Check if an address is in user space (valid for user access).
+ *
+ * @details
+ * In AArch64 with 48-bit VAs, user space addresses have bit 47 = 0.
+ * This means valid user addresses are from 0x0 to 0x0000'7FFF'FFFF'FFFF.
+ *
+ * @param addr Address to check.
+ * @return true if address is in user space, false if in kernel space.
+ */
+constexpr bool is_user_addr(u64 addr) {
+    return addr <= USER_ADDR_MAX;
+}
+
+/**
+ * @brief Check if an address is in kernel space.
+ *
+ * @param addr Address to check.
+ * @return true if address is in kernel space.
+ */
+constexpr bool is_kernel_addr(u64 addr) {
+    return addr > USER_ADDR_MAX;
+}
+
+/**
+ * @brief Validate a user buffer (address + length doesn't overflow into kernel).
+ *
+ * @param addr Start address of buffer.
+ * @param len Length of buffer in bytes.
+ * @return true if entire buffer is in user space.
+ */
+constexpr bool is_valid_user_buffer(u64 addr, u64 len) {
+    // Check for overflow
+    if (addr + len < addr) return false;
+    // Check entire range is in user space
+    return is_user_addr(addr) && is_user_addr(addr + len - 1);
+}
+
 } // namespace user
 
 // =============================================================================

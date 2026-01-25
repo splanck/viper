@@ -70,6 +70,7 @@
 #include "mm/pmm.hpp"
 #include "mm/pressure.hpp"
 #include "mm/slab.hpp"
+#include "mm/swap.hpp"
 #include "mm/vmm.hpp"
 #include "sched/scheduler.hpp"
 #include "sched/task.hpp"
@@ -597,6 +598,13 @@ void init_user_disk() {
         }
     } else {
         serial::puts("[kernel] User cache init failed\n");
+    }
+
+    // Initialize swap subsystem (uses portion of user disk)
+    if (mm::swap::init()) {
+        serial::puts("[kernel] Swap enabled\n");
+    } else {
+        serial::puts("[kernel] Swap not available\n");
     }
 }
 

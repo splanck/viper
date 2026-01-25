@@ -1,4 +1,5 @@
 #include "kheap.hpp"
+#include "../arch/aarch64/cpu.hpp"
 #include "../console/serial.hpp"
 #include "../include/constants.hpp"
 #include "../lib/spinlock.hpp"
@@ -135,6 +136,21 @@ constexpr u64 SIZE_CLASS_LIMITS[NUM_SIZE_CLASSES] = {
 };
 FreeBlock *free_lists[NUM_SIZE_CLASSES] = {nullptr};
 u64 free_list_counts[NUM_SIZE_CLASSES] = {0};
+
+// Per-CPU arenas for lock-free small allocations
+// Each CPU has its own free lists for the smaller size classes (0-5, up to 1024 bytes)
+constexpr usize PERCPU_SIZE_CLASSES = 6; // 32, 64, 128, 256, 512, 1024
+constexpr usize PERCPU_CACHE_SIZE = 8;   // Max blocks to cache per size class per CPU
+
+struct PerCpuArena {
+    FreeBlock *free_lists[PERCPU_SIZE_CLASSES];
+    u32 counts[PERCPU_SIZE_CLASSES];
+    Spinlock lock; // Per-CPU lock (rarely contended)
+    bool initialized;
+};
+
+PerCpuArena percpu_arenas[cpu::MAX_CPUS];
+bool percpu_enabled = false;
 
 // Legacy single free list pointer for backward compatibility with dump()
 FreeBlock *free_list = nullptr;
@@ -435,29 +451,59 @@ void init() {
     serial::puts(" (");
     serial::put_dec(heap_size / 1024);
     serial::puts(" KB)\n");
+
+    // Initialize per-CPU arenas
+    for (u32 i = 0; i < cpu::MAX_CPUS; i++) {
+        for (usize j = 0; j < PERCPU_SIZE_CLASSES; j++) {
+            percpu_arenas[i].free_lists[j] = nullptr;
+            percpu_arenas[i].counts[j] = 0;
+        }
+        percpu_arenas[i].initialized = true;
+    }
+    percpu_enabled = true;
+    serial::puts("[kheap] Per-CPU arenas enabled\n");
 }
 
 void *kmalloc(u64 size) {
     if (size == 0)
         return nullptr;
 
-    SpinlockGuard guard(heap_lock);
-
-    // Calculate required block size (header + aligned user size)
+    // Calculate required block size
     u64 required = align_up(size + HEADER_SIZE);
     if (required < MIN_BLOCK_SIZE) {
         required = MIN_BLOCK_SIZE;
     }
+
+    // Try per-CPU arena first for small allocations (reduces lock contention)
+    usize size_class = get_size_class(required);
+    if (percpu_enabled && size_class < PERCPU_SIZE_CLASSES) {
+        u32 cpu_id = cpu::current_id();
+        if (cpu_id < cpu::MAX_CPUS) {
+            PerCpuArena &arena = percpu_arenas[cpu_id];
+            SpinlockGuard pcpu_guard(arena.lock);
+
+            if (arena.free_lists[size_class] != nullptr) {
+                FreeBlock *block = arena.free_lists[size_class];
+                arena.free_lists[size_class] = block->next;
+                arena.counts[size_class]--;
+
+                block->header.set_used();
+                total_allocated += block->header.size();
+                return block->header.data();
+            }
+        }
+    }
+
+    // Fall back to global heap
+    SpinlockGuard guard(heap_lock);
 
     // Search segregated free lists starting from the appropriate size class
     FreeBlock *best = nullptr;
     FreeBlock **best_prev = nullptr;
     usize best_class = NUM_SIZE_CLASSES;
 
-    usize start_class = get_size_class(required);
-
-    // Search from start_class upward to find a suitable block
-    for (usize c = start_class; c < NUM_SIZE_CLASSES; c++) {
+    // Search from size_class upward to find a suitable block
+    for (usize c = size_class; c < NUM_SIZE_CLASSES; c++) {
         FreeBlock **pp = &free_lists[c];
         while (*pp != nullptr) {
             if ((*pp)->header.size() >= required) {
@@ -477,7 +523,7 @@ found:
             return nullptr;
         }
         // Try again after expansion - new block will be in large class
-        for (usize c = start_class; c < NUM_SIZE_CLASSES; c++) {
+        for (usize c = size_class; c < NUM_SIZE_CLASSES; c++) {
             FreeBlock **pp = &free_lists[c];
             while (*pp != nullptr) {
                 if ((*pp)->header.size() >= required) {
@@ -598,6 +644,35 @@ void kfree(void *ptr) {
     if (ptr == nullptr)
         return;
 
+    // Get block header for size check
+    BlockHeader *header = ptr_to_header(ptr);
+
+    // Try to return small blocks to per-CPU arena (reduces lock contention)
+    if (percpu_enabled && header->is_valid() && !header->is_free()) {
+        u64 block_size = header->size();
+        usize size_class = get_size_class(block_size);
+
+        if (size_class < PERCPU_SIZE_CLASSES) {
+            u32 cpu_id = cpu::current_id();
+            if (cpu_id < cpu::MAX_CPUS) {
+                PerCpuArena &arena = percpu_arenas[cpu_id];
+                SpinlockGuard pcpu_guard(arena.lock);
+
+                // Only cache if below limit to avoid memory hoarding
+                if (arena.counts[size_class] < PERCPU_CACHE_SIZE) {
+                    header->set_free();
+                    FreeBlock *block = reinterpret_cast<FreeBlock *>(header);
+                    block->next = arena.free_lists[size_class];
+                    arena.free_lists[size_class] = block;
+                    arena.counts[size_class]++;
+                    total_allocated -= block_size;
+                    return;
+                }
+            }
+        }
+    }
+
+    // Fall back to global heap
     SpinlockGuard guard(heap_lock);
 
     // Bounds check: verify pointer is within any heap region
@@ -609,7 +684,7 @@ void kfree(void *ptr) {
         return;
     }
 
-    BlockHeader *header = ptr_to_header(ptr);
+    // Note: header was already computed at the start of kfree()
 
     // Alignment check
     if ((reinterpret_cast<u64>(header) % ALIGNMENT) != 0) {

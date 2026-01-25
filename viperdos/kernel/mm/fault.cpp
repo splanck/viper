@@ -46,6 +46,7 @@
 #include "../viper/viper.hpp"
 #include "cow.hpp"
 #include "pmm.hpp"
+#include "swap.hpp"
 #include "vma.hpp"
 
 namespace mm {
@@ -511,6 +512,82 @@ static bool demand_map_fn(u64 virt, u64 phys, u32 prot) {
 }
 
 /**
+ * @brief Try to handle a swap-in fault.
+ *
+ * @details
+ * Checks if the page table entry for the faulting address is a swap entry.
+ * If so, allocates a new page, reads the swapped data from disk, and maps it.
+ *
+ * @param proc The current process.
+ * @param info The fault information.
+ * @return true if a swap-in was performed.
+ */
+static bool try_swap_in(viper::Viper *proc, const FaultInfo &info) {
+    if (!swap::is_available())
+        return false;
+
+    viper::AddressSpace *as = viper::get_address_space(proc);
+    if (!as)
+        return false;
+
+    // Read the raw PTE for this address
+    u64 page_addr = info.fault_addr & ~0xFFFULL;
+    u64 pte_value = as->read_pte(page_addr);
+
+    // Check if it's a swap entry
+    if (!swap::is_swap_entry(pte_value))
+        return false;
+
+    serial::puts("[swap] Swap-in for address ");
+    serial::put_hex(page_addr);
+    serial::puts(" slot=");
+    serial::put_dec(swap::get_swap_slot(pte_value));
+    serial::puts("\n");
+
+    // Allocate a new physical page
+    u64 new_phys = pmm::alloc_page();
+    if (new_phys == 0) {
+        serial::puts("[swap] Out of memory for swap-in\n");
+        return false;
+    }
+
+    // Read the page from swap
+    if (!swap::swap_in(pte_value, new_phys)) {
+        serial::puts("[swap] Swap-in read failed\n");
+        pmm::free_page(new_phys);
+        return false;
+    }
+
+    // Find the VMA to determine permissions
+    u64 saved_daif = proc->vma_list.acquire_lock();
+    Vma *vma = proc->vma_list.find_locked(info.fault_addr);
+    u32 vma_prot_copy = vma ? vma->prot : (vma_prot::READ | vma_prot::WRITE);
+    proc->vma_list.release_lock(saved_daif);
+
+    // Convert VMA prot to address space prot
+    u32 as_prot = 0;
+    if (vma_prot_copy & vma_prot::READ)
+        as_prot |= viper::prot::READ;
+    if (vma_prot_copy & vma_prot::WRITE)
+        as_prot |= viper::prot::WRITE;
+    if (vma_prot_copy & vma_prot::EXEC)
+        as_prot |= viper::prot::EXEC;
+
+    // Map the new page
+    if (!as->map(page_addr, new_phys, pmm::PAGE_SIZE, as_prot)) {
+        serial::puts("[swap] Failed to map swapped-in page\n");
+        pmm::free_page(new_phys);
+        return false;
+    }
+
+    serial::puts("[swap] Swap-in complete, new phys=");
+    serial::put_hex(new_phys);
+    serial::puts("\n");
+
+    return true;
+}
+
+/**
  * @brief Try to handle a translation fault via demand paging.
  * @return true if fault was handled.
  */
@@ -518,6 +595,10 @@ static bool try_demand_paging(viper::Viper *proc, const FaultInfo &info) {
     viper::AddressSpace *as = viper::get_address_space(proc);
     if (!as)
         return false;
+
+    // First, check if this is a swap-in situation
+    if (try_swap_in(proc, info))
+        return true;
 
     FaultResult result =
         handle_demand_fault(&proc->vma_list, info.fault_addr, info.is_write, demand_map_fn);

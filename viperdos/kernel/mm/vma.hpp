@@ -67,11 +67,17 @@ constexpr u8 SHARED = (1 << 1); ///< Shared mapping (don't COW on fork)
 } // namespace vma_flags
 
 /**
+ * @brief Red-black tree color for VMA nodes.
+ */
+enum class RBColor : u8 { RED = 0, BLACK = 1 };
+
+/**
  * @brief Virtual Memory Area descriptor.
  *
  * @details
  * Describes a contiguous region of virtual address space with uniform
- * permissions and backing. VMAs are stored in a linked list per address space.
+ * permissions and backing. VMAs are stored in a red-black tree for O(log n)
+ * lookup by address. Also maintains a linked list for iteration.
  */
 struct Vma {
     u64 start;    // Start address (page-aligned)
@@ -79,13 +85,19 @@ struct Vma {
     u32 prot;     // Protection flags (vma_prot)
     VmaType type; // Backing type
     u8 flags;     // VMA flags (vma_flags)
-    u8 _padding[2];
+    RBColor color; // Red-black tree color
+    u8 _padding;
 
     // For file-backed VMAs
     u64 file_inode;  // Inode number (0 if anonymous)
     u64 file_offset; // Offset within file
 
-    // Linked list
+    // Red-black tree pointers
+    Vma *left;
+    Vma *right;
+    Vma *parent;
+
+    // Linked list for iteration
     Vma *next;
 
     /**
@@ -237,7 +249,8 @@ class VmaList {
   private:
     Vma pool_[MAX_VMAS];    // Static pool of VMA structures
     bool used_[MAX_VMAS];   // Which pool entries are in use
-    Vma *head_{nullptr};    // Head of sorted linked list
+    Vma *head_{nullptr};    // Head of sorted linked list (for iteration)
+    Vma *root_{nullptr};    // Root of red-black tree (for O(log n) lookup)
     usize count_{0};        // Number of active VMAs
     mutable Spinlock lock_; // Protects all VmaList operations
 
@@ -252,9 +265,54 @@ class VmaList {
     void free_vma(Vma *vma);
 
     /**
-     * @brief Insert a VMA in sorted order.
+     * @brief Insert a VMA in sorted order (linked list).
      */
     void insert_sorted(Vma *vma);
+
+    /**
+     * @brief Insert a VMA into the red-black tree.
+     */
+    void rb_insert(Vma *vma);
+
+    /**
+     * @brief Remove a VMA from the red-black tree.
+     */
+    void rb_remove(Vma *vma);
+
+    /**
+     * @brief Fix red-black tree properties after insertion.
+     */
+    void rb_insert_fixup(Vma *vma);
+
+    /**
+     * @brief Fix red-black tree properties after removal.
+     */
+    void rb_remove_fixup(Vma *vma, Vma *parent);
+
+    /**
+     * @brief Left rotate around a node.
+     */
+    void rb_rotate_left(Vma *x);
+
+    /**
+     * @brief Right rotate around a node.
+     */
+    void rb_rotate_right(Vma *x);
+
+    /**
+     * @brief Find VMA using red-black tree (O(log n)).
+     */
+    Vma *rb_find(u64 addr) const;
+
+    /**
+     * @brief Transplant subtree during removal.
+     */
+    void rb_transplant(Vma *u, Vma *v);
+
+    /**
+     * @brief Find minimum node in subtree.
+     */
+    Vma *rb_minimum(Vma *x) const;
 };
 
 /**

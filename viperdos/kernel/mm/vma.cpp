@@ -10,6 +10,7 @@
 
 #include "vma.hpp"
 #include "../console/serial.hpp"
+#include "../fs/viperfs/viperfs.hpp"
 #include "pmm.hpp"
 
 namespace mm {
@@ -19,9 +20,269 @@ void VmaList::init() {
     for (usize i = 0; i < MAX_VMAS; i++) {
         used_[i] = false;
         pool_[i].next = nullptr;
+        pool_[i].left = nullptr;
+        pool_[i].right = nullptr;
+        pool_[i].parent = nullptr;
+        pool_[i].color = RBColor::BLACK;
     }
     head_ = nullptr;
+    root_ = nullptr;
     count_ = 0;
+}
+
+// ============================================================================
+// Red-Black Tree Operations for O(log n) VMA Lookup
+// ============================================================================
+
+void VmaList::rb_rotate_left(Vma *x) {
+    Vma *y = x->right;
+    x->right = y->left;
+    if (y->left) {
+        y->left->parent = x;
+    }
+    y->parent = x->parent;
+    if (!x->parent) {
+        root_ = y;
+    } else if (x == x->parent->left) {
+        x->parent->left = y;
+    } else {
+        x->parent->right = y;
+    }
+    y->left = x;
+    x->parent = y;
+}
+
+void VmaList::rb_rotate_right(Vma *x) {
+    Vma *y = x->left;
+    x->left = y->right;
+    if (y->right) {
+        y->right->parent = x;
+    }
+    y->parent = x->parent;
+    if (!x->parent) {
+        root_ = y;
+    } else if (x == x->parent->right) {
+        x->parent->right = y;
+    } else {
+        x->parent->left = y;
+    }
+    y->right = x;
+    x->parent = y;
+}
+
+void VmaList::rb_insert_fixup(Vma *z) {
+    while (z->parent && z->parent->color == RBColor::RED) {
+        if (z->parent->parent && z->parent == z->parent->parent->left) {
+            Vma *y = z->parent->parent->right;
+            if (y && y->color == RBColor::RED) {
+                z->parent->color = RBColor::BLACK;
+                y->color = RBColor::BLACK;
+                z->parent->parent->color = RBColor::RED;
+                z = z->parent->parent;
+            } else {
+                if (z == z->parent->right) {
+                    z = z->parent;
+                    rb_rotate_left(z);
+                }
+                z->parent->color = RBColor::BLACK;
+                if (z->parent->parent) {
+                    z->parent->parent->color = RBColor::RED;
+                    rb_rotate_right(z->parent->parent);
+                }
+            }
+        } else if (z->parent->parent) {
+            Vma *y = z->parent->parent->left;
+            if (y && y->color == RBColor::RED) {
+                z->parent->color = RBColor::BLACK;
+                y->color = RBColor::BLACK;
+                z->parent->parent->color = RBColor::RED;
+                z = z->parent->parent;
+            } else {
+                if (z == z->parent->left) {
+                    z = z->parent;
+                    rb_rotate_right(z);
+                }
+                z->parent->color = RBColor::BLACK;
+                if (z->parent->parent) {
+                    z->parent->parent->color = RBColor::RED;
+                    rb_rotate_left(z->parent->parent);
+                }
+            }
+        }
+    }
+    root_->color = RBColor::BLACK;
+}
+
+void VmaList::rb_insert(Vma *z) {
+    z->left = nullptr;
+    z->right = nullptr;
+    z->color = RBColor::RED;
+
+    Vma *y = nullptr;
+    Vma *x = root_;
+
+    while (x) {
+        y = x;
+        if (z->start < x->start) {
+            x = x->left;
+        } else {
+            x = x->right;
+        }
+    }
+
+    z->parent = y;
+    if (!y) {
+        root_ = z;
+    } else if (z->start < y->start) {
+        y->left = z;
+    } else {
+        y->right = z;
+    }
+
+    rb_insert_fixup(z);
+}
+
+Vma *VmaList::rb_minimum(Vma *x) const {
+    while (x && x->left) {
+        x = x->left;
+    }
+    return x;
+}
+
+void VmaList::rb_transplant(Vma *u, Vma *v) {
+    if (!u->parent) {
+        root_ = v;
+    } else if (u == u->parent->left) {
+        u->parent->left = v;
+    } else {
+        u->parent->right = v;
+    }
+    if (v) {
+        v->parent = u->parent;
+    }
+}
+
+void VmaList::rb_remove_fixup(Vma *x, Vma *parent) {
+    while (x != root_ && (!x || x->color == RBColor::BLACK)) {
+        if (x == (parent ? parent->left : nullptr)) {
+            Vma *w = parent ? parent->right : nullptr;
+            if (w && w->color == RBColor::RED) {
+                w->color = RBColor::BLACK;
+                parent->color = RBColor::RED;
+                rb_rotate_left(parent);
+                w = parent->right;
+            }
+            if (w && (!w->left || w->left->color == RBColor::BLACK) &&
+                (!w->right || w->right->color == RBColor::BLACK)) {
+                w->color = RBColor::RED;
+                x = parent;
+                parent = x ? x->parent : nullptr;
+            } else if (w) {
+                if (!w->right || w->right->color == RBColor::BLACK) {
+                    if (w->left) w->left->color = RBColor::BLACK;
+                    w->color = RBColor::RED;
+                    rb_rotate_right(w);
+                    w = parent->right;
+                }
+                if (w) {
+                    w->color = parent->color;
+                    parent->color = RBColor::BLACK;
+                    if (w->right) w->right->color = RBColor::BLACK;
+                    rb_rotate_left(parent);
+                }
+                x = root_;
+                break;
+            } else {
+                break;
+            }
+        } else {
+            Vma *w = parent ? parent->left : nullptr;
+            if (w && w->color == RBColor::RED) {
+                w->color = RBColor::BLACK;
+                parent->color = RBColor::RED;
+                rb_rotate_right(parent);
+                w = parent->left;
+            }
+            if (w && (!w->right || w->right->color == RBColor::BLACK) &&
+                (!w->left || w->left->color == RBColor::BLACK)) {
+                w->color = RBColor::RED;
+                x = parent;
+                parent = x ? x->parent : nullptr;
+            } else if (w) {
+                if (!w->left || w->left->color == RBColor::BLACK) {
+                    if (w->right) w->right->color = RBColor::BLACK;
+                    w->color = RBColor::RED;
+                    rb_rotate_left(w);
+                    w = parent->left;
+                }
+                if (w) {
+                    w->color = parent->color;
+                    parent->color = RBColor::BLACK;
+                    if (w->left) w->left->color = RBColor::BLACK;
+                    rb_rotate_right(parent);
+                }
+                x = root_;
+                break;
+            } else {
+                break;
+            }
+        }
+    }
+    if (x) x->color = RBColor::BLACK;
+}
+
+void VmaList::rb_remove(Vma *z) {
+    if (!z) return;
+
+    Vma *y = z;
+    Vma *x = nullptr;
+    Vma *x_parent = nullptr;
+    RBColor y_original_color = y->color;
+
+    if (!z->left) {
+        x = z->right;
+        x_parent = z->parent;
+        rb_transplant(z, z->right);
+    } else if (!z->right) {
+        x = z->left;
+        x_parent = z->parent;
+        rb_transplant(z, z->left);
+    } else {
+        y = rb_minimum(z->right);
+        y_original_color = y->color;
+        x = y->right;
+        if (y->parent == z) {
+            x_parent = y;
+        } else {
+            x_parent = y->parent;
+            rb_transplant(y, y->right);
+            y->right = z->right;
+            if (y->right) y->right->parent = y;
+        }
+        rb_transplant(z, y);
+        y->left = z->left;
+        if (y->left) y->left->parent = y;
+        y->color = z->color;
+    }
+
+    if (y_original_color == RBColor::BLACK) {
+        rb_remove_fixup(x, x_parent);
+    }
+}
+
+Vma *VmaList::rb_find(u64 addr) const {
+    Vma *node = root_;
+    while (node) {
+        if (addr < node->start) {
+            node = node->left;
+        } else if (addr >= node->end) {
+            node = node->right;
+        } else {
+            // addr is within [node->start, node->end)
+            return node;
+        }
+    }
+    return nullptr;
 }
 
 Vma *VmaList::alloc_vma() {
@@ -67,22 +328,6 @@ void VmaList::insert_sorted(Vma *vma) {
     prev->next = vma;
 }
 
-// Internal unlocked find for use when lock is already held
-static Vma *find_unlocked(Vma *head, u64 addr) {
-    Vma *vma = head;
-    while (vma) {
-        if (vma->contains(addr)) {
-            return vma;
-        }
-        // Optimization: if we've passed the address, stop searching
-        if (vma->start > addr) {
-            break;
-        }
-        vma = vma->next;
-    }
-    return nullptr;
-}
-
 /**
  * @brief Check if a range [start, end) overlaps with any existing VMA.
  * @note Caller must hold lock_.
@@ -108,17 +353,20 @@ static Vma *find_overlap_unlocked(Vma *head, u64 start, u64 end) {
 
 Vma *VmaList::find(u64 addr) {
     SpinlockGuard guard(lock_);
-    return find_unlocked(head_, addr);
+    // Use O(log n) red-black tree lookup
+    return rb_find(addr);
 }
 
 Vma *VmaList::find_locked(u64 addr) {
     // Caller must hold lock_
-    return find_unlocked(head_, addr);
+    // Use O(log n) red-black tree lookup
+    return rb_find(addr);
 }
 
 const Vma *VmaList::find(u64 addr) const {
     SpinlockGuard guard(lock_);
-    return find_unlocked(head_, addr);
+    // Use O(log n) red-black tree lookup
+    return rb_find(addr);
 }
 
 Vma *VmaList::add(u64 start, u64 end, u32 prot, VmaType type) {
@@ -150,11 +398,18 @@ Vma *VmaList::add(u64 start, u64 end, u32 prot, VmaType type) {
     vma->end = end;
     vma->prot = prot;
     vma->type = type;
+    vma->flags = vma_flags::NONE;
     vma->file_inode = 0;
     vma->file_offset = 0;
     vma->next = nullptr;
+    vma->left = nullptr;
+    vma->right = nullptr;
+    vma->parent = nullptr;
+    vma->color = RBColor::RED;
 
-    insert_sorted(vma);
+    // Insert into both data structures
+    insert_sorted(vma); // Linked list for iteration
+    rb_insert(vma);     // Red-black tree for O(log n) lookup
 
     return vma;
 }
@@ -175,6 +430,10 @@ bool VmaList::remove(Vma *target) {
         return false;
     }
 
+    // Remove from red-black tree
+    rb_remove(target);
+
+    // Remove from linked list
     if (head_ == target) {
         head_ = target->next;
         free_vma(target);
@@ -208,6 +467,10 @@ void VmaList::remove_range(u64 start, u64 end) {
         if (overlaps) {
             Vma *next = vma->next;
 
+            // Remove from red-black tree
+            rb_remove(vma);
+
+            // Remove from linked list
             if (prev) {
                 prev->next = next;
             } else {
@@ -227,8 +490,12 @@ void VmaList::clear() {
     SpinlockGuard guard(lock_);
 
     head_ = nullptr;
+    root_ = nullptr;
     for (usize i = 0; i < MAX_VMAS; i++) {
         used_[i] = false;
+        pool_[i].left = nullptr;
+        pool_[i].right = nullptr;
+        pool_[i].parent = nullptr;
     }
     count_ = 0;
 }
@@ -347,6 +614,9 @@ FaultResult handle_demand_fault(VmaList *vma_list,
     // Copy VMA properties before releasing lock to avoid TOCTOU
     u32 vma_prot_copy = vma->prot;
     VmaType vma_type_copy = vma->type;
+    u64 file_inode_copy = vma->file_inode;
+    u64 file_offset_copy = vma->file_offset;
+    u64 vma_start_copy = vma->start;
     vma_list->release_lock(saved_daif);
 
     // Allocate a physical page (outside lock to avoid lock ordering issues)
@@ -368,13 +638,48 @@ FaultResult handle_demand_fault(VmaList *vma_list,
             }
             break;
 
-        case VmaType::FILE:
-            // TODO: Read from file
-            // For now, zero-fill file-backed pages too
-            for (usize i = 0; i < 4096; i++) {
-                ptr[i] = 0;
+        case VmaType::FILE: {
+            // Read from file if we have a valid inode
+            bool read_ok = false;
+            if (file_inode_copy != 0) {
+                // Calculate offset within file for this page
+                u64 page_offset_in_vma = page_addr - vma_start_copy;
+                u64 file_read_offset = file_offset_copy + page_offset_in_vma;
+
+                // Try to read from ViperFS
+                fs::viperfs::ViperFS &vfs = fs::viperfs::viperfs();
+                fs::viperfs::Inode *inode = vfs.read_inode(file_inode_copy);
+                if (inode) {
+                    // Zero the page first (in case file is shorter than page)
+                    for (usize i = 0; i < 4096; i++) {
+                        ptr[i] = 0;
+                    }
+
+                    // Read file data into the page
+                    i64 bytes_read = vfs.read_data(inode, file_read_offset, ptr, 4096);
+                    vfs.release_inode(inode);
+
+                    if (bytes_read >= 0) {
+                        read_ok = true;
+                        serial::puts("[vma] File page-in: inode ");
+                        serial::put_dec(file_inode_copy);
+                        serial::puts(" offset ");
+                        serial::put_dec(file_read_offset);
+                        serial::puts(" read ");
+                        serial::put_dec(bytes_read);
+                        serial::puts(" bytes\n");
+                    }
+                }
+            }
+
+            // Fall back to zero-fill if read failed
+            if (!read_ok) {
+                for (usize i = 0; i < 4096; i++) {
+                    ptr[i] = 0;
+                }
             }
             break;
+        }
 
         case VmaType::GUARD:
             // Should not reach here (checked above under lock)
