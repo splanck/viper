@@ -1,7 +1,66 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
 /**
  * @file shell.cpp
  * @brief Main shell loop and command dispatch for vinit.
+ *
+ * This file implements the main command shell for ViperDOS, including
+ * the read-eval-print loop and command parsing/dispatch.
+ *
+ * ## Shell Loop
+ *
+ * The shell_loop() function is the core of the interactive shell:
+ * 1. Display prompt (e.g., "SYS:/> ")
+ * 2. Read a line of input via readline()
+ * 3. Parse command and arguments
+ * 4. Dispatch to appropriate cmd_* handler
+ * 5. Repeat
+ *
+ * ## Command Format
+ *
+ * Commands are case-insensitive. Arguments are separated by whitespace.
+ *
+ * ```
+ * COMMAND [argument1] [argument2] ...
+ * ```
+ *
+ * ## Built-in Commands
+ *
+ * | Command   | Description                    | Handler        |
+ * |-----------|--------------------------------|----------------|
+ * | CD        | Change directory               | cmd_cd()       |
+ * | PWD       | Print working directory        | cmd_pwd()      |
+ * | Dir       | List directory (compact)       | cmd_dir()      |
+ * | List      | List directory (detailed)      | cmd_list()     |
+ * | Type      | Display file contents          | cmd_type()     |
+ * | Copy      | Copy a file                    | cmd_copy()     |
+ * | Delete    | Delete a file                  | cmd_delete()   |
+ * | MakeDir   | Create directory               | cmd_makedir()  |
+ * | Rename    | Rename file/directory          | cmd_rename()   |
+ * | Run       | Execute a program              | cmd_run()      |
+ * | Assign    | List/manage assigns            | cmd_assign()   |
+ * | Path      | Resolve assign path            | cmd_path()     |
+ * | Fetch     | HTTP/HTTPS client              | cmd_fetch()    |
+ * | Help      | Show help information          | (inline)       |
+ * | Ver       | Show version                   | (inline)       |
+ * | Exit      | Exit shell (reboot)            | (inline)       |
+ *
+ * ## Prompt Format
+ *
+ * The prompt shows the current working directory prefixed with "SYS:":
+ * - Root: `SYS:> `
+ * - Directory: `SYS:/c/games> `
+ *
+ * @see vinit.hpp for global state
+ * @see cmd_fs.cpp for filesystem commands
+ * @see cmd_misc.cpp for run, assign, path, fetch
  */
+//===----------------------------------------------------------------------===//
+
 #include "vinit.hpp"
 
 // Paging control (defined in io.cpp)

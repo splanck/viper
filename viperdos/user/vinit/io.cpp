@@ -1,7 +1,61 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
 /**
  * @file io.cpp
- * @brief Console I/O and string helpers for vinit.
+ * @brief Console I/O, string helpers, and paging for vinit.
+ *
+ * This file implements all console input/output operations for the vinit
+ * shell, including:
+ * - Console service connection and messaging
+ * - Character and string output
+ * - Line editing with readline()
+ * - Paging for long output (e.g., help text)
+ *
+ * ## Console Protocol
+ *
+ * Communication with consoled uses a message-based protocol:
+ *
+ * | Message        | Direction | Description                  |
+ * |----------------|-----------|------------------------------|
+ * | CON_CONNECT    | Request   | Establish console connection |
+ * | CON_WRITE      | Request   | Write text to console        |
+ *
+ * All messages include a request_id for matching replies.
+ *
+ * ## Output Functions
+ *
+ * | Function      | Description                              |
+ * |---------------|------------------------------------------|
+ * | print_char()  | Output a single character                |
+ * | print_str()   | Output a null-terminated string          |
+ * | put_num()     | Output a signed decimal number           |
+ * | put_hex()     | Output an unsigned hexadecimal number    |
+ *
+ * ## Line Editing
+ *
+ * The readline() function provides basic line editing:
+ * - Printable characters are echoed and appended
+ * - Backspace deletes the last character
+ * - Enter submits the line
+ * - Lines are null-terminated in the output buffer
+ *
+ * ## Paging System
+ *
+ * For commands with long output (like Help), paging prevents text
+ * from scrolling off screen:
+ * - paging_enable(): Starts counting lines
+ * - paging_check(): Called after each newline, prompts "-- More --"
+ * - paging_disable(): Turns off paging
+ *
+ * @see vinit.hpp for shared declarations
+ * @see shell.cpp for command dispatch
  */
+//===----------------------------------------------------------------------===//
+
 #include "vinit.hpp"
 
 // =============================================================================

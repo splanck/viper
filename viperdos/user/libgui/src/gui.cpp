@@ -1,11 +1,108 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
 /**
  * @file gui.cpp
  * @brief ViperDOS GUI client library implementation.
  *
- * @details
- * Communicates with displayd via IPC to create windows, manage surfaces,
- * and handle input events.
+ * This file implements the client-side GUI library that applications use to
+ * create windows, handle input events, and perform drawing operations. The
+ * library communicates with displayd (the display server) via IPC channels
+ * using the display protocol defined in display_protocol.hpp.
+ *
+ * ## Architecture Overview
+ *
+ * ```
+ * +------------------+        IPC Channel         +-------------------+
+ * |   Application    | <----------------------->  |     displayd      |
+ * |------------------|                            |-------------------|
+ * | libgui (gui.cpp) |  - CreateSurface request   | Display Server    |
+ * | - gui_init()     |  - Present request         | - Window Manager  |
+ * | - gui_create_win |  - Event notification      | - Compositor      |
+ * | - gui_poll_event |                            | - Input Handler   |
+ * | - gui_fill_rect  |                            |                   |
+ * +------------------+        Shared Memory       +-------------------+
+ *         |          <--------------------------->       |
+ *         |              (pixel buffer)                  |
+ *         +----------------------------------------------+
+ * ```
+ *
+ * ## Communication Model
+ *
+ * The library uses a request-reply pattern for most operations:
+ * 1. Application calls a gui_* function
+ * 2. Library sends a request message to displayd via IPC channel
+ * 3. Library waits for a reply message from displayd
+ * 4. Library returns the result to the application
+ *
+ * For events, displayd pushes notifications to a dedicated event channel
+ * that the application polls via gui_poll_event().
+ *
+ * ## Shared Memory for Pixel Buffers
+ *
+ * Window pixel buffers are allocated by displayd and shared with the
+ * application via shared memory (SHM). This allows efficient zero-copy
+ * rendering:
+ * 1. displayd creates SHM region for window surface
+ * 2. displayd sends SHM handle to application in CreateSurface reply
+ * 3. Application maps SHM into its address space
+ * 4. Application draws directly to the pixel buffer
+ * 5. Application calls gui_present() to notify displayd to composite
+ *
+ * ## Thread Safety
+ *
+ * This library is NOT thread-safe. All gui_* functions should be called
+ * from a single thread. The library uses global state for the display
+ * channel connection and request ID counter.
+ *
+ * ## Usage Example
+ *
+ * @code
+ * // Initialize the GUI library
+ * if (gui_init() != 0) {
+ *     printf("Failed to connect to display server\n");
+ *     return -1;
+ * }
+ *
+ * // Create a window
+ * gui_window_t *win = gui_create_window("My App", 400, 300);
+ * if (!win) {
+ *     printf("Failed to create window\n");
+ *     gui_shutdown();
+ *     return -1;
+ * }
+ *
+ * // Main loop
+ * bool running = true;
+ * while (running) {
+ *     // Handle events
+ *     gui_event_t event;
+ *     while (gui_poll_event(win, &event) == 0) {
+ *         if (event.type == GUI_EVENT_CLOSE) {
+ *             running = false;
+ *         }
+ *     }
+ *
+ *     // Draw content
+ *     gui_fill_rect(win, 0, 0, 400, 300, 0xFFCCCCCC);
+ *     gui_draw_text(win, 10, 10, "Hello, World!", 0xFF000000);
+ *
+ *     // Present to screen
+ *     gui_present(win);
+ * }
+ *
+ * // Cleanup
+ * gui_destroy_window(win);
+ * gui_shutdown();
+ * @endcode
+ *
+ * @see display_protocol.hpp for the IPC message definitions
+ * @see gui.h for the public API declarations
  */
+//===----------------------------------------------------------------------===//
 
 #include "../include/gui.h"
 #include "../../servers/displayd/display_protocol.hpp"
@@ -13,26 +110,101 @@
 
 using namespace display_protocol;
 
-// =============================================================================
+//===----------------------------------------------------------------------===//
 // Internal State
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
-static int32_t g_display_channel = -1; // Channel to displayd
+/**
+ * @brief IPC channel handle for communication with displayd.
+ *
+ * This channel is obtained via assign_get("DISPLAY") during gui_init() and
+ * is used for all request-reply communication with the display server.
+ * A value of -1 indicates the library is not initialized.
+ */
+static int32_t g_display_channel = -1;
+
+/**
+ * @brief Monotonically increasing request ID counter.
+ *
+ * Each request sent to displayd is assigned a unique request_id to allow
+ * matching replies to their corresponding requests. This counter is
+ * incremented after each request.
+ */
 static uint32_t g_request_id = 1;
+
+/**
+ * @brief Flag indicating whether gui_init() has been called successfully.
+ *
+ * Used to prevent double-initialization and to validate that the library
+ * is ready for use before other operations.
+ */
 static bool g_initialized = false;
 
+/**
+ * @brief Internal window structure containing surface state.
+ *
+ * This structure is opaque to applications (they only see gui_window_t*).
+ * It contains all the state needed to manage a window, including the
+ * surface ID for displayd communication, the shared memory pixel buffer,
+ * and the event channel for receiving input notifications.
+ *
+ * ## Memory Layout
+ *
+ * The pixel buffer is a contiguous array of 32-bit ARGB pixels:
+ * - Pixels are stored in row-major order
+ * - Each row has `stride` bytes (may be padded for alignment)
+ * - Total buffer size is `stride * height` bytes
+ *
+ * ## Handle Ownership
+ *
+ * The window owns:
+ * - shm_handle: The SHM handle for the pixel buffer (closed on destroy)
+ * - event_channel: The channel for receiving events (closed on destroy)
+ * - pixels: The mapped virtual address of the SHM (unmapped on destroy)
+ */
 struct gui_window {
-    uint32_t surface_id;
-    uint32_t width;
-    uint32_t height;
-    uint32_t stride;
-    uint32_t shm_handle;
-    uint32_t *pixels;
-    char title[64];
-    int32_t event_channel; // Channel for receiving events
+    uint32_t surface_id;     /**< Surface ID assigned by displayd. */
+    uint32_t width;          /**< Window content width in pixels. */
+    uint32_t height;         /**< Window content height in pixels. */
+    uint32_t stride;         /**< Row stride in bytes (may include padding). */
+    uint32_t shm_handle;     /**< SHM handle for the pixel buffer. */
+    uint32_t *pixels;        /**< Pointer to mapped pixel buffer. */
+    char title[64];          /**< Window title (null-terminated). */
+    int32_t event_channel;   /**< Channel for receiving events from displayd. */
 };
 
-// Complete 8x8 bitmap font (ASCII 32-127)
+/**
+ * @brief Complete 8x8 bitmap font covering ASCII 32-127.
+ *
+ * This embedded font provides basic text rendering capability without
+ * requiring external font files. Each character is represented as an
+ * 8-byte array, where each byte represents one row of pixels.
+ *
+ * ## Glyph Encoding
+ *
+ * Each byte represents 8 horizontal pixels, with the MSB (bit 7) being
+ * the leftmost pixel:
+ * - Bit 7: Column 0 (leftmost)
+ * - Bit 6: Column 1
+ * - ...
+ * - Bit 0: Column 7 (rightmost)
+ *
+ * A set bit (1) means the pixel should be drawn in the foreground color.
+ * A clear bit (0) means the pixel should be drawn in the background color
+ * (for gui_draw_char) or left unchanged (for gui_draw_text).
+ *
+ * ## Character Range
+ *
+ * The font covers printable ASCII characters:
+ * - Index 0 = Space (ASCII 32)
+ * - Index 1 = '!' (ASCII 33)
+ * - ...
+ * - Index 95 = DEL block (ASCII 127)
+ *
+ * To get the glyph for a character: g_font[c - 32]
+ *
+ * @note Characters outside the 32-127 range are skipped by drawing functions.
+ */
 static const uint8_t g_font[96][8] = {
     // 32: Space
     {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
@@ -228,11 +400,23 @@ static const uint8_t g_font[96][8] = {
     {0x10, 0x38, 0x6C, 0xC6, 0xC6, 0xFE, 0x00, 0x00},
 };
 
-// =============================================================================
+//===----------------------------------------------------------------------===//
 // Helper Functions
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
-// Debug helper for libgui
+/**
+ * @brief Debug helper that prints a string and a numeric value.
+ *
+ * This internal function outputs debugging information to the system console
+ * via sys::print(). It converts the integer value to decimal and handles
+ * negative numbers correctly.
+ *
+ * @param prefix A string prefix to print before the number.
+ * @param val    The integer value to print (can be negative).
+ *
+ * @note Output goes to the kernel debug console, not the GUI window.
+ * @note This function is only used during development/debugging.
+ */
 static void debug_num(const char *prefix, int64_t val) {
     sys::print(prefix);
     if (val < 0) {
@@ -250,6 +434,46 @@ static void debug_num(const char *prefix, int64_t val) {
     sys::print("\n");
 }
 
+/**
+ * @brief Sends a request to displayd and waits for the reply.
+ *
+ * This is the core IPC helper that implements the request-reply pattern
+ * for communicating with the display server. It handles channel creation,
+ * message sending, reply waiting with timeout, and handle transfer.
+ *
+ * ## Communication Flow
+ *
+ * 1. Create a new channel pair (send_ch, recv_ch)
+ * 2. Send the request to displayd with send_ch attached
+ * 3. displayd processes the request and sends reply to send_ch
+ * 4. We receive the reply on recv_ch
+ * 5. Clean up channels and return
+ *
+ * ## Timeout Behavior
+ *
+ * The function uses a polling loop with sleep() to wait for the reply.
+ * Maximum wait time is approximately 5 seconds (500 iterations * 10ms).
+ * If no reply arrives within this time, the function returns false.
+ *
+ * ## Handle Transfer
+ *
+ * Some replies include kernel handles (e.g., SHM handles for window buffers).
+ * If out_handles and handle_count are provided, received handles are copied
+ * to the out_handles array.
+ *
+ * @param req          Pointer to the request message buffer.
+ * @param req_len      Size of the request message in bytes.
+ * @param reply        Pointer to buffer for the reply message.
+ * @param reply_len    Size of the reply buffer in bytes.
+ * @param out_handles  Optional array to receive transferred handles.
+ * @param handle_count On input: max handles to receive. On output: actual count.
+ *
+ * @return true if the request was sent and a reply was received successfully.
+ * @return false if communication failed (not initialized, channel error, timeout).
+ *
+ * @note This function is blocking and includes debug output for troubleshooting.
+ * @note The send channel is transferred to displayd (we no longer own it).
+ */
 static bool send_request_recv_reply(const void *req,
                                     size_t req_len,
                                     void *reply,
@@ -328,10 +552,44 @@ static bool send_request_recv_reply(const void *req,
     return false;
 }
 
-// =============================================================================
+//===----------------------------------------------------------------------===//
 // Initialization
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
+/**
+ * @brief Initializes the GUI library and connects to the display server.
+ *
+ * This function must be called before any other gui_* functions. It looks
+ * up the display server's IPC channel via the "DISPLAY" assign and stores
+ * it for subsequent communication.
+ *
+ * ## Assign Lookup
+ *
+ * The display server (displayd) registers itself under the "DISPLAY" assign
+ * during system startup. This function uses assign_get() to retrieve the
+ * channel handle, enabling communication with displayd.
+ *
+ * ## Idempotency
+ *
+ * Calling gui_init() multiple times is safe. Subsequent calls after the
+ * first successful initialization return immediately with success.
+ *
+ * @return 0 on success (library initialized and connected to displayd).
+ * @return -1 if displayd is not available (assign lookup failed).
+ *
+ * @note This function must be called before gui_create_window() or any
+ *       other gui_* function that communicates with displayd.
+ *
+ * @see gui_shutdown() To clean up when done with the GUI library.
+ *
+ * @code
+ * if (gui_init() != 0) {
+ *     printf("Display server not available\n");
+ *     return -1;
+ * }
+ * // Now safe to create windows
+ * @endcode
+ */
 extern "C" int gui_init(void) {
     if (g_initialized)
         return 0;
@@ -347,6 +605,32 @@ extern "C" int gui_init(void) {
     return 0;
 }
 
+/**
+ * @brief Shuts down the GUI library and releases resources.
+ *
+ * This function closes the connection to the display server and resets
+ * the library to its uninitialized state. After calling gui_shutdown(),
+ * gui_init() must be called again before using other gui_* functions.
+ *
+ * ## Cleanup Behavior
+ *
+ * - Closes the display channel connection
+ * - Resets the initialized flag to false
+ * - Does NOT destroy any windows (call gui_destroy_window() first)
+ *
+ * @note Calling gui_shutdown() when not initialized is safe (no-op).
+ *
+ * @note Applications should destroy all windows before calling shutdown
+ *       to avoid orphaned surfaces on the display server.
+ *
+ * @see gui_init() To reinitialize the library after shutdown.
+ *
+ * @code
+ * // Clean shutdown sequence
+ * gui_destroy_window(win);
+ * gui_shutdown();
+ * @endcode
+ */
 extern "C" void gui_shutdown(void) {
     if (!g_initialized)
         return;
@@ -359,6 +643,31 @@ extern "C" void gui_shutdown(void) {
     g_initialized = false;
 }
 
+/**
+ * @brief Retrieves information about the display device.
+ *
+ * This function queries displayd for the current display configuration,
+ * including the screen resolution and pixel format. This is useful for
+ * applications that need to adapt their layout to the available screen
+ * space.
+ *
+ * @param info Pointer to a gui_display_info_t structure to receive the
+ *             display information. Must not be NULL.
+ *
+ * @return 0 on success (info structure populated).
+ * @return -1 if not initialized, info is NULL, or communication failed.
+ * @return Non-zero status code from displayd on other errors.
+ *
+ * @note The display info may change if the display is reconfigured
+ *       (though this is rare in ViperDOS).
+ *
+ * @code
+ * gui_display_info_t info;
+ * if (gui_get_display_info(&info) == 0) {
+ *     printf("Display: %dx%d\n", info.width, info.height);
+ * }
+ * @endcode
+ */
 extern "C" int gui_get_display_info(gui_display_info_t *info) {
     if (!g_initialized || !info)
         return -1;
@@ -382,10 +691,68 @@ extern "C" int gui_get_display_info(gui_display_info_t *info) {
     return 0;
 }
 
-// =============================================================================
+//===----------------------------------------------------------------------===//
 // Window Management
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
+/**
+ * @brief Creates a new window with the specified title and size.
+ *
+ * This function requests displayd to create a new surface (window) with
+ * the given dimensions. The display server allocates a shared memory buffer
+ * for the pixel data and returns a handle that the application can map.
+ *
+ * ## Window Creation Process
+ *
+ * 1. Send CreateSurface request to displayd with title and dimensions
+ * 2. displayd allocates SHM, creates the surface, returns handles
+ * 3. Application maps the SHM into its address space
+ * 4. Allocate gui_window structure and populate it
+ * 5. Subscribe to events via a dedicated event channel
+ *
+ * ## Event Channel
+ *
+ * Each window has a dedicated event channel for receiving input events.
+ * This avoids flooding the main display channel and allows efficient
+ * event polling. The event channel is set up automatically during
+ * window creation.
+ *
+ * ## Pixel Buffer
+ *
+ * The returned window has a pixel buffer accessible via gui_get_pixels().
+ * The buffer is in ARGB format (8 bits per component, alpha in high byte).
+ * Applications draw by writing directly to this buffer, then call
+ * gui_present() to make changes visible.
+ *
+ * @param title  The window title displayed in the title bar. Can be NULL
+ *               (empty title). Maximum 63 characters.
+ * @param width  The width of the window content area in pixels.
+ * @param height The height of the window content area in pixels.
+ *
+ * @return Pointer to the created window structure, or NULL on failure.
+ *         The returned pointer is owned by the caller and must be freed
+ *         with gui_destroy_window().
+ *
+ * @note The library must be initialized with gui_init() before calling this.
+ *
+ * @note The actual window size includes window decorations (title bar,
+ *       borders) added by displayd. The width/height specify the content
+ *       area dimensions only.
+ *
+ * @see gui_destroy_window() To close and free the window.
+ * @see gui_get_pixels() To access the pixel buffer for drawing.
+ * @see gui_present() To make drawn content visible on screen.
+ *
+ * @code
+ * gui_window_t *win = gui_create_window("Calculator", 200, 300);
+ * if (!win) {
+ *     printf("Failed to create window\n");
+ *     return -1;
+ * }
+ * // Draw and present...
+ * gui_destroy_window(win);
+ * @endcode
+ */
 extern "C" gui_window_t *gui_create_window(const char *title, uint32_t width, uint32_t height) {
     if (!g_initialized)
         return nullptr;
@@ -505,6 +872,33 @@ extern "C" gui_window_t *gui_create_window(const char *title, uint32_t width, ui
     return win;
 }
 
+/**
+ * @brief Destroys a window and releases all associated resources.
+ *
+ * This function closes the window and frees all resources including:
+ * - The shared memory pixel buffer (unmapped and handle closed)
+ * - The event channel
+ * - The gui_window structure itself
+ *
+ * The function also sends a destroy request to displayd so the server
+ * can remove the surface from its window list and free server-side
+ * resources.
+ *
+ * @param win Pointer to the window to destroy. If NULL, does nothing.
+ *
+ * @note After calling this function, the win pointer is invalid and
+ *       must not be used.
+ *
+ * @note This function blocks until the destroy request is acknowledged
+ *       by displayd.
+ *
+ * @see gui_create_window() To create a new window.
+ *
+ * @code
+ * gui_destroy_window(win);
+ * win = nullptr;  // Good practice to null the pointer
+ * @endcode
+ */
 extern "C" void gui_destroy_window(gui_window_t *win) {
     if (!win)
         return;
@@ -531,6 +925,28 @@ extern "C" void gui_destroy_window(gui_window_t *win) {
     delete win;
 }
 
+/**
+ * @brief Changes the title of an existing window.
+ *
+ * This function updates both the local copy of the title and sends
+ * a request to displayd to update the window's title bar.
+ *
+ * @param win   Pointer to the window. If NULL, does nothing.
+ * @param title The new window title. If NULL, does nothing.
+ *              Maximum 63 characters (longer titles are truncated).
+ *
+ * @note The title change is reflected in the window's title bar
+ *       on the next display refresh.
+ *
+ * @see gui_get_title() To retrieve the current window title.
+ *
+ * @code
+ * // Update title to show current file
+ * char title[64];
+ * snprintf(title, sizeof(title), "Editor - %s", filename);
+ * gui_set_title(win, title);
+ * @endcode
+ */
 extern "C" void gui_set_title(gui_window_t *win, const char *title) {
     if (!win || !title)
         return;
@@ -553,10 +969,49 @@ extern "C" void gui_set_title(gui_window_t *win, const char *title) {
     send_request_recv_reply(&req, sizeof(req), &reply, sizeof(reply));
 }
 
+/**
+ * @brief Retrieves the current window title.
+ *
+ * @param win Pointer to the window. If NULL, returns NULL.
+ *
+ * @return Pointer to the null-terminated title string (internal buffer),
+ *         or NULL if win is NULL.
+ *
+ * @note The returned pointer is to an internal buffer. Do not free it.
+ *       The string is valid until the window is destroyed or the title
+ *       is changed with gui_set_title().
+ *
+ * @see gui_set_title() To change the window title.
+ */
 extern "C" const char *gui_get_title(gui_window_t *win) {
     return win ? win->title : nullptr;
 }
 
+/**
+ * @brief Creates a new window with extended flags.
+ *
+ * This function is similar to gui_create_window() but accepts additional
+ * flags to control window behavior. The flags are passed to displayd
+ * in the CreateSurface request.
+ *
+ * ## Flags
+ *
+ * - **WINDOW_FLAG_NO_TITLEBAR**: Create a borderless window without
+ *   window decorations.
+ * - Additional flags may be defined in display_protocol.hpp.
+ *
+ * @param title  The window title. Can be NULL. Maximum 63 characters.
+ * @param width  The content area width in pixels.
+ * @param height The content area height in pixels.
+ * @param flags  Window creation flags (see display_protocol.hpp).
+ *
+ * @return Pointer to the created window, or NULL on failure.
+ *
+ * @note This function includes debug output for troubleshooting.
+ *
+ * @see gui_create_window() For creating standard windows.
+ * @see gui_destroy_window() To close the window.
+ */
 extern "C" gui_window_t *gui_create_window_ex(const char *title,
                                               uint32_t width,
                                               uint32_t height,
@@ -690,6 +1145,33 @@ extern "C" gui_window_t *gui_create_window_ex(const char *title,
     return win;
 }
 
+/**
+ * @brief Lists all windows currently managed by the display server.
+ *
+ * This function queries displayd for a list of all surfaces (windows),
+ * including their IDs, titles, and state flags. This is used by the
+ * task manager to display the window list.
+ *
+ * @param list Pointer to a gui_window_list_t structure to receive the
+ *             window list. Must not be NULL.
+ *
+ * @return 0 on success (list populated).
+ * @return -1 if not initialized, list is NULL, or communication failed.
+ * @return Non-zero status code from displayd on other errors.
+ *
+ * @note The list has a maximum capacity of 16 windows.
+ *
+ * @code
+ * gui_window_list_t list;
+ * if (gui_list_windows(&list) == 0) {
+ *     for (uint32_t i = 0; i < list.count; i++) {
+ *         printf("%s %s\n",
+ *                list.windows[i].focused ? "*" : " ",
+ *                list.windows[i].title);
+ *     }
+ * }
+ * @endcode
+ */
 extern "C" int gui_list_windows(gui_window_list_t *list) {
     if (!g_initialized || !list)
         return -1;
@@ -721,6 +1203,24 @@ extern "C" int gui_list_windows(gui_window_list_t *list) {
     return 0;
 }
 
+/**
+ * @brief Restores a minimized window and brings it to the foreground.
+ *
+ * This function sends a request to displayd to restore a window that
+ * has been minimized. The window becomes visible again and receives
+ * keyboard focus.
+ *
+ * @param surface_id The surface ID of the window to restore.
+ *
+ * @return 0 on success.
+ * @return -1 if not initialized or communication failed.
+ * @return Non-zero status code from displayd on other errors.
+ *
+ * @note This function is typically used by the task manager to
+ *       allow users to switch between windows.
+ *
+ * @see gui_list_windows() To get the list of windows and their IDs.
+ */
 extern "C" int gui_restore_window(uint32_t surface_id) {
     if (!g_initialized)
         return -1;
@@ -738,6 +1238,22 @@ extern "C" int gui_restore_window(uint32_t surface_id) {
     return reply.status;
 }
 
+/**
+ * @brief Sets the window position on screen.
+ *
+ * This function requests displayd to move the window to the specified
+ * screen coordinates. The coordinates refer to the top-left corner of
+ * the window (including decorations).
+ *
+ * @param win Pointer to the window. If NULL, does nothing.
+ * @param x   The new X coordinate in screen pixels.
+ * @param y   The new Y coordinate in screen pixels.
+ *
+ * @note The window position change takes effect on the next display
+ *       refresh cycle.
+ *
+ * @note Negative coordinates may place part of the window off-screen.
+ */
 extern "C" void gui_set_position(gui_window_t *win, int32_t x, int32_t y) {
     if (!win)
         return;
@@ -753,10 +1269,45 @@ extern "C" void gui_set_position(gui_window_t *win, int32_t x, int32_t y) {
     send_request_recv_reply(&req, sizeof(req), &reply, sizeof(reply));
 }
 
-// =============================================================================
+//===----------------------------------------------------------------------===//
 // Scrollbar Support
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
+/**
+ * @brief Configures the vertical scrollbar for a window.
+ *
+ * This function tells displayd to display (or hide) a vertical scrollbar
+ * on the window. The scrollbar is rendered by the display server in the
+ * window decorations, not by the application.
+ *
+ * ## Scrollbar Calculation
+ *
+ * The scrollbar thumb size and position are calculated from:
+ * - **content_height**: Total height of the scrollable content
+ * - **viewport_height**: Height of the visible area
+ * - **scroll_pos**: Current scroll position (0 = top)
+ *
+ * The scrollbar is automatically enabled when content_height > viewport_height
+ * and disabled otherwise.
+ *
+ * @param win             Pointer to the window. If NULL, does nothing.
+ * @param content_height  Total height of scrollable content in pixels.
+ * @param viewport_height Height of the visible viewport in pixels.
+ * @param scroll_pos      Current scroll position (0 = top).
+ *
+ * @note The application receives GUI_EVENT_SCROLL events when the user
+ *       interacts with the scrollbar.
+ *
+ * @see gui_poll_event() For handling scroll events.
+ *
+ * @code
+ * // Configure scrollbar for a 2000px tall document in a 300px viewport
+ * gui_set_vscrollbar(win, 2000, 300, 0);  // Start at top
+ *
+ * // Later, when user scrolls...
+ * gui_set_vscrollbar(win, 2000, 300, scroll_offset);
+ * @endcode
+ */
 extern "C" void gui_set_vscrollbar(gui_window_t *win,
                                    int32_t content_height,
                                    int32_t viewport_height,
@@ -780,6 +1331,33 @@ extern "C" void gui_set_vscrollbar(gui_window_t *win,
     send_request_recv_reply(&req, sizeof(req), &reply, sizeof(reply));
 }
 
+/**
+ * @brief Configures the horizontal scrollbar for a window.
+ *
+ * This function tells displayd to display (or hide) a horizontal scrollbar
+ * on the window. The scrollbar is rendered by the display server in the
+ * window decorations.
+ *
+ * ## Scrollbar Calculation
+ *
+ * The scrollbar thumb size and position are calculated from:
+ * - **content_width**: Total width of the scrollable content
+ * - **viewport_width**: Width of the visible area
+ * - **scroll_pos**: Current scroll position (0 = leftmost)
+ *
+ * The scrollbar is automatically enabled when content_width > viewport_width
+ * and disabled otherwise.
+ *
+ * @param win            Pointer to the window. If NULL, does nothing.
+ * @param content_width  Total width of scrollable content in pixels.
+ * @param viewport_width Width of the visible viewport in pixels.
+ * @param scroll_pos     Current scroll position (0 = left).
+ *
+ * @note Horizontal scrollbars are less common than vertical ones but
+ *       useful for wide content like spreadsheets or code views.
+ *
+ * @see gui_set_vscrollbar() For vertical scrollbar configuration.
+ */
 extern "C" void gui_set_hscrollbar(gui_window_t *win,
                                    int32_t content_width,
                                    int32_t viewport_width,
@@ -803,34 +1381,181 @@ extern "C" void gui_set_hscrollbar(gui_window_t *win,
     send_request_recv_reply(&req, sizeof(req), &reply, sizeof(reply));
 }
 
-// =============================================================================
+//===----------------------------------------------------------------------===//
 // Pixel Buffer Access
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
+/**
+ * @brief Returns a pointer to the window's pixel buffer.
+ *
+ * The pixel buffer is a contiguous array of 32-bit ARGB pixels that
+ * the application can write to directly. Changes become visible after
+ * calling gui_present().
+ *
+ * ## Pixel Format
+ *
+ * Each pixel is a 32-bit value in ARGB format:
+ * - Bits 31-24: Alpha (0xFF = opaque, 0x00 = transparent)
+ * - Bits 23-16: Red
+ * - Bits 15-8:  Green
+ * - Bits 7-0:   Blue
+ *
+ * ## Buffer Layout
+ *
+ * Pixels are stored in row-major order. To access pixel (x, y):
+ * @code
+ * uint32_t stride_pixels = gui_get_stride(win) / 4;
+ * pixels[y * stride_pixels + x] = color;
+ * @endcode
+ *
+ * @param win Pointer to the window. If NULL, returns NULL.
+ *
+ * @return Pointer to the pixel buffer, or NULL if win is NULL.
+ *
+ * @note The stride may be larger than width*4 due to alignment padding.
+ *       Always use gui_get_stride() for row offsets.
+ *
+ * @warning The returned pointer becomes invalid after the window is
+ *          destroyed or resized.
+ *
+ * @see gui_get_stride() To get the row stride for correct indexing.
+ * @see gui_present() To make changes visible on screen.
+ */
 extern "C" uint32_t *gui_get_pixels(gui_window_t *win) {
     return win ? win->pixels : nullptr;
 }
 
+/**
+ * @brief Returns the width of the window content area.
+ *
+ * @param win Pointer to the window. If NULL, returns 0.
+ *
+ * @return The content width in pixels, or 0 if win is NULL.
+ *
+ * @note This is the drawable width, not including window decorations.
+ *
+ * @note The width may change after a resize event.
+ *
+ * @see gui_get_height() For the content height.
+ */
 extern "C" uint32_t gui_get_width(gui_window_t *win) {
     return win ? win->width : 0;
 }
 
+/**
+ * @brief Returns the height of the window content area.
+ *
+ * @param win Pointer to the window. If NULL, returns 0.
+ *
+ * @return The content height in pixels, or 0 if win is NULL.
+ *
+ * @note This is the drawable height, not including window decorations.
+ *
+ * @note The height may change after a resize event.
+ *
+ * @see gui_get_width() For the content width.
+ */
 extern "C" uint32_t gui_get_height(gui_window_t *win) {
     return win ? win->height : 0;
 }
 
+/**
+ * @brief Returns the row stride of the pixel buffer in bytes.
+ *
+ * The stride is the number of bytes between the start of one row and
+ * the start of the next row in the pixel buffer. This may be larger
+ * than width * 4 if the buffer has alignment padding.
+ *
+ * ## Usage
+ *
+ * To correctly index into the pixel buffer:
+ * @code
+ * uint32_t *pixels = gui_get_pixels(win);
+ * uint32_t stride_pixels = gui_get_stride(win) / 4;
+ *
+ * // Set pixel at (x, y)
+ * pixels[y * stride_pixels + x] = color;
+ * @endcode
+ *
+ * @param win Pointer to the window. If NULL, returns 0.
+ *
+ * @return The stride in bytes, or 0 if win is NULL.
+ *
+ * @note The stride may change after a resize event.
+ *
+ * @see gui_get_pixels() For the pixel buffer pointer.
+ */
 extern "C" uint32_t gui_get_stride(gui_window_t *win) {
     return win ? win->stride : 0;
 }
 
-// =============================================================================
+//===----------------------------------------------------------------------===//
 // Display Update
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
+/**
+ * @brief Presents the entire window content to the screen.
+ *
+ * This function notifies displayd that the window's pixel buffer has
+ * been updated and the window should be recomposited to the screen.
+ * This is a synchronous operation that waits for acknowledgement.
+ *
+ * ## Compositing Process
+ *
+ * 1. Application draws to pixel buffer
+ * 2. Application calls gui_present()
+ * 3. displayd reads the shared memory buffer
+ * 4. displayd composites the window onto the screen
+ * 5. displayd sends reply to application
+ *
+ * @param win Pointer to the window. If NULL, does nothing.
+ *
+ * @note This function blocks until displayd acknowledges the present.
+ *       For non-blocking behavior, use gui_present_async().
+ *
+ * @note Calling gui_present() too frequently may limit frame rate.
+ *       Consider using damage regions via gui_present_region() for
+ *       partial updates.
+ *
+ * @see gui_present_async() For fire-and-forget presentation.
+ * @see gui_present_region() For partial screen updates.
+ *
+ * @code
+ * // Draw frame
+ * gui_fill_rect(win, 0, 0, width, height, bg_color);
+ * draw_content(win);
+ *
+ * // Present to screen
+ * gui_present(win);
+ * @endcode
+ */
 extern "C" void gui_present(gui_window_t *win) {
     gui_present_region(win, 0, 0, 0, 0); // 0,0,0,0 = full surface
 }
 
+/**
+ * @brief Presents the window content without waiting for acknowledgement.
+ *
+ * This function sends a present request to displayd but does not wait
+ * for a reply. This is useful when the application wants to continue
+ * processing immediately after initiating the present.
+ *
+ * ## Trade-offs
+ *
+ * - **Faster**: Application continues immediately
+ * - **No confirmation**: No guarantee the present was processed
+ * - **Potential tearing**: Next frame may start before previous is shown
+ *
+ * @param win Pointer to the window. If NULL, does nothing.
+ *
+ * @note For games or animations where frame rate is critical, async
+ *       present can improve responsiveness.
+ *
+ * @note There is no way to know when the present completes. If you
+ *       need confirmation, use gui_present() instead.
+ *
+ * @see gui_present() For synchronous presentation with confirmation.
+ */
 extern "C" void gui_present_async(gui_window_t *win) {
     if (!win)
         return;
@@ -848,6 +1573,41 @@ extern "C" void gui_present_async(gui_window_t *win) {
     sys::channel_send(g_display_channel, &req, sizeof(req), nullptr, 0);
 }
 
+/**
+ * @brief Presents a specific region of the window content.
+ *
+ * This function is similar to gui_present() but allows specifying a
+ * damage rectangle indicating which portion of the window was updated.
+ * The compositor can use this hint to optimize compositing.
+ *
+ * ## Damage Rectangle
+ *
+ * The damage rectangle (x, y, w, h) specifies the region that changed:
+ * - (0, 0, 0, 0) means the entire surface (same as gui_present())
+ * - Specific values indicate only that region needs recompositing
+ *
+ * ## Performance
+ *
+ * Specifying damage regions can improve performance when only a small
+ * portion of the window changes (e.g., cursor blink, scrolling a single
+ * line). The compositor may skip unchanged regions.
+ *
+ * @param win Pointer to the window. If NULL, does nothing.
+ * @param x   X coordinate of the damage region.
+ * @param y   Y coordinate of the damage region.
+ * @param w   Width of the damage region (0 = full width).
+ * @param h   Height of the damage region (0 = full height).
+ *
+ * @note This is a synchronous operation that waits for acknowledgement.
+ *
+ * @see gui_present() For full-surface presentation.
+ *
+ * @code
+ * // Only the status bar changed
+ * draw_status_bar(win, 0, height - 20, width, 20);
+ * gui_present_region(win, 0, height - 20, width, 20);
+ * @endcode
+ */
 extern "C" void gui_present_region(
     gui_window_t *win, uint32_t x, uint32_t y, uint32_t w, uint32_t h) {
     if (!win)
@@ -866,10 +1626,76 @@ extern "C" void gui_present_region(
     send_request_recv_reply(&req, sizeof(req), &reply, sizeof(reply));
 }
 
-// =============================================================================
+//===----------------------------------------------------------------------===//
 // Events
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
+/**
+ * @brief Polls for the next event on a window.
+ *
+ * This function checks if an event is available for the window and
+ * returns it without blocking. If no event is available, it returns
+ * immediately with -1.
+ *
+ * ## Event Delivery
+ *
+ * Events are delivered via a dedicated event channel that was set up
+ * during window creation. This provides efficient, non-blocking event
+ * polling without flooding the main display channel.
+ *
+ * ## Event Types
+ *
+ * - **GUI_EVENT_MOUSE**: Mouse movement, button press/release
+ * - **GUI_EVENT_KEY**: Keyboard key press/release
+ * - **GUI_EVENT_FOCUS**: Window gained or lost keyboard focus
+ * - **GUI_EVENT_CLOSE**: User clicked the close button
+ * - **GUI_EVENT_RESIZE**: Window was resized (includes new SHM mapping)
+ * - **GUI_EVENT_SCROLL**: User interacted with a scrollbar
+ * - **GUI_EVENT_NONE**: No event available
+ *
+ * ## Resize Event Handling
+ *
+ * When a resize event is received, the library automatically:
+ * 1. Unmaps the old shared memory
+ * 2. Maps the new shared memory (handle received with the event)
+ * 3. Updates the window's width, height, stride, and pixels pointer
+ *
+ * Applications should check the new dimensions and redraw their content.
+ *
+ * @param win   Pointer to the window. If NULL, returns -1.
+ * @param event Pointer to receive the event data. If NULL, returns -1.
+ *
+ * @return 0 if an event was received (event populated).
+ * @return -1 if no event is available or parameters are invalid.
+ *
+ * @note This function does not block. For blocking behavior, use
+ *       gui_wait_event() or call gui_poll_event() in a loop.
+ *
+ * @note The function calls sys::yield() when no event is available to
+ *       prevent busy-waiting from starving other processes.
+ *
+ * @see gui_wait_event() For blocking event retrieval.
+ *
+ * @code
+ * gui_event_t event;
+ * while (running) {
+ *     while (gui_poll_event(win, &event) == 0) {
+ *         switch (event.type) {
+ *             case GUI_EVENT_CLOSE:
+ *                 running = false;
+ *                 break;
+ *             case GUI_EVENT_MOUSE:
+ *                 handle_mouse(event.mouse.x, event.mouse.y);
+ *                 break;
+ *             case GUI_EVENT_KEY:
+ *                 handle_key(event.key.keycode);
+ *                 break;
+ *         }
+ *     }
+ *     // Draw and present...
+ * }
+ * @endcode
+ */
 extern "C" int gui_poll_event(gui_window_t *win, gui_event_t *event) {
     if (!win || !event)
         return -1;
@@ -1041,6 +1867,38 @@ extern "C" int gui_poll_event(gui_window_t *win, gui_event_t *event) {
     return 0; // Event available
 }
 
+/**
+ * @brief Waits for the next event on a window (blocking).
+ *
+ * This function blocks until an event is available, then returns it.
+ * It repeatedly polls for events, yielding the CPU between attempts
+ * to avoid busy-waiting.
+ *
+ * @param win   Pointer to the window. If NULL, returns -1.
+ * @param event Pointer to receive the event data. If NULL, returns -1.
+ *
+ * @return 0 when an event is received (event populated).
+ * @return -1 if parameters are invalid.
+ *
+ * @note This function blocks indefinitely until an event arrives.
+ *       There is no timeout mechanism.
+ *
+ * @note For applications that need to do background work while waiting,
+ *       use gui_poll_event() in a loop with explicit yield/sleep.
+ *
+ * @see gui_poll_event() For non-blocking event retrieval.
+ *
+ * @code
+ * // Simple blocking event loop
+ * gui_event_t event;
+ * while (gui_wait_event(win, &event) == 0) {
+ *     if (event.type == GUI_EVENT_CLOSE) {
+ *         break;
+ *     }
+ *     handle_event(&event);
+ * }
+ * @endcode
+ */
 extern "C" int gui_wait_event(gui_window_t *win, gui_event_t *event) {
     if (!win || !event)
         return -1;
@@ -1054,10 +1912,37 @@ extern "C" int gui_wait_event(gui_window_t *win, gui_event_t *event) {
     }
 }
 
-// =============================================================================
+//===----------------------------------------------------------------------===//
 // Drawing Helpers
-// =============================================================================
+//===----------------------------------------------------------------------===//
 
+/**
+ * @brief Fills a rectangular area with a solid color.
+ *
+ * This function fills a rectangle in the window's pixel buffer with
+ * the specified color. The rectangle is clipped to the window bounds.
+ *
+ * @param win   Pointer to the window. If NULL, does nothing.
+ * @param x     X coordinate of the top-left corner.
+ * @param y     Y coordinate of the top-left corner.
+ * @param w     Width of the rectangle in pixels.
+ * @param h     Height of the rectangle in pixels.
+ * @param color Fill color in ARGB format (0xAARRGGBB).
+ *
+ * @note Rectangles extending beyond window bounds are clipped.
+ *
+ * @note Changes are not visible until gui_present() is called.
+ *
+ * @see gui_draw_rect() To draw a rectangle outline.
+ *
+ * @code
+ * // Clear window to light gray
+ * gui_fill_rect(win, 0, 0, gui_get_width(win), gui_get_height(win), 0xFFCCCCCC);
+ *
+ * // Draw a red square
+ * gui_fill_rect(win, 50, 50, 100, 100, 0xFFFF0000);
+ * @endcode
+ */
 extern "C" void gui_fill_rect(
     gui_window_t *win, uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color) {
     if (!win || !win->pixels)
@@ -1078,6 +1963,32 @@ extern "C" void gui_fill_rect(
     }
 }
 
+/**
+ * @brief Draws a rectangle outline (1 pixel wide).
+ *
+ * This function draws the outline of a rectangle without filling the
+ * interior. The outline is always 1 pixel wide.
+ *
+ * @param win   Pointer to the window. If NULL, does nothing.
+ * @param x     X coordinate of the top-left corner.
+ * @param y     Y coordinate of the top-left corner.
+ * @param w     Width of the rectangle in pixels.
+ * @param h     Height of the rectangle in pixels.
+ * @param color Line color in ARGB format (0xAARRGGBB).
+ *
+ * @note The outline is drawn inside the specified bounds (not outside).
+ *
+ * @note For rectangles with w=0 or h=0, nothing is drawn.
+ *
+ * @see gui_fill_rect() To fill a rectangle.
+ * @see gui_draw_hline() To draw individual horizontal lines.
+ * @see gui_draw_vline() To draw individual vertical lines.
+ *
+ * @code
+ * // Draw a black border around an area
+ * gui_draw_rect(win, 10, 10, 100, 50, 0xFF000000);
+ * @endcode
+ */
 extern "C" void gui_draw_rect(
     gui_window_t *win, uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color) {
     if (!win || !win->pixels || w == 0 || h == 0)
@@ -1089,6 +2000,42 @@ extern "C" void gui_draw_rect(
     gui_draw_vline(win, x + w - 1, y, y + h - 1, color);
 }
 
+/**
+ * @brief Draws a text string using the built-in 8x8 font.
+ *
+ * This function renders a null-terminated string at the specified
+ * position using the embedded bitmap font. Only foreground pixels are
+ * drawn; background pixels are left unchanged (transparent text).
+ *
+ * ## Font Properties
+ *
+ * - Character size: 8x8 pixels
+ * - Character spacing: 8 pixels (no gap between characters)
+ * - Supported range: ASCII 32-127 (printable characters)
+ *
+ * @param win   Pointer to the window. If NULL, does nothing.
+ * @param x     X coordinate of the first character's top-left corner.
+ * @param y     Y coordinate of the first character's top-left corner.
+ * @param text  Null-terminated string to draw. If NULL, does nothing.
+ * @param color Text color in ARGB format (0xAARRGGBB).
+ *
+ * @note Characters outside ASCII 32-127 are silently skipped.
+ *
+ * @note There is no automatic word wrap. Text extending beyond the
+ *       window edge is clipped.
+ *
+ * @note For text with a background color, use gui_draw_char() for
+ *       each character or clear the area first with gui_fill_rect().
+ *
+ * @see gui_draw_char() To draw a single character with background.
+ * @see gui_draw_char_scaled() For scaled text rendering.
+ *
+ * @code
+ * // Draw black text on a cleared background
+ * gui_fill_rect(win, 0, 0, 200, 20, 0xFFFFFFFF);  // White background
+ * gui_draw_text(win, 5, 5, "Hello, World!", 0xFF000000);
+ * @endcode
+ */
 extern "C" void gui_draw_text(
     gui_window_t *win, uint32_t x, uint32_t y, const char *text, uint32_t color) {
     if (!win || !win->pixels || !text)
@@ -1120,6 +2067,31 @@ extern "C" void gui_draw_text(
     }
 }
 
+/**
+ * @brief Draws a single character with foreground and background colors.
+ *
+ * This function renders a single character at the specified position,
+ * drawing both foreground (glyph) and background pixels. Unlike
+ * gui_draw_text(), this fills the entire 8x8 cell.
+ *
+ * @param win Pointer to the window. If NULL, does nothing.
+ * @param x   X coordinate of the character's top-left corner.
+ * @param y   Y coordinate of the character's top-left corner.
+ * @param c   The character to draw (ASCII 32-127). Unprintable
+ *            characters are replaced with space.
+ * @param fg  Foreground (glyph) color in ARGB format.
+ * @param bg  Background color in ARGB format.
+ *
+ * @note Useful for terminal-style displays or highlighted text.
+ *
+ * @see gui_draw_text() For strings with transparent background.
+ * @see gui_draw_char_scaled() For scaled character rendering.
+ *
+ * @code
+ * // Draw selected text (white on blue)
+ * gui_draw_char(win, 10, 10, 'A', 0xFFFFFFFF, 0xFF0000AA);
+ * @endcode
+ */
 extern "C" void gui_draw_char(
     gui_window_t *win, uint32_t x, uint32_t y, char c, uint32_t fg, uint32_t bg) {
     if (!win || !win->pixels)
@@ -1143,6 +2115,42 @@ extern "C" void gui_draw_char(
     }
 }
 
+/**
+ * @brief Draws a scaled character using nearest-neighbor interpolation.
+ *
+ * This function renders a character at a specified scale factor, useful
+ * for larger displays like digital clocks or title screens. The scaling
+ * uses nearest-neighbor interpolation to preserve the pixel-art
+ * appearance of the 8x8 font.
+ *
+ * ## Scale Factor
+ *
+ * The scale parameter is in half-units:
+ * - scale=2: 1x (8x8 pixels, same as gui_draw_char)
+ * - scale=3: 1.5x (12x12 pixels)
+ * - scale=4: 2x (16x16 pixels)
+ * - scale=6: 3x (24x24 pixels)
+ *
+ * @param win   Pointer to the window. If NULL, does nothing.
+ * @param x     X coordinate of the character's top-left corner.
+ * @param y     Y coordinate of the character's top-left corner.
+ * @param c     The character to draw (ASCII 32-127).
+ * @param fg    Foreground (glyph) color in ARGB format.
+ * @param bg    Background color in ARGB format.
+ * @param scale Scale factor in half-units (2=1x, 4=2x, 6=3x, etc.).
+ *
+ * @note The destination size is: (8 * scale / 2) x (8 * scale / 2) pixels.
+ *
+ * @see gui_draw_char() For standard 8x8 character rendering.
+ *
+ * @code
+ * // Draw a large "A" at 2x scale (16x16 pixels)
+ * gui_draw_char_scaled(win, 50, 50, 'A', 0xFF000000, 0xFFFFFFFF, 4);
+ *
+ * // Draw at 3x scale (24x24 pixels)
+ * gui_draw_char_scaled(win, 100, 50, 'B', 0xFF000000, 0xFFFFFFFF, 6);
+ * @endcode
+ */
 extern "C" void gui_draw_char_scaled(
     gui_window_t *win, uint32_t x, uint32_t y, char c, uint32_t fg, uint32_t bg, uint32_t scale) {
     if (!win || !win->pixels || scale == 0)
@@ -1179,6 +2187,30 @@ extern "C" void gui_draw_char_scaled(
     }
 }
 
+/**
+ * @brief Draws a horizontal line (1 pixel wide).
+ *
+ * This function draws a horizontal line from (x1, y) to (x2, y).
+ * The coordinates are automatically sorted, so x1 > x2 is allowed.
+ *
+ * @param win   Pointer to the window. If NULL, does nothing.
+ * @param x1    X coordinate of the first endpoint.
+ * @param x2    X coordinate of the second endpoint.
+ * @param y     Y coordinate of the line.
+ * @param color Line color in ARGB format (0xAARRGGBB).
+ *
+ * @note Lines are clipped to window bounds.
+ *
+ * @note For 3D beveled effects, see the libwidget draw_3d_* functions.
+ *
+ * @see gui_draw_vline() For vertical lines.
+ * @see gui_draw_rect() For rectangle outlines.
+ *
+ * @code
+ * // Draw a horizontal separator line
+ * gui_draw_hline(win, 10, 190, 50, 0xFF888888);
+ * @endcode
+ */
 extern "C" void gui_draw_hline(
     gui_window_t *win, uint32_t x1, uint32_t x2, uint32_t y, uint32_t color) {
     if (!win || !win->pixels)
@@ -1199,6 +2231,30 @@ extern "C" void gui_draw_hline(
     }
 }
 
+/**
+ * @brief Draws a vertical line (1 pixel wide).
+ *
+ * This function draws a vertical line from (x, y1) to (x, y2).
+ * The coordinates are automatically sorted, so y1 > y2 is allowed.
+ *
+ * @param win   Pointer to the window. If NULL, does nothing.
+ * @param x     X coordinate of the line.
+ * @param y1    Y coordinate of the first endpoint.
+ * @param y2    Y coordinate of the second endpoint.
+ * @param color Line color in ARGB format (0xAARRGGBB).
+ *
+ * @note Lines are clipped to window bounds.
+ *
+ * @note For 3D beveled effects, see the libwidget draw_3d_* functions.
+ *
+ * @see gui_draw_hline() For horizontal lines.
+ * @see gui_draw_rect() For rectangle outlines.
+ *
+ * @code
+ * // Draw a vertical separator line
+ * gui_draw_vline(win, 100, 10, 90, 0xFF888888);
+ * @endcode
+ */
 extern "C" void gui_draw_vline(
     gui_window_t *win, uint32_t x, uint32_t y1, uint32_t y2, uint32_t color) {
     if (!win || !win->pixels)

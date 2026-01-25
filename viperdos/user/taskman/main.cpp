@@ -4,16 +4,58 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: user/taskman/main.cpp
-// Purpose: GUI Task Manager for ViperDOS.
-//
-//===----------------------------------------------------------------------===//
-
 /**
  * @file main.cpp
- * @brief GUI Task Manager for viewing and managing processes.
+ * @brief GUI Task Manager for ViperDOS.
+ *
+ * This application provides a graphical view of running processes on the
+ * system. It displays process information and provides controls for
+ * managing tasks.
+ *
+ * ## Window Layout
+ *
+ * ```
+ * +--[ Task Manager ]-------------------+
+ * | Task Manager              X tasks   |  Header
+ * +-------------------------------------+
+ * | PID  Name           State  Pri  CPU |  Column Headers
+ * +-------------------------------------+
+ * | 1    kernel         Running  0   1M |
+ * | 2    displayd       Blocked  5   2K |  Task List
+ * | 3    workbench      Running  5   15K|
+ * | ...                                 |
+ * +-------------------------------------+
+ * | Memory: 45 / 128 MB                 |  Status Bar
+ * | [End Task] [Priority...] [Refresh] |  Buttons
+ * +-------------------------------------+
+ * ```
+ *
+ * ## Task States
+ *
+ * | State   | Description                     | Color  |
+ * |---------|---------------------------------|--------|
+ * | Ready   | Waiting to be scheduled         | Black  |
+ * | Running | Currently executing             | Green  |
+ * | Blocked | Waiting for I/O or event        | Gray   |
+ * | Exited  | Terminated but not yet reaped   | Red    |
+ *
+ * ## Controls
+ *
+ * - **Arrow keys**: Navigate task selection
+ * - **F5**: Refresh task list
+ * - **End Task**: Terminate selected process (not yet implemented)
+ * - **Priority**: Change process priority (not yet implemented)
+ * - **Refresh**: Manually refresh the task list
+ *
+ * ## Auto-Refresh
+ *
+ * The task list automatically refreshes every 3 seconds to show
+ * current process states.
+ *
+ * @see task_info.hpp for TaskInfo structure
+ * @see mem_info.hpp for MemInfo structure
  */
+//===----------------------------------------------------------------------===//
 
 #include "../syscall.hpp"
 #include <gui.h>
@@ -22,36 +64,109 @@
 #include <viperdos/mem_info.hpp>
 #include <viperdos/task_info.hpp>
 
-// Workbench color palette
+//===----------------------------------------------------------------------===//
+// Color Constants
+//===----------------------------------------------------------------------===//
+
+/**
+ * @defgroup TaskManColors Task Manager Colors
+ * @brief Color palette for the task manager UI.
+ * @{
+ */
+
+/** @brief Workbench blue for headers (0xFF0055AA). */
 constexpr uint32_t WB_BLUE = 0xFF0055AA;
+
+/** @brief Pure white (0xFFFFFFFF). */
 constexpr uint32_t WB_WHITE = 0xFFFFFFFF;
+
+/** @brief Pure black (0xFF000000). */
 constexpr uint32_t WB_BLACK = 0xFF000000;
+
+/** @brief Light gray background (0xFFAAAAAA). */
 constexpr uint32_t WB_GRAY_LIGHT = 0xFFAAAAAA;
+
+/** @brief Medium gray for disabled items (0xFF888888). */
 constexpr uint32_t WB_GRAY_MED = 0xFF888888;
+
+/** @brief Dark gray for borders (0xFF555555). */
 constexpr uint32_t WB_GRAY_DARK = 0xFF555555;
+
+/** @brief Orange highlight (unused). */
 [[maybe_unused]] constexpr uint32_t WB_ORANGE = 0xFFFF8800;
+
+/** @brief Red for exited/error states (0xFFFF4444). */
 constexpr uint32_t WB_RED = 0xFFFF4444;
+
+/** @brief Green for running processes (0xFF00AA44). */
 constexpr uint32_t WB_GREEN = 0xFF00AA44;
 
-// Window dimensions
+/** @} */ // end TaskManColors
+
+//===----------------------------------------------------------------------===//
+// Layout Constants
+//===----------------------------------------------------------------------===//
+
+/**
+ * @defgroup TaskManLayout Task Manager Layout
+ * @brief Dimensions for the task manager window.
+ * @{
+ */
+
+/** @brief Total window width in pixels. */
 constexpr int WIN_WIDTH = 480;
+
+/** @brief Total window height in pixels. */
 constexpr int WIN_HEIGHT = 380;
 
-// UI layout
+/** @brief Height of the title/header area. */
 constexpr int HEADER_HEIGHT = 30;
+
+/** @brief Height of each task row in the list. */
 constexpr int ROW_HEIGHT = 18;
+
+/** @brief Y position where the task list begins. */
 constexpr int LIST_TOP = 50;
+
+/** @brief Y position where the task list ends. */
 constexpr int LIST_BOTTOM = WIN_HEIGHT - 50;
+
+/** @brief Height of action buttons. */
 constexpr int BUTTON_HEIGHT = 24;
+
+/** @brief Y position of the button row. */
 constexpr int BUTTON_Y = WIN_HEIGHT - 35;
 
-// Columns
+/** @} */ // end TaskManLayout
+
+//===----------------------------------------------------------------------===//
+// Column Positions
+//===----------------------------------------------------------------------===//
+
+/**
+ * @defgroup TaskManColumns Task List Columns
+ * @brief X positions for task list columns.
+ * @{
+ */
+
+/** @brief X position of PID column. */
 constexpr int COL_PID = 15;
+
+/** @brief X position of Name column. */
 constexpr int COL_NAME = 55;
+
+/** @brief X position of State column. */
 constexpr int COL_STATE = 200;
+
+/** @brief X position of Priority column. */
 constexpr int COL_PRI = 280;
+
+/** @brief X position of CPU ticks column. */
 constexpr int COL_CPU = 330;
+
 // constexpr int COL_MEM = 400;  // Reserved for future memory column
+
+/** @} */ // end TaskManColumns
 
 // State
 static TaskInfo g_tasks[64];

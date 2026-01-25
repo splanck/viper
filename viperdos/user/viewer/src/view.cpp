@@ -1,5 +1,84 @@
 //===----------------------------------------------------------------------===//
-// Viewer UI implementation
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+/**
+ * @file view.cpp
+ * @brief View rendering implementation for the Viewer application.
+ *
+ * This file implements the View class which handles all visual rendering
+ * for the image viewer. The View is responsible for:
+ * - Displaying images with zoom and pan support
+ * - Drawing a checkerboard pattern for transparency
+ * - Rendering the status bar with image information
+ * - Showing error messages when no image is loaded
+ *
+ * ## Zoom System
+ *
+ * The viewer supports multiple zoom levels:
+ *
+ * | Level | Percentage | Description                    |
+ * |-------|------------|--------------------------------|
+ * | Fit   | Auto       | Scale to fit window (max 100%) |
+ * | Z25   | 25%        | Quarter size                   |
+ * | Z50   | 50%        | Half size                      |
+ * | Z100  | 100%       | Actual pixels (1:1)            |
+ * | Z200  | 200%       | Double size                    |
+ * | Z400  | 400%       | Quadruple size                 |
+ *
+ * In "Fit" mode, the image scales to fit within the display area
+ * while maintaining aspect ratio. Images smaller than the window
+ * are displayed at 100% (no upscaling).
+ *
+ * ## Rendering Pipeline
+ *
+ * The render() method draws in this order:
+ * 1. Fill background (gray)
+ * 2. If image loaded:
+ *    a. Calculate scaled dimensions based on zoom
+ *    b. Draw checkerboard for transparency
+ *    c. Draw image pixels (nearest-neighbor scaling)
+ *    d. Draw border around image
+ * 3. If no image: Draw error message centered
+ * 4. Draw status bar
+ * 5. Present to screen
+ *
+ * ## Scaling Algorithm
+ *
+ * Uses nearest-neighbor scaling for simplicity:
+ * ```cpp
+ * srcX = (displayX * imageWidth) / displayWidth;
+ * srcY = (displayY * imageHeight) / displayHeight;
+ * ```
+ *
+ * This produces blocky results at high zoom but is fast
+ * and preserves original pixel colors (important for
+ * pixel art or UI screenshots).
+ *
+ * ## Transparency Display
+ *
+ * Images with alpha channels are displayed over a checkerboard
+ * pattern (8x8 pixel cells, alternating light/dark gray).
+ * This makes transparent areas visible.
+ *
+ * ## Window Layout
+ *
+ * ```
+ * +------------------------+
+ * |                        |
+ * |    Image Area          | dims::IMAGE_AREA_HEIGHT
+ * |    (with pan/zoom)     |
+ * |                        |
+ * +------------------------+
+ * | Status: file.bmp 100%  | dims::STATUSBAR_HEIGHT (20px)
+ * +------------------------+
+ * ```
+ *
+ * @see view.hpp for View class definition
+ * @see image.hpp for Image class that provides pixel data
+ */
 //===----------------------------------------------------------------------===//
 
 #include "../include/view.hpp"

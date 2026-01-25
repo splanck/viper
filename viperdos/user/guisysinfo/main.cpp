@@ -4,16 +4,55 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: user/sysinfo/main.cpp
-// Purpose: GUI System Information utility for ViperDOS.
-//
-//===----------------------------------------------------------------------===//
-
 /**
  * @file main.cpp
- * @brief GUI System Information utility displaying system stats.
+ * @brief GUI System Information utility for ViperDOS.
+ *
+ * This application displays system information in a graphical window,
+ * similar to "About This Mac" or the Amiga System Information window.
+ * It provides a quick overview of:
+ * - Operating system version
+ * - Hardware platform
+ * - Memory usage
+ * - System uptime
+ * - Running processes
+ *
+ * ## Window Layout
+ *
+ * ```
+ * +--[ System Information ]--------------+
+ * |    ViperDOS System Info              |
+ * | ------------------------------------ |
+ * | System:    ViperDOS v0.3.1           |
+ * | Kernel:    Viper Microkernel         |
+ * | Platform:  AArch64 (ARM64)           |
+ * | CPU:       Cortex-A57 (QEMU)         |
+ * |                                      |
+ * | +----------------------------------+ |
+ * | |  Memory                          | |
+ * | |  Total: 128 MB    Free: 83 MB    | |
+ * | |  [########............]          | |  Memory bar
+ * | +----------------------------------+ |
+ * |                                      |
+ * | Uptime:    1:23:45                   |
+ * | ------------------------------------ |
+ * | Running Tasks (12)                   |
+ * | PID  Name           State   Priority |
+ * |   1  kernel         Running    0     |
+ * |   2  displayd       Blocked    5     |
+ * | ...                                  |
+ * +--------------------------------------+
+ * ```
+ *
+ * ## Auto-Refresh
+ *
+ * The display automatically refreshes every 2 seconds to show
+ * current memory usage, uptime, and process states.
+ *
+ * @see mem_info.hpp for memory information structure
+ * @see task_info.hpp for task information structure
  */
+//===----------------------------------------------------------------------===//
 
 #include "../syscall.hpp"
 #include <gui.h>
@@ -22,26 +61,74 @@
 #include <viperdos/mem_info.hpp>
 #include <viperdos/task_info.hpp>
 
-// Workbench color palette
+//===----------------------------------------------------------------------===//
+// Color Constants
+//===----------------------------------------------------------------------===//
+
+/**
+ * @defgroup SysInfoColors System Info Colors
+ * @brief Workbench-style color palette for the system info UI.
+ * @{
+ */
+
+/** @brief Workbench blue for section backgrounds (0xFF0055AA). */
 constexpr uint32_t WB_BLUE = 0xFF0055AA;
+
+/** @brief Pure white for text on blue (0xFFFFFFFF). */
 constexpr uint32_t WB_WHITE = 0xFFFFFFFF;
+
+/** @brief Pure black for primary text (0xFF000000). */
 constexpr uint32_t WB_BLACK = 0xFF000000;
+
+/** @brief Light gray window background (0xFFAAAAAA). */
 constexpr uint32_t WB_GRAY_LIGHT = 0xFFAAAAAA;
+
+/** @brief Dark gray for separators (0xFF555555). */
 constexpr uint32_t WB_GRAY_DARK = 0xFF555555;
+
+/** @brief Orange for memory usage bar (0xFFFF8800). */
 constexpr uint32_t WB_ORANGE = 0xFFFF8800;
 
-// Window dimensions
+/** @} */ // end SysInfoColors
+
+//===----------------------------------------------------------------------===//
+// Layout Constants
+//===----------------------------------------------------------------------===//
+
+/**
+ * @defgroup SysInfoLayout System Info Layout
+ * @brief Window dimensions for the system info display.
+ * @{
+ */
+
+/** @brief Total window width in pixels. */
 constexpr int WIN_WIDTH = 400;
+
+/** @brief Total window height in pixels. */
 constexpr int WIN_HEIGHT = 340;
 
-// System info data
+/** @} */ // end SysInfoLayout
+
+//===----------------------------------------------------------------------===//
+// System Data
+//===----------------------------------------------------------------------===//
+
+/**
+ * @brief Aggregated system information for display.
+ *
+ * This structure holds all the data queried from the kernel
+ * that gets displayed in the system info window.
+ */
 struct SystemData {
-    MemInfo mem;
-    TaskInfo tasks[32];
-    int taskCount;
-    uint64_t uptimeMs;
+    MemInfo mem;         /**< Memory usage statistics. */
+    TaskInfo tasks[32];  /**< Array of task information. */
+    int taskCount;       /**< Number of tasks in the array. */
+    uint64_t uptimeMs;   /**< System uptime in milliseconds. */
 };
 
+/**
+ * @brief Global system data refreshed periodically.
+ */
 static SystemData g_data;
 
 static void refreshData() {

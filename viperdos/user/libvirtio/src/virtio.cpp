@@ -1,11 +1,59 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
 /**
  * @file virtio.cpp
  * @brief User-space Virtio-MMIO implementation.
  *
- * @details
- * Implements the user-space `virtio::Device` helper using device access
- * syscalls for MMIO mapping and interrupt handling.
+ * This file implements the user-space `virtio::Device` class for interacting
+ * with Virtio devices via memory-mapped I/O (MMIO). It provides:
+ * - Device initialization and probing
+ * - Feature negotiation (legacy and modern)
+ * - Configuration space access
+ * - Interrupt registration and handling
+ * - Device enumeration and discovery
+ *
+ * ## Virtio-MMIO Register Layout
+ *
+ * The MMIO region is 0x200 bytes, structured as:
+ *
+ * | Offset | Register            | Description                |
+ * |--------|---------------------|----------------------------|
+ * | 0x00   | MagicValue          | 0x74726976 ("virt")        |
+ * | 0x04   | Version             | 1 (legacy) or 2 (modern)   |
+ * | 0x08   | DeviceID            | Device type (1=net, 2=blk) |
+ * | 0x0C   | VendorID            | 0x554D4551 for QEMU        |
+ * | 0x10   | DeviceFeatures      | Device-offered features    |
+ * | 0x20   | DriverFeatures      | Driver-accepted features   |
+ * | 0x30   | QueueSel            | Virtqueue index selector   |
+ * | 0x70   | Status              | Device status register     |
+ * | 0x100  | Config              | Device-specific config     |
+ *
+ * ## Device Initialization Flow
+ *
+ * 1. Map MMIO region via `device::map_device()` syscall
+ * 2. Verify magic value (0x74726976)
+ * 3. Check version (1 or 2)
+ * 4. Read device ID (0 = not present)
+ * 5. Reset device (write 0 to status)
+ * 6. Set ACKNOWLEDGE and DRIVER status bits
+ * 7. Negotiate features
+ * 8. Set up virtqueues
+ * 9. Set DRIVER_OK status bit
+ *
+ * ## Legacy vs Modern Mode
+ *
+ * - **Legacy (v1)**: 32-bit features, contiguous virtqueue layout
+ * - **Modern (v2)**: 64-bit features, separate virtqueue rings
+ *
+ * @see virtio.hpp for class definition
+ * @see virtqueue.cpp for virtqueue implementation
  */
+//===----------------------------------------------------------------------===//
+
 #include "../include/virtio.hpp"
 
 namespace virtio {

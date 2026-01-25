@@ -1,5 +1,68 @@
 //===----------------------------------------------------------------------===//
-// Editor view implementation
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+/**
+ * @file view.cpp
+ * @brief View rendering implementation for VEdit text editor.
+ *
+ * This file implements the View class which handles all visual rendering
+ * for the VEdit text editor. The View is responsible for drawing:
+ * - Menu bar with pulldown menus
+ * - Text editing area with optional line numbers
+ * - Cursor (blinking vertical bar)
+ * - Status bar showing filename and cursor position
+ *
+ * ## Rendering Pipeline
+ *
+ * The render() method orchestrates drawing in this order:
+ * 1. Clear background
+ * 2. Draw text area with line numbers (if enabled)
+ * 3. Draw cursor at current position
+ * 4. Draw status bar
+ * 5. Draw menu bar (last, so menus appear on top)
+ * 6. Draw active dropdown menu (if any)
+ * 7. Present to screen
+ *
+ * ## Menu System
+ *
+ * The editor has three menus defined in g_menus[]:
+ * - **File**: New, Open, Save, Save As, Quit
+ * - **Edit**: Cut, Copy, Paste, Select All
+ * - **View**: Toggle line numbers, word wrap
+ *
+ * Each menu item has:
+ * - Label: Display text
+ * - Shortcut: Keyboard shortcut hint (e.g., "Ctrl+S")
+ * - Action: Single character command code
+ *
+ * ## Coordinate System
+ *
+ * ```
+ * (0,0) +----------------------+ (WIN_WIDTH, 0)
+ *       | Menu Bar (20px)      |
+ *       +------+---------------+
+ *       | Line | Text Area     |
+ *       | Nums |               |
+ *       | 40px |               |
+ *       |      |               |
+ *       +------+---------------+
+ *       | Status Bar (20px)    |
+ *       +----------------------+
+ * ```
+ *
+ * ## Hit Testing
+ *
+ * The View provides methods to determine what UI element is at a
+ * given coordinate:
+ * - findMenuAt(): Returns menu index for a position in menu bar
+ * - findMenuItemAt(): Returns item index within an open menu
+ *
+ * @see view.hpp for View class definition
+ * @see editor.hpp for Editor class that provides data
+ */
 //===----------------------------------------------------------------------===//
 
 #include "../include/view.hpp"

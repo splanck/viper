@@ -1,5 +1,55 @@
 //===----------------------------------------------------------------------===//
-// Calculator logic implementation
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+/**
+ * @file calc.cpp
+ * @brief Calculator logic implementation for the ViperDOS Calculator app.
+ *
+ * This file implements the calculator's computation engine, handling:
+ * - Digit input and display formatting
+ * - Arithmetic operations (add, subtract, multiply, divide)
+ * - Special functions (percent, inverse, negate)
+ * - Memory operations (MC, MR, M+, M-)
+ *
+ * ## State Machine
+ *
+ * The calculator uses a simple state machine:
+ * ```
+ *  [Input] ─> [Operator] ─> [Input] ─> [Equals]
+ *     │            │            │           │
+ *     └─────────── Chain ───────┘           │
+ *                                           v
+ *                                    [Display Result]
+ * ```
+ *
+ * Key state variables:
+ * - `newNumber`: True if next digit should start a new number
+ * - `pendingOp`: Operation waiting for second operand
+ * - `accumulator`: First operand (or running result for chained ops)
+ *
+ * ## Chained Calculations
+ *
+ * When entering `2 + 3 + 4 =`:
+ * 1. Input "2" -> display "2"
+ * 2. Press "+" -> accumulator=2, pendingOp=Add
+ * 3. Input "3" -> display "3"
+ * 4. Press "+" -> calculate 2+3=5, display "5", accumulator=5, pendingOp=Add
+ * 5. Input "4" -> display "4"
+ * 6. Press "=" -> calculate 5+4=9, display "9"
+ *
+ * ## Display Formatting
+ *
+ * Numbers are displayed with the following rules:
+ * - Integers that fit are shown without decimal point
+ * - Large numbers use scientific notation (%.10g format)
+ * - Maximum display width is 14 characters
+ * - "Error" is shown for division by zero
+ *
+ * @see calc.hpp for State structure and function declarations
+ */
 //===----------------------------------------------------------------------===//
 
 #include "../include/calc.hpp"

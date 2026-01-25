@@ -1,5 +1,59 @@
 //===----------------------------------------------------------------------===//
-// Calculator UI implementation
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+/**
+ * @file ui.cpp
+ * @brief Calculator UI rendering and input handling.
+ *
+ * This file implements the calculator's graphical user interface, including:
+ * - Button layout and rendering with 3D effects
+ * - Display area with sunken frame appearance
+ * - Mouse click hit-testing
+ * - Keyboard input translation
+ *
+ * ## Button Layout
+ *
+ * The calculator has a 6x4 grid of buttons:
+ * ```
+ * +----+----+----+----+
+ * | MC | MR | M+ | C  |  Row 0: Memory and Clear
+ * +----+----+----+----+
+ * | 7  | 8  | 9  | /  |  Row 1: 7-8-9 and divide
+ * +----+----+----+----+
+ * | 4  | 5  | 6  | *  |  Row 2: 4-5-6 and multiply
+ * +----+----+----+----+
+ * | 1  | 2  | 3  | -  |  Row 3: 1-2-3 and subtract
+ * +----+----+----+----+
+ * | 0  | .  | =  | +  |  Row 4: 0, decimal, equals, add
+ * +----+----+----+----+
+ * |+/- | CE | %  |1/x |  Row 5: Special functions
+ * +----+----+----+----+
+ * ```
+ *
+ * ## Button Types and Colors
+ *
+ * | Type     | Color  | Examples            |
+ * |----------|--------|---------------------|
+ * | Digit    | White  | 0-9, decimal point  |
+ * | Operator | Orange | +, -, *, /, =       |
+ * | Function | Gray   | MC, MR, M+, +/-     |
+ * | Clear    | Red    | C, CE               |
+ *
+ * ## Keyboard Mapping
+ *
+ * The calculator accepts keyboard input via evdev keycodes:
+ * - Number row (1-9, 0) and numpad for digits
+ * - Numpad operators (+, -, *, /)
+ * - Enter or numpad Enter for equals
+ * - Escape for clear (C)
+ * - Backspace for clear entry (CE)
+ *
+ * @see ui.hpp for Button structure and constants
+ * @see calc.hpp for calculator state
+ */
 //===----------------------------------------------------------------------===//
 
 #include "../include/ui.hpp"

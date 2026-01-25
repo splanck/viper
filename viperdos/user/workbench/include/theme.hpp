@@ -1,48 +1,142 @@
 #pragma once
-/// @file theme.hpp
-/// @brief Theme system for Workbench colors.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+/**
+ * @file theme.hpp
+ * @brief Theme system for Workbench colors.
+ *
+ * This file defines the theming infrastructure for the Workbench desktop.
+ * Themes allow users to customize the visual appearance of the entire
+ * desktop environment with coordinated color schemes.
+ *
+ * ## Available Themes
+ *
+ * | Theme          | Description                              |
+ * |----------------|------------------------------------------|
+ * | Classic Amiga  | Traditional Workbench 3.x blue and gray  |
+ * | Dark Mode      | Dark backgrounds with soft text          |
+ * | Modern Blue    | Contemporary light theme with blue       |
+ * | High Contrast  | Accessibility theme with high contrast   |
+ *
+ * ## Theme Architecture
+ *
+ * ```
+ * +-------------------+
+ * | Theme struct      |  <- Color values for all UI elements
+ * +-------------------+
+ *          |
+ *          v
+ * +-------------------+
+ * | g_currentTheme    |  <- Global pointer to active theme
+ * +-------------------+
+ *          |
+ *          v
+ * +-------------------+
+ * | theme*() funcs    |  <- Inline accessors in colors.hpp
+ * +-------------------+
+ * ```
+ *
+ * ## Usage
+ *
+ * ```cpp
+ * // Switch to dark mode
+ * setTheme(&themes::DarkMode);
+ *
+ * // Draw using current theme
+ * gui_fill_rect(win, x, y, w, h, currentTheme().desktop);
+ * ```
+ *
+ * @see colors.hpp for theme accessor functions
+ */
+//===----------------------------------------------------------------------===//
 
 #include <stdint.h>
 
 namespace workbench {
 
-/// @brief Theme color scheme.
+//===----------------------------------------------------------------------===//
+// Theme Structure
+//===----------------------------------------------------------------------===//
+
+/**
+ * @brief Complete color scheme for the Workbench desktop environment.
+ *
+ * Each theme defines colors for all UI elements including the desktop
+ * background, windows, menus, icons, and text. Colors are stored in
+ * ARGB32 format (0xAARRGGBB).
+ *
+ * ## Color Categories
+ *
+ * - **Desktop**: Background and border colors for the desktop area
+ * - **Window**: Background, title bar, and border colors for windows
+ * - **UI Elements**: Text, highlights, and 3D effect colors
+ * - **Menu**: Colors for the menu bar and dropdown menus
+ * - **Icon**: Colors for desktop icon labels
+ *
+ * ## 3D Border Effect
+ *
+ * The 3D border effect uses two colors:
+ * - `border3dLight`: Top and left edges (simulates light from top-left)
+ * - `border3dDark`: Bottom and right edges (shadow effect)
+ */
 struct Theme {
-    const char *name;
+    const char *name;          /**< Human-readable theme name. */
 
     // Desktop colors
-    uint32_t desktop;       // Backdrop color
-    uint32_t desktopBorder; // Desktop border
+    uint32_t desktop;          /**< Main desktop/backdrop color. */
+    uint32_t desktopBorder;    /**< Desktop border color. */
 
     // Window colors
-    uint32_t windowBg;      // Window background
-    uint32_t titleBar;      // Active title bar
-    uint32_t titleBarText;  // Title bar text
-    uint32_t titleBarInactive;
+    uint32_t windowBg;         /**< Window content area background. */
+    uint32_t titleBar;         /**< Active window title bar. */
+    uint32_t titleBarText;     /**< Title bar text color. */
+    uint32_t titleBarInactive; /**< Inactive window title bar. */
 
     // UI element colors
-    uint32_t highlight;     // Selection highlight (e.g. orange)
-    uint32_t text;          // Default text color
-    uint32_t textDisabled;  // Disabled text
-    uint32_t border3dLight; // 3D border light side
-    uint32_t border3dDark;  // 3D border dark side
+    uint32_t highlight;        /**< Selection highlight (icons, menus). */
+    uint32_t text;             /**< Default text color. */
+    uint32_t textDisabled;     /**< Disabled/grayed-out text. */
+    uint32_t border3dLight;    /**< 3D border light edge (top/left). */
+    uint32_t border3dDark;     /**< 3D border dark edge (bottom/right). */
 
     // Menu colors
-    uint32_t menuBg;
-    uint32_t menuText;
-    uint32_t menuHighlight;
-    uint32_t menuHighlightText;
+    uint32_t menuBg;           /**< Menu bar and dropdown background. */
+    uint32_t menuText;         /**< Menu item text color. */
+    uint32_t menuHighlight;    /**< Hovered menu item background. */
+    uint32_t menuHighlightText;/**< Hovered menu item text. */
 
     // Icon colors
-    uint32_t iconBg;        // Icon label background
-    uint32_t iconText;      // Icon label text
-    uint32_t iconShadow;    // Icon label shadow
+    uint32_t iconBg;           /**< Selected icon label background. */
+    uint32_t iconText;         /**< Icon label text color. */
+    uint32_t iconShadow;       /**< Icon label drop shadow. */
 };
 
-/// @brief Built-in themes.
+//===----------------------------------------------------------------------===//
+// Built-in Theme Definitions
+//===----------------------------------------------------------------------===//
+
+/**
+ * @brief Built-in theme definitions.
+ *
+ * This namespace contains constexpr Theme definitions that can be used
+ * directly at compile time. Each theme is fully specified with all
+ * required colors.
+ */
 namespace themes {
 
-/// Classic Amiga Workbench 3.x colors
+/**
+ * @brief Classic Amiga Workbench 3.x color scheme.
+ *
+ * The default theme, inspired by the Amiga Workbench 3.x interface:
+ * - Blue desktop background
+ * - Light gray window backgrounds
+ * - Orange selection highlights
+ * - Classic 3D button effects
+ */
 constexpr Theme ClassicAmiga = {
     "Classic Amiga",
     // Desktop
@@ -70,7 +164,15 @@ constexpr Theme ClassicAmiga = {
     0xFF000000, // iconShadow
 };
 
-/// Dark mode theme
+/**
+ * @brief Dark mode theme for reduced eye strain.
+ *
+ * A modern dark theme with:
+ * - Dark blue-gray backgrounds
+ * - Light text for contrast
+ * - Pink/red accent colors
+ * - Soft edges with reduced contrast
+ */
 constexpr Theme DarkMode = {
     "Dark Mode",
     // Desktop
@@ -98,7 +200,15 @@ constexpr Theme DarkMode = {
     0xFF11111B, // iconShadow
 };
 
-/// Modern blue theme
+/**
+ * @brief Modern blue theme with contemporary styling.
+ *
+ * A clean, modern look with:
+ * - Navy blue desktop
+ * - Near-white window backgrounds
+ * - Bright blue accents and highlights
+ * - Subtle 3D effects
+ */
 constexpr Theme ModernBlue = {
     "Modern Blue",
     // Desktop
@@ -126,7 +236,15 @@ constexpr Theme ModernBlue = {
     0xFF1F2937, // iconShadow
 };
 
-/// High Contrast theme for accessibility
+/**
+ * @brief High contrast theme for accessibility.
+ *
+ * An accessibility-focused theme with:
+ * - Pure black backgrounds
+ * - Pure white text for maximum contrast
+ * - Yellow highlights for visibility
+ * - No subtle gradations
+ */
 constexpr Theme HighContrast = {
     "High Contrast",
     // Desktop
@@ -156,7 +274,29 @@ constexpr Theme HighContrast = {
 
 } // namespace themes
 
-/// @brief Get list of available themes.
+//===----------------------------------------------------------------------===//
+// Theme Management Functions
+//===----------------------------------------------------------------------===//
+
+/**
+ * @brief Returns an array of all built-in themes.
+ *
+ * Use this function to enumerate available themes for a theme
+ * selection UI.
+ *
+ * @param[out] count If non-null, receives the number of themes.
+ * @return Pointer to array of Theme objects.
+ *
+ * ## Example
+ *
+ * ```cpp
+ * int count;
+ * const Theme *themes = getBuiltinThemes(&count);
+ * for (int i = 0; i < count; i++) {
+ *     printf("Theme: %s\n", themes[i].name);
+ * }
+ * ```
+ */
 inline const Theme *getBuiltinThemes(int *count) {
     static const Theme themes[] = {
         themes::ClassicAmiga,
@@ -170,13 +310,51 @@ inline const Theme *getBuiltinThemes(int *count) {
     return themes;
 }
 
-/// @brief Currently active theme.
+/**
+ * @brief Pointer to the currently active theme.
+ *
+ * This global variable is managed by setTheme() and read by
+ * currentTheme(). It is null before setTheme() is first called,
+ * in which case currentTheme() returns ClassicAmiga.
+ *
+ * Defined in theme.cpp.
+ */
 extern const Theme *g_currentTheme;
 
-/// @brief Set the active theme.
+/**
+ * @brief Sets the active theme for the Workbench.
+ *
+ * After calling this function, all theme*() color accessors
+ * will return colors from the new theme. UI elements should
+ * be redrawn after a theme change.
+ *
+ * @param theme Pointer to the theme to activate.
+ *
+ * ## Example
+ *
+ * ```cpp
+ * // Switch to dark mode
+ * setTheme(&themes::DarkMode);
+ * desktop.redraw();
+ * ```
+ */
 void setTheme(const Theme *theme);
 
-/// @brief Get the active theme.
+/**
+ * @brief Returns a reference to the currently active theme.
+ *
+ * This is the primary way to access theme colors at runtime.
+ * If no theme has been set, returns the Classic Amiga theme.
+ *
+ * @return Reference to the active Theme.
+ *
+ * ## Usage
+ *
+ * ```cpp
+ * uint32_t bgColor = currentTheme().desktop;
+ * gui_fill_rect(win, 0, 0, w, h, bgColor);
+ * ```
+ */
 inline const Theme &currentTheme() {
     return g_currentTheme ? *g_currentTheme : themes::ClassicAmiga;
 }

@@ -1,5 +1,48 @@
 //===----------------------------------------------------------------------===//
-// Editor implementation
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+/**
+ * @file editor.cpp
+ * @brief Editor state and cursor management implementation for VEdit.
+ *
+ * This file implements the Editor class which manages the editing state
+ * including cursor position, scroll offset, and high-level editing operations.
+ *
+ * ## Cursor Management
+ *
+ * The cursor position (line, column) is always kept valid:
+ * - clampCursor(): Ensures cursor is within buffer bounds
+ * - After any operation that might invalidate the cursor position,
+ *   clampCursor() is called to fix it
+ *
+ * ## Scroll Management
+ *
+ * The scroll offset determines which portion of the document is visible:
+ * - ensureCursorVisible(): Adjusts scroll to keep cursor in view
+ * - Called after navigation to ensure cursor remains visible
+ *
+ * ## Editing Operations
+ *
+ * The Editor class provides high-level editing operations:
+ * - insertChar(): Insert character at cursor
+ * - deleteChar(): Delete character after cursor
+ * - backspace(): Delete character before cursor
+ * - insertNewline(): Split line at cursor
+ * - insertTab(): Insert tab character (or spaces)
+ *
+ * ## Navigation
+ *
+ * Cursor movement operations:
+ * - moveCursorLeft/Right/Up/Down: Arrow key movement
+ * - moveCursorHome/End: Line beginning/end
+ * - moveCursorPageUp/Down: Page navigation
+ *
+ * @see editor.hpp for the Editor class definition
+ * @see buffer.hpp for the underlying Buffer class
+ */
 //===----------------------------------------------------------------------===//
 
 #include "../include/editor.hpp"

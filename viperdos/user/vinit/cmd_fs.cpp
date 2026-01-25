@@ -1,9 +1,59 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
 /**
  * @file cmd_fs.cpp
  * @brief Filesystem shell commands for vinit.
  *
- * Uses kernel VFS for all filesystem operations (monolithic kernel mode).
+ * This file implements all filesystem-related shell commands for the vinit
+ * shell. All commands use the kernel VFS for filesystem operations.
+ *
+ * ## Implemented Commands
+ *
+ * | Command | Description                              | Example           |
+ * |---------|------------------------------------------|-------------------|
+ * | CD      | Change current directory                 | CD /sys           |
+ * | PWD     | Print working directory                  | PWD               |
+ * | Dir     | List directory (compact format)          | Dir /c            |
+ * | List    | List directory (detailed format)         | List .            |
+ * | Type    | Display file contents                    | Type readme.txt   |
+ * | Copy    | Copy file to new location                | Copy a.txt TO b   |
+ * | Delete  | Delete a file                            | Delete temp.txt   |
+ * | MakeDir | Create a new directory                   | MakeDir newdir    |
+ * | Rename  | Rename a file or directory               | Rename old AS new |
+ *
+ * ## Path Handling
+ *
+ * All commands support both absolute and relative paths:
+ * - Absolute paths start with "/" (e.g., "/sys/info")
+ * - Relative paths are resolved from current_dir
+ *
+ * The `normalize_path()` function handles:
+ * - "." (current directory)
+ * - ".." (parent directory)
+ * - Multiple slashes
+ *
+ * ## Special Directories
+ *
+ * - `/sys`: Virtual directory exposing kernel info (/sys/info, /sys/tasks)
+ * - `/`: Root directory showing both /sys and user disk contents
+ *
+ * ## Error Handling
+ *
+ * Commands set `last_rc` and `last_error` globals on failure:
+ * - RC_OK: Success
+ * - RC_ERROR: General error (invalid args, not found)
+ * - RC_WARN: Warning (non-fatal issue)
+ * - RC_FAIL: Fatal failure
+ *
+ * @see vinit.hpp for global state (current_dir, last_rc, last_error)
+ * @see cmd_misc.cpp for non-filesystem commands
  */
+//===----------------------------------------------------------------------===//
+
 #include "vinit.hpp"
 
 // =============================================================================

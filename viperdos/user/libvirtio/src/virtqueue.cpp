@@ -1,14 +1,71 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
 /**
  * @file virtqueue.cpp
  * @brief User-space Virtqueue allocation, setup, and polling implementation.
  *
- * @details
- * This file implements the user-space `Virtqueue` helper for both legacy and
- * modern virtio-mmio devices.
+ * This file implements the user-space `Virtqueue` class for both legacy and
+ * modern virtio-mmio devices. Virtqueues are the primary data transport
+ * mechanism between drivers and virtio devices.
  *
- * Memory allocation uses the DMA allocation syscall to obtain physically
- * contiguous memory suitable for virtqueue rings.
+ * ## Virtqueue Structure
+ *
+ * A virtqueue consists of three rings:
+ *
+ * ```
+ * +------------------+
+ * | Descriptor Table |  Array of VringDesc entries
+ * | (size entries)   |  Each: addr, len, flags, next
+ * +------------------+
+ * | Available Ring   |  Driver -> Device
+ * | flags, idx       |  Lists descriptors ready for processing
+ * | ring[size]       |
+ * +------------------+
+ * | Used Ring        |  Device -> Driver
+ * | flags, idx       |  Lists completed descriptors
+ * | ring[size]       |
+ * +------------------+
+ * ```
+ *
+ * ## Memory Layout
+ *
+ * - **Legacy mode**: All rings in one contiguous DMA allocation
+ * - **Modern mode**: Each ring in separate DMA allocation
+ *
+ * ## Descriptor Flags
+ *
+ * | Flag   | Value | Description                    |
+ * |--------|-------|--------------------------------|
+ * | NEXT   | 0x01  | Descriptor is chained          |
+ * | WRITE  | 0x02  | Device writes (not reads)      |
+ *
+ * ## Operation Flow
+ *
+ * **Driver submits request:**
+ * 1. Allocate descriptor(s) from free list
+ * 2. Fill descriptor(s) with buffer addresses
+ * 3. Add head descriptor to available ring
+ * 4. Notify device (write to QUEUE_NOTIFY)
+ *
+ * **Device completes request:**
+ * 1. Device processes buffers
+ * 2. Device adds descriptor head to used ring
+ * 3. Device raises interrupt
+ *
+ * **Driver handles completion:**
+ * 1. Poll used ring for new entries
+ * 2. Process completed buffers
+ * 3. Return descriptors to free list
+ *
+ * @see virtqueue.hpp for class definition
+ * @see virtio.cpp for device management
  */
+//===----------------------------------------------------------------------===//
+
 #include "../include/virtqueue.hpp"
 
 namespace virtio {

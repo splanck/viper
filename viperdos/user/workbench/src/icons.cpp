@@ -1,5 +1,61 @@
-/// @file icons.cpp
-/// @brief Icon pixel data for Workbench.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+/**
+ * @file icons.cpp
+ * @brief Icon pixel data definitions for ViperDOS Workbench.
+ *
+ * This file contains the raw pixel data for all icons used in the Workbench
+ * desktop environment. Each icon is a 24x24 pixel image stored as ARGB32
+ * values in row-major order.
+ *
+ * ## Icon Set
+ *
+ * | Icon        | Description                      | Usage                 |
+ * |-------------|----------------------------------|-----------------------|
+ * | disk_24     | 3.5" floppy disk                 | SYS: and other drives |
+ * | folder_24   | Closed folder                    | Directory entries     |
+ * | file_24     | Generic file                     | Unknown file types    |
+ * | file_text_24| Document with lines              | Text/source files     |
+ * | file_exe_24 | Gear symbol                      | Executables (.prg)    |
+ *
+ * ## Pixel Format
+ *
+ * Each pixel is a 32-bit ARGB value:
+ * ```
+ * Bits: 31-24  23-16  15-8   7-0
+ *       Alpha  Red    Green  Blue
+ * ```
+ *
+ * - Fully opaque: Alpha = 0xFF
+ * - Fully transparent: Alpha = 0x00 (value = 0)
+ *
+ * Icons use transparency (0) for the background to allow them to be
+ * drawn over the desktop pattern or selection highlight.
+ *
+ * ## Color Palette
+ *
+ * Icons use colors from colors.hpp:
+ * - WB_WHITE (0xFFFFFFFF) - Highlights
+ * - WB_GRAY_LIGHT (0xFFAAAAAA) - Light fills
+ * - WB_GRAY_MED (0xFF888888) - Mid tones
+ * - WB_GRAY_DARK (0xFF555555) - Dark outlines
+ * - WB_BLACK (0xFF000000) - Details
+ * - WB_BLUE (0xFF0055AA) - Accents
+ *
+ * ## Rendering
+ *
+ * Icons are rendered by copying pixels directly to the framebuffer,
+ * skipping pixels with value 0 (transparent). See FileBrowser::drawFileIcon()
+ * in filebrowser.cpp for the rendering implementation.
+ *
+ * @see icons.hpp for extern declarations
+ * @see colors.hpp for color constant definitions
+ */
+//===----------------------------------------------------------------------===//
 
 #include "../include/icons.hpp"
 #include "../include/colors.hpp"

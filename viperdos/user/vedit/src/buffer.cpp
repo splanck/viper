@@ -1,5 +1,39 @@
 //===----------------------------------------------------------------------===//
-// Text buffer implementation
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+/**
+ * @file buffer.cpp
+ * @brief Text buffer implementation for VEdit.
+ *
+ * This file implements the Buffer class which provides text storage and
+ * manipulation for the VEdit text editor. The buffer uses a line-based
+ * storage model with dynamic memory allocation per line.
+ *
+ * ## Memory Management
+ *
+ * - Lines are allocated with an initial capacity of 256 bytes
+ * - Lines automatically grow when text exceeds capacity
+ * - The lines array is pre-allocated to MAX_LINES entries
+ * - Each line's text buffer is independently allocated/freed
+ *
+ * ## File I/O
+ *
+ * The buffer supports loading and saving files:
+ * - load(): Reads file line by line, handles \n and \r\n
+ * - save(): Writes all lines with \n terminators
+ *
+ * ## Line Operations
+ *
+ * - insertChar(): Insert character at cursor position
+ * - deleteChar(): Delete character at cursor position
+ * - splitLine(): Split line at cursor (Enter key)
+ * - joinLines(): Join line with previous (Backspace at start)
+ *
+ * @see buffer.hpp for the Buffer class definition
+ */
 //===----------------------------------------------------------------------===//
 
 #include "../include/buffer.hpp"

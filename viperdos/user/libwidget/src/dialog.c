@@ -4,10 +4,48 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: user/libwidget/src/dialog.c
-// Purpose: Dialog box implementations.
-//
+/**
+ * @file dialog.c
+ * @brief Standard dialog box implementations for the libwidget toolkit.
+ *
+ * This file provides ready-to-use dialog boxes for common user interaction
+ * patterns. The dialogs are modal—they block interaction with other windows
+ * until dismissed.
+ *
+ * ## Available Dialogs
+ *
+ * - **Message Box** (msgbox_show): Displays a message with configurable
+ *   buttons (OK, OK/Cancel, Yes/No, Yes/No/Cancel) and icons.
+ *
+ * - **File Dialogs** (stubs): Open, save, and folder selection dialogs
+ *   are declared but not yet implemented.
+ *
+ * ## Modal Behavior
+ *
+ * The msgbox_show function runs its own event loop internally. It blocks
+ * the calling code until the user dismisses the dialog by clicking a button,
+ * pressing Enter/Escape, or closing the window. This provides familiar
+ * modal dialog behavior similar to desktop operating systems.
+ *
+ * ## Usage Example
+ *
+ * @code
+ * // Show a confirmation dialog
+ * msgbox_result_t result = msgbox_show(
+ *     parent,
+ *     "Confirm Delete",
+ *     "Are you sure you want to delete this file?",
+ *     MB_YES_NO,
+ *     MB_ICON_QUESTION
+ * );
+ *
+ * if (result == MB_RESULT_YES) {
+ *     delete_file(filename);
+ * }
+ * @endcode
+ *
+ * @see widget.h for dialog type and result enumerations
+ */
 //===----------------------------------------------------------------------===//
 
 #include <widget.h>
@@ -18,6 +56,89 @@
 // Message Box
 //===----------------------------------------------------------------------===//
 
+/**
+ * @brief Displays a modal message box dialog and waits for user response.
+ *
+ * This function creates a modal dialog window displaying a message with an
+ * icon and one or more buttons. It blocks until the user dismisses the
+ * dialog by clicking a button, pressing Enter/Escape, or closing the window.
+ *
+ * ## Dialog Layout
+ *
+ * ```
+ * +---------------------------+
+ * | Title                     |
+ * +---------------------------+
+ * | [Icon] Message text that  |
+ * |        can wrap to multi- |
+ * |        ple lines          |
+ * |                           |
+ * |    [OK]    [Cancel]       |
+ * +---------------------------+
+ * ```
+ *
+ * ## Button Configurations
+ *
+ * The `type` parameter determines which buttons appear:
+ * - **MB_OK**: Single "OK" button
+ * - **MB_OK_CANCEL**: "OK" and "Cancel" buttons
+ * - **MB_YES_NO**: "Yes" and "No" buttons
+ * - **MB_YES_NO_CANCEL**: "Yes", "No", and "Cancel" buttons
+ *
+ * ## Icon Types
+ *
+ * The `icon` parameter affects the icon color and symbol:
+ * - **MB_ICON_INFO**: Blue icon with "i" (information)
+ * - **MB_ICON_WARNING**: Orange icon with "!" (warning)
+ * - **MB_ICON_ERROR**: Red icon with "X" (error)
+ * - **MB_ICON_QUESTION**: Blue icon with "?" (question/confirmation)
+ *
+ * ## Keyboard Support
+ *
+ * - **Enter**: Selects the first button (OK or Yes)
+ * - **Escape**: Selects Cancel, or OK if only OK is available
+ *
+ * ## Dialog Sizing
+ *
+ * The dialog width is calculated based on message length:
+ * - Minimum: 200 pixels
+ * - Maximum: 400 pixels
+ * - Text that exceeds the width wraps to multiple lines
+ *
+ * @param parent  The parent window for positioning (currently unused).
+ * @param title   The dialog window title. If NULL, "Message" is used.
+ * @param message The message text to display. Supports newlines (\n) for
+ *                explicit line breaks. Long lines are automatically wrapped.
+ * @param type    The button configuration (MB_OK, MB_OK_CANCEL, etc.).
+ * @param icon    The icon to display (MB_ICON_INFO, MB_ICON_WARNING, etc.).
+ *
+ * @return The result indicating which button was clicked:
+ *         - MB_RESULT_OK: OK button clicked or Enter pressed
+ *         - MB_RESULT_CANCEL: Cancel button clicked, Escape pressed, or window closed
+ *         - MB_RESULT_YES: Yes button clicked
+ *         - MB_RESULT_NO: No button clicked
+ *
+ * @note This function runs its own event loop internally. The caller's code
+ *       is blocked until the dialog is dismissed.
+ *
+ * @note The dialog is automatically sized based on the message length,
+ *       with a minimum width of 200 pixels and maximum of 400 pixels.
+ *
+ * @code
+ * // Error message with single OK button
+ * msgbox_show(parent, "Error", "File not found!", MB_OK, MB_ICON_ERROR);
+ *
+ * // Confirmation with Yes/No buttons
+ * if (msgbox_show(parent, "Save?", "Save changes?",
+ *                 MB_YES_NO, MB_ICON_QUESTION) == MB_RESULT_YES) {
+ *     save_file();
+ * }
+ * @endcode
+ *
+ * @see msgbox_type_t for button configurations
+ * @see msgbox_icon_t for icon types
+ * @see msgbox_result_t for return values
+ */
 msgbox_result_t msgbox_show(gui_window_t *parent, const char *title, const char *message,
                             msgbox_type_t type, msgbox_icon_t icon) {
     (void)parent;
@@ -256,6 +377,27 @@ msgbox_result_t msgbox_show(gui_window_t *parent, const char *title, const char 
 // File Dialogs (Simplified stubs - full implementation would need file browser)
 //===----------------------------------------------------------------------===//
 
+/**
+ * @brief Opens a file selection dialog for choosing an existing file.
+ *
+ * @note **NOT YET IMPLEMENTED**. This function is a stub that always
+ *       returns NULL. A full implementation would need to:
+ *       - Display a file browser window
+ *       - Allow navigation through directories
+ *       - Support file type filtering
+ *       - Return the selected file path
+ *
+ * @param parent      The parent window for positioning (unused).
+ * @param title       The dialog window title (unused).
+ * @param filter      File type filter string, e.g., "*.txt" (unused).
+ * @param initial_dir Initial directory to display (unused).
+ *
+ * @return Always returns NULL (not implemented).
+ *         When implemented, would return a dynamically allocated string
+ *         containing the selected file path, or NULL if canceled.
+ *
+ * @todo Implement file browser dialog using the Workbench file browser.
+ */
 char *filedialog_open(gui_window_t *parent, const char *title, const char *filter,
                       const char *initial_dir) {
     (void)parent;
@@ -268,6 +410,27 @@ char *filedialog_open(gui_window_t *parent, const char *title, const char *filte
     return NULL;
 }
 
+/**
+ * @brief Opens a file selection dialog for choosing a save location.
+ *
+ * @note **NOT YET IMPLEMENTED**. This function is a stub that always
+ *       returns NULL. A full implementation would need to:
+ *       - Display a file browser window with file name entry
+ *       - Allow navigation through directories
+ *       - Prompt for overwrite confirmation if file exists
+ *       - Return the selected file path
+ *
+ * @param parent      The parent window for positioning (unused).
+ * @param title       The dialog window title (unused).
+ * @param filter      File type filter string, e.g., "*.txt" (unused).
+ * @param initial_dir Initial directory to display (unused).
+ *
+ * @return Always returns NULL (not implemented).
+ *         When implemented, would return a dynamically allocated string
+ *         containing the save file path, or NULL if canceled.
+ *
+ * @todo Implement save file dialog with filename entry field.
+ */
 char *filedialog_save(gui_window_t *parent, const char *title, const char *filter,
                       const char *initial_dir) {
     (void)parent;
@@ -279,6 +442,25 @@ char *filedialog_save(gui_window_t *parent, const char *title, const char *filte
     return NULL;
 }
 
+/**
+ * @brief Opens a dialog for selecting a folder/directory.
+ *
+ * @note **NOT YET IMPLEMENTED**. This function is a stub that always
+ *       returns NULL. A full implementation would need to:
+ *       - Display a directory browser (showing only folders)
+ *       - Allow navigation and creation of new folders
+ *       - Return the selected directory path
+ *
+ * @param parent      The parent window for positioning (unused).
+ * @param title       The dialog window title (unused).
+ * @param initial_dir Initial directory to display (unused).
+ *
+ * @return Always returns NULL (not implemented).
+ *         When implemented, would return a dynamically allocated string
+ *         containing the selected directory path, or NULL if canceled.
+ *
+ * @todo Implement folder selection dialog.
+ */
 char *filedialog_folder(gui_window_t *parent, const char *title, const char *initial_dir) {
     (void)parent;
     (void)title;

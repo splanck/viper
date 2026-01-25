@@ -1,21 +1,65 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
 /**
  * @file sysinfo.cpp
  * @brief System information and runtime test utility for ViperDOS.
  *
- * @details
- * This utility demonstrates comprehensive use of the libc runtime:
- * - Memory allocation (malloc/free)
- * - String functions
- * - Time functions
- * - Printf formatting
- * - Process/task listing
- * - Memory statistics
+ * This utility serves two purposes:
+ * 1. Display comprehensive system information (memory, tasks, uptime)
+ * 2. Run a test suite to validate libc runtime functions
  *
- * It also serves as a runtime validation test.
+ * ## Output Sections
  *
- * Usage:
- *   sysinfo          - Show system information and run tests
+ * ```
+ * === System Information ===
+ *   Uptime:        2h 15m 30s (8130000 ms)
+ *   CWD:           /
+ *   PID:           5
+ *   Memory Total:  131072 KB
+ *   Memory Free:   98304 KB
+ *   Memory Used:   32768 KB (25%)
+ *   Page Size:     4096 bytes
+ *
+ * === Running Tasks ===
+ *   ID    Name          State     Priority
+ *   1     kernel        Running   0
+ *   2     vinit         Ready     5
+ *   ...
+ *
+ * === Test Results ===
+ *   [PASS] strlen("hello") == 5
+ *   [PASS] malloc(64) returns non-NULL
+ *   ...
+ * ```
+ *
+ * ## Test Categories
+ *
+ * | Category      | Functions Tested                    |
+ * |---------------|-------------------------------------|
+ * | String        | strlen, strcmp, strcpy, strcat, etc |
+ * | Memory        | malloc, free, calloc, realloc       |
+ * | Character     | isalpha, isdigit, toupper, tolower  |
+ * | Stdlib        | atoi, atol, strtol, abs             |
+ * | Printf        | snprintf with various formats       |
+ *
+ * ## Exit Code
+ *
+ * - 0: All tests passed
+ * - 1: One or more tests failed
+ *
+ * ## Usage
+ *
+ * ```
+ * sysinfo          # Run from shell prompt
+ * ```
+ *
+ * @see syscall.hpp for system call wrappers
  */
+//===----------------------------------------------------------------------===//
 
 #include "../syscall.hpp"
 #include <assert.h>

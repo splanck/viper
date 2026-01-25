@@ -1,6 +1,52 @@
 #pragma once
-/// @file filebrowser.hpp
-/// @brief File browser window class.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+/**
+ * @file filebrowser.hpp
+ * @brief File browser window class for the Workbench.
+ *
+ * This file defines the FileBrowser class which provides a graphical
+ * file browser window for navigating the filesystem. Features include:
+ *
+ * - Directory listing with icons per file type
+ * - Navigation via double-click or toolbar
+ * - File selection and multi-select
+ * - Context menu for file operations
+ * - Inline rename editor
+ * - Scrollbar for long listings
+ *
+ * ## Window Layout
+ *
+ * ```
+ * +--[ Files: /path ]--------[X]---+
+ * | [^] /current/path              |  Toolbar
+ * +--------------------------------+
+ * |  +------+  +------+  +------+  |
+ * |  | icon |  | icon |  | icon |  |
+ * |  +------+  +------+  +------+  |
+ * |   file1    file2     file3     |  File Grid
+ * |                                |
+ * +--------------------------------+
+ * | file1.txt - 1234 bytes         |  Status Bar
+ * +--------------------------------+
+ * ```
+ *
+ * ## Event Handling
+ *
+ * The browser handles several event types:
+ * - Mouse clicks for selection and navigation
+ * - Right-clicks for context menu
+ * - Keyboard for navigation and shortcuts
+ * - Scroll events for scrollbar
+ *
+ * @see types.hpp for file entry and menu types
+ * @see desktop.hpp for browser management
+ */
+//===----------------------------------------------------------------------===//
 
 #include "types.hpp"
 #include <gui.h>
@@ -9,40 +55,109 @@ namespace workbench {
 
 class Desktop; // Forward declaration
 
-/// @brief Manages a file browser window for navigating directories.
+//===----------------------------------------------------------------------===//
+// FileBrowser Class
+//===----------------------------------------------------------------------===//
+
+/**
+ * @brief Manages a file browser window for navigating directories.
+ *
+ * Each FileBrowser instance represents a single window showing the
+ * contents of a directory. Multiple browsers can be open simultaneously,
+ * up to MAX_BROWSERS.
+ *
+ * ## Lifecycle
+ *
+ * 1. Constructed by Desktop::openFileBrowser()
+ * 2. init() creates the GUI window and loads directory
+ * 3. Events are dispatched via handleEvent()
+ * 4. Destroyed by Desktop::closeFileBrowser() on window close
+ *
+ * ## File Operations
+ *
+ * The browser supports several file operations:
+ * - **Open**: Double-click or Enter to open file/directory
+ * - **Delete**: Delete key or context menu
+ * - **Rename**: F2 or context menu (inline editor)
+ * - **Copy/Paste**: Context menu (uses global clipboard)
+ * - **New Folder**: Context menu on empty area
+ */
 class FileBrowser {
   public:
+    /**
+     * @brief Constructs a file browser for the given path.
+     *
+     * @param desktop Pointer to the parent Desktop (for callbacks).
+     * @param initialPath Directory path to display initially.
+     */
     FileBrowser(Desktop *desktop, const char *initialPath);
+
+    /**
+     * @brief Destroys the browser and its window.
+     */
     ~FileBrowser();
 
-    /// @brief Initialize the file browser window.
-    /// @return true on success.
+    //=== Initialization ===//
+
+    /**
+     * @brief Creates the browser window and loads directory contents.
+     *
+     * @return true on success, false if window creation fails.
+     */
     bool init();
 
-    /// @brief Get the browser window handle.
-    gui_window_t *window() const {
-        return m_window;
-    }
+    //=== Accessors ===//
 
-    /// @brief Check if this browser is still open.
-    bool isOpen() const {
-        return m_window != nullptr;
-    }
+    /**
+     * @brief Returns the browser's GUI window handle.
+     * @return Pointer to gui_window_t.
+     */
+    gui_window_t *window() const { return m_window; }
 
-    /// @brief Handle an event for this browser.
-    /// @return true if the event was consumed.
+    /**
+     * @brief Checks if the browser window is still open.
+     * @return true if the window exists.
+     */
+    bool isOpen() const { return m_window != nullptr; }
+
+    /**
+     * @brief Returns the current directory path.
+     * @return Null-terminated path string.
+     */
+    const char *currentPath() const { return m_currentPath; }
+
+    //=== Event Handling ===//
+
+    /**
+     * @brief Handles a GUI event for this browser.
+     *
+     * Processes mouse clicks, keyboard input, scroll events,
+     * and window close events.
+     *
+     * @param event The GUI event to process.
+     * @return true if the event was consumed.
+     */
     bool handleEvent(const gui_event_t &event);
 
-    /// @brief Navigate to a new directory.
+    //=== Navigation ===//
+
+    /**
+     * @brief Navigates to a new directory.
+     *
+     * Loads the directory contents, updates the title bar,
+     * and redraws the window.
+     *
+     * @param path Absolute path to navigate to.
+     */
     void navigateTo(const char *path);
 
-    /// @brief Navigate to parent directory.
+    /**
+     * @brief Navigates to the parent directory.
+     *
+     * Moves up one level in the directory hierarchy.
+     * Does nothing if already at root "/".
+     */
     void navigateUp();
-
-    /// @brief Get the current path.
-    const char *currentPath() const {
-        return m_currentPath;
-    }
 
   private:
     void loadDirectory();

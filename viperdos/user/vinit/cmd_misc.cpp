@@ -1,10 +1,65 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
 /**
  * @file cmd_misc.cpp
  * @brief Miscellaneous shell commands for vinit (run, assign, path, fetch).
  *
- * Uses libc for DNS resolution and TCP sockets.
- * Uses libtls for HTTPS connections.
+ * This file implements non-filesystem shell commands for the vinit shell,
+ * including program execution, assign management, and network operations.
+ *
+ * ## Implemented Commands
+ *
+ * | Command | Description                              | Example            |
+ * |---------|------------------------------------------|--------------------|
+ * | Run     | Execute a program                        | Run sysinfo        |
+ * | Assign  | List or manage logical assigns           | Assign             |
+ * | Path    | Resolve an assign path                   | Path SYS:          |
+ * | Fetch   | Download content from a URL              | Fetch example.com  |
+ *
+ * ## Run Command Details
+ *
+ * The Run command searches for programs in this order:
+ * 1. Current directory (if path is relative)
+ * 2. `/c/` directory (system commands)
+ * 3. `/c/` with `.prg` extension appended
+ *
+ * Programs receive their working directory via the args string:
+ * `"PWD=/current/dir;original_args"`
+ *
+ * Run waits for the spawned process to exit and reports its exit status.
+ *
+ * ## Fetch Command Details
+ *
+ * The Fetch command implements a simple HTTP(S) client:
+ * 1. Parse URL to extract host, port, path
+ * 2. Resolve hostname via DNS (gethostbyname)
+ * 3. Create TCP socket and connect
+ * 4. For HTTPS: perform TLS handshake (libtls)
+ * 5. Send HTTP GET request
+ * 6. Print response to console
+ *
+ * Supported URL formats:
+ * - `http://host/path`
+ * - `https://host/path`
+ * - `host` (defaults to http://host/)
+ *
+ * ## Assign System
+ *
+ * Assigns are logical device names that map to filesystem handles.
+ * System assigns include:
+ * - `SYS:` - System directory
+ * - `C:` - Commands directory
+ * - `RAM:` - RAM disk (if available)
+ *
+ * @see vinit.hpp for global state
+ * @see cmd_fs.cpp for filesystem commands
  */
+//===----------------------------------------------------------------------===//
+
 #include "vinit.hpp"
 
 #include <arpa/inet.h>

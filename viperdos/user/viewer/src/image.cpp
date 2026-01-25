@@ -1,5 +1,81 @@
 //===----------------------------------------------------------------------===//
-// Image loading implementation
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+/**
+ * @file image.cpp
+ * @brief Image loading implementation for the Viewer application.
+ *
+ * This file implements the Image class which handles loading and decoding
+ * of image files into ARGB32 pixel buffers suitable for display.
+ *
+ * ## Supported Formats
+ *
+ * | Format | Extensions | Description                           |
+ * |--------|------------|---------------------------------------|
+ * | BMP    | .bmp       | Windows Bitmap (24-bit, 32-bit)       |
+ * | PPM    | .ppm       | Portable Pixmap (binary P6 format)    |
+ *
+ * ## BMP Format Details
+ *
+ * The BMP loader handles:
+ * - 24-bit RGB images (no alpha, opaque)
+ * - 32-bit RGBA images (with alpha channel)
+ * - Bottom-up row order (standard BMP)
+ * - Top-down row order (negative height)
+ * - Row padding to 4-byte boundary
+ *
+ * BMP header structure (54 bytes):
+ * ```
+ * Offset  Size  Description
+ * 0       2     Magic "BM"
+ * 10      4     Pixel data offset
+ * 18      4     Image width
+ * 22      4     Image height (negative = top-down)
+ * 28      2     Bits per pixel (24 or 32)
+ * ```
+ *
+ * ## PPM Format Details
+ *
+ * The PPM loader handles binary (P6) format:
+ * ```
+ * P6
+ * # optional comments
+ * width height
+ * maxval
+ * <binary RGB data>
+ * ```
+ *
+ * - Only binary (P6) format supported, not ASCII (P3)
+ * - RGB triplets stored as raw bytes
+ * - No alpha channel (always opaque)
+ *
+ * ## Pixel Format
+ *
+ * All images are converted to ARGB32 format:
+ * ```
+ * Bits: 31-24  23-16  15-8   7-0
+ *       Alpha  Red    Green  Blue
+ * ```
+ *
+ * ## Memory Management
+ *
+ * - Pixel buffer allocated with malloc()
+ * - Maximum image size: 4096x4096 pixels
+ * - unload() frees buffer and resets state
+ * - Destructor calls unload() automatically
+ *
+ * ## Error Handling
+ *
+ * When loading fails:
+ * - m_pixels remains nullptr
+ * - m_error contains human-readable message
+ * - Previous image data is unloaded
+ *
+ * @see image.hpp for Image class definition
+ */
 //===----------------------------------------------------------------------===//
 
 #include "../include/image.hpp"

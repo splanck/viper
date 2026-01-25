@@ -4,16 +4,50 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: user/prefs/main.cpp
-// Purpose: GUI Preferences application for ViperDOS (Amiga-style).
-//
-//===----------------------------------------------------------------------===//
-
 /**
  * @file main.cpp
- * @brief GUI Preferences application with multiple categories.
+ * @brief GUI Preferences application for ViperDOS.
+ *
+ * This application provides a tabbed preferences panel for viewing and
+ * (in future versions) modifying system settings. The interface is inspired
+ * by the Amiga Workbench Preferences application.
+ *
+ * ## Application Structure
+ *
+ * The preferences panel has a sidebar with category buttons and a content
+ * area that displays settings for the selected category.
+ *
+ * ```
+ * +------------+--------------------------------+
+ * | [S] Screen |  Screen Preferences            |
+ * | [I] Input  |  ----------------------------- |
+ * | [T] Time   |                                |
+ * | [?] About  |  Resolution: 1024 x 768        |
+ * |            |  Color Depth: 32-bit           |
+ * |            |  Backdrop: Workbench Blue      |
+ * |            |                                |
+ * +------------+--------------------------------+
+ * |            | [Use] [Cancel] [Save]          |
+ * +------------+--------------------------------+
+ * ```
+ *
+ * ## Categories
+ *
+ * | Category | Description                        |
+ * |----------|------------------------------------|
+ * | Screen   | Display resolution and backdrop    |
+ * | Input    | Pointer and keyboard settings      |
+ * | Time     | System clock and uptime            |
+ * | About    | System information and version     |
+ *
+ * ## Limitations
+ *
+ * Currently, preferences are read-only. The "Use", "Cancel", and "Save"
+ * buttons are placeholders for future functionality.
+ *
+ * @see workbench for theme switching (available via Tools menu)
  */
+//===----------------------------------------------------------------------===//
 
 #include "../syscall.hpp"
 #include <gui.h>
@@ -21,41 +55,106 @@
 #include <string.h>
 #include <viperdos/mem_info.hpp>
 
-// Workbench color palette
+//===----------------------------------------------------------------------===//
+// Color Constants
+//===----------------------------------------------------------------------===//
+
+/**
+ * @defgroup PrefsColors Preferences Color Palette
+ * @brief Workbench-style colors for the preferences UI.
+ * @{
+ */
+
+/** @brief Classic Workbench blue (0xFF0055AA). */
 constexpr uint32_t WB_BLUE = 0xFF0055AA;
+
+/** @brief Pure white (0xFFFFFFFF). */
 constexpr uint32_t WB_WHITE = 0xFFFFFFFF;
+
+/** @brief Pure black (0xFF000000). */
 constexpr uint32_t WB_BLACK = 0xFF000000;
+
+/** @brief Light gray for backgrounds (0xFFAAAAAA). */
 constexpr uint32_t WB_GRAY_LIGHT = 0xFFAAAAAA;
+
+/** @brief Medium gray for disabled elements (0xFF888888). */
 constexpr uint32_t WB_GRAY_MED = 0xFF888888;
+
+/** @brief Dark gray for shadows (0xFF555555). */
 constexpr uint32_t WB_GRAY_DARK = 0xFF555555;
+
+/** @brief Orange for highlights (0xFFFF8800). Unused. */
 [[maybe_unused]] constexpr uint32_t WB_ORANGE = 0xFFFF8800;
 
-// Window dimensions
+/** @} */ // end PrefsColors
+
+//===----------------------------------------------------------------------===//
+// Layout Constants
+//===----------------------------------------------------------------------===//
+
+/**
+ * @defgroup PrefsLayout Preferences Layout Constants
+ * @brief Dimensions for the preferences window layout.
+ * @{
+ */
+
+/** @brief Total window width in pixels. */
 constexpr int WIN_WIDTH = 500;
+
+/** @brief Total window height in pixels. */
 constexpr int WIN_HEIGHT = 360;
 
-// UI layout
+/** @brief Width of the category sidebar in pixels. */
 constexpr int SIDEBAR_WIDTH = 110;
+
+/** @brief X position where content area begins. */
 constexpr int CONTENT_X = SIDEBAR_WIDTH + 10;
+
+/** @brief Height of action buttons at the bottom. */
 constexpr int BUTTON_HEIGHT = 24;
+
+/** @brief Height of each category button in sidebar. */
 constexpr int CATEGORY_HEIGHT = 28;
 
-// Preference categories
-enum class Category { Screen, Input, Time, About };
+/** @} */ // end PrefsLayout
 
-// Category info
-struct CategoryInfo {
-    const char *name;
-    const char *icon;
-    Category cat;
+//===----------------------------------------------------------------------===//
+// Category Types
+//===----------------------------------------------------------------------===//
+
+/**
+ * @brief Enumeration of preference categories.
+ *
+ * Each category corresponds to a tab in the sidebar and a different
+ * content panel.
+ */
+enum class Category {
+    Screen, /**< Display settings (resolution, backdrop). */
+    Input,  /**< Pointer and keyboard settings. */
+    Time,   /**< System time and uptime display. */
+    About   /**< System information and version. */
 };
 
+/**
+ * @brief Metadata for a category button in the sidebar.
+ */
+struct CategoryInfo {
+    const char *name; /**< Display name for the category. */
+    const char *icon; /**< Icon text (e.g., "[S]"). */
+    Category cat;     /**< Category enum value. */
+};
+
+/**
+ * @brief Array of category definitions.
+ */
 static const CategoryInfo g_categories[] = {
     {"Screen", "[S]", Category::Screen},
     {"Input", "[I]", Category::Input},
     {"Time", "[T]", Category::Time},
     {"About", "[?]", Category::About},
 };
+
+/** @brief Number of categories. */
 constexpr int NUM_CATEGORIES = sizeof(g_categories) / sizeof(g_categories[0]);
 
 // State
