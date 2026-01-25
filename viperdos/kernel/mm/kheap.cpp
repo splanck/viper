@@ -126,13 +126,37 @@ usize heap_region_count = 0;
 u64 heap_start = 0;
 u64 heap_end = 0;
 u64 heap_size = 0;
+
+// Segregated free lists by size class for O(1) small allocations
+// Size classes: 32, 64, 128, 256, 512, 1024, 2048, 4096, >4096 (large)
+constexpr usize NUM_SIZE_CLASSES = 9;
+constexpr u64 SIZE_CLASS_LIMITS[NUM_SIZE_CLASSES] = {
+    32, 64, 128, 256, 512, 1024, 2048, 4096, ~0ULL // Last is "large"
+};
+FreeBlock *free_lists[NUM_SIZE_CLASSES] = {nullptr};
+u64 free_list_counts[NUM_SIZE_CLASSES] = {0};
+
+// Legacy single free list pointer for backward compatibility with dump()
 FreeBlock *free_list = nullptr;
+
 u64 total_allocated = 0;
 u64 total_free = 0;
 u64 free_block_count = 0;
 
 // Spinlock for thread safety
 Spinlock heap_lock;
+
+/**
+ * @brief Get the size class index for a given block size.
+ */
+inline usize get_size_class(u64 size) {
+    for (usize i = 0; i < NUM_SIZE_CLASSES - 1; i++) {
+        if (size <= SIZE_CLASS_LIMITS[i]) {
+            return i;
+        }
+    }
+    return NUM_SIZE_CLASSES - 1; // Large blocks
+}
 
 /**
  * @brief Check if an address falls within any heap region.
@@ -204,15 +228,22 @@ bool expand_heap(u64 needed) {
             heap_regions[heap_region_count - 1].end = heap_end;
         }
 
-        // Create a free block for the new space
+        // Create a free block for the new space and add to segregated list
         FreeBlock *new_block = reinterpret_cast<FreeBlock *>(new_pages);
         new_block->header.magic = BLOCK_MAGIC_FREE;
         new_block->header._pad = 0;
         new_block->header.size_and_flags = expansion_size; // Free (bit 0 = 0)
-        new_block->next = free_list;
-        free_list = new_block;
+
+        // Add to large size class
+        usize class_idx = get_size_class(expansion_size);
+        new_block->next = free_lists[class_idx];
+        free_lists[class_idx] = new_block;
+        free_list_counts[class_idx]++;
         total_free += expansion_size;
         free_block_count++;
+
+        // Update legacy pointer
+        if (free_list == nullptr) free_list = new_block;
 
         return true;
     } else {
@@ -233,54 +264,125 @@ bool expand_heap(u64 needed) {
 
         heap_size += expansion_size;
 
-        // Add as a new free block
+        // Add as a new free block to segregated list
         FreeBlock *new_block = reinterpret_cast<FreeBlock *>(new_pages);
         new_block->header.magic = BLOCK_MAGIC_FREE;
         new_block->header._pad = 0;
         new_block->header.size_and_flags = expansion_size;
-        new_block->next = free_list;
-        free_list = new_block;
+
+        // Add to large size class
+        usize class_idx = get_size_class(expansion_size);
+        new_block->next = free_lists[class_idx];
+        free_lists[class_idx] = new_block;
+        free_list_counts[class_idx]++;
         total_free += expansion_size;
         free_block_count++;
+
+        // Update legacy pointer
+        if (free_list == nullptr) free_list = new_block;
 
         return true;
     }
 }
 
 /**
- * @brief Add a block to the free list (sorted by address for coalescing).
+ * @brief Add a block to the appropriate segregated free list.
  */
 void add_to_free_list(FreeBlock *block) {
     block->header.set_free();
 
-    // Insert sorted by address for easier coalescing
-    FreeBlock **pp = &free_list;
+    u64 size = block->header.size();
+    usize class_idx = get_size_class(size);
+
+    // Insert sorted by address within the size class for easier coalescing
+    FreeBlock **pp = &free_lists[class_idx];
     while (*pp != nullptr && *pp < block) {
         pp = &((*pp)->next);
     }
     block->next = *pp;
     *pp = block;
+    free_list_counts[class_idx]++;
     free_block_count++;
+
+    // Update legacy free_list pointer to first non-empty list
+    free_list = nullptr;
+    for (usize i = 0; i < NUM_SIZE_CLASSES; i++) {
+        if (free_lists[i] != nullptr) {
+            free_list = free_lists[i];
+            break;
+        }
+    }
 }
 
 /**
- * @brief Coalesce adjacent free blocks.
+ * @brief Remove a block from its size class free list.
+ */
+void remove_from_free_list(FreeBlock *block) {
+    u64 size = block->header.size();
+    usize class_idx = get_size_class(size);
+
+    FreeBlock **pp = &free_lists[class_idx];
+    while (*pp != nullptr) {
+        if (*pp == block) {
+            *pp = block->next;
+            free_list_counts[class_idx]--;
+            free_block_count--;
+            return;
+        }
+        pp = &((*pp)->next);
+    }
+}
+
+/**
+ * @brief Coalesce adjacent free blocks across all size classes.
+ * This is called after kfree to merge adjacent blocks.
  */
 void coalesce() {
-    FreeBlock *current = free_list;
-    while (current != nullptr && current->next != nullptr) {
-        // Check if current and next are adjacent in memory
-        u8 *current_end = reinterpret_cast<u8 *>(current) + current->header.size();
-        if (current_end == reinterpret_cast<u8 *>(current->next)) {
-            // Merge current with next
-            u64 combined_size = current->header.size() + current->next->header.size();
-            FreeBlock *absorbed = current->next;
-            current->header.set_size(combined_size);
-            current->next = absorbed->next;
-            free_block_count--;
-            // Don't advance - check if we can merge again
-        } else {
-            current = current->next;
+    // For each size class, check if blocks can be merged
+    // Since blocks are sorted by address within each class,
+    // we also need to check across classes for adjacent blocks
+
+    // Build a temporary merged list of all free blocks sorted by address
+    // This is O(n) but coalescing is called infrequently
+
+    // Simple approach: for the just-freed block, check its neighbors
+    // More sophisticated: periodic full coalesce
+
+    // For now, do per-class coalescing which handles most cases
+    for (usize c = 0; c < NUM_SIZE_CLASSES; c++) {
+        FreeBlock *current = free_lists[c];
+        while (current != nullptr && current->next != nullptr) {
+            // Check if current and next are adjacent in memory
+            u8 *current_end = reinterpret_cast<u8 *>(current) + current->header.size();
+            if (current_end == reinterpret_cast<u8 *>(current->next)) {
+                // Merge current with next
+                u64 combined_size = current->header.size() + current->next->header.size();
+                FreeBlock *absorbed = current->next;
+
+                // Remove current from this size class
+                remove_from_free_list(current);
+                // Remove absorbed from this size class
+                remove_from_free_list(absorbed);
+
+                // Update size and re-add to appropriate class
+                current->header.set_size(combined_size);
+                current->header.set_free();
+                add_to_free_list(current);
+
+                // Restart coalescing since lists changed
+                current = free_lists[c];
+            } else {
+                current = current->next;
+            }
+        }
+    }
+
+    // Update legacy free_list pointer
+    free_list = nullptr;
+    for (usize i = 0; i < NUM_SIZE_CLASSES; i++) {
+        if (free_lists[i] != nullptr) {
+            free_list = free_lists[i];
+            break;
         }
     }
 }
@@ -305,13 +407,22 @@ void init() {
     // Register the initial heap region
     add_heap_region(heap_start, heap_end);
 
-    // Initialize with one big free block
+    // Initialize segregated free lists
+    for (usize i = 0; i < NUM_SIZE_CLASSES; i++) {
+        free_lists[i] = nullptr;
+        free_list_counts[i] = 0;
+    }
+
+    // Initialize with one big free block in the large class
     FreeBlock *initial_block = reinterpret_cast<FreeBlock *>(heap_start);
     initial_block->header.magic = BLOCK_MAGIC_FREE;
     initial_block->header._pad = 0;
     initial_block->header.size_and_flags = heap_size; // Free (bit 0 = 0)
     initial_block->next = nullptr;
 
+    // Add to large size class
+    free_lists[NUM_SIZE_CLASSES - 1] = initial_block;
+    free_list_counts[NUM_SIZE_CLASSES - 1] = 1;
     free_list = initial_block;
     total_free = heap_size;
     total_allocated = 0;
@@ -338,35 +449,47 @@ void *kmalloc(u64 size) {
         required = MIN_BLOCK_SIZE;
     }
 
-    // First-fit search
+    // Search segregated free lists starting from the appropriate size class
     FreeBlock *best = nullptr;
     FreeBlock **best_prev = nullptr;
-    FreeBlock **pp = &free_list;
+    usize best_class = NUM_SIZE_CLASSES;
 
-    while (*pp != nullptr) {
-        if ((*pp)->header.size() >= required) {
-            best = *pp;
-            best_prev = pp;
-            break; // First fit
+    usize start_class = get_size_class(required);
+
+    // Search from start_class upward to find a suitable block
+    for (usize c = start_class; c < NUM_SIZE_CLASSES; c++) {
+        FreeBlock **pp = &free_lists[c];
+        while (*pp != nullptr) {
+            if ((*pp)->header.size() >= required) {
+                best = *pp;
+                best_prev = pp;
+                best_class = c;
+                goto found; // First fit found
+            }
+            pp = &((*pp)->next);
         }
-        pp = &((*pp)->next);
     }
 
+found:
     // Need to expand heap?
     if (best == nullptr) {
         if (!expand_heap(required)) {
             return nullptr;
         }
-        // Try again after expansion
-        pp = &free_list;
-        while (*pp != nullptr) {
-            if ((*pp)->header.size() >= required) {
-                best = *pp;
-                best_prev = pp;
-                break;
+        // Try again after expansion - new block will be in large class
+        for (usize c = start_class; c < NUM_SIZE_CLASSES; c++) {
+            FreeBlock **pp = &free_lists[c];
+            while (*pp != nullptr) {
+                if ((*pp)->header.size() >= required) {
+                    best = *pp;
+                    best_prev = pp;
+                    best_class = c;
+                    goto found2;
+                }
+                pp = &((*pp)->next);
             }
-            pp = &((*pp)->next);
         }
+found2:
         if (best == nullptr) {
             return nullptr;
         }
@@ -375,10 +498,20 @@ void *kmalloc(u64 size) {
     u64 block_size = best->header.size();
     u64 remaining = block_size - required;
 
-    // Remove from free list
+    // Remove from free list (already have pointer to prev)
     *best_prev = best->next;
+    free_list_counts[best_class]--;
     free_block_count--;
     total_free -= block_size;
+
+    // Update legacy free_list pointer
+    free_list = nullptr;
+    for (usize i = 0; i < NUM_SIZE_CLASSES; i++) {
+        if (free_lists[i] != nullptr) {
+            free_list = free_lists[i];
+            break;
+        }
+    }
 
     // Split if remaining space is large enough for a free block
     if (remaining >= MIN_BLOCK_SIZE) {

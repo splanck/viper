@@ -79,8 +79,7 @@ bool CowManager::init(u64 mem_start, u64 mem_end, PageInfo *page_info_array) {
 
     // Initialize all page info to zero
     for (u64 i = 0; i < total_pages_; i++) {
-        page_info_[i].refcount = 0;
-        page_info_[i].flags = 0;
+        page_info_[i].refcount_and_flags = 0;
     }
 
     initialized_ = true;
@@ -99,12 +98,16 @@ void CowManager::inc_ref(u64 phys_page) {
     if (!is_valid_page(phys_page))
         return;
 
-    SpinlockGuard guard(lock_);
-
     u64 idx = phys_to_index(phys_page);
-    if (page_info_[idx].refcount < 0xFFFF) {
-        page_info_[idx].refcount++;
-    }
+
+    // Atomic increment using compare-and-swap loop
+    u32 old_val, new_val;
+    do {
+        old_val = page_info_[idx].refcount_and_flags;
+        u16 refcount = static_cast<u16>(old_val & 0xFFFF);
+        if (refcount >= 0xFFFF) return; // Saturated
+        new_val = (old_val & 0xFFFF0000) | ((refcount + 1) & 0xFFFF);
+    } while (!__sync_bool_compare_and_swap(&page_info_[idx].refcount_and_flags, old_val, new_val));
 }
 
 bool CowManager::dec_ref(u64 phys_page) {
@@ -117,15 +120,18 @@ bool CowManager::dec_ref(u64 phys_page) {
     if (!is_valid_page(phys_page))
         return false;
 
-    SpinlockGuard guard(lock_);
-
     u64 idx = phys_to_index(phys_page);
-    if (page_info_[idx].refcount > 0) {
-        page_info_[idx].refcount--;
-        return page_info_[idx].refcount == 0;
-    }
 
-    return false;
+    // Atomic decrement using compare-and-swap loop
+    u32 old_val, new_val;
+    do {
+        old_val = page_info_[idx].refcount_and_flags;
+        u16 refcount = static_cast<u16>(old_val & 0xFFFF);
+        if (refcount == 0) return false;
+        new_val = (old_val & 0xFFFF0000) | ((refcount - 1) & 0xFFFF);
+    } while (!__sync_bool_compare_and_swap(&page_info_[idx].refcount_and_flags, old_val, new_val));
+
+    return (new_val & 0xFFFF) == 0;
 }
 
 u16 CowManager::get_ref(u64 phys_page) const {
@@ -138,10 +144,9 @@ u16 CowManager::get_ref(u64 phys_page) const {
     if (!is_valid_page(phys_page))
         return 0;
 
-    SpinlockGuard guard(lock_);
-
     u64 idx = phys_to_index(phys_page);
-    return page_info_[idx].refcount;
+    // Atomic read - no lock needed
+    return static_cast<u16>(page_info_[idx].refcount_and_flags & 0xFFFF);
 }
 
 void CowManager::mark_cow(u64 phys_page) {
@@ -153,10 +158,14 @@ void CowManager::mark_cow(u64 phys_page) {
     if (!is_valid_page(phys_page))
         return;
 
-    SpinlockGuard guard(lock_);
-
     u64 idx = phys_to_index(phys_page);
-    page_info_[idx].flags |= page_flags::COW;
+
+    // Atomic set COW flag using compare-and-swap
+    u32 old_val, new_val;
+    do {
+        old_val = page_info_[idx].refcount_and_flags;
+        new_val = old_val | (static_cast<u32>(page_flags::COW) << 16);
+    } while (!__sync_bool_compare_and_swap(&page_info_[idx].refcount_and_flags, old_val, new_val));
 }
 
 void CowManager::clear_cow(u64 phys_page) {
@@ -168,10 +177,14 @@ void CowManager::clear_cow(u64 phys_page) {
     if (!is_valid_page(phys_page))
         return;
 
-    SpinlockGuard guard(lock_);
-
     u64 idx = phys_to_index(phys_page);
-    page_info_[idx].flags &= ~page_flags::COW;
+
+    // Atomic clear COW flag using compare-and-swap
+    u32 old_val, new_val;
+    do {
+        old_val = page_info_[idx].refcount_and_flags;
+        new_val = old_val & ~(static_cast<u32>(page_flags::COW) << 16);
+    } while (!__sync_bool_compare_and_swap(&page_info_[idx].refcount_and_flags, old_val, new_val));
 }
 
 bool CowManager::is_cow(u64 phys_page) const {
@@ -183,10 +196,10 @@ bool CowManager::is_cow(u64 phys_page) const {
     if (!is_valid_page(phys_page))
         return false;
 
-    SpinlockGuard guard(lock_);
-
     u64 idx = phys_to_index(phys_page);
-    return (page_info_[idx].flags & page_flags::COW) != 0;
+    // Atomic read - no lock needed
+    u32 flags = (page_info_[idx].refcount_and_flags >> 16) & 0xFFFF;
+    return (flags & page_flags::COW) != 0;
 }
 
 } // namespace mm::cow

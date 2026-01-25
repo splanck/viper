@@ -43,6 +43,10 @@ u64 buddy_region_end = 0;   // mem_end
 u64 *bitmap = nullptr;
 u64 bitmap_size = 0; // Size in u64 words
 
+// Next-free hint: last word index where we found a free page
+// This avoids O(n) bitmap scans by starting from a likely-free location
+u64 next_free_hint = 0;
+
 // Helper to set a bit (mark page as used)
 /**
  * @brief Mark a page as used in the allocation bitmap.
@@ -242,7 +246,10 @@ u64 alloc_page() {
     // Fall back to bitmap allocator (pre-framebuffer region)
     SpinlockGuard guard(pmm_lock);
 
-    for (u64 word = 0; word < bitmap_size; word++) {
+    // Start search from next_free_hint to avoid O(n) scans
+    u64 start_word = next_free_hint;
+    for (u64 i = 0; i < bitmap_size; i++) {
+        u64 word = (start_word + i) % bitmap_size;
         if (bitmap[word] != ~0ULL) {
             // Found a word with at least one free bit
             for (u64 bit = 0; bit < 64; bit++) {
@@ -253,6 +260,8 @@ u64 alloc_page() {
                 if (!test_bit(page)) {
                     set_bit(page);
                     free_count--;
+                    // Update hint to this word for next allocation
+                    next_free_hint = word;
                     return page_to_addr(page);
                 }
             }
@@ -286,7 +295,12 @@ u64 alloc_pages(u64 count) {
     u64 run_start = 0;
     u64 run_length = 0;
 
-    for (u64 page = 0; page < total_pages; page++) {
+    // Start from hint for contiguous allocations too
+    u64 start_page = next_free_hint * 64;
+    if (start_page >= total_pages) start_page = 0;
+
+    for (u64 i = 0; i < total_pages; i++) {
+        u64 page = (start_page + i) % total_pages;
         if (!test_bit(page)) {
             if (run_length == 0) {
                 run_start = page;
@@ -295,10 +309,13 @@ u64 alloc_pages(u64 count) {
 
             if (run_length == count) {
                 // Found enough contiguous pages
-                for (u64 i = 0; i < count; i++) {
-                    set_bit(run_start + i);
+                for (u64 j = 0; j < count; j++) {
+                    set_bit(run_start + j);
                 }
                 free_count -= count;
+                // Update hint
+                next_free_hint = (run_start + count) / 64;
+                if (next_free_hint >= bitmap_size) next_free_hint = 0;
                 return page_to_addr(run_start);
             }
         } else {

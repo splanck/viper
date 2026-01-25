@@ -103,6 +103,23 @@ struct TableAllocation {
 };
 
 /**
+ * @brief Check if a page table has any valid entries.
+ *
+ * @param table Pointer to page table (512 entries).
+ * @return true if table is empty (all entries invalid).
+ */
+bool is_table_empty(u64 *table) {
+    if (!table)
+        return true;
+    for (u64 i = 0; i < ENTRIES_PER_TABLE; i++) {
+        if (table[i] & pte::VALID) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
  * @brief Walk page tables to a specific level (read-only, no allocation).
  *
  * @details
@@ -363,18 +380,58 @@ void unmap_block_2mb(u64 virt) {
     invalidate_all();
 }
 
-// Internal unlocked unmap implementation
+// Internal unlocked unmap implementation with page table cleanup
 static void unmap_page_unlocked(u64 virt) {
-    // Walk page tables to L3
-    u64 *l3 = walk_tables_readonly(virt, 3);
-    if (!l3)
+    if (!pgt_root)
         return;
 
-    // Clear the entry
+    // Walk page tables manually to get all level pointers
+    u64 l0e = pgt_root[l0_index(virt)];
+    if (!(l0e & pte::VALID))
+        return;
+
+    u64 *l1 = reinterpret_cast<u64 *>(l0e & PHYS_MASK);
+    u64 l1e = l1[l1_index(virt)];
+    if (!(l1e & pte::VALID))
+        return;
+
+    u64 *l2 = reinterpret_cast<u64 *>(l1e & PHYS_MASK);
+    u64 l2e = l2[l2_index(virt)];
+    if (!(l2e & pte::VALID))
+        return;
+
+    // Check if this is a block descriptor (not a table)
+    if (!(l2e & pte::TABLE))
+        return;
+
+    u64 *l3 = reinterpret_cast<u64 *>(l2e & PHYS_MASK);
+
+    // Clear the L3 entry
     l3[l3_index(virt)] = 0;
 
     // Invalidate TLB
     invalidate_page(virt);
+
+    // Check if L3 table is now empty and can be freed
+    if (is_table_empty(l3)) {
+        // Clear L2 entry pointing to this L3
+        l2[l2_index(virt)] = 0;
+        pmm::free_page(reinterpret_cast<u64>(l3));
+
+        // Check if L2 table is now empty
+        if (is_table_empty(l2)) {
+            // Clear L1 entry pointing to this L2
+            l1[l1_index(virt)] = 0;
+            pmm::free_page(reinterpret_cast<u64>(l2));
+
+            // Check if L1 table is now empty
+            if (is_table_empty(l1)) {
+                // Clear L0 entry pointing to this L1
+                pgt_root[l0_index(virt)] = 0;
+                pmm::free_page(reinterpret_cast<u64>(l1));
+            }
+        }
+    }
 }
 
 /** @copydoc vmm::unmap_page */

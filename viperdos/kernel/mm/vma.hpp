@@ -105,8 +105,9 @@ struct Vma {
 
 /**
  * @brief Maximum number of VMAs per address space.
+ * Increased from 64 to 256 to support large binaries with many mapped regions.
  */
-constexpr usize MAX_VMAS = 64;
+constexpr usize MAX_VMAS = 256;
 
 /**
  * @brief Maximum stack size in bytes (8 MB).

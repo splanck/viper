@@ -41,6 +41,9 @@ bool initialized = false;
 
 // Pre-defined caches
 SlabCache *g_inode_cache = nullptr;
+SlabCache *g_task_cache = nullptr;
+SlabCache *g_viper_cache = nullptr;
+SlabCache *g_channel_cache = nullptr;
 
 /**
  * @brief Find the slab containing a given object pointer.
@@ -418,18 +421,165 @@ SlabCache *inode_cache() {
     return g_inode_cache;
 }
 
+/** @copydoc slab::task_cache */
+SlabCache *task_cache() {
+    return g_task_cache;
+}
+
+/** @copydoc slab::viper_cache */
+SlabCache *viper_cache() {
+    return g_viper_cache;
+}
+
+/** @copydoc slab::channel_cache */
+SlabCache *channel_cache() {
+    return g_channel_cache;
+}
+
 /** @copydoc slab::init_object_caches */
 void init_object_caches() {
     serial::puts("[slab] Creating standard object caches\n");
 
     // Inode cache - 256 bytes per object
     g_inode_cache = cache_create("inode", 256);
-
     if (!g_inode_cache) {
         serial::puts("[slab] WARNING: Failed to create inode cache\n");
     }
 
+    // Task cache - 1024 bytes per object (Task struct is ~900 bytes)
+    g_task_cache = cache_create("task", 1024);
+    if (!g_task_cache) {
+        serial::puts("[slab] WARNING: Failed to create task cache\n");
+    }
+
+    // Viper cache - 512 bytes per object (Viper struct is ~450 bytes)
+    g_viper_cache = cache_create("viper", 512);
+    if (!g_viper_cache) {
+        serial::puts("[slab] WARNING: Failed to create viper cache\n");
+    }
+
+    // Channel cache - 32 bytes per object (kobj::Channel is small)
+    g_channel_cache = cache_create("channel", 32);
+    if (!g_channel_cache) {
+        serial::puts("[slab] WARNING: Failed to create channel cache\n");
+    }
+
     serial::puts("[slab] Standard object caches created\n");
+}
+
+/** @copydoc slab::cache_reap */
+u64 cache_reap(SlabCache *cache) {
+    if (!cache || !cache->active) {
+        return 0;
+    }
+
+    SpinlockGuard guard(cache->lock);
+
+    u64 pages_reclaimed = 0;
+
+    // Find and remove empty slabs (in_use == 0)
+    Slab **prev_ptr = &cache->slab_list;
+    Slab *slab = cache->slab_list;
+
+    while (slab) {
+        Slab *next = slab->next;
+
+        if (slab->in_use == 0) {
+            // This slab is empty - remove it from slab_list
+            *prev_ptr = next;
+
+            // Also remove from partial_list if present
+            if (cache->partial_list == slab) {
+                cache->partial_list = nullptr;
+                // Find another partial slab
+                for (Slab *s = cache->slab_list; s; s = s->next) {
+                    if (s->free_list) {
+                        cache->partial_list = s;
+                        break;
+                    }
+                }
+            }
+
+            // Free the slab page back to PMM
+            free_slab(slab);
+            pages_reclaimed++;
+
+            // Don't update prev_ptr since we removed current
+            slab = next;
+        } else {
+            prev_ptr = &slab->next;
+            slab = next;
+        }
+    }
+
+    if (pages_reclaimed > 0) {
+        serial::puts("[slab] Reaped ");
+        serial::put_dec(pages_reclaimed);
+        serial::puts(" pages from cache '");
+        serial::puts(cache->name);
+        serial::puts("'\n");
+    }
+
+    return pages_reclaimed;
+}
+
+/** @copydoc slab::reap */
+u64 reap() {
+    serial::puts("[slab] Starting slab reap...\n");
+
+    u64 total_reclaimed = 0;
+
+    // Global lock to iterate cache table
+    SpinlockGuard global_guard(slab_lock);
+
+    for (usize i = 0; i < MAX_CACHES; i++) {
+        if (caches[i].active) {
+            // Release global lock before per-cache reap to avoid deadlock
+            // (cache_reap takes cache lock, and we iterate caches under global)
+            // Since we're under global lock, the cache won't be destroyed
+
+            // Actually, we can just call cache_reap which handles its own lock
+            // But we need to be careful about lock ordering
+            // For simplicity, do it inline here
+
+            SlabCache *cache = &caches[i];
+            SpinlockGuard cache_guard(cache->lock);
+
+            Slab **prev_ptr = &cache->slab_list;
+            Slab *slab = cache->slab_list;
+
+            while (slab) {
+                Slab *next = slab->next;
+
+                if (slab->in_use == 0) {
+                    *prev_ptr = next;
+
+                    if (cache->partial_list == slab) {
+                        cache->partial_list = nullptr;
+                        for (Slab *s = cache->slab_list; s; s = s->next) {
+                            if (s->free_list) {
+                                cache->partial_list = s;
+                                break;
+                            }
+                        }
+                    }
+
+                    free_slab(slab);
+                    total_reclaimed++;
+                    slab = next;
+                } else {
+                    prev_ptr = &slab->next;
+                    slab = next;
+                }
+            }
+        }
+    }
+
+    serial::puts("[slab] Reap complete: ");
+    serial::put_dec(total_reclaimed);
+    serial::puts(" pages reclaimed\n");
+
+    return total_reclaimed;
 }
 
 } // namespace slab

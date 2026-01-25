@@ -171,6 +171,26 @@ void cache_stats(SlabCache *cache, u32 *out_slabs, u32 *out_objects_used, u32 *o
  */
 void dump_stats();
 
+/**
+ * @brief Reap empty slabs from all caches to reclaim memory.
+ *
+ * @details
+ * Scans all slab caches and returns completely empty slabs to the PMM.
+ * This should be called when memory is low or periodically to reclaim
+ * unused memory.
+ *
+ * @return Number of pages reclaimed.
+ */
+u64 reap();
+
+/**
+ * @brief Reap empty slabs from a specific cache.
+ *
+ * @param cache The cache to reap from.
+ * @return Number of pages reclaimed.
+ */
+u64 cache_reap(SlabCache *cache);
+
 // ============================================================================
 // Pre-defined caches for common kernel objects
 // ============================================================================
@@ -180,6 +200,24 @@ void dump_stats();
  * @return Pointer to the inode cache.
  */
 SlabCache *inode_cache();
+
+/**
+ * @brief Get the task slab cache (1024 bytes per object).
+ * @return Pointer to the task cache.
+ */
+SlabCache *task_cache();
+
+/**
+ * @brief Get the viper (process) slab cache (512 bytes per object).
+ * @return Pointer to the viper cache.
+ */
+SlabCache *viper_cache();
+
+/**
+ * @brief Get the channel slab cache (32 bytes per object).
+ * @return Pointer to the channel cache.
+ */
+SlabCache *channel_cache();
 
 /**
  * @brief Initialize the pre-defined object caches.

@@ -21,10 +21,18 @@ namespace mm::cow {
 
 /**
  * @brief Per-page metadata for COW tracking.
+ * Uses atomic refcount for lock-free inc/dec operations.
  */
 struct PageInfo {
-    u16 refcount; ///< Number of address spaces sharing this page
-    u16 flags;    ///< Page state flags
+    volatile u32 refcount_and_flags; ///< Lower 16 bits: refcount, upper 16 bits: flags
+
+    u16 refcount() const {
+        return static_cast<u16>(refcount_and_flags & 0xFFFF);
+    }
+
+    u16 flags() const {
+        return static_cast<u16>((refcount_and_flags >> 16) & 0xFFFF);
+    }
 };
 
 /**

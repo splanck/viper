@@ -259,14 +259,22 @@ FaultResult handle_demand_fault(VmaList *vma_list,
     Vma *vma = vma_list->find_locked(fault_addr);
     if (!vma) {
         // Check if this is a potential stack growth
-        // Stack grows downward, so check if address is just below a stack VMA
+        // Stack grows downward, so check if address is below a stack VMA
         Vma *v = vma_list->head_locked();
         while (v) {
             if (v->type == VmaType::STACK) {
-                // Stack growth: allow faults within one page of the stack bottom
-                if (fault_addr >= v->start - 4096 && fault_addr < v->start) {
+                // Stack growth: allow faults within MAX_STACK_GROW_PAGES of the stack bottom
+                // This enables multi-page stack growth for large local allocations
+                constexpr u64 MAX_STACK_GROW_PAGES = 16; // Grow up to 64KB at a time
+                constexpr u64 MAX_STACK_GROW = MAX_STACK_GROW_PAGES * 4096;
+
+                if (fault_addr >= v->start - MAX_STACK_GROW && fault_addr < v->start) {
+                    // Calculate how many pages we need to grow
+                    u64 new_start = page_addr;
+                    u64 pages_to_grow = (v->start - new_start) / 4096;
+
                     // Check stack size limit (vma->end is fixed stack top, vma->start grows down)
-                    u64 new_stack_size = v->end - page_addr;
+                    u64 new_stack_size = v->end - new_start;
                     if (new_stack_size > MAX_STACK_SIZE) {
                         vma_list->release_lock(saved_daif);
                         serial::puts("[vma] ERROR: Stack growth limit exceeded (");
@@ -280,32 +288,37 @@ FaultResult handle_demand_fault(VmaList *vma_list,
                     serial::puts("[vma] Growing stack from ");
                     serial::put_hex(v->start);
                     serial::puts(" to ");
-                    serial::put_hex(page_addr);
-                    serial::puts("\n");
+                    serial::put_hex(new_start);
+                    serial::puts(" (");
+                    serial::put_dec(pages_to_grow);
+                    serial::puts(" pages)\n");
 
-                    // Extend the VMA (under lock)
-                    v->start = page_addr;
+                    // Save old start and extend the VMA (under lock)
+                    u64 old_start = v->start;
+                    v->start = new_start;
 
                     // Copy VMA properties before releasing lock
                     u32 stack_prot = v->prot;
                     vma_list->release_lock(saved_daif);
 
-                    // Allocate and map the new stack page (outside lock)
-                    u64 phys = pmm::alloc_page();
-                    if (phys == 0) {
-                        serial::puts("[vma] ERROR: Failed to allocate stack page\n");
-                        return FaultResult::ERROR;
-                    }
+                    // Allocate and map all new stack pages (outside lock)
+                    for (u64 addr = new_start; addr < old_start; addr += 4096) {
+                        u64 phys = pmm::alloc_page();
+                        if (phys == 0) {
+                            serial::puts("[vma] ERROR: Failed to allocate stack page\n");
+                            return FaultResult::ERROR;
+                        }
 
-                    // Zero the page (convert physical to virtual address)
-                    u8 *ptr = reinterpret_cast<u8 *>(pmm::phys_to_virt(phys));
-                    for (usize i = 0; i < 4096; i++) {
-                        ptr[i] = 0;
-                    }
+                        // Zero the page (convert physical to virtual address)
+                        u8 *ptr = reinterpret_cast<u8 *>(pmm::phys_to_virt(phys));
+                        for (usize i = 0; i < 4096; i++) {
+                            ptr[i] = 0;
+                        }
 
-                    if (!map_callback(page_addr, phys, stack_prot)) {
-                        pmm::free_page(phys);
-                        return FaultResult::ERROR;
+                        if (!map_callback(addr, phys, stack_prot)) {
+                            pmm::free_page(phys);
+                            return FaultResult::ERROR;
+                        }
                     }
 
                     return FaultResult::STACK_GROW;
@@ -381,6 +394,56 @@ FaultResult handle_demand_fault(VmaList *vma_list,
     serial::puts(" -> ");
     serial::put_hex(phys);
     serial::puts("\n");
+
+    // Prefaulting: speculatively allocate pages ahead to reduce future faults
+    // Only for anonymous mappings (not file-backed or stack)
+    if (vma_type_copy == VmaType::ANONYMOUS) {
+        constexpr u64 PREFAULT_PAGES = 4; // Prefetch up to 4 pages ahead
+
+        // Re-acquire lock to check VMA bounds for prefaulting
+        saved_daif = vma_list->acquire_lock();
+        vma = vma_list->find_locked(page_addr);
+        if (vma && vma->type == VmaType::ANONYMOUS) {
+            u64 vma_end = vma->end;
+            u32 prefault_prot = vma->prot;
+            vma_list->release_lock(saved_daif);
+
+            u64 prefaulted = 0;
+            for (u64 i = 1; i <= PREFAULT_PAGES; i++) {
+                u64 prefault_addr = page_addr + (i * 4096);
+                if (prefault_addr >= vma_end) {
+                    break; // Beyond VMA bounds
+                }
+
+                // Allocate and map prefault page
+                u64 pf_phys = pmm::alloc_page();
+                if (pf_phys == 0) {
+                    break; // Out of memory, stop prefaulting
+                }
+
+                // Zero the page
+                u8 *pf_ptr = reinterpret_cast<u8 *>(pmm::phys_to_virt(pf_phys));
+                for (usize j = 0; j < 4096; j++) {
+                    pf_ptr[j] = 0;
+                }
+
+                if (!map_callback(prefault_addr, pf_phys, prefault_prot)) {
+                    // Page might already be mapped or mapping failed
+                    pmm::free_page(pf_phys);
+                    break;
+                }
+                prefaulted++;
+            }
+
+            if (prefaulted > 0) {
+                serial::puts("[vma] Prefaulted ");
+                serial::put_dec(prefaulted);
+                serial::puts(" pages\n");
+            }
+        } else {
+            vma_list->release_lock(saved_daif);
+        }
+    }
 
     return FaultResult::HANDLED;
 }

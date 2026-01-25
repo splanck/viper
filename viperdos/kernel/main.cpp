@@ -68,6 +68,7 @@
 #include "loader/loader.hpp"
 #include "mm/kheap.hpp"
 #include "mm/pmm.hpp"
+#include "mm/pressure.hpp"
 #include "mm/slab.hpp"
 #include "mm/vmm.hpp"
 #include "sched/scheduler.hpp"
@@ -203,6 +204,9 @@ void init_memory_subsystem() {
     // Initialize slab allocator
     slab::init();
     slab::init_object_caches();
+
+    // Initialize memory pressure monitor
+    mm::pressure::init();
 
     // Show high-level progress on display
     if (gcon::is_available()) {

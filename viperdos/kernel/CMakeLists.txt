@@ -42,6 +42,7 @@ set(KERNEL_SOURCES
         mm/fault.cpp
         mm/vma.cpp
         mm/cow.cpp
+        mm/pressure.cpp
         lib/timerwheel.cpp
         sched/task.cpp
         sched/context.S
