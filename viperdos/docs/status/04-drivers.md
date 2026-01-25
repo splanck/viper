@@ -9,21 +9,21 @@
 The drivers subsystem provides device drivers for VirtIO paravirtual devices, QEMU firmware configuration, and the RAM
 framebuffer.
 
-In microkernel mode, some drivers run in user-space servers:
+In the hybrid kernel architecture, all device drivers run in the kernel:
 
-- **netd server**: Contains VirtIO-net driver in user-space
-- **blkd server**: Contains VirtIO-blk driver in user-space
-- **inputd server**: Contains VirtIO-input driver in user-space
+- **VirtIO-blk**: Block device driver for filesystem access
+- **VirtIO-net**: Network device driver for TCP/IP stack
+- **VirtIO-input**: Keyboard and mouse input drivers
+- **VirtIO-gpu**: Graphics output driver
+- **VirtIO-rng**: Hardware random number generator
 
-User-space drivers use kernel device primitives:
+The kernel exposes device primitives for user-space display servers (consoled, displayd):
 
 - `SYS_MAP_DEVICE`: Map MMIO regions into user address space
 - `SYS_IRQ_REGISTER`: Register for device interrupts
 - `SYS_IRQ_WAIT`: Wait for interrupt notification
 - `SYS_DMA_ALLOC`: Allocate DMA-capable memory
 - `SYS_VIRT_TO_PHYS`: Get physical address for DMA
-
-The kernel still contains full drivers for boot-time initialization and fallback.
 
 ---
 

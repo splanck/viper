@@ -96,33 +96,31 @@ Backed by:
 
 ### Networking
 
-In microkernel mode, networking is handled by user-space servers:
+Networking is implemented in the kernel with `VIPER_KERNEL_ENABLE_NET=1`:
 
-- TCP/UDP sockets via netd server
-- DNS resolution via netd
-- TLS via libtls (user-space)
+- TCP/UDP sockets via kernel syscalls (SYS_SOCKET_*, SYS_TLS_*)
+- DNS resolution in kernel
+- TLS 1.3 in kernel (VIPER_KERNEL_ENABLE_TLS=1)
 
 Backed by:
 
-- `user/servers/netd/*` (microkernel mode)
-- `kernel/net/*` (kernel mode, when `VIPER_KERNEL_ENABLE_NET=1`)
+- `kernel/net/*` (TCP/IP stack)
+- `kernel/net/tls/*` (TLS 1.3)
 
 ### Input and console interaction
 
-Input and graphics console syscalls exist primarily for bring-up and UX integration; many paths also still use direct
-kernel calls.
+Input and graphics console syscalls exist primarily for bring-up and UX integration.
 
 Backed by:
 
-- `user/servers/consoled/*` (microkernel mode)
-- `user/servers/inputd/*` (microkernel mode)
-- `kernel/input/*`
-- `kernel/console/gcon.*`
-- `kernel/drivers/virtio/input.*`
+- `user/servers/consoled/*` (GUI terminal emulator)
+- `user/servers/displayd/*` (window manager)
+- `kernel/console/gcon.*` (kernel graphics console)
+- `kernel/drivers/virtio/input.*` (keyboard/mouse drivers)
 
-### Device Access (Microkernel)
+### Device Access
 
-Syscalls for user-space drivers to access hardware:
+Syscalls for user-space display servers to access hardware (used by consoled, displayd):
 
 | Syscall          | Number | Description                     |
 |------------------|--------|---------------------------------|
@@ -142,9 +140,9 @@ Backed by:
 
 - `kernel/syscall/device.cpp`
 
-### Shared Memory (Microkernel IPC)
+### Shared Memory (IPC)
 
-Syscalls for shared memory between processes:
+Syscalls for shared memory between processes (used by display servers for framebuffers):
 
 | Syscall      | Number | Description                  |
 |--------------|--------|------------------------------|

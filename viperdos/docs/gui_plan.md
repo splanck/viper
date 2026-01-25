@@ -3,8 +3,8 @@
 ## Executive Summary
 
 ViperDOS has solid foundations for a GUI desktop: dual framebuffer support (ramfb + VirtIO-GPU), VirtIO-input devices, a
-mature microkernel IPC system, and an established userspace server pattern. This plan outlines the prerequisites,
-architecture, and implementation phases for building a windowed desktop environment.
+mature IPC system, and an established userspace server pattern. This plan outlines the prerequisites, architecture, and
+implementation phases for building a windowed desktop environment.
 
 > **Implementation Status (v0.3.1):** Core GUI infrastructure is now implemented. displayd server provides window
 > compositing, libgui provides client API, and hello_gui demonstrates the system. Mouse event delivery to windows is the
@@ -23,16 +23,15 @@ architecture, and implementation phases for building a windowed desktop environm
 | Graphics console    | Stable | `kernel/console/gcon.cpp`         |
 | Font rendering      | Stable | `kernel/console/font.cpp`         |
 | Keyboard input      | Stable | `kernel/drivers/virtio/input.cpp` |
-| inputd server       | Stable | `user/servers/inputd/`            |
 | IPC channels        | Stable | `kernel/ipc/channel.cpp`          |
 | Shared memory       | Stable | kernel cap system                 |
-| Userspace servers   | Stable | blkd, netd, fsd, consoled, inputd |
+| Userspace servers   | Stable | consoled, displayd                |
 
 ### What's Implemented (v0.3.1)
 
 | Component          | Status          | Notes                                      |
 |--------------------|-----------------|--------------------------------------------|
-| Mouse input        | **Implemented** | Events detected and delivered to inputd    |
+| Mouse input        | **Implemented** | Events detected via kernel VirtIO-input    |
 | Cursor rendering   | **Implemented** | Software cursor in displayd (16x16 arrow)  |
 | Window surfaces    | **Implemented** | Shared memory pixel buffers                |
 | Display compositor | **Implemented** | displayd server with window compositing    |
@@ -59,13 +58,13 @@ architecture, and implementation phases for building a windowed desktop environm
 | Security         | Runs with minimal privileges       | Full kernel access              |
 | Performance      | IPC overhead                       | Direct memory access            |
 | Modularity       | Can restart/upgrade independently  | Tightly coupled                 |
-| ViperDOS pattern | Matches blkd/netd/fsd pattern      | Goes against microkernel design |
+| ViperDOS pattern | Matches display server pattern     | Goes against server design      |
 
 **Rationale:**
 
-1. ViperDOS is explicitly a microkernel - GUI belongs in userspace
+1. GUI belongs in userspace for fault isolation
 2. Shared memory handles eliminate most IPC overhead for pixel data
-3. Existing servers (blkd, netd, fsd) prove the pattern works
+3. Display servers (consoled, displayd) prove the pattern works
 4. Fault isolation is critical for desktop stability
 
 ### Performance Mitigation
@@ -114,7 +113,7 @@ architecture, and implementation phases for building a windowed desktop environm
 - **Composites** all visible surfaces to framebuffer
 - **Renders cursor** on top of everything
 - **Manages windows** (create, destroy, move, resize, z-order)
-- **Routes input** from inputd to focused window
+- **Routes input** from kernel to focused window
 - Registers as `DISPLAY:` assign
 
 #### libgui.a (Client Library)
@@ -129,7 +128,7 @@ architecture, and implementation phases for building a windowed desktop environm
 
 ### 0.1 Mouse Input Support - DONE
 
-Mouse input is now working via VirtIO-input driver and inputd server.
+Mouse input is now working via kernel VirtIO-input driver.
 
 ### 0.2 Framebuffer Access from Userspace - DONE
 
@@ -141,7 +140,7 @@ displayd uses `SYS_MAP_DEVICE` to map the framebuffer into its address space.
 
 ### Step 1.1-1.3: All Done
 
-- Mouse state is tracked via inputd server
+- Mouse state is tracked via kernel input driver
 - 16x16 cursor sprite is rendered by displayd
 - Cursor position is tracked and updated on mouse movement
 - Background save/restore is implemented for cursor rendering
@@ -211,7 +210,6 @@ Cycle focus through windows - **Not yet implemented**
 | Display Server     | `user/servers/displayd/`            | Complete |
 | GUI Client Library | `user/libgui/`                      | Complete |
 | GUI Demo           | `user/hello_gui/`                   | Complete |
-| Input Server       | `user/servers/inputd/`              | Complete |
 | Display Protocol   | `user/include/display_protocol.hpp` | Complete |
 
 ---
@@ -239,13 +237,12 @@ Cycle focus through windows - **Not yet implemented**
 
 ---
 
-## Why Userspace?
+## Why Userspace Display Servers?
 
-The GUI should be **100% userspace** because:
+The GUI should be **userspace** because:
 
-1. **Microkernel philosophy**: ViperDOS is explicitly a microkernel - all services belong in userspace
-2. **Fault isolation**: A crashed display server doesn't crash the kernel
-3. **Proven pattern**: blkd, netd, fsd already demonstrate the server model works
-4. **Zero-copy performance**: Shared memory handles eliminate IPC overhead for pixels
-5. **Easier development**: Can restart displayd without rebooting
-6. **Security**: Display server runs with minimal privileges (only CAP_DEVICE_ACCESS for framebuffer)
+1. **Fault isolation**: A crashed display server doesn't crash the kernel
+2. **Proven pattern**: consoled and displayd demonstrate the server model works
+3. **Zero-copy performance**: Shared memory handles eliminate IPC overhead for pixels
+4. **Easier development**: Can restart displayd without rebooting
+5. **Security**: Display server runs with minimal privileges (only CAP_DEVICE_ACCESS for framebuffer)

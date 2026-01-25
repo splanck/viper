@@ -6,18 +6,18 @@
 
 ## Overview
 
-User space consists of the `vinit` init process, user-space servers (netd, fsd, blkd, consoled, inputd), a complete
+User space consists of the `vinit` init process, user-space display servers (consoled, displayd), a complete
 freestanding C library (`libc`), networking/crypto libraries, and syscall wrappers.
 
-In the microkernel architecture:
+In the hybrid kernel architecture:
 
-- **vinit** spawns and manages the user-space servers
-- **libc** routes file operations to fsd, network operations to netd
-- **User-space libraries** (libtls, libhttp, libssh, libgui) build on libc and IPC
+- **vinit** spawns and manages the display servers
+- **libc** routes file operations and network operations directly to kernel syscalls
+- **User-space libraries** (libtls, libhttp, libssh, libgui) build on libc
 - Applications use standard POSIX-like APIs
 
-The libc enables portable POSIX-like application development without external dependencies, routing to the appropriate
-user-space server via IPC.
+The libc enables portable POSIX-like application development without external dependencies, calling kernel syscalls
+directly for filesystem, networking, and other operations.
 
 ---
 

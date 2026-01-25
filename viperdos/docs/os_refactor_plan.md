@@ -30,14 +30,17 @@
 | Add unified error codes                 | DONE     | 2026-01-01 | Removed duplicate result.hpp, added filesystem error codes to error::Code                                                      |
 
 This document identifies refactoring opportunities across the entire ViperDOS kernel codebase, including code
-duplication, large functions, readability issues, and microkernel architecture violations.
+duplication, large functions, and readability issues.
+
+> **Note:** ViperDOS has evolved to a hybrid kernel architecture. The filesystem, networking, and drivers are
+> intentionally implemented in the kernel for performance. Only display services (consoled, displayd) run in user-space.
 
 ---
 
 ## Table of Contents
 
 1. [Executive Summary](#1-executive-summary)
-2. [Microkernel Architecture Violations](#2-microkernel-architecture-violations)
+2. [Hybrid Kernel Architecture](#2-hybrid-kernel-architecture)
 3. [Large Functions Requiring Decomposition](#3-large-functions-requiring-decomposition)
 4. [Code Duplication](#4-code-duplication)
 5. [Magic Numbers Consolidation Plan](#5-magic-numbers-consolidation-plan)
@@ -56,7 +59,6 @@ duplication, large functions, readability issues, and microkernel architecture v
 
 | Category                    | Count      | Severity    |
 |-----------------------------|------------|-------------|
-| Microkernel violations      | 4 major    | Critical    |
 | Functions >50 lines         | 25+        | High        |
 | Code duplication instances  | 30+        | Medium-High |
 | Magic number occurrences    | 200+       | Medium      |
@@ -65,82 +67,26 @@ duplication, large functions, readability issues, and microkernel architecture v
 ### Immediate Actions Required
 
 1. **Constants**: Consolidate all magic numbers into `kernel/include/constants.hpp`
-2. **Architecture**: Move filesystem (ViperFS) to user-space server
-3. **Architecture**: Evaluate moving VirtIO drivers to user-space
-4. **Code Quality**: Decompose `kernel_main()` (990 lines)
-5. **Code Quality**: Extract common patterns (LRU cache, page table walking, VirtIO init)
+2. **Code Quality**: Decompose `kernel_main()` (990 lines)
+3. **Code Quality**: Extract common patterns (LRU cache, page table walking, VirtIO init)
 
 ---
 
-## 2. Microkernel Architecture Violations
+## 2. Hybrid Kernel Architecture
 
-ViperDOS is designed as a microkernel, but several subsystems violate this principle by residing in kernel space.
-
-### 2.1 Filesystem in Kernel (CRITICAL)
-
-**Location:** `kernel/fs/` entire subsystem (~2000 lines)
-
-**Issue:** Complete ViperFS implementation lives in kernel space. Traditional microkernels (Mach, QNX, seL4) move
-filesystems to user-space servers.
-
-**Impact:**
-
-- Increases kernel complexity and attack surface
-- Reduces modularity and replaceability
-- Violates microkernel principle of minimal kernel
-- Makes debugging filesystem issues harder (crashes affect entire system)
-
-**Files Affected:**
-
-- `kernel/fs/viperfs.cpp` (2000+ lines)
-- `kernel/fs/viperfs.hpp`
-- `kernel/fs/cache.cpp` (267 lines)
-- `kernel/fs/cache.hpp`
-- `kernel/fs/journal.cpp`
-- `kernel/vfs/vfs.cpp` (991 lines)
-
-**Recommendation:** Plan filesystem migration to user-space as a long-term architectural goal. Create an abstract
-filesystem interface layer to decouple VFS from ViperFS.
-
-### 2.2 Block Device Testing in kernel_main()
-
-**Location:** `kernel/main.cpp:439-712` (274 lines)
-
-**Issue:** Full filesystem mount, file I/O, and persistence code in kernel initialization.
-
-**Details:**
-
-- `virtio::blk_device()->read_sectors()`
-- Write operations
-- ViperFS mount and readdir operations mixed with kernel bring-up
-
-**Recommendation:** Move to test harness or init process in user-space.
-
-### 2.3 TLS Session State in Syscall Dispatcher
-
-**Location:** `kernel/syscall/table.cpp:218-223`
-
-```cpp
-#if VIPER_KERNEL_ENABLE_TLS
-static constexpr int MAX_TLS_SESSIONS = 16;
-static viper::tls::TlsSession tls_sessions[MAX_TLS_SESSIONS];
-static bool tls_session_active[MAX_TLS_SESSIONS] = {false};
-static kernel::Spinlock tls_lock;
-#endif
-```
-
-**Issue:** TLS state management in kernel syscall dispatcher is inappropriate for microkernel. TLS should be user-space
-library; kernel provides only syscall bridges.
-
-### 2.4 VirtIO Drivers in Kernel
-
-**Location:** `kernel/drivers/virtio/` (blk.cpp, gpu.cpp, rng.cpp, input.cpp)
-
-**Issue:** Device drivers sit in kernel space. While some microkernels keep simple drivers in kernel for performance,
-complex drivers like GPU should be user-space.
-
-**Recommendation:** Review architecture decision. Consider moving GPU and complex drivers to user-space with minimal
-in-kernel virtqueue support.
+> **Note:** ViperDOS has evolved to a **hybrid kernel** architecture. The following components are intentionally
+> implemented in the kernel for performance and simplicity:
+>
+> - **Filesystem**: VFS, ViperFS with journaling, block cache (`kernel/fs/`)
+> - **Networking**: TCP/IP stack, TLS 1.3 (`kernel/net/`)
+> - **Drivers**: All VirtIO drivers (blk, net, gpu, input, rng)
+>
+> Only display services run in user-space:
+> - **consoled**: GUI terminal emulator
+> - **displayd**: Window compositor and manager
+>
+> This is the current design. The items previously listed as "microkernel violations" are now considered intentional
+> architectural decisions.
 
 ---
 

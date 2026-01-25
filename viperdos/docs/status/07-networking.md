@@ -1,19 +1,20 @@
 # Networking Subsystem
 
-**Status:** Complete microkernel networking with user-space TCP/IP stack, TLS 1.3, HTTP, SSH-2
-**Architecture:** User-space server (netd) + client libraries
-**Total SLOC:** ~11,700
+**Status:** Complete kernel networking with TLS 1.3, HTTP, SSH-2
+**Architecture:** Kernel-based TCP/IP stack + user-space libraries
+**Total SLOC:** ~12,000 (kernel + libraries)
 
 ## Overview
 
-In the ViperDOS microkernel architecture, networking is implemented entirely in user-space:
+ViperDOS implements networking directly in the kernel, with user-space libraries for higher-level protocols:
 
-1. **netd server** (~3,200 SLOC): User-space TCP/IP stack with VirtIO-net driver
-2. **libtls** (~2,150 SLOC): TLS 1.3 client library
-3. **libhttp** (~560 SLOC): HTTP/1.1 client library
-4. **libssh** (~5,800 SLOC): SSH-2 and SFTP client library
+1. **Kernel TCP/IP stack**: Complete networking in kernel space
+2. **Kernel TLS 1.3**: TLS encryption in kernel space
+3. **libtls** (~2,150 SLOC): User-space TLS API wrapper
+4. **libhttp** (~560 SLOC): HTTP/1.1 client library
+5. **libssh** (~5,800 SLOC): SSH-2 and SFTP client library
 
-Applications use standard socket APIs (via libc), which route requests to netd via IPC channels.
+Applications use standard socket syscalls, which are handled directly by the kernel.
 
 ---
 
@@ -22,7 +23,7 @@ Applications use standard socket APIs (via libc), which route requests to netd v
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                       Applications                               │
-│         (ssh, sftp, ping, curl-like tools, etc.)                │
+│         (ssh, sftp, ping, fetch, vinit, etc.)                   │
 └────────────────────────────────┬────────────────────────────────┘
                                  │
          ┌───────────────────────┼───────────────────────┐
@@ -38,15 +39,18 @@ Applications use standard socket APIs (via libc), which route requests to netd v
 │                    libc (socket API)                             │
 │         socket(), connect(), send(), recv(), etc.               │
 └────────────────────────────────┬────────────────────────────────┘
-                                 │ IPC (channels)
+                                 │ Syscalls (SVC)
                                  ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                         netd Server                              │
+│                       Kernel (EL1)                               │
 │  ┌─────────────────────────────────────────────────────────────┐│
-│  │                    User-Space TCP/IP Stack                   ││
+│  │                    Kernel TCP/IP Stack                       ││
 │  │  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐ ││
 │  │  │  TCP (32) │  │  UDP (16) │  │   ICMP    │  │    DNS    │ ││
 │  │  └───────────┘  └───────────┘  └───────────┘  └───────────┘ ││
+│  │  ┌───────────────────────────────────────────────────────┐   ││
+│  │  │                   TLS 1.3 (kernel)                     │  ││
+│  │  └───────────────────────────────────────────────────────┘   ││
 │  │  ┌─────────────────────────────────────────────────────────┐ ││
 │  │  │                        IPv4                             │ ││
 │  │  └─────────────────────────────────────────────────────────┘ ││
@@ -57,12 +61,6 @@ Applications use standard socket APIs (via libc), which route requests to netd v
 │                              │                                   │
 │                    VirtIO-net Driver                            │
 └────────────────────────────────┬────────────────────────────────┘
-                                 │ MAP_DEVICE, IRQ
-                                 ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                        Kernel (EL1)                              │
-│           Device primitives, IRQ routing, memory mapping         │
-└─────────────────────────────────────────────────────────────────┘
                                  │
                                  ▼
 ┌─────────────────────────────────────────────────────────────────┐
@@ -72,85 +70,29 @@ Applications use standard socket APIs (via libc), which route requests to netd v
 
 ---
 
-## netd Server
+## Kernel Network Syscalls
 
-**Location:** `user/servers/netd/`
-**SLOC:** ~3,200
-**Registration:** `NETD:` (assign system)
-
-### Components
-
-| File           | Lines  | Description                              |
-|----------------|--------|------------------------------------------|
-| `main.cpp`     | ~920   | Server entry point, IPC message handling |
-| `netstack.hpp` | ~600   | Network stack structures and API         |
-| `netstack.cpp` | ~1,700 | TCP/IP stack implementation              |
-
-### Initialization Sequence
-
-1. Scan VirtIO MMIO range (0x0a000000-0x0a004000) for net device
-2. Skip devices already claimed (status != 0)
-3. Initialize VirtIO-net with IRQ registration
-4. Configure network interface (IP, netmask, gateway, DNS)
-5. Create service channel and register as "NETD:"
-6. Enter server loop processing IPC requests
-
-### Network Interface Configuration
-
-QEMU virt default configuration:
-
-| Parameter  | Value         |
-|------------|---------------|
-| IP Address | 10.0.2.15     |
-| Netmask    | 255.255.255.0 |
-| Gateway    | 10.0.2.2      |
-| DNS Server | 10.0.2.3      |
-
-### IPC Protocol
-
-**Namespace:** `netproto`
-**Message Size:** 256 bytes max (channel limit)
-
-#### Socket Operations
-
-| Message Type       | Value | Description                |
-|--------------------|-------|----------------------------|
-| NET_SOCKET_CREATE  | 1     | Create socket (TCP/UDP)    |
-| NET_SOCKET_CONNECT | 2     | Connect to remote host     |
-| NET_SOCKET_BIND    | 3     | Bind to local port         |
-| NET_SOCKET_LISTEN  | 4     | Listen for connections     |
-| NET_SOCKET_ACCEPT  | 5     | Accept incoming connection |
-| NET_SOCKET_SEND    | 6     | Send data (inline or SHM)  |
-| NET_SOCKET_RECV    | 7     | Receive data               |
-| NET_SOCKET_CLOSE   | 8     | Close socket               |
-| NET_SOCKET_STATUS  | 10    | Query socket readiness     |
-
-#### DNS and Diagnostics
-
-| Message Type         | Value | Description                |
-|----------------------|-------|----------------------------|
-| NET_DNS_RESOLVE      | 20    | Resolve hostname to IPv4   |
-| NET_PING             | 40    | ICMP echo request          |
-| NET_STATS            | 41    | Get network statistics     |
-| NET_INFO             | 42    | Get network configuration  |
-| NET_SUBSCRIBE_EVENTS | 43    | Subscribe to socket events |
-
-#### Data Transfer Modes
-
-**Inline Data (≤200 bytes):**
-
-- Data included directly in message payload
-- Used for most small transfers
-
-**Shared Memory (>200 bytes):**
-
-- SHM handle transferred with message
-- netd maps SHM, reads/writes, unmaps
-- Efficient for large transfers
+| Syscall            | Number | Description                |
+|--------------------|--------|----------------------------|
+| SYS_SOCKET_CREATE  | 0x50   | Create TCP socket          |
+| SYS_SOCKET_CONNECT | 0x51   | Connect to remote host     |
+| SYS_SOCKET_SEND    | 0x52   | Send data on socket        |
+| SYS_SOCKET_RECV    | 0x53   | Receive data from socket   |
+| SYS_SOCKET_CLOSE   | 0x54   | Close socket               |
+| SYS_DNS_RESOLVE    | 0x55   | Resolve hostname to IPv4   |
+| SYS_SOCKET_POLL    | 0x56   | Poll socket for readiness  |
+| SYS_TLS_CREATE     | 0xD0   | Create TLS session         |
+| SYS_TLS_HANDSHAKE  | 0xD1   | Perform TLS handshake      |
+| SYS_TLS_SEND       | 0xD2   | Send encrypted data        |
+| SYS_TLS_RECV       | 0xD3   | Receive encrypted data     |
+| SYS_TLS_CLOSE      | 0xD4   | Close TLS session          |
+| SYS_TLS_INFO       | 0xD5   | Query TLS session info     |
+| SYS_PING           | 0xE2   | ICMP ping with RTT         |
+| SYS_NET_STATS      | 0xE1   | Get network statistics     |
 
 ---
 
-## Protocol Stack (netd)
+## Kernel Protocol Stack
 
 ### Ethernet Layer
 
@@ -178,7 +120,7 @@ QEMU virt default configuration:
 
 - Echo request (ping) generation
 - Echo reply processing
-- Ping with timeout callback
+- Ping with timeout and RTT measurement
 
 ### UDP
 
@@ -204,6 +146,8 @@ QEMU virt default configuration:
 - Sequence number tracking
 - ACK generation
 - FIN/RST handling
+- Congestion control (slow start, congestion avoidance)
+- Retransmission with exponential backoff
 
 **TCP States:**
 
@@ -225,30 +169,36 @@ QEMU virt default configuration:
 - A record resolution
 - UDP-based queries to configured DNS server
 - Transaction ID tracking
-- Single pending query at a time
+- Configurable DNS server (default: 10.0.2.3)
 
----
-
-## libtls (TLS 1.3)
-
-**Location:** `user/libtls/`
-**SLOC:** ~2,150
-
-### Features
+### TLS 1.3 (Kernel)
 
 - TLS 1.3 client (RFC 8446)
 - ChaCha20-Poly1305 AEAD cipher
 - X25519 key exchange
 - SHA-256 hashing
 - Server Name Indication (SNI)
-- Certificate verification (optional)
+- Certificate verification with built-in root CAs
 
-### Crypto Components
+---
 
-| File       | Lines  | Description                         |
-|------------|--------|-------------------------------------|
-| `crypto.c` | ~1,170 | ChaCha20, Poly1305, X25519, SHA-256 |
-| `tls.c`    | ~980   | TLS handshake, record layer         |
+## Network Interface Configuration
+
+QEMU virt default configuration:
+
+| Parameter  | Value         |
+|------------|---------------|
+| IP Address | 10.0.2.15     |
+| Netmask    | 255.255.255.0 |
+| Gateway    | 10.0.2.2      |
+| DNS Server | 10.0.2.3      |
+
+---
+
+## libtls (User-Space TLS API)
+
+**Location:** `user/libtls/`
+**SLOC:** ~2,150
 
 ### API
 
@@ -291,7 +241,7 @@ typedef struct tls_config {
 ### Features
 
 - HTTP/1.1 client
-- HTTPS via libtls
+- HTTPS via libtls (kernel TLS)
 - GET, POST, PUT, DELETE, HEAD methods
 - Header parsing
 - Chunked transfer encoding
@@ -377,37 +327,26 @@ typedef struct http_response {
 
 ## libc Integration
 
-The libc socket functions route to netd via IPC:
+The libc socket functions call kernel syscalls directly:
 
-**Location:** `user/libc/src/netd_backend.cpp`
+**Location:** `user/libc/src/socket.c`
 
 ### Socket API Mapping
 
-| libc Function  | netd Message       |
+| libc Function  | Kernel Syscall     |
 |----------------|--------------------|
-| socket()       | NET_SOCKET_CREATE  |
-| connect()      | NET_SOCKET_CONNECT |
-| bind()         | NET_SOCKET_BIND    |
-| listen()       | NET_SOCKET_LISTEN  |
-| accept()       | NET_SOCKET_ACCEPT  |
-| send()/write() | NET_SOCKET_SEND    |
-| recv()/read()  | NET_SOCKET_RECV    |
-| close()        | NET_SOCKET_CLOSE   |
-| poll()         | NET_SOCKET_STATUS  |
-
-### Connection Flow
-
-1. Application calls `socket(AF_INET, SOCK_STREAM, 0)`
-2. libc sends NET_SOCKET_CREATE to netd
-3. netd allocates TcpConnection slot, returns socket ID
-4. libc returns socket ID as file descriptor
-5. Subsequent operations use this socket ID
+| socket()       | SYS_SOCKET_CREATE  |
+| connect()      | SYS_SOCKET_CONNECT |
+| send()/write() | SYS_SOCKET_SEND    |
+| recv()/read()  | SYS_SOCKET_RECV    |
+| close()        | SYS_SOCKET_CLOSE   |
+| poll()         | SYS_SOCKET_POLL    |
 
 ---
 
 ## Statistics
 
-netd tracks and reports:
+The kernel tracks and reports via SYS_NET_STATS:
 
 | Counter     | Description            |
 |-------------|------------------------|
@@ -426,60 +365,77 @@ netd tracks and reports:
 
 | Operation           | Typical Time |
 |---------------------|--------------|
-| Socket create (IPC) | ~50μs        |
+| Socket create       | ~10μs        |
 | TCP connect (local) | ~1-5ms       |
 | DNS resolution      | ~10-50ms     |
 | TLS handshake       | ~50-200ms    |
-| Socket send/recv    | ~100μs       |
+| Socket send/recv    | ~20μs        |
 
-### Limitations
+### Advantages of Kernel Networking
+
+- Lower latency (no IPC overhead)
+- Direct access to network buffers
+- Integrated TLS acceleration
+- Simpler application code
+
+### Resource Limits
 
 | Resource            | Limit     |
 |---------------------|-----------|
 | TCP connections     | 32        |
 | UDP sockets         | 16        |
 | ARP cache entries   | 16        |
-| Inline message data | 200 bytes |
 | TCP RX buffer       | 8KB       |
 | TCP TX buffer       | 8KB       |
-| UDP RX buffer       | 4KB       |
+| TLS sessions        | 16        |
 
 ---
 
-## Recent Improvements
+## Shell Commands
 
-- **TCP Flow Control**: Proper window management for reliable data transfer
-- **TCP Congestion Control**: Basic congestion window management
-- **TCP Retransmission**: Timeout-based retransmission with exponential backoff
-- **Improved SSH/SFTP**: More stable connections with proper window handling
+The vinit shell provides the `Fetch` command for HTTP/HTTPS:
+
+```
+SYS:> Fetch example.com
+SYS:> Fetch https://example.com
+```
+
+Network programs are run via the `Run` command:
+
+```
+SYS:> Run ping 10.0.2.2
+SYS:> Run ssh user@example.com
+SYS:> Run sftp user@example.com
+SYS:> Run netstat
+```
+
+---
 
 ## Not Implemented
 
 ### High Priority
 
-- ~~TCP window scaling (RFC 7323)~~ ✓ Basic flow control implemented
-- ~~TCP congestion control (RFC 5681)~~ ✓ Basic implementation
+- IPv6
 - TCP SACK (RFC 2018)
 - IP fragmentation/reassembly
 
 ### Medium Priority
 
-- IPv6
-- ~~TCP retransmission with backoff~~ ✓ Implemented
 - TCP TIME_WAIT with 2MSL
-- Keep-alive
+- TCP keep-alive
+- UDP multicast
 
 ### Low Priority
 
 - Raw sockets
-- Multicast
 - DHCP client
 - TLS 1.2 fallback
 - TLS session resumption
+- TLS server mode
 
 ---
 
-## Priority Recommendations: Next 5 Steps
+## Priority Recommendations: Next Steps
 
 ### 1. IPv6 Support
 
@@ -497,7 +453,6 @@ netd tracks and reports:
 - RFC 2018 SACK option parsing
 - Selective retransmission of lost segments
 - Improved throughput on high-latency links
-- Required for modern TCP performance
 
 ### 3. DHCP Client
 
@@ -506,22 +461,11 @@ netd tracks and reports:
 - DHCP discover/offer/request/ack
 - Obtain IP, gateway, DNS automatically
 - Lease renewal handling
-- Zero-config network setup
 
 ### 4. TLS Session Resumption
 
 **Impact:** Faster subsequent HTTPS connections
 
-- Session ID caching for resumption
-- 0-RTT data with early data
+- Session ticket caching
+- 0-RTT early data
 - Reduced handshake latency
-- Better user experience for web access
-
-### 5. SO_RCVBUF/SO_SNDBUF Socket Options
-
-**Impact:** Application-controlled buffer sizing
-
-- Per-socket buffer configuration
-- setsockopt()/getsockopt() support
-- Better memory utilization
-- Performance tuning for specific workloads

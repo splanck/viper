@@ -92,7 +92,7 @@ forwards them to connected clients via IPC.
 
 - Per-surface event queues (32 events each)
 - Event types: key, mouse, focus, close
-- Keyboard events routed from inputd to focused window
+- Keyboard events routed from kernel to focused window
 - Non-blocking poll via DISP_POLL_EVENT
 - Click detection for decoration buttons
 
@@ -626,7 +626,7 @@ add_gui_program(taskbar taskbar/taskbar.c)
     - Bidirectional IPC: consoled forwards keyboard events to connected clients
 
 - **January 2026**: GUI improvements
-    - Implemented keyboard event routing (inputd → displayd → focused window)
+    - Implemented keyboard event routing (kernel → displayd → focused window)
     - Implemented DISP_SET_TITLE handler (window title updates at runtime)
     - Added event queue overflow detection
     - Improved window cascade positioning (10 positions before repeating)

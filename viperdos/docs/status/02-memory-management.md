@@ -6,12 +6,12 @@
 
 ## Overview
 
-The memory management subsystem is a core kernel service in the ViperDOS microkernel. It provides physical page
+The memory management subsystem is a core kernel service in the ViperDOS hybrid kernel. It provides physical page
 allocation, virtual memory mapping, kernel heap services, slab allocation, demand paging, copy-on-write page sharing,
 and shared memory for IPC.
 
-In microkernel mode, memory management remains in the kernel while user-space servers use shared memory for efficient
-large data transfers.
+Memory management is implemented entirely in the kernel. User-space display servers (consoled, displayd) use shared
+memory for efficient large data transfers such as framebuffers.
 
 ## Components
 
@@ -527,12 +527,12 @@ void kheap::get_stats(&total, &used, &free, &blocks);
 
 ---
 
-## Shared Memory (Microkernel IPC)
+## Shared Memory (IPC)
 
 **Location:** `kernel/kobj/shm.cpp`, `kernel/kobj/shm.hpp`
 **SLOC:** ~150
 
-Shared memory provides efficient large data transfer between user-space processes in the microkernel architecture.
+Shared memory provides efficient large data transfer between user-space processes.
 
 ### Syscalls
 

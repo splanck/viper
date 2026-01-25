@@ -212,7 +212,7 @@ The Clang toolchain provides cross-compilation support using LLVM's Clang compil
 **Compiler Flags:**
 
 ```
--ffreestanding -nostdlib -mcpu=cortex-a72
+-ffreestanding -nostdlib -mcpu=cortex-a57
 -Wall -Wextra -Werror
 -fno-stack-protector -mstrict-align -fno-pie
 -fno-exceptions -fno-rtti (C++ only)

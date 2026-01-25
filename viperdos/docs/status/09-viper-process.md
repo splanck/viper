@@ -6,8 +6,8 @@
 
 ## Overview
 
-The Viper subsystem provides ViperDOS's user-space process abstraction. In the microkernel architecture, this is a core
-kernel component that provides:
+The Viper subsystem provides ViperDOS's user-space process abstraction. In the hybrid kernel architecture, this is a
+core kernel component that provides:
 
 - Process management (create, fork, wait, exit)
 - Per-process address spaces with demand paging and COW

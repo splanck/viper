@@ -9,10 +9,10 @@ The ViperDOS shell (vinit) provides a command-line interface with line editing, 
 | Category       | Commands                                                       |
 |----------------|----------------------------------------------------------------|
 | **Files**      | `Dir`, `List`, `Type`, `Copy`, `Delete`, `MakeDir`, `Rename`   |
-| **Navigation** | `chdir`, `cwd`, `Path`, `Assign`                               |
-| **Programs**   | `Run`, `RunFSD`                                                |
-| **System**     | `Version`, `Uptime`, `Avail`, `Status`, `Caps`, `Date`, `Time` |
-| **Network**    | `Fetch`, `ssh`, `sftp`, `ping`                                 |
+| **Navigation** | `CD`, `PWD`, `Path`, `Assign`                                  |
+| **Programs**   | `Run`                                                          |
+| **System**     | `Version`, `Uptime`, `Avail`, `Status`, `Servers`, `Caps`, `Date`, `Time` |
+| **Network**    | `Fetch`                                                        |
 | **Utility**    | `Echo`, `Cls`, `History`, `Why`, `Help`                        |
 | **Session**    | `EndShell`                                                     |
 
@@ -194,18 +194,20 @@ Renamed "oldname" to "newname"
 
 ## Navigation Commands
 
-### chdir
+### CD
 
 Change the current working directory.
 
-**Syntax:** `chdir [path]`
+**Syntax:** `CD [path]`
+
+**Aliases:** `chdir`
 
 **Examples:**
 
 ```
-SYS:> chdir /c
-SYS:/c> chdir ..
-SYS:> chdir
+SYS:> CD /c
+SYS:/c> CD ..
+SYS:> CD
 SYS:>
 ```
 
@@ -216,16 +218,18 @@ SYS:>
 
 ---
 
-### cwd
+### PWD
 
 Print the current working directory.
 
-**Syntax:** `cwd`
+**Syntax:** `PWD`
+
+**Aliases:** `cwd`
 
 **Examples:**
 
 ```
-SYS:/c> cwd
+SYS:/c> PWD
 /c
 ```
 
@@ -326,20 +330,6 @@ Process 4 exited with status 0
 
 ---
 
-### RunFSD
-
-Execute a user program by reading the ELF via `fsd` and spawning it from shared memory.
-
-**Syntax:** `RunFSD <path> [arguments]`
-
-**Notes:**
-
-- Requires `fsd` to be running (microkernel bring-up path).
-- Useful for running executables stored on the `fsd`-managed disk while spawn is being decoupled from the kernel
-  filesystem.
-
----
-
 ## System Commands
 
 ### Version
@@ -413,9 +403,10 @@ Process Status:
   --  --------  ---  --------------------------------
     0  Ready     255  idle [idle] [kernel]
     1  Running   128  vinit
-    2  Blocked   128  netd [kernel]
+    2  Blocked   128  consoled
+    3  Blocked   128  displayd
 
-3 tasks total
+4 tasks total
 ```
 
 **Process States:**
@@ -456,6 +447,34 @@ Capability Table:
 - `Socket` - Network socket
 - `Channel` - IPC channel
 - `Timer` - Timer object
+
+---
+
+### Servers
+
+Display or control system servers.
+
+**Syntax:** `Servers [restart <name>]`
+
+**Examples:**
+
+```
+SYS:> Servers
+
+Server Status:
+
+  Name        PID     Status
+  --------    -----   --------
+  displayd    2       Running
+  consoled    3       Running
+
+2 servers running
+```
+
+**Notes:**
+
+- Shows status of running display servers
+- Can restart a failed server with `Servers restart <name>`
 
 ---
 
@@ -515,83 +534,6 @@ HTTP/1.0 200 OK
 [Received 1256 bytes, encrypted]
 ```
 
----
-
-### ssh
-
-Connect to a remote server via SSH-2.
-
-**Syntax:** `ssh [-p port] [-l user] user@host [command]`
-
-**Examples:**
-
-```
-SYS:> ssh user@example.com
-Connecting to example.com:22...
-SSH handshake complete.
-user@example.com:~$
-
-SYS:> ssh -p 2222 user@host
-SYS:> ssh user@host "ls -la"
-```
-
-**Features:**
-
-- Ed25519 and RSA public key authentication
-- Password authentication fallback
-- Interactive shell mode with PTY
-- Remote command execution
-
----
-
-### sftp
-
-Interactive SFTP file transfer client.
-
-**Syntax:** `sftp [-p port] user@host`
-
-**Examples:**
-
-```
-SYS:> sftp user@example.com
-Connected to example.com
-sftp> ls
-file1.txt  file2.txt  docs/
-sftp> get file1.txt
-Downloading file1.txt... 1024 bytes
-sftp> put local.txt
-Uploading local.txt... 512 bytes
-sftp> quit
-```
-
-**Commands:**
-
-- `ls [path]` - List directory
-- `cd <path>` - Change remote directory
-- `pwd` - Print remote directory
-- `get <remote> [local]` - Download file
-- `put <local> [remote]` - Upload file
-- `mkdir <path>` - Create directory
-- `rm <path>` - Remove file
-- `quit` - Exit SFTP
-
----
-
-### ping
-
-Send ICMP echo requests to test network connectivity.
-
-**Syntax:** `ping <host>`
-
-**Examples:**
-
-```
-SYS:> ping 10.0.2.2
-PING 10.0.2.2: 64 bytes from 10.0.2.2: time=1.2 ms
-```
-
----
-
 **Supported Protocols:**
 
 - `http://` - Plain HTTP (port 80)
@@ -603,6 +545,28 @@ PING 10.0.2.2: 64 bytes from 10.0.2.2: time=1.2 ms
 - Uses TLS 1.3 for HTTPS connections
 - Certificates are verified against built-in root CA store
 - HTTP/1.0 protocol (no keep-alive)
+
+---
+
+## Network Programs
+
+The following network utilities are available as separate programs run via `Run`:
+
+| Program  | Description                              |
+|----------|------------------------------------------|
+| `ping`   | Send ICMP echo requests                  |
+| `ssh`    | SSH-2 client for remote shell access     |
+| `sftp`   | SFTP file transfer client                |
+| `netstat`| Display network statistics               |
+
+**Examples:**
+
+```
+SYS:> Run ping 10.0.2.2
+SYS:> Run ssh user@example.com
+SYS:> Run sftp user@example.com
+SYS:> Run netstat
+```
 
 ---
 

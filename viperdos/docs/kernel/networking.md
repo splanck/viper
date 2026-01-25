@@ -1,84 +1,84 @@
 # Networking Stack
 
-ViperDOS provides networking through a layered architecture that supports both kernel-mode and microkernel-mode
-operation.
+ViperDOS provides networking through a kernel-based TCP/IP stack with TLS 1.3 support.
 
-## Architecture Modes
+## Architecture
 
-### Microkernel Mode (Default)
-
-In microkernel mode (`VIPER_MICROKERNEL_MODE=1`, `VIPER_KERNEL_ENABLE_NET=0`), networking runs entirely in user space:
+The networking stack is implemented entirely in the kernel:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    User Applications                         │
-│           (vinit, ssh, fetch, etc.)                         │
+│           (vinit, ssh, sftp, ping, fetch, etc.)             │
 ├─────────────────────────────────────────────────────────────┤
 │    libc          │    libtls      │    libssh              │
-│   socket()       │   TLS 1.3      │   SSH-2 + SFTP         │
-│   connect()      │   X.509        │   Ed25519/RSA          │
+│   socket()       │   TLS API      │   SSH-2 + SFTP         │
+│   connect()      │   wrapper      │   Ed25519/RSA          │
+│      ↓           │      ↓         │                        │
+│   Syscalls       │   Syscalls     │                        │
 ├──────────────────┴────────────────┴─────────────────────────┤
-│                     netd Server                              │
-│   VirtIO-net  │  Ethernet  │  ARP  │  IPv4  │  TCP/UDP     │
-│   ~3,200 SLOC including libnetclient                        │
-├─────────────────────────────────────────────────────────────┤
-│                    Microkernel                               │
-│        IPC channels, device syscalls, shared memory          │
+│                        Kernel                                │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │                    TLS 1.3 Stack                         ││
+│  │   ChaCha20-Poly1305 │ X25519 │ SHA-256 │ Certs          ││
+│  ├─────────────────────────────────────────────────────────┤│
+│  │                    TCP/IP Stack                          ││
+│  │   TCP (32 conns) │ UDP (16 sockets) │ ICMP │ DNS        ││
+│  ├─────────────────────────────────────────────────────────┤│
+│  │                    IPv4 Layer                            ││
+│  │   Header parsing │ Checksum │ Routing                   ││
+│  ├─────────────────────────────────────────────────────────┤│
+│  │                    Ethernet/ARP                          ││
+│  │   Frame handling │ ARP cache (16 entries)               ││
+│  ├─────────────────────────────────────────────────────────┤│
+│  │                    VirtIO-net Driver                     ││
+│  │   TX/RX queues │ IRQ handling                           ││
+│  └─────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────┘
 ```
 
 **Key components:**
 
-- **netd server** (`user/servers/netd/`): User-space TCP/IP stack with VirtIO-net driver
-- **libtls** (`user/libtls/`): TLS 1.3 client library
-- **libhttp** (`user/libhttp/`): HTTP/1.1 client
+- **Kernel TCP/IP** (`kernel/net/`): Complete networking stack
+- **Kernel TLS** (`kernel/net/tls/`): TLS 1.3 with certificate verification
+- **VirtIO-net** (`kernel/drivers/virtio/net.*`): Network device driver
+- **libtls** (`user/libtls/`): User-space TLS API wrapper
+- **libhttp** (`user/libhttp/`): HTTP/1.1 client library
 - **libssh** (`user/libssh/`): SSH-2 client with SFTP support
-- **libnetclient** (`user/libnetclient/`): IPC client library for netd
 
-### Kernel Mode (Optional)
+## Network Syscalls
 
-When `VIPER_KERNEL_ENABLE_NET=1`, the full network stack runs in kernel space. This mode is useful for debugging
-and development but is not the default.
-
-Key files (kernel mode):
-
-- `kernel/net/network.*`: Network initialization and polling
-- `kernel/net/eth/*`: Ethernet and ARP
-- `kernel/net/ip/*`: IPv4, ICMP, UDP, TCP
-- `kernel/net/dns/*`: DNS resolver
-- `kernel/net/http/*`: HTTP client
-- `kernel/net/tls/*`: TLS 1.3 (when `VIPER_KERNEL_ENABLE_TLS=1`)
-
-## netd Server Protocol
-
-Applications communicate with netd via IPC channels using a message-based protocol:
+Applications access networking via kernel syscalls:
 
 ### Socket Operations
 
-| Message              | Code | Description                |
-|----------------------|------|----------------------------|
-| `NET_SOCKET_CREATE`  | 0x01 | Create TCP/UDP socket      |
-| `NET_SOCKET_CONNECT` | 0x02 | Connect to remote host     |
-| `NET_SOCKET_BIND`    | 0x03 | Bind to local address      |
-| `NET_SOCKET_LISTEN`  | 0x04 | Listen for connections     |
-| `NET_SOCKET_ACCEPT`  | 0x05 | Accept incoming connection |
-| `NET_SOCKET_SEND`    | 0x06 | Send data                  |
-| `NET_SOCKET_RECV`    | 0x07 | Receive data               |
-| `NET_SOCKET_CLOSE`   | 0x08 | Close socket               |
-| `NET_SOCKET_POLL`    | 0x09 | Poll socket for events     |
+| Syscall               | Number | Description                |
+|-----------------------|--------|----------------------------|
+| `SYS_SOCKET_CREATE`   | 0x50   | Create TCP socket          |
+| `SYS_SOCKET_CONNECT`  | 0x51   | Connect to remote host     |
+| `SYS_SOCKET_SEND`     | 0x52   | Send data                  |
+| `SYS_SOCKET_RECV`     | 0x53   | Receive data               |
+| `SYS_SOCKET_CLOSE`    | 0x54   | Close socket               |
+| `SYS_DNS_RESOLVE`     | 0x55   | Resolve hostname to IP     |
+| `SYS_SOCKET_POLL`     | 0x56   | Poll socket for events     |
 
-### DNS Operations
+### TLS Operations
 
-| Message           | Code | Description            |
-|-------------------|------|------------------------|
-| `NET_DNS_RESOLVE` | 0x14 | Resolve hostname to IP |
+| Syscall               | Number | Description                |
+|-----------------------|--------|----------------------------|
+| `SYS_TLS_CREATE`      | 0xD0   | Create TLS session         |
+| `SYS_TLS_HANDSHAKE`   | 0xD1   | Perform TLS handshake      |
+| `SYS_TLS_SEND`        | 0xD2   | Send encrypted data        |
+| `SYS_TLS_RECV`        | 0xD3   | Receive decrypted data     |
+| `SYS_TLS_CLOSE`       | 0xD4   | Close TLS session          |
+| `SYS_TLS_INFO`        | 0xD5   | Get session info           |
 
 ### Network Information
 
-| Message        | Code | Description               |
-|----------------|------|---------------------------|
-| `NET_PING`     | 0x28 | ICMP echo request         |
-| `NET_GET_INFO` | 0x29 | Get interface information |
+| Syscall               | Number | Description                |
+|-----------------------|--------|----------------------------|
+| `SYS_NET_STATS`       | 0xE1   | Get network statistics     |
+| `SYS_PING`            | 0xE2   | ICMP ping with RTT         |
 
 ## Protocol Stack Layers
 
@@ -170,19 +170,6 @@ Key files:
 - `user/libssh/ssh_auth.c`: Authentication
 - `user/libssh/ssh_channel.c`: Channel management
 - `user/libssh/sftp.c`: SFTP protocol
-
-## Device Syscalls for netd
-
-The netd server uses device syscalls to access hardware:
-
-| Syscall        | Number | Description                     |
-|----------------|--------|---------------------------------|
-| `map_device`   | 0x100  | Map VirtIO MMIO into user space |
-| `irq_register` | 0x101  | Register for network IRQ        |
-| `irq_wait`     | 0x102  | Wait for network interrupt      |
-| `irq_ack`      | 0x103  | Acknowledge interrupt           |
-| `dma_alloc`    | 0x104  | Allocate DMA buffer             |
-| `virt_to_phys` | 0x106  | Get physical address for DMA    |
 
 ## Network Configuration
 

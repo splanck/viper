@@ -1,8 +1,8 @@
 # Console Subsystem
 
 **Status:** Fully functional with GUI terminal emulator
-**Location:** `kernel/console/` + `user/servers/consoled/` + `user/servers/inputd/`
-**SLOC:** ~3,500 (kernel) + ~1,400 (consoled) + ~1,000 (inputd)
+**Location:** `kernel/console/` + `user/servers/consoled/`
+**SLOC:** ~3,500 (kernel) + ~1,400 (consoled)
 
 ## Overview
 
@@ -11,7 +11,7 @@ The console subsystem provides text output capabilities through multiple paths:
 - **Kernel console (gcon)**: Boot-time output and kernel debug messages via framebuffer
 - **Serial console**: PL011 UART for serial output and debugging
 - **consoled server**: User-space GUI terminal emulator running in a window (~1,400 SLOC)
-- **inputd server**: User-space keyboard/mouse input server (~1,000 SLOC)
+- **Kernel input drivers**: VirtIO-input drivers in kernel handle keyboard/mouse events
 
 The kernel console is used during boot and can be disabled when the GUI terminal takes over via `gcon_set_gui_mode()`.
 

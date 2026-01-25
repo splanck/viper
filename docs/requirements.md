@@ -721,7 +721,7 @@ The compiler must support:
 
 ## 11. Viper OS Kernel and Userland Requirements
 
-This section documents the specific compiler requirements for building the Viper OS kernel and userland components. The kernel is a freestanding AArch64 microkernel, and the userland includes a custom libc and C++ standard library implementation.
+This section documents the specific compiler requirements for building the Viper OS kernel and userland components. The kernel is a freestanding AArch64 hybrid kernel, and the userland includes a custom libc and C++ standard library implementation.
 
 ### 11.1 OS Component Standards
 

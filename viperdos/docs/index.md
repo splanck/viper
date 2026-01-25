@@ -6,12 +6,11 @@ Welcome to the ViperDOS documentation.
 
 ## Getting Started
 
-| Document                                   | Description                                        |
-|--------------------------------------------|----------------------------------------------------|
-| [Main README](../README.md)                | Build instructions and quickstart                  |
-| [Shell Commands](shell-commands.md)        | Complete command reference                         |
-| [Syscall Reference](syscalls.md)           | System call API documentation                      |
-| [Microkernel Plan](../bugs/microkernel.md) | Microkernel audit, phased migration plan, progress |
+| Document                            | Description                       |
+|-------------------------------------|-----------------------------------|
+| [Main README](../README.md)         | Build instructions and quickstart |
+| [Shell Commands](shell-commands.md) | Complete command reference        |
+| [Syscall Reference](syscalls.md)    | System call API documentation     |
 
 ---
 
@@ -34,7 +33,7 @@ Detailed documentation of the current implementation:
 | [User Space](status/10-userspace.md)                | libc and applications                     |
 | [Tools](status/11-tools.md)                         | Build tools                               |
 | [Cryptography](status/12-crypto.md)                 | SHA, AES, X25519, Ed25519                 |
-| [Servers](status/13-servers.md)                     | Microkernel servers                       |
+| [Servers](status/13-servers.md)                     | Display servers (consoled, displayd)      |
 | [Summary](status/14-summary.md)                     | Summary and roadmap                       |
 | [Boot](status/15-boot.md)                           | UEFI boot infrastructure                  |
 

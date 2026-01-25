@@ -119,8 +119,8 @@ in [Viper Processes and Address Spaces](viper_processes.md).
 
 ## Shared Memory for IPC
 
-In microkernel mode, user-space servers communicate via shared memory regions. The kernel provides syscalls for
-creating and mapping shared memory:
+User-space display servers (consoled, displayd) communicate with clients via shared memory regions for efficient large
+data transfers such as framebuffers. The kernel provides syscalls for creating and mapping shared memory:
 
 | Syscall      | Number | Description                            |
 |--------------|--------|----------------------------------------|

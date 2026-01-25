@@ -2,19 +2,15 @@
 
 This directory contains the complete documentation for ViperDOS, a capability-based operating system for AArch64.
 
-**Microkernel migration:** The active, code-verified microkernel audit + migration plan (with implementation progress)
-is `../bugs/microkernel.md`.
-
 ---
 
 ## Quick Links
 
-| Document                                       | Description                                        |
-|------------------------------------------------|----------------------------------------------------|
-| [Shell Commands](shell-commands.md)            | Complete shell command reference                   |
-| [Syscall Reference](syscalls.md)               | System call API documentation                      |
-| [Implementation Status](status/00-overview.md) | Current implementation status                      |
-| [Microkernel Plan](../bugs/microkernel.md)     | Microkernel audit, phased migration plan, progress |
+| Document                                       | Description                         |
+|------------------------------------------------|-------------------------------------|
+| [Shell Commands](shell-commands.md)            | Complete shell command reference    |
+| [Syscall Reference](syscalls.md)               | System call API documentation       |
+| [Implementation Status](status/00-overview.md) | Current implementation status       |
 
 ---
 
@@ -37,8 +33,10 @@ The ViperDOS shell provides a command-line interface:
 User programs are written in C or C++ and link against the ViperDOS libc:
 
 - [Syscall Reference](syscalls.md) - Complete syscall documentation
-- See `user/hello/` for a minimal example
-- See `user/edit/` for a more complex example (text editor)
+- See `user/hello/` for a minimal console example
+- See `user/hello_gui/` for a minimal GUI example
+- See `user/vedit/` for a full GUI text editor
+- See `user/calc/` for a GUI calculator application
 
 ---
 
@@ -61,7 +59,7 @@ Detailed documentation of the ViperDOS implementation:
 | [10-userspace.md](status/10-userspace.md)                 | vinit shell, syscall wrappers, libc, C++ runtime    |
 | [11-tools.md](status/11-tools.md)                         | mkfs.ziafs, fsck.ziafs, gen_roots_der               |
 | [12-crypto.md](status/12-crypto.md)                       | SHA, AES, ChaCha20, X25519, Ed25519, RSA            |
-| [13-servers.md](status/13-servers.md)                     | Microkernel servers (netd, fsd, blkd, displayd)     |
+| [13-servers.md](status/13-servers.md)                     | User-space display servers (consoled, displayd)     |
 | [14-summary.md](status/14-summary.md)                     | Summary and roadmap                                 |
 | [15-boot.md](status/15-boot.md)                           | VBoot UEFI bootloader, two-disk architecture        |
 
@@ -82,15 +80,18 @@ Detailed documentation of the ViperDOS implementation:
 ┌─────────────────────────────────────────────────────────────────┐
 │                        User Space (EL0)                          │
 │  ┌───────────────────────────────────────────────────────────┐  │
-│  │  vinit - Interactive shell with networking demos          │  │
-│  │  hello, fsinfo, sysinfo, netstat, ping, edit, ...        │  │
+│  │  GUI Applications                                          │  │
+│  │  workbench, calc, clock, vedit, viewer, prefs, taskman    │  │
 │  └───────────────────────────────────────────────────────────┘  │
 │  ┌───────────────────────────────────────────────────────────┐  │
-│  │  libc + C++ Runtime (55 C sources, 66 C++ headers)        │  │
+│  │  Shell & Utilities                                         │  │
+│  │  vinit, hello, sysinfo, netstat, ping, edit, fsinfo       │  │
 │  └───────────────────────────────────────────────────────────┘  │
 │  ┌───────────────────────────────────────────────────────────┐  │
-│  │  Microkernel Servers                                        │  │
-│  │  blkd, fsd, netd, consoled, inputd, displayd               │  │
+│  │  Libraries: libc, libgui, libwidget, libtls, libhttp      │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │  Display Servers: displayd, consoled                       │  │
 │  └───────────────────────────────────────────────────────────┘  │
 └─────────────────────────────┬───────────────────────────────────┘
                               │ SVC #0 (Syscalls)
@@ -123,7 +124,7 @@ Detailed documentation of the ViperDOS implementation:
                               │
 ┌─────────────────────────────┴───────────────────────────────────┐
 │                     QEMU virt Machine                            │
-│  ARM Cortex-A72  |  128MB RAM  |  GICv2  |  VirtIO-MMIO        │
+│  ARM Cortex-A57  |  128MB RAM  |  GICv2  |  VirtIO-MMIO        │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -146,20 +147,20 @@ Detailed documentation of the ViperDOS implementation:
 | Component              | SLOC         | Status   |
 |------------------------|--------------|----------|
 | VBoot Bootloader       | ~1,700       | Complete |
-| Architecture (AArch64) | ~3,600       | Complete |
-| Memory Management      | ~5,550       | Complete |
-| Console                | ~3,500       | Complete |
-| Drivers                | ~6,000       | Complete |
-| Filesystem             | ~9,600       | Complete |
-| IPC                    | ~2,500       | Complete |
-| Scheduler              | ~3,600       | Complete |
-| Viper/Capabilities     | ~2,900       | Complete |
-| User Servers           | ~10,500      | Complete |
-| libc                   | ~28,000      | Complete |
-| Libraries              | ~23,000      | Complete |
-| Applications           | ~5,000       | Complete |
-| Tools                  | ~2,200       | Complete |
-| **Total**              | **~115,000** |          |
+| Architecture (AArch64) | ~3,450       | Complete |
+| Memory Management      | ~5,200       | Complete |
+| Console                | ~3,950       | Complete |
+| Drivers                | ~5,450       | Complete |
+| Filesystem             | ~6,600       | Complete |
+| IPC                    | ~2,700       | Complete |
+| Scheduler              | ~4,450       | Complete |
+| Viper/Capabilities     | ~2,300       | Complete |
+| Display Servers        | ~4,200       | Complete |
+| libc                   | ~30,200      | Complete |
+| Libraries (GUI, etc.)  | ~17,100      | Complete |
+| GUI Applications       | ~17,700      | Complete |
+| Tools                  | ~2,000       | Complete |
+| **Total**              | **~143,000** |          |
 
 ---
 

@@ -1,13 +1,10 @@
 # Filesystems: Block Cache, ViperFS, and VFS
 
-ViperDOS provides filesystem access through a dual architecture supporting both kernel-mode and microkernel-mode
-operation.
+ViperDOS provides filesystem access through the kernel-based VFS and ViperFS implementation.
 
-## Architecture Modes
+## Architecture
 
-### Microkernel Mode (Default)
-
-In microkernel mode (`VIPER_MICROKERNEL_MODE=1`), filesystem operations run in user space:
+The filesystem is implemented entirely in the kernel:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -16,78 +13,72 @@ In microkernel mode (`VIPER_MICROKERNEL_MODE=1`), filesystem operations run in u
 ├─────────────────────────────────────────────────────────────┤
 │                         libc                                 │
 │     open() / read() / write() / close() / stat()            │
-│                  IPC to fsd server                           │
+│                  → Kernel syscalls                           │
 ├─────────────────────────────────────────────────────────────┤
-│                      fsd Server                              │
-│        ViperFS + VFS + Block Cache (~3,100 SLOC)            │
-├─────────────────────────────────────────────────────────────┤
-│                     blkd Server                              │
-│              VirtIO-blk driver (~800 SLOC)                  │
-├─────────────────────────────────────────────────────────────┤
-│                    Microkernel                               │
-│        IPC channels, device syscalls, shared memory          │
+│                        Kernel                                │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │                         VFS                              ││
+│  │        Path resolution, FD table, syscall handlers      ││
+│  ├─────────────────────────────────────────────────────────┤│
+│  │                       ViperFS                            ││
+│  │        Journaling, inodes, directories (~2,400 SLOC)    ││
+│  ├─────────────────────────────────────────────────────────┤│
+│  │                     Block Cache                          ││
+│  │              LRU, write-back (~600 SLOC)                ││
+│  ├─────────────────────────────────────────────────────────┤│
+│  │                    VirtIO-blk Driver                     ││
+│  │              Sector I/O, IRQ handling                   ││
+│  └─────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────┘
 ```
 
 **Key components:**
 
-- **fsd server** (`user/servers/fsd/`): User-space filesystem server
-- **blkd server** (`user/servers/blkd/`): User-space block device driver
-- **libc** (`user/libc/`): POSIX-like file API that IPCs to fsd
+- **VFS layer** (`kernel/fs/vfs/`): Path resolution, FD table, syscall dispatch
+- **ViperFS** (`kernel/fs/viperfs/`): Journaling filesystem implementation
+- **Block cache** (`kernel/fs/cache.*`): LRU cache with write-back
+- **VirtIO-blk** (`kernel/drivers/virtio/blk.*`): Block device driver
+- **libc** (`user/libc/`): POSIX-like file API calling kernel syscalls
 
-### Kernel Mode (Boot/Fallback)
+## Filesystem Syscalls
 
-The kernel retains a complete filesystem implementation for:
-
-- Boot-time file access (loading init process)
-- Fallback when microkernel servers aren't running
-- Development and debugging
-
-Key files (kernel mode):
-
-- `kernel/fs/cache.*`: Block cache
-- `kernel/fs/viperfs/*`: ViperFS implementation
-- `kernel/vfs/vfs.*`: VFS layer
-- `kernel/drivers/virtio/blk.*`: VirtIO block driver
-
-## fsd Server Protocol
-
-Applications communicate with fsd via IPC channels:
+Applications access the filesystem via kernel syscalls:
 
 ### File Operations
 
-| Message       | Code | Description            |
-|---------------|------|------------------------|
-| `FS_OPEN`     | 0x01 | Open file by path      |
-| `FS_CLOSE`    | 0x02 | Close file handle      |
-| `FS_READ`     | 0x03 | Read from file         |
-| `FS_WRITE`    | 0x04 | Write to file          |
-| `FS_SEEK`     | 0x05 | Seek to position       |
-| `FS_STAT`     | 0x06 | Get file metadata      |
-| `FS_FSTAT`    | 0x07 | Get metadata by handle |
-| `FS_TRUNCATE` | 0x08 | Truncate file          |
-| `FS_SYNC`     | 0x09 | Sync to disk           |
+| Syscall       | Number | Description            |
+|---------------|--------|------------------------|
+| `SYS_OPEN`    | 0x40   | Open file by path      |
+| `SYS_CLOSE`   | 0x41   | Close file descriptor  |
+| `SYS_READ`    | 0x42   | Read from file         |
+| `SYS_WRITE`   | 0x43   | Write to file          |
+| `SYS_LSEEK`   | 0x44   | Seek to position       |
+| `SYS_STAT`    | 0x45   | Get file metadata      |
+| `SYS_FSTAT`   | 0x46   | Get metadata by FD     |
+| `SYS_DUP`     | 0x47   | Duplicate FD           |
+| `SYS_DUP2`    | 0x48   | Duplicate to specific  |
 
 ### Directory Operations
 
-| Message       | Code | Description           |
-|---------------|------|-----------------------|
-| `FS_OPENDIR`  | 0x10 | Open directory        |
-| `FS_READDIR`  | 0x11 | Read directory entry  |
-| `FS_CLOSEDIR` | 0x12 | Close directory       |
-| `FS_MKDIR`    | 0x13 | Create directory      |
-| `FS_RMDIR`    | 0x14 | Remove directory      |
-| `FS_UNLINK`   | 0x15 | Delete file           |
-| `FS_RENAME`   | 0x16 | Rename file/directory |
+| Syscall       | Number | Description           |
+|---------------|--------|-----------------------|
+| `SYS_READDIR` | 0x60   | Read directory entry  |
+| `SYS_MKDIR`   | 0x61   | Create directory      |
+| `SYS_RMDIR`   | 0x62   | Remove directory      |
+| `SYS_UNLINK`  | 0x63   | Delete file           |
+| `SYS_RENAME`  | 0x64   | Rename file/directory |
+| `SYS_SYMLINK` | 0x65   | Create symbolic link  |
+| `SYS_READLINK`| 0x66   | Read symlink target   |
+| `SYS_GETCWD`  | 0x67   | Get working directory |
+| `SYS_CHDIR`   | 0x68   | Change directory      |
 
 ## Filesystem Layers
 
-### Layer 0: Block Device (virtio-blk or blkd)
+### Layer 0: Block Device (VirtIO-blk)
 
 The lowest layer provides sector-based reads/writes:
 
-- **Microkernel mode**: blkd server with user-space VirtIO driver
-- **Kernel mode**: `kernel/drivers/virtio/blk.*`
+- **Kernel driver**: `kernel/drivers/virtio/blk.*`
 
 The filesystem treats the disk as 4 KiB logical blocks; the driver handles 512-byte sector translation.
 
@@ -111,8 +102,7 @@ cache.sync();                         // Flush all dirty blocks
 
 Key files:
 
-- `kernel/fs/cache.*` (kernel mode)
-- `user/servers/fsd/cache.*` (user mode)
+- `kernel/fs/cache.*`
 
 ### Layer 2: ViperFS (On-Disk Format)
 
@@ -170,12 +160,12 @@ The VFS layer provides the user-facing API:
 
 **File descriptors:**
 
-- Per-process file descriptor table (capability-based in microkernel mode)
+- Per-process file descriptor table (capability-based)
 - Each descriptor stores: inode, offset, flags, rights
 
 **Capability-based handles:**
 
-In microkernel mode, file handles are capabilities:
+File handles are capabilities:
 
 ```cpp
 // Open returns a capability handle
@@ -190,8 +180,7 @@ handle_t ro = cap_derive(h, CAP_READ);
 
 Key files:
 
-- `kernel/vfs/vfs.*` (kernel mode)
-- `user/servers/fsd/vfs.*` (user mode)
+- `kernel/fs/vfs/*`
 
 ## Assigns Integration
 
@@ -206,31 +195,6 @@ This allows logical device names independent of physical mount points.
 Key files:
 
 - `kernel/assign/assign.*`
-- `user/servers/fsd/assigns.*`
-
-## Device Syscalls for blkd
-
-The blkd server uses device syscalls:
-
-| Syscall        | Number | Description             |
-|----------------|--------|-------------------------|
-| `map_device`   | 0x100  | Map VirtIO MMIO         |
-| `irq_register` | 0x101  | Register for block IRQ  |
-| `irq_wait`     | 0x102  | Wait for I/O completion |
-| `irq_ack`      | 0x103  | Acknowledge interrupt   |
-| `dma_alloc`    | 0x104  | Allocate DMA buffer     |
-| `virt_to_phys` | 0x106  | Get physical address    |
-
-## blkd Server Protocol
-
-fsd communicates with blkd via IPC:
-
-| Message     | Code | Description   |
-|-------------|------|---------------|
-| `BLK_READ`  | 0x01 | Read sectors  |
-| `BLK_WRITE` | 0x02 | Write sectors |
-| `BLK_FLUSH` | 0x03 | Flush to disk |
-| `BLK_INFO`  | 0x04 | Get disk info |
 
 ## Current Limitations
 

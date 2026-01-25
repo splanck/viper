@@ -292,7 +292,7 @@ System registers configured:
 
 ```
 EL0 - User space (Viper applications)
-EL1 - Kernel (ViperDOS microkernel)
+EL1 - Kernel (ViperDOS hybrid kernel)
 EL2 - Not used (no hypervisor)
 EL3 - Firmware only
 ```
@@ -897,7 +897,7 @@ When sending handles over a channel:
 4. Receiver gets new handle values in their own cap table
 5. Rights are preserved during transfer
 
-This enables microkernel patterns: a filesystem server can send file handles to clients.
+This enables capability transfer patterns: display servers can send framebuffer handles to clients.
 
 ### 10.4 Message Format and Limits
 

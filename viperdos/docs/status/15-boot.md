@@ -154,22 +154,18 @@ esp.img (GPT)
 
 #### System Disk (sys.img) - 2MB ViperFS
 
-Contains core system servers. Accessed by kernel VFS during boot.
+Contains core system files. Accessed by kernel VFS during boot.
 
 ```
 sys.img (ViperFS)
 ├── vinit.sys       # Init process and shell
-├── blkd.sys        # Block device server
-├── netd.sys        # Network server
-├── fsd.sys         # Filesystem server
-├── consoled.sys    # Console server
-├── inputd.sys      # Input server
-└── displayd.sys    # Display server
+├── consoled.sys    # GUI terminal server
+└── displayd.sys    # Display server (window manager)
 ```
 
 #### User Disk (user.img) - 8MB ViperFS
 
-Contains user programs and data. Accessed via blkd/fsd servers.
+Contains user programs and data. Accessed via kernel VFS.
 
 ```
 user.img (ViperFS)

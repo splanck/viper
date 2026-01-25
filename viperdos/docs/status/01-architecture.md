@@ -1,21 +1,20 @@
 # Architecture Subsystem (AArch64)
 
-**Status:** Complete for QEMU virt platform (microkernel) with UEFI boot
+**Status:** Complete for QEMU virt platform (hybrid kernel) with UEFI boot
 **Location:** `kernel/arch/aarch64/`
 **SLOC:** ~3,600
 
 ## Overview
 
-The architecture subsystem provides low-level AArch64 support for the ViperDOS microkernel, targeting the QEMU `virt`
-machine. In microkernel mode, the kernel provides only essential services while user-space servers handle networking,
-filesystem, and drivers.
+The architecture subsystem provides low-level AArch64 support for ViperDOS, targeting the QEMU `virt`
+machine. The hybrid kernel provides filesystem, networking, and TLS directly in the kernel, with only display
+servers (consoled, displayd) running in user space.
 
 **Build Configuration:**
 
-- `VIPER_MICROKERNEL_MODE=1` (default)
-- `VIPER_KERNEL_ENABLE_FS=1` (for boot)
-- `VIPER_KERNEL_ENABLE_NET=0` (use netd)
-- `VIPER_KERNEL_ENABLE_TLS=0` (use libtls)
+- `VIPER_KERNEL_ENABLE_FS=1` (kernel filesystem)
+- `VIPER_KERNEL_ENABLE_NET=1` (kernel networking)
+- `VIPER_KERNEL_ENABLE_TLS=1` (kernel TLS 1.3)
 
 ---
 
@@ -100,7 +99,7 @@ filesystem, and drivers.
 - IRQ acknowledgment and EOI (End of Interrupt)
 - Spurious interrupt detection (IRQ 1020+)
 - **SGI Support**: Software Generated Interrupts for IPI
-- **User-space IRQ registration**: For microkernel drivers
+- **User-space IRQ registration**: For display server drivers
 
 **Not Implemented:**
 
@@ -169,8 +168,7 @@ filesystem, and drivers.
 
 ## Syscall Table (~90 syscalls)
 
-The kernel provides syscalls for microkernel services. Some syscalls are
-conditionally enabled based on build configuration.
+The kernel provides syscalls for all services including filesystem, networking, and TLS.
 
 ### Task/Process (0x00-0x0F)
 
@@ -214,7 +212,7 @@ conditionally enabled based on build configuration.
 | 0x30   | time_now | Get current time (ms) |
 | 0x31   | sleep    | Sleep for duration    |
 
-### File I/O (0x40-0x4F) - Requires VIPER_KERNEL_ENABLE_FS
+### File I/O (0x40-0x4F)
 
 | Number | Name  | Description                     |
 |--------|-------|---------------------------------|
@@ -228,7 +226,7 @@ conditionally enabled based on build configuration.
 | 0x47   | dup   | Duplicate fd                    |
 | 0x48   | dup2  | Duplicate fd to specific number |
 
-### Networking (0x50-0x5F) - Requires VIPER_KERNEL_ENABLE_NET
+### Networking (0x50-0x5F)
 
 | Number | Name           | Description       |
 |--------|----------------|-------------------|
@@ -239,7 +237,7 @@ conditionally enabled based on build configuration.
 | 0x54   | socket_close   | Close socket      |
 | 0x55   | dns_resolve    | Resolve hostname  |
 
-### Directory/FS (0x60-0x6F) - Requires VIPER_KERNEL_ENABLE_FS
+### Directory/FS (0x60-0x6F)
 
 | Number | Name     | Description              |
 |--------|----------|--------------------------|
@@ -307,7 +305,7 @@ conditionally enabled based on build configuration.
 | 0xC3   | assign_list    | List all assigns      |
 | 0xC4   | assign_resolve | Resolve assign path   |
 
-### TLS (0xD0-0xDF) - Requires VIPER_KERNEL_ENABLE_TLS
+### TLS (0xD0-0xDF)
 
 | Number | Name          | Description            |
 |--------|---------------|------------------------|
@@ -336,7 +334,7 @@ conditionally enabled based on build configuration.
 | 0xF2   | putchar     | Write character         |
 | 0xF3   | uptime      | Get system uptime       |
 
-### Device Primitives (0x100-0x10F) - Microkernel Mode
+### Device Primitives (0x100-0x10F)
 
 | Number | Name           | Description            |
 |--------|----------------|------------------------|

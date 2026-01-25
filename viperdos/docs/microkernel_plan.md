@@ -1,12 +1,18 @@
 # ViperDOS Microkernel Migration Plan
 
 **Version:** 1.0
-**Status:** Historical (superseded)
+**Status:** Historical (not implemented)
 **Author:** Generated from codebase analysis
 **Date:** 2024
 
-> NOTE: This document is kept for historical context and may not match the current tree.
-> The active, code-verified plan and progress tracker is `../bugs/microkernel.md`.
+> **IMPORTANT: This plan was not implemented.** ViperDOS evolved into a **hybrid kernel** architecture instead.
+>
+> Current architecture (v0.3.2):
+> - **Kernel services**: Filesystem (VFS + ViperFS), Networking (TCP/IP + TLS 1.3), all device drivers
+> - **User-space servers**: Only consoled (GUI terminal) and displayd (window manager)
+> - The netd, fsd, and blkd servers described below were **never created**
+>
+> This document is preserved for historical reference only.
 
 ---
 

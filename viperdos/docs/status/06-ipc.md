@@ -6,13 +6,14 @@
 
 ## Overview
 
-The IPC subsystem provides message-passing primitives for inter-process communication in the ViperDOS microkernel. It
+The IPC subsystem provides message-passing primitives for inter-process communication in the ViperDOS hybrid kernel. It
 consists of two main components:
 
 - **Channels**: Bidirectional message-passing with capability transfer
 - **Poll**: Multiplexing and timer management for waiting on multiple events
 
-This is the primary mechanism for communication between user-space servers and clients in the microkernel architecture.
+This is the primary mechanism for communication between user-space display servers (consoled, displayd) and their
+clients.
 
 ## Architecture
 

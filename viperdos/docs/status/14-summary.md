@@ -1,23 +1,24 @@
 # ViperDOS Summary and Roadmap
 
 **Version:** 0.3.2 (January 2026)
-**Target:** AArch64 (Cortex-A72) on QEMU virt machine
-**Total Lines of Code:** ~115,000
+**Target:** AArch64 (Cortex-A57) on QEMU virt machine
+**Total Lines of Code:** ~143,000
 
 ## Executive Summary
 
-ViperDOS is a **capability-based microkernel** operating system for AArch64. The kernel provides only essential
-services (scheduling, memory, IPC, device primitives), while higher-level functionality runs in user-space servers
-communicating via message-passing channels.
+ViperDOS is a **capability-based hybrid kernel** operating system for AArch64. The kernel provides comprehensive
+services (scheduling, memory, IPC, filesystem, networking, TLS), while display services run in user-space servers
+(consoled, displayd) communicating via message-passing channels.
 
 The system is fully functional for QEMU bring-up with:
 
 - **UEFI Boot**: Custom VBoot bootloader with GOP framebuffer support
-- **Microkernel core**: Priority-based SMP scheduler, capability tables, IPC channels
+- **Hybrid kernel**: Priority-based SMP scheduler, capability tables, IPC channels
 - **Complete memory management**: Demand paging, COW, buddy/slab allocators
-- **User-space servers**: netd (TCP/IP), fsd (filesystem), blkd (block), consoled, inputd, displayd
-- **Full networking**: TCP/IP, TLS 1.3, HTTP, SSH-2/SFTP
-- **Journaling filesystem**: ViperFS with block/inode caching
+- **Kernel services**: TCP/IP stack, TLS 1.3, VFS, ViperFS with journaling
+- **Display servers**: consoled (GUI terminal), displayd (window manager)
+- **Full networking**: TCP/IP, TLS 1.3, HTTP, SSH-2/SFTP (kernel-based)
+- **Journaling filesystem**: ViperFS with block/inode caching (kernel-based)
 - **Capability-based security**: Handle-based access with rights derivation
 - **Comprehensive libc**: POSIX-compatible C library with C++ support
 - **GUI subsystem**: User-space display server with windowing
@@ -26,7 +27,7 @@ The system is fully functional for QEMU bring-up with:
 
 ## Implementation Completeness
 
-### Microkernel Core (98% Complete)
+### Kernel Core (98% Complete)
 
 | Component          | Status | Notes                                                  |
 |--------------------|--------|--------------------------------------------------------|
@@ -40,15 +41,11 @@ The system is fully functional for QEMU bring-up with:
 | Syscall Interface  | 100%   | 90+ syscalls                                           |
 | Exception Handling | 100%   | Faults, IRQ, signals                                   |
 
-### User-Space Servers (95% Complete)
+### User-Space Display Servers (95% Complete)
 
 | Server   | Status | Notes                                            |
 |----------|--------|--------------------------------------------------|
-| netd     | 95%    | Complete TCP/IP stack                            |
-| fsd      | 95%    | Full filesystem operations                       |
-| blkd     | 95%    | VirtIO-blk with IRQ                              |
 | consoled | 95%    | GUI terminal emulator, ANSI, keyboard forwarding |
-| inputd   | 95%    | Keyboard/mouse input                             |
 | displayd | 90%    | Window compositing, event delivery               |
 
 ### Drivers (100% Complete for QEMU)
@@ -120,8 +117,8 @@ The system is fully functional for QEMU bring-up with:
 |--------------|--------|-------------------------------|
 | libc         | 92%    | 56 source files, POSIX subset |
 | C++ headers  | 85%    | 66 header files               |
-| libnetclient | 95%    | netd client                   |
-| libfsclient  | 95%    | fsd client                    |
+| libvirtio    | 95%    | VirtIO driver helpers         |
+| libwidget    | 90%    | Widget toolkit for GUI        |
 | libgui       | 90%    | displayd client, font scaling |
 | libtls       | 90%    | TLS 1.3                       |
 | libhttp      | 90%    | HTTP client                   |
@@ -134,13 +131,13 @@ The system is fully functional for QEMU bring-up with:
 ## What Works Today
 
 1. **UEFI Boot**: VBoot loads kernel via UEFI on AArch64
-2. **Two-Disk Architecture**: Separate system (servers) and user (programs) disks
-3. **Microkernel Boot**: Kernel starts, servers initialize, shell runs
+2. **Two-Disk Architecture**: Separate system and user disks
+3. **Hybrid Kernel Boot**: Kernel starts with all services, display servers initialize
 4. **SMP Scheduling**: 4 CPUs with work stealing and load balancing
-5. **IPC Communication**: All user-space servers communicate via channels
-6. **File Operations**: Create, read, write, delete via fsd
-7. **Networking**: TCP/IP via netd, TLS, HTTP, SSH
-8. **Block I/O**: Filesystem backed by blkd with ViperFS
+5. **IPC Communication**: Display servers communicate via channels
+6. **File Operations**: Create, read, write, delete via kernel VFS
+7. **Networking**: Kernel TCP/IP stack, TLS, HTTP, SSH
+8. **Block I/O**: Kernel filesystem with VirtIO-blk driver
 9. **GUI Terminal**: consoled runs as a window with ANSI colors and keyboard forwarding
 10. **GUI Windows**: Display server with window compositing, mouse/keyboard events
 11. **Process Management**: Fork, wait, exit with capability tables
@@ -150,7 +147,7 @@ The system is fully functional for QEMU bring-up with:
 
 ---
 
-## Microkernel Architecture
+## Hybrid Kernel Architecture
 
 ### Kernel Services (EL1)
 
@@ -158,27 +155,25 @@ The system is fully functional for QEMU bring-up with:
 - Physical/virtual memory management (demand paging, COW)
 - IPC channels with handle transfer
 - Capability tables (per-process)
-- Device access primitives (MMIO, IRQ, DMA, framebuffer)
+- Device drivers (VirtIO-blk, VirtIO-net, ramfb, PL011)
+- VFS and ViperFS filesystem with journaling
+- TCP/IP networking stack
+- TLS 1.3 encryption
 - Exception/interrupt handling
 
-### User-Space Services (EL0)
+### User-Space Display Services (EL0)
 
 | Service  | Assign   | Purpose                    |
 |----------|----------|----------------------------|
-| netd     | NETD:    | TCP/IP stack, sockets, DNS |
-| fsd      | FSD:     | Filesystem operations      |
-| blkd     | BLKD:    | Block device I/O           |
 | consoled | CONSOLED | GUI terminal emulator      |
-| inputd   | INPUTD   | Keyboard/mouse             |
 | displayd | DISPLAY  | Window management, GUI     |
 
 ### Build Configuration
 
 ```cpp
-#define VIPER_MICROKERNEL_MODE 1    // Microkernel mode
-#define VIPER_KERNEL_ENABLE_FS 1    // Kernel FS for boot
-#define VIPER_KERNEL_ENABLE_NET 0   // Use netd instead
-#define VIPER_KERNEL_ENABLE_TLS 0   // Use libtls instead
+#define VIPER_KERNEL_ENABLE_FS 1    // Kernel filesystem (enabled)
+#define VIPER_KERNEL_ENABLE_NET 1   // Kernel networking (enabled)
+#define VIPER_KERNEL_ENABLE_TLS 1   // Kernel TLS 1.3 (enabled)
 ```
 
 ---
@@ -239,38 +234,38 @@ The system is fully functional for QEMU bring-up with:
 
 ### Code Size
 
-- Kernel: ~50,000 lines
+- Kernel: ~60,000 lines
 - Bootloader: ~1,700 lines
-- User-space: ~63,000 lines
-- **Total: ~115,000 lines**
+- User-space: ~81,000 lines
+- **Total: ~143,000 lines**
 
 ### Component Breakdown
 
-| Component         | SLOC    |
-|-------------------|---------|
-| VBoot Bootloader  | ~1,700  |
-| Architecture      | ~3,600  |
-| Memory Management | ~5,550  |
-| Scheduler         | ~4,500  |
-| IPC               | ~2,500  |
-| Filesystem        | ~9,600  |
-| Drivers           | ~6,000  |
-| Console           | ~3,500  |
-| Capabilities      | ~2,900  |
-| Syscalls          | ~2,000  |
-| User Servers      | ~10,500 |
-| libc              | ~28,000 |
-| Libraries         | ~23,000 |
-| Applications      | ~5,000  |
+| Component           | SLOC    |
+|---------------------|---------|
+| VBoot Bootloader    | ~1,700  |
+| Architecture        | ~3,600  |
+| Memory Management   | ~5,550  |
+| Scheduler           | ~4,500  |
+| IPC                 | ~2,500  |
+| Kernel Filesystem   | ~6,600  |
+| Kernel Networking   | ~5,400  |
+| Drivers             | ~6,000  |
+| Console             | ~3,500  |
+| Capabilities        | ~2,900  |
+| Syscalls            | ~4,000  |
+| Display Servers     | ~4,200  |
+| libc                | ~28,000 |
+| Libraries           | ~32,000 |
+| GUI Applications    | ~8,000  |
+| Console Applications| ~5,000  |
 
 ### Binary Sizes (Approximate)
 
-- kernel.sys: ~850KB
+- kernel.sys: ~1.2MB
 - BOOTAA64.EFI: ~15KB
 - vinit.sys: ~130KB
-- netd.sys: ~160KB
-- fsd.sys: ~130KB
-- blkd.sys: ~85KB
+- consoled.sys: ~100KB
 - displayd.sys: ~100KB
 - ssh.prg: ~175KB
 - sftp.prg: ~195KB
@@ -281,7 +276,7 @@ The system is fully functional for QEMU bring-up with:
 - Boot to shell: ~400ms
 - IPC round-trip: ~10-15μs
 - Context switch: ~1-2μs
-- File read (4KB via fsd): ~150μs
+- File read (4KB): ~150μs
 - Socket send (small): ~100μs
 - Work stealing latency: ~50μs
 
@@ -296,10 +291,10 @@ The system is fully functional for QEMU bring-up with:
     - Rights can only be reduced, not expanded
     - Handle transfer via IPC for delegation
 
-2. **Microkernel Design**
-    - Minimal kernel (scheduling, memory, IPC)
-    - Drivers in user-space (netd, fsd, blkd, displayd)
-    - Better fault isolation and security
+2. **Hybrid Kernel Design**
+    - Comprehensive kernel (scheduling, memory, IPC, filesystem, networking, TLS)
+    - Display services in user-space (consoled, displayd)
+    - Efficient performance with kernel-based services
 
 3. **UEFI Boot**
     - Custom VBoot bootloader
@@ -323,7 +318,7 @@ The system is fully functional for QEMU bring-up with:
 
 7. **POSIX-ish libc**
     - Familiar API for applications
-    - Routes to appropriate server (netd/fsd)
+    - Direct kernel syscalls for all operations
     - Freestanding implementation
 
 ---
@@ -467,13 +462,13 @@ cd os
 
 ## Conclusion
 
-ViperDOS v0.3.2 represents a complete microkernel architecture with UEFI boot, SMP scheduling, and user-space servers
-handling networking, filesystem, block I/O, GUI terminal, input, and display. The system demonstrates capability-based
-security, message-passing IPC, and modern boot infrastructure.
+ViperDOS v0.3.2 represents a complete hybrid kernel architecture with UEFI boot, SMP scheduling, and kernel-based
+filesystem, networking, and TLS services. User-space display servers (consoled, displayd) provide the GUI layer.
+The system demonstrates capability-based security, message-passing IPC, and modern boot infrastructure.
 
 The addition of the GUI terminal emulator (consoled with ANSI support and keyboard forwarding) enables the shell to run
 in a graphical window that coexists with other GUI applications, marking a significant step toward a full desktop
 environment.
 
 With these additions, ViperDOS would be suitable for embedded systems, educational use, or specialized applications
-requiring strong isolation guarantees.
+requiring efficient performance with a graphical interface.

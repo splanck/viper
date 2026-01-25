@@ -2,26 +2,23 @@
 
 **Version:** January 2026 (v0.3.2)
 **Target:** AArch64 (ARM64) on QEMU virt machine
-**Total SLOC:** ~115,000
+**Total SLOC:** ~143,000
 
 ## Executive Summary
 
-ViperDOS is a **capability-based microkernel** operating system targeting AArch64. In microkernel mode, the kernel
-provides only essential services: task scheduling, memory management, IPC channels with capability transfer, and device
-access primitives. Higher-level services run as user-space servers communicating via message-passing IPC.
+ViperDOS is a **capability-based hybrid kernel** operating system targeting AArch64. The kernel provides filesystem,
+networking, and device access directly, while display servers run in user space for GUI functionality.
 
 The current implementation provides:
 
-- **Microkernel core**: Priority-based preemptive scheduler with SMP, capability tables, bidirectional IPC channels
+- **Kernel core**: Priority-based preemptive scheduler with SMP, capability tables, bidirectional IPC channels
 - **UEFI boot**: Custom VBoot bootloader supporting UEFI boot on AArch64
-- **Two-disk architecture**: Separate system disk (servers) and user disk (programs)
 - **Memory management**: Demand paging, VMA tracking, copy-on-write, buddy allocator, slab allocator
-- **User-space servers**: netd (TCP/IP stack), fsd (filesystem), blkd (block devices), consoled (console), inputd (
-  keyboard/mouse), displayd (GUI)
-- **Complete libc**: POSIX-compatible C library with 56 source files
-- **Networking**: Full TCP/IP stack with TLS 1.3, HTTP client, SSH/SFTP clients
-- **Filesystem**: Crash-consistent journaling filesystem (ViperFS) with inode and block caching
-- **GUI subsystem**: User-space display server with windowing, libgui API, demo applications
+- **Kernel filesystem**: VFS + ViperFS with journaling, inode/block caching
+- **Kernel networking**: Full TCP/IP stack with TLS 1.3, HTTP client, SSH/SFTP clients
+- **User-space display servers**: consoled (GUI terminal), displayd (window manager)
+- **Complete libc**: POSIX-compatible C library with ~56 source files
+- **GUI subsystem**: User-space display server with windowing, libgui/libwidget APIs, Workbench desktop
 
 The system is designed for QEMU's `virt` machine but is structured for future hardware portability.
 
@@ -29,21 +26,23 @@ The system is designed for QEMU's `virt` machine but is structured for future ha
 
 ## Project Statistics
 
-| Component                  | SLOC    | Status                                                           |
-|----------------------------|---------|------------------------------------------------------------------|
-| Architecture (AArch64)     | ~3,600  | Complete for QEMU (GICv2/v3, PSCI, hi-res timer)                 |
-| VBoot (UEFI bootloader)    | ~1,700  | Complete (UEFI boot, GOP framebuffer)                            |
-| Memory Management          | ~5,550  | Complete (PMM, VMM, slab, buddy, COW, VMA)                       |
-| Console (Serial/Graphics)  | ~3,500  | Complete (ANSI escape codes, scrollback, cursor)                 |
-| Drivers (VirtIO/fw_cfg)    | ~6,000  | Complete for QEMU (blk, net, gpu, rng, input)                    |
-| Filesystem (VFS/ViperFS)   | ~9,600  | Complete (journal, inode cache, block cache)                     |
-| IPC (Channels/Poll)        | ~2,500  | Complete                                                         |
-| Scheduler/Tasks            | ~4,500  | Complete (8-level priority, SMP, CFS, EDF, priority inheritance) |
-| Viper/Capabilities         | ~2,900  | Complete (handle-based access, rights derivation)                |
-| User-Space Servers         | ~10,500 | Complete (netd, fsd, blkd, consoled, inputd, displayd)           |
-| User Space (libc/C++/libs) | ~55,000 | Complete (libc, libhttp, libtls, libssh, libgui)                 |
-| User Applications          | ~5,000  | Complete (20+ programs)                                          |
-| Tools                      | ~2,200  | Complete                                                         |
+| Component                  | SLOC     | Status                                                           |
+|----------------------------|----------|------------------------------------------------------------------|
+| VBoot (UEFI bootloader)    | ~1,700   | Complete (UEFI boot, GOP framebuffer)                            |
+| Architecture (AArch64)     | ~3,450   | Complete for QEMU (GICv2/v3, PSCI, hi-res timer)                 |
+| Memory Management          | ~5,200   | Complete (PMM, VMM, slab, buddy, COW, VMA)                       |
+| Console (Serial/Graphics)  | ~3,950   | Complete (ANSI escape codes, scrollback, cursor)                 |
+| Drivers (VirtIO/fw_cfg)    | ~5,450   | Complete for QEMU (blk, net, gpu, rng, input)                    |
+| Filesystem (VFS/ViperFS)   | ~6,600   | Complete (journal, inode cache, block cache)                     |
+| IPC (Channels/Poll)        | ~2,700   | Complete                                                         |
+| Scheduler/Tasks            | ~4,450   | Complete (8-level priority, SMP, CFS, EDF, priority inheritance) |
+| Viper/Capabilities         | ~2,300   | Complete (handle-based access, rights derivation)                |
+| Display Servers            | ~4,200   | Complete (consoled, displayd)                                    |
+| libc                       | ~30,200  | Complete (POSIX C library)                                       |
+| Libraries (GUI, etc.)      | ~17,100  | Complete (libgui, libwidget, libtls, libhttp, libssh)            |
+| GUI Applications           | ~17,700  | Complete (workbench, calc, clock, vedit, etc.)                   |
+| Tools                      | ~2,000   | Complete                                                         |
+| **Total**                  |**~143,000**|                                                               |
 
 ---
 
@@ -57,13 +56,13 @@ The system is designed for QEMU's `virt` machine but is structured for future ha
 | [04-drivers.md](04-drivers.md)                     | VirtIO (blk, net, gpu, rng, input), fw_cfg, ramfb                 |
 | [05-filesystem.md](05-filesystem.md)               | VFS, ViperFS, block cache, inode cache, journal                   |
 | [06-ipc.md](06-ipc.md)                             | Channels, poll, poll sets, capability transfer                    |
-| [07-networking.md](07-networking.md)               | User-space TCP/IP stack via netd server                           |
+| [07-networking.md](07-networking.md)               | Kernel TCP/IP stack, TLS, DNS, HTTP                               |
 | [08-scheduler.md](08-scheduler.md)                 | Priority-based scheduler, SMP, CFS, EDF, priority inheritance     |
 | [09-viper-process.md](09-viper-process.md)         | Viper processes, address spaces, VMA, capabilities                |
 | [10-userspace.md](10-userspace.md)                 | vinit, libc, C++ runtime, applications, GUI                       |
 | [11-tools.md](11-tools.md)                         | mkfs.ziafs, fsck.ziafs, gen_roots_der                             |
 | [12-crypto.md](12-crypto.md)                       | TLS 1.3, SSH crypto, hash functions, encryption                   |
-| [13-servers.md](13-servers.md)                     | Microkernel servers (netd, fsd, blkd, consoled, inputd, displayd) |
+| [13-servers.md](13-servers.md)                     | Display servers (consoled, displayd)                              |
 | [14-summary.md](14-summary.md)                     | Implementation summary and development roadmap                    |
 | [15-boot.md](15-boot.md)                           | VBoot UEFI bootloader, two-disk architecture                      |
 | [16-gui.md](16-gui.md)                             | GUI subsystem (displayd, libgui, taskbar)                         |
@@ -76,64 +75,51 @@ The system is designed for QEMU's `virt` machine but is structured for future ha
 ┌─────────────────────────────────────────────────────────────────┐
 │                        User Space (EL0)                          │
 │  ┌───────────────────────────────────────────────────────────┐  │
-│  │  vinit - Init Process & Interactive Shell                 │  │
-│  │  • AmigaDOS-style commands (dir, type, copy, etc.)        │  │
-│  │  • Networking demos (fetch, ssh, sftp, ping)              │  │
-│  │  • Server lifecycle management                             │  │
+│  │  GUI Applications                                          │  │
+│  │  workbench, calc, clock, vedit, viewer, prefs, taskman    │  │
 │  └───────────────────────────────────────────────────────────┘  │
 │  ┌───────────────────────────────────────────────────────────┐  │
-│  │  User Applications                                         │  │
-│  │  edit (text editor), ssh, sftp, ping, netstat, sysinfo    │  │
-│  │  devices, fsinfo, mathtest, hello, hello_gui              │  │
+│  │  Shell & Utilities                                         │  │
+│  │  vinit, hello, sysinfo, netstat, ping, edit, fsinfo       │  │
 │  └───────────────────────────────────────────────────────────┘  │
-│  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐         │
-│  │     netd      │ │     fsd       │ │     blkd      │         │
-│  │  TCP/IP stack │ │  Filesystem   │ │  Block device │         │
-│  │  via NETD:    │ │   via FSD:    │ │  via BLKD:    │         │
-│  └───────────────┘ └───────────────┘ └───────────────┘         │
-│  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐         │
-│  │   consoled    │ │    inputd     │ │   displayd    │         │
-│  │ GUI Terminal  │ │  Keyboard/    │ │ Display/GUI   │         │
-│  │ via CONSOLED: │ │  Mouse input  │ │ via DISPLAY:  │         │
-│  └───────────────┘ └───────────────┘ └───────────────┘         │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │  Libraries: libc, libgui, libwidget, libtls, libhttp      │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │  Display Servers: displayd, consoled                       │  │
+│  └───────────────────────────────────────────────────────────┘  │
 └─────────────────────────┬───────────────────────────────────────┘
-                          │ IPC (Channels) + Syscalls (SVC)
-                          ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                   Microkernel (EL1)                              │
+                          │ SVC #0 (Syscalls)
+┌─────────────────────────┴───────────────────────────────────────┐
+│                        Kernel (EL1)                              │
 │  ┌─────────────────────────────────────────────────────────────┐│
-│  │ Capability System                                           ││
-│  │ • Handle-based access control (16M handles per process)    ││
-│  │ • Rights: READ, WRITE, EXECUTE, DERIVE, TRANSFER, etc.     ││
-│  │ • Generation counters prevent use-after-free               ││
+│  │ Viper Process Model                                         ││
+│  │ • Per-process address spaces (TTBR0 + ASID)                ││
+│  │ • Capability tables with rights enforcement                 ││
 │  └─────────────────────────────────────────────────────────────┘│
 │  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐         │
-│  │  Scheduler    │ │     IPC       │ │    Memory     │         │
-│  │  • 8 priority │ │  • Channels   │ │  • PMM/VMM    │         │
-│  │    queues     │ │  • Handle     │ │  • Slab/Buddy │         │
-│  │  • SMP ready  │ │    transfer   │ │  • COW/VMA    │         │
-│  │  • Work steal │ │  • Poll sets  │ │  • Demand pg  │         │
+│  │  Scheduler    │ │     IPC       │ │   Networking  │         │
+│  │  8 priority   │ │  Channels     │ │  TCP/IP/TLS   │         │
+│  │  queues       │ │  Poll sets    │ │  DNS/HTTP     │         │
+│  └───────────────┘ └───────────────┘ └───────────────┘         │
+│  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐         │
+│  │  Filesystem   │ │   Console     │ │    Memory     │         │
+│  │  VFS/ViperFS  │ │  Serial/Gfx   │ │  PMM/VMM/COW  │         │
+│  │  Journal      │ │  ANSI codes   │ │  Buddy/Slab   │         │
 │  └───────────────┘ └───────────────┘ └───────────────┘         │
 │  ┌─────────────────────────────────────────────────────────────┐│
-│  │ Device Primitives (for user-space drivers)                  ││
-│  │ MAP_DEVICE │ IRQ_REGISTER │ IRQ_WAIT │ DMA_ALLOC            ││
-│  │ MAP_FRAMEBUFFER │ SHM_CREATE │ SHM_MAP                      ││
+│  │                        Drivers                               ││
+│  │  VirtIO: blk, net, gpu, rng, input  |  PL011  |  ramfb     ││
 │  └─────────────────────────────────────────────────────────────┘│
 │  ┌─────────────────────────────────────────────────────────────┐│
 │  │                     Architecture                             ││
-│  │  Boot │ MMU │ GIC (interrupts) │ Timer │ Exceptions         ││
+│  │  Boot  |  MMU (4-level)  |  GIC  |  Timer  |  Exceptions    ││
 │  └─────────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────────┘
                               │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
+┌─────────────────────────────┴───────────────────────────────────┐
 │                     QEMU virt Machine                            │
-│  • ARM Cortex-A72 CPU (4 cores supported)                       │
-│  • 128MB RAM (configurable)                                      │
-│  • GICv2/GICv3 interrupt controller (auto-detected)             │
-│  • PL011 UART                                                    │
-│  • VirtIO-MMIO devices                                           │
-│  • ramfb (graphics output)                                       │
+│  ARM Cortex-A57  |  128MB RAM  |  GICv2  |  VirtIO-MMIO        │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -164,7 +150,7 @@ ViperDOS uses separate disks for system and user content:
 | Disk   | Image    | Size | Contents                                    |
 |--------|----------|------|---------------------------------------------|
 | ESP    | esp.img  | 40MB | VBoot bootloader + kernel (UEFI mode only)  |
-| System | sys.img  | 2MB  | Core servers (vinit, netd, fsd, blkd, etc.) |
+| System | sys.img  | 2MB  | vinit, consoled, displayd                   |
 | User   | user.img | 8MB  | User programs, certificates, data           |
 
 This separation enables:
@@ -176,16 +162,15 @@ This separation enables:
 
 ---
 
-## Microkernel Design
+## Kernel Design
 
 ### Build Configuration
 
 ```cpp
 // kernel/include/config.hpp
-#define VIPER_MICROKERNEL_MODE 1      // Microkernel mode enabled
-#define VIPER_KERNEL_ENABLE_FS 1      // Kernel FS enabled for boot
-#define VIPER_KERNEL_ENABLE_NET 0     // Use netd server instead
-#define VIPER_KERNEL_ENABLE_TLS 0     // Use libtls instead
+#define VIPER_KERNEL_ENABLE_FS 1      // Kernel provides filesystem
+#define VIPER_KERNEL_ENABLE_NET 1     // Kernel provides TCP/IP stack
+#define VIPER_KERNEL_ENABLE_TLS 1     // Kernel provides TLS 1.3
 ```
 
 ### What Runs in Kernel Space
@@ -194,19 +179,16 @@ This separation enables:
 - **Memory management**: PMM, VMM, demand paging, COW
 - **IPC channels**: Bidirectional message passing with capability transfer
 - **Capability tables**: Handle-based access control
-- **Device primitives**: MMIO mapping, IRQ routing, DMA allocation
-- **Interrupt/exception handling**: GICv2/v3, timer, syscall dispatch
-- **Filesystem** (optional): VFS + ViperFS (enabled for boot)
+- **Filesystem**: VFS + ViperFS with journaling
+- **Networking**: Full TCP/IP stack with TLS 1.3
+- **Device drivers**: VirtIO (blk, net, gpu, rng, input)
+- **Interrupt/exception handling**: GICv2, timer, syscall dispatch
 
 ### What Runs in User Space
 
 | Server   | Assign   | Purpose                            |
 |----------|----------|------------------------------------|
-| netd     | NETD:    | TCP/IP stack, DNS, socket API      |
-| fsd      | FSD:     | Filesystem operations via blkd     |
-| blkd     | BLKD:    | VirtIO-blk device access           |
 | consoled | CONSOLED | GUI terminal emulator              |
-| inputd   | INPUTD   | Keyboard/mouse input               |
 | displayd | DISPLAY  | Window management, GUI compositing |
 
 ---
@@ -253,14 +235,14 @@ This separation enables:
 - Poll sets for multiplexing multiple channels
 - Shared memory for large data transfers
 
-### User-Space Network Stack
+### Kernel Network Stack
 
-- Ethernet/ARP/IPv4/ICMP in netd server
+- Ethernet/ARP/IPv4/ICMP in kernel
 - TCP with congestion control and retransmission
 - UDP for DNS queries
-- TLS 1.3 via libtls library
+- TLS 1.3 in kernel
 - HTTP/1.1 client with chunked encoding
-- SSH-2/SFTP client via libssh
+- SSH-2/SFTP client via libssh (user-space)
 
 ### Crash-Consistent Filesystem
 
@@ -268,7 +250,7 @@ This separation enables:
 - Inode cache with LRU eviction
 - Block cache with pinning and read-ahead
 - File truncation and fsync support
-- Accessible via fsd server
+- Directly accessible via kernel syscalls
 
 ### GUI Subsystem
 
@@ -289,6 +271,23 @@ See [16-gui.md](16-gui.md) for complete GUI documentation.
 
 ## User Applications
 
+### GUI Applications
+
+| Application | Purpose                                           |
+|-------------|---------------------------------------------------|
+| workbench   | Desktop environment with icon grid                |
+| calc        | Calculator with digit buttons and operators       |
+| clock       | Analog clock display                              |
+| vedit       | GUI text editor with file save/load               |
+| viewer      | Image and text file viewer                        |
+| prefs       | System preferences panel                          |
+| taskman     | Task manager with process list                    |
+| guisysinfo  | GUI system information display                    |
+| taskbar     | Desktop shell taskbar                             |
+| hello_gui   | GUI demo with window creation                     |
+
+### Console Applications
+
 | Application | Purpose                                           |
 |-------------|---------------------------------------------------|
 | vinit       | Init process and interactive shell (40+ commands) |
@@ -302,8 +301,6 @@ See [16-gui.md](16-gui.md) for complete GUI documentation.
 | fsinfo      | Filesystem information display                    |
 | mathtest    | Math library validation                           |
 | hello       | Malloc/heap test program                          |
-| hello_gui   | GUI demo with window creation                     |
-| taskbar     | Desktop shell taskbar                             |
 
 ---
 
@@ -313,11 +310,11 @@ User-space servers register themselves using the assign system:
 
 ```cpp
 // Server registration
-sys::assign_set("NETD", service_channel);
+sys::assign_set("DISPLAY", service_channel);
 
 // Client discovery
-u32 netd_handle;
-sys::assign_get("NETD", &netd_handle);
+u32 display_handle;
+sys::assign_get("DISPLAY", &display_handle);
 ```
 
 Standard assigns:
@@ -377,6 +374,7 @@ os/
 │   ├── console/         # Serial, graphics console, font
 │   ├── drivers/         # VirtIO, fw_cfg, ramfb
 │   ├── fs/              # VFS, ViperFS, cache, journal
+│   ├── net/             # TCP/IP stack, TLS, HTTP, DNS
 │   ├── ipc/             # Channels, poll, pollset
 │   ├── sched/           # Tasks, scheduler, signals, context switch
 │   ├── viper/           # Process model, address spaces
@@ -385,15 +383,18 @@ os/
 │   ├── syscall/         # Syscall dispatch table
 │   └── kobj/            # Kernel objects (file, dir, shm, channel)
 ├── user/
-│   ├── servers/         # User-space servers
-│   │   ├── netd/        # Network server (TCP/IP stack)
-│   │   ├── fsd/         # Filesystem server
-│   │   ├── blkd/        # Block device server
-│   │   ├── consoled/    # Console server
-│   │   ├── inputd/      # Input server
-│   │   └── displayd/    # Display/GUI server
+│   ├── servers/         # User-space display servers
+│   │   ├── consoled/    # GUI terminal emulator
+│   │   └── displayd/    # Window manager/compositor
 │   ├── vinit/           # Init process + shell
-│   ├── edit/            # Text editor
+│   ├── workbench/       # Desktop environment
+│   ├── calc/            # Calculator
+│   ├── clock/           # Analog clock
+│   ├── vedit/           # GUI text editor
+│   ├── viewer/          # Image/text viewer
+│   ├── prefs/           # System preferences
+│   ├── taskman/         # Task manager
+│   ├── edit/            # Console text editor
 │   ├── ssh/             # SSH client
 │   ├── sftp/            # SFTP client
 │   ├── ping/            # Ping utility
@@ -401,15 +402,13 @@ os/
 │   ├── libc/            # Freestanding C library
 │   │   ├── include/     # C headers (stdio.h, string.h, etc.)
 │   │   │   └── c++/     # C++ headers
-│   │   └── src/         # Implementation files (56 sources)
-│   ├── libnetclient/    # Client library for netd
-│   ├── libfsclient/     # Client library for fsd
+│   │   └── src/         # Implementation files (~56 sources)
 │   ├── libgui/          # GUI client library
-│   ├── libtls/          # TLS 1.3 library
+│   ├── libwidget/       # Widget toolkit library
+│   ├── libtls/          # TLS library (user-space API)
 │   ├── libhttp/         # HTTP client library
 │   ├── libssh/          # SSH-2/SFTP library
-│   ├── libvirtio/       # User-space VirtIO library
-│   └── syscall.hpp      # Low-level syscall wrappers
+│   └── libvirtio/       # User-space VirtIO library
 ├── include/viperdos/     # Shared kernel/user ABI headers
 ├── tools/               # Host-side build tools
 ├── scripts/             # Build scripts
@@ -525,14 +524,11 @@ os/
     - **New applications**: edit, hello_gui, devices, fsinfo
     - **Graphics console**: ANSI escape codes, scrollback buffer, cursor blinking
 
-- **January 2026 (v0.3.0)**: Microkernel architecture
-    - **Microkernel mode**: VIPER_MICROKERNEL_MODE=1 by default
-    - **User-space servers**: netd, fsd, blkd, consoled, inputd complete
-    - **libc-to-server routing**: Socket/file calls route to netd/fsd
-    - **Device syscalls**: MAP_DEVICE, IRQ_REGISTER, DMA_ALLOC for user drivers
-    - **libnetclient**: Client library for netd communication
-    - **libfsclient**: Client library for fsd communication
-    - **Shared memory IPC**: SHM_CREATE, SHM_MAP for large data transfer
+- **January 2026 (v0.3.0)**: Hybrid kernel architecture
+    - **Kernel services**: Filesystem, networking, TLS 1.3 implemented in kernel
+    - **User-space display servers**: consoled (GUI terminal), displayd (window manager)
+    - **Device syscalls**: MAP_DEVICE, IRQ_REGISTER, DMA_ALLOC for display servers
+    - **Shared memory IPC**: SHM_CREATE, SHM_MAP for framebuffer sharing
 
 - **December 2025 (v0.2.7)**: SSH/SFTP client implementation
     - Complete SSH-2 protocol (curve25519, Ed25519, aes-ctr, chacha20)

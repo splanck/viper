@@ -83,7 +83,9 @@ The canonical list of error codes lives in `include/viperdos/syscall_abi.hpp`. C
 | 0xD0-0xDF   | TLS        | TLS sessions                    |
 | 0xE0-0xEF   | System     | System information              |
 | 0xF0-0xFF   | Debug      | Console I/O, debug              |
-| 0x100-0x10F | Device     | Device management (microkernel) |
+| 0x100-0x10F | Device     | Device management, shared memory|
+| 0x110-0x11F | GUI        | Display, mouse, input events    |
+| 0x120-0x12F | TTY        | Kernel TTY buffer I/O           |
 
 ---
 
@@ -282,6 +284,89 @@ if (pid == 0) {
 - Child inherits copy-on-write mappings of parent's address space
 - Child gets a new capability table (copy of parent's)
 - Child's PID and PPID differ from parent
+
+---
+
+### SYS_TASK_LIST (0x05)
+
+Enumerate running tasks into a buffer.
+
+**Arguments:**
+
+- x0: Buffer for TaskInfo structures (void*) or nullptr
+- x1: Maximum entries (u32)
+
+**Returns:**
+
+- x1: Number of tasks (when buffer is nullptr: total count)
+
+---
+
+### SYS_TASK_SET_PRIORITY (0x06)
+
+Set the priority of a task.
+
+**Arguments:**
+
+- x0: Task ID (u64)
+- x1: Priority (u8, 0=highest, 255=lowest)
+
+**Returns:** 0 on success
+
+---
+
+### SYS_TASK_GET_PRIORITY (0x07)
+
+Get the priority of a task.
+
+**Arguments:**
+
+- x0: Task ID (u64)
+
+**Returns:**
+
+- x1: Priority (u8)
+
+---
+
+### SYS_REPLACE (0x0F)
+
+Replace current process image with a new executable (exec-like).
+
+**Arguments:**
+
+- x0: Path to ELF file (const char*)
+- x1: Display name (const char*) or 0
+- x2: Arguments string (const char*) or 0
+
+**Returns:** Does not return on success
+
+---
+
+### SYS_SCHED_SETAFFINITY (0x0D)
+
+Set CPU affinity mask for a task.
+
+**Arguments:**
+
+- x0: Task ID (u64, 0 = current task)
+- x1: CPU affinity mask (u64)
+
+**Returns:** 0 on success
+
+---
+
+### SYS_SCHED_GETAFFINITY (0x0E)
+
+Get CPU affinity mask for a task.
+
+**Arguments:**
+
+- x0: Task ID (u64, 0 = current task)
+
+**Returns:**
+
+- x1: CPU affinity mask (u64)
 
 ---
 
@@ -588,6 +673,60 @@ struct Stat {
 
 ---
 
+### SYS_FSTAT (0x46)
+
+Get file information from an open file descriptor.
+
+**Arguments:**
+
+- x0: File descriptor (i32)
+- x1: Stat structure (Stat*)
+
+**Returns:** 0 on success
+
+---
+
+### SYS_DUP (0x47)
+
+Duplicate a file descriptor to the lowest available slot.
+
+**Arguments:**
+
+- x0: File descriptor (i32)
+
+**Returns:**
+
+- x1: New file descriptor (i32)
+
+---
+
+### SYS_DUP2 (0x48)
+
+Duplicate a file descriptor to a specific slot.
+
+**Arguments:**
+
+- x0: Source file descriptor (i32)
+- x1: Target file descriptor (i32)
+
+**Returns:**
+
+- x1: Target file descriptor (i32) on success
+
+---
+
+### SYS_FSYNC (0x49)
+
+Sync file data to storage.
+
+**Arguments:**
+
+- x0: File descriptor (i32)
+
+**Returns:** 0 on success
+
+---
+
 ## Networking (0x50-0x5F)
 
 ### SYS_SOCKET_CREATE (0x50)
@@ -687,6 +826,22 @@ sys::dns_resolve("example.com", &ip);
 
 ---
 
+### SYS_SOCKET_POLL (0x56)
+
+Poll a socket for readiness.
+
+**Arguments:**
+
+- x0: Socket descriptor (i32)
+- x1: Events to poll for (u32, POLLIN/POLLOUT flags)
+- x2: Timeout in milliseconds (i32, -1 = infinite)
+
+**Returns:**
+
+- x1: Returned events (u32, POLLIN/POLLOUT/POLLHUP flags)
+
+---
+
 ## Directory Operations (0x60-0x6F)
 
 ### SYS_READDIR (0x60)
@@ -729,6 +884,18 @@ Create a directory.
 
 ---
 
+### SYS_RMDIR (0x62)
+
+Remove an empty directory.
+
+**Arguments:**
+
+- x0: Path (const char*)
+
+**Returns:** 0 on success
+
+---
+
 ### SYS_UNLINK (0x63)
 
 Delete a file.
@@ -751,6 +918,35 @@ Rename a file or directory.
 - x1: New path (const char*)
 
 **Returns:** 0 on success
+
+---
+
+### SYS_SYMLINK (0x65)
+
+Create a symbolic link.
+
+**Arguments:**
+
+- x0: Target path (const char*)
+- x1: Link path (const char*)
+
+**Returns:** 0 on success
+
+---
+
+### SYS_READLINK (0x66)
+
+Read the target of a symbolic link.
+
+**Arguments:**
+
+- x0: Link path (const char*)
+- x1: Buffer (char*)
+- x2: Buffer size (usize)
+
+**Returns:**
+
+- x1: Length of target path (i64)
 
 ---
 
@@ -782,6 +978,33 @@ Change current working directory.
 ---
 
 ## Capability Management (0x70-0x7F)
+
+### SYS_CAP_DERIVE (0x70)
+
+Derive a new handle with reduced rights from an existing handle.
+
+**Arguments:**
+
+- x0: Source handle (u32)
+- x1: Rights mask to retain (u32)
+
+**Returns:**
+
+- x1: New handle (u32)
+
+---
+
+### SYS_CAP_REVOKE (0x71)
+
+Revoke/close a capability handle.
+
+**Arguments:**
+
+- x0: Handle (u32)
+
+**Returns:** 0 on success
+
+---
 
 ### SYS_CAP_QUERY (0x72)
 
@@ -822,7 +1045,401 @@ List all capabilities in current process.
 
 ---
 
+### SYS_CAP_GET_BOUND (0x74)
+
+Get the capability bounding set for the current process.
+
+**Arguments:** None
+
+**Returns:**
+
+- x1: Bounding set mask (u64)
+
+---
+
+### SYS_CAP_DROP_BOUND (0x75)
+
+Drop rights from the capability bounding set (irreversible).
+
+**Arguments:**
+
+- x0: Rights to drop (u64)
+
+**Returns:** 0 on success
+
+---
+
+### SYS_GETRLIMIT (0x76)
+
+Get a resource limit for the current process.
+
+**Arguments:**
+
+- x0: Resource type (u32)
+
+**Returns:**
+
+- x1: Current limit (u64)
+- x2: Maximum limit (u64)
+
+---
+
+### SYS_SETRLIMIT (0x77)
+
+Set a resource limit for the current process (can only reduce).
+
+**Arguments:**
+
+- x0: Resource type (u32)
+- x1: New limit (u64)
+
+**Returns:** 0 on success
+
+---
+
+### SYS_GETRUSAGE (0x78)
+
+Get current resource usage for the current process.
+
+**Arguments:**
+
+- x0: Who (0 = self, 1 = children)
+
+**Returns:**
+
+- x1: User time in milliseconds (u64)
+- x2: System time in milliseconds (u64)
+
+---
+
+## Handle-based Filesystem (0x80-0x8F)
+
+These syscalls provide a capability-based filesystem API using directory/file handles rather than global integer file descriptors.
+
+### SYS_FS_OPEN_ROOT (0x80)
+
+Open the filesystem root directory and return a directory handle.
+
+**Arguments:** None
+
+**Returns:**
+
+- x1: Root directory handle (u32)
+
+---
+
+### SYS_FS_OPEN (0x81)
+
+Open a file or directory relative to a directory handle.
+
+**Arguments:**
+
+- x0: Directory handle (u32)
+- x1: Name (const char*)
+- x2: Flags (u32)
+- x3: Mode (u32)
+
+**Returns:**
+
+- x1: File/directory handle (u32)
+
+---
+
+### SYS_IO_READ (0x82)
+
+Read bytes from a file handle.
+
+**Arguments:**
+
+- x0: File handle (u32)
+- x1: Buffer (void*)
+- x2: Count (usize)
+
+**Returns:**
+
+- x1: Bytes read (i64)
+
+---
+
+### SYS_IO_WRITE (0x83)
+
+Write bytes to a file handle.
+
+**Arguments:**
+
+- x0: File handle (u32)
+- x1: Buffer (const void*)
+- x2: Count (usize)
+
+**Returns:**
+
+- x1: Bytes written (i64)
+
+---
+
+### SYS_IO_SEEK (0x84)
+
+Seek within a file handle.
+
+**Arguments:**
+
+- x0: File handle (u32)
+- x1: Offset (i64)
+- x2: Whence (i32)
+
+**Returns:**
+
+- x1: New position (i64)
+
+---
+
+### SYS_FS_READ_DIR (0x85)
+
+Read the next directory entry from a directory handle.
+
+**Arguments:**
+
+- x0: Directory handle (u32)
+- x1: Output DirEnt structure (DirEnt*)
+
+**Returns:** 0 on success, VERR_NOT_FOUND when no more entries
+
+---
+
+### SYS_FS_CLOSE (0x86)
+
+Close a file or directory handle.
+
+**Arguments:**
+
+- x0: Handle (u32)
+
+**Returns:** 0 on success
+
+---
+
+### SYS_FS_REWIND_DIR (0x87)
+
+Reset directory enumeration to the beginning.
+
+**Arguments:**
+
+- x0: Directory handle (u32)
+
+**Returns:** 0 on success
+
+---
+
+## Signal Handling (0x90-0x9F)
+
+POSIX-like signal handling for user-space tasks.
+
+### SYS_SIGACTION (0x90)
+
+Set signal action (handler, mask, flags).
+
+**Arguments:**
+
+- x0: Signal number (i32)
+- x1: New action (const sigaction*)
+- x2: Old action output (sigaction*) or nullptr
+
+**Returns:** 0 on success
+
+---
+
+### SYS_SIGPROCMASK (0x91)
+
+Set or get the blocked signal mask.
+
+**Arguments:**
+
+- x0: How (i32): SIG_BLOCK, SIG_UNBLOCK, or SIG_SETMASK
+- x1: New mask (const sigset_t*) or nullptr
+- x2: Old mask output (sigset_t*) or nullptr
+
+**Returns:** 0 on success
+
+---
+
+### SYS_SIGRETURN (0x92)
+
+Return from signal handler (restores original context).
+
+**Arguments:** None
+
+**Returns:** Does not return normally
+
+**Notes:**
+
+- Called automatically by signal trampoline
+- Restores saved register state
+
+---
+
+### SYS_KILL (0x93)
+
+Send a signal to a task or process.
+
+**Arguments:**
+
+- x0: Process ID (i64, 0 = current process group)
+- x1: Signal number (i32)
+
+**Returns:** 0 on success
+
+---
+
+### SYS_SIGPENDING (0x94)
+
+Get the set of pending signals.
+
+**Arguments:**
+
+- x0: Output signal set (sigset_t*)
+
+**Returns:** 0 on success
+
+---
+
+## Process Groups/Sessions (0xA0-0xAF)
+
+POSIX-like process groups and sessions for job control.
+
+### SYS_GETPID (0xA0)
+
+Get the process ID of the calling process.
+
+**Arguments:** None
+
+**Returns:**
+
+- x1: Process ID (u64)
+
+---
+
+### SYS_GETPPID (0xA1)
+
+Get the parent process ID of the calling process.
+
+**Arguments:** None
+
+**Returns:**
+
+- x1: Parent process ID (u64)
+
+---
+
+### SYS_GETPGID (0xA2)
+
+Get the process group ID of a process.
+
+**Arguments:**
+
+- x0: Process ID (u64, 0 = calling process)
+
+**Returns:**
+
+- x1: Process group ID (u64)
+
+---
+
+### SYS_SETPGID (0xA3)
+
+Set the process group ID of a process.
+
+**Arguments:**
+
+- x0: Process ID (u64, 0 = calling process)
+- x1: Process group ID (u64, 0 = use process ID)
+
+**Returns:** 0 on success
+
+---
+
+### SYS_GETSID (0xA4)
+
+Get the session ID of a process.
+
+**Arguments:**
+
+- x0: Process ID (u64, 0 = calling process)
+
+**Returns:**
+
+- x1: Session ID (u64)
+
+---
+
+### SYS_SETSID (0xA5)
+
+Create a new session with the calling process as leader.
+
+**Arguments:** None
+
+**Returns:**
+
+- x1: New session ID (u64)
+
+---
+
+### SYS_GET_ARGS (0xA6)
+
+Get command-line arguments for the current process.
+
+**Arguments:**
+
+- x0: Buffer (char*)
+- x1: Buffer size (usize)
+
+**Returns:**
+
+- x1: Length of arguments string (i64)
+
+---
+
 ## Assign System (0xC0-0xCF)
+
+The assign system maps short names (e.g., `SYS`) to directory handles, allowing paths like `SYS:foo/bar` to be resolved by the kernel.
+
+### SYS_ASSIGN_SET (0xC0)
+
+Create or update an assign mapping.
+
+**Arguments:**
+
+- x0: Assign name (const char*, e.g., "SYS")
+- x1: Directory handle (u32)
+
+**Returns:** 0 on success
+
+---
+
+### SYS_ASSIGN_GET (0xC1)
+
+Query an assign mapping.
+
+**Arguments:**
+
+- x0: Assign name (const char*)
+- x1: Output handle (u32*)
+- x2: Output flags (u32*) or nullptr
+
+**Returns:** 0 on success
+
+---
+
+### SYS_ASSIGN_REMOVE (0xC2)
+
+Remove an assign mapping.
+
+**Arguments:**
+
+- x0: Assign name (const char*)
+
+**Returns:** 0 on success
+
+---
 
 ### SYS_ASSIGN_LIST (0xC3)
 
@@ -830,22 +1447,24 @@ List all assigns.
 
 **Arguments:**
 
-- x0: Buffer for AssignInfo structures (void*)
-- x1: Max entries
-- x2: Output count (usize*)
+- x0: Buffer for AssignInfo structures (void*) or nullptr
+- x1: Max entries (u32)
 
-**Returns:** 0 on success
+**Returns:**
+
+- x1: Number of assigns (when buffer is nullptr: total count)
 
 ---
 
 ### SYS_ASSIGN_RESOLVE (0xC4)
 
-Resolve an assign name to a handle.
+Resolve an assign-prefixed path into a capability handle.
 
 **Arguments:**
 
 - x0: Assign name (const char*, e.g., "SYS")
-- x1: Output handle (u32*)
+- x1: Path within assign (const char*, e.g., "foo/bar")
+- x2: Output handle (u32*)
 
 **Returns:** 0 on success
 
@@ -925,6 +1544,29 @@ Close a TLS session.
 
 ---
 
+### SYS_TLS_INFO (0xD5)
+
+Query TLS session metadata.
+
+**Arguments:**
+
+- x0: TLS session handle (i32)
+- x1: Output TLSInfo structure (TLSInfo*)
+
+**Returns:** 0 on success
+
+**TLSInfo Structure:**
+
+```cpp
+struct TLSInfo {
+    char cipher_suite[64];     // Negotiated cipher suite name
+    char protocol_version[16]; // TLS version (e.g., "TLS 1.3")
+    bool client_mode;          // true if client, false if server
+};
+```
+
+---
+
 ## System Information (0xE0-0xEF)
 
 ### SYS_MEM_INFO (0xE0)
@@ -952,6 +1594,31 @@ struct MemInfo {
 
 ---
 
+### SYS_NET_STATS (0xE1)
+
+Get network statistics.
+
+**Arguments:**
+
+- x0: Output NetStats structure (NetStats*)
+
+**Returns:** 0 on success
+
+**NetStats Structure:**
+
+```cpp
+struct NetStats {
+    u64 packets_sent;
+    u64 packets_recv;
+    u64 bytes_sent;
+    u64 bytes_recv;
+    u64 tcp_connections;
+    u64 udp_sockets;
+};
+```
+
+---
+
 ### SYS_PING (0xE2)
 
 Send ICMP ping and measure RTT.
@@ -964,6 +1631,21 @@ Send ICMP ping and measure RTT.
 **Returns:**
 
 - x1: Round-trip time in milliseconds (u64) on success
+
+---
+
+### SYS_DEVICE_LIST (0xE3)
+
+List detected hardware devices.
+
+**Arguments:**
+
+- x0: Output DeviceInfo array (DeviceInfo*) or nullptr
+- x1: Maximum entries (u32)
+
+**Returns:**
+
+- x1: Number of devices (u64)
 
 ---
 
@@ -1020,10 +1702,10 @@ Get system uptime.
 
 ## Device Management + Shared Memory (0x100-0x10F)
 
-These syscalls are used by user-space drivers and microkernel servers.
+These syscalls are used by user-space display servers (consoled, displayd).
 
 > Note: The security model is currently in flux. Some device syscalls are gated by a temporary
-> “allow init descendants” bring-up policy in the kernel. See `../bugs/microkernel.md`.
+> "allow init descendants" bring-up policy in the kernel.
 
 ### SYS_MAP_DEVICE (0x100)
 
@@ -1198,6 +1880,193 @@ Close/release a shared memory handle.
 - x0: Shared memory handle (u32)
 
 **Returns:** 0 on success
+
+---
+
+## GUI/Display (0x110-0x11F)
+
+GUI-related primitives for display servers and input handling.
+
+### SYS_GET_MOUSE_STATE (0x110)
+
+Get current mouse state (position, buttons, deltas).
+
+**Arguments:**
+
+- x0: Output MouseState structure (MouseState*)
+
+**Returns:** 0 on success
+
+**MouseState Structure:**
+
+```cpp
+struct MouseState {
+    i32 x;          // Current X position
+    i32 y;          // Current Y position
+    i32 dx;         // X delta since last read
+    i32 dy;         // Y delta since last read
+    u32 buttons;    // Button state (bit 0 = left, bit 1 = right, bit 2 = middle)
+};
+```
+
+---
+
+### SYS_MAP_FRAMEBUFFER (0x111)
+
+Map the framebuffer into user address space.
+
+**Arguments:** None
+
+**Returns:**
+
+- x1: Virtual address of framebuffer (u64)
+- x2: Width in pixels (u32)
+- x3: Height in pixels (u32)
+
+**Notes:**
+
+- Stride can be calculated as width * 4 (32-bit BGRA)
+- Used by display servers to access the screen directly
+
+---
+
+### SYS_SET_MOUSE_BOUNDS (0x112)
+
+Set mouse cursor bounds (for display server).
+
+**Arguments:**
+
+- x0: Maximum X (u32, typically screen width - 1)
+- x1: Maximum Y (u32, typically screen height - 1)
+
+**Returns:** 0 on success
+
+---
+
+### SYS_INPUT_HAS_EVENT (0x113)
+
+Check if input events are available.
+
+**Arguments:** None
+
+**Returns:**
+
+- x1: 1 if event available, 0 otherwise
+
+---
+
+### SYS_INPUT_GET_EVENT (0x114)
+
+Get next input event from kernel queue.
+
+**Arguments:**
+
+- x0: Output InputEvent structure (InputEvent*)
+
+**Returns:** 0 on success, VERR_WOULD_BLOCK if no events
+
+**InputEvent Structure:**
+
+```cpp
+struct InputEvent {
+    u32 type;       // Event type (KEY_DOWN, KEY_UP, MOUSE_MOVE, etc.)
+    u32 code;       // Key code or button code
+    i32 value;      // Value (e.g., delta for mouse)
+    u32 modifiers;  // Modifier key state (shift, ctrl, alt)
+};
+```
+
+---
+
+### SYS_GCON_SET_GUI_MODE (0x115)
+
+Enable or disable GUI mode for the graphics console.
+
+**Arguments:**
+
+- x0: Enable (bool, 1 = GUI mode, 0 = text mode)
+
+**Returns:** 0 on success
+
+**Notes:**
+
+- When GUI mode is enabled, gcon writes to serial only (not framebuffer)
+- Used when displayd takes over the framebuffer
+
+---
+
+## TTY (0x120-0x12F)
+
+Kernel TTY buffer for text-mode console I/O.
+
+### SYS_TTY_READ (0x120)
+
+Read characters from TTY input buffer.
+
+**Arguments:**
+
+- x0: Buffer (char*)
+- x1: Buffer size (usize)
+
+**Returns:**
+
+- x1: Bytes read (i64)
+
+**Notes:**
+
+- Blocks until at least one character is available
+- Used by consoled for keyboard input
+
+---
+
+### SYS_TTY_WRITE (0x121)
+
+Write characters to TTY output.
+
+**Arguments:**
+
+- x0: Buffer (const char*)
+- x1: Length (usize)
+
+**Returns:**
+
+- x1: Bytes written (i64)
+
+**Notes:**
+
+- Renders directly to framebuffer via gcon
+- Bypasses IPC for performance
+
+---
+
+### SYS_TTY_PUSH_INPUT (0x122)
+
+Push a character into TTY input buffer.
+
+**Arguments:**
+
+- x0: Character (char)
+
+**Returns:** 0 on success
+
+**Notes:**
+
+- Used internally by timer interrupt to buffer keyboard input
+- Not typically called by user applications
+
+---
+
+### SYS_TTY_HAS_INPUT (0x123)
+
+Check if TTY has input available.
+
+**Arguments:** None
+
+**Returns:**
+
+- x1: 1 if input available, 0 otherwise
+
+---
 
 ## Using Syscalls in C++
 

@@ -6,11 +6,11 @@
 
 ## Overview
 
-ViperDOS implements cryptographic primitives for both kernel-space and user-space protocols. In microkernel mode:
+ViperDOS implements cryptographic primitives for both kernel-space and user-space protocols:
 
-- **libtls** (user-space): TLS 1.3 client library for applications
-- **libssh** (user-space): SSH-2 and SFTP client library
-- **Kernel crypto**: Available when `VIPER_KERNEL_ENABLE_TLS=1` (disabled in microkernel mode)
+- **Kernel TLS 1.3** (`kernel/net/tls/`): Full TLS 1.3 client with certificate verification
+- **libssh** (user-space): SSH-2 and SFTP client library with its own crypto
+- **Kernel crypto** (`kernel/net/tls/crypto/`): Shared primitives (enabled with `VIPER_KERNEL_ENABLE_TLS=1`)
 
 The implementation prioritizes correctness and security over performance, using constant-time algorithms where
 appropriate.

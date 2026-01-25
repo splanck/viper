@@ -1,23 +1,19 @@
 # Filesystem Subsystem
 
-**Status:** Complete with kernel FS (boot) and user-space fsd server
-**Architecture:** Kernel ViperFS (boot) + fsd server + blkd server
-**Total SLOC:** ~9,600 (kernel ~6,500 + fsd ~3,100)
+**Status:** Complete kernel-based filesystem
+**Architecture:** Kernel VFS + ViperFS driver + Block cache
+**Total SLOC:** ~6,600 (kernel)
 
 ## Overview
 
-The ViperDOS filesystem subsystem has two implementations:
+ViperDOS implements the filesystem entirely in the kernel:
 
-1. **Kernel FS** (~6,500 SLOC): Used during boot for loading initial binaries
-    - Enabled via `VIPER_KERNEL_ENABLE_FS=1` (default)
-    - Block cache, VFS, ViperFS with journaling
-    - Located in `kernel/fs/`
+1. **VFS Layer** (~1,200 SLOC): Path-based and handle-based file operations
+2. **ViperFS Driver** (~2,400 SLOC): Native filesystem with journaling
+3. **Block Cache** (~600 SLOC): LRU caching with read-ahead
+4. **Headers** (~2,400 SLOC): Type definitions and interfaces
 
-2. **fsd server** (~3,100 SLOC): User-space filesystem server for microkernel mode
-    - Connects to blkd for block I/O
-    - Implements simplified ViperFS
-    - Registered as "FSD:"
-    - Located in `user/servers/fsd/`
+Applications use standard POSIX-like syscalls, which are handled directly by the kernel.
 
 ---
 
@@ -31,32 +27,33 @@ The ViperDOS filesystem subsystem has two implementations:
                                  │
                                  ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    libc (fsd_backend.cpp)                        │
-│         Routes file operations to fsd via IPC                   │
+│                         libc                                     │
+│         POSIX wrappers → kernel syscalls                        │
 └────────────────────────────────┬────────────────────────────────┘
-                                 │ IPC (channels)
+                                 │ Syscalls (SVC)
                                  ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                          fsd Server                              │
+│                       Kernel (EL1)                               │
 │  ┌─────────────────────────────────────────────────────────────┐│
-│  │                   User-Space ViperFS                         ││
+│  │                         VFS Layer                            ││
 │  │  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐ ││
-│  │  │ Open File │  │   Path    │  │   Inode   │  │   Block   │ ││
-│  │  │Table (64) │  │ Resolver  │  │   Cache   │  │  Alloc    │ ││
+│  │  │    FD     │  │   Path    │  │  Handle   │  │   Inode   │ ││
+│  │  │Table (64) │  │ Resolver  │  │    API    │  │   Cache   │ ││
 │  │  └───────────┘  └───────────┘  └───────────┘  └───────────┘ ││
 │  └─────────────────────────────────────────────────────────────┘│
-└────────────────────────────────┬────────────────────────────────┘
-                                 │ IPC (blk protocol)
-                                 ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                          blkd Server                             │
-│               (VirtIO-blk device access)                        │
-└────────────────────────────────┬────────────────────────────────┘
-                                 │ MAP_DEVICE, IRQ
-                                 ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                        Kernel (EL1)                              │
-│           Device primitives, IRQ routing, memory mapping         │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │                    ViperFS Driver                            ││
+│  │  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐ ││
+│  │  │ Superblock│  │   Block   │  │  Journal  │  │ Directory │ ││
+│  │  │Validation │  │  Alloc    │  │   (WAL)   │  │  Entries  │ ││
+│  │  └───────────┘  └───────────┘  └───────────┘  └───────────┘ ││
+│  └─────────────────────────────────────────────────────────────┘│
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │                      Block Cache                             ││
+│  │         64 blocks (256KB) │ LRU │ Read-ahead                ││
+│  └─────────────────────────────────────────────────────────────┘│
+│                              │                                   │
+│                    VirtIO-blk Driver                            │
 └────────────────────────────────┬────────────────────────────────┘
                                  │
                                  ▼
@@ -67,133 +64,86 @@ The ViperDOS filesystem subsystem has two implementations:
 
 ---
 
-## fsd Server (User-Space)
+## Kernel Filesystem Syscalls
 
-**Location:** `user/servers/fsd/`
-**SLOC:** ~3,100
-**Registration:** `FSD:` (assign system)
+### Path-based Operations
 
-### Components
+| Syscall      | Number | Description                    |
+|--------------|--------|--------------------------------|
+| SYS_OPEN     | 0x40   | Open file by path              |
+| SYS_CLOSE    | 0x41   | Close file descriptor          |
+| SYS_READ     | 0x42   | Read from file descriptor      |
+| SYS_WRITE    | 0x43   | Write to file descriptor       |
+| SYS_LSEEK    | 0x44   | Seek file position             |
+| SYS_STAT     | 0x45   | Get file info by path          |
+| SYS_FSTAT    | 0x46   | Get file info by descriptor    |
+| SYS_DUP      | 0x47   | Duplicate file descriptor      |
+| SYS_DUP2     | 0x48   | Duplicate to specific FD       |
+| SYS_READDIR  | 0x60   | Read directory entries         |
+| SYS_MKDIR    | 0x61   | Create directory               |
+| SYS_RMDIR    | 0x62   | Remove directory               |
+| SYS_UNLINK   | 0x63   | Delete file                    |
+| SYS_RENAME   | 0x64   | Rename file/directory          |
+| SYS_SYMLINK  | 0x65   | Create symbolic link           |
+| SYS_READLINK | 0x66   | Read symbolic link target      |
+| SYS_GETCWD   | 0x67   | Get current working directory  |
+| SYS_CHDIR    | 0x68   | Change working directory       |
 
-| File              | Lines  | Description                                 |
-|-------------------|--------|---------------------------------------------|
-| `main.cpp`        | ~970   | Server entry, IPC handling, path resolution |
-| `viperfs.cpp`     | ~1,000 | ViperFS operations                          |
-| `viperfs.hpp`     | ~200   | ViperFS interface                           |
-| `format.hpp`      | ~160   | On-disk format definitions                  |
-| `fs_protocol.hpp` | ~460   | IPC protocol definitions                    |
-| `blk_client.hpp`  | ~360   | Block device client                         |
+### Handle-based Operations
 
-### Initialization Sequence
-
-1. Receive bootstrap capabilities from vinit
-2. Connect to blkd via "BLKD:" assign lookup
-3. Mount ViperFS (read superblock, validate)
-4. Create service channel
-5. Register as "FSD:"
-6. Enter server loop
-
-### IPC Protocol
-
-**Namespace:** `fs`
-**Message Size:** 256 bytes max
-
-#### File Operations
-
-| Message Type | Value | Description                          |
-|--------------|-------|--------------------------------------|
-| FS_OPEN      | 1     | Open file (with O_CREAT support)     |
-| FS_CLOSE     | 2     | Close file                           |
-| FS_READ      | 3     | Read data (inline, up to 200 bytes)  |
-| FS_WRITE     | 4     | Write data (inline, up to 200 bytes) |
-| FS_SEEK      | 5     | Seek (SET, CUR, END)                 |
-| FS_STAT      | 6     | Stat by path                         |
-| FS_FSTAT     | 7     | Stat by file ID                      |
-| FS_FSYNC     | 8     | Sync file to disk                    |
-
-#### Directory Operations
-
-| Message Type | Value | Description                          |
-|--------------|-------|--------------------------------------|
-| FS_READDIR   | 10    | Read directory entries (2 per reply) |
-| FS_MKDIR     | 11    | Create directory                     |
-| FS_RMDIR     | 12    | Remove directory                     |
-| FS_UNLINK    | 13    | Remove file                          |
-| FS_RENAME    | 14    | Rename/move entry                    |
-
-### Open Flags
-
-| Flag     | Value | Description       |
-|----------|-------|-------------------|
-| O_RDONLY | 0     | Read only         |
-| O_WRONLY | 1     | Write only        |
-| O_RDWR   | 2     | Read/write        |
-| O_CREAT  | 0x40  | Create if missing |
-| O_TRUNC  | 0x200 | Truncate to zero  |
-| O_APPEND | 0x400 | Append mode       |
-
-### File Descriptor Table
-
-- 64 maximum open files
-- Tracks inode number, offset, flags
-- Server-side management
+| Syscall           | Number | Description                    |
+|-------------------|--------|--------------------------------|
+| SYS_FS_OPEN_ROOT  | 0x80   | Get root directory handle      |
+| SYS_FS_OPEN       | 0x81   | Open relative to directory     |
+| SYS_IO_READ       | 0x82   | Read from handle               |
+| SYS_IO_WRITE      | 0x83   | Write to handle                |
+| SYS_IO_SEEK       | 0x84   | Seek handle position           |
+| SYS_FS_STAT       | 0x85   | Stat via handle                |
+| SYS_FS_READ_DIR   | 0x86   | Read directory entry           |
+| SYS_FS_REWIND_DIR | 0x87   | Reset directory enumeration    |
+| SYS_FS_CLOSE      | 0x88   | Close handle                   |
+| SYS_FS_MKDIR      | 0x89   | Create directory via handle    |
+| SYS_FS_UNLINK     | 0x8A   | Delete file via handle         |
+| SYS_FS_RENAME     | 0x8B   | Rename via handle              |
+| SYS_FS_SYNC       | 0x8C   | Sync file to disk              |
+| SYS_FS_TRUNCATE   | 0x8D   | Truncate file                  |
 
 ---
 
-## Kernel Filesystem (Boot)
-
-**Location:** `kernel/fs/`
-**SLOC:** ~6,500
-**Config:** `VIPER_KERNEL_ENABLE_FS=1` (default)
-
-### Block Cache
-
-**Location:** `kernel/fs/cache.cpp`, `cache.hpp`
-**SLOC:** ~925
-
-**Features:**
-
-- 64 block cache (256KB total)
-- LRU eviction policy
-- Reference counting
-- Hash table for O(1) lookup
-- Write-back dirty handling
-- Block pinning for critical metadata
-- Sequential read-ahead (up to 4 blocks)
-- Statistics tracking
-
-**CacheBlock Structure:**
-
-| Field     | Type     | Description          |
-|-----------|----------|----------------------|
-| block_num | u64      | Logical block number |
-| data      | u8[4096] | Block data           |
-| valid     | bool     | Data is valid        |
-| dirty     | bool     | Needs write-back     |
-| pinned    | bool     | Cannot be evicted    |
-| refcount  | u32      | Reference count      |
-
-### VFS Layer
+## VFS Layer
 
 **Location:** `kernel/fs/vfs/`
-**SLOC:** ~1,500
+**SLOC:** ~1,200
 
-**Features:**
+### Features
 
-- File descriptor table (32 FDs max)
+- Global file descriptor table (64 FDs max)
 - Path resolution from root
-- Open flags (O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_APPEND)
+- Open flags (O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_APPEND, O_TRUNC)
 - File operations: open, close, read, write, lseek, stat, fstat
 - Directory operations: mkdir, rmdir, unlink, rename, getdents
 - Symlink operations: symlink, readlink
 - dup, dup2 for FD duplication
+- Per-process working directory tracking
 
-### ViperFS Driver
+### File Descriptor Table
+
+| Field     | Type     | Description          |
+|-----------|----------|----------------------|
+| inode     | u32      | Inode number         |
+| offset    | u64      | Current file offset  |
+| flags     | u32      | Open flags           |
+| refcount  | u32      | Reference count      |
+| in_use    | bool     | Slot is active       |
+
+---
+
+## ViperFS Driver
 
 **Location:** `kernel/fs/viperfs/`
-**SLOC:** ~4,000
+**SLOC:** ~2,400
 
-**Features:**
+### Features
 
 - Superblock validation (magic: 0x53465056 = "VPFS")
 - 256-byte inodes
@@ -203,7 +153,7 @@ The ViperDOS filesystem subsystem has two implementations:
 - Direct + single/double indirect blocks
 - Write-ahead journaling for metadata
 
-**On-Disk Layout:**
+### On-Disk Layout
 
 ```
 Block 0:      Superblock
@@ -212,7 +162,7 @@ Blocks N+1-M: Inode table (16 inodes/block)
 Blocks M+1-:  Data blocks
 ```
 
-**Inode Structure (256 bytes):**
+### Inode Structure (256 bytes)
 
 | Field             | Size | Description           |
 |-------------------|------|-----------------------|
@@ -225,7 +175,7 @@ Blocks M+1-:  Data blocks
 | indirect          | 8    | Single indirect       |
 | double_indirect   | 8    | Double indirect       |
 
-**Block Addressing:**
+### Block Addressing
 
 | Range       | Type            | Capacity |
 |-------------|-----------------|----------|
@@ -233,19 +183,50 @@ Blocks M+1-:  Data blocks
 | 12-523      | Single Indirect | 2MB      |
 | 524-262,667 | Double Indirect | 1GB      |
 
-### Journal
+---
+
+## Block Cache
+
+**Location:** `kernel/fs/cache.cpp`, `cache.hpp`
+**SLOC:** ~600
+
+### Features
+
+- 64 block cache (256KB total)
+- LRU eviction policy
+- Reference counting
+- Hash table for O(1) lookup
+- Write-back dirty handling
+- Block pinning for critical metadata
+- Sequential read-ahead (up to 4 blocks)
+- Statistics tracking
+
+### CacheBlock Structure
+
+| Field     | Type     | Description          |
+|-----------|----------|----------------------|
+| block_num | u64      | Logical block number |
+| data      | u8[4096] | Block data           |
+| valid     | bool     | Data is valid        |
+| dirty     | bool     | Needs write-back     |
+| pinned    | bool     | Cannot be evicted    |
+| refcount  | u32      | Reference count      |
+
+---
+
+## Journal
 
 **Location:** `kernel/fs/viperfs/journal.cpp`
-**SLOC:** ~810
+**SLOC:** ~525
 
-**Features:**
+### Features
 
 - Write-ahead logging (WAL)
 - Transaction-based updates
 - Checksum validation
 - Crash recovery replay
 
-**Journaled Operations:**
+### Journaled Operations
 
 - create_file: Inode + parent directory
 - unlink: Inode + parent + bitmap
@@ -256,24 +237,27 @@ Blocks M+1-:  Data blocks
 
 ## libc Integration
 
-**Location:** `user/libc/src/fsd_backend.cpp`
+**Location:** `user/libc/src/unistd.c`, `stat.c`, `dirent.c`
 
-The libc file functions route to fsd:
+The libc file functions call kernel syscalls directly:
 
-| libc Function       | fsd Message          |
-|---------------------|----------------------|
-| open()              | FS_OPEN              |
-| close()             | FS_CLOSE             |
-| read()              | FS_READ              |
-| write()             | FS_WRITE             |
-| lseek()             | FS_SEEK              |
-| stat()              | FS_STAT              |
-| fstat()             | FS_FSTAT             |
-| mkdir()             | FS_MKDIR             |
-| rmdir()             | FS_RMDIR             |
-| unlink()            | FS_UNLINK            |
-| rename()            | FS_RENAME            |
-| opendir()/readdir() | FS_OPEN + FS_READDIR |
+| libc Function       | Kernel Syscall  |
+|---------------------|-----------------|
+| open()              | SYS_OPEN        |
+| close()             | SYS_CLOSE       |
+| read()              | SYS_READ        |
+| write()             | SYS_WRITE       |
+| lseek()             | SYS_LSEEK       |
+| stat()              | SYS_STAT        |
+| fstat()             | SYS_FSTAT       |
+| mkdir()             | SYS_MKDIR       |
+| rmdir()             | SYS_RMDIR       |
+| unlink()            | SYS_UNLINK      |
+| rename()            | SYS_RENAME      |
+| opendir()/readdir() | SYS_OPEN + SYS_READDIR |
+| getcwd()            | SYS_GETCWD      |
+| chdir()             | SYS_CHDIR       |
+| dup()/dup2()        | SYS_DUP/SYS_DUP2|
 
 ---
 
@@ -281,31 +265,44 @@ The libc file functions route to fsd:
 
 ### Latency (QEMU)
 
-| Operation       | Typical Time     |
-|-----------------|------------------|
-| File open (IPC) | ~50μs            |
-| Read 200 bytes  | ~100μs           |
-| Write 200 bytes | ~150μs           |
-| Directory list  | ~200μs per batch |
+| Operation       | Typical Time |
+|-----------------|--------------|
+| File open       | ~20μs        |
+| Read 4KB        | ~50μs        |
+| Write 4KB       | ~80μs        |
+| Directory list  | ~30μs        |
 
-### Limitations
+### Advantages of Kernel Filesystem
+
+- Lower latency (no IPC overhead)
+- Direct access to block cache
+- Integrated journaling
+- Simpler application code
+
+### Resource Limits
 
 | Resource        | Limit             |
 |-----------------|-------------------|
-| fsd open files  | 64                |
-| Kernel FD table | 32                |
+| Open FDs        | 64                |
 | Block cache     | 64 blocks (256KB) |
 | Inode cache     | 32 entries        |
-| Max inline data | 200 bytes         |
-| Path length     | 200 chars         |
-| Readdir batch   | 2 entries         |
+| Path length     | 256 chars         |
+| Max file size   | ~1GB              |
 
 ---
 
-## Recent Additions
+## Open Flags
 
-- **fsync support**: `FS_FSYNC` message type for syncing file data to disk
-- **Close-on-sync**: fsd properly syncs dirty data when files are closed
+| Flag     | Value | Description       |
+|----------|-------|-------------------|
+| O_RDONLY | 0     | Read only         |
+| O_WRONLY | 1     | Write only        |
+| O_RDWR   | 2     | Read/write        |
+| O_CREAT  | 0x40  | Create if missing |
+| O_TRUNC  | 0x200 | Truncate to zero  |
+| O_APPEND | 0x400 | Append mode       |
+
+---
 
 ## Not Implemented
 
@@ -320,7 +317,6 @@ The libc file functions route to fsd:
 - Hard links / link count
 - File locking (flock, fcntl)
 - Permissions enforcement
-- Large data via shared memory
 
 ### Low Priority
 
@@ -331,13 +327,13 @@ The libc file functions route to fsd:
 
 ---
 
-## Priority Recommendations: Next 5 Steps
+## Priority Recommendations: Next Steps
 
 ### 1. Per-Process File Descriptor Tables
 
 **Impact:** Correct process isolation for file handles
 
-- Move FD table from global to per-Viper structure
+- Move FD table from global to per-process structure
 - Proper FD inheritance on fork()
 - FD close on exec()
 - Required for multi-process file safety
@@ -360,16 +356,7 @@ The libc file functions route to fsd:
 - Lock inheritance across fork()
 - Required for databases and concurrent access
 
-### 4. Large File Support via Shared Memory
-
-**Impact:** Efficient I/O for files > 200 bytes
-
-- Automatic SHM allocation for large reads/writes
-- Zero-copy data path through shared buffers
-- Batch operations to reduce IPC overhead
-- Performance improvement for bulk I/O
-
-### 5. Background Writeback Thread
+### 4. Background Writeback Thread
 
 **Impact:** Improved write performance
 
