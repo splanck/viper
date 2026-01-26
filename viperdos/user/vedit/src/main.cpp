@@ -57,6 +57,8 @@
 
 #include "../include/editor.hpp"
 #include "../include/view.hpp"
+#include <stdlib.h>
+#include <widget.h>
 
 using namespace vedit;
 
@@ -87,15 +89,42 @@ using namespace vedit;
  * @note The 'Q' (Quit) action is not handled here; it's detected in the
  *       main loop to break out of the event loop.
  */
-static void handleMenuAction(Editor &editor, View &view, char action) {
+static void handleMenuAction(Editor &editor, View &view, gui_window_t *win, char action) {
     switch (action) {
     case 'N': // New
         editor.newFile();
         break;
 
-    case 'S': // Save
-        editor.saveFile();
+    case 'O': { // Open
+        char *path = filedialog_open(win, "Open File", nullptr, "/");
+        if (path) {
+            editor.loadFile(path);
+            free(path);
+        }
         break;
+    }
+
+    case 'S': // Save
+        if (editor.buffer().filename()[0] == '\0') {
+            // No filename set - use Save As
+            char *path = filedialog_save(win, "Save File", nullptr, "/");
+            if (path) {
+                editor.saveFileAs(path);
+                free(path);
+            }
+        } else {
+            editor.saveFile();
+        }
+        break;
+
+    case 'A': { // Save As
+        char *path = filedialog_save(win, "Save File As", nullptr, "/");
+        if (path) {
+            editor.saveFileAs(path);
+            free(path);
+        }
+        break;
+    }
 
     case 'L': // Toggle line numbers
         editor.config().showLineNumbers = !editor.config().showLineNumbers;
@@ -181,6 +210,66 @@ extern "C" int main(int argc, char **argv) {
     Editor editor;
     View view(win);
 
+    // Register menus with displayd for global menu bar (Amiga/Mac style)
+    {
+        gui_menu_def_t gui_menus[3]; // VEdit has 3 menus: File, Edit, View
+
+        // Zero-initialize
+        for (int m = 0; m < 3 && m < NUM_MENUS; m++) {
+            for (int i = 0; i < 24; i++)
+                gui_menus[m].title[i] = '\0';
+            gui_menus[m].item_count = 0;
+            gui_menus[m]._pad[0] = 0;
+            gui_menus[m]._pad[1] = 0;
+            gui_menus[m]._pad[2] = 0;
+            for (int j = 0; j < GUI_MAX_MENU_ITEMS; j++) {
+                for (int k = 0; k < 32; k++)
+                    gui_menus[m].items[j].label[k] = '\0';
+                for (int k = 0; k < 16; k++)
+                    gui_menus[m].items[j].shortcut[k] = '\0';
+                gui_menus[m].items[j].action = 0;
+                gui_menus[m].items[j].enabled = 0;
+                gui_menus[m].items[j].checked = 0;
+                gui_menus[m].items[j]._pad = 0;
+            }
+        }
+
+        // Convert our menus to gui format
+        for (int m = 0; m < 3 && m < NUM_MENUS; m++) {
+            // Copy title (menu label)
+            const char *src = g_menus[m].label;
+            for (int i = 0; i < 23 && src[i]; i++)
+                gui_menus[m].title[i] = src[i];
+
+            gui_menus[m].item_count = static_cast<uint8_t>(g_menus[m].itemCount);
+
+            // Copy items
+            for (int j = 0; j < g_menus[m].itemCount && j < GUI_MAX_MENU_ITEMS; j++) {
+                const MenuItem &item = g_menus[m].items[j];
+
+                // Copy label
+                if (item.label) {
+                    for (int k = 0; k < 31 && item.label[k]; k++)
+                        gui_menus[m].items[j].label[k] = item.label[k];
+                }
+
+                // Copy shortcut
+                if (item.shortcut) {
+                    for (int k = 0; k < 15 && item.shortcut[k]; k++)
+                        gui_menus[m].items[j].shortcut[k] = item.shortcut[k];
+                }
+
+                // Action is the single-character code
+                gui_menus[m].items[j].action = static_cast<uint8_t>(item.action);
+                // Enable all non-separator items
+                gui_menus[m].items[j].enabled = (item.label[0] != '-') ? 1 : 0;
+                gui_menus[m].items[j].checked = 0;
+            }
+        }
+
+        gui_set_menu(win, gui_menus, static_cast<uint8_t>(NUM_MENUS));
+    }
+
     // Load file from command line
     if (argc > 1) {
         editor.loadFile(argv[1]);
@@ -201,36 +290,24 @@ extern "C" int main(int argc, char **argv) {
                 running = false;
                 break;
 
+            case GUI_EVENT_MENU:
+                // Handle global menu bar item selection (Amiga/Mac style)
+                {
+                    char action = static_cast<char>(event.menu.action);
+                    if (action == 'Q') {
+                        running = false;
+                    } else if (action != 0) {
+                        handleMenuAction(editor, view, win, action);
+                    }
+                    needsRedraw = true;
+                }
+                break;
+
             case GUI_EVENT_MOUSE:
                 // Handle mouse button press (button down)
+                // Note: Menu bar clicks are now handled by displayd (global menu bar)
                 if (event.mouse.event_type == 1 && event.mouse.button == 0) {
-                    int clickMenu = view.findMenuAt(event.mouse.x, event.mouse.y);
-
-                    if (view.activeMenu() >= 0) {
-                        // Menu is currently open - handle click in dropdown
-                        int itemIdx =
-                            view.findMenuItemAt(view.activeMenu(), event.mouse.x, event.mouse.y);
-                        if (itemIdx >= 0) {
-                            // Clicked on menu item
-                            char action = view.getMenuAction(view.activeMenu(), itemIdx);
-                            if (action == 'Q') {
-                                running = false;
-                            } else {
-                                handleMenuAction(editor, view, action);
-                            }
-                        } else if (clickMenu >= 0 && clickMenu != view.activeMenu()) {
-                            // Clicked on different menu label
-                            view.setActiveMenu(clickMenu);
-                            view.setHoveredMenuItem(-1);
-                        } else {
-                            // Clicked outside menu - close it
-                            view.setActiveMenu(-1);
-                        }
-                    } else if (clickMenu >= 0) {
-                        // Clicked on menu bar - open menu
-                        view.setActiveMenu(clickMenu);
-                        view.setHoveredMenuItem(-1);
-                    } else if (event.mouse.y > view.textAreaY() &&
+                    if (event.mouse.y > view.textAreaY() &&
                                event.mouse.y < dims::WIN_HEIGHT - dims::STATUSBAR_HEIGHT) {
                         // Clicked in text area - position cursor
                         int relX = event.mouse.x;
@@ -240,22 +317,12 @@ extern "C" int main(int argc, char **argv) {
                                                   view.visibleLines());
                     }
                     needsRedraw = true;
-                } else if (event.mouse.event_type == 0) {
-                    // Mouse move - update menu item highlighting
-                    if (view.activeMenu() >= 0) {
-                        view.setHoveredMenuItem(
-                            view.findMenuItemAt(view.activeMenu(), event.mouse.x, event.mouse.y));
-                        needsRedraw = true;
-                    }
                 }
+                // Note: Menu hover is now handled by displayd (global menu bar)
                 break;
 
             case GUI_EVENT_KEY:
-                if (view.activeMenu() >= 0) {
-                    // Any key press closes the menu
-                    view.setActiveMenu(-1);
-                    needsRedraw = true;
-                } else {
+                {
                     // Handle keyboard input for text editing
                     bool handled = true;
 

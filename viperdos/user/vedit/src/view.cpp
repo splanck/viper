@@ -104,7 +104,8 @@ View::View(gui_window_t *win) : m_win(win), m_activeMenu(-1), m_hoveredMenuItem(
 }
 
 int View::visibleLines() const {
-    return (dims::WIN_HEIGHT - dims::MENUBAR_HEIGHT - dims::STATUSBAR_HEIGHT) / dims::LINE_HEIGHT;
+    // Note: Menu bar is now drawn by displayd, so full window height is available
+    return (dims::WIN_HEIGHT - dims::STATUSBAR_HEIGHT) / dims::LINE_HEIGHT;
 }
 
 int View::visibleCols(bool showLineNumbers) const {
@@ -117,7 +118,9 @@ int View::textAreaX(bool showLineNumbers) const {
 }
 
 int View::textAreaY() const {
-    return dims::MENUBAR_HEIGHT;
+    // Note: Menu bar is now drawn by displayd (global menu bar, Amiga/Mac style)
+    // So text area starts at y=0 in window coordinates
+    return 0;
 }
 
 void View::render(const Editor &editor) {
@@ -127,12 +130,8 @@ void View::render(const Editor &editor) {
     drawTextArea(editor);
     drawCursor(editor);
     drawStatusBar(editor);
-    drawMenuBar(editor);
-
-    // Draw open menu
-    if (m_activeMenu >= 0) {
-        drawMenu(m_activeMenu);
-    }
+    // Note: Menu bar is now drawn by displayd (global menu bar, Amiga/Mac style)
+    // We no longer draw our own menu bar - menus are registered via gui_set_menu()
 
     gui_present(m_win);
 }
@@ -250,7 +249,7 @@ void View::drawTextArea(const Editor &editor) {
     int textX = textAreaX(showLineNumbers);
     int textY = textAreaY();
     int textWidth = dims::WIN_WIDTH - textX;
-    int textHeight = dims::WIN_HEIGHT - dims::MENUBAR_HEIGHT - dims::STATUSBAR_HEIGHT;
+    int textHeight = dims::WIN_HEIGHT - dims::STATUSBAR_HEIGHT;
 
     // Text background
     gui_fill_rect(m_win, textX, textY, textWidth, textHeight, colors::TEXT_AREA);

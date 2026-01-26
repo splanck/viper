@@ -116,7 +116,7 @@ bool Desktop::init() {
     m_menus[2].title = "Tools";
     m_menus[2].titleX = 168;
     m_menus[2].titleWidth = 48;
-    m_menus[2].itemCount = 9;
+    m_menus[2].itemCount = 8;
     m_menus[2].items[0] = {"Shell", nullptr, PulldownAction::Shell, false, true};
     m_menus[2].items[1] = {"Preferences", nullptr, PulldownAction::Prefs, true, true};
     m_menus[2].items[2] = {"System Info", nullptr, PulldownAction::SysInfo, false, true};
@@ -126,6 +126,9 @@ bool Desktop::init() {
     m_menus[2].items[5] = {"Dark Mode", nullptr, PulldownAction::ThemeDark, false, true};
     m_menus[2].items[6] = {"Modern Blue", nullptr, PulldownAction::ThemeModern, false, true};
     m_menus[2].items[7] = {"High Contrast", nullptr, PulldownAction::ThemeHighContrast, false, true};
+
+    // Register menus with displayd for global menu bar (Amiga/Mac style)
+    registerMenuBar();
 
     // Discover mounted volumes dynamically
     discoverVolumes();
@@ -143,6 +146,66 @@ bool Desktop::init() {
     redraw();
 
     return true;
+}
+
+void Desktop::registerMenuBar() {
+    // Convert our menu structures to gui_menu_def_t and register with displayd
+    gui_menu_def_t gui_menus[3];
+
+    // Zero-initialize
+    for (int m = 0; m < 3; m++) {
+        for (int i = 0; i < 24; i++)
+            gui_menus[m].title[i] = '\0';
+        gui_menus[m].item_count = 0;
+        gui_menus[m]._pad[0] = 0;
+        gui_menus[m]._pad[1] = 0;
+        gui_menus[m]._pad[2] = 0;
+        for (int j = 0; j < GUI_MAX_MENU_ITEMS; j++) {
+            for (int k = 0; k < 32; k++)
+                gui_menus[m].items[j].label[k] = '\0';
+            for (int k = 0; k < 16; k++)
+                gui_menus[m].items[j].shortcut[k] = '\0';
+            gui_menus[m].items[j].action = 0;
+            gui_menus[m].items[j].enabled = 0;
+            gui_menus[m].items[j].checked = 0;
+            gui_menus[m].items[j]._pad = 0;
+        }
+    }
+
+    // Copy our menus to gui format
+    for (int m = 0; m < m_menuCount && m < 3; m++) {
+        // Copy title
+        const char *src = m_menus[m].title;
+        for (int i = 0; i < 23 && src[i]; i++)
+            gui_menus[m].title[i] = src[i];
+
+        gui_menus[m].item_count = static_cast<uint8_t>(m_menus[m].itemCount);
+
+        // Copy items
+        for (int j = 0; j < m_menus[m].itemCount && j < GUI_MAX_MENU_ITEMS; j++) {
+            const PulldownItem &item = m_menus[m].items[j];
+
+            // Copy label
+            if (item.label) {
+                for (int k = 0; k < 31 && item.label[k]; k++)
+                    gui_menus[m].items[j].label[k] = item.label[k];
+            }
+
+            // Copy shortcut
+            if (item.shortcut) {
+                for (int k = 0; k < 15 && item.shortcut[k]; k++)
+                    gui_menus[m].items[j].shortcut[k] = item.shortcut[k];
+            }
+
+            // Action is the enum value cast to uint8_t
+            gui_menus[m].items[j].action = static_cast<uint8_t>(item.action);
+            gui_menus[m].items[j].enabled = item.enabled ? 1 : 0;
+            gui_menus[m].items[j].checked = 0; // No checkmarks in current menus
+        }
+    }
+
+    // Register with displayd
+    gui_set_menu(m_window, gui_menus, static_cast<uint8_t>(m_menuCount));
 }
 
 void Desktop::run() {
@@ -202,9 +265,13 @@ void Desktop::closeFileBrowser(FileBrowser *browser) {
     }
 }
 
-void Desktop::spawnProgram(const char *path) {
+void Desktop::spawnProgram(const char *path, const char *args) {
     debug_serial("[workbench] Spawning: ");
     debug_serial(path);
+    if (args) {
+        debug_serial(" with args: ");
+        debug_serial(args);
+    }
     debug_serial("\n");
 
     // Use inline assembly for spawn syscall
@@ -214,14 +281,14 @@ void Desktop::spawnProgram(const char *path) {
 
     __asm__ volatile("mov x0, %[path]\n\t"
                      "mov x1, xzr\n\t"   // name = NULL
-                     "mov x2, xzr\n\t"   // args = NULL
+                     "mov x2, %[args]\n\t" // args
                      "mov x8, #0x03\n\t" // SYS_TASK_SPAWN
                      "svc #0\n\t"
                      "mov %[result], x0\n\t"
                      "mov %[pid], x1\n\t"
                      "mov %[tid], x2\n\t"
                      : [result] "=r"(result), [pid] "=r"(pid), [tid] "=r"(tid)
-                     : [path] "r"(path)
+                     : [path] "r"(path), [args] "r"(args)
                      : "x0", "x1", "x2", "x8", "memory");
 
     (void)pid;
@@ -230,7 +297,8 @@ void Desktop::spawnProgram(const char *path) {
 
 void Desktop::drawBackdrop() {
     // Solid backdrop using current theme
-    gui_fill_rect(m_window, 0, MENU_BAR_HEIGHT, m_width, m_height - MENU_BAR_HEIGHT, themeDesktop());
+    // Note: displayd draws the global menu bar on top, so we fill the entire window
+    gui_fill_rect(m_window, 0, 0, m_width, m_height, themeDesktop());
 }
 
 void Desktop::drawMenuBar() {
@@ -489,12 +557,9 @@ void Desktop::drawAllIcons() {
 
 void Desktop::redraw() {
     drawBackdrop();
-    drawMenuBar();
+    // Note: Menu bar is now drawn by displayd (global menu bar, Amiga/Mac style)
+    // We no longer draw our own menu bar - just register menus via gui_set_menu()
     drawAllIcons();
-    // Draw pulldown menu on top if active
-    if (m_activeMenu >= 0) {
-        drawPulldownMenu();
-    }
     gui_present(m_window);
 }
 
@@ -642,38 +707,8 @@ void Desktop::handleClick(int x, int y, int button) {
     if (button != 0)
         return; // Only handle left button
 
-    // Check for menu bar click first
-    if (y < MENU_BAR_HEIGHT) {
-        int menuIdx = findMenuAt(x, y);
-        if (menuIdx >= 0) {
-            if (m_activeMenu == menuIdx) {
-                // Toggle: clicking same menu closes it
-                closeMenu();
-            } else {
-                // Open the clicked menu
-                openMenu(menuIdx);
-            }
-        } else {
-            // Clicked in menu bar but not on a title
-            closeMenu();
-        }
-        return;
-    }
-
-    // If a menu is open, check if click is on a menu item
-    if (m_activeMenu >= 0) {
-        int itemIdx = findMenuItemAt(x, y);
-        if (itemIdx >= 0) {
-            const PulldownItem &item = m_menus[m_activeMenu].items[itemIdx];
-            if (item.enabled) {
-                handleMenuAction(item.action);
-            }
-        } else {
-            // Click outside menu - close it
-            closeMenu();
-        }
-        return;
-    }
+    // Note: Menu bar clicks are now handled by displayd (global menu bar)
+    // We receive GUI_EVENT_MENU events when menu items are selected
 
     int icon_idx = findIconAt(x, y);
 
@@ -732,31 +767,14 @@ void Desktop::handleDesktopEvent(const gui_event_t &event) {
         case GUI_EVENT_MOUSE:
             if (event.mouse.event_type == 1) { // Button down
                 handleClick(event.mouse.x, event.mouse.y, event.mouse.button);
-            } else if (event.mouse.event_type == 0) { // Mouse move
-                // Handle menu hover when menu is open
-                if (m_activeMenu >= 0) {
-                    int x = event.mouse.x;
-                    int y = event.mouse.y;
-
-                    // Check if mouse moved to a different menu title
-                    if (y < MENU_BAR_HEIGHT) {
-                        int menuIdx = findMenuAt(x, y);
-                        if (menuIdx >= 0 && menuIdx != m_activeMenu) {
-                            // Switch to hovered menu
-                            m_activeMenu = menuIdx;
-                            m_hoveredItem = -1;
-                            redraw();
-                        }
-                    } else {
-                        // Check if hovering over a menu item
-                        int itemIdx = findMenuItemAt(x, y);
-                        if (itemIdx != m_hoveredItem) {
-                            m_hoveredItem = itemIdx;
-                            redraw();
-                        }
-                    }
-                }
             }
+            // Note: Menu hover is now handled by displayd (global menu bar)
+            break;
+
+        case GUI_EVENT_MENU:
+            // Handle global menu bar item selection (Amiga/Mac style)
+            // The action code is the PulldownAction enum value we registered
+            handleMenuAction(static_cast<PulldownAction>(event.menu.action));
             break;
 
         case GUI_EVENT_KEY:

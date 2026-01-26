@@ -33,6 +33,7 @@ typedef enum {
     GUI_EVENT_RESIZE,
     GUI_EVENT_CLOSE,
     GUI_EVENT_SCROLL,
+    GUI_EVENT_MENU, ///< Global menu bar item selected (Amiga/Mac style)
 } gui_event_type_t;
 
 /**
@@ -84,6 +85,16 @@ typedef struct {
 } gui_scroll_event_t;
 
 /**
+ * @brief Menu event data (Amiga/Mac style global menu bar).
+ */
+typedef struct {
+    uint8_t menu_index; ///< Which menu (0 = first menu)
+    uint8_t item_index; ///< Which item in that menu
+    uint8_t action;     ///< Action code from gui_menu_item_t
+    uint8_t _pad;
+} gui_menu_event_t;
+
+/**
  * @brief Event union structure.
  */
 typedef struct {
@@ -95,6 +106,7 @@ typedef struct {
         gui_focus_event_t focus;
         gui_resize_event_t resize;
         gui_scroll_event_t scroll;
+        gui_menu_event_t menu;
     };
 } gui_event_t;
 
@@ -257,6 +269,67 @@ void gui_set_hscrollbar(gui_window_t *win,
                         int32_t content_width,
                         int32_t viewport_width,
                         int32_t scroll_pos);
+
+// =============================================================================
+// Global Menu Bar (Amiga/Mac style)
+// =============================================================================
+
+/// Maximum menus per window (File, Edit, View, etc.)
+#define GUI_MAX_MENUS 8
+
+/// Maximum items per menu
+#define GUI_MAX_MENU_ITEMS 16
+
+/**
+ * @brief Menu item definition.
+ */
+typedef struct {
+    char label[32];    ///< Display text (empty or "-" = separator)
+    char shortcut[16]; ///< Keyboard shortcut text (e.g., "Ctrl+S")
+    uint8_t action;    ///< Action code returned in gui_menu_event_t (0 = disabled/separator)
+    uint8_t enabled;   ///< 1 = enabled, 0 = disabled (grayed out)
+    uint8_t checked;   ///< 1 = show checkmark, 0 = no checkmark
+    uint8_t _pad;
+} gui_menu_item_t;
+
+/**
+ * @brief Menu definition (one pulldown menu like "File" or "Edit").
+ */
+typedef struct {
+    char title[24];                         ///< Menu title shown in menu bar
+    uint8_t item_count;                     ///< Number of items in this menu
+    uint8_t _pad[3];
+    gui_menu_item_t items[GUI_MAX_MENU_ITEMS]; ///< Menu items
+} gui_menu_def_t;
+
+/**
+ * @brief Set the global menu bar for a window.
+ *
+ * When this window has focus, these menus appear in the global menu bar
+ * at the top of the screen (Amiga/Mac style).
+ *
+ * @param win Window handle.
+ * @param menus Array of menu definitions.
+ * @param menu_count Number of menus (0 to clear, max GUI_MAX_MENUS).
+ * @return 0 on success, negative error code on failure.
+ *
+ * Example:
+ * @code
+ *   gui_menu_def_t menus[2];
+ *
+ *   // File menu
+ *   strcpy(menus[0].title, "File");
+ *   menus[0].item_count = 3;
+ *   strcpy(menus[0].items[0].label, "New");
+ *   strcpy(menus[0].items[0].shortcut, "Ctrl+N");
+ *   menus[0].items[0].action = 1;
+ *   menus[0].items[0].enabled = 1;
+ *   // ... more items ...
+ *
+ *   gui_set_menu(win, menus, 2);
+ * @endcode
+ */
+int gui_set_menu(gui_window_t *win, const gui_menu_def_t *menus, uint8_t menu_count);
 
 // =============================================================================
 // Pixel Buffer Access

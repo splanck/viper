@@ -2,19 +2,19 @@
 # Provides reusable UI components: buttons, labels, textboxes, lists, menus, etc.
 
 add_library(viperwidget STATIC
-    src/widget.c
-    src/button.c
-    src/label.c
-    src/textbox.c
-    src/checkbox.c
-    src/listview.c
-    src/treeview.c
-    src/menu.c
-    src/layout.c
-    src/progressbar.c
-    src/scrollbar.c
-    src/draw3d.c
-    src/dialog.c
+    src/widget.cpp
+    src/button.cpp
+    src/label.cpp
+    src/textbox.cpp
+    src/checkbox.cpp
+    src/listview.cpp
+    src/treeview.cpp
+    src/menu.cpp
+    src/layout.cpp
+    src/progressbar.cpp
+    src/scrollbar.cpp
+    src/draw3d.cpp
+    src/dialog.cpp
 )
 
 target_compile_options(viperwidget PRIVATE ${USER_COMPILE_OPTIONS})

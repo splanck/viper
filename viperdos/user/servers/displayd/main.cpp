@@ -96,6 +96,7 @@ struct QueuedEvent {
         MouseEvent mouse;
         FocusEvent focus;
         CloseEvent close;
+        MenuEvent menu;
     };
 };
 
@@ -165,12 +166,33 @@ struct Surface {
         int32_t viewport_size; // Visible area size
         int32_t scroll_pos;    // Current scroll position
     } vscroll, hscroll;
+
+    // Global menu bar menus (Amiga/Mac style)
+    uint8_t menu_count;
+    MenuDef menus[MAX_MENUS];
 };
 
 static Surface g_surfaces[MAX_SURFACES];
 static uint32_t g_next_surface_id = 1;
 static uint32_t g_focused_surface = 0;
 static uint32_t g_next_z_order = 1;
+
+// Global menu bar state (Amiga/Mac style)
+static constexpr uint32_t MENU_BAR_HEIGHT = 20;
+static constexpr uint32_t MENU_ITEM_HEIGHT = 18;
+static constexpr uint32_t MENU_PADDING = 8;
+// Classic Amiga Workbench 2.0+ menu bar colors
+static constexpr uint32_t COLOR_MENU_BG = 0xFF8899AA;           // Blue-grey (Amiga style)
+static constexpr uint32_t COLOR_MENU_TEXT = 0xFF000000;          // Black text
+static constexpr uint32_t COLOR_MENU_HIGHLIGHT = 0xFF0055AA;     // Amiga blue selection
+static constexpr uint32_t COLOR_MENU_HIGHLIGHT_TEXT = 0xFFFFFFFF; // White text on selection
+static constexpr uint32_t COLOR_MENU_DISABLED = 0xFF556677;      // Darker blue-grey
+static constexpr uint32_t COLOR_MENU_BORDER_LIGHT = 0xFFCCDDEE;  // Light highlight
+static constexpr uint32_t COLOR_MENU_BORDER_DARK = 0xFF334455;   // Dark shadow
+
+static int32_t g_active_menu = -1;      // Which menu is open (-1 = none)
+static int32_t g_hovered_menu_item = -1; // Which item in open menu is hovered
+static int32_t g_menu_title_positions[MAX_MENUS]; // X positions of menu titles
 
 // Bring a surface to the front (highest z-order)
 static void bring_to_front(Surface *surf) {
@@ -640,7 +662,272 @@ static void draw_hscrollbar(Surface *surf) {
 }
 
 // ============================================================================
-// Section 8: Compositing
+// Section 8: Global Menu Bar (Amiga/Mac style)
+// ============================================================================
+
+// Get the focused surface (returns nullptr if none)
+static Surface *get_focused_surface() {
+    for (uint32_t i = 0; i < MAX_SURFACES; i++) {
+        if (g_surfaces[i].in_use && g_surfaces[i].id == g_focused_surface) {
+            return &g_surfaces[i];
+        }
+    }
+    return nullptr;
+}
+
+// Get the surface whose menus should be displayed in the global menu bar.
+// Returns the focused surface if it has menus, otherwise falls back to
+// a SYSTEM surface with menus (e.g., the Workbench/desktop).
+static Surface *get_menu_surface() {
+    // First, try the focused surface
+    Surface *focused = get_focused_surface();
+    if (focused && focused->menu_count > 0) {
+        return focused;
+    }
+
+    // Fall back to a SYSTEM surface with menus (the desktop)
+    for (uint32_t i = 0; i < MAX_SURFACES; i++) {
+        if (g_surfaces[i].in_use &&
+            (g_surfaces[i].flags & SURFACE_FLAG_SYSTEM) &&
+            g_surfaces[i].menu_count > 0) {
+            return &g_surfaces[i];
+        }
+    }
+
+    return nullptr;
+}
+
+// Calculate menu title positions for the focused surface
+static void calc_menu_positions(Surface *surf) {
+    if (!surf || surf->menu_count == 0)
+        return;
+
+    int32_t x = MENU_PADDING; // Start at left edge of screen
+    for (uint8_t i = 0; i < surf->menu_count && i < MAX_MENUS; i++) {
+        g_menu_title_positions[i] = x;
+        // Calculate title width (8 pixels per char)
+        int32_t title_len = 0;
+        for (const char *p = surf->menus[i].title; *p; p++)
+            title_len++;
+        x += title_len * 8 + MENU_PADDING * 2;
+    }
+}
+
+// Find which menu title is at position x, y
+static int32_t find_menu_at(int32_t x, int32_t y) {
+    // Menu bar is at y=0 to y=MENU_BAR_HEIGHT
+    if (y < 0 || y >= static_cast<int32_t>(MENU_BAR_HEIGHT))
+        return -1;
+
+    Surface *surf = get_menu_surface();
+    if (!surf || surf->menu_count == 0)
+        return -1;
+
+    for (uint8_t i = 0; i < surf->menu_count; i++) {
+        int32_t title_x = g_menu_title_positions[i];
+        int32_t title_len = 0;
+        for (const char *p = surf->menus[i].title; *p; p++)
+            title_len++;
+        int32_t title_w = title_len * 8 + MENU_PADDING * 2;
+
+        if (x >= title_x && x < title_x + title_w)
+            return i;
+    }
+    return -1;
+}
+
+// Find which menu item is at position x, y (when menu is open)
+static int32_t find_menu_item_at(int32_t x, int32_t y) {
+    if (g_active_menu < 0)
+        return -1;
+
+    Surface *surf = get_menu_surface();
+    if (!surf || g_active_menu >= surf->menu_count)
+        return -1;
+
+    const MenuDef &menu = surf->menus[g_active_menu];
+    int32_t menu_x = g_menu_title_positions[g_active_menu];
+    int32_t menu_y = MENU_BAR_HEIGHT; // Dropdown starts just below menu bar
+
+    // Calculate menu width
+    int32_t max_width = 0;
+    for (uint8_t i = 0; i < menu.item_count; i++) {
+        int32_t item_len = 0;
+        for (const char *p = menu.items[i].label; *p; p++)
+            item_len++;
+        int32_t shortcut_len = 0;
+        for (const char *p = menu.items[i].shortcut; *p; p++)
+            shortcut_len++;
+        int32_t w = (item_len + shortcut_len + 4) * 8;
+        if (w > max_width)
+            max_width = w;
+    }
+    int32_t menu_w = max_width + MENU_PADDING * 2;
+    int32_t menu_h = menu.item_count * MENU_ITEM_HEIGHT + 4;
+
+    if (x < menu_x || x >= menu_x + menu_w ||
+        y < menu_y || y >= menu_y + menu_h)
+        return -1;
+
+    int32_t item_idx = (y - menu_y - 2) / MENU_ITEM_HEIGHT;
+    if (item_idx >= 0 && item_idx < menu.item_count)
+        return item_idx;
+
+    return -1;
+}
+
+// Draw the global menu bar (at very top of screen, Amiga style)
+static void draw_menu_bar() {
+    Surface *surf = get_menu_surface();
+
+    // Debug: log menu surface status once
+    static bool logged_menu_status = false;
+    if (!logged_menu_status) {
+        if (surf) {
+            debug_print("[displayd] draw_menu_bar: found surface id=");
+            debug_print_dec(surf->id);
+            debug_print(", menu_count=");
+            debug_print_dec(surf->menu_count);
+            if (surf->menu_count > 0) {
+                debug_print(", first menu title='");
+                debug_print(surf->menus[0].title);
+                debug_print("'");
+            }
+            debug_print("\n");
+        } else {
+            debug_print("[displayd] draw_menu_bar: no menu surface found\n");
+        }
+        logged_menu_status = true;
+    }
+
+    // Menu bar background - full width at top of screen
+    int32_t bar_x = 0;
+    int32_t bar_y = 0;
+    int32_t bar_w = g_fb_width;
+
+    fill_rect(bar_x, bar_y, bar_w, MENU_BAR_HEIGHT, COLOR_MENU_BG);
+
+    // Top highlight, bottom shadow
+    for (int32_t px = bar_x; px < bar_x + bar_w; px++) {
+        put_pixel(px, bar_y, COLOR_MENU_BORDER_LIGHT);
+        put_pixel(px, bar_y + MENU_BAR_HEIGHT - 1, COLOR_MENU_BORDER_DARK);
+    }
+
+    // Draw menu titles if focused surface has menus
+    if (surf && surf->menu_count > 0) {
+        calc_menu_positions(surf);
+
+        for (uint8_t i = 0; i < surf->menu_count; i++) {
+            int32_t title_x = g_menu_title_positions[i];
+            int32_t title_len = 0;
+            for (const char *p = surf->menus[i].title; *p; p++)
+                title_len++;
+            int32_t title_w = title_len * 8 + MENU_PADDING * 2;
+
+            // Highlight active menu
+            if (i == g_active_menu) {
+                fill_rect(title_x, bar_y + 1, title_w, MENU_BAR_HEIGHT - 2, COLOR_MENU_HIGHLIGHT);
+                draw_text(title_x + MENU_PADDING, bar_y + 4, surf->menus[i].title, COLOR_MENU_HIGHLIGHT_TEXT);
+            } else {
+                draw_text(title_x + MENU_PADDING, bar_y + 4, surf->menus[i].title, COLOR_MENU_TEXT);
+            }
+        }
+    }
+
+    // Right side: App title or "ViperDOS"
+    const char *right_text = surf ? surf->title : "ViperDOS";
+    int32_t text_len = 0;
+    for (const char *p = right_text; *p; p++)
+        text_len++;
+    draw_text(bar_x + bar_w - text_len * 8 - MENU_PADDING, bar_y + 4, right_text, COLOR_MENU_DISABLED);
+}
+
+// Draw the open pulldown menu
+static void draw_pulldown_menu() {
+    if (g_active_menu < 0)
+        return;
+
+    Surface *surf = get_menu_surface();
+    if (!surf || g_active_menu >= surf->menu_count)
+        return;
+
+    const MenuDef &menu = surf->menus[g_active_menu];
+    int32_t menu_x = g_menu_title_positions[g_active_menu];
+    int32_t menu_y = MENU_BAR_HEIGHT; // Dropdown starts just below menu bar
+
+    // Calculate menu width
+    int32_t max_width = 0;
+    for (uint8_t i = 0; i < menu.item_count; i++) {
+        int32_t item_len = 0;
+        for (const char *p = menu.items[i].label; *p; p++)
+            item_len++;
+        int32_t shortcut_len = 0;
+        for (const char *p = menu.items[i].shortcut; *p; p++)
+            shortcut_len++;
+        int32_t w = (item_len + shortcut_len + 4) * 8;
+        if (w > max_width)
+            max_width = w;
+    }
+
+    int32_t menu_w = max_width + MENU_PADDING * 2;
+    int32_t menu_h = menu.item_count * MENU_ITEM_HEIGHT + 4;
+
+    // Menu background
+    fill_rect(menu_x, menu_y, menu_w, menu_h, COLOR_MENU_BG);
+
+    // 3D border
+    for (int32_t px = menu_x; px < menu_x + menu_w; px++) {
+        put_pixel(px, menu_y, COLOR_MENU_BORDER_LIGHT);
+        put_pixel(px, menu_y + menu_h - 1, COLOR_MENU_BORDER_DARK);
+    }
+    for (int32_t py = menu_y; py < menu_y + menu_h; py++) {
+        put_pixel(menu_x, py, COLOR_MENU_BORDER_LIGHT);
+        put_pixel(menu_x + menu_w - 1, py, COLOR_MENU_BORDER_DARK);
+    }
+
+    // Draw menu items
+    int32_t item_y = menu_y + 2;
+    for (uint8_t i = 0; i < menu.item_count; i++) {
+        const MenuItem &item = menu.items[i];
+
+        // Separator
+        if (item.label[0] == '-' || item.label[0] == '\0') {
+            int32_t sep_y = item_y + MENU_ITEM_HEIGHT / 2;
+            for (int32_t px = menu_x + 4; px < menu_x + menu_w - 4; px++)
+                put_pixel(px, sep_y, COLOR_MENU_BORDER_DARK);
+            item_y += MENU_ITEM_HEIGHT;
+            continue;
+        }
+
+        // Highlight hovered item
+        uint32_t text_color = item.enabled ? COLOR_MENU_TEXT : COLOR_MENU_DISABLED;
+        if (static_cast<int32_t>(i) == g_hovered_menu_item && item.enabled) {
+            fill_rect(menu_x + 2, item_y, menu_w - 4, MENU_ITEM_HEIGHT, COLOR_MENU_HIGHLIGHT);
+            text_color = COLOR_MENU_HIGHLIGHT_TEXT;
+        }
+
+        // Checkmark
+        if (item.checked) {
+            draw_text(menu_x + 4, item_y + 2, "*", text_color);
+        }
+
+        // Label
+        draw_text(menu_x + 16, item_y + 2, item.label, text_color);
+
+        // Shortcut (right-aligned)
+        if (item.shortcut[0]) {
+            int32_t sc_len = 0;
+            for (const char *p = item.shortcut; *p; p++)
+                sc_len++;
+            draw_text(menu_x + menu_w - sc_len * 8 - 8, item_y + 2, item.shortcut, text_color);
+        }
+
+        item_y += MENU_ITEM_HEIGHT;
+    }
+}
+
+// ============================================================================
+// Section 9: Compositing
 // ============================================================================
 
 static void flip_buffers() {
@@ -737,6 +1024,10 @@ static void composite() {
         draw_vscrollbar(surf);
         draw_hscrollbar(surf);
     }
+
+    // Draw global menu bar (Amiga/Mac style - always on top)
+    draw_menu_bar();
+    draw_pulldown_menu();
 
     // Copy back buffer to front buffer in one operation
     flip_buffers();
@@ -1255,6 +1546,44 @@ static void handle_request(int32_t client_channel,
             break;
         }
 
+        case DISP_SET_MENU: {
+            // Handle global menu bar registration (Amiga/Mac style)
+            if (len < sizeof(SetMenuRequest))
+                return;
+            auto *req = reinterpret_cast<const SetMenuRequest *>(data);
+
+            GenericReply reply;
+            reply.type = DISP_GENERIC_REPLY;
+            reply.request_id = req->request_id;
+            reply.status = -1;
+
+            Surface *surf = find_surface_by_id(req->surface_id);
+            if (surf) {
+                // Store menu definitions for this surface
+                surf->menu_count = req->menu_count;
+                if (surf->menu_count > MAX_MENUS) {
+                    surf->menu_count = MAX_MENUS;
+                }
+
+                // Copy menu data
+                for (uint8_t i = 0; i < surf->menu_count; i++) {
+                    surf->menus[i] = req->menus[i];
+                }
+
+                debug_print("[displayd] Set menu bar for surface ");
+                debug_print_dec(surf->id);
+                debug_print(", menu_count=");
+                debug_print_dec(surf->menu_count);
+                debug_print("\n");
+
+                reply.status = 0;
+                composite(); // Redraw menu bar
+            }
+
+            sys::channel_send(client_channel, &reply, sizeof(reply), nullptr, 0);
+            break;
+        }
+
         default:
             debug_print("[displayd] Unknown message type: ");
             debug_print_dec(msg_type);
@@ -1485,6 +1814,26 @@ static void queue_key_event(Surface *surf, uint16_t keycode, uint8_t modifiers, 
     }
 }
 
+// Queue a menu event to a surface (Amiga/Mac style global menu bar)
+static void queue_menu_event(Surface *surf, uint8_t menu_index, uint8_t item_index, uint8_t action) {
+    QueuedEvent ev;
+    ev.event_type = DISP_EVENT_MENU;
+    ev.menu.type = DISP_EVENT_MENU;
+    ev.menu.surface_id = surf->id;
+    ev.menu.menu_index = menu_index;
+    ev.menu.item_index = item_index;
+    ev.menu.action = action;
+
+    // If client has event channel, send directly
+    if (surf->event_channel >= 0) {
+        sys::channel_send(surf->event_channel, &ev.menu, sizeof(ev.menu), nullptr, 0);
+    } else {
+        if (!surf->event_queue.push(ev)) {
+            // Overflow - menu event dropped
+        }
+    }
+}
+
 // ============================================================================
 // Section 12: Input Polling
 // ============================================================================
@@ -1536,6 +1885,23 @@ static void poll_mouse() {
         restore_cursor_background();
         g_cursor_x = state.x;
         g_cursor_y = state.y;
+
+        // Handle menu hover (when a pulldown menu is open)
+        if (g_active_menu >= 0) {
+            int32_t new_hover = find_menu_item_at(g_cursor_x, g_cursor_y);
+            if (new_hover != g_hovered_menu_item) {
+                g_hovered_menu_item = new_hover;
+                composite(); // Redraw to show hover highlight
+            }
+            // Also check if hovering over a different menu title
+            int32_t hover_menu = find_menu_at(g_cursor_x, g_cursor_y);
+            if (hover_menu >= 0 && hover_menu != g_active_menu) {
+                // Switch to the hovered menu
+                g_active_menu = hover_menu;
+                g_hovered_menu_item = -1;
+                composite();
+            }
+        }
 
         // Handle resizing
         if (g_resize_surface_id != 0) {
@@ -1663,7 +2029,70 @@ static void poll_mouse() {
         Surface *surf = find_surface_at(g_cursor_x, g_cursor_y);
 
         if (pressed) {
-            if (surf) {
+            // ----------------------------------------------------------------
+            // Global Menu Bar Handling (Amiga/Mac style - always on top)
+            // ----------------------------------------------------------------
+            bool menu_handled = false;
+
+            // Check if click is in the menu bar area (y=0 to MENU_BAR_HEIGHT)
+            if (g_cursor_y < static_cast<int32_t>(MENU_BAR_HEIGHT)) {
+                int32_t clicked_menu = find_menu_at(g_cursor_x, g_cursor_y);
+
+                if (clicked_menu >= 0) {
+                    // Clicked on a menu title
+                    if (g_active_menu == clicked_menu) {
+                        // Same menu - toggle closed
+                        g_active_menu = -1;
+                    } else {
+                        // Different menu or no menu open - open this menu
+                        g_active_menu = clicked_menu;
+                    }
+                    g_hovered_menu_item = -1;
+                    composite();
+                    menu_handled = true;
+                } else if (g_active_menu >= 0) {
+                    // Menu is open but didn't click on a title - close it
+                    g_active_menu = -1;
+                    g_hovered_menu_item = -1;
+                    composite();
+                    menu_handled = true;
+                }
+            }
+            // Check if click is in an open pulldown menu
+            else if (g_active_menu >= 0) {
+                int32_t item_idx = find_menu_item_at(g_cursor_x, g_cursor_y);
+
+                if (item_idx >= 0) {
+                    // Clicked on a menu item - execute it
+                    Surface *menu_surf = get_menu_surface();
+                    if (menu_surf && g_active_menu < menu_surf->menu_count) {
+                        const MenuDef &menu = menu_surf->menus[g_active_menu];
+                        if (item_idx < menu.item_count) {
+                            const MenuItem &item = menu.items[item_idx];
+                            // Only trigger if enabled and not a separator
+                            if (item.enabled && item.label[0] != '\0' && item.action != 0) {
+                                queue_menu_event(menu_surf, static_cast<uint8_t>(g_active_menu),
+                                                 static_cast<uint8_t>(item_idx), item.action);
+                            }
+                        }
+                    }
+                    g_active_menu = -1;
+                    g_hovered_menu_item = -1;
+                    composite();
+                    menu_handled = true;
+                } else {
+                    // Clicked outside pulldown - close menu
+                    g_active_menu = -1;
+                    g_hovered_menu_item = -1;
+                    composite();
+                    menu_handled = true;
+                }
+            }
+
+            // If menu handled the click, skip normal window handling
+            if (menu_handled) {
+                // Do nothing further
+            } else if (surf) {
                 // Handle focus change and bring to front
                 // Don't change focus to SYSTEM surfaces (like desktop/workbench)
                 // They should never receive focus or come to front

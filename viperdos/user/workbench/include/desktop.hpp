@@ -184,13 +184,15 @@ class Desktop {
      * Uses the SYS_TASK_SPAWN syscall to launch a program.
      *
      * @param path Path to the executable (e.g., "/c/prefs.prg").
+     * @param args Optional command line arguments (e.g., a file path to open).
      */
-    void spawnProgram(const char *path);
+    void spawnProgram(const char *path, const char *args = nullptr);
 
   private:
     void drawBackdrop();
     void drawMenuBar();
     void drawPulldownMenu();
+    void registerMenuBar();
     void drawIcon(DesktopIcon &icon);
     void drawAllIcons();
     void redraw();

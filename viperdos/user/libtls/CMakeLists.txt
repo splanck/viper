@@ -2,8 +2,8 @@
 # User-space TLS 1.3 client implementation
 
 set(LIBTLS_SOURCES
-        src/crypto.c
-        src/tls.c
+        src/crypto.cpp
+        src/tls.cpp
 )
 
 add_library(vipertls STATIC ${LIBTLS_SOURCES})

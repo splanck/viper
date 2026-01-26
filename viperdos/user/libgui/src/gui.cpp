@@ -1382,6 +1382,121 @@ extern "C" void gui_set_hscrollbar(gui_window_t *win,
 }
 
 //===----------------------------------------------------------------------===//
+// Global Menu Bar (Amiga/Mac style)
+//===----------------------------------------------------------------------===//
+
+/**
+ * @brief Sets the global menu bar for a window (Amiga/Mac style).
+ *
+ * This function registers menu definitions with displayd. When this window
+ * has focus, the menus appear in the global menu bar at the top of the screen
+ * (Amiga/Mac style), not in the window itself.
+ *
+ * When a menu item is selected, the application receives a GUI_EVENT_MENU event
+ * with the menu_index, item_index, and action code.
+ *
+ * @param win        Pointer to the window. If NULL, returns -1.
+ * @param menus      Array of menu definitions (can be NULL if menu_count is 0).
+ * @param menu_count Number of menus (0 to clear menus, max GUI_MAX_MENUS).
+ *
+ * @return 0 on success, -1 on failure.
+ *
+ * @note The gui_menu_def_t structures map directly to display_protocol::MenuDef,
+ *       so size/alignment must match.
+ *
+ * @code
+ * gui_menu_def_t menus[2];
+ * memset(menus, 0, sizeof(menus));
+ *
+ * // File menu
+ * strcpy(menus[0].title, "File");
+ * menus[0].item_count = 3;
+ * strcpy(menus[0].items[0].label, "New");
+ * strcpy(menus[0].items[0].shortcut, "Ctrl+N");
+ * menus[0].items[0].action = 1;
+ * menus[0].items[0].enabled = 1;
+ *
+ * strcpy(menus[0].items[1].label, "-");  // Separator
+ *
+ * strcpy(menus[0].items[2].label, "Quit");
+ * strcpy(menus[0].items[2].shortcut, "Ctrl+Q");
+ * menus[0].items[2].action = 2;
+ * menus[0].items[2].enabled = 1;
+ *
+ * gui_set_menu(win, menus, 1);
+ * @endcode
+ */
+extern "C" int gui_set_menu(gui_window_t *win, const gui_menu_def_t *menus, uint8_t menu_count) {
+    if (!win)
+        return -1;
+
+    SetMenuRequest req;
+    req.type = DISP_SET_MENU;
+    req.request_id = g_request_id++;
+    req.surface_id = win->surface_id;
+    req.menu_count = menu_count;
+    req._pad[0] = 0;
+    req._pad[1] = 0;
+    req._pad[2] = 0;
+
+    // Initialize menus array to zero
+    for (uint8_t i = 0; i < MAX_MENUS; i++) {
+        for (int j = 0; j < 24; j++)
+            req.menus[i].title[j] = '\0';
+        req.menus[i].item_count = 0;
+        req.menus[i]._pad[0] = 0;
+        req.menus[i]._pad[1] = 0;
+        req.menus[i]._pad[2] = 0;
+        for (uint8_t j = 0; j < MAX_MENU_ITEMS; j++) {
+            for (int k = 0; k < 32; k++)
+                req.menus[i].items[j].label[k] = '\0';
+            for (int k = 0; k < 16; k++)
+                req.menus[i].items[j].shortcut[k] = '\0';
+            req.menus[i].items[j].action = 0;
+            req.menus[i].items[j].enabled = 0;
+            req.menus[i].items[j].checked = 0;
+            req.menus[i].items[j]._pad = 0;
+        }
+    }
+
+    // Copy menu data (gui_menu_def_t and MenuDef are compatible structures)
+    if (menu_count > 0 && menus) {
+        uint8_t count = menu_count;
+        if (count > MAX_MENUS)
+            count = MAX_MENUS;
+        for (uint8_t i = 0; i < count; i++) {
+            // Copy title
+            for (int j = 0; j < 23 && menus[i].title[j]; j++)
+                req.menus[i].title[j] = menus[i].title[j];
+            req.menus[i].item_count = menus[i].item_count;
+
+            // Copy items
+            uint8_t item_count = menus[i].item_count;
+            if (item_count > MAX_MENU_ITEMS)
+                item_count = MAX_MENU_ITEMS;
+            for (uint8_t j = 0; j < item_count; j++) {
+                // Copy label
+                for (int k = 0; k < 31 && menus[i].items[j].label[k]; k++)
+                    req.menus[i].items[j].label[k] = menus[i].items[j].label[k];
+                // Copy shortcut
+                for (int k = 0; k < 15 && menus[i].items[j].shortcut[k]; k++)
+                    req.menus[i].items[j].shortcut[k] = menus[i].items[j].shortcut[k];
+                req.menus[i].items[j].action = menus[i].items[j].action;
+                req.menus[i].items[j].enabled = menus[i].items[j].enabled;
+                req.menus[i].items[j].checked = menus[i].items[j].checked;
+            }
+        }
+    }
+
+    GenericReply reply;
+    if (!send_request_recv_reply(&req, sizeof(req), &reply, sizeof(reply))) {
+        return -1;
+    }
+
+    return (reply.status == 0) ? 0 : -1;
+}
+
+//===----------------------------------------------------------------------===//
 // Pixel Buffer Access
 //===----------------------------------------------------------------------===//
 
@@ -1802,6 +1917,16 @@ extern "C" int gui_poll_event(gui_window_t *win, gui_event_t *event) {
                 break;
             }
 
+            case DISP_EVENT_MENU: {
+                auto *menu = reinterpret_cast<MenuEvent *>(ev_buf);
+                event->type = GUI_EVENT_MENU;
+                event->menu.menu_index = menu->menu_index;
+                event->menu.item_index = menu->item_index;
+                event->menu.action = menu->action;
+                event->menu._pad = 0;
+                break;
+            }
+
             default:
                 event->type = GUI_EVENT_NONE;
                 return -1;
@@ -1857,6 +1982,14 @@ extern "C" int gui_poll_event(gui_window_t *win, gui_event_t *event) {
 
         case DISP_EVENT_CLOSE:
             event->type = GUI_EVENT_CLOSE;
+            break;
+
+        case DISP_EVENT_MENU:
+            event->type = GUI_EVENT_MENU;
+            event->menu.menu_index = reply.menu.menu_index;
+            event->menu.item_index = reply.menu.item_index;
+            event->menu.action = reply.menu.action;
+            event->menu._pad = 0;
             break;
 
         default:

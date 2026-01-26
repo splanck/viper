@@ -2,7 +2,7 @@
 # User-space HTTP/HTTPS client implementation
 
 set(LIBHTTP_SOURCES
-        src/http.c
+        src/http.cpp
 )
 
 add_library(viperhttp STATIC ${LIBHTTP_SOURCES})

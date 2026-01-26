@@ -1,11 +1,11 @@
 # ViperDOS SSH Library
 
 set(LIBSSH_SOURCES
-        ssh.c
-        ssh_auth.c
-        ssh_channel.c
-        ssh_crypto.c
-        sftp.c
+        ssh.cpp
+        ssh_auth.cpp
+        ssh_channel.cpp
+        ssh_crypto.cpp
+        sftp.cpp
 )
 
 add_library(viperssh STATIC ${LIBSSH_SOURCES})

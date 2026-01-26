@@ -29,6 +29,7 @@ enum MsgType : uint32_t {
     DISP_LIST_WINDOWS = 12,     // List all windows (for taskbar)
     DISP_RESTORE_WINDOW = 13,   // Restore/focus a window
     DISP_SET_SCROLLBAR = 14,    // Configure scrollbar
+    DISP_SET_MENU = 15,         // Set/update menu bar for surface (Amiga/Mac style)
 
     // Replies
     DISP_INFO_REPLY = 0x81,
@@ -44,6 +45,7 @@ enum MsgType : uint32_t {
     DISP_EVENT_CLOSE = 0x93,
     DISP_EVENT_RESIZE = 0x94, // Window resized
     DISP_EVENT_SCROLL = 0x95, // Scrollbar position changed
+    DISP_EVENT_MENU = 0x96,   // Menu item selected (Amiga/Mac style global menu)
 };
 
 // Request: Get display info
@@ -189,6 +191,16 @@ struct ScrollEvent {
     uint8_t _pad[3];
 };
 
+// Event: Menu item selected (Amiga/Mac style global menu bar)
+struct MenuEvent {
+    uint32_t type;        // DISP_EVENT_MENU
+    uint32_t surface_id;
+    uint8_t menu_index;   // Which menu (0 = first menu)
+    uint8_t item_index;   // Which item in that menu
+    uint8_t action;       // Action code from MenuItem
+    uint8_t _pad;
+};
+
 // Request: Configure scrollbar
 struct SetScrollbarRequest {
     uint32_t type; // DISP_SET_SCROLLBAR
@@ -239,6 +251,7 @@ struct PollEventReply {
         CloseEvent close;
         ResizeEvent resize;
         ScrollEvent scroll;
+        MenuEvent menu;
     };
 };
 
@@ -282,7 +295,47 @@ struct RestoreWindowRequest {
     uint32_t surface_id;
 };
 
+//===----------------------------------------------------------------------===//
+// Global Menu Bar Protocol (Amiga/Mac style)
+//===----------------------------------------------------------------------===//
+
+/// Maximum menus per application (File, Edit, View, etc.)
+constexpr uint32_t MAX_MENUS = 8;
+
+/// Maximum items per menu
+constexpr uint32_t MAX_MENU_ITEMS = 16;
+
+/// Menu item definition
+struct MenuItem {
+    char label[32];      ///< Display text (empty string = separator)
+    char shortcut[16];   ///< Keyboard shortcut text (e.g., "Ctrl+S")
+    uint8_t action;      ///< Action code returned in MenuEvent (0 = disabled/separator)
+    uint8_t enabled;     ///< 1 = enabled, 0 = disabled (grayed out)
+    uint8_t checked;     ///< 1 = show checkmark, 0 = no checkmark
+    uint8_t _pad;
+};
+
+/// Menu definition (one pulldown menu like "File" or "Edit")
+struct MenuDef {
+    char title[24];                  ///< Menu title shown in menu bar
+    uint8_t item_count;              ///< Number of items in this menu
+    uint8_t _pad[3];
+    MenuItem items[MAX_MENU_ITEMS];  ///< Menu items
+};
+
+/// Request: Set menu bar for a surface
+/// When this surface has focus, these menus appear in the global menu bar
+struct SetMenuRequest {
+    uint32_t type;        ///< DISP_SET_MENU
+    uint32_t request_id;
+    uint32_t surface_id;
+    uint8_t menu_count;   ///< Number of menus (0 = clear menus)
+    uint8_t _pad[3];
+    MenuDef menus[MAX_MENUS];
+};
+
 // Maximum message payload size
-constexpr size_t MAX_PAYLOAD = 512;
+// SetMenuRequest is ~6900 bytes due to menu item data, so we need a larger buffer
+constexpr size_t MAX_PAYLOAD = 8192;
 
 } // namespace display_protocol
