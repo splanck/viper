@@ -1427,6 +1427,14 @@ extern "C" void gui_set_hscrollbar(gui_window_t *win,
  * @endcode
  */
 extern "C" int gui_set_menu(gui_window_t *win, const gui_menu_def_t *menus, uint8_t menu_count) {
+    sys::print("[gui] gui_set_menu called, menu_count=");
+    debug_num("", menu_count);
+    if (menu_count > 0 && menus) {
+        sys::print("[gui] first menu title='");
+        sys::print(menus[0].title);
+        sys::print("'\n");
+    }
+
     if (!win)
         return -1;
 
