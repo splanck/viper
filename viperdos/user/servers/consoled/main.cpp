@@ -43,6 +43,7 @@ static constexpr uint32_t PADDING = 8;
 // Colors (from centralized viper_colors.h)
 static constexpr uint32_t DEFAULT_FG = VIPER_COLOR_TEXT;
 static constexpr uint32_t DEFAULT_BG = VIPER_COLOR_CONSOLE_BG;
+static constexpr uint32_t CURSOR_COLOR = 0xFFFF8800; // Amiga orange
 
 // =============================================================================
 // Debug Output (serial only)
@@ -145,9 +146,9 @@ static void draw_cursor() {
     uint32_t px = PADDING + g_cursor_x * FONT_WIDTH;
     uint32_t py = PADDING + g_cursor_y * FONT_HEIGHT;
 
-    // Draw cursor as inverse block
+    // Draw cursor as orange block (Amiga style)
     Cell &c = cell_at(g_cursor_x, g_cursor_y);
-    gui_draw_char_scaled(g_window, px, py, c.ch, c.bg, c.fg, FONT_SCALE);
+    gui_draw_char_scaled(g_window, px, py, c.ch, c.bg, CURSOR_COLOR, FONT_SCALE);
 }
 
 static void redraw_all() {

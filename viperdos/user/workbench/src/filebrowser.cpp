@@ -402,8 +402,9 @@ bool FileBrowser::handleEvent(const gui_event_t &event) {
             return true;
 
         case GUI_EVENT_CLOSE:
-            // Signal desktop to close this browser
-            m_desktop->closeFileBrowser(this);
+            // Mark for deferred closing to avoid use-after-free
+            // Desktop will clean up after handleEvent returns
+            m_closing = true;
             return true;
 
         default:

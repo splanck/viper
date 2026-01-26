@@ -21,6 +21,8 @@
  */
 #include "dispatch.hpp"
 #include "table.hpp"
+#include "../include/error.hpp"
+#include "../sched/signal.hpp"
 
 namespace syscall {
 
@@ -37,6 +39,17 @@ namespace syscall {
 void dispatch(exceptions::ExceptionFrame *frame) {
     // Get syscall number from x8
     u32 syscall_num = static_cast<u32>(frame->x[8]);
+
+    // Special handling for sigreturn - it needs to restore the exception frame
+    if (syscall_num == 0x92) { // SYS_SIGRETURN
+        if (signal::restore_signal_context(frame)) {
+            // Success - frame has been restored, don't overwrite results
+            return;
+        }
+        // Failed - return error
+        frame->x[0] = static_cast<u64>(error::VERR_INVALID_ARG);
+        return;
+    }
 
     // Get arguments from x0-x5
     u64 a0 = frame->x[0];

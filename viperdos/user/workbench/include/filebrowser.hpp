@@ -121,6 +121,12 @@ class FileBrowser {
     bool isOpen() const { return m_window != nullptr; }
 
     /**
+     * @brief Checks if the browser is marked for closing.
+     * @return true if close was requested.
+     */
+    bool isClosing() const { return m_closing; }
+
+    /**
      * @brief Returns the current directory path.
      * @return Null-terminated path string.
      */
@@ -225,6 +231,9 @@ class FileBrowser {
 
     // Inline rename editor state
     RenameEditor m_renameEditor = {};
+
+    // Close request flag (deferred deletion to avoid use-after-free)
+    bool m_closing = false;
 };
 
 } // namespace workbench

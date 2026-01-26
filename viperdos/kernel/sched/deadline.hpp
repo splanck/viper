@@ -23,6 +23,21 @@ namespace deadline {
 constexpr u64 MIN_BANDWIDTH_FRACTION = 1000;
 
 /**
+ * @brief Deadline task flag: throttle on miss (skip to next period).
+ */
+constexpr u32 DL_FLAG_THROTTLE_ON_MISS = 1 << 0;
+
+/**
+ * @brief Deadline task flag: demote to SCHED_OTHER on repeated misses.
+ */
+constexpr u32 DL_FLAG_DEMOTE_ON_MISS = 1 << 1;
+
+/**
+ * @brief Number of consecutive misses before demotion (if DL_FLAG_DEMOTE_ON_MISS set).
+ */
+constexpr u32 DL_MISS_THRESHOLD = 3;
+
+/**
  * @brief Maximum total bandwidth (95% = 950/1000).
  *
  * @details
@@ -130,6 +145,50 @@ inline bool earlier_deadline(const task::Task *a, const task::Task *b) {
     if (!b)
         return true;
     return a->dl_abs_deadline < b->dl_abs_deadline;
+}
+
+/**
+ * @brief Check if a deadline task has missed its deadline.
+ *
+ * @param t Task to check.
+ * @param current_time Current system time in timer ticks.
+ * @return true if deadline was missed, false otherwise.
+ */
+bool check_deadline_miss(task::Task *t, u64 current_time);
+
+/**
+ * @brief Handle a deadline miss for a task.
+ *
+ * @details
+ * Called when a deadline miss is detected. Depending on dl_flags:
+ * - DL_FLAG_THROTTLE_ON_MISS: Skip to next period
+ * - DL_FLAG_DEMOTE_ON_MISS: Demote to SCHED_OTHER after threshold misses
+ * Always increments dl_missed counter and logs the miss.
+ *
+ * @param t Task that missed its deadline.
+ * @param current_time Current system time in timer ticks.
+ */
+void handle_deadline_miss(task::Task *t, u64 current_time);
+
+/**
+ * @brief Get the number of deadline misses for a task.
+ *
+ * @param t Task to query.
+ * @return Number of missed deadlines, 0 if task is null.
+ */
+inline u32 get_missed_deadlines(const task::Task *t) {
+    return t ? t->dl_missed : 0;
+}
+
+/**
+ * @brief Reset the deadline miss counter for a task.
+ *
+ * @param t Task to reset.
+ */
+inline void reset_missed_deadlines(task::Task *t) {
+    if (t) {
+        t->dl_missed = 0;
+    }
 }
 
 } // namespace deadline

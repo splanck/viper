@@ -16,6 +16,7 @@
 #include "../../sched/task.hpp"
 #include "../../cap/handle.hpp"
 #include "../../cap/rights.hpp"
+#include "../../console/serial.hpp"
 #include "../../include/constants.hpp"
 #include "../../include/viperdos/task_info.hpp"
 #include "../../ipc/channel.hpp"
@@ -69,22 +70,79 @@ SyscallResult sys_task_spawn(u64 a0, u64 a1, u64 a2, u64, u64, u64) {
         VALIDATE_USER_STRING(args, 256);
     }
 
+    // Copy user strings into kernel buffers BEFORE any operations that might
+    // cause a context switch. User pointers become invalid if TTBR0 switches
+    // to another process's page tables.
+    char path_buf[kernel::constants::limits::MAX_PATH];
+    char name_buf[64];
+    char args_buf[256];
+
+    // Copy path (required)
+    usize i = 0;
+    while (i < sizeof(path_buf) - 1 && path[i]) {
+        path_buf[i] = path[i];
+        i++;
+    }
+    path_buf[i] = '\0';
+
+    // Copy name (optional)
+    const char *display_name = path_buf;
+    if (name) {
+        i = 0;
+        while (i < sizeof(name_buf) - 1 && name[i]) {
+            name_buf[i] = name[i];
+            i++;
+        }
+        name_buf[i] = '\0';
+        display_name = name_buf;
+    }
+
+    // Copy args (optional)
+    const char *args_ptr = nullptr;
+    if (args) {
+        i = 0;
+        while (i < sizeof(args_buf) - 1 && args[i]) {
+            args_buf[i] = args[i];
+            i++;
+        }
+        args_buf[i] = '\0';
+        args_ptr = args_buf;
+    }
+
     task::Task *current_task = task::current();
     viper::Viper *parent_viper = nullptr;
     if (current_task && current_task->viper) {
         parent_viper = reinterpret_cast<viper::Viper *>(current_task->viper);
     }
 
-    const char *display_name = name ? name : path;
+    // Verify vinit's page tables before spawn
+    viper::debug_verify_vinit_tables("before spawn_process");
 
-    loader::SpawnResult result = loader::spawn_process(path, display_name, parent_viper);
+    loader::SpawnResult result = loader::spawn_process(path_buf, display_name, parent_viper);
     if (!result.success) {
         return err_code(error::VERR_IO);
     }
 
+    // Verify vinit's page tables after spawn
+    viper::debug_verify_vinit_tables("after spawn_process");
+
+    // DEBUG: Also show parent's L1[2] directly
+    if (parent_viper) {
+        viper::AddressSpace *parent_as = viper::get_address_space(parent_viper);
+        if (parent_as) {
+            u64 *l0 = reinterpret_cast<u64 *>(pmm::phys_to_virt(parent_as->root()));
+            if (l0[0] & 0x1) {
+                u64 *l1 = reinterpret_cast<u64 *>(pmm::phys_to_virt(l0[0] & ~0xFFFULL));
+                serial::puts("[spawn_debug] Parent L1[2]=");
+                serial::put_hex(l1[2]);
+                serial::puts("\n");
+            }
+        }
+    }
+
     cap::Handle bootstrap_send = create_bootstrap_channel(parent_viper, result.viper);
 
-    copy_args_to_viper(result.viper, args);
+    copy_args_to_viper(result.viper, args_ptr);
 
     return SyscallResult::ok(static_cast<u64>(result.viper->id),
                              static_cast<u64>(result.task_id),
@@ -103,6 +161,32 @@ SyscallResult sys_task_spawn_shm(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u64) {
     }
     if (args) {
         VALIDATE_USER_STRING(args, 256);
+    }
+
+    // Copy user strings into kernel buffers before any context-switch-prone operations
+    char name_buf[64];
+    char args_buf[256];
+
+    const char *display_name = "shm_spawn";
+    if (name) {
+        usize i = 0;
+        while (i < sizeof(name_buf) - 1 && name[i]) {
+            name_buf[i] = name[i];
+            i++;
+        }
+        name_buf[i] = '\0';
+        display_name = name_buf;
+    }
+
+    const char *args_ptr = nullptr;
+    if (args) {
+        usize i = 0;
+        while (i < sizeof(args_buf) - 1 && args[i]) {
+            args_buf[i] = args[i];
+            i++;
+        }
+        args_buf[i] = '\0';
+        args_ptr = args_buf;
     }
 
     task::Task *current_task = task::current();
@@ -134,7 +218,6 @@ SyscallResult sys_task_spawn_shm(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u64) {
         return err_invalid_arg();
     }
 
-    const char *display_name = name ? name : "shm_spawn";
     const void *elf_data = pmm::phys_to_virt(shm->phys_addr() + offset);
 
     loader::SpawnResult result = loader::spawn_process_from_blob(
@@ -145,7 +228,7 @@ SyscallResult sys_task_spawn_shm(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u64) {
 
     cap::Handle bootstrap_send = create_bootstrap_channel(parent_viper, result.viper);
 
-    copy_args_to_viper(result.viper, args);
+    copy_args_to_viper(result.viper, args_ptr);
 
     return SyscallResult::ok(static_cast<u64>(result.viper->id),
                              static_cast<u64>(result.task_id),
@@ -167,7 +250,30 @@ SyscallResult sys_replace(u64 a0, u64 a1, u64 a2, u64, u64, u64) {
         }
     }
 
-    loader::ReplaceResult result = loader::replace_process(path, preserve_handles, preserve_count);
+    // Copy path into kernel buffer for safety
+    char path_buf[256];
+    usize i = 0;
+    while (i < sizeof(path_buf) - 1 && path[i]) {
+        path_buf[i] = path[i];
+        i++;
+    }
+    path_buf[i] = '\0';
+
+    // Copy preserve_handles into kernel buffer (limit to reasonable count)
+    constexpr u32 MAX_PRESERVE = 16;
+    cap::Handle handles_buf[MAX_PRESERVE];
+    const cap::Handle *handles_ptr = nullptr;
+    if (preserve_handles && preserve_count > 0) {
+        if (preserve_count > MAX_PRESERVE) {
+            preserve_count = MAX_PRESERVE;
+        }
+        for (u32 j = 0; j < preserve_count; j++) {
+            handles_buf[j] = preserve_handles[j];
+        }
+        handles_ptr = handles_buf;
+    }
+
+    loader::ReplaceResult result = loader::replace_process(path_buf, handles_ptr, preserve_count);
     if (!result.success) {
         return err_code(error::VERR_IO);
     }

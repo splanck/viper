@@ -386,15 +386,17 @@ static void start_servers() {
 
         u32 timeout = 2000;
         if (wait_for_service(srv.assign, timeout)) {
-            print_str("[vinit] ");
-            print_str(srv.assign);
-            print_str(": ready\n");
             srv.available = true;
 
-            // When displayd is ready, disable kernel gcon to prevent interference
+            // When displayd is ready, disable kernel gcon BEFORE printing
+            // to prevent debug text from appearing on the graphical display
             if (streq(srv.assign, "DISPLAY")) {
                 sys::gcon_set_gui_mode(true);
             }
+
+            print_str("[vinit] ");
+            print_str(srv.assign);
+            print_str(": ready\n");
         } else {
             print_str("[vinit] ");
             print_str(srv.assign);

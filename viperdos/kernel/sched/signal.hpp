@@ -17,6 +17,11 @@
 #include "../include/types.hpp"
 #include "task.hpp"
 
+// Forward declaration of ExceptionFrame from arch/aarch64/exceptions.hpp
+namespace exceptions {
+struct ExceptionFrame;
+} // namespace exceptions
+
 namespace signal {
 
 /// Signal numbers (POSIX subset)
@@ -182,5 +187,47 @@ bool has_pending(task::Task *task);
  * the task for fatal signals since user handlers aren't implemented.
  */
 void process_pending();
+
+/**
+ * @brief Signal frame pushed on user stack during signal delivery.
+ *
+ * @details
+ * This structure is pushed onto the user stack before calling a signal handler.
+ * The sigreturn syscall uses this to restore the original context.
+ */
+struct SignalFrame {
+    u64 x[31];       ///< Saved general-purpose registers
+    u64 sp;          ///< Saved stack pointer
+    u64 elr;         ///< Saved return address
+    u64 spsr;        ///< Saved program status
+    u32 signum;      ///< Signal number
+    u32 blocked_old; ///< Previous blocked signal mask
+    u64 trampoline[2]; ///< Signal return trampoline code
+};
+
+/**
+ * @brief Set up signal delivery for the current task.
+ *
+ * @details
+ * Called when returning to user mode if a signal is pending. This function:
+ * 1. Saves the current context in a SignalFrame on the user stack
+ * 2. Sets up the exception frame to call the signal handler
+ * 3. When the handler returns, it calls the trampoline which invokes sigreturn
+ *
+ * @param frame Exception frame to modify for signal delivery.
+ * @return true if a signal was delivered, false if no action needed.
+ */
+bool setup_signal_delivery(exceptions::ExceptionFrame *frame);
+
+/**
+ * @brief Restore context after sigreturn syscall.
+ *
+ * @details
+ * Called from sys_sigreturn to restore the pre-signal context.
+ *
+ * @param frame Exception frame to restore into.
+ * @return true if restoration succeeded, false on error.
+ */
+bool restore_signal_context(exceptions::ExceptionFrame *frame);
 
 } // namespace signal

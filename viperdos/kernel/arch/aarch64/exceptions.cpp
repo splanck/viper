@@ -24,6 +24,7 @@
 #include "../../sched/scheduler.hpp"
 #include "../../sched/signal.hpp"
 #include "../../sched/task.hpp"
+#include "../../viper/address_space.hpp"
 #include "../../viper/viper.hpp"
 
 // Forward declaration for GIC handler
@@ -297,11 +298,15 @@ void handle_el0_sync(exceptions::ExceptionFrame *frame) {
         // Route to centralized syscall dispatcher
         syscall::dispatch(frame);
 
+        // DEBUG: Verify vinit page tables before returning to user mode
+        viper::debug_verify_vinit_tables("post-dispatch");
+
         // Check for pending signals before returning to user mode
-        task::Task *t = task::current();
-        if (t && (t->signals.pending & ~t->signals.blocked)) {
-            signal::process_pending();
-        }
+        // This may modify the frame to call a signal handler
+        signal::setup_signal_delivery(frame);
+
+        // DEBUG: Verify again after signal setup
+        viper::debug_verify_vinit_tables("pre-eret");
         return;
     }
 

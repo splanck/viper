@@ -802,6 +802,13 @@ void Desktop::handleBrowserEvents() {
         if (gui_poll_event(browser->window(), &event) == 0) {
             browser->handleEvent(event);
         }
+
+        // Check if browser was marked for closing (deferred deletion)
+        // This avoids use-after-free when close event deletes the browser
+        // while still inside handleEvent()
+        if (browser->isClosing()) {
+            closeFileBrowser(browser);
+        }
     }
 }
 

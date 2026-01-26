@@ -90,11 +90,16 @@ u64 *AddressSpace::phys_to_virt(u64 phys) {
 
 /** @copydoc viper::AddressSpace::init */
 bool AddressSpace::init() {
+    // Verify vinit tables at start of init
+    debug_verify_vinit_tables("AddressSpace::init start");
+
     // Allocate ASID
     asid_ = asid_alloc();
     if (asid_ == ASID_INVALID) {
         return false;
     }
+
+    debug_verify_vinit_tables("after asid_alloc");
 
     // Allocate root page table (L0)
     u64 l0_page = pmm::alloc_page();
@@ -104,6 +109,9 @@ bool AddressSpace::init() {
         return false;
     }
 
+    debug_verify_vinit_tables("after L0 alloc");
+
+
     root_ = l0_page;
 
     // Zero the L0 table
@@ -111,6 +119,8 @@ bool AddressSpace::init() {
     for (int i = 0; i < 512; i++) {
         l0[i] = 0;
     }
+
+    debug_verify_vinit_tables("after L0 zero");
 
     // Create user's own L1 table that includes kernel mappings
     // This allows kernel code to run when exceptions occur from user space
@@ -126,11 +136,16 @@ bool AddressSpace::init() {
             return false;
         }
 
+        debug_verify_vinit_tables("after L1 alloc");
+
+
         // Zero user's L1 table
         u64 *user_l1 = phys_to_virt(l1_page);
         for (int i = 0; i < 512; i++) {
             user_l1[i] = 0;
         }
+
+        debug_verify_vinit_tables("after L1 zero");
 
         // Copy kernel's L1[0] and L1[1] entries (0-2GB kernel mappings)
         u64 *kernel_l0 = phys_to_virt(kernel_ttbr0);
@@ -140,8 +155,26 @@ bool AddressSpace::init() {
             user_l1[1] = kernel_l1[1]; // RAM 1-2GB
         }
 
-        // Install user's L1 in user's L0
+        debug_verify_vinit_tables("after kernel L1 copy");
+
+        // Install user's L1 in user's L0 with proper barriers
         l0[0] = l1_page | pte::VALID | pte::TABLE;
+
+        // Ensure page table writes are visible to hardware table walker
+        asm volatile("dc cvau, %0" ::"r"(&l0[0]));
+        asm volatile("dc cvau, %0" ::"r"(&user_l1[0]));
+        asm volatile("dc cvau, %0" ::"r"(&user_l1[1]));
+        asm volatile("dsb ish");
+        asm volatile("isb");
+
+        debug_verify_vinit_tables("after cache flush");
+
+        // Debug: show L0 and L1 addresses
+        serial::puts("[address_space] L0=");
+        serial::put_hex(l0_page);
+        serial::puts(" L1=");
+        serial::put_hex(l1_page);
+        serial::puts("\n");
     }
 
     serial::puts("[address_space] Created new address space: ASID=");
@@ -149,6 +182,8 @@ bool AddressSpace::init() {
     serial::puts(", root=");
     serial::put_hex(root_);
     serial::puts("\n");
+
+    debug_verify_vinit_tables("AddressSpace::init end");
 
     return true;
 }
@@ -265,6 +300,12 @@ void AddressSpace::destroy() {
     serial::puts("[address_space] Address space fully released\n");
 }
 
+// Debug: Track physical addresses of vinit's page tables for corruption detection
+static u64 vinit_l0_phys = 0;
+static u64 vinit_l1_phys = 0;
+static u64 vinit_l2_phys = 0;
+static u64 vinit_l2_entry0 = 0; // Track initial L2[0] value
+
 /** @copydoc viper::AddressSpace::get_or_alloc_table */
 u64 *AddressSpace::get_or_alloc_table(u64 *parent, int index) {
     if (!(parent[index] & pte::VALID)) {
@@ -273,17 +314,183 @@ u64 *AddressSpace::get_or_alloc_table(u64 *parent, int index) {
         if (page == 0)
             return nullptr;
 
+        // DEBUG: Check if we're about to overwrite vinit's page tables
+        if (vinit_l0_phys != 0 && page == vinit_l0_phys) {
+            serial::puts("[page_table] CRITICAL: PMM returned vinit's L0!\n");
+        }
+        if (vinit_l1_phys != 0 && page == vinit_l1_phys) {
+            serial::puts("[page_table] CRITICAL: PMM returned vinit's L1!\n");
+        }
+        if (vinit_l2_phys != 0 && page == vinit_l2_phys) {
+            serial::puts("[page_table] CRITICAL: PMM returned vinit's L2!\n");
+        }
+
         // Zero the new table
         u64 *child = phys_to_virt(page);
         for (int i = 0; i < 512; i++) {
             child[i] = 0;
         }
 
-        // Install table entry
+        // Install table entry with proper memory barriers
+        // The page table walker may bypass caches, so we need DSB to ensure
+        // the write is complete before any subsequent page table walk
         parent[index] = page | pte::VALID | pte::TABLE;
+
+        // Clean the cache line containing the entry to ensure visibility
+        asm volatile("dc cvau, %0" ::"r"(&parent[index]));
+        asm volatile("dsb ish");
+        asm volatile("isb");
     }
 
     return phys_to_virt(parent[index] & pte::ADDR_MASK);
+}
+
+void debug_set_vinit_tables(u64 l0, u64 l1, u64 l2) {
+    vinit_l0_phys = l0;
+    vinit_l1_phys = l1;
+    vinit_l2_phys = l2;
+
+    // Also record the initial L2[0] value
+    u64 *l2_ptr = reinterpret_cast<u64 *>(pmm::phys_to_virt(l2));
+    vinit_l2_entry0 = l2_ptr[0];
+
+    serial::puts("[page_table] Tracking vinit tables: L0=");
+    serial::put_hex(l0);
+    serial::puts(" L1=");
+    serial::put_hex(l1);
+    serial::puts(" L2=");
+    serial::put_hex(l2);
+    serial::puts(" L2[0]=");
+    serial::put_hex(vinit_l2_entry0);
+    serial::puts("\n");
+}
+
+// Flag to halt after first corruption detected
+static bool corruption_detected = false;
+
+// Track last passing checkpoint for debugging
+static const char *last_good_checkpoint = nullptr;
+
+bool debug_verify_vinit_tables(const char *context) {
+    if (vinit_l0_phys == 0) {
+        return true; // Not tracking yet
+    }
+
+    // If we already detected corruption, spin forever to preserve output
+    if (corruption_detected) {
+        while (true) {
+            asm volatile("wfe");
+        }
+    }
+
+    // Read L0[0] and verify it points to L1
+    u64 *l0 = reinterpret_cast<u64 *>(pmm::phys_to_virt(vinit_l0_phys));
+    u64 l0_entry = l0[0];
+
+    if (!(l0_entry & pte::VALID)) {
+        corruption_detected = true;
+        serial::puts("\n\n========== CORRUPTION DETECTED ==========\n");
+        serial::puts("[page_table] CORRUPTION at ");
+        serial::puts(context);
+        serial::puts(": L0[0] invalid! was=");
+        serial::put_hex(l0_entry);
+        serial::puts("\n");
+        serial::puts("=========================================\n");
+        serial::puts("Halting to preserve boot output...\n");
+        while (true) {
+            asm volatile("wfe");
+        }
+        return false;
+    }
+
+    u64 l1_from_l0 = l0_entry & pte::ADDR_MASK;
+    if (l1_from_l0 != vinit_l1_phys) {
+        corruption_detected = true;
+        serial::puts("\n\n========== CORRUPTION DETECTED ==========\n");
+        serial::puts("[page_table] CORRUPTION at ");
+        serial::puts(context);
+        serial::puts(": L0[0] changed! expected=");
+        serial::put_hex(vinit_l1_phys);
+        serial::puts(" got=");
+        serial::put_hex(l1_from_l0);
+        serial::puts("\n");
+        serial::puts("=========================================\n");
+        serial::puts("Halting to preserve boot output...\n");
+        while (true) {
+            asm volatile("wfe");
+        }
+        return false;
+    }
+
+    // Read L1[2] and verify it points to L2
+    u64 *l1 = reinterpret_cast<u64 *>(pmm::phys_to_virt(vinit_l1_phys));
+    u64 l1_entry = l1[2];
+
+    if (!(l1_entry & pte::VALID)) {
+        corruption_detected = true;
+        serial::puts("\n\n========== CORRUPTION DETECTED ==========\n");
+        serial::puts("[page_table] CORRUPTION at ");
+        serial::puts(context);
+        serial::puts(": L1[2] invalid! was=");
+        serial::put_hex(l1_entry);
+        serial::puts("\n");
+        serial::puts("=========================================\n");
+        serial::puts("Halting to preserve boot output...\n");
+        while (true) {
+            asm volatile("wfe");
+        }
+        return false;
+    }
+
+    u64 l2_from_l1 = l1_entry & pte::ADDR_MASK;
+    if (l2_from_l1 != vinit_l2_phys) {
+        corruption_detected = true;
+        serial::puts("\n\n========== CORRUPTION DETECTED ==========\n");
+        serial::puts("[page_table] CORRUPTION at ");
+        serial::puts(context);
+        serial::puts(": L1[2] changed! expected=");
+        serial::put_hex(vinit_l2_phys);
+        serial::puts(" got=");
+        serial::put_hex(l2_from_l1);
+        serial::puts("\n");
+        serial::puts("=========================================\n");
+        serial::puts("Halting to preserve boot output...\n");
+        while (true) {
+            asm volatile("wfe");
+        }
+        return false;
+    }
+
+    // Also check L2[0] - the entry for vinit's code at 0x80000000
+    // Check the FULL entry value, not just VALID bit - an address size fault
+    // can occur when VALID is set but the physical address is out of range
+    u64 *l2 = reinterpret_cast<u64 *>(pmm::phys_to_virt(vinit_l2_phys));
+    u64 l2_entry = l2[0];
+
+    if (l2_entry != vinit_l2_entry0) {
+        corruption_detected = true;
+        serial::puts("\n\n========== CORRUPTION DETECTED ==========\n");
+        serial::puts("Last good: ");
+        serial::puts(last_good_checkpoint ? last_good_checkpoint : "(none)");
+        serial::puts("\nCorrupted at: ");
+        serial::puts(context);
+        serial::puts("\nL2[0] was=");
+        serial::put_hex(l2_entry);
+        serial::puts(" expected=");
+        serial::put_hex(vinit_l2_entry0);
+        serial::puts("\nL2_phys=");
+        serial::put_hex(vinit_l2_phys);
+        serial::puts("\n=========================================\n");
+        while (true) {
+            asm volatile("wfe");
+        }
+        return false;
+    }
+
+    // Track this as the last good checkpoint
+    last_good_checkpoint = context;
+
+    return true;
 }
 
 /** @copydoc viper::AddressSpace::map */
@@ -330,6 +537,10 @@ bool AddressSpace::map(u64 virt, u64 phys, usize size, u32 prot_flags) {
         }
 
         l3[i3] = entry;
+
+        // Ensure page table write is visible before TLB flush
+        asm volatile("dc cvau, %0" ::"r"(&l3[i3]));
+        asm volatile("dsb ish");
 
         // Invalidate TLB for this page
         tlb_flush_page(va, asid_);
@@ -513,6 +724,10 @@ bool AddressSpace::write_pte(u64 virt, u64 entry) {
 
     // Write the entry
     l3[i3] = entry;
+
+    // Ensure page table write is visible before TLB flush
+    asm volatile("dc cvau, %0" ::"r"(&l3[i3]));
+    asm volatile("dsb ish");
 
     // Invalidate TLB for this page
     tlb_flush_page(virt, asid_);

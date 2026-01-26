@@ -21,8 +21,8 @@ void init_mutex(PiMutex *m) {
 
     // Spinlock is default-initialized via constructor
     m->owner = nullptr;
-    m->owner_original_priority = 128; // Default priority
-    m->boosted_priority = 128;
+    m->owner_original_priority = task::PRIORITY_DEFAULT;
+    m->boosted_priority = task::PRIORITY_DEFAULT;
     m->initialized = true;
 }
 
@@ -46,8 +46,11 @@ bool try_lock(PiMutex *m) {
     }
 
     m->owner = cur;
-    m->owner_original_priority = cur->priority;
+    m->owner_original_priority = cur->original_priority;
     m->boosted_priority = cur->priority;
+
+    // Clear blocked_mutex since we now own this mutex
+    cur->blocked_mutex = nullptr;
 
     m->lock.release(saved_daif);
     return true;
@@ -66,19 +69,48 @@ void contend(PiMutex *m, task::Task *waiter) {
         return;
     }
 
-    // If waiter has higher priority (lower number), boost owner
-    if (waiter->priority < owner->priority) {
-        // Boost owner to waiter's priority
-        owner->priority = waiter->priority;
-        m->boosted_priority = waiter->priority;
+    // Track which mutex we're blocked on for chain inheritance
+    waiter->blocked_mutex = m;
 
-        serial::puts("[pi] Boosting task '");
-        serial::puts(owner->name);
-        serial::puts("' priority to ");
-        serial::put_dec(waiter->priority);
-        serial::puts(" (waiter: ");
-        serial::puts(waiter->name);
-        serial::puts(")\n");
+    // If waiter has higher priority (lower number), boost the chain
+    if (waiter->priority < owner->priority) {
+        // Follow the chain of blocking and boost all tasks
+        task::Task *current_owner = owner;
+        u8 boost_priority = waiter->priority;
+        constexpr int MAX_CHAIN_DEPTH = 8; // Prevent infinite loops
+        int depth = 0;
+
+        while (current_owner && depth < MAX_CHAIN_DEPTH) {
+            if (boost_priority < current_owner->priority) {
+                serial::puts("[pi] Boosting task '");
+                serial::puts(current_owner->name);
+                serial::puts("' priority from ");
+                serial::put_dec(current_owner->priority);
+                serial::puts(" to ");
+                serial::put_dec(boost_priority);
+                serial::puts(" (waiter: ");
+                serial::puts(waiter->name);
+                serial::puts(")\n");
+
+                current_owner->priority = boost_priority;
+            }
+
+            // Check if this owner is also blocked on a mutex
+            if (current_owner->blocked_mutex) {
+                PiMutex *next_mutex = static_cast<PiMutex *>(current_owner->blocked_mutex);
+                if (next_mutex->initialized) {
+                    next_mutex->boosted_priority = boost_priority;
+                    current_owner = next_mutex->owner;
+                    depth++;
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        m->boosted_priority = boost_priority;
     }
 
     m->lock.release(saved_daif);
@@ -98,21 +130,24 @@ void unlock(PiMutex *m) {
     }
 
     // Restore original priority if it was boosted
-    if (cur->priority != m->owner_original_priority) {
+    if (cur->priority != cur->original_priority) {
         serial::puts("[pi] Restoring task '");
         serial::puts(cur->name);
         serial::puts("' priority from ");
         serial::put_dec(cur->priority);
         serial::puts(" to ");
-        serial::put_dec(m->owner_original_priority);
+        serial::put_dec(cur->original_priority);
         serial::puts("\n");
 
-        cur->priority = m->owner_original_priority;
+        cur->priority = cur->original_priority;
     }
 
+    // Clear blocked mutex tracking
+    cur->blocked_mutex = nullptr;
+
     m->owner = nullptr;
-    m->owner_original_priority = 128;
-    m->boosted_priority = 128;
+    m->owner_original_priority = task::PRIORITY_DEFAULT;
+    m->boosted_priority = task::PRIORITY_DEFAULT;
 
     m->lock.release(saved_daif);
 }
@@ -153,10 +188,20 @@ void restore_priority(task::Task *t) {
     if (!t)
         return;
 
-    // Restore to default priority (128)
-    // In a full implementation, we'd track the original priority per-mutex
-    // For now, we use a simple restore to default
-    t->priority = 128;
+    // Restore to original priority (from before any PI boost)
+    if (t->priority != t->original_priority) {
+        serial::puts("[pi] Restoring task '");
+        serial::puts(t->name);
+        serial::puts("' priority from ");
+        serial::put_dec(t->priority);
+        serial::puts(" to original ");
+        serial::put_dec(t->original_priority);
+        serial::puts("\n");
+        t->priority = t->original_priority;
+    }
+
+    // Clear blocked mutex pointer
+    t->blocked_mutex = nullptr;
 }
 
 } // namespace pi

@@ -373,4 +373,16 @@ void tlb_flush_asid(u16 asid);
  */
 void tlb_flush_page(u64 virt, u16 asid);
 
+/**
+ * @brief Debug: Register vinit's page table addresses for corruption detection.
+ */
+void debug_set_vinit_tables(u64 l0, u64 l1, u64 l2);
+
+/**
+ * @brief Debug: Verify vinit's page tables haven't been corrupted.
+ * @param context String describing the check location (e.g., "after spawn").
+ * @return true if tables are intact, false if corruption detected.
+ */
+bool debug_verify_vinit_tables(const char *context);
+
 } // namespace viper

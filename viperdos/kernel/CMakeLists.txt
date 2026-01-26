@@ -53,6 +53,7 @@ set(KERNEL_SOURCES
         sched/idle.cpp
         sched/pi.cpp
         sched/deadline.cpp
+        sched/bandwidth.cpp
         syscall/dispatch.cpp
         syscall/table.cpp
         syscall/handlers/task.cpp

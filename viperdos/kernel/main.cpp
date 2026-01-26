@@ -910,6 +910,29 @@ bool load_and_start_vinit(viper::Viper *vp) {
     serial::puts("[kernel] vinit loaded successfully\n");
 
     viper::AddressSpace *as = viper::get_address_space(vp);
+    serial::puts("[kernel] DEBUG: got address space, root=");
+    serial::put_hex(as->root());
+    serial::puts("\n");
+
+    // DEBUG: Register vinit's page tables for corruption tracking
+    {
+        u64 l0_phys = as->root();
+        serial::puts("[kernel] DEBUG: l0_phys=");
+        serial::put_hex(l0_phys);
+        serial::puts("\n");
+        u64 *l0 = reinterpret_cast<u64 *>(pmm::phys_to_virt(l0_phys));
+        serial::puts("[kernel] DEBUG: l0[0]=");
+        serial::put_hex(l0[0]);
+        serial::puts("\n");
+        u64 l1_phys = l0[0] & ~0xFFFULL; // L0[0] points to L1
+        u64 *l1 = reinterpret_cast<u64 *>(pmm::phys_to_virt(l1_phys));
+        serial::puts("[kernel] DEBUG: l1[2]=");
+        serial::put_hex(l1[2]);
+        serial::puts("\n");
+        u64 l2_phys = (l1[2] & ~0xFFFULL); // L1[2] points to L2 for user code
+        viper::debug_set_vinit_tables(l0_phys, l1_phys, l2_phys);
+    }
+
     u64 stack_base = viper::layout::USER_STACK_TOP - viper::layout::USER_STACK_SIZE;
     u64 stack_page = as->alloc_map(stack_base, viper::layout::USER_STACK_SIZE, viper::prot::RW);
     if (!stack_page) {
@@ -939,6 +962,8 @@ bool load_and_start_vinit(viper::Viper *vp) {
     if (vinit_task) {
         serial::puts("[kernel] vinit task created, will run under scheduler\n");
         scheduler::enqueue(vinit_task);
+        // Verify right after enqueue
+        viper::debug_verify_vinit_tables("after vinit enqueue");
         return true;
     } else {
         serial::puts("[kernel] Failed to create vinit task\n");
@@ -1036,10 +1061,17 @@ extern "C" void kernel_main(void *boot_info_ptr) {
 
     cpu::boot_secondaries();
 
+    // Verify after CPU boot
+    viper::debug_verify_vinit_tables("after cpu::boot_secondaries");
+
     serial::puts("Starting scheduler...\n");
+    // Verify right before scheduler starts
+    viper::debug_verify_vinit_tables("before scheduler::start");
+
     if (gcon::is_available()) {
         gcon::puts("  Starting...\n");
         timer::delay_ms(200);
+        viper::debug_verify_vinit_tables("after gcon delay");
     }
 
     scheduler::start();

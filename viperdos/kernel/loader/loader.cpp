@@ -76,6 +76,9 @@ u64 load_segment(viper::AddressSpace *as,
     serial::put_dec(pages);
     serial::puts("\n");
 
+    // Verify vinit's page tables before allocation
+    viper::debug_verify_vinit_tables("before alloc_map");
+
     u32 prot = elf::flags_to_prot(phdr->p_flags);
 
     if (as->alloc_map(vaddr_aligned, pages * 4096, prot) == 0) {
@@ -83,15 +86,26 @@ u64 load_segment(viper::AddressSpace *as,
         return 0;
     }
 
+    // Verify after alloc_map
+    viper::debug_verify_vinit_tables("after alloc_map");
+
     u64 phys = as->translate(vaddr_aligned);
     if (phys == 0) {
         serial::puts("[loader] Failed to translate segment address\n");
         return 0;
     }
 
+
     u8 *dest = reinterpret_cast<u8 *>(pmm::phys_to_virt(phys));
+
+    // Verify before zeroing
+    viper::debug_verify_vinit_tables("before zeroing");
+
     for (usize j = 0; j < pages * 4096; j++)
         dest[j] = 0;
+
+    // Verify after zeroing
+    viper::debug_verify_vinit_tables("after zeroing");
 
     if (phdr->p_filesz > 0) {
         if (phdr->p_offset + phdr->p_filesz > elf_size) {
@@ -99,8 +113,15 @@ u64 load_segment(viper::AddressSpace *as,
             return 0;
         }
         const u8 *src = file_data + phdr->p_offset;
+
+        // Verify before copy
+        viper::debug_verify_vinit_tables("before memcpy");
+
         for (usize j = 0; j < phdr->p_filesz; j++)
             dest[offset_in_page + j] = src[j];
+
+        // Verify after copy
+        viper::debug_verify_vinit_tables("after memcpy");
     }
 
     serial::puts("[loader] Segment loaded OK\n");
@@ -189,12 +210,18 @@ LoadResult load_elf_from_disk(viper::Viper *v, const char *path) {
     serial::puts(path);
     serial::puts("\n");
 
+    // Verify before opening file
+    viper::debug_verify_vinit_tables("before vfs::open");
+
     // Open the file
     i32 fd = fs::vfs::open(path, fs::vfs::flags::O_RDONLY);
     if (fd < 0) {
         serial::puts("[loader] Failed to open file\n");
         return result;
     }
+
+    // Verify after opening file
+    viper::debug_verify_vinit_tables("after vfs::open");
 
     // Get file size using stat
     fs::vfs::Stat st;
@@ -215,6 +242,9 @@ LoadResult load_elf_from_disk(viper::Viper *v, const char *path) {
         return result;
     }
 
+    // Verify before kmalloc
+    viper::debug_verify_vinit_tables("before kmalloc");
+
     // Allocate buffer for file contents
     void *buf = kheap::kmalloc(file_size);
     if (!buf) {
@@ -223,8 +253,20 @@ LoadResult load_elf_from_disk(viper::Viper *v, const char *path) {
         return result;
     }
 
+    // Debug: Show buffer address
+    serial::puts("[loader] ELF buffer at ");
+    serial::put_hex(reinterpret_cast<u64>(buf));
+    serial::puts("\n");
+
+    // Verify after kmalloc
+    viper::debug_verify_vinit_tables("after kmalloc");
+
     // Read entire file
     i64 bytes_read = fs::vfs::read(fd, buf, file_size);
+
+    // Verify after read
+    viper::debug_verify_vinit_tables("after vfs::read");
+
     fs::vfs::close(fd);
 
     if (bytes_read < 0 || static_cast<usize>(bytes_read) != file_size) {
@@ -232,6 +274,9 @@ LoadResult load_elf_from_disk(viper::Viper *v, const char *path) {
         kheap::kfree(buf);
         return result;
     }
+
+    // Verify before load_elf
+    viper::debug_verify_vinit_tables("before load_elf");
 
     // Load the ELF
     result = load_elf(v, buf, file_size);
@@ -311,6 +356,17 @@ static SpawnResult complete_spawn(viper::Viper *v,
     v->heap_start = load_result.brk;
     v->heap_break = load_result.brk;
 
+    // DEBUG: Print name pointer and current TTBR0 before create_user_task
+    u64 ttbr0_before;
+    asm volatile("mrs %0, ttbr0_el1" : "=r"(ttbr0_before));
+    serial::puts("[loader] complete_spawn: name ptr=");
+    serial::put_hex(reinterpret_cast<u64>(name));
+    serial::puts(", ttbr0=");
+    serial::put_hex(ttbr0_before);
+    serial::puts(", new viper ttbr0=");
+    serial::put_hex(v->ttbr0);
+    serial::puts("\n");
+
     // Create user task
     task::Task *t = task::create_user_task(name, v, load_result.entry_point, stack_top);
     if (!t) {
@@ -359,6 +415,9 @@ SpawnResult spawn_process(const char *path, const char *name, viper::Viper *pare
     serial::puts(path);
     serial::puts("\n");
 
+    // Verify vinit's page tables before creating new process
+    viper::debug_verify_vinit_tables("before viper::create");
+
     // Create new process
     viper::Viper *v = viper::create(parent, name);
     if (!v) {
@@ -366,8 +425,14 @@ SpawnResult spawn_process(const char *path, const char *name, viper::Viper *pare
         return result;
     }
 
+    // Verify after creating new process
+    viper::debug_verify_vinit_tables("after viper::create");
+
     // Load ELF from disk
     LoadResult load_result = load_elf_from_disk(v, path);
+
+    // Verify after loading ELF
+    viper::debug_verify_vinit_tables("after load_elf_from_disk");
 
     return complete_spawn(v, load_result, name);
 }

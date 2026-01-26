@@ -308,11 +308,30 @@ void add_to_free_list(FreeBlock *block) {
     block->header.set_free();
 
     u64 size = block->header.size();
+
+    // Validate the block before adding
+    u64 block_addr = reinterpret_cast<u64>(block);
+    if (!is_in_heap(block_addr)) {
+        serial::puts("[kheap] ERROR: Trying to add invalid block ");
+        serial::put_hex(block_addr);
+        serial::puts(" to free list\n");
+        return;
+    }
+
     usize class_idx = get_size_class(size);
 
     // Insert sorted by address within the size class for easier coalescing
     FreeBlock **pp = &free_lists[class_idx];
     while (*pp != nullptr && *pp < block) {
+        // Validate each node as we traverse
+        u64 node_addr = reinterpret_cast<u64>(*pp);
+        if (!is_in_heap(node_addr)) {
+            serial::puts("[kheap] CORRUPTION in add: next ptr ");
+            serial::put_hex(node_addr);
+            serial::puts(" invalid, breaking chain\n");
+            *pp = nullptr;
+            break;
+        }
         pp = &((*pp)->next);
     }
     block->next = *pp;
@@ -506,6 +525,32 @@ void *kmalloc(u64 size) {
     for (usize c = size_class; c < NUM_SIZE_CLASSES; c++) {
         FreeBlock **pp = &free_lists[c];
         while (*pp != nullptr) {
+            // Validate the free block before using it
+            u64 block_addr = reinterpret_cast<u64>(*pp);
+            if (!is_in_heap(block_addr)) {
+                serial::puts("[kheap] CORRUPTION: Free list contains invalid addr ");
+                serial::put_hex(block_addr);
+                serial::puts(" in class ");
+                serial::put_dec(c);
+                serial::puts("\n");
+                // Skip this corrupted entry
+                *pp = (*pp)->next;
+                free_list_counts[c]--;
+                free_block_count--;
+                continue;
+            }
+            if ((*pp)->header.magic != BLOCK_MAGIC_FREE) {
+                serial::puts("[kheap] CORRUPTION: Block at ");
+                serial::put_hex(block_addr);
+                serial::puts(" has bad magic 0x");
+                serial::put_hex((*pp)->header.magic);
+                serial::puts("\n");
+                // Skip this corrupted entry
+                *pp = (*pp)->next;
+                free_list_counts[c]--;
+                free_block_count--;
+                continue;
+            }
             if ((*pp)->header.size() >= required) {
                 best = *pp;
                 best_prev = pp;
@@ -543,6 +588,38 @@ found2:
 
     u64 block_size = best->header.size();
     u64 remaining = block_size - required;
+
+    // DEBUG: Check if allocation would extend past heap region
+    u64 block_addr = reinterpret_cast<u64>(best);
+    u64 block_end = block_addr + block_size;
+    bool in_valid_region = false;
+    for (usize i = 0; i < heap_region_count; i++) {
+        if (block_addr >= heap_regions[i].start && block_end <= heap_regions[i].end) {
+            in_valid_region = true;
+            break;
+        }
+    }
+    if (!in_valid_region && required > 150000) { // Only log for large allocations
+        serial::puts("[kheap] WARNING: Block extends past heap region!\n");
+        serial::puts("  Block: ");
+        serial::put_hex(block_addr);
+        serial::puts(" - ");
+        serial::put_hex(block_end);
+        serial::puts(" (size=");
+        serial::put_dec(block_size);
+        serial::puts(")\n");
+        serial::puts("  Required: ");
+        serial::put_dec(required);
+        serial::puts("\n");
+        serial::puts("  Heap regions:\n");
+        for (usize i = 0; i < heap_region_count; i++) {
+            serial::puts("    ");
+            serial::put_hex(heap_regions[i].start);
+            serial::puts(" - ");
+            serial::put_hex(heap_regions[i].end);
+            serial::puts("\n");
+        }
+    }
 
     // Remove from free list (already have pointer to prev)
     *best_prev = best->next;

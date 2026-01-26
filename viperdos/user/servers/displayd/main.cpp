@@ -205,6 +205,7 @@ static constexpr uint32_t COLOR_BORDER = VIPER_COLOR_WINDOW_BORDER;
 static constexpr uint32_t COLOR_CLOSE_BTN = VIPER_COLOR_BTN_CLOSE;
 static constexpr uint32_t COLOR_WHITE = VIPER_COLOR_WHITE;
 static constexpr uint32_t COLOR_SCREEN_BORDER = VIPER_COLOR_BORDER;
+static constexpr uint32_t COLOR_CURSOR = 0xFFFF8800; // Amiga orange
 
 // Screen border (matches kernel console)
 static constexpr uint32_t SCREEN_BORDER_WIDTH = 20;
@@ -471,7 +472,7 @@ static void draw_cursor() {
             int32_t py = g_cursor_y + dy;
             if (px >= 0 && px < static_cast<int32_t>(g_fb_width) && py >= 0 &&
                 py < static_cast<int32_t>(g_fb_height)) {
-                uint32_t color = (pixel == 1) ? COLOR_WHITE : 0xFF000000;
+                uint32_t color = (pixel == 1) ? COLOR_CURSOR : 0xFF000000;
                 put_pixel(static_cast<uint32_t>(px), static_cast<uint32_t>(py), color);
             }
         }
@@ -1957,8 +1958,8 @@ extern "C" void _start() {
         sys::exit(1);
     }
 
-    debug_print("[displayd] Service registered as DISPLAY\n");
-    debug_print("[displayd] Ready.\n");
+    // Note: Don't print startup messages here - they would appear on the
+    // graphical display before vinit has a chance to disable gcon
 
     // Main event loop
     uint8_t msg_buf[MAX_PAYLOAD];

@@ -41,6 +41,7 @@ namespace {
  * - Allocating or deallocating task slots
  * - Allocating or freeing kernel stacks
  * - Modifying next_task_id
+ * - Modifying the task ID hash table
  *
  * This prevents race conditions on SMP systems where multiple CPUs
  * could otherwise allocate the same task slot or stack.
@@ -50,6 +51,65 @@ Spinlock task_lock;
 // Task storage
 Task tasks[MAX_TASKS];
 u32 next_task_id = 1;
+
+// Task ID hash table for O(1) lookup
+Task *task_hash_table[TASK_HASH_BUCKETS];
+
+/**
+ * @brief Compute hash bucket index for a task ID.
+ * @param id Task ID to hash.
+ * @return Bucket index (0 to TASK_HASH_BUCKETS-1).
+ */
+inline u32 task_hash(u32 id) {
+    return id & (TASK_HASH_BUCKETS - 1);
+}
+
+/**
+ * @brief Insert a task into the hash table.
+ * @note Caller must hold task_lock.
+ * @param t Task to insert.
+ */
+void hash_insert_locked(Task *t) {
+    u32 bucket = task_hash(t->id);
+    t->hash_next = task_hash_table[bucket];
+    task_hash_table[bucket] = t;
+}
+
+/**
+ * @brief Remove a task from the hash table.
+ * @note Caller must hold task_lock.
+ * @param t Task to remove.
+ */
+void hash_remove_locked(Task *t) {
+    u32 bucket = task_hash(t->id);
+    Task **pp = &task_hash_table[bucket];
+    while (*pp) {
+        if (*pp == t) {
+            *pp = t->hash_next;
+            t->hash_next = nullptr;
+            return;
+        }
+        pp = &(*pp)->hash_next;
+    }
+}
+
+/**
+ * @brief Find a task by ID using the hash table.
+ * @note Caller must hold task_lock.
+ * @param id Task ID to find.
+ * @return Task pointer or nullptr if not found.
+ */
+Task *hash_find_locked(u32 id) {
+    u32 bucket = task_hash(id);
+    Task *t = task_hash_table[bucket];
+    while (t) {
+        if (t->id == id && t->state != TaskState::Invalid) {
+            return t;
+        }
+        t = t->hash_next;
+    }
+    return nullptr;
+}
 
 // Per-CPU current_task is stored in cpu::CpuData::current_task
 // Accessor functions current() and set_current() use cpu::current() to get/set it
@@ -201,10 +261,16 @@ void idle_task_fn(void *) {
 void init() {
     serial::puts("[task] Initializing task subsystem\n");
 
+    // Clear hash table
+    for (u32 i = 0; i < TASK_HASH_BUCKETS; i++) {
+        task_hash_table[i] = nullptr;
+    }
+
     // Clear all task slots
     for (u32 i = 0; i < MAX_TASKS; i++) {
         tasks[i].state = TaskState::Invalid;
         tasks[i].id = 0;
+        tasks[i].hash_next = nullptr;
     }
 
     // Create idle task (special - uses task slot 0)
@@ -215,6 +281,7 @@ void init() {
     idle_task->flags = TASK_FLAG_KERNEL | TASK_FLAG_IDLE;
     idle_task->time_slice = TIME_SLICE_DEFAULT;
     idle_task->priority = PRIORITY_LOWEST; // Lowest priority
+    idle_task->original_priority = PRIORITY_LOWEST;
     idle_task->cpu_affinity = CPU_AFFINITY_ALL;
     idle_task->vruntime = 0;
     idle_task->nice = 0;
@@ -222,8 +289,16 @@ void init() {
     idle_task->dl_deadline = 0;
     idle_task->dl_period = 0;
     idle_task->dl_abs_deadline = 0;
+    idle_task->dl_missed = 0;
+    idle_task->dl_flags = 0;
+    idle_task->bw_runtime = 0;
+    idle_task->bw_period = 0;
+    idle_task->bw_consumed = 0;
+    idle_task->bw_period_start = 0;
+    idle_task->bw_throttled = false;
     idle_task->next = nullptr;
     idle_task->prev = nullptr;
+    idle_task->heap_index = static_cast<u32>(-1);
     // Acquire lock for consistency (though init runs single-threaded)
     u64 saved_daif = task_lock.acquire();
     idle_task->kernel_stack = allocate_kernel_stack_locked();
@@ -231,6 +306,8 @@ void init() {
     idle_task->kernel_stack_top = idle_task->kernel_stack + KERNEL_STACK_SIZE;
     idle_task->trap_frame = nullptr;
     idle_task->wait_channel = nullptr;
+    idle_task->blocked_mutex = nullptr;
+    idle_task->wait_timeout = 0;
     idle_task->exit_code = 0;
     idle_task->cpu_ticks = 0;
     idle_task->switch_count = 0;
@@ -265,6 +342,10 @@ void init() {
     idle_task->context.x26 = 0;
     idle_task->context.x27 = 0;
     idle_task->context.x28 = 0;
+    idle_task->hash_next = nullptr;
+
+    // Insert idle task into hash table
+    hash_insert_locked(idle_task);
 
     // Set current task to idle initially
     set_current(idle_task);
@@ -298,6 +379,10 @@ Task *create(const char *name, TaskEntry entry, void *arg, u32 flags) {
 
     // Initialize task fields - get next_task_id while holding lock
     t->id = next_task_id++;
+    t->hash_next = nullptr;
+
+    // Insert into hash table before releasing lock
+    hash_insert_locked(t);
 
     // Release lock before the rest of initialization
     task_lock.release(saved_daif);
@@ -306,6 +391,7 @@ Task *create(const char *name, TaskEntry entry, void *arg, u32 flags) {
     t->flags = flags | TASK_FLAG_KERNEL; // All tasks are kernel tasks for now
     t->time_slice = TIME_SLICE_DEFAULT;
     t->priority = PRIORITY_DEFAULT;
+    t->original_priority = PRIORITY_DEFAULT;
     t->policy = SchedPolicy::SCHED_OTHER; // Default to normal scheduling
     t->cpu_affinity = CPU_AFFINITY_ALL;   // Can run on any CPU
     t->vruntime = 0;                      // Start with zero vruntime (CFS)
@@ -314,9 +400,19 @@ Task *create(const char *name, TaskEntry entry, void *arg, u32 flags) {
     t->dl_deadline = 0;
     t->dl_period = 0;
     t->dl_abs_deadline = 0;
+    t->dl_missed = 0;
+    t->dl_flags = 0;
+    t->bw_runtime = 0;        // No bandwidth limit by default
+    t->bw_period = 0;
+    t->bw_consumed = 0;
+    t->bw_period_start = 0;
+    t->bw_throttled = false;
     t->next = nullptr;
     t->prev = nullptr;
+    t->heap_index = static_cast<u32>(-1); // Not in any heap
     t->wait_channel = nullptr;
+    t->blocked_mutex = nullptr;
+    t->wait_timeout = 0;
     t->exit_code = 0;
     t->trap_frame = nullptr;
     t->cpu_ticks = 0;
@@ -431,6 +527,15 @@ static void user_task_entry_trampoline(void *) {
 
 /** @copydoc task::create_user_task */
 Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack) {
+    // DEBUG: Check TTBR0 before accessing name
+    u64 ttbr0_val;
+    asm volatile("mrs %0, ttbr0_el1" : "=r"(ttbr0_val));
+    serial::puts("[task] create_user_task: name=");
+    serial::put_hex(reinterpret_cast<u64>(name));
+    serial::puts(", ttbr0=");
+    serial::put_hex(ttbr0_val);
+    serial::puts("\n");
+
     // Acquire task_lock for allocation operations
     u64 saved_daif = task_lock.acquire();
 
@@ -455,6 +560,10 @@ Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack) 
 
     // Initialize task fields - get next_task_id while holding lock
     t->id = next_task_id++;
+    t->hash_next = nullptr;
+
+    // Insert into hash table before releasing lock
+    hash_insert_locked(t);
 
     // Release lock before the rest of initialization
     task_lock.release(saved_daif);
@@ -463,6 +572,7 @@ Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack) 
     t->flags = TASK_FLAG_USER; // User task, not kernel
     t->time_slice = TIME_SLICE_DEFAULT;
     t->priority = PRIORITY_DEFAULT;
+    t->original_priority = PRIORITY_DEFAULT;
     t->policy = SchedPolicy::SCHED_OTHER; // Default to normal scheduling
     t->cpu_affinity = CPU_AFFINITY_ALL;   // Can run on any CPU
     t->vruntime = 0;                      // Start with zero vruntime (CFS)
@@ -471,9 +581,19 @@ Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack) 
     t->dl_deadline = 0;
     t->dl_period = 0;
     t->dl_abs_deadline = 0;
+    t->dl_missed = 0;
+    t->dl_flags = 0;
+    t->bw_runtime = 0;        // No bandwidth limit by default
+    t->bw_period = 0;
+    t->bw_consumed = 0;
+    t->bw_period_start = 0;
+    t->bw_throttled = false;
     t->next = nullptr;
     t->prev = nullptr;
+    t->heap_index = static_cast<u32>(-1); // Not in any heap
     t->wait_channel = nullptr;
+    t->blocked_mutex = nullptr;
+    t->wait_timeout = 0;
     t->exit_code = 0;
     t->trap_frame = nullptr;
     t->cpu_ticks = 0;
@@ -683,12 +803,11 @@ i8 get_nice(Task *t) {
 
 /** @copydoc task::get_by_id */
 Task *get_by_id(u32 id) {
-    for (u32 i = 0; i < MAX_TASKS; i++) {
-        if (tasks[i].id == id && tasks[i].state != TaskState::Invalid) {
-            return &tasks[i];
-        }
-    }
-    return nullptr;
+    // Use hash table for O(1) lookup
+    u64 saved_daif = task_lock.acquire();
+    Task *t = hash_find_locked(id);
+    task_lock.release(saved_daif);
+    return t;
 }
 
 /** @copydoc task::print_info */
@@ -834,14 +953,20 @@ u32 reap_exited() {
             serial::put_dec(t.id);
             serial::puts(")\n");
 
-            // Free kernel stack (must hold task_lock)
+            // Acquire lock for hash table and stack pool operations
+            u64 saved_daif = task_lock.acquire();
+
+            // Remove from hash table before clearing ID
+            hash_remove_locked(&t);
+
+            // Free kernel stack
             if (t.kernel_stack) {
-                u64 saved_daif = task_lock.acquire();
                 free_kernel_stack_locked(t.kernel_stack);
-                task_lock.release(saved_daif);
                 t.kernel_stack = nullptr;
                 t.kernel_stack_top = nullptr;
             }
+
+            task_lock.release(saved_daif);
 
             // Clear task slot
             t.id = 0;
@@ -850,6 +975,7 @@ u32 reap_exited() {
             t.viper = nullptr;
             t.next = nullptr;
             t.prev = nullptr;
+            t.hash_next = nullptr;
 
             reaped++;
         }
@@ -889,14 +1015,20 @@ void destroy(Task *t) {
     serial::put_dec(t->id);
     serial::puts(")\n");
 
-    // Free kernel stack (requires lock for pool access)
+    // Acquire lock for hash table and stack pool operations
+    u64 saved_daif = task_lock.acquire();
+
+    // Remove from hash table before clearing ID
+    hash_remove_locked(t);
+
+    // Free kernel stack
     if (t->kernel_stack) {
-        u64 saved_daif = task_lock.acquire();
         free_kernel_stack_locked(t->kernel_stack);
-        task_lock.release(saved_daif);
         t->kernel_stack = nullptr;
         t->kernel_stack_top = nullptr;
     }
+
+    task_lock.release(saved_daif);
 
     // Clear task slot
     t->id = 0;
@@ -905,6 +1037,7 @@ void destroy(Task *t) {
     t->viper = nullptr;
     t->next = nullptr;
     t->prev = nullptr;
+    t->hash_next = nullptr;
 }
 
 /** @copydoc task::wakeup */

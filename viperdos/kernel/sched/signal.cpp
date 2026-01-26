@@ -8,8 +8,10 @@
  * signal handlers are not yet implemented.
  */
 #include "signal.hpp"
+#include "../arch/aarch64/exceptions.hpp"
 #include "../console/gcon.hpp"
 #include "../console/serial.hpp"
+#include "../mm/vmm.hpp"
 #include "../viper/viper.hpp"
 #include "scheduler.hpp"
 #include "task.hpp"
@@ -332,6 +334,168 @@ void process_pending() {
     if (action == 'T') {
         task::exit(-(128 + signum));
     }
+}
+
+bool setup_signal_delivery(exceptions::ExceptionFrame *frame) {
+    task::Task *t = task::current();
+    if (!t || !frame)
+        return false;
+
+    // Check for deliverable signals
+    u32 deliverable = t->signals.pending & ~t->signals.blocked;
+    if (deliverable == 0)
+        return false;
+
+    // Find the lowest numbered pending signal
+    i32 signum = 0;
+    for (i32 i = 1; i < sig::NSIG; i++) {
+        if (deliverable & (1u << i)) {
+            signum = i;
+            break;
+        }
+    }
+
+    if (signum == 0)
+        return false;
+
+    // Get handler
+    u64 handler = t->signals.handlers[signum];
+
+    // SIG_DFL (0) - apply default action (don't set up handler)
+    if (handler == 0) {
+        char action = default_action(signum);
+        if (action == 'T') {
+            // Clear the pending signal and terminate
+            __atomic_fetch_and(&t->signals.pending, ~(1u << signum), __ATOMIC_SEQ_CST);
+            serial::puts("[signal] Delivering ");
+            serial::puts(signal_name(signum));
+            serial::puts(" (default: terminate) to '");
+            serial::puts(t->name);
+            serial::puts("'\n");
+            task::exit(-(128 + signum));
+            // Never returns
+        }
+        // For 'I', 'S', 'C' - clear signal and continue
+        __atomic_fetch_and(&t->signals.pending, ~(1u << signum), __ATOMIC_SEQ_CST);
+        return false;
+    }
+
+    // SIG_IGN (1) - just clear and continue
+    if (handler == 1) {
+        __atomic_fetch_and(&t->signals.pending, ~(1u << signum), __ATOMIC_SEQ_CST);
+        return false;
+    }
+
+    // User handler - set up signal frame on user stack
+    serial::puts("[signal] Delivering ");
+    serial::puts(signal_name(signum));
+    serial::puts(" to handler at 0x");
+    serial::put_hex(handler);
+    serial::puts(" for task '");
+    serial::puts(t->name);
+    serial::puts("'\n");
+
+    // Calculate new stack pointer (must be 16-byte aligned)
+    u64 user_sp = frame->sp;
+    u64 frame_size = sizeof(SignalFrame);
+    frame_size = (frame_size + 15) & ~15ULL; // Align to 16 bytes
+    u64 new_sp = user_sp - frame_size;
+
+    // Validate the new stack is in user space
+    if (new_sp < 0x1000 || new_sp >= 0x800000000000ULL) {
+        serial::puts("[signal] Invalid user stack for signal frame\n");
+        __atomic_fetch_and(&t->signals.pending, ~(1u << signum), __ATOMIC_SEQ_CST);
+        task::exit(-sig::SIGSEGV);
+        return false;
+    }
+
+    // Create the signal frame on the user stack
+    SignalFrame *sig_frame = reinterpret_cast<SignalFrame *>(new_sp);
+
+    // Save current context
+    for (int i = 0; i < 30; i++) {
+        sig_frame->x[i] = frame->x[i];
+    }
+    sig_frame->x[30] = frame->lr;
+    sig_frame->sp = frame->sp;
+    sig_frame->elr = frame->elr;
+    sig_frame->spsr = frame->spsr;
+    sig_frame->signum = static_cast<u32>(signum);
+    sig_frame->blocked_old = t->signals.blocked;
+
+    // Set up the signal return trampoline
+    // This is ARM64 code to call sigreturn:
+    //   mov x8, #SYS_SIGRETURN (0x90 = 144)
+    //   svc #0
+    // Encoded as:
+    //   0xD2801200  // mov x8, #0x90
+    //   0xD4000001  // svc #0
+    sig_frame->trampoline[0] = 0xD2801200D4000001ULL; // Combined as little-endian
+    sig_frame->trampoline[1] = 0; // Padding
+
+    // Clear this signal from pending
+    __atomic_fetch_and(&t->signals.pending, ~(1u << signum), __ATOMIC_SEQ_CST);
+
+    // Block signals during handler execution (add handler's mask)
+    u32 handler_mask = t->signals.handler_mask[signum];
+    if (!(t->signals.handler_flags[signum] & sa_flags::SA_NODEFER)) {
+        // Also block the current signal
+        handler_mask |= (1u << signum);
+    }
+    t->signals.blocked |= handler_mask;
+
+    // Reset handler to default if SA_RESETHAND is set
+    if (t->signals.handler_flags[signum] & sa_flags::SA_RESETHAND) {
+        t->signals.handlers[signum] = SIG_DFL;
+    }
+
+    // Modify exception frame to call the handler
+    // x0 = signal number
+    // x30 (LR) = address of trampoline (for when handler returns)
+    // SP = new stack pointer (below signal frame)
+    // ELR = handler address (where to jump)
+    frame->x[0] = static_cast<u64>(signum);
+    frame->lr = reinterpret_cast<u64>(&sig_frame->trampoline[0]);
+    frame->sp = new_sp;
+    frame->elr = handler;
+
+    return true;
+}
+
+bool restore_signal_context(exceptions::ExceptionFrame *frame) {
+    task::Task *t = task::current();
+    if (!t || !frame)
+        return false;
+
+    // The signal frame should be at the current SP
+    SignalFrame *sig_frame = reinterpret_cast<SignalFrame *>(frame->sp);
+
+    // Basic validation
+    u64 sp_addr = reinterpret_cast<u64>(sig_frame);
+    if (sp_addr < 0x1000 || sp_addr >= 0x800000000000ULL) {
+        serial::puts("[signal] Invalid signal frame address in sigreturn\n");
+        return false;
+    }
+
+    serial::puts("[signal] sigreturn - restoring context for signal ");
+    serial::put_dec(sig_frame->signum);
+    serial::puts("\n");
+
+    // Restore registers
+    for (int i = 0; i < 30; i++) {
+        frame->x[i] = sig_frame->x[i];
+    }
+    frame->lr = sig_frame->x[30];
+    frame->sp = sig_frame->sp;
+    frame->elr = sig_frame->elr;
+    // Restore SPSR but preserve EL bits for security
+    u64 safe_spsr = (sig_frame->spsr & 0xFFFFFFFF0FFFFFFFUL) | (frame->spsr & 0x0000000F0000000UL);
+    frame->spsr = safe_spsr;
+
+    // Restore blocked signal mask
+    t->signals.blocked = sig_frame->blocked_old;
+
+    return true;
 }
 
 } // namespace signal

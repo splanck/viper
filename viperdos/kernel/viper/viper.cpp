@@ -19,12 +19,16 @@
 #include "../console/serial.hpp"
 #include "../fs/vfs/vfs.hpp"
 #include "../include/error.hpp"
+#include "../lib/spinlock.hpp"
 #include "../mm/pmm.hpp"
 #include "../sched/scheduler.hpp"
 #include "../sched/task.hpp"
 #include "address_space.hpp"
 
 namespace viper {
+
+// Spinlock protecting viper table allocation
+static Spinlock viper_lock;
 
 // Viper table
 static Viper vipers[MAX_VIPERS];
@@ -91,14 +95,18 @@ void init() {
  *
  * @details
  * Scans the fixed-size Viper array for an entry marked @ref ViperState::Invalid.
- * The returned slot is not initialized; callers must transition it through
- * @ref ViperState::Creating and finish initialization before exposing it.
+ * The returned slot is atomically marked as Creating to prevent race conditions
+ * where multiple CPUs might allocate the same slot.
  *
- * @return Pointer to a free Viper slot, or `nullptr` if the table is full.
+ * @return Pointer to a free Viper slot (marked Creating), or `nullptr` if the table is full.
  */
 static Viper *alloc_viper() {
+    SpinlockGuard guard(viper_lock);
+
     for (u32 i = 0; i < MAX_VIPERS; i++) {
         if (vipers[i].state == ViperState::Invalid) {
+            // Atomically mark as Creating to prevent races
+            vipers[i].state = ViperState::Creating;
             return &vipers[i];
         }
     }
@@ -186,6 +194,7 @@ static void init_from_parent(Viper *v, Viper *parent) {
  * @brief Add viper to global tracking list.
  */
 static void add_to_global_list(Viper *v) {
+    SpinlockGuard guard(viper_lock);
     v->next_all = all_vipers_head;
     v->prev_all = nullptr;
     if (all_vipers_head)
@@ -202,11 +211,18 @@ Viper *create(Viper *parent, const char *name) {
     }
 
     int idx = viper_index(v);
-    if (idx < 0)
+    if (idx < 0) {
+        // Reset state if index is somehow invalid
+        v->state = ViperState::Invalid;
         return nullptr;
+    }
 
-    v->state = ViperState::Creating;
-    v->id = next_viper_id++;
+    // alloc_viper() already set state to Creating
+    // Assign ID atomically
+    {
+        SpinlockGuard guard(viper_lock);
+        v->id = next_viper_id++;
+    }
 
     for (int i = 0; i < 31 && name[i]; i++)
         v->name[i] = name[i];
@@ -287,14 +303,20 @@ void destroy(Viper *v) {
         cap_tables[idx].destroy();
     }
 
-    // Remove from global list
-    if (v->prev_all) {
-        v->prev_all->next_all = v->next_all;
-    } else {
-        all_vipers_head = v->next_all;
-    }
-    if (v->next_all) {
-        v->next_all->prev_all = v->prev_all;
+    // Remove from global list and mark as invalid (must be atomic)
+    {
+        SpinlockGuard guard(viper_lock);
+        if (v->prev_all) {
+            v->prev_all->next_all = v->next_all;
+        } else {
+            all_vipers_head = v->next_all;
+        }
+        if (v->next_all) {
+            v->next_all->prev_all = v->prev_all;
+        }
+
+        // Mark as invalid within the lock to prevent races with alloc_viper
+        v->state = ViperState::Invalid;
     }
 
     // Remove from parent's child list
@@ -310,8 +332,6 @@ void destroy(Viper *v) {
 
     // TODO: Clean up tasks
 
-    // Mark as invalid
-    v->state = ViperState::Invalid;
     v->id = 0;
     v->name[0] = '\0';
 }
@@ -415,7 +435,22 @@ AddressSpace *get_address_space(Viper *v) {
     int idx = viper_index(v);
     if (idx < 0 || idx >= static_cast<int>(MAX_VIPERS))
         return nullptr;
-    return &address_spaces[idx];
+
+    // Validate consistency between Viper and AddressSpace
+    AddressSpace *as = &address_spaces[idx];
+    if (as->root() != 0 && as->root() != v->ttbr0) {
+        serial::puts("[viper] CRITICAL: Viper '");
+        serial::puts(v->name);
+        serial::puts("' ttbr0=");
+        serial::put_hex(v->ttbr0);
+        serial::puts(" != address_space root=");
+        serial::put_hex(as->root());
+        serial::puts(" at index ");
+        serial::put_dec(idx);
+        serial::puts("\n");
+    }
+
+    return as;
 }
 
 /** @copydoc viper::exit */

@@ -147,7 +147,11 @@ inline u32 time_slice_for_priority(u8 priority) {
 
 // Maximum tasks
 /** @brief Maximum number of tasks supported by the fixed task table. */
-constexpr u32 MAX_TASKS = 64;
+constexpr u32 MAX_TASKS = 256;
+
+// Task ID hash table configuration
+/** @brief Number of hash table buckets (power of 2 for efficient modulo). */
+constexpr u32 TASK_HASH_BUCKETS = 64;
 
 // Saved context for context switch (callee-saved registers)
 // These are the registers that must be preserved across function calls
@@ -236,8 +240,9 @@ struct Task {
     u8 *kernel_stack_top; // Kernel stack top (initial SP)
 
     u32 time_slice;     // Remaining time slice ticks
-    u8 priority;        // Priority (0=highest, 255=lowest, default 128)
-    SchedPolicy policy; // Scheduling policy (SCHED_OTHER, SCHED_FIFO, SCHED_RR)
+    u8 priority;          // Priority (0=highest, 255=lowest, default 128)
+    u8 original_priority; // Priority before any PI boost (for restore)
+    SchedPolicy policy;   // Scheduling policy (SCHED_OTHER, SCHED_FIFO, SCHED_RR)
     u32 cpu_affinity;   // CPU affinity mask (bit N = can run on CPU N)
 
     // CFS (Completely Fair Scheduler) fields
@@ -249,12 +254,25 @@ struct Task {
     u64 dl_deadline;     // Relative deadline (nanoseconds)
     u64 dl_period;       // Period length (nanoseconds)
     u64 dl_abs_deadline; // Absolute deadline (timer tick when deadline expires)
+    u32 dl_missed;       // Count of missed deadlines
+    u32 dl_flags;        // Deadline flags (DL_FLAG_*)
+
+    // CPU bandwidth control (for rate limiting)
+    u64 bw_runtime;      // Budget: max runtime per period (ns, 0=unlimited)
+    u64 bw_period;       // Period length (ns)
+    u64 bw_consumed;     // Runtime consumed in current period (ns)
+    u64 bw_period_start; // Start tick of current period
+    bool bw_throttled;   // True if currently throttled
 
     Task *next; // Next task in queue (ready/wait queue)
     Task *prev; // Previous task in queue
+    Task *hash_next; // Next task in hash bucket (for O(1) ID lookup)
+    u32 heap_index;  // Index in scheduler heap (for O(log n) operations)
 
-    void *wait_channel; // What we're waiting on (for debugging)
-    i32 exit_code;      // Exit code when task exits
+    void *wait_channel;   // What we're waiting on (for debugging)
+    void *blocked_mutex;  // PI mutex we're blocked on (for PI chain traversal)
+    u64 wait_timeout;     // Absolute tick when wait times out (0 = no timeout)
+    i32 exit_code;        // Exit code when task exits
 
     // Statistics
     u64 cpu_ticks;    // Total CPU ticks consumed

@@ -25,6 +25,11 @@ namespace {
 // Spinlock protecting all PMM state
 Spinlock pmm_lock;
 
+// Debug: Track a specific page for corruption debugging
+constexpr u64 DEBUG_TRACKED_PAGE = 0x41003000;
+static bool debug_page_allocated = false;
+static int debug_alloc_count = 0;
+
 // Whether buddy allocator is available
 bool buddy_available = false;
 
@@ -117,6 +122,15 @@ void free_page_unlocked(u64 phys_addr) {
         return;
     }
 
+    // Debug tracking for specific page
+    if (phys_addr == DEBUG_TRACKED_PAGE) {
+        serial::puts("[pmm] DEBUG: Freeing tracked page 0x41003000\n");
+        if (!debug_page_allocated) {
+            serial::puts("[pmm] ERROR: Page 0x41003000 freed but was NOT allocated!\n");
+        }
+        debug_page_allocated = false;
+    }
+
     u64 page = addr_to_page(phys_addr);
     if (!test_bit(page)) {
         serial::puts("[pmm] WARNING: Double-free at ");
@@ -151,6 +165,13 @@ void init_buddy_region(u64 fb_end) {
         serial::puts(" MB, ");
         serial::put_dec(mm::buddy::get_allocator().free_pages_count());
         serial::puts(" pages)\n");
+
+        // Debug: Check if suspicious address 0x41003000 is in buddy region
+        if (DEBUG_TRACKED_PAGE >= fb_end && DEBUG_TRACKED_PAGE < mem_end) {
+            serial::puts("[pmm] DEBUG: 0x41003000 IS in buddy region\n");
+        } else {
+            serial::puts("[pmm] DEBUG: 0x41003000 NOT in buddy region\n");
+        }
     } else {
         serial::puts("[pmm] Buddy allocator init failed\n");
     }
@@ -174,11 +195,23 @@ void init_bitmap_region(u64 bitmap_addr, u64 usable_start, u64 fb_start) {
         }
     }
 
+    serial::puts("[pmm] Bitmap region: ");
+    serial::put_hex(usable_start);
+    serial::puts(" - ");
+    serial::put_hex(fb_start);
+    serial::puts("\n");
     serial::puts("[pmm] Bitmap: ");
     serial::put_dec(free_count);
     serial::puts(" pages (");
     serial::put_dec((free_count * PAGE_SIZE) / 1024);
     serial::puts(" KB)\n");
+
+    // Debug: Check if suspicious address 0x41003000 is in bitmap region
+    if (DEBUG_TRACKED_PAGE >= usable_start && DEBUG_TRACKED_PAGE < fb_start) {
+        serial::puts("[pmm] DEBUG: 0x41003000 IS in bitmap region\n");
+    } else {
+        serial::puts("[pmm] DEBUG: 0x41003000 NOT in bitmap region\n");
+    }
 }
 
 /**
@@ -262,7 +295,18 @@ u64 alloc_page() {
                     free_count--;
                     // Update hint to this word for next allocation
                     next_free_hint = word;
-                    return page_to_addr(page);
+                    u64 result_addr = page_to_addr(page);
+
+                    // Debug tracking for specific page (reduced output)
+                    if (result_addr == DEBUG_TRACKED_PAGE) {
+                        debug_alloc_count++;
+                        if (debug_page_allocated) {
+                            serial::puts("[pmm] ERROR: Page 0x41003000 DOUBLE ALLOCATED!\n");
+                        }
+                        debug_page_allocated = true;
+                    }
+
+                    return result_addr;
                 }
             }
         }

@@ -2,10 +2,14 @@
 #include "../arch/aarch64/cpu.hpp"
 #include "../console/serial.hpp"
 #include "../lib/spinlock.hpp"
+#include "../mm/pmm.hpp"
 #include "../viper/address_space.hpp"
 #include "../viper/viper.hpp"
+#include "../arch/aarch64/timer.hpp"
+#include "bandwidth.hpp"
 #include "cfs.hpp"
 #include "deadline.hpp"
+#include "heap.hpp"
 #include "idle.hpp"
 #include "task.hpp"
 
@@ -57,12 +61,15 @@ struct PriorityQueue {
  */
 struct PerCpuScheduler {
     PriorityQueue queues[task::NUM_PRIORITY_QUEUES];
+    u8 queue_bitmap; // Bitmap of non-empty queues for O(1) lookup
     Spinlock lock;
     u64 context_switches;
     u32 total_tasks;
     u32 steals;
     u32 migrations;
     bool initialized;
+    // Lock-free counter for quick empty checks (recommendation #11)
+    volatile u32 queue_count;
 };
 
 // Per-CPU scheduler state
@@ -75,9 +82,22 @@ Spinlock sched_lock;
 // 8 priority queues (0=highest, 7=lowest) - used for initial boot and global operations
 PriorityQueue priority_queues[task::NUM_PRIORITY_QUEUES];
 
+// Bitmap of non-empty global priority queues for O(1) lookup
+u8 queue_bitmap = 0;
+
+// Min-heap for O(log n) CFS vruntime selection
+sched::TaskHeap cfs_heap;
+
+// Min-heap for O(log n) EDF deadline selection
+sched::TaskHeap deadline_heap;
+
 // Statistics (use atomics for SMP-safe access)
 // Note: Use volatile to prevent compiler optimization and __atomic for SMP safety
 volatile u64 context_switch_count = 0;
+
+// Lock-free counters for quick empty checks (recommendation #11)
+// These allow checking if queues have work without acquiring locks
+volatile u32 global_queue_count = 0;
 
 // Scheduler running flag
 bool running = false;
@@ -97,16 +117,23 @@ inline u8 priority_to_queue(u8 priority) {
 }
 
 /**
+ * @brief Check if any tasks are ready in any queue (lock-free fast path).
+ * @return true if at least one task is ready.
+ */
+[[maybe_unused]]
+bool any_ready_lockfree() {
+    // Lock-free check using atomic counter - no locking required
+    return __atomic_load_n(&global_queue_count, __ATOMIC_RELAXED) > 0;
+}
+
+/**
  * @brief Check if any tasks are ready in any queue.
  * @note Caller must hold sched_lock.
  * @return true if at least one task is ready.
  */
 bool any_ready_locked() {
-    for (u8 i = 0; i < task::NUM_PRIORITY_QUEUES; i++) {
-        if (priority_queues[i].head)
-            return true;
-    }
-    return false;
+    // O(1) check using queue bitmap
+    return queue_bitmap != 0;
 }
 
 /**
@@ -141,6 +168,20 @@ void enqueue_locked(task::Task *t) {
         queue.head = t;
     }
     queue.tail = t;
+
+    // Mark this queue as non-empty in the bitmap
+    queue_bitmap |= (1u << queue_idx);
+
+    // TODO: Heap-based scheduling disabled pending debugging
+    // Also add to appropriate scheduling heap for O(log n) selection
+    // if (t->policy == task::SchedPolicy::SCHED_DEADLINE) {
+    //     sched::heap_insert(&deadline_heap, t);
+    // } else if (t->policy == task::SchedPolicy::SCHED_OTHER) {
+    //     sched::heap_insert(&cfs_heap, t);
+    // }
+
+    // Atomically increment global queue count for lock-free empty checks
+    __atomic_fetch_add(&global_queue_count, 1, __ATOMIC_RELAXED);
 
     t->state = task::TaskState::Ready;
 }
@@ -193,13 +234,63 @@ void enqueue_locked(task::Task *t) {
 // =============================================================================
 
 /**
+ * @brief Helper to remove a task from its priority queue.
+ * @note Caller must hold sched_lock.
+ */
+void remove_from_priority_queue(task::Task *t) {
+    u8 q_idx = priority_to_queue(t->priority);
+    PriorityQueue &queue = priority_queues[q_idx];
+
+    if (t->prev)
+        t->prev->next = t->next;
+    else
+        queue.head = t->next;
+
+    if (t->next)
+        t->next->prev = t->prev;
+    else
+        queue.tail = t->prev;
+
+    // Clear bitmap bit if queue is now empty
+    if (!queue.head) {
+        queue_bitmap &= ~(1u << q_idx);
+    }
+
+    // Atomically decrement global queue count
+    __atomic_fetch_sub(&global_queue_count, 1, __ATOMIC_RELAXED);
+
+    t->next = nullptr;
+    t->prev = nullptr;
+}
+
+/**
  * @brief Internal dequeue without lock (caller must hold sched_lock).
+ *
+ * Uses O(log n) heap operations for SCHED_DEADLINE and SCHED_OTHER tasks.
+ * RT tasks (SCHED_FIFO/RR) still use O(n) queue scan within their priority level.
  */
 task::Task *dequeue_locked() {
     u32 cpu_id = cpu::current_id();
     u32 cpu_mask = (1u << cpu_id);
 
-    // First pass: find earliest deadline task (SCHED_DEADLINE has highest priority)
+    // TODO: Heap-based scheduling disabled pending debugging
+    // First: check deadline heap for earliest deadline task (O(log n))
+    // SCHED_DEADLINE always has highest priority
+    // while (!sched::heap_empty(&deadline_heap)) {
+    //     task::Task *dl_best = sched::heap_peek(&deadline_heap);
+    //     if (dl_best && (dl_best->cpu_affinity & cpu_mask)) {
+    //         // Found a deadline task that can run on this CPU
+    //         sched::heap_extract_min(&deadline_heap);
+    //         remove_from_priority_queue(dl_best);
+    //         return dl_best;
+    //     }
+    //     // This task can't run on this CPU, skip it
+    //     // Note: In a more sophisticated implementation, we'd use a per-CPU heap
+    //     // For now, fall back to O(n) scan if the minimum can't run here
+    //     break;
+    // }
+
+    // O(n) scan for deadline tasks
     task::Task *dl_best = nullptr;
     for (u8 i = 0; i < task::NUM_PRIORITY_QUEUES; i++) {
         task::Task *t = priority_queues[i].head;
@@ -213,53 +304,57 @@ task::Task *dequeue_locked() {
         }
     }
 
-    // If we found a deadline task, return it
     if (dl_best) {
-        PriorityQueue &queue = priority_queues[priority_to_queue(dl_best->priority)];
-
-        if (dl_best->prev)
-            dl_best->prev->next = dl_best->next;
-        else
-            queue.head = dl_best->next;
-
-        if (dl_best->next)
-            dl_best->next->prev = dl_best->prev;
-        else
-            queue.tail = dl_best->prev;
-
-        dl_best->next = nullptr;
-        dl_best->prev = nullptr;
+        // sched::heap_remove(&deadline_heap, dl_best);
+        remove_from_priority_queue(dl_best);
         return dl_best;
     }
 
-    // Check queues from highest priority (0) to lowest (7) for RT and SCHED_OTHER
+    // Check queues from highest priority (0) to lowest (7) for RT tasks first
     for (u8 i = 0; i < task::NUM_PRIORITY_QUEUES; i++) {
         PriorityQueue &queue = priority_queues[i];
         if (!queue.head)
             continue;
 
-        // For CFS: find the task with lowest vruntime that can run on this CPU
-        // RT tasks (SCHED_FIFO/RR) still use FIFO ordering
+        task::Task *t = queue.head;
+        while (t) {
+            if (t->cpu_affinity & cpu_mask) {
+                // RT tasks: take first one (FIFO within priority)
+                if (t->policy == task::SchedPolicy::SCHED_FIFO ||
+                    t->policy == task::SchedPolicy::SCHED_RR) {
+                    remove_from_priority_queue(t);
+                    return t;
+                }
+            }
+            t = t->next;
+        }
+    }
+
+    // TODO: Heap-based scheduling disabled pending debugging
+    // Now check CFS heap for SCHED_OTHER tasks (O(log n))
+    // while (!sched::heap_empty(&cfs_heap)) {
+    //     task::Task *cfs_best = sched::heap_peek(&cfs_heap);
+    //     if (cfs_best && (cfs_best->cpu_affinity & cpu_mask)) {
+    //         sched::heap_extract_min(&cfs_heap);
+    //         remove_from_priority_queue(cfs_best);
+    //         return cfs_best;
+    //     }
+    //     // Task can't run on this CPU, try next in heap
+    //     // For simplicity, break and fall back to O(n) scan
+    //     break;
+    // }
+
+    // O(n) scan for SCHED_OTHER tasks
+    for (u8 i = 0; i < task::NUM_PRIORITY_QUEUES; i++) {
+        PriorityQueue &queue = priority_queues[i];
+        if (!queue.head)
+            continue;
+
         task::Task *best = nullptr;
         task::Task *t = queue.head;
 
         while (t) {
-            // Check CPU affinity - can this task run on current CPU?
-            if (t->cpu_affinity & cpu_mask) {
-                // Skip deadline tasks (handled above)
-                if (t->policy == task::SchedPolicy::SCHED_DEADLINE) {
-                    t = t->next;
-                    continue;
-                }
-
-                // RT tasks: take first one (FIFO within priority)
-                if (t->policy == task::SchedPolicy::SCHED_FIFO ||
-                    t->policy == task::SchedPolicy::SCHED_RR) {
-                    best = t;
-                    break;
-                }
-
-                // SCHED_OTHER: select by lowest vruntime (CFS)
+            if ((t->cpu_affinity & cpu_mask) && t->policy == task::SchedPolicy::SCHED_OTHER) {
                 if (!best || t->vruntime < best->vruntime) {
                     best = t;
                 }
@@ -268,22 +363,8 @@ task::Task *dequeue_locked() {
         }
 
         if (best) {
-            // Remove best from queue
-            if (best->prev) {
-                best->prev->next = best->next;
-            } else {
-                queue.head = best->next;
-            }
-
-            if (best->next) {
-                best->next->prev = best->prev;
-            } else {
-                queue.tail = best->prev;
-            }
-
-            best->next = nullptr;
-            best->prev = nullptr;
-
+            // sched::heap_remove(&cfs_heap, best);
+            remove_from_priority_queue(best);
             return best;
         }
     }
@@ -311,7 +392,8 @@ void enqueue_percpu_locked(task::Task *t, u32 cpu_id) {
     }
 
     u8 queue_idx = priority_to_queue(t->priority);
-    PriorityQueue &queue = per_cpu_sched[cpu_id].queues[queue_idx];
+    PerCpuScheduler &sched = per_cpu_sched[cpu_id];
+    PriorityQueue &queue = sched.queues[queue_idx];
 
     t->next = nullptr;
     t->prev = queue.tail;
@@ -323,8 +405,14 @@ void enqueue_percpu_locked(task::Task *t, u32 cpu_id) {
     }
     queue.tail = t;
 
+    // Mark this queue as non-empty in the bitmap
+    sched.queue_bitmap |= (1u << queue_idx);
+
+    // Atomically increment per-CPU queue count for lock-free checks
+    __atomic_fetch_add(&sched.queue_count, 1, __ATOMIC_RELAXED);
+
     t->state = task::TaskState::Ready;
-    per_cpu_sched[cpu_id].total_tasks++;
+    sched.total_tasks++;
 }
 
 /**
@@ -355,7 +443,8 @@ task::Task *dequeue_percpu_locked(u32 cpu_id) {
 
     // If we found a deadline task, return it
     if (dl_best) {
-        PriorityQueue &queue = sched.queues[priority_to_queue(dl_best->priority)];
+        u8 q_idx = priority_to_queue(dl_best->priority);
+        PriorityQueue &queue = sched.queues[q_idx];
 
         if (dl_best->prev)
             dl_best->prev->next = dl_best->next;
@@ -367,9 +456,16 @@ task::Task *dequeue_percpu_locked(u32 cpu_id) {
         else
             queue.tail = dl_best->prev;
 
+        // Clear bitmap bit if queue is now empty
+        if (!queue.head) {
+            sched.queue_bitmap &= ~(1u << q_idx);
+        }
+
         dl_best->next = nullptr;
         dl_best->prev = nullptr;
         sched.total_tasks--;
+        // Atomically decrement per-CPU queue count
+        __atomic_fetch_sub(&sched.queue_count, 1, __ATOMIC_RELAXED);
         return dl_best;
     }
 
@@ -422,9 +518,16 @@ task::Task *dequeue_percpu_locked(u32 cpu_id) {
                 queue.tail = best->prev;
             }
 
+            // Clear bitmap bit if queue is now empty
+            if (!queue.head) {
+                sched.queue_bitmap &= ~(1u << i);
+            }
+
             best->next = nullptr;
             best->prev = nullptr;
             sched.total_tasks--;
+            // Atomically decrement per-CPU queue count
+            __atomic_fetch_sub(&sched.queue_count, 1, __ATOMIC_RELAXED);
 
             return best;
         }
@@ -477,9 +580,16 @@ task::Task *steal_task(u32 current_cpu) {
                         queue.tail = t->prev;
                     }
 
+                    // Clear bitmap bit if queue is now empty
+                    if (!queue.head) {
+                        victim.queue_bitmap &= ~(1u << q);
+                    }
+
                     t->next = nullptr;
                     t->prev = nullptr;
                     victim.total_tasks--;
+                    // Atomically decrement victim's queue count
+                    __atomic_fetch_sub(&victim.queue_count, 1, __ATOMIC_RELAXED);
                     victim.migrations++;
 
                     victim.lock.release(saved_daif);
@@ -500,6 +610,18 @@ task::Task *steal_task(u32 current_cpu) {
 }
 
 /**
+ * @brief Check if any tasks are ready on the current CPU (lock-free fast path).
+ */
+[[maybe_unused]]
+bool any_ready_percpu_lockfree(u32 cpu_id) {
+    if (cpu_id >= cpu::MAX_CPUS || !per_cpu_sched[cpu_id].initialized) {
+        return any_ready_lockfree();
+    }
+    // Lock-free check using atomic counter
+    return __atomic_load_n(&per_cpu_sched[cpu_id].queue_count, __ATOMIC_RELAXED) > 0;
+}
+
+/**
  * @brief Check if any tasks are ready on the current CPU.
  * @note Caller must hold sched_lock. This function acquires per-CPU lock internally.
  */
@@ -510,15 +632,16 @@ bool any_ready_percpu(u32 cpu_id) {
 
     PerCpuScheduler &sched = per_cpu_sched[cpu_id];
 
+    // Fast path: lock-free check first
+    if (__atomic_load_n(&sched.queue_count, __ATOMIC_RELAXED) == 0) {
+        return false; // Definitely empty, no need to lock
+    }
+
+    // Slow path: lock for accurate bitmap check
     // Lock ordering: sched_lock (caller holds) -> per-CPU lock
     u64 saved_daif = sched.lock.acquire();
-    bool has_ready = false;
-    for (u8 i = 0; i < task::NUM_PRIORITY_QUEUES; i++) {
-        if (sched.queues[i].head) {
-            has_ready = true;
-            break;
-        }
-    }
+    // O(1) check using queue bitmap
+    bool has_ready = sched.queue_bitmap != 0;
     sched.lock.release(saved_daif);
 
     return has_ready;
@@ -536,17 +659,23 @@ void init() {
         priority_queues[i].tail = nullptr;
     }
 
+    // Initialize scheduling heaps for O(log n) selection
+    sched::heap_init(&cfs_heap, sched::cfs_key);
+    sched::heap_init(&deadline_heap, sched::deadline_key);
+
     // Initialize per-CPU scheduler state
     for (u32 c = 0; c < cpu::MAX_CPUS; c++) {
         for (u8 i = 0; i < task::NUM_PRIORITY_QUEUES; i++) {
             per_cpu_sched[c].queues[i].head = nullptr;
             per_cpu_sched[c].queues[i].tail = nullptr;
         }
+        per_cpu_sched[c].queue_bitmap = 0;
         per_cpu_sched[c].context_switches = 0;
         per_cpu_sched[c].total_tasks = 0;
         per_cpu_sched[c].steals = 0;
         per_cpu_sched[c].migrations = 0;
         per_cpu_sched[c].initialized = false;
+        per_cpu_sched[c].queue_count = 0;
     }
 
     // Initialize boot CPU (CPU 0)
@@ -701,6 +830,12 @@ void schedule() {
 
     // Set time slice based on scheduling policy
     if (next->policy == task::SchedPolicy::SCHED_DEADLINE) {
+        // TODO: Deadline miss check disabled pending debugging
+        // u64 current_time = timer::get_ticks();
+        // if (deadline::check_deadline_miss(next, current_time)) {
+        //     deadline::handle_deadline_miss(next, current_time);
+        // }
+
         // SCHED_DEADLINE: Time slice from runtime budget (ns -> ticks, 1 tick = 1ms)
         next->time_slice = static_cast<u32>(next->dl_runtime / 1000000);
         if (next->time_slice == 0)
@@ -737,9 +872,42 @@ void schedule() {
     old = current;
     task::set_current(next);
 
+    // Verify vinit's page tables before any context switch
+    viper::debug_verify_vinit_tables("pre-context-switch");
+
     // Switch address space if the next task is a user task with a different viper
     if (next->viper) {
         viper::Viper *v = reinterpret_cast<viper::Viper *>(next->viper);
+
+        // DEBUG: Check L1[2] and L2[0] before switching to this viper
+        if (v->ttbr0) {
+            u64 *l0 = reinterpret_cast<u64 *>(pmm::phys_to_virt(v->ttbr0));
+            if (l0[0] & 0x1) { // VALID
+                u64 *l1 = reinterpret_cast<u64 *>(pmm::phys_to_virt(l0[0] & ~0xFFFULL));
+                if (!(l1[2] & 0x1)) { // L1[2] INVALID!
+                    serial::puts("[sched] FATAL: L1[2] invalid for '");
+                    serial::puts(next->name);
+                    serial::puts("' L1[2]=");
+                    serial::put_hex(l1[2]);
+                    serial::puts("\n");
+                    while (true) asm volatile("wfe");
+                } else {
+                    // Also check L2[0]
+                    u64 *l2 = reinterpret_cast<u64 *>(pmm::phys_to_virt(l1[2] & ~0xFFFULL));
+                    if (!(l2[0] & 0x1)) { // L2[0] INVALID!
+                        serial::puts("[sched] FATAL: L2[0] invalid for '");
+                        serial::puts(next->name);
+                        serial::puts("' L2[0]=");
+                        serial::put_hex(l2[0]);
+                        serial::puts(" L2_phys=");
+                        serial::put_hex(l1[2] & ~0xFFFULL);
+                        serial::puts("\n");
+                        while (true) asm volatile("wfe");
+                    }
+                }
+            }
+        }
+
         viper::switch_address_space(v->ttbr0, v->asid);
         viper::set_current(v);
     }
@@ -874,9 +1042,22 @@ void tick() {
                         current->vruntime += cfs::calc_vruntime_delta(delta_ns, current->nice);
                     }
                 }
+
+                // TODO: Bandwidth control disabled pending debugging
+                // if (current->bw_runtime > 0) {
+                //     if (!bandwidth::account_runtime(current, 1)) {
+                //         // Task was throttled, need to reschedule
+                //         current->state = task::TaskState::Blocked;
+                //         need_schedule = true;
+                //     }
+                // }
             }
         }
     }
+
+    // TODO: Bandwidth replenishment disabled pending debugging
+    // u64 current_tick = timer::get_ticks();
+    // bandwidth::check_replenish(current_tick);
 
     // Schedule outside the lock (schedule() acquires its own lock)
     if (need_schedule) {

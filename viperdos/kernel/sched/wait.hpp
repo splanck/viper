@@ -87,6 +87,9 @@ inline void wait_init(WaitQueue *wq) {
  * If the condition is met after adding, call wait_abort() to remove.
  * The task's state is set to Blocked.
  *
+ * Tasks are inserted in priority order (lower priority value = higher priority).
+ * This ensures high-priority tasks are woken before low-priority ones.
+ *
  * @param wq Wait queue to add to.
  * @param t Task to add.
  */
@@ -98,16 +101,33 @@ inline void wait_enqueue(WaitQueue *wq, task::Task *t) {
     t->state = task::TaskState::Blocked;
     t->wait_channel = wq; // For debugging
 
-    // Add to tail of wait queue (FIFO)
-    t->next = nullptr;
-    t->prev = wq->tail;
-
-    if (wq->tail) {
-        wq->tail->next = t;
-    } else {
+    // Insert in priority order (lower value = higher priority = earlier in queue)
+    if (!wq->head || t->priority < wq->head->priority) {
+        // Insert at head (highest priority or empty queue)
+        t->next = wq->head;
+        t->prev = nullptr;
+        if (wq->head) {
+            wq->head->prev = t;
+        } else {
+            wq->tail = t;
+        }
         wq->head = t;
+    } else {
+        // Find insertion point (after all tasks with higher or equal priority)
+        task::Task *curr = wq->head;
+        while (curr->next && curr->next->priority <= t->priority) {
+            curr = curr->next;
+        }
+        // Insert after curr
+        t->next = curr->next;
+        t->prev = curr;
+        if (curr->next) {
+            curr->next->prev = t;
+        } else {
+            wq->tail = t;
+        }
+        curr->next = t;
     }
-    wq->tail = t;
     wq->count++;
 }
 
@@ -195,6 +215,60 @@ inline bool wait_empty(const WaitQueue *wq) {
  */
 inline u32 wait_count(const WaitQueue *wq) {
     return wq ? wq->count : 0;
+}
+
+/**
+ * @brief Add a task to the wait queue with a timeout.
+ *
+ * @details
+ * Same as wait_enqueue but sets a timeout. If the timeout expires before
+ * the task is woken, it will be woken with a timeout indication.
+ *
+ * @param wq Wait queue to add to.
+ * @param t Task to add.
+ * @param timeout_ticks Timeout in timer ticks from now. 0 means no timeout.
+ */
+void wait_enqueue_timeout(WaitQueue *wq, task::Task *t, u64 timeout_ticks);
+
+/**
+ * @brief Check for and wake timed-out waiters.
+ *
+ * @details
+ * Called from the timer interrupt to check all blocked tasks for timeouts.
+ * Any task whose timeout has expired is woken and its wait_timeout is set to 0.
+ *
+ * @param current_tick Current system tick count.
+ * @return Number of tasks woken due to timeout.
+ */
+u32 check_wait_timeouts(u64 current_tick);
+
+/**
+ * @brief Check if a task was woken due to timeout.
+ *
+ * @details
+ * Call after a task returns from waiting to check if it timed out.
+ * A task that timed out will have wait_timeout == 0 but was not
+ * explicitly woken by wait_wake_one/all.
+ *
+ * @param t Task to check.
+ * @return true if the task timed out, false if it was explicitly woken.
+ */
+inline bool wait_timed_out(task::Task *t) {
+    // A task that was woken by timeout will have wait_channel cleared
+    // but was not on a wait queue when woken - check via a flag
+    // For simplicity, we use wait_timeout == (u64)-1 to indicate timeout occurred
+    return t && t->wait_timeout == static_cast<u64>(-1);
+}
+
+/**
+ * @brief Clear the timeout flag after handling.
+ *
+ * @param t Task to clear.
+ */
+inline void wait_clear_timeout(task::Task *t) {
+    if (t) {
+        t->wait_timeout = 0;
+    }
 }
 
 } // namespace sched
