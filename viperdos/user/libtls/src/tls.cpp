@@ -642,7 +642,7 @@ void tls_config_init(tls_config_t *config) {
 }
 
 tls_session_t *tls_new(int socket_fd, const tls_config_t *config) {
-    tls_session_t *session = calloc(1, sizeof(tls_session_t));
+    tls_session_t *session = static_cast<tls_session_t *>(calloc(1, sizeof(tls_session_t)));
     if (!session)
         return NULL;
 
@@ -766,7 +766,7 @@ long tls_send(tls_session_t *session, const void *data, size_t len) {
         return 0;
 
     /* Send in chunks */
-    const uint8_t *ptr = data;
+    const uint8_t *ptr = static_cast<const uint8_t *>(data);
     size_t remaining = len;
 
     while (remaining > 0) {

@@ -49,8 +49,34 @@
 //===----------------------------------------------------------------------===//
 
 #include <widget.h>
+#include <dirent.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+
+/* File dialog constants */
+#define FD_WIDTH 400
+#define FD_HEIGHT 350
+#define FD_PATH_HEIGHT 24
+#define FD_LIST_TOP 30
+#define FD_LIST_HEIGHT 250
+#define FD_BUTTON_Y (FD_HEIGHT - 40)
+#define FD_ITEM_HEIGHT 20
+#define FD_MAX_ENTRIES 256
+#define FD_MAX_PATH 512
+#define FD_MAX_NAME 256
+
+/* File entry structure for dialog */
+struct fd_entry {
+    char name[FD_MAX_NAME];
+    bool is_dir;
+};
+
+/* Yield CPU to avoid busy-waiting */
+static inline void fd_yield(void) {
+    __asm__ volatile("mov x8, #0x0E\n\tsvc #0" ::: "x8");
+}
 
 //===----------------------------------------------------------------------===//
 // Message Box
@@ -380,92 +406,769 @@ msgbox_result_t msgbox_show(gui_window_t *parent, const char *title, const char 
 /**
  * @brief Opens a file selection dialog for choosing an existing file.
  *
- * @note **NOT YET IMPLEMENTED**. This function is a stub that always
- *       returns NULL. A full implementation would need to:
- *       - Display a file browser window
- *       - Allow navigation through directories
- *       - Support file type filtering
- *       - Return the selected file path
- *
- * @param parent      The parent window for positioning (unused).
- * @param title       The dialog window title (unused).
- * @param filter      File type filter string, e.g., "*.txt" (unused).
- * @param initial_dir Initial directory to display (unused).
- *
- * @return Always returns NULL (not implemented).
- *         When implemented, would return a dynamically allocated string
- *         containing the selected file path, or NULL if canceled.
- *
- * @todo Implement file browser dialog using the Workbench file browser.
+ * Displays a modal file browser with directory navigation, file list,
+ * and OK/Cancel buttons. Returns the selected file path or NULL if canceled.
  */
 char *filedialog_open(gui_window_t *parent, const char *title, const char *filter,
                       const char *initial_dir) {
     (void)parent;
-    (void)title;
-    (void)filter;
-    (void)initial_dir;
+    (void)filter; /* TODO: implement filtering */
 
-    // Stub - would need full file browser implementation
-    // For now, return NULL indicating cancel
-    return NULL;
+    /* Set initial directory */
+    char current_path[FD_MAX_PATH];
+    if (initial_dir && initial_dir[0]) {
+        strncpy(current_path, initial_dir, FD_MAX_PATH - 1);
+        current_path[FD_MAX_PATH - 1] = '\0';
+    } else {
+        strcpy(current_path, "/");
+    }
+
+    /* Create dialog window */
+    gui_window_t *dialog = gui_create_window(title ? title : "Open File", FD_WIDTH, FD_HEIGHT);
+    if (!dialog)
+        return NULL;
+
+    /* Allocate entry array */
+    fd_entry *entries = static_cast<fd_entry *>(malloc(FD_MAX_ENTRIES * sizeof(fd_entry)));
+    if (!entries) {
+        gui_destroy_window(dialog);
+        return NULL;
+    }
+
+    char *result = NULL;
+    bool running = true;
+    int entry_count = 0;
+    int selected = -1;
+    int scroll_offset = 0;
+    int visible_items = FD_LIST_HEIGHT / FD_ITEM_HEIGHT;
+
+    /* Load directory function */
+    auto load_dir = [&]() {
+        entry_count = 0;
+        selected = -1;
+        scroll_offset = 0;
+
+        DIR *dir = opendir(current_path);
+        if (!dir)
+            return;
+
+        /* Add parent directory entry if not at root */
+        if (strcmp(current_path, "/") != 0 && entry_count < FD_MAX_ENTRIES) {
+            strcpy(entries[entry_count].name, "..");
+            entries[entry_count].is_dir = true;
+            entry_count++;
+        }
+
+        struct dirent *ent;
+        while ((ent = readdir(dir)) != NULL && entry_count < FD_MAX_ENTRIES) {
+            if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
+                continue;
+
+            strncpy(entries[entry_count].name, ent->d_name, FD_MAX_NAME - 1);
+            entries[entry_count].name[FD_MAX_NAME - 1] = '\0';
+            entries[entry_count].is_dir = (ent->d_type == DT_DIR);
+            entry_count++;
+        }
+        closedir(dir);
+    };
+
+    /* Navigate up one directory */
+    auto navigate_up = [&]() {
+        if (strcmp(current_path, "/") == 0)
+            return;
+        char *last_slash = strrchr(current_path, '/');
+        if (last_slash == current_path) {
+            strcpy(current_path, "/");
+        } else if (last_slash) {
+            *last_slash = '\0';
+        }
+        load_dir();
+    };
+
+    /* Navigate into directory */
+    auto navigate_into = [&](const char *name) {
+        if (strcmp(name, "..") == 0) {
+            navigate_up();
+            return;
+        }
+        size_t cur_len = strlen(current_path);
+        if (cur_len + strlen(name) + 2 < FD_MAX_PATH) {
+            if (current_path[cur_len - 1] != '/')
+                strcat(current_path, "/");
+            strcat(current_path, name);
+        }
+        load_dir();
+    };
+
+    /* Initial load */
+    load_dir();
+
+    while (running) {
+        /* Draw dialog background */
+        gui_fill_rect(dialog, 0, 0, FD_WIDTH, FD_HEIGHT, WB_GRAY_LIGHT);
+
+        /* Draw path bar */
+        gui_fill_rect(dialog, 5, 5, FD_WIDTH - 10, FD_PATH_HEIGHT, WB_WHITE);
+        gui_draw_rect(dialog, 5, 5, FD_WIDTH - 10, FD_PATH_HEIGHT, WB_GRAY_DARK);
+        gui_draw_text(dialog, 10, 10, current_path, WB_BLACK);
+
+        /* Draw file list */
+        gui_fill_rect(dialog, 5, FD_LIST_TOP, FD_WIDTH - 10, FD_LIST_HEIGHT, WB_WHITE);
+        gui_draw_rect(dialog, 5, FD_LIST_TOP, FD_WIDTH - 10, FD_LIST_HEIGHT, WB_GRAY_DARK);
+
+        for (int i = 0; i < visible_items && (i + scroll_offset) < entry_count; i++) {
+            int idx = i + scroll_offset;
+            int y = FD_LIST_TOP + 2 + i * FD_ITEM_HEIGHT;
+
+            /* Selection highlight */
+            if (idx == selected) {
+                gui_fill_rect(dialog, 6, y, FD_WIDTH - 12, FD_ITEM_HEIGHT, WB_BLUE);
+            }
+
+            /* Icon indicator and name */
+            uint32_t text_color = (idx == selected) ? WB_WHITE : WB_BLACK;
+            const char *icon = entries[idx].is_dir ? "[D] " : "    ";
+
+            char display[FD_MAX_NAME + 8];
+            snprintf(display, sizeof(display), "%s%s", icon, entries[idx].name);
+            gui_draw_text(dialog, 10, y + 3, display, text_color);
+        }
+
+        /* Draw buttons */
+        int btn_width = 80;
+        int btn_height = 26;
+        int ok_x = FD_WIDTH / 2 - btn_width - 10;
+        int cancel_x = FD_WIDTH / 2 + 10;
+
+        draw_3d_button(dialog, ok_x, FD_BUTTON_Y, btn_width, btn_height, false);
+        draw_3d_button(dialog, cancel_x, FD_BUTTON_Y, btn_width, btn_height, false);
+
+        int text_offset = (btn_width - 16) / 2;
+        gui_draw_text(dialog, ok_x + text_offset, FD_BUTTON_Y + 7, "OK", WB_BLACK);
+        text_offset = (btn_width - 48) / 2;
+        gui_draw_text(dialog, cancel_x + text_offset, FD_BUTTON_Y + 7, "Cancel", WB_BLACK);
+
+        gui_present(dialog);
+
+        /* Handle events */
+        gui_event_t event;
+        if (gui_poll_event(dialog, &event) == 0) {
+            switch (event.type) {
+            case GUI_EVENT_CLOSE:
+                running = false;
+                break;
+
+            case GUI_EVENT_MOUSE:
+                if (event.mouse.event_type == 1 && event.mouse.button == 0) {
+                    int mx = event.mouse.x;
+                    int my = event.mouse.y;
+
+                    /* Check file list click */
+                    if (mx >= 5 && mx < FD_WIDTH - 5 &&
+                        my >= FD_LIST_TOP && my < FD_LIST_TOP + FD_LIST_HEIGHT) {
+                        int clicked_idx = (my - FD_LIST_TOP - 2) / FD_ITEM_HEIGHT + scroll_offset;
+                        if (clicked_idx >= 0 && clicked_idx < entry_count) {
+                            if (selected == clicked_idx) {
+                                /* Double-click behavior */
+                                if (entries[clicked_idx].is_dir) {
+                                    navigate_into(entries[clicked_idx].name);
+                                } else {
+                                    /* Select and confirm */
+                                    size_t path_len = strlen(current_path);
+                                    size_t name_len = strlen(entries[clicked_idx].name);
+                                    result = static_cast<char *>(malloc(path_len + name_len + 2));
+                                    if (result) {
+                                        strcpy(result, current_path);
+                                        if (result[path_len - 1] != '/')
+                                            strcat(result, "/");
+                                        strcat(result, entries[clicked_idx].name);
+                                    }
+                                    running = false;
+                                }
+                            } else {
+                                selected = clicked_idx;
+                            }
+                        }
+                    }
+
+                    /* Check OK button */
+                    if (mx >= ok_x && mx < ok_x + btn_width &&
+                        my >= FD_BUTTON_Y && my < FD_BUTTON_Y + btn_height) {
+                        if (selected >= 0 && !entries[selected].is_dir) {
+                            size_t path_len = strlen(current_path);
+                            size_t name_len = strlen(entries[selected].name);
+                            result = static_cast<char *>(malloc(path_len + name_len + 2));
+                            if (result) {
+                                strcpy(result, current_path);
+                                if (result[path_len - 1] != '/')
+                                    strcat(result, "/");
+                                strcat(result, entries[selected].name);
+                            }
+                        }
+                        running = false;
+                    }
+
+                    /* Check Cancel button */
+                    if (mx >= cancel_x && mx < cancel_x + btn_width &&
+                        my >= FD_BUTTON_Y && my < FD_BUTTON_Y + btn_height) {
+                        running = false;
+                    }
+                }
+                break;
+
+            case GUI_EVENT_KEY:
+                if (event.key.keycode == 0x28) { /* Enter */
+                    if (selected >= 0) {
+                        if (entries[selected].is_dir) {
+                            navigate_into(entries[selected].name);
+                        } else {
+                            size_t path_len = strlen(current_path);
+                            size_t name_len = strlen(entries[selected].name);
+                            result = static_cast<char *>(malloc(path_len + name_len + 2));
+                            if (result) {
+                                strcpy(result, current_path);
+                                if (result[path_len - 1] != '/')
+                                    strcat(result, "/");
+                                strcat(result, entries[selected].name);
+                            }
+                            running = false;
+                        }
+                    }
+                } else if (event.key.keycode == 0x29) { /* Escape */
+                    running = false;
+                } else if (event.key.keycode == 0x52) { /* Up */
+                    if (selected > 0) selected--;
+                    if (selected < scroll_offset) scroll_offset = selected;
+                } else if (event.key.keycode == 0x51) { /* Down */
+                    if (selected < entry_count - 1) selected++;
+                    if (selected >= scroll_offset + visible_items)
+                        scroll_offset = selected - visible_items + 1;
+                }
+                break;
+
+            default:
+                break;
+            }
+        }
+
+        fd_yield();
+    }
+
+    free(entries);
+    gui_destroy_window(dialog);
+    return result;
 }
 
 /**
  * @brief Opens a file selection dialog for choosing a save location.
  *
- * @note **NOT YET IMPLEMENTED**. This function is a stub that always
- *       returns NULL. A full implementation would need to:
- *       - Display a file browser window with file name entry
- *       - Allow navigation through directories
- *       - Prompt for overwrite confirmation if file exists
- *       - Return the selected file path
- *
- * @param parent      The parent window for positioning (unused).
- * @param title       The dialog window title (unused).
- * @param filter      File type filter string, e.g., "*.txt" (unused).
- * @param initial_dir Initial directory to display (unused).
- *
- * @return Always returns NULL (not implemented).
- *         When implemented, would return a dynamically allocated string
- *         containing the save file path, or NULL if canceled.
- *
- * @todo Implement save file dialog with filename entry field.
+ * Displays a modal file browser with directory navigation, file list,
+ * filename entry field, and Save/Cancel buttons.
  */
 char *filedialog_save(gui_window_t *parent, const char *title, const char *filter,
                       const char *initial_dir) {
     (void)parent;
-    (void)title;
     (void)filter;
-    (void)initial_dir;
 
-    // Stub - would need full file browser implementation
-    return NULL;
+    /* Set initial directory */
+    char current_path[FD_MAX_PATH];
+    if (initial_dir && initial_dir[0]) {
+        strncpy(current_path, initial_dir, FD_MAX_PATH - 1);
+        current_path[FD_MAX_PATH - 1] = '\0';
+    } else {
+        strcpy(current_path, "/");
+    }
+
+    /* Filename buffer */
+    char filename[FD_MAX_NAME] = "";
+    int filename_cursor = 0;
+
+    /* Create dialog window (taller for filename entry) */
+    int dialog_height = FD_HEIGHT + 30;
+    gui_window_t *dialog = gui_create_window(title ? title : "Save File", FD_WIDTH, dialog_height);
+    if (!dialog)
+        return NULL;
+
+    fd_entry *entries = static_cast<fd_entry *>(malloc(FD_MAX_ENTRIES * sizeof(fd_entry)));
+    if (!entries) {
+        gui_destroy_window(dialog);
+        return NULL;
+    }
+
+    char *result = NULL;
+    bool running = true;
+    int entry_count = 0;
+    int selected = -1;
+    int scroll_offset = 0;
+    int visible_items = FD_LIST_HEIGHT / FD_ITEM_HEIGHT;
+
+    /* Load directory (same as open dialog) */
+    auto load_dir = [&]() {
+        entry_count = 0;
+        selected = -1;
+        scroll_offset = 0;
+
+        DIR *dir = opendir(current_path);
+        if (!dir) return;
+
+        if (strcmp(current_path, "/") != 0 && entry_count < FD_MAX_ENTRIES) {
+            strcpy(entries[entry_count].name, "..");
+            entries[entry_count].is_dir = true;
+            entry_count++;
+        }
+
+        struct dirent *ent;
+        while ((ent = readdir(dir)) != NULL && entry_count < FD_MAX_ENTRIES) {
+            if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
+                continue;
+            strncpy(entries[entry_count].name, ent->d_name, FD_MAX_NAME - 1);
+            entries[entry_count].name[FD_MAX_NAME - 1] = '\0';
+            entries[entry_count].is_dir = (ent->d_type == DT_DIR);
+            entry_count++;
+        }
+        closedir(dir);
+    };
+
+    auto navigate_up = [&]() {
+        if (strcmp(current_path, "/") == 0) return;
+        char *last_slash = strrchr(current_path, '/');
+        if (last_slash == current_path) {
+            strcpy(current_path, "/");
+        } else if (last_slash) {
+            *last_slash = '\0';
+        }
+        load_dir();
+    };
+
+    auto navigate_into = [&](const char *name) {
+        if (strcmp(name, "..") == 0) {
+            navigate_up();
+            return;
+        }
+        size_t cur_len = strlen(current_path);
+        if (cur_len + strlen(name) + 2 < FD_MAX_PATH) {
+            if (current_path[cur_len - 1] != '/')
+                strcat(current_path, "/");
+            strcat(current_path, name);
+        }
+        load_dir();
+    };
+
+    load_dir();
+
+    int filename_y = FD_LIST_TOP + FD_LIST_HEIGHT + 5;
+    int button_y = dialog_height - 40;
+
+    while (running) {
+        gui_fill_rect(dialog, 0, 0, FD_WIDTH, dialog_height, WB_GRAY_LIGHT);
+
+        /* Path bar */
+        gui_fill_rect(dialog, 5, 5, FD_WIDTH - 10, FD_PATH_HEIGHT, WB_WHITE);
+        gui_draw_rect(dialog, 5, 5, FD_WIDTH - 10, FD_PATH_HEIGHT, WB_GRAY_DARK);
+        gui_draw_text(dialog, 10, 10, current_path, WB_BLACK);
+
+        /* File list */
+        gui_fill_rect(dialog, 5, FD_LIST_TOP, FD_WIDTH - 10, FD_LIST_HEIGHT, WB_WHITE);
+        gui_draw_rect(dialog, 5, FD_LIST_TOP, FD_WIDTH - 10, FD_LIST_HEIGHT, WB_GRAY_DARK);
+
+        for (int i = 0; i < visible_items && (i + scroll_offset) < entry_count; i++) {
+            int idx = i + scroll_offset;
+            int y = FD_LIST_TOP + 2 + i * FD_ITEM_HEIGHT;
+
+            if (idx == selected) {
+                gui_fill_rect(dialog, 6, y, FD_WIDTH - 12, FD_ITEM_HEIGHT, WB_BLUE);
+            }
+
+            uint32_t text_color = (idx == selected) ? WB_WHITE : WB_BLACK;
+            const char *icon = entries[idx].is_dir ? "[D] " : "    ";
+
+            char display[FD_MAX_NAME + 8];
+            snprintf(display, sizeof(display), "%s%s", icon, entries[idx].name);
+            gui_draw_text(dialog, 10, y + 3, display, text_color);
+        }
+
+        /* Filename label and entry */
+        gui_draw_text(dialog, 10, filename_y + 5, "Filename:", WB_BLACK);
+        gui_fill_rect(dialog, 80, filename_y, FD_WIDTH - 90, 24, WB_WHITE);
+        gui_draw_rect(dialog, 80, filename_y, FD_WIDTH - 90, 24, WB_GRAY_DARK);
+        gui_draw_text(dialog, 85, filename_y + 5, filename, WB_BLACK);
+
+        /* Cursor */
+        int cursor_x = 85 + filename_cursor * 8;
+        gui_draw_vline(dialog, cursor_x, filename_y + 3, filename_y + 21, WB_BLACK);
+
+        /* Buttons */
+        int btn_width = 80;
+        int btn_height = 26;
+        int save_x = FD_WIDTH / 2 - btn_width - 10;
+        int cancel_x = FD_WIDTH / 2 + 10;
+
+        draw_3d_button(dialog, save_x, button_y, btn_width, btn_height, false);
+        draw_3d_button(dialog, cancel_x, button_y, btn_width, btn_height, false);
+
+        int text_offset = (btn_width - 32) / 2;
+        gui_draw_text(dialog, save_x + text_offset, button_y + 7, "Save", WB_BLACK);
+        text_offset = (btn_width - 48) / 2;
+        gui_draw_text(dialog, cancel_x + text_offset, button_y + 7, "Cancel", WB_BLACK);
+
+        gui_present(dialog);
+
+        gui_event_t event;
+        if (gui_poll_event(dialog, &event) == 0) {
+            switch (event.type) {
+            case GUI_EVENT_CLOSE:
+                running = false;
+                break;
+
+            case GUI_EVENT_MOUSE:
+                if (event.mouse.event_type == 1 && event.mouse.button == 0) {
+                    int mx = event.mouse.x;
+                    int my = event.mouse.y;
+
+                    /* File list click */
+                    if (mx >= 5 && mx < FD_WIDTH - 5 &&
+                        my >= FD_LIST_TOP && my < FD_LIST_TOP + FD_LIST_HEIGHT) {
+                        int clicked_idx = (my - FD_LIST_TOP - 2) / FD_ITEM_HEIGHT + scroll_offset;
+                        if (clicked_idx >= 0 && clicked_idx < entry_count) {
+                            if (selected == clicked_idx && entries[clicked_idx].is_dir) {
+                                navigate_into(entries[clicked_idx].name);
+                            } else {
+                                selected = clicked_idx;
+                                if (!entries[selected].is_dir) {
+                                    strncpy(filename, entries[selected].name, FD_MAX_NAME - 1);
+                                    filename[FD_MAX_NAME - 1] = '\0';
+                                    filename_cursor = static_cast<int>(strlen(filename));
+                                }
+                            }
+                        }
+                    }
+
+                    /* Save button */
+                    if (mx >= save_x && mx < save_x + btn_width &&
+                        my >= button_y && my < button_y + btn_height) {
+                        if (filename[0] != '\0') {
+                            size_t path_len = strlen(current_path);
+                            size_t name_len = strlen(filename);
+                            result = static_cast<char *>(malloc(path_len + name_len + 2));
+                            if (result) {
+                                strcpy(result, current_path);
+                                if (result[path_len - 1] != '/')
+                                    strcat(result, "/");
+                                strcat(result, filename);
+                            }
+                        }
+                        running = false;
+                    }
+
+                    /* Cancel button */
+                    if (mx >= cancel_x && mx < cancel_x + btn_width &&
+                        my >= button_y && my < button_y + btn_height) {
+                        running = false;
+                    }
+                }
+                break;
+
+            case GUI_EVENT_KEY:
+                if (event.key.keycode == 0x28) { /* Enter */
+                    if (filename[0] != '\0') {
+                        size_t path_len = strlen(current_path);
+                        size_t name_len = strlen(filename);
+                        result = static_cast<char *>(malloc(path_len + name_len + 2));
+                        if (result) {
+                            strcpy(result, current_path);
+                            if (result[path_len - 1] != '/')
+                                strcat(result, "/");
+                            strcat(result, filename);
+                        }
+                        running = false;
+                    }
+                } else if (event.key.keycode == 0x29) { /* Escape */
+                    running = false;
+                } else if (event.key.keycode == 0x2A) { /* Backspace */
+                    if (filename_cursor > 0) {
+                        memmove(&filename[filename_cursor - 1], &filename[filename_cursor],
+                                strlen(filename) - filename_cursor + 1);
+                        filename_cursor--;
+                    }
+                } else if (event.key.keycode >= 0x04 && event.key.keycode <= 0x1D) {
+                    /* A-Z */
+                    if (filename_cursor < FD_MAX_NAME - 1) {
+                        char c = 'a' + event.key.keycode - 0x04;
+                        memmove(&filename[filename_cursor + 1], &filename[filename_cursor],
+                                strlen(filename) - filename_cursor + 1);
+                        filename[filename_cursor++] = c;
+                    }
+                } else if (event.key.keycode >= 0x1E && event.key.keycode <= 0x27) {
+                    /* 0-9 */
+                    if (filename_cursor < FD_MAX_NAME - 1) {
+                        char c = (event.key.keycode == 0x27) ? '0' : ('1' + event.key.keycode - 0x1E);
+                        memmove(&filename[filename_cursor + 1], &filename[filename_cursor],
+                                strlen(filename) - filename_cursor + 1);
+                        filename[filename_cursor++] = c;
+                    }
+                } else if (event.key.keycode == 0x37) { /* Period */
+                    if (filename_cursor < FD_MAX_NAME - 1) {
+                        memmove(&filename[filename_cursor + 1], &filename[filename_cursor],
+                                strlen(filename) - filename_cursor + 1);
+                        filename[filename_cursor++] = '.';
+                    }
+                } else if (event.key.keycode == 0x2D) { /* Minus/underscore */
+                    if (filename_cursor < FD_MAX_NAME - 1) {
+                        memmove(&filename[filename_cursor + 1], &filename[filename_cursor],
+                                strlen(filename) - filename_cursor + 1);
+                        filename[filename_cursor++] = '_';
+                    }
+                }
+                break;
+
+            default:
+                break;
+            }
+        }
+
+        fd_yield();
+    }
+
+    free(entries);
+    gui_destroy_window(dialog);
+    return result;
 }
 
 /**
  * @brief Opens a dialog for selecting a folder/directory.
  *
- * @note **NOT YET IMPLEMENTED**. This function is a stub that always
- *       returns NULL. A full implementation would need to:
- *       - Display a directory browser (showing only folders)
- *       - Allow navigation and creation of new folders
- *       - Return the selected directory path
+ * Displays a modal directory browser showing only folders, with navigation
+ * and OK/Cancel buttons. Returns the selected directory path or NULL if canceled.
  *
- * @param parent      The parent window for positioning (unused).
- * @param title       The dialog window title (unused).
- * @param initial_dir Initial directory to display (unused).
+ * @param parent      The parent window for positioning (currently unused).
+ * @param title       The dialog window title. If NULL, "Select Folder" is used.
+ * @param initial_dir Initial directory to display. If NULL, "/" is used.
  *
- * @return Always returns NULL (not implemented).
- *         When implemented, would return a dynamically allocated string
- *         containing the selected directory path, or NULL if canceled.
- *
- * @todo Implement folder selection dialog.
+ * @return A dynamically allocated string containing the selected directory path,
+ *         or NULL if canceled. Caller must free() the returned string.
  */
 char *filedialog_folder(gui_window_t *parent, const char *title, const char *initial_dir) {
     (void)parent;
-    (void)title;
-    (void)initial_dir;
 
-    // Stub - would need full file browser implementation
-    return NULL;
+    /* Set initial directory */
+    char current_path[FD_MAX_PATH];
+    if (initial_dir && initial_dir[0]) {
+        strncpy(current_path, initial_dir, FD_MAX_PATH - 1);
+        current_path[FD_MAX_PATH - 1] = '\0';
+    } else {
+        strcpy(current_path, "/");
+    }
+
+    /* Create dialog window */
+    gui_window_t *dialog = gui_create_window(title ? title : "Select Folder", FD_WIDTH, FD_HEIGHT);
+    if (!dialog)
+        return NULL;
+
+    /* Allocate entry array */
+    fd_entry *entries = static_cast<fd_entry *>(malloc(FD_MAX_ENTRIES * sizeof(fd_entry)));
+    if (!entries) {
+        gui_destroy_window(dialog);
+        return NULL;
+    }
+
+    char *result = NULL;
+    bool running = true;
+    int entry_count = 0;
+    int selected = -1;
+    int scroll_offset = 0;
+    int visible_items = FD_LIST_HEIGHT / FD_ITEM_HEIGHT;
+
+    /* Load directory - only directories */
+    auto load_dir = [&]() {
+        entry_count = 0;
+        selected = -1;
+        scroll_offset = 0;
+
+        DIR *dir = opendir(current_path);
+        if (!dir)
+            return;
+
+        /* Add parent directory entry if not at root */
+        if (strcmp(current_path, "/") != 0 && entry_count < FD_MAX_ENTRIES) {
+            strcpy(entries[entry_count].name, "..");
+            entries[entry_count].is_dir = true;
+            entry_count++;
+        }
+
+        struct dirent *ent;
+        while ((ent = readdir(dir)) != NULL && entry_count < FD_MAX_ENTRIES) {
+            if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
+                continue;
+
+            /* Only show directories */
+            if (ent->d_type != DT_DIR)
+                continue;
+
+            strncpy(entries[entry_count].name, ent->d_name, FD_MAX_NAME - 1);
+            entries[entry_count].name[FD_MAX_NAME - 1] = '\0';
+            entries[entry_count].is_dir = true;
+            entry_count++;
+        }
+        closedir(dir);
+    };
+
+    /* Navigate up one directory */
+    auto navigate_up = [&]() {
+        if (strcmp(current_path, "/") == 0)
+            return;
+        char *last_slash = strrchr(current_path, '/');
+        if (last_slash == current_path) {
+            strcpy(current_path, "/");
+        } else if (last_slash) {
+            *last_slash = '\0';
+        }
+        load_dir();
+    };
+
+    /* Navigate into directory */
+    auto navigate_into = [&](const char *name) {
+        if (strcmp(name, "..") == 0) {
+            navigate_up();
+            return;
+        }
+        size_t cur_len = strlen(current_path);
+        if (cur_len + strlen(name) + 2 < FD_MAX_PATH) {
+            if (current_path[cur_len - 1] != '/')
+                strcat(current_path, "/");
+            strcat(current_path, name);
+        }
+        load_dir();
+    };
+
+    /* Initial load */
+    load_dir();
+
+    while (running) {
+        /* Draw dialog background */
+        gui_fill_rect(dialog, 0, 0, FD_WIDTH, FD_HEIGHT, WB_GRAY_LIGHT);
+
+        /* Draw path bar with label */
+        gui_draw_text(dialog, 10, 10, "Selected:", WB_BLACK);
+        gui_fill_rect(dialog, 80, 5, FD_WIDTH - 90, FD_PATH_HEIGHT, WB_WHITE);
+        gui_draw_rect(dialog, 80, 5, FD_WIDTH - 90, FD_PATH_HEIGHT, WB_GRAY_DARK);
+        gui_draw_text(dialog, 85, 10, current_path, WB_BLACK);
+
+        /* Draw folder list */
+        gui_fill_rect(dialog, 5, FD_LIST_TOP, FD_WIDTH - 10, FD_LIST_HEIGHT, WB_WHITE);
+        gui_draw_rect(dialog, 5, FD_LIST_TOP, FD_WIDTH - 10, FD_LIST_HEIGHT, WB_GRAY_DARK);
+
+        for (int i = 0; i < visible_items && (i + scroll_offset) < entry_count; i++) {
+            int idx = i + scroll_offset;
+            int y = FD_LIST_TOP + 2 + i * FD_ITEM_HEIGHT;
+
+            /* Selection highlight */
+            if (idx == selected) {
+                gui_fill_rect(dialog, 6, y, FD_WIDTH - 12, FD_ITEM_HEIGHT, WB_BLUE);
+            }
+
+            /* Folder icon and name */
+            uint32_t text_color = (idx == selected) ? WB_WHITE : WB_BLACK;
+
+            char display[FD_MAX_NAME + 8];
+            snprintf(display, sizeof(display), "[D] %s", entries[idx].name);
+            gui_draw_text(dialog, 10, y + 3, display, text_color);
+        }
+
+        /* Draw buttons */
+        int btn_width = 80;
+        int btn_height = 26;
+        int ok_x = FD_WIDTH / 2 - btn_width - 10;
+        int cancel_x = FD_WIDTH / 2 + 10;
+
+        draw_3d_button(dialog, ok_x, FD_BUTTON_Y, btn_width, btn_height, false);
+        draw_3d_button(dialog, cancel_x, FD_BUTTON_Y, btn_width, btn_height, false);
+
+        int text_offset = (btn_width - 48) / 2;
+        gui_draw_text(dialog, ok_x + text_offset, FD_BUTTON_Y + 7, "Select", WB_BLACK);
+        text_offset = (btn_width - 48) / 2;
+        gui_draw_text(dialog, cancel_x + text_offset, FD_BUTTON_Y + 7, "Cancel", WB_BLACK);
+
+        gui_present(dialog);
+
+        /* Handle events */
+        gui_event_t event;
+        if (gui_poll_event(dialog, &event) == 0) {
+            switch (event.type) {
+            case GUI_EVENT_CLOSE:
+                running = false;
+                break;
+
+            case GUI_EVENT_MOUSE:
+                if (event.mouse.event_type == 1 && event.mouse.button == 0) {
+                    int mx = event.mouse.x;
+                    int my = event.mouse.y;
+
+                    /* Check folder list click */
+                    if (mx >= 5 && mx < FD_WIDTH - 5 &&
+                        my >= FD_LIST_TOP && my < FD_LIST_TOP + FD_LIST_HEIGHT) {
+                        int clicked_idx = (my - FD_LIST_TOP - 2) / FD_ITEM_HEIGHT + scroll_offset;
+                        if (clicked_idx >= 0 && clicked_idx < entry_count) {
+                            if (selected == clicked_idx) {
+                                /* Double-click: navigate into folder */
+                                navigate_into(entries[clicked_idx].name);
+                            } else {
+                                selected = clicked_idx;
+                            }
+                        }
+                    }
+
+                    /* Check Select button - select current directory */
+                    if (mx >= ok_x && mx < ok_x + btn_width &&
+                        my >= FD_BUTTON_Y && my < FD_BUTTON_Y + btn_height) {
+                        result = static_cast<char *>(malloc(strlen(current_path) + 1));
+                        if (result) {
+                            strcpy(result, current_path);
+                        }
+                        running = false;
+                    }
+
+                    /* Check Cancel button */
+                    if (mx >= cancel_x && mx < cancel_x + btn_width &&
+                        my >= FD_BUTTON_Y && my < FD_BUTTON_Y + btn_height) {
+                        running = false;
+                    }
+                }
+                break;
+
+            case GUI_EVENT_KEY:
+                if (event.key.keycode == 0x28) { /* Enter */
+                    /* If folder selected, navigate into it */
+                    if (selected >= 0) {
+                        navigate_into(entries[selected].name);
+                    } else {
+                        /* Select current directory */
+                        result = static_cast<char *>(malloc(strlen(current_path) + 1));
+                        if (result) {
+                            strcpy(result, current_path);
+                        }
+                        running = false;
+                    }
+                } else if (event.key.keycode == 0x29) { /* Escape */
+                    running = false;
+                } else if (event.key.keycode == 0x52) { /* Up */
+                    if (selected > 0) selected--;
+                    if (selected < scroll_offset) scroll_offset = selected;
+                } else if (event.key.keycode == 0x51) { /* Down */
+                    if (selected < entry_count - 1) selected++;
+                    if (selected >= scroll_offset + visible_items)
+                        scroll_offset = selected - visible_items + 1;
+                }
+                break;
+
+            default:
+                break;
+            }
+        }
+
+        fd_yield();
+    }
+
+    free(entries);
+    gui_destroy_window(dialog);
+    return result;
 }

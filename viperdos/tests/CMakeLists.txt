@@ -142,7 +142,22 @@ endfunction()
 add_host_test(test_sanity host/test_sanity.c)
 
 # Crypto known-answer tests for user/libssh primitives
-add_host_test(test_ssh_crypto host/test_ssh_crypto.c ../user/libssh/ssh_crypto.c)
+# test_ssh_crypto - uses C++ files, needs special handling
+add_custom_command(
+        OUTPUT ${CMAKE_BINARY_DIR}/test_ssh_crypto
+        COMMAND c++ -std=c++17 -Wall -Wextra -O2
+        -I${CMAKE_CURRENT_SOURCE_DIR}/host
+        ${CMAKE_CURRENT_SOURCE_DIR}/host/test_ssh_crypto.cpp
+        ${CMAKE_SOURCE_DIR}/user/libssh/ssh_crypto.cpp
+        -o ${CMAKE_BINARY_DIR}/test_ssh_crypto
+        DEPENDS
+        ${CMAKE_CURRENT_SOURCE_DIR}/host/test_ssh_crypto.cpp
+        ${CMAKE_SOURCE_DIR}/user/libssh/ssh_crypto.cpp
+        COMMENT "Building host test: test_ssh_crypto"
+)
+add_custom_target(test_ssh_crypto DEPENDS ${CMAKE_BINARY_DIR}/test_ssh_crypto)
+add_test(NAME host_ssh_crypto COMMAND ${CMAKE_BINARY_DIR}/test_ssh_crypto)
+set_tests_properties(host_ssh_crypto PROPERTIES LABELS "host")
 
 # Syscall table invariant tests (Python-based static analysis)
 find_package(Python3 QUIET)

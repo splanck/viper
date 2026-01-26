@@ -4,8 +4,8 @@
 #include <unistd.h>
 
 /* Raw kernel syscall wrappers (bypass libc fsd routing). */
-extern long __syscall1(long num, long arg0);
-extern long __syscall2(long num, long arg0, long arg1);
+extern "C" long __syscall1(long num, long arg0);
+extern "C" long __syscall2(long num, long arg0, long arg1);
 
 #define SYS_OPEN 0x40
 #define SYS_CLOSE 0x41
@@ -32,7 +32,9 @@ static int wait_for_fsd(void) {
     return -1;
 }
 
-int main(void) {
+extern "C" int main(int argc, char *argv[]) {
+    (void)argc;
+    (void)argv;
     /* Wait for FSD server to be available before running tests.
      * This is necessary because the smoke test may be spawned before
      * servers are fully registered (to load ELF before blkd resets device). */

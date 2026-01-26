@@ -9,6 +9,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Syscall interface (C linkage from assembly) */
+extern "C" long __syscall1(long n, long a1);
+
 /*=============================================================================
  * Authentication
  *===========================================================================*/
@@ -63,7 +66,7 @@ int ssh_auth_none(ssh_session_t *session) {
     while (1) {
         rc = ssh_packet_recv(session, &msg_type, response, &response_len);
         if (rc == SSH_AGAIN) {
-            extern long __syscall1(long, long);
+            /* defined at file scope */
             __syscall1(0x31 /* SYS_YIELD */, 0);
             continue;
         }
@@ -136,7 +139,7 @@ int ssh_auth_password(ssh_session_t *session, const char *password) {
         rc = ssh_packet_recv(session, &msg_type, response, &response_len);
         if (rc == SSH_AGAIN) {
             /* No data yet, yield and retry */
-            extern long __syscall1(long, long);
+            /* defined at file scope */
             __syscall1(0x31 /* SYS_YIELD */, 0);
             wait_count++;
             if (wait_count % 10000 == 0) {
@@ -248,7 +251,7 @@ int ssh_auth_try_publickey(ssh_session_t *session, ssh_key_t *key) {
     while (1) {
         rc = ssh_packet_recv(session, &msg_type, response, &response_len);
         if (rc == SSH_AGAIN) {
-            extern long __syscall1(long, long);
+            /* defined at file scope */
             __syscall1(0x31 /* SYS_YIELD */, 0);
             continue;
         }
@@ -391,7 +394,7 @@ int ssh_auth_publickey(ssh_session_t *session, ssh_key_t *key) {
     while (1) {
         rc = ssh_packet_recv(session, &msg_type, response, &response_len);
         if (rc == SSH_AGAIN) {
-            extern long __syscall1(long, long);
+            /* defined at file scope */
             __syscall1(0x31 /* SYS_YIELD */, 0);
             continue;
         }
@@ -437,7 +440,7 @@ ssh_key_t *ssh_key_load(const char *filename, const char *passphrase) {
     }
 
     /* Allocate one extra byte so text formats can be safely NUL-terminated. */
-    uint8_t *data = malloc(size + 1);
+    uint8_t *data = static_cast<uint8_t *>(malloc(size + 1));
     if (!data) {
         fclose(f);
         return NULL;
@@ -498,7 +501,7 @@ static size_t base64_decode(const char *in, size_t in_len, uint8_t *out, size_t 
 ssh_key_t *ssh_key_load_mem(const uint8_t *data, size_t len, const char *passphrase) {
     (void)passphrase;
 
-    ssh_key_t *key = calloc(1, sizeof(ssh_key_t));
+    ssh_key_t *key = static_cast<ssh_key_t *>(calloc(1, sizeof(ssh_key_t)));
     if (!key)
         return NULL;
 

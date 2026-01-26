@@ -420,15 +420,15 @@ static int findCategoryAt(int x, int y) {
     return -1;
 }
 
-static void handleClick(int x, int y, int button) {
+static bool handleClick(int x, int y, int button) {
     if (button != 0)
-        return;
+        return false;
 
     // Check category clicks
     int catIdx = findCategoryAt(x, y);
     if (catIdx >= 0) {
         g_currentCategory = g_categories[catIdx].cat;
-        return;
+        return false;
     }
 
     // Check button clicks
@@ -436,9 +436,10 @@ static void handleClick(int x, int y, int button) {
     if (y >= btnY && y < btnY + BUTTON_HEIGHT) {
         // Cancel button closes window
         if (x >= WIN_WIDTH - 160 && x < WIN_WIDTH - 90) {
-            // Will be handled in main loop
+            return true; // Signal to close
         }
     }
+    return false;
 }
 
 extern "C" int main() {
@@ -459,18 +460,28 @@ extern "C" int main() {
 
     // Event loop
     uint64_t lastRefresh = sys::uptime();
+    bool running = true;
 
-    while (true) {
+    while (running) {
         gui_event_t event;
         if (gui_poll_event(win, &event) == 0) {
             switch (event.type) {
                 case GUI_EVENT_CLOSE:
-                    goto done;
+                    running = false;
+                    break;
 
                 case GUI_EVENT_MOUSE:
                     if (event.mouse.event_type == 1) { // Button down
-                        handleClick(event.mouse.x, event.mouse.y, event.mouse.button);
+                        if (handleClick(event.mouse.x, event.mouse.y, event.mouse.button)) {
+                            running = false;
+                        }
                         drawWindow(win);
+                    } else if (event.mouse.event_type == 0) { // Mouse move
+                        int newHover = findCategoryAt(event.mouse.x, event.mouse.y);
+                        if (newHover != g_hoveredCategory) {
+                            g_hoveredCategory = newHover;
+                            drawWindow(win);
+                        }
                     }
                     break;
 
@@ -492,7 +503,6 @@ extern "C" int main() {
         __asm__ volatile("mov x8, #0x0E\n\tsvc #0" ::: "x8");
     }
 
-done:
     gui_destroy_window(win);
     gui_shutdown();
     return 0;

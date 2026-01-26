@@ -33,6 +33,9 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+/* Syscall interface (C linkage from assembly) */
+extern "C" long __syscall1(long n, long a1);
+
 /*=============================================================================
  * Buffer Utilities
  *===========================================================================*/
@@ -106,7 +109,7 @@ static size_t ssh_buf_write_mpint(uint8_t *buf, const uint8_t *data, size_t len)
  *===========================================================================*/
 
 ssh_session_t *ssh_new(void) {
-    ssh_session_t *session = calloc(1, sizeof(ssh_session_t));
+    ssh_session_t *session = static_cast<ssh_session_t *>(calloc(1, sizeof(ssh_session_t)));
     if (!session)
         return NULL;
 
@@ -213,7 +216,7 @@ static void ssh_set_error(ssh_session_t *session, const char *fmt, ...) {
  *===========================================================================*/
 
 static ssize_t ssh_socket_send(ssh_session_t *session, const void *data, size_t len) {
-    const uint8_t *ptr = data;
+    const uint8_t *ptr = static_cast<const uint8_t *>(data);
     size_t remaining = len;
 
     while (remaining > 0) {
@@ -236,7 +239,7 @@ static ssize_t ssh_socket_send(ssh_session_t *session, const void *data, size_t 
 }
 
 static ssize_t ssh_socket_recv(ssh_session_t *session, void *data, size_t len) {
-    uint8_t *ptr = data;
+    uint8_t *ptr = static_cast<uint8_t *>(data);
     size_t remaining = len;
 
     while (remaining > 0) {
@@ -254,7 +257,7 @@ static ssize_t ssh_socket_recv(ssh_session_t *session, void *data, size_t len) {
                     return SSH_AGAIN;
                 }
                 /* Got partial data - must complete the read. Short sleep to yield. */
-                extern long __syscall1(long, long);
+                /* defined at file scope */
                 __syscall1(0x31 /* SYS_SLEEP */, 1);
                 continue;
             }
@@ -474,7 +477,7 @@ int ssh_packet_wait(ssh_session_t *session,
         rc = ssh_packet_recv(session, &msg_type, payload, payload_len);
         if (rc == SSH_AGAIN) {
             /* No data yet, yield and retry */
-            extern long __syscall1(long, long);
+            /* defined at file scope */
             __syscall1(0x31 /* SYS_YIELD */, 0);
             continue;
         }
@@ -529,7 +532,7 @@ static int ssh_version_exchange(ssh_session_t *session) {
         rc = ssh_socket_recv(session, &c, 1);
         if (rc == SSH_AGAIN) {
             /* No data yet, yield and retry */
-            extern long __syscall1(long, long);
+            /* defined at file scope */
             __syscall1(0x31 /* SYS_YIELD */, 0);
             continue;
         }
@@ -639,7 +642,7 @@ int ssh_kex_start(ssh_session_t *session) {
     pos += 4;
 
     /* Save for exchange hash */
-    session->kex_init_local = malloc(pos);
+    session->kex_init_local = static_cast<uint8_t *>(malloc(pos));
     if (session->kex_init_local) {
         memcpy(session->kex_init_local, payload, pos);
         session->kex_init_local_len = pos;
@@ -651,7 +654,7 @@ int ssh_kex_start(ssh_session_t *session) {
 /* Parse KEXINIT and select algorithms */
 static int ssh_kex_parse_init(ssh_session_t *session, const uint8_t *payload, size_t len) {
     /* Save server's KEXINIT for exchange hash */
-    session->kex_init_remote = malloc(len);
+    session->kex_init_remote = static_cast<uint8_t *>(malloc(len));
     if (session->kex_init_remote) {
         memcpy(session->kex_init_remote, payload, len);
         session->kex_init_remote_len = len;

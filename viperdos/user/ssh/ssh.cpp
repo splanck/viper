@@ -84,7 +84,7 @@ static void usage(const char *prog) {
     fprintf(stderr, "  -v, -vv      Verbose mode (use -vv for packet-level tracing)\n");
 }
 
-int main(int argc, char *argv[]) {
+extern "C" int main(int argc, char *argv[]) {
     const char *hostname = NULL;
     const char *username = NULL;
     const char *identity = NULL;

@@ -92,7 +92,7 @@ void tls_sha256_init(sha256_ctx *ctx) {
 }
 
 void tls_sha256_update(sha256_ctx *ctx, const void *data, size_t len) {
-    const uint8_t *ptr = data;
+    const uint8_t *ptr = static_cast<const uint8_t *>(data);
     size_t idx = (ctx->count / 8) % 64;
 
     ctx->count += len * 8;
@@ -489,7 +489,7 @@ static void poly1305_blocks(poly1305_ctx *ctx, const uint8_t *data, size_t len, 
 }
 
 static void poly1305_update(poly1305_ctx *ctx, const void *data, size_t len) {
-    const uint8_t *ptr = data;
+    const uint8_t *ptr = static_cast<const uint8_t *>(data);
 
     if (ctx->buffer_len > 0) {
         size_t need = 16 - ctx->buffer_len;
@@ -630,7 +630,7 @@ size_t tls_chacha20_poly1305_encrypt(const uint8_t key[32],
                        64);
 
     /* Encrypt plaintext (starting at block 1) */
-    tls_chacha20_crypt(key, nonce, 1, plaintext, ciphertext, plaintext_len);
+    tls_chacha20_crypt(key, nonce, 1, static_cast<const uint8_t *>(plaintext), ciphertext, plaintext_len);
 
     /* Compute tag */
     poly1305_ctx poly;
@@ -716,7 +716,7 @@ long tls_chacha20_poly1305_decrypt(const uint8_t key[32],
         return -1;
 
     /* Decrypt */
-    tls_chacha20_crypt(key, nonce, 1, ciphertext, plaintext, data_len);
+    tls_chacha20_crypt(key, nonce, 1, static_cast<const uint8_t *>(ciphertext), plaintext, data_len);
 
     return (long)data_len;
 }

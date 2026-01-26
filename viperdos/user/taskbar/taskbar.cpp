@@ -152,7 +152,9 @@ static void handle_click(int32_t x, int32_t y) {
     }
 }
 
-int main(void) {
+extern "C" int main(int argc, char *argv[]) {
+    (void)argc;
+    (void)argv;
     printf("[taskbar] Starting ViperDOS Taskbar\n");
 
     // Initialize GUI

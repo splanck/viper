@@ -1548,8 +1548,15 @@ static void handle_request(int32_t client_channel,
 
         case DISP_SET_MENU: {
             // Handle global menu bar registration (Amiga/Mac style)
-            if (len < sizeof(SetMenuRequest))
+            debug_print("[displayd] DISP_SET_MENU received, len=");
+            debug_print_dec(static_cast<int64_t>(len));
+            debug_print(", sizeof(SetMenuRequest)=");
+            debug_print_dec(static_cast<int64_t>(sizeof(SetMenuRequest)));
+            debug_print("\n");
+            if (len < sizeof(SetMenuRequest)) {
+                debug_print("[displayd] DISP_SET_MENU: message too small, ignoring\n");
                 return;
+            }
             auto *req = reinterpret_cast<const SetMenuRequest *>(data);
 
             GenericReply reply;
@@ -1574,6 +1581,14 @@ static void handle_request(int32_t client_channel,
                 debug_print_dec(surf->id);
                 debug_print(", menu_count=");
                 debug_print_dec(surf->menu_count);
+                if (surf->menu_count > 0) {
+                    debug_print(", first title='");
+                    debug_print(surf->menus[0].title);
+                    debug_print("', items=");
+                    debug_print_dec(surf->menus[0].item_count);
+                }
+                debug_print(", flags=");
+                debug_print_dec(surf->flags);
                 debug_print("\n");
 
                 reply.status = 0;

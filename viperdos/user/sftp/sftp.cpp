@@ -127,7 +127,7 @@ static void cmd_ls(const char *path) {
     while ((attr = sftp_readdir(dir)) != NULL) {
         if (count >= capacity) {
             size_t new_cap = capacity ? capacity * 2 : 64;
-            sftp_attributes_t **new_entries = realloc(entries, new_cap * sizeof(*entries));
+            sftp_attributes_t **new_entries = static_cast<sftp_attributes_t **>(realloc(entries, new_cap * sizeof(*entries)));
             if (!new_entries) {
                 sftp_attributes_free(attr);
                 break;
@@ -434,7 +434,7 @@ static void usage(const char *prog) {
     fprintf(stderr, "  -i identity  Use identity file for public key authentication\n");
 }
 
-int main(int argc, char *argv[]) {
+extern "C" int main(int argc, char *argv[]) {
     const char *hostname = NULL;
     const char *username = NULL;
     const char *identity = NULL;

@@ -392,13 +392,15 @@ extern "C" int main() {
 
     // Event loop
     uint64_t lastRefresh = sys::uptime();
+    bool running = true;
 
-    while (true) {
+    while (running) {
         gui_event_t event;
         if (gui_poll_event(win, &event) == 0) {
             switch (event.type) {
                 case GUI_EVENT_CLOSE:
-                    goto done;
+                    running = false;
+                    break;
 
                 case GUI_EVENT_MOUSE:
                     if (event.mouse.event_type == 1) { // Button down
@@ -409,13 +411,22 @@ extern "C" int main() {
 
                 case GUI_EVENT_KEY:
                     if (event.key.pressed) {
+                        int maxVisible = (LIST_BOTTOM - LIST_TOP) / ROW_HEIGHT;
                         // Arrow keys for selection
                         if (event.key.keycode == 0x52 && g_selectedTask > 0) { // Up
                             g_selectedTask--;
+                            // Scroll up if needed
+                            if (g_selectedTask < g_scrollOffset) {
+                                g_scrollOffset = g_selectedTask;
+                            }
                             drawWindow(win);
                         } else if (event.key.keycode == 0x51 &&
                                    g_selectedTask < g_taskCount - 1) { // Down
                             g_selectedTask++;
+                            // Scroll down if needed
+                            if (g_selectedTask >= g_scrollOffset + maxVisible) {
+                                g_scrollOffset = g_selectedTask - maxVisible + 1;
+                            }
                             drawWindow(win);
                         } else if (event.key.keycode == 0x3E) { // F5 = Refresh
                             refreshTasks();
@@ -441,7 +452,6 @@ extern "C" int main() {
         __asm__ volatile("mov x8, #0x0E\n\tsvc #0" ::: "x8");
     }
 
-done:
     gui_destroy_window(win);
     gui_shutdown();
     return 0;

@@ -122,7 +122,7 @@ static void sha256_init(sha256_ctx *ctx) {
 }
 
 static void sha256_update(sha256_ctx *ctx, const void *data, size_t len) {
-    const uint8_t *ptr = data;
+    const uint8_t *ptr = static_cast<const uint8_t *>(data);
     size_t idx = (ctx->count / 8) % 64;
 
     ctx->count += len * 8;
@@ -280,7 +280,7 @@ static void sha1_init(sha1_ctx *ctx) {
 }
 
 static void sha1_update(sha1_ctx *ctx, const void *data, size_t len) {
-    const uint8_t *ptr = data;
+    const uint8_t *ptr = static_cast<const uint8_t *>(data);
     size_t idx = (ctx->count / 8) % 64;
 
     ctx->count += len * 8;
@@ -942,7 +942,7 @@ static void sha512(const void *data, size_t len, uint8_t hash[64]) {
                      0x1f83d9abfb41bd6bULL,
                      0x5be0cd19137e2179ULL};
 
-    const uint8_t *msg = data;
+    const uint8_t *msg = static_cast<const uint8_t *>(data);
     size_t total = len;
 
     /* Process full blocks */

@@ -114,10 +114,10 @@ add_user_program(devices devices/devices.cpp)
 add_user_program(edit edit/edit.cpp)
 
 # fsd_smoke - validates libc→fsd routing when fsd is present
-add_user_program(fsd_smoke fstest/fsd_smoke.c)
+add_user_program(fsd_smoke fstest/fsd_smoke.cpp)
 
 # tls_smoke - validates user-space TLS library
-add_executable(tls_smoke.prg fstest/tls_smoke.c)
+add_executable(tls_smoke.prg fstest/tls_smoke.cpp)
 target_compile_options(tls_smoke.prg PRIVATE ${USER_COMPILE_OPTIONS})
 target_link_options(tls_smoke.prg PRIVATE ${USER_LINK_OPTIONS})
 target_include_directories(tls_smoke.prg PRIVATE
@@ -142,10 +142,10 @@ function(add_ssh_program name)
 endfunction()
 
 # ssh - SSH client
-add_ssh_program(ssh ssh/ssh.c)
+add_ssh_program(ssh ssh/ssh.cpp)
 
 # sftp - SFTP client
-add_ssh_program(sftp sftp/sftp.c)
+add_ssh_program(sftp sftp/sftp.cpp)
 
 # Helper function for GUI programs (.prg extension)
 function(add_gui_program name)
@@ -177,10 +177,10 @@ function(add_widget_program name)
 endfunction()
 
 # hello_gui - GUI test program
-add_gui_program(hello_gui hello_gui/hello_gui.c)
+add_gui_program(hello_gui hello_gui/hello_gui.cpp)
 
 # taskbar - Desktop shell taskbar
-add_gui_program(taskbar taskbar/taskbar.c)
+add_gui_program(taskbar taskbar/taskbar.cpp)
 
 # workbench - Amiga-inspired desktop environment (system binary)
 add_executable(workbench.sys

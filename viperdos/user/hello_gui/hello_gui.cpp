@@ -46,7 +46,9 @@ static void draw_button(
     gui_draw_text(win, label_x, label_y, label, COLOR_BLACK);
 }
 
-int main(void) {
+extern "C" int main(int argc, char *argv[]) {
+    (void)argc;
+    (void)argv;
     printf("Hello GUI - ViperDOS GUI Demo\n");
     printf("Initializing GUI...\n");
 

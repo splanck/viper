@@ -393,7 +393,7 @@ int http_request(const http_request_t *request, http_response_t *response) {
     }
 
     /* Receive response */
-    char *recv_buf = malloc(HTTP_MAX_BODY);
+    char *recv_buf = static_cast<char *>(malloc(HTTP_MAX_BODY));
     if (!recv_buf) {
         http_disconnect(&conn);
         return HTTP_ERROR_MEMORY;
@@ -458,7 +458,7 @@ int http_request(const http_request_t *request, http_response_t *response) {
 
     /* Copy body */
     if (body_len > 0) {
-        response->body = malloc(body_len + 1);
+        response->body = static_cast<char *>(malloc(body_len + 1));
         if (response->body) {
             memcpy(response->body, recv_buf + body_start, body_len);
             response->body[body_len] = '\0';

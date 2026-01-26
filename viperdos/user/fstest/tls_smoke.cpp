@@ -9,7 +9,9 @@
 #include <string.h>
 #include <tls.h>
 
-int main(void) {
+extern "C" int main(int argc, char *argv[]) {
+    (void)argc;
+    (void)argv;
     printf("TLS smoke test starting...\n");
 
     /* Test 1: Config initialization */

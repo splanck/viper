@@ -206,6 +206,9 @@ class FileBrowser {
     void handleRenameKey(int keycode, bool shift);
     void drawRenameEditor();
 
+    // Properties dialog
+    void showProperties(int fileIndex);
+
   private:
     Desktop *m_desktop;
     gui_window_t *m_window = nullptr;

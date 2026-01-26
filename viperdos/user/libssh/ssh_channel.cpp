@@ -10,6 +10,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Syscall interface (C linkage from assembly) */
+extern "C" long __syscall1(long n, long a1);
+
 #define CHANNEL_WINDOW_SIZE (2 * 1024 * 1024) /* 2MB window */
 #define CHANNEL_MAX_PACKET 32768
 #define CHANNEL_BUFFER_SIZE (64 * 1024)
@@ -35,7 +38,7 @@ ssh_channel_t *ssh_channel_new(ssh_session_t *session) {
     if (slot < 0)
         return NULL;
 
-    ssh_channel_t *channel = calloc(1, sizeof(ssh_channel_t));
+    ssh_channel_t *channel = static_cast<ssh_channel_t *>(calloc(1, sizeof(ssh_channel_t)));
     if (!channel)
         return NULL;
 
@@ -47,8 +50,8 @@ ssh_channel_t *ssh_channel_new(ssh_session_t *session) {
     channel->exit_status = -1;
 
     /* Allocate read buffers */
-    channel->read_buf = malloc(CHANNEL_BUFFER_SIZE);
-    channel->ext_buf = malloc(CHANNEL_BUFFER_SIZE);
+    channel->read_buf = static_cast<uint8_t *>(malloc(CHANNEL_BUFFER_SIZE));
+    channel->ext_buf = static_cast<uint8_t *>(malloc(CHANNEL_BUFFER_SIZE));
     if (!channel->read_buf || !channel->ext_buf) {
         free(channel->read_buf);
         free(channel->ext_buf);
@@ -255,7 +258,7 @@ static int ssh_channel_wait_open(ssh_channel_t *channel) {
     while (channel->state == SSH_CHANSTATE_OPENING) {
         rc = ssh_packet_recv(session, &msg_type, payload, &payload_len);
         if (rc == SSH_AGAIN) {
-            extern long __syscall1(long, long);
+            /* defined at file scope */
             __syscall1(0x31 /* SYS_YIELD */, 0);
             continue;
         }
@@ -350,7 +353,7 @@ static int ssh_channel_request(ssh_channel_t *channel,
         while (1) {
             rc = ssh_packet_recv(channel->session, &msg_type, response, &response_len);
             if (rc == SSH_AGAIN) {
-                extern long __syscall1(long, long);
+                /* defined at file scope */
                 __syscall1(0x31 /* SYS_YIELD */, 0);
                 continue;
             }
@@ -441,7 +444,7 @@ ssize_t ssh_channel_write(ssh_channel_t *channel, const void *data, size_t len) 
         return SSH_ERROR;
     }
 
-    const uint8_t *ptr = data;
+    const uint8_t *ptr = static_cast<const uint8_t *>(data);
     size_t remaining = len;
     size_t total_sent = 0;
 
@@ -455,7 +458,7 @@ ssize_t ssh_channel_write(ssh_channel_t *channel, const void *data, size_t len) 
 
             int rc = ssh_packet_recv(channel->session, &msg_type, payload, &payload_len);
             if (rc == SSH_AGAIN) {
-                extern long __syscall1(long, long);
+                /* defined at file scope */
                 __syscall1(0x31 /* SYS_YIELD */, 0);
                 continue;
             }

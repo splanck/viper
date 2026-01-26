@@ -8,6 +8,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Syscall interface (C linkage from assembly) */
+extern "C" long __syscall1(long n, long a1);
+
 /* SFTP packet types */
 #define SSH_FXP_INIT 1
 #define SSH_FXP_VERSION 2
@@ -101,7 +104,7 @@ static int sftp_send_packet(sftp_session_t *sftp, uint8_t type, const uint8_t *d
 
 /* Yield helper - sleep briefly to avoid busy-waiting */
 static inline void sftp_yield(void) {
-    extern long __syscall1(long, long);
+    /* defined at file scope */
     /* Sleep 1ms instead of just yielding - gives network stack time to process */
     __syscall1(0x31 /* SYS_SLEEP */, 1);
 }
@@ -166,7 +169,7 @@ sftp_session_t *sftp_new(ssh_session_t *ssh) {
     if (!ssh)
         return NULL;
 
-    sftp_session_t *sftp = calloc(1, sizeof(sftp_session_t));
+    sftp_session_t *sftp = static_cast<sftp_session_t *>(calloc(1, sizeof(sftp_session_t)));
     if (!sftp)
         return NULL;
 
@@ -313,7 +316,7 @@ sftp_file_t *sftp_open(sftp_session_t *sftp, const char *path, int flags, mode_t
 
     if (type == SSH_FXP_STATUS) {
         if (response_len >= 8) {
-            sftp->error = ssh_buf_read_u32(response + 4);
+            sftp->error = static_cast<sftp_error_t>(ssh_buf_read_u32(response + 4));
         }
         return NULL;
     }
@@ -330,7 +333,7 @@ sftp_file_t *sftp_open(sftp_session_t *sftp, const char *path, int flags, mode_t
         return NULL;
     }
 
-    sftp_file_t *file = calloc(1, sizeof(sftp_file_t));
+    sftp_file_t *file = static_cast<sftp_file_t *>(calloc(1, sizeof(sftp_file_t)));
     if (!file)
         return NULL;
 
@@ -434,7 +437,7 @@ ssize_t sftp_read(sftp_file_t *file, void *buffer, size_t count) {
                 file->eof = true;
                 return 0;
             }
-            sftp->error = status;
+            sftp->error = static_cast<sftp_error_t>(status);
             return -1;
         }
         return -1;
@@ -503,7 +506,7 @@ ssize_t sftp_write(sftp_file_t *file, const void *buffer, size_t count) {
     if (type == SSH_FXP_STATUS && response_len >= 8) {
         uint32_t status = ssh_buf_read_u32(response + 4);
         if (status != 0) {
-            sftp->error = status;
+            sftp->error = static_cast<sftp_error_t>(status);
             return -1;
         }
     }
@@ -539,7 +542,7 @@ static sftp_attributes_t *parse_attrs(const uint8_t *data, size_t len, size_t *c
     if (len < 4)
         return NULL;
 
-    sftp_attributes_t *attr = calloc(1, sizeof(sftp_attributes_t));
+    sftp_attributes_t *attr = static_cast<sftp_attributes_t *>(calloc(1, sizeof(sftp_attributes_t)));
     if (!attr)
         return NULL;
 
@@ -631,7 +634,7 @@ sftp_attributes_t *sftp_stat(sftp_session_t *sftp, const char *path) {
 
     if (type == SSH_FXP_STATUS) {
         if (response_len >= 8) {
-            sftp->error = ssh_buf_read_u32(response + 4);
+            sftp->error = static_cast<sftp_error_t>(ssh_buf_read_u32(response + 4));
         }
         return NULL;
     }
@@ -673,7 +676,7 @@ sftp_attributes_t *sftp_lstat(sftp_session_t *sftp, const char *path) {
 
     if (type == SSH_FXP_STATUS) {
         if (response_len >= 8) {
-            sftp->error = ssh_buf_read_u32(response + 4);
+            sftp->error = static_cast<sftp_error_t>(ssh_buf_read_u32(response + 4));
         }
         return NULL;
     }
@@ -759,7 +762,7 @@ sftp_dir_t *sftp_opendir(sftp_session_t *sftp, const char *path) {
 
     if (type == SSH_FXP_STATUS) {
         if (response_len >= 8) {
-            sftp->error = ssh_buf_read_u32(response + 4);
+            sftp->error = static_cast<sftp_error_t>(ssh_buf_read_u32(response + 4));
         }
         return NULL;
     }
@@ -771,7 +774,7 @@ sftp_dir_t *sftp_opendir(sftp_session_t *sftp, const char *path) {
     if (handle_len > 256)
         return NULL;
 
-    sftp_dir_t *dir = calloc(1, sizeof(sftp_dir_t));
+    sftp_dir_t *dir = static_cast<sftp_dir_t *>(calloc(1, sizeof(sftp_dir_t)));
     if (!dir)
         return NULL;
 
@@ -802,11 +805,11 @@ static sftp_attributes_t *parse_dir_entry(const uint8_t *response,
     if (pos + name_len > response_len)
         return NULL;
 
-    sftp_attributes_t *attr = calloc(1, sizeof(sftp_attributes_t));
+    sftp_attributes_t *attr = static_cast<sftp_attributes_t *>(calloc(1, sizeof(sftp_attributes_t)));
     if (!attr)
         return NULL;
 
-    attr->name = malloc(name_len + 1);
+    attr->name = static_cast<char *>(malloc(name_len + 1));
     if (attr->name) {
         memcpy(attr->name, response + pos, name_len);
         attr->name[name_len] = '\0';
@@ -825,7 +828,7 @@ static sftp_attributes_t *parse_dir_entry(const uint8_t *response,
         return NULL;
     }
 
-    attr->longname = malloc(longname_len + 1);
+    attr->longname = static_cast<char *>(malloc(longname_len + 1));
     if (attr->longname) {
         memcpy(attr->longname, response + pos, longname_len);
         attr->longname[longname_len] = '\0';
@@ -875,7 +878,7 @@ sftp_attributes_t *sftp_readdir(sftp_dir_t *dir) {
     /* Return buffered entry if available */
     if (dir->entries && dir->entry_pos < dir->entry_count) {
         sftp_attributes_t *src = &dir->entries[dir->entry_pos++];
-        sftp_attributes_t *attr = calloc(1, sizeof(sftp_attributes_t));
+        sftp_attributes_t *attr = static_cast<sftp_attributes_t *>(calloc(1, sizeof(sftp_attributes_t)));
         if (!attr)
             return NULL;
 
@@ -929,7 +932,7 @@ sftp_attributes_t *sftp_readdir(sftp_dir_t *dir) {
                 dir->eof = true;
                 return NULL;
             }
-            sftp->error = status;
+            sftp->error = static_cast<sftp_error_t>(status);
         }
         return NULL;
     }
@@ -944,7 +947,7 @@ sftp_attributes_t *sftp_readdir(sftp_dir_t *dir) {
     }
 
     /* Allocate buffer for all entries */
-    dir->entries = calloc(count, sizeof(sftp_attributes_t));
+    dir->entries = static_cast<sftp_attributes_t *>(calloc(count, sizeof(sftp_attributes_t)));
     if (!dir->entries)
         return NULL;
 
@@ -1208,7 +1211,7 @@ char *sftp_realpath(sftp_session_t *sftp, const char *path) {
     if (pos + name_len > response_len)
         return NULL;
 
-    char *result = malloc(name_len + 1);
+    char *result = static_cast<char *>(malloc(name_len + 1));
     if (result) {
         memcpy(result, response + pos, name_len);
         result[name_len] = '\0';
@@ -1218,7 +1221,7 @@ char *sftp_realpath(sftp_session_t *sftp, const char *path) {
 }
 
 int sftp_chmod(sftp_session_t *sftp, const char *path, mode_t mode) {
-    sftp_attributes_t attr = {0};
+    sftp_attributes_t attr = {};
     attr.flags = SFTP_ATTR_PERMISSIONS;
     attr.permissions = mode;
     return sftp_setstat(sftp, path, &attr);
@@ -1283,7 +1286,7 @@ int sftp_setstat(sftp_session_t *sftp, const char *path, sftp_attributes_t *attr
 }
 
 int sftp_chown(sftp_session_t *sftp, const char *path, uid_t uid, gid_t gid) {
-    sftp_attributes_t attr = {0};
+    sftp_attributes_t attr = {};
     attr.flags = SFTP_ATTR_UIDGID;
     attr.uid = uid;
     attr.gid = gid;
@@ -1291,7 +1294,7 @@ int sftp_chown(sftp_session_t *sftp, const char *path, uid_t uid, gid_t gid) {
 }
 
 int sftp_utimes(sftp_session_t *sftp, const char *path, uint32_t atime, uint32_t mtime) {
-    sftp_attributes_t attr = {0};
+    sftp_attributes_t attr = {};
     attr.flags = SFTP_ATTR_ACMODTIME;
     attr.atime = atime;
     attr.mtime = mtime;
@@ -1376,7 +1379,7 @@ char *sftp_readlink(sftp_session_t *sftp, const char *path) {
     if (pos + name_len > response_len)
         return NULL;
 
-    char *result = malloc(name_len + 1);
+    char *result = static_cast<char *>(malloc(name_len + 1));
     if (result) {
         memcpy(result, response + pos, name_len);
         result[name_len] = '\0';

@@ -519,17 +519,13 @@ void FileBrowser::handleDoubleClick(int fileIndex) {
             break;
 
         case FileType::Text:
-            // TODO: Open in VEdit when available
-            debug_serial("[filebrowser] Text file: ");
-            debug_serial(fullPath);
-            debug_serial(" (VEdit not yet available)\n");
+            // Open in VEdit text editor
+            m_desktop->spawnProgram("/c/vedit.prg", fullPath);
             break;
 
         case FileType::Image:
-            // TODO: Open in image viewer when available
-            debug_serial("[filebrowser] Image file: ");
-            debug_serial(fullPath);
-            debug_serial(" (Viewer not yet available)\n");
+            // Open in image viewer
+            m_desktop->spawnProgram("/c/viewer.prg", fullPath);
             break;
 
         case FileType::Unknown:
@@ -824,8 +820,9 @@ void FileBrowser::executeMenuAction(MenuAction action) {
             break;
 
         case MenuAction::Properties:
-            // TODO: Show file properties dialog
-            debug_serial("[filebrowser] Properties not yet implemented\n");
+            if (m_contextMenuFile >= 0) {
+                showProperties(m_contextMenuFile);
+            }
             break;
 
         case MenuAction::Copy:
@@ -1430,6 +1427,142 @@ void FileBrowser::drawRenameEditor() {
     // Draw cursor (blinking could be added later)
     int cursorX = textX + m_renameEditor.cursorPos * 8;
     gui_draw_vline(m_window, cursorX, editorY + 2, editorY + editorH - 3, WB_BLACK);
+}
+
+//------------------------------------------------------------------------------
+// Properties Dialog
+//------------------------------------------------------------------------------
+
+void FileBrowser::showProperties(int fileIndex) {
+    if (fileIndex < 0 || fileIndex >= m_fileCount) {
+        return;
+    }
+
+    FileEntry &file = m_files[fileIndex];
+
+    // Don't show properties for ".."
+    if (strcmp(file.name, "..") == 0) {
+        return;
+    }
+
+    // Build full path
+    char fullPath[MAX_PATH_LEN];
+    if (strcmp(m_currentPath, "/") == 0) {
+        snprintf(fullPath, sizeof(fullPath), "/%s", file.name);
+    } else {
+        snprintf(fullPath, sizeof(fullPath), "%s/%s", m_currentPath, file.name);
+    }
+
+    // Create properties dialog
+    gui_window_t *dialog = gui_create_window("Properties", 280, 200);
+    if (!dialog) {
+        debug_serial("[filebrowser] Failed to create properties dialog\n");
+        return;
+    }
+
+    // Draw dialog content
+    gui_fill_rect(dialog, 0, 0, 280, 200, themeWindowBg());
+
+    // File name (bold/highlighted)
+    gui_draw_text(dialog, 15, 15, "Name:", themeText());
+    gui_draw_text(dialog, 80, 15, file.name, themeHighlight());
+
+    // File type
+    gui_draw_text(dialog, 15, 40, "Type:", themeText());
+    const char *typeStr = "Unknown";
+    switch (file.type) {
+        case FileType::Directory: typeStr = "Directory"; break;
+        case FileType::Executable: typeStr = "Executable"; break;
+        case FileType::Text: typeStr = "Text File"; break;
+        case FileType::Image: typeStr = "Image"; break;
+        default: typeStr = "File"; break;
+    }
+    gui_draw_text(dialog, 80, 40, typeStr, themeTextDisabled());
+
+    // File size
+    gui_draw_text(dialog, 15, 65, "Size:", themeText());
+    char sizeStr[64];
+    if (file.type == FileType::Directory) {
+        strcpy(sizeStr, "(directory)");
+    } else if (file.size < 1024) {
+        snprintf(sizeStr, sizeof(sizeStr), "%llu bytes", (unsigned long long)file.size);
+    } else if (file.size < 1024 * 1024) {
+        snprintf(sizeStr, sizeof(sizeStr), "%llu KB (%llu bytes)",
+                 (unsigned long long)(file.size / 1024), (unsigned long long)file.size);
+    } else {
+        snprintf(sizeStr, sizeof(sizeStr), "%llu MB (%llu bytes)",
+                 (unsigned long long)(file.size / (1024 * 1024)), (unsigned long long)file.size);
+    }
+    gui_draw_text(dialog, 80, 65, sizeStr, themeTextDisabled());
+
+    // Location
+    gui_draw_text(dialog, 15, 90, "Location:", themeText());
+    gui_draw_text(dialog, 80, 90, m_currentPath, themeTextDisabled());
+
+    // Full path
+    gui_draw_text(dialog, 15, 115, "Path:", themeText());
+    // Truncate if too long
+    char pathDisplay[32];
+    if (strlen(fullPath) > 28) {
+        strncpy(pathDisplay, fullPath, 25);
+        strcpy(pathDisplay + 25, "...");
+    } else {
+        strcpy(pathDisplay, fullPath);
+    }
+    gui_draw_text(dialog, 80, 115, pathDisplay, themeTextDisabled());
+
+    // Separator line
+    gui_draw_hline(dialog, 15, 265, 145, themeBorderDark());
+
+    // OK button
+    int btnX = 100;
+    int btnY = 160;
+    int btnW = 80;
+    int btnH = 24;
+    gui_fill_rect(dialog, btnX, btnY, btnW, btnH, themeMenuBg());
+    gui_draw_hline(dialog, btnX, btnX + btnW - 1, btnY, themeBorderLight());
+    gui_draw_vline(dialog, btnX, btnY, btnY + btnH - 1, themeBorderLight());
+    gui_draw_hline(dialog, btnX, btnX + btnW - 1, btnY + btnH - 1, themeBorderDark());
+    gui_draw_vline(dialog, btnX + btnW - 1, btnY, btnY + btnH - 1, themeBorderDark());
+    gui_draw_text(dialog, btnX + 30, btnY + 6, "OK", themeText());
+
+    gui_present(dialog);
+
+    // Simple modal loop - wait for close or click
+    bool dialogOpen = true;
+    while (dialogOpen) {
+        gui_event_t event;
+        if (gui_poll_event(dialog, &event) == 0) {
+            switch (event.type) {
+                case GUI_EVENT_CLOSE:
+                    dialogOpen = false;
+                    break;
+                case GUI_EVENT_MOUSE:
+                    if (event.mouse.event_type == 1 && event.mouse.button == 0) {
+                        // Check OK button click
+                        if (event.mouse.x >= btnX && event.mouse.x < btnX + btnW &&
+                            event.mouse.y >= btnY && event.mouse.y < btnY + btnH) {
+                            dialogOpen = false;
+                        }
+                    }
+                    break;
+                case GUI_EVENT_KEY:
+                    // Enter or Escape closes dialog
+                    if (event.key.pressed &&
+                        (event.key.keycode == 0x28 || event.key.keycode == 0x29)) {
+                        dialogOpen = false;
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+        // Yield
+        __asm__ volatile("mov x8, #0x0E\n\tsvc #0" ::: "x8");
+    }
+
+    gui_destroy_window(dialog);
+    debug_serial("[filebrowser] Closed properties dialog\n");
 }
 
 } // namespace workbench
