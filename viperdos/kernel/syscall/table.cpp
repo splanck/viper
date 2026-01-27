@@ -264,6 +264,13 @@ static const SyscallEntry syscall_table[] = {
     {SYS_KILL, sys_kill, "kill", 2},
     {SYS_SIGPENDING, sys_sigpending, "sigpending", 1},
 
+    // Thread (0xB0-0xB4)
+    {SYS_THREAD_CREATE, sys_thread_create, "thread_create", 3},
+    {SYS_THREAD_EXIT, sys_thread_exit, "thread_exit", 1},
+    {SYS_THREAD_JOIN, sys_thread_join, "thread_join", 1},
+    {SYS_THREAD_DETACH, sys_thread_detach, "thread_detach", 1},
+    {SYS_THREAD_SELF, sys_thread_self, "thread_self", 0},
+
     // Process Groups/Sessions (0xA0-0xAF)
     {SYS_GETPID, sys_getpid, "getpid", 0},
     {SYS_GETPPID, sys_getppid, "getppid", 0},

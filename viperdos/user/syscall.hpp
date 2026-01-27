@@ -2423,4 +2423,63 @@ inline u32 gamepad_query() {
     return r.ok() ? static_cast<u32>(r.val0) : 0;
 }
 
+// =============================================================================
+// Thread Syscalls
+// =============================================================================
+
+/**
+ * @brief Create a new thread in the current process.
+ *
+ * @param entry User-mode entry point for the thread.
+ * @param stack_top Top of the thread's user-mode stack.
+ * @param tls_base Thread-local storage base (set as TPIDR_EL0).
+ * @return Task ID of the new thread on success, or negative error code.
+ */
+inline i64 thread_create(u64 entry, u64 stack_top, u64 tls_base) {
+    auto r = syscall3(SYS_THREAD_CREATE, entry, stack_top, tls_base);
+    return r.ok() ? static_cast<i64>(r.val0) : r.error;
+}
+
+/**
+ * @brief Exit the calling thread with a return value.
+ *
+ * @param retval Return value (retrievable via thread_join).
+ */
+[[noreturn]] inline void thread_exit(u64 retval) {
+    syscall1(SYS_THREAD_EXIT, retval);
+    __builtin_unreachable();
+}
+
+/**
+ * @brief Wait for a thread to exit and retrieve its return value.
+ *
+ * @param task_id Task ID of the thread to join.
+ * @return Thread's return value on success, or negative error code.
+ */
+inline i64 thread_join(u32 task_id) {
+    auto r = syscall1(SYS_THREAD_JOIN, static_cast<u64>(task_id));
+    return r.ok() ? static_cast<i64>(r.val0) : r.error;
+}
+
+/**
+ * @brief Mark a thread as detached (auto-reap on exit).
+ *
+ * @param task_id Task ID of the thread to detach.
+ * @return 0 on success, or negative error code.
+ */
+inline i32 thread_detach(u32 task_id) {
+    auto r = syscall1(SYS_THREAD_DETACH, static_cast<u64>(task_id));
+    return static_cast<i32>(r.error);
+}
+
+/**
+ * @brief Get the calling thread's task ID.
+ *
+ * @return Task ID of the calling thread.
+ */
+inline u32 thread_self() {
+    auto r = syscall0(SYS_THREAD_SELF);
+    return r.ok() ? static_cast<u32>(r.val0) : 0;
+}
+
 } // namespace sys

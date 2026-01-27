@@ -916,6 +916,9 @@ void schedule() {
 
         viper::switch_address_space(v->ttbr0, v->asid);
         viper::set_current(v);
+
+        // Restore per-thread TLS pointer (TPIDR_EL0)
+        asm volatile("msr tpidr_el0, %0" ::"r"(next->thread.tls_base));
     }
 
     // Release lock before context switch - the new task will run with interrupts enabled

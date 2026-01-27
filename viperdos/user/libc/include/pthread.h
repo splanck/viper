@@ -16,7 +16,8 @@ typedef unsigned long size_t;
 typedef unsigned long pthread_t;
 
 typedef struct {
-    int dummy;
+    int detachstate;
+    size_t stacksize;
 } pthread_attr_t;
 
 /* Mutex types */

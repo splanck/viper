@@ -244,6 +244,25 @@
 #define SYS_SIGPENDING 0x94
 /** @} */
 
+/** @name Thread Syscalls (0xB0 - 0xB4)
+ *  @details
+ *  Userspace threading primitives. Threads share the parent process's address
+ *  space (Viper) and file descriptors. Each thread has its own stack and
+ *  TPIDR_EL0 thread-local storage base.
+ *  @{
+ */
+/** @brief Create a new thread in the current process (entry, stack_top, tls_base). */
+#define SYS_THREAD_CREATE 0xB0
+/** @brief Exit the calling thread with a return value (does not return). */
+#define SYS_THREAD_EXIT 0xB1
+/** @brief Wait for a thread to exit and retrieve its return value. */
+#define SYS_THREAD_JOIN 0xB2
+/** @brief Mark a thread as detached (no join needed, auto-reap on exit). */
+#define SYS_THREAD_DETACH 0xB3
+/** @brief Return the calling thread's task ID. */
+#define SYS_THREAD_SELF 0xB4
+/** @} */
+
 /** @name Process Group/Session Syscalls (0xA0 - 0xAF)
  *  @details
  *  POSIX-like process groups and sessions for job control.

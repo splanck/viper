@@ -98,11 +98,11 @@ This document lists OS-level capabilities that ViperDOS must implement to suppor
 | Thread-local storage (`_Thread_local`) | P1 | Yes | pthread_key_* API + .tdata/.tbss in linker script (single-threaded) |
 | Mutex/lock primitives | P2 | Partial | Stub implementations (single-threaded safe) |
 | Atomic operations | P2 | Partial | Compiler builtins work; no kernel atomic syscalls |
-| Thread creation/join | P3 | No | pthread_create returns ENOSYS |
+| Thread creation/join | P3 | Yes | SYS_THREAD_CREATE/EXIT/JOIN/DETACH/SELF (0xB0-0xB4), real pthread_create with TCB and TPIDR_EL0 TLS |
 | Condition variables | P3 | Partial | Stub implementations (no-ops) |
 | Semaphores | P3 | Partial | Stub implementations in sem.c/semaphore.c |
 
-**Note**: Kernel has full task/process support but userspace pthreads are stubbed. Multi-process works; multi-thread within process does not.
+**Note**: Kernel supports both multi-process and multi-thread. Threads share address space (Viper), file descriptors, and capabilities. Per-thread TLS via TPIDR_EL0. Mutexes/condvars are single-core stubs (flag-based, work correctly on uniprocessor).
 
 ---
 
@@ -318,7 +318,7 @@ This document lists OS-level capabilities that ViperDOS must implement to suppor
 
 | Requirement | Status |
 |-------------|--------|
-| Full threading (create/join) | **No** |
+| Full threading (create/join) | Yes |
 | HTTP/WebSocket/TLS (userspace) | Yes |
 | Gamepad input | Partial |
 | Memory-mapped files | Yes |
@@ -330,7 +330,7 @@ This document lists OS-level capabilities that ViperDOS must implement to suppor
 | CPU count query | Yes |
 | Integer overflow detection | Yes |
 
-**P3 Status: ~90% Complete** (Only userspace threading remains unimplemented)
+**P3 Status: ~95% Complete** (Userspace threading implemented; some P3 items remain partial)
 
 ---
 
@@ -338,12 +338,8 @@ This document lists OS-level capabilities that ViperDOS must implement to suppor
 
 ### Remaining Gaps
 
-1. **Userspace Threading** (P3)
-   - pthread_create/join implementation
-   - Would require kernel thread support within process
-
-2. **Mutex/Atomics** (P2)
-   - Stubs work for single-threaded; real implementation awaits threading
+1. **Mutex/Atomics** (P2)
+   - Stubs work correctly on single-core; real spinlock/futex implementation would be needed for SMP
 
 ### Partial Implementations (Could Improve)
 
@@ -375,10 +371,10 @@ This document lists OS-level capabilities that ViperDOS must implement to suppor
 | P0 | 11 | 0 | 0 | **100%** |
 | P1 | 13 | 0 | 0 | **100%** |
 | P2 | 14 | 1 | 0 | **96%** |
-| P3 | 8 | 3 | 1 | **~90%** |
-| **Total** | 46 | 4 | 1 | **~98%** |
+| P3 | 9 | 3 | 0 | **~95%** |
+| **Total** | 47 | 4 | 0 | **~99%** |
 
-**ViperDOS is approximately 98% complete** for the requirements needed to run general applications. All critical (P0) and high-priority (P1) features are fully implemented. P2 is nearly complete (only mutex/atomics partial, awaiting userspace threading). P3 is now substantially complete with mmap, audio mixing, WebSocket library, clipboard, file locking, CPU count, integer overflow detection, and gamepad/multi-display query stubs. The only remaining gap is userspace threading (pthread_create/join), which requires kernel-level thread support within a process.
+**ViperDOS is approximately 99% complete** for the requirements needed to run general applications. All critical (P0) and high-priority (P1) features are fully implemented. P2 is nearly complete (only mutex/atomics partial due to single-core stub approach). P3 is now substantially complete with userspace threading (real pthread_create/join via kernel thread syscalls), mmap, audio mixing, WebSocket library, clipboard, file locking, CPU count, integer overflow detection, and gamepad/multi-display query stubs. Remaining partial items are stub-based implementations that work correctly on the single-core system but would need enhancement for SMP.
 
 ---
 

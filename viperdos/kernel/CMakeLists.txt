@@ -89,6 +89,7 @@ set(KERNEL_SOURCES
         syscall/handlers/audio.cpp
         syscall/handlers/clipboard.cpp
         syscall/handlers/mmap.cpp
+        syscall/handlers/thread.cpp
         ipc/channel.cpp
         ipc/poll.cpp
         ipc/pollset.cpp

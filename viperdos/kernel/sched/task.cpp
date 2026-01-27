@@ -522,6 +522,11 @@ static void user_task_entry_trampoline(void *) {
     // Set current viper
     ::viper::set_current(v);
 
+    // Set per-thread TLS pointer (TPIDR_EL0) if set
+    if (t->thread.tls_base) {
+        asm volatile("msr tpidr_el0, %0" ::"r"(t->thread.tls_base));
+    }
+
     // Enter user mode - this won't return
     enter_user_mode(t->user_entry, t->user_stack, 0);
 
@@ -628,6 +633,14 @@ Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack) 
     // Initialize signal state for user task
     init_signal_state(t);
 
+    // Initialize thread state (main task is not a thread)
+    t->thread.is_thread = false;
+    t->thread.detached = false;
+    t->thread.joined = false;
+    t->thread.retval = 0;
+    t->thread.tls_base = 0;
+    t->thread.join_waiters = nullptr;
+
     // Set up initial context to call user_task_entry_trampoline
     u64 *stack_ptr = reinterpret_cast<u64 *>(t->kernel_stack_top);
     stack_ptr -= 2;
@@ -661,6 +674,150 @@ Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack) 
     return t;
 }
 
+/** @copydoc task::create_thread */
+Task *create_thread(const char *name, void *viper_ptr, u64 entry, u64 stack, u64 tls_base) {
+    ::viper::Viper *v = reinterpret_cast<::viper::Viper *>(viper_ptr);
+
+    // Check thread limit
+    if (v->task_count >= v->task_limit) {
+        serial::puts("[task] ERROR: Thread limit reached for viper\n");
+        return nullptr;
+    }
+
+    // Acquire task_lock for allocation operations
+    u64 saved_daif = task_lock.acquire();
+
+    Task *t = allocate_task_locked();
+    if (!t) {
+        task_lock.release(saved_daif);
+        serial::puts("[task] ERROR: No free task slots for thread\n");
+        return nullptr;
+    }
+
+    // Allocate kernel stack
+    t->kernel_stack = allocate_kernel_stack_locked();
+    if (!t->kernel_stack) {
+        t->state = TaskState::Invalid;
+        t->id = 0;
+        task_lock.release(saved_daif);
+        serial::puts("[task] ERROR: Failed to allocate kernel stack for thread\n");
+        return nullptr;
+    }
+    t->kernel_stack_top = t->kernel_stack + KERNEL_STACK_SIZE;
+
+    // Initialize task fields
+    t->id = next_task_id++;
+    t->hash_next = nullptr;
+    hash_insert_locked(t);
+    task_lock.release(saved_daif);
+
+    lib::strcpy_safe(t->name, name, sizeof(t->name));
+    t->state = TaskState::Ready;
+    t->flags = TASK_FLAG_USER;
+    t->time_slice = TIME_SLICE_DEFAULT;
+    t->priority = PRIORITY_DEFAULT;
+    t->original_priority = PRIORITY_DEFAULT;
+    t->policy = SchedPolicy::SCHED_OTHER;
+    t->cpu_affinity = CPU_AFFINITY_ALL;
+    t->vruntime = 0;
+    t->nice = 0;
+    t->dl_runtime = 0;
+    t->dl_deadline = 0;
+    t->dl_period = 0;
+    t->dl_abs_deadline = 0;
+    t->dl_missed = 0;
+    t->dl_flags = 0;
+    t->bw_runtime = 0;
+    t->bw_period = 0;
+    t->bw_consumed = 0;
+    t->bw_period_start = 0;
+    t->bw_throttled = false;
+    t->next = nullptr;
+    t->prev = nullptr;
+    t->heap_index = static_cast<u32>(-1);
+    t->wait_channel = nullptr;
+    t->blocked_mutex = nullptr;
+    t->wait_timeout = 0;
+    t->exit_code = 0;
+    t->trap_frame = nullptr;
+    t->cpu_ticks = 0;
+    t->switch_count = 0;
+    {
+        Task *curr = current();
+        t->parent_id = curr ? curr->id : 0;
+    }
+
+    // Share the same viper as the parent
+    t->viper = reinterpret_cast<struct ViperProcess *>(viper_ptr);
+    t->user_entry = entry;
+    t->user_stack = stack;
+
+    // Inherit CWD from current task
+    {
+        Task *curr = current();
+        if (curr && curr->cwd[0]) {
+            lib::strcpy_safe(t->cwd, curr->cwd, sizeof(t->cwd));
+        } else {
+            t->cwd[0] = '/';
+            t->cwd[1] = '\0';
+        }
+    }
+
+    // Initialize signal state
+    init_signal_state(t);
+
+    // Initialize thread state
+    t->thread.is_thread = true;
+    t->thread.detached = false;
+    t->thread.joined = false;
+    t->thread.retval = 0;
+    t->thread.tls_base = tls_base;
+
+    // Allocate join wait queue
+    static sched::WaitQueue thread_wait_queues[MAX_TASKS];
+    static u32 next_wq = 0;
+    if (next_wq < MAX_TASKS) {
+        sched::WaitQueue *wq = &thread_wait_queues[next_wq++];
+        sched::wait_init(wq);
+        t->thread.join_waiters = wq;
+    } else {
+        t->thread.join_waiters = nullptr;
+    }
+
+    // Increment process thread count
+    v->task_count++;
+
+    // Set up initial context to call user_task_entry_trampoline
+    u64 *stack_ptr = reinterpret_cast<u64 *>(t->kernel_stack_top);
+    stack_ptr -= 2;
+    stack_ptr[0] = reinterpret_cast<u64>(user_task_entry_trampoline);
+    stack_ptr[1] = 0;
+
+    t->context.x30 = reinterpret_cast<u64>(task_entry_trampoline);
+    t->context.sp = reinterpret_cast<u64>(stack_ptr);
+    t->context.x29 = 0;
+    t->context.x19 = 0;
+    t->context.x20 = 0;
+    t->context.x21 = 0;
+    t->context.x22 = 0;
+    t->context.x23 = 0;
+    t->context.x24 = 0;
+    t->context.x25 = 0;
+    t->context.x26 = 0;
+    t->context.x27 = 0;
+    t->context.x28 = 0;
+
+    serial::puts("[task] Created thread '");
+    serial::puts(name);
+    serial::puts("' (id=");
+    serial::put_dec(t->id);
+    serial::puts(", tls=");
+    serial::put_hex(tls_base);
+    serial::puts(")\n");
+
+    return t;
+}
+
 /** @copydoc task::current */
 Task *current() {
     return static_cast<Task *>(cpu::current()->current_task);
@@ -686,10 +843,23 @@ void exit(i32 code) {
     // Clear any poll/timer waiters referencing this task to prevent use-after-free
     poll::clear_task_waiters(t);
 
-    // If this is a user task with an associated viper process, exit the process
-    // This marks it as a zombie and wakes any waiting parent
+    // If this is a user task with an associated viper process
     if (t->viper) {
-        ::viper::exit(code);
+        if (t->thread.is_thread) {
+            // Thread exit: store return value and wake joiners, don't kill the process
+            t->thread.retval = static_cast<u64>(code);
+            if (t->thread.join_waiters) {
+                sched::wait_wake_all(
+                    static_cast<sched::WaitQueue *>(t->thread.join_waiters));
+            }
+            // Decrement process thread count
+            ::viper::Viper *v = reinterpret_cast<::viper::Viper *>(t->viper);
+            if (v->task_count > 0)
+                v->task_count--;
+        } else {
+            // Main task exit: exit the whole process
+            ::viper::exit(code);
+        }
     }
 
     t->exit_code = code;

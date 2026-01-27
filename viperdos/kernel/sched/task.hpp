@@ -296,6 +296,16 @@ struct Task {
         u32 pending;            ///< Pending signals bitmap
         TrapFrame *saved_frame; ///< Saved trap frame for sigreturn
     } signals;
+
+    // Thread state (for userspace threads sharing a Viper)
+    struct {
+        bool is_thread;    ///< True if this is a thread (not the main task)
+        bool detached;     ///< True if detached (no join needed, auto-reap)
+        bool joined;       ///< True if someone has called join on this thread
+        u64 retval;        ///< Return value from thread_exit
+        u64 tls_base;      ///< TPIDR_EL0 value for this thread
+        void *join_waiters; ///< WaitQueue* for tasks blocked in thread_join
+    } thread;
 };
 
 /**
@@ -477,6 +487,24 @@ void print_info(Task *t);
  * @return Pointer to the created task, or `nullptr` on failure.
  */
 Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack);
+
+/**
+ * @brief Create a new thread within an existing user process.
+ *
+ * @details
+ * Creates a task that shares the parent process's address space (Viper).
+ * The thread has its own kernel stack and user stack but shares page tables,
+ * file descriptors, and capabilities. TPIDR_EL0 is set to tls_base for
+ * per-thread local storage.
+ *
+ * @param name Human-readable thread name.
+ * @param viper_ptr The viper (user process) this thread belongs to.
+ * @param entry User-mode entry point address.
+ * @param stack User-mode stack pointer (top of stack).
+ * @param tls_base Thread-local storage base (set as TPIDR_EL0).
+ * @return Pointer to the created task, or `nullptr` on failure.
+ */
+Task *create_thread(const char *name, void *viper_ptr, u64 entry, u64 stack, u64 tls_base);
 
 /**
  * @brief Enumerate active tasks into a user-provided buffer.
