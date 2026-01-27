@@ -332,43 +332,43 @@ extern "C" int main(int argc, char **argv) {
                     bool handled = true;
 
                     switch (event.key.keycode) {
-                    // Navigation keys
-                    case 0x50: // Left arrow
+                    // Navigation keys (evdev keycodes)
+                    case 105: // Left arrow
                         editor.moveCursorLeft();
                         break;
-                    case 0x4F: // Right arrow
+                    case 106: // Right arrow
                         editor.moveCursorRight();
                         break;
-                    case 0x52: // Up arrow
+                    case 103: // Up arrow
                         editor.moveCursorUp();
                         break;
-                    case 0x51: // Down arrow
+                    case 108: // Down arrow
                         editor.moveCursorDown();
                         break;
-                    case 0x4A: // Home
+                    case 102: // Home
                         editor.moveCursorHome();
                         break;
-                    case 0x4D: // End
+                    case 107: // End
                         editor.moveCursorEnd();
                         break;
-                    case 0x4B: // Page Up
+                    case 104: // Page Up
                         editor.moveCursorPageUp(view.visibleLines());
                         break;
-                    case 0x4E: // Page Down
+                    case 109: // Page Down
                         editor.moveCursorPageDown(view.visibleLines());
                         break;
 
-                    // Editing keys
-                    case 0x2A: // Backspace
+                    // Editing keys (evdev keycodes)
+                    case 14: // Backspace
                         editor.backspace();
                         break;
-                    case 0x4C: // Delete
+                    case 111: // Delete
                         editor.deleteChar();
                         break;
-                    case 0x28: // Enter
+                    case 28: // Enter
                         editor.insertNewline();
                         break;
-                    case 0x2B: // Tab
+                    case 15: // Tab
                         editor.insertTab();
                         break;
 

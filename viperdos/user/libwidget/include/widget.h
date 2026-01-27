@@ -207,6 +207,8 @@ typedef enum {
 #define WB_BLACK      0xFF000000 /**< Black for text and outlines */
 #define WB_RED        0xFFFF4444 /**< Red for errors/warnings */
 #define WB_GREEN      0xFF00AA44 /**< Green for success indicators */
+#define WB_DARK_BG    0xFF1A1208 /**< Dark brown for list backgrounds */
+#define WB_CREAM      0xFFEEDDCC /**< Cream/tan for text on dark bg */
 /** @} */
 
 /* ============================================================================

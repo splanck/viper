@@ -376,11 +376,11 @@ msgbox_result_t msgbox_show(gui_window_t *parent, const char *title, const char 
                 break;
 
             case GUI_EVENT_KEY:
-                // Enter = OK/Yes, Escape = Cancel/No
-                if (event.key.keycode == 0x28) { // Enter
+                // Enter = OK/Yes, Escape = Cancel/No (evdev keycodes)
+                if (event.key.keycode == 28) { // Enter
                     result = btn1_result;
                     running = false;
-                } else if (event.key.keycode == 0x29) { // Escape
+                } else if (event.key.keycode == 1) { // Escape
                     result = (type == MB_OK) ? MB_RESULT_OK : MB_RESULT_CANCEL;
                     running = false;
                 }
@@ -508,12 +508,12 @@ char *filedialog_open(gui_window_t *parent, const char *title, const char *filte
         gui_fill_rect(dialog, 0, 0, FD_WIDTH, FD_HEIGHT, WB_GRAY_LIGHT);
 
         /* Draw path bar */
-        gui_fill_rect(dialog, 5, 5, FD_WIDTH - 10, FD_PATH_HEIGHT, WB_WHITE);
+        gui_fill_rect(dialog, 5, 5, FD_WIDTH - 10, FD_PATH_HEIGHT, WB_DARK_BG);
         gui_draw_rect(dialog, 5, 5, FD_WIDTH - 10, FD_PATH_HEIGHT, WB_GRAY_DARK);
-        gui_draw_text(dialog, 10, 10, current_path, WB_BLACK);
+        gui_draw_text(dialog, 10, 10, current_path, WB_CREAM);
 
         /* Draw file list */
-        gui_fill_rect(dialog, 5, FD_LIST_TOP, FD_WIDTH - 10, FD_LIST_HEIGHT, WB_WHITE);
+        gui_fill_rect(dialog, 5, FD_LIST_TOP, FD_WIDTH - 10, FD_LIST_HEIGHT, WB_DARK_BG);
         gui_draw_rect(dialog, 5, FD_LIST_TOP, FD_WIDTH - 10, FD_LIST_HEIGHT, WB_GRAY_DARK);
 
         for (int i = 0; i < visible_items && (i + scroll_offset) < entry_count; i++) {
@@ -526,7 +526,7 @@ char *filedialog_open(gui_window_t *parent, const char *title, const char *filte
             }
 
             /* Icon indicator and name */
-            uint32_t text_color = (idx == selected) ? WB_WHITE : WB_BLACK;
+            uint32_t text_color = (idx == selected) ? WB_WHITE : WB_CREAM;
             const char *icon = entries[idx].is_dir ? "[D] " : "    ";
 
             char display[FD_MAX_NAME + 8];
@@ -617,7 +617,7 @@ char *filedialog_open(gui_window_t *parent, const char *title, const char *filte
                 break;
 
             case GUI_EVENT_KEY:
-                if (event.key.keycode == 0x28) { /* Enter */
+                if (event.key.keycode == 28) { /* Enter (evdev) */
                     if (selected >= 0) {
                         if (entries[selected].is_dir) {
                             navigate_into(entries[selected].name);
@@ -634,12 +634,12 @@ char *filedialog_open(gui_window_t *parent, const char *title, const char *filte
                             running = false;
                         }
                     }
-                } else if (event.key.keycode == 0x29) { /* Escape */
+                } else if (event.key.keycode == 1) { /* Escape (evdev) */
                     running = false;
-                } else if (event.key.keycode == 0x52) { /* Up */
+                } else if (event.key.keycode == 103) { /* Up (evdev) */
                     if (selected > 0) selected--;
                     if (selected < scroll_offset) scroll_offset = selected;
-                } else if (event.key.keycode == 0x51) { /* Down */
+                } else if (event.key.keycode == 108) { /* Down (evdev) */
                     if (selected < entry_count - 1) selected++;
                     if (selected >= scroll_offset + visible_items)
                         scroll_offset = selected - visible_items + 1;
@@ -763,12 +763,12 @@ char *filedialog_save(gui_window_t *parent, const char *title, const char *filte
         gui_fill_rect(dialog, 0, 0, FD_WIDTH, dialog_height, WB_GRAY_LIGHT);
 
         /* Path bar */
-        gui_fill_rect(dialog, 5, 5, FD_WIDTH - 10, FD_PATH_HEIGHT, WB_WHITE);
+        gui_fill_rect(dialog, 5, 5, FD_WIDTH - 10, FD_PATH_HEIGHT, WB_DARK_BG);
         gui_draw_rect(dialog, 5, 5, FD_WIDTH - 10, FD_PATH_HEIGHT, WB_GRAY_DARK);
-        gui_draw_text(dialog, 10, 10, current_path, WB_BLACK);
+        gui_draw_text(dialog, 10, 10, current_path, WB_CREAM);
 
         /* File list */
-        gui_fill_rect(dialog, 5, FD_LIST_TOP, FD_WIDTH - 10, FD_LIST_HEIGHT, WB_WHITE);
+        gui_fill_rect(dialog, 5, FD_LIST_TOP, FD_WIDTH - 10, FD_LIST_HEIGHT, WB_DARK_BG);
         gui_draw_rect(dialog, 5, FD_LIST_TOP, FD_WIDTH - 10, FD_LIST_HEIGHT, WB_GRAY_DARK);
 
         for (int i = 0; i < visible_items && (i + scroll_offset) < entry_count; i++) {
@@ -779,7 +779,7 @@ char *filedialog_save(gui_window_t *parent, const char *title, const char *filte
                 gui_fill_rect(dialog, 6, y, FD_WIDTH - 12, FD_ITEM_HEIGHT, WB_BLUE);
             }
 
-            uint32_t text_color = (idx == selected) ? WB_WHITE : WB_BLACK;
+            uint32_t text_color = (idx == selected) ? WB_WHITE : WB_CREAM;
             const char *icon = entries[idx].is_dir ? "[D] " : "    ";
 
             char display[FD_MAX_NAME + 8];
@@ -789,13 +789,13 @@ char *filedialog_save(gui_window_t *parent, const char *title, const char *filte
 
         /* Filename label and entry */
         gui_draw_text(dialog, 10, filename_y + 5, "Filename:", WB_BLACK);
-        gui_fill_rect(dialog, 80, filename_y, FD_WIDTH - 90, 24, WB_WHITE);
+        gui_fill_rect(dialog, 80, filename_y, FD_WIDTH - 90, 24, WB_DARK_BG);
         gui_draw_rect(dialog, 80, filename_y, FD_WIDTH - 90, 24, WB_GRAY_DARK);
-        gui_draw_text(dialog, 85, filename_y + 5, filename, WB_BLACK);
+        gui_draw_text(dialog, 85, filename_y + 5, filename, WB_CREAM);
 
         /* Cursor */
         int cursor_x = 85 + filename_cursor * 8;
-        gui_draw_vline(dialog, cursor_x, filename_y + 3, filename_y + 21, WB_BLACK);
+        gui_draw_vline(dialog, cursor_x, filename_y + 3, filename_y + 21, WB_CREAM);
 
         /* Buttons */
         int btn_width = 80;
@@ -868,8 +868,10 @@ char *filedialog_save(gui_window_t *parent, const char *title, const char *filte
                 }
                 break;
 
-            case GUI_EVENT_KEY:
-                if (event.key.keycode == 0x28) { /* Enter */
+            case GUI_EVENT_KEY: {
+                /* evdev keycodes */
+                uint16_t kc = event.key.keycode;
+                if (kc == 28) { /* Enter */
                     if (filename[0] != '\0') {
                         size_t path_len = strlen(current_path);
                         size_t name_len = strlen(filename);
@@ -882,44 +884,65 @@ char *filedialog_save(gui_window_t *parent, const char *title, const char *filte
                         }
                         running = false;
                     }
-                } else if (event.key.keycode == 0x29) { /* Escape */
+                } else if (kc == 1) { /* Escape */
                     running = false;
-                } else if (event.key.keycode == 0x2A) { /* Backspace */
+                } else if (kc == 14) { /* Backspace */
                     if (filename_cursor > 0) {
                         memmove(&filename[filename_cursor - 1], &filename[filename_cursor],
                                 strlen(filename) - filename_cursor + 1);
                         filename_cursor--;
                     }
-                } else if (event.key.keycode >= 0x04 && event.key.keycode <= 0x1D) {
-                    /* A-Z */
-                    if (filename_cursor < FD_MAX_NAME - 1) {
-                        char c = 'a' + event.key.keycode - 0x04;
+                } else if (kc == 103) { /* Up - navigate to file list */
+                    if (selected > 0) selected--;
+                    if (selected < scroll_offset) scroll_offset = selected;
+                } else if (kc == 108) { /* Down - navigate file list */
+                    if (selected < entry_count - 1) selected++;
+                    if (selected >= scroll_offset + visible_items)
+                        scroll_offset = selected - visible_items + 1;
+                } else {
+                    /* Character input (evdev keycodes) */
+                    char c = 0;
+                    /* QWERTY row: Q=16..P=25 */
+                    if (kc >= 16 && kc <= 25) {
+                        c = "qwertyuiop"[kc - 16];
+                    }
+                    /* Home row: A=30..L=38 */
+                    else if (kc >= 30 && kc <= 38) {
+                        c = "asdfghjkl"[kc - 30];
+                    }
+                    /* Bottom row: Z=44..M=50 */
+                    else if (kc >= 44 && kc <= 50) {
+                        c = "zxcvbnm"[kc - 44];
+                    }
+                    /* Numbers 1-9: keycodes 2-10 */
+                    else if (kc >= 2 && kc <= 10) {
+                        c = '0' + (kc - 1);
+                    }
+                    /* Number 0: keycode 11 */
+                    else if (kc == 11) {
+                        c = '0';
+                    }
+                    /* Period: keycode 52 */
+                    else if (kc == 52) {
+                        c = '.';
+                    }
+                    /* Minus: keycode 12 */
+                    else if (kc == 12) {
+                        c = '-';
+                    }
+                    /* Underscore via shift (simplified - just use underscore) */
+                    else if (kc == 57) { /* Space */
+                        c = ' ';
+                    }
+
+                    if (c && filename_cursor < FD_MAX_NAME - 1) {
                         memmove(&filename[filename_cursor + 1], &filename[filename_cursor],
                                 strlen(filename) - filename_cursor + 1);
                         filename[filename_cursor++] = c;
-                    }
-                } else if (event.key.keycode >= 0x1E && event.key.keycode <= 0x27) {
-                    /* 0-9 */
-                    if (filename_cursor < FD_MAX_NAME - 1) {
-                        char c = (event.key.keycode == 0x27) ? '0' : ('1' + event.key.keycode - 0x1E);
-                        memmove(&filename[filename_cursor + 1], &filename[filename_cursor],
-                                strlen(filename) - filename_cursor + 1);
-                        filename[filename_cursor++] = c;
-                    }
-                } else if (event.key.keycode == 0x37) { /* Period */
-                    if (filename_cursor < FD_MAX_NAME - 1) {
-                        memmove(&filename[filename_cursor + 1], &filename[filename_cursor],
-                                strlen(filename) - filename_cursor + 1);
-                        filename[filename_cursor++] = '.';
-                    }
-                } else if (event.key.keycode == 0x2D) { /* Minus/underscore */
-                    if (filename_cursor < FD_MAX_NAME - 1) {
-                        memmove(&filename[filename_cursor + 1], &filename[filename_cursor],
-                                strlen(filename) - filename_cursor + 1);
-                        filename[filename_cursor++] = '_';
                     }
                 }
                 break;
+            }
 
             default:
                 break;
@@ -1049,12 +1072,12 @@ char *filedialog_folder(gui_window_t *parent, const char *title, const char *ini
 
         /* Draw path bar with label */
         gui_draw_text(dialog, 10, 10, "Selected:", WB_BLACK);
-        gui_fill_rect(dialog, 80, 5, FD_WIDTH - 90, FD_PATH_HEIGHT, WB_WHITE);
+        gui_fill_rect(dialog, 80, 5, FD_WIDTH - 90, FD_PATH_HEIGHT, WB_DARK_BG);
         gui_draw_rect(dialog, 80, 5, FD_WIDTH - 90, FD_PATH_HEIGHT, WB_GRAY_DARK);
-        gui_draw_text(dialog, 85, 10, current_path, WB_BLACK);
+        gui_draw_text(dialog, 85, 10, current_path, WB_CREAM);
 
         /* Draw folder list */
-        gui_fill_rect(dialog, 5, FD_LIST_TOP, FD_WIDTH - 10, FD_LIST_HEIGHT, WB_WHITE);
+        gui_fill_rect(dialog, 5, FD_LIST_TOP, FD_WIDTH - 10, FD_LIST_HEIGHT, WB_DARK_BG);
         gui_draw_rect(dialog, 5, FD_LIST_TOP, FD_WIDTH - 10, FD_LIST_HEIGHT, WB_GRAY_DARK);
 
         for (int i = 0; i < visible_items && (i + scroll_offset) < entry_count; i++) {
@@ -1067,7 +1090,7 @@ char *filedialog_folder(gui_window_t *parent, const char *title, const char *ini
             }
 
             /* Folder icon and name */
-            uint32_t text_color = (idx == selected) ? WB_WHITE : WB_BLACK;
+            uint32_t text_color = (idx == selected) ? WB_WHITE : WB_CREAM;
 
             char display[FD_MAX_NAME + 8];
             snprintf(display, sizeof(display), "[D] %s", entries[idx].name);
@@ -1136,7 +1159,7 @@ char *filedialog_folder(gui_window_t *parent, const char *title, const char *ini
                 break;
 
             case GUI_EVENT_KEY:
-                if (event.key.keycode == 0x28) { /* Enter */
+                if (event.key.keycode == 28) { /* Enter (evdev) */
                     /* If folder selected, navigate into it */
                     if (selected >= 0) {
                         navigate_into(entries[selected].name);
@@ -1148,12 +1171,12 @@ char *filedialog_folder(gui_window_t *parent, const char *title, const char *ini
                         }
                         running = false;
                     }
-                } else if (event.key.keycode == 0x29) { /* Escape */
+                } else if (event.key.keycode == 1) { /* Escape (evdev) */
                     running = false;
-                } else if (event.key.keycode == 0x52) { /* Up */
+                } else if (event.key.keycode == 103) { /* Up (evdev) */
                     if (selected > 0) selected--;
                     if (selected < scroll_offset) scroll_offset = selected;
-                } else if (event.key.keycode == 0x51) { /* Down */
+                } else if (event.key.keycode == 108) { /* Down (evdev) */
                     if (selected < entry_count - 1) selected++;
                     if (selected >= scroll_offset + visible_items)
                         scroll_offset = selected - visible_items + 1;

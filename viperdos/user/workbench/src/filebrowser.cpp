@@ -578,16 +578,15 @@ void FileBrowser::handleKeyPress(int keycode) {
         return;
     }
 
-    // Key codes (from keyboard driver)
-    // Note: These are HID usage codes
-    constexpr int KEY_ENTER = 0x28;  // Enter key
-    constexpr int KEY_DELETE = 0x4C; // Delete key
-    constexpr int KEY_BACKSPACE = 0x2A;
-    constexpr int KEY_F5 = 0x3E; // F5 key
-    constexpr int KEY_C = 0x06;  // 'C' key (with Ctrl modifier for copy)
-    constexpr int KEY_V = 0x19;  // 'V' key (with Ctrl modifier for paste)
-    constexpr int KEY_N = 0x11;  // 'N' key (with Ctrl modifier for new folder)
-    constexpr int KEY_F2 = 0x3B; // F2 key (rename)
+    // Key codes (evdev keycodes from kernel/input/keycodes.hpp)
+    constexpr int KEY_ENTER = 28;      // Enter key
+    constexpr int KEY_DELETE = 111;    // Delete key
+    constexpr int KEY_BACKSPACE = 14;  // Backspace key
+    constexpr int KEY_F5 = 63;         // F5 key
+    constexpr int KEY_C = 46;          // 'C' key (with Ctrl modifier for copy)
+    constexpr int KEY_V = 47;          // 'V' key (with Ctrl modifier for paste)
+    constexpr int KEY_N = 49;          // 'N' key (with Ctrl modifier for new folder)
+    constexpr int KEY_F2 = 60;         // F2 key (rename)
 
     switch (keycode) {
         case KEY_ENTER:
@@ -1199,15 +1198,15 @@ void FileBrowser::handleRenameKey(int keycode, bool shift) {
         return;
     }
 
-    // Key codes (HID usage codes)
-    constexpr int KEY_ENTER = 0x28;
-    constexpr int KEY_ESCAPE = 0x29;
-    constexpr int KEY_BACKSPACE = 0x2A;
-    constexpr int KEY_DELETE = 0x4C;
-    constexpr int KEY_LEFT = 0x50;
-    constexpr int KEY_RIGHT = 0x4F;
-    constexpr int KEY_HOME = 0x4A;
-    constexpr int KEY_END = 0x4D;
+    // Key codes (evdev keycodes from kernel/input/keycodes.hpp)
+    constexpr int KEY_ENTER = 28;
+    constexpr int KEY_ESCAPE = 1;
+    constexpr int KEY_BACKSPACE = 14;
+    constexpr int KEY_DELETE = 111;
+    constexpr int KEY_LEFT = 105;
+    constexpr int KEY_RIGHT = 106;
+    constexpr int KEY_HOME = 102;
+    constexpr int KEY_END = 107;
 
     int len = static_cast<int>(strlen(m_renameEditor.buffer));
 
