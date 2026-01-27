@@ -31,6 +31,7 @@ struct FrontendToolConfig
     bool emitIl = false;
     bool run = false;
     std::vector<std::string> forwardedArgs;
+    std::vector<std::string> programArgs;
 };
 
 /// @brief Callbacks for language-specific behavior in frontend tools.
@@ -115,6 +116,13 @@ inline FrontendToolConfig parseArgs(int argc, char **argv, const FrontendToolCal
                 }
             }
         }
+        else if (arg == "--")
+        {
+            // Remaining arguments are program arguments
+            for (int j = i + 1; j < argc; ++j)
+                config.programArgs.emplace_back(argv[j]);
+            break;
+        }
         else if (arg.ends_with(callbacks.fileExtension))
         {
             if (!config.sourcePath.empty())
@@ -181,6 +189,16 @@ inline std::vector<char *> buildIlcArgs(const FrontendToolConfig &config,
     for (const auto &fwd : config.forwardedArgs)
     {
         outStorage.push_back(fwd);
+    }
+
+    // Forward program arguments after '--' separator
+    if (!config.programArgs.empty())
+    {
+        outStorage.push_back("--");
+        for (const auto &parg : config.programArgs)
+        {
+            outStorage.push_back(parg);
+        }
     }
 
     // Build char* array from stable strings

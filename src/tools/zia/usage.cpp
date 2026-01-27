@@ -52,6 +52,7 @@ void printUsage()
               << "  zia hello.zia --emit-il                 Show generated IL\n"
               << "  zia hello.zia -o hello.il               Save IL to file\n"
               << "  zia hello.zia --trace --bounds-checks   Debug mode\n"
+              << "  zia hello.zia -- arg1 arg2               Pass args to program\n"
               << "  zia hello.zia --stdin-from input.txt    Redirect input\n"
               << "\n"
               << "Zia Language Notes:\n"
