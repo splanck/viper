@@ -857,7 +857,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     // Print banner
     println(L"");
     println(L"========================================");
-    println(L"  VBoot - ViperDOS Bootloader v0.2");
+    println(L"  VBoot - ViperDOS Bootloader v0.3.1");
     println(L"========================================");
     println(L"");
 

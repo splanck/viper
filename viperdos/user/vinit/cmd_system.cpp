@@ -3,6 +3,7 @@
  * @brief System-related shell commands for vinit.
  */
 #include "vinit.hpp"
+#include "../../version.h"
 
 void cmd_help() {
     print_str("\nViperDOS Shell Commands:\n\n");
@@ -69,7 +70,7 @@ void cmd_echo(const char *args) {
 }
 
 void cmd_version() {
-    print_str("ViperDOS 0.2.0 (December 2025)\n");
+    print_str(VIPERDOS_VERSION_FULL " (" VIPERDOS_BUILD_DATE ")\n");
     print_str("Platform: AArch64\n");
     last_rc = RC_OK;
 }

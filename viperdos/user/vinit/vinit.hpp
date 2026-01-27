@@ -14,6 +14,24 @@
 #include "../syscall.hpp"
 
 // =============================================================================
+// Console Mode
+// =============================================================================
+
+/// Console I/O mode for the shell
+enum class ConsoleMode {
+    STANDALONE,       ///< Connect to CONSOLED service (traditional mode)
+    CONSOLE_ATTACHED  ///< Spawned by consoled with private channels
+};
+
+/// Get current console mode
+ConsoleMode get_console_mode();
+
+/// Initialize console-attached mode with channels from bootstrap
+/// @param input_ch Channel to receive input from consoled
+/// @param output_ch Channel to send output to consoled
+void init_console_attached(i32 input_ch, i32 output_ch);
+
+// =============================================================================
 // String Helpers
 // =============================================================================
 

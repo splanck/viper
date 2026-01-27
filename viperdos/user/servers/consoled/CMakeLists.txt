@@ -3,6 +3,11 @@
 
 add_executable(consoled.sys
         main.cpp
+        ansi.cpp
+        keymap.cpp
+        request.cpp
+        shell.cpp
+        text_buffer.cpp
 )
 
 target_compile_options(consoled.sys PRIVATE ${USER_COMPILE_OPTIONS})

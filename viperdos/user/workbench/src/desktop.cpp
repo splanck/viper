@@ -30,6 +30,7 @@
 
 #include "../include/desktop.hpp"
 #include "../../../syscall.hpp" // For assign_list()
+#include "../../../version.h"
 #include "../include/colors.hpp"
 #include "../include/filebrowser.hpp"
 #include "../include/icons.hpp"
@@ -851,14 +852,14 @@ void Desktop::showAboutDialog() {
     gui_draw_text(m_aboutDialog, 80, 20, "ViperDOS Workbench", themeText());
 
     // Version info
-    gui_draw_text(m_aboutDialog, 100, 50, "Version 0.5.0", themeTextDisabled());
+    gui_draw_text(m_aboutDialog, 100, 50, "Version " VIPERDOS_VERSION_STRING, themeTextDisabled());
 
     // Description
     gui_draw_text(m_aboutDialog, 40, 80, "An Amiga-inspired desktop", themeText());
     gui_draw_text(m_aboutDialog, 30, 100, "for the Viper microkernel OS", themeText());
 
     // Copyright
-    gui_draw_text(m_aboutDialog, 60, 140, "(C) 2025 ViperDOS Team", themeTextDisabled());
+    gui_draw_text(m_aboutDialog, 60, 140, "(C) 2026 ViperDOS Team", themeTextDisabled());
 
     // Close hint
     gui_draw_text(m_aboutDialog, 70, 170, "Click [X] to close", themeTextDisabled());

@@ -121,6 +121,9 @@ set(KERNEL_SOURCES
         tests/viper_tests.cpp
         tests/syscall_tests.cpp
         tests/userfault_tests.cpp
+        tests/boot_diagnostics.cpp
+        # Initialization
+        init/init.cpp
 )
 
 # Create kernel executable

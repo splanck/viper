@@ -66,6 +66,7 @@
 static constexpr u32 CON_WRITE = 0x1001;
 static constexpr u32 CON_CONNECT = 0x1009;
 static constexpr u32 CON_CONNECT_REPLY = 0x2009;
+static constexpr u32 CON_INPUT = 0x3001;
 
 struct WriteRequest {
     u32 type;
@@ -87,12 +88,41 @@ struct ConnectReply {
     u32 rows;
 };
 
+/// Input event from consoled (matches console_protocol.hpp)
+struct InputEvent {
+    u32 type;       // CON_INPUT
+    char ch;        // ASCII character (0 if special key)
+    u8 pressed;     // 1 = key down, 0 = key up
+    u16 keycode;    // Raw evdev keycode
+    u8 modifiers;   // Shift=1, Ctrl=2, Alt=4
+    u8 _pad[3];
+};
+
 // Console service handles (set by init_console())
 static i32 g_console_service = -1; // Send endpoint to consoled
 static u32 g_request_id = 0;
 static bool g_console_ready = false;
 static u32 g_console_cols = 80;
 static u32 g_console_rows = 25;
+
+// =============================================================================
+// Console Mode State
+// =============================================================================
+
+static ConsoleMode g_console_mode = ConsoleMode::STANDALONE;
+static i32 g_attached_input_ch = -1;   // Channel to receive input from consoled
+static i32 g_attached_output_ch = -1;  // Channel to send output to consoled
+
+ConsoleMode get_console_mode() {
+    return g_console_mode;
+}
+
+void init_console_attached(i32 input_ch, i32 output_ch) {
+    g_attached_input_ch = input_ch;
+    g_attached_output_ch = output_ch;
+    g_console_mode = ConsoleMode::CONSOLE_ATTACHED;
+    g_console_ready = true;  // Mark console as ready
+}
 
 // =============================================================================
 // Output Buffering
@@ -221,10 +251,15 @@ static void console_write_direct(const char *s, usize len) {
         buf[sizeof(WriteRequest) + i] = static_cast<u8>(s[i]);
     }
 
+    // Choose channel based on console mode
+    i32 channel = (g_console_mode == ConsoleMode::CONSOLE_ATTACHED)
+                      ? g_attached_output_ch
+                      : g_console_service;
+
     // Send with retry if buffer is full - keep trying until success
     usize total_len = sizeof(WriteRequest) + len;
     while (true) {
-        i64 err = sys::channel_send(g_console_service, buf, total_len, nullptr, 0);
+        i64 err = sys::channel_send(channel, buf, total_len, nullptr, 0);
         if (err == 0)
             break;
         // Buffer full - sleep briefly to let consoled catch up
@@ -460,7 +495,7 @@ void put_hex(u32 n) {
 }
 
 // =============================================================================
-// Console Input (from kernel TTY buffer)
+// Console Input
 // =============================================================================
 
 bool is_console_ready() {
@@ -471,7 +506,37 @@ i32 getchar_from_console() {
     if (!g_console_ready)
         return -1;
 
-    // Read from kernel TTY buffer (blocking)
+    if (g_console_mode == ConsoleMode::CONSOLE_ATTACHED) {
+        // Read input event from consoled via channel (blocking)
+        InputEvent event;
+        u32 handles[4];
+        u32 handle_count = 4;
+
+        while (true) {
+            i64 n = sys::channel_recv(g_attached_input_ch, &event, sizeof(event),
+                                      handles, &handle_count);
+            if (n >= static_cast<i64>(sizeof(InputEvent))) {
+                if (event.type == CON_INPUT && event.pressed) {
+                    // Return the ASCII character (or special key code as negative)
+                    if (event.ch != 0) {
+                        return static_cast<i32>(static_cast<u8>(event.ch));
+                    }
+                    // Special keys: return negative keycode
+                    // Arrow keys: Up=103, Down=108, Left=105, Right=106
+                    return -static_cast<i32>(event.keycode);
+                }
+            } else if (n == VERR_WOULD_BLOCK) {
+                // No data yet - yield and retry
+                sys::yield();
+                continue;
+            } else {
+                // Channel error
+                return -1;
+            }
+        }
+    }
+
+    // Standalone mode: read from kernel TTY buffer (blocking)
     char c;
     i64 result = sys::tty_read(&c, 1);
     if (result == 1) {
@@ -484,7 +549,26 @@ i32 try_getchar_from_console() {
     if (!g_console_ready)
         return -1;
 
-    // Non-blocking read from kernel TTY buffer
+    if (g_console_mode == ConsoleMode::CONSOLE_ATTACHED) {
+        // Non-blocking read from consoled input channel
+        InputEvent event;
+        u32 handles[4];
+        u32 handle_count = 4;
+
+        i64 n = sys::channel_recv(g_attached_input_ch, &event, sizeof(event),
+                                  handles, &handle_count);
+        if (n >= static_cast<i64>(sizeof(InputEvent))) {
+            if (event.type == CON_INPUT && event.pressed) {
+                if (event.ch != 0) {
+                    return static_cast<i32>(static_cast<u8>(event.ch));
+                }
+                return -static_cast<i32>(event.keycode);
+            }
+        }
+        return -1; // No input available
+    }
+
+    // Standalone mode: non-blocking read from kernel TTY buffer
     if (!sys::tty_has_input())
         return -1;
 

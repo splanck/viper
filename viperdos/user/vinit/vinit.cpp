@@ -29,6 +29,7 @@
  * monolithic mode (VIPER_MICROKERNEL_MODE=0).
  */
 #include "vinit.hpp"
+#include "../../version.h"
 
 // =============================================================================
 // Server State Tracking (for crash isolation and restart)
@@ -451,14 +452,89 @@ static void test_malloc_at_startup() {
 }
 
 /**
+ * @brief Check if we were spawned by consoled with bootstrap channels.
+ *
+ * @details
+ * When consoled spawns vinit as a child shell, it sends two channel handles
+ * via bootstrap:
+ * - Input channel (recv endpoint): consoled sends keyboard input
+ * - Output channel (send endpoint): vinit sends CON_WRITE for output
+ *
+ * @param out_input_ch Output: input channel handle
+ * @param out_output_ch Output: output channel handle
+ * @return true if bootstrap channels were received
+ */
+static bool try_bootstrap_channels(i32 *out_input_ch, i32 *out_output_ch) {
+    constexpr i32 BOOTSTRAP_RECV = 0;
+    u8 msg[16];
+    u32 handles[4];
+    u32 handle_count = 4;
+
+    // Try to receive bootstrap message with handles
+    // Wait up to 500ms for consoled to send the channels
+    for (u32 attempt = 0; attempt < 500; attempt++) {
+        handle_count = 4;
+        i64 n = sys::channel_recv(BOOTSTRAP_RECV, msg, sizeof(msg), handles, &handle_count);
+
+        if (n >= 0 && handle_count >= 2) {
+            // Received bootstrap channels from consoled
+            *out_input_ch = static_cast<i32>(handles[0]);
+            *out_output_ch = static_cast<i32>(handles[1]);
+            sys::channel_close(BOOTSTRAP_RECV);
+            return true;
+        }
+
+        if (n == VERR_WOULD_BLOCK) {
+            // Wait a bit for consoled to send the channels
+            sys::sleep(1);
+            continue;
+        }
+
+        // Check for invalid handle - means we're init process (no bootstrap channel)
+        if (n == VERR_NOT_FOUND || n == VERR_INVALID_HANDLE) {
+            // No bootstrap channel - we're the init process
+            return false;
+        }
+
+        // Other error - keep trying for a bit
+        sys::sleep(1);
+    }
+
+    return false;
+}
+
+/**
  * @brief User-space entry point for the init process.
  */
 extern "C" void _start() {
+    // Check if we were spawned by consoled with bootstrap channels
+    // (console-attached mode for multi-window support)
+    i32 input_ch = -1;
+    i32 output_ch = -1;
+
+    if (try_bootstrap_channels(&input_ch, &output_ch)) {
+        // We're a shell spawned by consoled - run in attached mode
+        init_console_attached(input_ch, output_ch);
+
+        // Reset console colors
+        print_str(ANSI_RESET);
+        flush_console();
+
+        // Run the shell loop directly
+        shell_loop();
+
+        // Clean up
+        sys::channel_close(input_ch);
+        sys::channel_close(output_ch);
+        sys::exit(0);
+    }
+
+    // Original init process behavior below
     // Reset console colors to white on blue at startup (from viper_colors.h)
     print_str(ANSI_RESET);
 
     print_str("========================================\n");
-    print_str("  ViperDOS 0.2.0 - Init Process\n");
+    print_str("  " VIPERDOS_VERSION_FULL " - Init Process\n");
     print_str("========================================\n\n");
 
     print_str("[vinit] Starting ViperDOS...\n");
@@ -497,18 +573,11 @@ extern "C" void _start() {
 
         print_str("[vinit] Desktop ready - click Shell icon to start console\n");
 
-        // Wait for user to spawn consoled via workbench Shell icon
-        // Then connect and run the shell
+        // With the new multi-shell architecture, each consoled spawns its own shell
+        // process via bootstrap channels. The init process no longer needs to run
+        // a shell - it just waits for the system to shut down.
         while (true) {
-            // Try to connect to consoled (spawned by workbench when user clicks Shell)
-            if (init_console()) {
-                shell_loop();
-                // After shell exits, wait for next consoled instance
-                print_str("[vinit] Shell exited, waiting for next console...\n");
-            }
-
-            // Sleep briefly before checking again
-            sys::sleep(100);
+            sys::sleep(1000);
         }
     } else {
         print_str("[vinit] Workbench failed to start, falling back to shell\n");
