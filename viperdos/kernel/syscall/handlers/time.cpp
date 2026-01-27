@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "../../arch/aarch64/timer.hpp"
+#include "../../drivers/pl031.hpp"
 #include "../../ipc/poll.hpp"
 #include "../../sched/task.hpp"
 #include "handlers_internal.hpp"
@@ -29,6 +30,17 @@ SyscallResult sys_sleep(u64 a0, u64, u64, u64, u64, u64) {
         poll::sleep_ms(ms);
     }
     return SyscallResult::ok();
+}
+
+SyscallResult sys_time_now_ns(u64, u64, u64, u64, u64, u64) {
+    return SyscallResult::ok(timer::get_ns());
+}
+
+SyscallResult sys_rtc_read(u64, u64, u64, u64, u64, u64) {
+    if (!pl031::is_available()) {
+        return SyscallResult::err(error::VERR_NOT_SUPPORTED);
+    }
+    return SyscallResult::ok(pl031::read_time());
 }
 
 } // namespace syscall

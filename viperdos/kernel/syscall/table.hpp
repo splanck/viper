@@ -107,7 +107,7 @@ struct SyscallEntry {
 /**
  * @brief Maximum syscall number supported.
  */
-constexpr u32 SYSCALL_MAX = 0x10F;
+constexpr u32 SYSCALL_MAX = 0x12F;
 
 /**
  * @brief Get the syscall dispatch table.

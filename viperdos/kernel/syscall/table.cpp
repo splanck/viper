@@ -201,6 +201,8 @@ static const SyscallEntry syscall_table[] = {
     // Time (0x30-0x3F)
     {SYS_TIME_NOW, sys_time_now, "time_now", 0},
     {SYS_SLEEP, sys_sleep, "sleep", 1},
+    {SYS_TIME_NOW_NS, sys_time_now_ns, "time_now_ns", 0},
+    {SYS_RTC_READ, sys_rtc_read, "rtc_read", 0},
 
     // File I/O (0x40-0x4F)
     {SYS_OPEN, sys_open, "open", 2},
@@ -291,6 +293,7 @@ static const SyscallEntry syscall_table[] = {
     {SYS_NET_STATS, sys_net_stats, "net_stats", 1},
     {SYS_PING, sys_ping, "ping", 2},
     {SYS_DEVICE_LIST, sys_device_list, "device_list", 2},
+    {SYS_GETRANDOM, sys_getrandom, "getrandom", 2},
 
     // Debug/Console (0xF0-0xFF)
     {SYS_DEBUG_PRINT, sys_debug_print, "debug_print", 1},
@@ -326,6 +329,7 @@ static const SyscallEntry syscall_table[] = {
     {SYS_TTY_WRITE, sys_tty_write, "tty_write", 2},
     {SYS_TTY_PUSH_INPUT, sys_tty_push_input, "tty_push_input", 1},
     {SYS_TTY_HAS_INPUT, sys_tty_has_input, "tty_has_input", 0},
+    {SYS_TTY_GET_SIZE, sys_tty_get_size, "tty_get_size", 0},
 };
 
 static constexpr usize SYSCALL_TABLE_SIZE = sizeof(syscall_table) / sizeof(syscall_table[0]);

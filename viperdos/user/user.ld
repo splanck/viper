@@ -17,11 +17,13 @@ SECTIONS
 
     .data : {
         *(.data .data.*)
+        *(.tdata .tdata.*)    /* Thread-local initialized data (single-threaded: treat as .data) */
     }
 
     .bss : {
         __bss_start = .;
         *(.bss .bss.*)
+        *(.tbss .tbss.*)      /* Thread-local zero-init data (single-threaded: treat as .bss) */
         *(COMMON)
         __bss_end = .;
     }

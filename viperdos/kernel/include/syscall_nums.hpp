@@ -65,6 +65,8 @@ enum Number : u64 {
     SLEEP = SYS_SLEEP,
     TIMER_CREATE = SYS_TIMER_CREATE,
     TIMER_CANCEL = SYS_TIMER_CANCEL,
+    TIME_NOW_NS = SYS_TIME_NOW_NS,
+    RTC_READ = SYS_RTC_READ,
 
     // File I/O (0x40 - 0x4F)
     OPEN = SYS_OPEN,
@@ -133,6 +135,7 @@ enum Number : u64 {
     NET_STATS = SYS_NET_STATS,
     PING = SYS_PING,
     DEVICE_LIST = SYS_DEVICE_LIST,
+    GETRANDOM = SYS_GETRANDOM,
 
     // Debug (0xF0 - 0xFF)
     DEBUG_PRINT = SYS_DEBUG_PRINT,
@@ -164,6 +167,7 @@ enum Number : u64 {
     TTY_WRITE = SYS_TTY_WRITE,
     TTY_PUSH_INPUT = SYS_TTY_PUSH_INPUT,
     TTY_HAS_INPUT = SYS_TTY_HAS_INPUT,
+    TTY_GET_SIZE = SYS_TTY_GET_SIZE,
 };
 
 } // namespace syscall

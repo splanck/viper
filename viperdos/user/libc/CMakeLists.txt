@@ -41,7 +41,9 @@ set(LIBC_C_SOURCES
         src/spawn.c
         src/sched.c
         src/wordexp.c
+        src/ioctl.c
         src/ipc.c
+        src/random.c
         src/shm.c
         src/monetary.c
         src/iconv.c

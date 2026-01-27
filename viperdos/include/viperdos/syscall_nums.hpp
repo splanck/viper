@@ -121,6 +121,10 @@
 #define SYS_TIMER_CREATE 0x32
 /** @brief Cancel a timer object (reserved for future use). */
 #define SYS_TIMER_CANCEL 0x33
+/** @brief Return monotonic nanoseconds since boot (high-resolution). */
+#define SYS_TIME_NOW_NS 0x34
+/** @brief Read wall-clock time from RTC (Unix timestamp in seconds). */
+#define SYS_RTC_READ 0x35
 /** @} */
 
 /** @name File Descriptor I/O Syscalls (0x40 - 0x4F)
@@ -336,6 +340,8 @@
 #define SYS_PING 0xE2
 /** @brief List detected hardware devices into a DeviceInfo array. */
 #define SYS_DEVICE_LIST 0xE3
+/** @brief Fill buffer with cryptographic random bytes (args: buf, len). */
+#define SYS_GETRANDOM 0xE4
 /** @} */
 
 /** @name Debug / Console Syscalls (0xF0 - 0xFF)
@@ -423,4 +429,6 @@
 #define SYS_TTY_PUSH_INPUT 0x122
 /** @brief Check if TTY has input available (non-blocking). */
 #define SYS_TTY_HAS_INPUT 0x123
+/** @brief Get terminal size in character cells (returns cols, rows). */
+#define SYS_TTY_GET_SIZE 0x124
 /** @} */

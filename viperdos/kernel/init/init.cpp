@@ -22,6 +22,7 @@
 #include "../console/gcon.hpp"
 #include "../console/serial.hpp"
 #include "../drivers/fwcfg.hpp"
+#include "../drivers/pl031.hpp"
 #include "../drivers/ramfb.hpp"
 #include "../drivers/virtio/blk.hpp"
 #include "../drivers/virtio/gpu.hpp"
@@ -205,6 +206,11 @@ void init_interrupts() {
     cpu::init();
     exceptions::enable_interrupts();
     serial::puts("[kernel] Interrupts enabled\n");
+
+    // Initialize PL031 RTC for wall-clock time
+    if (!pl031::init()) {
+        serial::puts("[kernel] WARNING: PL031 RTC not available (time() will use uptime)\n");
+    }
 
     if (gcon::is_available()) {
         gcon::puts("  Interrupts...OK\n");

@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "../../drivers/virtio/rng.hpp"
 #include "../../include/config.hpp"
 #include "../../include/viperdos/mem_info.hpp"
 #include "../../include/viperdos/net_stats.hpp"
@@ -140,6 +141,26 @@ SyscallResult sys_device_list(u64 a0, u64 a1, u64, u64, u64, u64) {
     }
 
     return SyscallResult::ok(count);
+}
+
+SyscallResult sys_getrandom(u64 a0, u64 a1, u64, u64, u64, u64) {
+    u8 *buf = reinterpret_cast<u8 *>(a0);
+    usize len = static_cast<usize>(a1);
+
+    if (len == 0) {
+        return SyscallResult::ok(0);
+    }
+
+    if (!validate_user_write(buf, len)) {
+        return err_invalid_arg();
+    }
+
+    if (!virtio::rng::is_available()) {
+        return SyscallResult::err(error::VERR_NOT_SUPPORTED);
+    }
+
+    usize got = virtio::rng::get_bytes(buf, len);
+    return SyscallResult::ok(static_cast<u64>(got));
 }
 
 } // namespace syscall

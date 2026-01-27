@@ -7,7 +7,7 @@
 //
 // File: user/libc/src/time.c
 // Purpose: Time and date functions for ViperDOS libc.
-// Key invariants: Time measured as milliseconds since boot (no RTC).
+// Key invariants: RTC provides wall-clock; monotonic timer for intervals.
 // Ownership/Lifetime: Library; static storage for tm results.
 // Links: user/libc/include/time.h
 //
@@ -25,49 +25,54 @@
  * - Time formatting: strftime
  * - Sleep functions: nanosleep
  *
- * Note: ViperDOS currently lacks a real-time clock (RTC), so all time
- * values represent milliseconds since boot rather than calendar time.
- * The gmtime/localtime functions provide a simplified approximation.
+ * Wall-clock time is provided by the PL031 RTC (SYS_RTC_READ).
+ * Monotonic time uses the high-resolution timer (SYS_TIME_NOW_NS).
  */
 
 #include "../include/time.h"
 
 /* Syscall helpers - defined in syscall.S */
+extern long __syscall0(long num);
 extern long __syscall1(long num, long arg0);
 
 /* Syscall numbers */
 #define SYS_TIME_NOW 0x30
 #define SYS_SLEEP 0x31
+#define SYS_TIME_NOW_NS 0x34
+#define SYS_RTC_READ 0x35
 
 /**
  * @brief Get processor time used.
  *
- * @details
- * Returns the time in milliseconds since system boot. In ViperDOS,
- * this is the same as wall-clock time since there's no distinction
- * between user and system time.
- *
  * @return Time in milliseconds since boot (CLOCKS_PER_SEC = 1000).
  */
 clock_t clock(void) {
-    /* Returns time in milliseconds since boot */
     return (clock_t)__syscall1(SYS_TIME_NOW, 0);
 }
 
 /**
- * @brief Get current time in seconds.
+ * @brief Get current calendar time in seconds.
  *
  * @details
- * Returns the current time as seconds since boot (not Unix epoch).
- * If tloc is not NULL, the time is also stored there.
+ * Returns the current time as seconds since the Unix epoch
+ * (1970-01-01 00:00:00 UTC) if an RTC is available. Falls back
+ * to seconds since boot if no RTC is present.
  *
  * @param tloc If non-NULL, receives the time value.
- * @return Current time in seconds since boot.
+ * @return Current time in seconds since epoch (or since boot).
  */
 time_t time(time_t *tloc) {
-    /* ViperDOS doesn't have real-time clock yet, return uptime in seconds */
-    clock_t ms = clock();
-    time_t t = ms / 1000;
+    /* Try RTC first for real wall-clock time */
+    long rtc = __syscall0(SYS_RTC_READ);
+    time_t t;
+    if (rtc > 0) {
+        /* RTC returns Unix timestamp in seconds */
+        t = (time_t)rtc;
+    } else {
+        /* Fallback: uptime in seconds */
+        clock_t ms = clock();
+        t = ms / 1000;
+    }
     if (tloc)
         *tloc = t;
     return t;
@@ -75,11 +80,6 @@ time_t time(time_t *tloc) {
 
 /**
  * @brief Compute difference between two times.
- *
- * @details
- * Returns the difference in seconds between time1 and time0.
- * Standard C returns double, but ViperDOS returns long to avoid
- * kernel floating-point dependencies.
  *
  * @param time1 Later time value.
  * @param time0 Earlier time value.
@@ -91,12 +91,6 @@ long difftime(time_t time1, time_t time0) {
 
 /**
  * @brief High-resolution sleep.
- *
- * @details
- * Suspends execution for the time specified in req. The actual
- * resolution is milliseconds (any nanosecond component is rounded up).
- * If rem is non-NULL, any remaining time would be stored there on
- * interruption (currently always 0 as interruption isn't supported).
  *
  * @param req Requested sleep duration.
  * @param rem If non-NULL, receives remaining time on interruption.
@@ -113,7 +107,6 @@ int nanosleep(const struct timespec *req, struct timespec *rem) {
 
     __syscall1(SYS_SLEEP, ms);
 
-    /* We don't support interruption, so remaining time is always 0 */
     if (rem) {
         rem->tv_sec = 0;
         rem->tv_nsec = 0;
@@ -126,40 +119,56 @@ int nanosleep(const struct timespec *req, struct timespec *rem) {
  * @brief Get time from a specified clock.
  *
  * @details
- * Retrieves the current time from the specified clock and stores it in tp.
- * ViperDOS supports CLOCK_REALTIME and CLOCK_MONOTONIC, both returning
- * uptime since system boot (no real-time clock available).
+ * CLOCK_MONOTONIC returns high-resolution nanosecond time since boot.
+ * CLOCK_REALTIME returns wall-clock time from the RTC.
  *
  * @param clk_id Clock to query (CLOCK_REALTIME or CLOCK_MONOTONIC).
  * @param tp Structure to receive the time value.
- * @return 0 on success, -1 on error (invalid clock or NULL tp).
+ * @return 0 on success, -1 on error.
  */
 int clock_gettime(clockid_t clk_id, struct timespec *tp) {
     if (!tp)
         return -1;
 
-    /* Both CLOCK_REALTIME and CLOCK_MONOTONIC return uptime for now */
-    /* (ViperDOS doesn't have a real-time clock) */
-    if (clk_id != CLOCK_REALTIME && clk_id != CLOCK_MONOTONIC)
-        return -1;
+    if (clk_id == CLOCK_MONOTONIC) {
+        /* High-resolution monotonic time via nanosecond syscall */
+        long ns = __syscall0(SYS_TIME_NOW_NS);
+        if (ns < 0) {
+            /* Fallback to millisecond timer */
+            long ms = __syscall1(SYS_TIME_NOW, 0);
+            tp->tv_sec = ms / 1000;
+            tp->tv_nsec = (ms % 1000) * 1000000L;
+        } else {
+            tp->tv_sec = ns / 1000000000L;
+            tp->tv_nsec = ns % 1000000000L;
+        }
+        return 0;
+    }
 
-    /* Get time in milliseconds since boot */
-    long ms = __syscall1(SYS_TIME_NOW, 0);
+    if (clk_id == CLOCK_REALTIME) {
+        /* Wall-clock time from RTC */
+        long rtc = __syscall0(SYS_RTC_READ);
+        if (rtc > 0) {
+            tp->tv_sec = rtc;
+            /* Sub-second precision from monotonic timer */
+            long ms = __syscall1(SYS_TIME_NOW, 0);
+            tp->tv_nsec = (ms % 1000) * 1000000L;
+        } else {
+            /* No RTC, fall back to monotonic */
+            long ms = __syscall1(SYS_TIME_NOW, 0);
+            tp->tv_sec = ms / 1000;
+            tp->tv_nsec = (ms % 1000) * 1000000L;
+        }
+        return 0;
+    }
 
-    tp->tv_sec = ms / 1000;
-    tp->tv_nsec = (ms % 1000) * 1000000L;
-
-    return 0;
+    return -1;
 }
 
 /**
  * @brief Get clock resolution.
  *
- * @details
- * Retrieves the resolution (precision) of the specified clock. In ViperDOS,
- * all clocks have millisecond resolution (1,000,000 nanoseconds).
- *
- * @param clk_id Clock to query (CLOCK_REALTIME or CLOCK_MONOTONIC).
+ * @param clk_id Clock to query.
  * @param res If non-NULL, receives the clock resolution.
  * @return 0 on success, -1 on invalid clock ID.
  */
@@ -168,9 +177,15 @@ int clock_getres(clockid_t clk_id, struct timespec *res) {
         return -1;
 
     if (res) {
-        /* Resolution is 1 millisecond */
-        res->tv_sec = 0;
-        res->tv_nsec = 1000000L;
+        if (clk_id == CLOCK_MONOTONIC) {
+            /* Nanosecond resolution (16ns on typical QEMU) */
+            res->tv_sec = 0;
+            res->tv_nsec = 16L;
+        } else {
+            /* RTC has 1-second resolution */
+            res->tv_sec = 1;
+            res->tv_nsec = 0;
+        }
     }
 
     return 0;
@@ -179,26 +194,29 @@ int clock_getres(clockid_t clk_id, struct timespec *res) {
 /**
  * @brief Get current time with microsecond precision.
  *
- * @details
- * Returns the current time in seconds and microseconds. In ViperDOS,
- * this is uptime since boot rather than calendar time. The timezone
- * parameter is ignored.
- *
  * @param tv Structure to receive the time value.
  * @param tz Timezone (ignored, pass NULL).
  * @return 0 on success, -1 if tv is NULL.
  */
 int gettimeofday(struct timeval *tv, void *tz) {
-    (void)tz; /* Timezone not supported */
+    (void)tz;
 
     if (!tv)
         return -1;
 
-    /* Get time in milliseconds since boot */
-    long ms = __syscall1(SYS_TIME_NOW, 0);
-
-    tv->tv_sec = ms / 1000;
-    tv->tv_usec = (ms % 1000) * 1000L;
+    /* Try RTC for wall-clock seconds */
+    long rtc = __syscall0(SYS_RTC_READ);
+    if (rtc > 0) {
+        tv->tv_sec = rtc;
+        /* Sub-second from monotonic timer */
+        long ms = __syscall1(SYS_TIME_NOW, 0);
+        tv->tv_usec = (ms % 1000) * 1000L;
+    } else {
+        /* Fallback to uptime */
+        long ms = __syscall1(SYS_TIME_NOW, 0);
+        tv->tv_sec = ms / 1000;
+        tv->tv_usec = (ms % 1000) * 1000L;
+    }
 
     return 0;
 }
@@ -206,29 +224,38 @@ int gettimeofday(struct timeval *tv, void *tz) {
 /** Static storage for gmtime/localtime results (non-reentrant). */
 static struct tm _tm_result;
 
+/* Days per month (non-leap year) */
+static const int days_in_month[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+
+/**
+ * @brief Check if a year is a leap year.
+ */
+static int is_leap_year(int year) {
+    return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+}
+
+/**
+ * @brief Days in a given month (1-indexed month, handles leap years).
+ */
+static int month_days(int month, int year) {
+    if (month == 1 && is_leap_year(year))
+        return 29;
+    return days_in_month[month];
+}
+
 /**
  * @brief Convert time_t to broken-down time (UTC).
  *
  * @details
- * Converts the calendar time pointed to by timep into a broken-down time
- * structure (struct tm) expressed in UTC. The result is stored in static
- * memory and overwritten by subsequent calls.
- *
- * @warning This implementation is a simplified approximation since ViperDOS
- * doesn't have a real-time clock. The time value is treated as uptime rather
- * than actual calendar time.
+ * Properly converts Unix timestamps to calendar date/time.
  *
  * @param timep Pointer to time_t value to convert.
  * @return Pointer to static struct tm, or NULL if timep is NULL.
- *
- * @note Not thread-safe; use gmtime_r() for reentrant version (if available).
  */
 struct tm *gmtime(const time_t *timep) {
     if (!timep)
         return (struct tm *)0;
 
-    /* Simple implementation - doesn't handle real dates */
-    /* Just return uptime as seconds/minutes/hours/days */
     time_t t = *timep;
 
     _tm_result.tm_sec = t % 60;
@@ -237,13 +264,33 @@ struct tm *gmtime(const time_t *timep) {
     t /= 60;
     _tm_result.tm_hour = t % 24;
     t /= 24;
-    _tm_result.tm_mday = (t % 31) + 1;
-    t /= 31;
-    _tm_result.tm_mon = t % 12;
-    t /= 12;
-    _tm_result.tm_year = 70 + t; /* Years since 1900 */
-    _tm_result.tm_wday = 0;
-    _tm_result.tm_yday = 0;
+
+    /* t is now days since epoch (1970-01-01, a Thursday) */
+    _tm_result.tm_wday = (t + 4) % 7; /* Thursday = day 4 */
+
+    int year = 1970;
+    while (1) {
+        int days_this_year = is_leap_year(year) ? 366 : 365;
+        if (t < days_this_year)
+            break;
+        t -= days_this_year;
+        year++;
+    }
+
+    _tm_result.tm_year = year - 1900;
+    _tm_result.tm_yday = (int)t;
+
+    int month = 0;
+    while (month < 11) {
+        int dim = month_days(month, year);
+        if (t < dim)
+            break;
+        t -= dim;
+        month++;
+    }
+
+    _tm_result.tm_mon = month;
+    _tm_result.tm_mday = (int)t + 1;
     _tm_result.tm_isdst = 0;
 
     return &_tm_result;
@@ -253,28 +300,17 @@ struct tm *gmtime(const time_t *timep) {
  * @brief Convert time_t to broken-down local time.
  *
  * @details
- * Converts the calendar time to local time. In ViperDOS, there is no
- * timezone support, so this is equivalent to gmtime().
+ * No timezone support in ViperDOS, equivalent to gmtime().
  *
  * @param timep Pointer to time_t value to convert.
  * @return Pointer to static struct tm, or NULL if timep is NULL.
- *
- * @note Not thread-safe.
  */
 struct tm *localtime(const time_t *timep) {
-    /* No timezone support, just use gmtime */
     return gmtime(timep);
 }
 
 /**
  * @brief Convert broken-down time to time_t.
- *
- * @details
- * Converts the broken-down time structure to a time_t value representing
- * the same time. This is the inverse of localtime()/gmtime().
- *
- * @warning This is a simplified implementation that doesn't handle real
- * calendar dates accurately (no leap years, varying month lengths, etc.).
  *
  * @param tm Pointer to struct tm to convert.
  * @return time_t representation, or -1 if tm is NULL.
@@ -283,14 +319,26 @@ time_t mktime(struct tm *tm) {
     if (!tm)
         return -1;
 
-    /* Simple reverse of gmtime - not accurate for real dates */
-    time_t result = 0;
-    result += tm->tm_sec;
-    result += tm->tm_min * 60;
+    /* Count days from epoch to the start of tm_year */
+    time_t days = 0;
+    int year = 1900 + tm->tm_year;
+
+    for (int y = 1970; y < year; y++) {
+        days += is_leap_year(y) ? 366 : 365;
+    }
+
+    /* Add days for months in current year */
+    for (int m = 0; m < tm->tm_mon; m++) {
+        days += month_days(m, year);
+    }
+
+    /* Add remaining days */
+    days += tm->tm_mday - 1;
+
+    time_t result = days * 86400L;
     result += tm->tm_hour * 3600;
-    result += (tm->tm_mday - 1) * 86400L;
-    result += tm->tm_mon * 31L * 86400L;
-    result += (tm->tm_year - 70) * 365L * 86400L;
+    result += tm->tm_min * 60;
+    result += tm->tm_sec;
 
     return result;
 }
@@ -299,26 +347,22 @@ time_t mktime(struct tm *tm) {
  * @brief Format time into a string.
  *
  * @details
- * Formats the broken-down time tm according to the format string and stores
- * the result in s. The format string may contain literal characters and
- * conversion specifiers beginning with %.
- *
- * Supported format specifiers (minimal implementation):
+ * Supported format specifiers:
+ * - %Y: 4-digit year
+ * - %m: Month (01-12)
+ * - %d: Day of month (01-31)
  * - %H: Hour (00-23)
  * - %M: Minute (00-59)
  * - %S: Second (00-59)
  * - %%: Literal %
  *
- * Other format specifiers are copied to the output literally.
- *
  * @param s Buffer to store the formatted string.
- * @param max Maximum number of bytes to write (including null terminator).
- * @param format Format string with conversion specifiers.
- * @param tm Broken-down time to format.
- * @return Number of bytes written (excluding null terminator), or 0 on error.
+ * @param max Maximum number of bytes to write.
+ * @param format Format string.
+ * @param tm Broken-down time.
+ * @return Number of bytes written, or 0 on error.
  */
 size_t strftime(char *s, size_t max, const char *format, const struct tm *tm) {
-    /* Minimal implementation - just copy format with some substitutions */
     if (!s || max == 0 || !format || !tm)
         return 0;
 
@@ -326,36 +370,49 @@ size_t strftime(char *s, size_t max, const char *format, const struct tm *tm) {
     while (*format && written < max - 1) {
         if (*format == '%' && format[1]) {
             format++;
-            char buf[16];
-            const char *insert = buf;
+            char buf[8];
             int len = 0;
 
             switch (*format) {
+                case 'Y': {
+                    int yr = 1900 + tm->tm_year;
+                    buf[0] = '0' + (yr / 1000) % 10;
+                    buf[1] = '0' + (yr / 100) % 10;
+                    buf[2] = '0' + (yr / 10) % 10;
+                    buf[3] = '0' + yr % 10;
+                    len = 4;
+                    break;
+                }
+                case 'm':
+                    len = 2;
+                    buf[0] = '0' + ((tm->tm_mon + 1) / 10);
+                    buf[1] = '0' + ((tm->tm_mon + 1) % 10);
+                    break;
+                case 'd':
+                    len = 2;
+                    buf[0] = '0' + (tm->tm_mday / 10);
+                    buf[1] = '0' + (tm->tm_mday % 10);
+                    break;
                 case 'H':
                     len = 2;
                     buf[0] = '0' + (tm->tm_hour / 10);
                     buf[1] = '0' + (tm->tm_hour % 10);
-                    buf[2] = '\0';
                     break;
                 case 'M':
                     len = 2;
                     buf[0] = '0' + (tm->tm_min / 10);
                     buf[1] = '0' + (tm->tm_min % 10);
-                    buf[2] = '\0';
                     break;
                 case 'S':
                     len = 2;
                     buf[0] = '0' + (tm->tm_sec / 10);
                     buf[1] = '0' + (tm->tm_sec % 10);
-                    buf[2] = '\0';
                     break;
                 case '%':
                     len = 1;
                     buf[0] = '%';
-                    buf[1] = '\0';
                     break;
                 default:
-                    /* Unknown format, copy as-is */
                     s[written++] = '%';
                     if (written < max - 1)
                         s[written++] = *format;
@@ -364,7 +421,7 @@ size_t strftime(char *s, size_t max, const char *format, const struct tm *tm) {
             }
 
             for (int i = 0; i < len && written < max - 1; i++) {
-                s[written++] = insert[i];
+                s[written++] = buf[i];
             }
             format++;
         } else {

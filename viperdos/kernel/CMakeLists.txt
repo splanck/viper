@@ -43,6 +43,7 @@ set(KERNEL_SOURCES
         console/font.cpp
         console/gcon.cpp
         drivers/fwcfg.cpp
+        drivers/pl031.cpp
         drivers/ramfb.cpp
         mm/pmm.cpp
         mm/buddy.cpp

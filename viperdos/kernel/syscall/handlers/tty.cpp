@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "../../console/gcon.hpp"
 #include "../../tty/tty.hpp"
 #include "handlers_internal.hpp"
 
@@ -52,6 +53,16 @@ SyscallResult sys_tty_push_input(u64 a0, u64, u64, u64, u64, u64) {
 
 SyscallResult sys_tty_has_input(u64, u64, u64, u64, u64, u64) {
     return SyscallResult::ok(tty::has_input() ? 1 : 0);
+}
+
+SyscallResult sys_tty_get_size(u64, u64, u64, u64, u64, u64) {
+    u32 cols = 80, rows = 25;
+    if (gcon::is_available()) {
+        gcon::get_size(cols, rows);
+    }
+    // Pack cols (low 32) and rows (high 32) into single u64
+    u64 packed = (static_cast<u64>(rows) << 32) | static_cast<u64>(cols);
+    return SyscallResult::ok(packed);
 }
 
 } // namespace syscall

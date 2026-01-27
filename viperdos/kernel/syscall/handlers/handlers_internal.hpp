@@ -131,6 +131,8 @@ SyscallResult sys_poll_wait(u64 a0, u64 a1, u64 a2, u64 a3, u64, u64);
 
 SyscallResult sys_time_now(u64, u64, u64, u64, u64, u64);
 SyscallResult sys_sleep(u64 a0, u64, u64, u64, u64, u64);
+SyscallResult sys_time_now_ns(u64, u64, u64, u64, u64, u64);
+SyscallResult sys_rtc_read(u64, u64, u64, u64, u64, u64);
 
 // =============================================================================
 // File I/O (0x40-0x4F)
@@ -251,6 +253,7 @@ SyscallResult sys_mem_info(u64 a0, u64, u64, u64, u64, u64);
 SyscallResult sys_net_stats(u64 a0, u64, u64, u64, u64, u64);
 SyscallResult sys_ping(u64 a0, u64 a1, u64, u64, u64, u64);
 SyscallResult sys_device_list(u64 a0, u64 a1, u64, u64, u64, u64);
+SyscallResult sys_getrandom(u64 a0, u64 a1, u64, u64, u64, u64);
 
 // =============================================================================
 // Debug/Console (0xF0-0xFF)
@@ -298,5 +301,6 @@ SyscallResult sys_tty_read(u64 a0, u64 a1, u64, u64, u64, u64);
 SyscallResult sys_tty_write(u64 a0, u64 a1, u64, u64, u64, u64);
 SyscallResult sys_tty_push_input(u64 a0, u64, u64, u64, u64, u64);
 SyscallResult sys_tty_has_input(u64, u64, u64, u64, u64, u64);
+SyscallResult sys_tty_get_size(u64, u64, u64, u64, u64, u64);
 
 } // namespace syscall
