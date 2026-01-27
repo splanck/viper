@@ -43,14 +43,44 @@ namespace fs {
  * single-threaded access; there is no locking for SMP.
  */
 
+// ============================================================================
+// Configurable Cache Parameters
+// ============================================================================
+// These can be overridden at compile time via -D flags in CMakeLists.txt
+// For low-RAM systems, consider: -DVIPERFS_CACHE_BLOCKS=32 -DVIPERFS_READ_AHEAD=2
+
 /** @brief Block size used by the filesystem cache (4 KiB). */
 constexpr usize BLOCK_SIZE = 4096;
 
-/** @brief Number of cached blocks in the global block cache. */
-constexpr usize CACHE_BLOCKS = 64; // 256KB cache
+/** @brief Default number of cached blocks. */
+constexpr usize DEFAULT_CACHE_BLOCKS = 64;
 
-/** @brief Number of blocks to prefetch on sequential reads. */
-constexpr usize READ_AHEAD_BLOCKS = 4;
+/** @brief Default number of read-ahead blocks. */
+constexpr usize DEFAULT_READ_AHEAD_BLOCKS = 4;
+
+/** @brief Default hash table size for block lookup. */
+constexpr usize DEFAULT_HASH_SIZE = 32;
+
+#ifndef VIPERFS_CACHE_BLOCKS
+#define VIPERFS_CACHE_BLOCKS DEFAULT_CACHE_BLOCKS
+#endif
+
+#ifndef VIPERFS_READ_AHEAD_BLOCKS
+#define VIPERFS_READ_AHEAD_BLOCKS DEFAULT_READ_AHEAD_BLOCKS
+#endif
+
+#ifndef VIPERFS_HASH_SIZE
+#define VIPERFS_HASH_SIZE DEFAULT_HASH_SIZE
+#endif
+
+/** @brief Number of cached blocks in the global block cache (configurable). */
+constexpr usize CACHE_BLOCKS = VIPERFS_CACHE_BLOCKS;
+
+/** @brief Number of blocks to prefetch on sequential reads (configurable). */
+constexpr usize READ_AHEAD_BLOCKS = VIPERFS_READ_AHEAD_BLOCKS;
+
+/** @brief Hash table size for block lookup (configurable). */
+constexpr usize HASH_SIZE = VIPERFS_HASH_SIZE;
 
 /**
  * @brief One cached block of filesystem data.
@@ -251,8 +281,7 @@ class BlockCache {
     CacheBlock *lru_head_{nullptr};
     CacheBlock *lru_tail_{nullptr};
 
-    // Hash table for fast lookup
-    static constexpr usize HASH_SIZE = 32;
+    // Hash table for fast lookup (size from configurable HASH_SIZE constant)
     CacheBlock *hash_[HASH_SIZE];
 
     // Statistics

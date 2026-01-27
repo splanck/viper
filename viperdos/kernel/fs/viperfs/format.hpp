@@ -87,6 +87,12 @@ constexpr u32 VIPERFS_MAGIC = 0x53465056;
 /** @brief ViperFS on-disk format version. */
 constexpr u32 VIPERFS_VERSION = 1;
 
+/** @brief Primary superblock location (block 0). */
+constexpr u64 SUPERBLOCK_PRIMARY = 0;
+
+/** @brief Offset of checksum field in Superblock structure. */
+constexpr usize SUPERBLOCK_CHECKSUM_OFFSET = 168;
+
 /** @brief On-disk block size in bytes (matches the cache block size). */
 constexpr u64 BLOCK_SIZE = 4096;
 
@@ -122,7 +128,8 @@ struct Superblock {
     u64 data_start;         // Data blocks start
     u8 uuid[16];            // Volume UUID
     char label[64];         // Volume label
-    u8 _reserved[3928];     // Padding to 4096 bytes (4096 - 168 = 3928)
+    u32 checksum;           // CRC32 of superblock (excluding this field)
+    u8 _reserved[3924];     // Padding to 4096 bytes (4096 - 172 = 3924)
 };
 
 static_assert(sizeof(Superblock) == 4096, "Superblock must be 4096 bytes");
@@ -250,7 +257,8 @@ constexpr u32 PERM_EXEC = 0x0001;
 struct Inode {
     u64 inode_num;       // Inode number
     u32 mode;            // Type + permissions
-    u32 flags;           // Flags
+    u16 uid;             // Owner user ID
+    u16 gid;             // Owner group ID
     u64 size;            // File size in bytes
     u64 blocks;          // Blocks allocated
     u64 atime;           // Access time
@@ -261,7 +269,8 @@ struct Inode {
     u64 double_indirect; // Double indirect block
     u64 triple_indirect; // Triple indirect block
     u64 generation;      // Inode generation (for NFS/stale handle detection)
-    u8 _reserved[72];    // Padding to 256 bytes (256 - 184 = 72)
+    u32 flags;           // Inode flags
+    u8 _reserved[68];    // Padding to 256 bytes (256 - 188 = 68)
 };
 
 static_assert(sizeof(Inode) == 256, "Inode must be 256 bytes");

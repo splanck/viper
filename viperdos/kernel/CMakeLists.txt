@@ -15,6 +15,16 @@ option(VIPER_KERNEL_DEBUG_NET_SYSCALL "Enable verbose socket/DNS syscall logging
 option(VIPER_KERNEL_DEBUG_TCP "Enable verbose TCP stack logging" OFF)
 option(VIPER_KERNEL_DEBUG_VIRTIO_NET_IRQ "Enable verbose virtio-net IRQ logging" OFF)
 
+# -----------------------------------------------------------------------------
+# ViperFS Cache Configuration (compile-time)
+# -----------------------------------------------------------------------------
+# For low-RAM systems, reduce cache size:
+#   cmake -DVIPERFS_CACHE_BLOCKS=32 -DVIPERFS_READ_AHEAD_BLOCKS=2 ..
+#
+# VIPERFS_CACHE_BLOCKS: Number of 4KB blocks in cache (default: 64 = 256KB)
+# VIPERFS_READ_AHEAD_BLOCKS: Sequential read-ahead blocks (default: 4)
+# VIPERFS_HASH_SIZE: Hash table buckets for cache lookup (default: 32)
+
 # Source files
 set(KERNEL_SOURCES
         crt.cpp
@@ -45,6 +55,7 @@ set(KERNEL_SOURCES
         mm/pressure.cpp
         mm/swap.cpp
         lib/timerwheel.cpp
+        lib/crc32.cpp
         sched/task.cpp
         sched/context.S
         sched/scheduler.cpp
@@ -123,6 +134,17 @@ target_compile_definitions(kernel.sys PRIVATE
         VIPER_KERNEL_DEBUG_TCP=$<BOOL:${VIPER_KERNEL_DEBUG_TCP}>
         VIPER_KERNEL_DEBUG_VIRTIO_NET_IRQ=$<BOOL:${VIPER_KERNEL_DEBUG_VIRTIO_NET_IRQ}>
 )
+
+# ViperFS cache configuration (optional overrides)
+if(DEFINED VIPERFS_CACHE_BLOCKS)
+    target_compile_definitions(kernel.sys PRIVATE VIPERFS_CACHE_BLOCKS=${VIPERFS_CACHE_BLOCKS})
+endif()
+if(DEFINED VIPERFS_READ_AHEAD_BLOCKS)
+    target_compile_definitions(kernel.sys PRIVATE VIPERFS_READ_AHEAD_BLOCKS=${VIPERFS_READ_AHEAD_BLOCKS})
+endif()
+if(DEFINED VIPERFS_HASH_SIZE)
+    target_compile_definitions(kernel.sys PRIVATE VIPERFS_HASH_SIZE=${VIPERFS_HASH_SIZE})
+endif()
 
 # Include directories
 target_include_directories(kernel.sys PRIVATE

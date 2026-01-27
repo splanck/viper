@@ -23,6 +23,7 @@
 #include "viperfs.hpp"
 #include "../../arch/aarch64/timer.hpp"
 #include "../../console/serial.hpp"
+#include "../../lib/crc32.hpp"
 #include "../../mm/kheap.hpp"
 #include "../../mm/slab.hpp"
 #include "../cache.hpp"
@@ -410,39 +411,59 @@ bool viperfs_init() {
 bool ViperFS::mount() {
     serial::puts("[viperfs] Mounting filesystem...\n");
 
-    // Read superblock (block 0)
-    CacheBlock *sb_block = get_cache().get(0);
-    if (!sb_block) {
-        serial::puts("[viperfs] Failed to read superblock\n");
-        return false;
-    }
+    // Try reading primary superblock first
+    bool primary_valid = read_and_validate_superblock(SUPERBLOCK_PRIMARY, &sb_);
 
-    // Copy superblock
-    const Superblock *sb = reinterpret_cast<const Superblock *>(sb_block->data);
+    if (!primary_valid) {
+        serial::puts("[viperfs] Primary superblock invalid, trying backup...\n");
 
-    // Verify magic
-    if (sb->magic != VIPERFS_MAGIC) {
-        serial::puts("[viperfs] Invalid magic: ");
-        serial::put_hex(sb->magic);
-        serial::puts(" (expected ");
-        serial::put_hex(VIPERFS_MAGIC);
-        serial::puts(")\n");
-        get_cache().release(sb_block);
-        return false;
-    }
+        // To find backup, we need to peek at the primary's total_blocks field
+        // Read raw superblock to get total_blocks even if checksum is bad
+        CacheBlock *raw_sb = get_cache().get(SUPERBLOCK_PRIMARY);
+        if (!raw_sb) {
+            serial::puts("[viperfs] Failed to read primary superblock\n");
+            return false;
+        }
 
-    // Verify version
-    if (sb->version != VIPERFS_VERSION) {
-        serial::puts("[viperfs] Unsupported version: ");
-        serial::put_dec(sb->version);
+        const Superblock *raw = reinterpret_cast<const Superblock *>(raw_sb->data);
+        u64 total_blocks = raw->total_blocks;
+        get_cache().release(raw_sb);
+
+        // Validate that total_blocks is reasonable
+        if (total_blocks < 2) {
+            serial::puts("[viperfs] Filesystem too small (");
+            serial::put_dec(total_blocks);
+            serial::puts(" blocks)\n");
+            return false;
+        }
+
+        // Try backup superblock at last block
+        u64 backup_loc = total_blocks - 1;
+        if (!read_and_validate_superblock(backup_loc, &sb_)) {
+            serial::puts("[viperfs] Backup superblock also invalid\n");
+            return false;
+        }
+
+        serial::puts("[viperfs] Recovered from backup superblock\n");
+
+        // Repair: copy backup to primary
+        serial::puts("[viperfs] Repairing primary superblock...\n");
+        CacheBlock *primary_block = get_cache().get(SUPERBLOCK_PRIMARY);
+        if (primary_block) {
+            Superblock *primary_sb = reinterpret_cast<Superblock *>(primary_block->data);
+            *primary_sb = sb_;
+            primary_block->dirty = true;
+            get_cache().release(primary_block);
+        }
+    } else {
+        serial::puts("[viperfs] Primary superblock valid");
+        if (sb_.checksum != 0) {
+            serial::puts(" (CRC32: ");
+            serial::put_hex(sb_.checksum);
+            serial::puts(")");
+        }
         serial::puts("\n");
-        get_cache().release(sb_block);
-        return false;
     }
-
-    // Copy superblock data
-    sb_ = *sb;
-    get_cache().release(sb_block);
 
     // Initialize inode cache with parent pointer
     inode_cache_.init();
@@ -934,8 +955,92 @@ void ViperFS::sync() {
     if (!mounted_)
         return;
 
-    // Write superblock
-    CacheBlock *sb_block = get_cache().get(0);
+    // Write superblock to both primary and backup locations with CRC32
+    write_superblock_with_backup();
+
+    // Sync all dirty blocks
+    get_cache().sync();
+}
+
+/** @copydoc fs::viperfs::ViperFS::check_access */
+bool ViperFS::check_access(const Inode *inode, u16 uid, u16 gid, u32 requested) {
+    // Stub implementation - always allow access
+    // Will be implemented when multi-user support is added
+    (void)inode;
+    (void)uid;
+    (void)gid;
+    (void)requested;
+    return true;
+}
+
+/** @copydoc fs::viperfs::ViperFS::backup_superblock_location */
+u64 ViperFS::backup_superblock_location() const {
+    // Backup superblock is stored at the last block of the filesystem
+    // We need at least 2 blocks for primary and backup
+    if (sb_.total_blocks < 2) {
+        return 0;
+    }
+    return sb_.total_blocks - 1;
+}
+
+/** @copydoc fs::viperfs::ViperFS::read_and_validate_superblock */
+bool ViperFS::read_and_validate_superblock(u64 block_num, Superblock *out) {
+    if (!out) {
+        return false;
+    }
+
+    CacheBlock *sb_block = get_cache().get(block_num);
+    if (!sb_block) {
+        serial::puts("[viperfs] Failed to read superblock at block ");
+        serial::put_dec(block_num);
+        serial::puts("\n");
+        return false;
+    }
+
+    const Superblock *sb = reinterpret_cast<const Superblock *>(sb_block->data);
+
+    // Verify magic
+    if (sb->magic != VIPERFS_MAGIC) {
+        get_cache().release(sb_block);
+        return false;
+    }
+
+    // Verify version
+    if (sb->version != VIPERFS_VERSION) {
+        get_cache().release(sb_block);
+        return false;
+    }
+
+    // Verify CRC32 checksum (if present - checksum of 0 means no checksum for compatibility)
+    if (sb->checksum != 0) {
+        u32 computed = lib::crc32_superblock(sb_block->data, SUPERBLOCK_CHECKSUM_OFFSET);
+        if (computed != sb->checksum) {
+            serial::puts("[viperfs] Superblock CRC32 mismatch at block ");
+            serial::put_dec(block_num);
+            serial::puts(" (expected ");
+            serial::put_hex(sb->checksum);
+            serial::puts(", got ");
+            serial::put_hex(computed);
+            serial::puts(")\n");
+            get_cache().release(sb_block);
+            return false;
+        }
+    }
+
+    // Copy valid superblock
+    *out = *sb;
+    get_cache().release(sb_block);
+    return true;
+}
+
+/** @copydoc fs::viperfs::ViperFS::write_superblock_with_backup */
+void ViperFS::write_superblock_with_backup() {
+    // Compute CRC32 checksum (with checksum field treated as zero)
+    sb_.checksum = 0; // Clear before computing
+    sb_.checksum = lib::crc32_superblock(&sb_, SUPERBLOCK_CHECKSUM_OFFSET);
+
+    // Write primary superblock (block 0)
+    CacheBlock *sb_block = get_cache().get(SUPERBLOCK_PRIMARY);
     if (sb_block) {
         Superblock *sb = reinterpret_cast<Superblock *>(sb_block->data);
         *sb = sb_;
@@ -943,8 +1048,17 @@ void ViperFS::sync() {
         get_cache().release(sb_block);
     }
 
-    // Sync all dirty blocks
-    get_cache().sync();
+    // Write backup superblock (last block)
+    u64 backup_loc = backup_superblock_location();
+    if (backup_loc > 0) {
+        CacheBlock *backup_block = get_cache().get(backup_loc);
+        if (backup_block) {
+            Superblock *sb = reinterpret_cast<Superblock *>(backup_block->data);
+            *sb = sb_;
+            backup_block->dirty = true;
+            get_cache().release(backup_block);
+        }
+    }
 }
 
 /** @copydoc fs::viperfs::ViperFS::write_indirect */
@@ -1277,6 +1391,8 @@ u64 ViperFS::create_file(Inode *dir, const char *name, usize name_len) {
     Inode new_inode = {};
     new_inode.inode_num = ino;
     new_inode.mode = mode::TYPE_FILE | mode::PERM_READ | mode::PERM_WRITE;
+    new_inode.uid = 0; // Root user (will be set from process context when multi-user is implemented)
+    new_inode.gid = 0; // Root group
     new_inode.size = 0;
     new_inode.blocks = 0;
 
@@ -1359,6 +1475,8 @@ u64 ViperFS::create_dir(Inode *dir, const char *name, usize name_len) {
     Inode new_inode = {};
     new_inode.inode_num = ino;
     new_inode.mode = mode::TYPE_DIR | mode::PERM_READ | mode::PERM_WRITE | mode::PERM_EXEC;
+    new_inode.uid = 0; // Root user (will be set from process context when multi-user is implemented)
+    new_inode.gid = 0; // Root group
     new_inode.size = BLOCK_SIZE;
     new_inode.blocks = 1;
     new_inode.direct[0] = data_block;
@@ -1453,6 +1571,8 @@ u64 ViperFS::create_symlink(
     Inode new_inode = {};
     new_inode.inode_num = ino;
     new_inode.mode = mode::TYPE_LINK | mode::PERM_READ | mode::PERM_WRITE;
+    new_inode.uid = 0; // Root user (will be set from process context when multi-user is implemented)
+    new_inode.gid = 0; // Root group
     new_inode.size = target_len;
     new_inode.blocks = 0;
 

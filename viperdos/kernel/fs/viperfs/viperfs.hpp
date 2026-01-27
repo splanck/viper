@@ -397,6 +397,23 @@ class ViperFS {
      */
     bool fsync(Inode *inode);
 
+    // Permission checking
+    /**
+     * @brief Check if access to an inode is permitted.
+     *
+     * @details
+     * Checks whether the specified user/group has the requested permissions
+     * on the inode. Currently a stub that always returns true - will be
+     * implemented when multi-user support is added.
+     *
+     * @param inode Inode to check access for.
+     * @param uid User ID of accessor.
+     * @param gid Group ID of accessor.
+     * @param requested Requested permission bits (PERM_READ, PERM_WRITE, PERM_EXEC).
+     * @return true if access is permitted, false otherwise.
+     */
+    bool check_access(const Inode *inode, u16 uid, u16 gid, u32 requested);
+
     // Delete operations
     // Unlink a file from directory. Frees inode and blocks if no more links.
     /**
@@ -566,6 +583,38 @@ class ViperFS {
     // Read an indirect block pointer
     /** @brief Read a pointer value from an indirect block. */
     u64 read_indirect(u64 block, u64 index);
+
+    // Superblock redundancy helpers
+    /**
+     * @brief Calculate the backup superblock location.
+     *
+     * @details
+     * The backup superblock is stored at the last block of the filesystem.
+     *
+     * @return Block number of backup superblock, or 0 if not available.
+     */
+    u64 backup_superblock_location() const;
+
+    /**
+     * @brief Read and validate a superblock from a specific block.
+     *
+     * @details
+     * Reads the superblock, validates magic, version, and CRC32 checksum.
+     *
+     * @param block_num Block number to read from.
+     * @param out Output superblock structure.
+     * @return true if superblock is valid, false otherwise.
+     */
+    bool read_and_validate_superblock(u64 block_num, Superblock *out);
+
+    /**
+     * @brief Write superblock to both primary and backup locations.
+     *
+     * @details
+     * Computes CRC32 checksum and writes to primary (block 0) and
+     * backup (last block) locations.
+     */
+    void write_superblock_with_backup();
 };
 
 // Global ViperFS instance
