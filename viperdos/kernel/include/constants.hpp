@@ -138,10 +138,11 @@ constexpr u64 UART_BASE = 0x09000000;
 constexpr u32 UART_IRQ = 33;
 
 // GIC (Generic Interrupt Controller)
-constexpr u64 GICD_BASE = 0x08000000; // Distributor
-constexpr u64 GICC_BASE = 0x08010000; // CPU Interface (GICv2)
-constexpr u64 GICR_BASE = 0x080A0000; // Redistributor (GICv3)
-constexpr u64 GICR_STRIDE = 0x20000;  // 128KB per CPU
+constexpr u64 GICD_BASE = 0x08000000;   // Distributor
+constexpr u64 GICC_BASE = 0x08010000;   // CPU Interface (GICv2)
+constexpr u64 GICR_BASE = 0x080A0000;   // Redistributor (GICv3)
+constexpr u64 GICR_STRIDE = 0x20000;    // 128KB per CPU
+constexpr u64 GICD_SGIR_OFFSET = 0xF00; // Software Generated Interrupt Register
 
 // Firmware Config (QEMU fw_cfg)
 constexpr u64 FWCFG_BASE = 0x09020000;

@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include "../include/constants.hpp"
 #include "../include/error.hpp"
 #include "../include/types.hpp"
 
@@ -51,7 +52,7 @@ constexpr u32 MAX_POLL_EVENTS = 16;
  * the poll logic checks keyboard/serial input availability rather than a
  * concrete channel/timer object.
  */
-constexpr u32 HANDLE_CONSOLE_INPUT = 0xFFFF0001;
+constexpr u32 HANDLE_CONSOLE_INPUT = kc::handle::CONSOLE_INPUT;
 
 /**
  * @brief Special pseudo-handle representing network receive readiness.
@@ -60,7 +61,7 @@ constexpr u32 HANDLE_CONSOLE_INPUT = 0xFFFF0001;
  * When a poll entry uses this handle and includes @ref EventType::NETWORK_RX,
  * the poll logic checks if the network device has received data available.
  */
-constexpr u32 HANDLE_NETWORK_RX = 0xFFFF0002;
+constexpr u32 HANDLE_NETWORK_RX = kc::handle::NETWORK_RX;
 
 /**
  * @brief Bitmask of event types that can be requested/triggered by polling.

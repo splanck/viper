@@ -16,6 +16,7 @@
  */
 #include "cpu.hpp"
 #include "../../console/serial.hpp"
+#include "../../include/constants.hpp"
 #include "exceptions.hpp"
 #include "gic.hpp"
 #include "mmu.hpp"
@@ -31,11 +32,6 @@ namespace {
 
 /// Per-CPU data array (one per CPU)
 CpuData cpu_data[MAX_CPUS];
-
-/// GIC Distributor base address (QEMU virt machine)
-constexpr uintptr GICD_BASE = 0x08000000;
-/// GICD_SGIR offset for Software Generated Interrupts
-constexpr uintptr GICD_SGIR_OFFSET = 0xF00;
 
 /// Per-CPU kernel stacks (allocated statically)
 alignas(16) u8 cpu_stacks[MAX_CPUS][CPU_STACK_SIZE];
@@ -301,7 +297,8 @@ void send_ipi(u32 target_cpu, u32 ipi_type) {
     // SGI (Software Generated Interrupt) via GIC
     // GICD_SGIR format: [25:24] target list filter, [23:16] CPU target list, [3:0] SGI ID
     // For target list filter = 0b00, we specify target CPU in bits 23:16
-    volatile u32 *gicd_sgir = reinterpret_cast<volatile u32 *>(GICD_BASE + GICD_SGIR_OFFSET);
+    volatile u32 *gicd_sgir =
+        reinterpret_cast<volatile u32 *>(kc::hw::GICD_BASE + kc::hw::GICD_SGIR_OFFSET);
 
     u32 target_mask = 1 << target_cpu;
     u32 sgi_value = (target_mask << 16) | (ipi_type & 0xF);
@@ -311,7 +308,8 @@ void send_ipi(u32 target_cpu, u32 ipi_type) {
 
 void broadcast_ipi(u32 ipi_type) {
     // Broadcast to all other CPUs (target list filter = 0b01)
-    volatile u32 *gicd_sgir = reinterpret_cast<volatile u32 *>(GICD_BASE + GICD_SGIR_OFFSET);
+    volatile u32 *gicd_sgir =
+        reinterpret_cast<volatile u32 *>(kc::hw::GICD_BASE + kc::hw::GICD_SGIR_OFFSET);
 
     u32 sgi_value = (1 << 24) | (ipi_type & 0xF); // Filter = 0b01 = all except self
 

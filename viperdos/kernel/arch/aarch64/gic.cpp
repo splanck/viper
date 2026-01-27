@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 #include "gic.hpp"
 #include "../../console/serial.hpp"
+#include "../../include/constants.hpp"
 
 // Suppress unused variable warnings for register offset definitions
 // These document the full register set even if not all are currently used
@@ -35,18 +36,18 @@
  */
 namespace gic {
 
-// QEMU virt machine GIC addresses
+// QEMU virt machine GIC addresses (from centralized constants)
 namespace {
 // GIC Distributor (GICD) - same for v2 and v3
-constexpr uintptr GICD_BASE = 0x08000000;
+constexpr uintptr GICD_BASE = kc::hw::GICD_BASE;
 
 // GIC CPU Interface (GICC) - v2 only
-constexpr uintptr GICC_BASE = 0x08010000;
+constexpr uintptr GICC_BASE = kc::hw::GICC_BASE;
 
 // GIC Redistributor (GICR) - v3 only
 // Each CPU has 128KB: 64KB RD_base + 64KB SGI_base
-constexpr uintptr GICR_BASE = 0x080A0000;
-constexpr u64 GICR_STRIDE = 0x20000; // 128KB per CPU
+constexpr uintptr GICR_BASE = kc::hw::GICR_BASE;
+constexpr u64 GICR_STRIDE = kc::hw::GICR_STRIDE;
 
 // GICD registers (common)
 constexpr u32 GICD_CTLR = 0x000;       // Distributor Control
