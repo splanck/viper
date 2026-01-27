@@ -1,3 +1,9 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
 /**
  * @file virtio.hpp
  * @brief User-space Virtio-MMIO core definitions and base device helper.

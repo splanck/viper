@@ -43,15 +43,13 @@
 namespace channel {
 
 /** @brief Maximum bytes stored in a single channel message. */
-/// Note: Increased to 8192 to support large protocol messages like SetMenuRequest
 constexpr u32 MAX_MSG_SIZE = 8192;
 /** @brief Maximum number of channels that can exist at once. */
-constexpr u32 MAX_CHANNELS = 256;
+constexpr u32 MAX_CHANNELS = 64;
 /** @brief Default number of queued messages per channel. */
-/// Reduced from 128 to save memory with larger MAX_MSG_SIZE
-constexpr u32 DEFAULT_PENDING = 16;
+constexpr u32 DEFAULT_PENDING = 8;
 /** @brief Maximum configurable pending message capacity. */
-constexpr u32 MAX_PENDING = 32;
+constexpr u32 MAX_PENDING = 8;
 /** @brief Maximum number of handles that can be transferred in one message. */
 constexpr u32 MAX_HANDLES_PER_MSG = 4;
 

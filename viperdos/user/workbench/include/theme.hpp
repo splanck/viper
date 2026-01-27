@@ -113,6 +113,10 @@ struct Theme {
     uint32_t iconBg;           /**< Selected icon label background. */
     uint32_t iconText;         /**< Icon label text color. */
     uint32_t iconShadow;       /**< Icon label drop shadow. */
+
+    // Text area colors (for editors, dialogs, etc.)
+    uint32_t textAreaBg;       /**< Text editing area background. */
+    uint32_t textAreaText;     /**< Text editing area text color. */
 };
 
 //===----------------------------------------------------------------------===//
@@ -162,6 +166,9 @@ constexpr Theme ClassicAmiga = {
     0xFFFF8800, // iconBg
     0xFFFFFFFF, // iconText
     0xFF000000, // iconShadow
+    // Text area (classic Amiga blue on white)
+    0xFF0055AA, // textAreaBg (Amiga blue)
+    0xFFFFFFFF, // textAreaText (white)
 };
 
 /**
@@ -198,6 +205,9 @@ constexpr Theme DarkMode = {
     0xFFF38BA8, // iconBg
     0xFFCDD6F4, // iconText
     0xFF11111B, // iconShadow
+    // Text area
+    0xFF1E1E2E, // textAreaBg (dark)
+    0xFFCDD6F4, // textAreaText (light)
 };
 
 /**
@@ -234,6 +244,9 @@ constexpr Theme ModernBlue = {
     0xFF3B82F6, // iconBg
     0xFFFFFFFF, // iconText
     0xFF1F2937, // iconShadow
+    // Text area
+    0xFFFFFFFF, // textAreaBg (white)
+    0xFF1F2937, // textAreaText (dark)
 };
 
 /**
@@ -270,6 +283,9 @@ constexpr Theme HighContrast = {
     0xFFFFFF00, // iconBg
     0xFFFFFFFF, // iconText
     0xFFFFFFFF, // iconShadow
+    // Text area
+    0xFF000000, // textAreaBg (black)
+    0xFFFFFFFF, // textAreaText (white)
 };
 
 } // namespace themes

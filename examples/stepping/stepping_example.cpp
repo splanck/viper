@@ -1,5 +1,18 @@
-// File: examples/stepping/stepping_example.cpp
-// Purpose: Minimal usage of Runner step/continue API.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+/**
+ * @file stepping_example.cpp
+ * @brief Minimal usage of Runner step/continue API.
+ *
+ * @details
+ * This example demonstrates the single-stepping and continue API of the
+ * VM runner, useful for implementing debuggers and other tools that need
+ * fine-grained control over program execution.
+ */
 
 #include "il/build/IRBuilder.hpp"
 #include "viper/vm/VM.hpp"

@@ -1,3 +1,9 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
 /**
  * @file fdt.cpp
  * @brief Flattened Device Tree (FDT) parser implementation.

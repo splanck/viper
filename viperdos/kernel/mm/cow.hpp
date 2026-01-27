@@ -1,3 +1,9 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
 /**
  * @file cow.hpp
  * @brief Copy-on-Write (COW) page management.

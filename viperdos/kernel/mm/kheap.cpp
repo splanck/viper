@@ -1,3 +1,9 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
 #include "kheap.hpp"
 #include "../arch/aarch64/cpu.hpp"
 #include "../console/serial.hpp"

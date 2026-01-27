@@ -1,5 +1,18 @@
-// File: examples/externs/register_times2.cpp
-// Purpose: Demonstrate registering a simple extern with the VM runtime bridge.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+/**
+ * @file register_times2.cpp
+ * @brief Demonstrate registering a simple extern with the VM runtime bridge.
+ *
+ * @details
+ * This example shows how to register an external function (extern) with the
+ * Viper VM runtime bridge. External functions allow native C/C++ code to be
+ * called from IL programs, enabling host integration and system access.
+ */
 
 #include "il/build/IRBuilder.hpp"
 #include "viper/vm/RuntimeBridge.hpp"

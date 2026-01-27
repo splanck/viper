@@ -1,3 +1,9 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
 /**
  * @file main.cpp
  * @brief Display server (displayd) - window management and compositing.
@@ -202,9 +208,10 @@ static void bring_to_front(Surface *surf) {
 }
 
 // Cursor state
+static constexpr int CURSOR_SIZE = 24;
 static int32_t g_cursor_x = 0;
 static int32_t g_cursor_y = 0;
-static uint32_t g_cursor_saved[16 * 16];
+static uint32_t g_cursor_saved[CURSOR_SIZE * CURSOR_SIZE];
 static bool g_cursor_visible = true;
 
 // Window decoration constants
@@ -236,17 +243,35 @@ static constexpr uint32_t SCREEN_BORDER_WIDTH = 20;
 // Section 3: Data Tables (Cursor, Font)
 // ============================================================================
 
-// 16x16 arrow cursor (1 = white, 2 = black outline)
-static const uint8_t g_cursor_data[16 * 16] = {
-    2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    2, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    2, 1, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 1, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    2, 1, 1, 1, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 1, 1, 1, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0,
-    2, 1, 1, 1, 1, 1, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 2, 1, 1, 1, 1, 1, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0,
-    2, 1, 1, 2, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 2, 0, 2, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0,
-    2, 2, 0, 0, 2, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 2, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0,
+// 24x24 arrow cursor (1 = white/orange fill, 2 = black outline)
+// clang-format off
+static const uint8_t g_cursor_data[CURSOR_SIZE * CURSOR_SIZE] = {
+    2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    2,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    2,1,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    2,1,1,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    2,1,1,1,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    2,1,1,1,1,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    2,1,1,1,1,1,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    2,1,1,1,1,1,1,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    2,1,1,1,1,1,1,1,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    2,1,1,1,1,1,1,1,1,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    2,1,1,1,1,1,1,1,1,1,2,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    2,1,1,1,1,1,1,1,1,1,1,2,0,0,0,0,0,0,0,0,0,0,0,0,
+    2,1,1,1,1,1,1,1,1,1,1,1,2,0,0,0,0,0,0,0,0,0,0,0,
+    2,1,1,1,1,1,1,2,2,2,2,2,2,2,0,0,0,0,0,0,0,0,0,0,
+    2,1,1,1,1,1,1,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    2,1,1,2,2,1,1,1,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    2,1,2,0,0,2,1,1,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    2,2,0,0,0,2,1,1,1,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    2,0,0,0,0,0,2,1,1,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,2,1,1,1,2,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,2,1,1,2,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,2,1,1,1,2,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,2,2,2,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 };
+// clang-format on
 
 // Simple font (8x8 bitmap for basic ASCII)
 static const uint8_t g_font[96][8] = {
@@ -452,13 +477,13 @@ static void draw_text(int32_t x, int32_t y, const char *text, uint32_t color) {
 // ============================================================================
 
 static void save_cursor_background() {
-    for (int dy = 0; dy < 16; dy++) {
-        for (int dx = 0; dx < 16; dx++) {
+    for (int dy = 0; dy < CURSOR_SIZE; dy++) {
+        for (int dx = 0; dx < CURSOR_SIZE; dx++) {
             int32_t px = g_cursor_x + dx;
             int32_t py = g_cursor_y + dy;
             if (px >= 0 && px < static_cast<int32_t>(g_fb_width) && py >= 0 &&
                 py < static_cast<int32_t>(g_fb_height)) {
-                g_cursor_saved[dy * 16 + dx] =
+                g_cursor_saved[dy * CURSOR_SIZE + dx] =
                     get_pixel(static_cast<uint32_t>(px), static_cast<uint32_t>(py));
             }
         }
@@ -466,15 +491,15 @@ static void save_cursor_background() {
 }
 
 static void restore_cursor_background() {
-    for (int dy = 0; dy < 16; dy++) {
-        for (int dx = 0; dx < 16; dx++) {
+    for (int dy = 0; dy < CURSOR_SIZE; dy++) {
+        for (int dx = 0; dx < CURSOR_SIZE; dx++) {
             int32_t px = g_cursor_x + dx;
             int32_t py = g_cursor_y + dy;
             if (px >= 0 && px < static_cast<int32_t>(g_fb_width) && py >= 0 &&
                 py < static_cast<int32_t>(g_fb_height)) {
                 put_pixel(static_cast<uint32_t>(px),
                           static_cast<uint32_t>(py),
-                          g_cursor_saved[dy * 16 + dx]);
+                          g_cursor_saved[dy * CURSOR_SIZE + dx]);
             }
         }
     }
@@ -484,9 +509,9 @@ static void draw_cursor() {
     if (!g_cursor_visible)
         return;
 
-    for (int dy = 0; dy < 16; dy++) {
-        for (int dx = 0; dx < 16; dx++) {
-            uint8_t pixel = g_cursor_data[dy * 16 + dx];
+    for (int dy = 0; dy < CURSOR_SIZE; dy++) {
+        for (int dx = 0; dx < CURSOR_SIZE; dx++) {
+            uint8_t pixel = g_cursor_data[dy * CURSOR_SIZE + dx];
             if (pixel == 0)
                 continue;
 
@@ -779,26 +804,6 @@ static int32_t find_menu_item_at(int32_t x, int32_t y) {
 // Draw the global menu bar (at very top of screen, Amiga style)
 static void draw_menu_bar() {
     Surface *surf = get_menu_surface();
-
-    // Debug: log menu surface status once
-    static bool logged_menu_status = false;
-    if (!logged_menu_status) {
-        if (surf) {
-            debug_print("[displayd] draw_menu_bar: found surface id=");
-            debug_print_dec(surf->id);
-            debug_print(", menu_count=");
-            debug_print_dec(surf->menu_count);
-            if (surf->menu_count > 0) {
-                debug_print(", first menu title='");
-                debug_print(surf->menus[0].title);
-                debug_print("'");
-            }
-            debug_print("\n");
-        } else {
-            debug_print("[displayd] draw_menu_bar: no menu surface found\n");
-        }
-        logged_menu_status = true;
-    }
 
     // Menu bar background - full width at top of screen
     int32_t bar_x = 0;
@@ -1548,13 +1553,7 @@ static void handle_request(int32_t client_channel,
 
         case DISP_SET_MENU: {
             // Handle global menu bar registration (Amiga/Mac style)
-            debug_print("[displayd] DISP_SET_MENU received, len=");
-            debug_print_dec(static_cast<int64_t>(len));
-            debug_print(", sizeof(SetMenuRequest)=");
-            debug_print_dec(static_cast<int64_t>(sizeof(SetMenuRequest)));
-            debug_print("\n");
             if (len < sizeof(SetMenuRequest)) {
-                debug_print("[displayd] DISP_SET_MENU: message too small, ignoring\n");
                 return;
             }
             auto *req = reinterpret_cast<const SetMenuRequest *>(data);
@@ -1576,20 +1575,6 @@ static void handle_request(int32_t client_channel,
                 for (uint8_t i = 0; i < surf->menu_count; i++) {
                     surf->menus[i] = req->menus[i];
                 }
-
-                debug_print("[displayd] Set menu bar for surface ");
-                debug_print_dec(surf->id);
-                debug_print(", menu_count=");
-                debug_print_dec(surf->menu_count);
-                if (surf->menu_count > 0) {
-                    debug_print(", first title='");
-                    debug_print(surf->menus[0].title);
-                    debug_print("', items=");
-                    debug_print_dec(surf->menus[0].item_count);
-                }
-                debug_print(", flags=");
-                debug_print_dec(surf->flags);
-                debug_print("\n");
 
                 reply.status = 0;
                 composite(); // Redraw menu bar
@@ -2416,22 +2401,7 @@ extern "C" void _start() {
     // IPC messages wake us immediately regardless of timeout
     constexpr int64_t POLL_TIMEOUT_MS = 5;
 
-    // Debug: track loop iterations to detect if displayd is running
-    uint64_t loop_count = 0;
-    uint64_t last_debug_time = 0;
-
     while (true) {
-        loop_count++;
-
-        // Print periodic heartbeat to show displayd is running
-        uint64_t now = sys::uptime();
-        if (now - last_debug_time > 5000) {
-            debug_print("[displayd] Heartbeat: loop=");
-            debug_print_dec(static_cast<int64_t>(loop_count));
-            debug_print("\n");
-            last_debug_time = now;
-        }
-
         // Wait for messages on service channel
         // - Wakes immediately when IPC message arrives
         // - Times out after 5ms to poll mouse/keyboard
@@ -2448,16 +2418,6 @@ extern "C" void _start() {
 
             if (n > 0) {
                 messages_processed++;
-
-                // Got a message - show message type
-                uint32_t msg_type = *reinterpret_cast<uint32_t *>(msg_buf);
-                debug_print("[displayd] Received msg type=");
-                debug_print_dec(msg_type);
-                debug_print(" len=");
-                debug_print_dec(n);
-                debug_print(" handles=");
-                debug_print_dec(handle_count);
-                debug_print("\n");
 
                 if (handle_count > 0) {
                     // Message with reply channel - handle and respond

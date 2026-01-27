@@ -1,3 +1,9 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
 #include "console.hpp"
 #include "../drivers/virtio/input.hpp"
 #include "../input/input.hpp"

@@ -405,36 +405,6 @@ static const uint8_t g_font[96][8] = {
 //===----------------------------------------------------------------------===//
 
 /**
- * @brief Debug helper that prints a string and a numeric value.
- *
- * This internal function outputs debugging information to the system console
- * via sys::print(). It converts the integer value to decimal and handles
- * negative numbers correctly.
- *
- * @param prefix A string prefix to print before the number.
- * @param val    The integer value to print (can be negative).
- *
- * @note Output goes to the kernel debug console, not the GUI window.
- * @note This function is only used during development/debugging.
- */
-static void debug_num(const char *prefix, int64_t val) {
-    sys::print(prefix);
-    if (val < 0) {
-        sys::print("-");
-        val = -val;
-    }
-    char buf[24];
-    int i = 22;
-    buf[23] = '\0';
-    do {
-        buf[i--] = '0' + (val % 10);
-        val /= 10;
-    } while (val && i >= 0);
-    sys::print(&buf[i + 1]);
-    sys::print("\n");
-}
-
-/**
  * @brief Sends a request to displayd and waits for the reply.
  *
  * This is the core IPC helper that implements the request-reply pattern
@@ -480,53 +450,38 @@ static bool send_request_recv_reply(const void *req,
                                     size_t reply_len,
                                     uint32_t *out_handles = nullptr,
                                     uint32_t *handle_count = nullptr) {
-    sys::print("[gui] send_request_recv_reply entry\n");
     if (g_display_channel < 0)
         return false;
 
-    sys::print("[gui] calling channel_create\n");
     // Create reply channel
     auto ch_result = sys::channel_create();
-    sys::print("[gui] channel_create returned\n");
     if (ch_result.error != 0) {
-        debug_num("[libgui] channel_create failed: ", ch_result.error);
         return false;
     }
 
     int32_t send_ch = static_cast<int32_t>(ch_result.val0); // CAP_WRITE - for sending
     int32_t recv_ch = static_cast<int32_t>(ch_result.val1); // CAP_READ - for receiving
-    debug_num("[gui] send_ch=", send_ch);
-    debug_num("[gui] recv_ch=", recv_ch);
 
     // Send request with the SEND endpoint so displayd can write the reply back
     uint32_t send_handles[1] = {static_cast<uint32_t>(send_ch)};
-    sys::print("[gui] calling channel_send\n");
     int64_t err = sys::channel_send(g_display_channel, req, req_len, send_handles, 1);
-    sys::print("[gui] channel_send returned\n");
     if (err != 0) {
-        debug_num("[libgui] send failed: ", err);
         sys::channel_close(send_ch);
         sys::channel_close(recv_ch);
         return false;
     }
 
-    // Wait for reply on the RECV endpoint with yield between attempts.
-    // Previously this was a busy spin loop that wasted CPU cycles and could
-    // prevent displayd from getting scheduled to process the request.
-    uint32_t recv_handles[4];
-    uint32_t recv_handle_count = 4;
-
-    sys::print("[gui] entering recv loop\n");
-    // Note: send_ch was transferred to displayd, so we no longer own it
+    // Wait for reply on the RECV endpoint with sleep between attempts.
     // Use a reasonable timeout: 500 attempts * 10ms sleep = 5 seconds max
     // CRITICAL: Must use sleep() not yield() - yield() doesn't guarantee
     // any time passes, so the loop can spin through all iterations before
     // displayd gets scheduled to process the message.
+    uint32_t recv_handles[4];
+    uint32_t recv_handle_count = 4;
+
     for (uint32_t i = 0; i < 500; i++) {
         recv_handle_count = 4;
         int64_t n = sys::channel_recv(recv_ch, reply, reply_len, recv_handles, &recv_handle_count);
-        if (i == 0)
-            debug_num("[gui] first recv returned: ", n);
         if (n > 0) {
             sys::channel_close(recv_ch);
             if (out_handles && handle_count) {
@@ -538,16 +493,12 @@ static bool send_request_recv_reply(const void *req,
             return true;
         }
         if (n != VERR_WOULD_BLOCK) {
-            // Debug: unexpected error
-            debug_num("[libgui] recv error: ", n);
             break;
         }
         // Sleep to let displayd get scheduled and process the request
-        // sleep() actually waits, unlike yield() which just gives up timeslice
         sys::sleep(10);
     }
 
-    debug_num("[libgui] recv timeout after loops: ", 500);
     sys::channel_close(recv_ch);
     return false;
 }
@@ -1041,39 +992,29 @@ extern "C" gui_window_t *gui_create_window_ex(const char *title,
     uint32_t handles[4];
     uint32_t handle_count = 4;
 
-    sys::print("[gui] sending create request\n");
     if (!send_request_recv_reply(
             &req, sizeof(req), &reply, sizeof(reply), handles, &handle_count)) {
-        sys::print("[gui] send_request_recv_reply failed\n");
         return nullptr;
     }
-    sys::print("[gui] got reply\n");
 
     if (reply.status != 0 || handle_count == 0) {
-        sys::print("[gui] reply status bad\n");
         return nullptr;
     }
 
     // Map shared memory
-    sys::print("[gui] mapping shm\n");
     auto map_result = sys::shm_map(handles[0]);
     if (map_result.error != 0) {
-        sys::print("[gui] shm_map failed\n");
         sys::shm_close(handles[0]);
         return nullptr;
     }
-    sys::print("[gui] shm mapped OK\n");
 
     // Allocate window structure
-    sys::print("[gui] allocating window struct\n");
     gui_window_t *win = new gui_window_t();
-    sys::print("[gui] new returned\n");
     if (!win) {
         sys::shm_unmap(map_result.virt_addr);
         sys::shm_close(handles[0]);
         return nullptr;
     }
-    sys::print("[gui] window struct allocated\n");
 
     win->surface_id = reply.surface_id;
     win->width = width;
@@ -1427,14 +1368,6 @@ extern "C" void gui_set_hscrollbar(gui_window_t *win,
  * @endcode
  */
 extern "C" int gui_set_menu(gui_window_t *win, const gui_menu_def_t *menus, uint8_t menu_count) {
-    sys::print("[gui] gui_set_menu called, menu_count=");
-    debug_num("", menu_count);
-    if (menu_count > 0 && menus) {
-        sys::print("[gui] first menu title='");
-        sys::print(menus[0].title);
-        sys::print("'\n");
-    }
-
     if (!win)
         return -1;
 

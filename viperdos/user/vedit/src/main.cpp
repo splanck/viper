@@ -323,6 +323,11 @@ extern "C" int main(int argc, char **argv) {
 
             case GUI_EVENT_KEY:
                 {
+                    // Only process key press events, ignore key release
+                    if (!event.key.pressed) {
+                        break;
+                    }
+
                     // Handle keyboard input for text editing
                     bool handled = true;
 

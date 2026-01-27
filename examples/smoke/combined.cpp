@@ -1,5 +1,20 @@
-// File: examples/smoke/combined.cpp
-// Purpose: Smoke test combining TCO (tail-calls), externs, opcode counters, and polling pause/resume.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+/**
+ * @file combined.cpp
+ * @brief Smoke test combining TCO (tail-calls), externs, opcode counters, and polling pause/resume.
+ *
+ * @details
+ * This example demonstrates several VM features working together:
+ * - Tail-call optimization (TCO)
+ * - External function registration and invocation
+ * - Opcode counting
+ * - Polling pause/resume execution model
+ */
 
 #include "il/build/IRBuilder.hpp"
 #include "viper/vm/RuntimeBridge.hpp"

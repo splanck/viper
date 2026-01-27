@@ -1,3 +1,9 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
 #include "task.hpp"
 #include "../../include/viperdos/task_info.hpp"
 #include "../arch/aarch64/cpu.hpp"

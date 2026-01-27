@@ -249,7 +249,6 @@ constexpr u32 MAX_VIPERS = 64;
 constexpr u32 MAX_CHANNELS = 64;
 
 /// Maximum message size in bytes
-/// Note: Increased to 8192 to support large protocol messages like SetMenuRequest
 constexpr u32 MAX_MSG_SIZE = 8192;
 
 /// Maximum handles transferred per message

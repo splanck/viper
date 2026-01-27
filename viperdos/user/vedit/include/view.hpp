@@ -76,20 +76,20 @@ namespace colors {
 /** @brief Window and inactive area background (Workbench gray). */
 constexpr uint32_t BACKGROUND = 0xFFAAAAAA;
 
-/** @brief Text editing area background (white for contrast). */
-constexpr uint32_t TEXT_AREA = 0xFFFFFFFF;
+/** @brief Text editing area background (Amiga blue). */
+constexpr uint32_t TEXT_AREA = 0xFF0055AA;
 
-/** @brief Normal text color in text area (black). */
-constexpr uint32_t TEXT = 0xFF000000;
+/** @brief Normal text color in text area (white). */
+constexpr uint32_t TEXT = 0xFFFFFFFF;
 
-/** @brief Line number gutter background (Workbench gray). */
-constexpr uint32_t GUTTER = 0xFFAAAAAA;
+/** @brief Line number gutter background (darker blue). */
+constexpr uint32_t GUTTER = 0xFF003366;
 
-/** @brief Line number text color (muted gray). */
-constexpr uint32_t LINE_NUMBER = 0xFF888888;
+/** @brief Line number text color (light blue). */
+constexpr uint32_t LINE_NUMBER = 0xFF88AACC;
 
-/** @brief Text cursor color (black vertical line). */
-constexpr uint32_t CURSOR = 0xFF000000;
+/** @brief Text cursor color (white vertical line). */
+constexpr uint32_t CURSOR = 0xFFFFFFFF;
 
 /** @brief Selected text background color (blue). */
 constexpr uint32_t SELECTION = 0xFF0055AA;
