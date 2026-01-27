@@ -60,7 +60,7 @@ VMExecutorResult executeBytecodeVM(const il::core::Module &module, const VMExecu
     }
     else
     {
-        result.exitCode = static_cast<int>(bcResult.i64);
+        result.exitCode = 0;
     }
 
     if (config.flushStdout)
