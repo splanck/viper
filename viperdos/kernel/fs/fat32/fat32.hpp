@@ -205,7 +205,13 @@ struct FileInfo {
     u32 size;                    // File size
     u8 attr;                     // Attributes
     bool is_directory;           // True if directory
+    u64 atime;                   // Last access time (ms since epoch)
+    u64 mtime;                   // Last modification time (ms since epoch)
+    u64 ctime;                   // Creation time (ms since epoch)
 };
+
+/// Convert FAT32 DOS date/time to milliseconds since Unix epoch.
+u64 dos_datetime_to_ms(u16 date, u16 time, u8 tenths = 0);
 
 /**
  * @brief FAT32 filesystem driver.

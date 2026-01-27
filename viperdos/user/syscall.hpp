@@ -2026,9 +2026,11 @@ inline i32 shm_close(u32 handle) {
 struct MouseState {
     i32 x;      ///< Absolute X position
     i32 y;      ///< Absolute Y position
-    i32 dx;     ///< X movement delta since last query
-    i32 dy;     ///< Y movement delta since last query
-    u8 buttons; ///< Button bitmask: BIT0=left, BIT1=right, BIT2=middle
+    i32 dx;      ///< X movement delta since last query
+    i32 dy;      ///< Y movement delta since last query
+    i32 scroll;  ///< Vertical scroll delta since last query (positive=up)
+    i32 hscroll; ///< Horizontal scroll delta since last query (positive=right)
+    u8 buttons;  ///< Button bitmask: BIT0=left, BIT1=right, BIT2=middle
     u8 _pad[3];
 };
 
@@ -2095,6 +2097,7 @@ enum class InputEventType : u8 {
     KeyRelease = 2,
     MouseMove = 3,
     MouseButton = 4,
+    MouseScroll = 5,
 };
 
 /**
@@ -2140,6 +2143,36 @@ inline i32 input_get_event(InputEvent *event) {
  */
 inline void gcon_set_gui_mode(bool active) {
     syscall1(SYS_GCON_SET_GUI_MODE, active ? 1 : 0);
+}
+
+/**
+ * @brief Set hardware cursor image.
+ *
+ * @param pixels BGRA pixel data array.
+ * @param width Cursor width (max 64).
+ * @param height Cursor height (max 64).
+ * @param hot_x Hotspot X.
+ * @param hot_y Hotspot Y.
+ * @return 0 on success, negative on error.
+ */
+inline i32 set_cursor_image(const u32 *pixels, u32 width, u32 height,
+                            u32 hot_x, u32 hot_y) {
+    u64 dim = (static_cast<u64>(width) << 16) | height;
+    u64 hot = (static_cast<u64>(hot_x) << 16) | hot_y;
+    auto r = syscall3(SYS_SET_CURSOR_IMAGE, reinterpret_cast<u64>(pixels), dim, hot);
+    return static_cast<i32>(r.error);
+}
+
+/**
+ * @brief Move hardware cursor to position.
+ *
+ * @param x X position.
+ * @param y Y position.
+ * @return 0 on success, negative on error.
+ */
+inline i32 move_hw_cursor(u32 x, u32 y) {
+    auto r = syscall2(SYS_MOVE_CURSOR, static_cast<u64>(x), static_cast<u64>(y));
+    return static_cast<i32>(r.error);
 }
 
 // =============================================================================
@@ -2199,6 +2232,195 @@ inline void tty_push_input(char c) {
 inline bool tty_has_input() {
     auto r = syscall0(SYS_TTY_HAS_INPUT);
     return r.val0 != 0;
+}
+
+// =============================================================================
+// Audio Syscalls
+// =============================================================================
+
+/**
+ * @brief Query audio device availability and info.
+ *
+ * @param out_available Output: 1 if audio is available, 0 otherwise.
+ * @param out_streams Output: number of output streams.
+ * @param out_volume Output: current volume (0-255).
+ * @return 0 on success, negative error on failure.
+ */
+inline i32 audio_get_info(bool *out_available, u32 *out_streams, u8 *out_volume) {
+    auto r = syscall0(SYS_AUDIO_GET_INFO);
+    if (out_available) *out_available = (r.val0 != 0);
+    if (out_streams) *out_streams = static_cast<u32>(r.val1);
+    if (out_volume) *out_volume = static_cast<u8>(r.val2);
+    return static_cast<i32>(r.error);
+}
+
+/**
+ * @brief Configure a PCM audio stream.
+ *
+ * @param stream_id Output stream index.
+ * @param sample_rate Sample rate in Hz (e.g. 44100, 48000).
+ * @param channels Number of channels (1=mono, 2=stereo).
+ * @param bits Bits per sample (8 or 16).
+ * @return 0 on success, negative error on failure.
+ */
+inline i32 audio_configure(u32 stream_id, u32 sample_rate, u8 channels, u8 bits) {
+    u64 ch_bits = static_cast<u64>(channels) | (static_cast<u64>(bits) << 8);
+    auto r = syscall3(SYS_AUDIO_CONFIGURE,
+                      static_cast<u64>(stream_id),
+                      static_cast<u64>(sample_rate),
+                      ch_bits);
+    return static_cast<i32>(r.error);
+}
+
+/**
+ * @brief Prepare a stream for playback.
+ *
+ * @param stream_id Stream index.
+ * @return 0 on success, negative error on failure.
+ */
+inline i32 audio_prepare(u32 stream_id) {
+    auto r = syscall1(SYS_AUDIO_PREPARE, static_cast<u64>(stream_id));
+    return static_cast<i32>(r.error);
+}
+
+/**
+ * @brief Start playback on a stream.
+ *
+ * @param stream_id Stream index.
+ * @return 0 on success, negative error on failure.
+ */
+inline i32 audio_start(u32 stream_id) {
+    auto r = syscall1(SYS_AUDIO_START, static_cast<u64>(stream_id));
+    return static_cast<i32>(r.error);
+}
+
+/**
+ * @brief Stop playback on a stream.
+ *
+ * @param stream_id Stream index.
+ * @return 0 on success, negative error on failure.
+ */
+inline i32 audio_stop(u32 stream_id) {
+    auto r = syscall1(SYS_AUDIO_STOP, static_cast<u64>(stream_id));
+    return static_cast<i32>(r.error);
+}
+
+/**
+ * @brief Release a stream.
+ *
+ * @param stream_id Stream index.
+ * @return 0 on success, negative error on failure.
+ */
+inline i32 audio_release(u32 stream_id) {
+    auto r = syscall1(SYS_AUDIO_RELEASE, static_cast<u64>(stream_id));
+    return static_cast<i32>(r.error);
+}
+
+/**
+ * @brief Write PCM audio data to a stream.
+ *
+ * @param stream_id Stream index.
+ * @param data PCM sample data.
+ * @param len Length in bytes.
+ * @return Number of bytes written, or negative error on failure.
+ */
+inline i64 audio_write(u32 stream_id, const void *data, usize len) {
+    auto r = syscall3(SYS_AUDIO_WRITE,
+                      static_cast<u64>(stream_id),
+                      reinterpret_cast<u64>(data),
+                      len);
+    return r.ok() ? static_cast<i64>(r.val0) : r.error;
+}
+
+/**
+ * @brief Set audio volume (software scaling).
+ *
+ * @param volume Volume level (0=mute, 255=max).
+ * @return 0 on success, negative error on failure.
+ */
+inline i32 audio_set_volume(u8 volume) {
+    auto r = syscall1(SYS_AUDIO_SET_VOLUME, static_cast<u64>(volume));
+    return static_cast<i32>(r.error);
+}
+
+// =============================================================================
+// System Info - CPU count
+// =============================================================================
+
+/**
+ * @brief Query the number of logical CPUs.
+ *
+ * @return Number of CPUs (currently always 1).
+ */
+inline u32 cpu_count() {
+    auto r = syscall0(SYS_CPU_COUNT);
+    return r.ok() ? static_cast<u32>(r.val0) : 1;
+}
+
+// =============================================================================
+// Clipboard Syscalls
+// =============================================================================
+
+/**
+ * @brief Copy data to the kernel clipboard.
+ *
+ * @param data Pointer to data to copy.
+ * @param len Length in bytes.
+ * @return Number of bytes copied, or negative error.
+ */
+inline i64 clipboard_set(const void *data, usize len) {
+    auto r = syscall2(SYS_CLIPBOARD_SET, reinterpret_cast<u64>(data), len);
+    return r.ok() ? static_cast<i64>(r.val0) : r.error;
+}
+
+/**
+ * @brief Paste data from the kernel clipboard.
+ *
+ * @param buf Buffer to receive data.
+ * @param max_len Maximum bytes to copy.
+ * @return Number of bytes copied, or 0 if empty.
+ */
+inline i64 clipboard_get(void *buf, usize max_len) {
+    auto r = syscall2(SYS_CLIPBOARD_GET, reinterpret_cast<u64>(buf), max_len);
+    return r.ok() ? static_cast<i64>(r.val0) : r.error;
+}
+
+/**
+ * @brief Check if the clipboard has data.
+ *
+ * @return true if clipboard has data.
+ */
+inline bool clipboard_has() {
+    auto r = syscall0(SYS_CLIPBOARD_HAS);
+    return r.val0 != 0;
+}
+
+// =============================================================================
+// Display Query Syscalls
+// =============================================================================
+
+/**
+ * @brief Query number of connected displays.
+ *
+ * @return Number of displays (currently always 1).
+ */
+inline u32 display_count() {
+    auto r = syscall0(SYS_DISPLAY_COUNT);
+    return r.ok() ? static_cast<u32>(r.val0) : 1;
+}
+
+// =============================================================================
+// Gamepad/Joystick Syscalls
+// =============================================================================
+
+/**
+ * @brief Query gamepad/joystick availability.
+ *
+ * @return Number of connected gamepads (currently always 0).
+ */
+inline u32 gamepad_query() {
+    auto r = syscall0(SYS_GAMEPAD_QUERY);
+    return r.ok() ? static_cast<u32>(r.val0) : 0;
 }
 
 } // namespace sys

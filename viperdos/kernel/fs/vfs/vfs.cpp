@@ -28,12 +28,17 @@
 #include "../../lib/str.hpp"
 #include "../../sched/task.hpp"
 #include "../../viper/viper.hpp"
+#include "../fat32/fat32.hpp"
 #include "../viperfs/viperfs.hpp"
 
 namespace fs::vfs {
 
 // Global FD table for kernel-mode operations and backward compatibility
 static FDTable g_kernel_fdt;
+
+// User disk filesystem type tracking
+static FsType g_user_fs_type = FsType::VIPERFS;
+static bool g_user_fat32_available = false;
 
 /** @copydoc fs::vfs::init */
 void init() {
@@ -236,8 +241,11 @@ static bool get_absolute_path(const char *path, char *abs_path, usize abs_size) 
  * @brief Filesystem selection result.
  */
 struct FsSelection {
-    ::fs::viperfs::ViperFS *fs;
+    FsType fs_type;
+    ::fs::viperfs::ViperFS *viperfs; // non-null for VIPERFS
+    ::fs::fat32::FAT32 *fat32;       // non-null for FAT32
     bool writable;
+    bool valid;
 };
 
 /**
@@ -248,12 +256,35 @@ static FsSelection select_filesystem(const char *abs_path) {
 
     if (is_sys_path(abs_path, &effective_path)) {
         if (::fs::viperfs::viperfs().is_mounted())
-            return {&::fs::viperfs::viperfs(), false};
+            return {FsType::VIPERFS, &::fs::viperfs::viperfs(), nullptr, false, true};
     } else if (is_user_path(abs_path, &effective_path)) {
+        if (g_user_fat32_available && g_user_fs_type == FsType::FAT32) {
+            return {FsType::FAT32, nullptr, &::fs::fat32::fat32(), true, true};
+        }
         if (::fs::viperfs::user_viperfs_available())
-            return {&::fs::viperfs::user_viperfs(), true};
+            return {FsType::VIPERFS, &::fs::viperfs::user_viperfs(), nullptr, true, true};
     }
-    return {nullptr, false};
+    return {FsType::VIPERFS, nullptr, nullptr, false, false};
+}
+
+/// Notify VFS that user disk uses FAT32.
+void set_user_fs_fat32() {
+    g_user_fs_type = FsType::FAT32;
+    g_user_fat32_available = true;
+}
+
+/// Check if user disk is FAT32.
+bool user_fs_is_fat32() {
+    return g_user_fat32_available && g_user_fs_type == FsType::FAT32;
+}
+
+/**
+ * @brief Helper: get ViperFS pointer from file descriptor.
+ */
+static ::fs::viperfs::ViperFS *fd_viperfs(FileDesc *desc) {
+    if (desc->fs_type == FsType::VIPERFS)
+        return desc->fs.viperfs ? desc->fs.viperfs : &::fs::viperfs::viperfs();
+    return nullptr;
 }
 
 /**
@@ -320,7 +351,7 @@ i32 open(const char *path, u32 oflags) {
         return -1;
 
     FsSelection sel = select_filesystem(abs_path);
-    if (!sel.fs)
+    if (!sel.valid)
         return -1;
 
     bool wants_write = (oflags & flags::O_WRONLY) || (oflags & flags::O_RDWR) ||
@@ -328,14 +359,16 @@ i32 open(const char *path, u32 oflags) {
     if (wants_write && !sel.writable)
         return -1;
 
-    u64 ino = resolve_path(abs_path);
-
-    if (ino == 0 && (oflags & flags::O_CREAT)) {
-        ino = create_file_if_needed(sel.fs, abs_path);
+    // FAT32 handles its own open/create below (after FD alloc)
+    u64 ino = 0;
+    if (sel.fs_type == FsType::VIPERFS) {
+        ino = resolve_path(abs_path);
+        if (ino == 0 && (oflags & flags::O_CREAT)) {
+            ino = create_file_if_needed(sel.viperfs, abs_path);
+        }
+        if (ino == 0)
+            return -1;
     }
-
-    if (ino == 0)
-        return -1;
 
     i32 fd = fdt->alloc();
     if (fd < 0)
@@ -345,13 +378,51 @@ i32 open(const char *path, u32 oflags) {
     desc->inode_num = ino;
     desc->offset = 0;
     desc->flags = oflags;
-    desc->fs = sel.fs;
+    desc->fs_type = sel.fs_type;
+    if (sel.fs_type == FsType::FAT32) {
+        desc->fs.fat32 = sel.fat32;
+    } else {
+        desc->fs.viperfs = sel.viperfs;
+    }
 
-    if (oflags & flags::O_APPEND) {
-        ::fs::viperfs::Inode *inode = sel.fs->read_inode(ino);
-        if (inode) {
-            desc->offset = inode->size;
-            sel.fs->release_inode(inode);
+    if (sel.fs_type == FsType::FAT32) {
+        // FAT32: open and cache file info
+        ::fs::fat32::FileInfo fi{};
+        const char *effective = nullptr;
+        if (is_user_path(abs_path, &effective)) {
+            if (sel.fat32->open(effective, &fi)) {
+                desc->inode_num = fi.first_cluster;
+                desc->fat32_size = fi.size;
+                desc->fat32_attr = fi.attr;
+                desc->fat32_is_dir = fi.is_directory;
+                if (oflags & flags::O_APPEND) {
+                    desc->offset = fi.size;
+                }
+            } else if (oflags & flags::O_CREAT) {
+                if (sel.fat32->create_file(effective, &fi)) {
+                    desc->inode_num = fi.first_cluster;
+                    desc->fat32_size = fi.size;
+                    desc->fat32_attr = fi.attr;
+                    desc->fat32_is_dir = fi.is_directory;
+                } else {
+                    fdt->free(fd);
+                    return -1;
+                }
+            } else {
+                fdt->free(fd);
+                return -1;
+            }
+        } else {
+            fdt->free(fd);
+            return -1;
+        }
+    } else {
+        if (oflags & flags::O_APPEND) {
+            ::fs::viperfs::Inode *inode = sel.viperfs->read_inode(ino);
+            if (inode) {
+                desc->offset = inode->size;
+                sel.viperfs->release_inode(inode);
+            }
         }
     }
 
@@ -378,6 +449,11 @@ i32 dup(i32 oldfd) {
     new_desc->inode_num = old_desc->inode_num;
     new_desc->offset = old_desc->offset;
     new_desc->flags = old_desc->flags;
+    new_desc->fs_type = old_desc->fs_type;
+    new_desc->fs = old_desc->fs;
+    new_desc->fat32_size = old_desc->fat32_size;
+    new_desc->fat32_attr = old_desc->fat32_attr;
+    new_desc->fat32_is_dir = old_desc->fat32_is_dir;
 
     return newfd;
 }
@@ -411,6 +487,11 @@ i32 dup2(i32 oldfd, i32 newfd) {
     fdt->fds[newfd].inode_num = old_desc->inode_num;
     fdt->fds[newfd].offset = old_desc->offset;
     fdt->fds[newfd].flags = old_desc->flags;
+    fdt->fds[newfd].fs_type = old_desc->fs_type;
+    fdt->fds[newfd].fs = old_desc->fs;
+    fdt->fds[newfd].fat32_size = old_desc->fat32_size;
+    fdt->fds[newfd].fat32_attr = old_desc->fat32_attr;
+    fdt->fds[newfd].fat32_is_dir = old_desc->fat32_is_dir;
 
     return newfd;
 }
@@ -473,8 +554,26 @@ i64 read(i32 fd, void *buf, usize len) {
     if (access == flags::O_WRONLY)
         return -1;
 
-    // Use the filesystem stored in the FD (fall back to system viperfs for compatibility)
-    ::fs::viperfs::ViperFS *fs = desc->fs ? desc->fs : &::fs::viperfs::viperfs();
+    if (desc->fs_type == FsType::FAT32) {
+        // FAT32 read
+        ::fs::fat32::FAT32 *fat = desc->fs.fat32;
+        if (!fat)
+            return -1;
+        ::fs::fat32::FileInfo fi{};
+        fi.first_cluster = static_cast<u32>(desc->inode_num);
+        fi.size = desc->fat32_size;
+        fi.attr = desc->fat32_attr;
+        fi.is_directory = desc->fat32_is_dir;
+        i64 bytes = fat->read(&fi, desc->offset, buf, len);
+        if (bytes > 0)
+            desc->offset += bytes;
+        return bytes;
+    }
+
+    // ViperFS read
+    ::fs::viperfs::ViperFS *fs = fd_viperfs(desc);
+    if (!fs)
+        return -1;
 
     ::fs::viperfs::Inode *inode = fs->read_inode(desc->inode_num);
     if (!inode)
@@ -512,19 +611,42 @@ i64 write(i32 fd, const void *buf, usize len) {
     if (!desc)
         return -1;
 
-    // Check if write is permitted (file must be on user disk)
-    // System disk (/sys) FDs have fs pointing to system viperfs
-    // User disk FDs have fs pointing to user viperfs
-    if (!desc->fs || desc->fs == &::fs::viperfs::viperfs()) {
-        // System disk is read-only
-        return -1;
+    // Check if write is permitted (system disk is read-only)
+    if (desc->fs_type == FsType::VIPERFS) {
+        if (!desc->fs.viperfs || desc->fs.viperfs == &::fs::viperfs::viperfs()) {
+            return -1; // System disk is read-only
+        }
     }
 
     // Check flags
     if (!(desc->flags & flags::O_WRONLY) && !(desc->flags & flags::O_RDWR))
         return -1;
 
-    ::fs::viperfs::ViperFS *fs = desc->fs;
+    if (desc->fs_type == FsType::FAT32) {
+        // FAT32 write
+        ::fs::fat32::FAT32 *fat = desc->fs.fat32;
+        if (!fat)
+            return -1;
+        ::fs::fat32::FileInfo fi{};
+        fi.first_cluster = static_cast<u32>(desc->inode_num);
+        fi.size = desc->fat32_size;
+        fi.attr = desc->fat32_attr;
+        fi.is_directory = desc->fat32_is_dir;
+        i64 written = fat->write(&fi, desc->offset, buf, len);
+        if (written > 0) {
+            desc->offset += static_cast<u64>(written);
+            // Update cached size (FAT32::write may extend the file)
+            desc->fat32_size = fi.size;
+            desc->inode_num = fi.first_cluster; // May change if file was empty
+        }
+        return written;
+    }
+
+    // ViperFS write
+    ::fs::viperfs::ViperFS *fs = fd_viperfs(desc);
+    if (!fs)
+        return -1;
+
     ::fs::viperfs::Inode *inode = fs->read_inode(desc->inode_num);
     if (!inode)
         return -1;
@@ -561,12 +683,18 @@ i64 lseek(i32 fd, i64 offset, i32 whence) {
             new_offset = static_cast<i64>(desc->offset) + offset;
             break;
         case seek::END: {
-            ::fs::viperfs::ViperFS *fs = desc->fs ? desc->fs : &::fs::viperfs::viperfs();
-            ::fs::viperfs::Inode *inode = fs->read_inode(desc->inode_num);
-            if (!inode)
-                return -1;
-            new_offset = static_cast<i64>(inode->size) + offset;
-            fs->release_inode(inode);
+            if (desc->fs_type == FsType::FAT32) {
+                new_offset = static_cast<i64>(desc->fat32_size) + offset;
+            } else {
+                ::fs::viperfs::ViperFS *fs = fd_viperfs(desc);
+                if (!fs)
+                    return -1;
+                ::fs::viperfs::Inode *inode = fs->read_inode(desc->inode_num);
+                if (!inode)
+                    return -1;
+                new_offset = static_cast<i64>(inode->size) + offset;
+                fs->release_inode(inode);
+            }
             break;
         }
         default:
@@ -599,6 +727,24 @@ static ::fs::viperfs::ViperFS *get_fs_for_path(const char *path) {
 i32 stat(const char *path, Stat *st) {
     if (!path || !st)
         return -1;
+
+    // Check if this is a FAT32 user path
+    const char *effective = nullptr;
+    if (g_user_fat32_available && !is_sys_path(path, &effective) && is_user_path(path, &effective)) {
+        ::fs::fat32::FileInfo fi{};
+        if (!::fs::fat32::fat32().open(effective, &fi))
+            return -1;
+        st->ino = fi.first_cluster;
+        st->mode = fi.is_directory ? 0040755 : 0100644;
+        if (fi.attr & ::fs::fat32::attr::READ_ONLY)
+            st->mode &= ~0222;
+        st->size = fi.size;
+        st->blocks = (fi.size + 511) / 512;
+        st->atime = fi.atime;
+        st->mtime = fi.mtime;
+        st->ctime = fi.ctime;
+        return 0;
+    }
 
     u64 ino = resolve_path_cwd(path);
     if (ino == 0)
@@ -638,7 +784,24 @@ i32 fstat(i32 fd, Stat *st) {
     if (!desc)
         return -1;
 
-    ::fs::viperfs::ViperFS *fs = desc->fs ? desc->fs : &::fs::viperfs::viperfs();
+    if (desc->fs_type == FsType::FAT32) {
+        // FAT32 fstat: return cached info
+        st->ino = desc->inode_num; // first cluster
+        st->mode = desc->fat32_is_dir ? 0040755u : 0100644u;
+        if (desc->fat32_attr & ::fs::fat32::attr::READ_ONLY)
+            st->mode &= ~0222u;
+        st->size = desc->fat32_size;
+        st->blocks = (desc->fat32_size + 511) / 512;
+        st->atime = 0;
+        st->mtime = 0;
+        st->ctime = 0;
+        return 0;
+    }
+
+    ::fs::viperfs::ViperFS *fs = fd_viperfs(desc);
+    if (!fs)
+        return -1;
+
     ::fs::viperfs::Inode *inode = fs->read_inode(desc->inode_num);
     if (!inode)
         return -1;
@@ -665,7 +828,16 @@ i32 fsync(i32 fd) {
     if (!desc)
         return -1;
 
-    ::fs::viperfs::ViperFS *fs = desc->fs ? desc->fs : &::fs::viperfs::viperfs();
+    if (desc->fs_type == FsType::FAT32) {
+        ::fs::fat32::FAT32 *fat = desc->fs.fat32;
+        if (fat) fat->sync();
+        return 0;
+    }
+
+    ::fs::viperfs::ViperFS *fs = fd_viperfs(desc);
+    if (!fs)
+        return -1;
+
     ::fs::viperfs::Inode *inode = fs->read_inode(desc->inode_num);
     if (!inode)
         return -1;
@@ -758,7 +930,60 @@ i64 getdents(i32 fd, void *buf, usize len) {
     if (!desc)
         return -1;
 
-    ::fs::viperfs::ViperFS *fs = desc->fs ? desc->fs : &::fs::viperfs::viperfs();
+    if (desc->fs_type == FsType::FAT32) {
+        // FAT32 directory listing
+        if (!desc->fat32_is_dir)
+            return -1;
+
+        ::fs::fat32::FAT32 *fat = desc->fs.fat32;
+        if (!fat)
+            return -1;
+
+        // Read FAT32 directory entries
+        constexpr i32 MAX_FAT_ENTRIES = 128;
+        static ::fs::fat32::FileInfo fat_entries[MAX_FAT_ENTRIES];
+        u32 dir_cluster = static_cast<u32>(desc->inode_num);
+        i32 count = fat->read_dir(dir_cluster, fat_entries, MAX_FAT_ENTRIES);
+        if (count < 0)
+            return -1;
+
+        // Pack into DirEnt format, skipping already-read entries
+        u8 *out = static_cast<u8 *>(buf);
+        usize bytes_written = 0;
+        usize entries_to_skip = desc->offset;
+        usize entries_written = 0;
+
+        for (i32 i = 0; i < count; i++) {
+            if (static_cast<usize>(i) < entries_to_skip)
+                continue;
+
+            usize reclen = sizeof(DirEnt);
+            if (bytes_written + reclen > len)
+                break;
+
+            DirEnt *ent = reinterpret_cast<DirEnt *>(out + bytes_written);
+            ent->ino = fat_entries[i].first_cluster;
+            ent->reclen = static_cast<u16>(reclen);
+            ent->type = fat_entries[i].is_directory ? 2 : 1;
+            usize name_len = lib::strlen(fat_entries[i].name);
+            ent->namelen = static_cast<u8>(name_len > 255 ? 255 : name_len);
+            for (usize j = 0; j < ent->namelen; j++)
+                ent->name[j] = fat_entries[i].name[j];
+            ent->name[ent->namelen] = '\0';
+
+            bytes_written += reclen;
+            entries_written++;
+        }
+
+        desc->offset += entries_written;
+        return static_cast<i64>(bytes_written);
+    }
+
+    // ViperFS getdents
+    ::fs::viperfs::ViperFS *fs = fd_viperfs(desc);
+    if (!fs)
+        return -1;
+
     ::fs::viperfs::Inode *inode = fs->read_inode(desc->inode_num);
     if (!inode)
         return -1;
@@ -819,6 +1044,11 @@ i32 mkdir(const char *path) {
 
     if (!is_user_path(abs_path, &effective_path))
         return -1;
+
+    // FAT32 mkdir
+    if (g_user_fat32_available) {
+        return ::fs::fat32::fat32().create_dir(effective_path) ? 0 : -1;
+    }
 
     if (!::fs::viperfs::user_viperfs_available())
         return -1;
@@ -893,6 +1123,11 @@ i32 rmdir(const char *path) {
     if (!is_user_path(abs_path, &effective_path))
         return -1;
 
+    // FAT32 rmdir
+    if (g_user_fat32_available) {
+        return ::fs::fat32::fat32().remove(effective_path) ? 0 : -1;
+    }
+
     if (!::fs::viperfs::user_viperfs_available())
         return -1;
 
@@ -964,6 +1199,11 @@ i32 unlink(const char *path) {
 
     if (!is_user_path(abs_path, &effective_path))
         return -1;
+
+    // FAT32 unlink
+    if (g_user_fat32_available) {
+        return ::fs::fat32::fat32().remove(effective_path) ? 0 : -1;
+    }
 
     if (!::fs::viperfs::user_viperfs_available())
         return -1;

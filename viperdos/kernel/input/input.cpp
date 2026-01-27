@@ -49,7 +49,7 @@ static u8 current_modifiers = 0;
 static bool caps_lock_on = false;
 
 // Mouse state
-static MouseState g_mouse = {0, 0, 0, 0, 0, {0, 0, 0}};
+static MouseState g_mouse = {0, 0, 0, 0, 0, 0, 0, {0, 0, 0}};
 static u32 g_screen_width = 1024; // Default, updated by set_mouse_bounds()
 static u32 g_screen_height = 768; // Default, updated by set_mouse_bounds()
 static Spinlock mouse_lock;
@@ -255,6 +255,8 @@ static void poll_keyboard() {
 static void handle_mouse_move(u16 code, i32 value) {
     constexpr u16 REL_X = 0x00;
     constexpr u16 REL_Y = 0x01;
+    constexpr u16 REL_WHEEL = 0x08;
+    constexpr u16 REL_HWHEEL = 0x06;
 
     if (code == REL_X) {
         g_mouse.dx += value;
@@ -263,6 +265,13 @@ static void handle_mouse_move(u16 code, i32 value) {
             g_mouse.x = 0;
         if (g_mouse.x >= static_cast<i32>(g_screen_width))
             g_mouse.x = static_cast<i32>(g_screen_width) - 1;
+
+        Event ev;
+        ev.type = EventType::MouseMove;
+        ev.modifiers = current_modifiers;
+        ev.code = 0;
+        ev.value = 0;
+        push_event(ev);
     } else if (code == REL_Y) {
         g_mouse.dy += value;
         g_mouse.y += value;
@@ -270,14 +279,32 @@ static void handle_mouse_move(u16 code, i32 value) {
             g_mouse.y = 0;
         if (g_mouse.y >= static_cast<i32>(g_screen_height))
             g_mouse.y = static_cast<i32>(g_screen_height) - 1;
-    }
 
-    Event ev;
-    ev.type = EventType::MouseMove;
-    ev.modifiers = current_modifiers;
-    ev.code = 0;
-    ev.value = 0;
-    push_event(ev);
+        Event ev;
+        ev.type = EventType::MouseMove;
+        ev.modifiers = current_modifiers;
+        ev.code = 0;
+        ev.value = 0;
+        push_event(ev);
+    } else if (code == REL_WHEEL) {
+        g_mouse.scroll += value;
+
+        Event ev;
+        ev.type = EventType::MouseScroll;
+        ev.modifiers = current_modifiers;
+        ev.code = REL_WHEEL;
+        ev.value = value;
+        push_event(ev);
+    } else if (code == REL_HWHEEL) {
+        g_mouse.hscroll += value;
+
+        Event ev;
+        ev.type = EventType::MouseScroll;
+        ev.modifiers = current_modifiers;
+        ev.code = REL_HWHEEL;
+        ev.value = value;
+        push_event(ev);
+    }
 }
 
 /**
@@ -522,6 +549,8 @@ MouseState get_mouse_state() {
     // Reset deltas after reading
     g_mouse.dx = 0;
     g_mouse.dy = 0;
+    g_mouse.scroll = 0;
+    g_mouse.hscroll = 0;
     return state;
 }
 

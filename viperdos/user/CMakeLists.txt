@@ -38,6 +38,9 @@ add_subdirectory(libtls)
 # Build the HTTP client library
 add_subdirectory(libhttp)
 
+# Build the WebSocket client library
+add_subdirectory(libws)
+
 # Build the GUI client library
 add_subdirectory(libgui)
 

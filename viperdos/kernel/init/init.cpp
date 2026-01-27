@@ -25,9 +25,11 @@
 #include "../drivers/pl031.hpp"
 #include "../drivers/ramfb.hpp"
 #include "../drivers/virtio/blk.hpp"
+#include "../fs/fat32/fat32.hpp"
 #include "../drivers/virtio/gpu.hpp"
 #include "../drivers/virtio/input.hpp"
 #include "../drivers/virtio/rng.hpp"
+#include "../drivers/virtio/sound.hpp"
 #include "../drivers/virtio/virtio.hpp"
 #include "../fs/cache.hpp"
 #include "../fs/vfs/vfs.hpp"
@@ -245,6 +247,7 @@ void init_virtio_subsystem() {
     virtio::blk_init();
     virtio::gpu_init();
     virtio::input_init();
+    virtio::sound_init();
     input::init();
     tty::init();
     console::init_input();
@@ -311,11 +314,19 @@ static void init_user_disk() {
     fs::user_cache_init();
     if (fs::user_cache_available()) {
         if (fs::viperfs::user_viperfs_init()) {
-            serial::puts("[kernel] User filesystem mounted: ");
+            serial::puts("[kernel] User filesystem mounted (ViperFS): ");
             serial::puts(fs::viperfs::user_viperfs().label());
             serial::puts("\n");
         } else {
-            serial::puts("[kernel] User filesystem mount failed\n");
+            serial::puts("[kernel] ViperFS mount failed on user disk, trying FAT32...\n");
+            if (fs::fat32::fat32_init()) {
+                serial::puts("[kernel] User filesystem mounted (FAT32): ");
+                serial::puts(fs::fat32::fat32().label());
+                serial::puts("\n");
+                fs::vfs::set_user_fs_fat32();
+            } else {
+                serial::puts("[kernel] User filesystem mount failed (no ViperFS or FAT32)\n");
+            }
         }
     } else {
         serial::puts("[kernel] User cache init failed\n");

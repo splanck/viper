@@ -1892,9 +1892,13 @@ static void poll_mouse() {
 
     // Update cursor position
     if (cursor_moved) {
-        restore_cursor_background();
+        if (g_cursor_visible)
+            restore_cursor_background();
         g_cursor_x = state.x;
         g_cursor_y = state.y;
+        if (!g_cursor_visible)
+            sys::move_hw_cursor(static_cast<uint32_t>(state.x),
+                                static_cast<uint32_t>(state.y));
 
         // Handle menu hover (when a pulldown menu is open)
         if (g_active_menu >= 0) {
@@ -2361,6 +2365,27 @@ extern "C" void _start() {
     // Initialize cursor to center
     g_cursor_x = static_cast<int32_t>(g_fb_width / 2);
     g_cursor_y = static_cast<int32_t>(g_fb_height / 2);
+
+    // Try to set up hardware cursor
+    {
+        // Convert 24x24 cursor bitmap to 24x24 BGRA pixels
+        static uint32_t cursor_pixels[CURSOR_SIZE * CURSOR_SIZE];
+        for (int i = 0; i < CURSOR_SIZE * CURSOR_SIZE; i++) {
+            uint8_t v = g_cursor_data[i];
+            if (v == 0)
+                cursor_pixels[i] = 0x00000000; // Transparent
+            else if (v == 1)
+                cursor_pixels[i] = COLOR_CURSOR; // Orange fill
+            else
+                cursor_pixels[i] = 0xFF000000; // Black outline
+        }
+        if (sys::set_cursor_image(cursor_pixels, CURSOR_SIZE, CURSOR_SIZE, 0, 0) == 0) {
+            g_cursor_visible = false; // Disable software cursor
+            sys::move_hw_cursor(static_cast<uint32_t>(g_cursor_x),
+                                static_cast<uint32_t>(g_cursor_y));
+            debug_print("[displayd] Hardware cursor enabled\n");
+        }
+    }
 
     // Initialize surfaces
     for (uint32_t i = 0; i < MAX_SURFACES; i++) {

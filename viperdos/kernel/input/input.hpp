@@ -38,6 +38,7 @@ enum class EventType : u8 {
     KeyRelease = 2,
     MouseMove = 3,
     MouseButton = 4,
+    MouseScroll = 5,
 };
 
 // Modifier keys
@@ -156,12 +157,14 @@ bool has_char();
  * deltas since last query, and current button state.
  */
 struct MouseState {
-    i32 x;      ///< Absolute X position (clamped to screen bounds)
-    i32 y;      ///< Absolute Y position (clamped to screen bounds)
-    i32 dx;     ///< X movement delta since last query
-    i32 dy;     ///< Y movement delta since last query
-    u8 buttons; ///< Button bitmask: BIT0=left, BIT1=right, BIT2=middle
-    u8 _pad[3]; ///< Padding for alignment
+    i32 x;       ///< Absolute X position (clamped to screen bounds)
+    i32 y;       ///< Absolute Y position (clamped to screen bounds)
+    i32 dx;      ///< X movement delta since last query
+    i32 dy;      ///< Y movement delta since last query
+    i32 scroll;  ///< Vertical scroll delta since last query (positive=up)
+    i32 hscroll; ///< Horizontal scroll delta since last query (positive=right)
+    u8 buttons;  ///< Button bitmask: BIT0=left, BIT1=right, BIT2=middle
+    u8 _pad[3];  ///< Padding for alignment
 };
 
 /**

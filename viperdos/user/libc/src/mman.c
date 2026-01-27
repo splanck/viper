@@ -39,14 +39,14 @@
 extern long __syscall3(long num, long arg0, long arg1, long arg2);
 extern long __syscall6(long num, long arg0, long arg1, long arg2, long arg3, long arg4, long arg5);
 
-/* Syscall numbers */
-#define SYS_MMAP 0xE0
-#define SYS_MUNMAP 0xE1
-#define SYS_MPROTECT 0xE2
-#define SYS_MSYNC 0xE3
-#define SYS_MADVISE 0xE4
-#define SYS_MLOCK 0xE5
-#define SYS_MUNLOCK 0xE6
+/* Syscall numbers (0x150 block) */
+#define SYS_MMAP 0x150
+#define SYS_MUNMAP 0x151
+#define SYS_MPROTECT 0x152
+#define SYS_MSYNC 0x153
+#define SYS_MADVISE 0x154
+#define SYS_MLOCK 0x155
+#define SYS_MUNLOCK 0x156
 
 /**
  * @brief Map files or devices into memory.

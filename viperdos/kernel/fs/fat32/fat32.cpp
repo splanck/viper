@@ -15,6 +15,61 @@
 
 namespace fs::fat32 {
 
+// =============================================================================
+// DOS Date/Time Conversion
+// =============================================================================
+
+/// Convert FAT32 DOS date/time to milliseconds since Unix epoch.
+/// DOS date: bits [15:9]=year(+1980), [8:5]=month(1-12), [4:0]=day(1-31)
+/// DOS time: bits [15:11]=hour(0-23), [10:5]=minute(0-59), [4:0]=second/2(0-29)
+u64 dos_datetime_to_ms(u16 date, u16 time, u8 tenths) {
+    if (date == 0)
+        return 0;
+
+    u32 year = ((date >> 9) & 0x7F) + 1980;
+    u32 month = (date >> 5) & 0x0F;
+    u32 day = date & 0x1F;
+
+    u32 hour = (time >> 11) & 0x1F;
+    u32 minute = (time >> 5) & 0x3F;
+    u32 second = (time & 0x1F) * 2;
+
+    // Clamp values
+    if (month < 1)
+        month = 1;
+    if (month > 12)
+        month = 12;
+    if (day < 1)
+        day = 1;
+
+    // Days per month (non-leap)
+    static constexpr u32 days_in_month[] = {0, 31, 28, 31, 30, 31, 30,
+                                             31, 31, 30, 31, 30, 31};
+
+    // Calculate days since Unix epoch (1970-01-01)
+    u64 days = 0;
+    for (u32 y = 1970; y < year; y++) {
+        bool leap = (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0);
+        days += leap ? 366 : 365;
+    }
+    for (u32 m = 1; m < month; m++) {
+        days += days_in_month[m];
+        if (m == 2) {
+            bool leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+            if (leap)
+                days += 1;
+        }
+    }
+    days += day - 1;
+
+    u64 secs = days * 86400 + hour * 3600 + minute * 60 + second;
+    u64 ms = secs * 1000;
+    if (tenths > 0 && tenths <= 199) {
+        ms += tenths * 10;
+    }
+    return ms;
+}
+
 // Global FAT32 instance for user disk
 static FAT32 g_fat32;
 
@@ -496,6 +551,9 @@ i32 FAT32::read_dir(u32 dir_cluster, FileInfo *entries, i32 max_entries) {
                 fi->size = entry->file_size;
                 fi->attr = entry->attr;
                 fi->is_directory = (entry->attr & attr::DIRECTORY) != 0;
+                fi->ctime = dos_datetime_to_ms(entry->create_date, entry->create_time, entry->create_time_tenth);
+                fi->mtime = dos_datetime_to_ms(entry->modify_date, entry->modify_time);
+                fi->atime = dos_datetime_to_ms(entry->access_date, 0);
 
                 count++;
             }
@@ -528,6 +586,9 @@ bool FAT32::open(const char *path, FileInfo *info) {
     info->size = entry.file_size;
     info->attr = entry.attr;
     info->is_directory = (entry.attr & attr::DIRECTORY) != 0;
+    info->ctime = dos_datetime_to_ms(entry.create_date, entry.create_time, entry.create_time_tenth);
+    info->mtime = dos_datetime_to_ms(entry.modify_date, entry.modify_time);
+    info->atime = dos_datetime_to_ms(entry.access_date, 0);
 
     return true;
 }

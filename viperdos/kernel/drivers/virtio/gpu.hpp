@@ -180,6 +180,24 @@ struct GpuResourceAttachBacking {
     // Followed by nr_entries GpuMemEntry structures
 } __attribute__((packed));
 
+// Cursor position structure
+struct GpuCursorPos {
+    u32 scanout_id;
+    u32 x;
+    u32 y;
+    u32 padding;
+} __attribute__((packed));
+
+// UPDATE_CURSOR / MOVE_CURSOR command
+struct GpuUpdateCursor {
+    GpuCtrlHdr hdr;
+    GpuCursorPos pos;
+    u32 resource_id;
+    u32 hot_x;
+    u32 hot_y;
+    u32 padding;
+} __attribute__((packed));
+
 // VirtIO-GPU configuration space
 struct GpuConfig {
     u32 events_read;
@@ -295,6 +313,34 @@ class GpuDevice : public Device {
         return initialized_;
     }
 
+    /**
+     * @brief Set up the hardware cursor image and position.
+     *
+     * @param pixels BGRA pixel data (width * height * 4 bytes).
+     * @param width Cursor image width (max 64).
+     * @param height Cursor image height (max 64).
+     * @param hot_x Hotspot X offset.
+     * @param hot_y Hotspot Y offset.
+     * @return true on success.
+     */
+    bool setup_cursor(const u32 *pixels, u32 width, u32 height, u32 hot_x, u32 hot_y);
+
+    /**
+     * @brief Move the hardware cursor to a new position.
+     *
+     * @param x X position on scanout 0.
+     * @param y Y position on scanout 0.
+     * @return true on success.
+     */
+    bool move_cursor(u32 x, u32 y);
+
+    /**
+     * @brief Check if hardware cursor is active.
+     */
+    bool has_cursor() const {
+        return cursor_active_;
+    }
+
   private:
     Virtqueue controlq_;
     Virtqueue cursorq_;
@@ -315,6 +361,16 @@ class GpuDevice : public Device {
     static constexpr usize CMD_BUF_SIZE = 4096;
     static constexpr usize RESP_BUF_SIZE = 4096;
 
+    // Cursor state
+    u8 *cursor_cmd_buf_{nullptr};
+    u64 cursor_cmd_phys_{0};
+    u8 *cursor_img_buf_{nullptr};
+    u64 cursor_img_phys_{0};
+    bool cursor_active_{false};
+
+    static constexpr u32 CURSOR_RES_ID = 100;
+    static constexpr u32 MAX_CURSOR_DIM = 64;
+
     /**
      * @brief Send a command and wait for response.
      *
@@ -323,6 +379,14 @@ class GpuDevice : public Device {
      * @return true if command succeeded (response OK).
      */
     bool send_command(usize cmd_size, usize resp_size);
+
+    /**
+     * @brief Send a cursor command via the cursor queue (fire-and-forget).
+     *
+     * @param cmd_size Size of cursor command data.
+     * @return true on success.
+     */
+    bool send_cursor_command(usize cmd_size);
 };
 
 // Global GPU device initialization and access

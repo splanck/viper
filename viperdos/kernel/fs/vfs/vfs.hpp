@@ -66,26 +66,46 @@ constexpr usize MAX_FDS = 32;
 // File descriptor entry
 } // namespace fs::vfs
 
-// Forward declaration for ViperFS (in fs::viperfs namespace)
+// Forward declarations
 namespace fs::viperfs {
 class ViperFS;
+}
+namespace fs::fat32 {
+class FAT32;
 }
 
 namespace fs::vfs {
 
 /**
+ * @brief Filesystem type discriminator.
+ */
+enum class FsType : u8 {
+    VIPERFS = 0,
+    FAT32 = 1,
+};
+
+/**
  * @brief One open file descriptor entry.
  *
  * @details
- * Stores inode number, current file offset, open flags, and which
- * filesystem the file belongs to.
+ * Stores inode/cluster number, current file offset, open flags, and which
+ * filesystem the file belongs to. For FAT32, stores cached file metadata
+ * needed for read/write operations.
  */
 struct FileDesc {
     bool in_use;
-    u64 inode_num;            // Inode number
+    u64 inode_num;            // ViperFS inode number OR FAT32 first cluster
     u64 offset;               // Current file position
     u32 flags;                // Open flags
-    fs::viperfs::ViperFS *fs; // Which filesystem this FD belongs to
+    FsType fs_type;           // Which filesystem type
+    union {
+        fs::viperfs::ViperFS *viperfs;
+        fs::fat32::FAT32 *fat32;
+    } fs;
+    // FAT32-specific cached state (only valid when fs_type == FAT32)
+    u32 fat32_size;           // File size (may be updated by writes)
+    u8 fat32_attr;            // FAT32 attributes
+    bool fat32_is_dir;        // Is directory
 };
 
 // File descriptor table (per-process)
@@ -509,5 +529,11 @@ bool normalize_path(const char *path, const char *cwd, char *out, usize out_size
  * @return Inode number on success, or 0 if not found.
  */
 u64 resolve_path_cwd(const char *path);
+
+/// Notify VFS that user disk is FAT32 (call after mounting FAT32).
+void set_user_fs_fat32();
+
+/// Check if user disk is FAT32.
+bool user_fs_is_fat32();
 
 } // namespace fs::vfs

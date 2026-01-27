@@ -86,6 +86,9 @@ set(KERNEL_SOURCES
         syscall/handlers/device.cpp
         syscall/handlers/gui.cpp
         syscall/handlers/tty.cpp
+        syscall/handlers/audio.cpp
+        syscall/handlers/clipboard.cpp
+        syscall/handlers/mmap.cpp
         ipc/channel.cpp
         ipc/poll.cpp
         ipc/pollset.cpp
@@ -106,6 +109,7 @@ set(KERNEL_SOURCES
         drivers/virtio/input.cpp
         drivers/virtio/rng.cpp
         drivers/virtio/net.cpp
+        drivers/virtio/sound.cpp
         net/netstack.cpp
         input/input.cpp
         tty/tty.cpp

@@ -254,6 +254,8 @@ SyscallResult sys_net_stats(u64 a0, u64, u64, u64, u64, u64);
 SyscallResult sys_ping(u64 a0, u64 a1, u64, u64, u64, u64);
 SyscallResult sys_device_list(u64 a0, u64 a1, u64, u64, u64, u64);
 SyscallResult sys_getrandom(u64 a0, u64 a1, u64, u64, u64, u64);
+SyscallResult sys_uname(u64 a0, u64, u64, u64, u64, u64);
+SyscallResult sys_cpu_count(u64, u64, u64, u64, u64, u64);
 
 // =============================================================================
 // Debug/Console (0xF0-0xFF)
@@ -292,6 +294,9 @@ SyscallResult sys_set_mouse_bounds(u64 a0, u64 a1, u64, u64, u64, u64);
 SyscallResult sys_input_has_event(u64, u64, u64, u64, u64, u64);
 SyscallResult sys_input_get_event(u64 a0, u64, u64, u64, u64, u64);
 SyscallResult sys_gcon_set_gui_mode(u64 a0, u64, u64, u64, u64, u64);
+SyscallResult sys_set_cursor_image(u64 a0, u64 a1, u64 a2, u64, u64, u64);
+SyscallResult sys_move_cursor(u64 a0, u64 a1, u64, u64, u64, u64);
+SyscallResult sys_display_count(u64, u64, u64, u64, u64, u64);
 
 // =============================================================================
 // TTY (0x120-0x12F)
@@ -302,5 +307,44 @@ SyscallResult sys_tty_write(u64 a0, u64 a1, u64, u64, u64, u64);
 SyscallResult sys_tty_push_input(u64 a0, u64, u64, u64, u64, u64);
 SyscallResult sys_tty_has_input(u64, u64, u64, u64, u64, u64);
 SyscallResult sys_tty_get_size(u64, u64, u64, u64, u64, u64);
+
+// =============================================================================
+// Audio (0x130-0x13F)
+// =============================================================================
+
+SyscallResult sys_audio_configure(u64 a0, u64 a1, u64 a2, u64, u64, u64);
+SyscallResult sys_audio_prepare(u64 a0, u64, u64, u64, u64, u64);
+SyscallResult sys_audio_start(u64 a0, u64, u64, u64, u64, u64);
+SyscallResult sys_audio_stop(u64 a0, u64, u64, u64, u64, u64);
+SyscallResult sys_audio_release(u64 a0, u64, u64, u64, u64, u64);
+SyscallResult sys_audio_write(u64 a0, u64 a1, u64 a2, u64, u64, u64);
+SyscallResult sys_audio_set_volume(u64 a0, u64, u64, u64, u64, u64);
+SyscallResult sys_audio_get_info(u64 a0, u64, u64, u64, u64, u64);
+
+// =============================================================================
+// Clipboard (0x140-0x14F)
+// =============================================================================
+
+SyscallResult sys_clipboard_set(u64 a0, u64 a1, u64, u64, u64, u64);
+SyscallResult sys_clipboard_get(u64 a0, u64 a1, u64, u64, u64, u64);
+SyscallResult sys_clipboard_has(u64, u64, u64, u64, u64, u64);
+
+// =============================================================================
+// Memory Mapping (0x150-0x15F)
+// =============================================================================
+
+SyscallResult sys_mmap(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u64 a5);
+SyscallResult sys_munmap(u64 a0, u64 a1, u64, u64, u64, u64);
+SyscallResult sys_mprotect(u64 a0, u64 a1, u64 a2, u64, u64, u64);
+SyscallResult sys_msync(u64, u64, u64, u64, u64, u64);
+SyscallResult sys_madvise(u64, u64, u64, u64, u64, u64);
+SyscallResult sys_mlock(u64, u64, u64, u64, u64, u64);
+SyscallResult sys_munlock(u64, u64, u64, u64, u64, u64);
+
+// =============================================================================
+// Gamepad (0x160-0x16F)
+// =============================================================================
+
+SyscallResult sys_gamepad_query(u64, u64, u64, u64, u64, u64);
 
 } // namespace syscall

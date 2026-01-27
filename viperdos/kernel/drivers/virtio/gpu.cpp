@@ -118,6 +118,22 @@ bool GpuDevice::init() {
         resp_buf_[i] = 0;
     }
 
+    // Allocate cursor command buffer
+    cursor_cmd_phys_ = pmm::alloc_page();
+    if (cursor_cmd_phys_) {
+        cursor_cmd_buf_ = reinterpret_cast<u8 *>(pmm::phys_to_virt(cursor_cmd_phys_));
+        for (usize i = 0; i < pmm::PAGE_SIZE; i++)
+            cursor_cmd_buf_[i] = 0;
+    }
+
+    // Allocate cursor image buffer (64x64 BGRA = 16KB = 4 pages)
+    cursor_img_phys_ = pmm::alloc_pages(4);
+    if (cursor_img_phys_) {
+        cursor_img_buf_ = reinterpret_cast<u8 *>(pmm::phys_to_virt(cursor_img_phys_));
+        for (usize i = 0; i < 4 * pmm::PAGE_SIZE; i++)
+            cursor_img_buf_[i] = 0;
+    }
+
     // Device is ready
     add_status(status::DRIVER_OK);
 
@@ -382,6 +398,118 @@ bool GpuDevice::unref_resource(u32 resource_id) {
     cmd->padding = 0;
 
     return send_command(sizeof(GpuResourceUnref), sizeof(GpuCtrlHdr));
+}
+
+bool GpuDevice::send_cursor_command(usize cmd_size) {
+    if (!cursor_cmd_buf_ || !cursor_cmd_phys_)
+        return false;
+
+    i32 desc = cursorq_.alloc_desc();
+    if (desc < 0)
+        return false;
+
+    asm volatile("dsb sy" ::: "memory");
+
+    cursorq_.set_desc(desc, cursor_cmd_phys_, cmd_size, 0);
+    cursorq_.submit(desc);
+    cursorq_.kick();
+
+    // Wait for completion
+    for (u32 i = 0; i < 100000; i++) {
+        i32 used = cursorq_.poll_used();
+        if (used == desc) {
+            cursorq_.free_desc(desc);
+            return true;
+        }
+        asm volatile("yield" ::: "memory");
+    }
+
+    cursorq_.free_desc(desc);
+    return false;
+}
+
+bool GpuDevice::setup_cursor(const u32 *pixels, u32 width, u32 height,
+                              u32 hot_x, u32 hot_y) {
+    if (!initialized_ || !cursor_cmd_buf_ || !cursor_img_buf_)
+        return false;
+
+    if (width > MAX_CURSOR_DIM || height > MAX_CURSOR_DIM)
+        return false;
+
+    // Copy pixel data into cursor image buffer (zero-padded to 64x64)
+    u32 *img = reinterpret_cast<u32 *>(cursor_img_buf_);
+    for (u32 y = 0; y < MAX_CURSOR_DIM; y++) {
+        for (u32 x = 0; x < MAX_CURSOR_DIM; x++) {
+            if (x < width && y < height) {
+                img[y * MAX_CURSOR_DIM + x] = pixels[y * width + x];
+            } else {
+                img[y * MAX_CURSOR_DIM + x] = 0; // Transparent
+            }
+        }
+    }
+
+    // Create 2D resource for cursor
+    if (!create_resource_2d(CURSOR_RES_ID, MAX_CURSOR_DIM, MAX_CURSOR_DIM,
+                            gpu_format::B8G8R8A8_UNORM)) {
+        serial::puts("[virtio-gpu] Failed to create cursor resource\n");
+        return false;
+    }
+
+    // Attach backing memory
+    u32 img_size = MAX_CURSOR_DIM * MAX_CURSOR_DIM * 4;
+    if (!attach_backing(CURSOR_RES_ID, cursor_img_phys_, img_size)) {
+        serial::puts("[virtio-gpu] Failed to attach cursor backing\n");
+        return false;
+    }
+
+    // Transfer to host
+    if (!transfer_to_host_2d(CURSOR_RES_ID, 0, 0, MAX_CURSOR_DIM, MAX_CURSOR_DIM)) {
+        serial::puts("[virtio-gpu] Failed to transfer cursor image\n");
+        return false;
+    }
+
+    // Send UPDATE_CURSOR via cursor queue
+    GpuUpdateCursor *cmd = reinterpret_cast<GpuUpdateCursor *>(cursor_cmd_buf_);
+    cmd->hdr.type = gpu_cmd::UPDATE_CURSOR;
+    cmd->hdr.flags = 0;
+    cmd->hdr.fence_id = 0;
+    cmd->hdr.ctx_id = 0;
+    cmd->hdr.padding = 0;
+    cmd->pos.scanout_id = 0;
+    cmd->pos.x = 0;
+    cmd->pos.y = 0;
+    cmd->pos.padding = 0;
+    cmd->resource_id = CURSOR_RES_ID;
+    cmd->hot_x = hot_x;
+    cmd->hot_y = hot_y;
+    cmd->padding = 0;
+
+    if (!send_cursor_command(sizeof(GpuUpdateCursor))) {
+        serial::puts("[virtio-gpu] Failed to send UPDATE_CURSOR\n");
+        return false;
+    }
+
+    cursor_active_ = true;
+    serial::puts("[virtio-gpu] Hardware cursor enabled\n");
+    return true;
+}
+
+bool GpuDevice::move_cursor(u32 x, u32 y) {
+    if (!initialized_ || !cursor_active_ || !cursor_cmd_buf_)
+        return false;
+
+    GpuUpdateCursor *cmd = reinterpret_cast<GpuUpdateCursor *>(cursor_cmd_buf_);
+    cmd->hdr.type = gpu_cmd::MOVE_CURSOR;
+    cmd->hdr.flags = 0;
+    cmd->hdr.fence_id = 0;
+    cmd->hdr.ctx_id = 0;
+    cmd->hdr.padding = 0;
+    cmd->pos.scanout_id = 0;
+    cmd->pos.x = x;
+    cmd->pos.y = y;
+    cmd->pos.padding = 0;
+
+    return send_cursor_command(sizeof(GpuUpdateCursor));
 }
 
 void gpu_init() {

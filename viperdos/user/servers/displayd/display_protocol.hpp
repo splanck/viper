@@ -52,6 +52,12 @@ enum MsgType : uint32_t {
     DISP_EVENT_RESIZE = 0x94, // Window resized
     DISP_EVENT_SCROLL = 0x95, // Scrollbar position changed
     DISP_EVENT_MENU = 0x96,   // Menu item selected (Amiga/Mac style global menu)
+
+    // Clipboard (via kernel syscalls SYS_CLIPBOARD_SET/GET/HAS)
+    DISP_EVENT_CLIPBOARD = 0x97, // Clipboard content changed notification
+
+    // Drag and drop (stub - reserved for future use)
+    DISP_EVENT_DROP = 0x98, // Data dropped onto surface
 };
 
 // Request: Get display info
@@ -207,6 +213,24 @@ struct MenuEvent {
     uint8_t _pad;
 };
 
+// Event: Clipboard content changed
+struct ClipboardEvent {
+    uint32_t type; // DISP_EVENT_CLIPBOARD
+    uint32_t surface_id;
+    uint32_t data_length; // Length of clipboard data (use SYS_CLIPBOARD_GET to retrieve)
+};
+
+// Event: Data dropped onto surface (stub - reserved for future use)
+struct DropEvent {
+    uint32_t type; // DISP_EVENT_DROP
+    uint32_t surface_id;
+    int32_t x; // Drop position relative to surface
+    int32_t y;
+    uint32_t data_length; // Length of dropped data
+    uint8_t data_type;    // 0=text, 1=file_path
+    uint8_t _pad[3];
+};
+
 // Request: Configure scrollbar
 struct SetScrollbarRequest {
     uint32_t type; // DISP_SET_SCROLLBAR
@@ -258,6 +282,8 @@ struct PollEventReply {
         ResizeEvent resize;
         ScrollEvent scroll;
         MenuEvent menu;
+        ClipboardEvent clipboard;
+        DropEvent drop;
     };
 };
 

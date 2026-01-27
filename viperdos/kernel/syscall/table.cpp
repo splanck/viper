@@ -294,6 +294,8 @@ static const SyscallEntry syscall_table[] = {
     {SYS_PING, sys_ping, "ping", 2},
     {SYS_DEVICE_LIST, sys_device_list, "device_list", 2},
     {SYS_GETRANDOM, sys_getrandom, "getrandom", 2},
+    {SYS_UNAME, sys_uname, "uname", 1},
+    {SYS_CPU_COUNT, sys_cpu_count, "cpu_count", 0},
 
     // Debug/Console (0xF0-0xFF)
     {SYS_DEBUG_PRINT, sys_debug_print, "debug_print", 1},
@@ -323,6 +325,9 @@ static const SyscallEntry syscall_table[] = {
     {SYS_INPUT_HAS_EVENT, sys_input_has_event, "input_has_event", 0},
     {SYS_INPUT_GET_EVENT, sys_input_get_event, "input_get_event", 1},
     {SYS_GCON_SET_GUI_MODE, sys_gcon_set_gui_mode, "gcon_set_gui_mode", 1},
+    {SYS_SET_CURSOR_IMAGE, sys_set_cursor_image, "set_cursor_image", 3},
+    {SYS_MOVE_CURSOR, sys_move_cursor, "move_cursor", 2},
+    {SYS_DISPLAY_COUNT, sys_display_count, "display_count", 0},
 
     // TTY (0x120-0x12F)
     {SYS_TTY_READ, sys_tty_read, "tty_read", 2},
@@ -330,6 +335,33 @@ static const SyscallEntry syscall_table[] = {
     {SYS_TTY_PUSH_INPUT, sys_tty_push_input, "tty_push_input", 1},
     {SYS_TTY_HAS_INPUT, sys_tty_has_input, "tty_has_input", 0},
     {SYS_TTY_GET_SIZE, sys_tty_get_size, "tty_get_size", 0},
+
+    // Audio (0x130-0x13F)
+    {SYS_AUDIO_CONFIGURE, sys_audio_configure, "audio_configure", 3},
+    {SYS_AUDIO_PREPARE, sys_audio_prepare, "audio_prepare", 1},
+    {SYS_AUDIO_START, sys_audio_start, "audio_start", 1},
+    {SYS_AUDIO_STOP, sys_audio_stop, "audio_stop", 1},
+    {SYS_AUDIO_RELEASE, sys_audio_release, "audio_release", 1},
+    {SYS_AUDIO_WRITE, sys_audio_write, "audio_write", 3},
+    {SYS_AUDIO_SET_VOLUME, sys_audio_set_volume, "audio_set_volume", 1},
+    {SYS_AUDIO_GET_INFO, sys_audio_get_info, "audio_get_info", 1},
+
+    // Clipboard (0x140-0x14F)
+    {SYS_CLIPBOARD_SET, sys_clipboard_set, "clipboard_set", 2},
+    {SYS_CLIPBOARD_GET, sys_clipboard_get, "clipboard_get", 2},
+    {SYS_CLIPBOARD_HAS, sys_clipboard_has, "clipboard_has", 0},
+
+    // Memory Mapping (0x150-0x15F)
+    {SYS_MMAP, sys_mmap, "mmap", 6},
+    {SYS_MUNMAP, sys_munmap, "munmap", 2},
+    {SYS_MPROTECT, sys_mprotect, "mprotect", 3},
+    {SYS_MSYNC, sys_msync, "msync", 3},
+    {SYS_MADVISE, sys_madvise, "madvise", 3},
+    {SYS_MLOCK, sys_mlock, "mlock", 2},
+    {SYS_MUNLOCK, sys_munlock, "munlock", 2},
+
+    // Gamepad (0x160-0x16F)
+    {SYS_GAMEPAD_QUERY, sys_gamepad_query, "gamepad_query", 0},
 };
 
 static constexpr usize SYSCALL_TABLE_SIZE = sizeof(syscall_table) / sizeof(syscall_table[0]);

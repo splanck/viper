@@ -118,6 +118,9 @@ struct Viper {
     u64 heap_break; /**< Current program break (end of the heap). */
     u64 heap_max;   /**< Maximum heap address (heap_start + 64MB by default). */
 
+    // mmap region tracking
+    u64 mmap_next; /**< Next available virtual address for mmap allocations. */
+
     // Virtual memory areas for demand paging
     mm::VmaList vma_list; /**< VMA tracking for this process's address space. */
 
@@ -156,6 +159,9 @@ constexpr u64 USER_DATA_BASE = 0x0000'0000'C000'0000ULL; // 3GB
 
 // Heap starts at 4GB
 constexpr u64 USER_HEAP_BASE = 0x0000'0001'0000'0000ULL; // 4GB
+
+// mmap region starts at 8GB (grows upward)
+constexpr u64 USER_MMAP_BASE = 0x0000'0002'0000'0000ULL; // 8GB
 
 // Stack at top of user space (grows down)
 constexpr u64 USER_STACK_TOP = 0x0000'7FFF'FFFF'0000ULL; // ~128TB

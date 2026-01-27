@@ -111,6 +111,7 @@ constexpr u32 CONSOLE = 3;
 constexpr u32 RNG = 4;
 constexpr u32 GPU = 16;
 constexpr u32 INPUT = 18;
+constexpr u32 SOUND = 25;
 } // namespace device_type
 
 // Magic value "virt"

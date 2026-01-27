@@ -13,6 +13,7 @@
 #include "../../cap/handle.hpp"
 #include "../../console/gcon.hpp"
 #include "../../drivers/ramfb.hpp"
+#include "../../drivers/virtio/gpu.hpp"
 #include "../../input/input.hpp"
 #include "../../mm/pmm.hpp"
 #include "../../viper/address_space.hpp"
@@ -128,6 +129,47 @@ SyscallResult sys_input_get_event(u64 a0, u64, u64, u64, u64, u64) {
 SyscallResult sys_gcon_set_gui_mode(u64 a0, u64, u64, u64, u64, u64) {
     gcon::set_gui_mode(a0 != 0);
     return SyscallResult::ok();
+}
+
+SyscallResult sys_set_cursor_image(u64 a0, u64 a1, u64 a2, u64, u64, u64) {
+    const u32 *pixels = reinterpret_cast<const u32 *>(a0);
+    u32 width = static_cast<u32>(a1 >> 16);
+    u32 height = static_cast<u32>(a1 & 0xFFFF);
+    u32 hot_x = static_cast<u32>(a2 >> 16);
+    u32 hot_y = static_cast<u32>(a2 & 0xFFFF);
+
+    if (!pixels || width == 0 || height == 0 || width > 64 || height > 64)
+        return err_invalid_arg();
+
+    VALIDATE_USER_READ(pixels, width * height * 4);
+
+    virtio::GpuDevice *gpu = virtio::gpu_device();
+    if (!gpu)
+        return err_not_found();
+
+    if (!gpu->setup_cursor(pixels, width, height, hot_x, hot_y))
+        return err_io();
+
+    return SyscallResult::ok();
+}
+
+SyscallResult sys_move_cursor(u64 a0, u64 a1, u64, u64, u64, u64) {
+    u32 x = static_cast<u32>(a0);
+    u32 y = static_cast<u32>(a1);
+
+    virtio::GpuDevice *gpu = virtio::gpu_device();
+    if (!gpu || !gpu->has_cursor())
+        return err_not_found();
+
+    if (!gpu->move_cursor(x, y))
+        return err_io();
+
+    return SyscallResult::ok();
+}
+
+SyscallResult sys_display_count(u64, u64, u64, u64, u64, u64) {
+    // Single display only (VirtIO-GPU supports one scanout)
+    return SyscallResult::ok(1);
 }
 
 } // namespace syscall

@@ -143,6 +143,35 @@ SyscallResult sys_device_list(u64 a0, u64 a1, u64, u64, u64, u64) {
     return SyscallResult::ok(count);
 }
 
+SyscallResult sys_uname(u64 a0, u64, u64, u64, u64, u64) {
+    // utsname struct layout: 5 or 6 fields of 65 chars each
+    // Match the libc struct utsname layout exactly
+    constexpr usize FIELD_LEN = 65;
+    constexpr usize NUM_FIELDS = 5; // sysname, nodename, release, version, machine
+    char *buf = reinterpret_cast<char *>(a0);
+
+    if (!validate_user_write(buf, FIELD_LEN * NUM_FIELDS)) {
+        return err_invalid_arg();
+    }
+
+    auto copy_field = [](char *dst, const char *src) {
+        usize i = 0;
+        while (i < 64 && src[i]) {
+            dst[i] = src[i];
+            i++;
+        }
+        dst[i] = '\0';
+    };
+
+    copy_field(buf + FIELD_LEN * 0, "ViperDOS");
+    copy_field(buf + FIELD_LEN * 1, "viper");
+    copy_field(buf + FIELD_LEN * 2, "0.2.0");
+    copy_field(buf + FIELD_LEN * 3, "ViperDOS 0.2.0 (aarch64)");
+    copy_field(buf + FIELD_LEN * 4, "aarch64");
+
+    return SyscallResult::ok();
+}
+
 SyscallResult sys_getrandom(u64 a0, u64 a1, u64, u64, u64, u64) {
     u8 *buf = reinterpret_cast<u8 *>(a0);
     usize len = static_cast<usize>(a1);
@@ -161,6 +190,17 @@ SyscallResult sys_getrandom(u64 a0, u64 a1, u64, u64, u64, u64) {
 
     usize got = virtio::rng::get_bytes(buf, len);
     return SyscallResult::ok(static_cast<u64>(got));
+}
+
+SyscallResult sys_cpu_count(u64, u64, u64, u64, u64, u64) {
+    // Single-core system
+    return SyscallResult::ok(1);
+}
+
+SyscallResult sys_gamepad_query(u64, u64, u64, u64, u64, u64) {
+    // No gamepad/joystick hardware available (no VirtIO gamepad device)
+    // Returns: count=0 (no gamepads connected)
+    return SyscallResult::ok(0);
 }
 
 } // namespace syscall

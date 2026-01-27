@@ -462,7 +462,10 @@ int fcntl(int fd, int cmd, ...) {
         case F_GETLK:
         case F_SETLK:
         case F_SETLKW:
-            return -1; /* Locking not implemented */
+            /* Advisory locks succeed trivially in single-process environment.
+             * F_GETLK: no conflicting locks (single-process), return success.
+             * F_SETLK/F_SETLKW: lock always acquired, return success. */
+            return 0;
 
         case F_GETOWN:
             return 0;
@@ -473,6 +476,24 @@ int fcntl(int fd, int cmd, ...) {
         default:
             return -1;
     }
+}
+
+/**
+ * @brief Apply or remove an advisory lock on an open file.
+ *
+ * @details
+ * In ViperDOS's single-process environment, advisory locks always succeed
+ * since there are no competing processes. LOCK_NB has no effect.
+ *
+ * @param fd File descriptor.
+ * @param operation LOCK_SH, LOCK_EX, LOCK_UN, optionally ORed with LOCK_NB.
+ * @return 0 on success, -1 on error.
+ */
+int flock(int fd, int operation) {
+    (void)fd;
+    (void)operation;
+    /* Advisory locks succeed trivially in single-process environment */
+    return 0;
 }
 
 /**

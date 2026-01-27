@@ -80,6 +80,7 @@ void init() {
         vipers[i].heap_start = layout::USER_HEAP_BASE;
         vipers[i].heap_break = layout::USER_HEAP_BASE;
         vipers[i].heap_max = layout::USER_HEAP_BASE + (64 * 1024 * 1024); // 64MB heap limit
+        vipers[i].mmap_next = layout::USER_MMAP_BASE;
         vipers[i].memory_used = 0;
         vipers[i].memory_limit = DEFAULT_MEMORY_LIMIT;
         vipers[i].handle_limit = DEFAULT_HANDLE_LIMIT;
@@ -148,6 +149,7 @@ static void init_memory_regions(Viper *v) {
     v->heap_start = layout::USER_HEAP_BASE;
     v->heap_break = layout::USER_HEAP_BASE;
     v->heap_max = layout::USER_HEAP_BASE + (64 * 1024 * 1024);
+    v->mmap_next = layout::USER_MMAP_BASE;
 
     v->vma_list.init();
     v->vma_list.add(layout::USER_HEAP_BASE,
@@ -160,6 +162,14 @@ static void init_memory_regions(Viper *v) {
                     layout::USER_STACK_TOP,
                     mm::vma_prot::READ | mm::vma_prot::WRITE,
                     mm::VmaType::STACK);
+
+    // Guard page below stack for overflow detection (triggers SIGSEGV)
+    constexpr u64 GUARD_SIZE = 4096;
+    u64 guard_bottom = stack_bottom - GUARD_SIZE;
+    v->vma_list.add(guard_bottom,
+                    stack_bottom,
+                    0, // No access
+                    mm::VmaType::GUARD);
 }
 
 /**
@@ -613,10 +623,11 @@ Viper *fork() {
         return nullptr;
     }
 
-    // Copy heap state
+    // Copy heap and mmap state
     child->heap_start = parent->heap_start;
     child->heap_break = parent->heap_break;
     child->heap_max = parent->heap_max;
+    child->mmap_next = parent->mmap_next;
 
     // Copy capability bounding set and resource limits (already inherited via create(), but be
     // explicit)

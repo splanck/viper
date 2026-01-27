@@ -342,6 +342,10 @@
 #define SYS_DEVICE_LIST 0xE3
 /** @brief Fill buffer with cryptographic random bytes (args: buf, len). */
 #define SYS_GETRANDOM 0xE4
+/** @brief Fill a utsname structure with OS/machine identification. */
+#define SYS_UNAME 0xE8
+/** @brief Query the number of logical CPUs (returns 1 on single-core). */
+#define SYS_CPU_COUNT 0xE6
 /** @} */
 
 /** @name Debug / Console Syscalls (0xF0 - 0xFF)
@@ -412,6 +416,12 @@
 #define SYS_INPUT_GET_EVENT 0x114
 /** @brief Enable/disable GUI mode (when enabled, gcon writes to serial only). */
 #define SYS_GCON_SET_GUI_MODE 0x115
+/** @brief Set hardware cursor image (pixels, w|h, hot_x|hot_y). */
+#define SYS_SET_CURSOR_IMAGE 0x116
+/** @brief Move hardware cursor position (x, y). */
+#define SYS_MOVE_CURSOR 0x117
+/** @brief Query number of connected displays (returns count). */
+#define SYS_DISPLAY_COUNT 0x118
 /** @} */
 
 /** @name TTY Syscalls (0x120 - 0x12F)
@@ -431,4 +441,72 @@
 #define SYS_TTY_HAS_INPUT 0x123
 /** @brief Get terminal size in character cells (returns cols, rows). */
 #define SYS_TTY_GET_SIZE 0x124
+/** @} */
+
+/** @name Audio Syscalls (0x130 - 0x13F)
+ *  @details
+ *  PCM audio playback via the VirtIO-Sound driver. Streams are configured,
+ *  prepared, started, written to, and stopped/released.
+ *  @{
+ */
+/** @brief Configure a PCM stream (sample_rate, channels, bits). */
+#define SYS_AUDIO_CONFIGURE 0x130
+/** @brief Prepare a stream for playback. */
+#define SYS_AUDIO_PREPARE 0x131
+/** @brief Start playback on a stream. */
+#define SYS_AUDIO_START 0x132
+/** @brief Stop playback on a stream. */
+#define SYS_AUDIO_STOP 0x133
+/** @brief Release a stream. */
+#define SYS_AUDIO_RELEASE 0x134
+/** @brief Write PCM data to a stream (buf, len). */
+#define SYS_AUDIO_WRITE 0x135
+/** @brief Set software volume (0-255). */
+#define SYS_AUDIO_SET_VOLUME 0x136
+/** @brief Query audio device info (availability, stream count). */
+#define SYS_AUDIO_GET_INFO 0x137
+/** @} */
+
+/** @name Clipboard Syscalls (0x140 - 0x14F)
+ *  @details
+ *  Kernel-managed clipboard for copy/paste between processes.
+ *  @{
+ */
+/** @brief Copy data to the clipboard (buf, len, format). */
+#define SYS_CLIPBOARD_SET 0x140
+/** @brief Paste data from the clipboard (buf, max_len; returns actual length). */
+#define SYS_CLIPBOARD_GET 0x141
+/** @brief Check if clipboard has data (returns 1 if data, 0 if empty). */
+#define SYS_CLIPBOARD_HAS 0x142
+/** @} */
+
+/** @name Memory Mapping Syscalls (0x150 - 0x15F)
+ *  @details
+ *  Virtual memory mapping primitives for user-space.
+ *  @{
+ */
+/** @brief Map memory (addr, len, prot, flags, fd, offset). */
+#define SYS_MMAP 0x150
+/** @brief Unmap memory (addr, len). */
+#define SYS_MUNMAP 0x151
+/** @brief Change memory protection (addr, len, prot). */
+#define SYS_MPROTECT 0x152
+/** @brief Sync mapped memory (addr, len, flags). */
+#define SYS_MSYNC 0x153
+/** @brief Advise kernel about memory usage (addr, len, advice). */
+#define SYS_MADVISE 0x154
+/** @brief Lock pages in memory (addr, len). */
+#define SYS_MLOCK 0x155
+/** @brief Unlock pages in memory (addr, len). */
+#define SYS_MUNLOCK 0x156
+/** @} */
+
+/** @name Gamepad/Joystick Syscalls (0x160 - 0x16F)
+ *  @details
+ *  Gamepad/joystick input query. Currently returns "not available" as no
+ *  VirtIO gamepad device is supported.
+ *  @{
+ */
+/** @brief Query gamepad info (returns available count, 0 if none). */
+#define SYS_GAMEPAD_QUERY 0x160
 /** @} */
