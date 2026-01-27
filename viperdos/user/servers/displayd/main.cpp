@@ -219,6 +219,10 @@ static constexpr uint32_t TITLE_BAR_HEIGHT = 24;
 static constexpr uint32_t BORDER_WIDTH = 2;
 static constexpr uint32_t CLOSE_BUTTON_SIZE = 16;
 
+// Minimum Y position for window client area (title bar must be below menu bar)
+static constexpr int32_t MIN_WINDOW_Y =
+    static_cast<int32_t>(MENU_BAR_HEIGHT + TITLE_BAR_HEIGHT + BORDER_WIDTH);
+
 // Scrollbar constants
 static constexpr uint32_t SCROLLBAR_WIDTH = 16;
 static constexpr uint32_t SCROLLBAR_MIN_THUMB = 20;
@@ -1326,7 +1330,13 @@ static void handle_request(int32_t client_channel,
             for (uint32_t i = 0; i < MAX_SURFACES; i++) {
                 if (g_surfaces[i].in_use && g_surfaces[i].id == req->surface_id) {
                     g_surfaces[i].x = req->x;
-                    g_surfaces[i].y = req->y;
+                    int32_t new_y = req->y;
+                    // Clamp Y so title bar stays below menu bar (for decorated windows)
+                    if (!(g_surfaces[i].flags & SURFACE_FLAG_NO_DECORATIONS) &&
+                        new_y < MIN_WINDOW_Y) {
+                        new_y = MIN_WINDOW_Y;
+                    }
+                    g_surfaces[i].y = new_y;
                     reply.status = 0;
                     break;
                 }
@@ -1954,8 +1964,13 @@ static void poll_mouse() {
             Surface *drag_surf = find_surface_by_id(g_drag_surface_id);
             if (drag_surf) {
                 drag_surf->x = g_cursor_x - g_drag_offset_x;
-                drag_surf->y =
+                int32_t new_y =
                     g_cursor_y - g_drag_offset_y + static_cast<int32_t>(TITLE_BAR_HEIGHT);
+                // Clamp Y so title bar stays below menu bar
+                if (new_y < MIN_WINDOW_Y) {
+                    new_y = MIN_WINDOW_Y;
+                }
+                drag_surf->y = new_y;
             }
             composite();
         }
