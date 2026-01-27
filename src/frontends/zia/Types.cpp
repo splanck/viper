@@ -576,10 +576,20 @@ il::core::Type::Kind toILType(const ViperType &type)
         case TypeKindSem::Value:
             return il::core::Type::Kind::Ptr;
 
-        // Optional values need special handling
-        // (in-memory representation: flag + value)
+        // Optional reference types (String?, Entity?) use the inner type directly
+        // at the IL level since they are already nullable pointers (null = none).
+        // Optional value types (Integer?) need a flag+value wrapper → Ptr.
         case TypeKindSem::Optional:
+        {
+            if (!type.typeArgs.empty())
+            {
+                auto innerKind = toILType(*type.typeArgs[0]);
+                if (innerKind == il::core::Type::Kind::Str ||
+                    innerKind == il::core::Type::Kind::Ptr)
+                    return innerKind;
+            }
             return il::core::Type::Kind::Ptr;
+        }
 
         // Result needs special handling
         // (in-memory representation: tag + payload)

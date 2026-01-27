@@ -42,6 +42,9 @@ il::core::Type::Kind parseKindToken(std::string_view token)
 {
     using Kind = il::core::Type::Kind;
     token = trim(token);
+    // Optional types (trailing '?') map to Ptr at the IL level (nullable pointer)
+    if (!token.empty() && token.back() == '?')
+        return Kind::Ptr;
     if (token == "void")
         return Kind::Void;
     if (token == "i1" || token == "bool")

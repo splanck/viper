@@ -1,0 +1,1311 @@
+module lisp;
+
+// ============================================================
+// Lisp Interpreter in Zia — stress test of the Viper platform
+// ============================================================
+
+// === Type tags ===
+final T_NIL = 0;
+final T_INT = 1;
+final T_SYM = 2;
+final T_STR = 3;
+final T_CONS = 4;
+final T_FUNC = 5;
+final T_BUILTIN = 6;
+final T_BOOL = 7;
+
+// === Token types ===
+final TOK_LPAREN = 0;
+final TOK_RPAREN = 1;
+final TOK_SYMBOL = 2;
+final TOK_NUMBER = 3;
+final TOK_STRING = 4;
+final TOK_QUOTE = 5;
+final TOK_EOF = 6;
+
+// === Entities ===
+
+entity LispVal {
+    expose Integer tag;
+    expose Integer intVal;
+    expose String strVal;
+    expose LispVal? car;
+    expose LispVal? cdr;
+    expose LispVal? params;
+    expose LispVal? body;
+    expose Env? closureEnv;
+
+    expose func init(t: Integer) {
+        tag = t;
+        intVal = 0;
+        strVal = "";
+        car = null;
+        cdr = null;
+        params = null;
+        body = null;
+        closureEnv = null;
+    }
+}
+
+entity Env {
+    expose Map[String, LispVal] bindings;
+    expose Env? parent;
+
+    expose func init() {
+        bindings = {};
+        parent = null;
+    }
+}
+
+entity Token {
+    expose Integer type;
+    expose String value;
+
+    expose func init(t: Integer, v: String) {
+        type = t;
+        value = v;
+    }
+}
+
+// === Error handling ===
+var hasError: Boolean = false;
+var errorMsg: String = "";
+
+func setError(msg: String) {
+    if !hasError {
+        hasError = true;
+        errorMsg = msg;
+    }
+}
+
+func clearError() {
+    hasError = false;
+    errorMsg = "";
+}
+
+// === LispVal constructors ===
+
+func mkNil() -> LispVal {
+    return new LispVal(T_NIL);
+}
+
+func mkInt(n: Integer) -> LispVal {
+    var v = new LispVal(T_INT);
+    v.intVal = n;
+    return v;
+}
+
+func mkSym(s: String) -> LispVal {
+    var v = new LispVal(T_SYM);
+    v.strVal = s;
+    return v;
+}
+
+func mkStr(s: String) -> LispVal {
+    var v = new LispVal(T_STR);
+    v.strVal = s;
+    return v;
+}
+
+func mkBool(b: Boolean) -> LispVal {
+    var v = new LispVal(T_BOOL);
+    if b {
+        v.intVal = 1;
+    } else {
+        v.intVal = 0;
+    }
+    return v;
+}
+
+func mkCons(a: LispVal, d: LispVal) -> LispVal {
+    var v = new LispVal(T_CONS);
+    v.car = a;
+    v.cdr = d;
+    return v;
+}
+
+func mkLambda(p: LispVal, b: LispVal, e: Env) -> LispVal {
+    var v = new LispVal(T_FUNC);
+    v.params = p;
+    v.body = b;
+    v.closureEnv = e;
+    return v;
+}
+
+func mkBuiltin(name: String) -> LispVal {
+    var v = new LispVal(T_BUILTIN);
+    v.strVal = name;
+    return v;
+}
+
+// === LispVal accessors ===
+
+func getCar(v: LispVal) -> LispVal {
+    return v.car ?? mkNil();
+}
+
+func getCdr(v: LispVal) -> LispVal {
+    return v.cdr ?? mkNil();
+}
+
+func getParams(v: LispVal) -> LispVal {
+    return v.params ?? mkNil();
+}
+
+func getBody(v: LispVal) -> LispVal {
+    return v.body ?? mkNil();
+}
+
+// === Environment ===
+
+func makeChildEnv(p: Env) -> Env {
+    var e = new Env();
+    e.parent = p;
+    return e;
+}
+
+func envLookup(e: Env, name: String) -> LispVal {
+    if e.bindings.has(name) {
+        return e.bindings.get(name);
+    }
+    if e.parent != null {
+        var p: Env = e.parent ?? new Env();
+        return envLookup(p, name);
+    }
+    setError("Undefined variable: " + name);
+    return mkNil();
+}
+
+func envSet(e: Env, name: String, val: LispVal) {
+    e.bindings.set(name, val);
+}
+
+func envSetBang(e: Env, name: String, val: LispVal) -> Boolean {
+    if e.bindings.has(name) {
+        e.bindings.set(name, val);
+        return true;
+    }
+    if e.parent != null {
+        var p: Env = e.parent ?? new Env();
+        return envSetBang(p, name, val);
+    }
+    return false;
+}
+
+// === String helpers ===
+
+func strLen(s: String) -> Integer {
+    return Viper.String.Length(s);
+}
+
+func strCharAt(s: String, i: Integer) -> String {
+    return Viper.String.Left(Viper.String.Mid(s, i + 1), 1);
+}
+
+func strCharCode(s: String, i: Integer) -> Integer {
+    return Viper.String.Asc(Viper.String.Mid(s, i + 1));
+}
+
+func isDigit(code: Integer) -> Boolean {
+    return code >= 48 && code <= 57;
+}
+
+func isWhitespace(ch: String) -> Boolean {
+    return ch == " " || ch == "\t" || ch == "\n" || ch == "\r";
+}
+
+func isDelimiter(ch: String) -> Boolean {
+    return ch == " " || ch == "\t" || ch == "\n" || ch == "\r" ||
+           ch == "(" || ch == ")" || ch == "\"" || ch == ";" || ch == "";
+}
+
+// === Tokenizer ===
+
+func tokenize(source: String) -> List[Token] {
+    var tokens: List[Token] = [];
+    var pos: Integer = 0;
+    var len: Integer = strLen(source);
+
+    while pos < len {
+        var ch = strCharAt(source, pos);
+
+        // Skip whitespace
+        if isWhitespace(ch) {
+            pos = pos + 1;
+            while pos < len && isWhitespace(strCharAt(source, pos)) {
+                pos = pos + 1;
+            }
+        } else if ch == ";" {
+            // Skip comment to end of line
+            while pos < len && strCharAt(source, pos) != "\n" {
+                pos = pos + 1;
+            }
+        } else if ch == "(" {
+            tokens.add(new Token(TOK_LPAREN, "("));
+            pos = pos + 1;
+        } else if ch == ")" {
+            tokens.add(new Token(TOK_RPAREN, ")"));
+            pos = pos + 1;
+        } else if ch == "'" {
+            tokens.add(new Token(TOK_QUOTE, "'"));
+            pos = pos + 1;
+        } else if ch == "\"" {
+            // String literal
+            pos = pos + 1;
+            var str: String = "";
+            while pos < len && strCharAt(source, pos) != "\"" {
+                if strCharAt(source, pos) == "\\" && pos + 1 < len {
+                    pos = pos + 1;
+                    var esc = strCharAt(source, pos);
+                    if esc == "n" {
+                        str = str + "\n";
+                    } else if esc == "t" {
+                        str = str + "\t";
+                    } else if esc == "\\" {
+                        str = str + "\\";
+                    } else if esc == "\"" {
+                        str = str + "\"";
+                    } else {
+                        str = str + esc;
+                    }
+                } else {
+                    str = str + strCharAt(source, pos);
+                }
+                pos = pos + 1;
+            }
+            if pos < len {
+                pos = pos + 1;
+            }
+            tokens.add(new Token(TOK_STRING, str));
+        } else {
+            // Number or symbol
+            var code = strCharCode(source, pos);
+            var isNum = isDigit(code);
+            // Check for negative number: - followed by digit
+            if ch == "-" && pos + 1 < len && isDigit(strCharCode(source, pos + 1)) {
+                isNum = true;
+            }
+
+            if isNum {
+                var num: String = "";
+                if ch == "-" {
+                    num = "-";
+                    pos = pos + 1;
+                }
+                while pos < len && isDigit(strCharCode(source, pos)) {
+                    num = num + strCharAt(source, pos);
+                    pos = pos + 1;
+                }
+                tokens.add(new Token(TOK_NUMBER, num));
+            } else {
+                // Symbol
+                var sym: String = "";
+                while pos < len && !isDelimiter(strCharAt(source, pos)) {
+                    sym = sym + strCharAt(source, pos);
+                    pos = pos + 1;
+                }
+                if sym != "" {
+                    tokens.add(new Token(TOK_SYMBOL, sym));
+                }
+            }
+        }
+    }
+
+    tokens.add(new Token(TOK_EOF, ""));
+    return tokens;
+}
+
+// === Parser ===
+
+var pTokens: List[Token] = [];
+var pPos: Integer = 0;
+
+func peekToken() -> Token {
+    return pTokens.get(pPos);
+}
+
+func nextToken() -> Token {
+    var tok = pTokens.get(pPos);
+    pPos = pPos + 1;
+    return tok;
+}
+
+func parse(source: String) -> List[LispVal] {
+    pTokens = tokenize(source);
+    pPos = 0;
+    var exprs: List[LispVal] = [];
+
+    while peekToken().type != TOK_EOF {
+        var expr = parseExpr();
+        if hasError {
+            return exprs;
+        }
+        exprs.add(expr);
+    }
+    return exprs;
+}
+
+func parseExpr() -> LispVal {
+    var tok = nextToken();
+
+    if tok.type == TOK_NUMBER {
+        return mkInt(Viper.Parse.IntOr(tok.value, 0));
+    }
+
+    if tok.type == TOK_STRING {
+        return mkStr(tok.value);
+    }
+
+    if tok.type == TOK_SYMBOL {
+        if tok.value == "#t" {
+            return mkBool(true);
+        }
+        if tok.value == "#f" {
+            return mkBool(false);
+        }
+        return mkSym(tok.value);
+    }
+
+    if tok.type == TOK_QUOTE {
+        var expr = parseExpr();
+        return mkCons(mkSym("quote"), mkCons(expr, mkNil()));
+    }
+
+    if tok.type == TOK_LPAREN {
+        return parseList();
+    }
+
+    setError("Unexpected token: " + tok.value);
+    return mkNil();
+}
+
+func parseList() -> LispVal {
+    var tok = peekToken();
+
+    if tok.type == TOK_RPAREN {
+        nextToken();
+        return mkNil();
+    }
+
+    if tok.type == TOK_EOF {
+        setError("Unexpected end of input in list");
+        return mkNil();
+    }
+
+    var head = parseExpr();
+    if hasError {
+        return mkNil();
+    }
+    var tail = parseList();
+    return mkCons(head, tail);
+}
+
+// === Printer ===
+
+func lispPrint(v: LispVal) -> String {
+    if v.tag == T_NIL {
+        return "()";
+    }
+    if v.tag == T_INT {
+        return toString(v.intVal);
+    }
+    if v.tag == T_SYM {
+        return v.strVal;
+    }
+    if v.tag == T_STR {
+        return "\"" + v.strVal + "\"";
+    }
+    if v.tag == T_BOOL {
+        if v.intVal == 1 {
+            return "#t";
+        }
+        return "#f";
+    }
+    if v.tag == T_FUNC {
+        return "#<lambda>";
+    }
+    if v.tag == T_BUILTIN {
+        return "#<builtin:" + v.strVal + ">";
+    }
+    if v.tag == T_CONS {
+        return "(" + printList(v) + ")";
+    }
+    return "#<unknown>";
+}
+
+func printList(v: LispVal) -> String {
+    var carStr = lispPrint(getCar(v));
+    var tail = getCdr(v);
+    if tail.tag == T_NIL {
+        return carStr;
+    }
+    if tail.tag == T_CONS {
+        return carStr + " " + printList(tail);
+    }
+    return carStr + " . " + lispPrint(tail);
+}
+
+// === Evaluator ===
+
+func isTruthy(v: LispVal) -> Boolean {
+    if v.tag == T_BOOL && v.intVal == 0 {
+        return false;
+    }
+    if v.tag == T_NIL {
+        return false;
+    }
+    return true;
+}
+
+func eval(expr: LispVal, env: Env) -> LispVal {
+    if hasError {
+        return mkNil();
+    }
+
+    // Self-evaluating
+    if expr.tag == T_INT || expr.tag == T_STR || expr.tag == T_BOOL || expr.tag == T_NIL {
+        return expr;
+    }
+
+    // Symbol lookup
+    if expr.tag == T_SYM {
+        return envLookup(env, expr.strVal);
+    }
+
+    // List (special forms or function call)
+    if expr.tag == T_CONS {
+        var head = getCar(expr);
+
+        // Check for special forms
+        if head.tag == T_SYM {
+            var form = head.strVal;
+
+            if form == "quote" {
+                return getCar(getCdr(expr));
+            }
+
+            if form == "if" {
+                return evalIf(expr, env);
+            }
+
+            if form == "define" {
+                return evalDefine(expr, env);
+            }
+
+            if form == "set!" {
+                return evalSetBang(expr, env);
+            }
+
+            if form == "lambda" {
+                return evalLambda(expr, env);
+            }
+
+            if form == "begin" {
+                return evalBegin(getCdr(expr), env);
+            }
+
+            if form == "let" {
+                return evalLet(expr, env);
+            }
+
+            if form == "let*" {
+                return evalLetStar(expr, env);
+            }
+
+            if form == "cond" {
+                return evalCond(getCdr(expr), env);
+            }
+
+            if form == "and" {
+                return evalAnd(getCdr(expr), env);
+            }
+
+            if form == "or" {
+                return evalOr(getCdr(expr), env);
+            }
+        }
+
+        // Function call
+        var fn = eval(head, env);
+        if hasError {
+            return mkNil();
+        }
+        var args = evalArgList(getCdr(expr), env);
+        if hasError {
+            return mkNil();
+        }
+        return applyFn(fn, args);
+    }
+
+    setError("Cannot evaluate: " + lispPrint(expr));
+    return mkNil();
+}
+
+func evalArgList(argExprs: LispVal, env: Env) -> LispVal {
+    if argExprs.tag == T_NIL {
+        return mkNil();
+    }
+    var first = eval(getCar(argExprs), env);
+    if hasError {
+        return mkNil();
+    }
+    var rest = evalArgList(getCdr(argExprs), env);
+    return mkCons(first, rest);
+}
+
+func evalIf(expr: LispVal, env: Env) -> LispVal {
+    var rest = getCdr(expr);
+    var test = eval(getCar(rest), env);
+    if hasError {
+        return mkNil();
+    }
+
+    if isTruthy(test) {
+        return eval(getCar(getCdr(rest)), env);
+    }
+
+    var elseClause = getCdr(getCdr(rest));
+    if elseClause.tag == T_NIL {
+        return mkNil();
+    }
+    return eval(getCar(elseClause), env);
+}
+
+func evalDefine(expr: LispVal, env: Env) -> LispVal {
+    var rest = getCdr(expr);
+    var nameExpr = getCar(rest);
+
+    if nameExpr.tag == T_SYM {
+        var val = eval(getCar(getCdr(rest)), env);
+        if hasError {
+            return mkNil();
+        }
+        envSet(env, nameExpr.strVal, val);
+        return val;
+    }
+
+    if nameExpr.tag == T_CONS {
+        // (define (f x y) body...) shorthand
+        var funcName = getCar(nameExpr);
+        var paramList = getCdr(nameExpr);
+        var bodyExpr = getCar(getCdr(rest));
+        var lambda = mkLambda(paramList, bodyExpr, env);
+        envSet(env, funcName.strVal, lambda);
+        return lambda;
+    }
+
+    setError("Invalid define syntax");
+    return mkNil();
+}
+
+func evalSetBang(expr: LispVal, env: Env) -> LispVal {
+    var rest = getCdr(expr);
+    var name = getCar(rest);
+    var val = eval(getCar(getCdr(rest)), env);
+    if hasError {
+        return mkNil();
+    }
+    if name.tag != T_SYM {
+        setError("set! requires a symbol");
+        return mkNil();
+    }
+    if !envSetBang(env, name.strVal, val) {
+        setError("set!: undefined variable: " + name.strVal);
+    }
+    return val;
+}
+
+func evalLambda(expr: LispVal, env: Env) -> LispVal {
+    var rest = getCdr(expr);
+    var paramList = getCar(rest);
+    var bodyExpr = getCar(getCdr(rest));
+    return mkLambda(paramList, bodyExpr, env);
+}
+
+func evalBegin(exprs: LispVal, env: Env) -> LispVal {
+    if exprs.tag == T_NIL {
+        return mkNil();
+    }
+
+    var result = eval(getCar(exprs), env);
+    if hasError {
+        return mkNil();
+    }
+
+    var rest = getCdr(exprs);
+    if rest.tag == T_NIL {
+        return result;
+    }
+    return evalBegin(rest, env);
+}
+
+func evalLet(expr: LispVal, env: Env) -> LispVal {
+    // (let ((x 1) (y 2)) body)
+    var rest = getCdr(expr);
+    var bindingsList = getCar(rest);
+    var bodyExpr = getCar(getCdr(rest));
+
+    var letEnv = makeChildEnv(env);
+
+    // Process bindings
+    var bindings = bindingsList;
+    while bindings.tag == T_CONS {
+        var binding = getCar(bindings);
+        var name = getCar(binding);
+        var valExpr = getCar(getCdr(binding));
+        var val = eval(valExpr, env);
+        if hasError {
+            return mkNil();
+        }
+        envSet(letEnv, name.strVal, val);
+        bindings = getCdr(bindings);
+    }
+
+    return eval(bodyExpr, letEnv);
+}
+
+func evalLetStar(expr: LispVal, env: Env) -> LispVal {
+    // (let* ((x 1) (y x)) body) - sequential binding
+    var rest = getCdr(expr);
+    var bindingsList = getCar(rest);
+    var bodyExpr = getCar(getCdr(rest));
+
+    var letEnv = makeChildEnv(env);
+
+    var bindings = bindingsList;
+    while bindings.tag == T_CONS {
+        var binding = getCar(bindings);
+        var name = getCar(binding);
+        var valExpr = getCar(getCdr(binding));
+        var val = eval(valExpr, letEnv);
+        if hasError {
+            return mkNil();
+        }
+        envSet(letEnv, name.strVal, val);
+        bindings = getCdr(bindings);
+    }
+
+    return eval(bodyExpr, letEnv);
+}
+
+func evalCond(clauses: LispVal, env: Env) -> LispVal {
+    if clauses.tag == T_NIL {
+        return mkNil();
+    }
+
+    var clause = getCar(clauses);
+    var test = getCar(clause);
+    var body = getCar(getCdr(clause));
+
+    // (else ...) clause
+    if test.tag == T_SYM && test.strVal == "else" {
+        return eval(body, env);
+    }
+
+    var result = eval(test, env);
+    if hasError {
+        return mkNil();
+    }
+
+    if isTruthy(result) {
+        return eval(body, env);
+    }
+
+    return evalCond(getCdr(clauses), env);
+}
+
+func evalAnd(exprs: LispVal, env: Env) -> LispVal {
+    if exprs.tag == T_NIL {
+        return mkBool(true);
+    }
+
+    var val = eval(getCar(exprs), env);
+    if hasError {
+        return mkNil();
+    }
+
+    if !isTruthy(val) {
+        return val;
+    }
+
+    var rest = getCdr(exprs);
+    if rest.tag == T_NIL {
+        return val;
+    }
+    return evalAnd(rest, env);
+}
+
+func evalOr(exprs: LispVal, env: Env) -> LispVal {
+    if exprs.tag == T_NIL {
+        return mkBool(false);
+    }
+
+    var val = eval(getCar(exprs), env);
+    if hasError {
+        return mkNil();
+    }
+
+    if isTruthy(val) {
+        return val;
+    }
+
+    var rest = getCdr(exprs);
+    if rest.tag == T_NIL {
+        return val;
+    }
+    return evalOr(rest, env);
+}
+
+// === Function application ===
+
+func applyFn(fn: LispVal, args: LispVal) -> LispVal {
+    if fn.tag == T_BUILTIN {
+        return applyBuiltin(fn.strVal, args);
+    }
+
+    if fn.tag == T_FUNC {
+        var closureEnv: Env = fn.closureEnv ?? new Env();
+        var funcEnv = makeChildEnv(closureEnv);
+
+        // Bind parameters
+        var paramNames = getParams(fn);
+        var argVals = args;
+
+        while paramNames.tag == T_CONS {
+            var paramName = getCar(paramNames);
+            var argVal = getCar(argVals);
+            envSet(funcEnv, paramName.strVal, argVal);
+            paramNames = getCdr(paramNames);
+            argVals = getCdr(argVals);
+        }
+
+        return eval(getBody(fn), funcEnv);
+    }
+
+    setError("Not a function: " + lispPrint(fn));
+    return mkNil();
+}
+
+// === Builtins ===
+
+func listLength(lst: LispVal) -> Integer {
+    var count: Integer = 0;
+    var cur = lst;
+    while cur.tag == T_CONS {
+        count = count + 1;
+        cur = getCdr(cur);
+    }
+    return count;
+}
+
+func applyBuiltin(name: String, args: LispVal) -> LispVal {
+    // --- Arithmetic ---
+    if name == "+" {
+        var sum: Integer = 0;
+        var cur = args;
+        while cur.tag == T_CONS {
+            sum = sum + getCar(cur).intVal;
+            cur = getCdr(cur);
+        }
+        return mkInt(sum);
+    }
+
+    if name == "-" {
+        var first = getCar(args).intVal;
+        var rest = getCdr(args);
+        if rest.tag == T_NIL {
+            return mkInt(0 - first);
+        }
+        var result = first;
+        while rest.tag == T_CONS {
+            result = result - getCar(rest).intVal;
+            rest = getCdr(rest);
+        }
+        return mkInt(result);
+    }
+
+    if name == "*" {
+        var product: Integer = 1;
+        var cur = args;
+        while cur.tag == T_CONS {
+            product = product * getCar(cur).intVal;
+            cur = getCdr(cur);
+        }
+        return mkInt(product);
+    }
+
+    if name == "/" {
+        var first = getCar(args).intVal;
+        var rest = getCdr(args);
+        if rest.tag == T_NIL {
+            return mkInt(1 / first);
+        }
+        var result = first;
+        while rest.tag == T_CONS {
+            var divisor = getCar(rest).intVal;
+            if divisor == 0 {
+                setError("Division by zero");
+                return mkNil();
+            }
+            result = result / divisor;
+            rest = getCdr(rest);
+        }
+        return mkInt(result);
+    }
+
+    if name == "mod" {
+        var a = getCar(args).intVal;
+        var b = getCar(getCdr(args)).intVal;
+        if b == 0 {
+            setError("Modulo by zero");
+            return mkNil();
+        }
+        return mkInt(a % b);
+    }
+
+    // --- Comparison ---
+    if name == "<" {
+        var a = getCar(args).intVal;
+        var b = getCar(getCdr(args)).intVal;
+        return mkBool(a < b);
+    }
+
+    if name == ">" {
+        var a = getCar(args).intVal;
+        var b = getCar(getCdr(args)).intVal;
+        return mkBool(a > b);
+    }
+
+    if name == "=" {
+        var a = getCar(args).intVal;
+        var b = getCar(getCdr(args)).intVal;
+        return mkBool(a == b);
+    }
+
+    if name == "<=" {
+        var a = getCar(args).intVal;
+        var b = getCar(getCdr(args)).intVal;
+        return mkBool(a <= b);
+    }
+
+    if name == ">=" {
+        var a = getCar(args).intVal;
+        var b = getCar(getCdr(args)).intVal;
+        return mkBool(a >= b);
+    }
+
+    // --- List operations ---
+    if name == "car" {
+        var pair = getCar(args);
+        if pair.tag != T_CONS {
+            setError("car: not a pair");
+            return mkNil();
+        }
+        return getCar(pair);
+    }
+
+    if name == "cdr" {
+        var pair = getCar(args);
+        if pair.tag != T_CONS {
+            setError("cdr: not a pair");
+            return mkNil();
+        }
+        return getCdr(pair);
+    }
+
+    if name == "cons" {
+        var a = getCar(args);
+        var d = getCar(getCdr(args));
+        return mkCons(a, d);
+    }
+
+    if name == "list" {
+        return args;
+    }
+
+    if name == "null?" {
+        var v = getCar(args);
+        return mkBool(v.tag == T_NIL);
+    }
+
+    if name == "length" {
+        var lst = getCar(args);
+        return mkInt(listLength(lst));
+    }
+
+    if name == "append" {
+        var lst1 = getCar(args);
+        var lst2 = getCar(getCdr(args));
+        return lispAppend(lst1, lst2);
+    }
+
+    // --- Type predicates ---
+    if name == "number?" {
+        return mkBool(getCar(args).tag == T_INT);
+    }
+
+    if name == "symbol?" {
+        return mkBool(getCar(args).tag == T_SYM);
+    }
+
+    if name == "string?" {
+        return mkBool(getCar(args).tag == T_STR);
+    }
+
+    if name == "pair?" {
+        return mkBool(getCar(args).tag == T_CONS);
+    }
+
+    if name == "boolean?" {
+        return mkBool(getCar(args).tag == T_BOOL);
+    }
+
+    if name == "procedure?" {
+        var v = getCar(args);
+        return mkBool(v.tag == T_FUNC || v.tag == T_BUILTIN);
+    }
+
+    // --- Equality ---
+    if name == "eq?" {
+        var a = getCar(args);
+        var b = getCar(getCdr(args));
+        return mkBool(lispEq(a, b));
+    }
+
+    if name == "equal?" {
+        var a = getCar(args);
+        var b = getCar(getCdr(args));
+        return mkBool(lispEqual(a, b));
+    }
+
+    // --- Logic ---
+    if name == "not" {
+        return mkBool(!isTruthy(getCar(args)));
+    }
+
+    // --- I/O ---
+    if name == "display" {
+        var v = getCar(args);
+        if v.tag == T_STR {
+            Viper.Terminal.Print(v.strVal);
+        } else {
+            Viper.Terminal.Print(lispPrint(v));
+        }
+        return mkNil();
+    }
+
+    if name == "newline" {
+        Viper.Terminal.Say("");
+        return mkNil();
+    }
+
+    // --- String operations ---
+    if name == "string-length" {
+        return mkInt(strLen(getCar(args).strVal));
+    }
+
+    if name == "string-append" {
+        var result: String = "";
+        var cur = args;
+        while cur.tag == T_CONS {
+            result = result + getCar(cur).strVal;
+            cur = getCdr(cur);
+        }
+        return mkStr(result);
+    }
+
+    if name == "number->string" {
+        return mkStr(toString(getCar(args).intVal));
+    }
+
+    if name == "string->number" {
+        return mkInt(Viper.Parse.IntOr(getCar(args).strVal, 0));
+    }
+
+    // --- Higher-order ---
+    if name == "map" {
+        var fn = getCar(args);
+        var lst = getCar(getCdr(args));
+        return lispMap(fn, lst);
+    }
+
+    if name == "apply" {
+        var fn = getCar(args);
+        var argList = getCar(getCdr(args));
+        return applyFn(fn, argList);
+    }
+
+    setError("Unknown builtin: " + name);
+    return mkNil();
+}
+
+// === Helper functions for builtins ===
+
+func lispAppend(lst1: LispVal, lst2: LispVal) -> LispVal {
+    if lst1.tag == T_NIL {
+        return lst2;
+    }
+    return mkCons(getCar(lst1), lispAppend(getCdr(lst1), lst2));
+}
+
+func lispMap(fn: LispVal, lst: LispVal) -> LispVal {
+    if lst.tag == T_NIL {
+        return mkNil();
+    }
+    var elem = applyFn(fn, mkCons(getCar(lst), mkNil()));
+    if hasError {
+        return mkNil();
+    }
+    return mkCons(elem, lispMap(fn, getCdr(lst)));
+}
+
+func lispEq(a: LispVal, b: LispVal) -> Boolean {
+    if a.tag != b.tag {
+        return false;
+    }
+    if a.tag == T_NIL {
+        return true;
+    }
+    if a.tag == T_INT {
+        return a.intVal == b.intVal;
+    }
+    if a.tag == T_SYM {
+        return a.strVal == b.strVal;
+    }
+    if a.tag == T_BOOL {
+        return a.intVal == b.intVal;
+    }
+    return false;
+}
+
+func lispEqual(a: LispVal, b: LispVal) -> Boolean {
+    if a.tag != b.tag {
+        return false;
+    }
+    if a.tag == T_NIL {
+        return true;
+    }
+    if a.tag == T_INT {
+        return a.intVal == b.intVal;
+    }
+    if a.tag == T_SYM {
+        return a.strVal == b.strVal;
+    }
+    if a.tag == T_STR {
+        return a.strVal == b.strVal;
+    }
+    if a.tag == T_BOOL {
+        return a.intVal == b.intVal;
+    }
+    if a.tag == T_CONS {
+        return lispEqual(getCar(a), getCar(b)) && lispEqual(getCdr(a), getCdr(b));
+    }
+    return false;
+}
+
+// === Global environment setup ===
+
+func setupGlobalEnv() -> Env {
+    var env = new Env();
+
+    // Arithmetic
+    envSet(env, "+", mkBuiltin("+"));
+    envSet(env, "-", mkBuiltin("-"));
+    envSet(env, "*", mkBuiltin("*"));
+    envSet(env, "/", mkBuiltin("/"));
+    envSet(env, "mod", mkBuiltin("mod"));
+
+    // Comparison
+    envSet(env, "<", mkBuiltin("<"));
+    envSet(env, ">", mkBuiltin(">"));
+    envSet(env, "=", mkBuiltin("="));
+    envSet(env, "<=", mkBuiltin("<="));
+    envSet(env, ">=", mkBuiltin(">="));
+
+    // List operations
+    envSet(env, "car", mkBuiltin("car"));
+    envSet(env, "cdr", mkBuiltin("cdr"));
+    envSet(env, "cons", mkBuiltin("cons"));
+    envSet(env, "list", mkBuiltin("list"));
+    envSet(env, "null?", mkBuiltin("null?"));
+    envSet(env, "length", mkBuiltin("length"));
+    envSet(env, "append", mkBuiltin("append"));
+
+    // Type predicates
+    envSet(env, "number?", mkBuiltin("number?"));
+    envSet(env, "symbol?", mkBuiltin("symbol?"));
+    envSet(env, "string?", mkBuiltin("string?"));
+    envSet(env, "pair?", mkBuiltin("pair?"));
+    envSet(env, "boolean?", mkBuiltin("boolean?"));
+    envSet(env, "procedure?", mkBuiltin("procedure?"));
+
+    // Equality
+    envSet(env, "eq?", mkBuiltin("eq?"));
+    envSet(env, "equal?", mkBuiltin("equal?"));
+
+    // Logic
+    envSet(env, "not", mkBuiltin("not"));
+
+    // I/O
+    envSet(env, "display", mkBuiltin("display"));
+    envSet(env, "newline", mkBuiltin("newline"));
+
+    // String operations
+    envSet(env, "string-length", mkBuiltin("string-length"));
+    envSet(env, "string-append", mkBuiltin("string-append"));
+    envSet(env, "number->string", mkBuiltin("number->string"));
+    envSet(env, "string->number", mkBuiltin("string->number"));
+
+    // Higher-order
+    envSet(env, "map", mkBuiltin("map"));
+    envSet(env, "apply", mkBuiltin("apply"));
+
+    // Boolean constants
+    envSet(env, "#t", mkBool(true));
+    envSet(env, "#f", mkBool(false));
+
+    return env;
+}
+
+// === Run program ===
+
+func runProgram(source: String, env: Env) {
+    clearError();
+    var exprs = parse(source);
+
+    if hasError {
+        Viper.Terminal.Say("Parse error: " + errorMsg);
+        return;
+    }
+
+    var i: Integer = 0;
+    while i < exprs.count() {
+        clearError();
+        var result = eval(exprs.get(i), env);
+        if hasError {
+            Viper.Terminal.Say("Error: " + errorMsg);
+        }
+        i = i + 1;
+    }
+}
+
+// === REPL ===
+
+func countParens(s: String) -> Integer {
+    var depth: Integer = 0;
+    var i: Integer = 0;
+    var len = strLen(s);
+    var inString: Boolean = false;
+
+    while i < len {
+        var ch = strCharAt(s, i);
+        if inString {
+            if ch == "\\" {
+                i = i + 1;
+            } else if ch == "\"" {
+                inString = false;
+            }
+        } else {
+            if ch == "\"" {
+                inString = true;
+            } else if ch == "(" {
+                depth = depth + 1;
+            } else if ch == ")" {
+                depth = depth - 1;
+            } else if ch == ";" {
+                // Skip rest of line in comments
+                i = len;
+            }
+        }
+        i = i + 1;
+    }
+    return depth;
+}
+
+func repl(env: Env) {
+    Viper.Terminal.Say("Viper Lisp v0.1 — type (exit) to quit");
+    var running: Boolean = true;
+
+    while running {
+        Viper.Terminal.Print("lisp> ");
+        var lineOpt = Viper.Terminal.ReadLine();
+        if lineOpt == null {
+            Viper.Terminal.Say("");
+            return;
+        }
+        var input: String = lineOpt ?? "";
+
+        // Check for exit
+        if input == "(exit)" || input == "(quit)" {
+            return;
+        }
+
+        // Skip blank lines
+        if Viper.String.Trim(input) == "" {
+            // skip
+        } else {
+            // Accumulate lines until parens are balanced
+            var depth = countParens(input);
+            while depth > 0 {
+                Viper.Terminal.Print("...   ");
+                var moreOpt = Viper.Terminal.ReadLine();
+                if moreOpt == null {
+                    Viper.Terminal.Say("");
+                    return;
+                }
+                var moreLine: String = moreOpt ?? "";
+                input = input + "\n" + moreLine;
+                depth = countParens(input);
+            }
+
+            // Eval and print result
+            clearError();
+            var exprs = parse(input);
+            if hasError {
+                Viper.Terminal.Say("Parse error: " + errorMsg);
+            } else {
+                var j: Integer = 0;
+                while j < exprs.count() {
+                    clearError();
+                    var result = eval(exprs.get(j), env);
+                    if hasError {
+                        Viper.Terminal.Say("Error: " + errorMsg);
+                    } else {
+                        // Print non-void results
+                        if result.tag != T_NIL || j == exprs.count() - 1 {
+                            if result.tag != T_NIL {
+                                Viper.Terminal.Say(lispPrint(result));
+                            }
+                        }
+                    }
+                    j = j + 1;
+                }
+            }
+        }
+    }
+}
+
+// === Entry point ===
+
+func runFile(path: String, env: Env) {
+    if Viper.IO.File.Exists(path) {
+        var source = Viper.IO.File.ReadAllText(path);
+        runProgram(source, env);
+    } else {
+        Viper.Terminal.Say("File not found: " + path);
+    }
+}
+
+func start() {
+    var env = setupGlobalEnv();
+
+    // Try to read LISP_FILE env var
+    var lispFile = Viper.Environment.GetVariable("LISP_FILE");
+    if lispFile != "" {
+        runFile(lispFile, env);
+        return;
+    }
+
+    // REPL mode (default)
+    repl(env);
+}

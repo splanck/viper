@@ -260,8 +260,8 @@ Terminal input and output operations.
 
 | Method               | Signature          | Description                                                 |
 |----------------------|--------------------|-------------------------------------------------------------|
-| `ReadLine()`         | `String()`         | Reads a line of text from standard input                    |
-| `Ask(prompt)`        | `String(String)`   | Prints a prompt and reads a line from standard input         |
+| `ReadLine()`         | `String?()`        | Reads a line from stdin; returns null on EOF                |
+| `Ask(prompt)`        | `String?(String)`  | Prints prompt, reads a line from stdin; null on EOF          |
 | `GetKey()`           | `String()`         | Blocks for a single key press and returns a 1-character string |
 | `GetKeyTimeout(ms)`  | `String(Integer)`  | Waits up to `ms` for a key; returns `""` on timeout (negative = block) |
 | `InKey()`            | `String()`         | Non-blocking key poll; returns `""` if no key is available   |

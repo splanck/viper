@@ -1240,7 +1240,7 @@ func showGameOver() {
         Viper.Terminal.SetColor(COLOR_WHITE, COLOR_BLACK);
         Viper.Terminal.Print("Enter initials: ");
 
-        var name = Viper.Terminal.ReadLine();
+        var name = Viper.Terminal.ReadLine() ?? "";
         if Viper.String.Length(name) == 0 {
             name = "???";
         }

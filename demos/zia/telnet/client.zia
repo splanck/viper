@@ -59,7 +59,7 @@ func main() {
         }
 
         // Read user input
-        var input = Viper.Terminal.ReadLine();
+        var input = Viper.Terminal.ReadLine() ?? "";
 
         // Check for local exit command
         if input == "quit" || input == "exit" {

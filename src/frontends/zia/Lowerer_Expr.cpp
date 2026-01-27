@@ -741,7 +741,7 @@ LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr)
 
     il::core::Instr storePtrInstr;
     storePtrInstr.op = Opcode::Store;
-    storePtrInstr.type = Type(Type::Kind::Ptr);
+    storePtrInstr.type = left.type;
     storePtrInstr.operands = {ptrSlot, left.value};
     blockMgr_.currentBlock()->instructions.push_back(storePtrInstr);
 

@@ -20,7 +20,7 @@ func main() {
     var running = true;
     while running {
         Viper.Terminal.Print("sql> ");
-        var input = Viper.Terminal.ReadLine();
+        var input = Viper.Terminal.ReadLine() ?? "";
 
         if input == "exit" || input == "quit" {
             running = false;

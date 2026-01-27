@@ -56,9 +56,9 @@ Value Lowerer::extendOperandForComparison(Value val, Type type)
     {
         return emitUnary(Opcode::Zext1, Type(Type::Kind::I64), val);
     }
-    else if (type.kind == Type::Kind::Ptr)
+    else if (type.kind == Type::Kind::Ptr || type.kind == Type::Kind::Str)
     {
-        // Convert pointer to i64 via alloca/store/load
+        // Convert pointer/string to i64 via alloca/store/load
         unsigned slotId = nextTempId();
         il::core::Instr slotInstr;
         slotInstr.result = slotId;
@@ -67,7 +67,7 @@ Value Lowerer::extendOperandForComparison(Value val, Type type)
         slotInstr.operands = {Value::constInt(8)};
         blockMgr_.currentBlock()->instructions.push_back(slotInstr);
         Value slot = Value::temp(slotId);
-        emitStore(slot, val, Type(Type::Kind::Ptr));
+        emitStore(slot, val, type);
         return emitLoad(slot, Type(Type::Kind::I64));
     }
     return val;

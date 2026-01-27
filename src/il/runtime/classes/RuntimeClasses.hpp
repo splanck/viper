@@ -279,6 +279,7 @@ enum class ILScalarType : std::uint8_t
 struct ParsedSignature
 {
     ILScalarType returnType{ILScalarType::Unknown};
+    bool isOptionalReturn{false};
     std::vector<ILScalarType> params;
 
     /// @brief Check if the signature was parsed successfully.

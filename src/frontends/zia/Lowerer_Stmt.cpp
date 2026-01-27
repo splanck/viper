@@ -114,19 +114,20 @@ void Lowerer::lowerVarStmt(VarStmt *stmt)
         {
             TypeRef initType = sema_.typeOf(stmt->initializer.get());
             TypeRef innerType = varType->innerType();
+            Type optILType = mapType(varType);
             if (initType && initType->kind == TypeKindSem::Optional)
             {
-                ilType = Type(Type::Kind::Ptr);
+                ilType = optILType;
             }
             else if (initType && initType->kind == TypeKindSem::Unit)
             {
                 initValue = Value::null();
-                ilType = Type(Type::Kind::Ptr);
+                ilType = optILType;
             }
             else if (innerType)
             {
                 initValue = emitOptionalWrap(initValue, innerType);
-                ilType = Type(Type::Kind::Ptr);
+                ilType = optILType;
             }
         }
     }

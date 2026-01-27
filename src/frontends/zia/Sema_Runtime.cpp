@@ -164,6 +164,8 @@ void Sema::initRuntimeFunctions()
 
             // Convert IL types to Zia types
             TypeRef returnType = toZiaType(sig.returnType);
+            if (sig.isOptionalReturn)
+                returnType = types::optional(returnType);
             std::vector<TypeRef> paramTypes = toZiaParamTypes(sig);
 
             // Register the extern function with full type information

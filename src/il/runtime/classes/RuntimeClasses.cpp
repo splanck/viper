@@ -351,6 +351,13 @@ ParsedSignature parseRuntimeSignature(std::string_view sig)
     while (!retTok.empty() && std::isspace(static_cast<unsigned char>(retTok.back())))
         retTok.remove_suffix(1);
 
+    // Check for optional return type (trailing '?')
+    if (!retTok.empty() && retTok.back() == '?')
+    {
+        result.isOptionalReturn = true;
+        retTok.remove_suffix(1);
+    }
+
     result.returnType = mapILToken(retTok);
 
     // Extract the parameter list (everything between parentheses)

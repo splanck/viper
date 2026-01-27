@@ -592,6 +592,10 @@ static std::string ilTypeToCType(const std::string &ilType)
 /// @brief Map IL type to signature string format.
 static std::string ilTypeToSigType(const std::string &ilType)
 {
+    // Handle optional return types (trailing '?') — at the IL level, optional
+    // reference types keep their inner type (null pointer = none).
+    if (!ilType.empty() && ilType.back() == '?')
+        return ilTypeToSigType(ilType.substr(0, ilType.size() - 1));
     if (ilType == "str")
         return "string";
     if (ilType == "obj")
@@ -1399,6 +1403,13 @@ static void generateSignatures(const ParseState &state,
 /// @brief Map IL return type to Zia types:: expression.
 static std::string ilTypeToZiaType(const std::string &ilType, const std::string &canonical)
 {
+    // Handle optional return types (trailing '?')
+    if (!ilType.empty() && ilType.back() == '?')
+    {
+        std::string inner = ilType.substr(0, ilType.size() - 1);
+        return "types::optional(" + ilTypeToZiaType(inner, canonical) + ")";
+    }
+
     if (ilType == "str")
         return "types::string()";
     if (ilType == "i64")

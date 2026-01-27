@@ -281,7 +281,7 @@ func start() {
         }
 
         // Read input
-        var line = Viper.Terminal.Ask("");
+        var line = Viper.Terminal.Ask("") ?? "";
 
         // Handle multi-line input
         inputBuffer = inputBuffer + line;

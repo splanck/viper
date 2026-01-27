@@ -1601,11 +1601,11 @@ RT_FUNC(TermPrintInt,  rt_term_print_i64,"Viper.Terminal.PrintInt", "void(i64)")
 RT_FUNC(TermPrintNum,  rt_term_print_f64,"Viper.Terminal.PrintNum", "void(f64)")
 
 // Terminal input
-RT_FUNC(TermAsk,           rt_term_ask,           "Viper.Terminal.Ask",           "str(str)")
+RT_FUNC(TermAsk,           rt_term_ask,           "Viper.Terminal.Ask",           "str?(str)")
 RT_FUNC(TermGetKey,        rt_getkey_str,         "Viper.Terminal.GetKey",        "str()")
 RT_FUNC(TermGetKeyTimeout, rt_getkey_timeout_i32, "Viper.Terminal.GetKeyTimeout", "str(i64)")
 RT_FUNC(TermInKey,         rt_inkey_str,          "Viper.Terminal.InKey",         "str()")
-RT_FUNC(TermReadLine,      rt_term_read_line,     "Viper.Terminal.ReadLine",      "str()")
+RT_FUNC(TermReadLine,      rt_term_read_line,     "Viper.Terminal.ReadLine",      "str?()")
 
 // Terminal screen control
 RT_FUNC(TermBell,             rt_bell,                    "Viper.Terminal.Bell",             "void()")
@@ -3671,7 +3671,7 @@ RT_CLASS_END()
 
 // Viper.Terminal - terminal I/O, cursor control, and keyboard input
 RT_CLASS_BEGIN("Viper.Terminal", Terminal, "obj", none)
-    RT_METHOD("Ask", "str(str)", TermAsk)
+    RT_METHOD("Ask", "str?(str)", TermAsk)
     RT_METHOD("BeginBatch", "void()", TermBeginBatch)
     RT_METHOD("Bell", "void()", TermBell)
     RT_METHOD("Clear", "void()", TermClear)
@@ -3683,7 +3683,7 @@ RT_CLASS_BEGIN("Viper.Terminal", Terminal, "obj", none)
     RT_METHOD("Print", "void(str)", TermPrint)
     RT_METHOD("PrintInt", "void(i64)", TermPrintInt)
     RT_METHOD("PrintNum", "void(f64)", TermPrintNum)
-    RT_METHOD("ReadLine", "str()", TermReadLine)
+    RT_METHOD("ReadLine", "str?()", TermReadLine)
     RT_METHOD("Say", "void(str)", TermSay)
     RT_METHOD("SayBool", "void(i1)", TermSayBool)
     RT_METHOD("SayInt", "void(i64)", TermSayInt)

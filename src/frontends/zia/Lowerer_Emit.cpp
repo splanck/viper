@@ -297,7 +297,8 @@ LowerResult Lowerer::emitUnbox(Value boxed, Type expectedType)
 Lowerer::Value Lowerer::emitOptionalWrap(Value val, TypeRef innerType)
 {
     Type ilType = mapType(innerType);
-    if (ilType.kind == Type::Kind::Ptr)
+    // Reference types (Ptr, Str) are already nullable pointers — wrapping is a no-op.
+    if (ilType.kind == Type::Kind::Ptr || ilType.kind == Type::Kind::Str)
         return val;
     return emitBox(val, ilType);
 }
@@ -305,6 +306,10 @@ Lowerer::Value Lowerer::emitOptionalWrap(Value val, TypeRef innerType)
 LowerResult Lowerer::emitOptionalUnwrap(Value val, TypeRef innerType)
 {
     Type ilType = mapType(innerType);
+    // Reference types (Ptr, Str) are already the underlying value — no unboxing needed.
+    // Optional reference types use null to represent None, so the pointer IS the value.
+    if (ilType.kind == Type::Kind::Ptr || ilType.kind == Type::Kind::Str)
+        return {val, ilType};
     return emitUnbox(val, ilType);
 }
 

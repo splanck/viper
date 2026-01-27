@@ -8,7 +8,7 @@ bind "./_support";
 // COVER: Viper.Terminal.GetKey
 
 func start() {
-    var line = Viper.Terminal.ReadLine();
+    var line = Viper.Terminal.ReadLine() ?? "";
     assertEqStr(line, "hello", "readline");
 
     var key = Viper.Terminal.GetKey();
