@@ -13,7 +13,7 @@
 #   --qemu <path>      Path to qemu-system-aarch64 (auto-detected if not set)
 #   --kernel <path>    Path to kernel ELF (required)
 #   --disk <path>      Path to disk image (optional)
-#   --microkernel-devices  Attach dedicated microkernel devices if present
+#   --microkernel-devices  Attach dedicated extra devices if present
 #   --timeout <secs>   Timeout in seconds (default: 30)
 #   --expect <regex>   Pattern that must appear (can specify multiple)
 #   --forbid <regex>   Pattern that must NOT appear (can specify multiple)
@@ -65,7 +65,7 @@ usage() {
     echo "  --qemu <path>      Path to qemu-system-aarch64"
     echo "  --kernel <path>    Path to kernel ELF (required)"
     echo "  --disk <path>      Path to disk image"
-    echo "  --microkernel-devices  Attach dedicated microkernel devices if present"
+    echo "  --microkernel-devices  Attach dedicated extra devices if present"
     echo "  --timeout <secs>   Timeout in seconds (default: 30)"
     echo "  --expect <regex>   Pattern that must appear (repeatable)"
     echo "  --forbid <regex>   Pattern that must NOT appear (repeatable)"
@@ -210,8 +210,8 @@ QEMU_OPTS+=(
     -device virtio-net-device,netdev=net0
 )
 
-# Optional dedicated devices for user-space microkernel servers (blkd/fsd/netd).
-# Note: We no longer attach a second disk (microkernel.img) because:
+# Optional dedicated devices for legacy server tests (blkd/fsd/netd).
+# Note: We no longer attach a second disk because:
 # - With VIPER_KERNEL_ENABLE_BLK=0, the kernel doesn't claim the block device
 # - blkd will claim disk0 (disk.img) directly
 # - This fixes the issue where writes were going to the wrong disk

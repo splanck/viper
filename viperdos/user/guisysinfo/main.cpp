@@ -24,7 +24,7 @@
  * |    ViperDOS System Info              |
  * | ------------------------------------ |
  * | System:    ViperDOS v0.3.1           |
- * | Kernel:    Viper Microkernel         |
+ * | Kernel:    Viper Hybrid Kernel       |
  * | Platform:  AArch64 (ARM64)           |
  * | CPU:       Cortex-A57 (QEMU)         |
  * |                                      |
@@ -202,7 +202,7 @@ static void drawWindow(gui_window_t *win) {
     y += 18;
 
     gui_draw_text(win, 20, y, "Kernel:", WB_BLACK);
-    gui_draw_text(win, 120, y, "Viper Microkernel", WB_GRAY_DARK);
+    gui_draw_text(win, 120, y, "Viper Hybrid Kernel", WB_GRAY_DARK);
     y += 18;
 
     gui_draw_text(win, 20, y, "Platform:", WB_BLACK);

@@ -10,7 +10,7 @@
  * - Ctrl+S to save, Ctrl+Q to quit
  * - Ctrl+G for help
  *
- * Uses libc for file I/O to route through fsd (microkernel path).
+ * Uses libc for file I/O via kernel VFS syscalls.
  */
 
 #include <syscall.hpp>

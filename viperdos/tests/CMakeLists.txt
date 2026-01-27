@@ -340,7 +340,7 @@ if (VIPERDOS_HAS_QEMU)
     )
     set_tests_properties(qemu_userspace_init PROPERTIES LABELS "qemu;kernel;userspace")
 
-    # --- Microkernel servers: bring-up path (dedicated devices required) ---
+    # --- Legacy server bring-up path (dedicated devices required) ---
     add_qemu_test(microkernel_servers_ready
             --disk
             --microkernel-devices
@@ -350,7 +350,7 @@ if (VIPERDOS_HAS_QEMU)
             --expect "\\[vinit\\] FSD: ready"
     )
     set_tests_properties(qemu_microkernel_servers_ready PROPERTIES
-            LABELS "qemu;userspace;microkernel"
+            LABELS "qemu;userspace;servers"
             TIMEOUT 200
     )
 
@@ -364,7 +364,7 @@ if (VIPERDOS_HAS_QEMU)
             --expect "\\[fsd_smoke\\] OK: libc routed to fsd"
     )
     set_tests_properties(qemu_libc_fsd_smoke PROPERTIES
-            LABELS "qemu;userspace;microkernel;libc"
+            LABELS "qemu;userspace;servers;libc"
             TIMEOUT 200
     )
 

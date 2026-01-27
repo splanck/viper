@@ -310,7 +310,7 @@ i64 poll(PollEvent *events, u32 count, i64 timeout_ms) {
                 }
             }
 
-            // Network RX events removed - use netd user-space server instead
+            // Network RX events removed - networking handled in kernel
         }
 
         // Return if any events are ready

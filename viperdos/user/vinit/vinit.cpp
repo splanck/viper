@@ -26,7 +26,7 @@
  * - consoled: Console window for shell I/O
  *
  * Storage and network services are provided directly by the kernel in
- * monolithic mode (VIPER_MICROKERNEL_MODE=0).
+ * hybrid kernel mode.
  */
 #include "vinit.hpp"
 #include "../../version.h"
@@ -549,7 +549,7 @@ extern "C" void _start() {
     // Run startup malloc test
     test_malloc_at_startup();
 
-    // Start microkernel servers (blkd, netd, fsd)
+    // Start display servers (consoled, displayd)
     start_servers();
 
     // Give displayd time to fully initialize before starting workbench

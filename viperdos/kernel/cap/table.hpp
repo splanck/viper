@@ -56,7 +56,7 @@ enum class Kind : u16 {
     Input = 24,
     // Memory objects
     SharedMemory = 25,
-    // Device capabilities (microkernel)
+    // Device capabilities (user-space display servers)
     Device = 26,
 };
 

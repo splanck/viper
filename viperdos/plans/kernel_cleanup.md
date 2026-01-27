@@ -1,4 +1,9 @@
-# ViperDOS Kernel Cleanup Plan: Microkernel to Monolithic Transition
+# ViperDOS Kernel Cleanup Plan: Microkernel to Hybrid Kernel Transition
+
+> **HISTORICAL DOCUMENT:** This cleanup plan was created during the transition from microkernel to
+> hybrid kernel architecture. Most items listed here have been addressed. ViperDOS now uses a hybrid
+> kernel where filesystem, networking, and block I/O run in-kernel, with only display servers
+> (consoled, displayd) in user space.
 
 **Date:** January 2026
 **Purpose:** Comprehensive audit of microkernel artifacts that need to be removed or updated
@@ -7,8 +12,8 @@
 
 ## Executive Summary
 
-ViperDOS is transitioning from a microkernel design to a monolithic kernel architecture. This document identifies all
-artifacts (code, documentation, comments) that reference the microkernel design and need to be updated or removed.
+ViperDOS transitioned from a microkernel design to a hybrid kernel architecture. This document identifies
+artifacts (code, documentation, comments) that referenced the microkernel design and needed to be updated or removed.
 
 **Current State:**
 

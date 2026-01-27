@@ -9,7 +9,7 @@ Create a fully-featured Amiga-inspired Workbench desktop environment for ViperDO
 - System configuration utilities
 - A cohesive, retro-modern aesthetic faithful to the original Amiga
 
-The Workbench serves as the primary GUI interface for ViperDOS, bringing the beloved Amiga desktop experience to a modern microkernel operating system.
+The Workbench serves as the primary GUI interface for ViperDOS, bringing the beloved Amiga desktop experience to a modern hybrid kernel operating system.
 
 ---
 

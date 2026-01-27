@@ -7,7 +7,7 @@ Tests:
 2. No NULL handlers
 3. Non-empty names
 4. argcount <= 6
-5. Microkernel-critical syscall ABI is stable
+5. Core syscall ABI is stable
 """
 
 import re
@@ -131,8 +131,8 @@ def test_argcount_valid(entries):
     return passed, failed
 
 
-def test_microkernel_critical_abi(entries):
-    """Test that microkernel-critical syscalls exist with expected argcounts."""
+def test_core_critical_abi(entries):
+    """Test that core-critical syscalls exist with expected argcounts."""
     passed = 0
     failed = 0
 
@@ -150,7 +150,7 @@ def test_microkernel_critical_abi(entries):
         "SYS_POLL_ADD": 3,
         "SYS_POLL_WAIT": 4,
 
-        # Device + SHM (microkernel)
+        # Device + SHM (display servers)
         "SYS_MAP_DEVICE": 3,
         "SYS_IRQ_REGISTER": 1,
         "SYS_IRQ_WAIT": 2,
@@ -167,7 +167,7 @@ def test_microkernel_critical_abi(entries):
 
     by_const = {e["syscall_const"]: e for e in entries}
 
-    print("\n[Microkernel-critical ABI]")
+    print("\n[Core-critical ABI]")
     for const, expected_argc in required.items():
         entry = by_const.get(const)
         if entry is None:
@@ -183,7 +183,7 @@ def test_microkernel_critical_abi(entries):
         passed += 1
 
     if failed == 0:
-        print(f"  [PASS] All {passed} microkernel-critical syscall argcounts match")
+        print(f"  [PASS] All {passed} core-critical syscall argcounts match")
 
     return passed, failed
 
@@ -220,7 +220,7 @@ def main():
     total_passed += p
     total_failed += f
 
-    p, f = test_microkernel_critical_abi(entries)
+    p, f = test_core_critical_abi(entries)
     total_passed += p
     total_failed += f
 

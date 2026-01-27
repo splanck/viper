@@ -325,7 +325,7 @@ void cmd_servers(const char *args) {
     }
 
     // No arguments - show server status
-    print_str("\nMicrokernel Server Status:\n\n");
+    print_str("\nDisplay Server Status:\n\n");
     print_str("  Name   Assign  PID    Running  Available\n");
     print_str("  -----  ------  -----  -------  ---------\n");
 

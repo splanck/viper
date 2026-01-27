@@ -212,7 +212,7 @@ static poll::EventType check_readiness(u32 handle, poll::EventType mask) {
         return triggered;
     }
 
-    // Network RX pseudo-handle removed - use netd user-space server instead
+    // Network RX pseudo-handle removed - networking handled in kernel
     if (handle == poll::HANDLE_NETWORK_RX) {
         return triggered; // No kernel networking
     }

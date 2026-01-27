@@ -156,10 +156,53 @@ SyscallResult sys_mprotect(u64 a0, u64 a1, u64 a2, u64, u64, u64) {
         return err_invalid_arg();
     }
 
-    (void)prot;
+    auto *v = viper::current();
+    if (!v) {
+        return err_permission();
+    }
 
-    // Stub: accept the call but don't actually change protections yet.
-    // Full implementation would walk VMAs and update page table entries.
+    auto *as = viper::get_address_space(v);
+    if (!as) {
+        return err_permission();
+    }
+
+    u32 vma_prot_flags = posix_to_vma_prot(prot);
+    u64 end = addr + len;
+
+    // Update VMA protection flags for overlapping VMAs
+    auto saved = v->vma_list.acquire_lock();
+    for (mm::Vma *vma = v->vma_list.head_locked(); vma; vma = vma->next) {
+        if (vma->start >= end)
+            break;
+        if (vma->end <= addr)
+            continue;
+        vma->prot = vma_prot_flags;
+    }
+    v->vma_list.release_lock(saved);
+
+    // Update page table entries for already-mapped pages
+    for (u64 va = addr; va < end; va += PAGE_SIZE) {
+        u64 old_pte = as->read_pte(va);
+        if (!(old_pte & viper::pte::VALID))
+            continue;
+
+        // Rebuild PTE with new protection bits, preserving physical address
+        u64 phys = old_pte & viper::pte::ADDR_MASK;
+        u64 entry = phys | viper::pte::VALID | viper::pte::PAGE |
+                    viper::pte::AF | viper::pte::SH_INNER |
+                    viper::pte::AP_EL0 | viper::pte::ATTR_NORMAL;
+
+        if (!(prot & PROT_WRITE)) {
+            entry |= viper::pte::AP_RO;
+        }
+        if (!(prot & PROT_EXEC)) {
+            entry |= viper::pte::UXN | viper::pte::PXN;
+        }
+
+        as->write_pte(va, entry);
+        viper::tlb_flush_page(va, as->asid());
+    }
+
     return SyscallResult::ok();
 }
 

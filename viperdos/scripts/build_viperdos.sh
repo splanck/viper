@@ -34,9 +34,9 @@ NC='\033[0m' # No Color
 
 print_banner() {
     echo -e "${GREEN}"
-    echo "  ╦  ╦┬┌─┐┌─┐┬─┐╔═╗╔═╗"
-    echo "  ╚╗╔╝│├─┘├┤ ├┬┘║ ║╚═╗"
-    echo "   ╚╝ ┴┴  └─┘┴└─╚═╝╚═╝"
+    echo "  ╦  ╦┬┌─┐┌─┐┬─┐╔╦╗╔═╗╔═╗"
+    echo "  ╚╗╔╝│├─┘├┤ ├┬┘ ║║║ ║╚═╗"
+    echo "   ╚╝ ┴┴  └─┘┴└─═╩╝╚═╝╚═╝"
     echo -e "${NC}"
     echo "  Build & Run Script v1.0"
     echo ""
@@ -654,13 +654,13 @@ if [[ "$NETWORK" == true ]]; then
     )
     echo "  Network: virtio-net (10.0.2.15)"
 
-    # Dedicated microkernel NIC (for user-space netd)
+    # Dedicated NIC (for user-space netd)
     if [[ -f "$BUILD_DIR/netd.sys" ]]; then
         QEMU_OPTS+=(
             -netdev user,id=net1
             -device virtio-net-device,netdev=net1
         )
-        echo "  Microkernel Network: virtio-net (net1)"
+        echo "  User-space Network: virtio-net (net1)"
     fi
 fi
 

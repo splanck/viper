@@ -7,7 +7,7 @@
 //
 // File: user/libc/src/spawn.c
 // Purpose: POSIX spawn functions for ViperDOS libc.
-// Key invariants: Spawn not implemented; returns ENOSYS.
+// Key invariants: posix_spawn calls SYS_TASK_SPAWN kernel syscall.
 // Ownership/Lifetime: Library; file actions dynamically allocated.
 // Links: user/libc/include/spawn.h
 //
@@ -35,8 +35,8 @@
  * - posix_spawn_file_actions_adddup2: Add dup2 action
  * - posix_spawn_file_actions_addopen: Add open action
  *
- * The actual spawn functions (posix_spawn, posix_spawnp) return ENOSYS
- * as full process spawning is not yet implemented in ViperDOS.
+ * The spawn functions (posix_spawn, posix_spawnp) call the kernel's
+ * SYS_TASK_SPAWN syscall to create a new process from an ELF binary.
  */
 
 #include "../include/spawn.h"
@@ -370,10 +370,21 @@ int posix_spawn_file_actions_addfchdir_np(posix_spawn_file_actions_t *file_actio
  * Spawn functions
  * ============================================================ */
 
+/* Syscall wrapper */
+extern long __syscall3(long num, long arg0, long arg1, long arg2);
+
+/* Kernel syscall number for process spawning */
+#define SYS_TASK_SPAWN 0x03
+
 /*
  * posix_spawn - Spawn a process
  *
- * ViperDOS stub - returns ENOSYS since exec() is not fully implemented.
+ * Calls the kernel's SYS_TASK_SPAWN syscall to create a new process
+ * from the ELF binary at the given path. argv[] is flattened into a
+ * single space-separated args string for the kernel ABI.
+ *
+ * Note: file_actions and attrp are accepted but not applied (the kernel
+ * handles file descriptor inheritance and scheduling internally).
  */
 int posix_spawn(pid_t *pid,
                 const char *path,
@@ -381,19 +392,50 @@ int posix_spawn(pid_t *pid,
                 const posix_spawnattr_t *attrp,
                 char *const argv[],
                 char *const envp[]) {
-    (void)pid;
-    (void)path;
     (void)file_actions;
     (void)attrp;
-    (void)argv;
     (void)envp;
 
-    /* ViperDOS doesn't yet support full process spawning */
-    return ENOSYS;
+    if (!path) {
+        return EINVAL;
+    }
+
+    /* Build a single space-separated args string from argv[] */
+    char args_buf[256];
+    args_buf[0] = '\0';
+    if (argv) {
+        int pos = 0;
+        for (int i = 0; argv[i] && pos < 255; i++) {
+            if (i > 0 && pos < 255)
+                args_buf[pos++] = ' ';
+            for (int j = 0; argv[i][j] && pos < 255; j++)
+                args_buf[pos++] = argv[i][j];
+        }
+        args_buf[pos] = '\0';
+    }
+
+    long result = __syscall3(SYS_TASK_SPAWN,
+                             (long)path,
+                             (long)path,
+                             (long)(args_buf[0] ? args_buf : (char *)0));
+
+    if (result < 0) {
+        /* Kernel returned a negative error code */
+        return (int)(-result);
+    }
+
+    /* result contains the viper_id of the new process */
+    if (pid) {
+        *pid = (pid_t)result;
+    }
+
+    return 0;
 }
 
 /*
  * posix_spawnp - Spawn a process using PATH search
+ *
+ * ViperDOS uses absolute paths, so this delegates to posix_spawn.
  */
 int posix_spawnp(pid_t *pid,
                  const char *file,
@@ -401,13 +443,5 @@ int posix_spawnp(pid_t *pid,
                  const posix_spawnattr_t *attrp,
                  char *const argv[],
                  char *const envp[]) {
-    (void)pid;
-    (void)file;
-    (void)file_actions;
-    (void)attrp;
-    (void)argv;
-    (void)envp;
-
-    /* ViperDOS doesn't yet support full process spawning */
-    return ENOSYS;
+    return posix_spawn(pid, file, file_actions, attrp, argv, envp);
 }

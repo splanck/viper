@@ -455,7 +455,7 @@ if "%NETWORK%"=="true" (
     if exist "%BUILD_DIR%\netd.sys" (
         set "QEMU_OPTS=!QEMU_OPTS! -netdev user,id=net1"
         set "QEMU_OPTS=!QEMU_OPTS! -device virtio-net-device,netdev=net1"
-        echo   Microkernel Network: virtio-net (net1)
+        echo   Extra Network: virtio-net (net1)
     )
 )
 

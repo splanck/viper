@@ -1195,10 +1195,10 @@ static void handle_create_surface(int32_t client_channel,
     }
     surf->title[63] = '\0';
 
-    // Clear surface to white
+    // Clear surface to desktop color (avoids white flash before client renders)
     for (uint32_t y = 0; y < surf->height; y++) {
         for (uint32_t x = 0; x < surf->width; x++) {
-            surf->pixels[y * (stride / 4) + x] = COLOR_WHITE;
+            surf->pixels[y * (stride / 4) + x] = COLOR_DESKTOP;
         }
     }
 

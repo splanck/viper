@@ -6,7 +6,7 @@
  * This utility demonstrates the use of the libc filesystem functions
  * and provides information about files and directories.
  *
- * Uses libc for file I/O to route through fsd (microkernel path).
+ * Uses libc for file I/O via kernel VFS syscalls.
  *
  * Usage:
  *   fsinfo [path]   - Show information about a file or directory

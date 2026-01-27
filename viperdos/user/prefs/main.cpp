@@ -340,7 +340,7 @@ static void drawAboutPrefs(gui_window_t *win) {
     // Version info
     gui_draw_text(win, CONTENT_X + 80, y + 5, "ViperDOS Workbench", WB_BLACK);
     gui_draw_text(win, CONTENT_X + 80, y + 22, "Version " VIPERDOS_VERSION_STRING, WB_GRAY_DARK);
-    gui_draw_text(win, CONTENT_X + 80, y + 39, "Viper Microkernel OS", WB_GRAY_DARK);
+    gui_draw_text(win, CONTENT_X + 80, y + 39, "Hybrid Kernel OS", WB_GRAY_DARK);
     y += 75;
 
     // System info

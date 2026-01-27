@@ -3,7 +3,7 @@
 ## Executive Summary
 
 ViperDOS has solid foundations for a GUI desktop: dual framebuffer support (ramfb + VirtIO-GPU), VirtIO-input devices, a
-mature IPC system, and an established userspace server pattern. This plan outlines the prerequisites, architecture, and
+mature IPC system, and an established display server pattern. This plan outlines the prerequisites, architecture, and
 implementation phases for building a windowed desktop environment.
 
 > **Implementation Status (v0.3.1):** Core GUI infrastructure is now implemented. displayd server provides window
@@ -25,7 +25,7 @@ implementation phases for building a windowed desktop environment.
 | Keyboard input      | Stable | `kernel/drivers/virtio/input.cpp` |
 | IPC channels        | Stable | `kernel/ipc/channel.cpp`          |
 | Shared memory       | Stable | kernel cap system                 |
-| Userspace servers   | Stable | consoled, displayd                |
+| Display servers     | Stable | consoled, displayd                |
 
 ### What's Implemented (v0.3.1)
 

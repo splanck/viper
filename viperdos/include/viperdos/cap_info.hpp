@@ -59,7 +59,7 @@
 #define CAP_KIND_SURFACE 23       /**< Graphics surface/framebuffer object. */
 #define CAP_KIND_INPUT 24         /**< Input device/stream object. */
 #define CAP_KIND_SHARED_MEMORY 25 /**< Shared memory object. */
-#define CAP_KIND_DEVICE 26        /**< Device capability (microkernel). */
+#define CAP_KIND_DEVICE 26        /**< Device capability (display servers). */
 /** @} */
 
 /** @name Capability Rights

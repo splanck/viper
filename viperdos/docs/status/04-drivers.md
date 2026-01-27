@@ -1,8 +1,8 @@
 # Drivers Subsystem
 
-**Status:** Functional for QEMU virt platform (kernel and user-space)
-**Location:** `kernel/drivers/` + user-space servers
-**SLOC:** ~6,000 (kernel) + server-side
+**Status:** Functional for QEMU virt platform
+**Location:** `kernel/drivers/`
+**SLOC:** ~6,000
 
 ## Overview
 

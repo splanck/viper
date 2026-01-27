@@ -99,7 +99,7 @@ ViperDOS, with the kernel providing memory management, scheduling, I/O, and grap
 ├────────────────────────────────────────────────────────────────┤
 │  VCALL Boundary (svc instruction)                             │
 ├────────────────────────────────────────────────────────────────┤
-│  ViperDOS Microkernel                                           │
+│  ViperDOS Hybrid Kernel                                         │
 │  (Scheduler, Memory, IPC, Capabilities, HAL)                  │
 ├────────────────────────────────────────────────────────────────┤
 │  ARM64 Hardware                                                │
@@ -155,10 +155,10 @@ No ambient authority. Programs start with zero capabilities and receive only wha
 
 No blocking syscalls except `PollWait`. Operations either complete immediately or return `WOULD_BLOCK`.
 
-### 2.4 Microkernel Architecture
+### 2.4 Hybrid Kernel Architecture
 
-The kernel is small (<50,000 lines target). It handles scheduling, memory, IPC, capabilities, and HAL. Everything else
-runs in user space.
+The kernel provides scheduling, memory, IPC, capabilities, filesystem, networking, TLS, and device drivers.
+Display services (consoled, displayd) run in user space.
 
 ### 2.5 Shallow Type Awareness
 

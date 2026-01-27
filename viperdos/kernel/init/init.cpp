@@ -116,14 +116,14 @@ bool init_framebuffer() {
     if (fb_initialized && gcon::init()) {
         serial::puts("[kernel] Graphics console initialized\n");
         gcon::puts("\n");
-        gcon::puts("  =========================================\n");
-        gcon::puts("    __     ___                  ___  ____  \n");
-        gcon::puts("    \\ \\   / (_)_ __   ___ _ __ / _ \\/ ___| \n");
-        gcon::puts("     \\ \\ / /| | '_ \\ / _ \\ '__| | | \\___ \\ \n");
-        gcon::puts("      \\ V / | | |_) |  __/ |  | |_| |___) |\n");
-        gcon::puts("       \\_/  |_| .__/ \\___|_|   \\___/|____/ \n");
-        gcon::puts("              |_|                          \n");
-        gcon::puts("  =========================================\n");
+        gcon::puts("  =================================================\n");
+        gcon::puts("    __     ___                 ____   ___  ____  \n");
+        gcon::puts("    \\ \\   / (_)_ __   ___ _ __|  _ \\ / _ \\/ ___| \n");
+        gcon::puts("     \\ \\ / /| | '_ \\ / _ \\ '__| | | | | | \\___ \\ \n");
+        gcon::puts("      \\ V / | | |_) |  __/ |  | |_| | |_| |___) |\n");
+        gcon::puts("       \\_/  |_| .__/ \\___|_|  |____/ \\___/|____/ \n");
+        gcon::puts("              |_|                                 \n");
+        gcon::puts("  =================================================\n");
         gcon::puts("\n");
         gcon::puts("  Version: " VIPERDOS_VERSION_STRING " | AArch64\n");
         gcon::puts("\n");

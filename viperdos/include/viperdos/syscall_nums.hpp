@@ -385,7 +385,7 @@
 
 /** @name Device Management Syscalls (0x100 - 0x10F)
  *  @details
- *  Microkernel device access primitives. These allow user-space drivers to
+ *  Device access primitives. These allow user-space display servers to
  *  map device MMIO, register for IRQs, and allocate DMA buffers.
  *  Requires CAP_DEVICE_ACCESS capability.
  *  @{

@@ -48,7 +48,7 @@ enum Rights : u32 {
     CAP_SPAWN = 1 << 8,
     CAP_TRAVERSE = 1 << 9, // Directory traversal right
 
-    // Device access rights (microkernel support)
+    // Device access rights (for user-space display servers)
     CAP_DEVICE_ACCESS = 1 << 10, // Can map device MMIO memory
     CAP_IRQ_ACCESS = 1 << 11,    // Can register/wait for IRQs
     CAP_DMA_ACCESS = 1 << 12,    // Can allocate DMA buffers

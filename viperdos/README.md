@@ -1,13 +1,13 @@
 # ViperDOS
 
-**ViperDOS** is a capability-based operating system for AArch64 (ARM64), designed to explore microkernel architecture,
+**ViperDOS** is a capability-based operating system for AArch64 (ARM64), designed to explore hybrid kernel architecture,
 capability-based security, and modern OS concepts. It runs on QEMU's `virt` machine and features a complete TCP/IP stack
 with TLS 1.3, a crash-consistent journaling filesystem, and a retro-style interactive shell.
 
 > **Status:** Functional and actively developed. Suitable for experimentation and learning.
 >
-> **Microkernel status:** User-space servers operational (`netd`, `fsd`, `blkd`, `consoled`, `inputd`, `displayd`).
-> Kernel retains fallback implementations for boot and development. Total: ~115,000 SLOC (kernel ~50K, user ~65K).
+> **Hybrid kernel status:** Filesystem, networking, and block I/O run in-kernel. Display servers
+> (`consoled`, `displayd`) run in user space. Total: ~115,000 SLOC (kernel ~50K, user ~65K).
 
 ---
 
@@ -50,7 +50,7 @@ The build script automatically:
 **Two-Disk Architecture:**
 
 - **ESP (esp.img)**: EFI System Partition with VBoot bootloader and kernel
-- **System disk (sys.img)**: Core system servers (netd, fsd, blkd, etc.)
+- **System disk (sys.img)**: Core system programs (vinit, consoled, displayd)
 - **User disk (user.img)**: User programs and data
 
 **Requirements:**
@@ -69,10 +69,10 @@ ViperDOS is a research operating system exploring:
 | Concept                       | Implementation                                                                       |
 |-------------------------------|--------------------------------------------------------------------------------------|
 | **Capability-Based Security** | Handle-based access control with rights derivation and revocation                    |
-| **Microkernel Design**        | Minimal kernel with user-space servers (netd, fsd, blkd, consoled, inputd, displayd) |
+| **Hybrid Kernel Design**      | Kernel provides filesystem, networking, block I/O; display servers in user space      |
 | **Modern Memory Management**  | Demand paging, copy-on-write, shared memory, buddy allocator                         |
 | **Full Network Stack**        | TCP/IP, TLS 1.3, DNS, HTTP, SSH-2/SFTP (user-space)                                  |
-| **Crash-Consistent Storage**  | Write-ahead journaling filesystem (user-space fsd)                                   |
+| **Crash-Consistent Storage**  | Write-ahead journaling filesystem (kernel VFS/ViperFS)                               |
 
 ### Why ViperDOS?
 
@@ -102,7 +102,7 @@ ViperDOS is a research operating system exploring:
 | Component         | Features                                                                        |
 |-------------------|---------------------------------------------------------------------------------|
 | **libc**          | POSIX-compatible C library (stdio, string, stdlib, unistd, socket, poll)        |
-| **Servers**       | netd (TCP/IP), fsd (filesystem), blkd (block), consoled, inputd, displayd (GUI) |
+| **Display Servers** | consoled (GUI terminal emulator), displayd (window manager/compositor)           |
 | **libtls**        | TLS 1.3 client with X.509 certificate verification                              |
 | **libssh**        | SSH-2 client with SFTP, Ed25519/RSA authentication                              |
 | **libhttp**       | HTTP/1.1 client library                                                         |
@@ -151,8 +151,8 @@ The ViperDOS shell includes these commands:
 │  │  Syscall wrappers, memory allocator, string functions      │  │
 │  └───────────────────────────────────────────────────────────┘  │
 │  ┌───────────────────────────────────────────────────────────┐  │
-│  │  Microkernel Servers                                        │  │
-│  │  blkd, fsd, netd, consoled, inputd, displayd               │  │
+│  │  Display Servers                                             │  │
+│  │  consoled (GUI terminal), displayd (window manager)         │  │
 │  └───────────────────────────────────────────────────────────┘  │
 └─────────────────────────────┬───────────────────────────────────┘
                               │ SVC #0 (Syscalls)
@@ -211,17 +211,13 @@ os/
 ├── user/                # User space (~60,000 SLOC)
 │   ├── vinit/           # Shell and commands
 │   ├── libc/            # C library implementation
-│   ├── servers/         # Microkernel servers
-│   │   ├── netd/        # Network server (TCP/IP stack)
-│   │   ├── fsd/         # Filesystem server (ViperFS)
-│   │   ├── blkd/        # Block device server
-│   │   ├── consoled/    # Console output server
-│   │   ├── inputd/      # Keyboard/mouse input server
-│   │   └── displayd/    # Display/window server
+│   ├── servers/         # User-space display servers
+│   │   ├── consoled/    # GUI terminal emulator
+│   │   └── displayd/    # Window manager/compositor
 │   ├── libtls/          # TLS 1.3 client library
 │   ├── libssh/          # SSH-2 + SFTP client library
 │   ├── libhttp/         # HTTP/1.1 client library
-│   ├── libnetclient/    # IPC client for netd
+│   ├── libnetclient/    # Network client library
 │   ├── libgui/          # GUI client library for displayd
 │   ├── libvirtio/       # User-space VirtIO driver library
 │   ├── edit/            # Text editor
@@ -346,7 +342,7 @@ Content-Type: text/html; charset=UTF-8
 | [docs/status/10-userspace.md](docs/status/10-userspace.md)                 | User space and libc                  |
 | [docs/status/11-tools.md](docs/status/11-tools.md)                         | Build tools                          |
 | [docs/status/12-crypto.md](docs/status/12-crypto.md)                       | Cryptography                         |
-| [docs/status/13-servers.md](docs/status/13-servers.md)                     | Microkernel servers                  |
+| [docs/status/13-servers.md](docs/status/13-servers.md)                     | User-space servers                   |
 | [docs/status/14-summary.md](docs/status/14-summary.md)                     | Summary and roadmap                  |
 | [docs/status/15-boot.md](docs/status/15-boot.md)                           | Boot infrastructure                  |
 | [docs/shell-commands.md](docs/shell-commands.md)                           | Shell command reference              |

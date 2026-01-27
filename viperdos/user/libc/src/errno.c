@@ -7,9 +7,9 @@
 //
 // File: user/libc/src/errno.c
 // Purpose: Error number storage and assertion handling.
-// Key invariants: Thread-local errno (currently process-global).
+// Key invariants: Per-thread errno via TPIDR_EL0 TCB; main thread uses global.
 // Ownership/Lifetime: Library; errno persists across function calls.
-// Links: user/libc/include/errno.h
+// Links: user/libc/include/errno.h, user/libc/src/pthread.c (tcb_t layout)
 //
 //===----------------------------------------------------------------------===//
 
@@ -20,39 +20,59 @@
  * @details
  * This file provides:
  *
- * - errno: Thread-local error number storage (currently process-global)
+ * - errno: Per-thread error number storage via TPIDR_EL0 / TCB
  * - __assert_fail: Assertion failure handler for the assert() macro
  *
  * The errno mechanism allows library functions to report error conditions
  * without using return values. When a function fails, it sets errno to
  * an error code (defined in errno.h) that describes the failure.
  *
- * Note: The current implementation uses a single global errno, which is
- * not thread-safe. A future implementation should use thread-local storage.
+ * Per-thread errno is stored in the Thread Control Block (TCB) pointed
+ * to by TPIDR_EL0. The main thread (TPIDR_EL0 == 0) uses a static
+ * global fallback.
  */
 
 #include "../include/errno.h"
 #include "../include/stdio.h"
 #include "../include/stdlib.h"
+#include "../include/stddef.h"
 
-/* Simple errno storage - one per process for now (not thread-safe) */
-static int __errno_value = 0;
+/*
+ * Partial TCB layout matching pthread.c's tcb_t struct.
+ * Only fields up to errno_value are needed for offsetof().
+ */
+struct __tcb_layout {
+    void *start_routine;
+    void *arg;
+    void *stack_base;
+    unsigned long stack_size;
+    unsigned long thread_id;
+    int detached;
+    int errno_value;
+};
+
+/* Main thread errno (fallback when TPIDR_EL0 == 0) */
+static int __main_errno = 0;
 
 /**
- * @brief Get pointer to thread-local errno variable.
+ * @brief Get pointer to the current thread's errno variable.
  *
  * @details
  * Returns a pointer to the errno variable for the current thread.
- * The errno macro expands to (*__errno_location()), allowing errno
- * to be used as an lvalue (e.g., errno = 0).
- *
- * Note: Current implementation uses a single global variable, so
- * this is not thread-safe. A future implementation should use TLS.
+ * For spawned threads, this reads TPIDR_EL0 to find the TCB and
+ * returns &tcb->errno_value. For the main thread (TPIDR_EL0 == 0),
+ * returns a static global.
  *
  * @return Pointer to the errno integer for the current thread.
  */
 int *__errno_location(void) {
-    return &__errno_value;
+    unsigned long tpidr;
+    __asm__ volatile("mrs %0, tpidr_el0" : "=r"(tpidr));
+    if (tpidr) {
+        return (int *)((char *)tpidr +
+                        offsetof(struct __tcb_layout, errno_value));
+    }
+    return &__main_errno;
 }
 
 /**

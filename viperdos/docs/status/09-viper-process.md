@@ -15,7 +15,7 @@ core kernel component that provides:
 
 Each "Viper" is an in-kernel process representation that owns an address space, a capability table, and a set of tasks.
 The capability system provides fine-grained access control to kernel objects and enables secure delegation between
-user-space servers.
+user-space programs.
 
 ---
 

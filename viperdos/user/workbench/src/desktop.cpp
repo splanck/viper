@@ -856,7 +856,7 @@ void Desktop::showAboutDialog() {
 
     // Description
     gui_draw_text(m_aboutDialog, 40, 80, "An Amiga-inspired desktop", themeText());
-    gui_draw_text(m_aboutDialog, 30, 100, "for the Viper microkernel OS", themeText());
+    gui_draw_text(m_aboutDialog, 30, 100, "for the ViperDOS hybrid kernel", themeText());
 
     // Copyright
     gui_draw_text(m_aboutDialog, 60, 140, "(C) 2026 ViperDOS Team", themeTextDisabled());

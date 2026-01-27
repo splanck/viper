@@ -76,6 +76,7 @@ typedef struct {
     size_t stack_size;               /* Size of mmap'd stack region */
     pthread_t thread_id;             /* Kernel task ID */
     int detached;                    /* Detached state */
+    int errno_value;                 /* Per-thread errno storage */
     void *tls_values[TLS_KEYS_MAX]; /* Per-thread TLS storage */
 } tcb_t;
 

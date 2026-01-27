@@ -133,7 +133,7 @@ Shared memory is used for:
 
 - **Large data transfers**: Bulk file/network data between servers and applications
 - **Zero-copy I/O**: DMA buffers shared between drivers and applications
-- **Server communication**: High-bandwidth IPC between user-space servers
+- **Server communication**: High-bandwidth IPC between display servers and applications
 
 Key files:
 

@@ -58,7 +58,7 @@ This document lists OS-level capabilities that ViperDOS must implement to suppor
 | Current working directory | P1 | Yes | getcwd/chdir support |
 | File metadata (timestamps) | P2 | Yes | ViperFS and FAT32 timestamps populated |
 | File locking | P3 | Yes | Advisory locks via fcntl(F_SETLK/F_GETLK) and flock() (single-process: always succeed) |
-| Memory-mapped files | P3 | Yes | Anonymous mmap via SYS_MMAP (0x150), munmap, mprotect; VMA-based demand paging |
+| Memory-mapped files | P3 | Yes | Anonymous mmap via SYS_MMAP (0x150), munmap, mprotect (VMA + PTE update); VMA-based demand paging |
 
 ---
 
@@ -208,7 +208,7 @@ This document lists OS-level capabilities that ViperDOS must implement to suppor
 | Exit status code | P0 | Yes | Status passed to parent |
 | Environment variables | P1 | Yes | getenv/setenv in libc |
 | Command-line arguments | P0 | Yes | GET_ARGS syscall (0xA6) |
-| Process spawn/exec | P2 | Yes | TASK_SPAWN syscall, posix_spawn in libc |
+| Process spawn/exec | P2 | Yes | TASK_SPAWN kernel syscall + posix_spawn()/posix_spawnp() in libc |
 | Process wait | P2 | Yes | WAIT/WAITPID syscalls, waitpid in libc |
 | Signal handling | P2 | Yes | Full signal subsystem: SIGACTION, KILL, etc. |
 
@@ -249,7 +249,7 @@ This document lists OS-level capabilities that ViperDOS must implement to suppor
 
 | Requirement | Priority | ViperDOS Status | Notes |
 |-------------|----------|-----------------|-------|
-| `errno` support | P0 | Yes | Thread-local errno in libc |
+| `errno` support | P0 | Yes | Per-thread errno via TPIDR_EL0 TCB; main thread uses static global |
 | `strerror` | P1 | Yes | Error message strings |
 | Stack overflow detection | P2 | Yes | User stack guard page with fault detection |
 | Trap/abort mechanism | P0 | Yes | abort() in libc, kernel traps |
@@ -370,11 +370,11 @@ This document lists OS-level capabilities that ViperDOS must implement to suppor
 |----------|----------|---------|---------|------------|
 | P0 | 11 | 0 | 0 | **100%** |
 | P1 | 13 | 0 | 0 | **100%** |
-| P2 | 14 | 1 | 0 | **96%** |
+| P2 | 14 | 1 | 0 | **~96%** |
 | P3 | 9 | 3 | 0 | **~95%** |
 | **Total** | 47 | 4 | 0 | **~99%** |
 
-**ViperDOS is approximately 99% complete** for the requirements needed to run general applications. All critical (P0) and high-priority (P1) features are fully implemented. P2 is nearly complete (only mutex/atomics partial due to single-core stub approach). P3 is now substantially complete with userspace threading (real pthread_create/join via kernel thread syscalls), mmap, audio mixing, WebSocket library, clipboard, file locking, CPU count, integer overflow detection, and gamepad/multi-display query stubs. Remaining partial items are stub-based implementations that work correctly on the single-core system but would need enhancement for SMP.
+**ViperDOS is approximately 99% complete** for the requirements needed to run general applications. All critical (P0) and high-priority (P1) features are fully implemented. P2 is nearly complete (only mutex/atomics partial due to single-core stub approach). P3 is substantially complete with userspace threading (real pthread_create/join via kernel thread syscalls), mmap with full mprotect, audio mixing, WebSocket library, clipboard, file locking, CPU count, integer overflow detection, and gamepad/multi-display query stubs. Per-thread errno is implemented via TPIDR_EL0 TCB. posix_spawn/spawnp call the kernel's SYS_TASK_SPAWN syscall. Remaining partial items are stub-based implementations that work correctly on the single-core system but would need enhancement for SMP.
 
 ---
 

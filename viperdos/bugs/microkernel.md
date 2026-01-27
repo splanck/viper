@@ -1,7 +1,12 @@
 # ViperDOS Microkernel Audit & Migration Plan
 
-**Date:** 2025-12-31  
-**Scope:** `os/` only (do **not** touch `../compiler/`)  
+> **HISTORICAL DOCUMENT:** This plan was created when ViperDOS was exploring microkernel architecture.
+> ViperDOS has since adopted a **hybrid kernel** design where filesystem, networking, and block I/O
+> run in-kernel. Only display servers (consoled, displayd) remain in user space.
+> This document is preserved for historical reference only.
+
+**Date:** 2025-12-31
+**Scope:** `os/` only (do **not** touch `../compiler/`)
 **Goal:** Identify where the current tree diverges from microkernel architecture and provide a safe, phased plan to
 migrate without breaking boot, IO, or developer workflows.
 
