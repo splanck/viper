@@ -130,6 +130,26 @@ void rt_trap_stack_overflow(void)
     _exit(1);
 }
 
+#elif defined(__viperdos__)
+
+// ViperDOS stack safety implementation
+// TODO: ViperDOS - implement using signal handling or kernel stack guard pages
+// For now, provide a minimal implementation that traps on overflow
+
+void rt_init_stack_safety(void)
+{
+    // TODO: ViperDOS - register stack guard handler when kernel support is available
+    // No-op until ViperDOS signal/exception handling is implemented
+}
+
+void rt_trap_stack_overflow(void)
+{
+    // Use fprintf for simplicity; could use write() if available
+    fprintf(stderr, "Viper runtime trap: stack overflow\n");
+    fflush(stderr);
+    exit(1);
+}
+
 #else
 // Fallback for other platforms - no-op implementation
 void rt_init_stack_safety(void)

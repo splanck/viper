@@ -93,6 +93,10 @@ static int64_t get_timestamp_ms(void)
     LARGE_INTEGER counter;
     QueryPerformanceCounter(&counter);
     return (int64_t)((counter.QuadPart * 1000LL) / freq.QuadPart);
+#elif defined(__viperdos__)
+    // ViperDOS: Use rt_timer_ms from rt_time.c
+    extern int64_t rt_timer_ms(void);
+    return rt_timer_ms();
 #else
     struct timespec ts;
 #ifdef CLOCK_MONOTONIC
@@ -134,6 +138,10 @@ static void sleep_ms(int64_t ms)
 
 #if defined(_WIN32)
     Sleep((DWORD)ms);
+#elif defined(__viperdos__)
+    // ViperDOS: Use rt_sleep_ms from rt_time.c
+    extern void rt_sleep_ms(int32_t ms);
+    rt_sleep_ms((int32_t)ms);
 #else
     struct timespec ts;
     ts.tv_sec = ms / 1000;

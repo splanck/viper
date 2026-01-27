@@ -30,6 +30,22 @@
 // For strcasecmp: Windows uses _stricmp, POSIX uses strcasecmp
 #ifdef _WIN32
 #define strcasecmp _stricmp
+#elif defined(__viperdos__)
+// ViperDOS: strings.h may not be available yet
+static int viperdos_strcasecmp(const char *s1, const char *s2)
+{
+    while (*s1 && *s2)
+    {
+        int c1 = tolower((unsigned char)*s1);
+        int c2 = tolower((unsigned char)*s2);
+        if (c1 != c2)
+            return c1 - c2;
+        s1++;
+        s2++;
+    }
+    return tolower((unsigned char)*s1) - tolower((unsigned char)*s2);
+}
+#define strcasecmp viperdos_strcasecmp
 #else
 #include <strings.h>
 #endif

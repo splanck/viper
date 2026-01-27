@@ -151,6 +151,10 @@ int64_t rt_datetime_now_ms(void)
 {
 #if RT_PLATFORM_WINDOWS
     return rt_windows_time_ms();
+#elif RT_PLATFORM_VIPERDOS
+    // TODO: ViperDOS - implement using sys_clock_gettime or similar syscall
+    // For now, use standard time() with millisecond approximation
+    return (int64_t)time(NULL) * 1000;
 #elif RT_PLATFORM_MACOS
     struct timeval tv;
     gettimeofday(&tv, NULL);

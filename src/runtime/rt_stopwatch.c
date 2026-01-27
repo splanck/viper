@@ -101,6 +101,12 @@ static int64_t get_timestamp_ns(void)
     LARGE_INTEGER counter;
     QueryPerformanceCounter(&counter);
     return (int64_t)((counter.QuadPart * 1000000000LL) / freq.QuadPart);
+#elif defined(__viperdos__)
+    // TODO: ViperDOS - implement using monotonic clock syscall (sys_clock_gettime)
+    // For now, use a stub that returns milliseconds converted to nanoseconds
+    // This will be replaced when ViperDOS clock syscalls are available
+    extern int64_t rt_timer_ms(void); // from rt_time.c
+    return rt_timer_ms() * 1000000LL;
 #else
     struct timespec ts;
 #ifdef CLOCK_MONOTONIC

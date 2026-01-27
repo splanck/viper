@@ -37,6 +37,17 @@ extern void rt_trap(const char *msg);
 #pragma comment(lib, "ws2_32.lib")
 #define close closesocket
 typedef int socklen_t;
+#elif defined(__viperdos__)
+// ViperDOS: Socket support not yet implemented
+// TODO: ViperDOS - include network headers when available
+// WebSocket functionality will be available once networking is implemented
+typedef int socklen_t;
+#define close(fd) (-1)
+#define socket(domain, type, protocol) (-1)
+#define connect(fd, addr, len) (-1)
+#define send(fd, buf, len, flags) (-1)
+#define recv(fd, buf, len, flags) (-1)
+#define poll(fds, nfds, timeout) (-1)
 #else
 #include <arpa/inet.h>
 #include <errno.h>
