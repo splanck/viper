@@ -111,6 +111,7 @@ set(KERNEL_SOURCES
         fs/cache.cpp
         fs/viperfs/viperfs.cpp
         fs/viperfs/journal.cpp
+        fs/fat32/fat32.cpp
         fs/vfs/vfs.cpp
         # Assign system (v0.2.0)
         assign/assign.cpp

@@ -470,6 +470,7 @@ bool ViperFS::mount() {
     inode_cache_.set_parent(this);
 
     mounted_ = true;
+    sb_dirty_ = false; // Fresh mount - superblock is clean
 
     serial::puts("[viperfs] Mounted '");
     serial::puts(sb_.label);
@@ -513,6 +514,10 @@ void ViperFS::unmount() {
 
     // Sync inode cache first (before block cache)
     inode_cache_.sync_all();
+
+    // Always write superblock on unmount (even if not dirty)
+    write_superblock_with_backup();
+    sb_dirty_ = false;
 
     // Sync journal and cache
     if (journal().is_enabled()) {
@@ -850,6 +855,7 @@ u64 ViperFS::alloc_block_unlocked() {
                         get_cache().release(block);
 
                         sb_.free_blocks--;
+                        sb_dirty_ = true;
                         return block_num;
                     }
                 }
@@ -881,6 +887,7 @@ void ViperFS::free_block_unlocked(u64 block_num) {
     get_cache().release(block);
 
     sb_.free_blocks++;
+    sb_dirty_ = true;
 }
 
 /** @copydoc fs::viperfs::ViperFS::alloc_inode_unlocked */
@@ -955,8 +962,14 @@ void ViperFS::sync() {
     if (!mounted_)
         return;
 
-    // Write superblock to both primary and backup locations with CRC32
-    write_superblock_with_backup();
+    // Sync all cached inodes first
+    sync_inodes();
+
+    // Write superblock only if dirty (lazy sync for flash mode)
+    if (sb_dirty_) {
+        write_superblock_with_backup();
+        sb_dirty_ = false;
+    }
 
     // Sync all dirty blocks
     get_cache().sync();

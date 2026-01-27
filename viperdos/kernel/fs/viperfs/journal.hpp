@@ -178,9 +178,9 @@ class Journal {
     mutable Spinlock txn_lock_;
 
     /**
-     * @brief Calculate simple checksum for block data.
+     * @brief Calculate CRC32 checksum for block data.
      */
-    u64 checksum(const void *data, usize len);
+    u32 checksum(const void *data, usize len);
 
     /**
      * @brief Read the journal header from disk.

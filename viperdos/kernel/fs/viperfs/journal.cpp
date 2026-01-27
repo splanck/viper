@@ -27,6 +27,7 @@
 #include "journal.hpp"
 #include "../../arch/aarch64/timer.hpp"
 #include "../../console/serial.hpp"
+#include "../../lib/crc32.hpp"
 #include "../cache.hpp"
 
 namespace fs::viperfs {
@@ -42,13 +43,8 @@ bool journal_init(u64 journal_start, u64 num_blocks) {
     return g_journal.init(journal_start, num_blocks);
 }
 
-u64 Journal::checksum(const void *data, usize len) {
-    const u8 *bytes = static_cast<const u8 *>(data);
-    u64 sum = 0;
-    for (usize i = 0; i < len; i++) {
-        sum = (sum << 5) + sum + bytes[i]; // Simple hash
-    }
-    return sum;
+u32 Journal::checksum(const void *data, usize len) {
+    return lib::crc32(data, len);
 }
 
 bool Journal::read_header() {
@@ -170,12 +166,12 @@ bool Journal::verify_transaction_checksums(u64 block_num, const JournalTransacti
             return false;
         }
 
-        u64 computed = checksum(src->data, BLOCK_SIZE);
-        u64 expected = txn->blocks[i].checksum;
+        u32 computed = checksum(src->data, BLOCK_SIZE);
+        u32 expected = txn->blocks[i].checksum;
         cache().release(src);
 
         if (computed != expected) {
-            serial::puts("[journal] Checksum mismatch for block ");
+            serial::puts("[journal] CRC32 mismatch for block ");
             serial::put_dec(i);
             serial::putc('\n');
             return false;

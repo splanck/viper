@@ -222,6 +222,26 @@ class ViperFS {
         return sb_.root_inode;
     }
 
+    /**
+     * @brief Enable flash-optimized mode.
+     *
+     * @details
+     * In flash mode, the filesystem reduces unnecessary writes:
+     * - Superblock is only written on explicit sync or unmount
+     * - Block writes are coalesced where possible
+     * This extends flash storage lifespan.
+     *
+     * @param enable True to enable flash mode.
+     */
+    void set_flash_mode(bool enable) {
+        flash_mode_ = enable;
+    }
+
+    /** @brief Check if flash mode is enabled. */
+    bool is_flash_mode() const {
+        return flash_mode_;
+    }
+
     // Inode operations
     // Read an inode from disk. Caller must call release_inode() when done.
     /**
@@ -558,6 +578,8 @@ class ViperFS {
 
     Superblock sb_;
     bool mounted_{false};
+    bool sb_dirty_{false};       // Superblock has been modified (lazy sync)
+    bool flash_mode_{false};     // Flash-optimized mode (reduced writes)
     InodeCache inode_cache_;     // Inode cache instance
     BlockCache *cache_{nullptr}; // Block cache (nullptr = use default cache())
 

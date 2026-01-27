@@ -455,14 +455,51 @@ void BlockCache::sync_block(CacheBlock *block) {
 void BlockCache::sync() {
     SpinlockGuard guard(cache_lock);
 
-    serial::puts("[cache] Syncing dirty blocks...\n");
-
-    u32 synced = 0;
+    // Count dirty blocks
+    u32 dirty_count = 0;
     for (usize i = 0; i < CACHE_BLOCKS; i++) {
         if (blocks_[i].valid && blocks_[i].dirty) {
-            sync_block(&blocks_[i]);
-            synced++;
+            dirty_count++;
         }
+    }
+
+    if (dirty_count == 0) {
+        return; // Nothing to sync
+    }
+
+    serial::puts("[cache] Syncing ");
+    serial::put_dec(dirty_count);
+    serial::puts(" dirty blocks...\n");
+
+    // Collect dirty block indices and sort by block number for sequential writes
+    // (Better flash performance - reduces seek time and improves wear leveling)
+    usize dirty_indices[CACHE_BLOCKS];
+    u32 count = 0;
+
+    for (usize i = 0; i < CACHE_BLOCKS; i++) {
+        if (blocks_[i].valid && blocks_[i].dirty) {
+            dirty_indices[count++] = i;
+        }
+    }
+
+    // Simple insertion sort by block number (cache is small, O(n^2) is fine)
+    for (u32 i = 1; i < count; i++) {
+        usize key = dirty_indices[i];
+        u64 key_block = blocks_[key].block_num;
+        i32 j = static_cast<i32>(i) - 1;
+
+        while (j >= 0 && blocks_[dirty_indices[j]].block_num > key_block) {
+            dirty_indices[j + 1] = dirty_indices[j];
+            j--;
+        }
+        dirty_indices[j + 1] = key;
+    }
+
+    // Write blocks in sorted order
+    u32 synced = 0;
+    for (u32 i = 0; i < count; i++) {
+        sync_block(&blocks_[dirty_indices[i]]);
+        synced++;
     }
 
     serial::puts("[cache] Synced ");
