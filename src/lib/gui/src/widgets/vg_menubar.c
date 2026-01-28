@@ -2,6 +2,8 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
+#include "../../include/vg_widget.h"
+#include "../../../graphics/include/vgfx.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -23,6 +25,7 @@
 static void menubar_destroy(vg_widget_t *widget);
 static void menubar_measure(vg_widget_t *widget, float available_width, float available_height);
 static void menubar_paint(vg_widget_t *widget, void *canvas);
+static void menubar_paint_overlay(vg_widget_t *widget, void *canvas);
 static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event);
 
 //=============================================================================
@@ -33,6 +36,7 @@ static vg_widget_vtable_t g_menubar_vtable = {.destroy = menubar_destroy,
                                               .measure = menubar_measure,
                                               .arrange = NULL,
                                               .paint = menubar_paint,
+                                              .paint_overlay = menubar_paint_overlay,
                                               .handle_event = menubar_handle_event,
                                               .can_focus = NULL,
                                               .on_focus = NULL};
@@ -142,6 +146,10 @@ static void menubar_destroy(vg_widget_t *widget)
 {
     vg_menubar_t *menubar = (vg_menubar_t *)widget;
 
+    // Release input capture if this menubar holds it
+    if (vg_widget_get_input_capture() == widget)
+        vg_widget_release_input_capture();
+
     vg_menu_t *menu = menubar->first_menu;
     while (menu)
     {
@@ -163,10 +171,15 @@ static void menubar_measure(vg_widget_t *widget, float available_width, float av
 static void menubar_paint(vg_widget_t *widget, void *canvas)
 {
     vg_menubar_t *menubar = (vg_menubar_t *)widget;
+    vgfx_window_t win = (vgfx_window_t)canvas;
 
-    // Draw background
-    // TODO: Use vgfx primitives
-    (void)menubar->bg_color;
+    // Draw menubar background
+    vgfx_fill_rect(win,
+                   (int32_t)widget->x,
+                   (int32_t)widget->y,
+                   (int32_t)widget->width,
+                   (int32_t)widget->height,
+                   menubar->bg_color);
 
     if (!menubar->font)
         return;
@@ -191,9 +204,12 @@ static void menubar_paint(vg_widget_t *widget, void *canvas)
         // Draw highlight if this menu is open
         if (menu == menubar->open_menu)
         {
-            // Draw highlight background
-            // TODO: Use vgfx primitives
-            (void)menubar->highlight_bg;
+            vgfx_fill_rect(win,
+                           (int32_t)menu_x,
+                           (int32_t)widget->y,
+                           (int32_t)menu_width,
+                           (int32_t)widget->height,
+                           menubar->highlight_bg);
         }
 
         // Draw menu title
@@ -209,97 +225,154 @@ static void menubar_paint(vg_widget_t *widget, void *canvas)
         menu_x += menu_width;
     }
 
-    // Draw open menu dropdown
-    if (menubar->open_menu)
+    // NOTE: Dropdown is painted in paint_overlay() so it appears on top of other widgets
+}
+
+// Paint overlay - called after all widgets are painted to draw popups on top
+static void menubar_paint_overlay(vg_widget_t *widget, void *canvas)
+{
+    vg_menubar_t *menubar = (vg_menubar_t *)widget;
+
+    // Only draw if a menu is open
+    if (!menubar->open_menu || !menubar->font)
+        return;
+
+    vgfx_window_t win = (vgfx_window_t)canvas;
+
+    vg_font_metrics_t font_metrics;
+    vg_font_get_metrics(menubar->font, menubar->font_size, &font_metrics);
+
+    // Find position of open menu
+    float dropdown_x = widget->x;
+    for (vg_menu_t *menu = menubar->first_menu; menu != menubar->open_menu; menu = menu->next)
     {
-        // Find position of open menu
-        float dropdown_x = widget->x;
-        for (vg_menu_t *menu = menubar->first_menu; menu != menubar->open_menu; menu = menu->next)
+        if (menu->title)
         {
-            if (menu->title)
-            {
-                vg_text_metrics_t metrics;
-                vg_font_measure_text(menubar->font, menubar->font_size, menu->title, &metrics);
-                dropdown_x += metrics.width + menubar->menu_padding * 2;
-            }
+            vg_text_metrics_t metrics;
+            vg_font_measure_text(menubar->font, menubar->font_size, menu->title, &metrics);
+            dropdown_x += metrics.width + menubar->menu_padding * 2;
         }
+    }
 
-        // Calculate dropdown dimensions
-        float dropdown_y = widget->y + widget->height;
-        float dropdown_width = 200.0f;
-        float item_height = 24.0f;
-        float dropdown_height = menubar->open_menu->item_count * item_height;
+    // Calculate dropdown dimensions
+    float dropdown_y = widget->y + widget->height;
+    float dropdown_width = 200.0f;
+    float item_height = 24.0f;
+    float dropdown_height = menubar->open_menu->item_count * item_height;
 
-        // Draw dropdown background
-        // TODO: Use vgfx primitives
+    // Get theme for colors
+    vg_theme_t *theme = vg_theme_get_current();
 
-        // Draw menu items
-        float item_y = dropdown_y;
-        for (vg_menu_item_t *item = menubar->open_menu->first_item; item; item = item->next)
+    // Draw dropdown background (dark panel)
+    vgfx_fill_rect(win,
+                   (int32_t)dropdown_x,
+                   (int32_t)dropdown_y,
+                   (int32_t)dropdown_width,
+                   (int32_t)dropdown_height,
+                   menubar->bg_color);
+
+    // Draw dropdown border
+    uint32_t border_color = theme->colors.border_primary;
+    // Top border
+    vgfx_fill_rect(win, (int32_t)dropdown_x, (int32_t)dropdown_y, (int32_t)dropdown_width, 1,
+                   border_color);
+    // Left border
+    vgfx_fill_rect(win, (int32_t)dropdown_x, (int32_t)dropdown_y, 1, (int32_t)dropdown_height,
+                   border_color);
+    // Right border
+    vgfx_fill_rect(win, (int32_t)(dropdown_x + dropdown_width - 1), (int32_t)dropdown_y, 1,
+                   (int32_t)dropdown_height, border_color);
+    // Bottom border
+    vgfx_fill_rect(win, (int32_t)dropdown_x, (int32_t)(dropdown_y + dropdown_height - 1),
+                   (int32_t)dropdown_width, 1, border_color);
+
+    // Draw menu items
+    float item_y = dropdown_y;
+    for (vg_menu_item_t *item = menubar->open_menu->first_item; item; item = item->next)
+    {
+        if (item->separator)
         {
-            if (item->separator)
+            // Draw separator line
+            int32_t sep_margin = 8;
+            int32_t sep_y = (int32_t)(item_y + item_height / 2);
+            vgfx_fill_rect(win,
+                           (int32_t)dropdown_x + sep_margin,
+                           sep_y,
+                           (int32_t)dropdown_width - sep_margin * 2,
+                           1,
+                           theme->colors.border_secondary);
+        }
+        else
+        {
+            // Draw highlight if highlighted
+            if (item == menubar->highlighted)
             {
-                // Draw separator line
-                // TODO: Use vgfx primitives
+                vgfx_fill_rect(win,
+                               (int32_t)dropdown_x + 1,
+                               (int32_t)item_y,
+                               (int32_t)dropdown_width - 2,
+                               (int32_t)item_height,
+                               menubar->highlight_bg);
             }
-            else
-            {
-                // Draw highlight if highlighted
-                if (item == menubar->highlighted)
-                {
-                    // TODO: Use vgfx primitives
-                }
 
-                // Draw item text
-                if (item->text)
+            // Draw item text
+            if (item->text)
+            {
+                float item_text_y =
+                    item_y + (item_height + font_metrics.ascent - font_metrics.descent) / 2.0f;
+                uint32_t color = item->enabled ? menubar->text_color : menubar->disabled_color;
+                vg_font_draw_text(canvas,
+                                  menubar->font,
+                                  menubar->font_size,
+                                  dropdown_x + menubar->item_padding,
+                                  item_text_y,
+                                  item->text,
+                                  color);
+
+                // Draw shortcut if present
+                if (item->shortcut)
                 {
-                    float item_text_y =
-                        item_y + (item_height + font_metrics.ascent - font_metrics.descent) / 2.0f;
-                    uint32_t color = item->enabled ? menubar->text_color : menubar->disabled_color;
+                    vg_text_metrics_t shortcut_metrics;
+                    vg_font_measure_text(
+                        menubar->font, menubar->font_size, item->shortcut, &shortcut_metrics);
+                    float shortcut_x = dropdown_x + dropdown_width - shortcut_metrics.width -
+                                       menubar->item_padding;
                     vg_font_draw_text(canvas,
                                       menubar->font,
                                       menubar->font_size,
-                                      dropdown_x + menubar->item_padding,
+                                      shortcut_x,
                                       item_text_y,
-                                      item->text,
-                                      color);
+                                      item->shortcut,
+                                      menubar->disabled_color);
+                }
 
-                    // Draw shortcut if present
-                    if (item->shortcut)
-                    {
-                        vg_text_metrics_t shortcut_metrics;
-                        vg_font_measure_text(
-                            menubar->font, menubar->font_size, item->shortcut, &shortcut_metrics);
-                        float shortcut_x = dropdown_x + dropdown_width - shortcut_metrics.width -
-                                           menubar->item_padding;
-                        vg_font_draw_text(canvas,
-                                          menubar->font,
-                                          menubar->font_size,
-                                          shortcut_x,
-                                          item_text_y,
-                                          item->shortcut,
-                                          menubar->disabled_color);
-                    }
+                // Draw check mark if checked
+                if (item->checked)
+                {
+                    float check_x = dropdown_x + 4;
+                    float check_y = item_y + item_height / 2;
+                    vgfx_fill_rect(win, (int32_t)check_x, (int32_t)check_y, 3, 1,
+                                   menubar->text_color);
+                    vgfx_fill_rect(win, (int32_t)(check_x + 2), (int32_t)(check_y - 3), 1, 4,
+                                   menubar->text_color);
+                }
 
-                    // Draw check mark if checked
-                    if (item->checked)
-                    {
-                        // TODO: Draw check mark
-                    }
-
-                    // Draw submenu arrow if has submenu
-                    if (item->submenu)
-                    {
-                        // TODO: Draw arrow
-                    }
+                // Draw submenu arrow if has submenu
+                if (item->submenu)
+                {
+                    float arrow_x = dropdown_x + dropdown_width - 12;
+                    float arrow_y = item_y + item_height / 2;
+                    vgfx_fill_rect(win, (int32_t)arrow_x, (int32_t)(arrow_y - 2), 1, 5,
+                                   menubar->text_color);
+                    vgfx_fill_rect(win, (int32_t)(arrow_x + 1), (int32_t)(arrow_y - 1), 1, 3,
+                                   menubar->text_color);
+                    vgfx_fill_rect(win, (int32_t)(arrow_x + 2), (int32_t)arrow_y, 1, 1,
+                                   menubar->text_color);
                 }
             }
-
-            item_y += item_height;
         }
 
-        (void)dropdown_width;
-        (void)dropdown_height;
+        item_y += item_height;
     }
 }
 
@@ -386,7 +459,7 @@ static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event)
             float local_y = event->mouse.y;
 
             // Check if clicking menu bar
-            if (local_y < menubar->height)
+            if (local_y >= 0 && local_y < menubar->height && local_x >= 0)
             {
                 vg_menu_t *menu = find_menu_at_x(menubar, local_x);
                 if (menu)
@@ -397,6 +470,7 @@ static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event)
                         menubar->open_menu = NULL;
                         menubar->menu_active = false;
                         menu->open = false;
+                        vg_widget_release_input_capture();
                     }
                     else
                     {
@@ -408,15 +482,18 @@ static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event)
                         menubar->open_menu = menu;
                         menubar->menu_active = true;
                         menu->open = true;
+                        vg_widget_set_input_capture(widget);
                     }
                     widget->needs_paint = true;
                     return true;
                 }
             }
-            else if (menubar->open_menu && menubar->highlighted)
+
+            if (menubar->open_menu && menubar->highlighted)
             {
                 // Execute highlighted item
                 vg_menu_item_t *item = menubar->highlighted;
+                item->was_clicked = true;
                 if (item->enabled && item->action)
                 {
                     item->action(item->action_data);
@@ -427,9 +504,23 @@ static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event)
                 menubar->open_menu = NULL;
                 menubar->menu_active = false;
                 menubar->highlighted = NULL;
+                vg_widget_release_input_capture();
                 widget->needs_paint = true;
                 return true;
             }
+
+            // Click outside both menubar and dropdown area — close menu
+            if (menubar->open_menu)
+            {
+                menubar->open_menu->open = false;
+                menubar->open_menu = NULL;
+                menubar->menu_active = false;
+                menubar->highlighted = NULL;
+                vg_widget_release_input_capture();
+                widget->needs_paint = true;
+                return true;
+            }
+
             return false;
         }
 
@@ -450,6 +541,7 @@ static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event)
                         menubar->open_menu = NULL;
                         menubar->menu_active = false;
                         menubar->highlighted = NULL;
+                        vg_widget_release_input_capture();
                         widget->needs_paint = true;
                         return true;
 
@@ -518,6 +610,7 @@ static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event)
                         // Execute highlighted item
                         if (menubar->highlighted && menubar->highlighted->enabled)
                         {
+                            menubar->highlighted->was_clicked = true;
                             if (menubar->highlighted->action)
                             {
                                 menubar->highlighted->action(menubar->highlighted->action_data);
@@ -526,6 +619,7 @@ static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event)
                             menubar->open_menu = NULL;
                             menubar->menu_active = false;
                             menubar->highlighted = NULL;
+                            vg_widget_release_input_capture();
                             widget->needs_paint = true;
                         }
                         return true;

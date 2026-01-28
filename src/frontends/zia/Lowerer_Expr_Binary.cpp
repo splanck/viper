@@ -228,6 +228,13 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
     }
 
     // Non-assignment binary operations
+
+    // Handle short-circuit evaluation for And/Or BEFORE evaluating right operand
+    if (expr->op == BinaryOp::And || expr->op == BinaryOp::Or)
+    {
+        return lowerShortCircuit(expr);
+    }
+
     auto left = lowerExpr(expr->left.get());
     auto right = lowerExpr(expr->right.get());
 
@@ -518,6 +525,89 @@ LowerResult Lowerer::lowerUnary(UnaryExpr *expr)
     }
 
     return operand;
+}
+
+//=============================================================================
+// Short-Circuit Evaluation for And/Or
+//=============================================================================
+
+LowerResult Lowerer::lowerShortCircuit(BinaryExpr *expr)
+{
+    // Short-circuit evaluation for 'and' and 'or' operators.
+    //
+    // For 'A and B':
+    //   - If A is false, result is false (don't evaluate B)
+    //   - If A is true, result is B
+    //
+    // For 'A or B':
+    //   - If A is true, result is true (don't evaluate B)
+    //   - If A is false, result is B
+
+    bool isAnd = (expr->op == BinaryOp::And);
+
+    // Create basic blocks for control flow
+    size_t evalRightIdx = createBlock(isAnd ? "and_rhs" : "or_rhs");
+    size_t mergeIdx = createBlock(isAnd ? "and_merge" : "or_merge");
+
+    // Allocate result slot
+    unsigned slotId = nextTempId();
+    il::core::Instr allocInstr;
+    allocInstr.result = slotId;
+    allocInstr.op = Opcode::Alloca;
+    allocInstr.type = Type(Type::Kind::Ptr);
+    allocInstr.operands = {Value::constInt(8)};
+    blockMgr_.currentBlock()->instructions.push_back(allocInstr);
+    Value resultSlot = Value::temp(slotId);
+
+    // Evaluate left operand
+    auto left = lowerExpr(expr->left.get());
+
+    // Extend to i64 for comparison if needed
+    Value leftExt = (left.type.kind == Type::Kind::I1)
+                        ? emitUnary(Opcode::Zext1, Type(Type::Kind::I64), left.value)
+                        : left.value;
+
+    // Convert to bool (non-zero = true)
+    Value leftBool = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), leftExt, Value::constInt(0));
+
+    // Store left result as i1 in slot
+    emitStore(resultSlot, leftBool, Type(Type::Kind::I1));
+
+    // Branch based on left value
+    // For 'and': if left is true, evaluate right; else short-circuit to merge
+    // For 'or': if left is false, evaluate right; else short-circuit to merge
+    if (isAnd)
+    {
+        emitCBr(leftBool, evalRightIdx, mergeIdx);
+    }
+    else
+    {
+        emitCBr(leftBool, mergeIdx, evalRightIdx);
+    }
+
+    // Evaluate right operand block
+    setBlock(evalRightIdx);
+    auto right = lowerExpr(expr->right.get());
+
+    // Extend to i64 for comparison if needed
+    Value rightExt = (right.type.kind == Type::Kind::I1)
+                         ? emitUnary(Opcode::Zext1, Type(Type::Kind::I64), right.value)
+                         : right.value;
+
+    // Convert to bool
+    Value rightBool = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), rightExt, Value::constInt(0));
+
+    // Store right result in slot
+    emitStore(resultSlot, rightBool, Type(Type::Kind::I1));
+
+    // Branch to merge
+    emitBr(mergeIdx);
+
+    // Merge block - load result from slot
+    setBlock(mergeIdx);
+    Value result = emitLoad(resultSlot, Type(Type::Kind::I1));
+
+    return {result, Type(Type::Kind::I1)};
 }
 
 } // namespace il::frontends::zia

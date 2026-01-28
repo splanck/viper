@@ -11,6 +11,7 @@
 
 static uint32_t g_next_widget_id = 1;
 static vg_widget_t *g_focused_widget = NULL;
+static vg_widget_t *g_input_capture_widget = NULL;
 
 //=============================================================================
 // ID Generation
@@ -778,6 +779,25 @@ bool vg_widget_contains_point(vg_widget_t *widget, float x, float y)
     vg_widget_get_screen_bounds(widget, &sx, &sy, &sw, &sh);
 
     return x >= sx && x < sx + sw && y >= sy && y < sy + sh;
+}
+
+//=============================================================================
+// Input Capture
+//=============================================================================
+
+void vg_widget_set_input_capture(vg_widget_t *widget)
+{
+    g_input_capture_widget = widget;
+}
+
+void vg_widget_release_input_capture(void)
+{
+    g_input_capture_widget = NULL;
+}
+
+vg_widget_t *vg_widget_get_input_capture(void)
+{
+    return g_input_capture_widget;
 }
 
 //=============================================================================

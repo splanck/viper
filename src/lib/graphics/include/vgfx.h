@@ -245,6 +245,7 @@ extern "C"
             {
                 vgfx_key_t key; ///< Key code
                 int is_repeat;  ///< 1 if key repeat, 0 if initial press
+                int modifiers;  ///< Modifier flags (VGFX_MOD_SHIFT, VGFX_MOD_CTRL, etc.)
             } key;
 
             /// @brief Mouse movement event data (MOUSE_MOVE).

@@ -741,6 +741,12 @@ RT_FUNC(GuiTreeViewExpand,     rt_treeview_expand,      "Viper.GUI.TreeView.Expa
 RT_FUNC(GuiTreeViewCollapse,   rt_treeview_collapse,    "Viper.GUI.TreeView.Collapse",   "void(obj,obj)")
 RT_FUNC(GuiTreeViewSelect,     rt_treeview_select,      "Viper.GUI.TreeView.Select",     "void(obj,obj)")
 RT_FUNC(GuiTreeViewSetFont,    rt_treeview_set_font,    "Viper.GUI.TreeView.SetFont",    "void(obj,obj,f64)")
+RT_FUNC(GuiTreeViewGetSelected,        rt_treeview_get_selected,          "Viper.GUI.TreeView.GetSelected",        "obj(obj)")
+RT_FUNC(GuiTreeViewWasSelectionChanged, rt_treeview_was_selection_changed, "Viper.GUI.TreeView.WasSelectionChanged", "i64(obj)")
+RT_FUNC(GuiTreeViewNodeGetText,        rt_treeview_node_get_text,         "Viper.GUI.TreeView.Node.GetText",       "str(obj)")
+RT_FUNC(GuiTreeViewNodeSetData,        rt_treeview_node_set_data,         "Viper.GUI.TreeView.Node.SetData",       "void(obj,str)")
+RT_FUNC(GuiTreeViewNodeGetData,        rt_treeview_node_get_data,         "Viper.GUI.TreeView.Node.GetData",       "str(obj)")
+RT_FUNC(GuiTreeViewNodeIsExpanded,     rt_treeview_node_is_expanded,      "Viper.GUI.TreeView.Node.IsExpanded",    "i64(obj)")
 
 //=============================================================================
 // GUI - TABBAR
@@ -2948,9 +2954,19 @@ RT_CLASS_BEGIN("Viper.GUI.TreeView", GuiTreeView, "obj", GuiTreeViewNew)
     RT_METHOD("Collapse", "void(obj)", GuiTreeViewCollapse)
     RT_METHOD("Select", "void(obj)", GuiTreeViewSelect)
     RT_METHOD("SetFont", "void(obj,f64)", GuiTreeViewSetFont)
+    RT_METHOD("GetSelected", "obj()", GuiTreeViewGetSelected)
+    RT_METHOD("WasSelectionChanged", "i64()", GuiTreeViewWasSelectionChanged)
     RT_METHOD("Destroy", "void()", GuiWidgetDestroy)
     RT_METHOD("SetVisible", "void(i64)", GuiWidgetSetVisible)
     RT_METHOD("SetSize", "void(i64,i64)", GuiWidgetSetSize)
+RT_CLASS_END()
+
+// Viper.GUI.TreeNode - tree view node (returned by AddNode)
+RT_CLASS_BEGIN("Viper.GUI.TreeNode", GuiTreeNode, "obj", none)
+    RT_METHOD("GetText", "str()", GuiTreeViewNodeGetText)
+    RT_METHOD("SetData", "void(str)", GuiTreeViewNodeSetData)
+    RT_METHOD("GetData", "str()", GuiTreeViewNodeGetData)
+    RT_METHOD("IsExpanded", "i64()", GuiTreeViewNodeIsExpanded)
 RT_CLASS_END()
 
 // Viper.GUI.TabBar - tab bar widget

@@ -1,0 +1,45 @@
+module project;
+
+// ============================================================================
+// Project — represents an open workspace/folder
+// ============================================================================
+// The Project entity stores the root path and project metadata.
+// It is managed by ProjectManager which handles file tree operations.
+// ============================================================================
+
+entity Project {
+    // Absolute path to project root directory
+    expose String rootPath;
+
+    // Display name (folder name)
+    expose String name;
+
+    // Whether a project is currently open
+    expose Boolean isOpen;
+
+    expose func init() {
+        rootPath = "";
+        name = "";
+        isOpen = false;
+    }
+
+    // Open a project from a folder path.
+    expose func Open(path: String) {
+        rootPath = path;
+        // Extract folder name from path
+        name = Viper.IO.Path.Name(path);
+        // If path ends in separator, Name returns empty, so try one level up
+        if name == "" {
+            var trimmed = Viper.String.Left(path, Viper.String.Length(path) - 1);
+            name = Viper.IO.Path.Name(trimmed);
+        }
+        isOpen = true;
+    }
+
+    // Close the project.
+    expose func Close() {
+        rootPath = "";
+        name = "";
+        isOpen = false;
+    }
+}

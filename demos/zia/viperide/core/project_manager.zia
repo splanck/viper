@@ -1,0 +1,182 @@
+module project_manager;
+
+bind "project";
+
+// ============================================================================
+// ProjectManager — manages the file tree and project state
+// ============================================================================
+// Handles opening folders, populating the TreeView, and tracking selection.
+// Uses the polling pattern: call HandleTreeClicks() each frame to detect
+// when the user selects a file.
+// ============================================================================
+
+entity ProjectManager {
+    // The current project
+    expose project.Project project;
+
+    // Reference to the sidebar TreeView widget
+    expose Viper.GUI.TreeView treeView;
+
+    // Currently selected file path (empty if none)
+    expose String selectedFilePath;
+
+    // Flag indicating a file was just selected
+    expose Boolean fileWasSelected;
+
+    expose func init() {
+        selectedFilePath = "";
+        fileWasSelected = false;
+    }
+
+    // Initialize with the TreeView widget from AppShell.
+    expose func Setup(tree: Viper.GUI.TreeView) {
+        treeView = tree;
+        project = new project.Project();
+    }
+
+    // Open a folder as a project.
+    expose func OpenFolder(path: String) {
+        // Guard against uninitialized state
+        if project == null {
+            project = new project.Project();
+        }
+
+        // Close any existing project
+        if project.isOpen {
+            CloseProject();
+        }
+
+        project.Open(path);
+        PopulateTree();
+    }
+
+    // Close the current project.
+    expose func CloseProject() {
+        project.Close();
+        treeView.Clear();
+        selectedFilePath = "";
+    }
+
+    // Populate the TreeView with the project's files and folders.
+    expose func PopulateTree() {
+        treeView.Clear();
+
+        if project.isOpen == false {
+            return;
+        }
+
+        // Add root node for project
+        var rootNode = treeView.AddNode(null, project.name);
+        Viper.GUI.TreeView.Node.SetData(rootNode, project.rootPath);
+
+        // Build tree recursively from the root path
+        BuildTree(project.rootPath, rootNode);
+
+        // Expand the root node
+        treeView.Expand(rootNode);
+    }
+
+    // Build tree recursively for a directory.
+    func BuildTree(dirPath: String, parentNode: Viper.GUI.TreeNode) {
+        // First add directories (sorted by name)
+        var dirs = Viper.IO.Dir.DirsSeq(dirPath);
+        var dirCount = Viper.Collections.Seq.get_Len(dirs);
+        var i = 0;
+
+        while i < dirCount {
+            var dirName = Viper.Collections.Seq.Get(dirs, i);
+
+            // Skip hidden directories and common excludes
+            if ShouldExclude(dirName) == false {
+                var fullPath = Viper.IO.Path.Join(dirPath, dirName);
+                var folderLabel = "[D] " + dirName;
+                var folderNode = treeView.AddNode(parentNode, folderLabel);
+                Viper.GUI.TreeView.Node.SetData(folderNode, fullPath);
+
+                // Recurse into subdirectory
+                BuildTree(fullPath, folderNode);
+            }
+            i = i + 1;
+        }
+
+        // Then add files
+        var files = Viper.IO.Dir.FilesSeq(dirPath);
+        var fileCount = Viper.Collections.Seq.get_Len(files);
+        i = 0;
+
+        while i < fileCount {
+            var fileName = Viper.Collections.Seq.Get(files, i);
+
+            // Skip hidden files
+            if ShouldExcludeFile(fileName) == false {
+                var fullPath = Viper.IO.Path.Join(dirPath, fileName);
+                var fileLabel = "    " + fileName;
+                var fileNode = treeView.AddNode(parentNode, fileLabel);
+                Viper.GUI.TreeView.Node.SetData(fileNode, fullPath);
+            }
+            i = i + 1;
+        }
+    }
+
+    // Check if the selection changed and a file was selected.
+    // Call this every frame from the main loop.
+    // Returns the selected file path, or empty string if no selection change.
+    expose func HandleTreeClicks() -> String {
+        fileWasSelected = false;
+
+        // Guard against uninitialized state
+        if treeView == null {
+            return "";
+        }
+
+        if treeView.WasSelectionChanged() != 0 {
+            var selected = treeView.GetSelected();
+            if selected != null {
+                var path = Viper.GUI.TreeView.Node.GetData(selected);
+                var label = Viper.GUI.TreeView.Node.GetText(selected);
+
+                // Check if it's a file (not a directory)
+                // Files don't have "[D] " prefix
+                if Viper.String.IndexOf(label, "[D] ") != 1 {
+                    selectedFilePath = path;
+                    fileWasSelected = true;
+                    return path;
+                }
+            }
+        }
+
+        return "";
+    }
+
+    // Check if a directory name should be excluded from the tree.
+    func ShouldExclude(name: String) -> Boolean {
+        // Hidden directories
+        if Viper.String.Left(name, 1) == "." {
+            return true;
+        }
+
+        // Common exclude patterns
+        if name == "build" or name == "node_modules" or name == "__pycache__" {
+            return true;
+        }
+
+        return false;
+    }
+
+    // Check if a file should be excluded from the tree.
+    func ShouldExcludeFile(name: String) -> Boolean {
+        // Hidden files
+        if Viper.String.Left(name, 1) == "." {
+            return true;
+        }
+
+        return false;
+    }
+
+    // Refresh the tree from disk.
+    expose func RefreshTree() {
+        if project.isOpen {
+            PopulateTree();
+        }
+    }
+}

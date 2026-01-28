@@ -126,6 +126,7 @@ module Test;
 func start() {
     Integer x = 5;
     // These expressions use AND/OR with comparison results (I1 type)
+    // Short-circuit evaluation: && and || use control flow, not bitwise And/Or
     Boolean a = x > 0 && x < 10;
     Boolean b = x < 0 || x > 3;
     if (a && b) {
@@ -141,31 +142,32 @@ func start() {
 
     EXPECT_TRUE(result.succeeded());
 
-    // Verify that zext1 and trunc1 opcodes are generated for boolean ops
+    // Verify short-circuit evaluation: multiple blocks and conditional branches
+    // With short-circuit, && and || use control flow instead of bitwise And opcode
     bool foundZext1 = false;
-    bool foundTrunc1 = false;
-    bool foundAnd = false;
+    bool foundCBr = false;
+    size_t blockCount = 0;
     for (const auto &fn : result.module.functions)
     {
         if (fn.name == "main")
         {
+            blockCount = fn.blocks.size();
             for (const auto &block : fn.blocks)
             {
                 for (const auto &instr : block.instructions)
                 {
                     if (instr.op == il::core::Opcode::Zext1)
                         foundZext1 = true;
-                    if (instr.op == il::core::Opcode::Trunc1)
-                        foundTrunc1 = true;
-                    if (instr.op == il::core::Opcode::And)
-                        foundAnd = true;
+                    if (instr.op == il::core::Opcode::CBr)
+                        foundCBr = true;
                 }
             }
         }
     }
     EXPECT_TRUE(foundZext1);
-    EXPECT_TRUE(foundTrunc1);
-    EXPECT_TRUE(foundAnd);
+    EXPECT_TRUE(foundCBr);
+    // Short-circuit creates multiple blocks for and/or evaluation
+    EXPECT_TRUE(blockCount > 1);
 }
 
 /// @brief Test ternary conditional expressions lower into branch blocks.

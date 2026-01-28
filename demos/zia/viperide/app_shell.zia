@@ -26,6 +26,7 @@ entity AppShell {
     // File menu items
     expose Viper.GUI.MenuItem miNew;
     expose Viper.GUI.MenuItem miOpen;
+    expose Viper.GUI.MenuItem miOpenFolder;
     expose Viper.GUI.MenuItem miSave;
     expose Viper.GUI.MenuItem miSaveAs;
     expose Viper.GUI.MenuItem miSaveAll;
@@ -44,6 +45,12 @@ entity AppShell {
     // View menu items
     expose Viper.GUI.MenuItem miToggleSidebar;
     expose Viper.GUI.MenuItem miToggleStatusBar;
+
+    // Build menu
+    expose Viper.GUI.Menu buildMenu;
+    expose Viper.GUI.MenuItem miBuild;
+    expose Viper.GUI.MenuItem miBuildAndRun;
+    expose Viper.GUI.MenuItem miRun;
 
     // Toolbar + items
     expose Viper.GUI.Toolbar toolbar;
@@ -92,6 +99,8 @@ entity AppShell {
         miNew.SetShortcut("Ctrl+N");
         miOpen = fileMenu.AddItem("Open File...");
         miOpen.SetShortcut("Ctrl+O");
+        miOpenFolder = fileMenu.AddItem("Open Folder...");
+        miOpenFolder.SetShortcut("Ctrl+K Ctrl+O");
         fileMenu.AddSeparator();
         miSave = fileMenu.AddItem("Save");
         miSave.SetShortcut("Ctrl+S");
@@ -128,6 +137,15 @@ entity AppShell {
         miToggleSidebar = viewMenu.AddItem("Toggle Sidebar");
         miToggleSidebar.SetShortcut("Ctrl+B");
         miToggleStatusBar = viewMenu.AddItem("Toggle Status Bar");
+
+        // Build menu
+        buildMenu = menuBar.AddMenu("Build");
+        miBuild = buildMenu.AddItem("Build");
+        miBuild.SetShortcut("Ctrl+Shift+B");
+        miBuildAndRun = buildMenu.AddItem("Build and Run");
+        miBuildAndRun.SetShortcut("F5");
+        miRun = buildMenu.AddItem("Run without Build");
+        miRun.SetShortcut("Ctrl+F5");
 
         // Help menu
         helpMenu = menuBar.AddMenu("Help");

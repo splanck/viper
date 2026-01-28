@@ -115,6 +115,7 @@ extern "C"
 
         // Rendering
         void (*paint)(vg_widget_t *self, void *canvas);
+        void (*paint_overlay)(vg_widget_t *self, void *canvas); // For popups/dropdowns
 
         // Events
         bool (*handle_event)(vg_widget_t *self, vg_event_t *event);
@@ -344,6 +345,19 @@ extern "C"
 
     /// Check if point is inside widget
     bool vg_widget_contains_point(vg_widget_t *widget, float x, float y);
+
+    //=============================================================================
+    // Input Capture (for popups/dropdowns)
+    //=============================================================================
+
+    /// Set input capture — all mouse events route to this widget regardless of hit test
+    void vg_widget_set_input_capture(vg_widget_t *widget);
+
+    /// Release input capture
+    void vg_widget_release_input_capture(void);
+
+    /// Get the widget currently capturing input (NULL if none)
+    vg_widget_t *vg_widget_get_input_capture(void);
 
     //=============================================================================
     // Focus Management

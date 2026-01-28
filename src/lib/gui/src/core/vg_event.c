@@ -169,6 +169,44 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event)
         event->type == VG_EVENT_MOUSE_UP || event->type == VG_EVENT_CLICK ||
         event->type == VG_EVENT_DOUBLE_CLICK)
     {
+        // Check if a widget has captured input (e.g., open dropdown menu).
+        // When capture is active, all mouse events route to the captured widget
+        // regardless of hit testing. This allows dropdown menus to receive clicks
+        // even though the dropdown renders outside the menubar's widget bounds.
+        vg_widget_t *capture = vg_widget_get_input_capture();
+        if (capture)
+        {
+            event->target = capture;
+
+            // Convert to capture-widget-relative coordinates
+            float sx, sy, sw, sh;
+            vg_widget_get_screen_bounds(capture, &sx, &sy, &sw, &sh);
+            event->mouse.x = event->mouse.screen_x - sx;
+            event->mouse.y = event->mouse.screen_y - sy;
+
+            // For MOUSE_UP, we need to synthesize a CLICK event because
+            // vg_event_send()'s CLICK generation depends on contains_point(),
+            // which fails for dropdown clicks outside the widget bounds.
+            if (event->type == VG_EVENT_MOUSE_UP)
+            {
+                // Send MOUSE_UP first
+                if (capture->vtable && capture->vtable->handle_event)
+                    capture->vtable->handle_event(capture, event);
+
+                // Synthesize and send CLICK
+                vg_event_t click_event = *event;
+                click_event.type = VG_EVENT_CLICK;
+                if (capture->vtable && capture->vtable->handle_event)
+                    capture->vtable->handle_event(capture, &click_event);
+                return true;
+            }
+
+            // For other mouse events, call handle_event directly
+            if (capture->vtable && capture->vtable->handle_event)
+                return capture->vtable->handle_event(capture, event);
+            return false;
+        }
+
         vg_widget_t *target =
             vg_widget_hit_test(root, event->mouse.screen_x, event->mouse.screen_y);
         if (target)
@@ -186,10 +224,23 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event)
         return false;
     }
 
-    // Keyboard events go to focused widget
+    // Keyboard events: route to captured widget first (for menu keyboard navigation),
+    // then to focused widget, then to root.
     if (event->type == VG_EVENT_KEY_DOWN || event->type == VG_EVENT_KEY_UP ||
         event->type == VG_EVENT_KEY_CHAR)
     {
+        vg_widget_t *capture = vg_widget_get_input_capture();
+        if (capture)
+        {
+            event->target = capture;
+            if (capture->vtable && capture->vtable->handle_event)
+            {
+                if (capture->vtable->handle_event(capture, event))
+                    return true;
+            }
+            // If captured widget didn't handle it, fall through to focused widget
+        }
+
         vg_widget_t *focused = vg_widget_get_focused(root);
         if (focused)
         {

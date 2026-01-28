@@ -695,6 +695,10 @@ class Lowerer
     /// @return LowerResult with the operation result.
     LowerResult lowerBinary(BinaryExpr *expr);
 
+    /// @brief Lower a short-circuit And/Or expression with lazy evaluation.
+    /// @return LowerResult with the boolean result.
+    LowerResult lowerShortCircuit(BinaryExpr *expr);
+
     /// @brief Lower a unary expression.
     /// @return LowerResult with the operation result.
     LowerResult lowerUnary(UnaryExpr *expr);

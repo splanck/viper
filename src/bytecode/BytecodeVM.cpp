@@ -1979,12 +1979,18 @@ L_ROT3:
 
     // Local Variable Operations
 L_LOAD_LOCAL:
-    *sp++ = locals[decodeArg8_0(instr)];
+{
+    uint8_t slot = decodeArg8_0(instr);
+    *sp++ = locals[slot];
     DISPATCH();
+}
 
 L_STORE_LOCAL:
-    locals[decodeArg8_0(instr)] = *--sp;
+{
+    uint8_t slot = decodeArg8_0(instr);
+    locals[slot] = *--sp;
     DISPATCH();
+}
 
 L_LOAD_LOCAL_W:
     *sp++ = locals[decodeArg16(instr)];
@@ -2581,6 +2587,29 @@ L_GEP:
 {
     int64_t offset = (--sp)->i64;
     uint8_t *ptr = static_cast<uint8_t *>(sp[-1].ptr);
+    // Null pointer check for debugging field access
+    if (ptr == nullptr && offset != 0)
+    {
+        SYNC_STATE();
+        fprintf(stderr, "*** NULL POINTER DEREFERENCE ***\n");
+        fprintf(stderr, "Attempting to access field at offset %lld on null object\n",
+                (long long)offset);
+        fprintf(stderr, "PC: %u, Function: %s\n", pc - 1,
+                fp_->func->name.empty() ? "<unknown>" : fp_->func->name.c_str());
+        // Print call stack
+        fprintf(stderr, "Call stack:\n");
+        for (size_t i = 0; i < callStack_.size(); i++)
+        {
+            const auto &frame = callStack_[i];
+            fprintf(stderr, "  [%zu] %s (PC: %u)\n", i,
+                    frame.func->name.empty() ? "<unknown>" : frame.func->name.c_str(),
+                    frame.pc);
+        }
+        fflush(stderr);
+        trapKind_ = TrapKind::NullPointer;
+        state_ = VMState::Trapped;
+        return;
+    }
     sp[-1].ptr = ptr + offset;
     DISPATCH();
 }
@@ -2611,8 +2640,30 @@ L_LOAD_I32_MEM:
 
 L_LOAD_I64_MEM:
 {
+    void *addr = sp[-1].ptr;
+    // Null/invalid pointer check for debugging
+    if (addr == nullptr || reinterpret_cast<uintptr_t>(addr) < 4096)
+    {
+        SYNC_STATE();
+        fprintf(stderr, "*** NULL POINTER READ (i64) ***\n");
+        fprintf(stderr, "Attempting to read from address %p\n", addr);
+        fprintf(stderr, "PC: %u, Function: %s\n", pc - 1,
+                fp_->func->name.empty() ? "<unknown>" : fp_->func->name.c_str());
+        // Print call stack
+        fprintf(stderr, "Call stack:\n");
+        for (size_t i = 0; i < callStack_.size(); i++)
+        {
+            const auto &frame = callStack_[i];
+            fprintf(stderr, "  [%zu] %s (PC: %u)\n", i,
+                    frame.func->name.empty() ? "<unknown>" : frame.func->name.c_str(),
+                    frame.pc);
+        }
+        trapKind_ = TrapKind::NullPointer;
+        state_ = VMState::Trapped;
+        return;
+    }
     int64_t val;
-    std::memcpy(&val, sp[-1].ptr, sizeof(val));
+    std::memcpy(&val, addr, sizeof(val));
     sp[-1].i64 = val;
     DISPATCH();
 }
@@ -2627,8 +2678,30 @@ L_LOAD_F64_MEM:
 
 L_LOAD_PTR_MEM:
 {
+    void *addr = sp[-1].ptr;
+    // Null/invalid pointer check for debugging
+    if (addr == nullptr || reinterpret_cast<uintptr_t>(addr) < 4096)
+    {
+        SYNC_STATE();
+        fprintf(stderr, "*** NULL POINTER READ (ptr) ***\n");
+        fprintf(stderr, "Attempting to read from address %p\n", addr);
+        fprintf(stderr, "PC: %u, Function: %s\n", pc - 1,
+                fp_->func->name.empty() ? "<unknown>" : fp_->func->name.c_str());
+        // Print call stack
+        fprintf(stderr, "Call stack:\n");
+        for (size_t i = 0; i < callStack_.size(); i++)
+        {
+            const auto &frame = callStack_[i];
+            fprintf(stderr, "  [%zu] %s (PC: %u)\n", i,
+                    frame.func->name.empty() ? "<unknown>" : frame.func->name.c_str(),
+                    frame.pc);
+        }
+        trapKind_ = TrapKind::NullPointer;
+        state_ = VMState::Trapped;
+        return;
+    }
     void *val;
-    std::memcpy(&val, sp[-1].ptr, sizeof(val));
+    std::memcpy(&val, addr, sizeof(val));
     sp[-1].ptr = val;
     DISPATCH();
 }

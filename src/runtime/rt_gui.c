@@ -22,6 +22,11 @@
 #include "../lib/gui/include/vg_widget.h"
 #include "../lib/gui/include/vg_widgets.h"
 
+// Native file dialogs on macOS
+#ifdef __APPLE__
+#include "../lib/gui/src/dialogs/vg_filedialog_native.h"
+#endif
+
 #include <ctype.h> // For toupper
 #include <stdio.h>
 #include <stdlib.h>
@@ -188,6 +193,8 @@ static void render_widget_tree(vgfx_window_t window,
                                float parent_abs_x,
                                float parent_abs_y);
 void rt_gui_set_last_clicked(void *widget);
+static void rt_shortcuts_clear_triggered(void);
+static int rt_shortcuts_check_key(int key, int mods);
 
 void rt_gui_app_poll(void *app_ptr)
 {
@@ -200,6 +207,9 @@ void rt_gui_app_poll(void *app_ptr)
     // Clear last clicked
     app->last_clicked = NULL;
     rt_gui_set_last_clicked(NULL);
+
+    // Clear shortcut triggered flags from previous frame
+    rt_shortcuts_clear_triggered();
 
     // Get mouse position
     vgfx_mouse_pos(app->window, &app->mouse_x, &app->mouse_y);
@@ -239,35 +249,53 @@ void rt_gui_app_poll(void *app_ptr)
                 }
             }
 
+            // Check keyboard shortcuts before dispatching KEY_DOWN.
+            // If a shortcut matches, set its triggered flag and suppress
+            // the KEY_CHAR synthesis (so Ctrl+N doesn't insert 'N').
+            int shortcut_matched = 0;
+            if (event.type == VGFX_EVENT_KEY_DOWN)
+            {
+                shortcut_matched =
+                    rt_shortcuts_check_key(event.data.key.key, event.data.key.modifiers);
+            }
+
             // Dispatch all events to widget tree (handles focus, keyboard, etc.)
             vg_event_dispatch(app->root, &gui_event);
 
-            // Synthesize KEY_CHAR event from KEY_DOWN for printable characters
-            // (vgfx doesn't have character input events, only key events)
-            if (event.type == VGFX_EVENT_KEY_DOWN && !event.data.key.is_repeat)
+            // Synthesize KEY_CHAR event from KEY_DOWN for printable characters.
+            // Skip if a shortcut matched (so Ctrl+S doesn't insert 'S').
+            // Also skip if modifier keys are held (Ctrl/Cmd+key is not text input).
+            if (event.type == VGFX_EVENT_KEY_DOWN && !shortcut_matched)
             {
                 int key = event.data.key.key;
-                uint32_t codepoint = 0;
+                int mods = event.data.key.modifiers;
+                int has_ctrl_cmd = (mods & VGFX_MOD_CTRL) || (mods & VGFX_MOD_CMD);
+                int has_alt = mods & VGFX_MOD_ALT;
 
-                // Check if it's a printable ASCII character
-                if (key >= ' ' && key <= '~')
+                // Only synthesize KEY_CHAR for plain keys or shift+key (not ctrl/cmd/alt)
+                if (!has_ctrl_cmd && !has_alt)
                 {
-                    // Letters are uppercase by default, convert to lowercase
-                    if (key >= 'A' && key <= 'Z')
-                    {
-                        codepoint = key + ('a' - 'A'); // Convert to lowercase
-                    }
-                    else
-                    {
-                        codepoint = key;
-                    }
-                }
+                    uint32_t codepoint = 0;
 
-                if (codepoint != 0)
-                {
-                    vg_event_t char_event =
-                        vg_event_key(VG_EVENT_KEY_CHAR, (vg_key_t)key, codepoint, 0);
-                    vg_event_dispatch(app->root, &char_event);
+                    if (key >= ' ' && key <= '~')
+                    {
+                        int has_shift = mods & VGFX_MOD_SHIFT;
+                        if (key >= 'A' && key <= 'Z')
+                        {
+                            codepoint = has_shift ? key : key + ('a' - 'A');
+                        }
+                        else
+                        {
+                            codepoint = key;
+                        }
+                    }
+
+                    if (codepoint != 0)
+                    {
+                        vg_event_t char_event =
+                            vg_event_key(VG_EVENT_KEY_CHAR, (vg_key_t)key, codepoint, 0);
+                        vg_event_dispatch(app->root, &char_event);
+                    }
                 }
             }
         }
@@ -522,6 +550,28 @@ void rt_gui_app_render(void *app_ptr)
     {
         render_widget_tree(app->window, app->root, app->default_font, app->default_font_size,
                            0.0f, 0.0f);
+    }
+
+    // Paint overlays (popups, dropdowns) on top of all other widgets.
+    // The widget with input capture is typically the one with an open popup.
+    vg_widget_t *capture = vg_widget_get_input_capture();
+    if (capture && capture->vtable && capture->vtable->paint_overlay)
+    {
+        // Need to compute absolute position for the overlay
+        float abs_x = 0, abs_y = 0;
+        vg_widget_get_screen_bounds(capture, &abs_x, &abs_y, NULL, NULL);
+
+        // Temporarily set absolute coords for overlay paint
+        float rel_x = capture->x;
+        float rel_y = capture->y;
+        capture->x = abs_x;
+        capture->y = abs_y;
+
+        capture->vtable->paint_overlay(capture, (void *)app->window);
+
+        // Restore relative coords
+        capture->x = rel_x;
+        capture->y = rel_y;
     }
 
     // Present
@@ -923,6 +973,82 @@ void rt_treeview_set_font(void *tree, void *font, double size)
     {
         vg_treeview_set_font((vg_treeview_t *)tree, (vg_font_t *)font, (float)size);
     }
+}
+
+void *rt_treeview_get_selected(void *tree)
+{
+    if (!tree)
+        return NULL;
+    vg_treeview_t *tv = (vg_treeview_t *)tree;
+    return tv->selected;
+}
+
+// Track selection changes for polling pattern
+static vg_tree_node_t *g_last_treeview_selected = NULL;
+static vg_treeview_t *g_last_treeview_checked = NULL;
+
+int64_t rt_treeview_was_selection_changed(void *tree)
+{
+    if (!tree)
+        return 0;
+    vg_treeview_t *tv = (vg_treeview_t *)tree;
+
+    // Reset tracking if checking a different tree
+    if (g_last_treeview_checked != tv)
+    {
+        g_last_treeview_checked = tv;
+        g_last_treeview_selected = tv->selected;
+        return 0;
+    }
+
+    if (tv->selected != g_last_treeview_selected)
+    {
+        g_last_treeview_selected = tv->selected;
+        return 1;
+    }
+    return 0;
+}
+
+rt_string rt_treeview_node_get_text(void *node)
+{
+    if (!node)
+        return rt_str_empty();
+    vg_tree_node_t *n = (vg_tree_node_t *)node;
+    if (!n->text)
+        return rt_str_empty();
+    return rt_string_from_bytes(n->text, strlen(n->text));
+}
+
+void rt_treeview_node_set_data(void *node, rt_string data)
+{
+    if (!node)
+        return;
+    vg_tree_node_t *n = (vg_tree_node_t *)node;
+    // Free old data if it exists
+    if (n->user_data)
+        free(n->user_data);
+    // Store a copy of the string as user_data
+    const char *cstr = rt_string_cstr(data);
+    n->user_data = cstr ? strdup(cstr) : NULL;
+}
+
+rt_string rt_treeview_node_get_data(void *node)
+{
+    if (!node)
+        return rt_str_empty();
+    vg_tree_node_t *n = (vg_tree_node_t *)node;
+    if (!n->user_data)
+        return rt_str_empty();
+    const char *data = (const char *)n->user_data;
+    return rt_string_from_bytes(data, strlen(data));
+}
+
+int64_t rt_treeview_node_is_expanded(void *node)
+{
+    if (!node)
+        return 0;
+    vg_tree_node_t *n = (vg_tree_node_t *)node;
+    return n->expanded ? 1 : 0;
 }
 
 //=============================================================================
@@ -1789,6 +1915,55 @@ int64_t rt_shortcuts_was_triggered(rt_string id)
     return 0;
 }
 
+// Clear all shortcut triggered flags (call at start of each frame)
+static void rt_shortcuts_clear_triggered(void)
+{
+    for (int i = 0; i < g_shortcut_count; i++)
+    {
+        g_shortcuts[i].triggered = 0;
+    }
+    g_triggered_shortcut_id = NULL;
+}
+
+// Check if a key event matches any registered shortcut.
+// Returns 1 if a shortcut was triggered, 0 otherwise.
+static int rt_shortcuts_check_key(int key, int mods)
+{
+    if (!g_shortcuts_global_enabled)
+        return 0;
+
+    // On macOS, Cmd is used instead of Ctrl for shortcuts.
+    // Treat VGFX_MOD_CMD as Ctrl for cross-platform compatibility.
+    int has_ctrl = (mods & VGFX_MOD_CTRL) || (mods & VGFX_MOD_CMD);
+    int has_shift = (mods & VGFX_MOD_SHIFT) ? 1 : 0;
+    int has_alt = (mods & VGFX_MOD_ALT) ? 1 : 0;
+
+    // Only check if at least one modifier is held (plain keys aren't shortcuts)
+    if (!has_ctrl && !has_alt)
+        return 0;
+
+    int upper_key = (key >= 'a' && key <= 'z') ? key - ('a' - 'A') : key;
+
+    for (int i = 0; i < g_shortcut_count; i++)
+    {
+        if (!g_shortcuts[i].enabled || !g_shortcuts[i].keys)
+            continue;
+
+        int sc_ctrl = 0, sc_shift = 0, sc_alt = 0, sc_key = 0;
+        if (!parse_shortcut_keys(g_shortcuts[i].keys, &sc_ctrl, &sc_shift, &sc_alt, &sc_key))
+            continue;
+
+        if (sc_ctrl == has_ctrl && sc_shift == has_shift && sc_alt == has_alt &&
+            sc_key == upper_key)
+        {
+            g_shortcuts[i].triggered = 1;
+            g_triggered_shortcut_id = g_shortcuts[i].id;
+            return 1;
+        }
+    }
+    return 0;
+}
+
 rt_string rt_shortcuts_get_triggered(void)
 {
     if (g_triggered_shortcut_id)
@@ -2357,7 +2532,13 @@ int64_t rt_menuitem_was_clicked(void *item)
 {
     if (!item)
         return 0;
-    return (g_clicked_menuitem == item) ? 1 : 0;
+    vg_menu_item_t *mi = (vg_menu_item_t *)item;
+    if (mi->was_clicked)
+    {
+        mi->was_clicked = false;
+        return 1;
+    }
+    return 0;
 }
 
 //=============================================================================
@@ -2797,8 +2978,18 @@ void *rt_toolbar_add_button(void *toolbar, rt_string icon_path, rt_string toolti
     char *ctooltip = rt_string_to_cstr(tooltip);
 
     vg_icon_t icon = {0};
-    icon.type = VG_ICON_PATH;
-    icon.data.path = cicon;
+    // Only set path icon if there's actually a path
+    if (cicon && cicon[0] != '\0')
+    {
+        icon.type = VG_ICON_PATH;
+        icon.data.path = cicon; // Ownership transferred to item on success
+    }
+    else
+    {
+        icon.type = VG_ICON_NONE;
+        free(cicon); // Empty string, free it
+        cicon = NULL;
+    }
 
     vg_toolbar_item_t *item =
         vg_toolbar_add_button((vg_toolbar_t *)toolbar, NULL, NULL, icon, NULL, NULL);
@@ -2806,8 +2997,12 @@ void *rt_toolbar_add_button(void *toolbar, rt_string icon_path, rt_string toolti
     {
         vg_toolbar_item_set_tooltip(item, ctooltip);
     }
+    else if (cicon)
+    {
+        // Item creation failed, we still own cicon
+        free(cicon);
+    }
 
-    free(cicon);
     free(ctooltip);
     return item;
 }
@@ -2824,8 +3019,18 @@ void *rt_toolbar_add_button_with_text(void *toolbar,
     char *ctooltip = rt_string_to_cstr(tooltip);
 
     vg_icon_t icon = {0};
-    icon.type = VG_ICON_PATH;
-    icon.data.path = cicon;
+    // Only set path icon if there's actually a path
+    if (cicon && cicon[0] != '\0')
+    {
+        icon.type = VG_ICON_PATH;
+        icon.data.path = cicon; // Ownership transferred to item on success
+    }
+    else
+    {
+        icon.type = VG_ICON_NONE;
+        free(cicon); // Empty string, free it
+        cicon = NULL;
+    }
 
     vg_toolbar_item_t *item =
         vg_toolbar_add_button((vg_toolbar_t *)toolbar, NULL, ctext, icon, NULL, NULL);
@@ -2833,8 +3038,12 @@ void *rt_toolbar_add_button_with_text(void *toolbar,
     {
         vg_toolbar_item_set_tooltip(item, ctooltip);
     }
+    else if (cicon)
+    {
+        // Item creation failed, we still own cicon
+        free(cicon);
+    }
 
-    free(cicon);
     free(ctext);
     free(ctooltip);
     return item;
@@ -2848,8 +3057,18 @@ void *rt_toolbar_add_toggle(void *toolbar, rt_string icon_path, rt_string toolti
     char *ctooltip = rt_string_to_cstr(tooltip);
 
     vg_icon_t icon = {0};
-    icon.type = VG_ICON_PATH;
-    icon.data.path = cicon;
+    // Only set path icon if there's actually a path
+    if (cicon && cicon[0] != '\0')
+    {
+        icon.type = VG_ICON_PATH;
+        icon.data.path = cicon; // Ownership transferred to item on success
+    }
+    else
+    {
+        icon.type = VG_ICON_NONE;
+        free(cicon); // Empty string, free it
+        cicon = NULL;
+    }
 
     vg_toolbar_item_t *item =
         vg_toolbar_add_toggle((vg_toolbar_t *)toolbar, NULL, NULL, icon, false, NULL, NULL);
@@ -2857,8 +3076,12 @@ void *rt_toolbar_add_toggle(void *toolbar, rt_string icon_path, rt_string toolti
     {
         vg_toolbar_item_set_tooltip(item, ctooltip);
     }
+    else if (cicon)
+    {
+        // Item creation failed, we still own cicon
+        free(cicon);
+    }
 
-    free(cicon);
     free(ctooltip);
     return item;
 }
@@ -3043,7 +3266,13 @@ int64_t rt_toolbaritem_was_clicked(void *item)
 {
     if (!item)
         return 0;
-    return (g_clicked_toolbar_item == item) ? 1 : 0;
+    vg_toolbar_item_t *ti = (vg_toolbar_item_t *)item;
+    if (ti->was_clicked)
+    {
+        ti->was_clicked = false;
+        return 1;
+    }
+    return 0;
 }
 
 //=============================================================================
@@ -3601,14 +3830,19 @@ void rt_messagebox_destroy(void *box)
 // Phase 5: FileDialog
 //=============================================================================
 
-rt_string rt_filedialog_open(rt_string title, rt_string default_path, rt_string filter)
+rt_string rt_filedialog_open(rt_string title, rt_string filter, rt_string default_path)
 {
     char *ctitle = rt_string_to_cstr(title);
-    char *cpath = rt_string_to_cstr(default_path);
     char *cfilter = rt_string_to_cstr(filter);
+    char *cpath = rt_string_to_cstr(default_path);
 
+#ifdef __APPLE__
+    // Use native macOS file dialog
+    char *result = vg_native_open_file(ctitle, cpath, "Files", cfilter);
+#else
     // vg_filedialog_open_file expects: title, path, filter_name, filter_pattern
     char *result = vg_filedialog_open_file(ctitle, cpath, "Files", cfilter);
+#endif
 
     if (ctitle)
         free(ctitle);
@@ -3698,17 +3932,22 @@ rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, r
 }
 
 rt_string rt_filedialog_save(rt_string title,
-                             rt_string default_path,
                              rt_string filter,
-                             rt_string default_name)
+                             rt_string default_name,
+                             rt_string default_path)
 {
     char *ctitle = rt_string_to_cstr(title);
-    char *cpath = rt_string_to_cstr(default_path);
     char *cfilter = rt_string_to_cstr(filter);
     char *cname = rt_string_to_cstr(default_name);
+    char *cpath = rt_string_to_cstr(default_path);
 
+#ifdef __APPLE__
+    // Use native macOS file dialog
+    char *result = vg_native_save_file(ctitle, cpath, cname, "Files", cfilter);
+#else
     // vg_filedialog_save_file expects: title, path, default_name, filter_name, filter_pattern
     char *result = vg_filedialog_save_file(ctitle, cpath, cname, "Files", cfilter);
+#endif
 
     if (ctitle)
         free(ctitle);
@@ -3733,7 +3972,12 @@ rt_string rt_filedialog_select_folder(rt_string title, rt_string default_path)
     char *ctitle = rt_string_to_cstr(title);
     char *cpath = rt_string_to_cstr(default_path);
 
+#ifdef __APPLE__
+    // Use native macOS file dialog
+    char *result = vg_native_select_folder(ctitle, cpath);
+#else
     char *result = vg_filedialog_select_folder(ctitle, cpath);
+#endif
 
     if (ctitle)
         free(ctitle);

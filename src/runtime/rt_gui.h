@@ -310,6 +310,36 @@ extern "C"
     /// @param size Font size in pixels.
     void rt_treeview_set_font(void *tree, void *font, double size);
 
+    /// @brief Get the currently selected tree node.
+    /// @param tree TreeView widget handle.
+    /// @return Selected node handle or NULL if none selected.
+    void *rt_treeview_get_selected(void *tree);
+
+    /// @brief Check if selection changed since last call (polling pattern).
+    /// @param tree TreeView widget handle.
+    /// @return 1 if selection changed, 0 otherwise.
+    int64_t rt_treeview_was_selection_changed(void *tree);
+
+    /// @brief Get the text label of a tree node.
+    /// @param node Tree node handle.
+    /// @return Node text as runtime string.
+    rt_string rt_treeview_node_get_text(void *node);
+
+    /// @brief Store user data (file path) in a tree node.
+    /// @param node Tree node handle.
+    /// @param data String data to store.
+    void rt_treeview_node_set_data(void *node, rt_string data);
+
+    /// @brief Get user data stored in a tree node.
+    /// @param node Tree node handle.
+    /// @return Stored string data.
+    rt_string rt_treeview_node_get_data(void *node);
+
+    /// @brief Check if a tree node is expanded.
+    /// @param node Tree node handle.
+    /// @return 1 if expanded, 0 otherwise.
+    int64_t rt_treeview_node_is_expanded(void *node);
+
     //=========================================================================
     // TabBar Widget
     //=========================================================================

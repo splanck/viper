@@ -132,6 +132,37 @@ static void update_gutter_width(vg_codeeditor_t *editor)
     editor->gutter_width = metrics.width + 20.0f; // Add padding
 }
 
+// Ensure the cursor line is visible by adjusting scroll position
+static void ensure_cursor_visible(vg_codeeditor_t *editor)
+{
+    if (!editor)
+        return;
+
+    float visible_height = editor->base.height;
+    float cursor_y = editor->cursor_line * editor->line_height;
+
+    // Scroll up if cursor is above visible area
+    if (cursor_y < editor->scroll_y)
+    {
+        editor->scroll_y = cursor_y;
+    }
+    // Scroll down if cursor is below visible area
+    else if (cursor_y + editor->line_height > editor->scroll_y + visible_height)
+    {
+        editor->scroll_y = cursor_y + editor->line_height - visible_height;
+    }
+
+    // Clamp scroll_y to valid range
+    if (editor->scroll_y < 0)
+        editor->scroll_y = 0;
+
+    float max_scroll = (editor->line_count - 1) * editor->line_height;
+    if (max_scroll < 0)
+        max_scroll = 0;
+    if (editor->scroll_y > max_scroll)
+        editor->scroll_y = max_scroll;
+}
+
 //=============================================================================
 // Undo/Redo History Management
 //=============================================================================
@@ -628,6 +659,40 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
                            editor->cursor_color);
         }
     }
+
+    // Draw vertical scrollbar
+    float scrollbar_width = 12.0f;
+    float total_content_height = editor->line_count * editor->line_height;
+    float visible_height = widget->height;
+
+    if (total_content_height > visible_height)
+    {
+        // Scrollbar track background
+        float track_x = widget->x + widget->width - scrollbar_width;
+        uint32_t track_color = 0xFF3C3C3C; // Dark gray
+        vgfx_fill_rect((vgfx_window_t)canvas,
+                       (int32_t)track_x, (int32_t)widget->y,
+                       (int32_t)scrollbar_width, (int32_t)visible_height,
+                       track_color);
+
+        // Calculate thumb size and position
+        float thumb_ratio = visible_height / total_content_height;
+        if (thumb_ratio > 1.0f) thumb_ratio = 1.0f;
+        float thumb_height = visible_height * thumb_ratio;
+        if (thumb_height < 20.0f) thumb_height = 20.0f; // Minimum thumb size
+
+        float scroll_ratio = editor->scroll_y / (total_content_height - visible_height);
+        if (scroll_ratio < 0.0f) scroll_ratio = 0.0f;
+        if (scroll_ratio > 1.0f) scroll_ratio = 1.0f;
+        float thumb_y = widget->y + scroll_ratio * (visible_height - thumb_height);
+
+        // Scrollbar thumb
+        uint32_t thumb_color = 0xFF6C6C6C; // Medium gray
+        vgfx_fill_rect((vgfx_window_t)canvas,
+                       (int32_t)(track_x + 2), (int32_t)thumb_y,
+                       (int32_t)(scrollbar_width - 4), (int32_t)thumb_height,
+                       thumb_color);
+    }
 }
 
 static void insert_char(vg_codeeditor_t *editor, char c)
@@ -758,6 +823,24 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
     {
         case VG_EVENT_MOUSE_DOWN:
         {
+            float scrollbar_width = 12.0f;
+            float total_content_height = editor->line_count * editor->line_height;
+            float visible_height = widget->height;
+
+            // Check if click is on scrollbar
+            if (total_content_height > visible_height &&
+                event->mouse.x >= widget->width - scrollbar_width)
+            {
+                // Click on scrollbar - jump to position
+                float click_ratio = event->mouse.y / visible_height;
+                float max_scroll = total_content_height - visible_height;
+                editor->scroll_y = click_ratio * max_scroll;
+                if (editor->scroll_y < 0) editor->scroll_y = 0;
+                if (editor->scroll_y > max_scroll) editor->scroll_y = max_scroll;
+                widget->needs_paint = true;
+                return true;
+            }
+
             float content_x = editor->gutter_width;
             float local_x = event->mouse.x - content_x + editor->scroll_x;
             float local_y = event->mouse.y + editor->scroll_y;
@@ -890,9 +973,26 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
                         if (editor->cursor_col < (int)editor->lines[editor->cursor_line].length)
                             editor->cursor_col++;
                         break;
+                    case VG_KEY_PAGE_UP:
+                    {
+                        int visible_lines = (int)(widget->height / editor->line_height);
+                        editor->cursor_line -= visible_lines;
+                        if (editor->cursor_line < 0)
+                            editor->cursor_line = 0;
+                        break;
+                    }
+                    case VG_KEY_PAGE_DOWN:
+                    {
+                        int visible_lines = (int)(widget->height / editor->line_height);
+                        editor->cursor_line += visible_lines;
+                        if (editor->cursor_line >= editor->line_count)
+                            editor->cursor_line = editor->line_count - 1;
+                        break;
+                    }
                     default:
                         break;
                 }
+                ensure_cursor_visible(editor);
                 widget->needs_paint = true;
                 return true;
             }
@@ -947,6 +1047,26 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
                 case VG_KEY_END:
                     editor->cursor_col = (int)editor->lines[editor->cursor_line].length;
                     break;
+                case VG_KEY_PAGE_UP:
+                {
+                    int visible_lines = (int)(widget->height / editor->line_height);
+                    editor->cursor_line -= visible_lines;
+                    if (editor->cursor_line < 0)
+                        editor->cursor_line = 0;
+                    if (editor->cursor_col > (int)editor->lines[editor->cursor_line].length)
+                        editor->cursor_col = (int)editor->lines[editor->cursor_line].length;
+                    break;
+                }
+                case VG_KEY_PAGE_DOWN:
+                {
+                    int visible_lines = (int)(widget->height / editor->line_height);
+                    editor->cursor_line += visible_lines;
+                    if (editor->cursor_line >= editor->line_count)
+                        editor->cursor_line = editor->line_count - 1;
+                    if (editor->cursor_col > (int)editor->lines[editor->cursor_line].length)
+                        editor->cursor_col = (int)editor->lines[editor->cursor_line].length;
+                    break;
+                }
                 case VG_KEY_BACKSPACE:
                     if (editor->has_selection)
                     {
@@ -977,6 +1097,9 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
                     break;
             }
 
+            // Ensure cursor stays visible after movement
+            ensure_cursor_visible(editor);
+
             editor->cursor_visible = true;
             editor->has_selection = false;
             widget->needs_paint = true;
@@ -991,6 +1114,7 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
                     vg_codeeditor_delete_selection(editor);
                 }
                 insert_char(editor, (char)event->key.codepoint);
+                ensure_cursor_visible(editor);
                 widget->needs_paint = true;
             }
             return true;

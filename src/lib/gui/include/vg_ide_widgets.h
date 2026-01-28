@@ -243,6 +243,7 @@ extern "C"
         bool enabled;                ///< Enabled state
         bool checked;                ///< For toggle items
         bool show_label;             ///< Show text label
+        bool was_clicked;            ///< Set true when item is clicked (cleared on read)
 
         struct vg_menu *dropdown_menu; ///< Dropdown menu (for DROPDOWN type)
         vg_widget_t *custom_widget;    ///< Custom widget (for WIDGET type)
@@ -1703,6 +1704,7 @@ extern "C"
         bool enabled;               ///< Is item enabled
         bool checked;               ///< Is item checked (for toggles)
         bool separator;             ///< Is this a separator
+        bool was_clicked;           ///< Set true when item is clicked (cleared on read)
         struct vg_menu *submenu;    ///< Submenu (if any)
         struct vg_menu_item *next;
         struct vg_menu_item *prev;

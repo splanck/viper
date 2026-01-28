@@ -2,6 +2,7 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
+#include "../../../graphics/include/vgfx.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -361,9 +362,15 @@ static void toolbar_arrange(vg_widget_t *widget, float x, float y, float width, 
 static void toolbar_paint(vg_widget_t *widget, void *canvas)
 {
     vg_toolbar_t *tb = (vg_toolbar_t *)widget;
+    vgfx_window_t win = (vgfx_window_t)canvas;
 
-    // Draw background (placeholder - would use vgfx)
-    (void)tb->bg_color;
+    // Draw toolbar background
+    vgfx_fill_rect(win,
+                   (int32_t)widget->x,
+                   (int32_t)widget->y,
+                   (int32_t)widget->width,
+                   (int32_t)widget->height,
+                   tb->bg_color);
 
     uint32_t icon_px = get_icon_pixels(tb->icon_size);
 
@@ -373,8 +380,6 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas)
     for (int i = 0; i < max_index; i++)
     {
         vg_toolbar_item_t *item = tb->items[i];
-        if (!item->enabled)
-            continue;
 
         float item_width, item_height;
         float item_x, item_y;
@@ -397,8 +402,26 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas)
         switch (item->type)
         {
             case VG_TOOLBAR_ITEM_SEPARATOR:
+            {
                 // Draw vertical or horizontal line
+                vg_theme_t *theme = vg_theme_get_current();
+                uint32_t sep_color = theme->colors.border_primary;
+                if (tb->orientation == VG_TOOLBAR_HORIZONTAL)
+                {
+                    int32_t sep_x = (int32_t)(item_x + item_width / 2);
+                    int32_t sep_y1 = (int32_t)(widget->y + 4);
+                    int32_t sep_y2 = (int32_t)(widget->y + widget->height - 4);
+                    vgfx_fill_rect(win, sep_x, sep_y1, 1, sep_y2 - sep_y1, sep_color);
+                }
+                else
+                {
+                    int32_t sep_x1 = (int32_t)(widget->x + 4);
+                    int32_t sep_x2 = (int32_t)(widget->x + widget->width - 4);
+                    int32_t sep_y = (int32_t)(item_y + item_height / 2);
+                    vgfx_fill_rect(win, sep_x1, sep_y, sep_x2 - sep_x1, 1, sep_color);
+                }
                 break;
+            }
 
             case VG_TOOLBAR_ITEM_SPACER:
                 // Don't draw anything
@@ -408,22 +431,33 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas)
             case VG_TOOLBAR_ITEM_TOGGLE:
             case VG_TOOLBAR_ITEM_DROPDOWN:
             {
-                // Draw button background
+                // Draw button background based on state
+                uint32_t btn_bg = 0; // No background by default
                 if (item == tb->pressed_item)
                 {
-                    // Active/pressed state
-                    (void)tb->active_color;
+                    btn_bg = tb->active_color;
                 }
                 else if (item == tb->hovered_item)
                 {
-                    // Hover state
-                    (void)tb->hover_color;
+                    btn_bg = tb->hover_color;
                 }
                 else if (item->type == VG_TOOLBAR_ITEM_TOGGLE && item->checked)
                 {
-                    // Toggle checked state
-                    (void)tb->active_color;
+                    btn_bg = tb->active_color;
                 }
+
+                if (btn_bg != 0)
+                {
+                    vgfx_fill_rect(win,
+                                   (int32_t)item_x,
+                                   (int32_t)item_y,
+                                   (int32_t)item_width,
+                                   (int32_t)item_height,
+                                   btn_bg);
+                }
+
+                // Determine text color
+                uint32_t txt_color = item->enabled ? tb->text_color : tb->disabled_color;
 
                 // Draw icon
                 float icon_x = item_x + (item_width - icon_px) / 2;
@@ -472,7 +506,7 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas)
                                               icon_x,
                                               icon_y + icon_px * 0.8f,
                                               buf,
-                                              tb->text_color);
+                                              txt_color);
                         }
                         break;
 
@@ -495,14 +529,18 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas)
                                       label_x,
                                       label_y,
                                       item->label,
-                                      item->enabled ? tb->text_color : tb->disabled_color);
+                                      txt_color);
                 }
 
                 // Draw dropdown arrow
                 if (item->type == VG_TOOLBAR_ITEM_DROPDOWN)
                 {
                     // Draw small triangle at right edge
-                    // (placeholder)
+                    float arrow_x = item_x + item_width - 8;
+                    float arrow_y = item_y + item_height / 2;
+                    vgfx_fill_rect(win, (int32_t)arrow_x, (int32_t)(arrow_y - 1), 5, 1, txt_color);
+                    vgfx_fill_rect(win, (int32_t)(arrow_x + 1), (int32_t)arrow_y, 3, 1, txt_color);
+                    vgfx_fill_rect(win, (int32_t)(arrow_x + 2), (int32_t)(arrow_y + 1), 1, 1, txt_color);
                 }
                 break;
             }
@@ -529,8 +567,12 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas)
     // Draw overflow button if needed
     if (tb->overflow_start_index >= 0)
     {
-        // Draw "..." button at end
-        // (placeholder)
+        // Draw "..." indicator at end
+        float ov_x = widget->x + widget->width - 20;
+        float ov_y = widget->y + widget->height / 2;
+        vgfx_fill_rect(win, (int32_t)ov_x, (int32_t)ov_y, 2, 2, tb->text_color);
+        vgfx_fill_rect(win, (int32_t)(ov_x + 5), (int32_t)ov_y, 2, 2, tb->text_color);
+        vgfx_fill_rect(win, (int32_t)(ov_x + 10), (int32_t)ov_y, 2, 2, tb->text_color);
     }
 }
 
@@ -629,6 +671,9 @@ static bool toolbar_handle_event(vg_widget_t *widget, vg_event_t *event)
             vg_toolbar_item_t *item = find_item_at(tb, event->mouse.x, event->mouse.y);
             if (item && item == tb->pressed_item && item->enabled)
             {
+                // Set polling flag for runtime API
+                item->was_clicked = true;
+
                 // Trigger action
                 switch (item->type)
                 {

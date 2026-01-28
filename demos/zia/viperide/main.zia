@@ -3,9 +3,12 @@ module viperide;
 bind "app_shell";
 bind "core/document";
 bind "core/document_manager";
+bind "core/project";
+bind "core/project_manager";
 bind "editor/editor_engine";
 bind "editor/editor_tabs";
 bind "services/file_utils";
+bind "build/build_system";
 
 // ============================================================================
 // ViperIDE — main entry point
@@ -23,9 +26,21 @@ func main() {
     // Initialize components
     // ========================================================================
     var shell = new app_shell.AppShell();
+    if shell == null {
+        Viper.Terminal.Say("shell is null right after new!");
+    } else {
+        Viper.Terminal.Say("shell is valid right after new");
+    }
     var docMgr = new document_manager.DocumentManager();
+    if docMgr == null {
+        Viper.Terminal.Say("docMgr is null right after new!");
+    } else {
+        Viper.Terminal.Say("docMgr is valid right after new");
+    }
     var engine = new editor_engine.EditorEngine();
     var tabs = new editor_tabs.EditorTabs();
+    var projMgr = new project_manager.ProjectManager();
+    var buildSys = new build_system.BuildSystem();
 
     // Build the UI shell
     shell.Build("ViperIDE", WIN_WIDTH, WIN_HEIGHT);
@@ -36,6 +51,9 @@ func main() {
     // Setup tab bar
     tabs.Setup(shell.tabBar);
 
+    // Setup project manager with the sidebar tree
+    projMgr.Setup(shell.sidebarTree);
+
     // ========================================================================
     // Register keyboard shortcuts
     // ========================================================================
@@ -45,6 +63,8 @@ func main() {
     Viper.GUI.Shortcuts.Register("saveall", "Ctrl+Shift+S", "Save All Files");
     Viper.GUI.Shortcuts.Register("close", "Ctrl+W", "Close File");
     Viper.GUI.Shortcuts.Register("togglesidebar", "Ctrl+B", "Toggle Sidebar");
+    Viper.GUI.Shortcuts.Register("build", "Ctrl+Shift+B", "Build");
+    Viper.GUI.Shortcuts.Register("buildrun", "F5", "Build and Run");
 
     // ========================================================================
     // Create welcome document
@@ -67,9 +87,16 @@ func main() {
     shell.SetStatusRight(welcomeDoc.fileName);
 
     // ========================================================================
-    // Main event loop
+    // Main event loop (simplified for debugging)
     // ========================================================================
-    while shell.ShouldClose() == false {
+    if shell == null {
+        Viper.Terminal.Say("shell is null before loop");
+        return;
+    }
+    Viper.Terminal.Say("shell valid before loop");
+    var loopCount = 0;
+    while shell != null and shell.ShouldClose() == false {
+        loopCount = loopCount + 1;
         shell.Poll();
 
         // ====================================================================
@@ -121,6 +148,37 @@ func main() {
                 shell.SetStatusLeft("Opened: " + openDoc.fileName);
                 shell.SetStatusRight(openDoc.fileName);
             }
+        }
+
+        // ====================================================================
+        // Handle Open Folder (menu item)
+        // ====================================================================
+        if shell.miOpenFolder.WasClicked() != 0 {
+            var folderPath = Viper.GUI.FileDialog.SelectFolder("Open Folder", "");
+            if folderPath != "" {
+                projMgr.OpenFolder(folderPath);
+                shell.SetStatusLeft("Opened project: " + projMgr.project.name);
+            }
+        }
+
+        // ====================================================================
+        // Handle file tree clicks — open selected file
+        // ====================================================================
+        var treeSelectedPath = projMgr.HandleTreeClicks();
+        if treeSelectedPath != "" {
+            SaveEditorState(docMgr, engine);
+
+            var prevCount = docMgr.GetCount();
+            var treeOpenDoc = docMgr.OpenFile(treeSelectedPath);
+
+            if docMgr.GetCount() > prevCount {
+                tabs.AddTab(treeOpenDoc.fileName, 1);
+            }
+            tabs.SetActive(docMgr.activeIndex);
+            engine.LoadDocument(treeOpenDoc);
+
+            shell.SetStatusLeft("Opened: " + treeOpenDoc.fileName);
+            shell.SetStatusRight(treeOpenDoc.fileName);
         }
 
         // ====================================================================
@@ -194,7 +252,7 @@ func main() {
             var i = 0;
             while i < docMgr.GetCount() {
                 var doc = docMgr.documents.get(i);
-                if doc.isModified == false {
+                if doc != null and doc.isModified == false {
                     tabs.SetModified(i, false);
                 }
                 i = i + 1;
@@ -219,10 +277,15 @@ func main() {
                 doClose = closeIdx >= 0;
             }
         }
-        if doClose and closeIdx >= 0 {
-            tabs.RemoveTab(closeIdx);
-            docMgr.CloseDocument(closeIdx);
+        if doClose and closeIdx >= 0 and closeIdx < docMgr.GetCount() {
+            // Save editor state before closing
+            SaveEditorState(docMgr, engine);
 
+            // Close document and remove tab
+            docMgr.CloseDocument(closeIdx);
+            tabs.RemoveTab(closeIdx);
+
+            // Update editor with next document or clear
             var nextDoc = docMgr.GetActive();
             if nextDoc != null {
                 tabs.SetActive(docMgr.activeIndex);
@@ -257,11 +320,64 @@ func main() {
         }
 
         // ====================================================================
+        // Handle Build (menu, Ctrl+Shift+B)
+        // ====================================================================
+        var doBuild = shell.miBuild.WasClicked() != 0;
+        if doBuild == false {
+            doBuild = Viper.GUI.Shortcuts.WasTriggered("build") != 0;
+        }
+        if doBuild {
+            SaveEditorState(docMgr, engine);
+            var buildDoc = docMgr.GetActive();
+            if buildDoc != null {
+                if buildDoc.isNew == false {
+                    docMgr.SaveActive();
+                    shell.SetStatusLeft("Building...");
+                    var success = buildSys.Build(buildDoc.filePath);
+                    if success {
+                        shell.SetStatusLeft("Build succeeded");
+                    } else {
+                        shell.SetStatusLeft("Build failed: " + buildSys.GetErrorCount() + " errors");
+                    }
+                } else {
+                    shell.SetStatusLeft("Save file before building");
+                }
+            }
+        }
+
+        // ====================================================================
+        // Handle Build and Run (menu, F5)
+        // ====================================================================
+        var doBuildRun = shell.miBuildAndRun.WasClicked() != 0;
+        if doBuildRun == false {
+            doBuildRun = Viper.GUI.Shortcuts.WasTriggered("buildrun") != 0;
+        }
+        if doBuildRun {
+            SaveEditorState(docMgr, engine);
+            var runDoc = docMgr.GetActive();
+            if runDoc != null {
+                if runDoc.isNew == false {
+                    docMgr.SaveActive();
+                    shell.SetStatusLeft("Building and running...");
+                    var success = buildSys.BuildAndRun(runDoc.filePath);
+                    if success {
+                        shell.SetStatusLeft("Run completed");
+                    } else {
+                        shell.SetStatusLeft("Build failed: " + buildSys.GetErrorCount() + " errors");
+                    }
+                } else {
+                    shell.SetStatusLeft("Save file before running");
+                }
+            }
+        }
+
+        // ====================================================================
         // Handle tab switching (user clicked a different tab)
         // ====================================================================
         if shell.tabBar.WasChanged() != 0 {
             var newIdx = shell.tabBar.GetActiveIndex();
-            if newIdx >= 0 and newIdx != docMgr.activeIndex {
+            // Guard against invalid indices and skip if already on this tab
+            if newIdx >= 0 and newIdx < docMgr.GetCount() and newIdx != docMgr.activeIndex {
                 SaveEditorState(docMgr, engine);
                 docMgr.SetActive(newIdx);
                 var switchDoc = docMgr.GetActive();
@@ -276,12 +392,14 @@ func main() {
         // ====================================================================
         // Track modified state
         // ====================================================================
-        if engine.IsModified() {
-            var curDoc = docMgr.GetActive();
-            if curDoc != null {
-                if curDoc.isModified == false {
-                    curDoc.isModified = true;
-                    tabs.SetModified(docMgr.activeIndex, true);
+        if engine != null and docMgr != null and docMgr.GetCount() > 0 {
+            if engine.IsModified() {
+                var curDoc = docMgr.GetActive();
+                if curDoc != null {
+                    if curDoc.isModified == false {
+                        curDoc.isModified = true;
+                        tabs.SetModified(docMgr.activeIndex, true);
+                    }
                 }
             }
         }
@@ -289,7 +407,9 @@ func main() {
         // ====================================================================
         // Update status bar
         // ====================================================================
-        shell.SetStatusCenter("Ln " + engine.GetCursorLine() + ", Col " + engine.GetCursorCol() + "  |  Lines: " + engine.GetLineCount());
+        if engine != null {
+            shell.SetStatusCenter("Ln " + engine.GetCursorLine() + ", Col " + engine.GetCursorCol() + "  |  Lines: " + engine.GetLineCount());
+        }
 
         shell.Render();
     }
@@ -297,12 +417,23 @@ func main() {
     // ========================================================================
     // Cleanup
     // ========================================================================
-    shell.Destroy();
+    Viper.Terminal.Say("DEBUG: Loop exited after " + loopCount + " iterations");
+    if shell != null {
+        shell.Destroy();
+    }
 }
 
 // Save the editor's current content back to the active document.
 func SaveEditorState(docMgr: document_manager.DocumentManager,
                      engine: editor_engine.EditorEngine) {
+    if docMgr == null {
+        Viper.Terminal.Say("ERROR: SaveEditorState called with null docMgr!");
+        return;
+    }
+    if engine == null {
+        Viper.Terminal.Say("ERROR: SaveEditorState called with null engine!");
+        return;
+    }
     var doc = docMgr.GetActive();
     if doc != null {
         engine.SaveToDocument(doc);

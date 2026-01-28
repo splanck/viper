@@ -25,6 +25,9 @@ entity EditorEngine {
 
     // Load a document's content into the editor widget.
     expose func LoadDocument(doc: document.Document) {
+        if doc == null {
+            return;
+        }
         editor.SetText(doc.content);
         editor.ClearModified();
 
@@ -46,6 +49,9 @@ entity EditorEngine {
 
     // Save the editor's current state back to the document.
     expose func SaveToDocument(doc: document.Document) {
+        if doc == null {
+            return;
+        }
         doc.content = editor.Text;
         doc.cursorLine = lastCursorLine;
         doc.cursorCol = lastCursorCol;
@@ -59,26 +65,41 @@ entity EditorEngine {
 
     // Check if the editor content has been modified.
     expose func IsModified() -> Boolean {
+        if editor == null {
+            return false;
+        }
         return editor.IsModified() != 0;
     }
 
     // Clear the modified flag.
     expose func ClearModified() {
+        if editor == null {
+            return;
+        }
         editor.ClearModified();
     }
 
     // Get the current line count.
     expose func GetLineCount() -> Integer {
+        if editor == null {
+            return 0;
+        }
         return editor.LineCount;
     }
 
     // Get the current text content.
     expose func GetText() -> String {
+        if editor == null {
+            return "";
+        }
         return editor.Text;
     }
 
     // Set the text content.
     expose func SetText(text: String) {
+        if editor == null {
+            return;
+        }
         editor.SetText(text);
     }
 
@@ -89,11 +110,17 @@ entity EditorEngine {
 
     // Get the current cursor line (1-based for display).
     expose func GetCursorLine() -> Integer {
+        if editor == null {
+            return 1;
+        }
         return editor.CursorLine + 1;
     }
 
     // Get the current cursor column (1-based for display).
     expose func GetCursorCol() -> Integer {
+        if editor == null {
+            return 1;
+        }
         return editor.CursorCol + 1;
     }
 }

@@ -207,6 +207,7 @@ enum class RuntimeTypeId : std::size_t
     RTCLS_GuiCheckbox,
     RTCLS_GuiScrollView,
     RTCLS_GuiTreeView,
+    RTCLS_GuiTreeNode,
     RTCLS_GuiTabBar,
     RTCLS_GuiTab,
     RTCLS_GuiSplitPane,
