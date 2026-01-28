@@ -1,0 +1,310 @@
+module viperide;
+
+bind "app_shell";
+bind "core/document";
+bind "core/document_manager";
+bind "editor/editor_engine";
+bind "editor/editor_tabs";
+bind "services/file_utils";
+
+// ============================================================================
+// ViperIDE — main entry point
+// ============================================================================
+// Creates the UI shell, sets up components, and runs the event loop.
+// Professional IDE layout with MenuBar, Toolbar, SplitPane, StatusBar.
+// ============================================================================
+
+// Window dimensions
+var WIN_WIDTH = 1280;
+var WIN_HEIGHT = 800;
+
+func main() {
+    // ========================================================================
+    // Initialize components
+    // ========================================================================
+    var shell = new app_shell.AppShell();
+    var docMgr = new document_manager.DocumentManager();
+    var engine = new editor_engine.EditorEngine();
+    var tabs = new editor_tabs.EditorTabs();
+
+    // Build the UI shell
+    shell.Build("ViperIDE", WIN_WIDTH, WIN_HEIGHT);
+
+    // Setup editor inside the editor area (right panel of SplitPane)
+    engine.Setup(shell.editorArea);
+
+    // Setup tab bar
+    tabs.Setup(shell.tabBar);
+
+    // ========================================================================
+    // Register keyboard shortcuts
+    // ========================================================================
+    Viper.GUI.Shortcuts.Register("new", "Ctrl+N", "New File");
+    Viper.GUI.Shortcuts.Register("open", "Ctrl+O", "Open File");
+    Viper.GUI.Shortcuts.Register("save", "Ctrl+S", "Save File");
+    Viper.GUI.Shortcuts.Register("saveall", "Ctrl+Shift+S", "Save All Files");
+    Viper.GUI.Shortcuts.Register("close", "Ctrl+W", "Close File");
+    Viper.GUI.Shortcuts.Register("togglesidebar", "Ctrl+B", "Toggle Sidebar");
+
+    // ========================================================================
+    // Create welcome document
+    // ========================================================================
+    var welcomeText = "// Welcome to ViperIDE!\n";
+    welcomeText = welcomeText + "// A full-featured IDE for Zia and Viper Basic\n";
+    welcomeText = welcomeText + "\n";
+    welcomeText = welcomeText + "func main() {\n";
+    welcomeText = welcomeText + "    Viper.Terminal.Say(\"Hello from ViperIDE!\");\n";
+    welcomeText = welcomeText + "}\n";
+
+    var welcomeDoc = docMgr.NewDocument();
+    welcomeDoc.content = welcomeText;
+    tabs.AddTab(welcomeDoc.fileName, 1);
+    tabs.SetActive(0);
+    engine.LoadDocument(welcomeDoc);
+
+    shell.SetStatusLeft("Ready");
+    shell.SetStatusCenter("Ln 1, Col 1  |  Lines: " + engine.GetLineCount());
+    shell.SetStatusRight(welcomeDoc.fileName);
+
+    // ========================================================================
+    // Main event loop
+    // ========================================================================
+    while shell.ShouldClose() == false {
+        shell.Poll();
+
+        // ====================================================================
+        // Handle New File (menu, toolbar, or Ctrl+N)
+        // ====================================================================
+        var doNew = shell.miNew.WasClicked() != 0;
+        if doNew == false {
+            doNew = shell.tbNew.WasClicked() != 0;
+        }
+        if doNew == false {
+            doNew = Viper.GUI.Shortcuts.WasTriggered("new") != 0;
+        }
+        if doNew {
+            SaveEditorState(docMgr, engine);
+
+            var newDoc = docMgr.NewDocument();
+            tabs.AddTab(newDoc.fileName, 1);
+            tabs.SetActive(docMgr.activeIndex);
+            engine.LoadDocument(newDoc);
+
+            shell.SetStatusLeft("New file created");
+            shell.SetStatusRight(newDoc.fileName);
+        }
+
+        // ====================================================================
+        // Handle Open File (menu, toolbar, or Ctrl+O)
+        // ====================================================================
+        var doOpen = shell.miOpen.WasClicked() != 0;
+        if doOpen == false {
+            doOpen = shell.tbOpen.WasClicked() != 0;
+        }
+        if doOpen == false {
+            doOpen = Viper.GUI.Shortcuts.WasTriggered("open") != 0;
+        }
+        if doOpen {
+            var path = Viper.GUI.FileDialog.Open("Open File", "*.zia;*.bas;*.txt", "");
+            if path != "" {
+                SaveEditorState(docMgr, engine);
+
+                var prevCount = docMgr.GetCount();
+                var openDoc = docMgr.OpenFile(path);
+
+                if docMgr.GetCount() > prevCount {
+                    tabs.AddTab(openDoc.fileName, 1);
+                }
+                tabs.SetActive(docMgr.activeIndex);
+                engine.LoadDocument(openDoc);
+
+                shell.SetStatusLeft("Opened: " + openDoc.fileName);
+                shell.SetStatusRight(openDoc.fileName);
+            }
+        }
+
+        // ====================================================================
+        // Handle Save (menu, toolbar, or Ctrl+S)
+        // ====================================================================
+        var doSave = shell.miSave.WasClicked() != 0;
+        if doSave == false {
+            doSave = shell.tbSave.WasClicked() != 0;
+        }
+        if doSave == false {
+            doSave = Viper.GUI.Shortcuts.WasTriggered("save") != 0;
+        }
+        if doSave {
+            SaveEditorState(docMgr, engine);
+            var saveDoc = docMgr.GetActive();
+            if saveDoc != null {
+                if saveDoc.isNew {
+                    var savePath = Viper.GUI.FileDialog.Save(
+                        "Save File", "*.zia", saveDoc.fileName, "");
+                    if savePath != "" {
+                        docMgr.SaveAs(savePath);
+                        tabs.SetTitle(docMgr.activeIndex, saveDoc.fileName);
+                        tabs.SetModified(docMgr.activeIndex, false);
+                        engine.ClearModified();
+                        shell.SetStatusLeft("Saved: " + saveDoc.fileName);
+                        shell.SetStatusRight(saveDoc.fileName);
+                    }
+                } else {
+                    docMgr.SaveActive();
+                    tabs.SetModified(docMgr.activeIndex, false);
+                    engine.ClearModified();
+                    shell.SetStatusLeft("Saved: " + saveDoc.fileName);
+                }
+            }
+        }
+
+        // ====================================================================
+        // Handle Save As (menu item)
+        // ====================================================================
+        if shell.miSaveAs.WasClicked() != 0 {
+            SaveEditorState(docMgr, engine);
+            var saveAsDoc = docMgr.GetActive();
+            if saveAsDoc != null {
+                var saveAsPath = Viper.GUI.FileDialog.Save(
+                    "Save As", "*.zia", saveAsDoc.fileName, "");
+                if saveAsPath != "" {
+                    docMgr.SaveAs(saveAsPath);
+                    tabs.SetTitle(docMgr.activeIndex, saveAsDoc.fileName);
+                    tabs.SetModified(docMgr.activeIndex, false);
+                    engine.ClearModified();
+                    shell.SetStatusLeft("Saved as: " + saveAsDoc.fileName);
+                    shell.SetStatusRight(saveAsDoc.fileName);
+                }
+            }
+        }
+
+        // ====================================================================
+        // Handle Save All (menu, toolbar, or Ctrl+Shift+S)
+        // ====================================================================
+        var doSaveAll = shell.miSaveAll.WasClicked() != 0;
+        if doSaveAll == false {
+            doSaveAll = shell.tbSaveAll.WasClicked() != 0;
+        }
+        if doSaveAll == false {
+            doSaveAll = Viper.GUI.Shortcuts.WasTriggered("saveall") != 0;
+        }
+        if doSaveAll {
+            SaveEditorState(docMgr, engine);
+            var savedCount = docMgr.SaveAll();
+
+            var i = 0;
+            while i < docMgr.GetCount() {
+                var doc = docMgr.documents.get(i);
+                if doc.isModified == false {
+                    tabs.SetModified(i, false);
+                }
+                i = i + 1;
+            }
+            shell.SetStatusLeft("Saved " + savedCount + " files");
+        }
+
+        // ====================================================================
+        // Handle Close File (menu, Ctrl+W, or tab close button)
+        // ====================================================================
+        var doClose = shell.miClose.WasClicked() != 0;
+        if doClose == false {
+            doClose = Viper.GUI.Shortcuts.WasTriggered("close") != 0;
+        }
+        var closeIdx = -1;
+        if doClose {
+            closeIdx = docMgr.activeIndex;
+        }
+        if doClose == false {
+            if shell.tabBar.WasCloseClicked() != 0 {
+                closeIdx = shell.tabBar.GetCloseClickedIndex();
+                doClose = closeIdx >= 0;
+            }
+        }
+        if doClose and closeIdx >= 0 {
+            tabs.RemoveTab(closeIdx);
+            docMgr.CloseDocument(closeIdx);
+
+            var nextDoc = docMgr.GetActive();
+            if nextDoc != null {
+                tabs.SetActive(docMgr.activeIndex);
+                engine.LoadDocument(nextDoc);
+                shell.SetStatusRight(nextDoc.fileName);
+            } else {
+                engine.SetText("");
+                engine.ClearModified();
+                shell.SetStatusRight("No file");
+            }
+            shell.SetStatusLeft("File closed");
+        }
+
+        // ====================================================================
+        // Handle Exit (menu item)
+        // ====================================================================
+        if shell.miExit.WasClicked() != 0 {
+            // Break out of the event loop
+            shell.Destroy();
+            return;
+        }
+
+        // ====================================================================
+        // Handle Toggle Sidebar (menu or Ctrl+B)
+        // ====================================================================
+        var doToggleSidebar = shell.miToggleSidebar.WasClicked() != 0;
+        if doToggleSidebar == false {
+            doToggleSidebar = Viper.GUI.Shortcuts.WasTriggered("togglesidebar") != 0;
+        }
+        if doToggleSidebar {
+            shell.ToggleSidebar();
+        }
+
+        // ====================================================================
+        // Handle tab switching (user clicked a different tab)
+        // ====================================================================
+        if shell.tabBar.WasChanged() != 0 {
+            var newIdx = shell.tabBar.GetActiveIndex();
+            if newIdx >= 0 and newIdx != docMgr.activeIndex {
+                SaveEditorState(docMgr, engine);
+                docMgr.SetActive(newIdx);
+                var switchDoc = docMgr.GetActive();
+                if switchDoc != null {
+                    engine.LoadDocument(switchDoc);
+                    shell.SetStatusRight(switchDoc.fileName);
+                    shell.SetStatusLeft("Switched to: " + switchDoc.fileName);
+                }
+            }
+        }
+
+        // ====================================================================
+        // Track modified state
+        // ====================================================================
+        if engine.IsModified() {
+            var curDoc = docMgr.GetActive();
+            if curDoc != null {
+                if curDoc.isModified == false {
+                    curDoc.isModified = true;
+                    tabs.SetModified(docMgr.activeIndex, true);
+                }
+            }
+        }
+
+        // ====================================================================
+        // Update status bar
+        // ====================================================================
+        shell.SetStatusCenter("Ln " + engine.GetCursorLine() + ", Col " + engine.GetCursorCol() + "  |  Lines: " + engine.GetLineCount());
+
+        shell.Render();
+    }
+
+    // ========================================================================
+    // Cleanup
+    // ========================================================================
+    shell.Destroy();
+}
+
+// Save the editor's current content back to the active document.
+func SaveEditorState(docMgr: document_manager.DocumentManager,
+                     engine: editor_engine.EditorEngine) {
+    var doc = docMgr.GetActive();
+    if doc != null {
+        engine.SaveToDocument(doc);
+    }
+}

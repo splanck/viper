@@ -83,6 +83,9 @@ typedef struct
     int32_t mouse_y;           // Current mouse Y
 } rt_gui_app_t;
 
+// Global pointer to the current app for widget constructors to access the default font.
+static rt_gui_app_t *s_current_app = NULL;
+
 void *rt_gui_app_new(rt_string title, int64_t width, int64_t height)
 {
     rt_gui_app_t *app = calloc(1, sizeof(rt_gui_app_t));
@@ -122,7 +125,30 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height)
     // Set dark theme by default
     vg_theme_set_current(vg_theme_dark());
 
+    s_current_app = app;
     return app;
+}
+
+// Ensure the default font is loaded (lazy init on first use).
+static void rt_gui_ensure_default_font(void)
+{
+    if (!s_current_app || s_current_app->default_font)
+        return;
+    const char *font_paths[] = {"/System/Library/Fonts/Menlo.ttc",
+                                "/System/Library/Fonts/SFNSMono.ttf",
+                                "/System/Library/Fonts/Monaco.dfont",
+                                "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+                                "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
+                                NULL};
+    for (int i = 0; font_paths[i]; i++)
+    {
+        s_current_app->default_font = vg_font_load_file(font_paths[i]);
+        if (s_current_app->default_font)
+        {
+            s_current_app->default_font_size = 14.0f;
+            break;
+        }
+    }
 }
 
 void rt_gui_app_destroy(void *app_ptr)
@@ -438,6 +464,28 @@ static void layout_widget_tree(
     }
 }
 
+// Recursively convert widget tree from relative to absolute screen coordinates.
+// After this call, every widget->x/y is the absolute screen position.
+// This must be called after layout and before rendering, since vtable paint
+// functions use widget->x/y directly for drawing.
+static void convert_to_screen_coords(vg_widget_t *widget, float parent_abs_x, float parent_abs_y)
+{
+    if (!widget)
+        return;
+
+    // Convert relative position to absolute
+    widget->x += parent_abs_x;
+    widget->y += parent_abs_y;
+
+    // Recurse into children
+    vg_widget_t *child = widget->first_child;
+    while (child)
+    {
+        convert_to_screen_coords(child, widget->x, widget->y);
+        child = child->next_sibling;
+    }
+}
+
 void rt_gui_app_render(void *app_ptr)
 {
     if (!app_ptr)
@@ -467,18 +515,29 @@ void rt_gui_app_render(void *app_ptr)
         }
     }
 
-    // Perform layout
-    float font_size = app->default_font_size > 0 ? app->default_font_size : 14.0f;
+    // Perform layout using the GUI library's proper layout system.
+    // This handles VBox/HBox flex, padding, spacing, and widget constraints.
+    // Use the actual window dimensions, not root->width/height (which start at 0).
     if (app->root)
     {
-        layout_widget_tree(app->root, 0, 0, app->root->width, font_size);
+        int32_t win_w = 0, win_h = 0;
+        vgfx_get_size(app->window, &win_w, &win_h);
+        vg_widget_layout(app->root, (float)win_w, (float)win_h);
+    }
+
+    // Convert to absolute screen coordinates for rendering.
+    // vtable paint functions use widget->x/y directly, so they must be absolute.
+    // This is safe because layout is recomputed every frame above.
+    if (app->root)
+    {
+        convert_to_screen_coords(app->root, 0, 0);
     }
 
     // Clear with theme background
     vg_theme_t *theme = vg_theme_get_current();
     vgfx_cls(app->window, theme ? theme->colors.bg_secondary : 0xFF1E1E1E);
 
-    // Render widget tree
+    // Render widget tree using vtable paint functions
     if (app->root)
     {
         render_widget_tree(app->window, app->root, app->default_font, app->default_font_size);
@@ -505,7 +564,8 @@ void rt_gui_app_set_font(void *app_ptr, void *font, double size)
     app->default_font_size = (float)size;
 }
 
-// Simple widget rendering (would be expanded for full implementation)
+// Render widget tree. Assumes convert_to_screen_coords has already been called
+// so widget->x/y are absolute screen positions.
 static void render_widget_tree(vgfx_window_t window,
                                vg_widget_t *widget,
                                vg_font_t *font,
@@ -514,200 +574,20 @@ static void render_widget_tree(vgfx_window_t window,
     if (!widget || !widget->visible)
         return;
 
-    // Get screen coordinates (converts relative positions to absolute)
-    float x, y, w, h;
-    vg_widget_get_screen_bounds(widget, &x, &y, &w, &h);
-
-    vg_theme_t *theme = vg_theme_get_current();
-    if (!theme)
-        return;
-
     // Use default font size if not specified
     if (font_size <= 0)
         font_size = 14.0f;
 
-    // Render based on widget type
-    switch (widget->type)
+    // Delegate to vtable paint if available. All concrete widget types
+    // (Label, Button, MenuBar, Toolbar, StatusBar, etc.) have vtable paint.
+    // These functions use widget->x/y directly (now absolute after conversion).
+    if (widget->vtable && widget->vtable->paint)
     {
-        case VG_WIDGET_CONTAINER:
-            // Containers are transparent by default, just render children
-            break;
-
-        case VG_WIDGET_LABEL:
-        {
-            vg_label_t *label = (vg_label_t *)widget;
-            if (label->text)
-            {
-                vg_font_t *use_font = label->font ? label->font : font;
-                float use_size = label->font ? label->font_size : font_size;
-                if (use_font)
-                {
-                    vg_font_draw_text(window,
-                                      use_font,
-                                      use_size,
-                                      x,
-                                      y + use_size,
-                                      label->text,
-                                      label->text_color);
-                }
-                // No fallback without font - text won't render
-            }
-            break;
-        }
-
-        case VG_WIDGET_BUTTON:
-        {
-            vg_button_t *btn = (vg_button_t *)widget;
-            uint32_t bg = theme->colors.bg_primary;
-            if (widget->state & VG_STATE_HOVERED)
-                bg = theme->colors.bg_tertiary;
-            if (widget->state & VG_STATE_PRESSED)
-                bg = theme->colors.accent_primary;
-            vgfx_rect(window, (int)x, (int)y, (int)w, (int)h, bg);
-            if (btn->text)
-            {
-                vg_font_t *use_font = btn->font ? btn->font : font;
-                float use_size = btn->font ? btn->font_size : font_size;
-                if (use_font)
-                {
-                    float tw = strlen(btn->text) * use_size * 0.6f;
-                    float tx = x + (w - tw) / 2;
-                    float ty = y + (h + use_size) / 2 - 2;
-                    vg_font_draw_text(
-                        window, use_font, use_size, tx, ty, btn->text, theme->colors.fg_primary);
-                }
-                // No fallback without font
-            }
-            break;
-        }
-
-        case VG_WIDGET_TEXTINPUT:
-        {
-            vg_textinput_t *input = (vg_textinput_t *)widget;
-            uint32_t border_color = theme->colors.fg_tertiary;
-            // Draw background
-            vgfx_rect(window, (int)x, (int)y, (int)w, (int)h, theme->colors.bg_primary);
-            // Draw border
-            vgfx_rect(window, (int)x, (int)y, (int)w, 1, border_color);
-            vgfx_rect(window, (int)x, (int)(y + h - 1), (int)w, 1, border_color);
-            vgfx_rect(window, (int)x, (int)y, 1, (int)h, border_color);
-            vgfx_rect(window, (int)(x + w - 1), (int)y, 1, (int)h, border_color);
-            // Draw text or placeholder
-            const char *display_text =
-                (input->text && input->text[0]) ? input->text : input->placeholder;
-            uint32_t text_color = (input->text && input->text[0]) ? theme->colors.fg_primary
-                                                                  : theme->colors.fg_secondary;
-            if (display_text && font)
-            {
-                vg_font_draw_text(
-                    window, font, font_size, x + 4, y + font_size + 2, display_text, text_color);
-            }
-            break;
-        }
-
-        case VG_WIDGET_CODEEDITOR:
-        {
-            vg_codeeditor_t *editor = (vg_codeeditor_t *)widget;
-            uint32_t border_color = theme->colors.fg_tertiary;
-            // Draw background
-            vgfx_rect(window, (int)x, (int)y, (int)w, (int)h, theme->colors.bg_primary);
-            // Draw border
-            vgfx_rect(window, (int)x, (int)y, (int)w, 1, border_color);
-            vgfx_rect(window, (int)x, (int)(y + h - 1), (int)w, 1, border_color);
-            vgfx_rect(window, (int)x, (int)y, 1, (int)h, border_color);
-            vgfx_rect(window, (int)(x + w - 1), (int)y, 1, (int)h, border_color);
-            // Draw text content (simplified - just first few lines)
-            float line_height = font_size + 4;
-            float char_width = font_size * 0.6f; // Approximate monospace char width
-            const char *text_content = vg_codeeditor_get_text(editor);
-            if (text_content && font)
-            {
-                float ty = y + 4;
-                const char *line_start = text_content;
-                int max_lines = (int)((h - 8) / line_height);
-                for (int i = 0; i < max_lines && *line_start; i++)
-                {
-                    const char *line_end = strchr(line_start, '\n');
-                    int len = line_end ? (int)(line_end - line_start) : (int)strlen(line_start);
-                    char line_buf[256];
-                    if (len > 255)
-                        len = 255;
-                    memcpy(line_buf, line_start, len);
-                    line_buf[len] = '\0';
-                    vg_font_draw_text(window,
-                                      font,
-                                      font_size,
-                                      x + 4,
-                                      ty + font_size,
-                                      line_buf,
-                                      theme->colors.fg_primary);
-                    ty += line_height;
-                    if (!line_end)
-                        break;
-                    line_start = line_end + 1;
-                }
-            }
-            // Draw cursor if focused
-            if (widget->state & VG_STATE_FOCUSED)
-            {
-                float cursor_x = x + 4 + editor->cursor_col * char_width;
-                float cursor_y = y + 4 + editor->cursor_line * line_height;
-                // Draw cursor line
-                vgfx_rect(window,
-                          (int)cursor_x,
-                          (int)cursor_y,
-                          2,
-                          (int)font_size + 2,
-                          theme->colors.fg_primary);
-            }
-            break;
-        }
-
-        case VG_WIDGET_CHECKBOX:
-        {
-            vg_checkbox_t *cb = (vg_checkbox_t *)widget;
-            uint32_t border_color = theme->colors.fg_tertiary;
-            // Draw checkbox box
-            int box_size = 16;
-            vgfx_rect(window, (int)x, (int)y, box_size, box_size, theme->colors.bg_primary);
-            vgfx_rect(window, (int)x, (int)y, box_size, 1, border_color);
-            vgfx_rect(window, (int)x, (int)(y + box_size - 1), box_size, 1, border_color);
-            vgfx_rect(window, (int)x, (int)y, 1, box_size, border_color);
-            vgfx_rect(window, (int)(x + box_size - 1), (int)y, 1, box_size, border_color);
-            if (cb->checked)
-            {
-                // Draw checkmark (simplified as filled inner rect)
-                vgfx_rect(window,
-                          (int)(x + 3),
-                          (int)(y + 3),
-                          box_size - 6,
-                          box_size - 6,
-                          theme->colors.accent_primary);
-            }
-            // Draw label
-            if (cb->text && font)
-            {
-                vg_font_draw_text(window,
-                                  font,
-                                  font_size,
-                                  x + box_size + 6,
-                                  y + font_size,
-                                  cb->text,
-                                  theme->colors.fg_primary);
-            }
-            break;
-        }
-
-        default:
-            // For unhandled widgets, just draw a placeholder rect if they have size
-            if (w > 0 && h > 0)
-            {
-                vgfx_rect(window, (int)x, (int)y, (int)w, (int)h, theme->colors.bg_tertiary);
-            }
-            break;
+        widget->vtable->paint(widget, (void *)window);
     }
 
-    // Render children
+    // Render children (vtable paint functions draw their own chrome,
+    // but children are rendered here to ensure consistent traversal)
     vg_widget_t *child = widget->first_child;
     while (child)
     {
@@ -772,6 +652,14 @@ void rt_widget_set_size(void *widget, int64_t width, int64_t height)
     if (widget)
     {
         vg_widget_set_fixed_size((vg_widget_t *)widget, (float)width, (float)height);
+    }
+}
+
+void rt_widget_set_flex(void *widget, double flex)
+{
+    if (widget)
+    {
+        vg_widget_set_flex((vg_widget_t *)widget, (float)flex);
     }
 }
 
@@ -969,7 +857,15 @@ void rt_scrollview_set_content_size(void *scroll, double width, double height)
 
 void *rt_treeview_new(void *parent)
 {
-    return vg_treeview_create((vg_widget_t *)parent);
+    vg_treeview_t *tv = vg_treeview_create((vg_widget_t *)parent);
+    if (tv)
+    {
+        rt_gui_ensure_default_font();
+        if (s_current_app && s_current_app->default_font)
+            vg_treeview_set_font(tv, s_current_app->default_font,
+                                 s_current_app->default_font_size);
+    }
+    return tv;
 }
 
 void *rt_treeview_add_node(void *tree, void *parent_node, rt_string text)
@@ -1080,6 +976,71 @@ void rt_tab_set_modified(void *tab, int64_t modified)
     if (tab)
     {
         vg_tab_set_modified((vg_tab_t *)tab, modified != 0);
+    }
+}
+
+void *rt_tabbar_get_active(void *tabbar)
+{
+    return tabbar ? ((vg_tabbar_t *)tabbar)->active_tab : NULL;
+}
+
+int64_t rt_tabbar_get_active_index(void *tabbar)
+{
+    if (!tabbar)
+        return -1;
+    vg_tabbar_t *tb = (vg_tabbar_t *)tabbar;
+    return vg_tabbar_get_tab_index(tb, tb->active_tab);
+}
+
+int64_t rt_tabbar_was_changed(void *tabbar)
+{
+    if (!tabbar)
+        return 0;
+    vg_tabbar_t *tb = (vg_tabbar_t *)tabbar;
+    if (tb->active_tab != tb->prev_active_tab)
+    {
+        tb->prev_active_tab = tb->active_tab;
+        return 1;
+    }
+    return 0;
+}
+
+int64_t rt_tabbar_get_tab_count(void *tabbar)
+{
+    return tabbar ? ((vg_tabbar_t *)tabbar)->tab_count : 0;
+}
+
+int64_t rt_tabbar_was_close_clicked(void *tabbar)
+{
+    if (!tabbar)
+        return 0;
+    return ((vg_tabbar_t *)tabbar)->close_clicked_tab ? 1 : 0;
+}
+
+int64_t rt_tabbar_get_close_clicked_index(void *tabbar)
+{
+    if (!tabbar)
+        return -1;
+    vg_tabbar_t *tb = (vg_tabbar_t *)tabbar;
+    if (!tb->close_clicked_tab)
+        return -1;
+    int index = vg_tabbar_get_tab_index(tb, tb->close_clicked_tab);
+    tb->close_clicked_tab = NULL;
+    return index;
+}
+
+void *rt_tabbar_get_tab_at(void *tabbar, int64_t index)
+{
+    if (!tabbar)
+        return NULL;
+    return vg_tabbar_get_tab_at((vg_tabbar_t *)tabbar, (int)index);
+}
+
+void rt_tabbar_set_auto_close(void *tabbar, int64_t auto_close)
+{
+    if (tabbar)
+    {
+        ((vg_tabbar_t *)tabbar)->auto_close = auto_close != 0;
     }
 }
 
@@ -1211,35 +1172,22 @@ void rt_theme_set_light(void)
 
 void *rt_vbox_new(void)
 {
-    vg_widget_t *container = vg_widget_create(VG_WIDGET_CONTAINER);
-    if (container)
-    {
-        // Set layout to VBox using layout data
-        // For now this is a simple container, layout is set on the container
-    }
-    return container;
+    return vg_vbox_create(0.0f);
 }
 
 void *rt_hbox_new(void)
 {
-    vg_widget_t *container = vg_widget_create(VG_WIDGET_CONTAINER);
-    if (container)
-    {
-        // Set layout to HBox using layout data
-    }
-    return container;
+    return vg_hbox_create(0.0f);
 }
 
 void rt_container_set_spacing(void *container, double spacing)
 {
-    if (container)
-    {
-        // Set spacing in layout params
-        vg_widget_t *w = (vg_widget_t *)container;
-        // The spacing would be stored in layout data
-        (void)w;
-        (void)spacing;
-    }
+    if (!container)
+        return;
+    // Both vg_vbox_layout_t and vg_hbox_layout_t have spacing as their first
+    // field, so vg_vbox_set_spacing works for either type. For plain containers
+    // without impl_data, the call is a safe no-op.
+    vg_vbox_set_spacing((vg_widget_t *)container, (float)spacing);
 }
 
 void rt_container_set_padding(void *container, double padding)
@@ -2085,7 +2033,15 @@ void rt_widget_reset_cursor(void *widget)
 
 void *rt_menubar_new(void *parent)
 {
-    return vg_menubar_create((vg_widget_t *)parent);
+    vg_menubar_t *mb = vg_menubar_create((vg_widget_t *)parent);
+    if (mb)
+    {
+        rt_gui_ensure_default_font();
+        if (s_current_app && s_current_app->default_font)
+            vg_menubar_set_font(mb, s_current_app->default_font,
+                                s_current_app->default_font_size);
+    }
+    return mb;
 }
 
 void rt_menubar_destroy(void *menubar)
@@ -2498,7 +2454,15 @@ void *rt_contextmenu_get_clicked_item(void *menu)
 
 void *rt_statusbar_new(void *parent)
 {
-    return vg_statusbar_create((vg_widget_t *)parent);
+    vg_statusbar_t *sb = vg_statusbar_create((vg_widget_t *)parent);
+    if (sb)
+    {
+        rt_gui_ensure_default_font();
+        if (s_current_app && s_current_app->default_font)
+            vg_statusbar_set_font(sb, s_current_app->default_font,
+                                  s_current_app->default_font_size);
+    }
+    return sb;
 }
 
 void rt_statusbar_destroy(void *bar)
@@ -2786,7 +2750,15 @@ int64_t rt_statusbaritem_was_clicked(void *item)
 
 void *rt_toolbar_new(void *parent)
 {
-    return vg_toolbar_create((vg_widget_t *)parent, VG_TOOLBAR_HORIZONTAL);
+    vg_toolbar_t *tb = vg_toolbar_create((vg_widget_t *)parent, VG_TOOLBAR_HORIZONTAL);
+    if (tb)
+    {
+        rt_gui_ensure_default_font();
+        if (s_current_app && s_current_app->default_font)
+            vg_toolbar_set_font(tb, s_current_app->default_font,
+                                s_current_app->default_font_size);
+    }
+    return tb;
 }
 
 void *rt_toolbar_new_vertical(void *parent)
@@ -3381,6 +3353,16 @@ int64_t rt_codeeditor_get_cursor_col_at(void *editor, int64_t index)
     if (index != 0)
         return 0; // Only primary cursor supported
     return ((vg_codeeditor_t *)editor)->cursor_col;
+}
+
+int64_t rt_codeeditor_get_cursor_line(void *editor)
+{
+    return rt_codeeditor_get_cursor_line_at(editor, 0);
+}
+
+int64_t rt_codeeditor_get_cursor_col(void *editor)
+{
+    return rt_codeeditor_get_cursor_col_at(editor, 0);
 }
 
 void rt_codeeditor_set_cursor_position_at(void *editor, int64_t index, int64_t line, int64_t col)

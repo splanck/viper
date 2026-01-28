@@ -1,0 +1,31 @@
+module document;
+
+// ============================================================================
+// Document — represents a single open file in the editor
+// ============================================================================
+
+entity Document {
+    expose String filePath;            // Absolute path ("" for untitled)
+    expose String fileName;            // Display name
+    expose String content;             // Full text content
+    expose String language;            // "zia", "basic", "text"
+    expose Boolean isModified;         // Has unsaved changes
+    expose Boolean isNew;              // Never been saved to disk
+    expose Integer cursorLine;         // Last known cursor line
+    expose Integer cursorCol;          // Last known cursor column
+    expose Integer scrollLine;         // Last known scroll position
+    expose Integer lastModifiedOnDisk; // Timestamp from Viper.IO.File.Modified
+
+    expose func init() {
+        filePath = "";
+        fileName = "Untitled";
+        content = "";
+        language = "text";
+        isModified = false;
+        isNew = true;
+        cursorLine = 1;
+        cursorCol = 1;
+        scrollLine = 1;
+        lastModifiedOnDisk = 0;
+    }
+}

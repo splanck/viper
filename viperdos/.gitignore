@@ -20,5 +20,8 @@ cmake-build-*/
 # Disk images (generated)
 disk.img
 
+# QEMU binary (should not be committed)
+qemu-system-aarch64
+
 # Tools (compiled)
 tools/mkfs.viperfs

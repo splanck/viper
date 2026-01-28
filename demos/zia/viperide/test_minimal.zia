@@ -1,0 +1,36 @@
+module test_minimal;
+
+entity Shell {
+    expose Viper.GUI.App app;
+    expose Viper.GUI.VBox mainVBox;
+    expose Viper.GUI.MenuBar menuBar;
+    expose Viper.GUI.Menu fileMenu;
+
+    expose func Build() {
+        app = Viper.GUI.App.New("Minimal", 800, 600);
+        Viper.GUI.Theme.SetDark();
+
+        mainVBox = Viper.GUI.VBox.New();
+        mainVBox.SetSpacing(0.0);
+        mainVBox.SetPadding(0.0);
+        var root: Viper.GUI.Widget = app.Root;
+        root.AddChild(mainVBox);
+
+        menuBar = Viper.GUI.MenuBar.New(mainVBox);
+        fileMenu = menuBar.AddMenu("File");
+        var mi: Viper.GUI.MenuItem = fileMenu.AddItem("Quit");
+
+        Viper.Terminal.Say("Build done, entering loop");
+    }
+}
+
+func main() {
+    var s = new Shell();
+    s.Build();
+
+    while s.app.ShouldClose == 0 {
+        s.app.Poll();
+        s.app.Render();
+    }
+    s.app.Destroy();
+}

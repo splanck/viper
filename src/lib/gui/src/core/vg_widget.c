@@ -70,6 +70,26 @@ static void default_arrange(vg_widget_t *self, float x, float y, float width, fl
     self->y = y;
     self->width = width;
     self->height = height;
+
+    // Position children within content area (simple stacking for plain containers).
+    // Layout containers (VBox, HBox, SplitPane) override arrange and handle
+    // children themselves, so this only runs for default containers.
+    // Children are stretched to fill the content area (like CSS stretch).
+    float cx = self->layout.padding_left;
+    float cy = self->layout.padding_top;
+    float content_w = width - self->layout.padding_left - self->layout.padding_right;
+    float content_h = height - self->layout.padding_top - self->layout.padding_bottom;
+
+    VG_FOREACH_VISIBLE_CHILD(self, child)
+    {
+        float cw = content_w - child->layout.margin_left - child->layout.margin_right;
+        float ch = content_h - child->layout.margin_top - child->layout.margin_bottom;
+        vg_widget_arrange(child,
+                          cx + child->layout.margin_left,
+                          cy + child->layout.margin_top,
+                          cw > 0 ? cw : child->measured_width,
+                          ch > 0 ? ch : child->measured_height);
+    }
 }
 
 static void default_paint(vg_widget_t *self, void *canvas)
@@ -642,23 +662,20 @@ void vg_widget_arrange(vg_widget_t *root, float x, float y, float width, float h
     if (!root || !root->visible)
         return;
 
-    // Arrange this widget
     if (root->vtable && root->vtable->arrange)
     {
+        // Custom arrange functions (VBox, HBox, SplitPane, default containers)
+        // handle positioning self AND children.
         root->vtable->arrange(root, x, y, width, height);
     }
-
-    // Arrange children (this is usually overridden by layout containers)
-    float cx = root->layout.padding_left;
-    float cy = root->layout.padding_top;
-
-    VG_FOREACH_VISIBLE_CHILD(root, child)
+    else
     {
-        vg_widget_arrange(child,
-                          cx + child->layout.margin_left,
-                          cy + child->layout.margin_top,
-                          child->measured_width,
-                          child->measured_height);
+        // Widgets without arrange (MenuBar, Toolbar, StatusBar, etc.)
+        // just need their position and size set.
+        root->x = x;
+        root->y = y;
+        root->width = width;
+        root->height = height;
     }
 
     root->needs_layout = false;

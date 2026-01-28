@@ -1526,6 +1526,11 @@ extern "C"
         bool dragging;             ///< Is dragging a tab
         vg_tab_t *drag_tab;        ///< Tab being dragged
         float drag_x;              ///< Drag position
+
+        // Per-frame tracking for Zia runtime
+        vg_tab_t *prev_active_tab;   ///< Previous active tab (for change detection)
+        vg_tab_t *close_clicked_tab; ///< Tab whose close button was clicked (cleared on read)
+        bool auto_close;             ///< Auto-remove tab on close click (default true)
     } vg_tabbar_t;
 
     /// @brief Create a new tab bar widget
@@ -1554,6 +1559,18 @@ extern "C"
     /// @param tabbar TabBar widget
     /// @return Active tab or NULL
     vg_tab_t *vg_tabbar_get_active(vg_tabbar_t *tabbar);
+
+    /// @brief Get the index of a tab in the tab bar
+    /// @param tabbar TabBar widget
+    /// @param tab Tab to find
+    /// @return 0-based index, or -1 if not found
+    int vg_tabbar_get_tab_index(vg_tabbar_t *tabbar, vg_tab_t *tab);
+
+    /// @brief Get a tab by index
+    /// @param tabbar TabBar widget
+    /// @param index 0-based tab index
+    /// @return Tab at the given index, or NULL if out of bounds
+    vg_tab_t *vg_tabbar_get_tab_at(vg_tabbar_t *tabbar, int index);
 
     /// @brief Set tab title
     /// @param tab Tab

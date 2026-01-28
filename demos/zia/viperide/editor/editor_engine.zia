@@ -1,0 +1,98 @@
+module editor_engine;
+
+bind "../core/document";
+
+// ============================================================================
+// EditorEngine — wraps the Viper.GUI.CodeEditor widget with IDE-level features
+// ============================================================================
+
+entity EditorEngine {
+    expose Viper.GUI.CodeEditor editor;   // CodeEditor widget handle
+    expose Integer lastCursorLine;        // For detecting cursor changes
+    expose Integer lastCursorCol;
+
+    expose func init() {
+        lastCursorLine = 1;
+        lastCursorCol = 1;
+    }
+
+    // Create the CodeEditor widget inside a parent container.
+    expose func Setup(parent: Viper.GUI.VBox) {
+        editor = Viper.GUI.CodeEditor.New(parent);
+        editor.SetShowLineNumbers(1);
+    }
+
+    // Load a document's content into the editor widget.
+    expose func LoadDocument(doc: document.Document) {
+        editor.SetText(doc.content);
+        editor.ClearModified();
+
+        // Set language for syntax highlighting
+        if doc.language == "zia" {
+            editor.SetLanguage("zia");
+        } else if doc.language == "basic" {
+            editor.SetLanguage("basic");
+        }
+
+        // Restore cursor position
+        if doc.cursorLine > 0 {
+            editor.SetCursor(doc.cursorLine, doc.cursorCol);
+        }
+        if doc.scrollLine > 1 {
+            editor.ScrollToLine(doc.scrollLine);
+        }
+    }
+
+    // Save the editor's current state back to the document.
+    expose func SaveToDocument(doc: document.Document) {
+        doc.content = editor.Text;
+        doc.cursorLine = lastCursorLine;
+        doc.cursorCol = lastCursorCol;
+    }
+
+    // Navigate to a specific line.
+    expose func GoToLine(line: Integer) {
+        editor.SetCursor(line, 1);
+        editor.ScrollToLine(line);
+    }
+
+    // Check if the editor content has been modified.
+    expose func IsModified() -> Boolean {
+        return editor.IsModified() != 0;
+    }
+
+    // Clear the modified flag.
+    expose func ClearModified() {
+        editor.ClearModified();
+    }
+
+    // Get the current line count.
+    expose func GetLineCount() -> Integer {
+        return editor.LineCount;
+    }
+
+    // Get the current text content.
+    expose func GetText() -> String {
+        return editor.Text;
+    }
+
+    // Set the text content.
+    expose func SetText(text: String) {
+        editor.SetText(text);
+    }
+
+    // Set the editor size.
+    expose func SetSize(w: Integer, h: Integer) {
+        editor.SetSize(w, h);
+    }
+
+    // Get the current cursor line (1-based for display).
+    expose func GetCursorLine() -> Integer {
+        return editor.CursorLine + 1;
+    }
+
+    // Get the current cursor column (1-based for display).
+    expose func GetCursorCol() -> Integer {
+        return editor.CursorCol + 1;
+    }
+}

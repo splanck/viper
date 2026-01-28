@@ -139,6 +139,11 @@ vg_tabbar_t *vg_tabbar_create(vg_widget_t *parent)
     tabbar->drag_tab = NULL;
     tabbar->drag_x = 0;
 
+    // Per-frame tracking
+    tabbar->prev_active_tab = NULL;
+    tabbar->close_clicked_tab = NULL;
+    tabbar->auto_close = true;
+
     // Set size
     tabbar->base.constraints.min_height = tabbar->tab_height;
     tabbar->base.constraints.preferred_height = tabbar->tab_height;
@@ -330,13 +335,16 @@ static bool tabbar_handle_event(vg_widget_t *widget, vg_event_t *event)
 
                     if (local_x >= close_x)
                     {
+                        // Record close-clicked tab for runtime polling
+                        tabbar->close_clicked_tab = clicked;
+
                         // Close tab
                         bool allow_close = true;
                         if (tabbar->on_close)
                         {
                             allow_close = tabbar->on_close(widget, clicked, tabbar->on_close_data);
                         }
-                        if (allow_close)
+                        if (allow_close && tabbar->auto_close)
                         {
                             vg_tabbar_remove_tab(tabbar, clicked);
                         }
@@ -502,6 +510,34 @@ void vg_tabbar_set_active(vg_tabbar_t *tabbar, vg_tab_t *tab)
 vg_tab_t *vg_tabbar_get_active(vg_tabbar_t *tabbar)
 {
     return tabbar ? tabbar->active_tab : NULL;
+}
+
+int vg_tabbar_get_tab_index(vg_tabbar_t *tabbar, vg_tab_t *tab)
+{
+    if (!tabbar || !tab)
+        return -1;
+    int index = 0;
+    for (vg_tab_t *t = tabbar->first_tab; t; t = t->next)
+    {
+        if (t == tab)
+            return index;
+        index++;
+    }
+    return -1;
+}
+
+vg_tab_t *vg_tabbar_get_tab_at(vg_tabbar_t *tabbar, int index)
+{
+    if (!tabbar || index < 0)
+        return NULL;
+    int i = 0;
+    for (vg_tab_t *t = tabbar->first_tab; t; t = t->next)
+    {
+        if (i == index)
+            return t;
+        i++;
+    }
+    return NULL;
 }
 
 void vg_tab_set_title(vg_tab_t *tab, const char *title)

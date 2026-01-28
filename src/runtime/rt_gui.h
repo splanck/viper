@@ -100,6 +100,11 @@ extern "C"
     /// @param height Height in pixels.
     void rt_widget_set_size(void *widget, int64_t width, int64_t height);
 
+    /// @brief Set the flex grow factor for VBox/HBox layout.
+    /// @param widget Widget handle.
+    /// @param flex Flex factor (0 = fixed size, >0 = expand proportionally).
+    void rt_widget_set_flex(void *widget, double flex);
+
     /// @brief Add a child widget to a parent.
     /// @param parent Parent widget handle.
     /// @param child Child widget handle.
@@ -340,6 +345,47 @@ extern "C"
     /// @param tab Tab handle.
     /// @param modified 1 for modified, 0 for not modified.
     void rt_tab_set_modified(void *tab, int64_t modified);
+
+    /// @brief Get the active tab.
+    /// @param tabbar TabBar widget handle.
+    /// @return Active tab handle, or NULL if none.
+    void *rt_tabbar_get_active(void *tabbar);
+
+    /// @brief Get the index of the active tab.
+    /// @param tabbar TabBar widget handle.
+    /// @return 0-based index of active tab, or -1 if none.
+    int64_t rt_tabbar_get_active_index(void *tabbar);
+
+    /// @brief Check if the active tab changed since last call.
+    /// @param tabbar TabBar widget handle.
+    /// @return 1 if changed, 0 otherwise. Consumes the change flag.
+    int64_t rt_tabbar_was_changed(void *tabbar);
+
+    /// @brief Get the number of tabs.
+    /// @param tabbar TabBar widget handle.
+    /// @return Number of tabs.
+    int64_t rt_tabbar_get_tab_count(void *tabbar);
+
+    /// @brief Check if a tab close button was clicked.
+    /// @param tabbar TabBar widget handle.
+    /// @return 1 if close was clicked, 0 otherwise.
+    int64_t rt_tabbar_was_close_clicked(void *tabbar);
+
+    /// @brief Get the index of the tab whose close button was clicked.
+    /// @param tabbar TabBar widget handle.
+    /// @return 0-based index, or -1 if none. Consumes the close event.
+    int64_t rt_tabbar_get_close_clicked_index(void *tabbar);
+
+    /// @brief Get a tab by index.
+    /// @param tabbar TabBar widget handle.
+    /// @param index 0-based tab index.
+    /// @return Tab handle, or NULL if out of bounds.
+    void *rt_tabbar_get_tab_at(void *tabbar, int64_t index);
+
+    /// @brief Set whether tabs auto-close when close button is clicked.
+    /// @param tabbar TabBar widget handle.
+    /// @param auto_close 1 for auto-close (default), 0 to let Zia code handle removal.
+    void rt_tabbar_set_auto_close(void *tabbar, int64_t auto_close);
 
     //=========================================================================
     // SplitPane Widget
@@ -1606,6 +1652,16 @@ extern "C"
     /// @param index Cursor index.
     /// @return Column number (0-based).
     int64_t rt_codeeditor_get_cursor_col_at(void *editor, int64_t index);
+
+    /// @brief Get primary cursor line (0-based).
+    /// @param editor CodeEditor handle.
+    /// @return Line number.
+    int64_t rt_codeeditor_get_cursor_line(void *editor);
+
+    /// @brief Get primary cursor column (0-based).
+    /// @param editor CodeEditor handle.
+    /// @return Column number.
+    int64_t rt_codeeditor_get_cursor_col(void *editor);
 
     /// @brief Set cursor position by index.
     /// @param editor CodeEditor handle.

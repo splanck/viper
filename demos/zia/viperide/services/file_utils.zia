@@ -1,0 +1,63 @@
+module file_utils;
+
+// ============================================================================
+// File I/O utility functions for ViperIDE
+// ============================================================================
+
+// Read the entire contents of a file. Returns "" if file does not exist.
+func ReadFileContent(path: String) -> String {
+    if Viper.IO.File.Exists(path) {
+        return Viper.IO.File.ReadAllText(path);
+    }
+    return "";
+}
+
+// Write content to a file.
+func WriteFileContent(path: String, content: String) {
+    Viper.IO.File.WriteAllText(path, content);
+}
+
+// Detect language from file extension.
+// Returns "zia", "basic", or "text".
+func DetectLanguage(path: String) -> String {
+    var ext = Viper.IO.Path.Ext(path);
+    if ext == ".zia" {
+        return "zia";
+    }
+    if ext == ".bas" {
+        return "basic";
+    }
+    if ext == ".vb" {
+        return "basic";
+    }
+    if ext == ".txt" {
+        return "text";
+    }
+    if ext == ".md" {
+        return "text";
+    }
+    if ext == ".json" {
+        return "text";
+    }
+    return "text";
+}
+
+// Extract the file name from a full path.
+func GetFileName(path: String) -> String {
+    return Viper.IO.Path.Name(path);
+}
+
+// Extract the file name without extension.
+func GetFileStem(path: String) -> String {
+    return Viper.IO.Path.Stem(path);
+}
+
+// Check if a file exists.
+func FileExists(path: String) -> Boolean {
+    return Viper.IO.File.Exists(path);
+}
+
+// Get the last modification timestamp of a file.
+func GetFileModified(path: String) -> Integer {
+    return Viper.IO.File.Modified(path);
+}

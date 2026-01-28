@@ -1,0 +1,77 @@
+module editor_tabs;
+
+bind "../core/document";
+
+// ============================================================================
+// EditorTabs — manages the tab bar and document-to-tab synchronization
+// ============================================================================
+// Uses TabBar.GetTabAt(index) to look up tabs by index rather than
+// maintaining a parallel list (C-allocated Tab handles cannot be stored
+// in Zia runtime Lists due to heap header validation).
+// ============================================================================
+
+entity EditorTabs {
+    expose Viper.GUI.TabBar tabBar;  // TabBar widget handle
+    expose Integer lastActiveIndex;  // For detecting tab switches
+
+    expose func init() {
+        lastActiveIndex = -1;
+    }
+
+    // Set up the tab bar widget reference.
+    expose func Setup(tabBarWidget: Viper.GUI.TabBar) {
+        tabBar = tabBarWidget;
+        tabBar.SetAutoClose(0);
+    }
+
+    // Add a tab for a new document.
+    expose func AddTab(name: String, closeable: Integer) {
+        tabBar.AddTab(name, closeable);
+    }
+
+    // Remove a tab at the given index.
+    expose func RemoveTab(index: Integer) {
+        if index < 0 or index >= tabBar.TabCount {
+            return;
+        }
+        var tab: Viper.GUI.Tab = tabBar.GetTabAt(index);
+        tabBar.RemoveTab(tab);
+    }
+
+    // Activate a tab by index.
+    expose func SetActive(index: Integer) {
+        if index < 0 or index >= tabBar.TabCount {
+            return;
+        }
+        var tab: Viper.GUI.Tab = tabBar.GetTabAt(index);
+        tabBar.SetActive(tab);
+        lastActiveIndex = index;
+    }
+
+    // Update the tab title (e.g., after save or rename).
+    expose func SetTitle(index: Integer, title: String) {
+        if index < 0 or index >= tabBar.TabCount {
+            return;
+        }
+        var tab: Viper.GUI.Tab = tabBar.GetTabAt(index);
+        tab.SetTitle(title);
+    }
+
+    // Update the modified indicator on a tab.
+    expose func SetModified(index: Integer, modified: Boolean) {
+        if index < 0 or index >= tabBar.TabCount {
+            return;
+        }
+        var tab: Viper.GUI.Tab = tabBar.GetTabAt(index);
+        if modified {
+            tab.SetModified(1);
+        } else {
+            tab.SetModified(0);
+        }
+    }
+
+    // Get the number of tabs.
+    expose func GetCount() -> Integer {
+        return tabBar.TabCount;
+    }
+}

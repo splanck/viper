@@ -1,0 +1,13 @@
+module test_shell_only;
+bind "app_shell";
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("ShellTest", 1280, 800);
+
+    while shell.ShouldClose() == false {
+        shell.Poll();
+        shell.Render();
+    }
+    shell.Destroy();
+}

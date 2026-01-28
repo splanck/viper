@@ -1,0 +1,161 @@
+module document_manager;
+
+bind "document";
+bind "../services/file_utils";
+
+// ============================================================================
+// DocumentManager — manages all open documents and tab synchronization
+// ============================================================================
+
+entity DocumentManager {
+    expose List[document.Document] documents;  // All open documents
+    expose Integer activeIndex;                // Index of active document (-1 = none)
+    expose Integer untitledCount;              // Counter for "Untitled N" naming
+
+    expose func init() {
+        documents = [];
+        activeIndex = -1;
+        untitledCount = 0;
+    }
+
+    // Create a new untitled document.
+    // Returns the new Document. Caller is responsible for adding a tab.
+    expose func NewDocument() -> document.Document {
+        untitledCount = untitledCount + 1;
+        var doc = new document.Document();
+        doc.fileName = "Untitled " + untitledCount;
+        doc.language = "zia";
+        doc.isNew = true;
+
+        documents.add(doc);
+        activeIndex = documents.count() - 1;
+        return doc;
+    }
+
+    // Open a file from disk. If already open, activate that document.
+    // Returns the Document (existing or new). Caller adds a tab if new.
+    expose func OpenFile(path: String) -> document.Document {
+        // Check if already open
+        var existing = FindByPath(path);
+        if existing >= 0 {
+            activeIndex = existing;
+            return documents.get(existing);
+        }
+
+        // Create new document from file
+        var doc = new document.Document();
+        doc.filePath = path;
+        doc.fileName = file_utils.GetFileName(path);
+        doc.content = file_utils.ReadFileContent(path);
+        doc.language = file_utils.DetectLanguage(path);
+        doc.isNew = false;
+        doc.isModified = false;
+        if file_utils.FileExists(path) {
+            doc.lastModifiedOnDisk = file_utils.GetFileModified(path);
+        }
+
+        documents.add(doc);
+        activeIndex = documents.count() - 1;
+        return doc;
+    }
+
+    // Save the active document. Returns true on success.
+    expose func SaveActive() -> Boolean {
+        if activeIndex < 0 {
+            return false;
+        }
+        var doc = documents.get(activeIndex);
+        if doc.isNew {
+            // Need a path first — caller should use SaveAs dialog
+            return false;
+        }
+        file_utils.WriteFileContent(doc.filePath, doc.content);
+        doc.isModified = false;
+        doc.lastModifiedOnDisk = file_utils.GetFileModified(doc.filePath);
+        return true;
+    }
+
+    // Save a document to a specific path.
+    expose func SaveAs(path: String) -> Boolean {
+        if activeIndex < 0 {
+            return false;
+        }
+        var doc = documents.get(activeIndex);
+        doc.filePath = path;
+        doc.fileName = file_utils.GetFileName(path);
+        doc.language = file_utils.DetectLanguage(path);
+        doc.isNew = false;
+        file_utils.WriteFileContent(path, doc.content);
+        doc.isModified = false;
+        doc.lastModifiedOnDisk = file_utils.GetFileModified(path);
+        return true;
+    }
+
+    // Save all modified documents. Returns the number saved.
+    expose func SaveAll() -> Integer {
+        var count = 0;
+        var i = 0;
+        while i < documents.count() {
+            var doc = documents.get(i);
+            if doc.isModified and doc.isNew == false {
+                file_utils.WriteFileContent(doc.filePath, doc.content);
+                doc.isModified = false;
+                doc.lastModifiedOnDisk = file_utils.GetFileModified(doc.filePath);
+                count = count + 1;
+            }
+            i = i + 1;
+        }
+        return count;
+    }
+
+    // Close the document at the given index.
+    // Does NOT prompt for unsaved changes — caller should check isModified first.
+    // Caller is responsible for removing the tab.
+    expose func CloseDocument(index: Integer) -> Boolean {
+        if index < 0 or index >= documents.count() {
+            return false;
+        }
+        documents.removeAt(index);
+
+        // Adjust active index
+        if documents.count() == 0 {
+            activeIndex = -1;
+        } else if activeIndex >= documents.count() {
+            activeIndex = documents.count() - 1;
+        }
+        return true;
+    }
+
+    // Get the active document, or null if none.
+    expose func GetActive() -> document.Document? {
+        if activeIndex < 0 or activeIndex >= documents.count() {
+            return null;
+        }
+        return documents.get(activeIndex);
+    }
+
+    // Set the active document by index.
+    expose func SetActive(index: Integer) {
+        if index >= 0 and index < documents.count() {
+            activeIndex = index;
+        }
+    }
+
+    // Find a document by file path. Returns index or -1 if not found.
+    expose func FindByPath(path: String) -> Integer {
+        var i = 0;
+        while i < documents.count() {
+            var doc = documents.get(i);
+            if doc.filePath == path {
+                return i;
+            }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    // Get the number of open documents.
+    expose func GetCount() -> Integer {
+        return documents.count();
+    }
+}

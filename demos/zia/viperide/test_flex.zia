@@ -1,0 +1,63 @@
+module test_flex;
+
+entity TestShell {
+    expose Viper.GUI.App app;
+    expose Viper.GUI.VBox mainVBox;
+    expose Viper.GUI.MenuBar menuBar;
+    expose Viper.GUI.Menu fileMenu;
+    expose Viper.GUI.Toolbar toolbar;
+    expose Viper.GUI.ToolbarItem tbNew;
+    expose Viper.GUI.SplitPane splitPane;
+    expose Viper.GUI.TreeView sidebarTree;
+    expose Viper.GUI.VBox editorArea;
+    expose Viper.GUI.TabBar tabBar;
+    expose Viper.GUI.StatusBar statusBar;
+
+    expose func Build() {
+        app = Viper.GUI.App.New("Flex Test", 1280, 800);
+        Viper.GUI.Theme.SetDark();
+
+        mainVBox = Viper.GUI.VBox.New();
+        mainVBox.SetSpacing(0.0);
+        mainVBox.SetPadding(0.0);
+        var root: Viper.GUI.Widget = app.Root;
+        root.AddChild(mainVBox);
+
+        menuBar = Viper.GUI.MenuBar.New(mainVBox);
+        fileMenu = menuBar.AddMenu("File");
+        var miNew: Viper.GUI.MenuItem = fileMenu.AddItem("New");
+
+        toolbar = Viper.GUI.Toolbar.New(mainVBox);
+        tbNew = toolbar.AddButtonWithText("", "New", "New File");
+
+        splitPane = Viper.GUI.SplitPane.New(mainVBox, 1);
+        splitPane.SetFlex(1.0);
+        splitPane.SetPosition(0.20);
+
+        var leftPanel: Viper.GUI.Widget = splitPane.First;
+        sidebarTree = Viper.GUI.TreeView.New(leftPanel);
+
+        var rightPanel: Viper.GUI.Widget = splitPane.Second;
+        editorArea = Viper.GUI.VBox.New();
+        editorArea.SetSpacing(0.0);
+        editorArea.SetPadding(0.0);
+        rightPanel.AddChild(editorArea);
+
+        tabBar = Viper.GUI.TabBar.New(editorArea);
+
+        statusBar = Viper.GUI.StatusBar.New(mainVBox);
+        statusBar.SetLeftText("Ready");
+        statusBar.SetRightText("Flex Test");
+    }
+}
+
+func main() {
+    var shell = new TestShell();
+    shell.Build();
+
+    while shell.app.ShouldClose == 0 {
+        shell.app.Poll();
+        shell.app.Render();
+    }
+    shell.app.Destroy();
+}
