@@ -27,7 +27,7 @@ typedef long ssize_t;
 /** @brief Use /dev/urandom-equivalent source (default). */
 #define GRND_NONBLOCK 0x0001
 /** @brief Use /dev/random-equivalent source. */
-#define GRND_RANDOM   0x0002
+#define GRND_RANDOM 0x0002
 
 /**
  * @brief Obtain random bytes from the kernel.

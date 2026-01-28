@@ -88,11 +88,10 @@
  * - sin(270°) = -1000 (9 o'clock, maximum left)
  */
 static const int sin_table[60] = {
-    0,    105,  208,  309,  407,  500,  588,  669,  743,  809,  866,  914,
-    951,  978,  995,  1000, 995,  978,  951,  914,  866,  809,  743,  669,
-    588,  500,  407,  309,  208,  105,  0,    -105, -208, -309, -407, -500,
-    -588, -669, -743, -809, -866, -914, -951, -978, -995, -1000,-995, -978,
-    -951, -914, -866, -809, -743, -669, -588, -500, -407, -309, -208, -105};
+    0,     105,  208,  309,  407,  500,  588,  669,  743,  809,  866,  914,  951,  978,  995,
+    1000,  995,  978,  951,  914,  866,  809,  743,  669,  588,  500,  407,  309,  208,  105,
+    0,     -105, -208, -309, -407, -500, -588, -669, -743, -809, -866, -914, -951, -978, -995,
+    -1000, -995, -978, -951, -914, -866, -809, -743, -669, -588, -500, -407, -309, -208, -105};
 
 /**
  * @brief Cosine lookup table for 0-354° in 6° increments.
@@ -106,11 +105,10 @@ static const int sin_table[60] = {
  * - cos(270°) = 0 (9 o'clock, no vertical offset)
  */
 static const int cos_table[60] = {
-    1000, 995,  978,  951,  914,  866,  809,  743,  669,  588,  500,  407,
-    309,  208,  105,  0,    -105, -208, -309, -407, -500, -588, -669, -743,
-    -809, -866, -914, -951, -978, -995, -1000,-995, -978, -951, -914, -866,
-    -809, -743, -669, -588, -500, -407, -309, -208, -105, 0,    105,  208,
-    309,  407,  500,  588,  669,  743,  809,  866,  914,  951,  978,  995};
+    1000,  995,  978,  951,  914,  866,  809,  743,  669,  588,  500,  407,  309,  208,  105,
+    0,     -105, -208, -309, -407, -500, -588, -669, -743, -809, -866, -914, -951, -978, -995,
+    -1000, -995, -978, -951, -914, -866, -809, -743, -669, -588, -500, -407, -309, -208, -105,
+    0,     105,  208,  309,  407,  500,  588,  669,  743,  809,  866,  914,  951,  978,  995};
 
 /** @} */ // end ClockTrig
 
@@ -129,11 +127,13 @@ static const int cos_table[60] = {
  */
 static int lookup_sin(int angle) {
     // Normalize to 0-359
-    while (angle < 0) angle += 360;
+    while (angle < 0)
+        angle += 360;
     angle = angle % 360;
     // Convert to index (6 degrees per entry)
     int idx = angle / 6;
-    if (idx >= 60) idx = 59;
+    if (idx >= 60)
+        idx = 59;
     return sin_table[idx];
 }
 
@@ -147,10 +147,12 @@ static int lookup_sin(int angle) {
  * @return Cosine of angle scaled by 1000 (range: -1000 to +1000).
  */
 static int lookup_cos(int angle) {
-    while (angle < 0) angle += 360;
+    while (angle < 0)
+        angle += 360;
     angle = angle % 360;
     int idx = angle / 6;
-    if (idx >= 60) idx = 59;
+    if (idx >= 60)
+        idx = 59;
     return cos_table[idx];
 }
 
@@ -167,8 +169,7 @@ namespace clockapp {
  *
  * @param win The GUI window to render to.
  */
-UI::UI(gui_window_t *win) : m_win(win), m_24hour(false) {
-}
+UI::UI(gui_window_t *win) : m_win(win), m_24hour(false) {}
 
 /**
  * @brief Renders the complete clock display.
@@ -222,7 +223,8 @@ void UI::drawClockFace() {
     // Simple filled circle using horizontal lines
     for (int y = -r; y <= r; y++) {
         int x = 0;
-        while (x * x + y * y <= r * r) x++;
+        while (x * x + y * y <= r * r)
+            x++;
         x--;
         if (x >= 0) {
             gui_draw_hline(m_win, cx - x, cx + x, cy + y, colors::FACE);
@@ -294,8 +296,8 @@ void UI::drawHands(const Time &time) {
     drawHand(secondHandAngle(time), dims::SECOND_HAND_LENGTH, 1, colors::SECOND_HAND);
 
     // Draw center dot
-    gui_fill_rect(m_win, dims::CLOCK_CENTER_X - 3, dims::CLOCK_CENTER_Y - 3, 6, 6,
-                  colors::CENTER_DOT);
+    gui_fill_rect(
+        m_win, dims::CLOCK_CENTER_X - 3, dims::CLOCK_CENTER_Y - 3, 6, 6, colors::CENTER_DOT);
 }
 
 /**
@@ -332,9 +334,10 @@ void UI::drawHand(int angle, int length, int thickness, uint32_t color) {
     // Simple Bresenham-style line with thickness
     int dx = endX - cx;
     int dy = endY - cy;
-    int steps = (dx > 0 ? dx : -dx) > (dy > 0 ? dy : -dy) ? (dx > 0 ? dx : -dx)
-                                                          : (dy > 0 ? dy : -dy);
-    if (steps == 0) steps = 1;
+    int steps =
+        (dx > 0 ? dx : -dx) > (dy > 0 ? dy : -dy) ? (dx > 0 ? dx : -dx) : (dy > 0 ? dy : -dy);
+    if (steps == 0)
+        steps = 1;
 
     for (int i = 0; i <= steps; i++) {
         int x = cx + (dx * i) / steps;

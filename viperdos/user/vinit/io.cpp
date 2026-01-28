@@ -90,11 +90,11 @@ struct ConnectReply {
 
 /// Input event from consoled (matches console_protocol.hpp)
 struct InputEvent {
-    u32 type;       // CON_INPUT
-    char ch;        // ASCII character (0 if special key)
-    u8 pressed;     // 1 = key down, 0 = key up
-    u16 keycode;    // Raw evdev keycode
-    u8 modifiers;   // Shift=1, Ctrl=2, Alt=4
+    u32 type;     // CON_INPUT
+    char ch;      // ASCII character (0 if special key)
+    u8 pressed;   // 1 = key down, 0 = key up
+    u16 keycode;  // Raw evdev keycode
+    u8 modifiers; // Shift=1, Ctrl=2, Alt=4
     u8 _pad[3];
 };
 
@@ -110,8 +110,8 @@ static u32 g_console_rows = 25;
 // =============================================================================
 
 static ConsoleMode g_console_mode = ConsoleMode::STANDALONE;
-static i32 g_attached_input_ch = -1;   // Channel to receive input from consoled
-static i32 g_attached_output_ch = -1;  // Channel to send output to consoled
+static i32 g_attached_input_ch = -1;  // Channel to receive input from consoled
+static i32 g_attached_output_ch = -1; // Channel to send output to consoled
 
 ConsoleMode get_console_mode() {
     return g_console_mode;
@@ -121,7 +121,7 @@ void init_console_attached(i32 input_ch, i32 output_ch) {
     g_attached_input_ch = input_ch;
     g_attached_output_ch = output_ch;
     g_console_mode = ConsoleMode::CONSOLE_ATTACHED;
-    g_console_ready = true;  // Mark console as ready
+    g_console_ready = true; // Mark console as ready
 }
 
 // =============================================================================
@@ -252,9 +252,8 @@ static void console_write_direct(const char *s, usize len) {
     }
 
     // Choose channel based on console mode
-    i32 channel = (g_console_mode == ConsoleMode::CONSOLE_ATTACHED)
-                      ? g_attached_output_ch
-                      : g_console_service;
+    i32 channel = (g_console_mode == ConsoleMode::CONSOLE_ATTACHED) ? g_attached_output_ch
+                                                                    : g_console_service;
 
     // Send with retry if buffer is full - keep trying until success
     usize total_len = sizeof(WriteRequest) + len;
@@ -513,8 +512,8 @@ i32 getchar_from_console() {
         u32 handle_count = 4;
 
         while (true) {
-            i64 n = sys::channel_recv(g_attached_input_ch, &event, sizeof(event),
-                                      handles, &handle_count);
+            i64 n = sys::channel_recv(
+                g_attached_input_ch, &event, sizeof(event), handles, &handle_count);
             if (n >= static_cast<i64>(sizeof(InputEvent))) {
                 if (event.type == CON_INPUT && event.pressed) {
                     // Return the ASCII character (or special key code as negative)
@@ -555,8 +554,8 @@ i32 try_getchar_from_console() {
         u32 handles[4];
         u32 handle_count = 4;
 
-        i64 n = sys::channel_recv(g_attached_input_ch, &event, sizeof(event),
-                                  handles, &handle_count);
+        i64 n =
+            sys::channel_recv(g_attached_input_ch, &event, sizeof(event), handles, &handle_count);
         if (n >= static_cast<i64>(sizeof(InputEvent))) {
             if (event.type == CON_INPUT && event.pressed) {
                 if (event.ch != 0) {

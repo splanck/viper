@@ -80,11 +80,11 @@ enum class RBColor : u8 { RED = 0, BLACK = 1 };
  * lookup by address. Also maintains a linked list for iteration.
  */
 struct Vma {
-    u64 start;    // Start address (page-aligned)
-    u64 end;      // End address (exclusive, page-aligned)
-    u32 prot;     // Protection flags (vma_prot)
-    VmaType type; // Backing type
-    u8 flags;     // VMA flags (vma_flags)
+    u64 start;     // Start address (page-aligned)
+    u64 end;       // End address (exclusive, page-aligned)
+    u32 prot;      // Protection flags (vma_prot)
+    VmaType type;  // Backing type
+    u8 flags;      // VMA flags (vma_flags)
     RBColor color; // Red-black tree color
     u8 _padding;
 

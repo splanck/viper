@@ -158,21 +158,27 @@ class Image {
      *
      * @return true if an image is loaded and pixels() is valid.
      */
-    bool isLoaded() const { return m_pixels != nullptr; }
+    bool isLoaded() const {
+        return m_pixels != nullptr;
+    }
 
     /**
      * @brief Returns the image width in pixels.
      *
      * @return Width in pixels, or 0 if no image is loaded.
      */
-    int width() const { return m_width; }
+    int width() const {
+        return m_width;
+    }
 
     /**
      * @brief Returns the image height in pixels.
      *
      * @return Height in pixels, or 0 if no image is loaded.
      */
-    int height() const { return m_height; }
+    int height() const {
+        return m_height;
+    }
 
     /**
      * @brief Returns a pointer to the pixel data.
@@ -186,14 +192,18 @@ class Image {
      * @note The returned pointer is valid until the image is unloaded
      *       or a new image is loaded.
      */
-    const uint32_t *pixels() const { return m_pixels; }
+    const uint32_t *pixels() const {
+        return m_pixels;
+    }
 
     /**
      * @brief Returns the filename of the loaded image.
      *
      * @return Path that was passed to load(), or empty string if none.
      */
-    const char *filename() const { return m_filename; }
+    const char *filename() const {
+        return m_filename;
+    }
 
     /**
      * @brief Returns the last error message.
@@ -202,7 +212,9 @@ class Image {
      *
      * @return Error description, or empty string if no error.
      */
-    const char *errorMessage() const { return m_error; }
+    const char *errorMessage() const {
+        return m_error;
+    }
 
   private:
     /**

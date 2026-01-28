@@ -188,16 +188,16 @@ static constexpr uint32_t MENU_BAR_HEIGHT = 20;
 static constexpr uint32_t MENU_ITEM_HEIGHT = 18;
 static constexpr uint32_t MENU_PADDING = 8;
 // Classic Amiga Workbench 2.0+ menu bar colors
-static constexpr uint32_t COLOR_MENU_BG = 0xFF8899AA;           // Blue-grey (Amiga style)
-static constexpr uint32_t COLOR_MENU_TEXT = 0xFF000000;          // Black text
-static constexpr uint32_t COLOR_MENU_HIGHLIGHT = 0xFF0055AA;     // Amiga blue selection
+static constexpr uint32_t COLOR_MENU_BG = 0xFF8899AA;             // Blue-grey (Amiga style)
+static constexpr uint32_t COLOR_MENU_TEXT = 0xFF000000;           // Black text
+static constexpr uint32_t COLOR_MENU_HIGHLIGHT = 0xFF0055AA;      // Amiga blue selection
 static constexpr uint32_t COLOR_MENU_HIGHLIGHT_TEXT = 0xFFFFFFFF; // White text on selection
-static constexpr uint32_t COLOR_MENU_DISABLED = 0xFF556677;      // Darker blue-grey
-static constexpr uint32_t COLOR_MENU_BORDER_LIGHT = 0xFFCCDDEE;  // Light highlight
-static constexpr uint32_t COLOR_MENU_BORDER_DARK = 0xFF334455;   // Dark shadow
+static constexpr uint32_t COLOR_MENU_DISABLED = 0xFF556677;       // Darker blue-grey
+static constexpr uint32_t COLOR_MENU_BORDER_LIGHT = 0xFFCCDDEE;   // Light highlight
+static constexpr uint32_t COLOR_MENU_BORDER_DARK = 0xFF334455;    // Dark shadow
 
-static int32_t g_active_menu = -1;      // Which menu is open (-1 = none)
-static int32_t g_hovered_menu_item = -1; // Which item in open menu is hovered
+static int32_t g_active_menu = -1;                // Which menu is open (-1 = none)
+static int32_t g_hovered_menu_item = -1;          // Which item in open menu is hovered
 static int32_t g_menu_title_positions[MAX_MENUS]; // X positions of menu titles
 
 // Bring a surface to the front (highest z-order)
@@ -716,8 +716,7 @@ static Surface *get_menu_surface() {
 
     // Fall back to a SYSTEM surface with menus (the desktop)
     for (uint32_t i = 0; i < MAX_SURFACES; i++) {
-        if (g_surfaces[i].in_use &&
-            (g_surfaces[i].flags & SURFACE_FLAG_SYSTEM) &&
+        if (g_surfaces[i].in_use && (g_surfaces[i].flags & SURFACE_FLAG_SYSTEM) &&
             g_surfaces[i].menu_count > 0) {
             return &g_surfaces[i];
         }
@@ -794,8 +793,7 @@ static int32_t find_menu_item_at(int32_t x, int32_t y) {
     int32_t menu_w = max_width + MENU_PADDING * 2;
     int32_t menu_h = menu.item_count * MENU_ITEM_HEIGHT + 4;
 
-    if (x < menu_x || x >= menu_x + menu_w ||
-        y < menu_y || y >= menu_y + menu_h)
+    if (x < menu_x || x >= menu_x + menu_w || y < menu_y || y >= menu_y + menu_h)
         return -1;
 
     int32_t item_idx = (y - menu_y - 2) / MENU_ITEM_HEIGHT;
@@ -836,7 +834,10 @@ static void draw_menu_bar() {
             // Highlight active menu
             if (i == g_active_menu) {
                 fill_rect(title_x, bar_y + 1, title_w, MENU_BAR_HEIGHT - 2, COLOR_MENU_HIGHLIGHT);
-                draw_text(title_x + MENU_PADDING, bar_y + 4, surf->menus[i].title, COLOR_MENU_HIGHLIGHT_TEXT);
+                draw_text(title_x + MENU_PADDING,
+                          bar_y + 4,
+                          surf->menus[i].title,
+                          COLOR_MENU_HIGHLIGHT_TEXT);
             } else {
                 draw_text(title_x + MENU_PADDING, bar_y + 4, surf->menus[i].title, COLOR_MENU_TEXT);
             }
@@ -848,7 +849,8 @@ static void draw_menu_bar() {
     int32_t text_len = 0;
     for (const char *p = right_text; *p; p++)
         text_len++;
-    draw_text(bar_x + bar_w - text_len * 8 - MENU_PADDING, bar_y + 4, right_text, COLOR_MENU_DISABLED);
+    draw_text(
+        bar_x + bar_w - text_len * 8 - MENU_PADDING, bar_y + 4, right_text, COLOR_MENU_DISABLED);
 }
 
 // Draw the open pulldown menu
@@ -1825,7 +1827,10 @@ static void queue_key_event(Surface *surf, uint16_t keycode, uint8_t modifiers, 
 }
 
 // Queue a menu event to a surface (Amiga/Mac style global menu bar)
-static void queue_menu_event(Surface *surf, uint8_t menu_index, uint8_t item_index, uint8_t action) {
+static void queue_menu_event(Surface *surf,
+                             uint8_t menu_index,
+                             uint8_t item_index,
+                             uint8_t action) {
     QueuedEvent ev;
     ev.event_type = DISP_EVENT_MENU;
     ev.menu.type = DISP_EVENT_MENU;
@@ -1897,8 +1902,7 @@ static void poll_mouse() {
         g_cursor_x = state.x;
         g_cursor_y = state.y;
         if (!g_cursor_visible)
-            sys::move_hw_cursor(static_cast<uint32_t>(state.x),
-                                static_cast<uint32_t>(state.y));
+            sys::move_hw_cursor(static_cast<uint32_t>(state.x), static_cast<uint32_t>(state.y));
 
         // Handle menu hover (when a pulldown menu is open)
         if (g_active_menu >= 0) {
@@ -2090,8 +2094,10 @@ static void poll_mouse() {
                             const MenuItem &item = menu.items[item_idx];
                             // Only trigger if enabled and not a separator
                             if (item.enabled && item.label[0] != '\0' && item.action != 0) {
-                                queue_menu_event(menu_surf, static_cast<uint8_t>(g_active_menu),
-                                                 static_cast<uint8_t>(item_idx), item.action);
+                                queue_menu_event(menu_surf,
+                                                 static_cast<uint8_t>(g_active_menu),
+                                                 static_cast<uint8_t>(item_idx),
+                                                 item.action);
                             }
                         }
                     }

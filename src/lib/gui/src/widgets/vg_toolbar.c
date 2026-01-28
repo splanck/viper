@@ -1,8 +1,8 @@
 // vg_toolbar.c - Toolbar widget implementation
+#include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
-#include "../../../graphics/include/vgfx.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -523,13 +523,8 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas)
                 {
                     float label_x = icon_x + icon_px + tb->item_padding;
                     float label_y = item_y + item_height / 2 + tb->font_size / 2;
-                    vg_font_draw_text(canvas,
-                                      tb->font,
-                                      tb->font_size,
-                                      label_x,
-                                      label_y,
-                                      item->label,
-                                      txt_color);
+                    vg_font_draw_text(
+                        canvas, tb->font, tb->font_size, label_x, label_y, item->label, txt_color);
                 }
 
                 // Draw dropdown arrow
@@ -540,7 +535,8 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas)
                     float arrow_y = item_y + item_height / 2;
                     vgfx_fill_rect(win, (int32_t)arrow_x, (int32_t)(arrow_y - 1), 5, 1, txt_color);
                     vgfx_fill_rect(win, (int32_t)(arrow_x + 1), (int32_t)arrow_y, 3, 1, txt_color);
-                    vgfx_fill_rect(win, (int32_t)(arrow_x + 2), (int32_t)(arrow_y + 1), 1, 1, txt_color);
+                    vgfx_fill_rect(
+                        win, (int32_t)(arrow_x + 2), (int32_t)(arrow_y + 1), 1, 1, txt_color);
                 }
                 break;
             }

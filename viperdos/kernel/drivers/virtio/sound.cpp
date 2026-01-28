@@ -158,8 +158,10 @@ bool SoundDevice::send_control(usize cmd_size, usize resp_size) {
     i32 resp_desc = controlq_.alloc_desc();
 
     if (cmd_desc < 0 || resp_desc < 0) {
-        if (cmd_desc >= 0) controlq_.free_desc(cmd_desc);
-        if (resp_desc >= 0) controlq_.free_desc(resp_desc);
+        if (cmd_desc >= 0)
+            controlq_.free_desc(cmd_desc);
+        if (resp_desc >= 0)
+            controlq_.free_desc(resp_desc);
         return false;
     }
 
@@ -203,25 +205,38 @@ bool SoundDevice::send_stream_cmd(u32 code, u32 stream_id) {
 
 u8 SoundDevice::rate_to_index(u32 sample_rate) {
     switch (sample_rate) {
-    case 5512:   return 0;
-    case 8000:   return 1;
-    case 11025:  return 2;
-    case 16000:  return 3;
-    case 22050:  return 4;
-    case 32000:  return 5;
-    case 44100:  return 6;
-    case 48000:  return 7;
-    case 64000:  return 8;
-    case 88200:  return 9;
-    case 96000:  return 10;
-    case 176400: return 11;
-    case 192000: return 12;
-    default:     return 7; // Default to 48000
+        case 5512:
+            return 0;
+        case 8000:
+            return 1;
+        case 11025:
+            return 2;
+        case 16000:
+            return 3;
+        case 22050:
+            return 4;
+        case 32000:
+            return 5;
+        case 44100:
+            return 6;
+        case 48000:
+            return 7;
+        case 64000:
+            return 8;
+        case 88200:
+            return 9;
+        case 96000:
+            return 10;
+        case 176400:
+            return 11;
+        case 192000:
+            return 12;
+        default:
+            return 7; // Default to 48000
     }
 }
 
-bool SoundDevice::configure_stream(u32 stream_id, u32 sample_rate,
-                                    u8 channels, u8 bits) {
+bool SoundDevice::configure_stream(u32 stream_id, u32 sample_rate, u8 channels, u8 bits) {
     if (!initialized_)
         return false;
 
@@ -308,8 +323,10 @@ i64 SoundDevice::write_pcm(u32 stream_id, const void *data, usize len) {
     i32 status_desc = txq_.alloc_desc();
 
     if (data_desc < 0 || status_desc < 0) {
-        if (data_desc >= 0) txq_.free_desc(data_desc);
-        if (status_desc >= 0) txq_.free_desc(status_desc);
+        if (data_desc >= 0)
+            txq_.free_desc(data_desc);
+        if (status_desc >= 0)
+            txq_.free_desc(status_desc);
         return -1;
     }
 

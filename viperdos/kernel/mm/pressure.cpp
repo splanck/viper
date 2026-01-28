@@ -22,10 +22,10 @@ namespace mm::pressure {
 namespace {
 
 // Pressure thresholds (percentage of total memory)
-constexpr u32 THRESHOLD_LOW = 50;      // Below 50% free -> LOW
-constexpr u32 THRESHOLD_MEDIUM = 25;   // Below 25% free -> MEDIUM
-constexpr u32 THRESHOLD_HIGH = 10;     // Below 10% free -> HIGH
-constexpr u32 THRESHOLD_CRITICAL = 5;  // Below 5% free -> CRITICAL
+constexpr u32 THRESHOLD_LOW = 50;     // Below 50% free -> LOW
+constexpr u32 THRESHOLD_MEDIUM = 25;  // Below 25% free -> MEDIUM
+constexpr u32 THRESHOLD_HIGH = 10;    // Below 10% free -> HIGH
+constexpr u32 THRESHOLD_CRITICAL = 5; // Below 5% free -> CRITICAL
 
 // Callback registration
 struct CallbackEntry {
@@ -169,8 +169,11 @@ u64 reclaim_if_needed() {
     return force_reclaim();
 }
 
-void get_stats(Level *out_level, u64 *out_free_pages, u64 *out_total_pages,
-               u64 *out_reclaim_calls, u64 *out_pages_reclaimed) {
+void get_stats(Level *out_level,
+               u64 *out_free_pages,
+               u64 *out_total_pages,
+               u64 *out_reclaim_calls,
+               u64 *out_pages_reclaimed) {
     if (out_level)
         *out_level = check_level();
     if (out_free_pages)

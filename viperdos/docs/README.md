@@ -6,11 +6,11 @@ This directory contains the complete documentation for ViperDOS, a capability-ba
 
 ## Quick Links
 
-| Document                                       | Description                         |
-|------------------------------------------------|-------------------------------------|
-| [Shell Commands](shell-commands.md)            | Complete shell command reference    |
-| [Syscall Reference](syscalls.md)               | System call API documentation       |
-| [Implementation Status](status/00-overview.md) | Current implementation status       |
+| Document                                       | Description                      |
+|------------------------------------------------|----------------------------------|
+| [Shell Commands](shell-commands.md)            | Complete shell command reference |
+| [Syscall Reference](syscalls.md)               | System call API documentation    |
+| [Implementation Status](status/00-overview.md) | Current implementation status    |
 
 ---
 

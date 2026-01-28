@@ -112,6 +112,7 @@ constexpr uint32_t DIGITAL_BG = 0xFF222222;
 constexpr uint32_t DIGITAL_TEXT = 0xFF00FF00;
 
 } // namespace colors
+
 /** @} */ // end ClockColors
 
 //===----------------------------------------------------------------------===//
@@ -159,6 +160,7 @@ constexpr int DIGITAL_Y = 200;
 constexpr int DATE_Y = 220;
 
 } // namespace dims
+
 /** @} */ // end ClockDimensions
 
 //===----------------------------------------------------------------------===//
@@ -252,7 +254,9 @@ class UI {
      *
      * @see is24Hour() to query the current mode
      */
-    void toggle24Hour() { m_24hour = !m_24hour; }
+    void toggle24Hour() {
+        m_24hour = !m_24hour;
+    }
 
     /**
      * @brief Returns whether 24-hour display mode is active.
@@ -262,7 +266,9 @@ class UI {
      *
      * @see toggle24Hour() to change the mode
      */
-    bool is24Hour() const { return m_24hour; }
+    bool is24Hour() const {
+        return m_24hour;
+    }
 
   private:
     /**

@@ -50,6 +50,7 @@ static int viperdos_strcasecmp(const char *s1, const char *s2)
     }
     return tolower((unsigned char)*s1) - tolower((unsigned char)*s2);
 }
+
 #define strcasecmp viperdos_strcasecmp
 #else
 #include <strings.h>
@@ -282,7 +283,81 @@ void rt_gui_app_poll(void *app_ptr)
                         int has_shift = mods & VGFX_MOD_SHIFT;
                         if (key >= 'A' && key <= 'Z')
                         {
+                            // Letters: shift produces uppercase
                             codepoint = has_shift ? key : key + ('a' - 'A');
+                        }
+                        else if (has_shift)
+                        {
+                            // Shift mapping for US keyboard layout
+                            switch (key)
+                            {
+                                case '1':
+                                    codepoint = '!';
+                                    break;
+                                case '2':
+                                    codepoint = '@';
+                                    break;
+                                case '3':
+                                    codepoint = '#';
+                                    break;
+                                case '4':
+                                    codepoint = '$';
+                                    break;
+                                case '5':
+                                    codepoint = '%';
+                                    break;
+                                case '6':
+                                    codepoint = '^';
+                                    break;
+                                case '7':
+                                    codepoint = '&';
+                                    break;
+                                case '8':
+                                    codepoint = '*';
+                                    break;
+                                case '9':
+                                    codepoint = '(';
+                                    break;
+                                case '0':
+                                    codepoint = ')';
+                                    break;
+                                case '-':
+                                    codepoint = '_';
+                                    break;
+                                case '=':
+                                    codepoint = '+';
+                                    break;
+                                case '[':
+                                    codepoint = '{';
+                                    break;
+                                case ']':
+                                    codepoint = '}';
+                                    break;
+                                case '\\':
+                                    codepoint = '|';
+                                    break;
+                                case ';':
+                                    codepoint = ':';
+                                    break;
+                                case '\'':
+                                    codepoint = '"';
+                                    break;
+                                case ',':
+                                    codepoint = '<';
+                                    break;
+                                case '.':
+                                    codepoint = '>';
+                                    break;
+                                case '/':
+                                    codepoint = '?';
+                                    break;
+                                case '`':
+                                    codepoint = '~';
+                                    break;
+                                default:
+                                    codepoint = key;
+                                    break;
+                            }
                         }
                         else
                         {
@@ -548,8 +623,8 @@ void rt_gui_app_render(void *app_ptr)
     // double-count parent offsets and fail.
     if (app->root)
     {
-        render_widget_tree(app->window, app->root, app->default_font, app->default_font_size,
-                           0.0f, 0.0f);
+        render_widget_tree(
+            app->window, app->root, app->default_font, app->default_font_size, 0.0f, 0.0f);
     }
 
     // Paint overlays (popups, dropdowns) on top of all other widgets.
@@ -910,8 +985,7 @@ void *rt_treeview_new(void *parent)
     {
         rt_gui_ensure_default_font();
         if (s_current_app && s_current_app->default_font)
-            vg_treeview_set_font(tv, s_current_app->default_font,
-                                 s_current_app->default_font_size);
+            vg_treeview_set_font(tv, s_current_app->default_font, s_current_app->default_font_size);
     }
     return tv;
 }
@@ -1061,8 +1135,7 @@ void *rt_tabbar_new(void *parent)
     if (tabbar && s_current_app && s_current_app->default_font)
     {
         rt_gui_ensure_default_font();
-        vg_tabbar_set_font(tabbar, s_current_app->default_font,
-                           s_current_app->default_font_size);
+        vg_tabbar_set_font(tabbar, s_current_app->default_font, s_current_app->default_font_size);
     }
     return tabbar;
 }
@@ -1219,8 +1292,8 @@ void *rt_codeeditor_new(void *parent)
         rt_gui_ensure_default_font();
         if (s_current_app->default_font)
         {
-            vg_codeeditor_set_font(editor, s_current_app->default_font,
-                                   s_current_app->default_font_size);
+            vg_codeeditor_set_font(
+                editor, s_current_app->default_font, s_current_app->default_font_size);
         }
     }
     return editor;
@@ -2228,8 +2301,7 @@ void *rt_menubar_new(void *parent)
     {
         rt_gui_ensure_default_font();
         if (s_current_app && s_current_app->default_font)
-            vg_menubar_set_font(mb, s_current_app->default_font,
-                                s_current_app->default_font_size);
+            vg_menubar_set_font(mb, s_current_app->default_font, s_current_app->default_font_size);
     }
     return mb;
 }
@@ -2655,8 +2727,8 @@ void *rt_statusbar_new(void *parent)
     {
         rt_gui_ensure_default_font();
         if (s_current_app && s_current_app->default_font)
-            vg_statusbar_set_font(sb, s_current_app->default_font,
-                                  s_current_app->default_font_size);
+            vg_statusbar_set_font(
+                sb, s_current_app->default_font, s_current_app->default_font_size);
     }
     return sb;
 }
@@ -2951,8 +3023,7 @@ void *rt_toolbar_new(void *parent)
     {
         rt_gui_ensure_default_font();
         if (s_current_app && s_current_app->default_font)
-            vg_toolbar_set_font(tb, s_current_app->default_font,
-                                s_current_app->default_font_size);
+            vg_toolbar_set_font(tb, s_current_app->default_font, s_current_app->default_font_size);
     }
     return tb;
 }
@@ -3645,6 +3716,45 @@ int64_t rt_codeeditor_cursor_has_selection(void *editor, int64_t index)
         return 0; // Only primary cursor supported
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     return ce->has_selection ? 1 : 0;
+}
+
+void rt_codeeditor_undo(void *editor)
+{
+    if (editor)
+        vg_codeeditor_undo((vg_codeeditor_t *)editor);
+}
+
+void rt_codeeditor_redo(void *editor)
+{
+    if (editor)
+        vg_codeeditor_redo((vg_codeeditor_t *)editor);
+}
+
+int64_t rt_codeeditor_copy(void *editor)
+{
+    if (!editor)
+        return 0;
+    return vg_codeeditor_copy((vg_codeeditor_t *)editor) ? 1 : 0;
+}
+
+int64_t rt_codeeditor_cut(void *editor)
+{
+    if (!editor)
+        return 0;
+    return vg_codeeditor_cut((vg_codeeditor_t *)editor) ? 1 : 0;
+}
+
+int64_t rt_codeeditor_paste(void *editor)
+{
+    if (!editor)
+        return 0;
+    return vg_codeeditor_paste((vg_codeeditor_t *)editor) ? 1 : 0;
+}
+
+void rt_codeeditor_select_all(void *editor)
+{
+    if (editor)
+        vg_codeeditor_select_all((vg_codeeditor_t *)editor);
 }
 
 //=============================================================================

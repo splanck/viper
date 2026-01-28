@@ -46,18 +46,18 @@ display services run in user space. Two user-space servers are implemented:
 
 The kernel provides syscalls for user-space display servers:
 
-| Syscall               | Number | Description                               |
-|-----------------------|--------|-------------------------------------------|
-| SYS_MAP_FRAMEBUFFER   | 0x111  | Map framebuffer into user address space   |
-| SYS_GET_MOUSE_STATE   | 0x110  | Get current mouse position and buttons    |
-| SYS_SET_MOUSE_BOUNDS  | 0x112  | Set mouse cursor bounds                   |
-| SYS_INPUT_HAS_EVENT   | 0x113  | Check if input events are available       |
-| SYS_INPUT_GET_EVENT   | 0x114  | Get next input event from kernel queue    |
-| SYS_GCON_SET_GUI_MODE | 0x115  | Enable/disable GUI mode for gcon          |
-| SYS_SHM_CREATE        | 0x109  | Create shared memory object               |
-| SYS_SHM_MAP           | 0x10A  | Map shared memory into address space      |
-| SYS_SHM_UNMAP         | 0x10B  | Unmap shared memory                       |
-| SYS_SHM_CLOSE         | 0x10C  | Close shared memory handle                |
+| Syscall               | Number | Description                             |
+|-----------------------|--------|-----------------------------------------|
+| SYS_MAP_FRAMEBUFFER   | 0x111  | Map framebuffer into user address space |
+| SYS_GET_MOUSE_STATE   | 0x110  | Get current mouse position and buttons  |
+| SYS_SET_MOUSE_BOUNDS  | 0x112  | Set mouse cursor bounds                 |
+| SYS_INPUT_HAS_EVENT   | 0x113  | Check if input events are available     |
+| SYS_INPUT_GET_EVENT   | 0x114  | Get next input event from kernel queue  |
+| SYS_GCON_SET_GUI_MODE | 0x115  | Enable/disable GUI mode for gcon        |
+| SYS_SHM_CREATE        | 0x109  | Create shared memory object             |
+| SYS_SHM_MAP           | 0x10A  | Map shared memory into address space    |
+| SYS_SHM_UNMAP         | 0x10B  | Unmap shared memory                     |
+| SYS_SHM_CLOSE         | 0x10C  | Close shared memory handle              |
 
 ---
 

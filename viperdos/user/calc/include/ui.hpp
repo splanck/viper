@@ -195,12 +195,12 @@ enum class ButtonType {
  * - 'M': Memory clear, 'R': Memory recall, 'P': Memory plus
  */
 struct Button {
-    int row;            /**< Grid row index (0 = first button row). */
-    int col;            /**< Grid column index (0 = leftmost). */
-    int colSpan;        /**< Number of columns occupied (usually 1). */
-    const char *label;  /**< Button label text for display. */
-    char action;        /**< Action character for input dispatch. */
-    ButtonType type;    /**< Visual category for coloring. */
+    int row;           /**< Grid row index (0 = first button row). */
+    int col;           /**< Grid column index (0 = leftmost). */
+    int colSpan;       /**< Number of columns occupied (usually 1). */
+    const char *label; /**< Button label text for display. */
+    char action;       /**< Action character for input dispatch. */
+    ButtonType type;   /**< Visual category for coloring. */
 };
 
 //===----------------------------------------------------------------------===//

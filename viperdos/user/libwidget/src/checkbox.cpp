@@ -43,9 +43,9 @@
  */
 //===----------------------------------------------------------------------===//
 
-#include <widget.h>
 #include <stdlib.h>
 #include <string.h>
+#include <widget.h>
 
 /**
  * @brief Size of the checkbox square in pixels (14x14).

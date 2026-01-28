@@ -34,6 +34,7 @@
 // ViperDOS: Use POSIX-style case-insensitive comparison
 // TODO: ViperDOS - strings.h should be available in libc
 #include <ctype.h>
+
 static int strcasecmp(const char *s1, const char *s2)
 {
     while (*s1 && *s2)
@@ -47,6 +48,7 @@ static int strcasecmp(const char *s1, const char *s2)
     }
     return tolower((unsigned char)*s1) - tolower((unsigned char)*s2);
 }
+
 static int strncasecmp(const char *s1, const char *s2, size_t n)
 {
     while (n-- && *s1 && *s2)

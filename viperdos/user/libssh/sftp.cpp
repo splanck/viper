@@ -542,7 +542,8 @@ static sftp_attributes_t *parse_attrs(const uint8_t *data, size_t len, size_t *c
     if (len < 4)
         return NULL;
 
-    sftp_attributes_t *attr = static_cast<sftp_attributes_t *>(calloc(1, sizeof(sftp_attributes_t)));
+    sftp_attributes_t *attr =
+        static_cast<sftp_attributes_t *>(calloc(1, sizeof(sftp_attributes_t)));
     if (!attr)
         return NULL;
 
@@ -805,7 +806,8 @@ static sftp_attributes_t *parse_dir_entry(const uint8_t *response,
     if (pos + name_len > response_len)
         return NULL;
 
-    sftp_attributes_t *attr = static_cast<sftp_attributes_t *>(calloc(1, sizeof(sftp_attributes_t)));
+    sftp_attributes_t *attr =
+        static_cast<sftp_attributes_t *>(calloc(1, sizeof(sftp_attributes_t)));
     if (!attr)
         return NULL;
 
@@ -878,7 +880,8 @@ sftp_attributes_t *sftp_readdir(sftp_dir_t *dir) {
     /* Return buffered entry if available */
     if (dir->entries && dir->entry_pos < dir->entry_count) {
         sftp_attributes_t *src = &dir->entries[dir->entry_pos++];
-        sftp_attributes_t *attr = static_cast<sftp_attributes_t *>(calloc(1, sizeof(sftp_attributes_t)));
+        sftp_attributes_t *attr =
+            static_cast<sftp_attributes_t *>(calloc(1, sizeof(sftp_attributes_t)));
         if (!attr)
             return NULL;
 

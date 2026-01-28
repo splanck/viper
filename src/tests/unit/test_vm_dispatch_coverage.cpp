@@ -57,9 +57,9 @@ static void testDispatchMetadataConsistency()
     for (size_t i = 0; i < il::core::kNumOpcodes; ++i)
     {
         const auto &info = il::core::kOpcodeTable[i];
-        // Verify dispatch kind is valid
-        assert(static_cast<size_t>(info.vmDispatch) <=
-                   static_cast<size_t>(il::core::VMDispatch::EhEntry) &&
+        // Verify dispatch kind is valid (must be less than Count)
+        assert(static_cast<size_t>(info.vmDispatch) <
+                   static_cast<size_t>(il::core::VMDispatch::Count) &&
                "Invalid VMDispatch value in opcode table");
     }
 }

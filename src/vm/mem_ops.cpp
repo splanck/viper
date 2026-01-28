@@ -324,4 +324,34 @@ VM::ExecResult handleConstNull(VM &vm,
     ops::storeResult(fr, in, out);
     return {};
 }
+
+/// @brief Execute the `const.f64` opcode by materializing a floating-point constant.
+/// @details Evaluates the operand which contains the floating-point literal value
+///          and stores it directly in the destination slot.  No conversion or
+///          computation is performed; the operand is expected to already be a
+///          properly-encoded f64 value.
+/// @param vm Virtual machine orchestrating execution (unused).
+/// @param fr Active frame providing destination storage.
+/// @param in Instruction describing the constant.
+/// @param blocks Map of basic blocks for the current function (unused).
+/// @param bb Reference to the current basic block pointer (unused).
+/// @param ip Instruction index within @p bb (unused).
+/// @return Execution result signalling the interpreter should continue.
+VM::ExecResult handleConstF64(VM &vm,
+                              Frame &fr,
+                              const Instr &in,
+                              const VM::BlockMap &blocks,
+                              const BasicBlock *&bb,
+                              size_t &ip)
+{
+    (void)blocks;
+    (void)bb;
+    (void)ip;
+
+    Slot value = VMAccess::eval(vm, fr, in.operands[0]);
+    Slot out{};
+    out.f64 = value.f64;
+    ops::storeResult(fr, in, out);
+    return {};
+}
 } // namespace il::vm::detail::memory

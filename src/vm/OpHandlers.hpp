@@ -31,6 +31,7 @@ namespace il::vm::detail
 {
 using memory::handleAddrOf;
 using memory::handleAlloca;
+using memory::handleConstF64;
 using memory::handleConstNull;
 using memory::handleConstStr;
 using memory::handleGAddr;
@@ -111,6 +112,8 @@ using floating::handleFCmpGT;
 using floating::handleFCmpLE;
 using floating::handleFCmpLT;
 using floating::handleFCmpNE;
+using floating::handleFCmpOrd;
+using floating::handleFCmpUno;
 using floating::handleFDiv;
 using floating::handleFMul;
 using floating::handleFptosi;

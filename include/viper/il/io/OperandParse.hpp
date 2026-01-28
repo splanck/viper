@@ -46,16 +46,17 @@ namespace viper::il::io
 /// @brief Shared parser context for operand helpers.
 struct Context
 {
-    ::il::io::detail::ParserState &state; ///< Legacy parser state providing SSA maps and diagnostics.
-    ::il::core::Instr &instr;             ///< Instruction under construction receiving parsed operands.
+    ::il::io::detail::ParserState
+        &state;               ///< Legacy parser state providing SSA maps and diagnostics.
+    ::il::core::Instr &instr; ///< Instruction under construction receiving parsed operands.
 };
 
 /// @brief Result bundle returned by operand-specific parsers.
 struct ParseResult
 {
-    ::il::support::Expected<void> status{};              ///< Success/failure diagnostic container.
-    std::optional<::il::core::Value> value{};            ///< Parsed Value operand when applicable.
-    std::optional<std::string> label{};                ///< Parsed label text when applicable.
+    ::il::support::Expected<void> status{};   ///< Success/failure diagnostic container.
+    std::optional<::il::core::Value> value{}; ///< Parsed Value operand when applicable.
+    std::optional<std::string> label{};       ///< Parsed label text when applicable.
 
     /// @brief Query whether parsing succeeded.
     [[nodiscard]] bool ok() const
@@ -122,4 +123,3 @@ ParseResult parseTypeOperand(viper::parse::Cursor &cur, Context &ctx);
 ParseResult parseConstOperand(viper::parse::Cursor &cur, Context &ctx);
 
 } // namespace viper::il::io
-

@@ -91,51 +91,51 @@ using namespace vedit;
  */
 static void handleMenuAction(Editor &editor, View &view, gui_window_t *win, char action) {
     switch (action) {
-    case 'N': // New
-        editor.newFile();
-        break;
+        case 'N': // New
+            editor.newFile();
+            break;
 
-    case 'O': { // Open
-        char *path = filedialog_open(win, "Open File", nullptr, "/");
-        if (path) {
-            editor.loadFile(path);
-            free(path);
+        case 'O': { // Open
+            char *path = filedialog_open(win, "Open File", nullptr, "/");
+            if (path) {
+                editor.loadFile(path);
+                free(path);
+            }
+            break;
         }
-        break;
-    }
 
-    case 'S': // Save
-        if (editor.buffer().filename()[0] == '\0') {
-            // No filename set - use Save As
-            char *path = filedialog_save(win, "Save File", nullptr, "/");
+        case 'S': // Save
+            if (editor.buffer().filename()[0] == '\0') {
+                // No filename set - use Save As
+                char *path = filedialog_save(win, "Save File", nullptr, "/");
+                if (path) {
+                    editor.saveFileAs(path);
+                    free(path);
+                }
+            } else {
+                editor.saveFile();
+            }
+            break;
+
+        case 'A': { // Save As
+            char *path = filedialog_save(win, "Save File As", nullptr, "/");
             if (path) {
                 editor.saveFileAs(path);
                 free(path);
             }
-        } else {
-            editor.saveFile();
+            break;
         }
-        break;
 
-    case 'A': { // Save As
-        char *path = filedialog_save(win, "Save File As", nullptr, "/");
-        if (path) {
-            editor.saveFileAs(path);
-            free(path);
-        }
-        break;
-    }
+        case 'L': // Toggle line numbers
+            editor.config().showLineNumbers = !editor.config().showLineNumbers;
+            break;
 
-    case 'L': // Toggle line numbers
-        editor.config().showLineNumbers = !editor.config().showLineNumbers;
-        break;
+        case 'W': // Toggle word wrap
+            editor.config().wordWrap = !editor.config().wordWrap;
+            break;
 
-    case 'W': // Toggle word wrap
-        editor.config().wordWrap = !editor.config().wordWrap;
-        break;
-
-    case 'Q': // Quit - handled in main loop
-        break;
+        case 'Q': // Quit - handled in main loop
+            break;
     }
 
     view.setActiveMenu(-1);
@@ -285,44 +285,45 @@ extern "C" int main(int argc, char **argv) {
             bool needsRedraw = false;
 
             switch (event.type) {
-            case GUI_EVENT_CLOSE:
-                // Window close button clicked
-                running = false;
-                break;
+                case GUI_EVENT_CLOSE:
+                    // Window close button clicked
+                    running = false;
+                    break;
 
-            case GUI_EVENT_MENU:
-                // Handle global menu bar item selection (Amiga/Mac style)
-                {
-                    char action = static_cast<char>(event.menu.action);
-                    if (action == 'Q') {
-                        running = false;
-                    } else if (action != 0) {
-                        handleMenuAction(editor, view, win, action);
+                case GUI_EVENT_MENU:
+                    // Handle global menu bar item selection (Amiga/Mac style)
+                    {
+                        char action = static_cast<char>(event.menu.action);
+                        if (action == 'Q') {
+                            running = false;
+                        } else if (action != 0) {
+                            handleMenuAction(editor, view, win, action);
+                        }
+                        needsRedraw = true;
                     }
-                    needsRedraw = true;
-                }
-                break;
+                    break;
 
-            case GUI_EVENT_MOUSE:
-                // Handle mouse button press (button down)
-                // Note: Menu bar clicks are now handled by displayd (global menu bar)
-                if (event.mouse.event_type == 1 && event.mouse.button == 0) {
-                    if (event.mouse.y > view.textAreaY() &&
-                               event.mouse.y < dims::WIN_HEIGHT - dims::STATUSBAR_HEIGHT) {
-                        // Clicked in text area - position cursor
-                        int relX = event.mouse.x;
-                        int relY = event.mouse.y - view.textAreaY();
-                        editor.setCursorFromClick(relX, relY,
-                                                  view.textAreaX(editor.config().showLineNumbers),
-                                                  view.visibleLines());
+                case GUI_EVENT_MOUSE:
+                    // Handle mouse button press (button down)
+                    // Note: Menu bar clicks are now handled by displayd (global menu bar)
+                    if (event.mouse.event_type == 1 && event.mouse.button == 0) {
+                        if (event.mouse.y > view.textAreaY() &&
+                            event.mouse.y < dims::WIN_HEIGHT - dims::STATUSBAR_HEIGHT) {
+                            // Clicked in text area - position cursor
+                            int relX = event.mouse.x;
+                            int relY = event.mouse.y - view.textAreaY();
+                            editor.setCursorFromClick(
+                                relX,
+                                relY,
+                                view.textAreaX(editor.config().showLineNumbers),
+                                view.visibleLines());
+                        }
+                        needsRedraw = true;
                     }
-                    needsRedraw = true;
-                }
-                // Note: Menu hover is now handled by displayd (global menu bar)
-                break;
+                    // Note: Menu hover is now handled by displayd (global menu bar)
+                    break;
 
-            case GUI_EVENT_KEY:
-                {
+                case GUI_EVENT_KEY: {
                     // Only process key press events, ignore key release
                     if (!event.key.pressed) {
                         break;
@@ -332,126 +333,125 @@ extern "C" int main(int argc, char **argv) {
                     bool handled = true;
 
                     switch (event.key.keycode) {
-                    // Navigation keys (evdev keycodes)
-                    case 105: // Left arrow
-                        editor.moveCursorLeft();
-                        break;
-                    case 106: // Right arrow
-                        editor.moveCursorRight();
-                        break;
-                    case 103: // Up arrow
-                        editor.moveCursorUp();
-                        break;
-                    case 108: // Down arrow
-                        editor.moveCursorDown();
-                        break;
-                    case 102: // Home
-                        editor.moveCursorHome();
-                        break;
-                    case 107: // End
-                        editor.moveCursorEnd();
-                        break;
-                    case 104: // Page Up
-                        editor.moveCursorPageUp(view.visibleLines());
-                        break;
-                    case 109: // Page Down
-                        editor.moveCursorPageDown(view.visibleLines());
-                        break;
+                        // Navigation keys (evdev keycodes)
+                        case 105: // Left arrow
+                            editor.moveCursorLeft();
+                            break;
+                        case 106: // Right arrow
+                            editor.moveCursorRight();
+                            break;
+                        case 103: // Up arrow
+                            editor.moveCursorUp();
+                            break;
+                        case 108: // Down arrow
+                            editor.moveCursorDown();
+                            break;
+                        case 102: // Home
+                            editor.moveCursorHome();
+                            break;
+                        case 107: // End
+                            editor.moveCursorEnd();
+                            break;
+                        case 104: // Page Up
+                            editor.moveCursorPageUp(view.visibleLines());
+                            break;
+                        case 109: // Page Down
+                            editor.moveCursorPageDown(view.visibleLines());
+                            break;
 
-                    // Editing keys (evdev keycodes)
-                    case 14: // Backspace
-                        editor.backspace();
-                        break;
-                    case 111: // Delete
-                        editor.deleteChar();
-                        break;
-                    case 28: // Enter
-                        editor.insertNewline();
-                        break;
-                    case 15: // Tab
-                        editor.insertTab();
-                        break;
+                        // Editing keys (evdev keycodes)
+                        case 14: // Backspace
+                            editor.backspace();
+                            break;
+                        case 111: // Delete
+                            editor.deleteChar();
+                            break;
+                        case 28: // Enter
+                            editor.insertNewline();
+                            break;
+                        case 15: // Tab
+                            editor.insertTab();
+                            break;
 
-                    default: {
-                        // Convert keycode to character
-                        char ch = 0;
-                        uint16_t kc = event.key.keycode;
-                        bool shift = (event.key.modifiers & 1) != 0;
+                        default: {
+                            // Convert keycode to character
+                            char ch = 0;
+                            uint16_t kc = event.key.keycode;
+                            bool shift = (event.key.modifiers & 1) != 0;
 
-                        // Letters (evdev keycodes)
-                        // QWERTY row: Q=16 to P=25
-                        if (kc >= 16 && kc <= 25) {
-                            ch = "qwertyuiop"[kc - 16];
-                        }
-                        // ASDF row: A=30 to L=38
-                        else if (kc >= 30 && kc <= 38) {
-                            ch = "asdfghjkl"[kc - 30];
-                        }
-                        // ZXCV row: Z=44 to M=50
-                        else if (kc >= 44 && kc <= 50) {
-                            ch = "zxcvbnm"[kc - 44];
-                        }
-                        // Numbers 1-9 (keycodes 2-10)
-                        else if (kc >= 2 && kc <= 10) {
-                            ch = shift ? "!@#$%^&*("[kc - 2] : '0' + kc - 1;
-                        }
-                        // Number 0 (keycode 11)
-                        else if (kc == 11) {
-                            ch = shift ? ')' : '0';
-                        }
-                        // Space
-                        else if (kc == 57) {
-                            ch = ' ';
-                        }
-                        // Punctuation with shift variants
-                        else if (kc == 12) {
-                            ch = shift ? '_' : '-';
-                        } else if (kc == 13) {
-                            ch = shift ? '+' : '=';
-                        } else if (kc == 26) {
-                            ch = shift ? '{' : '[';
-                        } else if (kc == 27) {
-                            ch = shift ? '}' : ']';
-                        } else if (kc == 39) {
-                            ch = shift ? ':' : ';';
-                        } else if (kc == 40) {
-                            ch = shift ? '"' : '\'';
-                        } else if (kc == 51) {
-                            ch = shift ? '<' : ',';
-                        } else if (kc == 52) {
-                            ch = shift ? '>' : '.';
-                        } else if (kc == 53) {
-                            ch = shift ? '?' : '/';
-                        } else if (kc == 43) {
-                            ch = shift ? '|' : '\\';
-                        } else if (kc == 41) {
-                            ch = shift ? '~' : '`';
-                        }
-
-                        if (ch) {
-                            // Convert to uppercase if shift is pressed
-                            if (shift && ch >= 'a' && ch <= 'z') {
-                                ch = ch - 'a' + 'A';
+                            // Letters (evdev keycodes)
+                            // QWERTY row: Q=16 to P=25
+                            if (kc >= 16 && kc <= 25) {
+                                ch = "qwertyuiop"[kc - 16];
                             }
-                            editor.insertChar(ch);
-                        } else {
-                            handled = false;
+                            // ASDF row: A=30 to L=38
+                            else if (kc >= 30 && kc <= 38) {
+                                ch = "asdfghjkl"[kc - 30];
+                            }
+                            // ZXCV row: Z=44 to M=50
+                            else if (kc >= 44 && kc <= 50) {
+                                ch = "zxcvbnm"[kc - 44];
+                            }
+                            // Numbers 1-9 (keycodes 2-10)
+                            else if (kc >= 2 && kc <= 10) {
+                                ch = shift ? "!@#$%^&*("[kc - 2] : '0' + kc - 1;
+                            }
+                            // Number 0 (keycode 11)
+                            else if (kc == 11) {
+                                ch = shift ? ')' : '0';
+                            }
+                            // Space
+                            else if (kc == 57) {
+                                ch = ' ';
+                            }
+                            // Punctuation with shift variants
+                            else if (kc == 12) {
+                                ch = shift ? '_' : '-';
+                            } else if (kc == 13) {
+                                ch = shift ? '+' : '=';
+                            } else if (kc == 26) {
+                                ch = shift ? '{' : '[';
+                            } else if (kc == 27) {
+                                ch = shift ? '}' : ']';
+                            } else if (kc == 39) {
+                                ch = shift ? ':' : ';';
+                            } else if (kc == 40) {
+                                ch = shift ? '"' : '\'';
+                            } else if (kc == 51) {
+                                ch = shift ? '<' : ',';
+                            } else if (kc == 52) {
+                                ch = shift ? '>' : '.';
+                            } else if (kc == 53) {
+                                ch = shift ? '?' : '/';
+                            } else if (kc == 43) {
+                                ch = shift ? '|' : '\\';
+                            } else if (kc == 41) {
+                                ch = shift ? '~' : '`';
+                            }
+
+                            if (ch) {
+                                // Convert to uppercase if shift is pressed
+                                if (shift && ch >= 'a' && ch <= 'z') {
+                                    ch = ch - 'a' + 'A';
+                                }
+                                editor.insertChar(ch);
+                            } else {
+                                handled = false;
+                            }
+                            break;
                         }
-                        break;
-                    }
                     }
 
                     if (handled) {
                         // Keep cursor in view after any edit/navigation
-                        editor.ensureCursorVisible(view.visibleLines(),
-                                                   view.visibleCols(editor.config().showLineNumbers));
+                        editor.ensureCursorVisible(
+                            view.visibleLines(), view.visibleCols(editor.config().showLineNumbers));
                         needsRedraw = true;
                     }
-                }
-                break;
+                } break;
 
-            default:
-                break;
+                default:
+                    break;
             }
 
             // Re-render if state changed

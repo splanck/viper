@@ -102,52 +102,84 @@ constexpr uint32_t WB_GRAY_DARK = VIPER_COLOR_GRAY_DARK;
  */
 
 /** @brief Desktop/backdrop color from current theme. */
-inline uint32_t themeDesktop() { return currentTheme().desktop; }
+inline uint32_t themeDesktop() {
+    return currentTheme().desktop;
+}
 
 /** @brief Window background color from current theme. */
-inline uint32_t themeWindowBg() { return currentTheme().windowBg; }
+inline uint32_t themeWindowBg() {
+    return currentTheme().windowBg;
+}
 
 /** @brief Primary text color from current theme. */
-inline uint32_t themeText() { return currentTheme().text; }
+inline uint32_t themeText() {
+    return currentTheme().text;
+}
 
 /** @brief Disabled/grayed-out text color from current theme. */
-inline uint32_t themeTextDisabled() { return currentTheme().textDisabled; }
+inline uint32_t themeTextDisabled() {
+    return currentTheme().textDisabled;
+}
 
 /** @brief Selection highlight color from current theme. */
-inline uint32_t themeHighlight() { return currentTheme().highlight; }
+inline uint32_t themeHighlight() {
+    return currentTheme().highlight;
+}
 
 /** @brief 3D border light edge color from current theme. */
-inline uint32_t themeBorderLight() { return currentTheme().border3dLight; }
+inline uint32_t themeBorderLight() {
+    return currentTheme().border3dLight;
+}
 
 /** @brief 3D border dark edge color from current theme. */
-inline uint32_t themeBorderDark() { return currentTheme().border3dDark; }
+inline uint32_t themeBorderDark() {
+    return currentTheme().border3dDark;
+}
 
 /** @brief Menu bar and dropdown background from current theme. */
-inline uint32_t themeMenuBg() { return currentTheme().menuBg; }
+inline uint32_t themeMenuBg() {
+    return currentTheme().menuBg;
+}
 
 /** @brief Menu item text color from current theme. */
-inline uint32_t themeMenuText() { return currentTheme().menuText; }
+inline uint32_t themeMenuText() {
+    return currentTheme().menuText;
+}
 
 /** @brief Menu item hover/selection highlight from current theme. */
-inline uint32_t themeMenuHighlight() { return currentTheme().menuHighlight; }
+inline uint32_t themeMenuHighlight() {
+    return currentTheme().menuHighlight;
+}
 
 /** @brief Menu item text when highlighted from current theme. */
-inline uint32_t themeMenuHighlightText() { return currentTheme().menuHighlightText; }
+inline uint32_t themeMenuHighlightText() {
+    return currentTheme().menuHighlightText;
+}
 
 /** @brief Window title bar color from current theme. */
-inline uint32_t themeTitleBar() { return currentTheme().titleBar; }
+inline uint32_t themeTitleBar() {
+    return currentTheme().titleBar;
+}
 
 /** @brief Window title bar text color from current theme. */
-inline uint32_t themeTitleBarText() { return currentTheme().titleBarText; }
+inline uint32_t themeTitleBarText() {
+    return currentTheme().titleBarText;
+}
 
 /** @brief Desktop icon label background from current theme. */
-inline uint32_t themeIconBg() { return currentTheme().iconBg; }
+inline uint32_t themeIconBg() {
+    return currentTheme().iconBg;
+}
 
 /** @brief Desktop icon label text color from current theme. */
-inline uint32_t themeIconText() { return currentTheme().iconText; }
+inline uint32_t themeIconText() {
+    return currentTheme().iconText;
+}
 
 /** @brief Desktop icon label shadow color from current theme. */
-inline uint32_t themeIconShadow() { return currentTheme().iconShadow; }
+inline uint32_t themeIconShadow() {
+    return currentTheme().iconShadow;
+}
 
 /** @} */ // end ThemeFunctions
 

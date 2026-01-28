@@ -146,15 +146,15 @@ target_compile_definitions(kernel.sys PRIVATE
 )
 
 # ViperFS cache configuration (optional overrides)
-if(DEFINED VIPERFS_CACHE_BLOCKS)
+if (DEFINED VIPERFS_CACHE_BLOCKS)
     target_compile_definitions(kernel.sys PRIVATE VIPERFS_CACHE_BLOCKS=${VIPERFS_CACHE_BLOCKS})
-endif()
-if(DEFINED VIPERFS_READ_AHEAD_BLOCKS)
+endif ()
+if (DEFINED VIPERFS_READ_AHEAD_BLOCKS)
     target_compile_definitions(kernel.sys PRIVATE VIPERFS_READ_AHEAD_BLOCKS=${VIPERFS_READ_AHEAD_BLOCKS})
-endif()
-if(DEFINED VIPERFS_HASH_SIZE)
+endif ()
+if (DEFINED VIPERFS_HASH_SIZE)
     target_compile_definitions(kernel.sys PRIVATE VIPERFS_HASH_SIZE=${VIPERFS_HASH_SIZE})
-endif()
+endif ()
 
 # Include directories
 target_include_directories(kernel.sys PRIVATE

@@ -132,7 +132,8 @@ SyscallResult sys_fs_read_dir(u64 a0, u64 a1, u64, u64, u64, u64) {
     VALIDATE_USER_WRITE(ent, sizeof(kobj::FsDirEnt));
 
     GET_CAP_TABLE_OR_RETURN();
-    GET_OBJECT_WITH_RIGHTS(dir, kobj::DirObject, table, handle, cap::Kind::Directory, cap::CAP_READ);
+    GET_OBJECT_WITH_RIGHTS(
+        dir, kobj::DirObject, table, handle, cap::Kind::Directory, cap::CAP_READ);
 
     if (!dir->read_next(ent)) {
         return SyscallResult::ok(0);

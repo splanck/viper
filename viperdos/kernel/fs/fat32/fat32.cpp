@@ -43,8 +43,7 @@ u64 dos_datetime_to_ms(u16 date, u16 time, u8 tenths) {
         day = 1;
 
     // Days per month (non-leap)
-    static constexpr u32 days_in_month[] = {0, 31, 28, 31, 30, 31, 30,
-                                             31, 31, 30, 31, 30, 31};
+    static constexpr u32 days_in_month[] = {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
 
     // Calculate days since Unix epoch (1970-01-01)
     u64 days = 0;
@@ -368,8 +367,8 @@ void FAT32::parse_short_name(const DirEntry *entry, char *out) {
     out[j] = '\0';
 }
 
-bool FAT32::find_entry(u32 dir_cluster, const char *name, DirEntry *out,
-                       u32 *out_cluster, u32 *out_offset) {
+bool FAT32::find_entry(
+    u32 dir_cluster, const char *name, DirEntry *out, u32 *out_cluster, u32 *out_offset) {
     u32 cluster = (dir_cluster == 0) ? root_cluster_ : dir_cluster;
     char short_name[13];
 
@@ -547,11 +546,13 @@ i32 FAT32::read_dir(u32 dir_cluster, FileInfo *entries, i32 max_entries) {
 
                 FileInfo *fi = &entries[count];
                 parse_short_name(entry, fi->name);
-                fi->first_cluster = (static_cast<u32>(entry->cluster_high) << 16) | entry->cluster_low;
+                fi->first_cluster =
+                    (static_cast<u32>(entry->cluster_high) << 16) | entry->cluster_low;
                 fi->size = entry->file_size;
                 fi->attr = entry->attr;
                 fi->is_directory = (entry->attr & attr::DIRECTORY) != 0;
-                fi->ctime = dos_datetime_to_ms(entry->create_date, entry->create_time, entry->create_time_tenth);
+                fi->ctime = dos_datetime_to_ms(
+                    entry->create_date, entry->create_time, entry->create_time_tenth);
                 fi->mtime = dos_datetime_to_ms(entry->modify_date, entry->modify_time);
                 fi->atime = dos_datetime_to_ms(entry->access_date, 0);
 

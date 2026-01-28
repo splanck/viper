@@ -119,6 +119,8 @@ namespace viper::codegen::aarch64
             return "FMovRR";
         case MOpcode::FMovRI:
             return "FMovRI";
+        case MOpcode::FMovGR:
+            return "FMovGR";
         case MOpcode::FAddRRR:
             return "FAddRRR";
         case MOpcode::FSubRRR:
@@ -195,6 +197,12 @@ namespace viper::codegen::aarch64
             return "LsrRI";
         case MOpcode::AsrRI:
             return "AsrRI";
+        case MOpcode::LslvRRR:
+            return "LslvRRR";
+        case MOpcode::LsrvRRR:
+            return "LsrvRRR";
+        case MOpcode::AsrvRRR:
+            return "AsrvRRR";
         case MOpcode::CmpRR:
             return "CmpRR";
         case MOpcode::CmpRI:
@@ -209,6 +217,8 @@ namespace viper::codegen::aarch64
             return "BCond";
         case MOpcode::Bl:
             return "Bl";
+        case MOpcode::Blr:
+            return "Blr";
         case MOpcode::Ret:
             return "Ret";
         case MOpcode::AdrPage:

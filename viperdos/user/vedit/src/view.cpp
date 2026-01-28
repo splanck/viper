@@ -92,16 +92,11 @@ Menu g_menus[] = {
      5,
      0,
      0},
-    {"View",
-     {{"Line Numbers", "", 'L'}, {"Word Wrap", "", 'W'}},
-     2,
-     0,
-     0},
+    {"View", {{"Line Numbers", "", 'L'}, {"Word Wrap", "", 'W'}}, 2, 0, 0},
 };
 const int NUM_MENUS = sizeof(g_menus) / sizeof(g_menus[0]);
 
-View::View(gui_window_t *win) : m_win(win), m_activeMenu(-1), m_hoveredMenuItem(-1) {
-}
+View::View(gui_window_t *win) : m_win(win), m_activeMenu(-1), m_hoveredMenuItem(-1) {}
 
 int View::visibleLines() const {
     // Note: Menu bar is now drawn by displayd, so full window height is available
@@ -151,7 +146,11 @@ void View::drawMenuBar(const Editor &editor) {
         g_menus[i].width = labelLen * dims::CHAR_WIDTH + 16;
 
         if (i == m_activeMenu) {
-            gui_fill_rect(m_win, x - 4, 0, g_menus[i].width, dims::MENUBAR_HEIGHT - 1,
+            gui_fill_rect(m_win,
+                          x - 4,
+                          0,
+                          g_menus[i].width,
+                          dims::MENUBAR_HEIGHT - 1,
                           colors::MENU_HIGHLIGHT);
             gui_draw_text(m_win, x, 5, g_menus[i].label, colors::SELECTION_TEXT);
         } else {
@@ -212,8 +211,12 @@ void View::drawMenu(int menuIdx) {
 
             if (menu.items[i].shortcut[0]) {
                 int shortcutX =
-                    x + menuWidth - static_cast<int>(strlen(menu.items[i].shortcut)) * dims::CHAR_WIDTH - 10;
-                gui_draw_text(m_win, shortcutX, itemY + 4, menu.items[i].shortcut,
+                    x + menuWidth -
+                    static_cast<int>(strlen(menu.items[i].shortcut)) * dims::CHAR_WIDTH - 10;
+                gui_draw_text(m_win,
+                              shortcutX,
+                              itemY + 4,
+                              menu.items[i].shortcut,
                               i == m_hoveredMenuItem ? textColor : colors::LINE_NUMBER);
             }
         }
@@ -238,7 +241,10 @@ void View::drawStatusBar(const Editor &editor) {
     gui_draw_text(m_win, 10, y + 5, statusBuf, colors::TEXT);
 
     // Line/column
-    snprintf(statusBuf, sizeof(statusBuf), "Ln %d, Col %d", editor.cursorLine() + 1,
+    snprintf(statusBuf,
+             sizeof(statusBuf),
+             "Ln %d, Col %d",
+             editor.cursorLine() + 1,
              editor.cursorCol() + 1);
     int infoX = dims::WIN_WIDTH - static_cast<int>(strlen(statusBuf)) * dims::CHAR_WIDTH - 10;
     gui_draw_text(m_win, infoX, y + 5, statusBuf, colors::TEXT);
@@ -257,8 +263,8 @@ void View::drawTextArea(const Editor &editor) {
     // Line number gutter
     if (showLineNumbers) {
         gui_fill_rect(m_win, 0, textY, dims::LINE_NUMBER_WIDTH, textHeight, colors::GUTTER);
-        gui_draw_vline(m_win, dims::LINE_NUMBER_WIDTH - 1, textY, textY + textHeight - 1,
-                       colors::BORDER_DARK);
+        gui_draw_vline(
+            m_win, dims::LINE_NUMBER_WIDTH - 1, textY, textY + textHeight - 1, colors::BORDER_DARK);
     }
 
     int lines = visibleLines();

@@ -630,7 +630,8 @@ size_t tls_chacha20_poly1305_encrypt(const uint8_t key[32],
                        64);
 
     /* Encrypt plaintext (starting at block 1) */
-    tls_chacha20_crypt(key, nonce, 1, static_cast<const uint8_t *>(plaintext), ciphertext, plaintext_len);
+    tls_chacha20_crypt(
+        key, nonce, 1, static_cast<const uint8_t *>(plaintext), ciphertext, plaintext_len);
 
     /* Compute tag */
     poly1305_ctx poly;
@@ -716,7 +717,8 @@ long tls_chacha20_poly1305_decrypt(const uint8_t key[32],
         return -1;
 
     /* Decrypt */
-    tls_chacha20_crypt(key, nonce, 1, static_cast<const uint8_t *>(ciphertext), plaintext, data_len);
+    tls_chacha20_crypt(
+        key, nonce, 1, static_cast<const uint8_t *>(ciphertext), plaintext, data_len);
 
     return (long)data_len;
 }

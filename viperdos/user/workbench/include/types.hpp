@@ -273,28 +273,28 @@ struct DesktopIcon {
  * | Tools     | Shell, Prefs, SysInfo, TaskMan, Theme options     |
  */
 enum class PulldownAction {
-    None,             /**< No action (placeholder). */
+    None, /**< No action (placeholder). */
     // Workbench menu
-    Backdrop,         /**< Toggle backdrop mode. */
-    ExecuteCommand,   /**< Open command execution dialog. */
-    Redraw,           /**< Redraw all windows. */
-    UpdateAll,        /**< Update all window contents. */
-    LastMessage,      /**< Show last system message. */
-    AboutWorkbench,   /**< Show About ViperDOS dialog. */
-    QuitWorkbench,    /**< Exit Workbench (no-op currently). */
+    Backdrop,       /**< Toggle backdrop mode. */
+    ExecuteCommand, /**< Open command execution dialog. */
+    Redraw,         /**< Redraw all windows. */
+    UpdateAll,      /**< Update all window contents. */
+    LastMessage,    /**< Show last system message. */
+    AboutWorkbench, /**< Show About ViperDOS dialog. */
+    QuitWorkbench,  /**< Exit Workbench (no-op currently). */
     // Window menu
-    NewDrawer,        /**< Create a new folder. */
-    OpenParent,       /**< Navigate to parent directory. */
-    CloseWindow,      /**< Close the active window. */
-    Update,           /**< Refresh the current window. */
-    SelectContents,   /**< Select all files in window. */
-    CleanUp,          /**< Rearrange icons in grid. */
+    NewDrawer,      /**< Create a new folder. */
+    OpenParent,     /**< Navigate to parent directory. */
+    CloseWindow,    /**< Close the active window. */
+    Update,         /**< Refresh the current window. */
+    SelectContents, /**< Select all files in window. */
+    CleanUp,        /**< Rearrange icons in grid. */
     // Tools menu
-    ResetWB,          /**< Reset Workbench state. */
-    Prefs,            /**< Open Preferences application. */
-    Shell,            /**< Open a new shell window. */
-    SysInfo,          /**< Open System Information. */
-    TaskMan,          /**< Open Task Manager. */
+    ResetWB, /**< Reset Workbench state. */
+    Prefs,   /**< Open Preferences application. */
+    Shell,   /**< Open a new shell window. */
+    SysInfo, /**< Open System Information. */
+    TaskMan, /**< Open Task Manager. */
     // Theme switching
     ThemeClassic,     /**< Switch to Classic Amiga theme. */
     ThemeDark,        /**< Switch to Dark Mode theme. */
@@ -319,11 +319,11 @@ enum class PulldownAction {
  * ```
  */
 struct PulldownItem {
-    const char *label;      /**< Display text for the menu item. */
-    const char *shortcut;   /**< Optional shortcut hint (e.g., "Ctrl+Q"). */
-    PulldownAction action;  /**< Action to perform when selected. */
-    bool separator;         /**< If true, draw separator line after this item. */
-    bool enabled;           /**< If false, item is grayed out and not selectable. */
+    const char *label;     /**< Display text for the menu item. */
+    const char *shortcut;  /**< Optional shortcut hint (e.g., "Ctrl+Q"). */
+    PulldownAction action; /**< Action to perform when selected. */
+    bool separator;        /**< If true, draw separator line after this item. */
+    bool enabled;          /**< If false, item is grayed out and not selectable. */
 };
 
 /**
@@ -346,11 +346,11 @@ struct PulldownItem {
  * ```
  */
 struct PulldownMenu {
-    const char *title;       /**< Menu name displayed in the menu bar. */
-    int titleX;              /**< X position of title in menu bar (pixels). */
-    int titleWidth;          /**< Width of clickable title area (pixels). */
-    PulldownItem items[12];  /**< Array of menu items (max 12). */
-    int itemCount;           /**< Number of valid items in the array. */
+    const char *title;      /**< Menu name displayed in the menu bar. */
+    int titleX;             /**< X position of title in menu bar (pixels). */
+    int titleWidth;         /**< Width of clickable title area (pixels). */
+    PulldownItem items[12]; /**< Array of menu items (max 12). */
+    int itemCount;          /**< Number of valid items in the array. */
 };
 
 //===----------------------------------------------------------------------===//
@@ -371,14 +371,14 @@ struct PulldownMenu {
  * | On empty     | New Folder, Paste                    |
  */
 enum class MenuAction {
-    None,       /**< No action. */
-    Open,       /**< Open the file or directory. */
-    Delete,     /**< Delete the selected file. */
-    Rename,     /**< Start inline rename editor. */
-    Copy,       /**< Copy file path to clipboard. */
-    Paste,      /**< Paste file from clipboard. */
-    NewFolder,  /**< Create a new folder. */
-    Properties  /**< Show file properties dialog. */
+    None,      /**< No action. */
+    Open,      /**< Open the file or directory. */
+    Delete,    /**< Delete the selected file. */
+    Rename,    /**< Start inline rename editor. */
+    Copy,      /**< Copy file path to clipboard. */
+    Paste,     /**< Paste file from clipboard. */
+    NewFolder, /**< Create a new folder. */
+    Properties /**< Show file properties dialog. */
 };
 
 /**
@@ -388,10 +388,10 @@ enum class MenuAction {
  * Items can be enabled or disabled based on the current selection.
  */
 struct MenuItem {
-    const char *label;  /**< Display text for the item. */
-    MenuAction action;  /**< Action to perform when clicked. */
-    bool separator;     /**< If true, draw separator after this item. */
-    bool enabled;       /**< If false, item is grayed out. */
+    const char *label; /**< Display text for the item. */
+    MenuAction action; /**< Action to perform when clicked. */
+    bool separator;    /**< If true, draw separator after this item. */
+    bool enabled;      /**< If false, item is grayed out. */
 };
 
 /**
@@ -427,9 +427,9 @@ struct ContextMenu {
  * the source file after successful paste.
  */
 enum class ClipboardOp {
-    None,  /**< No operation pending. */
-    Copy,  /**< Copy operation (source preserved). */
-    Cut    /**< Cut operation (source deleted after paste). */
+    None, /**< No operation pending. */
+    Copy, /**< Copy operation (source preserved). */
+    Cut   /**< Cut operation (source deleted after paste). */
 };
 
 /**
@@ -448,9 +448,9 @@ enum class ClipboardOp {
  * 6. For Cut: source file is deleted, hasContent=false
  */
 struct FileClipboard {
-    char path[MAX_PATH_LEN];  /**< Full path of the copied/cut file. */
-    ClipboardOp operation;    /**< Type of operation (Copy or Cut). */
-    bool hasContent;          /**< True if clipboard contains a valid path. */
+    char path[MAX_PATH_LEN]; /**< Full path of the copied/cut file. */
+    ClipboardOp operation;   /**< Type of operation (Copy or Cut). */
+    bool hasContent;         /**< True if clipboard contains a valid path. */
 };
 
 /**

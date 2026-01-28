@@ -351,6 +351,22 @@ LBL_FCmpGE:
     DISPATCH_NEXT_FAST();
 }
 
+LBL_FCmpOrd:
+{
+    vm.inline_handle_FCmpOrd(state);
+    if (state.exitRequested) [[unlikely]]
+        goto LBL_SLOW_PATH;
+    DISPATCH_NEXT_FAST();
+}
+
+LBL_FCmpUno:
+{
+    vm.inline_handle_FCmpUno(state);
+    if (state.exitRequested) [[unlikely]]
+        goto LBL_SLOW_PATH;
+    DISPATCH_NEXT_FAST();
+}
+
 LBL_Sitofp:
 {
     vm.inline_handle_Sitofp(state);
@@ -492,6 +508,14 @@ LBL_GAddr:
 LBL_ConstNull:
 {
     vm.inline_handle_ConstNull(state);
+    if (state.exitRequested) [[unlikely]]
+        goto LBL_SLOW_PATH;
+    DISPATCH_NEXT_FAST();
+}
+
+LBL_ConstF64:
+{
+    vm.inline_handle_ConstF64(state);
     if (state.exitRequested) [[unlikely]]
         goto LBL_SLOW_PATH;
     DISPATCH_NEXT_FAST();

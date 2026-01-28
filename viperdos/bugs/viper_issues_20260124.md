@@ -224,19 +224,19 @@ inline bool is_output_fd(i32 fd) { return fd == 1 || fd == 2; }
 Upon code review, the virtio driver infrastructure is already properly factored:
 
 - `virtio::Device` base class (`virtio.hpp`) provides:
-  - `basic_init()` - common initialization sequence
-  - `read32()`, `write32()` - MMIO register access
-  - `read_config8/16/32/64()` - config space access
-  - `negotiate_features()` - feature negotiation
-  - `set_status()`, `add_status()`, `get_status()` - status management
-  - `read_isr()`, `ack_interrupt()` - interrupt handling
+    - `basic_init()` - common initialization sequence
+    - `read32()`, `write32()` - MMIO register access
+    - `read_config8/16/32/64()` - config space access
+    - `negotiate_features()` - feature negotiation
+    - `set_status()`, `add_status()`, `get_status()` - status management
+    - `read_isr()`, `ack_interrupt()` - interrupt handling
 
 - `virtio::Virtqueue` class (`virtqueue.hpp`) provides:
-  - `init()`, `destroy()` - queue setup/teardown
-  - `alloc_desc()`, `free_desc()`, `free_chain()` - descriptor management
-  - `set_desc()`, `chain_desc()` - descriptor configuration
-  - `submit()`, `kick()` - request submission
-  - `poll_used()`, `get_used_len()` - completion polling
+    - `init()`, `destroy()` - queue setup/teardown
+    - `alloc_desc()`, `free_desc()`, `free_chain()` - descriptor management
+    - `set_desc()`, `chain_desc()` - descriptor configuration
+    - `submit()`, `kick()` - request submission
+    - `poll_used()`, `get_used_len()` - completion polling
 
 - All device drivers (`BlkDevice`, `NetDevice`, `InputDevice`) inherit from `Device`
 - RNG uses `Device` directly as a composition
@@ -470,14 +470,14 @@ Files with incomplete work (10 files identified):
 
 ## 7. Refactoring Priority Matrix
 
-| Priority | Target                 | Impact         | Effort | Lines Saved | Status      |
-|----------|------------------------|----------------|--------|-------------|-------------|
-| 1        | User validation macros | HIGH           | 2-4h   | 300-400     | ✅ Complete |
-| 2        | SyscallResult helpers  | MEDIUM-HIGH    | 1-2h   | 150-200     | ✅ Complete |
-| 3        | Handle lookup template | MEDIUM         | 2-3h   | 100-150     | ✅ Complete |
+| Priority | Target                 | Impact         | Effort | Lines Saved | Status         |
+|----------|------------------------|----------------|--------|-------------|----------------|
+| 1        | User validation macros | HIGH           | 2-4h   | 300-400     | ✅ Complete     |
+| 2        | SyscallResult helpers  | MEDIUM-HIGH    | 1-2h   | 150-200     | ✅ Complete     |
+| 3        | Handle lookup template | MEDIUM         | 2-3h   | 100-150     | ✅ Complete     |
 | 4        | Virtio base class      | N/A            | 0h     | 0           | ✅ Already done |
-| 5        | IPC server framework   | MEDIUM         | 3-4h   | 400-500     | Pending     |
-| 6        | Documentation pass     | HIGH (quality) | 8-12h  | N/A         | ✅ Complete |
+| 5        | IPC server framework   | MEDIUM         | 3-4h   | 400-500     | Pending        |
+| 6        | Documentation pass     | HIGH (quality) | 8-12h  | N/A         | ✅ Complete     |
 
 **Total estimated code reduction:** 950-1,250 lines (revised after Phase 3 review)
 **Total estimated effort:** 11-16 hours remaining
@@ -489,46 +489,47 @@ Files with incomplete work (10 files identified):
 ### Phase 1: Quick Wins (4-6 hours) ✅ COMPLETED
 
 - [x] Add user validation macros to table.hpp
-  - Added VALIDATE_USER_READ, VALIDATE_USER_WRITE, VALIDATE_USER_STRING macros
+    - Added VALIDATE_USER_READ, VALIDATE_USER_WRITE, VALIDATE_USER_STRING macros
 - [x] Add SyscallResult helper functions
-  - Added ok_u64(), ok_u32(), ok_i64() for success returns
-  - Added err_invalid_arg(), err_invalid_handle(), err_not_found(), err_out_of_memory(), err_permission(), err_code() for error returns
-  - Added err_io(), err_not_supported(), err_would_block() for additional error types
+    - Added ok_u64(), ok_u32(), ok_i64() for success returns
+    - Added err_invalid_arg(), err_invalid_handle(), err_not_found(), err_out_of_memory(), err_permission(), err_code()
+      for error returns
+    - Added err_io(), err_not_supported(), err_would_block() for additional error types
 - [x] Update all 18 handler files to use new helpers
-  - channel.cpp, file.cpp, dir.cpp, handle_fs.cpp, net.cpp, device.cpp, task.cpp
-  - tls.cpp, cap.cpp, debug.cpp, gui.cpp, tty.cpp, procgroup.cpp
-  - signal.cpp, assign.cpp, poll.cpp, sysinfo.cpp
-  - (time.cpp was already minimal, no changes needed)
+    - channel.cpp, file.cpp, dir.cpp, handle_fs.cpp, net.cpp, device.cpp, task.cpp
+    - tls.cpp, cap.cpp, debug.cpp, gui.cpp, tty.cpp, procgroup.cpp
+    - signal.cpp, assign.cpp, poll.cpp, sysinfo.cpp
+    - (time.cpp was already minimal, no changes needed)
 - [x] Verify builds and tests pass
-  - Build: SUCCESS (100% targets built)
-  - Tests: 3/3 host tests passed
+    - Build: SUCCESS (100% targets built)
+    - Tests: 3/3 host tests passed
 
 ### Phase 2: Core Refactoring (6-9 hours) ✅ COMPLETED
 
 - [x] Create handle lookup macros in handlers_internal.hpp
-  - Added GET_CAP_TABLE_OR_RETURN() macro
-  - Added GET_OBJECT_WITH_RIGHTS(var, T, table, handle, kind, rights) macro
-  - Added GET_OBJECT_CHECKED(var, T, table, handle, kind) macro
+    - Added GET_CAP_TABLE_OR_RETURN() macro
+    - Added GET_OBJECT_WITH_RIGHTS(var, T, table, handle, kind, rights) macro
+    - Added GET_OBJECT_CHECKED(var, T, table, handle, kind) macro
 - [x] Add file descriptor helper functions to table.hpp
-  - Added is_stdin(), is_stdout(), is_stderr(), is_console_fd(), is_output_fd()
+    - Added is_stdin(), is_stdout(), is_stderr(), is_console_fd(), is_output_fd()
 - [x] Refactor affected handler files
-  - channel.cpp - updated to use handle lookup macros
-  - handle_fs.cpp - updated to use handle lookup macros
-  - file.cpp - updated to use file descriptor helpers
-  - cap.cpp - updated to use GET_CAP_TABLE_OR_RETURN()
+    - channel.cpp - updated to use handle lookup macros
+    - handle_fs.cpp - updated to use handle lookup macros
+    - file.cpp - updated to use file descriptor helpers
+    - cap.cpp - updated to use GET_CAP_TABLE_OR_RETURN()
 - [x] Verify builds and tests pass
-  - Build: SUCCESS (100% targets built)
-  - Tests: 3/3 host tests passed
+    - Build: SUCCESS (100% targets built)
+    - Tests: 3/3 host tests passed
 
 ### Phase 3: Driver Consolidation (4-6 hours) ✅ ALREADY IMPLEMENTED
 
 Upon review, the virtio driver infrastructure is already well-designed:
 
 - [x] `virtio::Device` base class exists in `virtio.hpp`
-  - Provides `basic_init()`, register access, config space reads
-  - Handles feature negotiation, status management, ISR handling
+    - Provides `basic_init()`, register access, config space reads
+    - Handles feature negotiation, status management, ISR handling
 - [x] `virtio::Virtqueue` class exists in `virtqueue.hpp`
-  - Provides descriptor allocation, chain management, submission, polling
+    - Provides descriptor allocation, chain management, submission, polling
 - [x] All drivers (BlkDevice, NetDevice, InputDevice) inherit from Device
 - [x] Common patterns already factored out
 
@@ -545,21 +546,21 @@ analysis. The existing architecture already implements the proposed refactoring.
 ### Phase 5: Documentation (8-12 hours) ✅ COMPLETED
 
 - [x] Document viperfs.cpp core algorithms
-  - Added disk layout diagram to format.hpp
-  - Added inode block pointer layout diagram
-  - Added block allocation algorithm documentation with complexity analysis
+    - Added disk layout diagram to format.hpp
+    - Added inode block pointer layout diagram
+    - Added block allocation algorithm documentation with complexity analysis
 - [x] Document netstack.cpp packet flow
-  - Added packet flow diagrams (receive and transmit paths)
-  - Added TCP state machine diagram with all state transitions
-  - Added buffer management documentation
+    - Added packet flow diagrams (receive and transmit paths)
+    - Added TCP state machine diagram with all state transitions
+    - Added buffer management documentation
 - [x] Document gcon.cpp rendering pipeline
-  - Added rendering architecture overview
-  - Documented design choices (no double buffering, no dirty rectangles)
-  - Explained font scaling and scrollback buffer implementation
+    - Added rendering architecture overview
+    - Documented design choices (no double buffering, no dirty rectangles)
+    - Explained font scaling and scrollback buffer implementation
 - [x] Document scheduler.cpp task selection
-  - Added task selection algorithm documentation (EDF, RT, CFS)
-  - Added preemption logic documentation
-  - Explained scheduling policy differences (FIFO, RR, OTHER)
+    - Added task selection algorithm documentation (EDF, RT, CFS)
+    - Added preemption logic documentation
+    - Explained scheduling policy differences (FIFO, RR, OTHER)
 
 ---
 

@@ -42,18 +42,18 @@ extern long __syscall6(long num, long a0, long a1, long a2, long a3, long a4, lo
 
 /* Syscall numbers */
 #define SYS_THREAD_CREATE 0xB0
-#define SYS_THREAD_EXIT   0xB1
-#define SYS_THREAD_JOIN   0xB2
+#define SYS_THREAD_EXIT 0xB1
+#define SYS_THREAD_JOIN 0xB2
 #define SYS_THREAD_DETACH 0xB3
-#define SYS_THREAD_SELF   0xB4
-#define SYS_MMAP          0x150
-#define SYS_MUNMAP        0x151
-#define SYS_TASK_EXIT     0x01
+#define SYS_THREAD_SELF 0xB4
+#define SYS_MMAP 0x150
+#define SYS_MUNMAP 0x151
+#define SYS_TASK_EXIT 0x01
 
 /* mmap constants */
-#define PROT_READ  0x01
+#define PROT_READ 0x01
 #define PROT_WRITE 0x02
-#define MAP_PRIVATE   0x02
+#define MAP_PRIVATE 0x02
 #define MAP_ANONYMOUS 0x20
 
 /* Default thread stack size (64KB) */
@@ -70,13 +70,13 @@ extern long __syscall6(long num, long a0, long a1, long a2, long a3, long a4, lo
  * own TLS data, stack info, and startup parameters.
  */
 typedef struct {
-    void *(*start_routine)(void *);  /* Thread entry function */
-    void *arg;                       /* Argument to start_routine */
-    void *stack_base;                /* Base of mmap'd stack region */
-    size_t stack_size;               /* Size of mmap'd stack region */
-    pthread_t thread_id;             /* Kernel task ID */
-    int detached;                    /* Detached state */
-    int errno_value;                 /* Per-thread errno storage */
+    void *(*start_routine)(void *); /* Thread entry function */
+    void *arg;                      /* Argument to start_routine */
+    void *stack_base;               /* Base of mmap'd stack region */
+    size_t stack_size;              /* Size of mmap'd stack region */
+    pthread_t thread_id;            /* Kernel task ID */
+    int detached;                   /* Detached state */
+    int errno_value;                /* Per-thread errno storage */
     void *tls_values[TLS_KEYS_MAX]; /* Per-thread TLS storage */
 } tcb_t;
 
@@ -142,9 +142,7 @@ int pthread_create(pthread_t *thread,
 
     /* Allocate stack via mmap */
     long stack_base = __syscall6(
-        SYS_MMAP, 0, (long)stacksize,
-        PROT_READ | PROT_WRITE,
-        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        SYS_MMAP, 0, (long)stacksize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
     if (stack_base <= 0) {
         return ENOMEM;
@@ -163,11 +161,10 @@ int pthread_create(pthread_t *thread,
     unsigned long stack_top = (stack_base + (long)stacksize) & ~0xFUL;
 
     /* Create the kernel thread */
-    long result = __syscall3(
-        SYS_THREAD_CREATE,
-        (long)thread_wrapper,
-        (long)stack_top,
-        (long)tcb);  /* tls_base = TCB address */
+    long result = __syscall3(SYS_THREAD_CREATE,
+                             (long)thread_wrapper,
+                             (long)stack_top,
+                             (long)tcb); /* tls_base = TCB address */
 
     if (result <= 0) {
         /* Failed - free the stack */

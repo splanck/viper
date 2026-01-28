@@ -59,8 +59,7 @@ SyscallResult sys_thread_exit(u64 a0, u64, u64, u64, u64, u64) {
 
     // Wake any joiners
     if (t->thread.join_waiters) {
-        sched::wait_wake_all(
-            static_cast<sched::WaitQueue *>(t->thread.join_waiters));
+        sched::wait_wake_all(static_cast<sched::WaitQueue *>(t->thread.join_waiters));
     }
 
     // Decrement process thread count
@@ -113,8 +112,7 @@ SyscallResult sys_thread_join(u64 a0, u64, u64, u64, u64, u64) {
 
     // Block until the thread exits
     if (target->thread.join_waiters) {
-        sched::WaitQueue *wq =
-            static_cast<sched::WaitQueue *>(target->thread.join_waiters);
+        sched::WaitQueue *wq = static_cast<sched::WaitQueue *>(target->thread.join_waiters);
         sched::wait_enqueue(wq, caller);
         scheduler::schedule();
     }

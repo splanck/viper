@@ -19,8 +19,8 @@
 
 /// Console I/O mode for the shell
 enum class ConsoleMode {
-    STANDALONE,       ///< Connect to CONSOLED service (traditional mode)
-    CONSOLE_ATTACHED  ///< Spawned by consoled with private channels
+    STANDALONE,      ///< Connect to CONSOLED service (traditional mode)
+    CONSOLE_ATTACHED ///< Spawned by consoled with private channels
 };
 
 /// Get current console mode

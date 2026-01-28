@@ -51,14 +51,14 @@ implementation phases for building a windowed desktop environment.
 
 ### Recommendation: **100% Userspace Services**
 
-| Factor           | Userspace                          | Kernel                          |
-|------------------|------------------------------------|---------------------------------|
-| Fault isolation  | Crash doesn't take down system     | Crash = system crash            |
-| Development      | Easier debugging, faster iteration | Requires kernel rebuild         |
-| Security         | Runs with minimal privileges       | Full kernel access              |
-| Performance      | IPC overhead                       | Direct memory access            |
-| Modularity       | Can restart/upgrade independently  | Tightly coupled                 |
-| ViperDOS pattern | Matches display server pattern     | Goes against server design      |
+| Factor           | Userspace                          | Kernel                     |
+|------------------|------------------------------------|----------------------------|
+| Fault isolation  | Crash doesn't take down system     | Crash = system crash       |
+| Development      | Easier debugging, faster iteration | Requires kernel rebuild    |
+| Security         | Runs with minimal privileges       | Full kernel access         |
+| Performance      | IPC overhead                       | Direct memory access       |
+| Modularity       | Can restart/upgrade independently  | Tightly coupled            |
+| ViperDOS pattern | Matches display server pattern     | Goes against server design |
 
 **Rationale:**
 

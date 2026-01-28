@@ -185,7 +185,8 @@ void VmaList::rb_remove_fixup(Vma *x, Vma *parent) {
                 parent = x ? x->parent : nullptr;
             } else if (w) {
                 if (!w->right || w->right->color == RBColor::BLACK) {
-                    if (w->left) w->left->color = RBColor::BLACK;
+                    if (w->left)
+                        w->left->color = RBColor::BLACK;
                     w->color = RBColor::RED;
                     rb_rotate_right(w);
                     w = parent->right;
@@ -193,7 +194,8 @@ void VmaList::rb_remove_fixup(Vma *x, Vma *parent) {
                 if (w) {
                     w->color = parent->color;
                     parent->color = RBColor::BLACK;
-                    if (w->right) w->right->color = RBColor::BLACK;
+                    if (w->right)
+                        w->right->color = RBColor::BLACK;
                     rb_rotate_left(parent);
                 }
                 x = root_;
@@ -216,7 +218,8 @@ void VmaList::rb_remove_fixup(Vma *x, Vma *parent) {
                 parent = x ? x->parent : nullptr;
             } else if (w) {
                 if (!w->left || w->left->color == RBColor::BLACK) {
-                    if (w->right) w->right->color = RBColor::BLACK;
+                    if (w->right)
+                        w->right->color = RBColor::BLACK;
                     w->color = RBColor::RED;
                     rb_rotate_left(w);
                     w = parent->left;
@@ -224,7 +227,8 @@ void VmaList::rb_remove_fixup(Vma *x, Vma *parent) {
                 if (w) {
                     w->color = parent->color;
                     parent->color = RBColor::BLACK;
-                    if (w->left) w->left->color = RBColor::BLACK;
+                    if (w->left)
+                        w->left->color = RBColor::BLACK;
                     rb_rotate_right(parent);
                 }
                 x = root_;
@@ -234,11 +238,13 @@ void VmaList::rb_remove_fixup(Vma *x, Vma *parent) {
             }
         }
     }
-    if (x) x->color = RBColor::BLACK;
+    if (x)
+        x->color = RBColor::BLACK;
 }
 
 void VmaList::rb_remove(Vma *z) {
-    if (!z) return;
+    if (!z)
+        return;
 
     Vma *y = z;
     Vma *x = nullptr;
@@ -263,11 +269,13 @@ void VmaList::rb_remove(Vma *z) {
             x_parent = y->parent;
             rb_transplant(y, y->right);
             y->right = z->right;
-            if (y->right) y->right->parent = y;
+            if (y->right)
+                y->right->parent = y;
         }
         rb_transplant(z, y);
         y->left = z->left;
-        if (y->left) y->left->parent = y;
+        if (y->left)
+            y->left->parent = y;
         y->color = z->color;
     }
 

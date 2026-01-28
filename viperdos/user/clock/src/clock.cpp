@@ -150,8 +150,8 @@ void formatTime24(const Time &time, char *buf, int bufSize) {
  * @param bufSize Size of the output buffer in bytes.
  */
 void formatDate(const Time &time, char *buf, int bufSize) {
-    const char *months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+    const char *months[] = {
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
     int monthIdx = time.month - 1;
     if (monthIdx < 0 || monthIdx > 11) {
         monthIdx = 0;

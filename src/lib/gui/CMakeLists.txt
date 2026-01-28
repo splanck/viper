@@ -57,11 +57,11 @@ set(VG_GUI_IDE_WIDGET_SOURCES
 )
 
 # Platform-specific native dialogs
-if(APPLE)
+if (APPLE)
     set(VG_GUI_NATIVE_DIALOG_SOURCES
-        src/dialogs/vg_filedialog_native.m
+            src/dialogs/vg_filedialog_native.m
     )
-endif()
+endif ()
 
 # Phase 1 + Phase 2 + Phase 3 + Phase 5: Font engine + Widget core + Widgets + IDE Widgets
 set(VG_GUI_SOURCES ${VG_GUI_FONT_SOURCES} ${VG_GUI_CORE_SOURCES} ${VG_GUI_WIDGET_SOURCES} ${VG_GUI_IDE_WIDGET_SOURCES} ${VG_GUI_NATIVE_DIALOG_SOURCES})

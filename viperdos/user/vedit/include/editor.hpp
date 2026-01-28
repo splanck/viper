@@ -152,14 +152,18 @@ class Editor {
      *
      * @return Reference to the Buffer for direct manipulation.
      */
-    Buffer &buffer() { return m_buffer; }
+    Buffer &buffer() {
+        return m_buffer;
+    }
 
     /**
      * @brief Returns a const reference to the text buffer.
      *
      * @return Const reference to the Buffer for read-only access.
      */
-    const Buffer &buffer() const { return m_buffer; }
+    const Buffer &buffer() const {
+        return m_buffer;
+    }
 
     //=== Cursor Position ===//
 
@@ -168,14 +172,18 @@ class Editor {
      *
      * @return Zero-based line index (0 to buffer.lineCount()-1).
      */
-    int cursorLine() const { return m_cursorLine; }
+    int cursorLine() const {
+        return m_cursorLine;
+    }
 
     /**
      * @brief Returns the current cursor column.
      *
      * @return Zero-based column offset (0 to lineLength).
      */
-    int cursorCol() const { return m_cursorCol; }
+    int cursorCol() const {
+        return m_cursorCol;
+    }
 
     //=== Scroll Position ===//
 
@@ -184,14 +192,18 @@ class Editor {
      *
      * @return Index of the first visible line.
      */
-    int scrollY() const { return m_scrollY; }
+    int scrollY() const {
+        return m_scrollY;
+    }
 
     /**
      * @brief Returns the horizontal scroll offset.
      *
      * @return Column offset of the first visible character.
      */
-    int scrollX() const { return m_scrollX; }
+    int scrollX() const {
+        return m_scrollX;
+    }
 
     //=== Configuration ===//
 
@@ -200,14 +212,18 @@ class Editor {
      *
      * @return Reference to Config for reading/modifying settings.
      */
-    Config &config() { return m_config; }
+    Config &config() {
+        return m_config;
+    }
 
     /**
      * @brief Returns a const reference to the configuration.
      *
      * @return Const reference to Config for read-only access.
      */
-    const Config &config() const { return m_config; }
+    const Config &config() const {
+        return m_config;
+    }
 
     //=== Cursor Movement ===//
 
@@ -398,12 +414,12 @@ class Editor {
      */
     void clampCursor();
 
-    Buffer m_buffer;   /**< Text storage. */
-    Config m_config;   /**< Editor settings. */
-    int m_cursorLine;  /**< Current cursor line (0-based). */
-    int m_cursorCol;   /**< Current cursor column (0-based). */
-    int m_scrollY;     /**< First visible line. */
-    int m_scrollX;     /**< First visible column. */
+    Buffer m_buffer;  /**< Text storage. */
+    Config m_config;  /**< Editor settings. */
+    int m_cursorLine; /**< Current cursor line (0-based). */
+    int m_cursorCol;  /**< Current cursor column (0-based). */
+    int m_scrollY;    /**< First visible line. */
+    int m_scrollX;    /**< First visible column. */
 };
 
 } // namespace vedit

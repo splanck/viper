@@ -654,8 +654,10 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
 
             // Draw cursor as a 2px-wide vertical line
             vgfx_fill_rect((vgfx_window_t)canvas,
-                           (int32_t)cursor_x, (int32_t)cursor_y,
-                           2, (int32_t)editor->line_height,
+                           (int32_t)cursor_x,
+                           (int32_t)cursor_y,
+                           2,
+                           (int32_t)editor->line_height,
                            editor->cursor_color);
         }
     }
@@ -671,26 +673,34 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
         float track_x = widget->x + widget->width - scrollbar_width;
         uint32_t track_color = 0xFF3C3C3C; // Dark gray
         vgfx_fill_rect((vgfx_window_t)canvas,
-                       (int32_t)track_x, (int32_t)widget->y,
-                       (int32_t)scrollbar_width, (int32_t)visible_height,
+                       (int32_t)track_x,
+                       (int32_t)widget->y,
+                       (int32_t)scrollbar_width,
+                       (int32_t)visible_height,
                        track_color);
 
         // Calculate thumb size and position
         float thumb_ratio = visible_height / total_content_height;
-        if (thumb_ratio > 1.0f) thumb_ratio = 1.0f;
+        if (thumb_ratio > 1.0f)
+            thumb_ratio = 1.0f;
         float thumb_height = visible_height * thumb_ratio;
-        if (thumb_height < 20.0f) thumb_height = 20.0f; // Minimum thumb size
+        if (thumb_height < 20.0f)
+            thumb_height = 20.0f; // Minimum thumb size
 
         float scroll_ratio = editor->scroll_y / (total_content_height - visible_height);
-        if (scroll_ratio < 0.0f) scroll_ratio = 0.0f;
-        if (scroll_ratio > 1.0f) scroll_ratio = 1.0f;
+        if (scroll_ratio < 0.0f)
+            scroll_ratio = 0.0f;
+        if (scroll_ratio > 1.0f)
+            scroll_ratio = 1.0f;
         float thumb_y = widget->y + scroll_ratio * (visible_height - thumb_height);
 
         // Scrollbar thumb
         uint32_t thumb_color = 0xFF6C6C6C; // Medium gray
         vgfx_fill_rect((vgfx_window_t)canvas,
-                       (int32_t)(track_x + 2), (int32_t)thumb_y,
-                       (int32_t)(scrollbar_width - 4), (int32_t)thumb_height,
+                       (int32_t)(track_x + 2),
+                       (int32_t)thumb_y,
+                       (int32_t)(scrollbar_width - 4),
+                       (int32_t)thumb_height,
                        thumb_color);
     }
 }
@@ -835,8 +845,10 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
                 float click_ratio = event->mouse.y / visible_height;
                 float max_scroll = total_content_height - visible_height;
                 editor->scroll_y = click_ratio * max_scroll;
-                if (editor->scroll_y < 0) editor->scroll_y = 0;
-                if (editor->scroll_y > max_scroll) editor->scroll_y = max_scroll;
+                if (editor->scroll_y < 0)
+                    editor->scroll_y = 0;
+                if (editor->scroll_y > max_scroll)
+                    editor->scroll_y = max_scroll;
                 widget->needs_paint = true;
                 return true;
             }
@@ -1753,6 +1765,71 @@ void vg_codeeditor_redo(vg_codeeditor_t *editor)
     } while (op);
 
     editor->has_selection = false;
+    editor->base.needs_paint = true;
+}
+
+bool vg_codeeditor_copy(vg_codeeditor_t *editor)
+{
+    if (!editor || !editor->has_selection)
+        return false;
+
+    char *text = vg_codeeditor_get_selection(editor);
+    if (text)
+    {
+        vgfx_clipboard_set_text(text);
+        free(text);
+        return true;
+    }
+    return false;
+}
+
+bool vg_codeeditor_cut(vg_codeeditor_t *editor)
+{
+    if (!editor || editor->read_only || !editor->has_selection)
+        return false;
+
+    char *text = vg_codeeditor_get_selection(editor);
+    if (text)
+    {
+        vgfx_clipboard_set_text(text);
+        free(text);
+        vg_codeeditor_delete_selection(editor);
+        editor->base.needs_paint = true;
+        return true;
+    }
+    return false;
+}
+
+bool vg_codeeditor_paste(vg_codeeditor_t *editor)
+{
+    if (!editor || editor->read_only)
+        return false;
+
+    char *text = vgfx_clipboard_get_text();
+    if (text)
+    {
+        if (editor->has_selection)
+        {
+            vg_codeeditor_delete_selection(editor);
+        }
+        vg_codeeditor_insert_text(editor, text);
+        free(text);
+        editor->base.needs_paint = true;
+        return true;
+    }
+    return false;
+}
+
+void vg_codeeditor_select_all(vg_codeeditor_t *editor)
+{
+    if (!editor || editor->line_count == 0)
+        return;
+
+    editor->selection.start_line = 0;
+    editor->selection.start_col = 0;
+    editor->selection.end_line = editor->line_count - 1;
+    editor->selection.end_col = editor->lines[editor->line_count - 1].length;
+    editor->has_selection = true;
     editor->base.needs_paint = true;
 }
 

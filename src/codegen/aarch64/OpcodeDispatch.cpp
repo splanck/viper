@@ -97,6 +97,8 @@
 #include "InstrLowering.hpp"
 #include "OpcodeMappings.hpp"
 
+#include <cstring>
+
 namespace viper::codegen::aarch64
 {
 
@@ -310,6 +312,15 @@ bool lowerInstruction(const il::core::Instr &ins,
         case Opcode::URemChk0:
             lowerURemChk0(ins, bbIn, ctx, bbOut());
             return true;
+        case Opcode::IdxChk:
+            lowerIdxChk(ins, bbIn, ctx, bbOut());
+            return true;
+        case Opcode::SRem:
+            lowerSRem(ins, bbIn, ctx, bbOut());
+            return true;
+        case Opcode::URem:
+            lowerURem(ins, bbIn, ctx, bbOut());
+            return true;
         case Opcode::FAdd:
         case Opcode::FSub:
         case Opcode::FMul:
@@ -322,6 +333,8 @@ bool lowerInstruction(const il::core::Instr &ins,
         case Opcode::FCmpLE:
         case Opcode::FCmpGT:
         case Opcode::FCmpGE:
+        case Opcode::FCmpOrd:
+        case Opcode::FCmpUno:
             lowerFpCompare(ins, bbIn, ctx, bbOut());
             return true;
         case Opcode::Sitofp:
@@ -330,6 +343,73 @@ bool lowerInstruction(const il::core::Instr &ins,
         case Opcode::Fptosi:
             lowerFptosi(ins, bbIn, ctx, bbOut());
             return true;
+        case Opcode::ConstF64:
+        {
+            // Lower const.f64 by materializing a floating-point constant.
+            // For arbitrary values, we load the 64-bit IEEE-754 representation
+            // into a GPR and then use fmov to transfer to FPR.
+            if (!ins.result || ins.operands.empty())
+                return true;
+
+            const uint16_t dst = ctx.nextVRegId++;
+            ctx.tempVReg[*ins.result] = dst;
+            ctx.tempRegClass[*ins.result] = RegClass::FPR;
+
+            // Get the f64 value from the operand
+            if (ins.operands[0].kind == il::core::Value::Kind::ConstFloat)
+            {
+                // Materialize the 64-bit representation into a GPR, then fmov to FPR
+                const double fval = ins.operands[0].f64;
+                uint64_t bits;
+                std::memcpy(&bits, &fval, sizeof(bits));
+
+                const uint16_t tmpGpr = ctx.nextVRegId++;
+                // Use MovRI - the emitter will handle movz/movk sequence automatically
+                bbOut().instrs.push_back(
+                    MInstr{MOpcode::MovRI,
+                           {MOperand::vregOp(RegClass::GPR, tmpGpr),
+                            MOperand::immOp(static_cast<long long>(bits))}});
+                // Use fmov to transfer GPR to FPR
+                bbOut().instrs.push_back(MInstr{MOpcode::FMovGR,
+                                                {MOperand::vregOp(RegClass::FPR, dst),
+                                                 MOperand::vregOp(RegClass::GPR, tmpGpr)}});
+            }
+            return true;
+        }
+        case Opcode::ConstNull:
+        {
+            // const_null produces a null pointer (0)
+            if (!ins.result)
+                return true;
+            const uint16_t dst = ctx.nextVRegId++;
+            ctx.tempVReg[*ins.result] = dst;
+            ctx.tempRegClass[*ins.result] = RegClass::GPR;
+            bbOut().instrs.push_back(
+                MInstr{MOpcode::MovRI,
+                       {MOperand::vregOp(RegClass::GPR, dst), MOperand::immOp(0)}});
+            return true;
+        }
+        case Opcode::GAddr:
+        {
+            // gaddr @symbol produces the address of a global variable
+            if (!ins.result || ins.operands.empty())
+                return true;
+            if (ins.operands[0].kind != il::core::Value::Kind::GlobalAddr)
+                return true;
+            const std::string &sym = ins.operands[0].str;
+            // Materialize address of global symbol using adrp+add
+            const uint16_t dst = ctx.nextVRegId++;
+            ctx.tempVReg[*ins.result] = dst;
+            ctx.tempRegClass[*ins.result] = RegClass::GPR;
+            bbOut().instrs.push_back(
+                MInstr{MOpcode::AdrPage,
+                       {MOperand::vregOp(RegClass::GPR, dst), MOperand::labelOp(sym)}});
+            bbOut().instrs.push_back(MInstr{MOpcode::AddPageOff,
+                                            {MOperand::vregOp(RegClass::GPR, dst),
+                                             MOperand::vregOp(RegClass::GPR, dst),
+                                             MOperand::labelOp(sym)}});
+            return true;
+        }
         case Opcode::ConstStr:
         {
             // Lower const_str to produce a string handle via rt_const_cstr.
@@ -370,6 +450,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                 return true;
             const unsigned ptrId = ins.operands[0].id;
             const int off = ctx.fb.localOffset(ptrId);
+            const bool isStr = (ins.type.kind == il::core::Type::Kind::Str);
             if (off != 0)
             {
                 // Store to alloca local via FP offset
@@ -450,6 +531,33 @@ bool lowerInstruction(const il::core::Instr &ins,
                         }
                         bbOut().instrs.push_back(MInstr{MOpcode::StrFprBaseImm,
                                                         {MOperand::vregOp(RegClass::FPR, srcF),
+                                                         MOperand::vregOp(RegClass::GPR, vbase),
+                                                         MOperand::immOp(0)}});
+                    }
+                    else if (isStr)
+                    {
+                        // String store: release old, retain new, then store
+                        // 1. Load old string from [base] into temp
+                        const uint16_t vOld = ctx.nextVRegId++;
+                        bbOut().instrs.push_back(MInstr{MOpcode::LdrRegBaseImm,
+                                                        {MOperand::vregOp(RegClass::GPR, vOld),
+                                                         MOperand::vregOp(RegClass::GPR, vbase),
+                                                         MOperand::immOp(0)}});
+                        // 2. Call rt_str_release_maybe(old) - move to X0 and call
+                        bbOut().instrs.push_back(MInstr{
+                            MOpcode::MovRR,
+                            {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, vOld)}});
+                        bbOut().instrs.push_back(
+                            MInstr{MOpcode::Bl, {MOperand::labelOp("rt_str_release_maybe")}});
+                        // 3. Call rt_str_retain_maybe(new) - move to X0 and call
+                        bbOut().instrs.push_back(MInstr{
+                            MOpcode::MovRR,
+                            {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, vval)}});
+                        bbOut().instrs.push_back(
+                            MInstr{MOpcode::Bl, {MOperand::labelOp("rt_str_retain_maybe")}});
+                        // 4. Store the new string
+                        bbOut().instrs.push_back(MInstr{MOpcode::StrRegBaseImm,
+                                                        {MOperand::vregOp(RegClass::GPR, vval),
                                                          MOperand::vregOp(RegClass::GPR, vbase),
                                                          MOperand::immOp(0)}});
                     }
@@ -646,6 +754,111 @@ bool lowerInstruction(const il::core::Instr &ins,
             {
                 // Fallback: emit call without args for noreturn functions
                 bbOut().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp(ins.callee)}});
+            }
+            return true;
+        }
+        case Opcode::CallIndirect:
+        {
+            // CallIndirect: operands[0] is function pointer (can be GlobalAddr @symbol or %temp)
+            // operands[1..n] are arguments
+
+            if (ins.operands.empty())
+                return true; // Invalid - need at least a function pointer
+
+            uint16_t vFuncPtr = 0;
+            size_t argStartIdx = 1; // Arguments start after the function pointer
+
+            const auto &funcPtrOp = ins.operands[0];
+            if (funcPtrOp.kind == il::core::Value::Kind::GlobalAddr)
+            {
+                // operands[0] is @symbol - load address via adrp/add pattern
+                const uint16_t addrReg = ctx.nextVRegId++;
+                bbOut().instrs.push_back(MInstr{
+                    MOpcode::AdrPage,
+                    {MOperand::vregOp(RegClass::GPR, addrReg), MOperand::labelOp(funcPtrOp.str)}});
+                bbOut().instrs.push_back(MInstr{MOpcode::AddPageOff,
+                                                {MOperand::vregOp(RegClass::GPR, addrReg),
+                                                 MOperand::vregOp(RegClass::GPR, addrReg),
+                                                 MOperand::labelOp(funcPtrOp.str)}});
+                vFuncPtr = addrReg;
+            }
+            else
+            {
+                // operands[0] is a temporary holding the function pointer
+                RegClass cFuncPtr = RegClass::GPR;
+                if (!materializeValueToVReg(ins.operands[0],
+                                            bbIn,
+                                            ctx.ti,
+                                            ctx.fb,
+                                            bbOut(),
+                                            ctx.tempVReg,
+                                            ctx.tempRegClass,
+                                            ctx.nextVRegId,
+                                            vFuncPtr,
+                                            cFuncPtr))
+                {
+                    return true; // Can't materialize function pointer
+                }
+            }
+
+            // Move arguments to arg registers x0-x7
+            constexpr PhysReg argRegs[] = {PhysReg::X0,
+                                           PhysReg::X1,
+                                           PhysReg::X2,
+                                           PhysReg::X3,
+                                           PhysReg::X4,
+                                           PhysReg::X5,
+                                           PhysReg::X6,
+                                           PhysReg::X7};
+            const size_t numArgs = ins.operands.size() - argStartIdx;
+            for (size_t i = 0; i < numArgs && i < 8; ++i)
+            {
+                uint16_t vArg = 0;
+                RegClass cArg = RegClass::GPR;
+                if (materializeValueToVReg(ins.operands[argStartIdx + i],
+                                           bbIn,
+                                           ctx.ti,
+                                           ctx.fb,
+                                           bbOut(),
+                                           ctx.tempVReg,
+                                           ctx.tempRegClass,
+                                           ctx.nextVRegId,
+                                           vArg,
+                                           cArg))
+                {
+                    bbOut().instrs.push_back(MInstr{
+                        MOpcode::MovRR,
+                        {MOperand::regOp(argRegs[i]), MOperand::vregOp(RegClass::GPR, vArg)}});
+                }
+            }
+
+            // Move function pointer to a caller-saved register (x9) before the call
+            // to avoid it being clobbered by arg setup
+            bbOut().instrs.push_back(
+                MInstr{MOpcode::MovRR,
+                       {MOperand::regOp(PhysReg::X9), MOperand::vregOp(RegClass::GPR, vFuncPtr)}});
+
+            // Emit indirect call: blr x9
+            bbOut().instrs.push_back(MInstr{MOpcode::Blr, {MOperand::regOp(PhysReg::X9)}});
+
+            // If the call produces a result, move x0 to a fresh vreg
+            if (ins.result)
+            {
+                const uint16_t dst = ctx.nextVRegId++;
+                ctx.tempVReg[*ins.result] = dst;
+                if (ins.type.kind == il::core::Type::Kind::F64)
+                {
+                    ctx.tempRegClass[*ins.result] = RegClass::FPR;
+                    bbOut().instrs.push_back(MInstr{MOpcode::FMovRR,
+                                                    {MOperand::vregOp(RegClass::FPR, dst),
+                                                     MOperand::regOp(ctx.ti.f64ReturnReg)}});
+                }
+                else
+                {
+                    bbOut().instrs.push_back(MInstr{
+                        MOpcode::MovRR,
+                        {MOperand::vregOp(RegClass::GPR, dst), MOperand::regOp(PhysReg::X0)}});
+                }
             }
             return true;
         }

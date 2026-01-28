@@ -296,8 +296,8 @@ typedef struct {
  * @brief Menu definition (one pulldown menu like "File" or "Edit").
  */
 typedef struct {
-    char title[24];                         ///< Menu title shown in menu bar
-    uint8_t item_count;                     ///< Number of items in this menu
+    char title[24];     ///< Menu title shown in menu bar
+    uint8_t item_count; ///< Number of items in this menu
     uint8_t _pad[3];
     gui_menu_item_t items[GUI_MAX_MENU_ITEMS]; ///< Menu items
 } gui_menu_def_t;

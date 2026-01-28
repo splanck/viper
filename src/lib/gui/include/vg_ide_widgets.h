@@ -2043,6 +2043,25 @@ extern "C"
     /// @param editor CodeEditor widget
     void vg_codeeditor_redo(vg_codeeditor_t *editor);
 
+    /// @brief Copy selected text to clipboard
+    /// @param editor CodeEditor widget
+    /// @return true if text was copied
+    bool vg_codeeditor_copy(vg_codeeditor_t *editor);
+
+    /// @brief Cut selected text to clipboard
+    /// @param editor CodeEditor widget
+    /// @return true if text was cut
+    bool vg_codeeditor_cut(vg_codeeditor_t *editor);
+
+    /// @brief Paste text from clipboard
+    /// @param editor CodeEditor widget
+    /// @return true if text was pasted
+    bool vg_codeeditor_paste(vg_codeeditor_t *editor);
+
+    /// @brief Select all text
+    /// @param editor CodeEditor widget
+    void vg_codeeditor_select_all(vg_codeeditor_t *editor);
+
     /// @brief Set font for code editor
     /// @param editor CodeEditor widget
     /// @param font Monospace font to use

@@ -265,7 +265,8 @@ bool expand_heap(u64 needed) {
         free_block_count++;
 
         // Update legacy pointer
-        if (free_list == nullptr) free_list = new_block;
+        if (free_list == nullptr)
+            free_list = new_block;
 
         return true;
     } else {
@@ -301,7 +302,8 @@ bool expand_heap(u64 needed) {
         free_block_count++;
 
         // Update legacy pointer
-        if (free_list == nullptr) free_list = new_block;
+        if (free_list == nullptr)
+            free_list = new_block;
 
         return true;
     }
@@ -586,7 +588,7 @@ found:
                 pp = &((*pp)->next);
             }
         }
-found2:
+    found2:
         if (best == nullptr) {
             return nullptr;
         }

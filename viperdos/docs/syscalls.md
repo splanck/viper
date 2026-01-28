@@ -66,26 +66,26 @@ The canonical list of error codes lives in `include/viperdos/syscall_abi.hpp`. C
 
 ## Syscall Categories
 
-| Range       | Category   | Description                     |
-|-------------|------------|---------------------------------|
-| 0x00-0x0F   | Task       | Process/task management         |
-| 0x10-0x1F   | Channel    | IPC channels                    |
-| 0x20-0x2F   | Poll       | Event multiplexing              |
-| 0x30-0x3F   | Time       | Timers and sleep                |
-| 0x40-0x4F   | File I/O   | POSIX-like file descriptors     |
-| 0x50-0x5F   | Network    | TCP/UDP sockets, DNS            |
-| 0x60-0x6F   | Directory  | Directory operations            |
-| 0x70-0x7F   | Capability | Handle management               |
-| 0x80-0x8F   | Handle FS  | Handle-based filesystem         |
-| 0x90-0x9F   | Signal     | POSIX signals                   |
-| 0xA0-0xAF   | Process    | Process groups, PIDs            |
-| 0xC0-0xCF   | Assign     | Logical device assigns          |
-| 0xD0-0xDF   | TLS        | TLS sessions                    |
-| 0xE0-0xEF   | System     | System information              |
-| 0xF0-0xFF   | Debug      | Console I/O, debug              |
-| 0x100-0x10F | Device     | Device management, shared memory|
-| 0x110-0x11F | GUI        | Display, mouse, input events    |
-| 0x120-0x12F | TTY        | Kernel TTY buffer I/O           |
+| Range       | Category   | Description                      |
+|-------------|------------|----------------------------------|
+| 0x00-0x0F   | Task       | Process/task management          |
+| 0x10-0x1F   | Channel    | IPC channels                     |
+| 0x20-0x2F   | Poll       | Event multiplexing               |
+| 0x30-0x3F   | Time       | Timers and sleep                 |
+| 0x40-0x4F   | File I/O   | POSIX-like file descriptors      |
+| 0x50-0x5F   | Network    | TCP/UDP sockets, DNS             |
+| 0x60-0x6F   | Directory  | Directory operations             |
+| 0x70-0x7F   | Capability | Handle management                |
+| 0x80-0x8F   | Handle FS  | Handle-based filesystem          |
+| 0x90-0x9F   | Signal     | POSIX signals                    |
+| 0xA0-0xAF   | Process    | Process groups, PIDs             |
+| 0xC0-0xCF   | Assign     | Logical device assigns           |
+| 0xD0-0xDF   | TLS        | TLS sessions                     |
+| 0xE0-0xEF   | System     | System information               |
+| 0xF0-0xFF   | Debug      | Console I/O, debug               |
+| 0x100-0x10F | Device     | Device management, shared memory |
+| 0x110-0x11F | GUI        | Display, mouse, input events     |
+| 0x120-0x12F | TTY        | Kernel TTY buffer I/O            |
 
 ---
 
@@ -1114,7 +1114,8 @@ Get current resource usage for the current process.
 
 ## Handle-based Filesystem (0x80-0x8F)
 
-These syscalls provide a capability-based filesystem API using directory/file handles rather than global integer file descriptors.
+These syscalls provide a capability-based filesystem API using directory/file handles rather than global integer file
+descriptors.
 
 ### SYS_FS_OPEN_ROOT (0x80)
 
@@ -1400,7 +1401,8 @@ Get command-line arguments for the current process.
 
 ## Assign System (0xC0-0xCF)
 
-The assign system maps short names (e.g., `SYS`) to directory handles, allowing paths like `SYS:foo/bar` to be resolved by the kernel.
+The assign system maps short names (e.g., `SYS`) to directory handles, allowing paths like `SYS:foo/bar` to be resolved
+by the kernel.
 
 ### SYS_ASSIGN_SET (0xC0)
 

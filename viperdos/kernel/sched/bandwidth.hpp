@@ -48,8 +48,8 @@ constexpr u64 MAX_PERIOD_NS = 1000000000ULL;
  * @brief Bandwidth configuration parameters.
  */
 struct BandwidthParams {
-    u64 runtime;  ///< Maximum runtime per period (nanoseconds, 0=unlimited)
-    u64 period;   ///< Period length (nanoseconds)
+    u64 runtime; ///< Maximum runtime per period (nanoseconds, 0=unlimited)
+    u64 period;  ///< Period length (nanoseconds)
 };
 
 /**

@@ -275,6 +275,18 @@ void VM::dispatchOpcodeSwitch(ExecState &state, const il::core::Instr &instr)
             inline_handle_FCmpGE(state);
             break;
         }
+        case il::core::Opcode::FCmpOrd:
+        {
+            traceInstruction(instr, state.fr);
+            inline_handle_FCmpOrd(state);
+            break;
+        }
+        case il::core::Opcode::FCmpUno:
+        {
+            traceInstruction(instr, state.fr);
+            inline_handle_FCmpUno(state);
+            break;
+        }
         case il::core::Opcode::Sitofp:
         {
             traceInstruction(instr, state.fr);
@@ -381,6 +393,12 @@ void VM::dispatchOpcodeSwitch(ExecState &state, const il::core::Instr &instr)
         {
             traceInstruction(instr, state.fr);
             inline_handle_ConstNull(state);
+            break;
+        }
+        case il::core::Opcode::ConstF64:
+        {
+            traceInstruction(instr, state.fr);
+            inline_handle_ConstF64(state);
             break;
         }
         case il::core::Opcode::Call:

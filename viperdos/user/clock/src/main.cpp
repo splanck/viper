@@ -122,22 +122,22 @@ extern "C" int main(int argc, char **argv) {
         gui_event_t event;
         if (gui_poll_event(win, &event) == 0) {
             switch (event.type) {
-            case GUI_EVENT_CLOSE:
-                // User closed the window
-                running = false;
-                break;
+                case GUI_EVENT_CLOSE:
+                    // User closed the window
+                    running = false;
+                    break;
 
-            case GUI_EVENT_MOUSE:
-                // Click toggles 12/24 hour mode
-                if (event.mouse.event_type == 1 && event.mouse.button == 0) {
-                    ui.toggle24Hour();
-                    getCurrentTime(time);
-                    ui.render(time);
-                }
-                break;
+                case GUI_EVENT_MOUSE:
+                    // Click toggles 12/24 hour mode
+                    if (event.mouse.event_type == 1 && event.mouse.button == 0) {
+                        ui.toggle24Hour();
+                        getCurrentTime(time);
+                        ui.render(time);
+                    }
+                    break;
 
-            default:
-                break;
+                default:
+                    break;
             }
         }
 

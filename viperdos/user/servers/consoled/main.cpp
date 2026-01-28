@@ -21,14 +21,14 @@
  * Text is rendered in a GUI window managed by displayd.
  */
 
+#include "../../include/viper_colors.h"
+#include "../../syscall.hpp"
 #include "ansi.hpp"
+#include "console_protocol.hpp"
 #include "keymap.hpp"
 #include "request.hpp"
 #include "shell.hpp"
 #include "text_buffer.hpp"
-#include "../../include/viper_colors.h"
-#include "../../syscall.hpp"
-#include "console_protocol.hpp"
 #include <gui.h>
 
 using namespace console_protocol;

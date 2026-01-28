@@ -163,14 +163,14 @@ static bool g_initialized = false;
  * - pixels: The mapped virtual address of the SHM (unmapped on destroy)
  */
 struct gui_window {
-    uint32_t surface_id;     /**< Surface ID assigned by displayd. */
-    uint32_t width;          /**< Window content width in pixels. */
-    uint32_t height;         /**< Window content height in pixels. */
-    uint32_t stride;         /**< Row stride in bytes (may include padding). */
-    uint32_t shm_handle;     /**< SHM handle for the pixel buffer. */
-    uint32_t *pixels;        /**< Pointer to mapped pixel buffer. */
-    char title[64];          /**< Window title (null-terminated). */
-    int32_t event_channel;   /**< Channel for receiving events from displayd. */
+    uint32_t surface_id;   /**< Surface ID assigned by displayd. */
+    uint32_t width;        /**< Window content width in pixels. */
+    uint32_t height;       /**< Window content height in pixels. */
+    uint32_t stride;       /**< Row stride in bytes (may include padding). */
+    uint32_t shm_handle;   /**< SHM handle for the pixel buffer. */
+    uint32_t *pixels;      /**< Pointer to mapped pixel buffer. */
+    char title[64];        /**< Window title (null-terminated). */
+    int32_t event_channel; /**< Channel for receiving events from displayd. */
 };
 
 /**

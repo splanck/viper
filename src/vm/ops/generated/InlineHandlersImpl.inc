@@ -473,6 +473,28 @@ void VM::inline_handle_FCmpGE(ExecState &st)
     handleInlineResult(st, exec);
 }
 
+void VM::inline_handle_FCmpOrd(ExecState &st)
+{
+    const Instr *instr = st.currentInstr;
+    if (!instr)
+    {
+        trapUnimplemented(Opcode::FCmpOrd);
+    }
+    ExecResult exec = il::vm::detail::handleFCmpOrd(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
+    handleInlineResult(st, exec);
+}
+
+void VM::inline_handle_FCmpUno(ExecState &st)
+{
+    const Instr *instr = st.currentInstr;
+    if (!instr)
+    {
+        trapUnimplemented(Opcode::FCmpUno);
+    }
+    ExecResult exec = il::vm::detail::handleFCmpUno(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
+    handleInlineResult(st, exec);
+}
+
 void VM::inline_handle_Sitofp(ExecState &st)
 {
     const Instr *instr = st.currentInstr;
@@ -677,6 +699,18 @@ void VM::inline_handle_ConstNull(ExecState &st)
     }
     ExecResult exec =
         il::vm::detail::handleConstNull(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
+    handleInlineResult(st, exec);
+}
+
+void VM::inline_handle_ConstF64(ExecState &st)
+{
+    const Instr *instr = st.currentInstr;
+    if (!instr)
+    {
+        trapUnimplemented(Opcode::ConstF64);
+    }
+    ExecResult exec =
+        il::vm::detail::handleConstF64(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
     handleInlineResult(st, exec);
 }
 

@@ -57,6 +57,6 @@ struct BasicDiagInfo
 [[nodiscard]] il::support::Severity getSeverity(BasicDiag diag);
 [[nodiscard]] std::string_view getFormat(BasicDiag diag);
 [[nodiscard]] std::string formatMessage(BasicDiag diag,
-                                         std::initializer_list<Replacement> replacements = {});
+                                        std::initializer_list<Replacement> replacements = {});
 
 } // namespace il::frontends::basic::diag

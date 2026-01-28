@@ -103,8 +103,8 @@ SyscallResult sys_mmap(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u64 a5) {
 
     // Create a VMA for the mapping (demand paging will handle actual allocation)
     auto saved = v->vma_list.acquire_lock();
-    mm::Vma *vma = v->vma_list.add(map_addr, map_addr + aligned_len,
-                                     vma_prot_flags, mm::VmaType::ANONYMOUS);
+    mm::Vma *vma =
+        v->vma_list.add(map_addr, map_addr + aligned_len, vma_prot_flags, mm::VmaType::ANONYMOUS);
     v->vma_list.release_lock(saved);
 
     if (!vma) {
@@ -188,9 +188,8 @@ SyscallResult sys_mprotect(u64 a0, u64 a1, u64 a2, u64, u64, u64) {
 
         // Rebuild PTE with new protection bits, preserving physical address
         u64 phys = old_pte & viper::pte::ADDR_MASK;
-        u64 entry = phys | viper::pte::VALID | viper::pte::PAGE |
-                    viper::pte::AF | viper::pte::SH_INNER |
-                    viper::pte::AP_EL0 | viper::pte::ATTR_NORMAL;
+        u64 entry = phys | viper::pte::VALID | viper::pte::PAGE | viper::pte::AF |
+                    viper::pte::SH_INNER | viper::pte::AP_EL0 | viper::pte::ATTR_NORMAL;
 
         if (!(prot & PROT_WRITE)) {
             entry |= viper::pte::AP_RO;

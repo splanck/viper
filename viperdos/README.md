@@ -66,13 +66,13 @@ The build script automatically:
 
 ViperDOS is a research operating system exploring:
 
-| Concept                       | Implementation                                                                       |
-|-------------------------------|--------------------------------------------------------------------------------------|
-| **Capability-Based Security** | Handle-based access control with rights derivation and revocation                    |
-| **Hybrid Kernel Design**      | Kernel provides filesystem, networking, block I/O; display servers in user space      |
-| **Modern Memory Management**  | Demand paging, copy-on-write, shared memory, buddy allocator                         |
-| **Full Network Stack**        | TCP/IP, TLS 1.3, DNS, HTTP, SSH-2/SFTP (user-space)                                  |
-| **Crash-Consistent Storage**  | Write-ahead journaling filesystem (kernel VFS/ViperFS)                               |
+| Concept                       | Implementation                                                                   |
+|-------------------------------|----------------------------------------------------------------------------------|
+| **Capability-Based Security** | Handle-based access control with rights derivation and revocation                |
+| **Hybrid Kernel Design**      | Kernel provides filesystem, networking, block I/O; display servers in user space |
+| **Modern Memory Management**  | Demand paging, copy-on-write, shared memory, buddy allocator                     |
+| **Full Network Stack**        | TCP/IP, TLS 1.3, DNS, HTTP, SSH-2/SFTP (user-space)                              |
+| **Crash-Consistent Storage**  | Write-ahead journaling filesystem (kernel VFS/ViperFS)                           |
 
 ### Why ViperDOS?
 
@@ -99,16 +99,16 @@ ViperDOS is a research operating system exploring:
 
 ### User Space (~65,000 SLOC)
 
-| Component         | Features                                                                        |
-|-------------------|---------------------------------------------------------------------------------|
-| **libc**          | POSIX-compatible C library (stdio, string, stdlib, unistd, socket, poll)        |
-| **Display Servers** | consoled (GUI terminal emulator), displayd (window manager/compositor)           |
-| **libtls**        | TLS 1.3 client with X.509 certificate verification                              |
-| **libssh**        | SSH-2 client with SFTP, Ed25519/RSA authentication                              |
-| **libhttp**       | HTTP/1.1 client library                                                         |
-| **libgui**        | GUI client library for displayd                                                 |
-| **vinit Shell**   | Interactive shell with line editing, history, tab completion                    |
-| **User Programs** | hello, fsinfo, sysinfo, netstat, ping, edit, devices, ssh, sftp, hello_gui      |
+| Component           | Features                                                                   |
+|---------------------|----------------------------------------------------------------------------|
+| **libc**            | POSIX-compatible C library (stdio, string, stdlib, unistd, socket, poll)   |
+| **Display Servers** | consoled (GUI terminal emulator), displayd (window manager/compositor)     |
+| **libtls**          | TLS 1.3 client with X.509 certificate verification                         |
+| **libssh**          | SSH-2 client with SFTP, Ed25519/RSA authentication                         |
+| **libhttp**         | HTTP/1.1 client library                                                    |
+| **libgui**          | GUI client library for displayd                                            |
+| **vinit Shell**     | Interactive shell with line editing, history, tab completion               |
+| **User Programs**   | hello, fsinfo, sysinfo, netstat, ping, edit, devices, ssh, sftp, hello_gui |
 
 ---
 

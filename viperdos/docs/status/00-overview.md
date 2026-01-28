@@ -26,46 +26,46 @@ The system is designed for QEMU's `virt` machine but is structured for future ha
 
 ## Project Statistics
 
-| Component                  | SLOC     | Status                                                           |
-|----------------------------|----------|------------------------------------------------------------------|
-| VBoot (UEFI bootloader)    | ~1,700   | Complete (UEFI boot, GOP framebuffer)                            |
-| Architecture (AArch64)     | ~3,450   | Complete for QEMU (GICv2/v3, PSCI, hi-res timer)                 |
-| Memory Management          | ~5,200   | Complete (PMM, VMM, slab, buddy, COW, VMA)                       |
-| Console (Serial/Graphics)  | ~3,950   | Complete (ANSI escape codes, scrollback, cursor)                 |
-| Drivers (VirtIO/fw_cfg)    | ~5,450   | Complete for QEMU (blk, net, gpu, rng, input)                    |
-| Filesystem (VFS/ViperFS)   | ~6,600   | Complete (journal, inode cache, block cache)                     |
-| IPC (Channels/Poll)        | ~2,700   | Complete                                                         |
-| Scheduler/Tasks            | ~4,450   | Complete (8-level priority, SMP, CFS, EDF, priority inheritance) |
-| Viper/Capabilities         | ~2,300   | Complete (handle-based access, rights derivation)                |
-| Display Servers            | ~4,200   | Complete (consoled, displayd)                                    |
-| libc                       | ~30,200  | Complete (POSIX C library)                                       |
-| Libraries (GUI, etc.)      | ~17,100  | Complete (libgui, libwidget, libtls, libhttp, libssh)            |
-| GUI Applications           | ~17,700  | Complete (workbench, calc, clock, vedit, etc.)                   |
-| Tools                      | ~2,000   | Complete                                                         |
-| **Total**                  |**~143,000**|                                                               |
+| Component                 | SLOC         | Status                                                           |
+|---------------------------|--------------|------------------------------------------------------------------|
+| VBoot (UEFI bootloader)   | ~1,700       | Complete (UEFI boot, GOP framebuffer)                            |
+| Architecture (AArch64)    | ~3,450       | Complete for QEMU (GICv2/v3, PSCI, hi-res timer)                 |
+| Memory Management         | ~5,200       | Complete (PMM, VMM, slab, buddy, COW, VMA)                       |
+| Console (Serial/Graphics) | ~3,950       | Complete (ANSI escape codes, scrollback, cursor)                 |
+| Drivers (VirtIO/fw_cfg)   | ~5,450       | Complete for QEMU (blk, net, gpu, rng, input)                    |
+| Filesystem (VFS/ViperFS)  | ~6,600       | Complete (journal, inode cache, block cache)                     |
+| IPC (Channels/Poll)       | ~2,700       | Complete                                                         |
+| Scheduler/Tasks           | ~4,450       | Complete (8-level priority, SMP, CFS, EDF, priority inheritance) |
+| Viper/Capabilities        | ~2,300       | Complete (handle-based access, rights derivation)                |
+| Display Servers           | ~4,200       | Complete (consoled, displayd)                                    |
+| libc                      | ~30,200      | Complete (POSIX C library)                                       |
+| Libraries (GUI, etc.)     | ~17,100      | Complete (libgui, libwidget, libtls, libhttp, libssh)            |
+| GUI Applications          | ~17,700      | Complete (workbench, calc, clock, vedit, etc.)                   |
+| Tools                     | ~2,000       | Complete                                                         |
+| **Total**                 | **~143,000** |                                                                  |
 
 ---
 
 ## Subsystem Documentation
 
-| Document                                           | Description                                                       |
-|----------------------------------------------------|-------------------------------------------------------------------|
-| [01-architecture.md](01-architecture.md)           | AArch64 boot, MMU, GIC, timer, exceptions, syscalls               |
-| [02-memory-management.md](02-memory-management.md) | PMM, VMM, slab, buddy, COW, VMA, kernel heap                      |
-| [03-console.md](03-console.md)                     | Serial UART, graphics console, ANSI escapes, fonts                |
-| [04-drivers.md](04-drivers.md)                     | VirtIO (blk, net, gpu, rng, input), fw_cfg, ramfb                 |
-| [05-filesystem.md](05-filesystem.md)               | VFS, ViperFS, block cache, inode cache, journal                   |
-| [06-ipc.md](06-ipc.md)                             | Channels, poll, poll sets, capability transfer                    |
-| [07-networking.md](07-networking.md)               | Kernel TCP/IP stack, TLS, DNS, HTTP                               |
-| [08-scheduler.md](08-scheduler.md)                 | Priority-based scheduler, SMP, CFS, EDF, priority inheritance     |
-| [09-viper-process.md](09-viper-process.md)         | Viper processes, address spaces, VMA, capabilities                |
-| [10-userspace.md](10-userspace.md)                 | vinit, libc, C++ runtime, applications, GUI                       |
-| [11-tools.md](11-tools.md)                         | mkfs.ziafs, fsck.ziafs, gen_roots_der                             |
-| [12-crypto.md](12-crypto.md)                       | TLS 1.3, SSH crypto, hash functions, encryption                   |
-| [13-servers.md](13-servers.md)                     | Display servers (consoled, displayd)                              |
-| [14-summary.md](14-summary.md)                     | Implementation summary and development roadmap                    |
-| [15-boot.md](15-boot.md)                           | VBoot UEFI bootloader, two-disk architecture                      |
-| [16-gui.md](16-gui.md)                             | GUI subsystem (displayd, libgui, taskbar)                         |
+| Document                                           | Description                                                   |
+|----------------------------------------------------|---------------------------------------------------------------|
+| [01-architecture.md](01-architecture.md)           | AArch64 boot, MMU, GIC, timer, exceptions, syscalls           |
+| [02-memory-management.md](02-memory-management.md) | PMM, VMM, slab, buddy, COW, VMA, kernel heap                  |
+| [03-console.md](03-console.md)                     | Serial UART, graphics console, ANSI escapes, fonts            |
+| [04-drivers.md](04-drivers.md)                     | VirtIO (blk, net, gpu, rng, input), fw_cfg, ramfb             |
+| [05-filesystem.md](05-filesystem.md)               | VFS, ViperFS, block cache, inode cache, journal               |
+| [06-ipc.md](06-ipc.md)                             | Channels, poll, poll sets, capability transfer                |
+| [07-networking.md](07-networking.md)               | Kernel TCP/IP stack, TLS, DNS, HTTP                           |
+| [08-scheduler.md](08-scheduler.md)                 | Priority-based scheduler, SMP, CFS, EDF, priority inheritance |
+| [09-viper-process.md](09-viper-process.md)         | Viper processes, address spaces, VMA, capabilities            |
+| [10-userspace.md](10-userspace.md)                 | vinit, libc, C++ runtime, applications, GUI                   |
+| [11-tools.md](11-tools.md)                         | mkfs.ziafs, fsck.ziafs, gen_roots_der                         |
+| [12-crypto.md](12-crypto.md)                       | TLS 1.3, SSH crypto, hash functions, encryption               |
+| [13-servers.md](13-servers.md)                     | Display servers (consoled, displayd)                          |
+| [14-summary.md](14-summary.md)                     | Implementation summary and development roadmap                |
+| [15-boot.md](15-boot.md)                           | VBoot UEFI bootloader, two-disk architecture                  |
+| [16-gui.md](16-gui.md)                             | GUI subsystem (displayd, libgui, taskbar)                     |
 
 ---
 
@@ -147,11 +147,11 @@ VBoot features:
 
 ViperDOS uses separate disks for system and user content:
 
-| Disk   | Image    | Size | Contents                                    |
-|--------|----------|------|---------------------------------------------|
-| ESP    | esp.img  | 40MB | VBoot bootloader + kernel (UEFI mode only)  |
-| System | sys.img  | 2MB  | vinit, consoled, displayd                   |
-| User   | user.img | 8MB  | User programs, certificates, data           |
+| Disk   | Image    | Size | Contents                                   |
+|--------|----------|------|--------------------------------------------|
+| ESP    | esp.img  | 40MB | VBoot bootloader + kernel (UEFI mode only) |
+| System | sys.img  | 2MB  | vinit, consoled, displayd                  |
+| User   | user.img | 8MB  | User programs, certificates, data          |
 
 This separation enables:
 
@@ -273,18 +273,18 @@ See [16-gui.md](16-gui.md) for complete GUI documentation.
 
 ### GUI Applications
 
-| Application | Purpose                                           |
-|-------------|---------------------------------------------------|
-| workbench   | Desktop environment with icon grid                |
-| calc        | Calculator with digit buttons and operators       |
-| clock       | Analog clock display                              |
-| vedit       | GUI text editor with file save/load               |
-| viewer      | Image and text file viewer                        |
-| prefs       | System preferences panel                          |
-| taskman     | Task manager with process list                    |
-| guisysinfo  | GUI system information display                    |
-| taskbar     | Desktop shell taskbar                             |
-| hello_gui   | GUI demo with window creation                     |
+| Application | Purpose                                     |
+|-------------|---------------------------------------------|
+| workbench   | Desktop environment with icon grid          |
+| calc        | Calculator with digit buttons and operators |
+| clock       | Analog clock display                        |
+| vedit       | GUI text editor with file save/load         |
+| viewer      | Image and text file viewer                  |
+| prefs       | System preferences panel                    |
+| taskman     | Task manager with process list              |
+| guisysinfo  | GUI system information display              |
+| taskbar     | Desktop shell taskbar                       |
+| hello_gui   | GUI demo with window creation               |
 
 ### Console Applications
 

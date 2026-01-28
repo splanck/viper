@@ -153,14 +153,14 @@ static_assert(sizeof(DirEntry) == 32, "DirEntry must be 32 bytes");
  * Multiple LFN entries precede the standard 8.3 entry in reverse order.
  */
 struct __attribute__((packed)) LFNEntry {
-    u8 order;       // Sequence number (1-20, 0x40 marks last)
-    u16 name1[5];   // Characters 1-5 (UCS-2)
-    u8 attr;        // Always 0x0F for LFN
-    u8 type;        // Always 0
-    u8 checksum;    // Checksum of 8.3 name
-    u16 name2[6];   // Characters 6-11 (UCS-2)
-    u16 cluster;    // Always 0
-    u16 name3[2];   // Characters 12-13 (UCS-2)
+    u8 order;     // Sequence number (1-20, 0x40 marks last)
+    u16 name1[5]; // Characters 1-5 (UCS-2)
+    u8 attr;      // Always 0x0F for LFN
+    u8 type;      // Always 0
+    u8 checksum;  // Checksum of 8.3 name
+    u16 name2[6]; // Characters 6-11 (UCS-2)
+    u16 cluster;  // Always 0
+    u16 name3[2]; // Characters 12-13 (UCS-2)
 };
 
 static_assert(sizeof(LFNEntry) == 32, "LFNEntry must be 32 bytes");
@@ -410,7 +410,8 @@ class FAT32 {
     /**
      * @brief Find a directory entry by name.
      */
-    bool find_entry(u32 dir_cluster, const char *name, DirEntry *out, u32 *out_cluster, u32 *out_offset);
+    bool find_entry(
+        u32 dir_cluster, const char *name, DirEntry *out, u32 *out_cluster, u32 *out_offset);
 
     /**
      * @brief Resolve a path to its directory entry.

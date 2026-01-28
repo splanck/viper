@@ -84,11 +84,11 @@ namespace workbench {
  * - `border3dDark`: Bottom and right edges (shadow effect)
  */
 struct Theme {
-    const char *name;          /**< Human-readable theme name. */
+    const char *name; /**< Human-readable theme name. */
 
     // Desktop colors
-    uint32_t desktop;          /**< Main desktop/backdrop color. */
-    uint32_t desktopBorder;    /**< Desktop border color. */
+    uint32_t desktop;       /**< Main desktop/backdrop color. */
+    uint32_t desktopBorder; /**< Desktop border color. */
 
     // Window colors
     uint32_t windowBg;         /**< Window content area background. */
@@ -97,26 +97,26 @@ struct Theme {
     uint32_t titleBarInactive; /**< Inactive window title bar. */
 
     // UI element colors
-    uint32_t highlight;        /**< Selection highlight (icons, menus). */
-    uint32_t text;             /**< Default text color. */
-    uint32_t textDisabled;     /**< Disabled/grayed-out text. */
-    uint32_t border3dLight;    /**< 3D border light edge (top/left). */
-    uint32_t border3dDark;     /**< 3D border dark edge (bottom/right). */
+    uint32_t highlight;     /**< Selection highlight (icons, menus). */
+    uint32_t text;          /**< Default text color. */
+    uint32_t textDisabled;  /**< Disabled/grayed-out text. */
+    uint32_t border3dLight; /**< 3D border light edge (top/left). */
+    uint32_t border3dDark;  /**< 3D border dark edge (bottom/right). */
 
     // Menu colors
-    uint32_t menuBg;           /**< Menu bar and dropdown background. */
-    uint32_t menuText;         /**< Menu item text color. */
-    uint32_t menuHighlight;    /**< Hovered menu item background. */
-    uint32_t menuHighlightText;/**< Hovered menu item text. */
+    uint32_t menuBg;            /**< Menu bar and dropdown background. */
+    uint32_t menuText;          /**< Menu item text color. */
+    uint32_t menuHighlight;     /**< Hovered menu item background. */
+    uint32_t menuHighlightText; /**< Hovered menu item text. */
 
     // Icon colors
-    uint32_t iconBg;           /**< Selected icon label background. */
-    uint32_t iconText;         /**< Icon label text color. */
-    uint32_t iconShadow;       /**< Icon label drop shadow. */
+    uint32_t iconBg;     /**< Selected icon label background. */
+    uint32_t iconText;   /**< Icon label text color. */
+    uint32_t iconShadow; /**< Icon label drop shadow. */
 
     // Text area colors (for editors, dialogs, etc.)
-    uint32_t textAreaBg;       /**< Text editing area background. */
-    uint32_t textAreaText;     /**< Text editing area text color. */
+    uint32_t textAreaBg;   /**< Text editing area background. */
+    uint32_t textAreaText; /**< Text editing area text color. */
 };
 
 //===----------------------------------------------------------------------===//

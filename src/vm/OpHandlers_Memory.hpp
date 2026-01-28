@@ -545,4 +545,20 @@ VM::ExecResult handleConstNull(VM &vm,
                                const il::core::BasicBlock *&bb,
                                size_t &ip);
 
+/// @brief Materialize a floating-point constant (ConstF64).
+/// @details Parses the operand as a f64 literal and stores it in the destination slot.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating continue, trap, or control transfer.
+VM::ExecResult handleConstF64(VM &vm,
+                              Frame &fr,
+                              const il::core::Instr &in,
+                              const VM::BlockMap &blocks,
+                              const il::core::BasicBlock *&bb,
+                              size_t &ip);
+
 } // namespace il::vm::detail::memory

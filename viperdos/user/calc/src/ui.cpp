@@ -111,30 +111,30 @@ static void getButtonRect(const Button &btn, int &x, int &y, int &w, int &h) {
 
 static uint32_t getButtonColor(ButtonType type) {
     switch (type) {
-    case ButtonType::Digit:
-        return COLOR_BTN_DIGIT;
-    case ButtonType::Operator:
-        return COLOR_BTN_OP;
-    case ButtonType::Function:
-        return COLOR_BTN_FUNC;
-    case ButtonType::Clear:
-        return COLOR_BTN_CLEAR;
-    default:
-        return COLOR_BTN_DIGIT;
+        case ButtonType::Digit:
+            return COLOR_BTN_DIGIT;
+        case ButtonType::Operator:
+            return COLOR_BTN_OP;
+        case ButtonType::Function:
+            return COLOR_BTN_FUNC;
+        case ButtonType::Clear:
+            return COLOR_BTN_CLEAR;
+        default:
+            return COLOR_BTN_DIGIT;
     }
 }
 
 static uint32_t getButtonTextColor(ButtonType type) {
     switch (type) {
-    case ButtonType::Digit:
-        return COLOR_TEXT_DARK;
-    case ButtonType::Operator:
-    case ButtonType::Clear:
-        return COLOR_TEXT_LIGHT;
-    case ButtonType::Function:
-        return COLOR_TEXT_LIGHT;
-    default:
-        return COLOR_TEXT_DARK;
+        case ButtonType::Digit:
+            return COLOR_TEXT_DARK;
+        case ButtonType::Operator:
+        case ButtonType::Clear:
+            return COLOR_TEXT_LIGHT;
+        case ButtonType::Function:
+            return COLOR_TEXT_LIGHT;
+        default:
+            return COLOR_TEXT_DARK;
     }
 }
 

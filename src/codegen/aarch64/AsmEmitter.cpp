@@ -369,6 +369,21 @@ void AsmEmitter::emitAsrRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long
     os << "  asr " << rn(dst) << ", " << rn(lhs) << ", #" << sh << "\n";
 }
 
+void AsmEmitter::emitLslvRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    os << "  lslv " << rn(dst) << ", " << rn(lhs) << ", " << rn(rhs) << "\n";
+}
+
+void AsmEmitter::emitLsrvRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    os << "  lsrv " << rn(dst) << ", " << rn(lhs) << ", " << rn(rhs) << "\n";
+}
+
+void AsmEmitter::emitAsrvRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    os << "  asrv " << rn(dst) << ", " << rn(lhs) << ", " << rn(rhs) << "\n";
+}
+
 void AsmEmitter::emitCmpRR(std::ostream &os, PhysReg lhs, PhysReg rhs) const
 {
     os << "  cmp " << rn(lhs) << ", " << rn(rhs) << "\n";
@@ -687,6 +702,14 @@ void AsmEmitter::emitFMovRI(std::ostream &os, PhysReg dst, double imm) const
     os << ", #" << imm << "\n";
 }
 
+void AsmEmitter::emitFMovGR(std::ostream &os, PhysReg dst, PhysReg src) const
+{
+    // fmov dN, xM - transfer bits from GPR to FPR without conversion
+    os << "  fmov ";
+    printD(os, dst);
+    os << ", " << rn(src) << "\n";
+}
+
 void AsmEmitter::emitFAddRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
 {
     os << "  fadd ";
@@ -873,6 +896,27 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
             return;
         case MOpcode::TstRR:
             emitTstRR(os, getReg(mi.ops[0]), getReg(mi.ops[1]));
+            return;
+        case MOpcode::Blr:
+            os << "  blr " << rn(getReg(mi.ops[0])) << "\n";
+            return;
+        case MOpcode::Cbz:
+            os << "  cbz " << rn(getReg(mi.ops[0])) << ", " << mi.ops[1].label << "\n";
+            return;
+        case MOpcode::LslvRRR:
+            emitLslvRRR(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getReg(mi.ops[2]));
+            return;
+        case MOpcode::LsrvRRR:
+            emitLsrvRRR(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getReg(mi.ops[2]));
+            return;
+        case MOpcode::AsrvRRR:
+            emitAsrvRRR(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getReg(mi.ops[2]));
+            return;
+        case MOpcode::FMovGR:
+            emitFMovGR(os, getReg(mi.ops[0]), getReg(mi.ops[1]));
+            return;
+        case MOpcode::FRintN:
+            emitFRintN(os, getReg(mi.ops[0]), getReg(mi.ops[1]));
             return;
         default:
             break;

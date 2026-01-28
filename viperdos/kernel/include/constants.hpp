@@ -121,7 +121,8 @@ constexpr bool is_kernel_addr(u64 addr) {
  */
 constexpr bool is_valid_user_buffer(u64 addr, u64 len) {
     // Check for overflow
-    if (addr + len < addr) return false;
+    if (addr + len < addr)
+        return false;
     // Check entire range is in user space
     return is_user_addr(addr) && is_user_addr(addr + len - 1);
 }

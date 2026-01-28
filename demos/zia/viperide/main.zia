@@ -26,17 +26,7 @@ func main() {
     // Initialize components
     // ========================================================================
     var shell = new app_shell.AppShell();
-    if shell == null {
-        Viper.Terminal.Say("shell is null right after new!");
-    } else {
-        Viper.Terminal.Say("shell is valid right after new");
-    }
     var docMgr = new document_manager.DocumentManager();
-    if docMgr == null {
-        Viper.Terminal.Say("docMgr is null right after new!");
-    } else {
-        Viper.Terminal.Say("docMgr is valid right after new");
-    }
     var engine = new editor_engine.EditorEngine();
     var tabs = new editor_tabs.EditorTabs();
     var projMgr = new project_manager.ProjectManager();
@@ -87,13 +77,8 @@ func main() {
     shell.SetStatusRight(welcomeDoc.fileName);
 
     // ========================================================================
-    // Main event loop (simplified for debugging)
+    // Main event loop
     // ========================================================================
-    if shell == null {
-        Viper.Terminal.Say("shell is null before loop");
-        return;
-    }
-    Viper.Terminal.Say("shell valid before loop");
     var loopCount = 0;
     while shell != null and shell.ShouldClose() == false {
         loopCount = loopCount + 1;
@@ -309,6 +294,60 @@ func main() {
         }
 
         // ====================================================================
+        // Handle Edit menu: Undo (menu item)
+        // ====================================================================
+        if shell.miUndo.WasClicked() != 0 {
+            if engine != null and engine.editor != null {
+                engine.editor.Undo();
+            }
+        }
+
+        // ====================================================================
+        // Handle Edit menu: Redo (menu item)
+        // ====================================================================
+        if shell.miRedo.WasClicked() != 0 {
+            if engine != null and engine.editor != null {
+                engine.editor.Redo();
+            }
+        }
+
+        // ====================================================================
+        // Handle Edit menu: Cut (menu item)
+        // ====================================================================
+        if shell.miCut.WasClicked() != 0 {
+            if engine != null and engine.editor != null {
+                engine.editor.Cut();
+            }
+        }
+
+        // ====================================================================
+        // Handle Edit menu: Copy (menu item)
+        // ====================================================================
+        if shell.miCopy.WasClicked() != 0 {
+            if engine != null and engine.editor != null {
+                engine.editor.Copy();
+            }
+        }
+
+        // ====================================================================
+        // Handle Edit menu: Paste (menu item)
+        // ====================================================================
+        if shell.miPaste.WasClicked() != 0 {
+            if engine != null and engine.editor != null {
+                engine.editor.Paste();
+            }
+        }
+
+        // ====================================================================
+        // Handle Edit menu: Select All (menu item)
+        // ====================================================================
+        if shell.miSelectAll.WasClicked() != 0 {
+            if engine != null and engine.editor != null {
+                engine.editor.SelectAll();
+            }
+        }
+
+        // ====================================================================
         // Handle Toggle Sidebar (menu or Ctrl+B)
         // ====================================================================
         var doToggleSidebar = shell.miToggleSidebar.WasClicked() != 0;
@@ -417,7 +456,6 @@ func main() {
     // ========================================================================
     // Cleanup
     // ========================================================================
-    Viper.Terminal.Say("DEBUG: Loop exited after " + loopCount + " iterations");
     if shell != null {
         shell.Destroy();
     }
@@ -426,12 +464,7 @@ func main() {
 // Save the editor's current content back to the active document.
 func SaveEditorState(docMgr: document_manager.DocumentManager,
                      engine: editor_engine.EditorEngine) {
-    if docMgr == null {
-        Viper.Terminal.Say("ERROR: SaveEditorState called with null docMgr!");
-        return;
-    }
-    if engine == null {
-        Viper.Terminal.Say("ERROR: SaveEditorState called with null engine!");
+    if docMgr == null or engine == null {
         return;
     }
     var doc = docMgr.GetActive();

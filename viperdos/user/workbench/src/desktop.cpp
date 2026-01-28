@@ -100,7 +100,8 @@ bool Desktop::init() {
     m_menus[0].titleWidth = 80;
     m_menus[0].itemCount = 4;
     m_menus[0].items[0] = {"About...", nullptr, PulldownAction::AboutWorkbench, false, true};
-    m_menus[0].items[1] = {"Execute Command...", nullptr, PulldownAction::ExecuteCommand, true, false};
+    m_menus[0].items[1] = {
+        "Execute Command...", nullptr, PulldownAction::ExecuteCommand, true, false};
     m_menus[0].items[2] = {"Redraw All", nullptr, PulldownAction::Redraw, false, true};
     m_menus[0].items[3] = {"Quit", "Ctrl+Q", PulldownAction::QuitWorkbench, false, true};
 
@@ -126,7 +127,8 @@ bool Desktop::init() {
     m_menus[2].items[4] = {"Classic Amiga", nullptr, PulldownAction::ThemeClassic, false, true};
     m_menus[2].items[5] = {"Dark Mode", nullptr, PulldownAction::ThemeDark, false, true};
     m_menus[2].items[6] = {"Modern Blue", nullptr, PulldownAction::ThemeModern, false, true};
-    m_menus[2].items[7] = {"High Contrast", nullptr, PulldownAction::ThemeHighContrast, false, true};
+    m_menus[2].items[7] = {
+        "High Contrast", nullptr, PulldownAction::ThemeHighContrast, false, true};
 
     // Register menus with displayd for global menu bar (Amiga/Mac style)
     registerMenuBar();
@@ -281,9 +283,9 @@ void Desktop::spawnProgram(const char *path, const char *args) {
     int64_t result;
 
     __asm__ volatile("mov x0, %[path]\n\t"
-                     "mov x1, xzr\n\t"   // name = NULL
+                     "mov x1, xzr\n\t"     // name = NULL
                      "mov x2, %[args]\n\t" // args
-                     "mov x8, #0x03\n\t" // SYS_TASK_SPAWN
+                     "mov x8, #0x03\n\t"   // SYS_TASK_SPAWN
                      "svc #0\n\t"
                      "mov %[result], x0\n\t"
                      "mov %[pid], x1\n\t"
@@ -316,9 +318,14 @@ void Desktop::drawMenuBar() {
     for (int i = 0; i < m_menuCount; i++) {
         if (i == m_activeMenu) {
             // Highlight active menu title
-            gui_fill_rect(m_window, m_menus[i].titleX - 4, 0,
-                         m_menus[i].titleWidth, MENU_BAR_HEIGHT - 1, themeMenuHighlight());
-            gui_draw_text(m_window, m_menus[i].titleX, 6, m_menus[i].title, themeMenuHighlightText());
+            gui_fill_rect(m_window,
+                          m_menus[i].titleX - 4,
+                          0,
+                          m_menus[i].titleWidth,
+                          MENU_BAR_HEIGHT - 1,
+                          themeMenuHighlight());
+            gui_draw_text(
+                m_window, m_menus[i].titleX, 6, m_menus[i].title, themeMenuHighlightText());
         } else {
             gui_draw_text(m_window, m_menus[i].titleX, 6, m_menus[i].title, themeMenuText());
         }
@@ -358,8 +365,10 @@ void Desktop::drawPulldownMenu() {
     // 3D border
     gui_draw_hline(m_window, menuX, menuX + menuWidth - 1, menuY, themeBorderLight());
     gui_draw_vline(m_window, menuX, menuY, menuY + menuHeight - 1, themeBorderLight());
-    gui_draw_hline(m_window, menuX, menuX + menuWidth - 1, menuY + menuHeight - 1, themeBorderDark());
-    gui_draw_vline(m_window, menuX + menuWidth - 1, menuY, menuY + menuHeight - 1, themeBorderDark());
+    gui_draw_hline(
+        m_window, menuX, menuX + menuWidth - 1, menuY + menuHeight - 1, themeBorderDark());
+    gui_draw_vline(
+        m_window, menuX + menuWidth - 1, menuY, menuY + menuHeight - 1, themeBorderDark());
 
     // Draw menu items
     int itemY = menuY + 2;
@@ -369,7 +378,12 @@ void Desktop::drawPulldownMenu() {
         // Highlight hovered item
         uint32_t textColor = item.enabled ? themeMenuText() : themeTextDisabled();
         if (i == m_hoveredItem && item.enabled) {
-            gui_fill_rect(m_window, menuX + 2, itemY, menuWidth - 4, MENU_ITEM_HEIGHT - 2, themeMenuHighlight());
+            gui_fill_rect(m_window,
+                          menuX + 2,
+                          itemY,
+                          menuWidth - 4,
+                          MENU_ITEM_HEIGHT - 2,
+                          themeMenuHighlight());
             textColor = themeMenuHighlightText();
         }
 
@@ -379,8 +393,12 @@ void Desktop::drawPulldownMenu() {
         // Draw shortcut (right-aligned)
         if (item.shortcut) {
             int shortcutX = menuX + menuWidth - static_cast<int>(strlen(item.shortcut)) * 8 - 10;
-            gui_draw_text(m_window, shortcutX, itemY + 4, item.shortcut,
-                         i == m_hoveredItem && item.enabled ? themeMenuHighlightText() : themeTextDisabled());
+            gui_draw_text(m_window,
+                          shortcutX,
+                          itemY + 4,
+                          item.shortcut,
+                          i == m_hoveredItem && item.enabled ? themeMenuHighlightText()
+                                                             : themeTextDisabled());
         }
 
         // Draw separator after this item
@@ -461,47 +479,47 @@ void Desktop::handleMenuAction(PulldownAction action) {
     closeMenu();
 
     switch (action) {
-    case PulldownAction::AboutWorkbench:
-        showAboutDialog();
-        break;
-    case PulldownAction::Redraw:
-        redraw();
-        break;
-    case PulldownAction::QuitWorkbench:
-        // In a real OS, we might trigger shutdown
-        // For now, just do nothing or show a message
-        break;
-    case PulldownAction::Shell:
-        spawnProgram("/sys/consoled.sys");
-        break;
-    case PulldownAction::Prefs:
-        spawnProgram("/c/prefs.prg");
-        break;
-    case PulldownAction::SysInfo:
-        spawnProgram("/c/guisysinfo.prg");
-        break;
-    case PulldownAction::TaskMan:
-        spawnProgram("/c/taskman.prg");
-        break;
-    // Theme switching
-    case PulldownAction::ThemeClassic:
-        setTheme(&themes::ClassicAmiga);
-        redraw();
-        break;
-    case PulldownAction::ThemeDark:
-        setTheme(&themes::DarkMode);
-        redraw();
-        break;
-    case PulldownAction::ThemeModern:
-        setTheme(&themes::ModernBlue);
-        redraw();
-        break;
-    case PulldownAction::ThemeHighContrast:
-        setTheme(&themes::HighContrast);
-        redraw();
-        break;
-    default:
-        break;
+        case PulldownAction::AboutWorkbench:
+            showAboutDialog();
+            break;
+        case PulldownAction::Redraw:
+            redraw();
+            break;
+        case PulldownAction::QuitWorkbench:
+            // In a real OS, we might trigger shutdown
+            // For now, just do nothing or show a message
+            break;
+        case PulldownAction::Shell:
+            spawnProgram("/sys/consoled.sys");
+            break;
+        case PulldownAction::Prefs:
+            spawnProgram("/c/prefs.prg");
+            break;
+        case PulldownAction::SysInfo:
+            spawnProgram("/c/guisysinfo.prg");
+            break;
+        case PulldownAction::TaskMan:
+            spawnProgram("/c/taskman.prg");
+            break;
+        // Theme switching
+        case PulldownAction::ThemeClassic:
+            setTheme(&themes::ClassicAmiga);
+            redraw();
+            break;
+        case PulldownAction::ThemeDark:
+            setTheme(&themes::DarkMode);
+            redraw();
+            break;
+        case PulldownAction::ThemeModern:
+            setTheme(&themes::ModernBlue);
+            redraw();
+            break;
+        case PulldownAction::ThemeHighContrast:
+            setTheme(&themes::HighContrast);
+            redraw();
+            break;
+        default:
+            break;
     }
 }
 

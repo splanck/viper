@@ -141,19 +141,25 @@ class Desktop {
      * @brief Returns the desktop width in pixels.
      * @return Screen width (typically 1024).
      */
-    uint32_t width() const { return m_width; }
+    uint32_t width() const {
+        return m_width;
+    }
 
     /**
      * @brief Returns the desktop height in pixels.
      * @return Screen height (typically 768).
      */
-    uint32_t height() const { return m_height; }
+    uint32_t height() const {
+        return m_height;
+    }
 
     /**
      * @brief Returns the desktop window handle.
      * @return Pointer to the GUI window structure.
      */
-    gui_window_t *window() const { return m_window; }
+    gui_window_t *window() const {
+        return m_window;
+    }
 
     //=== Window Management ===//
 
@@ -244,9 +250,9 @@ class Desktop {
     gui_window_t *m_prefsDialog = nullptr;
 
     // Pulldown menu state
-    int m_activeMenu = -1;    // Currently open menu (-1 = none)
-    int m_hoveredItem = -1;   // Currently hovered item in open menu
-    PulldownMenu m_menus[3];  // Workbench, Window, Tools
+    int m_activeMenu = -1;   // Currently open menu (-1 = none)
+    int m_hoveredItem = -1;  // Currently hovered item in open menu
+    PulldownMenu m_menus[3]; // Workbench, Window, Tools
     int m_menuCount = 3;
 };
 

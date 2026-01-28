@@ -2,8 +2,8 @@
  * @file cmd_system.cpp
  * @brief System-related shell commands for vinit.
  */
-#include "vinit.hpp"
 #include "../../version.h"
+#include "vinit.hpp"
 
 void cmd_help() {
     print_str("\nViperDOS Shell Commands:\n\n");

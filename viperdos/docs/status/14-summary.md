@@ -163,10 +163,10 @@ The system is fully functional for QEMU bring-up with:
 
 ### User-Space Display Services (EL0)
 
-| Service  | Assign   | Purpose                    |
-|----------|----------|----------------------------|
-| consoled | CONSOLED | GUI terminal emulator      |
-| displayd | DISPLAY  | Window management, GUI     |
+| Service  | Assign   | Purpose                |
+|----------|----------|------------------------|
+| consoled | CONSOLED | GUI terminal emulator  |
+| displayd | DISPLAY  | Window management, GUI |
 
 ### Build Configuration
 
@@ -241,24 +241,24 @@ The system is fully functional for QEMU bring-up with:
 
 ### Component Breakdown
 
-| Component           | SLOC    |
-|---------------------|---------|
-| VBoot Bootloader    | ~1,700  |
-| Architecture        | ~3,600  |
-| Memory Management   | ~5,550  |
-| Scheduler           | ~4,500  |
-| IPC                 | ~2,500  |
-| Kernel Filesystem   | ~6,600  |
-| Kernel Networking   | ~5,400  |
-| Drivers             | ~6,000  |
-| Console             | ~3,500  |
-| Capabilities        | ~2,900  |
-| Syscalls            | ~4,000  |
-| Display Servers     | ~4,200  |
-| libc                | ~28,000 |
-| Libraries           | ~32,000 |
-| GUI Applications    | ~8,000  |
-| Console Applications| ~5,000  |
+| Component            | SLOC    |
+|----------------------|---------|
+| VBoot Bootloader     | ~1,700  |
+| Architecture         | ~3,600  |
+| Memory Management    | ~5,550  |
+| Scheduler            | ~4,500  |
+| IPC                  | ~2,500  |
+| Kernel Filesystem    | ~6,600  |
+| Kernel Networking    | ~5,400  |
+| Drivers              | ~6,000  |
+| Console              | ~3,500  |
+| Capabilities         | ~2,900  |
+| Syscalls             | ~4,000  |
+| Display Servers      | ~4,200  |
+| libc                 | ~28,000 |
+| Libraries            | ~32,000 |
+| GUI Applications     | ~8,000  |
+| Console Applications | ~5,000  |
 
 ### Binary Sizes (Approximate)
 

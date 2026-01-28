@@ -722,6 +722,12 @@ int emitAndMaybeLink(const Options &opts)
         }
         // Run peephole optimizations after RA
         [[maybe_unused]] auto peepholeStats = runPeephole(mir);
+        // Debug: dump MIR after peephole
+        if (opts.dump_mir_after_ra)
+        {
+            std::cerr << "=== MIR after peephole: " << fn.name << " ===\n";
+            std::cerr << toString(mir) << "\n";
+        }
         emitter.emitFunction(asmStream, mir);
         asmStream << "\n";
     }

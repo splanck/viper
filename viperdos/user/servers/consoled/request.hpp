@@ -7,7 +7,7 @@
 #pragma once
 
 #include "ansi.hpp"
-#include "text_buffer.hpp"  // Includes gui.h which has stdint types
+#include "text_buffer.hpp" // Includes gui.h which has stdint types
 
 namespace consoled {
 
@@ -22,7 +22,7 @@ namespace consoled {
  * and sends appropriate responses.
  */
 class RequestHandler {
-public:
+  public:
     RequestHandler() = default;
 
     /**
@@ -44,7 +44,7 @@ public:
                 uint32_t *handles,
                 uint32_t handle_count);
 
-private:
+  private:
     TextBuffer *m_buffer = nullptr;
     AnsiParser *m_parser = nullptr;
 };

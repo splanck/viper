@@ -347,7 +347,8 @@ u64 alloc_pages(u64 count) {
 
     // Start from hint for contiguous allocations too
     u64 start_page = next_free_hint * 64;
-    if (start_page >= total_pages) start_page = 0;
+    if (start_page >= total_pages)
+        start_page = 0;
 
     for (u64 i = 0; i < total_pages; i++) {
         u64 page = (start_page + i) % total_pages;
@@ -365,7 +366,8 @@ u64 alloc_pages(u64 count) {
                 free_count -= count;
                 // Update hint
                 next_free_hint = (run_start + count) / 64;
-                if (next_free_hint >= bitmap_size) next_free_hint = 0;
+                if (next_free_hint >= bitmap_size)
+                    next_free_hint = 0;
                 return page_to_addr(run_start);
             }
         } else {

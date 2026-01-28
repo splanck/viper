@@ -51,18 +51,18 @@
  */
 //===----------------------------------------------------------------------===//
 
-#include <widget.h>
 #include <stdlib.h>
 #include <string.h>
+#include <widget.h>
 
 /** @brief Initial buffer capacity for text storage (256 bytes). */
 #define TEXTBOX_INITIAL_CAPACITY 256
 
 /** @brief Width of each character in the fixed-width font (8 pixels). */
-#define CHAR_WIDTH               8
+#define CHAR_WIDTH 8
 
 /** @brief Height of each character in the fixed-width font (10 pixels). */
-#define CHAR_HEIGHT              10
+#define CHAR_HEIGHT 10
 
 //===----------------------------------------------------------------------===//
 // TextBox Paint Handler
@@ -164,8 +164,10 @@ static void textbox_paint(widget_t *w, gui_window_t *win) {
 
     // Draw selection highlight
     if (tb->selection_start != tb->selection_end) {
-        int sel_start = tb->selection_start < tb->selection_end ? tb->selection_start : tb->selection_end;
-        int sel_end = tb->selection_start < tb->selection_end ? tb->selection_end : tb->selection_start;
+        int sel_start =
+            tb->selection_start < tb->selection_end ? tb->selection_start : tb->selection_end;
+        int sel_end =
+            tb->selection_start < tb->selection_end ? tb->selection_end : tb->selection_start;
 
         sel_start -= tb->scroll_offset;
         sel_end -= tb->scroll_offset;
@@ -293,7 +295,8 @@ static void textbox_delete_selection(textbox_t *tb) {
     if (tb->selection_start == tb->selection_end)
         return;
 
-    int sel_start = tb->selection_start < tb->selection_end ? tb->selection_start : tb->selection_end;
+    int sel_start =
+        tb->selection_start < tb->selection_end ? tb->selection_start : tb->selection_end;
     int sel_end = tb->selection_start < tb->selection_end ? tb->selection_end : tb->selection_start;
 
     // Remove selected text
@@ -340,7 +343,8 @@ static void textbox_insert_char(textbox_t *tb, char ch) {
     }
 
     // Insert character
-    memmove(tb->text + tb->cursor_pos + 1, tb->text + tb->cursor_pos,
+    memmove(tb->text + tb->cursor_pos + 1,
+            tb->text + tb->cursor_pos,
             tb->text_length - tb->cursor_pos + 1);
     tb->text[tb->cursor_pos] = ch;
     tb->text_length++;
@@ -395,74 +399,76 @@ static void textbox_key(widget_t *w, int keycode, char ch) {
         return;
 
     switch (keycode) {
-    case 0x50: // Left arrow
-        if (tb->cursor_pos > 0) {
-            tb->cursor_pos--;
-            tb->selection_start = tb->selection_end = tb->cursor_pos;
+        case 0x50: // Left arrow
+            if (tb->cursor_pos > 0) {
+                tb->cursor_pos--;
+                tb->selection_start = tb->selection_end = tb->cursor_pos;
+                textbox_ensure_cursor_visible(tb);
+            }
+            break;
+
+        case 0x4F: // Right arrow
+            if (tb->cursor_pos < tb->text_length) {
+                tb->cursor_pos++;
+                tb->selection_start = tb->selection_end = tb->cursor_pos;
+                textbox_ensure_cursor_visible(tb);
+            }
+            break;
+
+        case 0x4A: // Home
+            tb->cursor_pos = 0;
+            tb->selection_start = tb->selection_end = 0;
             textbox_ensure_cursor_visible(tb);
-        }
-        break;
+            break;
 
-    case 0x4F: // Right arrow
-        if (tb->cursor_pos < tb->text_length) {
-            tb->cursor_pos++;
-            tb->selection_start = tb->selection_end = tb->cursor_pos;
+        case 0x4D: // End
+            tb->cursor_pos = tb->text_length;
+            tb->selection_start = tb->selection_end = tb->text_length;
             textbox_ensure_cursor_visible(tb);
-        }
-        break;
+            break;
 
-    case 0x4A: // Home
-        tb->cursor_pos = 0;
-        tb->selection_start = tb->selection_end = 0;
-        textbox_ensure_cursor_visible(tb);
-        break;
+        case 0x2A: // Backspace
+            if (tb->selection_start != tb->selection_end) {
+                textbox_delete_selection(tb);
+            } else if (tb->cursor_pos > 0) {
+                memmove(tb->text + tb->cursor_pos - 1,
+                        tb->text + tb->cursor_pos,
+                        tb->text_length - tb->cursor_pos + 1);
+                tb->text_length--;
+                tb->cursor_pos--;
+                textbox_ensure_cursor_visible(tb);
+            }
+            if (tb->on_change) {
+                tb->on_change(tb->callback_data);
+            }
+            break;
 
-    case 0x4D: // End
-        tb->cursor_pos = tb->text_length;
-        tb->selection_start = tb->selection_end = tb->text_length;
-        textbox_ensure_cursor_visible(tb);
-        break;
+        case 0x4C: // Delete
+            if (tb->selection_start != tb->selection_end) {
+                textbox_delete_selection(tb);
+            } else if (tb->cursor_pos < tb->text_length) {
+                memmove(tb->text + tb->cursor_pos,
+                        tb->text + tb->cursor_pos + 1,
+                        tb->text_length - tb->cursor_pos);
+                tb->text_length--;
+            }
+            if (tb->on_change) {
+                tb->on_change(tb->callback_data);
+            }
+            break;
 
-    case 0x2A: // Backspace
-        if (tb->selection_start != tb->selection_end) {
-            textbox_delete_selection(tb);
-        } else if (tb->cursor_pos > 0) {
-            memmove(tb->text + tb->cursor_pos - 1, tb->text + tb->cursor_pos,
-                    tb->text_length - tb->cursor_pos + 1);
-            tb->text_length--;
-            tb->cursor_pos--;
-            textbox_ensure_cursor_visible(tb);
-        }
-        if (tb->on_change) {
-            tb->on_change(tb->callback_data);
-        }
-        break;
+        case 0x28: // Enter
+            if (tb->on_enter) {
+                tb->on_enter(tb->callback_data);
+            }
+            break;
 
-    case 0x4C: // Delete
-        if (tb->selection_start != tb->selection_end) {
-            textbox_delete_selection(tb);
-        } else if (tb->cursor_pos < tb->text_length) {
-            memmove(tb->text + tb->cursor_pos, tb->text + tb->cursor_pos + 1,
-                    tb->text_length - tb->cursor_pos);
-            tb->text_length--;
-        }
-        if (tb->on_change) {
-            tb->on_change(tb->callback_data);
-        }
-        break;
-
-    case 0x28: // Enter
-        if (tb->on_enter) {
-            tb->on_enter(tb->callback_data);
-        }
-        break;
-
-    default:
-        // Printable character
-        if (ch >= 32 && ch < 127) {
-            textbox_insert_char(tb, ch);
-        }
-        break;
+        default:
+            // Printable character
+            if (ch >= 32 && ch < 127) {
+                textbox_insert_char(tb, ch);
+            }
+            break;
     }
 }
 

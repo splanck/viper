@@ -123,6 +123,27 @@ bool lowerURemChk0(const il::core::Instr &ins,
                    LoweringContext &ctx,
                    MBasicBlock &out);
 
+/// @brief Lower index bounds check (idx.chk).
+/// @details Generates: cmp idx, lo; b.lt trap; cmp idx, hi; b.ge trap; mov dst, idx
+bool lowerIdxChk(const il::core::Instr &ins,
+                 const il::core::BasicBlock &bb,
+                 LoweringContext &ctx,
+                 MBasicBlock &out);
+
+/// @brief Lower signed remainder (srem) without zero-check.
+/// @details Generates: sdiv tmp, lhs, rhs; msub dst, tmp, rhs, lhs
+bool lowerSRem(const il::core::Instr &ins,
+               const il::core::BasicBlock &bb,
+               LoweringContext &ctx,
+               MBasicBlock &out);
+
+/// @brief Lower unsigned remainder (urem) without zero-check.
+/// @details Generates: udiv tmp, lhs, rhs; msub dst, tmp, rhs, lhs
+bool lowerURem(const il::core::Instr &ins,
+               const il::core::BasicBlock &bb,
+               LoweringContext &ctx,
+               MBasicBlock &out);
+
 //===----------------------------------------------------------------------===//
 // Type Conversions
 //===----------------------------------------------------------------------===//

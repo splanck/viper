@@ -28,9 +28,9 @@ namespace mm::swap {
 // Use sectors at the end of the user disk for swap
 // User disk is 8MB = 16384 sectors (512 bytes each)
 // Reserve the last 4MB (8192 sectors) for swap = 1024 pages
-static constexpr u64 SWAP_SECTOR_START = 8192; // Start at 4MB mark
+static constexpr u64 SWAP_SECTOR_START = 8192;                // Start at 4MB mark
 static constexpr u64 SECTORS_PER_PAGE = pmm::PAGE_SIZE / 512; // 8 sectors per 4KB page
-static constexpr usize ACTUAL_SWAP_SLOTS = 1024; // 4MB of swap = 1024 pages
+static constexpr usize ACTUAL_SWAP_SLOTS = 1024;              // 4MB of swap = 1024 pages
 
 // =============================================================================
 // State

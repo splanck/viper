@@ -97,8 +97,8 @@
  * @see draw_3d_sunken() For the opposite visual effect
  * @see draw_3d_button() For complete button rendering with inner bevels
  */
-void draw_3d_raised(gui_window_t *win, int x, int y, int w, int h,
-                    uint32_t face, uint32_t light, uint32_t shadow) {
+void draw_3d_raised(
+    gui_window_t *win, int x, int y, int w, int h, uint32_t face, uint32_t light, uint32_t shadow) {
     // Fill face
     gui_fill_rect(win, x, y, w, h, face);
 
@@ -163,8 +163,8 @@ void draw_3d_raised(gui_window_t *win, int x, int y, int w, int h,
  *
  * @see draw_3d_raised() For the opposite visual effect
  */
-void draw_3d_sunken(gui_window_t *win, int x, int y, int w, int h,
-                    uint32_t face, uint32_t light, uint32_t shadow) {
+void draw_3d_sunken(
+    gui_window_t *win, int x, int y, int w, int h, uint32_t face, uint32_t light, uint32_t shadow) {
     // Fill face
     gui_fill_rect(win, x, y, w, h, face);
 

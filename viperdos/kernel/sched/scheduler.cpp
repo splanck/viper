@@ -6,12 +6,12 @@
 //===----------------------------------------------------------------------===//
 #include "scheduler.hpp"
 #include "../arch/aarch64/cpu.hpp"
+#include "../arch/aarch64/timer.hpp"
 #include "../console/serial.hpp"
 #include "../lib/spinlock.hpp"
 #include "../mm/pmm.hpp"
 #include "../viper/address_space.hpp"
 #include "../viper/viper.hpp"
-#include "../arch/aarch64/timer.hpp"
 #include "bandwidth.hpp"
 #include "cfs.hpp"
 #include "deadline.hpp"
@@ -896,7 +896,8 @@ void schedule() {
                     serial::puts("' L1[2]=");
                     serial::put_hex(l1[2]);
                     serial::puts("\n");
-                    while (true) asm volatile("wfe");
+                    while (true)
+                        asm volatile("wfe");
                 } else {
                     // Also check L2[0]
                     u64 *l2 = reinterpret_cast<u64 *>(pmm::phys_to_virt(l1[2] & ~0xFFFULL));
@@ -908,7 +909,8 @@ void schedule() {
                         serial::puts(" L2_phys=");
                         serial::put_hex(l1[2] & ~0xFFFULL);
                         serial::puts("\n");
-                        while (true) asm volatile("wfe");
+                        while (true)
+                            asm volatile("wfe");
                     }
                 }
             }

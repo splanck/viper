@@ -2024,8 +2024,8 @@ inline i32 shm_close(u32 handle) {
  * @brief Mouse state structure returned by get_mouse_state.
  */
 struct MouseState {
-    i32 x;      ///< Absolute X position
-    i32 y;      ///< Absolute Y position
+    i32 x;       ///< Absolute X position
+    i32 y;       ///< Absolute Y position
     i32 dx;      ///< X movement delta since last query
     i32 dy;      ///< Y movement delta since last query
     i32 scroll;  ///< Vertical scroll delta since last query (positive=up)
@@ -2155,8 +2155,7 @@ inline void gcon_set_gui_mode(bool active) {
  * @param hot_y Hotspot Y.
  * @return 0 on success, negative on error.
  */
-inline i32 set_cursor_image(const u32 *pixels, u32 width, u32 height,
-                            u32 hot_x, u32 hot_y) {
+inline i32 set_cursor_image(const u32 *pixels, u32 width, u32 height, u32 hot_x, u32 hot_y) {
     u64 dim = (static_cast<u64>(width) << 16) | height;
     u64 hot = (static_cast<u64>(hot_x) << 16) | hot_y;
     auto r = syscall3(SYS_SET_CURSOR_IMAGE, reinterpret_cast<u64>(pixels), dim, hot);
@@ -2248,9 +2247,12 @@ inline bool tty_has_input() {
  */
 inline i32 audio_get_info(bool *out_available, u32 *out_streams, u8 *out_volume) {
     auto r = syscall0(SYS_AUDIO_GET_INFO);
-    if (out_available) *out_available = (r.val0 != 0);
-    if (out_streams) *out_streams = static_cast<u32>(r.val1);
-    if (out_volume) *out_volume = static_cast<u8>(r.val2);
+    if (out_available)
+        *out_available = (r.val0 != 0);
+    if (out_streams)
+        *out_streams = static_cast<u32>(r.val1);
+    if (out_volume)
+        *out_volume = static_cast<u8>(r.val2);
     return static_cast<i32>(r.error);
 }
 
@@ -2265,10 +2267,8 @@ inline i32 audio_get_info(bool *out_available, u32 *out_streams, u8 *out_volume)
  */
 inline i32 audio_configure(u32 stream_id, u32 sample_rate, u8 channels, u8 bits) {
     u64 ch_bits = static_cast<u64>(channels) | (static_cast<u64>(bits) << 8);
-    auto r = syscall3(SYS_AUDIO_CONFIGURE,
-                      static_cast<u64>(stream_id),
-                      static_cast<u64>(sample_rate),
-                      ch_bits);
+    auto r = syscall3(
+        SYS_AUDIO_CONFIGURE, static_cast<u64>(stream_id), static_cast<u64>(sample_rate), ch_bits);
     return static_cast<i32>(r.error);
 }
 
@@ -2325,10 +2325,8 @@ inline i32 audio_release(u32 stream_id) {
  * @return Number of bytes written, or negative error on failure.
  */
 inline i64 audio_write(u32 stream_id, const void *data, usize len) {
-    auto r = syscall3(SYS_AUDIO_WRITE,
-                      static_cast<u64>(stream_id),
-                      reinterpret_cast<u64>(data),
-                      len);
+    auto r =
+        syscall3(SYS_AUDIO_WRITE, static_cast<u64>(stream_id), reinterpret_cast<u64>(data), len);
     return r.ok() ? static_cast<i64>(r.val0) : r.error;
 }
 

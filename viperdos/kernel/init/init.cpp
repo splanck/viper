@@ -11,6 +11,7 @@
  */
 
 #include "init.hpp"
+#include "../../version.h"
 #include "../arch/aarch64/cpu.hpp"
 #include "../arch/aarch64/exceptions.hpp"
 #include "../arch/aarch64/gic.hpp"
@@ -25,13 +26,13 @@
 #include "../drivers/pl031.hpp"
 #include "../drivers/ramfb.hpp"
 #include "../drivers/virtio/blk.hpp"
-#include "../fs/fat32/fat32.hpp"
 #include "../drivers/virtio/gpu.hpp"
 #include "../drivers/virtio/input.hpp"
 #include "../drivers/virtio/rng.hpp"
 #include "../drivers/virtio/sound.hpp"
 #include "../drivers/virtio/virtio.hpp"
 #include "../fs/cache.hpp"
+#include "../fs/fat32/fat32.hpp"
 #include "../fs/vfs/vfs.hpp"
 #include "../fs/viperfs/viperfs.hpp"
 #include "../include/config.hpp"
@@ -54,7 +55,6 @@
 #include "../tty/tty.hpp"
 #include "../viper/address_space.hpp"
 #include "../viper/viper.hpp"
-#include "../../version.h"
 
 #if VIPER_KERNEL_ENABLE_NET
 #include "../drivers/virtio/net.hpp"

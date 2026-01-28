@@ -1404,7 +1404,8 @@ u64 ViperFS::create_file(Inode *dir, const char *name, usize name_len) {
     Inode new_inode = {};
     new_inode.inode_num = ino;
     new_inode.mode = mode::TYPE_FILE | mode::PERM_READ | mode::PERM_WRITE;
-    new_inode.uid = 0; // Root user (will be set from process context when multi-user is implemented)
+    new_inode.uid =
+        0; // Root user (will be set from process context when multi-user is implemented)
     new_inode.gid = 0; // Root group
     new_inode.size = 0;
     new_inode.blocks = 0;
@@ -1488,7 +1489,8 @@ u64 ViperFS::create_dir(Inode *dir, const char *name, usize name_len) {
     Inode new_inode = {};
     new_inode.inode_num = ino;
     new_inode.mode = mode::TYPE_DIR | mode::PERM_READ | mode::PERM_WRITE | mode::PERM_EXEC;
-    new_inode.uid = 0; // Root user (will be set from process context when multi-user is implemented)
+    new_inode.uid =
+        0; // Root user (will be set from process context when multi-user is implemented)
     new_inode.gid = 0; // Root group
     new_inode.size = BLOCK_SIZE;
     new_inode.blocks = 1;
@@ -1584,7 +1586,8 @@ u64 ViperFS::create_symlink(
     Inode new_inode = {};
     new_inode.inode_num = ino;
     new_inode.mode = mode::TYPE_LINK | mode::PERM_READ | mode::PERM_WRITE;
-    new_inode.uid = 0; // Root user (will be set from process context when multi-user is implemented)
+    new_inode.uid =
+        0; // Root user (will be set from process context when multi-user is implemented)
     new_inode.gid = 0; // Root group
     new_inode.size = target_len;
     new_inode.blocks = 0;

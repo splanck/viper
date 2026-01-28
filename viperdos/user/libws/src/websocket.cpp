@@ -98,15 +98,15 @@ static int parse_url(const char *url, ws_conn_t *conn) {
 
 // Send raw data via socket
 static int ws_raw_send(ws_conn_t *conn, const void *data, size_t len) {
-    long result = __syscall3(SYS_SOCKET_SEND, conn->socket_fd,
-                             reinterpret_cast<long>(data), static_cast<long>(len));
+    long result = __syscall3(
+        SYS_SOCKET_SEND, conn->socket_fd, reinterpret_cast<long>(data), static_cast<long>(len));
     return result < 0 ? WS_ERROR : WS_OK;
 }
 
 // Receive raw data from socket
 static int ws_raw_recv(ws_conn_t *conn, void *buf, size_t max_len) {
-    long result = __syscall3(SYS_SOCKET_RECV, conn->socket_fd,
-                             reinterpret_cast<long>(buf), static_cast<long>(max_len));
+    long result = __syscall3(
+        SYS_SOCKET_RECV, conn->socket_fd, reinterpret_cast<long>(buf), static_cast<long>(max_len));
     return static_cast<int>(result);
 }
 
@@ -120,7 +120,7 @@ static int ws_send_frame(ws_conn_t *conn, uint8_t opcode, const void *data, size
     size_t header_len = 2;
 
     header[0] = 0x80 | (opcode & 0x0F); // FIN + opcode
-    header[1] = 0x80;                     // Mask bit set (client must mask)
+    header[1] = 0x80;                   // Mask bit set (client must mask)
 
     if (len < 126) {
         header[1] |= static_cast<uint8_t>(len);
@@ -181,8 +181,8 @@ int ws_connect(const char *url, ws_conn_t *conn) {
 
     // Resolve hostname
     uint32_t ip_addr = 0;
-    long dns_ret = __syscall2(SYS_DNS_RESOLVE, reinterpret_cast<long>(conn->host),
-                              reinterpret_cast<long>(&ip_addr));
+    long dns_ret = __syscall2(
+        SYS_DNS_RESOLVE, reinterpret_cast<long>(conn->host), reinterpret_cast<long>(&ip_addr));
     if (dns_ret < 0) {
         conn->state = WS_STATE_DISCONNECTED;
         return WS_ERROR_CONNECT;
@@ -197,12 +197,9 @@ int ws_connect(const char *url, ws_conn_t *conn) {
     conn->socket_fd = static_cast<int>(sock);
 
     // Connect
-    uint32_t connect_addr = (ip_addr & 0xFF) << 24 |
-                            ((ip_addr >> 8) & 0xFF) << 16 |
-                            ((ip_addr >> 16) & 0xFF) << 8 |
-                            ((ip_addr >> 24) & 0xFF);
-    long conn_ret = __syscall3(SYS_SOCKET_CONNECT, conn->socket_fd,
-                               connect_addr, conn->port);
+    uint32_t connect_addr = (ip_addr & 0xFF) << 24 | ((ip_addr >> 8) & 0xFF) << 16 |
+                            ((ip_addr >> 16) & 0xFF) << 8 | ((ip_addr >> 24) & 0xFF);
+    long conn_ret = __syscall3(SYS_SOCKET_CONNECT, conn->socket_fd, connect_addr, conn->port);
     if (conn_ret < 0) {
         __syscall2(SYS_SOCKET_CLOSE, conn->socket_fd, 0);
         conn->state = WS_STATE_DISCONNECTED;
@@ -332,7 +329,8 @@ int ws_recv(ws_conn_t *conn, ws_frame_t *frame, int timeout_ms) {
 
         size_t total = 0;
         while (total < payload_len) {
-            int r = ws_raw_recv(conn, reinterpret_cast<uint8_t *>(frame->data) + total,
+            int r = ws_raw_recv(conn,
+                                reinterpret_cast<uint8_t *>(frame->data) + total,
                                 static_cast<size_t>(payload_len - total));
             if (r <= 0) {
                 free(frame->data);
@@ -365,8 +363,8 @@ int ws_recv(ws_conn_t *conn, ws_frame_t *frame, int timeout_ms) {
     } else if (frame->opcode == WS_OPCODE_CLOSE) {
         conn->state = WS_STATE_CLOSED;
         // Echo close frame
-        ws_send_frame(conn, WS_OPCODE_CLOSE, frame->data,
-                      frame->data_len > 2 ? 2 : frame->data_len);
+        ws_send_frame(
+            conn, WS_OPCODE_CLOSE, frame->data, frame->data_len > 2 ? 2 : frame->data_len);
     }
 
     return WS_OK;

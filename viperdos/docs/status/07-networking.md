@@ -72,23 +72,23 @@ Applications use standard socket syscalls, which are handled directly by the ker
 
 ## Kernel Network Syscalls
 
-| Syscall            | Number | Description                |
-|--------------------|--------|----------------------------|
-| SYS_SOCKET_CREATE  | 0x50   | Create TCP socket          |
-| SYS_SOCKET_CONNECT | 0x51   | Connect to remote host     |
-| SYS_SOCKET_SEND    | 0x52   | Send data on socket        |
-| SYS_SOCKET_RECV    | 0x53   | Receive data from socket   |
-| SYS_SOCKET_CLOSE   | 0x54   | Close socket               |
-| SYS_DNS_RESOLVE    | 0x55   | Resolve hostname to IPv4   |
-| SYS_SOCKET_POLL    | 0x56   | Poll socket for readiness  |
-| SYS_TLS_CREATE     | 0xD0   | Create TLS session         |
-| SYS_TLS_HANDSHAKE  | 0xD1   | Perform TLS handshake      |
-| SYS_TLS_SEND       | 0xD2   | Send encrypted data        |
-| SYS_TLS_RECV       | 0xD3   | Receive encrypted data     |
-| SYS_TLS_CLOSE      | 0xD4   | Close TLS session          |
-| SYS_TLS_INFO       | 0xD5   | Query TLS session info     |
-| SYS_PING           | 0xE2   | ICMP ping with RTT         |
-| SYS_NET_STATS      | 0xE1   | Get network statistics     |
+| Syscall            | Number | Description               |
+|--------------------|--------|---------------------------|
+| SYS_SOCKET_CREATE  | 0x50   | Create TCP socket         |
+| SYS_SOCKET_CONNECT | 0x51   | Connect to remote host    |
+| SYS_SOCKET_SEND    | 0x52   | Send data on socket       |
+| SYS_SOCKET_RECV    | 0x53   | Receive data from socket  |
+| SYS_SOCKET_CLOSE   | 0x54   | Close socket              |
+| SYS_DNS_RESOLVE    | 0x55   | Resolve hostname to IPv4  |
+| SYS_SOCKET_POLL    | 0x56   | Poll socket for readiness |
+| SYS_TLS_CREATE     | 0xD0   | Create TLS session        |
+| SYS_TLS_HANDSHAKE  | 0xD1   | Perform TLS handshake     |
+| SYS_TLS_SEND       | 0xD2   | Send encrypted data       |
+| SYS_TLS_RECV       | 0xD3   | Receive encrypted data    |
+| SYS_TLS_CLOSE      | 0xD4   | Close TLS session         |
+| SYS_TLS_INFO       | 0xD5   | Query TLS session info    |
+| SYS_PING           | 0xE2   | ICMP ping with RTT        |
+| SYS_NET_STATS      | 0xE1   | Get network statistics    |
 
 ---
 
@@ -380,14 +380,14 @@ The kernel tracks and reports via SYS_NET_STATS:
 
 ### Resource Limits
 
-| Resource            | Limit     |
-|---------------------|-----------|
-| TCP connections     | 32        |
-| UDP sockets         | 16        |
-| ARP cache entries   | 16        |
-| TCP RX buffer       | 8KB       |
-| TCP TX buffer       | 8KB       |
-| TLS sessions        | 16        |
+| Resource          | Limit |
+|-------------------|-------|
+| TCP connections   | 32    |
+| UDP sockets       | 16    |
+| ARP cache entries | 16    |
+| TCP RX buffer     | 8KB   |
+| TCP TX buffer     | 8KB   |
+| TLS sessions      | 16    |
 
 ---
 

@@ -730,7 +730,8 @@ i32 stat(const char *path, Stat *st) {
 
     // Check if this is a FAT32 user path
     const char *effective = nullptr;
-    if (g_user_fat32_available && !is_sys_path(path, &effective) && is_user_path(path, &effective)) {
+    if (g_user_fat32_available && !is_sys_path(path, &effective) &&
+        is_user_path(path, &effective)) {
         ::fs::fat32::FileInfo fi{};
         if (!::fs::fat32::fat32().open(effective, &fi))
             return -1;
@@ -830,7 +831,8 @@ i32 fsync(i32 fd) {
 
     if (desc->fs_type == FsType::FAT32) {
         ::fs::fat32::FAT32 *fat = desc->fs.fat32;
-        if (fat) fat->sync();
+        if (fat)
+            fat->sync();
         return 0;
     }
 

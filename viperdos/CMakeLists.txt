@@ -41,22 +41,22 @@ set(USER_IMAGE "${CMAKE_BINARY_DIR}/user.img")
 # -----------------------------------------------------------------------------
 file(STRINGS "${CMAKE_SOURCE_DIR}/user/programs.txt" USER_PROGRAMS_RAW)
 set(USER_PROGRAMS "")
-foreach(line ${USER_PROGRAMS_RAW})
+foreach (line ${USER_PROGRAMS_RAW})
     # Skip comments and empty lines
     string(REGEX MATCH "^#" is_comment "${line}")
     string(STRIP "${line}" line_stripped)
-    if(NOT is_comment AND NOT "${line_stripped}" STREQUAL "")
+    if (NOT is_comment AND NOT "${line_stripped}" STREQUAL "")
         list(APPEND USER_PROGRAMS "${line_stripped}")
-    endif()
-endforeach()
+    endif ()
+endforeach ()
 
 # Build the --add arguments and DEPENDS list for user.img
 set(USER_ADD_ARGS "")
 set(USER_DEPENDS "")
-foreach(prg ${USER_PROGRAMS})
+foreach (prg ${USER_PROGRAMS})
     list(APPEND USER_ADD_ARGS "--add" "${CMAKE_BINARY_DIR}/${prg}.prg:c/${prg}.prg")
     list(APPEND USER_DEPENDS "${prg}.prg")
-endforeach()
+endforeach ()
 
 # -----------------------------------------------------------------------------
 # sys.img - System disk (2MB)

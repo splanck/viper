@@ -87,65 +87,64 @@
 
 namespace viewer {
 
-View::View(gui_window_t *win) : m_win(win), m_zoom(ZoomLevel::Fit), m_panX(0), m_panY(0) {
-}
+View::View(gui_window_t *win) : m_win(win), m_zoom(ZoomLevel::Fit), m_panX(0), m_panY(0) {}
 
 int View::zoomPercent() const {
     switch (m_zoom) {
-    case ZoomLevel::Fit:
-        return 0; // Special case
-    case ZoomLevel::Z25:
-        return 25;
-    case ZoomLevel::Z50:
-        return 50;
-    case ZoomLevel::Z100:
-        return 100;
-    case ZoomLevel::Z200:
-        return 200;
-    case ZoomLevel::Z400:
-        return 400;
-    default:
-        return 100;
+        case ZoomLevel::Fit:
+            return 0; // Special case
+        case ZoomLevel::Z25:
+            return 25;
+        case ZoomLevel::Z50:
+            return 50;
+        case ZoomLevel::Z100:
+            return 100;
+        case ZoomLevel::Z200:
+            return 200;
+        case ZoomLevel::Z400:
+            return 400;
+        default:
+            return 100;
     }
 }
 
 void View::zoomIn() {
     switch (m_zoom) {
-    case ZoomLevel::Fit:
-    case ZoomLevel::Z25:
-        m_zoom = ZoomLevel::Z50;
-        break;
-    case ZoomLevel::Z50:
-        m_zoom = ZoomLevel::Z100;
-        break;
-    case ZoomLevel::Z100:
-        m_zoom = ZoomLevel::Z200;
-        break;
-    case ZoomLevel::Z200:
-    case ZoomLevel::Z400:
-        m_zoom = ZoomLevel::Z400;
-        break;
+        case ZoomLevel::Fit:
+        case ZoomLevel::Z25:
+            m_zoom = ZoomLevel::Z50;
+            break;
+        case ZoomLevel::Z50:
+            m_zoom = ZoomLevel::Z100;
+            break;
+        case ZoomLevel::Z100:
+            m_zoom = ZoomLevel::Z200;
+            break;
+        case ZoomLevel::Z200:
+        case ZoomLevel::Z400:
+            m_zoom = ZoomLevel::Z400;
+            break;
     }
 }
 
 void View::zoomOut() {
     switch (m_zoom) {
-    case ZoomLevel::Fit:
-    case ZoomLevel::Z25:
-        m_zoom = ZoomLevel::Z25;
-        break;
-    case ZoomLevel::Z50:
-        m_zoom = ZoomLevel::Z25;
-        break;
-    case ZoomLevel::Z100:
-        m_zoom = ZoomLevel::Z50;
-        break;
-    case ZoomLevel::Z200:
-        m_zoom = ZoomLevel::Z100;
-        break;
-    case ZoomLevel::Z400:
-        m_zoom = ZoomLevel::Z200;
-        break;
+        case ZoomLevel::Fit:
+        case ZoomLevel::Z25:
+            m_zoom = ZoomLevel::Z25;
+            break;
+        case ZoomLevel::Z50:
+            m_zoom = ZoomLevel::Z25;
+            break;
+        case ZoomLevel::Z100:
+            m_zoom = ZoomLevel::Z50;
+            break;
+        case ZoomLevel::Z200:
+            m_zoom = ZoomLevel::Z100;
+            break;
+        case ZoomLevel::Z400:
+            m_zoom = ZoomLevel::Z200;
+            break;
     }
 }
 
@@ -184,7 +183,8 @@ void View::drawImage(const Image &image) {
         float scaleX = static_cast<float>(dims::WIN_WIDTH) / imgW;
         float scaleY = static_cast<float>(dims::IMAGE_AREA_HEIGHT) / imgH;
         float scale = (scaleX < scaleY) ? scaleX : scaleY;
-        if (scale > 1.0f) scale = 1.0f; // Don't upscale in fit mode
+        if (scale > 1.0f)
+            scale = 1.0f; // Don't upscale in fit mode
         displayW = static_cast<int>(imgW * scale);
         displayH = static_cast<int>(imgH * scale);
     } else {
@@ -204,17 +204,21 @@ void View::drawImage(const Image &image) {
     const uint32_t *srcPixels = image.pixels();
     for (int dy = 0; dy < displayH; dy++) {
         int screenY = y + dy;
-        if (screenY < 0 || screenY >= dims::IMAGE_AREA_HEIGHT) continue;
+        if (screenY < 0 || screenY >= dims::IMAGE_AREA_HEIGHT)
+            continue;
 
         int srcY = (dy * imgH) / displayH;
-        if (srcY >= imgH) srcY = imgH - 1;
+        if (srcY >= imgH)
+            srcY = imgH - 1;
 
         for (int dx = 0; dx < displayW; dx++) {
             int screenX = x + dx;
-            if (screenX < 0 || screenX >= dims::WIN_WIDTH) continue;
+            if (screenX < 0 || screenX >= dims::WIN_WIDTH)
+                continue;
 
             int srcX = (dx * imgW) / displayW;
-            if (srcX >= imgW) srcX = imgW - 1;
+            if (srcX >= imgW)
+                srcX = imgW - 1;
 
             uint32_t pixel = srcPixels[srcY * imgW + srcX];
             gui_fill_rect(m_win, screenX, screenY, 1, 1, pixel);
@@ -234,13 +238,17 @@ void View::drawCheckerboard(int x, int y, int w, int h) {
         for (int cx = 0; cx < w; cx += cellSize) {
             int screenX = x + cx;
             int screenY = y + cy;
-            if (screenX < 0 || screenY < 0) continue;
-            if (screenX >= dims::WIN_WIDTH || screenY >= dims::IMAGE_AREA_HEIGHT) continue;
+            if (screenX < 0 || screenY < 0)
+                continue;
+            if (screenX >= dims::WIN_WIDTH || screenY >= dims::IMAGE_AREA_HEIGHT)
+                continue;
 
             int cellW = cellSize;
             int cellH = cellSize;
-            if (cx + cellW > w) cellW = w - cx;
-            if (cy + cellH > h) cellH = h - cy;
+            if (cx + cellW > w)
+                cellW = w - cx;
+            if (cy + cellH > h)
+                cellH = h - cy;
 
             bool light = ((cx / cellSize) + (cy / cellSize)) % 2 == 0;
             uint32_t color = light ? colors::CHECKERBOARD_LIGHT : colors::CHECKERBOARD_DARK;
@@ -273,7 +281,11 @@ void View::drawStatusBar(const Image &image) {
         if (m_zoom == ZoomLevel::Fit) {
             snprintf(statusBuf, sizeof(statusBuf), "%dx%d (Fit)", image.width(), image.height());
         } else {
-            snprintf(statusBuf, sizeof(statusBuf), "%dx%d @ %d%%", image.width(), image.height(),
+            snprintf(statusBuf,
+                     sizeof(statusBuf),
+                     "%dx%d @ %d%%",
+                     image.width(),
+                     image.height(),
                      zoomPercent());
         }
         int infoX = dims::WIN_WIDTH - static_cast<int>(strlen(statusBuf)) * 8 - 10;

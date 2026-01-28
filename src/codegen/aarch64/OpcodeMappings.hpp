@@ -204,17 +204,17 @@ inline const BinaryOpMapping *lookupBinaryOp(il::core::Opcode op)
         }
         case Opc::Shl:
         {
-            static constexpr BinaryOpMapping m{Opc::Shl, MOpcode::LslRI, true, MOpcode::LslRI};
+            static constexpr BinaryOpMapping m{Opc::Shl, MOpcode::LslvRRR, true, MOpcode::LslRI};
             return &m;
         }
         case Opc::LShr:
         {
-            static constexpr BinaryOpMapping m{Opc::LShr, MOpcode::LsrRI, true, MOpcode::LsrRI};
+            static constexpr BinaryOpMapping m{Opc::LShr, MOpcode::LsrvRRR, true, MOpcode::LsrRI};
             return &m;
         }
         case Opc::AShr:
         {
-            static constexpr BinaryOpMapping m{Opc::AShr, MOpcode::AsrRI, true, MOpcode::AsrRI};
+            static constexpr BinaryOpMapping m{Opc::AShr, MOpcode::AsrvRRR, true, MOpcode::AsrRI};
             return &m;
         }
         // Floating-point operations

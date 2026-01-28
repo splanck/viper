@@ -165,6 +165,32 @@ These functions:
 
 ---
 
+## VIDE-BUG-010: Native build crash on third tab (string use-after-free)
+
+**Severity:** Blocker (crashes on file open)
+**Status:** Fixed
+
+**Symptom:** Opening a third file in native-compiled ViperIDE crashed with SIGSEGV. The crash occurred in `rt_string_header` when `SetStatusRight()` was called with a document's `fileName` field. Debug pattern `0xdeadbeefcafebabe` in register X9 indicated use-after-free.
+
+**Root cause:** The ARM64 code generator's Store opcode handler did not implement string reference counting for entity field stores. When a string was assigned to an entity field (e.g., `doc.fileName = GetFileName(path)`):
+1. The string pointer was stored without calling `rt_str_retain_maybe()`
+2. When the original temporary went out of scope, the string was freed
+3. Later access to the entity field returned a dangling pointer
+
+The VM correctly implemented this in `storeSlotToPtr()` (OpHandlers_Memory.hpp:230-239) which calls `rt_str_release_maybe()` on the old value and `rt_str_retain_maybe()` on the new value.
+
+**Fix:** Modified the Store opcode handler in `OpcodeDispatch.cpp` to emit retain/release calls for string stores to entity fields (base-register + offset pattern):
+1. Load old string from destination
+2. Call `rt_str_release_maybe(old)`
+3. Call `rt_str_retain_maybe(new)`
+4. Store the new string
+
+Note: Only applies to base-register stores (entity fields, array elements), not FP-relative stores (local allocas). Entity objects are zero-initialized by `rt_obj_alloc`, making release of old value safe. Local allocas may contain garbage on first access.
+
+**Files:** `src/codegen/aarch64/OpcodeDispatch.cpp`
+
+---
+
 ## Known Remaining Issues
 
 ### VIDE-TODO-001: Dropdown menu has no visible background
@@ -187,11 +213,35 @@ Implemented proper rendering in `toolbar_paint()`:
 - Dropdown arrow indicators
 - Overflow "..." indicator
 
-### VIDE-TODO-003: Edit menu items not wired up
-Edit menu items (Undo, Redo, Cut, Copy, Paste, Select All, Find) are defined in `app_shell.zia` but the main event loop doesn't poll them. The CodeEditor widget would need clipboard and selection APIs to support these.
+### VIDE-TODO-003: Edit menu items not wired up — DONE
+**Status:** Completed
 
-### VIDE-TODO-004: Sidebar TreeView is empty
-The sidebar TreeView is created but no file tree is populated. This requires a file system browsing API.
+Added runtime API methods for CodeEditor: `Undo()`, `Redo()`, `Copy()`, `Cut()`, `Paste()`, `SelectAll()`. Wired up Edit menu items in `main.zia` event loop. Note: Find functionality still TODO (requires separate search dialog implementation).
 
-### VIDE-TODO-005: Shift+key doesn't produce correct characters
-The KEY_CHAR synthesis in `rt_gui_app_poll()` handles Shift+A-Z (uppercase) but doesn't handle shift variants of other keys (e.g., Shift+1 should produce '!', Shift+; should produce ':'). Full keymap translation would require platform-specific logic.
+**Files changed:**
+- `src/lib/gui/include/vg_ide_widgets.h` — declared C-layer functions
+- `src/lib/gui/src/widgets/vg_codeeditor.c` — implemented copy/cut/paste/select_all
+- `src/runtime/rt_gui.c` — runtime wrappers
+- `src/runtime/rt_gui.h` — declarations
+- `src/il/runtime/runtime.def` — RT_FUNC + RT_METHOD entries
+- `demos/zia/viperide/main.zia` — event loop handlers for miUndo, miRedo, miCut, miCopy, miPaste, miSelectAll
+
+### VIDE-TODO-004: Sidebar TreeView is empty — DONE
+**Status:** Already Implemented
+
+The file system APIs exist (`Viper.IO.Dir.DirsSeq`, `Viper.IO.Dir.FilesSeq`, `Viper.IO.Path.Join`, etc.) and the TreeView is populated when the user opens a folder via File > Open Folder. The `ProjectManager` entity in `core/project_manager.zia` handles:
+- Opening folders via `OpenFolder(path)`
+- Building the tree recursively via `BuildTree()`
+- Excluding hidden files/directories and common patterns (build, node_modules, etc.)
+- Detecting file selection via `HandleTreeClicks()`
+
+The TreeView is empty on startup because no project is open — this is intentional behavior.
+
+### VIDE-TODO-005: Shift+key doesn't produce correct characters — DONE
+**Status:** Fixed
+
+Added US keyboard layout shift mapping in `rt_gui_app_poll()` KEY_CHAR synthesis. Now handles:
+- Shift+numbers: 1→!, 2→@, 3→#, 4→$, 5→%, 6→^, 7→&, 8→*, 9→(, 0→)
+- Shift+symbols: -→_, =→+, [→{, ]→}, \→|, ;→:, '→", ,→<, .→>, /→?, `→~
+
+**File:** `src/runtime/rt_gui.c` (lines 278-345 approximately)

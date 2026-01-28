@@ -120,10 +120,10 @@ constexpr int WIN_HEIGHT = 340;
  * that gets displayed in the system info window.
  */
 struct SystemData {
-    MemInfo mem;         /**< Memory usage statistics. */
-    TaskInfo tasks[32];  /**< Array of task information. */
-    int taskCount;       /**< Number of tasks in the array. */
-    uint64_t uptimeMs;   /**< System uptime in milliseconds. */
+    MemInfo mem;        /**< Memory usage statistics. */
+    TaskInfo tasks[32]; /**< Array of task information. */
+    int taskCount;      /**< Number of tasks in the array. */
+    uint64_t uptimeMs;  /**< System uptime in milliseconds. */
 };
 
 /**

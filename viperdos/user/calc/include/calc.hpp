@@ -88,11 +88,11 @@ namespace calc {
  * performed between the accumulator and the current display value.
  */
 enum class Operation {
-    None,      /**< No pending operation. */
-    Add,       /**< Addition: accumulator + display */
-    Subtract,  /**< Subtraction: accumulator - display */
-    Multiply,  /**< Multiplication: accumulator * display */
-    Divide     /**< Division: accumulator / display (may cause error) */
+    None,     /**< No pending operation. */
+    Add,      /**< Addition: accumulator + display */
+    Subtract, /**< Subtraction: accumulator - display */
+    Multiply, /**< Multiplication: accumulator * display */
+    Divide    /**< Division: accumulator / display (may cause error) */
 };
 
 /**
@@ -119,14 +119,14 @@ enum class Operation {
  * 4. "=" is pressed, result = accumulator + display = 8, display shows "8"
  */
 struct State {
-    char display[32];     /**< Display string (null-terminated number or "Error"). */
-    double accumulator;   /**< First operand, stored when operator is pressed. */
-    double memory;        /**< Memory register for M+/MR operations. */
-    Operation pendingOp;  /**< Operation to apply when = or next op is pressed. */
-    bool newNumber;       /**< True if next digit starts a new number. */
-    bool hasDecimal;      /**< True if current number already has a decimal point. */
-    bool hasMemory;       /**< True if memory register contains a stored value. */
-    bool error;           /**< True if an error occurred (e.g., division by zero). */
+    char display[32];    /**< Display string (null-terminated number or "Error"). */
+    double accumulator;  /**< First operand, stored when operator is pressed. */
+    double memory;       /**< Memory register for M+/MR operations. */
+    Operation pendingOp; /**< Operation to apply when = or next op is pressed. */
+    bool newNumber;      /**< True if next digit starts a new number. */
+    bool hasDecimal;     /**< True if current number already has a decimal point. */
+    bool hasMemory;      /**< True if memory register contains a stored value. */
+    bool error;          /**< True if an error occurred (e.g., division by zero). */
 };
 
 //===----------------------------------------------------------------------===//

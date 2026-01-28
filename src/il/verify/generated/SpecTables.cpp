@@ -540,6 +540,32 @@ inline constexpr std::array<InstructionSpec, il::core::kNumOpcodes> kSpecs = {{
         VerifyStrategy::Default,
         nullptr,
     },
+    // FCmpOrd: floating-point ordered comparison (neither is NaN)
+    {
+        il::core::ResultArity::One,
+        il::core::TypeCategory::I1,
+        static_cast<uint8_t>(2),
+        static_cast<uint8_t>(2),
+        {il::core::TypeCategory::F64, il::core::TypeCategory::F64, il::core::TypeCategory::None},
+        false,
+        static_cast<uint8_t>(0),
+        false,
+        VerifyStrategy::Default,
+        nullptr,
+    },
+    // FCmpUno: floating-point unordered comparison (either is NaN)
+    {
+        il::core::ResultArity::One,
+        il::core::TypeCategory::I1,
+        static_cast<uint8_t>(2),
+        static_cast<uint8_t>(2),
+        {il::core::TypeCategory::F64, il::core::TypeCategory::F64, il::core::TypeCategory::None},
+        false,
+        static_cast<uint8_t>(0),
+        false,
+        VerifyStrategy::Default,
+        nullptr,
+    },
     {
         il::core::ResultArity::One,
         il::core::TypeCategory::F64,
@@ -757,6 +783,19 @@ inline constexpr std::array<InstructionSpec, il::core::kNumOpcodes> kSpecs = {{
         static_cast<uint8_t>(0),
         false,
         VerifyStrategy::ConstNull,
+        nullptr,
+    },
+    // ConstF64: load a constant 64-bit float
+    {
+        il::core::ResultArity::One,
+        il::core::TypeCategory::F64,
+        static_cast<uint8_t>(1),
+        static_cast<uint8_t>(1),
+        {il::core::TypeCategory::F64, il::core::TypeCategory::None, il::core::TypeCategory::None},
+        false,
+        static_cast<uint8_t>(0),
+        false,
+        VerifyStrategy::Default,
         nullptr,
     },
     {

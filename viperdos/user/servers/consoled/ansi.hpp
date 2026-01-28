@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
-#include "text_buffer.hpp"  // Includes gui.h which has stdint types
+#include "text_buffer.hpp" // Includes gui.h which has stdint types
 
 namespace consoled {
 
@@ -16,10 +16,10 @@ namespace consoled {
 
 enum class AnsiState {
     Normal,
-    Esc,      // Saw ESC
-    Csi,      // Saw ESC[
-    CsiPriv,  // Saw ESC[? (private sequence)
-    Osc,      // Saw ESC]
+    Esc,     // Saw ESC
+    Csi,     // Saw ESC[
+    CsiPriv, // Saw ESC[? (private sequence)
+    Osc,     // Saw ESC]
 };
 
 // =============================================================================
@@ -27,7 +27,7 @@ enum class AnsiState {
 // =============================================================================
 
 class AnsiParser {
-public:
+  public:
     AnsiParser() = default;
 
     // Initialize with a text buffer to write to
@@ -37,16 +37,31 @@ public:
     void write(const char *text, size_t len);
 
     // Color accessors
-    uint32_t fg_color() const { return m_fg_color; }
-    uint32_t bg_color() const { return m_bg_color; }
-    void set_colors(uint32_t fg, uint32_t bg) { m_fg_color = fg; m_bg_color = bg; }
+    uint32_t fg_color() const {
+        return m_fg_color;
+    }
+
+    uint32_t bg_color() const {
+        return m_bg_color;
+    }
+
+    void set_colors(uint32_t fg, uint32_t bg) {
+        m_fg_color = fg;
+        m_bg_color = bg;
+    }
+
     void reset_colors();
 
     // Mode accessors
-    bool bold_mode() const { return m_bold_mode; }
-    bool reverse_mode() const { return m_reverse_mode; }
+    bool bold_mode() const {
+        return m_bold_mode;
+    }
 
-private:
+    bool reverse_mode() const {
+        return m_reverse_mode;
+    }
+
+  private:
     // CSI parameter handling
     void csi_reset();
     void csi_push_param();

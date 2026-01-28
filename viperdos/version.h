@@ -18,7 +18,7 @@
 #define VIPERDOS_VERSION_PATCH 1
 
 #define VIPERDOS_VERSION_STRING "0.3.1"
-#define VIPERDOS_VERSION_FULL   "ViperDOS 0.3.1"
+#define VIPERDOS_VERSION_FULL "ViperDOS 0.3.1"
 
 // Build date - updated automatically or manually for releases
 #define VIPERDOS_BUILD_DATE "January 2026"

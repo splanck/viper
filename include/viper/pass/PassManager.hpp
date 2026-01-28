@@ -80,4 +80,3 @@ class PassManager
 };
 
 } // namespace viper::pass
-

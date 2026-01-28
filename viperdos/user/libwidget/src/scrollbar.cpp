@@ -58,9 +58,9 @@
  */
 //===----------------------------------------------------------------------===//
 
-#include <widget.h>
 #include <stdlib.h>
 #include <string.h>
+#include <widget.h>
 
 /**
  * @brief Size of the arrow buttons at each end of the scrollbar in pixels.
@@ -68,7 +68,7 @@
  * Both horizontal and vertical scrollbars use 16-pixel square arrow buttons.
  * The track area is the scrollbar length minus 2 * ARROW_SIZE.
  */
-#define ARROW_SIZE   16
+#define ARROW_SIZE 16
 
 /**
  * @brief Minimum size of the thumb in pixels.
@@ -76,7 +76,7 @@
  * Even when the viewport shows only a tiny fraction of the content, the thumb
  * is at least 20 pixels so it remains easy to click and drag.
  */
-#define MIN_THUMB    20
+#define MIN_THUMB 20
 
 //===----------------------------------------------------------------------===//
 // Scrollbar Paint Handler
@@ -147,7 +147,13 @@ static void scrollbar_paint(widget_t *w, gui_window_t *win) {
         gui_draw_text(win, x + width / 2 - 4, y + 3, "^", WB_BLACK);
 
         // Draw bottom arrow button
-        draw_3d_raised(win, x, y + height - ARROW_SIZE, width, ARROW_SIZE, WB_GRAY_LIGHT, WB_WHITE,
+        draw_3d_raised(win,
+                       x,
+                       y + height - ARROW_SIZE,
+                       width,
+                       ARROW_SIZE,
+                       WB_GRAY_LIGHT,
+                       WB_WHITE,
                        WB_GRAY_DARK);
         gui_draw_text(win, x + width / 2 - 4, y + height - ARROW_SIZE + 3, "v", WB_BLACK);
 
@@ -166,13 +172,13 @@ static void scrollbar_paint(widget_t *w, gui_window_t *win) {
             if (thumb_height > track_height)
                 thumb_height = track_height;
 
-            thumb_y = track_start +
-                      ((sb->value - sb->min_val) * (track_height - thumb_height)) / range;
+            thumb_y =
+                track_start + ((sb->value - sb->min_val) * (track_height - thumb_height)) / range;
         }
 
         // Draw thumb
-        draw_3d_raised(win, x + 1, thumb_y, width - 2, thumb_height, WB_GRAY_LIGHT, WB_WHITE,
-                       WB_GRAY_DARK);
+        draw_3d_raised(
+            win, x + 1, thumb_y, width - 2, thumb_height, WB_GRAY_LIGHT, WB_WHITE, WB_GRAY_DARK);
     } else {
         // Horizontal scrollbar
         // Draw track background
@@ -183,7 +189,13 @@ static void scrollbar_paint(widget_t *w, gui_window_t *win) {
         gui_draw_text(win, x + 4, y + height / 2 - 5, "<", WB_BLACK);
 
         // Draw right arrow button
-        draw_3d_raised(win, x + width - ARROW_SIZE, y, ARROW_SIZE, height, WB_GRAY_LIGHT, WB_WHITE,
+        draw_3d_raised(win,
+                       x + width - ARROW_SIZE,
+                       y,
+                       ARROW_SIZE,
+                       height,
+                       WB_GRAY_LIGHT,
+                       WB_WHITE,
                        WB_GRAY_DARK);
         gui_draw_text(win, x + width - ARROW_SIZE + 4, y + height / 2 - 5, ">", WB_BLACK);
 
@@ -202,13 +214,13 @@ static void scrollbar_paint(widget_t *w, gui_window_t *win) {
             if (thumb_width > track_width)
                 thumb_width = track_width;
 
-            thumb_x = track_start +
-                      ((sb->value - sb->min_val) * (track_width - thumb_width)) / range;
+            thumb_x =
+                track_start + ((sb->value - sb->min_val) * (track_width - thumb_width)) / range;
         }
 
         // Draw thumb
-        draw_3d_raised(win, thumb_x, y + 1, thumb_width, height - 2, WB_GRAY_LIGHT, WB_WHITE,
-                       WB_GRAY_DARK);
+        draw_3d_raised(
+            win, thumb_x, y + 1, thumb_width, height - 2, WB_GRAY_LIGHT, WB_WHITE, WB_GRAY_DARK);
     }
 }
 

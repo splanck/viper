@@ -52,33 +52,33 @@ Applications access networking via kernel syscalls:
 
 ### Socket Operations
 
-| Syscall               | Number | Description                |
-|-----------------------|--------|----------------------------|
-| `SYS_SOCKET_CREATE`   | 0x50   | Create TCP socket          |
-| `SYS_SOCKET_CONNECT`  | 0x51   | Connect to remote host     |
-| `SYS_SOCKET_SEND`     | 0x52   | Send data                  |
-| `SYS_SOCKET_RECV`     | 0x53   | Receive data               |
-| `SYS_SOCKET_CLOSE`    | 0x54   | Close socket               |
-| `SYS_DNS_RESOLVE`     | 0x55   | Resolve hostname to IP     |
-| `SYS_SOCKET_POLL`     | 0x56   | Poll socket for events     |
+| Syscall              | Number | Description            |
+|----------------------|--------|------------------------|
+| `SYS_SOCKET_CREATE`  | 0x50   | Create TCP socket      |
+| `SYS_SOCKET_CONNECT` | 0x51   | Connect to remote host |
+| `SYS_SOCKET_SEND`    | 0x52   | Send data              |
+| `SYS_SOCKET_RECV`    | 0x53   | Receive data           |
+| `SYS_SOCKET_CLOSE`   | 0x54   | Close socket           |
+| `SYS_DNS_RESOLVE`    | 0x55   | Resolve hostname to IP |
+| `SYS_SOCKET_POLL`    | 0x56   | Poll socket for events |
 
 ### TLS Operations
 
-| Syscall               | Number | Description                |
-|-----------------------|--------|----------------------------|
-| `SYS_TLS_CREATE`      | 0xD0   | Create TLS session         |
-| `SYS_TLS_HANDSHAKE`   | 0xD1   | Perform TLS handshake      |
-| `SYS_TLS_SEND`        | 0xD2   | Send encrypted data        |
-| `SYS_TLS_RECV`        | 0xD3   | Receive decrypted data     |
-| `SYS_TLS_CLOSE`       | 0xD4   | Close TLS session          |
-| `SYS_TLS_INFO`        | 0xD5   | Get session info           |
+| Syscall             | Number | Description            |
+|---------------------|--------|------------------------|
+| `SYS_TLS_CREATE`    | 0xD0   | Create TLS session     |
+| `SYS_TLS_HANDSHAKE` | 0xD1   | Perform TLS handshake  |
+| `SYS_TLS_SEND`      | 0xD2   | Send encrypted data    |
+| `SYS_TLS_RECV`      | 0xD3   | Receive decrypted data |
+| `SYS_TLS_CLOSE`     | 0xD4   | Close TLS session      |
+| `SYS_TLS_INFO`      | 0xD5   | Get session info       |
 
 ### Network Information
 
-| Syscall               | Number | Description                |
-|-----------------------|--------|----------------------------|
-| `SYS_NET_STATS`       | 0xE1   | Get network statistics     |
-| `SYS_PING`            | 0xE2   | ICMP ping with RTT         |
+| Syscall         | Number | Description            |
+|-----------------|--------|------------------------|
+| `SYS_NET_STATS` | 0xE1   | Get network statistics |
+| `SYS_PING`      | 0xE2   | ICMP ping with RTT     |
 
 ## Protocol Stack Layers
 

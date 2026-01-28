@@ -51,9 +51,9 @@ constexpr usize MAX_SWAP_SLOTS = 16384;
  * @brief Swap entry encoding constants.
  */
 namespace entry {
-constexpr u64 PRESENT_BIT = (1ULL << 0);   // Present bit (always 0 for swap)
-constexpr u64 SWAP_FLAG = (1ULL << 1);     // Indicates this is a swap entry
-constexpr u64 SLOT_SHIFT = 12;             // Slot index starts at bit 12
+constexpr u64 PRESENT_BIT = (1ULL << 0);         // Present bit (always 0 for swap)
+constexpr u64 SWAP_FLAG = (1ULL << 1);           // Indicates this is a swap entry
+constexpr u64 SLOT_SHIFT = 12;                   // Slot index starts at bit 12
 constexpr u64 SLOT_MASK = 0xFFFFFFFFFFFFF000ULL; // Mask for slot index
 } // namespace entry
 
@@ -162,9 +162,9 @@ void free_slot(u64 swap_entry);
 struct SwapStats {
     usize total_slots;
     usize used_slots;
-    usize swap_outs;      // Total pages swapped out
-    usize swap_ins;       // Total pages swapped in
-    usize io_errors;      // I/O errors encountered
+    usize swap_outs; // Total pages swapped out
+    usize swap_ins;  // Total pages swapped in
+    usize io_errors; // I/O errors encountered
 };
 
 /**

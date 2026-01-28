@@ -395,6 +395,62 @@ VM::ExecResult handleFCmpGE(VM &vm,
                              { return lhsVal.f64 >= rhsVal.f64; });
 }
 
+/// @brief Execute the `fcmp_ord` opcode to test if both operands are ordered.
+/// @details Returns true (1) if neither operand is NaN, false (0) otherwise.
+///          Uses std::isnan to check each operand value.  Control-flow metadata
+///          remains untouched as this is a pure comparison operation.
+/// @param vm Virtual machine coordinating execution (unused).
+/// @param fr Active frame providing operand and destination slots.
+/// @param in Instruction describing the comparison.
+/// @param blocks Map of basic blocks for the current function (unused).
+/// @param bb Reference to the current basic block pointer (unused).
+/// @param ip Instruction index within @p bb (unused).
+/// @return Execution result signalling the interpreter should continue.
+VM::ExecResult handleFCmpOrd(VM &vm,
+                             Frame &fr,
+                             const Instr &in,
+                             const VM::BlockMap &blocks,
+                             const BasicBlock *&bb,
+                             size_t &ip)
+{
+    (void)blocks;
+    (void)bb;
+    (void)ip;
+    return ops::applyCompare(vm,
+                             fr,
+                             in,
+                             [](const Slot &lhsVal, const Slot &rhsVal)
+                             { return !std::isnan(lhsVal.f64) && !std::isnan(rhsVal.f64); });
+}
+
+/// @brief Execute the `fcmp_uno` opcode to test if either operand is unordered (NaN).
+/// @details Returns true (1) if either operand is NaN, false (0) otherwise.
+///          Uses std::isnan to check each operand value.  Control-flow metadata
+///          remains untouched as this is a pure comparison operation.
+/// @param vm Virtual machine coordinating execution (unused).
+/// @param fr Active frame providing operand and destination slots.
+/// @param in Instruction describing the comparison.
+/// @param blocks Map of basic blocks for the current function (unused).
+/// @param bb Reference to the current basic block pointer (unused).
+/// @param ip Instruction index within @p bb (unused).
+/// @return Execution result signalling the interpreter should continue.
+VM::ExecResult handleFCmpUno(VM &vm,
+                             Frame &fr,
+                             const Instr &in,
+                             const VM::BlockMap &blocks,
+                             const BasicBlock *&bb,
+                             size_t &ip)
+{
+    (void)blocks;
+    (void)bb;
+    (void)ip;
+    return ops::applyCompare(vm,
+                             fr,
+                             in,
+                             [](const Slot &lhsVal, const Slot &rhsVal)
+                             { return std::isnan(lhsVal.f64) || std::isnan(rhsVal.f64); });
+}
+
 /// @brief Execute the `sitofp` opcode by converting a signed 64-bit integer to `double`.
 /// @details Uses @ref ops::applyUnary to evaluate the operand slot and stores the
 ///          converted `double` value.  Host conversion semantics provide the

@@ -408,7 +408,7 @@ Task *create(const char *name, TaskEntry entry, void *arg, u32 flags) {
     t->dl_abs_deadline = 0;
     t->dl_missed = 0;
     t->dl_flags = 0;
-    t->bw_runtime = 0;        // No bandwidth limit by default
+    t->bw_runtime = 0; // No bandwidth limit by default
     t->bw_period = 0;
     t->bw_consumed = 0;
     t->bw_period_start = 0;
@@ -594,7 +594,7 @@ Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack) 
     t->dl_abs_deadline = 0;
     t->dl_missed = 0;
     t->dl_flags = 0;
-    t->bw_runtime = 0;        // No bandwidth limit by default
+    t->bw_runtime = 0; // No bandwidth limit by default
     t->bw_period = 0;
     t->bw_consumed = 0;
     t->bw_period_start = 0;
@@ -849,8 +849,7 @@ void exit(i32 code) {
             // Thread exit: store return value and wake joiners, don't kill the process
             t->thread.retval = static_cast<u64>(code);
             if (t->thread.join_waiters) {
-                sched::wait_wake_all(
-                    static_cast<sched::WaitQueue *>(t->thread.join_waiters));
+                sched::wait_wake_all(static_cast<sched::WaitQueue *>(t->thread.join_waiters));
             }
             // Decrement process thread count
             ::viper::Viper *v = reinterpret_cast<::viper::Viper *>(t->viper);

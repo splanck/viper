@@ -92,6 +92,7 @@ constexpr uint32_t CHECKERBOARD_LIGHT = 0xFFCCCCCC;
 constexpr uint32_t CHECKERBOARD_DARK = 0xFF999999;
 
 } // namespace colors
+
 /** @} */ // end ViewerColors
 
 //===----------------------------------------------------------------------===//
@@ -218,21 +219,27 @@ class View {
      * Scales the image to fit within the display area while
      * maintaining the aspect ratio.
      */
-    void zoomFit() { m_zoom = ZoomLevel::Fit; }
+    void zoomFit() {
+        m_zoom = ZoomLevel::Fit;
+    }
 
     /**
      * @brief Sets zoom level to 100% (actual pixels).
      *
      * Displays the image at its native resolution with no scaling.
      */
-    void zoom100() { m_zoom = ZoomLevel::Z100; }
+    void zoom100() {
+        m_zoom = ZoomLevel::Z100;
+    }
 
     /**
      * @brief Returns the current zoom level.
      *
      * @return The current ZoomLevel enum value.
      */
-    ZoomLevel zoomLevel() const { return m_zoom; }
+    ZoomLevel zoomLevel() const {
+        return m_zoom;
+    }
 
     /**
      * @brief Returns the current zoom as a percentage.
@@ -262,7 +269,10 @@ class View {
     /**
      * @brief Resets the pan offset to center the image.
      */
-    void resetPan() { m_panX = 0; m_panY = 0; }
+    void resetPan() {
+        m_panX = 0;
+        m_panY = 0;
+    }
 
   private:
     /**

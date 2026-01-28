@@ -638,10 +638,14 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                         /* Extract modifier flags from NSEvent */
                         int mods = 0;
                         NSEventModifierFlags flags = [event modifierFlags];
-                        if (flags & NSEventModifierFlagShift) mods |= VGFX_MOD_SHIFT;
-                        if (flags & NSEventModifierFlagControl) mods |= VGFX_MOD_CTRL;
-                        if (flags & NSEventModifierFlagOption) mods |= VGFX_MOD_ALT;
-                        if (flags & NSEventModifierFlagCommand) mods |= VGFX_MOD_CMD;
+                        if (flags & NSEventModifierFlagShift)
+                            mods |= VGFX_MOD_SHIFT;
+                        if (flags & NSEventModifierFlagControl)
+                            mods |= VGFX_MOD_CTRL;
+                        if (flags & NSEventModifierFlagOption)
+                            mods |= VGFX_MOD_ALT;
+                        if (flags & NSEventModifierFlagCommand)
+                            mods |= VGFX_MOD_CMD;
 
                         vgfx_event_t vgfx_event = {
                             .type = VGFX_EVENT_KEY_DOWN,

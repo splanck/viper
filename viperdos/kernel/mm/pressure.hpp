@@ -107,8 +107,11 @@ u32 get_free_percent();
  * @param out_reclaim_calls Number of times reclaim was triggered.
  * @param out_pages_reclaimed Total pages reclaimed since init.
  */
-void get_stats(Level *out_level, u64 *out_free_pages, u64 *out_total_pages,
-               u64 *out_reclaim_calls, u64 *out_pages_reclaimed);
+void get_stats(Level *out_level,
+               u64 *out_free_pages,
+               u64 *out_total_pages,
+               u64 *out_reclaim_calls,
+               u64 *out_pages_reclaimed);
 
 /**
  * @brief Convert pressure level to string.

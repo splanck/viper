@@ -33,9 +33,9 @@
  */
 
 #include "../include/errno.h"
+#include "../include/stddef.h"
 #include "../include/stdio.h"
 #include "../include/stdlib.h"
-#include "../include/stddef.h"
 
 /*
  * Partial TCB layout matching pthread.c's tcb_t struct.
@@ -69,8 +69,7 @@ int *__errno_location(void) {
     unsigned long tpidr;
     __asm__ volatile("mrs %0, tpidr_el0" : "=r"(tpidr));
     if (tpidr) {
-        return (int *)((char *)tpidr +
-                        offsetof(struct __tcb_layout, errno_value));
+        return (int *)((char *)tpidr + offsetof(struct __tcb_layout, errno_value));
     }
     return &__main_errno;
 }

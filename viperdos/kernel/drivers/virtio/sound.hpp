@@ -133,8 +133,8 @@ struct SndQueryInfo {
 struct SndPcmInfo {
     u32 hdr_code;
     u32 features;
-    u64 formats;     // Bitmask of supported formats
-    u64 rates;       // Bitmask of supported rates
+    u64 formats; // Bitmask of supported formats
+    u64 rates;   // Bitmask of supported rates
     u8 direction;
     u8 channels_min;
     u8 channels_max;
@@ -183,10 +183,14 @@ class SoundDevice : public Device {
     bool init();
 
     /// Check if device is initialized and has output streams.
-    bool is_available() const { return initialized_ && num_output_streams_ > 0; }
+    bool is_available() const {
+        return initialized_ && num_output_streams_ > 0;
+    }
 
     /// Get number of output streams.
-    u32 num_output_streams() const { return num_output_streams_; }
+    u32 num_output_streams() const {
+        return num_output_streams_;
+    }
 
     /**
      * @brief Configure a PCM output stream.
@@ -222,10 +226,14 @@ class SoundDevice : public Device {
     i64 write_pcm(u32 stream_id, const void *data, usize len);
 
     /// Set volume (0-255, applied in software before submission).
-    void set_volume(u8 vol) { volume_ = vol; }
+    void set_volume(u8 vol) {
+        volume_ = vol;
+    }
 
     /// Get current volume.
-    u8 volume() const { return volume_; }
+    u8 volume() const {
+        return volume_;
+    }
 
   private:
     Virtqueue controlq_;
@@ -302,7 +310,9 @@ class AudioMixer {
     /**
      * @brief Check if mixing is active (more than one stream has pending data).
      */
-    bool is_active() const { return active_streams_ > 1; }
+    bool is_active() const {
+        return active_streams_ > 1;
+    }
 
   private:
     struct StreamBuf {
@@ -318,8 +328,10 @@ class AudioMixer {
 
     /// Clamp i32 to i16 range
     static i16 clamp16(i32 val) {
-        if (val > 32767) return 32767;
-        if (val < -32768) return -32768;
+        if (val > 32767)
+            return 32767;
+        if (val < -32768)
+            return -32768;
         return static_cast<i16>(val);
     }
 };

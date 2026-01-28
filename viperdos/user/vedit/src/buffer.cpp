@@ -119,7 +119,8 @@ bool Buffer::load(const char *filename) {
 
                 lineBuf[lineLen] = '\0';
                 m_lines[m_lineCount].capacity = lineLen + 64;
-                m_lines[m_lineCount].text = static_cast<char *>(malloc(m_lines[m_lineCount].capacity));
+                m_lines[m_lineCount].text =
+                    static_cast<char *>(malloc(m_lines[m_lineCount].capacity));
                 if (m_lines[m_lineCount].text) {
                     strcpy(m_lines[m_lineCount].text, lineBuf);
                     m_lines[m_lineCount].length = lineLen;
@@ -229,7 +230,8 @@ bool Buffer::insertLine(int afterLine) {
     }
 
     // Shift lines down
-    memmove(&m_lines[afterLine + 2], &m_lines[afterLine + 1],
+    memmove(&m_lines[afterLine + 2],
+            &m_lines[afterLine + 1],
             (m_lineCount - afterLine - 1) * sizeof(Line));
 
     // Initialize new line
@@ -333,8 +335,7 @@ void Buffer::deleteLine(int lineIdx) {
     free(m_lines[lineIdx].text);
 
     // Shift lines up
-    memmove(&m_lines[lineIdx], &m_lines[lineIdx + 1],
-            (m_lineCount - lineIdx - 1) * sizeof(Line));
+    memmove(&m_lines[lineIdx], &m_lines[lineIdx + 1], (m_lineCount - lineIdx - 1) * sizeof(Line));
 
     m_lineCount--;
     m_modified = true;

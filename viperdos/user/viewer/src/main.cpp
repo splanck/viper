@@ -142,84 +142,84 @@ extern "C" int main(int argc, char **argv) {
             bool needsRedraw = false;
 
             switch (event.type) {
-            case GUI_EVENT_CLOSE:
-                // Window close button clicked
-                running = false;
-                break;
+                case GUI_EVENT_CLOSE:
+                    // Window close button clicked
+                    running = false;
+                    break;
 
-            case GUI_EVENT_MOUSE:
-                if (event.mouse.event_type == 1) {
-                    // Mouse button press - start dragging
-                    if (event.mouse.button == 0) {
-                        dragging = true;
+                case GUI_EVENT_MOUSE:
+                    if (event.mouse.event_type == 1) {
+                        // Mouse button press - start dragging
+                        if (event.mouse.button == 0) {
+                            dragging = true;
+                            lastX = event.mouse.x;
+                            lastY = event.mouse.y;
+                        }
+                    } else if (event.mouse.event_type == 2) {
+                        // Mouse button release - stop dragging
+                        dragging = false;
+                    } else if (event.mouse.event_type == 0 && dragging) {
+                        // Mouse move while dragging - pan image
+                        int dx = event.mouse.x - lastX;
+                        int dy = event.mouse.y - lastY;
+                        view.pan(dx, dy);
                         lastX = event.mouse.x;
                         lastY = event.mouse.y;
+                        needsRedraw = true;
                     }
-                } else if (event.mouse.event_type == 2) {
-                    // Mouse button release - stop dragging
-                    dragging = false;
-                } else if (event.mouse.event_type == 0 && dragging) {
-                    // Mouse move while dragging - pan image
-                    int dx = event.mouse.x - lastX;
-                    int dy = event.mouse.y - lastY;
-                    view.pan(dx, dy);
-                    lastX = event.mouse.x;
-                    lastY = event.mouse.y;
-                    needsRedraw = true;
-                }
-                break;
-
-            case GUI_EVENT_KEY:
-                switch (event.key.keycode) {
-                case 0x2D: // + key (zoom in)
-                    view.zoomIn();
-                    needsRedraw = true;
                     break;
 
-                case 0x2E: // - key (zoom out)
-                    view.zoomOut();
-                    needsRedraw = true;
-                    break;
+                case GUI_EVENT_KEY:
+                    switch (event.key.keycode) {
+                        case 0x2D: // + key (zoom in)
+                            view.zoomIn();
+                            needsRedraw = true;
+                            break;
 
-                case 0x09: // F key (fit to window)
-                    view.zoomFit();
-                    view.resetPan();
-                    needsRedraw = true;
-                    break;
+                        case 0x2E: // - key (zoom out)
+                            view.zoomOut();
+                            needsRedraw = true;
+                            break;
 
-                case 0x1E: // 1 key (100% zoom)
-                    view.zoom100();
-                    view.resetPan();
-                    needsRedraw = true;
-                    break;
+                        case 0x09: // F key (fit to window)
+                            view.zoomFit();
+                            view.resetPan();
+                            needsRedraw = true;
+                            break;
 
-                case 0x50: // Left arrow (pan left)
-                    view.pan(20, 0);
-                    needsRedraw = true;
-                    break;
+                        case 0x1E: // 1 key (100% zoom)
+                            view.zoom100();
+                            view.resetPan();
+                            needsRedraw = true;
+                            break;
 
-                case 0x4F: // Right arrow (pan right)
-                    view.pan(-20, 0);
-                    needsRedraw = true;
-                    break;
+                        case 0x50: // Left arrow (pan left)
+                            view.pan(20, 0);
+                            needsRedraw = true;
+                            break;
 
-                case 0x52: // Up arrow (pan up)
-                    view.pan(0, 20);
-                    needsRedraw = true;
-                    break;
+                        case 0x4F: // Right arrow (pan right)
+                            view.pan(-20, 0);
+                            needsRedraw = true;
+                            break;
 
-                case 0x51: // Down arrow (pan down)
-                    view.pan(0, -20);
-                    needsRedraw = true;
+                        case 0x52: // Up arrow (pan up)
+                            view.pan(0, 20);
+                            needsRedraw = true;
+                            break;
+
+                        case 0x51: // Down arrow (pan down)
+                            view.pan(0, -20);
+                            needsRedraw = true;
+                            break;
+
+                        default:
+                            break;
+                    }
                     break;
 
                 default:
                     break;
-                }
-                break;
-
-            default:
-                break;
             }
 
             // Re-render if state changed

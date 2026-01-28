@@ -117,6 +117,10 @@ static const char *fpCondCode(il::core::Opcode op)
             return "gt";
         case il::core::Opcode::FCmpGE:
             return "ge";
+        case il::core::Opcode::FCmpOrd:
+            return "vc"; // vc = overflow clear (V flag clear if neither NaN)
+        case il::core::Opcode::FCmpUno:
+            return "vs"; // vs = overflow set (V flag set if either NaN)
         default:
             return "eq";
     }
@@ -286,10 +290,6 @@ bool materializeValueToVReg(const il::core::Value &v,
         {
             if (prod.operands.size() == 2)
             {
-                // Check if this is a shift operation that requires immediate
-                bool isShift =
-                    (prod.op == Opcode::Shl || prod.op == Opcode::LShr || prod.op == Opcode::AShr);
-
                 if (binOp->supportsImmediate &&
                     prod.operands[1].kind == il::core::Value::Kind::ConstInt)
                 {
@@ -301,9 +301,9 @@ bool materializeValueToVReg(const il::core::Value &v,
                     }
                     return false;
                 }
-                else if (!isShift)
+                else
                 {
-                    // Non-shift operations can use register-register form
+                    // Use register-register form (includes shifts with register amount)
                     if (emitRRR(binOp->mirOp, prod.operands[0], prod.operands[1]))
                     {
                         // Cache result to prevent re-materialization with different vreg
@@ -674,7 +674,6 @@ bool lowerSRemChk0(const il::core::Instr &ins,
         return false;
 
     // Generate divide-by-zero check: cmp rhs, #0; b.eq trap_label
-    // Note: cbz has limited range and requires local labels, so we use cmp+b.eq
     const std::string trapLabel = ".Ltrap_div0_" + std::to_string(ctx.trapLabelCounter++);
     out.instrs.push_back(
         MInstr{MOpcode::CmpRI, {MOperand::vregOp(RegClass::GPR, rhs), MOperand::immOp(0)}});
@@ -876,6 +875,225 @@ bool lowerURemChk0(const il::core::Instr &ins,
     ctx.mf.blocks.emplace_back();
     ctx.mf.blocks.back().name = trapLabel;
     ctx.mf.blocks.back().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
+
+    // Compute quotient: udiv tmp, lhs, rhs
+    const uint16_t quotient = ctx.nextVRegId++;
+    out.instrs.push_back(MInstr{MOpcode::UDivRRR,
+                                {MOperand::vregOp(RegClass::GPR, quotient),
+                                 MOperand::vregOp(RegClass::GPR, lhs),
+                                 MOperand::vregOp(RegClass::GPR, rhs)}});
+
+    // Compute remainder: msub dst, quotient, rhs, lhs => dst = lhs - quotient*rhs
+    const uint16_t dst = ctx.nextVRegId++;
+    ctx.tempVReg[*ins.result] = dst;
+    out.instrs.push_back(MInstr{MOpcode::MSubRRRR,
+                                {MOperand::vregOp(RegClass::GPR, dst),
+                                 MOperand::vregOp(RegClass::GPR, quotient),
+                                 MOperand::vregOp(RegClass::GPR, rhs),
+                                 MOperand::vregOp(RegClass::GPR, lhs)}});
+
+    return true;
+}
+
+//===----------------------------------------------------------------------===//
+// Index Bounds Check (idx.chk)
+//===----------------------------------------------------------------------===//
+
+bool lowerIdxChk(const il::core::Instr &ins,
+                 const il::core::BasicBlock &bb,
+                 LoweringContext &ctx,
+                 MBasicBlock &out)
+{
+    // idx.chk checks: lo <= idx < hi
+    // operands[0] = idx, operands[1] = lo, operands[2] = hi
+    if (!ins.result || ins.operands.size() < 3)
+        return false;
+
+    uint16_t idxV = 0, loV = 0, hiV = 0;
+    RegClass idxCls = RegClass::GPR, loCls = RegClass::GPR, hiCls = RegClass::GPR;
+
+    if (!materializeValueToVReg(ins.operands[0],
+                                bb,
+                                ctx.ti,
+                                ctx.fb,
+                                out,
+                                ctx.tempVReg,
+                                ctx.tempRegClass,
+                                ctx.nextVRegId,
+                                idxV,
+                                idxCls))
+        return false;
+
+    // Check if lo is constant 0 (common optimization)
+    const bool loIsZero = ins.operands[1].kind == il::core::Value::Kind::ConstInt &&
+                          ins.operands[1].i64 == 0;
+
+    if (!loIsZero)
+    {
+        if (!materializeValueToVReg(ins.operands[1],
+                                    bb,
+                                    ctx.ti,
+                                    ctx.fb,
+                                    out,
+                                    ctx.tempVReg,
+                                    ctx.tempRegClass,
+                                    ctx.nextVRegId,
+                                    loV,
+                                    loCls))
+            return false;
+    }
+
+    if (!materializeValueToVReg(ins.operands[2],
+                                bb,
+                                ctx.ti,
+                                ctx.fb,
+                                out,
+                                ctx.tempVReg,
+                                ctx.tempRegClass,
+                                ctx.nextVRegId,
+                                hiV,
+                                hiCls))
+        return false;
+
+    const std::string trapLabel = ".Ltrap_bounds_" + std::to_string(ctx.trapLabelCounter++);
+
+    if (loIsZero)
+    {
+        // Optimized case: just check idx >= hi (unsigned)
+        // cmp idx, hi; b.hs trap (unsigned >=)
+        out.instrs.push_back(MInstr{MOpcode::CmpRR,
+                                    {MOperand::vregOp(RegClass::GPR, idxV),
+                                     MOperand::vregOp(RegClass::GPR, hiV)}});
+        out.instrs.push_back(
+            MInstr{MOpcode::BCond, {MOperand::condOp("hs"), MOperand::labelOp(trapLabel)}});
+    }
+    else
+    {
+        // General case: check idx < lo OR idx >= hi
+        // cmp idx, lo; b.lt trap
+        out.instrs.push_back(MInstr{MOpcode::CmpRR,
+                                    {MOperand::vregOp(RegClass::GPR, idxV),
+                                     MOperand::vregOp(RegClass::GPR, loV)}});
+        out.instrs.push_back(
+            MInstr{MOpcode::BCond, {MOperand::condOp("lt"), MOperand::labelOp(trapLabel)}});
+
+        // cmp idx, hi; b.ge trap
+        out.instrs.push_back(MInstr{MOpcode::CmpRR,
+                                    {MOperand::vregOp(RegClass::GPR, idxV),
+                                     MOperand::vregOp(RegClass::GPR, hiV)}});
+        out.instrs.push_back(
+            MInstr{MOpcode::BCond, {MOperand::condOp("ge"), MOperand::labelOp(trapLabel)}});
+    }
+
+    // Create trap block
+    ctx.mf.blocks.emplace_back();
+    ctx.mf.blocks.back().name = trapLabel;
+    ctx.mf.blocks.back().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
+
+    // Result is the index value (pass-through)
+    const uint16_t dst = ctx.nextVRegId++;
+    ctx.tempVReg[*ins.result] = dst;
+    out.instrs.push_back(MInstr{MOpcode::MovRR,
+                                {MOperand::vregOp(RegClass::GPR, dst),
+                                 MOperand::vregOp(RegClass::GPR, idxV)}});
+
+    return true;
+}
+
+//===----------------------------------------------------------------------===//
+// Signed Remainder (srem) - no zero-check
+//===----------------------------------------------------------------------===//
+
+bool lowerSRem(const il::core::Instr &ins,
+               const il::core::BasicBlock &bb,
+               LoweringContext &ctx,
+               MBasicBlock &out)
+{
+    if (!ins.result || ins.operands.size() < 2)
+        return false;
+
+    uint16_t lhs = 0, rhs = 0;
+    RegClass lhsCls = RegClass::GPR, rhsCls = RegClass::GPR;
+
+    if (!materializeValueToVReg(ins.operands[0],
+                                bb,
+                                ctx.ti,
+                                ctx.fb,
+                                out,
+                                ctx.tempVReg,
+                                ctx.tempRegClass,
+                                ctx.nextVRegId,
+                                lhs,
+                                lhsCls))
+        return false;
+    if (!materializeValueToVReg(ins.operands[1],
+                                bb,
+                                ctx.ti,
+                                ctx.fb,
+                                out,
+                                ctx.tempVReg,
+                                ctx.tempRegClass,
+                                ctx.nextVRegId,
+                                rhs,
+                                rhsCls))
+        return false;
+
+    // Compute quotient: sdiv tmp, lhs, rhs
+    const uint16_t quotient = ctx.nextVRegId++;
+    out.instrs.push_back(MInstr{MOpcode::SDivRRR,
+                                {MOperand::vregOp(RegClass::GPR, quotient),
+                                 MOperand::vregOp(RegClass::GPR, lhs),
+                                 MOperand::vregOp(RegClass::GPR, rhs)}});
+
+    // Compute remainder: msub dst, quotient, rhs, lhs => dst = lhs - quotient*rhs
+    const uint16_t dst = ctx.nextVRegId++;
+    ctx.tempVReg[*ins.result] = dst;
+    out.instrs.push_back(MInstr{MOpcode::MSubRRRR,
+                                {MOperand::vregOp(RegClass::GPR, dst),
+                                 MOperand::vregOp(RegClass::GPR, quotient),
+                                 MOperand::vregOp(RegClass::GPR, rhs),
+                                 MOperand::vregOp(RegClass::GPR, lhs)}});
+
+    return true;
+}
+
+//===----------------------------------------------------------------------===//
+// Unsigned Remainder (urem) - no zero-check
+//===----------------------------------------------------------------------===//
+
+bool lowerURem(const il::core::Instr &ins,
+               const il::core::BasicBlock &bb,
+               LoweringContext &ctx,
+               MBasicBlock &out)
+{
+    if (!ins.result || ins.operands.size() < 2)
+        return false;
+
+    uint16_t lhs = 0, rhs = 0;
+    RegClass lhsCls = RegClass::GPR, rhsCls = RegClass::GPR;
+
+    if (!materializeValueToVReg(ins.operands[0],
+                                bb,
+                                ctx.ti,
+                                ctx.fb,
+                                out,
+                                ctx.tempVReg,
+                                ctx.tempRegClass,
+                                ctx.nextVRegId,
+                                lhs,
+                                lhsCls))
+        return false;
+    if (!materializeValueToVReg(ins.operands[1],
+                                bb,
+                                ctx.ti,
+                                ctx.fb,
+                                out,
+                                ctx.tempVReg,
+                                ctx.tempRegClass,
+                                ctx.nextVRegId,
+                                rhs,
+                                rhsCls))
+        return false;
 
     // Compute quotient: udiv tmp, lhs, rhs
     const uint16_t quotient = ctx.nextVRegId++;

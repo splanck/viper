@@ -107,6 +107,7 @@ namespace
         case MOpcode::MovRI:
         case MOpcode::FMovRR:
         case MOpcode::FMovRI:
+        case MOpcode::FMovGR:
         case MOpcode::AddRRR:
         case MOpcode::SubRRR:
         case MOpcode::MulRRR:
@@ -120,6 +121,9 @@ namespace
         case MOpcode::LslRI:
         case MOpcode::LsrRI:
         case MOpcode::AsrRI:
+        case MOpcode::LslvRRR:
+        case MOpcode::LsrvRRR:
+        case MOpcode::AsrvRRR:
         case MOpcode::Cset:
         case MOpcode::LdrRegFpImm:
         case MOpcode::LdrFprFpImm:
@@ -180,6 +184,7 @@ namespace
     {
         case MOpcode::MovRR:
         case MOpcode::FMovRR:
+        case MOpcode::FMovGR:
             // dst, src - check src (index 1)
             if (instr.ops.size() >= 2 && samePhysReg(instr.ops[1], reg))
                 return true;
@@ -197,6 +202,9 @@ namespace
         case MOpcode::FSubRRR:
         case MOpcode::FMulRRR:
         case MOpcode::FDivRRR:
+        case MOpcode::LslvRRR:
+        case MOpcode::LsrvRRR:
+        case MOpcode::AsrvRRR:
             // dst, lhs, rhs - check lhs and rhs (indices 1, 2)
             if (instr.ops.size() >= 2 && samePhysReg(instr.ops[1], reg))
                 return true;
@@ -255,6 +263,12 @@ namespace
 
         case MOpcode::Cbz:
             // reg, label - check reg
+            if (instr.ops.size() >= 1 && samePhysReg(instr.ops[0], reg))
+                return true;
+            break;
+
+        case MOpcode::Blr:
+            // blr reg - uses the register containing the function pointer
             if (instr.ops.size() >= 1 && samePhysReg(instr.ops[0], reg))
                 return true;
             break;
@@ -420,6 +434,9 @@ void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
         case MOpcode::LslRI:
         case MOpcode::LsrRI:
         case MOpcode::AsrRI:
+        case MOpcode::LslvRRR:
+        case MOpcode::LsrvRRR:
+        case MOpcode::AsrvRRR:
         case MOpcode::Cset:
         case MOpcode::LdrRegFpImm:
         case MOpcode::LdrRegBaseImm:
@@ -647,6 +664,7 @@ void removeMarkedInstructions(std::vector<MInstr> &instrs, const std::vector<boo
         case MOpcode::MovRI:
         case MOpcode::FMovRR:
         case MOpcode::FMovRI:
+        case MOpcode::FMovGR:
             // mov dst, src
             return idx == 0 ? std::make_pair(false, true) : std::make_pair(true, false);
 
@@ -662,6 +680,9 @@ void removeMarkedInstructions(std::vector<MInstr> &instrs, const std::vector<boo
         case MOpcode::FSubRRR:
         case MOpcode::FMulRRR:
         case MOpcode::FDivRRR:
+        case MOpcode::LslvRRR:
+        case MOpcode::LsrvRRR:
+        case MOpcode::AsrvRRR:
             // op dst, lhs, rhs
             return idx == 0 ? std::make_pair(false, true) : std::make_pair(true, false);
 
@@ -745,6 +766,10 @@ void removeMarkedInstructions(std::vector<MInstr> &instrs, const std::vector<boo
 
         case MOpcode::Cbz:
             // cbz reg, label
+            return idx == 0 ? std::make_pair(true, false) : std::make_pair(false, false);
+
+        case MOpcode::Blr:
+            // blr reg - the register is used (read) to call, not defined
             return idx == 0 ? std::make_pair(true, false) : std::make_pair(false, false);
 
         case MOpcode::AddFpImm:
@@ -934,6 +959,7 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
 
         // Call instructions - may have arbitrary effects
         case MOpcode::Bl:
+        case MOpcode::Blr:
             return true;
 
         // Branch and control flow - affect program flow
@@ -978,6 +1004,7 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
         case MOpcode::MovRI:
         case MOpcode::FMovRR:
         case MOpcode::FMovRI:
+        case MOpcode::FMovGR:
         {
             if (instr.ops.empty())
                 return false;
@@ -1013,6 +1040,7 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
         case MOpcode::MovRI:
         case MOpcode::FMovRR:
         case MOpcode::FMovRI:
+        case MOpcode::FMovGR:
         case MOpcode::AddRRR:
         case MOpcode::SubRRR:
         case MOpcode::MulRRR:

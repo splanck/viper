@@ -218,7 +218,9 @@ class Buffer {
      *
      * @return Number of lines (1 to MAX_LINES).
      */
-    int lineCount() const { return m_lineCount; }
+    int lineCount() const {
+        return m_lineCount;
+    }
 
     /**
      * @brief Returns the text content of a line.
@@ -323,21 +325,27 @@ class Buffer {
      *
      * @return true if modified since last save/load, false otherwise.
      */
-    bool isModified() const { return m_modified; }
+    bool isModified() const {
+        return m_modified;
+    }
 
     /**
      * @brief Clears the modification flag.
      *
      * Called after saving to indicate the buffer matches the file.
      */
-    void clearModified() { m_modified = false; }
+    void clearModified() {
+        m_modified = false;
+    }
 
     /**
      * @brief Returns the current filename.
      *
      * @return Path of the loaded/saved file, or empty string if none.
      */
-    const char *filename() const { return m_filename; }
+    const char *filename() const {
+        return m_filename;
+    }
 
   private:
     /**
@@ -363,9 +371,9 @@ class Buffer {
      */
     bool insertLine(int afterLine);
 
-    Line *m_lines;       /**< Array of line structures. */
-    int m_lineCount;     /**< Number of valid lines. */
-    bool m_modified;     /**< True if buffer has unsaved changes. */
+    Line *m_lines;        /**< Array of line structures. */
+    int m_lineCount;      /**< Number of valid lines. */
+    bool m_modified;      /**< True if buffer has unsaved changes. */
     char m_filename[256]; /**< Current file path. */
 };
 

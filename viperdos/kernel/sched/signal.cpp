@@ -437,7 +437,7 @@ bool setup_signal_delivery(exceptions::ExceptionFrame *frame) {
     //   0xD2801200  // mov x8, #0x90
     //   0xD4000001  // svc #0
     sig_frame->trampoline[0] = 0xD2801200D4000001ULL; // Combined as little-endian
-    sig_frame->trampoline[1] = 0; // Padding
+    sig_frame->trampoline[1] = 0;                     // Padding
 
     // Clear this signal from pending
     __atomic_fetch_and(&t->signals.pending, ~(1u << signum), __ATOMIC_SEQ_CST);

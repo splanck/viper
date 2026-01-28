@@ -55,8 +55,7 @@ struct SlotTraits<T, std::enable_if_t<std::is_integral_v<T> && !std::is_same_v<T
     }
 };
 
-template <typename T>
-struct SlotTraits<T, std::enable_if_t<std::is_floating_point_v<T>>>
+template <typename T> struct SlotTraits<T, std::enable_if_t<std::is_floating_point_v<T>>>
 {
     [[nodiscard]] static T load(const Slot &slot) noexcept
     {
@@ -69,8 +68,7 @@ struct SlotTraits<T, std::enable_if_t<std::is_floating_point_v<T>>>
     }
 };
 
-template <>
-struct SlotTraits<bool, void>
+template <> struct SlotTraits<bool, void>
 {
     [[nodiscard]] static bool load(const Slot &slot) noexcept
     {
@@ -94,10 +92,7 @@ struct SlotTraits<bool, void>
 /// @return Operand value converted to @p T.
 /// @note This helper simply materialises the operand slot and casts the stored value.
 template <typename T>
-[[nodiscard]] inline T readOperand(VM &vm,
-                                   Frame &fr,
-                                   const il::core::Instr &instr,
-                                   size_t index)
+[[nodiscard]] inline T readOperand(VM &vm, Frame &fr, const il::core::Instr &instr, size_t index)
 {
     const Slot slot = il::vm::detail::VMAccess::eval(vm, fr, instr.operands[index]);
     return detail::SlotTraits<T>::load(slot);
@@ -185,4 +180,3 @@ template <typename T>
 }
 
 } // namespace il::vm::internal
-

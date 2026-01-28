@@ -57,9 +57,9 @@
  */
 //===----------------------------------------------------------------------===//
 
-#include <widget.h>
 #include <stdlib.h>
 #include <string.h>
+#include <widget.h>
 
 //===----------------------------------------------------------------------===//
 // Layout API
@@ -357,8 +357,7 @@ static void layout_apply_horizontal(widget_t *container) {
 
     int x = container->x + layout->margin_left;
     int y = container->y + layout->margin_top;
-    int available_height =
-        container->height - layout->margin_top - layout->margin_bottom;
+    int available_height = container->height - layout->margin_top - layout->margin_bottom;
 
     for (int i = 0; i < container->child_count; i++) {
         widget_t *child = container->children[i];
@@ -407,8 +406,7 @@ static void layout_apply_vertical(widget_t *container) {
 
     int x = container->x + layout->margin_left;
     int y = container->y + layout->margin_top;
-    int available_width =
-        container->width - layout->margin_left - layout->margin_right;
+    int available_width = container->width - layout->margin_left - layout->margin_right;
 
     for (int i = 0; i < container->child_count; i++) {
         widget_t *child = container->children[i];
@@ -459,10 +457,8 @@ static void layout_apply_grid(widget_t *container) {
     if (!layout || layout->columns <= 0)
         return;
 
-    int content_width =
-        container->width - layout->margin_left - layout->margin_right;
-    int content_height =
-        container->height - layout->margin_top - layout->margin_bottom;
+    int content_width = container->width - layout->margin_left - layout->margin_right;
+    int content_height = container->height - layout->margin_top - layout->margin_bottom;
 
     int cell_width = (content_width - (layout->columns - 1) * layout->spacing) / layout->columns;
     int cell_height;
@@ -558,22 +554,22 @@ static void layout_apply_border(widget_t *container) {
             continue;
 
         switch (child->layout_constraint) {
-        case BORDER_NORTH:
-            north = child;
-            break;
-        case BORDER_SOUTH:
-            south = child;
-            break;
-        case BORDER_EAST:
-            east = child;
-            break;
-        case BORDER_WEST:
-            west = child;
-            break;
-        case BORDER_CENTER:
-        default:
-            center = child;
-            break;
+            case BORDER_NORTH:
+                north = child;
+                break;
+            case BORDER_SOUTH:
+                south = child;
+                break;
+            case BORDER_EAST:
+                east = child;
+                break;
+            case BORDER_WEST:
+                west = child;
+                break;
+            case BORDER_CENTER:
+            default:
+                center = child;
+                break;
         }
     }
 
@@ -588,8 +584,8 @@ static void layout_apply_border(widget_t *container) {
                         (north ? layout->spacing : 0) - (south ? layout->spacing : 0);
 
     int center_x = content_x + west_width + (west ? layout->spacing : 0);
-    int center_width = content_width - west_width - east_width -
-                       (west ? layout->spacing : 0) - (east ? layout->spacing : 0);
+    int center_width = content_width - west_width - east_width - (west ? layout->spacing : 0) -
+                       (east ? layout->spacing : 0);
 
     // Position widgets
     if (north) {
@@ -668,20 +664,20 @@ void layout_apply(widget_t *container) {
         return;
 
     switch (container->layout->type) {
-    case LAYOUT_NONE:
-        layout_apply_none(container);
-        break;
-    case LAYOUT_HORIZONTAL:
-        layout_apply_horizontal(container);
-        break;
-    case LAYOUT_VERTICAL:
-        layout_apply_vertical(container);
-        break;
-    case LAYOUT_GRID:
-        layout_apply_grid(container);
-        break;
-    case LAYOUT_BORDER:
-        layout_apply_border(container);
-        break;
+        case LAYOUT_NONE:
+            layout_apply_none(container);
+            break;
+        case LAYOUT_HORIZONTAL:
+            layout_apply_horizontal(container);
+            break;
+        case LAYOUT_VERTICAL:
+            layout_apply_vertical(container);
+            break;
+        case LAYOUT_GRID:
+            layout_apply_grid(container);
+            break;
+        case LAYOUT_BORDER:
+            layout_apply_border(container);
+            break;
     }
 }

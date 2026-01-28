@@ -26,9 +26,9 @@
  * - x3: Result value 2 (if syscall produces multiple results)
  */
 #include "dispatch.hpp"
-#include "table.hpp"
 #include "../include/error.hpp"
 #include "../sched/signal.hpp"
+#include "table.hpp"
 
 namespace syscall {
 

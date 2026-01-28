@@ -199,16 +199,16 @@ typedef enum {
  * @{
  */
 #define WB_GRAY_LIGHT 0xFFAAAAAA /**< Light gray for backgrounds */
-#define WB_GRAY_MED   0xFF888888 /**< Medium gray for disabled items */
-#define WB_GRAY_DARK  0xFF555555 /**< Dark gray for shadows/borders */
-#define WB_BLUE       0xFF0055AA /**< Workbench blue for selections */
-#define WB_ORANGE     0xFFFF8800 /**< Orange for highlights/selections */
-#define WB_WHITE      0xFFFFFFFF /**< White for highlights and text */
-#define WB_BLACK      0xFF000000 /**< Black for text and outlines */
-#define WB_RED        0xFFFF4444 /**< Red for errors/warnings */
-#define WB_GREEN      0xFF00AA44 /**< Green for success indicators */
-#define WB_DARK_BG    0xFF1A1208 /**< Dark brown for list backgrounds */
-#define WB_CREAM      0xFFEEDDCC /**< Cream/tan for text on dark bg */
+#define WB_GRAY_MED 0xFF888888   /**< Medium gray for disabled items */
+#define WB_GRAY_DARK 0xFF555555  /**< Dark gray for shadows/borders */
+#define WB_BLUE 0xFF0055AA       /**< Workbench blue for selections */
+#define WB_ORANGE 0xFFFF8800     /**< Orange for highlights/selections */
+#define WB_WHITE 0xFFFFFFFF      /**< White for highlights and text */
+#define WB_BLACK 0xFF000000      /**< Black for text and outlines */
+#define WB_RED 0xFFFF4444        /**< Red for errors/warnings */
+#define WB_GREEN 0xFF00AA44      /**< Green for success indicators */
+#define WB_DARK_BG 0xFF1A1208    /**< Dark brown for list backgrounds */
+#define WB_CREAM 0xFFEEDDCC      /**< Cream/tan for text on dark bg */
 /** @} */
 
 /* ============================================================================
@@ -308,31 +308,31 @@ typedef void (*treeview_select_fn)(tree_node_t *node, void *user_data);
  *       Use the appropriate creation function (button_create, etc.) instead.
  */
 struct widget {
-    widget_type_t type;     /**< Widget type identifier */
-    widget_t *parent;       /**< Parent widget (NULL for root) */
-    widget_t **children;    /**< Array of child widget pointers */
-    int child_count;        /**< Number of children currently attached */
-    int child_capacity;     /**< Allocated capacity for children array */
+    widget_type_t type;  /**< Widget type identifier */
+    widget_t *parent;    /**< Parent widget (NULL for root) */
+    widget_t **children; /**< Array of child widget pointers */
+    int child_count;     /**< Number of children currently attached */
+    int child_capacity;  /**< Allocated capacity for children array */
 
-    int x, y;               /**< Position relative to parent (pixels) */
-    int width, height;      /**< Size of the widget (pixels) */
-    bool visible;           /**< Whether widget is rendered */
-    bool enabled;           /**< Whether widget accepts input */
-    bool focused;           /**< Whether widget has keyboard focus */
+    int x, y;          /**< Position relative to parent (pixels) */
+    int width, height; /**< Size of the widget (pixels) */
+    bool visible;      /**< Whether widget is rendered */
+    bool enabled;      /**< Whether widget accepts input */
+    bool focused;      /**< Whether widget has keyboard focus */
 
-    uint32_t bg_color;      /**< Background fill color (0xAARRGGBB) */
-    uint32_t fg_color;      /**< Foreground/text color (0xAARRGGBB) */
+    uint32_t bg_color; /**< Background fill color (0xAARRGGBB) */
+    uint32_t fg_color; /**< Foreground/text color (0xAARRGGBB) */
 
     /* Event callback function pointers */
-    widget_paint_fn on_paint;   /**< Custom paint handler (optional) */
-    widget_click_fn on_click;   /**< Mouse click handler (optional) */
-    widget_key_fn on_key;       /**< Keyboard input handler (optional) */
-    widget_focus_fn on_focus;   /**< Focus change handler (optional) */
-    void *user_data;            /**< Application-defined data pointer */
+    widget_paint_fn on_paint; /**< Custom paint handler (optional) */
+    widget_click_fn on_click; /**< Mouse click handler (optional) */
+    widget_key_fn on_key;     /**< Keyboard input handler (optional) */
+    widget_focus_fn on_focus; /**< Focus change handler (optional) */
+    void *user_data;          /**< Application-defined data pointer */
 
     /* Layout information */
-    layout_t *layout;           /**< Layout manager for children (optional) */
-    int layout_constraint;      /**< Constraint for border layout */
+    layout_t *layout;      /**< Layout manager for children (optional) */
+    int layout_constraint; /**< Constraint for border layout */
 };
 
 /* ============================================================================
@@ -350,14 +350,14 @@ struct widget {
  * @see layout_create, layout_set_spacing, layout_set_margins, layout_apply
  */
 struct layout {
-    layout_type_t type;      /**< Type of layout algorithm to use */
-    int spacing;             /**< Space between adjacent children (pixels) */
-    int margin_left;         /**< Left edge margin (pixels) */
-    int margin_top;          /**< Top edge margin (pixels) */
-    int margin_right;        /**< Right edge margin (pixels) */
-    int margin_bottom;       /**< Bottom edge margin (pixels) */
-    int columns;             /**< Number of columns for LAYOUT_GRID */
-    int rows;                /**< Number of rows for LAYOUT_GRID */
+    layout_type_t type; /**< Type of layout algorithm to use */
+    int spacing;        /**< Space between adjacent children (pixels) */
+    int margin_left;    /**< Left edge margin (pixels) */
+    int margin_top;     /**< Top edge margin (pixels) */
+    int margin_right;   /**< Right edge margin (pixels) */
+    int margin_bottom;  /**< Bottom edge margin (pixels) */
+    int columns;        /**< Number of columns for LAYOUT_GRID */
+    int rows;           /**< Number of rows for LAYOUT_GRID */
 };
 
 /* ============================================================================
@@ -380,12 +380,12 @@ struct layout {
  * @see button_create, button_set_onclick
  */
 struct button {
-    widget_t base;              /**< Base widget (must be first member) */
-    char text[64];              /**< Button label text */
-    bool pressed;               /**< True while mouse button is held down */
-    bool hovered;               /**< True while mouse is over the button */
+    widget_t base;               /**< Base widget (must be first member) */
+    char text[64];               /**< Button label text */
+    bool pressed;                /**< True while mouse button is held down */
+    bool hovered;                /**< True while mouse is over the button */
     widget_callback_fn on_click; /**< Callback invoked when button is clicked */
-    void *callback_data;        /**< User data passed to click callback */
+    void *callback_data;         /**< User data passed to click callback */
 };
 
 /* ============================================================================
@@ -406,8 +406,8 @@ struct button {
  * @see label_create, label_set_text, label_set_alignment
  */
 struct label {
-    widget_t base;        /**< Base widget (must be first member) */
-    char text[256];       /**< Text content to display */
+    widget_t base;         /**< Base widget (must be first member) */
+    char text[256];        /**< Text content to display */
     alignment_t alignment; /**< Horizontal text alignment */
 };
 
@@ -432,20 +432,20 @@ struct label {
  * @see textbox_create, textbox_set_text, textbox_get_text
  */
 struct textbox {
-    widget_t base;              /**< Base widget (must be first member) */
-    char *text;                 /**< Dynamically allocated text buffer */
-    int text_capacity;          /**< Allocated buffer size */
-    int text_length;            /**< Current text length (not including null) */
-    int cursor_pos;             /**< Cursor position (0 = before first char) */
-    int scroll_offset;          /**< Horizontal scroll offset for long text */
-    int selection_start;        /**< Selection start position (-1 if none) */
-    int selection_end;          /**< Selection end position */
-    bool password_mode;         /**< If true, display asterisks instead of text */
-    bool multiline;             /**< If true, allow multiple lines (reserved) */
-    bool readonly;              /**< If true, prevent editing */
+    widget_t base;                /**< Base widget (must be first member) */
+    char *text;                   /**< Dynamically allocated text buffer */
+    int text_capacity;            /**< Allocated buffer size */
+    int text_length;              /**< Current text length (not including null) */
+    int cursor_pos;               /**< Cursor position (0 = before first char) */
+    int scroll_offset;            /**< Horizontal scroll offset for long text */
+    int selection_start;          /**< Selection start position (-1 if none) */
+    int selection_end;            /**< Selection end position */
+    bool password_mode;           /**< If true, display asterisks instead of text */
+    bool multiline;               /**< If true, allow multiple lines (reserved) */
+    bool readonly;                /**< If true, prevent editing */
     widget_callback_fn on_change; /**< Callback when text content changes */
     widget_callback_fn on_enter;  /**< Callback when Enter key is pressed */
-    void *callback_data;        /**< User data for callbacks */
+    void *callback_data;          /**< User data for callbacks */
 };
 
 /* ============================================================================
@@ -465,11 +465,11 @@ struct textbox {
  * @see checkbox_create, checkbox_set_checked, checkbox_is_checked
  */
 struct checkbox {
-    widget_t base;              /**< Base widget (must be first member) */
-    char text[64];              /**< Label text displayed next to checkbox */
-    bool checked;               /**< Current checked state */
+    widget_t base;                /**< Base widget (must be first member) */
+    char text[64];                /**< Label text displayed next to checkbox */
+    bool checked;                 /**< Current checked state */
     widget_callback_fn on_change; /**< Callback when checked state changes */
-    void *callback_data;        /**< User data for callback */
+    void *callback_data;          /**< User data for callback */
 };
 
 /* ============================================================================
@@ -494,18 +494,18 @@ struct checkbox {
  * @see listview_create, listview_add_item, listview_get_selected
  */
 struct listview {
-    widget_t base;              /**< Base widget (must be first member) */
-    char **items;               /**< Array of item strings */
-    int item_count;             /**< Number of items in the list */
-    int item_capacity;          /**< Allocated capacity for items array */
-    int selected_index;         /**< Currently selected item (-1 if none) */
-    int scroll_offset;          /**< Vertical scroll offset in items */
-    int visible_items;          /**< Number of items visible without scrolling */
-    bool multi_select;          /**< Whether multiple selection is allowed */
-    bool *selected;             /**< Selection state array for multi-select */
-    listview_select_fn on_select;      /**< Callback for selection changes */
+    widget_t base;                      /**< Base widget (must be first member) */
+    char **items;                       /**< Array of item strings */
+    int item_count;                     /**< Number of items in the list */
+    int item_capacity;                  /**< Allocated capacity for items array */
+    int selected_index;                 /**< Currently selected item (-1 if none) */
+    int scroll_offset;                  /**< Vertical scroll offset in items */
+    int visible_items;                  /**< Number of items visible without scrolling */
+    bool multi_select;                  /**< Whether multiple selection is allowed */
+    bool *selected;                     /**< Selection state array for multi-select */
+    listview_select_fn on_select;       /**< Callback for selection changes */
     listview_select_fn on_double_click; /**< Callback for double-clicks */
-    void *callback_data;        /**< User data for callbacks */
+    void *callback_data;                /**< User data for callbacks */
 };
 
 /* ============================================================================
@@ -529,13 +529,13 @@ struct listview {
  * @see treeview_add_node, tree_node_set_text, tree_node_get_user_data
  */
 struct tree_node {
-    char text[64];              /**< Node label text */
-    tree_node_t *children;      /**< Array of child nodes */
-    int child_count;            /**< Number of children */
-    int child_capacity;         /**< Allocated capacity for children array */
-    tree_node_t *parent;        /**< Parent node (NULL for root) */
-    bool expanded;              /**< Whether children are visible */
-    void *user_data;            /**< Application-defined data */
+    char text[64];         /**< Node label text */
+    tree_node_t *children; /**< Array of child nodes */
+    int child_count;       /**< Number of children */
+    int child_capacity;    /**< Allocated capacity for children array */
+    tree_node_t *parent;   /**< Parent node (NULL for root) */
+    bool expanded;         /**< Whether children are visible */
+    void *user_data;       /**< Application-defined data */
 };
 
 /**
@@ -556,14 +556,14 @@ struct tree_node {
  * @see treeview_create, treeview_add_node, treeview_expand, treeview_collapse
  */
 struct treeview {
-    widget_t base;              /**< Base widget (must be first member) */
-    tree_node_t *root;          /**< Hidden root node of the tree */
-    tree_node_t *selected;      /**< Currently selected node (NULL if none) */
-    int scroll_offset;          /**< Vertical scroll offset in visible nodes */
-    int visible_items;          /**< Number of nodes visible without scrolling */
+    widget_t base;                /**< Base widget (must be first member) */
+    tree_node_t *root;            /**< Hidden root node of the tree */
+    tree_node_t *selected;        /**< Currently selected node (NULL if none) */
+    int scroll_offset;            /**< Vertical scroll offset in visible nodes */
+    int visible_items;            /**< Number of nodes visible without scrolling */
     treeview_select_fn on_select; /**< Callback for selection changes */
     treeview_select_fn on_expand; /**< Callback for expand/collapse events */
-    void *callback_data;        /**< User data for callbacks */
+    void *callback_data;          /**< User data for callbacks */
 };
 
 /* ============================================================================
@@ -584,14 +584,14 @@ struct treeview {
  * and do not respond to clicks.
  */
 struct menu_item {
-    char text[64];              /**< Item label text */
-    char shortcut[16];          /**< Keyboard shortcut hint (e.g., "Ctrl+S") */
-    bool separator;             /**< If true, item is a separator line */
-    bool checked;               /**< Checkmark state for toggle items */
-    bool enabled;               /**< Whether item is interactive */
-    menu_t *submenu;            /**< Submenu to open (NULL for leaf items) */
+    char text[64];               /**< Item label text */
+    char shortcut[16];           /**< Keyboard shortcut hint (e.g., "Ctrl+S") */
+    bool separator;              /**< If true, item is a separator line */
+    bool checked;                /**< Checkmark state for toggle items */
+    bool enabled;                /**< Whether item is interactive */
+    menu_t *submenu;             /**< Submenu to open (NULL for leaf items) */
     widget_callback_fn on_click; /**< Callback when item is clicked */
-    void *callback_data;        /**< User data for callback */
+    void *callback_data;         /**< User data for callback */
 };
 
 /**
@@ -614,13 +614,13 @@ struct menu_item {
  * @see menu_create, menu_add_item, menu_show
  */
 struct menu {
-    menu_item_t *items;         /**< Array of menu items */
-    int item_count;             /**< Number of items in the menu */
-    int item_capacity;          /**< Allocated capacity for items array */
-    bool visible;               /**< Whether menu is currently displayed */
-    int x, y;                   /**< Screen position when visible */
-    int width, height;          /**< Calculated menu dimensions */
-    int hovered_index;          /**< Currently hovered item (-1 if none) */
+    menu_item_t *items; /**< Array of menu items */
+    int item_count;     /**< Number of items in the menu */
+    int item_capacity;  /**< Allocated capacity for items array */
+    bool visible;       /**< Whether menu is currently displayed */
+    int x, y;           /**< Screen position when visible */
+    int width, height;  /**< Calculated menu dimensions */
+    int hovered_index;  /**< Currently hovered item (-1 if none) */
 };
 
 /* ============================================================================
@@ -644,11 +644,11 @@ struct menu {
  * @see progressbar_create, progressbar_set_value, progressbar_set_range
  */
 struct progressbar {
-    widget_t base;      /**< Base widget (must be first member) */
-    int value;          /**< Current progress value */
-    int min_val;        /**< Minimum value (left edge of bar) */
-    int max_val;        /**< Maximum value (right edge of bar) */
-    bool show_text;     /**< Whether to display percentage text */
+    widget_t base;  /**< Base widget (must be first member) */
+    int value;      /**< Current progress value */
+    int min_val;    /**< Minimum value (left edge of bar) */
+    int max_val;    /**< Maximum value (right edge of bar) */
+    bool show_text; /**< Whether to display percentage text */
 };
 
 /* ============================================================================
@@ -671,14 +671,14 @@ struct progressbar {
  * @see scrollbar_create, scrollbar_set_value, scrollbar_set_range
  */
 struct scrollbar {
-    widget_t base;              /**< Base widget (must be first member) */
-    bool vertical;              /**< True for vertical, false for horizontal */
-    int value;                  /**< Current scroll position */
-    int min_val;                /**< Minimum scroll position */
-    int max_val;                /**< Maximum scroll position */
-    int page_size;              /**< Visible portion size (affects thumb size) */
+    widget_t base;                /**< Base widget (must be first member) */
+    bool vertical;                /**< True for vertical, false for horizontal */
+    int value;                    /**< Current scroll position */
+    int min_val;                  /**< Minimum scroll position */
+    int max_val;                  /**< Maximum scroll position */
+    int page_size;                /**< Visible portion size (affects thumb size) */
     widget_callback_fn on_change; /**< Callback when value changes */
-    void *callback_data;        /**< User data for callback */
+    void *callback_data;          /**< User data for callback */
 };
 
 /* ============================================================================
@@ -1535,8 +1535,8 @@ void menu_add_item(menu_t *m, const char *text, widget_callback_fn callback, voi
  * @param callback Function called when item is clicked.
  * @param data     User data passed to callback.
  */
-void menu_add_item_with_shortcut(menu_t *m, const char *text, const char *shortcut,
-                                  widget_callback_fn callback, void *data);
+void menu_add_item_with_shortcut(
+    menu_t *m, const char *text, const char *shortcut, widget_callback_fn callback, void *data);
 
 /**
  * @brief Add a separator line to a menu.
@@ -1814,8 +1814,11 @@ void layout_apply(widget_t *container);
  * @param icon    Icon to display (info, warning, error, question).
  * @return        Which button was clicked (MB_RESULT_OK, etc.).
  */
-msgbox_result_t msgbox_show(gui_window_t *parent, const char *title, const char *message,
-                            msgbox_type_t type, msgbox_icon_t icon);
+msgbox_result_t msgbox_show(gui_window_t *parent,
+                            const char *title,
+                            const char *message,
+                            msgbox_type_t type,
+                            msgbox_icon_t icon);
 
 /**
  * @brief Display a file open dialog.
@@ -1826,7 +1829,9 @@ msgbox_result_t msgbox_show(gui_window_t *parent, const char *title, const char 
  * @param initial_dir Starting directory, or NULL for current.
  * @return            Selected file path (caller must free), or NULL if canceled.
  */
-char *filedialog_open(gui_window_t *parent, const char *title, const char *filter,
+char *filedialog_open(gui_window_t *parent,
+                      const char *title,
+                      const char *filter,
                       const char *initial_dir);
 
 /**
@@ -1838,7 +1843,9 @@ char *filedialog_open(gui_window_t *parent, const char *title, const char *filte
  * @param initial_dir Starting directory, or NULL for current.
  * @return            Selected file path (caller must free), or NULL if canceled.
  */
-char *filedialog_save(gui_window_t *parent, const char *title, const char *filter,
+char *filedialog_save(gui_window_t *parent,
+                      const char *title,
+                      const char *filter,
                       const char *initial_dir);
 
 /**
@@ -1872,8 +1879,8 @@ char *filedialog_folder(gui_window_t *parent, const char *title, const char *ini
  * @param light  Highlight color for top/left edges.
  * @param shadow Shadow color for bottom/right edges.
  */
-void draw_3d_raised(gui_window_t *win, int x, int y, int w, int h,
-                    uint32_t face, uint32_t light, uint32_t shadow);
+void draw_3d_raised(
+    gui_window_t *win, int x, int y, int w, int h, uint32_t face, uint32_t light, uint32_t shadow);
 
 /**
  * @brief Draw a sunken (inward) 3D border.
@@ -1892,8 +1899,8 @@ void draw_3d_raised(gui_window_t *win, int x, int y, int w, int h,
  * @param light  Highlight color for bottom/right edges.
  * @param shadow Shadow color for top/left edges.
  */
-void draw_3d_sunken(gui_window_t *win, int x, int y, int w, int h,
-                    uint32_t face, uint32_t light, uint32_t shadow);
+void draw_3d_sunken(
+    gui_window_t *win, int x, int y, int w, int h, uint32_t face, uint32_t light, uint32_t shadow);
 
 /**
  * @brief Draw a standard 3D button.
@@ -1958,11 +1965,11 @@ void draw_3d_groove(gui_window_t *win, int x, int y, int w, int h);
  * the event loop, and widget_app_quit() to exit.
  */
 typedef struct {
-    gui_window_t *window;   /**< The application's main window */
-    widget_t *root;         /**< Root widget of the UI hierarchy */
-    widget_t *focused;      /**< Currently focused widget */
-    menu_t *active_menu;    /**< Currently visible menu (if any) */
-    bool running;           /**< False to exit the run loop */
+    gui_window_t *window; /**< The application's main window */
+    widget_t *root;       /**< Root widget of the UI hierarchy */
+    widget_t *focused;    /**< Currently focused widget */
+    menu_t *active_menu;  /**< Currently visible menu (if any) */
+    bool running;         /**< False to exit the run loop */
 } widget_app_t;
 
 /**

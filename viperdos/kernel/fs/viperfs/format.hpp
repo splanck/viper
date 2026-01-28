@@ -185,9 +185,9 @@ static_assert(sizeof(JournalHeader) == 4096, "JournalHeader must be 4096 bytes")
  * data follows this record.
  */
 struct JournalBlockRecord {
-    u64 block_num;  // Original block number on disk
-    u32 checksum;   // CRC32 checksum of block data
-    u32 _reserved;  // Padding for 16-byte alignment
+    u64 block_num; // Original block number on disk
+    u32 checksum;  // CRC32 checksum of block data
+    u32 _reserved; // Padding for 16-byte alignment
 };
 
 /**

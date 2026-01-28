@@ -1723,6 +1723,33 @@ extern "C"
     /// @return 1 if has selection, 0 otherwise.
     int64_t rt_codeeditor_cursor_has_selection(void *editor, int64_t index);
 
+    /// @brief Undo the last edit operation.
+    /// @param editor CodeEditor handle.
+    void rt_codeeditor_undo(void *editor);
+
+    /// @brief Redo the last undone operation.
+    /// @param editor CodeEditor handle.
+    void rt_codeeditor_redo(void *editor);
+
+    /// @brief Copy selected text to clipboard.
+    /// @param editor CodeEditor handle.
+    /// @return 1 if text was copied, 0 otherwise.
+    int64_t rt_codeeditor_copy(void *editor);
+
+    /// @brief Cut selected text to clipboard.
+    /// @param editor CodeEditor handle.
+    /// @return 1 if text was cut, 0 otherwise.
+    int64_t rt_codeeditor_cut(void *editor);
+
+    /// @brief Paste text from clipboard.
+    /// @param editor CodeEditor handle.
+    /// @return 1 if text was pasted, 0 otherwise.
+    int64_t rt_codeeditor_paste(void *editor);
+
+    /// @brief Select all text in the editor.
+    /// @param editor CodeEditor handle.
+    void rt_codeeditor_select_all(void *editor);
+
 //=========================================================================
 // Phase 5: MessageBox Dialog
 //=========================================================================

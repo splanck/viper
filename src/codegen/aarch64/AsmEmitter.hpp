@@ -174,6 +174,13 @@ class AsmEmitter
     /// @param imm Floating-point immediate value.
     void emitFMovRI(std::ostream &os, PhysReg dst, double imm) const;
 
+    /// @brief Emit GPR to FPR move: `fmov dDst, xSrc`.
+    /// @details Transfers bits from GPR to FPR without conversion.
+    /// @param os Output stream to write assembly text.
+    /// @param dst Destination FPR.
+    /// @param src Source GPR.
+    void emitFMovGR(std::ostream &os, PhysReg dst, PhysReg src) const;
+
     /// @brief Emit FP addition: `fadd dst, lhs, rhs`.
     /// @param os Output stream to write assembly text.
     /// @param dst Destination FPR.
@@ -291,6 +298,19 @@ class AsmEmitter
     /// @param lhs Source GPR.
     /// @param sh Shift amount (0-63).
     void emitAsrRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const;
+
+    /// @brief Emit variable left shift: `lslv dst, lhs, rhs`.
+    /// @param os Output stream to write assembly text.
+    /// @param dst Destination GPR.
+    /// @param lhs Value to shift.
+    /// @param rhs Shift amount register.
+    void emitLslvRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
+
+    /// @brief Emit variable logical right shift: `lsrv dst, lhs, rhs`.
+    void emitLsrvRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
+
+    /// @brief Emit variable arithmetic right shift: `asrv dst, lhs, rhs`.
+    void emitAsrvRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
 
     //=========================================================================
     // Compare and Conditional Set

@@ -48,12 +48,12 @@
  */
 //===----------------------------------------------------------------------===//
 
-#include <widget.h>
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <widget.h>
 
 /* File dialog constants */
 #define FD_WIDTH 400
@@ -165,8 +165,11 @@ static inline void fd_yield(void) {
  * @see msgbox_icon_t for icon types
  * @see msgbox_result_t for return values
  */
-msgbox_result_t msgbox_show(gui_window_t *parent, const char *title, const char *message,
-                            msgbox_type_t type, msgbox_icon_t icon) {
+msgbox_result_t msgbox_show(gui_window_t *parent,
+                            const char *title,
+                            const char *message,
+                            msgbox_type_t type,
+                            msgbox_icon_t icon) {
     (void)parent;
     (void)icon;
 
@@ -180,7 +183,8 @@ msgbox_result_t msgbox_show(gui_window_t *parent, const char *title, const char 
     int dialog_height = 120;
 
     // Create dialog window
-    gui_window_t *dialog = gui_create_window(title ? title : "Message", dialog_width, dialog_height);
+    gui_window_t *dialog =
+        gui_create_window(title ? title : "Message", dialog_width, dialog_height);
     if (!dialog)
         return MB_RESULT_CANCEL;
 
@@ -193,30 +197,30 @@ msgbox_result_t msgbox_show(gui_window_t *parent, const char *title, const char 
     msgbox_result_t btn3_result = MB_RESULT_CANCEL;
 
     switch (type) {
-    case MB_OK:
-        btn1_text = "OK";
-        btn1_result = MB_RESULT_OK;
-        break;
-    case MB_OK_CANCEL:
-        btn1_text = "OK";
-        btn2_text = "Cancel";
-        btn1_result = MB_RESULT_OK;
-        btn2_result = MB_RESULT_CANCEL;
-        break;
-    case MB_YES_NO:
-        btn1_text = "Yes";
-        btn2_text = "No";
-        btn1_result = MB_RESULT_YES;
-        btn2_result = MB_RESULT_NO;
-        break;
-    case MB_YES_NO_CANCEL:
-        btn1_text = "Yes";
-        btn2_text = "No";
-        btn3_text = "Cancel";
-        btn1_result = MB_RESULT_YES;
-        btn2_result = MB_RESULT_NO;
-        btn3_result = MB_RESULT_CANCEL;
-        break;
+        case MB_OK:
+            btn1_text = "OK";
+            btn1_result = MB_RESULT_OK;
+            break;
+        case MB_OK_CANCEL:
+            btn1_text = "OK";
+            btn2_text = "Cancel";
+            btn1_result = MB_RESULT_OK;
+            btn2_result = MB_RESULT_CANCEL;
+            break;
+        case MB_YES_NO:
+            btn1_text = "Yes";
+            btn2_text = "No";
+            btn1_result = MB_RESULT_YES;
+            btn2_result = MB_RESULT_NO;
+            break;
+        case MB_YES_NO_CANCEL:
+            btn1_text = "Yes";
+            btn2_text = "No";
+            btn3_text = "Cancel";
+            btn1_result = MB_RESULT_YES;
+            btn2_result = MB_RESULT_NO;
+            btn3_result = MB_RESULT_CANCEL;
+            break;
     }
 
     msgbox_result_t result = MB_RESULT_CANCEL;
@@ -232,19 +236,19 @@ msgbox_result_t msgbox_show(gui_window_t *parent, const char *title, const char 
         uint32_t icon_color = WB_BLUE;
 
         switch (icon) {
-        case MB_ICON_WARNING:
-            icon_color = WB_ORANGE;
-            break;
-        case MB_ICON_ERROR:
-            icon_color = WB_RED;
-            break;
-        case MB_ICON_QUESTION:
-            icon_color = WB_BLUE;
-            break;
-        case MB_ICON_INFO:
-        default:
-            icon_color = WB_BLUE;
-            break;
+            case MB_ICON_WARNING:
+                icon_color = WB_ORANGE;
+                break;
+            case MB_ICON_ERROR:
+                icon_color = WB_RED;
+                break;
+            case MB_ICON_QUESTION:
+                icon_color = WB_BLUE;
+                break;
+            case MB_ICON_INFO:
+            default:
+                icon_color = WB_BLUE;
+                break;
         }
 
         gui_fill_rect(dialog, icon_x, icon_y, 32, 32, icon_color);
@@ -252,19 +256,19 @@ msgbox_result_t msgbox_show(gui_window_t *parent, const char *title, const char 
         // Draw icon symbol
         const char *icon_sym = "i";
         switch (icon) {
-        case MB_ICON_WARNING:
-            icon_sym = "!";
-            break;
-        case MB_ICON_ERROR:
-            icon_sym = "X";
-            break;
-        case MB_ICON_QUESTION:
-            icon_sym = "?";
-            break;
-        case MB_ICON_INFO:
-        default:
-            icon_sym = "i";
-            break;
+            case MB_ICON_WARNING:
+                icon_sym = "!";
+                break;
+            case MB_ICON_ERROR:
+                icon_sym = "X";
+                break;
+            case MB_ICON_QUESTION:
+                icon_sym = "?";
+                break;
+            case MB_ICON_INFO:
+            default:
+                icon_sym = "i";
+                break;
         }
         gui_draw_text(dialog, icon_x + 12, icon_y + 11, icon_sym, WB_WHITE);
 
@@ -345,49 +349,49 @@ msgbox_result_t msgbox_show(gui_window_t *parent, const char *title, const char 
         gui_event_t event;
         if (gui_poll_event(dialog, &event) == 0) {
             switch (event.type) {
-            case GUI_EVENT_CLOSE:
-                result = MB_RESULT_CANCEL;
-                running = false;
-                break;
+                case GUI_EVENT_CLOSE:
+                    result = MB_RESULT_CANCEL;
+                    running = false;
+                    break;
 
-            case GUI_EVENT_MOUSE:
-                if (event.mouse.event_type == 1 && event.mouse.button == 0) {
-                    int mx = event.mouse.x;
-                    int my = event.mouse.y;
+                case GUI_EVENT_MOUSE:
+                    if (event.mouse.event_type == 1 && event.mouse.button == 0) {
+                        int mx = event.mouse.x;
+                        int my = event.mouse.y;
 
-                    if (my >= btn_y && my < btn_y + btn_height) {
-                        // Check button 1
-                        if (mx >= btn1_x && mx < btn1_x + btn_width) {
-                            result = btn1_result;
-                            running = false;
-                        }
-                        // Check button 2
-                        else if (btn2_text && mx >= btn2_x && mx < btn2_x + btn_width) {
-                            result = btn2_result;
-                            running = false;
-                        }
-                        // Check button 3
-                        else if (btn3_text && mx >= btn3_x && mx < btn3_x + btn_width) {
-                            result = btn3_result;
-                            running = false;
+                        if (my >= btn_y && my < btn_y + btn_height) {
+                            // Check button 1
+                            if (mx >= btn1_x && mx < btn1_x + btn_width) {
+                                result = btn1_result;
+                                running = false;
+                            }
+                            // Check button 2
+                            else if (btn2_text && mx >= btn2_x && mx < btn2_x + btn_width) {
+                                result = btn2_result;
+                                running = false;
+                            }
+                            // Check button 3
+                            else if (btn3_text && mx >= btn3_x && mx < btn3_x + btn_width) {
+                                result = btn3_result;
+                                running = false;
+                            }
                         }
                     }
-                }
-                break;
+                    break;
 
-            case GUI_EVENT_KEY:
-                // Enter = OK/Yes, Escape = Cancel/No (evdev keycodes)
-                if (event.key.keycode == 28) { // Enter
-                    result = btn1_result;
-                    running = false;
-                } else if (event.key.keycode == 1) { // Escape
-                    result = (type == MB_OK) ? MB_RESULT_OK : MB_RESULT_CANCEL;
-                    running = false;
-                }
-                break;
+                case GUI_EVENT_KEY:
+                    // Enter = OK/Yes, Escape = Cancel/No (evdev keycodes)
+                    if (event.key.keycode == 28) { // Enter
+                        result = btn1_result;
+                        running = false;
+                    } else if (event.key.keycode == 1) { // Escape
+                        result = (type == MB_OK) ? MB_RESULT_OK : MB_RESULT_CANCEL;
+                        running = false;
+                    }
+                    break;
 
-            default:
-                break;
+                default:
+                    break;
             }
         }
 
@@ -409,7 +413,9 @@ msgbox_result_t msgbox_show(gui_window_t *parent, const char *title, const char 
  * Displays a modal file browser with directory navigation, file list,
  * and OK/Cancel buttons. Returns the selected file path or NULL if canceled.
  */
-char *filedialog_open(gui_window_t *parent, const char *title, const char *filter,
+char *filedialog_open(gui_window_t *parent,
+                      const char *title,
+                      const char *filter,
                       const char *initial_dir) {
     (void)parent;
     (void)filter; /* TODO: implement filtering */
@@ -554,100 +560,105 @@ char *filedialog_open(gui_window_t *parent, const char *title, const char *filte
         gui_event_t event;
         if (gui_poll_event(dialog, &event) == 0) {
             switch (event.type) {
-            case GUI_EVENT_CLOSE:
-                running = false;
-                break;
+                case GUI_EVENT_CLOSE:
+                    running = false;
+                    break;
 
-            case GUI_EVENT_MOUSE:
-                if (event.mouse.event_type == 1 && event.mouse.button == 0) {
-                    int mx = event.mouse.x;
-                    int my = event.mouse.y;
+                case GUI_EVENT_MOUSE:
+                    if (event.mouse.event_type == 1 && event.mouse.button == 0) {
+                        int mx = event.mouse.x;
+                        int my = event.mouse.y;
 
-                    /* Check file list click */
-                    if (mx >= 5 && mx < FD_WIDTH - 5 &&
-                        my >= FD_LIST_TOP && my < FD_LIST_TOP + FD_LIST_HEIGHT) {
-                        int clicked_idx = (my - FD_LIST_TOP - 2) / FD_ITEM_HEIGHT + scroll_offset;
-                        if (clicked_idx >= 0 && clicked_idx < entry_count) {
-                            if (selected == clicked_idx) {
-                                /* Double-click behavior */
-                                if (entries[clicked_idx].is_dir) {
-                                    navigate_into(entries[clicked_idx].name);
-                                } else {
-                                    /* Select and confirm */
-                                    size_t path_len = strlen(current_path);
-                                    size_t name_len = strlen(entries[clicked_idx].name);
-                                    result = static_cast<char *>(malloc(path_len + name_len + 2));
-                                    if (result) {
-                                        strcpy(result, current_path);
-                                        if (result[path_len - 1] != '/')
-                                            strcat(result, "/");
-                                        strcat(result, entries[clicked_idx].name);
+                        /* Check file list click */
+                        if (mx >= 5 && mx < FD_WIDTH - 5 && my >= FD_LIST_TOP &&
+                            my < FD_LIST_TOP + FD_LIST_HEIGHT) {
+                            int clicked_idx =
+                                (my - FD_LIST_TOP - 2) / FD_ITEM_HEIGHT + scroll_offset;
+                            if (clicked_idx >= 0 && clicked_idx < entry_count) {
+                                if (selected == clicked_idx) {
+                                    /* Double-click behavior */
+                                    if (entries[clicked_idx].is_dir) {
+                                        navigate_into(entries[clicked_idx].name);
+                                    } else {
+                                        /* Select and confirm */
+                                        size_t path_len = strlen(current_path);
+                                        size_t name_len = strlen(entries[clicked_idx].name);
+                                        result =
+                                            static_cast<char *>(malloc(path_len + name_len + 2));
+                                        if (result) {
+                                            strcpy(result, current_path);
+                                            if (result[path_len - 1] != '/')
+                                                strcat(result, "/");
+                                            strcat(result, entries[clicked_idx].name);
+                                        }
+                                        running = false;
                                     }
-                                    running = false;
+                                } else {
+                                    selected = clicked_idx;
                                 }
-                            } else {
-                                selected = clicked_idx;
                             }
                         }
-                    }
 
-                    /* Check OK button */
-                    if (mx >= ok_x && mx < ok_x + btn_width &&
-                        my >= FD_BUTTON_Y && my < FD_BUTTON_Y + btn_height) {
-                        if (selected >= 0 && !entries[selected].is_dir) {
-                            size_t path_len = strlen(current_path);
-                            size_t name_len = strlen(entries[selected].name);
-                            result = static_cast<char *>(malloc(path_len + name_len + 2));
-                            if (result) {
-                                strcpy(result, current_path);
-                                if (result[path_len - 1] != '/')
-                                    strcat(result, "/");
-                                strcat(result, entries[selected].name);
-                            }
-                        }
-                        running = false;
-                    }
-
-                    /* Check Cancel button */
-                    if (mx >= cancel_x && mx < cancel_x + btn_width &&
-                        my >= FD_BUTTON_Y && my < FD_BUTTON_Y + btn_height) {
-                        running = false;
-                    }
-                }
-                break;
-
-            case GUI_EVENT_KEY:
-                if (event.key.keycode == 28) { /* Enter (evdev) */
-                    if (selected >= 0) {
-                        if (entries[selected].is_dir) {
-                            navigate_into(entries[selected].name);
-                        } else {
-                            size_t path_len = strlen(current_path);
-                            size_t name_len = strlen(entries[selected].name);
-                            result = static_cast<char *>(malloc(path_len + name_len + 2));
-                            if (result) {
-                                strcpy(result, current_path);
-                                if (result[path_len - 1] != '/')
-                                    strcat(result, "/");
-                                strcat(result, entries[selected].name);
+                        /* Check OK button */
+                        if (mx >= ok_x && mx < ok_x + btn_width && my >= FD_BUTTON_Y &&
+                            my < FD_BUTTON_Y + btn_height) {
+                            if (selected >= 0 && !entries[selected].is_dir) {
+                                size_t path_len = strlen(current_path);
+                                size_t name_len = strlen(entries[selected].name);
+                                result = static_cast<char *>(malloc(path_len + name_len + 2));
+                                if (result) {
+                                    strcpy(result, current_path);
+                                    if (result[path_len - 1] != '/')
+                                        strcat(result, "/");
+                                    strcat(result, entries[selected].name);
+                                }
                             }
                             running = false;
                         }
-                    }
-                } else if (event.key.keycode == 1) { /* Escape (evdev) */
-                    running = false;
-                } else if (event.key.keycode == 103) { /* Up (evdev) */
-                    if (selected > 0) selected--;
-                    if (selected < scroll_offset) scroll_offset = selected;
-                } else if (event.key.keycode == 108) { /* Down (evdev) */
-                    if (selected < entry_count - 1) selected++;
-                    if (selected >= scroll_offset + visible_items)
-                        scroll_offset = selected - visible_items + 1;
-                }
-                break;
 
-            default:
-                break;
+                        /* Check Cancel button */
+                        if (mx >= cancel_x && mx < cancel_x + btn_width && my >= FD_BUTTON_Y &&
+                            my < FD_BUTTON_Y + btn_height) {
+                            running = false;
+                        }
+                    }
+                    break;
+
+                case GUI_EVENT_KEY:
+                    if (event.key.keycode == 28) { /* Enter (evdev) */
+                        if (selected >= 0) {
+                            if (entries[selected].is_dir) {
+                                navigate_into(entries[selected].name);
+                            } else {
+                                size_t path_len = strlen(current_path);
+                                size_t name_len = strlen(entries[selected].name);
+                                result = static_cast<char *>(malloc(path_len + name_len + 2));
+                                if (result) {
+                                    strcpy(result, current_path);
+                                    if (result[path_len - 1] != '/')
+                                        strcat(result, "/");
+                                    strcat(result, entries[selected].name);
+                                }
+                                running = false;
+                            }
+                        }
+                    } else if (event.key.keycode == 1) { /* Escape (evdev) */
+                        running = false;
+                    } else if (event.key.keycode == 103) { /* Up (evdev) */
+                        if (selected > 0)
+                            selected--;
+                        if (selected < scroll_offset)
+                            scroll_offset = selected;
+                    } else if (event.key.keycode == 108) { /* Down (evdev) */
+                        if (selected < entry_count - 1)
+                            selected++;
+                        if (selected >= scroll_offset + visible_items)
+                            scroll_offset = selected - visible_items + 1;
+                    }
+                    break;
+
+                default:
+                    break;
             }
         }
 
@@ -665,7 +676,9 @@ char *filedialog_open(gui_window_t *parent, const char *title, const char *filte
  * Displays a modal file browser with directory navigation, file list,
  * filename entry field, and Save/Cancel buttons.
  */
-char *filedialog_save(gui_window_t *parent, const char *title, const char *filter,
+char *filedialog_save(gui_window_t *parent,
+                      const char *title,
+                      const char *filter,
                       const char *initial_dir) {
     (void)parent;
     (void)filter;
@@ -709,7 +722,8 @@ char *filedialog_save(gui_window_t *parent, const char *title, const char *filte
         scroll_offset = 0;
 
         DIR *dir = opendir(current_path);
-        if (!dir) return;
+        if (!dir)
+            return;
 
         if (strcmp(current_path, "/") != 0 && entry_count < FD_MAX_ENTRIES) {
             strcpy(entries[entry_count].name, "..");
@@ -730,7 +744,8 @@ char *filedialog_save(gui_window_t *parent, const char *title, const char *filte
     };
 
     auto navigate_up = [&]() {
-        if (strcmp(current_path, "/") == 0) return;
+        if (strcmp(current_path, "/") == 0)
+            return;
         char *last_slash = strrchr(current_path, '/');
         if (last_slash == current_path) {
             strcpy(current_path, "/");
@@ -816,36 +831,63 @@ char *filedialog_save(gui_window_t *parent, const char *title, const char *filte
         gui_event_t event;
         if (gui_poll_event(dialog, &event) == 0) {
             switch (event.type) {
-            case GUI_EVENT_CLOSE:
-                running = false;
-                break;
+                case GUI_EVENT_CLOSE:
+                    running = false;
+                    break;
 
-            case GUI_EVENT_MOUSE:
-                if (event.mouse.event_type == 1 && event.mouse.button == 0) {
-                    int mx = event.mouse.x;
-                    int my = event.mouse.y;
+                case GUI_EVENT_MOUSE:
+                    if (event.mouse.event_type == 1 && event.mouse.button == 0) {
+                        int mx = event.mouse.x;
+                        int my = event.mouse.y;
 
-                    /* File list click */
-                    if (mx >= 5 && mx < FD_WIDTH - 5 &&
-                        my >= FD_LIST_TOP && my < FD_LIST_TOP + FD_LIST_HEIGHT) {
-                        int clicked_idx = (my - FD_LIST_TOP - 2) / FD_ITEM_HEIGHT + scroll_offset;
-                        if (clicked_idx >= 0 && clicked_idx < entry_count) {
-                            if (selected == clicked_idx && entries[clicked_idx].is_dir) {
-                                navigate_into(entries[clicked_idx].name);
-                            } else {
-                                selected = clicked_idx;
-                                if (!entries[selected].is_dir) {
-                                    strncpy(filename, entries[selected].name, FD_MAX_NAME - 1);
-                                    filename[FD_MAX_NAME - 1] = '\0';
-                                    filename_cursor = static_cast<int>(strlen(filename));
+                        /* File list click */
+                        if (mx >= 5 && mx < FD_WIDTH - 5 && my >= FD_LIST_TOP &&
+                            my < FD_LIST_TOP + FD_LIST_HEIGHT) {
+                            int clicked_idx =
+                                (my - FD_LIST_TOP - 2) / FD_ITEM_HEIGHT + scroll_offset;
+                            if (clicked_idx >= 0 && clicked_idx < entry_count) {
+                                if (selected == clicked_idx && entries[clicked_idx].is_dir) {
+                                    navigate_into(entries[clicked_idx].name);
+                                } else {
+                                    selected = clicked_idx;
+                                    if (!entries[selected].is_dir) {
+                                        strncpy(filename, entries[selected].name, FD_MAX_NAME - 1);
+                                        filename[FD_MAX_NAME - 1] = '\0';
+                                        filename_cursor = static_cast<int>(strlen(filename));
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    /* Save button */
-                    if (mx >= save_x && mx < save_x + btn_width &&
-                        my >= button_y && my < button_y + btn_height) {
+                        /* Save button */
+                        if (mx >= save_x && mx < save_x + btn_width && my >= button_y &&
+                            my < button_y + btn_height) {
+                            if (filename[0] != '\0') {
+                                size_t path_len = strlen(current_path);
+                                size_t name_len = strlen(filename);
+                                result = static_cast<char *>(malloc(path_len + name_len + 2));
+                                if (result) {
+                                    strcpy(result, current_path);
+                                    if (result[path_len - 1] != '/')
+                                        strcat(result, "/");
+                                    strcat(result, filename);
+                                }
+                            }
+                            running = false;
+                        }
+
+                        /* Cancel button */
+                        if (mx >= cancel_x && mx < cancel_x + btn_width && my >= button_y &&
+                            my < button_y + btn_height) {
+                            running = false;
+                        }
+                    }
+                    break;
+
+                case GUI_EVENT_KEY: {
+                    /* evdev keycodes */
+                    uint16_t kc = event.key.keycode;
+                    if (kc == 28) { /* Enter */
                         if (filename[0] != '\0') {
                             size_t path_len = strlen(current_path);
                             size_t name_len = strlen(filename);
@@ -856,96 +898,75 @@ char *filedialog_save(gui_window_t *parent, const char *title, const char *filte
                                     strcat(result, "/");
                                 strcat(result, filename);
                             }
+                            running = false;
                         }
+                    } else if (kc == 1) { /* Escape */
                         running = false;
-                    }
-
-                    /* Cancel button */
-                    if (mx >= cancel_x && mx < cancel_x + btn_width &&
-                        my >= button_y && my < button_y + btn_height) {
-                        running = false;
-                    }
-                }
-                break;
-
-            case GUI_EVENT_KEY: {
-                /* evdev keycodes */
-                uint16_t kc = event.key.keycode;
-                if (kc == 28) { /* Enter */
-                    if (filename[0] != '\0') {
-                        size_t path_len = strlen(current_path);
-                        size_t name_len = strlen(filename);
-                        result = static_cast<char *>(malloc(path_len + name_len + 2));
-                        if (result) {
-                            strcpy(result, current_path);
-                            if (result[path_len - 1] != '/')
-                                strcat(result, "/");
-                            strcat(result, filename);
+                    } else if (kc == 14) { /* Backspace */
+                        if (filename_cursor > 0) {
+                            memmove(&filename[filename_cursor - 1],
+                                    &filename[filename_cursor],
+                                    strlen(filename) - filename_cursor + 1);
+                            filename_cursor--;
                         }
-                        running = false;
-                    }
-                } else if (kc == 1) { /* Escape */
-                    running = false;
-                } else if (kc == 14) { /* Backspace */
-                    if (filename_cursor > 0) {
-                        memmove(&filename[filename_cursor - 1], &filename[filename_cursor],
-                                strlen(filename) - filename_cursor + 1);
-                        filename_cursor--;
-                    }
-                } else if (kc == 103) { /* Up - navigate to file list */
-                    if (selected > 0) selected--;
-                    if (selected < scroll_offset) scroll_offset = selected;
-                } else if (kc == 108) { /* Down - navigate file list */
-                    if (selected < entry_count - 1) selected++;
-                    if (selected >= scroll_offset + visible_items)
-                        scroll_offset = selected - visible_items + 1;
-                } else {
-                    /* Character input (evdev keycodes) */
-                    char c = 0;
-                    /* QWERTY row: Q=16..P=25 */
-                    if (kc >= 16 && kc <= 25) {
-                        c = "qwertyuiop"[kc - 16];
-                    }
-                    /* Home row: A=30..L=38 */
-                    else if (kc >= 30 && kc <= 38) {
-                        c = "asdfghjkl"[kc - 30];
-                    }
-                    /* Bottom row: Z=44..M=50 */
-                    else if (kc >= 44 && kc <= 50) {
-                        c = "zxcvbnm"[kc - 44];
-                    }
-                    /* Numbers 1-9: keycodes 2-10 */
-                    else if (kc >= 2 && kc <= 10) {
-                        c = '0' + (kc - 1);
-                    }
-                    /* Number 0: keycode 11 */
-                    else if (kc == 11) {
-                        c = '0';
-                    }
-                    /* Period: keycode 52 */
-                    else if (kc == 52) {
-                        c = '.';
-                    }
-                    /* Minus: keycode 12 */
-                    else if (kc == 12) {
-                        c = '-';
-                    }
-                    /* Underscore via shift (simplified - just use underscore) */
-                    else if (kc == 57) { /* Space */
-                        c = ' ';
-                    }
+                    } else if (kc == 103) { /* Up - navigate to file list */
+                        if (selected > 0)
+                            selected--;
+                        if (selected < scroll_offset)
+                            scroll_offset = selected;
+                    } else if (kc == 108) { /* Down - navigate file list */
+                        if (selected < entry_count - 1)
+                            selected++;
+                        if (selected >= scroll_offset + visible_items)
+                            scroll_offset = selected - visible_items + 1;
+                    } else {
+                        /* Character input (evdev keycodes) */
+                        char c = 0;
+                        /* QWERTY row: Q=16..P=25 */
+                        if (kc >= 16 && kc <= 25) {
+                            c = "qwertyuiop"[kc - 16];
+                        }
+                        /* Home row: A=30..L=38 */
+                        else if (kc >= 30 && kc <= 38) {
+                            c = "asdfghjkl"[kc - 30];
+                        }
+                        /* Bottom row: Z=44..M=50 */
+                        else if (kc >= 44 && kc <= 50) {
+                            c = "zxcvbnm"[kc - 44];
+                        }
+                        /* Numbers 1-9: keycodes 2-10 */
+                        else if (kc >= 2 && kc <= 10) {
+                            c = '0' + (kc - 1);
+                        }
+                        /* Number 0: keycode 11 */
+                        else if (kc == 11) {
+                            c = '0';
+                        }
+                        /* Period: keycode 52 */
+                        else if (kc == 52) {
+                            c = '.';
+                        }
+                        /* Minus: keycode 12 */
+                        else if (kc == 12) {
+                            c = '-';
+                        }
+                        /* Underscore via shift (simplified - just use underscore) */
+                        else if (kc == 57) { /* Space */
+                            c = ' ';
+                        }
 
-                    if (c && filename_cursor < FD_MAX_NAME - 1) {
-                        memmove(&filename[filename_cursor + 1], &filename[filename_cursor],
-                                strlen(filename) - filename_cursor + 1);
-                        filename[filename_cursor++] = c;
+                        if (c && filename_cursor < FD_MAX_NAME - 1) {
+                            memmove(&filename[filename_cursor + 1],
+                                    &filename[filename_cursor],
+                                    strlen(filename) - filename_cursor + 1);
+                            filename[filename_cursor++] = c;
+                        }
                     }
+                    break;
                 }
-                break;
-            }
 
-            default:
-                break;
+                default:
+                    break;
             }
         }
 
@@ -1117,74 +1138,78 @@ char *filedialog_folder(gui_window_t *parent, const char *title, const char *ini
         gui_event_t event;
         if (gui_poll_event(dialog, &event) == 0) {
             switch (event.type) {
-            case GUI_EVENT_CLOSE:
-                running = false;
-                break;
+                case GUI_EVENT_CLOSE:
+                    running = false;
+                    break;
 
-            case GUI_EVENT_MOUSE:
-                if (event.mouse.event_type == 1 && event.mouse.button == 0) {
-                    int mx = event.mouse.x;
-                    int my = event.mouse.y;
+                case GUI_EVENT_MOUSE:
+                    if (event.mouse.event_type == 1 && event.mouse.button == 0) {
+                        int mx = event.mouse.x;
+                        int my = event.mouse.y;
 
-                    /* Check folder list click */
-                    if (mx >= 5 && mx < FD_WIDTH - 5 &&
-                        my >= FD_LIST_TOP && my < FD_LIST_TOP + FD_LIST_HEIGHT) {
-                        int clicked_idx = (my - FD_LIST_TOP - 2) / FD_ITEM_HEIGHT + scroll_offset;
-                        if (clicked_idx >= 0 && clicked_idx < entry_count) {
-                            if (selected == clicked_idx) {
-                                /* Double-click: navigate into folder */
-                                navigate_into(entries[clicked_idx].name);
-                            } else {
-                                selected = clicked_idx;
+                        /* Check folder list click */
+                        if (mx >= 5 && mx < FD_WIDTH - 5 && my >= FD_LIST_TOP &&
+                            my < FD_LIST_TOP + FD_LIST_HEIGHT) {
+                            int clicked_idx =
+                                (my - FD_LIST_TOP - 2) / FD_ITEM_HEIGHT + scroll_offset;
+                            if (clicked_idx >= 0 && clicked_idx < entry_count) {
+                                if (selected == clicked_idx) {
+                                    /* Double-click: navigate into folder */
+                                    navigate_into(entries[clicked_idx].name);
+                                } else {
+                                    selected = clicked_idx;
+                                }
                             }
                         }
-                    }
 
-                    /* Check Select button - select current directory */
-                    if (mx >= ok_x && mx < ok_x + btn_width &&
-                        my >= FD_BUTTON_Y && my < FD_BUTTON_Y + btn_height) {
-                        result = static_cast<char *>(malloc(strlen(current_path) + 1));
-                        if (result) {
-                            strcpy(result, current_path);
+                        /* Check Select button - select current directory */
+                        if (mx >= ok_x && mx < ok_x + btn_width && my >= FD_BUTTON_Y &&
+                            my < FD_BUTTON_Y + btn_height) {
+                            result = static_cast<char *>(malloc(strlen(current_path) + 1));
+                            if (result) {
+                                strcpy(result, current_path);
+                            }
+                            running = false;
                         }
-                        running = false;
-                    }
 
-                    /* Check Cancel button */
-                    if (mx >= cancel_x && mx < cancel_x + btn_width &&
-                        my >= FD_BUTTON_Y && my < FD_BUTTON_Y + btn_height) {
-                        running = false;
-                    }
-                }
-                break;
-
-            case GUI_EVENT_KEY:
-                if (event.key.keycode == 28) { /* Enter (evdev) */
-                    /* If folder selected, navigate into it */
-                    if (selected >= 0) {
-                        navigate_into(entries[selected].name);
-                    } else {
-                        /* Select current directory */
-                        result = static_cast<char *>(malloc(strlen(current_path) + 1));
-                        if (result) {
-                            strcpy(result, current_path);
+                        /* Check Cancel button */
+                        if (mx >= cancel_x && mx < cancel_x + btn_width && my >= FD_BUTTON_Y &&
+                            my < FD_BUTTON_Y + btn_height) {
+                            running = false;
                         }
-                        running = false;
                     }
-                } else if (event.key.keycode == 1) { /* Escape (evdev) */
-                    running = false;
-                } else if (event.key.keycode == 103) { /* Up (evdev) */
-                    if (selected > 0) selected--;
-                    if (selected < scroll_offset) scroll_offset = selected;
-                } else if (event.key.keycode == 108) { /* Down (evdev) */
-                    if (selected < entry_count - 1) selected++;
-                    if (selected >= scroll_offset + visible_items)
-                        scroll_offset = selected - visible_items + 1;
-                }
-                break;
+                    break;
 
-            default:
-                break;
+                case GUI_EVENT_KEY:
+                    if (event.key.keycode == 28) { /* Enter (evdev) */
+                        /* If folder selected, navigate into it */
+                        if (selected >= 0) {
+                            navigate_into(entries[selected].name);
+                        } else {
+                            /* Select current directory */
+                            result = static_cast<char *>(malloc(strlen(current_path) + 1));
+                            if (result) {
+                                strcpy(result, current_path);
+                            }
+                            running = false;
+                        }
+                    } else if (event.key.keycode == 1) { /* Escape (evdev) */
+                        running = false;
+                    } else if (event.key.keycode == 103) { /* Up (evdev) */
+                        if (selected > 0)
+                            selected--;
+                        if (selected < scroll_offset)
+                            scroll_offset = selected;
+                    } else if (event.key.keycode == 108) { /* Down (evdev) */
+                        if (selected < entry_count - 1)
+                            selected++;
+                        if (selected >= scroll_offset + visible_items)
+                            scroll_offset = selected - visible_items + 1;
+                    }
+                    break;
+
+                default:
+                    break;
             }
         }
 

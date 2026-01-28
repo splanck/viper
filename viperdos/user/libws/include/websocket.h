@@ -58,22 +58,22 @@ typedef enum {
 /* WebSocket frame (received) */
 typedef struct {
     uint8_t opcode;
-    uint8_t fin;       /* Final fragment */
-    void *data;        /* Payload data */
-    size_t data_len;   /* Payload length */
+    uint8_t fin;     /* Final fragment */
+    void *data;      /* Payload data */
+    size_t data_len; /* Payload length */
 } ws_frame_t;
 
 /* WebSocket connection */
 typedef struct ws_conn {
-    int socket_fd;     /* Underlying socket */
-    int tls_session;   /* TLS session handle (-1 if plain) */
-    ws_state_t state;  /* Connection state */
-    int use_tls;       /* Whether connection uses TLS */
-    char host[256];    /* Remote host */
-    uint16_t port;     /* Remote port */
-    char path[512];    /* WebSocket path */
+    int socket_fd;                       /* Underlying socket */
+    int tls_session;                     /* TLS session handle (-1 if plain) */
+    ws_state_t state;                    /* Connection state */
+    int use_tls;                         /* Whether connection uses TLS */
+    char host[256];                      /* Remote host */
+    uint16_t port;                       /* Remote port */
+    char path[512];                      /* WebSocket path */
     uint8_t recv_buf[WS_MAX_FRAME_SIZE]; /* Receive buffer */
-    size_t recv_len;   /* Bytes in receive buffer */
+    size_t recv_len;                     /* Bytes in receive buffer */
 } ws_conn_t;
 
 /**

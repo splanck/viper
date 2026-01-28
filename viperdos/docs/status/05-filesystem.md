@@ -68,45 +68,45 @@ Applications use standard POSIX-like syscalls, which are handled directly by the
 
 ### Path-based Operations
 
-| Syscall      | Number | Description                    |
-|--------------|--------|--------------------------------|
-| SYS_OPEN     | 0x40   | Open file by path              |
-| SYS_CLOSE    | 0x41   | Close file descriptor          |
-| SYS_READ     | 0x42   | Read from file descriptor      |
-| SYS_WRITE    | 0x43   | Write to file descriptor       |
-| SYS_LSEEK    | 0x44   | Seek file position             |
-| SYS_STAT     | 0x45   | Get file info by path          |
-| SYS_FSTAT    | 0x46   | Get file info by descriptor    |
-| SYS_DUP      | 0x47   | Duplicate file descriptor      |
-| SYS_DUP2     | 0x48   | Duplicate to specific FD       |
-| SYS_READDIR  | 0x60   | Read directory entries         |
-| SYS_MKDIR    | 0x61   | Create directory               |
-| SYS_RMDIR    | 0x62   | Remove directory               |
-| SYS_UNLINK   | 0x63   | Delete file                    |
-| SYS_RENAME   | 0x64   | Rename file/directory          |
-| SYS_SYMLINK  | 0x65   | Create symbolic link           |
-| SYS_READLINK | 0x66   | Read symbolic link target      |
-| SYS_GETCWD   | 0x67   | Get current working directory  |
-| SYS_CHDIR    | 0x68   | Change working directory       |
+| Syscall      | Number | Description                   |
+|--------------|--------|-------------------------------|
+| SYS_OPEN     | 0x40   | Open file by path             |
+| SYS_CLOSE    | 0x41   | Close file descriptor         |
+| SYS_READ     | 0x42   | Read from file descriptor     |
+| SYS_WRITE    | 0x43   | Write to file descriptor      |
+| SYS_LSEEK    | 0x44   | Seek file position            |
+| SYS_STAT     | 0x45   | Get file info by path         |
+| SYS_FSTAT    | 0x46   | Get file info by descriptor   |
+| SYS_DUP      | 0x47   | Duplicate file descriptor     |
+| SYS_DUP2     | 0x48   | Duplicate to specific FD      |
+| SYS_READDIR  | 0x60   | Read directory entries        |
+| SYS_MKDIR    | 0x61   | Create directory              |
+| SYS_RMDIR    | 0x62   | Remove directory              |
+| SYS_UNLINK   | 0x63   | Delete file                   |
+| SYS_RENAME   | 0x64   | Rename file/directory         |
+| SYS_SYMLINK  | 0x65   | Create symbolic link          |
+| SYS_READLINK | 0x66   | Read symbolic link target     |
+| SYS_GETCWD   | 0x67   | Get current working directory |
+| SYS_CHDIR    | 0x68   | Change working directory      |
 
 ### Handle-based Operations
 
-| Syscall           | Number | Description                    |
-|-------------------|--------|--------------------------------|
-| SYS_FS_OPEN_ROOT  | 0x80   | Get root directory handle      |
-| SYS_FS_OPEN       | 0x81   | Open relative to directory     |
-| SYS_IO_READ       | 0x82   | Read from handle               |
-| SYS_IO_WRITE      | 0x83   | Write to handle                |
-| SYS_IO_SEEK       | 0x84   | Seek handle position           |
-| SYS_FS_STAT       | 0x85   | Stat via handle                |
-| SYS_FS_READ_DIR   | 0x86   | Read directory entry           |
-| SYS_FS_REWIND_DIR | 0x87   | Reset directory enumeration    |
-| SYS_FS_CLOSE      | 0x88   | Close handle                   |
-| SYS_FS_MKDIR      | 0x89   | Create directory via handle    |
-| SYS_FS_UNLINK     | 0x8A   | Delete file via handle         |
-| SYS_FS_RENAME     | 0x8B   | Rename via handle              |
-| SYS_FS_SYNC       | 0x8C   | Sync file to disk              |
-| SYS_FS_TRUNCATE   | 0x8D   | Truncate file                  |
+| Syscall           | Number | Description                 |
+|-------------------|--------|-----------------------------|
+| SYS_FS_OPEN_ROOT  | 0x80   | Get root directory handle   |
+| SYS_FS_OPEN       | 0x81   | Open relative to directory  |
+| SYS_IO_READ       | 0x82   | Read from handle            |
+| SYS_IO_WRITE      | 0x83   | Write to handle             |
+| SYS_IO_SEEK       | 0x84   | Seek handle position        |
+| SYS_FS_STAT       | 0x85   | Stat via handle             |
+| SYS_FS_READ_DIR   | 0x86   | Read directory entry        |
+| SYS_FS_REWIND_DIR | 0x87   | Reset directory enumeration |
+| SYS_FS_CLOSE      | 0x88   | Close handle                |
+| SYS_FS_MKDIR      | 0x89   | Create directory via handle |
+| SYS_FS_UNLINK     | 0x8A   | Delete file via handle      |
+| SYS_FS_RENAME     | 0x8B   | Rename via handle           |
+| SYS_FS_SYNC       | 0x8C   | Sync file to disk           |
+| SYS_FS_TRUNCATE   | 0x8D   | Truncate file               |
 
 ---
 
@@ -128,13 +128,13 @@ Applications use standard POSIX-like syscalls, which are handled directly by the
 
 ### File Descriptor Table
 
-| Field     | Type     | Description          |
-|-----------|----------|----------------------|
-| inode     | u32      | Inode number         |
-| offset    | u64      | Current file offset  |
-| flags     | u32      | Open flags           |
-| refcount  | u32      | Reference count      |
-| in_use    | bool     | Slot is active       |
+| Field    | Type | Description         |
+|----------|------|---------------------|
+| inode    | u32  | Inode number        |
+| offset   | u64  | Current file offset |
+| flags    | u32  | Open flags          |
+| refcount | u32  | Reference count     |
+| in_use   | bool | Slot is active      |
 
 ---
 
@@ -241,23 +241,23 @@ Blocks M+1-:  Data blocks
 
 The libc file functions call kernel syscalls directly:
 
-| libc Function       | Kernel Syscall  |
-|---------------------|-----------------|
-| open()              | SYS_OPEN        |
-| close()             | SYS_CLOSE       |
-| read()              | SYS_READ        |
-| write()             | SYS_WRITE       |
-| lseek()             | SYS_LSEEK       |
-| stat()              | SYS_STAT        |
-| fstat()             | SYS_FSTAT       |
-| mkdir()             | SYS_MKDIR       |
-| rmdir()             | SYS_RMDIR       |
-| unlink()            | SYS_UNLINK      |
-| rename()            | SYS_RENAME      |
+| libc Function       | Kernel Syscall         |
+|---------------------|------------------------|
+| open()              | SYS_OPEN               |
+| close()             | SYS_CLOSE              |
+| read()              | SYS_READ               |
+| write()             | SYS_WRITE              |
+| lseek()             | SYS_LSEEK              |
+| stat()              | SYS_STAT               |
+| fstat()             | SYS_FSTAT              |
+| mkdir()             | SYS_MKDIR              |
+| rmdir()             | SYS_RMDIR              |
+| unlink()            | SYS_UNLINK             |
+| rename()            | SYS_RENAME             |
 | opendir()/readdir() | SYS_OPEN + SYS_READDIR |
-| getcwd()            | SYS_GETCWD      |
-| chdir()             | SYS_CHDIR       |
-| dup()/dup2()        | SYS_DUP/SYS_DUP2|
+| getcwd()            | SYS_GETCWD             |
+| chdir()             | SYS_CHDIR              |
+| dup()/dup2()        | SYS_DUP/SYS_DUP2       |
 
 ---
 
@@ -265,12 +265,12 @@ The libc file functions call kernel syscalls directly:
 
 ### Latency (QEMU)
 
-| Operation       | Typical Time |
-|-----------------|--------------|
-| File open       | ~20μs        |
-| Read 4KB        | ~50μs        |
-| Write 4KB       | ~80μs        |
-| Directory list  | ~30μs        |
+| Operation      | Typical Time |
+|----------------|--------------|
+| File open      | ~20μs        |
+| Read 4KB       | ~50μs        |
+| Write 4KB      | ~80μs        |
+| Directory list | ~30μs        |
 
 ### Advantages of Kernel Filesystem
 
@@ -281,13 +281,13 @@ The libc file functions call kernel syscalls directly:
 
 ### Resource Limits
 
-| Resource        | Limit             |
-|-----------------|-------------------|
-| Open FDs        | 64                |
-| Block cache     | 64 blocks (256KB) |
-| Inode cache     | 32 entries        |
-| Path length     | 256 chars         |
-| Max file size   | ~1GB              |
+| Resource      | Limit             |
+|---------------|-------------------|
+| Open FDs      | 64                |
+| Block cache   | 64 blocks (256KB) |
+| Inode cache   | 32 entries        |
+| Path length   | 256 chars         |
+| Max file size | ~1GB              |
 
 ---
 

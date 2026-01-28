@@ -90,11 +90,8 @@ u32 check_wait_timeouts(u64 current_tick) {
         if (!t)
             continue;
 
-        if (t->state == task::TaskState::Blocked &&
-            t->wait_timeout != 0 &&
-            t->wait_timeout != static_cast<u64>(-1) &&
-            current_tick >= t->wait_timeout) {
-
+        if (t->state == task::TaskState::Blocked && t->wait_timeout != 0 &&
+            t->wait_timeout != static_cast<u64>(-1) && current_tick >= t->wait_timeout) {
             // Timeout expired - remove from wait queue and wake
             if (t->wait_channel) {
                 WaitQueue *wq = reinterpret_cast<WaitQueue *>(t->wait_channel);

@@ -414,10 +414,8 @@ int posix_spawn(pid_t *pid,
         args_buf[pos] = '\0';
     }
 
-    long result = __syscall3(SYS_TASK_SPAWN,
-                             (long)path,
-                             (long)path,
-                             (long)(args_buf[0] ? args_buf : (char *)0));
+    long result = __syscall3(
+        SYS_TASK_SPAWN, (long)path, (long)path, (long)(args_buf[0] ? args_buf : (char *)0));
 
     if (result < 0) {
         /* Kernel returned a negative error code */

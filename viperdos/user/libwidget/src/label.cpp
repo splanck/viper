@@ -41,9 +41,9 @@
  */
 //===----------------------------------------------------------------------===//
 
-#include <widget.h>
 #include <stdlib.h>
 #include <string.h>
+#include <widget.h>
 
 //===----------------------------------------------------------------------===//
 // Label Paint Handler
@@ -96,16 +96,16 @@ static void label_paint(widget_t *w, gui_window_t *win) {
     int text_x;
 
     switch (lbl->alignment) {
-    case ALIGN_CENTER:
-        text_x = x + (width - text_width) / 2;
-        break;
-    case ALIGN_RIGHT:
-        text_x = x + width - text_width;
-        break;
-    case ALIGN_LEFT:
-    default:
-        text_x = x;
-        break;
+        case ALIGN_CENTER:
+            text_x = x + (width - text_width) / 2;
+            break;
+        case ALIGN_RIGHT:
+            text_x = x + width - text_width;
+            break;
+        case ALIGN_LEFT:
+        default:
+            text_x = x;
+            break;
     }
 
     int text_y = y + (w->height - 10) / 2;

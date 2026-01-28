@@ -239,11 +239,11 @@ struct Task {
     u8 *kernel_stack;     // Kernel stack base
     u8 *kernel_stack_top; // Kernel stack top (initial SP)
 
-    u32 time_slice;     // Remaining time slice ticks
+    u32 time_slice;       // Remaining time slice ticks
     u8 priority;          // Priority (0=highest, 255=lowest, default 128)
     u8 original_priority; // Priority before any PI boost (for restore)
     SchedPolicy policy;   // Scheduling policy (SCHED_OTHER, SCHED_FIFO, SCHED_RR)
-    u32 cpu_affinity;   // CPU affinity mask (bit N = can run on CPU N)
+    u32 cpu_affinity;     // CPU affinity mask (bit N = can run on CPU N)
 
     // CFS (Completely Fair Scheduler) fields
     u64 vruntime; // Virtual runtime for CFS (nanoseconds, scaled by weight)
@@ -264,15 +264,15 @@ struct Task {
     u64 bw_period_start; // Start tick of current period
     bool bw_throttled;   // True if currently throttled
 
-    Task *next; // Next task in queue (ready/wait queue)
-    Task *prev; // Previous task in queue
+    Task *next;      // Next task in queue (ready/wait queue)
+    Task *prev;      // Previous task in queue
     Task *hash_next; // Next task in hash bucket (for O(1) ID lookup)
     u32 heap_index;  // Index in scheduler heap (for O(log n) operations)
 
-    void *wait_channel;   // What we're waiting on (for debugging)
-    void *blocked_mutex;  // PI mutex we're blocked on (for PI chain traversal)
-    u64 wait_timeout;     // Absolute tick when wait times out (0 = no timeout)
-    i32 exit_code;        // Exit code when task exits
+    void *wait_channel;  // What we're waiting on (for debugging)
+    void *blocked_mutex; // PI mutex we're blocked on (for PI chain traversal)
+    u64 wait_timeout;    // Absolute tick when wait times out (0 = no timeout)
+    i32 exit_code;       // Exit code when task exits
 
     // Statistics
     u64 cpu_ticks;    // Total CPU ticks consumed
@@ -299,11 +299,11 @@ struct Task {
 
     // Thread state (for userspace threads sharing a Viper)
     struct {
-        bool is_thread;    ///< True if this is a thread (not the main task)
-        bool detached;     ///< True if detached (no join needed, auto-reap)
-        bool joined;       ///< True if someone has called join on this thread
-        u64 retval;        ///< Return value from thread_exit
-        u64 tls_base;      ///< TPIDR_EL0 value for this thread
+        bool is_thread;     ///< True if this is a thread (not the main task)
+        bool detached;      ///< True if detached (no join needed, auto-reap)
+        bool joined;        ///< True if someone has called join on this thread
+        u64 retval;         ///< Return value from thread_exit
+        u64 tls_base;       ///< TPIDR_EL0 value for this thread
         void *join_waiters; ///< WaitQueue* for tasks blocked in thread_join
     } thread;
 };

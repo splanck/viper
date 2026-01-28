@@ -2592,16 +2592,21 @@ L_GEP:
     {
         SYNC_STATE();
         fprintf(stderr, "*** NULL POINTER DEREFERENCE ***\n");
-        fprintf(stderr, "Attempting to access field at offset %lld on null object\n",
+        fprintf(stderr,
+                "Attempting to access field at offset %lld on null object\n",
                 (long long)offset);
-        fprintf(stderr, "PC: %u, Function: %s\n", pc - 1,
+        fprintf(stderr,
+                "PC: %u, Function: %s\n",
+                pc - 1,
                 fp_->func->name.empty() ? "<unknown>" : fp_->func->name.c_str());
         // Print call stack
         fprintf(stderr, "Call stack:\n");
         for (size_t i = 0; i < callStack_.size(); i++)
         {
             const auto &frame = callStack_[i];
-            fprintf(stderr, "  [%zu] %s (PC: %u)\n", i,
+            fprintf(stderr,
+                    "  [%zu] %s (PC: %u)\n",
+                    i,
                     frame.func->name.empty() ? "<unknown>" : frame.func->name.c_str(),
                     frame.pc);
         }
@@ -2647,14 +2652,18 @@ L_LOAD_I64_MEM:
         SYNC_STATE();
         fprintf(stderr, "*** NULL POINTER READ (i64) ***\n");
         fprintf(stderr, "Attempting to read from address %p\n", addr);
-        fprintf(stderr, "PC: %u, Function: %s\n", pc - 1,
+        fprintf(stderr,
+                "PC: %u, Function: %s\n",
+                pc - 1,
                 fp_->func->name.empty() ? "<unknown>" : fp_->func->name.c_str());
         // Print call stack
         fprintf(stderr, "Call stack:\n");
         for (size_t i = 0; i < callStack_.size(); i++)
         {
             const auto &frame = callStack_[i];
-            fprintf(stderr, "  [%zu] %s (PC: %u)\n", i,
+            fprintf(stderr,
+                    "  [%zu] %s (PC: %u)\n",
+                    i,
                     frame.func->name.empty() ? "<unknown>" : frame.func->name.c_str(),
                     frame.pc);
         }
@@ -2685,14 +2694,18 @@ L_LOAD_PTR_MEM:
         SYNC_STATE();
         fprintf(stderr, "*** NULL POINTER READ (ptr) ***\n");
         fprintf(stderr, "Attempting to read from address %p\n", addr);
-        fprintf(stderr, "PC: %u, Function: %s\n", pc - 1,
+        fprintf(stderr,
+                "PC: %u, Function: %s\n",
+                pc - 1,
                 fp_->func->name.empty() ? "<unknown>" : fp_->func->name.c_str());
         // Print call stack
         fprintf(stderr, "Call stack:\n");
         for (size_t i = 0; i < callStack_.size(); i++)
         {
             const auto &frame = callStack_[i];
-            fprintf(stderr, "  [%zu] %s (PC: %u)\n", i,
+            fprintf(stderr,
+                    "  [%zu] %s (PC: %u)\n",
+                    i,
                     frame.func->name.empty() ? "<unknown>" : frame.func->name.c_str(),
                     frame.pc);
         }

@@ -50,9 +50,9 @@
  */
 //===----------------------------------------------------------------------===//
 
-#include <widget.h>
 #include <stdlib.h>
 #include <string.h>
+#include <widget.h>
 
 /**
  * @brief Height of each list item row in pixels.
@@ -60,7 +60,7 @@
  * Each item occupies exactly 18 pixels of vertical space, providing room for
  * a single line of text (10 pixels) plus 4 pixels padding above and below.
  */
-#define ITEM_HEIGHT      18
+#define ITEM_HEIGHT 18
 
 /**
  * @brief Initial capacity of the items array.
@@ -183,7 +183,8 @@ static void listview_paint(widget_t *w, gui_window_t *win) {
         int thumb_y = sb_y + (lv->scroll_offset * (sb_height - thumb_height)) /
                                  (lv->item_count - lv->visible_items);
 
-        draw_3d_raised(win, sb_x + 1, thumb_y, 12, thumb_height, WB_GRAY_LIGHT, WB_WHITE, WB_GRAY_DARK);
+        draw_3d_raised(
+            win, sb_x + 1, thumb_y, 12, thumb_height, WB_GRAY_LIGHT, WB_WHITE, WB_GRAY_DARK);
     }
 }
 
@@ -300,67 +301,67 @@ static void listview_key(widget_t *w, int keycode, char ch) {
     listview_t *lv = (listview_t *)w;
 
     switch (keycode) {
-    case 0x52: // Up arrow
-        if (lv->selected_index > 0) {
-            lv->selected_index--;
+        case 0x52: // Up arrow
+            if (lv->selected_index > 0) {
+                lv->selected_index--;
+                listview_ensure_visible(lv, lv->selected_index);
+                if (lv->on_select) {
+                    lv->on_select(lv->selected_index, lv->callback_data);
+                }
+            }
+            break;
+
+        case 0x51: // Down arrow
+            if (lv->selected_index < lv->item_count - 1) {
+                lv->selected_index++;
+                listview_ensure_visible(lv, lv->selected_index);
+                if (lv->on_select) {
+                    lv->on_select(lv->selected_index, lv->callback_data);
+                }
+            }
+            break;
+
+        case 0x4B: // Page Up
+            lv->selected_index -= lv->visible_items;
+            if (lv->selected_index < 0)
+                lv->selected_index = 0;
             listview_ensure_visible(lv, lv->selected_index);
             if (lv->on_select) {
                 lv->on_select(lv->selected_index, lv->callback_data);
             }
-        }
-        break;
+            break;
 
-    case 0x51: // Down arrow
-        if (lv->selected_index < lv->item_count - 1) {
-            lv->selected_index++;
+        case 0x4E: // Page Down
+            lv->selected_index += lv->visible_items;
+            if (lv->selected_index >= lv->item_count)
+                lv->selected_index = lv->item_count - 1;
             listview_ensure_visible(lv, lv->selected_index);
             if (lv->on_select) {
                 lv->on_select(lv->selected_index, lv->callback_data);
             }
-        }
-        break;
+            break;
 
-    case 0x4B: // Page Up
-        lv->selected_index -= lv->visible_items;
-        if (lv->selected_index < 0)
+        case 0x4A: // Home
             lv->selected_index = 0;
-        listview_ensure_visible(lv, lv->selected_index);
-        if (lv->on_select) {
-            lv->on_select(lv->selected_index, lv->callback_data);
-        }
-        break;
+            listview_ensure_visible(lv, lv->selected_index);
+            if (lv->on_select) {
+                lv->on_select(lv->selected_index, lv->callback_data);
+            }
+            break;
 
-    case 0x4E: // Page Down
-        lv->selected_index += lv->visible_items;
-        if (lv->selected_index >= lv->item_count)
+        case 0x4D: // End
             lv->selected_index = lv->item_count - 1;
-        listview_ensure_visible(lv, lv->selected_index);
-        if (lv->on_select) {
-            lv->on_select(lv->selected_index, lv->callback_data);
-        }
-        break;
+            listview_ensure_visible(lv, lv->selected_index);
+            if (lv->on_select) {
+                lv->on_select(lv->selected_index, lv->callback_data);
+            }
+            break;
 
-    case 0x4A: // Home
-        lv->selected_index = 0;
-        listview_ensure_visible(lv, lv->selected_index);
-        if (lv->on_select) {
-            lv->on_select(lv->selected_index, lv->callback_data);
-        }
-        break;
-
-    case 0x4D: // End
-        lv->selected_index = lv->item_count - 1;
-        listview_ensure_visible(lv, lv->selected_index);
-        if (lv->on_select) {
-            lv->on_select(lv->selected_index, lv->callback_data);
-        }
-        break;
-
-    case 0x28: // Enter
-        if (lv->on_double_click && lv->selected_index >= 0) {
-            lv->on_double_click(lv->selected_index, lv->callback_data);
-        }
-        break;
+        case 0x28: // Enter
+            if (lv->on_double_click && lv->selected_index >= 0) {
+                lv->on_double_click(lv->selected_index, lv->callback_data);
+            }
+            break;
     }
 }
 
@@ -579,7 +580,8 @@ void listview_remove_item(listview_t *lv, int index) {
     free(lv->items[index]);
 
     // Shift items
-    memmove(&lv->items[index], &lv->items[index + 1], (lv->item_count - index - 1) * sizeof(char *));
+    memmove(
+        &lv->items[index], &lv->items[index + 1], (lv->item_count - index - 1) * sizeof(char *));
     lv->item_count--;
 
     // Adjust selection

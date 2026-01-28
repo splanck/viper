@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "../../console/gcon.hpp"
 #include "../../tty/tty.hpp"
+#include "../../console/gcon.hpp"
 #include "handlers_internal.hpp"
 
 namespace syscall {

@@ -6,15 +6,15 @@ The ViperDOS shell (vinit) provides a command-line interface with line editing, 
 
 ## Quick Reference
 
-| Category       | Commands                                                       |
-|----------------|----------------------------------------------------------------|
-| **Files**      | `Dir`, `List`, `Type`, `Copy`, `Delete`, `MakeDir`, `Rename`   |
-| **Navigation** | `CD`, `PWD`, `Path`, `Assign`                                  |
-| **Programs**   | `Run`                                                          |
+| Category       | Commands                                                                  |
+|----------------|---------------------------------------------------------------------------|
+| **Files**      | `Dir`, `List`, `Type`, `Copy`, `Delete`, `MakeDir`, `Rename`              |
+| **Navigation** | `CD`, `PWD`, `Path`, `Assign`                                             |
+| **Programs**   | `Run`                                                                     |
 | **System**     | `Version`, `Uptime`, `Avail`, `Status`, `Servers`, `Caps`, `Date`, `Time` |
-| **Network**    | `Fetch`                                                        |
-| **Utility**    | `Echo`, `Cls`, `History`, `Why`, `Help`                        |
-| **Session**    | `EndShell`                                                     |
+| **Network**    | `Fetch`                                                                   |
+| **Utility**    | `Echo`, `Cls`, `History`, `Why`, `Help`                                   |
+| **Session**    | `EndShell`                                                                |
 
 ---
 
@@ -552,12 +552,12 @@ HTTP/1.0 200 OK
 
 The following network utilities are available as separate programs run via `Run`:
 
-| Program  | Description                              |
-|----------|------------------------------------------|
-| `ping`   | Send ICMP echo requests                  |
-| `ssh`    | SSH-2 client for remote shell access     |
-| `sftp`   | SFTP file transfer client                |
-| `netstat`| Display network statistics               |
+| Program   | Description                          |
+|-----------|--------------------------------------|
+| `ping`    | Send ICMP echo requests              |
+| `ssh`     | SSH-2 client for remote shell access |
+| `sftp`    | SFTP file transfer client            |
+| `netstat` | Display network statistics           |
 
 **Examples:**
 

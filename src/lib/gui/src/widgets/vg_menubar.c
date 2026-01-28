@@ -1,9 +1,9 @@
 // vg_menubar.c - MenuBar widget implementation
+#include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widget.h"
-#include "../../../graphics/include/vgfx.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -274,17 +274,25 @@ static void menubar_paint_overlay(vg_widget_t *widget, void *canvas)
     // Draw dropdown border
     uint32_t border_color = theme->colors.border_primary;
     // Top border
-    vgfx_fill_rect(win, (int32_t)dropdown_x, (int32_t)dropdown_y, (int32_t)dropdown_width, 1,
-                   border_color);
+    vgfx_fill_rect(
+        win, (int32_t)dropdown_x, (int32_t)dropdown_y, (int32_t)dropdown_width, 1, border_color);
     // Left border
-    vgfx_fill_rect(win, (int32_t)dropdown_x, (int32_t)dropdown_y, 1, (int32_t)dropdown_height,
-                   border_color);
+    vgfx_fill_rect(
+        win, (int32_t)dropdown_x, (int32_t)dropdown_y, 1, (int32_t)dropdown_height, border_color);
     // Right border
-    vgfx_fill_rect(win, (int32_t)(dropdown_x + dropdown_width - 1), (int32_t)dropdown_y, 1,
-                   (int32_t)dropdown_height, border_color);
+    vgfx_fill_rect(win,
+                   (int32_t)(dropdown_x + dropdown_width - 1),
+                   (int32_t)dropdown_y,
+                   1,
+                   (int32_t)dropdown_height,
+                   border_color);
     // Bottom border
-    vgfx_fill_rect(win, (int32_t)dropdown_x, (int32_t)(dropdown_y + dropdown_height - 1),
-                   (int32_t)dropdown_width, 1, border_color);
+    vgfx_fill_rect(win,
+                   (int32_t)dropdown_x,
+                   (int32_t)(dropdown_y + dropdown_height - 1),
+                   (int32_t)dropdown_width,
+                   1,
+                   border_color);
 
     // Draw menu items
     float item_y = dropdown_y;
@@ -351,9 +359,13 @@ static void menubar_paint_overlay(vg_widget_t *widget, void *canvas)
                 {
                     float check_x = dropdown_x + 4;
                     float check_y = item_y + item_height / 2;
-                    vgfx_fill_rect(win, (int32_t)check_x, (int32_t)check_y, 3, 1,
-                                   menubar->text_color);
-                    vgfx_fill_rect(win, (int32_t)(check_x + 2), (int32_t)(check_y - 3), 1, 4,
+                    vgfx_fill_rect(
+                        win, (int32_t)check_x, (int32_t)check_y, 3, 1, menubar->text_color);
+                    vgfx_fill_rect(win,
+                                   (int32_t)(check_x + 2),
+                                   (int32_t)(check_y - 3),
+                                   1,
+                                   4,
                                    menubar->text_color);
                 }
 
@@ -362,12 +374,16 @@ static void menubar_paint_overlay(vg_widget_t *widget, void *canvas)
                 {
                     float arrow_x = dropdown_x + dropdown_width - 12;
                     float arrow_y = item_y + item_height / 2;
-                    vgfx_fill_rect(win, (int32_t)arrow_x, (int32_t)(arrow_y - 2), 1, 5,
+                    vgfx_fill_rect(
+                        win, (int32_t)arrow_x, (int32_t)(arrow_y - 2), 1, 5, menubar->text_color);
+                    vgfx_fill_rect(win,
+                                   (int32_t)(arrow_x + 1),
+                                   (int32_t)(arrow_y - 1),
+                                   1,
+                                   3,
                                    menubar->text_color);
-                    vgfx_fill_rect(win, (int32_t)(arrow_x + 1), (int32_t)(arrow_y - 1), 1, 3,
-                                   menubar->text_color);
-                    vgfx_fill_rect(win, (int32_t)(arrow_x + 2), (int32_t)arrow_y, 1, 1,
-                                   menubar->text_color);
+                    vgfx_fill_rect(
+                        win, (int32_t)(arrow_x + 2), (int32_t)arrow_y, 1, 1, menubar->text_color);
                 }
             }
         }

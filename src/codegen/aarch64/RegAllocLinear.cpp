@@ -892,6 +892,8 @@ class LinearAllocator
                 return {idx == 1, idx == 0};
             case MOpcode::FMovRI:
                 return {false, idx == 0};
+            case MOpcode::FMovGR:
+                return {idx == 1, idx == 0};
             default:
                 break;
         }

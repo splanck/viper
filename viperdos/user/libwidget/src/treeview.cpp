@@ -50,9 +50,9 @@
  */
 //===----------------------------------------------------------------------===//
 
-#include <widget.h>
 #include <stdlib.h>
 #include <string.h>
+#include <widget.h>
 
 /**
  * @brief Height of each tree node row in pixels.
@@ -60,7 +60,7 @@
  * Each node occupies exactly 18 pixels of vertical space, providing room for
  * a single line of text plus the expand/collapse box.
  */
-#define ITEM_HEIGHT      18
+#define ITEM_HEIGHT 18
 
 /**
  * @brief Horizontal indentation per tree level in pixels.
@@ -68,7 +68,7 @@
  * Each level of depth adds 16 pixels of left indentation. This creates the
  * visual hierarchy that makes parent-child relationships clear.
  */
-#define INDENT_WIDTH     16
+#define INDENT_WIDTH 16
 
 /**
  * @brief Size of the expand/collapse box in pixels (9x9 square).
@@ -76,7 +76,7 @@
  * The box contains a + (collapsed) or - (expanded) symbol and is positioned
  * just to the left of the node's text.
  */
-#define EXPAND_BOX_SIZE  9
+#define EXPAND_BOX_SIZE 9
 
 /**
  * @brief Initial capacity for a node's children array.
@@ -109,8 +109,7 @@
  * @note This function is marked unused because it's for future scrollbar
  *       calculations but is currently not called.
  */
-__attribute__((unused))
-static int treeview_count_visible(tree_node_t *node, int depth) {
+__attribute__((unused)) static int treeview_count_visible(tree_node_t *node, int depth) {
     if (!node)
         return 0;
 
@@ -208,8 +207,13 @@ static int treeview_get_depth(tree_node_t *node) {
  * @note Nodes outside the visible viewport (above y_base or below the widget
  *       bottom) are not drawn, but their Y position is still tracked.
  */
-static void treeview_paint_node(treeview_t *tv, gui_window_t *win, tree_node_t *node, int *y,
-                                int depth, int x_base, int y_base) {
+static void treeview_paint_node(treeview_t *tv,
+                                gui_window_t *win,
+                                tree_node_t *node,
+                                int *y,
+                                int depth,
+                                int x_base,
+                                int y_base) {
     if (!node || depth < 0)
         return;
 
@@ -407,80 +411,80 @@ static void treeview_key(widget_t *w, int keycode, char ch) {
         return;
 
     switch (keycode) {
-    case 0x52: // Up arrow
-        // Find previous visible node
-        // Simplified: just select parent if no previous sibling
-        if (tv->selected->parent && tv->selected->parent != tv->root) {
-            tree_node_t *parent = tv->selected->parent;
-            int idx = -1;
-            for (int i = 0; i < parent->child_count; i++) {
-                if (&parent->children[i] == tv->selected) {
-                    idx = i;
-                    break;
+        case 0x52: // Up arrow
+            // Find previous visible node
+            // Simplified: just select parent if no previous sibling
+            if (tv->selected->parent && tv->selected->parent != tv->root) {
+                tree_node_t *parent = tv->selected->parent;
+                int idx = -1;
+                for (int i = 0; i < parent->child_count; i++) {
+                    if (&parent->children[i] == tv->selected) {
+                        idx = i;
+                        break;
+                    }
                 }
-            }
-            if (idx > 0) {
-                tv->selected = &parent->children[idx - 1];
-            } else {
-                tv->selected = parent;
-            }
-            if (tv->on_select) {
-                tv->on_select(tv->selected, tv->callback_data);
-            }
-        }
-        break;
-
-    case 0x51: // Down arrow
-        // Find next visible node
-        if (tv->selected->expanded && tv->selected->child_count > 0) {
-            tv->selected = &tv->selected->children[0];
-        } else if (tv->selected->parent) {
-            tree_node_t *parent = tv->selected->parent;
-            int idx = -1;
-            for (int i = 0; i < parent->child_count; i++) {
-                if (&parent->children[i] == tv->selected) {
-                    idx = i;
-                    break;
+                if (idx > 0) {
+                    tv->selected = &parent->children[idx - 1];
+                } else {
+                    tv->selected = parent;
                 }
-            }
-            if (idx >= 0 && idx < parent->child_count - 1) {
-                tv->selected = &parent->children[idx + 1];
-            }
-        }
-        if (tv->on_select) {
-            tv->on_select(tv->selected, tv->callback_data);
-        }
-        break;
-
-    case 0x50: // Left arrow - collapse or go to parent
-        if (tv->selected->expanded && tv->selected->child_count > 0) {
-            tv->selected->expanded = false;
-            if (tv->on_expand) {
-                tv->on_expand(tv->selected, tv->callback_data);
-            }
-        } else if (tv->selected->parent && tv->selected->parent != tv->root) {
-            tv->selected = tv->selected->parent;
-            if (tv->on_select) {
-                tv->on_select(tv->selected, tv->callback_data);
-            }
-        }
-        break;
-
-    case 0x4F: // Right arrow - expand or go to first child
-        if (tv->selected->child_count > 0) {
-            if (!tv->selected->expanded) {
-                tv->selected->expanded = true;
-                if (tv->on_expand) {
-                    tv->on_expand(tv->selected, tv->callback_data);
-                }
-            } else {
-                tv->selected = &tv->selected->children[0];
                 if (tv->on_select) {
                     tv->on_select(tv->selected, tv->callback_data);
                 }
             }
-        }
-        break;
+            break;
+
+        case 0x51: // Down arrow
+            // Find next visible node
+            if (tv->selected->expanded && tv->selected->child_count > 0) {
+                tv->selected = &tv->selected->children[0];
+            } else if (tv->selected->parent) {
+                tree_node_t *parent = tv->selected->parent;
+                int idx = -1;
+                for (int i = 0; i < parent->child_count; i++) {
+                    if (&parent->children[i] == tv->selected) {
+                        idx = i;
+                        break;
+                    }
+                }
+                if (idx >= 0 && idx < parent->child_count - 1) {
+                    tv->selected = &parent->children[idx + 1];
+                }
+            }
+            if (tv->on_select) {
+                tv->on_select(tv->selected, tv->callback_data);
+            }
+            break;
+
+        case 0x50: // Left arrow - collapse or go to parent
+            if (tv->selected->expanded && tv->selected->child_count > 0) {
+                tv->selected->expanded = false;
+                if (tv->on_expand) {
+                    tv->on_expand(tv->selected, tv->callback_data);
+                }
+            } else if (tv->selected->parent && tv->selected->parent != tv->root) {
+                tv->selected = tv->selected->parent;
+                if (tv->on_select) {
+                    tv->on_select(tv->selected, tv->callback_data);
+                }
+            }
+            break;
+
+        case 0x4F: // Right arrow - expand or go to first child
+            if (tv->selected->child_count > 0) {
+                if (!tv->selected->expanded) {
+                    tv->selected->expanded = true;
+                    if (tv->on_expand) {
+                        tv->on_expand(tv->selected, tv->callback_data);
+                    }
+                } else {
+                    tv->selected = &tv->selected->children[0];
+                    if (tv->on_select) {
+                        tv->on_select(tv->selected, tv->callback_data);
+                    }
+                }
+            }
+            break;
     }
 }
 
@@ -683,7 +687,8 @@ void treeview_remove_node(treeview_t *tv, tree_node_t *node) {
     }
 
     // Shift remaining children
-    memmove(&parent->children[idx], &parent->children[idx + 1],
+    memmove(&parent->children[idx],
+            &parent->children[idx + 1],
             (parent->child_count - idx - 1) * sizeof(tree_node_t));
     parent->child_count--;
 }

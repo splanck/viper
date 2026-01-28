@@ -202,12 +202,12 @@ void process_pending();
  * The sigreturn syscall uses this to restore the original context.
  */
 struct SignalFrame {
-    u64 x[31];       ///< Saved general-purpose registers
-    u64 sp;          ///< Saved stack pointer
-    u64 elr;         ///< Saved return address
-    u64 spsr;        ///< Saved program status
-    u32 signum;      ///< Signal number
-    u32 blocked_old; ///< Previous blocked signal mask
+    u64 x[31];         ///< Saved general-purpose registers
+    u64 sp;            ///< Saved stack pointer
+    u64 elr;           ///< Saved return address
+    u64 spsr;          ///< Saved program status
+    u32 signum;        ///< Signal number
+    u32 blocked_old;   ///< Previous blocked signal mask
     u64 trampoline[2]; ///< Signal return trampoline code
 };
 

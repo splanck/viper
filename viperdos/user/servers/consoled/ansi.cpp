@@ -118,8 +118,14 @@ void AnsiParser::handle_sgr() {
                 break;
 
             // Foreground colors 30-37
-            case 30: case 31: case 32: case 33:
-            case 34: case 35: case 36: case 37:
+            case 30:
+            case 31:
+            case 32:
+            case 33:
+            case 34:
+            case 35:
+            case 36:
+            case 37:
                 if (m_bold_mode)
                     m_fg_color = ansi_bright_colors[param - 30];
                 else
@@ -131,8 +137,14 @@ void AnsiParser::handle_sgr() {
                 break;
 
             // Background colors 40-47
-            case 40: case 41: case 42: case 43:
-            case 44: case 45: case 46: case 47:
+            case 40:
+            case 41:
+            case 42:
+            case 43:
+            case 44:
+            case 45:
+            case 46:
+            case 47:
                 m_bg_color = ansi_colors[param - 40];
                 break;
 
@@ -141,14 +153,26 @@ void AnsiParser::handle_sgr() {
                 break;
 
             // Bright foreground colors 90-97
-            case 90: case 91: case 92: case 93:
-            case 94: case 95: case 96: case 97:
+            case 90:
+            case 91:
+            case 92:
+            case 93:
+            case 94:
+            case 95:
+            case 96:
+            case 97:
                 m_fg_color = ansi_bright_colors[param - 90];
                 break;
 
             // Bright background colors 100-107
-            case 100: case 101: case 102: case 103:
-            case 104: case 105: case 106: case 107:
+            case 100:
+            case 101:
+            case 102:
+            case 103:
+            case 104:
+            case 105:
+            case 106:
+            case 107:
                 m_bg_color = ansi_bright_colors[param - 100];
                 break;
 

@@ -51,6 +51,7 @@ enum class MOpcode
     // Floating-point (64-bit, scalar)
     FMovRR,
     FMovRI,
+    FMovGR, // fmov dDst, xSrc (transfer bits from GPR to FPR without conversion)
     FAddRRR,
     FSubRRR,
     FMulRRR,
@@ -95,6 +96,9 @@ enum class MOpcode
     LslRI,
     LsrRI,
     AsrRI,
+    LslvRRR, // lslv dst, lhs, rhs (shift left by register)
+    LsrvRRR, // lsrv dst, lhs, rhs (logical shift right by register)
+    AsrvRRR, // asrv dst, lhs, rhs (arithmetic shift right by register)
     CmpRR,
     CmpRI,
     TstRR, // tst lhs, rhs (bitwise AND, set flags, discard result)
@@ -102,6 +106,7 @@ enum class MOpcode
     Br,    // b label
     BCond, // b.<cond> label
     Bl,    // bl <label> (call)
+    Blr,   // blr <reg> (indirect call through register)
     Ret,   // ret (return from function)
     // Address materialisation for globals (Mach-O style)
     AdrPage,    // dst, label  => adrp dst, label@PAGE

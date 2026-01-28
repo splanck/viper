@@ -9,7 +9,8 @@ Create a fully-featured Amiga-inspired Workbench desktop environment for ViperDO
 - System configuration utilities
 - A cohesive, retro-modern aesthetic faithful to the original Amiga
 
-The Workbench serves as the primary GUI interface for ViperDOS, bringing the beloved Amiga desktop experience to a modern hybrid kernel operating system.
+The Workbench serves as the primary GUI interface for ViperDOS, bringing the beloved Amiga desktop experience to a
+modern hybrid kernel operating system.
 
 ---
 
@@ -17,37 +18,37 @@ The Workbench serves as the primary GUI interface for ViperDOS, bringing the bel
 
 ### COMPLETED Components
 
-| Component          | Status          | Lines of Code | Notes                                    |
-|--------------------|-----------------|---------------|------------------------------------------|
-| displayd           | **COMPLETE**    | ~2000         | Compositor with double buffering, z-order |
-| libgui             | **COMPLETE**    | ~3000         | Window creation, drawing, events         |
-| consoled           | **COMPLETE**    | ~1500         | GUI terminal with ANSI support           |
-| **libwidget**      | **COMPLETE**    | **8942**      | Full widget toolkit! Buttons, text, lists, dialogs |
-| Desktop            | **COMPLETE**    | ~900          | Icons, menus, file browser, themes       |
-| File Browser       | **COMPLETE**    | ~1400         | Navigation, context menus, properties dialog, copy/paste |
-| Window Management  | **COMPLETE**    | ~1000         | Focus, z-order, minimize/maximize        |
-| **File Dialogs**   | **COMPLETE**    | ~1174         | Open, Save, Folder selection dialogs     |
-| **Viewer**         | **COMPLETE**    | ~850          | BMP image viewer with zoom               |
-| **Calculator**     | **COMPLETE**    | ~795          | Full calculator with memory functions    |
-| **Clock**          | **COMPLETE**    | ~794          | Analog/digital clock with uptime         |
-| guisysinfo         | **COMPLETE**    | ~400          | System information display               |
+| Component         | Status       | Lines of Code | Notes                                                    |
+|-------------------|--------------|---------------|----------------------------------------------------------|
+| displayd          | **COMPLETE** | ~2000         | Compositor with double buffering, z-order                |
+| libgui            | **COMPLETE** | ~3000         | Window creation, drawing, events                         |
+| consoled          | **COMPLETE** | ~1500         | GUI terminal with ANSI support                           |
+| **libwidget**     | **COMPLETE** | **8942**      | Full widget toolkit! Buttons, text, lists, dialogs       |
+| Desktop           | **COMPLETE** | ~900          | Icons, menus, file browser, themes                       |
+| File Browser      | **COMPLETE** | ~1400         | Navigation, context menus, properties dialog, copy/paste |
+| Window Management | **COMPLETE** | ~1000         | Focus, z-order, minimize/maximize                        |
+| **File Dialogs**  | **COMPLETE** | ~1174         | Open, Save, Folder selection dialogs                     |
+| **Viewer**        | **COMPLETE** | ~850          | BMP image viewer with zoom                               |
+| **Calculator**    | **COMPLETE** | ~795          | Full calculator with memory functions                    |
+| **Clock**         | **COMPLETE** | ~794          | Analog/digital clock with uptime                         |
+| guisysinfo        | **COMPLETE** | ~400          | System information display                               |
 
 ### PARTIALLY Complete Components
 
-| Component       | Status          | What Works                           | What's Missing                      |
-|-----------------|-----------------|--------------------------------------|-------------------------------------|
-| Preferences     | **90%**         | Display, categories, Cancel works    | libprefs (persistent storage)       |
-| Task Manager    | **80%**         | Display, scrolling, selection        | Kill syscall, End Task button       |
-| **VEdit**       | **70%**         | Editing, Open/Save dialogs, nav      | Find/Replace, Undo, Selection       |
-| Desktop Icons   | **WRONG STYLE** | Working but generic                  | Need Amiga-style icons              |
+| Component     | Status          | What Works                        | What's Missing                |
+|---------------|-----------------|-----------------------------------|-------------------------------|
+| Preferences   | **90%**         | Display, categories, Cancel works | libprefs (persistent storage) |
+| Task Manager  | **80%**         | Display, scrolling, selection     | Kill syscall, End Task button |
+| **VEdit**     | **70%**         | Editing, Open/Save dialogs, nav   | Find/Replace, Undo, Selection |
+| Desktop Icons | **WRONG STYLE** | Working but generic               | Need Amiga-style icons        |
 
 ### NOT Implemented
 
-| Component       | Status           | Priority | Notes                               |
-|-----------------|------------------|----------|-------------------------------------|
-| Amiga Icons     | **NOT STARTED**  | HIGH     | Need wrench, question mark icons    |
-| libprefs        | **NOT STARTED**  | MEDIUM   | Persistent preferences storage      |
-| Kill Syscall    | **NOT STARTED**  | MEDIUM   | Kernel-side task termination        |
+| Component    | Status          | Priority | Notes                            |
+|--------------|-----------------|----------|----------------------------------|
+| Amiga Icons  | **NOT STARTED** | HIGH     | Need wrench, question mark icons |
+| libprefs     | **NOT STARTED** | MEDIUM   | Persistent preferences storage   |
+| Kill Syscall | **NOT STARTED** | MEDIUM   | Kernel-side task termination     |
 
 ---
 
@@ -59,14 +60,15 @@ The Workbench serves as the primary GUI interface for ViperDOS, bringing the bel
 **Effort:** Small (1-2 hours)
 **Goal:** Make the desktop authentically Amiga-like
 
-The current icons are generic and don't match the Amiga aesthetic. The Amiga used distinctive iconography that we should replicate.
+The current icons are generic and don't match the Amiga aesthetic. The Amiga used distinctive iconography that we should
+replicate.
 
 #### 1.1 Icon Replacements
 
-| Current Icon   | New Design                | Amiga Reference                        |
-|----------------|---------------------------|----------------------------------------|
-| `settings_24`  | **Wrench/Spanner**        | Amiga Prefs used a wrench tool icon    |
-| `about_24`     | **Question Mark "?"**     | Amiga help was a bold "?" in a circle  |
+| Current Icon  | New Design            | Amiga Reference                       |
+|---------------|-----------------------|---------------------------------------|
+| `settings_24` | **Wrench/Spanner**    | Amiga Prefs used a wrench tool icon   |
+| `about_24`    | **Question Mark "?"** | Amiga help was a bold "?" in a circle |
 
 #### 1.2 Wrench Icon Design (prefs_24)
 
@@ -88,6 +90,7 @@ Classic Amiga Prefs icon - a hand tool wrench:
 ```
 
 Colors:
+
 - Metal gray (0xFFAAAAAA) for body
 - White (0xFFFFFFFF) highlights on upper-left edges
 - Dark gray (0xFF555555) shadows on lower-right edges
@@ -113,6 +116,7 @@ Classic Amiga Help icon - bold "?" on blue circle:
 ```
 
 Colors:
+
 - Blue circle background (0xFF0055AA)
 - White question mark (0xFFFFFFFF)
 - Black outline (0xFF000000)
@@ -143,56 +147,56 @@ VEdit now has Open/Save dialogs working. The remaining features are critical for
 
 #### 2.1 Current VEdit Status
 
-| Feature              | Status      | Notes                          |
-|----------------------|-------------|--------------------------------|
-| Basic editing        | ✅ Working  | Insert, delete, navigation     |
-| Line numbers         | ✅ Working  | Toggle via View menu           |
-| Word wrap            | ✅ Working  | Toggle via View menu           |
-| File > New           | ✅ Working  | Clears buffer                  |
-| File > Open...       | ✅ Working  | Uses file dialog               |
-| File > Save          | ✅ Working  | Saves to current file          |
-| File > Save As...    | ✅ Working  | Uses file dialog               |
-| Modified indicator   | ✅ Working  | Shows "*" in status bar        |
-| **Find (Ctrl+F)**    | ❌ Missing  | Need search dialog             |
-| **Replace (Ctrl+R)** | ❌ Missing  | Need find/replace dialog       |
-| **Go to Line**       | ❌ Missing  | Need input dialog              |
-| **Undo/Redo**        | ❌ Missing  | Need operation history         |
-| **Text Selection**   | ❌ Missing  | Shift+arrows to select         |
-| **Cut/Copy/Paste**   | ❌ Missing  | Needs selection first          |
+| Feature              | Status    | Notes                      |
+|----------------------|-----------|----------------------------|
+| Basic editing        | ✅ Working | Insert, delete, navigation |
+| Line numbers         | ✅ Working | Toggle via View menu       |
+| Word wrap            | ✅ Working | Toggle via View menu       |
+| File > New           | ✅ Working | Clears buffer              |
+| File > Open...       | ✅ Working | Uses file dialog           |
+| File > Save          | ✅ Working | Saves to current file      |
+| File > Save As...    | ✅ Working | Uses file dialog           |
+| Modified indicator   | ✅ Working | Shows "*" in status bar    |
+| **Find (Ctrl+F)**    | ❌ Missing | Need search dialog         |
+| **Replace (Ctrl+R)** | ❌ Missing | Need find/replace dialog   |
+| **Go to Line**       | ❌ Missing | Need input dialog          |
+| **Undo/Redo**        | ❌ Missing | Need operation history     |
+| **Text Selection**   | ❌ Missing | Shift+arrows to select     |
+| **Cut/Copy/Paste**   | ❌ Missing | Needs selection first      |
 
 #### 2.2 Implementation Order
 
 1. **Selection Support** (prerequisite for copy/paste)
-   - Track selection start/end positions
-   - Shift+Arrow to extend selection
-   - Ctrl+A to select all
-   - Render selection highlight
+    - Track selection start/end positions
+    - Shift+Arrow to extend selection
+    - Ctrl+A to select all
+    - Render selection highlight
 
 2. **Cut/Copy/Paste**
-   - Global clipboard buffer
-   - Ctrl+X, Ctrl+C, Ctrl+V
-   - Edit menu items
+    - Global clipboard buffer
+    - Ctrl+X, Ctrl+C, Ctrl+V
+    - Edit menu items
 
 3. **Find Dialog**
-   - Text input for search term
-   - "Find Next" (F3) and "Find Previous"
-   - Highlight current match
-   - Wrap around option
+    - Text input for search term
+    - "Find Next" (F3) and "Find Previous"
+    - Highlight current match
+    - Wrap around option
 
 4. **Replace Dialog**
-   - Extends Find dialog
-   - Replace text input
-   - "Replace", "Replace All" buttons
+    - Extends Find dialog
+    - Replace text input
+    - "Replace", "Replace All" buttons
 
 5. **Go to Line Dialog**
-   - Simple number input
-   - Ctrl+G shortcut
-   - Jump to line number
+    - Simple number input
+    - Ctrl+G shortcut
+    - Jump to line number
 
 6. **Undo/Redo**
-   - Operation stack (insert, delete, replace)
-   - Ctrl+Z undo, Ctrl+Y redo
-   - Limit to 100 operations
+    - Operation stack (insert, delete, replace)
+    - Ctrl+Z undo, Ctrl+Y redo
+    - Limit to 100 operations
 
 #### 2.3 Files to Modify
 
@@ -212,31 +216,43 @@ user/vedit/
 #### 2.4 Menu Structure (Updated)
 
 **File Menu:**
+
 - New (Ctrl+N) ✅
 - Open... (Ctrl+O) ✅
 - Save (Ctrl+S) ✅
 - Save As... (Ctrl+Shift+S) ✅
+
 - ---
+
 - Quit (Ctrl+Q) ✅
 
 **Edit Menu:**
+
 - Undo (Ctrl+Z) - **NEW**
 - Redo (Ctrl+Y) - **NEW**
+
 - ---
+
 - Cut (Ctrl+X) - **NEW**
 - Copy (Ctrl+C) - **NEW**
 - Paste (Ctrl+V) - **NEW**
+
 - ---
+
 - Select All (Ctrl+A) - **NEW**
 
 **Search Menu:** - **NEW MENU**
+
 - Find... (Ctrl+F)
 - Find Next (F3)
 - Replace... (Ctrl+R)
+
 - ---
+
 - Go to Line... (Ctrl+G)
 
 **View Menu:**
+
 - Line Numbers ✅
 - Word Wrap ✅
 
@@ -251,27 +267,27 @@ user/vedit/
 #### 3.1 Kernel Changes Required
 
 1. **SYS_TASK_KILL syscall** (new)
-   - Takes PID as argument
-   - Permission check: can't kill kernel tasks (PID 0-4)
-   - Returns success/failure
+    - Takes PID as argument
+    - Permission check: can't kill kernel tasks (PID 0-4)
+    - Returns success/failure
 
 2. **SYS_TASK_SET_PRIORITY syscall** (may exist, verify)
-   - Takes PID and new priority
-   - Priority range: 0-15
-   - Permission check: can only change own tasks or children
+    - Takes PID and new priority
+    - Priority range: 0-15
+    - Permission check: can only change own tasks or children
 
 #### 3.2 Task Manager Changes
 
 1. **End Task button:**
-   - Show confirmation dialog: "Terminate process 'name' (PID X)?"
-   - Call kill syscall on confirm
-   - Refresh task list
-   - Handle errors (permission denied, already exited)
+    - Show confirmation dialog: "Terminate process 'name' (PID X)?"
+    - Call kill syscall on confirm
+    - Refresh task list
+    - Handle errors (permission denied, already exited)
 
 2. **Priority button:**
-   - Show input dialog: "Enter new priority (0-15):"
-   - Call set_priority syscall
-   - Refresh task list
+    - Show input dialog: "Enter new priority (0-15):"
+    - Call set_priority syscall
+    - Refresh task list
 
 #### 3.3 Files to Modify
 
@@ -354,30 +370,30 @@ user/libprefs/
 ### IMMEDIATE (Do First)
 
 1. **Phase 1: Amiga Icons** - Small effort, high visual impact
-   - Create wrench icon for Prefs
-   - Create question mark icon for Help
+    - Create wrench icon for Prefs
+    - Create question mark icon for Help
 
 ### SHORT TERM (This Week)
 
 2. **Phase 2: VEdit Completion** - Most important app
-   - Add selection support
-   - Add cut/copy/paste
-   - Add Find/Replace dialogs
-   - Add Go to Line
-   - Add Undo/Redo
+    - Add selection support
+    - Add cut/copy/paste
+    - Add Find/Replace dialogs
+    - Add Go to Line
+    - Add Undo/Redo
 
 ### MEDIUM TERM (Next Week)
 
 3. **Phase 3: Task Manager** - Requires kernel work
-   - Add kill syscall
-   - Wire up End Task button
-   - Wire up Priority button
+    - Add kill syscall
+    - Wire up End Task button
+    - Wire up Priority button
 
 ### LOW PRIORITY (When Time Permits)
 
 4. **Phase 4: libprefs** - Nice to have
-   - Create preferences library
-   - Wire up Prefs app save/load
+    - Create preferences library
+    - Wire up Prefs app save/load
 
 ---
 
@@ -385,28 +401,30 @@ user/libprefs/
 
 The following items from the original plan have been completed and are no longer tracked:
 
-| Item                  | Completed Date | Notes                                     |
-|-----------------------|----------------|-------------------------------------------|
-| libwidget             | Jan 2025       | 8942 lines, full widget toolkit           |
-| File dialogs          | Jan 2025       | Open, Save, Folder dialogs in libwidget   |
-| Image Viewer          | Jan 2025       | BMP viewer with zoom                      |
-| Calculator            | Jan 2025       | Full calculator with memory               |
-| Clock                 | Jan 2025       | Analog/digital with uptime                |
-| File Browser          | Jan 2025       | Context menus, properties, copy/paste     |
-| Theme System          | Jan 2025       | 4 themes: Classic, Dark, Modern, HighContrast |
-| VEdit Open/Save       | Jan 2025       | File dialogs integrated                   |
+| Item            | Completed Date | Notes                                         |
+|-----------------|----------------|-----------------------------------------------|
+| libwidget       | Jan 2025       | 8942 lines, full widget toolkit               |
+| File dialogs    | Jan 2025       | Open, Save, Folder dialogs in libwidget       |
+| Image Viewer    | Jan 2025       | BMP viewer with zoom                          |
+| Calculator      | Jan 2025       | Full calculator with memory                   |
+| Clock           | Jan 2025       | Analog/digital with uptime                    |
+| File Browser    | Jan 2025       | Context menus, properties, copy/paste         |
+| Theme System    | Jan 2025       | 4 themes: Classic, Dark, Modern, HighContrast |
+| VEdit Open/Save | Jan 2025       | File dialogs integrated                       |
 
 ---
 
 ## Testing Checklist
 
 ### Phase 1 Tests (Icons)
+
 - [ ] Wrench icon displays on desktop for "Prefs"
 - [ ] Question mark icon displays on desktop for "Help"
 - [ ] Icons render correctly when selected
 - [ ] Icons look good on all 4 themes
 
 ### Phase 2 Tests (VEdit)
+
 - [ ] Shift+Arrow selects text
 - [ ] Selection is visually highlighted
 - [ ] Ctrl+A selects all text
@@ -426,6 +444,7 @@ The following items from the original plan have been completed and are no longer
 - [ ] Undo works for multiple operations
 
 ### Phase 3 Tests (Task Manager)
+
 - [ ] End Task shows confirmation dialog
 - [ ] End Task terminates the selected process
 - [ ] End Task refreshes the list
@@ -434,6 +453,7 @@ The following items from the original plan have been completed and are no longer
 - [ ] Priority change is applied
 
 ### Phase 4 Tests (Preferences)
+
 - [ ] Preferences save to file on "Save"
 - [ ] Preferences load on app start
 - [ ] Theme preference persists across restarts
@@ -466,6 +486,7 @@ The ViperDOS Workbench will be considered **feature complete** when:
 ### Changelog
 
 **v3.0 (2025-01-26)**
+
 - Major update to reflect actual implementation status
 - Marked libwidget, Viewer, Calculator, Clock as COMPLETE
 - Marked File Dialogs as COMPLETE
@@ -476,9 +497,11 @@ The ViperDOS Workbench will be considered **feature complete** when:
 - Added comprehensive testing checklists
 
 **v2.0 (2025-01-26)**
+
 - Complete rewrite with honest assessment
 - Added Phase 3.5 for icon updates
 - Added libdialog as prerequisite
 
 **v1.0 (2025-01)**
+
 - Initial plan document

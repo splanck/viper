@@ -134,12 +134,12 @@ bool Image::load(const char *filename) {
     m_filename[sizeof(m_filename) - 1] = '\0';
 
     switch (format) {
-    case ImageFormat::BMP:
-        return loadBMP(filename);
-    case ImageFormat::PPM:
-        return loadPPM(filename);
-    default:
-        return false;
+        case ImageFormat::BMP:
+            return loadBMP(filename);
+        case ImageFormat::PPM:
+            return loadPPM(filename);
+        default:
+            return false;
     }
 }
 

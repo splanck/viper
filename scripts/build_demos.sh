@@ -11,7 +11,7 @@ BIN_DIR="$ROOT_DIR/demos/bin"
 BASIC_DIR="$ROOT_DIR/demos/basic"
 TMP_DIR="/tmp/viper_demo_build_$$"
 
-ILC="$BUILD_DIR/src/tools/ilc/ilc"
+ILC="$BUILD_DIR/src/tools/viper/viper"
 ZIA="$BUILD_DIR/src/tools/zia/zia"
 RUNTIME_LIB="$BUILD_DIR/src/runtime/libviper_runtime.a"
 GFX_LIB="$BUILD_DIR/lib/libvipergfx.a"
@@ -57,7 +57,7 @@ done
 
 # Check prerequisites
 if [[ ! -x "$ILC" ]]; then
-    echo -e "${RED}Error: ilc not found at $ILC${NC}"
+    echo -e "${RED}Error: viper tool not found at $ILC${NC}"
     echo "Run 'cmake --build build' first"
     exit 1
 fi
@@ -102,6 +102,7 @@ BASIC_DEMOS=(
 # Zia demo configurations: name:source_path
 ZIA_DEMOS=(
     "paint:${ZIA_DIR}/paint/main.zia"
+    "viperide:${ZIA_DIR}/viperide/main.zia"
 )
 
 build_basic_demo() {

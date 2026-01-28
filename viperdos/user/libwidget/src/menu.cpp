@@ -53,9 +53,9 @@
  */
 //===----------------------------------------------------------------------===//
 
-#include <widget.h>
 #include <stdlib.h>
 #include <string.h>
+#include <widget.h>
 
 /**
  * @brief Height of a normal (non-separator) menu item in pixels.
@@ -63,14 +63,14 @@
  * Each menu item occupies 20 pixels of vertical space, providing room for
  * text (10 pixels) plus 5 pixels padding above and below.
  */
-#define MENU_ITEM_HEIGHT   20
+#define MENU_ITEM_HEIGHT 20
 
 /**
  * @brief Vertical padding at the top and bottom of the menu.
  *
  * The menu has 4 pixels of padding before the first item and after the last.
  */
-#define MENU_PADDING       4
+#define MENU_PADDING 4
 
 /**
  * @brief Minimum width of a menu in pixels.
@@ -78,7 +78,7 @@
  * Even menus with very short items will be at least 100 pixels wide to
  * provide a reasonable click target.
  */
-#define MENU_MIN_WIDTH     100
+#define MENU_MIN_WIDTH 100
 
 /**
  * @brief Height of a separator item in pixels.
@@ -86,7 +86,7 @@
  * Separators are shorter than normal items at 8 pixels, just enough for
  * the 3D groove line plus some vertical spacing.
  */
-#define SEPARATOR_HEIGHT   8
+#define SEPARATOR_HEIGHT 8
 
 /**
  * @brief Initial capacity for the items array.
@@ -94,7 +94,7 @@
  * Menus start with space for 8 items. When this capacity is exceeded,
  * the array doubles in size.
  */
-#define INITIAL_CAPACITY   8
+#define INITIAL_CAPACITY 8
 
 //===----------------------------------------------------------------------===//
 // Menu API
@@ -240,8 +240,8 @@ void menu_add_item(menu_t *m, const char *text, widget_callback_fn callback, voi
  * @see menu_add_item() Convenience wrapper without shortcut
  * @see menu_set_item_enabled() To enable/disable the item
  */
-void menu_add_item_with_shortcut(menu_t *m, const char *text, const char *shortcut,
-                                  widget_callback_fn callback, void *data) {
+void menu_add_item_with_shortcut(
+    menu_t *m, const char *text, const char *shortcut, widget_callback_fn callback, void *data) {
     if (!m)
         return;
 

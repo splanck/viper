@@ -201,6 +201,40 @@ VM::ExecResult handleFCmpGE(VM &vm,
                             const il::core::BasicBlock *&bb,
                             size_t &ip);
 
+/// @brief Execute floating-point ordered comparison (FCmpOrd).
+/// @details Returns true if both operands are ordered (neither is NaN).
+///          Uses std::isnan to check each operand.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating continue, trap, or control transfer.
+VM::ExecResult handleFCmpOrd(VM &vm,
+                             Frame &fr,
+                             const il::core::Instr &in,
+                             const VM::BlockMap &blocks,
+                             const il::core::BasicBlock *&bb,
+                             size_t &ip);
+
+/// @brief Execute floating-point unordered comparison (FCmpUno).
+/// @details Returns true if either operand is NaN (unordered).
+///          Uses std::isnan to check each operand.
+/// @param vm Active VM instance.
+/// @param fr Current execution frame.
+/// @param in Instruction being executed.
+/// @param blocks Block map for the current function.
+/// @param bb In/out current basic block pointer.
+/// @param ip In/out instruction pointer within @p bb.
+/// @return Execution result indicating continue, trap, or control transfer.
+VM::ExecResult handleFCmpUno(VM &vm,
+                             Frame &fr,
+                             const il::core::Instr &in,
+                             const VM::BlockMap &blocks,
+                             const il::core::BasicBlock *&bb,
+                             size_t &ip);
+
 /// @brief Execute signed integer to floating-point conversion (SiToFp).
 /// @details Converts a signed integer operand to double and writes the result.
 ///          The conversion follows host IEEE-754 semantics.

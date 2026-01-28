@@ -112,25 +112,33 @@ class FileBrowser {
      * @brief Returns the browser's GUI window handle.
      * @return Pointer to gui_window_t.
      */
-    gui_window_t *window() const { return m_window; }
+    gui_window_t *window() const {
+        return m_window;
+    }
 
     /**
      * @brief Checks if the browser window is still open.
      * @return true if the window exists.
      */
-    bool isOpen() const { return m_window != nullptr; }
+    bool isOpen() const {
+        return m_window != nullptr;
+    }
 
     /**
      * @brief Checks if the browser is marked for closing.
      * @return true if close was requested.
      */
-    bool isClosing() const { return m_closing; }
+    bool isClosing() const {
+        return m_closing;
+    }
 
     /**
      * @brief Returns the current directory path.
      * @return Null-terminated path string.
      */
-    const char *currentPath() const { return m_currentPath; }
+    const char *currentPath() const {
+        return m_currentPath;
+    }
 
     //=== Event Handling ===//
 

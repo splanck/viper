@@ -43,16 +43,16 @@
 
 #include "viper/vm/debug/Debug.hpp"
 
+#include "support/source_location.hpp"
+#include "viper/vm/RuntimeBridge.hpp"
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
-#include <vector>
 #include <utility>
-#include <cstddef>
-#include <functional>
-#include "viper/vm/RuntimeBridge.hpp"
-#include "support/source_location.hpp"
+#include <vector>
 
 namespace il::core
 {
@@ -62,14 +62,15 @@ struct Module;
 namespace il::vm
 {
 class VM; // forward declaration for callbacks in RunConfig
+
 /// @brief Configuration parameters for executing an IL module.
 struct RunConfig
 {
-    TraceConfig trace;                ///< Tracing configuration.
-    uint64_t maxSteps = 0;            ///< Step limit; zero disables the limit.
-    DebugCtrl debug;                  ///< Debug controller copied into the VM.
+    TraceConfig trace;                  ///< Tracing configuration.
+    uint64_t maxSteps = 0;              ///< Step limit; zero disables the limit.
+    DebugCtrl debug;                    ///< Debug controller copied into the VM.
     DebugScript *debugScript = nullptr; ///< Optional script pointer; not owned.
-    std::vector<ExternDesc> externs;  ///< Pre-registered extern helpers.
+    std::vector<ExternDesc> externs;    ///< Pre-registered extern helpers.
     /// @brief Per-frame operand stack size in bytes.
     /// @details Controls the amount of stack storage available for @c alloca
     ///          operations within each function call. Defaults to 64KB which
@@ -213,13 +214,13 @@ class Runner
     ///       details on unknown opcode handling.
     struct TrapInfo
     {
-        int32_t kind = 0;           ///< Trap kind (see enum values above).
-        int32_t code = 0;           ///< Secondary error code (0 = none).
-        uint64_t ip = 0;            ///< Instruction index within block at trap.
-        int32_t line = -1;          ///< Source line (-1 = unknown).
-        std::string function;       ///< Function name (empty if unknown).
-        std::string block;          ///< Block label (empty if unknown).
-        std::string message;        ///< Formatted human-readable trap message.
+        int32_t kind = 0;     ///< Trap kind (see enum values above).
+        int32_t code = 0;     ///< Secondary error code (0 = none).
+        uint64_t ip = 0;      ///< Instruction index within block at trap.
+        int32_t line = -1;    ///< Source line (-1 = unknown).
+        std::string function; ///< Function name (empty if unknown).
+        std::string block;    ///< Block label (empty if unknown).
+        std::string message;  ///< Formatted human-readable trap message.
     };
 
     /// @brief Retrieve a pointer to the last trap snapshot, if any; nullptr otherwise.

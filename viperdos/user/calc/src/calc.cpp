@@ -86,16 +86,16 @@ void formatDisplay(State &state, double value) {
 
 static double calculate(double left, double right, Operation op) {
     switch (op) {
-    case Operation::Add:
-        return left + right;
-    case Operation::Subtract:
-        return left - right;
-    case Operation::Multiply:
-        return left * right;
-    case Operation::Divide:
-        return right != 0 ? left / right : 0;
-    default:
-        return right;
+        case Operation::Add:
+            return left + right;
+        case Operation::Subtract:
+            return left - right;
+        case Operation::Multiply:
+            return left * right;
+        case Operation::Divide:
+            return right != 0 ? left / right : 0;
+        default:
+            return right;
     }
 }
 

@@ -315,6 +315,86 @@ if (NOT WIN32)
     add_executable(test_codegen_arm64_fp ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_fp.cpp)
     target_link_libraries(test_codegen_arm64_fp PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
     viper_add_ctest(test_codegen_arm64_fp $<TARGET_FILE:test_codegen_arm64_fp>)
+
+    ## Indirect call lowering tests
+    add_executable(test_codegen_arm64_indirect_call ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_indirect_call.cpp)
+    target_link_libraries(test_codegen_arm64_indirect_call PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_indirect_call $<TARGET_FILE:test_codegen_arm64_indirect_call>)
+
+    ## Index bounds checking tests
+    add_executable(test_codegen_arm64_idxchk ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_idxchk.cpp)
+    target_link_libraries(test_codegen_arm64_idxchk PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_idxchk $<TARGET_FILE:test_codegen_arm64_idxchk>)
+
+    ## Division operations tests (sdiv/udiv/srem/urem)
+    add_executable(test_codegen_arm64_division ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_division.cpp)
+    target_link_libraries(test_codegen_arm64_division PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_division $<TARGET_FILE:test_codegen_arm64_division>)
+
+    ## Exception handling tests
+    add_executable(test_codegen_arm64_exception_handling ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_exception_handling.cpp)
+    target_link_libraries(test_codegen_arm64_exception_handling PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_exception_handling $<TARGET_FILE:test_codegen_arm64_exception_handling>)
+
+    ## String store with refcount tests
+    add_executable(test_codegen_arm64_string_store_refcount ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_string_store_refcount.cpp)
+    target_link_libraries(test_codegen_arm64_string_store_refcount PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_string_store_refcount $<TARGET_FILE:test_codegen_arm64_string_store_refcount>)
+
+    ## Subtraction and multiplication tests
+    add_executable(test_codegen_arm64_sub_mul ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_sub_mul.cpp)
+    target_link_libraries(test_codegen_arm64_sub_mul PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_sub_mul $<TARGET_FILE:test_codegen_arm64_sub_mul>)
+
+    ## Shift by register tests
+    add_executable(test_codegen_arm64_shift_reg ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_shift_reg.cpp)
+    target_link_libraries(test_codegen_arm64_shift_reg PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_shift_reg $<TARGET_FILE:test_codegen_arm64_shift_reg>)
+
+    ## All FP comparison tests
+    add_executable(test_codegen_arm64_fp_cmp_all ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_fp_cmp_all.cpp)
+    target_link_libraries(test_codegen_arm64_fp_cmp_all PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_fp_cmp_all $<TARGET_FILE:test_codegen_arm64_fp_cmp_all>)
+
+    ## Global address and const.null tests
+    add_executable(test_codegen_arm64_gaddr_constnull ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_gaddr_constnull.cpp)
+    target_link_libraries(test_codegen_arm64_gaddr_constnull PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_gaddr_constnull $<TARGET_FILE:test_codegen_arm64_gaddr_constnull>)
+
+    ## FPR spilling tests
+    add_executable(test_codegen_arm64_spill_fpr ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_spill_fpr.cpp)
+    target_link_libraries(test_codegen_arm64_spill_fpr PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_spill_fpr $<TARGET_FILE:test_codegen_arm64_spill_fpr>)
+
+    ## Cross-block phi with spilling tests
+    add_executable(test_codegen_arm64_cross_block_phi_spill ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_cross_block_phi_spill.cpp)
+    target_link_libraries(test_codegen_arm64_cross_block_phi_spill PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_cross_block_phi_spill $<TARGET_FILE:test_codegen_arm64_cross_block_phi_spill>)
+
+    ## Unsigned comparison tests
+    add_executable(test_codegen_arm64_unsigned_cmp ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_unsigned_cmp.cpp)
+    target_link_libraries(test_codegen_arm64_unsigned_cmp PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_unsigned_cmp $<TARGET_FILE:test_codegen_arm64_unsigned_cmp>)
+
+    ## Comprehensive peephole optimization tests
+    add_executable(test_codegen_arm64_peephole_comprehensive ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_peephole_comprehensive.cpp)
+    target_link_libraries(test_codegen_arm64_peephole_comprehensive PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_peephole_comprehensive $<TARGET_FILE:test_codegen_arm64_peephole_comprehensive>)
+
+    ## Mixed int/float argument ABI tests
+    add_executable(test_codegen_arm64_abi_mixed_args ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_abi_mixed_args.cpp)
+    target_link_libraries(test_codegen_arm64_abi_mixed_args PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_abi_mixed_args $<TARGET_FILE:test_codegen_arm64_abi_mixed_args>)
+
+    ## Rodata pool literals tests
+    add_executable(test_codegen_arm64_rodata_literals ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_rodata_literals.cpp)
+    target_link_libraries(test_codegen_arm64_rodata_literals PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_rodata_literals $<TARGET_FILE:test_codegen_arm64_rodata_literals>)
+
+    ## Callee-saved register preservation tests
+    add_executable(test_codegen_arm64_callee_saved ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_callee_saved.cpp)
+    target_link_libraries(test_codegen_arm64_callee_saved PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_callee_saved $<TARGET_FILE:test_codegen_arm64_callee_saved>)
 endif () # NOT WIN32 - ARM64 tests
 
 viper_add_ctest(NoAssertFalseGuard

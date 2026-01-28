@@ -70,6 +70,7 @@ constexpr usize MAX_FDS = 32;
 namespace fs::viperfs {
 class ViperFS;
 }
+
 namespace fs::fat32 {
 class FAT32;
 }
@@ -94,18 +95,20 @@ enum class FsType : u8 {
  */
 struct FileDesc {
     bool in_use;
-    u64 inode_num;            // ViperFS inode number OR FAT32 first cluster
-    u64 offset;               // Current file position
-    u32 flags;                // Open flags
-    FsType fs_type;           // Which filesystem type
+    u64 inode_num;  // ViperFS inode number OR FAT32 first cluster
+    u64 offset;     // Current file position
+    u32 flags;      // Open flags
+    FsType fs_type; // Which filesystem type
+
     union {
         fs::viperfs::ViperFS *viperfs;
         fs::fat32::FAT32 *fat32;
     } fs;
+
     // FAT32-specific cached state (only valid when fs_type == FAT32)
-    u32 fat32_size;           // File size (may be updated by writes)
-    u8 fat32_attr;            // FAT32 attributes
-    bool fat32_is_dir;        // Is directory
+    u32 fat32_size;    // File size (may be updated by writes)
+    u8 fat32_attr;     // FAT32 attributes
+    bool fat32_is_dir; // Is directory
 };
 
 // File descriptor table (per-process)

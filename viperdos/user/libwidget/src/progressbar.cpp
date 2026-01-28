@@ -52,10 +52,10 @@
  */
 //===----------------------------------------------------------------------===//
 
-#include <widget.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <widget.h>
 
 //===----------------------------------------------------------------------===//
 // ProgressBar Paint Handler

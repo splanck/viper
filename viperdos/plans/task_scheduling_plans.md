@@ -8,11 +8,15 @@
 
 ## Executive Summary
 
-ViperDOS implements a sophisticated multi-policy preemptive scheduler with support for real-time tasks (SCHED_FIFO, SCHED_RR), deadline scheduling (SCHED_DEADLINE/EDF), and completely fair scheduling (CFS). The system is designed for both single-CPU and SMP systems with per-CPU scheduling queues and work stealing.
+ViperDOS implements a sophisticated multi-policy preemptive scheduler with support for real-time tasks (SCHED_FIFO,
+SCHED_RR), deadline scheduling (SCHED_DEADLINE/EDF), and completely fair scheduling (CFS). The system is designed for
+both single-CPU and SMP systems with per-CPU scheduling queues and work stealing.
 
-**Key Finding:** The scheduler is well-architected for current use cases but has several scalability limitations that will become problematic with larger binaries and more complex workloads.
+**Key Finding:** The scheduler is well-architected for current use cases but has several scalability limitations that
+will become problematic with larger binaries and more complex workloads.
 
 **Critical Concerns:**
+
 1. Fixed 64-task limit will be exhausted by complex applications
 2. O(n) task table scans for lookups
 3. No user-space signal handler execution
@@ -234,6 +238,7 @@ CPU 0                    CPU 1                    CPU 2
 ```
 
 **Work Stealing Rules:**
+
 - Only steal from low-priority queues (4-7) to preserve RT guarantees
 - Use non-blocking try_acquire on victim's lock
 - Only steal tasks with compatible CPU affinity
@@ -273,6 +278,7 @@ void produce_data(WaitQueue *wq) {
 **Files:** `kernel/sched/task.hpp` (289 lines), `kernel/sched/task.cpp` (548 lines)
 
 **Strengths:**
+
 - Clean task lifecycle management
 - Guard pages for stack overflow detection
 - Stack pool recycling prevents fragmentation
@@ -280,18 +286,19 @@ void produce_data(WaitQueue *wq) {
 
 **Weaknesses:**
 
-| Issue | Location | Impact |
-|-------|----------|--------|
-| Fixed 64-task limit | `task.hpp:189` | Complex apps will exhaust |
-| O(n) task lookup by ID | `task.cpp:get_by_id` | Slow with many tasks |
-| Kernel stack fixed at 16KB | `task.hpp:63` | May overflow for deep recursion |
-| No task groups/cgroups | Fundamental | No resource limits per group |
+| Issue                      | Location             | Impact                          |
+|----------------------------|----------------------|---------------------------------|
+| Fixed 64-task limit        | `task.hpp:189`       | Complex apps will exhaust       |
+| O(n) task lookup by ID     | `task.cpp:get_by_id` | Slow with many tasks            |
+| Kernel stack fixed at 16KB | `task.hpp:63`        | May overflow for deep recursion |
+| No task groups/cgroups     | Fundamental          | No resource limits per group    |
 
 ### 2.2 Scheduler (scheduler.cpp)
 
 **Files:** `kernel/sched/scheduler.hpp` (185 lines), `kernel/sched/scheduler.cpp` (724 lines)
 
 **Strengths:**
+
 - Multi-policy support (FIFO, RR, Deadline, CFS)
 - Per-CPU queues reduce SMP contention
 - Work stealing for load balancing
@@ -299,80 +306,84 @@ void produce_data(WaitQueue *wq) {
 
 **Weaknesses:**
 
-| Issue | Location | Impact |
-|-------|----------|--------|
-| O(n) deadline scan | `scheduler.cpp:dequeue_locked` | Slow with many deadline tasks |
-| O(n) CFS vruntime scan | `scheduler.cpp:dequeue_locked` | Slow with many tasks per queue |
-| Global sched_lock contention | `scheduler.cpp:81` | SMP bottleneck |
-| No priority queue bitmap | Fundamental | Must scan all 8 queues |
+| Issue                        | Location                       | Impact                         |
+|------------------------------|--------------------------------|--------------------------------|
+| O(n) deadline scan           | `scheduler.cpp:dequeue_locked` | Slow with many deadline tasks  |
+| O(n) CFS vruntime scan       | `scheduler.cpp:dequeue_locked` | Slow with many tasks per queue |
+| Global sched_lock contention | `scheduler.cpp:81`             | SMP bottleneck                 |
+| No priority queue bitmap     | Fundamental                    | Must scan all 8 queues         |
 
 ### 2.3 Wait Queues (wait.cpp)
 
 **Files:** `kernel/sched/wait.hpp` (117 lines), `kernel/sched/wait.cpp` (149 lines)
 
 **Strengths:**
+
 - Clean FIFO ordering for fairness
 - Uses task's intrusive list pointers (no allocation)
 - Atomic wake operations
 
 **Weaknesses:**
 
-| Issue | Location | Impact |
-|-------|----------|--------|
-| O(n) dequeue search | `wait.cpp:wait_dequeue` | Slow for many waiters |
-| No priority ordering | Fundamental | High-priority task may wait behind low-priority |
-| No timeout support | Fundamental | Cannot wait with deadline |
+| Issue                | Location                | Impact                                          |
+|----------------------|-------------------------|-------------------------------------------------|
+| O(n) dequeue search  | `wait.cpp:wait_dequeue` | Slow for many waiters                           |
+| No priority ordering | Fundamental             | High-priority task may wait behind low-priority |
+| No timeout support   | Fundamental             | Cannot wait with deadline                       |
 
 ### 2.4 Priority Inheritance (pi.cpp)
 
 **Files:** `kernel/sched/pi.hpp` (75 lines), `kernel/sched/pi.cpp` (126 lines)
 
 **Strengths:**
+
 - Prevents basic priority inversion
 - Clean API with try_lock/unlock semantics
 - Automatic priority restoration
 
 **Weaknesses:**
 
-| Issue | Location | Impact |
-|-------|----------|--------|
-| Single-owner only | `pi.hpp:42` | No chain inheritance |
-| No waiter tracking | Fundamental | Can't boost to multiple waiters |
-| No deadlock detection | Fundamental | Lock ordering bugs not caught |
+| Issue                 | Location    | Impact                          |
+|-----------------------|-------------|---------------------------------|
+| Single-owner only     | `pi.hpp:42` | No chain inheritance            |
+| No waiter tracking    | Fundamental | Can't boost to multiple waiters |
+| No deadlock detection | Fundamental | Lock ordering bugs not caught   |
 
 ### 2.5 Deadline Scheduling (deadline.cpp)
 
 **Files:** `kernel/sched/deadline.hpp` (98 lines), `kernel/sched/deadline.cpp` (142 lines)
 
 **Strengths:**
+
 - Proper EDF implementation
 - Admission control (95% bandwidth cap)
 - Parameter validation
 
 **Weaknesses:**
 
-| Issue | Location | Impact |
-|-------|----------|--------|
-| No CBS (Constant Bandwidth Server) | Fundamental | Overruns affect other tasks |
-| No deadline miss detection | Fundamental | Silent failures |
-| O(n) earliest deadline search | `scheduler.cpp` | Slow with many deadline tasks |
+| Issue                              | Location        | Impact                        |
+|------------------------------------|-----------------|-------------------------------|
+| No CBS (Constant Bandwidth Server) | Fundamental     | Overruns affect other tasks   |
+| No deadline miss detection         | Fundamental     | Silent failures               |
+| O(n) earliest deadline search      | `scheduler.cpp` | Slow with many deadline tasks |
 
 ### 2.6 Signal Handling (signal.cpp)
 
 **Files:** `kernel/sched/signal.hpp` (159 lines), `kernel/sched/signal.cpp` (341 lines)
 
 **Strengths:**
+
 - POSIX signal numbers and semantics
 - Per-signal handler registration
 - Signal masking support
 
 **Weaknesses:**
 
-| Issue | Location | Impact |
-|-------|----------|--------|
-| No user handler execution | `signal.cpp:process_pending` | Apps can't handle signals |
-| No sigaltstack support | Fundamental | Stack overflow in handlers |
-| No sigqueue (RT signals) | Fundamental | Limited IPC capability |
+| Issue                     | Location                     | Impact                     |
+|---------------------------|------------------------------|----------------------------|
+| No user handler execution | `signal.cpp:process_pending` | Apps can't handle signals  |
+| No sigaltstack support    | Fundamental                  | Stack overflow in handlers |
+| No sigqueue (RT signals)  | Fundamental                  | Limited IPC capability     |
 
 ---
 
@@ -380,33 +391,33 @@ void produce_data(WaitQueue *wq) {
 
 ### 3.1 O(n) Operations
 
-| Operation | Complexity | Trigger Frequency |
-|-----------|------------|-------------------|
-| Task lookup by ID | O(MAX_TASKS) | Every kill/wait syscall |
-| Deadline task selection | O(total_tasks) | Every schedule() |
-| CFS vruntime minimum | O(queue_length) | Every schedule() |
-| Work stealing | O(MAX_CPUS × 4) | Every 100 ticks |
-| Wait queue search | O(waiters) | Every timeout/cancel |
-| Task table enumeration | O(MAX_TASKS) | Debug/stats only |
+| Operation               | Complexity      | Trigger Frequency       |
+|-------------------------|-----------------|-------------------------|
+| Task lookup by ID       | O(MAX_TASKS)    | Every kill/wait syscall |
+| Deadline task selection | O(total_tasks)  | Every schedule()        |
+| CFS vruntime minimum    | O(queue_length) | Every schedule()        |
+| Work stealing           | O(MAX_CPUS × 4) | Every 100 ticks         |
+| Wait queue search       | O(waiters)      | Every timeout/cancel    |
+| Task table enumeration  | O(MAX_TASKS)    | Debug/stats only        |
 
 ### 3.2 Lock Contention Points
 
-| Lock | Scope | Contention Level |
-|------|-------|------------------|
-| `task_lock` | Task creation/destruction | Medium |
-| `sched_lock` | Global queue operations | High on SMP |
-| `per_cpu_sched[i].lock` | Per-CPU queues | Low (good) |
-| Wait queue locks | Per-queue | Low-Medium |
+| Lock                    | Scope                     | Contention Level |
+|-------------------------|---------------------------|------------------|
+| `task_lock`             | Task creation/destruction | Medium           |
+| `sched_lock`            | Global queue operations   | High on SMP      |
+| `per_cpu_sched[i].lock` | Per-CPU queues            | Low (good)       |
+| Wait queue locks        | Per-queue                 | Low-Medium       |
 
 ### 3.3 Fixed Limits
 
-| Resource | Limit | Concern |
-|----------|-------|---------|
-| Tasks | 64 | **Critical** - will exhaust |
-| Priority queues | 8 | Acceptable |
-| Kernel stack | 16KB | May need increase |
-| CPUs | 4 | Sufficient for current hardware |
-| Deadline bandwidth | 95% | Acceptable |
+| Resource           | Limit | Concern                         |
+|--------------------|-------|---------------------------------|
+| Tasks              | 64    | **Critical** - will exhaust     |
+| Priority queues    | 8     | Acceptable                      |
+| Kernel stack       | 16KB  | May need increase               |
+| CPUs               | 4     | Sufficient for current hardware |
+| Deadline bandwidth | 95%   | Acceptable                      |
 
 ### 3.4 Memory Usage
 
@@ -429,29 +440,29 @@ For 1024 tasks: ~21 MB
 
 ### 4.1 Error Handling
 
-| Scenario | Current Behavior | Risk |
-|----------|------------------|------|
-| Stack overflow | Guard page fault → SIGSEGV | Good |
-| Task table full | create() returns nullptr | Caller must check |
+| Scenario                | Current Behavior             | Risk              |
+|-------------------------|------------------------------|-------------------|
+| Stack overflow          | Guard page fault → SIGSEGV   | Good              |
+| Task table full         | create() returns nullptr     | Caller must check |
 | Deadline admission fail | set_deadline() returns false | Caller must check |
-| Work stealing fail | Falls back to idle | Acceptable |
-| Signal delivery fail | Task killed | May lose data |
+| Work stealing fail      | Falls back to idle           | Acceptable        |
+| Signal delivery fail    | Task killed                  | May lose data     |
 
 ### 4.2 Potential Race Conditions
 
-| Location | Issue | Risk Level |
-|----------|-------|------------|
-| `scheduler.cpp:tick()` | Reads time_slice without lock | Low (single writer) |
-| `task.cpp:current()` | Per-CPU variable access | Low (correct barriers) |
-| `signal.cpp:send_signal` | Pending bitmap modification | Low (atomic ops) |
+| Location                 | Issue                         | Risk Level             |
+|--------------------------|-------------------------------|------------------------|
+| `scheduler.cpp:tick()`   | Reads time_slice without lock | Low (single writer)    |
+| `task.cpp:current()`     | Per-CPU variable access       | Low (correct barriers) |
+| `signal.cpp:send_signal` | Pending bitmap modification   | Low (atomic ops)       |
 
 ### 4.3 Resource Leak Risks
 
-| Resource | Leak Scenario | Prevention |
-|----------|---------------|------------|
-| Task slots | Exit without reap | `reap_exited()` periodic call |
-| Kernel stacks | Exit without cleanup | Stack pool tracks free list |
-| Wait queue entries | Task killed while waiting | Cleanup in `task::exit()` |
+| Resource           | Leak Scenario             | Prevention                    |
+|--------------------|---------------------------|-------------------------------|
+| Task slots         | Exit without reap         | `reap_exited()` periodic call |
+| Kernel stacks      | Exit without cleanup      | Stack pool tracks free list   |
+| Wait queue entries | Task killed while waiting | Cleanup in `task::exit()`     |
 
 ---
 
@@ -466,6 +477,7 @@ For 1024 tasks: ~21 MB
 **Problem:** Complex applications with threads, child processes, and daemons will exhaust this limit quickly.
 
 **Recommendation:**
+
 ```cpp
 // In kernel/sched/task.hpp
 constexpr usize MAX_TASKS = 256;
@@ -484,6 +496,7 @@ constexpr usize STACK_POOL_SLOTS = 256;
 **Problem:** O(64) now, O(256) after increase.
 
 **Recommendation:**
+
 ```cpp
 // Add hash table indexed by task ID
 constexpr usize TASK_HASH_SIZE = 64;  // Power of 2
@@ -506,6 +519,7 @@ Task* get_by_id(u32 id) {
 **Problem:** Wastes cycles checking empty queues.
 
 **Recommendation:**
+
 ```cpp
 struct PerCpuScheduler {
     PriorityQueue queues[8];
@@ -533,6 +547,7 @@ while (queue_bitmap) {
 **Problem:** Applications cannot handle SIGINT, SIGTERM, etc.
 
 **Recommendation:**
+
 ```cpp
 void deliver_user_signal(Task* t, int signum) {
     u64 handler = t->signals.handlers[signum];
@@ -568,6 +583,7 @@ void deliver_user_signal(Task* t, int signum) {
 **Problem:** O(n) per schedule() with many SCHED_OTHER tasks.
 
 **Recommendation:**
+
 ```cpp
 // Use red-black tree keyed by vruntime
 struct CfsRunQueue {
@@ -589,6 +605,7 @@ Task* pick_next_cfs() {
 **Problem:** O(n) even with few deadline tasks.
 
 **Recommendation:**
+
 ```cpp
 // Separate queue for deadline tasks, sorted by dl_abs_deadline
 struct DeadlineQueue {
@@ -613,6 +630,7 @@ Task* deadline_dequeue() {
 **Problem:** High-priority task may wait behind low-priority.
 
 **Recommendation:**
+
 ```cpp
 void wait_enqueue_priority(WaitQueue* wq, Task* t) {
     Task** pp = &wq->head;
@@ -633,6 +651,7 @@ void wait_enqueue_priority(WaitQueue* wq, Task* t) {
 **Problem:** Cannot implement `select()` with timeout.
 
 **Recommendation:**
+
 ```cpp
 bool wait_with_timeout(WaitQueue* wq, u64 timeout_ticks) {
     Task* t = current();
@@ -659,6 +678,7 @@ bool wait_with_timeout(WaitQueue* wq, u64 timeout_ticks) {
 **Problem:** Nested lock priority inversion not handled.
 
 **Recommendation:**
+
 ```cpp
 struct PiMutex {
     Task* owner;
@@ -690,6 +710,7 @@ void boost_chain(Task* waiter, PiMutex* mutex) {
 **Problem:** Silent failures in real-time applications.
 
 **Recommendation:**
+
 ```cpp
 void check_deadline_miss(Task* t) {
     if (t->policy != SCHED_DEADLINE) return;
@@ -718,6 +739,7 @@ void check_deadline_miss(Task* t) {
 **Problem:** Lock contention on SMP, latency spikes.
 
 **Recommendation:**
+
 - Use lock-free MPSC (multi-producer, single-consumer) queues for enqueue
 - Each CPU consumes from its own queue without locking
 - Cross-CPU migration uses lock-free handoff
@@ -731,6 +753,7 @@ void check_deadline_miss(Task* t) {
 **Problem:** One process can starve others.
 
 **Recommendation:**
+
 ```cpp
 struct BandwidthController {
     u64 quota;      // Max CPU time per period
@@ -754,43 +777,43 @@ void account_time(Task* t, u64 delta) {
 
 ## 6. Implementation Priority Matrix
 
-| Recommendation | Priority | Effort | Impact |
-|----------------|----------|--------|--------|
-| 1. Increase task limit to 256 | **Critical** | Low | High |
-| 2. Task ID hash table | **Critical** | Low | Medium |
-| 3. Priority queue bitmap | High | Low | Medium |
-| 4. User signal handlers | High | Medium | High |
-| 5. CFS red-black tree | Medium | Medium | Medium |
-| 6. Deadline queue | Medium | Low | Medium |
-| 7. Priority-ordered waits | Medium | Low | Medium |
-| 8. Wait timeout support | Medium | Medium | High |
-| 9. Full PI chain | Low | High | Medium |
-| 10. Deadline miss detection | Low | Low | Medium |
-| 11. Lock-free queues | Low | High | Medium |
-| 12. Bandwidth control | Low | High | Medium |
+| Recommendation                | Priority     | Effort | Impact |
+|-------------------------------|--------------|--------|--------|
+| 1. Increase task limit to 256 | **Critical** | Low    | High   |
+| 2. Task ID hash table         | **Critical** | Low    | Medium |
+| 3. Priority queue bitmap      | High         | Low    | Medium |
+| 4. User signal handlers       | High         | Medium | High   |
+| 5. CFS red-black tree         | Medium       | Medium | Medium |
+| 6. Deadline queue             | Medium       | Low    | Medium |
+| 7. Priority-ordered waits     | Medium       | Low    | Medium |
+| 8. Wait timeout support       | Medium       | Medium | High   |
+| 9. Full PI chain              | Low          | High   | Medium |
+| 10. Deadline miss detection   | Low          | Low    | Medium |
+| 11. Lock-free queues          | Low          | High   | Medium |
+| 12. Bandwidth control         | Low          | High   | Medium |
 
 ---
 
 ## 7. Files Summary
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| `kernel/sched/task.hpp` | 289 | Task structure and constants |
-| `kernel/sched/task.cpp` | 548 | Task lifecycle management |
-| `kernel/sched/scheduler.hpp` | 185 | Scheduler interface |
-| `kernel/sched/scheduler.cpp` | 724 | Core scheduling logic |
-| `kernel/sched/context.S` | 72 | Context switch assembly |
-| `kernel/sched/wait.hpp` | 117 | Wait queue interface |
-| `kernel/sched/wait.cpp` | 149 | Wait queue implementation |
-| `kernel/sched/signal.hpp` | 159 | Signal definitions |
-| `kernel/sched/signal.cpp` | 341 | Signal handling |
-| `kernel/sched/deadline.hpp` | 98 | Deadline scheduling interface |
-| `kernel/sched/deadline.cpp` | 142 | EDF implementation |
-| `kernel/sched/pi.hpp` | 75 | Priority inheritance interface |
-| `kernel/sched/pi.cpp` | 126 | Priority inheritance logic |
-| `kernel/sched/idle.hpp` | 52 | Idle task interface |
-| `kernel/sched/idle.cpp` | 68 | Idle task implementation |
-| **Total** | **~3,145** | |
+| File                         | Lines      | Purpose                        |
+|------------------------------|------------|--------------------------------|
+| `kernel/sched/task.hpp`      | 289        | Task structure and constants   |
+| `kernel/sched/task.cpp`      | 548        | Task lifecycle management      |
+| `kernel/sched/scheduler.hpp` | 185        | Scheduler interface            |
+| `kernel/sched/scheduler.cpp` | 724        | Core scheduling logic          |
+| `kernel/sched/context.S`     | 72         | Context switch assembly        |
+| `kernel/sched/wait.hpp`      | 117        | Wait queue interface           |
+| `kernel/sched/wait.cpp`      | 149        | Wait queue implementation      |
+| `kernel/sched/signal.hpp`    | 159        | Signal definitions             |
+| `kernel/sched/signal.cpp`    | 341        | Signal handling                |
+| `kernel/sched/deadline.hpp`  | 98         | Deadline scheduling interface  |
+| `kernel/sched/deadline.cpp`  | 142        | EDF implementation             |
+| `kernel/sched/pi.hpp`        | 75         | Priority inheritance interface |
+| `kernel/sched/pi.cpp`        | 126        | Priority inheritance logic     |
+| `kernel/sched/idle.hpp`      | 52         | Idle task interface            |
+| `kernel/sched/idle.cpp`      | 68         | Idle task implementation       |
+| **Total**                    | **~3,145** |                                |
 
 ---
 
@@ -846,24 +869,28 @@ TEST(Scheduler, SignalHandling) {
 The ViperDOS scheduler is well-designed for current use cases but requires several enhancements for larger binaries:
 
 **Must Fix Before Large Binaries:**
+
 1. Increase MAX_TASKS from 64 to 256
 2. Add task ID hash table for O(1) lookup
 3. Add priority queue bitmap for O(1) queue selection
 4. Implement user signal handler execution
 
 **Recommended for Production:**
+
 5. Replace CFS linear scan with red-black tree
 6. Add separate deadline queue
 7. Implement priority-ordered wait queues
 8. Add wait timeout support
 
-The codebase is clean, well-documented, and follows consistent patterns. With the critical recommendations implemented, ViperDOS should handle larger binaries effectively.
+The codebase is clean, well-documented, and follows consistent patterns. With the critical recommendations implemented,
+ViperDOS should handle larger binaries effectively.
 
 ---
 
 ## Appendix: Quick Reference
 
 ### Task States
+
 ```
 Invalid  → Created (not yet initialized)
 Ready    → In run queue, waiting for CPU
@@ -873,6 +900,7 @@ Exited   → Terminated, awaiting reap
 ```
 
 ### Scheduling Policies
+
 ```
 SCHED_OTHER   → CFS (default, nice-based)
 SCHED_FIFO    → Real-time FIFO (no preemption by time)
@@ -881,6 +909,7 @@ SCHED_DEADLINE → EDF (earliest deadline first)
 ```
 
 ### Key Constants
+
 ```cpp
 MAX_TASKS = 64              // Maximum concurrent tasks
 NUM_PRIORITY_QUEUES = 8     // Priority queue count

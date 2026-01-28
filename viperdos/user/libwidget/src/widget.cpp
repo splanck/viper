@@ -48,9 +48,9 @@
  */
 //===----------------------------------------------------------------------===//
 
-#include <widget.h>
 #include <stdlib.h>
 #include <string.h>
+#include <widget.h>
 
 //===----------------------------------------------------------------------===//
 // Keycode to character conversion
@@ -701,7 +701,8 @@ void widget_add_child(widget_t *parent, widget_t *child) {
     // Grow array if needed
     if (parent->child_count >= parent->child_capacity) {
         int new_cap = parent->child_capacity ? parent->child_capacity * 2 : 4;
-        widget_t **new_children = (widget_t **)realloc(parent->children, new_cap * sizeof(widget_t *));
+        widget_t **new_children =
+            (widget_t **)realloc(parent->children, new_cap * sizeof(widget_t *));
         if (!new_children)
             return;
         parent->children = new_children;
@@ -1319,38 +1320,44 @@ void widget_app_run(widget_app_t *app) {
         gui_event_t event;
         if (gui_poll_event(app->window, &event) == 0) {
             switch (event.type) {
-            case GUI_EVENT_CLOSE:
-                app->running = false;
-                break;
+                case GUI_EVENT_CLOSE:
+                    app->running = false;
+                    break;
 
-            case GUI_EVENT_MOUSE:
-                if (app->active_menu && menu_is_visible(app->active_menu)) {
-                    if (menu_handle_mouse(app->active_menu, event.mouse.x, event.mouse.y,
-                                          event.mouse.button, event.mouse.event_type)) {
-                        widget_app_repaint(app);
-                        break;
+                case GUI_EVENT_MOUSE:
+                    if (app->active_menu && menu_is_visible(app->active_menu)) {
+                        if (menu_handle_mouse(app->active_menu,
+                                              event.mouse.x,
+                                              event.mouse.y,
+                                              event.mouse.button,
+                                              event.mouse.event_type)) {
+                            widget_app_repaint(app);
+                            break;
+                        }
                     }
-                }
 
-                if (app->root) {
-                    if (widget_handle_mouse(app->root, event.mouse.x, event.mouse.y,
-                                            event.mouse.button, event.mouse.event_type)) {
-                        widget_app_repaint(app);
+                    if (app->root) {
+                        if (widget_handle_mouse(app->root,
+                                                event.mouse.x,
+                                                event.mouse.y,
+                                                event.mouse.button,
+                                                event.mouse.event_type)) {
+                            widget_app_repaint(app);
+                        }
                     }
-                }
-                break;
+                    break;
 
-            case GUI_EVENT_KEY:
-                if (app->root && event.key.pressed) {
-                    char ch = keycode_to_char(event.key.keycode, event.key.modifiers);
-                    if (widget_handle_key(app->root, event.key.keycode, ch)) {
-                        widget_app_repaint(app);
+                case GUI_EVENT_KEY:
+                    if (app->root && event.key.pressed) {
+                        char ch = keycode_to_char(event.key.keycode, event.key.modifiers);
+                        if (widget_handle_key(app->root, event.key.keycode, ch)) {
+                            widget_app_repaint(app);
+                        }
                     }
-                }
-                break;
+                    break;
 
-            default:
-                break;
+                default:
+                    break;
             }
         }
 

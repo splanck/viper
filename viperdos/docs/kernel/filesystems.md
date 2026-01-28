@@ -46,31 +46,31 @@ Applications access the filesystem via kernel syscalls:
 
 ### File Operations
 
-| Syscall       | Number | Description            |
-|---------------|--------|------------------------|
-| `SYS_OPEN`    | 0x40   | Open file by path      |
-| `SYS_CLOSE`   | 0x41   | Close file descriptor  |
-| `SYS_READ`    | 0x42   | Read from file         |
-| `SYS_WRITE`   | 0x43   | Write to file          |
-| `SYS_LSEEK`   | 0x44   | Seek to position       |
-| `SYS_STAT`    | 0x45   | Get file metadata      |
-| `SYS_FSTAT`   | 0x46   | Get metadata by FD     |
-| `SYS_DUP`     | 0x47   | Duplicate FD           |
-| `SYS_DUP2`    | 0x48   | Duplicate to specific  |
+| Syscall     | Number | Description           |
+|-------------|--------|-----------------------|
+| `SYS_OPEN`  | 0x40   | Open file by path     |
+| `SYS_CLOSE` | 0x41   | Close file descriptor |
+| `SYS_READ`  | 0x42   | Read from file        |
+| `SYS_WRITE` | 0x43   | Write to file         |
+| `SYS_LSEEK` | 0x44   | Seek to position      |
+| `SYS_STAT`  | 0x45   | Get file metadata     |
+| `SYS_FSTAT` | 0x46   | Get metadata by FD    |
+| `SYS_DUP`   | 0x47   | Duplicate FD          |
+| `SYS_DUP2`  | 0x48   | Duplicate to specific |
 
 ### Directory Operations
 
-| Syscall       | Number | Description           |
-|---------------|--------|-----------------------|
-| `SYS_READDIR` | 0x60   | Read directory entry  |
-| `SYS_MKDIR`   | 0x61   | Create directory      |
-| `SYS_RMDIR`   | 0x62   | Remove directory      |
-| `SYS_UNLINK`  | 0x63   | Delete file           |
-| `SYS_RENAME`  | 0x64   | Rename file/directory |
-| `SYS_SYMLINK` | 0x65   | Create symbolic link  |
-| `SYS_READLINK`| 0x66   | Read symlink target   |
-| `SYS_GETCWD`  | 0x67   | Get working directory |
-| `SYS_CHDIR`   | 0x68   | Change directory      |
+| Syscall        | Number | Description           |
+|----------------|--------|-----------------------|
+| `SYS_READDIR`  | 0x60   | Read directory entry  |
+| `SYS_MKDIR`    | 0x61   | Create directory      |
+| `SYS_RMDIR`    | 0x62   | Remove directory      |
+| `SYS_UNLINK`   | 0x63   | Delete file           |
+| `SYS_RENAME`   | 0x64   | Rename file/directory |
+| `SYS_SYMLINK`  | 0x65   | Create symbolic link  |
+| `SYS_READLINK` | 0x66   | Read symlink target   |
+| `SYS_GETCWD`   | 0x67   | Get working directory |
+| `SYS_CHDIR`    | 0x68   | Change directory      |
 
 ## Filesystem Layers
 

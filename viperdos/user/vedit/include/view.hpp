@@ -113,6 +113,7 @@ constexpr uint32_t BORDER_LIGHT = 0xFFFFFFFF;
 constexpr uint32_t BORDER_DARK = 0xFF555555;
 
 } // namespace colors
+
 /** @} */ // end VEditColors
 
 //===----------------------------------------------------------------------===//
@@ -155,6 +156,7 @@ constexpr int CHAR_HEIGHT = 12;
 constexpr int LINE_HEIGHT = 14;
 
 } // namespace dims
+
 /** @} */ // end VEditDimensions
 
 //===----------------------------------------------------------------------===//
@@ -186,11 +188,11 @@ struct MenuItem {
  * shown in the dropdown, and layout information computed at runtime.
  */
 struct Menu {
-    const char *label;    /**< Menu name displayed in menu bar. */
-    MenuItem items[10];   /**< Array of menu items (max 10). */
-    int itemCount;        /**< Number of valid items in array. */
-    int x;                /**< Computed X position of menu label. */
-    int width;            /**< Computed width of menu label area. */
+    const char *label;  /**< Menu name displayed in menu bar. */
+    MenuItem items[10]; /**< Array of menu items (max 10). */
+    int itemCount;      /**< Number of valid items in array. */
+    int x;              /**< Computed X position of menu label. */
+    int width;          /**< Computed width of menu label area. */
 };
 
 //===----------------------------------------------------------------------===//
@@ -260,28 +262,36 @@ class View {
      *
      * @return Menu index (0-based), or -1 if no menu is open.
      */
-    int activeMenu() const { return m_activeMenu; }
+    int activeMenu() const {
+        return m_activeMenu;
+    }
 
     /**
      * @brief Sets the active (open) menu.
      *
      * @param menu Menu index to open, or -1 to close all menus.
      */
-    void setActiveMenu(int menu) { m_activeMenu = menu; }
+    void setActiveMenu(int menu) {
+        m_activeMenu = menu;
+    }
 
     /**
      * @brief Returns the index of the hovered menu item.
      *
      * @return Item index within the active menu, or -1 if none.
      */
-    int hoveredMenuItem() const { return m_hoveredMenuItem; }
+    int hoveredMenuItem() const {
+        return m_hoveredMenuItem;
+    }
 
     /**
      * @brief Sets the hovered menu item for highlighting.
      *
      * @param item Item index within the active menu, or -1 for none.
      */
-    void setHoveredMenuItem(int item) { m_hoveredMenuItem = item; }
+    void setHoveredMenuItem(int item) {
+        m_hoveredMenuItem = item;
+    }
 
     //=== Hit Testing ===//
 

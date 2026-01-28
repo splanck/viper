@@ -428,8 +428,7 @@ bool GpuDevice::send_cursor_command(usize cmd_size) {
     return false;
 }
 
-bool GpuDevice::setup_cursor(const u32 *pixels, u32 width, u32 height,
-                              u32 hot_x, u32 hot_y) {
+bool GpuDevice::setup_cursor(const u32 *pixels, u32 width, u32 height, u32 hot_x, u32 hot_y) {
     if (!initialized_ || !cursor_cmd_buf_ || !cursor_img_buf_)
         return false;
 
@@ -449,8 +448,8 @@ bool GpuDevice::setup_cursor(const u32 *pixels, u32 width, u32 height,
     }
 
     // Create 2D resource for cursor
-    if (!create_resource_2d(CURSOR_RES_ID, MAX_CURSOR_DIM, MAX_CURSOR_DIM,
-                            gpu_format::B8G8R8A8_UNORM)) {
+    if (!create_resource_2d(
+            CURSOR_RES_ID, MAX_CURSOR_DIM, MAX_CURSOR_DIM, gpu_format::B8G8R8A8_UNORM)) {
         serial::puts("[virtio-gpu] Failed to create cursor resource\n");
         return false;
     }

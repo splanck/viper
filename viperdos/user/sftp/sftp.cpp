@@ -127,7 +127,8 @@ static void cmd_ls(const char *path) {
     while ((attr = sftp_readdir(dir)) != NULL) {
         if (count >= capacity) {
             size_t new_cap = capacity ? capacity * 2 : 64;
-            sftp_attributes_t **new_entries = static_cast<sftp_attributes_t **>(realloc(entries, new_cap * sizeof(*entries)));
+            sftp_attributes_t **new_entries =
+                static_cast<sftp_attributes_t **>(realloc(entries, new_cap * sizeof(*entries)));
             if (!new_entries) {
                 sftp_attributes_free(attr);
                 break;

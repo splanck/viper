@@ -251,8 +251,12 @@ void FileBrowser::drawFileList() {
         if (y + FB_ICON_GRID_Y > listTop && y < listTop + listHeight) {
             // Selection highlight using theme
             if (m_files[i].selected) {
-                gui_fill_rect(
-                    m_window, x - 2, y - 2, FB_ICON_GRID_X - 4, FB_ICON_GRID_Y - 4, themeHighlight());
+                gui_fill_rect(m_window,
+                              x - 2,
+                              y - 2,
+                              FB_ICON_GRID_X - 4,
+                              FB_ICON_GRID_Y - 4,
+                              themeHighlight());
             }
 
             // Draw icon
@@ -579,14 +583,14 @@ void FileBrowser::handleKeyPress(int keycode) {
     }
 
     // Key codes (evdev keycodes from kernel/input/keycodes.hpp)
-    constexpr int KEY_ENTER = 28;      // Enter key
-    constexpr int KEY_DELETE = 111;    // Delete key
-    constexpr int KEY_BACKSPACE = 14;  // Backspace key
-    constexpr int KEY_F5 = 63;         // F5 key
-    constexpr int KEY_C = 46;          // 'C' key (with Ctrl modifier for copy)
-    constexpr int KEY_V = 47;          // 'V' key (with Ctrl modifier for paste)
-    constexpr int KEY_N = 49;          // 'N' key (with Ctrl modifier for new folder)
-    constexpr int KEY_F2 = 60;         // F2 key (rename)
+    constexpr int KEY_ENTER = 28;     // Enter key
+    constexpr int KEY_DELETE = 111;   // Delete key
+    constexpr int KEY_BACKSPACE = 14; // Backspace key
+    constexpr int KEY_F5 = 63;        // F5 key
+    constexpr int KEY_C = 46;         // 'C' key (with Ctrl modifier for copy)
+    constexpr int KEY_V = 47;         // 'V' key (with Ctrl modifier for paste)
+    constexpr int KEY_N = 49;         // 'N' key (with Ctrl modifier for new folder)
+    constexpr int KEY_F2 = 60;        // F2 key (rename)
 
     switch (keycode) {
         case KEY_ENTER:
@@ -744,7 +748,8 @@ void FileBrowser::drawContextMenu() {
 
         // Hover highlight (if enabled) using theme
         if (i == m_contextMenu.hoveredItem && item.enabled) {
-            gui_fill_rect(m_window, x + 2, itemY, MENU_WIDTH - 4, MENU_ITEM_HEIGHT, themeMenuHighlight());
+            gui_fill_rect(
+                m_window, x + 2, itemY, MENU_WIDTH - 4, MENU_ITEM_HEIGHT, themeMenuHighlight());
             gui_draw_text(m_window, x + 8, itemY + 4, item.label, themeMenuHighlightText());
         } else {
             uint32_t textColor = item.enabled ? themeMenuText() : themeTextDisabled();
@@ -1470,11 +1475,21 @@ void FileBrowser::showProperties(int fileIndex) {
     gui_draw_text(dialog, 15, 40, "Type:", themeText());
     const char *typeStr = "Unknown";
     switch (file.type) {
-        case FileType::Directory: typeStr = "Directory"; break;
-        case FileType::Executable: typeStr = "Executable"; break;
-        case FileType::Text: typeStr = "Text File"; break;
-        case FileType::Image: typeStr = "Image"; break;
-        default: typeStr = "File"; break;
+        case FileType::Directory:
+            typeStr = "Directory";
+            break;
+        case FileType::Executable:
+            typeStr = "Executable";
+            break;
+        case FileType::Text:
+            typeStr = "Text File";
+            break;
+        case FileType::Image:
+            typeStr = "Image";
+            break;
+        default:
+            typeStr = "File";
+            break;
     }
     gui_draw_text(dialog, 80, 40, typeStr, themeTextDisabled());
 
@@ -1486,11 +1501,17 @@ void FileBrowser::showProperties(int fileIndex) {
     } else if (file.size < 1024) {
         snprintf(sizeStr, sizeof(sizeStr), "%llu bytes", (unsigned long long)file.size);
     } else if (file.size < 1024 * 1024) {
-        snprintf(sizeStr, sizeof(sizeStr), "%llu KB (%llu bytes)",
-                 (unsigned long long)(file.size / 1024), (unsigned long long)file.size);
+        snprintf(sizeStr,
+                 sizeof(sizeStr),
+                 "%llu KB (%llu bytes)",
+                 (unsigned long long)(file.size / 1024),
+                 (unsigned long long)file.size);
     } else {
-        snprintf(sizeStr, sizeof(sizeStr), "%llu MB (%llu bytes)",
-                 (unsigned long long)(file.size / (1024 * 1024)), (unsigned long long)file.size);
+        snprintf(sizeStr,
+                 sizeof(sizeStr),
+                 "%llu MB (%llu bytes)",
+                 (unsigned long long)(file.size / (1024 * 1024)),
+                 (unsigned long long)file.size);
     }
     gui_draw_text(dialog, 80, 65, sizeStr, themeTextDisabled());
 

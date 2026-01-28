@@ -16,8 +16,8 @@ TextBuffer::~TextBuffer() {
     delete[] m_buffer;
 }
 
-bool TextBuffer::init(gui_window_t *window, uint32_t cols, uint32_t rows,
-                      uint32_t default_fg, uint32_t default_bg) {
+bool TextBuffer::init(
+    gui_window_t *window, uint32_t cols, uint32_t rows, uint32_t default_fg, uint32_t default_bg) {
     m_window = window;
     m_cols = cols;
     m_rows = rows;
@@ -65,10 +65,14 @@ void TextBuffer::move_cursor(int32_t dx, int32_t dy) {
     int32_t new_x = static_cast<int32_t>(m_cursor_x) + dx;
     int32_t new_y = static_cast<int32_t>(m_cursor_y) + dy;
 
-    if (new_x < 0) new_x = 0;
-    if (new_x >= static_cast<int32_t>(m_cols)) new_x = m_cols - 1;
-    if (new_y < 0) new_y = 0;
-    if (new_y >= static_cast<int32_t>(m_rows)) new_y = m_rows - 1;
+    if (new_x < 0)
+        new_x = 0;
+    if (new_x >= static_cast<int32_t>(m_cols))
+        new_x = m_cols - 1;
+    if (new_y < 0)
+        new_y = 0;
+    if (new_y >= static_cast<int32_t>(m_rows))
+        new_y = m_rows - 1;
 
     m_cursor_x = static_cast<uint32_t>(new_x);
     m_cursor_y = static_cast<uint32_t>(new_y);
@@ -80,7 +84,8 @@ void TextBuffer::move_cursor(int32_t dx, int32_t dy) {
 }
 
 void TextBuffer::set_cursor_visible(bool visible) {
-    if (visible == m_cursor_visible) return;
+    if (visible == m_cursor_visible)
+        return;
 
     if (visible) {
         m_cursor_visible = true;
@@ -174,7 +179,8 @@ void TextBuffer::carriage_return() {
 
 void TextBuffer::tab() {
     uint32_t next_tab = (m_cursor_x + 8) & ~7u;
-    if (next_tab > m_cols) next_tab = m_cols;
+    if (next_tab > m_cols)
+        next_tab = m_cols;
     while (m_cursor_x < next_tab) {
         putchar(' ');
     }
@@ -293,7 +299,8 @@ void TextBuffer::draw_cell(uint32_t cx, uint32_t cy) {
 }
 
 void TextBuffer::draw_cursor() {
-    if (!m_cursor_visible) return;
+    if (!m_cursor_visible)
+        return;
 
     uint32_t px = PADDING + m_cursor_x * FONT_WIDTH;
     uint32_t py = PADDING + m_cursor_y * FONT_HEIGHT;

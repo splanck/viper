@@ -4,16 +4,22 @@
 #include <string.h>
 
 // Native open file dialog - returns allocated string or NULL
-char *vg_native_open_file(const char *title, const char *initial_path,
-                          const char *filter_name, const char *filter_pattern) {
-    @autoreleasepool {
+char *vg_native_open_file(const char *title,
+                          const char *initial_path,
+                          const char *filter_name,
+                          const char *filter_pattern)
+{
+    @autoreleasepool
+    {
         NSOpenPanel *panel = [NSOpenPanel openPanel];
 
-        if (title) {
+        if (title)
+        {
             [panel setTitle:[NSString stringWithUTF8String:title]];
         }
 
-        if (initial_path && strlen(initial_path) > 0) {
+        if (initial_path && strlen(initial_path) > 0)
+        {
             NSString *path = [NSString stringWithUTF8String:initial_path];
             [panel setDirectoryURL:[NSURL fileURLWithPath:path]];
         }
@@ -23,27 +29,33 @@ char *vg_native_open_file(const char *title, const char *initial_path,
         [panel setAllowsMultipleSelection:NO];
 
         // Parse filter pattern (e.g., "*.zia;*.bas;*.txt")
-        if (filter_pattern && strlen(filter_pattern) > 0) {
+        if (filter_pattern && strlen(filter_pattern) > 0)
+        {
             NSString *pattern = [NSString stringWithUTF8String:filter_pattern];
             NSMutableArray *extensions = [NSMutableArray array];
 
-            NSArray *parts = [pattern componentsSeparatedByString:@";"];
-            for (NSString *part in parts) {
-                NSString *trimmed = [part stringByTrimmingCharactersInSet:
-                    [NSCharacterSet whitespaceCharacterSet]];
-                if ([trimmed hasPrefix:@"*."]) {
+            NSArray *parts = [pattern componentsSeparatedByString:@ ";"];
+            for (NSString *part in parts)
+            {
+                NSString *trimmed =
+                    [part stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+                if ([trimmed hasPrefix:@ "*."])
+                {
                     [extensions addObject:[trimmed substringFromIndex:2]];
                 }
             }
 
-            if ([extensions count] > 0) {
+            if ([extensions count] > 0)
+            {
                 [panel setAllowedFileTypes:extensions];
             }
         }
 
-        if ([panel runModal] == NSModalResponseOK) {
+        if ([panel runModal] == NSModalResponseOK)
+        {
             NSURL *url = [[panel URLs] firstObject];
-            if (url) {
+            if (url)
+            {
                 const char *path = [[url path] UTF8String];
                 return strdup(path);
             }
@@ -54,47 +66,60 @@ char *vg_native_open_file(const char *title, const char *initial_path,
 }
 
 // Native save file dialog - returns allocated string or NULL
-char *vg_native_save_file(const char *title, const char *initial_path,
-                          const char *default_name, const char *filter_name,
-                          const char *filter_pattern) {
-    @autoreleasepool {
+char *vg_native_save_file(const char *title,
+                          const char *initial_path,
+                          const char *default_name,
+                          const char *filter_name,
+                          const char *filter_pattern)
+{
+    @autoreleasepool
+    {
         NSSavePanel *panel = [NSSavePanel savePanel];
 
-        if (title) {
+        if (title)
+        {
             [panel setTitle:[NSString stringWithUTF8String:title]];
         }
 
-        if (initial_path && strlen(initial_path) > 0) {
+        if (initial_path && strlen(initial_path) > 0)
+        {
             NSString *path = [NSString stringWithUTF8String:initial_path];
             [panel setDirectoryURL:[NSURL fileURLWithPath:path]];
         }
 
-        if (default_name && strlen(default_name) > 0) {
+        if (default_name && strlen(default_name) > 0)
+        {
             [panel setNameFieldStringValue:[NSString stringWithUTF8String:default_name]];
         }
 
         // Parse filter pattern
-        if (filter_pattern && strlen(filter_pattern) > 0) {
+        if (filter_pattern && strlen(filter_pattern) > 0)
+        {
             NSString *pattern = [NSString stringWithUTF8String:filter_pattern];
             NSMutableArray *extensions = [NSMutableArray array];
 
-            NSArray *parts = [pattern componentsSeparatedByString:@";"];
-            for (NSString *part in parts) {
-                NSString *trimmed = [part stringByTrimmingCharactersInSet:
-                    [NSCharacterSet whitespaceCharacterSet]];
-                if ([trimmed hasPrefix:@"*."]) {
+            NSArray *parts = [pattern componentsSeparatedByString:@ ";"];
+            for (NSString *part in parts)
+            {
+                NSString *trimmed =
+                    [part stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+                if ([trimmed hasPrefix:@ "*."])
+                {
                     [extensions addObject:[trimmed substringFromIndex:2]];
                 }
             }
 
-            if ([extensions count] > 0) {
+            if ([extensions count] > 0)
+            {
                 [panel setAllowedFileTypes:extensions];
             }
         }
 
-        if ([panel runModal] == NSModalResponseOK) {
+        if ([panel runModal] == NSModalResponseOK)
+        {
             NSURL *url = [panel URL];
-            if (url) {
+            if (url)
+            {
                 const char *path = [[url path] UTF8String];
                 return strdup(path);
             }
@@ -105,15 +130,19 @@ char *vg_native_save_file(const char *title, const char *initial_path,
 }
 
 // Native folder selection dialog - returns allocated string or NULL
-char *vg_native_select_folder(const char *title, const char *initial_path) {
-    @autoreleasepool {
+char *vg_native_select_folder(const char *title, const char *initial_path)
+{
+    @autoreleasepool
+    {
         NSOpenPanel *panel = [NSOpenPanel openPanel];
 
-        if (title) {
+        if (title)
+        {
             [panel setTitle:[NSString stringWithUTF8String:title]];
         }
 
-        if (initial_path && strlen(initial_path) > 0) {
+        if (initial_path && strlen(initial_path) > 0)
+        {
             NSString *path = [NSString stringWithUTF8String:initial_path];
             [panel setDirectoryURL:[NSURL fileURLWithPath:path]];
         }
@@ -122,9 +151,11 @@ char *vg_native_select_folder(const char *title, const char *initial_path) {
         [panel setCanChooseDirectories:YES];
         [panel setAllowsMultipleSelection:NO];
 
-        if ([panel runModal] == NSModalResponseOK) {
+        if ([panel runModal] == NSModalResponseOK)
+        {
             NSURL *url = [[panel URLs] firstObject];
-            if (url) {
+            if (url)
+            {
                 const char *path = [[url path] UTF8String];
                 return strdup(path);
             }

@@ -7,7 +7,7 @@
 #pragma once
 
 #include "ansi.hpp"
-#include "text_buffer.hpp"  // Includes gui.h which has stdint types
+#include "text_buffer.hpp" // Includes gui.h which has stdint types
 
 namespace consoled {
 
@@ -22,7 +22,7 @@ namespace consoled {
  * private I/O channels. This enables independent multi-window support.
  */
 class ShellManager {
-public:
+  public:
     ShellManager() = default;
     ~ShellManager();
 
@@ -52,15 +52,26 @@ public:
     void close();
 
     // Accessors
-    bool has_shell() const { return m_shell_pid >= 0; }
-    int64_t shell_pid() const { return m_shell_pid; }
-    int32_t input_channel() const { return m_input_send; }
-    int32_t output_channel() const { return m_output_recv; }
+    bool has_shell() const {
+        return m_shell_pid >= 0;
+    }
 
-private:
-    int64_t m_shell_pid = -1;       // PID of child shell process
-    int32_t m_input_send = -1;      // Channel to send input to shell
-    int32_t m_output_recv = -1;     // Channel to receive output from shell
+    int64_t shell_pid() const {
+        return m_shell_pid;
+    }
+
+    int32_t input_channel() const {
+        return m_input_send;
+    }
+
+    int32_t output_channel() const {
+        return m_output_recv;
+    }
+
+  private:
+    int64_t m_shell_pid = -1;   // PID of child shell process
+    int32_t m_input_send = -1;  // Channel to send input to shell
+    int32_t m_output_recv = -1; // Channel to receive output from shell
 };
 
 // =============================================================================
@@ -74,7 +85,7 @@ private:
  * cannot spawn their own shell process.
  */
 class LocalShell {
-public:
+  public:
     LocalShell() = default;
 
     /**
@@ -93,7 +104,7 @@ public:
      */
     void print_prompt();
 
-private:
+  private:
     void handle_command(const char *cmd, size_t len);
     int64_t spawn_program(const char *path);
 

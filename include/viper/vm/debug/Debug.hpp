@@ -55,8 +55,8 @@ struct Frame;
 enum class DebugEvent
 {
     None = 0,
-    TailCall,     ///< A tail-call reused the current frame (from -> to)
-    MemWatchHit,  ///< A memory write intersected a watched range.
+    TailCall,    ///< A tail-call reused the current frame (from -> to)
+    MemWatchHit, ///< A memory write intersected a watched range.
 };
 
 /// @brief Payload describing a tail-call optimisation event.
@@ -111,7 +111,10 @@ class TraceSink
 
     /// @brief Check if tracing is enabled.
     /// @return True when trace output should be emitted.
-    [[nodiscard]] bool isEnabled() const noexcept { return cfg.enabled(); }
+    [[nodiscard]] bool isEnabled() const noexcept
+    {
+        return cfg.enabled();
+    }
 
   private:
     struct InstrLocation
@@ -273,17 +276,18 @@ class DebugCtrl
 
     struct MemWatchRange
     {
-        std::uintptr_t start = 0;    ///< Start address as integer for comparison.
-        std::uintptr_t end = 0;      ///< End address (exclusive) for comparison.
-        const void *addr = nullptr;  ///< Original pointer for user reporting.
-        std::size_t size = 0;        ///< Original size for user reporting.
-        std::string tag;             ///< User-provided tag.
-        uint32_t id = 0;             ///< Internal ID for fast reference.
+        std::uintptr_t start = 0;   ///< Start address as integer for comparison.
+        std::uintptr_t end = 0;     ///< End address (exclusive) for comparison.
+        const void *addr = nullptr; ///< Original pointer for user reporting.
+        std::size_t size = 0;       ///< Original size for user reporting.
+        std::string tag;            ///< User-provided tag.
+        uint32_t id = 0;            ///< Internal ID for fast reference.
     };
+
     std::vector<MemWatchRange> memWatches_;
     std::vector<MemWatchHit> memEvents_;
-    uint32_t nextMemWatchId_ = 1;    ///< Next ID to assign.
-    bool memWatchesSorted_ = true;   ///< True when memWatches_ is sorted by start.
+    uint32_t nextMemWatchId_ = 1;  ///< Next ID to assign.
+    bool memWatchesSorted_ = true; ///< True when memWatches_ is sorted by start.
 };
 
 /// @brief Action produced by a debugger script.

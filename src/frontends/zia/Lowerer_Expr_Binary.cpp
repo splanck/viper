@@ -595,7 +595,8 @@ LowerResult Lowerer::lowerShortCircuit(BinaryExpr *expr)
                          : right.value;
 
     // Convert to bool
-    Value rightBool = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), rightExt, Value::constInt(0));
+    Value rightBool =
+        emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), rightExt, Value::constInt(0));
 
     // Store right result in slot
     emitStore(resultSlot, rightBool, Type(Type::Kind::I1));

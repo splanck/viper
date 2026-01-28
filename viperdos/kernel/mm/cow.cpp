@@ -111,7 +111,8 @@ void CowManager::inc_ref(u64 phys_page) {
     do {
         old_val = page_info_[idx].refcount_and_flags;
         u16 refcount = static_cast<u16>(old_val & 0xFFFF);
-        if (refcount >= 0xFFFF) return; // Saturated
+        if (refcount >= 0xFFFF)
+            return; // Saturated
         new_val = (old_val & 0xFFFF0000) | ((refcount + 1) & 0xFFFF);
     } while (!__sync_bool_compare_and_swap(&page_info_[idx].refcount_and_flags, old_val, new_val));
 }
@@ -133,7 +134,8 @@ bool CowManager::dec_ref(u64 phys_page) {
     do {
         old_val = page_info_[idx].refcount_and_flags;
         u16 refcount = static_cast<u16>(old_val & 0xFFFF);
-        if (refcount == 0) return false;
+        if (refcount == 0)
+            return false;
         new_val = (old_val & 0xFFFF0000) | ((refcount - 1) & 0xFFFF);
     } while (!__sync_bool_compare_and_swap(&page_info_[idx].refcount_and_flags, old_val, new_val));
 
