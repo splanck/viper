@@ -621,11 +621,11 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
             float cursor_y = widget->y + visible_cursor_line * editor->line_height -
                              (editor->scroll_y - editor->visible_first_line * editor->line_height);
 
-            // Draw cursor line
-            // TODO: Use vgfx primitives
-            (void)cursor_x;
-            (void)cursor_y;
-            (void)editor->cursor_color;
+            // Draw cursor as a 2px-wide vertical line
+            vgfx_fill_rect((vgfx_window_t)canvas,
+                           (int32_t)cursor_x, (int32_t)cursor_y,
+                           2, (int32_t)editor->line_height,
+                           editor->cursor_color);
         }
     }
 }

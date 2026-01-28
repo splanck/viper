@@ -157,6 +157,10 @@ void rt_gui_app_destroy(void *app_ptr)
         return;
     rt_gui_app_t *app = (rt_gui_app_t *)app_ptr;
 
+    // Clear global pointer before freeing to prevent use-after-free
+    if (s_current_app == app)
+        s_current_app = NULL;
+
     if (app->root)
     {
         vg_widget_destroy(app->root);
@@ -180,7 +184,9 @@ int64_t rt_gui_app_should_close(void *app_ptr)
 static void render_widget_tree(vgfx_window_t window,
                                vg_widget_t *widget,
                                vg_font_t *font,
-                               float font_size);
+                               float font_size,
+                               float parent_abs_x,
+                               float parent_abs_y);
 void rt_gui_set_last_clicked(void *widget);
 
 void rt_gui_app_poll(void *app_ptr)
@@ -464,28 +470,6 @@ static void layout_widget_tree(
     }
 }
 
-// Recursively convert widget tree from relative to absolute screen coordinates.
-// After this call, every widget->x/y is the absolute screen position.
-// This must be called after layout and before rendering, since vtable paint
-// functions use widget->x/y directly for drawing.
-static void convert_to_screen_coords(vg_widget_t *widget, float parent_abs_x, float parent_abs_y)
-{
-    if (!widget)
-        return;
-
-    // Convert relative position to absolute
-    widget->x += parent_abs_x;
-    widget->y += parent_abs_y;
-
-    // Recurse into children
-    vg_widget_t *child = widget->first_child;
-    while (child)
-    {
-        convert_to_screen_coords(child, widget->x, widget->y);
-        child = child->next_sibling;
-    }
-}
-
 void rt_gui_app_render(void *app_ptr)
 {
     if (!app_ptr)
@@ -525,22 +509,19 @@ void rt_gui_app_render(void *app_ptr)
         vg_widget_layout(app->root, (float)win_w, (float)win_h);
     }
 
-    // Convert to absolute screen coordinates for rendering.
-    // vtable paint functions use widget->x/y directly, so they must be absolute.
-    // This is safe because layout is recomputed every frame above.
-    if (app->root)
-    {
-        convert_to_screen_coords(app->root, 0, 0);
-    }
-
     // Clear with theme background
     vg_theme_t *theme = vg_theme_get_current();
     vgfx_cls(app->window, theme ? theme->colors.bg_secondary : 0xFF1E1E1E);
 
-    // Render widget tree using vtable paint functions
+    // Render widget tree — absolute offsets are accumulated during traversal
+    // so widget->x/y stay relative. This is critical: hit testing in poll()
+    // uses vg_widget_get_screen_bounds() which walks the parent chain from
+    // relative coords. If we converted to absolute here, hit testing would
+    // double-count parent offsets and fail.
     if (app->root)
     {
-        render_widget_tree(app->window, app->root, app->default_font, app->default_font_size);
+        render_widget_tree(app->window, app->root, app->default_font, app->default_font_size,
+                           0.0f, 0.0f);
     }
 
     // Present
@@ -564,12 +545,16 @@ void rt_gui_app_set_font(void *app_ptr, void *font, double size)
     app->default_font_size = (float)size;
 }
 
-// Render widget tree. Assumes convert_to_screen_coords has already been called
-// so widget->x/y are absolute screen positions.
+// Render widget tree. Accumulates absolute offsets from parent positions
+// so paint functions see absolute screen coordinates in widget->x/y.
+// Coordinates are restored to relative after painting so that hit testing
+// (which walks the parent chain) works correctly during event dispatch.
 static void render_widget_tree(vgfx_window_t window,
                                vg_widget_t *widget,
                                vg_font_t *font,
-                               float font_size)
+                               float font_size,
+                               float parent_abs_x,
+                               float parent_abs_y)
 {
     if (!widget || !widget->visible)
         return;
@@ -578,20 +563,33 @@ static void render_widget_tree(vgfx_window_t window,
     if (font_size <= 0)
         font_size = 14.0f;
 
+    // Compute absolute position from relative + parent offset
+    float abs_x = widget->x + parent_abs_x;
+    float abs_y = widget->y + parent_abs_y;
+
+    // Save relative coords, set absolute for paint
+    float rel_x = widget->x;
+    float rel_y = widget->y;
+    widget->x = abs_x;
+    widget->y = abs_y;
+
     // Delegate to vtable paint if available. All concrete widget types
     // (Label, Button, MenuBar, Toolbar, StatusBar, etc.) have vtable paint.
-    // These functions use widget->x/y directly (now absolute after conversion).
+    // Paint functions use widget->x/y directly (now absolute).
     if (widget->vtable && widget->vtable->paint)
     {
         widget->vtable->paint(widget, (void *)window);
     }
 
-    // Render children (vtable paint functions draw their own chrome,
-    // but children are rendered here to ensure consistent traversal)
+    // Restore relative coords immediately after painting
+    widget->x = rel_x;
+    widget->y = rel_y;
+
+    // Render children — pass our absolute position as their parent offset
     vg_widget_t *child = widget->first_child;
     while (child)
     {
-        render_widget_tree(window, child, font, font_size);
+        render_widget_tree(window, child, font, font_size, abs_x, abs_y);
         child = child->next_sibling;
     }
 }
@@ -933,7 +931,14 @@ void rt_treeview_set_font(void *tree, void *font, double size)
 
 void *rt_tabbar_new(void *parent)
 {
-    return vg_tabbar_create((vg_widget_t *)parent);
+    vg_tabbar_t *tabbar = vg_tabbar_create((vg_widget_t *)parent);
+    if (tabbar && s_current_app && s_current_app->default_font)
+    {
+        rt_gui_ensure_default_font();
+        vg_tabbar_set_font(tabbar, s_current_app->default_font,
+                           s_current_app->default_font_size);
+    }
+    return tabbar;
 }
 
 void *rt_tabbar_add_tab(void *tabbar, rt_string title, int64_t closable)
@@ -1082,7 +1087,17 @@ void *rt_splitpane_get_second(void *split)
 
 void *rt_codeeditor_new(void *parent)
 {
-    return vg_codeeditor_create((vg_widget_t *)parent);
+    vg_codeeditor_t *editor = vg_codeeditor_create((vg_widget_t *)parent);
+    if (editor && s_current_app)
+    {
+        rt_gui_ensure_default_font();
+        if (s_current_app->default_font)
+        {
+            vg_codeeditor_set_font(editor, s_current_app->default_font,
+                                   s_current_app->default_font_size);
+        }
+    }
+    return editor;
 }
 
 void rt_codeeditor_set_text(void *editor, rt_string text)

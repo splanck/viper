@@ -20,6 +20,7 @@ entity EditorEngine {
     expose func Setup(parent: Viper.GUI.VBox) {
         editor = Viper.GUI.CodeEditor.New(parent);
         editor.SetShowLineNumbers(1);
+        editor.SetFlex(1.0);
     }
 
     // Load a document's content into the editor widget.
