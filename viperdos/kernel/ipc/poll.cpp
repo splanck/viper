@@ -134,11 +134,14 @@ static Timer *alloc_timer() {
 
 /** @copydoc poll::timer_create */
 i64 timer_create(u64 timeout_ms) {
+    static u32 create_count = 0;
+
     u64 saved_daif = poll_lock.acquire();
 
     Timer *t = alloc_timer();
     if (!t) {
         poll_lock.release(saved_daif);
+        serial::puts("[poll] timer_create FAILED: no free slots\n");
         return error::VERR_OUT_OF_MEMORY;
     }
 
@@ -148,6 +151,19 @@ i64 timer_create(u64 timeout_ms) {
     t->waiter = nullptr;
 
     u32 id = t->id;
+    create_count++;
+
+    // Debug: print occasionally
+    if (create_count <= 5 || (create_count >= 40 && create_count <= 50)) {
+        serial::puts("[poll] timer_create id=");
+        serial::put_dec(id);
+        serial::puts(" expire=");
+        serial::put_dec(t->expire_time);
+        serial::puts(" create#");
+        serial::put_dec(create_count);
+        serial::puts("\n");
+    }
+
     poll_lock.release(saved_daif);
     return static_cast<i64>(id);
 }
@@ -328,8 +344,14 @@ i64 poll(PollEvent *events, u32 count, i64 timeout_ms) {
             return 0;
         }
 
-        // Yield and try again
-        task::yield();
+        // Yield and try again (or busy-wait if scheduler not running)
+        if (scheduler::is_running()) {
+            task::yield();
+        } else {
+            // Before scheduler starts, busy-wait with small delay
+            // This allows pre-scheduler tests to work
+            timer::delay_us(100);
+        }
     }
 }
 
@@ -337,8 +359,11 @@ i64 poll(PollEvent *events, u32 count, i64 timeout_ms) {
 void check_timers() {
     u64 now = time_now_ms();
 
-    // Process the timer wheel (O(1) amortized)
-    timerwheel::tick(now);
+    // NOTE: The timer wheel is not currently used - poll::timer_create() uses
+    // the simple timer table above. Calling timerwheel::tick() was causing
+    // panics due to interaction with heap corruption. Disabled until the
+    // timer systems are unified.
+    // timerwheel::tick(now);
 
     // Collect expired timer waiters under lock, then wake outside lock
     task::Task *waiters_to_wake[MAX_TIMERS];
@@ -360,9 +385,21 @@ void check_timers() {
     // Wake all expired timer waiters outside lock.
     // Only wake tasks that are actually blocked to avoid corrupting Running tasks.
     for (u32 i = 0; i < wake_count; i++) {
-        if (waiters_to_wake[i]->state == task::TaskState::Blocked) {
-            waiters_to_wake[i]->state = task::TaskState::Ready;
-            scheduler::enqueue(waiters_to_wake[i]);
+        task::Task *waiter = waiters_to_wake[i];
+        if (waiter->state == task::TaskState::Blocked) {
+            // DEBUG: track timer wakeups
+            static u32 wake_debug_count = 0;
+            wake_debug_count++;
+            if (wake_debug_count <= 10) {
+                serial::puts("[poll] waking '");
+                serial::puts(waiter->name);
+                serial::puts("' heap_idx=");
+                serial::put_dec(waiter->heap_index);
+                serial::puts("\n");
+            }
+
+            waiter->state = task::TaskState::Ready;
+            scheduler::enqueue(waiter);
         }
     }
 }

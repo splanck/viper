@@ -224,7 +224,7 @@ extern "C" int main() {
         }
 
         // Yield CPU to prevent busy-waiting
-        __asm__ volatile("mov x8, #0x0E\n\tsvc #0" ::: "x8");
+        __asm__ volatile("mov x8, #0x00\n\tsvc #0" ::: "x8");
     }
 
 done:

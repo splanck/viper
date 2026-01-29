@@ -62,6 +62,7 @@ char *strndup(const char *s, size_t n);
 
 /* Error string */
 char *strerror(int errnum);
+int strerror_r(int errnum, char *buf, size_t buflen); /* Thread-safe version */
 
 /* Thread-unsafe tokenizer (convenience wrapper) */
 char *strtok(char *str, const char *delim);

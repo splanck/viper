@@ -110,6 +110,17 @@ void preempt();
 [[noreturn]] void start();
 
 /**
+ * @brief Check if the scheduler is running.
+ *
+ * @details
+ * Returns true after start() has been called. Useful for code that needs
+ * to behave differently during early boot (before the scheduler is active).
+ *
+ * @return true if scheduler is running, false otherwise.
+ */
+bool is_running();
+
+/**
  * @brief Return the number of context switches performed.
  *
  * @return Context switch count.

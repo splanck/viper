@@ -1361,8 +1361,8 @@ void widget_app_run(widget_app_t *app) {
             }
         }
 
-        // Yield CPU
-        __asm__ volatile("mov x8, #0x0E\n\tsvc #0" ::: "x8");
+        // Yield CPU (syscall 0x00 = SYS_TASK_YIELD)
+        __asm__ volatile("mov x8, #0x00\n\tsvc #0" ::: "x8");
     }
 }
 

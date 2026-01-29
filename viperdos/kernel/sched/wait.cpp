@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 #include "wait.hpp"
 #include "../arch/aarch64/timer.hpp"
+#include "../console/serial.hpp"
 #include "scheduler.hpp"
 
 /**
@@ -52,6 +53,28 @@ task::Task *wait_wake_one(WaitQueue *wq) {
     t->wait_channel = nullptr;
     wq->count--;
 
+    // Diagnostic: check if task was marked as having been in heap when blocked
+    // (the magic marker from wait_enqueue defensive check)
+    if (t->wait_timeout == 0xDEADBEEF) {
+        serial::puts("[wait] WARNING: task '");
+        serial::puts(t->name);
+        serial::puts("' was in heap when blocked! heap_index=");
+        serial::put_dec(t->heap_index);
+        serial::puts("\n");
+        t->wait_timeout = 0;  // Clear the marker
+    }
+
+    // Verify heap_index is -1 before enqueueing
+    if (t->heap_index != static_cast<u32>(-1)) {
+        serial::puts("[wait] ERROR: task '");
+        serial::puts(t->name);
+        serial::puts("' heap_index=");
+        serial::put_dec(t->heap_index);
+        serial::puts(" at wake (should be -1)!\n");
+        // Don't enqueue - task is already in a heap somehow
+        return t;
+    }
+
     // Set to ready and enqueue
     t->state = task::TaskState::Ready;
     scheduler::enqueue(t);
@@ -73,8 +96,25 @@ u32 wait_wake_all(WaitQueue *wq) {
         t->prev = nullptr;
         t->wait_channel = nullptr;
 
+        // Clear diagnostic marker if set
+        if (t->wait_timeout == 0xDEADBEEF) {
+            serial::puts("[wait] WARNING: task '");
+            serial::puts(t->name);
+            serial::puts("' was in heap when blocked!\n");
+            t->wait_timeout = 0;
+        }
+
         // Only wake tasks that are actually blocked (avoid double-enqueue)
         if (t->state == task::TaskState::Blocked) {
+            // Verify heap_index before enqueueing
+            if (t->heap_index != static_cast<u32>(-1)) {
+                serial::puts("[wait] ERROR: task '");
+                serial::puts(t->name);
+                serial::puts("' heap_index=");
+                serial::put_dec(t->heap_index);
+                serial::puts(" at wake_all (should be -1)!\n");
+                continue;  // Skip this task
+            }
             t->state = task::TaskState::Ready;
             scheduler::enqueue(t);
             count++;
@@ -143,6 +183,16 @@ u32 check_wait_timeouts(u64 current_tick) {
             t->wait_channel = nullptr;
             if (timeout_count > 0) {
                 timeout_count--;
+            }
+
+            // Verify heap_index before enqueueing
+            if (t->heap_index != static_cast<u32>(-1)) {
+                serial::puts("[wait] ERROR: task '");
+                serial::puts(t->name);
+                serial::puts("' heap_index=");
+                serial::put_dec(t->heap_index);
+                serial::puts(" at timeout wake (should be -1)!\n");
+                continue;  // Skip this task
             }
 
             // Wake the task

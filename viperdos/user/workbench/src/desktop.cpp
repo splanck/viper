@@ -226,9 +226,7 @@ void Desktop::run() {
         handleDialogEvents();
 
         // Yield to other processes
-        __asm__ volatile("mov x8, #0x0E\n\t"
-                         "svc #0" ::
-                             : "x8");
+        sys::yield();
     }
 }
 

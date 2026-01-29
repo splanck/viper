@@ -13,6 +13,7 @@
 #pragma once
 
 #include "../include/types.hpp"
+#include "../console/serial.hpp"
 #include "task.hpp"
 
 /**
@@ -161,8 +162,28 @@ inline void heap_sift_down(TaskHeap *heap, u32 idx) {
  * @return true on success, false if heap is full.
  */
 inline bool heap_insert(TaskHeap *heap, task::Task *t) {
-    if (!t || heap->size >= HEAP_MAX_SIZE) {
+    if (!t) {
         return false;
+    }
+    if (heap->size >= HEAP_MAX_SIZE) {
+        // DEBUG: heap full
+        serial::puts("[heap] FULL! size=");
+        serial::put_dec(heap->size);
+        serial::puts(" task='");
+        serial::puts(t->name);
+        serial::puts("'\n");
+        return false;
+    }
+
+    // Prevent double-insertion - task must not already be in a heap
+    if (t->heap_index != static_cast<u32>(-1)) {
+        // DEBUG: double insert attempt
+        serial::puts("[heap] DOUBLE INSERT! task='");
+        serial::puts(t->name);
+        serial::puts("' idx=");
+        serial::put_dec(t->heap_index);
+        serial::puts("\n");
+        return false;  // Already in a heap
     }
 
     // Add at end
@@ -249,6 +270,11 @@ inline bool heap_remove(TaskHeap *heap, task::Task *t) {
 inline void heap_update(TaskHeap *heap, task::Task *t, u64 old_key) {
     if (!t || t->heap_index >= heap->size) {
         return;
+    }
+
+    // Verify task is actually at the claimed position
+    if (heap->nodes[t->heap_index] != t) {
+        return;  // Corruption detected - heap_index is stale
     }
 
     u64 new_key = heap->key_func(t);

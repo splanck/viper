@@ -142,7 +142,7 @@ static void handle_click(int32_t x, int32_t y) {
             gui_restore_window(g_buttons[i].surface_id);
             // Redraw after a short delay to show updated state
             for (int j = 0; j < 100; j++) {
-                __asm__ volatile("mov x8, #0x0E\n\t" // SYS_YIELD
+                __asm__ volatile("mov x8, #0x00\n\t" // SYS_YIELD
                                  "svc #0" ::
                                      : "x8");
             }
@@ -220,7 +220,7 @@ extern "C" int main(int argc, char *argv[]) {
         }
 
         // Yield to other processes
-        __asm__ volatile("mov x8, #0x0E\n\t" // SYS_YIELD
+        __asm__ volatile("mov x8, #0x00\n\t" // SYS_YIELD
                          "svc #0" ::
                              : "x8");
     }

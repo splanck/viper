@@ -91,6 +91,7 @@ void *bsearch(const void *key,
 /* Random number generation */
 int rand(void);
 void srand(unsigned int seed);
+int rand_r(unsigned int *seedp); /* Thread-safe version */
 
 /* Environment variables */
 char *getenv(const char *name);

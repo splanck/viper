@@ -103,6 +103,19 @@ inline void wait_enqueue(WaitQueue *wq, task::Task *t) {
     if (!wq || !t)
         return;
 
+    // Defensive: if task is somehow still in a heap, this is a serious bug
+    // Tasks must be dequeued from the scheduler before blocking.
+    // We set a flag here that can be checked elsewhere.
+    // NOTE: We cannot prevent the blocking here as that would cause worse issues.
+    // The task will be double-tracked (in heap AND wait queue) which will cause
+    // scheduling corruption when it's woken.
+    if (t->heap_index != static_cast<u32>(-1)) {
+        // Mark for diagnostic purposes - the caller has a bug
+        // Setting wait_timeout to a magic value that can be detected
+        // This is a hack, but we can't include serial.hpp here
+        t->wait_timeout = 0xDEADBEEF;  // Magic marker for debugging
+    }
+
     // Set task state to blocked
     t->state = task::TaskState::Blocked;
     t->wait_channel = wq; // For debugging
@@ -172,6 +185,9 @@ inline bool wait_dequeue(WaitQueue *wq, task::Task *t) {
             curr->next = nullptr;
             curr->prev = nullptr;
             curr->wait_channel = nullptr;
+            // Note: Do NOT modify heap_index here. Wait queues and scheduler
+            // heaps are separate data structures. heap_index tracks position
+            // in the scheduler heap, not wait queue membership.
             wq->count--;
             return true;
         }

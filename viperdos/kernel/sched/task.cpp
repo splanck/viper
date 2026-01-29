@@ -1123,6 +1123,7 @@ u32 reap_exited() {
             t.next = nullptr;
             t.prev = nullptr;
             t.hash_next = nullptr;
+            t.heap_index = static_cast<u32>(-1);  // Mark not in any heap
 
             reaped++;
         }
@@ -1185,6 +1186,7 @@ void destroy(Task *t) {
     t->next = nullptr;
     t->prev = nullptr;
     t->hash_next = nullptr;
+    t->heap_index = static_cast<u32>(-1);  // Mark not in any heap
 }
 
 /** @copydoc task::wakeup */

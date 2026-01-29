@@ -349,8 +349,19 @@ static void poll_mouse() {
     if (!virtio::mouse)
         return;
 
+    static u32 mouse_event_count = 0;
+
     virtio::InputEvent vev;
     while (virtio::mouse->get_event(&vev)) {
+        mouse_event_count++;
+
+        // DEBUG: Print mouse event count periodically
+        if (mouse_event_count % 100 == 0) {
+            serial::puts("[input] mouse events: ");
+            serial::put_dec(mouse_event_count);
+            serial::puts("\n");
+        }
+
         SpinlockGuard guard(mouse_lock);
 
         if (vev.type == virtio::ev_type::REL) {

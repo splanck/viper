@@ -73,9 +73,9 @@ struct fd_entry {
     bool is_dir;
 };
 
-/* Yield CPU to avoid busy-waiting */
+/* Yield CPU to avoid busy-waiting (syscall 0x00 = SYS_TASK_YIELD) */
 static inline void fd_yield(void) {
-    __asm__ volatile("mov x8, #0x0E\n\tsvc #0" ::: "x8");
+    __asm__ volatile("mov x8, #0x00\n\tsvc #0" ::: "x8");
 }
 
 //===----------------------------------------------------------------------===//
@@ -395,8 +395,8 @@ msgbox_result_t msgbox_show(gui_window_t *parent,
             }
         }
 
-        // Yield CPU
-        __asm__ volatile("mov x8, #0x0E\n\tsvc #0" ::: "x8");
+        // Yield CPU (syscall 0x00 = SYS_TASK_YIELD)
+        __asm__ volatile("mov x8, #0x00\n\tsvc #0" ::: "x8");
     }
 
     gui_destroy_window(dialog);

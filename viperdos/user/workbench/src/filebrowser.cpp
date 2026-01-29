@@ -34,6 +34,7 @@
 #include "../include/desktop.hpp"
 #include "../include/icons.hpp"
 #include "../include/utils.hpp"
+#include "../../../syscall.hpp"
 #include <dirent.h>
 #include <gui.h>
 #include <stdint.h>
@@ -1578,7 +1579,7 @@ void FileBrowser::showProperties(int fileIndex) {
             }
         }
         // Yield
-        __asm__ volatile("mov x8, #0x0E\n\tsvc #0" ::: "x8");
+        sys::yield();
     }
 
     gui_destroy_window(dialog);

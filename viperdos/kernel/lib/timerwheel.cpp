@@ -245,9 +245,18 @@ void TimerWheel::tick(u64 current_time_ms) {
                 head->prev = nullptr;
                 active_count_--;
 
-                // Call the callback
-                if (cb) {
+                // Call the callback (with defensive validation)
+                // Validate callback is in kernel text section before calling
+                // to protect against memory corruption
+                u64 cb_addr = reinterpret_cast<u64>(cb);
+                constexpr u64 KERNEL_TEXT_START = 0x40000000;
+                constexpr u64 KERNEL_TEXT_END = 0x40800000;
+                if (cb && cb_addr >= KERNEL_TEXT_START && cb_addr < KERNEL_TEXT_END) {
                     cb(ctx);
+                } else if (cb) {
+                    serial::puts("[timerwheel] WARNING: Invalid callback ptr ");
+                    serial::put_hex(cb_addr);
+                    serial::puts(", skipping\n");
                 }
             } else if (head->active) {
                 // Timer hasn't expired yet - re-add to wheel

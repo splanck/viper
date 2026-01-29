@@ -229,8 +229,8 @@ extern "C" int main(int argc, char **argv) {
         }
 
         // Yield CPU to prevent busy-waiting
-        // System call 0x0E = sched_yield()
-        __asm__ volatile("mov x8, #0x0E\n\tsvc #0" ::: "x8");
+        // System call 0x00 = SYS_TASK_YIELD
+        __asm__ volatile("mov x8, #0x00\n\tsvc #0" ::: "x8");
     }
 
     // Cleanup

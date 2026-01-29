@@ -120,6 +120,11 @@ constexpr u64 HEADER_SIZE = sizeof(BlockHeader);
 constexpr u64 ALIGNMENT = 16;
 constexpr u64 MAX_HEAP_SIZE = 64 * 1024 * 1024; // 64 MB max
 
+// Debug: watch for corruption at specific address
+// Note: address may shift between runs, so watch range around 0x409xxxxx
+constexpr u64 WATCH_ADDR_MIN = 0x40910000;
+constexpr u64 WATCH_ADDR_MAX = 0x40920000;
+
 // Heap region tracking for non-contiguous allocations
 struct HeapRegion {
     u64 start;
@@ -630,8 +635,18 @@ void *kmalloc(u64 size) {
             if ((*pp)->header.magic != BLOCK_MAGIC_FREE) {
                 serial::puts("[kheap] CORRUPTION: Block at ");
                 serial::put_hex(block_addr);
-                serial::puts(" has bad magic 0x");
+                serial::puts(" in class ");
+                serial::put_dec(c);
+                serial::puts("\n");
+                serial::puts("[kheap]   magic=");
                 serial::put_hex((*pp)->header.magic);
+                serial::puts(" (expected ");
+                serial::put_hex(BLOCK_MAGIC_FREE);
+                serial::puts(")\n");
+                serial::puts("[kheap]   size_and_flags=");
+                serial::put_hex((*pp)->header.size_and_flags);
+                serial::puts(" _pad=");
+                serial::put_hex((*pp)->header._pad);
                 serial::puts("\n");
                 // Skip this corrupted entry
                 *pp = (*pp)->next;
@@ -737,6 +752,18 @@ found:
         // Use entire block
         best->header.set_used();
         total_allocated += block_size;
+    }
+
+    // Debug: track watched address
+    u64 alloc_block_addr = reinterpret_cast<u64>(best);
+    if (alloc_block_addr >= WATCH_ADDR_MIN && alloc_block_addr < WATCH_ADDR_MAX) {
+        serial::puts("[kheap] WATCH: Allocating block at ");
+        serial::put_hex(alloc_block_addr);
+        serial::puts(" requested_size=");
+        serial::put_dec(size);
+        serial::puts(" data_ptr=");
+        serial::put_hex(reinterpret_cast<u64>(best->header.data()));
+        serial::puts("\n");
     }
 
     return best->header.data();
@@ -890,7 +917,27 @@ void kfree(void *ptr) {
 
     // Add to free list
     FreeBlock *block = reinterpret_cast<FreeBlock *>(header);
+
+    // Debug: track watched address
+    u64 block_addr = reinterpret_cast<u64>(header);
+    if (block_addr >= WATCH_ADDR_MIN && block_addr < WATCH_ADDR_MAX) {
+        serial::puts("[kheap] WATCH: Freeing block at ");
+        serial::put_hex(block_addr);
+        serial::puts(" size=");
+        serial::put_dec(block_size);
+        serial::puts("\n");
+    }
+
     add_to_free_list(block);
+
+    // Debug: verify magic after adding to free list
+    if (block_addr >= WATCH_ADDR_MIN && block_addr < WATCH_ADDR_MAX) {
+        if (header->magic != BLOCK_MAGIC_FREE) {
+            serial::puts("[kheap] WATCH: CORRUPTION right after free! magic=");
+            serial::put_hex(header->magic);
+            serial::puts("\n");
+        }
+    }
 
     // Try to coalesce
     coalesce();

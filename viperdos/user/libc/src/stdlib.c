@@ -752,7 +752,12 @@ static unsigned int rand_seed = 1;
  * Uses a linear congruential generator algorithm. The sequence is
  * deterministic based on the seed set by srand().
  *
+ * @warning This function is not thread-safe. Use rand_r() for thread-safe
+ *          random number generation.
+ *
  * @return Pseudo-random integer between 0 and RAND_MAX.
+ *
+ * @see rand_r, srand
  */
 int rand(void) {
     rand_seed = rand_seed * 1103515245 + 12345;
@@ -767,10 +772,36 @@ int rand(void) {
  * by rand(). Calling srand() with the same seed will produce the
  * same sequence.
  *
+ * @warning This function is not thread-safe. For multi-threaded programs,
+ *          use rand_r() with per-thread seed storage.
+ *
  * @param seed Seed value for the random number generator.
+ *
+ * @see rand, rand_r
  */
 void srand(unsigned int seed) {
     rand_seed = seed;
+}
+
+/**
+ * @brief Thread-safe pseudo-random number generator.
+ *
+ * @details
+ * Returns a pseudo-random integer in the range 0 to RAND_MAX (32767).
+ * Uses a linear congruential generator with caller-provided seed storage,
+ * making it safe for use in multi-threaded programs.
+ *
+ * @param seedp Pointer to the seed value (updated on each call).
+ *
+ * @return Pseudo-random integer between 0 and RAND_MAX.
+ *
+ * @note POSIX.1-2001 thread-safe alternative to rand().
+ *
+ * @see rand, srand
+ */
+int rand_r(unsigned int *seedp) {
+    *seedp = *seedp * 1103515245 + 12345;
+    return (int)((*seedp / 65536) % 32768);
 }
 
 /*

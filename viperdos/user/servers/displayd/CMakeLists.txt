@@ -1,7 +1,19 @@
 # Display server (displayd)
 # Provides window management and compositing
 
-add_executable(displayd.sys main.cpp)
+add_executable(displayd.sys
+    main.cpp
+    state.cpp
+    graphics.cpp
+    cursor.cpp
+    surface.cpp
+    window.cpp
+    menu.cpp
+    compositor.cpp
+    events.cpp
+    input.cpp
+    ipc.cpp
+)
 
 target_compile_options(displayd.sys PRIVATE ${USER_COMPILE_OPTIONS})
 target_link_options(displayd.sys PRIVATE ${USER_LINK_OPTIONS})

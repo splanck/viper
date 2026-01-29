@@ -1034,6 +1034,82 @@ size_t strerrorlen_s(int errnum) {
     return strlen(strerror(errnum));
 }
 
+/**
+ * @brief Thread-safe version of strerror.
+ *
+ * @details
+ * Stores the error description string in the caller-provided buffer,
+ * making this function safe for use in multi-threaded programs.
+ *
+ * @param errnum Error number (typically from errno).
+ * @param buf    Buffer to store the error string.
+ * @param buflen Size of the buffer in bytes.
+ *
+ * @return 0 on success, EINVAL if buf is NULL, ERANGE if buffer too small.
+ *
+ * @note XSI-compliant strerror_r(). Always null-terminates if buflen > 0.
+ *
+ * @see strerror
+ */
+int strerror_r(int errnum, char *buf, size_t buflen) {
+    if (!buf) {
+        return 22; /* EINVAL */
+    }
+    if (buflen == 0) {
+        return 34; /* ERANGE */
+    }
+
+    const char *msg;
+    if (errnum >= 0 && (size_t)errnum < NUM_ERROR_MESSAGES) {
+        msg = error_messages[errnum];
+    } else {
+        /* Build "Unknown error N" in the provided buffer */
+        const char *prefix = "Unknown error ";
+        char *p = buf;
+        size_t remaining = buflen - 1;
+
+        while (*prefix && remaining > 0) {
+            *p++ = *prefix++;
+            remaining--;
+        }
+
+        int n = errnum;
+        if (n < 0 && remaining > 0) {
+            *p++ = '-';
+            remaining--;
+            n = -n;
+        }
+
+        char digits[12];
+        int i = 0;
+        do {
+            digits[i++] = '0' + (n % 10);
+            n /= 10;
+        } while (n > 0);
+
+        while (i > 0 && remaining > 0) {
+            *p++ = digits[--i];
+            remaining--;
+        }
+        *p = '\0';
+
+        if (i > 0) {
+            return 34; /* ERANGE */
+        }
+        return 0;
+    }
+
+    size_t msg_len = strlen(msg);
+    if (msg_len >= buflen) {
+        memcpy(buf, msg, buflen - 1);
+        buf[buflen - 1] = '\0';
+        return 34; /* ERANGE */
+    }
+
+    memcpy(buf, msg, msg_len + 1);
+    return 0;
+}
+
 /** @} */ /* End of strerror_impl group */
 
 /** Static state for non-reentrant strtok(). */

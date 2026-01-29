@@ -352,7 +352,7 @@ extern "C" int main() {
         }
 
         // Yield CPU
-        __asm__ volatile("mov x8, #0x0E\n\tsvc #0" ::: "x8");
+        __asm__ volatile("mov x8, #0x00\n\tsvc #0" ::: "x8");
     }
 
     gui_destroy_window(win);

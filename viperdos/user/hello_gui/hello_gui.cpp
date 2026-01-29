@@ -198,7 +198,7 @@ extern "C" int main(int argc, char *argv[]) {
         }
 
         // Yield to other processes
-        __asm__ volatile("mov x8, #0x0E\n\t" // SYS_YIELD
+        __asm__ volatile("mov x8, #0x00\n\t" // SYS_YIELD
                          "svc #0" ::
                              : "x8");
     }
