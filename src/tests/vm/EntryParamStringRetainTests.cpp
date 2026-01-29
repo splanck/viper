@@ -68,13 +68,16 @@ int main()
         return 1;
     const unsigned paramId = entry.params[0].id;
 
-    auto &pendingOpt = state.fr.params[paramId];
-    if (!pendingOpt)
+    // Note: prepareExecution now calls transferBlockParams immediately, so
+    // the string is already transferred to fr.regs[paramId] instead of
+    // remaining in fr.params[paramId].
+    if (paramId >= state.fr.regs.size())
         return 1;
-    rt_string staged = pendingOpt->str;
+    rt_string staged = state.fr.regs[paramId].str;
     if (!staged)
         return 1;
 
+    // After transfer, the string should still be retained in registers
     if (header->refcnt != initialRef + 1)
         return 1;
 

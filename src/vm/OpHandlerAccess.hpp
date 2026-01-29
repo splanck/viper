@@ -117,6 +117,17 @@ struct VMAccess
         return vm.regCountCache_;
     }
 
+    /// @brief Transfer block parameters from pending slots to registers.
+    /// @details Used by TCO to ensure parameters are copied to registers after
+    ///          setting up the tail-call frame.
+    /// @param vm VM owning the frame.
+    /// @param fr Frame whose parameters should be transferred.
+    /// @param bb Basic block whose parameter definitions guide the transfer.
+    static inline void transferBlockParams(VM &vm, Frame &fr, const il::core::BasicBlock &bb)
+    {
+        vm.transferBlockParams(fr, bb);
+    }
+
     /// @brief Compute or retrieve the cached maximum SSA ID for a function.
     ///
     /// @details The maximum SSA ID determines the required register file size.

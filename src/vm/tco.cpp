@@ -138,6 +138,10 @@ bool tryTailCall(VM &vm, const il::core::Function *callee, std::span<const Slot>
     st.ip = 0;
     st.skipBreakOnce = false;
     st.switchCache.clear();
+    // Transfer block parameters to registers immediately.
+    // This is critical because after TCO, the dispatch loop may use the fast path
+    // which skips the pre-execution debug hooks that normally call transferBlockParams.
+    detail::VMAccess::transferBlockParams(vm, fr, *entry);
     // Emit debug/trace tailcall event
     vm.onTailCall(fromFn, callee);
     return true;

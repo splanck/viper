@@ -353,6 +353,81 @@ function(viper_add_vm_unit_tests)
     viper_add_test(test_vm_reentrant_callbacks ${_VIPER_VM_DIR}/ReentrantCallbackTests.cpp)
     target_link_libraries(test_vm_reentrant_callbacks PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
     viper_add_ctest(test_vm_reentrant_callbacks test_vm_reentrant_callbacks)
+
+    # Floating-point arithmetic tests (FAdd, FSub, FMul, FDiv)
+    viper_add_test(test_vm_float_arith ${_VIPER_VM_DIR}/FloatArithTests.cpp)
+    target_link_libraries(test_vm_float_arith PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
+    viper_add_ctest(test_vm_float_arith test_vm_float_arith)
+
+    # Floating-point comparison tests (FCmpEQ, FCmpNE, FCmpLT, FCmpLE, FCmpGT, FCmpGE, FCmpOrd, FCmpUno)
+    viper_add_test(test_vm_float_compare ${_VIPER_VM_DIR}/FloatCompareTests.cpp)
+    target_link_libraries(test_vm_float_compare PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
+    viper_add_ctest(test_vm_float_compare test_vm_float_compare)
+
+    # Signed comparison tests (SCmpLT, SCmpLE, SCmpGT, SCmpGE)
+    viper_add_test(test_vm_signed_compare ${_VIPER_VM_DIR}/SignedCompareTests.cpp)
+    target_link_libraries(test_vm_signed_compare PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
+    viper_add_ctest(test_vm_signed_compare test_vm_signed_compare)
+
+    # Integer overflow tests (ISubOvf, IMulOvf)
+    viper_add_test(test_vm_int_overflow ${_VIPER_VM_DIR}/IntOverflowTests.cpp)
+    target_link_libraries(test_vm_int_overflow PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
+    viper_add_ctest(test_vm_int_overflow test_vm_int_overflow)
+
+    # Float conversion tests (Sitofp, Uitofp, Fptosi, Fptoui)
+    viper_add_test(test_vm_float_convert ${_VIPER_VM_DIR}/FloatConvertTests.cpp)
+    target_link_libraries(test_vm_float_convert PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
+    viper_add_ctest(test_vm_float_convert test_vm_float_convert)
+
+    # Bitwise XOR tests
+    viper_add_test(test_vm_bitwise_xor ${_VIPER_VM_DIR}/BitwiseXorTests.cpp)
+    target_link_libraries(test_vm_bitwise_xor PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
+    viper_add_ctest(test_vm_bitwise_xor test_vm_bitwise_xor)
+
+    # Integer equality comparison tests (ICmpEq, ICmpNe)
+    viper_add_test(test_vm_int_equality ${_VIPER_VM_DIR}/IntEqualityTests.cpp)
+    target_link_libraries(test_vm_int_equality PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
+    viper_add_ctest(test_vm_int_equality test_vm_int_equality)
+
+    # Cast conversion tests (CastSiToFp, CastUiToFp, CastFpToSiRteChk, CastFpToUiRteChk)
+    viper_add_test(test_vm_cast_convert ${_VIPER_VM_DIR}/CastConvertTests.cpp)
+    target_link_libraries(test_vm_cast_convert PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
+    viper_add_ctest(test_vm_cast_convert test_vm_cast_convert)
+
+    # Narrowing cast tests (CastSiNarrowChk, CastUiNarrowChk)
+    viper_add_test(test_vm_narrow_cast ${_VIPER_VM_DIR}/NarrowCastTests.cpp)
+    target_link_libraries(test_vm_narrow_cast PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
+    viper_add_ctest(test_vm_narrow_cast test_vm_narrow_cast)
+
+    # Trunc1/Zext1 tests (1-bit truncation and extension)
+    viper_add_test(test_vm_trunc_zext ${_VIPER_VM_DIR}/TruncZextTests.cpp)
+    target_link_libraries(test_vm_trunc_zext PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
+    viper_add_ctest(test_vm_trunc_zext test_vm_trunc_zext)
+
+    # Basic integer arithmetic tests (Add, Sub, Mul)
+    viper_add_test(test_vm_int_basic_arith ${_VIPER_VM_DIR}/IntBasicArithTests.cpp)
+    target_link_libraries(test_vm_int_basic_arith PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
+    viper_add_ctest(test_vm_int_basic_arith test_vm_int_basic_arith)
+
+    # Shift left tests (Shl)
+    viper_add_test(test_vm_shift_left ${_VIPER_VM_DIR}/ShiftLeftTests.cpp)
+    target_link_libraries(test_vm_shift_left PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
+    viper_add_ctest(test_vm_shift_left test_vm_shift_left)
+
+    # Function call tests (Call)
+    viper_add_test(test_vm_call ${_VIPER_VM_DIR}/CallTests.cpp)
+    target_link_libraries(test_vm_call PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
+    viper_add_ctest(test_vm_call test_vm_call)
+
+    # GEP pointer arithmetic tests
+    viper_add_test(test_vm_gep_arith ${_VIPER_VM_DIR}/GepArithTests.cpp)
+    target_link_libraries(test_vm_gep_arith PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
+    viper_add_ctest(test_vm_gep_arith test_vm_gep_arith)
+
+    # AddrOf tests
+    viper_add_test(test_vm_addr_of_arith ${_VIPER_VM_DIR}/AddrOfTests.cpp)
+    target_link_libraries(test_vm_addr_of_arith PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
+    viper_add_ctest(test_vm_addr_of_arith test_vm_addr_of_arith)
 endfunction()
 
 function(viper_add_vm_path_tests)

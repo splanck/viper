@@ -598,6 +598,13 @@ VM::ExecState VM::prepareExecution(const Function &fn, std::span<const Slot> arg
     ExecState st{};
     st.owner = this;
     st.fr = setupFrame(fn, args, st.blocks, st.bb);
+    // Transfer block parameters immediately after frame setup.
+    // This ensures parameters are copied to registers before the first instruction
+    // executes, regardless of which dispatch path is taken. The transfer is
+    // idempotent (pending values are consumed), so if processDebugControl also
+    // runs at ip=0, it will see already-consumed params and skip redundant work.
+    if (st.bb)
+        transferBlockParams(st.fr, *st.bb);
     // Reserve branch-target cache buckets roughly based on number of
     // terminators to reduce rehashing during branching-heavy execution.
     size_t estTerms = 0;
