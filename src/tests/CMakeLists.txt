@@ -1018,3 +1018,55 @@ foreach (test_name IN LISTS ZIA_RUNTIME_TESTS)
                 TIMEOUT 30)
     endif ()
 endforeach ()
+
+# =============================================================================
+# Zia Language Feature Tests
+# These tests verify Zia language features work correctly.
+# Each test outputs "RESULT: ok" on success.
+# =============================================================================
+set(ZIA_LANG_TESTS_DIR "${CMAKE_SOURCE_DIR}/tests/zia_runtime")
+# Note: Some tests excluded due to environment requirements:
+# - 04_environment, 17_time_env: require command-line arguments
+# - 07_terminal_input: requires interactive input
+# - 09_math_rnd: requires specific Viper namespace bindings
+set(ZIA_LANG_TESTS
+        01_terminal_math_random
+        02_strings
+        03_collections
+        05_optionals_match
+        06_control_flow
+        08_string_length
+        10_for_break_continue
+        11_recursion_factorial
+        12_list_map_stats
+        13_optional_chain
+        14_entity_methods
+        15_generics_annotations
+        16_string_building
+        18_numeric_algorithms
+        19_lambdas
+        20_guard_error_handling
+        21_inheritance_deep
+        22_string_interpolation
+        23_pattern_matching_advanced
+        24_generics_advanced
+        25_interfaces
+        26_modules_namespaces
+        27_type_coercion
+        28_numeric_edge_cases
+        29_control_flow_advanced
+        30_value_types
+)
+
+foreach (test_name IN LISTS ZIA_LANG_TESTS)
+    set(test_file "${ZIA_LANG_TESTS_DIR}/${test_name}.zia")
+    if (EXISTS "${test_file}")
+        add_test(NAME zia_lang_${test_name}
+                COMMAND $<TARGET_FILE:zia> "${test_file}"
+                WORKING_DIRECTORY "${ZIA_LANG_TESTS_DIR}")
+        set_tests_properties(zia_lang_${test_name} PROPERTIES
+                PASS_REGULAR_EXPRESSION "RESULT: ok"
+                LABELS "zia"
+                TIMEOUT 30)
+    endif ()
+endforeach ()

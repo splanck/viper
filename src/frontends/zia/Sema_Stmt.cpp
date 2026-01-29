@@ -252,6 +252,12 @@ void Sema::analyzeForInStmt(ForInStmt *stmt)
         {
             // Map iteration binds (key, value)
         }
+        else if (iterableType->kind == TypeKindSem::List || iterableType->kind == TypeKindSem::Set)
+        {
+            // List/Set iteration with tuple binding: (index, element)
+            secondType = elementType;        // Element goes to second variable
+            elementType = types::integer();  // Index goes to first variable
+        }
         else if (iterableType->kind == TypeKindSem::Tuple)
         {
             const auto &elements = iterableType->tupleElementTypes();
@@ -263,7 +269,7 @@ void Sema::analyzeForInStmt(ForInStmt *stmt)
         }
         else
         {
-            error(stmt->loc, "Tuple binding requires Map or Tuple elements");
+            error(stmt->loc, "Tuple binding requires Map, List, Set, or Tuple elements");
         }
     }
 

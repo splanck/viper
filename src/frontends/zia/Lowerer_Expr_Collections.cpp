@@ -31,7 +31,8 @@ LowerResult Lowerer::lowerListLiteral(ListLiteralExpr *expr)
     for (auto &elem : expr->elements)
     {
         auto result = lowerExpr(elem.get());
-        Value boxed = emitBox(result.value, result.type);
+        TypeRef elemType = sema_.typeOf(elem.get());
+        Value boxed = emitBoxValue(result.value, result.type, elemType);
         emitCall(kListAdd, {list, boxed});
     }
 
@@ -46,7 +47,8 @@ LowerResult Lowerer::lowerMapLiteral(MapLiteralExpr *expr)
     {
         auto keyResult = lowerExpr(entry.key.get());
         auto valueResult = lowerExpr(entry.value.get());
-        Value boxedValue = emitBox(valueResult.value, valueResult.type);
+        TypeRef valueType = sema_.typeOf(entry.value.get());
+        Value boxedValue = emitBoxValue(valueResult.value, valueResult.type, valueType);
         emitCall(kMapSet, {map, keyResult.value, boxedValue});
     }
 
@@ -167,7 +169,7 @@ LowerResult Lowerer::lowerIndex(IndexExpr *expr)
     TypeRef elemType = sema_.typeOf(expr);
     Type ilType = mapType(elemType);
 
-    return emitUnbox(boxed, ilType);
+    return emitUnboxValue(boxed, ilType, elemType);
 }
 
 } // namespace il::frontends::zia

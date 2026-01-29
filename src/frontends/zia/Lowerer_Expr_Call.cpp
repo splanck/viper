@@ -144,7 +144,7 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
                 if (elemType)
                 {
                     Type ilElemType = mapType(elemType);
-                    return emitUnbox(boxed, ilElemType);
+                    return emitUnboxValue(boxed, ilElemType, elemType);
                 }
                 return LowerResult{boxed, Type(Type::Kind::Ptr)};
             }
@@ -163,7 +163,8 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
             if (expr->args.size() >= 1)
             {
                 auto valueResult = lowerExpr(expr->args[0].value.get());
-                Value boxedValue = emitBox(valueResult.value, valueResult.type);
+                TypeRef argType = sema_.typeOf(expr->args[0].value.get());
+                Value boxedValue = emitBoxValue(valueResult.value, valueResult.type, argType);
                 Value result =
                     emitCallRet(Type(Type::Kind::I1), kListRemove, {baseValue, boxedValue});
                 return LowerResult{result, Type(Type::Kind::I1)};
@@ -175,7 +176,8 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
             {
                 auto indexResult = lowerExpr(expr->args[0].value.get());
                 auto valueResult = lowerExpr(expr->args[1].value.get());
-                Value boxedValue = emitBox(valueResult.value, valueResult.type);
+                TypeRef argType = sema_.typeOf(expr->args[1].value.get());
+                Value boxedValue = emitBoxValue(valueResult.value, valueResult.type, argType);
                 emitCall(kListInsert, {baseValue, indexResult.value, boxedValue});
                 return LowerResult{Value::constInt(0), Type(Type::Kind::Void)};
             }
@@ -186,7 +188,8 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
             if (expr->args.size() >= 1)
             {
                 auto valueResult = lowerExpr(expr->args[0].value.get());
-                Value boxedValue = emitBox(valueResult.value, valueResult.type);
+                TypeRef argType = sema_.typeOf(expr->args[0].value.get());
+                Value boxedValue = emitBoxValue(valueResult.value, valueResult.type, argType);
                 Value result =
                     emitCallRet(Type(Type::Kind::I64), kListFind, {baseValue, boxedValue});
                 return LowerResult{result, Type(Type::Kind::I64)};
@@ -198,7 +201,8 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
             if (expr->args.size() >= 1)
             {
                 auto valueResult = lowerExpr(expr->args[0].value.get());
-                Value boxedValue = emitBox(valueResult.value, valueResult.type);
+                TypeRef argType = sema_.typeOf(expr->args[0].value.get());
+                Value boxedValue = emitBoxValue(valueResult.value, valueResult.type, argType);
                 Value result =
                     emitCallRet(Type(Type::Kind::I1), kListContains, {baseValue, boxedValue});
                 return LowerResult{result, Type(Type::Kind::I1)};
@@ -210,7 +214,8 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
             {
                 auto indexResult = lowerExpr(expr->args[0].value.get());
                 auto valueResult = lowerExpr(expr->args[1].value.get());
-                Value boxedValue = emitBox(valueResult.value, valueResult.type);
+                TypeRef argType = sema_.typeOf(expr->args[1].value.get());
+                Value boxedValue = emitBoxValue(valueResult.value, valueResult.type, argType);
                 emitCall(kListSet, {baseValue, indexResult.value, boxedValue});
                 return LowerResult{Value::constInt(0), Type(Type::Kind::Void)};
             }
@@ -224,7 +229,8 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
             for (auto &arg : expr->args)
             {
                 auto result = lowerExpr(arg.value.get());
-                args.push_back(emitBox(result.value, result.type));
+                TypeRef argType = sema_.typeOf(arg.value.get());
+                args.push_back(emitBoxValue(result.value, result.type, argType));
             }
             emitCall(kListAdd, args);
             return LowerResult{Value::constInt(0), Type(Type::Kind::Void)};
@@ -277,7 +283,8 @@ std::optional<LowerResult> Lowerer::lowerMapMethodCall(Value baseValue,
             {
                 auto keyResult = lowerExpr(expr->args[0].value.get());
                 auto valueResult = lowerExpr(expr->args[1].value.get());
-                Value boxedValue = emitBox(valueResult.value, valueResult.type);
+                TypeRef argType = sema_.typeOf(expr->args[1].value.get());
+                Value boxedValue = emitBoxValue(valueResult.value, valueResult.type, argType);
                 emitCall(kMapSet, {baseValue, keyResult.value, boxedValue});
                 return LowerResult{Value::constInt(0), Type(Type::Kind::Void)};
             }
@@ -292,7 +299,7 @@ std::optional<LowerResult> Lowerer::lowerMapMethodCall(Value baseValue,
                 if (valType)
                 {
                     Type ilValueType = mapType(valType);
-                    return emitUnbox(boxed, ilValueType);
+                    return emitUnboxValue(boxed, ilValueType, valType);
                 }
                 return LowerResult{boxed, Type(Type::Kind::Ptr)};
             }
@@ -303,13 +310,14 @@ std::optional<LowerResult> Lowerer::lowerMapMethodCall(Value baseValue,
             {
                 auto keyResult = lowerExpr(expr->args[0].value.get());
                 auto defaultResult = lowerExpr(expr->args[1].value.get());
-                Value boxedDefault = emitBox(defaultResult.value, defaultResult.type);
+                TypeRef argType = sema_.typeOf(expr->args[1].value.get());
+                Value boxedDefault = emitBoxValue(defaultResult.value, defaultResult.type, argType);
                 Value boxed = emitCallRet(
                     Type(Type::Kind::Ptr), kMapGetOr, {baseValue, keyResult.value, boxedDefault});
                 if (valType)
                 {
                     Type ilValueType = mapType(valType);
-                    return emitUnbox(boxed, ilValueType);
+                    return emitUnboxValue(boxed, ilValueType, valType);
                 }
                 return LowerResult{boxed, Type(Type::Kind::Ptr)};
             }
@@ -350,7 +358,8 @@ std::optional<LowerResult> Lowerer::lowerMapMethodCall(Value baseValue,
             {
                 auto keyResult = lowerExpr(expr->args[0].value.get());
                 auto valueResult = lowerExpr(expr->args[1].value.get());
-                Value boxedValue = emitBox(valueResult.value, valueResult.type);
+                TypeRef argType = sema_.typeOf(expr->args[1].value.get());
+                Value boxedValue = emitBoxValue(valueResult.value, valueResult.type, argType);
                 Value result = emitCallRet(Type(Type::Kind::I1),
                                            kMapSetIfMissing,
                                            {baseValue, keyResult.value, boxedValue});
@@ -1082,6 +1091,20 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 {
                     argValue = emitOptionalWrap(result.value, innerType);
                 }
+            }
+            // Handle Integer -> Number implicit conversion for function parameters
+            else if (paramType && paramType->kind == TypeKindSem::Number && argType &&
+                     argType->kind == TypeKindSem::Integer)
+            {
+                // Emit sitofp to convert i64 -> f64
+                unsigned convId = nextTempId();
+                il::core::Instr convInstr;
+                convInstr.result = convId;
+                convInstr.op = Opcode::Sitofp;
+                convInstr.type = Type(Type::Kind::F64);
+                convInstr.operands = {argValue};
+                blockMgr_.currentBlock()->instructions.push_back(convInstr);
+                argValue = Value::temp(convId);
             }
             // Handle type coercion when argument type is Unknown but param type is concrete
             // This happens when indexing into an empty list that was created with []

@@ -1,0 +1,130 @@
+module RuntimeTest24;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+// Test: Generic types and type parameters
+
+//=============================================================================
+// Generic entity with single type parameter
+//=============================================================================
+
+entity Box[T] {
+    expose T value;
+
+    expose func init(v: T) {
+        value = v;
+    }
+
+    expose func get() -> T {
+        return value;
+    }
+
+    expose func set(v: T) {
+        value = v;
+    }
+}
+
+func start() {
+    //=========================================================================
+    // Test 1: Generic Box with Integer
+    //=========================================================================
+    var intBox = new Box[Integer](42);
+    assertEqInt(intBox.get(), 42, "box_int_get");
+    intBox.set(100);
+    assertEqInt(intBox.get(), 100, "box_int_set");
+    assertEqInt(intBox.value, 100, "box_int_field");
+
+    //=========================================================================
+    // Test 2: Generic Box with String
+    //=========================================================================
+    var strBox = new Box[String]("hello");
+    assertEqStr(strBox.get(), "hello", "box_str_get");
+    strBox.set("world");
+    assertEqStr(strBox.get(), "world", "box_str_set");
+
+    //=========================================================================
+    // Test 3: Multiple Box instances
+    //=========================================================================
+    var box1 = new Box[Integer](1);
+    var box2 = new Box[Integer](2);
+    var box3 = new Box[Integer](3);
+    assertEqInt(box1.get() + box2.get() + box3.get(), 6, "multiple_boxes");
+
+    //=========================================================================
+    // Test 4: Generic entity with boolean
+    //=========================================================================
+    var boolBox = new Box[Boolean](true);
+    assertTrue(boolBox.get(), "box_bool_true");
+    boolBox.set(false);
+    assertTrue(!boolBox.get(), "box_bool_false");
+
+    //=========================================================================
+    // Test 5: Box independence
+    //=========================================================================
+    var boxA = new Box[Integer](100);
+    var boxB = new Box[Integer](200);
+    boxA.set(111);
+    assertEqInt(boxA.get(), 111, "box_a_after_set");
+    assertEqInt(boxB.get(), 200, "box_b_unchanged");
+
+    //=========================================================================
+    // Test 6: Box with negative numbers
+    //=========================================================================
+    var negBox = new Box[Integer](-50);
+    assertEqInt(negBox.get(), -50, "box_negative");
+    negBox.set(-100);
+    assertEqInt(negBox.get(), -100, "box_negative_set");
+
+    //=========================================================================
+    // Test 7: Box field direct access
+    //=========================================================================
+    var directBox = new Box[Integer](999);
+    assertEqInt(directBox.value, 999, "box_field_direct");
+    directBox.value = 888;
+    assertEqInt(directBox.value, 888, "box_field_direct_set");
+    assertEqInt(directBox.get(), 888, "box_get_after_field_set");
+
+    //=========================================================================
+    // Test 8: String Box concatenation
+    //=========================================================================
+    var s1Box = new Box[String]("Hello, ");
+    var s2Box = new Box[String]("World!");
+    var combined = s1Box.get() + s2Box.get();
+    assertEqStr(combined, "Hello, World!", "box_string_concat");
+
+    //=========================================================================
+    // Test 9: Box in expressions
+    //=========================================================================
+    var exprBox = new Box[Integer](10);
+    var result = exprBox.get() * 2 + 5;
+    assertEqInt(result, 25, "box_in_expr");
+
+    //=========================================================================
+    // Test 10: Chained box operations
+    //=========================================================================
+    var chainBox = new Box[Integer](0);
+    chainBox.set(chainBox.get() + 1);
+    chainBox.set(chainBox.get() + 1);
+    chainBox.set(chainBox.get() + 1);
+    assertEqInt(chainBox.get(), 3, "box_chained_ops");
+
+    //=========================================================================
+    // Test 11: Box comparison values
+    //=========================================================================
+    var compBox1 = new Box[Integer](10);
+    var compBox2 = new Box[Integer](20);
+    assertTrue(compBox1.get() < compBox2.get(), "box_compare_lt");
+    assertTrue(compBox2.get() > compBox1.get(), "box_compare_gt");
+
+    //=========================================================================
+    // Test 12: Empty string in Box
+    //=========================================================================
+    var emptyStrBox = new Box[String]("");
+    assertEqStr(emptyStrBox.get(), "", "box_empty_string");
+    emptyStrBox.set("not empty");
+    assertEqStr(emptyStrBox.get(), "not empty", "box_not_empty_string");
+
+    report();
+}

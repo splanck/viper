@@ -897,6 +897,12 @@ class Lowerer
     /// @param val The value to store.
     void emitFieldStore(const FieldLayout *field, Value selfPtr, Value val);
 
+    /// @brief Deep copy a value type (for copy-on-assign semantics).
+    /// @param info The value type info.
+    /// @param sourcePtr Pointer to source value.
+    /// @return Pointer to the new copy.
+    Value emitValueTypeCopy(const ValueTypeInfo &info, Value sourcePtr);
+
     /// @brief Lower a method call.
     /// @param method The method declaration.
     /// @param typeName The type containing the method.
@@ -992,6 +998,16 @@ class Lowerer
     /// Used when inserting primitives into List[T], Map[K,V], etc.
     Value emitBox(Value val, Type type);
 
+    /// @brief Box a value with semantic type context.
+    /// @param val The value to box.
+    /// @param ilType The IL type.
+    /// @param semanticType The semantic type for value type detection.
+    /// @return Boxed value (heap pointer).
+    ///
+    /// @details For value types, heap-allocates a copy of the struct.
+    /// For other types, falls back to standard emitBox() behavior.
+    Value emitBoxValue(Value val, Type ilType, TypeRef semanticType);
+
     /// @brief Unbox a value to a primitive type.
     /// @param boxed The boxed pointer value.
     /// @param expectedType The expected IL type.
@@ -1000,6 +1016,16 @@ class Lowerer
     /// @details Loads the value from the boxed pointer.
     /// Used when retrieving primitives from collections.
     LowerResult emitUnbox(Value boxed, Type expectedType);
+
+    /// @brief Unbox a value with semantic type context.
+    /// @param boxed The boxed pointer value.
+    /// @param ilType The expected IL type.
+    /// @param semanticType The semantic type for value type detection.
+    /// @return The unboxed value with its type.
+    ///
+    /// @details For value types, copies from heap to stack for copy semantics.
+    /// For other types, falls back to standard emitUnbox() behavior.
+    LowerResult emitUnboxValue(Value boxed, Type ilType, TypeRef semanticType);
 
     /// @brief Wrap a value in optional storage (box primitives/strings when needed).
     /// @param val The value to wrap.

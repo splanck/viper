@@ -504,6 +504,12 @@ inline constexpr const char *kUnboxI1 = "Viper.Box.ToI1";
 /// Extracts the string from a box. The box must contain a str.
 inline constexpr const char *kUnboxStr = "Viper.Box.ToStr";
 
+/// @brief Allocate heap memory for boxing a value type.
+/// @details Signature: ValueType(i64 size) -> ptr
+/// Returns a pointer to zero-initialized heap memory of the given size.
+/// Used when storing value types (structs) in generic collections.
+inline constexpr const char *kBoxValueType = "Viper.Box.ValueType";
+
 /// @}
 
 //=============================================================================

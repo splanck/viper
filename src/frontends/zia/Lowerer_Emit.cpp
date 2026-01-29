@@ -260,6 +260,35 @@ Lowerer::Value Lowerer::emitBox(Value val, Type type)
     }
 }
 
+Lowerer::Value Lowerer::emitBoxValue(Value val, Type ilType, TypeRef semanticType)
+{
+    // Check if this is a value type that needs heap allocation
+    if (semanticType && semanticType->kind == TypeKindSem::Value &&
+        ilType.kind == Type::Kind::Ptr)
+    {
+        // Look up the value type info
+        const ValueTypeInfo *info = getOrCreateValueTypeInfo(semanticType->name);
+        if (info && info->totalSize > 0)
+        {
+            // Allocate heap memory via runtime
+            Value heapPtr = emitCallRet(Type(Type::Kind::Ptr), kBoxValueType,
+                                        {Value::constInt(static_cast<int64_t>(info->totalSize))});
+
+            // Copy all fields from stack to heap
+            for (const auto &field : info->fields)
+            {
+                Value srcValue = emitFieldLoad(&field, val);
+                emitFieldStore(&field, heapPtr, srcValue);
+            }
+
+            return heapPtr;
+        }
+    }
+
+    // Fall back to standard boxing
+    return emitBox(val, ilType);
+}
+
 LowerResult Lowerer::emitUnbox(Value boxed, Type expectedType)
 {
     switch (expectedType.kind)
@@ -292,6 +321,26 @@ LowerResult Lowerer::emitUnbox(Value boxed, Type expectedType)
         default:
             return {boxed, Type(Type::Kind::Ptr)};
     }
+}
+
+LowerResult Lowerer::emitUnboxValue(Value boxed, Type ilType, TypeRef semanticType)
+{
+    // Check if this is a value type that needs copying from heap to stack
+    if (semanticType && semanticType->kind == TypeKindSem::Value &&
+        ilType.kind == Type::Kind::Ptr)
+    {
+        // Look up the value type info
+        const ValueTypeInfo *info = getOrCreateValueTypeInfo(semanticType->name);
+        if (info && info->totalSize > 0)
+        {
+            // Allocate stack memory for the copy
+            Value stackCopy = emitValueTypeCopy(*info, boxed);
+            return {stackCopy, Type(Type::Kind::Ptr)};
+        }
+    }
+
+    // Fall back to standard unboxing
+    return emitUnbox(boxed, ilType);
 }
 
 Lowerer::Value Lowerer::emitOptionalWrap(Value val, TypeRef innerType)
@@ -362,6 +411,28 @@ void Lowerer::emitFieldStore(const FieldLayout *field, Value selfPtr, Value val)
     Value fieldAddr = emitGEP(selfPtr, static_cast<int64_t>(field->offset));
     Type fieldType = mapType(field->type);
     emitStore(fieldAddr, val, fieldType);
+}
+
+Lowerer::Value Lowerer::emitValueTypeCopy(const ValueTypeInfo &info, Value sourcePtr)
+{
+    // Allocate stack space for the copy
+    unsigned allocaId = nextTempId();
+    il::core::Instr allocaInstr;
+    allocaInstr.result = allocaId;
+    allocaInstr.op = Opcode::Alloca;
+    allocaInstr.type = Type(Type::Kind::Ptr);
+    allocaInstr.operands = {Value::constInt(static_cast<int64_t>(info.totalSize))};
+    blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
+    Value destPtr = Value::temp(allocaId);
+
+    // Copy all fields from source to destination
+    for (const auto &field : info.fields)
+    {
+        Value srcValue = emitFieldLoad(&field, sourcePtr);
+        emitFieldStore(&field, destPtr, srcValue);
+    }
+
+    return destPtr;
 }
 
 //=============================================================================

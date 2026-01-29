@@ -1,0 +1,334 @@
+module RuntimeTest23;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+// Test: Advanced pattern matching with bindings and various patterns
+
+entity Point {
+    expose Integer x;
+    expose Integer y;
+
+    expose func init(px: Integer, py: Integer) {
+        x = px;
+        y = py;
+    }
+}
+
+entity Box {
+    expose Integer value;
+
+    expose func init(v: Integer) {
+        value = v;
+    }
+}
+
+// Function using match with binding
+func classifyNumber(n: Integer) -> String {
+    var result = "";
+    match n {
+        0 => { result = "zero"; }
+        1 => { result = "one"; }
+        2 => { result = "two"; }
+        x => { result = "other:" + toString(x); }
+    }
+    return result;
+}
+
+// Function using match on ranges/conditions via nested if
+func classifyAge(age: Integer) -> String {
+    var result = "";
+    match age {
+        0 => { result = "newborn"; }
+        n => {
+            if (n < 13) {
+                result = "child";
+            } else {
+                if (n < 20) {
+                    result = "teen";
+                } else {
+                    if (n < 65) {
+                        result = "adult";
+                    } else {
+                        result = "senior";
+                    }
+                }
+            }
+        }
+    }
+    return result;
+}
+
+// Match with binding and computation
+func transformValue(v: Integer) -> Integer {
+    var result = 0;
+    match v {
+        0 => { result = 100; }
+        1 => { result = 200; }
+        n => { result = n * 10; }
+    }
+    return result;
+}
+
+// Match on optional type
+func describeOptional(opt: Integer?) -> String {
+    var result = "";
+    match opt {
+        null => { result = "empty"; }
+        _ => { result = "value:" + toString(opt ?? 0); }
+    }
+    return result;
+}
+
+// Match with wildcard
+func mapToCategory(code: Integer) -> String {
+    var result = "";
+    match code {
+        100 => { result = "info"; }
+        200 => { result = "success"; }
+        400 => { result = "client_error"; }
+        500 => { result = "server_error"; }
+        _ => { result = "unknown"; }
+    }
+    return result;
+}
+
+// Nested match
+func processCode(major: Integer, minor: Integer) -> String {
+    var result = "";
+    match major {
+        1 => {
+            match minor {
+                0 => { result = "1.0"; }
+                1 => { result = "1.1"; }
+                _ => { result = "1.x"; }
+            }
+        }
+        2 => {
+            match minor {
+                0 => { result = "2.0"; }
+                _ => { result = "2.x"; }
+            }
+        }
+        _ => { result = "other"; }
+    }
+    return result;
+}
+
+// Match controlling loop
+func findFirst(list: List[Integer], target: Integer) -> Integer {
+    var result = -1;
+    var i = 0;
+    while (i < list.count()) {
+        var current = list.get(i);
+        match current {
+            t => {
+                if (t == target) {
+                    result = i;
+                    i = list.count(); // break out
+                }
+            }
+        }
+        i = i + 1;
+    }
+    return result;
+}
+
+// Multiple bindings in sequence
+func sumFirstThree(list: List[Integer]) -> Integer {
+    var sum = 0;
+    if (list.count() >= 1) {
+        var v0 = list.get(0);
+        match v0 {
+            x => { sum = sum + x; }
+        }
+    }
+    if (list.count() >= 2) {
+        var v1 = list.get(1);
+        match v1 {
+            x => { sum = sum + x; }
+        }
+    }
+    if (list.count() >= 3) {
+        var v2 = list.get(2);
+        match v2 {
+            x => { sum = sum + x; }
+        }
+    }
+    return sum;
+}
+
+func start() {
+    //=========================================================================
+    // Test 1: Basic match with literal patterns
+    //=========================================================================
+    assertEqStr(classifyNumber(0), "zero", "match_literal_0");
+    assertEqStr(classifyNumber(1), "one", "match_literal_1");
+    assertEqStr(classifyNumber(2), "two", "match_literal_2");
+
+    //=========================================================================
+    // Test 2: Match with binding (catch-all)
+    //=========================================================================
+    assertEqStr(classifyNumber(5), "other:5", "match_binding_5");
+    assertEqStr(classifyNumber(42), "other:42", "match_binding_42");
+    assertEqStr(classifyNumber(-1), "other:-1", "match_binding_neg");
+
+    //=========================================================================
+    // Test 3: Match with binding and conditional logic
+    //=========================================================================
+    assertEqStr(classifyAge(0), "newborn", "age_newborn");
+    assertEqStr(classifyAge(5), "child", "age_child");
+    assertEqStr(classifyAge(15), "teen", "age_teen");
+    assertEqStr(classifyAge(30), "adult", "age_adult");
+    assertEqStr(classifyAge(70), "senior", "age_senior");
+
+    //=========================================================================
+    // Test 4: Match with binding and computation
+    //=========================================================================
+    assertEqInt(transformValue(0), 100, "transform_0");
+    assertEqInt(transformValue(1), 200, "transform_1");
+    assertEqInt(transformValue(5), 50, "transform_5");
+    assertEqInt(transformValue(10), 100, "transform_10");
+
+    //=========================================================================
+    // Test 5: Match on optional - null case
+    //=========================================================================
+    var optNull: Integer? = null;
+    assertEqStr(describeOptional(optNull), "empty", "opt_null");
+
+    //=========================================================================
+    // Test 6: Match on optional - value case
+    //=========================================================================
+    var optVal: Integer? = 42;
+    assertEqStr(describeOptional(optVal), "value:42", "opt_value");
+
+    var optZero: Integer? = 0;
+    assertEqStr(describeOptional(optZero), "value:0", "opt_zero");
+
+    //=========================================================================
+    // Test 7: Match with wildcard pattern
+    //=========================================================================
+    assertEqStr(mapToCategory(100), "info", "category_100");
+    assertEqStr(mapToCategory(200), "success", "category_200");
+    assertEqStr(mapToCategory(400), "client_error", "category_400");
+    assertEqStr(mapToCategory(500), "server_error", "category_500");
+    assertEqStr(mapToCategory(300), "unknown", "category_300");
+    assertEqStr(mapToCategory(999), "unknown", "category_999");
+
+    //=========================================================================
+    // Test 8: Nested match statements
+    //=========================================================================
+    assertEqStr(processCode(1, 0), "1.0", "nested_1_0");
+    assertEqStr(processCode(1, 1), "1.1", "nested_1_1");
+    assertEqStr(processCode(1, 5), "1.x", "nested_1_x");
+    assertEqStr(processCode(2, 0), "2.0", "nested_2_0");
+    assertEqStr(processCode(2, 3), "2.x", "nested_2_x");
+    assertEqStr(processCode(3, 0), "other", "nested_other");
+
+    //=========================================================================
+    // Test 9: Match in loop context
+    //=========================================================================
+    var list: List[Integer] = [10, 20, 30, 40, 50];
+    assertEqInt(findFirst(list, 30), 2, "find_30");
+    assertEqInt(findFirst(list, 10), 0, "find_10");
+    assertEqInt(findFirst(list, 50), 4, "find_50");
+    assertEqInt(findFirst(list, 99), -1, "find_missing");
+
+    //=========================================================================
+    // Test 10: Multiple match uses
+    //=========================================================================
+    var nums: List[Integer] = [5, 10, 15, 20];
+    assertEqInt(sumFirstThree(nums), 30, "sum_first_three");
+
+    var short: List[Integer] = [7];
+    assertEqInt(sumFirstThree(short), 7, "sum_short_list");
+
+    var empty: List[Integer] = [];
+    assertEqInt(sumFirstThree(empty), 0, "sum_empty_list");
+
+    //=========================================================================
+    // Test 11: Match with multiple literal cases
+    //=========================================================================
+    var dayNum = 3;
+    var dayName = "";
+    match dayNum {
+        1 => { dayName = "Monday"; }
+        2 => { dayName = "Tuesday"; }
+        3 => { dayName = "Wednesday"; }
+        4 => { dayName = "Thursday"; }
+        5 => { dayName = "Friday"; }
+        6 => { dayName = "Saturday"; }
+        7 => { dayName = "Sunday"; }
+        _ => { dayName = "Invalid"; }
+    }
+    assertEqStr(dayName, "Wednesday", "day_name");
+
+    //=========================================================================
+    // Test 12: Match with string variable result
+    //=========================================================================
+    var code = 42;
+    var message = "";
+    match code {
+        0 => { message = "ok"; }
+        _ => { message = "error code " + toString(code); }
+    }
+    assertEqStr(message, "error code 42", "match_string_result");
+
+    //=========================================================================
+    // Test 13: Match affecting multiple variables
+    //=========================================================================
+    var input = 5;
+    var doubled = 0;
+    var tripled = 0;
+    var description = "";
+    match input {
+        0 => {
+            doubled = 0;
+            tripled = 0;
+            description = "zero";
+        }
+        n => {
+            doubled = n * 2;
+            tripled = n * 3;
+            description = "nonzero";
+        }
+    }
+    assertEqInt(doubled, 10, "multi_var_doubled");
+    assertEqInt(tripled, 15, "multi_var_tripled");
+    assertEqStr(description, "nonzero", "multi_var_desc");
+
+    //=========================================================================
+    // Test 14: Match with entity field
+    //=========================================================================
+    var box = new Box(25);
+    var boxResult = "";
+    match box.value {
+        0 => { boxResult = "empty"; }
+        v => { boxResult = "contains:" + toString(v); }
+    }
+    assertEqStr(boxResult, "contains:25", "match_entity_field");
+
+    //=========================================================================
+    // Test 15: Sequential matches
+    //=========================================================================
+    var x = 10;
+    var y = 20;
+    var xClass = "";
+    var yClass = "";
+
+    match x {
+        0 => { xClass = "zero"; }
+        _ => { xClass = "nonzero"; }
+    }
+
+    match y {
+        0 => { yClass = "zero"; }
+        _ => { yClass = "nonzero"; }
+    }
+
+    assertEqStr(xClass, "nonzero", "seq_match_x");
+    assertEqStr(yClass, "nonzero", "seq_match_y");
+
+    report();
+}

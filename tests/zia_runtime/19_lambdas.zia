@@ -1,0 +1,125 @@
+module RuntimeTest19;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+// Test: Lambda expressions and closures
+
+// Higher-order function that takes a lambda
+func applyTwice(f: (Integer) -> Integer, x: Integer) -> Integer {
+    return f(f(x));
+}
+
+// Higher-order function that returns a value computed by lambda
+func compute(a: Integer, b: Integer, op: (Integer, Integer) -> Integer) -> Integer {
+    return op(a, b);
+}
+
+func start() {
+    // Test 1: Simple lambda with single parameter
+    var addOne = (x: Integer) => x + 1;
+    assertEqInt(addOne(5), 6, "simple_lambda");
+
+    // Test 2: Lambda with multiple parameters
+    var add = (a: Integer, b: Integer) => a + b;
+    assertEqInt(add(3, 4), 7, "multi_param_lambda");
+
+    // Test 3: Lambda with expression body
+    var square = (x: Integer) => x * x;
+    assertEqInt(square(5), 25, "square_lambda");
+
+    // Test 4: Lambda passed to higher-order function
+    assertEqInt(applyTwice(addOne, 5), 7, "lambda_as_arg");
+
+    // Test 5: Different lambdas passed to same higher-order function
+    var mul = (a: Integer, b: Integer) => a * b;
+    var sub = (a: Integer, b: Integer) => a - b;
+    assertEqInt(compute(10, 3, add), 13, "compute_add");
+    assertEqInt(compute(10, 3, mul), 30, "compute_mul");
+    assertEqInt(compute(10, 3, sub), 7, "compute_sub");
+
+    // Test 6: Lambda returning lambda result
+    var compose = (x: Integer) => addOne(square(x));
+    assertEqInt(compose(3), 10, "composed_lambda");
+
+    // Test 7: Lambda with boolean result
+    var isPositive = (x: Integer) => x > 0;
+    assertTrue(isPositive(5), "lambda_bool_true");
+    assertTrue(!isPositive(-5), "lambda_bool_false");
+
+    // Test 8: Nested lambda calls
+    var double = (x: Integer) => x * 2;
+    var triple = (x: Integer) => x * 3;
+    assertEqInt(double(triple(4)), 24, "nested_lambda_calls");
+
+    // Test 9: Lambda with string concatenation
+    var greet = (name: String) => "Hello, " + name + "!";
+    assertEqStr(greet("World"), "Hello, World!", "string_lambda");
+
+    // Test 10: Lambda with comparison chain
+    var inRange = (x: Integer, lo: Integer, hi: Integer) => x >= lo && x <= hi;
+    assertTrue(inRange(5, 1, 10), "lambda_range_true");
+    assertTrue(!inRange(15, 1, 10), "lambda_range_false");
+
+    // Test 11: Lambda with void block body (print side effect)
+    var printHello = () => {
+        // Void block body works for side effects
+    };
+    printHello();
+    assertTrue(true, "void_block_lambda");
+
+    // Test 12: Multiple lambdas of same signature
+    var op1 = (a: Integer, b: Integer) => a + b;
+    var op2 = (a: Integer, b: Integer) => a - b;
+    var op3 = (a: Integer, b: Integer) => a * b;
+    assertEqInt(op1(5, 3), 8, "multi_same_sig_add");
+    assertEqInt(op2(5, 3), 2, "multi_same_sig_sub");
+    assertEqInt(op3(5, 3), 15, "multi_same_sig_mul");
+
+    // Test 13: Lambda with zero arguments
+    var getFortyTwo = () => 42;
+    assertEqInt(getFortyTwo(), 42, "no_arg_lambda");
+
+    // Test 14: Lambda returning string constant
+    var hello = () => "hello";
+    assertEqStr(hello(), "hello", "string_const_lambda");
+
+    // Test 15: Chained higher-order function calls
+    var inc = (x: Integer) => x + 1;
+    var result = applyTwice(inc, applyTwice(inc, 0));
+    assertEqInt(result, 4, "chained_hof");
+
+    //=========================================================================
+    // Closure Capture Tests (regression tests for fixed bugs)
+    //=========================================================================
+
+    // Test 16: Closure capturing Integer variable and using in arithmetic
+    var captured = 10;
+    var captureAdd = () => captured + 5;
+    assertEqInt(captureAdd(), 15, "closure_capture_add");
+
+    // Test 17: Closure capturing multiple variables
+    var a = 3;
+    var b = 7;
+    var captureMulti = () => a * b;
+    assertEqInt(captureMulti(), 21, "closure_capture_multi");
+
+    // Test 18: Closure capturing and using in comparison
+    var threshold = 10;
+    var aboveThreshold = (x: Integer) => x > threshold;
+    assertTrue(aboveThreshold(15), "closure_capture_cmp_true");
+    assertTrue(!aboveThreshold(5), "closure_capture_cmp_false");
+
+    // Test 19: Closure capturing String
+    var prefix = "Hello, ";
+    var makeGreeting = (name: String) => prefix + name;
+    assertEqStr(makeGreeting("World"), "Hello, World", "closure_capture_string");
+
+    // Test 20: Closure capturing outer variable and parameter
+    var outer = 100;
+    var addToOuter = (x: Integer) => outer + x;
+    assertEqInt(addToOuter(5), 105, "closure_capture_outer_and_param");
+
+    report();
+}

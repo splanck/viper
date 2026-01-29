@@ -1145,12 +1145,17 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
             info.name = cap.name;
             info.isSlot = false;
 
+            // Look up the variable's type - prefer localTypes_ (set during lowering)
+            // over sema_.lookupVarType() which may fail due to scope mismatch
+            auto localTypeIt = localTypes_.find(cap.name);
+            TypeRef varType = (localTypeIt != localTypes_.end()) ? localTypeIt->second
+                                                                 : sema_.lookupVarType(cap.name);
+
             // Look up the variable in current scope
             auto slotIt = slots_.find(cap.name);
             if (slotIt != slots_.end())
             {
                 // Load from slot to capture by value
-                TypeRef varType = sema_.lookupVarType(cap.name);
                 info.type = varType ? mapType(varType) : Type(Type::Kind::I64);
                 info.semType = varType;
                 info.value = loadFromSlot(cap.name, info.type);
@@ -1162,7 +1167,6 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
                 if (localIt != locals_.end())
                 {
                     info.value = localIt->second;
-                    TypeRef varType = sema_.lookupVarType(cap.name);
                     info.type = varType ? mapType(varType) : Type(Type::Kind::I64);
                     info.semType = varType;
                 }

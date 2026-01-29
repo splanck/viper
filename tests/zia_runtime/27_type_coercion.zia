@@ -1,0 +1,190 @@
+module RuntimeTest27;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+// Test: Type coercion and conversions
+
+//=============================================================================
+// Helper functions for type testing
+//=============================================================================
+
+func intToNumber(i: Integer) -> Number {
+    return i;  // Implicit widening
+}
+
+func addNumbers(a: Number, b: Number) -> Number {
+    return a + b;
+}
+
+func compareInts(a: Integer, b: Integer) -> Boolean {
+    return a == b;
+}
+
+func start() {
+    //=========================================================================
+    // Test 1: Integer to Number implicit widening
+    //=========================================================================
+    var i = 42;
+    var n: Number = i;  // Implicit conversion
+    assertApprox(n, 42.0, 0.001, "int_to_num_implicit");
+
+    //=========================================================================
+    // Test 2: Integer in Number arithmetic
+    //=========================================================================
+    var result = 10 + 2.5;  // Int + Number = Number
+    assertApprox(result, 12.5, 0.001, "int_num_add");
+
+    result = 20 - 3.5;
+    assertApprox(result, 16.5, 0.001, "int_num_sub");
+
+    result = 5 * 2.5;
+    assertApprox(result, 12.5, 0.001, "int_num_mul");
+
+    result = 15 / 4.0;
+    assertApprox(result, 3.75, 0.001, "int_num_div");
+
+    //=========================================================================
+    // Test 3: Number in Integer context (explicit)
+    //=========================================================================
+    var num = 3.7;
+    var truncated = Viper.Math.Floor(num);
+    assertApprox(truncated, 3.0, 0.001, "num_floor");
+
+    var rounded = Viper.Math.Round(3.5);
+    assertApprox(rounded, 4.0, 0.001, "num_round");
+
+    //=========================================================================
+    // Test 4: Mixed arithmetic expressions
+    //=========================================================================
+    var a = 10;
+    var b = 3.0;
+    var c = 2;
+
+    result = a + b * c;  // 10 + 3.0 * 2 = 16.0
+    assertApprox(result, 16.0, 0.001, "mixed_arith_1");
+
+    result = (a + b) * c;  // (10 + 3.0) * 2 = 26.0
+    assertApprox(result, 26.0, 0.001, "mixed_arith_2");
+
+    //=========================================================================
+    // Test 5: Function parameter coercion
+    //=========================================================================
+    var numResult = intToNumber(100);
+    assertApprox(numResult, 100.0, 0.001, "func_param_coerce");
+
+    numResult = addNumbers(5, 3.5);  // First arg coerced to Number
+    assertApprox(numResult, 8.5, 0.001, "func_mixed_params");
+
+    //=========================================================================
+    // Test 6: Comparison with coercion
+    //=========================================================================
+    var x = 5;
+    var y = 5.0;
+    assertTrue(x == 5, "int_eq_int");
+    // Note: Direct int == number comparison may require explicit handling
+
+    //=========================================================================
+    // Test 7: Boolean in conditionals
+    //=========================================================================
+    var flag = true;
+    var message = "";
+    if (flag) {
+        message = "true";
+    } else {
+        message = "false";
+    }
+    assertEqStr(message, "true", "bool_in_if");
+
+    flag = false;
+    if (flag) {
+        message = "true";
+    } else {
+        message = "false";
+    }
+    assertEqStr(message, "false", "bool_false_in_if");
+
+    //=========================================================================
+    // Test 8: String concatenation with numbers
+    //=========================================================================
+    var str = "Value: " + toString(42);
+    assertEqStr(str, "Value: 42", "str_concat_int");
+
+    str = "Pi: " + toString(3.14159);
+    assertNotEmpty(str, "str_concat_num");
+
+    //=========================================================================
+    // Test 9: List element type coercion
+    //=========================================================================
+    var intList: List[Integer] = [1, 2, 3, 4, 5];
+    assertEqInt(intList.get(0), 1, "list_int_0");
+    assertEqInt(intList.get(4), 5, "list_int_4");
+
+    //=========================================================================
+    // Test 10: Integer literal forms
+    //=========================================================================
+    var dec = 255;
+    assertEqInt(dec, 255, "decimal_literal");
+
+    var negDec = -100;
+    assertEqInt(negDec, -100, "negative_literal");
+
+    var zero = 0;
+    assertEqInt(zero, 0, "zero_literal");
+
+    //=========================================================================
+    // Test 11: Number literal forms
+    //=========================================================================
+    var numLit = 3.14159;
+    assertApprox(numLit, 3.14159, 0.00001, "number_literal");
+
+    var negNum = -2.5;
+    assertApprox(negNum, -2.5, 0.001, "negative_number");
+
+    var wholeNum = 1.0;
+    assertApprox(wholeNum, 1.0, 0.001, "whole_number");
+
+    //=========================================================================
+    // Test 12: Chained comparisons through variables
+    //=========================================================================
+    var v1 = 10;
+    var v2 = 20;
+    var v3 = 10;
+
+    assertTrue(v1 < v2, "chained_lt");
+    assertTrue(v2 > v1, "chained_gt");
+    assertTrue(v1 == v3, "chained_eq");
+    assertTrue(v1 != v2, "chained_ne");
+    assertTrue(v1 <= v2, "chained_le");
+    assertTrue(v1 <= v3, "chained_le_eq");
+    assertTrue(v2 >= v1, "chained_ge");
+    assertTrue(v3 >= v1, "chained_ge_eq");
+
+    //=========================================================================
+    // Test 13: Integer division vs Number division
+    //=========================================================================
+    var intDiv = 7 / 2;  // Integer division
+    assertEqInt(intDiv, 3, "int_div");
+
+    var numDiv = 7.0 / 2.0;  // Number division
+    assertApprox(numDiv, 3.5, 0.001, "num_div");
+
+    //=========================================================================
+    // Test 14: Modulo operation
+    //=========================================================================
+    assertEqInt(10 % 3, 1, "mod_positive");
+    assertEqInt(15 % 5, 0, "mod_zero_result");
+    assertEqInt(7 % 10, 7, "mod_larger_divisor");
+
+    //=========================================================================
+    // Test 15: Complex expression with mixed types
+    //=========================================================================
+    var expr = (10 + 5) * 2 - 3;
+    assertEqInt(expr, 27, "complex_int_expr");
+
+    var exprNum = (10.0 + 5) * 2.5 - 3;
+    assertApprox(exprNum, 34.5, 0.001, "complex_num_expr");
+
+    report();
+}

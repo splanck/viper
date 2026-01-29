@@ -1,0 +1,224 @@
+module RuntimeTest26;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+// Test: Module organization and namespace access
+
+//=============================================================================
+// Module-level variables
+//=============================================================================
+
+var moduleCounter: Integer = 0;
+var moduleName: String = "TestModule";
+
+//=============================================================================
+// Module-level functions
+//=============================================================================
+
+func incrementCounter() {
+    moduleCounter = moduleCounter + 1;
+}
+
+func getCounter() -> Integer {
+    return moduleCounter;
+}
+
+func resetCounter() {
+    moduleCounter = 0;
+}
+
+func getModuleName() -> String {
+    return moduleName;
+}
+
+//=============================================================================
+// Module-level entities
+//=============================================================================
+
+entity ModuleEntity {
+    expose Integer id;
+
+    expose func init(i: Integer) {
+        id = i;
+        incrementCounter(); // Uses module function
+    }
+
+    expose func getInfo() -> String {
+        return moduleName + ":" + toString(id);
+    }
+}
+
+//=============================================================================
+// Nested namespace simulation with entities
+//=============================================================================
+
+entity Math {
+    expose func add(a: Integer, b: Integer) -> Integer {
+        return a + b;
+    }
+
+    expose func sub(a: Integer, b: Integer) -> Integer {
+        return a - b;
+    }
+
+    expose func mul(a: Integer, b: Integer) -> Integer {
+        return a * b;
+    }
+
+    expose func max(a: Integer, b: Integer) -> Integer {
+        if (a > b) {
+            return a;
+        }
+        return b;
+    }
+
+    expose func min(a: Integer, b: Integer) -> Integer {
+        if (a < b) {
+            return a;
+        }
+        return b;
+    }
+
+    expose func abs(x: Integer) -> Integer {
+        if (x < 0) {
+            return -x;
+        }
+        return x;
+    }
+}
+
+entity StringUtils {
+    expose func repeat(s: String, n: Integer) -> String {
+        var result = "";
+        var i = 0;
+        while (i < n) {
+            result = result + s;
+            i = i + 1;
+        }
+        return result;
+    }
+
+    expose func isEmpty(s: String) -> Boolean {
+        return s == "";
+    }
+
+    expose func padLeft(s: String, width: Integer, padChar: String) -> String {
+        var result = s;
+        while (result.length() < width) {
+            result = padChar + result;
+        }
+        return result;
+    }
+}
+
+func start() {
+    //=========================================================================
+    // Test 1: Module-level variable access
+    //=========================================================================
+    assertEqInt(moduleCounter, 0, "initial_counter");
+    assertEqStr(moduleName, "TestModule", "module_name");
+
+    //=========================================================================
+    // Test 2: Module-level function calls
+    //=========================================================================
+    incrementCounter();
+    assertEqInt(getCounter(), 1, "after_increment");
+
+    incrementCounter();
+    incrementCounter();
+    assertEqInt(getCounter(), 3, "after_three_increments");
+
+    resetCounter();
+    assertEqInt(getCounter(), 0, "after_reset");
+
+    //=========================================================================
+    // Test 3: Module entity using module functions
+    //=========================================================================
+    resetCounter();
+    var e1 = new ModuleEntity(100);
+    assertEqInt(getCounter(), 1, "entity_incremented_counter");
+
+    var e2 = new ModuleEntity(200);
+    var e3 = new ModuleEntity(300);
+    assertEqInt(getCounter(), 3, "three_entities_created");
+
+    //=========================================================================
+    // Test 4: Module entity using module variables
+    //=========================================================================
+    assertEqStr(e1.getInfo(), "TestModule:100", "entity_info_1");
+    assertEqStr(e2.getInfo(), "TestModule:200", "entity_info_2");
+    assertEqStr(e3.getInfo(), "TestModule:300", "entity_info_3");
+
+    //=========================================================================
+    // Test 5: Math namespace entity
+    //=========================================================================
+    var math = new Math();
+    assertEqInt(math.add(3, 4), 7, "math_add");
+    assertEqInt(math.sub(10, 3), 7, "math_sub");
+    assertEqInt(math.mul(5, 6), 30, "math_mul");
+
+    //=========================================================================
+    // Test 6: Math max/min
+    //=========================================================================
+    assertEqInt(math.max(10, 20), 20, "math_max");
+    assertEqInt(math.max(30, 15), 30, "math_max_reverse");
+    assertEqInt(math.min(10, 20), 10, "math_min");
+    assertEqInt(math.min(30, 15), 15, "math_min_reverse");
+
+    //=========================================================================
+    // Test 7: Math abs
+    //=========================================================================
+    assertEqInt(math.abs(5), 5, "math_abs_positive");
+    assertEqInt(math.abs(-5), 5, "math_abs_negative");
+    assertEqInt(math.abs(0), 0, "math_abs_zero");
+
+    //=========================================================================
+    // Test 8: StringUtils namespace entity
+    //=========================================================================
+    var strUtils = new StringUtils();
+    assertEqStr(strUtils.repeat("ab", 3), "ababab", "string_repeat");
+    assertEqStr(strUtils.repeat("x", 5), "xxxxx", "string_repeat_single");
+    assertEqStr(strUtils.repeat("test", 0), "", "string_repeat_zero");
+
+    //=========================================================================
+    // Test 9: StringUtils isEmpty
+    //=========================================================================
+    assertTrue(strUtils.isEmpty(""), "empty_string_is_empty");
+    assertTrue(!strUtils.isEmpty("hello"), "nonempty_string_not_empty");
+    assertTrue(!strUtils.isEmpty(" "), "space_not_empty");
+
+    //=========================================================================
+    // Test 10: StringUtils padLeft
+    //=========================================================================
+    assertEqStr(strUtils.padLeft("5", 3, "0"), "005", "pad_left_zeros");
+    assertEqStr(strUtils.padLeft("42", 5, " "), "   42", "pad_left_spaces");
+    assertEqStr(strUtils.padLeft("hello", 3, "x"), "hello", "pad_left_no_change");
+
+    //=========================================================================
+    // Test 11: Multiple namespace entities working together
+    //=========================================================================
+    var a = 15;
+    var b = 7;
+    var sum = math.add(a, b);
+    var diff = math.abs(math.sub(a, b));
+    assertEqInt(sum, 22, "combined_sum");
+    assertEqInt(diff, 8, "combined_diff");
+
+    //=========================================================================
+    // Test 12: Module state persistence
+    //=========================================================================
+    resetCounter();
+    var entities: List[ModuleEntity] = [];
+    var i = 0;
+    while (i < 5) {
+        entities.add(new ModuleEntity(i * 10));
+        i = i + 1;
+    }
+    assertEqInt(getCounter(), 5, "five_entities_counter");
+    assertEqStr(entities.get(0).getInfo(), "TestModule:0", "list_entity_0");
+    assertEqStr(entities.get(4).getInfo(), "TestModule:40", "list_entity_4");
+
+    report();
+}

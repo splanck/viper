@@ -119,6 +119,12 @@ extern "C"
     /// @return 1 if equal, 0 otherwise.
     int64_t rt_box_eq_str(void *box, rt_string val);
 
+    /// @brief Allocate heap memory for boxing a value type (struct).
+    /// @param size Size in bytes to allocate.
+    /// @return Heap-allocated zero-initialized memory.
+    /// @note The compiler copies struct fields into this memory.
+    void *rt_box_value_type(int64_t size);
+
 #ifdef __cplusplus
 }
 #endif

@@ -110,6 +110,18 @@ void Lowerer::lowerVarStmt(VarStmt *stmt)
             ilType = Type(Type::Kind::F64);
         }
 
+        // Handle value type copy semantics - deep copy on assignment
+        TypeRef initType = sema_.typeOf(stmt->initializer.get());
+        if (initType && initType->kind == TypeKindSem::Value)
+        {
+            const ValueTypeInfo *info = getOrCreateValueTypeInfo(initType->name);
+            if (info)
+            {
+                // Deep copy the value type
+                initValue = emitValueTypeCopy(*info, initValue);
+            }
+        }
+
         if (varType && varType->kind == TypeKindSem::Optional)
         {
             TypeRef initType = sema_.typeOf(stmt->initializer.get());
@@ -448,8 +460,25 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
             elemType = sema_.resolveType(stmt->variableType.get());
 
         Type elemIlType = mapType(elemType);
-        createSlot(stmt->variable, elemIlType);
-        localTypes_[stmt->variable] = elemType;
+
+        // For tuple binding (for idx, val in list), first var is index, second is element
+        // For single binding (for val in list), the variable is the element
+        bool hasTupleBinding = stmt->isTuple && !stmt->secondVariable.empty();
+
+        if (hasTupleBinding)
+        {
+            // First variable is the index
+            createSlot(stmt->variable, Type(Type::Kind::I64));
+            localTypes_[stmt->variable] = types::integer();
+            // Second variable is the element
+            createSlot(stmt->secondVariable, elemIlType);
+            localTypes_[stmt->secondVariable] = elemType;
+        }
+        else
+        {
+            createSlot(stmt->variable, elemIlType);
+            localTypes_[stmt->variable] = elemType;
+        }
 
         auto listValue = lowerExpr(stmt->iterable.get());
 
@@ -482,9 +511,23 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
         setBlock(bodyIdx);
         Value listLoaded = loadFromSlot(listVar, Type(Type::Kind::Ptr));
         Value idxInBody = loadFromSlot(indexVar, Type(Type::Kind::I64));
-        Value boxed = emitCallRet(Type(Type::Kind::Ptr), kListGet, {listLoaded, idxInBody});
-        auto elemValue = emitUnbox(boxed, elemIlType);
-        storeToSlot(stmt->variable, elemValue.value, elemIlType);
+
+        if (hasTupleBinding)
+        {
+            // Store index in first variable
+            storeToSlot(stmt->variable, idxInBody, Type(Type::Kind::I64));
+            // Get and store element in second variable
+            Value boxed = emitCallRet(Type(Type::Kind::Ptr), kListGet, {listLoaded, idxInBody});
+            auto elemValue = emitUnboxValue(boxed, elemIlType, elemType);
+            storeToSlot(stmt->secondVariable, elemValue.value, elemIlType);
+        }
+        else
+        {
+            Value boxed = emitCallRet(Type(Type::Kind::Ptr), kListGet, {listLoaded, idxInBody});
+            auto elemValue = emitUnboxValue(boxed, elemIlType, elemType);
+            storeToSlot(stmt->variable, elemValue.value, elemIlType);
+        }
+
         lowerStmt(stmt->body.get());
         if (!isTerminated())
         {
@@ -502,6 +545,8 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
         setBlock(endIdx);
 
         removeSlot(stmt->variable);
+        if (hasTupleBinding)
+            removeSlot(stmt->secondVariable);
         removeSlot(indexVar);
         removeSlot(lenVar);
         removeSlot(listVar);
@@ -580,7 +625,7 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
             // Load map from slot for cross-block SSA
             Value mapLoaded = loadFromSlot(mapVar, Type(Type::Kind::Ptr));
             Value boxed = emitCallRet(Type(Type::Kind::Ptr), kMapGet, {mapLoaded, keyVal.value});
-            auto unboxed = emitUnbox(boxed, valueIlType);
+            auto unboxed = emitUnboxValue(boxed, valueIlType, valueType);
             storeToSlot(stmt->secondVariable, unboxed.value, valueIlType);
         }
 
@@ -640,6 +685,25 @@ void Lowerer::lowerReturnStmt(ReturnStmt *stmt)
                 convInstr.result = convId;
                 convInstr.op = Opcode::CastFpToSiRteChk;
                 convInstr.type = Type(Type::Kind::I64);
+                convInstr.operands = {returnValue};
+                blockMgr_.currentBlock()->instructions.push_back(convInstr);
+                returnValue = Value::temp(convId);
+            }
+        }
+
+        // Handle Integer -> Number implicit conversion for return statements
+        // This allows returning integer literals/expressions from Number-returning functions
+        if (currentReturnType_ && currentReturnType_->kind == TypeKindSem::Number)
+        {
+            TypeRef valueType = sema_.typeOf(stmt->value.get());
+            if (valueType && valueType->kind == TypeKindSem::Integer)
+            {
+                // Emit sitofp to convert i64 -> f64
+                unsigned convId = nextTempId();
+                il::core::Instr convInstr;
+                convInstr.result = convId;
+                convInstr.op = Opcode::Sitofp;
+                convInstr.type = Type(Type::Kind::F64);
                 convInstr.operands = {returnValue};
                 blockMgr_.currentBlock()->instructions.push_back(convInstr);
                 returnValue = Value::temp(convId);

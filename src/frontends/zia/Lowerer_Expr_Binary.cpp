@@ -100,6 +100,16 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                                   ? Type(Type::Kind::Ptr)
                                   : right.type;
 
+            // Handle value type copy semantics - deep copy on assignment
+            if (rightType && rightType->kind == TypeKindSem::Value)
+            {
+                const ValueTypeInfo *info = getOrCreateValueTypeInfo(rightType->name);
+                if (info)
+                {
+                    assignValue = emitValueTypeCopy(*info, assignValue);
+                }
+            }
+
             // Check if this is a slot-based variable
             auto slotIt = slots_.find(ident->name);
             if (slotIt != slots_.end())
@@ -167,8 +177,9 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             auto base = lowerExpr(indexExpr->base.get());
             auto index = lowerExpr(indexExpr->index.get());
             TypeRef baseType = sema_.typeOf(indexExpr->base.get());
+            TypeRef rightType = sema_.typeOf(expr->right.get());
 
-            Value boxedValue = emitBox(right.value, right.type);
+            Value boxedValue = emitBoxValue(right.value, right.type, rightType);
             if (baseType && baseType->kind == TypeKindSem::Map)
                 emitCall(kMapSet, {base.value, index.value, boxedValue});
             else
@@ -286,7 +297,10 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                 else if (rightType && rightType->kind == TypeKindSem::Number)
                     rightStr = emitCallRet(Type(Type::Kind::Str), kStringFromNum, {right.value});
                 else if (rightType && rightType->kind == TypeKindSem::Boolean)
-                    rightStr = emitCallRet(Type(Type::Kind::Str), kStringFromInt, {right.value});
+                {
+                    // Use kFmtBool to convert boolean to "true"/"false" string
+                    rightStr = emitCallRet(Type(Type::Kind::Str), kFmtBool, {right.value});
+                }
 
                 Value result =
                     emitCallRet(Type(Type::Kind::Str), kStringConcat, {left.value, rightStr});

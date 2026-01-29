@@ -270,43 +270,50 @@ void Sema::analyzeEntityDecl(EntityDecl &decl)
             EntityDecl *parent = parentIt->second;
             // BUG-VL-007 fix: Register inheritance for polymorphism support
             types::registerEntityInheritance(decl.name, parent->name);
-            // Add parent's fields to this entity's scope
-            for (auto &member : parent->members)
+
+            // Add ALL parent's fields to this entity's scope (including inherited fields)
+            // by scanning fieldTypes_ for entries with parent's name prefix.
+            // This ensures grandparent fields are also accessible in grandchildren.
+            std::string parentPrefix = parent->name + ".";
+            for (const auto &entry : fieldTypes_)
             {
-                if (member->kind == DeclKind::Field)
+                if (entry.first.rfind(parentPrefix, 0) == 0)
                 {
-                    auto *field = static_cast<FieldDecl *>(member.get());
-                    std::string fieldKey = parent->name + "." + field->name;
-                    auto typeIt = fieldTypes_.find(fieldKey);
-                    if (typeIt != fieldTypes_.end())
+                    // Extract field name from "Parent.fieldName"
+                    std::string fieldName = entry.first.substr(parentPrefix.size());
+                    // Skip if already defined (could be overridden)
+                    if (!currentScope_->lookupLocal(fieldName))
                     {
                         Symbol sym;
                         sym.kind = Symbol::Kind::Field;
-                        sym.name = field->name;
-                        sym.type = typeIt->second;
-                        defineSymbol(field->name, sym);
+                        sym.name = fieldName;
+                        sym.type = entry.second;
+                        defineSymbol(fieldName, sym);
                         // Also register in this entity's field types
-                        fieldTypes_[decl.name + "." + field->name] = typeIt->second;
+                        fieldTypes_[decl.name + "." + fieldName] = entry.second;
                     }
                 }
             }
-            // Add parent's methods to this entity's scope
-            for (auto &member : parent->members)
+
+            // Add ALL parent's methods to this entity's scope (including inherited methods)
+            std::string methodPrefix = parent->name + ".";
+            for (const auto &entry : methodTypes_)
             {
-                if (member->kind == DeclKind::Method)
+                if (entry.first.rfind(methodPrefix, 0) == 0)
                 {
-                    auto *method = static_cast<MethodDecl *>(member.get());
-                    std::string methodKey = parent->name + "." + method->name;
-                    auto typeIt = methodTypes_.find(methodKey);
-                    if (typeIt != methodTypes_.end())
+                    // Extract method name from "Parent.methodName"
+                    std::string methodName = entry.first.substr(methodPrefix.size());
+                    // Skip if already defined (could be overridden)
+                    if (!currentScope_->lookupLocal(methodName))
                     {
                         Symbol sym;
                         sym.kind = Symbol::Kind::Method;
-                        sym.name = method->name;
-                        sym.type = typeIt->second;
+                        sym.name = methodName;
+                        sym.type = entry.second;
                         sym.isFinal = true;
-                        sym.decl = method;
-                        defineSymbol(method->name, sym);
+                        defineSymbol(methodName, sym);
+                        // Also register in this entity's method types
+                        methodTypes_[decl.name + "." + methodName] = entry.second;
                     }
                 }
             }

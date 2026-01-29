@@ -1,0 +1,212 @@
+module RuntimeTest22;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+// Test: String interpolation with various expression types
+
+entity Person {
+    expose String name;
+    expose Integer age;
+
+    expose func init(n: String, a: Integer) {
+        name = n;
+        age = a;
+    }
+
+    expose func greet() -> String {
+        return "Hi, I'm ${name}";
+    }
+
+    expose func describe() -> String {
+        return "${name} is ${age} years old";
+    }
+}
+
+func double(x: Integer) -> Integer {
+    return x * 2;
+}
+
+func formatPoint(x: Integer, y: Integer) -> String {
+    return "(${x}, ${y})";
+}
+
+func start() {
+    //=========================================================================
+    // Test 1: Simple variable interpolation
+    //=========================================================================
+    var x = 42;
+    var s1 = "x = ${x}";
+    assertEqStr(s1, "x = 42", "simple_int");
+
+    var name = "Alice";
+    var s2 = "Hello, ${name}!";
+    assertEqStr(s2, "Hello, Alice!", "simple_string");
+
+    //=========================================================================
+    // Test 2: Expression interpolation
+    //=========================================================================
+    var a = 10;
+    var b = 5;
+    var s3 = "sum is ${a + b}";
+    assertEqStr(s3, "sum is 15", "expr_add");
+
+    var s4 = "product is ${a * b}";
+    assertEqStr(s4, "product is 50", "expr_mul");
+
+    var s5 = "difference is ${a - b}";
+    assertEqStr(s5, "difference is 5", "expr_sub");
+
+    //=========================================================================
+    // Test 3: Multiple interpolations in one string
+    //=========================================================================
+    var s6 = "${a} + ${b} = ${a + b}";
+    assertEqStr(s6, "10 + 5 = 15", "multi_interp");
+
+    var s7 = "${a} * ${b} = ${a * b}";
+    assertEqStr(s7, "10 * 5 = 50", "multi_interp_mul");
+
+    var first = "John";
+    var last = "Doe";
+    var s8 = "${first} ${last}";
+    assertEqStr(s8, "John Doe", "multi_strings");
+
+    //=========================================================================
+    // Test 4: Function call in interpolation
+    //=========================================================================
+    var s9 = "doubled: ${double(7)}";
+    assertEqStr(s9, "doubled: 14", "func_call");
+
+    var s10 = "point: ${formatPoint(3, 4)}";
+    assertEqStr(s10, "point: (3, 4)", "func_call_returns_string");
+
+    //=========================================================================
+    // Test 5: Complex expressions
+    //=========================================================================
+    var s11 = "complex: ${(a + b) * 2}";
+    assertEqStr(s11, "complex: 30", "complex_expr");
+
+    var s12 = "nested: ${double(a + b)}";
+    assertEqStr(s12, "nested: 30", "nested_func");
+
+    //=========================================================================
+    // Test 6: Entity field access in interpolation
+    //=========================================================================
+    var person = new Person("Bob", 30);
+    var s13 = "Name: ${person.name}";
+    assertEqStr(s13, "Name: Bob", "entity_field");
+
+    var s14 = "Age: ${person.age}";
+    assertEqStr(s14, "Age: 30", "entity_field_int");
+
+    var s15 = "${person.name} is ${person.age}";
+    assertEqStr(s15, "Bob is 30", "entity_multi_field");
+
+    //=========================================================================
+    // Test 7: Entity method returning interpolated string
+    //=========================================================================
+    assertEqStr(person.greet(), "Hi, I'm Bob", "entity_method_interp");
+    assertEqStr(person.describe(), "Bob is 30 years old", "entity_method_multi");
+
+    //=========================================================================
+    // Test 8: Interpolation with conditional string result
+    //=========================================================================
+    var adultStr = "yes";
+    if (person.age < 18) {
+        adultStr = "no";
+    }
+    var s16 = "Adult: ${adultStr}";
+    assertEqStr(s16, "Adult: yes", "conditional_interp");
+
+    //=========================================================================
+    // Test 9: Interpolation at start, middle, and end
+    //=========================================================================
+    var s18 = "${a} is the value";
+    assertEqStr(s18, "10 is the value", "interp_start");
+
+    var s19 = "The value is ${a} here";
+    assertEqStr(s19, "The value is 10 here", "interp_middle");
+
+    var s20 = "Value: ${a}";
+    assertEqStr(s20, "Value: 10", "interp_end");
+
+    //=========================================================================
+    // Test 10: Empty and single-char strings with interpolation
+    //=========================================================================
+    var empty = "";
+    var s21 = "before${empty}after";
+    assertEqStr(s21, "beforeafter", "empty_interp");
+
+    var single = "X";
+    var s22 = "A${single}B";
+    assertEqStr(s22, "AXB", "single_char_interp");
+
+    //=========================================================================
+    // Test 11: Numeric edge cases
+    //=========================================================================
+    var zero = 0;
+    var s23 = "zero: ${zero}";
+    assertEqStr(s23, "zero: 0", "zero_interp");
+
+    var negative = -42;
+    var s24 = "negative: ${negative}";
+    assertEqStr(s24, "negative: -42", "negative_interp");
+
+    //=========================================================================
+    // Test 12: Multiple adjacent interpolations
+    //=========================================================================
+    var s25 = "${a}${b}${a + b}";
+    assertEqStr(s25, "10515", "adjacent_interp");
+
+    //=========================================================================
+    // Test 13: Interpolation in loop
+    //=========================================================================
+    var result = "";
+    var i = 1;
+    while (i <= 3) {
+        result = result + "${i},";
+        i = i + 1;
+    }
+    assertEqStr(result, "1,2,3,", "loop_interp");
+
+    //=========================================================================
+    // Test 14: Conditional expressions in interpolation
+    //=========================================================================
+    var val = 10;
+    var sign = "";
+    if (val > 0) {
+        sign = "positive";
+    } else {
+        sign = "non-positive";
+    }
+    var s26 = "${val} is ${sign}";
+    assertEqStr(s26, "10 is positive", "conditional_in_interp");
+
+    //=========================================================================
+    // Test 15: Long interpolated string
+    //=========================================================================
+    var s27 = "a=${a}, b=${b}, sum=${a+b}, diff=${a-b}, prod=${a*b}";
+    assertEqStr(s27, "a=10, b=5, sum=15, diff=5, prod=50", "long_interp");
+
+    //=========================================================================
+    // Test 16: Boolean interpolation (regression test for fixed bug)
+    //=========================================================================
+    var boolTrue = true;
+    var boolFalse = false;
+    var s28 = "flag: ${boolTrue}";
+    assertEqStr(s28, "flag: true", "bool_interp_true");
+
+    var s29 = "flag: ${boolFalse}";
+    assertEqStr(s29, "flag: false", "bool_interp_false");
+
+    var s30 = "${boolTrue} and ${boolFalse}";
+    assertEqStr(s30, "true and false", "bool_interp_both");
+
+    // Boolean expression in interpolation
+    var x = 5;
+    var s31 = "positive: ${x > 0}";
+    assertEqStr(s31, "positive: true", "bool_expr_interp");
+
+    report();
+}

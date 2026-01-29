@@ -1,0 +1,193 @@
+module RuntimeTest28;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+// Test: Numeric edge cases and boundary conditions
+
+func start() {
+    //=========================================================================
+    // Test 1: Large integer values
+    //=========================================================================
+    var large = 1000000000;  // 1 billion
+    assertEqInt(large, 1000000000, "large_int");
+    assertEqInt(large * 2, 2000000000, "large_int_doubled");
+
+    //=========================================================================
+    // Test 2: Negative numbers
+    //=========================================================================
+    var neg = -12345;
+    assertEqInt(neg, -12345, "negative_int");
+    assertEqInt(neg * -1, 12345, "negative_negated");
+    assertEqInt(-neg, 12345, "unary_negate");
+
+    //=========================================================================
+    // Test 3: Zero behaviors
+    //=========================================================================
+    var zero = 0;
+    assertEqInt(zero, 0, "zero_value");
+    assertEqInt(zero + 5, 5, "zero_plus");
+    assertEqInt(5 + zero, 5, "plus_zero");
+    assertEqInt(zero * 100, 0, "zero_times");
+    assertEqInt(100 * zero, 0, "times_zero");
+    assertEqInt(zero - 5, -5, "zero_minus");
+
+    //=========================================================================
+    // Test 4: One behaviors
+    //=========================================================================
+    var one = 1;
+    assertEqInt(one * 42, 42, "one_times");
+    assertEqInt(42 * one, 42, "times_one");
+    assertEqInt(42 / one, 42, "div_one");
+
+    //=========================================================================
+    // Test 5: Integer overflow protection (if enabled)
+    //=========================================================================
+    // These should work within normal ranges
+    var a = 100000;
+    var b = 200000;
+    assertEqInt(a + b, 300000, "large_add");
+    assertEqInt(b - a, 100000, "large_sub");
+
+    //=========================================================================
+    // Test 6: Floating point precision
+    //=========================================================================
+    var pi = 3.14159265358979;
+    assertApprox(pi, 3.14159265358979, 0.0000001, "pi_precision");
+
+    var small = 0.0001;
+    assertApprox(small, 0.0001, 0.00001, "small_number");
+
+    //=========================================================================
+    // Test 7: Floating point arithmetic precision
+    //=========================================================================
+    var sum = 0.1 + 0.2;
+    assertApprox(sum, 0.3, 0.0001, "float_add_precision");
+
+    var product = 0.1 * 10.0;
+    assertApprox(product, 1.0, 0.0001, "float_mul_precision");
+
+    //=========================================================================
+    // Test 8: Division edge cases
+    //=========================================================================
+    assertEqInt(10 / 3, 3, "int_div_truncate");
+    assertEqInt(-10 / 3, -3, "neg_int_div");
+    assertEqInt(10 / -3, -3, "int_div_neg_divisor");
+    assertEqInt(-10 / -3, 3, "both_neg_div");
+
+    //=========================================================================
+    // Test 9: Modulo edge cases
+    //=========================================================================
+    assertEqInt(10 % 3, 1, "mod_normal");
+    assertEqInt(9 % 3, 0, "mod_exact");
+    assertEqInt(1 % 5, 1, "mod_smaller");
+
+    //=========================================================================
+    // Test 10: Comparison edge cases
+    //=========================================================================
+    assertTrue(0 == 0, "zero_eq_zero");
+    assertTrue(-0 == 0, "neg_zero_eq_zero");
+    assertTrue(!(1 == 2), "one_ne_two");
+    assertTrue(-5 < 0, "neg_lt_zero");
+    assertTrue(0 > -5, "zero_gt_neg");
+
+    //=========================================================================
+    // Test 11: Arithmetic with negatives
+    //=========================================================================
+    assertEqInt(-5 + 3, -2, "neg_plus_pos");
+    assertEqInt(3 + -5, -2, "pos_plus_neg");
+    assertEqInt(-5 + -3, -8, "neg_plus_neg");
+    assertEqInt(-5 - 3, -8, "neg_minus_pos");
+    assertEqInt(3 - -5, 8, "pos_minus_neg");
+    assertEqInt(-5 - -3, -2, "neg_minus_neg");
+
+    //=========================================================================
+    // Test 12: Multiplication signs
+    //=========================================================================
+    assertEqInt(3 * 4, 12, "pos_times_pos");
+    assertEqInt(-3 * 4, -12, "neg_times_pos");
+    assertEqInt(3 * -4, -12, "pos_times_neg");
+    assertEqInt(-3 * -4, 12, "neg_times_neg");
+
+    //=========================================================================
+    // Test 13: Order of operations
+    //=========================================================================
+    assertEqInt(2 + 3 * 4, 14, "precedence_mul_first");
+    assertEqInt((2 + 3) * 4, 20, "parens_add_first");
+    assertEqInt(10 - 6 / 2, 7, "precedence_div_first");
+    assertEqInt((10 - 6) / 2, 2, "parens_sub_first");
+
+    //=========================================================================
+    // Test 14: Chained operations
+    //=========================================================================
+    assertEqInt(1 + 2 + 3 + 4 + 5, 15, "chained_add");
+    assertEqInt(100 - 10 - 20 - 30, 40, "chained_sub");
+    assertEqInt(2 * 3 * 4, 24, "chained_mul");
+
+    //=========================================================================
+    // Test 15: Number comparisons
+    //=========================================================================
+    var n1 = 3.14;
+    var n2 = 3.14;
+    var n3 = 2.71;
+    assertTrue(n1 == n2, "num_eq_num");
+    assertTrue(n1 > n3, "num_gt_num");
+    assertTrue(n3 < n1, "num_lt_num");
+    assertTrue(n1 >= n2, "num_ge_eq");
+    assertTrue(n1 != n3, "num_ne_num");
+
+    //=========================================================================
+    // Test 16: Mixed comparisons
+    //=========================================================================
+    assertTrue(5 > 4.9, "int_gt_num");
+    assertTrue(4.9 < 5, "num_lt_int");
+    assertTrue(5 >= 5.0, "int_ge_num");
+    assertTrue(5.0 <= 5, "num_le_int");
+
+    //=========================================================================
+    // Test 17: Very small numbers
+    //=========================================================================
+    var tiny = 0.000001;
+    assertApprox(tiny * 1000000, 1.0, 0.0001, "tiny_scaled");
+    assertApprox(tiny + tiny, 0.000002, 0.0000001, "tiny_doubled");
+
+    //=========================================================================
+    // Test 18: Number formatting in expressions
+    //=========================================================================
+    var expr1 = 1.5 + 2.5;
+    assertApprox(expr1, 4.0, 0.001, "num_add_whole");
+
+    var expr2 = 10.0 / 4.0;
+    assertApprox(expr2, 2.5, 0.001, "num_div_frac");
+
+    //=========================================================================
+    // Test 19: Boolean logic truth tables
+    //=========================================================================
+    assertTrue(true && true, "and_tt");
+    assertTrue(!(true && false), "and_tf");
+    assertTrue(!(false && true), "and_ft");
+    assertTrue(!(false && false), "and_ff");
+
+    assertTrue(true || true, "or_tt");
+    assertTrue(true || false, "or_tf");
+    assertTrue(false || true, "or_ft");
+    assertTrue(!(false || false), "or_ff");
+
+    assertTrue(!false, "not_false");
+    assertTrue(!!true, "not_not_true");
+
+    //=========================================================================
+    // Test 20: Complex boolean expressions
+    //=========================================================================
+    var p = true;
+    var q = false;
+    var r = true;
+
+    assertTrue((p && r) || q, "complex_bool_1");
+    assertTrue(p && (r || q), "complex_bool_2");
+    assertTrue(!(q && !r), "complex_bool_3");
+    assertTrue((p || q) && (r || q), "complex_bool_4");
+
+    report();
+}

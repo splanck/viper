@@ -253,8 +253,8 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
         localTypes_[decl.params[i].name] = paramType;
     }
 
-    // Emit global variable initializations at start of main()
-    if (decl.name == "main" && !globalInitializers_.empty())
+    // Emit global variable initializations at start of start() (Zia entry point)
+    if (decl.name == "start" && !globalInitializers_.empty())
     {
         for (const auto &[name, initValue] : globalInitializers_)
         {

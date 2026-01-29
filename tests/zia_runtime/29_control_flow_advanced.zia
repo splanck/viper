@@ -1,0 +1,345 @@
+module RuntimeTest29;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+// Test: Advanced control flow patterns
+
+//=============================================================================
+// Helper functions
+//=============================================================================
+
+func isEven(n: Integer) -> Boolean {
+    return n % 2 == 0;
+}
+
+func isPrime(n: Integer) -> Boolean {
+    if (n < 2) {
+        return false;
+    }
+    if (n == 2) {
+        return true;
+    }
+    if (n % 2 == 0) {
+        return false;
+    }
+    var i = 3;
+    while (i * i <= n) {
+        if (n % i == 0) {
+            return false;
+        }
+        i = i + 2;
+    }
+    return true;
+}
+
+func fib(n: Integer) -> Integer {
+    if (n <= 1) {
+        return n;
+    }
+    var a = 0;
+    var b = 1;
+    var i = 2;
+    while (i <= n) {
+        var temp = a + b;
+        a = b;
+        b = temp;
+        i = i + 1;
+    }
+    return b;
+}
+
+func processPositive(n: Integer) -> Integer {
+    guard n > 0 else {
+        return -1;
+    }
+    return n * 2;
+}
+
+func validateInput(s: String, n: Integer) -> Boolean {
+    guard s != "" else {
+        return false;
+    }
+    guard n >= 0 else {
+        return false;
+    }
+    guard n <= 100 else {
+        return false;
+    }
+    return true;
+}
+
+func findFirst(list: List[Integer], target: Integer) -> Integer {
+    var idx = 0;
+    while (idx < list.count()) {
+        if (list.get(idx) == target) {
+            return idx;
+        }
+        idx = idx + 1;
+    }
+    return -1;
+}
+
+func start() {
+    //=========================================================================
+    // Test 1: Deeply nested if-else
+    //=========================================================================
+    var x = 15;
+    var result = "";
+    if (x < 10) {
+        if (x < 5) {
+            result = "tiny";
+        } else {
+            result = "small";
+        }
+    } else {
+        if (x < 20) {
+            if (x < 15) {
+                result = "medium-low";
+            } else {
+                result = "medium-high";
+            }
+        } else {
+            result = "large";
+        }
+    }
+    assertEqStr(result, "medium-high", "nested_if_else");
+
+    //=========================================================================
+    // Test 2: Multiple conditions with &&
+    //=========================================================================
+    var a = 5;
+    var b = 10;
+    var c = 15;
+    result = "";
+    if (a < b && b < c) {
+        result = "ascending";
+    }
+    assertEqStr(result, "ascending", "multi_and");
+
+    if (a < b && b > c) {
+        result = "mixed1";
+    } else {
+        result = "not_mixed1";
+    }
+    assertEqStr(result, "not_mixed1", "multi_and_false");
+
+    //=========================================================================
+    // Test 3: Multiple conditions with ||
+    //=========================================================================
+    var val = 7;
+    if (val == 5 || val == 7 || val == 11) {
+        result = "special";
+    } else {
+        result = "normal";
+    }
+    assertEqStr(result, "special", "multi_or");
+
+    val = 8;
+    if (val == 5 || val == 7 || val == 11) {
+        result = "special";
+    } else {
+        result = "normal";
+    }
+    assertEqStr(result, "normal", "multi_or_false");
+
+    //=========================================================================
+    // Test 4: While loop with break
+    //=========================================================================
+    var count = 0;
+    var i = 0;
+    while (i < 100) {
+        if (i == 5) {
+            break;
+        }
+        count = count + 1;
+        i = i + 1;
+    }
+    assertEqInt(count, 5, "while_break");
+
+    //=========================================================================
+    // Test 5: While loop with continue
+    //=========================================================================
+    var sum = 0;
+    i = 0;
+    while (i < 10) {
+        i = i + 1;
+        if (isEven(i)) {
+            continue;
+        }
+        sum = sum + i;  // Only odd numbers
+    }
+    assertEqInt(sum, 25, "while_continue");  // 1+3+5+7+9 = 25
+
+    //=========================================================================
+    // Test 6: Nested loops
+    //=========================================================================
+    var total = 0;
+    i = 0;
+    while (i < 3) {
+        var j = 0;
+        while (j < 3) {
+            total = total + 1;
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    assertEqInt(total, 9, "nested_loops");
+
+    //=========================================================================
+    // Test 7: Nested loops with break (inner only)
+    //=========================================================================
+    total = 0;
+    i = 0;
+    while (i < 3) {
+        var j = 0;
+        while (j < 10) {
+            if (j >= 2) {
+                break;
+            }
+            total = total + 1;
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    assertEqInt(total, 6, "nested_break_inner");
+
+    //=========================================================================
+    // Test 8: For loop basic
+    //=========================================================================
+    sum = 0;
+    for i in 1..5 {
+        sum = sum + i;
+    }
+    assertEqInt(sum, 10, "for_range");  // 1+2+3+4 = 10
+
+    //=========================================================================
+    // Test 9: For loop with break
+    //=========================================================================
+    sum = 0;
+    for i in 1..100 {
+        if (i > 5) {
+            break;
+        }
+        sum = sum + i;
+    }
+    assertEqInt(sum, 15, "for_break");  // 1+2+3+4+5 = 15
+
+    //=========================================================================
+    // Test 10: For loop with continue
+    //=========================================================================
+    sum = 0;
+    for i in 1..11 {
+        if (i % 2 == 0) {
+            continue;
+        }
+        sum = sum + i;
+    }
+    assertEqInt(sum, 25, "for_continue");  // 1+3+5+7+9 = 25
+
+    //=========================================================================
+    // Test 11: For loop over list
+    //=========================================================================
+    var nums: List[Integer] = [10, 20, 30, 40, 50];
+    sum = 0;
+    for n in nums {
+        sum = sum + n;
+    }
+    assertEqInt(sum, 150, "for_list");
+
+    //=========================================================================
+    // Test 12: For loop with index (tuple binding)
+    //=========================================================================
+    var indexed = "";
+    for idx, val in nums {
+        if (idx > 0) {
+            indexed = indexed + ",";
+        }
+        indexed = indexed + toString(idx) + ":" + toString(val);
+    }
+    assertEqStr(indexed, "0:10,1:20,2:30,3:40,4:50", "for_indexed");
+
+    //=========================================================================
+    // Test 13: Match as control flow
+    //=========================================================================
+    var code = 2;
+    var msg = "";
+    match code {
+        1 => { msg = "one"; }
+        2 => { msg = "two"; }
+        3 => { msg = "three"; }
+        _ => { msg = "other"; }
+    }
+    assertEqStr(msg, "two", "match_control");
+
+    //=========================================================================
+    // Test 14: Match with computation in arms
+    //=========================================================================
+    var input = 5;
+    var output = 0;
+    match input {
+        1 => { output = 100; }
+        2 => { output = 200; }
+        n => { output = n * 10; }
+    }
+    assertEqInt(output, 50, "match_compute");
+
+    //=========================================================================
+    // Test 15: Guard statement
+    //=========================================================================
+    assertEqInt(processPositive(5), 10, "guard_pass");
+    assertEqInt(processPositive(-3), -1, "guard_fail");
+    assertEqInt(processPositive(0), -1, "guard_zero");
+
+    //=========================================================================
+    // Test 16: Multiple guards
+    //=========================================================================
+    assertTrue(validateInput("test", 50), "multi_guard_pass");
+    assertTrue(!validateInput("", 50), "multi_guard_fail_1");
+    assertTrue(!validateInput("test", -5), "multi_guard_fail_2");
+    assertTrue(!validateInput("test", 150), "multi_guard_fail_3");
+
+    //=========================================================================
+    // Test 17: Loop with function calls
+    //=========================================================================
+    var primeSum = 0;
+    for i in 2..20 {
+        if (isPrime(i)) {
+            primeSum = primeSum + i;
+        }
+    }
+    assertEqInt(primeSum, 77, "prime_sum");  // 2+3+5+7+11+13+17+19 = 77
+
+    //=========================================================================
+    // Test 18: Fibonacci sequence
+    //=========================================================================
+    assertEqInt(fib(0), 0, "fib_0");
+    assertEqInt(fib(1), 1, "fib_1");
+    assertEqInt(fib(5), 5, "fib_5");
+    assertEqInt(fib(10), 55, "fib_10");
+
+    //=========================================================================
+    // Test 19: Early return patterns
+    //=========================================================================
+    var testList: List[Integer] = [10, 20, 30, 40, 50];
+    assertEqInt(findFirst(testList, 30), 2, "find_first_found");
+    assertEqInt(findFirst(testList, 99), -1, "find_first_not_found");
+
+    //=========================================================================
+    // Test 20: Complex loop termination
+    //=========================================================================
+    var found = false;
+    var searchVal = 0;
+    i = 0;
+    while (i < 100 && !found) {
+        if (i * i > 50) {
+            searchVal = i;
+            found = true;
+        }
+        i = i + 1;
+    }
+    assertEqInt(searchVal, 8, "complex_termination");
+
+    report();
+}

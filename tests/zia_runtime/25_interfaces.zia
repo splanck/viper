@@ -1,0 +1,206 @@
+module RuntimeTest25;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+// Test: Interface definitions and implementations
+
+//=============================================================================
+// Basic interface definition
+//=============================================================================
+
+interface Describable {
+    func describe() -> String;
+}
+
+//=============================================================================
+// Entities implementing interfaces
+//=============================================================================
+
+entity Person implements Describable {
+    expose String name;
+    expose Integer age;
+
+    expose func init(n: String, a: Integer) {
+        name = n;
+        age = a;
+    }
+
+    expose func describe() -> String {
+        return name + " is " + toString(age) + " years old";
+    }
+}
+
+entity Product implements Describable {
+    expose String title;
+    expose Integer price;
+
+    expose func init(t: String, p: Integer) {
+        title = t;
+        price = p;
+    }
+
+    expose func describe() -> String {
+        return title + ": $" + toString(price);
+    }
+}
+
+//=============================================================================
+// Shape interface with multiple methods
+//=============================================================================
+
+interface Shape {
+    func area() -> Integer;
+    func name() -> String;
+}
+
+entity Rectangle implements Shape {
+    expose Integer width;
+    expose Integer height;
+
+    expose func init(w: Integer, h: Integer) {
+        width = w;
+        height = h;
+    }
+
+    expose func area() -> Integer {
+        return width * height;
+    }
+
+    expose func name() -> String {
+        return "Rectangle";
+    }
+}
+
+entity Square implements Shape {
+    expose Integer side;
+
+    expose func init(s: Integer) {
+        side = s;
+    }
+
+    expose func area() -> Integer {
+        return side * side;
+    }
+
+    expose func name() -> String {
+        return "Square";
+    }
+}
+
+//=============================================================================
+// Functions accepting interfaces
+//=============================================================================
+
+func printDescription(d: Describable) -> String {
+    return d.describe();
+}
+
+func getArea(s: Shape) -> Integer {
+    return s.area();
+}
+
+func getName(s: Shape) -> String {
+    return s.name();
+}
+
+func start() {
+    //=========================================================================
+    // Test 1: Basic interface implementation - Person
+    //=========================================================================
+    var person = new Person("Alice", 30);
+    assertEqStr(person.describe(), "Alice is 30 years old", "person_describe");
+
+    //=========================================================================
+    // Test 2: Basic interface implementation - Product
+    //=========================================================================
+    var product = new Product("Widget", 25);
+    assertEqStr(product.describe(), "Widget: $25", "product_describe");
+
+    //=========================================================================
+    // Test 3: Interface as function parameter
+    //=========================================================================
+    assertEqStr(printDescription(person), "Alice is 30 years old", "interface_func_person");
+    assertEqStr(printDescription(product), "Widget: $25", "interface_func_product");
+
+    //=========================================================================
+    // Test 4: Shape interface - Rectangle
+    //=========================================================================
+    var rect = new Rectangle(4, 3);
+    assertEqInt(rect.area(), 12, "rect_area");
+    assertEqStr(rect.name(), "Rectangle", "rect_name");
+
+    //=========================================================================
+    // Test 5: Shape interface - Square
+    //=========================================================================
+    var square = new Square(5);
+    assertEqInt(square.area(), 25, "square_area");
+    assertEqStr(square.name(), "Square", "square_name");
+
+    //=========================================================================
+    // Test 6: Shape as function parameter
+    //=========================================================================
+    assertEqInt(getArea(rect), 12, "shape_func_rect_area");
+    assertEqInt(getArea(square), 25, "shape_func_square_area");
+    assertEqStr(getName(rect), "Rectangle", "shape_func_rect_name");
+    assertEqStr(getName(square), "Square", "shape_func_square_name");
+
+    //=========================================================================
+    // Test 7: Interface variable assignment
+    //=========================================================================
+    var describable: Describable = person;
+    assertEqStr(describable.describe(), "Alice is 30 years old", "interface_var_person");
+
+    describable = product;
+    assertEqStr(describable.describe(), "Widget: $25", "interface_var_product");
+
+    //=========================================================================
+    // Test 8: Shape interface variable
+    //=========================================================================
+    var shape: Shape = rect;
+    assertEqInt(shape.area(), 12, "shape_var_rect_area");
+
+    shape = square;
+    assertEqInt(shape.area(), 25, "shape_var_square_area");
+
+    //=========================================================================
+    // Test 9: Multiple instances through interface
+    //=========================================================================
+    var d1: Describable = new Person("Bob", 25);
+    var d2: Describable = new Person("Carol", 35);
+    var d3: Describable = new Product("Gadget", 99);
+
+    assertEqStr(d1.describe(), "Bob is 25 years old", "multi_d1");
+    assertEqStr(d2.describe(), "Carol is 35 years old", "multi_d2");
+    assertEqStr(d3.describe(), "Gadget: $99", "multi_d3");
+
+    //=========================================================================
+    // Test 10: Create multiple shapes
+    //=========================================================================
+    var r1 = new Rectangle(2, 3);
+    var r2 = new Rectangle(5, 4);
+    var s1 = new Square(3);
+
+    assertEqInt(r1.area(), 6, "multi_rect_1");
+    assertEqInt(r2.area(), 20, "multi_rect_2");
+    assertEqInt(s1.area(), 9, "multi_square_1");
+
+    //=========================================================================
+    // Test 11: Total area calculation
+    //=========================================================================
+    var totalArea = r1.area() + r2.area() + s1.area();
+    assertEqInt(totalArea, 35, "total_area");
+
+    //=========================================================================
+    // Test 12: Interface through variable
+    //=========================================================================
+    var s2: Shape = new Rectangle(2, 2);
+    var s3: Shape = new Square(3);
+    var area2 = s2.area();
+    var area3 = s3.area();
+    assertEqInt(area2, 4, "shape_var_area_2");
+    assertEqInt(area3, 9, "shape_var_area_3");
+
+    report();
+}

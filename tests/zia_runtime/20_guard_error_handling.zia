@@ -1,0 +1,197 @@
+module RuntimeTest20;
+
+bind "./_support";
+
+// EXPECT_OUT: RESULT: ok
+
+// Test: Guard statements and error handling patterns
+
+// Simple Result-like entity for error handling
+entity Result {
+    expose Boolean ok;
+    expose Integer value;
+    expose String error;
+
+    expose func init(isOk: Boolean, val: Integer, err: String) {
+        ok = isOk;
+        value = val;
+        error = err;
+    }
+}
+
+func success(val: Integer) -> Result {
+    return new Result(true, val, "");
+}
+
+func failure(msg: String) -> Result {
+    return new Result(false, 0, msg);
+}
+
+// Function using guard for validation
+func divideGuard(a: Integer, b: Integer) -> Result {
+    guard (b != 0) else {
+        return failure("division by zero");
+    }
+    return success(a / b);
+}
+
+// Function with multiple guards
+func processValue(x: Integer) -> Result {
+    guard (x >= 0) else {
+        return failure("value must be non-negative");
+    }
+    guard (x <= 100) else {
+        return failure("value must be <= 100");
+    }
+    return success(x * 2);
+}
+
+// Guard with complex condition
+func validateRange(min: Integer, max: Integer, value: Integer) -> Result {
+    guard (min <= max) else {
+        return failure("invalid range: min > max");
+    }
+    guard (value >= min && value <= max) else {
+        return failure("value out of range");
+    }
+    return success(value);
+}
+
+// Using optionals for nullable values
+func findPositive(a: Integer, b: Integer, c: Integer) -> Integer? {
+    if (a > 0) {
+        return a;
+    }
+    if (b > 0) {
+        return b;
+    }
+    if (c > 0) {
+        return c;
+    }
+    return null;
+}
+
+// Entity with optional field
+entity Container {
+    expose Integer? storedValue;
+
+    expose func init() {
+        storedValue = null;
+    }
+
+    expose func store(v: Integer) {
+        storedValue = v;
+    }
+
+    expose func retrieve() -> Integer {
+        return storedValue ?? -1;
+    }
+
+    expose func hasValue() -> Boolean {
+        return storedValue != null;
+    }
+}
+
+// Chain of operations that can fail
+func pipeline(input: Integer) -> Result {
+    var r1 = processValue(input);
+    guard (r1.ok) else {
+        return r1;
+    }
+
+    var r2 = divideGuard(r1.value, 2);
+    guard (r2.ok) else {
+        return r2;
+    }
+
+    return success(r2.value + 10);
+}
+
+func start() {
+    // Test 1: Basic guard - success case
+    var r1 = divideGuard(10, 2);
+    assertTrue(r1.ok, "guard_success_ok");
+    assertEqInt(r1.value, 5, "guard_success_value");
+
+    // Test 2: Basic guard - failure case
+    var r2 = divideGuard(10, 0);
+    assertTrue(!r2.ok, "guard_fail_ok");
+    assertEqStr(r2.error, "division by zero", "guard_fail_error");
+
+    // Test 3: Multiple guards - all pass
+    var r3 = processValue(50);
+    assertTrue(r3.ok, "multi_guard_pass");
+    assertEqInt(r3.value, 100, "multi_guard_value");
+
+    // Test 4: Multiple guards - first fails
+    var r4 = processValue(-5);
+    assertTrue(!r4.ok, "multi_guard_fail1");
+    assertEqStr(r4.error, "value must be non-negative", "multi_guard_err1");
+
+    // Test 5: Multiple guards - second fails
+    var r5 = processValue(150);
+    assertTrue(!r5.ok, "multi_guard_fail2");
+    assertEqStr(r5.error, "value must be <= 100", "multi_guard_err2");
+
+    // Test 6: Complex condition in guard
+    var r6 = validateRange(10, 20, 15);
+    assertTrue(r6.ok, "complex_guard_pass");
+
+    var r7 = validateRange(20, 10, 15);
+    assertTrue(!r7.ok, "complex_guard_invalid_range");
+
+    var r8 = validateRange(10, 20, 25);
+    assertTrue(!r8.ok, "complex_guard_out_of_range");
+
+    // Test 7: Optional with null coalescing
+    var opt1: Integer? = null;
+    assertEqInt(opt1 ?? 42, 42, "null_coalesce_null");
+
+    var opt2: Integer? = 10;
+    assertEqInt(opt2 ?? 42, 10, "null_coalesce_value");
+
+    // Test 8: Function returning optional
+    var found1 = findPositive(-1, -2, 5);
+    assertEqInt(found1 ?? -1, 5, "find_positive_found");
+
+    var found2 = findPositive(-1, -2, -3);
+    assertEqInt(found2 ?? -1, -1, "find_positive_none");
+
+    // Test 9: Entity with optional field
+    var container = new Container();
+    assertTrue(!container.hasValue(), "container_init_empty");
+    assertEqInt(container.retrieve(), -1, "container_default");
+
+    container.store(99);
+    assertTrue(container.hasValue(), "container_has_value");
+    assertEqInt(container.retrieve(), 99, "container_stored");
+
+    // Test 10: Chained operations with guard
+    var p1 = pipeline(25);
+    assertTrue(p1.ok, "pipeline_success");
+    assertEqInt(p1.value, 35, "pipeline_value");
+
+    var p2 = pipeline(-5);
+    assertTrue(!p2.ok, "pipeline_fail_early");
+
+    var p3 = pipeline(150);
+    assertTrue(!p3.ok, "pipeline_fail_validation");
+
+    // Test 11: Match on optional
+    var maybeVal: Integer? = 42;
+    var matched = 0;
+    match maybeVal {
+        null => { matched = -1; }
+        _ => { matched = 1; }
+    }
+    assertEqInt(matched, 1, "match_optional_some");
+
+    var noVal: Integer? = null;
+    match noVal {
+        null => { matched = -1; }
+        _ => { matched = 1; }
+    }
+    assertEqInt(matched, -1, "match_optional_none");
+
+    report();
+}

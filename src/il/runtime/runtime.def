@@ -124,6 +124,7 @@ RT_FUNC(BoxType,    rt_box_type,    "Viper.Box.Type",    "i64(obj)")
 RT_FUNC(BoxEqI64,   rt_box_eq_i64,  "Viper.Box.EqI64",   "i64(obj,i64)")
 RT_FUNC(BoxEqF64,   rt_box_eq_f64,  "Viper.Box.EqF64",   "i64(obj,f64)")
 RT_FUNC(BoxEqStr,   rt_box_eq_str,  "Viper.Box.EqStr",   "i64(obj,str)")
+RT_FUNC(BoxValueType, rt_box_value_type, "Viper.Box.ValueType", "obj(i64)")
 
 //=============================================================================
 // COLLECTIONS - BYTES

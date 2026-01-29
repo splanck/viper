@@ -191,3 +191,11 @@ int64_t rt_box_eq_str(void *box, rt_string val)
         return 0;
     return rt_str_eq(b->data.str_val, val);
 }
+
+void *rt_box_value_type(int64_t size)
+{
+    if (size <= 0)
+        return NULL;
+    // Allocate raw memory for value type - the compiler will copy fields
+    return rt_heap_alloc(RT_HEAP_OBJECT, RT_ELEM_NONE, 1, (size_t)size, (size_t)size);
+}
