@@ -249,7 +249,13 @@ class SoundDevice : public Device {
 
     u8 volume_{255}; // Max volume
 
-    // DMA buffers
+    // DMA buffers (using helper from virtio.hpp)
+    DmaBuffer cmd_dma_;
+    DmaBuffer resp_dma_;
+    DmaBuffer pcm_dma_;
+    DmaBuffer status_dma_;
+
+    // Convenience pointers for existing code
     u8 *cmd_buf_{nullptr};
     u64 cmd_buf_phys_{0};
     u8 *resp_buf_{nullptr};

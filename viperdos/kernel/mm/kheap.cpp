@@ -8,6 +8,7 @@
 #include "../arch/aarch64/cpu.hpp"
 #include "../console/serial.hpp"
 #include "../include/constants.hpp"
+#include "../lib/mem.hpp"
 #include "../lib/spinlock.hpp"
 #include "pmm.hpp"
 
@@ -168,6 +169,9 @@ u64 free_block_count = 0;
 // Spinlock for thread safety
 Spinlock heap_lock;
 
+// Forward declarations
+void update_legacy_free_list_head();
+
 /**
  * @brief Get the size class index for a given block size.
  */
@@ -264,9 +268,7 @@ bool expand_heap(u64 needed) {
         total_free += expansion_size;
         free_block_count++;
 
-        // Update legacy pointer
-        if (free_list == nullptr)
-            free_list = new_block;
+        update_legacy_free_list_head();
 
         return true;
     } else {
@@ -301,9 +303,7 @@ bool expand_heap(u64 needed) {
         total_free += expansion_size;
         free_block_count++;
 
-        // Update legacy pointer
-        if (free_list == nullptr)
-            free_list = new_block;
+        update_legacy_free_list_head();
 
         return true;
     }
@@ -347,14 +347,7 @@ void add_to_free_list(FreeBlock *block) {
     free_list_counts[class_idx]++;
     free_block_count++;
 
-    // Update legacy free_list pointer to first non-empty list
-    free_list = nullptr;
-    for (usize i = 0; i < NUM_SIZE_CLASSES; i++) {
-        if (free_lists[i] != nullptr) {
-            free_list = free_lists[i];
-            break;
-        }
-    }
+    update_legacy_free_list_head();
 }
 
 /**
@@ -377,50 +370,12 @@ void remove_from_free_list(FreeBlock *block) {
 }
 
 /**
- * @brief Coalesce adjacent free blocks across all size classes.
- * This is called after kfree to merge adjacent blocks.
+ * @brief Update the legacy free_list pointer to point to the first non-empty list.
+ *
+ * This helper reduces code duplication (Issue #10) by consolidating the
+ * repeated pattern of scanning size classes to find the first free block.
  */
-void coalesce() {
-    // For each size class, check if blocks can be merged
-    // Since blocks are sorted by address within each class,
-    // we also need to check across classes for adjacent blocks
-
-    // Build a temporary merged list of all free blocks sorted by address
-    // This is O(n) but coalescing is called infrequently
-
-    // Simple approach: for the just-freed block, check its neighbors
-    // More sophisticated: periodic full coalesce
-
-    // For now, do per-class coalescing which handles most cases
-    for (usize c = 0; c < NUM_SIZE_CLASSES; c++) {
-        FreeBlock *current = free_lists[c];
-        while (current != nullptr && current->next != nullptr) {
-            // Check if current and next are adjacent in memory
-            u8 *current_end = reinterpret_cast<u8 *>(current) + current->header.size();
-            if (current_end == reinterpret_cast<u8 *>(current->next)) {
-                // Merge current with next
-                u64 combined_size = current->header.size() + current->next->header.size();
-                FreeBlock *absorbed = current->next;
-
-                // Remove current from this size class
-                remove_from_free_list(current);
-                // Remove absorbed from this size class
-                remove_from_free_list(absorbed);
-
-                // Update size and re-add to appropriate class
-                current->header.set_size(combined_size);
-                current->header.set_free();
-                add_to_free_list(current);
-
-                // Restart coalescing since lists changed
-                current = free_lists[c];
-            } else {
-                current = current->next;
-            }
-        }
-    }
-
-    // Update legacy free_list pointer
+void update_legacy_free_list_head() {
     free_list = nullptr;
     for (usize i = 0; i < NUM_SIZE_CLASSES; i++) {
         if (free_lists[i] != nullptr) {
@@ -428,6 +383,131 @@ void coalesce() {
             break;
         }
     }
+}
+
+/**
+ * @brief Coalesce adjacent free blocks across all size classes.
+ *
+ * This is called after kfree to merge adjacent blocks. Uses an O(n) single-pass
+ * algorithm instead of the naive O(n²) restart approach:
+ * 1. Collect all free blocks into a temporary array
+ * 2. Sort by address (insertion sort for small n, already mostly sorted)
+ * 3. Single pass to merge adjacent blocks
+ * 4. Rebuild segregated free lists
+ *
+ * @note For heaps with >256 free blocks, falls back to simpler per-class
+ *       coalescing to avoid stack overflow.
+ */
+void coalesce() {
+    // Count total blocks
+    u64 total_blocks = 0;
+    for (usize c = 0; c < NUM_SIZE_CLASSES; c++) {
+        total_blocks += free_list_counts[c];
+    }
+
+    if (total_blocks <= 1) {
+        return; // Nothing to coalesce
+    }
+
+    // Use fixed-size stack array (can't allocate dynamically in heap allocator!)
+    constexpr usize MAX_COALESCE_BLOCKS = 256;
+
+    if (total_blocks > MAX_COALESCE_BLOCKS) {
+        // Fallback: simple per-class coalescing with do-while instead of restart
+        for (usize c = 0; c < NUM_SIZE_CLASSES; c++) {
+            bool merged;
+            do {
+                merged = false;
+                FreeBlock *current = free_lists[c];
+                while (current != nullptr && current->next != nullptr) {
+                    u8 *current_end = reinterpret_cast<u8 *>(current) + current->header.size();
+                    if (current_end == reinterpret_cast<u8 *>(current->next)) {
+                        u64 combined_size = current->header.size() + current->next->header.size();
+                        FreeBlock *absorbed = current->next;
+                        remove_from_free_list(current);
+                        remove_from_free_list(absorbed);
+                        current->header.set_size(combined_size);
+                        current->header.set_free();
+                        add_to_free_list(current);
+                        merged = true;
+                        break; // Restart this class only
+                    }
+                    current = current->next;
+                }
+            } while (merged);
+        }
+        goto update_legacy;
+    }
+
+    {
+        // Efficient O(n) algorithm for normal-sized heaps
+        FreeBlock *blocks[MAX_COALESCE_BLOCKS];
+        usize block_count = 0;
+
+        // Collect all blocks from all size classes
+        for (usize c = 0; c < NUM_SIZE_CLASSES; c++) {
+            FreeBlock *b = free_lists[c];
+            while (b != nullptr && block_count < MAX_COALESCE_BLOCKS) {
+                blocks[block_count++] = b;
+                b = b->next;
+            }
+        }
+
+        // Sort by address using insertion sort (fast for small n, cache-friendly)
+        for (usize i = 1; i < block_count; i++) {
+            FreeBlock *key = blocks[i];
+            usize j = i;
+            while (j > 0 && blocks[j - 1] > key) {
+                blocks[j] = blocks[j - 1];
+                j--;
+            }
+            blocks[j] = key;
+        }
+
+        // Clear all free lists before rebuilding
+        for (usize c = 0; c < NUM_SIZE_CLASSES; c++) {
+            free_lists[c] = nullptr;
+            free_list_counts[c] = 0;
+        }
+        free_block_count = 0;
+        total_free = 0;
+
+        // Single pass: merge adjacent blocks in-place
+        usize write_idx = 0;
+        for (usize i = 0; i < block_count; i++) {
+            if (write_idx == 0) {
+                blocks[write_idx++] = blocks[i];
+            } else {
+                FreeBlock *prev = blocks[write_idx - 1];
+                u8 *prev_end = reinterpret_cast<u8 *>(prev) + prev->header.size();
+
+                if (prev_end == reinterpret_cast<u8 *>(blocks[i])) {
+                    // Merge: extend prev to include blocks[i]
+                    u64 combined = prev->header.size() + blocks[i]->header.size();
+                    prev->header.set_size(combined);
+                    // blocks[i] is absorbed, don't increment write_idx
+                } else {
+                    // Not adjacent, keep blocks[i]
+                    blocks[write_idx++] = blocks[i];
+                }
+            }
+        }
+
+        // Rebuild segregated free lists from merged blocks
+        for (usize i = 0; i < write_idx; i++) {
+            FreeBlock *b = blocks[i];
+            b->header.set_free();
+            usize class_idx = get_size_class(b->header.size());
+            b->next = free_lists[class_idx];
+            free_lists[class_idx] = b;
+            free_list_counts[class_idx]++;
+            total_free += b->header.size();
+            free_block_count++;
+        }
+    }
+
+update_legacy:
+    update_legacy_free_list_head();
 }
 } // namespace
 
@@ -635,14 +715,7 @@ found:
     free_block_count--;
     total_free -= block_size;
 
-    // Update legacy free_list pointer
-    free_list = nullptr;
-    for (usize i = 0; i < NUM_SIZE_CLASSES; i++) {
-        if (free_lists[i] != nullptr) {
-            free_list = free_lists[i];
-            break;
-        }
-    }
+    update_legacy_free_list_head();
 
     // Split if remaining space is large enough for a free block
     if (remaining >= MIN_BLOCK_SIZE) {
@@ -672,10 +745,7 @@ found:
 void *kzalloc(u64 size) {
     void *ptr = kmalloc(size);
     if (ptr) {
-        u8 *p = static_cast<u8 *>(ptr);
-        for (u64 i = 0; i < size; i++) {
-            p[i] = 0;
-        }
+        lib::memset(ptr, 0, size);
     }
     return ptr;
 }
@@ -713,11 +783,7 @@ void *krealloc(void *ptr, u64 new_size) {
     }
 
     // Copy old data
-    u8 *src = static_cast<u8 *>(ptr);
-    u8 *dst = static_cast<u8 *>(new_ptr);
-    for (u64 i = 0; i < old_size; i++) {
-        dst[i] = src[i];
-    }
+    lib::memcpy(new_ptr, ptr, old_size);
 
     // Free old block (kfree handles its own locking)
     kfree(ptr);

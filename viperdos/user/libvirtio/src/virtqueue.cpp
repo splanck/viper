@@ -67,6 +67,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "../include/virtqueue.hpp"
+#include <string.h>
 
 namespace virtio {
 
@@ -131,9 +132,7 @@ bool Virtqueue::init(Device *dev, u32 queue_idx, u32 queue_size) {
 
         // Zero entire region
         u8 *vring_mem = reinterpret_cast<u8 *>(desc_virt_);
-        for (usize i = 0; i < alloc_size; i++) {
-            vring_mem[i] = 0;
-        }
+        memset(vring_mem, 0, alloc_size);
 
         // Set up pointers within the contiguous region
         desc_ = reinterpret_cast<VringDesc *>(vring_mem);
@@ -172,9 +171,7 @@ bool Virtqueue::init(Device *dev, u32 queue_idx, u32 queue_size) {
         desc_ = reinterpret_cast<VringDesc *>(desc_virt_);
 
         // Zero descriptor table
-        for (usize i = 0; i < desc_alloc; i++) {
-            reinterpret_cast<u8 *>(desc_)[i] = 0;
-        }
+        memset(desc_, 0, desc_alloc);
 
         // Allocate available ring
         usize avail_bytes = sizeof(VringAvail) + size_ * sizeof(u16) + sizeof(u16);
@@ -190,9 +187,7 @@ bool Virtqueue::init(Device *dev, u32 queue_idx, u32 queue_size) {
         avail_ = reinterpret_cast<VringAvail *>(avail_virt_);
 
         // Zero available ring
-        for (usize i = 0; i < avail_alloc; i++) {
-            reinterpret_cast<u8 *>(avail_)[i] = 0;
-        }
+        memset(avail_, 0, avail_alloc);
 
         // Allocate used ring
         usize used_bytes = sizeof(VringUsed) + size_ * sizeof(VringUsedElem) + sizeof(u16);
@@ -209,9 +204,7 @@ bool Virtqueue::init(Device *dev, u32 queue_idx, u32 queue_size) {
         used_ = reinterpret_cast<VringUsed *>(used_virt_);
 
         // Zero used ring
-        for (usize i = 0; i < used_alloc; i++) {
-            reinterpret_cast<u8 *>(used_)[i] = 0;
-        }
+        memset(used_, 0, used_alloc);
 
         // Set queue size
         dev->write32(reg::QUEUE_NUM, size_);

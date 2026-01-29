@@ -17,7 +17,11 @@
 #include "vma.hpp"
 #include "../console/serial.hpp"
 #include "../fs/viperfs/viperfs.hpp"
+#include "../include/constants.hpp"
+#include "../lib/mem.hpp"
 #include "pmm.hpp"
+
+namespace kc = kernel::constants;
 
 namespace mm {
 
@@ -385,7 +389,7 @@ const Vma *VmaList::find(u64 addr) const {
 
 Vma *VmaList::add(u64 start, u64 end, u32 prot, VmaType type) {
     // Validate alignment (no lock needed for validation)
-    if ((start & 0xFFF) != 0 || (end & 0xFFF) != 0) {
+    if ((start & kc::page::MASK) != 0 || (end & kc::page::MASK) != 0) {
         serial::puts("[vma] ERROR: Addresses must be page-aligned\n");
         return nullptr;
     }
@@ -531,7 +535,7 @@ FaultResult handle_demand_fault(VmaList *vma_list,
     }
 
     // Page-align the fault address
-    u64 page_addr = fault_addr & ~0xFFFULL;
+    u64 page_addr = fault_addr & kc::page::ALIGN_MASK;
 
     // Acquire VMA lock for the entire lookup phase
     u64 saved_daif = vma_list->acquire_lock();
@@ -547,12 +551,24 @@ FaultResult handle_demand_fault(VmaList *vma_list,
                 // Stack growth: allow faults within MAX_STACK_GROW_PAGES of the stack bottom
                 // This enables multi-page stack growth for large local allocations
                 constexpr u64 MAX_STACK_GROW_PAGES = 16; // Grow up to 64KB at a time
-                constexpr u64 MAX_STACK_GROW = MAX_STACK_GROW_PAGES * 4096;
+                constexpr u64 MAX_STACK_GROW = MAX_STACK_GROW_PAGES * kc::page::SIZE;
 
                 if (fault_addr >= v->start - MAX_STACK_GROW && fault_addr < v->start) {
                     // Calculate how many pages we need to grow
                     u64 new_start = page_addr;
-                    u64 pages_to_grow = (v->start - new_start) / 4096;
+
+                    // Issue #24 fix: Check for underflow/invalid address
+                    // User stack should not grow below 4KB to avoid NULL page
+                    constexpr u64 MIN_STACK_ADDRESS = 0x1000;
+                    if (new_start < MIN_STACK_ADDRESS) {
+                        vma_list->release_lock(saved_daif);
+                        serial::puts("[vma] ERROR: Stack growth underflow (addr ");
+                        serial::put_hex(new_start);
+                        serial::puts(" < min)\n");
+                        return FaultResult::UNHANDLED;
+                    }
+
+                    u64 pages_to_grow = (v->start - new_start) / kc::page::SIZE;
 
                     // Check stack size limit (vma->end is fixed stack top, vma->start grows down)
                     u64 new_stack_size = v->end - new_start;
@@ -583,7 +599,7 @@ FaultResult handle_demand_fault(VmaList *vma_list,
                     vma_list->release_lock(saved_daif);
 
                     // Allocate and map all new stack pages (outside lock)
-                    for (u64 addr = new_start; addr < old_start; addr += 4096) {
+                    for (u64 addr = new_start; addr < old_start; addr += kc::page::SIZE) {
                         u64 phys = pmm::alloc_page();
                         if (phys == 0) {
                             serial::puts("[vma] ERROR: Failed to allocate stack page\n");
@@ -592,9 +608,7 @@ FaultResult handle_demand_fault(VmaList *vma_list,
 
                         // Zero the page (convert physical to virtual address)
                         u8 *ptr = reinterpret_cast<u8 *>(pmm::phys_to_virt(phys));
-                        for (usize i = 0; i < 4096; i++) {
-                            ptr[i] = 0;
-                        }
+                        lib::memset(ptr, 0, kc::page::SIZE);
 
                         if (!map_callback(addr, phys, stack_prot)) {
                             pmm::free_page(phys);
@@ -647,9 +661,7 @@ FaultResult handle_demand_fault(VmaList *vma_list,
         case VmaType::ANONYMOUS:
         case VmaType::STACK:
             // Zero-fill anonymous and stack pages
-            for (usize i = 0; i < 4096; i++) {
-                ptr[i] = 0;
-            }
+            lib::memset(ptr, 0, kc::page::SIZE);
             break;
 
         case VmaType::FILE: {
@@ -665,12 +677,10 @@ FaultResult handle_demand_fault(VmaList *vma_list,
                 fs::viperfs::Inode *inode = vfs.read_inode(file_inode_copy);
                 if (inode) {
                     // Zero the page first (in case file is shorter than page)
-                    for (usize i = 0; i < 4096; i++) {
-                        ptr[i] = 0;
-                    }
+                    lib::memset(ptr, 0, kc::page::SIZE);
 
                     // Read file data into the page
-                    i64 bytes_read = vfs.read_data(inode, file_read_offset, ptr, 4096);
+                    i64 bytes_read = vfs.read_data(inode, file_read_offset, ptr, kc::page::SIZE);
                     vfs.release_inode(inode);
 
                     if (bytes_read >= 0) {
@@ -688,9 +698,7 @@ FaultResult handle_demand_fault(VmaList *vma_list,
 
             // Fall back to zero-fill if read failed
             if (!read_ok) {
-                for (usize i = 0; i < 4096; i++) {
-                    ptr[i] = 0;
-                }
+                lib::memset(ptr, 0, kc::page::SIZE);
             }
             break;
         }
@@ -729,7 +737,7 @@ FaultResult handle_demand_fault(VmaList *vma_list,
 
             u64 prefaulted = 0;
             for (u64 i = 1; i <= PREFAULT_PAGES; i++) {
-                u64 prefault_addr = page_addr + (i * 4096);
+                u64 prefault_addr = page_addr + (i * kc::page::SIZE);
                 if (prefault_addr >= vma_end) {
                     break; // Beyond VMA bounds
                 }
@@ -742,9 +750,7 @@ FaultResult handle_demand_fault(VmaList *vma_list,
 
                 // Zero the page
                 u8 *pf_ptr = reinterpret_cast<u8 *>(pmm::phys_to_virt(pf_phys));
-                for (usize j = 0; j < 4096; j++) {
-                    pf_ptr[j] = 0;
-                }
+                lib::memset(pf_ptr, 0, kc::page::SIZE);
 
                 if (!map_callback(prefault_addr, pf_phys, prefault_prot)) {
                     // Page might already be mapped or mapping failed

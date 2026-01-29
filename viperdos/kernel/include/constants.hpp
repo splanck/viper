@@ -150,8 +150,9 @@ constexpr u64 FWCFG_BASE = 0x09020000;
 
 // VirtIO MMIO region
 constexpr u64 VIRTIO_MMIO_BASE = 0x0a000000;
-constexpr u64 VIRTIO_DEVICE_STRIDE = 0x200; // Spacing between devices
-constexpr u32 VIRTIO_IRQ_BASE = 48;         // IRQs 48-79 for devices
+constexpr u64 VIRTIO_MMIO_END = 0x0a004000;  // End of scan range
+constexpr u64 VIRTIO_DEVICE_STRIDE = 0x200;  // Spacing between devices
+constexpr u32 VIRTIO_IRQ_BASE = 48;          // IRQs 48-79 for devices
 constexpr u32 VIRTIO_MAX_DEVICES = 32;
 
 // RTC (PL031)
@@ -180,6 +181,9 @@ constexpr u64 SHIFT = 12;
 
 /// Page offset mask (SIZE - 1)
 constexpr u64 MASK = SIZE - 1;
+
+/// Page alignment mask (for clearing offset bits)
+constexpr u64 ALIGN_MASK = ~MASK;
 
 /// 2MB block size (large page)
 constexpr u64 BLOCK_2MB = 2 * 1024 * 1024;
@@ -676,6 +680,9 @@ constexpr u32 RX_BUFFER_SIZE = 2048;
 /// Maximum Ethernet frame size (1500 + headers)
 constexpr u32 FRAME_MAX_SIZE = 1518;
 
+/// Maximum Ethernet frame payload (without FCS)
+constexpr u32 ETH_FRAME_MAX = 1514;
+
 /// Maximum IP packet payload
 constexpr u32 IP_PACKET_MAX = 1500;
 
@@ -753,6 +760,9 @@ constexpr u32 CONNECT_RETRY_COUNT = 5;
 
 /// Default IP TTL
 constexpr u8 IP_TTL_DEFAULT = 64;
+
+/// Default MAC address (QEMU default: 52:54:00:12:34:56)
+constexpr u8 DEFAULT_MAC[6] = {0x52, 0x54, 0x00, 0x12, 0x34, 0x56};
 
 } // namespace net
 

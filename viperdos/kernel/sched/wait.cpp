@@ -11,8 +11,27 @@
 /**
  * @file wait.cpp
  * @brief Wait queue implementation.
+ *
+ * ## Performance Notes
+ *
+ * The check_wait_timeouts() function currently uses O(n) scanning through
+ * all tasks to find expired timeouts. This is adequate for the current
+ * MAX_TASKS (256) but could be improved with a min-heap for timeouts.
+ *
+ * Optimization: We track the earliest timeout expiry to skip the scan entirely
+ * when no timeouts are pending or none are due yet.
+ *
+ * @todo Consider adding a dedicated timeout heap using the existing TaskHeap
+ *       infrastructure (would require a second heap_index in Task struct).
  */
 namespace sched {
+
+/// @brief Number of tasks currently waiting with a timeout.
+static u32 timeout_count = 0;
+
+/// @brief Earliest timeout expiry tick (minimum of all wait_timeout values).
+///        0 means no timeouts are pending.
+static u64 earliest_timeout = 0;
 
 task::Task *wait_wake_one(WaitQueue *wq) {
     if (!wq || !wq->head)
@@ -54,10 +73,12 @@ u32 wait_wake_all(WaitQueue *wq) {
         t->prev = nullptr;
         t->wait_channel = nullptr;
 
-        // Set to ready and enqueue
-        t->state = task::TaskState::Ready;
-        scheduler::enqueue(t);
-        count++;
+        // Only wake tasks that are actually blocked (avoid double-enqueue)
+        if (t->state == task::TaskState::Blocked) {
+            t->state = task::TaskState::Ready;
+            scheduler::enqueue(t);
+            count++;
+        }
     }
 
     wq->tail = nullptr;
@@ -72,42 +93,72 @@ void wait_enqueue_timeout(WaitQueue *wq, task::Task *t, u64 timeout_ticks) {
 
     // Calculate absolute timeout tick
     u64 current_tick = timer::get_ticks();
-    t->wait_timeout = (timeout_ticks > 0) ? (current_tick + timeout_ticks) : 0;
+    u64 abs_timeout = (timeout_ticks > 0) ? (current_tick + timeout_ticks) : 0;
+    t->wait_timeout = abs_timeout;
+
+    // Track timeout statistics for optimization
+    if (abs_timeout > 0) {
+        timeout_count++;
+        if (earliest_timeout == 0 || abs_timeout < earliest_timeout) {
+            earliest_timeout = abs_timeout;
+        }
+    }
 
     // Use regular priority-ordered enqueue
     wait_enqueue(wq, t);
 }
 
 u32 check_wait_timeouts(u64 current_tick) {
-    u32 woken = 0;
+    // Fast path: no timeouts pending or none due yet
+    if (timeout_count == 0) {
+        return 0;
+    }
+    if (earliest_timeout > 0 && current_tick < earliest_timeout) {
+        return 0; // No timeout is due yet
+    }
 
-    // Iterate through all tasks checking for timeouts
-    // We need access to the task table - this is a bit invasive
-    // For now, we'll use get_by_id to iterate, but ideally we'd
-    // have a dedicated timeout list
+    u32 woken = 0;
+    u64 new_earliest = 0; // Track new minimum for next call
+
+    // Scan all tasks for expired timeouts
+    // TODO: Replace with min-heap for O(log n) operations
     for (u32 i = 0; i < task::MAX_TASKS; i++) {
         task::Task *t = task::get_by_id(i);
         if (!t)
             continue;
 
-        if (t->state == task::TaskState::Blocked && t->wait_timeout != 0 &&
-            t->wait_timeout != static_cast<u64>(-1) && current_tick >= t->wait_timeout) {
+        // Skip tasks without timeouts or already marked as timed out
+        if (t->wait_timeout == 0 || t->wait_timeout == static_cast<u64>(-1))
+            continue;
+
+        if (t->state == task::TaskState::Blocked && current_tick >= t->wait_timeout) {
             // Timeout expired - remove from wait queue and wake
             if (t->wait_channel) {
                 WaitQueue *wq = reinterpret_cast<WaitQueue *>(t->wait_channel);
                 wait_dequeue(wq, t);
             }
 
-            // Mark as timed out
+            // Mark as timed out and decrement counter
             t->wait_timeout = static_cast<u64>(-1);
             t->wait_channel = nullptr;
+            if (timeout_count > 0) {
+                timeout_count--;
+            }
 
             // Wake the task
             t->state = task::TaskState::Ready;
             scheduler::enqueue(t);
             woken++;
+        } else if (t->state == task::TaskState::Blocked) {
+            // Task still waiting - track for new earliest
+            if (new_earliest == 0 || t->wait_timeout < new_earliest) {
+                new_earliest = t->wait_timeout;
+            }
         }
     }
+
+    // Update earliest timeout for next call
+    earliest_timeout = new_earliest;
 
     return woken;
 }

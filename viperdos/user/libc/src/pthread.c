@@ -195,6 +195,26 @@ int pthread_join(pthread_t thread, void **retval) {
 }
 
 void pthread_exit(void *retval) {
+    /* Invoke TLS key destructors (Issue #79 fix)
+     * POSIX requires destructors to be called up to PTHREAD_DESTRUCTOR_ITERATIONS times
+     * until all non-NULL TLS values are cleared or the limit is reached.
+     */
+    tcb_t *tcb = get_tcb();
+    void **tls = tcb ? tcb->tls_values : main_tls_values;
+    for (int iter = 0; iter < 4; iter++) { /* PTHREAD_DESTRUCTOR_ITERATIONS = 4 */
+        int any_called = 0;
+        for (int i = 0; i < TLS_KEYS_MAX; i++) {
+            if (tls_key_used[i] && tls_destructors[i] && tls[i]) {
+                void *val = tls[i];
+                tls[i] = NULL; /* Clear before calling destructor */
+                tls_destructors[i](val);
+                any_called = 1;
+            }
+        }
+        if (!any_called)
+            break;
+    }
+
     __syscall1(SYS_THREAD_EXIT, (long)retval);
     /* If this is the main thread and SYS_THREAD_EXIT returns (shouldn't),
      * fall back to process exit */

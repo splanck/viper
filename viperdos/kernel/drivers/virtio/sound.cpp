@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 #include "sound.hpp"
 #include "../../console/serial.hpp"
+#include "../../lib/mem.hpp"
 #include "../../mm/pmm.hpp"
 
 /**
@@ -90,28 +91,32 @@ bool SoundDevice::init() {
 
     // rxq (queue 3) - skip for playback-only driver
 
-    // Allocate DMA buffers
-    cmd_buf_phys_ = pmm::alloc_page();
-    resp_buf_phys_ = pmm::alloc_page();
-    pcm_buf_phys_ = pmm::alloc_pages(4); // 16KB
-    status_buf_phys_ = pmm::alloc_page();
+    // Allocate DMA buffers using helper (Issue #36-38)
+    cmd_dma_ = alloc_dma_buffer(1);
+    resp_dma_ = alloc_dma_buffer(1);
+    pcm_dma_ = alloc_dma_buffer(4); // 16KB
+    status_dma_ = alloc_dma_buffer(1);
 
-    if (!cmd_buf_phys_ || !resp_buf_phys_ || !pcm_buf_phys_ || !status_buf_phys_) {
+    if (!cmd_dma_.is_valid() || !resp_dma_.is_valid() ||
+        !pcm_dma_.is_valid() || !status_dma_.is_valid()) {
         serial::puts("[virtio-snd] Failed to allocate DMA buffers\n");
+        free_dma_buffer(cmd_dma_);
+        free_dma_buffer(resp_dma_);
+        free_dma_buffer(pcm_dma_);
+        free_dma_buffer(status_dma_);
         set_status(status::FAILED);
         return false;
     }
 
-    cmd_buf_ = reinterpret_cast<u8 *>(pmm::phys_to_virt(cmd_buf_phys_));
-    resp_buf_ = reinterpret_cast<u8 *>(pmm::phys_to_virt(resp_buf_phys_));
-    pcm_buf_ = reinterpret_cast<u8 *>(pmm::phys_to_virt(pcm_buf_phys_));
-    status_buf_ = reinterpret_cast<u8 *>(pmm::phys_to_virt(status_buf_phys_));
-
-    for (usize i = 0; i < pmm::PAGE_SIZE; i++) {
-        cmd_buf_[i] = 0;
-        resp_buf_[i] = 0;
-        status_buf_[i] = 0;
-    }
+    // Set up convenience pointers for existing code
+    cmd_buf_phys_ = cmd_dma_.phys;
+    resp_buf_phys_ = resp_dma_.phys;
+    pcm_buf_phys_ = pcm_dma_.phys;
+    status_buf_phys_ = status_dma_.phys;
+    cmd_buf_ = cmd_dma_.virt;
+    resp_buf_ = resp_dma_.virt;
+    pcm_buf_ = pcm_dma_.virt;
+    status_buf_ = status_dma_.virt;
 
     add_status(status::DRIVER_OK);
 
@@ -301,12 +306,10 @@ i64 SoundDevice::write_pcm(u32 stream_id, const void *data, usize len) {
 
     if (volume_ == 255) {
         // Full volume: direct copy
-        for (usize i = 0; i < len; i++)
-            dst[i] = src[i];
+        lib::memcpy(dst, src, len);
     } else if (volume_ == 0) {
         // Muted: silence
-        for (usize i = 0; i < len; i++)
-            dst[i] = 0;
+        lib::memset(dst, 0, len);
     } else {
         // Scale 16-bit samples
         const i16 *s16 = reinterpret_cast<const i16 *>(src);
@@ -397,9 +400,7 @@ i64 AudioMixer::submit(u32 stream_id, const void *data, usize len) {
     StreamBuf &buf = streams_[stream_id];
 
     // Copy samples into stream buffer
-    for (usize i = 0; i < samples; i++) {
-        buf.samples[i] = src[i];
-    }
+    lib::memcpy(buf.samples, src, samples * sizeof(i16));
     buf.count = samples;
 
     if (!buf.active) {

@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 #include "virtqueue.hpp"
 #include "../../console/serial.hpp"
+#include "../../lib/mem.hpp"
 #include "../../mm/pmm.hpp"
 
 /**
@@ -71,9 +72,7 @@ bool Virtqueue::init_legacy_vring() {
 
     // Zero entire region
     u8 *vring_mem = reinterpret_cast<u8 *>(pmm::phys_to_virt(desc_phys_));
-    for (usize i = 0; i < total_pages * pmm::PAGE_SIZE; i++) {
-        vring_mem[i] = 0;
-    }
+    lib::memset(vring_mem, 0, total_pages * pmm::PAGE_SIZE);
 
     // Set up pointers within the contiguous region
     desc_ = reinterpret_cast<VringDesc *>(vring_mem);
@@ -110,9 +109,7 @@ bool Virtqueue::init_modern_vring() {
     desc_ = reinterpret_cast<VringDesc *>(pmm::phys_to_virt(desc_phys_));
 
     // Zero descriptor table
-    for (usize i = 0; i < desc_pages * pmm::PAGE_SIZE / sizeof(u64); i++) {
-        reinterpret_cast<u64 *>(desc_)[i] = 0;
-    }
+    lib::memset(desc_, 0, desc_pages * pmm::PAGE_SIZE);
 
     // Allocate available ring (6 + 2*size bytes, page aligned)
     usize avail_bytes = sizeof(VringAvail) + size_ * sizeof(u16) + sizeof(u16);
@@ -126,9 +123,7 @@ bool Virtqueue::init_modern_vring() {
     avail_ = reinterpret_cast<VringAvail *>(pmm::phys_to_virt(avail_phys_));
 
     // Zero available ring
-    for (usize i = 0; i < avail_pages * pmm::PAGE_SIZE / sizeof(u64); i++) {
-        reinterpret_cast<u64 *>(avail_)[i] = 0;
-    }
+    lib::memset(avail_, 0, avail_pages * pmm::PAGE_SIZE);
 
     // Allocate used ring (6 + 8*size bytes, page aligned)
     usize used_bytes = sizeof(VringUsed) + size_ * sizeof(VringUsedElem) + sizeof(u16);
@@ -143,9 +138,7 @@ bool Virtqueue::init_modern_vring() {
     used_ = reinterpret_cast<VringUsed *>(pmm::phys_to_virt(used_phys_));
 
     // Zero used ring
-    for (usize i = 0; i < used_pages * pmm::PAGE_SIZE / sizeof(u64); i++) {
-        reinterpret_cast<u64 *>(used_)[i] = 0;
-    }
+    lib::memset(used_, 0, used_pages * pmm::PAGE_SIZE);
 
     // Set queue size
     dev_->write32(reg::QUEUE_NUM, size_);

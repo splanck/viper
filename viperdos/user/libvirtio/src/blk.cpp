@@ -3,6 +3,7 @@
  * @brief User-space VirtIO block device driver implementation.
  */
 #include "../include/blk.hpp"
+#include <string.h>
 
 // Freestanding offsetof
 #define OFFSETOF(type, member) __builtin_offsetof(type, member)
@@ -61,10 +62,7 @@ bool BlkDevice::init(u64 mmio_phys, u32 irq) {
     requests_ = reinterpret_cast<PendingRequest *>(requests_virt_);
 
     // Zero request buffer
-    u8 *ptr = reinterpret_cast<u8 *>(requests_virt_);
-    for (usize i = 0; i < PAGE_SIZE; i++) {
-        ptr[i] = 0;
-    }
+    memset(reinterpret_cast<void *>(requests_virt_), 0, PAGE_SIZE);
 
     // Device is ready
     add_status(status::DRIVER_OK);

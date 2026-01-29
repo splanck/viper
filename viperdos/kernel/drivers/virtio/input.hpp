@@ -235,6 +235,10 @@ class InputDevice : public Device {
     Virtqueue eventq_;
     Virtqueue statusq_;
 
+    // DMA buffers (using helper from virtio.hpp)
+    DmaBuffer events_dma_;
+    DmaBuffer status_dma_;
+
     // Event buffers
     InputEvent events_[INPUT_EVENT_BUFFERS];
     u64 events_phys_{0};

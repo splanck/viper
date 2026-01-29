@@ -141,9 +141,11 @@ static int vsnprintf_internal(char *str, size_t size, const char *format, va_lis
             format++;
         }
 
-        /* Parse width */
+        /* Parse width (with bounds check - Issue #80 fix) */
         while (*format >= '0' && *format <= '9') {
             width = width * 10 + (*format - '0');
+            if (width > 99999)
+                width = 99999; /* Cap to prevent overflow */
             format++;
         }
 

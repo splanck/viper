@@ -11,47 +11,23 @@
  * @details
  * Provides a user-space VirtIO-blk driver that uses the device access syscalls
  * for MMIO mapping, DMA allocation, and interrupt handling.
+ *
+ * Types and constants are imported from <viperdos/virtio_blk.hpp>.
  */
 #pragma once
 
 #include "virtio.hpp"
 #include "virtqueue.hpp"
+#include <viperdos/virtio_blk.hpp>
 
 namespace virtio {
 
-// Block request types
-namespace blk_type {
-constexpr u32 IN = 0;    // Read from device
-constexpr u32 OUT = 1;   // Write to device
-constexpr u32 FLUSH = 4; // Flush buffers
-} // namespace blk_type
-
-// Block request status
-namespace blk_status {
-constexpr u8 OK = 0;
-constexpr u8 IOERR = 1;
-constexpr u8 UNSUPP = 2;
-} // namespace blk_status
-
-// Block feature bits
-namespace blk_features {
-constexpr u64 SIZE_MAX = 1 << 1;
-constexpr u64 SEG_MAX = 1 << 2;
-constexpr u64 GEOMETRY = 1 << 4;
-constexpr u64 RO = 1 << 5;
-constexpr u64 BLK_SIZE = 1 << 6;
-constexpr u64 FLUSH = 1 << 9;
-constexpr u64 TOPOLOGY = 1 << 10;
-constexpr u64 CONFIG_WCE = 1 << 11;
-constexpr u64 MQ = 1 << 12;
-} // namespace blk_features
-
-// Block request header
-struct BlkReqHeader {
-    u32 type;
-    u32 reserved;
-    u64 sector;
-};
+// Types imported from shared header:
+// - blk_type::IN, blk_type::OUT, blk_type::FLUSH
+// - blk_status::OK, blk_status::IOERR, blk_status::UNSUPP
+// - blk_features::*
+// - BlkReqHeader
+// - BlkConfig
 
 /**
  * @brief User-space VirtIO block device driver.

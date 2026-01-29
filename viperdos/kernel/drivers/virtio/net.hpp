@@ -11,66 +11,27 @@
  * @details
  * Provides a kernel-space VirtIO-net driver for the monolithic kernel.
  * This driver handles Ethernet frame transmission and reception.
+ *
+ * Types and constants are imported from <viperdos/virtio_net.hpp>.
  */
 #pragma once
 
 #include "../../include/constants.hpp"
 #include "virtio.hpp"
 #include "virtqueue.hpp"
+#include <viperdos/virtio_net.hpp>
 
 namespace kc = kernel::constants;
 
 namespace virtio {
 
-// virtio-net feature bits
-namespace net_features {
-constexpr u64 CSUM = 1ULL << 0;       // Checksum offload
-constexpr u64 GUEST_CSUM = 1ULL << 1; // Guest handles checksum
-constexpr u64 MAC = 1ULL << 5;        // Device has MAC address
-constexpr u64 GSO = 1ULL << 6;        // Generic segmentation offload
-constexpr u64 MRG_RXBUF = 1ULL << 15; // Mergeable RX buffers
-constexpr u64 STATUS = 1ULL << 16;    // Device status available
-constexpr u64 CTRL_VQ = 1ULL << 17;   // Control virtqueue
-constexpr u64 MQ = 1ULL << 22;        // Multiple queues
-} // namespace net_features
-
-// virtio-net header (prepended to every packet)
-struct NetHeader {
-    u8 flags;
-    u8 gso_type;
-    u16 hdr_len;
-    u16 gso_size;
-    u16 csum_start;
-    u16 csum_offset;
-} __attribute__((packed));
-
-// Header flags
-namespace net_hdr_flags {
-constexpr u8 NEEDS_CSUM = 1;
-constexpr u8 DATA_VALID = 2;
-} // namespace net_hdr_flags
-
-// GSO types
-namespace net_gso {
-constexpr u8 NONE = 0;
-constexpr u8 TCPV4 = 1;
-constexpr u8 UDP = 3;
-constexpr u8 TCPV6 = 4;
-} // namespace net_gso
-
-// virtio-net config space layout
-struct NetConfig {
-    u8 mac[6];
-    u16 status;
-    u16 max_virtqueue_pairs;
-    u16 mtu;
-} __attribute__((packed));
-
-// Network status bits
-namespace net_status {
-constexpr u16 LINK_UP = 1;
-constexpr u16 ANNOUNCE = 2;
-} // namespace net_status
+// Types imported from shared header:
+// - net_features::*
+// - NetHeader
+// - net_hdr_flags::*
+// - net_gso::*
+// - NetConfig
+// - net_status::*
 
 /**
  * @brief Kernel VirtIO network device driver.
@@ -167,6 +128,11 @@ class NetDevice : public Device {
 
     RxBuffer *rx_buffers_{nullptr};
     u64 rx_buffers_phys_{0};
+
+    // O(1) descriptor-to-buffer mapping (Issue #42 optimization)
+    // Maps virtqueue descriptor index to rx_buffers_ index, or 0xFF if unused
+    static constexpr usize MAX_DESCRIPTORS = 256;
+    u8 desc_to_buffer_[MAX_DESCRIPTORS];
 
     // TX header buffer
     NetHeader *tx_header_{nullptr};

@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 #include "gpu.hpp"
 #include "../../console/serial.hpp"
+#include "../../lib/mem.hpp"
 #include "../../mm/pmm.hpp"
 
 /**
@@ -82,56 +83,40 @@ bool GpuDevice::init() {
         }
     }
 
-    // Allocate command buffer
-    cmd_buf_phys_ = pmm::alloc_page();
-    if (!cmd_buf_phys_) {
-        serial::puts("[virtio-gpu] Failed to allocate command buffer\n");
+    // Allocate DMA buffers using helper (Issue #36-38)
+    cmd_dma_ = alloc_dma_buffer(1);
+    resp_dma_ = alloc_dma_buffer(1);
+    mem_entries_dma_ = alloc_dma_buffer(1);
+
+    if (!cmd_dma_.is_valid() || !resp_dma_.is_valid() || !mem_entries_dma_.is_valid()) {
+        serial::puts("[virtio-gpu] Failed to allocate DMA buffers\n");
+        free_dma_buffer(cmd_dma_);
+        free_dma_buffer(resp_dma_);
+        free_dma_buffer(mem_entries_dma_);
         set_status(status::FAILED);
         return false;
     }
-    cmd_buf_ = reinterpret_cast<u8 *>(pmm::phys_to_virt(cmd_buf_phys_));
 
-    // Allocate response buffer
-    resp_buf_phys_ = pmm::alloc_page();
-    if (!resp_buf_phys_) {
-        serial::puts("[virtio-gpu] Failed to allocate response buffer\n");
-        pmm::free_page(cmd_buf_phys_);
-        set_status(status::FAILED);
-        return false;
-    }
-    resp_buf_ = reinterpret_cast<u8 *>(pmm::phys_to_virt(resp_buf_phys_));
+    // Set up convenience pointers
+    cmd_buf_phys_ = cmd_dma_.phys;
+    resp_buf_phys_ = resp_dma_.phys;
+    mem_entries_phys_ = mem_entries_dma_.phys;
+    cmd_buf_ = cmd_dma_.virt;
+    resp_buf_ = resp_dma_.virt;
+    mem_entries_ = reinterpret_cast<GpuMemEntry *>(mem_entries_dma_.virt);
 
-    // Allocate memory entries buffer
-    mem_entries_phys_ = pmm::alloc_page();
-    if (!mem_entries_phys_) {
-        serial::puts("[virtio-gpu] Failed to allocate mem entries buffer\n");
-        pmm::free_page(cmd_buf_phys_);
-        pmm::free_page(resp_buf_phys_);
-        set_status(status::FAILED);
-        return false;
-    }
-    mem_entries_ = reinterpret_cast<GpuMemEntry *>(pmm::phys_to_virt(mem_entries_phys_));
-
-    // Zero buffers
-    for (usize i = 0; i < pmm::PAGE_SIZE; i++) {
-        cmd_buf_[i] = 0;
-        resp_buf_[i] = 0;
+    // Allocate cursor buffers (optional, don't fail if unavailable)
+    cursor_cmd_dma_ = alloc_dma_buffer(1);
+    if (cursor_cmd_dma_.is_valid()) {
+        cursor_cmd_phys_ = cursor_cmd_dma_.phys;
+        cursor_cmd_buf_ = cursor_cmd_dma_.virt;
     }
 
-    // Allocate cursor command buffer
-    cursor_cmd_phys_ = pmm::alloc_page();
-    if (cursor_cmd_phys_) {
-        cursor_cmd_buf_ = reinterpret_cast<u8 *>(pmm::phys_to_virt(cursor_cmd_phys_));
-        for (usize i = 0; i < pmm::PAGE_SIZE; i++)
-            cursor_cmd_buf_[i] = 0;
-    }
-
-    // Allocate cursor image buffer (64x64 BGRA = 16KB = 4 pages)
-    cursor_img_phys_ = pmm::alloc_pages(4);
-    if (cursor_img_phys_) {
-        cursor_img_buf_ = reinterpret_cast<u8 *>(pmm::phys_to_virt(cursor_img_phys_));
-        for (usize i = 0; i < 4 * pmm::PAGE_SIZE; i++)
-            cursor_img_buf_[i] = 0;
+    // Cursor image buffer (64x64 BGRA = 16KB = 4 pages)
+    cursor_img_dma_ = alloc_dma_buffer(4);
+    if (cursor_img_dma_.is_valid()) {
+        cursor_img_phys_ = cursor_img_dma_.phys;
+        cursor_img_buf_ = cursor_img_dma_.virt;
     }
 
     // Device is ready

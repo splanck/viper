@@ -17,6 +17,7 @@
 
 #include "virtio.hpp"
 #include "virtqueue.hpp"
+#include <viperdos/virtio_blk.hpp>
 
 /**
  * @file blk.hpp
@@ -27,9 +28,7 @@
  * host disk image in QEMU. The driver builds block requests and submits them
  * to the device via a single virtqueue.
  *
- * This header defines:
- * - Request header/status formats used by virtio-blk.
- * - Basic device configuration structure.
+ * This header imports shared types from <viperdos/virtio_blk.hpp> and defines:
  * - `virtio::BlkDevice`, a driver that supports blocking reads/writes and a
  *   flush operation.
  *
@@ -37,80 +36,12 @@
  */
 namespace virtio {
 
-// Block request types
-/**
- * @brief Virtio-blk request type values.
- */
-namespace blk_type {
-constexpr u32 IN = 0;    // Read from device
-constexpr u32 OUT = 1;   // Write to device
-constexpr u32 FLUSH = 4; // Flush buffers
-} // namespace blk_type
-
-// Block request status
-/**
- * @brief Completion status values written by the device.
- */
-namespace blk_status {
-constexpr u8 OK = 0;
-constexpr u8 IOERR = 1;
-constexpr u8 UNSUPP = 2;
-} // namespace blk_status
-
-// Block feature bits
-/**
- * @brief Virtio-blk feature bits.
- *
- * @details
- * The driver currently does not rely on most optional features; it primarily
- * checks for read-only capability.
- */
-namespace blk_features {
-constexpr u64 SIZE_MAX = 1 << 1;
-constexpr u64 SEG_MAX = 1 << 2;
-constexpr u64 GEOMETRY = 1 << 4;
-constexpr u64 RO = 1 << 5; // Read-only
-constexpr u64 BLK_SIZE = 1 << 6;
-constexpr u64 FLUSH = 1 << 9;
-constexpr u64 TOPOLOGY = 1 << 10;
-constexpr u64 CONFIG_WCE = 1 << 11;
-constexpr u64 MQ = 1 << 12;
-constexpr u64 DISCARD = 1 << 13;
-constexpr u64 WRITE_ZEROES = 1 << 14;
-} // namespace blk_features
-
-// Block device configuration (at config offset 0x100)
-/**
- * @brief Virtio-blk configuration space layout (partial).
- *
- * @details
- * The config space contains capacity and optional properties like block size.
- * Only a subset is represented here.
- */
-struct BlkConfig {
-    u64 capacity; // Number of 512-byte sectors
-    u32 size_max; // Max size of single segment
-    u32 seg_max;  // Max number of segments
-
-    struct {
-        u16 cylinders;
-        u8 heads;
-        u8 sectors;
-    } geometry;
-
-    u32 blk_size; // Block size (usually 512)
-    // ... more fields for topology, etc.
-};
-
-// Block request header (sent to device)
-/**
- * @brief Virtio-blk request header placed at the start of a request chain.
- */
-struct BlkReqHeader {
-    u32 type; // blk_type::IN or blk_type::OUT
-    u32 reserved;
-    u64 sector; // Starting sector
-};
+// Types imported from shared header:
+// - blk_type::IN, blk_type::OUT, blk_type::FLUSH
+// - blk_status::OK, blk_status::IOERR, blk_status::UNSUPP
+// - blk_features::*
+// - BlkReqHeader
+// - BlkConfig
 
 // Block device driver
 /**
@@ -348,6 +279,8 @@ class BlkDevice : public Device {
         void *user_data{nullptr};
     };
 
+    // DMA buffer for requests (using helper from virtio.hpp)
+    DmaBuffer requests_dma_;
     PendingRequest *requests_{nullptr};
     u64 requests_phys_{0};
     AsyncRequest async_requests_[MAX_PENDING]{};

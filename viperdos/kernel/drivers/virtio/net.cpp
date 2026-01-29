@@ -25,6 +25,7 @@
 #include "../../arch/aarch64/gic.hpp"
 #include "../../console/serial.hpp"
 #include "../../include/constants.hpp"
+#include "../../lib/mem.hpp"
 #include "../../mm/pmm.hpp"
 
 namespace kc = kernel::constants;
@@ -76,12 +77,8 @@ bool NetDevice::init_mac_address(bool has_mac) {
         for (int i = 0; i < 6; i++)
             mac_[i] = read_config8(i);
     } else {
-        mac_[0] = 0x52;
-        mac_[1] = 0x54;
-        mac_[2] = 0x00;
-        mac_[3] = 0x12;
-        mac_[4] = 0x34;
-        mac_[5] = 0x56;
+        for (int i = 0; i < 6; i++)
+            mac_[i] = kc::net::DEFAULT_MAC[i];
     }
 
     serial::puts("[virtio-net] MAC: ");
@@ -114,8 +111,7 @@ bool NetDevice::init_rx_buffers() {
     for (usize i = 0; i < RX_BUFFER_COUNT; i++) {
         rx_buffers_[i].in_use = false;
         rx_buffers_[i].desc_idx = 0;
-        for (usize j = 0; j < RX_BUFFER_SIZE; j++)
-            rx_buffers_[i].data[j] = 0;
+        lib::memset(rx_buffers_[i].data, 0, RX_BUFFER_SIZE);
     }
 
     for (usize i = 0; i < RX_QUEUE_SIZE; i++) {
@@ -123,6 +119,9 @@ bool NetDevice::init_rx_buffers() {
         rx_queue_[i].len = 0;
         rx_queue_[i].valid = false;
     }
+
+    // Initialize descriptor-to-buffer mapping (0xFF = unused)
+    lib::memset(desc_to_buffer_, 0xFF, sizeof(desc_to_buffer_));
 
     return true;
 }
@@ -233,6 +232,11 @@ void NetDevice::queue_rx_buffer(usize idx) {
     buf->in_use = true;
     buf->desc_idx = static_cast<u16>(desc);
 
+    // Update O(1) descriptor-to-buffer mapping
+    if (static_cast<usize>(desc) < MAX_DESCRIPTORS) {
+        desc_to_buffer_[desc] = static_cast<u8>(idx);
+    }
+
     // Set up descriptor for device-writable buffer
     rx_vq_.set_desc(desc, buf_phys, RX_BUFFER_SIZE, desc_flags::WRITE);
 
@@ -250,15 +254,12 @@ void NetDevice::refill_rx_buffers() {
 }
 
 bool NetDevice::transmit(const void *data, usize len) {
-    if (len > 1514) { // Max Ethernet frame size
+    if (len > kc::net::ETH_FRAME_MAX) {
         return false;
     }
 
     // Copy frame data to TX buffer
-    const u8 *src = static_cast<const u8 *>(data);
-    for (usize i = 0; i < len; i++) {
-        tx_data_buf_[i] = src[i];
-    }
+    lib::memcpy(tx_data_buf_, data, len);
 
     // Set up virtio header
     tx_header_->flags = 0;
@@ -319,32 +320,38 @@ void NetDevice::poll_rx() {
         // Get length from used ring
         u32 len = rx_vq_.get_used_len(desc);
 
-        // Find which buffer this descriptor belongs to
-        for (usize i = 0; i < RX_BUFFER_COUNT; i++) {
-            if (rx_buffers_[i].in_use && rx_buffers_[i].desc_idx == static_cast<u16>(desc)) {
-                // Skip virtio header
-                if (len > sizeof(NetHeader)) {
-                    u16 frame_len = static_cast<u16>(len - sizeof(NetHeader));
-                    u8 *frame_data = rx_buffers_[i].data + sizeof(NetHeader);
-
-                    // Add to received queue if space available
-                    usize next_tail = (rx_queue_tail_ + 1) % RX_QUEUE_SIZE;
-                    if (next_tail != rx_queue_head_) {
-                        rx_queue_[rx_queue_tail_].data = frame_data;
-                        rx_queue_[rx_queue_tail_].len = frame_len;
-                        rx_queue_[rx_queue_tail_].valid = true;
-                        rx_queue_tail_ = next_tail;
-
-                        rx_packets_++;
-                        rx_bytes_ += frame_len;
-                    }
-                }
-
-                // Mark buffer as not in use (will be refilled)
-                rx_buffers_[i].in_use = false;
-                rx_vq_.free_desc(desc);
-                break;
+        // O(1) lookup: find which buffer this descriptor belongs to
+        usize buf_idx = RX_BUFFER_COUNT; // Invalid sentinel
+        if (static_cast<usize>(desc) < MAX_DESCRIPTORS) {
+            u8 mapped_idx = desc_to_buffer_[desc];
+            if (mapped_idx < RX_BUFFER_COUNT) {
+                buf_idx = mapped_idx;
             }
+        }
+
+        if (buf_idx < RX_BUFFER_COUNT && rx_buffers_[buf_idx].in_use) {
+            // Skip virtio header
+            if (len > sizeof(NetHeader)) {
+                u16 frame_len = static_cast<u16>(len - sizeof(NetHeader));
+                u8 *frame_data = rx_buffers_[buf_idx].data + sizeof(NetHeader);
+
+                // Add to received queue if space available
+                usize next_tail = (rx_queue_tail_ + 1) % RX_QUEUE_SIZE;
+                if (next_tail != rx_queue_head_) {
+                    rx_queue_[rx_queue_tail_].data = frame_data;
+                    rx_queue_[rx_queue_tail_].len = frame_len;
+                    rx_queue_[rx_queue_tail_].valid = true;
+                    rx_queue_tail_ = next_tail;
+
+                    rx_packets_++;
+                    rx_bytes_ += frame_len;
+                }
+            }
+
+            // Mark buffer as not in use (will be refilled)
+            rx_buffers_[buf_idx].in_use = false;
+            desc_to_buffer_[desc] = 0xFF; // Clear mapping
+            rx_vq_.free_desc(desc);
         }
     }
 
@@ -365,10 +372,7 @@ i32 NetDevice::receive(void *buf, usize max_len) {
     }
 
     // Copy data
-    u8 *dst = static_cast<u8 *>(buf);
-    for (u16 i = 0; i < copy_len; i++) {
-        dst[i] = pkt->data[i];
-    }
+    lib::memcpy(buf, pkt->data, copy_len);
 
     // Mark as consumed
     pkt->valid = false;

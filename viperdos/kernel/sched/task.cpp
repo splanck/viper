@@ -100,6 +100,45 @@ void hash_remove_locked(Task *t) {
 }
 
 /**
+ * @brief Initialize scheduling-related fields to default values.
+ *
+ * This helper consolidates the duplicated scheduling initialization
+ * pattern (Issue #17) from create(), create_user_task(), and fork_task().
+ *
+ * @param t Task to initialize.
+ */
+void init_task_sched_fields(Task *t) {
+    t->time_slice = TIME_SLICE_DEFAULT;
+    t->priority = PRIORITY_DEFAULT;
+    t->original_priority = PRIORITY_DEFAULT;
+    t->policy = SchedPolicy::SCHED_OTHER; // Default to normal scheduling
+    t->cpu_affinity = CPU_AFFINITY_ALL;   // Can run on any CPU
+    t->vruntime = 0;                      // Start with zero vruntime (CFS)
+    t->nice = 0;                          // Default nice value (CFS)
+    t->dl_runtime = 0;                    // SCHED_DEADLINE: no deadline by default
+    t->dl_deadline = 0;
+    t->dl_period = 0;
+    t->dl_abs_deadline = 0;
+    t->dl_missed = 0;
+    t->dl_flags = 0;
+    t->bw_runtime = 0; // No bandwidth limit by default
+    t->bw_period = 0;
+    t->bw_consumed = 0;
+    t->bw_period_start = 0;
+    t->bw_throttled = false;
+    t->next = nullptr;
+    t->prev = nullptr;
+    t->heap_index = static_cast<u32>(-1); // Not in any heap
+    t->wait_channel = nullptr;
+    t->blocked_mutex = nullptr;
+    t->wait_timeout = 0;
+    t->exit_code = 0;
+    t->trap_frame = nullptr;
+    t->cpu_ticks = 0;
+    t->switch_count = 0;
+}
+
+/**
  * @brief Find a task by ID using the hash table.
  * @note Caller must hold task_lock.
  * @param id Task ID to find.
@@ -395,28 +434,9 @@ Task *create(const char *name, TaskEntry entry, void *arg, u32 flags) {
     lib::strcpy_safe(t->name, name, sizeof(t->name));
     t->state = TaskState::Ready;
     t->flags = flags | TASK_FLAG_KERNEL; // All tasks are kernel tasks for now
-    t->time_slice = TIME_SLICE_DEFAULT;
-    t->priority = PRIORITY_DEFAULT;
-    t->original_priority = PRIORITY_DEFAULT;
-    t->policy = SchedPolicy::SCHED_OTHER; // Default to normal scheduling
-    t->cpu_affinity = CPU_AFFINITY_ALL;   // Can run on any CPU
-    t->vruntime = 0;                      // Start with zero vruntime (CFS)
-    t->nice = 0;                          // Default nice value (CFS)
-    t->dl_runtime = 0;                    // SCHED_DEADLINE: no deadline by default
-    t->dl_deadline = 0;
-    t->dl_period = 0;
-    t->dl_abs_deadline = 0;
-    t->dl_missed = 0;
-    t->dl_flags = 0;
-    t->bw_runtime = 0; // No bandwidth limit by default
-    t->bw_period = 0;
-    t->bw_consumed = 0;
-    t->bw_period_start = 0;
-    t->bw_throttled = false;
-    t->next = nullptr;
-    t->prev = nullptr;
-    t->heap_index = static_cast<u32>(-1); // Not in any heap
-    t->wait_channel = nullptr;
+
+    // Initialize common scheduling fields
+    init_task_sched_fields(t);
     t->blocked_mutex = nullptr;
     t->wait_timeout = 0;
     t->exit_code = 0;
@@ -581,34 +601,10 @@ Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack) 
     lib::strcpy_safe(t->name, name, sizeof(t->name));
     t->state = TaskState::Ready;
     t->flags = TASK_FLAG_USER; // User task, not kernel
-    t->time_slice = TIME_SLICE_DEFAULT;
-    t->priority = PRIORITY_DEFAULT;
-    t->original_priority = PRIORITY_DEFAULT;
-    t->policy = SchedPolicy::SCHED_OTHER; // Default to normal scheduling
-    t->cpu_affinity = CPU_AFFINITY_ALL;   // Can run on any CPU
-    t->vruntime = 0;                      // Start with zero vruntime (CFS)
-    t->nice = 0;                          // Default nice value (CFS)
-    t->dl_runtime = 0;                    // SCHED_DEADLINE: no deadline by default
-    t->dl_deadline = 0;
-    t->dl_period = 0;
-    t->dl_abs_deadline = 0;
-    t->dl_missed = 0;
-    t->dl_flags = 0;
-    t->bw_runtime = 0; // No bandwidth limit by default
-    t->bw_period = 0;
-    t->bw_consumed = 0;
-    t->bw_period_start = 0;
-    t->bw_throttled = false;
-    t->next = nullptr;
-    t->prev = nullptr;
-    t->heap_index = static_cast<u32>(-1); // Not in any heap
-    t->wait_channel = nullptr;
-    t->blocked_mutex = nullptr;
-    t->wait_timeout = 0;
-    t->exit_code = 0;
-    t->trap_frame = nullptr;
-    t->cpu_ticks = 0;
-    t->switch_count = 0;
+
+    // Initialize common scheduling fields
+    init_task_sched_fields(t);
+
     {
         Task *curr = current();
         t->parent_id = curr ? curr->id : 0;
@@ -714,34 +710,10 @@ Task *create_thread(const char *name, void *viper_ptr, u64 entry, u64 stack, u64
     lib::strcpy_safe(t->name, name, sizeof(t->name));
     t->state = TaskState::Ready;
     t->flags = TASK_FLAG_USER;
-    t->time_slice = TIME_SLICE_DEFAULT;
-    t->priority = PRIORITY_DEFAULT;
-    t->original_priority = PRIORITY_DEFAULT;
-    t->policy = SchedPolicy::SCHED_OTHER;
-    t->cpu_affinity = CPU_AFFINITY_ALL;
-    t->vruntime = 0;
-    t->nice = 0;
-    t->dl_runtime = 0;
-    t->dl_deadline = 0;
-    t->dl_period = 0;
-    t->dl_abs_deadline = 0;
-    t->dl_missed = 0;
-    t->dl_flags = 0;
-    t->bw_runtime = 0;
-    t->bw_period = 0;
-    t->bw_consumed = 0;
-    t->bw_period_start = 0;
-    t->bw_throttled = false;
-    t->next = nullptr;
-    t->prev = nullptr;
-    t->heap_index = static_cast<u32>(-1);
-    t->wait_channel = nullptr;
-    t->blocked_mutex = nullptr;
-    t->wait_timeout = 0;
-    t->exit_code = 0;
-    t->trap_frame = nullptr;
-    t->cpu_ticks = 0;
-    t->switch_count = 0;
+
+    // Initialize common scheduling fields
+    init_task_sched_fields(t);
+
     {
         Task *curr = current();
         t->parent_id = curr ? curr->id : 0;

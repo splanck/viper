@@ -658,9 +658,28 @@ SyscallResult sys_shm_create(u64 a0, u64, u64, u64, u64, u64) {
     u64 virt_base = 0x7000000000ULL;
     u64 virt_addr = 0;
     u64 aligned_size = pmm::page_align_up(size);
+    u64 num_pages = aligned_size / pmm::PAGE_SIZE;
 
-    for (u64 try_addr = virt_base; try_addr < 0x8000000000ULL; try_addr += aligned_size) {
-        if (as->translate(try_addr) == 0) {
+    // Search for a contiguous free virtual address range
+    // Check that ALL pages in the requested range are free
+    for (u64 try_addr = virt_base; try_addr + aligned_size <= 0x8000000000ULL;) {
+        // Quick check: if first page is occupied, skip forward
+        if (as->translate(try_addr) != 0) {
+            try_addr += pmm::PAGE_SIZE;
+            continue;
+        }
+
+        // First page is free, verify ALL pages in the range are free
+        bool range_free = true;
+        for (u64 p = 1; p < num_pages; p++) {
+            if (as->translate(try_addr + p * pmm::PAGE_SIZE) != 0) {
+                range_free = false;
+                // Skip past the occupied page and continue searching
+                try_addr += (p + 1) * pmm::PAGE_SIZE;
+                break;
+            }
+        }
+        if (range_free) {
             virt_addr = try_addr;
             break;
         }
@@ -732,9 +751,27 @@ SyscallResult sys_shm_map(u64 a0, u64, u64, u64, u64, u64) {
     u64 virt_base = 0x7000000000ULL;
     u64 virt_addr = 0;
     u64 aligned_size = shm->size();
+    u64 num_pages = aligned_size / pmm::PAGE_SIZE;
 
-    for (u64 try_addr = virt_base; try_addr < 0x8000000000ULL; try_addr += aligned_size) {
-        if (as->translate(try_addr) == 0) {
+    // Search for a contiguous free virtual address range
+    for (u64 try_addr = virt_base; try_addr + aligned_size <= 0x8000000000ULL;) {
+        // Quick check: if first page is occupied, skip forward
+        if (as->translate(try_addr) != 0) {
+            try_addr += pmm::PAGE_SIZE;
+            continue;
+        }
+
+        // First page is free, verify ALL pages in the range are free
+        bool range_free = true;
+        for (u64 p = 1; p < num_pages; p++) {
+            if (as->translate(try_addr + p * pmm::PAGE_SIZE) != 0) {
+                range_free = false;
+                // Skip past the occupied page and continue searching
+                try_addr += (p + 1) * pmm::PAGE_SIZE;
+                break;
+            }
+        }
+        if (range_free) {
             virt_addr = try_addr;
             break;
         }

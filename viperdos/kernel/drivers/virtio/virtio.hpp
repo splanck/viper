@@ -316,4 +316,50 @@ usize device_count();
  */
 const DeviceInfo *get_device_info(usize index);
 
+// =============================================================================
+// DMA Buffer Allocation Helper (Issue #36-38)
+// =============================================================================
+
+/**
+ * @brief Simple DMA buffer descriptor for virtio drivers.
+ *
+ * @details
+ * Consolidates the repeated DMA buffer allocation pattern found across
+ * multiple VirtIO drivers. Tracks both physical and virtual addresses.
+ */
+struct DmaBuffer {
+    u64 phys{0};   ///< Physical address (for device DMA)
+    u8 *virt{nullptr}; ///< Virtual address (for CPU access)
+    u64 size{0};   ///< Buffer size in bytes
+
+    /// @brief Check if the buffer is allocated.
+    bool is_valid() const {
+        return phys != 0 && virt != nullptr;
+    }
+};
+
+/**
+ * @brief Allocate a DMA buffer with the given number of pages.
+ *
+ * @details
+ * Handles the common pattern of:
+ * 1. Allocating physical page(s) via pmm::alloc_page(s)
+ * 2. Converting to virtual address via pmm::phys_to_virt
+ * 3. Optionally zeroing the buffer
+ *
+ * On failure, returns an invalid DmaBuffer (phys=0, virt=nullptr).
+ *
+ * @param pages Number of 4KB pages to allocate.
+ * @param zero_fill Whether to zero-fill the buffer (default: true).
+ * @return DmaBuffer with allocated addresses, or invalid buffer on failure.
+ */
+DmaBuffer alloc_dma_buffer(u64 pages, bool zero_fill = true);
+
+/**
+ * @brief Free a previously allocated DMA buffer.
+ *
+ * @param buf Buffer to free. Safe to call with invalid buffer.
+ */
+void free_dma_buffer(DmaBuffer &buf);
+
 } // namespace virtio

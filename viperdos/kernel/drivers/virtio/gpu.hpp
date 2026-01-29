@@ -348,13 +348,18 @@ class GpuDevice : public Device {
     u32 num_scanouts_{0};
     bool initialized_{false};
 
-    // Command/response buffers (DMA accessible)
+    // DMA buffers (using helper from virtio.hpp)
+    DmaBuffer cmd_dma_;
+    DmaBuffer resp_dma_;
+    DmaBuffer mem_entries_dma_;
+    DmaBuffer cursor_cmd_dma_;
+    DmaBuffer cursor_img_dma_;
+
+    // Convenience pointers for existing code
     u8 *cmd_buf_{nullptr};
     u64 cmd_buf_phys_{0};
     u8 *resp_buf_{nullptr};
     u64 resp_buf_phys_{0};
-
-    // Memory entry buffer for attach_backing
     GpuMemEntry *mem_entries_{nullptr};
     u64 mem_entries_phys_{0};
 

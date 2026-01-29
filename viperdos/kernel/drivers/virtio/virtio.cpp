@@ -6,8 +6,12 @@
 //===----------------------------------------------------------------------===//
 #include "virtio.hpp"
 #include "../../console/serial.hpp"
+#include "../../include/constants.hpp"
+#include "../../lib/mem.hpp"
 #include "../../lib/spinlock.hpp"
 #include "../../mm/pmm.hpp"
+
+namespace kc = kernel::constants;
 
 /**
  * @file virtio.cpp
@@ -205,9 +209,11 @@ void init() {
 
     num_devices = 0;
 
-    // QEMU virt machine: virtio MMIO at 0x0a000000-0x0a004000
-    // Each device is 0x200 bytes apart
-    for (u64 addr = 0x0a000000; addr < 0x0a004000 && num_devices < MAX_DEVICES; addr += 0x200) {
+    // QEMU virt machine: virtio MMIO range
+    // Each device is VIRTIO_DEVICE_STRIDE bytes apart
+    for (u64 addr = kc::hw::VIRTIO_MMIO_BASE;
+         addr < kc::hw::VIRTIO_MMIO_END && num_devices < MAX_DEVICES;
+         addr += kc::hw::VIRTIO_DEVICE_STRIDE) {
         volatile u32 *mmio = reinterpret_cast<volatile u32 *>(addr);
 
         // Check magic
@@ -286,6 +292,60 @@ const DeviceInfo *get_device_info(usize index) {
     if (index >= num_devices)
         return nullptr;
     return &devices[index];
+}
+
+// =============================================================================
+// DMA Buffer Allocation Helper Implementation (Issue #36-38)
+// =============================================================================
+
+/** @copydoc virtio::alloc_dma_buffer */
+DmaBuffer alloc_dma_buffer(u64 pages, bool zero_fill) {
+    DmaBuffer buf;
+
+    if (pages == 0) {
+        return buf; // Invalid request
+    }
+
+    // Allocate physical memory
+    if (pages == 1) {
+        buf.phys = pmm::alloc_page();
+    } else {
+        buf.phys = pmm::alloc_pages(pages);
+    }
+
+    if (buf.phys == 0) {
+        return buf; // Allocation failed
+    }
+
+    // Convert to virtual address
+    buf.virt = reinterpret_cast<u8 *>(pmm::phys_to_virt(buf.phys));
+    buf.size = pages * pmm::PAGE_SIZE;
+
+    // Optionally zero the buffer
+    if (zero_fill) {
+        lib::memset(buf.virt, 0, buf.size);
+    }
+
+    return buf;
+}
+
+/** @copydoc virtio::free_dma_buffer */
+void free_dma_buffer(DmaBuffer &buf) {
+    if (!buf.is_valid()) {
+        return; // Nothing to free
+    }
+
+    u64 pages = buf.size / pmm::PAGE_SIZE;
+    if (pages == 1) {
+        pmm::free_page(buf.phys);
+    } else if (pages > 1) {
+        pmm::free_pages(buf.phys, pages);
+    }
+
+    // Clear the buffer descriptor
+    buf.phys = 0;
+    buf.virt = nullptr;
+    buf.size = 0;
 }
 
 } // namespace virtio

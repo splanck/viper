@@ -225,14 +225,42 @@ static int viper_sock_dup2_fd(int oldfd, int newfd) {
     if (!viper_sock_fd_in_range(newfd))
         return -ENOTSUP;
 
-    // If newfd already exists as a socket FD, close it first.
-    if (viper_sock_get_obj_for_fd(newfd) != (viper_socket_obj_t *)0) {
-        (void)viper_sock_close_fd(newfd);
+    int newfd_idx = viper_sock_fd_index(newfd);
+    if (newfd_idx < 0 || newfd_idx >= VIPER_SOCKET_MAX_FDS)
+        return -EINVAL;
+
+    /* Issue #72 fix: Save the existing object info before modifying.
+     * This allows us to restore state if allocation fails, and ensures
+     * we don't lose the old FD in race conditions.
+     */
+    int old_in_use = g_sock_fds[newfd_idx].in_use;
+    int old_obj_index = old_in_use ? g_sock_fds[newfd_idx].obj_index : -1;
+
+    /* Clear the slot for reuse */
+    g_sock_fds[newfd_idx].in_use = 0;
+
+    /* Allocate the slot for the new object */
+    int rc = viper_sock_alloc_specific_fd_slot(newfd, obj_index);
+    if (rc < 0) {
+        /* Restore the old slot state on failure */
+        if (old_in_use) {
+            g_sock_fds[newfd_idx].in_use = 1;
+            g_sock_fds[newfd_idx].obj_index = (unsigned short)old_obj_index;
+        }
+        return rc;
     }
 
-    int rc = viper_sock_alloc_specific_fd_slot(newfd, obj_index);
-    if (rc < 0)
-        return rc;
+    /* Success - now clean up the old object if there was one */
+    if (old_in_use && old_obj_index >= 0) {
+        viper_socket_obj_t *old_obj = &g_sock_objs[old_obj_index];
+        if (old_obj->refs > 0) {
+            old_obj->refs--;
+            if (old_obj->refs == 0 && old_obj->socket_id >= 0) {
+                (void)__syscall3(SYS_SOCKET_CLOSE, old_obj->socket_id, 0, 0);
+                old_obj->socket_id = -1;
+            }
+        }
+    }
 
     g_sock_objs[obj_index].refs++;
     return newfd;
@@ -393,7 +421,8 @@ unsigned int ntohl(unsigned int netlong) {
 int socket(int domain, int type, int protocol) {
     long rc = __syscall3(SYS_SOCKET_CREATE, domain, type, protocol);
     if (rc < 0) {
-        errno = EPROTONOSUPPORT;
+        /* Preserve actual error code (Issue #70 fix) */
+        errno = (int)(-rc);
         return -1;
     }
     int sock_id = (int)rc;

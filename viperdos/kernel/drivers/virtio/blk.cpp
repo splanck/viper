@@ -8,6 +8,7 @@
 #include "../../arch/aarch64/gic.hpp"
 #include "../../console/serial.hpp"
 #include "../../include/constants.hpp"
+#include "../../lib/mem.hpp"
 #include "../../mm/pmm.hpp"
 
 namespace kc = kernel::constants;
@@ -70,7 +71,8 @@ static u64 probe_blk_capacity(u64 base) {
  */
 static u64 find_blk_by_capacity(u64 expected_sectors) {
     // Scan virtio MMIO range for block devices
-    for (u64 addr = 0x0a000000; addr < 0x0a004000; addr += 0x200) {
+    for (u64 addr = kc::hw::VIRTIO_MMIO_BASE; addr < kc::hw::VIRTIO_MMIO_END;
+         addr += kc::hw::VIRTIO_DEVICE_STRIDE) {
         u64 capacity = probe_blk_capacity(addr);
         if (capacity == expected_sectors) {
             return addr;
@@ -172,19 +174,15 @@ bool BlkDevice::init() {
         return false;
     }
 
-    // Allocate request buffer (page for pending requests)
-    requests_phys_ = pmm::alloc_page();
-    if (!requests_phys_) {
+    // Allocate request buffer using DMA helper (Issue #36-38)
+    requests_dma_ = alloc_dma_buffer(1);
+    if (!requests_dma_.is_valid()) {
         serial::puts("[virtio-blk] Failed to allocate request buffer\n");
         set_status(status::FAILED);
         return false;
     }
-    requests_ = reinterpret_cast<PendingRequest *>(pmm::phys_to_virt(requests_phys_));
-
-    // Zero request buffer
-    for (usize i = 0; i < pmm::PAGE_SIZE / sizeof(u64); i++) {
-        reinterpret_cast<u64 *>(requests_)[i] = 0;
-    }
+    requests_phys_ = requests_dma_.phys;
+    requests_ = reinterpret_cast<PendingRequest *>(requests_dma_.virt);
 
     // Device is ready
     add_status(status::DRIVER_OK);
@@ -796,9 +794,7 @@ bool BlkDevice::init_user_disk() {
     requests_ = reinterpret_cast<PendingRequest *>(pmm::phys_to_virt(requests_phys_));
 
     // Zero request buffer
-    for (usize i = 0; i < pmm::PAGE_SIZE / sizeof(u64); i++) {
-        reinterpret_cast<u64 *>(requests_)[i] = 0;
-    }
+    lib::memset(requests_, 0, pmm::PAGE_SIZE);
 
     // Device is ready
     add_status(status::DRIVER_OK);

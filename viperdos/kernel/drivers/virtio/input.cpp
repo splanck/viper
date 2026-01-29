@@ -145,14 +145,16 @@ bool InputDevice::setup_status_queue() {
         return true;
     }
 
-    status_event_phys_ = pmm::alloc_page();
-    if (status_event_phys_ == 0) {
+    // Allocate status buffer using DMA helper (Issue #36-38)
+    status_dma_ = alloc_dma_buffer(1);
+    if (!status_dma_.is_valid()) {
         serial::puts("[virtio-input] Failed to allocate status buffer\n");
         has_led_ = false;
         return true;
     }
 
-    status_event_ = reinterpret_cast<InputEvent *>(pmm::phys_to_virt(status_event_phys_));
+    status_event_phys_ = status_dma_.phys;
+    status_event_ = reinterpret_cast<InputEvent *>(status_dma_.virt);
     serial::puts("[virtio-input] Status queue initialized for LED control\n");
     return true;
 }
@@ -160,13 +162,16 @@ bool InputDevice::setup_status_queue() {
 bool InputDevice::allocate_event_buffers() {
     usize events_size = sizeof(InputEvent) * INPUT_EVENT_BUFFERS;
     usize pages_needed = (events_size + pmm::PAGE_SIZE - 1) / pmm::PAGE_SIZE;
-    events_phys_ = pmm::alloc_pages(pages_needed);
-    if (events_phys_ == 0) {
+
+    // Allocate event buffers using DMA helper (Issue #36-38)
+    events_dma_ = alloc_dma_buffer(pages_needed);
+    if (!events_dma_.is_valid()) {
         serial::puts("[virtio-input] Failed to allocate event buffers\n");
         return false;
     }
 
-    InputEvent *virt_events = reinterpret_cast<InputEvent *>(pmm::phys_to_virt(events_phys_));
+    events_phys_ = events_dma_.phys;
+    InputEvent *virt_events = reinterpret_cast<InputEvent *>(events_dma_.virt);
     for (usize i = 0; i < INPUT_EVENT_BUFFERS; i++) {
         events_[i] = virt_events[i];
     }

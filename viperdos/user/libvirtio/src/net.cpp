@@ -5,6 +5,7 @@
 
 #include "../include/net.hpp"
 #include "../include/device.hpp"
+#include <string.h>
 
 namespace virtio {
 
@@ -87,9 +88,7 @@ bool NetDevice::init(u64 mmio_phys, u32 irq) {
         rx_buffers_[i].in_use = false;
         rx_buffers_[i].desc_idx = 0;
         // Zero the data
-        for (usize j = 0; j < RX_BUFFER_SIZE; j++) {
-            rx_buffers_[i].data[j] = 0;
-        }
+        memset(rx_buffers_[i].data, 0, RX_BUFFER_SIZE);
     }
 
     // Allocate TX header buffer
@@ -201,10 +200,7 @@ bool NetDevice::transmit(const void *data, usize len) {
 
     // Copy frame data
     u8 *frame_buf = reinterpret_cast<u8 *>(frame_dma.virt_addr);
-    const u8 *src = static_cast<const u8 *>(data);
-    for (usize i = 0; i < len; i++) {
-        frame_buf[i] = src[i];
-    }
+    memcpy(frame_buf, data, len);
 
     // Set up virtio header
     tx_header_->flags = 0;
@@ -313,10 +309,7 @@ i32 NetDevice::receive(void *buf, usize max_len) {
     }
 
     // Copy data
-    u8 *dst = static_cast<u8 *>(buf);
-    for (u16 i = 0; i < copy_len; i++) {
-        dst[i] = pkt->data[i];
-    }
+    memcpy(buf, pkt->data, copy_len);
 
     // Mark as consumed
     pkt->valid = false;

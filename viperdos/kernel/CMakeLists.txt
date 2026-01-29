@@ -160,6 +160,7 @@ endif ()
 target_include_directories(kernel.sys PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/include  # Shared viperdos headers
 )
 
 # Kernel-specific compiler flags

@@ -14,6 +14,7 @@ add_library(libvirtio STATIC ${LIBVIRTIO_SOURCES})
 target_include_directories(libvirtio PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_SOURCE_DIR}/user
+        ${CMAKE_SOURCE_DIR}/user/libc/include
         ${CMAKE_SOURCE_DIR}/include
 )
 
