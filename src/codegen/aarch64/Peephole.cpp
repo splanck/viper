@@ -154,6 +154,7 @@ namespace
         case MOpcode::Br:
         case MOpcode::BCond:
         case MOpcode::Bl:
+        case MOpcode::Blr:
         case MOpcode::Ret:
         case MOpcode::Cbz:
         case MOpcode::StrRegFpImm:

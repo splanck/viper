@@ -1,7 +1,36 @@
 // vg_filedialog_native.m - Native macOS file dialog implementation
 #import <Cocoa/Cocoa.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #include <stdlib.h>
 #include <string.h>
+
+// Helper to set allowed content types from file extensions
+static void setAllowedExtensions(NSSavePanel *panel, NSArray *extensions)
+{
+    if (@available(macOS 11.0, *))
+    {
+        NSMutableArray<UTType *> *types = [NSMutableArray array];
+        for (NSString *ext in extensions)
+        {
+            UTType *type = [UTType typeWithFilenameExtension:ext];
+            if (type)
+            {
+                [types addObject:type];
+            }
+        }
+        if ([types count] > 0)
+        {
+            [panel setAllowedContentTypes:types];
+        }
+    }
+    else
+    {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        [panel setAllowedFileTypes:extensions];
+#pragma clang diagnostic pop
+    }
+}
 
 // Native open file dialog - returns allocated string or NULL
 char *vg_native_open_file(const char *title,
@@ -47,7 +76,7 @@ char *vg_native_open_file(const char *title,
 
             if ([extensions count] > 0)
             {
-                [panel setAllowedFileTypes:extensions];
+                setAllowedExtensions(panel, extensions);
             }
         }
 
@@ -111,7 +140,7 @@ char *vg_native_save_file(const char *title,
 
             if ([extensions count] > 0)
             {
-                [panel setAllowedFileTypes:extensions];
+                setAllowedExtensions(panel, extensions);
             }
         }
 

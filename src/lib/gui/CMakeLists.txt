@@ -91,6 +91,11 @@ if (UNIX AND NOT APPLE)
     target_link_libraries(vipergui PRIVATE m)
 endif ()
 
+# Link UniformTypeIdentifiers framework on macOS (for file dialogs)
+if (APPLE)
+    target_link_libraries(vipergui PRIVATE "-framework UniformTypeIdentifiers")
+endif ()
+
 # C11 standard
 set_target_properties(vipergui PROPERTIES
         C_STANDARD 11
