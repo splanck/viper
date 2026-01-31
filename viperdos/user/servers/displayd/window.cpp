@@ -167,6 +167,8 @@ uint8_t get_resize_edge(Surface *surf, int32_t x, int32_t y) {
         return 0;
     if (surf->maximized)
         return 0; // Can't resize maximized windows
+    if (surf->flags & SURFACE_FLAG_SYSTEM)
+        return 0; // SYSTEM surfaces (desktop) are not resizable
 
     int32_t win_x1 = surf->x - static_cast<int32_t>(BORDER_WIDTH);
     int32_t win_y1 = surf->y - static_cast<int32_t>(TITLE_BAR_HEIGHT + BORDER_WIDTH);

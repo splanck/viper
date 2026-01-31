@@ -166,20 +166,13 @@ extern "C" void _start() {
     constexpr size_t MAX_PAYLOAD = 4096;
     uint8_t msg_buf[MAX_PAYLOAD];
     uint32_t handles[4];
-    sys::PollEvent poll_events[1];
 
     // Process messages in batches to avoid starving input polling
     constexpr uint32_t MAX_MESSAGES_PER_BATCH = 16;
-    // Short poll timeout for mouse responsiveness (~200Hz polling)
-    constexpr int64_t POLL_TIMEOUT_MS = 5;
+    constexpr uint64_t COMPOSITE_INTERVAL_MS = 16; // ~60Hz
 
-    debug_print("[displayd] entering main loop\n");
+    uint64_t last_composite = sys::uptime();
     while (true) {
-        // Wait for messages on service channel
-        int32_t poll_result =
-            sys::poll_wait(static_cast<uint32_t>(g_poll_set), poll_events, 1, POLL_TIMEOUT_MS);
-
-        // Process messages if channel has data
         uint32_t messages_processed = 0;
 
         while (messages_processed < MAX_MESSAGES_PER_BATCH) {
@@ -212,7 +205,18 @@ extern "C" void _start() {
         poll_mouse();
         poll_keyboard();
 
-        (void)poll_result; // Suppress unused warning
+        // Periodic composite to ensure screen updates even if present
+        // requests are missed (workaround for poll_wait issues)
+        uint64_t now = sys::uptime();
+        if (now - last_composite >= COMPOSITE_INTERVAL_MS) {
+            composite();
+            last_composite = now;
+        }
+
+        // If idle, sleep briefly to avoid busy-looping
+        if (messages_processed == 0) {
+            sys::sleep(5);
+        }
     }
 
     sys::exit(0);

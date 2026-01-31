@@ -479,10 +479,36 @@ static bool send_request_recv_reply(const void *req,
     uint32_t recv_handles[4];
     uint32_t recv_handle_count = 4;
 
+    // Debug: track which iteration we're on
+    static uint32_t req_count = 0;
+    req_count++;
+    bool debug_this = (req_count <= 10);
+
+    if (debug_this) {
+        sys::print("[gui] send_req_recv_reply #");
+        char buf[16];
+        int i = 15;
+        buf[i] = '\0';
+        uint32_t v = req_count;
+        do { buf[--i] = '0' + (v % 10); v /= 10; } while (v > 0);
+        sys::print(&buf[i]);
+        sys::print(" waiting for reply...\n");
+    }
+
     for (uint32_t i = 0; i < 500; i++) {
         recv_handle_count = 4;
         int64_t n = sys::channel_recv(recv_ch, reply, reply_len, recv_handles, &recv_handle_count);
         if (n > 0) {
+            if (debug_this) {
+                sys::print("[gui] got reply after ");
+                char buf[16];
+                int bi = 15;
+                buf[bi] = '\0';
+                uint32_t v = i;
+                do { buf[--bi] = '0' + (v % 10); v /= 10; } while (v > 0);
+                sys::print(&buf[bi]);
+                sys::print(" iterations\n");
+            }
             sys::channel_close(recv_ch);
             if (out_handles && handle_count) {
                 for (uint32_t j = 0; j < recv_handle_count && j < *handle_count; j++) {
@@ -493,12 +519,25 @@ static bool send_request_recv_reply(const void *req,
             return true;
         }
         if (n != VERR_WOULD_BLOCK) {
+            if (debug_this) {
+                sys::print("[gui] recv error: ");
+                char buf[16];
+                int bi = 15;
+                buf[bi] = '\0';
+                int64_t v = -n;
+                do { buf[--bi] = '0' + (v % 10); v /= 10; } while (v > 0);
+                sys::print(&buf[bi]);
+                sys::print("\n");
+            }
             break;
         }
         // Sleep to let displayd get scheduled and process the request
         sys::sleep(10);
     }
 
+    if (debug_this) {
+        sys::print("[gui] send_req_recv_reply TIMEOUT\n");
+    }
     sys::channel_close(recv_ch);
     return false;
 }
@@ -1612,9 +1651,13 @@ extern "C" void gui_present(gui_window_t *win) {
  *
  * @see gui_present() For synchronous presentation with confirmation.
  */
-extern "C" void gui_present_async(gui_window_t *win) {
+extern "C" int gui_present_async(gui_window_t *win) {
     if (!win)
-        return;
+        return 0;
+
+    // Ensure all pixel buffer writes are visible before sending present request.
+    // On ARM64, cache coherency isn't automatic between processes sharing memory.
+    __asm__ volatile("dmb sy" ::: "memory");
 
     PresentRequest req;
     req.type = DISP_PRESENT;
@@ -1626,7 +1669,7 @@ extern "C" void gui_present_async(gui_window_t *win) {
     req.damage_h = 0;
 
     // Fire-and-forget: send without waiting for reply
-    sys::channel_send(g_display_channel, &req, sizeof(req), nullptr, 0);
+    return static_cast<int>(sys::channel_send(g_display_channel, &req, sizeof(req), nullptr, 0));
 }
 
 /**
@@ -1668,6 +1711,10 @@ extern "C" void gui_present_region(
     gui_window_t *win, uint32_t x, uint32_t y, uint32_t w, uint32_t h) {
     if (!win)
         return;
+
+    // Ensure all pixel buffer writes are visible before sending present request.
+    // On ARM64, cache coherency isn't automatic between processes sharing memory.
+    __asm__ volatile("dmb sy" ::: "memory");
 
     PresentRequest req;
     req.type = DISP_PRESENT;
@@ -1756,12 +1803,64 @@ extern "C" int gui_poll_event(gui_window_t *win, gui_event_t *event) {
     if (!win || !event)
         return -1;
 
+    // Debug: check if desktop is polling and what its event_channel is
+    static int desktop_poll_dbg = 0;
+    if (win->surface_id == 1) {
+        if (++desktop_poll_dbg % 2000 == 0) {
+            sys::print("[gui] sid=1 poll evch=");
+            char buf[16];
+            int32_t ch = win->event_channel;
+            int idx = 0;
+            if (ch < 0) {
+                buf[idx++] = '-';
+                ch = -ch;
+            }
+            char tmp[16];
+            int ti = 0;
+            do {
+                tmp[ti++] = '0' + (ch % 10);
+                ch /= 10;
+            } while (ch > 0);
+            while (ti > 0)
+                buf[idx++] = tmp[--ti];
+            buf[idx] = '\0';
+            sys::print(buf);
+            sys::print("\n");
+        }
+    }
+
     // If we have an event channel, receive directly from it (fast path)
     if (win->event_channel >= 0) {
         // Buffer large enough for any event type
         uint8_t ev_buf[64];
         uint32_t recv_handles[4];
         uint32_t handle_count = 4;
+
+        // Debug: show which channel we're polling (only for surface 1 = desktop)
+        static int poll_dbg_count = 0;
+        if (win->surface_id == 1 && ++poll_dbg_count % 1000 == 0) {
+            sys::print("[gui] DESKTOP poll ch=");
+            char buf[16];
+            // Simple decimal conversion
+            int32_t ch = win->event_channel;
+            int idx = 0;
+            if (ch < 0) {
+                buf[idx++] = '-';
+                ch = -ch;
+            }
+            char tmp[16];
+            int ti = 0;
+            do {
+                tmp[ti++] = '0' + (ch % 10);
+                ch /= 10;
+            } while (ch > 0);
+            while (ti > 0)
+                buf[idx++] = tmp[--ti];
+            buf[idx] = '\0';
+            sys::print(buf);
+            sys::print("\n");
+        }
+
         int64_t n = sys::channel_recv(
             win->event_channel, ev_buf, sizeof(ev_buf), recv_handles, &handle_count);
 
@@ -1775,6 +1874,28 @@ extern "C" int gui_poll_event(gui_window_t *win, gui_event_t *event) {
 
         // First 4 bytes is event type
         uint32_t ev_type = *reinterpret_cast<uint32_t *>(ev_buf);
+
+        // Debug: event received - distinguish desktop vs other windows
+        if (ev_type == DISP_EVENT_MOUSE) {
+            if (win->surface_id == 1) {
+                sys::print("[gui] DESKTOP GOT mouse ch=");
+                char buf[16];
+                int32_t ch = win->event_channel;
+                int idx = 0;
+                char tmp[16];
+                int ti = 0;
+                do {
+                    tmp[ti++] = '0' + (ch % 10);
+                    ch /= 10;
+                } while (ch > 0);
+                while (ti > 0)
+                    buf[idx++] = tmp[--ti];
+                buf[idx] = '\0';
+                sys::print(buf);
+                sys::print("\n");
+            }
+            // Don't log non-desktop mouse events (too noisy)
+        }
 
         switch (ev_type) {
             case DISP_EVENT_MOUSE: {

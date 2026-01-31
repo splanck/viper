@@ -387,17 +387,6 @@ void check_timers() {
     for (u32 i = 0; i < wake_count; i++) {
         task::Task *waiter = waiters_to_wake[i];
         if (waiter->state == task::TaskState::Blocked) {
-            // DEBUG: track timer wakeups
-            static u32 wake_debug_count = 0;
-            wake_debug_count++;
-            if (wake_debug_count <= 10) {
-                serial::puts("[poll] waking '");
-                serial::puts(waiter->name);
-                serial::puts("' heap_idx=");
-                serial::put_dec(waiter->heap_index);
-                serial::puts("\n");
-            }
-
             waiter->state = task::TaskState::Ready;
             scheduler::enqueue(waiter);
         }
@@ -468,10 +457,17 @@ void notify_handle(u32 handle, EventType events) {
     }
     poll_lock.release(saved_daif);
 
-    // Wake waiters outside lock
+    // Wake waiters outside lock.
+    // Must re-check state to avoid double-enqueue race with check_timers().
+    // A task can be registered for both timer and channel wakeup, so both
+    // check_timers() and notify_handle() may try to wake the same task.
+    // Only the first one to see state == Blocked should enqueue.
     for (u32 i = 0; i < wake_count; i++) {
-        waiters_to_wake[i]->state = task::TaskState::Ready;
-        scheduler::enqueue(waiters_to_wake[i]);
+        task::Task *waiter = waiters_to_wake[i];
+        if (waiter->state == task::TaskState::Blocked) {
+            waiter->state = task::TaskState::Ready;
+            scheduler::enqueue(waiter);
+        }
     }
 }
 

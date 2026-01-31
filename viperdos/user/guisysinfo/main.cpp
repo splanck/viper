@@ -8,49 +8,7 @@
  * @file main.cpp
  * @brief GUI System Information utility for ViperDOS.
  *
- * This application displays system information in a graphical window,
- * similar to "About This Mac" or the Amiga System Information window.
- * It provides a quick overview of:
- * - Operating system version
- * - Hardware platform
- * - Memory usage
- * - System uptime
- * - Running processes
- *
- * ## Window Layout
- *
- * ```
- * +--[ System Information ]--------------+
- * |    ViperDOS System Info              |
- * | ------------------------------------ |
- * | System:    ViperDOS v0.3.1           |
- * | Kernel:    Viper Hybrid Kernel       |
- * | Platform:  AArch64 (ARM64)           |
- * | CPU:       Cortex-A57 (QEMU)         |
- * |                                      |
- * | +----------------------------------+ |
- * | |  Memory                          | |
- * | |  Total: 128 MB    Free: 83 MB    | |
- * | |  [########............]          | |  Memory bar
- * | +----------------------------------+ |
- * |                                      |
- * | Uptime:    1:23:45                   |
- * | ------------------------------------ |
- * | Running Tasks (12)                   |
- * | PID  Name           State   Priority |
- * |   1  kernel         Running    0     |
- * |   2  displayd       Blocked    5     |
- * | ...                                  |
- * +--------------------------------------+
- * ```
- *
- * ## Auto-Refresh
- *
- * The display automatically refreshes every 2 seconds to show
- * current memory usage, uptime, and process states.
- *
- * @see mem_info.hpp for memory information structure
- * @see task_info.hpp for task information structure
+ * Refactored using OOP principles with SystemInfoApp class.
  */
 //===----------------------------------------------------------------------===//
 
@@ -62,300 +20,324 @@
 #include <viperdos/task_info.hpp>
 
 //===----------------------------------------------------------------------===//
-// Color Constants
+// Constants
 //===----------------------------------------------------------------------===//
 
-/**
- * @defgroup SysInfoColors System Info Colors
- * @brief Workbench-style color palette for the system info UI.
- * @{
- */
+namespace sysinfo {
 
-/** @brief Workbench blue for section backgrounds (0xFF0055AA). */
-constexpr uint32_t WB_BLUE = 0xFF0055AA;
+namespace colors {
+constexpr uint32_t BLUE = 0xFF0055AA;
+constexpr uint32_t WHITE = 0xFFFFFFFF;
+constexpr uint32_t BLACK = 0xFF000000;
+constexpr uint32_t GRAY_LIGHT = 0xFFAAAAAA;
+constexpr uint32_t GRAY_DARK = 0xFF555555;
+constexpr uint32_t ORANGE = 0xFFFF8800;
+} // namespace colors
 
-/** @brief Pure white for text on blue (0xFFFFFFFF). */
-constexpr uint32_t WB_WHITE = 0xFFFFFFFF;
-
-/** @brief Pure black for primary text (0xFF000000). */
-constexpr uint32_t WB_BLACK = 0xFF000000;
-
-/** @brief Light gray window background (0xFFAAAAAA). */
-constexpr uint32_t WB_GRAY_LIGHT = 0xFFAAAAAA;
-
-/** @brief Dark gray for separators (0xFF555555). */
-constexpr uint32_t WB_GRAY_DARK = 0xFF555555;
-
-/** @brief Orange for memory usage bar (0xFFFF8800). */
-constexpr uint32_t WB_ORANGE = 0xFFFF8800;
-
-/** @} */ // end SysInfoColors
-
-//===----------------------------------------------------------------------===//
-// Layout Constants
-//===----------------------------------------------------------------------===//
-
-/**
- * @defgroup SysInfoLayout System Info Layout
- * @brief Window dimensions for the system info display.
- * @{
- */
-
-/** @brief Total window width in pixels. */
+namespace layout {
 constexpr int WIN_WIDTH = 400;
-
-/** @brief Total window height in pixels. */
 constexpr int WIN_HEIGHT = 340;
-
-/** @} */ // end SysInfoLayout
+constexpr int MAX_VISIBLE_TASKS = 8;
+} // namespace layout
 
 //===----------------------------------------------------------------------===//
-// System Data
+// Formatter - Utility class for formatting values
 //===----------------------------------------------------------------------===//
 
-/**
- * @brief Aggregated system information for display.
- *
- * This structure holds all the data queried from the kernel
- * that gets displayed in the system info window.
- */
-struct SystemData {
-    MemInfo mem;        /**< Memory usage statistics. */
-    TaskInfo tasks[32]; /**< Array of task information. */
-    int taskCount;      /**< Number of tasks in the array. */
-    uint64_t uptimeMs;  /**< System uptime in milliseconds. */
+class Formatter {
+  public:
+    static void uptime(char *buf, size_t len, uint64_t ms) {
+        uint64_t seconds = ms / 1000;
+        uint64_t minutes = seconds / 60;
+        uint64_t hours = minutes / 60;
+        uint64_t days = hours / 24;
+
+        seconds %= 60;
+        minutes %= 60;
+        hours %= 24;
+
+        if (days > 0) {
+            snprintf(buf, len, "%llu day%s, %llu:%02llu:%02llu",
+                     days, days == 1 ? "" : "s", hours, minutes, seconds);
+        } else {
+            snprintf(buf, len, "%llu:%02llu:%02llu", hours, minutes, seconds);
+        }
+    }
+
+    static void bytes(char *buf, size_t len, uint64_t bytes) {
+        if (bytes >= 1024ULL * 1024 * 1024) {
+            snprintf(buf, len, "%llu GB", bytes / (1024ULL * 1024 * 1024));
+        } else if (bytes >= 1024 * 1024) {
+            snprintf(buf, len, "%llu MB", bytes / (1024 * 1024));
+        } else if (bytes >= 1024) {
+            snprintf(buf, len, "%llu KB", bytes / 1024);
+        } else {
+            snprintf(buf, len, "%llu bytes", bytes);
+        }
+    }
 };
 
-/**
- * @brief Global system data refreshed periodically.
- */
-static SystemData g_data;
+//===----------------------------------------------------------------------===//
+// SystemDataSource - Manages system data collection
+//===----------------------------------------------------------------------===//
 
-static void refreshData() {
-    // Get memory info
-    sys::mem_info(&g_data.mem);
+class SystemDataSource {
+  public:
+    static constexpr int MAX_TASKS = 32;
 
-    // Get task list
-    g_data.taskCount = sys::task_list(g_data.tasks, 32);
-    if (g_data.taskCount < 0) {
-        g_data.taskCount = 0;
+    SystemDataSource() : m_taskCount(0), m_uptimeMs(0) {}
+
+    void refresh() {
+        sys::mem_info(&m_mem);
+
+        m_taskCount = sys::task_list(m_tasks, MAX_TASKS);
+        if (m_taskCount < 0) {
+            m_taskCount = 0;
+        }
+
+        m_uptimeMs = sys::uptime();
     }
 
-    // Get uptime
-    g_data.uptimeMs = sys::uptime();
-}
+    const MemInfo &memInfo() const { return m_mem; }
+    int taskCount() const { return m_taskCount; }
+    uint64_t uptimeMs() const { return m_uptimeMs; }
+    const TaskInfo &task(int idx) const { return m_tasks[idx]; }
 
-static void formatUptime(char *buf, size_t len, uint64_t ms) {
-    uint64_t seconds = ms / 1000;
-    uint64_t minutes = seconds / 60;
-    uint64_t hours = minutes / 60;
-    uint64_t days = hours / 24;
+  private:
+    MemInfo m_mem;
+    TaskInfo m_tasks[MAX_TASKS];
+    int m_taskCount;
+    uint64_t m_uptimeMs;
+};
 
-    seconds %= 60;
-    minutes %= 60;
-    hours %= 24;
+//===----------------------------------------------------------------------===//
+// SystemInfoView - Renders the system information
+//===----------------------------------------------------------------------===//
 
-    if (days > 0) {
-        snprintf(buf,
-                 len,
-                 "%llu day%s, %llu:%02llu:%02llu",
-                 days,
-                 days == 1 ? "" : "s",
-                 hours,
-                 minutes,
-                 seconds);
-    } else {
-        snprintf(buf, len, "%llu:%02llu:%02llu", hours, minutes, seconds);
+class SystemInfoView {
+  public:
+    void draw(gui_window_t *win, const SystemDataSource &data) {
+        gui_fill_rect(win, 0, 0, layout::WIN_WIDTH, layout::WIN_HEIGHT, colors::GRAY_LIGHT);
+
+        int y = 15;
+        y = drawTitle(win, y);
+        y = drawSystemInfo(win, y);
+        y = drawMemorySection(win, y, data);
+        y = drawUptime(win, y, data);
+        y = drawTasksSection(win, y, data);
+
+        gui_present(win);
     }
-}
 
-static void formatBytes(char *buf, size_t len, uint64_t bytes) {
-    if (bytes >= 1024 * 1024 * 1024) {
-        snprintf(buf, len, "%llu GB", bytes / (1024 * 1024 * 1024));
-    } else if (bytes >= 1024 * 1024) {
-        snprintf(buf, len, "%llu MB", bytes / (1024 * 1024));
-    } else if (bytes >= 1024) {
-        snprintf(buf, len, "%llu KB", bytes / 1024);
-    } else {
-        snprintf(buf, len, "%llu bytes", bytes);
+  private:
+    int drawTitle(gui_window_t *win, int y) {
+        gui_draw_text(win, 130, y, "ViperDOS System Info", colors::BLACK);
+        y += 12;
+        gui_draw_hline(win, 20, layout::WIN_WIDTH - 20, y, colors::GRAY_DARK);
+        return y + 15;
     }
-}
 
-static void drawWindow(gui_window_t *win) {
-    // Background
-    gui_fill_rect(win, 0, 0, WIN_WIDTH, WIN_HEIGHT, WB_GRAY_LIGHT);
-
-    int y = 15;
-    char buf[128];
-
-    // Title
-    gui_draw_text(win, 130, y, "ViperDOS System Info", WB_BLACK);
-    y += 12;
-
-    // Horizontal line
-    gui_draw_hline(win, 20, WIN_WIDTH - 20, y, WB_GRAY_DARK);
-    y += 15;
-
-    // Version info
-    gui_draw_text(win, 20, y, "System:", WB_BLACK);
-    gui_draw_text(win, 120, y, "ViperDOS v0.3.1", WB_GRAY_DARK);
-    y += 18;
-
-    gui_draw_text(win, 20, y, "Kernel:", WB_BLACK);
-    gui_draw_text(win, 120, y, "Viper Hybrid Kernel", WB_GRAY_DARK);
-    y += 18;
-
-    gui_draw_text(win, 20, y, "Platform:", WB_BLACK);
-    gui_draw_text(win, 120, y, "AArch64 (ARM64)", WB_GRAY_DARK);
-    y += 18;
-
-    gui_draw_text(win, 20, y, "CPU:", WB_BLACK);
-    gui_draw_text(win, 120, y, "Cortex-A57 (QEMU)", WB_GRAY_DARK);
-    y += 25;
-
-    // Memory section
-    gui_fill_rect(win, 15, y - 3, WIN_WIDTH - 30, 60, WB_BLUE);
-    gui_draw_text(win, 20, y, "Memory", WB_WHITE);
-    y += 18;
-
-    formatBytes(buf, sizeof(buf), g_data.mem.total_bytes);
-    char totalBuf[64];
-    strncpy(totalBuf, buf, sizeof(totalBuf) - 1);
-
-    formatBytes(buf, sizeof(buf), g_data.mem.free_bytes);
-    char freeBuf[64];
-    strncpy(freeBuf, buf, sizeof(freeBuf) - 1);
-
-    snprintf(buf, sizeof(buf), "Total: %s    Free: %s", totalBuf, freeBuf);
-    gui_draw_text(win, 25, y, buf, WB_WHITE);
-    y += 18;
-
-    // Memory bar
-    int barX = 25;
-    int barW = WIN_WIDTH - 60;
-    int barH = 12;
-    gui_fill_rect(win, barX, y, barW, barH, WB_GRAY_DARK);
-
-    int usedW = 0;
-    if (g_data.mem.total_bytes > 0) {
-        usedW = static_cast<int>((g_data.mem.used_bytes * barW) / g_data.mem.total_bytes);
+    int drawSystemInfo(gui_window_t *win, int y) {
+        drawLabelValue(win, 20, y, "System:", "ViperDOS v0.3.1");
+        y += 18;
+        drawLabelValue(win, 20, y, "Kernel:", "Viper Hybrid Kernel");
+        y += 18;
+        drawLabelValue(win, 20, y, "Platform:", "AArch64 (ARM64)");
+        y += 18;
+        drawLabelValue(win, 20, y, "CPU:", "Cortex-A57 (QEMU)");
+        return y + 25;
     }
-    gui_fill_rect(win, barX, y, usedW, barH, WB_ORANGE);
-    y += 25;
 
-    // Uptime
-    gui_draw_text(win, 20, y, "Uptime:", WB_BLACK);
-    formatUptime(buf, sizeof(buf), g_data.uptimeMs);
-    gui_draw_text(win, 120, y, buf, WB_GRAY_DARK);
-    y += 25;
+    int drawMemorySection(gui_window_t *win, int y, const SystemDataSource &data) {
+        // Memory section background
+        gui_fill_rect(win, 15, y - 3, layout::WIN_WIDTH - 30, 60, colors::BLUE);
+        gui_draw_text(win, 20, y, "Memory", colors::WHITE);
+        y += 18;
 
-    // Tasks section
-    gui_draw_hline(win, 20, WIN_WIDTH - 20, y, WB_GRAY_DARK);
-    y += 8;
+        // Format memory values
+        char totalBuf[64], freeBuf[64], buf[128];
+        Formatter::bytes(totalBuf, sizeof(totalBuf), data.memInfo().total_bytes);
+        Formatter::bytes(freeBuf, sizeof(freeBuf), data.memInfo().free_bytes);
 
-    snprintf(buf, sizeof(buf), "Running Tasks (%d)", g_data.taskCount);
-    gui_draw_text(win, 20, y, buf, WB_BLACK);
-    y += 18;
+        snprintf(buf, sizeof(buf), "Total: %s    Free: %s", totalBuf, freeBuf);
+        gui_draw_text(win, 25, y, buf, colors::WHITE);
+        y += 18;
 
-    // Task header
-    gui_draw_text(win, 25, y, "PID", WB_GRAY_DARK);
-    gui_draw_text(win, 60, y, "Name", WB_GRAY_DARK);
-    gui_draw_text(win, 200, y, "State", WB_GRAY_DARK);
-    gui_draw_text(win, 280, y, "Priority", WB_GRAY_DARK);
-    y += 14;
+        // Memory bar
+        drawMemoryBar(win, 25, y, layout::WIN_WIDTH - 60, 12, data.memInfo());
+        return y + 25;
+    }
 
-    gui_draw_hline(win, 25, WIN_WIDTH - 25, y, WB_GRAY_DARK);
-    y += 4;
+    void drawMemoryBar(gui_window_t *win, int x, int y, int w, int h, const MemInfo &mem) {
+        gui_fill_rect(win, x, y, w, h, colors::GRAY_DARK);
 
-    // Task list (show up to 8 tasks)
-    int maxTasks = (g_data.taskCount < 8) ? g_data.taskCount : 8;
-    for (int i = 0; i < maxTasks; i++) {
-        TaskInfo &task = g_data.tasks[i];
+        int usedW = 0;
+        if (mem.total_bytes > 0) {
+            usedW = static_cast<int>((mem.used_bytes * w) / mem.total_bytes);
+        }
+        gui_fill_rect(win, x, y, usedW, h, colors::ORANGE);
+    }
+
+    int drawUptime(gui_window_t *win, int y, const SystemDataSource &data) {
+        char buf[64];
+        Formatter::uptime(buf, sizeof(buf), data.uptimeMs());
+
+        gui_draw_text(win, 20, y, "Uptime:", colors::BLACK);
+        gui_draw_text(win, 120, y, buf, colors::GRAY_DARK);
+        return y + 25;
+    }
+
+    int drawTasksSection(gui_window_t *win, int y, const SystemDataSource &data) {
+        gui_draw_hline(win, 20, layout::WIN_WIDTH - 20, y, colors::GRAY_DARK);
+        y += 8;
+
+        char buf[64];
+        snprintf(buf, sizeof(buf), "Running Tasks (%d)", data.taskCount());
+        gui_draw_text(win, 20, y, buf, colors::BLACK);
+        y += 18;
+
+        // Task header
+        gui_draw_text(win, 25, y, "PID", colors::GRAY_DARK);
+        gui_draw_text(win, 60, y, "Name", colors::GRAY_DARK);
+        gui_draw_text(win, 200, y, "State", colors::GRAY_DARK);
+        gui_draw_text(win, 280, y, "Priority", colors::GRAY_DARK);
+        y += 14;
+
+        gui_draw_hline(win, 25, layout::WIN_WIDTH - 25, y, colors::GRAY_DARK);
+        y += 4;
+
+        // Task list
+        int maxTasks = (data.taskCount() < layout::MAX_VISIBLE_TASKS)
+            ? data.taskCount() : layout::MAX_VISIBLE_TASKS;
+
+        for (int i = 0; i < maxTasks; i++) {
+            y = drawTaskRow(win, y, data.task(i));
+        }
+
+        if (data.taskCount() > layout::MAX_VISIBLE_TASKS) {
+            snprintf(buf, sizeof(buf), "... and %d more",
+                     data.taskCount() - layout::MAX_VISIBLE_TASKS);
+            gui_draw_text(win, 60, y, buf, colors::GRAY_DARK);
+        }
+
+        return y;
+    }
+
+    int drawTaskRow(gui_window_t *win, int y, const TaskInfo &task) {
+        char buf[32];
 
         // PID
         snprintf(buf, sizeof(buf), "%d", task.id);
-        gui_draw_text(win, 25, y, buf, WB_BLACK);
+        gui_draw_text(win, 25, y, buf, colors::BLACK);
 
-        // Name (truncate if needed)
+        // Name
         char nameBuf[20];
         strncpy(nameBuf, task.name, 18);
         nameBuf[18] = '\0';
-        gui_draw_text(win, 60, y, nameBuf, WB_BLACK);
+        gui_draw_text(win, 60, y, nameBuf, colors::BLACK);
 
         // State
-        const char *stateStr = "???";
-        switch (task.state) {
-            case TASK_STATE_READY:
-                stateStr = "Ready";
-                break;
-            case TASK_STATE_RUNNING:
-                stateStr = "Running";
-                break;
-            case TASK_STATE_BLOCKED:
-                stateStr = "Blocked";
-                break;
-            case TASK_STATE_EXITED:
-                stateStr = "Exited";
-                break;
-        }
-        gui_draw_text(win, 200, y, stateStr, WB_BLACK);
+        const char *stateStr = stateToString(task.state);
+        gui_draw_text(win, 200, y, stateStr, colors::BLACK);
 
         // Priority
         snprintf(buf, sizeof(buf), "%d", task.priority);
-        gui_draw_text(win, 290, y, buf, WB_BLACK);
+        gui_draw_text(win, 290, y, buf, colors::BLACK);
 
-        y += 14;
+        return y + 14;
     }
 
-    if (g_data.taskCount > 8) {
-        snprintf(buf, sizeof(buf), "... and %d more", g_data.taskCount - 8);
-        gui_draw_text(win, 60, y, buf, WB_GRAY_DARK);
+    const char *stateToString(uint32_t state) {
+        switch (state) {
+            case TASK_STATE_READY: return "Ready";
+            case TASK_STATE_RUNNING: return "Running";
+            case TASK_STATE_BLOCKED: return "Blocked";
+            case TASK_STATE_EXITED: return "Exited";
+            default: return "???";
+        }
     }
 
-    gui_present(win);
-}
+    void drawLabelValue(gui_window_t *win, int x, int y,
+                        const char *label, const char *value) {
+        gui_draw_text(win, x, y, label, colors::BLACK);
+        gui_draw_text(win, x + 100, y, value, colors::GRAY_DARK);
+    }
+};
+
+//===----------------------------------------------------------------------===//
+// SystemInfoApp - Main application class
+//===----------------------------------------------------------------------===//
+
+class SystemInfoApp {
+  public:
+    SystemInfoApp() : m_window(nullptr) {}
+
+    bool init() {
+        if (gui_init() != 0) {
+            return false;
+        }
+
+        m_window = gui_create_window("System Information",
+                                     layout::WIN_WIDTH, layout::WIN_HEIGHT);
+        if (!m_window) {
+            gui_shutdown();
+            return false;
+        }
+
+        m_data.refresh();
+        return true;
+    }
+
+    void run() {
+        m_view.draw(m_window, m_data);
+
+        uint64_t lastRefresh = sys::uptime();
+
+        while (true) {
+            gui_event_t event;
+            if (gui_poll_event(m_window, &event) == 0) {
+                if (event.type == GUI_EVENT_CLOSE) {
+                    break;
+                }
+            }
+
+            // Refresh every 2 seconds
+            uint64_t now = sys::uptime();
+            if (now - lastRefresh >= 2000) {
+                m_data.refresh();
+                m_view.draw(m_window, m_data);
+                lastRefresh = now;
+            }
+
+            __asm__ volatile("mov x8, #0x00\n\tsvc #0" ::: "x8");
+        }
+    }
+
+    void shutdown() {
+        gui_destroy_window(m_window);
+        gui_shutdown();
+    }
+
+  private:
+    gui_window_t *m_window;
+    SystemDataSource m_data;
+    SystemInfoView m_view;
+};
+
+} // namespace sysinfo
+
+//===----------------------------------------------------------------------===//
+// Main Entry Point
+//===----------------------------------------------------------------------===//
 
 extern "C" int main() {
-    // Initialize GUI
-    if (gui_init() != 0) {
+    sysinfo::SystemInfoApp app;
+
+    if (!app.init()) {
         return 1;
     }
 
-    // Create window
-    gui_window_t *win = gui_create_window("System Information", WIN_WIDTH, WIN_HEIGHT);
-    if (!win) {
-        gui_shutdown();
-        return 1;
-    }
-
-    // Initial data refresh
-    refreshData();
-    drawWindow(win);
-
-    // Event loop
-    uint64_t lastRefresh = sys::uptime();
-
-    while (true) {
-        gui_event_t event;
-        if (gui_poll_event(win, &event) == 0) {
-            if (event.type == GUI_EVENT_CLOSE) {
-                break;
-            }
-        }
-
-        // Refresh data every 2 seconds
-        uint64_t now = sys::uptime();
-        if (now - lastRefresh >= 2000) {
-            refreshData();
-            drawWindow(win);
-            lastRefresh = now;
-        }
-
-        // Yield CPU
-        __asm__ volatile("mov x8, #0x00\n\tsvc #0" ::: "x8");
-    }
-
-    gui_destroy_window(win);
-    gui_shutdown();
+    app.run();
+    app.shutdown();
     return 0;
 }

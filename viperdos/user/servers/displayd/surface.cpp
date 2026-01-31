@@ -24,11 +24,20 @@ Surface *find_surface_at(int32_t x, int32_t y) {
         if (!surf->in_use || !surf->visible || surf->minimized)
             continue;
 
-        // Check if in window bounds (including decorations)
-        int32_t win_x = surf->x - static_cast<int32_t>(BORDER_WIDTH);
-        int32_t win_y = surf->y - static_cast<int32_t>(TITLE_BAR_HEIGHT + BORDER_WIDTH);
-        int32_t win_x2 = surf->x + static_cast<int32_t>(surf->width + BORDER_WIDTH);
-        int32_t win_y2 = surf->y + static_cast<int32_t>(surf->height + BORDER_WIDTH);
+        // For SYSTEM surfaces (no decorations), don't add title bar/border padding
+        int32_t win_x, win_y, win_x2, win_y2;
+        if (surf->flags & SURFACE_FLAG_SYSTEM) {
+            win_x = surf->x;
+            win_y = surf->y;
+            win_x2 = surf->x + static_cast<int32_t>(surf->width);
+            win_y2 = surf->y + static_cast<int32_t>(surf->height);
+        } else {
+            // Check if in window bounds (including decorations)
+            win_x = surf->x - static_cast<int32_t>(BORDER_WIDTH);
+            win_y = surf->y - static_cast<int32_t>(TITLE_BAR_HEIGHT + BORDER_WIDTH);
+            win_x2 = surf->x + static_cast<int32_t>(surf->width + BORDER_WIDTH);
+            win_y2 = surf->y + static_cast<int32_t>(surf->height + BORDER_WIDTH);
+        }
 
         if (x >= win_x && x < win_x2 && y >= win_y && y < win_y2) {
             // Pick the one with highest z-order (top-most)

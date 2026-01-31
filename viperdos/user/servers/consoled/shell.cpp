@@ -44,7 +44,11 @@ ShellManager::~ShellManager() {
 }
 
 bool ShellManager::spawn() {
-    debug_print("[consoled] Spawning shell process...\n");
+    static uint32_t spawn_count = 0;
+    spawn_count++;
+    debug_print("[consoled] Spawning shell #");
+    debug_print_dec(spawn_count);
+    debug_print("...\n");
 
     // Create input channel pair (consoled sends -> shell receives)
     auto input_ch = sys::channel_create();
@@ -119,11 +123,20 @@ bool ShellManager::spawn() {
     m_input_send = input_send;
     m_output_recv = output_recv;
 
+    // Debug: log channel handles
+    debug_print("[consoled] spawn: output_send=");
+    debug_print_dec(static_cast<uint64_t>(output_send));
+    debug_print(" output_recv=");
+    debug_print_dec(static_cast<uint64_t>(output_recv));
+    debug_print("\n");
+
     // NOTE: We don't close input_recv and output_send - we passed them to shell
 
-    debug_print("[consoled] Shell spawned (pid ");
+    debug_print("[consoled] Shell #");
+    debug_print_dec(spawn_count);
+    debug_print(" spawned (pid ");
     debug_print_dec(pid);
-    debug_print(")\n");
+    debug_print("), bootstrap sent OK\n");
 
     return true;
 }
@@ -153,9 +166,9 @@ void ShellManager::send_input(char ch, uint16_t keycode, uint8_t modifiers) {
     sys::channel_send(m_input_send, &event, sizeof(event), nullptr, 0);
 }
 
-void ShellManager::poll_output(AnsiParser &parser) {
+bool ShellManager::poll_output(AnsiParser &parser) {
     if (m_output_recv < 0)
-        return;
+        return false;
 
     uint8_t buf[4096];
     uint32_t handles[4];
@@ -163,6 +176,40 @@ void ShellManager::poll_output(AnsiParser &parser) {
 
     // Non-blocking receive
     int64_t n = sys::channel_recv(m_output_recv, buf, sizeof(buf), handles, &handle_count);
+
+    // Debug: log first successful receive and periodic status during startup
+    static uint32_t recv_success_count = 0;
+    static uint64_t last_status_log = 0;
+    static uint32_t poll_count = 0;
+    poll_count++;
+
+    uint64_t now = sys::uptime();
+    if (n > 0) {
+        if (recv_success_count < 3) {
+            recv_success_count++;
+            debug_print("[consoled] poll_output SUCCESS #");
+            debug_print_dec(recv_success_count);
+            debug_print(" ch=");
+            debug_print_dec(static_cast<uint64_t>(m_output_recv));
+            debug_print(" n=");
+            debug_print_dec(static_cast<uint64_t>(n));
+            debug_print(" polls=");
+            debug_print_dec(poll_count);
+            debug_print(" time=");
+            debug_print_dec(now);
+            debug_print("ms\n");
+        }
+    } else if (recv_success_count == 0 && now - last_status_log >= 1000) {
+        // Log once per second during startup if no data yet
+        last_status_log = now;
+        debug_print("[consoled] poll_output waiting: ch=");
+        debug_print_dec(static_cast<uint64_t>(m_output_recv));
+        debug_print(" polls=");
+        debug_print_dec(poll_count);
+        debug_print(" time=");
+        debug_print_dec(now);
+        debug_print("ms\n");
+    }
 
     if (n > 0 && n >= static_cast<int64_t>(sizeof(uint32_t))) {
         uint32_t msg_type = *reinterpret_cast<uint32_t *>(buf);
@@ -191,7 +238,9 @@ void ShellManager::poll_output(AnsiParser &parser) {
                 sys::channel_close(static_cast<int32_t>(handles[i]));
             }
         }
+        return true;  // Data was received and processed
     }
+    return false;  // No data available
 }
 
 void ShellManager::close() {

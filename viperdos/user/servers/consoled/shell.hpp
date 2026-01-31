@@ -43,8 +43,9 @@ class ShellManager {
     /**
      * @brief Poll for output from the shell process.
      * @param parser ANSI parser to process output
+     * @return true if output was received, false otherwise
      */
-    void poll_output(AnsiParser &parser);
+    bool poll_output(AnsiParser &parser);
 
     /**
      * @brief Close shell channels and clean up.

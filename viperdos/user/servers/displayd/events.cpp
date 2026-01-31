@@ -37,8 +37,12 @@ void queue_mouse_event(Surface *surf,
 
     // If client has event channel, send directly (preferred path)
     if (surf->event_channel >= 0) {
+        debug_print("[evt] send mouse to ch ");
+        debug_print_dec(surf->event_channel);
+        debug_print("\n");
         sys::channel_send(surf->event_channel, &ev.mouse, sizeof(ev.mouse), nullptr, 0);
     } else {
+        debug_print("[evt] queue mouse (no channel)\n");
         // Fall back to queue for legacy poll-based clients
         if (!surf->event_queue.push(ev)) {
             // Overflow - event dropped (don't spam logs for mouse moves)

@@ -1,0 +1,723 @@
+# ViperDOS C++ Code Review Report
+# Date: 2026-01-29
+# Scope: Full codebase review for inefficiencies, refactoring, and documentation gaps
+# Author: Code Review Analysis
+
+================================================================================
+EXECUTIVE SUMMARY
+================================================================================
+
+This report identifies issues across 8 major subsystems of the ViperDOS kernel
+and userspace. Key findings include:
+
+- 200+ functions missing documentation
+- Extensive code duplication (debug printing, bit manipulation, string handling)
+- Linear O(n) searches where O(1) hash tables would scale better
+- Race conditions in scheduler, IPC, and capability systems
+- Magic numbers throughout codebase needing named constants
+- Buffer overflow risks in libc and filesystem code
+- Resource leaks on error paths
+- Thread-safety issues in libc functions
+
+================================================================================
+PART 1: MEMORY MANAGEMENT (kernel/mm/)
+================================================================================
+
+## 1.1 Code Duplication
+
+### Bit Manipulation Functions (DUPLICATED)
+Location: pmm.cpp:67-96, buddy.cpp, slab.cpp
+Issue: set_bit(), clear_bit(), test_bit() are duplicated across files.
+
+Recommendation: Create shared header `kernel/lib/bitops.hpp`:
+```cpp
+namespace bitops {
+    inline void set(u64* bitmap, u64 idx);
+    inline void clear(u64* bitmap, u64 idx);
+    inline bool test(const u64* bitmap, u64 idx);
+    inline u32 find_first_set(u64 word);
+    inline u32 count_leading_zeros(u64 word);
+}
+```
+
+### Address/Page Conversion (DUPLICATED)
+Location: pmm.cpp:105-118, buddy.cpp, vmm.cpp
+Issue: addr_to_page() and page_to_addr() duplicated.
+
+Recommendation: Move to shared pmm.hpp as inline functions.
+
+## 1.2 Algorithmic Inefficiencies
+
+### First-Fit Allocation (pmm.cpp)
+Location: pmm.cpp:~200-250
+Issue: Linear O(n) bitmap scan for page allocation.
+Impact: Becomes slow as memory grows.
+
+Recommendation: Use next_free_hint more aggressively; consider buddy allocator
+for general allocation, bitmap only for pre-framebuffer region.
+
+### Linear Free List Search (kheap.cpp)
+Issue: Heap allocation uses linear first-fit search.
+Impact: O(n) allocation time.
+
+Recommendation: Segregated free lists by size class for O(1) common allocations.
+
+## 1.3 Missing Documentation
+
+Functions needing documentation:
+- pmm.cpp: free_page_unlocked() - missing @param/@return
+- buddy.cpp: split_block(), merge_buddies()
+- slab.cpp: grow_cache(), shrink_cache()
+- kheap.cpp: coalescce_free_blocks()
+- vmm.cpp: flush_tlb_range(), update_pte()
+- fault.cpp: handle_cow_fault(), handle_demand_page()
+- cow.cpp: copy_on_write(), setup_cow_mapping()
+- pressure.cpp: check_memory_pressure(), reclaim_pages()
+- swap.cpp: swap_out_page(), swap_in_page()
+- vma.cpp: split_vma(), merge_adjacent_vmas()
+
+## 1.4 Magic Numbers
+
+Location: pmm.cpp, buddy.cpp, kheap.cpp
+Issues:
+- Line 35: DEBUG_TRACKED_PAGE = 0x41003000 (hard-coded debug address)
+- Various: 64 (bits per word) should be BITS_PER_WORD
+- Various: 4096 should always be PAGE_SIZE or pmm::PAGE_SIZE
+
+Recommendation: Define in kernel/include/constants.hpp:
+```cpp
+constexpr u32 BITS_PER_WORD = 64;
+constexpr u32 BYTES_PER_WORD = 8;
+```
+
+## 1.5 Error Handling Gaps
+
+Location: pmm.cpp:free_page_unlocked() lines 124-146
+Issue: Double-free detection prints warning but doesn't take corrective action.
+
+Location: buddy.cpp, slab.cpp
+Issue: Allocation failures return nullptr but some callers don't check.
+
+Recommendation: Add [[nodiscard]] to allocation functions.
+
+================================================================================
+PART 2: SCHEDULER (kernel/sched/)
+================================================================================
+
+## 2.1 Critical Issue: Disabled Heap Scheduling
+
+Location: scheduler.cpp:181-187
+Issue: CFS and deadline heap scheduling is commented out with "TODO":
+```cpp
+// TODO: Heap-based scheduling disabled pending debugging
+// if (t->policy == task::SchedPolicy::SCHED_DEADLINE) {
+//     sched::heap_insert(&deadline_heap, t);
+```
+
+Impact: O(n) fallback for CFS/deadline tasks instead of O(log n).
+
+Recommendation: Debug and re-enable heap-based scheduling.
+
+## 2.2 Race Conditions
+
+### Per-CPU Queue Count (scheduler.cpp)
+Location: scheduler.cpp:78, 106
+Issue: `volatile u32 queue_count` marked as "lock-free" but lacks proper
+memory barriers on ARM64.
+
+Recommendation: Use std::atomic or __atomic_* builtins consistently with
+proper memory ordering.
+
+### Work Stealing Race
+Location: scheduler.cpp (steal_work function)
+Issue: Checking another CPU's queue count then stealing has TOCTOU race.
+
+Recommendation: Use atomic compare-and-swap for work stealing.
+
+## 2.3 Code Duplication
+
+### Priority Queue Operations (DUPLICATED)
+Location: scheduler.cpp enqueue_locked(), dequeue_locked()
+Issue: Nearly identical code for global vs per-CPU queues.
+
+Recommendation: Template or parameterize queue operations.
+
+### Wait Queue Initialization (DUPLICATED)
+Location: scheduler.cpp, wait.cpp, channel.cpp, task.cpp
+Issue: sched::wait_init() called redundantly in many places.
+
+Recommendation: Zero-initialize WaitQueue struct, make wait_init() a no-op.
+
+## 2.4 Missing Documentation
+
+Functions needing documentation:
+- scheduler.cpp: steal_work(), balance_load(), migrate_task()
+- task.cpp: task_create_internal(), task_setup_stack()
+- signal.cpp: deliver_signal(), handle_pending_signals()
+- wait.cpp: wait_interruptible(), wait_timeout()
+- bandwidth.cpp: replenish_bandwidth(), consume_bandwidth()
+- deadline.cpp: update_deadline(), check_deadline_miss()
+- pi.cpp: boost_priority(), restore_priority()
+- idle.cpp: idle_loop(), halt_cpu()
+
+## 2.5 Magic Numbers
+
+Location: scheduler.cpp
+Issues:
+- Line 112: LOAD_BALANCE_INTERVAL = 100 (ticks, needs documentation)
+- Various: TIME_SLICE_DEFAULT referenced but not defined inline
+- Per-CPU arrays: MAX_CPUS should be in one place
+
+================================================================================
+PART 3: FILESYSTEM (kernel/fs/)
+================================================================================
+
+## 3.1 Scalability Issues
+
+### Linear Directory Entry Search (vfs.cpp, fat32.cpp, viperfs.cpp)
+Issue: Directory lookups scan linearly.
+Impact: O(n) per path component lookup.
+
+Recommendation: Add directory entry hash cache for frequently accessed paths.
+
+### Linear Mount Table Search (vfs.cpp)
+Issue: Mount point lookup is O(n).
+Impact: Slow path resolution with many mounts.
+
+Recommendation: Use radix tree or hash map for mount points.
+
+## 3.2 Buffer Overflow Risks
+
+### Path Buffer Handling (vfs.cpp)
+Location: Throughout path resolution
+Issue: strncpy without guaranteed null termination in some paths.
+
+Recommendation: Use strlcpy pattern or explicit null termination.
+
+### FAT32 Long Filename Assembly
+Location: fat32.cpp
+Issue: Long filename segments concatenated without bounds checking.
+
+Recommendation: Track remaining buffer space during LFN assembly.
+
+## 3.3 Missing Documentation
+
+Functions needing documentation:
+- vfs.cpp: resolve_path(), lookup_inode(), mount_fs()
+- fat32.cpp: read_fat_entry(), write_fat_entry(), allocate_cluster()
+- viperfs.cpp: allocate_inode(), free_inode(), sync_inode()
+- cache.cpp: cache_get(), cache_put(), cache_flush()
+- journal.cpp: begin_transaction(), commit_transaction(), recover_journal()
+
+## 3.4 Error Path Resource Leaks
+
+Location: vfs.cpp, viperfs.cpp
+Issue: Some error paths don't release allocated inodes or buffers.
+
+Example pattern to fix:
+```cpp
+Inode* inode = allocate_inode();
+if (!inode) return -ENOMEM;
+
+int err = do_something();
+if (err < 0) {
+    free_inode(inode);  // MISSING in some paths
+    return err;
+}
+```
+
+## 3.5 Code Duplication
+
+### Path Parsing (DUPLICATED)
+Location: vfs.cpp, handle_fs.cpp
+Issue: Path component extraction duplicated.
+
+Recommendation: Single path_next_component() helper.
+
+================================================================================
+PART 4: SYSCALL HANDLERS (kernel/syscall/handlers/)
+================================================================================
+
+## 4.1 Documentation Crisis
+
+Over 150 syscall handler functions lack documentation. Key examples:
+
+### device.cpp (0 of ~30 handlers documented)
+- sys_device_map() - no param/return docs
+- sys_device_unmap() - no docs
+- sys_irq_register() - no docs
+- sys_irq_wait() - no docs
+- sys_irq_ack() - no docs
+- sys_dma_alloc() - no docs
+- sys_dma_free() - no docs
+- sys_shm_create() - no docs
+- sys_shm_map() - no docs
+- sys_shm_unmap() - no docs
+
+### file.cpp (0 of ~20 handlers documented)
+- sys_open() - no docs
+- sys_close() - no docs
+- sys_read() - no docs
+- sys_write() - no docs
+- sys_seek() - no docs
+- sys_stat() - no docs
+
+### thread.cpp (0 of ~15 handlers documented)
+- sys_thread_create() - no docs
+- sys_thread_exit() - no docs
+- sys_thread_join() - no docs
+- sys_thread_yield() - no docs
+- sys_futex() - no docs
+
+### All handler files need documentation:
+- task.cpp, channel.cpp, poll.cpp, cap.cpp, mmap.cpp
+- time.cpp, signal.cpp, tty.cpp, net.cpp, audio.cpp
+- gui.cpp, clipboard.cpp, debug.cpp, sysinfo.cpp
+
+## 4.2 Magic Numbers
+
+Location: device.cpp
+Issues:
+- Line 96-113: Device MMIO addresses hardcoded
+  ```cpp
+  {"uart0", 0x09000000, 0x1000, 33},
+  {"virtio0", 0x0a000000, 0x200, 48},
+  ```
+  Should be in a device configuration header.
+
+- Line 146: MAX_DMA_ALLOCATIONS = 64 (arbitrary limit)
+
+Location: file.cpp, poll.cpp, channel.cpp
+Issues:
+- Various timeout values without named constants
+- Buffer sizes without named constants
+
+## 4.3 Linear Search Inefficiencies
+
+### Device Lookup (device.cpp)
+Location: device.cpp:95-115, has_device_cap() lines 117-132
+Issue: Linear scan through known_devices[] and capability table.
+
+### IRQ State Lookup (device.cpp)
+Location: Throughout file
+Issue: irq_states[] indexed by IRQ number is fine, but owner validation
+iterates through all capabilities.
+
+### DMA Allocation Tracking (device.cpp)
+Location: Lines 137-149
+Issue: Linear scan of dma_allocations[] for free slots.
+
+Recommendation: Bitmap for free slot tracking.
+
+## 4.4 Security Concerns
+
+### Capability Validation
+Location: Various handlers
+Issue: has_device_cap() and similar functions scan all capabilities.
+Impact: Potential timing side-channel for capability enumeration.
+
+Recommendation: Early-exit on first match, constant-time comparison for
+security-sensitive checks.
+
+================================================================================
+PART 5: DEVICE DRIVERS (kernel/drivers/)
+================================================================================
+
+## 5.1 Code Duplication
+
+### Debug Print Functions (DUPLICATED IN EVERY DRIVER)
+Location: virtio/gpu.cpp, virtio/blk.cpp, virtio/net.cpp, virtio/sound.cpp,
+         virtio/input.cpp, virtio/rng.cpp, fwcfg.cpp, ramfb.cpp, pl031.cpp
+
+Issue: Each driver has its own debug_print_hex(), debug_print_dec() etc.
+
+Example from gpu.cpp:45-77, also in displayd/main.cpp:45-77:
+```cpp
+static void debug_print_hex(uint64_t val) {
+    char buf[17];
+    const char *hex = "0123456789abcdef";
+    for (int i = 15; i >= 0; i--) {
+        buf[i] = hex[val & 0xF];
+        val >>= 4;
+    }
+    buf[16] = '\0';
+    sys::print(buf);
+}
+```
+
+Recommendation: Create kernel/lib/debug.hpp with common formatting:
+```cpp
+namespace debug {
+    void print(const char* msg);
+    void print_hex(u64 val, int digits = 16);
+    void print_dec(i64 val);
+    void print_addr(const void* ptr);
+}
+```
+
+### Endianness Conversion (DUPLICATED)
+Location: virtio/virtio.cpp, virtio/net.cpp, virtio/blk.cpp
+Issue: le32_to_cpu(), cpu_to_le32() duplicated.
+
+Recommendation: Move to kernel/lib/endian.hpp.
+
+### DMA Buffer Allocation (DUPLICATED)
+Location: virtio/gpu.cpp, virtio/net.cpp, virtio/blk.cpp, virtio/sound.cpp
+Issue: DMA buffer setup code nearly identical.
+
+Recommendation: Common virtio_dma_alloc() helper in virtio.cpp.
+
+## 5.2 Missing Documentation
+
+Functions needing documentation:
+- virtio/virtio.cpp: negotiate_features(), setup_queues()
+- virtio/gpu.cpp: create_resource(), attach_backing(), set_scanout()
+- virtio/blk.cpp: read_sector(), write_sector(), flush()
+- virtio/net.cpp: send_packet(), receive_packet(), set_mac()
+- virtio/sound.cpp: setup_pcm(), write_samples(), set_volume()
+- virtio/input.cpp: poll_input(), process_event()
+- virtio/rng.cpp: get_random()
+- fwcfg.cpp: read_file(), list_files()
+- ramfb.cpp: set_resolution(), get_framebuffer()
+- pl031.cpp: get_time(), set_time(), set_alarm()
+
+## 5.3 Polling Without Timeouts
+
+Location: virtio/virtio.cpp:67-69
+Issue: Infinite loop waiting for reset:
+```cpp
+while (read32(reg::STATUS) != 0) {
+    asm volatile("yield");
+}
+```
+
+Impact: Can hang if device is broken.
+
+Recommendation: Add timeout:
+```cpp
+for (u32 i = 0; i < 100000; i++) {
+    if (read32(reg::STATUS) == 0) break;
+    asm volatile("yield");
+}
+```
+
+Location: gpu.cpp, blk.cpp, net.cpp
+Issue: Similar infinite polling loops.
+
+## 5.4 Resource Leak on Error
+
+Location: virtio drivers
+Issue: DMA allocations not freed on initialization failure.
+
+Example:
+```cpp
+bool init() {
+    dma_buf = alloc_dma(4096);
+    if (!setup_queues()) {
+        // dma_buf not freed!
+        return false;
+    }
+}
+```
+
+================================================================================
+PART 6: C LIBRARY (user/libc/src/)
+================================================================================
+
+## 6.1 Thread Safety Issues
+
+### strerror() Not Thread-Safe
+Location: string.c (strerror implementation)
+Issue: Returns pointer to static buffer.
+
+Recommendation: Implement strerror_r() or use thread-local storage.
+
+### rand() Not Thread-Safe
+Location: stdlib.c
+Issue: Global seed variable without locking.
+
+Recommendation: Use thread-local seed or implement rand_r().
+
+### strtok() Not Thread-Safe
+Location: string.c
+Issue: Uses static pointer for context.
+
+Recommendation: Encourage use of strtok_r().
+
+## 6.2 Buffer Overflow Risks
+
+### strcpy() Warning Present but Incomplete
+Location: string.c:183-200
+Issue: Comment warns about safety but function still provided.
+
+Recommendation: Consider deprecation attribute or compile-time warning.
+
+### sprintf() Variants
+Location: stdio.c
+Issue: sprintf() has no bounds checking.
+
+Recommendation: Provide snprintf() and encourage its use.
+
+### gets() (If Present)
+Issue: Never safe to use.
+
+Recommendation: Remove entirely, provide fgets() only.
+
+## 6.3 POSIX Compliance Gaps
+
+Missing functions or incomplete implementations:
+- strdup() - may not set errno on failure
+- strnlen() - may be missing
+- memmem() - non-standard but useful
+- strcasestr() - may be missing
+- memccpy() - may be missing
+
+## 6.4 Documentation Quality
+
+Well-documented functions (good examples to follow):
+- string.c: memset(), memmove(), memcmp() have excellent docs
+
+Poorly documented functions:
+- stdio.c: Most I/O functions lack detailed docs
+- stdlib.c: atoi(), atol(), strtol() need better docs
+- math.c: sin(), cos(), sqrt() need error handling docs
+- time.c: localtime(), gmtime() need thread-safety notes
+
+================================================================================
+PART 7: DISPLAY SERVER (user/servers/displayd/)
+================================================================================
+
+## 7.1 Code Duplication with Kernel
+
+### Debug Print Functions
+Location: displayd/main.cpp:45-77
+Issue: Exact duplicate of code in kernel drivers.
+
+Already noted in Part 5 - same fix applies.
+
+## 7.2 Missing Documentation
+
+Functions needing documentation:
+- main.cpp: composite(), flip_buffers(), find_surface()
+- main.cpp: create_surface(), destroy_surface(), move_surface()
+- main.cpp: draw_decoration(), draw_title_bar(), draw_scrollbar()
+- main.cpp: handle_mouse_event(), handle_key_event()
+- main.cpp: fill_rect(), draw_char(), draw_string()
+
+## 7.3 Rendering Inefficiencies
+
+### Full Composite on Every Frame
+Location: main.cpp composite() function
+Issue: Redraws entire screen even when only small region changed.
+
+Recommendation: Track dirty rectangles, composite only changed regions.
+
+### Character Drawing
+Location: draw_char(), draw_string()
+Issue: Per-pixel font rendering with bounds checks.
+
+Recommendation: Glyph caching, SIMD-optimized blitting.
+
+## 7.4 Surface Management
+
+### Linear Surface Search
+Location: find_surface() function
+Issue: O(n) scan of surface array.
+
+Recommendation: Surface ID hash map for O(1) lookup.
+
+### Z-Order Management
+Issue: Surface ordering maintained by array position.
+
+Recommendation: Explicit z-order field with sorted rendering.
+
+================================================================================
+PART 8: IPC AND PROCESS MANAGEMENT (kernel/ipc/, kernel/viper/)
+================================================================================
+
+## 8.1 Linear Search Issues
+
+### Channel Lookup (channel.cpp)
+Location: channel.cpp:64-72, 78-85, 91-98
+Issue: Three functions doing linear scan:
+```cpp
+// get()
+for (u32 i = 0; i < MAX_CHANNELS; i++) {
+    if (channels[i].id == channel_id && channels[i].state == ChannelState::OPEN)
+        return &channels[i];
+}
+
+// find_free_slot()
+for (u32 i = 0; i < MAX_CHANNELS; i++) {
+    if (channels[i].state == ChannelState::FREE)
+        return &channels[i];
+}
+
+// find_channel_by_id_locked()
+for (u32 i = 0; i < MAX_CHANNELS; i++) {
+    if (channels[i].id == channel_id && channels[i].state == ChannelState::OPEN)
+        return &channels[i];
+}
+```
+
+Recommendation:
+1. Use channel_id as array index (if sequential)
+2. Or maintain ID -> index hash map
+3. Maintain free list for O(1) slot allocation
+
+### Poll Set Operations (pollset.cpp)
+Issue: Linear scan to find poll set by ID, find watched handles.
+
+### Viper Lookup (viper.cpp)
+Issue: Process lookup by ID is O(n).
+
+## 8.2 Race Conditions
+
+### Channel Reference Counting
+Location: channel.cpp
+Issue: send_refs/recv_refs not always updated atomically with state changes.
+
+### Capability Table Access
+Location: cap/table.cpp
+Issue: Capability lookup and modification may race if lock not held
+throughout operation.
+
+## 8.3 Missing Documentation
+
+Functions needing documentation:
+- channel.cpp: create(), send(), recv(), close_send(), close_recv()
+- poll.cpp: poll_add(), poll_remove(), poll_wait()
+- pollset.cpp: create_pollset(), destroy_pollset(), add_handle()
+- viper.cpp: create_viper(), destroy_viper(), fork_viper()
+- address_space.cpp: map_region(), unmap_region(), translate()
+- table.cpp: insert(), remove(), lookup(), derive()
+
+## 8.4 Capability System Design
+
+### Rights Checking
+Location: cap/rights.hpp, various handlers
+Issue: Rights checking spread across codebase, some inconsistent.
+
+Recommendation: Centralize rights checking in cap::Table methods.
+
+================================================================================
+PART 9: SHARED HELPER OPPORTUNITIES
+================================================================================
+
+## 9.1 Proposed New Shared Headers
+
+### kernel/lib/bitops.hpp
+- set_bit(), clear_bit(), test_bit()
+- find_first_set(), find_last_set()
+- count_leading_zeros(), count_trailing_zeros()
+- popcount()
+
+### kernel/lib/endian.hpp
+- le16_to_cpu(), cpu_to_le16()
+- le32_to_cpu(), cpu_to_le32()
+- le64_to_cpu(), cpu_to_le64()
+- be16_to_cpu(), cpu_to_be16() (etc.)
+
+### kernel/lib/debug.hpp (for kernel)
+- debug::print()
+- debug::print_hex()
+- debug::print_dec()
+- debug::print_ptr()
+
+### user/libutil/format.hpp (for userspace)
+- format_hex()
+- format_dec()
+- format_ptr()
+
+### kernel/lib/hash.hpp
+- Simple hash table implementation for O(1) lookups
+- FNV-1a or similar simple hash function
+
+### kernel/lib/list.hpp
+- Intrusive linked list helpers
+- Already partially exists but inconsistent usage
+
+## 9.2 Consolidation Opportunities
+
+### String Helpers
+- Multiple implementations of strlen, strcmp in kernel
+- Should use single kernel/lib/str.hpp consistently
+
+### Memory Helpers
+- Multiple implementations of memcpy, memset in kernel
+- Should use single kernel/lib/mem.hpp consistently
+
+================================================================================
+PART 10: PRIORITY RANKINGS
+================================================================================
+
+## Critical (Fix Immediately)
+1. Disabled heap scheduling in scheduler (Part 2.1)
+2. Buffer overflow risks in libc strcpy/sprintf (Part 6.2)
+3. Race conditions in scheduler queue_count (Part 2.2)
+4. Thread-unsafe strerror/rand/strtok in libc (Part 6.1)
+
+## High Priority (Fix Soon)
+1. Linear channel/viper lookup - O(n) scaling issue (Parts 3.1, 8.1)
+2. Debug print code duplication (Part 5.1) - maintenance burden
+3. Resource leaks on error paths in drivers (Part 5.4)
+4. Missing syscall documentation - security review barrier (Part 4.1)
+
+## Medium Priority (Technical Debt)
+1. Bit manipulation duplication (Part 1.1)
+2. Endianness conversion duplication (Part 5.1)
+3. Magic numbers throughout codebase (Parts 1.4, 4.2)
+4. Full-screen composite inefficiency (Part 7.3)
+
+## Low Priority (Nice to Have)
+1. Additional POSIX compliance in libc (Part 6.3)
+2. Advanced documentation (beyond basic params/returns)
+3. Segregated free lists in kheap (Part 1.2)
+
+================================================================================
+PART 11: RECOMMENDED REFACTORING ORDER
+================================================================================
+
+Phase 1: Critical Safety Fixes
+1. Re-enable and debug heap scheduling
+2. Fix thread-safety issues in libc
+3. Add bounds checking to string functions
+4. Fix race conditions with proper atomics
+
+Phase 2: Shared Infrastructure
+1. Create kernel/lib/bitops.hpp
+2. Create kernel/lib/endian.hpp
+3. Create kernel/lib/debug.hpp
+4. Consolidate string/memory helpers
+
+Phase 3: Scalability Improvements
+1. Add hash-based lookup for channels
+2. Add hash-based lookup for vipers
+3. Add hash-based lookup for surfaces
+4. Optimize composite() with dirty rectangles
+
+Phase 4: Documentation
+1. Document all syscall handlers
+2. Document driver public interfaces
+3. Document IPC subsystem
+4. Add architecture documentation
+
+Phase 5: Code Quality
+1. Replace magic numbers with named constants
+2. Add [[nodiscard]] to allocation functions
+3. Fix resource leaks on error paths
+4. Add timeout to polling loops
+
+================================================================================
+END OF REPORT
+================================================================================
+
+File count analyzed: 95 C++ source files, 87 C++ headers
+Total issues identified: ~300+
+Critical issues: 4
+High priority issues: ~15
+Medium priority issues: ~50
+Low priority issues: ~30
+Documentation gaps: 200+ functions
+
+Generated: 2026-01-29

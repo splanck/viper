@@ -59,14 +59,17 @@ void poll_mouse() {
     sys::MouseState state;
     int result = sys::get_mouse_state(&state);
     if (result != 0) {
-        static bool warned = false;
-        if (!warned) {
-            debug_print("[displayd] get_mouse_state failed: ");
-            debug_print_dec(result);
-            debug_print("\n");
-            warned = true;
-        }
         return;
+    }
+
+    static uint32_t call_count = 0;
+    call_count++;
+    if (call_count % 100 == 0) {
+        debug_print("[displayd] got state=(");
+        debug_print_dec(state.x);
+        debug_print(",");
+        debug_print_dec(state.y);
+        debug_print(")\n");
     }
 
     bool cursor_moved = (state.x != g_last_mouse_x || state.y != g_last_mouse_y);
@@ -228,6 +231,21 @@ void poll_mouse() {
         Surface *surf = find_surface_at(g_cursor_x, g_cursor_y);
 
         if (pressed) {
+            // Debug click routing
+            debug_print("[click] at (");
+            debug_print_dec(g_cursor_x);
+            debug_print(",");
+            debug_print_dec(g_cursor_y);
+            debug_print(") surf=");
+            if (surf) {
+                debug_print_dec(surf->id);
+                debug_print(" z=");
+                debug_print_dec(surf->z_order);
+                if (surf->flags & SURFACE_FLAG_SYSTEM) debug_print(" SYSTEM");
+            } else {
+                debug_print("NULL");
+            }
+            debug_print("\n");
             // ----------------------------------------------------------------
             // Global Menu Bar Handling (Amiga/Mac style - always on top)
             // ----------------------------------------------------------------
@@ -410,6 +428,9 @@ void poll_mouse() {
                                 else if (pressed & 0x04)
                                     button = 2; // Middle
 
+                                debug_print("[click] -> queue to ");
+                                debug_print_dec(surf->id);
+                                debug_print("\n");
                                 queue_mouse_event(
                                     surf, 1, local_x, local_y, 0, 0, state.buttons, button);
                             }

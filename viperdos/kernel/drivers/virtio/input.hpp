@@ -192,6 +192,41 @@ class InputDevice : public Device {
     }
 
     /**
+     * @brief Whether the device reports absolute axis data.
+     *
+     * @details
+     * Absolute axes are typical of tablet/touch devices and some virtual pointers.
+     */
+    bool has_abs() const {
+        return has_abs_;
+    }
+
+    /**
+     * @brief Get absolute axis range for a given code.
+     *
+     * @param code Absolute axis code (e.g., ABS_X, ABS_Y).
+     * @param out_min Output minimum value.
+     * @param out_max Output maximum value.
+     * @return true if range is known/valid for the axis.
+     */
+    bool get_abs_range(u16 code, i32 &out_min, i32 &out_max) const {
+        constexpr u16 ABS_X = 0x00;
+        constexpr u16 ABS_Y = 0x01;
+
+        if (code == ABS_X && has_abs_x_) {
+            out_min = abs_x_min_;
+            out_max = abs_x_max_;
+            return true;
+        }
+        if (code == ABS_Y && has_abs_y_) {
+            out_min = abs_y_min_;
+            out_max = abs_y_max_;
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * @brief Set the state of a keyboard LED.
      *
      * @details
@@ -217,6 +252,7 @@ class InputDevice : public Device {
     // Initialization helpers
     void read_device_name();
     void detect_device_type();
+    bool read_abs_info(u16 code, i32 &out_min, i32 &out_max);
     bool negotiate_features();
     bool setup_event_queue();
     bool setup_status_queue();
@@ -248,6 +284,13 @@ class InputDevice : public Device {
     char name_[128];
     bool is_keyboard_{false};
     bool is_mouse_{false};
+    bool has_abs_{false};
+    bool has_abs_x_{false};
+    bool has_abs_y_{false};
+    i32 abs_x_min_{0};
+    i32 abs_x_max_{0};
+    i32 abs_y_min_{0};
+    i32 abs_y_max_{0};
     bool has_led_{false};
 
     // Status buffer for LED control (single event)

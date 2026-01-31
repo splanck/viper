@@ -122,6 +122,27 @@ void init_console_attached(i32 input_ch, i32 output_ch) {
     g_attached_output_ch = output_ch;
     g_console_mode = ConsoleMode::CONSOLE_ATTACHED;
     g_console_ready = true; // Mark console as ready
+
+    // Debug: log channel handles
+    sys::print("[vinit] init_console_attached: input=");
+    char buf[16];
+    int bi = 0;
+    i32 tmp = input_ch;
+    char tmp2[16];
+    int ti = 0;
+    do { tmp2[ti++] = '0' + (tmp % 10); tmp /= 10; } while (tmp > 0);
+    while (ti > 0) buf[bi++] = tmp2[--ti];
+    buf[bi] = '\0';
+    sys::print(buf);
+    sys::print(" output=");
+    bi = 0;
+    tmp = output_ch;
+    ti = 0;
+    do { tmp2[ti++] = '0' + (tmp % 10); tmp /= 10; } while (tmp > 0);
+    while (ti > 0) buf[bi++] = tmp2[--ti];
+    buf[bi] = '\0';
+    sys::print(buf);
+    sys::print("\n");
 }
 
 // =============================================================================
@@ -255,13 +276,42 @@ static void console_write_direct(const char *s, usize len) {
     i32 channel = (g_console_mode == ConsoleMode::CONSOLE_ATTACHED) ? g_attached_output_ch
                                                                     : g_console_service;
 
+    // Debug: log first few sends
+    static u32 send_count = 0;
+    if (++send_count <= 5) {
+        sys::print("[vinit] CON_WRITE #");
+        char buf2[16];
+        int bi = 0;
+        u32 tmp = send_count;
+        char tmp2[16];
+        int ti = 0;
+        do { tmp2[ti++] = '0' + (tmp % 10); tmp /= 10; } while (tmp > 0);
+        while (ti > 0) buf2[bi++] = tmp2[--ti];
+        buf2[bi] = '\0';
+        sys::print(buf2);
+        sys::print(" len=");
+        bi = 0;
+        tmp = static_cast<u32>(len);
+        ti = 0;
+        do { tmp2[ti++] = '0' + (tmp % 10); tmp /= 10; } while (tmp > 0);
+        while (ti > 0) buf2[bi++] = tmp2[--ti];
+        buf2[bi] = '\0';
+        sys::print(buf2);
+        sys::print("\n");
+    }
+
     // Send with retry if buffer is full - keep trying until success
     usize total_len = sizeof(WriteRequest) + len;
+    u32 retry_count = 0;
     while (true) {
         i64 err = sys::channel_send(channel, buf, total_len, nullptr, 0);
         if (err == 0)
             break;
         // Buffer full - sleep briefly to let consoled catch up
+        retry_count++;
+        if (retry_count == 100) {
+            sys::print("[shell] write stuck after 100 retries!\n");
+        }
         sys::sleep(1);
     }
 }
@@ -525,8 +575,10 @@ i32 getchar_from_console() {
                     return -static_cast<i32>(event.keycode);
                 }
             } else if (n == VERR_WOULD_BLOCK) {
-                // No data yet - yield and retry
-                sys::yield();
+                // No data yet - sleep briefly to give other tasks CPU time
+                // Using sleep instead of yield because SCHED_RR tasks would
+                // otherwise monopolize the CPU while polling for input
+                sys::sleep(5);
                 continue;
             } else {
                 // Channel error

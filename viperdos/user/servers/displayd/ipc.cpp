@@ -221,7 +221,7 @@ void handle_request(int32_t client_channel,
             if (len < sizeof(PresentRequest))
                 return;
 
-            // Just recomposite
+            // Recomposite
             composite();
 
             // Only send reply if client provided a reply channel

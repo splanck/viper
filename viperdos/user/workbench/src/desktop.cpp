@@ -212,11 +212,21 @@ void Desktop::registerMenuBar() {
 }
 
 void Desktop::run() {
+    static int poll_count = 0;
     while (true) {
         // Handle desktop events
         gui_event_t event;
-        if (gui_poll_event(m_window, &event) == 0) {
+        int poll_result = gui_poll_event(m_window, &event);
+        if (poll_result == 0) {
+            if (event.type == GUI_EVENT_MOUSE) {
+                debug_serial("[wb] got mouse event\n");
+            }
             handleDesktopEvent(event);
+        }
+
+        // Debug: periodically log that we're polling
+        if (++poll_count % 10000 == 0) {
+            debug_serial("[wb] polling desktop\n");
         }
 
         // Handle file browser events

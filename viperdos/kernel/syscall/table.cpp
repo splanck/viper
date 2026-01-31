@@ -20,6 +20,7 @@
 #include "../cap/table.hpp"
 #include "../console/serial.hpp"
 #include "../include/error.hpp"
+#include "../include/constants.hpp"
 #include "../include/syscall_nums.hpp"
 #include "../sched/task.hpp"
 #include "../viper/viper.hpp"
@@ -83,24 +84,21 @@ static void trace_exit(const SyscallEntry *entry, const SyscallResult &result) {
 // =============================================================================
 
 static bool is_valid_user_address(u64 addr, usize size) {
-    if (addr + size < addr) {
+    if (size == 0) {
+        return addr >= viper::layout::USER_CODE_BASE &&
+               addr <= kc::user::USER_ADDR_MAX;
+    }
+
+    if (addr < viper::layout::USER_CODE_BASE) {
         return false;
     }
 
-    if (addr < 0x1000) {
-        return false;
+    u64 end = addr + size - 1;
+    if (end < addr) {
+        return false; // overflow
     }
 
-    if (addr >= 0xFFFF000000000000ULL) {
-        return false;
-    }
-
-    u64 top_bits = addr >> 48;
-    u64 bit47 = (addr >> 47) & 1;
-    if (bit47 == 0 && top_bits != 0) {
-        return false;
-    }
-    if (bit47 == 1 && top_bits != 0xFFFF) {
+    if (end > kc::user::USER_ADDR_MAX) {
         return false;
     }
 

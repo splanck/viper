@@ -38,6 +38,10 @@ void flip_buffers() {
 }
 
 void composite() {
+    // Ensure we see the latest pixel writes from client applications.
+    // On ARM64, cache coherency isn't automatic between processes sharing memory.
+    __asm__ volatile("dmb sy" ::: "memory");
+
     // Draw to back buffer to avoid flicker
     g_draw_target = g_back_buffer;
 

@@ -46,6 +46,8 @@ constexpr u32 READ = 1 << 0;
 constexpr u32 WRITE = 1 << 1;
 /** @brief Page is executable at EL0. */
 constexpr u32 EXEC = 1 << 2;
+/** @brief Map page as non-cacheable (uses MAIR index 2). */
+constexpr u32 UNCACHED = 1 << 3;
 
 // Common combinations
 /** @brief Read/write mapping. */
@@ -90,6 +92,8 @@ constexpr u64 PXN = 1ULL << 53; // Privileged execute never
 constexpr u64 ATTR_DEVICE = 0ULL << 2; // MAIR index 0 (device memory)
 /** @brief MAIR index 1: normal memory attributes. */
 constexpr u64 ATTR_NORMAL = 1ULL << 2; // MAIR index 1 (normal memory)
+/** @brief MAIR index 2: normal, non-cacheable. */
+constexpr u64 ATTR_NC = 2ULL << 2; // MAIR index 2 (non-cacheable)
 
 // Address mask for 4KB pages
 /** @brief Mask extracting the output-address bits from an entry (4 KiB granule). */

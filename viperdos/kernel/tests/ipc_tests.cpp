@@ -40,14 +40,14 @@ static void ping_task_fn(void *arg) {
         serial::put_dec(i);
         serial::puts("\n");
 
-        i64 send_result = sys::channel_send(ch->ping_to_pong, ping_msg, 5);
+        i64 send_result = channel::send(ch->ping_to_pong, ping_msg, 5);
         if (send_result < 0) {
             serial::puts("[ping] Send failed!\n");
             break;
         }
 
         // Wait for PONG on channel 2
-        i64 recv_result = sys::channel_recv(ch->pong_to_ping, buffer, sizeof(buffer));
+        i64 recv_result = channel::recv(ch->pong_to_ping, buffer, sizeof(buffer));
         if (recv_result < 0) {
             serial::puts("[ping] Recv failed!\n");
             break;
@@ -76,7 +76,7 @@ static void pong_task_fn(void *arg) {
 
     for (int i = 0; i < 3; i++) {
         // Wait for PING on channel 1
-        i64 recv_result = sys::channel_recv(ch->ping_to_pong, buffer, sizeof(buffer));
+        i64 recv_result = channel::recv(ch->ping_to_pong, buffer, sizeof(buffer));
         if (recv_result < 0) {
             serial::puts("[pong] Recv failed!\n");
             break;
@@ -92,7 +92,7 @@ static void pong_task_fn(void *arg) {
         serial::put_dec(i);
         serial::puts("\n");
 
-        i64 send_result = sys::channel_send(ch->pong_to_ping, pong_msg, 5);
+        i64 send_result = channel::send(ch->pong_to_ping, pong_msg, 5);
         if (send_result < 0) {
             serial::puts("[pong] Send failed!\n");
             break;

@@ -128,6 +128,11 @@ void get_stats(u64 *out_total_size, u64 *out_used, u64 *out_free, u64 *out_free_
  */
 void dump();
 
+/**
+ * @brief Check a specific address for heap corruption (debugging).
+ */
+void debug_check_watch_addr(const char *context);
+
 } // namespace kheap
 
 // size_t for operator new/delete

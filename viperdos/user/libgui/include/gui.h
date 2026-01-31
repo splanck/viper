@@ -385,7 +385,7 @@ void gui_present(gui_window_t *win);
  * Does not wait for displayd to respond. Use this for better performance
  * when you don't need to synchronize with the display.
  */
-void gui_present_async(gui_window_t *win);
+int gui_present_async(gui_window_t *win);
 
 /**
  * @brief Present a specific region of the window.

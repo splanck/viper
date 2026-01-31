@@ -121,9 +121,17 @@ constexpr u64 ALIGNMENT = 16;
 constexpr u64 MAX_HEAP_SIZE = 64 * 1024 * 1024; // 64 MB max
 
 // Debug: watch for corruption at specific address
-// Note: address may shift between runs, so watch range around 0x409xxxxx
-constexpr u64 WATCH_ADDR_MIN = 0x40910000;
-constexpr u64 WATCH_ADDR_MAX = 0x40920000;
+// Note: address may shift between runs, so watch range around 0x419xxxxx
+constexpr u64 WATCH_ADDR_MIN = 0x41980000;
+constexpr u64 WATCH_ADDR_MAX = 0x419a0000;
+
+// Debug: specific address to watch for corruption (updated dynamically)
+u64 CORRUPTION_WATCH_ADDR = 0;
+
+// Debug: saved header values for comparison
+static u32 saved_magic = 0;
+static u64 saved_size_and_flags = 0;
+static bool watching = false;
 
 // Heap region tracking for non-contiguous allocations
 struct HeapRegion {
@@ -199,6 +207,80 @@ bool is_in_heap(u64 addr) {
         }
     }
     return false;
+}
+
+/**
+ * @brief Dump first 32 bytes at an address as hex.
+ */
+void debug_dump_memory(const char *label, u64 addr) {
+    if (addr == 0) return;
+    serial::puts("[kheap-memdump] ");
+    serial::puts(label);
+    serial::puts(" at 0x");
+    serial::put_hex(addr);
+    serial::puts(":\n  ");
+
+    u8 *p = reinterpret_cast<u8 *>(addr);
+    for (int i = 0; i < 32; i++) {
+        if (i > 0 && i % 8 == 0) serial::puts(" ");
+        serial::put_hex(p[i]);
+        serial::puts(" ");
+    }
+    serial::puts("\n");
+}
+
+/**
+ * @brief Start watching a remainder block.
+ */
+void debug_start_watching(u64 addr) {
+    if (addr >= WATCH_ADDR_MIN && addr < WATCH_ADDR_MAX) {
+        CORRUPTION_WATCH_ADDR = addr;
+        BlockHeader *hdr = reinterpret_cast<BlockHeader *>(addr);
+        saved_magic = hdr->magic;
+        saved_size_and_flags = hdr->size_and_flags;
+        watching = true;
+        serial::puts("[kheap-watch] START watching 0x");
+        serial::put_hex(addr);
+        serial::puts(" magic=0x");
+        serial::put_hex(saved_magic);
+        serial::puts(" size=0x");
+        serial::put_hex(saved_size_and_flags);
+        serial::puts("\n");
+    }
+}
+
+/**
+ * @brief Check if a specific address has valid heap block header.
+ * Call this after key operations to detect when corruption first occurs.
+ */
+void debug_check_corruption_addr(const char *context) {
+    if (!watching || CORRUPTION_WATCH_ADDR == 0) return;
+
+    BlockHeader *hdr = reinterpret_cast<BlockHeader *>(CORRUPTION_WATCH_ADDR);
+
+    // Check if memory changed
+    if (hdr->magic != saved_magic || hdr->size_and_flags != saved_size_and_flags) {
+        serial::puts("\n[kheap-watch] CORRUPTION DETECTED during: ");
+        serial::puts(context);
+        serial::puts("\n");
+        serial::puts("[kheap-watch]   addr=0x");
+        serial::put_hex(CORRUPTION_WATCH_ADDR);
+        serial::puts("\n");
+        serial::puts("[kheap-watch]   was: magic=0x");
+        serial::put_hex(saved_magic);
+        serial::puts(" size=0x");
+        serial::put_hex(saved_size_and_flags);
+        serial::puts("\n");
+        serial::puts("[kheap-watch]   now: magic=0x");
+        serial::put_hex(hdr->magic);
+        serial::puts(" size=0x");
+        serial::put_hex(hdr->size_and_flags);
+        serial::puts("\n");
+        debug_dump_memory("corrupted block", CORRUPTION_WATCH_ADDR);
+
+        // Stop watching to avoid spam
+        watching = false;
+    }
 }
 
 /**
@@ -321,9 +403,8 @@ void add_to_free_list(FreeBlock *block) {
     block->header.set_free();
 
     u64 size = block->header.size();
-
-    // Validate the block before adding
     u64 block_addr = reinterpret_cast<u64>(block);
+
     if (!is_in_heap(block_addr)) {
         serial::puts("[kheap] ERROR: Trying to add invalid block ");
         serial::put_hex(block_addr);
@@ -509,6 +590,9 @@ void coalesce() {
             total_free += b->header.size();
             free_block_count++;
         }
+
+        // Debug: check after coalesce rebuild
+        debug_check_corruption_addr("coalesce_rebuild");
     }
 
 update_legacy:
@@ -725,6 +809,19 @@ found:
     }
 
     // Remove from free list (already have pointer to prev)
+    // Debug: log removals in range 0x41980000-0x419a0000
+    u64 best_addr = reinterpret_cast<u64>(best);
+    if (best_addr >= 0x41980000 && best_addr < 0x419a0000) {
+        serial::puts("[kheap-trace] remove_from_free_list: block=0x");
+        serial::put_hex(best_addr);
+        serial::puts(" size=");
+        serial::put_dec(block_size);
+        serial::puts(" required=");
+        serial::put_dec(required);
+        serial::puts(" user_size=");
+        serial::put_dec(size);
+        serial::puts("\n");
+    }
     *best_prev = best->next;
     free_list_counts[best_class]--;
     free_block_count--;
@@ -744,8 +841,25 @@ found:
         remainder->header.magic = BLOCK_MAGIC_FREE;
         remainder->header._pad = 0;
         remainder->header.size_and_flags = remaining; // Free
+
+        // Debug: log if remainder is in watched range
+        u64 remainder_addr = reinterpret_cast<u64>(remainder);
+        if (remainder_addr >= WATCH_ADDR_MIN && remainder_addr < WATCH_ADDR_MAX) {
+            serial::puts("[kheap] Creating remainder at 0x");
+            serial::put_hex(remainder_addr);
+            serial::puts(" size=");
+            serial::put_dec(remaining);
+            serial::puts("\n");
+        }
+
         add_to_free_list(remainder);
         total_free += remaining;
+
+        // Start watching this remainder if in range
+        debug_start_watching(remainder_addr);
+
+        // Debug: check right after split
+        debug_check_corruption_addr("kmalloc_split");
 
         total_allocated += required;
     } else {
@@ -765,6 +879,9 @@ found:
         serial::put_hex(reinterpret_cast<u64>(best->header.data()));
         serial::puts("\n");
     }
+
+    // Debug: check if corruption watch address is affected
+    debug_check_corruption_addr("kmalloc_return");
 
     return best->header.data();
 }
@@ -826,6 +943,7 @@ void kfree(void *ptr) {
     BlockHeader *header = ptr_to_header(ptr);
 
     // Try to return small blocks to per-CPU arena (reduces lock contention)
+    // BUT: Don't use per-CPU arena if there's an adjacent free block that needs coalescing
     if (percpu_enabled && header->is_valid() && !header->is_free()) {
         u64 block_size = header->size();
         usize size_class = get_size_class(block_size);
@@ -834,17 +952,38 @@ void kfree(void *ptr) {
             u32 cpu_id = cpu::current_id();
             if (cpu_id < cpu::MAX_CPUS) {
                 PerCpuArena &arena = percpu_arenas[cpu_id];
-                SpinlockGuard pcpu_guard(arena.lock);
 
-                // Only cache if below limit to avoid memory hoarding
-                if (arena.counts[size_class] < PERCPU_CACHE_SIZE) {
-                    header->set_free();
-                    FreeBlock *block = reinterpret_cast<FreeBlock *>(header);
-                    block->next = arena.free_lists[size_class];
-                    arena.free_lists[size_class] = block;
-                    arena.counts[size_class]++;
-                    total_allocated -= block_size;
-                    return;
+                // Check if the next block (at block + size) is free
+                // If so, we MUST use the global free path to coalesce
+                u64 block_addr = reinterpret_cast<u64>(header);
+                u64 block_end = block_addr + block_size;
+                BlockHeader *next_block = reinterpret_cast<BlockHeader *>(block_end);
+
+                // Only check if next block is within a heap region
+                bool next_is_free = false;
+                if (is_in_heap(block_end)) {
+                    // Check if next block is a valid free block
+                    if (next_block->magic == BLOCK_MAGIC_FREE) {
+                        next_is_free = true;
+                    }
+                }
+
+                // Skip per-CPU arena if coalescing is needed
+                if (next_is_free) {
+                    // Fall through to global free path for coalescing
+                } else {
+                    SpinlockGuard pcpu_guard(arena.lock);
+
+                    // Only cache if below limit to avoid memory hoarding
+                    if (arena.counts[size_class] < PERCPU_CACHE_SIZE) {
+                        header->set_free();
+                        FreeBlock *block = reinterpret_cast<FreeBlock *>(header);
+                        block->next = arena.free_lists[size_class];
+                        arena.free_lists[size_class] = block;
+                        arena.counts[size_class]++;
+                        total_allocated -= block_size;
+                        return;
+                    }
                 }
             }
         }
@@ -941,6 +1080,9 @@ void kfree(void *ptr) {
 
     // Try to coalesce
     coalesce();
+
+    // Debug: check after kfree completes
+    debug_check_corruption_addr("kfree_done");
 }
 
 u64 get_used() {
@@ -1010,6 +1152,10 @@ void dump() {
     if (block != nullptr) {
         serial::puts("    ... (more blocks)\n");
     }
+}
+
+void debug_check_watch_addr(const char *context) {
+    debug_check_corruption_addr(context);
 }
 
 } // namespace kheap

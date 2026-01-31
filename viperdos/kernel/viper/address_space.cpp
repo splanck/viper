@@ -530,9 +530,10 @@ bool AddressSpace::map(u64 virt, u64 phys, usize size, u32 prot_flags) {
         if (!l3)
             return false;
 
-        // Build page table entry (use normal memory attributes)
+        // Build page table entry (choose memory attributes)
+        u64 attr = (prot_flags & prot::UNCACHED) ? pte::ATTR_NC : pte::ATTR_NORMAL;
         u64 entry =
-            pa | pte::VALID | pte::PAGE | pte::AF | pte::SH_INNER | pte::AP_EL0 | pte::ATTR_NORMAL;
+            pa | pte::VALID | pte::PAGE | pte::AF | pte::SH_INNER | pte::AP_EL0 | attr;
 
         // Set protection bits
         if (!(prot_flags & prot::WRITE)) {

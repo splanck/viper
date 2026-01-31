@@ -8,44 +8,8 @@
  * @file main.cpp
  * @brief GUI Preferences application for ViperDOS.
  *
- * This application provides a tabbed preferences panel for viewing and
- * (in future versions) modifying system settings. The interface is inspired
- * by the Amiga Workbench Preferences application.
- *
- * ## Application Structure
- *
- * The preferences panel has a sidebar with category buttons and a content
- * area that displays settings for the selected category.
- *
- * ```
- * +------------+--------------------------------+
- * | [S] Screen |  Screen Preferences            |
- * | [I] Input  |  ----------------------------- |
- * | [T] Time   |                                |
- * | [?] About  |  Resolution: 1024 x 768        |
- * |            |  Color Depth: 32-bit           |
- * |            |  Backdrop: Workbench Blue      |
- * |            |                                |
- * +------------+--------------------------------+
- * |            | [Use] [Cancel] [Save]          |
- * +------------+--------------------------------+
- * ```
- *
- * ## Categories
- *
- * | Category | Description                        |
- * |----------|------------------------------------|
- * | Screen   | Display resolution and backdrop    |
- * | Input    | Pointer and keyboard settings      |
- * | Time     | System clock and uptime            |
- * | About    | System information and version     |
- *
- * ## Limitations
- *
- * Currently, preferences are read-only. The "Use", "Cancel", and "Save"
- * buttons are placeholders for future functionality.
- *
- * @see workbench for theme switching (available via Tools menu)
+ * Refactored using OOP principles with separate panel classes for each
+ * preference category.
  */
 //===----------------------------------------------------------------------===//
 
@@ -57,454 +21,443 @@
 #include <viperdos/mem_info.hpp>
 
 //===----------------------------------------------------------------------===//
-// Color Constants
+// Color and Layout Constants
 //===----------------------------------------------------------------------===//
 
-/**
- * @defgroup PrefsColors Preferences Color Palette
- * @brief Workbench-style colors for the preferences UI.
- * @{
- */
+namespace prefs {
 
-/** @brief Classic Workbench blue (0xFF0055AA). */
-constexpr uint32_t WB_BLUE = 0xFF0055AA;
+namespace colors {
+constexpr uint32_t BLUE = 0xFF0055AA;
+constexpr uint32_t WHITE = 0xFFFFFFFF;
+constexpr uint32_t BLACK = 0xFF000000;
+constexpr uint32_t GRAY_LIGHT = 0xFFAAAAAA;
+constexpr uint32_t GRAY_MED = 0xFF888888;
+constexpr uint32_t GRAY_DARK = 0xFF555555;
+} // namespace colors
 
-/** @brief Pure white (0xFFFFFFFF). */
-constexpr uint32_t WB_WHITE = 0xFFFFFFFF;
-
-/** @brief Pure black (0xFF000000). */
-constexpr uint32_t WB_BLACK = 0xFF000000;
-
-/** @brief Light gray for backgrounds (0xFFAAAAAA). */
-constexpr uint32_t WB_GRAY_LIGHT = 0xFFAAAAAA;
-
-/** @brief Medium gray for disabled elements (0xFF888888). */
-constexpr uint32_t WB_GRAY_MED = 0xFF888888;
-
-/** @brief Dark gray for shadows (0xFF555555). */
-constexpr uint32_t WB_GRAY_DARK = 0xFF555555;
-
-/** @brief Orange for highlights (0xFFFF8800). Unused. */
-[[maybe_unused]] constexpr uint32_t WB_ORANGE = 0xFFFF8800;
-
-/** @} */ // end PrefsColors
-
-//===----------------------------------------------------------------------===//
-// Layout Constants
-//===----------------------------------------------------------------------===//
-
-/**
- * @defgroup PrefsLayout Preferences Layout Constants
- * @brief Dimensions for the preferences window layout.
- * @{
- */
-
-/** @brief Total window width in pixels. */
+namespace layout {
 constexpr int WIN_WIDTH = 500;
-
-/** @brief Total window height in pixels. */
 constexpr int WIN_HEIGHT = 360;
-
-/** @brief Width of the category sidebar in pixels. */
 constexpr int SIDEBAR_WIDTH = 110;
-
-/** @brief X position where content area begins. */
 constexpr int CONTENT_X = SIDEBAR_WIDTH + 10;
-
-/** @brief Height of action buttons at the bottom. */
 constexpr int BUTTON_HEIGHT = 24;
-
-/** @brief Height of each category button in sidebar. */
 constexpr int CATEGORY_HEIGHT = 28;
-
-/** @} */ // end PrefsLayout
+} // namespace layout
 
 //===----------------------------------------------------------------------===//
-// Category Types
+// Button3D - Reusable 3D button widget
 //===----------------------------------------------------------------------===//
 
-/**
- * @brief Enumeration of preference categories.
- *
- * Each category corresponds to a tab in the sidebar and a different
- * content panel.
- */
-enum class Category {
-    Screen, /**< Display settings (resolution, backdrop). */
-    Input,  /**< Pointer and keyboard settings. */
-    Time,   /**< System time and uptime display. */
-    About   /**< System information and version. */
-};
+class Button3D {
+  public:
+    static void draw(gui_window_t *win, int x, int y, int w, int h,
+                     const char *label, bool pressed) {
+        uint32_t bg = pressed ? colors::GRAY_MED : colors::GRAY_LIGHT;
+        gui_fill_rect(win, x, y, w, h, bg);
 
-/**
- * @brief Metadata for a category button in the sidebar.
- */
-struct CategoryInfo {
-    const char *name; /**< Display name for the category. */
-    const char *icon; /**< Icon text (e.g., "[S]"). */
-    Category cat;     /**< Category enum value. */
-};
-
-/**
- * @brief Array of category definitions.
- */
-static const CategoryInfo g_categories[] = {
-    {"Screen", "[S]", Category::Screen},
-    {"Input", "[I]", Category::Input},
-    {"Time", "[T]", Category::Time},
-    {"About", "[?]", Category::About},
-};
-
-/** @brief Number of categories. */
-constexpr int NUM_CATEGORIES = sizeof(g_categories) / sizeof(g_categories[0]);
-
-// State
-static Category g_currentCategory = Category::Screen;
-static int g_hoveredCategory = -1;
-static MemInfo g_memInfo;
-
-static void drawButton3D(
-    gui_window_t *win, int x, int y, int w, int h, const char *label, bool pressed) {
-    uint32_t bg = pressed ? WB_GRAY_MED : WB_GRAY_LIGHT;
-    gui_fill_rect(win, x, y, w, h, bg);
-
-    if (pressed) {
-        gui_draw_hline(win, x, x + w - 1, y, WB_GRAY_DARK);
-        gui_draw_vline(win, x, y, y + h - 1, WB_GRAY_DARK);
-        gui_draw_hline(win, x, x + w - 1, y + h - 1, WB_WHITE);
-        gui_draw_vline(win, x + w - 1, y, y + h - 1, WB_WHITE);
-    } else {
-        gui_draw_hline(win, x, x + w - 1, y, WB_WHITE);
-        gui_draw_vline(win, x, y, y + h - 1, WB_WHITE);
-        gui_draw_hline(win, x, x + w - 1, y + h - 1, WB_GRAY_DARK);
-        gui_draw_vline(win, x + w - 1, y, y + h - 1, WB_GRAY_DARK);
-    }
-
-    int textX = x + (w - static_cast<int>(strlen(label)) * 8) / 2;
-    int textY = y + (h - 10) / 2;
-    gui_draw_text(win, textX, textY, label, WB_BLACK);
-}
-
-static void drawSidebar(gui_window_t *win) {
-    // Sidebar background
-    gui_fill_rect(win, 0, 0, SIDEBAR_WIDTH, WIN_HEIGHT, WB_GRAY_MED);
-
-    // Category buttons
-    int y = 15;
-    for (int i = 0; i < NUM_CATEGORIES; i++) {
-        bool selected = (g_categories[i].cat == g_currentCategory);
-
-        if (selected) {
-            gui_fill_rect(win, 5, y, SIDEBAR_WIDTH - 10, CATEGORY_HEIGHT, WB_BLUE);
-        } else if (i == g_hoveredCategory) {
-            gui_fill_rect(win, 5, y, SIDEBAR_WIDTH - 10, CATEGORY_HEIGHT, WB_GRAY_LIGHT);
+        if (pressed) {
+            gui_draw_hline(win, x, x + w - 1, y, colors::GRAY_DARK);
+            gui_draw_vline(win, x, y, y + h - 1, colors::GRAY_DARK);
+            gui_draw_hline(win, x, x + w - 1, y + h - 1, colors::WHITE);
+            gui_draw_vline(win, x + w - 1, y, y + h - 1, colors::WHITE);
+        } else {
+            gui_draw_hline(win, x, x + w - 1, y, colors::WHITE);
+            gui_draw_vline(win, x, y, y + h - 1, colors::WHITE);
+            gui_draw_hline(win, x, x + w - 1, y + h - 1, colors::GRAY_DARK);
+            gui_draw_vline(win, x + w - 1, y, y + h - 1, colors::GRAY_DARK);
         }
 
-        // Icon
-        uint32_t textColor = selected ? WB_WHITE : WB_BLACK;
-        gui_draw_text(win, 12, y + 8, g_categories[i].icon, textColor);
+        int textX = x + (w - static_cast<int>(strlen(label)) * 8) / 2;
+        int textY = y + (h - 10) / 2;
+        gui_draw_text(win, textX, textY, label, colors::BLACK);
+    }
+};
 
-        // Name
-        gui_draw_text(win, 38, y + 8, g_categories[i].name, textColor);
+//===----------------------------------------------------------------------===//
+// PrefsPanel - Abstract base class for preference panels
+//===----------------------------------------------------------------------===//
 
-        y += CATEGORY_HEIGHT + 4;
+class PrefsPanel {
+  public:
+    virtual ~PrefsPanel() = default;
+    virtual void draw(gui_window_t *win) = 0;
+    virtual const char *name() const = 0;
+    virtual const char *icon() const = 0;
+};
+
+//===----------------------------------------------------------------------===//
+// ScreenPrefsPanel
+//===----------------------------------------------------------------------===//
+
+class ScreenPrefsPanel : public PrefsPanel {
+  public:
+    void draw(gui_window_t *win) override {
+        int y = 25;
+
+        gui_draw_text(win, layout::CONTENT_X, y, "Screen Preferences", colors::BLACK);
+        y += 25;
+
+        gui_draw_hline(win, layout::CONTENT_X, layout::WIN_WIDTH - 20, y, colors::GRAY_DARK);
+        y += 15;
+
+        gui_draw_text(win, layout::CONTENT_X, y, "Resolution:", colors::BLACK);
+        gui_draw_text(win, layout::CONTENT_X + 100, y, "1024 x 768", colors::GRAY_DARK);
+        y += 25;
+
+        gui_draw_text(win, layout::CONTENT_X, y, "Color Depth:", colors::BLACK);
+        gui_draw_text(win, layout::CONTENT_X + 100, y, "32-bit (True Color)", colors::GRAY_DARK);
+        y += 25;
+
+        gui_draw_text(win, layout::CONTENT_X, y, "Backdrop:", colors::BLACK);
+        gui_fill_rect(win, layout::CONTENT_X + 100, y - 2, 80, 16, colors::BLUE);
+        gui_draw_text(win, layout::CONTENT_X + 190, y, "Workbench Blue", colors::GRAY_DARK);
+        y += 35;
+
+        gui_fill_rect(win, layout::CONTENT_X, y,
+                      layout::WIN_WIDTH - layout::CONTENT_X - 20, 50, colors::BLUE);
+        gui_draw_text(win, layout::CONTENT_X + 10, y + 10,
+                      "Screen preferences are read-only", colors::WHITE);
+        gui_draw_text(win, layout::CONTENT_X + 10, y + 28,
+                      "in this version of ViperDOS.", colors::WHITE);
     }
 
-    // Sidebar border
-    gui_draw_vline(win, SIDEBAR_WIDTH - 1, 0, WIN_HEIGHT, WB_GRAY_DARK);
-}
+    const char *name() const override { return "Screen"; }
+    const char *icon() const override { return "[S]"; }
+};
 
-static void drawScreenPrefs(gui_window_t *win) {
-    int y = 25;
+//===----------------------------------------------------------------------===//
+// InputPrefsPanel
+//===----------------------------------------------------------------------===//
 
-    gui_draw_text(win, CONTENT_X, y, "Screen Preferences", WB_BLACK);
-    y += 25;
+class InputPrefsPanel : public PrefsPanel {
+  public:
+    void draw(gui_window_t *win) override {
+        int y = 25;
 
-    gui_draw_hline(win, CONTENT_X, WIN_WIDTH - 20, y, WB_GRAY_DARK);
-    y += 15;
+        gui_draw_text(win, layout::CONTENT_X, y, "Input Preferences", colors::BLACK);
+        y += 25;
 
-    // Resolution
-    gui_draw_text(win, CONTENT_X, y, "Resolution:", WB_BLACK);
-    gui_draw_text(win, CONTENT_X + 100, y, "1024 x 768", WB_GRAY_DARK);
-    y += 25;
+        gui_draw_hline(win, layout::CONTENT_X, layout::WIN_WIDTH - 20, y, colors::GRAY_DARK);
+        y += 15;
 
-    // Color depth
-    gui_draw_text(win, CONTENT_X, y, "Color Depth:", WB_BLACK);
-    gui_draw_text(win, CONTENT_X + 100, y, "32-bit (True Color)", WB_GRAY_DARK);
-    y += 25;
+        gui_draw_text(win, layout::CONTENT_X, y, "Pointer", colors::BLUE);
+        y += 20;
 
-    // Backdrop
-    gui_draw_text(win, CONTENT_X, y, "Backdrop:", WB_BLACK);
-    gui_fill_rect(win, CONTENT_X + 100, y - 2, 80, 16, WB_BLUE);
-    gui_draw_text(win, CONTENT_X + 190, y, "Workbench Blue", WB_GRAY_DARK);
-    y += 35;
+        gui_draw_text(win, layout::CONTENT_X + 10, y, "Speed:", colors::BLACK);
+        gui_draw_text(win, layout::CONTENT_X + 100, y, "Medium", colors::GRAY_DARK);
+        y += 20;
 
-    // Note
-    gui_fill_rect(win, CONTENT_X, y, WIN_WIDTH - CONTENT_X - 20, 50, WB_BLUE);
-    gui_draw_text(win, CONTENT_X + 10, y + 10, "Screen preferences are read-only", WB_WHITE);
-    gui_draw_text(win, CONTENT_X + 10, y + 28, "in this version of ViperDOS.", WB_WHITE);
-}
+        gui_draw_text(win, layout::CONTENT_X + 10, y, "Double-click:", colors::BLACK);
+        gui_draw_text(win, layout::CONTENT_X + 100, y, "400 ms", colors::GRAY_DARK);
+        y += 30;
 
-static void drawInputPrefs(gui_window_t *win) {
-    int y = 25;
+        gui_draw_text(win, layout::CONTENT_X, y, "Keyboard", colors::BLUE);
+        y += 20;
 
-    gui_draw_text(win, CONTENT_X, y, "Input Preferences", WB_BLACK);
-    y += 25;
+        gui_draw_text(win, layout::CONTENT_X + 10, y, "Repeat delay:", colors::BLACK);
+        gui_draw_text(win, layout::CONTENT_X + 120, y, "500 ms", colors::GRAY_DARK);
+        y += 20;
 
-    gui_draw_hline(win, CONTENT_X, WIN_WIDTH - 20, y, WB_GRAY_DARK);
-    y += 15;
+        gui_draw_text(win, layout::CONTENT_X + 10, y, "Repeat rate:", colors::BLACK);
+        gui_draw_text(win, layout::CONTENT_X + 120, y, "30 Hz", colors::GRAY_DARK);
+        y += 20;
 
-    // Pointer section
-    gui_draw_text(win, CONTENT_X, y, "Pointer", WB_BLUE);
-    y += 20;
-
-    gui_draw_text(win, CONTENT_X + 10, y, "Speed:", WB_BLACK);
-    gui_draw_text(win, CONTENT_X + 100, y, "Medium", WB_GRAY_DARK);
-    y += 20;
-
-    gui_draw_text(win, CONTENT_X + 10, y, "Double-click:", WB_BLACK);
-    gui_draw_text(win, CONTENT_X + 100, y, "400 ms", WB_GRAY_DARK);
-    y += 30;
-
-    // Keyboard section
-    gui_draw_text(win, CONTENT_X, y, "Keyboard", WB_BLUE);
-    y += 20;
-
-    gui_draw_text(win, CONTENT_X + 10, y, "Repeat delay:", WB_BLACK);
-    gui_draw_text(win, CONTENT_X + 120, y, "500 ms", WB_GRAY_DARK);
-    y += 20;
-
-    gui_draw_text(win, CONTENT_X + 10, y, "Repeat rate:", WB_BLACK);
-    gui_draw_text(win, CONTENT_X + 120, y, "30 Hz", WB_GRAY_DARK);
-    y += 20;
-
-    gui_draw_text(win, CONTENT_X + 10, y, "Layout:", WB_BLACK);
-    gui_draw_text(win, CONTENT_X + 120, y, "US English", WB_GRAY_DARK);
-}
-
-static void drawTimePrefs(gui_window_t *win) {
-    int y = 25;
-
-    gui_draw_text(win, CONTENT_X, y, "Time Preferences", WB_BLACK);
-    y += 25;
-
-    gui_draw_hline(win, CONTENT_X, WIN_WIDTH - 20, y, WB_GRAY_DARK);
-    y += 15;
-
-    // Current time
-    uint64_t uptime = sys::uptime();
-    uint64_t seconds = uptime / 1000;
-    uint64_t minutes = (seconds / 60) % 60;
-    uint64_t hours = (seconds / 3600) % 24;
-
-    char timeBuf[32];
-    snprintf(timeBuf, sizeof(timeBuf), "%02llu:%02llu:%02llu", hours, minutes, seconds % 60);
-
-    gui_draw_text(win, CONTENT_X, y, "System Time:", WB_BLACK);
-    gui_draw_text(win, CONTENT_X + 110, y, timeBuf, WB_GRAY_DARK);
-    y += 25;
-
-    // Uptime
-    uint64_t upHours = seconds / 3600;
-    uint64_t upMins = (seconds / 60) % 60;
-    snprintf(timeBuf, sizeof(timeBuf), "%llu hours, %llu minutes", upHours, upMins);
-
-    gui_draw_text(win, CONTENT_X, y, "Uptime:", WB_BLACK);
-    gui_draw_text(win, CONTENT_X + 110, y, timeBuf, WB_GRAY_DARK);
-    y += 25;
-
-    // Time zone
-    gui_draw_text(win, CONTENT_X, y, "Time Zone:", WB_BLACK);
-    gui_draw_text(win, CONTENT_X + 110, y, "UTC", WB_GRAY_DARK);
-    y += 25;
-
-    // Clock format
-    gui_draw_text(win, CONTENT_X, y, "Clock Format:", WB_BLACK);
-    gui_draw_text(win, CONTENT_X + 110, y, "24-hour", WB_GRAY_DARK);
-}
-
-static void drawAboutPrefs(gui_window_t *win) {
-    int y = 25;
-
-    gui_draw_text(win, CONTENT_X, y, "About ViperDOS", WB_BLACK);
-    y += 25;
-
-    gui_draw_hline(win, CONTENT_X, WIN_WIDTH - 20, y, WB_GRAY_DARK);
-    y += 20;
-
-    // Logo area
-    gui_fill_rect(win, CONTENT_X, y, 60, 60, WB_BLUE);
-    gui_draw_text(win, CONTENT_X + 8, y + 20, "VIPER", WB_WHITE);
-    gui_draw_text(win, CONTENT_X + 12, y + 35, "DOS", WB_WHITE);
-
-    // Version info
-    gui_draw_text(win, CONTENT_X + 80, y + 5, "ViperDOS Workbench", WB_BLACK);
-    gui_draw_text(win, CONTENT_X + 80, y + 22, "Version " VIPERDOS_VERSION_STRING, WB_GRAY_DARK);
-    gui_draw_text(win, CONTENT_X + 80, y + 39, "Hybrid Kernel OS", WB_GRAY_DARK);
-    y += 75;
-
-    // System info
-    sys::mem_info(&g_memInfo);
-
-    char buf[64];
-    snprintf(buf,
-             sizeof(buf),
-             "Memory: %llu MB total, %llu MB free",
-             g_memInfo.total_bytes / (1024 * 1024),
-             g_memInfo.free_bytes / (1024 * 1024));
-    gui_draw_text(win, CONTENT_X, y, buf, WB_BLACK);
-    y += 20;
-
-    gui_draw_text(win, CONTENT_X, y, "Platform: AArch64 (ARM64)", WB_BLACK);
-    y += 20;
-
-    gui_draw_text(win, CONTENT_X, y, "Display: 1024x768 32bpp", WB_BLACK);
-    y += 30;
-
-    // Copyright
-    gui_draw_text(win, CONTENT_X, y, "(C) 2025 ViperDOS Team", WB_GRAY_DARK);
-}
-
-static void drawContent(gui_window_t *win) {
-    // Content area background
-    gui_fill_rect(win, SIDEBAR_WIDTH, 0, WIN_WIDTH - SIDEBAR_WIDTH, WIN_HEIGHT - 45, WB_GRAY_LIGHT);
-
-    switch (g_currentCategory) {
-        case Category::Screen:
-            drawScreenPrefs(win);
-            break;
-        case Category::Input:
-            drawInputPrefs(win);
-            break;
-        case Category::Time:
-            drawTimePrefs(win);
-            break;
-        case Category::About:
-            drawAboutPrefs(win);
-            break;
+        gui_draw_text(win, layout::CONTENT_X + 10, y, "Layout:", colors::BLACK);
+        gui_draw_text(win, layout::CONTENT_X + 120, y, "US English", colors::GRAY_DARK);
     }
-}
 
-static void drawBottomBar(gui_window_t *win) {
-    // Bottom bar background
-    gui_fill_rect(
-        win, SIDEBAR_WIDTH, WIN_HEIGHT - 45, WIN_WIDTH - SIDEBAR_WIDTH, 45, WB_GRAY_LIGHT);
-    gui_draw_hline(win, SIDEBAR_WIDTH, WIN_WIDTH, WIN_HEIGHT - 45, WB_GRAY_DARK);
+    const char *name() const override { return "Input"; }
+    const char *icon() const override { return "[I]"; }
+};
 
-    // Buttons
-    int btnY = WIN_HEIGHT - 35;
-    int btnW = 70;
+//===----------------------------------------------------------------------===//
+// TimePrefsPanel
+//===----------------------------------------------------------------------===//
 
-    drawButton3D(win, WIN_WIDTH - 240, btnY, btnW, BUTTON_HEIGHT, "Use", false);
-    drawButton3D(win, WIN_WIDTH - 160, btnY, btnW, BUTTON_HEIGHT, "Cancel", false);
-    drawButton3D(win, WIN_WIDTH - 80, btnY, btnW, BUTTON_HEIGHT, "Save", false);
-}
+class TimePrefsPanel : public PrefsPanel {
+  public:
+    void draw(gui_window_t *win) override {
+        int y = 25;
 
-static void drawWindow(gui_window_t *win) {
-    drawSidebar(win);
-    drawContent(win);
-    drawBottomBar(win);
-    gui_present(win);
-}
+        gui_draw_text(win, layout::CONTENT_X, y, "Time Preferences", colors::BLACK);
+        y += 25;
 
-static int findCategoryAt(int x, int y) {
-    if (x >= SIDEBAR_WIDTH)
+        gui_draw_hline(win, layout::CONTENT_X, layout::WIN_WIDTH - 20, y, colors::GRAY_DARK);
+        y += 15;
+
+        uint64_t uptime = sys::uptime();
+        uint64_t seconds = uptime / 1000;
+        uint64_t minutes = (seconds / 60) % 60;
+        uint64_t hours = (seconds / 3600) % 24;
+
+        char timeBuf[32];
+        snprintf(timeBuf, sizeof(timeBuf), "%02llu:%02llu:%02llu", hours, minutes, seconds % 60);
+
+        gui_draw_text(win, layout::CONTENT_X, y, "System Time:", colors::BLACK);
+        gui_draw_text(win, layout::CONTENT_X + 110, y, timeBuf, colors::GRAY_DARK);
+        y += 25;
+
+        uint64_t upHours = seconds / 3600;
+        uint64_t upMins = (seconds / 60) % 60;
+        snprintf(timeBuf, sizeof(timeBuf), "%llu hours, %llu minutes", upHours, upMins);
+
+        gui_draw_text(win, layout::CONTENT_X, y, "Uptime:", colors::BLACK);
+        gui_draw_text(win, layout::CONTENT_X + 110, y, timeBuf, colors::GRAY_DARK);
+        y += 25;
+
+        gui_draw_text(win, layout::CONTENT_X, y, "Time Zone:", colors::BLACK);
+        gui_draw_text(win, layout::CONTENT_X + 110, y, "UTC", colors::GRAY_DARK);
+        y += 25;
+
+        gui_draw_text(win, layout::CONTENT_X, y, "Clock Format:", colors::BLACK);
+        gui_draw_text(win, layout::CONTENT_X + 110, y, "24-hour", colors::GRAY_DARK);
+    }
+
+    const char *name() const override { return "Time"; }
+    const char *icon() const override { return "[T]"; }
+};
+
+//===----------------------------------------------------------------------===//
+// AboutPrefsPanel
+//===----------------------------------------------------------------------===//
+
+class AboutPrefsPanel : public PrefsPanel {
+  public:
+    void draw(gui_window_t *win) override {
+        int y = 25;
+
+        gui_draw_text(win, layout::CONTENT_X, y, "About ViperDOS", colors::BLACK);
+        y += 25;
+
+        gui_draw_hline(win, layout::CONTENT_X, layout::WIN_WIDTH - 20, y, colors::GRAY_DARK);
+        y += 20;
+
+        // Logo area
+        gui_fill_rect(win, layout::CONTENT_X, y, 60, 60, colors::BLUE);
+        gui_draw_text(win, layout::CONTENT_X + 8, y + 20, "VIPER", colors::WHITE);
+        gui_draw_text(win, layout::CONTENT_X + 12, y + 35, "DOS", colors::WHITE);
+
+        gui_draw_text(win, layout::CONTENT_X + 80, y + 5, "ViperDOS Workbench", colors::BLACK);
+        gui_draw_text(win, layout::CONTENT_X + 80, y + 22,
+                      "Version " VIPERDOS_VERSION_STRING, colors::GRAY_DARK);
+        gui_draw_text(win, layout::CONTENT_X + 80, y + 39, "Hybrid Kernel OS", colors::GRAY_DARK);
+        y += 75;
+
+        MemInfo memInfo;
+        sys::mem_info(&memInfo);
+
+        char buf[64];
+        snprintf(buf, sizeof(buf), "Memory: %llu MB total, %llu MB free",
+                 memInfo.total_bytes / (1024 * 1024),
+                 memInfo.free_bytes / (1024 * 1024));
+        gui_draw_text(win, layout::CONTENT_X, y, buf, colors::BLACK);
+        y += 20;
+
+        gui_draw_text(win, layout::CONTENT_X, y, "Platform: AArch64 (ARM64)", colors::BLACK);
+        y += 20;
+
+        gui_draw_text(win, layout::CONTENT_X, y, "Display: 1024x768 32bpp", colors::BLACK);
+        y += 30;
+
+        gui_draw_text(win, layout::CONTENT_X, y, "(C) 2025 ViperDOS Team", colors::GRAY_DARK);
+    }
+
+    const char *name() const override { return "About"; }
+    const char *icon() const override { return "[?]"; }
+};
+
+//===----------------------------------------------------------------------===//
+// PreferencesApp - Main application class
+//===----------------------------------------------------------------------===//
+
+class PreferencesApp {
+  public:
+    PreferencesApp() : m_window(nullptr), m_currentPanel(0), m_hoveredPanel(-1) {
+        m_panels[0] = &m_screenPanel;
+        m_panels[1] = &m_inputPanel;
+        m_panels[2] = &m_timePanel;
+        m_panels[3] = &m_aboutPanel;
+    }
+
+    bool init() {
+        if (gui_init() != 0) {
+            return false;
+        }
+
+        m_window = gui_create_window("Preferences", layout::WIN_WIDTH, layout::WIN_HEIGHT);
+        return m_window != nullptr;
+    }
+
+    void run() {
+        draw();
+
+        uint64_t lastRefresh = sys::uptime();
+        bool running = true;
+
+        while (running) {
+            gui_event_t event;
+            if (gui_poll_event(m_window, &event) == 0) {
+                switch (event.type) {
+                    case GUI_EVENT_CLOSE:
+                        running = false;
+                        break;
+
+                    case GUI_EVENT_MOUSE:
+                        if (event.mouse.event_type == 1) {
+                            if (handleClick(event.mouse.x, event.mouse.y, event.mouse.button)) {
+                                running = false;
+                            }
+                            draw();
+                        } else if (event.mouse.event_type == 0) {
+                            int newHover = findPanelAt(event.mouse.x, event.mouse.y);
+                            if (newHover != m_hoveredPanel) {
+                                m_hoveredPanel = newHover;
+                                draw();
+                            }
+                        }
+                        break;
+
+                    default:
+                        break;
+                }
+            }
+
+            // Refresh time display every second if on Time tab
+            if (m_currentPanel == 2) { // Time panel
+                uint64_t now = sys::uptime();
+                if (now - lastRefresh >= 1000) {
+                    draw();
+                    lastRefresh = now;
+                }
+            }
+
+            __asm__ volatile("mov x8, #0x00\n\tsvc #0" ::: "x8");
+        }
+    }
+
+    void shutdown() {
+        if (m_window) {
+            gui_destroy_window(m_window);
+        }
+        gui_shutdown();
+    }
+
+  private:
+    static constexpr int NUM_PANELS = 4;
+
+    gui_window_t *m_window;
+    int m_currentPanel;
+    int m_hoveredPanel;
+
+    ScreenPrefsPanel m_screenPanel;
+    InputPrefsPanel m_inputPanel;
+    TimePrefsPanel m_timePanel;
+    AboutPrefsPanel m_aboutPanel;
+    PrefsPanel *m_panels[NUM_PANELS];
+
+    void draw() {
+        drawSidebar();
+        drawContent();
+        drawBottomBar();
+        gui_present(m_window);
+    }
+
+    void drawSidebar() {
+        gui_fill_rect(m_window, 0, 0, layout::SIDEBAR_WIDTH, layout::WIN_HEIGHT, colors::GRAY_MED);
+
+        int y = 15;
+        for (int i = 0; i < NUM_PANELS; i++) {
+            bool selected = (i == m_currentPanel);
+
+            if (selected) {
+                gui_fill_rect(m_window, 5, y, layout::SIDEBAR_WIDTH - 10,
+                              layout::CATEGORY_HEIGHT, colors::BLUE);
+            } else if (i == m_hoveredPanel) {
+                gui_fill_rect(m_window, 5, y, layout::SIDEBAR_WIDTH - 10,
+                              layout::CATEGORY_HEIGHT, colors::GRAY_LIGHT);
+            }
+
+            uint32_t textColor = selected ? colors::WHITE : colors::BLACK;
+            gui_draw_text(m_window, 12, y + 8, m_panels[i]->icon(), textColor);
+            gui_draw_text(m_window, 38, y + 8, m_panels[i]->name(), textColor);
+
+            y += layout::CATEGORY_HEIGHT + 4;
+        }
+
+        gui_draw_vline(m_window, layout::SIDEBAR_WIDTH - 1, 0, layout::WIN_HEIGHT, colors::GRAY_DARK);
+    }
+
+    void drawContent() {
+        gui_fill_rect(m_window, layout::SIDEBAR_WIDTH, 0,
+                      layout::WIN_WIDTH - layout::SIDEBAR_WIDTH,
+                      layout::WIN_HEIGHT - 45, colors::GRAY_LIGHT);
+
+        m_panels[m_currentPanel]->draw(m_window);
+    }
+
+    void drawBottomBar() {
+        gui_fill_rect(m_window, layout::SIDEBAR_WIDTH, layout::WIN_HEIGHT - 45,
+                      layout::WIN_WIDTH - layout::SIDEBAR_WIDTH, 45, colors::GRAY_LIGHT);
+        gui_draw_hline(m_window, layout::SIDEBAR_WIDTH, layout::WIN_WIDTH,
+                       layout::WIN_HEIGHT - 45, colors::GRAY_DARK);
+
+        int btnY = layout::WIN_HEIGHT - 35;
+        int btnW = 70;
+
+        Button3D::draw(m_window, layout::WIN_WIDTH - 240, btnY, btnW,
+                       layout::BUTTON_HEIGHT, "Use", false);
+        Button3D::draw(m_window, layout::WIN_WIDTH - 160, btnY, btnW,
+                       layout::BUTTON_HEIGHT, "Cancel", false);
+        Button3D::draw(m_window, layout::WIN_WIDTH - 80, btnY, btnW,
+                       layout::BUTTON_HEIGHT, "Save", false);
+    }
+
+    int findPanelAt(int x, int y) {
+        if (x >= layout::SIDEBAR_WIDTH) return -1;
+
+        int panelY = 15;
+        for (int i = 0; i < NUM_PANELS; i++) {
+            if (y >= panelY && y < panelY + layout::CATEGORY_HEIGHT) {
+                return i;
+            }
+            panelY += layout::CATEGORY_HEIGHT + 4;
+        }
         return -1;
-
-    int catY = 15;
-    for (int i = 0; i < NUM_CATEGORIES; i++) {
-        if (y >= catY && y < catY + CATEGORY_HEIGHT) {
-            return i;
-        }
-        catY += CATEGORY_HEIGHT + 4;
     }
-    return -1;
-}
 
-static bool handleClick(int x, int y, int button) {
-    if (button != 0)
-        return false;
+    bool handleClick(int x, int y, int button) {
+        if (button != 0) return false;
 
-    // Check category clicks
-    int catIdx = findCategoryAt(x, y);
-    if (catIdx >= 0) {
-        g_currentCategory = g_categories[catIdx].cat;
+        int panelIdx = findPanelAt(x, y);
+        if (panelIdx >= 0) {
+            m_currentPanel = panelIdx;
+            return false;
+        }
+
+        int btnY = layout::WIN_HEIGHT - 35;
+        if (y >= btnY && y < btnY + layout::BUTTON_HEIGHT) {
+            if (x >= layout::WIN_WIDTH - 160 && x < layout::WIN_WIDTH - 90) {
+                return true; // Cancel clicked
+            }
+        }
         return false;
     }
+};
 
-    // Check button clicks
-    int btnY = WIN_HEIGHT - 35;
-    if (y >= btnY && y < btnY + BUTTON_HEIGHT) {
-        // Cancel button closes window
-        if (x >= WIN_WIDTH - 160 && x < WIN_WIDTH - 90) {
-            return true; // Signal to close
-        }
-    }
-    return false;
-}
+} // namespace prefs
+
+//===----------------------------------------------------------------------===//
+// Main Entry Point
+//===----------------------------------------------------------------------===//
 
 extern "C" int main() {
-    // Initialize GUI
-    if (gui_init() != 0) {
+    prefs::PreferencesApp app;
+
+    if (!app.init()) {
         return 1;
     }
 
-    // Create window
-    gui_window_t *win = gui_create_window("Preferences", WIN_WIDTH, WIN_HEIGHT);
-    if (!win) {
-        gui_shutdown();
-        return 1;
-    }
-
-    // Initial draw
-    drawWindow(win);
-
-    // Event loop
-    uint64_t lastRefresh = sys::uptime();
-    bool running = true;
-
-    while (running) {
-        gui_event_t event;
-        if (gui_poll_event(win, &event) == 0) {
-            switch (event.type) {
-                case GUI_EVENT_CLOSE:
-                    running = false;
-                    break;
-
-                case GUI_EVENT_MOUSE:
-                    if (event.mouse.event_type == 1) { // Button down
-                        if (handleClick(event.mouse.x, event.mouse.y, event.mouse.button)) {
-                            running = false;
-                        }
-                        drawWindow(win);
-                    } else if (event.mouse.event_type == 0) { // Mouse move
-                        int newHover = findCategoryAt(event.mouse.x, event.mouse.y);
-                        if (newHover != g_hoveredCategory) {
-                            g_hoveredCategory = newHover;
-                            drawWindow(win);
-                        }
-                    }
-                    break;
-
-                default:
-                    break;
-            }
-        }
-
-        // Refresh time display every second if on Time tab
-        if (g_currentCategory == Category::Time) {
-            uint64_t now = sys::uptime();
-            if (now - lastRefresh >= 1000) {
-                drawWindow(win);
-                lastRefresh = now;
-            }
-        }
-
-        // Yield CPU
-        __asm__ volatile("mov x8, #0x00\n\tsvc #0" ::: "x8");
-    }
-
-    gui_destroy_window(win);
-    gui_shutdown();
+    app.run();
+    app.shutdown();
     return 0;
 }

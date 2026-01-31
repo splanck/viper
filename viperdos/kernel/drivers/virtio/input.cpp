@@ -59,7 +59,15 @@ void InputDevice::detect_device_type() {
     config[1] = ev_type::REL;
     asm volatile("dsb sy" ::: "memory");
     u8 ev_rel_size = config[2];
-    is_mouse_ = (ev_rel_size > 0);
+
+    // EV_BITS query for EV_ABS (absolute axis - tablet/touch/pointer)
+    config[0] = input_config::EV_BITS;
+    config[1] = ev_type::ABS;
+    asm volatile("dsb sy" ::: "memory");
+    u8 ev_abs_size = config[2];
+    has_abs_ = (ev_abs_size > 0);
+
+    is_mouse_ = (ev_rel_size > 0) || has_abs_;
 
     // EV_BITS query for EV_KEY
     config[0] = input_config::EV_BITS;
@@ -81,6 +89,48 @@ void InputDevice::detect_device_type() {
         serial::puts("[virtio-input] Device is a mouse\n");
     if (has_led_)
         serial::puts("[virtio-input] Device supports LED control\n");
+
+    // If device supports ABS, try to read axis ranges
+    if (has_abs_) {
+        i32 min = 0;
+        i32 max = 0;
+        if (read_abs_info(0x00, min, max) && max > min) { // ABS_X
+            has_abs_x_ = true;
+            abs_x_min_ = min;
+            abs_x_max_ = max;
+        }
+        if (read_abs_info(0x01, min, max) && max > min) { // ABS_Y
+            has_abs_y_ = true;
+            abs_y_min_ = min;
+            abs_y_max_ = max;
+        }
+    }
+}
+
+bool InputDevice::read_abs_info(u16 code, i32 &out_min, i32 &out_max) {
+    volatile u8 *config = reinterpret_cast<volatile u8 *>(base() + reg::CONFIG);
+
+    config[0] = input_config::ABS_INFO;
+    config[1] = static_cast<u8>(code);
+    asm volatile("dsb sy" ::: "memory");
+
+    u8 size = config[2];
+    if (size < 8) {
+        return false;
+    }
+
+    auto read_u32 = [&](u32 offset) -> u32 {
+        u32 v = 0;
+        v |= static_cast<u32>(config[8 + offset + 0]);
+        v |= static_cast<u32>(config[8 + offset + 1]) << 8;
+        v |= static_cast<u32>(config[8 + offset + 2]) << 16;
+        v |= static_cast<u32>(config[8 + offset + 3]) << 24;
+        return v;
+    };
+
+    out_min = static_cast<i32>(read_u32(0));
+    out_max = static_cast<i32>(read_u32(4));
+    return true;
 }
 
 bool InputDevice::negotiate_features() {

@@ -605,6 +605,29 @@ Task *create_user_task(const char *name, void *viper_ptr, u64 entry, u64 stack) 
     // Initialize common scheduling fields
     init_task_sched_fields(t);
 
+    // Display server needs real-time priority for responsive cursor rendering.
+    // Other GUI applications (consoled, workbench) should use SCHED_OTHER (CFS)
+    // for fair CPU sharing. Previously consoled/vinit were also SCHED_RR which
+    // caused them to starve CFS tasks completely.
+    {
+        auto contains = [](const char *haystack, const char *needle) {
+            for (const char *h = haystack; *h; h++) {
+                const char *p = h, *n = needle;
+                while (*n && *p == *n) { p++; n++; }
+                if (!*n) return true;
+            }
+            return false;
+        };
+        if (contains(t->name, "displayd")) {
+            t->policy = SchedPolicy::SCHED_RR;
+            t->time_slice = RT_TIME_SLICE_DEFAULT;
+            t->priority = 32;  // High RT priority (queue 1)
+            serial::puts("[task] displayd set to SCHED_RR priority\n");
+        }
+        // Note: consoled and vinit now use SCHED_OTHER (CFS) by default
+        // to avoid starving other CFS tasks like workbench.
+    }
+
     {
         Task *curr = current();
         t->parent_id = curr ? curr->id : 0;

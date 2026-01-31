@@ -690,7 +690,8 @@ SyscallResult sys_shm_create(u64 a0, u64, u64, u64, u64, u64) {
         return err_out_of_memory();
     }
 
-    if (!as->map(virt_addr, shm->phys_addr(), aligned_size, viper::prot::RW)) {
+    u32 prot = viper::prot::RW | viper::prot::UNCACHED;
+    if (!as->map(virt_addr, shm->phys_addr(), aligned_size, prot)) {
         delete shm;
         return err_out_of_memory();
     }
@@ -781,7 +782,7 @@ SyscallResult sys_shm_map(u64 a0, u64, u64, u64, u64, u64) {
         return err_out_of_memory();
     }
 
-    u32 prot = viper::prot::READ;
+    u32 prot = viper::prot::READ | viper::prot::UNCACHED;
     if (cap::has_rights(entry->rights, cap::CAP_WRITE)) {
         prot |= viper::prot::WRITE;
     }

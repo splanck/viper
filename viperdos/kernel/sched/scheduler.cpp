@@ -87,7 +87,27 @@ struct PerCpuScheduler {
     // State
     bool initialized;
     volatile u32 queue_count;  // Atomic for lock-free checks
+
+    // CFS fairness tracking (Linux CFS-style)
+    // min_vruntime: monotonically increasing baseline for fair scheduling
+    // All task vruntimes are normalized relative to this value
+    u64 min_vruntime;
+    u32 cfs_nr_running;  // Number of CFS tasks in heap (excludes idle)
 };
+
+/**
+ * @brief Advance min_vruntime based on a task that's about to run.
+ *
+ * Called when a CFS task is dequeued (picked to run). min_vruntime
+ * advances to track the lowest vruntime that has been scheduled,
+ * ensuring it monotonically increases as CPU time passes.
+ */
+inline void advance_min_vruntime(PerCpuScheduler &sched, u64 vruntime) {
+    // Only advance, never go backward (monotonicity)
+    if (vruntime > sched.min_vruntime) {
+        sched.min_vruntime = vruntime;
+    }
+}
 
 // Per-CPU scheduler state
 PerCpuScheduler per_cpu_sched[cpu::MAX_CPUS];
@@ -198,23 +218,13 @@ void enqueue_percpu_locked(task::Task *t, u32 cpu_id) {
 
     // State validation: only Ready or Running tasks should be enqueued
     if (t->state != task::TaskState::Ready && t->state != task::TaskState::Running) {
-        serial::puts("[sched] WARNING: enqueue task '");
-        serial::puts(t->name);
-        serial::puts("' in state ");
-        serial::put_dec(static_cast<u32>(t->state));
-        serial::puts(" (expected Ready/Running)\n");
         return;
     }
 
-    // Defensive: ensure task is not already in a heap (for deadline tasks only now)
-    // SCHED_OTHER now uses linked lists like RT tasks
-    if (t->policy == task::SchedPolicy::SCHED_DEADLINE &&
+    // Defensive: ensure task is not already in a heap (for heap-scheduled tasks)
+    if ((t->policy == task::SchedPolicy::SCHED_DEADLINE ||
+         t->policy == task::SchedPolicy::SCHED_OTHER) &&
         t->heap_index != static_cast<u32>(-1)) {
-        serial::puts("[sched] WARNING: task '");
-        serial::puts(t->name);
-        serial::puts("' already in heap (idx=");
-        serial::put_dec(t->heap_index);
-        serial::puts("), skipping enqueue\n");
         return;
     }
 
@@ -232,21 +242,77 @@ void enqueue_percpu_locked(task::Task *t, u32 cpu_id) {
         break;
 
     case task::SchedPolicy::SCHED_OTHER: {
-        // TEMPORARY: Use simple linked list instead of heap to debug mouse freeze
-        // This bypasses CFS vruntime ordering but should work correctly
-        u8 q_idx = priority_to_queue(t->priority);
-        auto &queue = sched.rt_queues[q_idx];
+        // CFS scheduling: use vruntime-based heap for fair scheduling
 
-        t->next = nullptr;
-        t->prev = queue.tail;
-        if (queue.tail) {
-            queue.tail->next = t;
-        } else {
-            queue.head = t;
+        // Sleeper fairness: if task slept and fell behind min_vruntime,
+        // normalize up to prevent it from stealing CPU time from tasks
+        // that have been running.
+        // Skip idle task - it should always have low vruntime as fallback.
+        if (!(t->flags & task::TASK_FLAG_IDLE)) {
+            // Debug: track displayd vruntime
+            // Names are paths like "/sys/displayd.sys" - check for substring
+            auto contains = [](const char *haystack, const char *needle) {
+                for (const char *h = haystack; *h; h++) {
+                    const char *p = h, *n = needle;
+                    while (*n && *p == *n) { p++; n++; }
+                    if (!*n) return true;
+                }
+                return false;
+            };
+            bool is_displayd = contains(t->name, "displayd");
+            static u32 displayd_enq = 0;
+
+            if (t->vruntime < sched.min_vruntime) {
+                // Debug: show vruntime normalization for new/waking tasks
+                if (t->vruntime == 0) {
+                    // Brand new task - show the bump
+                    serial::puts("[cfs] NEW '");
+                    serial::puts(t->name);
+                    serial::puts("' vrt 0 -> ");
+                    serial::put_dec(static_cast<u32>(sched.min_vruntime / 1000000));
+                    serial::puts("M\n");
+                }
+                if (is_displayd) {
+                    displayd_enq++;
+                    if (displayd_enq <= 10 || (displayd_enq % 1000 == 0)) {
+                        serial::puts("[cfs] displayd enq#");
+                        serial::put_dec(displayd_enq);
+                        serial::puts(" vrt ");
+                        serial::put_dec(static_cast<u32>(t->vruntime / 1000000));
+                        serial::puts("M -> ");
+                        serial::put_dec(static_cast<u32>(sched.min_vruntime / 1000000));
+                        serial::puts("M\n");
+                    }
+                }
+                t->vruntime = sched.min_vruntime;
+            } else if (is_displayd) {
+                displayd_enq++;
+                if (displayd_enq <= 10 || (displayd_enq % 1000 == 0)) {
+                    serial::puts("[cfs] displayd enq#");
+                    serial::put_dec(displayd_enq);
+                    serial::puts(" vrt ");
+                    serial::put_dec(static_cast<u32>(t->vruntime / 1000000));
+                    serial::puts("M (min=");
+                    serial::put_dec(static_cast<u32>(sched.min_vruntime / 1000000));
+                    serial::puts("M)\n");
+                }
+            }
+            // Note: We do NOT cap high vruntime down. High vruntime means
+            // the task ran a lot and should wait - that's fair scheduling.
         }
-        queue.tail = t;
-        sched.rt_bitmap |= (1u << q_idx);
-        inserted = true;
+
+        inserted = sched::heap_insert(&sched.cfs_heap, t);
+        if (!inserted) {
+            serial::puts("[sched] WARNING: heap_insert failed for CFS task '");
+            serial::puts(t->name);
+            serial::puts("'\n");
+            return;
+        }
+
+        // Track CFS task count
+        if (!(t->flags & task::TASK_FLAG_IDLE)) {
+            sched.cfs_nr_running++;
+        }
         break;
     }
 
@@ -352,9 +418,76 @@ task::Task *dequeue_percpu_locked(u32 cpu_id) {
         }
     }
 
-    // Priority 3: SCHED_OTHER - now using RT queues (same as RT tasks)
-    // The rt_bitmap check above already handles this since SCHED_OTHER
-    // tasks are now enqueued to rt_queues
+    // Priority 3: SCHED_OTHER (CFS - lowest vruntime first)
+    if (!sched::heap_empty(&sched.cfs_heap)) {
+        t = sched::heap_extract_min(&sched.cfs_heap);
+        if (t) {
+            // Track CFS task count
+            if (!(t->flags & task::TASK_FLAG_IDLE)) {
+                sched.cfs_nr_running--;
+
+                // Debug: track key task dequeues
+                // Names are paths like "/sys/displayd.sys" - check for substring
+                auto contains = [](const char *haystack, const char *needle) {
+                    for (const char *h = haystack; *h; h++) {
+                        const char *p = h, *n = needle;
+                        while (*n && *p == *n) { p++; n++; }
+                        if (!*n) return true;
+                    }
+                    return false;
+                };
+                bool is_displayd = contains(t->name, "displayd");
+                bool is_workbench = contains(t->name, "workbench");
+                static u32 displayd_deq = 0;
+                static u32 workbench_deq = 0;
+                static u32 total_deq = 0;
+                total_deq++;
+
+                if (is_displayd) {
+                    displayd_deq++;
+                    if (displayd_deq <= 10 || (displayd_deq % 1000 == 0)) {
+                        serial::puts("[cfs] displayd deq#");
+                        serial::put_dec(displayd_deq);
+                        serial::puts(" vrt=");
+                        serial::put_dec(static_cast<u32>(t->vruntime / 1000000));
+                        serial::puts("M min=");
+                        serial::put_dec(static_cast<u32>(sched.min_vruntime / 1000000));
+                        serial::puts("M\n");
+                    }
+                } else if (is_workbench) {
+                    workbench_deq++;
+                    if (workbench_deq <= 10 || (workbench_deq % 1000 == 0)) {
+                        serial::puts("[cfs] workbench deq#");
+                        serial::put_dec(workbench_deq);
+                        serial::puts(" vrt=");
+                        serial::put_dec(static_cast<u32>(t->vruntime / 1000000));
+                        serial::puts("M min=");
+                        serial::put_dec(static_cast<u32>(sched.min_vruntime / 1000000));
+                        serial::puts("M\n");
+                    }
+                }
+
+                // Periodic summary of dequeue counts
+                if (total_deq == 100 || total_deq == 1000 || total_deq % 5000 == 0) {
+                    serial::puts("[cfs] deq summary: disp=");
+                    serial::put_dec(displayd_deq);
+                    serial::puts(" work=");
+                    serial::put_dec(workbench_deq);
+                    serial::puts(" total=");
+                    serial::put_dec(total_deq);
+                    serial::puts("\n");
+                }
+
+                // Advance min_vruntime as this task is about to run
+                // This ensures min_vruntime monotonically increases
+                advance_min_vruntime(sched, t->vruntime);
+            }
+
+            sched.total_tasks--;
+            __atomic_fetch_sub(&sched.queue_count, 1, __ATOMIC_RELAXED);
+            return t;
+        }
+    }
 
     return nullptr;
 }
@@ -513,6 +646,8 @@ void init_cpu(u32 cpu_id) {
     sched.steals = 0;
     sched.migrations = 0;
     sched.queue_count = 0;
+    sched.min_vruntime = 0;
+    sched.cfs_nr_running = 0;
     sched.initialized = true;
 
     serial::puts("[sched] CPU ");
@@ -581,10 +716,9 @@ void schedule() {
         saved_daif = sched.lock.acquire();
     }
 
-    // If same task, re-enqueue and return
     if (next == current) {
-        if (current->state == task::TaskState::Ready) {
-            enqueue_percpu_locked(current, cpu_id);
+        if (current->state != task::TaskState::Running) {
+            current->state = task::TaskState::Running;
         }
         sched.lock.release(saved_daif);
         return;
@@ -592,6 +726,30 @@ void schedule() {
 
     // Put current task back in ready queue if it's still runnable
     if (current) {
+        // Debug: check if displayd is being skipped
+        auto contains = [](const char *haystack, const char *needle) {
+            for (const char *h = haystack; *h; h++) {
+                const char *p = h, *n = needle;
+                while (*n && *p == *n) { p++; n++; }
+                if (!*n) return true;
+            }
+            return false;
+        };
+        bool is_displayd = contains(current->name, "displayd");
+        static u32 displayd_sched = 0;
+        if (is_displayd) {
+            displayd_sched++;
+            if (displayd_sched <= 5 || (displayd_sched >= 26400 && displayd_sched < 26420)) {
+                serial::puts("[sched] displayd #");
+                serial::put_dec(displayd_sched);
+                serial::puts(" state=");
+                serial::put_dec(static_cast<u32>(current->state));
+                serial::puts(" heap_idx=");
+                serial::put_dec(current->heap_index);
+                serial::puts("\n");
+            }
+        }
+
         if (current->state == task::TaskState::Running) {
             // Account for CPU time used (consumed time slice)
             u32 original_slice = task::time_slice_for_priority(current->priority);
@@ -607,6 +765,10 @@ void schedule() {
                 serial::puts(current->name);
                 serial::puts("' exited\n");
             }
+        } else if (is_displayd && displayd_sched >= 26400 && displayd_sched < 26420) {
+            serial::puts("[sched] displayd NOT re-enqueued, state=");
+            serial::put_dec(static_cast<u32>(current->state));
+            serial::puts("\n");
         }
         // Blocked tasks are on wait queues, not re-enqueued here
     }

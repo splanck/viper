@@ -23,6 +23,7 @@
 #include "../../kobj/channel.hpp"
 #include "../../kobj/shm.hpp"
 #include "../../loader/loader.hpp"
+#include "../../mm/kheap.hpp"
 #include "../../mm/pmm.hpp"
 #include "../../sched/scheduler.hpp"
 #include "../../viper/address_space.hpp"
@@ -508,15 +509,24 @@ static cap::Handle create_bootstrap_channel(viper::Viper *parent, viper::Viper *
         return cap::HANDLE_INVALID;
     }
 
+    kheap::debug_check_watch_addr("bootstrap_start");
+
     i64 channel_id = channel::create();
     if (channel_id < 0) {
         return cap::HANDLE_INVALID;
     }
 
+    kheap::debug_check_watch_addr("after_channel_create");
+
     kobj::Channel *send_ep =
         kobj::Channel::adopt(static_cast<u32>(channel_id), kobj::Channel::ENDPOINT_SEND);
+
+    kheap::debug_check_watch_addr("after_send_ep_alloc");
+
     kobj::Channel *recv_ep =
         kobj::Channel::adopt(static_cast<u32>(channel_id), kobj::Channel::ENDPOINT_RECV);
+
+    kheap::debug_check_watch_addr("after_recv_ep_alloc");
 
     if (!send_ep || !recv_ep) {
         delete send_ep;
@@ -527,6 +537,9 @@ static cap::Handle create_bootstrap_channel(viper::Viper *parent, viper::Viper *
 
     cap::Handle child_recv =
         child->cap_table->insert(recv_ep, cap::Kind::Channel, cap::CAP_READ | cap::CAP_TRANSFER);
+
+    kheap::debug_check_watch_addr("after_child_insert");
+
     if (child_recv == cap::HANDLE_INVALID) {
         delete send_ep;
         delete recv_ep;
@@ -535,6 +548,9 @@ static cap::Handle create_bootstrap_channel(viper::Viper *parent, viper::Viper *
 
     cap::Handle parent_send =
         parent->cap_table->insert(send_ep, cap::Kind::Channel, cap::CAP_WRITE | cap::CAP_TRANSFER);
+
+    kheap::debug_check_watch_addr("after_parent_insert");
+
     if (parent_send == cap::HANDLE_INVALID) {
         child->cap_table->remove(child_recv);
         delete send_ep;

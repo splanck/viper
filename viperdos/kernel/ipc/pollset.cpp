@@ -5,6 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 #include "pollset.hpp"
+#include "../arch/aarch64/timer.hpp"
 #include "../cap/rights.hpp"
 #include "../cap/table.hpp"
 #include "../console/console.hpp"
@@ -309,25 +310,17 @@ i64 wait(u32 poll_id, poll::PollEvent *out_events, u32 max_events, i64 timeout_m
         return error::VERR_PERMISSION;
     }
 
-    u64 deadline = 0;
-    if (timeout_ms > 0) {
-        deadline = poll::time_now_ms() + static_cast<u64>(timeout_ms);
-    }
-
-    // Event-driven wait loop
-    while (true) {
+    auto scan_ready = [&](bool *out_has_pseudo) -> u32 {
         u32 ready_count = 0;
-        bool has_pseudo_handles = false;
+        bool has_pseudo = false;
 
-        // Check each entry in the poll set
         for (u32 i = 0; i < MAX_ENTRIES_PER_SET && ready_count < max_events; i++) {
             if (!ps->entries[i].active)
                 continue;
 
-            // Track if we have pseudo-handles that need polling
             if (ps->entries[i].handle == poll::HANDLE_CONSOLE_INPUT ||
                 ps->entries[i].handle == poll::HANDLE_NETWORK_RX) {
-                has_pseudo_handles = true;
+                has_pseudo = true;
             }
 
             poll::EventType triggered = check_entry_readiness(ps->entries[i]);
@@ -338,7 +331,6 @@ i64 wait(u32 poll_id, poll::PollEvent *out_events, u32 max_events, i64 timeout_m
                 out_events[ready_count].triggered = triggered;
                 ready_count++;
 
-                // Handle oneshot mode - deactivate entry after trigger
                 if (poll::has_flag(ps->entries[i].flags, poll::PollFlags::ONESHOT)) {
                     ps->entries[i].active = false;
                     ps->entry_count--;
@@ -346,25 +338,68 @@ i64 wait(u32 poll_id, poll::PollEvent *out_events, u32 max_events, i64 timeout_m
             }
         }
 
+        if (out_has_pseudo) {
+            *out_has_pseudo = has_pseudo;
+        }
+
+        return ready_count;
+    };
+
+    // Non-blocking poll (timeout_ms == 0)
+    if (timeout_ms == 0) {
+        u32 ready_count = scan_ready(nullptr);
+        return static_cast<i64>(ready_count);
+    }
+
+    // Finite timeout path: use timer-based blocking
+    if (timeout_ms > 0) {
+        // Create a timer that will wake us after timeout_ms
+        i64 timer_result = poll::timer_create(static_cast<u64>(timeout_ms));
+        if (timer_result < 0) {
+            // Timer creation failed - do a single poll and return
+            u32 ready_count = scan_ready(nullptr);
+            return static_cast<i64>(ready_count);
+        }
+        u32 timeout_timer_id = static_cast<u32>(timer_result);
+
+        // Register for channel events so we wake on messages too
+        for (u32 i = 0; i < MAX_ENTRIES_PER_SET; i++) {
+            if (!ps->entries[i].active)
+                continue;
+            u32 handle = ps->entries[i].handle;
+            poll::EventType mask = ps->entries[i].mask;
+            if (handle != poll::HANDLE_CONSOLE_INPUT && handle != poll::HANDLE_NETWORK_RX) {
+                poll::register_wait(handle, mask);
+            }
+        }
+
+        // Block until timer expires or channel event arrives
+        poll::register_timer_wait_and_block(timeout_timer_id);
+        task::yield();
+
+        // Woke up - cancel timer and unregister waits
+        poll::timer_cancel(timeout_timer_id);
+        poll::unregister_wait();
+
+        // Check what's ready and return
+        u32 ready_count = scan_ready(nullptr);
+        return static_cast<i64>(ready_count);
+    }
+
+    // Event-driven wait loop (infinite timeout only)
+    while (true) {
+        bool has_pseudo_handles = false;
+        bool has_channel_handles = false;
+        u32 ready_count = scan_ready(&has_pseudo_handles);
+
         // Return if any events are ready
         if (ready_count > 0) {
             return static_cast<i64>(ready_count);
         }
 
-        // Non-blocking mode: return immediately
-        if (timeout_ms == 0) {
-            return 0;
-        }
-
-        // Check timeout
-        if (timeout_ms > 0 && poll::time_now_ms() >= deadline) {
-            return 0;
-        }
-
         // Register for event-driven wakeup on channel handles.
         // We always register channel handles so notify_handle() can wake us,
         // even when pseudo-handles are present.
-        bool has_channel_handles = false;
         for (u32 i = 0; i < MAX_ENTRIES_PER_SET; i++) {
             if (!ps->entries[i].active)
                 continue;
@@ -382,7 +417,7 @@ i64 wait(u32 poll_id, poll::PollEvent *out_events, u32 max_events, i64 timeout_m
         // Choose blocking strategy based on handle types present.
         // The key requirement is that we can be woken by EITHER:
         // - notify_handle() when a channel has data (for channel handles)
-        // - check_timers() when the poll interval expires (for timeout/pseudo-handles)
+        // - check_timers() when the poll interval expires (for pseudo-handles)
         u32 poll_timer_id = 0;
 
         if (has_pseudo_handles) {
@@ -404,22 +439,8 @@ i64 wait(u32 poll_id, poll::PollEvent *out_events, u32 max_events, i64 timeout_m
             }
         } else if (has_channel_handles) {
             // No pseudo-handles but have channel handles.
-            // If a timeout is specified, create a timer to honor it.
-            // Otherwise block until a channel event wakes us.
-            if (timeout_ms > 0) {
-                // Calculate remaining time until deadline
-                u64 now = poll::time_now_ms();
-                u64 remaining = (deadline > now) ? (deadline - now) : 1;
-                i64 timer_result = poll::timer_create(remaining);
-
-                if (timer_result >= 0) {
-                    poll_timer_id = static_cast<u32>(timer_result);
-                    poll::register_timer_wait_and_block(poll_timer_id);
-                } else if (current) {
-                    current->state = task::TaskState::Blocked;
-                }
-            } else if (current) {
-                // No timeout (wait indefinitely) - block until channel event
+            // Block until a channel event wakes us.
+            if (current) {
                 current->state = task::TaskState::Blocked;
             }
         }

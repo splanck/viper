@@ -48,11 +48,43 @@ static u8 current_modifiers = 0;
 // Caps lock state (toggle)
 static bool caps_lock_on = false;
 
-// Mouse state
-static MouseState g_mouse = {0, 0, 0, 0, 0, 0, 0, {0, 0, 0}};
+// Mouse state - use atomics for x/y to ensure visibility across interrupt/syscall contexts
+static volatile i32 g_mouse_x = 512;
+static volatile i32 g_mouse_y = 384;
+static MouseState g_mouse = {512, 384, 0, 0, 0, 0, 0, {0, 0, 0}};
 static u32 g_screen_width = 1024; // Default, updated by set_mouse_bounds()
 static u32 g_screen_height = 768; // Default, updated by set_mouse_bounds()
 static Spinlock mouse_lock;
+
+static inline i32 clamp_i32(i32 value, i32 min, i32 max) {
+    if (value < min)
+        return min;
+    if (value > max)
+        return max;
+    return value;
+}
+
+static i32 scale_abs_to_screen(i32 value, i32 min, i32 max, u32 screen_size) {
+    if (screen_size == 0) {
+        return 0;
+    }
+
+    // If range is invalid, assume value already in screen coordinates
+    if (max <= min) {
+        return clamp_i32(value, 0, static_cast<i32>(screen_size) - 1);
+    }
+
+    i64 range = static_cast<i64>(max) - static_cast<i64>(min);
+    i64 v = static_cast<i64>(clamp_i32(value, min, max)) - static_cast<i64>(min);
+    i64 scaled = (v * (static_cast<i64>(screen_size) - 1)) / range;
+
+    if (scaled < 0)
+        scaled = 0;
+    if (scaled >= static_cast<i64>(screen_size))
+        scaled = static_cast<i64>(screen_size) - 1;
+
+    return static_cast<i32>(scaled);
+}
 
 /** @copydoc input::init */
 void init() {
@@ -65,8 +97,10 @@ void init() {
     caps_lock_on = false;
 
     // Initialize mouse state (center of default screen)
-    g_mouse.x = static_cast<i32>(g_screen_width / 2);
-    g_mouse.y = static_cast<i32>(g_screen_height / 2);
+    g_mouse_x = static_cast<i32>(g_screen_width / 2);
+    g_mouse_y = static_cast<i32>(g_screen_height / 2);
+    g_mouse.x = g_mouse_x;
+    g_mouse.y = g_mouse_y;
     g_mouse.dx = 0;
     g_mouse.dy = 0;
     g_mouse.buttons = 0;
@@ -258,13 +292,29 @@ static void handle_mouse_move(u16 code, i32 value) {
     constexpr u16 REL_WHEEL = 0x08;
     constexpr u16 REL_HWHEEL = 0x06;
 
+    static u32 move_count = 0;
+    move_count++;
+    if (move_count % 50 == 0) {
+        serial::puts("[move] #");
+        serial::put_dec(move_count);
+        serial::puts(" code=");
+        serial::put_dec(code);
+        serial::puts(" val=");
+        serial::put_dec(static_cast<u32>(value));
+        serial::puts(" x=");
+        serial::put_dec(static_cast<u32>(g_mouse_x));
+        serial::puts("\n");
+    }
+
     if (code == REL_X) {
         g_mouse.dx += value;
-        g_mouse.x += value;
-        if (g_mouse.x < 0)
-            g_mouse.x = 0;
-        if (g_mouse.x >= static_cast<i32>(g_screen_width))
-            g_mouse.x = static_cast<i32>(g_screen_width) - 1;
+        i32 new_x = g_mouse_x + value;
+        if (new_x < 0)
+            new_x = 0;
+        if (new_x >= static_cast<i32>(g_screen_width))
+            new_x = static_cast<i32>(g_screen_width) - 1;
+        g_mouse_x = new_x;
+        g_mouse.x = new_x;
 
         Event ev;
         ev.type = EventType::MouseMove;
@@ -274,11 +324,13 @@ static void handle_mouse_move(u16 code, i32 value) {
         push_event(ev);
     } else if (code == REL_Y) {
         g_mouse.dy += value;
-        g_mouse.y += value;
-        if (g_mouse.y < 0)
-            g_mouse.y = 0;
-        if (g_mouse.y >= static_cast<i32>(g_screen_height))
-            g_mouse.y = static_cast<i32>(g_screen_height) - 1;
+        i32 new_y = g_mouse_y + value;
+        if (new_y < 0)
+            new_y = 0;
+        if (new_y >= static_cast<i32>(g_screen_height))
+            new_y = static_cast<i32>(g_screen_height) - 1;
+        g_mouse_y = new_y;
+        g_mouse.y = new_y;
 
         Event ev;
         ev.type = EventType::MouseMove;
@@ -304,6 +356,59 @@ static void handle_mouse_move(u16 code, i32 value) {
         ev.code = REL_HWHEEL;
         ev.value = value;
         push_event(ev);
+    }
+}
+
+/**
+ * @brief Handle a mouse absolute movement event.
+ *
+ * @param dev Input device for range metadata.
+ * @param code ABS_X or ABS_Y axis code.
+ * @param value Absolute position value.
+ */
+static void handle_mouse_abs(virtio::InputDevice *dev, u16 code, i32 value) {
+    constexpr u16 ABS_X = 0x00;
+    constexpr u16 ABS_Y = 0x01;
+
+    if (!dev)
+        return;
+
+    i32 min = 0;
+    i32 max = 0;
+    bool has_range = dev->get_abs_range(code, min, max);
+
+    if (code == ABS_X) {
+        i32 new_x = has_range ? scale_abs_to_screen(value, min, max, g_screen_width)
+                              : clamp_i32(value, 0, static_cast<i32>(g_screen_width) - 1);
+        i32 dx = new_x - g_mouse_x;
+        if (dx != 0) {
+            g_mouse.dx += dx;
+            g_mouse_x = new_x;
+            g_mouse.x = new_x;
+
+            Event ev;
+            ev.type = EventType::MouseMove;
+            ev.modifiers = current_modifiers;
+            ev.code = 0;
+            ev.value = 0;
+            push_event(ev);
+        }
+    } else if (code == ABS_Y) {
+        i32 new_y = has_range ? scale_abs_to_screen(value, min, max, g_screen_height)
+                              : clamp_i32(value, 0, static_cast<i32>(g_screen_height) - 1);
+        i32 dy = new_y - g_mouse_y;
+        if (dy != 0) {
+            g_mouse.dy += dy;
+            g_mouse_y = new_y;
+            g_mouse.y = new_y;
+
+            Event ev;
+            ev.type = EventType::MouseMove;
+            ev.modifiers = current_modifiers;
+            ev.code = 0;
+            ev.value = 0;
+            push_event(ev);
+        }
     }
 }
 
@@ -349,26 +454,32 @@ static void poll_mouse() {
     if (!virtio::mouse)
         return;
 
-    static u32 mouse_event_count = 0;
-
+    static u32 event_count = 0;
     virtio::InputEvent vev;
     while (virtio::mouse->get_event(&vev)) {
-        mouse_event_count++;
-
-        // DEBUG: Print mouse event count periodically
-        if (mouse_event_count % 100 == 0) {
-            serial::puts("[input] mouse events: ");
-            serial::put_dec(mouse_event_count);
-            serial::puts("\n");
+        event_count++;
+        if (event_count % 50 == 0) {
+            serial::puts("[mouse] ev#");
+            serial::put_dec(event_count);
+            serial::puts(" -> (");
+            serial::put_dec(static_cast<u32>(g_mouse.x));
+            serial::puts(",");
+            serial::put_dec(static_cast<u32>(g_mouse.y));
+            serial::puts(")\n");
         }
 
         SpinlockGuard guard(mouse_lock);
 
         if (vev.type == virtio::ev_type::REL) {
             handle_mouse_move(vev.code, static_cast<i32>(vev.value));
+        } else if (vev.type == virtio::ev_type::ABS) {
+            handle_mouse_abs(virtio::mouse, vev.code, static_cast<i32>(vev.value));
         } else if (vev.type == virtio::ev_type::KEY) {
             handle_mouse_button(vev.code, vev.value != 0);
         }
+
+        // Memory barrier to ensure writes are visible to other contexts
+        __atomic_thread_fence(__ATOMIC_RELEASE);
     }
 }
 
@@ -556,7 +667,32 @@ u8 modifier_bit(u16 code) {
 /** @copydoc input::get_mouse_state */
 MouseState get_mouse_state() {
     SpinlockGuard guard(mouse_lock);
-    MouseState state = g_mouse;
+
+    // Read position from volatile variables to ensure we see interrupt updates
+    MouseState state;
+    state.x = g_mouse_x;
+    state.y = g_mouse_y;
+    state.dx = g_mouse.dx;
+    state.dy = g_mouse.dy;
+    state.scroll = g_mouse.scroll;
+    state.hscroll = g_mouse.hscroll;
+    state.buttons = g_mouse.buttons;
+
+    // Debug: log what we're returning
+    static u32 get_count = 0;
+    get_count++;
+    if (get_count % 100 == 0) {
+        serial::puts("[get_mouse] returning (");
+        serial::put_dec(static_cast<u32>(state.x));
+        serial::puts(",");
+        serial::put_dec(static_cast<u32>(state.y));
+        serial::puts(") g_mouse_x=");
+        serial::put_dec(static_cast<u32>(g_mouse_x));
+        serial::puts(" g_mouse.x=");
+        serial::put_dec(static_cast<u32>(g_mouse.x));
+        serial::puts("\n");
+    }
+
     // Reset deltas after reading
     g_mouse.dx = 0;
     g_mouse.dy = 0;
@@ -572,21 +708,26 @@ void set_mouse_bounds(u32 width, u32 height) {
     g_screen_height = height;
 
     // Clamp current position to new bounds
-    if (g_mouse.x >= static_cast<i32>(width))
-        g_mouse.x = static_cast<i32>(width) - 1;
-    if (g_mouse.y >= static_cast<i32>(height))
-        g_mouse.y = static_cast<i32>(height) - 1;
-    if (g_mouse.x < 0)
-        g_mouse.x = 0;
-    if (g_mouse.y < 0)
-        g_mouse.y = 0;
+    i32 x = g_mouse_x;
+    i32 y = g_mouse_y;
+    if (x >= static_cast<i32>(width))
+        x = static_cast<i32>(width) - 1;
+    if (y >= static_cast<i32>(height))
+        y = static_cast<i32>(height) - 1;
+    if (x < 0)
+        x = 0;
+    if (y < 0)
+        y = 0;
+    g_mouse_x = x;
+    g_mouse_y = y;
+    g_mouse.x = x;
+    g_mouse.y = y;
 }
 
 /** @copydoc input::get_mouse_position */
 void get_mouse_position(i32 &x, i32 &y) {
-    SpinlockGuard guard(mouse_lock);
-    x = g_mouse.x;
-    y = g_mouse.y;
+    x = g_mouse_x;
+    y = g_mouse_y;
 }
 
 /** @copydoc input::set_mouse_position */
@@ -603,6 +744,8 @@ void set_mouse_position(i32 x, i32 y) {
     if (y >= static_cast<i32>(g_screen_height))
         y = static_cast<i32>(g_screen_height) - 1;
 
+    g_mouse_x = x;
+    g_mouse_y = y;
     g_mouse.x = x;
     g_mouse.y = y;
 }

@@ -465,38 +465,49 @@ static void test_malloc_at_startup() {
  * @return true if bootstrap channels were received
  */
 static bool try_bootstrap_channels(i32 *out_input_ch, i32 *out_output_ch) {
-    constexpr i32 BOOTSTRAP_RECV = 0;
     u8 msg[16];
     u32 handles[4];
-    u32 handle_count = 4;
 
-    // Try to receive bootstrap message with handles
-    // Wait up to 500ms for consoled to send the channels
+    CapListEntry entries[32];
+    i32 entry_count = sys::cap_list(entries, 32);
+    if (entry_count <= 0) {
+        return false;
+    }
+
+    u32 bootstrap_handles[8];
+    u32 bootstrap_count = 0;
+    for (i32 i = 0; i < entry_count && bootstrap_count < 8; i++) {
+        if (entries[i].kind == CAP_KIND_CHANNEL &&
+            (entries[i].rights & CAP_RIGHT_READ) != 0) {
+            bootstrap_handles[bootstrap_count++] = entries[i].handle;
+        }
+    }
+
+    if (bootstrap_count == 0) {
+        return false;
+    }
+
     for (u32 attempt = 0; attempt < 500; attempt++) {
-        handle_count = 4;
-        i64 n = sys::channel_recv(BOOTSTRAP_RECV, msg, sizeof(msg), handles, &handle_count);
+        for (u32 i = 0; i < bootstrap_count; i++) {
+            u32 handle_count = 4;
+            i64 n = sys::channel_recv(static_cast<i32>(bootstrap_handles[i]),
+                                      msg,
+                                      sizeof(msg),
+                                      handles,
+                                      &handle_count);
 
-        if (n >= 0 && handle_count >= 2) {
-            // Received bootstrap channels from consoled
-            *out_input_ch = static_cast<i32>(handles[0]);
-            *out_output_ch = static_cast<i32>(handles[1]);
-            sys::channel_close(BOOTSTRAP_RECV);
-            return true;
+            if (n >= 0 && handle_count >= 2) {
+                *out_input_ch = static_cast<i32>(handles[0]);
+                *out_output_ch = static_cast<i32>(handles[1]);
+                sys::channel_close(static_cast<i32>(bootstrap_handles[i]));
+                return true;
+            }
+
+            if (n == VERR_NOT_FOUND || n == VERR_INVALID_HANDLE) {
+                bootstrap_handles[i] = 0xFFFFFFFFu;
+            }
         }
 
-        if (n == VERR_WOULD_BLOCK) {
-            // Wait a bit for consoled to send the channels
-            sys::sleep(1);
-            continue;
-        }
-
-        // Check for invalid handle - means we're init process (no bootstrap channel)
-        if (n == VERR_NOT_FOUND || n == VERR_INVALID_HANDLE) {
-            // No bootstrap channel - we're the init process
-            return false;
-        }
-
-        // Other error - keep trying for a bit
         sys::sleep(1);
     }
 
@@ -514,6 +525,11 @@ extern "C" void _start() {
 
     if (try_bootstrap_channels(&input_ch, &output_ch)) {
         // We're a shell spawned by consoled - run in attached mode
+        sys::print("[vinit-shell] Bootstrap received: input=");
+        put_hex(static_cast<u32>(input_ch));
+        sys::print(" output=");
+        put_hex(static_cast<u32>(output_ch));
+        sys::print("\n");
         init_console_attached(input_ch, output_ch);
 
         // Reset console colors
