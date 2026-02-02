@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-updated: 2026-01-15
+last-updated: 2026-02-02
 ---
 
 # Viper IL — Quickstart
@@ -15,7 +15,7 @@ IL programs.
 
 Viper IL is a **typed, readable intermediate language** that serves as the core of the Viper toolchain:
 
-- **Frontends** (BASIC, Pascal, etc.) compile to IL
+- **Frontends** (Zia, BASIC, Pascal, etc.) compile to IL
 - **VM** executes IL directly via bytecode interpretation
 - **Verifier** checks IL for safety and correctness
 - **Transforms** (SimplifyCFG, Liveness, etc.) optimize IL
@@ -262,6 +262,6 @@ Available passes: `simplifycfg`, `liveness`, `licm`, `sccp`
 
 **Explore:**
 
-- Check `tests/golden/il/` for more IL examples
+- Check `src/tests/golden/il/` for more IL examples
 - Run `viper --help` for all available options
 - Experiment with optimization passes

@@ -105,13 +105,14 @@ implemented in C and exposed through the IL runtime system.
 | [`Trap`](diagnostics.md#viperdiagnostics)         | Static   | Unconditional trap |
 | [`Stopwatch`](time.md#viperdiagnosticsstopwatch)  | Instance | Performance timing |
 
-### Viper.Audio
+### Viper.Sound
 
-| Class                                     | Type     | Description                      |
-|-------------------------------------------|----------|----------------------------------|
-| [`Sound`](audio.md#viperaudiosoound)      | Instance | Sound effects for short clips    |
-| [`Music`](audio.md#viperaudiomusic)       | Instance | Streaming music playback         |
-| [`Audio`](audio.md#viperaudio-static)     | Static   | Global audio control             |
+| Class                                         | Type     | Description                      |
+|-----------------------------------------------|----------|----------------------------------|
+| [`Sound`](audio.md#vipersoundsound)           | Instance | Sound effects for short clips    |
+| [`Music`](audio.md#vipersoundmusic)           | Instance | Streaming music playback         |
+| [`Voice`](audio.md#vipersoundvoice)           | Static   | Voice control for playing sounds |
+| [`Audio`](audio.md#vipersoundaudio-static)    | Static   | Global audio control             |
 
 ### Viper.Graphics
 
@@ -244,6 +245,8 @@ implemented in C and exposed through the IL runtime system.
 
 ## See Also
 
+- [Zia Language Reference](../zia-reference.md)
 - [BASIC Language Reference](../basic-reference.md)
+- [Pascal Language Reference](../experimental/pascal-reference.md)
 - [IL Guide](../il-guide.md)
 - [Getting Started](../getting-started.md)

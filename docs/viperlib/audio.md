@@ -6,18 +6,19 @@
 
 ## Contents
 
-- [Viper.Audio.Sound](#viperaudiosoound)
-- [Viper.Audio.Music](#viperaudiomusic)
-- [Viper.Audio (Static)](#viperaudio-static)
+- [Viper.Sound.Sound](#vipersoundsound)
+- [Viper.Sound.Music](#vipersoundmusic)
+- [Viper.Sound.Voice](#vipersoundvoice)
+- [Viper.Sound.Audio (Static)](#vipersoundaudio-static)
 
 ---
 
-## Viper.Audio.Sound
+## Viper.Sound.Sound
 
 Sound effect class for short audio clips. Sounds are loaded entirely into memory for low-latency playback.
 
 **Type:** Instance (obj)
-**Constructor:** `Viper.Audio.Sound.Load(path)`
+**Constructor:** `Viper.Sound.Sound.Load(path)`
 
 ### Static Methods
 
@@ -35,24 +36,24 @@ Sound effect class for short audio clips. Sounds are loaded entirely into memory
 
 ### Voice Control
 
-After playing a sound, you receive a voice ID that can be used to control playback:
+After playing a sound, you receive a voice ID that can be used with `Viper.Sound.Voice`:
 
-| Function                           | Description                                    |
-|------------------------------------|------------------------------------------------|
-| `Viper.Audio.StopVoice(id)`        | Stop a playing voice                           |
-| `Viper.Audio.SetVoiceVolume(id, vol)` | Set voice volume (0-100)                    |
-| `Viper.Audio.SetVoicePan(id, pan)` | Set voice pan (-100 left, 0 center, 100 right) |
-| `Viper.Audio.IsVoicePlaying(id)`   | Returns 1 if voice is still playing            |
+| Method                              | Description                                    |
+|-------------------------------------|------------------------------------------------|
+| `Viper.Sound.Voice.Stop(id)`        | Stop a playing voice                           |
+| `Viper.Sound.Voice.SetVolume(id, vol)` | Set voice volume (0-100)                    |
+| `Viper.Sound.Voice.SetPan(id, pan)` | Set voice pan (-100 left, 0 center, 100 right) |
+| `Viper.Sound.Voice.IsPlaying(id)`   | Returns 1 if voice is still playing            |
 
 ### Example
 
 ```basic
 ' Load sound effects
-DIM laser AS Viper.Audio.Sound
-DIM explosion AS Viper.Audio.Sound
+DIM laser AS Viper.Sound.Sound
+DIM explosion AS Viper.Sound.Sound
 
-laser = Viper.Audio.Sound.Load("laser.wav")
-explosion = Viper.Audio.Sound.Load("explosion.wav")
+laser = Viper.Sound.Sound.Load("laser.wav")
+explosion = Viper.Sound.Sound.Load("explosion.wav")
 
 IF laser <> NULL THEN
     ' Play with default settings
@@ -63,7 +64,7 @@ IF laser <> NULL THEN
     voiceId = laser.PlayEx(80, -50)  ' 80% volume, panned left
 
     ' Control the playing sound
-    Viper.Audio.SetVoiceVolume(voiceId, 50)
+    Viper.Sound.Voice.SetVolume(voiceId, 50)
 END IF
 
 ' Play looping background sound
@@ -71,17 +72,17 @@ DIM engineSound AS INTEGER
 engineSound = laser.PlayLoop(60, 0)
 
 ' Later, stop the loop
-Viper.Audio.StopVoice(engineSound)
+Viper.Sound.Voice.Stop(engineSound)
 ```
 
 ---
 
-## Viper.Audio.Music
+## Viper.Sound.Music
 
 Streaming music class for longer audio tracks. Music is streamed from disk for memory efficiency.
 
 **Type:** Instance (obj)
-**Constructor:** `Viper.Audio.Music.Load(path)`
+**Constructor:** `Viper.Sound.Music.Load(path)`
 
 ### Static Methods
 
@@ -112,8 +113,8 @@ Streaming music class for longer audio tracks. Music is streamed from disk for m
 
 ```basic
 ' Load background music
-DIM bgMusic AS Viper.Audio.Music
-bgMusic = Viper.Audio.Music.Load("background.wav")
+DIM bgMusic AS Viper.Sound.Music
+bgMusic = Viper.Sound.Music.Load("background.wav")
 
 IF bgMusic <> NULL THEN
     ' Set initial volume
@@ -151,51 +152,68 @@ END IF
 
 ---
 
-## Viper.Audio (Static)
+## Viper.Sound.Voice
+
+Static class for controlling individual playing voices (sound instances).
+
+**Type:** Static utility class
+
+### Methods
+
+| Method                     | Signature                      | Description                                    |
+|----------------------------|--------------------------------|------------------------------------------------|
+| `Stop(id)`                 | `Void(Integer)`                | Stop a playing voice                           |
+| `SetVolume(id, vol)`       | `Void(Integer, Integer)`       | Set volume for a voice (0-100)                 |
+| `SetPan(id, pan)`          | `Void(Integer, Integer)`       | Set pan for a voice (-100 to 100)              |
+| `IsPlaying(id)`            | `Integer(Integer)`             | Check if voice is playing (returns 1 or 0)     |
+
+---
+
+## Viper.Sound.Audio (Static)
 
 Global audio system control functions.
 
 **Type:** Static utility class
 
-### Properties
-
-| Property       | Type    | Access | Description                    |
-|----------------|---------|--------|--------------------------------|
-| `MasterVolume` | Integer | R/W    | Master volume for all audio (0-100) |
-
 ### Methods
 
 | Method                          | Signature                      | Description                                    |
 |---------------------------------|--------------------------------|------------------------------------------------|
+| `Init()`                        | `Integer()`                    | Initialize the audio system. Returns 1 on success |
+| `Shutdown()`                    | `Void()`                       | Shut down the audio system                     |
+| `SetMasterVolume(vol)`          | `Void(Integer)`                | Set master volume for all audio (0-100)        |
+| `GetMasterVolume()`             | `Integer()`                    | Get current master volume                      |
 | `PauseAll()`                    | `Void()`                       | Pause all audio playback                       |
 | `ResumeAll()`                   | `Void()`                       | Resume all audio playback                      |
 | `StopAllSounds()`               | `Void()`                       | Stop all playing sounds (not music)            |
-| `StopVoice(id)`                 | `Void(Integer)`                | Stop a specific voice                          |
-| `SetVoiceVolume(id, vol)`       | `Void(Integer, Integer)`       | Set volume for a voice (0-100)                 |
-| `SetVoicePan(id, pan)`          | `Void(Integer, Integer)`       | Set pan for a voice (-100 to 100)              |
-| `IsVoicePlaying(id)`            | `Integer(Integer)`             | Check if voice is playing (returns 1 or 0)     |
 
 ### Example
 
 ```basic
+' Initialize audio
+Viper.Sound.Audio.Init()
+
 ' Set master volume
-Viper.Audio.MasterVolume = 80
+Viper.Sound.Audio.SetMasterVolume(80)
 
 ' Pause all audio during pause menu
 SUB ShowPauseMenu()
-    Viper.Audio.PauseAll()
+    Viper.Sound.Audio.PauseAll()
 
     ' ... show menu ...
 
-    Viper.Audio.ResumeAll()
+    Viper.Sound.Audio.ResumeAll()
 END SUB
 
 ' Stop all sound effects when changing levels
 SUB ChangeLevel(level AS INTEGER)
-    Viper.Audio.StopAllSounds()
+    Viper.Sound.Audio.StopAllSounds()
 
     ' ... load new level ...
 END SUB
+
+' Cleanup before exit
+Viper.Sound.Audio.Shutdown()
 ```
 
 ---

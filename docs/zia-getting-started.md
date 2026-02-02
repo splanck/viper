@@ -357,7 +357,7 @@ var keyTimeout = Viper.Terminal.GetKeyTimeout(100);  // With timeout (ms)
 // Terminal control
 Viper.Terminal.Clear();                // Clear screen
 Viper.Terminal.SetPosition(row, col);  // Move cursor
-Viper.Terminal.SetColor(colorCode);    // Set text color (0-15)
+Viper.Terminal.SetColor(fg, bg);       // Set foreground/background (0-15)
 Viper.Terminal.SetCursorVisible(0);    // Hide cursor
 ```
 
@@ -384,9 +384,9 @@ Viper.Time.SleepMs(500);  // Sleep for 500 milliseconds
 ### Math Functions
 
 ```viper
-var abs = Viper.Math.Abs(-42);      // 42
+var abs = Viper.Math.AbsInt(-42);   // 42
 var sqrt = Viper.Math.Sqrt(16.0);   // 4.0
-var rand = Viper.Random.Next(100);  // Random 0-99
+var rand = Viper.Random.NextInt(100);  // Random 0-99
 ```
 
 ---
@@ -407,7 +407,7 @@ func start() {
     Viper.Terminal.Say("I'm thinking of a number between 1 and 100.");
 
     // Generate random number 1-100
-    secretNumber = Viper.Random.Next(100) + 1;
+    secretNumber = Viper.Random.NextInt(100) + 1;
     guessCount = 0;
     gameOver = 0;
 
@@ -438,8 +438,8 @@ func getNextGuess() -> Integer {
 ```
 
 For more complete examples, see the `demos/zia/` directory:
-- `frogger.zia` — Full Frogger game with entities and collision detection
-- `entities.zia` — Entity system with multiple types
+- `frogger/main.zia` — Full Frogger game with entities and collision detection
+- `ladders/` — Donkey Kong-style platformer with multiple entities
 
 ---
 
@@ -452,8 +452,8 @@ For more complete examples, see the `demos/zia/` directory:
 
 **Examples:**
 
-- `demos/zia/frogger.zia` — Complete game example
-- `demos/zia/entities.zia` — Entity definitions
+- `demos/zia/frogger/` — Complete Frogger game example
+- `demos/zia/ladders/` — Donkey Kong-style platformer
 
 **Related Guides:**
 

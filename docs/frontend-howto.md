@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-updated: 2025-11-13
+last-updated: 2026-02-02
 ---
 
 # How to Write a Viper Frontend
@@ -62,8 +62,8 @@ Viper is a compiler infrastructure with multiple components:
 Source Language → Frontend → IL → VM/Codegen → Execution
 ```
 
-Viper currently includes two frontends: **BASIC** and **Pascal**. Both compile to the same IL and share the runtime
-library.
+Viper currently includes three frontends: **Zia**, **BASIC**, and **Pascal**. All compile to the same IL and share the
+runtime library.
 
 ### Prerequisites
 
@@ -481,7 +481,7 @@ cmake --build build
 **Output (IL text format):**
 
 ```
-il 0.1
+il 0.2
 
 extern @rt_print_i64(i64) -> void
 
@@ -494,7 +494,7 @@ entry:
 
 **Understanding the IL output:**
 
-- `il 0.1` — IL version header (required by spec)
+- `il 0.2` — IL version header (required by spec)
 - `extern @rt_print_i64(i64) -> void` — External function declaration (implemented in C runtime)
 - `func @main() -> i64 { ... }` — Function definition with signature
 - `entry:` — Basic block label
@@ -3465,7 +3465,7 @@ print("Hello, World!")
 **Expected:** `tests/golden/yourfrontend/hello.il`
 
 ```
-il 0.1
+il 0.2
 
 extern @rt_print_str(str) -> void
 
@@ -3700,21 +3700,21 @@ Study the BASIC frontend for patterns:
 
 ### Testing Examples
 
-19. **tests/unit/frontends/basic/** — Unit tests
-20. **tests/golden/basic_to_il/** — Golden tests
-21. **tests/integration/basic/** — E2E tests
+19. **src/tests/unit/test_basic_*.cpp** — BASIC unit tests
+20. **src/tests/golden/basic/** — Golden tests
+21. **src/tests/zia/** — Zia integration tests
 
 ### Documentation
 
 22. **docs/il-guide.md** — IL specification
 23. **docs/il-reference.md** — IL instruction reference
 24. **docs/architecture.md** — Viper architecture
-25. **docs/namespaces.md** — Namespace implementation
+25. **docs/devdocs/namespaces.md** — Namespace implementation
 
 ### Example Programs
 
 26. **examples/smoke/combined.cpp** — Manual IL construction
-27. **tests/golden/basic/**.bas — BASIC examples
+27. **src/tests/golden/basic/*.bas** — BASIC examples
 
 ---
 

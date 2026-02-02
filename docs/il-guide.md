@@ -1,14 +1,14 @@
 ---
 status: active
 audience: public
-last-verified: 2026-01-15
+last-verified: 2026-02-02
 ---
 
 # Viper IL — Complete Guide
 
 Comprehensive guide to Viper's Intermediate Language (IL), covering everything from quickstart to advanced topics. This
 document consolidates the quickstart, normative reference, BASIC lowering rules, optimization passes, and worked
-examples for IL v0.1.
+examples for IL v0.2.
 
 > **Note:** This guide documents IL v0.2.0. See the version header in your IL files for compatibility.
 
@@ -41,7 +41,7 @@ Viper's intermediate language. **No prior compiler experience is required.**
 Viper IL is the **"thin waist"** of the Viper toolchain — a versioned, textual intermediate representation that
 decouples frontends from backends:
 
-- **Frontends** (BASIC, Pascal, etc.) compile to IL
+- **Frontends** (Zia, BASIC, Pascal, etc.) compile to IL
 - **VM** executes IL deterministically
 - **Verifier** ensures type safety and correctness
 - **Transforms** optimize IL (SimplifyCFG, LICM, SCCP)

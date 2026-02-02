@@ -6,18 +6,21 @@ The Viper Runtime Library documentation has been reorganized into separate files
 
 | Module                                   | Description                                                               |
 |------------------------------------------|---------------------------------------------------------------------------|
-| [Architecture](viperlib/architecture.md) | Runtime internals                                                         |
-| [Collections](viperlib/collections.md)   | `Bag`, `Bytes`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Stack`, `TreeMap` |
-| [Core Types](viperlib/core.md)           | `Object`, `String`                                                        |
-| [Cryptography](viperlib/crypto.md)       | `Hash`                                                                    |
-| [Diagnostics](viperlib/diagnostics.md)   | `Assert`, `Stopwatch`                                                     |
-| [Graphics](viperlib/graphics.md)         | `Canvas`, `Color`, `Pixels`                                               |
+| [Architecture](viperlib/architecture.md) | Runtime internals, type reference                                         |
+| [Audio](viperlib/audio.md)               | `Sound`, `Music` — audio playback for games and applications              |
+| [Collections](viperlib/collections.md)   | `Bag`, `Bytes`, `Heap`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Set`, `Stack`, `TreeMap` |
+| [Core Types](viperlib/core.md)           | `Object`, `Box`, `String` — foundational types                            |
+| [Cryptography](viperlib/crypto.md)       | `Hash`, `KeyDerive`, `Rand`, `Tls`                                        |
+| [Diagnostics](viperlib/diagnostics.md)   | `Assert`, `Trap`, `Stopwatch`                                             |
+| [Graphics](viperlib/graphics.md)         | `Canvas`, `Color`, `Pixels`, `Sprite`, `Tilemap`, `Camera`                |
+| [GUI](viperlib/gui.md)                   | `App`, `Button`, `Label`, widgets — GUI toolkit for applications          |
 | [Index](viperlib/README.md)              | Overview and quick navigation                                             |
+| [Input](viperlib/input.md)               | `Keyboard`, `Mouse`, `Pad` — input for games and interactive apps         |
 | [Input/Output](viperlib/io.md)           | `Archive`, `BinFile`, `Compress`, `Dir`, `File`, `LineReader`, `LineWriter`, `MemStream`, `Path`, `Watcher` |
-| [Mathematics](viperlib/math.md)          | `Bits`, `Math`, `Random`, `Vec2`, `Vec3`                                  |
-| [Network](viperlib/network.md)           | `Dns`, `Tcp`, `TcpServer`, `Udp`                                          |
+| [Mathematics](viperlib/math.md)          | `BigInt`, `Bits`, `Mat3`, `Mat4`, `Math`, `Random`, `Vec2`, `Vec3`        |
+| [Network](viperlib/network.md)           | `Dns`, `Http`, `HttpReq`, `HttpRes`, `Tcp`, `TcpServer`, `Udp`, `Url`, `WebSocket` |
 | [System](viperlib/system.md)             | `Environment`, `Exec`, `Machine`, `Terminal`                              |
-| [Text Processing](viperlib/text.md)      | `Codec`, `Csv`, `Guid`, `StringBuilder`                                   |
-| [Threads](viperlib/threads.md)           | `Monitor`, `Thread`, `SafeI64`                                             |
+| [Text Processing](viperlib/text.md)      | `Codec`, `Csv`, `Guid`, `Pattern`, `StringBuilder`, `Template`, `Xml`, `Yaml` |
+| [Threads](viperlib/threads.md)           | `Barrier`, `Channel`, `Gate`, `Monitor`, `Pool`, `RwLock`, `SafeI64`, `Thread` |
 | [Time & Timing](viperlib/time.md)        | `Clock`, `Countdown`, `DateTime`, `Stopwatch`                             |
 | [Utilities](viperlib/utilities.md)       | `Convert`, `Fmt`, `Log`, `Parse`                                          |
