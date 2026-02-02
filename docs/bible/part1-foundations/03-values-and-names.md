@@ -618,7 +618,7 @@ To do math with user input, you must convert it first:
 
 ```rust
 var userInput = "25";
-var age = Viper.Parse.Int(userInput);  // Convert to number
+var age = Viper.Convert.ToInt(userInput);  // Convert to number
 var nextYear = age + 1;  // Now this is 26
 ```
 
@@ -939,15 +939,15 @@ module Age;
 func start() {
     Viper.Terminal.Print("How old are you? ");
     var ageText = Viper.Terminal.ReadLine();   // This is a string
-    var age = Viper.Parse.Int(ageText);         // Convert to integer
+    var age = Viper.Convert.ToInt(ageText);         // Convert to integer
 
     var nextYear = age + 1;
     Viper.Terminal.Say("Next year you'll be " + nextYear);
 }
 ```
 
-`Viper.Parse.Int()` converts a string like `"25"` into the number `25`.
-`Viper.Parse.Float()` converts a string like `"3.14"` into the float `3.14`.
+`Viper.Convert.ToInt()` converts a string like `"25"` into the number `25`.
+`Viper.Convert.ToDouble()` converts a string like `"3.14"` into the float `3.14`.
 
 **What if the user types something that isn't a number?**
 
@@ -1071,7 +1071,7 @@ Integer divided by integer gives integer. Use floats for fractional results.
 var age = Viper.Terminal.ReadLine();  // This is a string "25"
 var nextYear = age + 1;  // Concatenates to "251", doesn't add!
 ```
-`ReadLine()` always returns a string. Use `Parse.Int()` or `Parse.Float()` to convert.
+`ReadLine()` always returns a string. Use `Convert.ToInt()` or `Convert.ToDouble()` to convert.
 
 ### 7. Using var twice for the same variable
 ```rust
@@ -1103,10 +1103,10 @@ func start() {
     Viper.Terminal.Say("================");
 
     Viper.Terminal.Print("Enter first number: ");
-    var first = Viper.Parse.Float(Viper.Terminal.ReadLine());
+    var first = Viper.Convert.ToDouble(Viper.Terminal.ReadLine());
 
     Viper.Terminal.Print("Enter second number: ");
-    var second = Viper.Parse.Float(Viper.Terminal.ReadLine());
+    var second = Viper.Convert.ToDouble(Viper.Terminal.ReadLine());
 
     var sum = first + second;
     var difference = first - second;
@@ -1178,7 +1178,7 @@ Every one of these chapters builds on what you've learned here. Values, types, v
 
 - Variables can change (that's why they're called variables). Use `=` to assign new values.
 
-- Use `ReadLine()` to get text input from users. Use `Parse.Int()` or `Parse.Float()` to convert text to numbers.
+- Use `ReadLine()` to get text input from users. Use `Convert.ToInt()` or `Convert.ToDouble()` to convert text to numbers.
 
 - Choose descriptive variable names to make your code readable.
 

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-01-15
+last-verified: 2026-02-02
 ---
 
 # Getting Started with Viper
@@ -62,6 +62,7 @@ After building, confirm the primary tools work correctly:
 ```sh
 ./build/src/tools/vbasic/vbasic --help
 ./build/src/tools/zia/zia --help
+./build/src/tools/vpascal/vpascal --help
 ./build/src/tools/ilrun/ilrun --help
 ./build/src/tools/il-verify/il-verify --help
 ```
@@ -109,6 +110,29 @@ Run it:
 Hello, World!
 ```
 
+### Pascal
+
+Create a file `hello.pas`:
+
+```pascal
+program Hello;
+begin
+    WriteLn('Hello, World!');
+end.
+```
+
+Run it:
+
+```sh
+./build/src/tools/vpascal/vpascal hello.pas
+```
+
+**Expected output:**
+
+```
+Hello, World!
+```
+
 ---
 
 ## Working with IL Programs
@@ -141,7 +165,8 @@ For more examples, see the **[BASIC Tutorial](basic-language.md)**,
 | Tool        | Purpose                       | Example                  |
 |-------------|-------------------------------|--------------------------|
 | `vbasic`    | Run/compile BASIC programs    | `vbasic script.bas`      |
-| `zia`       | Run/compile Zia programs    | `zia program.zia`      |
+| `zia`       | Run/compile Zia programs      | `zia program.zia`        |
+| `vpascal`   | Run/compile Pascal programs   | `vpascal program.pas`    |
 | `ilrun`     | Execute IL programs           | `ilrun program.il`       |
 | `il-verify` | Verify IL correctness         | `il-verify program.il`   |
 | `il-dis`    | Disassemble IL                | `il-dis program.il`      |
@@ -191,6 +216,8 @@ Viper guarantees consistent numeric behavior across all platforms and execution 
 - **[BASIC Reference](basic-reference.md)** — Complete BASIC language reference
 - **[Zia Tutorial](zia-getting-started.md)** — Learn Zia by example
 - **[Zia Reference](zia-reference.md)** — Complete Zia language reference
+- **[Pascal Tutorial](experimental/pascal-language.md)** — Learn Viper Pascal by example
+- **[Pascal Reference](experimental/pascal-reference.md)** — Complete Pascal language reference
 - **[IL Guide](il-guide.md)** — Comprehensive IL documentation
 
 **Implementation Guides:**

@@ -16,16 +16,16 @@ Imagine you are building a game. Your player has a name, a level, health points,
 
 ```rust
 value Player {
-    name: string;
-    level: i64;
-    health: f64;
-    inventory: [string];
+    name: String;
+    level: Integer;
+    health: Number;
+    inventory: [String];
     position: Position;
 }
 
 value Position {
-    x: f64;
-    y: f64;
+    x: Number;
+    y: Number;
 }
 ```
 
@@ -390,12 +390,12 @@ For clean code, add serialization methods to your entities:
 
 ```rust
 entity Player {
-    name: string;
-    level: i64;
-    health: f64;
-    inventory: [string];
-    x: f64;
-    y: f64;
+    name: String;
+    level: Integer;
+    health: Number;
+    inventory: [String];
+    x: Number;
+    y: Number;
 
     // Convert this Player to a JSON representation
     func toJSON() -> JSONValue {
@@ -442,13 +442,13 @@ Usage becomes elegant:
 
 ```rust
 // Save a player
-func saveGame(player: Player, filename: string) {
+func saveGame(player: Player, filename: String) {
     var json = player.toJSON().toPrettyString();
     Viper.File.writeText(filename, json);
 }
 
 // Load a player
-func loadGame(filename: string) -> Player {
+func loadGame(filename: String) -> Player {
     var json = Viper.File.readText(filename);
     var data = JSON.parse(json);
     return Player.fromJSON(data);
@@ -853,9 +853,9 @@ bind Viper.File;
 // ============================================
 
 entity Contact {
-    name: string;
-    phone: string;
-    email: string;
+    name: String;
+    phone: String;
+    email: String;
 
     func toJSON() -> JSONValue {
         var obj = JSON.object();
@@ -876,9 +876,9 @@ entity Contact {
 
 entity ContactBook {
     hide contacts: [Contact];
-    hide filename: string;
+    hide filename: String;
 
-    expose func init(filename: string) {
+    expose func init(filename: String) {
         self.filename = filename;
         self.contacts = [];
         self.load();
@@ -891,7 +891,7 @@ entity ContactBook {
     }
 
     // Find contacts by name (partial match)
-    func search(query: string) -> [Contact] {
+    func search(query: String) -> [Contact] {
         var results: [Contact] = [];
         var lowerQuery = query.toLower();
 
@@ -905,7 +905,7 @@ entity ContactBook {
     }
 
     // Remove a contact by name (exact match)
-    func remove(name: string) -> bool {
+    func remove(name: String) -> Boolean {
         var newContacts: [Contact] = [];
         var found = false;
 
@@ -1103,7 +1103,7 @@ if data.has("player") && data["player"].has("stats") {
 }
 
 // BETTER: Use a helper function with defaults
-func getNestedString(data: JSONValue, path: string, defaultValue: string) -> string {
+func getNestedString(data: JSONValue, path: String, defaultValue: String) -> String {
     var parts = path.split(".");
     var current = data;
 
@@ -1132,7 +1132,7 @@ var level = data["level"].asInt();  // Might fail or return 0
 Defensive approach:
 
 ```rust
-func safeGetInt(data: JSONValue, key: string, defaultValue: i64) -> i64 {
+func safeGetInt(data: JSONValue, key: String, defaultValue: Integer) -> Integer {
     if !data.has(key) {
         return defaultValue;
     }
@@ -1143,7 +1143,7 @@ func safeGetInt(data: JSONValue, key: string, defaultValue: i64) -> i64 {
     if value.isNumber() {
         return value.asInt();
     } else if value.isString() {
-        return Viper.Parse.Int(value.asString());
+        return Viper.Convert.ToInt(value.asString());
     }
 
     return defaultValue;
@@ -1319,7 +1319,7 @@ Paste your JSON into a validator to get precise error messages.
 After parsing, inspect what you got:
 
 ```rust
-func debugJSON(data: JSONValue, indent: string) {
+func debugJSON(data: JSONValue, indent: String) {
     if data.isObject() {
         Viper.Terminal.Say(indent + "{");
         for key in data.keys() {
@@ -1380,7 +1380,7 @@ If round-trip works, your serialization is correct. If it fails, you know where 
 Instead of crashing on bad data, log the problem and continue:
 
 ```rust
-func loadPlayerSafe(filename: string) -> Player? {
+func loadPlayerSafe(filename: String) -> Player? {
     if !File.exists(filename) {
         Viper.Terminal.Say("Warning: Save file not found, using defaults");
         return null;
@@ -1453,7 +1453,7 @@ BASIC uses functions rather than methods and requires escaping double quotes by 
 uses ViperJSON;
 var
     data, obj: TJSONValue;
-    name, json: string;
+    name, json: String;
 begin
     data := JSONParse('{"name": "test", "value": 42}');
     name := data['name'].AsString;
@@ -1503,19 +1503,19 @@ Here is a complete binary save example:
 bind Viper.IO;
 
 value GameSave {
-    version: i32;
-    playerName: string;
-    level: i32;
-    health: f32;
-    x: f32;
-    y: f32;
-    inventory: [string];
+    version: Integer;
+    playerName: String;
+    level: Integer;
+    health: Number;
+    x: Number;
+    y: Number;
+    inventory: [String];
 }
 
 final MAGIC = 0x56535631;  // "VSV1"
 final VERSION = 1;
 
-func saveBinary(save: GameSave, filename: string) {
+func saveBinary(save: GameSave, filename: String) {
     var writer = BinaryWriter.create(filename);
 
     // Header
@@ -1538,7 +1538,7 @@ func saveBinary(save: GameSave, filename: string) {
     writer.close();
 }
 
-func loadBinary(filename: string) -> GameSave? {
+func loadBinary(filename: String) -> GameSave? {
     var reader = BinaryReader.open(filename);
 
     // Verify magic number
@@ -1593,11 +1593,11 @@ bind Viper.File;
 
 entity Config {
     hide data: JSONValue;
-    hide filename: string;
-    hide dirty: bool;
+    hide filename: String;
+    hide dirty: Boolean;
 
     // Initialize with a filename, loading existing data if available
-    expose func init(filename: string) {
+    expose func init(filename: String) {
         self.filename = filename;
         self.dirty = false;
 
@@ -1615,7 +1615,7 @@ entity Config {
     }
 
     // Navigate to a nested value using dot notation (e.g., "audio.volume")
-    hide func getPath(key: string) -> JSONValue? {
+    hide func getPath(key: String) -> JSONValue? {
         var parts = key.split(".");
         var current = self.data;
 
@@ -1630,7 +1630,7 @@ entity Config {
     }
 
     // Set a nested value, creating intermediate objects as needed
-    hide func setPath(key: string, value: JSONValue) {
+    hide func setPath(key: String, value: JSONValue) {
         var parts = key.split(".");
         var current = self.data;
 
@@ -1649,7 +1649,7 @@ entity Config {
     }
 
     // Get values with type-safe defaults
-    func getString(key: string, defaultValue: string) -> string {
+    func getString(key: String, defaultValue: String) -> String {
         var value = self.getPath(key);
         if value == null || !value.isString() {
             return defaultValue;
@@ -1657,7 +1657,7 @@ entity Config {
         return value.asString();
     }
 
-    func getInt(key: string, defaultValue: i64) -> i64 {
+    func getInt(key: String, defaultValue: Integer) -> Integer {
         var value = self.getPath(key);
         if value == null || !value.isNumber() {
             return defaultValue;
@@ -1665,7 +1665,7 @@ entity Config {
         return value.asInt();
     }
 
-    func getFloat(key: string, defaultValue: f64) -> f64 {
+    func getFloat(key: String, defaultValue: Number) -> Number {
         var value = self.getPath(key);
         if value == null || !value.isNumber() {
             return defaultValue;
@@ -1673,7 +1673,7 @@ entity Config {
         return value.asFloat();
     }
 
-    func getBool(key: string, defaultValue: bool) -> bool {
+    func getBool(key: String, defaultValue: Boolean) -> Boolean {
         var value = self.getPath(key);
         if value == null || !value.isBool() {
             return defaultValue;
@@ -1682,19 +1682,19 @@ entity Config {
     }
 
     // Set values
-    func setString(key: string, value: string) {
+    func setString(key: String, value: String) {
         self.setPath(key, JSON.string(value));
     }
 
-    func setInt(key: string, value: i64) {
+    func setInt(key: String, value: Integer) {
         self.setPath(key, JSON.number(value));
     }
 
-    func setFloat(key: string, value: f64) {
+    func setFloat(key: String, value: Number) {
         self.setPath(key, JSON.number(value));
     }
 
-    func setBool(key: string, value: bool) {
+    func setBool(key: String, value: Boolean) {
         self.setPath(key, JSON.bool(value));
     }
 

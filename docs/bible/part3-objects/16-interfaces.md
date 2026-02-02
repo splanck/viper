@@ -73,8 +73,8 @@ Electrical outlets are interfaces too. A standard wall outlet promises to provid
 
 ```rust
 interface PowerSource {
-    func getVoltage() -> f64;
-    func draw(watts: f64) -> bool;
+    func getVoltage() -> Number;
+    func draw(watts: Number) -> Boolean;
 }
 ```
 
@@ -84,7 +84,7 @@ When companies hire, job postings list requirements: "Must know Python, SQL, and
 
 ```rust
 interface SoftwareEngineer {
-    func writeCode(language: string) -> string;
+    func writeCode(language: String) -> String;
     func reviewCode(pr: PullRequest) -> [Comment];
     func debugIssue(bug: Bug) -> Fix;
 }
@@ -121,8 +121,8 @@ You can have multiple methods:
 
 ```rust
 interface Saveable {
-    func save(filename: string) -> bool;
-    func load(filename: string) -> bool;
+    func save(filename: String) -> Boolean;
+    func load(filename: String) -> Boolean;
     func getLastSaved() -> timestamp;
 }
 ```
@@ -131,10 +131,10 @@ And methods can have any signature:
 
 ```rust
 interface Calculator {
-    func add(a: f64, b: f64) -> f64;
-    func subtract(a: f64, b: f64) -> f64;
-    func multiply(a: f64, b: f64) -> f64;
-    func divide(a: f64, b: f64) -> f64;
+    func add(a: Number, b: Number) -> Number;
+    func subtract(a: Number, b: Number) -> Number;
+    func multiply(a: Number, b: Number) -> Number;
+    func divide(a: Number, b: Number) -> Number;
 }
 ```
 
@@ -157,7 +157,7 @@ interface Drawable {
 }
 
 entity Circle implements Drawable {
-    radius: f64;
+    radius: Number;
 
     func draw() {
         Viper.Terminal.Say("Drawing a circle with radius " + self.radius);
@@ -165,8 +165,8 @@ entity Circle implements Drawable {
 }
 
 entity Rectangle implements Drawable {
-    width: f64;
-    height: f64;
+    width: Number;
+    height: Number;
 
     func draw() {
         Viper.Terminal.Say("Drawing a rectangle " + self.width + "x" + self.height);
@@ -183,7 +183,7 @@ If you claim to implement an interface but forget a method, the compiler will co
 ```rust
 interface Drawable {
     func draw();
-    func getColor() -> string;
+    func getColor() -> String;
 }
 
 entity Circle implements Drawable {
@@ -202,33 +202,33 @@ The interface only specifies *what* must be done, not *how*. This gives implemen
 
 ```rust
 interface DataStore {
-    func save(key: string, value: string);
-    func load(key: string) -> string;
+    func save(key: String, value: String);
+    func load(key: String) -> String;
 }
 
 // Store in memory
 entity MemoryStore implements DataStore {
-    data: {string: string};
+    data: {String: String};
 
-    func save(key: string, value: string) {
+    func save(key: String, value: String) {
         self.data[key] = value;
     }
 
-    func load(key: string) -> string {
+    func load(key: String) -> String {
         return self.data[key];
     }
 }
 
 // Store in a file
 entity FileStore implements DataStore {
-    basePath: string;
+    basePath: String;
 
-    func save(key: string, value: string) {
+    func save(key: String, value: String) {
         var path = self.basePath + "/" + key + ".txt";
         Viper.Files.Write(path, value);
     }
 
-    func load(key: string) -> string {
+    func load(key: String) -> String {
         var path = self.basePath + "/" + key + ".txt";
         return Viper.Files.Read(path);
     }
@@ -238,14 +238,14 @@ entity FileStore implements DataStore {
 entity DatabaseStore implements DataStore {
     connection: DBConnection;
 
-    func save(key: string, value: string) {
+    func save(key: String, value: String) {
         self.connection.execute(
             "INSERT INTO store (key, value) VALUES (?, ?)",
             [key, value]
         );
     }
 
-    func load(key: string) -> string {
+    func load(key: String) -> String {
         var result = self.connection.query(
             "SELECT value FROM store WHERE key = ?",
             [key]
@@ -295,7 +295,7 @@ func processDrawable(d: Drawable) {
 }
 
 // As a return type
-func createDrawable(type: string) -> Drawable {
+func createDrawable(type: String) -> Drawable {
     if type == "circle" {
         return Circle { radius: 5.0 };
     }
@@ -416,7 +416,7 @@ interface Drawable {
 }
 
 interface Movable {
-    func move(dx: f64, dy: f64);
+    func move(dx: Number, dy: Number);
 }
 
 interface Clickable {
@@ -424,15 +424,15 @@ interface Clickable {
 }
 
 entity Button implements Drawable, Movable, Clickable {
-    x: f64;
-    y: f64;
-    label: string;
+    x: Number;
+    y: Number;
+    label: String;
 
     func draw() {
         Viper.Terminal.Say("Drawing button: " + self.label);
     }
 
-    func move(dx: f64, dy: f64) {
+    func move(dx: Number, dy: Number) {
         self.x += dx;
         self.y += dy;
     }
@@ -469,12 +469,12 @@ entity Tree implements Drawable {
 // A player can be drawn and moved, but not clicked
 entity Player implements Drawable, Movable {
     func draw() { ... }
-    func move(dx: f64, dy: f64) { ... }
+    func move(dx: Number, dy: Number) { ... }
 }
 
 // An invisible trigger can be moved and clicked, but not drawn
 entity InvisibleTrigger implements Movable, Clickable {
-    func move(dx: f64, dy: f64) { ... }
+    func move(dx: Number, dy: Number) { ... }
     func onClick() { ... }
 }
 ```
@@ -489,9 +489,9 @@ You can combine inheritance and interfaces. This is common and powerful.
 
 ```rust
 entity Enemy {
-    health: i64;
+    health: Integer;
 
-    func takeDamage(amount: i64) {
+    func takeDamage(amount: Integer) {
         self.health -= amount;
     }
 }
@@ -501,7 +501,7 @@ interface Drawable {
 }
 
 interface Attackable {
-    func attack() -> i64;
+    func attack() -> Integer;
 }
 
 entity Goblin extends Enemy implements Drawable, Attackable {
@@ -509,7 +509,7 @@ entity Goblin extends Enemy implements Drawable, Attackable {
         Viper.Terminal.Say("Drawing a goblin");
     }
 
-    func attack() -> i64 {
+    func attack() -> Integer {
         return 5;
     }
 }
@@ -536,16 +536,16 @@ entity Goblin implements Drawable extends Enemy { ... }
 
 ```rust
 entity GameObject {
-    id: i64;
-    x: f64;
-    y: f64;
-    active: bool;
+    id: Integer;
+    x: Number;
+    y: Number;
+    active: Boolean;
 
-    func getPosition() -> (f64, f64) {
+    func getPosition() -> (Number, Number) {
         return (self.x, self.y);
     }
 
-    func setPosition(x: f64, y: f64) {
+    func setPosition(x: Number, y: Number) {
         self.x = x;
         self.y = y;
     }
@@ -553,7 +553,7 @@ entity GameObject {
 
 interface Renderable {
     func render(screen: Screen);
-    func getLayer() -> i64;
+    func getLayer() -> Integer;
 }
 
 interface Collidable {
@@ -562,7 +562,7 @@ interface Collidable {
 }
 
 interface Updatable {
-    func update(deltaTime: f64);
+    func update(deltaTime: Number);
 }
 
 // A player has everything
@@ -575,7 +575,7 @@ entity Player extends GameObject implements Renderable, Collidable, Updatable {
         screen.draw(self.sprite, self.x, self.y);
     }
 
-    func getLayer() -> i64 {
+    func getLayer() -> Integer {
         return 5;  // Player renders on layer 5
     }
 
@@ -587,7 +587,7 @@ entity Player extends GameObject implements Renderable, Collidable, Updatable {
         Viper.Terminal.Say("Player hit something!");
     }
 
-    func update(deltaTime: f64) {
+    func update(deltaTime: Number) {
         self.x += self.velocity.x * deltaTime;
         self.y += self.velocity.y * deltaTime;
     }
@@ -601,7 +601,7 @@ entity Background extends GameObject implements Renderable {
         screen.draw(self.image, 0, 0);
     }
 
-    func getLayer() -> i64 {
+    func getLayer() -> Integer {
         return 0;  // Background is layer 0 (behind everything)
     }
 }
@@ -635,8 +635,8 @@ This is problematic:
 
 ```rust
 interface Database {
-    func save(table: string, data: any);
-    func load(table: string, id: i64) -> any;
+    func save(table: String, data: any);
+    func load(table: String, id: Integer) -> any;
 }
 
 entity UserService {
@@ -650,7 +650,7 @@ entity UserService {
         self.db.save("users", user);
     }
 
-    func getUser(id: i64) -> User {
+    func getUser(id: Integer) -> User {
         return self.db.load("users", id);
     }
 }
@@ -689,17 +689,17 @@ The benefit? Your code becomes:
 
 ```rust
 interface Logger {
-    func log(message: string);
-    func error(message: string);
+    func log(message: String);
+    func error(message: String);
 }
 
 interface PaymentProcessor {
-    func charge(amount: f64, cardNumber: string) -> bool;
-    func refund(transactionId: string) -> bool;
+    func charge(amount: Number, cardNumber: String) -> Boolean;
+    func refund(transactionId: String) -> Boolean;
 }
 
 interface EmailSender {
-    func send(to: string, subject: string, body: string);
+    func send(to: String, subject: String, body: String);
 }
 
 entity OrderService {
@@ -755,12 +755,12 @@ With interfaces, you can create *test doubles* (also called mocks or fakes):
 
 ```rust
 interface EmailSender {
-    func send(to: string, subject: string, body: string);
+    func send(to: String, subject: String, body: String);
 }
 
 // Real implementation for production
 entity SmtpEmailSender implements EmailSender {
-    func send(to: string, subject: string, body: string) {
+    func send(to: String, subject: String, body: String) {
         // Actually send email via SMTP
         Viper.Net.SMTP.send(to, subject, body);
     }
@@ -774,7 +774,7 @@ entity FakeEmailSender implements EmailSender {
         self.sentEmails = [];
     }
 
-    func send(to: string, subject: string, body: string) {
+    func send(to: String, subject: String, body: String) {
         // Don't actually send. Just record that we would have.
         self.sentEmails.push(Email { to: to, subject: subject, body: body });
     }
@@ -818,11 +818,11 @@ Fakes let you simulate scenarios that are hard to create with real systems:
 
 ```rust
 entity AlwaysFailingPaymentProcessor implements PaymentProcessor {
-    func charge(amount: f64, cardNumber: string) -> bool {
+    func charge(amount: Number, cardNumber: String) -> Boolean {
         return false;  // Simulate payment failure
     }
 
-    func refund(transactionId: string) -> bool {
+    func refund(transactionId: String) -> Boolean {
         return false;
     }
 }
@@ -876,13 +876,13 @@ Prefer small, focused interfaces over large ones. This is called the *Interface 
 ```rust
 interface GameEntity {
     func draw();
-    func move(dx: f64, dy: f64);
-    func attack() -> i64;
-    func takeDamage(amount: i64);
+    func move(dx: Number, dy: Number);
+    func attack() -> Integer;
+    func takeDamage(amount: Integer);
     func save();
     func load();
-    func playSound(sound: string);
-    func getTooltip() -> string;
+    func playSound(sound: String);
+    func getTooltip() -> String;
 }
 ```
 
@@ -898,12 +898,12 @@ interface Drawable {
 }
 
 interface Movable {
-    func move(dx: f64, dy: f64);
+    func move(dx: Number, dy: Number);
 }
 
 interface Combatant {
-    func attack() -> i64;
-    func takeDamage(amount: i64);
+    func attack() -> Integer;
+    func takeDamage(amount: Integer);
 }
 
 interface Saveable {
@@ -912,7 +912,7 @@ interface Saveable {
 }
 
 interface Audible {
-    func playSound(sound: string);
+    func playSound(sound: String);
 }
 ```
 
@@ -953,7 +953,7 @@ When designing an interface, think about the code that will *use* it, not the co
 ```rust
 interface UserRepository {
     func openConnection();
-    func executeQuery(sql: string) -> ResultSet;
+    func executeQuery(sql: String) -> ResultSet;
     func closeConnection();
 }
 ```
@@ -963,10 +963,10 @@ This interface leaks implementation details. What if the implementation isn't SQ
 **Good: Designed around what clients need**
 ```rust
 interface UserRepository {
-    func getUser(id: i64) -> User;
+    func getUser(id: Integer) -> User;
     func saveUser(user: User);
-    func deleteUser(id: i64);
-    func findUsersByName(name: string) -> [User];
+    func deleteUser(id: Integer);
+    func findUsersByName(name: String) -> [User];
 }
 ```
 
@@ -990,7 +990,7 @@ interface Drawable {
 // Later, need animation support
 // Don't add to Drawable! Create new interface.
 interface Animatable extends Drawable {
-    func animate(frame: i64);
+    func animate(frame: Integer);
 }
 ```
 
@@ -1007,43 +1007,43 @@ module PluginSystem;
 
 // Interface that all plugins must implement
 interface Plugin {
-    func getName() -> string;
-    func execute(input: string) -> string;
+    func getName() -> String;
+    func execute(input: String) -> String;
 }
 
 // Some plugins
 entity UppercasePlugin implements Plugin {
-    func getName() -> string {
+    func getName() -> String {
         return "Uppercase";
     }
 
-    func execute(input: string) -> string {
+    func execute(input: String) -> String {
         return input.upper();
     }
 }
 
 entity ReversePlugin implements Plugin {
-    func getName() -> string {
+    func getName() -> String {
         return "Reverse";
     }
 
-    func execute(input: string) -> string {
+    func execute(input: String) -> String {
         return Viper.Text.reverse(input);
     }
 }
 
 entity RepeatPlugin implements Plugin {
-    times: i64;
+    times: Integer;
 
-    expose func init(times: i64) {
+    expose func init(times: Integer) {
         self.times = times;
     }
 
-    func getName() -> string {
+    func getName() -> String {
         return "Repeat x" + self.times;
     }
 
-    func execute(input: string) -> string {
+    func execute(input: String) -> String {
         return Viper.Text.repeat(input, self.times);
     }
 }
@@ -1061,7 +1061,7 @@ entity PluginManager {
         Viper.Terminal.Say("Registered: " + plugin.getName());
     }
 
-    func process(input: string) -> string {
+    func process(input: String) -> String {
         var result = input;
         for plugin in self.plugins {
             result = plugin.execute(result);
@@ -1160,32 +1160,32 @@ The strategy pattern lets you swap algorithms at runtime:
 
 ```rust
 interface SortStrategy {
-    func sort(items: [i64]) -> [i64];
+    func sort(items: [Integer]) -> [Integer];
 }
 
 entity QuickSort implements SortStrategy {
-    func sort(items: [i64]) -> [i64] {
+    func sort(items: [Integer]) -> [Integer] {
         // Quick sort implementation
         ...
     }
 }
 
 entity MergeSort implements SortStrategy {
-    func sort(items: [i64]) -> [i64] {
+    func sort(items: [Integer]) -> [Integer] {
         // Merge sort implementation
         ...
     }
 }
 
 entity BubbleSort implements SortStrategy {
-    func sort(items: [i64]) -> [i64] {
+    func sort(items: [Integer]) -> [Integer] {
         // Bubble sort implementation (slow but simple)
         ...
     }
 }
 
 // Use any sorting strategy
-func processData(data: [i64], strategy: SortStrategy) {
+func processData(data: [Integer], strategy: SortStrategy) {
     var sorted = strategy.sort(data);
     ...
 }
@@ -1205,7 +1205,7 @@ The observer pattern notifies interested parties when something happens:
 
 ```rust
 interface Observer {
-    func onEvent(event: string);
+    func onEvent(event: String);
 }
 
 entity Subject {
@@ -1223,7 +1223,7 @@ entity Subject {
         self.observers.remove(obs);
     }
 
-    func notify(event: string) {
+    func notify(event: String) {
         for obs in self.observers {
             obs.onEvent(event);
         }
@@ -1232,15 +1232,15 @@ entity Subject {
 
 // Different observers respond differently
 entity LoggingObserver implements Observer {
-    func onEvent(event: string) {
+    func onEvent(event: String) {
         Viper.Terminal.Say("LOG: " + event);
     }
 }
 
 entity EmailObserver implements Observer {
-    adminEmail: string;
+    adminEmail: String;
 
-    func onEvent(event: string) {
+    func onEvent(event: String) {
         Viper.Email.send(self.adminEmail, "Event: " + event);
     }
 }
@@ -1259,23 +1259,23 @@ The repository pattern abstracts data access:
 
 ```rust
 interface UserRepository {
-    func findById(id: i64) -> User;
-    func findByEmail(email: string) -> User;
+    func findById(id: Integer) -> User;
+    func findByEmail(email: String) -> User;
     func save(user: User);
-    func delete(id: i64);
+    func delete(id: Integer);
     func findAll() -> [User];
 }
 
 // In-memory implementation for development/testing
 entity InMemoryUserRepository implements UserRepository {
-    users: {i64: User};
-    nextId: i64;
+    users: {Integer: User};
+    nextId: Integer;
 
-    func findById(id: i64) -> User {
+    func findById(id: Integer) -> User {
         return self.users[id];
     }
 
-    func findByEmail(email: string) -> User {
+    func findByEmail(email: String) -> User {
         for user in self.users.values() {
             if user.email == email {
                 return user;
@@ -1292,7 +1292,7 @@ entity InMemoryUserRepository implements UserRepository {
         self.users[user.id] = user;
     }
 
-    func delete(id: i64) {
+    func delete(id: Integer) {
         self.users.remove(id);
     }
 
@@ -1305,7 +1305,7 @@ entity InMemoryUserRepository implements UserRepository {
 entity PostgresUserRepository implements UserRepository {
     connection: PGConnection;
 
-    func findById(id: i64) -> User {
+    func findById(id: Integer) -> User {
         var row = self.connection.queryOne(
             "SELECT * FROM users WHERE id = ?", [id]
         );
@@ -1364,7 +1364,7 @@ Master interfaces, and you'll write code that adapts to change instead of fighti
 
 ## Exercises
 
-**Exercise 16.1**: Create a `Comparable` interface with a `compareTo(other) -> i64` method. Implement it for a `Person` entity (compare by age). Write a function that finds the oldest person in a list.
+**Exercise 16.1**: Create a `Comparable` interface with a `compareTo(other) -> Integer` method. Implement it for a `Person` entity (compare by age). Write a function that finds the oldest person in a list.
 
 **Exercise 16.2**: Create `Readable` and `Writable` interfaces. Create a `File` entity that implements both. Create a `ReadOnlyFile` that implements only `Readable`.
 

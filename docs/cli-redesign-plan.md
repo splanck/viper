@@ -1,10 +1,15 @@
 ---
-status: planning
+status: phase-1-complete
 audience: internal
 created: 2025-11-15
+updated: 2026-01-19
 ---
 
 # CLI Redesign Implementation Plan
+
+> **Implementation Status (2026-01):** Phase 1 is complete. Both `vbasic` and `ilrun` tools have been
+> implemented in `src/tools/vbasic/` and `src/tools/ilrun/`. The tools are functional and follow the
+> design outlined below.
 
 ## Executive Summary
 

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-updated: 2026-01-15
+last-updated: 2026-02-02
 ---
 
 # Viper IL — Reference
@@ -95,14 +95,13 @@ entry:
 
 ```il
 %t41 = addr_of @.Lstr
+```
 
 **`gaddr`** — Address of a mutable module-level global (modvar).
 
 ```il
 %p = gaddr @.Counter        # pointer to module variable storage
 store i64, %p, 1            # write 1 into the counter
-```
-
 ```
 
 **`fadd`** — Floating-point addition.

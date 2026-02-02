@@ -430,7 +430,7 @@ var userInputs: [i64] = [];
 Viper.Terminal.Say("Enter numbers (0 to stop):");
 
 while true {
-    var num = Viper.Parse.Int(Viper.Terminal.ReadLine());
+    var num = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
     if num == 0 {
         break;
     }
@@ -795,7 +795,7 @@ for i in 0..arr.length {   // Correct! 0.. excludes the endpoint
 **Calculated index going wrong:**
 ```rust
 var arr = [10, 20, 30];
-var userInput = Viper.Parse.Int(Viper.Terminal.ReadLine());
+var userInput = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
 var value = arr[userInput];  // Dangerous! User might enter 999
 ```
 
@@ -1118,7 +1118,7 @@ func start() {
             }
         } else if input == "done" {
             Viper.Terminal.Print("Task number to mark done: ");
-            var num = Viper.Parse.Int(Viper.Terminal.ReadLine());
+            var num = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
             if num >= 1 && num <= tasks.length {
                 completed[num - 1] = true;  // Convert to zero-based index
                 Viper.Terminal.Say("Marked done: " + tasks[num - 1]);
@@ -1127,7 +1127,7 @@ func start() {
             }
         } else if input == "remove" {
             Viper.Terminal.Print("Task number to remove: ");
-            var num = Viper.Parse.Int(Viper.Terminal.ReadLine());
+            var num = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
             if num >= 1 && num <= tasks.length {
                 // Rebuild arrays without this task
                 var newTasks: [String] = [];
@@ -1221,14 +1221,14 @@ func start() {
             Viper.Terminal.Print("Item name: ");
             var item = Viper.Terminal.ReadLine();
             Viper.Terminal.Print("Quantity: ");
-            var qty = Viper.Parse.Int(Viper.Terminal.ReadLine());
+            var qty = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
 
             pickupItem(items, quantities, item, qty, maxSlots);
         } else if cmd == "drop" {
             Viper.Terminal.Print("Item name: ");
             var item = Viper.Terminal.ReadLine();
             Viper.Terminal.Print("Quantity: ");
-            var qty = Viper.Parse.Int(Viper.Terminal.ReadLine());
+            var qty = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
 
             dropItem(items, quantities, item, qty);
         } else if cmd == "use" {
@@ -1266,7 +1266,7 @@ func showInventory(items: [String], quantities: [i64]) {
     Viper.Terminal.Say("Slots used: " + items.length);
 }
 
-func pickupItem(items: [String], quantities: [i64], name: String, qty: i64, maxSlots: i64) {
+func pickupItem(items: [String], quantities: [Integer], name: String, qty: Integer, maxSlots: Integer) {
     var existing = findItem(items, name);
 
     if existing >= 0 {
@@ -1285,7 +1285,7 @@ func pickupItem(items: [String], quantities: [i64], name: String, qty: i64, maxS
     }
 }
 
-func dropItem(items: [String], quantities: [i64], name: String, qty: i64) {
+func dropItem(items: [String], quantities: [Integer], name: String, qty: Integer) {
     var idx = findItem(items, name);
 
     if idx < 0 {
@@ -1353,7 +1353,7 @@ func start() {
     Viper.Terminal.Print("Enter your name: ");
     var playerName = Viper.Terminal.ReadLine();
     Viper.Terminal.Print("Enter your score: ");
-    var playerScore = Viper.Parse.Int(Viper.Terminal.ReadLine());
+    var playerScore = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
 
     // Find where to insert
     var insertPos = -1;
@@ -1575,7 +1575,7 @@ for n in nums {
 ```rust
 var items = ["Sword", "Shield", "Potion"];
 Viper.Terminal.Print("Choose item (1-3): ");
-var choice = Viper.Parse.Int(Viper.Terminal.ReadLine());
+var choice = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
 
 // WRONG: User might enter 0, 99, or -5
 var item = items[choice - 1];
@@ -1608,7 +1608,7 @@ func start() {
     // Collect grades with validation
     while true {
         Viper.Terminal.Print("Grade: ");
-        var input = Viper.Parse.Int(Viper.Terminal.ReadLine());
+        var input = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
 
         if input == -1 {
             break;

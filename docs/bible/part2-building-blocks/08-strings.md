@@ -118,7 +118,7 @@ This pattern is fundamental. Want to count uppercase letters? Loop through each 
 
 ```rust
 // Count uppercase letters
-func countUppercase(text: string) -> i64 {
+func countUppercase(text: String) -> Integer {
     var count = 0;
     for i in 0..text.length {
         var c = text[i];
@@ -138,7 +138,7 @@ You can construct strings by starting empty and adding characters:
 
 ```rust
 // Reverse a string
-func reverse(text: string) -> string {
+func reverse(text: String) -> String {
     var result = "";
     for i in 0..text.length {
         // Add characters from the end to the beginning
@@ -154,7 +154,7 @@ Or filter characters based on criteria:
 
 ```rust
 // Keep only letters
-func lettersOnly(text: string) -> string {
+func lettersOnly(text: String) -> String {
     var result = "";
     for i in 0..text.length {
         var c = text[i];
@@ -205,7 +205,7 @@ for i in 0..text.length {
 And for validation:
 
 ```rust
-func validatePassword(password: string) -> bool {
+func validatePassword(password: String) -> Boolean {
     if password.length < 8 {
         Viper.Terminal.Say("Password must be at least 8 characters");
         return false;
@@ -340,7 +340,7 @@ The rule: operations are evaluated left to right. Once you hit a string, everyth
 Concatenation is intuitive for simple cases:
 
 ```rust
-func formatName(first: string, middle: string, last: string) -> string {
+func formatName(first: String, middle: String, last: String) -> String {
     return first + " " + middle + " " + last;
 }
 
@@ -406,7 +406,7 @@ var rest = text.skip(7);     // "World!"
 
 **Extract file extension:**
 ```rust
-func getExtension(filename: string) -> string {
+func getExtension(filename: String) -> String {
     var dotPos = filename.lastIndexOf(".");
     if dotPos == -1 {
         return "";  // No extension
@@ -421,7 +421,7 @@ Viper.Terminal.Say(getExtension("README"));         // (empty)
 
 **Extract domain from email:**
 ```rust
-func getEmailDomain(email: string) -> string {
+func getEmailDomain(email: String) -> String {
     var atPos = email.indexOf("@");
     if atPos == -1 {
         return "";  // Not a valid email
@@ -434,7 +434,7 @@ Viper.Terminal.Say(getEmailDomain("user@example.com"));  // example.com
 
 **Truncate with ellipsis:**
 ```rust
-func truncate(text: string, maxLength: i64) -> string {
+func truncate(text: String, maxLength: Integer) -> String {
     if text.length <= maxLength {
         return text;
     }
@@ -523,7 +523,7 @@ if filename.startsWith("report") {
 
 **File type detection:**
 ```rust
-func getFileType(filename: string) -> string {
+func getFileType(filename: String) -> String {
     if filename.endsWith(".jpg") || filename.endsWith(".png") {
         return "image";
     }
@@ -539,7 +539,7 @@ func getFileType(filename: string) -> string {
 
 **URL validation:**
 ```rust
-func isSecureUrl(url: string) -> bool {
+func isSecureUrl(url: String) -> Boolean {
     return url.startsWith("https://");
 }
 ```
@@ -549,7 +549,7 @@ func isSecureUrl(url: string) -> bool {
 `indexOf` only finds the first occurrence. To find all:
 
 ```rust
-func findAll(text: string, search: string) -> array<i64> {
+func findAll(text: String, search: String) -> array<Integer> {
     var positions = [];
     var pos = 0;
 
@@ -608,7 +608,7 @@ if input.lower() == "yes" {  // true!
 
 **Common pattern for user input:**
 ```rust
-func normalizeInput(text: string) -> string {
+func normalizeInput(text: String) -> String {
     return text.trim().lower();
 }
 
@@ -644,7 +644,7 @@ Viper.Terminal.Say("apple" < "Banana"); // false (a > B)
 For true alphabetical sorting, convert to the same case:
 
 ```rust
-func alphabeticallyBefore(a: string, b: string) -> bool {
+func alphabeticallyBefore(a: String, b: String) -> Boolean {
     return a.lower() < b.lower();
 }
 
@@ -665,7 +665,7 @@ For numeric comparison, convert to numbers:
 ```rust
 var a = "9";
 var b = "10";
-if Viper.Parse.Int(a) < Viper.Parse.Int(b) {
+if Viper.Convert.ToInt(a) < Viper.Convert.ToInt(b) {
     Viper.Terminal.Say("9 is less than 10");  // Correct!
 }
 ```
@@ -721,7 +721,7 @@ Without `.lower()`, "YES", "Yes", "yes", and "yEs" would all be different. Conve
 Combine case conversion with substrings:
 
 ```rust
-func capitalize(text: string) -> string {
+func capitalize(text: String) -> String {
     if text.length == 0 {
         return "";
     }
@@ -734,7 +734,7 @@ Viper.Terminal.Say(capitalize("ALICE"));  // Alice
 
 **Title case (capitalize each word):**
 ```rust
-func titleCase(text: string) -> string {
+func titleCase(text: String) -> String {
     var words = text.split(" ");
     var result = [];
 
@@ -820,7 +820,7 @@ var result = text.replace("fish", "bird");
 
 **Sanitizing input:**
 ```rust
-func sanitize(text: string) -> string {
+func sanitize(text: String) -> String {
     var result = text;
     result = result.replace("<", "&lt;");
     result = result.replace(">", "&gt;");
@@ -832,7 +832,7 @@ func sanitize(text: string) -> string {
 **Normalizing data:**
 ```rust
 // Remove common variations in phone numbers
-func normalizePhone(phone: string) -> string {
+func normalizePhone(phone: String) -> String {
     var result = phone;
     result = result.replace(" ", "");
     result = result.replace("-", "");
@@ -847,7 +847,7 @@ Viper.Terminal.Say(normalizePhone("+1 (555) 123-4567"));  // 15551234567
 
 **Template substitution:**
 ```rust
-func greet(template: string, name: string, time: string) -> string {
+func greet(template: String, name: String, time: String) -> String {
     var result = template;
     result = result.replace("{name}", name);
     result = result.replace("{time}", time);
@@ -870,7 +870,7 @@ Viper.Terminal.Say(text.replace("hello", "hi"));
 For case-insensitive replace, you need a more complex approach:
 
 ```rust
-func replaceIgnoreCase(text: string, search: string, replacement: string) -> string {
+func replaceIgnoreCase(text: String, search: String, replacement: String) -> String {
     var result = "";
     var i = 0;
     var searchLower = search.lower();
@@ -967,7 +967,7 @@ var pairs = data.split("&");  // ["name=Alice", "age=30", "city=Boston"]
 CSV (Comma-Separated Values) is extremely common:
 
 ```rust
-func parseCSVLine(line: string) -> array<string> {
+func parseCSVLine(line: String) -> array<String> {
     return line.split(",");
 }
 
@@ -1035,7 +1035,7 @@ var rejoined = parts.join(", "); // "Hello, World!"
 **Transform and rejoin:**
 ```rust
 // Capitalize each word
-func titleCase(text: string) -> string {
+func titleCase(text: String) -> String {
     var words = text.split(" ");
     var capitalized = [];
 
@@ -1056,7 +1056,7 @@ Viper.Terminal.Say(titleCase("the QUICK brown FOX"));
 **Change delimiter:**
 ```rust
 // Convert paths between systems
-func windowsToUnix(path: string) -> string {
+func windowsToUnix(path: String) -> String {
     return path.split("\\").join("/");
 }
 
@@ -1143,7 +1143,7 @@ func generateReport(data: array<Record>) -> string {
 Another efficient pattern is to collect pieces in an array and join at the end:
 
 ```rust
-func buildList(items: array<string>) -> string {
+func buildList(items: array<String>) -> String {
     var lines = [];
 
     for i in 0..items.length {
@@ -1169,8 +1169,8 @@ This avoids repeated concatenation and is often cleaner than StringBuilder.
 **String to number:**
 ```rust
 var text = "42";
-var num = Viper.Parse.Int(text);     // 42 (integer)
-var pi = Viper.Parse.Float("3.14");  // 3.14 (float)
+var num = Viper.Convert.ToInt(text);     // 42 (integer)
+var pi = Viper.Convert.ToDouble("3.14");  // 3.14 (float)
 ```
 
 **Number to string:**
@@ -1192,7 +1192,7 @@ Be careful — `"5" + 3` is `"53"`, not `8`:
 ```rust
 var input = "5";
 Viper.Terminal.Say(input + 3);  // "53" (string concatenation!)
-Viper.Terminal.Say(Viper.Parse.Int(input) + 3);  // 8 (arithmetic)
+Viper.Terminal.Say(Viper.Convert.ToInt(input) + 3);  // 8 (arithmetic)
 ```
 
 If you want arithmetic, convert to numbers first.
@@ -1202,10 +1202,10 @@ If you want arithmetic, convert to numbers first.
 What if the string isn't a valid number?
 
 ```rust
-var result = Viper.Parse.Int("abc");  // Error or NaN
+var result = Viper.Convert.ToInt("abc");  // Error or NaN
 
 // Safe approach with validation
-func safeParseInt(text: string) -> i64 {
+func safeParseInt(text: String) -> Integer {
     // Check if string contains only digits
     for i in 0..text.length {
         var c = text[i];
@@ -1213,7 +1213,7 @@ func safeParseInt(text: string) -> i64 {
             return -1;  // Invalid
         }
     }
-    return Viper.Parse.Int(text);
+    return Viper.Convert.ToInt(text);
 }
 ```
 
@@ -1246,23 +1246,23 @@ Notice the patterns:
 ### Character Classification
 
 ```rust
-func isDigit(c: char) -> bool {
+func isDigit(c: Char) -> Boolean {
     return c.code() >= '0'.code() && c.code() <= '9'.code();
 }
 
-func isUppercase(c: char) -> bool {
+func isUppercase(c: Char) -> Boolean {
     return c.code() >= 'A'.code() && c.code() <= 'Z'.code();
 }
 
-func isLowercase(c: char) -> bool {
+func isLowercase(c: Char) -> Boolean {
     return c.code() >= 'a'.code() && c.code() <= 'z'.code();
 }
 
-func isLetter(c: char) -> bool {
+func isLetter(c: Char) -> Boolean {
     return isUppercase(c) || isLowercase(c);
 }
 
-func isAlphanumeric(c: char) -> bool {
+func isAlphanumeric(c: Char) -> Boolean {
     return isLetter(c) || isDigit(c);
 }
 ```
@@ -1270,14 +1270,14 @@ func isAlphanumeric(c: char) -> bool {
 ### Character Conversion
 
 ```rust
-func toUpper(c: char) -> char {
+func toUpper(c: Char) -> Char {
     if c.code() >= 'a'.code() && c.code() <= 'z'.code() {
         return Char.fromCode(c.code() - 32);
     }
     return c;
 }
 
-func toLower(c: char) -> char {
+func toLower(c: Char) -> Char {
     if c.code() >= 'A'.code() && c.code() <= 'Z'.code() {
         return Char.fromCode(c.code() + 32);
     }
@@ -1289,7 +1289,7 @@ func toLower(c: char) -> char {
 
 ```rust
 // Get numeric value of a digit character
-func digitValue(c: char) -> i64 {
+func digitValue(c: Char) -> Integer {
     if c.code() >= '0'.code() && c.code() <= '9'.code() {
         return c.code() - '0'.code();
     }
@@ -1354,7 +1354,7 @@ Let's apply everything to real-world problems.
 A basic email validator:
 
 ```rust
-func isValidEmail(email: string) -> bool {
+func isValidEmail(email: String) -> Boolean {
     var trimmed = email.trim();
 
     // Must contain exactly one @
@@ -1390,7 +1390,7 @@ Viper.Terminal.Say(isValidEmail("two@@signs.com"));     // false
 ### Formatting Names
 
 ```rust
-func formatName(fullName: string) -> string {
+func formatName(fullName: String) -> String {
     var trimmed = fullName.trim();
 
     // Handle empty input
@@ -1427,7 +1427,7 @@ Viper.Terminal.Say(formatName("bob jones jr"));      // Bob Jones Jr
 ### Parsing Key-Value Data
 
 ```rust
-func parseKeyValue(text: string) -> Map<string, string> {
+func parseKeyValue(text: String) -> Map<String, String> {
     var result = Map.new();
     var pairs = text.split("&");
 
@@ -1452,7 +1452,7 @@ Viper.Terminal.Say(parsed.get("age"));   // 30
 ### Cleaning User Input
 
 ```rust
-func cleanInput(text: string) -> string {
+func cleanInput(text: String) -> String {
     var result = text.trim();
 
     // Normalize whitespace (collapse multiple spaces)
@@ -1469,7 +1469,7 @@ Viper.Terminal.Say(cleanInput("  hello    world  "));  // "hello world"
 ### Password Strength Checker
 
 ```rust
-func checkPasswordStrength(password: string) -> string {
+func checkPasswordStrength(password: String) -> String {
     var score = 0;
     var feedback = [];
 
@@ -1570,7 +1570,7 @@ if a == b {
 **Debugging technique:** Print with visible boundaries:
 
 ```rust
-func debugString(text: string) {
+func debugString(text: String) {
     Viper.Terminal.Say("[" + text + "]");
     Viper.Terminal.Say("Length: " + text.length);
 
@@ -1643,7 +1643,7 @@ if text.length > 0 {
 
 **Safe first character:**
 ```rust
-func firstChar(text: string) -> string {
+func firstChar(text: String) -> String {
     if text.length == 0 {
         return "";
     }
@@ -1688,7 +1688,7 @@ Let's build a program that analyzes text:
 ```rust
 module WordCounter;
 
-func countWords(text: string) -> i64 {
+func countWords(text: String) -> Integer {
     var words = text.split(" ");
     var count = 0;
 
@@ -1701,7 +1701,7 @@ func countWords(text: string) -> i64 {
     return count;
 }
 
-func countVowels(text: string) -> i64 {
+func countVowels(text: String) -> Integer {
     var vowels = "aeiouAEIOU";
     var count = 0;
 
@@ -1874,7 +1874,7 @@ var b = "3";
 Viper.Terminal.Say(a + b);  // "53", not 8!
 
 // Convert to numbers first for math:
-Viper.Terminal.Say(Viper.Parse.Int(a) + Viper.Parse.Int(b));  // 8
+Viper.Terminal.Say(Viper.Convert.ToInt(a) + Viper.Convert.ToInt(b));  // 8
 ```
 
 **Not trimming user input:**
@@ -1906,7 +1906,7 @@ if input.trim() == "yes" {  // Works
 - `replace` substitutes text
 - `split` breaks into arrays; `join` combines arrays
 - String comparison is case-sensitive and uses character codes
-- `Viper.Parse.Int/Float` convert strings to numbers
+- `Viper.Convert.ToInt/ToDouble` convert strings to numbers
 - `Viper.Fmt.format` creates formatted strings
 - Always check for empty strings and off-by-one errors
 - Use `trim()` on user input before processing

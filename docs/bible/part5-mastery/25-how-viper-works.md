@@ -51,7 +51,7 @@ Source Code → Lexer → Parser → Semantic Analyzer → IL Generator → Runt
 Let's trace a simple program through this entire journey. We'll use this example:
 
 ```rust
-func add(a: i64, b: i64) -> i64 {
+func add(a: Integer, b: Integer) -> Integer {
     return a + b;
 }
 
@@ -219,9 +219,9 @@ The *semantic analyzer* checks that your code actually makes sense. This is wher
 Every expression has a type. The semantic analyzer ensures types are used consistently:
 
 ```rust
-var x: i64 = "hello";      // Error: cannot assign string to i64
-var y = add("a", "b");     // Error: 'add' expects i64 arguments, got string
-var z = 5 + "three";       // Error: cannot add i64 and string
+var x: Integer = "hello";      // Error: cannot assign String to Integer
+var y = add("a", "b");     // Error: 'add' expects Integer arguments, got String
+var z = 5 + "three";       // Error: cannot add Integer and String
 ```
 
 Type checking is your first line of defense against bugs. When the type checker complains, it's often catching a real problem with your logic.
@@ -249,12 +249,12 @@ func another() {
 Functions that declare a return type must actually return a value:
 
 ```rust
-func getValue() -> i64 {
+func getValue() -> Integer {
     var x = 5;
     // Error: function 'getValue' must return a value
 }
 
-func maybeReturn(flag: bool) -> i64 {
+func maybeReturn(flag: Boolean) -> Integer {
     if flag {
         return 42;
     }
@@ -268,8 +268,8 @@ When working with entities and values, the semantic analyzer ensures you use the
 
 ```rust
 entity Player {
-    expose name: string;
-    hide health: i64;       // hidden from outside
+    expose name: String;
+    hide health: Integer;       // hidden from outside
 }
 
 func test() {
@@ -357,7 +357,7 @@ Here's the same function in all three Viper languages:
 
 **Zia**
 ```rust
-func square(x: i64) -> i64 {
+func square(x: Integer) -> Integer {
     return x * x;
 }
 ```
@@ -480,7 +480,7 @@ call @funcname(%arg1, %arg2)  ; call function
 Let's trace a more complex function through IL:
 
 ```rust
-func factorial(n: i64) -> i64 {
+func factorial(n: Integer) -> Integer {
     if n <= 1 {
         return 1;
     }
@@ -661,7 +661,7 @@ While you don't manage memory directly, understanding GC helps you write efficie
 
 ```rust
 // Less efficient: creates many temporary strings
-func buildName(first: string, last: string) -> string {
+func buildName(first: String, last: String) -> String {
     var result = "";
     result = result + first;  // temporary string created
     result = result + " ";    // another temporary
@@ -670,7 +670,7 @@ func buildName(first: string, last: string) -> string {
 }
 
 // More efficient: fewer allocations
-func buildName(first: string, last: string) -> string {
+func buildName(first: String, last: String) -> String {
     return first + " " + last;  // compiler can optimize this
 }
 ```
@@ -700,7 +700,7 @@ func missing(         // Missing closing parenthesis
 
 **Semantic Errors** (Stage 3 - Analysis)
 ```rust
-var x: i64 = "hello";     // Type mismatch
+var x: Integer = "hello";     // Type mismatch
 unknown_function();        // Undefined function
 var y = z + 1;            // Undefined variable 'z'
 ```
@@ -713,7 +713,7 @@ Some errors can only be detected when the program runs:
 
 **Division by Zero**
 ```rust
-func divide(a: i64, b: i64) -> i64 {
+func divide(a: Integer, b: Integer) -> Integer {
     return a / b;  // What if b is 0?
 }
 
@@ -734,7 +734,7 @@ var value = arr[i];  // Runtime error if i >= 3 or i < 0
 
 **Null Reference**
 ```rust
-func findPlayer(name: string) -> Player? {
+func findPlayer(name: String) -> Player? {
     // might return null if not found
 }
 
@@ -780,7 +780,7 @@ Let's follow a complete program through every stage of compilation. This will so
 ### The Source Code
 
 ```rust
-func max(a: i64, b: i64) -> i64 {
+func max(a: Integer, b: Integer) -> Integer {
     if a > b {
         return a;
     }
@@ -930,7 +930,7 @@ Understanding the compilation pipeline gives you powerful debugging strategies.
 
 4. **Semantic errors**: Check types, names, and logic
    ```rust
-   var x: i64 = getInput();  // Does getInput() return i64?
+   var x: Integer = getInput();  // Does getInput() return Integer?
    process(x, y, z);         // Are x, y, z defined? Right types?
    ```
 
@@ -938,7 +938,7 @@ Understanding the compilation pipeline gives you powerful debugging strategies.
 
 1. **Print intermediate values** to narrow down where logic goes wrong
    ```rust
-   func calculate(x: i64) -> i64 {
+   func calculate(x: Integer) -> Integer {
        Viper.Terminal.Say("Input: " + x.toString());
        var step1 = x * 2;
        Viper.Terminal.Say("After multiply: " + step1.toString());
@@ -965,7 +965,7 @@ IL helps you understand why some code is slow:
 
 ```rust
 // This creates many temporary strings
-func slow() -> string {
+func slow() -> String {
     var result = "";
     for i in 0..1000 {
         result = result + i.toString();  // New string each iteration!
@@ -986,7 +986,7 @@ Viper's architecture allows three different languages to share one runtime. Let'
 
 **Zia** (modern, curly-brace syntax)
 ```rust
-func greet(name: string) {
+func greet(name: String) {
     Viper.Terminal.Say("Hello, " + name + "!");
 }
 
@@ -1134,7 +1134,7 @@ Write the same function in Zia and BASIC. Use `--dump-il` on both and compare. W
 **Exercise 25.5 - IL Reading**
 Look at the IL for this function:
 ```rust
-func sum_to_n(n: i64) -> i64 {
+func sum_to_n(n: Integer) -> Integer {
     var total = 0;
     var i = 1;
     while i <= n {
@@ -1160,7 +1160,7 @@ Think about what happens to memory. When are strings created? When might they be
 **Exercise 25.7 - Performance Thinking**
 Consider these two functions:
 ```rust
-func version1(n: i64) -> i64 {
+func version1(n: Integer) -> Integer {
     var sum = 0;
     for i in 0..n {
         sum = sum + i;
@@ -1168,7 +1168,7 @@ func version1(n: i64) -> i64 {
     return sum;
 }
 
-func version2(n: i64) -> i64 {
+func version2(n: Integer) -> Integer {
     return (n * (n - 1)) / 2;
 }
 ```
@@ -1177,7 +1177,7 @@ Both compute the sum 0 + 1 + 2 + ... + (n-1). Use `--dump-il` to see how differe
 **Exercise 25.8 (Challenge) - Recursive IL Tracing**
 Trace the complete IL execution of:
 ```rust
-func fib(n: i64) -> i64 {
+func fib(n: Integer) -> Integer {
     if n <= 1 {
         return n;
     }

@@ -23,8 +23,8 @@ var enemyScore = 0;  // Wait, enemies don't have scores...
 You add a second enemy. Five more. A third enemy. Five more. Then you realize: you need to pass all this information to a function that handles combat. Your function signature becomes a nightmare:
 
 ```rust
-func attack(attackerName: string, attackerHealth: i64, attackerX: f64, attackerY: f64,
-            defenderName: string, defenderHealth: i64, defenderX: f64, defenderY: f64,
+func attack(attackerName: String, attackerHealth: Integer, attackerX: Number, attackerY: Number,
+            defenderName: String, defenderHealth: Integer, defenderX: Number, defenderY: Number,
             ...) {
     // This is getting out of hand
 }
@@ -36,7 +36,7 @@ And when you call it:
 attack(playerName, playerHealth, playerX, playerY, enemyName, enemyHealth, enemyX, enemyY, ...);
 ```
 
-Did you pass the arguments in the right order? Is `playerY` really the fourth argument, or was it the third? If you swap `attackerX` and `attackerY`, the compiler won't catch it — they're both `f64`. Your bug silently corrupts your game.
+Did you pass the arguments in the right order? Is `playerY` really the fourth argument, or was it the third? If you swap `attackerX` and `attackerY`, the compiler won't catch it — they're both `Number`. Your bug silently corrupts your game.
 
 Then you need to return the updated health values. But functions can only return one thing. So you resort to ugly workarounds, or you give up and use global variables, and your code becomes a tangled mess.
 
@@ -78,7 +78,7 @@ Nothing enforces that points have exactly two coordinates, or that `pointX` and 
 Every function that works with a point needs two parameters:
 
 ```rust
-func distance(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
+func distance(x1: Number, y1: Number, x2: Number, y2: Number) -> Number {
     var dx = x2 - x1;
     var dy = y2 - y1;
     return Viper.Math.sqrt(dx * dx + dy * dy);
@@ -88,7 +88,7 @@ func distance(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
 That's four parameters for two points. What about three points?
 
 ```rust
-func triangleArea(x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64) -> f64 {
+func triangleArea(x1: Number, y1: Number, x2: Number, y2: Number, x3: Number, y3: Number) -> Number {
     // Six parameters!
     ...
 }
@@ -145,12 +145,12 @@ A *structure* (sometimes called a *struct*, *record*, or *value type*) lets you 
 
 ```rust
 value Point {
-    x: f64;
-    y: f64;
+    x: Number;
+    y: Number;
 }
 ```
 
-This defines a new type called `Point`. It has two *fields*: `x` and `y`, both 64-bit floating-point numbers. The `value` keyword tells Viper we're defining a structure.
+This defines a new type called `Point`. It has two *fields*: `x` and `y`, both floating-point numbers. The `value` keyword tells Viper we're defining a structure.
 
 Now we can create points:
 
@@ -216,7 +216,7 @@ Table: Points
 +--------+--------+
 ```
 
-The structure definition (`value Point { x: f64; y: f64; }`) defines the columns. Each actual `Point` value is one row.
+The structure definition (`value Point { x: Number; y: Number; }`) defines the columns. Each actual `Point` value is one row.
 
 ---
 
@@ -230,9 +230,9 @@ In real life, you don't think of a person as "a name floating in space, plus an 
 
 ```rust
 value Person {
-    name: string;
-    age: i64;
-    email: string;
+    name: String;
+    age: Integer;
+    email: String;
 }
 
 var alice = Person { name: "Alice", age: 30, email: "alice@example.com" };
@@ -246,8 +246,8 @@ A rectangle isn't "a width" and "a height." It's a shape that has both propertie
 
 ```rust
 value Rectangle {
-    width: f64;
-    height: f64;
+    width: Number;
+    height: Number;
 }
 
 var screen = Rectangle { width: 1920.0, height: 1080.0 };
@@ -259,9 +259,9 @@ January 15, 2024 isn't three separate numbers. It's a date — one conceptual un
 
 ```rust
 value Date {
-    year: i64;
-    month: i64;
-    day: i64;
+    year: Integer;
+    month: Integer;
+    day: Integer;
 }
 
 var birthday = Date { year: 1990, month: 7, day: 4 };
@@ -273,9 +273,9 @@ A color like "coral" isn't separate red, green, and blue values. It's one color 
 
 ```rust
 value Color {
-    red: i64;
-    green: i64;
-    blue: i64;
+    red: Integer;
+    green: Integer;
+    blue: Integer;
 }
 
 var coral = Color { red: 255, green: 127, blue: 80 };
@@ -303,10 +303,10 @@ Each field has a name and a type. Fields are separated by semicolons.
 
 ```rust
 value Book {
-    title: string;
-    author: string;
-    pageCount: i64;
-    price: f64;
+    title: String;
+    author: String;
+    pageCount: Integer;
+    price: Number;
 }
 ```
 
@@ -361,8 +361,8 @@ One of the most important concepts to understand about structures is *value sema
 
 ```rust
 value Point {
-    x: f64;
-    y: f64;
+    x: Number;
+    y: Number;
 }
 
 var p1 = Point { x: 10.0, y: 20.0 };
@@ -414,7 +414,7 @@ The function can modify its copy all it wants, but the original in the calling c
 If a function needs to modify a structure and have the caller see the changes, return the modified version:
 
 ```rust
-func moveRight(point: Point, amount: f64) -> Point {
+func moveRight(point: Point, amount: Number) -> Point {
     point.x = point.x + amount;
     return point;
 }
@@ -450,14 +450,14 @@ You can define *methods* inside a structure — functions that operate on that s
 
 ```rust
 value Rectangle {
-    width: f64;
-    height: f64;
+    width: Number;
+    height: Number;
 
-    func area() -> f64 {
+    func area() -> Number {
         return self.width * self.height;
     }
 
-    func perimeter() -> f64 {
+    func perimeter() -> Number {
         return 2 * (self.width + self.height);
     }
 }
@@ -517,10 +517,10 @@ Methods can have parameters in addition to the implicit `self`:
 
 ```rust
 value Point {
-    x: f64;
-    y: f64;
+    x: Number;
+    y: Number;
 
-    func distance(other: Point) -> f64 {
+    func distance(other: Point) -> Number {
         var dx = other.x - self.x;
         var dy = other.y - self.y;
         return Viper.Math.sqrt(dx * dx + dy * dy);
@@ -550,7 +550,7 @@ Methods can change the structure's fields:
 
 ```rust
 value Counter {
-    count: i64;
+    count: Integer;
 
     func increment() {
         self.count = self.count + 1;
@@ -560,7 +560,7 @@ value Counter {
         self.count = 0;
     }
 
-    func add(amount: i64) {
+    func add(amount: Integer) {
         self.count = self.count + amount;
     }
 }
@@ -584,8 +584,8 @@ A common pattern is methods that return a new structure rather than modifying th
 
 ```rust
 value Point {
-    x: f64;
-    y: f64;
+    x: Number;
+    y: Number;
 
     func add(other: Point) -> Point {
         return Point {
@@ -594,7 +594,7 @@ value Point {
         };
     }
 
-    func scale(factor: f64) -> Point {
+    func scale(factor: Number) -> Point {
         return Point {
             x: self.x * factor,
             y: self.y * factor
@@ -626,10 +626,10 @@ Consider modeling an address:
 
 ```rust
 value Address {
-    street: string;
-    city: string;
-    state: string;
-    zipCode: string;
+    street: String;
+    city: String;
+    state: String;
+    zipCode: String;
 }
 ```
 
@@ -637,8 +637,8 @@ Now a `Person` can include an `Address`:
 
 ```rust
 value Person {
-    name: string;
-    age: i64;
+    name: String;
+    age: Integer;
     home: Address;
 }
 
@@ -678,14 +678,14 @@ Let's model a game with nested structures:
 
 ```rust
 value Vec2 {
-    x: f64;
-    y: f64;
+    x: Number;
+    y: Number;
 
     func add(other: Vec2) -> Vec2 {
         return Vec2 { x: self.x + other.x, y: self.y + other.y };
     }
 
-    func distance(other: Vec2) -> f64 {
+    func distance(other: Vec2) -> Number {
         var dx = other.x - self.x;
         var dy = other.y - self.y;
         return Viper.Math.sqrt(dx * dx + dy * dy);
@@ -693,25 +693,25 @@ value Vec2 {
 }
 
 value Health {
-    current: i64;
-    maximum: i64;
+    current: Integer;
+    maximum: Integer;
 
-    func percentage() -> f64 {
+    func percentage() -> Number {
         return (self.current * 100) / self.maximum;
     }
 
-    func isDead() -> bool {
+    func isDead() -> Boolean {
         return self.current <= 0;
     }
 
-    func heal(amount: i64) {
+    func heal(amount: Integer) {
         self.current = self.current + amount;
         if self.current > self.maximum {
             self.current = self.maximum;
         }
     }
 
-    func damage(amount: i64) {
+    func damage(amount: Integer) {
         self.current = self.current - amount;
         if self.current < 0 {
             self.current = 0;
@@ -720,12 +720,12 @@ value Health {
 }
 
 value Player {
-    name: string;
+    name: String;
     position: Vec2;
     health: Health;
-    score: i64;
+    score: Integer;
 
-    func isAlive() -> bool {
+    func isAlive() -> Boolean {
         return !self.health.isDead();
     }
 
@@ -733,7 +733,7 @@ value Player {
         self.position = self.position.add(direction);
     }
 
-    func takeDamage(amount: i64) {
+    func takeDamage(amount: Integer) {
         self.health.damage(amount);
         if self.health.isDead() {
             Viper.Terminal.Say(self.name + " has been defeated!");
@@ -782,10 +782,10 @@ Create a function that returns a structure with default values:
 
 ```rust
 value Config {
-    volume: i64;
-    difficulty: string;
-    fullscreen: bool;
-    musicEnabled: bool;
+    volume: Integer;
+    difficulty: String;
+    fullscreen: Boolean;
+    musicEnabled: Boolean;
 }
 
 func defaultConfig() -> Config {
@@ -812,19 +812,19 @@ You can have different functions for different scenarios:
 
 ```rust
 value Rectangle {
-    width: f64;
-    height: f64;
+    width: Number;
+    height: Number;
 }
 
-func square(size: f64) -> Rectangle {
+func square(size: Number) -> Rectangle {
     return Rectangle { width: size, height: size };
 }
 
-func goldenRectangle(width: f64) -> Rectangle {
+func goldenRectangle(width: Number) -> Rectangle {
     return Rectangle { width: width, height: width / 1.618 };
 }
 
-func screen(resolution: string) -> Rectangle {
+func screen(resolution: String) -> Rectangle {
     if resolution == "720p" {
         return Rectangle { width: 1280.0, height: 720.0 };
     } else if resolution == "1080p" {
@@ -846,16 +846,16 @@ Some structures benefit from having an `init` method pattern:
 
 ```rust
 value Circle {
-    centerX: f64;
-    centerY: f64;
-    radius: f64;
+    centerX: Number;
+    centerY: Number;
+    radius: Number;
 }
 
-func createCircle(x: f64, y: f64, r: f64) -> Circle {
+func createCircle(x: Number, y: Number, r: Number) -> Circle {
     return Circle { centerX: x, centerY: y, radius: r };
 }
 
-func circleAtOrigin(radius: f64) -> Circle {
+func circleAtOrigin(radius: Number) -> Circle {
     return Circle { centerX: 0.0, centerY: 0.0, radius: radius };
 }
 
@@ -884,19 +884,19 @@ Too many fields:
 ```rust
 // This is unwieldy
 value Person {
-    firstName: string;
-    lastName: string;
-    birthYear: i64;
-    birthMonth: i64;
-    birthDay: i64;
-    streetAddress: string;
-    city: string;
-    state: string;
-    zipCode: string;
-    country: string;
-    phoneCountryCode: string;
-    phoneAreaCode: string;
-    phoneNumber: string;
+    firstName: String;
+    lastName: String;
+    birthYear: Integer;
+    birthMonth: Integer;
+    birthDay: Integer;
+    streetAddress: String;
+    city: String;
+    state: String;
+    zipCode: String;
+    country: String;
+    phoneCountryCode: String;
+    phoneAreaCode: String;
+    phoneNumber: String;
     // ... and so on
 }
 ```
@@ -904,28 +904,28 @@ value Person {
 Better with nesting:
 ```rust
 value Date {
-    year: i64;
-    month: i64;
-    day: i64;
+    year: Integer;
+    month: Integer;
+    day: Integer;
 }
 
 value Address {
-    street: string;
-    city: string;
-    state: string;
-    zipCode: string;
-    country: string;
+    street: String;
+    city: String;
+    state: String;
+    zipCode: String;
+    country: String;
 }
 
 value Phone {
-    countryCode: string;
-    areaCode: string;
-    number: string;
+    countryCode: String;
+    areaCode: String;
+    number: String;
 }
 
 value Person {
-    firstName: string;
-    lastName: string;
+    firstName: String;
+    lastName: String;
     birthday: Date;
     address: Address;
     phone: Phone;
@@ -967,20 +967,20 @@ Let's see structures in action with several complete examples.
 
 ```rust
 value Card {
-    suit: string;    // "Hearts", "Diamonds", "Clubs", "Spades"
-    rank: string;    // "2"-"10", "J", "Q", "K", "A"
+    suit: String;    // "Hearts", "Diamonds", "Clubs", "Spades"
+    rank: String;    // "2"-"10", "J", "Q", "K", "A"
 
-    func display() -> string {
+    func display() -> String {
         return self.rank + " of " + self.suit;
     }
 
-    func value() -> i64 {
+    func value() -> Integer {
         if self.rank == "A" {
             return 11;
         } else if self.rank == "K" || self.rank == "Q" || self.rank == "J" {
             return 10;
         } else {
-            return Viper.Parse.Int(self.rank);
+            return Viper.Convert.ToInt(self.rank);
         }
     }
 }
@@ -1013,14 +1013,14 @@ func start() {
 
 ```rust
 value Point {
-    x: f64;
-    y: f64;
+    x: Number;
+    y: Number;
 
-    func toString() -> string {
+    func toString() -> String {
         return "(" + self.x + ", " + self.y + ")";
     }
 
-    func distance(other: Point) -> f64 {
+    func distance(other: Point) -> Number {
         var dx = other.x - self.x;
         var dy = other.y - self.y;
         return Viper.Math.sqrt(dx * dx + dy * dy);
@@ -1036,14 +1036,14 @@ value Point {
 
 value Rectangle {
     topLeft: Point;
-    width: f64;
-    height: f64;
+    width: Number;
+    height: Number;
 
-    func area() -> f64 {
+    func area() -> Number {
         return self.width * self.height;
     }
 
-    func perimeter() -> f64 {
+    func perimeter() -> Number {
         return 2 * (self.width + self.height);
     }
 
@@ -1061,7 +1061,7 @@ value Rectangle {
         };
     }
 
-    func contains(point: Point) -> bool {
+    func contains(point: Point) -> Boolean {
         return point.x >= self.topLeft.x &&
                point.x <= self.topLeft.x + self.width &&
                point.y >= self.topLeft.y &&
@@ -1090,10 +1090,10 @@ func start() {
 
 ```rust
 value Student {
-    name: string;
-    grades: [i64];
+    name: String;
+    grades: [Integer];
 
-    func average() -> f64 {
+    func average() -> Number {
         if self.grades.length == 0 {
             return 0.0;
         }
@@ -1104,7 +1104,7 @@ value Student {
         return sum / self.grades.length;
     }
 
-    func highest() -> i64 {
+    func highest() -> Integer {
         if self.grades.length == 0 {
             return 0;
         }
@@ -1117,7 +1117,7 @@ value Student {
         return max;
     }
 
-    func lowest() -> i64 {
+    func lowest() -> Integer {
         if self.grades.length == 0 {
             return 0;
         }
@@ -1130,7 +1130,7 @@ value Student {
         return min;
     }
 
-    func letterGrade() -> string {
+    func letterGrade() -> String {
         var avg = self.average();
         if avg >= 90 {
             return "A";
@@ -1144,7 +1144,7 @@ value Student {
         return "F";
     }
 
-    func addGrade(grade: i64) {
+    func addGrade(grade: Integer) {
         self.grades.push(grade);
     }
 
@@ -1178,20 +1178,20 @@ func start() {
 
 ```rust
 value Item {
-    name: string;
-    weight: f64;
-    value: i64;
+    name: String;
+    weight: Number;
+    value: Integer;
 
-    func toString() -> string {
+    func toString() -> String {
         return self.name + " (weight: " + self.weight + ", value: " + self.value + ")";
     }
 }
 
 value Inventory {
     items: [Item];
-    maxWeight: f64;
+    maxWeight: Number;
 
-    func currentWeight() -> f64 {
+    func currentWeight() -> Number {
         var total = 0.0;
         for item in self.items {
             total = total + item.weight;
@@ -1199,7 +1199,7 @@ value Inventory {
         return total;
     }
 
-    func totalValue() -> i64 {
+    func totalValue() -> Integer {
         var total = 0;
         for item in self.items {
             total = total + item.value;
@@ -1207,11 +1207,11 @@ value Inventory {
         return total;
     }
 
-    func canAdd(item: Item) -> bool {
+    func canAdd(item: Item) -> Boolean {
         return self.currentWeight() + item.weight <= self.maxWeight;
     }
 
-    func add(item: Item) -> bool {
+    func add(item: Item) -> Boolean {
         if self.canAdd(item) {
             self.items.push(item);
             return true;
@@ -1271,8 +1271,8 @@ Let's put everything together in a more complex game example:
 module GameDemo;
 
 value Vec2 {
-    x: f64;
-    y: f64;
+    x: Number;
+    y: Number;
 
     func add(other: Vec2) -> Vec2 {
         return Vec2 { x: self.x + other.x, y: self.y + other.y };
@@ -1282,38 +1282,38 @@ value Vec2 {
         return Vec2 { x: self.x - other.x, y: self.y - other.y };
     }
 
-    func scale(factor: f64) -> Vec2 {
+    func scale(factor: Number) -> Vec2 {
         return Vec2 { x: self.x * factor, y: self.y * factor };
     }
 
-    func length() -> f64 {
+    func length() -> Number {
         return Viper.Math.sqrt(self.x * self.x + self.y * self.y);
     }
 
-    func distance(other: Vec2) -> f64 {
+    func distance(other: Vec2) -> Number {
         return self.subtract(other).length();
     }
 
-    func toString() -> string {
+    func toString() -> String {
         return "(" + self.x + ", " + self.y + ")";
     }
 }
 
 value Stats {
-    health: i64;
-    maxHealth: i64;
-    attack: i64;
-    defense: i64;
+    health: Integer;
+    maxHealth: Integer;
+    attack: Integer;
+    defense: Integer;
 
-    func healthPercent() -> i64 {
+    func healthPercent() -> Integer {
         return (self.health * 100) / self.maxHealth;
     }
 
-    func isAlive() -> bool {
+    func isAlive() -> Boolean {
         return self.health > 0;
     }
 
-    func takeDamage(amount: i64) -> i64 {
+    func takeDamage(amount: Integer) -> Integer {
         var actualDamage = amount - self.defense;
         if actualDamage < 1 {
             actualDamage = 1;  // Minimum 1 damage
@@ -1325,7 +1325,7 @@ value Stats {
         return actualDamage;
     }
 
-    func heal(amount: i64) {
+    func heal(amount: Integer) {
         self.health = self.health + amount;
         if self.health > self.maxHealth {
             self.health = self.maxHealth;
@@ -1334,17 +1334,17 @@ value Stats {
 }
 
 value Player {
-    name: string;
+    name: String;
     position: Vec2;
     stats: Stats;
-    score: i64;
-    level: i64;
+    score: Integer;
+    level: Integer;
 
     func move(direction: Vec2) {
         self.position = self.position.add(direction);
     }
 
-    func attack(target: Enemy) -> i64 {
+    func attack(target: Enemy) -> Integer {
         var damage = target.stats.takeDamage(self.stats.attack);
         if !target.stats.isAlive() {
             self.score = self.score + target.pointValue;
@@ -1366,25 +1366,25 @@ value Player {
 }
 
 value Enemy {
-    name: string;
+    name: String;
     position: Vec2;
     stats: Stats;
-    pointValue: i64;
+    pointValue: Integer;
 
-    func distanceTo(player: Player) -> f64 {
+    func distanceTo(player: Player) -> Number {
         return self.position.distance(player.position);
     }
 
-    func canAttack(player: Player) -> bool {
+    func canAttack(player: Player) -> Boolean {
         return self.distanceTo(player) < 2.0;
     }
 
-    func attack(player: Player) -> i64 {
+    func attack(player: Player) -> Integer {
         return player.stats.takeDamage(self.stats.attack);
     }
 }
 
-func createPlayer(name: string) -> Player {
+func createPlayer(name: String) -> Player {
     return Player {
         name: name,
         position: Vec2 { x: 0.0, y: 0.0 },
@@ -1399,7 +1399,7 @@ func createPlayer(name: string) -> Player {
     };
 }
 
-func createGoblin(x: f64, y: f64) -> Enemy {
+func createGoblin(x: Number, y: Number) -> Enemy {
     return Enemy {
         name: "Goblin",
         position: Vec2 { x: x, y: y },
@@ -1413,7 +1413,7 @@ func createGoblin(x: f64, y: f64) -> Enemy {
     };
 }
 
-func createOrc(x: f64, y: f64) -> Enemy {
+func createOrc(x: Number, y: Number) -> Enemy {
     return Enemy {
         name: "Orc",
         position: Vec2 { x: x, y: y },
@@ -1482,10 +1482,10 @@ This example demonstrates:
 **Zia**
 ```rust
 value Point {
-    x: f64;
-    y: f64;
+    x: Number;
+    y: Number;
 
-    func distance(other: Point) -> f64 {
+    func distance(other: Point) -> Number {
         var dx = other.x - self.x;
         var dy = other.y - self.y;
         return Viper.Math.sqrt(dx * dx + dy * dy);
@@ -1554,11 +1554,11 @@ For now, structures handle most cases beautifully. They're simpler, safer, and s
 Create instances with validated or computed values:
 
 ```rust
-func createPoint(x: f64, y: f64) -> Point {
+func createPoint(x: Number, y: Number) -> Point {
     return Point { x: x, y: y };
 }
 
-func pointFromAngle(angle: f64, distance: f64) -> Point {
+func pointFromAngle(angle: Number, distance: Number) -> Point {
     return Point {
         x: distance * Viper.Math.cos(angle),
         y: distance * Viper.Math.sin(angle)
@@ -1570,8 +1570,8 @@ func pointFromAngle(angle: f64, distance: f64) -> Point {
 
 ```rust
 value Config {
-    volume: i64;
-    difficulty: string;
+    volume: Integer;
+    difficulty: String;
 }
 
 func defaultConfig() -> Config {
@@ -1589,14 +1589,14 @@ For structures with many optional fields, build them step by step:
 
 ```rust
 value Character {
-    name: string;
-    health: i64;
-    attack: i64;
-    defense: i64;
-    speed: i64;
+    name: String;
+    health: Integer;
+    attack: Integer;
+    defense: Integer;
+    speed: Integer;
 }
 
-func baseCharacter(name: string) -> Character {
+func baseCharacter(name: String) -> Character {
     return Character {
         name: name,
         health: 100,
@@ -1623,11 +1623,11 @@ rogue.speed = 20;
 ### Comparing Structures
 
 ```rust
-func pointsEqual(a: Point, b: Point) -> bool {
+func pointsEqual(a: Point, b: Point) -> Boolean {
     return a.x == b.x && a.y == b.y;
 }
 
-func pointsNearlyEqual(a: Point, b: Point, tolerance: f64) -> bool {
+func pointsNearlyEqual(a: Point, b: Point, tolerance: Number) -> Boolean {
     return a.distance(b) < tolerance;
 }
 ```
@@ -1636,10 +1636,10 @@ func pointsNearlyEqual(a: Point, b: Point, tolerance: f64) -> bool {
 
 ```rust
 value Person {
-    name: string;
-    age: i64;
+    name: String;
+    age: Integer;
 
-    func toString() -> string {
+    func toString() -> String {
         return self.name + " (age " + self.age + ")";
     }
 }

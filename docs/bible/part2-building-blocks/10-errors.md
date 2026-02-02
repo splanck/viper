@@ -79,7 +79,7 @@ var y = arr[10];  // Index 10 doesn't exist
 var text: string = null;
 var len = text.length;  // Can't access properties of null
 
-var num = Viper.Parse.Int("hello");  // "hello" is not a number
+var num = Viper.Convert.ToInt("hello");  // "hello" is not a number
 ```
 
 Runtime errors occur because the code is syntactically correct but asks the computer to do something impossible. You can't divide by zero. You can't access an array element that doesn't exist. These operations make no sense.
@@ -94,13 +94,13 @@ Logic errors are the sneakiest. Your code is syntactically correct. It runs with
 
 ```rust
 // Trying to calculate the average
-func average(a: i64, b: i64) -> i64 {
+func average(a: Integer, b: Integer) -> Integer {
     return a + b / 2;  // Oops! Division happens before addition
     // Should be: return (a + b) / 2;
 }
 
 // Trying to check if a number is between 1 and 10
-func inRange(n: i64) -> bool {
+func inRange(n: Integer) -> Boolean {
     return n > 1 && n < 10;  // Should be >= 1 and <= 10
     // Numbers 1 and 10 are incorrectly excluded
 }
@@ -247,7 +247,7 @@ A single try block might have multiple things that could go wrong:
 ```rust
 try {
     var content = Viper.File.readText(filename);  // Could fail: file missing
-    var value = Viper.Parse.Int(content);          // Could fail: not a number
+    var value = Viper.Convert.ToInt(content);          // Could fail: not a number
     var result = 1000 / value;                     // Could fail: zero
     Viper.Terminal.Say("Result: " + result);
 } catch e {
@@ -260,7 +260,7 @@ If *any* of these three operations fails, the catch block runs. But which one fa
 ```rust
 try {
     var content = Viper.File.readText(filename);
-    var value = Viper.Parse.Int(content);
+    var value = Viper.Convert.ToInt(content);
     var result = 1000 / value;
     Viper.Terminal.Say("Result: " + result);
 } catch e: FileNotFound {
@@ -336,11 +336,11 @@ The stack trace is your roadmap for debugging. It answers:
 Often, the bug isn't in the function where the error occurred. Look back through the chain:
 
 ```rust
-func divide(a: i64, b: i64) -> i64 {
+func divide(a: Integer, b: Integer) -> Integer {
     return a / b;  // Error: division by zero
 }
 
-func computeAverage(numbers: [i64]) -> i64 {
+func computeAverage(numbers: [Integer]) -> Integer {
     var sum = 0;
     for n in numbers {
         sum += n;
@@ -348,7 +348,7 @@ func computeAverage(numbers: [i64]) -> i64 {
     return divide(sum, numbers.length);  // BUG: empty array has length 0!
 }
 
-func processScores(data: string) {
+func processScores(data: String) {
     var scores = parseScores(data);
     var avg = computeAverage(scores);  // Called with empty array
     Viper.Terminal.Say("Average: " + avg);
@@ -401,7 +401,7 @@ Use `finally` for:
 You can signal errors from your own code using `throw`:
 
 ```rust
-func setAge(age: i64) {
+func setAge(age: Integer) {
     if age < 0 {
         throw Error("Age cannot be negative: " + age);
     }
@@ -453,7 +453,7 @@ The best error handling is *preventing* errors in the first place. Defensive pro
 Check that inputs are valid before using them:
 
 ```rust
-func processOrder(quantity: i64, price: f64) {
+func processOrder(quantity: Integer, price: Number) {
     // Validate at the start
     if quantity <= 0 {
         throw Error("Quantity must be positive");
@@ -504,7 +504,7 @@ if b != 0 {
 When missing values are acceptable, use defaults:
 
 ```rust
-func getConfig(key: string, defaultValue: string) -> string {
+func getConfig(key: String, defaultValue: String) -> String {
     if config.hasKey(key) {
         return config[key];
     }
@@ -521,7 +521,7 @@ var logLevel = getConfig("logLevel", "info");
 Handle error cases at the top of functions, then proceed with the main logic:
 
 ```rust
-func processFile(filename: string) {
+func processFile(filename: String) {
     // Guard clauses handle all the edge cases
     if filename.length == 0 {
         throw Error("Filename cannot be empty");
@@ -562,7 +562,7 @@ Catch an error when:
 
 ```rust
 // Recovery: try a backup file
-func loadData() -> string {
+func loadData() -> String {
     try {
         return Viper.File.readText("data.txt");
     } catch e: FileNotFound {
@@ -571,7 +571,7 @@ func loadData() -> string {
 }
 
 // Translation: hide implementation details
-func getUser(id: i64) -> User {
+func getUser(id: Integer) -> User {
     try {
         return database.query("SELECT * FROM users WHERE id = " + id);
     } catch e: DatabaseError {
@@ -751,7 +751,7 @@ Let's look at errors you'll encounter in real programs and how to handle them.
 Networks are inherently unreliable. Connections drop, servers go down, requests time out.
 
 ```rust
-func fetchUserData(userId: i64) -> UserData {
+func fetchUserData(userId: Integer) -> UserData {
     var maxRetries = 3;
     var retryDelay = 1000;  // milliseconds
 
@@ -782,14 +782,14 @@ Key strategies for network errors:
 Users will enter invalid data. Always. Count on it.
 
 ```rust
-func getValidAge() -> i64 {
+func getValidAge() -> Integer {
     while true {
         Viper.Terminal.Print("Enter your age: ");
         var input = Viper.Terminal.ReadLine().trim();
 
         // Try to parse
         try {
-            var age = Viper.Parse.Int(input);
+            var age = Viper.Convert.ToInt(input);
 
             // Validate range
             if age < 0 || age > 150 {
@@ -816,7 +816,7 @@ Principles for user input:
 Programs can run out of resources: memory, disk space, file handles, network connections.
 
 ```rust
-func processLargeFile(filename: string) {
+func processLargeFile(filename: String) {
     var reader = Viper.File.openRead(filename);
 
     try {
@@ -889,7 +889,7 @@ module DataProcessor;
 
 final LOG_FILE = "processor.log";
 
-func log(message: string) {
+func log(message: String) {
     var timestamp = Viper.Time.now().toString();
     var entry = "[" + timestamp + "] " + message + "\n";
 
@@ -901,7 +901,7 @@ func log(message: string) {
     }
 }
 
-func readDataFile(filename: string) -> [i64] {
+func readDataFile(filename: String) -> [Integer] {
     if filename.length == 0 {
         throw Error("Filename cannot be empty");
     }
@@ -911,7 +911,7 @@ func readDataFile(filename: string) -> [i64] {
     }
 
     var lines = Viper.File.readLines(filename);
-    var numbers: [i64] = [];
+    var numbers: [Integer] = [];
     var lineNum = 0;
 
     for line in lines {
@@ -924,7 +924,7 @@ func readDataFile(filename: string) -> [i64] {
         }
 
         try {
-            var num = Viper.Parse.Int(trimmed);
+            var num = Viper.Convert.ToInt(trimmed);
             numbers.push(num);
         } catch e: ParseError {
             log("Warning: skipping invalid number on line " + lineNum + ": " + trimmed);
@@ -938,12 +938,12 @@ func readDataFile(filename: string) -> [i64] {
     return numbers;
 }
 
-func calculateStats(numbers: [i64]) -> Stats {
+func calculateStats(numbers: [Integer]) -> Stats {
     if numbers.length == 0 {
         throw Error("Cannot calculate stats on empty array");
     }
 
-    var sum: i64 = 0;
+    var sum: Integer = 0;
     var min = numbers[0];
     var max = numbers[0];
 
@@ -964,7 +964,7 @@ func calculateStats(numbers: [i64]) -> Stats {
     );
 }
 
-func processFile(filename: string) {
+func processFile(filename: String) {
     log("Processing file: " + filename);
 
     try {
@@ -1151,7 +1151,7 @@ Exceptions should be exceptional — not a normal part of logic:
 
 ```rust
 // BAD: Using exceptions as control flow
-func findUser(name: string) -> User {
+func findUser(name: String) -> User {
     for user in users {
         if user.name == name {
             throw Found(user);  // Abuse!
@@ -1161,7 +1161,7 @@ func findUser(name: string) -> User {
 }
 
 // GOOD: Normal control flow
-func findUser(name: string) -> User? {
+func findUser(name: String) -> User? {
     for user in users {
         if user.name == name {
             return user;

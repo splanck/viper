@@ -1,8 +1,8 @@
 # Viper Bytecode VM - Comprehensive Technical Design
 
-**Status:** DETAILED DESIGN COMPLETE
+**Status:** IMPLEMENTED
 **Date:** January 2026
-**Version:** 2.0
+**Version:** 2.1
 
 ---
 
@@ -54,7 +54,7 @@ Implement a bytecode VM that:
 
 ## 2. Current IL Analysis
 
-### 2.1 Complete IL Opcode Inventory (70 opcodes)
+### 2.1 Complete IL Opcode Inventory (80+ opcodes)
 
 #### Integer Arithmetic (14 opcodes)
 | Opcode | Mnemonic | Semantics | Trap? |
@@ -111,7 +111,7 @@ Implement a bytecode VM that:
 | UCmpGT | `ucmp_gt` | a > b (unsigned) |
 | UCmpGE | `ucmp_ge` | a >= b (unsigned) |
 
-#### Float Comparisons (6 opcodes)
+#### Float Comparisons (8 opcodes)
 | Opcode | Mnemonic | Semantics |
 |--------|----------|-----------|
 | FCmpEQ | `fcmp_eq` | a == b |
@@ -120,6 +120,8 @@ Implement a bytecode VM that:
 | FCmpLE | `fcmp_le` | a <= b |
 | FCmpGT | `fcmp_gt` | a > b |
 | FCmpGE | `fcmp_ge` | a >= b |
+| FCmpOrd | `fcmp_ord` | ordered (both non-NaN) |
+| FCmpUno | `fcmp_uno` | unordered (either NaN) |
 
 #### Type Conversions (10 opcodes)
 | Opcode | Mnemonic | Semantics | Trap? |
@@ -145,13 +147,14 @@ Implement a bytecode VM that:
 | AddrOf | `addr_of` | &val | No |
 | GAddr | `gaddr` | &global | No |
 
-#### Constants (2 opcodes)
+#### Constants (3 opcodes)
 | Opcode | Mnemonic | Semantics |
 |--------|----------|-----------|
 | ConstStr | `const_str` | Load string literal |
 | ConstNull | `const_null` | Load null pointer |
+| ConstF64 | `const.f64` | Load float constant |
 
-#### Control Flow (5 opcodes)
+#### Control Flow (6 opcodes)
 | Opcode | Mnemonic | Semantics | Trap? |
 |--------|----------|-----------|-------|
 | Call | `call` | Call function | Yes |
@@ -161,7 +164,7 @@ Implement a bytecode VM that:
 | CBr | `cbr` | Conditional branch | Yes |
 | Ret | `ret` | Return from function | Yes |
 
-#### Exception Handling (12 opcodes)
+#### Exception Handling (14 opcodes)
 | Opcode | Mnemonic | Semantics | Trap? |
 |--------|----------|-----------|-------|
 | TrapKind | `trap.kind` | Get current trap kind | No |
@@ -1477,19 +1480,16 @@ See Section 4 for complete opcode specification.
 ```
 src/bytecode/
 ├── Bytecode.hpp              # Opcode enum and encoding
+├── Bytecode.cpp              # Opcode implementation
 ├── BytecodeModule.hpp        # Module data structures
-├── BytecodeModule.cpp
 ├── BytecodeCompiler.hpp      # IL → bytecode
-├── BytecodeCompiler.cpp
+├── BytecodeCompiler.cpp      # Compiler implementation
 ├── BytecodeVM.hpp            # VM state and API
-├── BytecodeVM.cpp            # Switch dispatch
-├── BytecodeVM_Threaded.cpp   # Computed goto dispatch
-├── RuntimeIntegration.cpp    # Native call bridge
-├── ExceptionHandling.cpp     # Trap and handler logic
-├── DebugSupport.cpp          # Debug infrastructure
-└── tests/
-    └── ...
+└── BytecodeVM.cpp            # Interpreter loop with all opcodes
 ```
+
+Note: The implementation is consolidated into fewer files than originally planned,
+with exception handling, threading, and runtime integration built directly into BytecodeVM.cpp.
 
 ## Appendix C: Migration Path
 

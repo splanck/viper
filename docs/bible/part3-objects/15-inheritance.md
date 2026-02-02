@@ -14,31 +14,31 @@ Imagine building a game with different enemies. You start with a goblin:
 
 ```rust
 entity Goblin {
-    x: f64;
-    y: f64;
-    health: i64;
-    name: string;
+    x: Number;
+    y: Number;
+    health: Integer;
+    name: String;
 
-    expose func init(x: f64, y: f64) {
+    expose func init(x: Number, y: Number) {
         self.x = x;
         self.y = y;
         self.health = 30;
         self.name = "Goblin";
     }
 
-    func move(dx: f64, dy: f64) {
+    func move(dx: Number, dy: Number) {
         self.x += dx;
         self.y += dy;
     }
 
-    func takeDamage(amount: i64) {
+    func takeDamage(amount: Integer) {
         self.health -= amount;
         if self.health <= 0 {
             Viper.Terminal.Say(self.name + " has been defeated!");
         }
     }
 
-    func attack() -> i64 {
+    func attack() -> Integer {
         return 5;
     }
 }
@@ -48,31 +48,31 @@ Great! Now you need an orc:
 
 ```rust
 entity Orc {
-    x: f64;
-    y: f64;
-    health: i64;
-    name: string;
+    x: Number;
+    y: Number;
+    health: Integer;
+    name: String;
 
-    expose func init(x: f64, y: f64) {
+    expose func init(x: Number, y: Number) {
         self.x = x;
         self.y = y;
         self.health = 50;
         self.name = "Orc";
     }
 
-    func move(dx: f64, dy: f64) {
+    func move(dx: Number, dy: Number) {
         self.x += dx;
         self.y += dy;
     }
 
-    func takeDamage(amount: i64) {
+    func takeDamage(amount: Integer) {
         self.health -= amount;
         if self.health <= 0 {
             Viper.Terminal.Say(self.name + " has been defeated!");
         }
     }
 
-    func attack() -> i64 {
+    func attack() -> Integer {
         return 10;
     }
 }
@@ -106,31 +106,31 @@ With inheritance, we extract the common parts into a *base entity*:
 
 ```rust
 entity Enemy {
-    x: f64;
-    y: f64;
-    health: i64;
-    name: string;
+    x: Number;
+    y: Number;
+    health: Integer;
+    name: String;
 
-    expose func init(x: f64, y: f64, health: i64, name: string) {
+    expose func init(x: Number, y: Number, health: Integer, name: String) {
         self.x = x;
         self.y = y;
         self.health = health;
         self.name = name;
     }
 
-    func move(dx: f64, dy: f64) {
+    func move(dx: Number, dy: Number) {
         self.x += dx;
         self.y += dy;
     }
 
-    func takeDamage(amount: i64) {
+    func takeDamage(amount: Integer) {
         self.health -= amount;
         if self.health <= 0 {
             Viper.Terminal.Say(self.name + " has been defeated!");
         }
     }
 
-    func attack() -> i64 {
+    func attack() -> Integer {
         return 1;  // Default damage
     }
 }
@@ -140,31 +140,31 @@ Now we can create specialized enemies that *extend* this base:
 
 ```rust
 entity Goblin extends Enemy {
-    expose func init(x: f64, y: f64) {
+    expose func init(x: Number, y: Number) {
         super(x, y, 30, "Goblin");
     }
 
-    func attack() -> i64 {
+    func attack() -> Integer {
         return 5;
     }
 }
 
 entity Orc extends Enemy {
-    expose func init(x: f64, y: f64) {
+    expose func init(x: Number, y: Number) {
         super(x, y, 50, "Orc");
     }
 
-    func attack() -> i64 {
+    func attack() -> Integer {
         return 10;
     }
 }
 
 entity Dragon extends Enemy {
-    expose func init(x: f64, y: f64) {
+    expose func init(x: Number, y: Number) {
         super(x, y, 200, "Dragon");
     }
 
-    func attack() -> i64 {
+    func attack() -> Integer {
         return 35;
     }
 
@@ -250,12 +250,12 @@ When you create a child entity, you typically need to initialize the parent's fi
 
 ```rust
 entity Enemy {
-    x: f64;
-    y: f64;
-    health: i64;
-    name: string;
+    x: Number;
+    y: Number;
+    health: Integer;
+    name: String;
 
-    expose func init(x: f64, y: f64, health: i64, name: string) {
+    expose func init(x: Number, y: Number, health: Integer, name: String) {
         self.x = x;
         self.y = y;
         self.health = health;
@@ -264,7 +264,7 @@ entity Enemy {
 }
 
 entity Goblin extends Enemy {
-    expose func init(x: f64, y: f64) {
+    expose func init(x: Number, y: Number) {
         super(x, y, 30, "Goblin");  // Call Enemy's initializer
     }
 }
@@ -288,9 +288,9 @@ entity Enemy {
 }
 
 entity Dragon extends Enemy {
-    fireBreaths: i64;
+    fireBreaths: Integer;
 
-    expose func init(x: f64, y: f64) {
+    expose func init(x: Number, y: Number) {
         super(x, y, 200, "Dragon");
         self.fireBreaths = 3;
     }
@@ -335,13 +335,13 @@ In Viper, when you define a method in a child entity with the same name as a par
 
 ```rust
 entity Enemy {
-    func attack() -> i64 {
+    func attack() -> Integer {
         return 1;
     }
 }
 
 entity Orc extends Enemy {
-    override func attack() -> i64 {
+    override func attack() -> Integer {
         return 10;
     }
 }
@@ -361,13 +361,13 @@ Without the `override` keyword, you might accidentally override a parent method:
 
 ```rust
 entity Vehicle {
-    func turn(degrees: f64) {
+    func turn(degrees: Number) {
         // Rotate the vehicle
     }
 }
 
 entity Car extends Vehicle {
-    func turn(degrees: f64) {
+    func turn(degrees: Number) {
         // Oops! We meant to add a new method for turn signals
         // But we accidentally overrode the steering!
     }
@@ -384,7 +384,7 @@ Inheritance can extend multiple levels, creating a *hierarchy* or *tree* of rela
 
 ```rust
 entity Animal {
-    name: string;
+    name: String;
 
     func breathe() {
         Viper.Terminal.Say(self.name + " is breathing");
@@ -396,7 +396,7 @@ entity Animal {
 }
 
 entity Mammal extends Animal {
-    furColor: string;
+    furColor: String;
 
     func nurse() {
         Viper.Terminal.Say(self.name + " is nursing its young");
@@ -404,9 +404,9 @@ entity Mammal extends Animal {
 }
 
 entity Dog extends Mammal {
-    breed: string;
+    breed: String;
 
-    expose func init(name: string, breed: string) {
+    expose func init(name: String, breed: String) {
         self.name = name;
         self.breed = breed;
         self.furColor = "brown";
@@ -475,19 +475,19 @@ Let's build a classic example that demonstrates inheritance well - geometric sha
 module Shapes;
 
 entity Shape {
-    x: f64;
-    y: f64;
+    x: Number;
+    y: Number;
 
-    expose func init(x: f64, y: f64) {
+    expose func init(x: Number, y: Number) {
         self.x = x;
         self.y = y;
     }
 
-    func area() -> f64 {
+    func area() -> Number {
         return 0.0;  // Base shapes have no area
     }
 
-    func perimeter() -> f64 {
+    func perimeter() -> Number {
         return 0.0;  // Base shapes have no perimeter
     }
 
@@ -495,27 +495,27 @@ entity Shape {
         Viper.Terminal.Say("Shape at (" + self.x + ", " + self.y + ")");
     }
 
-    func move(dx: f64, dy: f64) {
+    func move(dx: Number, dy: Number) {
         self.x += dx;
         self.y += dy;
     }
 }
 
 entity Rectangle extends Shape {
-    width: f64;
-    height: f64;
+    width: Number;
+    height: Number;
 
-    expose func init(x: f64, y: f64, width: f64, height: f64) {
+    expose func init(x: Number, y: Number, width: Number, height: Number) {
         super(x, y);
         self.width = width;
         self.height = height;
     }
 
-    override func area() -> f64 {
+    override func area() -> Number {
         return self.width * self.height;
     }
 
-    override func perimeter() -> f64 {
+    override func perimeter() -> Number {
         return 2.0 * (self.width + self.height);
     }
 
@@ -529,18 +529,18 @@ entity Rectangle extends Shape {
 }
 
 entity Circle extends Shape {
-    radius: f64;
+    radius: Number;
 
-    expose func init(x: f64, y: f64, radius: f64) {
+    expose func init(x: Number, y: Number, radius: Number) {
         super(x, y);
         self.radius = radius;
     }
 
-    override func area() -> f64 {
+    override func area() -> Number {
         return Viper.Math.PI * self.radius * self.radius;
     }
 
-    override func perimeter() -> f64 {
+    override func perimeter() -> Number {
         return 2.0 * Viper.Math.PI * self.radius;
     }
 
@@ -552,13 +552,13 @@ entity Circle extends Shape {
         Viper.Terminal.Say("  Circumference: " + self.perimeter());
     }
 
-    func diameter() -> f64 {
+    func diameter() -> Number {
         return self.radius * 2.0;
     }
 }
 
 entity Square extends Rectangle {
-    expose func init(x: f64, y: f64, size: f64) {
+    expose func init(x: Number, y: Number, size: Number) {
         super(x, y, size, size);
     }
 
@@ -617,7 +617,7 @@ In this pattern, the parent defines the *structure* of an algorithm, but lets ch
 
 ```rust
 entity Report {
-    title: string;
+    title: String;
 
     func generate() {
         self.printHeader();
@@ -642,10 +642,10 @@ entity Report {
 }
 
 entity SalesReport extends Report {
-    totalSales: f64;
-    itemsSold: i64;
+    totalSales: Number;
+    itemsSold: Integer;
 
-    expose func init(sales: f64, items: i64) {
+    expose func init(sales: Number, items: Integer) {
         self.title = "Sales Report";
         self.totalSales = sales;
         self.itemsSold = items;
@@ -659,10 +659,10 @@ entity SalesReport extends Report {
 }
 
 entity InventoryReport extends Report {
-    items: i64;
-    lowStock: i64;
+    items: Integer;
+    lowStock: Integer;
 
-    expose func init(items: i64, lowStock: i64) {
+    expose func init(items: Integer, lowStock: Integer) {
         self.title = "Inventory Report";
         self.items = items;
         self.lowStock = lowStock;
@@ -686,14 +686,14 @@ This pattern creates progressively more specific versions of a concept:
 
 ```rust
 entity Account {
-    balance: f64;
-    accountNumber: string;
+    balance: Number;
+    accountNumber: String;
 
-    func deposit(amount: f64) {
+    func deposit(amount: Number) {
         self.balance += amount;
     }
 
-    func withdraw(amount: f64) -> bool {
+    func withdraw(amount: Number) -> Boolean {
         if amount <= self.balance {
             self.balance -= amount;
             return true;
@@ -703,9 +703,9 @@ entity Account {
 }
 
 entity SavingsAccount extends Account {
-    interestRate: f64;
+    interestRate: Number;
 
-    expose func init(accountNumber: string, initialDeposit: f64, rate: f64) {
+    expose func init(accountNumber: String, initialDeposit: Number, rate: Number) {
         self.accountNumber = accountNumber;
         self.balance = initialDeposit;
         self.interestRate = rate;
@@ -717,7 +717,7 @@ entity SavingsAccount extends Account {
         Viper.Terminal.Say("Added $" + interest + " in interest");
     }
 
-    override func withdraw(amount: f64) -> bool {
+    override func withdraw(amount: Number) -> Boolean {
         // Savings accounts might have minimum balance requirements
         if self.balance - amount < 100.0 {
             Viper.Terminal.Say("Cannot withdraw: would go below $100 minimum");
@@ -728,15 +728,15 @@ entity SavingsAccount extends Account {
 }
 
 entity CheckingAccount extends Account {
-    overdraftLimit: f64;
+    overdraftLimit: Number;
 
-    expose func init(accountNumber: string, initialDeposit: f64, limit: f64) {
+    expose func init(accountNumber: String, initialDeposit: Number, limit: Number) {
         self.accountNumber = accountNumber;
         self.balance = initialDeposit;
         self.overdraftLimit = limit;
     }
 
-    override func withdraw(amount: f64) -> bool {
+    override func withdraw(amount: Number) -> Boolean {
         // Checking accounts can overdraft up to a limit
         if amount <= self.balance + self.overdraftLimit {
             self.balance -= amount;
@@ -799,8 +799,8 @@ Even when "is-a" seems to apply, composition might still be better. Here are sig
 // If Rectangle only needs the position from Shape, not area/perimeter methods:
 entity Rectangle {
     position: Point;  // Composition
-    width: f64;
-    height: f64;
+    width: Number;
+    height: Number;
 }
 ```
 
@@ -858,7 +858,7 @@ entity Window extends Rectangle { }
 // Better: A Window has a rectangular frame
 entity Window {
     frame: Rectangle;
-    title: string;
+    title: String;
     content: View;
 }
 ```
@@ -903,7 +903,7 @@ entity Stack {
         return self.items[self.items.length - 1];
     }
 
-    func isEmpty() -> bool {
+    func isEmpty() -> Boolean {
         return self.items.length == 0;
     }
 }
@@ -1038,7 +1038,7 @@ Different Viper language styles express inheritance differently:
 **Zia**
 ```rust
 entity Animal {
-    name: string;
+    name: String;
 
     func speak() {
         Viper.Terminal.Say("...");
@@ -1046,7 +1046,7 @@ entity Animal {
 }
 
 entity Dog extends Animal {
-    expose func init(name: string) {
+    expose func init(name: String) {
         self.name = name;
     }
 

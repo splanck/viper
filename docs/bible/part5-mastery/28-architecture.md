@@ -134,7 +134,7 @@ Consider this problematic code:
 ```rust
 // Bad: Everything mixed together
 entity UserManager {
-    func registerUser(email: string, password: string) {
+    func registerUser(email: String, password: String) {
         // Validate email format
         if !email.contains("@") || !email.contains(".") {
             showError("Invalid email");
@@ -182,7 +182,7 @@ Now consider the separated version:
 ```rust
 // Good: Separate concerns
 entity EmailValidator {
-    func validate(email: string) -> ValidationResult {
+    func validate(email: String) -> ValidationResult {
         if !email.contains("@") {
             return ValidationResult.invalid("Missing @ symbol");
         }
@@ -194,7 +194,7 @@ entity EmailValidator {
 }
 
 entity PasswordValidator {
-    func validate(password: string) -> ValidationResult {
+    func validate(password: String) -> ValidationResult {
         if password.length < 8 {
             return ValidationResult.invalid("Must be at least 8 characters");
         }
@@ -203,7 +203,7 @@ entity PasswordValidator {
 }
 
 entity PasswordHasher {
-    func hash(password: string) -> string {
+    func hash(password: String) -> String {
         return Crypto.sha256(password);
     }
 }
@@ -230,7 +230,7 @@ entity WelcomeEmailSender {
         self.smtp = smtp;
     }
 
-    func send(email: string) {
+    func send(email: String) {
         self.smtp.send(
             to: email,
             subject: "Welcome!",
@@ -246,7 +246,7 @@ entity RegistrationService {
     hide repository: UserRepository;
     hide welcomeEmail: WelcomeEmailSender;
 
-    func register(email: string, password: string) -> RegistrationResult {
+    func register(email: String, password: String) -> RegistrationResult {
         // Validate
         var emailResult = self.emailValidator.validate(email);
         if !emailResult.isValid {
@@ -317,7 +317,7 @@ entity ReportCalculator {
 }
 
 entity HtmlReportFormatter {
-    func format(results: ReportResults) -> string { ... }
+    func format(results: ReportResults) -> String { ... }
 }
 
 entity PdfReportFormatter {
@@ -325,11 +325,11 @@ entity PdfReportFormatter {
 }
 
 entity ReportEmailer {
-    func send(report: string, recipients: [string]) { ... }
+    func send(report: String, recipients: [String]) { ... }
 }
 
 entity ReportFileSaver {
-    func save(report: string, path: string) { ... }
+    func save(report: String, path: String) { ... }
 }
 ```
 
@@ -368,15 +368,15 @@ The `OrderProcessor` is welded to MySQL, Stripe, and SendGrid. Testing requires 
 // Good: Depend on abstractions
 interface IOrderRepository {
     func save(order: Order);
-    func findById(id: string) -> Order?;
+    func findById(id: String) -> Order?;
 }
 
 interface IPaymentGateway {
-    func charge(amount: f64, customerId: string) -> PaymentResult;
+    func charge(amount: Number, customerId: String) -> PaymentResult;
 }
 
 interface IEmailService {
-    func send(to: string, subject: string, body: string);
+    func send(to: String, subject: String, body: String);
 }
 
 entity OrderProcessor {
@@ -429,12 +429,12 @@ Clients should not be forced to depend on methods they do not use. Prefer small,
 ```rust
 // Bad: Bloated interface
 interface IEmployee {
-    func getName() -> string;
-    func getSalary() -> f64;
-    func getOfficeLocation() -> string;
+    func getName() -> String;
+    func getSalary() -> Number;
+    func getOfficeLocation() -> String;
     func getRemoteWorkSchedule() -> Schedule;
     func getEquipmentAssigned() -> [Equipment];
-    func getParkingSpot() -> string;
+    func getParkingSpot() -> String;
     func getHealthBenefits() -> Benefits;
     func getStockOptions() -> [StockGrant];
 }
@@ -445,18 +445,18 @@ A payroll system only needs `getName()` and `getSalary()`. But it must accept an
 ```rust
 // Good: Segregated interfaces
 interface IIdentifiable {
-    func getName() -> string;
-    func getId() -> string;
+    func getName() -> String;
+    func getId() -> String;
 }
 
 interface ICompensated {
-    func getSalary() -> f64;
-    func getBonus() -> f64;
+    func getSalary() -> Number;
+    func getBonus() -> Number;
 }
 
 interface ILocatable {
-    func getOfficeLocation() -> string;
-    func getParkingSpot() -> string;
+    func getOfficeLocation() -> String;
+    func getParkingSpot() -> String;
 }
 
 interface IBenefited {
@@ -466,7 +466,7 @@ interface IBenefited {
 
 // Payroll only needs what it uses
 entity PayrollCalculator {
-    func calculatePay(employee: IIdentifiable & ICompensated) -> f64 {
+    func calculatePay(employee: IIdentifiable & ICompensated) -> Number {
         return employee.getSalary() + employee.getBonus();
     }
 }
@@ -586,21 +586,21 @@ MVC separates user interface applications into three components:
 // Model: Business logic and data
 entity TodoList {
     hide items: [TodoItem];
-    hide nextId: i64;
+    hide nextId: Integer;
 
     expose func init() {
         self.items = [];
         self.nextId = 1;
     }
 
-    func addItem(text: string) -> TodoItem {
+    func addItem(text: String) -> TodoItem {
         var item = TodoItem(id: self.nextId, text: text, done: false);
         self.nextId = self.nextId + 1;
         self.items.push(item);
         return item;
     }
 
-    func toggleItem(id: i64) {
+    func toggleItem(id: Integer) {
         for item in self.items {
             if item.id == id {
                 item.done = !item.done;
@@ -609,7 +609,7 @@ entity TodoList {
         }
     }
 
-    func removeItem(id: i64) {
+    func removeItem(id: Integer) {
         self.items = self.items.filter(item => item.id != id);
     }
 
@@ -617,7 +617,7 @@ entity TodoList {
         return self.items.clone();
     }
 
-    func getActiveCount() -> i64 {
+    func getActiveCount() -> Integer {
         return self.items.filter(item => !item.done).length;
     }
 }
@@ -628,7 +628,7 @@ entity TodoView {
     hide inputElement: HTMLInputElement;
     hide countElement: HTMLElement;
 
-    func render(items: [TodoItem], activeCount: i64) {
+    func render(items: [TodoItem], activeCount: Integer) {
         self.listElement.clear();
 
         for item in items {
@@ -644,7 +644,7 @@ entity TodoView {
         self.countElement.setText(activeCount.toString() + " items left");
     }
 
-    func bindAddItem(handler: func(string)) {
+    func bindAddItem(handler: func(String)) {
         self.inputElement.onEnter(func() {
             var text = self.inputElement.getValue();
             if text.length > 0 {
@@ -654,14 +654,14 @@ entity TodoView {
         });
     }
 
-    func bindToggleItem(handler: func(i64)) {
+    func bindToggleItem(handler: func(Integer)) {
         self.listElement.onClick(func(event: Event) {
             var id = event.target.getAttribute("data-id").toInt();
             handler(id);
         });
     }
 
-    func bindDeleteItem(handler: func(i64)) {
+    func bindDeleteItem(handler: func(Integer)) {
         // Similar binding for delete buttons
     }
 }
@@ -684,17 +684,17 @@ entity TodoController {
         self.updateView();
     }
 
-    func handleAdd(text: string) {
+    func handleAdd(text: String) {
         self.model.addItem(text);
         self.updateView();
     }
 
-    func handleToggle(id: i64) {
+    func handleToggle(id: Integer) {
         self.model.toggleItem(id);
         self.updateView();
     }
 
-    func handleDelete(id: i64) {
+    func handleDelete(id: Integer) {
         self.model.removeItem(id);
         self.updateView();
     }
@@ -750,11 +750,11 @@ The repository pattern abstracts data access behind a collection-like interface:
 
 ```rust
 interface IProductRepository {
-    func findById(id: string) -> Product?;
-    func findByCategory(category: string) -> [Product];
+    func findById(id: String) -> Product?;
+    func findByCategory(category: String) -> [Product];
     func findAll() -> [Product];
     func save(product: Product);
-    func delete(id: string);
+    func delete(id: String);
 }
 ```
 
@@ -769,7 +769,7 @@ entity SqlProductRepository implements IProductRepository {
         self.db = db;
     }
 
-    func findById(id: string) -> Product? {
+    func findById(id: String) -> Product? {
         var row = self.db.queryOne(
             "SELECT * FROM products WHERE id = ?",
             [id]
@@ -780,7 +780,7 @@ entity SqlProductRepository implements IProductRepository {
         return self.mapRowToProduct(row);
     }
 
-    func findByCategory(category: string) -> [Product] {
+    func findByCategory(category: String) -> [Product] {
         var rows = self.db.query(
             "SELECT * FROM products WHERE category = ?",
             [category]
@@ -802,7 +802,7 @@ entity SqlProductRepository implements IProductRepository {
         }
     }
 
-    func delete(id: string) {
+    func delete(id: String) {
         self.db.execute("DELETE FROM products WHERE id = ?", [id]);
     }
 
@@ -823,11 +823,11 @@ entity InMemoryProductRepository implements IProductRepository {
         self.products = Map();
     }
 
-    func findById(id: string) -> Product? {
+    func findById(id: String) -> Product? {
         return self.products.get(id);
     }
 
-    func findByCategory(category: string) -> [Product] {
+    func findByCategory(category: String) -> [Product] {
         return self.products.values()
             .filter(p => p.category == category);
     }
@@ -840,7 +840,7 @@ entity InMemoryProductRepository implements IProductRepository {
         self.products.set(product.id, product);
     }
 
-    func delete(id: string) {
+    func delete(id: String) {
         self.products.remove(id);
     }
 }
@@ -881,7 +881,7 @@ entity OrderService {
         self.inventoryService = inventoryService;
     }
 
-    func placeOrder(customerId: string, items: [OrderItem]) -> OrderResult {
+    func placeOrder(customerId: String, items: [OrderItem]) -> OrderResult {
         // Load customer
         var customer = self.customerRepo.findById(customerId);
         if customer == null {
@@ -937,7 +937,7 @@ entity OrderService {
         return OrderResult.success(order);
     }
 
-    hide func buildConfirmationEmail(order: Order) -> string {
+    hide func buildConfirmationEmail(order: Order) -> String {
         // Build email body
     }
 }
@@ -968,7 +968,7 @@ entity OracleProvider implements IDatabaseProvider { ... }
 entity MongoProvider implements IDatabaseProvider { ... }
 
 entity DatabaseFactory {
-    func create(type: string) -> IDatabaseProvider {
+    func create(type: String) -> IDatabaseProvider {
         // Complex factory logic
     }
 }
@@ -977,7 +977,7 @@ entity DatabaseFactory {
 entity Database {
     hide connection: PostgresConnection;
 
-    expose func init(connectionString: string) {
+    expose func init(connectionString: String) {
         self.connection = PostgresConnection(connectionString);
     }
 }
@@ -1005,17 +1005,17 @@ Abstraction has costs: more code, more indirection, harder to trace execution. W
 ```rust
 // Unnecessary abstraction
 interface ICalculator {
-    func add(a: i64, b: i64) -> i64;
+    func add(a: Integer, b: Integer) -> Integer;
 }
 
 entity Calculator implements ICalculator {
-    func add(a: i64, b: i64) -> i64 {
+    func add(a: Integer, b: Integer) -> Integer {
         return a + b;
     }
 }
 
 // Just write the function
-func add(a: i64, b: i64) -> i64 {
+func add(a: Integer, b: Integer) -> Integer {
     return a + b;
 }
 ```
@@ -1025,8 +1025,8 @@ The interface adds nothing. `add` is not going to have multiple implementations.
 ```rust
 // Worthwhile abstraction
 interface IPaymentProcessor {
-    func charge(amount: f64, customerId: string) -> PaymentResult;
-    func refund(transactionId: string) -> RefundResult;
+    func charge(amount: Number, customerId: String) -> PaymentResult;
+    func refund(transactionId: String) -> RefundResult;
 }
 
 // Real implementation calls Stripe API
@@ -1065,7 +1065,7 @@ func processShipment(shipment: Shipment) {
 }
 
 // Now you have enough examples to abstract well
-func withLogging<T>(name: string, id: string, operation: func() -> T) -> T {
+func withLogging<T>(name: String, id: String, operation: func() -> T) -> T {
     log("Processing " + name + " " + id);
     var result = operation();
     log(name + " processed " + id);
@@ -1156,14 +1156,14 @@ entity EventBus {
         self.subscribers = Map();
     }
 
-    func subscribe(eventType: string, handler: func(Event)) {
+    func subscribe(eventType: String, handler: func(Event)) {
         if !self.subscribers.has(eventType) {
             self.subscribers.set(eventType, []);
         }
         self.subscribers.get(eventType).push(handler);
     }
 
-    func unsubscribe(eventType: string, handler: func(Event)) {
+    func unsubscribe(eventType: String, handler: func(Event)) {
         if self.subscribers.has(eventType) {
             var handlers = self.subscribers.get(eventType);
             self.subscribers.set(
@@ -1185,10 +1185,10 @@ entity EventBus {
 
 // Events are simple data
 value OrderPlacedEvent {
-    type: string = "order_placed";
-    orderId: string;
-    customerId: string;
-    total: f64;
+    type: String = "order_placed";
+    orderId: String;
+    customerId: String;
+    total: Number;
 }
 
 // Order service publishes
@@ -1258,11 +1258,11 @@ entity Container {
         self.singletons = Map();
     }
 
-    func register<T>(name: string, factory: func() -> T) {
+    func register<T>(name: String, factory: func() -> T) {
         self.registrations.set(name, factory);
     }
 
-    func registerSingleton<T>(name: string, factory: func() -> T) {
+    func registerSingleton<T>(name: String, factory: func() -> T) {
         self.registrations.set(name, func() -> T {
             if !self.singletons.has(name) {
                 self.singletons.set(name, factory());
@@ -1271,7 +1271,7 @@ entity Container {
         });
     }
 
-    func resolve<T>(name: string) -> T {
+    func resolve<T>(name: String) -> T {
         var factory = self.registrations.get(name);
         if factory == null {
             throw Error("No registration for: " + name);
@@ -1433,17 +1433,17 @@ First, create domain objects to represent our concepts:
 ```rust
 // domain/Book.zia
 value Book {
-    isbn: string;
-    title: string;
-    author: string;
-    available: bool;
+    isbn: String;
+    title: String;
+    author: String;
+    available: Boolean;
 }
 
 // domain/Loan.zia
 value Loan {
-    id: i64;
-    isbn: string;
-    borrowerName: string;
+    id: Integer;
+    isbn: String;
+    borrowerName: String;
     borrowDate: DateTime;
 }
 ```
@@ -1463,7 +1463,7 @@ entity BookRepository {
         self.db = db;
     }
 
-    func findByIsbn(isbn: string) -> Book? {
+    func findByIsbn(isbn: String) -> Book? {
         var row = self.db.queryOne(
             "SELECT * FROM books WHERE isbn = ?",
             [isbn]
@@ -1513,7 +1513,7 @@ entity LoanRepository {
         self.db = db;
     }
 
-    func findActiveByIsbn(isbn: string) -> Loan? {
+    func findActiveByIsbn(isbn: String) -> Loan? {
         var row = self.db.queryOne(
             "SELECT * FROM loans WHERE isbn = ? ORDER BY date DESC LIMIT 1",
             [isbn]
@@ -1536,7 +1536,7 @@ entity LoanRepository {
         );
     }
 
-    func delete(id: i64) {
+    func delete(id: Integer) {
         self.db.execute("DELETE FROM loans WHERE id = ?", [id]);
     }
 }
@@ -1557,7 +1557,7 @@ entity LibraryService {
         self.loanRepo = loanRepo;
     }
 
-    func addBook(title: string, author: string, isbn: string) -> Result<Book, string> {
+    func addBook(title: String, author: String, isbn: String) -> Result<Book, String> {
         // Validation
         if title.trim().length == 0 {
             return Result.error("Title is required");
@@ -1585,7 +1585,7 @@ entity LibraryService {
         return Result.success(book);
     }
 
-    func borrowBook(isbn: string, borrowerName: string) -> Result<Loan, string> {
+    func borrowBook(isbn: String, borrowerName: String) -> Result<Loan, String> {
         // Validation
         if borrowerName.trim().length == 0 {
             return Result.error("Borrower name is required");
@@ -1621,7 +1621,7 @@ entity LibraryService {
         return Result.success(loan);
     }
 
-    func returnBook(isbn: string) -> Result<bool, string> {
+    func returnBook(isbn: String) -> Result<Boolean, String> {
         // Find active loan
         var loan = self.loanRepo.findActiveByIsbn(isbn);
         if loan == null {
@@ -1759,16 +1759,16 @@ Finally, extract interfaces so we can test without a database:
 ```rust
 // domain/IBookRepository.zia
 interface IBookRepository {
-    func findByIsbn(isbn: string) -> Book?;
+    func findByIsbn(isbn: String) -> Book?;
     func findAll() -> [Book];
     func save(book: Book);
 }
 
 // domain/ILoanRepository.zia
 interface ILoanRepository {
-    func findActiveByIsbn(isbn: string) -> Loan?;
+    func findActiveByIsbn(isbn: String) -> Loan?;
     func save(loan: Loan);
-    func delete(id: i64);
+    func delete(id: Integer);
 }
 
 // Update LibraryService to use interfaces
@@ -1795,7 +1795,7 @@ entity InMemoryBookRepository implements IBookRepository {
         self.books = Map();
     }
 
-    func findByIsbn(isbn: string) -> Book? {
+    func findByIsbn(isbn: String) -> Book? {
         return self.books.get(isbn);
     }
 
@@ -1947,7 +1947,7 @@ Flexibility nobody needs:
 ```rust
 // Supports 5 authentication methods, company uses 1
 entity AuthenticationStrategyFactory {
-    func create(type: string) -> IAuthenticationStrategy {
+    func create(type: String) -> IAuthenticationStrategy {
         if type == "oauth" { return OAuthStrategy(); }
         if type == "saml" { return SamlStrategy(); }
         if type == "ldap" { return LdapStrategy(); }
@@ -2061,13 +2061,13 @@ When code becomes hard to change, add structure:
 ```rust
 // Growing: Extract services
 entity UserService {
-    func create(data: UserData) -> User { }
-    func find(id: string) -> User? { }
+    func create(data: UserData) -> User { ... }
+    func find(id: String) -> User? { ... }
 }
 
 entity OrderService {
-    func create(data: OrderData) -> Order { }
-    func find(id: string) -> Order? { }
+    func create(data: OrderData) -> Order { ... }
+    func find(id: String) -> Order? { ... }
 }
 
 entity App {
@@ -2125,7 +2125,7 @@ Architecture concepts are language-independent. Here is how they appear in Viper
 module Application;
 
 interface IRepository<T> {
-    func findById(id: string) -> T?;
+    func findById(id: String) -> T?;
     func save(item: T);
 }
 
@@ -2136,7 +2136,7 @@ entity UserService {
         self.repo = repo;
     }
 
-    func createUser(name: string) -> User {
+    func createUser(name: String) -> User {
         var user = User(name);
         self.repo.save(user);
         return user;
@@ -2239,7 +2239,7 @@ Architecture is not about following rules. It is about making thoughtful decisio
 **Exercise 28.1 (Warm-up)**: Take this monolithic function and identify separate concerns:
 
 ```rust
-func processPayment(userId: string, amount: f64) {
+func processPayment(userId: String, amount: Number) {
     // Load user from database
     var db = Database.connect("localhost:5432");
     var user = db.query("SELECT * FROM users WHERE id = ?", [userId]);

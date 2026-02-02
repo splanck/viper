@@ -515,7 +515,7 @@ DIM H3 AS mylib.helper
 **Explore Examples:**
 
 - Browse `examples/basic/` for more sample programs
-- Check `tests/golden/basic/` for test cases
+- Check `src/tests/golden/basic/` for test cases
 
 **Advanced Topics:**
 

@@ -230,10 +230,10 @@ DIM no AS BOOLEAN = FALSE
 
 **Zia equivalent:**
 ```rust
-var count: i64 = 42;      // Explicit type
-var price: f64 = 19.99;   // 64-bit float
-var name: string = "Bob"; // String
-var active: bool = true;  // Boolean
+var count: Integer = 42;      // Explicit type
+var price: Number = 19.99;    // 64-bit float
+var name: String = "Bob";     // String
+var active: Boolean = true;   // Boolean
 ```
 
 ---
@@ -853,15 +853,15 @@ END FUNCTION
 
 **Zia equivalent:**
 ```rust
-func greet(name: string) {
+func greet(name: String) {
     Viper.Terminal.Say("Hello, " + name);
 }
 
-func add(a: i64, b: i64) -> i64 {
+func add(a: Integer, b: Integer) -> Integer {
     return a + b;
 }
 
-func greet(name: string, greeting: string = "Hello") { ... }
+func greet(name: String, greeting: String = "Hello") { ... }
 ```
 
 ---
@@ -1612,10 +1612,10 @@ END TYPE
 **Zia equivalent:**
 ```rust
 value Point {
-    x: f64;
-    y: f64;
+    x: Number;
+    y: Number;
 
-    func distance(other: Point) -> f64 {
+    func distance(other: Point) -> Number {
         var dx = self.x - other.x;
         var dy = self.y - other.y;
         return Viper.Math.sqrt(dx*dx + dy*dy);
@@ -1818,7 +1818,7 @@ NEXT animal
 **Zia equivalent:**
 ```rust
 entity Counter {
-    hide count: i64;
+    hide count: Integer;
 
     expose func init() {
         self.count = 0;
@@ -2424,7 +2424,7 @@ END MODULE
 ```rust
 module MathUtils;
 
-export func add(a: i64, b: i64) -> i64 {
+export func add(a: Integer, b: Integer) -> Integer {
     return a + b;
 }
 

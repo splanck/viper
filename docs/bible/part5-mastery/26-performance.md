@@ -157,7 +157,7 @@ Let's make timing reusable:
 ```rust
 bind Viper.Time;
 
-func timed<T>(name: string, work: func() -> T) -> T {
+func timed<T>(name: String, work: func() -> T) -> T {
     var start = Time.nanos();
     var result = work();
     var elapsed = (Time.nanos() - start) / 1_000_000.0;
@@ -269,7 +269,7 @@ Big O describes how the work required grows as input size grows. It answers: "If
 Consider searching for a name in a list:
 
 ```rust
-func findPerson(people: [string], name: string) -> i64 {
+func findPerson(people: [String], name: String) -> Integer {
     for i in 0..people.length {
         if people[i] == name {
             return i;
@@ -319,7 +319,7 @@ The differences are dramatic at large scales:
 The work doesn't depend on input size. Array indexing is O(1):
 
 ```rust
-func getFirst(items: [i64]) -> i64 {
+func getFirst(items: [Integer]) -> Integer {
     return items[0];  // Same speed whether array has 10 or 10 million items
 }
 ```
@@ -329,7 +329,7 @@ func getFirst(items: [i64]) -> i64 {
 Each step eliminates half the remaining work. Binary search is O(log n):
 
 ```rust
-func binarySearch(sorted: [i64], target: i64) -> i64 {
+func binarySearch(sorted: [Integer], target: Integer) -> Integer {
     var low = 0;
     var high = sorted.length - 1;
 
@@ -353,7 +353,7 @@ func binarySearch(sorted: [i64], target: i64) -> i64 {
 Examine each item once. Summing an array is O(n):
 
 ```rust
-func sum(items: [i64]) -> i64 {
+func sum(items: [Integer]) -> Integer {
     var total = 0;
     for item in items {
         total += item;
@@ -427,7 +427,7 @@ Let's see Big O in action with a real problem: checking if a list has any duplic
 ### Approach 1: Check Every Pair (O(n²))
 
 ```rust
-func hasDuplicates_slow(items: [i64]) -> bool {
+func hasDuplicates_slow(items: [Integer]) -> Boolean {
     for i in 0..items.length {
         for j in (i+1)..items.length {
             if items[i] == items[j] {
@@ -447,7 +447,7 @@ With 1,000,000 items: ~500,000,000,000 comparisons (could take minutes)
 ### Approach 2: Sort First (O(n log n))
 
 ```rust
-func hasDuplicates_medium(items: [i64]) -> bool {
+func hasDuplicates_medium(items: [Integer]) -> Boolean {
     var sorted = items.sorted();  // O(n log n)
 
     for i in 0..(sorted.length - 1) {  // O(n)
@@ -467,8 +467,8 @@ With 1,000,000 items: ~20,000,000 comparisons (milliseconds)
 ### Approach 3: Use a Set (O(n))
 
 ```rust
-func hasDuplicates_fast(items: [i64]) -> bool {
-    var seen = Set<i64>.create();
+func hasDuplicates_fast(items: [Integer]) -> Boolean {
+    var seen = Set<Integer>.create();
 
     for item in items {
         if seen.contains(item) {  // O(1) average
@@ -575,7 +575,7 @@ Using the wrong data structure can turn O(1) operations into O(n):
 ```rust
 var users: [User] = [];
 
-func findUser(id: i64) -> User? {
+func findUser(id: Integer) -> User? {
     for user in users {          // O(n) - checks every user
         if user.id == id {
             return user;
@@ -587,9 +587,9 @@ func findUser(id: i64) -> User? {
 
 **Fast: Using a Map**
 ```rust
-var users: Map<i64, User> = Map.new();
+var users: Map<Integer, User> = Map.new();
 
-func findUser(id: i64) -> User? {
+func findUser(id: Integer) -> User? {
     return users.get(id);        // O(1) - direct lookup
 }
 ```
@@ -598,7 +598,7 @@ Similarly for membership testing:
 
 **Slow:**
 ```rust
-var seen: [string] = [];
+var seen: [String] = [];
 if !contains(seen, item) {       // O(n) each time
     seen.push(item);
 }
@@ -606,7 +606,7 @@ if !contains(seen, item) {       // O(n) each time
 
 **Fast:**
 ```rust
-var seen: Set<string> = Set.new();
+var seen: Set<String> = Set.new();
 if !seen.contains(item) {        // O(1) each time
     seen.add(item);
 }
@@ -683,20 +683,20 @@ For functions called repeatedly with the same arguments, remember results:
 
 ```rust
 entity FibonacciCalculator {
-    hide cache: Map<i64, i64>;
+    hide cache: Map<Integer, Integer>;
 
     expose func init() {
         self.cache = Map.new();
     }
 
-    expose func calculate(n: i64) -> i64 {
+    expose func calculate(n: Integer) -> Integer {
         // Check cache first
         if self.cache.has(n) {
             return self.cache.get(n);
         }
 
         // Compute if not cached
-        var result: i64;
+        var result: Integer;
         if n <= 1 {
             result = n;
         } else {
@@ -732,7 +732,7 @@ In tight loops, allocations add up:
 ```rust
 func processFrames() {
     while running {
-        var buffer = [i64](1000);  // Allocating every frame!
+        var buffer = [Integer](1000);  // Allocating every frame!
         fillBuffer(buffer);
         process(buffer);
     }
@@ -743,7 +743,7 @@ func processFrames() {
 **Fast:**
 ```rust
 func processFrames() {
-    var buffer = [i64](1000);  // Allocate once
+    var buffer = [Integer](1000);  // Allocate once
     while running {
         clearBuffer(buffer);
         fillBuffer(buffer);
@@ -758,7 +758,7 @@ Copying large data structures is expensive:
 
 **Slow:**
 ```rust
-func processData(data: [i64]) -> [i64] {
+func processData(data: [Integer]) -> [Integer] {
     var result = data.clone();  // Copies entire array!
     for i in 0..result.length {
         result[i] *= 2;
@@ -771,7 +771,7 @@ If the caller doesn't need the original, modify in place:
 
 **Fast:**
 ```rust
-func processData(data: [i64]) {
+func processData(data: [Integer]) {
     for i in 0..data.length {
         data[i] *= 2;
     }
@@ -786,9 +786,9 @@ Sometimes you can trade memory for speed, or vice versa.
 **Trade Memory for Speed (Caching):**
 ```rust
 entity ImageProcessor {
-    hide thumbnailCache: Map<string, Image>;
+    hide thumbnailCache: Map<String, Image>;
 
-    expose func getThumbnail(path: string) -> Image {
+    expose func getThumbnail(path: String) -> Image {
         if self.thumbnailCache.has(path) {
             return self.thumbnailCache.get(path);  // Fast: from cache
         }
@@ -803,11 +803,11 @@ entity ImageProcessor {
 **Trade Speed for Memory (Lazy Loading):**
 ```rust
 entity Document {
-    hide path: string;
-    hide contentLoaded: bool;
-    hide content: string;
+    hide path: String;
+    hide contentLoaded: Boolean;
+    hide content: String;
 
-    expose func getContent() -> string {
+    expose func getContent() -> String {
         if !self.contentLoaded {
             self.content = File.readAll(self.path);  // Load only when needed
             self.contentLoaded = true;
@@ -821,7 +821,7 @@ entity Document {
 **Trade Speed for Memory (Streaming):**
 ```rust
 // Memory-heavy: Load everything
-func processFile_memory(path: string) {
+func processFile_memory(path: String) {
     var lines = File.readAllLines(path);  // Entire file in memory!
     for line in lines {
         process(line);
@@ -829,7 +829,7 @@ func processFile_memory(path: string) {
 }
 
 // Memory-light: Stream
-func processFile_streaming(path: string) {
+func processFile_streaming(path: String) {
     var reader = BufferedReader(File.open(path, "r"));
     while !reader.eof() {
         var line = reader.readLine();  // One line at a time
@@ -928,8 +928,8 @@ Let's walk through optimizing a real program step by step: counting word frequen
 ### Step 1: The Naive Implementation
 
 ```rust
-func countWords_v1(text: string) -> Map<string, i64> {
-    var counts: Map<string, i64> = Map.new();
+func countWords_v1(text: String) -> Map<String, Integer> {
+    var counts: Map<String, Integer> = Map.new();
 
     // Split by spaces
     var words = text.split(" ");
@@ -973,8 +973,8 @@ countWords_v1: 2340 ms
 **Version 2: Eliminate intermediate array from split**
 
 ```rust
-func countWords_v2(text: string) -> Map<string, i64> {
-    var counts: Map<string, i64> = Map.new();
+func countWords_v2(text: String) -> Map<String, Integer> {
+    var counts: Map<String, Integer> = Map.new();
     var wordStart = -1;
 
     for i in 0..text.length {
@@ -1010,8 +1010,8 @@ Result: **1650 ms** (30% faster). No more giant array allocation.
 **Version 3: Build words without intermediate strings**
 
 ```rust
-func countWords_v3(text: string) -> Map<string, i64> {
-    var counts: Map<string, i64> = Map.new();
+func countWords_v3(text: String) -> Map<String, Integer> {
+    var counts: Map<String, Integer> = Map.new();
     var builder = StringBuilder.create();
 
     for i in 0..text.length {
@@ -1103,7 +1103,7 @@ Always let measurements guide you.
 
 ```rust
 // "Optimized" code that's actually broken
-func fastSum(items: [i64]) -> i64 {
+func fastSum(items: [Integer]) -> Integer {
     // Skip null check for speed
     var total = items[0];  // Crashes if empty!
     for i in 1..items.length {
@@ -1175,7 +1175,7 @@ When comparing approaches, benchmark carefully. Computers are tricky; many thing
 ```rust
 bind Viper.Time;
 
-func benchmark(name: string, iterations: i64, work: func()) {
+func benchmark(name: String, iterations: Integer, work: func()) {
     // Warm up: let JIT/caches stabilize
     for i in 0..100 {
         work();
@@ -1296,12 +1296,12 @@ Make a targeted change and measure:
 ```rust
 // Before (hypothesis: this Set creation is expensive)
 for item in items {
-    var matches = Set<i64>.create();  // Creating every iteration?
+    var matches = Set<Integer>.create();  // Creating every iteration?
     ...
 }
 
 // After (test: reuse the Set)
-var matches = Set<i64>.create();  // Create once
+var matches = Set<Integer>.create();  // Create once
 for item in items {
     matches.clear();
     ...
@@ -1343,7 +1343,7 @@ When debugging performance, look for these usual suspects:
 ```rust
 bind Viper.Time;
 
-func benchmark(name: string, work: func()) {
+func benchmark(name: String, work: func()) {
     var start = Time.millis();
     for i in 0..1000 {
         work();
@@ -1424,7 +1424,7 @@ Remember:
 
 ```rust
 // Function A
-func mystery1(n: i64) -> i64 {
+func mystery1(n: Integer) -> Integer {
     var sum = 0;
     for i in 0..n {
         for j in 0..n {
@@ -1435,7 +1435,7 @@ func mystery1(n: i64) -> i64 {
 }
 
 // Function B
-func mystery2(n: i64) -> i64 {
+func mystery2(n: Integer) -> Integer {
     var sum = 0;
     for i in 0..n {
         sum += i;
@@ -1444,7 +1444,7 @@ func mystery2(n: i64) -> i64 {
 }
 
 // Function C
-func mystery3(n: i64) -> i64 {
+func mystery3(n: Integer) -> Integer {
     if n <= 1 {
         return 1;
     }
@@ -1455,8 +1455,8 @@ func mystery3(n: i64) -> i64 {
 **Exercise 26.4 (Data Structure)**: Rewrite this slow code to use appropriate data structures:
 
 ```rust
-func findCommon(list1: [i64], list2: [i64]) -> [i64] {
-    var common: [i64] = [];
+func findCommon(list1: [Integer], list2: [Integer]) -> [Integer] {
+    var common: [Integer] = [];
     for item in list1 {
         for other in list2 {
             if item == other && !contains(common, item) {
@@ -1473,7 +1473,7 @@ Benchmark both versions with lists of 10,000 items.
 **Exercise 26.5 (Memory)**: This code creates too many objects. Rewrite it to minimize allocations:
 
 ```rust
-func generateReport(records: [Record]) -> string {
+func generateReport(records: [Record]) -> String {
     var output = "";
     for record in records {
         output += "ID: " + record.id + "\n";
@@ -1488,8 +1488,8 @@ func generateReport(records: [Record]) -> string {
 **Exercise 26.6 (I/O)**: Convert this sequential code to parallel:
 
 ```rust
-func fetchAllData(urls: [string]) -> [string] {
-    var results: [string] = [];
+func fetchAllData(urls: [String]) -> [String] {
+    var results: [String] = [];
     for url in urls {
         var data = Http.get(url);
         results.push(data);
@@ -1503,7 +1503,7 @@ Measure the speedup with 10 URLs that each take ~100ms to fetch.
 **Exercise 26.7 (Caching)**: Implement a memoized version of this function:
 
 ```rust
-func expensiveComputation(x: i64, y: i64) -> i64 {
+func expensiveComputation(x: Integer, y: Integer) -> Integer {
     // Simulate expensive work
     Thread.sleep(100);
     return x * y + x + y;
@@ -1515,7 +1515,7 @@ Your solution should return instantly for repeated calls with the same arguments
 **Exercise 26.8 (Complete Optimization)**: Profile this word-counting function, identify all performance issues, and fix them. Document each change and its impact:
 
 ```rust
-func countWordFrequencies(filePath: string) -> Map<string, i64> {
+func countWordFrequencies(filePath: String) -> Map<String, Integer> {
     var file = File.open(filePath, "r");
     var text = "";
     while !file.eof() {
@@ -1523,7 +1523,7 @@ func countWordFrequencies(filePath: string) -> Map<string, i64> {
     }
     file.close();
 
-    var counts: Map<string, i64> = Map.new();
+    var counts: Map<String, Integer> = Map.new();
     var words = text.split(" ");
 
     for word in words {

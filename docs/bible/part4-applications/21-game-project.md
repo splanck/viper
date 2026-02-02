@@ -62,10 +62,10 @@ In Zia, we represent entities using values and sometimes entity types. Think of 
 
 ```rust
 value Frog {
-    x: f64;           // Position across the screen
-    y: f64;           // Position up and down
-    alive: bool;      // Is the frog currently alive?
-    moveCooldown: f64; // Time until next move is allowed
+    x: Number;           // Position across the screen
+    y: Number;           // Position up and down
+    alive: Boolean;      // Is the frog currently alive?
+    moveCooldown: Number; // Time until next move is allowed
 }
 ```
 
@@ -230,22 +230,22 @@ bind Config;
 // The Frog value represents everything we need to know about the player
 expose value Frog {
     // Pixel coordinates for smooth movement and drawing
-    x: f64;
-    y: f64;
+    x: Number;
+    y: Number;
 
     // Grid coordinates for collision zones and logical position
-    gridX: i64;
-    gridY: i64;
+    gridX: Integer;
+    gridY: Integer;
 
     // If the frog is on a log or turtle, it moves with that platform
     // null means the frog is not riding anything
     ridingPlatform: ?Platform;
 
     // Is the frog currently alive?
-    alive: bool;
+    alive: Boolean;
 
     // Time until the frog can move again (prevents too-fast hopping)
-    moveCooldown: f64;
+    moveCooldown: Number;
 }
 ```
 
@@ -277,7 +277,7 @@ The `spawn` function creates a frog at the starting position. Notice that `creat
 
 ```rust
 // Update the frog each frame
-expose func update(frog: Frog, dt: f64) -> Frog {
+expose func update(frog: Frog, dt: Number) -> Frog {
     var f = frog;
 
     // Decrease the movement cooldown
@@ -307,12 +307,12 @@ But what if the log carries the frog off the screen? That is why we check the bo
 
 ```rust
 // Check if the frog can move (cooldown expired)
-expose func canMove(frog: Frog) -> bool {
+expose func canMove(frog: Frog) -> Boolean {
     return frog.moveCooldown <= 0;
 }
 
 // Attempt to move the frog in a direction
-expose func move(frog: Frog, dx: i64, dy: i64) -> Frog {
+expose func move(frog: Frog, dx: Integer, dy: Integer) -> Frog {
     var f = frog;
 
     var newX = f.gridX + dx;
@@ -366,14 +366,14 @@ module Vehicle;
 bind Config;
 
 expose value Vehicle {
-    x: f64;             // Horizontal position (pixels)
-    y: f64;             // Vertical position (pixels)
-    width: f64;         // How wide the vehicle is
-    speed: f64;         // Pixels per second (negative = left, positive = right)
+    x: Number;             // Horizontal position (pixels)
+    y: Number;             // Vertical position (pixels)
+    width: Number;         // How wide the vehicle is
+    speed: Number;         // Pixels per second (negative = left, positive = right)
     color: Color;       // Color for drawing
 }
 
-expose func create(row: i64, speed: f64, width: f64, color: Color) -> Vehicle {
+expose func create(row: Integer, speed: Number, width: Number, color: Color) -> Vehicle {
     // Start position depends on direction
     // Vehicles moving right start off the left edge
     // Vehicles moving left start off the right edge
@@ -395,7 +395,7 @@ expose func create(row: i64, speed: f64, width: f64, color: Color) -> Vehicle {
 The starting position logic is clever: if a vehicle moves right (positive speed), it starts just off the left edge so it appears to drive onto the screen. If it moves left (negative speed), it starts at the right edge.
 
 ```rust
-expose func update(vehicle: Vehicle, dt: f64) -> Vehicle {
+expose func update(vehicle: Vehicle, dt: Number) -> Vehicle {
     var v = vehicle;
     v.x += v.speed * dt;
 
@@ -425,7 +425,7 @@ expose func getBounds(vehicle: Vehicle) -> Rect {
     };
 }
 
-expose func hitsPoint(v: Vehicle, px: f64, py: f64) -> bool {
+expose func hitsPoint(v: Vehicle, px: Number, py: Number) -> Boolean {
     var bounds = getBounds(v);
     return px >= bounds.x && px < bounds.x + bounds.width &&
            py >= bounds.y && py < bounds.y + bounds.height;
@@ -447,14 +447,14 @@ module Platform;
 bind Config;
 
 expose value Platform {
-    x: f64;
-    y: f64;
-    width: f64;
-    speed: f64;
+    x: Number;
+    y: Number;
+    width: Number;
+    speed: Number;
     color: Color;
 }
 
-expose func create(row: i64, speed: f64, width: f64, color: Color) -> Platform {
+expose func create(row: Integer, speed: Number, width: Number, color: Color) -> Platform {
     var startX = 0.0;
     if speed < 0 {
         startX = Config.SCREEN_WIDTH;
@@ -469,7 +469,7 @@ expose func create(row: i64, speed: f64, width: f64, color: Color) -> Platform {
     };
 }
 
-expose func update(platform: Platform, dt: f64) -> Platform {
+expose func update(platform: Platform, dt: Number) -> Platform {
     var p = platform;
     p.x += p.speed * dt;
 
@@ -484,7 +484,7 @@ expose func update(platform: Platform, dt: f64) -> Platform {
     return p;
 }
 
-expose func containsPoint(p: Platform, px: f64, py: f64) -> bool {
+expose func containsPoint(p: Platform, px: Number, py: Number) -> Boolean {
     return px >= p.x && px < p.x + p.width &&
            py >= p.y && py < p.y + Config.TILE_SIZE;
 }
@@ -511,12 +511,12 @@ expose value GameState {
     frog: Frog.Frog;                    // The player
     vehicles: [Vehicle.Vehicle];        // All cars and trucks
     platforms: [Platform.Platform];     // All logs and turtles
-    homesOccupied: [bool];              // Which home slots are filled
-    score: i64;                         // Current score
-    lives: i64;                         // Remaining lives
-    level: i64;                         // Current level (affects speed)
-    gameOver: bool;                     // Is the game over?
-    won: bool;                          // Did the player win? (for future use)
+    homesOccupied: [Boolean];              // Which home slots are filled
+    score: Integer;                         // Current score
+    lives: Integer;                         // Remaining lives
+    level: Integer;                         // Current level (affects speed)
+    gameOver: Boolean;                     // Is the game over?
+    won: Boolean;                          // Did the player win? (for future use)
 }
 ```
 
@@ -621,7 +621,7 @@ The `speedMod` multiplier creates progressive difficulty. Level 1 runs at 1.0x s
 The heart of game logic happens in update:
 
 ```rust
-expose func update(state: GameState, dt: f64) -> GameState {
+expose func update(state: GameState, dt: Number) -> GameState {
     var s = state;
 
     // Nothing happens if the game is over
@@ -763,7 +763,7 @@ func checkHome(state: GameState) -> GameState {
     return s;
 }
 
-func getHomeIndex(gridX: i64) -> i64 {
+func getHomeIndex(gridX: Integer) -> Integer {
     // Five home slots spread across the top row
     var positions = [2, 6, 10, 14, 18];
     for i in 0..5 {
@@ -783,7 +783,7 @@ The home slots are not the entire top row. There are barriers between them. Land
 The game module also handles the interface between input and frog movement:
 
 ```rust
-expose func moveFrog(state: GameState, dx: i64, dy: i64) -> GameState {
+expose func moveFrog(state: GameState, dx: Integer, dy: Integer) -> GameState {
     var s = state;
 
     if Frog.canMove(s.frog) {
@@ -1303,7 +1303,7 @@ canvas.drawImage(sprite, frog.x - 20, frog.y);
 Save the highest score to a file so players can compete with themselves:
 
 ```rust
-func loadHighScore() -> i64 {
+func loadHighScore() -> Integer {
     var file = File.open("highscore.txt", "r");
     if file == null {
         return 0;
@@ -1313,7 +1313,7 @@ func loadHighScore() -> i64 {
     return score;
 }
 
-func saveHighScore(score: i64) {
+func saveHighScore(score: Integer) {
     var file = File.open("highscore.txt", "w");
     file.writeLine(score.toString());
     file.close();
@@ -1333,7 +1333,7 @@ Add urgency with a countdown timer:
 ```rust
 value GameState {
     // ... existing fields ...
-    timeRemaining: f64;
+    timeRemaining: Number;
 }
 
 // In create:
@@ -1358,9 +1358,9 @@ In the original Frogger, turtles periodically submerge, creating temporary dange
 ```rust
 value Platform {
     // ... existing fields ...
-    isTurtle: bool;
-    submergeTimer: f64;
-    submerged: bool;
+    isTurtle: Boolean;
+    submergeTimer: Number;
+    submerged: Boolean;
 }
 
 // In update:
@@ -1393,8 +1393,8 @@ Add a second frog controlled by WASD, competing for score:
 value GameState {
     frog1: Frog;  // Arrow keys
     frog2: Frog;  // WASD keys
-    score1: i64;
-    score2: i64;
+    score1: Integer;
+    score2: Integer;
     // ...
 }
 ```
@@ -1407,10 +1407,10 @@ Add collectible items that appear occasionally:
 
 ```rust
 value PowerUp {
-    x: f64;
-    y: f64;
+    x: Number;
+    y: Number;
     kind: PowerUpKind;  // EXTRA_LIFE, SLOW_MOTION, INVINCIBILITY
-    timer: f64;         // How long until it disappears
+    timer: Number;         // How long until it disappears
 }
 
 // Spawn power-ups occasionally

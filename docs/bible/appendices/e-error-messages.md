@@ -167,7 +167,7 @@ Error: SyntaxError at main.zia:EOF
 
 ```rust
 // Problem: Missing closing brace
-func calculate(x: i64) -> i64 {
+func calculate(x: Integer) -> Integer {
     if x > 0 {
         return x * 2;
     // Missing } for the if
@@ -175,7 +175,7 @@ func calculate(x: i64) -> i64 {
 }  // This closes the function, but if is still open
 
 // Solution: Add the missing brace
-func calculate(x: i64) -> i64 {
+func calculate(x: Integer) -> Integer {
     if x > 0 {
         return x * 2;
     }  // Close the if
@@ -354,12 +354,12 @@ var count: i64 = 42;
 var count: string = "hello";
 
 // Solution 3: Convert the value (if appropriate)
-var count: i64 = Viper.Parse.Int("42");
+var count: i64 = Viper.Convert.ToInt("42");
 ```
 
 ```rust
 // Problem: Wrong parameter type
-func greet(name: string) {
+func greet(name: String) {
     Viper.Terminal.Say("Hello, " + name);
 }
 
@@ -479,8 +479,8 @@ var b = "3";
 var sum = a + b;  // Results in "53", not 8!
 
 // Solution: Convert to numbers first
-var a = Viper.Parse.Int("5");
-var b = Viper.Parse.Int("3");
+var a = Viper.Convert.ToInt("5");
+var b = Viper.Convert.ToInt("3");
 var sum = a + b;  // 8
 ```
 
@@ -506,17 +506,17 @@ Error: TypeError at main.zia:15:12
 
 ```rust
 // Problem: Parsing non-number
-var num = Viper.Parse.Int("hello");  // Error: "hello" is not a number
+var num = Viper.Convert.ToInt("hello");  // Error: "hello" is not a number
 
 // Solution 1: Validate before parsing
 var input = "hello";
 if input.isNumeric() {
-    var num = Viper.Parse.Int(input);
+    var num = Viper.Convert.ToInt(input);
 }
 
 // Solution 2: Use try-catch
 try {
-    var num = Viper.Parse.Int(input);
+    var num = Viper.Convert.ToInt(input);
 } catch e: ParseError {
     Viper.Terminal.Say("Please enter a valid number");
 }
@@ -524,12 +524,12 @@ try {
 
 ```rust
 // Problem: Trailing characters
-var num = Viper.Parse.Int("42abc");  // Error or unexpected result
+var num = Viper.Convert.ToInt("42abc");  // Error or unexpected result
 
 // Solution: Clean input first
 var input = "42abc";
 var cleaned = input.trim().replaceAll("[^0-9]", "");
-var num = Viper.Parse.Int(cleaned);
+var num = Viper.Convert.ToInt(cleaned);
 ```
 
 **Prevention:** Always validate user input before parsing. Use try-catch when conversion might fail.
@@ -723,29 +723,29 @@ Error: NameError at main.zia:30:6
 
 ```rust
 // Problem: Same function defined twice
-func calculate(x: i64) -> i64 {
+func calculate(x: Integer) -> Integer {
     return x * 2;
 }
 
-func calculate(x: i64) -> i64 {  // Error: duplicate
+func calculate(x: Integer) -> Integer {  // Error: duplicate
     return x * 3;
 }
 
 // Solution 1: Rename one
-func calculateDouble(x: i64) -> i64 {
+func calculateDouble(x: Integer) -> Integer {
     return x * 2;
 }
 
-func calculateTriple(x: i64) -> i64 {
+func calculateTriple(x: Integer) -> Integer {
     return x * 3;
 }
 
 // Solution 2: Use overloading (different parameters)
-func calculate(x: i64) -> i64 {
+func calculate(x: Integer) -> Integer {
     return x * 2;
 }
 
-func calculate(x: i64, y: i64) -> i64 {
+func calculate(x: Integer, y: Integer) -> Integer {
     return x + y;
 }
 ```
@@ -840,7 +840,7 @@ Error: ArgumentError at main.zia:10:5
 
 ```rust
 // The function definition
-func add(a: i64, b: i64) -> i64 {
+func add(a: Integer, b: Integer) -> Integer {
     return a + b;
 }
 
@@ -901,7 +901,7 @@ func getValue() -> i64 {
 
 ```rust
 // Problem: Return only in some branches
-func getStatus(code: i64) -> string {
+func getStatus(code: Integer) -> String {
     if code == 0 {
         return "OK";
     } else if code == 1 {
@@ -911,7 +911,7 @@ func getStatus(code: i64) -> string {
 }
 
 // Solution: Ensure all paths return
-func getStatus(code: i64) -> string {
+func getStatus(code: Integer) -> String {
     if code == 0 {
         return "OK";
     } else if code == 1 {
@@ -938,19 +938,19 @@ Error: TypeError at main.zia:8:5
 
 ```rust
 // Problem: Returning from void function
-func printMessage(msg: string) {
+func printMessage(msg: String) {
     Viper.Terminal.Say(msg);
     return msg;  // Error: function doesn't return anything
 }
 
 // Solution 1: Remove the return value
-func printMessage(msg: string) {
+func printMessage(msg: String) {
     Viper.Terminal.Say(msg);
     return;  // OK: return without value
 }
 
 // Solution 2: Add return type if needed
-func printMessage(msg: string) -> string {
+func printMessage(msg: String) -> String {
     Viper.Terminal.Say(msg);
     return msg;  // OK: function returns string
 }
@@ -970,7 +970,7 @@ Error: TypeError at main.zia:15:12
 **Fix examples:**
 
 ```rust
-func greet(name: string) {
+func greet(name: String) {
     Viper.Terminal.Say("Hello, " + name);
 }
 
@@ -1099,7 +1099,7 @@ entity Dog extends Animal {
 
 // Problem: Different parameters
 entity Dog extends Animal {
-    func speak(loudly: bool) -> string {  // Error: parent has no params
+    func speak(loudly: Boolean) -> String {  // Error: parent has no params
         return "Woof!";
     }
 }
@@ -1130,7 +1130,7 @@ entity Player {
     name: string;
     health: i64;
 
-    expose func init(name: string, health: i64) {
+    expose func init(name: String, health: Integer) {
         self.name = name;
         self.health = health;
     }
@@ -1288,7 +1288,7 @@ if count != 0 {
 
 ```rust
 // Solution: Provide default for zero divisor
-func safeDivide(a: i64, b: i64, default: i64) -> i64 {
+func safeDivide(a: Integer, b: Integer, default: Integer) -> Integer {
     if b == 0 {
         return default;
     }
@@ -1398,13 +1398,13 @@ Error: StackOverflowError at main.zia:15:5
 
 ```rust
 // Problem: Infinite recursion (no base case)
-func countdown(n: i64) {
+func countdown(n: Integer) {
     Viper.Terminal.Say(n);
     countdown(n - 1);  // Never stops!
 }
 
 // Solution: Add base case
-func countdown(n: i64) {
+func countdown(n: Integer) {
     if n < 0 {
         return;  // Base case: stop recursion
     }
@@ -1415,12 +1415,12 @@ func countdown(n: i64) {
 
 ```rust
 // Problem: Base case never reached
-func factorial(n: i64) -> i64 {
+func factorial(n: Integer) -> Integer {
     return n * factorial(n - 1);  // n keeps decreasing forever!
 }
 
 // Solution: Proper base case
-func factorial(n: i64) -> i64 {
+func factorial(n: Integer) -> Integer {
     if n <= 1 {
         return 1;  // Base case
     }
@@ -1430,13 +1430,13 @@ func factorial(n: i64) -> i64 {
 
 ```rust
 // Problem: Recursion too deep even with base case
-func processDeep(depth: i64) {
+func processDeep(depth: Integer) {
     if depth == 0 { return; }
     processDeep(depth - 1);  // With depth = 1000000, stack overflow
 }
 
 // Solution: Convert to iteration
-func processDeep(depth: i64) {
+func processDeep(depth: Integer) {
     for i in 0..depth {
         // Process iteration
     }
@@ -1902,7 +1902,7 @@ When you encounter an error:
 ### Validate Early
 
 ```rust
-func processOrder(quantity: i64, price: f64) {
+func processOrder(quantity: Integer, price: Number) {
     // Validate at the start
     if quantity <= 0 {
         throw Error("Quantity must be positive");

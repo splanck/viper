@@ -43,7 +43,7 @@ Viper's standard library is organized into modules under the `Viper` namespace. 
 | `Viper.File` | File operations | Reading/writing data |
 | `Viper.Dir` | Directory operations | Navigating the filesystem |
 | `Viper.Path` | Path manipulation | Building file paths safely |
-| `Viper.Parse` | String-to-number conversion | Processing user input |
+| `Viper.Convert` | String-to-number conversion | Processing user input |
 | `Viper.Fmt` | String formatting | Creating output messages |
 | `Viper.Math` | Mathematical functions | Calculations, geometry |
 | `Viper.Random` | Random number generation | Games, simulations, testing |
@@ -109,7 +109,7 @@ func showMenu() -> i64 {
     Viper.Terminal.Print("Choose (1-4): ");
 
     var choice = Viper.Terminal.ReadLine().trim();
-    return Viper.Parse.Int(choice);
+    return Viper.Convert.ToInt(choice);
 }
 ```
 
@@ -169,7 +169,7 @@ Viper.Math.E;                // 2.71828182845904...
 
 ```rust
 // Distance between two points
-func distance(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
+func distance(x1: Number, y1: Number, x2: Number, y2: Number) -> Number {
     var dx = x2 - x1;
     var dy = y2 - y1;
     return Viper.Math.sqrt(dx * dx + dy * dy);
@@ -180,7 +180,7 @@ func distance(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
 
 ```rust
 // Compound interest
-func compoundInterest(principal: f64, rate: f64, years: i64) -> f64 {
+func compoundInterest(principal: Number, rate: Number, years: Integer) -> Number {
     return principal * Viper.Math.pow(1.0 + rate, years.toFloat());
 }
 ```
@@ -275,7 +275,7 @@ if roll <= 50 {
 
 **Password generator:**
 ```rust
-func generatePassword(length: i64) -> string {
+func generatePassword(length: Integer) -> String {
     var chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%";
     var password = "";
 
@@ -561,7 +561,7 @@ Viper.Text.words("hello world");      // ["hello", "world"]
 ### Practical Example: Validating User Input
 
 ```rust
-func isValidUsername(username: string) -> bool {
+func isValidUsername(username: String) -> Boolean {
     // Must be 3-20 characters
     if username.length < 3 || username.length > 20 {
         return false;
@@ -663,7 +663,7 @@ tags.remove("urgent");
 ### Practical Example: Word Frequency Counter
 
 ```rust
-func countWords(text: string) -> Map {
+func countWords(text: String) -> Map {
     var frequency = Viper.Collections.Map.new();
     var words = text.lower().split(" ");
 
@@ -674,7 +674,7 @@ func countWords(text: string) -> Map {
         }
 
         if frequency.has(word) {
-            var count = Viper.Parse.Int(frequency.get(word));
+            var count = Viper.Convert.ToInt(frequency.get(word));
             frequency.set(word, (count + 1).toString());
         } else {
             frequency.set(word, "1");
@@ -708,10 +708,10 @@ Converting strings to other types is so common it gets its own module.
 ### Basic Parsing
 
 ```rust
-Viper.Parse.Int("42");             // 42
-Viper.Parse.Float("3.14");         // 3.14
-Viper.Parse.Bool("true");          // true
-Viper.Parse.Bool("false");         // false
+Viper.Convert.ToInt("42");             // 42
+Viper.Convert.ToDouble("3.14");         // 3.14
+Viper.Convert.ToBool("true");          // true
+Viper.Convert.ToBool("false");         // false
 ```
 
 ### Error Handling
@@ -720,7 +720,7 @@ Parsing can fail. Handle it gracefully:
 
 ```rust
 try {
-    var num = Viper.Parse.Int("not a number");
+    var num = Viper.Convert.ToInt("not a number");
 } catch e {
     Viper.Terminal.Say("Invalid input - please enter a number");
 }
@@ -729,13 +729,13 @@ try {
 ### Practical Example: Robust Input Function
 
 ```rust
-func getNumber(prompt: string) -> i64 {
+func getNumber(prompt: String) -> Integer {
     while true {
         Viper.Terminal.Print(prompt);
         var input = Viper.Terminal.ReadLine().trim();
 
         try {
-            return Viper.Parse.Int(input);
+            return Viper.Convert.ToInt(input);
         } catch e {
             Viper.Terminal.Say("Please enter a valid number.");
         }
@@ -886,13 +886,13 @@ var id = Viper.Crypto.guid();
 **Never store passwords in plain text.** Hash them:
 
 ```rust
-func hashPassword(password: string, salt: string) -> string {
+func hashPassword(password: String, salt: String) -> String {
     // Combine password with salt to prevent rainbow table attacks
     var salted = password + salt;
     return Viper.Crypto.sha256(salted);
 }
 
-func checkPassword(input: string, salt: string, storedHash: string) -> bool {
+func checkPassword(input: String, salt: String, storedHash: String) -> Boolean {
     var inputHash = hashPassword(input, salt);
     return inputHash == storedHash;
 }
@@ -997,7 +997,7 @@ A naive approach:
 
 ```rust
 // DON'T DO THIS - slow and possibly inaccurate
-func naiveSqrt(n: f64) -> f64 {
+func naiveSqrt(n: Number) -> Number {
     var guess = n / 2.0;
     for i in 0..100 {
         guess = (guess + n / guess) / 2.0;
@@ -1012,7 +1012,7 @@ The standard library implementation is faster, handles edge cases (0, negative n
 
 ```rust
 // DON'T DO THIS - buggy and incomplete
-func formatDate(year: i64, month: i64, day: i64) -> string {
+func formatDate(year: Integer, month: Integer, day: Integer) -> String {
     var monthNames = ["Jan", "Feb", "Mar", ...];  // All 12 months
     return monthNames[month - 1] + " " + day + ", " + year;
 }
@@ -1024,7 +1024,7 @@ What about time zones? Localization? 12-hour vs 24-hour time? The standard libra
 
 ```rust
 // DON'T DO THIS - SHA256 is complex
-func sha256(input: string) -> string {
+func sha256(input: String) -> String {
     // This is literally hundreds of lines of careful bit manipulation
     // with specific constants and transformations.
     // One mistake = security vulnerability.
@@ -1139,11 +1139,11 @@ Some standard library patterns appear constantly. Learn these by heart.
 ### Pattern: Safe User Input
 
 ```rust
-func getInt(prompt: string) -> i64 {
+func getInt(prompt: String) -> Integer {
     while true {
         Viper.Terminal.Print(prompt);
         try {
-            return Viper.Parse.Int(Viper.Terminal.ReadLine().trim());
+            return Viper.Convert.ToInt(Viper.Terminal.ReadLine().trim());
         } catch e {
             Viper.Terminal.Say("Invalid input. Please enter a number.");
         }
@@ -1154,7 +1154,7 @@ func getInt(prompt: string) -> i64 {
 ### Pattern: Read Config with Default
 
 ```rust
-func getConfig(key: string, defaultValue: string) -> string {
+func getConfig(key: String, defaultValue: String) -> String {
     var envValue = Viper.Environment.get(key);
     if envValue != null && envValue.length > 0 {
         return envValue;
@@ -1166,7 +1166,7 @@ func getConfig(key: string, defaultValue: string) -> string {
 ### Pattern: Safe File Read
 
 ```rust
-func readFileSafe(path: string) -> string {
+func readFileSafe(path: String) -> String {
     if !Viper.File.exists(path) {
         return "";
     }
@@ -1183,7 +1183,7 @@ func readFileSafe(path: string) -> string {
 ### Pattern: Measure Performance
 
 ```rust
-func timed(name: string, operation: func()) {
+func timed(name: String, operation: func()) {
     var start = Viper.Time.millis();
     operation();
     var elapsed = Viper.Time.millis() - start;

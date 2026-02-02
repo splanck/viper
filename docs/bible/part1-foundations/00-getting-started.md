@@ -394,7 +394,7 @@ Right now, Viper is built, but your terminal doesn't know where to find it. We n
 
 While still in the viper directory, run:
 ```bash
-export PATH="$PATH:$(pwd)/build/bin"
+export PATH="$PATH:$(pwd)/build/src/tools/zia:$(pwd)/build/src/tools/vbasic:$(pwd)/build/src/tools/vpascal:$(pwd)/build/src/tools/viper"
 ```
 
 This adds Viper to your PATH for the current terminal session. If you close the terminal and open a new one, you'll need to run this command again.
@@ -405,12 +405,12 @@ To make this permanent, you need to add the export command to your shell's confi
 
 **On macOS (using zsh, the default on newer Macs):**
 ```bash
-echo 'export PATH="$PATH:$HOME/dev/viper/build/bin"' >> ~/.zshrc
+echo 'export PATH="$PATH:$HOME/dev/viper/build/src/tools/zia:$HOME/dev/viper/build/src/tools/vbasic:$HOME/dev/viper/build/src/tools/vpascal:$HOME/dev/viper/build/src/tools/viper"' >> ~/.zshrc
 ```
 
 **On macOS (using bash, on older Macs) or Linux:**
 ```bash
-echo 'export PATH="$PATH:$HOME/dev/viper/build/bin"' >> ~/.bashrc
+echo 'export PATH="$PATH:$HOME/dev/viper/build/src/tools/zia:$HOME/dev/viper/build/src/tools/vbasic:$HOME/dev/viper/build/src/tools/vpascal:$HOME/dev/viper/build/src/tools/viper"' >> ~/.bashrc
 ```
 
 Then reload your configuration:
@@ -449,7 +449,7 @@ The PATH isn't set correctly. Let's debug:
 
 1. First, check if the zia executable exists:
    ```bash
-   ls ~/dev/viper/build/bin/zia
+   ls ~/dev/viper/build/src/tools/zia/zia
    ```
 
    If this says "No such file or directory", the build didn't complete successfully. Go back to the building step.
@@ -459,11 +459,11 @@ The PATH isn't set correctly. Let's debug:
    echo $PATH
    ```
 
-   Look for `/Users/yourname/dev/viper/build/bin` (or similar) in the output. If it's not there, the PATH configuration didn't work.
+   Look for `/Users/yourname/dev/viper/build/src/tools/zia` (or similar) in the output. If it's not there, the PATH configuration didn't work.
 
 3. As a workaround, you can always run Viper with the full path:
    ```bash
-   ~/dev/viper/build/bin/zia --version
+   ~/dev/viper/build/src/tools/zia/zia --version
    ```
 
 ### Test 2: Create and Run a Test Program
@@ -534,14 +534,14 @@ Here are solutions to problems that commonly trip up beginners:
 
 2. **Did you set up your PATH?** Run the export command again:
    ```bash
-   export PATH="$PATH:$HOME/dev/viper/build/bin"
+   export PATH="$PATH:$HOME/dev/viper/build/src/tools/zia"
    ```
 
 3. **Are you in a new terminal window?** The PATH changes only affect the terminal session where you made them, unless you added them to your configuration file. If you're in a new terminal, either run the export command again or make sure you completed the "permanent method" steps.
 
 4. **Use the full path:** If all else fails, you can always use the full path:
    ```bash
-   ~/dev/viper/build/bin/zia yourprogram.zia
+   ~/dev/viper/build/src/tools/zia/zia yourprogram.zia
    ```
 
 ### "No such file or directory" (for your code file)
@@ -572,7 +572,7 @@ Here are solutions to problems that commonly trip up beginners:
 
 1. **On macOS/Linux**, if the zia executable doesn't have execute permission:
    ```bash
-   chmod +x ~/dev/viper/build/bin/zia
+   chmod +x ~/dev/viper/build/src/tools/zia/zia
    ```
 
 2. **On macOS**, if you see a security warning about an unidentified developer, go to System Preferences > Security & Privacy and click "Allow Anyway".

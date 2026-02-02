@@ -52,23 +52,23 @@ When you buy something, the cashier says "How would you like to pay?" You might 
 
 ```rust
 interface PaymentMethod {
-    func pay(amount: f64) -> bool;
+    func pay(amount: Number) -> Boolean;
 }
 
 entity CashPayment implements PaymentMethod {
-    func pay(amount: f64) -> bool {
+    func pay(amount: Number) -> Boolean {
         // Count bills, make change
     }
 }
 
 entity CreditCard implements PaymentMethod {
-    func pay(amount: f64) -> bool {
+    func pay(amount: Number) -> Boolean {
         // Contact bank, authorize transaction
     }
 }
 
 entity MobilePayment implements PaymentMethod {
-    func pay(amount: f64) -> bool {
+    func pay(amount: Number) -> Boolean {
         // Communicate with phone, verify fingerprint
     }
 }
@@ -99,7 +99,7 @@ Without polymorphism, your code becomes a cascade of type checks:
 
 ```rust
 // Without polymorphism - this gets ugly fast
-func processEntity(entity: Any, type: string) {
+func processEntity(entity: Any, type: String) {
     if type == "player" {
         entity.movePlayer();
         entity.drawPlayer();
@@ -151,7 +151,7 @@ Want to test your payment processing without actually charging credit cards? Wit
 
 ```rust
 entity MockPayment implements PaymentMethod {
-    func pay(amount: f64) -> bool {
+    func pay(amount: Number) -> Boolean {
         Viper.Terminal.Say("[Test] Would charge: " + amount);
         return true;  // Always succeeds for testing
     }
@@ -245,25 +245,25 @@ The other form of polymorphism happens at compile time: *method overloading*.
 
 ```rust
 entity Printer {
-    func print(text: string) {
+    func print(text: String) {
         Viper.Terminal.Say(text);
     }
 
-    func print(number: i64) {
+    func print(number: Integer) {
         Viper.Terminal.Say(number.toString());
     }
 
-    func print(number: f64) {
+    func print(number: Number) {
         Viper.Terminal.Say(number.toString());
     }
 
-    func print(items: [string]) {
+    func print(items: [String]) {
         for item in items {
             Viper.Terminal.Say(item);
         }
     }
 
-    func print(item: string, times: i64) {
+    func print(item: String, times: Integer) {
         for i in 0..times {
             Viper.Terminal.Say(item);
         }
@@ -275,11 +275,11 @@ Same method name, different parameter types. The compiler chooses the right vers
 
 ```rust
 var p = Printer();
-p.print("hello");           // Calls print(text: string)
-p.print(42);                // Calls print(number: i64)
-p.print(3.14);              // Calls print(number: f64)
-p.print(["a", "b", "c"]);   // Calls print(items: [string])
-p.print("hi", 3);           // Calls print(item: string, times: i64)
+p.print("hello");           // Calls print(text: String)
+p.print(42);                // Calls print(number: Integer)
+p.print(3.14);              // Calls print(number: Number)
+p.print(["a", "b", "c"]);   // Calls print(items: [String])
+p.print("hi", 3);           // Calls print(item: String, times: Integer)
 ```
 
 This is *static polymorphism* or *early binding* — the decision is made at compile time based on the types of arguments you provide.
@@ -296,8 +296,8 @@ func first<T>(items: [T]) -> T {
 var numbers = [1, 2, 3];
 var names = ["Alice", "Bob"];
 
-var firstNum = first(numbers);   // Returns i64
-var firstName = first(names);    // Returns string
+var firstNum = first(numbers);   // Returns Integer
+var firstName = first(names);    // Returns String
 ```
 
 The function works with *any* type — the type becomes a parameter. We'll cover generics fully in a later chapter.
@@ -314,35 +314,35 @@ Consider a game with many different kinds of entities:
 
 ```rust
 interface Updatable {
-    func update(deltaTime: f64);
+    func update(deltaTime: Number);
 }
 
 entity Player implements Updatable {
-    func update(deltaTime: f64) {
+    func update(deltaTime: Number) {
         // Read input, move character, check interactions
     }
 }
 
 entity Enemy implements Updatable {
-    func update(deltaTime: f64) {
+    func update(deltaTime: Number) {
         // Run AI, chase player, attack if in range
     }
 }
 
 entity Projectile implements Updatable {
-    func update(deltaTime: f64) {
+    func update(deltaTime: Number) {
         // Move forward, check for collisions
     }
 }
 
 entity Particle implements Updatable {
-    func update(deltaTime: f64) {
+    func update(deltaTime: Number) {
         // Fade out, drift, disappear when expired
     }
 }
 
 entity AnimatedDecoration implements Updatable {
-    func update(deltaTime: f64) {
+    func update(deltaTime: Number) {
         // Advance animation frame
     }
 }
@@ -382,32 +382,32 @@ The same pattern works for drawing:
 ```rust
 interface Drawable {
     func draw();
-    func getDepth() -> i64;  // For sorting (draw back-to-front)
+    func getDepth() -> Integer;  // For sorting (draw back-to-front)
 }
 
 entity Background implements Drawable {
     func draw() { /* Draw sky, mountains */ }
-    func getDepth() -> i64 { return 0; }  // Furthest back
+    func getDepth() -> Integer { return 0; }  // Furthest back
 }
 
 entity Ground implements Drawable {
     func draw() { /* Draw terrain */ }
-    func getDepth() -> i64 { return 1; }
+    func getDepth() -> Integer { return 1; }
 }
 
 entity Character implements Drawable {
     func draw() { /* Draw sprite */ }
-    func getDepth() -> i64 { return 2; }
+    func getDepth() -> Integer { return 2; }
 }
 
 entity Foreground implements Drawable {
     func draw() { /* Draw trees, buildings in front */ }
-    func getDepth() -> i64 { return 3; }
+    func getDepth() -> Integer { return 3; }
 }
 
 entity UIOverlay implements Drawable {
     func draw() { /* Draw health bar, score */ }
-    func getDepth() -> i64 { return 100; }  // Always on top
+    func getDepth() -> Integer { return 100; }  // Always on top
 }
 ```
 
@@ -437,29 +437,29 @@ Imagine a document application that can export to different formats:
 
 ```rust
 interface Exporter {
-    func export(document: Document) -> string;
-    func getExtension() -> string;
+    func export(document: Document) -> String;
+    func getExtension() -> String;
 }
 
 entity PDFExporter implements Exporter {
-    func export(document: Document) -> string {
+    func export(document: Document) -> String {
         // Convert to PDF format
     }
-    func getExtension() -> string { return "pdf"; }
+    func getExtension() -> String { return "pdf"; }
 }
 
 entity HTMLExporter implements Exporter {
-    func export(document: Document) -> string {
+    func export(document: Document) -> String {
         // Convert to HTML
     }
-    func getExtension() -> string { return "html"; }
+    func getExtension() -> String { return "html"; }
 }
 
 entity MarkdownExporter implements Exporter {
-    func export(document: Document) -> string {
+    func export(document: Document) -> String {
         // Convert to Markdown
     }
-    func getExtension() -> string { return "md"; }
+    func getExtension() -> String { return "md"; }
 }
 ```
 
@@ -490,7 +490,7 @@ entity ExportMenu {
         }
     }
 
-    func exportAs(index: i64, document: Document) -> string {
+    func exportAs(index: Integer, document: Document) -> String {
         var exporter = self.exporters[index];
         return exporter.export(document);
     }
@@ -501,10 +501,10 @@ Later, someone wants to add Word export. They create a `WordExporter` class:
 
 ```rust
 entity WordExporter implements Exporter {
-    func export(document: Document) -> string {
+    func export(document: Document) -> String {
         // Convert to Word format
     }
-    func getExtension() -> string { return "docx"; }
+    func getExtension() -> String { return "docx"; }
 }
 ```
 
@@ -522,8 +522,8 @@ This extensibility is the foundation of plugin systems:
 
 ```rust
 interface Plugin {
-    func getName() -> string;
-    func getVersion() -> string;
+    func getName() -> String;
+    func getVersion() -> String;
     func initialize();
     func execute(context: PluginContext);
 }
@@ -559,29 +559,29 @@ Different algorithms, interchangeable at runtime:
 
 ```rust
 interface CompressionStrategy {
-    func compress(data: string) -> string;
-    func decompress(data: string) -> string;
+    func compress(data: String) -> String;
+    func decompress(data: String) -> String;
 }
 
 entity NoCompression implements CompressionStrategy {
-    func compress(data: string) -> string { return data; }
-    func decompress(data: string) -> string { return data; }
+    func compress(data: String) -> String { return data; }
+    func decompress(data: String) -> String { return data; }
 }
 
 entity GzipCompression implements CompressionStrategy {
-    func compress(data: string) -> string {
+    func compress(data: String) -> String {
         // Apply gzip algorithm
     }
-    func decompress(data: string) -> string {
+    func decompress(data: String) -> String {
         // Reverse gzip
     }
 }
 
 entity LZ4Compression implements CompressionStrategy {
-    func compress(data: string) -> string {
+    func compress(data: String) -> String {
         // Apply LZ4 - faster but less compression
     }
-    func decompress(data: string) -> string {
+    func decompress(data: String) -> String {
         // Reverse LZ4
     }
 }
@@ -593,12 +593,12 @@ entity FileManager {
         self.compression = compression;
     }
 
-    func save(filename: string, data: string) {
+    func save(filename: String, data: String) {
         var compressed = self.compression.compress(data);
         Viper.File.WriteText(filename, compressed);
     }
 
-    func load(filename: string) -> string {
+    func load(filename: String) -> String {
         var compressed = Viper.File.ReadText(filename);
         return self.compression.decompress(compressed);
     }
@@ -626,11 +626,11 @@ Polymorphism excels at event-driven systems:
 ```rust
 interface EventHandler {
     func handle(event: Event);
-    func canHandle(event: Event) -> bool;
+    func canHandle(event: Event) -> Boolean;
 }
 
 entity KeyPressHandler implements EventHandler {
-    func canHandle(event: Event) -> bool {
+    func canHandle(event: Event) -> Boolean {
         return event.type == "keypress";
     }
 
@@ -640,7 +640,7 @@ entity KeyPressHandler implements EventHandler {
 }
 
 entity MouseClickHandler implements EventHandler {
-    func canHandle(event: Event) -> bool {
+    func canHandle(event: Event) -> Boolean {
         return event.type == "click";
     }
 
@@ -650,7 +650,7 @@ entity MouseClickHandler implements EventHandler {
 }
 
 entity ResizeHandler implements EventHandler {
-    func canHandle(event: Event) -> bool {
+    func canHandle(event: Event) -> Boolean {
         return event.type == "resize";
     }
 
@@ -682,13 +682,13 @@ Encapsulate actions as objects for undo/redo:
 interface Command {
     func execute();
     func undo();
-    func getDescription() -> string;
+    func getDescription() -> String;
 }
 
 entity InsertTextCommand implements Command {
     document: Document;
-    position: i64;
-    text: string;
+    position: Integer;
+    text: String;
 
     func execute() {
         self.document.insertAt(self.position, self.text);
@@ -698,15 +698,15 @@ entity InsertTextCommand implements Command {
         self.document.deleteRange(self.position, self.position + self.text.length);
     }
 
-    func getDescription() -> string {
+    func getDescription() -> String {
         return "Insert '" + self.text + "'";
     }
 }
 
 entity DeleteTextCommand implements Command {
     document: Document;
-    position: i64;
-    deletedText: string;
+    position: Integer;
+    deletedText: String;
 
     func execute() {
         self.deletedText = self.document.getRange(self.position, self.position + 1);
@@ -717,7 +717,7 @@ entity DeleteTextCommand implements Command {
         self.document.insertAt(self.position, self.deletedText);
     }
 
-    func getDescription() -> string {
+    func getDescription() -> String {
         return "Delete '" + self.deletedText + "'";
     }
 }
@@ -776,7 +776,7 @@ When you design with polymorphism, ask: "What behaviors do I need?" not "What ty
 
 ```rust
 // Type-focused (brittle)
-func feedAnimal(animal: Animal, animalType: string) {
+func feedAnimal(animal: Animal, animalType: String) {
     if animalType == "dog" {
         feedDog(animal);
     } else if animalType == "cat" {
@@ -831,8 +831,8 @@ Polymorphism is most powerful when you combine inheritance (shared code) with in
 ```rust
 // Interface: defines what things can do
 interface Attackable {
-    func takeDamage(amount: i64);
-    func isAlive() -> bool;
+    func takeDamage(amount: Integer);
+    func isAlive() -> Boolean;
 }
 
 interface Drawable {
@@ -840,30 +840,30 @@ interface Drawable {
 }
 
 interface Movable {
-    func move(dx: f64, dy: f64);
+    func move(dx: Number, dy: Number);
 }
 
 // Base class: provides shared implementation
 entity GameEntity {
-    x: f64;
-    y: f64;
+    x: Number;
+    y: Number;
 
-    func getPosition() -> (f64, f64) {
+    func getPosition() -> (Number, Number) {
         return (self.x, self.y);
     }
 }
 
 // Derived classes: inherit code AND implement interfaces
 entity Player extends GameEntity implements Attackable, Drawable, Movable {
-    health: i64;
+    health: Integer;
     sprite: Sprite;
 
-    func takeDamage(amount: i64) {
+    func takeDamage(amount: Integer) {
         self.health -= amount;
         self.playHurtAnimation();
     }
 
-    func isAlive() -> bool {
+    func isAlive() -> Boolean {
         return self.health > 0;
     }
 
@@ -871,7 +871,7 @@ entity Player extends GameEntity implements Attackable, Drawable, Movable {
         self.sprite.drawAt(self.x, self.y);
     }
 
-    func move(dx: f64, dy: f64) {
+    func move(dx: Number, dy: Number) {
         self.x += dx;
         self.y += dy;
         self.playWalkAnimation();
@@ -886,14 +886,14 @@ entity Tree extends GameEntity implements Drawable {
 }
 
 entity Enemy extends GameEntity implements Attackable, Drawable, Movable {
-    health: i64;
+    health: Integer;
 
-    func takeDamage(amount: i64) {
+    func takeDamage(amount: Integer) {
         self.health -= amount;
         self.flashRed();
     }
 
-    func isAlive() -> bool {
+    func isAlive() -> Boolean {
         return self.health > 0;
     }
 
@@ -901,7 +901,7 @@ entity Enemy extends GameEntity implements Attackable, Drawable, Movable {
         drawEnemySprite(self.x, self.y);
     }
 
-    func move(dx: f64, dy: f64) {
+    func move(dx: Number, dy: Number) {
         // AI-controlled movement
         self.x += dx;
         self.y += dy;
@@ -939,24 +939,24 @@ interface Drawable {
 }
 
 value Rect {
-    x: f64;
-    y: f64;
-    width: f64;
-    height: f64;
+    x: Number;
+    y: Number;
+    width: Number;
+    height: Number;
 
-    func contains(px: f64, py: f64) -> bool {
+    func contains(px: Number, py: Number) -> Boolean {
         return px >= self.x && px <= self.x + self.width &&
                py >= self.y && py <= self.y + self.height;
     }
 }
 
 entity Circle implements Drawable {
-    x: f64;
-    y: f64;
-    radius: f64;
-    color: string;
+    x: Number;
+    y: Number;
+    radius: Number;
+    color: String;
 
-    expose func init(x: f64, y: f64, radius: f64, color: string) {
+    expose func init(x: Number, y: Number, radius: Number, color: String) {
         self.x = x;
         self.y = y;
         self.radius = radius;
@@ -979,13 +979,13 @@ entity Circle implements Drawable {
 }
 
 entity Rectangle implements Drawable {
-    x: f64;
-    y: f64;
-    width: f64;
-    height: f64;
-    color: string;
+    x: Number;
+    y: Number;
+    width: Number;
+    height: Number;
+    color: String;
 
-    expose func init(x: f64, y: f64, w: f64, h: f64, color: string) {
+    expose func init(x: Number, y: Number, w: Number, h: Number, color: String) {
         self.x = x;
         self.y = y;
         self.width = w;
@@ -1004,12 +1004,12 @@ entity Rectangle implements Drawable {
 }
 
 entity Text implements Drawable {
-    x: f64;
-    y: f64;
-    content: string;
-    fontSize: f64;
+    x: Number;
+    y: Number;
+    content: String;
+    fontSize: Number;
 
-    expose func init(x: f64, y: f64, content: string) {
+    expose func init(x: Number, y: Number, content: String) {
         self.x = x;
         self.y = y;
         self.content = content;
@@ -1030,9 +1030,9 @@ entity Text implements Drawable {
 // Group of drawables - demonstrates the Composite Pattern
 entity Group implements Drawable {
     children: [Drawable];
-    name: string;
+    name: String;
 
-    expose func init(name: string) {
+    expose func init(name: String) {
         self.children = [];
         self.name = name;
     }
@@ -1073,7 +1073,7 @@ entity Group implements Drawable {
 }
 
 // Function that works with any Drawable - demonstrates polymorphism
-func findItemAt(items: [Drawable], x: f64, y: f64) -> Drawable? {
+func findItemAt(items: [Drawable], x: Number, y: Number) -> Drawable? {
     for item in items {
         if item.getBounds().contains(x, y) {
             return item;
@@ -1310,13 +1310,13 @@ That's often a sign you should use polymorphism instead.
 
 **Exercise 17.3**: Create a notification system: `Notifier` interface with `send(message)`, implemented by `EmailNotifier`, `SMSNotifier`, `PushNotifier`, and `SlackNotifier`. Write code that sends a message through multiple notifiers.
 
-**Exercise 17.4**: Implement the composite pattern: create a `FileSystemItem` interface with `getSize() -> i64`, with `File` and `Folder` implementations. Folders contain items and report their total size.
+**Exercise 17.4**: Implement the composite pattern: create a `FileSystemItem` interface with `getSize() -> Integer`, with `File` and `Folder` implementations. Folders contain items and report their total size.
 
-**Exercise 17.5**: Create a validation system: `Validator` interface with `validate(input: string) -> bool` and `getError() -> string`. Create `LengthValidator`, `EmailValidator`, `NumberValidator`. Write code that applies multiple validators.
+**Exercise 17.5**: Create a validation system: `Validator` interface with `validate(input: String) -> Boolean` and `getError() -> String`. Create `LengthValidator`, `EmailValidator`, `NumberValidator`. Write code that applies multiple validators.
 
 **Exercise 17.6**: Implement a simple calculator using the Command pattern with undo/redo. Commands: `AddCommand`, `SubtractCommand`, `MultiplyCommand`, `DivideCommand`.
 
-**Exercise 17.7** (Challenge): Build a simple expression evaluator: `Expression` interface with `evaluate() -> f64`, implemented by `Number`, `Add`, `Subtract`, `Multiply`, `Divide`. Create an expression tree like `Add(Multiply(2, 3), 4)` and evaluate it (should return 10).
+**Exercise 17.7** (Challenge): Build a simple expression evaluator: `Expression` interface with `evaluate() -> Number`, implemented by `NumericLiteral`, `Add`, `Subtract`, `Multiply`, `Divide`. Create an expression tree like `Add(Multiply(2, 3), 4)` and evaluate it (should return 10).
 
 **Exercise 17.8** (Challenge): Create a simple game with polymorphic entities. Define `GameEntity` interface with `update()` and `render()`. Create `Player`, `Enemy`, `Projectile`, and `PowerUp` entities. Write a game loop that updates and renders all entities.
 

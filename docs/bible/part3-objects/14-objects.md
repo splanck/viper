@@ -20,8 +20,8 @@ Consider a simple `BankAccount` structure:
 
 ```rust
 value BankAccount {
-    ownerName: string;
-    balance: f64;
+    ownerName: String;
+    balance: Number;
 }
 
 var account = BankAccount("Alice", 1000.0);
@@ -43,13 +43,13 @@ In a real banking system, this would be catastrophic. The balance should only ch
 With structures, you write functions that operate on data:
 
 ```rust
-func deposit(account: BankAccount, amount: f64) {
+func deposit(account: BankAccount, amount: Number) {
     if amount > 0 {
         account.balance += amount;
     }
 }
 
-func withdraw(account: BankAccount, amount: f64) -> bool {
+func withdraw(account: BankAccount, amount: Number) -> Boolean {
     if amount > 0 && amount <= account.balance {
         account.balance -= amount;
         return true;
@@ -72,8 +72,8 @@ A structure is just raw data. There's no built-in way to ensure it starts in a v
 
 ```rust
 value Rectangle {
-    width: f64;
-    height: f64;
+    width: Number;
+    height: Number;
 }
 
 var rect = Rectangle(0.0, 0.0);  // Created with default values
@@ -88,9 +88,9 @@ Say you have a structure for representing colors:
 
 ```rust
 value Color {
-    red: i64;    // 0-255
-    green: i64;  // 0-255
-    blue: i64;   // 0-255
+    red: Integer;    // 0-255
+    green: Integer;  // 0-255
+    blue: Integer;   // 0-255
 }
 ```
 
@@ -124,8 +124,8 @@ A value groups data:
 
 ```rust
 value Rectangle {
-    width: f64;
-    height: f64;
+    width: Number;
+    height: Number;
 }
 ```
 
@@ -133,19 +133,19 @@ An *entity* groups data *and* behavior:
 
 ```rust
 entity Rectangle {
-    width: f64;
-    height: f64;
+    width: Number;
+    height: Number;
 
-    expose func init(width: f64, height: f64) {
+    expose func init(width: Number, height: Number) {
         self.width = width;
         self.height = height;
     }
 
-    func area() -> f64 {
+    func area() -> Number {
         return self.width * self.height;
     }
 
-    func perimeter() -> f64 {
+    func perimeter() -> Number {
         return 2 * (self.width + self.height);
     }
 }
@@ -225,10 +225,10 @@ Both `fido` and `rex` are Dogs -- they follow the same template. But they're sep
 
 ```rust
 entity Dog {
-    name: string;
-    age: i64;
+    name: String;
+    age: Integer;
 
-    expose func init(name: string, age: i64) {
+    expose func init(name: String, age: Integer) {
         self.name = name;
         self.age = age;
     }
@@ -297,10 +297,10 @@ The initializer is a special method that runs when you create a new object. Its 
 
 ```rust
 entity Person {
-    name: string;
-    age: i64;
+    name: String;
+    age: Integer;
 
-    expose func init(name: string, age: i64) {
+    expose func init(name: String, age: Integer) {
         self.name = name;
         self.age = age;
     }
@@ -326,26 +326,26 @@ You can define multiple initializers with different parameter lists. This is cal
 
 ```rust
 entity Person {
-    name: string;
-    age: i64;
-    email: string;
+    name: String;
+    age: Integer;
+    email: String;
 
     // Full initialization
-    expose func init(name: string, age: i64, email: string) {
+    expose func init(name: String, age: Integer, email: String) {
         self.name = name;
         self.age = age;
         self.email = email;
     }
 
     // Without email
-    expose func init(name: string, age: i64) {
+    expose func init(name: String, age: Integer) {
         self.name = name;
         self.age = age;
         self.email = "";  // Default to empty string
     }
 
     // Just a name
-    expose func init(name: string) {
+    expose func init(name: String) {
         self.name = name;
         self.age = 0;      // Default age
         self.email = "";   // Default email
@@ -365,10 +365,10 @@ Initializers are the perfect place to validate input and ensure objects start in
 
 ```rust
 entity Rectangle {
-    width: f64;
-    height: f64;
+    width: Number;
+    height: Number;
 
-    expose func init(width: f64, height: f64) {
+    expose func init(width: Number, height: Number) {
         // Ensure dimensions are positive
         if width <= 0 {
             self.width = 1.0;  // Use minimum valid value
@@ -398,14 +398,14 @@ Initializers can do more than just assign fields. They can perform any setup log
 
 ```rust
 entity GameCharacter {
-    name: string;
-    health: i64;
-    maxHealth: i64;
-    level: i64;
-    experience: i64;
-    inventory: [string];
+    name: String;
+    health: Integer;
+    maxHealth: Integer;
+    level: Integer;
+    experience: Integer;
+    inventory: [String];
 
-    expose func init(name: string) {
+    expose func init(name: String) {
         self.name = name;
         self.level = 1;
         self.experience = 0;
@@ -428,11 +428,11 @@ Some fields have values that depend on other fields. The initializer is where yo
 
 ```rust
 entity Circle {
-    radius: f64;
-    diameter: f64;
-    circumference: f64;
+    radius: Number;
+    diameter: Number;
+    circumference: Number;
 
-    expose func init(radius: f64) {
+    expose func init(radius: Number) {
         self.radius = radius;
         self.diameter = radius * 2;
         self.circumference = 2 * Viper.Math.PI * radius;
@@ -444,17 +444,17 @@ However, this pattern can be dangerous -- if `radius` changes later, `diameter` 
 
 ```rust
 entity Circle {
-    radius: f64;
+    radius: Number;
 
-    expose func init(radius: f64) {
+    expose func init(radius: Number) {
         self.radius = radius;
     }
 
-    func diameter() -> f64 {
+    func diameter() -> Number {
         return self.radius * 2;  // Always computed fresh
     }
 
-    func circumference() -> f64 {
+    func circumference() -> Number {
         return 2 * Viper.Math.PI * self.radius;  // Always accurate
     }
 }
@@ -470,7 +470,7 @@ Inside a method, you need a way to refer to the specific object the method was c
 
 ```rust
 entity Counter {
-    count: i64;
+    count: Integer;
 
     expose func init() {
         self.count = 0;
@@ -480,7 +480,7 @@ entity Counter {
         self.count += 1;
     }
 
-    func getCount() -> i64 {
+    func getCount() -> Integer {
         return self.count;
     }
 }
@@ -566,10 +566,10 @@ Consider what happens when anyone can modify an object's fields directly:
 
 ```rust
 entity BankAccount {
-    ownerName: string;
-    balance: f64;  // Completely exposed!
+    ownerName: String;
+    balance: Number;  // Completely exposed!
 
-    expose func init(owner: string, initial: f64) {
+    expose func init(owner: String, initial: Number) {
         self.ownerName = owner;
         self.balance = initial;
     }
@@ -591,10 +591,10 @@ Zia lets you control what's visible from outside the entity:
 
 ```rust
 entity BankAccount {
-    hide balance: f64;
-    ownerName: string;
+    hide balance: Number;
+    ownerName: String;
 
-    expose func init(owner: string, initialDeposit: f64) {
+    expose func init(owner: String, initialDeposit: Number) {
         self.ownerName = owner;
         if initialDeposit < 0 {
             self.balance = 0;  // Don't allow negative initial balance
@@ -603,13 +603,13 @@ entity BankAccount {
         }
     }
 
-    expose func deposit(amount: f64) {
+    expose func deposit(amount: Number) {
         if amount > 0 {
             self.balance += amount;
         }
     }
 
-    expose func withdraw(amount: f64) -> bool {
+    expose func withdraw(amount: Number) -> Boolean {
         if amount > 0 && amount <= self.balance {
             self.balance -= amount;
             return true;
@@ -617,7 +617,7 @@ entity BankAccount {
         return false;
     }
 
-    expose func getBalance() -> f64 {
+    expose func getBalance() -> Number {
         return self.balance;
     }
 }
@@ -655,9 +655,9 @@ Different entities have different invariants:
 
 ```rust
 entity Temperature {
-    hide kelvin: f64;
+    hide kelvin: Number;
 
-    expose func init(kelvin: f64) {
+    expose func init(kelvin: Number) {
         // Invariant: Temperature cannot be below absolute zero
         if kelvin < 0 {
             self.kelvin = 0;
@@ -666,7 +666,7 @@ entity Temperature {
         }
     }
 
-    expose func setKelvin(k: f64) {
+    expose func setKelvin(k: Number) {
         if k >= 0 {
             self.kelvin = k;
         }
@@ -675,24 +675,24 @@ entity Temperature {
 }
 
 entity Password {
-    hide hash: string;
+    hide hash: String;
 
-    expose func init(plaintext: string) {
+    expose func init(plaintext: String) {
         // Invariant: Never store plaintext passwords
         self.hash = computeHash(plaintext);
     }
 
-    expose func check(attempt: string) -> bool {
+    expose func check(attempt: String) -> Boolean {
         return computeHash(attempt) == self.hash;
     }
     // The plaintext is never stored or retrievable
 }
 
 entity OrderedPair {
-    hide first: i64;
-    hide second: i64;
+    hide first: Integer;
+    hide second: Integer;
 
-    expose func init(a: i64, b: i64) {
+    expose func init(a: Integer, b: Integer) {
         // Invariant: first <= second always
         if a <= b {
             self.first = a;
@@ -726,21 +726,21 @@ Usually, the answer is no. External code needs to *do things* with the object (c
 
 ```rust
 entity Player {
-    hide name: string;
-    hide health: i64;
-    hide maxHealth: i64;
-    hide x: f64;
-    hide y: f64;
+    hide name: String;
+    hide health: Integer;
+    hide maxHealth: Integer;
+    hide x: Number;
+    hide y: Number;
 
     // External code can get information...
-    expose func getName() -> string { return self.name; }
-    expose func getHealth() -> i64 { return self.health; }
-    expose func getPosition() -> (f64, f64) { return (self.x, self.y); }
+    expose func getName() -> String { return self.name; }
+    expose func getHealth() -> Integer { return self.health; }
+    expose func getPosition() -> (Number, Number) { return (self.x, self.y); }
 
     // ...and perform actions that enforce game rules
-    expose func takeDamage(amount: i64) { ... }
-    expose func heal(amount: i64) { ... }
-    expose func moveTo(x: f64, y: f64) { ... }
+    expose func takeDamage(amount: Integer) { ... }
+    expose func heal(amount: Integer) { ... }
+    expose func moveTo(x: Number, y: Number) { ... }
 }
 ```
 
@@ -752,25 +752,25 @@ Methods define what objects can *do*. They're functions that belong to an entity
 
 ```rust
 entity Circle {
-    radius: f64;
+    radius: Number;
 
-    expose func init(radius: f64) {
+    expose func init(radius: Number) {
         self.radius = radius;
     }
 
-    func area() -> f64 {
+    func area() -> Number {
         return Viper.Math.PI * self.radius * self.radius;
     }
 
-    func circumference() -> f64 {
+    func circumference() -> Number {
         return 2 * Viper.Math.PI * self.radius;
     }
 
-    func scale(factor: f64) {
+    func scale(factor: Number) {
         self.radius *= factor;
     }
 
-    func diameter() -> f64 {
+    func diameter() -> Number {
         return self.radius * 2;
     }
 }
@@ -794,11 +794,11 @@ Methods generally fall into a few categories:
 **Accessors (Getters)** -- Return information about the object:
 
 ```rust
-func getName() -> string {
+func getName() -> String {
     return self.name;
 }
 
-func getHealth() -> i64 {
+func getHealth() -> Integer {
     return self.health;
 }
 ```
@@ -806,11 +806,11 @@ func getHealth() -> i64 {
 **Mutators (Setters/Modifiers)** -- Change the object's state:
 
 ```rust
-func setName(newName: string) {
+func setName(newName: String) {
     self.name = newName;
 }
 
-func takeDamage(amount: i64) {
+func takeDamage(amount: Integer) {
     self.health -= amount;
     if self.health < 0 {
         self.health = 0;
@@ -821,11 +821,11 @@ func takeDamage(amount: i64) {
 **Computed Properties** -- Calculate values from the object's state:
 
 ```rust
-func area() -> f64 {
+func area() -> Number {
     return self.width * self.height;
 }
 
-func isAlive() -> bool {
+func isAlive() -> Boolean {
     return self.health > 0;
 }
 ```
@@ -857,7 +857,7 @@ Sometimes you have a choice: should this be a method on an entity, or a standalo
 ```rust
 // Good as a method - operates on the circle's own data
 entity Circle {
-    func area() -> f64 {
+    func area() -> Number {
         return Viper.Math.PI * self.radius * self.radius;
     }
 }
@@ -871,7 +871,7 @@ entity Circle {
 
 ```rust
 // Good as a function - works with two objects equally
-func distance(p1: Point, p2: Point) -> f64 {
+func distance(p1: Point, p2: Point) -> Number {
     var dx = p2.x - p1.x;
     var dy = p2.y - p1.y;
     return Viper.Math.sqrt(dx*dx + dy*dy);
@@ -895,9 +895,9 @@ func processOrder() {
 }
 
 // Good: split into focused methods
-func validate() -> bool { ... }
-func calculateShipping() -> f64 { ... }
-func chargePayment(amount: f64) -> bool { ... }
+func validate() -> Boolean { ... }
+func calculateShipping() -> Number { ... }
+func chargePayment(amount: Number) -> Boolean { ... }
 func updateInventory() { ... }
 func sendConfirmationEmail() { ... }
 ```
@@ -906,13 +906,13 @@ func sendConfirmationEmail() { ... }
 
 ```rust
 // Good names - clear actions
-func deposit(amount: f64) { ... }
-func withdraw(amount: f64) { ... }
+func deposit(amount: Number) { ... }
+func withdraw(amount: Number) { ... }
 func save() { ... }
 func display() { ... }
 
 // Poor names - not clear what they do
-func money(amount: f64) { ... }
+func money(amount: Number) { ... }
 func doIt() { ... }
 func process() { ... }
 ```
@@ -921,14 +921,14 @@ func process() { ... }
 
 ```rust
 // Confusing: does this modify count, or just return it?
-func getAndIncrement() -> i64 {
+func getAndIncrement() -> Integer {
     var old = self.count;
     self.count += 1;
     return old;
 }
 
 // Clearer: separate operations
-func getCount() -> i64 { return self.count; }
+func getCount() -> Integer { return self.count; }
 func increment() { self.count += 1; }
 ```
 
@@ -948,7 +948,7 @@ State is the current condition of an object -- the values of all its fields at a
 
 ```rust
 entity TrafficLight {
-    hide color: string;
+    hide color: String;
 
     expose func init() {
         self.color = "red";  // Initial state
@@ -964,7 +964,7 @@ entity TrafficLight {
         }
     }
 
-    expose func getColor() -> string {
+    expose func getColor() -> String {
         return self.color;
     }
 }
@@ -1012,16 +1012,16 @@ When designing an entity, ask:
 
 ```rust
 entity GameCharacter {
-    hide health: i64;
-    hide state: string;  // "alive", "dead", "respawning"
+    hide health: Integer;
+    hide state: String;  // "alive", "dead", "respawning"
 
-    expose func init(name: string) {
+    expose func init(name: String) {
         // ...
         self.health = 100;
         self.state = "alive";
     }
 
-    expose func takeDamage(amount: i64) {
+    expose func takeDamage(amount: Integer) {
         if self.state != "alive" {
             return;  // Can't damage dead/respawning characters
         }
@@ -1047,7 +1047,7 @@ entity GameCharacter {
         }
     }
 
-    expose func move(dx: f64, dy: f64) {
+    expose func move(dx: Number, dy: Number) {
         if self.state == "alive" {
             // Actually move
         }
@@ -1125,14 +1125,14 @@ Following the principle of "hide by default":
 
 ```rust
 entity BankAccount {
-    hide accountNumber: string;
-    hide ownerName: string;
-    hide balance: f64;
-    hide transactions: [string];
-    hide dateOpened: string;
+    hide accountNumber: String;
+    hide ownerName: String;
+    hide balance: Number;
+    hide transactions: [String];
+    hide dateOpened: String;
 
     // Main initializer with full information
-    expose func init(accountNumber: string, ownerName: string, initialDeposit: f64) {
+    expose func init(accountNumber: String, ownerName: String, initialDeposit: Number) {
         self.accountNumber = accountNumber;
         self.ownerName = ownerName;
         self.dateOpened = Viper.Time.now();
@@ -1149,7 +1149,7 @@ entity BankAccount {
     }
 
     // Simplified initializer for zero-balance accounts
-    expose func init(accountNumber: string, ownerName: string) {
+    expose func init(accountNumber: String, ownerName: String) {
         self.accountNumber = accountNumber;
         self.ownerName = ownerName;
         self.dateOpened = Viper.Time.now();
@@ -1160,7 +1160,7 @@ entity BankAccount {
 
     // ===== Public Methods =====
 
-    expose func deposit(amount: f64) -> bool {
+    expose func deposit(amount: Number) -> Boolean {
         if amount <= 0 {
             return false;  // Invalid deposit amount
         }
@@ -1170,7 +1170,7 @@ entity BankAccount {
         return true;
     }
 
-    expose func withdraw(amount: f64) -> bool {
+    expose func withdraw(amount: Number) -> Boolean {
         if amount <= 0 {
             return false;  // Invalid withdrawal amount
         }
@@ -1185,19 +1185,19 @@ entity BankAccount {
         return true;
     }
 
-    expose func getBalance() -> f64 {
+    expose func getBalance() -> Number {
         return self.balance;
     }
 
-    expose func getAccountNumber() -> string {
+    expose func getAccountNumber() -> String {
         return self.accountNumber;
     }
 
-    expose func getOwnerName() -> string {
+    expose func getOwnerName() -> String {
         return self.ownerName;
     }
 
-    expose func getTransactionHistory() -> [string] {
+    expose func getTransactionHistory() -> [String] {
         // Return a copy so external code can't modify our history
         return self.transactions.copy();
     }
@@ -1221,7 +1221,7 @@ entity BankAccount {
 
     // ===== Private Helper Methods =====
 
-    hide func addTransaction(description: string) {
+    hide func addTransaction(description: String) {
         var timestamp = Viper.Time.now();
         self.transactions.push(timestamp + ": " + description);
     }
@@ -1271,23 +1271,23 @@ Let's put everything together with a more complete example:
 module TodoApp;
 
 entity TodoItem {
-    hide text: string;
-    hide done: bool;
-    hide createdAt: string;
-    hide completedAt: string;
+    hide text: String;
+    hide done: Boolean;
+    hide createdAt: String;
+    hide completedAt: String;
 
-    expose func init(text: string) {
+    expose func init(text: String) {
         self.text = text;
         self.done = false;
         self.createdAt = Viper.Time.now();
         self.completedAt = "";
     }
 
-    expose func getText() -> string {
+    expose func getText() -> String {
         return self.text;
     }
 
-    expose func isDone() -> bool {
+    expose func isDone() -> Boolean {
         return self.done;
     }
 
@@ -1303,7 +1303,7 @@ entity TodoItem {
         self.completedAt = "";
     }
 
-    expose func toString() -> string {
+    expose func toString() -> String {
         var status = "";
         if self.done {
             status = "[X]";
@@ -1316,30 +1316,30 @@ entity TodoItem {
 
 entity TodoList {
     hide items: [TodoItem];
-    hide name: string;
+    hide name: String;
 
-    expose func init(name: string) {
+    expose func init(name: String) {
         self.name = name;
         self.items = [];
     }
 
-    expose func add(text: string) {
+    expose func add(text: String) {
         self.items.push(TodoItem(text));
     }
 
-    expose func markDone(index: i64) {
+    expose func markDone(index: Integer) {
         if index >= 0 && index < self.items.length {
             self.items[index].markDone();
         }
     }
 
-    expose func markUndone(index: i64) {
+    expose func markUndone(index: Integer) {
         if index >= 0 && index < self.items.length {
             self.items[index].markUndone();
         }
     }
 
-    expose func remove(index: i64) {
+    expose func remove(index: Integer) {
         if index >= 0 && index < self.items.length {
             self.items.removeAt(index);
         }
@@ -1360,7 +1360,7 @@ entity TodoList {
         Viper.Terminal.Say("  " + self.countCompleted() + "/" + self.items.length + " completed");
     }
 
-    expose func countRemaining() -> i64 {
+    expose func countRemaining() -> Integer {
         var count = 0;
         for item in self.items {
             if !item.isDone() {
@@ -1370,7 +1370,7 @@ entity TodoList {
         return count;
     }
 
-    expose func countCompleted() -> i64 {
+    expose func countCompleted() -> Integer {
         var count = 0;
         for item in self.items {
             if item.isDone() {
@@ -1440,9 +1440,9 @@ Notice how:
 
 ```rust
 entity Dog {
-    name: string;
+    name: String;
 
-    expose func init(name: string) {
+    expose func init(name: String) {
         self.name = name;
     }
 
@@ -1579,8 +1579,8 @@ func processOrder() {
 }
 
 // Better -- each method has one job
-func validateOrder() -> bool { ... }
-func processPayment() -> bool { ... }
+func validateOrder() -> Boolean { ... }
+func processPayment() -> Boolean { ... }
 func updateInventory() { ... }
 func sendConfirmation() { ... }
 
@@ -1601,7 +1601,7 @@ func processOrder() {
 
 ```rust
 entity Counter {
-    count: i64;
+    count: Integer;
 
     func increment() {
         count += 1;  // Error: should be self.count
@@ -1615,7 +1615,7 @@ Inside a method, you must use `self` to access the object's fields. Without it, 
 
 ```rust
 entity BankAccount {
-    balance: f64;  // Bad: anyone can modify directly
+    balance: Number;  // Bad: anyone can modify directly
 }
 
 var account = BankAccount();
@@ -1665,7 +1665,7 @@ Long methods are hard to understand, test, and debug. Break them into smaller, f
 ### Ignoring Invalid Input
 
 ```rust
-func setAge(age: i64) {
+func setAge(age: Integer) {
     self.age = age;  // What if age is -5? Or 500?
 }
 ```

@@ -888,8 +888,8 @@ module GameFramework;
 bind Viper.Graphics;
 
 value Vec2 {
-    x: f64;
-    y: f64;
+    x: Number;
+    y: Number;
 }
 
 entity GameObject {
@@ -897,13 +897,13 @@ entity GameObject {
     size: Vec2;
     color: Color;
 
-    expose func init(x: f64, y: f64, w: f64, h: f64, c: Color) {
+    expose func init(x: Number, y: Number, w: Number, h: Number, c: Color) {
         self.position = Vec2 { x: x, y: y };
         self.size = Vec2 { x: w, y: h };
         self.color = c;
     }
 
-    func update(dt: f64) {
+    func update(dt: Number) {
         // Override in child entities for custom behavior
     }
 
@@ -913,7 +913,7 @@ entity GameObject {
                        self.size.x, self.size.y);
     }
 
-    func collidesWith(other: GameObject) -> bool {
+    func collidesWith(other: GameObject) -> Boolean {
         // Axis-Aligned Bounding Box (AABB) collision
         return self.position.x < other.position.x + other.size.x &&
                self.position.x + self.size.x > other.position.x &&
@@ -925,10 +925,10 @@ entity GameObject {
 entity Game {
     canvas: Canvas;
     objects: [GameObject];
-    running: bool;
-    lastTime: i64;
+    running: Boolean;
+    lastTime: Integer;
 
-    expose func init(width: i64, height: i64, title: string) {
+    expose func init(width: Integer, height: Integer, title: String) {
         self.canvas = Canvas(width, height);
         self.canvas.setTitle(title);
         self.objects = [];
@@ -960,7 +960,7 @@ entity Game {
         // Override for game-specific input handling
     }
 
-    func update(dt: f64) {
+    func update(dt: Number) {
         for obj in self.objects {
             obj.update(dt);
         }
@@ -1093,7 +1093,7 @@ var x = 100.0;  // Float
 x = x + 0.5;    // Now x = 100.5
 
 // When drawing, convert to integer:
-canvas.fillCircle(x as i64, y as i64, 20);
+canvas.fillCircle(x as Integer, y as Integer, 20);
 ```
 
 ### Mistake 5: Forgetting show() or flip()

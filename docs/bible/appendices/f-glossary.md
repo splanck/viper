@@ -184,11 +184,11 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Debugger**: A tool that lets you run a program step by step, inspect variable values, and understand what the code is doing. Essential for finding tricky bugs.
 
-**Declaration**: Introducing a new variable, function, or type to the program. Tells the compiler that something exists and what type it is. Example: `var age: i64` declares an integer variable named age. See also *Definition*, *Variable*.
+**Declaration**: Introducing a new variable, function, or type to the program. Tells the compiler that something exists and what type it is. Example: `var age: Integer` declares an integer variable named age. See also *Definition*, *Variable*.
 
 **Decrement**: To decrease a value by 1. Example: `count -= 1` or `count = count - 1`. See also *Increment*.
 
-**Default parameter**: A parameter that has a value automatically used if no argument is provided. Example: `func greet(name: string = "Guest")` - calling `greet()` uses "Guest" as the name. See [Appendix A](a-zia-reference.md). See also *Parameter*, *Argument*.
+**Default parameter**: A parameter that has a value automatically used if no argument is provided. Example: `func greet(name: String = "Guest")` - calling `greet()` uses "Guest" as the name. See [Appendix A](a-zia-reference.md). See also *Parameter*, *Argument*.
 
 **Definition**: Providing the implementation or value for something that was declared. A function definition includes the function body. See also *Declaration*.
 
@@ -236,7 +236,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Execute**: To run code. When the computer executes a program, it carries out its instructions. See also *Run*, *Runtime*.
 
-**Explicit**: Clearly stated, not implied. Explicit type declarations like `var x: i64 = 5` state the type directly. Opposite of implicit. See also *Implicit*.
+**Explicit**: Clearly stated, not implied. Explicit type declarations like `var x: Integer = 5` state the type directly. Opposite of implicit. See also *Implicit*.
 
 **Export**: To make code available for use by other modules. Exported functions and entities can be imported elsewhere. See [Chapter 12](../part2-building-blocks/12-modules.md). See also *Import*, *Module*.
 
@@ -254,7 +254,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **False**: One of the two boolean values, representing "no," "off," or "not true." The opposite of `true`. See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Boolean*, *True*.
 
-**Field**: A variable that belongs to an entity or value type. Part of an object's data. Example: in `entity Player { name: string; health: i64; }`, `name` and `health` are fields. Also called member variable, attribute, or property. See [Chapter 14](../part3-objects/14-objects.md). See also *Entity*, *Method*.
+**Field**: A variable that belongs to an entity or value type. Part of an object's data. Example: in `entity Player { name: String; health: Integer; }`, `name` and `health` are fields. Also called member variable, attribute, or property. See [Chapter 14](../part3-objects/14-objects.md). See also *Entity*, *Method*.
 
 **FIFO**: First In, First Out. A queue behavior where the first item added is the first item removed. Like a line at a store. See also *Queue*, *LIFO*.
 
@@ -274,9 +274,9 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Framework**: A reusable structure that provides a foundation for building applications. More comprehensive than a library - a framework calls your code rather than you calling it. Examples: web frameworks, game frameworks. See also *Library*.
 
-**Func**: **[Zia]** Keyword used to declare a function. Example: `func add(a: i64, b: i64) -> i64 { return a + b; }`. See [Chapter 7](../part1-foundations/07-functions.md). See also *Function*, *Method*.
+**Func**: **[Zia]** Keyword used to declare a function. Example: `func add(a: Integer, b: Integer) -> Integer { return a + b; }`. See [Chapter 7](../part1-foundations/07-functions.md). See also *Function*, *Method*.
 
-**Function**: A reusable block of code that performs a specific task. Takes inputs (parameters), does work, and optionally returns an output (return value). Like a machine: put something in, get something out. Example: `func add(a: i64, b: i64) -> i64 { return a + b; }`. See [Chapter 7](../part1-foundations/07-functions.md). See also *Method*, *Parameter*, *Return value*.
+**Function**: A reusable block of code that performs a specific task. Takes inputs (parameters), does work, and optionally returns an output (return value). Like a machine: put something in, get something out. Example: `func add(a: Integer, b: Integer) -> Integer { return a + b; }`. See [Chapter 7](../part1-foundations/07-functions.md). See also *Method*, *Parameter*, *Return value*.
 
 ---
 
@@ -306,7 +306,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Helper method**: A private method that assists other methods in an entity. Breaks down complex operations into smaller pieces. Example: a private `validateInput()` method called by public methods. See also *Method*, *Hide*.
 
-**Hide**: **[Zia]** The visibility modifier that restricts a member's access to within the entity only (equivalent to "private" in other languages). Hidden fields can only be accessed by the entity's own methods. Example: `hide balance: f64`. See [Chapter 14](../part3-objects/14-objects.md). See also *Expose*, *Private*, *Encapsulation*.
+**Hide**: **[Zia]** The visibility modifier that restricts a member's access to within the entity only (equivalent to "private" in other languages). Hidden fields can only be accessed by the entity's own methods. Example: `hide balance: Number`. See [Chapter 14](../part3-objects/14-objects.md). See also *Expose*, *Private*, *Encapsulation*.
 
 **HTTP** (Hypertext Transfer Protocol) (aitch-tee-tee-PEE): The protocol for web communication. When you visit a website, your browser uses HTTP to request pages from servers. See [Chapter 22](../part4-applications/22-networking.md). See also *TCP*, *Protocol*.
 
@@ -342,7 +342,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Inheritance** (in-HAIR-ih-tuns): An entity adopting properties and methods from a parent entity. The child "inherits" from the parent and can add or override functionality. Models "is-a" relationships: a Dog is an Animal. See [Chapter 15](../part3-objects/15-inheritance.md). See also *Entity*, *Extends*, *Base class*, *Derived class*.
 
-**Init**: **[Zia]** The special method name for initializers (constructors). Called automatically when creating new objects. Example: `expose func init(name: string) { self.name = name; }`. See [Chapter 14](../part3-objects/14-objects.md). See also *Initializer*, *Constructor*.
+**Init**: **[Zia]** The special method name for initializers (constructors). Called automatically when creating new objects. Example: `expose func init(name: String) { self.name = name; }`. See [Chapter 14](../part3-objects/14-objects.md). See also *Initializer*, *Constructor*.
 
 **Initialization**: Setting a variable's initial value when it's created. In Zia, variables must be initialized: `var count = 0`. See also *Declaration*, *Assignment*.
 
@@ -460,7 +460,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Newline**: A character that starts a new line. Written as `\n` in strings. When printed, moves the cursor to the beginning of the next line. See also *Escape character*.
 
-**Null** (NUHL): A special value representing "no value" or "nothing." Indicates the absence of an object or meaningful value. Can cause errors if you try to use a null value. In Zia, nullable types use `?`: `var x: i64? = null`. See [Appendix A](a-zia-reference.md). See also *Nullable*, *Nil*.
+**Null** (NUHL): A special value representing "no value" or "nothing." Indicates the absence of an object or meaningful value. Can cause errors if you try to use a null value. In Zia, nullable types use `?`: `var x: Integer? = null`. See [Appendix A](a-zia-reference.md). See also *Nullable*, *Nil*.
 
 **Null coalescing**: Providing a default value when something is null. In Zia: `value ?? default` returns `value` if not null, otherwise `default`. See [Appendix A](a-zia-reference.md). See also *Null*, *Optional*.
 
@@ -500,7 +500,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Parallelism**: Multiple tasks executing simultaneously on different CPU cores. True parallel execution requires multiple cores. See [Chapter 24](../part4-applications/24-concurrency.md). See also *Concurrency*, *Thread*, *Core*.
 
-**Parameter**: A variable in a function definition that receives an argument value. The placeholder that arguments fill. In `func greet(name: string)`, `name` is a parameter. See [Chapter 7](../part1-foundations/07-functions.md). See also *Argument* (the related but different concept).
+**Parameter**: A variable in a function definition that receives an argument value. The placeholder that arguments fill. In `func greet(name: String)`, `name` is a parameter. See [Chapter 7](../part1-foundations/07-functions.md). See also *Argument* (the related but different concept).
 
 **Parent class**: See *Base class*.
 
@@ -578,7 +578,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Return**: (1) To send a value back from a function: `return result;` (2) The `return` statement that exits a function. See [Chapter 7](../part1-foundations/07-functions.md). See also *Return value*, *Function*.
 
-**Return type**: The type of value a function returns. Declared after `->` in Zia: `func add(a: i64, b: i64) -> i64`. See [Chapter 7](../part1-foundations/07-functions.md). See also *Function*, *Return value*.
+**Return type**: The type of value a function returns. Declared after `->` in Zia: `func add(a: Integer, b: Integer) -> Integer`. See [Chapter 7](../part1-foundations/07-functions.md). See also *Function*, *Return value*.
 
 **Return value**: The value a function sends back when it completes. The result of calling the function. `add(2, 3)` has return value 5. See [Chapter 7](../part1-foundations/07-functions.md). See also *Function*, *Return*.
 
@@ -610,7 +610,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Side effect**: Something a function does besides returning a value - modifying external state, printing output, writing files. Pure functions have no side effects. See also *Pure function*.
 
-**Signature**: The "shape" of a function: its name, parameters, and return type. Two functions with the same signature are interchangeable. Example: `func add(a: i64, b: i64) -> i64` has a specific signature.
+**Signature**: The "shape" of a function: its name, parameters, and return type. Two functions with the same signature are interchangeable. Example: `func add(a: Integer, b: Integer) -> Integer` has a specific signature.
 
 **Signed**: A numeric type that can represent negative numbers. `i64` is signed (-9223372036854775808 to 9223372036854775807). See also *Unsigned*, *Integer*.
 
@@ -702,7 +702,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Type**: A classification defining what values a variable can hold and what operations are valid. Every value and expression has a type. See [Chapter 3](../part1-foundations/03-values-and-names.md). See also *Data type*, *Static typing*, *Type inference*.
 
-**Type conversion**: Changing a value from one type to another. Also called casting. `Viper.Parse.Int("42")` converts string to integer. Some conversions are automatic; others must be explicit. See also *Parse*.
+**Type conversion**: Changing a value from one type to another. Also called casting. `Viper.Convert.ToInt("42")` converts string to integer. Some conversions are automatic; others must be explicit. See also *Parse*.
 
 **Type inference**: The compiler automatically determining types from context, so you don't have to write them explicitly. `var x = 5` infers that x is an integer. See [Appendix A](a-zia-reference.md). See also *Implicit*, *Static typing*.
 
@@ -728,7 +728,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 ## V
 
-**Value**: (1) A single piece of data - a specific number, text, or boolean. The actual data stored in a variable. (2) **[Zia]** The keyword used to define value types (equivalent to "struct" in other languages). A value groups related data fields together. Example: `value Point { x: f64; y: f64; }`. ViperScript and ViperC use the traditional `struct` keyword. See [Chapter 11](../part2-building-blocks/11-structures.md). See also *Literal*, *Variable*, *Entity*.
+**Value**: (1) A single piece of data - a specific number, text, or boolean. The actual data stored in a variable. (2) **[Zia]** The keyword used to define value types (equivalent to "struct" in other languages). A value groups related data fields together. Example: `value Point { x: Number; y: Number; }`. ViperScript and ViperC use the traditional `struct` keyword. See [Chapter 11](../part2-building-blocks/11-structures.md). See also *Literal*, *Variable*, *Entity*.
 
 **Value type**: A type where variables hold the actual data directly (not a reference). When assigned or passed, the data is copied. `value` types in Zia are value types. See [Chapter 11](../part2-building-blocks/11-structures.md). See also *Reference type*, *Value*.
 

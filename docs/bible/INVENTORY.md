@@ -50,11 +50,11 @@ This document maps existing Viper documentation and code examples to the Bible's
 - [x] Chapter 0: Getting Started (complete)
 - [x] Chapter 1: The Machine (complete)
 - [x] Chapter 2: Your First Program (complete)
-- [ ] Chapter 3: Values and Names
-- [ ] Chapter 4: Making Decisions
-- [ ] Chapter 5: Repetition
-- [ ] Chapter 6: Collections
-- [ ] Chapter 7: Breaking It Down
+- [x] Chapter 3: Values and Names (complete)
+- [x] Chapter 4: Making Decisions (complete)
+- [x] Chapter 5: Repetition (complete)
+- [x] Chapter 6: Collections (complete)
+- [x] Chapter 7: Breaking It Down (complete)
 
 ---
 

@@ -14,15 +14,15 @@ This reference documents the Viper Runtime Library, the standard modules availab
 - [Viper.Time](#vipertime) - Time and date operations
 - [Viper.Collections](#vipercollections) - Data structures
 - [Viper.Network](#vipernetwork) - HTTP, TCP, UDP
-- [Viper.JSON](#viperjson) - JSON parsing/generation
-- [Viper.Threading](#viperthreading) - Concurrency primitives
+- [Viper.Text.Json](#vipertextjson) - JSON parsing/generation
+- [Viper.Threads](#viperthreads) - Concurrency primitives
 - [Viper.Graphics](#vipergraphics) - Drawing and windows
 - [Viper.GUI](#vipergui) - Widget-based user interfaces
 - [Viper.Input](#viperinput) - Keyboard, mouse, gamepad
 - [Viper.Crypto](#vipercrypto) - Hashing and encoding
 - [Viper.Environment](#viperenvironment) - System information
-- [Viper.Regex](#viperregex) - Regular expressions
-- [Viper.Process](#viperprocess) - External processes
+- [Viper.Text.Pattern](#vipertextpattern) - Regular expressions
+- [Viper.Exec](#viperexec) - External processes
 - [Viper.Test](#vipertest) - Testing utilities
 
 ---
@@ -330,7 +330,7 @@ Viper.Terminal.Say("\rDone!          ");
 #### Progress Bar
 
 ```rust
-func showProgress(current: i64, total: i64) {
+func showProgress(current: Integer, total: Integer) {
     var percent = (current * 100) / total;
     var bars = percent / 5;  // 20 characters wide
 
@@ -356,7 +356,7 @@ Viper.Terminal.Say("");  // Newline when done
 #### Simple Menu System
 
 ```rust
-func showMenu(options: [string]) -> i64 {
+func showMenu(options: [String]) -> Integer {
     loop {
         Viper.Terminal.Clear();
         Viper.Terminal.Say("Select an option:");
@@ -541,7 +541,7 @@ Adds text to the end of an existing file, or creates the file if it does not exi
 **Example:**
 ```rust
 // Simple logging
-func log(message: string) {
+func log(message: String) {
     var timestamp = DateTime.now().format("YYYY-MM-DD HH:mm:ss");
     Viper.File.appendText("app.log", "[" + timestamp + "] " + message + "\n");
 }
@@ -887,7 +887,7 @@ var abs = Viper.File.absolutePath("../data/input.txt");
 #### Safe File Reading
 
 ```rust
-func readFileSafe(path: string, defaultValue: string) -> string {
+func readFileSafe(path: String, defaultValue: String) -> String {
     if Viper.File.exists(path) {
         return Viper.File.readText(path);
     }
@@ -900,7 +900,7 @@ var config = readFileSafe("config.txt", "default settings");
 #### Processing All Files in Directory
 
 ```rust
-func processDirectory(dirPath: string, ext: string) {
+func processDirectory(dirPath: String, ext: String) {
     for filename in Viper.File.listDir(dirPath) {
         var fullPath = Viper.File.join(dirPath, filename);
 
@@ -1105,7 +1105,7 @@ Viper.Math.sqrt(16.0)   // Returns: 4.0
 Viper.Math.sqrt(2.0)    // Returns: 1.41421356...
 
 // Distance between two points
-func distance(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
+func distance(x1: Number, y1: Number, x2: Number, y2: Number) -> Number {
     var dx = x2 - x1;
     var dy = y2 - y1;
     return Viper.Math.sqrt(dx*dx + dy*dy);
@@ -1147,7 +1147,7 @@ Viper.Math.pow(10.0, 3.0)   // Returns: 1000.0
 Viper.Math.pow(4.0, 0.5)    // Returns: 2.0 (same as sqrt)
 
 // Compound interest
-func futureValue(principal: f64, rate: f64, years: i64) -> f64 {
+func futureValue(principal: Number, rate: Number, years: Integer) -> Number {
     return principal * Viper.Math.pow(1.0 + rate, years.toF64());
 }
 ```
@@ -1185,7 +1185,7 @@ Viper.Math.log10(1000.0)       // Returns: 3.0
 Viper.Math.log2(1024.0)        // Returns: 10.0
 
 // Number of bits needed to represent a number
-func bitsNeeded(n: i64) -> i64 {
+func bitsNeeded(n: Integer) -> Integer {
     return Viper.Math.ceil(Viper.Math.log2(n.toF64() + 1.0)).toInt();
 }
 ```
@@ -1214,7 +1214,7 @@ Viper.Math.cos(0.0)                   // Returns: 1.0
 Viper.Math.cos(Viper.Math.PI)         // Returns: -1.0
 
 // Circular motion
-func circularPosition(angle: f64, radius: f64) -> (f64, f64) {
+func circularPosition(angle: Number, radius: Number) -> (Number, Number) {
     var x = Viper.Math.cos(angle) * radius;
     var y = Viper.Math.sin(angle) * radius;
     return (x, y);
@@ -1235,7 +1235,7 @@ func atan2(y: f64, x: f64) -> f64      // Arc tangent of y/x (handles quadrants)
 **Example:**
 ```rust
 // atan2 is usually what you want for angles between points
-func angleTo(fromX: f64, fromY: f64, toX: f64, toY: f64) -> f64 {
+func angleTo(fromX: Number, fromY: Number, toX: Number, toY: Number) -> Number {
     return Viper.Math.atan2(toY - fromY, toX - fromX);
 }
 
@@ -1290,7 +1290,7 @@ Returns a random floating-point number from 0.0 (inclusive) to 1.0 (exclusive).
 var r = Viper.Math.random();  // e.g., 0.7231498...
 
 // Random number in range [min, max)
-func randomRange(min: f64, max: f64) -> f64 {
+func randomRange(min: Number, max: Number) -> Number {
     return min + Viper.Math.random() * (max - min);
 }
 
@@ -1591,8 +1591,8 @@ map.values()            // -> [ValueType]
 **Example:**
 ```rust
 // Word frequency counter
-func countWords(text: string) -> Map<string, i64> {
-    var counts = Map<string, i64>.new();
+func countWords(text: String) -> Map<String, Integer> {
+    var counts = Map<String, Integer>.new();
 
     for word in text.split(" ") {
         var lower = word.toLower();
@@ -1726,7 +1726,7 @@ stack.size              // -> i64
 // Undo system
 var undoStack = Stack<string>.new();
 
-func doAction(action: string) {
+func doAction(action: String) {
     undoStack.push(action);
     Viper.Terminal.Say("Did: " + action);
 }
@@ -1770,11 +1770,11 @@ pq.size                 // -> i64
 **Example:**
 ```rust
 struct Task {
-    name: string,
-    priority: i64  // Lower number = higher priority
+    name: String,
+    priority: Integer  // Lower number = higher priority
 }
 
-func compareTasks(a: Task, b: Task) -> i64 {
+func compareTasks(a: Task, b: Task) -> Integer {
     return a.priority - b.priority;
 }
 
@@ -2048,7 +2048,7 @@ var json = user.toPrettyString();
 #### Safe Property Access
 
 ```rust
-func getStringOr(json: JsonValue, key: string, default: string) -> string {
+func getStringOr(json: JsonValue, key: String, default: String) -> String {
     var value = json[key];
     if value != nil {
         return value.asString();
@@ -2062,7 +2062,7 @@ var name = getStringOr(data, "nickname", "Anonymous");
 #### Config File Loading
 
 ```rust
-func loadConfig(path: string) -> JsonValue {
+func loadConfig(path: String) -> JsonValue {
     if Viper.File.exists(path) {
         var content = Viper.File.readText(path);
         return JSON.parse(content);

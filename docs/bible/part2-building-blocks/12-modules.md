@@ -25,36 +25,36 @@ var playerY = 0.0;
 var playerHealth = 100;
 var playerSpeed = 5.0;
 
-func movePlayer(dx: f64, dy: f64) { ... }
-func damagePlayer(amount: i64) { ... }
-func healPlayer(amount: i64) { ... }
+func movePlayer(dx: Number, dy: Number) { ... }
+func damagePlayer(amount: Integer) { ... }
+func healPlayer(amount: Integer) { ... }
 func renderPlayer() { ... }
 
 // Enemy stuff
 var enemies: [Enemy] = [];
 
-func spawnEnemy(x: f64, y: f64) { ... }
+func spawnEnemy(x: Number, y: Number) { ... }
 func updateEnemies() { ... }
 func renderEnemies() { ... }
 
 // Item stuff
 var items: [Item] = [];
 
-func spawnItem(x: f64, y: f64, type: string) { ... }
+func spawnItem(x: Number, y: Number, type: String) { ... }
 func checkItemPickup() { ... }
 func renderItems() { ... }
 
 // Physics stuff
-func checkCollision(a: Rect, b: Rect) -> bool { ... }
+func checkCollision(a: Rect, b: Rect) -> Boolean { ... }
 func applyGravity(entity: Entity) { ... }
 
 // Rendering stuff
 func clearScreen() { ... }
-func drawSprite(x: f64, y: f64, sprite: Sprite) { ... }
+func drawSprite(x: Number, y: Number, sprite: Sprite) { ... }
 
 // Audio stuff
-func playSound(name: string) { ... }
-func playMusic(name: string) { ... }
+func playSound(name: String) { ... }
+func playMusic(name: String) { ... }
 
 // ... hundreds more lines
 ```
@@ -85,11 +85,11 @@ Here's a simple module:
 // file: math_utils.zia
 module MathUtils;
 
-func square(x: f64) -> f64 {
+func square(x: Number) -> Number {
     return x * x;
 }
 
-func cube(x: f64) -> f64 {
+func cube(x: Number) -> Number {
     return x * x * x;
 }
 
@@ -114,8 +114,8 @@ Without modules, you're forced into awkward solutions:
 
 ```rust
 // Without modules: ugly prefixed names
-func mathAdd(a: i64, b: i64) -> i64 { ... }
-func listAdd(list: [i64], item: i64) { ... }
+func mathAdd(a: Integer, b: Integer) -> Integer { ... }
+func listAdd(list: [Integer], item: Integer) { ... }
 func databaseAddUser(user: User) { ... }
 ```
 
@@ -278,7 +278,7 @@ export func decrement() {
     count -= 1;
 }
 
-export func get() -> i64 {
+export func get() -> Integer {
     return count;
 }
 
@@ -335,7 +335,7 @@ Things that should usually be private:
 module EmailValidator;
 
 // Public: This is what the module is for
-export func isValid(email: string) -> bool {
+export func isValid(email: String) -> Boolean {
     if email.length == 0 {
         return false;
     }
@@ -349,11 +349,11 @@ export func isValid(email: string) -> bool {
 }
 
 // Private helpers: Users don't need these
-func containsAt(email: string) -> bool {
+func containsAt(email: String) -> Boolean {
     return email.contains("@");
 }
 
-func hasValidDomain(email: string) -> bool {
+func hasValidDomain(email: String) -> Boolean {
     var parts = email.split("@");
     if parts.length != 2 {
         return false;
@@ -552,8 +552,8 @@ There are several strategies:
 module Position;
 
 export value Vec2 {
-    x: f64;
-    y: f64;
+    x: Number;
+    y: Number;
 }
 
 // player.zia
@@ -637,7 +637,7 @@ bind Config;
 // Lower dependency: receives what it needs
 module Report;
 
-export func generate(data: [Record], format: Formatter) -> string {
+export func generate(data: [Record], format: Formatter) -> String {
     // No database binding — data is passed in
     // No email binding — report is returned, caller sends it
     // ...
@@ -670,16 +670,16 @@ Think of your module as having two parts:
 module Cache;
 
 // Interface (stable promise)
-export func get(key: string) -> string?;
-export func set(key: string, value: string);
+export func get(key: String) -> String?;
+export func set(key: String, value: String);
 export func clear();
 
 // Implementation (hidden, can change)
-var data: Map<string, CacheEntry>;  // Could change to use Redis
+var data: Map<String, CacheEntry>;  // Could change to use Redis
 var maxSize = 1000;                 // Could become configurable
 
 func evictOldest() { ... }          // Internal helper
-func shouldEvict() -> bool { ... }  // Internal helper
+func shouldEvict() -> Boolean { ... }  // Internal helper
 ```
 
 Users see only `get`, `set`, and `clear`. You're free to completely rewrite the implementation — use a different data structure, add expiration, move to a database — without breaking anyone's code.
@@ -695,11 +695,11 @@ Let's refactor our game demo into proper modules:
 module Vec2;
 
 export value Vec2 {
-    x: f64;
-    y: f64;
+    x: Number;
+    y: Number;
 }
 
-export func create(x: f64, y: f64) -> Vec2 {
+export func create(x: Number, y: Number) -> Vec2 {
     return Vec2 { x: x, y: y };
 }
 
@@ -711,11 +711,11 @@ export func subtract(a: Vec2, b: Vec2) -> Vec2 {
     return Vec2 { x: a.x - b.x, y: a.y - b.y };
 }
 
-export func scale(v: Vec2, factor: f64) -> Vec2 {
+export func scale(v: Vec2, factor: Number) -> Vec2 {
     return Vec2 { x: v.x * factor, y: v.y * factor };
 }
 
-export func distance(a: Vec2, b: Vec2) -> f64 {
+export func distance(a: Vec2, b: Vec2) -> Number {
     var dx = b.x - a.x;
     var dy = b.y - a.y;
     return Viper.Math.sqrt(dx * dx + dy * dy);
@@ -725,7 +725,7 @@ export func zero() -> Vec2 {
     return Vec2 { x: 0.0, y: 0.0 };
 }
 
-export func magnitude(v: Vec2) -> f64 {
+export func magnitude(v: Vec2) -> Number {
     return Viper.Math.sqrt(v.x * v.x + v.y * v.y);
 }
 
@@ -745,14 +745,14 @@ module Player;
 bind Vec2;
 
 export value Player {
-    name: string;
+    name: String;
     position: Vec2.Vec2;
-    health: i64;
-    maxHealth: i64;
-    score: i64;
+    health: Integer;
+    maxHealth: Integer;
+    score: Integer;
 }
 
-export func create(name: string) -> Player {
+export func create(name: String) -> Player {
     return Player {
         name: name,
         position: Vec2.zero(),
@@ -762,7 +762,7 @@ export func create(name: string) -> Player {
     };
 }
 
-export func isAlive(player: Player) -> bool {
+export func isAlive(player: Player) -> Boolean {
     return player.health > 0;
 }
 
@@ -776,7 +776,7 @@ export func move(player: Player, direction: Vec2.Vec2) -> Player {
     };
 }
 
-export func takeDamage(player: Player, amount: i64) -> Player {
+export func takeDamage(player: Player, amount: Integer) -> Player {
     var newHealth = player.health - amount;
     if newHealth < 0 {
         newHealth = 0;
@@ -790,7 +790,7 @@ export func takeDamage(player: Player, amount: i64) -> Player {
     };
 }
 
-export func heal(player: Player, amount: i64) -> Player {
+export func heal(player: Player, amount: Integer) -> Player {
     var newHealth = player.health + amount;
     if newHealth > player.maxHealth {
         newHealth = player.maxHealth;
@@ -804,7 +804,7 @@ export func heal(player: Player, amount: i64) -> Player {
     };
 }
 
-export func addScore(player: Player, points: i64) -> Player {
+export func addScore(player: Player, points: Integer) -> Player {
     return Player {
         name: player.name,
         position: player.position,
@@ -823,11 +823,11 @@ bind Vec2;
 
 export value Enemy {
     position: Vec2.Vec2;
-    damage: i64;
-    speed: f64;
+    damage: Integer;
+    speed: Number;
 }
 
-export func create(x: f64, y: f64, damage: i64) -> Enemy {
+export func create(x: Number, y: Number, damage: Integer) -> Enemy {
     return Enemy {
         position: Vec2.create(x, y),
         damage: damage,
@@ -1065,7 +1065,7 @@ Sometimes you want to test internal functions that aren't exported. There are se
 
 ```rust
 // Exported for testing, not for normal use
-export func test_containsAt(email: string) -> bool {
+export func test_containsAt(email: String) -> Boolean {
     return containsAt(email);
 }
 ```
@@ -1075,11 +1075,11 @@ export func test_containsAt(email: string) -> bool {
 ```rust
 module EmailValidator;
 
-func containsAt(email: string) -> bool {
+func containsAt(email: String) -> Boolean {
     return email.contains("@");
 }
 
-export func isValid(email: string) -> bool {
+export func isValid(email: String) -> Boolean {
     // Uses containsAt internally
 }
 
@@ -1156,11 +1156,11 @@ Pascal explicitly separates `interface` (what's visible to other units) from `im
 module User;
 
 export var users: [User] = [];  // Internal data exposed
-export var nextId: i64 = 1;     // Implementation detail exposed
+export var nextId: Integer = 1;     // Implementation detail exposed
 
-export func createUser(name: string) -> User { ... }
-export func validateName(name: string) -> bool { ... }  // Internal helper exposed
-export func generateId() -> i64 { ... }  // Internal helper exposed
+export func createUser(name: String) -> User { ... }
+export func validateName(name: String) -> Boolean { ... }  // Internal helper exposed
+export func generateId() -> Integer { ... }  // Internal helper exposed
 ```
 
 ```rust
@@ -1168,11 +1168,11 @@ export func generateId() -> i64 { ... }  // Internal helper exposed
 module User;
 
 var users: [User] = [];  // Private
-var nextId: i64 = 1;     // Private
+var nextId: Integer = 1;     // Private
 
-export func createUser(name: string) -> User { ... }
-export func findUser(id: i64) -> User? { ... }
-export func deleteUser(id: i64) -> bool { ... }
+export func createUser(name: String) -> User { ... }
+export func findUser(id: Integer) -> User? { ... }
+export func deleteUser(id: Integer) -> Boolean { ... }
 ```
 
 ### God Modules
@@ -1246,21 +1246,21 @@ FileUtils.write("out.txt", s);
 // Bad: Module is too granular
 // add.zia
 module Add;
-export func add(a: i64, b: i64) -> i64 { return a + b; }
+export func add(a: Integer, b: Integer) -> Integer { return a + b; }
 
 // subtract.zia
 module Subtract;
-export func subtract(a: i64, b: i64) -> i64 { return a - b; }
+export func subtract(a: Integer, b: Integer) -> Integer { return a - b; }
 ```
 
 ```rust
 // Good: Module has coherent purpose
 // math.zia
 module Math;
-export func add(a: i64, b: i64) -> i64 { return a + b; }
-export func subtract(a: i64, b: i64) -> i64 { return a - b; }
-export func multiply(a: i64, b: i64) -> i64 { return a * b; }
-export func divide(a: i64, b: i64) -> i64 { return a / b; }
+export func add(a: Integer, b: Integer) -> Integer { return a + b; }
+export func subtract(a: Integer, b: Integer) -> Integer { return a - b; }
+export func multiply(a: Integer, b: Integer) -> Integer { return a * b; }
+export func divide(a: Integer, b: Integer) -> Integer { return a / b; }
 ```
 
 ---

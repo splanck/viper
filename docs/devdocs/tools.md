@@ -4,6 +4,21 @@ Reference documentation for the Viper command-line tools.
 
 ## User-Facing Tools
 
+### zia
+
+Run or compile Zia programs.
+
+```bash
+# Run a Zia program
+zia program.zia
+
+# Emit IL
+zia program.zia --emit-il
+
+# Save IL to file
+zia program.zia -o program.il
+```
+
 ### vbasic
 
 Run or compile BASIC programs.
@@ -17,6 +32,21 @@ vbasic program.bas --emit-il
 
 # Save IL to file
 vbasic program.bas -o program.il
+```
+
+### vpascal
+
+Run or compile Pascal programs.
+
+```bash
+# Run a Pascal program
+vpascal program.pas
+
+# Emit IL
+vpascal program.pas --emit-il
+
+# Save IL to file
+vpascal program.pas -o program.il
 ```
 
 ### ilrun
@@ -61,8 +91,12 @@ The unified compiler driver provides advanced functionality.
 The CLI is organized around primary entry points:
 
 - `viper -run <file.il>` — Execute an IL module
+- `viper front zia -emit-il <file.zia>` — Lower Zia to IL
+- `viper front zia -run <file.zia>` — Compile and execute Zia
 - `viper front basic -emit-il <file.bas>` — Lower BASIC to IL
 - `viper front basic -run <file.bas>` — Compile and execute BASIC
+- `viper front pascal -emit-il <file.pas>` — Lower Pascal to IL
+- `viper front pascal -run <file.pas>` — Compile and execute Pascal
 - `viper il-opt <in.il> -o <out.il>` — Run optimization passes
 - `viper codegen x64 <in.il> -o <out>` — Compile to x86-64 native code (experimental; unvalidated on real x86)
 - `viper codegen arm64 <in.il> -S <out.s>` — Generate ARM64 assembly
@@ -91,16 +125,22 @@ viper -run <file.il> [flags]
 | `--count`                    | Print executed instruction count at exit     |
 | `--time`                     | Print wall-clock execution time              |
 
-### viper front basic
+### viper front
 
-Compile BASIC programs.
+Compile programs from any supported frontend (zia, basic, pascal).
 
 ```bash
-# Emit IL
-viper front basic -emit-il <file.bas> [--bounds-checks]
+# Zia
+viper front zia -emit-il <file.zia> [--bounds-checks]
+viper front zia -run <file.zia> [--trace=il|src] [--stdin-from <file>]
 
-# Run BASIC programs
+# BASIC
+viper front basic -emit-il <file.bas> [--bounds-checks]
 viper front basic -run <file.bas> [--trace=il|src] [--stdin-from <file>]
+
+# Pascal
+viper front pascal -emit-il <file.pas> [--bounds-checks]
+viper front pascal -run <file.pas> [--trace=il|src] [--stdin-from <file>]
 ```
 
 ### viper il-opt

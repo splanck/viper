@@ -518,7 +518,7 @@ Now that we understand the basics, let's explore patterns that make input handli
 Remember that analog sticks rarely rest exactly at (0, 0). A dead zone ignores small values near the center:
 
 ```rust
-func applyDeadZone(value: f64, threshold: f64) -> f64 {
+func applyDeadZone(value: Number, threshold: Number) -> Number {
     if Viper.Math.abs(value) < threshold {
         return 0.0;  // Treat small values as zero
     }
@@ -535,7 +535,7 @@ A threshold of 0.15 is typical. Too low, and the character drifts. Too high, and
 A more sophisticated dead zone smoothly scales the value to avoid a "jump" when crossing the threshold:
 
 ```rust
-func applyDeadZoneSmooth(value: f64, threshold: f64) -> f64 {
+func applyDeadZoneSmooth(value: Number, threshold: Number) -> Number {
     var absValue = Viper.Math.abs(value);
     if absValue < threshold {
         return 0.0;
@@ -554,7 +554,7 @@ Games should abstract input so the same action can come from different sources. 
 
 ```rust
 entity InputManager {
-    func getMoveX() -> f64 {
+    func getMoveX() -> Number {
         // Check keyboard first
         if Input.isKeyDown(Key.LEFT) || Input.isKeyDown(Key.A) {
             return -1.0;
@@ -574,7 +574,7 @@ entity InputManager {
         return 0.0;
     }
 
-    func getMoveY() -> f64 {
+    func getMoveY() -> Number {
         if Input.isKeyDown(Key.UP) || Input.isKeyDown(Key.W) {
             return -1.0;
         }
@@ -592,13 +592,13 @@ entity InputManager {
         return 0.0;
     }
 
-    func isJumpPressed() -> bool {
+    func isJumpPressed() -> Boolean {
         return Input.wasKeyPressed(Key.SPACE) ||
                Input.wasKeyPressed(Key.W) ||
                Input.wasControllerButtonPressed(0, ControllerButton.A);
     }
 
-    func isActionPressed() -> bool {
+    func isActionPressed() -> Boolean {
         return Input.wasKeyPressed(Key.E) ||
                Input.wasKeyPressed(Key.ENTER) ||
                Input.wasControllerButtonPressed(0, ControllerButton.X);
@@ -632,7 +632,7 @@ Players appreciate customizable controls. A key map stores the current bindings:
 
 ```rust
 entity KeyMap {
-    hide bindings: Map<string, i64>;
+    hide bindings: Map<String, Integer>;
 
     expose func init() {
         self.bindings = Map.new();
@@ -646,21 +646,21 @@ entity KeyMap {
         self.bindings.set("pause", Key.ESCAPE);
     }
 
-    func isActionDown(action: string) -> bool {
+    func isActionDown(action: String) -> Boolean {
         var key = self.bindings.get(action);
         return Input.isKeyDown(key);
     }
 
-    func wasActionPressed(action: string) -> bool {
+    func wasActionPressed(action: String) -> Boolean {
         var key = self.bindings.get(action);
         return Input.wasKeyPressed(key);
     }
 
-    func rebind(action: string, key: i64) {
+    func rebind(action: String, key: Integer) {
         self.bindings.set(action, key);
     }
 
-    func getBinding(action: string) -> i64 {
+    func getBinding(action: String) -> Integer {
         return self.bindings.get(action);
     }
 }
@@ -669,7 +669,7 @@ entity KeyMap {
 To let the player rebind a key:
 
 ```rust
-func waitForKeyAndRebind(keyMap: KeyMap, action: string) {
+func waitForKeyAndRebind(keyMap: KeyMap, action: String) {
     // Wait for any key press
     while true {
         for keyCode in 0..256 {
@@ -691,10 +691,10 @@ Imagine you're playing a platformer. Your character is falling toward the ground
 
 ```rust
 entity InputBuffer {
-    hide jumpBufferTime: f64;
-    hide jumpBufferDuration: f64 = 0.1;  // 100ms buffer window
+    hide jumpBufferTime: Number;
+    hide jumpBufferDuration: Number = 0.1;  // 100ms buffer window
 
-    func update(dt: f64) {
+    func update(dt: Number) {
         // Decrease buffer timer
         if self.jumpBufferTime > 0 {
             self.jumpBufferTime -= dt;
@@ -706,7 +706,7 @@ entity InputBuffer {
         }
     }
 
-    func consumeJump() -> bool {
+    func consumeJump() -> Boolean {
         // If there's a buffered jump, use it and clear the buffer
         if self.jumpBufferTime > 0 {
             self.jumpBufferTime = 0;
@@ -740,11 +740,11 @@ A related technique is *coyote time* (named after cartoon coyotes who don't fall
 
 ```rust
 entity CoyoteTime {
-    hide timeLeftGrounded: f64;
-    hide coyoteDuration: f64 = 0.1;  // 100ms grace period
-    hide wasGrounded: bool = false;
+    hide timeLeftGrounded: Number;
+    hide coyoteDuration: Number = 0.1;  // 100ms grace period
+    hide wasGrounded: Boolean = false;
 
-    func update(dt: f64, isGrounded: bool) {
+    func update(dt: Number, isGrounded: Boolean) {
         if isGrounded {
             self.timeLeftGrounded = self.coyoteDuration;
             self.wasGrounded = true;
@@ -757,7 +757,7 @@ entity CoyoteTime {
         }
     }
 
-    func canJump() -> bool {
+    func canJump() -> Boolean {
         return self.timeLeftGrounded > 0;
     }
 }
@@ -771,13 +771,13 @@ Some inputs shouldn't repeat too quickly. *Debouncing* prevents rapid-fire activ
 
 ```rust
 entity Debouncer {
-    hide cooldowns: Map<string, f64>;
+    hide cooldowns: Map<String, Number>;
 
     expose func init() {
         self.cooldowns = Map.new();
     }
 
-    func update(dt: f64) {
+    func update(dt: Number) {
         for action in self.cooldowns.keys() {
             var remaining = self.cooldowns.get(action);
             if remaining > 0 {
@@ -786,7 +786,7 @@ entity Debouncer {
         }
     }
 
-    func canActivate(action: string, cooldown: f64) -> bool {
+    func canActivate(action: String, cooldown: Number) -> Boolean {
         var remaining = self.cooldowns.get(action);
         if remaining == nil || remaining <= 0 {
             self.cooldowns.set(action, cooldown);
@@ -829,11 +829,11 @@ bind Viper.Graphics;
 bind Viper.Input;
 
 value Player {
-    x: f64;
-    y: f64;
-    vx: f64;
-    vy: f64;
-    onGround: bool;
+    x: Number;
+    y: Number;
+    vx: Number;
+    vy: Number;
+    onGround: Boolean;
 }
 
 final GRAVITY = 800.0;

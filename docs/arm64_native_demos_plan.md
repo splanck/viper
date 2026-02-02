@@ -23,63 +23,15 @@ This document outlines the work required to compile and run chess, vtris, and fr
 
 ### Phase 1: Symbol Mappings Added
 
-Added ~35 symbol mappings to `mapRuntimeSymbol()` in `src/codegen/aarch64/AsmEmitter.cpp`:
+Symbol mappings are centralized in `src/il/runtime/RuntimeNameMap.hpp` via the `mapCanonicalRuntimeName()` function. The AsmEmitter calls this function to resolve `Viper.*` names to their C runtime equivalents (e.g., `rt_term_cls`, `rt_inkey_str`).
 
-```cpp
-// Terminal operations
-if (name == "Viper.Terminal.Clear")
-    return "rt_term_cls";
-if (name == "Viper.Terminal.InKey")
-    return "rt_inkey_str";
-if (name == "Viper.Terminal.SetColor")
-    return "rt_term_color_i32";
-if (name == "Viper.Terminal.SetPosition")
-    return "rt_term_locate_i32";
+Key mappings include:
+- Terminal operations: `Viper.Terminal.Clear` → `rt_term_cls`
+- String operations: `Viper.Strings.FromI32` → `rt_str_i32_alloc`
+- Parsing: `Viper.Parse.Int64` → `rt_parse_int64`
+- Object methods: `Viper.Object.Equals` → `rt_obj_equals`
 
-// String formatting
-if (name == "Viper.Strings.FromI32")
-    return "rt_str_i32_alloc";
-if (name == "Viper.Strings.FromI16")
-    return "rt_str_i16_alloc";
-if (name == "Viper.Strings.FromSingle")
-    return "rt_str_f_alloc";
-if (name == "Viper.Strings.FromDoublePrecise")
-    return "rt_str_d_alloc";
-if (name == "Viper.Strings.SplitFields")
-    return "rt_split_fields";
-if (name == "Viper.Strings.Equals")
-    return "rt_str_eq";
-if (name == "Viper.Strings.FromStr")
-    return "rt_str";
-
-// Parsing
-if (name == "Viper.Parse.Int64")
-    return "rt_parse_int64";
-if (name == "Viper.Parse.Double")
-    return "rt_parse_double";
-
-// String properties
-if (name == "Viper.String.ConcatSelf")
-    return "rt_concat";
-if (name == "Viper.String.get_IsEmpty")
-    return "rt_str_is_empty";
-
-// Object methods
-if (name == "Viper.Object.Equals")
-    return "rt_obj_equals";
-if (name == "Viper.Object.GetHashCode")
-    return "rt_obj_get_hash_code";
-if (name == "Viper.Object.ReferenceEquals")
-    return "rt_obj_reference_equals";
-if (name == "Viper.Object.ToString")
-    return "rt_obj_to_string";
-
-// StringBuilder properties
-if (name == "Viper.Text.StringBuilder.get_Length")
-    return "rt_text_sb_get_length";
-if (name == "Viper.Text.StringBuilder.get_Capacity")
-    return "rt_text_sb_get_capacity";
-```
+See `src/il/runtime/RuntimeNameMap.hpp` for the complete mapping table.
 
 ### Phase 2: Demo Compilation Verified
 
@@ -117,11 +69,12 @@ Test script: `src/tests/e2e/test_arm64_native_link.cmake`
 
 ## Files Modified
 
-| File                                         | Changes                                                 |
-|----------------------------------------------|---------------------------------------------------------|
-| `src/codegen/aarch64/AsmEmitter.cpp`         | Added ~35 symbol mappings to `mapRuntimeSymbol()`       |
-| `src/tests/e2e/CMakeLists.txt`               | Added 3 ARM64 native linking tests                      |
-| `src/tests/e2e/test_arm64_native_link.cmake` | New test script for full compile/assemble/link pipeline |
+| File                                         | Changes                                                              |
+|----------------------------------------------|----------------------------------------------------------------------|
+| `src/il/runtime/RuntimeNameMap.hpp`          | Centralized symbol mappings for `Viper.*` to C runtime names         |
+| `src/codegen/aarch64/AsmEmitter.cpp`         | Uses `mapCanonicalRuntimeName()` for symbol resolution               |
+| `src/tests/e2e/CMakeLists.txt`               | Added 3 ARM64 native linking tests                                   |
+| `src/tests/e2e/test_arm64_native_link.cmake` | New test script for full compile/assemble/link pipeline              |
 
 ## Success Criteria (All Met)
 

@@ -366,12 +366,12 @@ bind Viper.Network;
 bind Viper.JSON;
 
 value Weather {
-    temperature: f64;
-    conditions: string;
-    humidity: f64;
+    temperature: Number;
+    conditions: String;
+    humidity: Number;
 }
 
-func fetchWeather(city: string) -> Weather? {
+func fetchWeather(city: String) -> Weather? {
     // Build the URL with the city parameter
     var url = "https://api.weather.example.com/current?city=" + city;
 
@@ -609,9 +609,9 @@ entity ChatServer {
     hide clients: [TcpSocket];
 
     // Flag to control the server loop
-    hide running: bool;
+    hide running: Boolean;
 
-    expose func init(port: i64) {
+    expose func init(port: Integer) {
         // Start listening on the specified port
         self.server = TcpServer.listen(port);
         self.clients = [];
@@ -667,7 +667,7 @@ entity ChatServer {
     }
 
     // Send a message to all connected clients
-    func broadcast(message: string) {
+    func broadcast(message: String) {
         for client in self.clients {
             client.write(message + "\n");
         }
@@ -740,10 +740,10 @@ bind Viper.Threading;
 
 entity ChatClient {
     hide socket: TcpSocket;
-    hide username: string;
-    hide running: bool;
+    hide username: String;
+    hide running: Boolean;
 
-    expose func init(host: string, port: i64, username: string) {
+    expose func init(host: String, port: Integer, username: String) {
         self.username = username;
         self.running = true;
 
@@ -898,20 +898,20 @@ bind Viper.Network;
 
 // Player state that we'll send frequently
 value PlayerState {
-    id: i64;
-    x: f64;
-    y: f64;
-    rotation: f64;
-    health: i64;
-    timestamp: i64;  // When this state was captured
+    id: Integer;
+    x: Number;
+    y: Number;
+    rotation: Number;
+    health: Integer;
+    timestamp: Integer;  // When this state was captured
 }
 
 entity GameNetwork {
     hide socket: UdpSocket;
-    hide serverAddress: string;
-    hide serverPort: i64;
+    hide serverAddress: String;
+    hide serverPort: Integer;
 
-    expose func init(serverAddress: string, serverPort: i64) {
+    expose func init(serverAddress: String, serverPort: Integer) {
         self.socket = UdpSocket.create();
         self.serverAddress = serverAddress;
         self.serverPort = serverPort;
@@ -947,14 +947,14 @@ entity GameNetwork {
 }
 
 // Convert state to transmittable format
-func packPlayerState(state: PlayerState) -> string {
+func packPlayerState(state: PlayerState) -> String {
     // Simple text format (real games use compact binary)
     return state.id + "," + state.x + "," + state.y + "," +
            state.rotation + "," + state.health + "," + state.timestamp;
 }
 
 // Convert received data back to state
-func unpackPlayerState(data: string) -> PlayerState {
+func unpackPlayerState(data: String) -> PlayerState {
     var parts = data.split(",");
     return PlayerState {
         id: parts[0].toInt(),
@@ -982,9 +982,9 @@ bind Viper.Network;
 
 entity WebSocketClient {
     hide ws: WebSocket;
-    hide connected: bool;
+    hide connected: Boolean;
 
-    func connect(url: string) {
+    func connect(url: String) {
         self.connected = false;
 
         // Initiate WebSocket connection
@@ -1000,7 +1000,7 @@ entity WebSocketClient {
             self.ws.send("Hello server, I'm online!");
         });
 
-        self.ws.onMessage(func(message: string) {
+        self.ws.onMessage(func(message: String) {
             // Server sent us something
             Viper.Terminal.Say("Server: " + message);
         });
@@ -1010,12 +1010,12 @@ entity WebSocketClient {
             self.connected = false;
         });
 
-        self.ws.onError(func(error: string) {
+        self.ws.onError(func(error: String) {
             Viper.Terminal.Say("Error: " + error);
         });
     }
 
-    func send(message: string) {
+    func send(message: String) {
         if self.connected {
             self.ws.send(message);
         } else {
@@ -1099,7 +1099,7 @@ For important operations, implement retry logic with exponential backoff:
 ```rust
 bind Viper.Network;
 
-func robustFetch(url: string, maxRetries: i64) -> string? {
+func robustFetch(url: String, maxRetries: Integer) -> String? {
     var retries = 0;
 
     while retries < maxRetries {
@@ -1202,7 +1202,7 @@ Every open connection uses system resources. Leaking connections will eventually
 
 ```rust
 // BAD: Connection leak!
-func fetchData(host: string, port: i64) -> string {
+func fetchData(host: String, port: Integer) -> String {
     var socket = TcpSocket.connect(host, port);
     var data = socket.readAll();
     return data;  // Socket never closed!
@@ -1210,7 +1210,7 @@ func fetchData(host: string, port: i64) -> string {
 // If called 1000 times, you have 1000 open connections
 
 // GOOD: Always close
-func fetchData(host: string, port: i64) -> string {
+func fetchData(host: String, port: Integer) -> String {
     var socket = TcpSocket.connect(host, port);
     var data = socket.readAll();
     socket.close();  // Clean up!
@@ -1218,7 +1218,7 @@ func fetchData(host: string, port: i64) -> string {
 }
 
 // EVEN BETTER: Handle errors too
-func fetchData(host: string, port: i64) -> string? {
+func fetchData(host: String, port: Integer) -> String? {
     var socket = TcpSocket.connect(host, port);
 
     if socket == null {
@@ -1271,7 +1271,7 @@ When you read from a socket, you might not get all the data at once. Networks de
 var message = socket.read(1024);  // Might get less than 1024 bytes!
 
 // GOOD: Read until you have what you need
-func readExactly(socket: TcpSocket, count: i64) -> string {
+func readExactly(socket: TcpSocket, count: Integer) -> String {
     var result = "";
 
     while result.length < count {
@@ -1333,7 +1333,7 @@ socket.write("25\n");
 socket.write("Hello\n");
 
 // Option 2: Length-prefixed
-func sendMessage(socket: TcpSocket, message: string) {
+func sendMessage(socket: TcpSocket, message: String) {
     var length = message.length;
     socket.write(length + ":" + message);  // "5:Hello"
 }
@@ -1355,7 +1355,7 @@ while true {
 // If socket breaks, readLine returns null, and process(null) crashes
 
 // GOOD: Detect disconnection and reconnect
-func reliableConnection(host: string, port: i64) {
+func reliableConnection(host: String, port: Integer) {
     var socket: TcpSocket? = null;
 
     while true {
@@ -1465,9 +1465,9 @@ Without limits, attackers can flood your server with requests.
 ```rust
 entity RateLimitedServer {
     // Track requests per IP address
-    hide requestCounts: Map<string, i64>;
-    hide lastReset: i64;
-    hide maxRequestsPerMinute: i64;
+    hide requestCounts: Map<String, Integer>;
+    hide lastReset: Integer;
+    hide maxRequestsPerMinute: Integer;
 
     expose func init() {
         self.requestCounts = Map.new();
@@ -1528,7 +1528,7 @@ Network bugs are notoriously hard to track down. The problem might be in your co
 When network code doesn't work, add logging at every step:
 
 ```rust
-func debugFetch(url: string) -> string? {
+func debugFetch(url: String) -> String? {
     Viper.Terminal.Say("[DEBUG] Starting fetch of: " + url);
 
     try {
@@ -1646,22 +1646,22 @@ bind Viper.Time;
 
 // Data type for weather information
 value CityWeather {
-    city: string;
-    temperature: f64;
-    conditions: string;
-    humidity: f64;
-    windSpeed: f64;
-    lastUpdated: i64;
+    city: String;
+    temperature: Number;
+    conditions: String;
+    humidity: Number;
+    windSpeed: Number;
+    lastUpdated: Integer;
 }
 
 // Service entity that handles weather API calls
 entity WeatherService {
-    hide apiKey: string;
-    hide baseUrl: string;
-    hide cache: Map<string, CityWeather>;
-    hide cacheTimeout: i64;
+    hide apiKey: String;
+    hide baseUrl: String;
+    hide cache: Map<String, CityWeather>;
+    hide cacheTimeout: Integer;
 
-    expose func init(apiKey: string) {
+    expose func init(apiKey: String) {
         self.apiKey = apiKey;
         self.baseUrl = "https://api.weather.example.com/v1";
         self.cache = Map.new();
@@ -1669,7 +1669,7 @@ entity WeatherService {
     }
 
     // Fetch weather for a city, using cache when possible
-    func getWeather(city: string) -> CityWeather? {
+    func getWeather(city: String) -> CityWeather? {
         // Check cache first
         if self.cache.has(city) {
             var cached = self.cache.get(city);
@@ -1747,7 +1747,7 @@ func displayWeather(weather: CityWeather) {
     Viper.Terminal.Say("+----------------------------------+");
 }
 
-func padRight(s: string, width: i64) -> string {
+func padRight(s: String, width: Integer) -> String {
     while s.length < width {
         s = s + " ";
     }
@@ -1847,7 +1847,7 @@ uses ViperNetwork;
 var
     response: THttpResponse;
     sock: TTcpSocket;
-    reply: string;
+    reply: String;
     udp: TUdpSocket;
 begin
     response := HttpGet('https://api.example.com/data');

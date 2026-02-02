@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-updated: 2025-01-19
+last-updated: 2026-02-02
 ---
 
 # How to Extend the Viper Runtime

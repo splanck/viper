@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-updated: 2025-11-21
+last-updated: 2026-02-02
 ---
 
 # ViperGFX Graphics Library
@@ -40,8 +40,8 @@ management, pixel operations, drawing primitives, and input handling through a s
 | Platform    | Backend      | Status                  |
 |-------------|--------------|-------------------------|
 | **macOS**   | Cocoa/AppKit | ✅ **Fully Implemented** |
-| **Linux**   | X11          | ⏳ Stub (planned)        |
-| **Windows** | Win32 GDI    | ⏳ Stub (planned)        |
+| **Linux**   | X11          | ✅ **Fully Implemented** |
+| **Windows** | Win32 GDI    | ✅ **Fully Implemented** |
 | **Testing** | Mock backend | ✅ Fully Implemented     |
 
 ---
@@ -290,8 +290,8 @@ src/lib/graphics/
 │   ├── vgfx_draw.c      # Drawing algorithms
 │   ├── vgfx_internal.h  # Internal structures
 │   ├── vgfx_platform_macos.m    # macOS backend
-│   ├── vgfx_platform_linux.c    # Linux backend (stub)
-│   ├── vgfx_platform_win32.c    # Windows backend (stub)
+│   ├── vgfx_platform_linux.c    # Linux X11 backend
+│   ├── vgfx_platform_win32.c    # Windows Win32 backend
 │   └── vgfx_platform_mock.c     # Mock backend for tests
 ├── tests/               # Unit tests
 └── examples/            # Example programs
@@ -427,7 +427,6 @@ ViperGFX provides a simple, deterministic, cross-platform 2D graphics solution f
 ✅ **Integrated** — Builds as part of Viper
 ✅ **Tested** — 20/20 tests passing (100%)
 ✅ **Documented** — Complete API reference and examples
-✅ **macOS Ready** — Fully implemented Cocoa backend
-⏳ **Portable** — Linux/Windows backends planned
+✅ **Cross-Platform** — Fully implemented backends for macOS (Cocoa), Linux (X11), and Windows (Win32)
 
 For questions or contributions, see the [main Viper documentation](README.md).

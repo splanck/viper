@@ -36,7 +36,7 @@ Complete language reference for Viper BASIC. This document describes **statement
 - [Reserved Root](#reserved-root)
 - [Keyword Index](#keyword-index)
 - [Runtime Classes (Viper.*)](#runtime-classes-viper)
-- [Runtime classes (Viper.*)](#runtime-classes-viper)
+- [Runtime Classes Usage Examples](#runtime-classes-usage-examples)
 
 ---
 
@@ -1033,7 +1033,7 @@ Semantics:
 - Inner exceptions raised between lines 20–39 are caught by the TRY handler.
 - After `END TRY`, the previously active `ON ERROR GOTO Outer` handler continues to apply.
 
-## Runtime classes (Viper.*)
+## Runtime Classes Usage Examples
 
 Runtime-backed classes expose an object surface (properties, methods, constructors) that lower to canonical extern
 functions provided by the runtime. Two families are currently available:

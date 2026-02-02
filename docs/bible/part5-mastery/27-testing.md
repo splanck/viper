@@ -94,7 +94,7 @@ Unit tests verify that individual pieces of code work correctly in isolation. A 
 
 ```rust
 // The function we want to test
-func isPrime(n: i64) -> bool {
+func isPrime(n: Integer) -> Boolean {
     if n < 2 { return false; }
     if n == 2 { return true; }
     if n % 2 == 0 { return false; }
@@ -272,7 +272,7 @@ Let's start with the basics. Here's a simple function and a test for it:
 ```rust
 bind Viper.Test;
 
-func add(a: i64, b: i64) -> i64 {
+func add(a: Integer, b: Integer) -> Integer {
     return a + b;
 }
 
@@ -333,10 +333,10 @@ test "basic assertions" {
     assert !false;
 
     // Null checks
-    var x: string? = "hello";
+    var x: String? = "hello";
     assert x != null;
 
-    var y: string? = null;
+    var y: String? = null;
     assert y == null;
 }
 ```
@@ -587,37 +587,37 @@ entity Stack<T> {
         return self.items.pop();
     }
 
-    func isEmpty() -> bool {
+    func isEmpty() -> Boolean {
         return self.items.length == 0;
     }
 
-    func size() -> i64 {
+    func size() -> Integer {
         return self.items.length;
     }
 }
 
 // Zero: Empty stack behavior
 test "new stack is empty" {
-    var stack = Stack<i64>();
+    var stack = Stack<Integer>();
     assert stack.isEmpty();
     assertEqual(stack.size(), 0);
 }
 
 test "pop on empty stack returns null" {
-    var stack = Stack<i64>();
+    var stack = Stack<Integer>();
     assert stack.pop() == null;
 }
 
 // One: Single element behavior
 test "stack with one element is not empty" {
-    var stack = Stack<i64>();
+    var stack = Stack<Integer>();
     stack.push(42);
     assert !stack.isEmpty();
     assertEqual(stack.size(), 1);
 }
 
 test "pop returns the single element" {
-    var stack = Stack<i64>();
+    var stack = Stack<Integer>();
     stack.push(42);
     assertEqual(stack.pop(), 42);
     assert stack.isEmpty();
@@ -625,7 +625,7 @@ test "pop returns the single element" {
 
 // Many: Multiple elements behavior
 test "stack maintains LIFO order" {
-    var stack = Stack<i64>();
+    var stack = Stack<Integer>();
     stack.push(1);
     stack.push(2);
     stack.push(3);
@@ -637,7 +637,7 @@ test "stack maintains LIFO order" {
 
 // Boundary: Edge behavior
 test "push then pop returns to empty" {
-    var stack = Stack<i64>();
+    var stack = Stack<Integer>();
     stack.push(1);
     stack.pop();
     assert stack.isEmpty();
@@ -645,7 +645,7 @@ test "push then pop returns to empty" {
 
 // Exception/Error: Error behavior
 test "multiple pops on empty stack all return null" {
-    var stack = Stack<i64>();
+    var stack = Stack<Integer>();
     assert stack.pop() == null;
     assert stack.pop() == null;
 }
@@ -773,7 +773,7 @@ A stub returns predetermined values, ignoring its inputs:
 ```rust
 // Real implementation
 entity WeatherService {
-    func getTemperature(city: string) -> f64 {
+    func getTemperature(city: String) -> Number {
         var response = Http.get("https://api.weather.com/" + city);
         return parseTemperature(response);
     }
@@ -781,13 +781,13 @@ entity WeatherService {
 
 // Stub for testing
 entity StubWeatherService implements IWeatherService {
-    hide temperature: f64;
+    hide temperature: Number;
 
-    expose func init(temp: f64) {
+    expose func init(temp: Number) {
         self.temperature = temp;
     }
 
-    func getTemperature(city: string) -> f64 {
+    func getTemperature(city: String) -> Number {
         return self.temperature;  // Always returns the configured value
     }
 }
@@ -832,7 +832,7 @@ entity MockEmailService implements IEmailService {
         self.sentEmails.push(email);
     }
 
-    func wasSent(to: string, subject: string) -> bool {
+    func wasSent(to: String, subject: String) -> Boolean {
         for email in self.sentEmails {
             if email.to == to && email.subject == subject {
                 return true;
@@ -841,7 +841,7 @@ entity MockEmailService implements IEmailService {
         return false;
     }
 
-    func sendCount() -> i64 {
+    func sendCount() -> Integer {
         return self.sentEmails.length;
     }
 }
@@ -882,7 +882,7 @@ entity ProductionDatabase implements IDatabase {
 
 // Fake database: uses in-memory storage
 entity FakeDatabase implements IDatabase {
-    hide data: Map<string, User>;
+    hide data: Map<String, User>;
 
     expose func init() {
         self.data = Map();
@@ -892,11 +892,11 @@ entity FakeDatabase implements IDatabase {
         self.data.set(user.id, user);
     }
 
-    func findById(id: string) -> User? {
+    func findById(id: String) -> User? {
         return self.data.get(id);
     }
 
-    func delete(id: string) {
+    func delete(id: String) {
         self.data.remove(id);
     }
 }
@@ -954,7 +954,7 @@ This fails because `isPrime` doesn't exist yet.
 **Step 2: Green --- Make it pass with minimum code**
 
 ```rust
-func isPrime(n: i64) -> bool {
+func isPrime(n: Integer) -> Boolean {
     return true;  // Minimum code to pass!
 }
 ```
@@ -974,7 +974,7 @@ This fails because our function always returns true.
 **Step 4: Green --- Make it pass**
 
 ```rust
-func isPrime(n: i64) -> bool {
+func isPrime(n: Integer) -> Boolean {
     if n == 4 {
         return false;
     }
@@ -1005,7 +1005,7 @@ These fail because we haven't handled these cases.
 **Step 6: Green --- Handle small numbers**
 
 ```rust
-func isPrime(n: i64) -> bool {
+func isPrime(n: Integer) -> Boolean {
     if n < 2 {
         return false;
     }
@@ -1033,7 +1033,7 @@ test "9 is not prime" {
 Time to write a real algorithm:
 
 ```rust
-func isPrime(n: i64) -> bool {
+func isPrime(n: Integer) -> Boolean {
     if n < 2 {
         return false;
     }
@@ -1053,7 +1053,7 @@ All tests pass.
 The algorithm works but is slow. Let's optimize:
 
 ```rust
-func isPrime(n: i64) -> bool {
+func isPrime(n: Integer) -> Boolean {
     if n < 2 { return false; }
     if n == 2 { return true; }
     if n % 2 == 0 { return false; }
@@ -1297,7 +1297,7 @@ Total                 95/122        25/37       78%
 High coverage doesn't mean good tests. Consider:
 
 ```rust
-func divide(a: i64, b: i64) -> i64 {
+func divide(a: Integer, b: Integer) -> Integer {
     return a / b;
 }
 
@@ -1481,7 +1481,7 @@ Implementation:
 entity StringCalculator {
     expose func init() {}
 
-    func add(numbers: string) -> i64 {
+    func add(numbers: String) -> Integer {
         if numbers == "" {
             return 0;
         }
@@ -1503,11 +1503,11 @@ test "single number returns that number" {
 Implementation:
 
 ```rust
-func add(numbers: string) -> i64 {
+func add(numbers: String) -> Integer {
     if numbers == "" {
         return 0;
     }
-    return Viper.Parse.Int(numbers);
+    return Viper.Convert.ToInt(numbers);
 }
 ```
 
@@ -1524,7 +1524,7 @@ test "two numbers returns sum" {
 Implementation:
 
 ```rust
-func add(numbers: string) -> i64 {
+func add(numbers: String) -> Integer {
     if numbers == "" {
         return 0;
     }
@@ -1532,7 +1532,7 @@ func add(numbers: string) -> i64 {
     var parts = numbers.split(",");
     var sum = 0;
     for part in parts {
-        sum += Viper.Parse.Int(part);
+        sum += Viper.Convert.ToInt(part);
     }
     return sum;
 }
@@ -1563,7 +1563,7 @@ test "newlines work as separators" {
 Implementation:
 
 ```rust
-func add(numbers: string) -> i64 {
+func add(numbers: String) -> Integer {
     if numbers == "" {
         return 0;
     }
@@ -1573,7 +1573,7 @@ func add(numbers: string) -> i64 {
     var parts = normalized.split(",");
     var sum = 0;
     for part in parts {
-        sum += Viper.Parse.Int(part);
+        sum += Viper.Convert.ToInt(part);
     }
     return sum;
 }
@@ -1608,18 +1608,18 @@ test "exception message includes negative number" {
 Implementation:
 
 ```rust
-func add(numbers: string) -> i64 {
+func add(numbers: String) -> Integer {
     if numbers == "" {
         return 0;
     }
 
     var normalized = numbers.replace("\n", ",");
     var parts = normalized.split(",");
-    var negatives: [i64] = [];
+    var negatives: [Integer] = [];
     var sum = 0;
 
     for part in parts {
-        var n = Viper.Parse.Int(part);
+        var n = Viper.Convert.ToInt(part);
         if n < 0 {
             negatives.push(n);
         }
@@ -1645,18 +1645,18 @@ func add(numbers: string) -> i64 {
 entity StringCalculator {
     expose func init() {}
 
-    func add(numbers: string) -> i64 {
+    func add(numbers: String) -> Integer {
         if numbers == "" {
             return 0;
         }
 
         var normalized = numbers.replace("\n", ",");
         var parts = normalized.split(",");
-        var negatives: [i64] = [];
+        var negatives: [Integer] = [];
         var sum = 0;
 
         for part in parts {
-            var n = Viper.Parse.Int(part.trim());
+            var n = Viper.Convert.ToInt(part.trim());
             if n < 0 {
                 negatives.push(n);
             }
@@ -1854,9 +1854,9 @@ The time you spend writing tests saves far more time in debugging, maintenance, 
 ## Exercises
 
 **Exercise 27.1 (Mimic)**: Write tests for a `StringUtils` entity with these methods:
-- `reverse(s: string) -> string`: Returns the string reversed
-- `capitalize(s: string) -> string`: Capitalizes the first letter
-- `isPalindrome(s: string) -> bool`: Returns true if the string reads the same forwards and backwards
+- `reverse(s: String) -> String`: Returns the string reversed
+- `capitalize(s: String) -> String`: Capitalizes the first letter
+- `isPalindrome(s: String) -> Boolean`: Returns true if the string reads the same forwards and backwards
 
 Test normal cases, edge cases (empty string, single character), and various inputs.
 
@@ -1898,7 +1898,7 @@ Test that these components work together correctly for login success, login fail
 **Exercise 27.7 (Debug)**: Here's a buggy function. Write tests that expose the bugs, then fix them:
 
 ```rust
-func calculateGrade(score: i64) -> string {
+func calculateGrade(score: Integer) -> String {
     if score >= 90 { return "A"; }
     if score >= 80 { return "B"; }
     if score >= 70 { return "C"; }

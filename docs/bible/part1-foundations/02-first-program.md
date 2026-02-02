@@ -83,7 +83,7 @@ If you see "command not found" or a similar error, go back to the Getting Starte
 
 1. **Did you run the export command?** After building Viper, you need to add it to your PATH. Run:
    ```bash
-   export PATH="$PATH:/path/to/viper/build/bin"
+   export PATH="$PATH:/path/to/viper/build/src/tools/zia"
    ```
    Replace `/path/to/viper` with wherever you cloned the Viper repository.
 
@@ -469,9 +469,9 @@ When things go wrong (and they will — that's normal!), error messages are your
 
 **How to fix it:**
 1. Make sure you completed the installation in Chapter 0
-2. If on macOS/Linux, run the export command again: `export PATH="$PATH:/path/to/viper/build/bin"`
+2. If on macOS/Linux, run the export command again: `export PATH="$PATH:/path/to/viper/build/src/tools/zia"`
 3. If on Windows, check that Viper is in your system PATH
-4. Try using the full path: `/full/path/to/viper/build/bin/zia hello.zia`
+4. Try using the full path: `/full/path/to/viper/build/src/tools/zia/zia hello.zia`
 
 ### "file not found" or "No such file or directory"
 

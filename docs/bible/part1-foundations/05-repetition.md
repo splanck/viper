@@ -1005,7 +1005,7 @@ var age = 0;
 
 while !valid {
     Viper.Terminal.Print("Enter your age (0-120): ");
-    age = Viper.Parse.Int(Viper.Terminal.ReadLine());
+    age = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
 
     if age >= 0 && age <= 120 {
         valid = true;
@@ -1274,7 +1274,7 @@ func start() {
         var triesLeft = MAX_TRIES - tries;
 
         Viper.Terminal.Print("Guess #" + tries + ": ");
-        var guess = Viper.Parse.Int(Viper.Terminal.ReadLine());
+        var guess = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
 
         if guess == SECRET {
             Viper.Terminal.Say("");

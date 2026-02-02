@@ -144,7 +144,7 @@ entity GameEngine {
         Viper.Terminal.Say("Game engine running");
     }
 
-    func getFrameRate() -> i64 {
+    func getFrameRate() -> Integer {
         return 60;
     }
 }
@@ -180,7 +180,7 @@ entity Config {
     hide static instance: Config? = null;
 
     // Configuration data
-    hide settings: {string: string};
+    hide settings: {String: String};
 
     hide func init() {
         // Load default settings
@@ -197,22 +197,22 @@ entity Config {
         return Config.instance;
     }
 
-    func get(key: string) -> string? {
+    func get(key: String) -> String? {
         return self.settings[key];
     }
 
-    func set(key: string, value: string) {
+    func set(key: String, value: String) {
         self.settings[key] = value;
     }
 
-    func loadFromFile(path: string) {
+    func loadFromFile(path: String) {
         // Load settings from disk
         var content = Viper.File.read(path);
         // Parse and populate self.settings...
         Viper.Terminal.Say("Loaded settings from " + path);
     }
 
-    func saveToFile(path: string) {
+    func saveToFile(path: String) {
         // Save settings to disk
         Viper.Terminal.Say("Saved settings to " + path);
     }
@@ -225,7 +225,7 @@ func updateUserPreferences() {
     config.saveToFile("settings.json");
 }
 
-func getVolumeLevel() -> string {
+func getVolumeLevel() -> String {
     var config = Config.getInstance();
     return config.get("volume") ?? "50";
 }
@@ -276,7 +276,7 @@ enemy: dragon at 100, 100
 How does your code create these enemies? The naive approach:
 
 ```rust
-func loadLevel(data: string) {
+func loadLevel(data: String) {
     // Parse data...
     for line in data.split("\n") {
         var parts = parseLine(line);
@@ -315,15 +315,15 @@ The Factory pattern centralizes object creation:
 ```rust
 interface Enemy {
     func attack();
-    func getHealth() -> i64;
-    func getName() -> string;
+    func getHealth() -> Integer;
+    func getName() -> String;
 }
 
 entity Goblin implements Enemy {
-    x: f64;
-    y: f64;
+    x: Number;
+    y: Number;
 
-    expose func init(x: f64, y: f64) {
+    expose func init(x: Number, y: Number) {
         self.x = x;
         self.y = y;
     }
@@ -332,20 +332,20 @@ entity Goblin implements Enemy {
         Viper.Terminal.Say("Goblin scratches!");
     }
 
-    func getHealth() -> i64 {
+    func getHealth() -> Integer {
         return 30;
     }
 
-    func getName() -> string {
+    func getName() -> String {
         return "Goblin";
     }
 }
 
 entity Orc implements Enemy {
-    x: f64;
-    y: f64;
+    x: Number;
+    y: Number;
 
-    expose func init(x: f64, y: f64) {
+    expose func init(x: Number, y: Number) {
         self.x = x;
         self.y = y;
     }
@@ -354,20 +354,20 @@ entity Orc implements Enemy {
         Viper.Terminal.Say("Orc smashes!");
     }
 
-    func getHealth() -> i64 {
+    func getHealth() -> Integer {
         return 50;
     }
 
-    func getName() -> string {
+    func getName() -> String {
         return "Orc";
     }
 }
 
 entity Dragon implements Enemy {
-    x: f64;
-    y: f64;
+    x: Number;
+    y: Number;
 
-    expose func init(x: f64, y: f64) {
+    expose func init(x: Number, y: Number) {
         self.x = x;
         self.y = y;
     }
@@ -376,18 +376,18 @@ entity Dragon implements Enemy {
         Viper.Terminal.Say("Dragon breathes fire!");
     }
 
-    func getHealth() -> i64 {
+    func getHealth() -> Integer {
         return 200;
     }
 
-    func getName() -> string {
+    func getName() -> String {
         return "Dragon";
     }
 }
 
 // The Factory
 entity EnemyFactory {
-    static func create(type: string, x: f64, y: f64) -> Enemy {
+    static func create(type: String, x: Number, y: Number) -> Enemy {
         if type == "goblin" {
             return Goblin(x, y);
         } else if type == "orc" {
@@ -400,7 +400,7 @@ entity EnemyFactory {
     }
 
     // Smarter creation based on game logic
-    static func createForLevel(level: i64, x: f64, y: f64) -> Enemy {
+    static func createForLevel(level: Integer, x: Number, y: Number) -> Enemy {
         if level < 3 {
             return Goblin(x, y);
         } else if level < 7 {
@@ -422,7 +422,7 @@ entity EnemyFactory {
     }
 
     // Create multiple enemies
-    static func createWave(count: i64, level: i64) -> [Enemy] {
+    static func createWave(count: Integer, level: Integer) -> [Enemy] {
         var enemies: [Enemy] = [];
         for i in 0..count {
             var x = Viper.Math.random() * 800.0;
@@ -437,7 +437,7 @@ entity EnemyFactory {
 Now the level loader is clean:
 
 ```rust
-func loadLevel(data: string) {
+func loadLevel(data: String) {
     for line in data.split("\n") {
         var parts = parseLine(line);
         var enemy = EnemyFactory.create(parts.type, parts.x, parts.y);
@@ -446,7 +446,7 @@ func loadLevel(data: string) {
 }
 
 // Or even simpler for procedural levels:
-func generateLevel(levelNumber: i64) {
+func generateLevel(levelNumber: Integer) {
     var enemies = EnemyFactory.createWave(10, levelNumber);
     // Use enemies...
 }
@@ -525,26 +525,26 @@ The Builder pattern constructs objects step by step:
 
 ```rust
 entity Character {
-    name: string;
-    characterClass: string;
-    health: i64;
-    mana: i64;
-    strength: i64;
-    dexterity: i64;
-    intelligence: i64;
-    race: string;
-    canUseMagic: bool;
-    isUndead: bool;
-    weapon: string;
-    armor: string;
-    mount: string;
+    name: String;
+    characterClass: String;
+    health: Integer;
+    mana: Integer;
+    strength: Integer;
+    dexterity: Integer;
+    intelligence: Integer;
+    race: String;
+    canUseMagic: Boolean;
+    isUndead: Boolean;
+    weapon: String;
+    armor: String;
+    mount: String;
 
     // Internal constructor — don't call directly
     expose func init(
-        name: string, characterClass: string, health: i64, mana: i64,
-        strength: i64, dexterity: i64, intelligence: i64, race: string,
-        canUseMagic: bool, isUndead: bool, weapon: string, armor: string,
-        mount: string
+        name: String, characterClass: String, health: Integer, mana: Integer,
+        strength: Integer, dexterity: Integer, intelligence: Integer, race: String,
+        canUseMagic: Boolean, isUndead: Boolean, weapon: String, armor: String,
+        mount: String
     ) {
         self.name = name;
         self.characterClass = characterClass;
@@ -571,61 +571,61 @@ entity Character {
 
 entity CharacterBuilder {
     // All fields with defaults
-    hide name: string = "Unnamed";
-    hide characterClass: string = "Adventurer";
-    hide health: i64 = 100;
-    hide mana: i64 = 50;
-    hide strength: i64 = 10;
-    hide dexterity: i64 = 10;
-    hide intelligence: i64 = 10;
-    hide race: string = "human";
-    hide canUseMagic: bool = false;
-    hide isUndead: bool = false;
-    hide weapon: string = "Fists";
-    hide armor: string = "Clothes";
-    hide mount: string = "None";
+    hide name: String = "Unnamed";
+    hide characterClass: String = "Adventurer";
+    hide health: Integer = 100;
+    hide mana: Integer = 50;
+    hide strength: Integer = 10;
+    hide dexterity: Integer = 10;
+    hide intelligence: Integer = 10;
+    hide race: String = "human";
+    hide canUseMagic: Boolean = false;
+    hide isUndead: Boolean = false;
+    hide weapon: String = "Fists";
+    hide armor: String = "Clothes";
+    hide mount: String = "None";
 
     expose func init() {
         // Defaults are set in field declarations
     }
 
     // Each setter returns self for chaining
-    func named(name: string) -> CharacterBuilder {
+    func named(name: String) -> CharacterBuilder {
         self.name = name;
         return self;
     }
 
-    func ofClass(characterClass: string) -> CharacterBuilder {
+    func ofClass(characterClass: String) -> CharacterBuilder {
         self.characterClass = characterClass;
         return self;
     }
 
-    func withHealth(health: i64) -> CharacterBuilder {
+    func withHealth(health: Integer) -> CharacterBuilder {
         self.health = health;
         return self;
     }
 
-    func withMana(mana: i64) -> CharacterBuilder {
+    func withMana(mana: Integer) -> CharacterBuilder {
         self.mana = mana;
         return self;
     }
 
-    func withStrength(strength: i64) -> CharacterBuilder {
+    func withStrength(strength: Integer) -> CharacterBuilder {
         self.strength = strength;
         return self;
     }
 
-    func withDexterity(dexterity: i64) -> CharacterBuilder {
+    func withDexterity(dexterity: Integer) -> CharacterBuilder {
         self.dexterity = dexterity;
         return self;
     }
 
-    func withIntelligence(intelligence: i64) -> CharacterBuilder {
+    func withIntelligence(intelligence: Integer) -> CharacterBuilder {
         self.intelligence = intelligence;
         return self;
     }
 
-    func ofRace(race: string) -> CharacterBuilder {
+    func ofRace(race: String) -> CharacterBuilder {
         self.race = race;
         return self;
     }
@@ -640,17 +640,17 @@ entity CharacterBuilder {
         return self;
     }
 
-    func wielding(weapon: string) -> CharacterBuilder {
+    func wielding(weapon: String) -> CharacterBuilder {
         self.weapon = weapon;
         return self;
     }
 
-    func wearing(armor: string) -> CharacterBuilder {
+    func wearing(armor: String) -> CharacterBuilder {
         self.armor = armor;
         return self;
     }
 
-    func riding(mount: string) -> CharacterBuilder {
+    func riding(mount: String) -> CharacterBuilder {
         self.mount = mount;
         return self;
     }
@@ -775,7 +775,7 @@ You're building a navigation app. You need to calculate routes, but there are di
 You could write one giant method with if-else for each mode:
 
 ```rust
-func calculateRoute(start: Point, end: Point, mode: string) {
+func calculateRoute(start: Point, end: Point, mode: String) {
     if mode == "driving" {
         // 200 lines of driving logic
     } else if mode == "walking" {
@@ -801,8 +801,8 @@ The Strategy pattern defines a family of algorithms, encapsulates each one, and 
 ```rust
 interface RouteStrategy {
     func calculateRoute(start: Point, end: Point) -> [Point];
-    func getName() -> string;
-    func getEstimatedTime(distance: f64) -> f64;
+    func getName() -> String;
+    func getEstimatedTime(distance: Number) -> Number;
 }
 
 entity DrivingStrategy implements RouteStrategy {
@@ -813,11 +813,11 @@ entity DrivingStrategy implements RouteStrategy {
         return [start, end];  // Simplified
     }
 
-    func getName() -> string {
+    func getName() -> String {
         return "Driving";
     }
 
-    func getEstimatedTime(distance: f64) -> f64 {
+    func getEstimatedTime(distance: Number) -> Number {
         return distance / 50.0;  // 50 km/h average
     }
 }
@@ -829,11 +829,11 @@ entity WalkingStrategy implements RouteStrategy {
         return [start, end];
     }
 
-    func getName() -> string {
+    func getName() -> String {
         return "Walking";
     }
 
-    func getEstimatedTime(distance: f64) -> f64 {
+    func getEstimatedTime(distance: Number) -> Number {
         return distance / 5.0;  // 5 km/h
     }
 }
@@ -845,11 +845,11 @@ entity BikingStrategy implements RouteStrategy {
         return [start, end];
     }
 
-    func getName() -> string {
+    func getName() -> String {
         return "Biking";
     }
 
-    func getEstimatedTime(distance: f64) -> f64 {
+    func getEstimatedTime(distance: Number) -> Number {
         return distance / 15.0;  // 15 km/h
     }
 }
@@ -861,11 +861,11 @@ entity TransitStrategy implements RouteStrategy {
         return [start, end];
     }
 
-    func getName() -> string {
+    func getName() -> String {
         return "Public Transit";
     }
 
-    func getEstimatedTime(distance: f64) -> f64 {
+    func getEstimatedTime(distance: Number) -> Number {
         return distance / 25.0;  // 25 km/h with stops
     }
 }
@@ -893,7 +893,7 @@ entity Navigator {
         Viper.Terminal.Say("Estimated time: " + time + " hours");
     }
 
-    hide func calculateDistance(route: [Point]) -> f64 {
+    hide func calculateDistance(route: [Point]) -> Number {
         // Sum distances between waypoints
         return 10.0;  // Simplified
     }
@@ -953,12 +953,12 @@ func start() {
 
 ```rust
 interface SortStrategy {
-    func sort(items: [i64]) -> [i64];
-    func getName() -> string;
+    func sort(items: [Integer]) -> [Integer];
+    func getName() -> String;
 }
 
 entity BubbleSort implements SortStrategy {
-    func sort(items: [i64]) -> [i64] {
+    func sort(items: [Integer]) -> [Integer] {
         // Bubble sort implementation
         var result = items.copy();
         var n = result.length;
@@ -974,11 +974,11 @@ entity BubbleSort implements SortStrategy {
         return result;
     }
 
-    func getName() -> string { return "Bubble Sort"; }
+    func getName() -> String { return "Bubble Sort"; }
 }
 
 entity QuickSort implements SortStrategy {
-    func sort(items: [i64]) -> [i64] {
+    func sort(items: [Integer]) -> [Integer] {
         // Quick sort implementation (simplified)
         if items.length <= 1 {
             return items;
@@ -987,7 +987,7 @@ entity QuickSort implements SortStrategy {
         return items;
     }
 
-    func getName() -> string { return "Quick Sort"; }
+    func getName() -> String { return "Quick Sort"; }
 }
 
 entity DataProcessor {
@@ -1001,7 +1001,7 @@ entity DataProcessor {
         self.sortStrategy = strategy;
     }
 
-    func processData(data: [i64]) -> [i64] {
+    func processData(data: [Integer]) -> [Integer] {
         Viper.Terminal.Say("Sorting with " + self.sortStrategy.getName());
         return self.sortStrategy.sort(data);
     }
@@ -1045,7 +1045,7 @@ The Observer pattern defines a one-to-many dependency: when one object changes, 
 
 ```rust
 interface Observer {
-    func onUpdate(event: string, data: any);
+    func onUpdate(event: String, data: any);
 }
 
 entity Subject {
@@ -1070,7 +1070,7 @@ entity Subject {
         self.observers = newList;
     }
 
-    func notify(event: string, data: any) {
+    func notify(event: String, data: any) {
         for observer in self.observers {
             observer.onUpdate(event, data);
         }
@@ -1083,24 +1083,24 @@ Now let's build a stock price monitoring system:
 ```rust
 // The subject: stock price
 entity StockPrice extends Subject {
-    hide symbol: string;
-    hide price: f64;
+    hide symbol: String;
+    hide price: Number;
 
-    expose func init(symbol: string, initialPrice: f64) {
+    expose func init(symbol: String, initialPrice: Number) {
         super();
         self.symbol = symbol;
         self.price = initialPrice;
     }
 
-    func getPrice() -> f64 {
+    func getPrice() -> Number {
         return self.price;
     }
 
-    func getSymbol() -> string {
+    func getSymbol() -> String {
         return self.symbol;
     }
 
-    func setPrice(newPrice: f64) {
+    func setPrice(newPrice: Number) {
         var oldPrice = self.price;
         self.price = newPrice;
 
@@ -1116,13 +1116,13 @@ entity StockPrice extends Subject {
 
 // Various observers
 entity PriceDisplay implements Observer {
-    hide name: string;
+    hide name: String;
 
-    expose func init(name: string) {
+    expose func init(name: String) {
         self.name = name;
     }
 
-    func onUpdate(event: string, data: any) {
+    func onUpdate(event: String, data: any) {
         if event == "price_change" {
             Viper.Terminal.Say(
                 "[" + self.name + "] " +
@@ -1134,13 +1134,13 @@ entity PriceDisplay implements Observer {
 }
 
 entity AlertSystem implements Observer {
-    hide threshold: f64;
+    hide threshold: Number;
 
-    expose func init(threshold: f64) {
+    expose func init(threshold: Number) {
         self.threshold = threshold;
     }
 
-    func onUpdate(event: string, data: any) {
+    func onUpdate(event: String, data: any) {
         if event == "price_change" {
             if Viper.Math.abs(data.change) > self.threshold {
                 Viper.Terminal.Say(
@@ -1153,13 +1153,13 @@ entity AlertSystem implements Observer {
 }
 
 entity TradeLogger implements Observer {
-    hide logFile: string;
+    hide logFile: String;
 
-    expose func init(logFile: string) {
+    expose func init(logFile: String) {
         self.logFile = logFile;
     }
 
-    func onUpdate(event: string, data: any) {
+    func onUpdate(event: String, data: any) {
         if event == "price_change" {
             var timestamp = Viper.Time.now();
             var logEntry = timestamp + "," + data.symbol + "," +
@@ -1171,15 +1171,15 @@ entity TradeLogger implements Observer {
 }
 
 entity AutoTrader implements Observer {
-    hide buyThreshold: f64;
-    hide sellThreshold: f64;
+    hide buyThreshold: Number;
+    hide sellThreshold: Number;
 
-    expose func init(buyThreshold: f64, sellThreshold: f64) {
+    expose func init(buyThreshold: Number, sellThreshold: Number) {
         self.buyThreshold = buyThreshold;
         self.sellThreshold = sellThreshold;
     }
 
-    func onUpdate(event: string, data: any) {
+    func onUpdate(event: String, data: any) {
         if event == "price_change" {
             if data.newPrice < self.buyThreshold {
                 Viper.Terminal.Say(
@@ -1258,14 +1258,14 @@ entity GameEventSystem extends Subject {
         self.notify("player_died", {});
     }
 
-    func enemyKilled(enemyType: string, points: i64) {
+    func enemyKilled(enemyType: String, points: Integer) {
         self.notify("enemy_killed", {
             "type": enemyType,
             "points": points
         });
     }
 
-    func levelCompleted(level: i64, time: f64) {
+    func levelCompleted(level: Integer, time: Number) {
         self.notify("level_completed", {
             "level": level,
             "time": time
@@ -1274,14 +1274,14 @@ entity GameEventSystem extends Subject {
 }
 
 entity ScoreManager implements Observer {
-    hide score: i64 = 0;
+    hide score: Integer = 0;
 
-    func onUpdate(event: string, data: any) {
+    func onUpdate(event: String, data: any) {
         if event == "enemy_killed" {
             self.score += data.points;
             Viper.Terminal.Say("Score: " + self.score);
         } else if event == "level_completed" {
-            var bonus = 1000 - (data.time as i64 * 10);
+            var bonus = 1000 - (data.time as Integer * 10);
             if bonus > 0 {
                 self.score += bonus;
                 Viper.Terminal.Say("Time bonus: " + bonus);
@@ -1291,7 +1291,7 @@ entity ScoreManager implements Observer {
 }
 
 entity SoundManager implements Observer {
-    func onUpdate(event: string, data: any) {
+    func onUpdate(event: String, data: any) {
         if event == "player_died" {
             Viper.Terminal.Say("Playing: death_sound.wav");
         } else if event == "enemy_killed" {
@@ -1303,9 +1303,9 @@ entity SoundManager implements Observer {
 }
 
 entity AchievementSystem implements Observer {
-    hide enemiesKilled: i64 = 0;
+    hide enemiesKilled: Integer = 0;
 
-    func onUpdate(event: string, data: any) {
+    func onUpdate(event: String, data: any) {
         if event == "enemy_killed" {
             self.enemiesKilled += 1;
             if self.enemiesKilled == 10 {
@@ -1359,27 +1359,27 @@ The Command pattern encapsulates actions as objects, enabling undo, queueing, an
 interface Command {
     func execute();
     func undo();
-    func describe() -> string;
+    func describe() -> String;
 }
 
 entity TextEditor {
-    hide content: string;
+    hide content: String;
 
     expose func init() {
         self.content = "";
     }
 
-    func getText() -> string {
+    func getText() -> String {
         return self.content;
     }
 
-    func insertAt(position: i64, text: string) {
+    func insertAt(position: Integer, text: String) {
         var before = self.content.substring(0, position);
         var after = self.content.substring(position);
         self.content = before + text + after;
     }
 
-    func deleteAt(position: i64, length: i64) {
+    func deleteAt(position: Integer, length: Integer) {
         var before = self.content.substring(0, position);
         var after = self.content.substring(position + length);
         self.content = before + after;
@@ -1393,10 +1393,10 @@ entity TextEditor {
 // Insert text command
 entity InsertCommand implements Command {
     hide editor: TextEditor;
-    hide position: i64;
-    hide text: string;
+    hide position: Integer;
+    hide text: String;
 
-    expose func init(editor: TextEditor, position: i64, text: string) {
+    expose func init(editor: TextEditor, position: Integer, text: String) {
         self.editor = editor;
         self.position = position;
         self.text = text;
@@ -1410,7 +1410,7 @@ entity InsertCommand implements Command {
         self.editor.deleteAt(self.position, self.text.length);
     }
 
-    func describe() -> string {
+    func describe() -> String {
         return "Insert \"" + self.text + "\" at position " + self.position;
     }
 }
@@ -1418,10 +1418,10 @@ entity InsertCommand implements Command {
 // Delete text command
 entity DeleteCommand implements Command {
     hide editor: TextEditor;
-    hide position: i64;
-    hide deletedText: string;  // Remember what was deleted for undo
+    hide position: Integer;
+    hide deletedText: String;  // Remember what was deleted for undo
 
-    expose func init(editor: TextEditor, position: i64, length: i64) {
+    expose func init(editor: TextEditor, position: Integer, length: Integer) {
         self.editor = editor;
         self.position = position;
         // Save the text we're about to delete
@@ -1436,7 +1436,7 @@ entity DeleteCommand implements Command {
         self.editor.insertAt(self.position, self.deletedText);
     }
 
-    func describe() -> string {
+    func describe() -> String {
         return "Delete \"" + self.deletedText + "\" at position " + self.position;
     }
 }
@@ -1444,11 +1444,11 @@ entity DeleteCommand implements Command {
 // Replace text command
 entity ReplaceCommand implements Command {
     hide editor: TextEditor;
-    hide position: i64;
-    hide oldText: string;
-    hide newText: string;
+    hide position: Integer;
+    hide oldText: String;
+    hide newText: String;
 
-    expose func init(editor: TextEditor, position: i64, length: i64, newText: string) {
+    expose func init(editor: TextEditor, position: Integer, length: Integer, newText: String) {
         self.editor = editor;
         self.position = position;
         self.oldText = editor.getText().substring(position, position + length);
@@ -1465,7 +1465,7 @@ entity ReplaceCommand implements Command {
         self.editor.insertAt(self.position, self.oldText);
     }
 
-    func describe() -> string {
+    func describe() -> String {
         return "Replace \"" + self.oldText + "\" with \"" + self.newText + "\"";
     }
 }
@@ -1565,9 +1565,9 @@ Commands can be grouped and replayed:
 ```rust
 entity MacroCommand implements Command {
     hide commands: [Command];
-    hide name: string;
+    hide name: String;
 
-    expose func init(name: string) {
+    expose func init(name: String) {
         self.name = name;
         self.commands = [];
     }
@@ -1589,7 +1589,7 @@ entity MacroCommand implements Command {
         }
     }
 
-    func describe() -> string {
+    func describe() -> String {
         return "Macro: " + self.name + " (" + self.commands.length + " commands)";
     }
 }
@@ -1633,7 +1633,7 @@ You're programming a vending machine. Its behavior depends entirely on its state
 You could handle this with flags and conditionals:
 
 ```rust
-func insertCoin(amount: i64) {
+func insertCoin(amount: Integer) {
     if self.state == "idle" {
         self.balance += amount;
         self.state = "has_money";
@@ -1646,7 +1646,7 @@ func insertCoin(amount: i64) {
     }
 }
 
-func selectItem(item: string) {
+func selectItem(item: String) {
     if self.state == "idle" {
         // Display message: insert coins first
     } else if self.state == "has_money" {
@@ -1674,21 +1674,21 @@ The State pattern represents each state as an object that handles behavior for t
 
 ```rust
 interface VendingState {
-    func insertCoin(machine: VendingMachine, amount: i64);
-    func selectItem(machine: VendingMachine, item: string);
+    func insertCoin(machine: VendingMachine, amount: Integer);
+    func selectItem(machine: VendingMachine, item: String);
     func dispense(machine: VendingMachine);
     func returnCoins(machine: VendingMachine);
-    func getName() -> string;
+    func getName() -> String;
 }
 
 entity IdleState implements VendingState {
-    func insertCoin(machine: VendingMachine, amount: i64) {
+    func insertCoin(machine: VendingMachine, amount: Integer) {
         machine.addBalance(amount);
         Viper.Terminal.Say("Inserted: $" + amount + ". Balance: $" + machine.getBalance());
         machine.setState(HasMoneyState());
     }
 
-    func selectItem(machine: VendingMachine, item: string) {
+    func selectItem(machine: VendingMachine, item: String) {
         Viper.Terminal.Say("Please insert coins first");
     }
 
@@ -1700,16 +1700,16 @@ entity IdleState implements VendingState {
         Viper.Terminal.Say("No coins to return");
     }
 
-    func getName() -> string { return "Idle"; }
+    func getName() -> String { return "Idle"; }
 }
 
 entity HasMoneyState implements VendingState {
-    func insertCoin(machine: VendingMachine, amount: i64) {
+    func insertCoin(machine: VendingMachine, amount: Integer) {
         machine.addBalance(amount);
         Viper.Terminal.Say("Added: $" + amount + ". Balance: $" + machine.getBalance());
     }
 
-    func selectItem(machine: VendingMachine, item: string) {
+    func selectItem(machine: VendingMachine, item: String) {
         var price = machine.getPrice(item);
         if price == null {
             Viper.Terminal.Say("Item not found: " + item);
@@ -1742,16 +1742,16 @@ entity HasMoneyState implements VendingState {
         machine.setState(IdleState());
     }
 
-    func getName() -> string { return "Has Money"; }
+    func getName() -> String { return "Has Money"; }
 }
 
 entity DispensingState implements VendingState {
-    func insertCoin(machine: VendingMachine, amount: i64) {
+    func insertCoin(machine: VendingMachine, amount: Integer) {
         Viper.Terminal.Say("Please wait, dispensing in progress");
         // Could queue the coin for later
     }
 
-    func selectItem(machine: VendingMachine, item: string) {
+    func selectItem(machine: VendingMachine, item: String) {
         Viper.Terminal.Say("Please wait, dispensing in progress");
     }
 
@@ -1784,15 +1784,15 @@ entity DispensingState implements VendingState {
         Viper.Terminal.Say("Please wait, dispensing in progress");
     }
 
-    func getName() -> string { return "Dispensing"; }
+    func getName() -> String { return "Dispensing"; }
 }
 
 entity OutOfStockState implements VendingState {
-    func insertCoin(machine: VendingMachine, amount: i64) {
+    func insertCoin(machine: VendingMachine, amount: Integer) {
         Viper.Terminal.Say("Sorry, machine is empty. Returning your $" + amount);
     }
 
-    func selectItem(machine: VendingMachine, item: string) {
+    func selectItem(machine: VendingMachine, item: String) {
         Viper.Terminal.Say("Sorry, machine is empty");
     }
 
@@ -1804,15 +1804,15 @@ entity OutOfStockState implements VendingState {
         Viper.Terminal.Say("No coins inserted");
     }
 
-    func getName() -> string { return "Out of Stock"; }
+    func getName() -> String { return "Out of Stock"; }
 }
 
 entity VendingMachine {
     hide state: VendingState;
-    hide balance: i64;
-    hide selectedItem: string?;
-    hide inventory: {string: i64};  // item -> quantity
-    hide prices: {string: i64};     // item -> price
+    hide balance: Integer;
+    hide selectedItem: String?;
+    hide inventory: {String: Integer};  // item -> quantity
+    hide prices: {String: Integer};     // item -> price
 
     expose func init() {
         self.state = IdleState();
@@ -1822,7 +1822,7 @@ entity VendingMachine {
         self.prices = {};
     }
 
-    func stock(item: string, quantity: i64, price: i64) {
+    func stock(item: String, quantity: Integer, price: Integer) {
         self.inventory[item] = quantity;
         self.prices[item] = price;
 
@@ -1833,12 +1833,12 @@ entity VendingMachine {
     }
 
     // Delegate all actions to current state
-    func insertCoin(amount: i64) {
+    func insertCoin(amount: Integer) {
         Viper.Terminal.Say("[" + self.state.getName() + "] Insert coin: $" + amount);
         self.state.insertCoin(self, amount);
     }
 
-    func selectItem(item: string) {
+    func selectItem(item: String) {
         Viper.Terminal.Say("[" + self.state.getName() + "] Select: " + item);
         self.state.selectItem(self, item);
     }
@@ -1857,21 +1857,21 @@ entity VendingMachine {
         return self.state;
     }
 
-    func getBalance() -> i64 { return self.balance; }
-    func setBalance(amount: i64) { self.balance = amount; }
-    func addBalance(amount: i64) { self.balance += amount; }
+    func getBalance() -> Integer { return self.balance; }
+    func setBalance(amount: Integer) { self.balance = amount; }
+    func addBalance(amount: Integer) { self.balance += amount; }
 
-    func getSelectedItem() -> string? { return self.selectedItem; }
-    func setSelectedItem(item: string?) { self.selectedItem = item; }
+    func getSelectedItem() -> String? { return self.selectedItem; }
+    func setSelectedItem(item: String?) { self.selectedItem = item; }
 
-    func getPrice(item: string) -> i64? { return self.prices[item]; }
-    func getStock(item: string) -> i64 { return self.inventory[item] ?? 0; }
+    func getPrice(item: String) -> Integer? { return self.prices[item]; }
+    func getStock(item: String) -> Integer { return self.inventory[item] ?? 0; }
 
-    func decrementStock(item: string) {
+    func decrementStock(item: String) {
         self.inventory[item] = self.inventory[item] - 1;
     }
 
-    func isEmpty() -> bool {
+    func isEmpty() -> Boolean {
         for item, qty in self.inventory {
             if qty > 0 { return false; }
         }
@@ -1965,8 +1965,8 @@ You run a coffee shop with a software ordering system. You start with simple cof
 
 ```rust
 entity Coffee {
-    func cost() -> f64 { return 2.00; }
-    func description() -> string { return "Coffee"; }
+    func cost() -> Number { return 2.00; }
+    func description() -> String { return "Coffee"; }
 }
 ```
 
@@ -1993,29 +1993,29 @@ The Decorator pattern wraps objects to add behavior dynamically:
 
 ```rust
 interface Beverage {
-    func cost() -> f64;
-    func description() -> string;
+    func cost() -> Number;
+    func description() -> String;
 }
 
 // Base beverages
 entity Espresso implements Beverage {
-    func cost() -> f64 { return 2.00; }
-    func description() -> string { return "Espresso"; }
+    func cost() -> Number { return 2.00; }
+    func description() -> String { return "Espresso"; }
 }
 
 entity HouseBlend implements Beverage {
-    func cost() -> f64 { return 1.50; }
-    func description() -> string { return "House Blend Coffee"; }
+    func cost() -> Number { return 1.50; }
+    func description() -> String { return "House Blend Coffee"; }
 }
 
 entity Decaf implements Beverage {
-    func cost() -> f64 { return 1.75; }
-    func description() -> string { return "Decaf Coffee"; }
+    func cost() -> Number { return 1.75; }
+    func description() -> String { return "Decaf Coffee"; }
 }
 
 entity Tea implements Beverage {
-    func cost() -> f64 { return 1.25; }
-    func description() -> string { return "Tea"; }
+    func cost() -> Number { return 1.25; }
+    func description() -> String { return "Tea"; }
 }
 
 // Abstract decorator
@@ -2026,11 +2026,11 @@ entity BeverageDecorator implements Beverage {
         self.beverage = beverage;
     }
 
-    func cost() -> f64 {
+    func cost() -> Number {
         return self.beverage.cost();
     }
 
-    func description() -> string {
+    func description() -> String {
         return self.beverage.description();
     }
 }
@@ -2041,11 +2041,11 @@ entity Milk extends BeverageDecorator {
         super(beverage);
     }
 
-    func cost() -> f64 {
+    func cost() -> Number {
         return self.beverage.cost() + 0.50;
     }
 
-    func description() -> string {
+    func description() -> String {
         return self.beverage.description() + ", Milk";
     }
 }
@@ -2055,11 +2055,11 @@ entity Sugar extends BeverageDecorator {
         super(beverage);
     }
 
-    func cost() -> f64 {
+    func cost() -> Number {
         return self.beverage.cost() + 0.20;
     }
 
-    func description() -> string {
+    func description() -> String {
         return self.beverage.description() + ", Sugar";
     }
 }
@@ -2069,11 +2069,11 @@ entity WhippedCream extends BeverageDecorator {
         super(beverage);
     }
 
-    func cost() -> f64 {
+    func cost() -> Number {
         return self.beverage.cost() + 0.75;
     }
 
-    func description() -> string {
+    func description() -> String {
         return self.beverage.description() + ", Whipped Cream";
     }
 }
@@ -2083,11 +2083,11 @@ entity Vanilla extends BeverageDecorator {
         super(beverage);
     }
 
-    func cost() -> f64 {
+    func cost() -> Number {
         return self.beverage.cost() + 0.60;
     }
 
-    func description() -> string {
+    func description() -> String {
         return self.beverage.description() + ", Vanilla";
     }
 }
@@ -2097,11 +2097,11 @@ entity ExtraShot extends BeverageDecorator {
         super(beverage);
     }
 
-    func cost() -> f64 {
+    func cost() -> Number {
         return self.beverage.cost() + 0.80;
     }
 
-    func description() -> string {
+    func description() -> String {
         return self.beverage.description() + ", Extra Shot";
     }
 }
@@ -2155,18 +2155,18 @@ Decorators work beyond pricing. Here's an I/O example:
 
 ```rust
 interface DataStream {
-    func write(data: string);
-    func read() -> string;
+    func write(data: String);
+    func read() -> String;
 }
 
 entity FileStream implements DataStream {
-    hide content: string = "";
+    hide content: String = "";
 
-    func write(data: string) {
+    func write(data: String) {
         self.content += data;
     }
 
-    func read() -> string {
+    func read() -> String {
         return self.content;
     }
 }
@@ -2178,17 +2178,17 @@ entity EncryptionDecorator implements DataStream {
         self.stream = stream;
     }
 
-    func write(data: string) {
+    func write(data: String) {
         var encrypted = self.encrypt(data);
         self.stream.write(encrypted);
     }
 
-    func read() -> string {
+    func read() -> String {
         var encrypted = self.stream.read();
         return self.decrypt(encrypted);
     }
 
-    hide func encrypt(data: string) -> string {
+    hide func encrypt(data: String) -> String {
         // Simple Caesar cipher for demonstration
         var result = "";
         for char in data {
@@ -2197,7 +2197,7 @@ entity EncryptionDecorator implements DataStream {
         return result;
     }
 
-    hide func decrypt(data: string) -> string {
+    hide func decrypt(data: String) -> String {
         var result = "";
         for char in data {
             result += (char.code - 3).toChar();
@@ -2213,22 +2213,22 @@ entity CompressionDecorator implements DataStream {
         self.stream = stream;
     }
 
-    func write(data: string) {
+    func write(data: String) {
         var compressed = self.compress(data);
         self.stream.write(compressed);
     }
 
-    func read() -> string {
+    func read() -> String {
         var compressed = self.stream.read();
         return self.decompress(compressed);
     }
 
-    hide func compress(data: string) -> string {
+    hide func compress(data: String) -> String {
         // Simplified run-length encoding
         return "[compressed:" + data.length + "]" + data;
     }
 
-    hide func decompress(data: string) -> string {
+    hide func decompress(data: String) -> String {
         // Extract original from compressed format
         return data.substring(data.indexOf("]") + 1);
     }
@@ -2241,12 +2241,12 @@ entity LoggingDecorator implements DataStream {
         self.stream = stream;
     }
 
-    func write(data: string) {
+    func write(data: String) {
         Viper.Terminal.Say("Writing " + data.length + " bytes");
         self.stream.write(data);
     }
 
-    func read() -> string {
+    func read() -> String {
         var data = self.stream.read();
         Viper.Terminal.Say("Read " + data.length + " bytes");
         return data;
@@ -2304,7 +2304,7 @@ This example combines Factory, Strategy, Observer, and State:
 ```rust
 // Observer for game events
 interface GameObserver {
-    func onEvent(event: string, data: any);
+    func onEvent(event: String, data: any);
 }
 
 entity GameEvents {
@@ -2326,7 +2326,7 @@ entity GameEvents {
         self.observers.push(observer);
     }
 
-    func emit(event: string, data: any) {
+    func emit(event: String, data: any) {
         for obs in self.observers {
             obs.onEvent(event, data);
         }
@@ -2335,11 +2335,11 @@ entity GameEvents {
 
 // Strategy for AI behavior
 interface AIStrategy {
-    func decide(entity: GameEntity, world: World) -> string;
+    func decide(entity: GameEntity, world: World) -> String;
 }
 
 entity AggressiveAI implements AIStrategy {
-    func decide(entity: GameEntity, world: World) -> string {
+    func decide(entity: GameEntity, world: World) -> String {
         var player = world.getPlayer();
         if entity.distanceTo(player) < 100 {
             return "attack";
@@ -2349,7 +2349,7 @@ entity AggressiveAI implements AIStrategy {
 }
 
 entity DefensiveAI implements AIStrategy {
-    func decide(entity: GameEntity, world: World) -> string {
+    func decide(entity: GameEntity, world: World) -> String {
         var player = world.getPlayer();
         if entity.health < 30 {
             return "flee";
@@ -2362,7 +2362,7 @@ entity DefensiveAI implements AIStrategy {
 }
 
 entity PassiveAI implements AIStrategy {
-    func decide(entity: GameEntity, world: World) -> string {
+    func decide(entity: GameEntity, world: World) -> String {
         return "wander";
     }
 }
@@ -2370,7 +2370,7 @@ entity PassiveAI implements AIStrategy {
 // State for entity condition
 interface EntityState {
     func update(entity: GameEntity, world: World);
-    func getName() -> string;
+    func getName() -> String;
 }
 
 entity AliveState implements EntityState {
@@ -2386,7 +2386,7 @@ entity AliveState implements EntityState {
         entity.executeAction(action);
     }
 
-    func getName() -> string { return "Alive"; }
+    func getName() -> String { return "Alive"; }
 }
 
 entity DeadState implements EntityState {
@@ -2394,13 +2394,13 @@ entity DeadState implements EntityState {
         // Dead entities don't update
     }
 
-    func getName() -> string { return "Dead"; }
+    func getName() -> String { return "Dead"; }
 }
 
 entity StunnedState implements EntityState {
-    hide duration: i64;
+    hide duration: Integer;
 
-    expose func init(duration: i64) {
+    expose func init(duration: Integer) {
         self.duration = duration;
     }
 
@@ -2412,19 +2412,19 @@ entity StunnedState implements EntityState {
         // Stunned entities can't act
     }
 
-    func getName() -> string { return "Stunned"; }
+    func getName() -> String { return "Stunned"; }
 }
 
 // The game entity
 entity GameEntity {
-    name: string;
-    health: i64;
-    x: f64;
-    y: f64;
+    name: String;
+    health: Integer;
+    x: Number;
+    y: Number;
     hide ai: AIStrategy;
     hide state: EntityState;
 
-    expose func init(name: string, health: i64, ai: AIStrategy) {
+    expose func init(name: String, health: Integer, ai: AIStrategy) {
         self.name = name;
         self.health = health;
         self.ai = ai;
@@ -2446,46 +2446,46 @@ entity GameEntity {
         self.state.update(self, world);
     }
 
-    func takeDamage(amount: i64) {
+    func takeDamage(amount: Integer) {
         self.health -= amount;
         Viper.Terminal.Say(self.name + " takes " + amount + " damage. Health: " + self.health);
     }
 
-    func distanceTo(other: GameEntity) -> f64 {
+    func distanceTo(other: GameEntity) -> Number {
         var dx = self.x - other.x;
         var dy = self.y - other.y;
         return Viper.Math.sqrt(dx * dx + dy * dy);
     }
 
-    func executeAction(action: string) {
+    func executeAction(action: String) {
         Viper.Terminal.Say(self.name + " performs: " + action);
     }
 }
 
 // Factory for creating entities
 entity EntityFactory {
-    static func createGoblin(x: f64, y: f64) -> GameEntity {
+    static func createGoblin(x: Number, y: Number) -> GameEntity {
         var goblin = GameEntity("Goblin", 30, AggressiveAI());
         goblin.x = x;
         goblin.y = y;
         return goblin;
     }
 
-    static func createOrc(x: f64, y: f64) -> GameEntity {
+    static func createOrc(x: Number, y: Number) -> GameEntity {
         var orc = GameEntity("Orc", 50, DefensiveAI());
         orc.x = x;
         orc.y = y;
         return orc;
     }
 
-    static func createSlime(x: f64, y: f64) -> GameEntity {
+    static func createSlime(x: Number, y: Number) -> GameEntity {
         var slime = GameEntity("Slime", 20, PassiveAI());
         slime.x = x;
         slime.y = y;
         return slime;
     }
 
-    static func createByType(type: string, x: f64, y: f64) -> GameEntity {
+    static func createByType(type: String, x: Number, y: Number) -> GameEntity {
         if type == "goblin" { return EntityFactory.createGoblin(x, y); }
         if type == "orc" { return EntityFactory.createOrc(x, y); }
         if type == "slime" { return EntityFactory.createSlime(x, y); }
@@ -2495,9 +2495,9 @@ entity EntityFactory {
 
 // Observer for scoring
 entity ScoreTracker implements GameObserver {
-    hide score: i64 = 0;
+    hide score: Integer = 0;
 
-    func onEvent(event: string, data: any) {
+    func onEvent(event: String, data: any) {
         if event == "entity_died" {
             self.score += 100;
             Viper.Terminal.Say("Score: " + self.score);

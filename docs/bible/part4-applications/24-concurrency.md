@@ -156,10 +156,10 @@ func applyFilter(image: Image, filter: Filter) {
 Some computations can be split across multiple cores. Sorting a million numbers is faster if four cores each sort 250,000, then merge results. Processing 1000 images finishes in a quarter of the time with four parallel workers.
 
 ```rust
-func parallelSum(numbers: [i64]) -> i64 {
+func parallelSum(numbers: [Integer]) -> Integer {
     var numCores = 4;
     var chunkSize = numbers.length / numCores;
-    var threads: [Thread<i64>] = [];
+    var threads: [Thread<Integer>] = [];
 
     // Launch parallel workers
     for i in 0..numCores {
@@ -281,7 +281,7 @@ A *race condition* is the broader category: any bug where behavior depends on ti
 
 ```rust
 // No data race (proper locking) but still a race condition
-func transfer(from: Account, to: Account, amount: f64) {
+func transfer(from: Account, to: Account, amount: Number) {
     from.mutex.lock();
     if from.balance >= amount {
         from.balance -= amount;
@@ -359,7 +359,7 @@ This unpredictability is *fundamental*. You cannot control or rely on the exact 
 Threads can return values:
 
 ```rust
-var thread = Thread.spawn(func() -> i64 {
+var thread = Thread.spawn(func() -> Integer {
     var sum = 0;
     for i in 0..1000000 {
         sum += i;
@@ -381,7 +381,7 @@ Viper.Terminal.Say("Sum: " + result);
 Here's a practical example — computing a sum in parallel:
 
 ```rust
-func processChunk(data: [i64], start: i64, end: i64) -> i64 {
+func processChunk(data: [Integer], start: Integer, end: Integer) -> Integer {
     var sum = 0;
     for i in start..end {
         sum += data[i];
@@ -389,10 +389,10 @@ func processChunk(data: [i64], start: i64, end: i64) -> i64 {
     return sum;
 }
 
-func parallelSum(data: [i64]) -> i64 {
+func parallelSum(data: [Integer]) -> Integer {
     var numThreads = 4;
     var chunkSize = data.length / numThreads;
-    var threads: [Thread<i64>] = [];
+    var threads: [Thread<Integer>] = [];
 
     // Launch threads
     for i in 0..numThreads {
@@ -543,7 +543,7 @@ An atomic operation completes as an indivisible unit. No thread can see it "half
 ```rust
 bind Viper.Threading;
 
-var counter = Atomic<i64>.create(0);
+var counter = Atomic<Integer>.create(0);
 
 var t1 = Thread.spawn(func() {
     for i in 0..100000 {
@@ -583,15 +583,15 @@ Use mutexes for:
 
 ```rust
 // Atomic is perfect for a simple counter
-var visitCount = Atomic<i64>.create(0);
+var visitCount = Atomic<Integer>.create(0);
 visitCount.increment();
 
 // Mutex needed for complex update
-var account = Account { balance: 1000.0, lastTransaction: null };
+var account = Account { balance: 1000, lastTransaction: null };
 var accountMutex = Mutex.create();
 
 accountMutex.synchronized(func() {
-    account.balance -= 100.0;
+    account.balance -= 100;
     account.lastTransaction = Time.now();  // Must update together
 });
 ```
@@ -605,7 +605,7 @@ Viper provides collections that handle synchronization internally:
 ```rust
 bind Viper.Threading;
 
-var safeList = ConcurrentList<string>.create();
+var safeList = ConcurrentList<String>.create();
 
 // Multiple threads can safely add items
 Thread.spawn(func() {
@@ -640,7 +640,7 @@ Instead of multiple threads accessing shared data (with all the synchronization 
 bind Viper.Threading;
 
 func start() {
-    var channel = Channel<string>.create();
+    var channel = Channel<String>.create();
 
     // Producer thread
     var producer = Thread.spawn(func() {
@@ -679,10 +679,10 @@ A channel is like a pipe. One end sends data, the other receives. The channel ha
 
 ```rust
 // Unbuffered: send blocks until receive
-var channel = Channel<i64>.create();
+var channel = Channel<Integer>.create();
 
 // Buffered: can hold 10 items before blocking
-var buffered = Channel<i64>.create(10);
+var buffered = Channel<Integer>.create(10);
 ```
 
 An unbuffered channel synchronizes sender and receiver — the sender blocks until someone receives. This is *rendezvous* style communication.
@@ -694,8 +694,8 @@ A buffered channel allows the sender to continue (up to the buffer size) without
 Sometimes you need to receive from whichever channel has data first:
 
 ```rust
-var chan1 = Channel<string>.create();
-var chan2 = Channel<string>.create();
+var chan1 = Channel<String>.create();
+var chan2 = Channel<String>.create();
 
 // In another thread: sending to chan1
 // In another thread: sending to chan2
@@ -723,7 +723,7 @@ bind Viper.Threading;
 // Allow at most 3 concurrent database connections
 var dbSemaphore = Semaphore.create(3);
 
-func queryDatabase(query: string) -> Result {
+func queryDatabase(query: String) -> Result {
     dbSemaphore.acquire();  // Wait for a "permit"
     try {
         var connection = Database.connect();
@@ -778,9 +778,9 @@ Instead of creating 100 threads (expensive), the pool's 4 workers process tasks 
 ```rust
 var pool = ThreadPool.create(4);
 
-var futures: [Future<i64>] = [];
+var futures: [Future<Integer>] = [];
 for i in 0..10 {
-    var future = pool.submitWithResult(func() -> i64 {
+    var future = pool.submitWithResult(func() -> Integer {
         return expensiveCalculation(i);
     });
     futures.push(future);
@@ -804,12 +804,12 @@ For I/O-bound work (network, files), async/await offers a cleaner model than man
 ```rust
 bind Viper.Async;
 
-async func fetchData(url: string) -> string {
+async func fetchData(url: String) -> String {
     var response = await Http.getAsync(url);
     return response.body;
 }
 
-async func processUrls(urls: [string]) {
+async func processUrls(urls: [String]) {
     // Fetch all in parallel
     var tasks = [];
     for url in urls {
@@ -904,7 +904,7 @@ Break any condition and deadlock becomes impossible.
 
 ```rust
 // Always lock in consistent order (by ID, alphabetically, etc.)
-func transferMoney(from: Account, to: Account, amount: f64) {
+func transferMoney(from: Account, to: Account, amount: Number) {
     // Lock lower ID first, always
     var first = if from.id < to.id { from } else { to };
     var second = if from.id < to.id { to } else { from };
@@ -923,7 +923,7 @@ func transferMoney(from: Account, to: Account, amount: f64) {
 **Timeout**: Use `tryLock` with a timeout. If you can't acquire a lock in time, release what you hold and retry.
 
 ```rust
-func safeOperation() -> bool {
+func safeOperation() -> Boolean {
     if !mutex1.tryLock(1000) {  // 1 second timeout
         return false;
     }
@@ -1006,7 +1006,7 @@ Thread.spawn(func() { data.push("A"); });
 Thread.spawn(func() { data.push("B"); });
 
 // Good: Use thread-safe collection
-var data = ConcurrentList<string>.create();
+var data = ConcurrentList<String>.create();
 Thread.spawn(func() { data.add("A"); });
 Thread.spawn(func() { data.add("B"); });
 
@@ -1119,7 +1119,7 @@ Some tools detect data races automatically by tracking memory accesses. They slo
 Add logging with thread IDs and timestamps. Reconstruct the sequence of events after a failure.
 
 ```rust
-func log(message: string) {
+func logMessage(message: String) {
     var threadId = Thread.currentId();
     var time = Time.millis();
     Viper.Terminal.Say("[" + time + "] Thread " + threadId + ": " + message);
@@ -1187,16 +1187,16 @@ bind Viper.Graphics;
 bind Viper.File;
 
 value ImageTask {
-    inputPath: string;
-    outputPath: string;
+    inputPath: String;
+    outputPath: String;
 }
 
 entity ParallelProcessor {
     hide pool: ThreadPool;
-    hide completedCount: Atomic<i64>;
-    hide totalCount: i64;
+    hide completedCount: Atomic<Integer>;
+    hide totalCount: Integer;
 
-    expose func init(numWorkers: i64) {
+    expose func init(numWorkers: Integer) {
         self.pool = ThreadPool.create(numWorkers);
         self.completedCount = Atomic.create(0);
         self.totalCount = 0;
@@ -1204,10 +1204,10 @@ entity ParallelProcessor {
 
     func process(tasks: [ImageTask]) {
         self.totalCount = tasks.length;
-        var futures: [Future<bool>] = [];
+        var futures: [Future<Boolean>] = [];
 
         for task in tasks {
-            var future = self.pool.submitWithResult(func() -> bool {
+            var future = self.pool.submitWithResult(func() -> Boolean {
                 return self.processImage(task);
             });
             futures.push(future);
@@ -1232,7 +1232,7 @@ entity ParallelProcessor {
         Viper.Terminal.Say("Completed: " + successCount + "/" + self.totalCount + " succeeded");
     }
 
-    func processImage(task: ImageTask) -> bool {
+    func processImage(task: ImageTask) -> Boolean {
         try {
             var image = Image.load(task.inputPath);
 
@@ -1268,7 +1268,7 @@ func applyGrayscale(image: Image) -> Image {
     return image;
 }
 
-func applyResize(image: Image, width: i64, height: i64) -> Image {
+func applyResize(image: Image, width: Integer, height: Integer) -> Image {
     return image.resize(width, height);
 }
 

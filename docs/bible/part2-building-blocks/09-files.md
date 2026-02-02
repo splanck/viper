@@ -636,7 +636,7 @@ var all = Viper.Dir.list("documents");
 ### Practical Example: Finding All Text Files
 
 ```rust
-func findTextFiles(directory: string) {
+func findTextFiles(directory: String) {
     var entries = Viper.Dir.list(directory);
 
     for entry in entries {
@@ -702,7 +702,7 @@ var content = Viper.File.readText("file\0name.txt");
 Never let file errors crash your program unexpectedly. Handle them:
 
 ```rust
-func loadConfig() -> string {
+func loadConfig() -> String {
     try {
         return Viper.File.readText("config.txt");
     } catch e: FileNotFound {
@@ -726,7 +726,7 @@ func loadConfig() -> string {
 Don't show raw error messages to users. Translate them:
 
 ```rust
-func openUserFile(path: string) -> string {
+func openUserFile(path: String) -> String {
     try {
         return Viper.File.readText(path);
     } catch e: FileNotFound {
@@ -765,7 +765,7 @@ If power fails, or your program crashes, or the disk has an error during the wri
 The professional approach:
 
 ```rust
-func safeWrite(filename: string, content: string) {
+func safeWrite(filename: String, content: String) {
     var tempFile = filename + ".tmp";
 
     // Step 1: Write to a temporary file
@@ -791,7 +791,7 @@ Why is this safer?
 For critical data, keep a backup:
 
 ```rust
-func writeWithBackup(filename: string, content: string) {
+func writeWithBackup(filename: String, content: String) {
     // Create backup of existing file
     if Viper.File.exists(filename) {
         var backupName = filename + ".backup";
@@ -809,7 +809,7 @@ If something goes wrong, the user still has their `.backup` file.
 
 **Confirm before overwriting:**
 ```rust
-func saveFile(filename: string, content: string) {
+func saveFile(filename: String, content: String) {
     if Viper.File.exists(filename) {
         Viper.Terminal.Print("File exists. Overwrite? (y/n): ");
         var response = Viper.Terminal.ReadLine().trim().lower();
@@ -825,7 +825,7 @@ func saveFile(filename: string, content: string) {
 
 **Generate unique names:**
 ```rust
-func uniqueFilename(base: string, ext: string) -> string {
+func uniqueFilename(base: String, ext: String) -> String {
     var filename = base + ext;
     var counter = 1;
 
@@ -857,8 +857,8 @@ module Config;
 final CONFIG_FILE = "settings.cfg";
 
 // Simple key=value format
-func loadConfig() -> Map<string, string> {
-    var config = Map<string, string>();
+func loadConfig() -> Map<String, String> {
+    var config = Map<String, String>();
 
     if !Viper.File.exists(CONFIG_FILE) {
         return config;  // Empty config if file doesn't exist
@@ -885,8 +885,8 @@ func loadConfig() -> Map<string, string> {
     return config;
 }
 
-func saveConfig(config: Map<string, string>) {
-    var lines: [string] = [];
+func saveConfig(config: Map<String, String>) {
+    var lines: [String] = [];
     lines.push("# Application settings");
     lines.push("# Edit with care!");
     lines.push("");
@@ -905,7 +905,7 @@ func start() {
 
     // Get setting with default
     var theme = config.getOrDefault("theme", "light");
-    var volume = Viper.Parse.Int(config.getOrDefault("volume", "50"));
+    var volume = Viper.Convert.ToInt(config.getOrDefault("volume", "50"));
 
     Viper.Terminal.Say("Theme: " + theme);
     Viper.Terminal.Say("Volume: " + volume);
@@ -935,21 +935,21 @@ module Logger;
 
 final LOG_FILE = "application.log";
 
-func log(level: string, message: string) {
+func log(level: String, message: String) {
     var timestamp = Viper.Time.now().format("YYYY-MM-DD HH:mm:ss");
     var entry = "[" + timestamp + "] [" + level + "] " + message + "\n";
     Viper.File.appendText(LOG_FILE, entry);
 }
 
-func info(message: string) {
+func info(message: String) {
     log("INFO", message);
 }
 
-func warning(message: string) {
+func warning(message: String) {
     log("WARNING", message);
 }
 
-func error(message: string) {
+func error(message: String) {
     log("ERROR", message);
 }
 
@@ -986,15 +986,15 @@ module GameSave;
 final SAVE_DIR = "saves";
 
 struct SaveData {
-    playerName: string,
-    level: i64,
-    score: i64,
-    health: i64,
-    inventory: [string],
-    position: (f64, f64)
+    playerName: String,
+    level: Integer,
+    score: Integer,
+    health: Integer,
+    inventory: [String],
+    position: (Number, Number)
 }
 
-func save(data: SaveData, slot: i64) {
+func save(data: SaveData, slot: Integer) {
     // Ensure save directory exists
     if !Viper.Dir.exists(SAVE_DIR) {
         Viper.Dir.create(SAVE_DIR);
@@ -1002,7 +1002,7 @@ func save(data: SaveData, slot: i64) {
 
     var filename = Viper.Path.join(SAVE_DIR, "save_" + slot + ".dat");
 
-    var lines: [string] = [];
+    var lines: [String] = [];
     lines.push("name=" + data.playerName);
     lines.push("level=" + data.level);
     lines.push("score=" + data.score);
@@ -1014,7 +1014,7 @@ func save(data: SaveData, slot: i64) {
     Viper.Terminal.Say("Game saved to slot " + slot);
 }
 
-func load(slot: i64) -> SaveData? {
+func load(slot: Integer) -> SaveData? {
     var filename = Viper.Path.join(SAVE_DIR, "save_" + slot + ".dat");
 
     if !Viper.File.exists(filename) {
@@ -1033,13 +1033,13 @@ func load(slot: i64) -> SaveData? {
         var value = parts[1];
 
         if key == "name" { data.playerName = value; }
-        else if key == "level" { data.level = Viper.Parse.Int(value); }
-        else if key == "score" { data.score = Viper.Parse.Int(value); }
-        else if key == "health" { data.health = Viper.Parse.Int(value); }
+        else if key == "level" { data.level = Viper.Convert.ToInt(value); }
+        else if key == "score" { data.score = Viper.Convert.ToInt(value); }
+        else if key == "health" { data.health = Viper.Convert.ToInt(value); }
         else if key == "inventory" { data.inventory = value.split(","); }
         else if key == "position" {
             var coords = value.split(",");
-            data.position = (Viper.Parse.Float(coords[0]), Viper.Parse.Float(coords[1]));
+            data.position = (Viper.Convert.ToDouble(coords[0]), Viper.Convert.ToDouble(coords[1]));
         }
     }
 
@@ -1047,8 +1047,8 @@ func load(slot: i64) -> SaveData? {
     return data;
 }
 
-func listSaves() -> [i64] {
-    var saves: [i64] = [];
+func listSaves() -> [Integer] {
+    var saves: [Integer] = [];
 
     if !Viper.Dir.exists(SAVE_DIR) {
         return saves;
@@ -1058,7 +1058,7 @@ func listSaves() -> [i64] {
     for file in files {
         if file.startsWith("save_") && file.endsWith(".dat") {
             var numStr = file.substring(5, file.length - 9);
-            saves.push(Viper.Parse.Int(numStr));
+            saves.push(Viper.Convert.ToInt(numStr));
         }
     }
 
@@ -1071,8 +1071,8 @@ func listSaves() -> [i64] {
 Exporting data for spreadsheets or other programs:
 
 ```rust
-func exportToCSV(filename: string, headers: [string], rows: [[string]]) {
-    var lines: [string] = [];
+func exportToCSV(filename: String, headers: [String], rows: [[String]]) {
+    var lines: [String] = [];
 
     // Header row
     lines.push(headers.join(","));
@@ -1080,7 +1080,7 @@ func exportToCSV(filename: string, headers: [string], rows: [[string]]) {
     // Data rows
     for row in rows {
         // Escape commas and quotes in values
-        var escapedRow: [string] = [];
+        var escapedRow: [String] = [];
         for value in row {
             if value.contains(",") || value.contains("\"") {
                 value = "\"" + value.replace("\"", "\"\"") + "\"";
@@ -1110,8 +1110,8 @@ exportToCSV("people.csv", headers, data);
 Reading data from CSV files:
 
 ```rust
-func importFromCSV(filename: string) -> [[string]] {
-    var rows: [[string]] = [];
+func importFromCSV(filename: String) -> [[String]] {
+    var rows: [[String]] = [];
     var lines = Viper.File.readLines(filename);
 
     for line in lines {
@@ -1146,7 +1146,7 @@ final NOTES_FILE = "notes.txt";
 final BACKUP_FILE = "notes.txt.backup";
 
 // Load notes from file
-func loadNotes() -> [string] {
+func loadNotes() -> [String] {
     if !Viper.File.exists(NOTES_FILE) {
         return [];
     }
@@ -1154,7 +1154,7 @@ func loadNotes() -> [string] {
     try {
         var lines = Viper.File.readLines(NOTES_FILE);
         // Filter out empty lines
-        var notes: [string] = [];
+        var notes: [String] = [];
         for line in lines {
             if line.trim().length > 0 {
                 notes.push(line);
@@ -1179,7 +1179,7 @@ func loadNotes() -> [string] {
 }
 
 // Save notes to file (with backup)
-func saveNotes(notes: [string]) -> bool {
+func saveNotes(notes: [String]) -> Boolean {
     // Create backup of existing file
     if Viper.File.exists(NOTES_FILE) {
         try {
@@ -1215,7 +1215,7 @@ func saveNotes(notes: [string]) -> bool {
 }
 
 // Display all notes
-func displayNotes(notes: [string]) {
+func displayNotes(notes: [String]) {
     if notes.length == 0 {
         Viper.Terminal.Say("No notes yet.");
         Viper.Terminal.Say("Use 'add' to create your first note!");
@@ -1293,7 +1293,7 @@ func start() {
                 var input = Viper.Terminal.ReadLine().trim();
 
                 try {
-                    var num = Viper.Parse.Int(input);
+                    var num = Viper.Convert.ToInt(input);
                     if num == 0 {
                         Viper.Terminal.Say("Cancelled.");
                     } else if num >= 1 && num <= notes.length {
@@ -1319,7 +1319,7 @@ func start() {
                 var input = Viper.Terminal.ReadLine().trim();
 
                 try {
-                    var num = Viper.Parse.Int(input);
+                    var num = Viper.Convert.ToInt(input);
                     if num == 0 {
                         Viper.Terminal.Say("Cancelled.");
                     } else if num >= 1 && num <= notes.length {

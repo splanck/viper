@@ -59,7 +59,7 @@ var x = 42;  // Comments can follow code
 /// Calculates the area of a circle.
 /// @param radius The radius of the circle
 /// @return The area as a floating-point number
-func circleArea(radius: f64) -> f64 {
+func circleArea(radius: Number) -> Number {
     return Viper.Math.PI * radius * radius;
 }
 ```
@@ -80,12 +80,12 @@ Variables store values that can be referenced by name.
 ### Mutable Variables (`var`)
 
 ```rust
-var x = 42;              // Type inferred as i64
-var name = "Alice";      // Type inferred as string
-var pi = 3.14159;        // Type inferred as f64
+var x = 42;              // Type inferred as Integer
+var name = "Alice";      // Type inferred as String
+var pi = 3.14159;        // Type inferred as Number
 
-var count: i64 = 0;      // Explicit type annotation
-var ratio: f64 = 0.5;    // Explicit type when needed
+var count: Integer = 0;  // Explicit type annotation
+var ratio: Number = 0.5; // Explicit type when needed
 
 // Variables can be reassigned
 var score = 0;
@@ -545,15 +545,15 @@ Functions organize code into reusable, named blocks.
 
 ```rust
 // Function with parameters and return type
-func add(a: i64, b: i64) -> i64 {
+func add(a: Integer, b: Integer) -> Integer {
     return a + b;
 }
 
 // Single-expression function (implicit return)
-func add(a: i64, b: i64) -> i64 = a + b;
+func add(a: Integer, b: Integer) -> Integer = a + b;
 
 // Function with no return value
-func greet(name: string) {
+func greet(name: String) {
     Viper.Terminal.Say("Hello, " + name + "!");
 }
 
@@ -586,7 +586,7 @@ createRect(50.0, 75.0);      // 50x75
 ### Named Parameters
 
 ```rust
-func createUser(name: string, age: i64, admin: bool, active: bool) {
+func createUser(name: String, age: Integer, admin: Boolean, active: Boolean) {
     // ...
 }
 
@@ -976,7 +976,7 @@ value Rectangle {
     }
 
     // Method with parameters
-    func scale(factor: f64) -> Rectangle {
+    func scale(factor: Number) -> Rectangle {
         return Rectangle {
             width: self.width * factor,
             height: self.height * factor
@@ -984,7 +984,7 @@ value Rectangle {
     }
 
     // Static method - no self, called on the type
-    static func square(size: f64) -> Rectangle {
+    static func square(size: Number) -> Rectangle {
         return Rectangle { width: size, height: size };
     }
 }
@@ -1032,7 +1032,7 @@ entity Counter {
     }
 
     // Overloaded initializer
-    expose func init(initial: i64) {
+    expose func init(initial: Integer) {
         self.count = initial;
     }
 
@@ -1072,12 +1072,12 @@ entity Player {
     name: string;
     score: i64;
 
-    expose func init(name: string) {
+    expose func init(name: String) {
         self.name = name;     // self.name is the field
         self.score = 0;       // name is the parameter
     }
 
-    expose func addScore(points: i64) {
+    expose func addScore(points: Integer) {
         self.score += points;
         self.checkAchievement();  // Can call other methods on self
     }
@@ -1130,7 +1130,7 @@ entity BankAccount {
     internal bankCode: string;       // Anywhere in this module
     expose ownerName: string;        // Anywhere
 
-    expose func init(owner: string, initial: f64) {
+    expose func init(owner: String, initial: Number) {
         self.ownerName = owner;
         self.balance = initial;
     }
@@ -1140,14 +1140,14 @@ entity BankAccount {
         return self.balance;
     }
 
-    expose func deposit(amount: f64) {
+    expose func deposit(amount: Number) {
         if amount > 0 {
             self.balance += amount;
         }
     }
 
     // Private helper method
-    hide func logTransaction(type: string, amount: f64) {
+    hide func logTransaction(type: String, amount: Number) {
         // Internal logging
     }
 }
@@ -1180,7 +1180,7 @@ Entities can extend other entities to inherit and specialize behavior.
 entity Animal {
     protected name: string;
 
-    expose func init(name: string) {
+    expose func init(name: String) {
         self.name = name;
     }
 
@@ -1196,7 +1196,7 @@ entity Animal {
 entity Dog extends Animal {
     hide breed: string;
 
-    expose func init(name: string, breed: string) {
+    expose func init(name: String, breed: String) {
         super(name);          // Call parent initializer
         self.breed = breed;
     }
@@ -1222,7 +1222,7 @@ Viper.Terminal.Say(dog.getName());  // "Rex" - inherited method
 
 ```rust
 entity Cat extends Animal {
-    expose func init(name: string) {
+    expose func init(name: String) {
         super(name);
     }
 
@@ -1257,7 +1257,7 @@ entity Shape {
 entity Circle extends Shape {
     hide radius: f64;
 
-    expose func init(radius: f64) {
+    expose func init(radius: Number) {
         self.radius = radius;
     }
 
@@ -1288,8 +1288,8 @@ interface Drawable {
 }
 
 interface Clickable {
-    func onClick(x: i64, y: i64);
-    func isPointInside(x: i64, y: i64) -> bool;
+    func onClick(x: Integer, y: Integer);
+    func isPointInside(x: Integer, y: Integer) -> Boolean;
 }
 ```
 
@@ -1303,7 +1303,7 @@ entity Button implements Drawable, Clickable {
     hide height: i64;
     hide label: string;
 
-    expose func init(x: i64, y: i64, w: i64, h: i64, label: string) {
+    expose func init(x: Integer, y: Integer, w: Integer, h: Integer, label: String) {
         self.x = x;
         self.y = y;
         self.width = w;
@@ -1321,11 +1321,11 @@ entity Button implements Drawable, Clickable {
     }
 
     // Implement Clickable
-    expose func onClick(x: i64, y: i64) {
+    expose func onClick(x: Integer, y: Integer) {
         Viper.Terminal.Say("Button clicked: " + self.label);
     }
 
-    expose func isPointInside(x: i64, y: i64) -> bool {
+    expose func isPointInside(x: Integer, y: Integer) -> Boolean {
         return x >= self.x && x < self.x + self.width &&
                y >= self.y && y < self.y + self.height;
     }
@@ -1435,7 +1435,7 @@ enum Option<T> {
     None
 }
 
-func findUser(id: i64) -> Option<User> {
+func findUser(id: Integer) -> Option<User> {
     if id == 1 {
         return Option.Some(User("Alice"));
     }
@@ -1586,14 +1586,14 @@ Handle exceptional conditions gracefully.
 ### Throwing Errors
 
 ```rust
-func divide(a: f64, b: f64) -> f64 {
+func divide(a: Number, b: Number) -> Number {
     if b == 0 {
         throw DivisionByZeroError("Cannot divide by zero");
     }
     return a / b;
 }
 
-func validateAge(age: i64) -> i64 {
+func validateAge(age: Integer) -> Integer {
     if age < 0 {
         throw ValidationError("Age cannot be negative");
     }
@@ -1628,7 +1628,7 @@ try {
 entity ValidationError extends Error {
     hide field: string;
 
-    expose func init(message: string, field: string) {
+    expose func init(message: String, field: String) {
         super(message);
         self.field = field;
     }
@@ -1670,16 +1670,16 @@ Organize code into reusable units.
 module MathUtils;
 
 // Exported - visible to other modules
-export func square(x: f64) -> f64 {
+export func square(x: Number) -> Number {
     return x * x;
 }
 
-export func cube(x: f64) -> f64 {
+export func cube(x: Number) -> Number {
     return x * x * x;
 }
 
 // Not exported - private to this module
-func helper(x: f64) -> f64 {
+func helper(x: Number) -> Number {
     return x;
 }
 

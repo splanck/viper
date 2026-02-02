@@ -86,7 +86,7 @@ Now imagine your requirements change. Instead of simple rectangles, you need to 
 
 ## What Is a Function?
 
-You've already used functions. `Viper.Terminal.Say()` is a function. `Viper.Parse.Int()` is a function. Someone else wrote the code that makes them work; you just use them by name.
+You've already used functions. `Viper.Terminal.Say()` is a function. `Viper.Convert.ToInt()` is a function. Someone else wrote the code that makes them work; you just use them by name.
 
 A function is a named, reusable block of code. You define it once, then *call* it whenever you need that behavior. Think of a function like a recipe in a cookbook. The recipe has a name ("Chocolate Cake"), a list of ingredients you need to provide (flour, eggs, sugar), and a series of steps. When you want a chocolate cake, you don't invent the process from scratch --- you follow the recipe. You can make the cake multiple times, with slightly different ingredients (more sugar for a sweeter cake), and you always get a cake back.
 
@@ -199,7 +199,7 @@ Notice the syntax for calling a function: the function name followed by parenthe
 A function that always does the exact same thing is limited. Usually, we want to customize behavior. We do this by giving functions **parameters** --- placeholders for values that will be provided when the function is called.
 
 ```rust
-func greet(name: string) {
+func greet(name: String) {
     Viper.Terminal.Say("Hello, " + name + "!");
 }
 
@@ -221,14 +221,14 @@ Hello, Carol!
 
 These two terms are often confused, but they mean different things:
 
-- **Parameter**: The variable defined in the function declaration. It's a placeholder, a slot waiting to be filled. In `func greet(name: string)`, `name` is a parameter.
+- **Parameter**: The variable defined in the function declaration. It's a placeholder, a slot waiting to be filled. In `func greet(name: String)`, `name` is a parameter.
 
 - **Argument**: The actual value you provide when calling the function. In `greet("Alice")`, the string `"Alice"` is an argument.
 
 Think of it this way: the **parameter** is the parking space, the **argument** is the car you park in it.
 
 ```rust
-func greet(name: string) {    // 'name' is the PARAMETER (the parking space)
+func greet(name: String) {    // 'name' is the PARAMETER (the parking space)
     Viper.Terminal.Say("Hello, " + name + "!");
 }
 
@@ -265,7 +265,7 @@ Each call gets its own copy of the parameters. They don't interfere with each ot
 You can have multiple parameters, separated by commas:
 
 ```rust
-func introduce(name: string, age: i64) {
+func introduce(name: String, age: Integer) {
     Viper.Terminal.Say(name + " is " + age + " years old.");
 }
 
@@ -288,7 +288,7 @@ Bob is 25 years old.
 When you pass a value to a function, the function receives a **copy** of that value (for simple types like numbers and strings). Modifying the parameter inside the function does not affect the original:
 
 ```rust
-func tryToChange(x: i64) {
+func tryToChange(x: Integer) {
     x = 999;  // This changes the local copy
     Viper.Terminal.Say("Inside function: " + x);
 }
@@ -312,7 +312,7 @@ The function received a copy of `42`. Changing the copy doesn't change the origi
 Some functions compute a value and give it back to the caller. They *return* a result:
 
 ```rust
-func add(a: i64, b: i64) -> i64 {
+func add(a: Integer, b: Integer) -> Integer {
     return a + b;
 }
 
@@ -337,7 +337,7 @@ When a function executes a `return` statement, two things happen:
 Think of it like a tennis ball machine. You press the button (call the function), the machine does some internal work (the function body), and a ball shoots out (the return value). The `return` statement is the moment the ball leaves the machine.
 
 ```rust
-func add(a: i64, b: i64) -> i64 {
+func add(a: Integer, b: Integer) -> Integer {
     return a + b;
     Viper.Terminal.Say("This never runs!");  // Dead code - never executed
 }
@@ -426,7 +426,7 @@ func start() {
 You can use `return` without a value to exit early:
 
 ```rust
-func maybeGreet(shouldGreet: bool) {
+func maybeGreet(shouldGreet: Boolean) {
     if !shouldGreet {
         return;  // Exit immediately, do nothing else
     }
@@ -448,7 +448,7 @@ Early returns are useful for handling special cases at the beginning of a functi
 Variables created inside a function are *local* --- they exist only within that function. This region where a variable is valid is called its **scope**.
 
 ```rust
-func calculateArea(width: i64, height: i64) -> i64 {
+func calculateArea(width: Integer, height: Integer) -> Integer {
     var area = width * height;  // 'area' is born here
     return area;
 }                               // 'area' dies here
@@ -467,12 +467,12 @@ The variable `area` exists only while `calculateArea` is running. When the funct
 Scope is a feature, not a limitation. It provides **isolation**:
 
 ```rust
-func calculateRectangleArea(w: i64, h: i64) -> i64 {
+func calculateRectangleArea(w: Integer, h: Integer) -> Integer {
     var temp = w * h;
     return temp;
 }
 
-func calculateTriangleArea(base: i64, height: i64) -> i64 {
+func calculateTriangleArea(base: Integer, height: Integer) -> Integer {
     var temp = base * height / 2;  // Same name 'temp', different variable!
     return temp;
 }
@@ -569,15 +569,15 @@ A stack is a data structure like a stack of plates: you add plates to the top, a
 Let's trace through this code:
 
 ```rust
-func multiply(a: i64, b: i64) -> i64 {
+func multiply(a: Integer, b: Integer) -> Integer {
     return a * b;
 }
 
-func square(n: i64) -> i64 {
+func square(n: Integer) -> Integer {
     return multiply(n, n);
 }
 
-func sumOfSquares(x: i64, y: i64) -> i64 {
+func sumOfSquares(x: Integer, y: Integer) -> Integer {
     var sq1 = square(x);
     var sq2 = square(y);
     return sq1 + sq2;
@@ -685,11 +685,11 @@ func greet() {
     Viper.Terminal.Say("Hello, stranger!");
 }
 
-func greet(name: string) {
+func greet(name: String) {
     Viper.Terminal.Say("Hello, " + name + "!");
 }
 
-func greet(name: string, times: i64) {
+func greet(name: String, times: Integer) {
     for i in 0..times {
         Viper.Terminal.Say("Hello, " + name + "!");
     }
@@ -715,15 +715,15 @@ Overloading is useful for:
 
 2. **Handling different types**:
 ```rust
-func printValue(n: i64) {
+func printValue(n: Integer) {
     Viper.Terminal.Say("Integer: " + n);
 }
 
-func printValue(s: string) {
+func printValue(s: String) {
     Viper.Terminal.Say("String: " + s);
 }
 
-func printValue(b: bool) {
+func printValue(b: Boolean) {
     Viper.Terminal.Say("Boolean: " + b);
 }
 ```
@@ -749,7 +749,7 @@ Factorial is the product of all positive integers up to n. For example, 5! (read
 Notice something interesting: 5! = 5 x 4! And 4! = 4 x 3! The factorial of n is n times the factorial of (n-1). This is a recursive definition --- factorial is defined in terms of itself.
 
 ```rust
-func factorial(n: i64) -> i64 {
+func factorial(n: Integer) -> Integer {
     if n <= 1 {
         return 1;  // Base case: 0! = 1! = 1
     }
@@ -811,7 +811,7 @@ Every recursive function needs:
 The Fibonacci sequence is: 0, 1, 1, 2, 3, 5, 8, 13, 21, ... Each number is the sum of the two before it.
 
 ```rust
-func fib(n: i64) -> i64 {
+func fib(n: Integer) -> Integer {
     if n <= 1 {
         return n;  // Base cases: fib(0) = 0, fib(1) = 1
     }
@@ -1045,11 +1045,11 @@ func calculateAverage(grades: [i64]) -> i64 {
     return sum / grades.length;
 }
 
-func displayAverage(avg: i64) {
+func displayAverage(avg: Integer) {
     Viper.Terminal.Say("Average: " + avg);
 }
 
-func saveAverage(avg: i64) {
+func saveAverage(avg: Integer) {
     Viper.File.Write("grades.txt", "Average: " + avg);
 }
 
@@ -1106,12 +1106,12 @@ A **pure function** takes inputs and returns outputs without modifying anything 
 
 ```rust
 // Pure function: no side effects
-func add(a: i64, b: i64) -> i64 {
+func add(a: Integer, b: Integer) -> Integer {
     return a + b;
 }
 
 // Pure function: no side effects
-func formatName(first: string, last: string) -> string {
+func formatName(first: String, last: String) -> String {
     return last + ", " + first;
 }
 ```
@@ -1127,7 +1127,7 @@ func incrementCounter() {
 }
 
 // Side effect: performs I/O
-func printMessage(msg: string) {
+func printMessage(msg: String) {
     Viper.Terminal.Say(msg);
 }
 ```
@@ -1175,7 +1175,7 @@ func processOrder(order: Order) {
     sendConfirmation(order);
 }
 
-func isSpamEmail(email: string) -> bool {
+func isSpamEmail(email: String) -> Boolean {
     var atPos = email.indexOf("@");
     var domain = email.substring(atPos + 1);
     return domain == "spam.com";
@@ -1201,11 +1201,11 @@ module GradeTracker;
 // Returns -1 if user wants to finish
 func readGrade() -> i64 {
     Viper.Terminal.Print("Grade: ");
-    return Viper.Parse.Int(Viper.Terminal.ReadLine());
+    return Viper.Convert.ToInt(Viper.Terminal.ReadLine());
 }
 
 // Check if a grade is within valid range
-func isValidGrade(grade: i64) -> bool {
+func isValidGrade(grade: Integer) -> Boolean {
     return grade >= 0 && grade <= 100;
 }
 
@@ -1277,7 +1277,7 @@ func maximum(grades: [i64]) -> i64 {
 }
 
 // Convert numeric grade to letter grade
-func letterGrade(grade: i64) -> string {
+func letterGrade(grade: Integer) -> String {
     if grade >= 90 { return "A"; }
     if grade >= 80 { return "B"; }
     if grade >= 70 { return "C"; }
@@ -1371,11 +1371,11 @@ Each function does one thing. They're short. They have clear names. They build o
 
 **Zia**
 ```rust
-func add(a: i64, b: i64) -> i64 {
+func add(a: Integer, b: Integer) -> Integer {
     return a + b;
 }
 
-func greet(name: string) {
+func greet(name: String) {
     Viper.Terminal.Say("Hello, " + name);
 }
 
@@ -1429,7 +1429,7 @@ Pascal uses `function` (returns a value) and `procedure` (no return value). Like
 
 **Forgetting to return:**
 ```rust
-func add(a: i64, b: i64) -> i64 {
+func add(a: Integer, b: Integer) -> Integer {
     var sum = a + b;
     // Oops! Forgot 'return sum'
 }  // Compiler error: function must return a value
@@ -1437,7 +1437,7 @@ func add(a: i64, b: i64) -> i64 {
 
 **Wrong parameter order:**
 ```rust
-func greet(name: string, age: i64) { ... }
+func greet(name: String, age: Integer) { ... }
 
 greet(25, "Alice");  // Error! Arguments are swapped
 greet("Alice", 25);  // Correct
@@ -1445,11 +1445,11 @@ greet("Alice", 25);  // Correct
 
 **Infinite recursion:**
 ```rust
-func forever(n: i64) -> i64 {
+func forever(n: Integer) -> Integer {
     return forever(n);  // Never stops! No base case, n never changes
 }
 
-func badFactorial(n: i64) -> i64 {
+func badFactorial(n: Integer) -> Integer {
     return n * badFactorial(n - 1);  // No base case! Runs forever (then crashes)
 }
 ```
@@ -1468,7 +1468,7 @@ func start() {
 
 **Expecting parameters to modify original variables:**
 ```rust
-func double(x: i64) {
+func double(x: Integer) {
     x = x * 2;  // Only modifies local copy
 }
 
@@ -1495,7 +1495,7 @@ func readNumbers() -> [i64] { ... }
 func validateNumbers(numbers: [i64]) -> bool { ... }
 func calculateStatistics(numbers: [i64]) -> Statistics { ... }
 func formatReport(stats: Statistics) -> string { ... }
-func printReport(report: string) { ... }
+func printReport(report: String) { ... }
 ```
 
 ---

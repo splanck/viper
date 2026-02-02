@@ -844,7 +844,7 @@ module Grader;
 
 func start() {
     Viper.Terminal.Print("Enter the score (0-100): ");
-    var score = Viper.Parse.Int(Viper.Terminal.ReadLine());
+    var score = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
 
     // First, validate the input
     if score < 0 || score > 100 {
@@ -898,7 +898,7 @@ module AgeChecker;
 
 func start() {
     Viper.Terminal.Print("Enter your age: ");
-    var age = Viper.Parse.Int(Viper.Terminal.ReadLine());
+    var age = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
 
     Viper.Terminal.Say("");  // Blank line for readability
 
@@ -971,7 +971,7 @@ func start() {
     Viper.Terminal.Say("3. Defend (reduce incoming damage by half)");
 
     Viper.Terminal.Print("Your choice: ");
-    var choice = Viper.Parse.Int(Viper.Terminal.ReadLine());
+    var choice = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
 
     var damage = 0;
     var defended = false;
@@ -1046,7 +1046,7 @@ func start() {
 
     // Get age
     Viper.Terminal.Print("Age: ");
-    var age = Viper.Parse.Int(Viper.Terminal.ReadLine());
+    var age = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
 
     // Validation
     var isValid = true;
@@ -1191,7 +1191,7 @@ func start() {
     Viper.Terminal.Say("5. Quit");
     Viper.Terminal.Print("Choose an option: ");
 
-    var choice = Viper.Parse.Int(Viper.Terminal.ReadLine());
+    var choice = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
 
     match choice {
         1 => {
@@ -1614,7 +1614,7 @@ func start() {
     Viper.Terminal.Say("");
 
     Viper.Terminal.Print("Your guess: ");
-    var guess = Viper.Parse.Int(Viper.Terminal.ReadLine());
+    var guess = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
     guessesRemaining = guessesRemaining - 1;
 
     // Validate input

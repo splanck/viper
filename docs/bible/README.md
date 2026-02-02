@@ -96,7 +96,7 @@ Viper supports three languages that all compile to the same underlying system. T
 
 **Zia** — Modern, clean, C-like syntax. Our recommended choice for new projects.
 ```rust
-func greet(name: string) {
+func greet(name: String) {
     Viper.Terminal.Say("Hello, " + name + "!");
 }
 ```
