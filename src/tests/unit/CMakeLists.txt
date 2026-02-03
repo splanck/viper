@@ -847,4 +847,49 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_string_ext ${VIPER_TESTS_DIR}/runtime/RTStringExtTests.cpp)
     target_link_libraries(test_rt_string_ext PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_string_ext test_rt_string_ext)
+
+    # Game development abstractions tests
+    viper_add_test(test_rt_statemachine ${VIPER_TESTS_DIR}/unit/runtime/RTStateMachineTests.cpp)
+    target_link_libraries(test_rt_statemachine PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_statemachine test_rt_statemachine)
+
+    viper_add_test(test_rt_tween ${VIPER_TESTS_DIR}/unit/runtime/RTTweenTests.cpp)
+    target_link_libraries(test_rt_tween PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_tween test_rt_tween)
+
+    viper_add_test(test_rt_buttongroup ${VIPER_TESTS_DIR}/unit/runtime/RTButtonGroupTests.cpp)
+    target_link_libraries(test_rt_buttongroup PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_buttongroup test_rt_buttongroup)
+
+    viper_add_test(test_rt_smoothvalue ${VIPER_TESTS_DIR}/unit/runtime/RTSmoothValueTests.cpp)
+    target_link_libraries(test_rt_smoothvalue PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_smoothvalue test_rt_smoothvalue)
+
+    viper_add_test(test_rt_particle ${VIPER_TESTS_DIR}/unit/runtime/RTParticleTests.cpp)
+    target_link_libraries(test_rt_particle PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_particle test_rt_particle)
+
+    viper_add_test(test_rt_spriteanim ${VIPER_TESTS_DIR}/unit/runtime/RTSpriteAnimTests.cpp)
+    target_link_libraries(test_rt_spriteanim PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_spriteanim test_rt_spriteanim)
+
+    viper_add_test(test_rt_collision ${VIPER_TESTS_DIR}/unit/runtime/RTCollisionTests.cpp)
+    target_link_libraries(test_rt_collision PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_collision test_rt_collision)
+
+    viper_add_test(test_rt_objpool ${VIPER_TESTS_DIR}/unit/runtime/RTObjPoolTests.cpp)
+    target_link_libraries(test_rt_objpool PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_objpool test_rt_objpool)
+
+    viper_add_test(test_rt_screenfx ${VIPER_TESTS_DIR}/unit/runtime/RTScreenFXTests.cpp)
+    target_link_libraries(test_rt_screenfx PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_screenfx test_rt_screenfx)
+
+    viper_add_test(test_rt_pathfollow ${VIPER_TESTS_DIR}/unit/runtime/RTPathFollowTests.cpp)
+    target_link_libraries(test_rt_pathfollow PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_pathfollow test_rt_pathfollow)
+
+    viper_add_test(test_rt_quadtree ${VIPER_TESTS_DIR}/unit/runtime/RTQuadtreeTests.cpp)
+    target_link_libraries(test_rt_quadtree PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_quadtree test_rt_quadtree)
 endfunction()
