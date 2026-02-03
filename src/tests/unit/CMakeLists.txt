@@ -770,6 +770,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_file_read_line_overflow PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_file_read_line_overflow test_rt_file_read_line_overflow)
 
+    viper_add_test(test_rt_action_mapping ${VIPER_TESTS_DIR}/unit/runtime/RTActionMappingTests.cpp)
+    target_link_libraries(test_rt_action_mapping PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_action_mapping test_rt_action_mapping)
+
     viper_add_test(test_rt_input_line_fail ${VIPER_TESTS_DIR}/runtime/RTInputLineFailTests.cpp)
     target_link_libraries(test_rt_input_line_fail PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_input_line_fail test_rt_input_line_fail)

@@ -104,6 +104,7 @@ set(RT_EXEC_SOURCES
 )
 
 set(RT_GRAPHICS_SOURCES
+        rt_action.c
         rt_font.c
         rt_graphics.c
         rt_gui.c
@@ -141,6 +142,7 @@ set(RT_NETWORK_SOURCES
 )
 
 set(RT_PUBLIC_HEADERS
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_action.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_context.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_error.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_trap.h

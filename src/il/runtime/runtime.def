@@ -2240,6 +2240,50 @@ RT_FUNC(PadButtonDown, rt_pad_button_down, "Viper.Input.Pad.get_PAD_DOWN", "i64(
 RT_FUNC(PadButtonLeft, rt_pad_button_left, "Viper.Input.Pad.get_PAD_LEFT", "i64()")
 RT_FUNC(PadButtonRight, rt_pad_button_right, "Viper.Input.Pad.get_PAD_RIGHT", "i64()")
 RT_FUNC(PadButtonGuide, rt_pad_button_guide, "Viper.Input.Pad.get_PAD_GUIDE", "i64()")
+
+//=============================================================================
+// Viper.Input.Action - Action Mapping System
+//=============================================================================
+
+RT_FUNC(ActionClear, rt_action_clear, "Viper.Input.Action.Clear", "void()")
+RT_FUNC(ActionDefine, rt_action_define, "Viper.Input.Action.Define", "i1(str)")
+RT_FUNC(ActionDefineAxis, rt_action_define_axis, "Viper.Input.Action.DefineAxis", "i1(str)")
+RT_FUNC(ActionExists, rt_action_exists, "Viper.Input.Action.Exists", "i1(str)")
+RT_FUNC(ActionIsAxis, rt_action_is_axis, "Viper.Input.Action.IsAxis", "i1(str)")
+RT_FUNC(ActionRemove, rt_action_remove, "Viper.Input.Action.Remove", "i1(str)")
+RT_FUNC(ActionBindKey, rt_action_bind_key, "Viper.Input.Action.BindKey", "i1(str,i64)")
+RT_FUNC(ActionBindKeyAxis, rt_action_bind_key_axis, "Viper.Input.Action.BindKeyAxis", "i1(str,i64,f64)")
+RT_FUNC(ActionUnbindKey, rt_action_unbind_key, "Viper.Input.Action.UnbindKey", "i1(str,i64)")
+RT_FUNC(ActionBindMouse, rt_action_bind_mouse, "Viper.Input.Action.BindMouse", "i1(str,i64)")
+RT_FUNC(ActionUnbindMouse, rt_action_unbind_mouse, "Viper.Input.Action.UnbindMouse", "i1(str,i64)")
+RT_FUNC(ActionBindMouseX, rt_action_bind_mouse_x, "Viper.Input.Action.BindMouseX", "i1(str,f64)")
+RT_FUNC(ActionBindMouseY, rt_action_bind_mouse_y, "Viper.Input.Action.BindMouseY", "i1(str,f64)")
+RT_FUNC(ActionBindScrollX, rt_action_bind_scroll_x, "Viper.Input.Action.BindScrollX", "i1(str,f64)")
+RT_FUNC(ActionBindScrollY, rt_action_bind_scroll_y, "Viper.Input.Action.BindScrollY", "i1(str,f64)")
+RT_FUNC(ActionBindPadButton, rt_action_bind_pad_button, "Viper.Input.Action.BindPadButton", "i1(str,i64,i64)")
+RT_FUNC(ActionUnbindPadButton, rt_action_unbind_pad_button, "Viper.Input.Action.UnbindPadButton", "i1(str,i64,i64)")
+RT_FUNC(ActionBindPadAxis, rt_action_bind_pad_axis, "Viper.Input.Action.BindPadAxis", "i1(str,i64,i64,f64)")
+RT_FUNC(ActionUnbindPadAxis, rt_action_unbind_pad_axis, "Viper.Input.Action.UnbindPadAxis", "i1(str,i64,i64)")
+RT_FUNC(ActionBindPadButtonAxis, rt_action_bind_pad_button_axis, "Viper.Input.Action.BindPadButtonAxis", "i1(str,i64,i64,f64)")
+RT_FUNC(ActionPressed, rt_action_pressed, "Viper.Input.Action.Pressed", "i1(str)")
+RT_FUNC(ActionReleased, rt_action_released, "Viper.Input.Action.Released", "i1(str)")
+RT_FUNC(ActionHeld, rt_action_held, "Viper.Input.Action.Held", "i1(str)")
+RT_FUNC(ActionStrength, rt_action_strength, "Viper.Input.Action.Strength", "f64(str)")
+RT_FUNC(ActionAxis, rt_action_axis, "Viper.Input.Action.Axis", "f64(str)")
+RT_FUNC(ActionAxisRaw, rt_action_axis_raw, "Viper.Input.Action.AxisRaw", "f64(str)")
+RT_FUNC(ActionList, rt_action_list, "Viper.Input.Action.List", "obj()")
+RT_FUNC(ActionBindingsStr, rt_action_bindings_str, "Viper.Input.Action.BindingsStr", "str(str)")
+RT_FUNC(ActionBindingCount, rt_action_binding_count, "Viper.Input.Action.BindingCount", "i64(str)")
+RT_FUNC(ActionKeyBoundTo, rt_action_key_bound_to, "Viper.Input.Action.KeyBoundTo", "str(i64)")
+RT_FUNC(ActionMouseBoundTo, rt_action_mouse_bound_to, "Viper.Input.Action.MouseBoundTo", "str(i64)")
+RT_FUNC(ActionPadButtonBoundTo, rt_action_pad_button_bound_to, "Viper.Input.Action.PadButtonBoundTo", "str(i64,i64)")
+RT_FUNC(ActionAxisLeftX, rt_action_axis_left_x, "Viper.Input.Action.get_AXIS_LEFT_X", "i64()")
+RT_FUNC(ActionAxisLeftY, rt_action_axis_left_y, "Viper.Input.Action.get_AXIS_LEFT_Y", "i64()")
+RT_FUNC(ActionAxisRightX, rt_action_axis_right_x, "Viper.Input.Action.get_AXIS_RIGHT_X", "i64()")
+RT_FUNC(ActionAxisRightY, rt_action_axis_right_y, "Viper.Input.Action.get_AXIS_RIGHT_Y", "i64()")
+RT_FUNC(ActionAxisLeftTrigger, rt_action_axis_left_trigger, "Viper.Input.Action.get_AXIS_LEFT_TRIGGER", "i64()")
+RT_FUNC(ActionAxisRightTrigger, rt_action_axis_right_trigger, "Viper.Input.Action.get_AXIS_RIGHT_TRIGGER", "i64()")
+
 RT_FUNC(ArchiveOpen, rt_archive_open, "Viper.IO.Archive.Open", "obj(str)")
 RT_FUNC(ArchiveCreate, rt_archive_create, "Viper.IO.Archive.Create", "obj(str)")
 RT_FUNC(ArchiveFromBytes, rt_archive_from_bytes, "Viper.IO.Archive.FromBytes", "obj(obj)")
@@ -3483,6 +3527,61 @@ RT_CLASS_BEGIN("Viper.Input.Pad", Pad, "none", none)
     RT_PROP("PAD_LEFT", "i64", PadButtonLeft, none)
     RT_PROP("PAD_RIGHT", "i64", PadButtonRight, none)
     RT_PROP("PAD_GUIDE", "i64", PadButtonGuide, none)
+RT_CLASS_END()
+
+// Viper.Input.Action - action mapping system (static class)
+RT_CLASS_BEGIN("Viper.Input.Action", Action, "none", none)
+    // Action definition
+    RT_METHOD("Clear", "void()", ActionClear)
+    RT_METHOD("Define", "i1(str)", ActionDefine)
+    RT_METHOD("DefineAxis", "i1(str)", ActionDefineAxis)
+    RT_METHOD("Exists", "i1(str)", ActionExists)
+    RT_METHOD("IsAxis", "i1(str)", ActionIsAxis)
+    RT_METHOD("Remove", "i1(str)", ActionRemove)
+
+    // Keyboard bindings
+    RT_METHOD("BindKey", "i1(str,i64)", ActionBindKey)
+    RT_METHOD("BindKeyAxis", "i1(str,i64,f64)", ActionBindKeyAxis)
+    RT_METHOD("UnbindKey", "i1(str,i64)", ActionUnbindKey)
+
+    // Mouse bindings
+    RT_METHOD("BindMouse", "i1(str,i64)", ActionBindMouse)
+    RT_METHOD("UnbindMouse", "i1(str,i64)", ActionUnbindMouse)
+    RT_METHOD("BindMouseX", "i1(str,f64)", ActionBindMouseX)
+    RT_METHOD("BindMouseY", "i1(str,f64)", ActionBindMouseY)
+    RT_METHOD("BindScrollX", "i1(str,f64)", ActionBindScrollX)
+    RT_METHOD("BindScrollY", "i1(str,f64)", ActionBindScrollY)
+
+    // Gamepad bindings
+    RT_METHOD("BindPadButton", "i1(str,i64,i64)", ActionBindPadButton)
+    RT_METHOD("UnbindPadButton", "i1(str,i64,i64)", ActionUnbindPadButton)
+    RT_METHOD("BindPadAxis", "i1(str,i64,i64,f64)", ActionBindPadAxis)
+    RT_METHOD("UnbindPadAxis", "i1(str,i64,i64)", ActionUnbindPadAxis)
+    RT_METHOD("BindPadButtonAxis", "i1(str,i64,i64,f64)", ActionBindPadButtonAxis)
+
+    // State queries
+    RT_METHOD("Pressed", "i1(str)", ActionPressed)
+    RT_METHOD("Released", "i1(str)", ActionReleased)
+    RT_METHOD("Held", "i1(str)", ActionHeld)
+    RT_METHOD("Strength", "f64(str)", ActionStrength)
+    RT_METHOD("Axis", "f64(str)", ActionAxis)
+    RT_METHOD("AxisRaw", "f64(str)", ActionAxisRaw)
+
+    // Introspection
+    RT_METHOD("List", "obj()", ActionList)
+    RT_METHOD("BindingsStr", "str(str)", ActionBindingsStr)
+    RT_METHOD("BindingCount", "i64(str)", ActionBindingCount)
+    RT_METHOD("KeyBoundTo", "str(i64)", ActionKeyBoundTo)
+    RT_METHOD("MouseBoundTo", "str(i64)", ActionMouseBoundTo)
+    RT_METHOD("PadButtonBoundTo", "str(i64,i64)", ActionPadButtonBoundTo)
+
+    // Gamepad axis constants
+    RT_PROP("AXIS_LEFT_X", "i64", ActionAxisLeftX, none)
+    RT_PROP("AXIS_LEFT_Y", "i64", ActionAxisLeftY, none)
+    RT_PROP("AXIS_RIGHT_X", "i64", ActionAxisRightX, none)
+    RT_PROP("AXIS_RIGHT_Y", "i64", ActionAxisRightY, none)
+    RT_PROP("AXIS_LEFT_TRIGGER", "i64", ActionAxisLeftTrigger, none)
+    RT_PROP("AXIS_RIGHT_TRIGGER", "i64", ActionAxisRightTrigger, none)
 RT_CLASS_END()
 
 // Viper.IO.Dir - directory operations

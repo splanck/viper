@@ -13,6 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_action.h"
 #include "rt_graphics.h"
 #include "rt_font.h"
 #include "rt_input.h"
@@ -240,6 +241,9 @@ int64_t rt_canvas_poll(void *canvas_ptr)
 
     // Poll gamepads for state updates
     rt_pad_poll();
+
+    // Update action mapping state from all input sources
+    rt_action_update();
 
     // Update mouse position from current cursor location
     int32_t mx = 0, my = 0;

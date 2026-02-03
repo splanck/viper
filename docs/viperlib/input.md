@@ -9,6 +9,7 @@
 - [Viper.Input.Keyboard](#viperinputkeyboard)
 - [Viper.Input.Mouse](#viperinputmouse)
 - [Viper.Input.Pad](#viperinputpad)
+- [Viper.Input.Action](#viperinputaction)
 
 ---
 
@@ -840,6 +841,250 @@ The Pad class automatically integrates with Canvas. When you call `Canvas.Poll()
 5. Press/release events are detected
 
 You don't need to explicitly initialize gamepads - they're ready when you create a Canvas.
+
+---
+
+## Viper.Input.Action
+
+High-level action mapping system for device-agnostic input handling.
+
+**Type:** Static utility class
+
+The Action class provides an abstraction layer over raw input devices. Instead of checking individual keys, mouse buttons, or gamepad buttons, you define named "actions" and bind them to multiple input sources. This enables:
+
+- **Input remapping** without code changes
+- **Multi-device support** - query a single action that works across keyboard, mouse, and gamepad
+- **Axis actions** for analog input (movement, camera control)
+- **Consistent state tracking** - pressed, released, and held states
+
+Action state is updated automatically when you call `Canvas.Poll()`.
+
+### Action System Lifecycle
+
+| Method        | Signature | Description                                     |
+|---------------|-----------|------------------------------------------------|
+| `Clear()`     | `Void()`  | Remove all defined actions and bindings         |
+
+### Action Definition Methods
+
+| Method                | Signature          | Description                                                |
+|-----------------------|--------------------|------------------------------------------------------------|
+| `Define(name)`        | `Boolean(String)`  | Define a new button action; returns false if already exists|
+| `DefineAxis(name)`    | `Boolean(String)`  | Define a new axis action; returns false if already exists  |
+| `Exists(name)`        | `Boolean(String)`  | Check if an action is defined                              |
+| `IsAxis(name)`        | `Boolean(String)`  | Check if an action is an axis action                       |
+| `Remove(name)`        | `Boolean(String)`  | Remove an action and all its bindings                      |
+
+### Keyboard Binding Methods
+
+| Method                          | Signature                      | Description                                      |
+|---------------------------------|--------------------------------|--------------------------------------------------|
+| `BindKey(action, key)`          | `Boolean(String, Integer)`     | Bind a key to a button action                    |
+| `BindKeyAxis(action, key, value)` | `Boolean(String, Integer, Double)` | Bind a key to an axis action with value     |
+| `UnbindKey(action, key)`        | `Boolean(String, Integer)`     | Remove a key binding from an action              |
+
+### Mouse Binding Methods
+
+| Method                             | Signature                      | Description                                      |
+|------------------------------------|--------------------------------|--------------------------------------------------|
+| `BindMouse(action, button)`        | `Boolean(String, Integer)`     | Bind a mouse button to a button action           |
+| `UnbindMouse(action, button)`      | `Boolean(String, Integer)`     | Remove a mouse button binding                    |
+| `BindMouseX(action, sensitivity)`  | `Boolean(String, Double)`      | Bind mouse X delta to an axis action             |
+| `BindMouseY(action, sensitivity)`  | `Boolean(String, Double)`      | Bind mouse Y delta to an axis action             |
+| `BindScrollX(action, sensitivity)` | `Boolean(String, Double)`      | Bind scroll wheel X to an axis action            |
+| `BindScrollY(action, sensitivity)` | `Boolean(String, Double)`      | Bind scroll wheel Y to an axis action            |
+
+### Gamepad Binding Methods
+
+| Method                                         | Signature                               | Description                                      |
+|------------------------------------------------|-----------------------------------------|--------------------------------------------------|
+| `BindPadButton(action, pad, button)`           | `Boolean(String, Integer, Integer)`     | Bind a gamepad button to a button action         |
+| `UnbindPadButton(action, pad, button)`         | `Boolean(String, Integer, Integer)`     | Remove a gamepad button binding                  |
+| `BindPadAxis(action, pad, axis, scale)`        | `Boolean(String, Integer, Integer, Double)` | Bind a gamepad axis to an axis action        |
+| `UnbindPadAxis(action, pad, axis)`             | `Boolean(String, Integer, Integer)`     | Remove a gamepad axis binding                    |
+| `BindPadButtonAxis(action, pad, button, value)`| `Boolean(String, Integer, Integer, Double)` | Bind a gamepad button to an axis action      |
+
+**Note:** Use pad index `-1` to match any connected controller.
+
+### Button Action Query Methods
+
+| Method             | Signature          | Description                                                  |
+|--------------------|--------------------|------------------------------------------------------------- |
+| `Pressed(action)`  | `Boolean(String)`  | Returns true if any bound input was pressed this frame       |
+| `Released(action)` | `Boolean(String)`  | Returns true if any bound input was released this frame      |
+| `Held(action)`     | `Boolean(String)`  | Returns true if any bound input is currently held            |
+| `Strength(action)` | `Double(String)`   | Returns 1.0 if held, 0.0 otherwise                           |
+
+### Axis Action Query Methods
+
+| Method             | Signature         | Description                                                   |
+|--------------------|-------------------|---------------------------------------------------------------|
+| `Axis(action)`     | `Double(String)`  | Returns combined axis value, clamped to -1.0 to 1.0           |
+| `AxisRaw(action)`  | `Double(String)`  | Returns combined axis value, not clamped                      |
+
+### Introspection Methods
+
+| Method                  | Signature          | Description                                              |
+|-------------------------|--------------------|---------------------------------------------------------|
+| `List()`                | `Seq()`            | Returns a Seq of all defined action names                |
+| `BindingsStr(action)`   | `String(String)`   | Returns human-readable description of bindings           |
+| `BindingCount(action)`  | `Integer(String)`  | Returns the number of bindings for an action             |
+
+### Conflict Detection Methods
+
+| Method                              | Signature                      | Description                                    |
+|-------------------------------------|--------------------------------|------------------------------------------------|
+| `KeyBoundTo(key)`                   | `String(Integer)`              | Returns action name if key is bound, else ""   |
+| `MouseBoundTo(button)`              | `String(Integer)`              | Returns action name if button is bound, else ""|
+| `PadButtonBoundTo(pad, button)`     | `String(Integer, Integer)`     | Returns action name if bound, else ""          |
+
+### Axis Constants
+
+| Property            | Value | Description                     |
+|---------------------|-------|---------------------------------|
+| `AXIS_LEFT_X`       | 0     | Left stick horizontal           |
+| `AXIS_LEFT_Y`       | 1     | Left stick vertical             |
+| `AXIS_RIGHT_X`      | 2     | Right stick horizontal          |
+| `AXIS_RIGHT_Y`      | 3     | Right stick vertical            |
+| `AXIS_LEFT_TRIGGER` | 4     | Left trigger (0.0 to 1.0)       |
+| `AXIS_RIGHT_TRIGGER`| 5     | Right trigger (0.0 to 1.0)      |
+
+### Example: Basic Game Actions
+
+```basic
+DIM canvas AS Viper.Graphics.Canvas
+canvas = NEW Viper.Graphics.Canvas("Action Demo", 800, 600)
+
+' Define actions
+Viper.Input.Action.Define("jump")
+Viper.Input.Action.Define("fire")
+Viper.Input.Action.DefineAxis("move_x")
+Viper.Input.Action.DefineAxis("move_y")
+
+' Bind keyboard
+Viper.Input.Action.BindKey("jump", Viper.Input.Keyboard.KEY_SPACE)
+Viper.Input.Action.BindKey("fire", Viper.Input.Keyboard.KEY_Z)
+Viper.Input.Action.BindKeyAxis("move_x", Viper.Input.Keyboard.KEY_LEFT, -1.0)
+Viper.Input.Action.BindKeyAxis("move_x", Viper.Input.Keyboard.KEY_RIGHT, 1.0)
+Viper.Input.Action.BindKeyAxis("move_y", Viper.Input.Keyboard.KEY_UP, -1.0)
+Viper.Input.Action.BindKeyAxis("move_y", Viper.Input.Keyboard.KEY_DOWN, 1.0)
+
+' Bind gamepad (any controller)
+Viper.Input.Action.BindPadButton("jump", -1, Viper.Input.Pad.PAD_A)
+Viper.Input.Action.BindPadButton("fire", -1, Viper.Input.Pad.PAD_X)
+Viper.Input.Action.BindPadAxis("move_x", -1, Viper.Input.Action.AXIS_LEFT_X, 1.0)
+Viper.Input.Action.BindPadAxis("move_y", -1, Viper.Input.Action.AXIS_LEFT_Y, 1.0)
+
+DIM playerX AS DOUBLE = 400.0
+DIM playerY AS DOUBLE = 300.0
+DIM speed AS DOUBLE = 5.0
+
+DO WHILE canvas.ShouldClose = 0
+    canvas.Poll()
+
+    ' Movement using axis actions (works with keyboard OR gamepad)
+    playerX = playerX + Viper.Input.Action.Axis("move_x") * speed
+    playerY = playerY + Viper.Input.Action.Axis("move_y") * speed
+
+    ' Jump action (works with Space OR gamepad A)
+    IF Viper.Input.Action.Pressed("jump") THEN
+        PRINT "Jump!"
+    END IF
+
+    ' Fire action (works with Z OR gamepad X)
+    IF Viper.Input.Action.Held("fire") THEN
+        PRINT "Firing..."
+    END IF
+
+    canvas.Clear(&H00000000)
+    canvas.Disc(INT(playerX), INT(playerY), 20, &H00FF0000)
+    canvas.Flip()
+LOOP
+```
+
+### Example: Mouse Look with Action Mapping
+
+```basic
+DIM canvas AS Viper.Graphics.Canvas
+canvas = NEW Viper.Graphics.Canvas("FPS Camera", 800, 600)
+
+' Define look actions
+Viper.Input.Action.DefineAxis("look_x")
+Viper.Input.Action.DefineAxis("look_y")
+
+' Bind mouse delta with sensitivity
+Viper.Input.Action.BindMouseX("look_x", 0.002)
+Viper.Input.Action.BindMouseY("look_y", 0.002)
+
+' Also allow gamepad right stick
+Viper.Input.Action.BindPadAxis("look_x", -1, Viper.Input.Action.AXIS_RIGHT_X, 0.05)
+Viper.Input.Action.BindPadAxis("look_y", -1, Viper.Input.Action.AXIS_RIGHT_Y, 0.05)
+
+DIM yaw AS DOUBLE = 0.0
+DIM pitch AS DOUBLE = 0.0
+
+Viper.Input.Mouse.Capture()
+
+DO WHILE canvas.ShouldClose = 0
+    canvas.Poll()
+
+    yaw = yaw + Viper.Input.Action.Axis("look_x")
+    pitch = pitch + Viper.Input.Action.Axis("look_y")
+
+    ' Clamp pitch
+    IF pitch > 1.57 THEN pitch = 1.57
+    IF pitch < -1.57 THEN pitch = -1.57
+
+    canvas.Clear(&H00000000)
+    ' Render scene using yaw/pitch...
+    canvas.Flip()
+LOOP
+
+Viper.Input.Mouse.Release()
+```
+
+### Example: Rebindable Controls
+
+```basic
+' Query current bindings
+DIM jumpBindings AS STRING
+jumpBindings = Viper.Input.Action.BindingsStr("jump")
+PRINT "Jump is bound to: "; jumpBindings
+
+' Check for conflicts
+DIM conflict AS STRING
+conflict = Viper.Input.Action.KeyBoundTo(Viper.Input.Keyboard.KEY_SPACE)
+IF conflict <> "" THEN
+    PRINT "Space is already bound to: "; conflict
+END IF
+
+' Rebind at runtime
+Viper.Input.Action.UnbindKey("jump", Viper.Input.Keyboard.KEY_SPACE)
+Viper.Input.Action.BindKey("jump", Viper.Input.Keyboard.KEY_W)
+```
+
+### Notes
+
+- Action state is updated when `Canvas.Poll()` is called
+- `Pressed()` and `Released()` only return true for one frame
+- Multiple bindings on a button action trigger if ANY binding is active
+- Axis bindings are combined (summed) and clamped to -1.0 to 1.0
+- Use `AxisRaw()` to get the unclamped sum for advanced use cases
+- Binding the same input to multiple actions is allowed
+- Use pad index `-1` for "any controller" in local multiplayer setups
+
+### Design Philosophy
+
+The Action system follows the principle of "define once, query everywhere":
+
+1. **Define** your game's actions at startup (jump, fire, move_x, etc.)
+2. **Bind** multiple inputs to each action (keyboard + mouse + gamepad)
+3. **Query** actions in your game logic, not raw inputs
+
+This separation means:
+- Players can rebind controls without code changes
+- Supporting new input devices only requires adding bindings
+- Game logic remains clean and device-agnostic
 
 ---
 

@@ -42,6 +42,7 @@
 #include "il/runtime/RuntimeSignatures_Handlers.hpp"
 
 #include "rt.hpp"
+#include "rt_action.h"
 #include "rt_aes.h"
 #include "rt_archive.h"
 #include "rt_args.h"

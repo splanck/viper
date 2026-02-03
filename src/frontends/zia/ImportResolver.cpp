@@ -150,8 +150,12 @@ bool ImportResolver::processModule(ModuleDecl &module,
     // imports B (already processed), we get [B, C, A] not [C, B, A].
     std::vector<DeclPtr> importedDecls;
 
-    for (const auto &bind : module.binds)
+    // Important: Use index-based iteration because we may add transitive binds
+    // to module.binds during processing. Range-based for would cause iterator
+    // invalidation when the vector grows.
+    for (size_t i = 0; i < module.binds.size(); ++i)
     {
+        const auto &bind = module.binds[i];
         std::string bindFilePath = resolveImportPath(bind.path, modulePath);
         std::string normalizedBindPath = normalizePath(bindFilePath);
 
@@ -175,13 +179,20 @@ bool ImportResolver::processModule(ModuleDecl &module,
         // This ensures semantic analysis can resolve module-qualified names
         // (e.g., if main imports game, and game imports utils, then main
         // needs to see the utils bind to resolve game's references to utils).
+        // We resolve paths to absolute form to avoid re-resolution issues.
         for (const auto &transitiveBind : boundModule->binds)
         {
-            // Avoid duplicate binds
+            // Resolve the transitive bind path relative to its original file
+            std::string resolvedPath = resolveImportPath(transitiveBind.path, bindFilePath);
+            std::string normalizedPath = normalizePath(resolvedPath);
+
+            // Check if this normalized path is already bound
             bool alreadyBound = false;
             for (const auto &existingBind : module.binds)
             {
-                if (existingBind.path == transitiveBind.path)
+                std::string existingResolved = resolveImportPath(existingBind.path, modulePath);
+                std::string existingNormalized = normalizePath(existingResolved);
+                if (existingNormalized == normalizedPath)
                 {
                     alreadyBound = true;
                     break;
@@ -189,7 +200,10 @@ bool ImportResolver::processModule(ModuleDecl &module,
             }
             if (!alreadyBound)
             {
-                module.binds.push_back(transitiveBind);
+                // Store the absolute path so it resolves correctly from any context
+                BindDecl absoluteBind(transitiveBind.loc, normalizedPath);
+                absoluteBind.alias = transitiveBind.alias;
+                module.binds.push_back(absoluteBind);
             }
         }
 
