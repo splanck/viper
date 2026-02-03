@@ -435,6 +435,48 @@ Lowerer::Value Lowerer::emitValueTypeCopy(const ValueTypeInfo &info, Value sourc
     return destPtr;
 }
 
+Lowerer::Value Lowerer::emitValueTypeAlloc(const ValueTypeInfo &info)
+{
+    // Allocate stack space for the value type
+    unsigned allocaId = nextTempId();
+    il::core::Instr allocaInstr;
+    allocaInstr.result = allocaId;
+    allocaInstr.op = Opcode::Alloca;
+    allocaInstr.type = Type(Type::Kind::Ptr);
+    allocaInstr.operands = {Value::constInt(static_cast<int64_t>(info.totalSize))};
+    blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
+    Value destPtr = Value::temp(allocaId);
+
+    // Zero-initialize all fields
+    for (const auto &field : info.fields)
+    {
+        Value zeroVal;
+        Type fieldType = mapType(field.type);
+        switch (fieldType.kind)
+        {
+            case Type::Kind::I64:
+            case Type::Kind::I32:
+            case Type::Kind::I16:
+            case Type::Kind::I1:
+                zeroVal = Value::constInt(0);
+                break;
+            case Type::Kind::F64:
+                zeroVal = Value::constFloat(0.0);
+                break;
+            case Type::Kind::Str:
+                zeroVal = Value::constStr("");
+                break;
+            case Type::Kind::Ptr:
+            default:
+                zeroVal = Value::null();
+                break;
+        }
+        emitFieldStore(&field, destPtr, zeroVal);
+    }
+
+    return destPtr;
+}
+
 //=============================================================================
 // Type Mapping
 //=============================================================================

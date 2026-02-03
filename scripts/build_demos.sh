@@ -103,6 +103,7 @@ BASIC_DEMOS=(
 ZIA_DEMOS=(
     "paint:${ZIA_DIR}/paint/main.zia"
     "viperide:${ZIA_DIR}/viperide/main.zia"
+    "pacman-zia:${ZIA_DIR}/pacman/main_modular.zia"
 )
 
 build_basic_demo() {

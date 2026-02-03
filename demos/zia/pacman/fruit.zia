@@ -1,0 +1,99 @@
+// =============================================================================
+// PAC-MAN - Fruit Entity
+// =============================================================================
+
+module fruit;
+
+bind "./config";
+bind "./utils";
+
+// =============================================================================
+// FRUIT ENTITY - Bonus item that appears in the maze
+// =============================================================================
+
+entity Fruit {
+    hide Integer fruitType;
+    hide Integer gridX;
+    hide Integer gridY;
+    hide Integer screenX;
+    hide Integer screenY;
+    hide Boolean active;
+    hide Integer timer;
+    hide Integer displayTimer;
+    hide Integer lastPoints;
+
+    expose func init() {
+        fruitType = config.FRUIT_NONE;
+        gridX = 14;
+        gridY = 17;
+        screenX = utils.gridToScreenX(gridX);
+        screenY = utils.gridToScreenY(gridY);
+        active = false;
+        timer = 0;
+        displayTimer = 0;
+        lastPoints = 0;
+    }
+
+    expose func spawn(level: Integer) {
+        fruitType = utils.getFruitForLevel(level);
+        active = true;
+        timer = 600;
+        displayTimer = 0;
+    }
+
+    expose func update() {
+        if active {
+            timer = timer - 1;
+            if timer <= 0 {
+                active = false;
+                fruitType = config.FRUIT_NONE;
+            }
+        }
+        if displayTimer > 0 {
+            displayTimer = displayTimer - 1;
+        }
+    }
+
+    expose func isActive() -> Boolean {
+        return active;
+    }
+
+    expose func collect() -> Integer {
+        if active {
+            active = false;
+            displayTimer = 120;
+            lastPoints = utils.getFruitPoints(fruitType);
+            return lastPoints;
+        }
+        return 0;
+    }
+
+    expose func collidesWithPacman(pacmanX: Integer, pacmanY: Integer) -> Boolean {
+        if !active { return false; }
+        return gridX == pacmanX and gridY == pacmanY;
+    }
+
+    expose func reset() {
+        active = false;
+        timer = 0;
+        displayTimer = 0;
+        fruitType = config.FRUIT_NONE;
+    }
+
+    expose func draw(canvas: Viper.Graphics.Canvas) {
+        if active {
+            var color = utils.getFruitColor(fruitType);
+            var centerX = screenX + config.TILE_SIZE / 2;
+            var centerY = screenY + config.TILE_SIZE / 2;
+
+            canvas.Disc(centerX, centerY, 8, color);
+            canvas.Box(centerX - 1, centerY - 10, 3, 4, 0x00008800);
+        }
+
+        if displayTimer > 0 {
+            var pointsText = Viper.Fmt.Int(lastPoints);
+            canvas.Text(screenX, screenY, pointsText, config.COLOR_WHITE);
+        }
+    }
+}
+

@@ -619,8 +619,13 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                                              dequeue:YES]))
         { /* Remove from queue */
 
-            /* Let the application handle the event first (for system services) */
-            [NSApp sendEvent:event];
+            /* Don't forward keyboard events to NSApp - we handle them directly.
+               This prevents the system beep when arrow keys are pressed. */
+            NSEventType eventType = [event type];
+            if (eventType != NSEventTypeKeyDown && eventType != NSEventTypeKeyUp)
+            {
+                [NSApp sendEvent:event];
+            }
 
             /* Translate to ViperGFX events */
             int64_t timestamp = vgfx_platform_now_ms();

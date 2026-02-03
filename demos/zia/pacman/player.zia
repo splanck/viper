@@ -1,0 +1,184 @@
+// =============================================================================
+// PAC-MAN - Player Entity
+// =============================================================================
+
+module player;
+
+bind "./config";
+bind "./utils";
+bind "./vec2";
+bind "./maze";
+
+// =============================================================================
+// PACMAN ENTITY - The player character
+// =============================================================================
+
+entity PacMan {
+    hide Integer gridX;
+    hide Integer gridY;
+    hide Integer screenX;
+    hide Integer screenY;
+    hide Integer direction;
+    hide Integer nextDirection;
+    hide Integer speed;
+    hide Integer animFrame;
+    hide Integer animTimer;
+    hide Boolean mouthOpen;
+
+    expose func init(startX: Integer, startY: Integer) {
+        gridX = startX;
+        gridY = startY;
+        screenX = utils.gridToScreenX(startX);
+        screenY = utils.gridToScreenY(startY);
+        direction = config.DIR_NONE;
+        nextDirection = config.DIR_NONE;
+        speed = 4;
+        animFrame = 0;
+        animTimer = 0;
+        mouthOpen = true;
+    }
+
+    expose func setNextDirection(dir: Integer) {
+        nextDirection = dir;
+    }
+
+    expose func update(theMaze: maze.Maze) {
+        animTimer = animTimer + 1;
+        if animTimer >= 5 {
+            animTimer = 0;
+            mouthOpen = !mouthOpen;
+        }
+
+        var atGridX = utils.gridToScreenX(gridX);
+        var atGridY = utils.gridToScreenY(gridY);
+
+        if nextDirection != config.DIR_NONE and screenX == atGridX and screenY == atGridY {
+            var nextVec = vec2.getDirectionVector(nextDirection);
+            var nextGridX = gridX + nextVec.x;
+            var nextGridY = gridY + nextVec.y;
+
+            if nextGridX < 0 {
+                nextGridX = config.GRID_WIDTH - 1;
+            } else if nextGridX >= config.GRID_WIDTH {
+                nextGridX = 0;
+            }
+
+            if theMaze.isWalkable(nextGridX, nextGridY) {
+                direction = nextDirection;
+                nextDirection = config.DIR_NONE;
+            }
+        }
+
+        if direction != config.DIR_NONE {
+            var dirVec = vec2.getDirectionVector(direction);
+            var targetGridX = gridX + dirVec.x;
+            var targetGridY = gridY + dirVec.y;
+
+            if targetGridX < 0 {
+                gridX = config.GRID_WIDTH - 1;
+                screenX = utils.gridToScreenX(gridX);
+                return;
+            } else if targetGridX >= config.GRID_WIDTH {
+                gridX = 0;
+                screenX = utils.gridToScreenX(gridX);
+                return;
+            }
+
+            if theMaze.isWalkable(targetGridX, targetGridY) {
+                var targetScreenX = utils.gridToScreenX(targetGridX);
+                var targetScreenY = utils.gridToScreenY(targetGridY);
+
+                if screenX < targetScreenX {
+                    screenX = screenX + speed;
+                    if screenX >= targetScreenX {
+                        screenX = targetScreenX;
+                        gridX = targetGridX;
+                    }
+                } else if screenX > targetScreenX {
+                    screenX = screenX - speed;
+                    if screenX <= targetScreenX {
+                        screenX = targetScreenX;
+                        gridX = targetGridX;
+                    }
+                }
+
+                if screenY < targetScreenY {
+                    screenY = screenY + speed;
+                    if screenY >= targetScreenY {
+                        screenY = targetScreenY;
+                        gridY = targetGridY;
+                    }
+                } else if screenY > targetScreenY {
+                    screenY = screenY - speed;
+                    if screenY <= targetScreenY {
+                        screenY = targetScreenY;
+                        gridY = targetGridY;
+                    }
+                }
+            } else {
+                direction = config.DIR_NONE;
+                screenX = utils.gridToScreenX(gridX);
+                screenY = utils.gridToScreenY(gridY);
+            }
+        }
+    }
+
+    expose func getGridX() -> Integer {
+        return gridX;
+    }
+
+    expose func getGridY() -> Integer {
+        return gridY;
+    }
+
+    expose func reset(startX: Integer, startY: Integer) {
+        gridX = startX;
+        gridY = startY;
+        screenX = utils.gridToScreenX(startX);
+        screenY = utils.gridToScreenY(startY);
+        direction = config.DIR_NONE;
+        nextDirection = config.DIR_NONE;
+    }
+
+    expose func draw(canvas: Viper.Graphics.Canvas) {
+        var centerX = screenX + config.TILE_SIZE / 2;
+        var centerY = screenY + config.TILE_SIZE / 2;
+        var radius = config.TILE_SIZE / 2 - 2;
+
+        canvas.Disc(centerX, centerY, radius, config.COLOR_YELLOW);
+
+        if mouthOpen {
+            var mouthX1 = centerX;
+            var mouthY1 = centerY;
+            var mouthX2 = centerX;
+            var mouthY2 = centerY;
+            var mouthX3 = centerX;
+            var mouthY3 = centerY;
+
+            if direction == config.DIR_RIGHT or direction == config.DIR_NONE {
+                mouthX2 = centerX + radius;
+                mouthY2 = centerY - radius / 2;
+                mouthX3 = centerX + radius;
+                mouthY3 = centerY + radius / 2;
+            } else if direction == config.DIR_LEFT {
+                mouthX2 = centerX - radius;
+                mouthY2 = centerY - radius / 2;
+                mouthX3 = centerX - radius;
+                mouthY3 = centerY + radius / 2;
+            } else if direction == config.DIR_UP {
+                mouthX2 = centerX - radius / 2;
+                mouthY2 = centerY - radius;
+                mouthX3 = centerX + radius / 2;
+                mouthY3 = centerY - radius;
+            } else if direction == config.DIR_DOWN {
+                mouthX2 = centerX - radius / 2;
+                mouthY2 = centerY + radius;
+                mouthX3 = centerX + radius / 2;
+                mouthY3 = centerY + radius;
+            }
+
+            canvas.Triangle(mouthX1, mouthY1, mouthX2, mouthY2, mouthX3, mouthY3, config.COLOR_BLACK);
+        }
+    }
+}
+

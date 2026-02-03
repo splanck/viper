@@ -1,0 +1,38 @@
+// =============================================================================
+// PAC-MAN CLONE - Main Entry Point (Modular Version)
+// =============================================================================
+//
+// A comprehensive Pac-Man clone built in Zia demonstrating OOP principles
+// and modular multi-file architecture.
+//
+// Controls:
+//   Arrow Keys - Move Pac-Man
+//   P          - Pause game
+//   R          - Restart (after game over)
+//   ESC        - Quit
+//
+// =============================================================================
+
+module main;
+
+// Only need to bind direct dependencies - transitive bindings are now resolved
+bind "./config";
+bind "./game";
+
+// =============================================================================
+// ENTRY POINT
+// =============================================================================
+
+func start() {
+    Viper.Terminal.Say("PAC-MAN - Modular Version");
+    Viper.Terminal.Say("Loading...");
+
+    var theGame = new game.Game();
+    theGame.init();
+
+    Viper.Terminal.Say("Starting game!");
+    theGame.run();
+
+    Viper.Terminal.Say("Thanks for playing!");
+}
+

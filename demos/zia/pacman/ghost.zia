@@ -1,0 +1,304 @@
+// =============================================================================
+// PAC-MAN - Ghost Entity
+// =============================================================================
+
+module ghost;
+
+bind "./config";
+bind "./utils";
+bind "./vec2";
+bind "./maze";
+
+// Ghost type constants
+final GHOST_BLINKY = 0;
+final GHOST_PINKY = 1;
+final GHOST_INKY = 2;
+final GHOST_CLYDE = 3;
+
+// =============================================================================
+// GHOST ENTITY - Enemy characters with AI
+// =============================================================================
+
+entity Ghost {
+    hide Integer gridX;
+    hide Integer gridY;
+    hide Integer screenX;
+    hide Integer screenY;
+    hide Integer direction;
+    hide Integer speed;
+    hide Integer color;
+    hide Integer mode;
+    hide Integer ghostType;
+    hide Integer frightenedTimer;
+    hide Integer homeX;
+    hide Integer homeY;
+    hide Integer scatterX;
+    hide Integer scatterY;
+    hide Boolean atTileCenter;
+
+    expose func init(gType: Integer, startX: Integer, startY: Integer, ghostColor: Integer) {
+        ghostType = gType;
+        gridX = startX;
+        gridY = startY;
+        screenX = utils.gridToScreenX(startX);
+        screenY = utils.gridToScreenY(startY);
+        direction = config.DIR_UP;
+        speed = 3;
+        color = ghostColor;
+        mode = config.MODE_SCATTER;
+        frightenedTimer = 0;
+        homeX = startX;
+        homeY = startY;
+        atTileCenter = true;
+
+        if ghostType == GHOST_BLINKY {
+            scatterX = config.GRID_WIDTH - 3;
+            scatterY = 0;
+        } else if ghostType == GHOST_PINKY {
+            scatterX = 2;
+            scatterY = 0;
+        } else if ghostType == GHOST_INKY {
+            scatterX = config.GRID_WIDTH - 1;
+            scatterY = config.GRID_HEIGHT - 1;
+        } else {
+            scatterX = 0;
+            scatterY = config.GRID_HEIGHT - 1;
+        }
+    }
+
+    expose func setMode(newMode: Integer) {
+        if newMode == config.MODE_FRIGHTENED {
+            frightenedTimer = 600;
+            // Reverse direction when entering frightened mode
+            direction = utils.getOppositeDirection(direction);
+        }
+        mode = newMode;
+    }
+
+    expose func getMode() -> Integer {
+        return mode;
+    }
+
+    expose func update(theMaze: maze.Maze, pacmanX: Integer, pacmanY: Integer, blinkyX: Integer, blinkyY: Integer) {
+        if mode == config.MODE_FRIGHTENED {
+            frightenedTimer = frightenedTimer - 1;
+            if frightenedTimer <= 0 {
+                mode = config.MODE_CHASE;
+            }
+        }
+
+        // Check if we're at the center of a tile
+        var tileScreenX = utils.gridToScreenX(gridX);
+        var tileScreenY = utils.gridToScreenY(gridY);
+        atTileCenter = (screenX == tileScreenX) and (screenY == tileScreenY);
+
+        // Only pick new direction when at tile center
+        if atTileCenter {
+            var targetX = scatterX;
+            var targetY = scatterY;
+
+            if mode == config.MODE_CHASE {
+                if ghostType == GHOST_BLINKY {
+                    // Blinky targets Pac-Man directly
+                    targetX = pacmanX;
+                    targetY = pacmanY;
+                } else if ghostType == GHOST_PINKY {
+                    // Pinky targets 4 tiles ahead of Pac-Man
+                    targetX = pacmanX;
+                    targetY = pacmanY - 4;
+                    if targetY < 0 { targetY = 0; }
+                } else if ghostType == GHOST_INKY {
+                    // Inky uses Blinky's position to calculate target
+                    var aheadX = pacmanX;
+                    var aheadY = pacmanY - 2;
+                    targetX = aheadX + (aheadX - blinkyX);
+                    targetY = aheadY + (aheadY - blinkyY);
+                } else {
+                    // Clyde chases when far, scatters when close
+                    var dist = utils.manhattanDistance(gridX, gridY, pacmanX, pacmanY);
+                    if dist > 8 {
+                        targetX = pacmanX;
+                        targetY = pacmanY;
+                    }
+                    // else uses scatter target
+                }
+            } else if mode == config.MODE_FRIGHTENED {
+                // Random target when frightened
+                targetX = Viper.Random.NextInt(config.GRID_WIDTH);
+                targetY = Viper.Random.NextInt(config.GRID_HEIGHT);
+            }
+
+            self.chooseDirection(targetX, targetY, theMaze);
+        }
+
+        // Move in current direction
+        self.move(theMaze);
+    }
+
+    hide func chooseDirection(targetX: Integer, targetY: Integer, theMaze: maze.Maze) {
+        var bestDir = direction;
+        var bestDist = 999999;
+        var oppositeDir = utils.getOppositeDirection(direction);
+
+        // Count available directions
+        var availableDirs = 0;
+
+        // Check all four directions, prefer in order: UP, LEFT, DOWN, RIGHT (Pac-Man convention)
+        var dirs = [config.DIR_UP, config.DIR_LEFT, config.DIR_DOWN, config.DIR_RIGHT];
+        var i = 0;
+        while i < 4 {
+            var testDir = dirs.get(i);
+            var dirVec = vec2.getDirectionVector(testDir);
+            var nextX = gridX + dirVec.x;
+            var nextY = gridY + dirVec.y;
+
+            // Handle tunnel wrap
+            if nextX < 0 { nextX = config.GRID_WIDTH - 1; }
+            if nextX >= config.GRID_WIDTH { nextX = 0; }
+
+            if theMaze.isWalkable(nextX, nextY) {
+                availableDirs = availableDirs + 1;
+
+                // Never reverse unless it's the only option
+                if testDir != oppositeDir {
+                    var dist = utils.manhattanDistance(nextX, nextY, targetX, targetY);
+                    if dist < bestDist {
+                        bestDist = dist;
+                        bestDir = testDir;
+                    }
+                }
+            }
+            i = i + 1;
+        }
+
+        // If no valid direction found (only reverse available), allow reverse
+        if bestDist == 999999 {
+            var dirVec = vec2.getDirectionVector(oppositeDir);
+            var nextX = gridX + dirVec.x;
+            var nextY = gridY + dirVec.y;
+            if nextX < 0 { nextX = config.GRID_WIDTH - 1; }
+            if nextX >= config.GRID_WIDTH { nextX = 0; }
+            if theMaze.isWalkable(nextX, nextY) {
+                bestDir = oppositeDir;
+            }
+        }
+
+        direction = bestDir;
+    }
+
+    hide func move(theMaze: maze.Maze) {
+        var moveVec = vec2.getDirectionVector(direction);
+        var nextGridX = gridX + moveVec.x;
+        var nextGridY = gridY + moveVec.y;
+
+        // Handle tunnel wrap
+        if nextGridX < 0 {
+            nextGridX = config.GRID_WIDTH - 1;
+            gridX = nextGridX;
+            screenX = utils.gridToScreenX(nextGridX);
+            return;
+        } else if nextGridX >= config.GRID_WIDTH {
+            nextGridX = 0;
+            gridX = nextGridX;
+            screenX = utils.gridToScreenX(nextGridX);
+            return;
+        }
+
+        if theMaze.isWalkable(nextGridX, nextGridY) {
+            var targetScreenX = utils.gridToScreenX(nextGridX);
+            var targetScreenY = utils.gridToScreenY(nextGridY);
+
+            // Move towards target
+            if screenX < targetScreenX {
+                screenX = screenX + speed;
+                if screenX >= targetScreenX {
+                    screenX = targetScreenX;
+                    gridX = nextGridX;
+                }
+            } else if screenX > targetScreenX {
+                screenX = screenX - speed;
+                if screenX <= targetScreenX {
+                    screenX = targetScreenX;
+                    gridX = nextGridX;
+                }
+            }
+
+            if screenY < targetScreenY {
+                screenY = screenY + speed;
+                if screenY >= targetScreenY {
+                    screenY = targetScreenY;
+                    gridY = nextGridY;
+                }
+            } else if screenY > targetScreenY {
+                screenY = screenY - speed;
+                if screenY <= targetScreenY {
+                    screenY = targetScreenY;
+                    gridY = nextGridY;
+                }
+            }
+        }
+    }
+
+    expose func getGridX() -> Integer {
+        return gridX;
+    }
+
+    expose func getGridY() -> Integer {
+        return gridY;
+    }
+
+    expose func collidesWithPacman(pacmanX: Integer, pacmanY: Integer) -> Boolean {
+        return gridX == pacmanX and gridY == pacmanY;
+    }
+
+    expose func reset() {
+        gridX = homeX;
+        gridY = homeY;
+        screenX = utils.gridToScreenX(homeX);
+        screenY = utils.gridToScreenY(homeY);
+        direction = config.DIR_UP;
+        mode = config.MODE_SCATTER;
+        frightenedTimer = 0;
+        atTileCenter = true;
+    }
+
+    expose func draw(canvas: Viper.Graphics.Canvas) {
+        var centerX = screenX + config.TILE_SIZE / 2;
+        var centerY = screenY + config.TILE_SIZE / 2;
+        var radius = config.TILE_SIZE / 2 - 2;
+
+        var drawColor = color;
+        if mode == config.MODE_FRIGHTENED {
+            if frightenedTimer < 120 {
+                // Flash white/blue when about to end
+                if (frightenedTimer / 10) % 2 == 0 {
+                    drawColor = config.COLOR_WHITE;
+                } else {
+                    drawColor = config.COLOR_BLUE;
+                }
+            } else {
+                drawColor = config.COLOR_BLUE;
+            }
+        }
+
+        // Ghost body
+        canvas.Disc(centerX, centerY - 2, radius, drawColor);
+        canvas.Box(screenX + 2, centerY - 2, config.TILE_SIZE - 4, radius, drawColor);
+
+        // Eyes
+        var eyeOffset = 4;
+        canvas.Disc(centerX - eyeOffset, centerY - 4, 4, config.COLOR_WHITE);
+        canvas.Disc(centerX + eyeOffset, centerY - 4, 4, config.COLOR_WHITE);
+
+        // Pupils look in movement direction
+        var pupilOffsetX = 0;
+        var pupilOffsetY = 0;
+        if direction == config.DIR_LEFT { pupilOffsetX = -2; }
+        else if direction == config.DIR_RIGHT { pupilOffsetX = 2; }
+        else if direction == config.DIR_UP { pupilOffsetY = -2; }
+        else if direction == config.DIR_DOWN { pupilOffsetY = 2; }
+
+        canvas.Disc(centerX - eyeOffset + pupilOffsetX, centerY - 4 + pupilOffsetY, 2, config.COLOR_BLUE);
+        canvas.Disc(centerX + eyeOffset + pupilOffsetX, centerY - 4 + pupilOffsetY, 2, config.COLOR_BLUE);
+    }
+}

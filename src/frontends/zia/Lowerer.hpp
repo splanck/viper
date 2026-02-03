@@ -903,6 +903,11 @@ class Lowerer
     /// @return Pointer to the new copy.
     Value emitValueTypeCopy(const ValueTypeInfo &info, Value sourcePtr);
 
+    /// @brief Allocate stack space for a value type without initialization.
+    /// @param info The value type info.
+    /// @return Pointer to the allocated (zero-initialized) space.
+    Value emitValueTypeAlloc(const ValueTypeInfo &info);
+
     /// @brief Lower a method call.
     /// @param method The method declaration.
     /// @param typeName The type containing the method.

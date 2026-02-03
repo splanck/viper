@@ -1,0 +1,57 @@
+// =============================================================================
+// PAC-MAN - Vec2 Entity (2D Vector)
+// =============================================================================
+
+module vec2;
+
+bind "./config";
+
+// =============================================================================
+// VEC2 ENTITY - 2D Position/Velocity helper
+// =============================================================================
+
+entity Vec2 {
+    expose Integer x;
+    expose Integer y;
+
+    expose func init(xVal: Integer, yVal: Integer) {
+        x = xVal;
+        y = yVal;
+    }
+
+    expose func set(xVal: Integer, yVal: Integer) {
+        x = xVal;
+        y = yVal;
+    }
+
+    expose func copy() -> Vec2 {
+        return makeVec2(x, y);
+    }
+
+    expose func equals(other: Vec2) -> Boolean {
+        return x == other.x and y == other.y;
+    }
+}
+
+// =============================================================================
+// FACTORY FUNCTIONS
+// =============================================================================
+
+func makeVec2(xVal: Integer, yVal: Integer) -> Vec2 {
+    var v = new Vec2(xVal, yVal);
+    return v;
+}
+
+func getDirectionVector(dir: Integer) -> Vec2 {
+    if dir == config.DIR_UP {
+        return makeVec2(0, -1);
+    } else if dir == config.DIR_DOWN {
+        return makeVec2(0, 1);
+    } else if dir == config.DIR_LEFT {
+        return makeVec2(-1, 0);
+    } else if dir == config.DIR_RIGHT {
+        return makeVec2(1, 0);
+    }
+    return makeVec2(0, 0);
+}
+

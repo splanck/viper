@@ -171,6 +171,28 @@ bool ImportResolver::processModule(ModuleDecl &module,
         if (!processModule(*boundModule, bindFilePath, bind.loc, depth + 1))
             return false;
 
+        // Propagate transitive binds to the importing module.
+        // This ensures semantic analysis can resolve module-qualified names
+        // (e.g., if main imports game, and game imports utils, then main
+        // needs to see the utils bind to resolve game's references to utils).
+        for (const auto &transitiveBind : boundModule->binds)
+        {
+            // Avoid duplicate binds
+            bool alreadyBound = false;
+            for (const auto &existingBind : module.binds)
+            {
+                if (existingBind.path == transitiveBind.path)
+                {
+                    alreadyBound = true;
+                    break;
+                }
+            }
+            if (!alreadyBound)
+            {
+                module.binds.push_back(transitiveBind);
+            }
+        }
+
         // Collect this bind's declarations (which include its transitive binds)
         for (auto &decl : boundModule->declarations)
             importedDecls.push_back(std::move(decl));

@@ -1,0 +1,108 @@
+// =============================================================================
+// PAC-MAN - Utility Functions
+// =============================================================================
+
+module utils;
+
+bind "./config";
+
+// =============================================================================
+// COORDINATE CONVERSION
+// =============================================================================
+
+// Convert grid position to screen position
+func gridToScreenX(gridX: Integer) -> Integer {
+    return gridX * config.TILE_SIZE;
+}
+
+func gridToScreenY(gridY: Integer) -> Integer {
+    return gridY * config.TILE_SIZE;
+}
+
+// Convert screen position to grid position
+func screenToGridX(screenX: Integer) -> Integer {
+    return screenX / config.TILE_SIZE;
+}
+
+func screenToGridY(screenY: Integer) -> Integer {
+    return screenY / config.TILE_SIZE;
+}
+
+// =============================================================================
+// DIRECTION HELPERS
+// =============================================================================
+
+func getOppositeDirection(dir: Integer) -> Integer {
+    if dir == config.DIR_UP { return config.DIR_DOWN; }
+    if dir == config.DIR_DOWN { return config.DIR_UP; }
+    if dir == config.DIR_LEFT { return config.DIR_RIGHT; }
+    if dir == config.DIR_RIGHT { return config.DIR_LEFT; }
+    return config.DIR_NONE;
+}
+
+// =============================================================================
+// FRUIT HELPERS
+// =============================================================================
+
+func getFruitForLevel(level: Integer) -> Integer {
+    if level == 1 { return config.FRUIT_CHERRY; }
+    if level == 2 { return config.FRUIT_STRAWBERRY; }
+    if level == 3 or level == 4 { return config.FRUIT_ORANGE; }
+    if level == 5 or level == 6 { return config.FRUIT_APPLE; }
+    if level == 7 or level == 8 { return config.FRUIT_MELON; }
+    if level == 9 or level == 10 { return config.FRUIT_GALAXIAN; }
+    if level == 11 or level == 12 { return config.FRUIT_BELL; }
+    return config.FRUIT_KEY;
+}
+
+func getFruitPoints(fruitType: Integer) -> Integer {
+    if fruitType == config.FRUIT_CHERRY { return 100; }
+    if fruitType == config.FRUIT_STRAWBERRY { return 300; }
+    if fruitType == config.FRUIT_ORANGE { return 500; }
+    if fruitType == config.FRUIT_APPLE { return 700; }
+    if fruitType == config.FRUIT_MELON { return 1000; }
+    if fruitType == config.FRUIT_GALAXIAN { return 2000; }
+    if fruitType == config.FRUIT_BELL { return 3000; }
+    if fruitType == config.FRUIT_KEY { return 5000; }
+    return 0;
+}
+
+func getFruitColor(fruitType: Integer) -> Integer {
+    if fruitType == config.FRUIT_CHERRY { return config.COLOR_CHERRY; }
+    if fruitType == config.FRUIT_STRAWBERRY { return config.COLOR_STRAWBERRY; }
+    if fruitType == config.FRUIT_ORANGE { return config.COLOR_ORANGE_FRUIT; }
+    if fruitType == config.FRUIT_APPLE { return config.COLOR_APPLE; }
+    if fruitType == config.FRUIT_MELON { return config.COLOR_MELON; }
+    if fruitType == config.FRUIT_GALAXIAN { return config.COLOR_GALAXIAN; }
+    if fruitType == config.FRUIT_BELL { return config.COLOR_BELL; }
+    if fruitType == config.FRUIT_KEY { return config.COLOR_KEY; }
+    return config.COLOR_WHITE;
+}
+
+// =============================================================================
+// MATH HELPERS
+// =============================================================================
+
+func abs(value: Integer) -> Integer {
+    if value < 0 {
+        return 0 - value;
+    }
+    return value;
+}
+
+func min(a: Integer, b: Integer) -> Integer {
+    if a < b { return a; }
+    return b;
+}
+
+func max(a: Integer, b: Integer) -> Integer {
+    if a > b { return a; }
+    return b;
+}
+
+func manhattanDistance(x1: Integer, y1: Integer, x2: Integer, y2: Integer) -> Integer {
+    var dx = abs(x1 - x2);
+    var dy = abs(y1 - y2);
+    return dx + dy;
+}
+

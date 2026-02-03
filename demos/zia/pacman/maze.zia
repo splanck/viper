@@ -1,0 +1,199 @@
+// =============================================================================
+// PAC-MAN - Maze Entity
+// =============================================================================
+
+module maze;
+
+bind "./config";
+bind "./utils";
+
+// =============================================================================
+// MAZE ENTITY - The game board with walls, dots, and power pellets
+// =============================================================================
+
+entity Maze {
+    hide List[Integer] tiles;
+    hide Integer width;
+    hide Integer height;
+    hide Integer totalDots;
+    hide Integer dotsRemaining;
+    hide Integer pelletTimer;
+    hide Boolean pelletVisible;
+
+    expose func init() {
+        width = config.GRID_WIDTH;
+        height = config.GRID_HEIGHT;
+        tiles = [];
+        totalDots = 0;
+        dotsRemaining = 0;
+        pelletTimer = 0;
+        pelletVisible = true;
+        self.initializeMaze();
+    }
+
+    hide func initializeMaze() {
+        var size = width * height;
+        var i = 0;
+        while i < size {
+            tiles.add(config.TILE_EMPTY);
+            i = i + 1;
+        }
+
+        // Classic Pac-Man maze layout (28x31)
+        self.setRow(0, "1111111111111111111111111111");
+        self.setRow(1, "1222222222222112222222222221");
+        self.setRow(2, "1211112111112112111112111121");
+        self.setRow(3, "1311112111112112111112111131");
+        self.setRow(4, "1211112111112112111112111121");
+        self.setRow(5, "1222222222222222222222222221");
+        self.setRow(6, "1211112112111111112112111121");
+        self.setRow(7, "1211112112111111112112111121");
+        self.setRow(8, "1222222112222112222112222221");
+        self.setRow(9, "1111112111110110111112111111");
+        self.setRow(10, "0000012111110110111112100000");
+        self.setRow(11, "0000012110000000000112100000");
+        self.setRow(12, "0000012110111441110112100000");
+        self.setRow(13, "1111112110100000010112111111");
+        self.setRow(14, "0000002000100000010002000000");
+        self.setRow(15, "1111112110100000010112111111");
+        self.setRow(16, "0000012110111111110112100000");
+        self.setRow(17, "0000012110000000000112100000");
+        self.setRow(18, "0000012110111111110112100000");
+        self.setRow(19, "1111112110111111110112111111");
+        self.setRow(20, "1222222222222112222222222221");
+        self.setRow(21, "1211112111112112111112111121");
+        self.setRow(22, "1211112111112112111112111121");
+        self.setRow(23, "1322112222222002222222112231");
+        self.setRow(24, "1112112112111111112112112111");
+        self.setRow(25, "1112112112111111112112112111");
+        self.setRow(26, "1222222112222112222112222221");
+        self.setRow(27, "1211111111112112111111111121");
+        self.setRow(28, "1211111111112112111111111121");
+        self.setRow(29, "1222222222222222222222222221");
+        self.setRow(30, "1111111111111111111111111111");
+
+        self.countDots();
+    }
+
+    hide func setRow(row: Integer, pattern: String) {
+        var col = 0;
+        while col < Viper.String.Length(pattern) and col < width {
+            var ch = Viper.String.Substring(pattern, col, 1);
+            var tile = config.TILE_EMPTY;
+            if ch == "1" {
+                tile = config.TILE_WALL;
+            } else if ch == "2" {
+                tile = config.TILE_DOT;
+            } else if ch == "3" {
+                tile = config.TILE_PELLET;
+            } else if ch == "4" {
+                tile = config.TILE_GATE;
+            }
+            self.setTile(col, row, tile);
+            col = col + 1;
+        }
+    }
+
+    hide func countDots() {
+        totalDots = 0;
+        var i = 0;
+        while i < tiles.length() {
+            var tile = tiles.get(i);
+            if tile == config.TILE_DOT or tile == config.TILE_PELLET {
+                totalDots = totalDots + 1;
+            }
+            i = i + 1;
+        }
+        dotsRemaining = totalDots;
+    }
+
+    expose func getTile(x: Integer, y: Integer) -> Integer {
+        if x < 0 or x >= width or y < 0 or y >= height {
+            return config.TILE_WALL;
+        }
+        var index = y * width + x;
+        return tiles.get(index);
+    }
+
+    expose func setTile(x: Integer, y: Integer, value: Integer) {
+        if x >= 0 and x < width and y >= 0 and y < height {
+            var index = y * width + x;
+            tiles.set(index, value);
+        }
+    }
+
+    expose func isWall(x: Integer, y: Integer) -> Boolean {
+        var tile = self.getTile(x, y);
+        return tile == config.TILE_WALL or tile == config.TILE_GATE;
+    }
+
+    expose func isWalkable(x: Integer, y: Integer) -> Boolean {
+        return !self.isWall(x, y);
+    }
+
+    expose func eatDot(x: Integer, y: Integer) -> Integer {
+        var tile = self.getTile(x, y);
+        if tile == config.TILE_DOT {
+            self.setTile(x, y, config.TILE_EMPTY);
+            dotsRemaining = dotsRemaining - 1;
+            return 10;
+        } else if tile == config.TILE_PELLET {
+            self.setTile(x, y, config.TILE_EMPTY);
+            dotsRemaining = dotsRemaining - 1;
+            return 50;
+        }
+        return 0;
+    }
+
+    expose func getDotsRemaining() -> Integer {
+        return dotsRemaining;
+    }
+
+    expose func allDotsEaten() -> Boolean {
+        return dotsRemaining <= 0;
+    }
+
+    expose func reset() {
+        self.initializeMaze();
+    }
+
+    expose func draw(canvas: Viper.Graphics.Canvas) {
+        // Update pellet blink timer
+        pelletTimer = pelletTimer + 1;
+        if pelletTimer >= 10 {
+            pelletTimer = 0;
+            pelletVisible = !pelletVisible;
+        }
+
+        var y = 0;
+        while y < height {
+            var x = 0;
+            while x < width {
+                var tile = self.getTile(x, y);
+                var screenX = utils.gridToScreenX(x);
+                var screenY = utils.gridToScreenY(y);
+
+                if tile == config.TILE_WALL {
+                    canvas.Box(screenX, screenY, config.TILE_SIZE, config.TILE_SIZE, config.COLOR_WALL);
+                } else if tile == config.TILE_DOT {
+                    var centerX = screenX + config.TILE_SIZE / 2;
+                    var centerY = screenY + config.TILE_SIZE / 2;
+                    canvas.Disc(centerX, centerY, 3, config.COLOR_DOT);
+                } else if tile == config.TILE_PELLET {
+                    // Power pellets blink
+                    if pelletVisible {
+                        var centerX = screenX + config.TILE_SIZE / 2;
+                        var centerY = screenY + config.TILE_SIZE / 2;
+                        canvas.Disc(centerX, centerY, 8, config.COLOR_PELLET);
+                    }
+                } else if tile == config.TILE_GATE {
+                    canvas.Box(screenX, screenY + config.TILE_SIZE / 3, config.TILE_SIZE, config.TILE_SIZE / 3, config.COLOR_PINK);
+                }
+
+                x = x + 1;
+            }
+            y = y + 1;
+        }
+    }
+}
+

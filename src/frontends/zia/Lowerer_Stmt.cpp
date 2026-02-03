@@ -148,26 +148,44 @@ void Lowerer::lowerVarStmt(VarStmt *stmt)
         // Default initialization
         ilType = mapType(varType);
 
-        switch (ilType.kind)
+        // Special handling for value types - allocate proper stack space
+        if (varType && varType->kind == TypeKindSem::Value)
         {
-            case Type::Kind::I64:
-            case Type::Kind::I32:
-            case Type::Kind::I16:
-            case Type::Kind::I1:
-                initValue = Value::constInt(0);
-                break;
-            case Type::Kind::F64:
-                initValue = Value::constFloat(0.0);
-                break;
-            case Type::Kind::Str:
-                initValue = Value::constStr("");
-                break;
-            case Type::Kind::Ptr:
+            const ValueTypeInfo *info = getOrCreateValueTypeInfo(varType->name);
+            if (info)
+            {
+                // Allocate and zero-initialize the value type
+                initValue = emitValueTypeAlloc(*info);
+            }
+            else
+            {
+                // Fallback if type info not found
                 initValue = Value::null();
-                break;
-            default:
-                initValue = Value::constInt(0);
-                break;
+            }
+        }
+        else
+        {
+            switch (ilType.kind)
+            {
+                case Type::Kind::I64:
+                case Type::Kind::I32:
+                case Type::Kind::I16:
+                case Type::Kind::I1:
+                    initValue = Value::constInt(0);
+                    break;
+                case Type::Kind::F64:
+                    initValue = Value::constFloat(0.0);
+                    break;
+                case Type::Kind::Str:
+                    initValue = Value::constStr("");
+                    break;
+                case Type::Kind::Ptr:
+                    initValue = Value::null();
+                    break;
+                default:
+                    initValue = Value::constInt(0);
+                    break;
+            }
         }
     }
 
