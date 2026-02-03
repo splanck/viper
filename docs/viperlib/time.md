@@ -8,6 +8,7 @@
 
 - [Viper.Time.Clock](#vipertimeclock)
 - [Viper.Time.Countdown](#vipertimecountdown)
+- [Viper.Time.Timer](#vipertimetimer)
 - [Viper.DateTime](#viperdatetime)
 - [Viper.Diagnostics.Stopwatch](#viperdiagnosticsstopwatch)
 
@@ -143,6 +144,171 @@ PRINT "Done!"
 | Timeout with early exit       | `Countdown`       |
 | Progress tracking during wait | `Countdown`       |
 | Pause/resume timing           | `Countdown`       |
+
+---
+
+## Viper.Time.Timer
+
+Frame-based timers for games and animations. Unlike Countdown which uses wall-clock milliseconds, Timer operates
+in discrete frames, making it ideal for deterministic game logic.
+
+**Type:** Instance class (requires `New()`)
+
+### Constructor
+
+| Method  | Signature  | Description                                 |
+|---------|------------|---------------------------------------------|
+| `New()` | `Timer()`  | Create a new timer (initially stopped)      |
+
+### Properties
+
+| Property    | Type                   | Description                                            |
+|-------------|------------------------|--------------------------------------------------------|
+| `Duration`  | `Integer` (read/write) | Total frames for the countdown                         |
+| `Elapsed`   | `Integer` (read-only)  | Frames elapsed since start                             |
+| `Remaining` | `Integer` (read-only)  | Frames remaining until expiration (0 if expired)       |
+| `Progress`  | `Integer` (read-only)  | Completion percentage (0-100)                          |
+| `IsRunning` | `Boolean` (read-only)  | True if the timer is currently running                 |
+| `IsExpired` | `Boolean` (read-only)  | True if the timer has finished                         |
+| `IsRepeating` | `Boolean` (read-only)| True if the timer auto-restarts when expired          |
+
+### Methods
+
+| Method                  | Signature          | Description                                               |
+|-------------------------|--------------------|---------------------------------------------------------|
+| `Start(frames)`         | `Void(Integer)`    | Start a one-shot countdown for specified frames          |
+| `StartRepeating(frames)`| `Void(Integer)`    | Start a repeating timer that auto-restarts               |
+| `Stop()`                | `Void()`           | Pause the timer, preserving elapsed time                 |
+| `Reset()`               | `Void()`           | Reset elapsed to 0 without stopping                      |
+| `Update()`              | `Boolean()`        | Advance timer by one frame; returns true if just expired |
+| `SetDuration(frames)`   | `Void(Integer)`    | Change duration without restarting                       |
+
+### Notes
+
+- Timer operates in frames, not milliseconds - call `Update()` once per frame
+- `Update()` returns true exactly once when the timer expires
+- One-shot timers stop when expired; repeating timers reset and continue
+- `Progress` returns integer percentage (0-100), useful for animations
+- Frame-based timing ensures deterministic game behavior across different hardware
+
+### Example: Animation Timer
+
+```basic
+DIM canvas AS Viper.Graphics.Canvas
+canvas = NEW Viper.Graphics.Canvas("Animation", 800, 600)
+
+' Create a 60-frame animation timer (1 second at 60fps)
+DIM anim AS OBJECT = Viper.Time.Timer.New()
+anim.Start(60)
+
+DO WHILE canvas.ShouldClose = 0
+    canvas.Poll()
+
+    ' Update timer each frame
+    IF anim.Update() THEN
+        PRINT "Animation complete!"
+    END IF
+
+    ' Use progress for smooth interpolation
+    DIM progress AS INTEGER = anim.Progress
+    DIM x AS INTEGER = progress * 7  ' Move from 0 to 700
+
+    canvas.Clear(&H00000000)
+    canvas.Box(x, 280, 40, 40, &H00FF0000)
+    canvas.Flip()
+LOOP
+```
+
+### Example: Repeating Timer (Game Events)
+
+```basic
+' Create a timer that fires every 180 frames (3 seconds at 60fps)
+DIM spawnTimer AS OBJECT = Viper.Time.Timer.New()
+spawnTimer.StartRepeating(180)
+
+' Game loop
+DO WHILE running
+    canvas.Poll()
+
+    ' Check if it's time to spawn an enemy
+    IF spawnTimer.Update() THEN
+        SpawnEnemy()  ' Called every 3 seconds
+    END IF
+
+    ' Rest of game logic...
+LOOP
+```
+
+### Example: Ghost Mode Timer (Pac-Man Style)
+
+```basic
+' Timers for ghost behavior modes
+DIM frightenedTimer AS OBJECT = Viper.Time.Timer.New()
+
+' When player eats power pellet
+SUB OnPowerPelletEaten()
+    ' Ghosts are frightened for 600 frames (10 seconds at 60fps)
+    frightenedTimer.Start(600)
+    SetGhostsFrightened(TRUE)
+END SUB
+
+' In game loop
+SUB UpdateGhosts()
+    IF frightenedTimer.IsRunning THEN
+        ' Check for approaching end (start blinking at 20%)
+        IF frightenedTimer.Remaining < 120 THEN
+            BlinkGhosts()
+        END IF
+
+        IF frightenedTimer.Update() THEN
+            ' Timer expired, return to normal
+            SetGhostsFrightened(FALSE)
+        END IF
+    END IF
+END SUB
+```
+
+### Example: Multiple Timers
+
+```basic
+' Different timers for different purposes
+DIM invincibilityTimer AS OBJECT = Viper.Time.Timer.New()
+DIM powerUpTimer AS OBJECT = Viper.Time.Timer.New()
+DIM respawnTimer AS OBJECT = Viper.Time.Timer.New()
+
+' In game loop, update all active timers
+IF invincibilityTimer.Update() THEN
+    isInvincible = FALSE
+END IF
+
+IF powerUpTimer.Update() THEN
+    speedMultiplier = 1.0
+END IF
+
+IF respawnTimer.Update() THEN
+    RespawnPlayer()
+END IF
+```
+
+### Comparison with Countdown
+
+| Feature             | Timer                          | Countdown                       |
+|---------------------|--------------------------------|---------------------------------|
+| Time unit           | Frames                         | Milliseconds                    |
+| Determinism         | Fully deterministic            | Subject to system clock jitter  |
+| Use case            | Game logic, animations         | Real-world timeouts             |
+| Update model        | Manual `Update()` per frame    | Automatic based on clock        |
+| Progress tracking   | 0-100 integer percentage       | Elapsed/remaining in ms         |
+| Repeating mode      | Yes (`StartRepeating`)         | No (must manually restart)      |
+
+### Use Cases
+
+- **Animations:** Smooth interpolation with `Progress` property
+- **Cooldowns:** Weapon fire rate, ability cooldowns
+- **Spawn timers:** Periodic enemy spawning
+- **Power-ups:** Duration-limited effects
+- **Mode transitions:** Ghost AI state changes
+- **Delays:** Wait N frames before action
 
 ---
 

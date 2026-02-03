@@ -64,6 +64,8 @@ set(RT_COLLECTIONS_SOURCES
         rt_map.c
         rt_treemap.c
         rt_bytes.c
+        rt_grid2d.c
+        rt_timer.c
 )
 
 set(RT_TEXT_SOURCES
@@ -110,6 +112,7 @@ set(RT_GRAPHICS_SOURCES
         rt_gui.c
         rt_input.c
         rt_input_pad.c
+        rt_inputmgr.c
         rt_mat3.c
         rt_mat4.c
         rt_vec2.c
@@ -178,6 +181,9 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_graphics.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_gui.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_input.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_inputmgr.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_grid2d.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_timer.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_datetime.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_map.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_parse.h

@@ -189,6 +189,10 @@ enum class RuntimeTypeId : std::size_t
     RTCLS_Mouse,
     RTCLS_Pad,
     RTCLS_Action,
+    RTCLS_InputMgr,
+    // Data structure classes
+    RTCLS_Grid2D,
+    RTCLS_Timer,
     // Audio classes
     RTCLS_Audio,
     RTCLS_Sound,

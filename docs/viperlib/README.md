@@ -15,20 +15,20 @@ implemented in C and exposed through the IL runtime system.
 |---------------------------------|---------------------------------------------------------------------------|
 | [Architecture](architecture.md) | Runtime internals, type reference                                         |
 | [Audio](audio.md)               | `Sound`, `Music` — audio playback for games and applications              |
-| [Collections](collections.md)   | `Bag`, `Bytes`, `Heap`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Set`, `Stack`, `TreeMap` |
+| [Collections](collections.md)   | `Bag`, `Bytes`, `Grid2D`, `Heap`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Set`, `Stack`, `TreeMap` |
 | [Core Types](core.md)           | `Object`, `Box`, `String` — foundational types                             |
 | [Cryptography](crypto.md)       | `Hash`, `KeyDerive`, `Rand`, `Tls`                                        |
 | [Diagnostics](diagnostics.md)   | `Assert`, `Trap`, `Stopwatch`                                             |
 | [Graphics](graphics.md)         | `Canvas`, `Color`, `Pixels`, `Sprite`, `Tilemap`, `Camera`                |
 | [GUI](gui.md)                   | `App`, `Button`, `Label`, widgets — GUI toolkit for applications          |
-| [Input](input.md)               | `Keyboard`, `Mouse`, `Pad` — input for games and interactive apps       |
+| [Input](input.md)               | `Keyboard`, `Mouse`, `Pad`, `Manager` — input for games and interactive apps |
 | [Input/Output](io.md)           | `Archive`, `BinFile`, `Compress`, `Dir`, `File`, `LineReader`, `LineWriter`, `MemStream`, `Path`, `Watcher` |
 | [Mathematics](math.md)          | `BigInt`, `Bits`, `Mat3`, `Mat4`, `Math`, `Random`, `Vec2`, `Vec3`        |
 | [Network](network.md)           | `Dns`, `Http`, `HttpReq`, `HttpRes`, `Tcp`, `TcpServer`, `Udp`, `Url`, `WebSocket` |
 | [System](system.md)             | `Environment`, `Exec`, `Machine`, `Terminal`                              |
 | [Text Processing](text.md)      | `Codec`, `Csv`, `Guid`, `Pattern`, `StringBuilder`, `Template`, `Xml`, `Yaml` |
 | [Threads](threads.md)           | `Barrier`, `Channel`, `Gate`, `Monitor`, `Pool`, `RwLock`, `SafeI64`, `Thread` |
-| [Time & Timing](time.md)        | `Clock`, `Countdown`, `DateTime`, `Stopwatch`                             |
+| [Time & Timing](time.md)        | `Clock`, `Countdown`, `Timer`, `DateTime`, `Stopwatch`                    |
 | [Utilities](utilities.md)       | `Convert`, `Fmt`, `Log`, `Parse`                                          |
 
 ---
@@ -71,6 +71,7 @@ implemented in C and exposed through the IL runtime system.
 |-----------------------------------------------------|----------|-------------------------------------|
 | [`Bag`](collections.md#vipercollectionsbag)         | Instance | String set with set operations      |
 | [`Bytes`](collections.md#vipercollectionsbytes)     | Instance | Byte array for binary data          |
+| [`Grid2D`](collections.md#vipercollectionsgrid2d)   | Instance | 2D array for tile maps and grids    |
 | [`List`](collections.md#vipercollectionslist)       | Instance | Dynamic array of objects            |
 | [`Map`](collections.md#vipercollectionsmap)         | Instance | String-keyed hash map               |
 | [`Queue`](collections.md#vipercollectionsqueue)     | Instance | FIFO collection                     |
@@ -149,11 +150,12 @@ implemented in C and exposed through the IL runtime system.
 
 ### Viper.Input
 
-| Class                                         | Type   | Description                      |
-|-----------------------------------------------|--------|----------------------------------|
-| [`Keyboard`](input.md#viperinputkeyboard)     | Static | Keyboard input for games and UI  |
-| [`Mouse`](input.md#viperinputmouse)           | Static | Mouse input for games and UI     |
-| [`Pad`](input.md#viperinputpad)               | Static | Gamepad/controller input         |
+| Class                                         | Type     | Description                        |
+|-----------------------------------------------|----------|------------------------------------|
+| [`Keyboard`](input.md#viperinputkeyboard)     | Static   | Keyboard input for games and UI    |
+| [`Mouse`](input.md#viperinputmouse)           | Static   | Mouse input for games and UI       |
+| [`Pad`](input.md#viperinputpad)               | Static   | Gamepad/controller input           |
+| [`Manager`](input.md#viperinputmanager)       | Instance | Unified input with debouncing      |
 
 ### Viper.IO
 
@@ -210,10 +212,11 @@ implemented in C and exposed through the IL runtime system.
 
 ### Viper.Time
 
-| Class                                     | Type     | Description             |
-|-------------------------------------------|----------|-------------------------|
-| [`Clock`](time.md#vipertimeclock)         | Static   | Sleep and tick counting |
-| [`Countdown`](time.md#vipertimecountdown) | Instance | Interval timing         |
+| Class                                     | Type     | Description                  |
+|-------------------------------------------|----------|------------------------------|
+| [`Clock`](time.md#vipertimeclock)         | Static   | Sleep and tick counting      |
+| [`Countdown`](time.md#vipertimecountdown) | Instance | Millisecond-based countdown  |
+| [`Timer`](time.md#vipertimetimer)         | Instance | Frame-based game timers      |
 
 ---
 
@@ -229,6 +232,7 @@ implemented in C and exposed through the IL runtime system.
 
 | Need                      | Use       | Why                                      |
 |---------------------------|-----------|------------------------------------------|
+| 2D tile maps/grids        | `Grid2D`  | Efficient (x,y) access, bounds checking  |
 | Binary data               | `Bytes`   | Efficient byte manipulation              |
 | FIFO (first-in-first-out) | `Queue`   | Enqueue/dequeue interface                |
 | Priority queue            | `Heap`    | Extract min/max by priority              |

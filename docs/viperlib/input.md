@@ -10,6 +10,7 @@
 - [Viper.Input.Mouse](#viperinputmouse)
 - [Viper.Input.Pad](#viperinputpad)
 - [Viper.Input.Action](#viperinputaction)
+- [Viper.Input.Manager](#viperinputmanager)
 
 ---
 
@@ -1088,7 +1089,230 @@ This separation means:
 
 ---
 
+## Viper.Input.Manager
+
+High-level input manager with debouncing and unified direction input. Simplifies input handling for games by providing
+device-agnostic direction queries and built-in debouncing for menu navigation.
+
+**Type:** Instance class (requires `New()`)
+
+Unlike the low-level Keyboard, Mouse, and Pad classes that require checking specific keys/buttons, InputManager provides
+unified "direction" input that automatically combines keyboard arrows, WASD, D-pad, and analog sticks.
+
+### Constructor
+
+| Method  | Signature        | Description                      |
+|---------|------------------|----------------------------------|
+| `New()` | `InputManager()` | Create a new input manager       |
+
+### Properties
+
+| Property       | Type    | Description                                    |
+|----------------|---------|------------------------------------------------|
+| `DebounceDelay`| Integer | Frames to wait before allowing repeat (r/w)    |
+
+### Core Methods
+
+| Method     | Signature | Description                                                      |
+|------------|-----------|------------------------------------------------------------------|
+| `Update()` | `Void()`  | Update input state; call once per frame after `Canvas.Poll()`    |
+
+### Unified Direction Methods
+
+These methods check ALL input sources (keyboard, D-pad, analog sticks) and return true if ANY is active:
+
+| Method      | Signature   | Description                                              |
+|-------------|-------------|----------------------------------------------------------|
+| `Up()`      | `Boolean()` | Arrow Up, W, D-pad Up, or left stick up                  |
+| `Down()`    | `Boolean()` | Arrow Down, S, D-pad Down, or left stick down            |
+| `Left()`    | `Boolean()` | Arrow Left, A, D-pad Left, or left stick left            |
+| `Right()`   | `Boolean()` | Arrow Right, D, D-pad Right, or left stick right         |
+| `Confirm()` | `Boolean()` | Enter, Space, or gamepad A button                        |
+| `Cancel()`  | `Boolean()` | Escape or gamepad B button                               |
+| `AxisX()`   | `Double()`  | Combined horizontal axis (-1.0 to 1.0)                   |
+| `AxisY()`   | `Double()`  | Combined vertical axis (-1.0 to 1.0)                     |
+
+### Keyboard Methods
+
+| Method                    | Signature           | Description                                          |
+|---------------------------|---------------------|------------------------------------------------------|
+| `KeyPressed(key)`         | `Boolean(Integer)`  | True if key was pressed this frame (edge detection)  |
+| `KeyReleased(key)`        | `Boolean(Integer)`  | True if key was released this frame                  |
+| `KeyHeld(key)`            | `Boolean(Integer)`  | True if key is currently held down                   |
+| `KeyPressedDebounced(key)`| `Boolean(Integer)`  | True if pressed with debouncing (for menus)          |
+
+### Mouse Methods
+
+| Method                 | Signature           | Description                                     |
+|------------------------|---------------------|-------------------------------------------------|
+| `MousePressed(button)` | `Boolean(Integer)`  | True if button was pressed this frame           |
+| `MouseReleased(button)`| `Boolean(Integer)`  | True if button was released this frame          |
+| `MouseHeld(button)`    | `Boolean(Integer)`  | True if button is currently held                |
+| `MouseX()`             | `Integer()`         | Current mouse X position                        |
+| `MouseY()`             | `Integer()`         | Current mouse Y position                        |
+| `MouseDeltaX()`        | `Integer()`         | Mouse X movement since last frame               |
+| `MouseDeltaY()`        | `Integer()`         | Mouse Y movement since last frame               |
+| `ScrollX()`            | `Integer()`         | Horizontal scroll delta                         |
+| `ScrollY()`            | `Integer()`         | Vertical scroll delta                           |
+
+### Gamepad Methods
+
+| Method                        | Signature                   | Description                           |
+|-------------------------------|-----------------------------|---------------------------------------|
+| `PadPressed(pad, button)`     | `Boolean(Integer, Integer)` | True if button was pressed this frame |
+| `PadReleased(pad, button)`    | `Boolean(Integer, Integer)` | True if button was released this frame|
+| `PadHeld(pad, button)`        | `Boolean(Integer, Integer)` | True if button is currently held      |
+| `PadLeftX(pad)`               | `Double(Integer)`           | Left stick X (-1.0 to 1.0)            |
+| `PadLeftY(pad)`               | `Double(Integer)`           | Left stick Y (-1.0 to 1.0)            |
+| `PadRightX(pad)`              | `Double(Integer)`           | Right stick X (-1.0 to 1.0)           |
+| `PadRightY(pad)`              | `Double(Integer)`           | Right stick Y (-1.0 to 1.0)           |
+| `PadLeftTrigger(pad)`         | `Double(Integer)`           | Left trigger (0.0 to 1.0)             |
+| `PadRightTrigger(pad)`        | `Double(Integer)`           | Right trigger (0.0 to 1.0)            |
+
+**Note:** Use pad index `-1` to check any connected controller.
+
+### Example: Menu Navigation
+
+```basic
+DIM canvas AS Viper.Graphics.Canvas
+canvas = NEW Viper.Graphics.Canvas("Menu Demo", 800, 600)
+
+DIM input AS OBJECT = Viper.Input.Manager.New()
+input.DebounceDelay = 12  ' Wait 12 frames between repeat inputs
+
+DIM selectedItem AS INTEGER = 0
+DIM menuItems(3) AS STRING
+menuItems(0) = "New Game"
+menuItems(1) = "Continue"
+menuItems(2) = "Options"
+menuItems(3) = "Exit"
+
+DO WHILE canvas.ShouldClose = 0
+    canvas.Poll()
+    input.Update()
+
+    ' Navigation with unified direction (works with keyboard AND gamepad)
+    IF input.Up() THEN
+        selectedItem = selectedItem - 1
+        IF selectedItem < 0 THEN selectedItem = 3
+    END IF
+
+    IF input.Down() THEN
+        selectedItem = selectedItem + 1
+        IF selectedItem > 3 THEN selectedItem = 0
+    END IF
+
+    ' Confirm selection
+    IF input.Confirm() THEN
+        SELECT CASE selectedItem
+            CASE 0: StartNewGame()
+            CASE 1: ContinueGame()
+            CASE 2: ShowOptions()
+            CASE 3: EXIT DO
+        END SELECT
+    END IF
+
+    ' Back/Cancel
+    IF input.Cancel() THEN
+        EXIT DO
+    END IF
+
+    ' Render menu...
+    canvas.Clear(&H00000000)
+    FOR i = 0 TO 3
+        DIM color AS INTEGER = &H00FFFFFF
+        IF i = selectedItem THEN color = &H00FFFF00
+        ' Draw menu item at y position...
+    NEXT i
+    canvas.Flip()
+LOOP
+```
+
+### Example: Game Movement
+
+```basic
+DIM canvas AS Viper.Graphics.Canvas
+canvas = NEW Viper.Graphics.Canvas("Game", 800, 600)
+
+DIM input AS OBJECT = Viper.Input.Manager.New()
+
+DIM playerX AS DOUBLE = 400.0
+DIM playerY AS DOUBLE = 300.0
+DIM speed AS DOUBLE = 5.0
+
+DO WHILE canvas.ShouldClose = 0
+    canvas.Poll()
+    input.Update()
+
+    ' Smooth movement using axis values (works with WASD, arrows, AND analog stick)
+    playerX = playerX + input.AxisX() * speed
+    playerY = playerY + input.AxisY() * speed
+
+    ' Or use digital direction for grid-based movement
+    IF input.Left() THEN playerX = playerX - speed
+    IF input.Right() THEN playerX = playerX + speed
+    IF input.Up() THEN playerY = playerY - speed
+    IF input.Down() THEN playerY = playerY + speed
+
+    canvas.Clear(&H00000000)
+    canvas.Disc(INT(playerX), INT(playerY), 20, &H00FF0000)
+    canvas.Flip()
+LOOP
+```
+
+### Example: Debounced Key Input
+
+```basic
+DIM input AS OBJECT = Viper.Input.Manager.New()
+input.DebounceDelay = 15  ' About 250ms at 60fps
+
+DO WHILE running
+    canvas.Poll()
+    input.Update()
+
+    ' Non-debounced: fires every frame while held
+    IF input.KeyHeld(Viper.Input.Keyboard.KEY_SPACE) THEN
+        FireWeapon()  ' Continuous fire
+    END IF
+
+    ' Debounced: fires once, then requires release or wait
+    IF input.KeyPressedDebounced(Viper.Input.Keyboard.KEY_P) THEN
+        TogglePause()  ' Won't rapid-toggle
+    END IF
+LOOP
+```
+
+### Notes
+
+- Call `Update()` once per frame after `Canvas.Poll()`
+- Unified direction methods combine all input sources automatically
+- Debouncing prevents rapid repeated inputs from held keys
+- AxisX/AxisY return smooth analog values from sticks, or -1/0/1 from digital inputs
+- Use pad index `-1` to accept input from any connected gamepad
+
+### InputManager vs Low-Level Classes
+
+| Feature                | InputManager                    | Keyboard/Mouse/Pad            |
+|------------------------|---------------------------------|-------------------------------|
+| Unified directions     | Yes (Up/Down/Left/Right)        | No (check each device)        |
+| Built-in debouncing    | Yes (`KeyPressedDebounced`)     | No (must implement manually)  |
+| Device-agnostic axes   | Yes (`AxisX`, `AxisY`)          | No                            |
+| Confirm/Cancel actions | Yes (built-in mappings)         | No                            |
+| Per-key control        | Yes (falls through to low-level)| Yes                           |
+| State tracking         | Automatic                       | Must track manually           |
+
+### Use Cases
+
+- **Menu navigation:** Unified Up/Down/Confirm/Cancel
+- **Character movement:** Combined axis input from all devices
+- **Dialog systems:** Debounced input to prevent skipping
+- **Inventory screens:** Device-agnostic selection
+- **Quick prototyping:** Less boilerplate than raw input classes
+
+---
+
 ## See Also
 
 - [Graphics](graphics.md) - `Canvas` class for windowing and rendering that drives input polling
 - [Collections](collections.md) - `Seq` type returned by `GetPressed()` and `GetReleased()` methods
+- [Time](time.md) - `Timer` class for frame-based timing that pairs well with InputManager
