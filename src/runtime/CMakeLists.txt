@@ -66,6 +66,17 @@ set(RT_COLLECTIONS_SOURCES
         rt_bytes.c
         rt_grid2d.c
         rt_timer.c
+        rt_statemachine.c
+        rt_tween.c
+        rt_buttongroup.c
+        rt_smoothvalue.c
+        rt_particle.c
+        rt_spriteanim.c
+        rt_collision.c
+        rt_objpool.c
+        rt_screenfx.c
+        rt_pathfollow.c
+        rt_quadtree.c
 )
 
 set(RT_TEXT_SOURCES
@@ -184,6 +195,17 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_inputmgr.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_grid2d.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_timer.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_statemachine.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_tween.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_buttongroup.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_smoothvalue.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_particle.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_spriteanim.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_collision.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_objpool.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_screenfx.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_pathfollow.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_quadtree.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_datetime.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_map.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_parse.h

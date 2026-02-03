@@ -193,6 +193,19 @@ enum class RuntimeTypeId : std::size_t
     // Data structure classes
     RTCLS_Grid2D,
     RTCLS_Timer,
+    // Game development abstractions
+    RTCLS_StateMachine,
+    RTCLS_Tween,
+    RTCLS_ButtonGroup,
+    RTCLS_SmoothValue,
+    RTCLS_ParticleEmitter,
+    RTCLS_SpriteAnimation,
+    RTCLS_CollisionRect,
+    RTCLS_Collision,
+    RTCLS_ObjectPool,
+    RTCLS_ScreenFX,
+    RTCLS_PathFollower,
+    RTCLS_Quadtree,
     // Audio classes
     RTCLS_Audio,
     RTCLS_Sound,

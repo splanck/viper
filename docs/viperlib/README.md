@@ -19,6 +19,7 @@ implemented in C and exposed through the IL runtime system.
 | [Core Types](core.md)           | `Object`, `Box`, `String` — foundational types                             |
 | [Cryptography](crypto.md)       | `Hash`, `KeyDerive`, `Rand`, `Tls`                                        |
 | [Diagnostics](diagnostics.md)   | `Assert`, `Trap`, `Stopwatch`                                             |
+| [Game Utilities](game.md)       | `StateMachine`, `Tween`, `ObjectPool`, `Quadtree` — game development abstractions |
 | [Graphics](graphics.md)         | `Canvas`, `Color`, `Pixels`, `Sprite`, `Tilemap`, `Camera`                |
 | [GUI](gui.md)                   | `App`, `Button`, `Label`, widgets — GUI toolkit for applications          |
 | [Input](input.md)               | `Keyboard`, `Mouse`, `Pad`, `Manager` — input for games and interactive apps |
@@ -41,6 +42,9 @@ implemented in C and exposed through the IL runtime system.
 |---------------------------------------------|----------|-----------------------------------------------|
 | [`Bits`](math.md#viperbits)                 | Static   | Bit manipulation (shifts, rotates, counting)  |
 | [`Box`](core.md#viperbox)                   | Static   | Boxing helpers for generic collections         |
+| [`ButtonGroup`](game.md#viperbuttongroup)   | Instance | Mutually exclusive button selection            |
+| [`Collision`](game.md#vipercollision)       | Static   | Static collision detection helpers             |
+| [`CollisionRect`](game.md#vipercollisionrect) | Instance | AABB collision detection                     |
 | [`Convert`](utilities.md#viperconvert)      | Static   | Type conversion utilities                     |
 | [`DateTime`](time.md#viperdatetime)         | Static   | Date and time operations                      |
 | [`Environment`](system.md#viperenvironment) | Static   | Command-line args and environment             |
@@ -53,9 +57,18 @@ implemented in C and exposed through the IL runtime system.
 | [`Mat4`](math.md#vipermathmat4)             | Instance | 4×4 matrix for 3D transformations             |
 | [`Object`](core.md#viperobject)             | Base     | Root type for all reference types             |
 | [`Parse`](utilities.md#viperparse)          | Static   | String parsing utilities                      |
+| [`ParticleEmitter`](game.md#viperparticleemitter) | Instance | Particle effects system                  |
 | [`Random`](math.md#viperrandom)             | Static   | Random number generation                      |
+| [`SmoothValue`](game.md#vipersmoothvalue)   | Instance | Smooth value interpolation                    |
+| [`SpriteAnimation`](game.md#viperspriteanimation) | Instance | Frame-based sprite animation controller |
+| [`StateMachine`](game.md#viperstatemachine) | Instance | Finite state machine for game states          |
 | [`String`](core.md#viperstring)             | Instance | Immutable string with manipulation methods    |
 | [`Terminal`](system.md#viperterminal)       | Static   | Terminal input/output                         |
+| [`Tween`](game.md#vipertween)               | Instance | Animation tweening with easing functions      |
+| [`ObjectPool`](game.md#viperobjectpool)     | Instance | Efficient object slot reuse                   |
+| [`ScreenFX`](game.md#viperscreenfx)         | Instance | Screen effects (shake, flash, fade)           |
+| [`PathFollower`](game.md#viperpathfollower) | Instance | Path following along waypoints                |
+| [`Quadtree`](game.md#viperquadtree)         | Instance | Spatial partitioning for collision queries    |
 | [`Vec2`](math.md#vipervec2)                 | Instance | 2D vector math                                |
 | [`Vec3`](math.md#vipervec3)                 | Instance | 3D vector math                                |
 

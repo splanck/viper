@@ -57,6 +57,8 @@
 #include "rt_binfile.h"
 #include "rt_bits.h"
 #include "rt_box.h"
+#include "rt_buttongroup.h"
+#include "rt_collision.h"
 #include "rt_bytes.h"
 #include "rt_camera.h"
 #include "rt_channel.h"
@@ -104,30 +106,39 @@
 #include "rt_ns_bridge.h"
 #include "rt_numeric.h"
 #include "rt_object.h"
+#include "rt_objpool.h"
 #include "rt_oop.h"
 #include "rt_output.h"
 #include "rt_parse.h"
+#include "rt_particle.h"
+#include "rt_pathfollow.h"
 #include "rt_path.h"
 #include "rt_pixels.h"
 #include "rt_pqueue.h"
 #include "rt_printf_compat.h"
 #include "rt_queue.h"
+#include "rt_quadtree.h"
 #include "rt_rand.h"
 #include "rt_random.h"
 #include "rt_regex.h"
 #include "rt_ring.h"
 #include "rt_seq.h"
+#include "rt_screenfx.h"
 #include "rt_set.h"
+#include "rt_smoothvalue.h"
 #include "rt_sprite.h"
+#include "rt_spriteanim.h"
 #include "rt_stack.h"
 #include "rt_stopwatch.h"
 #include "rt_string.h"
+#include "rt_statemachine.h"
 #include "rt_string_builder.h"
 #include "rt_template.h"
 #include "rt_threadpool.h"
 #include "rt_threads.h"
 #include "rt_tilemap.h"
 #include "rt_timer.h"
+#include "rt_tween.h"
 #include "rt_tls.h"
 #include "rt_trap.h"
 #include "rt_treemap.h"
@@ -1689,20 +1700,50 @@ struct Descriptor
 /// @details Copies every descriptor row alongside its row index and performs a
 ///          simple insertion-sort so lookups can binary search the resulting
 ///          array without constructing dynamic state at runtime.
+/// @brief Constexpr merge sort helper - merge two sorted ranges.
+template <std::size_t N>
+constexpr void mergeRanges(std::array<Descriptor, N> &arr, std::array<Descriptor, N> &temp, std::size_t left,
+                           std::size_t mid, std::size_t right)
+{
+    std::size_t i = left, j = mid, k = left;
+    while (i < mid && j < right)
+    {
+        if (arr[i].name <= arr[j].name)
+            temp[k++] = arr[i++];
+        else
+            temp[k++] = arr[j++];
+    }
+    while (i < mid)
+        temp[k++] = arr[i++];
+    while (j < right)
+        temp[k++] = arr[j++];
+    for (std::size_t x = left; x < right; ++x)
+        arr[x] = temp[x];
+}
+
+/// @brief Constexpr merge sort - O(n log n) complexity.
+template <std::size_t N>
+constexpr void mergeSort(std::array<Descriptor, N> &arr, std::array<Descriptor, N> &temp, std::size_t left,
+                         std::size_t right)
+{
+    if (right - left <= 1)
+        return;
+    std::size_t mid = left + (right - left) / 2;
+    mergeSort(arr, temp, left, mid);
+    mergeSort(arr, temp, mid, right);
+    mergeRanges(arr, temp, left, mid, right);
+}
+
 constexpr auto makeDescriptorIndex()
 {
     std::array<Descriptor, kDescriptorRows.size()> index{};
     for (std::size_t i = 0; i < index.size(); ++i)
         index[i] = Descriptor{kDescriptorRows[i].name, i};
 
-    for (std::size_t i = 0; i < index.size(); ++i)
-    {
-        for (std::size_t j = i + 1; j < index.size(); ++j)
-        {
-            if (index[j].name < index[i].name)
-                std::swap(index[i], index[j]);
-        }
-    }
+    // Use O(n log n) merge sort instead of O(n²) selection sort
+    std::array<Descriptor, kDescriptorRows.size()> temp{};
+    mergeSort(index, temp, 0, index.size());
+
     return index;
 }
 
