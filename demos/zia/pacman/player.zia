@@ -1,12 +1,15 @@
 // =============================================================================
 // PAC-MAN - Player Entity
 // =============================================================================
+// Uses new Viper runtime features:
+// - Viper.Timer for mouth animation timing
+// - Simplified movement with cleaner logic
+// =============================================================================
 
 module player;
 
 bind "./config";
 bind "./utils";
-bind "./vec2";
 bind "./maze";
 
 // =============================================================================
@@ -20,9 +23,9 @@ entity PacMan {
     hide Integer screenY;
     hide Integer direction;
     hide Integer nextDirection;
-    hide Integer speed;
-    hide Integer animFrame;
-    hide Integer animTimer;
+
+    // Use Timer for mouth animation
+    hide Viper.Timer mouthTimer;
     hide Boolean mouthOpen;
 
     expose func init(startX: Integer, startY: Integer) {
@@ -32,9 +35,10 @@ entity PacMan {
         screenY = utils.gridToScreenY(startY);
         direction = config.DIR_NONE;
         nextDirection = config.DIR_NONE;
-        speed = 4;
-        animFrame = 0;
-        animTimer = 0;
+
+        // Setup mouth animation timer (toggles every 5 frames)
+        mouthTimer = Viper.Timer.New();
+        mouthTimer.StartRepeating(5);
         mouthOpen = true;
     }
 
@@ -43,25 +47,20 @@ entity PacMan {
     }
 
     expose func update(theMaze: maze.Maze) {
-        animTimer = animTimer + 1;
-        if animTimer >= 5 {
-            animTimer = 0;
+        // Update mouth animation
+        if mouthTimer.Update() {
             mouthOpen = !mouthOpen;
         }
 
         var atGridX = utils.gridToScreenX(gridX);
         var atGridY = utils.gridToScreenY(gridY);
 
-        if nextDirection != config.DIR_NONE and screenX == atGridX and screenY == atGridY {
-            var nextVec = vec2.getDirectionVector(nextDirection);
-            var nextGridX = gridX + nextVec.x;
-            var nextGridY = gridY + nextVec.y;
-
-            if nextGridX < 0 {
-                nextGridX = config.GRID_WIDTH - 1;
-            } else if nextGridX >= config.GRID_WIDTH {
-                nextGridX = 0;
-            }
+        // Check if we can change direction (only at tile center)
+        if nextDirection != config.DIR_NONE && screenX == atGridX && screenY == atGridY {
+            var nextDirX = utils.getDirX(nextDirection);
+            var nextDirY = utils.getDirY(nextDirection);
+            var nextGridX = self.wrapX(gridX + nextDirX);
+            var nextGridY = gridY + nextDirY;
 
             if theMaze.isWalkable(nextGridX, nextGridY) {
                 direction = nextDirection;
@@ -69,17 +68,16 @@ entity PacMan {
             }
         }
 
+        // Move in current direction
         if direction != config.DIR_NONE {
-            var dirVec = vec2.getDirectionVector(direction);
-            var targetGridX = gridX + dirVec.x;
-            var targetGridY = gridY + dirVec.y;
+            var dirX = utils.getDirX(direction);
+            var dirY = utils.getDirY(direction);
+            var targetGridX = self.wrapX(gridX + dirX);
+            var targetGridY = gridY + dirY;
 
-            if targetGridX < 0 {
-                gridX = config.GRID_WIDTH - 1;
-                screenX = utils.gridToScreenX(gridX);
-                return;
-            } else if targetGridX >= config.GRID_WIDTH {
-                gridX = 0;
+            // Handle tunnel wrap (instant teleport)
+            if dirX != 0 && ((gridX == 0 && dirX < 0) || (gridX == config.GRID_WIDTH - 1 && dirX > 0)) {
+                gridX = targetGridX;
                 screenX = utils.gridToScreenX(gridX);
                 return;
             }
@@ -88,14 +86,15 @@ entity PacMan {
                 var targetScreenX = utils.gridToScreenX(targetGridX);
                 var targetScreenY = utils.gridToScreenY(targetGridY);
 
+                // Move toward target
                 if screenX < targetScreenX {
-                    screenX = screenX + speed;
+                    screenX = screenX + config.PACMAN_SPEED;
                     if screenX >= targetScreenX {
                         screenX = targetScreenX;
                         gridX = targetGridX;
                     }
                 } else if screenX > targetScreenX {
-                    screenX = screenX - speed;
+                    screenX = screenX - config.PACMAN_SPEED;
                     if screenX <= targetScreenX {
                         screenX = targetScreenX;
                         gridX = targetGridX;
@@ -103,24 +102,34 @@ entity PacMan {
                 }
 
                 if screenY < targetScreenY {
-                    screenY = screenY + speed;
+                    screenY = screenY + config.PACMAN_SPEED;
                     if screenY >= targetScreenY {
                         screenY = targetScreenY;
                         gridY = targetGridY;
                     }
                 } else if screenY > targetScreenY {
-                    screenY = screenY - speed;
+                    screenY = screenY - config.PACMAN_SPEED;
                     if screenY <= targetScreenY {
                         screenY = targetScreenY;
                         gridY = targetGridY;
                     }
                 }
             } else {
+                // Hit wall, stop and snap to grid
                 direction = config.DIR_NONE;
                 screenX = utils.gridToScreenX(gridX);
                 screenY = utils.gridToScreenY(gridY);
             }
         }
+    }
+
+    hide func wrapX(x: Integer) -> Integer {
+        if x < 0 {
+            return config.GRID_WIDTH - 1;
+        } else if x >= config.GRID_WIDTH {
+            return 0;
+        }
+        return x;
     }
 
     expose func getGridX() -> Integer {
@@ -131,6 +140,14 @@ entity PacMan {
         return gridY;
     }
 
+    expose func getScreenX() -> Integer {
+        return screenX;
+    }
+
+    expose func getScreenY() -> Integer {
+        return screenY;
+    }
+
     expose func reset(startX: Integer, startY: Integer) {
         gridX = startX;
         gridY = startY;
@@ -138,6 +155,8 @@ entity PacMan {
         screenY = utils.gridToScreenY(startY);
         direction = config.DIR_NONE;
         nextDirection = config.DIR_NONE;
+        mouthOpen = true;
+        mouthTimer.Reset();
     }
 
     expose func draw(canvas: Viper.Graphics.Canvas) {
@@ -145,8 +164,10 @@ entity PacMan {
         var centerY = screenY + config.TILE_SIZE / 2;
         var radius = config.TILE_SIZE / 2 - 2;
 
+        // Draw body
         canvas.Disc(centerX, centerY, radius, config.COLOR_YELLOW);
 
+        // Draw mouth when open
         if mouthOpen {
             var mouthX1 = centerX;
             var mouthY1 = centerY;
@@ -155,7 +176,7 @@ entity PacMan {
             var mouthX3 = centerX;
             var mouthY3 = centerY;
 
-            if direction == config.DIR_RIGHT or direction == config.DIR_NONE {
+            if direction == config.DIR_RIGHT || direction == config.DIR_NONE {
                 mouthX2 = centerX + radius;
                 mouthY2 = centerY - radius / 2;
                 mouthX3 = centerX + radius;

@@ -1,84 +1,41 @@
 // =============================================================================
 // PAC-MAN - Configuration and Constants
 // =============================================================================
+// Rewritten to use new Viper runtime features:
+// - Action mapping constants for device-agnostic input
+// - Cleaned up organization
+// =============================================================================
 
 module config;
 
-// Screen dimensions
+// =============================================================================
+// SCREEN & GRID DIMENSIONS
+// =============================================================================
+
 final SCREEN_WIDTH = 672;    // 28 tiles * 24 pixels
 final SCREEN_HEIGHT = 744;   // 31 tiles * 24 pixels
-
-// Tile size
 final TILE_SIZE = 24;
-
-// Grid dimensions
 final GRID_WIDTH = 28;
 final GRID_HEIGHT = 31;
 
-// Colors (0x00RRGGBB format)
+// =============================================================================
+// COLORS (0x00RRGGBB format)
+// =============================================================================
+
 final COLOR_BLACK = 0x00000000;
-final COLOR_YELLOW = 0x00FFFF00;
 final COLOR_WHITE = 0x00FFFFFF;
+final COLOR_YELLOW = 0x00FFFF00;
 final COLOR_BLUE = 0x000000FF;
 final COLOR_RED = 0x00FF0000;
 final COLOR_PINK = 0x00FFB8FF;
 final COLOR_CYAN = 0x0000FFFF;
 final COLOR_ORANGE = 0x00FFB852;
+final COLOR_GREEN = 0x0000FF00;
+
+// Game-specific colors
 final COLOR_WALL = 0x002121DE;
 final COLOR_DOT = 0x00FFB897;
 final COLOR_PELLET = 0x00FFB897;
-
-// Key codes (from vgfx.h)
-final KEY_UP = 260;
-final KEY_DOWN = 261;
-final KEY_LEFT = 258;
-final KEY_RIGHT = 259;
-final KEY_ESCAPE = 256;
-final KEY_ENTER = 257;
-final KEY_SPACE = 32;
-final KEY_P = 80;
-final KEY_R = 82;
-
-// Game states
-final STATE_PLAYING = 0;
-final STATE_PAUSED = 1;
-final STATE_GAME_OVER = 2;
-final STATE_WIN = 3;
-final STATE_READY = 4;
-
-// Direction constants (0 is reserved for NONE)
-final DIR_NONE = 0;
-final DIR_UP = 1;
-final DIR_DOWN = 2;
-final DIR_LEFT = 3;
-final DIR_RIGHT = 4;
-
-// Ghost modes
-final MODE_SCATTER = 0;
-final MODE_CHASE = 1;
-final MODE_FRIGHTENED = 2;
-final MODE_EATEN = 3;
-
-// Timing (in milliseconds)
-final FRAME_TIME = 16;  // ~60 FPS
-
-// Tile types
-final TILE_EMPTY = 0;
-final TILE_WALL = 1;
-final TILE_DOT = 2;
-final TILE_PELLET = 3;
-final TILE_GATE = 4;
-
-// Fruit types
-final FRUIT_NONE = 0;
-final FRUIT_CHERRY = 1;
-final FRUIT_STRAWBERRY = 2;
-final FRUIT_ORANGE = 3;
-final FRUIT_APPLE = 4;
-final FRUIT_MELON = 5;
-final FRUIT_GALAXIAN = 6;
-final FRUIT_BELL = 7;
-final FRUIT_KEY = 8;
 
 // Fruit colors
 final COLOR_CHERRY = 0x00FF0000;
@@ -90,8 +47,137 @@ final COLOR_GALAXIAN = 0x00FFFF00;
 final COLOR_BELL = 0x00FFDD00;
 final COLOR_KEY = 0x0000CCFF;
 
-// Menu states
-final MENU_MAIN = 0;
-final MENU_PLAYING = 1;
-final MENU_HIGHSCORES = 2;
+// =============================================================================
+// KEY CODES (from vgfx.h)
+// =============================================================================
+
+final KEY_UP = 260;
+final KEY_DOWN = 261;
+final KEY_LEFT = 258;
+final KEY_RIGHT = 259;
+final KEY_ESCAPE = 256;
+final KEY_ENTER = 257;
+final KEY_SPACE = 32;
+final KEY_P = 80;
+final KEY_R = 82;
+final KEY_W = 87;
+final KEY_A = 65;
+final KEY_S = 83;
+final KEY_D = 68;
+
+// =============================================================================
+// GAMEPAD BUTTONS (from vgfx.h)
+// =============================================================================
+
+final PAD_A = 0;
+final PAD_B = 1;
+final PAD_X = 2;
+final PAD_Y = 3;
+final PAD_START = 6;
+final PAD_DPAD_UP = 10;
+final PAD_DPAD_DOWN = 11;
+final PAD_DPAD_LEFT = 12;
+final PAD_DPAD_RIGHT = 13;
+
+// =============================================================================
+// ACTION NAMES (for Viper.Input.Action mapping system)
+// =============================================================================
+
+final ACTION_UP = "move_up";
+final ACTION_DOWN = "move_down";
+final ACTION_LEFT = "move_left";
+final ACTION_RIGHT = "move_right";
+final ACTION_CONFIRM = "confirm";
+final ACTION_CANCEL = "cancel";
+final ACTION_PAUSE = "pause";
+final ACTION_RESTART = "restart";
+
+// =============================================================================
+// GAME STATES (for state machine)
+// =============================================================================
+
+final STATE_MENU = 0;
+final STATE_PLAYING = 1;
+final STATE_PAUSED = 2;
+final STATE_GAME_OVER = 3;
+final STATE_WIN = 4;
+final STATE_READY = 5;
+final STATE_DYING = 6;
+final STATE_HIGHSCORES = 7;
+
+// =============================================================================
+// DIRECTION CONSTANTS
+// =============================================================================
+
+final DIR_NONE = 0;
+final DIR_UP = 1;
+final DIR_DOWN = 2;
+final DIR_LEFT = 3;
+final DIR_RIGHT = 4;
+
+// =============================================================================
+// GHOST MODES
+// =============================================================================
+
+final MODE_SCATTER = 0;
+final MODE_CHASE = 1;
+final MODE_FRIGHTENED = 2;
+final MODE_EATEN = 3;
+
+// =============================================================================
+// TILE TYPES
+// =============================================================================
+
+final TILE_EMPTY = 0;
+final TILE_WALL = 1;
+final TILE_DOT = 2;
+final TILE_PELLET = 3;
+final TILE_GATE = 4;
+
+// =============================================================================
+// FRUIT TYPES
+// =============================================================================
+
+final FRUIT_NONE = 0;
+final FRUIT_CHERRY = 1;
+final FRUIT_STRAWBERRY = 2;
+final FRUIT_ORANGE = 3;
+final FRUIT_APPLE = 4;
+final FRUIT_MELON = 5;
+final FRUIT_GALAXIAN = 6;
+final FRUIT_BELL = 7;
+final FRUIT_KEY = 8;
+
+// =============================================================================
+// TIMING (in frames at 60 FPS)
+// =============================================================================
+
+final FRAME_TIME = 16;           // ~60 FPS in milliseconds
+final READY_DURATION = 180;      // 3 seconds
+final DEATH_DURATION = 120;      // 2 seconds
+final FRIGHTENED_DURATION = 600; // 10 seconds
+final MODE_SWITCH_TIME = 420;    // 7 seconds between scatter/chase
+final FRUIT_DURATION = 600;      // 10 seconds
+final POINTS_DISPLAY_TIME = 120; // 2 seconds
+
+// =============================================================================
+// EASING TYPES (from rt_tween.h)
+// =============================================================================
+
+final EASE_LINEAR = 0;
+final EASE_IN_QUAD = 1;
+final EASE_OUT_QUAD = 2;
+final EASE_IN_OUT_QUAD = 3;
+final EASE_OUT_BOUNCE = 18;
+
+// =============================================================================
+// GAMEPLAY CONSTANTS
+// =============================================================================
+
+final PACMAN_SPEED = 4;
+final GHOST_SPEED = 3;
+final EXTRA_LIFE_SCORE = 10000;
+final DOT_POINTS = 10;
+final PELLET_POINTS = 50;
+final GHOST_BASE_POINTS = 200;
 

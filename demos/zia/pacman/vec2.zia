@@ -1,5 +1,8 @@
 // =============================================================================
-// PAC-MAN - Vec2 Entity (2D Vector)
+// PAC-MAN - Vec2 Value Type (Optional utility, not currently used)
+// =============================================================================
+// This file is kept for reference but the main game uses simple Integer
+// coordinates directly for better performance and clarity.
 // =============================================================================
 
 module vec2;
@@ -7,10 +10,10 @@ module vec2;
 bind "./config";
 
 // =============================================================================
-// VEC2 ENTITY - 2D Position/Velocity helper
+// VEC2 VALUE TYPE - 2D integer vector
 // =============================================================================
 
-entity Vec2 {
+value Vec2 {
     expose Integer x;
     expose Integer y;
 
@@ -24,12 +27,28 @@ entity Vec2 {
         y = yVal;
     }
 
-    expose func copy() -> Vec2 {
-        return makeVec2(x, y);
+    expose func add(other: Vec2) -> Vec2 {
+        return makeVec2(x + other.x, y + other.y);
+    }
+
+    expose func sub(other: Vec2) -> Vec2 {
+        return makeVec2(x - other.x, y - other.y);
+    }
+
+    expose func scale(factor: Integer) -> Vec2 {
+        return makeVec2(x * factor, y * factor);
     }
 
     expose func equals(other: Vec2) -> Boolean {
-        return x == other.x and y == other.y;
+        return x == other.x && y == other.y;
+    }
+
+    expose func manhattanDistance(other: Vec2) -> Integer {
+        var dx = x - other.x;
+        var dy = y - other.y;
+        if dx < 0 { dx = 0 - dx; }
+        if dy < 0 { dy = 0 - dy; }
+        return dx + dy;
     }
 }
 
@@ -42,7 +61,11 @@ func makeVec2(xVal: Integer, yVal: Integer) -> Vec2 {
     return v;
 }
 
-func getDirectionVector(dir: Integer) -> Vec2 {
+func zeroVec2() -> Vec2 {
+    return makeVec2(0, 0);
+}
+
+func directionToVec2(dir: Integer) -> Vec2 {
     if dir == config.DIR_UP {
         return makeVec2(0, -1);
     } else if dir == config.DIR_DOWN {

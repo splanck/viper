@@ -1,6 +1,13 @@
 // =============================================================================
 // PAC-MAN - Game Controller Entity
 // =============================================================================
+// Uses new Viper runtime features:
+// - Viper.Input.Manager for edge detection and debounced menu input
+// - Viper.Timer for game timing (ready state, death, mode switching)
+// - Viper.Tween for animations (ready text bounce)
+// - Viper.SmoothValue for score counter animation
+// - for-in range syntax for cleaner iteration
+// =============================================================================
 
 module game;
 
@@ -17,51 +24,63 @@ bind "./fruit";
 
 entity Game {
     hide Viper.Graphics.Canvas canvas;
+    hide Viper.Input.Manager input;
     hide maze.Maze theMaze;
     hide player.PacMan pacman;
     hide List[ghost.Ghost] ghosts;
     hide fruit.Fruit theFruit;
 
+    // Game state
     hide Integer score;
     hide Integer lives;
     hide Integer level;
-    hide Integer state;
-    hide Integer readyTimer;
-    hide Integer modeTimer;
-    hide Boolean globalMode;
-    hide Integer ghostsEaten;
-    hide Integer dotsEaten;
     hide Integer highScore;
+    hide Integer dotsEaten;
+    hide Integer ghostsEaten;
     hide Boolean extraLifeAwarded;
-
-    // Menu system
-    hide Integer menuState;
+    hide Integer gameState;
     hide Integer menuSelection;
-    hide List[Integer] highScores;
 
-    // Input debouncing
-    hide Integer inputCooldown;
+    // Use Timers instead of manual counters
+    hide Viper.Timer readyTimer;
+    hide Viper.Timer deathTimer;
+    hide Viper.Timer modeTimer;
+    hide Boolean chaseMode;
+
+    // Animations
+    hide Viper.Tween readyTween;
+    hide Viper.SmoothValue displayScore;
+
+    // High scores list
+    hide List[Integer] highScores;
 
     expose func init() {
         canvas = Viper.Graphics.Canvas.New("PAC-MAN", config.SCREEN_WIDTH, config.SCREEN_HEIGHT);
+        input = Viper.Input.Manager.New();
 
+        // Initialize game objects
         theMaze = new maze.Maze();
         theMaze.init();
 
         pacman = new player.PacMan(14, 23);
 
         ghosts = [];
-        var blinky = new ghost.Ghost(0, 14, 11, config.COLOR_RED);
-        ghosts.add(blinky);
-        var pinky = new ghost.Ghost(1, 13, 14, config.COLOR_PINK);
-        ghosts.add(pinky);
-        var inky = new ghost.Ghost(2, 14, 14, config.COLOR_CYAN);
-        ghosts.add(inky);
-        var clyde = new ghost.Ghost(3, 15, 14, config.COLOR_ORANGE);
-        ghosts.add(clyde);
+        ghosts.add(new ghost.Ghost(0, 14, 11, config.COLOR_RED));    // Blinky
+        ghosts.add(new ghost.Ghost(1, 13, 14, config.COLOR_PINK));   // Pinky
+        ghosts.add(new ghost.Ghost(2, 14, 14, config.COLOR_CYAN));   // Inky
+        ghosts.add(new ghost.Ghost(3, 15, 14, config.COLOR_ORANGE)); // Clyde
 
         theFruit = new fruit.Fruit();
         theFruit.init();
+
+        // Initialize timers
+        readyTimer = Viper.Timer.New();
+        deathTimer = Viper.Timer.New();
+        modeTimer = Viper.Timer.New();
+
+        // Initialize animations
+        readyTween = Viper.Tween.New();
+        displayScore = Viper.SmoothValue.New(0.0, 900.0);
 
         // Initialize high scores
         highScores = [];
@@ -72,21 +91,58 @@ entity Game {
         highScores.add(2000);
         highScore = 10000;
 
+        // Initialize state
         score = 0;
         lives = 3;
         level = 1;
-        state = config.STATE_READY;
-        readyTimer = 180;
-        modeTimer = 0;
-        globalMode = false;
-        ghostsEaten = 0;
         dotsEaten = 0;
+        ghostsEaten = 0;
         extraLifeAwarded = false;
-
-        // Start at main menu
-        menuState = config.MENU_MAIN;
+        gameState = config.STATE_MENU;
         menuSelection = 0;
-        inputCooldown = 0;
+        chaseMode = false;
+    }
+
+    // Helper functions for input (using canvas.KeyHeld directly)
+    hide func isKeyHeld(key: Integer) -> Boolean {
+        return canvas.KeyHeld(key) != 0;
+    }
+
+    hide func isKeyPressed(key: Integer) -> Boolean {
+        // For "pressed" we use the InputManager's edge detection
+        return input.KeyPressed(key);
+    }
+
+    hide func isUpHeld() -> Boolean {
+        return self.isKeyHeld(config.KEY_UP) || self.isKeyHeld(config.KEY_W);
+    }
+
+    hide func isDownHeld() -> Boolean {
+        return self.isKeyHeld(config.KEY_DOWN) || self.isKeyHeld(config.KEY_S);
+    }
+
+    hide func isLeftHeld() -> Boolean {
+        return self.isKeyHeld(config.KEY_LEFT) || self.isKeyHeld(config.KEY_A);
+    }
+
+    hide func isRightHeld() -> Boolean {
+        return self.isKeyHeld(config.KEY_RIGHT) || self.isKeyHeld(config.KEY_D);
+    }
+
+    hide func isConfirmPressed() -> Boolean {
+        return self.isKeyPressed(config.KEY_ENTER) || self.isKeyPressed(config.KEY_SPACE);
+    }
+
+    hide func isCancelPressed() -> Boolean {
+        return self.isKeyPressed(config.KEY_ESCAPE);
+    }
+
+    hide func isPausePressed() -> Boolean {
+        return self.isKeyPressed(config.KEY_P);
+    }
+
+    hide func isRestartPressed() -> Boolean {
+        return self.isKeyPressed(config.KEY_R);
     }
 
     expose func run() {
@@ -94,57 +150,36 @@ entity Game {
 
         while running {
             canvas.Poll();
+            input.Update();
 
-            // Decrement input cooldown
-            if inputCooldown > 0 {
-                inputCooldown = inputCooldown - 1;
-            }
+            // Update smooth score display
+            displayScore.Target = score * 1.0;
+            displayScore.Update();
 
-            // Check for quit
-            if canvas.KeyHeld(config.KEY_ESCAPE) != 0 and inputCooldown == 0 {
-                if menuState == config.MENU_PLAYING {
-                    menuState = config.MENU_MAIN;
-                    inputCooldown = 12;
-                } else {
-                    running = false;
-                }
-            }
-
-            // Handle based on menu state
-            if menuState == config.MENU_MAIN {
-                self.handleMenuInput();
+            // State-specific logic
+            if gameState == config.STATE_MENU {
+                running = self.updateMenu();
                 self.renderMenu();
-            } else if menuState == config.MENU_HIGHSCORES {
-                self.handleHighScoreInput();
+            } else if gameState == config.STATE_HIGHSCORES {
+                self.updateHighScores();
                 self.renderHighScores();
-            } else if menuState == config.MENU_PLAYING {
-                // Handle game state
-                if state == config.STATE_PLAYING {
-                    self.handleInput();
-                    self.updateGame();
-                } else if state == config.STATE_READY {
-                    readyTimer = readyTimer - 1;
-                    if readyTimer <= 0 {
-                        state = config.STATE_PLAYING;
-                    }
-                } else if state == config.STATE_PAUSED {
-                    if canvas.KeyHeld(config.KEY_P) != 0 and inputCooldown == 0 {
-                        state = config.STATE_PLAYING;
-                        inputCooldown = 12;
-                    }
-                } else if state == config.STATE_GAME_OVER {
-                    self.updateHighScores();
-                    if canvas.KeyHeld(config.KEY_R) != 0 and inputCooldown == 0 {
-                        self.resetGame();
-                        inputCooldown = 12;
-                    }
-                } else if state == config.STATE_WIN {
-                    if canvas.KeyHeld(config.KEY_R) != 0 and inputCooldown == 0 {
-                        self.nextLevel();
-                        inputCooldown = 12;
-                    }
-                }
-
+            } else if gameState == config.STATE_READY {
+                self.updateReady();
+                self.render();
+            } else if gameState == config.STATE_PLAYING {
+                self.updatePlaying();
+                self.render();
+            } else if gameState == config.STATE_PAUSED {
+                self.updatePaused();
+                self.render();
+            } else if gameState == config.STATE_DYING {
+                self.updateDying();
+                self.render();
+            } else if gameState == config.STATE_GAME_OVER {
+                self.updateGameOver();
+                self.render();
+            } else if gameState == config.STATE_WIN {
+                self.updateWin();
                 self.render();
             }
 
@@ -152,83 +187,51 @@ entity Game {
         }
     }
 
-    // Handle menu input
-    hide func handleMenuInput() {
-        if inputCooldown > 0 {
-            return;
-        }
+    // =========================================================================
+    // MENU STATE
+    // =========================================================================
 
-        if canvas.KeyHeld(config.KEY_UP) != 0 {
+    hide func updateMenu() -> Boolean {
+        // Menu navigation with debounced input
+        if input.KeyPressedDebounced(config.KEY_UP) || input.KeyPressedDebounced(config.KEY_W) {
             menuSelection = menuSelection - 1;
-            if menuSelection < 0 {
-                menuSelection = 2;
-            }
-            inputCooldown = 10;
-        } else if canvas.KeyHeld(config.KEY_DOWN) != 0 {
+            if menuSelection < 0 { menuSelection = 2; }
+        }
+        if input.KeyPressedDebounced(config.KEY_DOWN) || input.KeyPressedDebounced(config.KEY_S) {
             menuSelection = menuSelection + 1;
-            if menuSelection > 2 {
-                menuSelection = 0;
-            }
-            inputCooldown = 10;
+            if menuSelection > 2 { menuSelection = 0; }
         }
 
-        // Enter key or Space to select
-        if canvas.KeyHeld(config.KEY_ENTER) != 0 or canvas.KeyHeld(config.KEY_SPACE) != 0 {
+        // Selection
+        if self.isConfirmPressed() {
             if menuSelection == 0 {
                 // Start Game
                 self.resetGame();
-                menuState = config.MENU_PLAYING;
+                self.startReady();
             } else if menuSelection == 1 {
                 // High Scores
-                menuState = config.MENU_HIGHSCORES;
+                gameState = config.STATE_HIGHSCORES;
+            } else {
+                // Quit
+                return false;
             }
-            // menuSelection == 2 is Quit, handled by ESC
-            inputCooldown = 12;
         }
+
+        // Quick quit
+        if self.isCancelPressed() {
+            return false;
+        }
+
+        return true;
     }
 
-    // Handle high score screen input
-    hide func handleHighScoreInput() {
-        if inputCooldown > 0 {
-            return;
-        }
-
-        if canvas.KeyHeld(config.KEY_ENTER) != 0 or canvas.KeyHeld(config.KEY_SPACE) != 0 or canvas.KeyHeld(config.KEY_ESCAPE) != 0 {
-            menuState = config.MENU_MAIN;
-            inputCooldown = 12;
-        }
-    }
-
-    // Update high scores
-    hide func updateHighScores() {
-        var i = 0;
-        while i < highScores.length() {
-            if score > highScores.get(i) {
-                // Shift scores down
-                var j = highScores.length() - 1;
-                while j > i {
-                    var prevScore = highScores.get(j - 1);
-                    highScores.set(j, prevScore);
-                    j = j - 1;
-                }
-                highScores.set(i, score);
-                if i == 0 {
-                    highScore = score;
-                }
-                return;
-            }
-            i = i + 1;
-        }
-    }
-
-    // Render main menu
     hide func renderMenu() {
         canvas.Clear(config.COLOR_BLACK);
 
         // Title
         canvas.Text(config.SCREEN_WIDTH / 2 - 80, 100, "PAC-MAN", config.COLOR_YELLOW);
 
-        // Menu options
+        // Menu options with highlighting
         var startColor = config.COLOR_WHITE;
         var scoresColor = config.COLOR_WHITE;
         var quitColor = config.COLOR_WHITE;
@@ -239,16 +242,16 @@ entity Game {
 
         canvas.Text(config.SCREEN_WIDTH / 2 - 60, 250, "START GAME", startColor);
         canvas.Text(config.SCREEN_WIDTH / 2 - 60, 300, "HIGH SCORES", scoresColor);
-        canvas.Text(config.SCREEN_WIDTH / 2 - 60, 350, "QUIT (ESC)", quitColor);
+        canvas.Text(config.SCREEN_WIDTH / 2 - 60, 350, "QUIT", quitColor);
 
         // High score display
         canvas.Text(config.SCREEN_WIDTH / 2 - 80, 450, "HIGH SCORE: " + Viper.Fmt.Int(highScore), config.COLOR_CYAN);
 
         // Instructions
-        canvas.Text(config.SCREEN_WIDTH / 2 - 100, 550, "Use Arrow Keys to Select", config.COLOR_WHITE);
-        canvas.Text(config.SCREEN_WIDTH / 2 - 100, 580, "Press ENTER to Confirm", config.COLOR_WHITE);
+        canvas.Text(config.SCREEN_WIDTH / 2 - 120, 550, "Arrow Keys / WASD / D-Pad", config.COLOR_WHITE);
+        canvas.Text(config.SCREEN_WIDTH / 2 - 100, 580, "ENTER / SPACE / A Button", config.COLOR_WHITE);
 
-        // Draw Pac-Man and ghosts as decoration
+        // Decorative characters
         canvas.Disc(100, 200, 20, config.COLOR_YELLOW);
         canvas.Disc(config.SCREEN_WIDTH - 100, 200, 20, config.COLOR_RED);
         canvas.Disc(config.SCREEN_WIDTH - 150, 200, 20, config.COLOR_PINK);
@@ -258,18 +261,24 @@ entity Game {
         canvas.Flip();
     }
 
-    // Render high scores screen
+    // =========================================================================
+    // HIGH SCORES STATE
+    // =========================================================================
+
+    hide func updateHighScores() {
+        if self.isConfirmPressed() || self.isCancelPressed() {
+            gameState = config.STATE_MENU;
+        }
+    }
+
     hide func renderHighScores() {
         canvas.Clear(config.COLOR_BLACK);
 
-        // Title
         canvas.Text(config.SCREEN_WIDTH / 2 - 80, 100, "HIGH SCORES", config.COLOR_YELLOW);
 
-        // Display scores
         var y = 200;
         var rank = 1;
-        var i = 0;
-        while i < highScores.length() {
+        for i in 0..highScores.length() {
             var scoreVal = highScores.get(i);
             var rankText = Viper.Fmt.Int(rank) + ". " + Viper.Fmt.Int(scoreVal);
             var color = config.COLOR_WHITE;
@@ -279,96 +288,133 @@ entity Game {
             canvas.Text(config.SCREEN_WIDTH / 2 - 60, y, rankText, color);
             y = y + 40;
             rank = rank + 1;
-            i = i + 1;
         }
 
-        // Instructions
-        canvas.Text(config.SCREEN_WIDTH / 2 - 100, 500, "Press ENTER to return", config.COLOR_WHITE);
-
+        canvas.Text(config.SCREEN_WIDTH / 2 - 100, 500, "Press any key to return", config.COLOR_WHITE);
         canvas.Flip();
     }
 
-    hide func handleInput() {
-        // Movement keys - check once and set direction
-        var up = canvas.KeyHeld(config.KEY_UP);
-        var down = canvas.KeyHeld(config.KEY_DOWN);
-        var left = canvas.KeyHeld(config.KEY_LEFT);
-        var right = canvas.KeyHeld(config.KEY_RIGHT);
-
-        if up != 0 {
-            pacman.setNextDirection(config.DIR_UP);
-        } else if down != 0 {
-            pacman.setNextDirection(config.DIR_DOWN);
-        } else if left != 0 {
-            pacman.setNextDirection(config.DIR_LEFT);
-        } else if right != 0 {
-            pacman.setNextDirection(config.DIR_RIGHT);
-        }
-
-        // Pause toggle with debounce
-        if canvas.KeyHeld(config.KEY_P) != 0 and inputCooldown == 0 {
-            state = config.STATE_PAUSED;
-            inputCooldown = 12;
+    hide func updateHighScoresList() {
+        for i in 0..highScores.length() {
+            if score > highScores.get(i) {
+                // Shift scores down
+                var j = highScores.length() - 1;
+                while j > i {
+                    highScores.set(j, highScores.get(j - 1));
+                    j = j - 1;
+                }
+                highScores.set(i, score);
+                if i == 0 {
+                    highScore = score;
+                }
+                return;
+            }
         }
     }
 
-    hide func updateGame() {
-        modeTimer = modeTimer + 1;
-        if modeTimer >= 420 {
-            modeTimer = 0;
-            globalMode = !globalMode;
+    // =========================================================================
+    // READY STATE
+    // =========================================================================
 
-            var i = 0;
-            while i < ghosts.length() {
+    hide func startReady() {
+        readyTimer.Start(config.READY_DURATION);
+        readyTween.StartI64(0, 100, 30, config.EASE_OUT_BOUNCE);
+        gameState = config.STATE_READY;
+    }
+
+    hide func updateReady() {
+        readyTimer.Update();
+        readyTween.Update();
+
+        if readyTimer.IsExpired {
+            modeTimer.Start(config.MODE_SWITCH_TIME);
+            chaseMode = false;
+            gameState = config.STATE_PLAYING;
+        }
+    }
+
+    // =========================================================================
+    // PLAYING STATE
+    // =========================================================================
+
+    hide func updatePlaying() {
+        // Handle pause
+        if self.isPausePressed() {
+            gameState = config.STATE_PAUSED;
+            return;
+        }
+
+        // Handle movement input
+        if self.isUpHeld() {
+            pacman.setNextDirection(config.DIR_UP);
+        } else if self.isDownHeld() {
+            pacman.setNextDirection(config.DIR_DOWN);
+        } else if self.isLeftHeld() {
+            pacman.setNextDirection(config.DIR_LEFT);
+        } else if self.isRightHeld() {
+            pacman.setNextDirection(config.DIR_RIGHT);
+        }
+
+        // Update ghost mode timer
+        if modeTimer.Update() {
+            chaseMode = !chaseMode;
+            modeTimer.Start(config.MODE_SWITCH_TIME);
+
+            // Update ghost modes
+            for i in 0..ghosts.length() {
                 var g = ghosts.get(i);
                 if g.getMode() != config.MODE_FRIGHTENED {
-                    if globalMode {
+                    if chaseMode {
                         g.setMode(config.MODE_CHASE);
                     } else {
                         g.setMode(config.MODE_SCATTER);
                     }
                 }
-                i = i + 1;
             }
         }
 
+        // Update game objects
         pacman.update(theMaze);
         theFruit.update();
 
+        // Check for dot eating
         var points = theMaze.eatDot(pacman.getGridX(), pacman.getGridY());
         if points > 0 {
             score = score + points;
             dotsEaten = dotsEaten + 1;
 
-            if dotsEaten == 70 or dotsEaten == 170 {
+            // Spawn fruit at 70 and 170 dots
+            if dotsEaten == 70 || dotsEaten == 170 {
                 theFruit.spawn(level);
             }
 
-            if points == 50 {
+            // Power pellet - frighten ghosts
+            if points == config.PELLET_POINTS {
                 ghostsEaten = 0;
-                var i = 0;
-                while i < ghosts.length() {
+                for i in 0..ghosts.length() {
                     var g = ghosts.get(i);
                     g.setMode(config.MODE_FRIGHTENED);
-                    i = i + 1;
                 }
             }
         }
 
+        // Check fruit collection
         if theFruit.collidesWithPacman(pacman.getGridX(), pacman.getGridY()) {
-            var fruitPoints = theFruit.collect();
-            score = score + fruitPoints;
+            score = score + theFruit.collect();
         }
 
-        if score >= 10000 and !extraLifeAwarded {
+        // Extra life at 10000 points
+        if score >= config.EXTRA_LIFE_SCORE && !extraLifeAwarded {
             lives = lives + 1;
             extraLifeAwarded = true;
         }
 
+        // Update high score
         if score > highScore {
             highScore = score;
         }
 
+        // Update ghosts
         var blinkyX = 0;
         var blinkyY = 0;
         if ghosts.length() > 0 {
@@ -377,57 +423,110 @@ entity Game {
             blinkyY = blinky.getGridY();
         }
 
-        var i = 0;
-        while i < ghosts.length() {
+        for i in 0..ghosts.length() {
             var g = ghosts.get(i);
             g.update(theMaze, pacman.getGridX(), pacman.getGridY(), blinkyX, blinkyY);
-            i = i + 1;
         }
 
-        i = 0;
-        while i < ghosts.length() {
+        // Check ghost collisions
+        for i in 0..ghosts.length() {
             var g = ghosts.get(i);
             if g.collidesWithPacman(pacman.getGridX(), pacman.getGridY()) {
                 if g.getMode() == config.MODE_FRIGHTENED {
+                    // Eat ghost
                     ghostsEaten = ghostsEaten + 1;
-                    var ghostPoints = 200;
+                    var ghostPoints = config.GHOST_BASE_POINTS;
                     var mult = 1;
-                    var j = 1;
-                    while j < ghostsEaten {
+                    for j in 1..ghostsEaten {
                         mult = mult * 2;
-                        j = j + 1;
                     }
                     score = score + ghostPoints * mult;
                     g.reset();
                 } else {
+                    // Pac-Man dies
                     self.pacmanDeath();
                     return;
                 }
             }
-            i = i + 1;
         }
 
+        // Check win condition
         if theMaze.allDotsEaten() {
-            state = config.STATE_WIN;
+            gameState = config.STATE_WIN;
         }
     }
 
     hide func pacmanDeath() {
         lives = lives - 1;
+
         if lives <= 0 {
-            state = config.STATE_GAME_OVER;
+            self.updateHighScoresList();
+            gameState = config.STATE_GAME_OVER;
         } else {
-            pacman.reset(14, 23);
-            var i = 0;
-            while i < ghosts.length() {
-                var g = ghosts.get(i);
-                g.reset();
-                i = i + 1;
-            }
-            state = config.STATE_READY;
-            readyTimer = 120;
+            deathTimer.Start(config.DEATH_DURATION);
+            gameState = config.STATE_DYING;
         }
     }
+
+    // =========================================================================
+    // DYING STATE
+    // =========================================================================
+
+    hide func updateDying() {
+        deathTimer.Update();
+        if deathTimer.IsExpired {
+            pacman.reset(14, 23);
+            for i in 0..ghosts.length() {
+                var g = ghosts.get(i);
+                g.reset();
+            }
+            self.startReady();
+        }
+    }
+
+    // =========================================================================
+    // PAUSED STATE
+    // =========================================================================
+
+    hide func updatePaused() {
+        if self.isPausePressed() || self.isConfirmPressed() {
+            gameState = config.STATE_PLAYING;
+        }
+        if self.isCancelPressed() {
+            gameState = config.STATE_MENU;
+        }
+    }
+
+    // =========================================================================
+    // GAME OVER STATE
+    // =========================================================================
+
+    hide func updateGameOver() {
+        if self.isRestartPressed() {
+            self.resetGame();
+            self.startReady();
+        }
+        if self.isCancelPressed() {
+            gameState = config.STATE_MENU;
+        }
+    }
+
+    // =========================================================================
+    // WIN STATE
+    // =========================================================================
+
+    hide func updateWin() {
+        if self.isRestartPressed() || self.isConfirmPressed() {
+            self.nextLevel();
+        }
+        if self.isCancelPressed() {
+            gameState = config.STATE_MENU;
+        }
+    }
+
+    // =========================================================================
+    // GAME RESET
+    // =========================================================================
 
     hide func resetGame() {
         score = 0;
@@ -435,72 +534,82 @@ entity Game {
         level = 1;
         dotsEaten = 0;
         extraLifeAwarded = false;
+        chaseMode = false;
+
         theMaze.reset();
         pacman.reset(14, 23);
-        var i = 0;
-        while i < ghosts.length() {
+        for i in 0..ghosts.length() {
             var g = ghosts.get(i);
             g.reset();
-            i = i + 1;
         }
         theFruit.reset();
-        state = config.STATE_READY;
-        readyTimer = 180;
-        modeTimer = 0;
-        globalMode = false;
+
+        displayScore.SetImmediate(0.0);
     }
 
     hide func nextLevel() {
         level = level + 1;
         dotsEaten = 0;
+        chaseMode = false;
+
         theMaze.reset();
         pacman.reset(14, 23);
-        var i = 0;
-        while i < ghosts.length() {
+        for i in 0..ghosts.length() {
             var g = ghosts.get(i);
             g.reset();
-            i = i + 1;
         }
         theFruit.reset();
-        state = config.STATE_READY;
-        readyTimer = 180;
-        modeTimer = 0;
-        globalMode = false;
+
+        self.startReady();
     }
+
+    // =========================================================================
+    // RENDERING
+    // =========================================================================
 
     hide func render() {
         canvas.Clear(config.COLOR_BLACK);
 
+        // Draw game objects
         theMaze.draw(canvas);
         theFruit.draw(canvas);
         pacman.draw(canvas);
 
-        var i = 0;
-        while i < ghosts.length() {
+        for i in 0..ghosts.length() {
             var g = ghosts.get(i);
             g.draw(canvas);
-            i = i + 1;
         }
 
+        // Draw UI
         self.drawUI();
 
-        if state == config.STATE_READY {
-            canvas.Text(config.SCREEN_WIDTH / 2 - 40, config.SCREEN_HEIGHT / 2, "READY!", config.COLOR_YELLOW);
-        } else if state == config.STATE_PAUSED {
+        // Draw state overlays
+        if gameState == config.STATE_READY {
+            var tweenProgress = readyTween.Progress;
+            var textY = config.SCREEN_HEIGHT / 2 - 10 + (100 - tweenProgress);
+            canvas.Text(config.SCREEN_WIDTH / 2 - 40, textY, "READY!", config.COLOR_YELLOW);
+        } else if gameState == config.STATE_PAUSED {
             canvas.Text(config.SCREEN_WIDTH / 2 - 40, config.SCREEN_HEIGHT / 2, "PAUSED", config.COLOR_YELLOW);
-        } else if state == config.STATE_GAME_OVER {
+            canvas.Text(config.SCREEN_WIDTH / 2 - 70, config.SCREEN_HEIGHT / 2 + 30, "P to continue", config.COLOR_WHITE);
+            canvas.Text(config.SCREEN_WIDTH / 2 - 70, config.SCREEN_HEIGHT / 2 + 60, "ESC for menu", config.COLOR_WHITE);
+        } else if gameState == config.STATE_GAME_OVER {
             canvas.Text(config.SCREEN_WIDTH / 2 - 60, config.SCREEN_HEIGHT / 2, "GAME OVER", config.COLOR_RED);
-            canvas.Text(config.SCREEN_WIDTH / 2 - 70, config.SCREEN_HEIGHT / 2 + 30, "Press R to restart", config.COLOR_WHITE);
-        } else if state == config.STATE_WIN {
+            canvas.Text(config.SCREEN_WIDTH / 2 - 70, config.SCREEN_HEIGHT / 2 + 30, "R to restart", config.COLOR_WHITE);
+            canvas.Text(config.SCREEN_WIDTH / 2 - 70, config.SCREEN_HEIGHT / 2 + 60, "ESC for menu", config.COLOR_WHITE);
+        } else if gameState == config.STATE_WIN {
             canvas.Text(config.SCREEN_WIDTH / 2 - 80, config.SCREEN_HEIGHT / 2, "LEVEL COMPLETE!", config.COLOR_YELLOW);
-            canvas.Text(config.SCREEN_WIDTH / 2 - 90, config.SCREEN_HEIGHT / 2 + 30, "Press R for next level", config.COLOR_WHITE);
+            canvas.Text(config.SCREEN_WIDTH / 2 - 90, config.SCREEN_HEIGHT / 2 + 30, "R for next level", config.COLOR_WHITE);
+        } else if gameState == config.STATE_DYING {
+            canvas.Text(config.SCREEN_WIDTH / 2 - 40, config.SCREEN_HEIGHT / 2, "OUCH!", config.COLOR_RED);
         }
 
         canvas.Flip();
     }
 
     hide func drawUI() {
-        var scoreText = "SCORE: " + Viper.Fmt.Int(score);
+        // Use smooth score for display
+        var displayScoreInt = displayScore.ValueI64;
+        var scoreText = "SCORE: " + Viper.Fmt.Int(displayScoreInt);
         canvas.Text(10, 5, scoreText, config.COLOR_WHITE);
 
         var levelText = "LEVEL: " + Viper.Fmt.Int(level);
@@ -510,3 +619,4 @@ entity Game {
         canvas.Text(config.SCREEN_WIDTH - 100, 5, livesText, config.COLOR_WHITE);
     }
 }
+

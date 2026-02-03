@@ -1,6 +1,11 @@
 // =============================================================================
 // PAC-MAN - Maze Entity
 // =============================================================================
+// Uses new Viper runtime features:
+// - Viper.Grid2D for 2D tile storage with bounds checking
+// - Viper.Timer for pellet blink animation
+// - for-in range syntax for cleaner iteration
+// =============================================================================
 
 module maze;
 
@@ -12,44 +17,41 @@ bind "./utils";
 // =============================================================================
 
 entity Maze {
-    hide List[Integer] tiles;
-    hide Integer width;
-    hide Integer height;
+    hide Viper.Grid2D tiles;
     hide Integer totalDots;
     hide Integer dotsRemaining;
-    hide Integer pelletTimer;
+
+    // Use Timer for pellet blinking instead of manual counter
+    hide Viper.Timer pelletBlinkTimer;
     hide Boolean pelletVisible;
 
     expose func init() {
-        width = config.GRID_WIDTH;
-        height = config.GRID_HEIGHT;
-        tiles = [];
+        // Create Grid2D with dimensions and default value
+        tiles = Viper.Grid2D.New(config.GRID_WIDTH, config.GRID_HEIGHT, config.TILE_EMPTY);
         totalDots = 0;
         dotsRemaining = 0;
-        pelletTimer = 0;
+
+        // Setup pellet blink timer (toggles every 10 frames)
+        pelletBlinkTimer = Viper.Timer.New();
+        pelletBlinkTimer.StartRepeating(10);
         pelletVisible = true;
+
         self.initializeMaze();
     }
 
     hide func initializeMaze() {
-        var size = width * height;
-        var i = 0;
-        while i < size {
-            tiles.add(config.TILE_EMPTY);
-            i = i + 1;
-        }
-
         // Classic Pac-Man maze layout (28x31)
-        self.setRow(0, "1111111111111111111111111111");
-        self.setRow(1, "1222222222222112222222222221");
-        self.setRow(2, "1211112111112112111112111121");
-        self.setRow(3, "1311112111112112111112111131");
-        self.setRow(4, "1211112111112112111112111121");
-        self.setRow(5, "1222222222222222222222222221");
-        self.setRow(6, "1211112112111111112112111121");
-        self.setRow(7, "1211112112111111112112111121");
-        self.setRow(8, "1222222112222112222112222221");
-        self.setRow(9, "1111112111110110111112111111");
+        // 0=empty, 1=wall, 2=dot, 3=pellet, 4=gate
+        self.setRow(0,  "1111111111111111111111111111");
+        self.setRow(1,  "1222222222222112222222222221");
+        self.setRow(2,  "1211112111112112111112111121");
+        self.setRow(3,  "1311112111112112111112111131");
+        self.setRow(4,  "1211112111112112111112111121");
+        self.setRow(5,  "1222222222222222222222222221");
+        self.setRow(6,  "1211112112111111112112111121");
+        self.setRow(7,  "1211112112111111112112111121");
+        self.setRow(8,  "1222222112222112222112222221");
+        self.setRow(9,  "1111112111110110111112111111");
         self.setRow(10, "0000012111110110111112100000");
         self.setRow(11, "0000012110000000000112100000");
         self.setRow(12, "0000012110111441110112100000");
@@ -76,8 +78,11 @@ entity Maze {
     }
 
     hide func setRow(row: Integer, pattern: String) {
-        var col = 0;
-        while col < Viper.String.Length(pattern) and col < width {
+        var patternLen = Viper.String.Length(pattern);
+        for col in 0..config.GRID_WIDTH {
+            if col >= patternLen {
+                break;
+            }
             var ch = Viper.String.Substring(pattern, col, 1);
             var tile = config.TILE_EMPTY;
             if ch == "1" {
@@ -89,46 +94,40 @@ entity Maze {
             } else if ch == "4" {
                 tile = config.TILE_GATE;
             }
-            self.setTile(col, row, tile);
-            col = col + 1;
+            tiles.Set(col, row, tile);
         }
     }
 
     hide func countDots() {
-        totalDots = 0;
-        var i = 0;
-        while i < tiles.length() {
-            var tile = tiles.get(i);
-            if tile == config.TILE_DOT or tile == config.TILE_PELLET {
-                totalDots = totalDots + 1;
-            }
-            i = i + 1;
-        }
+        // Use Grid2D's Count method for efficiency
+        totalDots = tiles.Count(config.TILE_DOT) + tiles.Count(config.TILE_PELLET);
         dotsRemaining = totalDots;
     }
 
     expose func getTile(x: Integer, y: Integer) -> Integer {
-        if x < 0 or x >= width or y < 0 or y >= height {
+        if !tiles.InBounds(x, y) {
             return config.TILE_WALL;
         }
-        var index = y * width + x;
-        return tiles.get(index);
+        return tiles.Get(x, y);
     }
 
     expose func setTile(x: Integer, y: Integer, value: Integer) {
-        if x >= 0 and x < width and y >= 0 and y < height {
-            var index = y * width + x;
-            tiles.set(index, value);
-        }
+        tiles.Set(x, y, value);
     }
 
     expose func isWall(x: Integer, y: Integer) -> Boolean {
         var tile = self.getTile(x, y);
-        return tile == config.TILE_WALL or tile == config.TILE_GATE;
+        return tile == config.TILE_WALL || tile == config.TILE_GATE;
     }
 
     expose func isWalkable(x: Integer, y: Integer) -> Boolean {
         return !self.isWall(x, y);
+    }
+
+    // Ghosts can walk through gates to exit the ghost house
+    expose func isWalkableForGhost(x: Integer, y: Integer) -> Boolean {
+        var tile = self.getTile(x, y);
+        return tile != config.TILE_WALL;
     }
 
     expose func eatDot(x: Integer, y: Integer) -> Integer {
@@ -136,11 +135,11 @@ entity Maze {
         if tile == config.TILE_DOT {
             self.setTile(x, y, config.TILE_EMPTY);
             dotsRemaining = dotsRemaining - 1;
-            return 10;
+            return config.DOT_POINTS;
         } else if tile == config.TILE_PELLET {
             self.setTile(x, y, config.TILE_EMPTY);
             dotsRemaining = dotsRemaining - 1;
-            return 50;
+            return config.PELLET_POINTS;
         }
         return 0;
     }
@@ -154,22 +153,19 @@ entity Maze {
     }
 
     expose func reset() {
+        tiles.Fill(config.TILE_EMPTY);
         self.initializeMaze();
     }
 
     expose func draw(canvas: Viper.Graphics.Canvas) {
         // Update pellet blink timer
-        pelletTimer = pelletTimer + 1;
-        if pelletTimer >= 10 {
-            pelletTimer = 0;
+        if pelletBlinkTimer.Update() {
             pelletVisible = !pelletVisible;
         }
 
-        var y = 0;
-        while y < height {
-            var x = 0;
-            while x < width {
-                var tile = self.getTile(x, y);
+        for y in 0..config.GRID_HEIGHT {
+            for x in 0..config.GRID_WIDTH {
+                var tile = tiles.Get(x, y);
                 var screenX = utils.gridToScreenX(x);
                 var screenY = utils.gridToScreenY(y);
 
@@ -180,7 +176,7 @@ entity Maze {
                     var centerY = screenY + config.TILE_SIZE / 2;
                     canvas.Disc(centerX, centerY, 3, config.COLOR_DOT);
                 } else if tile == config.TILE_PELLET {
-                    // Power pellets blink
+                    // Power pellets blink using Timer
                     if pelletVisible {
                         var centerX = screenX + config.TILE_SIZE / 2;
                         var centerY = screenY + config.TILE_SIZE / 2;
@@ -189,10 +185,7 @@ entity Maze {
                 } else if tile == config.TILE_GATE {
                     canvas.Box(screenX, screenY + config.TILE_SIZE / 3, config.TILE_SIZE, config.TILE_SIZE / 3, config.COLOR_PINK);
                 }
-
-                x = x + 1;
             }
-            y = y + 1;
         }
     }
 }

@@ -1,19 +1,22 @@
 // =============================================================================
 // PAC-MAN - Ghost Entity
 // =============================================================================
+// Uses new Viper runtime features:
+// - Viper.Timer for frightened mode countdown and flash animation
+// - Cleaner AI targeting logic
+// =============================================================================
 
 module ghost;
 
 bind "./config";
 bind "./utils";
-bind "./vec2";
 bind "./maze";
 
 // Ghost type constants
-final GHOST_BLINKY = 0;
-final GHOST_PINKY = 1;
-final GHOST_INKY = 2;
-final GHOST_CLYDE = 3;
+final GHOST_BLINKY = 0;  // Red - targets Pac-Man directly
+final GHOST_PINKY = 1;   // Pink - targets 4 tiles ahead of Pac-Man
+final GHOST_INKY = 2;    // Cyan - complex targeting using Blinky position
+final GHOST_CLYDE = 3;   // Orange - targets Pac-Man when far, scatter when close
 
 // =============================================================================
 // GHOST ENTITY - Enemy characters with AI
@@ -25,16 +28,21 @@ entity Ghost {
     hide Integer screenX;
     hide Integer screenY;
     hide Integer direction;
-    hide Integer speed;
     hide Integer color;
     hide Integer mode;
     hide Integer ghostType;
-    hide Integer frightenedTimer;
     hide Integer homeX;
     hide Integer homeY;
     hide Integer scatterX;
     hide Integer scatterY;
     hide Boolean atTileCenter;
+    hide Boolean inHouse;  // True if ghost is still in the ghost house
+
+    // Use Timers for frightened mode
+    hide Viper.Timer frightenedTimer;
+    hide Viper.Timer flashTimer;
+    hide Viper.Timer exitTimer;  // Delay before exiting house
+    hide Boolean flashWhite;
 
     expose func init(gType: Integer, startX: Integer, startY: Integer, ghostColor: Integer) {
         ghostType = gType;
@@ -43,14 +51,16 @@ entity Ghost {
         screenX = utils.gridToScreenX(startX);
         screenY = utils.gridToScreenY(startY);
         direction = config.DIR_UP;
-        speed = 3;
         color = ghostColor;
         mode = config.MODE_SCATTER;
-        frightenedTimer = 0;
         homeX = startX;
         homeY = startY;
         atTileCenter = true;
 
+        // Blinky starts outside, others start in the ghost house
+        inHouse = (ghostType != GHOST_BLINKY);
+
+        // Set scatter corner based on ghost type
         if ghostType == GHOST_BLINKY {
             scatterX = config.GRID_WIDTH - 3;
             scatterY = 0;
@@ -64,13 +74,33 @@ entity Ghost {
             scatterX = 0;
             scatterY = config.GRID_HEIGHT - 1;
         }
+
+        // Setup frightened timer
+        frightenedTimer = Viper.Timer.New();
+
+        // Setup flash timer (toggles every 10 frames when about to end)
+        flashTimer = Viper.Timer.New();
+        flashTimer.StartRepeating(10);
+        flashWhite = false;
+
+        // Setup exit timer - stagger ghost exits
+        exitTimer = Viper.Timer.New();
+        if ghostType == GHOST_PINKY {
+            exitTimer.Start(60);   // Pinky exits after 1 second
+        } else if ghostType == GHOST_INKY {
+            exitTimer.Start(180);  // Inky exits after 3 seconds
+        } else if ghostType == GHOST_CLYDE {
+            exitTimer.Start(300);  // Clyde exits after 5 seconds
+        }
     }
 
     expose func setMode(newMode: Integer) {
         if newMode == config.MODE_FRIGHTENED {
-            frightenedTimer = 600;
-            // Reverse direction when entering frightened mode
+            frightenedTimer.Start(config.FRIGHTENED_DURATION);
             direction = utils.getOppositeDirection(direction);
+            flashWhite = false;
+        } else {
+            frightenedTimer.Stop();
         }
         mode = newMode;
     }
@@ -80,24 +110,54 @@ entity Ghost {
     }
 
     expose func update(theMaze: maze.Maze, pacmanX: Integer, pacmanY: Integer, blinkyX: Integer, blinkyY: Integer) {
+        // Update exit timer for ghosts in house
+        if inHouse {
+            exitTimer.Update();
+        }
+
+        // Update frightened mode
         if mode == config.MODE_FRIGHTENED {
-            frightenedTimer = frightenedTimer - 1;
-            if frightenedTimer <= 0 {
+            frightenedTimer.Update();
+
+            // Flash when about to end (last 2 seconds = 120 frames)
+            if frightenedTimer.Remaining < 120 {
+                if flashTimer.Update() {
+                    flashWhite = !flashWhite;
+                }
+            }
+
+            if frightenedTimer.IsExpired {
                 mode = config.MODE_CHASE;
             }
         }
 
-        // Check if we're at the center of a tile
+        // Check if at tile center
         var tileScreenX = utils.gridToScreenX(gridX);
         var tileScreenY = utils.gridToScreenY(gridY);
-        atTileCenter = (screenX == tileScreenX) and (screenY == tileScreenY);
+        atTileCenter = (screenX == tileScreenX) && (screenY == tileScreenY);
 
-        // Only pick new direction when at tile center
+        // Check if ghost has exited the house (reached row 11 or above)
+        if inHouse && gridY <= 11 {
+            inHouse = false;
+        }
+
+        // Choose direction at tile centers
         if atTileCenter {
             var targetX = scatterX;
             var targetY = scatterY;
 
-            if mode == config.MODE_CHASE {
+            // If in house and timer expired, target the exit
+            if inHouse {
+                if exitTimer.IsExpired {
+                    // Target exit point (above the gate)
+                    targetX = 14;
+                    targetY = 11;
+                } else {
+                    // Stay in place or bob up and down
+                    targetX = gridX;
+                    targetY = gridY;
+                }
+            } else if mode == config.MODE_CHASE {
                 if ghostType == GHOST_BLINKY {
                     // Blinky targets Pac-Man directly
                     targetX = pacmanX;
@@ -108,19 +168,19 @@ entity Ghost {
                     targetY = pacmanY - 4;
                     if targetY < 0 { targetY = 0; }
                 } else if ghostType == GHOST_INKY {
-                    // Inky uses Blinky's position to calculate target
+                    // Inky uses vector from Blinky through 2 tiles ahead of Pac-Man
                     var aheadX = pacmanX;
                     var aheadY = pacmanY - 2;
                     targetX = aheadX + (aheadX - blinkyX);
                     targetY = aheadY + (aheadY - blinkyY);
                 } else {
-                    // Clyde chases when far, scatters when close
+                    // Clyde targets Pac-Man when far, scatter corner when close
                     var dist = utils.manhattanDistance(gridX, gridY, pacmanX, pacmanY);
                     if dist > 8 {
                         targetX = pacmanX;
                         targetY = pacmanY;
                     }
-                    // else uses scatter target
+                    // Otherwise uses scatterX/scatterY
                 }
             } else if mode == config.MODE_FRIGHTENED {
                 // Random target when frightened
@@ -131,7 +191,6 @@ entity Ghost {
             self.chooseDirection(targetX, targetY, theMaze);
         }
 
-        // Move in current direction
         self.move(theMaze);
     }
 
@@ -140,45 +199,38 @@ entity Ghost {
         var bestDist = 999999;
         var oppositeDir = utils.getOppositeDirection(direction);
 
-        // Count available directions
-        var availableDirs = 0;
-
-        // Check all four directions, prefer in order: UP, LEFT, DOWN, RIGHT (Pac-Man convention)
+        // Check all four directions in order: UP, LEFT, DOWN, RIGHT (tie-breaker order)
         var dirs = [config.DIR_UP, config.DIR_LEFT, config.DIR_DOWN, config.DIR_RIGHT];
-        var i = 0;
-        while i < 4 {
+        for i in 0..4 {
             var testDir = dirs.get(i);
-            var dirVec = vec2.getDirectionVector(testDir);
-            var nextX = gridX + dirVec.x;
-            var nextY = gridY + dirVec.y;
 
-            // Handle tunnel wrap
-            if nextX < 0 { nextX = config.GRID_WIDTH - 1; }
-            if nextX >= config.GRID_WIDTH { nextX = 0; }
+            // Can't reverse direction (unless in house)
+            if testDir == oppositeDir && !inHouse {
+                continue;
+            }
 
-            if theMaze.isWalkable(nextX, nextY) {
-                availableDirs = availableDirs + 1;
+            var dirX = utils.getDirX(testDir);
+            var dirY = utils.getDirY(testDir);
+            var nextX = self.wrapX(gridX + dirX);
+            var nextY = gridY + dirY;
 
-                // Never reverse unless it's the only option
-                if testDir != oppositeDir {
-                    var dist = utils.manhattanDistance(nextX, nextY, targetX, targetY);
-                    if dist < bestDist {
-                        bestDist = dist;
-                        bestDir = testDir;
-                    }
+            // Ghosts can walk through gates
+            if theMaze.isWalkableForGhost(nextX, nextY) {
+                var dist = utils.manhattanDistance(nextX, nextY, targetX, targetY);
+                if dist < bestDist {
+                    bestDist = dist;
+                    bestDir = testDir;
                 }
             }
-            i = i + 1;
         }
 
-        // If no valid direction found (only reverse available), allow reverse
+        // If no valid direction found (stuck), allow reverse
         if bestDist == 999999 {
-            var dirVec = vec2.getDirectionVector(oppositeDir);
-            var nextX = gridX + dirVec.x;
-            var nextY = gridY + dirVec.y;
-            if nextX < 0 { nextX = config.GRID_WIDTH - 1; }
-            if nextX >= config.GRID_WIDTH { nextX = 0; }
-            if theMaze.isWalkable(nextX, nextY) {
+            var dirX = utils.getDirX(oppositeDir);
+            var dirY = utils.getDirY(oppositeDir);
+            var nextX = self.wrapX(gridX + dirX);
+            var nextY = gridY + dirY;
+            if theMaze.isWalkableForGhost(nextX, nextY) {
                 bestDir = oppositeDir;
             }
         }
@@ -187,36 +239,31 @@ entity Ghost {
     }
 
     hide func move(theMaze: maze.Maze) {
-        var moveVec = vec2.getDirectionVector(direction);
-        var nextGridX = gridX + moveVec.x;
-        var nextGridY = gridY + moveVec.y;
+        var moveX = utils.getDirX(direction);
+        var moveY = utils.getDirY(direction);
+        var nextGridX = self.wrapX(gridX + moveX);
+        var nextGridY = gridY + moveY;
 
         // Handle tunnel wrap
-        if nextGridX < 0 {
-            nextGridX = config.GRID_WIDTH - 1;
-            gridX = nextGridX;
-            screenX = utils.gridToScreenX(nextGridX);
-            return;
-        } else if nextGridX >= config.GRID_WIDTH {
-            nextGridX = 0;
+        if moveX != 0 && ((gridX == 0 && moveX < 0) || (gridX == config.GRID_WIDTH - 1 && moveX > 0)) {
             gridX = nextGridX;
             screenX = utils.gridToScreenX(nextGridX);
             return;
         }
 
-        if theMaze.isWalkable(nextGridX, nextGridY) {
+        // Ghosts can walk through gates
+        if theMaze.isWalkableForGhost(nextGridX, nextGridY) {
             var targetScreenX = utils.gridToScreenX(nextGridX);
             var targetScreenY = utils.gridToScreenY(nextGridY);
 
-            // Move towards target
             if screenX < targetScreenX {
-                screenX = screenX + speed;
+                screenX = screenX + config.GHOST_SPEED;
                 if screenX >= targetScreenX {
                     screenX = targetScreenX;
                     gridX = nextGridX;
                 }
             } else if screenX > targetScreenX {
-                screenX = screenX - speed;
+                screenX = screenX - config.GHOST_SPEED;
                 if screenX <= targetScreenX {
                     screenX = targetScreenX;
                     gridX = nextGridX;
@@ -224,19 +271,28 @@ entity Ghost {
             }
 
             if screenY < targetScreenY {
-                screenY = screenY + speed;
+                screenY = screenY + config.GHOST_SPEED;
                 if screenY >= targetScreenY {
                     screenY = targetScreenY;
                     gridY = nextGridY;
                 }
             } else if screenY > targetScreenY {
-                screenY = screenY - speed;
+                screenY = screenY - config.GHOST_SPEED;
                 if screenY <= targetScreenY {
                     screenY = targetScreenY;
                     gridY = nextGridY;
                 }
             }
         }
+    }
+
+    hide func wrapX(x: Integer) -> Integer {
+        if x < 0 {
+            return config.GRID_WIDTH - 1;
+        } else if x >= config.GRID_WIDTH {
+            return 0;
+        }
+        return x;
     }
 
     expose func getGridX() -> Integer {
@@ -247,8 +303,16 @@ entity Ghost {
         return gridY;
     }
 
+    expose func getScreenX() -> Integer {
+        return screenX;
+    }
+
+    expose func getScreenY() -> Integer {
+        return screenY;
+    }
+
     expose func collidesWithPacman(pacmanX: Integer, pacmanY: Integer) -> Boolean {
-        return gridX == pacmanX and gridY == pacmanY;
+        return gridX == pacmanX && gridY == pacmanY;
     }
 
     expose func reset() {
@@ -258,8 +322,19 @@ entity Ghost {
         screenY = utils.gridToScreenY(homeY);
         direction = config.DIR_UP;
         mode = config.MODE_SCATTER;
-        frightenedTimer = 0;
         atTileCenter = true;
+        frightenedTimer.Stop();
+        flashWhite = false;
+
+        // Reset house state
+        inHouse = (ghostType != GHOST_BLINKY);
+        if ghostType == GHOST_PINKY {
+            exitTimer.Start(60);
+        } else if ghostType == GHOST_INKY {
+            exitTimer.Start(180);
+        } else if ghostType == GHOST_CLYDE {
+            exitTimer.Start(300);
+        }
     }
 
     expose func draw(canvas: Viper.Graphics.Canvas) {
@@ -267,38 +342,41 @@ entity Ghost {
         var centerY = screenY + config.TILE_SIZE / 2;
         var radius = config.TILE_SIZE / 2 - 2;
 
+        // Determine draw color
         var drawColor = color;
         if mode == config.MODE_FRIGHTENED {
-            if frightenedTimer < 120 {
-                // Flash white/blue when about to end
-                if (frightenedTimer / 10) % 2 == 0 {
-                    drawColor = config.COLOR_WHITE;
-                } else {
-                    drawColor = config.COLOR_BLUE;
-                }
+            if frightenedTimer.Remaining < 120 && flashWhite {
+                drawColor = config.COLOR_WHITE;
             } else {
                 drawColor = config.COLOR_BLUE;
             }
         }
 
-        // Ghost body
+        // Ghost body (semicircle + rectangle)
         canvas.Disc(centerX, centerY - 2, radius, drawColor);
         canvas.Box(screenX + 2, centerY - 2, config.TILE_SIZE - 4, radius, drawColor);
 
-        // Eyes
-        var eyeOffset = 4;
-        canvas.Disc(centerX - eyeOffset, centerY - 4, 4, config.COLOR_WHITE);
-        canvas.Disc(centerX + eyeOffset, centerY - 4, 4, config.COLOR_WHITE);
+        // Eyes (not shown when frightened)
+        if mode != config.MODE_FRIGHTENED {
+            var eyeOffset = 4;
+            canvas.Disc(centerX - eyeOffset, centerY - 4, 4, config.COLOR_WHITE);
+            canvas.Disc(centerX + eyeOffset, centerY - 4, 4, config.COLOR_WHITE);
 
-        // Pupils look in movement direction
-        var pupilOffsetX = 0;
-        var pupilOffsetY = 0;
-        if direction == config.DIR_LEFT { pupilOffsetX = -2; }
-        else if direction == config.DIR_RIGHT { pupilOffsetX = 2; }
-        else if direction == config.DIR_UP { pupilOffsetY = -2; }
-        else if direction == config.DIR_DOWN { pupilOffsetY = 2; }
+            // Pupils look in movement direction
+            var pupilOffsetX = 0;
+            var pupilOffsetY = 0;
+            if direction == config.DIR_LEFT { pupilOffsetX = -2; }
+            else if direction == config.DIR_RIGHT { pupilOffsetX = 2; }
+            else if direction == config.DIR_UP { pupilOffsetY = -2; }
+            else if direction == config.DIR_DOWN { pupilOffsetY = 2; }
 
-        canvas.Disc(centerX - eyeOffset + pupilOffsetX, centerY - 4 + pupilOffsetY, 2, config.COLOR_BLUE);
-        canvas.Disc(centerX + eyeOffset + pupilOffsetX, centerY - 4 + pupilOffsetY, 2, config.COLOR_BLUE);
+            canvas.Disc(centerX - eyeOffset + pupilOffsetX, centerY - 4 + pupilOffsetY, 2, config.COLOR_BLUE);
+            canvas.Disc(centerX + eyeOffset + pupilOffsetX, centerY - 4 + pupilOffsetY, 2, config.COLOR_BLUE);
+        } else {
+            // Frightened face - simple dots for eyes
+            canvas.Disc(centerX - 4, centerY - 3, 2, config.COLOR_WHITE);
+            canvas.Disc(centerX + 4, centerY - 3, 2, config.COLOR_WHITE);
+        }
     }
 }
+

@@ -1,6 +1,10 @@
 // =============================================================================
 // PAC-MAN - Fruit Entity
 // =============================================================================
+// Uses new Viper runtime features:
+// - Viper.Timer for fruit visibility and points display duration
+// - Viper.Tween for floating points animation
+// =============================================================================
 
 module fruit;
 
@@ -18,9 +22,15 @@ entity Fruit {
     hide Integer screenX;
     hide Integer screenY;
     hide Boolean active;
-    hide Integer timer;
-    hide Integer displayTimer;
     hide Integer lastPoints;
+
+    // Use Timer for fruit visibility
+    hide Viper.Timer visibilityTimer;
+
+    // Use Timer and Tween for points display
+    hide Viper.Timer displayTimer;
+    hide Viper.Tween pointsTween;
+    hide Boolean showingPoints;
 
     expose func init() {
         fruitType = config.FRUIT_NONE;
@@ -29,28 +39,36 @@ entity Fruit {
         screenX = utils.gridToScreenX(gridX);
         screenY = utils.gridToScreenY(gridY);
         active = false;
-        timer = 0;
-        displayTimer = 0;
         lastPoints = 0;
+        showingPoints = false;
+
+        visibilityTimer = Viper.Timer.New();
+        displayTimer = Viper.Timer.New();
+        pointsTween = Viper.Tween.New();
     }
 
     expose func spawn(level: Integer) {
         fruitType = utils.getFruitForLevel(level);
         active = true;
-        timer = 600;
-        displayTimer = 0;
+        visibilityTimer.Start(config.FRUIT_DURATION);
+        showingPoints = false;
     }
 
     expose func update() {
         if active {
-            timer = timer - 1;
-            if timer <= 0 {
+            visibilityTimer.Update();
+            if visibilityTimer.IsExpired {
                 active = false;
                 fruitType = config.FRUIT_NONE;
             }
         }
-        if displayTimer > 0 {
-            displayTimer = displayTimer - 1;
+
+        if showingPoints {
+            displayTimer.Update();
+            pointsTween.Update();
+            if displayTimer.IsExpired {
+                showingPoints = false;
+            }
         }
     }
 
@@ -61,8 +79,13 @@ entity Fruit {
     expose func collect() -> Integer {
         if active {
             active = false;
-            displayTimer = 120;
             lastPoints = utils.getFruitPoints(fruitType);
+
+            // Start points display animation
+            showingPoints = true;
+            displayTimer.Start(config.POINTS_DISPLAY_TIME);
+            pointsTween.StartI64(0, 30, config.POINTS_DISPLAY_TIME, config.EASE_OUT_QUAD);
+
             return lastPoints;
         }
         return 0;
@@ -70,14 +93,15 @@ entity Fruit {
 
     expose func collidesWithPacman(pacmanX: Integer, pacmanY: Integer) -> Boolean {
         if !active { return false; }
-        return gridX == pacmanX and gridY == pacmanY;
+        return gridX == pacmanX && gridY == pacmanY;
     }
 
     expose func reset() {
         active = false;
-        timer = 0;
-        displayTimer = 0;
         fruitType = config.FRUIT_NONE;
+        visibilityTimer.Stop();
+        displayTimer.Stop();
+        showingPoints = false;
     }
 
     expose func draw(canvas: Viper.Graphics.Canvas) {
@@ -86,13 +110,17 @@ entity Fruit {
             var centerX = screenX + config.TILE_SIZE / 2;
             var centerY = screenY + config.TILE_SIZE / 2;
 
+            // Draw fruit body
             canvas.Disc(centerX, centerY, 8, color);
+            // Draw stem
             canvas.Box(centerX - 1, centerY - 10, 3, 4, 0x00008800);
         }
 
-        if displayTimer > 0 {
+        // Show floating points when collected
+        if showingPoints {
             var pointsText = Viper.Fmt.Int(lastPoints);
-            canvas.Text(screenX, screenY, pointsText, config.COLOR_WHITE);
+            var floatOffset = pointsTween.ValueI64;
+            canvas.Text(screenX, screenY - floatOffset, pointsText, config.COLOR_WHITE);
         }
     }
 }
