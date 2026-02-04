@@ -21,32 +21,34 @@ bind "./config";
 bind "./utils";
 bind "./game";
 
+bind Viper.Terminal;
+
 func start() {
-    Viper.Terminal.Say("===========================================");
-    Viper.Terminal.Say("CENTIPEDE - A Zia/Viper Graphical Demo");
-    Viper.Terminal.Say("===========================================");
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("Demonstrating new game development features:");
-    Viper.Terminal.Say("  - Viper.Graphics.Canvas (graphical rendering)");
-    Viper.Terminal.Say("  - Viper.Game.Grid2D (2D tile storage)");
-    Viper.Terminal.Say("  - Viper.Game.Timer (frame-based timers)");
-    Viper.Terminal.Say("  - Viper.Game.SmoothValue (animated counters)");
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("Controls:");
-    Viper.Terminal.Say("  Arrow Keys / WASD - Move");
-    Viper.Terminal.Say("  SPACE             - Fire");
-    Viper.Terminal.Say("  ENTER             - Start");
-    Viper.Terminal.Say("  ESC               - Quit");
-    Viper.Terminal.Say("  P                 - Pause");
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("Loading...");
+    Say("===========================================");
+    Say("CENTIPEDE - A Zia/Viper Graphical Demo");
+    Say("===========================================");
+    Say("");
+    Say("Demonstrating new game development features:");
+    Say("  - Viper.Graphics.Canvas (graphical rendering)");
+    Say("  - Viper.Game.Grid2D (2D tile storage)");
+    Say("  - Viper.Game.Timer (frame-based timers)");
+    Say("  - Viper.Game.SmoothValue (animated counters)");
+    Say("");
+    Say("Controls:");
+    Say("  Arrow Keys / WASD - Move");
+    Say("  SPACE             - Fire");
+    Say("  ENTER             - Start");
+    Say("  ESC               - Quit");
+    Say("  P                 - Pause");
+    Say("");
+    Say("Loading...");
 
     var theGame = new game.Game();
 
-    Viper.Terminal.Say("Starting game!");
+    Say("Starting game!");
     theGame.run();
 
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("Thanks for playing!");
+    Say("");
+    Say("Thanks for playing!");
 }
 

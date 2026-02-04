@@ -6,6 +6,12 @@ module simple_starfield;
 // Uses integer math only to work around Viperlang type coercion bugs.
 // ============================================================================
 
+bind Viper.Random;
+bind Viper.Graphics;
+bind Viper.Graphics.Canvas;
+bind Viper.Graphics.Color;
+bind Viper.Time;
+
 // Color constants
 var BLACK: Integer;
 var WHITE: Integer;
@@ -13,10 +19,10 @@ var CYAN: Integer;
 var GRAY: Integer;
 
 func initColors() {
-    BLACK = Viper.Graphics.Color.RGB(0, 0, 0);
-    WHITE = Viper.Graphics.Color.RGB(255, 255, 255);
-    CYAN = Viper.Graphics.Color.RGB(0, 255, 255);
-    GRAY = Viper.Graphics.Color.RGB(128, 128, 128);
+    BLACK = RGB(0, 0, 0);
+    WHITE = RGB(255, 255, 255);
+    CYAN = RGB(0, 255, 255);
+    GRAY = RGB(128, 128, 128);
 }
 
 // Fade a color by a percentage (0 = black, 100 = original)
@@ -39,7 +45,7 @@ func fadeColorInt(color: Integer, percent: Integer) -> Integer {
     if gi > 255 { gi = 255; }
     if bi > 255 { bi = 255; }
 
-    return Viper.Graphics.Color.RGB(ri, gi, bi);
+    return RGB(ri, gi, bi);
 }
 
 // Star entity using scaled integers (multiply coords by 1000 for precision)
@@ -58,12 +64,12 @@ entity Star {
 
     expose func reset() {
         // Random position: -1000 to +1000 (scaled by 1000 = -1.0 to +1.0)
-        x = Viper.Random.NextInt(2000000) - 1000000;
-        y = Viper.Random.NextInt(2000000) - 1000000;
-        z = 1 + Viper.Random.NextInt(maxZ);
-        speed = 50 + Viper.Random.NextInt(150);
-        var brightness = 180 + Viper.Random.NextInt(76);
-        color = Viper.Graphics.Color.RGB(brightness, brightness, brightness);
+        x = NextInt(2000000) - 1000000;
+        y = NextInt(2000000) - 1000000;
+        z = 1 + NextInt(maxZ);
+        speed = 50 + NextInt(150);
+        var brightness = 180 + NextInt(76);
+        color = RGB(brightness, brightness, brightness);
     }
 
     expose func update(deltaZ: Integer) {
@@ -74,7 +80,7 @@ entity Star {
         }
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas, centerX: Integer, centerY: Integer, fov: Integer, width: Integer, height: Integer) {
+    expose func draw(canvas: Canvas, centerX: Integer, centerY: Integer, fov: Integer, width: Integer, height: Integer) {
         if z <= 0 {
             return;
         }
@@ -158,7 +164,7 @@ entity Starfield {
         }
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas, width: Integer, height: Integer) {
+    expose func draw(canvas: Canvas, width: Integer, height: Integer) {
         var centerX = width / 2;
         var centerY = height / 2;
 
@@ -176,7 +182,7 @@ entity Starfield {
 }
 
 // Run the starfield demo
-func run(canvas: Viper.Graphics.Canvas, width: Integer, height: Integer) {
+func run(canvas: Canvas, width: Integer, height: Integer) {
     initColors();
 
     var field = new Starfield();
@@ -247,6 +253,6 @@ func run(canvas: Viper.Graphics.Canvas, width: Integer, height: Integer) {
 
 // Main entry point
 func main() {
-    var canvas = Viper.Graphics.Canvas.New("Viper Starfield Demo", 800, 600);
+    var canvas = Canvas.New("Viper Starfield Demo", 800, 600);
     run(canvas, 800, 600);
 }

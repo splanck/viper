@@ -10,6 +10,9 @@ module particle;
 bind "./config";
 bind "./utils";
 
+bind Viper.Graphics;
+bind Viper.Random;
+
 // =============================================================================
 // PARTICLE ENTITY - Individual particle with velocity and lifetime
 // =============================================================================
@@ -80,7 +83,7 @@ entity Particle {
         }
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         if !active {
             return;
         }
@@ -125,10 +128,10 @@ entity ParticleSystem {
         for p in particles {
             if !p.isActive() && spawned < count {
                 // Random velocity in all directions
-                var vx = Viper.Random.NextInt(12) - 6;
-                var vy = Viper.Random.NextInt(12) - 8;  // Bias upward
-                var life = 15 + Viper.Random.NextInt(15);
-                var size = 2 + Viper.Random.NextInt(3);
+                var vx = NextInt(12) - 6;
+                var vy = NextInt(12) - 8;  // Bias upward
+                var life = 15 + NextInt(15);
+                var size = 2 + NextInt(3);
                 p.spawn(x, y, vx, vy, life, color, size);
                 spawned = spawned + 1;
             }
@@ -155,8 +158,8 @@ entity ParticleSystem {
     expose func spawnSpark(x: Integer, y: Integer, color: Integer) {
         for p in particles {
             if !p.isActive() {
-                var vx = Viper.Random.NextInt(6) - 3;
-                var vy = Viper.Random.NextInt(4) - 6;
+                var vx = NextInt(6) - 3;
+                var vy = NextInt(4) - 6;
                 p.spawn(x, y, vx, vy, 10, color, 2);
                 return;
             }
@@ -168,10 +171,10 @@ entity ParticleSystem {
         var spawned = 0;
         for p in particles {
             if !p.isActive() && spawned < 3 {
-                var vx = Viper.Random.NextInt(8) - 4;
-                var vy = Viper.Random.NextInt(6) - 4;
+                var vx = NextInt(8) - 4;
+                var vy = NextInt(6) - 4;
                 var col = config.COLOR_MUSHROOM_2;
-                if Viper.Random.NextInt(2) == 0 {
+                if NextInt(2) == 0 {
                     col = config.COLOR_MUSHROOM_3;
                 }
                 p.spawn(x, y, vx, vy, 12, col, 2);
@@ -218,7 +221,7 @@ entity ParticleSystem {
         }
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         for p in particles {
             if p.isActive() {
                 p.draw(canvas);

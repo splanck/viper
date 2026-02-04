@@ -2,6 +2,8 @@
 // Provides URL routing and query string parsing for dynamic content
 module router;
 
+bind Viper.String;
+
 // ============================================================================
 // ROUTE IDs
 // ============================================================================
@@ -34,14 +36,14 @@ func router_getCount() -> Integer {
 // Extract query string from path (everything after ?)
 // Returns empty string if no query string
 func router_extractQuery(fullPath: String) -> String {
-    var len = Viper.String.Length(fullPath);
+    var len = String.Length(fullPath);
     var i = 0;
 
     while i < len {
-        var ch = Viper.String.Substring(fullPath, i, 1);
+        var ch = String.Substring(fullPath, i, 1);
         if ch == "?" {
             if i + 1 < len {
-                return Viper.String.Substring(fullPath, i + 1, len - i - 1);
+                return String.Substring(fullPath, i + 1, len - i - 1);
             }
             return "";
         }
@@ -53,13 +55,13 @@ func router_extractQuery(fullPath: String) -> String {
 
 // Extract path portion (everything before ?)
 func router_extractPath(fullPath: String) -> String {
-    var len = Viper.String.Length(fullPath);
+    var len = String.Length(fullPath);
     var i = 0;
 
     while i < len {
-        var ch = Viper.String.Substring(fullPath, i, 1);
+        var ch = String.Substring(fullPath, i, 1);
         if ch == "?" {
-            return Viper.String.Substring(fullPath, 0, i);
+            return String.Substring(fullPath, 0, i);
         }
         i = i + 1;
     }
@@ -70,8 +72,8 @@ func router_extractPath(fullPath: String) -> String {
 // Get a query parameter value by name
 // Returns empty string if not found
 func router_getQueryParam(query: String, name: String) -> String {
-    var queryLen = Viper.String.Length(query);
-    var nameLen = Viper.String.Length(name);
+    var queryLen = String.Length(query);
+    var nameLen = String.Length(name);
 
     if queryLen == 0 || nameLen == 0 {
         return "";
@@ -82,7 +84,7 @@ func router_getQueryParam(query: String, name: String) -> String {
         // Check if we're at start of a parameter (start of string or after &)
         var atStart = i == 0;
         if i > 0 {
-            var prevCh = Viper.String.Substring(query, i - 1, 1);
+            var prevCh = String.Substring(query, i - 1, 1);
             atStart = prevCh == "&";
         }
 
@@ -90,8 +92,8 @@ func router_getQueryParam(query: String, name: String) -> String {
             // Check if this parameter matches our name
             var remaining = queryLen - i;
             if remaining >= nameLen + 1 {
-                var potentialName = Viper.String.Substring(query, i, nameLen);
-                var nextCh = Viper.String.Substring(query, i + nameLen, 1);
+                var potentialName = String.Substring(query, i, nameLen);
+                var nextCh = String.Substring(query, i + nameLen, 1);
 
                 if potentialName == name && nextCh == "=" {
                     // Found the parameter, extract value until & or end
@@ -99,7 +101,7 @@ func router_getQueryParam(query: String, name: String) -> String {
                     var valueEnd = valueStart;
 
                     while valueEnd < queryLen {
-                        var ch = Viper.String.Substring(query, valueEnd, 1);
+                        var ch = String.Substring(query, valueEnd, 1);
                         if ch == "&" {
                             break;
                         }
@@ -107,7 +109,7 @@ func router_getQueryParam(query: String, name: String) -> String {
                     }
 
                     if valueEnd > valueStart {
-                        return Viper.String.Substring(query, valueStart, valueEnd - valueStart);
+                        return String.Substring(query, valueStart, valueEnd - valueStart);
                     }
                     return "";
                 }

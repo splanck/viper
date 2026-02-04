@@ -3,6 +3,8 @@
 
 module token;
 
+bind Viper.Fmt;
+
 //=============================================================================
 // TOKEN TYPE CONSTANTS
 //=============================================================================
@@ -194,8 +196,8 @@ entity Token {
     }
 
     expose func toString() -> String {
-        return "Token(" + Viper.Fmt.Int(kind) + ", '" + text + "', " +
-               Viper.Fmt.Int(line) + ":" + Viper.Fmt.Int(column) + ")";
+        return "Token(" + Fmt.Int(kind) + ", '" + text + "', " +
+               Fmt.Int(line) + ":" + Fmt.Int(column) + ")";
     }
 }
 
@@ -237,5 +239,5 @@ func tokenTypeName(kind: Integer) -> String {
     if (kind == TK_COMMA) { return "COMMA"; }
     if (kind == TK_SEMICOLON) { return "SEMICOLON"; }
     if (kind == TK_DOT) { return "DOT"; }
-    return "UNKNOWN(" + Viper.Fmt.Int(kind) + ")";
+    return "UNKNOWN(" + Fmt.Int(kind) + ")";
 }

@@ -3,6 +3,9 @@
 
 module test_advanced;
 
+bind Viper.Terminal;
+bind Viper.Fmt;
+
 bind "./executor";
 
 //=============================================================================
@@ -14,10 +17,10 @@ Integer failed = 0;
 
 func assertTrue(cond: Boolean, desc: String) {
     if cond {
-        Viper.Terminal.Say("  PASS: " + desc);
+        Terminal.Say("  PASS: " + desc);
         passed = passed + 1;
     } else {
-        Viper.Terminal.Say("  FAIL: " + desc);
+        Terminal.Say("  FAIL: " + desc);
         failed = failed + 1;
     }
 }
@@ -31,7 +34,7 @@ func assertFalse(cond: Boolean, desc: String) {
 //=============================================================================
 
 func testUnion() {
-    Viper.Terminal.Say("Testing UNION...");
+    Terminal.Say("Testing UNION...");
     var exec = new Executor();
     exec.init();
 
@@ -50,7 +53,7 @@ func testUnion() {
 }
 
 func testUnionAll() {
-    Viper.Terminal.Say("Testing UNION ALL...");
+    Terminal.Say("Testing UNION ALL...");
     var exec = new Executor();
     exec.init();
 
@@ -69,7 +72,7 @@ func testUnionAll() {
 }
 
 func testCaseExpression() {
-    Viper.Terminal.Say("Testing CASE expressions...");
+    Terminal.Say("Testing CASE expressions...");
     var exec = new Executor();
     exec.init();
 
@@ -106,7 +109,7 @@ func testCaseExpression() {
 }
 
 func testCaseWithoutElse() {
-    Viper.Terminal.Say("Testing CASE without ELSE...");
+    Terminal.Say("Testing CASE without ELSE...");
     var exec = new Executor();
     exec.init();
 
@@ -128,7 +131,7 @@ func testCaseWithoutElse() {
 }
 
 func testCaseInWhere() {
-    Viper.Terminal.Say("Testing CASE in WHERE clause...");
+    Terminal.Say("Testing CASE in WHERE clause...");
     var exec = new Executor();
     exec.init();
 
@@ -148,7 +151,7 @@ func testCaseInWhere() {
 //=============================================================================
 
 func testExcept() {
-    Viper.Terminal.Say("Testing EXCEPT...");
+    Terminal.Say("Testing EXCEPT...");
     var exec = new Executor();
     exec.init();
 
@@ -168,7 +171,7 @@ func testExcept() {
 }
 
 func testExceptWithDuplicates() {
-    Viper.Terminal.Say("Testing EXCEPT with duplicates...");
+    Terminal.Say("Testing EXCEPT with duplicates...");
     var exec = new Executor();
     exec.init();
 
@@ -192,7 +195,7 @@ func testExceptWithDuplicates() {
 //=============================================================================
 
 func testIntersect() {
-    Viper.Terminal.Say("Testing INTERSECT...");
+    Terminal.Say("Testing INTERSECT...");
     var exec = new Executor();
     exec.init();
 
@@ -213,7 +216,7 @@ func testIntersect() {
 }
 
 func testIntersectWithDuplicates() {
-    Viper.Terminal.Say("Testing INTERSECT with duplicates...");
+    Terminal.Say("Testing INTERSECT with duplicates...");
     var exec = new Executor();
     exec.init();
 
@@ -233,7 +236,7 @@ func testIntersectWithDuplicates() {
 }
 
 func testIntersectNoMatch() {
-    Viper.Terminal.Say("Testing INTERSECT with no matching rows...");
+    Terminal.Say("Testing INTERSECT with no matching rows...");
     var exec = new Executor();
     exec.init();
 
@@ -254,8 +257,8 @@ func testIntersectNoMatch() {
 //=============================================================================
 
 func start() {
-    Viper.Terminal.Say("=== Phase 11: Advanced Features Tests ===");
-    Viper.Terminal.Say("");
+    Terminal.Say("=== Phase 11: Advanced Features Tests ===");
+    Terminal.Say("");
 
     testUnion();
     testUnionAll();
@@ -270,8 +273,8 @@ func start() {
     testIntersectWithDuplicates();
     testIntersectNoMatch();
 
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("=== Results ===");
-    Viper.Terminal.Say("Passed: " + Viper.Fmt.Int(passed));
-    Viper.Terminal.Say("Failed: " + Viper.Fmt.Int(failed));
+    Terminal.Say("");
+    Terminal.Say("=== Results ===");
+    Terminal.Say("Passed: " + Fmt.Int(passed));
+    Terminal.Say("Failed: " + Fmt.Int(failed));
 }

@@ -15,6 +15,8 @@
 
 module main;
 
+bind Viper.Terminal;
+
 // Only need to bind direct dependencies - transitive bindings are now resolved
 bind "./config";
 bind "./game";
@@ -24,15 +26,15 @@ bind "./game";
 // =============================================================================
 
 func start() {
-    Viper.Terminal.Say("PAC-MAN - Modular Version");
-    Viper.Terminal.Say("Loading...");
+    Say("PAC-MAN - Modular Version");
+    Say("Loading...");
 
     var theGame = new game.Game();
     theGame.init();
 
-    Viper.Terminal.Say("Starting game!");
+    Say("Starting game!");
     theGame.run();
 
-    Viper.Terminal.Say("Thanks for playing!");
+    Say("Thanks for playing!");
 }
 

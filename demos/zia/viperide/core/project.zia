@@ -1,5 +1,8 @@
 module project;
 
+bind Path = Viper.IO.Path;
+bind Str = Viper.String;
+
 // ============================================================================
 // Project — represents an open workspace/folder
 // ============================================================================
@@ -27,11 +30,11 @@ entity Project {
     expose func Open(path: String) {
         rootPath = path;
         // Extract folder name from path
-        name = Viper.IO.Path.Name(path);
+        name = Path.Name(path);
         // If path ends in separator, Name returns empty, so try one level up
         if name == "" {
-            var trimmed = Viper.String.Left(path, Viper.String.Length(path) - 1);
-            name = Viper.IO.Path.Name(trimmed);
+            var trimmed = Str.Left(path, Str.Length(path) - 1);
+            name = Path.Name(trimmed);
         }
         isOpen = true;
     }

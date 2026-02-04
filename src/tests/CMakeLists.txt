@@ -800,3 +800,29 @@ foreach (test_name IN LISTS ZIA_LANG_TESTS)
                 TIMEOUT 30)
     endif ()
 endforeach ()
+
+# =============================================================================
+# Zia Namespace Bind Tests
+# These tests verify the bind Viper.* namespace import feature.
+# Each test outputs "RESULT: ok" on success.
+# =============================================================================
+set(ZIA_BIND_NAMESPACE_TESTS_DIR "${CMAKE_SOURCE_DIR}/tests/zia/bind_namespace")
+set(ZIA_BIND_NAMESPACE_TESTS
+        test_basic
+        test_alias
+        test_selective
+        test_new
+)
+
+foreach (test_name IN LISTS ZIA_BIND_NAMESPACE_TESTS)
+    set(test_file "${ZIA_BIND_NAMESPACE_TESTS_DIR}/${test_name}.zia")
+    if (EXISTS "${test_file}")
+        add_test(NAME zia_bind_namespace_${test_name}
+                COMMAND $<TARGET_FILE:zia> "${test_file}"
+                WORKING_DIRECTORY "${ZIA_BIND_NAMESPACE_TESTS_DIR}")
+        set_tests_properties(zia_bind_namespace_${test_name} PROPERTIES
+                PASS_REGULAR_EXPRESSION "RESULT: ok"
+                LABELS "zia;namespace"
+                TIMEOUT 30)
+    endif ()
+endforeach ()

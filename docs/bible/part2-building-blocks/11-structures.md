@@ -78,10 +78,12 @@ Nothing enforces that points have exactly two coordinates, or that `pointX` and 
 Every function that works with a point needs two parameters:
 
 ```rust
+bind Viper.Math;
+
 func distance(x1: Number, y1: Number, x2: Number, y2: Number) -> Number {
     var dx = x2 - x1;
     var dy = y2 - y1;
-    return Viper.Math.sqrt(dx * dx + dy * dy);
+    return sqrt(dx * dx + dy * dy);
 }
 ```
 
@@ -162,8 +164,10 @@ var position = Point { x: 10.5, y: 20.3 };
 Each variable holds a complete point — both coordinates bundled together. You access individual fields with dot notation:
 
 ```rust
-Viper.Terminal.Say(position.x);  // 10.5
-Viper.Terminal.Say(position.y);  // 20.3
+bind Viper.Terminal;
+
+Say(position.x);  // 10.5
+Say(position.y);  // 20.3
 ```
 
 And you can modify fields:
@@ -336,10 +340,12 @@ var book2 = Book { author: "B", price: 9.99, title: "A", pageCount: 100 };
 Use dot notation to read field values:
 
 ```rust
-Viper.Terminal.Say(myBook.title);      // "The Viper Programming Guide"
-Viper.Terminal.Say(myBook.author);     // "Jane Developer"
-Viper.Terminal.Say(myBook.pageCount);  // 450
-Viper.Terminal.Say(myBook.price);      // 29.99
+bind Viper.Terminal;
+
+Say(myBook.title);      // "The Viper Programming Guide"
+Say(myBook.author);     // "Jane Developer"
+Say(myBook.pageCount);  // 450
+Say(myBook.price);      // 29.99
 ```
 
 ### Modifying Fields
@@ -370,8 +376,10 @@ var p2 = p1;  // p2 is a COPY of p1
 
 p2.x = 99.0;  // Modify p2
 
-Viper.Terminal.Say(p1.x);  // 10.0 - p1 is unchanged!
-Viper.Terminal.Say(p2.x);  // 99.0 - only p2 changed
+bind Viper.Terminal;
+
+Say(p1.x);  // 10.0 - p1 is unchanged!
+Say(p2.x);  // 99.0 - only p2 changed
 ```
 
 This is different from how some languages handle objects, where assignment creates a reference (an alias) to the same underlying data. With value semantics, each variable has its own independent copy.
@@ -397,14 +405,16 @@ Original p1:          After p2 = p1:           After p2.x = 99:
 When you pass a structure to a function, the function receives a copy:
 
 ```rust
+bind Viper.Terminal;
+
 func tryToModify(point: Point) {
     point.x = 999.0;  // Modifies the local copy
-    Viper.Terminal.Say("Inside function: " + point.x);  // 999.0
+    Say("Inside function: " + point.x);  // 999.0
 }
 
 var original = Point { x: 10.0, y: 20.0 };
 tryToModify(original);
-Viper.Terminal.Say("After function: " + original.x);  // 10.0 - unchanged!
+Say("After function: " + original.x);  // 10.0 - unchanged!
 ```
 
 The function can modify its copy all it wants, but the original in the calling code is unaffected. This is often what you want — it prevents functions from accidentally corrupting your data.
@@ -414,6 +424,8 @@ The function can modify its copy all it wants, but the original in the calling c
 If a function needs to modify a structure and have the caller see the changes, return the modified version:
 
 ```rust
+bind Viper.Terminal;
+
 func moveRight(point: Point, amount: Number) -> Point {
     point.x = point.x + amount;
     return point;
@@ -421,7 +433,7 @@ func moveRight(point: Point, amount: Number) -> Point {
 
 var p = Point { x: 10.0, y: 20.0 };
 p = moveRight(p, 5.0);  // Replace p with the returned copy
-Viper.Terminal.Say(p.x);  // 15.0
+Say(p.x);  // 15.0
 ```
 
 This pattern is explicit: "give me a modified copy" rather than "secretly change my data."
@@ -466,9 +478,11 @@ value Rectangle {
 Now you can call these methods on any `Rectangle`:
 
 ```rust
+bind Viper.Terminal;
+
 var rect = Rectangle { width: 10.0, height: 5.0 };
-Viper.Terminal.Say(rect.area());       // 50.0
-Viper.Terminal.Say(rect.perimeter());  // 30.0
+Say(rect.area());       // 50.0
+Say(rect.perimeter());  // 30.0
 ```
 
 ### The `self` Keyword
@@ -516,6 +530,9 @@ Methods have advantages:
 Methods can have parameters in addition to the implicit `self`:
 
 ```rust
+bind Viper.Math;
+bind Viper.Terminal;
+
 value Point {
     x: Number;
     y: Number;
@@ -523,7 +540,7 @@ value Point {
     func distance(other: Point) -> Number {
         var dx = other.x - self.x;
         var dy = other.y - self.y;
-        return Viper.Math.sqrt(dx * dx + dy * dy);
+        return sqrt(dx * dx + dy * dy);
     }
 
     func midpoint(other: Point) -> Point {
@@ -537,11 +554,11 @@ value Point {
 var a = Point { x: 0.0, y: 0.0 };
 var b = Point { x: 3.0, y: 4.0 };
 
-Viper.Terminal.Say(a.distance(b));  // 5.0 (3-4-5 right triangle)
+Say(a.distance(b));  // 5.0 (3-4-5 right triangle)
 
 var mid = a.midpoint(b);
-Viper.Terminal.Say(mid.x);  // 1.5
-Viper.Terminal.Say(mid.y);  // 2.0
+Say(mid.x);  // 1.5
+Say(mid.y);  // 2.0
 ```
 
 ### Methods Can Modify `self`
@@ -565,17 +582,19 @@ value Counter {
     }
 }
 
+bind Viper.Terminal;
+
 var c = Counter { count: 0 };
 c.increment();
 c.increment();
 c.increment();
-Viper.Terminal.Say(c.count);  // 3
+Say(c.count);  // 3
 
 c.add(10);
-Viper.Terminal.Say(c.count);  // 13
+Say(c.count);  // 13
 
 c.reset();
-Viper.Terminal.Say(c.count);  // 0
+Say(c.count);  // 0
 ```
 
 ### Methods Can Return New Instances
@@ -605,11 +624,13 @@ value Point {
 var p = Point { x: 2.0, y: 3.0 };
 var v = Point { x: 1.0, y: 1.0 };
 
+bind Viper.Terminal;
+
 var moved = p.add(v);  // New point at (3.0, 4.0)
 var bigger = p.scale(2.0);  // New point at (4.0, 6.0)
 
 // Original p is unchanged!
-Viper.Terminal.Say(p.x);  // 2.0
+Say(p.x);  // 2.0
 ```
 
 This style keeps the original value intact, which can prevent bugs and make code easier to reason about.
@@ -657,9 +678,11 @@ var alice = Person {
 Access nested fields with chained dots:
 
 ```rust
-Viper.Terminal.Say(alice.name);           // "Alice"
-Viper.Terminal.Say(alice.home.city);      // "Springfield"
-Viper.Terminal.Say(alice.home.zipCode);   // "62701"
+bind Viper.Terminal;
+
+Say(alice.name);           // "Alice"
+Say(alice.home.city);      // "Springfield"
+Say(alice.home.zipCode);   // "62701"
 ```
 
 ### Why Nest?
@@ -677,6 +700,8 @@ Nesting provides several benefits:
 Let's model a game with nested structures:
 
 ```rust
+bind Viper.Math;
+
 value Vec2 {
     x: Number;
     y: Number;
@@ -688,7 +713,7 @@ value Vec2 {
     func distance(other: Vec2) -> Number {
         var dx = other.x - self.x;
         var dy = other.y - self.y;
-        return Viper.Math.sqrt(dx * dx + dy * dy);
+        return sqrt(dx * dx + dy * dy);
     }
 }
 
@@ -734,9 +759,10 @@ value Player {
     }
 
     func takeDamage(amount: Integer) {
+        bind Viper.Terminal;
         self.health.damage(amount);
         if self.health.isDead() {
-            Viper.Terminal.Say(self.name + " has been defeated!");
+            Say(self.name + " has been defeated!");
         }
     }
 }
@@ -752,10 +778,12 @@ var hero = Player {
     score: 0
 };
 
+bind Viper.Terminal;
+
 // Use nested methods
 hero.move(Vec2 { x: 5.0, y: 3.0 });
 hero.takeDamage(25);
-Viper.Terminal.Say(hero.health.percentage());  // 75.0
+Say(hero.health.percentage());  // 75.0
 ```
 
 ### Modifying Nested Fields
@@ -966,6 +994,9 @@ Let's see structures in action with several complete examples.
 ### Example: Playing Cards
 
 ```rust
+bind Viper.Convert;
+bind Viper.Terminal;
+
 value Card {
     suit: String;    // "Hearts", "Diamonds", "Clubs", "Spades"
     rank: String;    // "2"-"10", "J", "Q", "K", "A"
@@ -980,7 +1011,7 @@ value Card {
         } else if self.rank == "K" || self.rank == "Q" || self.rank == "J" {
             return 10;
         } else {
-            return Viper.Convert.ToInt(self.rank);
+            return ToInt(self.rank);
         }
     }
 }
@@ -1001,17 +1032,20 @@ func createDeck() -> [Card] {
 
 func start() {
     var deck = createDeck();
-    Viper.Terminal.Say("Deck has " + deck.length + " cards");  // 52
+    Say("Deck has " + deck.length + " cards");  // 52
 
     // Show some cards
-    Viper.Terminal.Say(deck[0].display());   // "2 of Hearts"
-    Viper.Terminal.Say(deck[51].display());  // "A of Spades"
+    Say(deck[0].display());   // "2 of Hearts"
+    Say(deck[51].display());  // "A of Spades"
 }
 ```
 
 ### Example: 2D Geometry
 
 ```rust
+bind Viper.Math;
+bind Viper.Terminal;
+
 value Point {
     x: Number;
     y: Number;
@@ -1023,7 +1057,7 @@ value Point {
     func distance(other: Point) -> Number {
         var dx = other.x - self.x;
         var dy = other.y - self.y;
-        return Viper.Math.sqrt(dx * dx + dy * dy);
+        return sqrt(dx * dx + dy * dy);
     }
 
     func midpoint(other: Point) -> Point {
@@ -1076,12 +1110,12 @@ func start() {
         height: 50.0
     };
 
-    Viper.Terminal.Say("Area: " + rect.area());         // 5000.0
-    Viper.Terminal.Say("Center: " + rect.center().toString());  // (60.0, 45.0)
+    Say("Area: " + rect.area());         // 5000.0
+    Say("Center: " + rect.center().toString());  // (60.0, 45.0)
 
     var testPoint = Point { x: 50.0, y: 40.0 };
     if rect.contains(testPoint) {
-        Viper.Terminal.Say("Point is inside rectangle");
+        Say("Point is inside rectangle");
     }
 }
 ```
@@ -1089,6 +1123,8 @@ func start() {
 ### Example: Student Grades
 
 ```rust
+bind Viper.Terminal;
+
 value Student {
     name: String;
     grades: [Integer];
@@ -1149,12 +1185,12 @@ value Student {
     }
 
     func report() {
-        Viper.Terminal.Say("Student: " + self.name);
-        Viper.Terminal.Say("  Grades: " + self.grades.length);
-        Viper.Terminal.Say("  Average: " + self.average());
-        Viper.Terminal.Say("  Highest: " + self.highest());
-        Viper.Terminal.Say("  Lowest: " + self.lowest());
-        Viper.Terminal.Say("  Letter: " + self.letterGrade());
+        Say("Student: " + self.name);
+        Say("  Grades: " + self.grades.length);
+        Say("  Average: " + self.average());
+        Say("  Highest: " + self.highest());
+        Say("  Lowest: " + self.lowest());
+        Say("  Letter: " + self.letterGrade());
     }
 }
 
@@ -1163,13 +1199,13 @@ func start() {
     var bob = Student { name: "Bob", grades: [78, 82, 75, 80, 79] };
 
     alice.report();
-    Viper.Terminal.Say("");
+    Say("");
     bob.report();
 
     // Add a new grade
     bob.addGrade(90);
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("After Bob's new test:");
+    Say("");
+    Say("After Bob's new test:");
     bob.report();
 }
 ```
@@ -1177,6 +1213,8 @@ func start() {
 ### Example: Simple Inventory System
 
 ```rust
+bind Viper.Terminal;
+
 value Item {
     name: String;
     weight: Number;
@@ -1220,16 +1258,16 @@ value Inventory {
     }
 
     func display() {
-        Viper.Terminal.Say("=== Inventory ===");
+        Say("=== Inventory ===");
         if self.items.length == 0 {
-            Viper.Terminal.Say("  (empty)");
+            Say("  (empty)");
         } else {
             for item in self.items {
-                Viper.Terminal.Say("  - " + item.toString());
+                Say("  - " + item.toString());
             }
         }
-        Viper.Terminal.Say("Weight: " + self.currentWeight() + " / " + self.maxWeight);
-        Viper.Terminal.Say("Value: " + self.totalValue());
+        Say("Weight: " + self.currentWeight() + " / " + self.maxWeight);
+        Say("Value: " + self.totalValue());
     }
 }
 
@@ -1252,11 +1290,11 @@ func start() {
 
     backpack.display();
 
-    Viper.Terminal.Say("");
+    Say("");
     if backpack.add(armor) {
-        Viper.Terminal.Say("Added armor!");
+        Say("Added armor!");
     } else {
-        Viper.Terminal.Say("Can't add armor - too heavy!");
+        Say("Can't add armor - too heavy!");
     }
 }
 ```
@@ -1269,6 +1307,9 @@ Let's put everything together in a more complex game example:
 
 ```rust
 module GameDemo;
+
+bind Viper.Math;
+bind Viper.Terminal;
 
 value Vec2 {
     x: Number;
@@ -1287,7 +1328,7 @@ value Vec2 {
     }
 
     func length() -> Number {
-        return Viper.Math.sqrt(self.x * self.x + self.y * self.y);
+        return sqrt(self.x * self.x + self.y * self.y);
     }
 
     func distance(other: Vec2) -> Number {
@@ -1348,20 +1389,20 @@ value Player {
         var damage = target.stats.takeDamage(self.stats.attack);
         if !target.stats.isAlive() {
             self.score = self.score + target.pointValue;
-            Viper.Terminal.Say(self.name + " defeated " + target.name + "!");
-            Viper.Terminal.Say("  +" + target.pointValue + " points");
+            Say(self.name + " defeated " + target.name + "!");
+            Say("  +" + target.pointValue + " points");
         }
         return damage;
     }
 
     func statusReport() {
-        Viper.Terminal.Say("=== " + self.name + " ===");
-        Viper.Terminal.Say("  Level: " + self.level);
-        Viper.Terminal.Say("  Position: " + self.position.toString());
-        Viper.Terminal.Say("  Health: " + self.stats.health + "/" + self.stats.maxHealth);
-        Viper.Terminal.Say("  Attack: " + self.stats.attack);
-        Viper.Terminal.Say("  Defense: " + self.stats.defense);
-        Viper.Terminal.Say("  Score: " + self.score);
+        Say("=== " + self.name + " ===");
+        Say("  Level: " + self.level);
+        Say("  Position: " + self.position.toString());
+        Say("  Health: " + self.stats.health + "/" + self.stats.maxHealth);
+        Say("  Attack: " + self.stats.attack);
+        Say("  Defense: " + self.stats.defense);
+        Say("  Score: " + self.score);
     }
 }
 
@@ -1428,8 +1469,8 @@ func createOrc(x: Number, y: Number) -> Enemy {
 }
 
 func start() {
-    Viper.Terminal.Say("=== Adventure Game Demo ===");
-    Viper.Terminal.Say("");
+    Say("=== Adventure Game Demo ===");
+    Say("");
 
     var hero = createPlayer("Hero");
     var goblin = createGoblin(3.0, 0.0);
@@ -1437,33 +1478,33 @@ func start() {
 
     hero.statusReport();
 
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("A goblin appears!");
+    Say("");
+    Say("A goblin appears!");
 
     // Move toward goblin
     hero.move(Vec2 { x: 2.0, y: 0.0 });
-    Viper.Terminal.Say("Hero moves to " + hero.position.toString());
-    Viper.Terminal.Say("Distance to goblin: " + goblin.distanceTo(hero));
+    Say("Hero moves to " + hero.position.toString());
+    Say("Distance to goblin: " + goblin.distanceTo(hero));
 
     // Combat
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("Combat begins!");
+    Say("");
+    Say("Combat begins!");
 
     while hero.stats.isAlive() && goblin.stats.isAlive() {
         // Hero attacks
         var damage = hero.attack(goblin);
-        Viper.Terminal.Say("Hero deals " + damage + " damage to Goblin");
+        Say("Hero deals " + damage + " damage to Goblin");
 
         if goblin.stats.isAlive() {
             // Goblin attacks back
             damage = goblin.attack(hero);
-            Viper.Terminal.Say("Goblin deals " + damage + " damage to Hero");
+            Say("Goblin deals " + damage + " damage to Hero");
         }
 
-        Viper.Terminal.Say("  Hero HP: " + hero.stats.health + " | Goblin HP: " + goblin.stats.health);
+        Say("  Hero HP: " + hero.stats.health + " | Goblin HP: " + goblin.stats.health);
     }
 
-    Viper.Terminal.Say("");
+    Say("");
     hero.statusReport();
 }
 ```
@@ -1481,6 +1522,9 @@ This example demonstrates:
 
 **Zia**
 ```rust
+bind Viper.Math;
+bind Viper.Terminal;
+
 value Point {
     x: Number;
     y: Number;
@@ -1488,12 +1532,12 @@ value Point {
     func distance(other: Point) -> Number {
         var dx = other.x - self.x;
         var dy = other.y - self.y;
-        return Viper.Math.sqrt(dx * dx + dy * dy);
+        return sqrt(dx * dx + dy * dy);
     }
 }
 
 var p = Point { x: 3.0, y: 4.0 };
-Viper.Terminal.Say(p.x);
+Say(p.x);
 ```
 
 **BASIC**
@@ -1554,14 +1598,16 @@ For now, structures handle most cases beautifully. They're simpler, safer, and s
 Create instances with validated or computed values:
 
 ```rust
+bind Viper.Math;
+
 func createPoint(x: Number, y: Number) -> Point {
     return Point { x: x, y: y };
 }
 
 func pointFromAngle(angle: Number, distance: Number) -> Point {
     return Point {
-        x: distance * Viper.Math.cos(angle),
-        y: distance * Viper.Math.sin(angle)
+        x: distance * cos(angle),
+        y: distance * sin(angle)
     };
 }
 ```
@@ -1635,6 +1681,8 @@ func pointsNearlyEqual(a: Point, b: Point, tolerance: Number) -> Boolean {
 ### Converting to String
 
 ```rust
+bind Viper.Terminal;
+
 value Person {
     name: String;
     age: Integer;
@@ -1645,7 +1693,7 @@ value Person {
 }
 
 var p = Person { name: "Alice", age: 30 };
-Viper.Terminal.Say(p.toString());  // "Alice (age 30)"
+Say(p.toString());  // "Alice (age 30)"
 ```
 
 ---
@@ -1674,18 +1722,22 @@ p.x = 5.0;  // Now you can access fields
 ### Expecting Changes to Persist Through Functions
 
 ```rust
+bind Viper.Terminal;
+
 func birthday(person: Person) {
     person.age = person.age + 1;  // Modifies a copy!
 }
 
 var alice = Person { name: "Alice", age: 30 };
 birthday(alice);
-Viper.Terminal.Say(alice.age);  // Still 30!
+Say(alice.age);  // Still 30!
 ```
 
 Remember value semantics: the function gets a copy. To actually update:
 
 ```rust
+bind Viper.Terminal;
+
 func birthday(person: Person) -> Person {
     person.age = person.age + 1;
     return person;
@@ -1693,7 +1745,7 @@ func birthday(person: Person) -> Person {
 
 var alice = Person { name: "Alice", age: 30 };
 alice = birthday(alice);  // Assign the returned copy back
-Viper.Terminal.Say(alice.age);  // 31
+Say(alice.age);  // 31
 ```
 
 ### Misspelling Field Names

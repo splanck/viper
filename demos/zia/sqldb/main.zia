@@ -3,6 +3,8 @@
 
 module main;
 
+bind Viper.Terminal;
+
 bind "./executor";
 
 //=============================================================================
@@ -10,17 +12,17 @@ bind "./executor";
 //=============================================================================
 
 func main() {
-    Viper.Terminal.Say("ViperSQL - SQLite Clone in ViperLang");
-    Viper.Terminal.Say("Type SQL commands or 'exit' to quit.");
-    Viper.Terminal.Say("");
+    Terminal.Say("ViperSQL - SQLite Clone in ViperLang");
+    Terminal.Say("Type SQL commands or 'exit' to quit.");
+    Terminal.Say("");
 
     var exec = new Executor();
     exec.init();
 
     var running = true;
     while running {
-        Viper.Terminal.Print("sql> ");
-        var input = Viper.Terminal.ReadLine() ?? "";
+        Terminal.Print("sql> ");
+        var input = Terminal.ReadLine() ?? "";
 
         if input == "exit" || input == "quit" {
             running = false;
@@ -32,9 +34,9 @@ func main() {
         }
 
         var result = exec.executeSql(input);
-        Viper.Terminal.Say(result.toString());
-        Viper.Terminal.Say("");
+        Terminal.Say(result.toString());
+        Terminal.Say("");
     }
 
-    Viper.Terminal.Say("Goodbye!");
+    Terminal.Say("Goodbye!");
 }

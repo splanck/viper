@@ -421,24 +421,40 @@ struct InterfaceDecl : Decl
     InterfaceDecl(SourceLoc l, std::string n) : Decl(DeclKind::Interface, l), name(std::move(n)) {}
 };
 
-/// @brief Bind declaration: brings external namespaces into scope.
-/// @details Binds make namespaces from the runtime or other modules
-/// available in the current module with an optional alias.
+/// @brief Bind declaration: brings external modules or namespaces into scope.
+/// @details Binds make code from other modules or the Viper runtime namespace
+/// available in the current module. Supports both file binds and namespace binds.
 ///
-/// ## Examples
-/// - `bind Viper.Terminal;` - Bind namespace without alias
-/// - `bind Viper.Terminal as Term;` - Bind with alias
+/// ## File Binds (import Zia source files)
+/// - `bind "./utils";` - Relative path to another .zia file
+/// - `bind "../lib/helpers";` - Parent directory path
+/// - `bind "./colors" as C;` - With alias for qualified access
+///
+/// ## Namespace Binds (import Viper runtime namespaces)
+/// - `bind Viper.Terminal;` - Import all symbols from namespace
+/// - `bind Viper.Graphics as G;` - With alias: G.Canvas, G.Sprite
+/// - `bind Viper.Terminal { Say, ReadLine };` - Import specific symbols only
 struct BindDecl : Decl
 {
-    /// @brief The namespace path (e.g., "Viper.Terminal").
+    /// @brief The bind path (file path OR namespace like "Viper.Terminal").
     std::string path;
 
     /// @brief Bind alias (empty if no alias).
     std::string alias;
 
+    /// @brief True if this is a runtime namespace bind, false for file bind.
+    /// @details Namespace binds start with "Viper." and don't use string literals.
+    /// File binds use string literals like "./module" or "../lib/utils".
+    bool isNamespaceBind = false;
+
+    /// @brief Specific items to import (empty = import all).
+    /// @details Only used for namespace binds. Supports selective import:
+    /// `bind Viper.Terminal { Say, ReadLine };`
+    std::vector<std::string> specificItems;
+
     /// @brief Construct a bind declaration.
     /// @param l Source location.
-    /// @param p The namespace path.
+    /// @param p The bind path (file or namespace).
     BindDecl(SourceLoc l, std::string p) : Decl(DeclKind::Bind, l), path(std::move(p)) {}
 };
 

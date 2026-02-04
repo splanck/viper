@@ -3,6 +3,9 @@
 
 module index;
 
+bind Viper.String;
+bind Viper.Fmt;
+
 bind "./types";
 bind "./schema";
 bind "./table";
@@ -77,10 +80,10 @@ entity SqlIndex {
     expose func hashString(s: String) -> Integer {
         var hash = 0;
         var i = 0;
-        var len = Viper.String.Length(s);
+        var len = String.Length(s);
         while i < len {
-            var ch = Viper.String.Substring(s, i, 1);
-            var c = Viper.String.Asc(ch);
+            var ch = String.Substring(s, i, 1);
+            var c = String.Asc(ch);
             hash = (hash * 31 + c) % 32767;
             i = i + 1;
         }
@@ -199,7 +202,7 @@ entity SqlIndex {
             result = result + columnNames.get(i);
             i = i + 1;
         }
-        result = result + ") [" + Viper.Fmt.Int(entries.count()) + " entries]";
+        result = result + ") [" + Fmt.Int(entries.count()) + " entries]";
         return result;
     }
 }

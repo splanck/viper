@@ -4,6 +4,9 @@
 
 module test_server;
 
+bind Viper.Terminal;
+bind Viper.Fmt;
+
 bind "./server/sql_server";
 bind "./types";
 
@@ -17,22 +20,22 @@ var testsFailed = 0;
 func assert(condition: Boolean, testName: String) {
     if condition {
         testsPassed = testsPassed + 1;
-        Viper.Terminal.Say("[PASS] " + testName);
+        Terminal.Say("[PASS] " + testName);
     } else {
         testsFailed = testsFailed + 1;
-        Viper.Terminal.Say("[FAIL] " + testName);
+        Terminal.Say("[FAIL] " + testName);
     }
 }
 
 func printSummary() {
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("===========================================");
-    Viper.Terminal.Say("SERVER TEST SUMMARY");
-    Viper.Terminal.Say("===========================================");
-    Viper.Terminal.Say("Passed: " + Viper.Fmt.Int(testsPassed));
-    Viper.Terminal.Say("Failed: " + Viper.Fmt.Int(testsFailed));
-    Viper.Terminal.Say("Total:  " + Viper.Fmt.Int(testsPassed + testsFailed));
-    Viper.Terminal.Say("===========================================");
+    Terminal.Say("");
+    Terminal.Say("===========================================");
+    Terminal.Say("SERVER TEST SUMMARY");
+    Terminal.Say("===========================================");
+    Terminal.Say("Passed: " + Fmt.Int(testsPassed));
+    Terminal.Say("Failed: " + Fmt.Int(testsFailed));
+    Terminal.Say("Total:  " + Fmt.Int(testsPassed + testsFailed));
+    Terminal.Say("===========================================");
 }
 
 //=============================================================================
@@ -40,8 +43,8 @@ func printSummary() {
 //=============================================================================
 
 func testClientSessionInit() {
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("--- ClientSession Tests ---");
+    Terminal.Say("");
+    Terminal.Say("--- ClientSession Tests ---");
 
     var session = new ClientSession();
     session.init();
@@ -73,8 +76,8 @@ func testClientSessionToString() {
 //=============================================================================
 
 func testServerQueryResultInit() {
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("--- ServerQueryResult Tests ---");
+    Terminal.Say("");
+    Terminal.Say("--- ServerQueryResult Tests ---");
 
     var result = new ServerQueryResult();
     result.init();
@@ -134,8 +137,8 @@ func testServerQueryResultAddRow() {
 //=============================================================================
 
 func testSqlServerInit() {
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("--- SqlServer Tests ---");
+    Terminal.Say("");
+    Terminal.Say("--- SqlServer Tests ---");
 
     var server = new SqlServer();
     server.init();
@@ -184,8 +187,8 @@ func testSqlServerExecutor() {
 //=============================================================================
 
 func testServerQueryExecution() {
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("--- Integration Tests ---");
+    Terminal.Say("");
+    Terminal.Say("--- Integration Tests ---");
 
     var server = new SqlServer();
     server.init();
@@ -243,8 +246,8 @@ func testServerDatabaseOperations() {
 //=============================================================================
 
 func testConstants() {
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("--- Constants Tests ---");
+    Terminal.Say("");
+    Terminal.Say("--- Constants Tests ---");
 
     assert(DEFAULT_PORT == 5432, "DEFAULT_PORT is 5432");
     assert(MAX_QUERY_SIZE == 65536, "MAX_QUERY_SIZE is 64KB");
@@ -257,9 +260,9 @@ func testConstants() {
 //=============================================================================
 
 func main() {
-    Viper.Terminal.Say("===========================================");
-    Viper.Terminal.Say("VIPERSQL NETWORK SERVER TESTS");
-    Viper.Terminal.Say("===========================================");
+    Terminal.Say("===========================================");
+    Terminal.Say("VIPERSQL NETWORK SERVER TESTS");
+    Terminal.Say("===========================================");
 
     // ClientSession tests
     testClientSessionInit();

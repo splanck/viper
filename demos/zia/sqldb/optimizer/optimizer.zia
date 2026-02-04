@@ -8,6 +8,8 @@
 
 module optimizer;
 
+bind Viper.Fmt;
+
 bind "../types";
 bind "../schema";
 bind "../table";
@@ -149,9 +151,9 @@ entity AccessPath {
         var wholePart = estimatedCost / 100;
         var fracPart = estimatedCost % 100;
         if fracPart < 10 {
-            return Viper.Fmt.Int(wholePart) + ".0" + Viper.Fmt.Int(fracPart);
+            return Fmt.Int(wholePart) + ".0" + Fmt.Int(fracPart);
         }
-        return Viper.Fmt.Int(wholePart) + "." + Viper.Fmt.Int(fracPart);
+        return Fmt.Int(wholePart) + "." + Fmt.Int(fracPart);
     }
 
     expose func toString() -> String {
@@ -204,9 +206,9 @@ entity QueryPlan {
         var wholePart = totalCost / 100;
         var fracPart = totalCost % 100;
         if fracPart < 10 {
-            return Viper.Fmt.Int(wholePart) + ".0" + Viper.Fmt.Int(fracPart);
+            return Fmt.Int(wholePart) + ".0" + Fmt.Int(fracPart);
         }
-        return Viper.Fmt.Int(wholePart) + "." + Viper.Fmt.Int(fracPart);
+        return Fmt.Int(wholePart) + "." + Fmt.Int(fracPart);
     }
 
     expose func toString() -> String {

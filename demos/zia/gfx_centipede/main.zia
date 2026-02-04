@@ -1,12 +1,15 @@
 // main.viper - Entry point for Centipede game
 module main;
 
+bind Viper.Graphics;
+bind Viper.Time;
+
 bind "./config";
 bind "./game";
 
 func main() {
     // Create game window
-    var canvas = new Viper.Graphics.Canvas(config.TITLE, config.SCREEN_WIDTH, config.SCREEN_HEIGHT);
+    var canvas = new Canvas(config.TITLE, config.SCREEN_WIDTH, config.SCREEN_HEIGHT);
 
     // Initialize game
     game.initGame();

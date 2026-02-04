@@ -1053,12 +1053,14 @@ All tests pass.
 The algorithm works but is slow. Let's optimize:
 
 ```rust
+bind Viper.Math;
+
 func isPrime(n: Integer) -> Boolean {
     if n < 2 { return false; }
     if n == 2 { return true; }
     if n % 2 == 0 { return false; }
 
-    var limit = Viper.Math.sqrt(n).toInt() + 1;
+    var limit = Math.sqrt(n).toInt() + 1;
     for i in 3..limit step 2 {
         if n % i == 0 {
             return false;
@@ -1507,7 +1509,7 @@ func add(numbers: String) -> Integer {
     if numbers == "" {
         return 0;
     }
-    return Viper.Convert.ToInt(numbers);
+    return Convert.ToInt(numbers);
 }
 ```
 
@@ -1532,7 +1534,7 @@ func add(numbers: String) -> Integer {
     var parts = numbers.split(",");
     var sum = 0;
     for part in parts {
-        sum += Viper.Convert.ToInt(part);
+        sum += Convert.ToInt(part);
     }
     return sum;
 }
@@ -1573,7 +1575,7 @@ func add(numbers: String) -> Integer {
     var parts = normalized.split(",");
     var sum = 0;
     for part in parts {
-        sum += Viper.Convert.ToInt(part);
+        sum += Convert.ToInt(part);
     }
     return sum;
 }
@@ -1619,7 +1621,7 @@ func add(numbers: String) -> Integer {
     var sum = 0;
 
     for part in parts {
-        var n = Viper.Convert.ToInt(part);
+        var n = Convert.ToInt(part);
         if n < 0 {
             negatives.push(n);
         }
@@ -1656,7 +1658,7 @@ entity StringCalculator {
         var sum = 0;
 
         for part in parts {
-            var n = Viper.Convert.ToInt(part.trim());
+            var n = Convert.ToInt(part.trim());
             if n < 0 {
                 negatives.push(n);
             }

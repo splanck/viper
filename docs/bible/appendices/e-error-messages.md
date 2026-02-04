@@ -354,13 +354,16 @@ var count: i64 = 42;
 var count: string = "hello";
 
 // Solution 3: Convert the value (if appropriate)
-var count: i64 = Viper.Convert.ToInt("42");
+bind Viper.Convert;
+var count: i64 = ToInt("42");
 ```
 
 ```rust
 // Problem: Wrong parameter type
+bind Viper.Terminal;
+
 func greet(name: String) {
-    Viper.Terminal.Say("Hello, " + name);
+    Say("Hello, " + name);
 }
 
 greet(42);  // Error: expected string, got i64
@@ -479,8 +482,9 @@ var b = "3";
 var sum = a + b;  // Results in "53", not 8!
 
 // Solution: Convert to numbers first
-var a = Viper.Convert.ToInt("5");
-var b = Viper.Convert.ToInt("3");
+bind Viper.Convert;
+var a = ToInt("5");
+var b = ToInt("3");
 var sum = a + b;  // 8
 ```
 
@@ -506,30 +510,35 @@ Error: TypeError at main.zia:15:12
 
 ```rust
 // Problem: Parsing non-number
-var num = Viper.Convert.ToInt("hello");  // Error: "hello" is not a number
+bind Viper.Convert;
+bind Viper.Terminal;
+
+var num = ToInt("hello");  // Error: "hello" is not a number
 
 // Solution 1: Validate before parsing
 var input = "hello";
 if input.isNumeric() {
-    var num = Viper.Convert.ToInt(input);
+    var num = ToInt(input);
 }
 
 // Solution 2: Use try-catch
 try {
-    var num = Viper.Convert.ToInt(input);
+    var num = ToInt(input);
 } catch e: ParseError {
-    Viper.Terminal.Say("Please enter a valid number");
+    Say("Please enter a valid number");
 }
 ```
 
 ```rust
 // Problem: Trailing characters
-var num = Viper.Convert.ToInt("42abc");  // Error or unexpected result
+bind Viper.Convert;
+
+var num = ToInt("42abc");  // Error or unexpected result
 
 // Solution: Clean input first
 var input = "42abc";
 var cleaned = input.trim().replaceAll("[^0-9]", "");
-var num = Viper.Convert.ToInt(cleaned);
+var num = ToInt(cleaned);
 ```
 
 **Prevention:** Always validate user input before parsing. Use try-catch when conversion might fail.
@@ -557,15 +566,17 @@ Error: NullPointerError at main.zia:15:18
 
 ```rust
 // Problem: Using null value
+bind Viper.Terminal;
+
 var user = findUser(id);
-Viper.Terminal.Say(user.name);  // Error if user is null!
+Say(user.name);  // Error if user is null!
 
 // Solution 1: Check for null
 var user = findUser(id);
 if user != null {
-    Viper.Terminal.Say(user.name);
+    Say(user.name);
 } else {
-    Viper.Terminal.Say("User not found");
+    Say("User not found");
 }
 
 // Solution 2: Use null-safe operator (if available)
@@ -620,36 +631,42 @@ Error: NameError at main.zia:15:20
 
 ```rust
 // Problem: Typo
+bind Viper.Terminal;
+
 var counter = 0;
-Viper.Terminal.Say(counte);  // Error: typo in name
+Say(counte);  // Error: typo in name
 
 // Solution: Fix spelling
-Viper.Terminal.Say(counter);
+Say(counter);
 ```
 
 ```rust
 // Problem: Used before declaration
-Viper.Terminal.Say(score);  // Error: score doesn't exist yet
+bind Viper.Terminal;
+
+Say(score);  // Error: score doesn't exist yet
 var score = 100;
 
 // Solution: Declare before use
 var score = 100;
-Viper.Terminal.Say(score);
+Say(score);
 ```
 
 ```rust
 // Problem: Out of scope
+bind Viper.Terminal;
+
 if someCondition {
     var temp = 42;
 }
-Viper.Terminal.Say(temp);  // Error: temp not visible here
+Say(temp);  // Error: temp not visible here
 
 // Solution: Declare in outer scope
 var temp = 0;
 if someCondition {
     temp = 42;
 }
-Viper.Terminal.Say(temp);
+Say(temp);
 ```
 
 **Prevention:**
@@ -779,12 +796,14 @@ Error: NameError at main.zia:5:12
 
 ```rust
 // Problem: Usage before declaration
-Viper.Terminal.Say(total);  // Error
+bind Viper.Terminal;
+
+Say(total);  // Error
 var total = 100;
 
 // Solution: Move declaration before use
 var total = 100;
-Viper.Terminal.Say(total);  // OK
+Say(total);  // OK
 ```
 
 ---
@@ -938,20 +957,22 @@ Error: TypeError at main.zia:8:5
 
 ```rust
 // Problem: Returning from void function
+bind Viper.Terminal;
+
 func printMessage(msg: String) {
-    Viper.Terminal.Say(msg);
+    Say(msg);
     return msg;  // Error: function doesn't return anything
 }
 
 // Solution 1: Remove the return value
 func printMessage(msg: String) {
-    Viper.Terminal.Say(msg);
+    Say(msg);
     return;  // OK: return without value
 }
 
 // Solution 2: Add return type if needed
 func printMessage(msg: String) -> String {
-    Viper.Terminal.Say(msg);
+    Say(msg);
     return msg;  // OK: function returns string
 }
 ```
@@ -970,8 +991,10 @@ Error: TypeError at main.zia:15:12
 **Fix examples:**
 
 ```rust
+bind Viper.Terminal;
+
 func greet(name: String) {
-    Viper.Terminal.Say("Hello, " + name);
+    Say("Hello, " + name);
 }
 
 // Problem: Wrong argument type
@@ -1010,11 +1033,13 @@ interface Drawable {
 }
 
 // Problem: Missing method
+bind Viper.Terminal;
+
 entity Circle implements Drawable {
     radius: f64;
 
     func draw() {
-        Viper.Terminal.Say("Drawing circle");
+        Say("Drawing circle");
     }
     // Missing getColor()!
 }
@@ -1025,7 +1050,7 @@ entity Circle implements Drawable {
     color: string;
 
     func draw() {
-        Viper.Terminal.Say("Drawing circle with radius " + self.radius);
+        Say("Drawing circle with radius " + self.radius);
     }
 
     func getColor() -> string {
@@ -1059,11 +1084,13 @@ entity BankAccount {
 }
 
 // Problem: Accessing hidden field
+bind Viper.Terminal;
+
 var account = BankAccount();
-Viper.Terminal.Say(account.balance);  // Error: balance is hidden
+Say(account.balance);  // Error: balance is hidden
 
 // Solution: Use exposed method
-Viper.Terminal.Say(account.getBalance());  // OK
+Say(account.getBalance());  // OK
 ```
 
 **Prevention:** Design your entities with clear exposed/hidden boundaries. Use `expose` for the public interface and `hide` for internal implementation.
@@ -1157,12 +1184,14 @@ Error: ContextError at main.zia:12:16
 **Fix examples:**
 
 ```rust
+bind Viper.Terminal;
+
 entity Counter {
     count: i64;
 
     // Problem: Using self in static function
     static func printCount() {
-        Viper.Terminal.Say(self.count);  // Error: no self in static
+        Say(self.count);  // Error: no self in static
     }
 }
 
@@ -1171,7 +1200,7 @@ entity Counter {
     count: i64;
 
     func printCount() {
-        Viper.Terminal.Say(self.count);  // OK: self exists in methods
+        Say(self.count);  // OK: self exists in methods
     }
 }
 
@@ -1180,7 +1209,7 @@ entity Counter {
     count: i64;
 
     static func printCount(counter: Counter) {
-        Viper.Terminal.Say(counter.count);  // Access via parameter
+        Say(counter.count);  // Access via parameter
     }
 }
 ```
@@ -1223,19 +1252,21 @@ var x = items[4];  // OK: last valid index
 
 ```rust
 // Problem: Off-by-one in loop
+bind Viper.Terminal;
+
 var items = ["a", "b", "c"];
 for i in 0..items.length + 1 {  // Goes to 3, but max index is 2
-    Viper.Terminal.Say(items[i]);  // Error on last iteration
+    Say(items[i]);  // Error on last iteration
 }
 
 // Solution: Correct loop bounds
 for i in 0..items.length {  // 0 to 2 (exclusive)
-    Viper.Terminal.Say(items[i]);  // OK
+    Say(items[i]);  // OK
 }
 
 // Better: Use for-each
 for item in items {
-    Viper.Terminal.Say(item);  // No index needed
+    Say(item);  // No index needed
 }
 ```
 
@@ -1279,10 +1310,12 @@ var count = 0;
 var average = total / count;  // Error: dividing by 0
 
 // Solution: Check before dividing
+bind Viper.Terminal;
+
 if count != 0 {
     var average = total / count;
 } else {
-    Viper.Terminal.Say("Cannot calculate average: no items");
+    Say("Cannot calculate average: no items");
 }
 ```
 
@@ -1363,6 +1396,8 @@ if animal is Cat {
 
 ```rust
 // Solution: Use pattern matching
+bind Viper.Terminal;
+
 match animal {
     case cat: Cat {
         cat.meow();
@@ -1371,7 +1406,7 @@ match animal {
         dog.bark();
     }
     else {
-        Viper.Terminal.Say("Unknown animal");
+        Say("Unknown animal");
     }
 }
 ```
@@ -1398,8 +1433,10 @@ Error: StackOverflowError at main.zia:15:5
 
 ```rust
 // Problem: Infinite recursion (no base case)
+bind Viper.Terminal;
+
 func countdown(n: Integer) {
-    Viper.Terminal.Say(n);
+    Say(n);
     countdown(n - 1);  // Never stops!
 }
 
@@ -1408,7 +1445,7 @@ func countdown(n: Integer) {
     if n < 0 {
         return;  // Base case: stop recursion
     }
-    Viper.Terminal.Say(n);
+    Say(n);
     countdown(n - 1);
 }
 ```
@@ -1473,28 +1510,31 @@ Error: FileError at main.zia:5:20
 
 ```rust
 // Problem: File doesn't exist
-var content = Viper.File.readText("data.txt");  // Error if missing
+bind Viper.File;
+bind Viper.Terminal;
+
+var content = readText("data.txt");  // Error if missing
 
 // Solution 1: Check existence first
-if Viper.File.exists("data.txt") {
-    var content = Viper.File.readText("data.txt");
+if exists("data.txt") {
+    var content = readText("data.txt");
 } else {
-    Viper.Terminal.Say("File not found");
+    Say("File not found");
 }
 
 // Solution 2: Use try-catch
 try {
-    var content = Viper.File.readText("data.txt");
+    var content = readText("data.txt");
 } catch e: FileNotFound {
-    Viper.Terminal.Say("File not found, creating default...");
-    Viper.File.writeText("data.txt", "default content");
+    Say("File not found, creating default...");
+    writeText("data.txt", "default content");
 }
 
 // Solution 3: Provide path at runtime
-Viper.Terminal.Print("Enter filename: ");
-var filename = Viper.Terminal.ReadLine();
-if Viper.File.exists(filename) {
-    var content = Viper.File.readText(filename);
+Print("Enter filename: ");
+var filename = ReadLine();
+if exists(filename) {
+    var content = readText(filename);
 }
 ```
 
@@ -1519,11 +1559,14 @@ Error: FileError at main.zia:10:5
 
 ```rust
 // Problem: Writing to protected location
-Viper.File.writeText("/etc/config.txt", data);  // Permission denied
+bind Viper.File;
+bind Viper.OS;
+
+writeText("/etc/config.txt", data);  // Permission denied
 
 // Solution: Write to allowed location
-Viper.File.writeText("./config.txt", data);  // Local directory
-Viper.File.writeText(Viper.OS.homeDir() + "/config.txt", data);  // User's home
+writeText("./config.txt", data);  // Local directory
+writeText(homeDir() + "/config.txt", data);  // User's home
 ```
 
 **Prevention:**
@@ -1546,24 +1589,28 @@ Error: FileError at main.zia:15:5
 
 ```rust
 // Problem: File exists in exclusive mode
-Viper.File.createNew("output.txt", data);  // Error if exists
+bind Viper.File;
+bind Viper.Terminal;
+bind Viper.Time;
+
+createNew("output.txt", data);  // Error if exists
 
 // Solution 1: Use overwrite mode
-Viper.File.writeText("output.txt", data);  // Overwrites if exists
+writeText("output.txt", data);  // Overwrites if exists
 
 // Solution 2: Check and decide
-if Viper.File.exists("output.txt") {
-    Viper.Terminal.Print("File exists. Overwrite? (y/n): ");
-    if Viper.Terminal.ReadLine() == "y" {
-        Viper.File.writeText("output.txt", data);
+if exists("output.txt") {
+    Print("File exists. Overwrite? (y/n): ");
+    if ReadLine() == "y" {
+        writeText("output.txt", data);
     }
 } else {
-    Viper.File.writeText("output.txt", data);
+    writeText("output.txt", data);
 }
 
 // Solution 3: Generate unique name
-var filename = "output_" + Viper.Time.now().toString() + ".txt";
-Viper.File.writeText(filename, data);
+var filename = "output_" + now().toString() + ".txt";
+writeText(filename, data);
 ```
 
 ---
@@ -1581,14 +1628,17 @@ Error: ParseError at main.zia:8:25
 
 ```rust
 // Problem: Invalid JSON
-var data = Viper.Json.parse("{invalid json}");  // Parse error
+bind Viper.Json;
+bind Viper.Terminal;
+
+var data = parse("{invalid json}");  // Parse error
 
 // Solution: Validate and handle errors
 try {
-    var data = Viper.Json.parse(content);
+    var data = parse(content);
     processData(data);
 } catch e: ParseError {
-    Viper.Terminal.Say("Invalid file format: " + e.message);
+    Say("Invalid file format: " + e.message);
     // Use default or prompt user
 }
 ```
@@ -1639,10 +1689,12 @@ func processLargeData(source: DataSource) {
 
 ```rust
 // Problem: Loading huge file into memory
-var content = Viper.File.readText("huge_file.txt");  // Out of memory
+bind Viper.File;
+
+var content = readText("huge_file.txt");  // Out of memory
 
 // Solution: Read line by line
-var reader = Viper.File.openReader("huge_file.txt");
+var reader = openReader("huge_file.txt");
 while reader.hasNextLine() {
     var line = reader.readLine();
     processLine(line);
@@ -1881,7 +1933,7 @@ When you encounter an error:
 
 3. **Trace back through the call stack.** The error might occur in a function, but the bug might be in the code that called it with wrong arguments.
 
-4. **Print intermediate values.** Add `Viper.Terminal.Say()` calls to see what values variables have at different points.
+4. **Print intermediate values.** Add `Say()` calls (after `bind Viper.Terminal;`) to see what values variables have at different points.
 
 5. **Simplify the problem.** Create a minimal example that reproduces the error. Often, the bug becomes obvious.
 
@@ -1930,16 +1982,18 @@ throw Error("Invalid age: " + age + ". Age must be between 0 and 150.");
 ### Handle Specific Errors
 
 ```rust
+bind Viper.Terminal;
+
 try {
     var config = loadConfig();
 } catch e: FileNotFound {
-    Viper.Terminal.Say("Config file missing, using defaults");
+    Say("Config file missing, using defaults");
     config = defaultConfig;
 } catch e: ParseError {
-    Viper.Terminal.Say("Config file corrupted: " + e.message);
+    Say("Config file corrupted: " + e.message);
     throw e;  // Re-throw - can't recover from this
 } catch e {
-    Viper.Terminal.Say("Unexpected error: " + e.message);
+    Say("Unexpected error: " + e.message);
     log(e);
 }
 ```

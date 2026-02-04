@@ -4,6 +4,8 @@
 
 module server;
 
+bind Viper.Fmt;
+
 bind "./database";
 bind "./table";
 bind "./index";
@@ -212,7 +214,7 @@ entity DatabaseServer {
         var db = maybeDb;
 
         var stats = "Database: " + name + "\n";
-        stats = stats + "Tables: " + Viper.Fmt.Int(db.tableCount()) + "\n";
+        stats = stats + "Tables: " + Fmt.Int(db.tableCount()) + "\n";
 
         // Count total rows across all tables
         var totalRows = 0;
@@ -225,7 +227,7 @@ entity DatabaseServer {
             }
             i = i + 1;
         }
-        stats = stats + "Total rows: " + Viper.Fmt.Int(totalRows);
+        stats = stats + "Total rows: " + Fmt.Int(totalRows);
 
         return stats;
     }

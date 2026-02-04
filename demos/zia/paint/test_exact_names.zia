@@ -15,9 +15,11 @@ bind "./tools/eyedropper";
 bind "./ui/button";
 bind "./ui/slider";
 
+bind Viper.Graphics;
+
 // Use exact same field names as original PaintApp
 entity ExactPaintApp {
-    hide Viper.Graphics.Canvas gfx;
+    hide Canvas gfx;
 
     // Use exact same name as module - could cause resolution issue
     expose canvas.DrawingCanvas canvas;
@@ -66,7 +68,7 @@ entity ExactPaintApp {
     hide Integer canvasOffsetY;
 
     expose func init() {
-        gfx = Viper.Graphics.Canvas.New(config.WINDOW_TITLE, config.WINDOW_WIDTH, config.WINDOW_HEIGHT);
+        gfx = Canvas.New(config.WINDOW_TITLE, config.WINDOW_WIDTH, config.WINDOW_HEIGHT);
 
         canvas = new canvas.DrawingCanvas();
         canvas.initWithSize(1024, 768);

@@ -9,6 +9,12 @@ module fireworks;
 
 bind "./colors";
 
+bind Viper.Random;
+bind Viper.Graphics;
+bind Viper.Graphics.Color;
+bind Viper.Math;
+bind Viper.Time;
+
 var PI: Number;
 
 func initConstants() {
@@ -29,12 +35,12 @@ entity Sparkle {
     expose func init(px: Number, py: Number, angle: Number, speed: Number, c: Integer) {
         x = px;
         y = py;
-        vx = Viper.Math.Cos(angle) * speed;
-        vy = Viper.Math.Sin(angle) * speed;
+        vx = Cos(angle) * speed;
+        vy = Sin(angle) * speed;
         color = c;
-        maxLife = 40 + Viper.Random.NextInt(40);
+        maxLife = 40 + NextInt(40);
         life = maxLife;
-        trail = Viper.Random.NextInt(3) == 0;
+        trail = NextInt(3) == 0;
     }
 
     expose func update(gravity: Number) {
@@ -52,7 +58,7 @@ entity Sparkle {
         return life > 0;
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         if life <= 0 {
             return;
         }
@@ -60,13 +66,13 @@ entity Sparkle {
         var fade = life / maxLife;
         var drawColor = colors.fadeColor(color, fade);
 
-        var px = Viper.Math.Floor(x);
-        var py = Viper.Math.Floor(y);
+        var px = Floor(x);
+        var py = Floor(y);
 
         if trail {
             // Draw with trail
-            var oldX = Viper.Math.Floor(x - vx * 2);
-            var oldY = Viper.Math.Floor(y - vy * 2);
+            var oldX = Floor(x - vx * 2);
+            var oldY = Floor(y - vy * 2);
             canvas.Line(oldX, oldY, px, py, colors.fadeColor(drawColor, 0.5));
         }
 
@@ -94,11 +100,11 @@ entity Rocket {
     expose func init(startX: Number, screenHeight: Integer) {
         x = startX;
         y = screenHeight;
-        vx = (Viper.Random.Next() - 0.5) * 2.0;
-        vy = -10.0 - Viper.Random.Next() * 5.0;
-        color = colors.rainbowPhase(Viper.Random.NextInt(360));
+        vx = (Next() - 0.5) * 2.0;
+        vy = -10.0 - Next() * 5.0;
+        color = colors.rainbowPhase(NextInt(360));
         exploded = false;
-        targetY = 100.0 + Viper.Random.Next() * 200.0;
+        targetY = 100.0 + Next() * 200.0;
         trail = [];
     }
 
@@ -108,7 +114,7 @@ entity Rocket {
         }
 
         // Store trail
-        var trailPos = Viper.Math.Floor(x) * 10000 + Viper.Math.Floor(y);
+        var trailPos = Floor(x) * 10000 + Floor(y);
         trail.add(trailPos);
         if trail.count() > 15 {
             trail.removeAt(0);
@@ -131,7 +137,7 @@ entity Rocket {
         return exploded;
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         if exploded {
             return;
         }
@@ -149,8 +155,8 @@ entity Rocket {
         }
 
         // Draw rocket
-        var px = Viper.Math.Floor(x);
-        var py = Viper.Math.Floor(y);
+        var px = Floor(x);
+        var py = Floor(y);
         canvas.Disc(px, py, 2, color);
         canvas.Disc(px, py, 1, colors.WHITE);
     }
@@ -163,12 +169,12 @@ entity Explosion {
 
     expose func init(x: Number, y: Number, color: Integer) {
         sparkles = [];
-        pattern = Viper.Random.NextInt(4);
+        pattern = NextInt(4);
 
         var numSparkles: Integer;
         if pattern == 0 {
             // Circle explosion
-            numSparkles = 80 + Viper.Random.NextInt(40);
+            numSparkles = 80 + NextInt(40);
             createCircle(x, y, color, numSparkles);
         } else if pattern == 1 {
             // Star pattern
@@ -185,8 +191,8 @@ entity Explosion {
     expose func createCircle(x: Number, y: Number, color: Integer, count: Integer) {
         var i = 0;
         while i < count {
-            var angle = Viper.Random.Next() * 2.0 * PI;
-            var speed = 2.0 + Viper.Random.Next() * 6.0;
+            var angle = Next() * 2.0 * PI;
+            var speed = 2.0 + Next() * 6.0;
             var sparkle = new Sparkle();
             sparkle.init(x, y, angle, speed, color);
             sparkles.add(sparkle);
@@ -195,7 +201,7 @@ entity Explosion {
     }
 
     expose func createStar(x: Number, y: Number, color: Integer) {
-        var points = 5 + Viper.Random.NextInt(3);
+        var points = 5 + NextInt(3);
         var i = 0;
         while i < points {
             var baseAngle = (i * 2.0 * PI) / points;
@@ -203,8 +209,8 @@ entity Explosion {
             // Create spray at each point
             var j = 0;
             while j < 15 {
-                var angle = baseAngle + (Viper.Random.Next() - 0.5) * 0.3;
-                var speed = 4.0 + Viper.Random.Next() * 4.0;
+                var angle = baseAngle + (Next() - 0.5) * 0.3;
+                var speed = 4.0 + Next() * 4.0;
                 var sparkle = new Sparkle();
                 sparkle.init(x, y, angle, speed, color);
                 sparkles.add(sparkle);
@@ -219,7 +225,7 @@ entity Explosion {
         var i = 0;
         while i < 40 {
             var angle = (i * 2.0 * PI) / 40.0;
-            var speed = 3.0 + Viper.Random.Next() * 0.5;
+            var speed = 3.0 + Next() * 0.5;
             var sparkle = new Sparkle();
             sparkle.init(x, y, angle, speed, color);
             sparkles.add(sparkle);
@@ -227,11 +233,11 @@ entity Explosion {
         }
 
         // Outer ring with different color
-        var outerColor = colors.rainbowPhase((Viper.Random.NextInt(360) + 180) - ((Viper.Random.NextInt(360) + 180) / 360) * 360);
+        var outerColor = colors.rainbowPhase((NextInt(360) + 180) - ((NextInt(360) + 180) / 360) * 360);
         i = 0;
         while i < 50 {
             var angle = (i * 2.0 * PI) / 50.0;
-            var speed = 5.5 + Viper.Random.Next() * 0.5;
+            var speed = 5.5 + Next() * 0.5;
             var sparkle = new Sparkle();
             sparkle.init(x, y, angle, speed, outerColor);
             sparkles.add(sparkle);
@@ -242,11 +248,11 @@ entity Explosion {
     expose func createWillow(x: Number, y: Number, color: Integer) {
         var i = 0;
         while i < 100 {
-            var angle = Viper.Random.Next() * 2.0 * PI;
-            var speed = 1.0 + Viper.Random.Next() * 3.0;
+            var angle = Next() * 2.0 * PI;
+            var speed = 1.0 + Next() * 3.0;
             var sparkle = new Sparkle();
             sparkle.init(x, y, angle, speed, color);
-            sparkle.maxLife = 80 + Viper.Random.NextInt(40);  // Longer life
+            sparkle.maxLife = 80 + NextInt(40);  // Longer life
             sparkle.life = sparkle.maxLife;
             sparkle.trail = true;
             sparkles.add(sparkle);
@@ -277,7 +283,7 @@ entity Explosion {
         return sparkles.count() == 0;
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         var i = 0;
         while i < sparkles.count() {
             var s = sparkles.get(i);
@@ -316,7 +322,7 @@ entity FireworksShow {
     }
 
     expose func launchRandom() {
-        var x = 100.0 + Viper.Random.Next() * (screenWidth - 200);
+        var x = 100.0 + Next() * (screenWidth - 200);
         launch(x);
     }
 
@@ -328,7 +334,7 @@ entity FireworksShow {
                 launchTimer = 0;
                 launchRandom();
                 // Occasionally launch multiple
-                if Viper.Random.NextInt(4) == 0 {
+                if NextInt(4) == 0 {
                     launchRandom();
                 }
             }
@@ -374,7 +380,7 @@ entity FireworksShow {
         }
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         // Draw rockets
         var i = 0;
         while i < rockets.count() {
@@ -398,7 +404,7 @@ entity FireworksShow {
 }
 
 // Run the fireworks demo
-func run(canvas: Viper.Graphics.Canvas) {
+func run(canvas: Canvas) {
     var width = canvas.Width;
     var height = canvas.Height;
 
@@ -460,25 +466,25 @@ func run(canvas: Viper.Graphics.Canvas) {
         show.update();
 
         // Draw background (dark night sky with slight fade)
-        canvas.Clear(Viper.Graphics.Color.RGB(5, 5, 15));
+        canvas.Clear(RGB(5, 5, 15));
 
         // Draw ground
-        canvas.Box(0, height - 20, width, 20, Viper.Graphics.Color.RGB(20, 30, 20));
+        canvas.Box(0, height - 20, width, 20, RGB(20, 30, 20));
 
         // Draw cityscape silhouette
         var bx = 0;
         while bx < width {
-            var bh = 30 + Viper.Random.NextInt(60);
-            var bw = 20 + Viper.Random.NextInt(30);
-            canvas.Box(bx, height - 20 - bh, bw, bh, Viper.Graphics.Color.RGB(15, 20, 25));
+            var bh = 30 + NextInt(60);
+            var bw = 20 + NextInt(30);
+            canvas.Box(bx, height - 20 - bh, bw, bh, RGB(15, 20, 25));
 
             // Windows
             var wy = height - 20 - bh + 5;
             while wy < height - 25 {
                 var wx = bx + 3;
                 while wx < bx + bw - 3 {
-                    if Viper.Random.NextInt(3) != 0 {
-                        var wc = Viper.Graphics.Color.RGB(255, 255, 150);
+                    if NextInt(3) != 0 {
+                        var wc = RGB(255, 255, 150);
                         canvas.Box(wx, wy, 3, 4, wc);
                     }
                     wx = wx + 6;

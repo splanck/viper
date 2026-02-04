@@ -3,6 +3,8 @@
 
 module lexer;
 
+bind Viper.String;
+
 bind "./token";
 
 //=============================================================================
@@ -21,7 +23,7 @@ entity Lexer {
         pos = 0;
         line = 1;
         column = 1;
-        length = Viper.String.Length(src);
+        length = String.Length(src);
     }
 
     expose func isAtEnd() -> Boolean {
@@ -30,12 +32,12 @@ entity Lexer {
 
     hide func peek() -> String {
         if (isAtEnd()) { return ""; }
-        return Viper.String.Substring(source, pos, 1);
+        return String.Substring(source, pos, 1);
     }
 
     hide func peekNext() -> String {
         if (pos + 1 >= length) { return ""; }
-        return Viper.String.Substring(source, pos + 1, 1);
+        return String.Substring(source, pos + 1, 1);
     }
 
     hide func advance() -> String {
@@ -72,12 +74,12 @@ entity Lexer {
     }
 
     hide func isDigit(ch: String) -> Boolean {
-        var code = Viper.String.Asc(ch);
+        var code = String.Asc(ch);
         return code >= 48 && code <= 57;  // '0' = 48, '9' = 57
     }
 
     hide func isAlpha(ch: String) -> Boolean {
-        var code = Viper.String.Asc(ch);
+        var code = String.Asc(ch);
         if (code >= 65 && code <= 90) { return true; }   // 'A' = 65, 'Z' = 90
         if (code >= 97 && code <= 122) { return true; }  // 'a' = 97, 'z' = 122
         return ch == "_";
@@ -97,12 +99,12 @@ entity Lexer {
         if (peek() == "." && isDigit(peekNext())) {
             advance();
             while (!isAtEnd() && isDigit(peek())) { advance(); }
-            var text = Viper.String.Substring(source, startPos, pos - startPos);
+            var text = String.Substring(source, startPos, pos - startPos);
             var tok = new Token(TK_NUMBER, text, startLine, startCol);
             return tok;
         }
 
-        var text = Viper.String.Substring(source, startPos, pos - startPos);
+        var text = String.Substring(source, startPos, pos - startPos);
         var tok = new Token(TK_INTEGER, text, startLine, startCol);
         return tok;
     }
@@ -122,7 +124,7 @@ entity Lexer {
             }
         }
 
-        var text = Viper.String.Substring(source, startPos, pos - startPos);
+        var text = String.Substring(source, startPos, pos - startPos);
         if (!isAtEnd()) { advance(); }
 
         var tok = new Token(TK_STRING, text, startLine, startCol);
@@ -137,8 +139,8 @@ entity Lexer {
         while (!isAtEnd() && isAlphaNum(peek())) { advance(); }
 
         var len = pos - startPos;
-        var text = Viper.String.Substring(source, startPos, len);
-        var upper = Viper.String.ToUpper(text);
+        var text = String.Substring(source, startPos, len);
+        var upper = String.ToUpper(text);
         var kind = lookupKeyword(upper);
 
         var tok = new Token(kind, text, startLine, startCol);

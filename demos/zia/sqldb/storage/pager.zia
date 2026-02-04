@@ -3,6 +3,9 @@
 
 module pager;
 
+bind Viper.IO;
+bind Viper.String;
+
 bind "./page";
 bind "./serializer";
 
@@ -148,7 +151,7 @@ entity Pager {
     expose func openDatabase(fname: String) -> Boolean {
         filename = fname;
 
-        if Viper.IO.File.Exists(fname) == false {
+        if IO.File.Exists(fname) == false {
             return false;
         }
 
@@ -278,26 +281,26 @@ entity Pager {
 
     // Read page data into an existing buffer (returns false on failure)
     hide func readPageIntoBuffer(pageId: Integer, dest: BinaryBuffer) -> Boolean {
-        if Viper.IO.File.Exists(filename) == false {
+        if IO.File.Exists(filename) == false {
             return false;
         }
 
-        var content = Viper.IO.File.ReadAllText(filename);
+        var content = IO.File.ReadAllText(filename);
         var startOffset = pageId * PAGE_SIZE;
 
-        if startOffset + PAGE_SIZE > Viper.String.Length(content) {
+        if startOffset + PAGE_SIZE > String.Length(content) {
             return false;
         }
 
-        var pageData = Viper.String.Substring(content, startOffset, PAGE_SIZE);
+        var pageData = String.Substring(content, startOffset, PAGE_SIZE);
 
         // Copy page data into destination buffer
         dest.seek(0);
         var i = 0;
-        var len = Viper.String.Length(pageData);
+        var len = String.Length(pageData);
         while i < len && i < PAGE_SIZE {
-            var ch = Viper.String.Substring(pageData, i, 1);
-            var code = Viper.String.Asc(ch);
+            var ch = String.Substring(pageData, i, 1);
+            var code = String.Asc(ch);
             dest.writeByte(code);
             i = i + 1;
         }
@@ -340,7 +343,7 @@ entity Pager {
             if i < bytes.count() {
                 b = bytes.get(i);
             }
-            result = result + Viper.String.Chr(b);
+            result = result + String.Chr(b);
             i = i + 1;
         }
         return result;
@@ -351,10 +354,10 @@ entity Pager {
         var buf = new BinaryBuffer();
         buf.initWithCapacity(PAGE_SIZE);
         var i = 0;
-        var len = Viper.String.Length(s);
+        var len = String.Length(s);
         while i < len && i < PAGE_SIZE {
-            var ch = Viper.String.Substring(s, i, 1);
-            var code = Viper.String.Asc(ch);
+            var ch = String.Substring(s, i, 1);
+            var code = String.Asc(ch);
             buf.writeByte(code);
             i = i + 1;
         }
@@ -372,14 +375,14 @@ entity Pager {
         // Read entire file, update the page, write back
         // (This is inefficient but necessary without seek support)
         var content = "";
-        if Viper.IO.File.Exists(filename) {
-            content = Viper.IO.File.ReadAllText(filename);
+        if IO.File.Exists(filename) {
+            content = IO.File.ReadAllText(filename);
         }
 
         // Pad content to the right length
         var targetLen = (pageId + 1) * PAGE_SIZE;
-        while Viper.String.Length(content) < targetLen {
-            content = content + Viper.String.Chr(0);
+        while String.Length(content) < targetLen {
+            content = content + String.Chr(0);
         }
 
         // Build new content with updated page
@@ -388,31 +391,31 @@ entity Pager {
 
         var newContent = "";
         if startOffset > 0 {
-            newContent = Viper.String.Substring(content, 0, startOffset);
+            newContent = String.Substring(content, 0, startOffset);
         }
         newContent = newContent + pageData;
         var endOffset = startOffset + PAGE_SIZE;
-        if endOffset < Viper.String.Length(content) {
-            newContent = newContent + Viper.String.Substring(content, endOffset, Viper.String.Length(content) - endOffset);
+        if endOffset < String.Length(content) {
+            newContent = newContent + String.Substring(content, endOffset, String.Length(content) - endOffset);
         }
 
-        Viper.IO.File.WriteAllText(filename, newContent);
+        IO.File.WriteAllText(filename, newContent);
     }
 
     // Read a page from the file at the given page ID
     hide func readPageFromFile(pageId: Integer) -> BinaryBuffer? {
-        if Viper.IO.File.Exists(filename) == false {
+        if IO.File.Exists(filename) == false {
             return null;
         }
 
-        var content = Viper.IO.File.ReadAllText(filename);
+        var content = IO.File.ReadAllText(filename);
         var startOffset = pageId * PAGE_SIZE;
 
-        if startOffset + PAGE_SIZE > Viper.String.Length(content) {
+        if startOffset + PAGE_SIZE > String.Length(content) {
             return null;
         }
 
-        var pageData = Viper.String.Substring(content, startOffset, PAGE_SIZE);
+        var pageData = String.Substring(content, startOffset, PAGE_SIZE);
         return stringToBuffer(pageData);
     }
 

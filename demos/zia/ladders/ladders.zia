@@ -2,6 +2,11 @@
 // All entities and game logic in a single file for ViperLang compatibility
 module main;
 
+bind Viper.Graphics;
+bind Viper.Graphics.Color;
+bind Viper.Time;
+bind Viper.Fmt;
+
 // ===========================================================================
 // CONFIGURATION CONSTANTS
 // ===========================================================================
@@ -70,7 +75,7 @@ func flipBoxY(y: Integer, h: Integer) -> Integer {
 }
 
 // Canvas reference (set in main)
-var _canvas: Viper.Graphics.Canvas;
+var _canvas: Canvas;
 
 // Wrapper drawing functions that handle Y-flip automatically
 func drawBox(x: Integer, y: Integer, w: Integer, h: Integer, color: Integer) {
@@ -115,22 +120,22 @@ var COLOR_MENU_BG: Integer;
 var COLOR_MENU_HIGHLIGHT: Integer;
 
 func initColors() {
-    COLOR_BLACK = Viper.Graphics.Color.RGB(0, 0, 0);
-    COLOR_WHITE = Viper.Graphics.Color.RGB(255, 255, 255);
-    COLOR_RED = Viper.Graphics.Color.RGB(255, 0, 0);
-    COLOR_GREEN = Viper.Graphics.Color.RGB(0, 255, 0);
-    COLOR_YELLOW = Viper.Graphics.Color.RGB(255, 255, 0);
-    COLOR_GOLD = Viper.Graphics.Color.RGB(255, 215, 0);
-    COLOR_DARK_GRAY = Viper.Graphics.Color.RGB(64, 64, 64);
-    COLOR_LIGHT_GRAY = Viper.Graphics.Color.RGB(192, 192, 192);
-    COLOR_BACKGROUND = Viper.Graphics.Color.RGB(20, 20, 40);
-    COLOR_PLATFORM = Viper.Graphics.Color.RGB(100, 80, 60);
-    COLOR_LADDER = Viper.Graphics.Color.RGB(180, 140, 80);
-    COLOR_PLAYER = Viper.Graphics.Color.RGB(100, 200, 255);
-    COLOR_ENEMY = Viper.Graphics.Color.RGB(255, 80, 80);
-    COLOR_COLLECTIBLE = Viper.Graphics.Color.RGB(255, 215, 0);
-    COLOR_MENU_BG = Viper.Graphics.Color.RGB(30, 30, 60);
-    COLOR_MENU_HIGHLIGHT = Viper.Graphics.Color.RGB(100, 100, 200);
+    COLOR_BLACK = RGB(0, 0, 0);
+    COLOR_WHITE = RGB(255, 255, 255);
+    COLOR_RED = RGB(255, 0, 0);
+    COLOR_GREEN = RGB(0, 255, 0);
+    COLOR_YELLOW = RGB(255, 255, 0);
+    COLOR_GOLD = RGB(255, 215, 0);
+    COLOR_DARK_GRAY = RGB(64, 64, 64);
+    COLOR_LIGHT_GRAY = RGB(192, 192, 192);
+    COLOR_BACKGROUND = RGB(20, 20, 40);
+    COLOR_PLATFORM = RGB(100, 80, 60);
+    COLOR_LADDER = RGB(180, 140, 80);
+    COLOR_PLAYER = RGB(100, 200, 255);
+    COLOR_ENEMY = RGB(255, 80, 80);
+    COLOR_COLLECTIBLE = RGB(255, 215, 0);
+    COLOR_MENU_BG = RGB(30, 30, 60);
+    COLOR_MENU_HIGHLIGHT = RGB(100, 100, 200);
 }
 
 // ===========================================================================
@@ -158,10 +163,10 @@ entity Platform {
         return 0;
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         drawBox(x, y, width, height, COLOR_PLATFORM);
         // Top highlight
-        drawLine(x, y, x + width - 1, y, Viper.Graphics.Color.RGB(140, 120, 100));
+        drawLine(x, y, x + width - 1, y, RGB(140, 120, 100));
     }
 }
 
@@ -207,7 +212,7 @@ entity Ladder {
         return 0;
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         var left = getLeft();
         var right = getRight() - 1;
         var bottom = getBottom();
@@ -243,7 +248,7 @@ entity Collectible {
         if animTimer >= 60 { animTimer = 0; }
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         if collected == 1 { return; }
         var size = COLLECTIBLE_SIZE;
         var offset = (animTimer / 10) % 3;
@@ -313,7 +318,7 @@ entity Enemy {
         return 1;
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         if active == 0 { return; }
         drawBox(x + 2, y + 4, ENEMY_WIDTH - 4, ENEMY_HEIGHT - 4, COLOR_ENEMY);
         drawDisc(x + ENEMY_WIDTH / 2, y + 4, 4, COLOR_ENEMY);
@@ -456,7 +461,7 @@ entity Player {
         if x > SCREEN_WIDTH - PLAYER_WIDTH { x = SCREEN_WIDTH - PLAYER_WIDTH; }
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         if state == PSTATE_DEAD { return; }
         if invincible > 0 {
             if (invincible / 4) % 2 == 0 { return; }
@@ -473,15 +478,15 @@ entity Player {
         var legAnim = (animFrame / 8) % 2;
         if onLadder == 1 {
             if legAnim == 0 {
-                drawLine(x + 4, y + PLAYER_HEIGHT - 3, x + 2, y + PLAYER_HEIGHT, Viper.Graphics.Color.RGB(70, 150, 200));
-                drawLine(x + PLAYER_WIDTH - 4, y + PLAYER_HEIGHT - 3, x + PLAYER_WIDTH - 2, y + PLAYER_HEIGHT - 2, Viper.Graphics.Color.RGB(70, 150, 200));
+                drawLine(x + 4, y + PLAYER_HEIGHT - 3, x + 2, y + PLAYER_HEIGHT, RGB(70, 150, 200));
+                drawLine(x + PLAYER_WIDTH - 4, y + PLAYER_HEIGHT - 3, x + PLAYER_WIDTH - 2, y + PLAYER_HEIGHT - 2, RGB(70, 150, 200));
             } else {
-                drawLine(x + 4, y + PLAYER_HEIGHT - 3, x + 2, y + PLAYER_HEIGHT - 2, Viper.Graphics.Color.RGB(70, 150, 200));
-                drawLine(x + PLAYER_WIDTH - 4, y + PLAYER_HEIGHT - 3, x + PLAYER_WIDTH - 2, y + PLAYER_HEIGHT, Viper.Graphics.Color.RGB(70, 150, 200));
+                drawLine(x + 4, y + PLAYER_HEIGHT - 3, x + 2, y + PLAYER_HEIGHT - 2, RGB(70, 150, 200));
+                drawLine(x + PLAYER_WIDTH - 4, y + PLAYER_HEIGHT - 3, x + PLAYER_WIDTH - 2, y + PLAYER_HEIGHT, RGB(70, 150, 200));
             }
         } else {
-            drawLine(x + 4, y + PLAYER_HEIGHT - 3, x + 3, y + PLAYER_HEIGHT, Viper.Graphics.Color.RGB(70, 150, 200));
-            drawLine(x + PLAYER_WIDTH - 4, y + PLAYER_HEIGHT - 3, x + PLAYER_WIDTH - 3, y + PLAYER_HEIGHT, Viper.Graphics.Color.RGB(70, 150, 200));
+            drawLine(x + 4, y + PLAYER_HEIGHT - 3, x + 3, y + PLAYER_HEIGHT, RGB(70, 150, 200));
+            drawLine(x + PLAYER_WIDTH - 4, y + PLAYER_HEIGHT - 3, x + PLAYER_WIDTH - 3, y + PLAYER_HEIGHT, RGB(70, 150, 200));
         }
     }
 }
@@ -1005,7 +1010,7 @@ func respawnPlayer() {
 // DRAWING FUNCTIONS
 // ===========================================================================
 
-func drawPlatforms(canvas: Viper.Graphics.Canvas) {
+func drawPlatforms(canvas: Canvas) {
     var i = 0;
     while i < platformCount {
         var px = platformX.get(i);
@@ -1013,12 +1018,12 @@ func drawPlatforms(canvas: Viper.Graphics.Canvas) {
         var pw = platformW.get(i);
         var ph = platformH.get(i);
         drawBox(px, py, pw, ph, COLOR_PLATFORM);
-        drawLine(px, py, px + pw - 1, py, Viper.Graphics.Color.RGB(140, 120, 100));
+        drawLine(px, py, px + pw - 1, py, RGB(140, 120, 100));
         i = i + 1;
     }
 }
 
-func drawLadders(canvas: Viper.Graphics.Canvas) {
+func drawLadders(canvas: Canvas) {
     var i = 0;
     while i < ladderCount {
         var lx = ladderX.get(i);
@@ -1038,7 +1043,7 @@ func drawLadders(canvas: Viper.Graphics.Canvas) {
     }
 }
 
-func drawCollectibles(canvas: Viper.Graphics.Canvas) {
+func drawCollectibles(canvas: Canvas) {
     var i = 0;
     while i < collectCount {
         if collectCollected.get(i) == 0 {
@@ -1053,7 +1058,7 @@ func drawCollectibles(canvas: Viper.Graphics.Canvas) {
     }
 }
 
-func drawEnemies(canvas: Viper.Graphics.Canvas) {
+func drawEnemies(canvas: Canvas) {
     var i = 0;
     while i < enemyCount {
         if enemyActive.get(i) == 1 {
@@ -1080,7 +1085,7 @@ func drawEnemies(canvas: Viper.Graphics.Canvas) {
     }
 }
 
-func drawPlayer(canvas: Viper.Graphics.Canvas) {
+func drawPlayer(canvas: Canvas) {
     if playerState == PSTATE_DEAD { return; }
     if playerInvincible > 0 {
         if (playerInvincible / 4) % 2 == 0 { return; }
@@ -1092,15 +1097,15 @@ func drawPlayer(canvas: Viper.Graphics.Canvas) {
     } else {
         canvas.Plot(playerX + 2, playerY + 4, COLOR_WHITE);
     }
-    var legColor = Viper.Graphics.Color.RGB(70, 150, 200);
+    var legColor = RGB(70, 150, 200);
     drawLine(playerX + 4, playerY + PLAYER_HEIGHT - 3, playerX + 3, playerY + PLAYER_HEIGHT, legColor);
     drawLine(playerX + PLAYER_WIDTH - 4, playerY + PLAYER_HEIGHT - 3, playerX + PLAYER_WIDTH - 3, playerY + PLAYER_HEIGHT, legColor);
 }
 
-func drawExit(canvas: Viper.Graphics.Canvas) {
+func drawExit(canvas: Canvas) {
     if collectedCount >= totalCollectibles {
         drawBox(exitX, exitY, 20, 24, COLOR_GREEN);
-        drawFrame(exitX, exitY, 20, 24, Viper.Graphics.Color.RGB(100, 255, 100));
+        drawFrame(exitX, exitY, 20, 24, RGB(100, 255, 100));
         drawDisc(exitX + 15, exitY + 12, 2, COLOR_GOLD);
     } else {
         drawBox(exitX, exitY, 20, 24, COLOR_DARK_GRAY);
@@ -1108,10 +1113,10 @@ func drawExit(canvas: Viper.Graphics.Canvas) {
     }
 }
 
-func drawHUD(canvas: Viper.Graphics.Canvas) {
-    drawText(10, 10, "SCORE: " + Viper.Fmt.Int(score), COLOR_YELLOW);
-    drawText(SCREEN_WIDTH / 2 - 50, 10, "HIGH: " + Viper.Fmt.Int(highScore), COLOR_GOLD);
-    drawText(SCREEN_WIDTH - 100, 10, "LVL: " + Viper.Fmt.Int(currentLevel), COLOR_WHITE);
+func drawHUD(canvas: Canvas) {
+    drawText(10, 10, "SCORE: " + Int(score), COLOR_YELLOW);
+    drawText(SCREEN_WIDTH / 2 - 50, 10, "HIGH: " + Int(highScore), COLOR_GOLD);
+    drawText(SCREEN_WIDTH - 100, 10, "LVL: " + Int(currentLevel), COLOR_WHITE);
     drawText(10, 30, "LIVES:", COLOR_GREEN);
     var i = 0;
     while i < playerLives {
@@ -1120,13 +1125,13 @@ func drawHUD(canvas: Viper.Graphics.Canvas) {
     }
     var remaining = totalCollectibles - collectedCount;
     if remaining > 0 {
-        drawText(SCREEN_WIDTH - 120, 30, "ITEMS: " + Viper.Fmt.Int(remaining), COLOR_COLLECTIBLE);
+        drawText(SCREEN_WIDTH - 120, 30, "ITEMS: " + Int(remaining), COLOR_COLLECTIBLE);
     } else {
         drawText(SCREEN_WIDTH - 120, 30, "EXIT OPEN!", COLOR_GREEN);
     }
 }
 
-func drawGame(canvas: Viper.Graphics.Canvas) {
+func drawGame(canvas: Canvas) {
     canvas.Clear(COLOR_BACKGROUND);
     drawPlatforms(canvas);
     drawLadders(canvas);
@@ -1141,13 +1146,13 @@ func drawGame(canvas: Viper.Graphics.Canvas) {
 // MENU SCREENS
 // ===========================================================================
 
-func drawTitleScreen(canvas: Viper.Graphics.Canvas) {
+func drawTitleScreen(canvas: Canvas) {
     // Background gradient
     var y = 0;
     while y < SCREEN_HEIGHT {
         var shade = 20 + y / 20;
         if shade > 60 { shade = 60; }
-        drawLine(0, y, SCREEN_WIDTH, y, Viper.Graphics.Color.RGB(shade / 3, shade / 3, shade));
+        drawLine(0, y, SCREEN_WIDTH, y, RGB(shade / 3, shade / 3, shade));
         y = y + 1;
     }
 
@@ -1182,7 +1187,7 @@ func drawTitleScreen(canvas: Viper.Graphics.Canvas) {
     drawText(SCREEN_WIDTH / 2 - 80, SCREEN_HEIGHT - 30, "Viper Ladders Demo 2025", COLOR_DARK_GRAY);
 }
 
-func drawControlsScreen(canvas: Viper.Graphics.Canvas) {
+func drawControlsScreen(canvas: Canvas) {
     drawBox(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, COLOR_MENU_BG);
     drawText(SCREEN_WIDTH / 2 - 50, 50, "CONTROLS", COLOR_GOLD);
 
@@ -1205,7 +1210,7 @@ func drawControlsScreen(canvas: Viper.Graphics.Canvas) {
     drawText(SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT - 60, "Press ENTER to return", COLOR_YELLOW);
 }
 
-func drawPauseMenu(canvas: Viper.Graphics.Canvas) {
+func drawPauseMenu(canvas: Canvas) {
     drawBox(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, COLOR_DARK_GRAY);
 
     var boxX = SCREEN_WIDTH / 2 - 100;
@@ -1236,7 +1241,7 @@ func drawPauseMenu(canvas: Viper.Graphics.Canvas) {
     drawText(menuX, menuY, "QUIT", COLOR_WHITE);
 }
 
-func drawGameOver(canvas: Viper.Graphics.Canvas) {
+func drawGameOver(canvas: Canvas) {
     drawBox(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, COLOR_DARK_GRAY);
 
     var boxX = SCREEN_WIDTH / 2 - 120;
@@ -1245,9 +1250,9 @@ func drawGameOver(canvas: Viper.Graphics.Canvas) {
     drawFrame(boxX, boxY, 240, 200, COLOR_RED);
 
     drawText(boxX + 70, boxY + 20, "GAME OVER", COLOR_RED);
-    drawText(boxX + 30, boxY + 60, "Score: " + Viper.Fmt.Int(score), COLOR_YELLOW);
-    drawText(boxX + 30, boxY + 80, "Level: " + Viper.Fmt.Int(currentLevel), COLOR_WHITE);
-    drawText(boxX + 30, boxY + 100, "High: " + Viper.Fmt.Int(highScore), COLOR_GOLD);
+    drawText(boxX + 30, boxY + 60, "Score: " + Int(score), COLOR_YELLOW);
+    drawText(boxX + 30, boxY + 80, "Level: " + Int(currentLevel), COLOR_WHITE);
+    drawText(boxX + 30, boxY + 100, "High: " + Int(highScore), COLOR_GOLD);
 
     var menuX = boxX + 60;
     var menuY = boxY + 140;
@@ -1264,20 +1269,20 @@ func drawGameOver(canvas: Viper.Graphics.Canvas) {
     drawText(menuX, menuY, "MAIN MENU", COLOR_WHITE);
 }
 
-func drawLevelComplete(canvas: Viper.Graphics.Canvas) {
-    drawBox(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Viper.Graphics.Color.RGB(0, 50, 0));
+func drawLevelComplete(canvas: Canvas) {
+    drawBox(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, RGB(0, 50, 0));
 
     var boxX = SCREEN_WIDTH / 2 - 120;
     var boxY = SCREEN_HEIGHT / 2 - 80;
     drawBox(boxX, boxY, 240, 160, COLOR_MENU_BG);
     drawFrame(boxX, boxY, 240, 160, COLOR_GREEN);
 
-    drawText(boxX + 30, boxY + 20, "LEVEL " + Viper.Fmt.Int(currentLevel) + " COMPLETE!", COLOR_GREEN);
+    drawText(boxX + 30, boxY + 20, "LEVEL " + Int(currentLevel) + " COMPLETE!", COLOR_GREEN);
 
     var levelScore = score - levelStartScore;
-    drawText(boxX + 30, boxY + 60, "Level Score: " + Viper.Fmt.Int(levelScore), COLOR_YELLOW);
-    drawText(boxX + 30, boxY + 80, "Bonus: " + Viper.Fmt.Int(SCORE_PER_LEVEL), COLOR_GOLD);
-    drawText(boxX + 30, boxY + 100, "Total: " + Viper.Fmt.Int(score + SCORE_PER_LEVEL), COLOR_WHITE);
+    drawText(boxX + 30, boxY + 60, "Level Score: " + Int(levelScore), COLOR_YELLOW);
+    drawText(boxX + 30, boxY + 80, "Bonus: " + Int(SCORE_PER_LEVEL), COLOR_GOLD);
+    drawText(boxX + 30, boxY + 100, "Total: " + Int(score + SCORE_PER_LEVEL), COLOR_WHITE);
 
     drawText(boxX + 40, boxY + 130, "Press ENTER to continue", COLOR_LIGHT_GRAY);
 }
@@ -1316,7 +1321,7 @@ func handlePlayerDeath() {
     }
 }
 
-func updateGameplay(canvas: Viper.Graphics.Canvas) {
+func updateGameplay(canvas: Canvas) {
     // Update invincibility
     if playerInvincible > 0 { playerInvincible = playerInvincible - 1; }
 
@@ -1431,7 +1436,7 @@ func updateGameplay(canvas: Viper.Graphics.Canvas) {
 // ===========================================================================
 
 func main() {
-    var canvas = new Viper.Graphics.Canvas(TITLE, SCREEN_WIDTH, SCREEN_HEIGHT);
+    var canvas = new Canvas(TITLE, SCREEN_WIDTH, SCREEN_HEIGHT);
     _canvas = canvas;
 
     initColors();

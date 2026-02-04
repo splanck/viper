@@ -2,6 +2,9 @@
 // Handles title screen, pause menu, and game over screens
 module menu;
 
+bind Viper.Graphics;
+bind Viper.Fmt;
+
 bind "./config";
 bind "./colors";
 
@@ -19,7 +22,7 @@ entity MenuItem {
         selected = 0;
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         var textColor = colors.UI_TEXT_COLOR;
         if selected == 1 {
             textColor = colors.MENU_HIGHLIGHT_COLOR;
@@ -31,7 +34,7 @@ entity MenuItem {
 }
 
 // Draw title screen
-func drawTitleScreen(canvas: Viper.Graphics.Canvas, selectedItem: Integer, animFrame: Integer) {
+func drawTitleScreen(canvas: Canvas, selectedItem: Integer, animFrame: Integer) {
     // Background with gradient effect
     var bgY = 0;
     while bgY < config.SCREEN_HEIGHT {
@@ -78,7 +81,7 @@ func drawTitleScreen(canvas: Viper.Graphics.Canvas, selectedItem: Integer, animF
 }
 
 // Draw a menu item with selection indicator
-func drawMenuItemText(canvas: Viper.Graphics.Canvas, x: Integer, y: Integer, text: String, selected: Integer) {
+func drawMenuItemText(canvas: Canvas, x: Integer, y: Integer, text: String, selected: Integer) {
     if selected == 1 {
         // Draw selection box
         canvas.Frame(x - 10, y - 5, 140, 25, colors.MENU_HIGHLIGHT_COLOR);
@@ -90,7 +93,7 @@ func drawMenuItemText(canvas: Viper.Graphics.Canvas, x: Integer, y: Integer, tex
 }
 
 // Draw a decorative ladder for the title screen
-func drawDecorativeLadder(canvas: Viper.Graphics.Canvas, x: Integer, y: Integer, h: Integer) {
+func drawDecorativeLadder(canvas: Canvas, x: Integer, y: Integer, h: Integer) {
     var left = x;
     var right = x + 12;
     var bottom = y + h;
@@ -108,7 +111,7 @@ func drawDecorativeLadder(canvas: Viper.Graphics.Canvas, x: Integer, y: Integer,
 }
 
 // Draw a mini animated player for decoration
-func drawMiniPlayer(canvas: Viper.Graphics.Canvas, x: Integer, y: Integer, frame: Integer) {
+func drawMiniPlayer(canvas: Canvas, x: Integer, y: Integer, frame: Integer) {
     var bodyColor = colors.PLAYER_COLOR;
 
     // Body
@@ -128,7 +131,7 @@ func drawMiniPlayer(canvas: Viper.Graphics.Canvas, x: Integer, y: Integer, frame
 }
 
 // Draw pause menu overlay
-func drawPauseMenu(canvas: Viper.Graphics.Canvas, selectedItem: Integer) {
+func drawPauseMenu(canvas: Canvas, selectedItem: Integer) {
     // Semi-transparent overlay
     var overlayColor = colors.rgba(0, 0, 0, 180);
     canvas.Box(0, 0, config.SCREEN_WIDTH, config.SCREEN_HEIGHT, colors.DARK_GRAY);
@@ -155,7 +158,7 @@ func drawPauseMenu(canvas: Viper.Graphics.Canvas, selectedItem: Integer) {
 }
 
 // Draw game over screen
-func drawGameOver(canvas: Viper.Graphics.Canvas, score: Integer, highScore: Integer, levelReached: Integer, selectedItem: Integer) {
+func drawGameOver(canvas: Canvas, score: Integer, highScore: Integer, levelReached: Integer, selectedItem: Integer) {
     // Dark overlay
     canvas.Box(0, 0, config.SCREEN_WIDTH, config.SCREEN_HEIGHT, colors.DARK_GRAY);
 
@@ -172,9 +175,9 @@ func drawGameOver(canvas: Viper.Graphics.Canvas, score: Integer, highScore: Inte
     canvas.Text(boxX + 70, boxY + 20, "GAME OVER", colors.RED);
 
     // Stats
-    canvas.Text(boxX + 30, boxY + 60, "Score: " + Viper.Fmt.Int(score), colors.UI_SCORE_COLOR);
-    canvas.Text(boxX + 30, boxY + 80, "Level: " + Viper.Fmt.Int(levelReached), colors.UI_TEXT_COLOR);
-    canvas.Text(boxX + 30, boxY + 100, "High: " + Viper.Fmt.Int(highScore), colors.GOLD);
+    canvas.Text(boxX + 30, boxY + 60, "Score: " + Int(score), colors.UI_SCORE_COLOR);
+    canvas.Text(boxX + 30, boxY + 80, "Level: " + Int(levelReached), colors.UI_TEXT_COLOR);
+    canvas.Text(boxX + 30, boxY + 100, "High: " + Int(highScore), colors.GOLD);
 
     // Menu items
     var menuX = boxX + 60;
@@ -185,7 +188,7 @@ func drawGameOver(canvas: Viper.Graphics.Canvas, score: Integer, highScore: Inte
 }
 
 // Draw level complete screen
-func drawLevelComplete(canvas: Viper.Graphics.Canvas, levelNum: Integer, levelScore: Integer, totalScore: Integer) {
+func drawLevelComplete(canvas: Canvas, levelNum: Integer, levelScore: Integer, totalScore: Integer) {
     // Success overlay
     canvas.Box(0, 0, config.SCREEN_WIDTH, config.SCREEN_HEIGHT, colors.DARK_GREEN);
 
@@ -199,19 +202,19 @@ func drawLevelComplete(canvas: Viper.Graphics.Canvas, levelNum: Integer, levelSc
     canvas.Frame(boxX, boxY, boxW, boxH, colors.GREEN);
 
     // Title
-    canvas.Text(boxX + 40, boxY + 20, "LEVEL " + Viper.Fmt.Int(levelNum) + " COMPLETE!", colors.GREEN);
+    canvas.Text(boxX + 40, boxY + 20, "LEVEL " + Int(levelNum) + " COMPLETE!", colors.GREEN);
 
     // Stats
-    canvas.Text(boxX + 30, boxY + 60, "Level Score: " + Viper.Fmt.Int(levelScore), colors.UI_SCORE_COLOR);
-    canvas.Text(boxX + 30, boxY + 80, "Bonus: " + Viper.Fmt.Int(config.SCORE_PER_LEVEL), colors.GOLD);
-    canvas.Text(boxX + 30, boxY + 100, "Total: " + Viper.Fmt.Int(totalScore), colors.WHITE);
+    canvas.Text(boxX + 30, boxY + 60, "Level Score: " + Int(levelScore), colors.UI_SCORE_COLOR);
+    canvas.Text(boxX + 30, boxY + 80, "Bonus: " + Int(config.SCORE_PER_LEVEL), colors.GOLD);
+    canvas.Text(boxX + 30, boxY + 100, "Total: " + Int(totalScore), colors.WHITE);
 
     // Continue prompt
     canvas.Text(boxX + 40, boxY + 130, "Press ENTER to continue", colors.LIGHT_GRAY);
 }
 
 // Draw controls help screen
-func drawControlsScreen(canvas: Viper.Graphics.Canvas) {
+func drawControlsScreen(canvas: Canvas) {
     // Background
     canvas.Box(0, 0, config.SCREEN_WIDTH, config.SCREEN_HEIGHT, colors.MENU_BG_COLOR);
 

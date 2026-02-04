@@ -837,10 +837,46 @@ TypeRef Sema::resolveNamedType(const std::string &name) const
     if (name == "Ptr" || name == "ptr")
         return types::ptr();
 
+    // Built-in collection types (default element type is unknown for non-generic usage)
+    if (name == "List")
+        return types::list(types::unknown());
+    if (name == "Set")
+        return types::set(types::unknown());
+    if (name == "Map")
+        return types::map(types::string(), types::unknown());
+
     // Look up in registry
     auto it = typeRegistry_.find(name);
     if (it != typeRegistry_.end())
         return it->second;
+
+    // Check if this is an imported type from a bound namespace
+    // e.g., "Canvas" imported from "Viper.Graphics"
+    auto importIt = importedSymbols_.find(name);
+    if (importIt != importedSymbols_.end())
+    {
+        const std::string &fullName = importIt->second;
+
+        // Check if the imported type is a built-in collection type
+        if (fullName == "Viper.Collections.List")
+            return types::list(types::unknown());
+        if (fullName == "Viper.Collections.Set")
+            return types::set(types::unknown());
+        if (fullName == "Viper.Collections.Map")
+            return types::map(types::string(), types::unknown());
+
+        // Look up the full qualified name in the registry
+        it = typeRegistry_.find(fullName);
+        if (it != typeRegistry_.end())
+            return it->second;
+
+        // For runtime classes (e.g., Viper.Graphics.Canvas), return a runtime class type
+        // with the full qualified name so the lowerer can generate correct calls
+        if (fullName.rfind("Viper.", 0) == 0)
+        {
+            return types::runtimeClass(fullName);
+        }
+    }
 
     // Handle cross-module type references (e.g., "token.Token")
     // The ImportResolver merges imported declarations, so we just need

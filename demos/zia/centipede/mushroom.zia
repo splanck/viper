@@ -1,7 +1,7 @@
 // =============================================================================
 // CENTIPEDE - Mushroom Field
 // =============================================================================
-// Uses Viper.Game.Grid2D for efficient 2D tile storage
+// Uses Grid2D for efficient 2D tile storage
 // Mushrooms have 4 health and change color as damaged
 // =============================================================================
 
@@ -10,18 +10,22 @@ module mushroom;
 bind "./config";
 bind "./utils";
 
+bind Viper.Game;
+bind Viper.Graphics;
+bind Viper.Random;
+
 // =============================================================================
 // MUSHROOM FIELD ENTITY - The game board with mushrooms
 // =============================================================================
 
 entity MushroomField {
-    hide Viper.Game.Grid2D grid;         // Stores mushroom health (0-4)
-    hide Viper.Game.Grid2D poisoned;     // Tracks poisoned mushrooms
+    hide Grid2D grid;         // Stores mushroom health (0-4)
+    hide Grid2D poisoned;     // Tracks poisoned mushrooms
     hide Integer totalMushrooms;
 
     expose func init() {
-        grid = Viper.Game.Grid2D.New(config.GRID_WIDTH, config.GRID_HEIGHT, 0);
-        poisoned = Viper.Game.Grid2D.New(config.GRID_WIDTH, config.GRID_HEIGHT, 0);
+        grid = Grid2D.New(config.GRID_WIDTH, config.GRID_HEIGHT, 0);
+        poisoned = Grid2D.New(config.GRID_WIDTH, config.GRID_HEIGHT, 0);
         totalMushrooms = 0;
     }
 
@@ -32,8 +36,8 @@ entity MushroomField {
 
         while placed < count && attempts < maxAttempts {
             // Place mushrooms in the mushroom zone (not in player zone or top row)
-            var x = Viper.Random.NextInt(config.GRID_WIDTH);
-            var y = config.MUSHROOM_ZONE_TOP + Viper.Random.NextInt(config.MUSHROOM_ZONE_BOTTOM - config.MUSHROOM_ZONE_TOP - 6);
+            var x = NextInt(config.GRID_WIDTH);
+            var y = config.MUSHROOM_ZONE_TOP + NextInt(config.MUSHROOM_ZONE_BOTTOM - config.MUSHROOM_ZONE_TOP - 6);
 
             if grid.Get(x, y) == 0 {
                 grid.Set(x, y, config.MUSHROOM_MAX_HEALTH);
@@ -127,7 +131,7 @@ entity MushroomField {
         }
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         for y in 0..config.GRID_HEIGHT {
             for x in 0..config.GRID_WIDTH {
                 var health = grid.Get(x, y);
@@ -138,7 +142,7 @@ entity MushroomField {
         }
     }
 
-    hide func drawMushroom(canvas: Viper.Graphics.Canvas, gridX: Integer, gridY: Integer, health: Integer, isPoisonedMush: Boolean) {
+    hide func drawMushroom(canvas: Canvas, gridX: Integer, gridY: Integer, health: Integer, isPoisonedMush: Boolean) {
         var screenX = utils.gridToScreenX(gridX);
         var screenY = utils.gridToScreenY(gridY);
         var centerX = screenX + config.TILE_SIZE / 2;

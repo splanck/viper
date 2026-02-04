@@ -51,6 +51,8 @@ The second approach is polymorphism. One piece of code, many types of vehicles, 
 When you buy something, the cashier says "How would you like to pay?" You might use cash, credit card, debit card, mobile payment, or gift card. The cashier doesn't need different training for each payment method. They just need to know: "Can this payment method complete the transaction?"
 
 ```rust
+bind Viper.Terminal;
+
 interface PaymentMethod {
     func pay(amount: Number) -> Boolean;
 }
@@ -77,10 +79,12 @@ entity MobilePayment implements PaymentMethod {
 The cashier's checkout code doesn't care which specific payment method you use:
 
 ```rust
+bind Viper.Terminal;
+
 func checkout(items: [Item], payment: PaymentMethod) {
     var total = calculateTotal(items);
     if payment.pay(total) {
-        Viper.Terminal.Say("Transaction complete!");
+        Say("Transaction complete!");
     }
 }
 ```
@@ -150,9 +154,11 @@ This is called the *Open-Closed Principle*: code should be open for extension bu
 Want to test your payment processing without actually charging credit cards? With polymorphism, create a `MockPaymentMethod` that always succeeds:
 
 ```rust
+bind Viper.Terminal;
+
 entity MockPayment implements PaymentMethod {
     func pay(amount: Number) -> Boolean {
-        Viper.Terminal.Say("[Test] Would charge: " + amount);
+        Say("[Test] Would charge: " + amount);
         return true;  // Always succeeds for testing
     }
 }
@@ -175,27 +181,29 @@ There are two flavors of polymorphism, and understanding both will deepen your m
 This is what we've been discussing: the decision about which method to call happens *at runtime*, based on the actual object type.
 
 ```rust
+bind Viper.Terminal;
+
 entity Animal {
     func speak() {
-        Viper.Terminal.Say("...");
+        Say("...");
     }
 }
 
 entity Dog extends Animal {
     func speak() {
-        Viper.Terminal.Say("Woof!");
+        Say("Woof!");
     }
 }
 
 entity Cat extends Animal {
     func speak() {
-        Viper.Terminal.Say("Meow!");
+        Say("Meow!");
     }
 }
 
 entity Cow extends Animal {
     func speak() {
-        Viper.Terminal.Say("Moo!");
+        Say("Moo!");
     }
 }
 
@@ -211,8 +219,10 @@ The answer: **Dog's version**. The actual object type determines the method call
 This is called *dynamic dispatch* or *late binding*. The decision is made at runtime because the compiler can't always know what type an object will be. Consider:
 
 ```rust
+bind Viper.Random;
+
 func makeRandomAnimal() -> Animal {
-    var r = Viper.Random.Int(0, 3);
+    var r = Int(0, 3);
     if r == 0 {
         return Dog();
     } else if r == 1 {
@@ -244,28 +254,30 @@ This happens automatically. You just write `object.method()` and the right imple
 The other form of polymorphism happens at compile time: *method overloading*.
 
 ```rust
+bind Viper.Terminal;
+
 entity Printer {
     func print(text: String) {
-        Viper.Terminal.Say(text);
+        Say(text);
     }
 
     func print(number: Integer) {
-        Viper.Terminal.Say(number.toString());
+        Say(number.toString());
     }
 
     func print(number: Number) {
-        Viper.Terminal.Say(number.toString());
+        Say(number.toString());
     }
 
     func print(items: [String]) {
         for item in items {
-            Viper.Terminal.Say(item);
+            Say(item);
         }
     }
 
     func print(item: String, times: Integer) {
         for i in 0..times {
-            Viper.Terminal.Say(item);
+            Say(item);
         }
     }
 }
@@ -466,6 +478,8 @@ entity MarkdownExporter implements Exporter {
 The export menu:
 
 ```rust
+bind Viper.Terminal;
+
 entity ExportMenu {
     exporters: [Exporter];
 
@@ -482,10 +496,10 @@ entity ExportMenu {
     }
 
     func showOptions() {
-        Viper.Terminal.Say("Export as:");
+        Say("Export as:");
         var i = 1;
         for exporter in self.exporters {
-            Viper.Terminal.Say(i + ". " + exporter.getExtension().upper());
+            Say(i + ". " + exporter.getExtension().upper());
             i += 1;
         }
     }
@@ -521,6 +535,8 @@ No existing code was modified. The ExportMenu didn't change. The other exporters
 This extensibility is the foundation of plugin systems:
 
 ```rust
+bind Viper.Terminal;
+
 interface Plugin {
     func getName() -> String;
     func getVersion() -> String;
@@ -533,7 +549,7 @@ entity PluginManager {
 
     func loadPlugin(plugin: Plugin) {
         self.plugins.push(plugin);
-        Viper.Terminal.Say("Loaded: " + plugin.getName() + " v" + plugin.getVersion());
+        Say("Loaded: " + plugin.getName() + " v" + plugin.getVersion());
         plugin.initialize();
     }
 
@@ -595,11 +611,11 @@ entity FileManager {
 
     func save(filename: String, data: String) {
         var compressed = self.compression.compress(data);
-        Viper.File.WriteText(filename, compressed);
+        File.WriteText(filename, compressed);
     }
 
     func load(filename: String) -> String {
-        var compressed = Viper.File.ReadText(filename);
+        var compressed = File.ReadText(filename);
         return self.compression.decompress(compressed);
     }
 }
@@ -624,6 +640,8 @@ The Strategy pattern lets you swap algorithms without changing the code that use
 Polymorphism excels at event-driven systems:
 
 ```rust
+bind Viper.Terminal;
+
 interface EventHandler {
     func handle(event: Event);
     func canHandle(event: Event) -> Boolean;
@@ -635,7 +653,7 @@ entity KeyPressHandler implements EventHandler {
     }
 
     func handle(event: Event) {
-        Viper.Terminal.Say("Key pressed: " + event.key);
+        Say("Key pressed: " + event.key);
     }
 }
 
@@ -645,7 +663,7 @@ entity MouseClickHandler implements EventHandler {
     }
 
     func handle(event: Event) {
-        Viper.Terminal.Say("Click at: " + event.x + ", " + event.y);
+        Say("Click at: " + event.x + ", " + event.y);
     }
 }
 
@@ -655,7 +673,7 @@ entity ResizeHandler implements EventHandler {
     }
 
     func handle(event: Event) {
-        Viper.Terminal.Say("Window resized to: " + event.width + "x" + event.height);
+        Say("Window resized to: " + event.width + "x" + event.height);
     }
 }
 
@@ -737,7 +755,7 @@ entity CommandHistory {
             var command = self.executed.pop();
             command.undo();
             self.undone.push(command);
-            Viper.Terminal.Say("Undid: " + command.getDescription());
+            Say("Undid: " + command.getDescription());
         }
     }
 
@@ -746,7 +764,7 @@ entity CommandHistory {
             var command = self.undone.pop();
             command.execute();
             self.executed.push(command);
-            Viper.Terminal.Say("Redid: " + command.getDescription());
+            Say("Redid: " + command.getDescription());
         }
     }
 }
@@ -933,6 +951,8 @@ Let's build a complete rendering system that demonstrates polymorphism's power:
 ```rust
 module DrawingSystem;
 
+bind Viper.Terminal;
+
 interface Drawable {
     func draw();
     func getBounds() -> Rect;
@@ -964,7 +984,7 @@ entity Circle implements Drawable {
     }
 
     func draw() {
-        Viper.Terminal.Say("Drawing " + self.color + " circle at (" +
+        Say("Drawing " + self.color + " circle at (" +
             self.x + ", " + self.y + ") radius " + self.radius);
     }
 
@@ -994,7 +1014,7 @@ entity Rectangle implements Drawable {
     }
 
     func draw() {
-        Viper.Terminal.Say("Drawing " + self.color + " rectangle at (" +
+        Say("Drawing " + self.color + " rectangle at (" +
             self.x + ", " + self.y + ") size " + self.width + "x" + self.height);
     }
 
@@ -1017,7 +1037,7 @@ entity Text implements Drawable {
     }
 
     func draw() {
-        Viper.Terminal.Say("Drawing text '" + self.content + "' at (" +
+        Say("Drawing text '" + self.content + "' at (" +
             self.x + ", " + self.y + ")");
     }
 
@@ -1042,11 +1062,11 @@ entity Group implements Drawable {
     }
 
     func draw() {
-        Viper.Terminal.Say("--- Drawing group: " + self.name + " ---");
+        Say("--- Drawing group: " + self.name + " ---");
         for child in self.children {
             child.draw();
         }
-        Viper.Terminal.Say("--- End group: " + self.name + " ---");
+        Say("--- End group: " + self.name + " ---");
     }
 
     func getBounds() -> Rect {
@@ -1102,19 +1122,19 @@ func start() {
     scene.add(icons);  // Group inside group!
 
     // Draw everything with one call
-    Viper.Terminal.Say("=== Drawing Scene ===");
+    Say("=== Drawing Scene ===");
     scene.draw();
 
     // Get total bounds
     var bounds = scene.getBounds();
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("Scene bounds: " + bounds.width + "x" + bounds.height);
+    Say("");
+    Say("Scene bounds: " + bounds.width + "x" + bounds.height);
 
     // Find item at click position - works with any Drawable
     var allItems: [Drawable] = [rect, circle, label];
     var clicked = findItemAt(allItems, 50.0, 30.0);
     if clicked != null {
-        Viper.Terminal.Say("Clicked on something!");
+        Say("Clicked on something!");
     }
 }
 ```
@@ -1127,19 +1147,21 @@ Notice how `Group` is itself `Drawable`. This is the *Composite Pattern* — tre
 
 **Zia**
 ```rust
+bind Viper.Terminal;
+
 interface Animal {
     func speak();
 }
 
 entity Dog implements Animal {
     func speak() {
-        Viper.Terminal.Say("Woof!");
+        Say("Woof!");
     }
 }
 
 entity Cat implements Animal {
     func speak() {
-        Viper.Terminal.Say("Meow!");
+        Say("Meow!");
     }
 }
 

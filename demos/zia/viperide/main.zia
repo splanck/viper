@@ -10,6 +10,8 @@ bind "editor/editor_tabs";
 bind "services/file_utils";
 bind "build/build_system";
 
+bind Viper.GUI;
+
 // ============================================================================
 // ViperIDE — main entry point
 // ============================================================================
@@ -47,14 +49,14 @@ func main() {
     // ========================================================================
     // Register keyboard shortcuts
     // ========================================================================
-    Viper.GUI.Shortcuts.Register("new", "Ctrl+N", "New File");
-    Viper.GUI.Shortcuts.Register("open", "Ctrl+O", "Open File");
-    Viper.GUI.Shortcuts.Register("save", "Ctrl+S", "Save File");
-    Viper.GUI.Shortcuts.Register("saveall", "Ctrl+Shift+S", "Save All Files");
-    Viper.GUI.Shortcuts.Register("close", "Ctrl+W", "Close File");
-    Viper.GUI.Shortcuts.Register("togglesidebar", "Ctrl+B", "Toggle Sidebar");
-    Viper.GUI.Shortcuts.Register("build", "Ctrl+Shift+B", "Build");
-    Viper.GUI.Shortcuts.Register("buildrun", "F5", "Build and Run");
+    Shortcuts.Register("new", "Ctrl+N", "New File");
+    Shortcuts.Register("open", "Ctrl+O", "Open File");
+    Shortcuts.Register("save", "Ctrl+S", "Save File");
+    Shortcuts.Register("saveall", "Ctrl+Shift+S", "Save All Files");
+    Shortcuts.Register("close", "Ctrl+W", "Close File");
+    Shortcuts.Register("togglesidebar", "Ctrl+B", "Toggle Sidebar");
+    Shortcuts.Register("build", "Ctrl+Shift+B", "Build");
+    Shortcuts.Register("buildrun", "F5", "Build and Run");
 
     // ========================================================================
     // Create welcome document
@@ -92,7 +94,7 @@ func main() {
             doNew = shell.tbNew.WasClicked() != 0;
         }
         if doNew == false {
-            doNew = Viper.GUI.Shortcuts.WasTriggered("new") != 0;
+            doNew = Shortcuts.WasTriggered("new") != 0;
         }
         if doNew {
             SaveEditorState(docMgr, engine);
@@ -114,10 +116,10 @@ func main() {
             doOpen = shell.tbOpen.WasClicked() != 0;
         }
         if doOpen == false {
-            doOpen = Viper.GUI.Shortcuts.WasTriggered("open") != 0;
+            doOpen = Shortcuts.WasTriggered("open") != 0;
         }
         if doOpen {
-            var path = Viper.GUI.FileDialog.Open("Open File", "*.zia;*.bas;*.txt", "");
+            var path = FileDialog.Open("Open File", "*.zia;*.bas;*.txt", "");
             if path != "" {
                 SaveEditorState(docMgr, engine);
 
@@ -139,7 +141,7 @@ func main() {
         // Handle Open Folder (menu item)
         // ====================================================================
         if shell.miOpenFolder.WasClicked() != 0 {
-            var folderPath = Viper.GUI.FileDialog.SelectFolder("Open Folder", "");
+            var folderPath = FileDialog.SelectFolder("Open Folder", "");
             if folderPath != "" {
                 projMgr.OpenFolder(folderPath);
                 shell.SetStatusLeft("Opened project: " + projMgr.project.name);
@@ -174,14 +176,14 @@ func main() {
             doSave = shell.tbSave.WasClicked() != 0;
         }
         if doSave == false {
-            doSave = Viper.GUI.Shortcuts.WasTriggered("save") != 0;
+            doSave = Shortcuts.WasTriggered("save") != 0;
         }
         if doSave {
             SaveEditorState(docMgr, engine);
             var saveDoc = docMgr.GetActive();
             if saveDoc != null {
                 if saveDoc.isNew {
-                    var savePath = Viper.GUI.FileDialog.Save(
+                    var savePath = FileDialog.Save(
                         "Save File", "*.zia", saveDoc.fileName, "");
                     if savePath != "" {
                         docMgr.SaveAs(savePath);
@@ -207,7 +209,7 @@ func main() {
             SaveEditorState(docMgr, engine);
             var saveAsDoc = docMgr.GetActive();
             if saveAsDoc != null {
-                var saveAsPath = Viper.GUI.FileDialog.Save(
+                var saveAsPath = FileDialog.Save(
                     "Save As", "*.zia", saveAsDoc.fileName, "");
                 if saveAsPath != "" {
                     docMgr.SaveAs(saveAsPath);
@@ -228,7 +230,7 @@ func main() {
             doSaveAll = shell.tbSaveAll.WasClicked() != 0;
         }
         if doSaveAll == false {
-            doSaveAll = Viper.GUI.Shortcuts.WasTriggered("saveall") != 0;
+            doSaveAll = Shortcuts.WasTriggered("saveall") != 0;
         }
         if doSaveAll {
             SaveEditorState(docMgr, engine);
@@ -250,7 +252,7 @@ func main() {
         // ====================================================================
         var doClose = shell.miClose.WasClicked() != 0;
         if doClose == false {
-            doClose = Viper.GUI.Shortcuts.WasTriggered("close") != 0;
+            doClose = Shortcuts.WasTriggered("close") != 0;
         }
         var closeIdx = -1;
         if doClose {
@@ -352,7 +354,7 @@ func main() {
         // ====================================================================
         var doToggleSidebar = shell.miToggleSidebar.WasClicked() != 0;
         if doToggleSidebar == false {
-            doToggleSidebar = Viper.GUI.Shortcuts.WasTriggered("togglesidebar") != 0;
+            doToggleSidebar = Shortcuts.WasTriggered("togglesidebar") != 0;
         }
         if doToggleSidebar {
             shell.ToggleSidebar();
@@ -363,7 +365,7 @@ func main() {
         // ====================================================================
         var doBuild = shell.miBuild.WasClicked() != 0;
         if doBuild == false {
-            doBuild = Viper.GUI.Shortcuts.WasTriggered("build") != 0;
+            doBuild = Shortcuts.WasTriggered("build") != 0;
         }
         if doBuild {
             SaveEditorState(docMgr, engine);
@@ -389,7 +391,7 @@ func main() {
         // ====================================================================
         var doBuildRun = shell.miBuildAndRun.WasClicked() != 0;
         if doBuildRun == false {
-            doBuildRun = Viper.GUI.Shortcuts.WasTriggered("buildrun") != 0;
+            doBuildRun = Shortcuts.WasTriggered("buildrun") != 0;
         }
         if doBuildRun {
             SaveEditorState(docMgr, engine);

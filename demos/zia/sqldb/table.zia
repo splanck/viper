@@ -3,6 +3,8 @@
 
 module table;
 
+bind Viper.Fmt;
+
 bind "./types";
 bind "./schema";
 
@@ -132,8 +134,8 @@ entity Table {
     expose func toString() -> String {
         var numCols = columns.count();
         var numRows = rows.count();
-        var colStr = Viper.Fmt.Int(numCols);
-        var rowStr = Viper.Fmt.Int(numRows);
+        var colStr = Fmt.Int(numCols);
+        var rowStr = Fmt.Int(numRows);
         var result = "Table: " + name + " (" + colStr + " cols, " + rowStr + " rows)";
         return result;
     }

@@ -79,12 +79,14 @@ Here's the mental picture you should hold in your mind: You're walking down a pa
 You can't take both paths. You can't take neither. You must choose one.
 
 ```rust
+bind Viper.Terminal;
+
 var gateOpen = true;
 
 if gateOpen {
-    Viper.Terminal.Say("Going through the gate");
+    Say("Going through the gate");
 } else {
-    Viper.Terminal.Say("Taking the path around");
+    Say("Taking the path around");
 }
 ```
 
@@ -101,13 +103,15 @@ This is the fundamental pattern of decision-making in programs. Master this, and
 The simplest form has no `else`:
 
 ```rust
+bind Viper.Terminal;
+
 var temperature = 35;
 
 if temperature > 30 {
-    Viper.Terminal.Say("It's hot today!");
+    Say("It's hot today!");
 }
 
-Viper.Terminal.Say("Have a nice day.");
+Say("Have a nice day.");
 ```
 
 Let's trace through this program step by step, exactly as the computer does:
@@ -169,15 +173,17 @@ if password == secret { ... }  // do passwords match?
 Here's a crucial skill for programmers: you need to be able to "run" code in your head, step by step, just like a computer would. Let's practice with another example:
 
 ```rust
+bind Viper.Terminal;
+
 var balance = 50;
 var price = 75;
 
 if balance >= price {
-    Viper.Terminal.Say("Purchase complete!");
+    Say("Purchase complete!");
     balance = balance - price;
 }
 
-Viper.Terminal.Say("Your balance is: " + balance);
+Say("Your balance is: " + balance);
 ```
 
 Walk through it:
@@ -207,12 +213,14 @@ Now imagine `balance` was `100`:
 When you need to do one thing OR another (but never both, and never neither), use `else`:
 
 ```rust
+bind Viper.Terminal;
+
 var hour = 14;
 
 if hour < 12 {
-    Viper.Terminal.Say("Good morning!");
+    Say("Good morning!");
 } else {
-    Viper.Terminal.Say("Good afternoon!");
+    Say("Good afternoon!");
 }
 ```
 
@@ -244,12 +252,14 @@ The room is always in exactly one of these states.
 Imagine a bouncer at a club checking IDs:
 
 ```rust
+bind Viper.Terminal;
+
 var age = 17;
 
 if age >= 21 {
-    Viper.Terminal.Say("Welcome! Enjoy your evening.");
+    Say("Welcome! Enjoy your evening.");
 } else {
-    Viper.Terminal.Say("Sorry, you must be 21 or older.");
+    Say("Sorry, you must be 21 or older.");
 }
 ```
 
@@ -262,16 +272,18 @@ The bouncer doesn't have three or four responses. It's binary: you're either old
 Sometimes there are more than two possibilities:
 
 ```rust
+bind Viper.Terminal;
+
 var hour = 20;
 
 if hour < 12 {
-    Viper.Terminal.Say("Good morning!");
+    Say("Good morning!");
 } else if hour < 17 {
-    Viper.Terminal.Say("Good afternoon!");
+    Say("Good afternoon!");
 } else if hour < 21 {
-    Viper.Terminal.Say("Good evening!");
+    Say("Good evening!");
 } else {
-    Viper.Terminal.Say("Good night!");
+    Say("Good night!");
 }
 ```
 
@@ -293,12 +305,14 @@ The final `else` catches anything that didn't match earlier conditions. It's the
 Consider this buggy code:
 
 ```rust
+bind Viper.Terminal;
+
 var score = 95;
 
 if score >= 60 {
-    Viper.Terminal.Say("You passed!");
+    Say("You passed!");
 } else if score >= 90 {
-    Viper.Terminal.Say("Excellent work!");
+    Say("Excellent work!");
 }
 ```
 
@@ -309,12 +323,14 @@ Wait — 95 is also >= 90. Shouldn't it print "Excellent work!"? Nope. We alread
 The fix: Put more specific conditions first.
 
 ```rust
+bind Viper.Terminal;
+
 var score = 95;
 
 if score >= 90 {
-    Viper.Terminal.Say("Excellent work!");
+    Say("Excellent work!");
 } else if score >= 60 {
-    Viper.Terminal.Say("You passed!");
+    Say("You passed!");
 }
 ```
 
@@ -439,15 +455,17 @@ In English, we use "equals" for both, which causes confusion. In code, they're c
 You can store boolean values in variables:
 
 ```rust
+bind Viper.Terminal;
+
 var isRaining = true;
 var hasUmbrella = false;
 
 if isRaining {
-    Viper.Terminal.Say("It's raining!");
+    Say("It's raining!");
 }
 
 if hasUmbrella {
-    Viper.Terminal.Say("Good thing you have an umbrella!");
+    Say("Good thing you have an umbrella!");
 }
 ```
 
@@ -468,13 +486,15 @@ if !isRaining { ... }          // This is cleaner (we'll learn ! soon)
 You can store the result of a comparison:
 
 ```rust
+bind Viper.Terminal;
+
 var age = 25;
 var canVote = age >= 18;    // canVote is now true
 
-Viper.Terminal.Say("Can vote: " + canVote);  // Prints "Can vote: true"
+Say("Can vote: " + canVote);  // Prints "Can vote: true"
 
 if canVote {
-    Viper.Terminal.Say("Remember to register!");
+    Say("Remember to register!");
 }
 ```
 
@@ -491,8 +511,10 @@ Often you need to check multiple things at once. The logical operators let you c
 The AND operator (`&&`) returns `true` only when BOTH sides are true.
 
 ```rust
+bind Viper.Terminal;
+
 if age >= 18 && hasTicket {
-    Viper.Terminal.Say("Welcome to the show!");
+    Say("Welcome to the show!");
 }
 ```
 
@@ -531,8 +553,10 @@ age < 18 && hasCar               // false && false = false
 You can chain multiple conditions:
 
 ```rust
+bind Viper.Terminal;
+
 if hasTicket && age >= 18 && !isBanned {
-    Viper.Terminal.Say("You may enter");
+    Say("You may enter");
 }
 ```
 
@@ -543,8 +567,10 @@ ALL three conditions must be true. Think of it as: "Do you have a ticket? Are yo
 The OR operator (`||`) returns `true` when AT LEAST ONE side is true.
 
 ```rust
+bind Viper.Terminal;
+
 if day == "Saturday" || day == "Sunday" {
-    Viper.Terminal.Say("It's the weekend!");
+    Say("It's the weekend!");
 }
 ```
 
@@ -577,10 +603,12 @@ hasCash || hasCard || hasCoupon // false || true || false = true
 #### Real Example: Multiple Payment Methods
 
 ```rust
+bind Viper.Terminal;
+
 if hasCash || hasCard || hasDigitalWallet {
-    Viper.Terminal.Say("Payment accepted!");
+    Say("Payment accepted!");
 } else {
-    Viper.Terminal.Say("Sorry, no valid payment method.");
+    Say("Sorry, no valid payment method.");
 }
 ```
 
@@ -591,10 +619,12 @@ The customer can pay as long as they have at least one valid method.
 The NOT operator (`!`) reverses a boolean. True becomes false, false becomes true.
 
 ```rust
+bind Viper.Terminal;
+
 var gameOver = false;
 
 if !gameOver {
-    Viper.Terminal.Say("Keep playing!");
+    Say("Keep playing!");
 }
 ```
 
@@ -612,19 +642,21 @@ Simple as that. NOT just flips the value.
 #### Common Uses of NOT
 
 ```rust
+bind Viper.Terminal;
+
 // Check if something is NOT the case
 if !isLoggedIn {
-    Viper.Terminal.Say("Please log in first");
+    Say("Please log in first");
 }
 
 // Check if a list is NOT empty
 if !isEmpty {
-    Viper.Terminal.Say("Processing items...");
+    Say("Processing items...");
 }
 
 // Check if user did NOT agree
 if !agreedToTerms {
-    Viper.Terminal.Say("You must agree to continue");
+    Say("You must agree to continue");
 }
 ```
 
@@ -633,8 +665,10 @@ if !agreedToTerms {
 You can build complex conditions:
 
 ```rust
+bind Viper.Terminal;
+
 if (age >= 18 && age <= 65) || hasSpecialPass {
-    Viper.Terminal.Say("You qualify for the program.");
+    Say("You qualify for the program.");
 }
 ```
 
@@ -666,6 +700,8 @@ if (a || b) && c { ... }    // Clear: either a or b, AND c
 #### Complex Example: Movie Theater
 
 ```rust
+bind Viper.Terminal;
+
 var age = 15;
 var hasParent = true;
 var movieRating = "R";
@@ -676,9 +712,9 @@ var canWatch = (movieRating == "G" || movieRating == "PG") ||
                (age >= 13 && hasParent);
 
 if canWatch {
-    Viper.Terminal.Say("Enjoy the movie!");
+    Say("Enjoy the movie!");
 } else {
-    Viper.Terminal.Say("Sorry, you cannot watch this movie.");
+    Say("Sorry, you cannot watch this movie.");
 }
 ```
 
@@ -711,7 +747,7 @@ This is useful for safety checks:
 ```rust
 // Safe: if name is null, we never try to check its length
 if name != null && name.length > 0 {
-    Viper.Terminal.Say("Hello, " + name);
+    Say("Hello, " + name);
 }
 ```
 
@@ -724,18 +760,20 @@ If `name` is null, the left side is false, so we never try to access `name.lengt
 You can put `if` statements inside other `if` statements:
 
 ```rust
+bind Viper.Terminal;
+
 var hasAccount = true;
 var password = "secret123";
 var inputPassword = "secret123";
 
 if hasAccount {
     if password == inputPassword {
-        Viper.Terminal.Say("Login successful!");
+        Say("Login successful!");
     } else {
-        Viper.Terminal.Say("Wrong password.");
+        Say("Wrong password.");
     }
 } else {
-    Viper.Terminal.Say("Please create an account first.");
+    Say("Please create an account first.");
 }
 ```
 
@@ -769,26 +807,28 @@ Each decision branches into more decisions. The program follows one path through
 Nesting works, but deep nesting gets hard to read:
 
 ```rust
+bind Viper.Terminal;
+
 if hasAccount {
     if isVerified {
         if !isBanned {
             if password == inputPassword {
                 if !sessionExpired {
-                    Viper.Terminal.Say("Login successful!");
+                    Say("Login successful!");
                 } else {
-                    Viper.Terminal.Say("Session expired.");
+                    Say("Session expired.");
                 }
             } else {
-                Viper.Terminal.Say("Wrong password.");
+                Say("Wrong password.");
             }
         } else {
-            Viper.Terminal.Say("Account banned.");
+            Say("Account banned.");
         }
     } else {
-        Viper.Terminal.Say("Please verify your email.");
+        Say("Please verify your email.");
     }
 } else {
-    Viper.Terminal.Say("Please create an account.");
+    Say("Please create an account.");
 }
 ```
 
@@ -799,32 +839,34 @@ This is sometimes called "pyramid of doom" or "arrow code" (because the indentat
 Often you can flatten nested code using "guard clauses" — checking for problems first and handling the happy path at the end:
 
 ```rust
+bind Viper.Terminal;
+
 if !hasAccount {
-    Viper.Terminal.Say("Please create an account.");
+    Say("Please create an account.");
     return;
 }
 
 if !isVerified {
-    Viper.Terminal.Say("Please verify your email.");
+    Say("Please verify your email.");
     return;
 }
 
 if isBanned {
-    Viper.Terminal.Say("Account banned.");
+    Say("Account banned.");
     return;
 }
 
 if password != inputPassword {
-    Viper.Terminal.Say("Wrong password.");
+    Say("Wrong password.");
     return;
 }
 
 if sessionExpired {
-    Viper.Terminal.Say("Session expired.");
+    Say("Session expired.");
     return;
 }
 
-Viper.Terminal.Say("Login successful!");
+Say("Login successful!");
 ```
 
 This reads like a checklist: "First, check if no account — if so, stop. Then check if not verified — if so, stop. Then..."
@@ -841,14 +883,15 @@ Let's build some real programs that use decisions.
 
 ```rust
 module Grader;
+bind Viper.Terminal;
 
 func start() {
-    Viper.Terminal.Print("Enter the score (0-100): ");
-    var score = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
+    Print("Enter the score (0-100): ");
+    var score = Viper.Convert.ToInt(ReadLine());
 
     // First, validate the input
     if score < 0 || score > 100 {
-        Viper.Terminal.Say("Invalid score! Please enter a number between 0 and 100.");
+        Say("Invalid score! Please enter a number between 0 and 100.");
         return;
     }
 
@@ -873,17 +916,17 @@ func start() {
         message = "You did not pass. Please see the teacher.";
     }
 
-    Viper.Terminal.Say("Score: " + score);
-    Viper.Terminal.Say("Grade: " + grade);
-    Viper.Terminal.Say(message);
+    Say("Score: " + score);
+    Say("Grade: " + grade);
+    Say(message);
 
     // Add plus/minus for more precision
     var lastDigit = score % 10;
     if grade != "F" && grade != "A" {
         if lastDigit >= 7 {
-            Viper.Terminal.Say("(High " + grade + ", close to " + grade + "+)");
+            Say("(High " + grade + ", close to " + grade + "+)");
         } else if lastDigit <= 2 {
-            Viper.Terminal.Say("(Low " + grade + ", close to " + grade + "-)");
+            Say("(Low " + grade + ", close to " + grade + "-)");
         }
     }
 }
@@ -895,46 +938,47 @@ Notice how the conditions are ordered from highest to lowest. A score of 85 isn'
 
 ```rust
 module AgeChecker;
+bind Viper.Terminal;
 
 func start() {
-    Viper.Terminal.Print("Enter your age: ");
-    var age = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
+    Print("Enter your age: ");
+    var age = Viper.Convert.ToInt(ReadLine());
 
-    Viper.Terminal.Say("");  // Blank line for readability
+    Say("");  // Blank line for readability
 
     // Check various age-gated activities
-    Viper.Terminal.Say("Based on your age (" + age + "), here's what you can do:");
-    Viper.Terminal.Say("");
+    Say("Based on your age (" + age + "), here's what you can do:");
+    Say("");
 
     // Voting
     if age >= 18 {
-        Viper.Terminal.Say("[X] Vote in elections");
+        Say("[X] Vote in elections");
     } else {
         var yearsUntilVoting = 18 - age;
-        Viper.Terminal.Say("[ ] Vote in elections (in " + yearsUntilVoting + " years)");
+        Say("[ ] Vote in elections (in " + yearsUntilVoting + " years)");
     }
 
     // Driving (varies by location, using 16 as example)
     if age >= 16 {
-        Viper.Terminal.Say("[X] Drive a car");
+        Say("[X] Drive a car");
     } else if age >= 15 {
-        Viper.Terminal.Say("[ ] Drive a car (eligible for learner's permit)");
+        Say("[ ] Drive a car (eligible for learner's permit)");
     } else {
-        Viper.Terminal.Say("[ ] Drive a car (not yet eligible)");
+        Say("[ ] Drive a car (not yet eligible)");
     }
 
     // Rent a car (usually 25)
     if age >= 25 {
-        Viper.Terminal.Say("[X] Rent a car (no young driver fee)");
+        Say("[X] Rent a car (no young driver fee)");
     } else if age >= 21 {
-        Viper.Terminal.Say("[X] Rent a car (young driver fee applies)");
+        Say("[X] Rent a car (young driver fee applies)");
     } else {
-        Viper.Terminal.Say("[ ] Rent a car (must be 21+)");
+        Say("[ ] Rent a car (must be 21+)");
     }
 
     // Senior discount
     if age >= 65 {
-        Viper.Terminal.Say("[X] Senior citizen discount eligible");
+        Say("[X] Senior citizen discount eligible");
     }
 }
 ```
@@ -943,6 +987,7 @@ func start() {
 
 ```rust
 module BattleGame;
+bind Viper.Terminal;
 
 func start() {
     // Player stats
@@ -955,74 +1000,74 @@ func start() {
     var enemyHealth = 80;
     var enemyAttack = 25;
 
-    Viper.Terminal.Say("=== BATTLE BEGINS ===");
-    Viper.Terminal.Say("Your health: " + playerHealth);
-    Viper.Terminal.Say("Enemy health: " + enemyHealth);
-    Viper.Terminal.Say("");
+    Say("=== BATTLE BEGINS ===");
+    Say("Your health: " + playerHealth);
+    Say("Enemy health: " + enemyHealth);
+    Say("");
 
     // Player's turn - choose action
-    Viper.Terminal.Say("Choose your action:");
+    Say("Choose your action:");
     if hasSword {
-        Viper.Terminal.Say("1. Sword Attack (30 damage)");
+        Say("1. Sword Attack (30 damage)");
     }
     if playerMana >= 20 {
-        Viper.Terminal.Say("2. Magic Blast (40 damage, costs 20 mana)");
+        Say("2. Magic Blast (40 damage, costs 20 mana)");
     }
-    Viper.Terminal.Say("3. Defend (reduce incoming damage by half)");
+    Say("3. Defend (reduce incoming damage by half)");
 
-    Viper.Terminal.Print("Your choice: ");
-    var choice = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
+    Print("Your choice: ");
+    var choice = Viper.Convert.ToInt(ReadLine());
 
     var damage = 0;
     var defended = false;
 
     if choice == 1 && hasSword {
         damage = 30;
-        Viper.Terminal.Say("You swing your sword!");
+        Say("You swing your sword!");
     } else if choice == 2 && playerMana >= 20 {
         damage = 40;
         playerMana = playerMana - 20;
-        Viper.Terminal.Say("You cast a magic blast!");
+        Say("You cast a magic blast!");
     } else if choice == 3 {
         defended = true;
-        Viper.Terminal.Say("You raise your shield and brace for impact!");
+        Say("You raise your shield and brace for impact!");
     } else {
-        Viper.Terminal.Say("Invalid choice! You hesitate and lose your turn.");
+        Say("Invalid choice! You hesitate and lose your turn.");
     }
 
     // Apply damage to enemy
     enemyHealth = enemyHealth - damage;
     if damage > 0 {
-        Viper.Terminal.Say("Enemy takes " + damage + " damage!");
+        Say("Enemy takes " + damage + " damage!");
     }
 
     // Check if enemy defeated
     if enemyHealth <= 0 {
-        Viper.Terminal.Say("*** VICTORY! The enemy is defeated! ***");
+        Say("*** VICTORY! The enemy is defeated! ***");
         return;
     }
 
     // Enemy's turn
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("Enemy attacks!");
+    Say("");
+    Say("Enemy attacks!");
 
     var incomingDamage = enemyAttack;
     if defended && hasShield {
         incomingDamage = incomingDamage / 2;
-        Viper.Terminal.Say("Your shield blocks half the damage!");
+        Say("Your shield blocks half the damage!");
     }
 
     playerHealth = playerHealth - incomingDamage;
-    Viper.Terminal.Say("You take " + incomingDamage + " damage!");
+    Say("You take " + incomingDamage + " damage!");
 
     // Check if player defeated
     if playerHealth <= 0 {
-        Viper.Terminal.Say("*** DEFEAT! You have fallen... ***");
+        Say("*** DEFEAT! You have fallen... ***");
     } else {
-        Viper.Terminal.Say("");
-        Viper.Terminal.Say("Your health: " + playerHealth);
-        Viper.Terminal.Say("Enemy health: " + enemyHealth);
-        Viper.Terminal.Say("The battle continues...");
+        Say("");
+        Say("Your health: " + playerHealth);
+        Say("Enemy health: " + enemyHealth);
+        Say("The battle continues...");
     }
 }
 ```
@@ -1031,65 +1076,66 @@ func start() {
 
 ```rust
 module FormValidator;
+bind Viper.Terminal;
 
 func start() {
-    Viper.Terminal.Say("=== Account Registration ===");
-    Viper.Terminal.Say("");
+    Say("=== Account Registration ===");
+    Say("");
 
     // Get username
-    Viper.Terminal.Print("Username (4-20 characters): ");
-    var username = Viper.Terminal.ReadLine();
+    Print("Username (4-20 characters): ");
+    var username = ReadLine();
 
     // Get email
-    Viper.Terminal.Print("Email address: ");
-    var email = Viper.Terminal.ReadLine();
+    Print("Email address: ");
+    var email = ReadLine();
 
     // Get age
-    Viper.Terminal.Print("Age: ");
-    var age = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
+    Print("Age: ");
+    var age = Viper.Convert.ToInt(ReadLine());
 
     // Validation
     var isValid = true;
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("Validation results:");
+    Say("");
+    Say("Validation results:");
 
     // Check username length
     var usernameLength = Viper.String.Length(username);
     if usernameLength < 4 {
-        Viper.Terminal.Say("[FAIL] Username too short (minimum 4 characters)");
+        Say("[FAIL] Username too short (minimum 4 characters)");
         isValid = false;
     } else if usernameLength > 20 {
-        Viper.Terminal.Say("[FAIL] Username too long (maximum 20 characters)");
+        Say("[FAIL] Username too long (maximum 20 characters)");
         isValid = false;
     } else {
-        Viper.Terminal.Say("[ OK ] Username length is valid");
+        Say("[ OK ] Username length is valid");
     }
 
     // Check email contains @
     if Viper.String.Contains(email, "@") && Viper.String.Contains(email, ".") {
-        Viper.Terminal.Say("[ OK ] Email format appears valid");
+        Say("[ OK ] Email format appears valid");
     } else {
-        Viper.Terminal.Say("[FAIL] Email must contain @ and .");
+        Say("[FAIL] Email must contain @ and .");
         isValid = false;
     }
 
     // Check age
     if age < 13 {
-        Viper.Terminal.Say("[FAIL] Must be at least 13 years old");
+        Say("[FAIL] Must be at least 13 years old");
         isValid = false;
     } else if age > 120 {
-        Viper.Terminal.Say("[FAIL] Please enter a realistic age");
+        Say("[FAIL] Please enter a realistic age");
         isValid = false;
     } else {
-        Viper.Terminal.Say("[ OK ] Age is valid");
+        Say("[ OK ] Age is valid");
     }
 
     // Final result
-    Viper.Terminal.Say("");
+    Say("");
     if isValid {
-        Viper.Terminal.Say("Registration successful! Welcome, " + username + "!");
+        Say("Registration successful! Welcome, " + username + "!");
     } else {
-        Viper.Terminal.Say("Registration failed. Please fix the errors above.");
+        Say("Registration failed. Please fix the errors above.");
     }
 }
 ```
@@ -1101,17 +1147,19 @@ func start() {
 When you're comparing one value against many specific possibilities, `match` can be cleaner than a long `if-else if` chain:
 
 ```rust
+bind Viper.Terminal;
+
 var day = 3;
 
 match day {
-    1 => Viper.Terminal.Say("Monday"),
-    2 => Viper.Terminal.Say("Tuesday"),
-    3 => Viper.Terminal.Say("Wednesday"),
-    4 => Viper.Terminal.Say("Thursday"),
-    5 => Viper.Terminal.Say("Friday"),
-    6 => Viper.Terminal.Say("Saturday"),
-    7 => Viper.Terminal.Say("Sunday"),
-    _ => Viper.Terminal.Say("Invalid day")
+    1 => Say("Monday"),
+    2 => Say("Tuesday"),
+    3 => Say("Wednesday"),
+    4 => Say("Thursday"),
+    5 => Say("Friday"),
+    6 => Say("Saturday"),
+    7 => Say("Sunday"),
+    _ => Say("Invalid day")
 }
 ```
 
@@ -1139,13 +1187,15 @@ Use `if-else if` when:
 - Your conditions involve complex boolean expressions
 
 ```rust
+bind Viper.Terminal;
+
 // GOOD use of match: checking one value against specific options
 match menuChoice {
     1 => startGame(),
     2 => showOptions(),
     3 => viewHighScores(),
     4 => exitGame(),
-    _ => Viper.Terminal.Say("Invalid choice")
+    _ => Say("Invalid choice")
 }
 
 // BAD use of match: ranges don't work this way
@@ -1166,10 +1216,12 @@ if score >= 90 {
 You can match multiple values with `|`:
 
 ```rust
+bind Viper.Terminal;
+
 match day {
-    1 | 2 | 3 | 4 | 5 => Viper.Terminal.Say("Weekday"),
-    6 | 7 => Viper.Terminal.Say("Weekend"),
-    _ => Viper.Terminal.Say("Invalid day")
+    1 | 2 | 3 | 4 | 5 => Say("Weekday"),
+    6 | 7 => Say("Weekend"),
+    _ => Say("Invalid day")
 }
 ```
 
@@ -1181,42 +1233,43 @@ Match shines in menu-driven programs:
 
 ```rust
 module MenuDemo;
+bind Viper.Terminal;
 
 func start() {
-    Viper.Terminal.Say("=== MAIN MENU ===");
-    Viper.Terminal.Say("1. New Game");
-    Viper.Terminal.Say("2. Load Game");
-    Viper.Terminal.Say("3. Options");
-    Viper.Terminal.Say("4. Credits");
-    Viper.Terminal.Say("5. Quit");
-    Viper.Terminal.Print("Choose an option: ");
+    Say("=== MAIN MENU ===");
+    Say("1. New Game");
+    Say("2. Load Game");
+    Say("3. Options");
+    Say("4. Credits");
+    Say("5. Quit");
+    Print("Choose an option: ");
 
-    var choice = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
+    var choice = Viper.Convert.ToInt(ReadLine());
 
     match choice {
         1 => {
-            Viper.Terminal.Say("Starting new game...");
-            Viper.Terminal.Say("Welcome, hero!");
+            Say("Starting new game...");
+            Say("Welcome, hero!");
         },
         2 => {
-            Viper.Terminal.Say("Loading saved games...");
-            Viper.Terminal.Say("No saved games found.");
+            Say("Loading saved games...");
+            Say("No saved games found.");
         },
         3 => {
-            Viper.Terminal.Say("=== OPTIONS ===");
-            Viper.Terminal.Say("Sound: ON");
-            Viper.Terminal.Say("Difficulty: NORMAL");
+            Say("=== OPTIONS ===");
+            Say("Sound: ON");
+            Say("Difficulty: NORMAL");
         },
         4 => {
-            Viper.Terminal.Say("=== CREDITS ===");
-            Viper.Terminal.Say("Created with Zia");
-            Viper.Terminal.Say("Thanks for playing!");
+            Say("=== CREDITS ===");
+            Say("Created with Zia");
+            Say("Thanks for playing!");
         },
         5 => {
-            Viper.Terminal.Say("Goodbye!");
+            Say("Goodbye!");
         },
         _ => {
-            Viper.Terminal.Say("Invalid option. Please enter 1-5.");
+            Say("Invalid option. Please enter 1-5.");
         }
     }
 }
@@ -1229,6 +1282,8 @@ Notice that when you need multiple statements for a case, you use `{ }` braces.
 Match can be used as an expression that returns a value:
 
 ```rust
+bind Viper.Terminal;
+
 var day = 3;
 
 var dayName = match day {
@@ -1242,7 +1297,7 @@ var dayName = match day {
     _ => "Unknown"
 };
 
-Viper.Terminal.Say("Today is " + dayName);
+Say("Today is " + dayName);
 ```
 
 This is more concise than setting a variable in each branch.
@@ -1253,20 +1308,22 @@ This is more concise than setting a variable in each branch.
 
 **Zia**
 ```rust
+bind Viper.Terminal;
+
 var score = 85;
 
 if score >= 60 {
-    Viper.Terminal.Say("You passed!");
+    Say("You passed!");
 } else {
-    Viper.Terminal.Say("Try again.");
+    Say("Try again.");
 }
 
 match score / 10 {
-    10 | 9 => Viper.Terminal.Say("A"),
-    8 => Viper.Terminal.Say("B"),
-    7 => Viper.Terminal.Say("C"),
-    6 => Viper.Terminal.Say("D"),
-    _ => Viper.Terminal.Say("F")
+    10 | 9 => Say("A"),
+    8 => Say("B"),
+    7 => Say("C"),
+    6 => Say("D"),
+    _ => Say("F")
 }
 ```
 
@@ -1375,11 +1432,13 @@ Your code inside an `if` block never executes, even when you think it should.
 
 1. **Print the actual values** before the condition:
 ```rust
-Viper.Terminal.Say("DEBUG: score = " + score);
-Viper.Terminal.Say("DEBUG: score >= 90 is " + (score >= 90));
+bind Viper.Terminal;
+
+Say("DEBUG: score = " + score);
+Say("DEBUG: score >= 90 is " + (score >= 90));
 
 if score >= 90 {
-    Viper.Terminal.Say("A grade!");
+    Say("A grade!");
 }
 ```
 
@@ -1403,12 +1462,16 @@ The code takes the `else` path when it should take the `if` path (or vice versa)
 
 1. **Print the condition result**:
 ```rust
+bind Viper.Terminal;
+
 var result = age >= 18;
-Viper.Terminal.Say("DEBUG: age >= 18 evaluates to: " + result);
+Say("DEBUG: age >= 18 evaluates to: " + result);
 ```
 
 2. **Simplify complex conditions**. Break them into parts:
 ```rust
+bind Viper.Terminal;
+
 // Instead of:
 if age >= 18 && hasID && !isBanned { ... }
 
@@ -1416,10 +1479,10 @@ if age >= 18 && hasID && !isBanned { ... }
 var ageOK = age >= 18;
 var hasIDOK = hasID;
 var notBanned = !isBanned;
-Viper.Terminal.Say("age >= 18: " + ageOK);
-Viper.Terminal.Say("hasID: " + hasIDOK);
-Viper.Terminal.Say("!isBanned: " + notBanned);
-Viper.Terminal.Say("all together: " + (ageOK && hasIDOK && notBanned));
+Say("age >= 18: " + ageOK);
+Say("hasID: " + hasIDOK);
+Say("!isBanned: " + notBanned);
+Say("all together: " + (ageOK && hasIDOK && notBanned));
 ```
 
 3. **Check operator precedence**. Use parentheses to be explicit:
@@ -1439,19 +1502,21 @@ You expected only one action, but multiple things happened.
 **Diagnosis:** You probably used multiple `if` statements instead of `if-else if`:
 
 ```rust
+bind Viper.Terminal;
+
 // BUG: Both messages might print!
 if score >= 60 {
-    Viper.Terminal.Say("You passed!");
+    Say("You passed!");
 }
 if score >= 90 {
-    Viper.Terminal.Say("Excellent!");
+    Say("Excellent!");
 }
 
 // FIX: Use else if if only one should print
 if score >= 90 {
-    Viper.Terminal.Say("Excellent!");
+    Say("Excellent!");
 } else if score >= 60 {
-    Viper.Terminal.Say("You passed!");
+    Say("You passed!");
 }
 ```
 
@@ -1460,18 +1525,20 @@ if score >= 90 {
 Your conditions are in the wrong order, and an earlier condition catches cases meant for later ones.
 
 ```rust
+bind Viper.Terminal;
+
 // BUG: score = 95 prints "You passed" instead of "Excellent"
 if score >= 60 {
-    Viper.Terminal.Say("You passed!");
+    Say("You passed!");
 } else if score >= 90 {
-    Viper.Terminal.Say("Excellent!");    // Never reached for 95!
+    Say("Excellent!");    // Never reached for 95!
 }
 
 // FIX: Check more specific conditions first
 if score >= 90 {
-    Viper.Terminal.Say("Excellent!");
+    Say("Excellent!");
 } else if score >= 60 {
-    Viper.Terminal.Say("You passed!");
+    Say("You passed!");
 }
 ```
 
@@ -1482,18 +1549,20 @@ if score >= 90 {
 When in doubt, print everything:
 
 ```rust
-Viper.Terminal.Say("=== DEBUG START ===");
-Viper.Terminal.Say("age = " + age);
-Viper.Terminal.Say("hasAccount = " + hasAccount);
-Viper.Terminal.Say("password = " + password);
-Viper.Terminal.Say("inputPassword = " + inputPassword);
-Viper.Terminal.Say("password == inputPassword: " + (password == inputPassword));
-Viper.Terminal.Say("=== DEBUG END ===");
+bind Viper.Terminal;
+
+Say("=== DEBUG START ===");
+Say("age = " + age);
+Say("hasAccount = " + hasAccount);
+Say("password = " + password);
+Say("inputPassword = " + inputPassword);
+Say("password == inputPassword: " + (password == inputPassword));
+Say("=== DEBUG END ===");
 
 if hasAccount && password == inputPassword {
-    Viper.Terminal.Say("Login successful!");
+    Say("Login successful!");
 } else {
-    Viper.Terminal.Say("Login failed.");
+    Say("Login failed.");
 }
 ```
 
@@ -1503,9 +1572,11 @@ This reveals exactly what values you're working with and how the condition evalu
 
 **Off-by-one errors:**
 ```rust
+bind Viper.Terminal;
+
 // User enters 18, expecting to pass, but fails
 if age > 18 {    // Should be >= 18
-    Viper.Terminal.Say("You can vote!");
+    Say("You can vote!");
 }
 ```
 
@@ -1536,8 +1607,10 @@ if username == "admin" && password == "secret" {
 
 **Forgetting braces:**
 ```rust
+bind Viper.Terminal;
+
 if score > 100
-    Viper.Terminal.Say("High score!");  // Error: missing braces
+    Say("High score!");  // Error: missing braces
 ```
 Zia requires `{ }` around conditional blocks.
 
@@ -1564,34 +1637,40 @@ if score >= 90 {
 
 **Overlapping conditions with separate ifs:**
 ```rust
+bind Viper.Terminal;
+
 // Both could be true for score = 85
 if score >= 80 {
-    Viper.Terminal.Say("B or better");
+    Say("B or better");
 }
 if score >= 70 {
-    Viper.Terminal.Say("C or better");
+    Say("C or better");
 }
 ```
 
 If you want only one to run, use `else if`:
 ```rust
+bind Viper.Terminal;
+
 if score >= 80 {
-    Viper.Terminal.Say("B or better");
+    Say("B or better");
 } else if score >= 70 {
-    Viper.Terminal.Say("C or better");
+    Say("C or better");
 }
 ```
 
 **Confusing && and ||:**
 ```rust
+bind Viper.Terminal;
+
 // Wrong: This is never true (nothing is both < 0 AND > 100)
 if score < 0 && score > 100 {
-    Viper.Terminal.Say("Invalid");
+    Say("Invalid");
 }
 
 // Right: Invalid if EITHER condition is true
 if score < 0 || score > 100 {
-    Viper.Terminal.Say("Invalid");
+    Say("Invalid");
 }
 ```
 
@@ -1603,37 +1682,38 @@ Here's a number guessing game that uses everything we've learned:
 
 ```rust
 module GuessGame;
+bind Viper.Terminal;
 
 func start() {
     final SECRET = 7;
     final MAX_GUESSES = 3;
     var guessesRemaining = MAX_GUESSES;
 
-    Viper.Terminal.Say("I'm thinking of a number between 1 and 10.");
-    Viper.Terminal.Say("You have " + MAX_GUESSES + " guesses.");
-    Viper.Terminal.Say("");
+    Say("I'm thinking of a number between 1 and 10.");
+    Say("You have " + MAX_GUESSES + " guesses.");
+    Say("");
 
-    Viper.Terminal.Print("Your guess: ");
-    var guess = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
+    Print("Your guess: ");
+    var guess = Viper.Convert.ToInt(ReadLine());
     guessesRemaining = guessesRemaining - 1;
 
     // Validate input
     if guess < 1 || guess > 10 {
-        Viper.Terminal.Say("That's not between 1 and 10! You wasted a guess.");
+        Say("That's not between 1 and 10! You wasted a guess.");
     } else if guess == SECRET {
-        Viper.Terminal.Say("Correct! You win!");
-        Viper.Terminal.Say("You guessed it in " + (MAX_GUESSES - guessesRemaining) + " tries!");
+        Say("Correct! You win!");
+        Say("You guessed it in " + (MAX_GUESSES - guessesRemaining) + " tries!");
     } else {
         // Give a hint
         if guess < SECRET {
-            Viper.Terminal.Say("Too low!");
+            Say("Too low!");
         } else {
-            Viper.Terminal.Say("Too high!");
+            Say("Too high!");
         }
 
         // Show remaining guesses
         if guessesRemaining > 0 {
-            Viper.Terminal.Say("You have " + guessesRemaining + " guesses left.");
+            Say("You have " + guessesRemaining + " guesses left.");
 
             // Extra hint if this was close
             var difference = guess - SECRET;
@@ -1642,13 +1722,13 @@ func start() {
             }
 
             if difference == 1 {
-                Viper.Terminal.Say("Hint: You were VERY close!");
+                Say("Hint: You were VERY close!");
             } else if difference <= 3 {
-                Viper.Terminal.Say("Hint: You were somewhat close.");
+                Say("Hint: You were somewhat close.");
             }
         } else {
-            Viper.Terminal.Say("No guesses remaining. The answer was " + SECRET + ".");
-            Viper.Terminal.Say("Better luck next time!");
+            Say("No guesses remaining. The answer was " + SECRET + ".");
+            Say("Better luck next time!");
         }
     }
 }

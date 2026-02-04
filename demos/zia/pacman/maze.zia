@@ -2,12 +2,16 @@
 // PAC-MAN - Maze Entity
 // =============================================================================
 // Uses new Viper runtime features:
-// - Viper.Game.Grid2D for 2D tile storage with bounds checking
-// - Viper.Game.Timer for pellet blink animation
+// - Grid2D for 2D tile storage with bounds checking
+// - Timer for pellet blink animation
 // - for-in range syntax for cleaner iteration
 // =============================================================================
 
 module maze;
+
+bind Viper.Game;
+bind Viper.Graphics;
+bind Viper.String;
 
 bind "./config";
 bind "./utils";
@@ -17,22 +21,22 @@ bind "./utils";
 // =============================================================================
 
 entity Maze {
-    hide Viper.Game.Grid2D tiles;
+    hide Grid2D tiles;
     hide Integer totalDots;
     hide Integer dotsRemaining;
 
     // Use Timer for pellet blinking instead of manual counter
-    hide Viper.Game.Timer pelletBlinkTimer;
+    hide Timer pelletBlinkTimer;
     hide Boolean pelletVisible;
 
     expose func init() {
         // Create Grid2D with dimensions and default value
-        tiles = Viper.Game.Grid2D.New(config.GRID_WIDTH, config.GRID_HEIGHT, config.TILE_EMPTY);
+        tiles = Grid2D.New(config.GRID_WIDTH, config.GRID_HEIGHT, config.TILE_EMPTY);
         totalDots = 0;
         dotsRemaining = 0;
 
         // Setup pellet blink timer (toggles every 10 frames)
-        pelletBlinkTimer = Viper.Game.Timer.New();
+        pelletBlinkTimer = Timer.New();
         pelletBlinkTimer.StartRepeating(10);
         pelletVisible = true;
 
@@ -78,12 +82,12 @@ entity Maze {
     }
 
     hide func setRow(row: Integer, pattern: String) {
-        var patternLen = Viper.String.Length(pattern);
+        var patternLen = Length(pattern);
         for col in 0..config.GRID_WIDTH {
             if col >= patternLen {
                 break;
             }
-            var ch = Viper.String.Substring(pattern, col, 1);
+            var ch = Substring(pattern, col, 1);
             var tile = config.TILE_EMPTY;
             if ch == "1" {
                 tile = config.TILE_WALL;
@@ -157,7 +161,7 @@ entity Maze {
         self.initializeMaze();
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         // Update pellet blink timer
         if pelletBlinkTimer.Update() {
             pelletVisible = !pelletVisible;

@@ -3,6 +3,9 @@
 
 module parser;
 
+bind Viper.String;
+bind Viper.Fmt;
+
 bind "./token";
 bind "./lexer";
 bind "./types";
@@ -45,7 +48,7 @@ entity Parser {
             return true;
         }
         hasError = true;
-        error = "Expected token " + Viper.Fmt.Int(kind) + ", got " + Viper.Fmt.Int(currentToken.kind);
+        error = "Expected token " + Fmt.Int(kind) + ", got " + Fmt.Int(currentToken.kind);
         return false;
     }
 
@@ -617,7 +620,7 @@ entity Parser {
                     }
                 } else if currentToken.kind == TK_IDENTIFIER {
                     var maybeAlias = currentToken.text;
-                    var upperAlias = Viper.String.ToUpper(maybeAlias);
+                    var upperAlias = String.ToUpper(maybeAlias);
                     if upperAlias != "FROM" && upperAlias != "WHERE" && upperAlias != "GROUP" && upperAlias != "ORDER" && upperAlias != "LIMIT" && upperAlias != "HAVING" {
                         advance();
                     }
@@ -658,7 +661,7 @@ entity Parser {
             }
         } else if currentToken.kind == TK_IDENTIFIER {
             var aliasText = currentToken.text;
-            var upperAlias = Viper.String.ToUpper(aliasText);
+            var upperAlias = String.ToUpper(aliasText);
             if upperAlias != "WHERE" && upperAlias != "GROUP" && upperAlias != "ORDER" && upperAlias != "LIMIT" && upperAlias != "HAVING" && upperAlias != "JOIN" && upperAlias != "INNER" && upperAlias != "LEFT" && upperAlias != "RIGHT" && upperAlias != "FULL" && upperAlias != "CROSS" {
                 firstTableAlias = aliasText;
                 stmt.tableAlias = firstTableAlias;
@@ -737,7 +740,7 @@ entity Parser {
                 }
             } else if currentToken.kind == TK_IDENTIFIER {
                 var maybeAlias = currentToken.text;
-                var upperAlias = Viper.String.ToUpper(maybeAlias);
+                var upperAlias = String.ToUpper(maybeAlias);
                 if upperAlias != "ON" && upperAlias != "WHERE" && upperAlias != "GROUP" && upperAlias != "ORDER" && upperAlias != "LIMIT" && upperAlias != "JOIN" {
                     joinTableAlias = maybeAlias;
                     advance();

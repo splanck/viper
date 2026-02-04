@@ -9,6 +9,12 @@ module starfield;
 
 bind "./colors";
 
+bind Viper.Random;
+bind Viper.Graphics;
+bind Viper.Graphics.Color;
+bind Viper.Math;
+bind Viper.Time;
+
 // Star entity representing a single star in 3D space
 entity Star {
     expose Number x;
@@ -22,13 +28,13 @@ entity Star {
     }
 
     expose func reset(maxZ: Number) {
-        x = (Viper.Random.Next() - 0.5) * 2000.0;
-        y = (Viper.Random.Next() - 0.5) * 2000.0;
-        z = Viper.Random.Next() * maxZ;
-        speed = 0.5 + Viper.Random.Next() * 1.5;
-        var brightness = 180 + Viper.Random.NextInt(76);
-        var blueTint = Viper.Random.NextInt(40);
-        color = Viper.Graphics.Color.RGB(brightness - blueTint, brightness - blueTint, brightness);
+        x = (Next() - 0.5) * 2000.0;
+        y = (Next() - 0.5) * 2000.0;
+        z = Next() * maxZ;
+        speed = 0.5 + Next() * 1.5;
+        var brightness = 180 + NextInt(76);
+        var blueTint = NextInt(40);
+        color = RGB(brightness - blueTint, brightness - blueTint, brightness);
     }
 
     expose func update(deltaZ: Number, maxZ: Number) {
@@ -43,18 +49,18 @@ entity Star {
         if z <= 0.0 {
             return -1;
         }
-        return centerX + Viper.Math.Floor((x * fov) / z);
+        return centerX + Floor((x * fov) / z);
     }
 
     expose func getScreenY(centerY: Integer, fov: Number) -> Integer {
         if z <= 0.0 {
             return -1;
         }
-        return centerY + Viper.Math.Floor((y * fov) / z);
+        return centerY + Floor((y * fov) / z);
     }
 
     expose func getSize(maxZ: Number) -> Integer {
-        var size = Viper.Math.Floor(4.0 * (1.0 - z / maxZ));
+        var size = Floor(4.0 * (1.0 - z / maxZ));
         if size < 1 {
             size = 1;
         }
@@ -107,7 +113,7 @@ entity Starfield {
         }
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas, width: Integer, height: Integer) {
+    expose func draw(canvas: Canvas, width: Integer, height: Integer) {
         var centerX = width / 2;
         var centerY = height / 2;
 
@@ -126,8 +132,8 @@ entity Starfield {
                 if warpMode {
                     var oldZ = star.z + speed * 3.0 * star.speed;
                     if oldZ < maxDepth {
-                        var oldSx = centerX + Viper.Math.Floor((star.x * fov) / oldZ);
-                        var oldSy = centerY + Viper.Math.Floor((star.y * fov) / oldZ);
+                        var oldSx = centerX + Floor((star.x * fov) / oldZ);
+                        var oldSy = centerY + Floor((star.y * fov) / oldZ);
                         canvas.Line(oldSx, oldSy, sx, sy, drawColor);
                     }
                 }
@@ -153,7 +159,7 @@ entity Starfield {
 }
 
 // Run the starfield demo
-func run(canvas: Viper.Graphics.Canvas) {
+func run(canvas: Canvas) {
     var width = canvas.Width;
     var height = canvas.Height;
 

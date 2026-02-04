@@ -25,6 +25,10 @@
 
 module sql;
 
+bind Viper.Terminal;
+bind Viper.String;
+bind Viper.Fmt;
+
 //=============================================================================
 // SECTION 1: TOKEN TYPES
 //=============================================================================
@@ -211,8 +215,8 @@ entity Token {
     }
 
     expose func toString() -> String {
-        return "Token(" + Viper.Fmt.Int(kind) + ", '" + text + "', " +
-               Viper.Fmt.Int(line) + ":" + Viper.Fmt.Int(column) + ")";
+        return "Token(" + Fmt.Int(kind) + ", '" + text + "', " +
+               Fmt.Int(line) + ":" + Fmt.Int(column) + ")";
     }
 }
 
@@ -254,7 +258,7 @@ func tokenTypeName(kind: Integer) -> String {
     if (kind == TK_COMMA) { return "COMMA"; }
     if (kind == TK_SEMICOLON) { return "SEMICOLON"; }
     if (kind == TK_DOT) { return "DOT"; }
-    return "UNKNOWN(" + Viper.Fmt.Int(kind) + ")";
+    return "UNKNOWN(" + Fmt.Int(kind) + ")";
 }
 
 //=============================================================================
@@ -273,7 +277,7 @@ entity Lexer {
         pos = 0;
         line = 1;
         column = 1;
-        length = Viper.String.Length(src);
+        length = String.Length(src);
     }
 
     expose func isAtEnd() -> Boolean {
@@ -282,12 +286,12 @@ entity Lexer {
 
     hide func peek() -> String {
         if (isAtEnd()) { return ""; }
-        return Viper.String.Substring(source, pos, 1);
+        return String.Substring(source, pos, 1);
     }
 
     hide func peekNext() -> String {
         if (pos + 1 >= length) { return ""; }
-        return Viper.String.Substring(source, pos + 1, 1);
+        return String.Substring(source, pos + 1, 1);
     }
 
     hide func advance() -> String {
@@ -325,13 +329,13 @@ entity Lexer {
 
     hide func isDigit(ch: String) -> Boolean {
         // Workaround for Bug #003: use ASCII codes instead of string comparison
-        var code = Viper.String.Asc(ch);
+        var code = String.Asc(ch);
         return code >= 48 && code <= 57;  // '0' = 48, '9' = 57
     }
 
     hide func isAlpha(ch: String) -> Boolean {
         // Workaround for Bug #003: use ASCII codes instead of string comparison
-        var code = Viper.String.Asc(ch);
+        var code = String.Asc(ch);
         if (code >= 65 && code <= 90) { return true; }   // 'A' = 65, 'Z' = 90
         if (code >= 97 && code <= 122) { return true; }  // 'a' = 97, 'z' = 122
         return ch == "_";
@@ -351,12 +355,12 @@ entity Lexer {
         if (peek() == "." && isDigit(peekNext())) {
             advance();
             while (!isAtEnd() && isDigit(peek())) { advance(); }
-            var text = Viper.String.Substring(source, startPos, pos - startPos);
+            var text = String.Substring(source, startPos, pos - startPos);
             var tok = new Token(TK_NUMBER, text, startLine, startCol);
             return tok;
         }
 
-        var text = Viper.String.Substring(source, startPos, pos - startPos);
+        var text = String.Substring(source, startPos, pos - startPos);
         var tok = new Token(TK_INTEGER, text, startLine, startCol);
         return tok;
     }
@@ -376,7 +380,7 @@ entity Lexer {
             }
         }
 
-        var text = Viper.String.Substring(source, startPos, pos - startPos);
+        var text = String.Substring(source, startPos, pos - startPos);
         if (!isAtEnd()) { advance(); }
 
         var tok = new Token(TK_STRING, text, startLine, startCol);
@@ -391,8 +395,8 @@ entity Lexer {
         while (!isAtEnd() && isAlphaNum(peek())) { advance(); }
 
         var len = pos - startPos;
-        var text = Viper.String.Substring(source, startPos, len);
-        var upper = Viper.String.ToUpper(text);
+        var text = String.Substring(source, startPos, len);
+        var upper = String.ToUpper(text);
         var kind = lookupKeyword(upper);
 
         var tok = new Token(kind, text, startLine, startCol);
@@ -553,20 +557,20 @@ final SQL_BLOB = 4;
 func stringToInt(text: String) -> Integer {
     var result = 0;
     var i = 0;
-    var len = Viper.String.Length(text);
+    var len = String.Length(text);
     var negative = false;
 
     // Check for negative
     if len > 0 {
-        if Viper.String.Substring(text, 0, 1) == "-" {
+        if String.Substring(text, 0, 1) == "-" {
             negative = true;
             i = 1;
         }
     }
 
     while i < len {
-        var ch = Viper.String.Substring(text, i, 1);
-        var code = Viper.String.Asc(ch);
+        var ch = String.Substring(text, i, 1);
+        var code = String.Asc(ch);
         if code >= 48 {
             if code <= 57 {
                 result = result * 10 + (code - 48);
@@ -656,7 +660,7 @@ entity SqlValue {
     // Convert to string representation
     expose func toString() -> String {
         if (kind == SQL_NULL) { return "NULL"; }
-        if (kind == SQL_INTEGER) { return Viper.Fmt.Int(intValue); }
+        if (kind == SQL_INTEGER) { return Fmt.Int(intValue); }
         if (kind == SQL_REAL) { return textValue; } // Store REAL as text for display
         if (kind == SQL_TEXT) { return "'" + textValue + "'"; }
         if (kind == SQL_BLOB) { return "X'" + textValue + "'"; }
@@ -685,14 +689,14 @@ entity SqlValue {
             // String comparison
             if (textValue == other.textValue) { return 0; }
             // Compare character by character
-            var myLen = Viper.String.Length(textValue);
-            var otherLen = Viper.String.Length(other.textValue);
+            var myLen = String.Length(textValue);
+            var otherLen = String.Length(other.textValue);
             var minLen = myLen;
             if otherLen < minLen { minLen = otherLen; }
             var i = 0;
             while i < minLen {
-                var myChar = Viper.String.Asc(Viper.String.Substring(textValue, i, 1));
-                var otherChar = Viper.String.Asc(Viper.String.Substring(other.textValue, i, 1));
+                var myChar = String.Asc(String.Substring(textValue, i, 1));
+                var otherChar = String.Asc(String.Substring(other.textValue, i, 1));
                 if myChar < otherChar { return -1; }
                 if myChar > otherChar { return 1; }
                 i = i + 1;
@@ -1067,8 +1071,8 @@ entity Table {
     expose func toString() -> String {
         var numCols = columns.count();
         var numRows = rows.count();
-        var colStr = Viper.Fmt.Int(numCols);
-        var rowStr = Viper.Fmt.Int(numRows);
+        var colStr = Fmt.Int(numCols);
+        var rowStr = Fmt.Int(numRows);
         var result = "Table: " + name + " (" + colStr + " cols, " + rowStr + " rows)";
         return result;
     }
@@ -1140,10 +1144,10 @@ entity SqlIndex {
     expose func hashString(s: String) -> Integer {
         var hash = 0;
         var i = 0;
-        var len = Viper.String.Length(s);
+        var len = String.Length(s);
         while i < len {
-            var ch = Viper.String.Substring(s, i, 1);
-            var c = Viper.String.Asc(ch);
+            var ch = String.Substring(s, i, 1);
+            var c = String.Asc(ch);
             hash = (hash * 31 + c) % 32767;
             i = i + 1;
         }
@@ -1260,7 +1264,7 @@ entity SqlIndex {
             result = result + columnNames.get(i);
             i = i + 1;
         }
-        result = result + ") [" + Viper.Fmt.Int(entries.count()) + " entries]";
+        result = result + ") [" + Fmt.Int(entries.count()) + " entries]";
         return result;
     }
 }
@@ -1764,7 +1768,7 @@ func parserExpect(kind: Integer) -> Boolean {
         return true;
     }
     parserHasError = true;
-    parserError = "Expected token " + Viper.Fmt.Int(kind) + ", got " + Viper.Fmt.Int(parserToken.kind);
+    parserError = "Expected token " + Fmt.Int(kind) + ", got " + Fmt.Int(parserToken.kind);
     return false;
 }
 
@@ -2407,7 +2411,7 @@ func parseSelectStmt() -> SelectStmt {
                 }
             } else if parserToken.kind == 13 {  // TK_IDENTIFIER - implicit alias
                 var maybeAlias = parserToken.text;
-                var upperAlias = Viper.String.ToUpper(maybeAlias);
+                var upperAlias = String.ToUpper(maybeAlias);
                 if upperAlias != "FROM" && upperAlias != "WHERE" && upperAlias != "GROUP" && upperAlias != "ORDER" && upperAlias != "LIMIT" && upperAlias != "HAVING" {
                     parserAdvance();  // Skip the alias
                 }
@@ -2501,7 +2505,7 @@ func parseSelectStmt() -> SelectStmt {
         } else if parserToken.kind == 13 {  // TK_IDENTIFIER (alias without AS)
             // Check it's not a keyword that could follow FROM table
             var aliasText = parserToken.text;
-            var upperAlias = Viper.String.ToUpper(aliasText);
+            var upperAlias = String.ToUpper(aliasText);
             if upperAlias != "WHERE" && upperAlias != "GROUP" && upperAlias != "ORDER" && upperAlias != "LIMIT" && upperAlias != "HAVING" && upperAlias != "JOIN" && upperAlias != "INNER" && upperAlias != "LEFT" && upperAlias != "RIGHT" && upperAlias != "FULL" && upperAlias != "CROSS" {
                 firstTableAlias = aliasText;
                 stmt.tableAlias = firstTableAlias;
@@ -2533,7 +2537,7 @@ func parseSelectStmt() -> SelectStmt {
             }
         } else if parserToken.kind == 13 {
             var maybeAlias = parserToken.text;
-            var upperMaybe = Viper.String.ToUpper(maybeAlias);
+            var upperMaybe = String.ToUpper(maybeAlias);
             if upperMaybe != "WHERE" && upperMaybe != "GROUP" && upperMaybe != "ORDER" && upperMaybe != "LIMIT" && upperMaybe != "HAVING" && upperMaybe != "JOIN" {
                 extraTableAlias = maybeAlias;
                 parserAdvance();
@@ -2621,7 +2625,7 @@ func parseSelectStmt() -> SelectStmt {
             }
         } else if parserToken.kind == 13 {
             var maybeJoinAlias = parserToken.text;
-            var upperJoinAlias = Viper.String.ToUpper(maybeJoinAlias);
+            var upperJoinAlias = String.ToUpper(maybeJoinAlias);
             if upperJoinAlias != "ON" && upperJoinAlias != "WHERE" && upperJoinAlias != "GROUP" &&
                upperJoinAlias != "ORDER" && upperJoinAlias != "LIMIT" && upperJoinAlias != "JOIN" {
                 joinTableAlias = maybeJoinAlias;
@@ -3216,7 +3220,7 @@ entity QueryResult {
         if rows.count() == 0 && columnNames.count() == 0 {
             result = message;
         } else {
-            result = result + "(" + Viper.Fmt.Int(rows.count()) + " rows)";
+            result = result + "(" + Fmt.Int(rows.count()) + " rows)";
         }
 
         return result;
@@ -3593,20 +3597,20 @@ func evalBinaryExpr(expr: Expr, row: Row, table: Table) -> Integer {
 func textToInt(text: String) -> Integer {
     var result = 0;
     var i = 0;
-    var len = Viper.String.Length(text);
+    var len = String.Length(text);
     var negative = false;
 
     // Check for negative
     if len > 0 {
-        if Viper.String.Substring(text, 0, 1) == "-" {
+        if String.Substring(text, 0, 1) == "-" {
             negative = true;
             i = 1;
         }
     }
 
     while i < len {
-        var ch = Viper.String.Substring(text, i, 1);
-        var code = Viper.String.Asc(ch);
+        var ch = String.Substring(text, i, 1);
+        var code = String.Asc(ch);
         if code >= 48 {
             if code <= 57 {
                 result = result * 10 + (code - 48);
@@ -3803,7 +3807,7 @@ func executeInsert(stmt: InsertStmt) -> QueryResult {
         r = r + 1;
     }
 
-    result.message = "Inserted " + Viper.Fmt.Int(rowsInserted) + " row(s)";
+    result.message = "Inserted " + Fmt.Int(rowsInserted) + " row(s)";
     return result;
 }
 
@@ -4289,7 +4293,7 @@ func executeCrossJoin(stmt: SelectStmt) -> QueryResult {
                     result.addColumnName(colExpr.columnName);
                 }
             } else {
-                result.addColumnName("expr" + Viper.Fmt.Int(c));
+                result.addColumnName("expr" + Fmt.Int(c));
             }
             c = c + 1;
         }
@@ -4491,7 +4495,7 @@ func executeCrossJoin(stmt: SelectStmt) -> QueryResult {
         ri = ri + 1;
     }
 
-    result.message = "Selected " + Viper.Fmt.Int(result.rowCount()) + " row(s)";
+    result.message = "Selected " + Fmt.Int(result.rowCount()) + " row(s)";
     return result;
 }
 
@@ -4591,7 +4595,7 @@ func executeSelect(stmt: SelectStmt) -> QueryResult {
         }
         // For derived tables with SELECT *, just return the subquery result
         // More complex queries (with WHERE, ORDER BY, etc.) would need additional work
-        derivedResult.message = "Selected " + Viper.Fmt.Int(derivedResult.rowCount()) + " row(s)";
+        derivedResult.message = "Selected " + Fmt.Int(derivedResult.rowCount()) + " row(s)";
         return derivedResult;
     }
 
@@ -4643,7 +4647,7 @@ func executeSelect(stmt: SelectStmt) -> QueryResult {
                     result.addColumnName(funcName + "()");
                 }
             } else {
-                result.addColumnName("expr" + Viper.Fmt.Int(c));
+                result.addColumnName("expr" + Fmt.Int(c));
             }
             c = c + 1;
         }
@@ -4777,7 +4781,7 @@ func executeSelect(stmt: SelectStmt) -> QueryResult {
             groupIdx = groupIdx + 1;
         }
 
-        result.message = "Selected " + Viper.Fmt.Int(result.rowCount()) + " row(s)";
+        result.message = "Selected " + Fmt.Int(result.rowCount()) + " row(s)";
         currentTableAlias = savedAlias;  // Restore alias
         return result;
     }
@@ -4942,7 +4946,7 @@ func executeSelect(stmt: SelectStmt) -> QueryResult {
         ri = ri + 1;
     }
 
-    result.message = "Selected " + Viper.Fmt.Int(result.rowCount()) + " row(s)";
+    result.message = "Selected " + Fmt.Int(result.rowCount()) + " row(s)";
     currentTableAlias = savedAlias;  // Restore alias
     return result;
 }
@@ -5000,7 +5004,7 @@ func executeUpdate(stmt: UpdateStmt) -> QueryResult {
         r = r + 1;
     }
 
-    result.message = "Updated " + Viper.Fmt.Int(updateCount) + " row(s)";
+    result.message = "Updated " + Fmt.Int(updateCount) + " row(s)";
     result.rowsAffected = updateCount;
     return result;
 }
@@ -5047,7 +5051,7 @@ func executeDelete(stmt: DeleteStmt) -> QueryResult {
         r = r + 1;
     }
 
-    result.message = "Deleted " + Viper.Fmt.Int(deleteCount) + " row(s)";
+    result.message = "Deleted " + Fmt.Int(deleteCount) + " row(s)";
     result.rowsAffected = deleteCount;
     return result;
 }
@@ -5102,7 +5106,7 @@ func executeCreateIndex(stmt: CreateIndexStmt) -> QueryResult {
     // Add to index manager
     idxMgr.addIndex(idx);
 
-    result.message = "Index '" + stmt.indexName + "' created with " + Viper.Fmt.Int(idx.entryCount()) + " entries";
+    result.message = "Index '" + stmt.indexName + "' created with " + Fmt.Int(idx.entryCount()) + " entries";
     return result;
 }
 
@@ -5216,120 +5220,120 @@ func executeSql(sql: String) -> QueryResult {
 //=============================================================================
 
 func testSqlValue() {
-    Viper.Terminal.Say("=== SqlValue Test ===");
+    Terminal.Say("=== SqlValue Test ===");
 
     var v1 = sqlNull();
-    Viper.Terminal.Say("v1 (NULL): " + v1.toString() + " type=" + v1.typeName());
+    Terminal.Say("v1 (NULL): " + v1.toString() + " type=" + v1.typeName());
 
     var v2 = sqlInteger(42);
-    Viper.Terminal.Say("v2 (INTEGER): " + v2.toString() + " type=" + v2.typeName());
+    Terminal.Say("v2 (INTEGER): " + v2.toString() + " type=" + v2.typeName());
 
     var v3 = sqlReal(3.14, "3.14");
-    Viper.Terminal.Say("v3 (REAL): " + v3.toString() + " type=" + v3.typeName());
+    Terminal.Say("v3 (REAL): " + v3.toString() + " type=" + v3.typeName());
 
     var v4 = sqlText("Hello");
-    Viper.Terminal.Say("v4 (TEXT): " + v4.toString() + " type=" + v4.typeName());
+    Terminal.Say("v4 (TEXT): " + v4.toString() + " type=" + v4.typeName());
 
     // Test comparisons
     var v5 = sqlInteger(100);
-    Viper.Terminal.Say("v2.compare(v5): " + Viper.Fmt.Int(v2.compare(v5)) + " (expect -1)");
-    Viper.Terminal.Say("v5.compare(v2): " + Viper.Fmt.Int(v5.compare(v2)) + " (expect 1)");
+    Terminal.Say("v2.compare(v5): " + Fmt.Int(v2.compare(v5)) + " (expect -1)");
+    Terminal.Say("v5.compare(v2): " + Fmt.Int(v5.compare(v2)) + " (expect 1)");
 
     var v6 = sqlInteger(42);
-    Viper.Terminal.Say("v2.equals(v6): " + Viper.Fmt.Bool(v2.equals(v6)) + " (expect true)");
+    Terminal.Say("v2.equals(v6): " + Fmt.Bool(v2.equals(v6)) + " (expect true)");
 
-    Viper.Terminal.Say("=== SqlValue Test PASSED ===");
+    Terminal.Say("=== SqlValue Test PASSED ===");
 }
 
 func testTokens() {
-    Viper.Terminal.Say("=== Token Types Test ===");
+    Terminal.Say("=== Token Types Test ===");
 
     var tok1 = new Token(TK_SELECT, "SELECT", 1, 1);
-    Viper.Terminal.Say("Token 1: " + tok1.toString());
-    Viper.Terminal.Say("  isKeyword: " + Viper.Fmt.Bool(tok1.isKeyword()));
+    Terminal.Say("Token 1: " + tok1.toString());
+    Terminal.Say("  isKeyword: " + Fmt.Bool(tok1.isKeyword()));
 
     var tok2 = new Token(TK_INTEGER, "42", 1, 8);
-    Viper.Terminal.Say("Token 2: " + tok2.toString());
-    Viper.Terminal.Say("  isLiteral: " + Viper.Fmt.Bool(tok2.isLiteral()));
+    Terminal.Say("Token 2: " + tok2.toString());
+    Terminal.Say("  isLiteral: " + Fmt.Bool(tok2.isLiteral()));
 
-    Viper.Terminal.Say("=== Token Types Test PASSED ===");
+    Terminal.Say("=== Token Types Test PASSED ===");
 }
 
 func testLexer() {
-    Viper.Terminal.Say("=== Lexer Test ===");
+    Terminal.Say("=== Lexer Test ===");
 
     var sql = "SELECT id, name FROM users WHERE age > 21;";
-    Viper.Terminal.Say("Input: " + sql);
-    Viper.Terminal.Say("");
+    Terminal.Say("Input: " + sql);
+    Terminal.Say("");
 
     var lex = new Lexer(sql);
     var tok = lex.nextToken();
     while (tok.kind != TK_EOF) {
-        Viper.Terminal.Say("  " + tokenTypeName(tok.kind) + ": '" + tok.text + "'");
+        Terminal.Say("  " + tokenTypeName(tok.kind) + ": '" + tok.text + "'");
         tok = lex.nextToken();
     }
 
-    Viper.Terminal.Say("");
+    Terminal.Say("");
 
     var sql2 = "INSERT INTO users VALUES (1, 'John', 3.14);";
-    Viper.Terminal.Say("Input: " + sql2);
-    Viper.Terminal.Say("");
+    Terminal.Say("Input: " + sql2);
+    Terminal.Say("");
 
     var lex2 = new Lexer(sql2);
     tok = lex2.nextToken();
     while (tok.kind != TK_EOF) {
-        Viper.Terminal.Say("  " + tokenTypeName(tok.kind) + ": '" + tok.text + "'");
+        Terminal.Say("  " + tokenTypeName(tok.kind) + ": '" + tok.text + "'");
         tok = lex2.nextToken();
     }
 
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("=== Lexer Test PASSED ===");
+    Terminal.Say("");
+    Terminal.Say("=== Lexer Test PASSED ===");
 }
 
 func testColumnRow() {
-    Viper.Terminal.Say("=== Column & Row Test ===");
+    Terminal.Say("=== Column & Row Test ===");
 
     // Test Column creation
     var col1 = makeColumn("id", SQL_INTEGER);
     col1.primaryKey = true;
     col1.autoIncrement = true;
-    Viper.Terminal.Say("col1: " + col1.toString());
+    Terminal.Say("col1: " + col1.toString());
 
     var col2 = makeColumn("name", SQL_TEXT);
     col2.notNull = true;
-    Viper.Terminal.Say("col2: " + col2.toString());
+    Terminal.Say("col2: " + col2.toString());
 
     var col3 = makeColumn("score", SQL_REAL);
     col3.setDefault(sqlReal(0.0, "0.0"));
-    Viper.Terminal.Say("col3: " + col3.toString());
+    Terminal.Say("col3: " + col3.toString());
 
     // Test Row creation
     var row1 = makeRow(3);
-    Viper.Terminal.Say("row1 (empty): " + row1.toString());
+    Terminal.Say("row1 (empty): " + row1.toString());
 
     row1.setValue(0, sqlInteger(1));
     row1.setValue(1, sqlText("Alice"));
     row1.setValue(2, sqlReal(95.5, "95.5"));
-    Viper.Terminal.Say("row1 (filled): " + row1.toString());
+    Terminal.Say("row1 (filled): " + row1.toString());
 
     // Test Row clone
     var row2 = row1.clone();
     row2.setValue(0, sqlInteger(2));
     row2.setValue(1, sqlText("Bob"));
-    Viper.Terminal.Say("row2 (cloned): " + row2.toString());
+    Terminal.Say("row2 (cloned): " + row2.toString());
 
     // Verify original unchanged
-    Viper.Terminal.Say("row1 (verify): " + row1.toString());
+    Terminal.Say("row1 (verify): " + row1.toString());
 
     // Test Row value access
     var v = row1.getValue(1);
-    Viper.Terminal.Say("row1.getValue(1): " + v.toString());
+    Terminal.Say("row1.getValue(1): " + v.toString());
 
-    Viper.Terminal.Say("=== Column & Row Test PASSED ===");
+    Terminal.Say("=== Column & Row Test PASSED ===");
 }
 
 func testTable() {
-    Viper.Terminal.Say("=== Table Test ===");
+    Terminal.Say("=== Table Test ===");
 
     // Create a users table
     var users = makeTable("users");
@@ -5347,15 +5351,15 @@ func testTable() {
     var colAge = makeColumn("age", SQL_INTEGER);
     users.addColumn(colAge);
 
-    Viper.Terminal.Say(users.toString());
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say(users.schemaString());
-    Viper.Terminal.Say("");
+    Terminal.Say(users.toString());
+    Terminal.Say("");
+    Terminal.Say(users.schemaString());
+    Terminal.Say("");
 
     // Test column lookup
     var idx = users.findColumnIndex("name");
-    var idxStr = Viper.Fmt.Int(idx);
-    Viper.Terminal.Say("Column 'name' at index: " + idxStr);
+    var idxStr = Fmt.Int(idx);
+    Terminal.Say("Column 'name' at index: " + idxStr);
 
     // Insert some rows
     var vals1: List[SqlValue] = [];
@@ -5376,24 +5380,24 @@ func testTable() {
     vals3.add(sqlNull());
     users.insertRow(vals3);
 
-    Viper.Terminal.Say(users.toString());
+    Terminal.Say(users.toString());
 
     // Print row count
-    Viper.Terminal.Say("");
-    var rowCountStr = Viper.Fmt.Int(users.rowCount());
-    Viper.Terminal.Say("Rows inserted: " + rowCountStr);
+    Terminal.Say("");
+    var rowCountStr = Fmt.Int(users.rowCount());
+    Terminal.Say("Rows inserted: " + rowCountStr);
 
     // Test delete
     users.deleteRow(1);
-    Viper.Terminal.Say("After deleting row 1:");
-    Viper.Terminal.Say("(Row 0 and 2 should remain, row 1 marked deleted)");
+    Terminal.Say("After deleting row 1:");
+    Terminal.Say("(Row 0 and 2 should remain, row 1 marked deleted)");
 
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("=== Table Test PASSED ===");
+    Terminal.Say("");
+    Terminal.Say("=== Table Test PASSED ===");
 }
 
 func testExecutor() {
-    Viper.Terminal.Say("=== Executor Test ===");
+    Terminal.Say("=== Executor Test ===");
 
     // Reset database
     currentDb = new Database();
@@ -5402,209 +5406,209 @@ func testExecutor() {
 
     // Test CREATE TABLE
     var sql1 = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER);";
-    Viper.Terminal.Say("SQL: " + sql1);
+    Terminal.Say("SQL: " + sql1);
     var r1 = executeSql(sql1);
-    Viper.Terminal.Say("Result: " + r1.message);
+    Terminal.Say("Result: " + r1.message);
 
     // Test INSERT
     var sql2 = "INSERT INTO users VALUES (1, 'Alice', 30);";
-    Viper.Terminal.Say("SQL: " + sql2);
+    Terminal.Say("SQL: " + sql2);
     var r2 = executeSql(sql2);
-    Viper.Terminal.Say("Result: " + r2.message);
+    Terminal.Say("Result: " + r2.message);
 
     var sql3 = "INSERT INTO users VALUES (2, 'Bob', 25);";
-    Viper.Terminal.Say("SQL: " + sql3);
+    Terminal.Say("SQL: " + sql3);
     var r3 = executeSql(sql3);
-    Viper.Terminal.Say("Result: " + r3.message);
+    Terminal.Say("Result: " + r3.message);
 
     var sql4 = "INSERT INTO users VALUES (3, 'Charlie', 35);";
-    Viper.Terminal.Say("SQL: " + sql4);
+    Terminal.Say("SQL: " + sql4);
     var r4 = executeSql(sql4);
-    Viper.Terminal.Say("Result: " + r4.message);
+    Terminal.Say("Result: " + r4.message);
 
     // Test SELECT *
     var sql5 = "SELECT * FROM users;";
-    Viper.Terminal.Say("SQL: " + sql5);
+    Terminal.Say("SQL: " + sql5);
     var r5 = executeSql(sql5);
-    Viper.Terminal.Say("Result: " + r5.message);
-    Viper.Terminal.Say(r5.toString());
+    Terminal.Say("Result: " + r5.message);
+    Terminal.Say(r5.toString());
 
     // Test SELECT with WHERE
     var sql6 = "SELECT * FROM users WHERE age > 28;";
-    Viper.Terminal.Say("SQL: " + sql6);
+    Terminal.Say("SQL: " + sql6);
     var r6 = executeSql(sql6);
-    Viper.Terminal.Say("Result: " + r6.message);
-    Viper.Terminal.Say(r6.toString());
+    Terminal.Say("Result: " + r6.message);
+    Terminal.Say(r6.toString());
 
     // Test UPDATE
     var sql7 = "UPDATE users SET age = 31 WHERE name = 'Alice';";
-    Viper.Terminal.Say("SQL: " + sql7);
+    Terminal.Say("SQL: " + sql7);
     var r7 = executeSql(sql7);
-    Viper.Terminal.Say("Result: " + r7.message);
+    Terminal.Say("Result: " + r7.message);
 
     // Verify UPDATE
     var sql8 = "SELECT * FROM users WHERE name = 'Alice';";
-    Viper.Terminal.Say("SQL: " + sql8);
+    Terminal.Say("SQL: " + sql8);
     var r8 = executeSql(sql8);
-    Viper.Terminal.Say("Result: " + r8.message);
-    Viper.Terminal.Say(r8.toString());
+    Terminal.Say("Result: " + r8.message);
+    Terminal.Say(r8.toString());
 
     // Test DELETE
     var sql9 = "DELETE FROM users WHERE name = 'Bob';";
-    Viper.Terminal.Say("SQL: " + sql9);
+    Terminal.Say("SQL: " + sql9);
     var r9 = executeSql(sql9);
-    Viper.Terminal.Say("Result: " + r9.message);
+    Terminal.Say("Result: " + r9.message);
 
     // Verify DELETE
     var sql10 = "SELECT * FROM users;";
-    Viper.Terminal.Say("SQL: " + sql10);
+    Terminal.Say("SQL: " + sql10);
     var r10 = executeSql(sql10);
-    Viper.Terminal.Say("Result: " + r10.message);
-    Viper.Terminal.Say(r10.toString());
+    Terminal.Say("Result: " + r10.message);
+    Terminal.Say(r10.toString());
 
     // Test ORDER BY - Insert more data
     var sql11 = "INSERT INTO users VALUES (4, 'Diana', 28);";
-    Viper.Terminal.Say("SQL: " + sql11);
+    Terminal.Say("SQL: " + sql11);
     var r11 = executeSql(sql11);
-    Viper.Terminal.Say("Result: " + r11.message);
+    Terminal.Say("Result: " + r11.message);
 
     // Test ORDER BY ASC
     var sql12 = "SELECT * FROM users ORDER BY age;";
-    Viper.Terminal.Say("SQL: " + sql12);
+    Terminal.Say("SQL: " + sql12);
     var r12 = executeSql(sql12);
-    Viper.Terminal.Say("Result: " + r12.message);
-    Viper.Terminal.Say(r12.toString());
+    Terminal.Say("Result: " + r12.message);
+    Terminal.Say(r12.toString());
 
     // Test ORDER BY DESC
     var sql13 = "SELECT * FROM users ORDER BY age DESC;";
-    Viper.Terminal.Say("SQL: " + sql13);
+    Terminal.Say("SQL: " + sql13);
     var r13 = executeSql(sql13);
-    Viper.Terminal.Say("Result: " + r13.message);
-    Viper.Terminal.Say(r13.toString());
+    Terminal.Say("Result: " + r13.message);
+    Terminal.Say(r13.toString());
 
     // Test ORDER BY name ASC
     var sql14 = "SELECT * FROM users ORDER BY name ASC;";
-    Viper.Terminal.Say("SQL: " + sql14);
+    Terminal.Say("SQL: " + sql14);
     var r14 = executeSql(sql14);
-    Viper.Terminal.Say("Result: " + r14.message);
-    Viper.Terminal.Say(r14.toString());
+    Terminal.Say("Result: " + r14.message);
+    Terminal.Say(r14.toString());
 
     // Test LIMIT
     var sql15 = "SELECT * FROM users ORDER BY age LIMIT 2;";
-    Viper.Terminal.Say("SQL: " + sql15);
+    Terminal.Say("SQL: " + sql15);
     var r15 = executeSql(sql15);
-    Viper.Terminal.Say("Result: " + r15.message);
-    Viper.Terminal.Say(r15.toString());
+    Terminal.Say("Result: " + r15.message);
+    Terminal.Say(r15.toString());
 
     // Test LIMIT with OFFSET
     var sql16 = "SELECT * FROM users ORDER BY age LIMIT 2 OFFSET 1;";
-    Viper.Terminal.Say("SQL: " + sql16);
+    Terminal.Say("SQL: " + sql16);
     var r16 = executeSql(sql16);
-    Viper.Terminal.Say("Result: " + r16.message);
-    Viper.Terminal.Say(r16.toString());
+    Terminal.Say("Result: " + r16.message);
+    Terminal.Say(r16.toString());
 
     // Test DISTINCT - Add more rows with duplicate ages
     var sql17 = "INSERT INTO users VALUES (5, 'Eve', 31);";
-    Viper.Terminal.Say("SQL: " + sql17);
+    Terminal.Say("SQL: " + sql17);
     var r17 = executeSql(sql17);
-    Viper.Terminal.Say("Result: " + r17.message);
+    Terminal.Say("Result: " + r17.message);
 
     // Test SELECT DISTINCT age
     var sql18 = "SELECT DISTINCT age FROM users;";
-    Viper.Terminal.Say("SQL: " + sql18);
+    Terminal.Say("SQL: " + sql18);
     var r18 = executeSql(sql18);
-    Viper.Terminal.Say("Result: " + r18.message);
-    Viper.Terminal.Say(r18.toString());
+    Terminal.Say("Result: " + r18.message);
+    Terminal.Say(r18.toString());
 
     // Test SELECT age without DISTINCT (should have duplicates)
     var sql19 = "SELECT age FROM users;";
-    Viper.Terminal.Say("SQL: " + sql19);
+    Terminal.Say("SQL: " + sql19);
     var r19 = executeSql(sql19);
-    Viper.Terminal.Say("Result: " + r19.message);
-    Viper.Terminal.Say(r19.toString());
+    Terminal.Say("Result: " + r19.message);
+    Terminal.Say(r19.toString());
 
     // Test COUNT(*)
     var sql20 = "SELECT COUNT(*) FROM users;";
-    Viper.Terminal.Say("SQL: " + sql20);
+    Terminal.Say("SQL: " + sql20);
     var r20 = executeSql(sql20);
-    Viper.Terminal.Say("Result: " + r20.message);
-    Viper.Terminal.Say(r20.toString());
+    Terminal.Say("Result: " + r20.message);
+    Terminal.Say(r20.toString());
 
     // Test SUM(age)
     var sql21 = "SELECT SUM(age) FROM users;";
-    Viper.Terminal.Say("SQL: " + sql21);
+    Terminal.Say("SQL: " + sql21);
     var r21 = executeSql(sql21);
-    Viper.Terminal.Say("Result: " + r21.message);
-    Viper.Terminal.Say(r21.toString());
+    Terminal.Say("Result: " + r21.message);
+    Terminal.Say(r21.toString());
 
     // Test AVG(age)
     var sql22 = "SELECT AVG(age) FROM users;";
-    Viper.Terminal.Say("SQL: " + sql22);
+    Terminal.Say("SQL: " + sql22);
     var r22 = executeSql(sql22);
-    Viper.Terminal.Say("Result: " + r22.message);
-    Viper.Terminal.Say(r22.toString());
+    Terminal.Say("Result: " + r22.message);
+    Terminal.Say(r22.toString());
 
     // Test MIN(age) and MAX(age)
     var sql23 = "SELECT MIN(age), MAX(age) FROM users;";
-    Viper.Terminal.Say("SQL: " + sql23);
+    Terminal.Say("SQL: " + sql23);
     var r23 = executeSql(sql23);
-    Viper.Terminal.Say("Result: " + r23.message);
-    Viper.Terminal.Say(r23.toString());
+    Terminal.Say("Result: " + r23.message);
+    Terminal.Say(r23.toString());
 
     // Test COUNT(*) with WHERE
     var sql24 = "SELECT COUNT(*) FROM users WHERE age > 30;";
-    Viper.Terminal.Say("SQL: " + sql24);
+    Terminal.Say("SQL: " + sql24);
     var r24 = executeSql(sql24);
-    Viper.Terminal.Say("Result: " + r24.message);
-    Viper.Terminal.Say(r24.toString());
+    Terminal.Say("Result: " + r24.message);
+    Terminal.Say(r24.toString());
 
     // Test GROUP BY
     var sql25 = "SELECT age, COUNT(*) FROM users GROUP BY age;";
-    Viper.Terminal.Say("SQL: " + sql25);
+    Terminal.Say("SQL: " + sql25);
     var r25 = executeSql(sql25);
-    Viper.Terminal.Say("Result: " + r25.message);
-    Viper.Terminal.Say(r25.toString());
+    Terminal.Say("Result: " + r25.message);
+    Terminal.Say(r25.toString());
 
     // Test GROUP BY with SUM
     var sql26 = "SELECT age, SUM(id) FROM users GROUP BY age;";
-    Viper.Terminal.Say("SQL: " + sql26);
+    Terminal.Say("SQL: " + sql26);
     var r26 = executeSql(sql26);
-    Viper.Terminal.Say("Result: " + r26.message);
-    Viper.Terminal.Say(r26.toString());
+    Terminal.Say("Result: " + r26.message);
+    Terminal.Say(r26.toString());
 
     // Test HAVING clause
     var sql27 = "SELECT age, COUNT(*) FROM users GROUP BY age HAVING COUNT(*) > 1;";
-    Viper.Terminal.Say("SQL: " + sql27);
+    Terminal.Say("SQL: " + sql27);
     var r27 = executeSql(sql27);
-    Viper.Terminal.Say("Result: " + r27.message);
-    Viper.Terminal.Say(r27.toString());
+    Terminal.Say("Result: " + r27.message);
+    Terminal.Say(r27.toString());
 
     // Test HAVING with SUM
     var sql28 = "SELECT age, SUM(id) FROM users GROUP BY age HAVING SUM(id) >= 4;";
-    Viper.Terminal.Say("SQL: " + sql28);
+    Terminal.Say("SQL: " + sql28);
     var r28 = executeSql(sql28);
-    Viper.Terminal.Say("Result: " + r28.message);
-    Viper.Terminal.Say(r28.toString());
+    Terminal.Say("Result: " + r28.message);
+    Terminal.Say(r28.toString());
 
     // Test table alias
     var sql29 = "SELECT * FROM users u WHERE u.age > 30;";
-    Viper.Terminal.Say("SQL: " + sql29);
+    Terminal.Say("SQL: " + sql29);
     var r29 = executeSql(sql29);
-    Viper.Terminal.Say("Result: " + r29.message);
-    Viper.Terminal.Say(r29.toString());
+    Terminal.Say("Result: " + r29.message);
+    Terminal.Say(r29.toString());
 
     // Test table alias with AS
     var sql30 = "SELECT id, name FROM users AS u;";
-    Viper.Terminal.Say("SQL: " + sql30);
+    Terminal.Say("SQL: " + sql30);
     var r30 = executeSql(sql30);
-    Viper.Terminal.Say("Result: " + r30.message);
-    Viper.Terminal.Say(r30.toString());
+    Terminal.Say("Result: " + r30.message);
+    Terminal.Say(r30.toString());
 
     // CROSS JOIN tests - create a second table
     var sql31 = "CREATE TABLE orders (order_id INTEGER, user_id INTEGER, product TEXT);";
-    Viper.Terminal.Say("SQL: " + sql31);
+    Terminal.Say("SQL: " + sql31);
     var r31 = executeSql(sql31);
-    Viper.Terminal.Say("Result: " + r31.message);
+    Terminal.Say("Result: " + r31.message);
 
     var sql32 = "INSERT INTO orders VALUES (101, 1, 'Widget');";
     executeSql(sql32);
@@ -5612,142 +5616,142 @@ func testExecutor() {
     executeSql(sql33);
     var sql33b = "INSERT INTO orders VALUES (103, 99, 'Thingamajig');";
     executeSql(sql33b);
-    Viper.Terminal.Say("Inserted 3 orders (one with non-existent user_id=99)");
+    Terminal.Say("Inserted 3 orders (one with non-existent user_id=99)");
 
     // Test basic CROSS JOIN with SELECT *
     var sql34 = "SELECT * FROM users, orders;";
-    Viper.Terminal.Say("SQL: " + sql34);
+    Terminal.Say("SQL: " + sql34);
     var r34 = executeSql(sql34);
-    Viper.Terminal.Say("Result: " + r34.message);
-    Viper.Terminal.Say(r34.toString());
+    Terminal.Say("Result: " + r34.message);
+    Terminal.Say(r34.toString());
 
     // Test CROSS JOIN with WHERE clause (simulating INNER JOIN)
     var sql35 = "SELECT users.name, orders.product FROM users, orders WHERE users.id = orders.user_id;";
-    Viper.Terminal.Say("SQL: " + sql35);
+    Terminal.Say("SQL: " + sql35);
     var r35 = executeSql(sql35);
-    Viper.Terminal.Say("Result: " + r35.message);
-    Viper.Terminal.Say(r35.toString());
+    Terminal.Say("Result: " + r35.message);
+    Terminal.Say(r35.toString());
 
     // Test CROSS JOIN with aliases
     var sql36 = "SELECT u.name, o.product FROM users u, orders o WHERE u.id = o.user_id;";
-    Viper.Terminal.Say("SQL: " + sql36);
+    Terminal.Say("SQL: " + sql36);
     var r36 = executeSql(sql36);
-    Viper.Terminal.Say("Result: " + r36.message);
-    Viper.Terminal.Say(r36.toString());
+    Terminal.Say("Result: " + r36.message);
+    Terminal.Say(r36.toString());
 
     // Test INNER JOIN syntax
     var sql37 = "SELECT users.name, orders.product FROM users INNER JOIN orders ON users.id = orders.user_id;";
-    Viper.Terminal.Say("SQL: " + sql37);
+    Terminal.Say("SQL: " + sql37);
     var r37 = executeSql(sql37);
-    Viper.Terminal.Say("Result: " + r37.message);
-    Viper.Terminal.Say(r37.toString());
+    Terminal.Say("Result: " + r37.message);
+    Terminal.Say(r37.toString());
 
     // Test INNER JOIN with aliases
     var sql38 = "SELECT u.name, o.product FROM users u INNER JOIN orders o ON u.id = o.user_id;";
-    Viper.Terminal.Say("SQL: " + sql38);
+    Terminal.Say("SQL: " + sql38);
     var r38 = executeSql(sql38);
-    Viper.Terminal.Say("Result: " + r38.message);
-    Viper.Terminal.Say(r38.toString());
+    Terminal.Say("Result: " + r38.message);
+    Terminal.Say(r38.toString());
 
     // Test bare JOIN (same as INNER JOIN)
     var sql39 = "SELECT u.name, o.product FROM users u JOIN orders o ON u.id = o.user_id;";
-    Viper.Terminal.Say("SQL: " + sql39);
+    Terminal.Say("SQL: " + sql39);
     var r39 = executeSql(sql39);
-    Viper.Terminal.Say("Result: " + r39.message);
-    Viper.Terminal.Say(r39.toString());
+    Terminal.Say("Result: " + r39.message);
+    Terminal.Say(r39.toString());
 
     // Test LEFT JOIN - returns all users, even those without orders
     var sql40 = "SELECT u.name, o.product FROM users u LEFT JOIN orders o ON u.id = o.user_id;";
-    Viper.Terminal.Say("SQL: " + sql40);
+    Terminal.Say("SQL: " + sql40);
     var r40 = executeSql(sql40);
-    Viper.Terminal.Say("Result: " + r40.message);
-    Viper.Terminal.Say(r40.toString());
+    Terminal.Say("Result: " + r40.message);
+    Terminal.Say(r40.toString());
 
     // Test LEFT OUTER JOIN (same as LEFT JOIN)
     var sql41 = "SELECT u.name, o.product FROM users u LEFT OUTER JOIN orders o ON u.id = o.user_id;";
-    Viper.Terminal.Say("SQL: " + sql41);
+    Terminal.Say("SQL: " + sql41);
     var r41 = executeSql(sql41);
-    Viper.Terminal.Say("Result: " + r41.message);
-    Viper.Terminal.Say(r41.toString());
+    Terminal.Say("Result: " + r41.message);
+    Terminal.Say(r41.toString());
 
     // Test RIGHT JOIN - returns all orders, even those without matching users
     var sql42 = "SELECT u.name, o.product FROM users u RIGHT JOIN orders o ON u.id = o.user_id;";
-    Viper.Terminal.Say("SQL: " + sql42);
+    Terminal.Say("SQL: " + sql42);
     var r42 = executeSql(sql42);
-    Viper.Terminal.Say("Result: " + r42.message);
-    Viper.Terminal.Say(r42.toString());
+    Terminal.Say("Result: " + r42.message);
+    Terminal.Say(r42.toString());
 
     // Test FULL OUTER JOIN - returns all from both tables
     var sql43 = "SELECT u.name, o.product FROM users u FULL OUTER JOIN orders o ON u.id = o.user_id;";
-    Viper.Terminal.Say("SQL: " + sql43);
+    Terminal.Say("SQL: " + sql43);
     var r43 = executeSql(sql43);
-    Viper.Terminal.Say("Result: " + r43.message);
-    Viper.Terminal.Say(r43.toString());
+    Terminal.Say("Result: " + r43.message);
+    Terminal.Say(r43.toString());
 
     // Phase 6: Subqueries
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("--- Subquery Tests ---");
+    Terminal.Say("");
+    Terminal.Say("--- Subquery Tests ---");
 
     // Test scalar subquery in WHERE: find users older than average
     var sql44 = "SELECT name, age FROM users WHERE age > (SELECT AVG(age) FROM users);";
-    Viper.Terminal.Say("SQL: " + sql44);
+    Terminal.Say("SQL: " + sql44);
     var r44 = executeSql(sql44);
-    Viper.Terminal.Say("Result: " + r44.message);
-    Viper.Terminal.Say(r44.toString());
+    Terminal.Say("Result: " + r44.message);
+    Terminal.Say(r44.toString());
 
     // Test scalar subquery getting max value
     var sql45 = "SELECT name FROM users WHERE age = (SELECT MAX(age) FROM users);";
-    Viper.Terminal.Say("SQL: " + sql45);
+    Terminal.Say("SQL: " + sql45);
     var r45 = executeSql(sql45);
-    Viper.Terminal.Say("Result: " + r45.message);
-    Viper.Terminal.Say(r45.toString());
+    Terminal.Say("Result: " + r45.message);
+    Terminal.Say(r45.toString());
 
     // Test scalar subquery getting count
     var sql46 = "SELECT * FROM users WHERE id > (SELECT COUNT(*) FROM orders);";
-    Viper.Terminal.Say("SQL: " + sql46);
+    Terminal.Say("SQL: " + sql46);
     var r46 = executeSql(sql46);
-    Viper.Terminal.Say("Result: " + r46.message);
-    Viper.Terminal.Say(r46.toString());
+    Terminal.Say("Result: " + r46.message);
+    Terminal.Say(r46.toString());
 
     // Test IN subquery: users who have placed orders
     var sql47 = "SELECT name FROM users WHERE id IN (SELECT user_id FROM orders);";
-    Viper.Terminal.Say("SQL: " + sql47);
+    Terminal.Say("SQL: " + sql47);
     var r47 = executeSql(sql47);
-    Viper.Terminal.Say("Result: " + r47.message);
-    Viper.Terminal.Say(r47.toString());
+    Terminal.Say("Result: " + r47.message);
+    Terminal.Say(r47.toString());
 
     // Test IN subquery: users who have NOT placed orders (using NOT IN pattern)
     var sql48 = "SELECT name FROM users WHERE id IN (SELECT user_id FROM orders WHERE user_id > 2);";
-    Viper.Terminal.Say("SQL: " + sql48);
+    Terminal.Say("SQL: " + sql48);
     var r48 = executeSql(sql48);
-    Viper.Terminal.Say("Result: " + r48.message);
-    Viper.Terminal.Say(r48.toString());
+    Terminal.Say("Result: " + r48.message);
+    Terminal.Say(r48.toString());
 
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("--- Derived Table Tests ---");
+    Terminal.Say("");
+    Terminal.Say("--- Derived Table Tests ---");
 
     // Test derived table (subquery in FROM)
     var sql49 = "SELECT * FROM (SELECT name, age FROM users WHERE age > 25) AS older_users;";
-    Viper.Terminal.Say("SQL: " + sql49);
+    Terminal.Say("SQL: " + sql49);
     var r49 = executeSql(sql49);
-    Viper.Terminal.Say("Result: " + r49.message);
-    Viper.Terminal.Say(r49.toString());
+    Terminal.Say("Result: " + r49.message);
+    Terminal.Say(r49.toString());
 
     // Test derived table with aggregation
     var sql50 = "SELECT * FROM (SELECT COUNT(*) AS cnt FROM users) AS user_count;";
-    Viper.Terminal.Say("SQL: " + sql50);
+    Terminal.Say("SQL: " + sql50);
     var r50 = executeSql(sql50);
-    Viper.Terminal.Say("Result: " + r50.message);
-    Viper.Terminal.Say(r50.toString());
+    Terminal.Say("Result: " + r50.message);
+    Terminal.Say(r50.toString());
 
-    Viper.Terminal.Say("--- Correlated Subquery Tests ---");
+    Terminal.Say("--- Correlated Subquery Tests ---");
 
     // Test correlated subquery - find users older than average age of users with same city
     // First, let's add city column to users and insert data with cities
     var sql51 = "CREATE TABLE employees (id INTEGER, name TEXT, department TEXT, salary INTEGER);";
-    Viper.Terminal.Say("SQL: " + sql51);
+    Terminal.Say("SQL: " + sql51);
     var r51 = executeSql(sql51);
-    Viper.Terminal.Say("Result: " + r51.message);
+    Terminal.Say("Result: " + r51.message);
 
     var sql52 = "INSERT INTO employees VALUES (1, 'Alice', 'Engineering', 80000);";
     executeSql(sql52);
@@ -5759,24 +5763,24 @@ func testExecutor() {
     executeSql(sql55);
     var sql56 = "INSERT INTO employees VALUES (5, 'Eve', 'Engineering', 90000);";
     executeSql(sql56);
-    Viper.Terminal.Say("Inserted 5 employees");
+    Terminal.Say("Inserted 5 employees");
 
     // Correlated subquery: Find employees earning more than avg salary in their department
     var sql57 = "SELECT name, department, salary FROM employees e WHERE salary > (SELECT AVG(salary) FROM employees WHERE department = e.department);";
-    Viper.Terminal.Say("SQL: " + sql57);
+    Terminal.Say("SQL: " + sql57);
     var r57 = executeSql(sql57);
-    Viper.Terminal.Say("Result: " + r57.message);
-    Viper.Terminal.Say(r57.toString());
+    Terminal.Say("Result: " + r57.message);
+    Terminal.Say(r57.toString());
     // Expected: Alice (80K > Engineering avg 81.6K? No), Eve (90K > 81.6K? Yes), Diana (65K > Sales avg 62.5K? Yes)
     // Actually Engineering avg = (80+75+90)/3 = 81.66, Sales avg = (60+65)/2 = 62.5
     // So Eve (90 > 81.66) and Diana (65 > 62.5) should be returned
 
     // Simpler correlated subquery test: find employees where their salary equals max in their dept
     var sql58 = "SELECT name, department, salary FROM employees e WHERE salary = (SELECT MAX(salary) FROM employees WHERE department = e.department);";
-    Viper.Terminal.Say("SQL: " + sql58);
+    Terminal.Say("SQL: " + sql58);
     var r58 = executeSql(sql58);
-    Viper.Terminal.Say("Result: " + r58.message);
-    Viper.Terminal.Say(r58.toString());
+    Terminal.Say("Result: " + r58.message);
+    Terminal.Say(r58.toString());
     // Expected: Eve (max in Engineering), Diana (max in Sales)
 
     //=========================================================================
@@ -5785,157 +5789,157 @@ func testExecutor() {
     // Reset database for constraint tests
     dbInitialized = false;
 
-    Viper.Terminal.Say("--- Constraint Tests ---");
+    Terminal.Say("--- Constraint Tests ---");
 
     // Create table with constraints
     var sqlConst1 = "CREATE TABLE consttest (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE);";
-    Viper.Terminal.Say("SQL: " + sqlConst1);
+    Terminal.Say("SQL: " + sqlConst1);
     var rConst1 = executeSql(sqlConst1);
-    Viper.Terminal.Say(rConst1.message);
+    Terminal.Say(rConst1.message);
 
     // Valid insert
     var sqlConst2 = "INSERT INTO consttest VALUES (1, 'Alice', 'alice@test.com');";
-    Viper.Terminal.Say("SQL: " + sqlConst2);
+    Terminal.Say("SQL: " + sqlConst2);
     var rConst2 = executeSql(sqlConst2);
-    Viper.Terminal.Say(rConst2.message);
+    Terminal.Say(rConst2.message);
 
     // Test PRIMARY KEY duplicate rejection
     var sqlConst3 = "INSERT INTO consttest VALUES (1, 'Bob', 'bob@test.com');";
-    Viper.Terminal.Say("SQL: " + sqlConst3);
+    Terminal.Say("SQL: " + sqlConst3);
     var rConst3 = executeSql(sqlConst3);
     if rConst3.success == false {
-        Viper.Terminal.Say("EXPECTED ERROR: " + rConst3.message);
+        Terminal.Say("EXPECTED ERROR: " + rConst3.message);
     } else {
-        Viper.Terminal.Say("FAILED: Duplicate PRIMARY KEY was allowed!");
+        Terminal.Say("FAILED: Duplicate PRIMARY KEY was allowed!");
     }
 
     // Test NOT NULL rejection
     var sqlConst4 = "INSERT INTO consttest VALUES (2, NULL, 'null@test.com');";
-    Viper.Terminal.Say("SQL: " + sqlConst4);
+    Terminal.Say("SQL: " + sqlConst4);
     var rConst4 = executeSql(sqlConst4);
     if rConst4.success == false {
-        Viper.Terminal.Say("EXPECTED ERROR: " + rConst4.message);
+        Terminal.Say("EXPECTED ERROR: " + rConst4.message);
     } else {
-        Viper.Terminal.Say("FAILED: NULL in NOT NULL column was allowed!");
+        Terminal.Say("FAILED: NULL in NOT NULL column was allowed!");
     }
 
     // Test UNIQUE rejection
     var sqlConst5 = "INSERT INTO consttest VALUES (3, 'Charlie', 'alice@test.com');";
-    Viper.Terminal.Say("SQL: " + sqlConst5);
+    Terminal.Say("SQL: " + sqlConst5);
     var rConst5 = executeSql(sqlConst5);
     if rConst5.success == false {
-        Viper.Terminal.Say("EXPECTED ERROR: " + rConst5.message);
+        Terminal.Say("EXPECTED ERROR: " + rConst5.message);
     } else {
-        Viper.Terminal.Say("FAILED: Duplicate UNIQUE value was allowed!");
+        Terminal.Say("FAILED: Duplicate UNIQUE value was allowed!");
     }
 
     // Valid insert with unique values
     var sqlConst6 = "INSERT INTO consttest VALUES (2, 'Bob', 'bob@test.com');";
-    Viper.Terminal.Say("SQL: " + sqlConst6);
+    Terminal.Say("SQL: " + sqlConst6);
     var rConst6 = executeSql(sqlConst6);
-    Viper.Terminal.Say(rConst6.message);
+    Terminal.Say(rConst6.message);
 
     // Verify final state
     var sqlConst7 = "SELECT * FROM consttest;";
-    Viper.Terminal.Say("SQL: " + sqlConst7);
+    Terminal.Say("SQL: " + sqlConst7);
     var rConst7 = executeSql(sqlConst7);
     if rConst7.success == true {
-        Viper.Terminal.Say("Rows returned: " + Viper.Fmt.Int(rConst7.rowsAffected));
-        Viper.Terminal.Say(rConst7.toString());
+        Terminal.Say("Rows returned: " + Fmt.Int(rConst7.rowsAffected));
+        Terminal.Say(rConst7.toString());
     }
 
-    Viper.Terminal.Say("--- AUTOINCREMENT Tests ---");
+    Terminal.Say("--- AUTOINCREMENT Tests ---");
 
     // Reset database for autoincrement tests
     dbInitialized = false;
 
     // Create table with AUTOINCREMENT
     var sqlAuto1 = "CREATE TABLE autoinc (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT);";
-    Viper.Terminal.Say("SQL: " + sqlAuto1);
+    Terminal.Say("SQL: " + sqlAuto1);
     var rAuto1 = executeSql(sqlAuto1);
-    Viper.Terminal.Say(rAuto1.message);
+    Terminal.Say(rAuto1.message);
 
     // Insert without specifying id (should auto-generate)
     var sqlAuto2 = "INSERT INTO autoinc (name) VALUES ('Alice');";
-    Viper.Terminal.Say("SQL: " + sqlAuto2);
+    Terminal.Say("SQL: " + sqlAuto2);
     var rAuto2 = executeSql(sqlAuto2);
-    Viper.Terminal.Say(rAuto2.message);
+    Terminal.Say(rAuto2.message);
 
     var sqlAuto3 = "INSERT INTO autoinc (name) VALUES ('Bob');";
-    Viper.Terminal.Say("SQL: " + sqlAuto3);
+    Terminal.Say("SQL: " + sqlAuto3);
     var rAuto3 = executeSql(sqlAuto3);
-    Viper.Terminal.Say(rAuto3.message);
+    Terminal.Say(rAuto3.message);
 
     var sqlAuto4 = "INSERT INTO autoinc (name) VALUES ('Charlie');";
-    Viper.Terminal.Say("SQL: " + sqlAuto4);
+    Terminal.Say("SQL: " + sqlAuto4);
     var rAuto4 = executeSql(sqlAuto4);
-    Viper.Terminal.Say(rAuto4.message);
+    Terminal.Say(rAuto4.message);
 
     // Verify auto-generated IDs
     var sqlAuto5 = "SELECT * FROM autoinc;";
-    Viper.Terminal.Say("SQL: " + sqlAuto5);
+    Terminal.Say("SQL: " + sqlAuto5);
     var rAuto5 = executeSql(sqlAuto5);
     if rAuto5.success == true {
-        Viper.Terminal.Say("Rows returned: " + Viper.Fmt.Int(rAuto5.rowsAffected));
-        Viper.Terminal.Say(rAuto5.toString());
+        Terminal.Say("Rows returned: " + Fmt.Int(rAuto5.rowsAffected));
+        Terminal.Say(rAuto5.toString());
     }
 
-    Viper.Terminal.Say("--- FOREIGN KEY Tests ---");
+    Terminal.Say("--- FOREIGN KEY Tests ---");
 
     // Reset database
     dbInitialized = false;
 
     // Create parent table
     var sqlFk1 = "CREATE TABLE fkparent (id INTEGER PRIMARY KEY, name TEXT);";
-    Viper.Terminal.Say("SQL: " + sqlFk1);
+    Terminal.Say("SQL: " + sqlFk1);
     var rFk1 = executeSql(sqlFk1);
-    Viper.Terminal.Say(rFk1.message);
+    Terminal.Say(rFk1.message);
 
     // Insert into parent table
     var rFk2 = executeSql("INSERT INTO fkparent VALUES (1, 'Engineering');");
-    Viper.Terminal.Say(rFk2.message);
+    Terminal.Say(rFk2.message);
     var rFk3 = executeSql("INSERT INTO fkparent VALUES (2, 'Sales');");
-    Viper.Terminal.Say(rFk3.message);
+    Terminal.Say(rFk3.message);
 
     // Create child table with foreign key
     var sqlFk4 = "CREATE TABLE fkchild (id INTEGER PRIMARY KEY, name TEXT, parent_id INTEGER REFERENCES fkparent(id));";
-    Viper.Terminal.Say("SQL: " + sqlFk4);
+    Terminal.Say("SQL: " + sqlFk4);
     var rFk4 = executeSql(sqlFk4);
-    Viper.Terminal.Say(rFk4.message);
+    Terminal.Say(rFk4.message);
 
     // Valid insert (references existing parent)
     var sqlFk5 = "INSERT INTO fkchild VALUES (1, 'Alice', 1);";
-    Viper.Terminal.Say("SQL: " + sqlFk5);
+    Terminal.Say("SQL: " + sqlFk5);
     var rFk5 = executeSql(sqlFk5);
-    Viper.Terminal.Say(rFk5.message);
+    Terminal.Say(rFk5.message);
 
     // Invalid insert (references non-existent parent)
     var sqlFk6 = "INSERT INTO fkchild VALUES (2, 'Bob', 99);";
-    Viper.Terminal.Say("SQL: " + sqlFk6);
+    Terminal.Say("SQL: " + sqlFk6);
     var rFk6 = executeSql(sqlFk6);
     if rFk6.success == false {
-        Viper.Terminal.Say("EXPECTED ERROR: " + rFk6.message);
+        Terminal.Say("EXPECTED ERROR: " + rFk6.message);
     } else {
-        Viper.Terminal.Say("FAILED: Invalid foreign key value was allowed!");
+        Terminal.Say("FAILED: Invalid foreign key value was allowed!");
     }
 
     // NULL foreign key is allowed
     var sqlFk7 = "INSERT INTO fkchild VALUES (3, 'Charlie', NULL);";
-    Viper.Terminal.Say("SQL: " + sqlFk7);
+    Terminal.Say("SQL: " + sqlFk7);
     var rFk7 = executeSql(sqlFk7);
-    Viper.Terminal.Say(rFk7.message);
+    Terminal.Say(rFk7.message);
 
     // Verify final state
     var sqlFk8 = "SELECT * FROM fkchild;";
-    Viper.Terminal.Say("SQL: " + sqlFk8);
+    Terminal.Say("SQL: " + sqlFk8);
     var rFk8 = executeSql(sqlFk8);
     if rFk8.success == true {
-        Viper.Terminal.Say("Rows returned: " + Viper.Fmt.Int(rFk8.rowsAffected));
-        Viper.Terminal.Say(rFk8.toString());
+        Terminal.Say("Rows returned: " + Fmt.Int(rFk8.rowsAffected));
+        Terminal.Say(rFk8.toString());
     }
 
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("--- INDEX Tests ---");
+    Terminal.Say("");
+    Terminal.Say("--- INDEX Tests ---");
 
     // Reset database for index tests
     currentDb = new Database();
@@ -5947,9 +5951,9 @@ func testExecutor() {
 
     // Create test table
     var sqlIdx1 = "CREATE TABLE indextest (id INTEGER PRIMARY KEY, name TEXT, score INTEGER);";
-    Viper.Terminal.Say("SQL: " + sqlIdx1);
+    Terminal.Say("SQL: " + sqlIdx1);
     var rIdx1 = executeSql(sqlIdx1);
-    Viper.Terminal.Say(rIdx1.message);
+    Terminal.Say(rIdx1.message);
 
     // Insert test data
     var sqlIdx2 = "INSERT INTO indextest VALUES (1, 'Alice', 95);";
@@ -5958,182 +5962,182 @@ func testExecutor() {
     executeSql(sqlIdx3);
     var sqlIdx4 = "INSERT INTO indextest VALUES (3, 'Charlie', 92);";
     executeSql(sqlIdx4);
-    Viper.Terminal.Say("Inserted 3 rows");
+    Terminal.Say("Inserted 3 rows");
 
     // Create an index
     var sqlIdx5 = "CREATE INDEX idx_name ON indextest (name);";
-    Viper.Terminal.Say("SQL: " + sqlIdx5);
+    Terminal.Say("SQL: " + sqlIdx5);
     var rIdx5 = executeSql(sqlIdx5);
-    Viper.Terminal.Say(rIdx5.message);
+    Terminal.Say(rIdx5.message);
 
     // Create a multi-column index
     var sqlIdx6 = "CREATE INDEX idx_score_name ON indextest (score, name);";
-    Viper.Terminal.Say("SQL: " + sqlIdx6);
+    Terminal.Say("SQL: " + sqlIdx6);
     var rIdx6 = executeSql(sqlIdx6);
-    Viper.Terminal.Say(rIdx6.message);
+    Terminal.Say(rIdx6.message);
 
     // Create a unique index
     var sqlIdx7 = "CREATE UNIQUE INDEX idx_id_unique ON indextest (id);";
-    Viper.Terminal.Say("SQL: " + sqlIdx7);
+    Terminal.Say("SQL: " + sqlIdx7);
     var rIdx7 = executeSql(sqlIdx7);
-    Viper.Terminal.Say(rIdx7.message);
+    Terminal.Say(rIdx7.message);
 
     // Try to create duplicate index (should fail)
     var sqlIdx8 = "CREATE INDEX idx_name ON indextest (name);";
-    Viper.Terminal.Say("SQL: " + sqlIdx8);
+    Terminal.Say("SQL: " + sqlIdx8);
     var rIdx8 = executeSql(sqlIdx8);
     if rIdx8.success == false {
-        Viper.Terminal.Say("EXPECTED ERROR: " + rIdx8.message);
+        Terminal.Say("EXPECTED ERROR: " + rIdx8.message);
     } else {
-        Viper.Terminal.Say("FAILED: Duplicate index was allowed!");
+        Terminal.Say("FAILED: Duplicate index was allowed!");
     }
 
     // Try to create index on non-existent table (should fail)
     var sqlIdx9 = "CREATE INDEX idx_bad ON nonexistent (col);";
-    Viper.Terminal.Say("SQL: " + sqlIdx9);
+    Terminal.Say("SQL: " + sqlIdx9);
     var rIdx9 = executeSql(sqlIdx9);
     if rIdx9.success == false {
-        Viper.Terminal.Say("EXPECTED ERROR: " + rIdx9.message);
+        Terminal.Say("EXPECTED ERROR: " + rIdx9.message);
     } else {
-        Viper.Terminal.Say("FAILED: Index on nonexistent table was allowed!");
+        Terminal.Say("FAILED: Index on nonexistent table was allowed!");
     }
 
     // Try to create index on non-existent column (should fail)
     var sqlIdx10 = "CREATE INDEX idx_badcol ON indextest (badcol);";
-    Viper.Terminal.Say("SQL: " + sqlIdx10);
+    Terminal.Say("SQL: " + sqlIdx10);
     var rIdx10 = executeSql(sqlIdx10);
     if rIdx10.success == false {
-        Viper.Terminal.Say("EXPECTED ERROR: " + rIdx10.message);
+        Terminal.Say("EXPECTED ERROR: " + rIdx10.message);
     } else {
-        Viper.Terminal.Say("FAILED: Index on nonexistent column was allowed!");
+        Terminal.Say("FAILED: Index on nonexistent column was allowed!");
     }
 
     // DROP INDEX tests skipped due to Bug #022 (ViperLang runtime issue with List.get().property)
     // The CREATE INDEX tests above work correctly; DROP INDEX has a runtime trap
-    Viper.Terminal.Say("(DROP INDEX tests skipped due to Bug #022)");
-    Viper.Terminal.Say("");
+    Terminal.Say("(DROP INDEX tests skipped due to Bug #022)");
+    Terminal.Say("");
 
-    Viper.Terminal.Say("=== Executor Test PASSED ===");
+    Terminal.Say("=== Executor Test PASSED ===");
 }
 
 func start() {
-    Viper.Terminal.Say("SQLite Clone - ViperLang Edition");
-    Viper.Terminal.Say("================================");
-    Viper.Terminal.Say("");
+    Terminal.Say("SQLite Clone - ViperLang Edition");
+    Terminal.Say("================================");
+    Terminal.Say("");
 
     testTokens();
-    Viper.Terminal.Say("");
+    Terminal.Say("");
     testLexer();
-    Viper.Terminal.Say("");
+    Terminal.Say("");
     testSqlValue();
-    Viper.Terminal.Say("");
+    Terminal.Say("");
     testColumnRow();
-    Viper.Terminal.Say("");
+    Terminal.Say("");
     testTable();
-    Viper.Terminal.Say("");
+    Terminal.Say("");
     testExpr();
-    Viper.Terminal.Say("");
+    Terminal.Say("");
     testParser();
-    Viper.Terminal.Say("");
+    Terminal.Say("");
     testExecutor();
 }
 
 func testExpr() {
-    Viper.Terminal.Say("=== Expression Test ===");
+    Terminal.Say("=== Expression Test ===");
 
     // Test literal expressions
     var e1 = exprNull();
-    Viper.Terminal.Say("Null literal: " + e1.toString() + " (kind=" + Viper.Fmt.Int(e1.kind) + ")");
+    Terminal.Say("Null literal: " + e1.toString() + " (kind=" + Fmt.Int(e1.kind) + ")");
 
     var e2 = exprInt(42);
-    Viper.Terminal.Say("Int literal: " + e2.toString() + " (kind=" + Viper.Fmt.Int(e2.kind) + ")");
+    Terminal.Say("Int literal: " + e2.toString() + " (kind=" + Fmt.Int(e2.kind) + ")");
 
     var e3 = exprReal(3.14, "3.14");
-    Viper.Terminal.Say("Real literal: " + e3.toString());
+    Terminal.Say("Real literal: " + e3.toString());
 
     var e4 = exprText("hello");
-    Viper.Terminal.Say("Text literal: " + e4.toString());
+    Terminal.Say("Text literal: " + e4.toString());
 
     // Test column reference
     var e5 = exprColumn("name");
-    Viper.Terminal.Say("Column ref: " + e5.toString() + " (kind=" + Viper.Fmt.Int(e5.kind) + ", col=" + e5.columnName + ")");
+    Terminal.Say("Column ref: " + e5.toString() + " (kind=" + Fmt.Int(e5.kind) + ", col=" + e5.columnName + ")");
 
     var e6 = exprTableColumn("users", "id");
-    Viper.Terminal.Say("Table.column ref: " + e6.toString());
+    Terminal.Say("Table.column ref: " + e6.toString());
 
     // Test star expression
     var e7 = exprStar();
-    Viper.Terminal.Say("Star: " + e7.toString());
+    Terminal.Say("Star: " + e7.toString());
 
     // Test binary expressions (using literal values since global constants don't resolve in functions)
     // OP_ADD=1, OP_EQ=10, OP_MUL=3, OP_NEG=1, OP_NOT=2
     var e8 = exprBinary(1, exprInt(1), exprInt(2));  // OP_ADD
-    Viper.Terminal.Say("Binary add: " + e8.toString());
+    Terminal.Say("Binary add: " + e8.toString());
 
     var e9 = exprBinary(10, exprColumn("age"), exprInt(21));  // OP_EQ
-    Viper.Terminal.Say("Binary eq: " + e9.toString());
+    Terminal.Say("Binary eq: " + e9.toString());
 
     // Test compound expression: (a + b) * c
     var add = exprBinary(1, exprColumn("a"), exprColumn("b"));  // OP_ADD
     var mul = exprBinary(3, add, exprColumn("c"));  // OP_MUL
-    Viper.Terminal.Say("Compound: " + mul.toString());
+    Terminal.Say("Compound: " + mul.toString());
 
     // Test unary expression
     var e10 = exprUnary(1, exprInt(5));  // OP_NEG
-    Viper.Terminal.Say("Unary neg: " + e10.toString());
+    Terminal.Say("Unary neg: " + e10.toString());
 
     var e11 = exprUnary(2, exprColumn("active"));  // OP_NOT
-    Viper.Terminal.Say("Unary not: " + e11.toString());
+    Terminal.Say("Unary not: " + e11.toString());
 
-    Viper.Terminal.Say("=== Expression Test PASSED ===");
+    Terminal.Say("=== Expression Test PASSED ===");
 }
 
 func testParser() {
-    Viper.Terminal.Say("=== Parser Test ===");
+    Terminal.Say("=== Parser Test ===");
 
     // Test CREATE TABLE parsing
     var sql1 = "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, age INTEGER);";
-    Viper.Terminal.Say("Input: " + sql1);
-    Viper.Terminal.Say("");
+    Terminal.Say("Input: " + sql1);
+    Terminal.Say("");
 
     parserInit(sql1);
     parserAdvance();  // Skip CREATE token
     var createStmt = parseCreateTableStmt();
 
     if parserHasError {
-        Viper.Terminal.Say("ERROR: " + parserError);
+        Terminal.Say("ERROR: " + parserError);
     } else {
-        Viper.Terminal.Say("Parsed:");
-        Viper.Terminal.Say(createStmt.toString());
+        Terminal.Say("Parsed:");
+        Terminal.Say(createStmt.toString());
     }
 
-    Viper.Terminal.Say("");
+    Terminal.Say("");
 
     // Test INSERT parsing
     var sql2 = "INSERT INTO users (id, name, age) VALUES (1, 'Alice', 30), (2, 'Bob', 25);";
-    Viper.Terminal.Say("Input: " + sql2);
-    Viper.Terminal.Say("");
+    Terminal.Say("Input: " + sql2);
+    Terminal.Say("");
 
     parserInit(sql2);
     parserAdvance();  // Skip INSERT token
     var insertStmt = parseInsertStmt();
 
     if parserHasError {
-        Viper.Terminal.Say("ERROR: " + parserError);
+        Terminal.Say("ERROR: " + parserError);
     } else {
-        Viper.Terminal.Say("Parsed:");
-        Viper.Terminal.Say(insertStmt.toString());
+        Terminal.Say("Parsed:");
+        Terminal.Say(insertStmt.toString());
     }
 
-    Viper.Terminal.Say("");
+    Terminal.Say("");
 
     // Test expression parsing
     var sql3 = "1 + 2 * 3";
-    Viper.Terminal.Say("Expr: " + sql3);
+    Terminal.Say("Expr: " + sql3);
     parserInit(sql3);
     var expr = parseExpr();
-    Viper.Terminal.Say("Parsed: " + expr.toString());
+    Terminal.Say("Parsed: " + expr.toString());
 
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("=== Parser Test PASSED ===");
+    Terminal.Say("");
+    Terminal.Say("=== Parser Test PASSED ===");
 }

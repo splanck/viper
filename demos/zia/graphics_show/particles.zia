@@ -9,6 +9,13 @@ module particles;
 
 bind "./colors";
 
+bind Viper.Random;
+bind Viper.Graphics;
+bind Viper.Graphics.Color;
+bind Viper.Math;
+bind Viper.Fmt;
+bind Viper.Time;
+
 // Single particle with physics properties
 entity Particle {
     expose Number x;
@@ -28,9 +35,9 @@ entity Particle {
         vx = 0.0;
         vy = 0.0;
         baseColor = color;
-        maxLife = 60 + Viper.Random.NextInt(60);
+        maxLife = 60 + NextInt(60);
         life = maxLife;
-        size = 2 + Viper.Random.NextInt(3);
+        size = 2 + NextInt(3);
         gravity = 0.15;
         drag = 0.99;
     }
@@ -63,14 +70,14 @@ entity Particle {
         return colors.fadeColor(baseColor, fade);
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         if life <= 0 {
             return;
         }
 
         var drawColor = getColor();
-        var px = Viper.Math.Floor(x);
-        var py = Viper.Math.Floor(y);
+        var px = Floor(x);
+        var py = Floor(y);
 
         var currentSize = (size * life) / maxLife;
         if currentSize < 1 {
@@ -118,11 +125,11 @@ entity Emitter {
                 var p = new Particle();
                 p.init(x, y, color);
 
-                var emitAngle = angle + (Viper.Random.Next() - 0.5) * spread;
-                var emitSpeed = speed * (0.8 + Viper.Random.Next() * 0.4);
+                var emitAngle = angle + (Next() - 0.5) * spread;
+                var emitSpeed = speed * (0.8 + Next() * 0.4);
 
-                var velX = Viper.Math.Cos(emitAngle) * emitSpeed;
-                var velY = Viper.Math.Sin(emitAngle) * emitSpeed;
+                var velX = Cos(emitAngle) * emitSpeed;
+                var velY = Sin(emitAngle) * emitSpeed;
                 p.setVelocity(velX, velY);
 
                 system.particles.add(p);
@@ -173,7 +180,7 @@ entity ParticleSystem {
         }
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         var i = 0;
         while i < particles.count() {
             var p = particles.get(i);
@@ -192,7 +199,7 @@ entity ParticleSystem {
 }
 
 // Run the particle demo
-func run(canvas: Viper.Graphics.Canvas) {
+func run(canvas: Canvas) {
     var width = canvas.Width;
     var height = canvas.Height;
 
@@ -262,22 +269,22 @@ func run(canvas: Viper.Graphics.Canvas) {
 
         system.update(width, height);
 
-        canvas.Clear(Viper.Graphics.Color.RGB(10, 10, 20));
+        canvas.Clear(RGB(10, 10, 20));
 
         system.draw(canvas);
 
         if showEmitters {
-            canvas.Ring(Viper.Math.Floor(emitter1.x), Viper.Math.Floor(emitter1.y), 10, colors.ORANGE);
-            canvas.Ring(Viper.Math.Floor(emitter2.x), Viper.Math.Floor(emitter2.y), 10, colors.CYAN);
-            canvas.Ring(Viper.Math.Floor(emitter3.x), Viper.Math.Floor(emitter3.y), 10, colors.MAGENTA);
+            canvas.Ring(Floor(emitter1.x), Floor(emitter1.y), 10, colors.ORANGE);
+            canvas.Ring(Floor(emitter2.x), Floor(emitter2.y), 10, colors.CYAN);
+            canvas.Ring(Floor(emitter3.x), Floor(emitter3.y), 10, colors.MAGENTA);
         }
 
         canvas.TextBg(10, 10, "PARTICLE SYSTEM", colors.WHITE, colors.BLACK);
 
-        var countStr = "Particles: " + Viper.Fmt.Int(system.getCount());
+        var countStr = "Particles: " + Int(system.getCount());
         canvas.TextBg(10, 28, countStr, colors.GRAY, colors.BLACK);
 
-        var windStr = "Wind: " + Viper.Fmt.Num(system.wind);
+        var windStr = "Wind: " + Num(system.wind);
         canvas.TextBg(10, 46, windStr, colors.GRAY, colors.BLACK);
 
         canvas.TextBg(10, height - 30, "LEFT/RIGHT: Wind | C: Clear | R: Reset Wind | ESC: Exit", colors.DARK_GRAY, colors.BLACK);

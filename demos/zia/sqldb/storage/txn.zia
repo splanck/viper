@@ -3,6 +3,8 @@
 
 module txn;
 
+bind Viper.Fmt;
+
 bind "./page";
 bind "./wal";
 bind "./serializer";
@@ -103,7 +105,7 @@ entity Transaction {
         if state == TXN_COMMITTED { stateStr = "COMMITTED"; }
         if state == TXN_ABORTED { stateStr = "ABORTED"; }
         if state == TXN_PREPARED { stateStr = "PREPARED"; }
-        return "Transaction[" + Viper.Fmt.Int(txnId) + "] " + stateStr;
+        return "Transaction[" + Fmt.Int(txnId) + "] " + stateStr;
     }
 }
 
@@ -178,7 +180,7 @@ entity Lock {
         if resourceType == 2 { typeStr = "ROW"; }
         var modeStr = "S";
         if mode == LOCK_EXCLUSIVE { modeStr = "X"; }
-        return typeStr + "[" + Viper.Fmt.Int(resourceId) + "] " + modeStr + " (txn=" + Viper.Fmt.Int(txnId) + ")";
+        return typeStr + "[" + Fmt.Int(resourceId) + "] " + modeStr + " (txn=" + Fmt.Int(txnId) + ")";
     }
 }
 

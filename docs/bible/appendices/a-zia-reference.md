@@ -59,8 +59,10 @@ var x = 42;  // Comments can follow code
 /// Calculates the area of a circle.
 /// @param radius The radius of the circle
 /// @return The area as a floating-point number
+bind Viper.Math;
+
 func circleArea(radius: Number) -> Number {
-    return Viper.Math.PI * radius * radius;
+    return Math.PI * radius * radius;
 }
 ```
 
@@ -342,13 +344,13 @@ if condition {
 
 // If-else
 if score >= 90 {
-    Viper.Terminal.Say("A");
+    Terminal.Say("A");
 } else if score >= 80 {
-    Viper.Terminal.Say("B");
+    Terminal.Say("B");
 } else if score >= 70 {
-    Viper.Terminal.Say("C");
+    Terminal.Say("C");
 } else {
-    Viper.Terminal.Say("Below C");
+    Terminal.Say("Below C");
 }
 
 // If as expression (returns a value)
@@ -386,7 +388,7 @@ if age >= 18 {
 // Basic while
 var count = 0;
 while count < 10 {
-    Viper.Terminal.Say(count);
+    Terminal.Say(count);
     count += 1;
 }
 
@@ -415,7 +417,7 @@ while !file.isEOF() {
 // Polling with timeout
 var attempts = 0;
 while !isReady() && attempts < 100 {
-    Viper.Time.sleep(100);
+    Time.sleep(100);
     attempts += 1;
 }
 ```
@@ -450,12 +452,12 @@ for item in items {
 
 // With index using enumerate
 for i, item in items.enumerate() {
-    Viper.Terminal.Say("Item " + i + ": " + item);
+    Terminal.Say("Item " + i + ": " + item);
 }
 
 // Iterate over map entries
 for key, value in map {
-    Viper.Terminal.Say(key + " = " + value);
+    Terminal.Say(key + " = " + value);
 }
 ```
 
@@ -493,8 +495,8 @@ match value {
 
 // Multiple values
 match day {
-    "Saturday" | "Sunday" => Viper.Terminal.Say("Weekend!"),
-    _ => Viper.Terminal.Say("Weekday")
+    "Saturday" | "Sunday" => Terminal.Say("Weekend!"),
+    _ => Terminal.Say("Weekday")
 }
 
 // Range matching
@@ -521,9 +523,9 @@ match result {
 
 // Matching entity types
 match shape {
-    Circle(c) => Viper.Terminal.Say("Circle with radius " + c.radius),
-    Rectangle(r) => Viper.Terminal.Say("Rectangle " + r.width + "x" + r.height),
-    _ => Viper.Terminal.Say("Unknown shape")
+    Circle(c) => Terminal.Say("Circle with radius " + c.radius),
+    Rectangle(r) => Terminal.Say("Rectangle " + r.width + "x" + r.height),
+    _ => Terminal.Say("Unknown shape")
 }
 ```
 
@@ -553,21 +555,25 @@ func add(a: Integer, b: Integer) -> Integer {
 func add(a: Integer, b: Integer) -> Integer = a + b;
 
 // Function with no return value
+bind Viper.Terminal;
+
 func greet(name: String) {
-    Viper.Terminal.Say("Hello, " + name + "!");
+    Terminal.Say("Hello, " + name + "!");
 }
 
 // Function with no parameters
 func sayHello() {
-    Viper.Terminal.Say("Hello!");
+    Terminal.Say("Hello!");
 }
 ```
 
 ### Default Parameters
 
 ```rust
+bind Viper.Terminal;
+
 func greet(name: string, greeting: string = "Hello") {
-    Viper.Terminal.Say(greeting + ", " + name + "!");
+    Terminal.Say(greeting + ", " + name + "!");
 }
 
 greet("Alice");              // "Hello, Alice!"
@@ -618,7 +624,7 @@ sum(1, 2, 3, 4, 5);     // 15
 
 func log(level: string, messages: ...string) {
     for msg in messages {
-        Viper.Terminal.Say("[" + level + "] " + msg);
+        Terminal.Say("[" + level + "] " + msg);
     }
 }
 
@@ -662,7 +668,7 @@ func fetchData(url: string, onComplete: func(Data)) {
 }
 
 fetchData("api/users", (data) => {
-    Viper.Terminal.Say("Got " + data.count + " users");
+    Terminal.Say("Got " + data.count + " users");
 });
 
 // Sorting with custom comparator
@@ -717,11 +723,11 @@ numbers.shuffle();                // Randomize order
 
 // Iteration
 for num in numbers {
-    Viper.Terminal.Say(num);
+    Terminal.Say(num);
 }
 
 for i, num in numbers.enumerate() {
-    Viper.Terminal.Say("Index " + i + ": " + num);
+    Terminal.Say("Index " + i + ": " + num);
 }
 
 // Functional methods
@@ -764,15 +770,15 @@ ages.isEmpty()                    // true if empty
 
 // Iteration
 for key, value in ages {
-    Viper.Terminal.Say(key + " is " + value);
+    Terminal.Say(key + " is " + value);
 }
 
 for key in ages.keys() {
-    Viper.Terminal.Say(key);
+    Terminal.Say(key);
 }
 
 for value in ages.values() {
-    Viper.Terminal.Say(value);
+    Terminal.Say(value);
 }
 
 // Common pattern: counting occurrences
@@ -810,7 +816,7 @@ var difference = seen.difference(other);  // Elements in seen but not other
 
 // Iteration
 for item in seen {
-    Viper.Terminal.Say(item);
+    Terminal.Say(item);
 }
 
 // Common pattern: removing duplicates
@@ -1003,8 +1009,8 @@ var p2 = p1;          // p2 is a COPY of p1
 
 p2.x = 99.0;          // Modify p2
 
-Viper.Terminal.Say(p1.x);  // 10.0 - p1 is unchanged
-Viper.Terminal.Say(p2.x);  // 99.0 - only p2 changed
+Terminal.Say(p1.x);  // 10.0 - p1 is unchanged
+Terminal.Say(p2.x);  // 99.0 - only p2 changed
 ```
 
 **When to use values vs. entities:**
@@ -1084,7 +1090,7 @@ entity Player {
 
     hide func checkAchievement() {
         if self.score >= 1000 {
-            Viper.Terminal.Say(self.name + " reached 1000 points!");
+            Terminal.Say(self.name + " reached 1000 points!");
         }
     }
 }
@@ -1098,8 +1104,8 @@ var c2 = c1;              // c2 references the SAME object as c1
 
 c2.increment();
 
-Viper.Terminal.Say(c1.getCount());  // 11 - both see the same object
-Viper.Terminal.Say(c2.getCount());  // 11
+Terminal.Say(c1.getCount());  // 11 - both see the same object
+Terminal.Say(c2.getCount());  // 11
 ```
 
 **When to use entities:**
@@ -1154,8 +1160,8 @@ entity BankAccount {
 
 // Usage
 var account = BankAccount("Alice", 100.0);
-Viper.Terminal.Say(account.ownerName);     // OK - exposed
-Viper.Terminal.Say(account.getBalance());  // OK - exposed method
+Terminal.Say(account.ownerName);     // OK - exposed
+Terminal.Say(account.getBalance());  // OK - exposed method
 // account.balance = 1000000;               // Error - hidden
 ```
 
@@ -1185,7 +1191,7 @@ entity Animal {
     }
 
     expose func speak() {
-        Viper.Terminal.Say(self.name + " makes a sound");
+        Terminal.Say(self.name + " makes a sound");
     }
 
     expose func getName() -> string {
@@ -1203,19 +1209,19 @@ entity Dog extends Animal {
 
     // Override parent method
     override expose func speak() {
-        Viper.Terminal.Say(self.name + " barks: Woof!");
+        Terminal.Say(self.name + " barks: Woof!");
     }
 
     // New method specific to Dog
     expose func fetch() {
-        Viper.Terminal.Say(self.name + " fetches the ball");
+        Terminal.Say(self.name + " fetches the ball");
     }
 }
 
 var dog = Dog("Rex", "German Shepherd");
 dog.speak();              // "Rex barks: Woof!"
 dog.fetch();              // "Rex fetches the ball"
-Viper.Terminal.Say(dog.getName());  // "Rex" - inherited method
+Terminal.Say(dog.getName());  // "Rex" - inherited method
 ```
 
 ### Calling Parent Methods
@@ -1228,7 +1234,7 @@ entity Cat extends Animal {
 
     override expose func speak() {
         super.speak();        // Call parent's speak()
-        Viper.Terminal.Say(self.name + " also purrs");
+        Terminal.Say(self.name + " also purrs");
     }
 }
 
@@ -1249,8 +1255,8 @@ entity Shape {
 
     // Concrete method using abstract methods
     expose func describe() {
-        Viper.Terminal.Say("Area: " + self.area());
-        Viper.Terminal.Say("Perimeter: " + self.perimeter());
+        Terminal.Say("Area: " + self.area());
+        Terminal.Say("Perimeter: " + self.perimeter());
     }
 }
 
@@ -1262,11 +1268,11 @@ entity Circle extends Shape {
     }
 
     override expose func area() -> f64 {
-        return Viper.Math.PI * self.radius * self.radius;
+        return Math.PI * self.radius * self.radius;
     }
 
     override expose func perimeter() -> f64 {
-        return 2 * Viper.Math.PI * self.radius;
+        return 2 * Math.PI * self.radius;
     }
 }
 ```
@@ -1322,7 +1328,7 @@ entity Button implements Drawable, Clickable {
 
     // Implement Clickable
     expose func onClick(x: Integer, y: Integer) {
-        Viper.Terminal.Say("Button clicked: " + self.label);
+        Terminal.Say("Button clicked: " + self.label);
     }
 
     expose func isPointInside(x: Integer, y: Integer) -> Boolean {
@@ -1360,7 +1366,7 @@ interface Printable {
 
     // Default implementation
     func print() {
-        Viper.Terminal.Say(self.toString());
+        Terminal.Say(self.toString());
     }
 }
 
@@ -1395,9 +1401,9 @@ enum Color {
 var c = Color.RED;
 
 match c {
-    Color.RED => Viper.Terminal.Say("Red"),
-    Color.GREEN => Viper.Terminal.Say("Green"),
-    Color.BLUE => Viper.Terminal.Say("Blue")
+    Color.RED => Terminal.Say("Red"),
+    Color.GREEN => Terminal.Say("Green"),
+    Color.BLUE => Terminal.Say("Blue")
 }
 ```
 
@@ -1426,8 +1432,8 @@ var success: Result<i64, string> = Result.Ok(42);
 var failure: Result<i64, string> = Result.Err("Not found");
 
 match success {
-    Result.Ok(value) => Viper.Terminal.Say("Got: " + value),
-    Result.Err(msg) => Viper.Terminal.Say("Error: " + msg)
+    Result.Ok(value) => Terminal.Say("Got: " + value),
+    Result.Err(msg) => Terminal.Say("Error: " + msg)
 }
 
 enum Option<T> {
@@ -1519,7 +1525,7 @@ entity Box<T> {
 var intBox = Box<i64>(42);
 var strBox = Box<string>("hello");
 
-Viper.Terminal.Say(intBox.get());  // 42
+Terminal.Say(intBox.get());  // 42
 ```
 
 ### Generic Constraints
@@ -1609,13 +1615,13 @@ func validateAge(age: Integer) -> Integer {
 ```rust
 try {
     var result = divide(10, 0);
-    Viper.Terminal.Say(result);
+    Terminal.Say(result);
 } catch DivisionByZeroError {
-    Viper.Terminal.Say("Cannot divide by zero!");
+    Terminal.Say("Cannot divide by zero!");
 } catch MathError as e {
-    Viper.Terminal.Say("Math error: " + e.message);
+    Terminal.Say("Math error: " + e.message);
 } catch Error as e {
-    Viper.Terminal.Say("General error: " + e.message);
+    Terminal.Say("General error: " + e.message);
 } finally {
     // Always executed, even if error occurred
     cleanup();
@@ -1746,13 +1752,13 @@ var user: User? = findUser(id);
 ```rust
 // Explicit check
 if x != null {
-    Viper.Terminal.Say(x);    // x is known to be non-null here
+    Terminal.Say(x);    // x is known to be non-null here
 }
 
 // Pattern matching
 match user {
-    null => Viper.Terminal.Say("No user found"),
-    _ => Viper.Terminal.Say("Found: " + user.name)
+    null => Terminal.Say("No user found"),
+    _ => Terminal.Say("Found: " + user.name)
 }
 ```
 

@@ -10,6 +10,11 @@ module plasma;
 
 bind "./colors";
 
+bind Viper.Graphics;
+bind Viper.Graphics.Color;
+bind Viper.Math;
+bind Viper.Time;
+
 // Precomputed sine table (256 entries, values 0-255)
 var sinTable: List[Integer];
 var PI: Number;
@@ -21,8 +26,8 @@ func initSinTable() {
     var i = 0;
     while i < 256 {
         var angle = (i * 2.0 * PI) / 256.0;
-        var s = Viper.Math.Sin(angle);
-        var value = Viper.Math.Floor((s + 1.0) * 127.5);
+        var s = Sin(angle);
+        var value = Floor((s + 1.0) * 127.5);
         sinTable.add(value);
         i = i + 1;
     }
@@ -41,7 +46,7 @@ func fastSin(x: Integer) -> Integer {
 
 // Plasma renderer using a pixel buffer for speed
 entity PlasmaRenderer {
-    expose Viper.Graphics.Pixels buffer;
+    expose Pixels buffer;
     expose List[Integer] palette;
     expose Integer time;
     expose Integer width;
@@ -54,7 +59,7 @@ entity PlasmaRenderer {
         time = 0;
         mode = 0;
 
-        buffer = new Viper.Graphics.Pixels(width, height);
+        buffer = new Pixels(width, height);
         generatePalette();
     }
 
@@ -72,11 +77,11 @@ entity PlasmaRenderer {
             var phase = i;
 
             // Use sine waves for smooth color transitions
-            r = Viper.Math.Floor(127.5 + 127.5 * Viper.Math.Sin((phase * 2.0 * PI) / 256.0));
-            g = Viper.Math.Floor(127.5 + 127.5 * Viper.Math.Sin((phase * 2.0 * PI) / 256.0 + PI * 2.0 / 3.0));
-            b = Viper.Math.Floor(127.5 + 127.5 * Viper.Math.Sin((phase * 2.0 * PI) / 256.0 + PI * 4.0 / 3.0));
+            r = Floor(127.5 + 127.5 * Sin((phase * 2.0 * PI) / 256.0));
+            g = Floor(127.5 + 127.5 * Sin((phase * 2.0 * PI) / 256.0 + PI * 2.0 / 3.0));
+            b = Floor(127.5 + 127.5 * Sin((phase * 2.0 * PI) / 256.0 + PI * 4.0 / 3.0));
 
-            var color = Viper.Graphics.Color.RGB(r, g, b);
+            var color = RGB(r, g, b);
             palette.add(color);
             i = i + 1;
         }
@@ -109,7 +114,7 @@ entity PlasmaRenderer {
                 b = 255;
             }
 
-            var color = Viper.Graphics.Color.RGB(r, g, b);
+            var color = RGB(r, g, b);
             palette.add(color);
             i = i + 1;
         }
@@ -126,10 +131,10 @@ entity PlasmaRenderer {
 
             // Blue-green ocean colors
             r = 0;
-            g = Viper.Math.Floor(64.0 + 64.0 * Viper.Math.Sin((i * 2.0 * PI) / 128.0));
-            b = Viper.Math.Floor(128.0 + 127.0 * Viper.Math.Sin((i * 2.0 * PI) / 256.0));
+            g = Floor(64.0 + 64.0 * Sin((i * 2.0 * PI) / 128.0));
+            b = Floor(128.0 + 127.0 * Sin((i * 2.0 * PI) / 256.0));
 
-            var color = Viper.Graphics.Color.RGB(r, g, b);
+            var color = RGB(r, g, b);
             palette.add(color);
             i = i + 1;
         }
@@ -149,7 +154,7 @@ entity PlasmaRenderer {
                     var v1 = fastSin(x + time);
                     var v2 = fastSin(y + time / 2);
                     var v3 = fastSin((x + y + time) / 2);
-                    var v4 = fastSin(Viper.Math.Floor(Viper.Math.Sqrt(x * x + y * y) + time));
+                    var v4 = fastSin(Floor(Sqrt(x * x + y * y) + time));
                     value = (v1 + v2 + v3 + v4) / 4;
                 } else if mode == 1 {
                     // Circular ripples
@@ -157,8 +162,8 @@ entity PlasmaRenderer {
                     var cy = height / 2;
                     var dx = x - cx;
                     var dy = y - cy;
-                    var dist = Viper.Math.Sqrt(dx * dx + dy * dy);
-                    value = fastSin(Viper.Math.Floor(dist * 2.0 - time * 3));
+                    var dist = Sqrt(dx * dx + dy * dy);
+                    value = fastSin(Floor(dist * 2.0 - time * 3));
                 } else if mode == 2 {
                     // Diamond pattern
                     var dx = x - width / 2;
@@ -178,11 +183,11 @@ entity PlasmaRenderer {
                     var dx2 = x - cx2;
                     var dy2 = y - cy2;
 
-                    var d1 = Viper.Math.Sqrt(dx1 * dx1 + dy1 * dy1);
-                    var d2 = Viper.Math.Sqrt(dx2 * dx2 + dy2 * dy2);
+                    var d1 = Sqrt(dx1 * dx1 + dy1 * dy1);
+                    var d2 = Sqrt(dx2 * dx2 + dy2 * dy2);
 
-                    var v1 = fastSin(Viper.Math.Floor(d1 - time * 2));
-                    var v2 = fastSin(Viper.Math.Floor(d2 + time * 2));
+                    var v1 = fastSin(Floor(d1 - time * 2));
+                    var v2 = fastSin(Floor(d2 + time * 2));
                     value = (v1 + v2) / 2;
                 }
 
@@ -199,7 +204,7 @@ entity PlasmaRenderer {
         }
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         canvas.Blit(0, 0, buffer);
     }
 
@@ -223,7 +228,7 @@ entity PlasmaRenderer {
 }
 
 // Run the plasma demo
-func run(canvas: Viper.Graphics.Canvas) {
+func run(canvas: Canvas) {
     var width = canvas.Width;
     var height = canvas.Height;
 

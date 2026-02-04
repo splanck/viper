@@ -15,9 +15,11 @@ bind "./tools/eyedropper";
 bind "./ui/button";
 bind "./ui/slider";
 
+bind Viper.Graphics;
+
 // Simplified PaintApp entity with all fields
 entity TestPaintApp {
-    hide Viper.Graphics.Canvas gfx;
+    hide Canvas gfx;
     expose canvas.DrawingCanvas drawCanvas;
     expose colors.ColorManager clrMgr;
     expose brush.BrushSettings brsh;
@@ -43,7 +45,7 @@ entity TestPaintApp {
     hide Integer running;
 
     expose func init() {
-        gfx = Viper.Graphics.Canvas.New(config.WINDOW_TITLE, 800, 600);
+        gfx = Canvas.New(config.WINDOW_TITLE, 800, 600);
 
         drawCanvas = new canvas.DrawingCanvas();
         drawCanvas.initWithSize(640, 480);

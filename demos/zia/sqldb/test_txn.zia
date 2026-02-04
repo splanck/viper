@@ -3,6 +3,10 @@
 
 module test_txn;
 
+bind Viper.Terminal;
+bind Viper.Fmt;
+bind Viper.String;
+
 bind "./storage/page";
 bind "./storage/serializer";
 bind "./storage/wal";
@@ -19,22 +23,22 @@ var testsFailed = 0;
 func assert(condition: Boolean, testName: String) {
     if condition {
         testsPassed = testsPassed + 1;
-        Viper.Terminal.Say("[PASS] " + testName);
+        Terminal.Say("[PASS] " + testName);
     } else {
         testsFailed = testsFailed + 1;
-        Viper.Terminal.Say("[FAIL] " + testName);
+        Terminal.Say("[FAIL] " + testName);
     }
 }
 
 func printSummary() {
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("===========================================");
-    Viper.Terminal.Say("TRANSACTION MANAGER TEST SUMMARY");
-    Viper.Terminal.Say("===========================================");
-    Viper.Terminal.Say("Passed: " + Viper.Fmt.Int(testsPassed));
-    Viper.Terminal.Say("Failed: " + Viper.Fmt.Int(testsFailed));
-    Viper.Terminal.Say("Total:  " + Viper.Fmt.Int(testsPassed + testsFailed));
-    Viper.Terminal.Say("===========================================");
+    Terminal.Say("");
+    Terminal.Say("===========================================");
+    Terminal.Say("TRANSACTION MANAGER TEST SUMMARY");
+    Terminal.Say("===========================================");
+    Terminal.Say("Passed: " + Fmt.Int(testsPassed));
+    Terminal.Say("Failed: " + Fmt.Int(testsFailed));
+    Terminal.Say("Total:  " + Fmt.Int(testsPassed + testsFailed));
+    Terminal.Say("===========================================");
 }
 
 //=============================================================================
@@ -42,8 +46,8 @@ func printSummary() {
 //=============================================================================
 
 func testTransactionInit() {
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("--- Transaction Tests ---");
+    Terminal.Say("");
+    Terminal.Say("--- Transaction Tests ---");
 
     var txn = new Transaction();
     txn.init();
@@ -91,7 +95,7 @@ func testTransactionToString() {
     txn.initWithId(5, 100);
 
     var str = txn.toString();
-    assert(Viper.String.Length(str) > 0, "Transaction has string representation");
+    assert(String.Length(str) > 0, "Transaction has string representation");
 }
 
 //=============================================================================
@@ -99,8 +103,8 @@ func testTransactionToString() {
 //=============================================================================
 
 func testLockInit() {
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("--- Lock Tests ---");
+    Terminal.Say("");
+    Terminal.Say("--- Lock Tests ---");
 
     var lock = new Lock();
     lock.init();
@@ -153,7 +157,7 @@ func testLockToString() {
     lock.initTableLock(5, LOCK_EXCLUSIVE, 10);
 
     var str = lock.toString();
-    assert(Viper.String.Length(str) > 0, "Lock has string representation");
+    assert(String.Length(str) > 0, "Lock has string representation");
 }
 
 //=============================================================================
@@ -161,8 +165,8 @@ func testLockToString() {
 //=============================================================================
 
 func testLockManagerInit() {
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("--- LockManager Tests ---");
+    Terminal.Say("");
+    Terminal.Say("--- LockManager Tests ---");
 
     var mgr = new LockManager();
     mgr.init();
@@ -263,8 +267,8 @@ func testLockManagerHoldsLock() {
 //=============================================================================
 
 func testTxnManagerInit() {
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("--- TransactionManager Tests ---");
+    Terminal.Say("");
+    Terminal.Say("--- TransactionManager Tests ---");
 
     var tm = new TransactionManager();
     tm.init();
@@ -444,8 +448,8 @@ func testTxnManagerLogging() {
 }
 
 func testTxnManagerConcurrentLocking() {
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("--- Concurrent Locking Tests ---");
+    Terminal.Say("");
+    Terminal.Say("--- Concurrent Locking Tests ---");
 
     var tm = new TransactionManager();
     tm.init();
@@ -485,9 +489,9 @@ func testTxnManagerLockUpgrade() {
 //=============================================================================
 
 func main() {
-    Viper.Terminal.Say("===========================================");
-    Viper.Terminal.Say("VIPERSQL TRANSACTION MANAGER TESTS");
-    Viper.Terminal.Say("===========================================");
+    Terminal.Say("===========================================");
+    Terminal.Say("VIPERSQL TRANSACTION MANAGER TESTS");
+    Terminal.Say("===========================================");
 
     // Transaction tests
     testTransactionInit();

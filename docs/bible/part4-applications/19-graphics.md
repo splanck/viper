@@ -575,6 +575,7 @@ Let's see the game loop in action:
 module BouncingBall;
 
 bind Viper.Graphics;
+bind Viper.Time;
 
 func start() {
     var canvas = Canvas(800, 600);
@@ -629,7 +630,7 @@ func start() {
         canvas.show();
 
         // === WAIT ===
-        Viper.Time.sleep(16);  // ~60 FPS (1000ms / 60 = ~16ms)
+        sleep(16);  // ~60 FPS (1000ms / 60 = ~16ms)
     }
 }
 ```
@@ -713,11 +714,13 @@ Same code, different results!
 Instead of moving a fixed amount per frame, we move based on how much time has passed:
 
 ```rust
-var lastTime = Viper.Time.millis();
+bind Viper.Time;
+
+var lastTime = millis();
 
 while canvas.isOpen() {
     // Calculate delta time
-    var now = Viper.Time.millis();
+    var now = millis();
     var dt = (now - lastTime) / 1000.0;  // Convert to seconds
     lastTime = now;
 
@@ -748,15 +751,17 @@ Same distance covered in the same real-world time, regardless of frame rate!
 ### Delta Time in Practice
 
 ```rust
+bind Viper.Time;
+
 var x = 400.0;
 var y = 300.0;
 var speedX = 200.0;  // 200 pixels per second
 var speedY = 150.0;  // 150 pixels per second
 
-var lastTime = Viper.Time.millis();
+var lastTime = millis();
 
 while canvas.isOpen() {
-    var now = Viper.Time.millis();
+    var now = millis();
     var dt = (now - lastTime) / 1000.0;
     lastTime = now;
 
@@ -773,7 +778,7 @@ while canvas.isOpen() {
     canvas.fillCircle(x, y, 20);
     canvas.show();
 
-    Viper.Time.sleep(16);
+    sleep(16);
 }
 ```
 
@@ -886,6 +891,7 @@ Let's put everything together into a reusable structure:
 module GameFramework;
 
 bind Viper.Graphics;
+bind Viper.Time;
 
 value Vec2 {
     x: Number;
@@ -933,7 +939,7 @@ entity Game {
         self.canvas.setTitle(title);
         self.objects = [];
         self.running = true;
-        self.lastTime = Viper.Time.millis();
+        self.lastTime = millis();
     }
 
     func add(obj: GameObject) {
@@ -943,7 +949,7 @@ entity Game {
     func run() {
         while self.running && self.canvas.isOpen() {
             // Calculate delta time
-            var now = Viper.Time.millis();
+            var now = millis();
             var dt = (now - self.lastTime) / 1000.0;
             self.lastTime = now;
 
@@ -952,7 +958,7 @@ entity Game {
             self.update(dt);
             self.render();
 
-            Viper.Time.sleep(16);
+            sleep(16);
         }
     }
 
@@ -1145,7 +1151,9 @@ When your graphics don't look right, here's a systematic approach:
 Print key values to the console:
 
 ```rust
-Viper.Terminal.Say("x=" + x + ", y=" + y + ", dx=" + dx);
+bind Viper.Terminal;
+
+Say("x=" + x + ", y=" + y + ", dx=" + dx);
 ```
 
 Check: Are the values what you expect? Are they changing each frame?
@@ -1174,7 +1182,9 @@ canvas.drawLine(player.x, player.y, player.x + player.dx * 10, player.y + player
 Make things move slowly so you can watch:
 
 ```rust
-Viper.Time.sleep(500);  // Half second between frames
+bind Viper.Time;
+
+sleep(500);  // Half second between frames
 ```
 
 Or reduce velocities temporarily:

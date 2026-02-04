@@ -31,7 +31,9 @@ Every one of these tasks involves working with specific pieces of data -- values
 This is an important distinction. When we write:
 
 ```rust
-Viper.Terminal.Say(42);
+bind Viper.Terminal;
+
+Say(42);
 ```
 
 Two different things are happening:
@@ -144,7 +146,9 @@ This instruction says: "Get a box, put the value `25` inside it, and stick a lab
 Now, whenever your program mentions `age`, the computer knows to go find the box labeled `age` and look inside to see what value is there.
 
 ```rust
-Viper.Terminal.Say(age);  // Goes to the 'age' box, finds 25, displays it
+bind Viper.Terminal;
+
+Say(age);  // Goes to the 'age' box, finds 25, displays it
 ```
 
 ### The Name Tag Analogy
@@ -169,28 +173,34 @@ Variables serve several crucial purposes:
 
 **1. Memory**: Programs need to remember things for later use.
 ```rust
-var name = Viper.Terminal.ReadLine();  // Remember what the user typed
+bind Viper.Terminal;
+
+var name = ReadLine();  // Remember what the user typed
 // ... 50 lines of code later ...
-Viper.Terminal.Say("Goodbye, " + name);  // Still remember their name!
+Say("Goodbye, " + name);  // Still remember their name!
 ```
 
 **2. Clarity**: Names make code readable.
 ```rust
+bind Viper.Terminal;
+
 // What does this mean?
-Viper.Terminal.Say(100 * 0.08);
+Say(100 * 0.08);
 
 // Much clearer!
 var price = 100;
 var taxRate = 0.08;
-Viper.Terminal.Say(price * taxRate);
+Say(price * taxRate);
 ```
 
 **3. Reusability**: Use the same value in multiple places without retyping it.
 ```rust
+bind Viper.Terminal;
+
 var greeting = "Welcome to Viper Programming!";
-Viper.Terminal.Say(greeting);
+Say(greeting);
 // ... later ...
-Viper.Terminal.Say(greeting);  // Same message, no retyping
+Say(greeting);  // Same message, no retyping
 ```
 
 **4. Change**: Update a value in one place, and everywhere using that variable sees the update.
@@ -207,13 +217,14 @@ Let's see variables at work:
 
 ```rust
 module Variables;
+bind Viper.Terminal;
 
 func start() {
     var name = "Alice";
     var age = 30;
 
-    Viper.Terminal.Say("Name: " + name);
-    Viper.Terminal.Say("Age: " + age);
+    Say("Name: " + name);
+    Say("Age: " + age);
 }
 ```
 
@@ -322,14 +333,16 @@ Use floats for:
 You can do math with numbers using operators:
 
 ```rust
+bind Viper.Terminal;
+
 var a = 10;
 var b = 3;
 
-Viper.Terminal.Say(a + b);   // 13 (addition)
-Viper.Terminal.Say(a - b);   // 7  (subtraction)
-Viper.Terminal.Say(a * b);   // 30 (multiplication)
-Viper.Terminal.Say(a / b);   // 3  (division - see below!)
-Viper.Terminal.Say(a % b);   // 1  (remainder/modulo)
+Say(a + b);   // 13 (addition)
+Say(a - b);   // 7  (subtraction)
+Say(a * b);   // 30 (multiplication)
+Say(a / b);   // 3  (division - see below!)
+Say(a % b);   // 1  (remainder/modulo)
 ```
 
 These work exactly like arithmetic you learned in school -- mostly. Division has a surprise, which we'll address shortly.
@@ -412,8 +425,10 @@ var isDivisibleBy4 = year % 4 == 0;  // true (for leap year checking)
 Here's something that surprises almost every beginner:
 
 ```rust
+bind Viper.Terminal;
+
 var result = 10 / 3;
-Viper.Terminal.Say(result);  // Prints: 3
+Say(result);  // Prints: 3
 ```
 
 Wait -- 10 divided by 3 is 3.333..., isn't it? Why does Viper say 3?
@@ -516,8 +531,10 @@ The `\"` doesn't print as `\"` -- it prints as `"`. The backslash "escapes" the 
 **Examples in action:**
 
 ```rust
+bind Viper.Terminal;
+
 // Newlines
-Viper.Terminal.Say("Line one\nLine two\nLine three");
+Say("Line one\nLine two\nLine three");
 ```
 Output:
 ```
@@ -527,10 +544,12 @@ Line three
 ```
 
 ```rust
+bind Viper.Terminal;
+
 // Tabs (for alignment)
-Viper.Terminal.Say("Name\tAge\tCity");
-Viper.Terminal.Say("Alice\t30\tNew York");
-Viper.Terminal.Say("Bob\t25\tChicago");
+Say("Name\tAge\tCity");
+Say("Alice\t30\tNew York");
+Say("Bob\t25\tChicago");
 ```
 Output:
 ```
@@ -540,8 +559,10 @@ Bob     25      Chicago
 ```
 
 ```rust
+bind Viper.Terminal;
+
 // Including backslashes (need to escape them)
-Viper.Terminal.Say("Path: C:\\Users\\Alice\\Documents");
+Say("Path: C:\\Users\\Alice\\Documents");
 ```
 Output:
 ```
@@ -549,8 +570,10 @@ Path: C:\Users\Alice\Documents
 ```
 
 ```rust
+bind Viper.Terminal;
+
 // Quotes in dialogue
-Viper.Terminal.Say("\"To be or not to be,\" he pondered.");
+Say("\"To be or not to be,\" he pondered.");
 ```
 Output:
 ```
@@ -572,9 +595,11 @@ Think of it like gluing words together. `"Hello"` + `", "` + `"World"` + `"!"` b
 **Concatenating strings with numbers:**
 
 ```rust
+bind Viper.Terminal;
+
 var name = "Alice";
 var age = 30;
-Viper.Terminal.Say(name + " is " + age + " years old.");
+Say(name + " is " + age + " years old.");
 ```
 Output:
 ```
@@ -818,14 +843,16 @@ Breaking complex boolean expressions into named parts makes them much easier to 
 Variables can change. That's why they're called "variables" -- they vary.
 
 ```rust
+bind Viper.Terminal;
+
 var score = 0;
-Viper.Terminal.Say(score);  // 0
+Say(score);  // 0
 
 score = 10;
-Viper.Terminal.Say(score);  // 10
+Say(score);  // 10
 
 score = score + 5;
-Viper.Terminal.Say(score);  // 15
+Say(score);  // 15
 ```
 
 Notice that after creating a variable with `var`, we change it using just `=` (no `var`). Using `var` again would try to create a *new* variable with the same name, which is an error.
@@ -906,12 +933,13 @@ So far, our variables have been set by us in the code. But programs become inter
 
 ```rust
 module Greeting;
+bind Viper.Terminal;
 
 func start() {
-    Viper.Terminal.Print("What is your name? ");
-    var name = Viper.Terminal.ReadLine();
+    Print("What is your name? ");
+    var name = ReadLine();
 
-    Viper.Terminal.Say("Hello, " + name + "!");
+    Say("Hello, " + name + "!");
 }
 ```
 
@@ -935,14 +963,15 @@ We use `Print()` for the prompt so the user types on the same line as the questi
 
 ```rust
 module Age;
+bind Viper.Terminal;
 
 func start() {
-    Viper.Terminal.Print("How old are you? ");
-    var ageText = Viper.Terminal.ReadLine();   // This is a string
+    Print("How old are you? ");
+    var ageText = ReadLine();   // This is a string
     var age = Viper.Convert.ToInt(ageText);         // Convert to integer
 
     var nextYear = age + 1;
-    Viper.Terminal.Say("Next year you'll be " + nextYear);
+    Say("Next year you'll be " + nextYear);
 }
 ```
 
@@ -958,8 +987,10 @@ If you try to parse `"hello"` as a number, you'll get an error. In Chapter 7, we
 A very common beginner mistake:
 
 ```rust
-Viper.Terminal.Print("Enter a number: ");
-var number = Viper.Terminal.ReadLine();  // "5"
+bind Viper.Terminal;
+
+Print("Enter a number: ");
+var number = ReadLine();  // "5"
 var doubled = number * 2;  // Error! Can't multiply a string
 ```
 
@@ -973,12 +1004,14 @@ Viper supports three syntax styles. The concepts -- values, variables, types, op
 
 **Zia**
 ```rust
+bind Viper.Terminal;
+
 var name = "Alice";
 var age = 30;
 final PI = 3.14159;
 
 age = age + 1;
-Viper.Terminal.Say(name + " is " + age);
+Say(name + " is " + age);
 ```
 
 **BASIC**
@@ -1041,7 +1074,9 @@ Variables must be given a value when created.
 
 ### 2. Using a variable before creating it
 ```rust
-Viper.Terminal.Say(score);  // Error: score doesn't exist yet!
+bind Viper.Terminal;
+
+Say(score);  // Error: score doesn't exist yet!
 var score = 100;
 ```
 You must create a variable before you can use it.
@@ -1068,7 +1103,9 @@ Integer divided by integer gives integer. Use floats for fractional results.
 
 ### 6. Forgetting to convert user input
 ```rust
-var age = Viper.Terminal.ReadLine();  // This is a string "25"
+bind Viper.Terminal;
+
+var age = ReadLine();  // This is a string "25"
 var nextYear = age + 1;  // Concatenates to "251", doesn't add!
 ```
 `ReadLine()` always returns a string. Use `Convert.ToInt()` or `Convert.ToDouble()` to convert.
@@ -1097,28 +1134,29 @@ Here's a small program that uses everything we've learned:
 
 ```rust
 module Calculator;
+bind Viper.Terminal;
 
 func start() {
-    Viper.Terminal.Say("Simple Calculator");
-    Viper.Terminal.Say("================");
+    Say("Simple Calculator");
+    Say("================");
 
-    Viper.Terminal.Print("Enter first number: ");
-    var first = Viper.Convert.ToDouble(Viper.Terminal.ReadLine());
+    Print("Enter first number: ");
+    var first = Viper.Convert.ToDouble(ReadLine());
 
-    Viper.Terminal.Print("Enter second number: ");
-    var second = Viper.Convert.ToDouble(Viper.Terminal.ReadLine());
+    Print("Enter second number: ");
+    var second = Viper.Convert.ToDouble(ReadLine());
 
     var sum = first + second;
     var difference = first - second;
     var product = first * second;
     var quotient = first / second;
 
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("Results:");
-    Viper.Terminal.Say(first + " + " + second + " = " + sum);
-    Viper.Terminal.Say(first + " - " + second + " = " + difference);
-    Viper.Terminal.Say(first + " * " + second + " = " + product);
-    Viper.Terminal.Say(first + " / " + second + " = " + quotient);
+    Say("");
+    Say("Results:");
+    Say(first + " + " + second + " = " + sum);
+    Say(first + " - " + second + " = " + difference);
+    Say(first + " * " + second + " = " + product);
+    Say(first + " / " + second + " = " + quotient);
 }
 ```
 

@@ -2,6 +2,9 @@
 // A Mr. Robot style platform/ladder climbing game
 module main;
 
+bind Viper.Graphics;
+bind Viper.Time;
+
 bind "./config";
 bind "./colors";
 bind "./player";
@@ -92,7 +95,7 @@ func handlePlayerDeath() {
 }
 
 // Update game logic
-func updateGame(canvas: Viper.Graphics.Canvas) {
+func updateGame(canvas: Canvas) {
     // Update player invincibility
     currentPlayer.updateInvincibility();
 
@@ -211,7 +214,7 @@ func updateGame(canvas: Viper.Graphics.Canvas) {
 }
 
 // Handle menu input
-func handleMenuInput(canvas: Viper.Graphics.Canvas) -> Integer {
+func handleMenuInput(canvas: Canvas) -> Integer {
     // Debounce key presses
     frameCount = frameCount + 1;
     if frameCount - lastKeyTime < 10 {
@@ -243,7 +246,7 @@ func handleMenuInput(canvas: Viper.Graphics.Canvas) -> Integer {
 }
 
 // Handle pause menu input
-func handlePauseInput(canvas: Viper.Graphics.Canvas) -> Integer {
+func handlePauseInput(canvas: Canvas) -> Integer {
     frameCount = frameCount + 1;
     if frameCount - lastKeyTime < 10 {
         return 0;
@@ -280,7 +283,7 @@ func handlePauseInput(canvas: Viper.Graphics.Canvas) -> Integer {
 }
 
 // Handle game over input
-func handleGameOverInput(canvas: Viper.Graphics.Canvas) -> Integer {
+func handleGameOverInput(canvas: Canvas) -> Integer {
     frameCount = frameCount + 1;
     if frameCount - lastKeyTime < 10 {
         return 0;
@@ -311,7 +314,7 @@ func handleGameOverInput(canvas: Viper.Graphics.Canvas) -> Integer {
 }
 
 // Draw gameplay
-func drawGame(canvas: Viper.Graphics.Canvas) {
+func drawGame(canvas: Canvas) {
     // Clear background
     canvas.Clear(colors.BACKGROUND_COLOR);
 
@@ -328,7 +331,7 @@ func drawGame(canvas: Viper.Graphics.Canvas) {
 // Main entry point
 func main() {
     // Create window
-    var canvas = new Viper.Graphics.Canvas(config.TITLE, config.SCREEN_WIDTH, config.SCREEN_HEIGHT);
+    var canvas = new Canvas(config.TITLE, config.SCREEN_WIDTH, config.SCREEN_HEIGHT);
 
     // Initialize game
     initGame();

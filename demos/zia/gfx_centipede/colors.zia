@@ -1,6 +1,8 @@
 // colors.viper - Color palette for Centipede (Atari-inspired)
 module colors;
 
+bind Viper.Graphics.Color;
+
 // Background colors
 final BLACK = 0;
 final DARK_GREEN = 2236962;        // RGB(34, 34, 34) - very dark
@@ -52,11 +54,11 @@ final EXPLOSION_3 = 16744448;      // Orange
 
 // Helper function to create colors
 func RGB(r: Integer, g: Integer, b: Integer) -> Integer {
-    return Viper.Graphics.Color.RGB(r, g, b);
+    return Color.RGB(r, g, b);
 }
 
 func RGBA(r: Integer, g: Integer, b: Integer, a: Integer) -> Integer {
-    return Viper.Graphics.Color.RGBA(r, g, b, a);
+    return Color.RGBA(r, g, b, a);
 }
 
 // Palette for centipede segments (cycles through these)

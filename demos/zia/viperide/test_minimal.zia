@@ -1,26 +1,29 @@
 module test_minimal;
 
+bind GUI = Viper.GUI;
+bind Terminal = Viper.Terminal;
+
 entity Shell {
-    expose Viper.GUI.App app;
-    expose Viper.GUI.VBox mainVBox;
-    expose Viper.GUI.MenuBar menuBar;
-    expose Viper.GUI.Menu fileMenu;
+    expose GUI.App app;
+    expose GUI.VBox mainVBox;
+    expose GUI.MenuBar menuBar;
+    expose GUI.Menu fileMenu;
 
     expose func Build() {
-        app = Viper.GUI.App.New("Minimal", 800, 600);
-        Viper.GUI.Theme.SetDark();
+        app = GUI.App.New("Minimal", 800, 600);
+        GUI.Theme.SetDark();
 
-        mainVBox = Viper.GUI.VBox.New();
+        mainVBox = GUI.VBox.New();
         mainVBox.SetSpacing(0.0);
         mainVBox.SetPadding(0.0);
-        var root: Viper.GUI.Widget = app.Root;
+        var root: GUI.Widget = app.Root;
         root.AddChild(mainVBox);
 
-        menuBar = Viper.GUI.MenuBar.New(mainVBox);
+        menuBar = GUI.MenuBar.New(mainVBox);
         fileMenu = menuBar.AddMenu("File");
-        var mi: Viper.GUI.MenuItem = fileMenu.AddItem("Quit");
+        var mi: GUI.MenuItem = fileMenu.AddItem("Quit");
 
-        Viper.Terminal.Say("Build done, entering loop");
+        Terminal.Say("Build done, entering loop");
     }
 }
 

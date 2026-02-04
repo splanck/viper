@@ -2,6 +2,8 @@
 // Manages platforms, ladders, enemies, and collectibles for each level
 module level;
 
+bind Viper.Graphics;
+
 bind "./config";
 bind "./colors";
 bind "./platform";
@@ -29,7 +31,7 @@ entity Collectible {
         }
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         if collected == 1 {
             return;
         }
@@ -280,7 +282,7 @@ entity Level {
     }
 
     // Draw all level elements
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         // Draw platforms
         var i = 0;
         while i < platforms.count() {

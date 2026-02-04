@@ -8,6 +8,13 @@ module matrix;
 
 bind "./colors";
 
+bind Viper.Random;
+bind Viper.Graphics;
+bind Viper.Graphics.Canvas;
+bind Viper.Graphics.Color;
+bind Viper.Math;
+bind Viper.Time;
+
 var CHARS: List[String];
 
 func initChars() {
@@ -31,7 +38,7 @@ func initChars() {
 }
 
 func getRandomChar() -> String {
-    var idx = Viper.Random.NextInt(CHARS.count());
+    var idx = NextInt(CHARS.count());
     return CHARS.get(idx);
 }
 
@@ -73,9 +80,9 @@ entity MatrixColumn {
     }
 
     expose func reset() {
-        headY = 0 - Viper.Random.NextInt(colHeight);
-        length = 8 + Viper.Random.NextInt(20);
-        speed = 1 + Viper.Random.NextInt(3);
+        headY = 0 - NextInt(colHeight);
+        length = 8 + NextInt(20);
+        speed = 1 + NextInt(3);
         frameCounter = 0;
     }
 
@@ -102,7 +109,7 @@ entity MatrixColumn {
                 mc.randomize();
             } else if distFromHead <= length {
                 var fade = 1.0 - (distFromHead / (length + 1));
-                mc.brightness = Viper.Math.Floor(200.0 * fade);
+                mc.brightness = Floor(200.0 * fade);
             } else {
                 mc.brightness = mc.brightness - 30;
                 if mc.brightness < 0 {
@@ -111,7 +118,7 @@ entity MatrixColumn {
             }
 
             if mc.brightness > 50 {
-                if Viper.Random.NextInt(100) < 5 {
+                if NextInt(100) < 5 {
                     mc.randomize();
                 }
             }
@@ -120,7 +127,7 @@ entity MatrixColumn {
         }
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas, x: Integer, charHeight: Integer) {
+    expose func draw(canvas: Canvas, x: Integer, charHeight: Integer) {
         var i = 0;
         while i < chars.count() {
             var mc = chars.get(i);
@@ -129,11 +136,11 @@ entity MatrixColumn {
                 var color: Integer;
 
                 if headY == i {
-                    color = Viper.Graphics.Color.RGB(255, 255, 255);
+                    color = RGB(255, 255, 255);
                 } else {
                     var g = mc.brightness;
                     var r = g / 4;
-                    color = Viper.Graphics.Color.RGB(r, g, r / 2);
+                    color = RGB(r, g, r / 2);
                 }
 
                 canvas.Text(x, y, mc.char, color);
@@ -162,7 +169,7 @@ entity MatrixRain {
         while i < numColumns {
             var col = new MatrixColumn();
             col.init(charsPerColumn);
-            col.headY = 0 - Viper.Random.NextInt(charsPerColumn * 2);
+            col.headY = 0 - NextInt(charsPerColumn * 2);
             columns.add(col);
             i = i + 1;
         }
@@ -177,7 +184,7 @@ entity MatrixRain {
         }
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         var i = 0;
         while i < columns.count() {
             var col = columns.get(i);
@@ -189,7 +196,7 @@ entity MatrixRain {
 }
 
 // Run the matrix demo
-func run(canvas: Viper.Graphics.Canvas) {
+func run(canvas: Canvas) {
     var width = canvas.Width;
     var height = canvas.Height;
 
@@ -223,9 +230,9 @@ func run(canvas: Viper.Graphics.Canvas) {
         rain.draw(canvas);
 
         if showTitle {
-            var titleColor = Viper.Graphics.Color.RGB(0, 200, 0);
+            var titleColor = RGB(0, 200, 0);
             canvas.TextBg(width / 2 - 80, height / 2 - 20, "THE MATRIX", titleColor, colors.BLACK);
-            canvas.TextBg(width / 2 - 100, height / 2 + 10, "Press ESC to exit", Viper.Graphics.Color.RGB(0, 150, 0), colors.BLACK);
+            canvas.TextBg(width / 2 - 100, height / 2 + 10, "Press ESC to exit", RGB(0, 150, 0), colors.BLACK);
 
             titleTimer = titleTimer - 1;
             if titleTimer <= 0 {

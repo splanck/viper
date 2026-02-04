@@ -39,13 +39,15 @@ Not all errors are the same. Understanding the different types helps you diagnos
 Syntax errors happen when your code violates the rules of the language. It's like writing a sentence with the words in the wrong order — even if your meaning is clear to a human, the compiler can't understand it.
 
 ```rust
+bind Viper.Terminal;
+
 // Missing semicolon
 var x = 10
 var y = 20;
 
 // Mismatched parentheses
 if (x > 5 {
-    Viper.Terminal.Say("hello");
+    Say("hello");
 }
 
 // Misspelled keyword
@@ -79,7 +81,8 @@ var y = arr[10];  // Index 10 doesn't exist
 var text: string = null;
 var len = text.length;  // Can't access properties of null
 
-var num = Viper.Convert.ToInt("hello");  // "hello" is not a number
+bind Viper.Convert;
+var num = ToInt("hello");  // "hello" is not a number
 ```
 
 Runtime errors occur because the code is syntactically correct but asks the computer to do something impossible. You can't divide by zero. You can't access an array element that doesn't exist. These operations make no sense.
@@ -172,8 +175,10 @@ When you see an error, follow this process:
 This is crucial: the line where an error occurs is not always the line where the bug lives.
 
 ```rust
+bind Viper.Terminal;
+
 func processUser(user: User) {
-    Viper.Terminal.Say(user.name);  // ERROR: null pointer on line 5
+    Say(user.name);  // ERROR: null pointer on line 5
 }
 
 func start() {
@@ -194,16 +199,18 @@ Now that you understand what errors are and how to read error messages, let's le
 ### Basic Structure
 
 ```rust
+bind Viper.Terminal;
+
 try {
     // Code that might fail
     var x = 10 / y;
-    Viper.Terminal.Say("Result: " + x);
+    Say("Result: " + x);
 } catch e {
     // Code that runs if an error occurred
-    Viper.Terminal.Say("Something went wrong: " + e.message);
+    Say("Something went wrong: " + e.message);
 }
 
-Viper.Terminal.Say("Program continues...");
+Say("Program continues...");
 ```
 
 Here's how it works:
@@ -220,15 +227,17 @@ The `e` variable in `catch e` gives you access to information about the error �
 The `try` block should contain the "risky" code — the operations that might fail. When an error occurs, *nothing after that point in the try block runs*:
 
 ```rust
+bind Viper.Terminal;
+
 try {
-    Viper.Terminal.Say("Step 1");
+    Say("Step 1");
     var x = 10 / 0;                    // Error here!
-    Viper.Terminal.Say("Step 2");      // Never runs
-    Viper.Terminal.Say("Step 3");      // Never runs
+    Say("Step 2");      // Never runs
+    Say("Step 3");      // Never runs
 } catch e {
-    Viper.Terminal.Say("Caught: " + e.message);
+    Say("Caught: " + e.message);
 }
-Viper.Terminal.Say("Done");
+Say("Done");
 ```
 
 Output:
@@ -245,32 +254,40 @@ Step 2 and Step 3 never execute. The moment division by zero is attempted, execu
 A single try block might have multiple things that could go wrong:
 
 ```rust
+bind Viper.File;
+bind Viper.Convert;
+bind Viper.Terminal;
+
 try {
-    var content = Viper.File.readText(filename);  // Could fail: file missing
-    var value = Viper.Convert.ToInt(content);          // Could fail: not a number
-    var result = 1000 / value;                     // Could fail: zero
-    Viper.Terminal.Say("Result: " + result);
+    var content = readText(filename);  // Could fail: file missing
+    var value = ToInt(content);        // Could fail: not a number
+    var result = 1000 / value;         // Could fail: zero
+    Say("Result: " + result);
 } catch e {
-    Viper.Terminal.Say("Error: " + e.message);
+    Say("Error: " + e.message);
 }
 ```
 
 If *any* of these three operations fails, the catch block runs. But which one failed? You can check:
 
 ```rust
+bind Viper.File;
+bind Viper.Convert;
+bind Viper.Terminal;
+
 try {
-    var content = Viper.File.readText(filename);
-    var value = Viper.Convert.ToInt(content);
+    var content = readText(filename);
+    var value = ToInt(content);
     var result = 1000 / value;
-    Viper.Terminal.Say("Result: " + result);
+    Say("Result: " + result);
 } catch e: FileNotFound {
-    Viper.Terminal.Say("File doesn't exist: " + filename);
+    Say("File doesn't exist: " + filename);
 } catch e: ParseError {
-    Viper.Terminal.Say("File doesn't contain a valid number");
+    Say("File doesn't contain a valid number");
 } catch e: DivisionByZero {
-    Viper.Terminal.Say("The file contained zero");
+    Say("The file contained zero");
 } catch e {
-    Viper.Terminal.Say("Unexpected error: " + e.message);
+    Say("Unexpected error: " + e.message);
 }
 ```
 
@@ -349,9 +366,10 @@ func computeAverage(numbers: [Integer]) -> Integer {
 }
 
 func processScores(data: String) {
+    bind Viper.Terminal;
     var scores = parseScores(data);
     var avg = computeAverage(scores);  // Called with empty array
-    Viper.Terminal.Say("Average: " + avg);
+    Say("Average: " + avg);
 }
 ```
 
@@ -371,13 +389,15 @@ The error appears in `divide`, but the bug is in `computeAverage` (or maybe `pro
 Sometimes you need to run cleanup code no matter what happens — whether the try block succeeds or fails:
 
 ```rust
+bind Viper.Terminal;
+
 var connection = Database.connect("localhost");
 
 try {
     var data = connection.query("SELECT * FROM users");
     processData(data);
 } catch e {
-    Viper.Terminal.Say("Database error: " + e.message);
+    Say("Database error: " + e.message);
 } finally {
     connection.close();  // Always runs, error or not
 }
@@ -430,13 +450,15 @@ throw ValidationError("Email address is invalid");
 Custom types help callers handle specific errors differently:
 
 ```rust
+bind Viper.Terminal;
+
 try {
     loadConfiguration();
 } catch e: FileNotFound {
-    Viper.Terminal.Say("Config file missing, using defaults");
+    Say("Config file missing, using defaults");
     useDefaults();
 } catch e: ParseError {
-    Viper.Terminal.Say("Config file is corrupted");
+    Say("Config file is corrupted");
     // Can't recover from this
     throw e;
 }
@@ -522,12 +544,13 @@ Handle error cases at the top of functions, then proceed with the main logic:
 
 ```rust
 func processFile(filename: String) {
+    bind Viper.File;
     // Guard clauses handle all the edge cases
     if filename.length == 0 {
         throw Error("Filename cannot be empty");
     }
 
-    if !Viper.File.exists(filename) {
+    if !exists(filename) {
         throw Error("File does not exist: " + filename);
     }
 
@@ -536,7 +559,7 @@ func processFile(filename: String) {
     }
 
     // Main logic — we know the file is valid
-    var content = Viper.File.readText(filename);
+    var content = readText(filename);
     // ...
 }
 ```
@@ -561,12 +584,14 @@ Catch an error when:
 - You're at the top level and need to report to the user
 
 ```rust
+bind Viper.File;
+
 // Recovery: try a backup file
 func loadData() -> String {
     try {
-        return Viper.File.readText("data.txt");
+        return readText("data.txt");
     } catch e: FileNotFound {
-        return Viper.File.readText("data.backup.txt");
+        return readText("data.backup.txt");
     }
 }
 
@@ -599,9 +624,12 @@ Let errors propagate when:
 - It's a programming error (bug) that should crash
 
 ```rust
+bind Viper.File;
+bind Viper.Terminal;
+
 // Can't handle it — let it propagate
 func loadConfig() -> Config {
-    var content = Viper.File.readText("config.txt");  // Might fail
+    var content = readText("config.txt");  // Might fail
     return parseConfig(content);  // Might fail
     // If either fails, we can't proceed — let it bubble up
 }
@@ -612,9 +640,9 @@ func start() {
         var config = loadConfig();
         runApplication(config);
     } catch e: FileNotFound {
-        Viper.Terminal.Say("Please create config.txt first");
+        Say("Please create config.txt first");
     } catch e: ParseError {
-        Viper.Terminal.Say("Config file is invalid: " + e.message);
+        Say("Config file is invalid: " + e.message);
     }
 }
 ```
@@ -632,18 +660,20 @@ Logic errors don't produce error messages — they produce wrong results. Findin
 The simplest and most widely used technique: add print statements to see what's happening inside your code.
 
 ```rust
+bind Viper.Terminal;
+
 func mysteriouslyWrongResult(data: [i64]) -> i64 {
-    Viper.Terminal.Say("DEBUG: Input data = " + data.toString());
+    Say("DEBUG: Input data = " + data.toString());
 
     var sum = 0;
     for i in 0..data.length {
-        Viper.Terminal.Say("DEBUG: i = " + i + ", data[i] = " + data[i]);
+        Say("DEBUG: i = " + i + ", data[i] = " + data[i]);
         sum += data[i];
-        Viper.Terminal.Say("DEBUG: sum is now " + sum);
+        Say("DEBUG: sum is now " + sum);
     }
 
     var result = sum / data.length;
-    Viper.Terminal.Say("DEBUG: final result = " + result);
+    Say("DEBUG: final result = " + result);
     return result;
 }
 ```
@@ -682,13 +712,15 @@ When you have a lot of code and don't know where the bug is, use binary search: 
 5. Repeat, narrowing down each time
 
 ```rust
+bind Viper.Terminal;
+
 func complexProcessing(input: Data) -> Result {
     var a = stepOne(input);
     var b = stepTwo(a);
     var c = stepThree(b);
 
     // CHECKPOINT: Is the data correct here?
-    Viper.Terminal.Say("DEBUG mid-point: " + c.toString());
+    Say("DEBUG mid-point: " + c.toString());
 
     var d = stepFour(c);
     var e = stepFive(d);
@@ -731,10 +763,11 @@ func processTransactions(accounts: [Account], transactions: [Transaction]) -> Re
 
 // Simplified test
 func testSimple() {
+    bind Viper.Terminal;
     var accounts = [Account.new(100)];  // One account
     var transactions = [Transaction.new(50)];  // One transaction
     var report = processTransactions(accounts, transactions);
-    Viper.Terminal.Say(report.toString());
+    Say(report.toString());
 }
 ```
 
@@ -751,6 +784,9 @@ Let's look at errors you'll encounter in real programs and how to handle them.
 Networks are inherently unreliable. Connections drop, servers go down, requests time out.
 
 ```rust
+bind Viper.Terminal;
+bind Viper.Time;
+
 func fetchUserData(userId: Integer) -> UserData {
     var maxRetries = 3;
     var retryDelay = 1000;  // milliseconds
@@ -760,8 +796,8 @@ func fetchUserData(userId: Integer) -> UserData {
             return HttpClient.get("https://api.example.com/users/" + userId);
         } catch e: NetworkError {
             if attempt < maxRetries {
-                Viper.Terminal.Say("Network error, retrying in " + retryDelay + "ms...");
-                Viper.Time.sleep(retryDelay);
+                Say("Network error, retrying in " + retryDelay + "ms...");
+                sleep(retryDelay);
                 retryDelay *= 2;  // Exponential backoff
             } else {
                 throw Error("Failed to fetch user after " + maxRetries + " attempts");
@@ -782,24 +818,27 @@ Key strategies for network errors:
 Users will enter invalid data. Always. Count on it.
 
 ```rust
+bind Viper.Terminal;
+bind Viper.Convert;
+
 func getValidAge() -> Integer {
     while true {
-        Viper.Terminal.Print("Enter your age: ");
-        var input = Viper.Terminal.ReadLine().trim();
+        Print("Enter your age: ");
+        var input = ReadLine().trim();
 
         // Try to parse
         try {
-            var age = Viper.Convert.ToInt(input);
+            var age = ToInt(input);
 
             // Validate range
             if age < 0 || age > 150 {
-                Viper.Terminal.Say("Please enter a realistic age (0-150)");
+                Say("Please enter a realistic age (0-150)");
                 continue;
             }
 
             return age;
         } catch e: ParseError {
-            Viper.Terminal.Say("That's not a valid number. Please try again.");
+            Say("That's not a valid number. Please try again.");
         }
     }
 }
@@ -816,8 +855,11 @@ Principles for user input:
 Programs can run out of resources: memory, disk space, file handles, network connections.
 
 ```rust
+bind Viper.File;
+bind Viper.Terminal;
+
 func processLargeFile(filename: String) {
-    var reader = Viper.File.openRead(filename);
+    var reader = openRead(filename);
 
     try {
         while reader.hasMore() {
@@ -826,7 +868,7 @@ func processLargeFile(filename: String) {
             try {
                 processChunk(chunk);
             } catch e: OutOfMemory {
-                Viper.Terminal.Say("Memory low, pausing to free resources...");
+                Say("Memory low, pausing to free resources...");
                 gc();  // Force garbage collection
                 processChunk(chunk);  // Try again
             }
@@ -848,6 +890,9 @@ Resource management tips:
 Programs often depend on files that might not exist:
 
 ```rust
+bind Viper.File;
+bind Viper.Terminal;
+
 func loadConfiguration() -> Config {
     final CONFIG_FILE = "config.json";
     final DEFAULT_CONFIG = Config.new(
@@ -856,17 +901,17 @@ func loadConfiguration() -> Config {
         maxRetries: 3
     );
 
-    if !Viper.File.exists(CONFIG_FILE) {
-        Viper.Terminal.Say("Config file not found, creating default...");
-        Viper.File.writeText(CONFIG_FILE, DEFAULT_CONFIG.toJson());
+    if !exists(CONFIG_FILE) {
+        Say("Config file not found, creating default...");
+        writeText(CONFIG_FILE, DEFAULT_CONFIG.toJson());
         return DEFAULT_CONFIG;
     }
 
     try {
-        var content = Viper.File.readText(CONFIG_FILE);
+        var content = readText(CONFIG_FILE);
         return Config.fromJson(content);
     } catch e: ParseError {
-        Viper.Terminal.Say("Config file is corrupted, using defaults");
+        Say("Config file is corrupted, using defaults");
         return DEFAULT_CONFIG;
     }
 }
@@ -887,17 +932,22 @@ Let's put it all together with a program that demonstrates comprehensive error h
 ```rust
 module DataProcessor;
 
+bind Viper.File;
+bind Viper.Terminal;
+bind Viper.Time;
+bind Viper.Convert;
+
 final LOG_FILE = "processor.log";
 
 func log(message: String) {
-    var timestamp = Viper.Time.now().toString();
+    var timestamp = now().toString();
     var entry = "[" + timestamp + "] " + message + "\n";
 
     try {
-        Viper.File.appendText(LOG_FILE, entry);
+        appendText(LOG_FILE, entry);
     } catch e {
         // If we can't log, print to console at least
-        Viper.Terminal.Say("LOG: " + message);
+        Say("LOG: " + message);
     }
 }
 
@@ -906,11 +956,11 @@ func readDataFile(filename: String) -> [Integer] {
         throw Error("Filename cannot be empty");
     }
 
-    if !Viper.File.exists(filename) {
+    if !exists(filename) {
         throw FileNotFound("Data file not found: " + filename);
     }
 
-    var lines = Viper.File.readLines(filename);
+    var lines = readLines(filename);
     var numbers: [Integer] = [];
     var lineNum = 0;
 
@@ -924,7 +974,7 @@ func readDataFile(filename: String) -> [Integer] {
         }
 
         try {
-            var num = Viper.Convert.ToInt(trimmed);
+            var num = ToInt(trimmed);
             numbers.push(num);
         } catch e: ParseError {
             log("Warning: skipping invalid number on line " + lineNum + ": " + trimmed);
@@ -973,47 +1023,47 @@ func processFile(filename: String) {
 
         var stats = calculateStats(numbers);
 
-        Viper.Terminal.Say("=== Statistics for " + filename + " ===");
-        Viper.Terminal.Say("Count:   " + stats.count);
-        Viper.Terminal.Say("Sum:     " + stats.sum);
-        Viper.Terminal.Say("Min:     " + stats.min);
-        Viper.Terminal.Say("Max:     " + stats.max);
-        Viper.Terminal.Say("Average: " + stats.average);
+        Say("=== Statistics for " + filename + " ===");
+        Say("Count:   " + stats.count);
+        Say("Sum:     " + stats.sum);
+        Say("Min:     " + stats.min);
+        Say("Max:     " + stats.max);
+        Say("Average: " + stats.average);
 
         log("Successfully processed " + filename);
 
     } catch e: FileNotFound {
-        Viper.Terminal.Say("Error: " + e.message);
-        Viper.Terminal.Say("Please check that the file exists and try again.");
+        Say("Error: " + e.message);
+        Say("Please check that the file exists and try again.");
         log("File not found: " + filename);
 
     } catch e: ParseError {
-        Viper.Terminal.Say("Error: The file contains invalid data");
-        Viper.Terminal.Say(e.message);
+        Say("Error: The file contains invalid data");
+        Say(e.message);
         log("Parse error in " + filename + ": " + e.message);
 
     } catch e {
-        Viper.Terminal.Say("Unexpected error: " + e.message);
+        Say("Unexpected error: " + e.message);
         log("Unexpected error processing " + filename + ": " + e.message);
     }
 }
 
 func start() {
-    Viper.Terminal.Say("Data Processor");
-    Viper.Terminal.Say("==============");
-    Viper.Terminal.Say("");
+    Say("Data Processor");
+    Say("==============");
+    Say("");
 
     while true {
-        Viper.Terminal.Print("Enter filename (or 'quit' to exit): ");
-        var input = Viper.Terminal.ReadLine().trim();
+        Print("Enter filename (or 'quit' to exit): ");
+        var input = ReadLine().trim();
 
         if input.lower() == "quit" {
-            Viper.Terminal.Say("Goodbye!");
+            Say("Goodbye!");
             break;
         }
 
         processFile(input);
-        Viper.Terminal.Say("");
+        Say("");
     }
 }
 ```
@@ -1032,12 +1082,14 @@ This program demonstrates:
 
 ### Zia
 ```rust
+bind Viper.Terminal;
+
 try {
     riskyOperation();
 } catch e: FileNotFound {
-    Viper.Terminal.Say("File not found");
+    Say("File not found");
 } catch e {
-    Viper.Terminal.Say("Error: " + e.message);
+    Say("Error: " + e.message);
 } finally {
     cleanup();
 }
@@ -1118,26 +1170,30 @@ try {
 Catching everything can hide bugs:
 
 ```rust
+bind Viper.Terminal;
+
 try {
     var result = complexOperation(data);
     saveResult(result);
     sendNotification(result);
 } catch e {
-    Viper.Terminal.Say("Something went wrong");  // Which operation? What error?
+    Say("Something went wrong");  // Which operation? What error?
 }
 ```
 
 Better:
 
 ```rust
+bind Viper.Terminal;
+
 try {
     var result = complexOperation(data);
     saveResult(result);
     sendNotification(result);
 } catch e: ValidationError {
-    Viper.Terminal.Say("Invalid data: " + e.message);
+    Say("Invalid data: " + e.message);
 } catch e: StorageError {
-    Viper.Terminal.Say("Could not save: " + e.message);
+    Say("Could not save: " + e.message);
 } catch e: NetworkError {
     log("Notification failed: " + e.message);
     // Notification failure is not fatal, continue

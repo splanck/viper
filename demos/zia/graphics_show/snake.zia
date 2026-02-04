@@ -8,6 +8,12 @@ module snake;
 
 bind "./colors";
 
+bind Viper.Random;
+bind Viper.Graphics;
+bind Viper.Graphics.Color;
+bind Viper.Fmt;
+bind Viper.Time;
+
 var DIR_UP: Integer;
 var DIR_DOWN: Integer;
 var DIR_LEFT: Integer;
@@ -42,12 +48,12 @@ entity Food {
     }
 
     expose func spawn(gridWidth: Integer, gridHeight: Integer) {
-        x = Viper.Random.NextInt(gridWidth);
-        y = Viper.Random.NextInt(gridHeight);
-        color = colors.rainbowPhase(Viper.Random.NextInt(360));
+        x = NextInt(gridWidth);
+        y = NextInt(gridHeight);
+        color = colors.rainbowPhase(NextInt(360));
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas, cellSize: Integer, offsetX: Integer, offsetY: Integer) {
+    expose func draw(canvas: Canvas, cellSize: Integer, offsetX: Integer, offsetY: Integer) {
         var px = offsetX + x * cellSize + cellSize / 2;
         var py = offsetY + y * cellSize + cellSize / 2;
         var radius = cellSize / 2 - 2;
@@ -76,8 +82,8 @@ entity Snake {
         nextDirection = DIR_RIGHT;
         growing = 0;
         alive = true;
-        headColor = Viper.Graphics.Color.RGB(100, 255, 100);
-        bodyColor = Viper.Graphics.Color.RGB(50, 200, 50);
+        headColor = RGB(100, 255, 100);
+        bodyColor = RGB(50, 200, 50);
 
         var i = 0;
         while i < 3 {
@@ -165,7 +171,7 @@ entity Snake {
         return segments.count();
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas, cellSize: Integer, offsetX: Integer, offsetY: Integer) {
+    expose func draw(canvas: Canvas, cellSize: Integer, offsetX: Integer, offsetY: Integer) {
         var i = segments.count() - 1;
         while i >= 0 {
             var seg = segments.get(i);
@@ -269,8 +275,8 @@ entity SnakeGame {
         }
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas, screenWidth: Integer, screenHeight: Integer) {
-        var gridColor = Viper.Graphics.Color.RGB(30, 40, 30);
+    expose func draw(canvas: Canvas, screenWidth: Integer, screenHeight: Integer) {
+        var gridColor = RGB(30, 40, 30);
         canvas.Box(offsetX, offsetY, gridWidth * cellSize, gridHeight * cellSize, gridColor);
 
         canvas.Frame(offsetX - 2, offsetY - 2, gridWidth * cellSize + 4, gridHeight * cellSize + 4, colors.WHITE);
@@ -278,10 +284,10 @@ entity SnakeGame {
         food.draw(canvas, cellSize, offsetX, offsetY);
         snake.draw(canvas, cellSize, offsetX, offsetY);
 
-        var scoreStr = "Score: " + Viper.Fmt.Int(score);
+        var scoreStr = "Score: " + Int(score);
         canvas.TextBg(10, 10, scoreStr, colors.WHITE, colors.BLACK);
 
-        var hiStr = "High: " + Viper.Fmt.Int(highScore);
+        var hiStr = "High: " + Int(highScore);
         canvas.TextBg(screenWidth - 100, 10, hiStr, colors.YELLOW, colors.BLACK);
 
         if gameOver {
@@ -296,7 +302,7 @@ entity SnakeGame {
 }
 
 // Run the snake game
-func run(canvas: Viper.Graphics.Canvas) {
+func run(canvas: Canvas) {
     var width = canvas.Width;
     var height = canvas.Height;
 
@@ -352,7 +358,7 @@ func run(canvas: Viper.Graphics.Canvas) {
 
         game.update();
 
-        canvas.Clear(Viper.Graphics.Color.RGB(20, 25, 20));
+        canvas.Clear(RGB(20, 25, 20));
         game.draw(canvas, width, height);
 
         canvas.Flip();

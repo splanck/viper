@@ -6,6 +6,13 @@ bind "./logger";
 bind "./threadpool";
 bind "./router";
 
+bind Viper.Terminal;
+bind Viper.String;
+bind Viper.Network;
+bind Viper.IO;
+bind Viper.Time;
+bind Viper.Fmt;
+
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
@@ -26,7 +33,7 @@ func handleApiStatus(path: String, query: String) -> String {
     body = body + "\"server\": \"Viper Web Server\",";
     body = body + "\"version\": \"" + VERSION + "\",";
     body = body + "\"status\": \"running\",";
-    body = body + "\"workers\": " + Viper.Fmt.Int(cfg_workers);
+    body = body + "\"workers\": " + Fmt.Int(cfg_workers);
     body = body + "}";
 
     return buildResponse(200, "OK", "application/json", body);
@@ -45,21 +52,21 @@ func handleApiEcho(path: String, query: String) -> String {
 
 // Handler for /api/time - returns current server time
 func handleApiTime(path: String, query: String) -> String {
-    var now = Viper.Time.DateTime.Now();
-    var year = Viper.Time.DateTime.Year(now);
-    var month = Viper.Time.DateTime.Month(now);
-    var day = Viper.Time.DateTime.Day(now);
-    var hour = Viper.Time.DateTime.Hour(now);
-    var minute = Viper.Time.DateTime.Minute(now);
-    var second = Viper.Time.DateTime.Second(now);
+    var now = Time.DateTime.Now();
+    var year = Time.DateTime.Year(now);
+    var month = Time.DateTime.Month(now);
+    var day = Time.DateTime.Day(now);
+    var hour = Time.DateTime.Hour(now);
+    var minute = Time.DateTime.Minute(now);
+    var second = Time.DateTime.Second(now);
 
     var body = "{";
-    body = body + "\"year\": " + Viper.Fmt.Int(year) + ",";
-    body = body + "\"month\": " + Viper.Fmt.Int(month) + ",";
-    body = body + "\"day\": " + Viper.Fmt.Int(day) + ",";
-    body = body + "\"hour\": " + Viper.Fmt.Int(hour) + ",";
-    body = body + "\"minute\": " + Viper.Fmt.Int(minute) + ",";
-    body = body + "\"second\": " + Viper.Fmt.Int(second);
+    body = body + "\"year\": " + Fmt.Int(year) + ",";
+    body = body + "\"month\": " + Fmt.Int(month) + ",";
+    body = body + "\"day\": " + Fmt.Int(day) + ",";
+    body = body + "\"hour\": " + Fmt.Int(hour) + ",";
+    body = body + "\"minute\": " + Fmt.Int(minute) + ",";
+    body = body + "\"second\": " + Fmt.Int(second);
     body = body + "}";
 
     return buildResponse(200, "OK", "application/json", body);
@@ -94,13 +101,13 @@ func registerRoutes() {
 // Returns true if parsing succeeded
 func parseRequestLine(line: String, method: String, path: String, version: String) -> Boolean {
     // Find first space (after method)
-    var len = Viper.String.Length(line);
+    var len = String.Length(line);
     var i = 0;
     var firstSpace = -1;
     var secondSpace = -1;
 
     while i < len {
-        var ch = Viper.String.Substring(line, i, 1);
+        var ch = String.Substring(line, i, 1);
         if ch == " " {
             if firstSpace == -1 {
                 firstSpace = i;
@@ -117,11 +124,11 @@ func parseRequestLine(line: String, method: String, path: String, version: Strin
     }
 
     // Extract parts
-    method = Viper.String.Substring(line, 0, firstSpace);
+    method = String.Substring(line, 0, firstSpace);
     var pathLen = secondSpace - firstSpace - 1;
-    path = Viper.String.Substring(line, firstSpace + 1, pathLen);
+    path = String.Substring(line, firstSpace + 1, pathLen);
     var versionLen = len - secondSpace - 1;
-    version = Viper.String.Substring(line, secondSpace + 1, versionLen);
+    version = String.Substring(line, secondSpace + 1, versionLen);
 
     return true;
 }
@@ -134,10 +141,10 @@ func parseRequestLine(line: String, method: String, path: String, version: Strin
 
 // Find the end of the first line (request line)
 func findLineEnd(rawRequest: String) -> Integer {
-    var len = Viper.String.Length(rawRequest);
+    var len = String.Length(rawRequest);
     var i = 0;
     while i < len {
-        var ch = Viper.String.Substring(rawRequest, i, 1);
+        var ch = String.Substring(rawRequest, i, 1);
         if ch == "\r" || ch == "\n" {
             return i;
         }
@@ -157,10 +164,10 @@ func extractMethod(rawRequest: String) -> String {
     // Find first space
     var i = 0;
     while i < lineEnd {
-        var ch = Viper.String.Substring(rawRequest, i, 1);
+        var ch = String.Substring(rawRequest, i, 1);
         if ch == " " {
             if i > 0 {
-                return Viper.String.Substring(rawRequest, 0, i);
+                return String.Substring(rawRequest, 0, i);
             }
             return "";
         }
@@ -182,7 +189,7 @@ func extractRequestPath(rawRequest: String) -> String {
     var firstSpace = -1;
     var i = 0;
     while i < lineEnd {
-        var ch = Viper.String.Substring(rawRequest, i, 1);
+        var ch = String.Substring(rawRequest, i, 1);
         if ch == " " {
             firstSpace = i;
             break;
@@ -198,7 +205,7 @@ func extractRequestPath(rawRequest: String) -> String {
     var secondSpace = lineEnd;
     i = firstSpace + 1;
     while i < lineEnd {
-        var ch = Viper.String.Substring(rawRequest, i, 1);
+        var ch = String.Substring(rawRequest, i, 1);
         if ch == " " {
             secondSpace = i;
             break;
@@ -211,7 +218,7 @@ func extractRequestPath(rawRequest: String) -> String {
         return "";
     }
 
-    return Viper.String.Substring(rawRequest, firstSpace + 1, pathLen);
+    return String.Substring(rawRequest, firstSpace + 1, pathLen);
 }
 
 // Validate that a raw request is parseable
@@ -228,10 +235,10 @@ func isValidRequest(rawRequest: String) -> Boolean {
 // Build response with optional Last-Modified header and optional body inclusion
 func buildResponseFull(statusCode: Integer, statusText: String, contentType: String,
                        body: String, lastModified: Integer, includeBody: Boolean) -> String {
-    var bodyLen = Viper.String.Length(body);
+    var bodyLen = String.Length(body);
 
     var response = "HTTP/1.1 ";
-    response = response + Viper.Fmt.Int(statusCode);
+    response = response + Fmt.Int(statusCode);
     response = response + " ";
     response = response + statusText;
     response = response + "\r\n";
@@ -239,7 +246,7 @@ func buildResponseFull(statusCode: Integer, statusText: String, contentType: Str
     response = response + contentType;
     response = response + "\r\n";
     response = response + "Content-Length: ";
-    response = response + Viper.Fmt.Int(bodyLen);
+    response = response + Fmt.Int(bodyLen);
     response = response + "\r\n";
 
     // Add Last-Modified header if provided
@@ -272,7 +279,7 @@ func buildResponse(statusCode: Integer, statusText: String, contentType: String,
 func formatHttpDate(timestamp: Integer) -> String {
     // For now, return Unix timestamp as string
     // Full date formatting would require day-of-week calculation
-    return Viper.Fmt.Int(timestamp);
+    return Fmt.Int(timestamp);
 }
 
 func response200(contentType: String, body: String) -> String {
@@ -312,13 +319,13 @@ func response400() -> String {
 // ============================================================================
 
 func getMimeType(path: String) -> String {
-    var len = Viper.String.Length(path);
+    var len = String.Length(path);
 
     // Find last dot
     var dotPos = -1;
     var i = len - 1;
     while i >= 0 {
-        var ch = Viper.String.Substring(path, i, 1);
+        var ch = String.Substring(path, i, 1);
         if ch == "." {
             dotPos = i;
             break;
@@ -331,7 +338,7 @@ func getMimeType(path: String) -> String {
     }
 
     var extLen = len - dotPos;
-    var ext = Viper.String.Substring(path, dotPos, extLen);
+    var ext = String.Substring(path, dotPos, extLen);
 
     // Check extensions
     if ext == ".html" || ext == ".htm" {
@@ -378,12 +385,12 @@ func getMimeType(path: String) -> String {
 // Check if path is safe (no directory traversal)
 func isPathSafe(path: String) -> Boolean {
     // Check for ".." sequences
-    var len = Viper.String.Length(path);
+    var len = String.Length(path);
     var i = 0;
 
     while i < len - 1 {
-        var ch1 = Viper.String.Substring(path, i, 1);
-        var ch2 = Viper.String.Substring(path, i + 1, 1);
+        var ch1 = String.Substring(path, i, 1);
+        var ch2 = String.Substring(path, i + 1, 1);
         if ch1 == "." && ch2 == "." {
             return false;
         }
@@ -393,7 +400,7 @@ func isPathSafe(path: String) -> Boolean {
     // Check for null bytes
     i = 0;
     while i < len {
-        var ch = Viper.String.Substring(path, i, 1);
+        var ch = String.Substring(path, i, 1);
         if ch == "\0" {
             return false;
         }
@@ -411,12 +418,12 @@ func normalizePath(path: String) -> String {
     }
 
     // Remove query string if present
-    var len = Viper.String.Length(path);
+    var len = String.Length(path);
     var i = 0;
     while i < len {
-        var ch = Viper.String.Substring(path, i, 1);
+        var ch = String.Substring(path, i, 1);
         if ch == "?" {
-            return Viper.String.Substring(path, 0, i);
+            return String.Substring(path, 0, i);
         }
         i = i + 1;
     }
@@ -433,11 +440,11 @@ func normalizePath(path: String) -> String {
 // the runtime-created string to a local variable.
 
 func fileExists(fullPath: String) -> Boolean {
-    return Viper.IO.File.Exists(fullPath);
+    return IO.File.Exists(fullPath);
 }
 
 func readFileContent(fullPath: String) -> String {
-    return Viper.IO.File.ReadAllText(fullPath);
+    return IO.File.ReadAllText(fullPath);
 }
 
 func getFileMimeType(fullPath: String) -> String {
@@ -445,11 +452,11 @@ func getFileMimeType(fullPath: String) -> String {
 }
 
 func buildFullPath(relativePath: String) -> String {
-    return Viper.IO.Path.Join(webRoot, relativePath);
+    return IO.Path.Join(webRoot, relativePath);
 }
 
 func getFileModTime(fullPath: String) -> Integer {
-    return Viper.IO.File.Modified(fullPath);
+    return IO.File.Modified(fullPath);
 }
 
 // Serve static file with support for HEAD requests
@@ -463,11 +470,11 @@ func serveStaticFile(path: String, isHead: Boolean) -> String {
 
     // Build relative path (remove leading /)
     var relativePath = normalizedPath;
-    var pathLen = Viper.String.Length(normalizedPath);
+    var pathLen = String.Length(normalizedPath);
     if pathLen > 0 {
-        var firstChar = Viper.String.Substring(normalizedPath, 0, 1);
+        var firstChar = String.Substring(normalizedPath, 0, 1);
         if firstChar == "/" {
-            relativePath = Viper.String.Substring(normalizedPath, 1, pathLen - 1);
+            relativePath = String.Substring(normalizedPath, 1, pathLen - 1);
         }
     }
 
@@ -494,18 +501,18 @@ func serveStaticFile(path: String, isHead: Boolean) -> String {
 // Response starts with "HTTP/1.1 XXX StatusText\r\n..."
 func extractStatusCode(response: String) -> Integer {
     // Find the first space (after HTTP/1.1)
-    var len = Viper.String.Length(response);
+    var len = String.Length(response);
     if len < 12 {
         return 0;
     }
 
     // Status code starts at position 9 (after "HTTP/1.1 ")
-    var codeStr = Viper.String.Substring(response, 9, 3);
+    var codeStr = String.Substring(response, 9, 3);
 
     // Parse the 3-digit code manually
-    var c1 = Viper.String.Substring(codeStr, 0, 1);
-    var c2 = Viper.String.Substring(codeStr, 1, 1);
-    var c3 = Viper.String.Substring(codeStr, 2, 1);
+    var c1 = String.Substring(codeStr, 0, 1);
+    var c2 = String.Substring(codeStr, 1, 1);
+    var c3 = String.Substring(codeStr, 2, 1);
 
     var d1 = charToDigit(c1);
     var d2 = charToDigit(c2);
@@ -520,19 +527,19 @@ func extractStatusCode(response: String) -> Integer {
 
 func handleClient(client: Ptr) {
     var startTime = log_startTimer();
-    var clientHost = Viper.Network.Tcp.get_Host(client);
+    var clientHost = Network.Tcp.get_Host(client);
     var statusCode = 200;
     var responseSize = 0;
 
     // Set a timeout for receiving
-    Viper.Network.Tcp.SetRecvTimeout(client, 5000);
+    Network.Tcp.SetRecvTimeout(client, 5000);
 
     // Read request (up to MAX_REQUEST_SIZE bytes)
-    var rawRequest = Viper.Network.Tcp.RecvStr(client, MAX_REQUEST_SIZE);
+    var rawRequest = Network.Tcp.RecvStr(client, MAX_REQUEST_SIZE);
 
-    var requestLen = Viper.String.Length(rawRequest);
+    var requestLen = String.Length(rawRequest);
     if requestLen == 0 {
-        Viper.Network.Tcp.Close(client);
+        Network.Tcp.Close(client);
         return;
     }
 
@@ -543,9 +550,9 @@ func handleClient(client: Ptr) {
     if reqMethod == "" || reqPath == "" {
         statusCode = 400;
         var response = response400();
-        responseSize = Viper.String.Length(response);
-        Viper.Network.Tcp.SendStr(client, response);
-        Viper.Network.Tcp.Close(client);
+        responseSize = String.Length(response);
+        Network.Tcp.SendStr(client, response);
+        Network.Tcp.Close(client);
         log_request(clientHost, "???", "???", statusCode, responseSize, log_elapsed(startTime));
         return;
     }
@@ -554,9 +561,9 @@ func handleClient(client: Ptr) {
     if reqMethod != "GET" && reqMethod != "HEAD" {
         statusCode = 405;
         var response = buildResponse(405, "Method Not Allowed", "text/plain", "Method not allowed");
-        responseSize = Viper.String.Length(response);
-        Viper.Network.Tcp.SendStr(client, response);
-        Viper.Network.Tcp.Close(client);
+        responseSize = String.Length(response);
+        Network.Tcp.SendStr(client, response);
+        Network.Tcp.Close(client);
         log_request(clientHost, reqMethod, reqPath, statusCode, responseSize, log_elapsed(startTime));
         return;
     }
@@ -576,13 +583,13 @@ func handleClient(client: Ptr) {
         // Fall back to static file serving
         response = serveStaticFile(reqPath, isHead);
     }
-    responseSize = Viper.String.Length(response);
+    responseSize = String.Length(response);
 
     // Extract status code from response (first line: "HTTP/1.1 XXX ...")
     statusCode = extractStatusCode(response);
 
-    Viper.Network.Tcp.SendStr(client, response);
-    Viper.Network.Tcp.Close(client);
+    Network.Tcp.SendStr(client, response);
+    Network.Tcp.Close(client);
 
     log_request(clientHost, reqMethod, reqPath, statusCode, responseSize, log_elapsed(startTime));
 }
@@ -593,23 +600,23 @@ func handleClient(client: Ptr) {
 
 func main() {
     // Load configuration from file (or use defaults)
-    var configPath = Viper.IO.Path.Join(Viper.IO.Dir.Current(), CFG_FILENAME);
+    var configPath = IO.Path.Join(IO.Dir.Current(), CFG_FILENAME);
     var configLoaded = config_load(configPath);
 
     // Initialize logger with configured level
     log_init(cfg_log_level);
 
     // Set web root (resolve relative paths)
-    if Viper.String.Substring(cfg_webroot, 0, 1) == "/" {
+    if String.Substring(cfg_webroot, 0, 1) == "/" {
         webRoot = cfg_webroot;
     } else {
-        webRoot = Viper.IO.Path.Join(Viper.IO.Dir.Current(), cfg_webroot);
+        webRoot = IO.Path.Join(IO.Dir.Current(), cfg_webroot);
     }
 
     // Startup banner (always shown)
-    Viper.Terminal.Say("========================================");
-    Viper.Terminal.Say("  Viper Web Server v" + VERSION);
-    Viper.Terminal.Say("========================================");
+    Terminal.Say("========================================");
+    Terminal.Say("  Viper Web Server v" + VERSION);
+    Terminal.Say("========================================");
 
     if configLoaded {
         log_info("Configuration loaded from " + configPath);
@@ -617,30 +624,30 @@ func main() {
         log_info("Using default configuration (no " + CFG_FILENAME + " found)");
     }
 
-    log_info("Port: " + Viper.Fmt.Int(cfg_port));
+    log_info("Port: " + Fmt.Int(cfg_port));
     log_info("Web root: " + webRoot);
-    log_info("Workers: " + Viper.Fmt.Int(cfg_workers));
+    log_info("Workers: " + Fmt.Int(cfg_workers));
 
     // Initialize router and register API routes
     registerRoutes();
-    log_info("Routes registered: " + Viper.Fmt.Int(router_getCount()) + " API endpoints");
+    log_info("Routes registered: " + Fmt.Int(router_getCount()) + " API endpoints");
 
     // Initialize thread pool with configured worker count
     pool_init(&handleClient, cfg_workers);
     log_info("Thread pool initialized");
 
     // Create server on configured port
-    var server = Viper.Network.TcpServer.Listen(cfg_port);
+    var server = Network.TcpServer.Listen(cfg_port);
 
-    log_info("Server listening on http://localhost:" + Viper.Fmt.Int(cfg_port) + "/");
-    Viper.Terminal.Say("Press Ctrl+C to stop.");
-    Viper.Terminal.Say("");
+    log_info("Server listening on http://localhost:" + Fmt.Int(cfg_port) + "/");
+    Terminal.Say("Press Ctrl+C to stop.");
+    Terminal.Say("");
 
     // Accept connections and dispatch to thread pool
     var running = 1;
     while running == 1 {
         // Accept a client connection
-        var client = Viper.Network.TcpServer.Accept(server);
+        var client = Network.TcpServer.Accept(server);
 
         // Submit to thread pool for handling
         pool_submit(client);
@@ -650,6 +657,6 @@ func main() {
     log_info("Shutting down...");
     pool_shutdown();
 
-    Viper.Network.TcpServer.Close(server);
+    Network.TcpServer.Close(server);
     log_info("Server stopped");
 }

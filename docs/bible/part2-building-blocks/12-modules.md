@@ -147,12 +147,13 @@ To use code from another module, you bind it:
 module Main;
 
 bind MathUtils;
+bind Viper.Terminal;
 
 func start() {
     var x = 5.0;
-    Viper.Terminal.Say("Square: " + MathUtils.square(x));
-    Viper.Terminal.Say("Cube: " + MathUtils.cube(x));
-    Viper.Terminal.Say("Pi: " + MathUtils.PI);
+    Say("Square: " + MathUtils.square(x));
+    Say("Cube: " + MathUtils.cube(x));
+    Say("Pi: " + MathUtils.PI);
 }
 ```
 
@@ -185,10 +186,11 @@ If you only need certain items, bind them directly:
 
 ```rust
 bind MathUtils { square, PI };
+bind Viper.Terminal;
 
 func start() {
-    Viper.Terminal.Say(square(5.0));  // No prefix needed
-    Viper.Terminal.Say(PI);
+    Say(square(5.0));  // No prefix needed
+    Say(PI);
 }
 ```
 
@@ -200,10 +202,11 @@ Sometimes you want to rename a binding. Maybe the name is too long, or maybe it 
 
 ```rust
 bind MathUtils { square as sq, PI as pi };
+bind Viper.Terminal;
 
 func start() {
-    Viper.Terminal.Say(sq(5.0));
-    Viper.Terminal.Say(pi);
+    Say(sq(5.0));
+    Say(pi);
 }
 ```
 
@@ -211,10 +214,11 @@ You can also alias the entire module:
 
 ```rust
 bind MathUtils as M;
+bind Viper.Terminal;
 
 func start() {
-    Viper.Terminal.Say(M.square(5.0));
-    Viper.Terminal.Say(M.PI);
+    Say(M.square(5.0));
+    Say(M.PI);
 }
 ```
 
@@ -244,7 +248,7 @@ Real-world example:
 ```rust
 // Good: Full bind when using many functions
 bind Viper.Math;
-var x = Viper.Math.sqrt(a) + Viper.Math.sin(b) + Viper.Math.cos(c);
+var x = sqrt(a) + sin(b) + cos(c);
 
 // Good: Specific bind for frequently used items
 bind Viper.Terminal { Say, ReadLine };
@@ -292,11 +296,12 @@ The `count` variable and `reset` function are internal implementation details. O
 ```rust
 // file: main.zia
 bind Counter;
+bind Viper.Terminal;
 
 func start() {
     Counter.increment();
     Counter.increment();
-    Viper.Terminal.Say(Counter.get());  // 2
+    Say(Counter.get());  // 2
 
     // Counter.count = 100;  // Error: count is private
     // Counter.reset();      // Error: reset is private
@@ -455,21 +460,40 @@ Choose the structure that makes sense for your project. The goal is that anyone 
 
 ## The Standard Library
 
-Viper comes with a rich standard library organized into modules:
+Viper comes with a rich standard library organized into namespaces:
 
 ```rust
-bind Viper.Terminal;   // Terminal I/O
-bind Viper.File;       // File operations
+bind Viper.Terminal;   // Terminal I/O (Say, Print, ReadLine, etc.)
+bind Viper.IO;         // File operations
 bind Viper.Math;       // Mathematical functions
-bind Viper.Parse;      // String parsing
 bind Viper.Fmt;        // Formatting
 bind Viper.Time;       // Date and time
 bind Viper.Random;     // Random numbers
+bind Viper.Graphics;   // 2D graphics (Canvas, Sprite, etc.)
 ```
 
-You've been using `Viper.Terminal.Say()` all along — that's accessing the `Say` function from the `Viper.Terminal` module.
+When you bind a Viper namespace, its functions become available without the full prefix:
 
-The standard library is pre-bound for convenience, so you don't need explicit bind statements for common modules. But understanding that they're modules helps you know where to look for functionality. Need to work with time? Check `Viper.Time`. Need to format numbers? Check `Viper.Fmt`.
+```rust
+bind Viper.Terminal;
+bind Viper.Random;
+
+func start() {
+    Say("Guess a number!");           // No Viper.Terminal. prefix needed
+    var secret = NextInt(100) + 1;    // No Viper.Random. prefix needed
+}
+```
+
+Without `bind`, you'd write `Viper.Terminal.Say("...")` and `Viper.Random.NextInt(100)`. Both work, but `bind` makes code cleaner.
+
+You can also bind with aliases or selectively import specific items:
+
+```rust
+bind Viper.Terminal as T;              // Alias: T.Say("Hello")
+bind Viper.Math { Sqrt, Sin, Cos };    // Selective: Sqrt(x) works, Tan(x) doesn't
+```
+
+Understanding that these are namespaces helps you know where to look for functionality. Need to work with time? Check `Viper.Time`. Need to format numbers? Check `Viper.Fmt`.
 
 ---
 
@@ -716,9 +740,10 @@ export func scale(v: Vec2, factor: Number) -> Vec2 {
 }
 
 export func distance(a: Vec2, b: Vec2) -> Number {
+    bind Viper.Math;
     var dx = b.x - a.x;
     var dy = b.y - a.y;
-    return Viper.Math.sqrt(dx * dx + dy * dy);
+    return sqrt(dx * dx + dy * dy);
 }
 
 export func zero() -> Vec2 {
@@ -726,7 +751,8 @@ export func zero() -> Vec2 {
 }
 
 export func magnitude(v: Vec2) -> Number {
-    return Viper.Math.sqrt(v.x * v.x + v.y * v.y);
+    bind Viper.Math;
+    return sqrt(v.x * v.x + v.y * v.y);
 }
 
 export func normalize(v: Vec2) -> Vec2 {
@@ -855,42 +881,43 @@ module Main;
 bind Vec2;
 bind Player;
 bind Enemy;
+bind Viper.Terminal;
 
 func start() {
-    Viper.Terminal.Say("=== Modular Game Demo ===");
-    Viper.Terminal.Say("");
+    Say("=== Modular Game Demo ===");
+    Say("");
 
     var player = Player.create("Hero");
     var enemy = Enemy.create(5.0, 3.0, 10);
 
-    Viper.Terminal.Say("Player: " + player.name);
-    Viper.Terminal.Say("Health: " + player.health + "/" + player.maxHealth);
-    Viper.Terminal.Say("Position: (" + player.position.x + ", " + player.position.y + ")");
-    Viper.Terminal.Say("");
+    Say("Player: " + player.name);
+    Say("Health: " + player.health + "/" + player.maxHealth);
+    Say("Position: (" + player.position.x + ", " + player.position.y + ")");
+    Say("");
 
     // Move player
     var direction = Vec2.create(1.0, 0.5);
     player = Player.move(player, direction);
-    Viper.Terminal.Say("Player moved to: (" + player.position.x + ", " + player.position.y + ")");
+    Say("Player moved to: (" + player.position.x + ", " + player.position.y + ")");
 
     // Enemy chases player
     enemy = Enemy.moveToward(enemy, player.position);
-    Viper.Terminal.Say("Enemy moved to: (" + enemy.position.x + ", " + enemy.position.y + ")");
+    Say("Enemy moved to: (" + enemy.position.x + ", " + enemy.position.y + ")");
 
     // Check combat
     var dist = Vec2.distance(player.position, enemy.position);
-    Viper.Terminal.Say("Distance to enemy: " + dist);
+    Say("Distance to enemy: " + dist);
 
     if dist < 5.0 {
         player = Player.takeDamage(player, enemy.damage);
-        Viper.Terminal.Say("Hit! Health: " + player.health);
+        Say("Hit! Health: " + player.health);
     }
 
     if Player.isAlive(player) {
         player = Player.addScore(player, 100);
-        Viper.Terminal.Say("Player survives! Score: " + player.score);
+        Say("Player survives! Score: " + player.score);
     } else {
-        Viper.Terminal.Say("Game Over!");
+        Say("Game Over!");
     }
 }
 ```
@@ -930,10 +957,12 @@ Users bind `string_utils` and get a clean, organized API:
 ```rust
 bind string_utils;
 
+bind Viper.Terminal;
+
 var email = "test@example.com";
 if string_utils.validation.isEmail(email) {
     var domain = string_utils.parsing.extractDomain(email);
-    Viper.Terminal.Say("Domain: " + domain);
+    Say("Domain: " + domain);
 }
 ```
 

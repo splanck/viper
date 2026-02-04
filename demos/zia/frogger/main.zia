@@ -1,5 +1,11 @@
 module Main;
 
+// Namespace bindings for cleaner code
+bind Viper.String;
+bind Viper.Terminal;
+bind Viper.Fmt;
+bind Viper.Time;
+
 // Frogger - Classic Arcade Game
 
 // ============================================
@@ -242,46 +248,46 @@ entity Home {
 var ESC: String;
 
 func initRenderer() {
-    ESC = Viper.String.Chr(27);
+    ESC = Chr(27);
 }
 
 func clear() {
-    Viper.Terminal.Print(Viper.String.Concat(ESC, "[2J"));
-    Viper.Terminal.Print(Viper.String.Concat(ESC, "[H"));
+    Print(Concat(ESC, "[2J"));
+    Print(Concat(ESC, "[H"));
 }
 
 func moveTo(r: Integer, c: Integer) {
-    var seq = Viper.String.Concat(ESC, "[");
-    seq = Viper.String.Concat(seq, Viper.Fmt.Int(r));
-    seq = Viper.String.Concat(seq, ";");
-    seq = Viper.String.Concat(seq, Viper.Fmt.Int(c));
-    seq = Viper.String.Concat(seq, "H");
-    Viper.Terminal.Print(seq);
+    var seq = Concat(ESC, "[");
+    seq = Concat(seq, Int(r));
+    seq = Concat(seq, ";");
+    seq = Concat(seq, Int(c));
+    seq = Concat(seq, "H");
+    Print(seq);
 }
 
 func setColor(fg: Integer) {
-    var seq = Viper.String.Concat(ESC, "[");
-    seq = Viper.String.Concat(seq, Viper.Fmt.Int(30 + fg));
-    seq = Viper.String.Concat(seq, "m");
-    Viper.Terminal.Print(seq);
+    var seq = Concat(ESC, "[");
+    seq = Concat(seq, Int(30 + fg));
+    seq = Concat(seq, "m");
+    Print(seq);
 }
 
 func resetColor() {
-    Viper.Terminal.Print(Viper.String.Concat(ESC, "[0m"));
+    Print(Concat(ESC, "[0m"));
 }
 
 func hideCursor() {
-    Viper.Terminal.Print(Viper.String.Concat(ESC, "[?25l"));
+    Print(Concat(ESC, "[?25l"));
 }
 
 func showCursor() {
-    Viper.Terminal.Print(Viper.String.Concat(ESC, "[?25h"));
+    Print(Concat(ESC, "[?25h"));
 }
 
 func drawAt(r: Integer, c: Integer, color: Integer, text: String) {
     moveTo(r, c);
     setColor(color);
-    Viper.Terminal.Print(text);
+    Print(text);
     resetColor();
 }
 
@@ -567,10 +573,10 @@ func update() {
 func drawGame() {
     // Header
     drawAt(1, 2, 7, "Lives:");
-    drawAt(1, 8, 2, Viper.Fmt.Int(frog.lives));
+    drawAt(1, 8, 2, Int(frog.lives));
     drawAt(1, 25, 6, "*** FROGGER ***");
     drawAt(1, 50, 3, "Score:");
-    drawAt(1, 57, 7, Viper.Fmt.Int(frog.score));
+    drawAt(1, 57, 7, Int(frog.score));
 
     // Home row
     drawLine(HOME_ROW, 1, GAME_WIDTH, 4, "~");
@@ -669,8 +675,8 @@ func drawGame() {
 // INPUT
 // ============================================
 func handleInput() {
-    var key = Viper.Terminal.InKey();
-    var keyLen = Viper.String.Length(key);
+    var key = InKey();
+    var keyLen = Length(key);
 
     if keyLen > 0 {
         if key == "w" {
@@ -716,7 +722,7 @@ func handleInput() {
 // MAIN
 // ============================================
 func start() {
-    Viper.Terminal.Say("Starting Frogger...");
+    Say("Starting Frogger...");
 
     initGame();
 
@@ -737,12 +743,12 @@ func start() {
 
     // Game over screen
     if game.homesFilled >= 5 {
-        Viper.Terminal.Say("*** CONGRATULATIONS! YOU WIN! ***");
+        Say("*** CONGRATULATIONS! YOU WIN! ***");
     } else {
-        Viper.Terminal.Say("*** GAME OVER ***");
+        Say("*** GAME OVER ***");
     }
-    Viper.Terminal.Say(Viper.String.Concat("Final Score: ", Viper.Fmt.Int(frog.score)));
-    Viper.Terminal.Say(Viper.String.Concat("Homes Filled: ", Viper.Fmt.Int(game.homesFilled)));
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("Thanks for playing Frogger!");
+    Say(Concat("Final Score: ", Int(frog.score)));
+    Say(Concat("Homes Filled: ", Int(game.homesFilled)));
+    Say("");
+    Say("Thanks for playing Frogger!");
 }

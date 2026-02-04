@@ -1,6 +1,9 @@
 // scoreboard.viper - Score display and high score tracking for Ladders game
 module scoreboard;
 
+bind Viper.Graphics;
+bind Viper.Fmt;
+
 bind "./config";
 bind "./colors";
 
@@ -149,15 +152,15 @@ func addHighScore(name: String, score: Integer, level: Integer) {
 }
 
 // Draw the in-game HUD
-func drawHUD(canvas: Viper.Graphics.Canvas) {
+func drawHUD(canvas: Canvas) {
     // Score
-    canvas.Text(10, 10, "SCORE: " + Viper.Fmt.Int(currentScore), colors.UI_SCORE_COLOR);
+    canvas.Text(10, 10, "SCORE: " + Int(currentScore), colors.UI_SCORE_COLOR);
 
     // High score
-    canvas.Text(config.SCREEN_WIDTH / 2 - 50, 10, "HIGH: " + Viper.Fmt.Int(highScore), colors.GOLD);
+    canvas.Text(config.SCREEN_WIDTH / 2 - 50, 10, "HIGH: " + Int(highScore), colors.GOLD);
 
     // Level
-    canvas.Text(config.SCREEN_WIDTH - 100, 10, "LVL: " + Viper.Fmt.Int(currentLevel), colors.UI_TEXT_COLOR);
+    canvas.Text(config.SCREEN_WIDTH - 100, 10, "LVL: " + Int(currentLevel), colors.UI_TEXT_COLOR);
 
     // Lives (draw hearts or icons)
     var lifeX = 10;
@@ -174,14 +177,14 @@ func drawHUD(canvas: Viper.Graphics.Canvas) {
 
     // Collectibles remaining
     if collectiblesRemaining > 0 {
-        canvas.Text(config.SCREEN_WIDTH - 150, 30, "ITEMS: " + Viper.Fmt.Int(collectiblesRemaining), colors.COLLECTIBLE_COLOR);
+        canvas.Text(config.SCREEN_WIDTH - 150, 30, "ITEMS: " + Int(collectiblesRemaining), colors.COLLECTIBLE_COLOR);
     } else {
         canvas.Text(config.SCREEN_WIDTH - 150, 30, "EXIT OPEN!", colors.GREEN);
     }
 }
 
 // Draw the high scores screen
-func drawHighScores(canvas: Viper.Graphics.Canvas) {
+func drawHighScores(canvas: Canvas) {
     // Background
     canvas.Box(0, 0, config.SCREEN_WIDTH, config.SCREEN_HEIGHT, colors.MENU_BG_COLOR);
 
@@ -215,10 +218,10 @@ func drawHighScores(canvas: Viper.Graphics.Canvas) {
             rankColor = colors.BROWN;
         }
 
-        canvas.Text(110, entryY, Viper.Fmt.Int(rank), rankColor);
+        canvas.Text(110, entryY, Int(rank), rankColor);
         canvas.Text(180, entryY, entry.name, colors.WHITE);
-        canvas.Text(280, entryY, Viper.Fmt.Int(entry.score), colors.UI_SCORE_COLOR);
-        canvas.Text(410, entryY, Viper.Fmt.Int(entry.level), colors.UI_TEXT_COLOR);
+        canvas.Text(280, entryY, Int(entry.score), colors.UI_SCORE_COLOR);
+        canvas.Text(410, entryY, Int(entry.level), colors.UI_TEXT_COLOR);
 
         entryY = entryY + 40;
         rank = rank + 1;

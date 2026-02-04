@@ -2,6 +2,13 @@
 // Provides file system navigation and basic commands
 module main;
 
+bind Viper.Terminal;
+bind Viper.Network;
+bind Viper.String;
+bind Viper.IO;
+bind Viper.Time;
+bind Viper.Fmt;
+
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
@@ -18,7 +25,7 @@ var currentDir: String;
 var username: String;
 
 func initSession() {
-    currentDir = Viper.IO.Dir.Current();
+    currentDir = IO.Dir.Current();
     username = "guest";
 }
 
@@ -111,10 +118,10 @@ func splitCommand(cmd: String) -> List[String] {
     var result: List[String] = [];
     var current = "";
     var i = 0;
-    var len = Viper.String.Length(cmd);
+    var len = String.Length(cmd);
 
     while i < len {
-        var ch = Viper.String.Substring(cmd, i, 1);
+        var ch = String.Substring(cmd, i, 1);
         if ch == " " {
             if current != "" {
                 result.add(current);
@@ -161,16 +168,16 @@ func cdCommand(path: String) -> String {
     var newPath = path;
 
     // Handle relative paths
-    var pathLen = Viper.String.Length(path);
+    var pathLen = String.Length(path);
     if pathLen > 0 {
-        var firstChar = Viper.String.Substring(path, 0, 1);
+        var firstChar = String.Substring(path, 0, 1);
         if firstChar != "/" {
-            newPath = Viper.IO.Path.Join(currentDir, path);
+            newPath = IO.Path.Join(currentDir, path);
         }
     }
 
     // Check if directory exists
-    if Viper.IO.Dir.Exists(newPath) == false {
+    if IO.Dir.Exists(newPath) == false {
         return "cd: " + path + ": No such directory\n";
     }
 
@@ -183,15 +190,15 @@ func lsCommand(path: String) -> String {
     var targetPath = path;
 
     // Handle relative paths
-    var pathLen = Viper.String.Length(path);
+    var pathLen = String.Length(path);
     if pathLen > 0 {
-        var firstChar = Viper.String.Substring(path, 0, 1);
+        var firstChar = String.Substring(path, 0, 1);
         if firstChar != "/" {
-            targetPath = Viper.IO.Path.Join(currentDir, path);
+            targetPath = IO.Path.Join(currentDir, path);
         }
     }
 
-    if Viper.IO.Dir.Exists(targetPath) == false {
+    if IO.Dir.Exists(targetPath) == false {
         return "ls: " + path + ": No such directory\n";
     }
 
@@ -204,35 +211,35 @@ func catCommand(filename: String) -> String {
     var filepath = filename;
 
     // Handle relative paths
-    var fnLen = Viper.String.Length(filename);
+    var fnLen = String.Length(filename);
     if fnLen > 0 {
-        var firstChar = Viper.String.Substring(filename, 0, 1);
+        var firstChar = String.Substring(filename, 0, 1);
         if firstChar != "/" {
-            filepath = Viper.IO.Path.Join(currentDir, filename);
+            filepath = IO.Path.Join(currentDir, filename);
         }
     }
 
-    if Viper.IO.File.Exists(filepath) == false {
+    if IO.File.Exists(filepath) == false {
         return "cat: " + filename + ": No such file\n";
     }
 
-    var content = Viper.IO.File.ReadAllText(filepath);
+    var content = IO.File.ReadAllText(filepath);
     return content + "\n";
 }
 
 // DATE command
 func dateCommand() -> String {
-    var now = Viper.Time.DateTime.Now();
-    return Viper.Fmt.Int(now) + " (unix timestamp)\n";
+    var now = Time.DateTime.Now();
+    return Fmt.Int(now) + " (unix timestamp)\n";
 }
 
 // ECHO command
 func echoCommand(cmd: String) -> String {
     // Remove "echo " prefix
-    var len = Viper.String.Length(cmd);
+    var len = String.Length(cmd);
     if len > 5 {
         var sublen = len - 5;
-        return Viper.String.Substring(cmd, 5, sublen) + "\n";
+        return String.Substring(cmd, 5, sublen) + "\n";
     }
     return "\n";
 }
@@ -246,46 +253,46 @@ func handleClient(client: Ptr) {
     initSession();
 
     // Send welcome banner
-    Viper.Network.Tcp.SendStr(client, "\n");
-    Viper.Network.Tcp.SendStr(client, "=================================\n");
-    Viper.Network.Tcp.SendStr(client, "  Viper Telnet Server v" + VERSION + "\n");
-    Viper.Network.Tcp.SendStr(client, "=================================\n");
-    Viper.Network.Tcp.SendStr(client, "Type 'help' for available commands.\n");
-    Viper.Network.Tcp.SendStr(client, "\n");
+    Network.Tcp.SendStr(client, "\n");
+    Network.Tcp.SendStr(client, "=================================\n");
+    Network.Tcp.SendStr(client, "  Viper Telnet Server v" + VERSION + "\n");
+    Network.Tcp.SendStr(client, "=================================\n");
+    Network.Tcp.SendStr(client, "Type 'help' for available commands.\n");
+    Network.Tcp.SendStr(client, "\n");
 
     // Send initial prompt
-    Viper.Network.Tcp.SendStr(client, currentDir + " $ ");
+    Network.Tcp.SendStr(client, currentDir + " $ ");
 
     var connected = 1;
 
     while connected == 1 {
         // Check if connection is still open
-        if Viper.Network.Tcp.get_IsOpen(client) == false {
+        if Network.Tcp.get_IsOpen(client) == false {
             connected = 0;
             break;
         }
 
         // Read a line from client
-        var line = Viper.Network.Tcp.RecvLine(client);
+        var line = Network.Tcp.RecvLine(client);
 
         // Execute the command
         var result = executeCommand(line);
 
         if result == "EXIT" {
-            Viper.Network.Tcp.SendStr(client, "Goodbye!\n");
+            Network.Tcp.SendStr(client, "Goodbye!\n");
             connected = 0;
             break;
         }
 
         if result != "" {
-            Viper.Network.Tcp.SendStr(client, result);
+            Network.Tcp.SendStr(client, result);
         }
 
         // Send prompt
-        Viper.Network.Tcp.SendStr(client, currentDir + " $ ");
+        Network.Tcp.SendStr(client, currentDir + " $ ");
     }
 
-    Viper.Network.Tcp.Close(client);
+    Network.Tcp.Close(client);
 }
 
 // ============================================================================
@@ -295,38 +302,38 @@ func handleClient(client: Ptr) {
 func main() {
     var port = DEFAULT_PORT;
 
-    Viper.Terminal.Print("Starting Viper Telnet Server on port ");
-    Viper.Terminal.PrintInt(port);
-    Viper.Terminal.Say("...");
+    Terminal.Print("Starting Viper Telnet Server on port ");
+    Terminal.PrintInt(port);
+    Terminal.Say("...");
 
     // Create server
-    var server = Viper.Network.TcpServer.Listen(port);
+    var server = Network.TcpServer.Listen(port);
 
-    Viper.Terminal.Say("Server listening. Waiting for connections...");
-    Viper.Terminal.Say("Press Ctrl+C to stop.");
-    Viper.Terminal.Say("");
+    Terminal.Say("Server listening. Waiting for connections...");
+    Terminal.Say("Press Ctrl+C to stop.");
+    Terminal.Say("");
 
     // Accept connections in a loop
     var running = 1;
     while running == 1 {
-        Viper.Terminal.Say("Waiting for client...");
+        Terminal.Say("Waiting for client...");
 
         // Accept a client connection
-        var client = Viper.Network.TcpServer.Accept(server);
+        var client = Network.TcpServer.Accept(server);
 
-        Viper.Terminal.Print("Client connected from ");
-        Viper.Terminal.Print(Viper.Network.Tcp.get_Host(client));
-        Viper.Terminal.Print(":");
-        Viper.Terminal.PrintInt(Viper.Network.Tcp.get_Port(client));
-        Viper.Terminal.Say("");
+        Terminal.Print("Client connected from ");
+        Terminal.Print(Network.Tcp.get_Host(client));
+        Terminal.Print(":");
+        Terminal.PrintInt(Network.Tcp.get_Port(client));
+        Terminal.Say("");
 
         // Handle the client session
         handleClient(client);
 
-        Viper.Terminal.Say("Client disconnected.");
-        Viper.Terminal.Say("");
+        Terminal.Say("Client disconnected.");
+        Terminal.Say("");
     }
 
-    Viper.Network.TcpServer.Close(server);
-    Viper.Terminal.Say("Server stopped.");
+    Network.TcpServer.Close(server);
+    Terminal.Say("Server stopped.");
 }

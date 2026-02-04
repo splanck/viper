@@ -37,8 +37,10 @@ Create a file named `hello.zia`:
 ```viper
 module Hello;
 
+bind Viper.Terminal;
+
 func start() {
-    Viper.Terminal.Say("Hello, World!");
+    Say("Hello, World!");
 }
 ```
 
@@ -52,7 +54,7 @@ Run it:
 
 - Every file starts with a `module` declaration
 - `start()` is the entry point (like `main()` in C)
-- Use `Viper.Terminal.Say()` for console output with newline
+- Use `bind Viper.Terminal;` to import terminal functions, then `Say()` for console output with newline
 - Statements end with semicolons; blocks use `{ }`
 - Comments use `//` for single-line and `/* */` for multi-line
 
@@ -84,9 +86,11 @@ final PI = 3.14159;      // Immutable constant
 Embed expressions in strings with `${...}`:
 
 ```viper
+bind Viper.Terminal;
+
 var name = "Alice";
 var age = 30;
-Viper.Terminal.Say("${name} is ${age} years old");
+Say("${name} is ${age} years old");
 ```
 
 ---
@@ -96,12 +100,14 @@ Viper.Terminal.Say("${name} is ${age} years old");
 ### If Statements
 
 ```viper
+bind Viper.Terminal;
+
 if score > 100 {
-    Viper.Terminal.Say("High score!");
+    Say("High score!");
 } else if score > 50 {
-    Viper.Terminal.Say("Good score");
+    Say("Good score");
 } else {
-    Viper.Terminal.Say("Try again");
+    Say("Try again");
 }
 ```
 
@@ -110,9 +116,11 @@ Note: Parentheses around conditions are optional.
 ### While Loops
 
 ```viper
+bind Viper.Terminal;
+
 var i = 0;
 while i < 10 {
-    Viper.Terminal.PrintInt(i);
+    PrintInt(i);
     i = i + 1;
 }
 ```
@@ -122,22 +130,26 @@ while i < 10 {
 C-style for loops:
 
 ```viper
+bind Viper.Terminal;
+
 for (var i = 0; i < 10; i = i + 1) {
-    Viper.Terminal.PrintInt(i);
+    PrintInt(i);
 }
 ```
 
 ### For-In Loops (Ranges)
 
 ```viper
+bind Viper.Terminal;
+
 // Exclusive range: 0 to 9
 for i in 0..10 {
-    Viper.Terminal.PrintInt(i);
+    PrintInt(i);
 }
 
 // Inclusive range: 0 to 10
 for i in 0..=10 {
-    Viper.Terminal.PrintInt(i);
+    PrintInt(i);
 }
 ```
 
@@ -148,8 +160,10 @@ for i in 0..=10 {
 ### Basic Functions
 
 ```viper
+bind Viper.Terminal;
+
 func greet(name: String) {
-    Viper.Terminal.Say("Hello, ${name}!");
+    Say("Hello, ${name}!");
 }
 
 func add(a: Integer, b: Integer) -> Integer {
@@ -159,7 +173,7 @@ func add(a: Integer, b: Integer) -> Integer {
 func start() {
     greet("World");
     var sum = add(3, 4);
-    Viper.Terminal.SayInt(sum);  // 7
+    SayInt(sum);  // 7
 }
 ```
 
@@ -216,6 +230,8 @@ entity Player {
 ### Using Entities
 
 ```viper
+bind Viper.Terminal;
+
 func start() {
     // Create a new entity instance
     var player = new Player();
@@ -225,8 +241,8 @@ func start() {
     player.addScore(100);
     player.takeDamage(25);
 
-    Viper.Terminal.Print("Health: ");
-    Viper.Terminal.SayInt(player.getHealth());  // 75
+    Print("Health: ");
+    SayInt(player.getHealth());  // 75
 }
 ```
 
@@ -244,6 +260,8 @@ func start() {
 Value types have copy semantics — assignments create copies.
 
 ```viper
+bind Viper.Math;
+
 value Point {
     Integer x;
     Integer y;
@@ -254,7 +272,7 @@ value Point {
     }
 
     func distanceFromOrigin() -> Number {
-        return Viper.Math.Sqrt(x * x + y * y);
+        return Sqrt(x * x + y * y);
     }
 }
 ```
@@ -268,6 +286,8 @@ Zia supports generic collections from the runtime library.
 ### Lists
 
 ```viper
+bind Viper.Terminal;
+
 // Create a list of integers
 var numbers: List[Integer] = new List[Integer]();
 numbers.add(10);
@@ -280,7 +300,7 @@ var first = numbers.get(0);  // 10
 // Iterate
 var i = 0;
 while i < numbers.size() {
-    Viper.Terminal.SayInt(numbers.get(i));
+    SayInt(numbers.get(i));
     i = i + 1;
 }
 ```
@@ -335,31 +355,60 @@ func start() {
 - `"../bar"` — Parent directory relative path
 - `"foo"` — Same directory, adds `.zia` extension
 
+### Binding Runtime Namespaces
+
+Bind Viper runtime namespaces to use their functions without qualification:
+
+```viper
+module Game;
+
+bind Viper.Terminal;     // Import terminal functions
+bind Viper.Graphics;     // Import graphics classes
+bind Viper.Time;         // Import time functions
+
+func start() {
+    Say("Hello from Zia!");           // No need for Viper.Terminal.Say()
+    var canvas = new Canvas(800, 600, "Game");
+    Clock.SleepMs(16);
+}
+```
+
+**Namespace bind options:**
+
+- `bind Viper.Terminal;` — Import all symbols
+- `bind Viper.Terminal as T;` — Import with alias (use `T.Say()`)
+- `bind Viper.Terminal { Say };` — Import specific symbols only
+
 ---
 
 ## 9. Working with the Runtime
 
-Zia programs have access to the full Viper Runtime Library.
+Zia programs have access to the full Viper Runtime Library. Import namespaces
+with `bind` or use fully qualified names.
 
 ### Terminal I/O
 
 ```viper
+bind Viper.Terminal;
+
 // Output
-Viper.Terminal.Say("Hello");           // Print with newline
-Viper.Terminal.Print("No newline");    // Print without newline
-Viper.Terminal.SayInt(42);             // Print integer with newline
-Viper.Terminal.PrintInt(42);           // Print integer without newline
+Say("Hello");           // Print with newline
+Print("No newline");    // Print without newline
+SayInt(42);             // Print integer with newline
+PrintInt(42);           // Print integer without newline
 
 // Input
-var key = Viper.Terminal.GetKey();             // Wait for key press
-var keyTimeout = Viper.Terminal.GetKeyTimeout(100);  // With timeout (ms)
+var key = GetKey();             // Wait for key press
+var keyTimeout = GetKeyTimeout(100);  // With timeout (ms)
 
 // Terminal control
-Viper.Terminal.Clear();                // Clear screen
-Viper.Terminal.SetPosition(row, col);  // Move cursor
-Viper.Terminal.SetColor(fg, bg);       // Set foreground/background (0-15)
-Viper.Terminal.SetCursorVisible(0);    // Hide cursor
+Clear();                // Clear screen
+SetPosition(row, col);  // Move cursor
+SetColor(fg, bg);       // Set foreground/background (0-15)
+SetCursorVisible(0);    // Hide cursor
 ```
+
+> **Note:** You can also use fully qualified names like `Viper.Terminal.Say()` without binding.
 
 ### Color Codes
 
@@ -378,15 +427,20 @@ Viper.Terminal.SetCursorVisible(0);    // Hide cursor
 ### Time Functions
 
 ```viper
-Viper.Time.SleepMs(500);  // Sleep for 500 milliseconds
+bind Viper.Time;
+
+Clock.SleepMs(500);  // Sleep for 500 milliseconds
 ```
 
 ### Math Functions
 
 ```viper
-var abs = Viper.Math.AbsInt(-42);   // 42
-var sqrt = Viper.Math.Sqrt(16.0);   // 4.0
-var rand = Viper.Random.NextInt(100);  // Random 0-99
+bind Viper.Math;
+bind Viper.Random;
+
+var abs = AbsInt(-42);     // 42
+var sqrt = Sqrt(16.0);     // 4.0
+var rand = NextInt(100);   // Random 0-99
 ```
 
 ---
@@ -398,21 +452,24 @@ Here's a complete mini-game demonstrating Zia features:
 ```viper
 module GuessGame;
 
+bind Viper.Terminal;
+bind Viper.Random;
+
 var secretNumber = 0;
 var guessCount = 0;
 var gameOver = 0;
 
 func start() {
-    Viper.Terminal.Say("=== Number Guessing Game ===");
-    Viper.Terminal.Say("I'm thinking of a number between 1 and 100.");
+    Say("=== Number Guessing Game ===");
+    Say("I'm thinking of a number between 1 and 100.");
 
     // Generate random number 1-100
-    secretNumber = Viper.Random.NextInt(100) + 1;
+    secretNumber = NextInt(100) + 1;
     guessCount = 0;
     gameOver = 0;
 
     while gameOver == 0 {
-        Viper.Terminal.Print("Your guess: ");
+        Print("Your guess: ");
 
         // For simplicity, we'll use a fixed sequence
         // In a real game, you'd read user input
@@ -421,12 +478,12 @@ func start() {
         guessCount = guessCount + 1;
 
         if guess == secretNumber {
-            Viper.Terminal.Say("Correct! You got it in ${guessCount} guesses!");
+            Say("Correct! You got it in ${guessCount} guesses!");
             gameOver = 1;
         } else if guess < secretNumber {
-            Viper.Terminal.Say("Too low!");
+            Say("Too low!");
         } else {
-            Viper.Terminal.Say("Too high!");
+            Say("Too high!");
         }
     }
 }

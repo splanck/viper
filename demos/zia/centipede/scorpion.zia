@@ -12,6 +12,10 @@ bind "./config";
 bind "./utils";
 bind "./mushroom";
 
+bind Viper.Game;
+bind Viper.Graphics;
+bind Viper.Random;
+
 // =============================================================================
 // SCORPION ENTITY - Mushroom-poisoning enemy
 // =============================================================================
@@ -21,7 +25,7 @@ entity Scorpion {
     hide Integer screenY;
     hide Integer direction;  // -1 for left, 1 for right
     hide Boolean active;
-    hide Viper.Game.Timer moveTimer;
+    hide Timer moveTimer;
     hide Integer animFrame;
 
     expose func init() {
@@ -29,13 +33,13 @@ entity Scorpion {
         screenY = 0;
         direction = 1;
         active = false;
-        moveTimer = Viper.Game.Timer.New();
+        moveTimer = Timer.New();
         animFrame = 0;
     }
 
     expose func spawn() {
         // Spawn from left or right side
-        if Viper.Random.NextInt(2) == 0 {
+        if NextInt(2) == 0 {
             screenX = -config.TILE_SIZE;
             direction = 1;
         } else {
@@ -49,7 +53,7 @@ entity Scorpion {
         if maxY < minY {
             maxY = minY + config.TILE_SIZE * 4;
         }
-        var gridY = config.MUSHROOM_ZONE_TOP + Viper.Random.NextInt((maxY - minY) / config.TILE_SIZE);
+        var gridY = config.MUSHROOM_ZONE_TOP + NextInt((maxY - minY) / config.TILE_SIZE);
         screenY = utils.gridToScreenY(gridY);
 
         active = true;
@@ -113,7 +117,7 @@ entity Scorpion {
         return utils.screenToGridY(screenY + config.TILE_SIZE / 2);
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         if !active {
             return;
         }

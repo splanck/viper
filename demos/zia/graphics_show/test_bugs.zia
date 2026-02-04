@@ -1,5 +1,7 @@
 module test_bugs;
 
+bind Viper.Math;
+
 // Test BUG-005: Mixed type arithmetic
 func testBug005() {
     var i = 5;
@@ -11,13 +13,13 @@ func testBug005() {
 // Test BUG-004: Type mismatch in return contexts
 func testBug004(x: Number) -> Integer {
     // Floor returns Number, but we want to return Integer
-    return Viper.Math.Floor(x);
+    return Floor(x);
 }
 
 // Test BUG-006: Floor return type
 func testBug006() {
     var n = 3.7;
-    var floored = Viper.Math.Floor(n);  // floored should be Number (3.0)
+    var floored = Floor(n);  // floored should be Number (3.0)
     // This should fail if we try to use it as Integer:
     // var intVal: Integer = floored;  // Should error or need cast
 }

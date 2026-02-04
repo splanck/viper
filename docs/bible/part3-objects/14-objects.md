@@ -224,6 +224,8 @@ Think of it like this:
 Both `fido` and `rex` are Dogs -- they follow the same template. But they're separate objects with their own data. When Fido barks, Rex doesn't bark. When Rex's age increases, Fido's age stays the same.
 
 ```rust
+bind Viper.Terminal;
+
 entity Dog {
     name: String;
     age: Integer;
@@ -234,12 +236,12 @@ entity Dog {
     }
 
     func bark() {
-        Viper.Terminal.Say(self.name + " says woof!");
+        Say(self.name + " says woof!");
     }
 
     func haveBirthday() {
         self.age += 1;
-        Viper.Terminal.Say(self.name + " is now " + self.age + "!");
+        Say(self.name + " is now " + self.age + "!");
     }
 }
 
@@ -251,7 +253,7 @@ fido.bark();         // "Fido says woof!"
 rex.bark();          // "Rex says woof!"
 
 fido.haveBirthday(); // "Fido is now 4!"
-Viper.Terminal.Say(rex.age);  // Still 7 - Rex didn't age
+Say(rex.age);  // Still 7 - Rex didn't age
 ```
 
 This distinction matters because:
@@ -271,11 +273,13 @@ This distinction matters because:
 You create an object by calling the entity name like a function:
 
 ```rust
+bind Viper.Terminal;
+
 var rect1 = Rectangle(10.0, 5.0);
 var rect2 = Rectangle(3.0, 4.0);
 
-Viper.Terminal.Say(rect1.area());  // 50
-Viper.Terminal.Say(rect2.area());  // 12
+Say(rect1.area());  // 50
+Say(rect2.area());  // 12
 ```
 
 Each call creates a fresh object. The arguments you pass go to the initializer, which sets up the object's initial state.
@@ -364,6 +368,8 @@ Multiple initializers let callers provide different levels of detail. Some objec
 Initializers are the perfect place to validate input and ensure objects start in valid states:
 
 ```rust
+bind Viper.Terminal;
+
 entity Rectangle {
     width: Number;
     height: Number;
@@ -386,8 +392,8 @@ entity Rectangle {
 
 // Even with invalid input, the object is valid
 var rect = Rectangle(-5.0, 0.0);
-Viper.Terminal.Say(rect.width);   // 1.0 (corrected)
-Viper.Terminal.Say(rect.height);  // 1.0 (corrected)
+Say(rect.width);   // 1.0 (corrected)
+Say(rect.height);  // 1.0 (corrected)
 ```
 
 You might also choose to report errors differently -- storing an error flag, logging a message, or using Zia's error handling mechanisms. The key insight is that the initializer controls how objects come into existence.
@@ -427,6 +433,8 @@ entity GameCharacter {
 Some fields have values that depend on other fields. The initializer is where you establish these relationships:
 
 ```rust
+bind Viper.Math;
+
 entity Circle {
     radius: Number;
     diameter: Number;
@@ -435,7 +443,7 @@ entity Circle {
     expose func init(radius: Number) {
         self.radius = radius;
         self.diameter = radius * 2;
-        self.circumference = 2 * Viper.Math.PI * radius;
+        self.circumference = 2 * PI * radius;
     }
 }
 ```
@@ -443,6 +451,8 @@ entity Circle {
 However, this pattern can be dangerous -- if `radius` changes later, `diameter` and `circumference` will be out of sync. It's often better to compute derived values in methods:
 
 ```rust
+bind Viper.Math;
+
 entity Circle {
     radius: Number;
 
@@ -455,7 +465,7 @@ entity Circle {
     }
 
     func circumference() -> Number {
-        return 2 * Viper.Math.PI * self.radius;  // Always accurate
+        return 2 * PI * self.radius;  // Always accurate
     }
 }
 ```
@@ -497,9 +507,11 @@ Think of it as the method's window into its own object's data. Without `self`, t
 Let's trace through exactly what happens:
 
 ```rust
+bind Viper.Terminal;
+
 var counter = Counter();       // Step 1: Create object
 counter.increment();           // Step 2: Call method
-Viper.Terminal.Say(counter.getCount());  // Step 3: Get value
+Say(counter.getCount());       // Step 3: Get value
 ```
 
 **Step 1: `Counter()` creates an object**
@@ -535,6 +547,8 @@ The variable `count` doesn't exist in the method's local scope. It's a field tha
 This becomes clearer with multiple objects:
 
 ```rust
+bind Viper.Terminal;
+
 var counterA = Counter();
 var counterB = Counter();
 
@@ -542,8 +556,8 @@ counterA.increment();  // Inside: self = counterA, self.count goes 0 -> 1
 counterA.increment();  // Inside: self = counterA, self.count goes 1 -> 2
 counterB.increment();  // Inside: self = counterB, self.count goes 0 -> 1
 
-Viper.Terminal.Say(counterA.getCount());  // 2
-Viper.Terminal.Say(counterB.getCount());  // 1
+Say(counterA.getCount());  // 2
+Say(counterB.getCount());  // 1
 ```
 
 Each call binds `self` to the appropriate object. The method is the same code, but `self` changes based on which object the method was called on.
@@ -626,9 +640,11 @@ entity BankAccount {
 Now the balance is hidden -- external code cannot access it directly:
 
 ```rust
+bind Viper.Terminal;
+
 var account = BankAccount("Alice", 100.0);
 account.deposit(50.0);
-Viper.Terminal.Say(account.getBalance());  // 150
+Say(account.getBalance());  // 150
 
 // account.balance = 1000000;  // Error: balance is hidden
 ```
@@ -751,6 +767,8 @@ entity Player {
 Methods define what objects can *do*. They're functions that belong to an entity and operate on its data through `self`.
 
 ```rust
+bind Viper.Math;
+
 entity Circle {
     radius: Number;
 
@@ -759,11 +777,11 @@ entity Circle {
     }
 
     func area() -> Number {
-        return Viper.Math.PI * self.radius * self.radius;
+        return PI * self.radius * self.radius;
     }
 
     func circumference() -> Number {
-        return 2 * Viper.Math.PI * self.radius;
+        return 2 * PI * self.radius;
     }
 
     func scale(factor: Number) {
@@ -855,10 +873,12 @@ Sometimes you have a choice: should this be a method on an entity, or a standalo
 - You want to take advantage of encapsulation (accessing hidden fields)
 
 ```rust
+bind Viper.Math;
+
 // Good as a method - operates on the circle's own data
 entity Circle {
     func area() -> Number {
-        return Viper.Math.PI * self.radius * self.radius;
+        return PI * self.radius * self.radius;
     }
 }
 ```
@@ -870,11 +890,13 @@ entity Circle {
 - The operation doesn't need access to hidden state
 
 ```rust
+bind Viper.Math;
+
 // Good as a function - works with two objects equally
 func distance(p1: Point, p2: Point) -> Number {
     var dx = p2.x - p1.x;
     var dy = p2.y - p1.y;
-    return Viper.Math.sqrt(dx*dx + dy*dy);
+    return sqrt(dx*dx + dy*dy);
 }
 ```
 
@@ -947,6 +969,8 @@ State is the current condition of an object -- the values of all its fields at a
 - Determines how the object behaves
 
 ```rust
+bind Viper.Terminal;
+
 entity TrafficLight {
     hide color: String;
 
@@ -970,16 +994,16 @@ entity TrafficLight {
 }
 
 var light = TrafficLight();
-Viper.Terminal.Say(light.getColor());  // "red"
+Say(light.getColor());  // "red"
 
 light.advance();
-Viper.Terminal.Say(light.getColor());  // "green"
+Say(light.getColor());  // "green"
 
 light.advance();
-Viper.Terminal.Say(light.getColor());  // "yellow"
+Say(light.getColor());  // "yellow"
 
 light.advance();
-Viper.Terminal.Say(light.getColor());  // "red" again
+Say(light.getColor());  // "red" again
 ```
 
 The traffic light object transitions through states: red, green, yellow, red, green, yellow... Each call to `advance()` changes the state.
@@ -1124,6 +1148,9 @@ Following the principle of "hide by default":
 ### Step 5: Write the Entity
 
 ```rust
+bind Viper.Terminal;
+bind Viper.Time;
+
 entity BankAccount {
     hide accountNumber: String;
     hide ownerName: String;
@@ -1135,7 +1162,7 @@ entity BankAccount {
     expose func init(accountNumber: String, ownerName: String, initialDeposit: Number) {
         self.accountNumber = accountNumber;
         self.ownerName = ownerName;
-        self.dateOpened = Viper.Time.now();
+        self.dateOpened = now();
         self.transactions = [];
 
         // Enforce non-negative initial balance
@@ -1152,7 +1179,7 @@ entity BankAccount {
     expose func init(accountNumber: String, ownerName: String) {
         self.accountNumber = accountNumber;
         self.ownerName = ownerName;
-        self.dateOpened = Viper.Time.now();
+        self.dateOpened = now();
         self.balance = 0;
         self.transactions = [];
         self.addTransaction("Account opened with $0.00");
@@ -1203,26 +1230,26 @@ entity BankAccount {
     }
 
     expose func printStatement() {
-        Viper.Terminal.Say("========================================");
-        Viper.Terminal.Say("Account Statement");
-        Viper.Terminal.Say("Account: " + self.accountNumber);
-        Viper.Terminal.Say("Owner: " + self.ownerName);
-        Viper.Terminal.Say("Opened: " + self.dateOpened);
-        Viper.Terminal.Say("Current Balance: $" + self.balance);
-        Viper.Terminal.Say("----------------------------------------");
-        Viper.Terminal.Say("Transaction History:");
+        Say("========================================");
+        Say("Account Statement");
+        Say("Account: " + self.accountNumber);
+        Say("Owner: " + self.ownerName);
+        Say("Opened: " + self.dateOpened);
+        Say("Current Balance: $" + self.balance);
+        Say("----------------------------------------");
+        Say("Transaction History:");
 
         for transaction in self.transactions {
-            Viper.Terminal.Say("  " + transaction);
+            Say("  " + transaction);
         }
 
-        Viper.Terminal.Say("========================================");
+        Say("========================================");
     }
 
     // ===== Private Helper Methods =====
 
     hide func addTransaction(description: String) {
-        var timestamp = Viper.Time.now();
+        var timestamp = now();
         self.transactions.push(timestamp + ": " + description);
     }
 }
@@ -1231,6 +1258,8 @@ entity BankAccount {
 ### Step 6: Use the Entity
 
 ```rust
+bind Viper.Terminal;
+
 func start() {
     // Create an account
     var account = BankAccount("1234-5678", "Alice Johnson", 500.0);
@@ -1242,7 +1271,7 @@ func start() {
     account.withdraw(1000.0);  // Declined: insufficient funds
 
     // Check the balance
-    Viper.Terminal.Say("Current balance: $" + account.getBalance());
+    Say("Current balance: $" + account.getBalance());
 
     // Print full statement
     account.printStatement();
@@ -1270,6 +1299,9 @@ Let's put everything together with a more complete example:
 ```rust
 module TodoApp;
 
+bind Viper.Terminal;
+bind Viper.Time;
+
 entity TodoItem {
     hide text: String;
     hide done: Boolean;
@@ -1279,7 +1311,7 @@ entity TodoItem {
     expose func init(text: String) {
         self.text = text;
         self.done = false;
-        self.createdAt = Viper.Time.now();
+        self.createdAt = now();
         self.completedAt = "";
     }
 
@@ -1294,7 +1326,7 @@ entity TodoItem {
     expose func markDone() {
         if !self.done {
             self.done = true;
-            self.completedAt = Viper.Time.now();
+            self.completedAt = now();
         }
     }
 
@@ -1346,18 +1378,18 @@ entity TodoList {
     }
 
     expose func display() {
-        Viper.Terminal.Say("=== " + self.name + " ===");
+        Say("=== " + self.name + " ===");
         if self.items.length == 0 {
-            Viper.Terminal.Say("  (empty)");
+            Say("  (empty)");
             return;
         }
 
         for i in 0..self.items.length {
-            Viper.Terminal.Say("  " + (i + 1) + ". " + self.items[i].toString());
+            Say("  " + (i + 1) + ". " + self.items[i].toString());
         }
 
-        Viper.Terminal.Say("");
-        Viper.Terminal.Say("  " + self.countCompleted() + "/" + self.items.length + " completed");
+        Say("");
+        Say("  " + self.countCompleted() + "/" + self.items.length + " completed");
     }
 
     expose func countRemaining() -> Integer {
@@ -1419,7 +1451,7 @@ func start() {
     //
     //   1/3 completed
 
-    Viper.Terminal.Say("Remaining: " + todos.countRemaining());
+    Say("Remaining: " + todos.countRemaining());
     // Remaining: 2
 }
 ```
@@ -1439,6 +1471,8 @@ Notice how:
 **Zia**
 
 ```rust
+bind Viper.Terminal;
+
 entity Dog {
     name: String;
 
@@ -1447,7 +1481,7 @@ entity Dog {
     }
 
     func bark() {
-        Viper.Terminal.Say(self.name + " says woof!");
+        Say(self.name + " says woof!");
     }
 }
 

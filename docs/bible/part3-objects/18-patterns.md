@@ -122,13 +122,15 @@ Think of a country's president or prime minister. There's exactly one at any tim
 The Singleton pattern provides a single instance and global access:
 
 ```rust
+bind Viper.Terminal;
+
 entity GameEngine {
     // The single instance, hidden from outside
     hide static instance: GameEngine? = null;
 
     // Hidden initializer prevents direct construction
     hide func init() {
-        Viper.Terminal.Say("GameEngine initialized");
+        Say("GameEngine initialized");
     }
 
     // Public access point
@@ -141,7 +143,7 @@ entity GameEngine {
 
     // Instance methods
     func run() {
-        Viper.Terminal.Say("Game engine running");
+        Say("Game engine running");
     }
 
     func getFrameRate() -> Integer {
@@ -158,6 +160,8 @@ The key elements:
 Using it:
 
 ```rust
+bind Viper.Terminal;
+
 func start() {
     // Get the engine (creates it first time)
     var engine = GameEngine.getInstance();
@@ -167,7 +171,7 @@ func start() {
     var sameEngine = GameEngine.getInstance();
 
     // These are the same object
-    Viper.Terminal.Say(engine == sameEngine);  // true
+    Say(engine == sameEngine);  // true
 }
 ```
 
@@ -176,6 +180,9 @@ No matter how many times you call `getInstance()`, you get the same engine. The 
 ### A More Complete Example: Configuration Manager
 
 ```rust
+bind Viper.Terminal;
+bind Viper.File;
+
 entity Config {
     hide static instance: Config? = null;
 
@@ -207,14 +214,14 @@ entity Config {
 
     func loadFromFile(path: String) {
         // Load settings from disk
-        var content = Viper.File.read(path);
+        var content = read(path);
         // Parse and populate self.settings...
-        Viper.Terminal.Say("Loaded settings from " + path);
+        Say("Loaded settings from " + path);
     }
 
     func saveToFile(path: String) {
         // Save settings to disk
-        Viper.Terminal.Say("Saved settings to " + path);
+        Say("Saved settings to " + path);
     }
 }
 
@@ -313,6 +320,9 @@ A factory is like that kitchen. You ask for what you want; it handles the creati
 The Factory pattern centralizes object creation:
 
 ```rust
+bind Viper.Terminal;
+bind Viper.Math;
+
 interface Enemy {
     func attack();
     func getHealth() -> Integer;
@@ -329,7 +339,7 @@ entity Goblin implements Enemy {
     }
 
     func attack() {
-        Viper.Terminal.Say("Goblin scratches!");
+        Say("Goblin scratches!");
     }
 
     func getHealth() -> Integer {
@@ -351,7 +361,7 @@ entity Orc implements Enemy {
     }
 
     func attack() {
-        Viper.Terminal.Say("Orc smashes!");
+        Say("Orc smashes!");
     }
 
     func getHealth() -> Integer {
@@ -373,7 +383,7 @@ entity Dragon implements Enemy {
     }
 
     func attack() {
-        Viper.Terminal.Say("Dragon breathes fire!");
+        Say("Dragon breathes fire!");
     }
 
     func getHealth() -> Integer {
@@ -405,13 +415,13 @@ entity EnemyFactory {
             return Goblin(x, y);
         } else if level < 7 {
             // Mix of goblins and orcs
-            if Viper.Math.random() > 0.5 {
+            if Math.random() > 0.5 {
                 return Orc(x, y);
             }
             return Goblin(x, y);
         } else {
             // All enemy types possible
-            var roll = Viper.Math.random();
+            var roll = Math.random();
             if roll < 0.3 {
                 return Dragon(x, y);
             } else if roll < 0.6 {
@@ -425,8 +435,8 @@ entity EnemyFactory {
     static func createWave(count: Integer, level: Integer) -> [Enemy] {
         var enemies: [Enemy] = [];
         for i in 0..count {
-            var x = Viper.Math.random() * 800.0;
-            var y = Viper.Math.random() * 600.0;
+            var x = Math.random() * 800.0;
+            var y = Math.random() * 600.0;
             enemies.push(EnemyFactory.createForLevel(level, x, y));
         }
         return enemies;
@@ -524,6 +534,8 @@ You build the order step by step, specifying only what matters to you, with sens
 The Builder pattern constructs objects step by step:
 
 ```rust
+bind Viper.Terminal;
+
 entity Character {
     name: String;
     characterClass: String;
@@ -562,10 +574,10 @@ entity Character {
     }
 
     func describe() {
-        Viper.Terminal.Say(self.name + " the " + self.race + " " + self.characterClass);
-        Viper.Terminal.Say("  HP: " + self.health + " MP: " + self.mana);
-        Viper.Terminal.Say("  STR: " + self.strength + " DEX: " + self.dexterity + " INT: " + self.intelligence);
-        Viper.Terminal.Say("  Weapon: " + self.weapon + " Armor: " + self.armor);
+        Say(self.name + " the " + self.race + " " + self.characterClass);
+        Say("  HP: " + self.health + " MP: " + self.mana);
+        Say("  STR: " + self.strength + " DEX: " + self.dexterity + " INT: " + self.intelligence);
+        Say("  Weapon: " + self.weapon + " Armor: " + self.armor);
     }
 }
 
@@ -799,6 +811,8 @@ Think of paying for something. You can use cash, credit card, mobile payment, or
 The Strategy pattern defines a family of algorithms, encapsulates each one, and makes them interchangeable:
 
 ```rust
+bind Viper.Terminal;
+
 interface RouteStrategy {
     func calculateRoute(start: Point, end: Point) -> [Point];
     func getName() -> String;
@@ -807,7 +821,7 @@ interface RouteStrategy {
 
 entity DrivingStrategy implements RouteStrategy {
     func calculateRoute(start: Point, end: Point) -> [Point] {
-        Viper.Terminal.Say("Calculating driving route...");
+        Say("Calculating driving route...");
         // Prefer highways, avoid pedestrian zones
         // Returns list of waypoints
         return [start, end];  // Simplified
@@ -824,7 +838,7 @@ entity DrivingStrategy implements RouteStrategy {
 
 entity WalkingStrategy implements RouteStrategy {
     func calculateRoute(start: Point, end: Point) -> [Point] {
-        Viper.Terminal.Say("Calculating walking route...");
+        Say("Calculating walking route...");
         // Use sidewalks, can cut through parks
         return [start, end];
     }
@@ -840,7 +854,7 @@ entity WalkingStrategy implements RouteStrategy {
 
 entity BikingStrategy implements RouteStrategy {
     func calculateRoute(start: Point, end: Point) -> [Point] {
-        Viper.Terminal.Say("Calculating biking route...");
+        Say("Calculating biking route...");
         // Use bike lanes, avoid steep hills
         return [start, end];
     }
@@ -856,7 +870,7 @@ entity BikingStrategy implements RouteStrategy {
 
 entity TransitStrategy implements RouteStrategy {
     func calculateRoute(start: Point, end: Point) -> [Point] {
-        Viper.Terminal.Say("Calculating transit route...");
+        Say("Calculating transit route...");
         // Follow bus and train routes
         return [start, end];
     }
@@ -880,7 +894,7 @@ entity Navigator {
 
     func setStrategy(strategy: RouteStrategy) {
         self.strategy = strategy;
-        Viper.Terminal.Say("Switched to " + strategy.getName());
+        Say("Switched to " + strategy.getName());
     }
 
     func navigate(start: Point, end: Point) {
@@ -888,9 +902,9 @@ entity Navigator {
         var distance = self.calculateDistance(route);
         var time = self.strategy.getEstimatedTime(distance);
 
-        Viper.Terminal.Say("Route via " + self.strategy.getName());
-        Viper.Terminal.Say("Distance: " + distance + " km");
-        Viper.Terminal.Say("Estimated time: " + time + " hours");
+        Say("Route via " + self.strategy.getName());
+        Say("Distance: " + distance + " km");
+        Say("Estimated time: " + time + " hours");
     }
 
     hide func calculateDistance(route: [Point]) -> Number {
@@ -934,7 +948,7 @@ func start() {
     for strategy in strategies {
         navigator.setStrategy(strategy);
         navigator.navigate(home, office);
-        Viper.Terminal.Say("---");
+        Say("---");
     }
 }
 ```
@@ -1002,7 +1016,7 @@ entity DataProcessor {
     }
 
     func processData(data: [Integer]) -> [Integer] {
-        Viper.Terminal.Say("Sorting with " + self.sortStrategy.getName());
+        Say("Sorting with " + self.sortStrategy.getName());
         return self.sortStrategy.sort(data);
     }
 }
@@ -1081,6 +1095,10 @@ entity Subject {
 Now let's build a stock price monitoring system:
 
 ```rust
+bind Viper.Terminal;
+bind Viper.Math;
+bind Viper.Time;
+
 // The subject: stock price
 entity StockPrice extends Subject {
     hide symbol: String;
@@ -1124,7 +1142,7 @@ entity PriceDisplay implements Observer {
 
     func onUpdate(event: String, data: any) {
         if event == "price_change" {
-            Viper.Terminal.Say(
+            Say(
                 "[" + self.name + "] " +
                 data.symbol + ": $" + data.newPrice +
                 " (" + (data.change >= 0 ? "+" : "") + data.change + ")"
@@ -1142,8 +1160,8 @@ entity AlertSystem implements Observer {
 
     func onUpdate(event: String, data: any) {
         if event == "price_change" {
-            if Viper.Math.abs(data.change) > self.threshold {
-                Viper.Terminal.Say(
+            if abs(data.change) > self.threshold {
+                Say(
                     "ALERT: Large price movement in " + data.symbol +
                     " (change: " + data.change + ")"
                 );
@@ -1161,11 +1179,11 @@ entity TradeLogger implements Observer {
 
     func onUpdate(event: String, data: any) {
         if event == "price_change" {
-            var timestamp = Viper.Time.now();
+            var timestamp = now();
             var logEntry = timestamp + "," + data.symbol + "," +
                            data.oldPrice + "," + data.newPrice;
-            Viper.Terminal.Say("[LOG] " + logEntry);
-            // In real code: Viper.File.append(self.logFile, logEntry);
+            Say("[LOG] " + logEntry);
+            // In real code: append(self.logFile, logEntry);
         }
     }
 }
@@ -1182,11 +1200,11 @@ entity AutoTrader implements Observer {
     func onUpdate(event: String, data: any) {
         if event == "price_change" {
             if data.newPrice < self.buyThreshold {
-                Viper.Terminal.Say(
+                Say(
                     "AUTO-BUY: " + data.symbol + " at $" + data.newPrice
                 );
             } else if data.newPrice > self.sellThreshold {
-                Viper.Terminal.Say(
+                Say(
                     "AUTO-SELL: " + data.symbol + " at $" + data.newPrice
                 );
             }
@@ -1215,7 +1233,7 @@ func start() {
     // [Mobile App] AAPL: $152 (+2)
     // [LOG] 2024-01-15 10:30:00,AAPL,150,152
 
-    Viper.Terminal.Say("---");
+    Say("---");
 
     apple.setPrice(158.0);
     // [Main Screen] AAPL: $158 (+6)
@@ -1223,7 +1241,7 @@ func start() {
     // ALERT: Large price movement in AAPL (change: 6)
     // [LOG] 2024-01-15 10:31:00,AAPL,152,158
 
-    Viper.Terminal.Say("---");
+    Say("---");
 
     apple.setPrice(161.0);
     // [Main Screen] AAPL: $161 (+3)
@@ -1279,12 +1297,12 @@ entity ScoreManager implements Observer {
     func onUpdate(event: String, data: any) {
         if event == "enemy_killed" {
             self.score += data.points;
-            Viper.Terminal.Say("Score: " + self.score);
+            Say("Score: " + self.score);
         } else if event == "level_completed" {
             var bonus = 1000 - (data.time as Integer * 10);
             if bonus > 0 {
                 self.score += bonus;
-                Viper.Terminal.Say("Time bonus: " + bonus);
+                Say("Time bonus: " + bonus);
             }
         }
     }
@@ -1293,11 +1311,11 @@ entity ScoreManager implements Observer {
 entity SoundManager implements Observer {
     func onUpdate(event: String, data: any) {
         if event == "player_died" {
-            Viper.Terminal.Say("Playing: death_sound.wav");
+            Say("Playing: death_sound.wav");
         } else if event == "enemy_killed" {
-            Viper.Terminal.Say("Playing: hit_sound.wav");
+            Say("Playing: hit_sound.wav");
         } else if event == "level_completed" {
-            Viper.Terminal.Say("Playing: victory_fanfare.wav");
+            Say("Playing: victory_fanfare.wav");
         }
     }
 }
@@ -1309,9 +1327,9 @@ entity AchievementSystem implements Observer {
         if event == "enemy_killed" {
             self.enemiesKilled += 1;
             if self.enemiesKilled == 10 {
-                Viper.Terminal.Say("Achievement Unlocked: Novice Hunter");
+                Say("Achievement Unlocked: Novice Hunter");
             } else if self.enemiesKilled == 100 {
-                Viper.Terminal.Say("Achievement Unlocked: Veteran Slayer");
+                Say("Achievement Unlocked: Veteran Slayer");
             }
         }
     }
@@ -1356,6 +1374,8 @@ The order ticket turns an action (make food) into an object (the written ticket)
 The Command pattern encapsulates actions as objects, enabling undo, queueing, and logging:
 
 ```rust
+bind Viper.Terminal;
+
 interface Command {
     func execute();
     func undo();
@@ -1386,7 +1406,7 @@ entity TextEditor {
     }
 
     func display() {
-        Viper.Terminal.Say("Document: \"" + self.content + "\"");
+        Say("Document: \"" + self.content + "\"");
     }
 }
 
@@ -1485,35 +1505,35 @@ entity CommandHistory {
         self.commands.push(command);
         // Clear redo stack when new command is executed
         self.undoneCommands = [];
-        Viper.Terminal.Say("Executed: " + command.describe());
+        Say("Executed: " + command.describe());
     }
 
     func undo() {
         if self.commands.length == 0 {
-            Viper.Terminal.Say("Nothing to undo");
+            Say("Nothing to undo");
             return;
         }
         var command = self.commands.pop();
         command.undo();
         self.undoneCommands.push(command);
-        Viper.Terminal.Say("Undone: " + command.describe());
+        Say("Undone: " + command.describe());
     }
 
     func redo() {
         if self.undoneCommands.length == 0 {
-            Viper.Terminal.Say("Nothing to redo");
+            Say("Nothing to redo");
             return;
         }
         var command = self.undoneCommands.pop();
         command.execute();
         self.commands.push(command);
-        Viper.Terminal.Say("Redone: " + command.describe());
+        Say("Redone: " + command.describe());
     }
 
     func showHistory() {
-        Viper.Terminal.Say("Command history:");
+        Say("Command history:");
         for i, cmd in self.commands.enumerate() {
-            Viper.Terminal.Say("  " + i + ": " + cmd.describe());
+            Say("  " + i + ": " + cmd.describe());
         }
     }
 }
@@ -1522,6 +1542,8 @@ entity CommandHistory {
 Using the editor:
 
 ```rust
+bind Viper.Terminal;
+
 func start() {
     var editor = TextEditor();
     var history = CommandHistory();
@@ -1540,7 +1562,7 @@ func start() {
     history.execute(ReplaceCommand(editor, 7, 5, "Viper"));
     editor.display();  // Document: "Hello, Viper"
 
-    Viper.Terminal.Say("--- Undo ---");
+    Say("--- Undo ---");
 
     history.undo();
     editor.display();  // Document: "Hello, World"
@@ -1548,12 +1570,12 @@ func start() {
     history.undo();
     editor.display();  // Document: "Hello World"
 
-    Viper.Terminal.Say("--- Redo ---");
+    Say("--- Redo ---");
 
     history.redo();
     editor.display();  // Document: "Hello, World"
 
-    Viper.Terminal.Say("--- History ---");
+    Say("--- History ---");
     history.showHistory();
 }
 ```
@@ -1673,6 +1695,8 @@ Same action, completely different behavior based on state. The state determines 
 The State pattern represents each state as an object that handles behavior for that state:
 
 ```rust
+bind Viper.Terminal;
+
 interface VendingState {
     func insertCoin(machine: VendingMachine, amount: Integer);
     func selectItem(machine: VendingMachine, item: String);
@@ -1684,20 +1708,20 @@ interface VendingState {
 entity IdleState implements VendingState {
     func insertCoin(machine: VendingMachine, amount: Integer) {
         machine.addBalance(amount);
-        Viper.Terminal.Say("Inserted: $" + amount + ". Balance: $" + machine.getBalance());
+        Say("Inserted: $" + amount + ". Balance: $" + machine.getBalance());
         machine.setState(HasMoneyState());
     }
 
     func selectItem(machine: VendingMachine, item: String) {
-        Viper.Terminal.Say("Please insert coins first");
+        Say("Please insert coins first");
     }
 
     func dispense(machine: VendingMachine) {
-        Viper.Terminal.Say("No item selected");
+        Say("No item selected");
     }
 
     func returnCoins(machine: VendingMachine) {
-        Viper.Terminal.Say("No coins to return");
+        Say("No coins to return");
     }
 
     func getName() -> String { return "Idle"; }
@@ -1706,23 +1730,23 @@ entity IdleState implements VendingState {
 entity HasMoneyState implements VendingState {
     func insertCoin(machine: VendingMachine, amount: Integer) {
         machine.addBalance(amount);
-        Viper.Terminal.Say("Added: $" + amount + ". Balance: $" + machine.getBalance());
+        Say("Added: $" + amount + ". Balance: $" + machine.getBalance());
     }
 
     func selectItem(machine: VendingMachine, item: String) {
         var price = machine.getPrice(item);
         if price == null {
-            Viper.Terminal.Say("Item not found: " + item);
+            Say("Item not found: " + item);
             return;
         }
 
         if machine.getBalance() < price {
-            Viper.Terminal.Say("Insufficient funds. Need $" + price + ", have $" + machine.getBalance());
+            Say("Insufficient funds. Need $" + price + ", have $" + machine.getBalance());
             return;
         }
 
         if machine.getStock(item) == 0 {
-            Viper.Terminal.Say("Sorry, " + item + " is out of stock");
+            Say("Sorry, " + item + " is out of stock");
             return;
         }
 
@@ -1732,13 +1756,13 @@ entity HasMoneyState implements VendingState {
     }
 
     func dispense(machine: VendingMachine) {
-        Viper.Terminal.Say("Please select an item first");
+        Say("Please select an item first");
     }
 
     func returnCoins(machine: VendingMachine) {
         var balance = machine.getBalance();
         machine.setBalance(0);
-        Viper.Terminal.Say("Returning $" + balance);
+        Say("Returning $" + balance);
         machine.setState(IdleState());
     }
 
@@ -1747,12 +1771,12 @@ entity HasMoneyState implements VendingState {
 
 entity DispensingState implements VendingState {
     func insertCoin(machine: VendingMachine, amount: Integer) {
-        Viper.Terminal.Say("Please wait, dispensing in progress");
+        Say("Please wait, dispensing in progress");
         // Could queue the coin for later
     }
 
     func selectItem(machine: VendingMachine, item: String) {
-        Viper.Terminal.Say("Please wait, dispensing in progress");
+        Say("Please wait, dispensing in progress");
     }
 
     func dispense(machine: VendingMachine) {
@@ -1761,7 +1785,7 @@ entity DispensingState implements VendingState {
 
         // Vend the item
         machine.decrementStock(item);
-        Viper.Terminal.Say("Dispensing: " + item);
+        Say("Dispensing: " + item);
 
         // Calculate change
         var change = machine.getBalance() - price;
@@ -1769,7 +1793,7 @@ entity DispensingState implements VendingState {
         machine.setSelectedItem(null);
 
         if change > 0 {
-            Viper.Terminal.Say("Change: $" + change);
+            Say("Change: $" + change);
         }
 
         // Check if we should go to out-of-stock state
@@ -1781,7 +1805,7 @@ entity DispensingState implements VendingState {
     }
 
     func returnCoins(machine: VendingMachine) {
-        Viper.Terminal.Say("Please wait, dispensing in progress");
+        Say("Please wait, dispensing in progress");
     }
 
     func getName() -> String { return "Dispensing"; }
@@ -1789,19 +1813,19 @@ entity DispensingState implements VendingState {
 
 entity OutOfStockState implements VendingState {
     func insertCoin(machine: VendingMachine, amount: Integer) {
-        Viper.Terminal.Say("Sorry, machine is empty. Returning your $" + amount);
+        Say("Sorry, machine is empty. Returning your $" + amount);
     }
 
     func selectItem(machine: VendingMachine, item: String) {
-        Viper.Terminal.Say("Sorry, machine is empty");
+        Say("Sorry, machine is empty");
     }
 
     func dispense(machine: VendingMachine) {
-        Viper.Terminal.Say("Nothing to dispense");
+        Say("Nothing to dispense");
     }
 
     func returnCoins(machine: VendingMachine) {
-        Viper.Terminal.Say("No coins inserted");
+        Say("No coins inserted");
     }
 
     func getName() -> String { return "Out of Stock"; }
@@ -1834,17 +1858,17 @@ entity VendingMachine {
 
     // Delegate all actions to current state
     func insertCoin(amount: Integer) {
-        Viper.Terminal.Say("[" + self.state.getName() + "] Insert coin: $" + amount);
+        Say("[" + self.state.getName() + "] Insert coin: $" + amount);
         self.state.insertCoin(self, amount);
     }
 
     func selectItem(item: String) {
-        Viper.Terminal.Say("[" + self.state.getName() + "] Select: " + item);
+        Say("[" + self.state.getName() + "] Select: " + item);
         self.state.selectItem(self, item);
     }
 
     func returnCoins() {
-        Viper.Terminal.Say("[" + self.state.getName() + "] Return coins");
+        Say("[" + self.state.getName() + "] Return coins");
         self.state.returnCoins(self);
     }
 
@@ -1992,6 +2016,8 @@ Think of a plain t-shirt. You can add things to it: iron-on patches, embroidery,
 The Decorator pattern wraps objects to add behavior dynamically:
 
 ```rust
+bind Viper.Terminal;
+
 interface Beverage {
     func cost() -> Number;
     func description() -> String;
@@ -2110,16 +2136,18 @@ entity ExtraShot extends BeverageDecorator {
 Now any combination is possible:
 
 ```rust
+bind Viper.Terminal;
+
 func start() {
     // Simple espresso
     var drink1: Beverage = Espresso();
-    Viper.Terminal.Say(drink1.description() + " - $" + drink1.cost());
+    Say(drink1.description() + " - $" + drink1.cost());
     // Espresso - $2.00
 
     // Espresso with milk
     var drink2: Beverage = Espresso();
     drink2 = Milk(drink2);
-    Viper.Terminal.Say(drink2.description() + " - $" + drink2.cost());
+    Say(drink2.description() + " - $" + drink2.cost());
     // Espresso, Milk - $2.50
 
     // Fancy latte: espresso + milk + vanilla + whipped cream
@@ -2127,7 +2155,7 @@ func start() {
     drink3 = Milk(drink3);
     drink3 = Vanilla(drink3);
     drink3 = WhippedCream(drink3);
-    Viper.Terminal.Say(drink3.description() + " - $" + drink3.cost());
+    Say(drink3.description() + " - $" + drink3.cost());
     // Espresso, Milk, Vanilla, Whipped Cream - $3.85
 
     // Double shot with milk and extra sugar
@@ -2136,13 +2164,13 @@ func start() {
     drink4 = Milk(drink4);
     drink4 = Sugar(drink4);
     drink4 = Sugar(drink4);  // Extra sugar!
-    Viper.Terminal.Say(drink4.description() + " - $" + drink4.cost());
+    Say(drink4.description() + " - $" + drink4.cost());
     // Espresso, Extra Shot, Milk, Sugar, Sugar - $4.00
 
     // Tea with milk
     var drink5: Beverage = Tea();
     drink5 = Milk(drink5);
-    Viper.Terminal.Say(drink5.description() + " - $" + drink5.cost());
+    Say(drink5.description() + " - $" + drink5.cost());
     // Tea, Milk - $1.75
 }
 ```
@@ -2154,6 +2182,8 @@ Each decorator wraps a beverage, adds its own cost and description, and delegate
 Decorators work beyond pricing. Here's an I/O example:
 
 ```rust
+bind Viper.Terminal;
+
 interface DataStream {
     func write(data: String);
     func read() -> String;
@@ -2242,13 +2272,13 @@ entity LoggingDecorator implements DataStream {
     }
 
     func write(data: String) {
-        Viper.Terminal.Say("Writing " + data.length + " bytes");
+        Say("Writing " + data.length + " bytes");
         self.stream.write(data);
     }
 
     func read() -> String {
         var data = self.stream.read();
-        Viper.Terminal.Say("Read " + data.length + " bytes");
+        Say("Read " + data.length + " bytes");
         return data;
     }
 }
@@ -2274,7 +2304,7 @@ func start() {
     // Reading goes through: file -> decryption -> decompression -> logging
     var message = stream.read();
     // Read 14 bytes
-    Viper.Terminal.Say(message);  // Secret message
+    Say(message);  // Secret message
 }
 ```
 
@@ -2302,6 +2332,9 @@ Real systems don't use patterns in isolation. They combine multiple patterns to 
 This example combines Factory, Strategy, Observer, and State:
 
 ```rust
+bind Viper.Terminal;
+bind Viper.Math;
+
 // Observer for game events
 interface GameObserver {
     func onEvent(event: String, data: any);
@@ -2434,7 +2467,7 @@ entity GameEntity {
     }
 
     func setState(newState: EntityState) {
-        Viper.Terminal.Say(self.name + " state: " + self.state.getName() + " -> " + newState.getName());
+        Say(self.name + " state: " + self.state.getName() + " -> " + newState.getName());
         self.state = newState;
     }
 
@@ -2448,17 +2481,17 @@ entity GameEntity {
 
     func takeDamage(amount: Integer) {
         self.health -= amount;
-        Viper.Terminal.Say(self.name + " takes " + amount + " damage. Health: " + self.health);
+        Say(self.name + " takes " + amount + " damage. Health: " + self.health);
     }
 
     func distanceTo(other: GameEntity) -> Number {
         var dx = self.x - other.x;
         var dy = self.y - other.y;
-        return Viper.Math.sqrt(dx * dx + dy * dy);
+        return Math.sqrt(dx * dx + dy * dy);
     }
 
     func executeAction(action: String) {
-        Viper.Terminal.Say(self.name + " performs: " + action);
+        Say(self.name + " performs: " + action);
     }
 }
 
@@ -2500,7 +2533,7 @@ entity ScoreTracker implements GameObserver {
     func onEvent(event: String, data: any) {
         if event == "entity_died" {
             self.score += 100;
-            Viper.Terminal.Say("Score: " + self.score);
+            Say("Score: " + self.score);
         }
     }
 }

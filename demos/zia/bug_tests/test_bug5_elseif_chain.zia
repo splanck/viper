@@ -3,6 +3,8 @@
 // Previously this would fail with "ret value type mismatch: expected str but got i64"
 module main;
 
+bind Viper.Terminal;
+
 // Function with else-if chain returning String
 func getColorName(code: String) -> String {
     if code == "R" {
@@ -57,54 +59,54 @@ func maybeReturn(value: Integer) -> String {
 }
 
 func main() {
-    Viper.Terminal.Say("Testing Bug #5: else-if chain with String return");
-    Viper.Terminal.Say("================================================");
-    Viper.Terminal.Say("");
+    Say("Testing Bug #5: else-if chain with String return");
+    Say("================================================");
+    Say("");
 
     // Test color function
-    Viper.Terminal.Print("Color R: ");
-    Viper.Terminal.Say(getColorName("R"));
+    Print("Color R: ");
+    Say(getColorName("R"));
 
-    Viper.Terminal.Print("Color G: ");
-    Viper.Terminal.Say(getColorName("G"));
+    Print("Color G: ");
+    Say(getColorName("G"));
 
-    Viper.Terminal.Print("Color B: ");
-    Viper.Terminal.Say(getColorName("B"));
+    Print("Color B: ");
+    Say(getColorName("B"));
 
-    Viper.Terminal.Print("Color X: ");
-    Viper.Terminal.Say(getColorName("X"));
+    Print("Color X: ");
+    Say(getColorName("X"));
 
-    Viper.Terminal.Say("");
+    Say("");
 
     // Test day function
-    Viper.Terminal.Print("Day 1: ");
-    Viper.Terminal.Say(getDayName(1));
+    Print("Day 1: ");
+    Say(getDayName(1));
 
-    Viper.Terminal.Print("Day 5: ");
-    Viper.Terminal.Say(getDayName(5));
+    Print("Day 5: ");
+    Say(getDayName(5));
 
-    Viper.Terminal.Print("Day 7: ");
-    Viper.Terminal.Say(getDayName(7));
+    Print("Day 7: ");
+    Say(getDayName(7));
 
-    Viper.Terminal.Print("Day 99: ");
-    Viper.Terminal.Say(getDayName(99));
+    Print("Day 99: ");
+    Say(getDayName(99));
 
-    Viper.Terminal.Say("");
+    Say("");
 
     // Test implicit return path
-    Viper.Terminal.Print("maybeReturn(150): ");
-    Viper.Terminal.Say(maybeReturn(150));
+    Print("maybeReturn(150): ");
+    Say(maybeReturn(150));
 
-    Viper.Terminal.Print("maybeReturn(75): ");
-    Viper.Terminal.Say(maybeReturn(75));
+    Print("maybeReturn(75): ");
+    Say(maybeReturn(75));
 
-    Viper.Terminal.Print("maybeReturn(25): ");
-    Viper.Terminal.Say(maybeReturn(25));
+    Print("maybeReturn(25): ");
+    Say(maybeReturn(25));
 
-    Viper.Terminal.Print("maybeReturn(-5): '");
-    Viper.Terminal.Print(maybeReturn(-5));
-    Viper.Terminal.Say("' (should be empty)");
+    Print("maybeReturn(-5): '");
+    Print(maybeReturn(-5));
+    Say("' (should be empty)");
 
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("Bug #5 Test PASSED!");
+    Say("");
+    Say("Bug #5 Test PASSED!");
 }

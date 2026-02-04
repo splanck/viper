@@ -3,6 +3,10 @@
 
 module executor;
 
+bind Viper.String;
+bind Viper.Fmt;
+bind Viper.IO;
+
 bind "./types";
 bind "./schema";
 bind "./table";
@@ -292,12 +296,12 @@ entity Executor {
             if left.kind == SQL_TEXT {
                 leftStr = left.textValue;
             } else if left.kind == SQL_INTEGER {
-                leftStr = Viper.Fmt.Int(left.intValue);
+                leftStr = Fmt.Int(left.intValue);
             }
             if right.kind == SQL_TEXT {
                 rightStr = right.textValue;
             } else if right.kind == SQL_INTEGER {
-                rightStr = Viper.Fmt.Int(right.intValue);
+                rightStr = Fmt.Int(right.intValue);
             }
             return sqlText(leftStr + rightStr);
         }
@@ -324,25 +328,25 @@ entity Executor {
     }
 
     expose func evalFunction(expr: Expr, row: Row, table: Table) -> SqlValue {
-        var name = Viper.String.ToUpper(expr.funcName);
+        var name = String.ToUpper(expr.funcName);
 
         // String functions
         if name == "UPPER" && expr.args.count() > 0 {
             var arg = evalExpr(expr.args.get(0), row, table);
             if arg.kind == SQL_TEXT {
-                return sqlText(Viper.String.ToUpper(arg.textValue));
+                return sqlText(String.ToUpper(arg.textValue));
             }
         }
         if name == "LOWER" && expr.args.count() > 0 {
             var arg = evalExpr(expr.args.get(0), row, table);
             if arg.kind == SQL_TEXT {
-                return sqlText(Viper.String.ToLower(arg.textValue));
+                return sqlText(String.ToLower(arg.textValue));
             }
         }
         if name == "LENGTH" && expr.args.count() > 0 {
             var arg = evalExpr(expr.args.get(0), row, table);
             if arg.kind == SQL_TEXT {
-                return sqlInteger(Viper.String.Length(arg.textValue));
+                return sqlInteger(String.Length(arg.textValue));
             }
         }
 
@@ -354,7 +358,7 @@ entity Executor {
                 var str = strArg.textValue;
                 var start = startArg.intValue - 1;  // SQL uses 1-based indexing
                 if start < 0 { start = 0; }
-                var len = Viper.String.Length(str) - start;
+                var len = String.Length(str) - start;
 
                 if expr.args.count() >= 3 {
                     var lenArg = evalExpr(expr.args.get(2), row, table);
@@ -363,10 +367,10 @@ entity Executor {
                     }
                 }
 
-                if start >= Viper.String.Length(str) {
+                if start >= String.Length(str) {
                     return sqlText("");
                 }
-                return sqlText(Viper.String.Substring(str, start, len));
+                return sqlText(String.Substring(str, start, len));
             }
         }
 
@@ -377,15 +381,15 @@ entity Executor {
                 var s = arg.textValue;
                 // Trim leading spaces
                 var start = 0;
-                while start < Viper.String.Length(s) && Viper.String.Substring(s, start, 1) == " " {
+                while start < String.Length(s) && String.Substring(s, start, 1) == " " {
                     start = start + 1;
                 }
                 // Trim trailing spaces
-                var end = Viper.String.Length(s);
-                while end > start && Viper.String.Substring(s, end - 1, 1) == " " {
+                var end = String.Length(s);
+                while end > start && String.Substring(s, end - 1, 1) == " " {
                     end = end - 1;
                 }
-                return sqlText(Viper.String.Substring(s, start, end - start));
+                return sqlText(String.Substring(s, start, end - start));
             }
         }
 
@@ -395,10 +399,10 @@ entity Executor {
             if arg.kind == SQL_TEXT {
                 var s = arg.textValue;
                 var start = 0;
-                while start < Viper.String.Length(s) && Viper.String.Substring(s, start, 1) == " " {
+                while start < String.Length(s) && String.Substring(s, start, 1) == " " {
                     start = start + 1;
                 }
-                return sqlText(Viper.String.Substring(s, start, Viper.String.Length(s) - start));
+                return sqlText(String.Substring(s, start, String.Length(s) - start));
             }
         }
 
@@ -407,11 +411,11 @@ entity Executor {
             var arg = evalExpr(expr.args.get(0), row, table);
             if arg.kind == SQL_TEXT {
                 var s = arg.textValue;
-                var end = Viper.String.Length(s);
-                while end > 0 && Viper.String.Substring(s, end - 1, 1) == " " {
+                var end = String.Length(s);
+                while end > 0 && String.Substring(s, end - 1, 1) == " " {
                     end = end - 1;
                 }
-                return sqlText(Viper.String.Substring(s, 0, end));
+                return sqlText(String.Substring(s, 0, end));
             }
         }
 
@@ -427,14 +431,14 @@ entity Executor {
                 // Simple replacement - find and replace all occurrences
                 var result = "";
                 var i = 0;
-                var fromLen = Viper.String.Length(from);
-                var strLen = Viper.String.Length(str);
+                var fromLen = String.Length(from);
+                var strLen = String.Length(str);
                 while i < strLen {
-                    if i + fromLen <= strLen && Viper.String.Substring(str, i, fromLen) == from {
+                    if i + fromLen <= strLen && String.Substring(str, i, fromLen) == from {
                         result = result + to;
                         i = i + fromLen;
                     } else {
-                        result = result + Viper.String.Substring(str, i, 1);
+                        result = result + String.Substring(str, i, 1);
                         i = i + 1;
                     }
                 }
@@ -451,7 +455,7 @@ entity Executor {
                 if arg.kind == SQL_TEXT {
                     result = result + arg.textValue;
                 } else if arg.kind == SQL_INTEGER {
-                    result = result + Viper.Fmt.Int(arg.intValue);
+                    result = result + Fmt.Int(arg.intValue);
                 }
                 i = i + 1;
             }
@@ -465,11 +469,11 @@ entity Executor {
             if strArg.kind == SQL_TEXT && subArg.kind == SQL_TEXT {
                 var str = strArg.textValue;
                 var sub = subArg.textValue;
-                var subLen = Viper.String.Length(sub);
-                var strLen = Viper.String.Length(str);
+                var subLen = String.Length(sub);
+                var strLen = String.Length(str);
                 var i = 0;
                 while i + subLen <= strLen {
-                    if Viper.String.Substring(str, i, subLen) == sub {
+                    if String.Substring(str, i, subLen) == sub {
                         return sqlInteger(i + 1);  // 1-based
                     }
                     i = i + 1;
@@ -664,7 +668,7 @@ entity Executor {
     // Note: MIN/MAX with exactly 2 arguments are treated as scalar functions
     expose func isAggregateExpr(expr: Expr) -> Boolean {
         if expr.kind == EXPR_FUNCTION {
-            var funcName = Viper.String.ToUpper(expr.funcName);
+            var funcName = String.ToUpper(expr.funcName);
             if funcName == "COUNT" { return true; }
             if funcName == "SUM" { return true; }
             if funcName == "AVG" { return true; }
@@ -690,7 +694,7 @@ entity Executor {
 
     // Evaluate an aggregate function over a list of row indices
     expose func evalAggregate(expr: Expr, matchingRows: List[Integer], table: Table) -> SqlValue {
-        var funcName = Viper.String.ToUpper(expr.funcName);
+        var funcName = String.ToUpper(expr.funcName);
         var hasArg = expr.args.count() > 0;
 
         // COUNT(*)
@@ -940,7 +944,7 @@ entity Executor {
             r = r + 1;
         }
 
-        result.message = "Inserted " + Viper.Fmt.Int(rowsInserted) + " row(s)";
+        result.message = "Inserted " + Fmt.Int(rowsInserted) + " row(s)";
         result.rowsAffected = rowsInserted;
         return result;
     }
@@ -1090,7 +1094,7 @@ entity Executor {
                 } else if colExpr.kind == EXPR_FUNCTION {
                     result.addColumnName(colExpr.funcName);
                 } else {
-                    result.addColumnName("col" + Viper.Fmt.Int(c));
+                    result.addColumnName("col" + Fmt.Int(c));
                 }
                 c = c + 1;
             }
@@ -1492,7 +1496,7 @@ entity Executor {
             r = r + 1;
         }
 
-        result.message = "Updated " + Viper.Fmt.Int(rowsUpdated) + " row(s)";
+        result.message = "Updated " + Fmt.Int(rowsUpdated) + " row(s)";
         result.rowsAffected = rowsUpdated;
         return result;
     }
@@ -1525,7 +1529,7 @@ entity Executor {
             r = r + 1;
         }
 
-        result.message = "Deleted " + Viper.Fmt.Int(rowsDeleted) + " row(s)";
+        result.message = "Deleted " + Fmt.Int(rowsDeleted) + " row(s)";
         result.rowsAffected = rowsDeleted;
         return result;
     }
@@ -2265,7 +2269,7 @@ entity Executor {
                         result.addColumnName(colExpr.columnName);
                     }
                 } else {
-                    result.addColumnName("expr" + Viper.Fmt.Int(c));
+                    result.addColumnName("expr" + Fmt.Int(c));
                 }
                 c = c + 1;
             }
@@ -2509,7 +2513,7 @@ entity Executor {
         }
 
         // Write to file
-        Viper.IO.File.WriteAllText(filename, content);
+        IO.File.WriteAllText(filename, content);
         result.message = "Database saved to '" + filename + "'";
 
         return result;
@@ -2591,12 +2595,12 @@ entity Executor {
         var result = new QueryResult();
         result.init();
 
-        if Viper.IO.File.Exists(filename) == false {
+        if IO.File.Exists(filename) == false {
             result.setError("File not found: " + filename);
             return result;
         }
 
-        var content = Viper.IO.File.ReadAllText(filename);
+        var content = IO.File.ReadAllText(filename);
         if content == "" {
             result.setError("Failed to read file or file is empty: " + filename);
             return result;
@@ -2609,7 +2613,7 @@ entity Executor {
 
         var i = 0;
         while i < statements.count() {
-            var stmt = Viper.String.Trim(statements.get(i));
+            var stmt = String.Trim(statements.get(i));
             if stmt != "" {
                 var stmtResult = executeSql(stmt);
                 if stmtResult.success {
@@ -2621,9 +2625,9 @@ entity Executor {
             i = i + 1;
         }
 
-        result.message = "Loaded '" + filename + "': " + Viper.Fmt.Int(executed) + " statements executed";
+        result.message = "Loaded '" + filename + "': " + Fmt.Int(executed) + " statements executed";
         if errors > 0 {
-            result.message = result.message + ", " + Viper.Fmt.Int(errors) + " errors";
+            result.message = result.message + ", " + Fmt.Int(errors) + " errors";
         }
         return result;
     }
@@ -2636,9 +2640,9 @@ entity Executor {
         var stringChar = "";
 
         var i = 0;
-        var len = Viper.String.Length(content);
+        var len = String.Length(content);
         while i < len {
-            var ch = Viper.String.Substring(content, i, 1);
+            var ch = String.Substring(content, i, 1);
 
             if inString {
                 current = current + ch;
@@ -2661,7 +2665,7 @@ entity Executor {
         }
 
         // Add any remaining content
-        if Viper.String.Trim(current) != "" {
+        if String.Trim(current) != "" {
             statements.add(current);
         }
 
@@ -2723,7 +2727,7 @@ entity Executor {
             ri = ri + 1;
         }
 
-        Viper.IO.File.WriteAllText(filename, csv);
+        IO.File.WriteAllText(filename, csv);
 
         var rowCount = 0;
         ri = 0;
@@ -2737,7 +2741,7 @@ entity Executor {
             }
             ri = ri + 1;
         }
-        result.message = "Exported " + Viper.Fmt.Int(rowCount) + " rows to '" + filename + "'";
+        result.message = "Exported " + Fmt.Int(rowCount) + " rows to '" + filename + "'";
 
         return result;
     }
@@ -2746,9 +2750,9 @@ entity Executor {
     hide func escapeCSV(value: String) -> String {
         var needsQuotes = false;
         var i = 0;
-        var len = Viper.String.Length(value);
+        var len = String.Length(value);
         while i < len {
-            var ch = Viper.String.Substring(value, i, 1);
+            var ch = String.Substring(value, i, 1);
             if ch == "," || ch == "\"" || ch == "\n" || ch == "\r" {
                 needsQuotes = true;
                 break;
@@ -2761,7 +2765,7 @@ entity Executor {
             var escaped = "";
             i = 0;
             while i < len {
-                var ch = Viper.String.Substring(value, i, 1);
+                var ch = String.Substring(value, i, 1);
                 if ch == "\"" {
                     escaped = escaped + "\"\"";
                 } else {
@@ -2786,12 +2790,12 @@ entity Executor {
         }
         var table = maybeTable;
 
-        if Viper.IO.File.Exists(filename) == false {
+        if IO.File.Exists(filename) == false {
             result.setError("File not found: " + filename);
             return result;
         }
 
-        var content = Viper.IO.File.ReadAllText(filename);
+        var content = IO.File.ReadAllText(filename);
         if content == "" {
             result.setError("Failed to read file or file is empty: " + filename);
             return result;
@@ -2808,7 +2812,7 @@ entity Executor {
         var colIndices: List[Integer] = [];
         var fi = 0;
         while fi < headerFields.count() {
-            var fieldName = Viper.String.Trim(headerFields.get(fi));
+            var fieldName = String.Trim(headerFields.get(fi));
             var colIdx = table.findColumnIndex(fieldName);
             colIndices.add(colIdx);
             fi = fi + 1;
@@ -2818,7 +2822,7 @@ entity Executor {
         var imported = 0;
         var li = 1;
         while li < lines.count() {
-            var line = Viper.String.Trim(lines.get(li));
+            var line = String.Trim(lines.get(li));
             if line != "" {
                 var fields = parseCSVLine(line);
                 var values: List[SqlValue] = [];
@@ -2854,7 +2858,7 @@ entity Executor {
             li = li + 1;
         }
 
-        result.message = "Imported " + Viper.Fmt.Int(imported) + " rows from '" + filename + "'";
+        result.message = "Imported " + Fmt.Int(imported) + " rows from '" + filename + "'";
         return result;
     }
 
@@ -2863,9 +2867,9 @@ entity Executor {
         var lines: List[String] = [];
         var current = "";
         var i = 0;
-        var len = Viper.String.Length(content);
+        var len = String.Length(content);
         while i < len {
-            var ch = Viper.String.Substring(content, i, 1);
+            var ch = String.Substring(content, i, 1);
             if ch == "\n" {
                 lines.add(current);
                 current = "";
@@ -2886,15 +2890,15 @@ entity Executor {
         var current = "";
         var inQuotes = false;
         var i = 0;
-        var len = Viper.String.Length(line);
+        var len = String.Length(line);
 
         while i < len {
-            var ch = Viper.String.Substring(line, i, 1);
+            var ch = String.Substring(line, i, 1);
 
             if inQuotes {
                 if ch == "\"" {
                     // Check for escaped quote
-                    if i + 1 < len && Viper.String.Substring(line, i + 1, 1) == "\"" {
+                    if i + 1 < len && String.Substring(line, i + 1, 1) == "\"" {
                         current = current + "\"";
                         i = i + 1;
                     } else {
@@ -2921,7 +2925,7 @@ entity Executor {
 
     // Parse a CSV value according to column type
     hide func parseCSVValue(value: String, table: Table, colIdx: Integer) -> SqlValue {
-        var trimmed = Viper.String.Trim(value);
+        var trimmed = String.Trim(value);
         if trimmed == "" {
             return sqlNull();
         }
@@ -2976,7 +2980,7 @@ entity Executor {
             ti = ti + 1;
         }
 
-        result.message = "VACUUM complete: removed " + Viper.Fmt.Int(totalRemoved) + " deleted rows";
+        result.message = "VACUUM complete: removed " + Fmt.Int(totalRemoved) + " deleted rows";
         return result;
     }
 

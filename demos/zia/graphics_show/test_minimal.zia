@@ -1,10 +1,15 @@
 module test_minimal;
 
-func main() {
-    var canvas = Viper.Graphics.Canvas.New("Test", 400, 300);
+bind Viper.Graphics;
+bind Viper.Graphics.Canvas;
+bind Viper.Graphics.Color;
+bind Viper.Time;
 
-    var black = Viper.Graphics.Color.RGB(0, 0, 0);
-    var white = Viper.Graphics.Color.RGB(255, 255, 255);
+func main() {
+    var canvas = Canvas.New("Test", 400, 300);
+
+    var black = RGB(0, 0, 0);
+    var white = RGB(255, 255, 255);
 
     var i = 0;
     while i < 60 {

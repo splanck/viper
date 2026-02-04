@@ -50,9 +50,9 @@ Prints a message to standard output followed by a newline. This is your primary 
 
 **Example:**
 ```rust
-Viper.Terminal.Say("Hello, World!");
-Viper.Terminal.Say("The answer is: " + 42);
-Viper.Terminal.Say(3.14159);  // Prints "3.14159"
+Terminal.Say("Hello, World!");
+Terminal.Say("The answer is: " + 42);
+Terminal.Say(3.14159);  // Prints "3.14159"
 ```
 
 **When to use:** Use `Say` when you want each message on its own line. This is the standard choice for most output.
@@ -72,12 +72,12 @@ Prints a message without a trailing newline. Subsequent output continues on the 
 
 **Example:**
 ```rust
-Viper.Terminal.Write("Loading");
+Terminal.Write("Loading");
 for i in 0..5 {
-    Viper.Time.sleep(500);
-    Viper.Terminal.Write(".");
+    Time.sleep(500);
+    Terminal.Write(".");
 }
-Viper.Terminal.Say(" done!");  // Output: Loading..... done!
+Terminal.Say(" done!");  // Output: Loading..... done!
 ```
 
 **When to use:** Use `Write` for progress indicators, inline prompts, or when building output piece by piece.
@@ -98,7 +98,7 @@ Prints a message to standard error (stderr) with a newline. Error messages go to
 **Example:**
 ```rust
 if !Viper.File.exists(filename) {
-    Viper.Terminal.SayError("Error: File not found: " + filename);
+    Terminal.SayError("Error: File not found: " + filename);
     Viper.Environment.exit(1);
 }
 ```
@@ -126,11 +126,11 @@ Displays a prompt and waits for the user to type a line of input. Returns when t
 
 **Example:**
 ```rust
-var name = Viper.Terminal.Ask("What is your name? ");
-var ageStr = Viper.Terminal.Ask("How old are you? ");
+var name = Terminal.Ask("What is your name? ");
+var ageStr = Terminal.Ask("How old are you? ");
 var age = ageStr.toInt();
 
-Viper.Terminal.Say("Hello, " + name + "! You are " + age + " years old.");
+Terminal.Say("Hello, " + name + "! You are " + age + " years old.");
 ```
 
 **When to use:** Use `Ask` for any situation where you need user input, from simple prompts to form-style data entry.
@@ -153,13 +153,13 @@ Reads a single character from input without waiting for Enter. Useful for immedi
 
 **Example:**
 ```rust
-Viper.Terminal.Say("Continue? (y/n)");
-var response = Viper.Terminal.GetChar();
+Terminal.Say("Continue? (y/n)");
+var response = Terminal.GetChar();
 
 if response == "y" or response == "Y" {
-    Viper.Terminal.Say("Continuing...");
+    Terminal.Say("Continuing...");
 } else {
-    Viper.Terminal.Say("Cancelled.");
+    Terminal.Say("Cancelled.");
 }
 ```
 
@@ -181,18 +181,18 @@ Reads a single keypress, including special keys like arrows, function keys, and 
 
 **Example:**
 ```rust
-Viper.Terminal.Say("Use arrow keys to move, Q to quit");
+Terminal.Say("Use arrow keys to move, Q to quit");
 
 loop {
-    var key = Viper.Terminal.GetKey();
+    var key = Terminal.GetKey();
 
     match key.code {
-        Key.UP -> Viper.Terminal.Say("Moving up"),
-        Key.DOWN -> Viper.Terminal.Say("Moving down"),
-        Key.LEFT -> Viper.Terminal.Say("Moving left"),
-        Key.RIGHT -> Viper.Terminal.Say("Moving right"),
+        Key.UP -> Terminal.Say("Moving up"),
+        Key.DOWN -> Terminal.Say("Moving down"),
+        Key.LEFT -> Terminal.Say("Moving left"),
+        Key.RIGHT -> Terminal.Say("Moving right"),
         Key.Q -> break,
-        _ -> Viper.Terminal.Say("Unknown key")
+        _ -> Terminal.Say("Unknown key")
     }
 }
 ```
@@ -216,11 +216,11 @@ Clears the entire terminal screen and moves the cursor to the top-left corner.
 **Example:**
 ```rust
 func displayMenu() {
-    Viper.Terminal.Clear();
-    Viper.Terminal.Say("=== MAIN MENU ===");
-    Viper.Terminal.Say("1. New Game");
-    Viper.Terminal.Say("2. Load Game");
-    Viper.Terminal.Say("3. Quit");
+    Terminal.Clear();
+    Terminal.Say("=== MAIN MENU ===");
+    Terminal.Say("1. New Game");
+    Terminal.Say("2. Load Game");
+    Terminal.Say("3. Quit");
 }
 ```
 
@@ -244,13 +244,13 @@ Sets the text color for subsequent output. `ResetColor` returns to the terminal'
 
 **Example:**
 ```rust
-Viper.Terminal.SetColor(Color.RED);
-Viper.Terminal.Say("ERROR: Something went wrong!");
-Viper.Terminal.ResetColor();
+Terminal.SetColor(Color.RED);
+Terminal.Say("ERROR: Something went wrong!");
+Terminal.ResetColor();
 
-Viper.Terminal.SetColor(Color.GREEN);
-Viper.Terminal.Say("SUCCESS: Operation completed.");
-Viper.Terminal.ResetColor();
+Terminal.SetColor(Color.GREEN);
+Terminal.Say("SUCCESS: Operation completed.");
+Terminal.ResetColor();
 ```
 
 **When to use:** Use colors sparingly to highlight important information like errors (red), warnings (yellow), or success messages (green).
@@ -274,23 +274,23 @@ Positions the cursor at the specified column and row. Coordinates are 1-based (t
 **Example:**
 ```rust
 // Draw a box around the screen edge
-Viper.Terminal.Clear();
+Terminal.Clear();
 
 // Top border
-Viper.Terminal.MoveCursor(1, 1);
-Viper.Terminal.Write("+------------------------+");
+Terminal.MoveCursor(1, 1);
+Terminal.Write("+------------------------+");
 
 // Side borders
 for row in 2..10 {
-    Viper.Terminal.MoveCursor(1, row);
-    Viper.Terminal.Write("|");
-    Viper.Terminal.MoveCursor(26, row);
-    Viper.Terminal.Write("|");
+    Terminal.MoveCursor(1, row);
+    Terminal.Write("|");
+    Terminal.MoveCursor(26, row);
+    Terminal.Write("|");
 }
 
 // Bottom border
-Viper.Terminal.MoveCursor(1, 10);
-Viper.Terminal.Write("+------------------------+");
+Terminal.MoveCursor(1, 10);
+Terminal.Write("+------------------------+");
 ```
 
 **When to use:** Use cursor positioning for TUI (text user interface) applications, games, or formatted displays.
@@ -308,17 +308,17 @@ Controls cursor visibility. Hiding the cursor creates a cleaner appearance for a
 
 **Example:**
 ```rust
-Viper.Terminal.HideCursor();
+Terminal.HideCursor();
 
 // Animate a spinner
 var frames = ["|", "/", "-", "\\"];
 for i in 0..20 {
-    Viper.Terminal.Write("\r" + frames[i % 4] + " Loading...");
-    Viper.Time.sleep(100);
+    Terminal.Write("\r" + frames[i % 4] + " Loading...");
+    Time.sleep(100);
 }
 
-Viper.Terminal.ShowCursor();
-Viper.Terminal.Say("\rDone!          ");
+Terminal.ShowCursor();
+Terminal.Say("\rDone!          ");
 ```
 
 **When to use:** Hide the cursor during animations or full-screen displays. Always remember to show it again before the program exits.
@@ -334,23 +334,23 @@ func showProgress(current: Integer, total: Integer) {
     var percent = (current * 100) / total;
     var bars = percent / 5;  // 20 characters wide
 
-    Viper.Terminal.Write("\r[");
+    Terminal.Write("\r[");
     for i in 0..20 {
         if i < bars {
-            Viper.Terminal.Write("=");
+            Terminal.Write("=");
         } else {
-            Viper.Terminal.Write(" ");
+            Terminal.Write(" ");
         }
     }
-    Viper.Terminal.Write("] " + percent + "%");
+    Terminal.Write("] " + percent + "%");
 }
 
 // Usage
 for i in 0..100 {
     showProgress(i, 100);
-    Viper.Time.sleep(50);
+    Time.sleep(50);
 }
-Viper.Terminal.Say("");  // Newline when done
+Terminal.Say("");  // Newline when done
 ```
 
 #### Simple Menu System
@@ -358,24 +358,24 @@ Viper.Terminal.Say("");  // Newline when done
 ```rust
 func showMenu(options: [String]) -> Integer {
     loop {
-        Viper.Terminal.Clear();
-        Viper.Terminal.Say("Select an option:");
-        Viper.Terminal.Say("");
+        Terminal.Clear();
+        Terminal.Say("Select an option:");
+        Terminal.Say("");
 
         for i, option in options.enumerate() {
-            Viper.Terminal.Say("  " + (i + 1) + ". " + option);
+            Terminal.Say("  " + (i + 1) + ". " + option);
         }
 
-        Viper.Terminal.Say("");
-        var choice = Viper.Terminal.Ask("Enter choice (1-" + options.len() + "): ");
+        Terminal.Say("");
+        var choice = Terminal.Ask("Enter choice (1-" + options.len() + "): ");
         var num = choice.toInt();
 
         if num >= 1 and num <= options.len() {
             return num - 1;  // Return 0-based index
         }
 
-        Viper.Terminal.Say("Invalid choice. Press any key...");
-        Viper.Terminal.GetChar();
+        Terminal.Say("Invalid choice. Press any key...");
+        Terminal.GetChar();
     }
 }
 ```
@@ -408,7 +408,7 @@ Reads the entire contents of a text file as a string.
 **Example:**
 ```rust
 var content = Viper.File.readText("config.txt");
-Viper.Terminal.Say("File contents: " + content);
+Terminal.Say("File contents: " + content);
 ```
 
 **When to use:** Use for small to medium text files (configuration files, data files, source code). For large files, consider `readLines` to process line by line.
@@ -436,11 +436,11 @@ Reads the entire contents of a file as raw bytes.
 **Example:**
 ```rust
 var bytes = Viper.File.readBytes("image.png");
-Viper.Terminal.Say("File size: " + bytes.len() + " bytes");
+Terminal.Say("File size: " + bytes.len() + " bytes");
 
 // Check PNG magic number
 if bytes[0] == 0x89 and bytes[1] == 0x50 {
-    Viper.Terminal.Say("Valid PNG file");
+    Terminal.Say("Valid PNG file");
 }
 ```
 
@@ -466,7 +466,7 @@ Reads a text file and returns an array where each element is one line.
 var lines = Viper.File.readLines("names.txt");
 
 for i, line in lines.enumerate() {
-    Viper.Terminal.Say("Line " + (i + 1) + ": " + line);
+    Terminal.Say("Line " + (i + 1) + ": " + line);
 }
 ```
 
@@ -599,7 +599,7 @@ Deletes a file.
 ```rust
 if Viper.File.exists("temp.txt") {
     Viper.File.delete("temp.txt");
-    Viper.Terminal.Say("Temporary file cleaned up");
+    Terminal.Say("Temporary file cleaned up");
 }
 ```
 
@@ -675,7 +675,7 @@ Returns the size of a file in bytes.
 ```rust
 var bytes = Viper.File.size("video.mp4");
 var megabytes = bytes / (1024 * 1024);
-Viper.Terminal.Say("File size: " + megabytes + " MB");
+Terminal.Say("File size: " + megabytes + " MB");
 ```
 
 ---
@@ -696,7 +696,7 @@ var modified = Viper.File.modifiedTime("document.txt");
 var now = DateTime.now();
 
 if now.diffDays(modified) > 30 {
-    Viper.Terminal.Say("Warning: File is over 30 days old");
+    Terminal.Say("Warning: File is over 30 days old");
 }
 ```
 
@@ -720,9 +720,9 @@ var entries = Viper.File.listDir(".");
 
 for entry in entries {
     if Viper.File.isDir(entry) {
-        Viper.Terminal.Say("[DIR]  " + entry);
+        Terminal.Say("[DIR]  " + entry);
     } else {
-        Viper.Terminal.Say("[FILE] " + entry);
+        Terminal.Say("[FILE] " + entry);
     }
 }
 ```
@@ -860,7 +860,7 @@ match Viper.File.extension(filename).toLower() {
     ".txt", ".md" -> handleTextFile(filename),
     ".jpg", ".png" -> handleImageFile(filename),
     ".json" -> handleJsonFile(filename),
-    _ -> Viper.Terminal.Say("Unknown file type")
+    _ -> Terminal.Say("Unknown file type")
 }
 ```
 
@@ -924,16 +924,16 @@ Mathematical functions and constants for numeric computation.
 ### Constants
 
 ```rust
-Viper.Math.PI      // 3.14159265358979323846 - ratio of circle circumference to diameter
-Viper.Math.E       // 2.71828182845904523536 - base of natural logarithm
-Viper.Math.TAU     // 6.28318530717958647692 - 2*PI, full circle in radians
+Math.PI      // 3.14159265358979323846 - ratio of circle circumference to diameter
+Math.E       // 2.71828182845904523536 - base of natural logarithm
+Math.TAU     // 6.28318530717958647692 - 2*PI, full circle in radians
 ```
 
 **Example:**
 ```rust
 var radius = 5.0;
-var circumference = 2.0 * Viper.Math.PI * radius;  // or TAU * radius
-var area = Viper.Math.PI * radius * radius;
+var circumference = 2.0 * Math.PI * radius;  // or TAU * radius
+var area = Math.PI * radius * radius;
 ```
 
 ---
@@ -950,9 +950,9 @@ Returns the absolute (non-negative) value.
 
 **Example:**
 ```rust
-Viper.Math.abs(-5)      // Returns: 5
-Viper.Math.abs(5)       // Returns: 5
-Viper.Math.abs(-3.14)   // Returns: 3.14
+Math.abs(-5)      // Returns: 5
+Math.abs(5)       // Returns: 5
+Math.abs(-3.14)   // Returns: 3.14
 ```
 
 ---
@@ -967,12 +967,12 @@ Returns -1 for negative numbers, 0 for zero, 1 for positive numbers.
 
 **Example:**
 ```rust
-Viper.Math.sign(-42)    // Returns: -1
-Viper.Math.sign(0)      // Returns: 0
-Viper.Math.sign(42)     // Returns: 1
+Math.sign(-42)    // Returns: -1
+Math.sign(0)      // Returns: 0
+Math.sign(42)     // Returns: 1
 
 // Useful for direction
-var direction = Viper.Math.sign(targetX - currentX);
+var direction = Math.sign(targetX - currentX);
 currentX += direction * speed;
 ```
 
@@ -989,12 +989,12 @@ Returns the smaller or larger of two values.
 
 **Example:**
 ```rust
-Viper.Math.min(3, 7)    // Returns: 3
-Viper.Math.max(3, 7)    // Returns: 7
+Math.min(3, 7)    // Returns: 3
+Math.max(3, 7)    // Returns: 7
 
 // Keep value in bounds
-var health = Viper.Math.max(0, health - damage);  // Never below 0
-var health = Viper.Math.min(100, health + healing);  // Never above 100
+var health = Math.max(0, health - damage);  // Never below 0
+var health = Math.min(100, health + healing);  // Never above 100
 ```
 
 ---
@@ -1009,13 +1009,13 @@ Constrains a value to a range. Equivalent to `max(min, min(max, value))`.
 
 **Example:**
 ```rust
-Viper.Math.clamp(150, 0, 100)   // Returns: 100
-Viper.Math.clamp(-50, 0, 100)   // Returns: 0
-Viper.Math.clamp(50, 0, 100)    // Returns: 50
+Math.clamp(150, 0, 100)   // Returns: 100
+Math.clamp(-50, 0, 100)   // Returns: 0
+Math.clamp(50, 0, 100)    // Returns: 50
 
 // Common use: keep game entities on screen
-playerX = Viper.Math.clamp(playerX, 0, screenWidth);
-playerY = Viper.Math.clamp(playerY, 0, screenHeight);
+playerX = Math.clamp(playerX, 0, screenWidth);
+playerY = Math.clamp(playerY, 0, screenHeight);
 ```
 
 ---
@@ -1032,9 +1032,9 @@ Rounds down to the nearest integer (toward negative infinity).
 
 **Example:**
 ```rust
-Viper.Math.floor(3.7)   // Returns: 3.0
-Viper.Math.floor(3.2)   // Returns: 3.0
-Viper.Math.floor(-3.2)  // Returns: -4.0 (toward negative infinity)
+Math.floor(3.7)   // Returns: 3.0
+Math.floor(3.2)   // Returns: 3.0
+Math.floor(-3.2)  // Returns: -4.0 (toward negative infinity)
 ```
 
 ---
@@ -1049,9 +1049,9 @@ Rounds up to the nearest integer (toward positive infinity).
 
 **Example:**
 ```rust
-Viper.Math.ceil(3.2)    // Returns: 4.0
-Viper.Math.ceil(3.0)    // Returns: 3.0
-Viper.Math.ceil(-3.7)   // Returns: -3.0 (toward positive infinity)
+Math.ceil(3.2)    // Returns: 4.0
+Math.ceil(3.0)    // Returns: 3.0
+Math.ceil(-3.7)   // Returns: -3.0 (toward positive infinity)
 ```
 
 ---
@@ -1066,9 +1066,9 @@ Rounds to the nearest integer. Halfway cases round away from zero.
 
 **Example:**
 ```rust
-Viper.Math.round(3.4)   // Returns: 3.0
-Viper.Math.round(3.5)   // Returns: 4.0
-Viper.Math.round(-3.5)  // Returns: -4.0
+Math.round(3.4)   // Returns: 3.0
+Math.round(3.5)   // Returns: 4.0
+Math.round(-3.5)  // Returns: -4.0
 ```
 
 ---
@@ -1083,8 +1083,8 @@ Truncates toward zero (removes the fractional part).
 
 **Example:**
 ```rust
-Viper.Math.trunc(3.7)   // Returns: 3.0
-Viper.Math.trunc(-3.7)  // Returns: -3.0 (toward zero, not down)
+Math.trunc(3.7)   // Returns: 3.0
+Math.trunc(-3.7)  // Returns: -3.0 (toward zero, not down)
 ```
 
 ---
@@ -1101,14 +1101,14 @@ Returns the square root.
 
 **Example:**
 ```rust
-Viper.Math.sqrt(16.0)   // Returns: 4.0
-Viper.Math.sqrt(2.0)    // Returns: 1.41421356...
+Math.sqrt(16.0)   // Returns: 4.0
+Math.sqrt(2.0)    // Returns: 1.41421356...
 
 // Distance between two points
 func distance(x1: Number, y1: Number, x2: Number, y2: Number) -> Number {
     var dx = x2 - x1;
     var dy = y2 - y1;
-    return Viper.Math.sqrt(dx*dx + dy*dy);
+    return Math.sqrt(dx*dx + dy*dy);
 }
 ```
 
@@ -1126,8 +1126,8 @@ Returns the cube root. Unlike `sqrt`, works with negative numbers.
 
 **Example:**
 ```rust
-Viper.Math.cbrt(27.0)   // Returns: 3.0
-Viper.Math.cbrt(-27.0)  // Returns: -3.0
+Math.cbrt(27.0)   // Returns: 3.0
+Math.cbrt(-27.0)  // Returns: -3.0
 ```
 
 ---
@@ -1142,13 +1142,13 @@ Returns base raised to the power of exponent.
 
 **Example:**
 ```rust
-Viper.Math.pow(2.0, 10.0)   // Returns: 1024.0
-Viper.Math.pow(10.0, 3.0)   // Returns: 1000.0
-Viper.Math.pow(4.0, 0.5)    // Returns: 2.0 (same as sqrt)
+Math.pow(2.0, 10.0)   // Returns: 1024.0
+Math.pow(10.0, 3.0)   // Returns: 1000.0
+Math.pow(4.0, 0.5)    // Returns: 2.0 (same as sqrt)
 
 // Compound interest
 func futureValue(principal: Number, rate: Number, years: Integer) -> Number {
-    return principal * Viper.Math.pow(1.0 + rate, years.toF64());
+    return principal * Math.pow(1.0 + rate, years.toF64());
 }
 ```
 
@@ -1164,8 +1164,8 @@ Returns e raised to the power x.
 
 **Example:**
 ```rust
-Viper.Math.exp(1.0)     // Returns: 2.71828... (e)
-Viper.Math.exp(0.0)     // Returns: 1.0
+Math.exp(1.0)     // Returns: 2.71828... (e)
+Math.exp(0.0)     // Returns: 1.0
 ```
 
 ---
@@ -1180,13 +1180,13 @@ func log2(x: f64) -> f64     // Base-2 logarithm
 
 **Example:**
 ```rust
-Viper.Math.log(Viper.Math.E)   // Returns: 1.0
-Viper.Math.log10(1000.0)       // Returns: 3.0
-Viper.Math.log2(1024.0)        // Returns: 10.0
+Math.log(Math.E)   // Returns: 1.0
+Math.log10(1000.0)       // Returns: 3.0
+Math.log2(1024.0)        // Returns: 10.0
 
 // Number of bits needed to represent a number
 func bitsNeeded(n: Integer) -> Integer {
-    return Viper.Math.ceil(Viper.Math.log2(n.toF64() + 1.0)).toInt();
+    return Math.ceil(Math.log2(n.toF64() + 1.0)).toInt();
 }
 ```
 
@@ -1208,15 +1208,15 @@ func tan(x: f64) -> f64    // Tangent
 
 **Example:**
 ```rust
-Viper.Math.sin(0.0)                   // Returns: 0.0
-Viper.Math.sin(Viper.Math.PI / 2.0)   // Returns: 1.0
-Viper.Math.cos(0.0)                   // Returns: 1.0
-Viper.Math.cos(Viper.Math.PI)         // Returns: -1.0
+Math.sin(0.0)                   // Returns: 0.0
+Math.sin(Math.PI / 2.0)   // Returns: 1.0
+Math.cos(0.0)                   // Returns: 1.0
+Math.cos(Math.PI)         // Returns: -1.0
 
 // Circular motion
 func circularPosition(angle: Number, radius: Number) -> (Number, Number) {
-    var x = Viper.Math.cos(angle) * radius;
-    var y = Viper.Math.sin(angle) * radius;
+    var x = Math.cos(angle) * radius;
+    var y = Math.sin(angle) * radius;
     return (x, y);
 }
 ```
@@ -1236,7 +1236,7 @@ func atan2(y: f64, x: f64) -> f64      // Arc tangent of y/x (handles quadrants)
 ```rust
 // atan2 is usually what you want for angles between points
 func angleTo(fromX: Number, fromY: Number, toX: Number, toY: Number) -> Number {
-    return Viper.Math.atan2(toY - fromY, toX - fromX);
+    return Math.atan2(toY - fromY, toX - fromX);
 }
 
 var angle = angleTo(0.0, 0.0, 1.0, 1.0);  // 45 degrees = PI/4 radians
@@ -1265,12 +1265,12 @@ func toDegrees(radians: f64) -> f64
 
 **Example:**
 ```rust
-var rad = Viper.Math.toRadians(90.0);   // Returns: PI/2
-var deg = Viper.Math.toDegrees(Viper.Math.PI);  // Returns: 180.0
+var rad = Math.toRadians(90.0);   // Returns: PI/2
+var deg = Math.toDegrees(Math.PI);  // Returns: 180.0
 
 // If you have user input in degrees
 var userAngle = 45.0;  // degrees
-var x = Viper.Math.cos(Viper.Math.toRadians(userAngle));
+var x = Math.cos(Math.toRadians(userAngle));
 ```
 
 ---
@@ -1287,11 +1287,11 @@ Returns a random floating-point number from 0.0 (inclusive) to 1.0 (exclusive).
 
 **Example:**
 ```rust
-var r = Viper.Math.random();  // e.g., 0.7231498...
+var r = Math.random();  // e.g., 0.7231498...
 
 // Random number in range [min, max)
 func randomRange(min: Number, max: Number) -> Number {
-    return min + Viper.Math.random() * (max - min);
+    return min + Math.random() * (max - min);
 }
 
 var temperature = randomRange(-10.0, 40.0);
@@ -1309,12 +1309,12 @@ Returns a random integer in the range [min, max] (inclusive on both ends).
 
 **Example:**
 ```rust
-var diceRoll = Viper.Math.randomInt(1, 6);
-var coinFlip = Viper.Math.randomInt(0, 1);  // 0 or 1
+var diceRoll = Math.randomInt(1, 6);
+var coinFlip = Math.randomInt(0, 1);  // 0 or 1
 
 // Random array element
 func randomChoice<T>(arr: [T]) -> T {
-    var index = Viper.Math.randomInt(0, arr.len() - 1);
+    var index = Math.randomInt(0, arr.len() - 1);
     return arr[index];
 }
 
@@ -1335,13 +1335,13 @@ Sets the random number generator seed. Same seed produces same sequence.
 **Example:**
 ```rust
 // Reproducible random sequence
-Viper.Math.randomSeed(12345);
-var a = Viper.Math.randomInt(1, 100);  // Always same value
-var b = Viper.Math.randomInt(1, 100);  // Always same value
+Math.randomSeed(12345);
+var a = Math.randomInt(1, 100);  // Always same value
+var b = Math.randomInt(1, 100);  // Always same value
 
 // Reset to get same sequence again
-Viper.Math.randomSeed(12345);
-var c = Viper.Math.randomInt(1, 100);  // c == a
+Math.randomSeed(12345);
+var c = Math.randomInt(1, 100);  // c == a
 ```
 
 **When to use:** Use for testing, reproducible simulations, or games with "daily challenges."
@@ -1366,12 +1366,12 @@ func nanos() -> i64     // Nanoseconds since epoch
 **Example:**
 ```rust
 // Measure execution time
-var start = Viper.Time.millis();
+var start = Time.millis();
 
 // ... do some work ...
 
-var elapsed = Viper.Time.millis() - start;
-Viper.Terminal.Say("Operation took " + elapsed + " ms");
+var elapsed = Time.millis() - start;
+Terminal.Say("Operation took " + elapsed + " ms");
 ```
 
 ---
@@ -1386,8 +1386,8 @@ Returns the current date and time.
 
 **Example:**
 ```rust
-var now = Viper.Time.now();
-Viper.Terminal.Say("Current time: " + now.format("YYYY-MM-DD HH:mm:ss"));
+var now = Time.now();
+Terminal.Say("Current time: " + now.format("YYYY-MM-DD HH:mm:ss"));
 ```
 
 ---
@@ -1404,25 +1404,25 @@ Pauses execution for the specified duration.
 
 **Example:**
 ```rust
-Viper.Terminal.Say("Starting in 3...");
-Viper.Time.sleep(1000);
-Viper.Terminal.Say("2...");
-Viper.Time.sleep(1000);
-Viper.Terminal.Say("1...");
-Viper.Time.sleep(1000);
-Viper.Terminal.Say("Go!");
+Terminal.Say("Starting in 3...");
+Time.sleep(1000);
+Terminal.Say("2...");
+Time.sleep(1000);
+Terminal.Say("1...");
+Time.sleep(1000);
+Terminal.Say("Go!");
 
 // Animation frame timing
 var frameTime = 1000 / 60;  // ~16ms for 60 FPS
 loop {
-    var frameStart = Viper.Time.millis();
+    var frameStart = Time.millis();
 
     updateGame();
     renderGame();
 
-    var elapsed = Viper.Time.millis() - frameStart;
+    var elapsed = Time.millis() - frameStart;
     if elapsed < frameTime {
-        Viper.Time.sleep(frameTime - elapsed);
+        Time.sleep(frameTime - elapsed);
     }
 }
 ```
@@ -1454,10 +1454,10 @@ var dt = DateTime.now();
 
 var dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday",
                 "Thursday", "Friday", "Saturday"];
-Viper.Terminal.Say("Today is " + dayNames[dt.dayOfWeek]);
+Terminal.Say("Today is " + dayNames[dt.dayOfWeek]);
 
 if dt.month == 12 and dt.day == 25 {
-    Viper.Terminal.Say("Merry Christmas!");
+    Terminal.Say("Merry Christmas!");
 }
 ```
 
@@ -1554,7 +1554,7 @@ var days = end.diffDays(start);  // 365.0
 // Days until deadline
 var deadline = DateTime.parse("2024-06-15");
 var daysLeft = deadline.diffDays(DateTime.now());
-Viper.Terminal.Say("Days remaining: " + Viper.Math.ceil(daysLeft).toInt());
+Terminal.Say("Days remaining: " + Math.ceil(daysLeft).toInt());
 ```
 
 ---
@@ -1610,7 +1610,7 @@ var text = "the quick brown fox jumps over the lazy dog";
 var freq = countWords(text);
 
 for word, count in freq {
-    Viper.Terminal.Say(word + ": " + count);
+    Terminal.Say(word + ": " + count);
 }
 ```
 
@@ -1650,7 +1650,7 @@ visitors.add("alice");
 visitors.add("bob");
 visitors.add("alice");  // Duplicate ignored
 
-Viper.Terminal.Say("Unique visitors: " + visitors.size);  // 2
+Terminal.Say("Unique visitors: " + visitors.size);  // 2
 
 // Set operations
 var admins = Set<string>.new();
@@ -1694,7 +1694,7 @@ tasks.enqueue("Generate report");
 
 while !tasks.isEmpty() {
     var task = tasks.dequeue();
-    Viper.Terminal.Say("Processing: " + task);
+    Terminal.Say("Processing: " + task);
     // Process task...
 }
 ```
@@ -1728,15 +1728,15 @@ var undoStack = Stack<string>.new();
 
 func doAction(action: String) {
     undoStack.push(action);
-    Viper.Terminal.Say("Did: " + action);
+    Terminal.Say("Did: " + action);
 }
 
 func undo() {
     if !undoStack.isEmpty() {
         var action = undoStack.pop();
-        Viper.Terminal.Say("Undoing: " + action);
+        Terminal.Say("Undoing: " + action);
     } else {
-        Viper.Terminal.Say("Nothing to undo");
+        Terminal.Say("Nothing to undo");
     }
 }
 
@@ -1786,7 +1786,7 @@ taskQueue.enqueue(Task { name: "Medium task", priority: 5 });
 
 while !taskQueue.isEmpty() {
     var task = taskQueue.dequeue();
-    Viper.Terminal.Say("Processing: " + task.name);
+    Terminal.Say("Processing: " + task.name);
 }
 // Output:
 // Processing: Critical bug fix
@@ -1837,10 +1837,10 @@ var response = Http.get("https://api.example.com/users");
 if response.ok {
     var data = JSON.parse(response.body);
     for user in data.asArray() {
-        Viper.Terminal.Say(user["name"].asString());
+        Terminal.Say(user["name"].asString());
     }
 } else {
-    Viper.Terminal.SayError("Request failed: " + response.statusCode);
+    Terminal.SayError("Request failed: " + response.statusCode);
 }
 
 // POST with JSON body
@@ -1882,7 +1882,7 @@ socket.write("Host: example.com\r\n");
 socket.write("\r\n");
 
 var response = socket.read(4096);
-Viper.Terminal.Say(response);
+Terminal.Say(response);
 
 socket.close();
 ```
@@ -1900,11 +1900,11 @@ server.close() -> void
 ```rust
 // Echo server
 var server = TcpServer.listen(8080);
-Viper.Terminal.Say("Server listening on port 8080");
+Terminal.Say("Server listening on port 8080");
 
 while true {
     var client = server.accept();
-    Viper.Terminal.Say("Client connected");
+    Terminal.Say("Client connected");
 
     var data = client.readLine();
     client.write("Echo: " + data + "\n");
@@ -1939,7 +1939,7 @@ var receiver = UdpSocket.create();
 receiver.bind(9000);
 
 var packet = receiver.receive();
-Viper.Terminal.Say("Received: " + packet.data + " from " + packet.address);
+Terminal.Say("Received: " + packet.data + " from " + packet.address);
 receiver.close();
 ```
 
@@ -2106,7 +2106,7 @@ thread.result() -> T       // Wait and get return value
 ```rust
 // Simple thread
 var thread = Thread.spawn(func() {
-    Viper.Terminal.Say("Hello from thread!");
+    Terminal.Say("Hello from thread!");
 });
 thread.join();
 
@@ -2122,7 +2122,7 @@ var thread = Thread.spawn(func() -> i64 {
 // Do other work while thread runs...
 
 var result = thread.result();
-Viper.Terminal.Say("Sum: " + result);
+Terminal.Say("Sum: " + result);
 ```
 
 ---
@@ -2210,7 +2210,7 @@ for thread in threads {
     thread.join();
 }
 
-Viper.Terminal.Say("Count: " + counter.get());  // Always 10000
+Terminal.Say("Count: " + counter.get());  // Always 10000
 ```
 
 **When to use:** Use Atomics for simple counters or flags. Use Mutex for more complex shared state.
@@ -2238,7 +2238,7 @@ var channel = Channel<string>.create();
 var producer = Thread.spawn(func() {
     for i in 0..5 {
         channel.send("Message " + i);
-        Viper.Time.sleep(100);
+        Time.sleep(100);
     }
     channel.close();
 });
@@ -2249,7 +2249,7 @@ loop {
     if msg == nil {
         break;
     }
-    Viper.Terminal.Say("Received: " + msg);
+    Terminal.Say("Received: " + msg);
 }
 
 producer.join();
@@ -2334,7 +2334,7 @@ while canvas.isOpen() {
     // Draw frame...
 
     canvas.show();
-    Viper.Time.sleep(16);  // ~60 FPS
+    Time.sleep(16);  // ~60 FPS
 }
 ```
 
@@ -3031,7 +3031,7 @@ if Input.isMouseDown(MouseButton.LEFT) {
 // Zoom with scroll wheel
 var zoom = 1.0;
 zoom += Input.mouseScroll() * 0.1;
-zoom = Viper.Math.clamp(zoom, 0.1, 5.0);
+zoom = Math.clamp(zoom, 0.1, 5.0);
 ```
 
 ---
@@ -3055,8 +3055,8 @@ if Input.isControllerConnected(0) {
     var moveY = Input.controllerAxis(0, Axis.LEFT_Y);
 
     // Dead zone handling
-    if Viper.Math.abs(moveX) < 0.15 { moveX = 0.0; }
-    if Viper.Math.abs(moveY) < 0.15 { moveY = 0.0; }
+    if Math.abs(moveX) < 0.15 { moveX = 0.0; }
+    if Math.abs(moveY) < 0.15 { moveY = 0.0; }
 
     playerX += moveX * speed;
     playerY += moveY * speed;
@@ -3088,7 +3088,7 @@ func Viper.Crypto.sha512(data: string) -> string   // 128-char hex string
 ```rust
 var password = "secretpassword";
 var hash = Viper.Crypto.sha256(password);
-Viper.Terminal.Say("Hash: " + hash);
+Terminal.Say("Hash: " + hash);
 // Hash: 2bb80d537b1da3e38bd30361aa855686bde0eacd7162fef6a25fe97bf527a25b
 
 // File integrity check
@@ -3137,7 +3137,7 @@ var bytes = original.toBytes();
 
 // Base64
 var encoded = Viper.Crypto.base64Encode(bytes);
-Viper.Terminal.Say(encoded);  // "SGVsbG8sIFdvcmxkIQ=="
+Terminal.Say(encoded);  // "SGVsbG8sIFdvcmxkIQ=="
 
 var decoded = Viper.Crypto.base64Decode(encoded);
 var text = String.fromBytes(decoded);  // "Hello, World!"
@@ -3188,9 +3188,9 @@ Viper.Environment.tempDir      // System temp directory
 
 **Example:**
 ```rust
-Viper.Terminal.Say("OS: " + Viper.Environment.os);
-Viper.Terminal.Say("Architecture: " + Viper.Environment.arch);
-Viper.Terminal.Say("CPU cores: " + Viper.Environment.cpuCount);
+Terminal.Say("OS: " + Viper.Environment.os);
+Terminal.Say("Architecture: " + Viper.Environment.arch);
+Terminal.Say("CPU cores: " + Viper.Environment.cpuCount);
 
 // Platform-specific paths
 var configPath = Viper.File.join(Viper.Environment.homeDir, ".myapp", "config.json");
@@ -3211,7 +3211,7 @@ func Viper.Environment.exit(code: i64) -> void
 var args = Viper.Environment.args;
 
 if args.len() < 2 {
-    Viper.Terminal.Say("Usage: program <filename>");
+    Terminal.Say("Usage: program <filename>");
     Viper.Environment.exit(1);
 }
 
@@ -3266,9 +3266,9 @@ var pattern = Regex.compile("(\\d{4})-(\\d{2})-(\\d{2})");
 
 if pattern.matches("2024-03-15") {
     var match = pattern.find("2024-03-15");
-    Viper.Terminal.Say("Year: " + match.groups[1]);   // "2024"
-    Viper.Terminal.Say("Month: " + match.groups[2]);  // "03"
-    Viper.Terminal.Say("Day: " + match.groups[3]);    // "15"
+    Terminal.Say("Year: " + match.groups[1]);   // "2024"
+    Terminal.Say("Month: " + match.groups[2]);  // "03"
+    Terminal.Say("Day: " + match.groups[3]);    // "15"
 }
 ```
 
@@ -3369,10 +3369,10 @@ result.stderr     // string - standard error
 ```rust
 // Simple command
 var result = Process.run("ls", ["-la"]);
-Viper.Terminal.Say(result.stdout);
+Terminal.Say(result.stdout);
 
 if result.exitCode != 0 {
-    Viper.Terminal.SayError("Command failed: " + result.stderr);
+    Terminal.SayError("Command failed: " + result.stderr);
 }
 
 // With options
@@ -3403,7 +3403,7 @@ var process = Process.spawn("python3", []);
 
 process.write("print(2 + 2)\n");
 var output = process.readLine();
-Viper.Terminal.Say("Result: " + output);  // "4"
+Terminal.Say("Result: " + output);  // "4"
 
 process.write("exit()\n");
 process.wait();
@@ -3458,7 +3458,7 @@ assertNull(findUser("nonexistent"));
 assertNotNull(findUser("alice"));
 
 // Floating point comparison
-assertClose(Viper.Math.PI, 3.14159, 0.00001);
+assertClose(Math.PI, 3.14159, 0.00001);
 
 // Exception testing
 assertThrows(func() {

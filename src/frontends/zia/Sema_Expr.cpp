@@ -157,6 +157,19 @@ TypeRef Sema::analyzeIdent(IdentExpr *expr)
     Symbol *sym = lookupSymbol(expr->name);
     if (!sym)
     {
+        // Check if this is an imported symbol from a bound namespace
+        auto importIt = importedSymbols_.find(expr->name);
+        if (importIt != importedSymbols_.end())
+        {
+            // For imported runtime classes, return a module-like type so that
+            // field access (e.g., Canvas.New) can be resolved
+            const std::string &fullName = importIt->second;
+            if (fullName.rfind("Viper.", 0) == 0)
+            {
+                return types::module(fullName);
+            }
+        }
+
         errorUndefined(expr->loc, expr->name);
         return types::unknown();
     }
@@ -553,11 +566,73 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
         }
     }
 
+    // Check if callee is an imported symbol from a bound namespace
+    // This handles unqualified calls like Say() when Viper.Terminal is bound
+    if (expr->callee->kind == ExprKind::Ident)
+    {
+        auto *identExpr = static_cast<IdentExpr *>(expr->callee.get());
+        auto importIt = importedSymbols_.find(identExpr->name);
+        if (importIt != importedSymbols_.end())
+        {
+            // Resolve to the full qualified name
+            const std::string &fullName = importIt->second;
+            Symbol *sym = lookupSymbol(fullName);
+            if (sym && sym->kind == Symbol::Kind::Function && sym->isExtern)
+            {
+                // Store the resolved callee for the lowerer
+                runtimeCallees_[expr] = fullName;
+                exprTypes_[expr->callee.get()] = sym->type;
+
+                // Analyze arguments
+                for (auto &arg : expr->args)
+                {
+                    analyzeExpr(arg.value.get());
+                }
+
+                // Return the function's return type
+                if (sym->type && sym->type->kind == TypeKindSem::Function)
+                {
+                    return sym->type->returnType();
+                }
+                return sym->type;
+            }
+        }
+    }
+
     // First, try to resolve dotted function names like Viper.Terminal.Say or MyLib.helper
     // This unified lookup works for both runtime functions and user-defined namespaced functions
     std::string dottedName;
     if (extractDottedName(expr->callee.get(), dottedName))
     {
+        // Check if the first part is a module alias or imported symbol that needs expansion
+        // e.g., "T.Say" where T is an alias for "Viper.Terminal" becomes "Viper.Terminal.Say"
+        // or "Canvas.New" where Canvas is imported from Viper.Graphics becomes "Viper.Graphics.Canvas.New"
+        auto dotPos = dottedName.find('.');
+        if (dotPos != std::string::npos)
+        {
+            std::string firstPart = dottedName.substr(0, dotPos);
+            std::string rest = dottedName.substr(dotPos + 1);
+
+            // Check if firstPart is a module alias (bound namespace with alias)
+            for (const auto &[ns, alias] : boundNamespaces_)
+            {
+                if (!alias.empty() && alias == firstPart)
+                {
+                    // Expand the alias: T.Say -> Viper.Terminal.Say
+                    dottedName = ns + "." + rest;
+                    break;
+                }
+            }
+
+            // Check if firstPart is an imported symbol (e.g., Canvas from Viper.Graphics)
+            auto importIt = importedSymbols_.find(firstPart);
+            if (importIt != importedSymbols_.end())
+            {
+                // Expand: Canvas.New -> Viper.Graphics.Canvas.New
+                dottedName = importIt->second + "." + rest;
+            }
+        }
+
         // Check if it's a known function (runtime or user-defined with qualified name)
         Symbol *sym = lookupSymbol(dottedName);
         if (sym && sym->kind == Symbol::Kind::Function)
@@ -939,15 +1014,34 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
         baseType = baseType->innerType();
     }
 
-    // Handle module-qualified access (e.g., colors.initColors)
+    // Handle module-qualified access (e.g., colors.initColors or Canvas.New)
     if (baseType && baseType->kind == TypeKindSem::Module)
     {
-        // Look up the symbol in global scope (imported symbols are merged)
-        Symbol *sym = lookupSymbol(expr->field);
+        // Build the full qualified name (e.g., Viper.Graphics.Canvas.New)
+        std::string fullName = baseType->name + "." + expr->field;
+
+        // First try to look up the qualified name directly
+        Symbol *sym = lookupSymbol(fullName);
         if (sym)
         {
             return sym->type;
         }
+
+        // For runtime classes (Viper.*), the symbol might not be in the symbol table
+        // but could be a valid runtime method. Check importedSymbols_ for the method.
+        auto importIt = importedSymbols_.find(fullName);
+        if (importIt != importedSymbols_.end())
+        {
+            return types::module(importIt->second);
+        }
+
+        // For local modules, also try unqualified name (for backwards compatibility)
+        sym = lookupSymbol(expr->field);
+        if (sym)
+        {
+            return sym->type;
+        }
+
         // If not found in global scope, report error
         error(expr->loc,
               "Module '" + baseType->name + "' has no exported symbol '" + expr->field + "'");

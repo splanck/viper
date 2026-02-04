@@ -1,7 +1,9 @@
 module gfx_test;
 
+bind Viper.Graphics;
+
 // Very minimal graphics test - just create and destroy a canvas
 func main() {
-    var canvas = Viper.Graphics.Canvas.New("Test", 100, 100);
+    var canvas = Canvas.New("Test", 100, 100);
     // Just create and immediately exit
 }

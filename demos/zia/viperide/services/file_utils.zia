@@ -1,26 +1,29 @@
 module file_utils;
 
+bind File = Viper.IO.File;
+bind Path = Viper.IO.Path;
+
 // ============================================================================
 // File I/O utility functions for ViperIDE
 // ============================================================================
 
 // Read the entire contents of a file. Returns "" if file does not exist.
 func ReadFileContent(path: String) -> String {
-    if Viper.IO.File.Exists(path) {
-        return Viper.IO.File.ReadAllText(path);
+    if File.Exists(path) {
+        return File.ReadAllText(path);
     }
     return "";
 }
 
 // Write content to a file.
 func WriteFileContent(path: String, content: String) {
-    Viper.IO.File.WriteAllText(path, content);
+    File.WriteAllText(path, content);
 }
 
 // Detect language from file extension.
 // Returns "zia", "basic", or "text".
 func DetectLanguage(path: String) -> String {
-    var ext = Viper.IO.Path.Ext(path);
+    var ext = Path.Ext(path);
     if ext == ".zia" {
         return "zia";
     }
@@ -44,20 +47,20 @@ func DetectLanguage(path: String) -> String {
 
 // Extract the file name from a full path.
 func GetFileName(path: String) -> String {
-    return Viper.IO.Path.Name(path);
+    return Path.Name(path);
 }
 
 // Extract the file name without extension.
 func GetFileStem(path: String) -> String {
-    return Viper.IO.Path.Stem(path);
+    return Path.Stem(path);
 }
 
 // Check if a file exists.
 func FileExists(path: String) -> Boolean {
-    return Viper.IO.File.Exists(path);
+    return File.Exists(path);
 }
 
 // Get the last modification timestamp of a file.
 func GetFileModified(path: String) -> Integer {
-    return Viper.IO.File.Modified(path);
+    return File.Modified(path);
 }

@@ -1,0 +1,13 @@
+// Test selective namespace bind
+// EXPECT_OUT: RESULT: ok
+module TestSelectiveNamespaceBind;
+
+// Bind only specific items from Viper.Terminal
+bind Viper.Terminal { Say };
+
+func start() {
+    // Say should work
+    Say("Testing selective namespace bind...");
+    Say("Selective import test - Say works!");
+    Say("RESULT: ok");
+}

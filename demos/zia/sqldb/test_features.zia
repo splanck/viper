@@ -1,6 +1,9 @@
 // test_features.viper - Test various SQL features
 module test_features;
 
+bind Viper.Terminal;
+bind Viper.Fmt;
+
 bind "./executor";
 
 Integer passed = 0;
@@ -9,10 +12,10 @@ Integer failed = 0;
 func assert(condition: Boolean, msg: String) {
     if condition {
         passed = passed + 1;
-        Viper.Terminal.Say("  PASS: " + msg);
+        Terminal.Say("  PASS: " + msg);
     } else {
         failed = failed + 1;
-        Viper.Terminal.Say("  FAIL: " + msg);
+        Terminal.Say("  FAIL: " + msg);
     }
 }
 
@@ -20,11 +23,11 @@ func main() {
     var exec = new Executor();
     exec.init();
 
-    Viper.Terminal.Say("=== Extended SQL Feature Tests ===");
-    Viper.Terminal.Say("");
+    Terminal.Say("=== Extended SQL Feature Tests ===");
+    Terminal.Say("");
 
     // Test CREATE INDEX and index lookups
-    Viper.Terminal.Say("Testing INDEX...");
+    Terminal.Say("Testing INDEX...");
     exec.executeSql("CREATE TABLE products (id INTEGER, name TEXT, price INTEGER)");
     exec.executeSql("INSERT INTO products VALUES (1, 'Apple', 100)");
     exec.executeSql("INSERT INTO products VALUES (2, 'Banana', 50)");
@@ -36,7 +39,7 @@ func main() {
     assert(r1.success, "CREATE INDEX should succeed");
 
     // Test string functions
-    Viper.Terminal.Say("Testing String Functions...");
+    Terminal.Say("Testing String Functions...");
     var r2 = exec.executeSql("SELECT UPPER(name) FROM products WHERE id = 1");
     assert(r2.success, "UPPER function should work");
     assert(r2.rowCount() == 1, "Should return 1 row");
@@ -48,7 +51,7 @@ func main() {
     assert(r4.success, "LENGTH function should work");
 
     // Test ABS function
-    Viper.Terminal.Say("Testing Math Functions...");
+    Terminal.Say("Testing Math Functions...");
     exec.executeSql("CREATE TABLE temps (id INTEGER, temp INTEGER)");
     exec.executeSql("INSERT INTO temps VALUES (1, -10)");
     exec.executeSql("INSERT INTO temps VALUES (2, 25)");
@@ -57,7 +60,7 @@ func main() {
     assert(r5.success, "ABS function should work");
 
     // Test COALESCE
-    Viper.Terminal.Say("Testing COALESCE...");
+    Terminal.Say("Testing COALESCE...");
     exec.executeSql("CREATE TABLE nullable (id INTEGER, val INTEGER)");
     exec.executeSql("INSERT INTO nullable VALUES (1, 100)");
     // Can't easily insert NULL, but test with existing value
@@ -65,7 +68,7 @@ func main() {
     assert(r6.success, "COALESCE should work");
 
     // Test complex WHERE with AND/OR
-    Viper.Terminal.Say("Testing Complex WHERE...");
+    Terminal.Say("Testing Complex WHERE...");
     var r7 = exec.executeSql("SELECT * FROM products WHERE price > 50 AND price < 150");
     assert(r7.success, "AND in WHERE should work");
     assert(r7.rowCount() == 3, "Should return 3 products (Apple, Cherry, Date)");
@@ -75,12 +78,12 @@ func main() {
     assert(r8.rowCount() == 2, "Should return 2 products (Banana, Elderberry)");
 
     // Test nested expressions
-    Viper.Terminal.Say("Testing Arithmetic...");
+    Terminal.Say("Testing Arithmetic...");
     var r9 = exec.executeSql("SELECT price * 2 FROM products WHERE id = 1");
     assert(r9.success, "Arithmetic in SELECT should work");
 
     // Test multiple ORDER BY
-    Viper.Terminal.Say("Testing ORDER BY...");
+    Terminal.Say("Testing ORDER BY...");
     var r10 = exec.executeSql("SELECT * FROM products ORDER BY price ASC");
     assert(r10.success, "ORDER BY ASC should work");
 
@@ -88,19 +91,19 @@ func main() {
     assert(r11.success, "ORDER BY DESC should work");
 
     // Test LIMIT with OFFSET
-    Viper.Terminal.Say("Testing LIMIT/OFFSET...");
+    Terminal.Say("Testing LIMIT/OFFSET...");
     var r12 = exec.executeSql("SELECT * FROM products LIMIT 2 OFFSET 1");
     assert(r12.success, "LIMIT with OFFSET should work");
     assert(r12.rowCount() == 2, "Should return 2 rows");
 
     // Test combined features
-    Viper.Terminal.Say("Testing Combined Features...");
+    Terminal.Say("Testing Combined Features...");
     var r13 = exec.executeSql("SELECT name, price FROM products WHERE price > 50 ORDER BY price DESC LIMIT 3");
     assert(r13.success, "Combined WHERE/ORDER/LIMIT should work");
     assert(r13.rowCount() == 3, "Should return 3 rows");
 
     // Test aggregate with WHERE
-    Viper.Terminal.Say("Testing Aggregates with WHERE...");
+    Terminal.Say("Testing Aggregates with WHERE...");
     var r14 = exec.executeSql("SELECT COUNT(*) FROM products WHERE price > 100");
     assert(r14.success, "COUNT with WHERE should work");
     assert(r14.rowCount() == 1, "Should return 1 row");
@@ -112,8 +115,8 @@ func main() {
     assert(r16.success, "AVG should work");
 
     // Print results
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("=== Results ===");
-    Viper.Terminal.Say("Passed: " + Viper.Fmt.Int(passed));
-    Viper.Terminal.Say("Failed: " + Viper.Fmt.Int(failed));
+    Terminal.Say("");
+    Terminal.Say("=== Results ===");
+    Terminal.Say("Passed: " + Fmt.Int(passed));
+    Terminal.Say("Failed: " + Fmt.Int(failed));
 }

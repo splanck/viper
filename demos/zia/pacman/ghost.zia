@@ -2,11 +2,15 @@
 // PAC-MAN - Ghost Entity
 // =============================================================================
 // Uses new Viper runtime features:
-// - Viper.Game.Timer for frightened mode countdown and flash animation
+// - Timer for frightened mode countdown and flash animation
 // - Cleaner AI targeting logic
 // =============================================================================
 
 module ghost;
+
+bind Viper.Game;
+bind Viper.Graphics;
+bind Viper.Random;
 
 bind "./config";
 bind "./utils";
@@ -39,9 +43,9 @@ entity Ghost {
     hide Boolean inHouse;  // True if ghost is still in the ghost house
 
     // Use Timers for frightened mode
-    hide Viper.Game.Timer frightenedTimer;
-    hide Viper.Game.Timer flashTimer;
-    hide Viper.Game.Timer exitTimer;  // Delay before exiting house
+    hide Timer frightenedTimer;
+    hide Timer flashTimer;
+    hide Timer exitTimer;  // Delay before exiting house
     hide Boolean flashWhite;
 
     expose func init(gType: Integer, startX: Integer, startY: Integer, ghostColor: Integer) {
@@ -76,15 +80,15 @@ entity Ghost {
         }
 
         // Setup frightened timer
-        frightenedTimer = Viper.Game.Timer.New();
+        frightenedTimer = Timer.New();
 
         // Setup flash timer (toggles every 10 frames when about to end)
-        flashTimer = Viper.Game.Timer.New();
+        flashTimer = Timer.New();
         flashTimer.StartRepeating(10);
         flashWhite = false;
 
         // Setup exit timer - stagger ghost exits
-        exitTimer = Viper.Game.Timer.New();
+        exitTimer = Timer.New();
         if ghostType == GHOST_PINKY {
             exitTimer.Start(60);   // Pinky exits after 1 second
         } else if ghostType == GHOST_INKY {
@@ -184,8 +188,8 @@ entity Ghost {
                 }
             } else if mode == config.MODE_FRIGHTENED {
                 // Random target when frightened
-                targetX = Viper.Random.NextInt(config.GRID_WIDTH);
-                targetY = Viper.Random.NextInt(config.GRID_HEIGHT);
+                targetX = NextInt(config.GRID_WIDTH);
+                targetY = NextInt(config.GRID_HEIGHT);
             }
 
             self.chooseDirection(targetX, targetY, theMaze);
@@ -337,7 +341,7 @@ entity Ghost {
         }
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         var centerX = screenX + config.TILE_SIZE / 2;
         var centerY = screenY + config.TILE_SIZE / 2;
         var radius = config.TILE_SIZE / 2 - 2;

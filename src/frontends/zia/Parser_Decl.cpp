@@ -73,14 +73,16 @@ BindDecl Parser::parseBindDecl()
     SourceLoc loc = bindTok.loc;
 
     std::string path;
+    bool isNamespaceBind = false;
 
     // Check for string literal (file path bind)
     if (check(TokenKind::StringLiteral))
     {
         Token pathTok = advance();
         path = pathTok.stringValue;
+        isNamespaceBind = false;
     }
-    // Otherwise parse dotted identifier path: Viper.Terminal
+    // Otherwise parse dotted identifier path: Viper.Terminal or module_name
     else if (check(TokenKind::Identifier))
     {
         Token firstTok = advance();
@@ -97,6 +99,13 @@ BindDecl Parser::parseBindDecl()
             Token segmentTok = advance();
             path += segmentTok.text;
         }
+
+        // Detect if this is a namespace bind (starts with "Viper.")
+        // File binds use string literals, namespace binds use dotted identifiers
+        if (path.rfind("Viper.", 0) == 0)
+        {
+            isNamespaceBind = true;
+        }
     }
     else
     {
@@ -105,10 +114,46 @@ BindDecl Parser::parseBindDecl()
     }
 
     BindDecl decl(loc, path);
+    decl.isNamespaceBind = isNamespaceBind;
+
+    // Parse optional selective import: { item1, item2, ... }
+    // Only valid for namespace binds
+    if (check(TokenKind::LBrace))
+    {
+        if (!isNamespaceBind)
+        {
+            error("selective imports { ... } only allowed for namespace binds");
+        }
+        else
+        {
+            advance(); // consume '{'
+            while (!check(TokenKind::RBrace) && !check(TokenKind::Eof))
+            {
+                if (!check(TokenKind::Identifier))
+                {
+                    error("expected identifier in selective import list");
+                    break;
+                }
+                Token itemTok = advance();
+                decl.specificItems.push_back(itemTok.text);
+
+                if (!match(TokenKind::Comma))
+                    break;
+            }
+            if (!expect(TokenKind::RBrace, "}"))
+                return decl;
+        }
+    }
 
     // Parse optional alias: as AliasName
+    // Note: alias and selective import are mutually exclusive
     if (match(TokenKind::KwAs))
     {
+        if (!decl.specificItems.empty())
+        {
+            error("cannot use alias 'as' with selective imports { ... }");
+            return decl;
+        }
         if (!check(TokenKind::Identifier))
         {
             error("expected alias name after 'as'");

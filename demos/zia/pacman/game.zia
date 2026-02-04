@@ -2,14 +2,20 @@
 // PAC-MAN - Game Controller Entity
 // =============================================================================
 // Uses new Viper runtime features:
-// - Viper.Input.Manager for edge detection and debounced menu input
-// - Viper.Game.Timer for game timing (ready state, death, mode switching)
-// - Viper.Game.Tween for animations (ready text bounce)
-// - Viper.Game.SmoothValue for score counter animation
+// - Manager for edge detection and debounced menu input
+// - Timer for game timing (ready state, death, mode switching)
+// - Tween for animations (ready text bounce)
+// - SmoothValue for score counter animation
 // - for-in range syntax for cleaner iteration
 // =============================================================================
 
 module game;
+
+bind Viper.Graphics;
+bind Viper.Input;
+bind Viper.Game;
+bind Viper.Time;
+bind Viper.Fmt;
 
 bind "./config";
 bind "./utils";
@@ -23,8 +29,8 @@ bind "./fruit";
 // =============================================================================
 
 entity Game {
-    hide Viper.Graphics.Canvas canvas;
-    hide Viper.Input.Manager input;
+    hide Canvas canvas;
+    hide Manager input;
     hide maze.Maze theMaze;
     hide player.PacMan pacman;
     hide List[ghost.Ghost] ghosts;
@@ -42,21 +48,21 @@ entity Game {
     hide Integer menuSelection;
 
     // Use Timers instead of manual counters
-    hide Viper.Game.Timer readyTimer;
-    hide Viper.Game.Timer deathTimer;
-    hide Viper.Game.Timer modeTimer;
+    hide Timer readyTimer;
+    hide Timer deathTimer;
+    hide Timer modeTimer;
     hide Boolean chaseMode;
 
     // Animations
-    hide Viper.Game.Tween readyTween;
-    hide Viper.Game.SmoothValue displayScore;
+    hide Tween readyTween;
+    hide SmoothValue displayScore;
 
     // High scores list
     hide List[Integer] highScores;
 
     expose func init() {
-        canvas = Viper.Graphics.Canvas.New("PAC-MAN", config.SCREEN_WIDTH, config.SCREEN_HEIGHT);
-        input = Viper.Input.Manager.New();
+        canvas = Canvas.New("PAC-MAN", config.SCREEN_WIDTH, config.SCREEN_HEIGHT);
+        input = Manager.New();
 
         // Initialize game objects
         theMaze = new maze.Maze();
@@ -74,13 +80,13 @@ entity Game {
         theFruit.init();
 
         // Initialize timers
-        readyTimer = Viper.Game.Timer.New();
-        deathTimer = Viper.Game.Timer.New();
-        modeTimer = Viper.Game.Timer.New();
+        readyTimer = Timer.New();
+        deathTimer = Timer.New();
+        modeTimer = Timer.New();
 
         // Initialize animations
-        readyTween = Viper.Game.Tween.New();
-        displayScore = Viper.Game.SmoothValue.New(0.0, 900.0);
+        readyTween = Tween.New();
+        displayScore = SmoothValue.New(0.0, 900.0);
 
         // Initialize high scores
         highScores = [];
@@ -245,7 +251,7 @@ entity Game {
         canvas.Text(config.SCREEN_WIDTH / 2 - 60, 350, "QUIT", quitColor);
 
         // High score display
-        canvas.Text(config.SCREEN_WIDTH / 2 - 80, 450, "HIGH SCORE: " + Viper.Fmt.Int(highScore), config.COLOR_CYAN);
+        canvas.Text(config.SCREEN_WIDTH / 2 - 80, 450, "HIGH SCORE: " + Int(highScore), config.COLOR_CYAN);
 
         // Instructions
         canvas.Text(config.SCREEN_WIDTH / 2 - 120, 550, "Arrow Keys / WASD / D-Pad", config.COLOR_WHITE);
@@ -280,7 +286,7 @@ entity Game {
         var rank = 1;
         for i in 0..highScores.length() {
             var scoreVal = highScores.get(i);
-            var rankText = Viper.Fmt.Int(rank) + ". " + Viper.Fmt.Int(scoreVal);
+            var rankText = Int(rank) + ". " + Int(scoreVal);
             var color = config.COLOR_WHITE;
             if rank == 1 { color = config.COLOR_YELLOW; }
             if rank == 2 { color = config.COLOR_CYAN; }
@@ -609,13 +615,13 @@ entity Game {
     hide func drawUI() {
         // Use smooth score for display
         var displayScoreInt = displayScore.ValueI64;
-        var scoreText = "SCORE: " + Viper.Fmt.Int(displayScoreInt);
+        var scoreText = "SCORE: " + Int(displayScoreInt);
         canvas.Text(10, 5, scoreText, config.COLOR_WHITE);
 
-        var levelText = "LEVEL: " + Viper.Fmt.Int(level);
+        var levelText = "LEVEL: " + Int(level);
         canvas.Text(config.SCREEN_WIDTH / 2 - 40, 5, levelText, config.COLOR_WHITE);
 
-        var livesText = "LIVES: " + Viper.Fmt.Int(lives);
+        var livesText = "LIVES: " + Int(lives);
         canvas.Text(config.SCREEN_WIDTH - 100, 5, livesText, config.COLOR_WHITE);
     }
 }

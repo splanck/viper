@@ -13,6 +13,8 @@ This chapter will teach you not just *how* to use inheritance, but *when* to use
 Imagine building a game with different enemies. You start with a goblin:
 
 ```rust
+bind Viper.Terminal;
+
 entity Goblin {
     x: Number;
     y: Number;
@@ -34,7 +36,7 @@ entity Goblin {
     func takeDamage(amount: Integer) {
         self.health -= amount;
         if self.health <= 0 {
-            Viper.Terminal.Say(self.name + " has been defeated!");
+            Say(self.name + " has been defeated!");
         }
     }
 
@@ -47,6 +49,8 @@ entity Goblin {
 Great! Now you need an orc:
 
 ```rust
+bind Viper.Terminal;
+
 entity Orc {
     x: Number;
     y: Number;
@@ -68,7 +72,7 @@ entity Orc {
     func takeDamage(amount: Integer) {
         self.health -= amount;
         if self.health <= 0 {
-            Viper.Terminal.Say(self.name + " has been defeated!");
+            Say(self.name + " has been defeated!");
         }
     }
 
@@ -105,6 +109,8 @@ This isn't just a programming trick - it reflects how we naturally categorize th
 With inheritance, we extract the common parts into a *base entity*:
 
 ```rust
+bind Viper.Terminal;
+
 entity Enemy {
     x: Number;
     y: Number;
@@ -126,7 +132,7 @@ entity Enemy {
     func takeDamage(amount: Integer) {
         self.health -= amount;
         if self.health <= 0 {
-            Viper.Terminal.Say(self.name + " has been defeated!");
+            Say(self.name + " has been defeated!");
         }
     }
 
@@ -139,6 +145,8 @@ entity Enemy {
 Now we can create specialized enemies that *extend* this base:
 
 ```rust
+bind Viper.Terminal;
+
 entity Goblin extends Enemy {
     expose func init(x: Number, y: Number) {
         super(x, y, 30, "Goblin");
@@ -169,7 +177,7 @@ entity Dragon extends Enemy {
     }
 
     func breatheFire() {
-        Viper.Terminal.Say("The dragon unleashes a torrent of flame!");
+        Say("The dragon unleashes a torrent of flame!");
     }
 }
 ```
@@ -205,21 +213,23 @@ When an entity extends another, it automatically receives:
 Let's see this in action:
 
 ```rust
+bind Viper.Terminal;
+
 var goblin = Goblin(10.0, 20.0);
 
 // Using inherited fields
-Viper.Terminal.Say(goblin.x);       // 10.0
-Viper.Terminal.Say(goblin.name);    // "Goblin"
+Say(goblin.x);       // 10.0
+Say(goblin.name);    // "Goblin"
 
 // Using inherited methods
 goblin.move(5.0, 0.0);
-Viper.Terminal.Say(goblin.x);       // 15.0
+Say(goblin.x);       // 15.0
 
 goblin.takeDamage(10);
-Viper.Terminal.Say(goblin.health);  // 20
+Say(goblin.health);  // 20
 
 // Using overridden method
-Viper.Terminal.Say(goblin.attack()); // 5 (not 1!)
+Say(goblin.attack()); // 5 (not 1!)
 ```
 
 The goblin can do everything an enemy can do, plus whatever specialized behavior we add.
@@ -279,11 +289,13 @@ Think of it like filling out a form. The parent entity says "I need these four p
 Sometimes you want to *extend* the parent's behavior rather than completely replace it. The `super.methodName()` syntax lets you call the parent's version of a method:
 
 ```rust
+bind Viper.Terminal;
+
 entity Enemy {
     func describe() {
-        Viper.Terminal.Say("An enemy named " + self.name);
-        Viper.Terminal.Say("  Position: (" + self.x + ", " + self.y + ")");
-        Viper.Terminal.Say("  Health: " + self.health);
+        Say("An enemy named " + self.name);
+        Say("  Position: (" + self.x + ", " + self.y + ")");
+        Say("  Health: " + self.health);
     }
 }
 
@@ -297,7 +309,7 @@ entity Dragon extends Enemy {
 
     func describe() {
         super.describe();  // First, do everything Enemy.describe() does
-        Viper.Terminal.Say("  Fire breaths remaining: " + self.fireBreaths);
+        Say("  Fire breaths remaining: " + self.fireBreaths);
     }
 }
 
@@ -383,15 +395,17 @@ Using `override` explicitly helps catch these mistakes. If you add `override` bu
 Inheritance can extend multiple levels, creating a *hierarchy* or *tree* of related entities:
 
 ```rust
+bind Viper.Terminal;
+
 entity Animal {
     name: String;
 
     func breathe() {
-        Viper.Terminal.Say(self.name + " is breathing");
+        Say(self.name + " is breathing");
     }
 
     func speak() {
-        Viper.Terminal.Say("...");
+        Say("...");
     }
 }
 
@@ -399,7 +413,7 @@ entity Mammal extends Animal {
     furColor: String;
 
     func nurse() {
-        Viper.Terminal.Say(self.name + " is nursing its young");
+        Say(self.name + " is nursing its young");
     }
 }
 
@@ -413,11 +427,11 @@ entity Dog extends Mammal {
     }
 
     override func speak() {
-        Viper.Terminal.Say(self.name + " says: Woof!");
+        Say(self.name + " says: Woof!");
     }
 
     func fetch() {
-        Viper.Terminal.Say(self.name + " fetches the ball");
+        Say(self.name + " fetches the ball");
     }
 }
 ```
@@ -474,6 +488,9 @@ Let's build a classic example that demonstrates inheritance well - geometric sha
 ```rust
 module Shapes;
 
+bind Viper.Terminal;
+bind Viper.Math;
+
 entity Shape {
     x: Number;
     y: Number;
@@ -492,7 +509,7 @@ entity Shape {
     }
 
     func describe() {
-        Viper.Terminal.Say("Shape at (" + self.x + ", " + self.y + ")");
+        Say("Shape at (" + self.x + ", " + self.y + ")");
     }
 
     func move(dx: Number, dy: Number) {
@@ -521,10 +538,10 @@ entity Rectangle extends Shape {
 
     override func describe() {
         super.describe();
-        Viper.Terminal.Say("  Type: Rectangle");
-        Viper.Terminal.Say("  Dimensions: " + self.width + " x " + self.height);
-        Viper.Terminal.Say("  Area: " + self.area());
-        Viper.Terminal.Say("  Perimeter: " + self.perimeter());
+        Say("  Type: Rectangle");
+        Say("  Dimensions: " + self.width + " x " + self.height);
+        Say("  Area: " + self.area());
+        Say("  Perimeter: " + self.perimeter());
     }
 }
 
@@ -537,19 +554,19 @@ entity Circle extends Shape {
     }
 
     override func area() -> Number {
-        return Viper.Math.PI * self.radius * self.radius;
+        return PI * self.radius * self.radius;
     }
 
     override func perimeter() -> Number {
-        return 2.0 * Viper.Math.PI * self.radius;
+        return 2.0 * PI * self.radius;
     }
 
     override func describe() {
         super.describe();
-        Viper.Terminal.Say("  Type: Circle");
-        Viper.Terminal.Say("  Radius: " + self.radius);
-        Viper.Terminal.Say("  Area: " + self.area());
-        Viper.Terminal.Say("  Circumference: " + self.perimeter());
+        Say("  Type: Circle");
+        Say("  Radius: " + self.radius);
+        Say("  Area: " + self.area());
+        Say("  Circumference: " + self.perimeter());
     }
 
     func diameter() -> Number {
@@ -563,11 +580,11 @@ entity Square extends Rectangle {
     }
 
     override func describe() {
-        Viper.Terminal.Say("Shape at (" + self.x + ", " + self.y + ")");
-        Viper.Terminal.Say("  Type: Square");
-        Viper.Terminal.Say("  Size: " + self.width);
-        Viper.Terminal.Say("  Area: " + self.area());
-        Viper.Terminal.Say("  Perimeter: " + self.perimeter());
+        Say("Shape at (" + self.x + ", " + self.y + ")");
+        Say("  Type: Square");
+        Say("  Size: " + self.width);
+        Say("  Area: " + self.area());
+        Say("  Perimeter: " + self.perimeter());
     }
 }
 
@@ -577,23 +594,23 @@ func start() {
     var square = Square(10.0, 10.0, 4.0);
 
     rect.describe();
-    Viper.Terminal.Say("");
+    Say("");
 
     circle.describe();
-    Viper.Terminal.Say("");
+    Say("");
 
     square.describe();
-    Viper.Terminal.Say("");
+    Say("");
 
     // All shapes can move - inherited unchanged
     rect.move(5.0, 5.0);
     circle.move(-3.0, 2.0);
     square.move(1.0, 1.0);
 
-    Viper.Terminal.Say("After moving:");
-    Viper.Terminal.Say("Rectangle is at (" + rect.x + ", " + rect.y + ")");
-    Viper.Terminal.Say("Circle is at (" + circle.x + ", " + circle.y + ")");
-    Viper.Terminal.Say("Square is at (" + square.x + ", " + square.y + ")");
+    Say("After moving:");
+    Say("Rectangle is at (" + rect.x + ", " + rect.y + ")");
+    Say("Circle is at (" + circle.x + ", " + circle.y + ")");
+    Say("Square is at (" + square.x + ", " + square.y + ")");
 }
 ```
 
@@ -616,6 +633,8 @@ Certain patterns appear repeatedly when using inheritance. Learning to recognize
 In this pattern, the parent defines the *structure* of an algorithm, but lets children fill in specific steps:
 
 ```rust
+bind Viper.Terminal;
+
 entity Report {
     title: String;
 
@@ -626,18 +645,18 @@ entity Report {
     }
 
     func printHeader() {
-        Viper.Terminal.Say("=== " + self.title + " ===");
-        Viper.Terminal.Say("");
+        Say("=== " + self.title + " ===");
+        Say("");
     }
 
     func printContent() {
         // Children override this
-        Viper.Terminal.Say("(No content)");
+        Say("(No content)");
     }
 
     func printFooter() {
-        Viper.Terminal.Say("");
-        Viper.Terminal.Say("=== End of Report ===");
+        Say("");
+        Say("=== End of Report ===");
     }
 }
 
@@ -652,9 +671,9 @@ entity SalesReport extends Report {
     }
 
     override func printContent() {
-        Viper.Terminal.Say("Total Sales: $" + self.totalSales);
-        Viper.Terminal.Say("Items Sold: " + self.itemsSold);
-        Viper.Terminal.Say("Average Price: $" + (self.totalSales / self.itemsSold));
+        Say("Total Sales: $" + self.totalSales);
+        Say("Items Sold: " + self.itemsSold);
+        Say("Average Price: $" + (self.totalSales / self.itemsSold));
     }
 }
 
@@ -669,10 +688,10 @@ entity InventoryReport extends Report {
     }
 
     override func printContent() {
-        Viper.Terminal.Say("Total Items: " + self.items);
-        Viper.Terminal.Say("Low Stock Alerts: " + self.lowStock);
+        Say("Total Items: " + self.items);
+        Say("Low Stock Alerts: " + self.lowStock);
         if self.lowStock > 5 {
-            Viper.Terminal.Say("WARNING: Many items need restocking!");
+            Say("WARNING: Many items need restocking!");
         }
     }
 }
@@ -685,6 +704,8 @@ The parent (`Report`) defines the template: header, then content, then footer. C
 This pattern creates progressively more specific versions of a concept:
 
 ```rust
+bind Viper.Terminal;
+
 entity Account {
     balance: Number;
     accountNumber: String;
@@ -714,13 +735,13 @@ entity SavingsAccount extends Account {
     func addInterest() {
         var interest = self.balance * self.interestRate;
         self.deposit(interest);
-        Viper.Terminal.Say("Added $" + interest + " in interest");
+        Say("Added $" + interest + " in interest");
     }
 
     override func withdraw(amount: Number) -> Boolean {
         // Savings accounts might have minimum balance requirements
         if self.balance - amount < 100.0 {
-            Viper.Terminal.Say("Cannot withdraw: would go below $100 minimum");
+            Say("Cannot withdraw: would go below $100 minimum");
             return false;
         }
         return super.withdraw(amount);
@@ -741,11 +762,11 @@ entity CheckingAccount extends Account {
         if amount <= self.balance + self.overdraftLimit {
             self.balance -= amount;
             if self.balance < 0.0 {
-                Viper.Terminal.Say("Warning: Account overdrawn by $" + (-self.balance));
+                Say("Warning: Account overdrawn by $" + (-self.balance));
             }
             return true;
         }
-        Viper.Terminal.Say("Cannot withdraw: would exceed overdraft limit");
+        Say("Cannot withdraw: would exceed overdraft limit");
         return false;
     }
 }
@@ -944,16 +965,18 @@ processEnemy(Dragon(0.0, 0.0));   // Works!
 This seems obvious, but it's easy to violate. Consider:
 
 ```rust
+bind Viper.Terminal;
+
 entity Bird {
     func fly() {
-        Viper.Terminal.Say("Flying through the air");
+        Say("Flying through the air");
     }
 }
 
 entity Penguin extends Bird {
     override func fly() {
         // Penguins can't fly!
-        Viper.Terminal.Say("Error: Penguins cannot fly");
+        Say("Error: Penguins cannot fly");
         // Or worse: crash the program
     }
 }
@@ -977,6 +1000,8 @@ Better designs:
 The *fragile base class problem* occurs when changes to a parent class break child classes in unexpected ways.
 
 ```rust
+bind Viper.Terminal;
+
 entity MediaPlayer {
     func play() {
         self.preparePlayback();
@@ -984,11 +1009,11 @@ entity MediaPlayer {
     }
 
     func preparePlayback() {
-        Viper.Terminal.Say("Preparing...");
+        Say("Preparing...");
     }
 
     func startPlayback() {
-        Viper.Terminal.Say("Playing...");
+        Say("Playing...");
     }
 }
 
@@ -999,7 +1024,7 @@ entity VideoPlayer extends MediaPlayer {
     }
 
     func loadVideo() {
-        Viper.Terminal.Say("Loading video...");
+        Say("Loading video...");
     }
 }
 ```
@@ -1037,11 +1062,13 @@ Different Viper language styles express inheritance differently:
 
 **Zia**
 ```rust
+bind Viper.Terminal;
+
 entity Animal {
     name: String;
 
     func speak() {
-        Viper.Terminal.Say("...");
+        Say("...");
     }
 }
 
@@ -1051,7 +1078,7 @@ entity Dog extends Animal {
     }
 
     override func speak() {
-        Viper.Terminal.Say(self.name + " says: Woof!");
+        Say(self.name + " says: Woof!");
     }
 }
 ```

@@ -1,6 +1,7 @@
 module editor_tabs;
 
 bind "../core/document";
+bind GUI = Viper.GUI;
 
 // ============================================================================
 // EditorTabs — manages the tab bar and document-to-tab synchronization
@@ -11,7 +12,7 @@ bind "../core/document";
 // ============================================================================
 
 entity EditorTabs {
-    expose Viper.GUI.TabBar tabBar;  // TabBar widget handle
+    expose GUI.TabBar tabBar;  // TabBar widget handle
     expose Integer lastActiveIndex;  // For detecting tab switches
 
     expose func init() {
@@ -19,7 +20,7 @@ entity EditorTabs {
     }
 
     // Set up the tab bar widget reference.
-    expose func Setup(tabBarWidget: Viper.GUI.TabBar) {
+    expose func Setup(tabBarWidget: GUI.TabBar) {
         tabBar = tabBarWidget;
         tabBar.SetAutoClose(0);
     }
@@ -34,7 +35,7 @@ entity EditorTabs {
         if index < 0 or index >= tabBar.TabCount {
             return;
         }
-        var tab: Viper.GUI.Tab = tabBar.GetTabAt(index);
+        var tab: GUI.Tab = tabBar.GetTabAt(index);
         tabBar.RemoveTab(tab);
     }
 
@@ -43,7 +44,7 @@ entity EditorTabs {
         if index < 0 or index >= tabBar.TabCount {
             return;
         }
-        var tab: Viper.GUI.Tab = tabBar.GetTabAt(index);
+        var tab: GUI.Tab = tabBar.GetTabAt(index);
         tabBar.SetActive(tab);
         lastActiveIndex = index;
     }
@@ -53,7 +54,7 @@ entity EditorTabs {
         if index < 0 or index >= tabBar.TabCount {
             return;
         }
-        var tab: Viper.GUI.Tab = tabBar.GetTabAt(index);
+        var tab: GUI.Tab = tabBar.GetTabAt(index);
         tab.SetTitle(title);
     }
 
@@ -62,7 +63,7 @@ entity EditorTabs {
         if index < 0 or index >= tabBar.TabCount {
             return;
         }
-        var tab: Viper.GUI.Tab = tabBar.GetTabAt(index);
+        var tab: GUI.Tab = tabBar.GetTabAt(index);
         if modified {
             tab.SetModified(1);
         } else {

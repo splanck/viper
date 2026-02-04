@@ -2,6 +2,8 @@
 // Handles player movement, climbing, and rendering
 module player;
 
+bind Viper.Graphics;
+
 bind "./config";
 bind "./colors";
 
@@ -229,7 +231,7 @@ entity Player {
     }
 
     // Draw the player
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         // Don't draw if dead (could add death animation later)
         if state == STATE_DEAD {
             return;

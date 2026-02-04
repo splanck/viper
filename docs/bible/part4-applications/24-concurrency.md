@@ -227,7 +227,7 @@ var t2 = Thread.spawn(func() {
 t1.join();
 t2.join();
 
-Viper.Terminal.Say("Counter: " + counter);
+Terminal.Say("Counter: " + counter);
 // Expected: 200000
 // Actual: Something less, different each run!
 ```
@@ -308,21 +308,23 @@ A *thread* is an independent sequence of execution. Your program starts with one
 
 ```rust
 bind Viper.Threading;
+bind Viper.Terminal;
+bind Viper.Time;
 
 func start() {
-    Viper.Terminal.Say("Main thread starting");
+    Terminal.Say("Main thread starting");
 
     var thread = Thread.spawn(func() {
-        Viper.Terminal.Say("Worker thread running");
-        Viper.Time.sleep(1000);
-        Viper.Terminal.Say("Worker thread done");
+        Terminal.Say("Worker thread running");
+        Time.sleep(1000);
+        Terminal.Say("Worker thread done");
     });
 
-    Viper.Terminal.Say("Main thread continues");
+    Terminal.Say("Main thread continues");
 
     thread.join();  // Wait for worker to finish
 
-    Viper.Terminal.Say("All done");
+    Terminal.Say("All done");
 }
 ```
 
@@ -371,7 +373,7 @@ var thread = Thread.spawn(func() -> Integer {
 prepareOutput();
 
 var result = thread.result();  // Waits and gets result
-Viper.Terminal.Say("Sum: " + result);
+Terminal.Say("Sum: " + result);
 ```
 
 `thread.result()` blocks until the thread finishes, then returns whatever the thread's function returned.
@@ -451,7 +453,7 @@ var t2 = Thread.spawn(func() {
 t1.join();
 t2.join();
 
-Viper.Terminal.Say("Counter: " + counter);  // Always 200000
+Terminal.Say("Counter: " + counter);  // Always 200000
 ```
 
 When a thread calls `mutex.lock()`:
@@ -560,7 +562,7 @@ var t2 = Thread.spawn(func() {
 t1.join();
 t2.join();
 
-Viper.Terminal.Say("Counter: " + counter.get());  // Always 200000
+Terminal.Say("Counter: " + counter.get());  // Always 200000
 ```
 
 Atomic operations available:
@@ -638,6 +640,8 @@ Instead of multiple threads accessing shared data (with all the synchronization 
 
 ```rust
 bind Viper.Threading;
+bind Viper.Terminal;
+bind Viper.Time;
 
 func start() {
     var channel = Channel<String>.create();
@@ -646,7 +650,7 @@ func start() {
     var producer = Thread.spawn(func() {
         for i in 0..10 {
             channel.send("Message " + i);
-            Viper.Time.sleep(100);
+            Time.sleep(100);
         }
         channel.close();
     });
@@ -658,7 +662,7 @@ func start() {
             if message == null {
                 break;  // Channel closed
             }
-            Viper.Terminal.Say("Got: " + message);
+            Terminal.Say("Got: " + message);
         }
     });
 
@@ -702,7 +706,7 @@ var chan2 = Channel<String>.create();
 
 // Wait for whichever channel has data first
 var result = Channel.select([chan1, chan2]);
-Viper.Terminal.Say("Got from channel " + result.index + ": " + result.value);
+Terminal.Say("Got from channel " + result.index + ": " + result.value);
 ```
 
 ### Why Channels Are Safer
@@ -752,6 +756,7 @@ Creating threads has overhead. For many small tasks, a *thread pool* is more eff
 
 ```rust
 bind Viper.Threading;
+bind Viper.Terminal;
 
 func start() {
     // Pool with 4 worker threads
@@ -761,7 +766,7 @@ func start() {
     for i in 0..100 {
         pool.submit(func() {
             var result = expensiveCalculation(i);
-            Viper.Terminal.Say("Task " + i + " result: " + result);
+            Terminal.Say("Task " + i + " result: " + result);
         });
     }
 
@@ -789,7 +794,7 @@ for i in 0..10 {
 // Collect results
 for future in futures {
     var result = future.get();  // Blocks until ready
-    Viper.Terminal.Say("Result: " + result);
+    Terminal.Say("Result: " + result);
 }
 ```
 
@@ -820,7 +825,7 @@ async func processUrls(urls: [String]) {
     var results = await Async.all(tasks);
 
     for result in results {
-        Viper.Terminal.Say("Got: " + result.length + " bytes");
+        Terminal.Say("Got: " + result.length + " bytes");
     }
 }
 
@@ -846,13 +851,15 @@ Under the hood, async/await typically uses fewer threads than explicit threading
 A *deadlock* occurs when threads wait for each other forever. Neither can proceed because each holds something the other needs.
 
 ```rust
+bind Viper.Time;
+
 // DEADLOCK EXAMPLE - DON'T DO THIS
 var mutex1 = Mutex.create();
 var mutex2 = Mutex.create();
 
 var t1 = Thread.spawn(func() {
     mutex1.lock();           // T1 holds mutex1
-    Viper.Time.sleep(100);   // Small delay makes deadlock likely
+    Time.sleep(100);         // Small delay makes deadlock likely
     mutex2.lock();           // T1 wants mutex2... but T2 has it!
     // Never reaches here
     mutex2.unlock();
@@ -861,7 +868,7 @@ var t1 = Thread.spawn(func() {
 
 var t2 = Thread.spawn(func() {
     mutex2.lock();           // T2 holds mutex2
-    Viper.Time.sleep(100);
+    Time.sleep(100);
     mutex1.lock();           // T2 wants mutex1... but T1 has it!
     // Never reaches here
     mutex1.unlock();
@@ -1103,7 +1110,7 @@ func stressTest() {
         }
         // Verify invariants
         if !checkInvariants() {
-            Viper.Terminal.Say("Bug found on trial " + trial);
+            Terminal.Say("Bug found on trial " + trial);
             break;
         }
     }
@@ -1119,10 +1126,12 @@ Some tools detect data races automatically by tracking memory accesses. They slo
 Add logging with thread IDs and timestamps. Reconstruct the sequence of events after a failure.
 
 ```rust
+bind Viper.Terminal;
+
 func logMessage(message: String) {
     var threadId = Thread.currentId();
     var time = Time.millis();
-    Viper.Terminal.Say("[" + time + "] Thread " + threadId + ": " + message);
+    Terminal.Say("[" + time + "] Thread " + threadId + ": " + message);
 }
 ```
 
@@ -1185,6 +1194,8 @@ module ImageProcessor;
 bind Viper.Threading;
 bind Viper.Graphics;
 bind Viper.File;
+bind Viper.Terminal;
+bind Viper.Time;
 
 value ImageTask {
     inputPath: String;
@@ -1217,8 +1228,8 @@ entity ParallelProcessor {
         while self.completedCount.get() < self.totalCount {
             var done = self.completedCount.get();
             var percent = (done * 100) / self.totalCount;
-            Viper.Terminal.Say("Progress: " + percent + "% (" + done + "/" + self.totalCount + ")");
-            Viper.Time.sleep(500);
+            Terminal.Say("Progress: " + percent + "% (" + done + "/" + self.totalCount + ")");
+            Time.sleep(500);
         }
 
         // Collect results
@@ -1229,7 +1240,7 @@ entity ParallelProcessor {
             }
         }
 
-        Viper.Terminal.Say("Completed: " + successCount + "/" + self.totalCount + " succeeded");
+        Terminal.Say("Completed: " + successCount + "/" + self.totalCount + " succeeded");
     }
 
     func processImage(task: ImageTask) -> Boolean {
@@ -1246,7 +1257,7 @@ entity ParallelProcessor {
             return true;
 
         } catch Error as e {
-            Viper.Terminal.Say("Error processing " + task.inputPath + ": " + e.message);
+            Terminal.Say("Error processing " + task.inputPath + ": " + e.message);
             self.completedCount.increment();
             return false;
         }
@@ -1285,13 +1296,13 @@ func start() {
         }
     }
 
-    Viper.Terminal.Say("Processing " + tasks.length + " images...");
+    Terminal.Say("Processing " + tasks.length + " images...");
 
     var processor = ParallelProcessor(4);  // 4 worker threads
     processor.process(tasks);
     processor.shutdown();
 
-    Viper.Terminal.Say("Done!");
+    Terminal.Say("Done!");
 }
 ```
 
@@ -1318,9 +1329,10 @@ This example demonstrates several best practices:
 **Zia**
 ```rust
 bind Viper.Threading;
+bind Viper.Terminal;
 
 var thread = Thread.spawn(func() {
-    Viper.Terminal.Say("In thread");
+    Terminal.Say("In thread");
 });
 thread.join();
 

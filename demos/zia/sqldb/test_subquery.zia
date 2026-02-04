@@ -1,6 +1,9 @@
 // test_subquery.viper - Test subquery support
 module test_subquery;
 
+bind Viper.Terminal;
+bind Viper.Fmt;
+
 bind "./executor";
 
 Integer passed = 0;
@@ -9,10 +12,10 @@ Integer failed = 0;
 func assert(condition: Boolean, msg: String) {
     if condition {
         passed = passed + 1;
-        Viper.Terminal.Say("  PASS: " + msg);
+        Terminal.Say("  PASS: " + msg);
     } else {
         failed = failed + 1;
-        Viper.Terminal.Say("  FAIL: " + msg);
+        Terminal.Say("  FAIL: " + msg);
     }
 }
 
@@ -20,8 +23,8 @@ func main() {
     var exec = new Executor();
     exec.init();
 
-    Viper.Terminal.Say("=== Subquery Tests ===");
-    Viper.Terminal.Say("");
+    Terminal.Say("=== Subquery Tests ===");
+    Terminal.Say("");
 
     // Create test tables
     exec.executeSql("CREATE TABLE departments (id INTEGER, name TEXT)");
@@ -37,7 +40,7 @@ func main() {
     exec.executeSql("INSERT INTO employees VALUES (5, 'Eve', 3, 60000)");
 
     // Test scalar subquery in WHERE clause
-    Viper.Terminal.Say("Testing scalar subquery in WHERE...");
+    Terminal.Say("Testing scalar subquery in WHERE...");
     var r1 = exec.executeSql("SELECT name FROM employees WHERE salary = (SELECT MAX(salary) FROM employees)");
     assert(r1.success, "Scalar subquery should work");
     assert(r1.rowCount() == 1, "Should return 1 row for max salary");
@@ -51,7 +54,7 @@ func main() {
     }
 
     // Test subquery with MIN
-    Viper.Terminal.Say("Testing MIN subquery...");
+    Terminal.Say("Testing MIN subquery...");
     var r2 = exec.executeSql("SELECT name FROM employees WHERE salary = (SELECT MIN(salary) FROM employees)");
     assert(r2.success, "MIN subquery should work");
     assert(r2.rowCount() == 1, "Should return 1 row for min salary");
@@ -65,19 +68,19 @@ func main() {
     }
 
     // Test IN subquery
-    Viper.Terminal.Say("Testing IN subquery...");
+    Terminal.Say("Testing IN subquery...");
     var r3 = exec.executeSql("SELECT name FROM employees WHERE dept_id IN (SELECT id FROM departments WHERE name = 'Engineering')");
     assert(r3.success, "IN subquery should work");
     assert(r3.rowCount() == 2, "Should return 2 engineering employees");
 
     // Test IN subquery with multiple values
-    Viper.Terminal.Say("Testing IN with multiple values...");
+    Terminal.Say("Testing IN with multiple values...");
     var r4 = exec.executeSql("SELECT name FROM employees WHERE dept_id IN (SELECT id FROM departments WHERE id <= 2)");
     assert(r4.success, "IN subquery with multiple values should work");
     assert(r4.rowCount() == 4, "Should return 4 employees (Engineering + Marketing)");
 
     // Test scalar subquery in SELECT column (comparison)
-    Viper.Terminal.Say("Testing subquery comparison...");
+    Terminal.Say("Testing subquery comparison...");
     var r5 = exec.executeSql("SELECT name FROM employees WHERE salary > (SELECT AVG(salary) FROM employees)");
     assert(r5.success, "Comparison with subquery should work");
     // AVG salary = (80000+75000+65000+70000+60000)/5 = 70000
@@ -85,7 +88,7 @@ func main() {
     assert(r5.rowCount() == 2, "Should return 2 employees above average");
 
     // Test NOT IN (using comparison)
-    Viper.Terminal.Say("Testing subquery with comparison operators...");
+    Terminal.Say("Testing subquery with comparison operators...");
     var r6 = exec.executeSql("SELECT COUNT(*) FROM employees WHERE dept_id = (SELECT id FROM departments WHERE name = 'Sales')");
     assert(r6.success, "COUNT with subquery should work");
     if r6.rowCount() == 1 {
@@ -98,14 +101,14 @@ func main() {
     }
 
     // Test nested conditions with subquery
-    Viper.Terminal.Say("Testing complex conditions with subquery...");
+    Terminal.Say("Testing complex conditions with subquery...");
     var r7 = exec.executeSql("SELECT name FROM employees WHERE salary >= 70000 AND dept_id IN (SELECT id FROM departments WHERE id = 1)");
     assert(r7.success, "Complex condition with subquery should work");
     assert(r7.rowCount() == 2, "Should return Alice and Bob (Engineering with salary >= 70000)");
 
     // Print results
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("=== Results ===");
-    Viper.Terminal.Say("Passed: " + Viper.Fmt.Int(passed));
-    Viper.Terminal.Say("Failed: " + Viper.Fmt.Int(failed));
+    Terminal.Say("");
+    Terminal.Say("=== Results ===");
+    Terminal.Say("Passed: " + Fmt.Int(passed));
+    Terminal.Say("Failed: " + Fmt.Int(failed));
 }

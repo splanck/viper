@@ -9,6 +9,12 @@ module sierpinski;
 
 bind "./colors";
 
+bind Viper.Random;
+bind Viper.Graphics;
+bind Viper.Graphics.Color;
+bind Viper.Math;
+bind Viper.Time;
+
 var PI: Number;
 
 func initConstants() {
@@ -55,7 +61,7 @@ entity SierpinskiTriangle {
             }
 
             // Pick random vertex
-            var idx = Viper.Random.NextInt(3);
+            var idx = NextInt(3);
             var vertex = vertices.get(idx);
             var vx = vertex / 10000;
             var vy = vertex - (vx * 10000);
@@ -65,8 +71,8 @@ entity SierpinskiTriangle {
             currentY = (currentY + vy) / 2.0;
 
             // Store point
-            var px = Viper.Math.Floor(currentX);
-            var py = Viper.Math.Floor(currentY);
+            var px = Floor(currentX);
+            var py = Floor(currentY);
             points.add(px * 10000 + py);
 
             i = i + 1;
@@ -74,7 +80,7 @@ entity SierpinskiTriangle {
         phase = phase + 1;
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         var i = 0;
         while i < points.count() {
             var point = points.get(i);
@@ -110,7 +116,7 @@ entity SierpinskiTriangle {
 
 // Simple Mandelbrot set renderer
 entity MandelbrotRenderer {
-    expose Viper.Graphics.Pixels buffer;
+    expose Pixels buffer;
     expose Integer width;
     expose Integer height;
     expose Number centerX;
@@ -123,7 +129,7 @@ entity MandelbrotRenderer {
     expose func init(w: Integer, h: Integer) {
         width = w;
         height = h;
-        buffer = new Viper.Graphics.Pixels(width, height);
+        buffer = new Pixels(width, height);
         centerX = -0.5;
         centerY = 0.0;
         zoom = 200.0;
@@ -188,7 +194,7 @@ entity MandelbrotRenderer {
         }
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         canvas.Blit(0, 0, buffer);
 
         if not complete {
@@ -256,12 +262,12 @@ entity FractalTree {
         }
 
         // Calculate end point
-        var endX = x + Viper.Math.Cos(dir) * len;
-        var endY = y + Viper.Math.Sin(dir) * len;
+        var endX = x + Cos(dir) * len;
+        var endY = y + Sin(dir) * len;
 
         // Store as list of line segments
-        var startPacked = Viper.Math.Floor(x) * 10000 + Viper.Math.Floor(y);
-        var endPacked = Viper.Math.Floor(endX) * 10000 + Viper.Math.Floor(endY);
+        var startPacked = Floor(x) * 10000 + Floor(y);
+        var endPacked = Floor(endX) * 10000 + Floor(endY);
         branches.add(startPacked);
         branches.add(endPacked);
         branches.add(depth);
@@ -276,7 +282,7 @@ entity FractalTree {
         angle = a;
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas, width: Integer, height: Integer) {
+    expose func draw(canvas: Canvas, width: Integer, height: Integer) {
         var i = 0;
         while i < branches.count() {
             var startPacked = branches.get(i);
@@ -292,7 +298,7 @@ entity FractalTree {
             var hue = (depth * 30 + colorPhase) - ((depth * 30 + colorPhase) / 360) * 360;
             var color: Integer;
             if depth < 3 {
-                color = Viper.Graphics.Color.RGB(101, 67, 33);  // Brown trunk
+                color = RGB(101, 67, 33);  // Brown trunk
             } else {
                 color = colors.rainbowPhase(hue);
             }
@@ -356,7 +362,7 @@ entity FractalDemo {
         }
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas, width: Integer, height: Integer) {
+    expose func draw(canvas: Canvas, width: Integer, height: Integer) {
         if mode == 0 {
             sierpinski.draw(canvas);
         } else if mode == 1 {
@@ -399,7 +405,7 @@ entity FractalDemo {
 }
 
 // Run the fractal demo
-func run(canvas: Viper.Graphics.Canvas) {
+func run(canvas: Canvas) {
     var width = canvas.Width;
     var height = canvas.Height;
 

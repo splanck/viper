@@ -158,13 +158,15 @@ Column A is index 0, column B is index 1, and so on. The array is the row; the i
 To access an individual element, use the array name followed by the index in square brackets:
 
 ```rust
+bind Viper.Terminal;
+
 var scores = [85, 92, 78, 95, 88];
 
-Viper.Terminal.Say(scores[0]);  // 85 (first element)
-Viper.Terminal.Say(scores[1]);  // 92 (second element)
-Viper.Terminal.Say(scores[2]);  // 78 (third element)
-Viper.Terminal.Say(scores[3]);  // 95 (fourth element)
-Viper.Terminal.Say(scores[4]);  // 88 (fifth element)
+Say(scores[0]);  // 85 (first element)
+Say(scores[1]);  // 92 (second element)
+Say(scores[2]);  // 78 (third element)
+Say(scores[3]);  // 95 (fourth element)
+Say(scores[4]);  // 88 (fifth element)
 ```
 
 Notice something important: **indices start at 0, not 1.** The first element is at index 0, the second at index 1, and so on. For an array of 5 elements, valid indices are 0, 1, 2, 3, and 4. There is no index 5 — that would be asking for a sixth element that doesn't exist.
@@ -310,14 +312,16 @@ The syntax `[value; count]` creates an array with `count` copies of `value`. Thi
 Every array knows how many elements it contains. Access this with the `.length` property:
 
 ```rust
+bind Viper.Terminal;
+
 var names = ["Alice", "Bob", "Carol"];
-Viper.Terminal.Say(names.length);  // 3
+Say(names.length);  // 3
 
 var primes = [2, 3, 5, 7, 11, 13, 17, 19];
-Viper.Terminal.Say(primes.length);  // 8
+Say(primes.length);  // 8
 
 var empty: [i64] = [];
-Viper.Terminal.Say(empty.length);   // 0
+Say(empty.length);   // 0
 ```
 
 The length is crucial for working with arrays safely. The valid indices always go from 0 to `length - 1`. Trying to access any index outside this range is an error.
@@ -336,12 +340,14 @@ var scores = [85, 92, 78, 95, 88];
 Arrays are mutable — you can change individual elements after creation:
 
 ```rust
+bind Viper.Terminal;
+
 var scores = [85, 92, 78, 95, 88];
 
 // Change the third element (index 2) from 78 to 82
 scores[2] = 82;
 
-Viper.Terminal.Say(scores[2]);  // 82
+Say(scores[2]);  // 82
 
 // Change multiple elements
 scores[0] = 90;
@@ -351,12 +357,14 @@ scores[4] = 91;
 You can also use an element's current value in the calculation:
 
 ```rust
+bind Viper.Terminal;
+
 var counts = [10, 20, 30];
 
 // Add 5 to the second element
 counts[1] = counts[1] + 5;
 
-Viper.Terminal.Say(counts[1]);  // 25
+Say(counts[1]);  // 25
 ```
 
 ---
@@ -370,16 +378,18 @@ Unlike the fixed arrays in some languages, Viper arrays can grow and shrink dyna
 The `push` operation adds an element to the end of an array:
 
 ```rust
+bind Viper.Terminal;
+
 var names = ["Alice", "Bob"];
-Viper.Terminal.Say(names.length);  // 2
+Say(names.length);  // 2
 
 names.push("Carol");
-Viper.Terminal.Say(names.length);  // 3
-Viper.Terminal.Say(names[2]);      // Carol
+Say(names.length);  // 3
+Say(names[2]);      // Carol
 
 names.push("Dave");
 names.push("Eve");
-Viper.Terminal.Say(names.length);  // 5
+Say(names.length);  // 5
 ```
 
 Think of `push` like adding a new car to the end of a train — the train gets longer, and the new car has the next number in sequence.
@@ -389,16 +399,18 @@ Think of `push` like adding a new car to the end of a train — the train gets l
 The `pop` operation removes the last element and returns it:
 
 ```rust
+bind Viper.Terminal;
+
 var numbers = [1, 2, 3, 4, 5];
-Viper.Terminal.Say(numbers.length);  // 5
+Say(numbers.length);  // 5
 
 var last = numbers.pop();  // Removes and returns 5
-Viper.Terminal.Say(last);            // 5
-Viper.Terminal.Say(numbers.length);  // 4
+Say(last);            // 5
+Say(numbers.length);  // 4
 
 var another = numbers.pop();  // Removes and returns 4
-Viper.Terminal.Say(another);         // 4
-Viper.Terminal.Say(numbers.length);  // 3
+Say(another);         // 4
+Say(numbers.length);  // 3
 // numbers is now [1, 2, 3]
 ```
 
@@ -425,19 +437,21 @@ if numbers.length > 0 {
 These operations let you build arrays piece by piece:
 
 ```rust
+bind Viper.Terminal;
+
 var userInputs: [i64] = [];
 
-Viper.Terminal.Say("Enter numbers (0 to stop):");
+Say("Enter numbers (0 to stop):");
 
 while true {
-    var num = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
+    var num = Viper.Convert.ToInt(ReadLine());
     if num == 0 {
         break;
     }
     userInputs.push(num);
 }
 
-Viper.Terminal.Say("You entered " + userInputs.length + " numbers.");
+Say("You entered " + userInputs.length + " numbers.");
 ```
 
 You start with an empty array and grow it as the user provides input. You couldn't do this with fixed variables like `num1`, `num2`, etc.
@@ -453,6 +467,8 @@ A common task is searching for a value in an array.
 The simplest approach is to check each element one by one:
 
 ```rust
+bind Viper.Terminal;
+
 var names = ["Alice", "Bob", "Carol", "Dave", "Eve"];
 var target = "Carol";
 var foundIndex = -1;  // -1 means "not found"
@@ -465,9 +481,9 @@ for i in 0..names.length {
 }
 
 if foundIndex >= 0 {
-    Viper.Terminal.Say("Found '" + target + "' at index " + foundIndex);
+    Say("Found '" + target + "' at index " + foundIndex);
 } else {
-    Viper.Terminal.Say("'" + target + "' not found");
+    Say("'" + target + "' not found");
 }
 ```
 
@@ -480,6 +496,8 @@ This is called *linear search* because you go through the array in a line, one e
 Sometimes you just need to know yes or no, not where:
 
 ```rust
+bind Viper.Terminal;
+
 var numbers = [10, 25, 30, 45, 50];
 var lookingFor = 30;
 var found = false;
@@ -492,9 +510,9 @@ for n in numbers {
 }
 
 if found {
-    Viper.Terminal.Say("Found it!");
+    Say("Found it!");
 } else {
-    Viper.Terminal.Say("Not in the list.");
+    Say("Not in the list.");
 }
 ```
 
@@ -503,6 +521,8 @@ if found {
 How many times does a value appear?
 
 ```rust
+bind Viper.Terminal;
+
 var grades = ["A", "B", "A", "C", "A", "B", "A", "D"];
 var countA = 0;
 
@@ -512,7 +532,7 @@ for grade in grades {
     }
 }
 
-Viper.Terminal.Say("Number of A grades: " + countA);  // 4
+Say("Number of A grades: " + countA);  // 4
 ```
 
 ---
@@ -526,11 +546,13 @@ Sorting puts array elements in order — smallest to largest (ascending) or larg
 Viper provides a built-in sort method:
 
 ```rust
+bind Viper.Terminal;
+
 var numbers = [64, 34, 25, 12, 22, 11, 90];
 numbers.sort();
 
 for n in numbers {
-    Viper.Terminal.Print(n + " ");
+    Print(n + " ");
 }
 // Output: 11 12 22 25 34 64 90
 ```
@@ -538,11 +560,13 @@ for n in numbers {
 For strings, sort orders alphabetically:
 
 ```rust
+bind Viper.Terminal;
+
 var names = ["Charlie", "Alice", "Bob", "Diana"];
 names.sort();
 
 for name in names {
-    Viper.Terminal.Say(name);
+    Say(name);
 }
 // Alice, Bob, Charlie, Diana
 ```
@@ -591,10 +615,12 @@ Processing every element in an array is so common that there are several pattern
 The cleanest way when you just need each value:
 
 ```rust
+bind Viper.Terminal;
+
 var fruits = ["apple", "banana", "cherry", "date"];
 
 for fruit in fruits {
-    Viper.Terminal.Say("I enjoy eating " + fruit);
+    Say("I enjoy eating " + fruit);
 }
 ```
 
@@ -607,10 +633,12 @@ The variable `fruit` takes on each value in sequence: first "apple", then "banan
 When you need to know *where* each element is:
 
 ```rust
+bind Viper.Terminal;
+
 var scores = [85, 92, 78, 95, 88];
 
 for i in 0..scores.length {
-    Viper.Terminal.Say("Student " + (i + 1) + " scored " + scores[i]);
+    Say("Student " + (i + 1) + " scored " + scores[i]);
 }
 ```
 
@@ -636,11 +664,13 @@ Notice `i + 1` to display human-friendly numbering (1, 2, 3) while using program
 Sometimes you need more control than a for loop provides:
 
 ```rust
+bind Viper.Terminal;
+
 var numbers = [10, 20, 30, 40, 50];
 var i = 0;
 
 while i < numbers.length {
-    Viper.Terminal.Say("Index " + i + ": " + numbers[i]);
+    Say("Index " + i + ": " + numbers[i]);
     i = i + 1;
 }
 ```
@@ -652,12 +682,14 @@ while i < numbers.length {
 To process elements from last to first:
 
 ```rust
+bind Viper.Terminal;
+
 var countdown = [5, 4, 3, 2, 1];
 
 // Using while loop for reverse
 var i = countdown.length - 1;
 while i >= 0 {
-    Viper.Terminal.Say(countdown[i]);
+    Say(countdown[i]);
     i = i - 1;
 }
 // Prints: 1, 2, 3, 4, 5 (but we access 5 first, then 4...)
@@ -667,7 +699,7 @@ while i >= 0 {
 var letters = ["a", "b", "c", "d", "e"];
 var j = letters.length - 1;
 while j >= 0 {
-    Viper.Terminal.Say(letters[j]);
+    Say(letters[j]);
     j = j - 1;
 }
 // Prints: e, d, c, b, a
@@ -678,22 +710,24 @@ while j >= 0 {
 Skip elements as needed:
 
 ```rust
+bind Viper.Terminal;
+
 var numbers = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
 
 // Even indices only (0, 2, 4, 6, 8)
 var i = 0;
 while i < numbers.length {
-    Viper.Terminal.Print(numbers[i] + " ");
+    Print(numbers[i] + " ");
     i = i + 2;
 }
 // Output: 0 2 4 6 8
 
-Viper.Terminal.Say("");
+Say("");
 
 // Odd indices only (1, 3, 5, 7, 9)
 i = 1;
 while i < numbers.length {
-    Viper.Terminal.Print(numbers[i] + " ");
+    Print(numbers[i] + " ");
     i = i + 2;
 }
 // Output: 1 3 5 7 9
@@ -704,14 +738,16 @@ while i < numbers.length {
 Stop early when you find what you need:
 
 ```rust
+bind Viper.Terminal;
+
 var values = [10, 20, -5, 30, 40];
 
 for v in values {
     if v < 0 {
-        Viper.Terminal.Say("Found negative number, stopping.");
+        Say("Found negative number, stopping.");
         break;
     }
-    Viper.Terminal.Say("Processing: " + v);
+    Say("Processing: " + v);
 }
 // Processes 10, 20, then stops at -5
 ```
@@ -719,13 +755,15 @@ for v in values {
 Or skip certain elements:
 
 ```rust
+bind Viper.Terminal;
+
 var numbers = [1, -2, 3, -4, 5, -6];
 
 for n in numbers {
     if n < 0 {
         continue;  // Skip negative numbers
     }
-    Viper.Terminal.Say("Positive: " + n);
+    Say("Positive: " + n);
 }
 // Prints: 1, 3, 5
 ```
@@ -783,30 +821,36 @@ var x = empty[0];  // Error! Array is empty, no index 0
 
 **Loop going too far:**
 ```rust
+bind Viper.Terminal;
+
 var arr = [1, 2, 3];
 for i in 0..=arr.length {  // Wrong! 0..= includes the endpoint
-    Viper.Terminal.Say(arr[i]);  // Crashes when i=3
+    Say(arr[i]);  // Crashes when i=3
 }
 for i in 0..arr.length {   // Correct! 0.. excludes the endpoint
-    Viper.Terminal.Say(arr[i]);  // Works: i goes 0, 1, 2
+    Say(arr[i]);  // Works: i goes 0, 1, 2
 }
 ```
 
 **Calculated index going wrong:**
 ```rust
+bind Viper.Terminal;
+
 var arr = [10, 20, 30];
-var userInput = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
+var userInput = Viper.Convert.ToInt(ReadLine());
 var value = arr[userInput];  // Dangerous! User might enter 999
 ```
 
 To prevent this, validate indices before using them:
 
 ```rust
+bind Viper.Terminal;
+
 if userInput >= 0 && userInput < arr.length {
     var value = arr[userInput];
     // Safe to use value
 } else {
-    Viper.Terminal.Say("Invalid selection");
+    Say("Invalid selection");
 }
 ```
 
@@ -817,11 +861,13 @@ if userInput >= 0 && userInput < arr.length {
 Arrays can hold any type. Strings are especially common:
 
 ```rust
+bind Viper.Terminal;
+
 var fruits = ["apple", "banana", "cherry", "date", "elderberry"];
 
-Viper.Terminal.Say("Menu:");
+Say("Menu:");
 for i in 0..fruits.length {
-    Viper.Terminal.Say((i + 1) + ". " + fruits[i]);
+    Say((i + 1) + ". " + fruits[i]);
 }
 ```
 
@@ -845,6 +891,8 @@ String arrays are how you'd store:
 ### Working with String Arrays
 
 ```rust
+bind Viper.Terminal;
+
 var words = ["The", "quick", "brown", "fox"];
 
 // Join into a sentence
@@ -852,7 +900,7 @@ var sentence = "";
 for word in words {
     sentence = sentence + word + " ";
 }
-Viper.Terminal.Say(sentence);  // "The quick brown fox "
+Say(sentence);  // "The quick brown fox "
 
 // Find longest word
 var longest = words[0];
@@ -861,7 +909,7 @@ for word in words {
         longest = word;
     }
 }
-Viper.Terminal.Say("Longest word: " + longest);  // "quick" or "brown" (both length 5)
+Say("Longest word: " + longest);  // "quick" or "brown" (both length 5)
 ```
 
 ---
@@ -914,22 +962,26 @@ Let's break down `grid[1][2]`:
 2. `[2]` gets the third element of that row: `6`
 
 ```rust
+bind Viper.Terminal;
+
 var grid = [
     [1, 2, 3],
     [4, 5, 6],
     [7, 8, 9]
 ];
 
-Viper.Terminal.Say(grid[0][0]);  // 1 (top-left)
-Viper.Terminal.Say(grid[0][2]);  // 3 (top-right)
-Viper.Terminal.Say(grid[2][0]);  // 7 (bottom-left)
-Viper.Terminal.Say(grid[2][2]);  // 9 (bottom-right)
-Viper.Terminal.Say(grid[1][1]);  // 5 (center)
+Say(grid[0][0]);  // 1 (top-left)
+Say(grid[0][2]);  // 3 (top-right)
+Say(grid[2][0]);  // 7 (bottom-left)
+Say(grid[2][2]);  // 9 (bottom-right)
+Say(grid[1][1]);  // 5 (center)
 ```
 
 ### Modifying Elements
 
 ```rust
+bind Viper.Terminal;
+
 var grid = [
     [1, 2, 3],
     [4, 5, 6],
@@ -938,7 +990,7 @@ var grid = [
 
 grid[1][1] = 50;  // Change center from 5 to 50
 
-Viper.Terminal.Say(grid[1][1]);  // 50
+Say(grid[1][1]);  // 50
 ```
 
 ### Iterating Over a 2D Array
@@ -946,6 +998,8 @@ Viper.Terminal.Say(grid[1][1]);  // 50
 To visit every element, you need nested loops — one for rows, one for columns:
 
 ```rust
+bind Viper.Terminal;
+
 var grid = [
     [1, 2, 3],
     [4, 5, 6],
@@ -954,9 +1008,9 @@ var grid = [
 
 for row in 0..grid.length {
     for col in 0..grid[row].length {
-        Viper.Terminal.Print(grid[row][col] + " ");
+        Print(grid[row][col] + " ");
     }
-    Viper.Terminal.Say("");  // New line after each row
+    Say("");  // New line after each row
 }
 ```
 
@@ -970,6 +1024,8 @@ Output:
 ### Example: Tic-Tac-Toe Board
 
 ```rust
+bind Viper.Terminal;
+
 var board = [
     ["X", "O", "X"],
     [" ", "X", "O"],
@@ -979,16 +1035,16 @@ var board = [
 // Print the board nicely
 func printBoard(board: [[String]]) {
     for row in 0..board.length {
-        Viper.Terminal.Print(" ");
+        Print(" ");
         for col in 0..board[row].length {
-            Viper.Terminal.Print(board[row][col]);
+            Print(board[row][col]);
             if col < board[row].length - 1 {
-                Viper.Terminal.Print(" | ");
+                Print(" | ");
             }
         }
-        Viper.Terminal.Say("");
+        Say("");
         if row < board.length - 1 {
-            Viper.Terminal.Say("-----------");
+            Say("-----------");
         }
     }
 }
@@ -1008,6 +1064,8 @@ Output:
 ### Example: Multiplication Table
 
 ```rust
+bind Viper.Terminal;
+
 // Create a 10x10 multiplication table
 var table: [[i64]] = [];
 
@@ -1020,20 +1078,20 @@ for i in 1..11 {
 }
 
 // Print header
-Viper.Terminal.Print("    ");
+Print("    ");
 for i in 1..11 {
-    Viper.Terminal.Print(i + "\t");
+    Print(i + "\t");
 }
-Viper.Terminal.Say("");
-Viper.Terminal.Say("--------------------------------------------");
+Say("");
+Say("--------------------------------------------");
 
 // Print table
 for i in 0..table.length {
-    Viper.Terminal.Print((i + 1) + " | ");
+    Print((i + 1) + " | ");
     for j in 0..table[i].length {
-        Viper.Terminal.Print(table[i][j] + "\t");
+        Print(table[i][j] + "\t");
     }
-    Viper.Terminal.Say("");
+    Say("");
 }
 ```
 
@@ -1042,6 +1100,8 @@ for i in 0..table.length {
 A grayscale image is just a 2D array of brightness values (0 = black, 255 = white):
 
 ```rust
+bind Viper.Terminal;
+
 // A tiny 5x5 "image" of a plus sign
 var image = [
     [0, 0, 255, 0, 0],
@@ -1055,12 +1115,12 @@ var image = [
 for row in 0..image.length {
     for col in 0..image[row].length {
         if image[row][col] > 128 {
-            Viper.Terminal.Print("#");  // Bright
+            Print("#");  // Bright
         } else {
-            Viper.Terminal.Print(".");  // Dark
+            Print(".");  // Dark
         }
     }
-    Viper.Terminal.Say("");
+    Say("");
 }
 ```
 
@@ -1081,53 +1141,54 @@ Let's build a functional todo list manager:
 
 ```rust
 module TodoList;
+bind Viper.Terminal;
 
 func start() {
     var tasks: [String] = [];
     var completed: [bool] = [];  // Parallel array tracking completion
 
-    Viper.Terminal.Say("=== Todo List Manager ===");
-    Viper.Terminal.Say("Commands: add, done, list, remove, quit");
-    Viper.Terminal.Say("");
+    Say("=== Todo List Manager ===");
+    Say("Commands: add, done, list, remove, quit");
+    Say("");
 
     while true {
-        Viper.Terminal.Print("> ");
-        var input = Viper.Terminal.ReadLine();
+        Print("> ");
+        var input = ReadLine();
 
         if input == "quit" {
-            Viper.Terminal.Say("Goodbye!");
+            Say("Goodbye!");
             break;
         } else if input == "add" {
-            Viper.Terminal.Print("Task: ");
-            var task = Viper.Terminal.ReadLine();
+            Print("Task: ");
+            var task = ReadLine();
             tasks.push(task);
             completed.push(false);
-            Viper.Terminal.Say("Added: " + task);
+            Say("Added: " + task);
         } else if input == "list" {
             if tasks.length == 0 {
-                Viper.Terminal.Say("No tasks yet!");
+                Say("No tasks yet!");
             } else {
-                Viper.Terminal.Say("Your tasks:");
+                Say("Your tasks:");
                 for i in 0..tasks.length {
                     var status = "[ ]";
                     if completed[i] {
                         status = "[X]";
                     }
-                    Viper.Terminal.Say((i + 1) + ". " + status + " " + tasks[i]);
+                    Say((i + 1) + ". " + status + " " + tasks[i]);
                 }
             }
         } else if input == "done" {
-            Viper.Terminal.Print("Task number to mark done: ");
-            var num = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
+            Print("Task number to mark done: ");
+            var num = Viper.Convert.ToInt(ReadLine());
             if num >= 1 && num <= tasks.length {
                 completed[num - 1] = true;  // Convert to zero-based index
-                Viper.Terminal.Say("Marked done: " + tasks[num - 1]);
+                Say("Marked done: " + tasks[num - 1]);
             } else {
-                Viper.Terminal.Say("Invalid task number.");
+                Say("Invalid task number.");
             }
         } else if input == "remove" {
-            Viper.Terminal.Print("Task number to remove: ");
-            var num = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
+            Print("Task number to remove: ");
+            var num = Viper.Convert.ToInt(ReadLine());
             if num >= 1 && num <= tasks.length {
                 // Rebuild arrays without this task
                 var newTasks: [String] = [];
@@ -1138,17 +1199,17 @@ func start() {
                         newCompleted.push(completed[i]);
                     }
                 }
-                Viper.Terminal.Say("Removed: " + tasks[num - 1]);
+                Say("Removed: " + tasks[num - 1]);
                 tasks = newTasks;
                 completed = newCompleted;
             } else {
-                Viper.Terminal.Say("Invalid task number.");
+                Say("Invalid task number.");
             }
         } else {
-            Viper.Terminal.Say("Unknown command. Try: add, done, list, remove, quit");
+            Say("Unknown command. Try: add, done, list, remove, quit");
         }
 
-        Viper.Terminal.Say("");
+        Say("");
     }
 }
 ```
@@ -1198,49 +1259,50 @@ A simple game inventory:
 
 ```rust
 module Inventory;
+bind Viper.Terminal;
 
 func start() {
     var items: [String] = [];
     var quantities: [i64] = [];
     var maxSlots = 10;
 
-    Viper.Terminal.Say("=== Inventory System ===");
-    Viper.Terminal.Say("Commands: pickup, drop, use, show, quit");
-    Viper.Terminal.Say("Max slots: " + maxSlots);
-    Viper.Terminal.Say("");
+    Say("=== Inventory System ===");
+    Say("Commands: pickup, drop, use, show, quit");
+    Say("Max slots: " + maxSlots);
+    Say("");
 
     while true {
-        Viper.Terminal.Print("Command> ");
-        var cmd = Viper.Terminal.ReadLine();
+        Print("Command> ");
+        var cmd = ReadLine();
 
         if cmd == "quit" {
             break;
         } else if cmd == "show" {
             showInventory(items, quantities);
         } else if cmd == "pickup" {
-            Viper.Terminal.Print("Item name: ");
-            var item = Viper.Terminal.ReadLine();
-            Viper.Terminal.Print("Quantity: ");
-            var qty = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
+            Print("Item name: ");
+            var item = ReadLine();
+            Print("Quantity: ");
+            var qty = Viper.Convert.ToInt(ReadLine());
 
             pickupItem(items, quantities, item, qty, maxSlots);
         } else if cmd == "drop" {
-            Viper.Terminal.Print("Item name: ");
-            var item = Viper.Terminal.ReadLine();
-            Viper.Terminal.Print("Quantity: ");
-            var qty = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
+            Print("Item name: ");
+            var item = ReadLine();
+            Print("Quantity: ");
+            var qty = Viper.Convert.ToInt(ReadLine());
 
             dropItem(items, quantities, item, qty);
         } else if cmd == "use" {
-            Viper.Terminal.Print("Item name: ");
-            var item = Viper.Terminal.ReadLine();
+            Print("Item name: ");
+            var item = ReadLine();
 
             useItem(items, quantities, item);
         } else {
-            Viper.Terminal.Say("Unknown command.");
+            Say("Unknown command.");
         }
 
-        Viper.Terminal.Say("");
+        Say("");
     }
 }
 
@@ -1255,15 +1317,15 @@ func findItem(items: [String], name: String): i64 {
 
 func showInventory(items: [String], quantities: [i64]) {
     if items.length == 0 {
-        Viper.Terminal.Say("Inventory is empty.");
+        Say("Inventory is empty.");
         return;
     }
 
-    Viper.Terminal.Say("=== Inventory ===");
+    Say("=== Inventory ===");
     for i in 0..items.length {
-        Viper.Terminal.Say("- " + items[i] + " x" + quantities[i]);
+        Say("- " + items[i] + " x" + quantities[i]);
     }
-    Viper.Terminal.Say("Slots used: " + items.length);
+    Say("Slots used: " + items.length);
 }
 
 func pickupItem(items: [String], quantities: [Integer], name: String, qty: Integer, maxSlots: Integer) {
@@ -1272,16 +1334,16 @@ func pickupItem(items: [String], quantities: [Integer], name: String, qty: Integ
     if existing >= 0 {
         // Already have this item, add to quantity
         quantities[existing] = quantities[existing] + qty;
-        Viper.Terminal.Say("Added " + qty + " " + name + " (now have " + quantities[existing] + ")");
+        Say("Added " + qty + " " + name + " (now have " + quantities[existing] + ")");
     } else {
         // New item
         if items.length >= maxSlots {
-            Viper.Terminal.Say("Inventory full! Drop something first.");
+            Say("Inventory full! Drop something first.");
             return;
         }
         items.push(name);
         quantities.push(qty);
-        Viper.Terminal.Say("Picked up " + qty + " " + name);
+        Say("Picked up " + qty + " " + name);
     }
 }
 
@@ -1289,13 +1351,13 @@ func dropItem(items: [String], quantities: [Integer], name: String, qty: Integer
     var idx = findItem(items, name);
 
     if idx < 0 {
-        Viper.Terminal.Say("You don't have any " + name);
+        Say("You don't have any " + name);
         return;
     }
 
     if qty >= quantities[idx] {
         // Drop all - remove from inventory
-        Viper.Terminal.Say("Dropped all " + name);
+        Say("Dropped all " + name);
         // Remove by shifting elements (simplified)
         var newItems: [String] = [];
         var newQty: [i64] = [];
@@ -1308,7 +1370,7 @@ func dropItem(items: [String], quantities: [Integer], name: String, qty: Integer
         // Note: In real code, you'd modify the original arrays
     } else {
         quantities[idx] = quantities[idx] - qty;
-        Viper.Terminal.Say("Dropped " + qty + " " + name + " (have " + quantities[idx] + " left)");
+        Say("Dropped " + qty + " " + name + " (have " + quantities[idx] + " left)");
     }
 }
 
@@ -1316,15 +1378,15 @@ func useItem(items: [String], quantities: [i64], name: String) {
     var idx = findItem(items, name);
 
     if idx < 0 {
-        Viper.Terminal.Say("You don't have any " + name);
+        Say("You don't have any " + name);
         return;
     }
 
-    Viper.Terminal.Say("Used " + name + "!");
+    Say("Used " + name + "!");
     quantities[idx] = quantities[idx] - 1;
 
     if quantities[idx] <= 0 {
-        Viper.Terminal.Say("No more " + name + " left.");
+        Say("No more " + name + " left.");
         // Would remove from inventory here
     }
 }
@@ -1336,6 +1398,7 @@ func useItem(items: [String], quantities: [i64], name: String) {
 
 ```rust
 module HighScores;
+bind Viper.Terminal;
 
 func start() {
     // Start with some default scores
@@ -1343,17 +1406,17 @@ func start() {
     var scores = [15000, 12500, 11200, 10800, 9500];
     var maxScores = 5;
 
-    Viper.Terminal.Say("=== High Score Table ===");
-    Viper.Terminal.Say("");
+    Say("=== High Score Table ===");
+    Say("");
 
     displayScores(names, scores);
 
     // Add a new score
-    Viper.Terminal.Say("");
-    Viper.Terminal.Print("Enter your name: ");
-    var playerName = Viper.Terminal.ReadLine();
-    Viper.Terminal.Print("Enter your score: ");
-    var playerScore = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
+    Say("");
+    Print("Enter your name: ");
+    var playerName = ReadLine();
+    Print("Enter your score: ");
+    var playerScore = Viper.Convert.ToInt(ReadLine());
 
     // Find where to insert
     var insertPos = -1;
@@ -1385,31 +1448,31 @@ func start() {
         names = newNames;
         scores = newScores;
 
-        Viper.Terminal.Say("");
-        Viper.Terminal.Say("Congratulations! You made the high score list!");
-        Viper.Terminal.Say("");
+        Say("");
+        Say("Congratulations! You made the high score list!");
+        Say("");
     } else if scores.length < maxScores {
         // Append to end
         names.push(playerName);
         scores.push(playerScore);
-        Viper.Terminal.Say("");
-        Viper.Terminal.Say("You made the list!");
-        Viper.Terminal.Say("");
+        Say("");
+        Say("You made the list!");
+        Say("");
     } else {
-        Viper.Terminal.Say("");
-        Viper.Terminal.Say("Score not high enough for the leaderboard.");
-        Viper.Terminal.Say("");
+        Say("");
+        Say("Score not high enough for the leaderboard.");
+        Say("");
     }
 
     displayScores(names, scores);
 }
 
 func displayScores(names: [String], scores: [i64]) {
-    Viper.Terminal.Say("  RANK  NAME          SCORE");
-    Viper.Terminal.Say("  ----  ----          -----");
+    Say("  RANK  NAME          SCORE");
+    Say("  ----  ----          -----");
 
     for i in 0..names.length {
-        Viper.Terminal.Say("  " + (i + 1) + ".    " + names[i] + "         " + scores[i]);
+        Say("  " + (i + 1) + ".    " + names[i] + "         " + scores[i]);
     }
 }
 ```
@@ -1422,6 +1485,8 @@ Different languages handle arrays with different syntax, but the concepts are id
 
 **Zia**
 ```rust
+bind Viper.Terminal;
+
 var numbers = [10, 20, 30];
 
 // Access
@@ -1432,14 +1497,14 @@ numbers[1] = 25;
 
 // Iterate
 for n in numbers {
-    Viper.Terminal.Say(n);
+    Say(n);
 }
 
 // Add
 numbers.push(40);
 
 // Length
-Viper.Terminal.Say(numbers.length);
+Say(numbers.length);
 ```
 
 **BASIC**
@@ -1517,11 +1582,13 @@ Remember: Length tells you *how many* elements. The highest index is always one 
 ### Forgetting Zero-Based Indexing
 
 ```rust
+bind Viper.Terminal;
+
 var scores = [85, 92, 78];
 
 // "I want the second score"
-Viper.Terminal.Say(scores[2]);  // WRONG: This is the THIRD element (78)
-Viper.Terminal.Say(scores[1]);  // CORRECT: This is the SECOND element (92)
+Say(scores[2]);  // WRONG: This is the THIRD element (78)
+Say(scores[1]);  // CORRECT: This is the SECOND element (92)
 ```
 
 When counting elements, humans say "first, second, third..."
@@ -1542,16 +1609,18 @@ if arr.length > 0 {
 ### Using Wrong Loop Range
 
 ```rust
+bind Viper.Terminal;
+
 var arr = [1, 2, 3, 4, 5];
 
 // WRONG: 0..=length includes length itself
 for i in 0..=arr.length {
-    Viper.Terminal.Say(arr[i]);  // Crashes on last iteration (i=5)
+    Say(arr[i]);  // Crashes on last iteration (i=5)
 }
 
 // CORRECT: 0..length excludes the endpoint
 for i in 0..arr.length {
-    Viper.Terminal.Say(arr[i]);  // Works perfectly (i goes 0,1,2,3,4)
+    Say(arr[i]);  // Works perfectly (i goes 0,1,2,3,4)
 }
 ```
 
@@ -1573,9 +1642,11 @@ for n in nums {
 ### Index From User Input Without Validation
 
 ```rust
+bind Viper.Terminal;
+
 var items = ["Sword", "Shield", "Potion"];
-Viper.Terminal.Print("Choose item (1-3): ");
-var choice = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
+Print("Choose item (1-3): ");
+var choice = Viper.Convert.ToInt(ReadLine());
 
 // WRONG: User might enter 0, 99, or -5
 var item = items[choice - 1];
@@ -1583,9 +1654,9 @@ var item = items[choice - 1];
 // CORRECT: Validate first
 if choice >= 1 && choice <= items.length {
     var item = items[choice - 1];
-    Viper.Terminal.Say("You selected: " + item);
+    Say("You selected: " + item);
 } else {
-    Viper.Terminal.Say("Invalid choice.");
+    Say("Invalid choice.");
 }
 ```
 
@@ -1597,18 +1668,19 @@ Let's build a comprehensive grade tracker that brings everything together:
 
 ```rust
 module GradeTracker;
+bind Viper.Terminal;
 
 func start() {
     var grades: [i64] = [];
 
-    Viper.Terminal.Say("=== Student Grade Tracker ===");
-    Viper.Terminal.Say("Enter grades (enter -1 to finish):");
-    Viper.Terminal.Say("");
+    Say("=== Student Grade Tracker ===");
+    Say("Enter grades (enter -1 to finish):");
+    Say("");
 
     // Collect grades with validation
     while true {
-        Viper.Terminal.Print("Grade: ");
-        var input = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
+        Print("Grade: ");
+        var input = Viper.Convert.ToInt(ReadLine());
 
         if input == -1 {
             break;
@@ -1616,16 +1688,16 @@ func start() {
 
         if input >= 0 && input <= 100 {
             grades.push(input);
-            Viper.Terminal.Say("  Added. Total grades: " + grades.length);
+            Say("  Added. Total grades: " + grades.length);
         } else {
-            Viper.Terminal.Say("  Please enter 0-100, or -1 to finish.");
+            Say("  Please enter 0-100, or -1 to finish.");
         }
     }
 
     // Handle empty input
     if grades.length == 0 {
-        Viper.Terminal.Say("");
-        Viper.Terminal.Say("No grades entered.");
+        Say("");
+        Say("No grades entered.");
         return;
     }
 
@@ -1666,10 +1738,10 @@ func start() {
     var average = sum / grades.length;
 
     // Generate report
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("========== GRADE REPORT ==========");
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("All grades entered:");
+    Say("");
+    Say("========== GRADE REPORT ==========");
+    Say("");
+    Say("All grades entered:");
 
     for i in 0..grades.length {
         var letterGrade = "F";
@@ -1682,24 +1754,24 @@ func start() {
         } else if grades[i] >= 60 {
             letterGrade = "D";
         }
-        Viper.Terminal.Say("  Student " + (i + 1) + ": " + grades[i] + " (" + letterGrade + ")");
+        Say("  Student " + (i + 1) + ": " + grades[i] + " (" + letterGrade + ")");
     }
 
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("Statistics:");
-    Viper.Terminal.Say("  Number of students: " + grades.length);
-    Viper.Terminal.Say("  Lowest grade:       " + min);
-    Viper.Terminal.Say("  Highest grade:      " + max);
-    Viper.Terminal.Say("  Average:            " + average);
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("Grade Distribution:");
-    Viper.Terminal.Say("  A (90-100): " + countA + " students");
-    Viper.Terminal.Say("  B (80-89):  " + countB + " students");
-    Viper.Terminal.Say("  C (70-79):  " + countC + " students");
-    Viper.Terminal.Say("  D (60-69):  " + countD + " students");
-    Viper.Terminal.Say("  F (0-59):   " + countF + " students");
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("===================================");
+    Say("");
+    Say("Statistics:");
+    Say("  Number of students: " + grades.length);
+    Say("  Lowest grade:       " + min);
+    Say("  Highest grade:      " + max);
+    Say("  Average:            " + average);
+    Say("");
+    Say("Grade Distribution:");
+    Say("  A (90-100): " + countA + " students");
+    Say("  B (80-89):  " + countB + " students");
+    Say("  C (70-79):  " + countC + " students");
+    Say("  D (60-69):  " + countD + " students");
+    Say("  F (0-59):   " + countF + " students");
+    Say("");
+    Say("===================================");
 }
 ```
 

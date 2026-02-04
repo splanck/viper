@@ -17,10 +17,14 @@
 ```viper
 module Hello
 
+bind Viper.Terminal;    // Import terminal functions
+
 func main() {
-    Viper.Terminal.Say("Hello, Zia!")
+    Say("Hello, Zia!")  // No need for Viper.Terminal.Say()
 }
 ```
+
+> You can still use fully qualified names: `Viper.Terminal.Say("Hello!")`
 
 ---
 
@@ -125,11 +129,13 @@ total = 100;
 ### Pattern Matching
 
 ```viper
+bind Viper.Terminal;
+
 value Result[T] = Ok(T) | Error(Text)
 
 match divide(10, 2) {
-    Ok(value) => Viper.Terminal.Say("Result: ${value}");
-    Error(msg) => Viper.Terminal.Say("Error: ${msg}");
+    Ok(value) => Say("Result: ${value}");
+    Error(msg) => Say("Error: ${msg}");
 }
 
 // With guards
@@ -158,6 +164,8 @@ Text result = condition ? "yes" : "no";
 ### Loops
 
 ```viper
+bind Viper.Terminal;
+
 // For each
 for item in list {
     process(item);
@@ -172,12 +180,12 @@ while condition {
 
 // Range (half-open)
 for i in 0..10 {
-    Viper.Terminal.SayInt(i);  // 0 through 9
+    SayInt(i);  // 0 through 9
 }
 
 // Range (inclusive)
 for i in 0..=10 {
-    Viper.Terminal.SayInt(i);  // 0 through 10
+    SayInt(i);  // 0 through 10
 }
 ```
 
@@ -202,6 +210,8 @@ func process(data: Data?) -> Text {
 ## Functions
 
 ```viper
+bind Viper.Terminal;
+
 // Basic function
 func add(a: Number, b: Number) -> Number {
     return a + b;
@@ -209,12 +219,12 @@ func add(a: Number, b: Number) -> Number {
 
 // No return value
 func printSum(a: Number, b: Number) {
-    Viper.Terminal.SayNum(a + b);
+    SayNum(a + b);
 }
 
 // Default parameters
 func greet(name: Text = "World") {
-    Viper.Terminal.Say("Hello, ${name}!");
+    Say("Hello, ${name}!");
 }
 
 // Generic function
@@ -230,9 +240,11 @@ func first[T](list: List[T]) -> Option[T] {
 > **Note:** Async/await is planned for future versions. Currently, programs run synchronously.
 
 ```viper
+bind Viper.IO.File;
+
 // Async function (future feature)
 async func loadData(path: Text) -> Text {
-    return Viper.IO.File.ReadAllText(path);
+    return ReadAllText(path);
 }
 
 // Using async
@@ -248,20 +260,23 @@ async func main() {
 ## Error Handling (No Exceptions!)
 
 ```viper
+bind Viper.IO.File;
+bind Viper.Terminal;
+
 // Errors as values
 value Result[T] = Ok(T) | Error(ErrorInfo)
 
 func readFile(path: Text) -> Result[Text] {
-    if !Viper.IO.File.Exists(path) {
+    if !Exists(path) {
         return Error(ErrorInfo("NOT_FOUND", "File not found"));
     }
-    return Ok(Viper.IO.File.ReadAllText(path));
+    return Ok(ReadAllText(path));
 }
 
 // Handle with pattern matching
 match readFile("data.txt") {
     Ok(content) => process(content);
-    Error(e) => Viper.Terminal.Say("Failed: ${e.message}");
+    Error(e) => Say("Failed: ${e.message}");
 }
 
 // The ? operator works for BOTH Result and Option
@@ -294,6 +309,8 @@ All collections are provided by the Viper.Collections.* runtime.
 ### List (Viper.Collections.List)
 
 ```viper
+bind Viper.Terminal;
+
 List numbers = new List();
 numbers.Add(1);
 numbers.Add(2);
@@ -304,7 +321,7 @@ Integer first = numbers.get_Item(0);  // 1
 
 // Check if contains
 if numbers.Has(2) {
-    Viper.Terminal.Say("Has 2");
+    Say("Has 2");
 }
 
 // Get count
@@ -314,6 +331,8 @@ Integer count = numbers.Count;
 ### Map (Viper.Collections.Map)
 
 ```viper
+bind Viper.Terminal;
+
 Map ages = new Map();
 ages.Set("alice", 30);
 ages.Set("bob", 25);
@@ -323,7 +342,7 @@ Integer aliceAge = ages.Get("alice");
 
 // Check if key exists
 if ages.Has("alice") {
-    Viper.Terminal.Say("Alice is ${aliceAge}");
+    Say("Alice is ${aliceAge}");
 }
 
 // Get all keys
@@ -333,13 +352,15 @@ List keys = ages.Keys();
 ### Bag (Viper.Collections.Bag) - String Sets
 
 ```viper
+bind Viper.Terminal;
+
 Bag fruits = new Bag();
 fruits.Put("apple");
 fruits.Put("banana");
 fruits.Put("apple");  // No duplicates
 
 if fruits.Has("apple") {
-    Viper.Terminal.Say("Has apple");
+    Say("Has apple");
 }
 ```
 
@@ -348,19 +369,21 @@ if fruits.Has("apple") {
 ## Optionals (T? = Option[T])
 
 ```viper
+bind Viper.Terminal;
+
 // T? is sugar for Option[T]
 Text? maybe = null;        // Same as: Option[Text] = None
 maybe = "Hello";           // Same as: Some("Hello")
 
 // Pattern matching (preferred)
 match maybe {
-    Some(value) => Viper.Terminal.Say(value);
-    None => Viper.Terminal.Say("Nothing");
+    Some(value) => Say(value);
+    None => Say("Nothing");
 }
 
 // If-let (future feature)
 if let value = maybe {
-    Viper.Terminal.Say(value);  // value is Text, not Text?
+    Say(value);  // value is Text, not Text?
 }
 
 // Optional chaining
@@ -383,20 +406,22 @@ func getName(id: Text) -> Option[Text] {
 > **Note:** Channels are planned for future versions with async support.
 
 ```viper
+bind Viper.Terminal;
+
 Channel[Message] channel = new Channel[Message](10);
 
 // Send (returns Result[Void])
 async {
     match channel.send(new Message("Hello")) {
         Ok => continue;
-        Error(Closed) => Viper.Terminal.Say("Channel closed");
+        Error(Closed) => Say("Channel closed");
     }
 }
 
 // Receive (returns Option[T])
 async {
     while let msg = channel.receive() {
-        Viper.Terminal.Say(msg);  // Loops until channel closed
+        Say(msg);  // Loops until channel closed
     }
 }
 
@@ -463,6 +488,8 @@ entity Service {
 ```viper
 module TaskManager;
 
+bind Viper.Terminal;
+
 // Task entity with state
 entity Task {
     Integer id;
@@ -484,11 +511,11 @@ entity Task {
         if done == 0 {
             status = "[ ]";
         }
-        Viper.Terminal.Print(status);
-        Viper.Terminal.Print(" ");
-        Viper.Terminal.PrintInt(id);
-        Viper.Terminal.Print(": ");
-        Viper.Terminal.Say(title);
+        Print(status);
+        Print(" ");
+        PrintInt(id);
+        Print(": ");
+        Say(title);
     }
 }
 
@@ -507,11 +534,11 @@ entity TaskManager {
         task.init(nextId, title);
         tasks.add(task);
         nextId = nextId + 1;
-        Viper.Terminal.Say("Task added!");
+        Say("Task added!");
     }
 
     func listTasks() {
-        Viper.Terminal.Say("--- Tasks ---");
+        Say("--- Tasks ---");
         Integer i = 0;
         while i < tasks.get_Count() {
             Task task = tasks.get(i);
@@ -526,12 +553,12 @@ entity TaskManager {
             Task task = tasks.get(i);
             if task.id == taskId {
                 task.markDone();
-                Viper.Terminal.Say("Task marked complete!");
+                Say("Task marked complete!");
                 return;
             }
             i = i + 1;
         }
-        Viper.Terminal.Say("Task not found.");
+        Say("Task not found.");
     }
 }
 
@@ -542,24 +569,24 @@ func start() {
     manager = new TaskManager();
     manager.init();
 
-    Viper.Terminal.Say("Task Manager - Commands: a)dd, l)ist, c)omplete, q)uit");
+    Say("Task Manager - Commands: a)dd, l)ist, c)omplete, q)uit");
 
     Integer running = 1;
     while running == 1 {
-        Viper.Terminal.Print("> ");
-        String cmd = Viper.Terminal.GetKey();
+        Print("> ");
+        String cmd = GetKey();
 
         if cmd == "a" {
-            Viper.Terminal.Print("Title: ");
-            Text title = Viper.Terminal.ReadLine();
+            Print("Title: ");
+            Text title = ReadLine();
             manager.addTask(title);
         }
         if cmd == "l" {
             manager.listTasks();
         }
         if cmd == "c" {
-            Viper.Terminal.Print("Task ID: ");
-            Integer id = Viper.Terminal.ReadInt();
+            Print("Task ID: ");
+            Integer id = ReadInt();
             manager.completeTask(id);
         }
         if cmd == "q" {
@@ -567,7 +594,7 @@ func start() {
         }
     }
 
-    Viper.Terminal.Say("Goodbye!");
+    Say("Goodbye!");
 }
 ```
 

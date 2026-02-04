@@ -12,6 +12,10 @@ bind "./config";
 bind "./utils";
 bind "./mushroom";
 
+bind Viper.Game;
+bind Viper.Graphics;
+bind Viper.Random;
+
 // =============================================================================
 // FLEA ENTITY - Mushroom-dropping enemy
 // =============================================================================
@@ -21,7 +25,7 @@ entity Flea {
     hide Integer screenY;
     hide Boolean active;
     hide Integer health;
-    hide Viper.Game.Timer moveTimer;
+    hide Timer moveTimer;
     hide Integer animFrame;
     hide Boolean fast;  // Speeds up after first hit
 
@@ -30,14 +34,14 @@ entity Flea {
         screenY = 0;
         active = false;
         health = 2;
-        moveTimer = Viper.Game.Timer.New();
+        moveTimer = Timer.New();
         animFrame = 0;
         fast = false;
     }
 
     expose func spawn() {
         // Spawn from random X at top of screen
-        var gridX = Viper.Random.NextInt(config.GRID_WIDTH);
+        var gridX = NextInt(config.GRID_WIDTH);
         screenX = utils.gridToScreenX(gridX);
         screenY = 0;
         active = true;
@@ -78,7 +82,7 @@ entity Flea {
             screenY = screenY + speed;
 
             // Create mushroom randomly while falling
-            if Viper.Random.NextInt(3) == 0 {
+            if NextInt(3) == 0 {
                 var gridX = utils.screenToGridX(screenX + config.TILE_SIZE / 2);
                 var gridY = utils.screenToGridY(screenY + config.TILE_SIZE / 2);
 
@@ -115,7 +119,7 @@ entity Flea {
         return utils.screenToGridY(screenY + config.TILE_SIZE / 2);
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         if !active {
             return;
         }

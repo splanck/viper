@@ -2,6 +2,8 @@
 // Ladders connect platforms and allow vertical movement
 module ladder;
 
+bind Viper.Graphics;
+
 bind "./config";
 bind "./colors";
 
@@ -89,7 +91,7 @@ entity Ladder {
     }
 
     // Draw the ladder with rungs
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         var ladderLeft = getLeft();
         var ladderRight = getRight() - 1;
         var ladderBottom = getBottom();

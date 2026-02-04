@@ -1,5 +1,7 @@
 module app_shell;
 
+bind GUI = Viper.GUI;
+
 // ============================================================================
 // AppShell — top-level UI layout for ViperIDE
 // ============================================================================
@@ -9,64 +11,64 @@ module app_shell;
 
 entity AppShell {
     // Application
-    expose Viper.GUI.App app;
+    expose GUI.App app;
 
     // Layout containers
-    expose Viper.GUI.VBox mainVBox;
-    expose Viper.GUI.SplitPane splitPane;
-    expose Viper.GUI.VBox editorArea;
+    expose GUI.VBox mainVBox;
+    expose GUI.SplitPane splitPane;
+    expose GUI.VBox editorArea;
 
     // Menu bar + menus
-    expose Viper.GUI.MenuBar menuBar;
-    expose Viper.GUI.Menu fileMenu;
-    expose Viper.GUI.Menu editMenu;
-    expose Viper.GUI.Menu viewMenu;
-    expose Viper.GUI.Menu helpMenu;
+    expose GUI.MenuBar menuBar;
+    expose GUI.Menu fileMenu;
+    expose GUI.Menu editMenu;
+    expose GUI.Menu viewMenu;
+    expose GUI.Menu helpMenu;
 
     // File menu items
-    expose Viper.GUI.MenuItem miNew;
-    expose Viper.GUI.MenuItem miOpen;
-    expose Viper.GUI.MenuItem miOpenFolder;
-    expose Viper.GUI.MenuItem miSave;
-    expose Viper.GUI.MenuItem miSaveAs;
-    expose Viper.GUI.MenuItem miSaveAll;
-    expose Viper.GUI.MenuItem miClose;
-    expose Viper.GUI.MenuItem miExit;
+    expose GUI.MenuItem miNew;
+    expose GUI.MenuItem miOpen;
+    expose GUI.MenuItem miOpenFolder;
+    expose GUI.MenuItem miSave;
+    expose GUI.MenuItem miSaveAs;
+    expose GUI.MenuItem miSaveAll;
+    expose GUI.MenuItem miClose;
+    expose GUI.MenuItem miExit;
 
     // Edit menu items
-    expose Viper.GUI.MenuItem miUndo;
-    expose Viper.GUI.MenuItem miRedo;
-    expose Viper.GUI.MenuItem miCut;
-    expose Viper.GUI.MenuItem miCopy;
-    expose Viper.GUI.MenuItem miPaste;
-    expose Viper.GUI.MenuItem miSelectAll;
-    expose Viper.GUI.MenuItem miFind;
+    expose GUI.MenuItem miUndo;
+    expose GUI.MenuItem miRedo;
+    expose GUI.MenuItem miCut;
+    expose GUI.MenuItem miCopy;
+    expose GUI.MenuItem miPaste;
+    expose GUI.MenuItem miSelectAll;
+    expose GUI.MenuItem miFind;
 
     // View menu items
-    expose Viper.GUI.MenuItem miToggleSidebar;
-    expose Viper.GUI.MenuItem miToggleStatusBar;
+    expose GUI.MenuItem miToggleSidebar;
+    expose GUI.MenuItem miToggleStatusBar;
 
     // Build menu
-    expose Viper.GUI.Menu buildMenu;
-    expose Viper.GUI.MenuItem miBuild;
-    expose Viper.GUI.MenuItem miBuildAndRun;
-    expose Viper.GUI.MenuItem miRun;
+    expose GUI.Menu buildMenu;
+    expose GUI.MenuItem miBuild;
+    expose GUI.MenuItem miBuildAndRun;
+    expose GUI.MenuItem miRun;
 
     // Toolbar + items
-    expose Viper.GUI.Toolbar toolbar;
-    expose Viper.GUI.ToolbarItem tbNew;
-    expose Viper.GUI.ToolbarItem tbOpen;
-    expose Viper.GUI.ToolbarItem tbSave;
-    expose Viper.GUI.ToolbarItem tbSaveAll;
+    expose GUI.Toolbar toolbar;
+    expose GUI.ToolbarItem tbNew;
+    expose GUI.ToolbarItem tbOpen;
+    expose GUI.ToolbarItem tbSave;
+    expose GUI.ToolbarItem tbSaveAll;
 
     // Tab bar
-    expose Viper.GUI.TabBar tabBar;
+    expose GUI.TabBar tabBar;
 
     // Sidebar
-    expose Viper.GUI.TreeView sidebarTree;
+    expose GUI.TreeView sidebarTree;
 
     // Status bar
-    expose Viper.GUI.StatusBar statusBar;
+    expose GUI.StatusBar statusBar;
 
     // State
     expose Boolean sidebarVisible;
@@ -78,20 +80,20 @@ entity AppShell {
     // Build the complete UI shell. Call once at startup.
     expose func Build(title: String, width: Integer, height: Integer) {
         // Create application window
-        app = Viper.GUI.App.New(title, width, height);
-        Viper.GUI.Theme.SetDark();
+        app = GUI.App.New(title, width, height);
+        GUI.Theme.SetDark();
 
         // Main vertical layout (fills entire window)
-        mainVBox = Viper.GUI.VBox.New();
+        mainVBox = GUI.VBox.New();
         mainVBox.SetSpacing(0.0);
         mainVBox.SetPadding(0.0);
-        var root: Viper.GUI.Widget = app.Root;
+        var root: GUI.Widget = app.Root;
         root.AddChild(mainVBox);
 
         // ====================================================================
         // Menu Bar
         // ====================================================================
-        menuBar = Viper.GUI.MenuBar.New(mainVBox);
+        menuBar = GUI.MenuBar.New(mainVBox);
 
         // File menu
         fileMenu = menuBar.AddMenu("File");
@@ -149,12 +151,12 @@ entity AppShell {
 
         // Help menu
         helpMenu = menuBar.AddMenu("Help");
-        var miAbout: Viper.GUI.MenuItem = helpMenu.AddItem("About ViperIDE");
+        var miAbout: GUI.MenuItem = helpMenu.AddItem("About ViperIDE");
 
         // ====================================================================
         // Toolbar
         // ====================================================================
-        toolbar = Viper.GUI.Toolbar.New(mainVBox);
+        toolbar = GUI.Toolbar.New(mainVBox);
         tbNew = toolbar.AddButtonWithText("", "New", "New File (Ctrl+N)");
         tbOpen = toolbar.AddButtonWithText("", "Open", "Open File (Ctrl+O)");
         tbSave = toolbar.AddButtonWithText("", "Save", "Save File (Ctrl+S)");
@@ -164,28 +166,28 @@ entity AppShell {
         // ====================================================================
         // SplitPane — sidebar (left) + editor area (right)
         // ====================================================================
-        splitPane = Viper.GUI.SplitPane.New(mainVBox, 1);
+        splitPane = GUI.SplitPane.New(mainVBox, 1);
         splitPane.SetFlex(1.0);
         splitPane.SetPosition(0.20);
 
         // Sidebar — TreeView in left panel
-        var leftPanel: Viper.GUI.Widget = splitPane.First;
-        sidebarTree = Viper.GUI.TreeView.New(leftPanel);
+        var leftPanel: GUI.Widget = splitPane.First;
+        sidebarTree = GUI.TreeView.New(leftPanel);
 
         // Editor area — VBox in right panel (TabBar + CodeEditor)
-        var rightPanel: Viper.GUI.Widget = splitPane.Second;
-        editorArea = Viper.GUI.VBox.New();
+        var rightPanel: GUI.Widget = splitPane.Second;
+        editorArea = GUI.VBox.New();
         editorArea.SetSpacing(0.0);
         editorArea.SetPadding(0.0);
         rightPanel.AddChild(editorArea);
 
         // Tab bar inside editor area
-        tabBar = Viper.GUI.TabBar.New(editorArea);
+        tabBar = GUI.TabBar.New(editorArea);
 
         // ====================================================================
         // Status Bar
         // ====================================================================
-        statusBar = Viper.GUI.StatusBar.New(mainVBox);
+        statusBar = GUI.StatusBar.New(mainVBox);
         statusBar.SetLeftText("Ready");
         statusBar.SetCenterText("");
         statusBar.SetRightText("ViperIDE");

@@ -2,11 +2,15 @@
 // PAC-MAN - Fruit Entity
 // =============================================================================
 // Uses new Viper runtime features:
-// - Viper.Game.Timer for fruit visibility and points display duration
-// - Viper.Game.Tween for floating points animation
+// - Timer for fruit visibility and points display duration
+// - Tween for floating points animation
 // =============================================================================
 
 module fruit;
+
+bind Viper.Game;
+bind Viper.Graphics;
+bind Viper.Fmt;
 
 bind "./config";
 bind "./utils";
@@ -25,11 +29,11 @@ entity Fruit {
     hide Integer lastPoints;
 
     // Use Timer for fruit visibility
-    hide Viper.Game.Timer visibilityTimer;
+    hide Timer visibilityTimer;
 
     // Use Timer and Tween for points display
-    hide Viper.Game.Timer displayTimer;
-    hide Viper.Game.Tween pointsTween;
+    hide Timer displayTimer;
+    hide Tween pointsTween;
     hide Boolean showingPoints;
 
     expose func init() {
@@ -42,9 +46,9 @@ entity Fruit {
         lastPoints = 0;
         showingPoints = false;
 
-        visibilityTimer = Viper.Game.Timer.New();
-        displayTimer = Viper.Game.Timer.New();
-        pointsTween = Viper.Game.Tween.New();
+        visibilityTimer = Timer.New();
+        displayTimer = Timer.New();
+        pointsTween = Tween.New();
     }
 
     expose func spawn(level: Integer) {
@@ -104,7 +108,7 @@ entity Fruit {
         showingPoints = false;
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         if active {
             var color = utils.getFruitColor(fruitType);
             var centerX = screenX + config.TILE_SIZE / 2;
@@ -118,7 +122,7 @@ entity Fruit {
 
         // Show floating points when collected
         if showingPoints {
-            var pointsText = Viper.Fmt.Int(lastPoints);
+            var pointsText = Int(lastPoints);
             var floatOffset = pointsTween.ValueI64;
             canvas.Text(screenX, screenY - floatOffset, pointsText, config.COLOR_WHITE);
         }

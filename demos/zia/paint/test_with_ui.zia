@@ -15,9 +15,11 @@ bind "./tools/eyedropper";
 bind "./ui/button";
 bind "./ui/slider";
 
+bind Viper.Graphics;
+
 func main() {
     // Create graphics canvas
-    var gfx = Viper.Graphics.Canvas.New(config.WINDOW_TITLE, 800, 600);
+    var gfx = Canvas.New(config.WINDOW_TITLE, 800, 600);
 
     // Create DrawingCanvas and initialize with size
     var c = new canvas.DrawingCanvas();

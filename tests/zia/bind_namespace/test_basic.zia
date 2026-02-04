@@ -1,0 +1,13 @@
+// Test basic namespace bind functionality
+// EXPECT_OUT: RESULT: ok
+module TestBasicNamespaceBind;
+
+// Bind the Viper.Terminal namespace
+bind Viper.Terminal;
+
+func start() {
+    // Should be able to call Say without qualification
+    Say("Testing basic namespace bind...");
+    Say("This test verifies bind Viper.Terminal works.");
+    Say("RESULT: ok");
+}

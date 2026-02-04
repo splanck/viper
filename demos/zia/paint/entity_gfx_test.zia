@@ -1,12 +1,14 @@
 module entity_gfx_test;
 
+bind Viper.Graphics;
+
 entity TestEntity {
     expose Integer value;
     expose ptr canvas;
 
     expose func init() {
         value = 42;
-        canvas = Viper.Graphics.Canvas.New("Entity Test", 100, 100);
+        canvas = Canvas.New("Entity Test", 100, 100);
     }
 
     expose func cleanup() {

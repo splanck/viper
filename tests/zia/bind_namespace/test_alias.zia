@@ -1,0 +1,13 @@
+// Test namespace bind with alias
+// EXPECT_OUT: RESULT: ok
+module TestAliasNamespaceBind;
+
+// Bind Viper.Terminal with alias
+bind Viper.Terminal as T;
+
+func start() {
+    // Access via alias
+    T.Say("Testing alias namespace bind...");
+    T.Say("Alias imports work correctly.");
+    T.Say("RESULT: ok");
+}

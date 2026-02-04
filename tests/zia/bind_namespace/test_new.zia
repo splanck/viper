@@ -1,0 +1,26 @@
+// Test new expression with imported types
+// EXPECT_OUT: RESULT: ok
+module TestNewImported;
+
+bind Viper.Terminal;
+bind Viper.Collections;
+
+func start() {
+    Say("Testing new with imported types...");
+
+    // Create a List using the imported type (with type parameter)
+    var myList = new List[String]();
+    myList.add("first");
+    myList.add("second");
+    myList.add("third");
+
+    Say("List created with " + Viper.Convert.ToString_Int(myList.count) + " items");
+
+    // Iterate over the list
+    for item in myList {
+        Say("  - " + item);
+    }
+
+    Say("New expression test passed!");
+    Say("RESULT: ok");
+}

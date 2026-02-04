@@ -1139,13 +1139,29 @@ var tags = {"alpha", "beta"};            // Inferred as Set[String]
 module MyApp.Services.UserService;
 ```
 
-### Imports
+### Binds
+
+**File binds** — Import Zia source modules:
 
 ```viper
-bind MyApp.Models.User;           // Bind specific type
-bind MyApp.Utils;                 // Bind entire module
-bind MyApp.Utils as U;            // Bind with alias
-bind MyApp.Models.{User, Order};  // Bind multiple
+bind "./models";                  // Relative path (adds .zia)
+bind "./utils" as U;              // With alias
+```
+
+**Namespace binds** — Import Viper runtime namespaces:
+
+```viper
+bind Viper.Terminal;              // Import all symbols (Say, Print, etc.)
+bind Viper.Graphics;              // Import graphics (Canvas, Sprite, etc.)
+bind Viper.Terminal as T;         // With alias: T.Say("hi")
+bind Viper.Terminal { Say };      // Import specific symbols only
+```
+
+When you bind a namespace, its symbols become available without qualification:
+
+```viper
+bind Viper.Terminal;
+Say("Hello!");                    // Instead of Viper.Terminal.Say("Hello!")
 ```
 
 ### Visibility

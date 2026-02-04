@@ -3,6 +3,9 @@
 
 module test_btree;
 
+bind Viper.Terminal;
+bind Viper.Fmt;
+
 bind "./storage/page";
 bind "./storage/serializer";
 bind "./storage/pager";
@@ -21,22 +24,22 @@ var testsFailed = 0;
 func assert(condition: Boolean, testName: String) {
     if condition {
         testsPassed = testsPassed + 1;
-        Viper.Terminal.Say("[PASS] " + testName);
+        Terminal.Say("[PASS] " + testName);
     } else {
         testsFailed = testsFailed + 1;
-        Viper.Terminal.Say("[FAIL] " + testName);
+        Terminal.Say("[FAIL] " + testName);
     }
 }
 
 func printSummary() {
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("===========================================");
-    Viper.Terminal.Say("B-TREE TEST SUMMARY");
-    Viper.Terminal.Say("===========================================");
-    Viper.Terminal.Say("Passed: " + Viper.Fmt.Int(testsPassed));
-    Viper.Terminal.Say("Failed: " + Viper.Fmt.Int(testsFailed));
-    Viper.Terminal.Say("Total:  " + Viper.Fmt.Int(testsPassed + testsFailed));
-    Viper.Terminal.Say("===========================================");
+    Terminal.Say("");
+    Terminal.Say("===========================================");
+    Terminal.Say("B-TREE TEST SUMMARY");
+    Terminal.Say("===========================================");
+    Terminal.Say("Passed: " + Fmt.Int(testsPassed));
+    Terminal.Say("Failed: " + Fmt.Int(testsFailed));
+    Terminal.Say("Total:  " + Fmt.Int(testsPassed + testsFailed));
+    Terminal.Say("===========================================");
 }
 
 //=============================================================================
@@ -44,8 +47,8 @@ func printSummary() {
 //=============================================================================
 
 func testBTreeKeyInit() {
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("--- BTreeKey Tests ---");
+    Terminal.Say("");
+    Terminal.Say("--- BTreeKey Tests ---");
 
     var key = new BTreeKey();
     key.init();
@@ -85,8 +88,8 @@ func testBTreeKeyCompare() {
 //=============================================================================
 
 func testBTreeNodeInit() {
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("--- BTreeNode Tests ---");
+    Terminal.Say("");
+    Terminal.Say("--- BTreeNode Tests ---");
 
     var node = new BTreeNode();
     node.init();
@@ -235,8 +238,8 @@ func testBTreeNodeIsFull() {
 //=============================================================================
 
 func testBTreeNodeSerialization() {
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("--- BTreeNode Serialization Tests ---");
+    Terminal.Say("");
+    Terminal.Say("--- BTreeNode Serialization Tests ---");
 
     // Create a leaf node with some keys (all integers for consistent sort order)
     var node = new BTreeNode();
@@ -321,8 +324,8 @@ func testBTreeInternalNodeSerialization() {
 //=============================================================================
 
 func testBTreeCreate() {
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("--- BTree Integration Tests ---");
+    Terminal.Say("");
+    Terminal.Say("--- BTree Integration Tests ---");
 
     // Create a pager and buffer pool
     var pager = new Pager();
@@ -564,8 +567,8 @@ func testBTreeCountKeys() {
 }
 
 func testBTreeManyInserts() {
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("--- BTree Stress Test ---");
+    Terminal.Say("");
+    Terminal.Say("--- BTree Stress Test ---");
 
     var pager = new Pager();
     pager.init();
@@ -604,7 +607,7 @@ func testBTreeManyInserts() {
     // Height should be reasonable
     var h = tree.height();
     assert(h >= 1 && h <= 4, "Stress test: height is reasonable (1-4)");
-    Viper.Terminal.Say("Tree height after 200 inserts: " + Viper.Fmt.Int(h));
+    Terminal.Say("Tree height after 200 inserts: " + Fmt.Int(h));
 
     pool.flushAll();
     pager.closeDatabase();
@@ -654,9 +657,9 @@ func testBTreeStringKeys() {
 //=============================================================================
 
 func main() {
-    Viper.Terminal.Say("===========================================");
-    Viper.Terminal.Say("VIPERSQL B-TREE TESTS");
-    Viper.Terminal.Say("===========================================");
+    Terminal.Say("===========================================");
+    Terminal.Say("VIPERSQL B-TREE TESTS");
+    Terminal.Say("===========================================");
 
     // BTreeKey tests
     testBTreeKeyInit();

@@ -3,6 +3,8 @@
 
 module result;
 
+bind Viper.Fmt;
+
 bind "./schema";
 
 //=============================================================================
@@ -112,7 +114,7 @@ entity QueryResult {
         if rows.count() == 0 && columnNames.count() == 0 {
             result = message;
         } else {
-            result = result + "(" + Viper.Fmt.Int(rows.count()) + " rows)";
+            result = result + "(" + Fmt.Int(rows.count()) + " rows)";
         }
 
         return result;

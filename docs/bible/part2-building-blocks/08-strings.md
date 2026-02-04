@@ -58,10 +58,12 @@ Why start at 0? It comes from how computers calculate memory addresses. If the s
 You can access individual characters:
 
 ```rust
+bind Viper.Terminal;
+
 var word = "Hello";
-Viper.Terminal.Say(word[0]);  // H
-Viper.Terminal.Say(word[4]);  // o
-Viper.Terminal.Say(word.length);  // 5
+Say(word[0]);  // H
+Say(word[4]);  // o
+Say(word.length);  // 5
 ```
 
 This should feel familiar — strings behave like arrays of characters because that's exactly what they are.
@@ -77,21 +79,25 @@ Before diving into string operations, let's master working with individual chara
 Every character in a string has a position (index), starting from 0:
 
 ```rust
+bind Viper.Terminal;
+
 var name = "Alice";
-Viper.Terminal.Say(name[0]);  // A (first character)
-Viper.Terminal.Say(name[1]);  // l (second character)
-Viper.Terminal.Say(name[4]);  // e (fifth/last character)
+Say(name[0]);  // A (first character)
+Say(name[1]);  // l (second character)
+Say(name[4]);  // e (fifth/last character)
 ```
 
 You can use any expression as an index:
 
 ```rust
+bind Viper.Terminal;
+
 var text = "Programming";
 var middle = text.length / 2;
-Viper.Terminal.Say(text[middle]);  // Prints the middle character
+Say(text[middle]);  // Prints the middle character
 
 var lastIndex = text.length - 1;
-Viper.Terminal.Say(text[lastIndex]);  // g (last character)
+Say(text[lastIndex]);  // g (last character)
 ```
 
 ### Iterating Through Strings
@@ -99,9 +105,11 @@ Viper.Terminal.Say(text[lastIndex]);  // g (last character)
 To process every character, loop through the indices:
 
 ```rust
+bind Viper.Terminal;
+
 var text = "Viper";
 for i in 0..text.length {
-    Viper.Terminal.Say("Character " + i + ": " + text[i]);
+    Say("Character " + i + ": " + text[i]);
 }
 ```
 
@@ -117,6 +125,8 @@ Character 4: r
 This pattern is fundamental. Want to count uppercase letters? Loop through each character and check. Want to find all positions of a letter? Loop and record indices where it matches.
 
 ```rust
+bind Viper.Terminal;
+
 // Count uppercase letters
 func countUppercase(text: String) -> Integer {
     var count = 0;
@@ -129,7 +139,7 @@ func countUppercase(text: String) -> Integer {
     return count;
 }
 
-Viper.Terminal.Say(countUppercase("Hello World"));  // 2 (H and W)
+Say(countUppercase("Hello World"));  // 2 (H and W)
 ```
 
 ### Building Strings Character by Character
@@ -137,6 +147,8 @@ Viper.Terminal.Say(countUppercase("Hello World"));  // 2 (H and W)
 You can construct strings by starting empty and adding characters:
 
 ```rust
+bind Viper.Terminal;
+
 // Reverse a string
 func reverse(text: String) -> String {
     var result = "";
@@ -147,12 +159,14 @@ func reverse(text: String) -> String {
     return result;
 }
 
-Viper.Terminal.Say(reverse("Hello"));  // olleH
+Say(reverse("Hello"));  // olleH
 ```
 
 Or filter characters based on criteria:
 
 ```rust
+bind Viper.Terminal;
+
 // Keep only letters
 func lettersOnly(text: String) -> String {
     var result = "";
@@ -168,7 +182,7 @@ func lettersOnly(text: String) -> String {
     return result;
 }
 
-Viper.Terminal.Say(lettersOnly("Hello, World! 123"));  // HelloWorld
+Say(lettersOnly("Hello, World! 123"));  // HelloWorld
 ```
 
 ---
@@ -178,17 +192,21 @@ Viper.Terminal.Say(lettersOnly("Hello, World! 123"));  // HelloWorld
 The `.length` property tells you how many characters a string contains:
 
 ```rust
-Viper.Terminal.Say("Hello".length);     // 5
-Viper.Terminal.Say("".length);          // 0 (empty string)
-Viper.Terminal.Say("Hi there!".length); // 9 (space counts)
+bind Viper.Terminal;
+
+Say("Hello".length);     // 5
+Say("".length);          // 0 (empty string)
+Say("Hi there!".length); // 9 (space counts)
 ```
 
 **Every character counts** — letters, numbers, spaces, punctuation, even invisible characters like tabs and newlines:
 
 ```rust
-Viper.Terminal.Say("A B".length);    // 3 (A, space, B)
-Viper.Terminal.Say("A\tB".length);   // 3 (A, tab, B)
-Viper.Terminal.Say("A\nB".length);   // 3 (A, newline, B)
+bind Viper.Terminal;
+
+Say("A B".length);    // 3 (A, space, B)
+Say("A\tB".length);   // 3 (A, tab, B)
+Say("A\nB".length);   // 3 (A, newline, B)
 ```
 
 ### Why Length Matters
@@ -196,22 +214,26 @@ Viper.Terminal.Say("A\nB".length);   // 3 (A, newline, B)
 Length is essential for loops:
 
 ```rust
+bind Viper.Terminal;
+
 var text = "Viper";
 for i in 0..text.length {
-    Viper.Terminal.Say("Character " + i + ": " + text[i]);
+    Say("Character " + i + ": " + text[i]);
 }
 ```
 
 And for validation:
 
 ```rust
+bind Viper.Terminal;
+
 func validatePassword(password: String) -> Boolean {
     if password.length < 8 {
-        Viper.Terminal.Say("Password must be at least 8 characters");
+        Say("Password must be at least 8 characters");
         return false;
     }
     if password.length > 128 {
-        Viper.Terminal.Say("Password too long");
+        Say("Password too long");
         return false;
     }
     return true;
@@ -221,14 +243,16 @@ func validatePassword(password: String) -> Boolean {
 And for safe indexing:
 
 ```rust
+bind Viper.Terminal;
+
 var text = "Hello";
 var index = 10;
 
 // Always check before accessing
 if index >= 0 && index < text.length {
-    Viper.Terminal.Say(text[index]);
+    Say(text[index]);
 } else {
-    Viper.Terminal.Say("Index out of bounds");
+    Say("Index out of bounds");
 }
 ```
 
@@ -250,9 +274,11 @@ This isn't a limitation — it's a deliberate design choice with important benef
 **Safety**: When you pass a string to a function, you know it won't be modified unexpectedly.
 
 ```rust
+bind Viper.Terminal;
+
 var username = "Alice";
 someFunction(username);  // Cannot modify our string
-Viper.Terminal.Say(username);  // Still "Alice", guaranteed
+Say(username);  // Still "Alice", guaranteed
 ```
 
 **Sharing**: The same string can be shared by multiple variables without copying.
@@ -305,17 +331,21 @@ This creates 1000 intermediate strings that are immediately discarded. For build
 The `+` operator joins strings together:
 
 ```rust
+bind Viper.Terminal;
+
 var first = "Hello";
 var second = "World";
 var greeting = first + ", " + second + "!";
-Viper.Terminal.Say(greeting);  // Hello, World!
+Say(greeting);  // Hello, World!
 ```
 
 When you "add" a string and a number, the number is converted to a string:
 
 ```rust
+bind Viper.Terminal;
+
 var score = 42;
-Viper.Terminal.Say("Your score: " + score);  // Your score: 42
+Say("Your score: " + score);  // Your score: 42
 ```
 
 ### Concatenation Order Matters
@@ -323,14 +353,16 @@ Viper.Terminal.Say("Your score: " + score);  // Your score: 42
 Because conversion happens automatically, order can be surprising:
 
 ```rust
+bind Viper.Terminal;
+
 // String first: concatenation
-Viper.Terminal.Say("Score: " + 5 + 3);   // Score: 53 (string concat)
+Say("Score: " + 5 + 3);   // Score: 53 (string concat)
 
 // Numbers first: arithmetic then concat
-Viper.Terminal.Say(5 + 3 + " points");   // 8 points (addition first)
+Say(5 + 3 + " points");   // 8 points (addition first)
 
 // Use parentheses to be explicit
-Viper.Terminal.Say("Total: " + (5 + 3)); // Total: 8
+Say("Total: " + (5 + 3)); // Total: 8
 ```
 
 The rule: operations are evaluated left to right. Once you hit a string, everything after becomes concatenation.
@@ -340,11 +372,13 @@ The rule: operations are evaluated left to right. Once you hit a string, everyth
 Concatenation is intuitive for simple cases:
 
 ```rust
+bind Viper.Terminal;
+
 func formatName(first: String, middle: String, last: String) -> String {
     return first + " " + middle + " " + last;
 }
 
-Viper.Terminal.Say(formatName("John", "Fitzgerald", "Kennedy"));
+Say(formatName("John", "Fitzgerald", "Kennedy"));
 // John Fitzgerald Kennedy
 ```
 
@@ -406,6 +440,8 @@ var rest = text.skip(7);     // "World!"
 
 **Extract file extension:**
 ```rust
+bind Viper.Terminal;
+
 func getExtension(filename: String) -> String {
     var dotPos = filename.lastIndexOf(".");
     if dotPos == -1 {
@@ -414,13 +450,15 @@ func getExtension(filename: String) -> String {
     return filename.skip(dotPos + 1);
 }
 
-Viper.Terminal.Say(getExtension("report.pdf"));    // pdf
-Viper.Terminal.Say(getExtension("archive.tar.gz")); // gz
-Viper.Terminal.Say(getExtension("README"));         // (empty)
+Say(getExtension("report.pdf"));    // pdf
+Say(getExtension("archive.tar.gz")); // gz
+Say(getExtension("README"));         // (empty)
 ```
 
 **Extract domain from email:**
 ```rust
+bind Viper.Terminal;
+
 func getEmailDomain(email: String) -> String {
     var atPos = email.indexOf("@");
     if atPos == -1 {
@@ -429,11 +467,13 @@ func getEmailDomain(email: String) -> String {
     return email.skip(atPos + 1);
 }
 
-Viper.Terminal.Say(getEmailDomain("user@example.com"));  // example.com
+Say(getEmailDomain("user@example.com"));  // example.com
 ```
 
 **Truncate with ellipsis:**
 ```rust
+bind Viper.Terminal;
+
 func truncate(text: String, maxLength: Integer) -> String {
     if text.length <= maxLength {
         return text;
@@ -441,8 +481,8 @@ func truncate(text: String, maxLength: Integer) -> String {
     return text.left(maxLength - 3) + "...";
 }
 
-Viper.Terminal.Say(truncate("Hello, World!", 10));  // Hello, ...
-Viper.Terminal.Say(truncate("Hi", 10));             // Hi
+Say(truncate("Hello, World!", 10));  // Hello, ...
+Say(truncate("Hi", 10));             // Hi
 ```
 
 ---
@@ -468,16 +508,18 @@ Why -1 for "not found"? Because 0 is a valid position (the start of the string),
 Always check if the search succeeded:
 
 ```rust
+bind Viper.Terminal;
+
 var email = "user@example.com";
 var atPos = email.indexOf("@");
 
 if atPos == -1 {
-    Viper.Terminal.Say("Invalid email: no @ symbol");
+    Say("Invalid email: no @ symbol");
 } else {
     var username = email.left(atPos);
     var domain = email.skip(atPos + 1);
-    Viper.Terminal.Say("Username: " + username);  // user
-    Viper.Terminal.Say("Domain: " + domain);      // example.com
+    Say("Username: " + username);  // user
+    Say("Domain: " + domain);      // example.com
 }
 ```
 
@@ -496,10 +538,12 @@ var filename = path.skip(lastSlash + 1);  // file.txt
 When you only care whether something exists, not where:
 
 ```rust
+bind Viper.Terminal;
+
 var text = "The quick brown fox";
 
 if text.contains("quick") {
-    Viper.Terminal.Say("Found it!");
+    Say("Found it!");
 }
 ```
 
@@ -510,14 +554,16 @@ This is cleaner than checking `indexOf(...) != -1`.
 Check the beginning or end of a string:
 
 ```rust
+bind Viper.Terminal;
+
 var filename = "report.pdf";
 
 if filename.endsWith(".pdf") {
-    Viper.Terminal.Say("It's a PDF file");
+    Say("It's a PDF file");
 }
 
 if filename.startsWith("report") {
-    Viper.Terminal.Say("It's a report");
+    Say("It's a report");
 }
 ```
 
@@ -578,12 +624,14 @@ Comparing strings is essential for sorting, searching, and validation — but it
 ### Basic Equality
 
 ```rust
+bind Viper.Terminal;
+
 var a = "hello";
 var b = "hello";
 var c = "Hello";
 
-Viper.Terminal.Say(a == b);  // true - exact match
-Viper.Terminal.Say(a == c);  // false - case differs!
+Say(a == b);  // true - exact match
+Say(a == c);  // false - case differs!
 ```
 
 ### Case Sensitivity
@@ -591,30 +639,36 @@ Viper.Terminal.Say(a == c);  // false - case differs!
 String comparison is **case-sensitive** by default. "Hello" and "hello" are different strings:
 
 ```rust
+bind Viper.Terminal;
+
 var input = "YES";
 if input == "yes" {  // false!
-    Viper.Terminal.Say("Match");
+    Say("Match");
 }
 ```
 
 For case-insensitive comparison, convert to the same case first:
 
 ```rust
+bind Viper.Terminal;
+
 var input = "YES";
 if input.lower() == "yes" {  // true!
-    Viper.Terminal.Say("User said yes");
+    Say("User said yes");
 }
 ```
 
 **Common pattern for user input:**
 ```rust
+bind Viper.Terminal;
+
 func normalizeInput(text: String) -> String {
     return text.trim().lower();
 }
 
 var input = "  YES  ";
 if normalizeInput(input) == "yes" {
-    Viper.Terminal.Say("Confirmed");
+    Say("Confirmed");
 }
 ```
 
@@ -623,9 +677,11 @@ if normalizeInput(input) == "yes" {
 Strings can be compared alphabetically using `<`, `>`, `<=`, `>=`:
 
 ```rust
-Viper.Terminal.Say("apple" < "banana");  // true (a before b)
-Viper.Terminal.Say("cat" < "car");       // false (t after r)
-Viper.Terminal.Say("apple" < "apricot"); // true (p before r)
+bind Viper.Terminal;
+
+Say("apple" < "banana");  // true (a before b)
+Say("cat" < "car");       // false (t after r)
+Say("apple" < "apricot"); // true (p before r)
 ```
 
 This is called **lexicographic ordering** — comparing character by character until a difference is found.
@@ -635,20 +691,24 @@ This is called **lexicographic ordering** — comparing character by character u
 Alphabetical comparison uses character codes, which leads to surprises:
 
 ```rust
+bind Viper.Terminal;
+
 // All uppercase letters come BEFORE all lowercase
-Viper.Terminal.Say("Z" < "a");     // true! Z (90) < a (97)
-Viper.Terminal.Say("Apple" < "banana"); // true (A < b)
-Viper.Terminal.Say("apple" < "Banana"); // false (a > B)
+Say("Z" < "a");     // true! Z (90) < a (97)
+Say("Apple" < "banana"); // true (A < b)
+Say("apple" < "Banana"); // false (a > B)
 ```
 
 For true alphabetical sorting, convert to the same case:
 
 ```rust
+bind Viper.Terminal;
+
 func alphabeticallyBefore(a: String, b: String) -> Boolean {
     return a.lower() < b.lower();
 }
 
-Viper.Terminal.Say(alphabeticallyBefore("apple", "Banana"));  // true
+Say(alphabeticallyBefore("apple", "Banana"));  // true
 ```
 
 ### Numeric Strings Don't Sort Numerically
@@ -656,30 +716,37 @@ Viper.Terminal.Say(alphabeticallyBefore("apple", "Banana"));  // true
 Another common trap:
 
 ```rust
-Viper.Terminal.Say("9" < "10");   // false! '9' (57) > '1' (49)
-Viper.Terminal.Say("9" < "100");  // false! Same reason
+bind Viper.Terminal;
+
+Say("9" < "10");   // false! '9' (57) > '1' (49)
+Say("9" < "100");  // false! Same reason
 ```
 
 For numeric comparison, convert to numbers:
 
 ```rust
+bind Viper.Terminal;
+bind Viper.Convert;
+
 var a = "9";
 var b = "10";
-if Viper.Convert.ToInt(a) < Viper.Convert.ToInt(b) {
-    Viper.Terminal.Say("9 is less than 10");  // Correct!
+if ToInt(a) < ToInt(b) {
+    Say("9 is less than 10");  // Correct!
 }
 ```
 
 ### Comparing Empty Strings
 
 ```rust
+bind Viper.Terminal;
+
 var empty = "";
 var space = " ";
 
-Viper.Terminal.Say(empty == "");     // true
-Viper.Terminal.Say(empty == space);  // false (space is a character)
-Viper.Terminal.Say(empty.length == 0); // true
-Viper.Terminal.Say(space.length == 0); // false
+Say(empty == "");     // true
+Say(empty == space);  // false (space is a character)
+Say(empty.length == 0); // true
+Say(space.length == 0); // false
 ```
 
 ---
@@ -689,17 +756,21 @@ Viper.Terminal.Say(space.length == 0); // false
 Strings can be converted to all uppercase or all lowercase:
 
 ```rust
+bind Viper.Terminal;
+
 var text = "Hello, World!";
-Viper.Terminal.Say(text.upper());  // HELLO, WORLD!
-Viper.Terminal.Say(text.lower());  // hello, world!
+Say(text.upper());  // HELLO, WORLD!
+Say(text.lower());  // hello, world!
 ```
 
 Remember: the original string is unchanged (immutability):
 
 ```rust
+bind Viper.Terminal;
+
 var name = "Alice";
-Viper.Terminal.Say(name.upper());  // ALICE
-Viper.Terminal.Say(name);          // Alice (still)
+Say(name.upper());  // ALICE
+Say(name);          // Alice (still)
 ```
 
 ### Case-Insensitive Comparisons
@@ -707,10 +778,12 @@ Viper.Terminal.Say(name);          // Alice (still)
 The most common use of case conversion:
 
 ```rust
+bind Viper.Terminal;
+
 var input = "YES";
 
 if input.lower() == "yes" {
-    Viper.Terminal.Say("User said yes!");
+    Say("User said yes!");
 }
 ```
 
@@ -721,6 +794,8 @@ Without `.lower()`, "YES", "Yes", "yes", and "yEs" would all be different. Conve
 Combine case conversion with substrings:
 
 ```rust
+bind Viper.Terminal;
+
 func capitalize(text: String) -> String {
     if text.length == 0 {
         return "";
@@ -728,12 +803,14 @@ func capitalize(text: String) -> String {
     return text[0].upper() + text.skip(1).lower();
 }
 
-Viper.Terminal.Say(capitalize("jOHN"));   // John
-Viper.Terminal.Say(capitalize("ALICE"));  // Alice
+Say(capitalize("jOHN"));   // John
+Say(capitalize("ALICE"));  // Alice
 ```
 
 **Title case (capitalize each word):**
 ```rust
+bind Viper.Terminal;
+
 func titleCase(text: String) -> String {
     var words = text.split(" ");
     var result = [];
@@ -745,7 +822,7 @@ func titleCase(text: String) -> String {
     return result.join(" ");
 }
 
-Viper.Terminal.Say(titleCase("the quick brown fox"));
+Say(titleCase("the quick brown fox"));
 // The Quick Brown Fox
 ```
 
@@ -756,8 +833,10 @@ Viper.Terminal.Say(titleCase("the quick brown fox"));
 User input often has extra spaces. The `trim` method removes whitespace from both ends:
 
 ```rust
+bind Viper.Terminal;
+
 var input = "   hello   ";
-Viper.Terminal.Say("[" + input.trim() + "]");  // [hello]
+Say("[" + input.trim() + "]");  // [hello]
 ```
 
 Variations:
@@ -777,8 +856,10 @@ text.trim();       // "hello" (both sides)
 - Carriage returns ('\r')
 
 ```rust
+bind Viper.Terminal;
+
 var messy = "\t  Hello World  \n";
-Viper.Terminal.Say("[" + messy.trim() + "]");  // [Hello World]
+Say("[" + messy.trim() + "]");  // [Hello World]
 ```
 
 ### Essential for User Input
@@ -786,11 +867,13 @@ Viper.Terminal.Say("[" + messy.trim() + "]");  // [Hello World]
 Always trim user input before processing:
 
 ```rust
-Viper.Terminal.Say("Enter your name:");
-var name = Viper.Terminal.ReadLine().trim();
+bind Viper.Terminal;
+
+Say("Enter your name:");
+var name = ReadLine().trim();
 
 if name.length == 0 {
-    Viper.Terminal.Say("Name cannot be empty");
+    Say("Name cannot be empty");
 }
 ```
 
@@ -803,9 +886,11 @@ Without trimming, a user who types "   " (just spaces) would pass a length check
 To replace occurrences of one string with another:
 
 ```rust
+bind Viper.Terminal;
+
 var text = "Hello, World!";
 var result = text.replace("World", "Viper");
-Viper.Terminal.Say(result);  // Hello, Viper!
+Say(result);  // Hello, Viper!
 ```
 
 By default, this replaces all occurrences:
@@ -831,6 +916,8 @@ func sanitize(text: String) -> String {
 
 **Normalizing data:**
 ```rust
+bind Viper.Terminal;
+
 // Remove common variations in phone numbers
 func normalizePhone(phone: String) -> String {
     var result = phone;
@@ -842,11 +929,13 @@ func normalizePhone(phone: String) -> String {
     return result;
 }
 
-Viper.Terminal.Say(normalizePhone("+1 (555) 123-4567"));  // 15551234567
+Say(normalizePhone("+1 (555) 123-4567"));  // 15551234567
 ```
 
 **Template substitution:**
 ```rust
+bind Viper.Terminal;
+
 func greet(template: String, name: String, time: String) -> String {
     var result = template;
     result = result.replace("{name}", name);
@@ -855,15 +944,17 @@ func greet(template: String, name: String, time: String) -> String {
 }
 
 var template = "Good {time}, {name}! Welcome back.";
-Viper.Terminal.Say(greet(template, "Alice", "morning"));
+Say(greet(template, "Alice", "morning"));
 // Good morning, Alice! Welcome back.
 ```
 
 ### Replace Is Case-Sensitive
 
 ```rust
+bind Viper.Terminal;
+
 var text = "Hello hello HELLO";
-Viper.Terminal.Say(text.replace("hello", "hi"));
+Say(text.replace("hello", "hi"));
 // Hello hi HELLO (only exact match replaced)
 ```
 
@@ -900,11 +991,13 @@ func replaceIgnoreCase(text: String, search: String, replacement: String) -> Str
 Splitting breaks a string into an array of pieces at each occurrence of a delimiter:
 
 ```rust
+bind Viper.Terminal;
+
 var csv = "apple,banana,cherry";
 var fruits = csv.split(",");
 
 for fruit in fruits {
-    Viper.Terminal.Say(fruit);
+    Say(fruit);
 }
 ```
 
@@ -967,6 +1060,8 @@ var pairs = data.split("&");  // ["name=Alice", "age=30", "city=Boston"]
 CSV (Comma-Separated Values) is extremely common:
 
 ```rust
+bind Viper.Terminal;
+
 func parseCSVLine(line: String) -> array<String> {
     return line.split(",");
 }
@@ -974,14 +1069,16 @@ func parseCSVLine(line: String) -> array<String> {
 var line = "Alice,30,Engineer,Boston";
 var fields = parseCSVLine(line);
 
-Viper.Terminal.Say("Name: " + fields[0]);       // Alice
-Viper.Terminal.Say("Age: " + fields[1]);        // 30
-Viper.Terminal.Say("Job: " + fields[2]);        // Engineer
-Viper.Terminal.Say("City: " + fields[3]);       // Boston
+Say("Name: " + fields[0]);       // Alice
+Say("Age: " + fields[1]);        // 30
+Say("Job: " + fields[2]);        // Engineer
+Say("City: " + fields[3]);       // Boston
 ```
 
 **Processing multiple lines:**
 ```rust
+bind Viper.Terminal;
+
 var csvData = "Alice,30,Boston\nBob,25,Seattle\nCarol,35,Denver";
 var lines = csvData.split("\n");
 
@@ -990,7 +1087,7 @@ for line in lines {
     var name = fields[0];
     var age = fields[1];
     var city = fields[2];
-    Viper.Terminal.Say(name + " is " + age + " years old, lives in " + city);
+    Say(name + " is " + age + " years old, lives in " + city);
 }
 ```
 
@@ -1008,18 +1105,22 @@ Carol is 35 years old, lives in Denver
 The reverse of splitting — combining an array into a single string:
 
 ```rust
+bind Viper.Terminal;
+
 var words = ["Hello", "World"];
 var sentence = words.join(" ");
-Viper.Terminal.Say(sentence);  // Hello World
+Say(sentence);  // Hello World
 ```
 
 The argument is what to put between elements:
 
 ```rust
+bind Viper.Terminal;
+
 var numbers = ["1", "2", "3"];
-Viper.Terminal.Say(numbers.join(", "));  // 1, 2, 3
-Viper.Terminal.Say(numbers.join("-"));   // 1-2-3
-Viper.Terminal.Say(numbers.join(""));    // 123
+Say(numbers.join(", "));  // 1, 2, 3
+Say(numbers.join("-"));   // 1-2-3
+Say(numbers.join(""));    // 123
 ```
 
 ### Split and Join Together
@@ -1034,6 +1135,8 @@ var rejoined = parts.join(", "); // "Hello, World!"
 
 **Transform and rejoin:**
 ```rust
+bind Viper.Terminal;
+
 // Capitalize each word
 func titleCase(text: String) -> String {
     var words = text.split(" ");
@@ -1049,18 +1152,20 @@ func titleCase(text: String) -> String {
     return capitalized.join(" ");
 }
 
-Viper.Terminal.Say(titleCase("the QUICK brown FOX"));
+Say(titleCase("the QUICK brown FOX"));
 // The Quick Brown Fox
 ```
 
 **Change delimiter:**
 ```rust
+bind Viper.Terminal;
+
 // Convert paths between systems
 func windowsToUnix(path: String) -> String {
     return path.split("\\").join("/");
 }
 
-Viper.Terminal.Say(windowsToUnix("C:\\Users\\Alice\\Documents"));
+Say(windowsToUnix("C:\\Users\\Alice\\Documents"));
 // C:/Users/Alice/Documents
 ```
 
@@ -1119,11 +1224,14 @@ var result = builder.toString();
 ### Building Complex Output
 
 ```rust
+bind Viper.StringBuilder;
+bind Viper.Time;
+
 func generateReport(data: array<Record>) -> string {
-    var sb = Viper.StringBuilder.new();
+    var sb = StringBuilder.new();
 
     sb.append("=== Report ===\n");
-    sb.append("Generated: " + Viper.Time.now() + "\n");
+    sb.append("Generated: " + now() + "\n");
     sb.append("\n");
 
     for record in data {
@@ -1143,6 +1251,8 @@ func generateReport(data: array<Record>) -> string {
 Another efficient pattern is to collect pieces in an array and join at the end:
 
 ```rust
+bind Viper.Terminal;
+
 func buildList(items: array<String>) -> String {
     var lines = [];
 
@@ -1154,7 +1264,7 @@ func buildList(items: array<String>) -> String {
 }
 
 var items = ["Apple", "Banana", "Cherry"];
-Viper.Terminal.Say(buildList(items));
+Say(buildList(items));
 // 1. Apple
 // 2. Banana
 // 3. Cherry
@@ -1168,9 +1278,11 @@ This avoids repeated concatenation and is often cleaner than StringBuilder.
 
 **String to number:**
 ```rust
+bind Viper.Convert;
+
 var text = "42";
-var num = Viper.Convert.ToInt(text);     // 42 (integer)
-var pi = Viper.Convert.ToDouble("3.14");  // 3.14 (float)
+var num = ToInt(text);     // 42 (integer)
+var pi = ToDouble("3.14");  // 3.14 (float)
 ```
 
 **Number to string:**
@@ -1190,9 +1302,12 @@ var result = "Answer: " + 42;  // "Answer: 42"
 Be careful — `"5" + 3` is `"53"`, not `8`:
 
 ```rust
+bind Viper.Terminal;
+bind Viper.Convert;
+
 var input = "5";
-Viper.Terminal.Say(input + 3);  // "53" (string concatenation!)
-Viper.Terminal.Say(Viper.Convert.ToInt(input) + 3);  // 8 (arithmetic)
+Say(input + 3);  // "53" (string concatenation!)
+Say(ToInt(input) + 3);  // 8 (arithmetic)
 ```
 
 If you want arithmetic, convert to numbers first.
@@ -1202,7 +1317,9 @@ If you want arithmetic, convert to numbers first.
 What if the string isn't a valid number?
 
 ```rust
-var result = Viper.Convert.ToInt("abc");  // Error or NaN
+bind Viper.Convert;
+
+var result = ToInt("abc");  // Error or NaN
 
 // Safe approach with validation
 func safeParseInt(text: String) -> Integer {
@@ -1213,7 +1330,7 @@ func safeParseInt(text: String) -> Integer {
             return -1;  // Invalid
         }
     }
-    return Viper.Convert.ToInt(text);
+    return ToInt(text);
 }
 ```
 
@@ -1296,8 +1413,10 @@ func digitValue(c: Char) -> Integer {
     return -1;  // Not a digit
 }
 
-Viper.Terminal.Say(digitValue('7'));  // 7
-Viper.Terminal.Say(digitValue('a'));  // -1
+bind Viper.Terminal;
+
+Say(digitValue('7'));  // 7
+Say(digitValue('a'));  // -1
 ```
 
 ---
@@ -1307,9 +1426,11 @@ Viper.Terminal.Say(digitValue('a'));  // -1
 For complex output, string formatting is cleaner than concatenation:
 
 ```rust
+bind Viper.Fmt;
+
 var name = "Alice";
 var score = 95;
-var message = Viper.Fmt.format("Player {} scored {} points!", name, score);
+var message = format("Player {} scored {} points!", name, score);
 // "Player Alice scored 95 points!"
 ```
 
@@ -1320,8 +1441,11 @@ The `{}` placeholders are replaced by the arguments in order.
 You can control formatting:
 
 ```rust
+bind Viper.Terminal;
+bind Viper.Fmt;
+
 var pi = 3.14159265;
-Viper.Terminal.Say(Viper.Fmt.format("Pi is approximately {:.2}", pi));
+Say(format("Pi is approximately {:.2}", pi));
 // "Pi is approximately 3.14"
 ```
 
@@ -1330,17 +1454,19 @@ The `:.2` means "2 decimal places." We'll explore formatting options more in Cha
 ### Padding and Alignment
 
 ```rust
+bind Viper.Fmt;
+
 // Right-align in 10 characters
-Viper.Fmt.format("{:>10}", "hi");  // "        hi"
+format("{:>10}", "hi");  // "        hi"
 
 // Left-align in 10 characters
-Viper.Fmt.format("{:<10}", "hi");  // "hi        "
+format("{:<10}", "hi");  // "hi        "
 
 // Center in 10 characters
-Viper.Fmt.format("{:^10}", "hi");  // "    hi    "
+format("{:^10}", "hi");  // "    hi    "
 
 // Pad with zeros
-Viper.Fmt.format("{:05}", 42);     // "00042"
+format("{:05}", 42);     // "00042"
 ```
 
 ---
@@ -1354,6 +1480,8 @@ Let's apply everything to real-world problems.
 A basic email validator:
 
 ```rust
+bind Viper.Terminal;
+
 func isValidEmail(email: String) -> Boolean {
     var trimmed = email.trim();
 
@@ -1381,15 +1509,17 @@ func isValidEmail(email: String) -> Boolean {
     return true;
 }
 
-Viper.Terminal.Say(isValidEmail("user@example.com"));   // true
-Viper.Terminal.Say(isValidEmail("invalid"));            // false
-Viper.Terminal.Say(isValidEmail("no@dots"));            // false
-Viper.Terminal.Say(isValidEmail("two@@signs.com"));     // false
+Say(isValidEmail("user@example.com"));   // true
+Say(isValidEmail("invalid"));            // false
+Say(isValidEmail("no@dots"));            // false
+Say(isValidEmail("two@@signs.com"));     // false
 ```
 
 ### Formatting Names
 
 ```rust
+bind Viper.Terminal;
+
 func formatName(fullName: String) -> String {
     var trimmed = fullName.trim();
 
@@ -1419,9 +1549,9 @@ func formatName(fullName: String) -> String {
     return formatted.join(" ");
 }
 
-Viper.Terminal.Say(formatName("  john   SMITH  "));  // John Smith
-Viper.Terminal.Say(formatName("ALICE"));             // Alice
-Viper.Terminal.Say(formatName("bob jones jr"));      // Bob Jones Jr
+Say(formatName("  john   SMITH  "));  // John Smith
+Say(formatName("ALICE"));             // Alice
+Say(formatName("bob jones jr"));      // Bob Jones Jr
 ```
 
 ### Parsing Key-Value Data
@@ -1443,15 +1573,19 @@ func parseKeyValue(text: String) -> Map<String, String> {
     return result;
 }
 
+bind Viper.Terminal;
+
 var data = "name=Alice&age=30&city=Boston";
 var parsed = parseKeyValue(data);
-Viper.Terminal.Say(parsed.get("name"));  // Alice
-Viper.Terminal.Say(parsed.get("age"));   // 30
+Say(parsed.get("name"));  // Alice
+Say(parsed.get("age"));   // 30
 ```
 
 ### Cleaning User Input
 
 ```rust
+bind Viper.Terminal;
+
 func cleanInput(text: String) -> String {
     var result = text.trim();
 
@@ -1463,7 +1597,7 @@ func cleanInput(text: String) -> String {
     return result;
 }
 
-Viper.Terminal.Say(cleanInput("  hello    world  "));  // "hello world"
+Say(cleanInput("  hello    world  "));  // "hello world"
 ```
 
 ### Password Strength Checker
@@ -1539,10 +1673,12 @@ func checkPasswordStrength(password: String) -> String {
     }
 }
 
-Viper.Terminal.Say(checkPasswordStrength("abc"));
+bind Viper.Terminal;
+
+Say(checkPasswordStrength("abc"));
 // Weak - needs: at least 8 characters, uppercase letter, digit, special character
 
-Viper.Terminal.Say(checkPasswordStrength("MyPassword123!"));
+Say(checkPasswordStrength("MyPassword123!"));
 // Strong
 ```
 
@@ -1557,26 +1693,30 @@ Strings often cause subtle bugs. Here are common issues and how to find them.
 Sometimes strings look identical but aren't:
 
 ```rust
+bind Viper.Terminal;
+
 var a = "hello";
 var b = "hello ";  // Trailing space!
 
 if a == b {
-    Viper.Terminal.Say("Equal");
+    Say("Equal");
 } else {
-    Viper.Terminal.Say("Different!");  // This runs
+    Say("Different!");  // This runs
 }
 ```
 
 **Debugging technique:** Print with visible boundaries:
 
 ```rust
+bind Viper.Terminal;
+
 func debugString(text: String) {
-    Viper.Terminal.Say("[" + text + "]");
-    Viper.Terminal.Say("Length: " + text.length);
+    Say("[" + text + "]");
+    Say("Length: " + text.length);
 
     // Show character codes
     for i in 0..text.length {
-        Viper.Terminal.Say("  [" + i + "]: '" + text[i] + "' = " + text[i].code());
+        Say("  [" + i + "]: '" + text[i] + "' = " + text[i].code());
     }
 }
 
@@ -1604,17 +1744,19 @@ debugString("hello ");
 The most common string bug:
 
 ```rust
+bind Viper.Terminal;
+
 var text = "Hello";
 // text[5] does NOT exist - indices are 0-4
 
 // Wrong:
 for i in 0..text.length + 1 {  // Goes to index 5!
-    Viper.Terminal.Say(text[i]);
+    Say(text[i]);
 }
 
 // Right:
 for i in 0..text.length {      // Goes to index 4
-    Viper.Terminal.Say(text[i]);
+    Say(text[i]);
 }
 ```
 
@@ -1688,6 +1830,8 @@ Let's build a program that analyzes text:
 ```rust
 module WordCounter;
 
+bind Viper.Terminal;
+
 func countWords(text: String) -> Integer {
     var words = text.split(" ");
     var count = 0;
@@ -1715,18 +1859,18 @@ func countVowels(text: String) -> Integer {
 }
 
 func start() {
-    Viper.Terminal.Say("Enter some text:");
-    var text = Viper.Terminal.ReadLine();
+    Say("Enter some text:");
+    var text = ReadLine();
 
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("=== Analysis ===");
-    Viper.Terminal.Say("Characters: " + text.length);
-    Viper.Terminal.Say("Words: " + countWords(text));
-    Viper.Terminal.Say("Vowels: " + countVowels(text));
+    Say("");
+    Say("=== Analysis ===");
+    Say("Characters: " + text.length);
+    Say("Words: " + countWords(text));
+    Say("Vowels: " + countVowels(text));
 
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("Uppercase: " + text.upper());
-    Viper.Terminal.Say("Lowercase: " + text.lower());
+    Say("");
+    Say("Uppercase: " + text.upper());
+    Say("Lowercase: " + text.lower());
 }
 ```
 
@@ -1750,10 +1894,12 @@ Lowercase: hello world from viper
 
 **Zia**
 ```rust
+bind Viper.Terminal;
+
 var text = "Hello, World!";
 
 // Length
-Viper.Terminal.Say(text.length);
+Say(text.length);
 
 // Substring
 var sub = text.substring(0, 5);
@@ -1869,17 +2015,22 @@ if text.length == 0 {    // Check if empty
 
 **Confusing string concatenation with arithmetic:**
 ```rust
+bind Viper.Terminal;
+bind Viper.Convert;
+
 var a = "5";
 var b = "3";
-Viper.Terminal.Say(a + b);  // "53", not 8!
+Say(a + b);  // "53", not 8!
 
 // Convert to numbers first for math:
-Viper.Terminal.Say(Viper.Convert.ToInt(a) + Viper.Convert.ToInt(b));  // 8
+Say(ToInt(a) + ToInt(b));  // 8
 ```
 
 **Not trimming user input:**
 ```rust
-var input = Viper.Terminal.ReadLine();
+bind Viper.Terminal;
+
+var input = ReadLine();
 // User might type "  yes  " with spaces
 
 if input == "yes" {  // Fails!

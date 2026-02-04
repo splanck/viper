@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/Sema.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 
 namespace il::frontends::zia
 {
@@ -27,6 +28,14 @@ void Sema::analyzeBind(BindDecl &decl)
         return;
     }
 
+    // Handle namespace binds (e.g., "Viper.Terminal")
+    if (decl.isNamespaceBind)
+    {
+        analyzeNamespaceBind(decl);
+        return;
+    }
+
+    // Handle file binds (existing logic)
     binds_.insert(decl.path);
 
     // Extract module name from bind path
@@ -66,6 +75,197 @@ void Sema::analyzeBind(BindDecl &decl)
         sym.type = types::module(moduleName);
         sym.isFinal = true;
         defineSymbol(moduleName, sym);
+    }
+}
+
+void Sema::analyzeNamespaceBind(BindDecl &decl)
+{
+    const std::string &ns = decl.path;
+
+    // Validate this is a known runtime namespace
+    if (!isValidRuntimeNamespace(ns))
+    {
+        error(decl.loc, "Unknown runtime namespace: " + ns);
+        return;
+    }
+
+    // Store the bound namespace
+    boundNamespaces_[ns] = decl.alias;
+
+    if (!decl.specificItems.empty())
+    {
+        // Selective import: bind Viper.Terminal { Say, ReadLine };
+        for (const auto &item : decl.specificItems)
+        {
+            std::string fullName = ns + "." + item;
+            Symbol *sym = lookupSymbol(fullName);
+            if (!sym)
+            {
+                error(decl.loc, "Unknown symbol '" + item + "' in namespace " + ns);
+                continue;
+            }
+            // Check for conflicts with existing imports
+            auto existingIt = importedSymbols_.find(item);
+            if (existingIt != importedSymbols_.end() && existingIt->second != fullName)
+            {
+                error(decl.loc,
+                      "Symbol '" + item + "' conflicts with existing import from " +
+                          existingIt->second);
+                continue;
+            }
+            importedSymbols_[item] = fullName;
+        }
+    }
+    else if (!decl.alias.empty())
+    {
+        // Alias import: bind Viper.Terminal as T;
+        // Register alias as a module symbol for qualified access
+        Symbol sym;
+        sym.kind = Symbol::Kind::Module;
+        sym.name = decl.alias;
+        sym.type = types::module(ns);
+        sym.isFinal = true;
+        defineSymbol(decl.alias, sym);
+    }
+    else
+    {
+        // Full namespace import: bind Viper.Terminal;
+        // Import all symbols from this namespace into scope
+        importNamespaceSymbols(ns);
+    }
+}
+
+bool Sema::isValidRuntimeNamespace(const std::string &ns)
+{
+    // A namespace is valid if any runtime class or method starts with "ns."
+    const std::string prefix = ns + ".";
+
+    // Check typeRegistry_ for runtime class types
+    for (const auto &[name, type] : typeRegistry_)
+    {
+        if (name.rfind(prefix, 0) == 0 || name == ns)
+        {
+            return true;
+        }
+    }
+
+    // Also check the RuntimeRegistry for methods that match this namespace
+    const auto &registry = il::runtime::RuntimeRegistry::instance();
+    const auto &catalog = registry.rawCatalog();
+    for (const auto &cls : catalog)
+    {
+        // Check if class is in this namespace
+        std::string clsName = cls.qname ? cls.qname : "";
+        if (clsName.rfind(prefix, 0) == 0 || clsName == ns)
+            return true;
+
+        // Check if any method target starts with this namespace
+        for (const auto &m : cls.methods)
+        {
+            if (m.target && std::string(m.target).rfind(prefix, 0) == 0)
+                return true;
+        }
+    }
+
+    return false;
+}
+
+void Sema::importNamespaceSymbols(const std::string &ns)
+{
+    // Import all symbols from this namespace
+    const std::string prefix = ns + ".";
+
+    // Walk through all registered types and import matching class names
+    for (const auto &[name, type] : typeRegistry_)
+    {
+        if (name.rfind(prefix, 0) == 0)
+        {
+            // Extract short name (e.g., "Canvas" from "Viper.Graphics.Canvas")
+            std::string shortName = name.substr(prefix.size());
+            // Skip nested namespaces (only import direct children)
+            if (shortName.find('.') != std::string::npos)
+                continue;
+
+            // Check for conflicts
+            auto existingIt = importedSymbols_.find(shortName);
+            if (existingIt != importedSymbols_.end() && existingIt->second != name)
+            {
+                // Conflict - first import wins, but we could warn here
+                continue;
+            }
+            importedSymbols_[shortName] = name;
+        }
+    }
+
+    // Import class names and function symbols using the RuntimeRegistry
+    // This gives us access to all registered runtime classes and methods
+    const auto &registry = il::runtime::RuntimeRegistry::instance();
+    const auto &catalog = registry.rawCatalog();
+
+    for (const auto &cls : catalog)
+    {
+        // Import the class name itself (e.g., "Canvas" from "Viper.Graphics.Canvas")
+        std::string clsName = cls.qname ? cls.qname : "";
+        if (!clsName.empty() && clsName.rfind(prefix, 0) == 0)
+        {
+            // Extract short name
+            std::string shortName = clsName.substr(prefix.size());
+            // Skip nested namespaces (only import direct children)
+            if (shortName.find('.') == std::string::npos)
+            {
+                auto existingIt = importedSymbols_.find(shortName);
+                if (existingIt == importedSymbols_.end())
+                {
+                    importedSymbols_[shortName] = clsName;
+                }
+            }
+        }
+
+        // Import methods from classes in this namespace
+        for (const auto &m : cls.methods)
+        {
+            if (!m.target)
+                continue;
+
+            std::string target(m.target);
+            if (target.rfind(prefix, 0) != 0)
+                continue;
+
+            // Extract short name (e.g., "Say" from "Viper.Terminal.Say")
+            std::string shortName = target.substr(prefix.size());
+
+            // Skip nested namespaces (only import direct children)
+            if (shortName.find('.') != std::string::npos)
+                continue;
+
+            // Check for conflicts
+            auto existingIt = importedSymbols_.find(shortName);
+            if (existingIt != importedSymbols_.end() && existingIt->second != target)
+            {
+                // Conflict - first import wins
+                continue;
+            }
+            importedSymbols_[shortName] = target;
+        }
+
+        // Also import property getters as functions (for property access)
+        for (const auto &p : cls.properties)
+        {
+            if (p.getter)
+            {
+                std::string getter(p.getter);
+                if (getter.rfind(prefix, 0) != 0)
+                    continue;
+
+                std::string shortName = getter.substr(prefix.size());
+                if (shortName.find('.') != std::string::npos)
+                    continue;
+
+                auto existingIt = importedSymbols_.find(shortName);
+                if (existingIt == importedSymbols_.end())
+                    importedSymbols_[shortName] = getter;
+            }
+        }
     }
 }
 

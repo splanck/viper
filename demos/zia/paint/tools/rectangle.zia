@@ -1,6 +1,8 @@
 // rectangle.viper - Rectangle tool for Viper Paint
 module rectangle;
 
+bind Viper.Graphics;
+
 bind "../config";
 bind "../canvas";
 bind "../colors";
@@ -92,7 +94,7 @@ entity RectangleTool {
     }
 
     // Draw preview on screen canvas
-    expose func drawPreview(gfx: Viper.Graphics.Canvas, offsetX: Integer, offsetY: Integer, color: Integer) {
+    expose func drawPreview(gfx: Canvas, offsetX: Integer, offsetY: Integer, color: Integer) {
         if drawing == 1 {
             var x1 = startX;
             var y1 = startY;

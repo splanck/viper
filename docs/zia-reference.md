@@ -243,6 +243,8 @@ variableName        // Variable reference
 The `&` operator obtains a reference (pointer) to a function, which can be stored in a variable or passed as an argument:
 
 ```viper
+bind Viper.Threads;
+
 func handler(arg: Ptr) {
     // Handle something
 }
@@ -256,7 +258,7 @@ func start() {
     takeCallback(&handler);     // Pass function reference directly
 
     // With Thread.Start
-    var thread = Viper.Threads.Thread.Start(&handler, 0);
+    var thread = Thread.Start(&handler, 0);
 }
 ```
 
@@ -707,20 +709,56 @@ module ModuleName;
 
 ### Bind Declaration
 
-Bind other modules to use their types and functions:
+Bind modules or runtime namespaces to use their types and functions:
 
 ```viper
+// File binds - import Zia source files
 bind "path/to/module";          // Relative or simple path
 bind "./sibling";               // Same directory
 bind "../parent/module";        // Parent directory
 bind "./utils" as U;            // With alias
+
+// Namespace binds - import Viper runtime namespaces
+bind Viper.Terminal;            // Import all symbols
+bind Viper.Graphics;            // Now Canvas, Sprite, etc. available
+bind Viper.Math as M;           // With alias: M.Sqrt(), M.Sin()
+bind Viper.Terminal { Say };    // Import specific symbols only
 ```
 
-**Path Resolution:**
+**File Path Resolution:**
 
 - `"./foo"` — Resolves to `foo.zia` in the same directory
 - `"../bar"` — Resolves to `bar.zia` in parent directory
 - `"name"` — Resolves to `name.zia` in the same directory
+
+**Namespace Imports:**
+
+When you bind a runtime namespace like `Viper.Terminal`, all its functions
+become available without qualification:
+
+```viper
+bind Viper.Terminal;
+
+Say("Hello!");           // Instead of Viper.Terminal.Say("Hello!")
+var name = ReadLine();   // Instead of Viper.Terminal.ReadLine()
+```
+
+You can also use an alias to avoid conflicts:
+
+```viper
+bind Viper.Terminal as T;
+
+T.Say("Hello!");
+```
+
+Or import only specific items:
+
+```viper
+bind Viper.Terminal { Say, ReadLine };
+
+Say("Hello!");      // Works
+// Print("x");      // Error: Print not imported
+```
 
 ### Circular Bind Protection
 
@@ -834,40 +872,48 @@ Zia programs have access to the full Viper Runtime through the `Viper.*` namespa
 #### Terminal I/O
 
 ```viper
-Viper.Terminal.Say(str);            // Print with newline
-Viper.Terminal.Print(str);          // Print without newline
-Viper.Terminal.SayInt(i);           // Print integer with newline
-Viper.Terminal.PrintInt(i);         // Print integer without newline
-Viper.Terminal.GetKey();            // Read single key
-Viper.Terminal.GetKeyTimeout(ms);   // Read key with timeout
-Viper.Terminal.Clear();             // Clear screen
-Viper.Terminal.SetPosition(r, c);   // Move cursor
-Viper.Terminal.SetColor(code);      // Set text color
-Viper.Terminal.SetCursorVisible(v); // Show/hide cursor
-Viper.Terminal.BeginBatch();        // Start batch output
-Viper.Terminal.EndBatch();          // End batch output
+bind Viper.Terminal;
+
+Say(str);            // Print with newline
+Print(str);          // Print without newline
+SayInt(i);           // Print integer with newline
+PrintInt(i);         // Print integer without newline
+GetKey();            // Read single key
+GetKeyTimeout(ms);   // Read key with timeout
+Clear();             // Clear screen
+SetPosition(r, c);   // Move cursor
+SetColor(code);      // Set text color
+SetCursorVisible(v); // Show/hide cursor
+BeginBatch();        // Start batch output
+EndBatch();          // End batch output
 ```
 
 #### Time
 
 ```viper
-Viper.Time.SleepMs(ms);             // Sleep for milliseconds
+bind Viper.Time;
+
+SleepMs(ms);             // Sleep for milliseconds
 ```
 
 #### Math
 
 ```viper
-Viper.Math.Abs(x);                  // Absolute value
-Viper.Math.Sqrt(x);                 // Square root
-Viper.Math.Sin(x);                  // Sine
-Viper.Math.Cos(x);                  // Cosine
+bind Viper.Math;
+
+Abs(x);                  // Absolute value
+Sqrt(x);                 // Square root
+Sin(x);                  // Sine
+Cos(x);                  // Cosine
 // ... and many more
 ```
 
 #### Random
 
 ```viper
-Viper.Random.Next(max);             // Random integer [0, max)
+bind Viper.Random;
+
+Next(max);             // Random integer [0, max)
 ```
 
 #### Collections

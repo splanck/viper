@@ -283,16 +283,17 @@ The simplest networking is fetching web pages and APIs. HTTP (Hypertext Transfer
 
 ```rust
 bind Viper.Network;
+bind Viper.Terminal;
 
 func start() {
     // Fetch a web page
     var response = Http.get("https://api.example.com/data");
 
     if response.ok {
-        Viper.Terminal.Say("Got response:");
-        Viper.Terminal.Say(response.body);
+        Terminal.Say("Got response:");
+        Terminal.Say(response.body);
     } else {
-        Viper.Terminal.Say("Error: " + response.statusCode);
+        Terminal.Say("Error: " + response.statusCode);
     }
 }
 ```
@@ -364,6 +365,7 @@ Most modern web APIs exchange data in JSON (JavaScript Object Notation) format. 
 ```rust
 bind Viper.Network;
 bind Viper.JSON;
+bind Viper.Terminal;
 
 value Weather {
     temperature: Number;
@@ -380,7 +382,7 @@ func fetchWeather(city: String) -> Weather? {
 
     // Check if the request succeeded
     if !response.ok {
-        Viper.Terminal.Say("Request failed with status: " + response.statusCode);
+        Terminal.Say("Request failed with status: " + response.statusCode);
         return null;
     }
 
@@ -401,11 +403,11 @@ func start() {
     var weather = fetchWeather("Seattle");
 
     if weather != null {
-        Viper.Terminal.Say("Temperature: " + weather.temperature + "F");
-        Viper.Terminal.Say("Conditions: " + weather.conditions);
-        Viper.Terminal.Say("Humidity: " + weather.humidity + "%");
+        Terminal.Say("Temperature: " + weather.temperature + "F");
+        Terminal.Say("Conditions: " + weather.conditions);
+        Terminal.Say("Humidity: " + weather.humidity + "%");
     } else {
-        Viper.Terminal.Say("Could not fetch weather data");
+        Terminal.Say("Could not fetch weather data");
     }
 }
 ```
@@ -442,6 +444,7 @@ Here's how to connect to a server and communicate:
 
 ```rust
 bind Viper.Network;
+bind Viper.Terminal;
 
 func start() {
     // Connect to a server
@@ -450,11 +453,11 @@ func start() {
 
     // Check if connection succeeded
     if socket == null {
-        Viper.Terminal.Say("Connection failed");
+        Terminal.Say("Connection failed");
         return;
     }
 
-    Viper.Terminal.Say("Connected!");
+    Terminal.Say("Connected!");
 
     // Send data (write to the socket)
     // This is like talking into the phone
@@ -463,8 +466,8 @@ func start() {
     // Receive response (read from the socket)
     // This is like listening to the other person
     var response = socket.readAll();
-    Viper.Terminal.Say("Received " + response.length + " bytes");
-    Viper.Terminal.Say(response);
+    Terminal.Say("Received " + response.length + " bytes");
+    Terminal.Say(response);
 
     // Close the connection (hang up the phone)
     socket.close();
@@ -505,25 +508,26 @@ A server listens for incoming connections instead of initiating them:
 
 ```rust
 bind Viper.Network;
+bind Viper.Terminal;
 
 func start() {
     // Create a server socket that listens on port 8080
     // This is like setting up a phone line that can receive calls
     var server = TcpServer.listen(8080);
-    Viper.Terminal.Say("Server listening on port 8080");
+    Terminal.Say("Server listening on port 8080");
 
     // Server loop: accept and handle connections forever
     while true {
         // Wait for a client to connect
         // This is like waiting for the phone to ring, then answering
-        Viper.Terminal.Say("Waiting for client...");
+        Terminal.Say("Waiting for client...");
         var client = server.accept();
 
-        Viper.Terminal.Say("Client connected from " + client.remoteAddress());
+        Terminal.Say("Client connected from " + client.remoteAddress());
 
         // Read what the client sent
         var message = client.readLine();
-        Viper.Terminal.Say("Client said: " + message);
+        Terminal.Say("Client said: " + message);
 
         // Send a response
         client.write("Hello, client! You said: " + message + "\n");
@@ -531,7 +535,7 @@ func start() {
         // Close this client connection
         // The server keeps running, ready for more clients
         client.close();
-        Viper.Terminal.Say("Client disconnected");
+        Terminal.Say("Client disconnected");
     }
 }
 ```
@@ -600,6 +604,8 @@ module ChatServer;
 
 bind Viper.Network;
 bind Viper.Collections;
+bind Viper.Terminal;
+bind Viper.Time;
 
 entity ChatServer {
     // The server socket that accepts new connections
@@ -616,7 +622,7 @@ entity ChatServer {
         self.server = TcpServer.listen(port);
         self.clients = [];
         self.running = true;
-        Viper.Terminal.Say("Chat server started on port " + port);
+        Terminal.Say("Chat server started on port " + port);
     }
 
     // Main server loop
@@ -631,7 +637,7 @@ entity ChatServer {
                 // A new client connected!
                 self.clients.push(newClient);
                 self.broadcast("*** A new user has joined ***");
-                Viper.Terminal.Say("New client connected. Total clients: " + self.clients.length);
+                Terminal.Say("New client connected. Total clients: " + self.clients.length);
             }
 
             // Step 2: Check each client for incoming messages
@@ -648,21 +654,21 @@ entity ChatServer {
                         self.clients.remove(i);
                         self.broadcast("*** A user has left ***");
                         client.close();
-                        Viper.Terminal.Say("Client disconnected. Total clients: " + self.clients.length);
+                        Terminal.Say("Client disconnected. Total clients: " + self.clients.length);
                         // Don't increment i; the next client shifted into this position
                         continue;
                     }
 
                     // Broadcast the message to everyone
                     self.broadcast(message);
-                    Viper.Terminal.Say("Broadcast: " + message);
+                    Terminal.Say("Broadcast: " + message);
                 }
 
                 i += 1;
             }
 
             // Small sleep to avoid consuming 100% CPU
-            Viper.Time.sleep(10);
+            Time.sleep(10);
         }
     }
 
@@ -685,7 +691,7 @@ entity ChatServer {
 
         // Close the server socket
         self.server.close();
-        Viper.Terminal.Say("Server stopped");
+        Terminal.Say("Server stopped");
     }
 }
 
@@ -737,6 +743,8 @@ module ChatClient;
 
 bind Viper.Network;
 bind Viper.Threading;
+bind Viper.Terminal;
+bind Viper.Time;
 
 entity ChatClient {
     hide socket: TcpSocket;
@@ -751,14 +759,14 @@ entity ChatClient {
         self.socket = TcpSocket.connect(host, port);
 
         if self.socket == null {
-            Viper.Terminal.Say("Could not connect to server at " + host + ":" + port);
+            Terminal.Say("Could not connect to server at " + host + ":" + port);
             self.running = false;
             return;
         }
 
-        Viper.Terminal.Say("Connected to chat server!");
-        Viper.Terminal.Say("Type messages and press Enter. Type /quit to exit.");
-        Viper.Terminal.Say("");
+        Terminal.Say("Connected to chat server!");
+        Terminal.Say("Type messages and press Enter. Type /quit to exit.");
+        Terminal.Say("");
     }
 
     func run() {
@@ -773,7 +781,7 @@ entity ChatClient {
         // Main thread handles sending messages
         while self.running {
             // Wait for user to type something
-            var input = Viper.Terminal.Ask("");
+            var input = Terminal.Ask("");
 
             if input == "/quit" {
                 self.running = false;
@@ -788,7 +796,7 @@ entity ChatClient {
         // Wait for the receiver thread to finish
         receiver.join();
         self.socket.close();
-        Viper.Terminal.Say("Disconnected from server.");
+        Terminal.Say("Disconnected from server.");
     }
 
     // This runs in a separate thread
@@ -800,23 +808,23 @@ entity ChatClient {
 
                 if message == null {
                     // Server closed connection
-                    Viper.Terminal.Say("*** Disconnected from server ***");
+                    Terminal.Say("*** Disconnected from server ***");
                     self.running = false;
                     break;
                 }
 
                 // Display the message
-                Viper.Terminal.Say(message);
+                Terminal.Say(message);
             }
 
             // Small sleep to avoid consuming CPU
-            Viper.Time.sleep(10);
+            Time.sleep(10);
         }
     }
 }
 
 func start() {
-    var username = Viper.Terminal.Ask("Enter your username: ");
+    var username = Terminal.Ask("Enter your username: ");
     var client = ChatClient("localhost", 9000, username);
     client.run();
 }
@@ -830,14 +838,14 @@ The client uses two threads --- one for sending and one for receiving. This is n
 ```
 Main Thread                     Receiver Thread
     |                               |
-    |   Viper.Terminal.Ask()        |   socket.hasData()?
+    |   Terminal.Ask()              |   socket.hasData()?
     |   (waiting for input...)      |   socket.readLine()
-    |                               |   Viper.Terminal.Say()
+    |                               |   Terminal.Say()
     |                               |
     v                               v
 User types "Hello"              Server sends "Bob: Hi"
     |                               |
-    |   socket.write()              |   Viper.Terminal.Say("Bob: Hi")
+    |   socket.write()              |   Terminal.Say("Bob: Hi")
     |                               |
 ```
 
@@ -851,6 +859,7 @@ UDP trades reliability for speed. When you can tolerate lost packets or have you
 
 ```rust
 bind Viper.Network;
+bind Viper.Terminal;
 
 // UDP sender
 func sendUdpMessage() {
@@ -871,15 +880,15 @@ func sendUdpMessage() {
 func receiveUdpMessages() {
     // Bind to port 5000 - we'll receive anything sent here
     var socket = UdpSocket.bind(5000);
-    Viper.Terminal.Say("Listening for UDP messages on port 5000...");
+    Terminal.Say("Listening for UDP messages on port 5000...");
 
     while true {
         // Wait for and receive a packet
         var packet = socket.receive();
 
         // Packet contains data and sender info
-        Viper.Terminal.Say("From " + packet.address + ":" + packet.port);
-        Viper.Terminal.Say("Message: " + packet.data);
+        Terminal.Say("From " + packet.address + ":" + packet.port);
+        Terminal.Say("Message: " + packet.data);
     }
 }
 ```
@@ -895,6 +904,7 @@ Games often need to send player state many times per second. Lost packets don't 
 
 ```rust
 bind Viper.Network;
+bind Viper.Time;
 
 // Player state that we'll send frequently
 value PlayerState {
@@ -936,7 +946,7 @@ entity GameNetwork {
             var state = unpackPlayerState(packet.data);
 
             // Only use recent states - discard old ones
-            var now = Viper.Time.millis();
+            var now = Time.millis();
             if now - state.timestamp < 1000 {  // Less than 1 second old
                 states.push(state);
             }
@@ -979,6 +989,7 @@ HTTP was designed for request-response: the client asks, the server answers, don
 
 ```rust
 bind Viper.Network;
+bind Viper.Terminal;
 
 entity WebSocketClient {
     hide ws: WebSocket;
@@ -994,7 +1005,7 @@ entity WebSocketClient {
         // These functions will be called when events occur
 
         self.ws.onOpen(func() {
-            Viper.Terminal.Say("Connected to server!");
+            Terminal.Say("Connected to server!");
             self.connected = true;
             // Now we can send messages
             self.ws.send("Hello server, I'm online!");
@@ -1002,16 +1013,16 @@ entity WebSocketClient {
 
         self.ws.onMessage(func(message: String) {
             // Server sent us something
-            Viper.Terminal.Say("Server: " + message);
+            Terminal.Say("Server: " + message);
         });
 
         self.ws.onClose(func() {
-            Viper.Terminal.Say("Connection closed");
+            Terminal.Say("Connection closed");
             self.connected = false;
         });
 
         self.ws.onError(func(error: String) {
-            Viper.Terminal.Say("Error: " + error);
+            Terminal.Say("Error: " + error);
         });
     }
 
@@ -1019,7 +1030,7 @@ entity WebSocketClient {
         if self.connected {
             self.ws.send(message);
         } else {
-            Viper.Terminal.Say("Not connected!");
+            Terminal.Say("Not connected!");
         }
     }
 
@@ -1034,7 +1045,7 @@ func start() {
 
     // Now we can send messages anytime, and receive them anytime
     while true {
-        var input = Viper.Terminal.Ask("");
+        var input = Terminal.Ask("");
         if input == "/quit" {
             client.close();
             break;
@@ -1061,20 +1072,21 @@ Networks are inherently unreliable. Connections drop. Servers go down. Packets g
 
 ```rust
 bind Viper.Network;
+bind Viper.Terminal;
 
 func demonstrateFailures() {
     // Failure 1: Cannot connect
     // Server might be down, address might be wrong
     var socket = TcpSocket.connect("nonexistent.example.com", 80);
     if socket == null {
-        Viper.Terminal.Say("Could not connect - server unreachable");
+        Terminal.Say("Could not connect - server unreachable");
     }
 
     // Failure 2: Connection drops mid-conversation
     // WiFi cuts out, server crashes, network cable unplugged
     var response = socket.readLine();
     if response == null {
-        Viper.Terminal.Say("Connection lost while reading");
+        Terminal.Say("Connection lost while reading");
     }
 
     // Failure 3: Timeout - server too slow
@@ -1085,9 +1097,9 @@ func demonstrateFailures() {
     // We connected and communicated, but server said "no"
     var httpResponse = Http.get("https://api.example.com/resource");
     if httpResponse.statusCode == 404 {
-        Viper.Terminal.Say("Resource not found");
+        Terminal.Say("Resource not found");
     } else if httpResponse.statusCode == 500 {
-        Viper.Terminal.Say("Server error");
+        Terminal.Say("Server error");
     }
 }
 ```
@@ -1098,6 +1110,8 @@ For important operations, implement retry logic with exponential backoff:
 
 ```rust
 bind Viper.Network;
+bind Viper.Terminal;
+bind Viper.Time;
 
 func robustFetch(url: String, maxRetries: Integer) -> String? {
     var retries = 0;
@@ -1115,31 +1129,31 @@ func robustFetch(url: String, maxRetries: Integer) -> String? {
                 // Server error (5xx) - worth retrying
                 // The server might recover
                 retries += 1;
-                Viper.Terminal.Say("Server error " + response.statusCode +
-                                   ", retrying... (" + retries + "/" + maxRetries + ")");
+                Terminal.Say("Server error " + response.statusCode +
+                             ", retrying... (" + retries + "/" + maxRetries + ")");
 
                 // Exponential backoff: wait longer each retry
                 // 1st retry: 1 second, 2nd: 2 seconds, 3rd: 4 seconds
                 var waitTime = 1000 * (1 << retries);  // 2^retries * 1000ms
-                Viper.Time.sleep(waitTime);
+                Time.sleep(waitTime);
                 continue;
             }
 
             // Client error (4xx) - don't retry
             // Our request is wrong, retrying won't help
-            Viper.Terminal.Say("Client error " + response.statusCode + " - not retrying");
+            Terminal.Say("Client error " + response.statusCode + " - not retrying");
             return null;
 
         } catch NetworkError as e {
             retries += 1;
-            Viper.Terminal.Say("Network error: " + e.message +
-                               ", retrying... (" + retries + "/" + maxRetries + ")");
+            Terminal.Say("Network error: " + e.message +
+                         ", retrying... (" + retries + "/" + maxRetries + ")");
             var waitTime = 1000 * (1 << retries);
-            Viper.Time.sleep(waitTime);
+            Time.sleep(waitTime);
         }
     }
 
-    Viper.Terminal.Say("Failed after " + maxRetries + " retries");
+    Terminal.Say("Failed after " + maxRetries + " retries");
     return null;
 }
 
@@ -1147,9 +1161,9 @@ func start() {
     var data = robustFetch("https://api.example.com/important-data", 5);
 
     if data != null {
-        Viper.Terminal.Say("Got data: " + data);
+        Terminal.Say("Got data: " + data);
     } else {
-        Viper.Terminal.Say("Could not fetch data");
+        Terminal.Say("Could not fetch data");
     }
 }
 ```
@@ -1301,14 +1315,14 @@ myArray[index] = value;  // What if index is negative? Or huge?
 var packet = socket.receive();
 
 if packet.data.length > 100 {
-    Viper.Terminal.Say("Packet too large, ignoring");
+    Terminal.Say("Packet too large, ignoring");
     return;
 }
 
 var index = packet.data.toInt();
 
 if index < 0 || index >= myArray.length {
-    Viper.Terminal.Say("Invalid index received, ignoring");
+    Terminal.Say("Invalid index received, ignoring");
     return;
 }
 
@@ -1355,22 +1369,25 @@ while true {
 // If socket breaks, readLine returns null, and process(null) crashes
 
 // GOOD: Detect disconnection and reconnect
+bind Viper.Terminal;
+bind Viper.Time;
+
 func reliableConnection(host: String, port: Integer) {
     var socket: TcpSocket? = null;
 
     while true {
         // Connect if needed
         if socket == null {
-            Viper.Terminal.Say("Connecting...");
+            Terminal.Say("Connecting...");
             socket = TcpSocket.connect(host, port);
 
             if socket == null {
-                Viper.Terminal.Say("Connection failed, retrying in 5 seconds");
-                Viper.Time.sleep(5000);
+                Terminal.Say("Connection failed, retrying in 5 seconds");
+                Time.sleep(5000);
                 continue;
             }
 
-            Viper.Terminal.Say("Connected!");
+            Terminal.Say("Connected!");
         }
 
         // Try to read
@@ -1378,7 +1395,7 @@ func reliableConnection(host: String, port: Integer) {
 
         if message == null {
             // Connection broke
-            Viper.Terminal.Say("Disconnected!");
+            Terminal.Say("Disconnected!");
             socket.close();
             socket = null;
             continue;  // Loop will reconnect
@@ -1463,6 +1480,8 @@ var contents = File.read("/data/" + filename);
 Without limits, attackers can flood your server with requests.
 
 ```rust
+bind Viper.Time;
+
 entity RateLimitedServer {
     // Track requests per IP address
     hide requestCounts: Map<String, Integer>;
@@ -1471,13 +1490,13 @@ entity RateLimitedServer {
 
     expose func init() {
         self.requestCounts = Map.new();
-        self.lastReset = Viper.Time.millis();
+        self.lastReset = Time.millis();
         self.maxRequestsPerMinute = 100;
     }
 
     func handleRequest(client: TcpSocket) {
         var ip = client.remoteAddress();
-        var now = Viper.Time.millis();
+        var now = Time.millis();
 
         // Reset counts every minute
         if now - self.lastReset > 60000 {
@@ -1528,30 +1547,32 @@ Network bugs are notoriously hard to track down. The problem might be in your co
 When network code doesn't work, add logging at every step:
 
 ```rust
+bind Viper.Terminal;
+
 func debugFetch(url: String) -> String? {
-    Viper.Terminal.Say("[DEBUG] Starting fetch of: " + url);
+    Terminal.Say("[DEBUG] Starting fetch of: " + url);
 
     try {
-        Viper.Terminal.Say("[DEBUG] Making HTTP request...");
+        Terminal.Say("[DEBUG] Making HTTP request...");
         var response = Http.get(url, { timeout: 5000 });
 
-        Viper.Terminal.Say("[DEBUG] Response status: " + response.statusCode);
-        Viper.Terminal.Say("[DEBUG] Response headers: " + response.headers);
-        Viper.Terminal.Say("[DEBUG] Response body length: " + response.body.length);
-        Viper.Terminal.Say("[DEBUG] Response body (first 200 chars): " +
-                          response.body.substring(0, 200));
+        Terminal.Say("[DEBUG] Response status: " + response.statusCode);
+        Terminal.Say("[DEBUG] Response headers: " + response.headers);
+        Terminal.Say("[DEBUG] Response body length: " + response.body.length);
+        Terminal.Say("[DEBUG] Response body (first 200 chars): " +
+                     response.body.substring(0, 200));
 
         if response.ok {
-            Viper.Terminal.Say("[DEBUG] Success!");
+            Terminal.Say("[DEBUG] Success!");
             return response.body;
         } else {
-            Viper.Terminal.Say("[DEBUG] Request failed with status " + response.statusCode);
+            Terminal.Say("[DEBUG] Request failed with status " + response.statusCode);
             return null;
         }
 
     } catch NetworkError as e {
-        Viper.Terminal.Say("[DEBUG] Network error: " + e.message);
-        Viper.Terminal.Say("[DEBUG] Error type: " + e.type);
+        Terminal.Say("[DEBUG] Network error: " + e.message);
+        Terminal.Say("[DEBUG] Error type: " + e.type);
         return null;
     }
 }
@@ -1563,27 +1584,33 @@ Network communication involves multiple layers. Test each one:
 
 1. **Can you reach the host at all?**
 ```rust
+bind Viper.Terminal;
+
 var socket = TcpSocket.connect(host, port, { timeout: 3000 });
 if socket == null {
-    Viper.Terminal.Say("Cannot connect to " + host + ":" + port);
-    Viper.Terminal.Say("Check: Is the server running? Is the address correct?");
-    Viper.Terminal.Say("Check: Firewall blocking? Network connected?");
+    Terminal.Say("Cannot connect to " + host + ":" + port);
+    Terminal.Say("Check: Is the server running? Is the address correct?");
+    Terminal.Say("Check: Firewall blocking? Network connected?");
 }
 ```
 
 2. **Can you send data?**
 ```rust
+bind Viper.Terminal;
+
 socket.write("test\n");
-Viper.Terminal.Say("Data sent successfully");
+Terminal.Say("Data sent successfully");
 // If this fails, connection might have dropped
 ```
 
 3. **Can you receive data?**
 ```rust
+bind Viper.Terminal;
+
 var response = socket.readLine();
 if response == null {
-    Viper.Terminal.Say("No response from server");
-    Viper.Terminal.Say("Check: Is server expecting different input format?");
+    Terminal.Say("No response from server");
+    Terminal.Say("Check: Is server expecting different input format?");
 }
 ```
 
@@ -1603,9 +1630,9 @@ Before debugging your code, verify the server works with known-good tools:
 
 // Step 3: Are you sending what you think you're sending?
 // Print the exact URL, headers, and body before sending
-Viper.Terminal.Say("URL: " + url);
-Viper.Terminal.Say("Headers: " + headers);
-Viper.Terminal.Say("Body: " + body);
+Terminal.Say("URL: " + url);
+Terminal.Say("Headers: " + headers);
+Terminal.Say("Body: " + body);
 ```
 
 ### Common Network Error Messages and Their Meanings
@@ -1643,6 +1670,7 @@ module WeatherDashboard;
 bind Viper.Network;
 bind Viper.JSON;
 bind Viper.Time;
+bind Viper.Terminal;
 
 // Data type for weather information
 value CityWeather {
@@ -1676,7 +1704,7 @@ entity WeatherService {
             var age = Time.millis() - cached.lastUpdated;
 
             if age < self.cacheTimeout {
-                Viper.Terminal.Say("(Using cached data for " + city + ")");
+                Terminal.Say("(Using cached data for " + city + ")");
                 return cached;
             }
         }
@@ -1689,11 +1717,11 @@ entity WeatherService {
             var response = Http.get(url, { timeout: 10000 });
 
             if !response.ok {
-                Viper.Terminal.Say("API error for " + city + ": " + response.statusCode);
+                Terminal.Say("API error for " + city + ": " + response.statusCode);
 
                 // If we have stale cache data, use it rather than nothing
                 if self.cache.has(city) {
-                    Viper.Terminal.Say("(Using stale cached data)");
+                    Terminal.Say("(Using stale cached data)");
                     return self.cache.get(city);
                 }
 
@@ -1717,18 +1745,18 @@ entity WeatherService {
             return weather;
 
         } catch NetworkError as e {
-            Viper.Terminal.Say("Network error for " + city + ": " + e.message);
+            Terminal.Say("Network error for " + city + ": " + e.message);
 
             // Return stale cache if available
             if self.cache.has(city) {
-                Viper.Terminal.Say("(Using stale cached data)");
+                Terminal.Say("(Using stale cached data)");
                 return self.cache.get(city);
             }
 
             return null;
 
         } catch JSONError as e {
-            Viper.Terminal.Say("Parse error for " + city + ": " + e.message);
+            Terminal.Say("Parse error for " + city + ": " + e.message);
             return null;
         }
     }
@@ -1736,15 +1764,15 @@ entity WeatherService {
 
 // Display functions
 func displayWeather(weather: CityWeather) {
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("+----------------------------------+");
-    Viper.Terminal.Say("|  " + padRight(weather.city, 32) + "|");
-    Viper.Terminal.Say("+----------------------------------+");
-    Viper.Terminal.Say("|  Temperature: " + padRight(weather.temperature + "F", 17) + "|");
-    Viper.Terminal.Say("|  Conditions:  " + padRight(weather.conditions, 17) + "|");
-    Viper.Terminal.Say("|  Humidity:    " + padRight(weather.humidity + "%", 17) + "|");
-    Viper.Terminal.Say("|  Wind:        " + padRight(weather.windSpeed + " mph", 17) + "|");
-    Viper.Terminal.Say("+----------------------------------+");
+    Terminal.Say("");
+    Terminal.Say("+----------------------------------+");
+    Terminal.Say("|  " + padRight(weather.city, 32) + "|");
+    Terminal.Say("+----------------------------------+");
+    Terminal.Say("|  Temperature: " + padRight(weather.temperature + "F", 17) + "|");
+    Terminal.Say("|  Conditions:  " + padRight(weather.conditions, 17) + "|");
+    Terminal.Say("|  Humidity:    " + padRight(weather.humidity + "%", 17) + "|");
+    Terminal.Say("|  Wind:        " + padRight(weather.windSpeed + " mph", 17) + "|");
+    Terminal.Say("+----------------------------------+");
 }
 
 func padRight(s: String, width: Integer) -> String {
@@ -1755,9 +1783,9 @@ func padRight(s: String, width: Integer) -> String {
 }
 
 func displayHeader() {
-    Viper.Terminal.Say("========================================");
-    Viper.Terminal.Say("         WEATHER DASHBOARD              ");
-    Viper.Terminal.Say("========================================");
+    Terminal.Say("========================================");
+    Terminal.Say("         WEATHER DASHBOARD              ");
+    Terminal.Say("========================================");
 }
 
 // Main program
@@ -1776,13 +1804,13 @@ func start() {
         if weather != null {
             displayWeather(weather);
         } else {
-            Viper.Terminal.Say("");
-            Viper.Terminal.Say("Could not fetch weather for " + city);
+            Terminal.Say("");
+            Terminal.Say("Could not fetch weather for " + city);
         }
     }
 
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("Dashboard complete. Data cached for 5 minutes.");
+    Terminal.Say("");
+    Terminal.Say("Dashboard complete. Data cached for 5 minutes.");
 }
 ```
 
@@ -1801,11 +1829,12 @@ This example demonstrates:
 **Zia**
 ```rust
 bind Viper.Network;
+bind Viper.Terminal;
 
 // HTTP request
 var response = Http.get("https://api.example.com/data");
 if response.ok {
-    Viper.Terminal.Say(response.body);
+    Terminal.Say(response.body);
 }
 
 // TCP client

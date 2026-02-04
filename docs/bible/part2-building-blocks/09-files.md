@@ -117,9 +117,11 @@ Notice Windows uses backslashes (`\`), but since backslash is also the escape ch
 **Good news:** Viper handles this automatically. You can use forward slashes everywhere, and Viper will convert them appropriately for the operating system:
 
 ```rust
+bind File from Viper;
+
 // This works on ALL operating systems
 var path = "C:/Users/Alice/Documents/report.txt";
-var content = Viper.File.readText(path);
+var content = readText(path);
 ```
 
 ### Relative Paths
@@ -158,30 +160,34 @@ If your program is running from `/home/alice/myprogram/`, then:
 
 ### Path Manipulation
 
-The `Viper.Path` module helps work with paths safely:
+The `Path` module helps work with paths safely:
 
 ```rust
+bind Path from Viper;
+
 var path = "/home/alice/documents/report.txt";
 
-Viper.Path.fileName(path);     // "report.txt"
-Viper.Path.extension(path);    // ".txt"
-Viper.Path.directory(path);    // "/home/alice/documents"
-Viper.Path.baseName(path);     // "report" (name without extension)
+fileName(path);     // "report.txt"
+extension(path);    // ".txt"
+directory(path);    // "/home/alice/documents"
+baseName(path);     // "report" (name without extension)
 
 // Building paths safely
 var dir = "/home/alice";
 var file = "documents/report.txt";
-var full = Viper.Path.join(dir, file);  // "/home/alice/documents/report.txt"
+var full = join(dir, file);  // "/home/alice/documents/report.txt"
 ```
 
-Always use `Viper.Path.join` instead of string concatenation:
+Always use `Path.join` instead of string concatenation:
 
 ```rust
+bind Path from Viper;
+
 // Bad: might produce "/home/alice//documents" or wrong separators
 var path = directory + "/" + filename;
 
 // Good: handles edge cases correctly
-var path = Viper.Path.join(directory, filename);
+var path = join(directory, filename);
 ```
 
 ### Cross-Platform Considerations
@@ -200,9 +206,11 @@ If you're writing software that might run on different operating systems, keep t
 To get standard locations portably:
 
 ```rust
-var home = Viper.Environment.homeDir();           // User's home directory
-var temp = Viper.Environment.tempDir();           // Temporary file directory
-var cwd = Viper.Environment.currentDir();         // Current working directory
+bind Environment from Viper;
+
+var home = homeDir();           // User's home directory
+var temp = tempDir();           // Temporary file directory
+var cwd = currentDir();         // Current working directory
 ```
 
 ---
@@ -268,7 +276,9 @@ When you open a file, you specify what you intend to do with it. This is called 
 Read mode opens an existing file for reading. The file must already exist — if it doesn't, you'll get an error.
 
 ```rust
-var content = Viper.File.readText("data.txt");
+bind File from Viper;
+
+var content = readText("data.txt");
 ```
 
 The file is opened, read from beginning to end, and then closed automatically. Your program receives the contents as a string.
@@ -278,7 +288,9 @@ The file is opened, read from beginning to end, and then closed automatically. Y
 Write mode creates a new file or overwrites an existing one. This is destructive — if the file exists, its contents are erased and replaced.
 
 ```rust
-Viper.File.writeText("output.txt", "Hello, World!");
+bind File from Viper;
+
+writeText("output.txt", "Hello, World!");
 ```
 
 **Be careful!** Write mode doesn't ask for confirmation. If `output.txt` contained your life's work, it's now gone forever (unless you have backups).
@@ -288,7 +300,9 @@ Viper.File.writeText("output.txt", "Hello, World!");
 Append mode adds data to the end of an existing file, or creates a new file if it doesn't exist. Existing content is preserved.
 
 ```rust
-Viper.File.appendText("log.txt", "New entry\n");
+bind File from Viper;
+
+appendText("log.txt", "New entry\n");
 ```
 
 Each call adds to the end. The file grows over time. This is perfect for logs, history files, and accumulating data.
@@ -314,8 +328,11 @@ Let's explore file reading in detail, from simple to advanced techniques.
 The simplest approach loads the entire file into memory:
 
 ```rust
-var content = Viper.File.readText("message.txt");
-Viper.Terminal.Say(content);
+bind File from Viper;
+bind Terminal from Viper;
+
+var content = readText("message.txt");
+Say(content);
 ```
 
 **What happens:**
@@ -334,12 +351,15 @@ Viper.Terminal.Say(content);
 Often you want to process a file line by line. `readLines` returns an array of strings:
 
 ```rust
-var lines = Viper.File.readLines("data.txt");
+bind File from Viper;
+bind Terminal from Viper;
 
-Viper.Terminal.Say("File has " + lines.length + " lines");
+var lines = readLines("data.txt");
+
+Say("File has " + lines.length + " lines");
 
 for line in lines {
-    Viper.Terminal.Say("Line: " + line);
+    Say("Line: " + line);
 }
 ```
 
@@ -355,12 +375,15 @@ This is still loading everything at once, but having lines as separate strings i
 For large files, read one line at a time:
 
 ```rust
-var reader = Viper.File.openRead("huge.txt");
+bind File from Viper;
+bind Terminal from Viper;
+
+var reader = openRead("huge.txt");
 
 while reader.hasMore() {
     var line = reader.readLine();
     // Process this one line
-    Viper.Terminal.Say(line);
+    Say(line);
 }
 
 reader.close();  // Don't forget!
@@ -379,7 +402,9 @@ reader.close();  // Don't forget!
 Sometimes you need to jump to a specific location:
 
 ```rust
-var reader = Viper.File.openRead("data.bin");
+bind File from Viper;
+
+var reader = openRead("data.bin");
 
 // Skip to position 100
 reader.seek(100);
@@ -401,9 +426,12 @@ Writing is where things can go wrong in ways that lose data. Let's understand ho
 ### Simple Writing
 
 ```rust
+bind File from Viper;
+bind Terminal from Viper;
+
 var content = "Hello, File!\nThis is line two.\nAnd line three.";
-Viper.File.writeText("output.txt", content);
-Viper.Terminal.Say("File written!");
+writeText("output.txt", content);
+Say("File written!");
 ```
 
 **What happens:**
@@ -418,9 +446,11 @@ The `\n` creates line breaks. Without them, everything would be on one line.
 ### Appending Data
 
 ```rust
-Viper.File.appendText("log.txt", "Event 1 occurred\n");
-Viper.File.appendText("log.txt", "Event 2 occurred\n");
-Viper.File.appendText("log.txt", "Event 3 occurred\n");
+bind File from Viper;
+
+appendText("log.txt", "Event 1 occurred\n");
+appendText("log.txt", "Event 2 occurred\n");
+appendText("log.txt", "Event 3 occurred\n");
 ```
 
 After these three calls, `log.txt` contains:
@@ -437,7 +467,9 @@ Append is safer than write because you can't accidentally erase data.
 For large amounts of data, or when building output over time:
 
 ```rust
-var writer = Viper.File.openWrite("output.txt");
+bind File from Viper;
+
+var writer = openWrite("output.txt");
 
 writer.writeLine("Header line");
 
@@ -458,7 +490,9 @@ writer.close();  // CRUCIAL: flushes buffered data to disk
 Because of buffering, calling `writeLine` doesn't guarantee the data is on disk. To force data to disk:
 
 ```rust
-var writer = Viper.File.openWrite("critical.txt");
+bind File from Viper;
+
+var writer = openWrite("critical.txt");
 
 writer.writeLine("Important data");
 writer.flush();  // Force buffered data to disk now
@@ -506,15 +540,17 @@ If you open a binary file in Notepad, you see gibberish — because the bytes ar
 A simple example — storing numbers efficiently:
 
 ```rust
+bind File from Viper;
+
 // Store the number 1000000 as text: needs 7 bytes ("1000000")
 // Store the number 1000000 as binary: needs 4 bytes (the actual bits)
 
 // Write binary data
 var data: [byte] = [0x40, 0x42, 0x0F, 0x00];  // 1000000 in little-endian
-Viper.File.writeBytes("number.bin", data);
+writeBytes("number.bin", data);
 
 // Read binary data
-var bytes = Viper.File.readBytes("number.bin");
+var bytes = readBytes("number.bin");
 ```
 
 ### When to Use Each
@@ -534,17 +570,20 @@ var bytes = Viper.File.readBytes("number.bin");
 ### Working with Binary Files
 
 ```rust
+bind File from Viper;
+bind Terminal from Viper;
+
 // Writing binary data
 var data: [byte] = [0x89, 0x50, 0x4E, 0x47];  // PNG header bytes
-Viper.File.writeBytes("header.bin", data);
+writeBytes("header.bin", data);
 
 // Reading binary data
-var bytes = Viper.File.readBytes("image.png");
-Viper.Terminal.Say("File size: " + bytes.length + " bytes");
+var bytes = readBytes("image.png");
+Say("File size: " + bytes.length + " bytes");
 
 // Check for PNG signature
 if bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47 {
-    Viper.Terminal.Say("This is a PNG file!");
+    Say("This is a PNG file!");
 }
 ```
 
@@ -557,11 +596,14 @@ Binary file handling is more complex and usually requires understanding the spec
 Before reading, you might want to check if a file exists:
 
 ```rust
-if Viper.File.exists("config.txt") {
-    var config = Viper.File.readText("config.txt");
-    Viper.Terminal.Say("Loaded config");
+bind File from Viper;
+bind Terminal from Viper;
+
+if exists("config.txt") {
+    var config = readText("config.txt");
+    Say("Loaded config");
 } else {
-    Viper.Terminal.Say("No config file found, using defaults");
+    Say("No config file found, using defaults");
 }
 ```
 
@@ -570,9 +612,11 @@ if Viper.File.exists("config.txt") {
 There's a subtle issue with check-then-read:
 
 ```rust
-if Viper.File.exists("data.txt") {
+bind File from Viper;
+
+if exists("data.txt") {
     // Another program could delete the file RIGHT HERE
-    var content = Viper.File.readText("data.txt");  // Might fail!
+    var content = readText("data.txt");  // Might fail!
 }
 ```
 
@@ -581,11 +625,14 @@ Between checking and reading, another program (or user) could delete the file. T
 For critical code, consider using try-catch instead:
 
 ```rust
+bind File from Viper;
+bind Terminal from Viper;
+
 try {
-    var content = Viper.File.readText("data.txt");
+    var content = readText("data.txt");
     // Process content...
 } catch e: FileNotFound {
-    Viper.Terminal.Say("File not found, using defaults");
+    Say("File not found, using defaults");
 }
 ```
 
@@ -602,51 +649,61 @@ Files are organized in directories. Viper provides tools to work with them.
 ### Checking and Creating Directories
 
 ```rust
+bind Dir from Viper;
+bind Terminal from Viper;
+
 // Check if directory exists
-if Viper.Dir.exists("saves") {
-    Viper.Terminal.Say("Saves directory found");
+if exists("saves") {
+    Say("Saves directory found");
 }
 
 // Create a directory
-Viper.Dir.create("output");
+create("output");
 
 // Create nested directories (creates parent directories as needed)
-Viper.Dir.createAll("output/data/processed");
+createAll("output/data/processed");
 ```
 
 ### Listing Directory Contents
 
 ```rust
+bind Dir from Viper;
+bind Terminal from Viper;
+
 // List all files in a directory
-var files = Viper.Dir.listFiles("data");
+var files = listFiles("data");
 for file in files {
-    Viper.Terminal.Say(file);
+    Say(file);
 }
 
 // List subdirectories
-var dirs = Viper.Dir.listDirs("projects");
+var dirs = listDirs("projects");
 for dir in dirs {
-    Viper.Terminal.Say("Directory: " + dir);
+    Say("Directory: " + dir);
 }
 
 // List everything (files and directories)
-var all = Viper.Dir.list("documents");
+var all = list("documents");
 ```
 
 ### Practical Example: Finding All Text Files
 
 ```rust
+bind Dir from Viper;
+bind Path from Viper;
+bind Terminal from Viper;
+
 func findTextFiles(directory: String) {
-    var entries = Viper.Dir.list(directory);
+    var entries = list(directory);
 
     for entry in entries {
-        var path = Viper.Path.join(directory, entry);
+        var path = join(directory, entry);
 
-        if Viper.Dir.exists(path) {
+        if exists(path) {
             // It's a directory, recurse into it
             findTextFiles(path);
         } else if entry.endsWith(".txt") {
-            Viper.Terminal.Say("Found: " + path);
+            Say("Found: " + path);
         }
     }
 }
@@ -664,36 +721,46 @@ Files are a major source of errors. The file might not exist. You might not have
 
 **File not found:**
 ```rust
+bind File from Viper;
+
 // The file doesn't exist
-var content = Viper.File.readText("nonexistent.txt");
+var content = readText("nonexistent.txt");
 // Error: File not found: nonexistent.txt
 ```
 
 **Permission denied:**
 ```rust
+bind File from Viper;
+
 // You don't have permission to read/write this file
-var content = Viper.File.readText("/etc/shadow");
+var content = readText("/etc/shadow");
 // Error: Permission denied: /etc/shadow
 ```
 
 **Disk full:**
 ```rust
+bind File from Viper;
+
 // No space left on the storage device
-Viper.File.writeText("huge.txt", massiveData);
+writeText("huge.txt", massiveData);
 // Error: No space left on device
 ```
 
 **Path is a directory:**
 ```rust
+bind File from Viper;
+
 // Trying to read a directory as a file
-var content = Viper.File.readText("my_folder");
+var content = readText("my_folder");
 // Error: Is a directory: my_folder
 ```
 
 **Invalid path:**
 ```rust
+bind File from Viper;
+
 // Path contains invalid characters or is malformed
-var content = Viper.File.readText("file\0name.txt");
+var content = readText("file\0name.txt");
 // Error: Invalid path
 ```
 
@@ -702,20 +769,23 @@ var content = Viper.File.readText("file\0name.txt");
 Never let file errors crash your program unexpectedly. Handle them:
 
 ```rust
+bind File from Viper;
+bind Terminal from Viper;
+
 func loadConfig() -> String {
     try {
-        return Viper.File.readText("config.txt");
+        return readText("config.txt");
     } catch e: FileNotFound {
-        Viper.Terminal.Say("Config file not found, creating default...");
+        Say("Config file not found, creating default...");
         var defaultConfig = "theme=light\nvolume=50";
-        Viper.File.writeText("config.txt", defaultConfig);
+        writeText("config.txt", defaultConfig);
         return defaultConfig;
     } catch e: PermissionDenied {
-        Viper.Terminal.Say("Cannot read config file: permission denied");
-        Viper.Terminal.Say("Using built-in defaults");
+        Say("Cannot read config file: permission denied");
+        Say("Using built-in defaults");
         return "theme=light\nvolume=50";
     } catch e {
-        Viper.Terminal.Say("Unexpected error reading config: " + e.message);
+        Say("Unexpected error reading config: " + e.message);
         return "theme=light\nvolume=50";
     }
 }
@@ -726,20 +796,23 @@ func loadConfig() -> String {
 Don't show raw error messages to users. Translate them:
 
 ```rust
+bind File from Viper;
+bind Terminal from Viper;
+
 func openUserFile(path: String) -> String {
     try {
-        return Viper.File.readText(path);
+        return readText(path);
     } catch e: FileNotFound {
-        Viper.Terminal.Say("Sorry, the file '" + path + "' doesn't exist.");
-        Viper.Terminal.Say("Please check the filename and try again.");
+        Say("Sorry, the file '" + path + "' doesn't exist.");
+        Say("Please check the filename and try again.");
         return "";
     } catch e: PermissionDenied {
-        Viper.Terminal.Say("Sorry, you don't have permission to open this file.");
-        Viper.Terminal.Say("Try running the program as administrator, or choose a different file.");
+        Say("Sorry, you don't have permission to open this file.");
+        Say("Try running the program as administrator, or choose a different file.");
         return "";
     } catch e {
-        Viper.Terminal.Say("Sorry, couldn't open the file.");
-        Viper.Terminal.Say("Technical details: " + e.message);
+        Say("Sorry, couldn't open the file.");
+        Say("Technical details: " + e.message);
         return "";
     }
 }
@@ -754,8 +827,10 @@ Writing files is risky. If something goes wrong mid-write, you might end up with
 ### The Danger of Direct Overwriting
 
 ```rust
+bind File from Viper;
+
 // Dangerous: if this fails mid-write, data.txt is corrupted
-Viper.File.writeText("data.txt", newData);
+writeText("data.txt", newData);
 ```
 
 If power fails, or your program crashes, or the disk has an error during the write, `data.txt` might be left in a broken state.
@@ -765,19 +840,21 @@ If power fails, or your program crashes, or the disk has an error during the wri
 The professional approach:
 
 ```rust
+bind File from Viper;
+
 func safeWrite(filename: String, content: String) {
     var tempFile = filename + ".tmp";
 
     // Step 1: Write to a temporary file
-    Viper.File.writeText(tempFile, content);
+    writeText(tempFile, content);
 
     // Step 2: Delete the old file (if it exists)
-    if Viper.File.exists(filename) {
-        Viper.File.delete(filename);
+    if exists(filename) {
+        delete(filename);
     }
 
     // Step 3: Rename temp file to real name
-    Viper.File.rename(tempFile, filename);
+    rename(tempFile, filename);
 }
 ```
 
@@ -791,15 +868,17 @@ Why is this safer?
 For critical data, keep a backup:
 
 ```rust
+bind File from Viper;
+
 func writeWithBackup(filename: String, content: String) {
     // Create backup of existing file
-    if Viper.File.exists(filename) {
+    if exists(filename) {
         var backupName = filename + ".backup";
-        Viper.File.copy(filename, backupName);
+        copy(filename, backupName);
     }
 
     // Now write the new content
-    Viper.File.writeText(filename, content);
+    writeText(filename, content);
 }
 ```
 
@@ -809,27 +888,32 @@ If something goes wrong, the user still has their `.backup` file.
 
 **Confirm before overwriting:**
 ```rust
+bind File from Viper;
+bind Terminal from Viper;
+
 func saveFile(filename: String, content: String) {
-    if Viper.File.exists(filename) {
-        Viper.Terminal.Print("File exists. Overwrite? (y/n): ");
-        var response = Viper.Terminal.ReadLine().trim().lower();
+    if exists(filename) {
+        Print("File exists. Overwrite? (y/n): ");
+        var response = ReadLine().trim().lower();
         if response != "y" {
-            Viper.Terminal.Say("Save cancelled.");
+            Say("Save cancelled.");
             return;
         }
     }
-    Viper.File.writeText(filename, content);
-    Viper.Terminal.Say("File saved.");
+    writeText(filename, content);
+    Say("File saved.");
 }
 ```
 
 **Generate unique names:**
 ```rust
+bind File from Viper;
+
 func uniqueFilename(base: String, ext: String) -> String {
     var filename = base + ext;
     var counter = 1;
 
-    while Viper.File.exists(filename) {
+    while exists(filename) {
         filename = base + "_" + counter + ext;
         counter += 1;
     }
@@ -854,17 +938,21 @@ Programs often store settings in configuration files:
 ```rust
 module Config;
 
+bind File from Viper;
+bind Convert from Viper;
+bind Terminal from Viper;
+
 final CONFIG_FILE = "settings.cfg";
 
 // Simple key=value format
 func loadConfig() -> Map<String, String> {
     var config = Map<String, String>();
 
-    if !Viper.File.exists(CONFIG_FILE) {
+    if !exists(CONFIG_FILE) {
         return config;  // Empty config if file doesn't exist
     }
 
-    var lines = Viper.File.readLines(CONFIG_FILE);
+    var lines = readLines(CONFIG_FILE);
 
     for line in lines {
         line = line.trim();
@@ -896,7 +984,7 @@ func saveConfig(config: Map<String, String>) {
     }
 
     var content = lines.join("\n");
-    Viper.File.writeText(CONFIG_FILE, content);
+    writeText(CONFIG_FILE, content);
 }
 
 // Usage
@@ -905,10 +993,10 @@ func start() {
 
     // Get setting with default
     var theme = config.getOrDefault("theme", "light");
-    var volume = Viper.Convert.ToInt(config.getOrDefault("volume", "50"));
+    var volume = ToInt(config.getOrDefault("volume", "50"));
 
-    Viper.Terminal.Say("Theme: " + theme);
-    Viper.Terminal.Say("Volume: " + volume);
+    Say("Theme: " + theme);
+    Say("Volume: " + volume);
 
     // Change a setting
     config["theme"] = "dark";
@@ -933,12 +1021,15 @@ Recording events for debugging and auditing:
 ```rust
 module Logger;
 
+bind Time from Viper;
+bind File from Viper;
+
 final LOG_FILE = "application.log";
 
 func log(level: String, message: String) {
-    var timestamp = Viper.Time.now().format("YYYY-MM-DD HH:mm:ss");
+    var timestamp = now().format("YYYY-MM-DD HH:mm:ss");
     var entry = "[" + timestamp + "] [" + level + "] " + message + "\n";
-    Viper.File.appendText(LOG_FILE, entry);
+    appendText(LOG_FILE, entry);
 }
 
 func info(message: String) {
@@ -983,6 +1074,12 @@ Games need to persist player progress:
 ```rust
 module GameSave;
 
+bind Dir from Viper;
+bind Path from Viper;
+bind File from Viper;
+bind Terminal from Viper;
+bind Convert from Viper;
+
 final SAVE_DIR = "saves";
 
 struct SaveData {
@@ -996,11 +1093,11 @@ struct SaveData {
 
 func save(data: SaveData, slot: Integer) {
     // Ensure save directory exists
-    if !Viper.Dir.exists(SAVE_DIR) {
-        Viper.Dir.create(SAVE_DIR);
+    if !exists(SAVE_DIR) {
+        create(SAVE_DIR);
     }
 
-    var filename = Viper.Path.join(SAVE_DIR, "save_" + slot + ".dat");
+    var filename = join(SAVE_DIR, "save_" + slot + ".dat");
 
     var lines: [String] = [];
     lines.push("name=" + data.playerName);
@@ -1010,19 +1107,19 @@ func save(data: SaveData, slot: Integer) {
     lines.push("inventory=" + data.inventory.join(","));
     lines.push("position=" + data.position.0 + "," + data.position.1);
 
-    Viper.File.writeText(filename, lines.join("\n"));
-    Viper.Terminal.Say("Game saved to slot " + slot);
+    writeText(filename, lines.join("\n"));
+    Say("Game saved to slot " + slot);
 }
 
 func load(slot: Integer) -> SaveData? {
-    var filename = Viper.Path.join(SAVE_DIR, "save_" + slot + ".dat");
+    var filename = join(SAVE_DIR, "save_" + slot + ".dat");
 
-    if !Viper.File.exists(filename) {
-        Viper.Terminal.Say("No save found in slot " + slot);
+    if !fileExists(filename) {
+        Say("No save found in slot " + slot);
         return null;
     }
 
-    var lines = Viper.File.readLines(filename);
+    var lines = readLines(filename);
     var data = SaveData();
 
     for line in lines {
@@ -1033,32 +1130,32 @@ func load(slot: Integer) -> SaveData? {
         var value = parts[1];
 
         if key == "name" { data.playerName = value; }
-        else if key == "level" { data.level = Viper.Convert.ToInt(value); }
-        else if key == "score" { data.score = Viper.Convert.ToInt(value); }
-        else if key == "health" { data.health = Viper.Convert.ToInt(value); }
+        else if key == "level" { data.level = ToInt(value); }
+        else if key == "score" { data.score = ToInt(value); }
+        else if key == "health" { data.health = ToInt(value); }
         else if key == "inventory" { data.inventory = value.split(","); }
         else if key == "position" {
             var coords = value.split(",");
-            data.position = (Viper.Convert.ToDouble(coords[0]), Viper.Convert.ToDouble(coords[1]));
+            data.position = (ToDouble(coords[0]), ToDouble(coords[1]));
         }
     }
 
-    Viper.Terminal.Say("Game loaded from slot " + slot);
+    Say("Game loaded from slot " + slot);
     return data;
 }
 
 func listSaves() -> [Integer] {
     var saves: [Integer] = [];
 
-    if !Viper.Dir.exists(SAVE_DIR) {
+    if !exists(SAVE_DIR) {
         return saves;
     }
 
-    var files = Viper.Dir.listFiles(SAVE_DIR);
+    var files = listFiles(SAVE_DIR);
     for file in files {
         if file.startsWith("save_") && file.endsWith(".dat") {
             var numStr = file.substring(5, file.length - 9);
-            saves.push(Viper.Convert.ToInt(numStr));
+            saves.push(ToInt(numStr));
         }
     }
 
@@ -1071,6 +1168,9 @@ func listSaves() -> [Integer] {
 Exporting data for spreadsheets or other programs:
 
 ```rust
+bind File from Viper;
+bind Terminal from Viper;
+
 func exportToCSV(filename: String, headers: [String], rows: [[String]]) {
     var lines: [String] = [];
 
@@ -1090,8 +1190,8 @@ func exportToCSV(filename: String, headers: [String], rows: [[String]]) {
         lines.push(escapedRow.join(","));
     }
 
-    Viper.File.writeText(filename, lines.join("\n"));
-    Viper.Terminal.Say("Exported " + rows.length + " rows to " + filename);
+    writeText(filename, lines.join("\n"));
+    Say("Exported " + rows.length + " rows to " + filename);
 }
 
 // Usage
@@ -1110,9 +1210,12 @@ exportToCSV("people.csv", headers, data);
 Reading data from CSV files:
 
 ```rust
+bind File from Viper;
+bind Terminal from Viper;
+
 func importFromCSV(filename: String) -> [[String]] {
     var rows: [[String]] = [];
-    var lines = Viper.File.readLines(filename);
+    var lines = readLines(filename);
 
     for line in lines {
         if line.trim().length == 0 { continue; }
@@ -1129,8 +1232,8 @@ func importFromCSV(filename: String) -> [[String]] {
 var data = importFromCSV("people.csv");
 var headers = data[0];
 
-Viper.Terminal.Say("Columns: " + headers.join(", "));
-Viper.Terminal.Say("Data rows: " + (data.length - 1));
+Say("Columns: " + headers.join(", "));
+Say("Data rows: " + (data.length - 1));
 ```
 
 ---
@@ -1142,17 +1245,20 @@ Let's build a full application that demonstrates proper file handling:
 ```rust
 module NoteKeeper;
 
+bind File from Viper;
+bind Terminal from Viper;
+
 final NOTES_FILE = "notes.txt";
 final BACKUP_FILE = "notes.txt.backup";
 
 // Load notes from file
 func loadNotes() -> [String] {
-    if !Viper.File.exists(NOTES_FILE) {
+    if !exists(NOTES_FILE) {
         return [];
     }
 
     try {
-        var lines = Viper.File.readLines(NOTES_FILE);
+        var lines = readLines(NOTES_FILE);
         // Filter out empty lines
         var notes: [String] = [];
         for line in lines {
@@ -1162,15 +1268,15 @@ func loadNotes() -> [String] {
         }
         return notes;
     } catch e {
-        Viper.Terminal.Say("Warning: Could not load notes: " + e.message);
+        Say("Warning: Could not load notes: " + e.message);
 
         // Try backup
-        if Viper.File.exists(BACKUP_FILE) {
-            Viper.Terminal.Say("Attempting to load from backup...");
+        if exists(BACKUP_FILE) {
+            Say("Attempting to load from backup...");
             try {
-                return Viper.File.readLines(BACKUP_FILE);
+                return readLines(BACKUP_FILE);
             } catch e2 {
-                Viper.Terminal.Say("Backup also failed.");
+                Say("Backup also failed.");
             }
         }
 
@@ -1181,11 +1287,11 @@ func loadNotes() -> [String] {
 // Save notes to file (with backup)
 func saveNotes(notes: [String]) -> Boolean {
     // Create backup of existing file
-    if Viper.File.exists(NOTES_FILE) {
+    if exists(NOTES_FILE) {
         try {
-            Viper.File.copy(NOTES_FILE, BACKUP_FILE);
+            copy(NOTES_FILE, BACKUP_FILE);
         } catch e {
-            Viper.Terminal.Say("Warning: Could not create backup");
+            Say("Warning: Could not create backup");
         }
     }
 
@@ -1193,21 +1299,21 @@ func saveNotes(notes: [String]) -> Boolean {
     var tempFile = NOTES_FILE + ".tmp";
     try {
         var content = notes.join("\n");
-        Viper.File.writeText(tempFile, content);
+        writeText(tempFile, content);
 
         // Delete old file and rename temp to real
-        if Viper.File.exists(NOTES_FILE) {
-            Viper.File.delete(NOTES_FILE);
+        if exists(NOTES_FILE) {
+            delete(NOTES_FILE);
         }
-        Viper.File.rename(tempFile, NOTES_FILE);
+        rename(tempFile, NOTES_FILE);
 
         return true;
     } catch e {
-        Viper.Terminal.Say("Error saving notes: " + e.message);
+        Say("Error saving notes: " + e.message);
 
         // Clean up temp file if it exists
-        if Viper.File.exists(tempFile) {
-            Viper.File.delete(tempFile);
+        if exists(tempFile) {
+            delete(tempFile);
         }
 
         return false;
@@ -1217,52 +1323,52 @@ func saveNotes(notes: [String]) -> Boolean {
 // Display all notes
 func displayNotes(notes: [String]) {
     if notes.length == 0 {
-        Viper.Terminal.Say("No notes yet.");
-        Viper.Terminal.Say("Use 'add' to create your first note!");
+        Say("No notes yet.");
+        Say("Use 'add' to create your first note!");
         return;
     }
 
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("=== Your Notes ===");
+    Say("");
+    Say("=== Your Notes ===");
     for i in 0..notes.length {
-        Viper.Terminal.Say((i + 1) + ". " + notes[i]);
+        Say((i + 1) + ". " + notes[i]);
     }
-    Viper.Terminal.Say("==================");
+    Say("==================");
 }
 
 // Show help
 func showHelp() {
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("Available commands:");
-    Viper.Terminal.Say("  list   - Show all notes");
-    Viper.Terminal.Say("  add    - Add a new note");
-    Viper.Terminal.Say("  delete - Delete a note by number");
-    Viper.Terminal.Say("  edit   - Edit an existing note");
-    Viper.Terminal.Say("  clear  - Delete all notes");
-    Viper.Terminal.Say("  help   - Show this help");
-    Viper.Terminal.Say("  quit   - Exit the program");
-    Viper.Terminal.Say("");
+    Say("");
+    Say("Available commands:");
+    Say("  list   - Show all notes");
+    Say("  add    - Add a new note");
+    Say("  delete - Delete a note by number");
+    Say("  edit   - Edit an existing note");
+    Say("  clear  - Delete all notes");
+    Say("  help   - Show this help");
+    Say("  quit   - Exit the program");
+    Say("");
 }
 
 func start() {
     var notes = loadNotes();
 
-    Viper.Terminal.Say("===================");
-    Viper.Terminal.Say("   Note Keeper");
-    Viper.Terminal.Say("===================");
-    Viper.Terminal.Say("Type 'help' for commands");
-    Viper.Terminal.Say("");
+    Say("===================");
+    Say("   Note Keeper");
+    Say("===================");
+    Say("Type 'help' for commands");
+    Say("");
 
     if notes.length > 0 {
-        Viper.Terminal.Say("Loaded " + notes.length + " existing notes.");
+        Say("Loaded " + notes.length + " existing notes.");
     }
 
     while true {
-        Viper.Terminal.Print("> ");
-        var command = Viper.Terminal.ReadLine().trim().lower();
+        Print("> ");
+        var command = ReadLine().trim().lower();
 
         if command == "quit" || command == "exit" {
-            Viper.Terminal.Say("Goodbye!");
+            Say("Goodbye!");
             break;
 
         } else if command == "help" {
@@ -1272,91 +1378,91 @@ func start() {
             displayNotes(notes);
 
         } else if command == "add" {
-            Viper.Terminal.Print("Enter note: ");
-            var note = Viper.Terminal.ReadLine().trim();
+            Print("Enter note: ");
+            var note = ReadLine().trim();
 
             if note.length == 0 {
-                Viper.Terminal.Say("Note cannot be empty.");
+                Say("Note cannot be empty.");
             } else {
                 notes.push(note);
                 if saveNotes(notes) {
-                    Viper.Terminal.Say("Note added!");
+                    Say("Note added!");
                 }
             }
 
         } else if command == "delete" {
             if notes.length == 0 {
-                Viper.Terminal.Say("No notes to delete.");
+                Say("No notes to delete.");
             } else {
                 displayNotes(notes);
-                Viper.Terminal.Print("Delete which number? (0 to cancel): ");
-                var input = Viper.Terminal.ReadLine().trim();
+                Print("Delete which number? (0 to cancel): ");
+                var input = ReadLine().trim();
 
                 try {
-                    var num = Viper.Convert.ToInt(input);
+                    var num = ToInt(input);
                     if num == 0 {
-                        Viper.Terminal.Say("Cancelled.");
+                        Say("Cancelled.");
                     } else if num >= 1 && num <= notes.length {
                         var deleted = notes[num - 1];
                         notes.removeAt(num - 1);
                         if saveNotes(notes) {
-                            Viper.Terminal.Say("Deleted: " + deleted);
+                            Say("Deleted: " + deleted);
                         }
                     } else {
-                        Viper.Terminal.Say("Invalid number. Enter 1-" + notes.length);
+                        Say("Invalid number. Enter 1-" + notes.length);
                     }
                 } catch e {
-                    Viper.Terminal.Say("Please enter a number.");
+                    Say("Please enter a number.");
                 }
             }
 
         } else if command == "edit" {
             if notes.length == 0 {
-                Viper.Terminal.Say("No notes to edit.");
+                Say("No notes to edit.");
             } else {
                 displayNotes(notes);
-                Viper.Terminal.Print("Edit which number? (0 to cancel): ");
-                var input = Viper.Terminal.ReadLine().trim();
+                Print("Edit which number? (0 to cancel): ");
+                var input = ReadLine().trim();
 
                 try {
-                    var num = Viper.Convert.ToInt(input);
+                    var num = ToInt(input);
                     if num == 0 {
-                        Viper.Terminal.Say("Cancelled.");
+                        Say("Cancelled.");
                     } else if num >= 1 && num <= notes.length {
-                        Viper.Terminal.Say("Current: " + notes[num - 1]);
-                        Viper.Terminal.Print("New text: ");
-                        var newNote = Viper.Terminal.ReadLine().trim();
+                        Say("Current: " + notes[num - 1]);
+                        Print("New text: ");
+                        var newNote = ReadLine().trim();
 
                         if newNote.length == 0 {
-                            Viper.Terminal.Say("Note cannot be empty. Use 'delete' to remove.");
+                            Say("Note cannot be empty. Use 'delete' to remove.");
                         } else {
                             notes[num - 1] = newNote;
                             if saveNotes(notes) {
-                                Viper.Terminal.Say("Note updated!");
+                                Say("Note updated!");
                             }
                         }
                     } else {
-                        Viper.Terminal.Say("Invalid number. Enter 1-" + notes.length);
+                        Say("Invalid number. Enter 1-" + notes.length);
                     }
                 } catch e {
-                    Viper.Terminal.Say("Please enter a number.");
+                    Say("Please enter a number.");
                 }
             }
 
         } else if command == "clear" {
             if notes.length == 0 {
-                Viper.Terminal.Say("Already empty.");
+                Say("Already empty.");
             } else {
-                Viper.Terminal.Print("Delete ALL " + notes.length + " notes? (yes/no): ");
-                var confirm = Viper.Terminal.ReadLine().trim().lower();
+                Print("Delete ALL " + notes.length + " notes? (yes/no): ");
+                var confirm = ReadLine().trim().lower();
 
                 if confirm == "yes" {
                     notes = [];
                     if saveNotes(notes) {
-                        Viper.Terminal.Say("All notes deleted.");
+                        Say("All notes deleted.");
                     }
                 } else {
-                    Viper.Terminal.Say("Cancelled.");
+                    Say("Cancelled.");
                 }
             }
 
@@ -1365,8 +1471,8 @@ func start() {
             continue;
 
         } else {
-            Viper.Terminal.Say("Unknown command: '" + command + "'");
-            Viper.Terminal.Say("Type 'help' for available commands.");
+            Say("Unknown command: '" + command + "'");
+            Say("Type 'help' for available commands.");
         }
     }
 }
@@ -1386,23 +1492,25 @@ This program demonstrates:
 
 **Zia**
 ```rust
+bind File from Viper;
+
 // Read
-var content = Viper.File.readText("file.txt");
+var content = readText("file.txt");
 
 // Write
-Viper.File.writeText("file.txt", "Hello!");
+writeText("file.txt", "Hello!");
 
 // Append
-Viper.File.appendText("file.txt", "More text\n");
+appendText("file.txt", "More text\n");
 
 // Check existence
-if Viper.File.exists("file.txt") { ... }
+if exists("file.txt") { ... }
 
 // Read lines
-var lines = Viper.File.readLines("file.txt");
+var lines = readLines("file.txt");
 
 // Stream reading
-var reader = Viper.File.openRead("file.txt");
+var reader = openRead("file.txt");
 while reader.hasMore() {
     var line = reader.readLine();
 }
@@ -1473,34 +1581,42 @@ Pascal uses file variables and procedures like AssignFile, Reset (open for readi
 
 **Forgetting the file might not exist:**
 ```rust
+bind File from Viper;
+bind Terminal from Viper;
+
 // Crashes if file doesn't exist
-var content = Viper.File.readText("maybe.txt");
+var content = readText("maybe.txt");
 
 // Better: check first
-if Viper.File.exists("maybe.txt") {
-    var content = Viper.File.readText("maybe.txt");
+if exists("maybe.txt") {
+    var content = readText("maybe.txt");
 }
 
 // Or: use try-catch
 try {
-    var content = Viper.File.readText("maybe.txt");
+    var content = readText("maybe.txt");
 } catch e: FileNotFound {
-    Viper.Terminal.Say("File not found");
+    Say("File not found");
 }
 ```
 
 **Overwriting when you meant to append:**
 ```rust
-Viper.File.writeText("log.txt", "Entry 1\n");
-Viper.File.writeText("log.txt", "Entry 2\n");  // Oops! Entry 1 is gone
+bind File from Viper;
+
+writeText("log.txt", "Entry 1\n");
+writeText("log.txt", "Entry 2\n");  // Oops! Entry 1 is gone
 
 // Correct: use append for logs
-Viper.File.writeText("log.txt", "Entry 1\n");
-Viper.File.appendText("log.txt", "Entry 2\n");  // Both entries preserved
+writeText("log.txt", "Entry 1\n");
+appendText("log.txt", "Entry 2\n");  // Both entries preserved
 ```
 
 **Hardcoding paths:**
 ```rust
+bind Environment from Viper;
+bind Path from Viper;
+
 // Bad: only works on your machine
 var file = "C:\\Users\\Alice\\Documents\\data.txt";
 
@@ -1508,18 +1624,20 @@ var file = "C:\\Users\\Alice\\Documents\\data.txt";
 var file = "data/scores.txt";
 
 // Or build paths dynamically
-var home = Viper.Environment.homeDir();
-var file = Viper.Path.join(home, "Documents", "data.txt");
+var home = homeDir();
+var file = join(home, "Documents", "data.txt");
 ```
 
 **Not closing files:**
 ```rust
-var reader = Viper.File.openRead("file.txt");
+bind File from Viper;
+
+var reader = openRead("file.txt");
 // ... use reader ...
 // Forgot reader.close()!  File stays locked, resources leak
 
 // Always close, even if errors occur:
-var reader = Viper.File.openRead("file.txt");
+var reader = openRead("file.txt");
 try {
     // ... use reader ...
 } finally {
@@ -1529,18 +1647,22 @@ try {
 
 **Assuming writes are immediate:**
 ```rust
-var writer = Viper.File.openWrite("important.txt");
+bind File from Viper;
+
+var writer = openWrite("important.txt");
 writer.writeLine("Critical data");
 // Power fails here - data might be lost!
 
 // Better: flush critical data
-var writer = Viper.File.openWrite("important.txt");
+var writer = openWrite("important.txt");
 writer.writeLine("Critical data");
 writer.flush();  // Force to disk
 ```
 
 **Not handling paths cross-platform:**
 ```rust
+bind Path from Viper;
+
 // Bad: backslash doesn't work on Mac/Linux
 var path = "data\\files\\scores.txt";
 
@@ -1548,7 +1670,7 @@ var path = "data\\files\\scores.txt";
 var path = "data/files/scores.txt";
 
 // Best: use Path.join
-var path = Viper.Path.join("data", "files", "scores.txt");
+var path = join("data", "files", "scores.txt");
 ```
 
 ---
@@ -1563,10 +1685,10 @@ var path = Viper.Path.join("data", "files", "scores.txt");
 - **Handle errors gracefully** — files can fail in many ways
 - **Use temporary files and backups** for safe writing
 - **Text files are human-readable; binary files store raw data**
-- `Viper.File.readText/writeText/appendText` for simple operations
-- `Viper.File.openRead/openWrite` for streaming large files
-- `Viper.Dir` for working with directories
-- `Viper.Path` for manipulating paths safely and portably
+- `readText/writeText/appendText` for simple operations
+- `openRead/openWrite` for streaming large files
+- `Dir` module for working with directories
+- `Path` module for manipulating paths safely and portably
 
 ---
 

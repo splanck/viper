@@ -1,6 +1,8 @@
 // button.viper - Button UI control for Viper Paint
 module button;
 
+bind Viper.Graphics;
+
 bind "../config";
 
 // Button entity - clickable button with text
@@ -97,7 +99,7 @@ entity Button {
     }
 
     // Draw the button
-    expose func draw(gfx: Viper.Graphics.Canvas) {
+    expose func draw(gfx: Canvas) {
         if visible == 0 {
             return;
         }
@@ -216,7 +218,7 @@ entity ToolButton {
         return wasClicked;
     }
 
-    expose func draw(gfx: Viper.Graphics.Canvas) {
+    expose func draw(gfx: Canvas) {
         var bgColor = config.UI_BG_BUTTON;
         if selected == 1 {
             bgColor = config.UI_BG_BUTTON_ACTIVE;

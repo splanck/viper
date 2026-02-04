@@ -1,6 +1,8 @@
 // line.viper - Line tool for Viper Paint
 module line;
 
+bind Viper.Graphics;
+
 bind "../config";
 bind "../canvas";
 bind "../colors";
@@ -61,7 +63,7 @@ entity LineTool {
     }
 
     // Draw preview on screen canvas (not the drawing canvas)
-    expose func drawPreview(gfx: Viper.Graphics.Canvas, offsetX: Integer, offsetY: Integer, color: Integer) {
+    expose func drawPreview(gfx: Canvas, offsetX: Integer, offsetY: Integer, color: Integer) {
         if drawing == 1 {
             // Draw preview line on the graphics canvas
             gfx.Line(offsetX + startX, offsetY + startY,

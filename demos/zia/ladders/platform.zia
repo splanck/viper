@@ -2,6 +2,8 @@
 // Platforms are horizontal surfaces the player can walk on
 module platform;
 
+bind Viper.Graphics;
+
 bind "./config";
 bind "./colors";
 
@@ -91,7 +93,7 @@ entity Platform {
     }
 
     // Draw the platform
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         // Main platform body
         canvas.Box(x, y, width, height, colors.PLATFORM_COLOR);
 

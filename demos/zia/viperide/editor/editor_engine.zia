@@ -1,13 +1,14 @@
 module editor_engine;
 
 bind "../core/document";
+bind GUI = Viper.GUI;
 
 // ============================================================================
-// EditorEngine — wraps the Viper.GUI.CodeEditor widget with IDE-level features
+// EditorEngine — wraps the GUI.CodeEditor widget with IDE-level features
 // ============================================================================
 
 entity EditorEngine {
-    expose Viper.GUI.CodeEditor editor;   // CodeEditor widget handle
+    expose GUI.CodeEditor editor;   // CodeEditor widget handle
     expose Integer lastCursorLine;        // For detecting cursor changes
     expose Integer lastCursorCol;
 
@@ -17,8 +18,8 @@ entity EditorEngine {
     }
 
     // Create the CodeEditor widget inside a parent container.
-    expose func Setup(parent: Viper.GUI.VBox) {
-        editor = Viper.GUI.CodeEditor.New(parent);
+    expose func Setup(parent: GUI.VBox) {
+        editor = GUI.CodeEditor.New(parent);
         editor.SetShowLineNumbers(1);
         editor.SetFlex(1.0);
     }

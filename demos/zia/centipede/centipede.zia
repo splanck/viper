@@ -3,7 +3,7 @@
 // =============================================================================
 // The main enemy: a segmented creature that moves across and down the screen
 // When hit, it splits into two centipedes
-// Uses Viper.Game.Timer for movement timing
+// Uses Timer for movement timing
 // =============================================================================
 
 module centipede;
@@ -11,6 +11,9 @@ module centipede;
 bind "./config";
 bind "./utils";
 bind "./mushroom";
+
+bind Viper.Game;
+bind Viper.Graphics;
 
 // =============================================================================
 // SEGMENT ENTITY - Individual segment of the centipede
@@ -134,7 +137,7 @@ entity Segment {
         return hitPoisoned;
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         if !active {
             return;
         }
@@ -168,13 +171,13 @@ entity Segment {
 
 entity Centipede {
     hide List[Segment] segments;
-    hide Viper.Game.Timer moveTimer;
+    hide Timer moveTimer;
     hide Integer moveDelay;
     hide Integer nextChainId;
 
     expose func init() {
         segments = [];
-        moveTimer = Viper.Game.Timer.New();
+        moveTimer = Timer.New();
         moveDelay = config.CENTIPEDE_MOVE_DELAY;
         nextChainId = 1;
     }
@@ -338,7 +341,7 @@ entity Centipede {
         return count;
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         // Draw body segments first, then heads (so heads appear on top)
         for seg in segments {
             if seg.isActive() && !seg.isHeadSegment() {

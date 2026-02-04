@@ -1,5 +1,8 @@
 module widgets_demo;
 
+bind Viper.GUI;
+bind Viper.Convert;
+
 // ============================================================================
 // WIDGETS DEMO - Showcase of Viper.GUI Widgets
 // ============================================================================
@@ -8,13 +11,13 @@ module widgets_demo;
 
 func main() {
     // Create application
-    var app = Viper.GUI.App.New("Widget Showcase", 800, 600);
-    Viper.GUI.Theme.SetDark();
+    var app = GUI.App.New("Widget Showcase", 800, 600);
+    GUI.Theme.SetDark();
 
     var root = app.Root;
 
     // Main layout - horizontal split
-    var mainLayout = Viper.GUI.HBox.New();
+    var mainLayout = GUI.HBox.New();
     mainLayout.SetSpacing(16.0);
     mainLayout.SetPadding(16.0);
     root.AddChild(mainLayout);
@@ -22,34 +25,34 @@ func main() {
     // ========================================================================
     // Left Panel - Form Widgets
     // ========================================================================
-    var leftPanel = Viper.GUI.VBox.New();
+    var leftPanel = GUI.VBox.New();
     leftPanel.SetSpacing(12.0);
     leftPanel.SetSize(350, 560);
     mainLayout.AddChild(leftPanel);
 
     // Section: Text Inputs
-    var inputTitle = Viper.GUI.Label.New(leftPanel, "Text Inputs");
+    var inputTitle = GUI.Label.New(leftPanel, "Text Inputs");
     inputTitle.SetColor(0xFF4CAF50);
 
-    var nameLabel = Viper.GUI.Label.New(leftPanel, "Name:");
+    var nameLabel = GUI.Label.New(leftPanel, "Name:");
     nameLabel.SetColor(0xFFCCCCCC);
 
-    var nameInput = Viper.GUI.TextInput.New(leftPanel);
+    var nameInput = GUI.TextInput.New(leftPanel);
     nameInput.SetPlaceholder("Enter your name...");
     nameInput.SetSize(320, 28);
 
-    var emailLabel = Viper.GUI.Label.New(leftPanel, "Email:");
+    var emailLabel = GUI.Label.New(leftPanel, "Email:");
     emailLabel.SetColor(0xFFCCCCCC);
 
-    var emailInput = Viper.GUI.TextInput.New(leftPanel);
+    var emailInput = GUI.TextInput.New(leftPanel);
     emailInput.SetPlaceholder("user@example.com");
     emailInput.SetSize(320, 28);
 
     // Section: Dropdown
-    var dropTitle = Viper.GUI.Label.New(leftPanel, "Dropdown:");
+    var dropTitle = GUI.Label.New(leftPanel, "Dropdown:");
     dropTitle.SetColor(0xFFCCCCCC);
 
-    var dropdown = Viper.GUI.Dropdown.New(leftPanel);
+    var dropdown = GUI.Dropdown.New(leftPanel);
     dropdown.SetPlaceholder("Select a language...");
     dropdown.SetSize(320, 28);
     dropdown.AddItem("Viper");
@@ -59,53 +62,53 @@ func main() {
     dropdown.AddItem("Go");
 
     // Section: Checkboxes
-    var checkTitle = Viper.GUI.Label.New(leftPanel, "Options:");
+    var checkTitle = GUI.Label.New(leftPanel, "Options:");
     checkTitle.SetColor(0xFFCCCCCC);
 
-    var check1 = Viper.GUI.Checkbox.New(leftPanel, "Enable dark mode");
+    var check1 = GUI.Checkbox.New(leftPanel, "Enable dark mode");
     check1.SetChecked(true);
 
-    var check2 = Viper.GUI.Checkbox.New(leftPanel, "Show line numbers");
+    var check2 = GUI.Checkbox.New(leftPanel, "Show line numbers");
     check2.SetChecked(true);
 
-    var check3 = Viper.GUI.Checkbox.New(leftPanel, "Auto-save");
+    var check3 = GUI.Checkbox.New(leftPanel, "Auto-save");
 
     // Section: Radio Buttons
-    var radioTitle = Viper.GUI.Label.New(leftPanel, "Theme:");
+    var radioTitle = GUI.Label.New(leftPanel, "Theme:");
     radioTitle.SetColor(0xFFCCCCCC);
 
-    var themeGroup = Viper.GUI.RadioGroup.New();
-    var radioLight = Viper.GUI.RadioButton.New(leftPanel, "Light", themeGroup);
-    var radioDark = Viper.GUI.RadioButton.New(leftPanel, "Dark", themeGroup);
-    var radioSystem = Viper.GUI.RadioButton.New(leftPanel, "System", themeGroup);
+    var themeGroup = GUI.RadioGroup.New();
+    var radioLight = GUI.RadioButton.New(leftPanel, "Light", themeGroup);
+    var radioDark = GUI.RadioButton.New(leftPanel, "Dark", themeGroup);
+    var radioSystem = GUI.RadioButton.New(leftPanel, "System", themeGroup);
     radioDark.SetSelected(true);
 
     // Section: Slider
-    var sliderTitle = Viper.GUI.Label.New(leftPanel, "Font Size:");
+    var sliderTitle = GUI.Label.New(leftPanel, "Font Size:");
     sliderTitle.SetColor(0xFFCCCCCC);
 
-    var fontSlider = Viper.GUI.Slider.New(leftPanel, true);
+    var fontSlider = GUI.Slider.New(leftPanel, true);
     fontSlider.SetRange(8.0, 32.0);
     fontSlider.SetValue(14.0);
     fontSlider.SetStep(1.0);
     fontSlider.SetSize(320, 24);
 
-    var sliderValue = Viper.GUI.Label.New(leftPanel, "14 pt");
+    var sliderValue = GUI.Label.New(leftPanel, "14 pt");
     sliderValue.SetColor(0xFF888888);
 
     // ========================================================================
     // Right Panel - List and Progress
     // ========================================================================
-    var rightPanel = Viper.GUI.VBox.New();
+    var rightPanel = GUI.VBox.New();
     rightPanel.SetSpacing(12.0);
     rightPanel.SetSize(380, 560);
     mainLayout.AddChild(rightPanel);
 
     // Section: List Box
-    var listTitle = Viper.GUI.Label.New(rightPanel, "Recent Files:");
+    var listTitle = GUI.Label.New(rightPanel, "Recent Files:");
     listTitle.SetColor(0xFF4CAF50);
 
-    var listBox = Viper.GUI.ListBox.New(rightPanel);
+    var listBox = GUI.ListBox.New(rightPanel);
     listBox.SetSize(360, 200);
     listBox.AddItem("main.viper");
     listBox.AddItem("utils.viper");
@@ -114,18 +117,18 @@ func main() {
     listBox.AddItem("package.json");
 
     // Section: Progress Bar
-    var progressTitle = Viper.GUI.Label.New(rightPanel, "Loading Progress:");
+    var progressTitle = GUI.Label.New(rightPanel, "Loading Progress:");
     progressTitle.SetColor(0xFFCCCCCC);
 
-    var progressBar = Viper.GUI.ProgressBar.New(rightPanel);
+    var progressBar = GUI.ProgressBar.New(rightPanel);
     progressBar.SetSize(360, 20);
     progressBar.SetValue(0.0);
 
     // Section: Spinner
-    var spinnerTitle = Viper.GUI.Label.New(rightPanel, "Quantity:");
+    var spinnerTitle = GUI.Label.New(rightPanel, "Quantity:");
     spinnerTitle.SetColor(0xFFCCCCCC);
 
-    var spinner = Viper.GUI.Spinner.New(rightPanel);
+    var spinner = GUI.Spinner.New(rightPanel);
     spinner.SetRange(1.0, 100.0);
     spinner.SetStep(1.0);
     spinner.SetDecimals(0);
@@ -133,24 +136,24 @@ func main() {
     spinner.SetSize(120, 28);
 
     // Buttons
-    var buttonRow = Viper.GUI.HBox.New();
+    var buttonRow = GUI.HBox.New();
     buttonRow.SetSpacing(8.0);
     rightPanel.AddChild(buttonRow);
 
-    var submitBtn = Viper.GUI.Button.New(buttonRow, "Submit");
+    var submitBtn = GUI.Button.New(buttonRow, "Submit");
     submitBtn.SetSize(100, 36);
     submitBtn.SetStyle(1);  // Primary
 
-    var cancelBtn = Viper.GUI.Button.New(buttonRow, "Cancel");
+    var cancelBtn = GUI.Button.New(buttonRow, "Cancel");
     cancelBtn.SetSize(100, 36);
     cancelBtn.SetStyle(0);  // Default
 
-    var dangerBtn = Viper.GUI.Button.New(buttonRow, "Delete");
+    var dangerBtn = GUI.Button.New(buttonRow, "Delete");
     dangerBtn.SetSize(100, 36);
     dangerBtn.SetStyle(3);  // Danger
 
     // Status
-    var status = Viper.GUI.Label.New(rightPanel, "Ready");
+    var status = GUI.Label.New(rightPanel, "Ready");
     status.SetColor(0xFF888888);
 
     // Animation state
@@ -165,7 +168,7 @@ func main() {
 
         // Update slider label
         var fontSize = fontSlider.Value;
-        var fontSizeStr = Viper.Convert.ToString_Double(fontSize);
+        var fontSizeStr = Convert.ToString_Double(fontSize);
         sliderValue.SetText(fontSizeStr + " pt");
 
         // Update progress bar animation

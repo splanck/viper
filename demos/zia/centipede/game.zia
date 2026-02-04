@@ -2,7 +2,7 @@
 // CENTIPEDE - Game Controller
 // =============================================================================
 // Main game loop, state management, and rendering coordination
-// Uses Viper.Graphics.Canvas for all rendering
+// Uses Canvas for all rendering
 // =============================================================================
 
 module game;
@@ -18,12 +18,18 @@ bind "./scorpion";
 bind "./particle";
 bind "./popup";
 
+bind Viper.Game;
+bind Viper.Graphics;
+bind Viper.Random;
+bind Viper.Time;
+bind Viper.Fmt;
+
 // =============================================================================
 // GAME ENTITY - Main game controller
 // =============================================================================
 
 entity Game {
-    hide Viper.Graphics.Canvas canvas;
+    hide Canvas canvas;
     hide Integer gameState;
     hide Integer score;
     hide Integer highScore;
@@ -42,18 +48,18 @@ entity Game {
     hide popup.PopupManager popups;
 
     // Timers
-    hide Viper.Game.Timer spiderSpawnTimer;
-    hide Viper.Game.Timer fleaSpawnTimer;
-    hide Viper.Game.Timer scorpionSpawnTimer;
-    hide Viper.Game.Timer levelCompleteTimer;
-    hide Viper.Game.Timer gameOverTimer;
+    hide Timer spiderSpawnTimer;
+    hide Timer fleaSpawnTimer;
+    hide Timer scorpionSpawnTimer;
+    hide Timer levelCompleteTimer;
+    hide Timer gameOverTimer;
 
     // Animation
     hide Integer menuAnimFrame;
-    hide Viper.Game.Timer menuAnimTimer;
+    hide Timer menuAnimTimer;
 
     // Score display
-    hide Viper.Game.SmoothValue displayScore;
+    hide SmoothValue displayScore;
 
     // Input debouncing
     hide Boolean enterWasHeld;
@@ -62,7 +68,7 @@ entity Game {
 
     expose func run() {
         // Create canvas
-        canvas = Viper.Graphics.Canvas.New("CENTIPEDE", config.SCREEN_WIDTH, config.SCREEN_HEIGHT);
+        canvas = Canvas.New("CENTIPEDE", config.SCREEN_WIDTH, config.SCREEN_HEIGHT);
 
         // Initialize game state
         gameState = config.STATE_MENU;
@@ -73,17 +79,17 @@ entity Game {
         running = true;
 
         // Initialize timers
-        spiderSpawnTimer = Viper.Game.Timer.New();
-        fleaSpawnTimer = Viper.Game.Timer.New();
-        scorpionSpawnTimer = Viper.Game.Timer.New();
-        levelCompleteTimer = Viper.Game.Timer.New();
-        gameOverTimer = Viper.Game.Timer.New();
-        menuAnimTimer = Viper.Game.Timer.New();
+        spiderSpawnTimer = Timer.New();
+        fleaSpawnTimer = Timer.New();
+        scorpionSpawnTimer = Timer.New();
+        levelCompleteTimer = Timer.New();
+        gameOverTimer = Timer.New();
+        menuAnimTimer = Timer.New();
         menuAnimTimer.StartRepeating(10);
         menuAnimFrame = 0;
 
         // Initialize smooth score display (initial value, speed)
-        displayScore = Viper.Game.SmoothValue.New(0.0, 900.0);
+        displayScore = SmoothValue.New(0.0, 900.0);
 
         // Input debouncing
         enterWasHeld = false;
@@ -186,7 +192,7 @@ entity Game {
 
         // Draw high score
         canvas.Text(config.SCREEN_WIDTH / 2 - 84, 520, "HIGH SCORE:", config.COLOR_YELLOW);
-        canvas.Text(config.SCREEN_WIDTH / 2 - 36, 550, Viper.Fmt.Int(highScore), config.COLOR_WHITE);
+        canvas.Text(config.SCREEN_WIDTH / 2 - 36, 550, Int(highScore), config.COLOR_WHITE);
     }
 
     // =========================================================================
@@ -505,7 +511,7 @@ entity Game {
         canvas.Text(config.SCREEN_WIDTH / 2 - 72, config.SCREEN_HEIGHT / 2 - 50, "GAME OVER", config.COLOR_RED);
 
         canvas.Text(config.SCREEN_WIDTH / 2 - 72, config.SCREEN_HEIGHT / 2 - 10, "Final Score:", config.COLOR_WHITE);
-        canvas.Text(config.SCREEN_WIDTH / 2 - 36, config.SCREEN_HEIGHT / 2 + 20, Viper.Fmt.Int(score), config.COLOR_YELLOW);
+        canvas.Text(config.SCREEN_WIDTH / 2 - 36, config.SCREEN_HEIGHT / 2 + 20, Int(score), config.COLOR_YELLOW);
 
         if gameOverTimer.IsExpired {
             canvas.Text(config.SCREEN_WIDTH / 2 - 108, config.SCREEN_HEIGHT / 2 + 60, "Press R to Restart", config.COLOR_GRAY);
@@ -531,7 +537,7 @@ entity Game {
         canvas.Text(config.SCREEN_WIDTH / 2 - 108, config.SCREEN_HEIGHT / 2 - 30, "LEVEL COMPLETE!", config.COLOR_GREEN);
 
         canvas.Text(config.SCREEN_WIDTH / 2 - 48, config.SCREEN_HEIGHT / 2 + 10, "Level:", config.COLOR_WHITE);
-        canvas.Text(config.SCREEN_WIDTH / 2 + 24, config.SCREEN_HEIGHT / 2 + 10, Viper.Fmt.Int(level), config.COLOR_YELLOW);
+        canvas.Text(config.SCREEN_WIDTH / 2 + 24, config.SCREEN_HEIGHT / 2 + 10, Int(level), config.COLOR_YELLOW);
     }
 
     // =========================================================================
@@ -574,11 +580,11 @@ entity Game {
     hide func drawHUD() {
         // Score
         canvas.Text(10, 8, "SCORE:", config.COLOR_WHITE);
-        canvas.Text(80, 8, Viper.Fmt.Int(displayScore.ValueI64), config.COLOR_YELLOW);
+        canvas.Text(80, 8, Int(displayScore.ValueI64), config.COLOR_YELLOW);
 
         // High score
         canvas.Text(config.SCREEN_WIDTH / 2 - 40, 8, "HI:", config.COLOR_WHITE);
-        canvas.Text(config.SCREEN_WIDTH / 2, 8, Viper.Fmt.Int(highScore), config.COLOR_YELLOW);
+        canvas.Text(config.SCREEN_WIDTH / 2, 8, Int(highScore), config.COLOR_YELLOW);
 
         // Lives
         canvas.Text(config.SCREEN_WIDTH - 120, 8, "LIVES:", config.COLOR_WHITE);
@@ -589,7 +595,7 @@ entity Game {
 
         // Level
         canvas.Text(10, config.SCREEN_HEIGHT - 20, "LVL:", config.COLOR_WHITE);
-        canvas.Text(50, config.SCREEN_HEIGHT - 20, Viper.Fmt.Int(level), config.COLOR_CYAN);
+        canvas.Text(50, config.SCREEN_HEIGHT - 20, Int(level), config.COLOR_CYAN);
 
         // Draw player zone boundary line
         var zoneY = config.PLAYER_ZONE_TOP * config.TILE_SIZE;

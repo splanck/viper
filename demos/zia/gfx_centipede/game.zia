@@ -1,6 +1,9 @@
 // game.viper - Core game logic for Centipede
 module game;
 
+bind Viper.Graphics;
+bind Viper.Random;
+
 bind "./config";
 
 // Screen height for Y-flip (Y=0 is at bottom in this graphics system)
@@ -163,7 +166,7 @@ func initMushrooms() {
     while (row < 34) {
         var col = 0;
         while (col < config.GRID_COLS) {
-            var chance = Viper.Random.NextInt(100);
+            var chance = NextInt(100);
             if (chance < config.MUSHROOM_DENSITY) {
                 var idx = row * config.GRID_COLS + col;
                 mushrooms[idx] = config.MUSHROOM_HITS;
@@ -211,7 +214,7 @@ func setMushroomHits(col: Integer, row: Integer, hits: Integer) {
     mushrooms[idx] = hits;
 }
 
-func updatePlayer(canvas: Viper.Graphics.Canvas) {
+func updatePlayer(canvas: Canvas) {
     if (playerDead) {
         playerRespawnTimer = playerRespawnTimer - 1;
         if (playerRespawnTimer <= 0) {
@@ -432,14 +435,14 @@ func updateSpider() {
             spiderActive = true;
             spiderTimer = config.SPIDER_SPAWN_INTERVAL;
 
-            if (Viper.Random.NextInt(2) == 0) {
+            if (NextInt(2) == 0) {
                 spiderX = 0;
                 spiderDirX = 1;
             } else {
                 spiderX = config.SCREEN_WIDTH - config.SPIDER_SIZE;
                 spiderDirX = -1;
             }
-            spiderY = config.PLAYER_ZONE_TOP + Viper.Random.NextInt(80);
+            spiderY = config.PLAYER_ZONE_TOP + NextInt(80);
             spiderDirY = 1;
         }
         return;
@@ -457,7 +460,7 @@ func updateSpider() {
         spiderDirY = -1;
     }
 
-    if (Viper.Random.NextInt(20) == 0) {
+    if (NextInt(20) == 0) {
         spiderDirY = -spiderDirY;
     }
 
@@ -488,7 +491,7 @@ func killPlayer() {
     bulletActive = false;
 }
 
-func drawPlayer(canvas: Viper.Graphics.Canvas) {
+func drawPlayer(canvas: Canvas) {
     if (playerDead) {
         if (playerRespawnTimer > 90) {
             canvas.Disc(playerX + 6, flipY(playerY + 7), 15, COLOR_EXPLOSION1);
@@ -508,7 +511,7 @@ func drawPlayer(canvas: Viper.Graphics.Canvas) {
     canvas.Box(playerX + 4, py + 8, 4, 6, COLOR_PLAYER_GUN);
 }
 
-func drawBullet(canvas: Viper.Graphics.Canvas) {
+func drawBullet(canvas: Canvas) {
     if (bulletActive == false) {
         return;
     }
@@ -516,7 +519,7 @@ func drawBullet(canvas: Viper.Graphics.Canvas) {
     canvas.Box(bulletX, flipY(bulletY + config.BULLET_HEIGHT), config.BULLET_WIDTH, config.BULLET_HEIGHT, COLOR_BULLET);
 }
 
-func drawMushrooms(canvas: Viper.Graphics.Canvas) {
+func drawMushrooms(canvas: Canvas) {
     var row = 0;
     while (row < config.GRID_ROWS) {
         var col = 0;
@@ -538,7 +541,7 @@ func drawMushrooms(canvas: Viper.Graphics.Canvas) {
     }
 }
 
-func drawCentipede(canvas: Viper.Graphics.Canvas) {
+func drawCentipede(canvas: Canvas) {
     var i = 0;
     while (i < segmentCount) {
         var x = segX[i];
@@ -566,7 +569,7 @@ func drawCentipede(canvas: Viper.Graphics.Canvas) {
     }
 }
 
-func drawSpider(canvas: Viper.Graphics.Canvas) {
+func drawSpider(canvas: Canvas) {
     if (spiderActive == false) {
         return;
     }
@@ -587,7 +590,7 @@ func drawSpider(canvas: Viper.Graphics.Canvas) {
     }
 }
 
-func drawUI(canvas: Viper.Graphics.Canvas) {
+func drawUI(canvas: Canvas) {
     canvas.Text(10, flipY(20), "SCORE: " + score, COLOR_UI_SCORE);
     canvas.Text(200, flipY(20), "LEVEL: " + level, COLOR_UI_TEXT);
 
@@ -602,7 +605,7 @@ func drawUI(canvas: Viper.Graphics.Canvas) {
     canvas.Line(0, flipY(config.PLAYER_ZONE_TOP - 1), config.SCREEN_WIDTH, flipY(config.PLAYER_ZONE_TOP - 1), COLOR_GRID_LINE);
 }
 
-func drawGameOver(canvas: Viper.Graphics.Canvas) {
+func drawGameOver(canvas: Canvas) {
     // Box takes (x, y, width, height, color)
     canvas.Box(100, flipY(350), 280, 100, COLOR_OVERLAY);
     canvas.Frame(100, flipY(350), 280, 100, COLOR_UI_GAMEOVER);
@@ -611,14 +614,14 @@ func drawGameOver(canvas: Viper.Graphics.Canvas) {
     canvas.Text(130, flipY(345), "PRESS SPACE TO RESTART", COLOR_UI_TEXT);
 }
 
-func drawPaused(canvas: Viper.Graphics.Canvas) {
+func drawPaused(canvas: Canvas) {
     // Box takes (x, y, width, height, color)
     canvas.Box(160, flipY(330), 160, 40, COLOR_OVERLAY);
     canvas.Frame(160, flipY(330), 160, 40, COLOR_UI_TEXT);
     canvas.Text(200, flipY(317), "PAUSED", COLOR_UI_TEXT);
 }
 
-func update(canvas: Viper.Graphics.Canvas) {
+func update(canvas: Canvas) {
     frameCount = frameCount + 1;
 
     if (gameOver) {
@@ -638,7 +641,7 @@ func update(canvas: Viper.Graphics.Canvas) {
     updateSpider();
 }
 
-func draw(canvas: Viper.Graphics.Canvas) {
+func draw(canvas: Canvas) {
     // Clear screen to black - Box takes (x, y, width, height, color)
     canvas.Box(0, 0, config.SCREEN_WIDTH, config.SCREEN_HEIGHT, 0);
 

@@ -51,13 +51,15 @@ Source Code → Lexer → Parser → Semantic Analyzer → IL Generator → Runt
 Let's trace a simple program through this entire journey. We'll use this example:
 
 ```rust
+bind Viper.Terminal;
+
 func add(a: Integer, b: Integer) -> Integer {
     return a + b;
 }
 
 func start() {
     var result = add(3, 4);
-    Viper.Terminal.Say(result);
+    Terminal.Say(result);
 }
 ```
 
@@ -232,8 +234,8 @@ Variables exist within scopes. The semantic analyzer ensures you only use variab
 
 ```rust
 func test() {
-    Viper.Terminal.Say(x);  // Error: 'x' not defined
-    var x = 5;               // too late!
+    Terminal.Say(x);  // Error: 'x' not defined
+    var x = 5;         // too late!
 }
 
 func another() {
@@ -789,7 +791,7 @@ func max(a: Integer, b: Integer) -> Integer {
 
 func start() {
     var result = max(10, 25);
-    Viper.Terminal.Say(result);
+    Terminal.Say(result);
 }
 ```
 
@@ -938,12 +940,14 @@ Understanding the compilation pipeline gives you powerful debugging strategies.
 
 1. **Print intermediate values** to narrow down where logic goes wrong
    ```rust
+   bind Viper.Terminal;
+
    func calculate(x: Integer) -> Integer {
-       Viper.Terminal.Say("Input: " + x.toString());
+       Terminal.Say("Input: " + x.toString());
        var step1 = x * 2;
-       Viper.Terminal.Say("After multiply: " + step1.toString());
+       Terminal.Say("After multiply: " + step1.toString());
        var step2 = step1 + 10;
-       Viper.Terminal.Say("After add: " + step2.toString());
+       Terminal.Say("After add: " + step2.toString());
        return step2;
    }
    ```
@@ -986,8 +990,10 @@ Viper's architecture allows three different languages to share one runtime. Let'
 
 **Zia** (modern, curly-brace syntax)
 ```rust
+bind Viper.Terminal;
+
 func greet(name: String) {
-    Viper.Terminal.Say("Hello, " + name + "!");
+    Terminal.Say("Hello, " + name + "!");
 }
 
 func start() {

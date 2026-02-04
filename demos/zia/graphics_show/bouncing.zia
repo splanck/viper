@@ -9,6 +9,13 @@ module bouncing;
 
 bind "./colors";
 
+bind Viper.Random;
+bind Viper.Graphics;
+bind Viper.Graphics.Color;
+bind Viper.Math;
+bind Viper.Fmt;
+bind Viper.Time;
+
 // Ball entity with physics
 entity Ball {
     expose Number x;
@@ -22,8 +29,8 @@ entity Ball {
     expose func init(px: Number, py: Number, r: Integer, c: Integer) {
         x = px;
         y = py;
-        vx = (Viper.Random.Next() - 0.5) * 8.0;
-        vy = (Viper.Random.Next() - 0.5) * 8.0;
+        vx = (Next() - 0.5) * 8.0;
+        vy = (Next() - 0.5) * 8.0;
         radius = r;
         color = c;
         mass = r * r;
@@ -52,9 +59,9 @@ entity Ball {
         }
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
-        var px = Viper.Math.Floor(x);
-        var py = Viper.Math.Floor(y);
+    expose func draw(canvas: Canvas) {
+        var px = Floor(x);
+        var py = Floor(y);
 
         canvas.Disc(px, py, radius, color);
 
@@ -74,7 +81,7 @@ entity Ball {
     expose func distanceTo(other: Ball) -> Number {
         var dx = x - other.x;
         var dy = y - other.y;
-        return Viper.Math.Sqrt(dx * dx + dy * dy);
+        return Sqrt(dx * dx + dy * dy);
     }
 
     expose func collidesWith(other: Ball) -> Boolean {
@@ -85,7 +92,7 @@ entity Ball {
     expose func resolveCollision(other: Ball) {
         var dx = other.x - x;
         var dy = other.y - y;
-        var dist = Viper.Math.Sqrt(dx * dx + dy * dy);
+        var dist = Sqrt(dx * dx + dy * dy);
 
         if dist == 0.0 {
             return;
@@ -134,8 +141,8 @@ entity BallManager {
     }
 
     expose func addBall(px: Number, py: Number) {
-        var radius = 15 + Viper.Random.NextInt(25);
-        var color = colors.rainbowPhase(Viper.Random.NextInt(360));
+        var radius = 15 + NextInt(25);
+        var color = colors.rainbowPhase(NextInt(360));
 
         var ball = new Ball();
         ball.init(px, py, radius, color);
@@ -145,8 +152,8 @@ entity BallManager {
     expose func addRandomBalls(count: Integer, screenWidth: Integer, screenHeight: Integer) {
         var i = 0;
         while i < count {
-            var px = 50 + Viper.Random.NextInt(screenWidth - 100);
-            var py = 50 + Viper.Random.NextInt(screenHeight / 2);
+            var px = 50 + NextInt(screenWidth - 100);
+            var py = 50 + NextInt(screenHeight / 2);
             addBall(px, py);
             i = i + 1;
         }
@@ -176,7 +183,7 @@ entity BallManager {
         }
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         var i = 0;
         while i < balls.count() {
             var ball = balls.get(i);
@@ -195,7 +202,7 @@ entity BallManager {
 }
 
 // Run the bouncing demo
-func run(canvas: Viper.Graphics.Canvas) {
+func run(canvas: Canvas) {
     var width = canvas.Width;
     var height = canvas.Height;
 
@@ -223,8 +230,8 @@ func run(canvas: Viper.Graphics.Canvas) {
         }
 
         if canvas.KeyHeld(32) != 0 and spawnTimer == 0 {
-            var px = 100 + Viper.Random.NextInt(width - 200);
-            var py = 50 + Viper.Random.NextInt(100);
+            var px = 100 + NextInt(width - 200);
+            var py = 50 + NextInt(100);
             manager.addBall(px, py);
             spawnTimer = 10;
         }
@@ -258,18 +265,18 @@ func run(canvas: Viper.Graphics.Canvas) {
 
         manager.update(width, height);
 
-        canvas.Clear(Viper.Graphics.Color.RGB(20, 20, 30));
+        canvas.Clear(RGB(20, 20, 30));
 
-        canvas.Box(0, height - 5, width, 5, Viper.Graphics.Color.RGB(60, 60, 80));
+        canvas.Box(0, height - 5, width, 5, RGB(60, 60, 80));
 
         manager.draw(canvas);
 
         canvas.TextBg(10, 10, "BOUNCING BALLS", colors.WHITE, colors.BLACK);
 
-        var countStr = "Balls: " + Viper.Fmt.Int(manager.getCount());
+        var countStr = "Balls: " + Int(manager.getCount());
         canvas.TextBg(10, 28, countStr, colors.GRAY, colors.BLACK);
 
-        var gravStr = "Gravity: " + Viper.Fmt.Num(manager.gravity);
+        var gravStr = "Gravity: " + Num(manager.gravity);
         canvas.TextBg(10, 46, gravStr, colors.GRAY, colors.BLACK);
 
         canvas.TextBg(10, height - 30, "SPACE: Add | UP/DOWN: Gravity | C: Clear | R: Reset | ESC: Exit", colors.DARK_GRAY, colors.BLACK);

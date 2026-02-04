@@ -1,6 +1,9 @@
 // test_functions.viper - Test SQL functions
 module test_functions;
 
+bind Viper.Terminal;
+bind Viper.Fmt;
+
 bind "./executor";
 
 Integer passed = 0;
@@ -9,10 +12,10 @@ Integer failed = 0;
 func assert(condition: Boolean, msg: String) {
     if condition {
         passed = passed + 1;
-        Viper.Terminal.Say("  PASS: " + msg);
+        Terminal.Say("  PASS: " + msg);
     } else {
         failed = failed + 1;
-        Viper.Terminal.Say("  FAIL: " + msg);
+        Terminal.Say("  FAIL: " + msg);
     }
 }
 
@@ -25,24 +28,24 @@ func assertValue(result: QueryResult, expected: String, msg: String) {
             var actual = val.toString();
             if actual == expected {
                 passed = passed + 1;
-                Viper.Terminal.Say("  PASS: " + msg + " = " + actual);
+                Terminal.Say("  PASS: " + msg + " = " + actual);
             } else {
                 failed = failed + 1;
-                Viper.Terminal.Say("  FAIL: " + msg + " expected '" + expected + "' got '" + actual + "'");
+                Terminal.Say("  FAIL: " + msg + " expected '" + expected + "' got '" + actual + "'");
             }
             return;
         }
     }
     failed = failed + 1;
-    Viper.Terminal.Say("  FAIL: " + msg + " - no result");
+    Terminal.Say("  FAIL: " + msg + " - no result");
 }
 
 func main() {
     var exec = new Executor();
     exec.init();
 
-    Viper.Terminal.Say("=== SQL Functions Tests ===");
-    Viper.Terminal.Say("");
+    Terminal.Say("=== SQL Functions Tests ===");
+    Terminal.Say("");
 
     // Create test table
     exec.executeSql("CREATE TABLE test (id INTEGER, name TEXT, val INTEGER)");
@@ -50,7 +53,7 @@ func main() {
     exec.executeSql("INSERT INTO test VALUES (2, '  spaces  ', -10)");
 
     // String Functions
-    Viper.Terminal.Say("Testing String Functions...");
+    Terminal.Say("Testing String Functions...");
 
     var r1 = exec.executeSql("SELECT UPPER(name) FROM test WHERE id = 1");
     assertValue(r1, "HELLO WORLD", "UPPER");
@@ -89,8 +92,8 @@ func main() {
     assertValue(r12, "0", "INSTR not found");
 
     // Math Functions
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("Testing Math Functions...");
+    Terminal.Say("");
+    Terminal.Say("Testing Math Functions...");
 
     var r13 = exec.executeSql("SELECT ABS(val) FROM test WHERE id = 2");
     assertValue(r13, "10", "ABS of negative");
@@ -108,8 +111,8 @@ func main() {
     assertValue(r17, "20", "MAX of two values");
 
     // Null/Conditional Functions
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("Testing Null/Conditional Functions...");
+    Terminal.Say("");
+    Terminal.Say("Testing Null/Conditional Functions...");
 
     var r18 = exec.executeSql("SELECT COALESCE(val, 0) FROM test WHERE id = 1");
     assertValue(r18, "42", "COALESCE with non-null");
@@ -136,8 +139,8 @@ func main() {
     assertValue(r25, "text", "TYPEOF text");
 
     // Print results
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("=== Results ===");
-    Viper.Terminal.Say("Passed: " + Viper.Fmt.Int(passed));
-    Viper.Terminal.Say("Failed: " + Viper.Fmt.Int(failed));
+    Terminal.Say("");
+    Terminal.Say("=== Results ===");
+    Terminal.Say("Passed: " + Fmt.Int(passed));
+    Terminal.Say("Failed: " + Fmt.Int(failed));
 }

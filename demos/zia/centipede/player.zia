@@ -11,6 +11,9 @@ bind "./config";
 bind "./utils";
 bind "./mushroom";
 
+bind Viper.Game;
+bind Viper.Graphics;
+
 // =============================================================================
 // BULLET ENTITY - Player's projectile
 // =============================================================================
@@ -67,7 +70,7 @@ entity Bullet {
         return utils.screenToGridY(screenY);
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         if active {
             var bulletWidth = 4;
             var bulletHeight = 12;
@@ -85,7 +88,7 @@ entity Player {
     hide Integer screenX;
     hide Integer screenY;
     hide Bullet bullet;
-    hide Viper.Game.Timer fireCooldown;
+    hide Timer fireCooldown;
     hide Boolean canFire;
 
     // Starting position (for reset)
@@ -104,7 +107,7 @@ entity Player {
         bullet.init();
 
         // Initialize fire cooldown
-        fireCooldown = Viper.Game.Timer.New();
+        fireCooldown = Timer.New();
         canFire = true;
     }
 
@@ -115,7 +118,7 @@ entity Player {
         canFire = true;
     }
 
-    expose func update(canvas: Viper.Graphics.Canvas, field: mushroom.MushroomField) {
+    expose func update(canvas: Canvas, field: mushroom.MushroomField) {
         // Handle movement input
         var moveX = 0;
         var moveY = 0;
@@ -225,7 +228,7 @@ entity Player {
         bullet.destroy();
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         // Draw player ship
         var centerX = screenX + config.TILE_SIZE / 2;
         var centerY = screenY + config.TILE_SIZE / 2;

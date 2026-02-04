@@ -17,6 +17,14 @@ bind "./snake";
 bind "./fireworks";
 bind "./sierpinski";
 
+bind Viper.Random;
+bind Viper.Graphics;
+bind Viper.Graphics.Canvas;
+bind Viper.Graphics.Color;
+bind Viper.Math;
+bind Viper.String;
+bind Viper.Time;
+
 // Menu item structure
 entity MenuItem {
     expose String name;
@@ -38,10 +46,10 @@ entity MenuStar {
     expose Integer brightness;
 
     expose func init(screenWidth: Integer, screenHeight: Integer) {
-        x = Viper.Random.Next() * screenWidth;
-        y = Viper.Random.Next() * screenHeight;
-        speed = 0.5 + Viper.Random.Next() * 2.0;
-        brightness = 50 + Viper.Random.NextInt(200);
+        x = Next() * screenWidth;
+        y = Next() * screenHeight;
+        speed = 0.5 + Next() * 2.0;
+        brightness = 50 + NextInt(200);
     }
 
     expose func update(screenWidth: Integer) {
@@ -51,9 +59,9 @@ entity MenuStar {
         }
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
-        var color = Viper.Graphics.Color.RGB(brightness, brightness, brightness);
-        canvas.Plot(Viper.Math.Floor(x), Viper.Math.Floor(y), color);
+    expose func draw(canvas: Canvas) {
+        var color = RGB(brightness, brightness, brightness);
+        canvas.Plot(Floor(x), Floor(y), color);
     }
 }
 
@@ -129,7 +137,7 @@ entity Menu {
         }
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas, width: Integer, height: Integer) {
+    expose func draw(canvas: Canvas, width: Integer, height: Integer) {
         if not visible {
             return;
         }
@@ -145,18 +153,18 @@ entity Menu {
         // Draw title with rainbow effect
         var titleY = 60;
         var title = "GRAPHICS SHOW";
-        var titleX = (width - Viper.String.Length(title) * 8) / 2;
+        var titleX = (width - Length(title) * 8) / 2;
 
         // Draw each character with rainbow color
         var charIdx = 0;
-        while charIdx < Viper.String.Length(title) {
+        while charIdx < Length(title) {
             var hue = (charIdx * 30 + titlePhase * 3) - ((charIdx * 30 + titlePhase * 3) / 360) * 360;
             var charColor = colors.rainbowPhase(hue);
 
             // Get single character
-            var ch = Viper.String.Mid(title, charIdx + 1);
-            ch = Viper.String.Left(ch, 1);
-            if Viper.String.Length(ch) > 0 {
+            var ch = Mid(title, charIdx + 1);
+            ch = Left(ch, 1);
+            if Length(ch) > 0 {
                 canvas.Text(titleX + charIdx * 12, titleY, ch, charColor);
             }
             charIdx = charIdx + 1;
@@ -164,8 +172,8 @@ entity Menu {
 
         // Draw subtitle
         var subtitle = "A Viperlang Graphics Framework Demo";
-        var subX = (width - Viper.String.Length(subtitle) * 8) / 2;
-        canvas.Text(subX, titleY + 30, subtitle, Viper.Graphics.Color.RGB(150, 150, 150));
+        var subX = (width - Length(subtitle) * 8) / 2;
+        canvas.Text(subX, titleY + 30, subtitle, RGB(150, 150, 150));
 
         // Draw menu items
         var menuY = 150;
@@ -179,7 +187,7 @@ entity Menu {
 
             if i == selected {
                 // Selected item - draw highlight box
-                var boxColor = Viper.Graphics.Color.RGB(40, 60, 100);
+                var boxColor = RGB(40, 60, 100);
                 canvas.RoundBox(itemX - 20, itemY - 5, 240, 28, 5, boxColor);
 
                 // Draw selection indicator
@@ -190,7 +198,7 @@ entity Menu {
                 canvas.Text(itemX, itemY, item.name, colors.WHITE);
             } else {
                 // Unselected item
-                canvas.Text(itemX, itemY, item.name, Viper.Graphics.Color.RGB(120, 120, 120));
+                canvas.Text(itemX, itemY, item.name, RGB(120, 120, 120));
             }
 
             i = i + 1;
@@ -199,21 +207,21 @@ entity Menu {
         // Draw description for selected item
         var selectedItem = items.get(selected);
         var descY = menuY + items.count() * menuItemHeight + 30;
-        var descX = (width - Viper.String.Length(selectedItem.description) * 8) / 2;
-        canvas.Text(descX, descY, selectedItem.description, Viper.Graphics.Color.RGB(100, 150, 200));
+        var descX = (width - Length(selectedItem.description) * 8) / 2;
+        canvas.Text(descX, descY, selectedItem.description, RGB(100, 150, 200));
 
         // Draw instructions
         var instructions = "UP/DOWN: Select | ENTER: Run Demo | ESC: Exit";
-        var instX = (width - Viper.String.Length(instructions) * 8) / 2;
-        canvas.Text(instX, height - 40, instructions, Viper.Graphics.Color.RGB(80, 80, 80));
+        var instX = (width - Length(instructions) * 8) / 2;
+        canvas.Text(instX, height - 40, instructions, RGB(80, 80, 80));
 
         // Draw version/credits
-        canvas.Text(10, height - 20, "Viper Graphics Framework v1.0", Viper.Graphics.Color.RGB(60, 60, 60));
+        canvas.Text(10, height - 20, "Viper Graphics Framework v1.0", RGB(60, 60, 60));
     }
 }
 
 // Run a specific demo
-func runDemo(demoIndex: Integer, canvas: Viper.Graphics.Canvas) {
+func runDemo(demoIndex: Integer, canvas: Canvas) {
     if demoIndex == 0 {
         starfield.run(canvas);
     } else if demoIndex == 1 {
@@ -241,7 +249,7 @@ func start() {
     // Create canvas
     var width = 800;
     var height = 600;
-    var canvas = new Viper.Graphics.Canvas("Graphics Show", width, height);
+    var canvas = new Canvas("Graphics Show", width, height);
 
     // Create menu
     var menu = new Menu();
@@ -346,7 +354,7 @@ func start() {
         menu.update(width);
 
         // Clear and draw
-        canvas.Clear(Viper.Graphics.Color.RGB(10, 15, 25));
+        canvas.Clear(RGB(10, 15, 25));
         menu.draw(canvas, width, height);
 
         canvas.Flip();

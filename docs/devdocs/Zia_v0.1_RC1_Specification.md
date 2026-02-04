@@ -45,6 +45,8 @@ Zia programs are made of **modules** containing **types** and **functions**.
 ```viper
 module HelloWorld;
 
+bind Viper.Terminal;
+
 // Two kinds of types: values (copied) and entities (referenced)
 value Point {
     Number x;
@@ -63,7 +65,7 @@ entity User {
 // Async is built-in
 async func main() {
     User user = new User(name: "Alice", email: "alice@example.com");
-    Viper.Terminal.Say(user.greet());
+    Say(user.greet());
 }
 ```
 
@@ -205,18 +207,20 @@ Both values and entities can implement interfaces.
 - The `?` operator propagates both `Error` (from Result) and `None` (from Option)
 
 ```viper
+bind Viper.Terminal;
+
 Text? maybe = null;           // Same as: Option[Text] = None
 maybe = "Hello";              // Same as: Some("Hello")
 
 // Pattern matching (preferred)
 match maybe {
-    Some(text) => Viper.Terminal.Say(text);
-    None => Viper.Terminal.Say("Nothing");
+    Some(text) => Say(text);
+    None => Say("Nothing");
 }
 
 // If-let sugar (future feature)
 if let text = maybe {
-    Viper.Terminal.Say(text);  // text is Text, not Text?
+    Say(text);  // text is Text, not Text?
 }
 
 // Optional chaining and null coalescing
@@ -299,8 +303,9 @@ if temperature > 30 {
 Text status = isOnline ? "Connected" : "Offline";
 
 // If-let for optionals (future feature)
+bind Viper.Terminal;
 if let user = findUser(id) {
-    Viper.Terminal.Say(user.name);  // user is User, not User?
+    Say(user.name);  // user is User, not User?
 }
 
 // While-let (future feature)
@@ -343,13 +348,14 @@ while hasMore() {
 }
 
 // Range (half-open: includes start, excludes end)
+bind Viper.Terminal;
 for i in 0..10 {
-    Viper.Terminal.SayInt(i);  // 0 through 9
+    SayInt(i);  // 0 through 9
 }
 
 // Inclusive range
 for i in 0..=10 {
-    Viper.Terminal.SayInt(i);  // 0 through 10
+    SayInt(i);  // 0 through 10
 }
 ```
 
@@ -360,6 +366,9 @@ for i in 0..=10 {
 **No exceptions!** Errors are just values. Use `Result[T]` for operations that can fail:
 
 ```viper
+bind Viper.IO.File;
+bind Viper.Terminal;
+
 value Result[T] = Ok(T) | Error(ErrorInfo)
 
 value ErrorInfo {
@@ -369,21 +378,21 @@ value ErrorInfo {
 }
 
 func readFile(path: Text) -> Result[Text] {
-    if !Viper.IO.File.Exists(path) {
+    if !Exists(path) {
         return Error(ErrorInfo(
             code: "NOT_FOUND",
             message: "File not found: ${path}"
         ));
     }
 
-    Text contents = Viper.IO.File.ReadAllText(path);
+    Text contents = ReadAllText(path);
     return Ok(contents);
 }
 
 // Handle with pattern matching
 match readFile("data.txt") {
     Ok(content) => process(content);
-    Error(e) => Viper.Terminal.Say("Failed: ${e.message}");
+    Error(e) => Say("Failed: ${e.message}");
 }
 ```
 
@@ -435,9 +444,11 @@ func getUser(id: Text) -> User {
 `async { }` creates a `Task[T]`. Tasks are futures that can be awaited:
 
 ```viper
+bind Viper.IO.File;
+
 async func loadData(path: Text) -> Text {
     // Future: async file I/O
-    return Viper.IO.File.ReadAllText(path);
+    return ReadAllText(path);
 }
 
 async func main() {
@@ -576,11 +587,24 @@ Every file declares its module:
 ```viper
 module MyApp.Services.UserService;
 
-bind MyApp.Models.User;
-bind MyApp.Data.Database as DB;
-bind Viper.IO.File;
+// File binds - import Zia source modules
+bind "./models";                  // Relative path
+bind "./database" as DB;          // With alias
+
+// Namespace binds - import Viper runtime namespaces
+bind Viper.IO;                    // Import all (File, Dir, etc.)
+bind Viper.Terminal;              // Say, Print, ReadLine, etc.
+bind Viper.Terminal as T;         // With alias: T.Say("hi")
+bind Viper.Terminal { Say };      // Import specific symbols only
 
 // Module contents...
+```
+
+When you bind a runtime namespace, its symbols become available without qualification:
+
+```viper
+bind Viper.Terminal;
+Say("Hello!");                    // Instead of Viper.Terminal.Say()
 ```
 
 ### Visibility
@@ -616,6 +640,8 @@ entity UserService {
 - `collection.get(i)` — Returns `Option[T]` (safe access)
 
 ```viper
+bind Viper.Terminal;
+
 List list = new List();
 list.add(1);
 list.add(2);
@@ -627,9 +653,9 @@ Integer first = list.get(0);  // 1
 // Safe access
 if list.get_Count() > 10 {
     Integer val = list.get(10);
-    Viper.Terminal.SayInt(val);
+    SayInt(val);
 } else {
-    Viper.Terminal.Say("No element at index 10");
+    Say("No element at index 10");
 }
 ```
 

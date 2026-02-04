@@ -15,9 +15,11 @@ bind "./tools/eyedropper";
 bind "./ui/button";
 bind "./ui/slider";
 
+bind Viper.Graphics;
+
 // Change only the 'canvas' field name to avoid module collision
 entity TestApp {
-    hide Viper.Graphics.Canvas gfx;
+    hide Canvas gfx;
 
     // Changed from 'canvas' to 'drawCanvas' to avoid module collision
     expose canvas.DrawingCanvas drawCanvas;
@@ -66,7 +68,7 @@ entity TestApp {
     hide Integer canvasOffsetY;
 
     expose func init() {
-        gfx = Viper.Graphics.Canvas.New(config.WINDOW_TITLE, config.WINDOW_WIDTH, config.WINDOW_HEIGHT);
+        gfx = Canvas.New(config.WINDOW_TITLE, config.WINDOW_WIDTH, config.WINDOW_HEIGHT);
 
         drawCanvas = new canvas.DrawingCanvas();
         drawCanvas.initWithSize(1024, 768);

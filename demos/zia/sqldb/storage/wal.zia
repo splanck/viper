@@ -3,6 +3,10 @@
 
 module wal;
 
+bind Viper.IO;
+bind Viper.String;
+bind Viper.Fmt;
+
 bind "./page";
 bind "./serializer";
 
@@ -60,7 +64,7 @@ entity LSN {
     }
 
     expose func toString() -> String {
-        return Viper.Fmt.Int(fileNumber) + ":" + Viper.Fmt.Int(offset);
+        return Fmt.Int(fileNumber) + ":" + Fmt.Int(offset);
     }
 }
 
@@ -171,7 +175,7 @@ entity LogRecord {
     }
 
     expose func toString() -> String {
-        return "[" + lsn.toString() + "] " + recordTypeString() + " txn=" + Viper.Fmt.Int(txnId);
+        return "[" + lsn.toString() + "] " + recordTypeString() + " txn=" + Fmt.Int(txnId);
     }
 }
 
@@ -410,8 +414,8 @@ entity WALManager {
 
         // Read existing content
         var content = "";
-        if Viper.IO.File.Exists(filename) {
-            content = Viper.IO.File.ReadAllText(filename);
+        if IO.File.Exists(filename) {
+            content = IO.File.ReadAllText(filename);
         }
 
         // Append buffer content with bounds checking
@@ -426,11 +430,11 @@ entity WALManager {
             if b > 255 {
                 b = b % 256;
             }
-            content = content + Viper.String.Chr(b);
+            content = content + String.Chr(b);
             i = i + 1;
         }
 
-        Viper.IO.File.WriteAllText(filename, content);
+        IO.File.WriteAllText(filename, content);
 
         // Update last flushed LSN
         lastFlushedLSN.fileNumber = currentFile;
@@ -451,7 +455,7 @@ entity WALManager {
 
     // Get log file path
     hide func logFilePath(fileNum: Integer) -> String {
-        return logDir + "/wal_" + Viper.Fmt.Int(fileNum) + ".log";
+        return logDir + "/wal_" + Fmt.Int(fileNum) + ".log";
     }
 
     //=========================================================================
@@ -463,20 +467,20 @@ entity WALManager {
         var records: List[LogRecord] = [];
         var filename = logFilePath(fileNum);
 
-        if Viper.IO.File.Exists(filename) == false {
+        if IO.File.Exists(filename) == false {
             return records;
         }
 
-        var content = Viper.IO.File.ReadAllText(filename);
+        var content = IO.File.ReadAllText(filename);
         var buf = new BinaryBuffer();
         buf.init();
 
         // Convert string to buffer
         var i = 0;
-        var len = Viper.String.Length(content);
+        var len = String.Length(content);
         while i < len {
-            var ch = Viper.String.Substring(content, i, 1);
-            var code = Viper.String.Asc(ch);
+            var ch = String.Substring(content, i, 1);
+            var code = String.Asc(ch);
             buf.writeByte(code);
             i = i + 1;
         }
@@ -555,11 +559,11 @@ entity RecoveryResult {
 
     expose func toString() -> String {
         var result = "Recovery Result:\n";
-        result = result + "  Committed: " + Viper.Fmt.Int(committedTxns.count()) + "\n";
-        result = result + "  Aborted: " + Viper.Fmt.Int(abortedTxns.count()) + "\n";
-        result = result + "  Active at crash: " + Viper.Fmt.Int(activeTxnsAtCrash.count()) + "\n";
-        result = result + "  Redo operations: " + Viper.Fmt.Int(redoCount) + "\n";
-        result = result + "  Undo operations: " + Viper.Fmt.Int(undoCount);
+        result = result + "  Committed: " + Fmt.Int(committedTxns.count()) + "\n";
+        result = result + "  Aborted: " + Fmt.Int(abortedTxns.count()) + "\n";
+        result = result + "  Active at crash: " + Fmt.Int(activeTxnsAtCrash.count()) + "\n";
+        result = result + "  Redo operations: " + Fmt.Int(redoCount) + "\n";
+        result = result + "  Undo operations: " + Fmt.Int(undoCount);
         return result;
     }
 }

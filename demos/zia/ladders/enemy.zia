@@ -2,6 +2,8 @@
 // Enemies patrol platforms and chase the player
 module enemy;
 
+bind Viper.Graphics;
+
 bind "./config";
 bind "./colors";
 
@@ -186,7 +188,7 @@ entity Enemy {
     }
 
     // Draw the enemy
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         if active == 0 {
             return;
         }

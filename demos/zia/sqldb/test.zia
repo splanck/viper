@@ -3,6 +3,9 @@
 
 module test;
 
+bind Viper.Terminal;
+bind Viper.Fmt;
+
 bind "./executor";
 
 //=============================================================================
@@ -15,16 +18,16 @@ Integer testsFailed = 0;
 func assert(condition: Boolean, message: String) {
     if condition {
         testsPassed = testsPassed + 1;
-        Viper.Terminal.Say("  PASS: " + message);
+        Terminal.Say("  PASS: " + message);
     } else {
         testsFailed = testsFailed + 1;
-        Viper.Terminal.Say("  FAIL: " + message);
+        Terminal.Say("  FAIL: " + message);
     }
 }
 
 func runTests() {
-    Viper.Terminal.Say("=== ViperSQL Test Suite ===");
-    Viper.Terminal.Say("");
+    Terminal.Say("=== ViperSQL Test Suite ===");
+    Terminal.Say("");
 
     testCreateTable();
     testInsert();
@@ -32,10 +35,10 @@ func runTests() {
     testUpdate();
     testDelete();
 
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("=== Results ===");
-    Viper.Terminal.Say("Passed: " + Viper.Fmt.Int(testsPassed));
-    Viper.Terminal.Say("Failed: " + Viper.Fmt.Int(testsFailed));
+    Terminal.Say("");
+    Terminal.Say("=== Results ===");
+    Terminal.Say("Passed: " + Fmt.Int(testsPassed));
+    Terminal.Say("Failed: " + Fmt.Int(testsFailed));
 }
 
 //=============================================================================
@@ -43,7 +46,7 @@ func runTests() {
 //=============================================================================
 
 func testCreateTable() {
-    Viper.Terminal.Say("Testing CREATE TABLE...");
+    Terminal.Say("Testing CREATE TABLE...");
 
     var exec = new Executor();
     exec.init();
@@ -60,7 +63,7 @@ func testCreateTable() {
 }
 
 func testInsert() {
-    Viper.Terminal.Say("Testing INSERT...");
+    Terminal.Say("Testing INSERT...");
 
     var exec = new Executor();
     exec.init();
@@ -80,7 +83,7 @@ func testInsert() {
 }
 
 func testSelect() {
-    Viper.Terminal.Say("Testing SELECT...");
+    Terminal.Say("Testing SELECT...");
 
     var exec = new Executor();
     exec.init();
@@ -107,7 +110,7 @@ func testSelect() {
 }
 
 func testUpdate() {
-    Viper.Terminal.Say("Testing UPDATE...");
+    Terminal.Say("Testing UPDATE...");
 
     var exec = new Executor();
     exec.init();
@@ -125,7 +128,7 @@ func testUpdate() {
 }
 
 func testDelete() {
-    Viper.Terminal.Say("Testing DELETE...");
+    Terminal.Say("Testing DELETE...");
 
     var exec = new Executor();
     exec.init();

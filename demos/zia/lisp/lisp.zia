@@ -1,5 +1,11 @@
 module lisp;
 
+bind Viper.Terminal;
+bind Viper.String;
+bind Viper.Parse;
+bind Viper.IO;
+bind Viper.Environment;
+
 // ============================================================
 // Lisp Interpreter in Zia — stress test of the Viper platform
 // ============================================================
@@ -195,15 +201,15 @@ func envSetBang(e: Env, name: String, val: LispVal) -> Boolean {
 // === String helpers ===
 
 func strLen(s: String) -> Integer {
-    return Viper.String.Length(s);
+    return String.Length(s);
 }
 
 func strCharAt(s: String, i: Integer) -> String {
-    return Viper.String.Left(Viper.String.Mid(s, i + 1), 1);
+    return String.Left(String.Mid(s, i + 1), 1);
 }
 
 func strCharCode(s: String, i: Integer) -> Integer {
-    return Viper.String.Asc(Viper.String.Mid(s, i + 1));
+    return String.Asc(String.Mid(s, i + 1));
 }
 
 func isDigit(code: Integer) -> Boolean {
@@ -349,7 +355,7 @@ func parseExpr() -> LispVal {
     var tok = nextToken();
 
     if tok.type == TOK_NUMBER {
-        return mkInt(Viper.Parse.IntOr(tok.value, 0));
+        return mkInt(Parse.IntOr(tok.value, 0));
     }
 
     if tok.type == TOK_STRING {
@@ -987,15 +993,15 @@ func applyBuiltin(name: String, args: LispVal) -> LispVal {
     if name == "display" {
         var v = getCar(args);
         if v.tag == T_STR {
-            Viper.Terminal.Print(v.strVal);
+            Terminal.Print(v.strVal);
         } else {
-            Viper.Terminal.Print(lispPrint(v));
+            Terminal.Print(lispPrint(v));
         }
         return mkNil();
     }
 
     if name == "newline" {
-        Viper.Terminal.Say("");
+        Terminal.Say("");
         return mkNil();
     }
 
@@ -1019,7 +1025,7 @@ func applyBuiltin(name: String, args: LispVal) -> LispVal {
     }
 
     if name == "string->number" {
-        return mkInt(Viper.Parse.IntOr(getCar(args).strVal, 0));
+        return mkInt(Parse.IntOr(getCar(args).strVal, 0));
     }
 
     // --- Higher-order ---
@@ -1174,7 +1180,7 @@ func runProgram(source: String, env: Env) {
     var exprs = parse(source);
 
     if hasError {
-        Viper.Terminal.Say("Parse error: " + errorMsg);
+        Terminal.Say("Parse error: " + errorMsg);
         return;
     }
 
@@ -1183,7 +1189,7 @@ func runProgram(source: String, env: Env) {
         clearError();
         var result = eval(exprs.get(i), env);
         if hasError {
-            Viper.Terminal.Say("Error: " + errorMsg);
+            Terminal.Say("Error: " + errorMsg);
         }
         i = i + 1;
     }
@@ -1223,14 +1229,14 @@ func countParens(s: String) -> Integer {
 }
 
 func repl(env: Env) {
-    Viper.Terminal.Say("Viper Lisp v0.1 — type (exit) to quit");
+    Terminal.Say("Viper Lisp v0.1 — type (exit) to quit");
     var running: Boolean = true;
 
     while running {
-        Viper.Terminal.Print("lisp> ");
-        var lineOpt = Viper.Terminal.ReadLine();
+        Terminal.Print("lisp> ");
+        var lineOpt = Terminal.ReadLine();
         if lineOpt == null {
-            Viper.Terminal.Say("");
+            Terminal.Say("");
             return;
         }
         var input: String = lineOpt ?? "";
@@ -1241,16 +1247,16 @@ func repl(env: Env) {
         }
 
         // Skip blank lines
-        if Viper.String.Trim(input) == "" {
+        if String.Trim(input) == "" {
             // skip
         } else {
             // Accumulate lines until parens are balanced
             var depth = countParens(input);
             while depth > 0 {
-                Viper.Terminal.Print("...   ");
-                var moreOpt = Viper.Terminal.ReadLine();
+                Terminal.Print("...   ");
+                var moreOpt = Terminal.ReadLine();
                 if moreOpt == null {
-                    Viper.Terminal.Say("");
+                    Terminal.Say("");
                     return;
                 }
                 var moreLine: String = moreOpt ?? "";
@@ -1262,19 +1268,19 @@ func repl(env: Env) {
             clearError();
             var exprs = parse(input);
             if hasError {
-                Viper.Terminal.Say("Parse error: " + errorMsg);
+                Terminal.Say("Parse error: " + errorMsg);
             } else {
                 var j: Integer = 0;
                 while j < exprs.count() {
                     clearError();
                     var result = eval(exprs.get(j), env);
                     if hasError {
-                        Viper.Terminal.Say("Error: " + errorMsg);
+                        Terminal.Say("Error: " + errorMsg);
                     } else {
                         // Print non-void results
                         if result.tag != T_NIL || j == exprs.count() - 1 {
                             if result.tag != T_NIL {
-                                Viper.Terminal.Say(lispPrint(result));
+                                Terminal.Say(lispPrint(result));
                             }
                         }
                     }
@@ -1288,11 +1294,11 @@ func repl(env: Env) {
 // === Entry point ===
 
 func runFile(path: String, env: Env) {
-    if Viper.IO.File.Exists(path) {
-        var source = Viper.IO.File.ReadAllText(path);
+    if IO.File.Exists(path) {
+        var source = IO.File.ReadAllText(path);
         runProgram(source, env);
     } else {
-        Viper.Terminal.Say("File not found: " + path);
+        Terminal.Say("File not found: " + path);
     }
 }
 
@@ -1300,7 +1306,7 @@ func start() {
     var env = setupGlobalEnv();
 
     // Try to read LISP_FILE env var
-    var lispFile = Viper.Environment.GetVariable("LISP_FILE");
+    var lispFile = Environment.GetVariable("LISP_FILE");
     if lispFile != "" {
         runFile(lispFile, env);
         return;

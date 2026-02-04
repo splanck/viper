@@ -125,8 +125,10 @@ Open your text editor and create a new file. Type the following code exactly as 
 ```rust
 module Hello;
 
+bind Viper.Terminal;
+
 func start() {
-    Viper.Terminal.Say("Hello, World!");
+    Say("Hello, World!");
 }
 ```
 
@@ -147,14 +149,19 @@ m o d u l e   H e l l o ;
 That's the word "module", a space, the word "Hello", and a semicolon.
 
 ```
+bind Viper.Terminal;
+```
+That's "bind", a space, "Viper.Terminal", and a semicolon. This imports the terminal functions.
+
+```
 func start() {
 ```
 That's "func" (short for function), a space, "start", open parenthesis, close parenthesis, a space, and an open curly brace.
 
 ```
-    Viper.Terminal.Say("Hello, World!");
+    Say("Hello, World!");
 ```
-That's four spaces (or one tab), then "Viper.Terminal.Say", open parenthesis, a double quote, the text "Hello, World!", a double quote, close parenthesis, and a semicolon.
+That's four spaces (or one tab), then "Say", open parenthesis, a double quote, the text "Hello, World!", a double quote, close parenthesis, and a semicolon.
 
 ```
 }
@@ -165,7 +172,7 @@ Double-check your code against this. The most common mistakes are:
 - Forgetting the semicolons
 - Using the wrong kind of quotes (use straight quotes ", not curly quotes " ")
 - Misspelling "module", "func", "start", "Viper", "Terminal", or "Say"
-- Forgetting the period between "Viper", "Terminal", and "Say"
+- Forgetting the bind line
 
 ---
 
@@ -268,13 +275,42 @@ hello.zia:1:1: error: expected 'module' declaration
 
 Every Zia file must start by declaring what module it belongs to. There's no way around this — it's a fundamental requirement of the language.
 
-### Line 2: (blank)
+### Line 2: `bind Viper.Terminal;`
 
-The blank line between `module Hello;` and `func start()` isn't required. The compiler ignores blank lines completely. They're there for humans — to make the code easier to read by visually separating different parts.
+```rust
+bind Viper.Terminal;
+```
+
+This line imports the Terminal module from Viper's standard library. The *standard library* is a collection of pre-written code that comes with Zia. You don't have to write code to display text on the screen — the standard library provides these capabilities ready-made.
+
+**What does `bind` do?** It makes the functions from `Viper.Terminal` available directly. Without this line, you'd have to write `Viper.Terminal.Say("Hello, World!")` — the full path to the function. With `bind`, you can just write `Say("Hello, World!")`.
+
+**Why `Viper.Terminal`?** The dots (`.`) navigate through namespaces. `Viper` is the overall namespace for the standard library. `Terminal` is the specific module for terminal/console operations (displaying text, getting keyboard input, etc.).
+
+**What happens without this line?**
+
+```rust
+module Hello;
+
+func start() {
+    Say("Hello, World!");  // Error!
+}
+```
+
+You'll get:
+```
+hello.zia:4:5: error: undefined identifier 'Say'
+```
+
+The compiler doesn't know what `Say` means because we didn't tell it where to find the function.
+
+### Line 3: (blank)
+
+The blank line isn't required. The compiler ignores blank lines completely. They're there for humans — to make the code easier to read by visually separating different parts.
 
 **Good habit:** Use blank lines to group related code together, like paragraphs in writing.
 
-### Line 3: `func start() {`
+### Line 4: `func start() {`
 
 ```rust
 func start() {
@@ -299,8 +335,10 @@ This line defines a *function* called `start`. There's a lot packed into this on
 ```rust
 module Hello;
 
+bind Viper.Terminal;
+
 func begin() {
-    Viper.Terminal.Say("Hello, World!");
+    Say("Hello, World!");
 }
 ```
 
@@ -311,25 +349,23 @@ hello.zia: error: no entry point found (missing 'start' function)
 
 The program compiles, but the computer doesn't know what to run. It's like having a recipe book with no table of contents — you don't know where to start reading.
 
-### Line 4: `    Viper.Terminal.Say("Hello, World!");`
+### Line 5: `    Say("Hello, World!");`
 
 ```rust
-    Viper.Terminal.Say("Hello, World!");
+    Say("Hello, World!");
 ```
 
 This is the line that actually makes something happen. Let's examine each piece:
 
 **The indentation** — those four spaces at the beginning — isn't required by Zia. The program would work exactly the same without them. But they're *crucial* for humans. The indentation shows visually that this line is *inside* the function, subordinate to it. When you see indented code, you know it's part of something. Consistent indentation makes code readable. Most programmers use either 2 or 4 spaces for each level of indentation.
 
-**`Viper.Terminal`** refers to the Terminal module of Viper's standard library. The *standard library* is a collection of pre-written code that comes with Zia. You don't have to write code to display text on the screen, read files, or do math — the standard library provides these capabilities ready-made.
-
-The dots (`.`) are how you navigate through namespaces. `Viper` is the overall namespace for the standard library. `Terminal` is the specific module for terminal/console operations. This hierarchical naming prevents confusion — if you had your own `Terminal` module, it wouldn't conflict with Viper's.
-
-**`Say`** is a function in the Terminal module that displays text followed by a newline (moving to the next line afterward). The standard library provides this so you don't have to figure out how to communicate with the operating system's console — you just call `Say`.
+**`Say`** is a function from the Terminal module that displays text followed by a newline (moving to the next line afterward). We can call it directly because we imported it with `bind Viper.Terminal;` at the top of the file.
 
 **`("Hello, World!")`** — the parentheses contain what we're passing to the `Say` function. This is called an *argument*. We're telling `Say` *what* to say. The double quotes indicate that `Hello, World!` is a *string* — a piece of text. Without the quotes, the compiler would try to interpret `Hello` as a variable name and get confused.
 
 **The semicolon** ends this statement.
+
+> **Note:** Without `bind Viper.Terminal;`, you'd have to write `Viper.Terminal.Say("Hello, World!");` — the full path to the function. Both approaches work, but `bind` makes code cleaner.
 
 **What if you forget the semicolon?**
 
@@ -549,8 +585,10 @@ Edit your program to say something different:
 ```rust
 module Hello;
 
+bind Viper.Terminal;
+
 func start() {
-    Viper.Terminal.Say("I wrote my first program!");
+    Say("I wrote my first program!");
 }
 ```
 
@@ -570,10 +608,12 @@ A single `Say` prints one line. What if you want more?
 ```rust
 module Hello;
 
+bind Viper.Terminal;
+
 func start() {
-    Viper.Terminal.Say("Line one.");
-    Viper.Terminal.Say("Line two.");
-    Viper.Terminal.Say("Line three.");
+    Say("Line one.");
+    Say("Line two.");
+    Say("Line three.");
 }
 ```
 
@@ -593,10 +633,12 @@ What if you want multiple things on the same line? Use `Print` instead of `Say`:
 ```rust
 module Hello;
 
+bind Viper.Terminal;
+
 func start() {
-    Viper.Terminal.Print("One ");
-    Viper.Terminal.Print("Two ");
-    Viper.Terminal.Say("Three");
+    Print("One ");
+    Print("Two ");
+    Say("Three");
 }
 ```
 
@@ -618,12 +660,14 @@ With what you know, you can create simple text art:
 ```rust
 module Art;
 
+bind Viper.Terminal;
+
 func start() {
-    Viper.Terminal.Say("  *  ");
-    Viper.Terminal.Say(" *** ");
-    Viper.Terminal.Say("*****");
-    Viper.Terminal.Say(" *** ");
-    Viper.Terminal.Say("  *  ");
+    Say("  *  ");
+    Say(" *** ");
+    Say("*****");
+    Say(" *** ");
+    Say("  *  ");
 }
 ```
 

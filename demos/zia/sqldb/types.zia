@@ -3,6 +3,9 @@
 
 module types;
 
+bind Viper.String;
+bind Viper.Fmt;
+
 //=============================================================================
 // SQL TYPE CONSTANTS
 //=============================================================================
@@ -21,19 +24,19 @@ final SQL_BLOB = 4;
 func stringToInt(text: String) -> Integer {
     var result = 0;
     var i = 0;
-    var len = Viper.String.Length(text);
+    var len = String.Length(text);
     var negative = false;
 
     if len > 0 {
-        if Viper.String.Substring(text, 0, 1) == "-" {
+        if String.Substring(text, 0, 1) == "-" {
             negative = true;
             i = 1;
         }
     }
 
     while i < len {
-        var ch = Viper.String.Substring(text, i, 1);
-        var code = Viper.String.Asc(ch);
+        var ch = String.Substring(text, i, 1);
+        var code = String.Asc(ch);
         if code >= 48 {
             if code <= 57 {
                 result = result * 10 + (code - 48);
@@ -52,26 +55,26 @@ func stringToInt(text: String) -> Integer {
 func stringToNumber(text: String) -> Float {
     var result = 0.0;
     var i = 0;
-    var len = Viper.String.Length(text);
+    var len = String.Length(text);
     var negative = false;
     var foundDecimal = false;
     var decimalPlace = 0.1;
 
     if len > 0 {
-        if Viper.String.Substring(text, 0, 1) == "-" {
+        if String.Substring(text, 0, 1) == "-" {
             negative = true;
             i = 1;
         }
     }
 
     while i < len {
-        var ch = Viper.String.Substring(text, i, 1);
+        var ch = String.Substring(text, i, 1);
         if ch == "." {
             foundDecimal = true;
             i = i + 1;
             continue;
         }
-        var code = Viper.String.Asc(ch);
+        var code = String.Asc(ch);
         if code >= 48 && code <= 57 {
             var digit = code - 48;
             if foundDecimal {
@@ -159,7 +162,7 @@ entity SqlValue {
 
     expose func toString() -> String {
         if (kind == SQL_NULL) { return "NULL"; }
-        if (kind == SQL_INTEGER) { return Viper.Fmt.Int(intValue); }
+        if (kind == SQL_INTEGER) { return Fmt.Int(intValue); }
         if (kind == SQL_REAL) { return textValue; }
         if (kind == SQL_TEXT) { return textValue; }
         if (kind == SQL_BLOB) { return textValue; }
@@ -169,7 +172,7 @@ entity SqlValue {
     // Format for SQL output (with quotes)
     expose func toSqlString() -> String {
         if (kind == SQL_NULL) { return "NULL"; }
-        if (kind == SQL_INTEGER) { return Viper.Fmt.Int(intValue); }
+        if (kind == SQL_INTEGER) { return Fmt.Int(intValue); }
         if (kind == SQL_REAL) { return textValue; }
         if (kind == SQL_TEXT) { return "'" + textValue + "'"; }
         if (kind == SQL_BLOB) { return "X'" + textValue + "'"; }
@@ -205,15 +208,15 @@ entity SqlValue {
             if textValue == other.textValue {
                 result = 0;
             } else {
-                var myLen = Viper.String.Length(textValue);
-                var otherLen = Viper.String.Length(other.textValue);
+                var myLen = String.Length(textValue);
+                var otherLen = String.Length(other.textValue);
                 var minLen = myLen;
                 if otherLen < minLen { minLen = otherLen; }
                 var i = 0;
                 var found = false;
                 while i < minLen && found == false {
-                    var myChar = Viper.String.Asc(Viper.String.Substring(textValue, i, 1));
-                    var otherChar = Viper.String.Asc(Viper.String.Substring(other.textValue, i, 1));
+                    var myChar = String.Asc(String.Substring(textValue, i, 1));
+                    var otherChar = String.Asc(String.Substring(other.textValue, i, 1));
                     if myChar < otherChar {
                         result = -1;
                         found = true;

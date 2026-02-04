@@ -6,6 +6,9 @@
 
 module sql_server;
 
+bind Viper.String;
+bind Viper.Fmt;
+
 bind "../executor";
 bind "../types";
 
@@ -33,25 +36,25 @@ final MSG_AUTH = 82;         // 'R' - Authentication
 
 // Check if string starts with prefix
 func stringStartsWith(s: String, prefix: String) -> Boolean {
-    var prefixLen = Viper.String.Length(prefix);
-    var sLen = Viper.String.Length(s);
+    var prefixLen = String.Length(prefix);
+    var sLen = String.Length(s);
     if sLen < prefixLen {
         return false;
     }
-    var start = Viper.String.Substring(s, 0, prefixLen);
+    var start = String.Substring(s, 0, prefixLen);
     return start == prefix;
 }
 
 // Check if string contains substring
 func stringContains(s: String, sub: String) -> Boolean {
-    var sLen = Viper.String.Length(s);
-    var subLen = Viper.String.Length(sub);
+    var sLen = String.Length(s);
+    var subLen = String.Length(sub);
     if subLen > sLen {
         return false;
     }
     var i = 0;
     while i <= sLen - subLen {
-        var slice = Viper.String.Substring(s, i, subLen);
+        var slice = String.Substring(s, i, subLen);
         if slice == sub {
             return true;
         }
@@ -62,14 +65,14 @@ func stringContains(s: String, sub: String) -> Boolean {
 
 // Find index of substring
 func stringIndexOf(s: String, sub: String) -> Integer {
-    var sLen = Viper.String.Length(s);
-    var subLen = Viper.String.Length(sub);
+    var sLen = String.Length(s);
+    var subLen = String.Length(sub);
     if subLen > sLen {
         return -1;
     }
     var i = 0;
     while i <= sLen - subLen {
-        var slice = Viper.String.Substring(s, i, subLen);
+        var slice = String.Substring(s, i, subLen);
         if slice == sub {
             return i;
         }
@@ -78,9 +81,9 @@ func stringIndexOf(s: String, sub: String) -> Integer {
     return -1;
 }
 
-// Convert string to uppercase (wrapper for Viper.String.ToUpper)
+// Convert string to uppercase (wrapper for String.ToUpper)
 func stringToUpper(s: String) -> String {
-    return Viper.String.ToUpper(s);
+    return String.ToUpper(s);
 }
 
 //=============================================================================
@@ -114,7 +117,7 @@ entity ClientSession {
     }
 
     expose func toString() -> String {
-        return "Session[" + Viper.Fmt.Int(sessionId) + "] " + clientHost + " user=" + username;
+        return "Session[" + Fmt.Int(sessionId) + "] " + clientHost + " user=" + username;
     }
 }
 
@@ -318,7 +321,7 @@ entity SqlServer {
         // Send completion message
         output = output + result.commandTag;
         if result.rowsAffected > 0 {
-            output = output + " " + Viper.Fmt.Int(result.rowsAffected);
+            output = output + " " + Fmt.Int(result.rowsAffected);
         }
         output = output + "\n";
 
@@ -339,9 +342,9 @@ entity SqlServer {
 
     expose func getStats() -> String {
         var stats = "ViperSQL Server Statistics:\n";
-        stats = stats + "  Port: " + Viper.Fmt.Int(port) + "\n";
-        stats = stats + "  Connections: " + Viper.Fmt.Int(connectionsHandled) + "\n";
-        stats = stats + "  Queries: " + Viper.Fmt.Int(queriesExecuted);
+        stats = stats + "  Port: " + Fmt.Int(port) + "\n";
+        stats = stats + "  Connections: " + Fmt.Int(connectionsHandled) + "\n";
+        stats = stats + "  Queries: " + Fmt.Int(queriesExecuted);
         return stats;
     }
 

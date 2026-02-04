@@ -3,6 +3,11 @@
 
 module sql_client;
 
+bind Viper.Network;
+bind Viper.Terminal;
+bind Viper.String;
+bind Viper.Fmt;
+
 //=============================================================================
 // CLIENT CONSTANTS
 //=============================================================================
@@ -42,15 +47,15 @@ entity SqlClient {
 
     // Connect to the server
     expose func connect() -> Boolean {
-        connection = Viper.Network.Tcp.Connect(host, port);
+        connection = Network.Tcp.Connect(host, port);
         connected = true;
 
         // Set timeout
-        Viper.Network.Tcp.SetRecvTimeout(connection, RECV_TIMEOUT);
+        Network.Tcp.SetRecvTimeout(connection, RECV_TIMEOUT);
 
         // Wait for READY
-        var response = Viper.Network.Tcp.RecvStr(connection, MAX_RESPONSE_SIZE);
-        if Viper.String.Contains(response, "READY") == false {
+        var response = Network.Tcp.RecvStr(connection, MAX_RESPONSE_SIZE);
+        if String.Contains(response, "READY") == false {
             lastError = "Server did not send READY";
             disconnect();
             return false;
@@ -62,8 +67,8 @@ entity SqlClient {
     // Disconnect from the server
     expose func disconnect() {
         if connected {
-            Viper.Network.Tcp.SendStr(connection, "QUIT\n");
-            Viper.Network.Tcp.Close(connection);
+            Network.Tcp.SendStr(connection, "QUIT\n");
+            Network.Tcp.Close(connection);
             connected = false;
         }
     }
@@ -85,38 +90,38 @@ entity SqlClient {
         }
 
         // Send query
-        Viper.Network.Tcp.SendStr(connection, query + "\n");
+        Network.Tcp.SendStr(connection, query + "\n");
 
         // Read response until READY
         var response = "";
         var done = false;
 
         while done == false {
-            var chunk = Viper.Network.Tcp.RecvStr(connection, MAX_RESPONSE_SIZE);
-            if Viper.String.Length(chunk) == 0 {
+            var chunk = Network.Tcp.RecvStr(connection, MAX_RESPONSE_SIZE);
+            if String.Length(chunk) == 0 {
                 done = true;
             } else {
                 response = response + chunk;
-                if Viper.String.Contains(chunk, "READY") {
+                if String.Contains(chunk, "READY") {
                     done = true;
                 }
             }
         }
 
         // Remove READY from response
-        var readyPos = Viper.String.IndexOf(response, "READY");
+        var readyPos = String.IndexOf(response, "READY");
         if readyPos >= 0 {
-            response = Viper.String.Substring(response, 0, readyPos);
+            response = String.Substring(response, 0, readyPos);
         }
 
-        return Viper.String.Trim(response);
+        return String.Trim(response);
     }
 
     // Execute and print result
     expose func executeAndPrint(query: String) {
         var result = execute(query);
-        if Viper.String.Length(result) > 0 {
-            Viper.Terminal.Say(result);
+        if String.Length(result) > 0 {
+            Terminal.Say(result);
         }
     }
 
@@ -137,33 +142,33 @@ func runInteractive(host: String, port: Integer) {
     var client = new SqlClient();
     client.initWithHostPort(host, port);
 
-    Viper.Terminal.Say("Connecting to " + host + ":" + Viper.Fmt.Int(port) + "...");
+    Terminal.Say("Connecting to " + host + ":" + Fmt.Int(port) + "...");
 
     if client.connect() == false {
-        Viper.Terminal.Say("Connection failed: " + client.getLastError());
+        Terminal.Say("Connection failed: " + client.getLastError());
         return;
     }
 
-    Viper.Terminal.Say("Connected to ViperSQL server");
-    Viper.Terminal.Say("Type SQL queries or 'quit' to exit");
-    Viper.Terminal.Say("");
+    Terminal.Say("Connected to ViperSQL server");
+    Terminal.Say("Type SQL queries or 'quit' to exit");
+    Terminal.Say("");
 
     var running = true;
     while running {
-        Viper.Terminal.Say("vipersql> ");
-        var input = Viper.Terminal.Hear();
-        var query = Viper.String.Trim(input);
+        Terminal.Say("vipersql> ");
+        var input = Terminal.Hear();
+        var query = String.Trim(input);
 
         if query == "quit" || query == "exit" || query == "\\q" {
             running = false;
-        } else if Viper.String.Length(query) > 0 {
+        } else if String.Length(query) > 0 {
             client.executeAndPrint(query);
-            Viper.Terminal.Say("");
+            Terminal.Say("");
         }
     }
 
     client.disconnect();
-    Viper.Terminal.Say("Disconnected.");
+    Terminal.Say("Disconnected.");
 }
 
 //=============================================================================
@@ -171,10 +176,10 @@ func runInteractive(host: String, port: Integer) {
 //=============================================================================
 
 func main() {
-    Viper.Terminal.Say("========================================");
-    Viper.Terminal.Say("  ViperSQL Client");
-    Viper.Terminal.Say("========================================");
-    Viper.Terminal.Say("");
+    Terminal.Say("========================================");
+    Terminal.Say("  ViperSQL Client");
+    Terminal.Say("========================================");
+    Terminal.Say("");
 
     runInteractive("localhost", DEFAULT_PORT);
 }

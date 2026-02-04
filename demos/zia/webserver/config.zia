@@ -2,6 +2,9 @@
 // Parses configuration from file or uses defaults
 module config;
 
+bind Viper.IO;
+bind Viper.String;
+
 // ============================================================================
 // CONFIGURATION VALUES (set by config_load or defaults)
 // ============================================================================
@@ -42,13 +45,13 @@ func config_load(configPath: String) -> Boolean {
     config_init();
 
     // Check if config file exists
-    if Viper.IO.File.Exists(configPath) == false {
+    if IO.File.Exists(configPath) == false {
         return false;
     }
 
     // Read the file
-    var content = Viper.IO.File.ReadAllText(configPath);
-    var len = Viper.String.Length(content);
+    var content = IO.File.ReadAllText(configPath);
+    var len = String.Length(content);
     if len == 0 {
         return false;
     }
@@ -61,21 +64,21 @@ func config_load(configPath: String) -> Boolean {
         var isNewline = false;
 
         if atEnd == false {
-            var ch = Viper.String.Substring(content, i, 1);
+            var ch = String.Substring(content, i, 1);
             isNewline = ch == "\n" || ch == "\r";
         }
 
         if isNewline || atEnd {
             if i > lineStart {
                 var lineLen = i - lineStart;
-                var line = Viper.String.Substring(content, lineStart, lineLen);
+                var line = String.Substring(content, lineStart, lineLen);
                 config_parseLine(line);
             }
             // Skip \r\n sequence
             if atEnd == false {
-                var ch = Viper.String.Substring(content, i, 1);
+                var ch = String.Substring(content, i, 1);
                 if ch == "\r" && i + 1 < len {
-                    var next = Viper.String.Substring(content, i + 1, 1);
+                    var next = String.Substring(content, i + 1, 1);
                     if next == "\n" {
                         i = i + 1;
                     }
@@ -91,13 +94,13 @@ func config_load(configPath: String) -> Boolean {
 
 // Parse a single configuration line
 func config_parseLine(line: String) {
-    var len = Viper.String.Length(line);
+    var len = String.Length(line);
     if len == 0 {
         return;
     }
 
     // Skip comments (lines starting with #)
-    var firstChar = Viper.String.Substring(line, 0, 1);
+    var firstChar = String.Substring(line, 0, 1);
     if firstChar == "#" {
         return;
     }
@@ -106,7 +109,7 @@ func config_parseLine(line: String) {
     var eqPos = -1;
     var i = 0;
     while i < len {
-        var ch = Viper.String.Substring(line, i, 1);
+        var ch = String.Substring(line, i, 1);
         if ch == "=" {
             eqPos = i;
             break;
@@ -119,11 +122,11 @@ func config_parseLine(line: String) {
     }
 
     // Extract key and value
-    var key = config_trim(Viper.String.Substring(line, 0, eqPos));
+    var key = config_trim(String.Substring(line, 0, eqPos));
     var valueLen = len - eqPos - 1;
     var value = "";
     if valueLen > 0 {
-        value = config_trim(Viper.String.Substring(line, eqPos + 1, valueLen));
+        value = config_trim(String.Substring(line, eqPos + 1, valueLen));
     }
 
     // Set configuration based on key
@@ -143,7 +146,7 @@ func config_parseLine(line: String) {
 
 // Trim whitespace from string
 func config_trim(s: String) -> String {
-    var len = Viper.String.Length(s);
+    var len = String.Length(s);
     if len == 0 {
         return s;
     }
@@ -151,7 +154,7 @@ func config_trim(s: String) -> String {
     // Find start (skip leading whitespace)
     var start = 0;
     while start < len {
-        var ch = Viper.String.Substring(s, start, 1);
+        var ch = String.Substring(s, start, 1);
         if ch != " " && ch != "\t" {
             break;
         }
@@ -161,7 +164,7 @@ func config_trim(s: String) -> String {
     // Find end (skip trailing whitespace)
     var end = len;
     while end > start {
-        var ch = Viper.String.Substring(s, end - 1, 1);
+        var ch = String.Substring(s, end - 1, 1);
         if ch != " " && ch != "\t" {
             break;
         }
@@ -172,12 +175,12 @@ func config_trim(s: String) -> String {
         return "";
     }
 
-    return Viper.String.Substring(s, start, end - start);
+    return String.Substring(s, start, end - start);
 }
 
 // Parse integer from string with default
 func config_parseInt(s: String, defaultVal: Integer) -> Integer {
-    var len = Viper.String.Length(s);
+    var len = String.Length(s);
     if len == 0 {
         return defaultVal;
     }
@@ -185,7 +188,7 @@ func config_parseInt(s: String, defaultVal: Integer) -> Integer {
     var result = 0;
     var i = 0;
     while i < len {
-        var ch = Viper.String.Substring(s, i, 1);
+        var ch = String.Substring(s, i, 1);
         var digit = charToDigit(ch);
         if digit < 0 {
             return defaultVal;  // Invalid character

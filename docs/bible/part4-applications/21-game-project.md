@@ -955,6 +955,7 @@ bind Game;
 bind Renderer;
 bind Viper.Graphics;
 bind Viper.Input;
+bind Viper.Time;
 
 func start() {
     // Create the game window
@@ -965,12 +966,12 @@ func start() {
     var state = Game.create();
 
     // Track time for delta calculations
-    var lastTime = Viper.Time.millis();
+    var lastTime = millis();
 
     // The game loop
     while canvas.isOpen() {
         // Calculate how much time passed since last frame
-        var now = Viper.Time.millis();
+        var now = millis();
         var dt = (now - lastTime) / 1000.0;  // Convert to seconds
         lastTime = now;
 
@@ -1010,7 +1011,7 @@ func start() {
 
         // === TIMING ===
         // Sleep to target approximately 60 FPS
-        Viper.Time.sleep(16);  // 16ms ≈ 60 frames per second
+        sleep(16);  // 16ms ≈ 60 frames per second
     }
 }
 ```

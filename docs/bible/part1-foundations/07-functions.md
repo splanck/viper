@@ -14,29 +14,30 @@ Before we define functions formally, let's experience the problem they solve. Im
 
 ```rust
 module MessyProgram;
+bind Viper.Terminal;
 
 func start() {
     // Welcome the user
-    Viper.Terminal.Say("================================");
-    Viper.Terminal.Say("    Welcome to Our Program!     ");
-    Viper.Terminal.Say("================================");
-    Viper.Terminal.Say("");
+    Say("================================");
+    Say("    Welcome to Our Program!     ");
+    Say("================================");
+    Say("");
 
     // ... some code happens ...
 
     // User completed a task, greet them again
-    Viper.Terminal.Say("================================");
-    Viper.Terminal.Say("    Welcome to Our Program!     ");
-    Viper.Terminal.Say("================================");
-    Viper.Terminal.Say("");
+    Say("================================");
+    Say("    Welcome to Our Program!     ");
+    Say("================================");
+    Say("");
 
     // ... more code ...
 
     // User returned from settings, greet them again
-    Viper.Terminal.Say("================================");
-    Viper.Terminal.Say("    Welcome to Our Program!     ");
-    Viper.Terminal.Say("================================");
-    Viper.Terminal.Say("");
+    Say("================================");
+    Say("    Welcome to Our Program!     ");
+    Say("================================");
+    Say("");
 }
 ```
 
@@ -48,31 +49,32 @@ Let's see an even worse example. Suppose you need to calculate the area of recta
 
 ```rust
 module MessierProgram;
+bind Viper.Terminal;
 
 func start() {
     // Calculate area for room 1
     var width1 = 10;
     var height1 = 8;
     var area1 = width1 * height1;
-    Viper.Terminal.Say("Room 1 area: " + area1);
+    Say("Room 1 area: " + area1);
 
     // Calculate area for room 2
     var width2 = 15;
     var height2 = 12;
     var area2 = width2 * height2;
-    Viper.Terminal.Say("Room 2 area: " + area2);
+    Say("Room 2 area: " + area2);
 
     // Calculate area for room 3
     var width3 = 20;
     var height3 = 10;
     var area3 = width3 * heigth3;  // Oops! Typo: heigth3
-    Viper.Terminal.Say("Room 3 area: " + area3);
+    Say("Room 3 area: " + area3);
 
     // Calculate area for room 4
     var width4 = 12;
     var height4 = 9;
     var area4 = width4 + height4;  // Oops! Wrong operator: + instead of *
-    Viper.Terminal.Say("Room 4 area: " + area4);
+    Say("Room 4 area: " + area4);
 }
 ```
 
@@ -147,9 +149,11 @@ When you write your own functions, think about them as black boxes you're creati
 Here's a simple function:
 
 ```rust
+bind Viper.Terminal;
+
 func greet() {
-    Viper.Terminal.Say("Hello!");
-    Viper.Terminal.Say("Welcome to the program.");
+    Say("Hello!");
+    Say("Welcome to the program.");
 }
 ```
 
@@ -166,10 +170,11 @@ To use it:
 
 ```rust
 module Greeting;
+bind Viper.Terminal;
 
 func greet() {
-    Viper.Terminal.Say("Hello!");
-    Viper.Terminal.Say("Welcome to the program.");
+    Say("Hello!");
+    Say("Welcome to the program.");
 }
 
 func start() {
@@ -199,8 +204,10 @@ Notice the syntax for calling a function: the function name followed by parenthe
 A function that always does the exact same thing is limited. Usually, we want to customize behavior. We do this by giving functions **parameters** --- placeholders for values that will be provided when the function is called.
 
 ```rust
+bind Viper.Terminal;
+
 func greet(name: String) {
-    Viper.Terminal.Say("Hello, " + name + "!");
+    Say("Hello, " + name + "!");
 }
 
 func start() {
@@ -228,8 +235,10 @@ These two terms are often confused, but they mean different things:
 Think of it this way: the **parameter** is the parking space, the **argument** is the car you park in it.
 
 ```rust
+bind Viper.Terminal;
+
 func greet(name: String) {    // 'name' is the PARAMETER (the parking space)
-    Viper.Terminal.Say("Hello, " + name + "!");
+    Say("Hello, " + name + "!");
 }
 
 func start() {
@@ -265,8 +274,10 @@ Each call gets its own copy of the parameters. They don't interfere with each ot
 You can have multiple parameters, separated by commas:
 
 ```rust
+bind Viper.Terminal;
+
 func introduce(name: String, age: Integer) {
-    Viper.Terminal.Say(name + " is " + age + " years old.");
+    Say(name + " is " + age + " years old.");
 }
 
 func start() {
@@ -288,16 +299,18 @@ Bob is 25 years old.
 When you pass a value to a function, the function receives a **copy** of that value (for simple types like numbers and strings). Modifying the parameter inside the function does not affect the original:
 
 ```rust
+bind Viper.Terminal;
+
 func tryToChange(x: Integer) {
     x = 999;  // This changes the local copy
-    Viper.Terminal.Say("Inside function: " + x);
+    Say("Inside function: " + x);
 }
 
 func start() {
     var number = 42;
-    Viper.Terminal.Say("Before: " + number);  // 42
-    tryToChange(number);                       // "Inside function: 999"
-    Viper.Terminal.Say("After: " + number);   // Still 42!
+    Say("Before: " + number);  // 42
+    tryToChange(number);       // "Inside function: 999"
+    Say("After: " + number);   // Still 42!
 }
 ```
 
@@ -312,13 +325,15 @@ The function received a copy of `42`. Changing the copy doesn't change the origi
 Some functions compute a value and give it back to the caller. They *return* a result:
 
 ```rust
+bind Viper.Terminal;
+
 func add(a: Integer, b: Integer) -> Integer {
     return a + b;
 }
 
 func start() {
     var sum = add(3, 4);
-    Viper.Terminal.Say(sum);  // 7
+    Say(sum);  // 7
 }
 ```
 
@@ -337,9 +352,11 @@ When a function executes a `return` statement, two things happen:
 Think of it like a tennis ball machine. You press the button (call the function), the machine does some internal work (the function body), and a ball shoots out (the return value). The `return` statement is the moment the ball leaves the machine.
 
 ```rust
+bind Viper.Terminal;
+
 func add(a: Integer, b: Integer) -> Integer {
     return a + b;
-    Viper.Terminal.Say("This never runs!");  // Dead code - never executed
+    Say("This never runs!");  // Dead code - never executed
 }
 ```
 
@@ -358,11 +375,13 @@ var sum = add(3, 4);
 The returned value can be used in any way a regular value can be used:
 
 ```rust
+bind Viper.Terminal;
+
 // Store it in a variable
 var result = add(3, 4);
 
 // Use it directly in output
-Viper.Terminal.Say(add(3, 4));           // prints 7
+Say(add(3, 4));           // prints 7
 
 // Use it in an expression
 var doubled = add(3, 4) * 2;             // 14
@@ -372,7 +391,7 @@ var bigger = add(add(1, 2), add(3, 4));  // add(3, 7) = 10
 
 // Use it in a condition
 if add(3, 4) > 5 {
-    Viper.Terminal.Say("Sum is big!");
+    Say("Sum is big!");
 }
 ```
 
@@ -406,12 +425,14 @@ This nested evaluation is powerful. Functions can use other functions, which can
 Some functions do things without computing a result --- like printing, saving files, or modifying state. These functions perform *actions* rather than *calculations*. They don't specify a return type:
 
 ```rust
+bind Viper.Terminal;
+
 func sayGoodbye() {
-    Viper.Terminal.Say("Goodbye!");
+    Say("Goodbye!");
 }
 
 func printLine() {
-    Viper.Terminal.Say("================");
+    Say("================");
 }
 
 func start() {
@@ -426,11 +447,13 @@ func start() {
 You can use `return` without a value to exit early:
 
 ```rust
+bind Viper.Terminal;
+
 func maybeGreet(shouldGreet: Boolean) {
     if !shouldGreet {
         return;  // Exit immediately, do nothing else
     }
-    Viper.Terminal.Say("Hello!");
+    Say("Hello!");
 }
 
 func start() {
@@ -448,6 +471,8 @@ Early returns are useful for handling special cases at the beginning of a functi
 Variables created inside a function are *local* --- they exist only within that function. This region where a variable is valid is called its **scope**.
 
 ```rust
+bind Viper.Terminal;
+
 func calculateArea(width: Integer, height: Integer) -> Integer {
     var area = width * height;  // 'area' is born here
     return area;
@@ -455,8 +480,8 @@ func calculateArea(width: Integer, height: Integer) -> Integer {
 
 func start() {
     var result = calculateArea(5, 3);
-    Viper.Terminal.Say(result);  // 15
-    // Viper.Terminal.Say(area);  // Error! 'area' doesn't exist here
+    Say(result);  // 15
+    // Say(area);  // Error! 'area' doesn't exist here
 }
 ```
 
@@ -467,6 +492,8 @@ The variable `area` exists only while `calculateArea` is running. When the funct
 Scope is a feature, not a limitation. It provides **isolation**:
 
 ```rust
+bind Viper.Terminal;
+
 func calculateRectangleArea(w: Integer, h: Integer) -> Integer {
     var temp = w * h;
     return temp;
@@ -480,8 +507,8 @@ func calculateTriangleArea(base: Integer, height: Integer) -> Integer {
 func start() {
     var r = calculateRectangleArea(10, 5);
     var t = calculateTriangleArea(10, 5);
-    Viper.Terminal.Say(r);  // 50
-    Viper.Terminal.Say(t);  // 25
+    Say(r);  // 50
+    Say(t);  // 25
 }
 ```
 
@@ -495,6 +522,7 @@ A **local variable** is declared inside a function and exists only within that f
 
 ```rust
 module ScopeDemo;
+bind Viper.Terminal;
 
 var globalCounter = 0;  // Global: accessible everywhere
 
@@ -504,8 +532,8 @@ func incrementCounter() {
 }
 
 func printCounter() {
-    Viper.Terminal.Say(globalCounter);  // Can access global
-    // Viper.Terminal.Say(localValue);  // Error! localValue is not in scope
+    Say(globalCounter);  // Can access global
+    // Say(localValue);  // Error! localValue is not in scope
 }
 
 func start() {
@@ -522,17 +550,19 @@ func start() {
 Blocks (code inside `{ }`) create nested scopes:
 
 ```rust
+bind Viper.Terminal;
+
 func scopeExample() {
     var outer = 10;
 
     if true {
         var inner = 20;
-        Viper.Terminal.Say(outer);  // OK: can see outer from inside
-        Viper.Terminal.Say(inner);  // OK: inner is in scope
+        Say(outer);  // OK: can see outer from inside
+        Say(inner);  // OK: inner is in scope
     }
 
-    Viper.Terminal.Say(outer);  // OK: still in scope
-    // Viper.Terminal.Say(inner);  // Error! inner went out of scope
+    Say(outer);  // OK: still in scope
+    // Say(inner);  // Error! inner went out of scope
 }
 ```
 
@@ -548,7 +578,7 @@ func functionA() {
 }
 
 func functionB() {
-    // Viper.Terminal.Say(secretA);  // Error! secretA doesn't exist here
+    // Say(secretA);  // Error! secretA doesn't exist here
 }
 ```
 
@@ -569,6 +599,8 @@ A stack is a data structure like a stack of plates: you add plates to the top, a
 Let's trace through this code:
 
 ```rust
+bind Viper.Terminal;
+
 func multiply(a: Integer, b: Integer) -> Integer {
     return a * b;
 }
@@ -585,7 +617,7 @@ func sumOfSquares(x: Integer, y: Integer) -> Integer {
 
 func start() {
     var result = sumOfSquares(3, 4);
-    Viper.Terminal.Say(result);
+    Say(result);
 }
 ```
 
@@ -681,17 +713,19 @@ Understanding the call stack helps you trace through complex code and debug prob
 In many languages (including Zia), you can define multiple functions with the same name as long as they have different parameters. This is called **function overloading**.
 
 ```rust
+bind Viper.Terminal;
+
 func greet() {
-    Viper.Terminal.Say("Hello, stranger!");
+    Say("Hello, stranger!");
 }
 
 func greet(name: String) {
-    Viper.Terminal.Say("Hello, " + name + "!");
+    Say("Hello, " + name + "!");
 }
 
 func greet(name: String, times: Integer) {
     for i in 0..times {
-        Viper.Terminal.Say("Hello, " + name + "!");
+        Say("Hello, " + name + "!");
     }
 }
 
@@ -715,16 +749,18 @@ Overloading is useful for:
 
 2. **Handling different types**:
 ```rust
+bind Viper.Terminal;
+
 func printValue(n: Integer) {
-    Viper.Terminal.Say("Integer: " + n);
+    Say("Integer: " + n);
 }
 
 func printValue(s: String) {
-    Viper.Terminal.Say("String: " + s);
+    Say("String: " + s);
 }
 
 func printValue(b: Boolean) {
-    Viper.Terminal.Say("Boolean: " + b);
+    Say("Boolean: " + b);
 }
 ```
 
@@ -749,6 +785,8 @@ Factorial is the product of all positive integers up to n. For example, 5! (read
 Notice something interesting: 5! = 5 x 4! And 4! = 4 x 3! The factorial of n is n times the factorial of (n-1). This is a recursive definition --- factorial is defined in terms of itself.
 
 ```rust
+bind Viper.Terminal;
+
 func factorial(n: Integer) -> Integer {
     if n <= 1 {
         return 1;  // Base case: 0! = 1! = 1
@@ -757,7 +795,7 @@ func factorial(n: Integer) -> Integer {
 }
 
 func start() {
-    Viper.Terminal.Say(factorial(5));  // 120
+    Say(factorial(5));  // 120
 }
 ```
 
@@ -811,6 +849,8 @@ Every recursive function needs:
 The Fibonacci sequence is: 0, 1, 1, 2, 3, 5, 8, 13, 21, ... Each number is the sum of the two before it.
 
 ```rust
+bind Viper.Terminal;
+
 func fib(n: Integer) -> Integer {
     if n <= 1 {
         return n;  // Base cases: fib(0) = 0, fib(1) = 1
@@ -820,7 +860,7 @@ func fib(n: Integer) -> Integer {
 
 func start() {
     for i in 0..10 {
-        Viper.Terminal.Print(fib(i) + " ");
+        Print(fib(i) + " ");
     }
 }
 ```
@@ -870,6 +910,7 @@ Let's see functions in action by taking messy code and improving it. Here's a di
 
 ```rust
 module MessyStats;
+bind Viper.Terminal;
 
 func start() {
     var numbers: [i64] = [4, 8, 15, 16, 23, 42];
@@ -879,7 +920,7 @@ func start() {
     for n in numbers {
         sum = sum + n;
     }
-    Viper.Terminal.Say("Sum: " + sum);
+    Say("Sum: " + sum);
 
     // Calculate average
     var sum2 = 0;
@@ -887,7 +928,7 @@ func start() {
         sum2 = sum2 + n;
     }
     var avg = sum2 / numbers.length;
-    Viper.Terminal.Say("Average: " + avg);
+    Say("Average: " + avg);
 
     // Find minimum
     var min = numbers[0];
@@ -896,7 +937,7 @@ func start() {
             min = n;
         }
     }
-    Viper.Terminal.Say("Minimum: " + min);
+    Say("Minimum: " + min);
 
     // Find maximum
     var max = numbers[0];
@@ -905,7 +946,7 @@ func start() {
             max = n;
         }
     }
-    Viper.Terminal.Say("Maximum: " + max);
+    Say("Maximum: " + max);
 
     // Calculate range
     var min2 = numbers[0];
@@ -921,7 +962,7 @@ func start() {
         }
     }
     var range = max2 - min2;
-    Viper.Terminal.Say("Range: " + range);
+    Say("Range: " + range);
 }
 ```
 
@@ -937,6 +978,7 @@ This code has serious problems:
 
 ```rust
 module CleanStats;
+bind Viper.Terminal;
 
 // Calculate the sum of an array of numbers
 func sum(numbers: [i64]) -> i64 {
@@ -981,11 +1023,11 @@ func range(numbers: [i64]) -> i64 {
 
 // Print all statistics for an array
 func printStats(numbers: [i64]) {
-    Viper.Terminal.Say("Sum: " + sum(numbers));
-    Viper.Terminal.Say("Average: " + average(numbers));
-    Viper.Terminal.Say("Minimum: " + minimum(numbers));
-    Viper.Terminal.Say("Maximum: " + maximum(numbers));
-    Viper.Terminal.Say("Range: " + range(numbers));
+    Say("Sum: " + sum(numbers));
+    Say("Average: " + average(numbers));
+    Say("Minimum: " + minimum(numbers));
+    Say("Maximum: " + maximum(numbers));
+    Say("Range: " + range(numbers));
 }
 
 func start() {
@@ -1029,12 +1071,14 @@ Over decades, programmers have developed principles for writing good functions. 
 A function should have a single, clear purpose. If you find yourself using "and" to describe what a function does ("calculates the average AND prints it AND saves it to a file"), consider splitting it.
 
 ```rust
+bind Viper.Terminal;
+
 // Bad: Does three things
 func processGrades(grades: [i64]) {
     var sum = 0;
     for g in grades { sum = sum + g; }
     var avg = sum / grades.length;
-    Viper.Terminal.Say("Average: " + avg);
+    Say("Average: " + avg);
     Viper.File.Write("grades.txt", "Average: " + avg);
 }
 
@@ -1046,7 +1090,7 @@ func calculateAverage(grades: [i64]) -> i64 {
 }
 
 func displayAverage(avg: Integer) {
-    Viper.Terminal.Say("Average: " + avg);
+    Say("Average: " + avg);
 }
 
 func saveAverage(avg: Integer) {
@@ -1128,7 +1172,7 @@ func incrementCounter() {
 
 // Side effect: performs I/O
 func printMessage(msg: String) {
-    Viper.Terminal.Say(msg);
+    Say(msg);
 }
 ```
 
@@ -1192,6 +1236,7 @@ Let's see all these principles applied to a complete, well-organized program:
 
 ```rust
 module GradeTracker;
+bind Viper.Terminal;
 
 // ============================================
 // Input Functions
@@ -1200,8 +1245,8 @@ module GradeTracker;
 // Prompt for and read a single grade from the user
 // Returns -1 if user wants to finish
 func readGrade() -> i64 {
-    Viper.Terminal.Print("Grade: ");
-    return Viper.Convert.ToInt(Viper.Terminal.ReadLine());
+    Print("Grade: ");
+    return Viper.Convert.ToInt(ReadLine());
 }
 
 // Check if a grade is within valid range
@@ -1213,8 +1258,8 @@ func isValidGrade(grade: Integer) -> Boolean {
 func readAllGrades() -> [i64] {
     var grades: [i64] = [];
 
-    Viper.Terminal.Say("Enter grades (0-100). Enter -1 to finish.");
-    Viper.Terminal.Say("");
+    Say("Enter grades (0-100). Enter -1 to finish.");
+    Say("");
 
     while true {
         var grade = readGrade();
@@ -1226,7 +1271,7 @@ func readAllGrades() -> [i64] {
         if isValidGrade(grade) {
             grades.push(grade);
         } else {
-            Viper.Terminal.Say("Invalid grade. Please enter 0-100, or -1 to finish.");
+            Say("Invalid grade. Please enter 0-100, or -1 to finish.");
         }
     }
 
@@ -1307,41 +1352,41 @@ func countLetterGrades(grades: [i64]) -> [i64] {
 
 // Print a separator line
 func printSeparator() {
-    Viper.Terminal.Say("================================");
+    Say("================================");
 }
 
 // Print the main statistics
 func printStatistics(grades: [i64]) {
-    Viper.Terminal.Say("Number of grades: " + grades.length);
-    Viper.Terminal.Say("Sum of grades:    " + sum(grades));
-    Viper.Terminal.Say("Average grade:    " + average(grades));
-    Viper.Terminal.Say("Lowest grade:     " + minimum(grades));
-    Viper.Terminal.Say("Highest grade:    " + maximum(grades));
-    Viper.Terminal.Say("Class average:    " + letterGrade(average(grades)));
+    Say("Number of grades: " + grades.length);
+    Say("Sum of grades:    " + sum(grades));
+    Say("Average grade:    " + average(grades));
+    Say("Lowest grade:     " + minimum(grades));
+    Say("Highest grade:    " + maximum(grades));
+    Say("Class average:    " + letterGrade(average(grades)));
 }
 
 // Print the grade distribution
 func printDistribution(grades: [i64]) {
     var counts = countLetterGrades(grades);
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("Grade Distribution:");
-    Viper.Terminal.Say("  A: " + counts[0]);
-    Viper.Terminal.Say("  B: " + counts[1]);
-    Viper.Terminal.Say("  C: " + counts[2]);
-    Viper.Terminal.Say("  D: " + counts[3]);
-    Viper.Terminal.Say("  F: " + counts[4]);
+    Say("");
+    Say("Grade Distribution:");
+    Say("  A: " + counts[0]);
+    Say("  B: " + counts[1]);
+    Say("  C: " + counts[2]);
+    Say("  D: " + counts[3]);
+    Say("  F: " + counts[4]);
 }
 
 // Print the complete grade report
 func printReport(grades: [i64]) {
-    Viper.Terminal.Say("");
+    Say("");
     printSeparator();
-    Viper.Terminal.Say("       GRADE REPORT            ");
+    Say("       GRADE REPORT            ");
     printSeparator();
-    Viper.Terminal.Say("");
+    Say("");
     printStatistics(grades);
     printDistribution(grades);
-    Viper.Terminal.Say("");
+    Say("");
     printSeparator();
 }
 
@@ -1353,7 +1398,7 @@ func start() {
     var grades = readAllGrades();
 
     if grades.length == 0 {
-        Viper.Terminal.Say("No grades entered.");
+        Say("No grades entered.");
         return;
     }
 
@@ -1371,12 +1416,14 @@ Each function does one thing. They're short. They have clear names. They build o
 
 **Zia**
 ```rust
+bind Viper.Terminal;
+
 func add(a: Integer, b: Integer) -> Integer {
     return a + b;
 }
 
 func greet(name: String) {
-    Viper.Terminal.Say("Hello, " + name);
+    Say("Hello, " + name);
 }
 
 func start() {
@@ -1456,18 +1503,22 @@ func badFactorial(n: Integer) -> Integer {
 
 **Trying to use local variables outside their function:**
 ```rust
+bind Viper.Terminal;
+
 func compute() {
     var result = 42;
 }
 
 func start() {
     compute();
-    Viper.Terminal.Say(result);  // Error! 'result' doesn't exist here
+    Say(result);  // Error! 'result' doesn't exist here
 }
 ```
 
 **Expecting parameters to modify original variables:**
 ```rust
+bind Viper.Terminal;
+
 func double(x: Integer) {
     x = x * 2;  // Only modifies local copy
 }
@@ -1475,7 +1526,7 @@ func double(x: Integer) {
 func start() {
     var num = 5;
     double(num);
-    Viper.Terminal.Say(num);  // Still 5! The function modified its copy
+    Say(num);  // Still 5! The function modified its copy
 }
 ```
 

@@ -1,10 +1,14 @@
 // Minimal test with portrait dimensions (same as centipede: 480x640)
 module main;
 
-func main() {
-    var canvas = new Viper.Graphics.Canvas("Portrait Test", 480, 640);
+bind Viper.Graphics;
+bind Viper.Graphics.Color;
+bind Viper.Time;
 
-    var white = Viper.Graphics.Color.RGB(255, 255, 255);
+func main() {
+    var canvas = new Canvas("Portrait Test", 480, 640);
+
+    var white = RGB(255, 255, 255);
     var running = 1;
 
     while running == 1 {

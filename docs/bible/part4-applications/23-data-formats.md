@@ -278,6 +278,7 @@ Parsing means reading JSON text and creating program data structures from it:
 
 ```rust
 bind Viper.JSON;
+bind Viper.Terminal;
 
 func start() {
     var jsonText = '{"name": "Alice", "score": 100, "active": true}';
@@ -290,9 +291,9 @@ func start() {
     var score = data["score"].asInt();
     var active = data["active"].asBool();
 
-    Viper.Terminal.Say("Player: " + name);
-    Viper.Terminal.Say("Score: " + score);
-    Viper.Terminal.Say("Active: " + active);
+    Terminal.Say("Player: " + name);
+    Terminal.Say("Score: " + score);
+    Terminal.Say("Active: " + active);
 }
 ```
 
@@ -317,6 +318,7 @@ To save program data as JSON, you build a JSON structure programmatically:
 
 ```rust
 bind Viper.JSON;
+bind Viper.Terminal;
 
 func start() {
     // Create a JSON object
@@ -343,7 +345,7 @@ func start() {
 
     // Convert to JSON text
     var jsonText = player.toString();
-    Viper.Terminal.Say(jsonText);
+    Terminal.Say(jsonText);
 }
 ```
 
@@ -360,7 +362,7 @@ Compact JSON is hard to read. For debugging, logs, or configuration files that h
 
 ```rust
 var jsonText = player.toPrettyString();
-Viper.Terminal.Say(jsonText);
+Terminal.Say(jsonText);
 ```
 
 Output:
@@ -441,15 +443,17 @@ entity Player {
 Usage becomes elegant:
 
 ```rust
+bind Viper.File;
+
 // Save a player
 func saveGame(player: Player, filename: String) {
     var json = player.toJSON().toPrettyString();
-    Viper.File.writeText(filename, json);
+    writeText(filename, json);
 }
 
 // Load a player
 func loadGame(filename: String) -> Player {
-    var json = Viper.File.readText(filename);
+    var json = readText(filename);
     var data = JSON.parse(json);
     return Player.fromJSON(data);
 }
@@ -519,6 +523,7 @@ But CSV has significant limitations:
 
 ```rust
 bind Viper.CSV;
+bind Viper.Terminal;
 
 func start() {
     var csv = CSV.load("players.csv");
@@ -528,7 +533,7 @@ func start() {
         var level = row["level"].toInt();
         var health = row["health"].toFloat();
 
-        Viper.Terminal.Say(name + " (Level " + level + ", HP: " + health + ")");
+        Terminal.Say(name + " (Level " + level + ", HP: " + health + ")");
     }
 }
 ```
@@ -847,6 +852,7 @@ module ContactManager;
 
 bind Viper.JSON;
 bind Viper.File;
+bind Viper.Terminal;
 
 // ============================================
 // Data Model
@@ -961,44 +967,44 @@ entity ContactBook {
 // ============================================
 
 func printContact(contact: Contact) {
-    Viper.Terminal.Say("  Name:  " + contact.name);
-    Viper.Terminal.Say("  Phone: " + contact.phone);
-    Viper.Terminal.Say("  Email: " + contact.email);
+    Terminal.Say("  Name:  " + contact.name);
+    Terminal.Say("  Phone: " + contact.phone);
+    Terminal.Say("  Email: " + contact.email);
 }
 
 func printHelp() {
-    Viper.Terminal.Say("Commands:");
-    Viper.Terminal.Say("  add     - Add a new contact");
-    Viper.Terminal.Say("  list    - Show all contacts");
-    Viper.Terminal.Say("  search  - Search for contacts");
-    Viper.Terminal.Say("  remove  - Remove a contact");
-    Viper.Terminal.Say("  quit    - Exit the program");
+    Terminal.Say("Commands:");
+    Terminal.Say("  add     - Add a new contact");
+    Terminal.Say("  list    - Show all contacts");
+    Terminal.Say("  search  - Search for contacts");
+    Terminal.Say("  remove  - Remove a contact");
+    Terminal.Say("  quit    - Exit the program");
 }
 
 func start() {
     var book = ContactBook("contacts.json");
 
-    Viper.Terminal.Say("=== Contact Manager ===");
-    Viper.Terminal.Say("Type 'help' for commands.");
-    Viper.Terminal.Say("");
+    Terminal.Say("=== Contact Manager ===");
+    Terminal.Say("Type 'help' for commands.");
+    Terminal.Say("");
 
     while true {
-        Viper.Terminal.Print("> ");
-        var command = Viper.Terminal.ReadLine().trim();
+        Terminal.Print("> ");
+        var command = Terminal.ReadLine().trim();
 
         if command == "quit" {
-            Viper.Terminal.Say("Goodbye!");
+            Terminal.Say("Goodbye!");
             break;
         } else if command == "help" {
             printHelp();
         } else if command == "add" {
             // Gather contact information
-            Viper.Terminal.Print("Name: ");
-            var name = Viper.Terminal.ReadLine().trim();
-            Viper.Terminal.Print("Phone: ");
-            var phone = Viper.Terminal.ReadLine().trim();
-            Viper.Terminal.Print("Email: ");
-            var email = Viper.Terminal.ReadLine().trim();
+            Terminal.Print("Name: ");
+            var name = Terminal.ReadLine().trim();
+            Terminal.Print("Phone: ");
+            var phone = Terminal.ReadLine().trim();
+            Terminal.Print("Email: ");
+            var email = Terminal.ReadLine().trim();
 
             // Create and add the contact
             var contact = Contact();
@@ -1007,47 +1013,47 @@ func start() {
             contact.email = email;
             book.add(contact);
 
-            Viper.Terminal.Say("Contact added.");
+            Terminal.Say("Contact added.");
         } else if command == "list" {
             var contacts = book.all();
             if contacts.length == 0 {
-                Viper.Terminal.Say("No contacts yet.");
+                Terminal.Say("No contacts yet.");
             } else {
-                Viper.Terminal.Say("All contacts:");
+                Terminal.Say("All contacts:");
                 for i in 0..contacts.length {
-                    Viper.Terminal.Say("");
-                    Viper.Terminal.Say((i + 1) + ".");
+                    Terminal.Say("");
+                    Terminal.Say((i + 1) + ".");
                     printContact(contacts[i]);
                 }
             }
         } else if command == "search" {
-            Viper.Terminal.Print("Search for: ");
-            var query = Viper.Terminal.ReadLine().trim();
+            Terminal.Print("Search for: ");
+            var query = Terminal.ReadLine().trim();
 
             var results = book.search(query);
             if results.length == 0 {
-                Viper.Terminal.Say("No contacts found.");
+                Terminal.Say("No contacts found.");
             } else {
-                Viper.Terminal.Say("Found " + results.length + " contact(s):");
+                Terminal.Say("Found " + results.length + " contact(s):");
                 for contact in results {
-                    Viper.Terminal.Say("");
+                    Terminal.Say("");
                     printContact(contact);
                 }
             }
         } else if command == "remove" {
-            Viper.Terminal.Print("Name to remove: ");
-            var name = Viper.Terminal.ReadLine().trim();
+            Terminal.Print("Name to remove: ");
+            var name = Terminal.ReadLine().trim();
 
             if book.remove(name) {
-                Viper.Terminal.Say("Contact removed.");
+                Terminal.Say("Contact removed.");
             } else {
-                Viper.Terminal.Say("Contact not found.");
+                Terminal.Say("Contact not found.");
             }
         } else {
-            Viper.Terminal.Say("Unknown command. Type 'help' for options.");
+            Terminal.Say("Unknown command. Type 'help' for options.");
         }
 
-        Viper.Terminal.Say("");
+        Terminal.Say("");
     }
 }
 ```
@@ -1143,7 +1149,7 @@ func safeGetInt(data: JSONValue, key: String, defaultValue: Integer) -> Integer 
     if value.isNumber() {
         return value.asInt();
     } else if value.isString() {
-        return Viper.Convert.ToInt(value.asString());
+        return Convert.ToInt(value.asString());
     }
 
     return defaultValue;
@@ -1253,9 +1259,11 @@ var data = JSON.parse("this is { not valid json");
 Handle parse errors:
 
 ```rust
+bind Viper.Terminal;
+
 var result = JSON.tryParse(jsonText);
 if result.isError() {
-    Viper.Terminal.Say("Invalid JSON: " + result.errorMessage());
+    Terminal.Say("Invalid JSON: " + result.errorMessage());
     return;
 }
 var data = result.value();
@@ -1295,10 +1303,12 @@ When data does not parse correctly, systematic debugging helps.
 Before parsing, see exactly what you received:
 
 ```rust
+bind Viper.Terminal;
+
 var jsonText = File.readText("data.json");
-Viper.Terminal.Say("=== RAW JSON ===");
-Viper.Terminal.Say(jsonText);
-Viper.Terminal.Say("================");
+Terminal.Say("=== RAW JSON ===");
+Terminal.Say(jsonText);
+Terminal.Say("================");
 
 var data = JSON.parse(jsonText);
 ```
@@ -1319,28 +1329,30 @@ Paste your JSON into a validator to get precise error messages.
 After parsing, inspect what you got:
 
 ```rust
+bind Viper.Terminal;
+
 func debugJSON(data: JSONValue, indent: String) {
     if data.isObject() {
-        Viper.Terminal.Say(indent + "{");
+        Terminal.Say(indent + "{");
         for key in data.keys() {
-            Viper.Terminal.Say(indent + "  \"" + key + "\":");
+            Terminal.Say(indent + "  \"" + key + "\":");
             debugJSON(data[key], indent + "    ");
         }
-        Viper.Terminal.Say(indent + "}");
+        Terminal.Say(indent + "}");
     } else if data.isArray() {
-        Viper.Terminal.Say(indent + "[");
+        Terminal.Say(indent + "[");
         for item in data.asArray() {
             debugJSON(item, indent + "  ");
         }
-        Viper.Terminal.Say(indent + "]");
+        Terminal.Say(indent + "]");
     } else if data.isString() {
-        Viper.Terminal.Say(indent + "string: \"" + data.asString() + "\"");
+        Terminal.Say(indent + "string: \"" + data.asString() + "\"");
     } else if data.isNumber() {
-        Viper.Terminal.Say(indent + "number: " + data.asFloat());
+        Terminal.Say(indent + "number: " + data.asFloat());
     } else if data.isBool() {
-        Viper.Terminal.Say(indent + "bool: " + data.asBool());
+        Terminal.Say(indent + "bool: " + data.asBool());
     } else if data.isNull() {
-        Viper.Terminal.Say(indent + "null");
+        Terminal.Say(indent + "null");
     }
 }
 
@@ -1365,10 +1377,10 @@ var restored = Player.fromJSON(parsed);
 
 // Compare
 if original.name != restored.name {
-    Viper.Terminal.Say("Name mismatch!");
+    Terminal.Say("Name mismatch!");
 }
 if original.level != restored.level {
-    Viper.Terminal.Say("Level mismatch!");
+    Terminal.Say("Level mismatch!");
 }
 // ... check all fields
 ```
@@ -1380,9 +1392,11 @@ If round-trip works, your serialization is correct. If it fails, you know where 
 Instead of crashing on bad data, log the problem and continue:
 
 ```rust
+bind Viper.Terminal;
+
 func loadPlayerSafe(filename: String) -> Player? {
     if !File.exists(filename) {
-        Viper.Terminal.Say("Warning: Save file not found, using defaults");
+        Terminal.Say("Warning: Save file not found, using defaults");
         return null;
     }
 
@@ -1390,15 +1404,15 @@ func loadPlayerSafe(filename: String) -> Player? {
     var parseResult = JSON.tryParse(json);
 
     if parseResult.isError() {
-        Viper.Terminal.Say("Warning: Invalid save file format");
-        Viper.Terminal.Say("Error: " + parseResult.errorMessage());
+        Terminal.Say("Warning: Invalid save file format");
+        Terminal.Say("Error: " + parseResult.errorMessage());
         return null;
     }
 
     var data = parseResult.value();
 
     if !data.has("name") || !data.has("level") {
-        Viper.Terminal.Say("Warning: Save file missing required fields");
+        Terminal.Say("Warning: Save file missing required fields");
         return null;
     }
 
@@ -1501,6 +1515,7 @@ Here is a complete binary save example:
 
 ```rust
 bind Viper.IO;
+bind Viper.Terminal;
 
 value GameSave {
     version: Integer;
@@ -1544,7 +1559,7 @@ func loadBinary(filename: String) -> GameSave? {
     // Verify magic number
     var magic = reader.readUInt32();
     if magic != MAGIC {
-        Viper.Terminal.Say("Error: Not a valid save file");
+        Terminal.Say("Error: Not a valid save file");
         reader.close();
         return null;
     }
@@ -1552,7 +1567,7 @@ func loadBinary(filename: String) -> GameSave? {
     // Check version
     var version = reader.readUInt32();
     if version > VERSION {
-        Viper.Terminal.Say("Error: Save file is from a newer version");
+        Terminal.Say("Error: Save file is from a newer version");
         reader.close();
         return null;
     }
@@ -1590,6 +1605,7 @@ module ConfigSystem;
 
 bind Viper.JSON;
 bind Viper.File;
+bind Viper.Terminal;
 
 entity Config {
     hide data: JSONValue;
@@ -1604,7 +1620,7 @@ entity Config {
         if File.exists(filename) {
             var result = JSON.tryParse(File.readText(filename));
             if result.isError() {
-                Viper.Terminal.Say("Warning: Config file invalid, using defaults");
+                Terminal.Say("Warning: Config file invalid, using defaults");
                 self.data = JSON.object();
             } else {
                 self.data = result.value();
@@ -1729,11 +1745,11 @@ func start() {
     var playerName = config.getString("player.name", "New Player");
     var difficulty = config.getInt("game.difficulty", 2);
 
-    Viper.Terminal.Say("Current settings:");
-    Viper.Terminal.Say("  Volume: " + volume);
-    Viper.Terminal.Say("  Fullscreen: " + fullscreen);
-    Viper.Terminal.Say("  Player: " + playerName);
-    Viper.Terminal.Say("  Difficulty: " + difficulty);
+    Terminal.Say("Current settings:");
+    Terminal.Say("  Volume: " + volume);
+    Terminal.Say("  Fullscreen: " + fullscreen);
+    Terminal.Say("  Player: " + playerName);
+    Terminal.Say("  Difficulty: " + difficulty);
 
     // Modify settings
     config.setFloat("audio.volume", 0.5);
@@ -1743,8 +1759,8 @@ func start() {
     // Persist changes
     config.save();
 
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("Settings saved!");
+    Terminal.Say("");
+    Terminal.Say("Settings saved!");
 }
 ```
 

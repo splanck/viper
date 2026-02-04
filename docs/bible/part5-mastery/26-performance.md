@@ -95,6 +95,7 @@ The simplest way to measure is with a stopwatch:
 
 ```rust
 bind Viper.Time;
+bind Viper.Terminal;
 
 func start() {
     var startTime = Time.millis();
@@ -102,7 +103,7 @@ func start() {
     doExpensiveWork();
 
     var elapsed = Time.millis() - startTime;
-    Viper.Terminal.Say("Took " + elapsed + " ms");
+    Terminal.Say("Took " + elapsed + " ms");
 }
 ```
 
@@ -114,6 +115,7 @@ You can time individual sections:
 
 ```rust
 bind Viper.Time;
+bind Viper.Terminal;
 
 func processData(data: [Record]) {
     var t0 = Time.millis();
@@ -121,22 +123,22 @@ func processData(data: [Record]) {
     var parsed = parseRecords(data);
 
     var t1 = Time.millis();
-    Viper.Terminal.Say("Parsing: " + (t1 - t0) + " ms");
+    Terminal.Say("Parsing: " + (t1 - t0) + " ms");
 
     var validated = validateRecords(parsed);
 
     var t2 = Time.millis();
-    Viper.Terminal.Say("Validation: " + (t2 - t1) + " ms");
+    Terminal.Say("Validation: " + (t2 - t1) + " ms");
 
     var results = computeResults(validated);
 
     var t3 = Time.millis();
-    Viper.Terminal.Say("Computation: " + (t3 - t2) + " ms");
+    Terminal.Say("Computation: " + (t3 - t2) + " ms");
 
     writeResults(results);
 
     var t4 = Time.millis();
-    Viper.Terminal.Say("Writing: " + (t4 - t3) + " ms");
+    Terminal.Say("Writing: " + (t4 - t3) + " ms");
 }
 ```
 
@@ -156,12 +158,13 @@ Let's make timing reusable:
 
 ```rust
 bind Viper.Time;
+bind Viper.Terminal;
 
 func timed<T>(name: String, work: func() -> T) -> T {
     var start = Time.nanos();
     var result = work();
     var elapsed = (Time.nanos() - start) / 1_000_000.0;
-    Viper.Terminal.Say(name + ": " + elapsed + " ms");
+    Terminal.Say(name + ": " + elapsed + " ms");
     return result;
 }
 
@@ -411,7 +414,7 @@ But watch for hidden loops:
 func sneakyQuadratic(items: [string]) {
     for item in items {
         if items.contains(item.reversed()) {  // contains() is O(n)!
-            Viper.Terminal.Say("Found palindrome pair");
+            Terminal.Say("Found palindrome pair");
         }
     }
 }
@@ -491,6 +494,7 @@ Let's benchmark all three:
 
 ```rust
 bind Viper.Time;
+bind Viper.Terminal;
 
 func start() {
     var sizes = [1000, 10000, 100000];
@@ -498,19 +502,19 @@ func start() {
     for size in sizes {
         var data = generateRandomData(size);
 
-        Viper.Terminal.Say("\n--- Size: " + size + " ---");
+        Terminal.Say("\n--- Size: " + size + " ---");
 
         var t0 = Time.millis();
         hasDuplicates_slow(data);
-        Viper.Terminal.Say("O(n²):      " + (Time.millis() - t0) + " ms");
+        Terminal.Say("O(n²):      " + (Time.millis() - t0) + " ms");
 
         var t1 = Time.millis();
         hasDuplicates_medium(data);
-        Viper.Terminal.Say("O(n log n): " + (Time.millis() - t1) + " ms");
+        Terminal.Say("O(n log n): " + (Time.millis() - t1) + " ms");
 
         var t2 = Time.millis();
         hasDuplicates_fast(data);
-        Viper.Terminal.Say("O(n):       " + (Time.millis() - t2) + " ms");
+        Terminal.Say("O(n):       " + (Time.millis() - t2) + " ms");
     }
 }
 ```
@@ -659,7 +663,7 @@ Don't compute the same thing twice:
 func processExpensiveData(items: [Item]) {
     for item in items {
         if computeExpensiveValue(item) > threshold {
-            Viper.Terminal.Say("High: " + computeExpensiveValue(item));  // Computing twice!
+            Terminal.Say("High: " + computeExpensiveValue(item));  // Computing twice!
         }
     }
 }
@@ -671,7 +675,7 @@ func processExpensiveData(items: [Item]) {
     for item in items {
         var value = computeExpensiveValue(item);  // Compute once
         if value > threshold {
-            Viper.Terminal.Say("High: " + value);  // Reuse
+            Terminal.Say("High: " + value);  // Reuse
         }
     }
 }
@@ -1174,6 +1178,7 @@ When comparing approaches, benchmark carefully. Computers are tricky; many thing
 
 ```rust
 bind Viper.Time;
+bind Viper.Terminal;
 
 func benchmark(name: String, iterations: Integer, work: func()) {
     // Warm up: let JIT/caches stabilize
@@ -1191,7 +1196,7 @@ func benchmark(name: String, iterations: Integer, work: func()) {
     var totalMs = (end - start) / 1_000_000.0;
     var perIter = totalMs / iterations;
 
-    Viper.Terminal.Say(name + ": " + perIter.format(3) + " ms/iter");
+    Terminal.Say(name + ": " + perIter.format(3) + " ms/iter");
 }
 ```
 
@@ -1209,7 +1214,7 @@ func badBenchmark() {
     var start = Time.millis();
     compute(data);  // Compiler might optimize this away!
     var end = Time.millis();
-    Viper.Terminal.Say("Took " + (end - start));
+    Terminal.Say("Took " + (end - start));
 }
 ```
 
@@ -1222,8 +1227,8 @@ func goodBenchmark() {
         result += compute(data);  // Result is used, can't be optimized away
     }
     var end = Time.millis();
-    Viper.Terminal.Say("Took " + ((end - start) / 1000.0) + " ms/iter");
-    Viper.Terminal.Say("Checksum: " + result);  // Actually use the result
+    Terminal.Say("Took " + ((end - start) / 1000.0) + " ms/iter");
+    Terminal.Say("Checksum: " + result);  // Actually use the result
 }
 ```
 
@@ -1238,6 +1243,8 @@ When your program is slow but you're not sure why, follow this systematic approa
 First, create a test case that reliably shows the problem:
 
 ```rust
+bind Viper.Terminal;
+
 func reproduceSlowness() {
     var testData = loadTestData("large_dataset.json");
 
@@ -1245,7 +1252,7 @@ func reproduceSlowness() {
     processData(testData);
     var elapsed = Time.millis() - start;
 
-    Viper.Terminal.Say("Processing took: " + elapsed + " ms");
+    Terminal.Say("Processing took: " + elapsed + " ms");
     // Run multiple times, should see consistent results
 }
 ```
@@ -1263,6 +1270,8 @@ Look at the top functions. Is it what you expected? Often it's not.
 If the profiler points to a large function, add internal timing:
 
 ```rust
+bind Viper.Terminal;
+
 func processData(data: [Record]) {
     var t0 = Time.millis();
 
@@ -1270,13 +1279,13 @@ func processData(data: [Record]) {
     ...
 
     var t1 = Time.millis();
-    Viper.Terminal.Say("Section A: " + (t1 - t0) + " ms");
+    Terminal.Say("Section A: " + (t1 - t0) + " ms");
 
     // Section B
     ...
 
     var t2 = Time.millis();
-    Viper.Terminal.Say("Section B: " + (t2 - t1) + " ms");
+    Terminal.Say("Section B: " + (t2 - t1) + " ms");
 
     // etc.
 }
@@ -1342,6 +1351,7 @@ When debugging performance, look for these usual suspects:
 **Zia**
 ```rust
 bind Viper.Time;
+bind Viper.Terminal;
 
 func benchmark(name: String, work: func()) {
     var start = Time.millis();
@@ -1349,7 +1359,7 @@ func benchmark(name: String, work: func()) {
         work();
     }
     var elapsed = Time.millis() - start;
-    Viper.Terminal.Say(name + ": " + elapsed + " ms total");
+    Terminal.Say(name + ": " + elapsed + " ms total");
 }
 ```
 

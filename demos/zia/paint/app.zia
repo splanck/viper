@@ -1,6 +1,11 @@
 // app.viper - Main application controller for Viper Paint
 module app;
 
+bind Viper.Graphics;
+bind Viper.Time;
+bind Viper.Input;
+bind Viper.Convert;
+
 bind "./config";
 bind "./canvas";
 bind "./colors";
@@ -19,7 +24,7 @@ bind "./ui/slider";
 // PaintApp entity - main application controller
 entity PaintApp {
     // Graphics canvas (window)
-    hide Viper.Graphics.Canvas gfx;
+    hide Canvas gfx;
 
     // Drawing canvas (pixel buffer)
     expose canvas.DrawingCanvas canvas;
@@ -77,7 +82,7 @@ entity PaintApp {
 
     expose func init() {
         // Create the graphics window
-        gfx = new Viper.Graphics.Canvas(config.WINDOW_TITLE, config.WINDOW_WIDTH, config.WINDOW_HEIGHT);
+        gfx = new Canvas(config.WINDOW_TITLE, config.WINDOW_WIDTH, config.WINDOW_HEIGHT);
 
         // Initialize drawing canvas
         canvas = new canvas.DrawingCanvas();

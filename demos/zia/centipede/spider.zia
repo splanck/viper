@@ -12,6 +12,10 @@ bind "./config";
 bind "./utils";
 bind "./mushroom";
 
+bind Viper.Game;
+bind Viper.Graphics;
+bind Viper.Random;
+
 // =============================================================================
 // SPIDER ENTITY - Erratic bouncing enemy
 // =============================================================================
@@ -22,7 +26,7 @@ entity Spider {
     hide Integer dirX;
     hide Integer dirY;
     hide Boolean active;
-    hide Viper.Game.Timer moveTimer;
+    hide Timer moveTimer;
     hide Integer animFrame;
 
     expose func init() {
@@ -31,13 +35,13 @@ entity Spider {
         dirX = 1;
         dirY = 1;
         active = false;
-        moveTimer = Viper.Game.Timer.New();
+        moveTimer = Timer.New();
         animFrame = 0;
     }
 
     expose func spawn() {
         // Spawn from left or right side, in player zone
-        if Viper.Random.NextInt(2) == 0 {
+        if NextInt(2) == 0 {
             screenX = 0;
             dirX = 1;
         } else {
@@ -48,9 +52,9 @@ entity Spider {
         // Random Y in player zone
         var minY = config.PLAYER_ZONE_TOP * config.TILE_SIZE;
         var maxY = config.SCREEN_HEIGHT - config.TILE_SIZE * 2;
-        screenY = minY + Viper.Random.NextInt(maxY - minY);
+        screenY = minY + NextInt(maxY - minY);
 
-        dirY = Viper.Random.NextInt(2) * 2 - 1;  // -1 or 1
+        dirY = NextInt(2) * 2 - 1;  // -1 or 1
         active = true;
         moveTimer.StartRepeating(config.SPIDER_MOVE_DELAY);
         animFrame = 0;
@@ -77,10 +81,10 @@ entity Spider {
             screenX = screenX + dirX * speed;
 
             // Randomly change vertical direction
-            if Viper.Random.NextInt(5) == 0 {
+            if NextInt(5) == 0 {
                 dirY = -dirY;
             }
-            if Viper.Random.NextInt(3) == 0 {
+            if NextInt(3) == 0 {
                 screenY = screenY + dirY * speed;
             }
 
@@ -129,7 +133,7 @@ entity Spider {
         return utils.screenToGridY(screenY + config.TILE_SIZE / 2);
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         if !active {
             return;
         }

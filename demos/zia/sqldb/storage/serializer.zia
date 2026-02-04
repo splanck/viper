@@ -3,6 +3,8 @@
 
 module serializer;
 
+bind Viper.String;
+
 bind "../types";
 bind "../table";
 bind "./page";
@@ -73,12 +75,12 @@ entity BinaryBuffer {
 
     // Write a string (length-prefixed)
     expose func writeString(s: String) {
-        var len = Viper.String.Length(s);
+        var len = String.Length(s);
         writeInt32(len);
         var i = 0;
         while i < len {
-            var ch = Viper.String.Substring(s, i, 1);
-            var code = Viper.String.Asc(ch);
+            var ch = String.Substring(s, i, 1);
+            var code = String.Asc(ch);
             writeByte(code);
             i = i + 1;
         }
@@ -124,7 +126,7 @@ entity BinaryBuffer {
         var i = 0;
         while i < len {
             var code = readByte();
-            result = result + Viper.String.Chr(code);
+            result = result + String.Chr(code);
             i = i + 1;
         }
         return result;
@@ -163,9 +165,9 @@ entity BinaryBuffer {
 // Helper function for hex digits
 func hexDigit(n: Integer) -> String {
     if n < 10 {
-        return Viper.String.Chr(48 + n);  // '0' = 48
+        return String.Chr(48 + n);  // '0' = 48
     }
-    return Viper.String.Chr(65 + n - 10);  // 'A' = 65
+    return String.Chr(65 + n - 10);  // 'A' = 65
 }
 
 //=============================================================================
@@ -244,11 +246,11 @@ entity ValueSerializer {
         }
 
         if val.kind == SQL_REAL {
-            return 1 + 4 + Viper.String.Length(val.textValue);  // Tag + len + string
+            return 1 + 4 + String.Length(val.textValue);  // Tag + len + string
         }
 
         if val.kind == SQL_TEXT {
-            return 1 + 4 + Viper.String.Length(val.textValue);  // Tag + len + string
+            return 1 + 4 + String.Length(val.textValue);  // Tag + len + string
         }
 
         return 1;

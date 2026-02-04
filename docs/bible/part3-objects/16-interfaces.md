@@ -152,6 +152,8 @@ To implement an interface, an entity must:
 3. Match the exact signatures (names, parameters, return types)
 
 ```rust
+bind Viper.Terminal;
+
 interface Drawable {
     func draw();
 }
@@ -160,7 +162,7 @@ entity Circle implements Drawable {
     radius: Number;
 
     func draw() {
-        Viper.Terminal.Say("Drawing a circle with radius " + self.radius);
+        Say("Drawing a circle with radius " + self.radius);
     }
 }
 
@@ -169,7 +171,7 @@ entity Rectangle implements Drawable {
     height: Number;
 
     func draw() {
-        Viper.Terminal.Say("Drawing a rectangle " + self.width + "x" + self.height);
+        Say("Drawing a rectangle " + self.width + "x" + self.height);
     }
 }
 ```
@@ -181,6 +183,8 @@ Both entities are Drawable. They each provide their own implementation of `draw(
 If you claim to implement an interface but forget a method, the compiler will complain:
 
 ```rust
+bind Viper.Terminal;
+
 interface Drawable {
     func draw();
     func getColor() -> String;
@@ -188,7 +192,7 @@ interface Drawable {
 
 entity Circle implements Drawable {
     func draw() {
-        Viper.Terminal.Say("Drawing circle");
+        Say("Drawing circle");
     }
     // ERROR: Circle claims to implement Drawable but doesn't implement getColor()!
 }
@@ -411,6 +415,8 @@ You can't express this with single inheritance. A smartphone isn't "a type of ph
 ### Implementing Multiple Interfaces
 
 ```rust
+bind Viper.Terminal;
+
 interface Drawable {
     func draw();
 }
@@ -429,7 +435,7 @@ entity Button implements Drawable, Movable, Clickable {
     label: String;
 
     func draw() {
-        Viper.Terminal.Say("Drawing button: " + self.label);
+        Say("Drawing button: " + self.label);
     }
 
     func move(dx: Number, dy: Number) {
@@ -438,7 +444,7 @@ entity Button implements Drawable, Movable, Clickable {
     }
 
     func onClick() {
-        Viper.Terminal.Say("Button clicked: " + self.label);
+        Say("Button clicked: " + self.label);
     }
 }
 ```
@@ -488,6 +494,8 @@ Each entity implements exactly what it needs. No more, no less.
 You can combine inheritance and interfaces. This is common and powerful.
 
 ```rust
+bind Viper.Terminal;
+
 entity Enemy {
     health: Integer;
 
@@ -506,7 +514,7 @@ interface Attackable {
 
 entity Goblin extends Enemy implements Drawable, Attackable {
     func draw() {
-        Viper.Terminal.Say("Drawing a goblin");
+        Say("Drawing a goblin");
     }
 
     func attack() -> Integer {
@@ -535,6 +543,8 @@ entity Goblin implements Drawable extends Enemy { ... }
 ### A Richer Example
 
 ```rust
+bind Viper.Terminal;
+
 entity GameObject {
     id: Integer;
     x: Number;
@@ -584,7 +594,7 @@ entity Player extends GameObject implements Renderable, Collidable, Updatable {
     }
 
     func onCollision(other: Collidable) {
-        Viper.Terminal.Say("Player hit something!");
+        Say("Player hit something!");
     }
 
     func update(deltaTime: Number) {
@@ -1005,6 +1015,9 @@ Interfaces are perfect for plugin systems where you don't know what implementati
 ```rust
 module PluginSystem;
 
+bind Viper.Terminal;
+bind Viper.Text;
+
 // Interface that all plugins must implement
 interface Plugin {
     func getName() -> String;
@@ -1028,7 +1041,7 @@ entity ReversePlugin implements Plugin {
     }
 
     func execute(input: String) -> String {
-        return Viper.Text.reverse(input);
+        return reverse(input);
     }
 }
 
@@ -1044,7 +1057,7 @@ entity RepeatPlugin implements Plugin {
     }
 
     func execute(input: String) -> String {
-        return Viper.Text.repeat(input, self.times);
+        return repeat(input, self.times);
     }
 }
 
@@ -1058,7 +1071,7 @@ entity PluginManager {
 
     func register(plugin: Plugin) {
         self.plugins.push(plugin);
-        Viper.Terminal.Say("Registered: " + plugin.getName());
+        Say("Registered: " + plugin.getName());
     }
 
     func process(input: String) -> String {
@@ -1070,9 +1083,9 @@ entity PluginManager {
     }
 
     func listPlugins() {
-        Viper.Terminal.Say("Installed plugins:");
+        Say("Installed plugins:");
         for plugin in self.plugins {
-            Viper.Terminal.Say("  - " + plugin.getName());
+            Say("  - " + plugin.getName());
         }
     }
 }
@@ -1091,8 +1104,8 @@ func start() {
     var input = "hello";
     var output = manager.process(input);
 
-    Viper.Terminal.Say("Input: " + input);
-    Viper.Terminal.Say("Output: " + output);
+    Say("Input: " + input);
+    Say("Output: " + output);
     // Output: OLLEHOLLEH (uppercased, reversed, repeated twice)
 }
 ```
@@ -1107,13 +1120,15 @@ This is the power of interfaces: *designing for extension without modification*.
 
 **Zia**
 ```rust
+bind Viper.Terminal;
+
 interface Printable {
     func print();
 }
 
 entity Document implements Printable {
     func print() {
-        Viper.Terminal.Say("Printing document");
+        Say("Printing document");
     }
 }
 ```
@@ -1233,7 +1248,7 @@ entity Subject {
 // Different observers respond differently
 entity LoggingObserver implements Observer {
     func onEvent(event: String) {
-        Viper.Terminal.Say("LOG: " + event);
+        Say("LOG: " + event);
     }
 }
 
@@ -1241,7 +1256,7 @@ entity EmailObserver implements Observer {
     adminEmail: String;
 
     func onEvent(event: String) {
-        Viper.Email.send(self.adminEmail, "Event: " + event);
+        Email.send(self.adminEmail, "Event: " + event);
     }
 }
 

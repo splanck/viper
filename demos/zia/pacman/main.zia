@@ -28,34 +28,35 @@
 
 module PacMan;
 
+bind Viper.Terminal;
 bind "./game";
 
 func start() {
-    Viper.Terminal.Say("===========================================");
-    Viper.Terminal.Say("PAC-MAN - A Zia/Viper Game Demo");
-    Viper.Terminal.Say("===========================================");
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("Demonstrating new game development features:");
-    Viper.Terminal.Say("  - Viper.Input.Manager (debounced input)");
-    Viper.Terminal.Say("  - Viper.Game.Grid2D (2D tile storage)");
-    Viper.Terminal.Say("  - Viper.Game.Timer (frame-based timers)");
-    Viper.Terminal.Say("  - Viper.Game.Tween (smooth animations)");
-    Viper.Terminal.Say("  - Viper.Game.SmoothValue (animated counters)");
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("Controls:");
-    Viper.Terminal.Say("  Arrow Keys / WASD - Move");
-    Viper.Terminal.Say("  ENTER / SPACE     - Select");
-    Viper.Terminal.Say("  ESC               - Back/Quit");
-    Viper.Terminal.Say("  P                 - Pause");
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("Loading...");
+    Say("===========================================");
+    Say("PAC-MAN - A Zia/Viper Game Demo");
+    Say("===========================================");
+    Say("");
+    Say("Demonstrating new game development features:");
+    Say("  - Viper.Input.Manager (debounced input)");
+    Say("  - Viper.Game.Grid2D (2D tile storage)");
+    Say("  - Viper.Game.Timer (frame-based timers)");
+    Say("  - Viper.Game.Tween (smooth animations)");
+    Say("  - Viper.Game.SmoothValue (animated counters)");
+    Say("");
+    Say("Controls:");
+    Say("  Arrow Keys / WASD - Move");
+    Say("  ENTER / SPACE     - Select");
+    Say("  ESC               - Back/Quit");
+    Say("  P                 - Pause");
+    Say("");
+    Say("Loading...");
 
     var theGame = new game.Game();
 
-    Viper.Terminal.Say("Starting game!");
+    Say("Starting game!");
     theGame.run();
 
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("Thanks for playing!");
+    Say("");
+    Say("Thanks for playing!");
 }
 

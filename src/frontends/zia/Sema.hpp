@@ -489,6 +489,28 @@ class Sema
     /// For example, `bind Viper.Terminal as Term;` makes Term.Say, Term.Ask, etc. available.
     void analyzeBind(BindDecl &decl);
 
+    /// @brief Analyze a namespace bind declaration.
+    /// @param decl The bind declaration (must have isNamespaceBind=true).
+    ///
+    /// @details Processes namespace binds like `bind Viper.Terminal;`:
+    /// - Full import: imports all symbols from the namespace
+    /// - Alias import: creates module symbol for qualified access
+    /// - Selective import: imports only specified symbols
+    void analyzeNamespaceBind(BindDecl &decl);
+
+    /// @brief Check if a namespace path refers to a valid runtime namespace.
+    /// @param ns The namespace path (e.g., "Viper.Terminal").
+    /// @return True if the namespace exists in the runtime registry.
+    bool isValidRuntimeNamespace(const std::string &ns);
+
+    /// @brief Import all symbols from a runtime namespace into scope.
+    /// @param ns The namespace path (e.g., "Viper.Terminal").
+    ///
+    /// @details Walks through all registered extern symbols and imports
+    /// those that match the namespace prefix. Nested namespaces are not
+    /// imported (e.g., binding Viper.Graphics doesn't import Viper.Graphics.Color.Red).
+    void importNamespaceSymbols(const std::string &ns);
+
     /// @brief Analyze a global variable declaration.
     /// @param decl The global variable declaration.
     ///
@@ -1076,8 +1098,19 @@ class Sema
     /// the FieldExpr to "Viper.Math.get_Pi" so the lowerer can emit a getter call.
     std::unordered_map<const FieldExpr *, std::string> runtimeFieldGetters_;
 
-    /// @brief Set of bind paths seen in the current module.
+    /// @brief Set of bind paths seen in the current module (file binds).
     std::unordered_set<std::string> binds_;
+
+    /// @brief Bound runtime namespaces (e.g., "Viper.Terminal").
+    /// @details Maps namespace prefix to optional alias. Empty alias means
+    /// full namespace import (all symbols imported without prefix).
+    std::unordered_map<std::string, std::string> boundNamespaces_;
+
+    /// @brief Symbols imported from bound namespaces.
+    /// @details Maps short name (e.g., "Say") to full qualified name
+    /// (e.g., "Viper.Terminal.Say"). Used for unqualified function calls
+    /// and constructor resolution.
+    std::unordered_map<std::string, std::string> importedSymbols_;
 
     /// @brief Map from imported module names to their exported symbols.
     /// @details When `import "./colors"` is processed, "colors" maps to

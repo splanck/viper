@@ -5,7 +5,9 @@
 ```viper
 module MyApp;                          // Module declaration
 
-bind Viper.IO.File;                  // Bind
+bind Viper.Terminal;                   // Namespace bind (import all symbols)
+bind Viper.IO as IO;                   // Namespace bind with alias
+bind Viper.Math { Sqrt, Pi };          // Selective import
 
 // Value type (copied)
 value Point {

@@ -311,6 +311,8 @@ These return the mouse position in canvas coordinates. The top-left corner of yo
 You can use mouse position for many things:
 
 ```rust
+bind Viper.Math;
+
 // Make something follow the mouse
 cursor.x = Input.mouseX();
 cursor.y = Input.mouseY();
@@ -327,7 +329,7 @@ if mx >= button.x && mx < button.x + button.width &&
 // Point a turret at the mouse
 var dx = Input.mouseX() - turret.x;
 var dy = Input.mouseY() - turret.y;
-turret.angle = Viper.Math.atan2(dy, dx);
+turret.angle = atan2(dy, dx);
 ```
 
 ### Mouse Buttons
@@ -381,6 +383,7 @@ module MouseDraw;
 
 bind Viper.Graphics;
 bind Viper.Input;
+bind Viper.Time;
 
 func start() {
     var canvas = Canvas(800, 600);
@@ -406,7 +409,7 @@ func start() {
         }
 
         canvas.show();
-        Viper.Time.sleep(16);
+        sleep(16);
     }
 }
 ```
@@ -518,8 +521,10 @@ Now that we understand the basics, let's explore patterns that make input handli
 Remember that analog sticks rarely rest exactly at (0, 0). A dead zone ignores small values near the center:
 
 ```rust
+bind Viper.Math;
+
 func applyDeadZone(value: Number, threshold: Number) -> Number {
-    if Viper.Math.abs(value) < threshold {
+    if abs(value) < threshold {
         return 0.0;  // Treat small values as zero
     }
     return value;
@@ -535,8 +540,10 @@ A threshold of 0.15 is typical. Too low, and the character drifts. Too high, and
 A more sophisticated dead zone smoothly scales the value to avoid a "jump" when crossing the threshold:
 
 ```rust
+bind Viper.Math;
+
 func applyDeadZoneSmooth(value: Number, threshold: Number) -> Number {
-    var absValue = Viper.Math.abs(value);
+    var absValue = abs(value);
     if absValue < threshold {
         return 0.0;
     }
@@ -553,6 +560,8 @@ This makes the transition from dead zone to movement smooth rather than abrupt.
 Games should abstract input so the same action can come from different sources. This lets players use their preferred input device and makes your code cleaner:
 
 ```rust
+bind Viper.Math;
+
 entity InputManager {
     func getMoveX() -> Number {
         // Check keyboard first
@@ -566,7 +575,7 @@ entity InputManager {
         // Then check controller
         if Input.isControllerConnected(0) {
             var axis = Input.controllerAxis(0, Axis.LEFT_X);
-            if Viper.Math.abs(axis) > 0.2 {  // Dead zone
+            if abs(axis) > 0.2 {  // Dead zone
                 return axis;
             }
         }
@@ -584,7 +593,7 @@ entity InputManager {
 
         if Input.isControllerConnected(0) {
             var axis = Input.controllerAxis(0, Axis.LEFT_Y);
-            if Viper.Math.abs(axis) > 0.2 {
+            if abs(axis) > 0.2 {
                 return axis;
             }
         }
@@ -669,6 +678,8 @@ entity KeyMap {
 To let the player rebind a key:
 
 ```rust
+bind Viper.Time;
+
 func waitForKeyAndRebind(keyMap: KeyMap, action: String) {
     // Wait for any key press
     while true {
@@ -678,7 +689,7 @@ func waitForKeyAndRebind(keyMap: KeyMap, action: String) {
                 return;
             }
         }
-        Viper.Time.sleep(16);
+        sleep(16);
     }
 }
 ```
@@ -827,6 +838,7 @@ module CharacterDemo;
 
 bind Viper.Graphics;
 bind Viper.Input;
+bind Viper.Time;
 
 value Player {
     x: Number;
@@ -853,11 +865,11 @@ func start() {
         onGround: true
     };
 
-    var lastTime = Viper.Time.millis();
+    var lastTime = millis();
 
     while canvas.isOpen() {
         // Calculate delta time
-        var now = Viper.Time.millis();
+        var now = millis();
         var dt = (now - lastTime) / 1000.0;
         lastTime = now;
 
@@ -921,7 +933,7 @@ func start() {
         canvas.drawText(10, 75, "On ground: " + player.onGround);
 
         canvas.show();
-        Viper.Time.sleep(16);
+        sleep(16);
     }
 }
 ```
@@ -1029,8 +1041,10 @@ player.x += stickX * speed * dt;  // Character slowly drifts even with stick cen
 
 **Right:**
 ```rust
+bind Viper.Math;
+
 var stickX = Input.controllerAxis(0, Axis.LEFT_X);
-if Viper.Math.abs(stickX) < 0.15 {
+if abs(stickX) < 0.15 {
     stickX = 0.0;  // Dead zone
 }
 player.x += stickX * speed * dt;
@@ -1068,11 +1082,13 @@ Centralizing input handling makes it easy to add controller support, rebindable 
 When your game window isn't focused (the player clicked on another window), you might still receive input events in some situations, or the input state might be stale. Good practice:
 
 ```rust
+bind Viper.Time;
+
 while canvas.isOpen() {
     if !canvas.hasFocus() {
         // Window not focused, skip input processing
         // Maybe also pause the game
-        Viper.Time.sleep(100);  // Don't burn CPU while unfocused
+        sleep(100);  // Don't burn CPU while unfocused
         continue;
     }
 
@@ -1161,14 +1177,17 @@ If keyboard works but controller doesn't:
 For input buffering and timing-sensitive code:
 
 ```rust
+bind Viper.Terminal;
+bind Viper.Time;
+
 if Input.wasKeyPressed(Key.SPACE) {
-    Viper.Terminal.Say("Jump pressed at time: " + Viper.Time.millis());
+    Say("Jump pressed at time: " + millis());
 }
 
 if player.onGround {
-    Viper.Terminal.Say("On ground at time: " + Viper.Time.millis());
+    Say("On ground at time: " + millis());
     if inputBuffer.consumeJump() {
-        Viper.Terminal.Say("Jump executed!");
+        Say("Jump executed!");
     }
 }
 ```

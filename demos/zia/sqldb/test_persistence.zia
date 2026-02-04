@@ -3,6 +3,11 @@
 
 module test_persistence;
 
+bind Viper.Terminal;
+bind Viper.Fmt;
+bind Viper.IO;
+bind Viper.String;
+
 bind "./executor";
 
 //=============================================================================
@@ -14,10 +19,10 @@ Integer failed = 0;
 
 func assertTrue(cond: Boolean, desc: String) {
     if cond {
-        Viper.Terminal.Say("  PASS: " + desc);
+        Terminal.Say("  PASS: " + desc);
         passed = passed + 1;
     } else {
-        Viper.Terminal.Say("  FAIL: " + desc);
+        Terminal.Say("  FAIL: " + desc);
         failed = failed + 1;
     }
 }
@@ -31,7 +36,7 @@ func assertFalse(cond: Boolean, desc: String) {
 //=============================================================================
 
 func testDescribe() {
-    Viper.Terminal.Say("Testing DESCRIBE...");
+    Terminal.Say("Testing DESCRIBE...");
     var exec = new Executor();
     exec.init();
 
@@ -51,7 +56,7 @@ func testDescribe() {
 }
 
 func testHelp() {
-    Viper.Terminal.Say("Testing HELP...");
+    Terminal.Say("Testing HELP...");
     var exec = new Executor();
     exec.init();
 
@@ -61,7 +66,7 @@ func testHelp() {
 }
 
 func testVacuum() {
-    Viper.Terminal.Say("Testing VACUUM...");
+    Terminal.Say("Testing VACUUM...");
     var exec = new Executor();
     exec.init();
 
@@ -83,12 +88,12 @@ func testVacuum() {
     assertTrue(vacuumResult.success, "VACUUM should succeed");
 
     // Verify message
-    var hasRemoved = Viper.String.IndexOf(vacuumResult.message, "removed") >= 0;
+    var hasRemoved = String.IndexOf(vacuumResult.message, "removed") >= 0;
     assertTrue(hasRemoved, "VACUUM message should mention removed rows");
 }
 
 func testAlterTableAddColumn() {
-    Viper.Terminal.Say("Testing ALTER TABLE ADD COLUMN...");
+    Terminal.Say("Testing ALTER TABLE ADD COLUMN...");
     var exec = new Executor();
     exec.init();
 
@@ -112,7 +117,7 @@ func testAlterTableAddColumn() {
 }
 
 func testAlterTableDropColumn() {
-    Viper.Terminal.Say("Testing ALTER TABLE DROP COLUMN...");
+    Terminal.Say("Testing ALTER TABLE DROP COLUMN...");
     var exec = new Executor();
     exec.init();
 
@@ -134,7 +139,7 @@ func testAlterTableDropColumn() {
 }
 
 func testAlterTableRename() {
-    Viper.Terminal.Say("Testing ALTER TABLE RENAME...");
+    Terminal.Say("Testing ALTER TABLE RENAME...");
     var exec = new Executor();
     exec.init();
 
@@ -153,7 +158,7 @@ func testAlterTableRename() {
 }
 
 func testAlterTableRenameColumn() {
-    Viper.Terminal.Say("Testing ALTER TABLE RENAME COLUMN...");
+    Terminal.Say("Testing ALTER TABLE RENAME COLUMN...");
     var exec = new Executor();
     exec.init();
 
@@ -173,7 +178,7 @@ func testAlterTableRenameColumn() {
 }
 
 func testSaveAndOpen() {
-    Viper.Terminal.Say("Testing SAVE and OPEN...");
+    Terminal.Say("Testing SAVE and OPEN...");
     var exec = new Executor();
     exec.init();
 
@@ -199,11 +204,11 @@ func testSaveAndOpen() {
     assertTrue(selectResult.rowCount() == 2, "Should have 2 rows after OPEN");
 
     // Cleanup
-    Viper.IO.File.Delete("/tmp/test_sqldb.sql");
+    IO.File.Delete("/tmp/test_sqldb.sql");
 }
 
 func testExportImport() {
-    Viper.Terminal.Say("Testing EXPORT and IMPORT...");
+    Terminal.Say("Testing EXPORT and IMPORT...");
     var exec = new Executor();
     exec.init();
 
@@ -218,7 +223,7 @@ func testExportImport() {
     assertTrue(exportResult.success, "EXPORT should succeed");
 
     // Verify file exists
-    assertTrue(Viper.IO.File.Exists("/tmp/products.csv"), "CSV file should exist");
+    assertTrue(IO.File.Exists("/tmp/products.csv"), "CSV file should exist");
 
     // Create new table and import
     exec.executeSql("CREATE TABLE products2 (id INTEGER, name TEXT, price INTEGER)");
@@ -231,11 +236,11 @@ func testExportImport() {
     assertTrue(selectResult.rowCount() == 3, "Should have 3 rows after IMPORT");
 
     // Cleanup
-    Viper.IO.File.Delete("/tmp/products.csv");
+    IO.File.Delete("/tmp/products.csv");
 }
 
 func testShowTables() {
-    Viper.Terminal.Say("Testing SHOW TABLES...");
+    Terminal.Say("Testing SHOW TABLES...");
     var exec = new Executor();
     exec.init();
 
@@ -253,8 +258,8 @@ func testShowTables() {
 //=============================================================================
 
 func start() {
-    Viper.Terminal.Say("=== Phase 10: Persistence Tests ===");
-    Viper.Terminal.Say("");
+    Terminal.Say("=== Phase 10: Persistence Tests ===");
+    Terminal.Say("");
 
     testDescribe();
     testHelp();
@@ -267,8 +272,8 @@ func start() {
     testExportImport();
     testShowTables();
 
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("=== Results ===");
-    Viper.Terminal.Say("Passed: " + Viper.Fmt.Int(passed));
-    Viper.Terminal.Say("Failed: " + Viper.Fmt.Int(failed));
+    Terminal.Say("");
+    Terminal.Say("=== Results ===");
+    Terminal.Say("Passed: " + Fmt.Int(passed));
+    Terminal.Say("Failed: " + Fmt.Int(failed));
 }

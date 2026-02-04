@@ -156,6 +156,12 @@ bool ImportResolver::processModule(ModuleDecl &module,
     for (size_t i = 0; i < module.binds.size(); ++i)
     {
         const auto &bind = module.binds[i];
+
+        // Skip namespace binds (e.g., "bind Viper.Terminal;") - they are handled
+        // by semantic analysis, not file resolution.
+        if (bind.isNamespaceBind)
+            continue;
+
         std::string bindFilePath = resolveImportPath(bind.path, modulePath);
         std::string normalizedBindPath = normalizePath(bindFilePath);
 
@@ -182,6 +188,30 @@ bool ImportResolver::processModule(ModuleDecl &module,
         // We resolve paths to absolute form to avoid re-resolution issues.
         for (const auto &transitiveBind : boundModule->binds)
         {
+            // Namespace binds don't need path resolution - they're handled by Sema
+            if (transitiveBind.isNamespaceBind)
+            {
+                // Check if already bound
+                bool alreadyBound = false;
+                for (const auto &existingBind : module.binds)
+                {
+                    if (existingBind.isNamespaceBind && existingBind.path == transitiveBind.path)
+                    {
+                        alreadyBound = true;
+                        break;
+                    }
+                }
+                if (!alreadyBound)
+                {
+                    BindDecl nsBind(transitiveBind.loc, transitiveBind.path);
+                    nsBind.alias = transitiveBind.alias;
+                    nsBind.isNamespaceBind = true;
+                    nsBind.specificItems = transitiveBind.specificItems;
+                    module.binds.push_back(nsBind);
+                }
+                continue;
+            }
+
             // Resolve the transitive bind path relative to its original file
             std::string resolvedPath = resolveImportPath(transitiveBind.path, bindFilePath);
             std::string normalizedPath = normalizePath(resolvedPath);
@@ -190,6 +220,8 @@ bool ImportResolver::processModule(ModuleDecl &module,
             bool alreadyBound = false;
             for (const auto &existingBind : module.binds)
             {
+                if (existingBind.isNamespaceBind)
+                    continue; // Skip namespace binds when comparing file paths
                 std::string existingResolved = resolveImportPath(existingBind.path, modulePath);
                 std::string existingNormalized = normalizePath(existingResolved);
                 if (existingNormalized == normalizedPath)
@@ -203,6 +235,8 @@ bool ImportResolver::processModule(ModuleDecl &module,
                 // Store the absolute path so it resolves correctly from any context
                 BindDecl absoluteBind(transitiveBind.loc, normalizedPath);
                 absoluteBind.alias = transitiveBind.alias;
+                absoluteBind.isNamespaceBind = transitiveBind.isNamespaceBind;
+                absoluteBind.specificItems = transitiveBind.specificItems;
                 module.binds.push_back(absoluteBind);
             }
         }

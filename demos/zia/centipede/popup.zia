@@ -10,6 +10,9 @@ module popup;
 bind "./config";
 bind "./utils";
 
+bind Viper.Graphics;
+bind Viper.Fmt;
+
 // =============================================================================
 // SCORE POPUP ENTITY - Floating score text
 // =============================================================================
@@ -58,7 +61,7 @@ entity ScorePopup {
         }
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         if !active {
             return;
         }
@@ -72,7 +75,7 @@ entity ScorePopup {
         }
 
         // Draw the score text
-        canvas.Text(screenX - 12, screenY, Viper.Fmt.Int(points), color);
+        canvas.Text(screenX - 12, screenY, Int(points), color);
     }
 }
 
@@ -112,7 +115,7 @@ entity PopupManager {
         }
     }
 
-    expose func draw(canvas: Viper.Graphics.Canvas) {
+    expose func draw(canvas: Canvas) {
         for p in popups {
             if p.isActive() {
                 p.draw(canvas);

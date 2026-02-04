@@ -1,6 +1,8 @@
 // canvas.viper - Drawing canvas for Viper Paint
 module canvas;
 
+bind Viper.Graphics;
+
 bind "./config";
 
 // Convert 0x00RRGGBB (Canvas format) to 0xRRGGBBFF (Pixels format)
@@ -18,7 +20,7 @@ entity DrawingCanvas {
     expose Integer width;           // Canvas width in pixels
     expose Integer height;          // Canvas height in pixels
     expose Integer backgroundColor; // Background color (for clear/eraser)
-    hide Viper.Graphics.Pixels pixels;  // Pixel buffer
+    hide Pixels pixels;  // Pixel buffer
 
     // Default constructor (required for new Entity() pattern)
     expose func init() {
@@ -32,7 +34,7 @@ entity DrawingCanvas {
         width = w;
         height = h;
         backgroundColor = config.COLOR_WHITE;
-        pixels = Viper.Graphics.Pixels.New(w, h);
+        pixels = Pixels.New(w, h);
         clear();
     }
 
@@ -289,7 +291,7 @@ entity DrawingCanvas {
     }
 
     // Get the raw pixels object for blitting
-    expose func getPixels() -> Viper.Graphics.Pixels {
+    expose func getPixels() -> Pixels {
         return pixels;
     }
 
@@ -300,7 +302,7 @@ entity DrawingCanvas {
 
     // Load from BMP file
     expose func loadBmp(filename: String) -> Integer {
-        var loaded = Viper.Graphics.Pixels.LoadBmp(filename);
+        var loaded = Pixels.LoadBmp(filename);
         if loaded != null {
             pixels = loaded;
             // Note: Width/height should match original canvas

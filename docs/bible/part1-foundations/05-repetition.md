@@ -5,12 +5,14 @@ Close your eyes and imagine this task: print every number from 1 to 1000 on the 
 With what we know so far, you might start writing:
 
 ```rust
-Viper.Terminal.Say(1);
-Viper.Terminal.Say(2);
-Viper.Terminal.Say(3);
-Viper.Terminal.Say(4);
+bind Viper.Terminal;
+
+Say(1);
+Say(2);
+Say(3);
+Say(4);
 // ... 996 more lines ...
-Viper.Terminal.Say(1000);
+Say(1000);
 ```
 
 A thousand lines of nearly identical code. Your fingers would ache. Your eyes would glaze over. You'd make typos. You'd miscount. And what if someone asked you to change it to print 1 to 10,000? You'd need to add 9,000 more lines.
@@ -33,17 +35,21 @@ Before we dive into syntax, let's appreciate what loops really give us.
 
 Without loops:
 ```rust
-Viper.Terminal.Say("Hello");
-Viper.Terminal.Say("Hello");
-Viper.Terminal.Say("Hello");
-Viper.Terminal.Say("Hello");
-Viper.Terminal.Say("Hello");
+bind Viper.Terminal;
+
+Say("Hello");
+Say("Hello");
+Say("Hello");
+Say("Hello");
+Say("Hello");
 ```
 
 With loops:
 ```rust
+bind Viper.Terminal;
+
 for i in 1..=5 {
-    Viper.Terminal.Say("Hello");
+    Say("Hello");
 }
 ```
 
@@ -61,11 +67,13 @@ var sum = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 +
 
 With loops:
 ```rust
+bind Viper.Terminal;
+
 var sum = 0;
 for i in 1..=100 {
     sum = sum + i;
 }
-Viper.Terminal.Say(sum);  // 5050
+Say(sum);  // 5050
 ```
 
 The loop version not only works, it can be changed to sum 1 to 1,000,000 by changing one number. Try doing that by hand.
@@ -100,10 +108,12 @@ That's a loop. The condition is "is it a workday?" The body is your morning acti
 The simplest loop repeats as long as a condition is true. We call it `while` because it loops *while* something remains true.
 
 ```rust
+bind Viper.Terminal;
+
 var count = 1;
 
 while count <= 5 {
-    Viper.Terminal.Say(count);
+    Say(count);
     count = count + 1;
 }
 ```
@@ -136,7 +146,7 @@ Let's be the computer. We'll trace through the loop above step by step, tracking
 **Iteration 1:**
 1. Check condition: Is `count <= 5`? Is `1 <= 5`? **Yes, true.**
 2. Enter the loop body.
-3. Execute `Viper.Terminal.Say(count)`: Print "1"
+3. Execute `Say(count)`: Print "1"
 4. Execute `count = count + 1`: count becomes 2
 5. Reach end of body, go back to condition check.
 
@@ -178,11 +188,13 @@ This mental tracing is how programmers debug loops. When a loop behaves unexpect
 Notice that `while` checks the condition *before* running the body. If the condition is false from the start, the body never runs - not even once:
 
 ```rust
+bind Viper.Terminal;
+
 var x = 10;
 while x < 5 {
-    Viper.Terminal.Say("This never prints");
+    Say("This never prints");
 }
-Viper.Terminal.Say("Loop finished");
+Say("Loop finished");
 ```
 
 Output:
@@ -201,8 +213,10 @@ This is important. A `while` loop guarantees zero or more iterations. It might n
 What if the condition never becomes false?
 
 ```rust
+bind Viper.Terminal;
+
 while true {
-    Viper.Terminal.Say("Forever!");
+    Say("Forever!");
 }
 ```
 
@@ -213,9 +227,11 @@ The condition is literally `true`. It will never become `false`. This loop runs 
 The most common cause is forgetting to update the variable you're checking:
 
 ```rust
+bind Viper.Terminal;
+
 var count = 1;
 while count <= 5 {
-    Viper.Terminal.Say(count);
+    Say(count);
     // Oops! We forgot: count = count + 1;
 }
 ```
@@ -233,10 +249,12 @@ We print "1" infinitely because `count` never changes. The condition `count <= 5
 Another classic mistake - changing the wrong variable:
 
 ```rust
+bind Viper.Terminal;
+
 var i = 0;
 var j = 0;
 while i < 10 {
-    Viper.Terminal.Say(i);
+    Say(i);
     j = j + 1;  // Wrong! We're incrementing j, but checking i
 }
 ```
@@ -295,8 +313,10 @@ while true {
 When you know how many times to repeat, `for` is cleaner than `while`. Instead of manually initializing, checking, and incrementing a counter, `for` handles all of that:
 
 ```rust
+bind Viper.Terminal;
+
 for i in 1..6 {
-    Viper.Terminal.Say(i);
+    Say(i);
 }
 ```
 
@@ -324,8 +344,10 @@ The `1..6` is called a *range*. It represents a sequence of numbers. But there's
 
 **`..` (two dots) excludes the end:**
 ```rust
+bind Viper.Terminal;
+
 for i in 1..5 {
-    Viper.Terminal.Say(i);  // Prints 1, 2, 3, 4 (NOT 5!)
+    Say(i);  // Prints 1, 2, 3, 4 (NOT 5!)
 }
 ```
 
@@ -333,8 +355,10 @@ The range `1..5` includes 1, 2, 3, 4 but stops *before* 5.
 
 **`..=` (two dots and equals) includes the end:**
 ```rust
+bind Viper.Terminal;
+
 for i in 1..=5 {
-    Viper.Terminal.Say(i);  // Prints 1, 2, 3, 4, 5
+    Say(i);  // Prints 1, 2, 3, 4, 5
 }
 ```
 
@@ -355,29 +379,31 @@ If you're iterating over array indices, exclusive ranges match naturally. If you
 ### Range Examples
 
 ```rust
+bind Viper.Terminal;
+
 // Count from 0 to 9
 for i in 0..10 {
-    Viper.Terminal.Say(i);  // 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
+    Say(i);  // 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
 }
 
 // Count from 1 to 10
 for i in 1..=10 {
-    Viper.Terminal.Say(i);  // 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+    Say(i);  // 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 }
 
 // Count from 5 to 9
 for i in 5..10 {
-    Viper.Terminal.Say(i);  // 5, 6, 7, 8, 9
+    Say(i);  // 5, 6, 7, 8, 9
 }
 
 // Count from 10 to 10 (one iteration)
 for i in 10..=10 {
-    Viper.Terminal.Say(i);  // 10
+    Say(i);  // 10
 }
 
 // Empty range: no iterations
 for i in 5..5 {
-    Viper.Terminal.Say(i);  // Nothing prints - range is empty
+    Say(i);  // Nothing prints - range is empty
 }
 ```
 
@@ -386,8 +412,10 @@ for i in 5..5 {
 To count backward, use `.rev()` to reverse the range:
 
 ```rust
+bind Viper.Terminal;
+
 for i in (1..=10).rev() {
-    Viper.Terminal.Say(i);
+    Say(i);
 }
 ```
 
@@ -410,10 +438,12 @@ Note the parentheses around the range - they're necessary because we're calling 
 Classic countdown:
 
 ```rust
+bind Viper.Terminal;
+
 for i in (1..=5).rev() {
-    Viper.Terminal.Say(i);
+    Say(i);
 }
-Viper.Terminal.Say("Liftoff!");
+Say("Liftoff!");
 ```
 
 Output:
@@ -431,28 +461,32 @@ Liftoff!
 Sometimes you don't want every number - you want every second number, or every tenth:
 
 ```rust
+bind Viper.Terminal;
+
 // Count by 2s: even numbers from 0 to 10
 for i in (0..=10).step(2) {
-    Viper.Terminal.Say(i);  // 0, 2, 4, 6, 8, 10
+    Say(i);  // 0, 2, 4, 6, 8, 10
 }
 
 // Count by 3s
 for i in (0..20).step(3) {
-    Viper.Terminal.Say(i);  // 0, 3, 6, 9, 12, 15, 18
+    Say(i);  // 0, 3, 6, 9, 12, 15, 18
 }
 
 // Count by 5s
 for i in (0..=100).step(5) {
-    Viper.Terminal.Say(i);  // 0, 5, 10, 15, ... 95, 100
+    Say(i);  // 0, 5, 10, 15, ... 95, 100
 }
 ```
 
 You can combine stepping with reversing:
 
 ```rust
+bind Viper.Terminal;
+
 // Count down by 2s
 for i in (0..=10).step(2).rev() {
-    Viper.Terminal.Say(i);  // 10, 8, 6, 4, 2, 0
+    Say(i);  // 10, 8, 6, 4, 2, 0
 }
 ```
 
@@ -469,9 +503,11 @@ Both loops can accomplish the same tasks, but each has its natural use cases.
 - "Go through each index of an array"
 
 ```rust
+bind Viper.Terminal;
+
 // We know: exactly 10 iterations
 for i in 1..=10 {
-    Viper.Terminal.Say("Iteration " + i);
+    Say("Iteration " + i);
 }
 ```
 
@@ -482,13 +518,15 @@ for i in 1..=10 {
 - "Search until we find a match"
 
 ```rust
+bind Viper.Terminal;
+
 // We don't know: depends on user input
 var password = "";
 while password != "secret" {
-    Viper.Terminal.Print("Password: ");
-    password = Viper.Terminal.ReadLine();
+    Print("Password: ");
+    password = ReadLine();
 }
-Viper.Terminal.Say("Access granted!");
+Say("Access granted!");
 ```
 
 The user might guess correctly on the first try (1 iteration) or the hundredth (100 iterations). We can't know in advance, so `while` is the right choice.
@@ -502,14 +540,16 @@ The user might guess correctly on the first try (1 iteration) or the hundredth (
 Sometimes you want to stop a loop before its natural end. The `break` statement immediately exits the loop:
 
 ```rust
+bind Viper.Terminal;
+
 for i in 1..100 {
     if i * i > 50 {
-        Viper.Terminal.Say("Stopping at " + i);
+        Say("Stopping at " + i);
         break;
     }
-    Viper.Terminal.Say(i + " squared is " + (i * i));
+    Say(i + " squared is " + (i * i));
 }
-Viper.Terminal.Say("Loop finished");
+Say("Loop finished");
 ```
 
 Output:
@@ -532,6 +572,8 @@ When `i` becomes 8, `8 * 8 = 64 > 50`, so we print the message and `break`. Exec
 **Searching**: Stop when you find what you're looking for.
 
 ```rust
+bind Viper.Terminal;
+
 var numbers = [4, 8, 15, 16, 23, 42];
 var target = 16;
 var foundAt = -1;  // -1 means "not found"
@@ -544,9 +586,9 @@ for i in 0..numbers.length {
 }
 
 if foundAt >= 0 {
-    Viper.Terminal.Say("Found " + target + " at index " + foundAt);
+    Say("Found " + target + " at index " + foundAt);
 } else {
-    Viper.Terminal.Say("Not found");
+    Say("Not found");
 }
 ```
 
@@ -555,6 +597,8 @@ Without `break`, the loop would continue checking every element even after findi
 **Early termination**: Stop when continuing is pointless.
 
 ```rust
+bind Viper.Terminal;
+
 // Check if a number is prime
 var n = 97;
 var isPrime = true;
@@ -567,9 +611,9 @@ for i in 2..n {
 }
 
 if isPrime {
-    Viper.Terminal.Say(n + " is prime");
+    Say(n + " is prime");
 } else {
-    Viper.Terminal.Say(n + " is not prime");
+    Say(n + " is not prime");
 }
 ```
 
@@ -578,12 +622,14 @@ Once we find any divisor, we know the number isn't prime. No point checking more
 **User-controlled loops**:
 
 ```rust
+bind Viper.Terminal;
+
 while true {
-    Viper.Terminal.Print("Enter a command (quit to exit): ");
-    var command = Viper.Terminal.ReadLine();
+    Print("Enter a command (quit to exit): ");
+    var command = ReadLine();
 
     if command == "quit" {
-        Viper.Terminal.Say("Goodbye!");
+        Say("Goodbye!");
         break;
     }
 
@@ -600,11 +646,13 @@ The loop is infinite, but `break` provides an exit when the user types "quit".
 While `break` exits the loop entirely, `continue` skips the *rest of the current iteration* and moves to the next one:
 
 ```rust
+bind Viper.Terminal;
+
 for i in 1..=10 {
     if i % 2 == 0 {
         continue;  // Skip even numbers
     }
-    Viper.Terminal.Say(i);
+    Say(i);
 }
 ```
 
@@ -631,13 +679,15 @@ When `continue` executes, the program jumps back to the loop header, increments 
 **Processing only valid data:**
 
 ```rust
+bind Viper.Terminal;
+
 var values = [10, -5, 20, -15, 30, 0, 40];
 
 for i in 0..values.length {
     if values[i] <= 0 {
         continue;  // Skip non-positive values
     }
-    Viper.Terminal.Say("Processing: " + values[i]);
+    Say("Processing: " + values[i]);
 }
 ```
 
@@ -652,12 +702,14 @@ Processing: 40
 **Skipping specific cases:**
 
 ```rust
+bind Viper.Terminal;
+
 // Print numbers 1-20, but skip multiples of 3
 for i in 1..=20 {
     if i % 3 == 0 {
         continue;
     }
-    Viper.Terminal.Say(i);
+    Say(i);
 }
 ```
 
@@ -705,11 +757,13 @@ Think of a checkout line. `break` is leaving the store. `continue` is letting so
 Loops can contain other loops. When they do, the inner loop runs completely for each iteration of the outer loop.
 
 ```rust
+bind Viper.Terminal;
+
 for row in 1..=3 {
     for col in 1..=4 {
-        Viper.Terminal.Print("*");
+        Print("*");
     }
-    Viper.Terminal.Say("");  // New line after each row
+    Say("");  // New line after each row
 }
 ```
 
@@ -747,20 +801,22 @@ With nested loops, iterations *multiply*. A 100-iteration outer loop with a 100-
 ### Practical Example: Multiplication Table
 
 ```rust
-Viper.Terminal.Say("    1   2   3   4   5");
-Viper.Terminal.Say("  +-------------------");
+bind Viper.Terminal;
+
+Say("    1   2   3   4   5");
+Say("  +-------------------");
 
 for row in 1..=5 {
-    Viper.Terminal.Print(row + " |");
+    Print(row + " |");
     for col in 1..=5 {
         var product = row * col;
         if product < 10 {
-            Viper.Terminal.Print("  " + product + " ");
+            Print("  " + product + " ");
         } else {
-            Viper.Terminal.Print(" " + product + " ");
+            Print(" " + product + " ");
         }
     }
-    Viper.Terminal.Say("");
+    Say("");
 }
 ```
 
@@ -780,16 +836,18 @@ Output:
 Nested loops are natural for 2D structures - grids, tables, game boards:
 
 ```rust
+bind Viper.Terminal;
+
 // Draw a 5x5 checkerboard pattern
 for row in 0..5 {
     for col in 0..5 {
         if (row + col) % 2 == 0 {
-            Viper.Terminal.Print("#");
+            Print("#");
         } else {
-            Viper.Terminal.Print(".");
+            Print(".");
         }
     }
-    Viper.Terminal.Say("");
+    Say("");
 }
 ```
 
@@ -807,14 +865,16 @@ Output:
 `break` and `continue` affect only the innermost loop they're in:
 
 ```rust
+bind Viper.Terminal;
+
 for i in 1..=3 {
     for j in 1..=3 {
         if j == 2 {
             break;  // Only breaks inner loop
         }
-        Viper.Terminal.Say("i=" + i + ", j=" + j);
+        Say("i=" + i + ", j=" + j);
     }
-    Viper.Terminal.Say("Inner loop ended for i=" + i);
+    Say("Inner loop ended for i=" + i);
 }
 ```
 
@@ -841,6 +901,8 @@ Certain loop structures appear again and again in programming. Learning to recog
 Count how many items match a condition.
 
 ```rust
+bind Viper.Terminal;
+
 var numbers = [1, 5, 3, 8, 2, 9, 4, 7, 6];
 var count = 0;
 
@@ -850,7 +912,7 @@ for i in 0..numbers.length {
     }
 }
 
-Viper.Terminal.Say("Found " + count + " numbers greater than 5");  // 4
+Say("Found " + count + " numbers greater than 5");  // 4
 ```
 
 The pattern:
@@ -864,11 +926,13 @@ The pattern:
 Add up values.
 
 ```rust
+bind Viper.Terminal;
+
 var total = 0;
 for i in 1..=100 {
     total = total + i;
 }
-Viper.Terminal.Say("Sum of 1 to 100 is " + total);  // 5050
+Say("Sum of 1 to 100 is " + total);  // 5050
 ```
 
 The pattern:
@@ -897,6 +961,8 @@ for i in 1..=5 {
 Find the largest or smallest value.
 
 ```rust
+bind Viper.Terminal;
+
 var values = [23, 7, 42, 15, 8, 31];
 var max = values[0];  // Start with first element
 
@@ -906,7 +972,7 @@ for i in 1..values.length {  // Start at 1, we already have values[0]
     }
 }
 
-Viper.Terminal.Say("Maximum is " + max);  // 42
+Say("Maximum is " + max);  // 42
 ```
 
 For minimum, just change `>` to `<`:
@@ -924,6 +990,8 @@ for i in 1..values.length {
 Find an item that matches a condition.
 
 ```rust
+bind Viper.Terminal;
+
 var names = ["Alice", "Bob", "Charlie", "Diana"];
 var target = "Charlie";
 var foundIndex = -1;  // -1 means "not found"
@@ -936,9 +1004,9 @@ for i in 0..names.length {
 }
 
 if foundIndex >= 0 {
-    Viper.Terminal.Say("Found at index " + foundIndex);
+    Say("Found at index " + foundIndex);
 } else {
-    Viper.Terminal.Say("Not found");
+    Say("Not found");
 }
 ```
 
@@ -979,11 +1047,13 @@ for i in 0..numbers.length {
 Construct a string piece by piece.
 
 ```rust
+bind Viper.Terminal;
+
 var result = "";
 for i in 1..=5 {
     result = result + i + " ";
 }
-Viper.Terminal.Say(result);  // "1 2 3 4 5 "
+Say(result);  // "1 2 3 4 5 "
 
 // Building with condition
 var message = "";
@@ -992,7 +1062,7 @@ for i in 1..=10 {
         message = message + i + ",";
     }
 }
-Viper.Terminal.Say(message);  // "2,4,6,8,10,"
+Say(message);  // "2,4,6,8,10,"
 ```
 
 ### Pattern 8: Validating Input
@@ -1000,21 +1070,23 @@ Viper.Terminal.Say(message);  // "2,4,6,8,10,"
 Keep asking until valid input is provided.
 
 ```rust
+bind Viper.Terminal;
+
 var valid = false;
 var age = 0;
 
 while !valid {
-    Viper.Terminal.Print("Enter your age (0-120): ");
-    age = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
+    Print("Enter your age (0-120): ");
+    age = Viper.Convert.ToInt(ReadLine());
 
     if age >= 0 && age <= 120 {
         valid = true;
     } else {
-        Viper.Terminal.Say("Invalid age. Please try again.");
+        Say("Invalid age. Please try again.");
     }
 }
 
-Viper.Terminal.Say("You entered: " + age);
+Say("You entered: " + age);
 ```
 
 This loop has no fixed number of iterations - it depends entirely on when the user provides valid input.
@@ -1037,20 +1109,22 @@ The loop runs one too many or one too few times.
 - Wrong comparison operator (`<` vs `<=`)
 
 ```rust
+bind Viper.Terminal;
+
 // Intended: print 1-10
 // Bug: prints 1-9
 for i in 1..10 {
-    Viper.Terminal.Say(i);
+    Say(i);
 }
 
 // Fix: use ..= to include 10
 for i in 1..=10 {
-    Viper.Terminal.Say(i);
+    Say(i);
 }
 
 // Alternative fix: use 11 as the end
 for i in 1..11 {
-    Viper.Terminal.Say(i);
+    Say(i);
 }
 ```
 
@@ -1068,10 +1142,12 @@ The loop never stops.
 - Condition that can never become false
 
 ```rust
+bind Viper.Terminal;
+
 // Bug: count never changes
 var count = 0;
 while count < 10 {
-    Viper.Terminal.Say(count);
+    Say(count);
     // Missing: count = count + 1;
 }
 
@@ -1107,25 +1183,27 @@ The loop body never executes.
 - Wrong direction range
 
 ```rust
+bind Viper.Terminal;
+
 // Bug: 10 is not less than 5, so body never runs
 var x = 10;
 while x < 5 {
-    Viper.Terminal.Say("Never prints");
+    Say("Never prints");
 }
 
 // Bug: empty range (5..5 has no elements)
 for i in 5..5 {
-    Viper.Terminal.Say("Never prints");
+    Say("Never prints");
 }
 
 // Bug: can't count up from 10 to 1 without .rev()
 for i in 10..1 {
-    Viper.Terminal.Say(i);  // Never prints - empty range
+    Say(i);  // Never prints - empty range
 }
 
 // Fix: use reverse
 for i in (1..=10).rev() {
-    Viper.Terminal.Say(i);
+    Say(i);
 }
 ```
 
@@ -1136,10 +1214,12 @@ for i in (1..=10).rev() {
 Variable defined inside loop isn't available outside.
 
 ```rust
+bind Viper.Terminal;
+
 for i in 1..=5 {
     var squared = i * i;
 }
-Viper.Terminal.Say(squared);  // Error! squared doesn't exist here
+Say(squared);  // Error! squared doesn't exist here
 ```
 
 The variable `squared` is created fresh each iteration and discarded at the end of each iteration. It doesn't exist outside the loop.
@@ -1147,11 +1227,13 @@ The variable `squared` is created fresh each iteration and discarded at the end 
 **Fix**: Declare the variable outside the loop.
 
 ```rust
+bind Viper.Terminal;
+
 var lastSquared = 0;
 for i in 1..=5 {
     lastSquared = i * i;
 }
-Viper.Terminal.Say(lastSquared);  // 25
+Say(lastSquared);  // 25
 ```
 
 ### Debugging Strategy
@@ -1165,13 +1247,15 @@ When a loop misbehaves:
 5. **Check your updates** - is the right variable changing in the right direction?
 
 ```rust
+bind Viper.Terminal;
+
 // Debugging version
 var count = 0;
 while count < 5 {
-    Viper.Terminal.Say("DEBUG: count = " + count);  // Add this
+    Say("DEBUG: count = " + count);  // Add this
     // ... your code ...
     count = count + 1;
-    Viper.Terminal.Say("DEBUG: after increment, count = " + count);  // And this
+    Say("DEBUG: after increment, count = " + count);  // And this
 }
 ```
 
@@ -1181,21 +1265,23 @@ while count < 5 {
 
 **Zia**
 ```rust
+bind Viper.Terminal;
+
 // while loop
 var i = 0;
 while i < 5 {
-    Viper.Terminal.Say(i);
+    Say(i);
     i += 1;
 }
 
 // for loop
 for i in 0..5 {
-    Viper.Terminal.Say(i);
+    Say(i);
 }
 
 // for with step
 for i in (0..10).step(2) {
-    Viper.Terminal.Say(i);  // 0, 2, 4, 6, 8
+    Say(i);  // 0, 2, 4, 6, 8
 }
 ```
 
@@ -1256,6 +1342,7 @@ Let's improve our guessing game from Chapter 4 with loops:
 
 ```rust
 module GuessGame;
+bind Viper.Terminal;
 
 func start() {
     final SECRET = 7;
@@ -1263,41 +1350,41 @@ func start() {
     var tries = 0;
     var won = false;
 
-    Viper.Terminal.Say("=== Number Guessing Game ===");
-    Viper.Terminal.Say("I'm thinking of a number between 1 and 10.");
-    Viper.Terminal.Say("You have " + MAX_TRIES + " tries to guess it.");
-    Viper.Terminal.Say("");
+    Say("=== Number Guessing Game ===");
+    Say("I'm thinking of a number between 1 and 10.");
+    Say("You have " + MAX_TRIES + " tries to guess it.");
+    Say("");
 
     // Main game loop
     while tries < MAX_TRIES && !won {
         tries = tries + 1;
         var triesLeft = MAX_TRIES - tries;
 
-        Viper.Terminal.Print("Guess #" + tries + ": ");
-        var guess = Viper.Convert.ToInt(Viper.Terminal.ReadLine());
+        Print("Guess #" + tries + ": ");
+        var guess = Viper.Convert.ToInt(ReadLine());
 
         if guess == SECRET {
-            Viper.Terminal.Say("");
-            Viper.Terminal.Say("*** CORRECT! You win! ***");
-            Viper.Terminal.Say("You got it in " + tries + " tries!");
+            Say("");
+            Say("*** CORRECT! You win! ***");
+            Say("You got it in " + tries + " tries!");
             won = true;
         } else if guess < SECRET {
-            Viper.Terminal.Say("Too low!");
+            Say("Too low!");
             if triesLeft > 0 {
-                Viper.Terminal.Say("(" + triesLeft + " tries remaining)");
+                Say("(" + triesLeft + " tries remaining)");
             }
         } else {
-            Viper.Terminal.Say("Too high!");
+            Say("Too high!");
             if triesLeft > 0 {
-                Viper.Terminal.Say("(" + triesLeft + " tries remaining)");
+                Say("(" + triesLeft + " tries remaining)");
             }
         }
-        Viper.Terminal.Say("");
+        Say("");
     }
 
     if !won {
-        Viper.Terminal.Say("Game over! The number was " + SECRET);
-        Viper.Terminal.Say("Better luck next time!");
+        Say("Game over! The number was " + SECRET);
+        Say("Better luck next time!");
     }
 }
 ```

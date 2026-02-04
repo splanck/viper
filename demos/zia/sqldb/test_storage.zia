@@ -3,6 +3,9 @@
 
 module test_storage;
 
+bind Viper.Terminal;
+bind Viper.Fmt;
+
 bind "./storage/page";
 bind "./storage/serializer";
 bind "./storage/pager";
@@ -22,10 +25,10 @@ Integer failed = 0;
 
 func assertTrue(cond: Boolean, desc: String) {
     if cond {
-        Viper.Terminal.Say("  PASS: " + desc);
+        Terminal.Say("  PASS: " + desc);
         passed = passed + 1;
     } else {
-        Viper.Terminal.Say("  FAIL: " + desc);
+        Terminal.Say("  FAIL: " + desc);
         failed = failed + 1;
     }
 }
@@ -39,7 +42,7 @@ func assertFalse(cond: Boolean, desc: String) {
 //=============================================================================
 
 func testBinaryBuffer() {
-    Viper.Terminal.Say("Testing BinaryBuffer...");
+    Terminal.Say("Testing BinaryBuffer...");
 
     var buf = new BinaryBuffer();
     buf.init();
@@ -74,7 +77,7 @@ func testBinaryBuffer() {
 }
 
 func testValueSerializer() {
-    Viper.Terminal.Say("Testing ValueSerializer...");
+    Terminal.Say("Testing ValueSerializer...");
 
     var ser = new ValueSerializer();
     ser.init();
@@ -107,7 +110,7 @@ func testValueSerializer() {
 }
 
 func testRowSerializer() {
-    Viper.Terminal.Say("Testing RowSerializer...");
+    Terminal.Say("Testing RowSerializer...");
 
     var ser = new RowSerializer();
     ser.init();
@@ -135,7 +138,7 @@ func testRowSerializer() {
 }
 
 func testPagerCreateOpen() {
-    Viper.Terminal.Say("Testing Pager create/open...");
+    Terminal.Say("Testing Pager create/open...");
 
     var pager = new Pager();
     pager.init();
@@ -159,7 +162,7 @@ func testPagerCreateOpen() {
 }
 
 func testPageAllocation() {
-    Viper.Terminal.Say("Testing page allocation...");
+    Terminal.Say("Testing page allocation...");
 
     var pager = new Pager();
     pager.init();
@@ -176,7 +179,7 @@ func testPageAllocation() {
 }
 
 func testBufferPool() {
-    Viper.Terminal.Say("Testing BufferPool...");
+    Terminal.Say("Testing BufferPool...");
 
     var pool = new BufferPool();
     pool.init();
@@ -205,7 +208,7 @@ func testBufferPool() {
 }
 
 func testDataPage() {
-    Viper.Terminal.Say("Testing DataPage operations...");
+    Terminal.Say("Testing DataPage operations...");
 
     var mgr = new DataPageManager();
     mgr.init();
@@ -253,7 +256,7 @@ func testDataPage() {
 }
 
 func testSchemaPage() {
-    Viper.Terminal.Say("Testing SchemaPage operations...");
+    Terminal.Say("Testing SchemaPage operations...");
 
     var mgr = new SchemaPageManager();
     mgr.init();
@@ -298,7 +301,7 @@ func testSchemaPage() {
 }
 
 func testEndToEnd() {
-    Viper.Terminal.Say("Testing end-to-end storage...");
+    Terminal.Say("Testing end-to-end storage...");
 
     var pool = new BufferPool();
     pool.init();
@@ -413,8 +416,8 @@ func testEndToEnd() {
 //=============================================================================
 
 func start() {
-    Viper.Terminal.Say("=== Phase 2: Binary Storage Engine Tests ===");
-    Viper.Terminal.Say("");
+    Terminal.Say("=== Phase 2: Binary Storage Engine Tests ===");
+    Terminal.Say("");
 
     testBinaryBuffer();
     testValueSerializer();
@@ -426,8 +429,8 @@ func start() {
     testSchemaPage();
     testEndToEnd();
 
-    Viper.Terminal.Say("");
-    Viper.Terminal.Say("=== Results ===");
-    Viper.Terminal.Say("Passed: " + Viper.Fmt.Int(passed));
-    Viper.Terminal.Say("Failed: " + Viper.Fmt.Int(failed));
+    Terminal.Say("");
+    Terminal.Say("=== Results ===");
+    Terminal.Say("Passed: " + Fmt.Int(passed));
+    Terminal.Say("Failed: " + Fmt.Int(failed));
 }

@@ -1,6 +1,11 @@
 module project_manager;
 
 bind "project";
+bind GUI = Viper.GUI;
+bind Path = Viper.IO.Path;
+bind Dir = Viper.IO.Dir;
+bind Seq = Viper.Collections.Seq;
+bind Str = Viper.String;
 
 // ============================================================================
 // ProjectManager — manages the file tree and project state
@@ -15,7 +20,7 @@ entity ProjectManager {
     expose project.Project project;
 
     // Reference to the sidebar TreeView widget
-    expose Viper.GUI.TreeView treeView;
+    expose GUI.TreeView treeView;
 
     // Currently selected file path (empty if none)
     expose String selectedFilePath;
@@ -29,7 +34,7 @@ entity ProjectManager {
     }
 
     // Initialize with the TreeView widget from AppShell.
-    expose func Setup(tree: Viper.GUI.TreeView) {
+    expose func Setup(tree: GUI.TreeView) {
         treeView = tree;
         project = new project.Project();
     }
@@ -67,7 +72,7 @@ entity ProjectManager {
 
         // Add root node for project
         var rootNode = treeView.AddNode(null, project.name);
-        Viper.GUI.TreeView.Node.SetData(rootNode, project.rootPath);
+        GUI.TreeView.Node.SetData(rootNode, project.rootPath);
 
         // Build tree recursively from the root path
         BuildTree(project.rootPath, rootNode);
@@ -77,21 +82,21 @@ entity ProjectManager {
     }
 
     // Build tree recursively for a directory.
-    func BuildTree(dirPath: String, parentNode: Viper.GUI.TreeNode) {
+    func BuildTree(dirPath: String, parentNode: GUI.TreeNode) {
         // First add directories (sorted by name)
-        var dirs = Viper.IO.Dir.DirsSeq(dirPath);
-        var dirCount = Viper.Collections.Seq.get_Len(dirs);
+        var dirs = Dir.DirsSeq(dirPath);
+        var dirCount = Seq.get_Len(dirs);
         var i = 0;
 
         while i < dirCount {
-            var dirName = Viper.Collections.Seq.Get(dirs, i);
+            var dirName = Seq.Get(dirs, i);
 
             // Skip hidden directories and common excludes
             if ShouldExclude(dirName) == false {
-                var fullPath = Viper.IO.Path.Join(dirPath, dirName);
+                var fullPath = Path.Join(dirPath, dirName);
                 var folderLabel = "[D] " + dirName;
                 var folderNode = treeView.AddNode(parentNode, folderLabel);
-                Viper.GUI.TreeView.Node.SetData(folderNode, fullPath);
+                GUI.TreeView.Node.SetData(folderNode, fullPath);
 
                 // Recurse into subdirectory
                 BuildTree(fullPath, folderNode);
@@ -100,19 +105,19 @@ entity ProjectManager {
         }
 
         // Then add files
-        var files = Viper.IO.Dir.FilesSeq(dirPath);
-        var fileCount = Viper.Collections.Seq.get_Len(files);
+        var files = Dir.FilesSeq(dirPath);
+        var fileCount = Seq.get_Len(files);
         i = 0;
 
         while i < fileCount {
-            var fileName = Viper.Collections.Seq.Get(files, i);
+            var fileName = Seq.Get(files, i);
 
             // Skip hidden files
             if ShouldExcludeFile(fileName) == false {
-                var fullPath = Viper.IO.Path.Join(dirPath, fileName);
+                var fullPath = Path.Join(dirPath, fileName);
                 var fileLabel = "    " + fileName;
                 var fileNode = treeView.AddNode(parentNode, fileLabel);
-                Viper.GUI.TreeView.Node.SetData(fileNode, fullPath);
+                GUI.TreeView.Node.SetData(fileNode, fullPath);
             }
             i = i + 1;
         }
@@ -132,12 +137,12 @@ entity ProjectManager {
         if treeView.WasSelectionChanged() != 0 {
             var selected = treeView.GetSelected();
             if selected != null {
-                var path = Viper.GUI.TreeView.Node.GetData(selected);
-                var label = Viper.GUI.TreeView.Node.GetText(selected);
+                var path = GUI.TreeView.Node.GetData(selected);
+                var label = GUI.TreeView.Node.GetText(selected);
 
                 // Check if it's a file (not a directory)
                 // Files don't have "[D] " prefix
-                if Viper.String.IndexOf(label, "[D] ") != 1 {
+                if Str.IndexOf(label, "[D] ") != 1 {
                     selectedFilePath = path;
                     fileWasSelected = true;
                     return path;
@@ -151,7 +156,7 @@ entity ProjectManager {
     // Check if a directory name should be excluded from the tree.
     func ShouldExclude(name: String) -> Boolean {
         // Hidden directories
-        if Viper.String.Left(name, 1) == "." {
+        if Str.Left(name, 1) == "." {
             return true;
         }
 
@@ -166,7 +171,7 @@ entity ProjectManager {
     // Check if a file should be excluded from the tree.
     func ShouldExcludeFile(name: String) -> Boolean {
         // Hidden files
-        if Viper.String.Left(name, 1) == "." {
+        if Str.Left(name, 1) == "." {
             return true;
         }
 

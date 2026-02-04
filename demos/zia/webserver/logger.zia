@@ -2,6 +2,12 @@
 // Provides logging with levels, timestamps, and request tracking
 module logger;
 
+bind Viper.Terminal;
+bind Viper.Time;
+bind Viper.Threads;
+bind Viper.Collections;
+bind Viper.Fmt;
+
 // ============================================================================
 // LOG LEVELS
 // ============================================================================
@@ -24,7 +30,7 @@ var log_monitor: List[Integer];
 func log_init(level: Integer) {
     log_level = level;
     // Create a dummy list to use as monitor object
-    log_monitor = Viper.Collections.List.New();
+    log_monitor = Collections.List.New();
 }
 
 // ============================================================================
@@ -49,34 +55,34 @@ func log_levelName(level: Integer) -> String {
 
 func log_pad2(n: Integer) -> String {
     if n < 10 {
-        return "0" + Viper.Fmt.Int(n);
+        return "0" + Fmt.Int(n);
     }
-    return Viper.Fmt.Int(n);
+    return Fmt.Int(n);
 }
 
 func log_pad3(n: Integer) -> String {
     if n < 10 {
-        return "00" + Viper.Fmt.Int(n);
+        return "00" + Fmt.Int(n);
     }
     if n < 100 {
-        return "0" + Viper.Fmt.Int(n);
+        return "0" + Fmt.Int(n);
     }
-    return Viper.Fmt.Int(n);
+    return Fmt.Int(n);
 }
 
 func log_timestamp() -> String {
-    var now = Viper.Time.DateTime.Now();
-    var ms = Viper.Time.DateTime.NowMs() % 1000;
+    var now = Time.DateTime.Now();
+    var ms = Time.DateTime.NowMs() % 1000;
 
-    var year = Viper.Time.DateTime.Year(now);
-    var month = Viper.Time.DateTime.Month(now);
-    var day = Viper.Time.DateTime.Day(now);
-    var hour = Viper.Time.DateTime.Hour(now);
-    var minute = Viper.Time.DateTime.Minute(now);
-    var second = Viper.Time.DateTime.Second(now);
+    var year = Time.DateTime.Year(now);
+    var month = Time.DateTime.Month(now);
+    var day = Time.DateTime.Day(now);
+    var hour = Time.DateTime.Hour(now);
+    var minute = Time.DateTime.Minute(now);
+    var second = Time.DateTime.Second(now);
 
     // Format: YYYY-MM-DD HH:MM:SS.mmm
-    var ts = Viper.Fmt.Int(year) + "-";
+    var ts = Fmt.Int(year) + "-";
     ts = ts + log_pad2(month) + "-";
     ts = ts + log_pad2(day) + " ";
     ts = ts + log_pad2(hour) + ":";
@@ -99,9 +105,9 @@ func log_write(level: Integer, message: String) {
     var line = "[" + log_timestamp() + "] [" + log_levelName(level) + "] " + message;
 
     // Thread-safe output
-    Viper.Threads.Monitor.Enter(log_monitor);
-    Viper.Terminal.Say(line);
-    Viper.Threads.Monitor.Exit(log_monitor);
+    Threads.Monitor.Enter(log_monitor);
+    Terminal.Say(line);
+    Threads.Monitor.Exit(log_monitor);
 }
 
 // ============================================================================
@@ -133,9 +139,9 @@ func log_error(message: String) {
 func log_request(clientIp: String, method: String, path: String,
                  status: Integer, size: Integer, durationMs: Integer) {
     var msg = clientIp + " " + method + " " + path + " ";
-    msg = msg + Viper.Fmt.Int(status) + " ";
-    msg = msg + Viper.Fmt.Int(size) + " ";
-    msg = msg + Viper.Fmt.Int(durationMs) + "ms";
+    msg = msg + Fmt.Int(status) + " ";
+    msg = msg + Fmt.Int(size) + " ";
+    msg = msg + Fmt.Int(durationMs) + "ms";
 
     // Use appropriate log level based on status
     if status >= 500 {
@@ -149,10 +155,10 @@ func log_request(clientIp: String, method: String, path: String,
 
 // Get current time in milliseconds for duration tracking
 func log_startTimer() -> Integer {
-    return Viper.Time.Clock.Ticks();
+    return Time.Clock.Ticks();
 }
 
 // Calculate elapsed time in milliseconds
 func log_elapsed(startTime: Integer) -> Integer {
-    return Viper.Time.Clock.Ticks() - startTime;
+    return Time.Clock.Ticks() - startTime;
 }
