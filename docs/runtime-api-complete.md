@@ -135,8 +135,6 @@ Type conversion functions between strings and numeric types.
 | `ToDouble(s)` | `f64(str)` | Parse string to float |
 | `ToString_Int(n)` | `str(i64)` | Convert integer to string |
 | `ToString_Double(n)` | `str(f64)` | Convert float to string |
-| `IntToStr(n)` | `str(i64)` | Convert integer to string |
-| `NumToStr(n)` | `str(f64)` | Convert float to string |
 | `NumToInt(n)` | `i64(f64)` | Convert float to integer (truncate) |
 
 ### Examples
@@ -443,7 +441,7 @@ Logging utilities with configurable log levels.
 Viper.Log.set_Level(Viper.Log.get_DEBUG);
 
 // Log messages
-Viper.Log.Debug("Processing item " + Viper.Strings.FromInt(i));
+Viper.Log.Debug("Processing item " + Viper.Convert.ToString_Int(i));
 Viper.Log.Info("Server started on port 8080");
 Viper.Log.Warn("Connection pool running low");
 Viper.Log.Error("Failed to connect to database");
@@ -474,8 +472,8 @@ System and hardware information.
 
 ```zia
 Viper.Terminal.Say("OS: " + Viper.Machine.get_OS);
-Viper.Terminal.Say("Cores: " + Viper.Strings.FromInt(Viper.Machine.get_Cores));
-Viper.Terminal.Say("Memory: " + Viper.Strings.FromInt(Viper.Machine.get_MemTotal / 1048576) + " MB");
+Viper.Terminal.Say("Cores: " + Viper.Convert.ToString_Int(Viper.Machine.get_Cores));
+Viper.Terminal.Say("Memory: " + Viper.Convert.ToString_Int(Viper.Machine.get_MemTotal / 1048576) + " MB");
 ```
 
 ---
@@ -674,9 +672,6 @@ Additional string utilities (conversion focus).
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `FromInt(n)` | `str(i64)` | Integer to string |
-| `FromDouble(n)` | `str(f64)` | Float to string |
-| `FromDoublePrecise(n)` | `str(f64)` | Float with full precision |
 | `FromSingle(n)` | `str(f64)` | Float (single precision format) |
 | `FromI16(n)` | `str(i16)` | 16-bit int to string |
 | `FromI32(n)` | `str(i32)` | 32-bit int to string |
@@ -684,6 +679,8 @@ Additional string utilities (conversion focus).
 | `Equals(a, b)` | `bool(str, str)` | String equality |
 | `Join(sep, list)` | `str(str, obj)` | Join list with separator |
 | `SplitFields(s, arr, max)` | `i64(str, ptr, i64)` | Split on whitespace |
+
+> **Note**: For integer/double to string conversion, use `Viper.Convert.ToString_Int` and `Viper.Convert.ToString_Double`.
 
 ---
 

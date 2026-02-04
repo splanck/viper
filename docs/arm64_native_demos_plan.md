@@ -27,7 +27,7 @@ Symbol mappings are centralized in `src/il/runtime/RuntimeNameMap.hpp` via the `
 
 Key mappings include:
 - Terminal operations: `Viper.Terminal.Clear` → `rt_term_cls`
-- String operations: `Viper.Strings.FromI32` → `rt_str_i32_alloc`
+- String operations: `Viper.String.FromI32` → `rt_str_i32_alloc`
 - Parsing: `Viper.Parse.Int64` → `rt_parse_int64`
 - Object methods: `Viper.Object.Equals` → `rt_obj_equals`
 

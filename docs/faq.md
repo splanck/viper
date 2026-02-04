@@ -260,7 +260,7 @@ Built-in functions include:
 
 - **Math**: `Abs`, `Sqr`, `Sqrt`, `Sin`, `Cos`, `Tan`, `Exp`, `Ln`, `Round`, `Trunc`
 - **String**: `Length`, `Copy`, `Pos`, `Concat`, `UpperCase`, `LowerCase`, `Trim`
-- **Conversion**: `IntToStr`, `FloatToStr`, `StrToInt`, `StrToFloat`, `Chr`, `Ord`
+- **Conversion**: `ToString_Int`, `ToString_Double`, `ToInt`, `ToDouble`, `Chr`, `Ord`
 - **I/O**: `Write`, `WriteLn`, `Read`, `ReadLn`
 - **Ordinal**: `Succ`, `Pred`, `Inc`, `Dec`
 
@@ -336,7 +336,7 @@ All three frontends (Zia, BASIC, Pascal) share the same runtime library. Built-i
 - **String**: `Length`/`Len`, `Copy`/`Mid$`, `Concat`, `Trim`
 - **I/O**: `Print`/`Write`, `Input`/`Read`
 - **Graphics**: `Color`, `Locate`, `Cls`
-- **Conversion**: `IntToStr`/`Str$`, `StrToInt`/`Val`
+- **Conversion**: `ToString_Int`/`Str$`, `ToInt`/`Val`
 
 See the respective builtin registries in `/src/frontends/zia/`, `/src/frontends/basic/`, and `/src/frontends/pascal/`
 for language-specific function lists.

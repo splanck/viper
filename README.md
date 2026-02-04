@@ -190,8 +190,8 @@ Frontends lower to a typed IL that is compact, explicit, and inspectable.
 
 ```il
 il 0.2
-extern @Viper.Console.PrintStr(str) -> void
-extern @Viper.Console.PrintI64(i64) -> void
+extern @Viper.Terminal.PrintStr(str) -> void
+extern @Viper.Terminal.PrintI64(i64) -> void
 global const str @.NL = "\n"
 global const str @.HELLO = "HELLO"
 
@@ -199,10 +199,10 @@ func @main() -> i64 {
 entry:
   %x = add 2, 3
   %y = mul %x, 2
-  call @Viper.Console.PrintStr(const_str @.HELLO)
-  call @Viper.Console.PrintStr(const_str @.NL)
-  call @Viper.Console.PrintI64(%y)
-  call @Viper.Console.PrintStr(const_str @.NL)
+  call @Viper.Terminal.PrintStr(const_str @.HELLO)
+  call @Viper.Terminal.PrintStr(const_str @.NL)
+  call @Viper.Terminal.PrintI64(%y)
+  call @Viper.Terminal.PrintStr(const_str @.NL)
   ret 0
 }
 ```

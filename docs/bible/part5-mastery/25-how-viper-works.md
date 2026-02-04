@@ -310,7 +310,7 @@ entry:
 .func start() -> void
 entry:
     %t0 = call @add(3, 4)    ; call add(3, 4), store result in %t0
-    call @Viper.Console.PrintI64(%t0)  ; print the result
+    call @Viper.Terminal.PrintI64(%t0)  ; print the result
     ret                      ; return from start
 ```
 
@@ -553,7 +553,7 @@ Step 5: Execute `ret %sum`
         Action: Return 7 to caller
         --- Back in start ---
 
-Step 6: Execute `call @Viper.Console.PrintI64`
+Step 6: Execute `call @Viper.Terminal.PrintI64`
         Action: Print 7 to console
         Output: 7
 ```
@@ -869,7 +869,7 @@ return_b:
 .func start() -> void
 entry:
     %result = call @max(10, 25)
-    call @Viper.Console.PrintI64(%result)
+    call @Viper.Terminal.PrintI64(%result)
     ret
 ```
 
@@ -896,7 +896,7 @@ Instruction: call @max(10, 25)
 
   %result = 25
 
-Instruction: call @Viper.Console.PrintI64(%result)
+Instruction: call @Viper.Terminal.PrintI64(%result)
   Output: 25
 
 Instruction: ret
@@ -974,7 +974,7 @@ func slow() -> String {
 }
 ```
 
-Looking at the IL, you'd see a `call @Viper.Strings.Concat` in every loop iteration, each creating a new string.
+Looking at the IL, you'd see a `call @Viper.String.Concat` in every loop iteration, each creating a new string.
 
 ---
 
@@ -1024,10 +1024,10 @@ end.
 .func greet(str) -> void
 entry:
     %t0 = const_str @.hello       ; "Hello, "
-    %t1 = call @Viper.Strings.Concat(%t0, %0)
+    %t1 = call @Viper.String.Concat(%t0, %0)
     %t2 = const_str @.exclaim     ; "!"
-    %t3 = call @Viper.Strings.Concat(%t1, %t2)
-    call @Viper.Console.PrintStr(%t3)
+    %t3 = call @Viper.String.Concat(%t1, %t2)
+    call @Viper.Terminal.PrintStr(%t3)
     ret
 
 .func start() -> void

@@ -88,7 +88,7 @@ how the BASIC frontend discovers and binds built‑in runtime classes.
     - C implementations: `src/runtime/rt_*.c` provide the actual behavior
       (`rt_string_builder.c`, `rt_object.c`, `rt_file_ext.c`, `rt_list.c`, etc.).
       Many OOP methods are thin bridges over procedural helpers (e.g.,
-      `Viper.Strings.*`).
+      `Viper.String.*`).
 
 ### Canonical Runtime Classes
 
@@ -110,14 +110,14 @@ The following built‑in classes are available under the `Viper.*` namespace:
 - `Viper.Math` — Mathematical functions (static utility class)
     - Methods: `Abs(f64)`, `Sqrt(f64)`, `Sin(f64)`, `Cos(f64)`, `Tan(f64)`, `Floor(f64)`, `Ceil(f64)`, `Pow(f64,f64)`,
       `Log(f64)`, `Exp(f64)`
-- `Viper.Console` — Console I/O (static utility class)
+- `Viper.Terminal` — Console I/O (static utility class)
     - Methods: `WriteLine(str)`, `ReadLine()`
 
 **Note:** Legacy `Viper.System.*` aliases have been removed. Use the canonical `Viper.*` names.
 
 ### Backward‑Compatible Procedural Surface
 
-The legacy procedural runtime (e.g., `Viper.Strings.Len`, `Viper.IO.*`) remains
+The legacy procedural runtime (e.g., `Viper.String.Len`, `Viper.IO.*`) remains
 available for compatibility and for some bridges. New code should prefer the OOP
 runtime classes under `Viper.*` (canonical). Where applicable, the catalog maps
 class members directly onto the procedural targets.

@@ -618,7 +618,7 @@ class RuntimeBridge {
 
 **Call flow:**
 
-1. IL `call @Viper.Console.PrintI64(args)` instruction (or legacy `@rt_*` alias)
+1. IL `call @Viper.Terminal.PrintI64(args)` instruction (or legacy `@rt_*` alias)
 2. Handler evaluates arguments into `Slot` vector
 3. `RuntimeBridge::call()` looks up function descriptor by canonical name
 4. C function is invoked with marshalled arguments

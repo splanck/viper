@@ -2147,7 +2147,7 @@ Lowering:
 %s1 = const.str "Hello, "
 %s2 = call str @Viper.String.Concat(%s1, %name)
 %s3 = call str @Viper.String.Concat(%s2, "! You are ")
-%age_str = call str @Viper.Strings.FromInt(%age)
+%age_str = call str @Viper.Convert.ToString_Int(%age)
 %s4 = call str @Viper.String.Concat(%s3, %age_str)
 %msg = call str @Viper.String.Concat(%s4, " years old.")
 ```
@@ -2238,7 +2238,7 @@ If a feature proves too difficult:
 | 2.4 | Dec 2024 | Phase 2 progress: Value types (2.1), Entity types (2.2), and Optionals (2.3) complete with tests |
 | 2.5 | Dec 2024 | Phases 3 & 4 progress: Functions (3.1), Methods (3.2), If/Else (4.1), and Loops (4.3) complete. For-in loops with ranges now use slot-based SSA for mutable variables. 12 compiler tests passing |
 | 2.6 | Dec 2024 | Phase 7.1 (List) complete with boxing/unboxing. Terminal functions added (SetColor, SetPosition, SetCursorVisible, SetAltScreen, BeginBatch, EndBatch, GetKeyTimeout) and Timer functions (Sleep, Millis). Fixed i64/i32 signature mismatches. Known bug: string comparison RHS const_str not emitted |
-| 2.7 | Dec 19, 2024 | Fixed string comparison to use Viper.Strings.Equals runtime call; Fixed entity field assignment offset; Parser now handles binary ops in call args; Created 7 demo applications in /demos/zia/; All 907 tests passing |
+| 2.7 | Dec 19, 2024 | Fixed string comparison to use Viper.String.Equals runtime call; Fixed entity field assignment offset; Parser now handles binary ops in call args; Created 7 demo applications in /demos/zia/; All 907 tests passing |
 
 ---
 
@@ -2250,7 +2250,7 @@ If a feature proves too difficult:
 **Next Step:** Fix lambda/match expression issues, continue with standard library wrappers
 
 **Recent Fixes (Dec 19, 2024):**
-- String comparison (`==`, `!=`) now correctly calls `Viper.Strings.Equals` runtime function
+- String comparison (`==`, `!=`) now correctly calls `Viper.String.Equals` runtime function
 - Entity field assignment uses correct offset (field.offset without extra header addition)
 - Parser now handles binary operators in function call arguments (e.g., `foo(x + 1, y)`)
 - 7 demo applications created in `/demos/zia/` that all compile successfully

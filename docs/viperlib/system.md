@@ -300,11 +300,11 @@ explicit control or are working at the IL level.
 
 ### Backward Compatibility
 
-`Viper.Console.*` names are retained as aliases for backward compatibility. New code should use `Viper.Terminal.*`.
+`Viper.Terminal.*` names are retained as aliases for backward compatibility. New code should use `Viper.Terminal.*`.
 
 ### Legacy Buffered Output Names
 
-`Viper.Terminal.PrintStr`, `PrintI64`, and `PrintF64` (and their `Viper.Console.*` aliases) are low-level buffered
+`Viper.Terminal.PrintStr`, `PrintI64`, and `PrintF64` (and their `Viper.Terminal.*` aliases) are low-level buffered
 output helpers used by some frontends. They do not flush automatically; call `Flush()` when you need immediate output.
 
 ---

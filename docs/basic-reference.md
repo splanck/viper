@@ -238,7 +238,7 @@ Lowering equivalence (receiver as first argument):
 
 - `s.Length` → `Viper.String.get_Length(s)`
 - `s.Substring(i, j)` → `Viper.String.Substring(s, i, j)`
-- `NEW Viper.String(x)` → `Viper.Strings.FromStr(x)` (when available)
+- `NEW Viper.String(x)` → `Viper.String.FromStr(x)` (when available)
 
 Null and bounds:
 
@@ -267,7 +267,7 @@ Methods:
 
 Constructor helper (optional):
 
-- `FromStr(string s) -> string` → `Viper.Strings.FromStr(string)`
+- `FromStr(string s) -> string` → `Viper.String.FromStr(string)`
 
 ### `Viper.Collections.List` (non-generic)
 
@@ -692,19 +692,19 @@ procedures fully qualified, or import a namespace with `USING`.
 - Fully qualified:
 
 ```basic
-Viper.Console.PrintI64(42)
+Viper.Terminal.PrintI64(42)
 ```
 
 - With USING (same line using `:`):
 
 ```basic
-USING Viper.Console : PrintI64(42)
+USING Viper.Terminal : PrintI64(42)
 ```
 
 - Or as two lines:
 
 ```basic
-USING Viper.Console
+USING Viper.Terminal
 PrintI64(42)
 ```
 
@@ -713,37 +713,36 @@ PrintI64(42)
 All runtime procedures are available under canonical `Viper.*` namespace names. Legacy `rt_*` aliases are maintained for
 compatibility. Signatures shown as `Name(params)->result`.
 
-#### Viper.Console
+#### Viper.Terminal
 
 Console I/O operations:
 
-- `Viper.Console.PrintI64(i64)->void` — Print an integer to console
-- `Viper.Console.PrintF64(f64)->void` — Print a floating-point number to console
-- `Viper.Console.PrintStr(str)->void` — Print a string to console
-- `Viper.Console.ReadLine()->str` — Read a line from console input
+- `Viper.Terminal.PrintI64(i64)->void` — Print an integer to console
+- `Viper.Terminal.PrintF64(f64)->void` — Print a floating-point number to console
+- `Viper.Terminal.PrintStr(str)->void` — Print a string to console
+- `Viper.Terminal.ReadLine()->str` — Read a line from console input
 
-#### Viper.Strings
+#### Viper.String
 
-String manipulation and conversion:
+String manipulation:
 
-- `Viper.Strings.Len(str)->i64` — Get string length
-- `Viper.Strings.Mid(str, i64, i64)->str` — Extract substring (start, length)
-- `Viper.Strings.Concat(str, str)->str` — Concatenate two strings
-- `Viper.Strings.SplitFields(str, ptr str, i64)->i64` — Split string into fields
-- `Viper.Strings.FromInt(i64)->str` — Convert int64 to string
-- `Viper.Strings.FromI16(i16)->str` — Convert int16 to string
-- `Viper.Strings.FromI32(i32)->str` — Convert int32 to string
-- `Viper.Strings.FromSingle(f32)->str` — Convert float to string
-- `Viper.Strings.FromDouble(f64)->str` — Convert double to string
-- `Viper.Strings.FromDoublePrecise(f64)->str` — Convert double to string (high precision)
-- `Viper.Strings.Builder.New()->ptr` — Create a new StringBuilder instance
+- `Viper.String.get_Length(str)->i64` — Get string length
+- `Viper.String.Mid(str, i64, i64)->str` — Extract substring (start, length)
+- `Viper.String.Concat(str, str)->str` — Concatenate two strings
+- `Viper.String.SplitFields(str, ptr str, i64)->i64` — Split string into fields
+- `Viper.String.FromI16(i16)->str` — Convert int16 to string
+- `Viper.String.FromI32(i32)->str` — Convert int32 to string
+- `Viper.String.FromSingle(f32)->str` — Convert float to string
+- `Viper.String.Builder.New()->ptr` — Create a new StringBuilder instance
 
 #### Viper.Convert
 
-Type conversion (with automatic handling):
+Type conversion:
 
-- `Viper.Convert.ToInt(str)->i64` — Convert string to integer (throws on error)
+- `Viper.Convert.ToInt64(str)->i64` — Convert string to integer (throws on error)
 - `Viper.Convert.ToDouble(str)->f64` — Convert string to double (throws on error)
+- `Viper.Convert.ToString_Int(i64)->str` — Convert integer to string
+- `Viper.Convert.ToString_Double(f64)->str` — Convert double to string
 
 #### Viper.Parse
 
@@ -793,7 +792,7 @@ Collection types:
 Using runtime procedures:
 
 ```basic
-USING Viper.Console
+USING Viper.Terminal
 USING Viper.Strings
 
 PrintStr("Length: ")
@@ -828,14 +827,14 @@ USING directives cannot appear inside NAMESPACE, CLASS, or INTERFACE blocks.
 
 ```basic
 ' ✓ CORRECT: USING at file scope, before declarations
-USING Viper.Console
+USING Viper.Terminal
 
 NAMESPACE App
   SUB Main()
     ' Use imported namespace without qualification
     PrintI64(99)
     ' Or fully qualified (always works)
-    Viper.Console.PrintI64(99)
+    Viper.Terminal.PrintI64(99)
   END SUB
 END NAMESPACE
 
@@ -851,13 +850,13 @@ NAMESPACE App
   END SUB
 END NAMESPACE
 
-USING Viper.Console  ' Error: USING must appear before all declarations
+USING Viper.Terminal  ' Error: USING must appear before all declarations
 ```
 
 ```basic
 ' ✗ WRONG: USING inside NAMESPACE block (Error: E_NS_008)
 NAMESPACE App
-  USING Viper.Console  ' Error: USING inside NAMESPACE block not allowed
+  USING Viper.Terminal  ' Error: USING inside NAMESPACE block not allowed
   SUB Main()
   END SUB
 END NAMESPACE
@@ -869,8 +868,8 @@ END NAMESPACE
 2. **Before declarations**: USING must appear before any NAMESPACE, CLASS, or INTERFACE declarations
 3. **File-scoped effect**: Each file's USING directives do not affect other compilation units
 4. **Two forms**:
-    - Simple: `USING Viper.Console` (imports all from namespace)
-    - Aliased: `USING VC = Viper.Console` (creates shorthand alias)
+    - Simple: `USING Viper.Terminal` (imports all from namespace)
+    - Aliased: `USING VC = Viper.Terminal` (creates shorthand alias)
 
 For complete namespace documentation, see [Namespace Reference](devdocs/namespaces.md).
 
@@ -1041,7 +1040,7 @@ functions provided by the runtime. Two families are currently available:
 - Viper.String (aliased in BASIC as STRING)
 - Viper.Text.StringBuilder
 
-These object members are functional equivalents of the procedural helpers under Viper.Strings.* and Viper.Text.*. The
+These object members are functional equivalents of the procedural helpers under Viper.String.* and Viper.Text.*. The
 compiler lowers property and method calls to the corresponding extern with the receiver as argument 0.
 
 Examples:
@@ -1049,31 +1048,31 @@ Examples:
 ```basic
 10 DIM s AS STRING                 ' STRING is an alias of Viper.String
 20 LET s = "hello"
-30 Viper.Console.PrintI64(s.Length)
-40 Viper.Console.PrintStr(s.Substring(2, 3))  ' index base matches MID$: 0-based start
+30 Viper.Terminal.PrintI64(s.Length)
+40 Viper.Terminal.PrintStr(s.Substring(2, 3))  ' index base matches MID$: 0-based start
 
 100 DIM sb AS Viper.Text.StringBuilder
 110 LET sb = NEW Viper.Text.StringBuilder()
 120 ' Depending on your build, APPEND may be a reserved keyword; use the procedural form below if needed.
 130 ' sb.Append("X")
 140 ' or equivalently (procedural): sb = Viper.Text.StringBuilder.Append(sb, "X")
-150 Viper.Console.PrintI64(sb.Length)
-160 Viper.Console.PrintStr(sb.ToString())
+150 Viper.Terminal.PrintI64(sb.Length)
+160 Viper.Terminal.PrintStr(sb.ToString())
 ```
 
 Conventions and semantics:
 
 - Properties and methods lower to canonical externs with the receiver as arg0.
-    - Examples: s.Length → call @Viper.Strings.Len(s);
-      s.Substring(i,n) → call @Viper.Strings.Mid(s,i,n);
+    - Examples: s.Length → call @Viper.String.Len(s);
+      s.Substring(i,n) → call @Viper.String.Mid(s,i,n);
       sb.ToString() → call @Viper.Text.StringBuilder.ToString(sb)
 - STRING alias: The BASIC type STRING is the same nominal runtime class as Viper.String.
 - Index base: Substring uses the same convention as MID$ — start is 0-based; length is a count.
 - Null receivers trap: Accessing a property or method on a null object raises a runtime trap that can be caught with
   TRY/CATCH.
-- Procedural equivalence: For every object member there is a procedural helper under Viper.Strings.* or Viper.Text.*
+- Procedural equivalence: For every object member there is a procedural helper under Viper.String.* or Viper.Text.*
   with the receiver passed explicitly as the first argument. Use these forms where convenient or when a member name
   collides with a BASIC keyword (e.g., APPEND).
 
 Cross-reference: See [Standard Library & Namespaces](#standard-library--namespaces) for procedural helpers under
-Viper.Strings.* and Viper.Text.*.
+Viper.String.* and Viper.Text.*.

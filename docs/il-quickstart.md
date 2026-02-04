@@ -35,13 +35,13 @@ Create a file `hello.il`:
 ```il
 il 0.1
 
-extern @Viper.Console.PrintStr(str) -> void
+extern @Viper.Terminal.PrintStr(str) -> void
 global const str @.msg = "Hello, Viper IL!"
 
 func @main() -> i64 {
 entry:
   %msg = const_str @.msg
-  call @Viper.Console.PrintStr(%msg)
+  call @Viper.Terminal.PrintStr(%msg)
   ret 0
 }
 ```
@@ -90,8 +90,8 @@ Use `il 0.1.2` for experimental features.
 Declare runtime functions you'll call:
 
 ```il
-extern @Viper.Console.PrintI64(i64) -> void
-extern @Viper.Strings.Concat(str, str) -> str
+extern @Viper.Terminal.PrintI64(i64) -> void
+extern @Viper.String.Concat(str, str) -> str
 ```
 
 ### Global Constants

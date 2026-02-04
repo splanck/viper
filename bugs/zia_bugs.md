@@ -805,7 +805,7 @@ entity Vehicle {
 | `Viper.Text.Pattern.*` | New, Match, FindAll, Replace | Regex patterns |
 | `Viper.Fmt.*` | Str, Int, Num, Bool, Pad, Size | Formatting |
 | `Viper.Parse.*` | Int, Num, Bool | String parsing |
-| `Viper.Convert.*` | IntToStr, NumToStr, BoolToStr | Type conversion |
+| `Viper.Convert.*` | ToString_Int, ToString_Double, ToInt64, ToDouble | Type conversion |
 | `Viper.Log.*` | Info, Warn, Error, Debug | Logging |
 | `Viper.Collections.Bag.*` | New, Put, Has, Drop, Items | Set collections |
 | `Viper.Collections.Bytes.*` | New, Get, Set, Slice, ToHex, FromHex | Byte arrays |

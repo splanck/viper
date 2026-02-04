@@ -589,7 +589,7 @@ SYS:                                    # Boot device (D0:\)
 │   ├── Viper.IO.vlib                   # File I/O
 │   ├── Viper.Text.vlib                 # Strings, formatting
 │   ├── Viper.Collections.vlib          # Data structures
-│   ├── Viper.Console.vlib              # Console I/O
+│   ├── Viper.Terminal.vlib             # Console I/O
 │   ├── Viper.Graphics.vlib             # Drawing primitives
 │   ├── Viper.Math.vlib                 # Math functions
 │   ├── Viper.Time.vlib                 # Time, timers

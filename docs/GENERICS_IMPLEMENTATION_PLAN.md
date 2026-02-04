@@ -585,7 +585,7 @@ value Container[T] {
 var ints = Container[Integer]();
 ints.items = [1, 2, 3];
 var strings = ints.map[String](func(x: Integer) -> String {
-    return Viper.Strings.FromInt(x);
+    return Viper.Convert.ToString_Int(x);
 });
 ```
 
@@ -1040,7 +1040,7 @@ func divide(a: Number, b: Number) -> Result[Number, String] {
 func start() {
     var result = divide(10, 2)
         .map[String](func(n: Number) -> String {
-            return Viper.Strings.FromFloat(n);
+            return Viper.String.FromFloat(n);
         });
 
     if (result.isOk && result.value == "5") {

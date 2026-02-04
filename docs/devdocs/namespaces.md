@@ -726,37 +726,36 @@ canonical namespace organization is now implemented and available in IL and BASI
 
 ### Runtime Functions by Namespace
 
-#### Viper.Console
+#### Viper.Terminal
 
 Console I/O operations:
 
-- `Viper.Console.PrintStr(str)->void` — Print string
-- `Viper.Console.PrintI64(i64)->void` — Print integer
-- `Viper.Console.PrintF64(f64)->void` — Print double
-- `Viper.Console.ReadLine()->str` — Read line from console
+- `Viper.Terminal.PrintStr(str)->void` — Print string
+- `Viper.Terminal.PrintI64(i64)->void` — Print integer
+- `Viper.Terminal.PrintF64(f64)->void` — Print double
+- `Viper.Terminal.ReadLine()->str` — Read line from console
 
-#### Viper.Strings
+#### Viper.String
 
-String manipulation and conversion:
+String manipulation:
 
-- `Viper.Strings.Len(str)->i64` — String length
-- `Viper.Strings.Mid(str,i64,i64)->str` — Substring
-- `Viper.Strings.Concat(str,str)->str` — Concatenate strings
-- `Viper.Strings.SplitFields(str,ptr str,i64)->i64` — Split into fields
-- `Viper.Strings.FromInt(i64)->str` — Convert int64 to string
-- `Viper.Strings.FromI16(i16)->str` — Convert int16 to string
-- `Viper.Strings.FromI32(i32)->str` — Convert int32 to string
-- `Viper.Strings.FromSingle(f32)->str` — Convert float to string
-- `Viper.Strings.FromDouble(f64)->str` — Convert double to string
-- `Viper.Strings.FromDoublePrecise(f64)->str` — Precise double to string
-- `Viper.Strings.Builder.New()->ptr` — Create StringBuilder
+- `Viper.String.get_Length(str)->i64` — String length
+- `Viper.String.Mid(str,i64,i64)->str` — Substring
+- `Viper.String.Concat(str,str)->str` — Concatenate strings
+- `Viper.String.SplitFields(str,ptr str,i64)->i64` — Split into fields
+- `Viper.String.FromI16(i16)->str` — Convert int16 to string
+- `Viper.String.FromI32(i32)->str` — Convert int32 to string
+- `Viper.String.FromSingle(f32)->str` — Convert float to string
+- `Viper.String.Builder.New()->ptr` — Create StringBuilder
 
 #### Viper.Convert
 
-Type conversion with error handling:
+Type conversion:
 
-- `Viper.Convert.ToInt(str)->i64` — String to int (throws on error)
+- `Viper.Convert.ToInt64(str)->i64` — String to int (throws on error)
 - `Viper.Convert.ToDouble(str)->f64` — String to double (throws on error)
+- `Viper.Convert.ToString_Int(i64)->str` — Convert int64 to string
+- `Viper.Convert.ToString_Double(f64)->str` — Convert double to string
 
 #### Viper.Parse
 
@@ -845,9 +844,9 @@ first‑class and tested:
         - `MinInt(I64, I64) -> I64` — Minimum of two integers
         - `MaxInt(I64, I64) -> I64` — Maximum of two integers
 
-#### Viper.Console
+#### Viper.Terminal
 
-- `Viper.Console` — Console I/O (static utility)
+- `Viper.Terminal` — Console I/O (static utility)
     - Methods (static): `WriteLine(STRING)->VOID`, `ReadLine()->STRING`
 
 #### Viper.Random
@@ -893,16 +892,16 @@ first‑class and tested:
 For backward compatibility, legacy `rt_*` function names are maintained as aliases when built with
 `-DVIPER_RUNTIME_NS_DUAL=ON` (currently the default). Examples:
 
-- `rt_print_str` → `Viper.Console.PrintStr`
-- `rt_print_i64` → `Viper.Console.PrintI64`
-- `rt_len` → `Viper.Strings.Len`
+- `rt_print_str` → `Viper.Terminal.PrintStr`
+- `rt_print_i64` → `Viper.Terminal.PrintI64`
+- `rt_len` → `Viper.String.Len`
 
 New code should use the canonical `Viper.*` names.
 
 ### OOP Runtime vs Procedural Helpers
 
 The OOP `Viper.*` classes are the preferred surface for new code. The legacy procedural helpers (e.g.,
-`Viper.Strings.Len`, `Viper.IO.*`) remain available and are used internally by some lowering bridges for backwards
+`Viper.String.Len`, `Viper.IO.*`) remain available and are used internally by some lowering bridges for backwards
 compatibility. Migration is straightforward: replace procedural calls with equivalent class property/method calls as
 listed above.
 

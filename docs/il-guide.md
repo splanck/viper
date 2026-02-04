@@ -82,10 +82,10 @@ Create a file `first.il` with the contents:
 ```il
 # Print the number 4 and exit.
 il 0.1
-extern @Viper.Console.PrintI64(i64) -> void
+extern @Viper.Terminal.PrintI64(i64) -> void
 func @main() -> i64 {
 entry:
-  call @Viper.Console.PrintI64(4)    # runtime prints `4\n`
+  call @Viper.Terminal.PrintI64(4)    # runtime prints `4\n`
   ret 0                    # zero exit code
 }
 ```
@@ -106,10 +106,10 @@ Expected output:
 
 - `# Print the number 4 and exit.` – comments start with `#` and are ignored by the VM.
 - `il 0.1` – required version header (use `il 0.1.2` for experimental features).
-- `extern @Viper.Console.PrintI64(i64) -> void` – declare a runtime function taking an `i64` and returning `void`.
+- `extern @Viper.Terminal.PrintI64(i64) -> void` – declare a runtime function taking an `i64` and returning `void`.
 - `func @main() -> i64 {` – define the `@main` function that returns an `i64` exit code.
 - `entry:` – the initial basic block label.
-- `call @Viper.Console.PrintI64(4)` – invoke the extern with the literal `4`.
+- `call @Viper.Terminal.PrintI64(4)` – invoke the extern with the literal `4`.
 - `ret 0` – terminate the function and supply the process exit status.
 - `}` – close the function body.
 
@@ -120,7 +120,7 @@ Compatibility:
 - Planned: Starting in v0.3.0, legacy `@rt_*` aliases will be OFF by default. Enable with `-DVIPER_RUNTIME_NS_DUAL=ON`
   if you need to load legacy IL.
 
-**What just happened?** `Viper.Console.PrintI64` is supplied by the runtime and prints its argument. Every function ends
+**What just happened?** `Viper.Terminal.PrintI64` is supplied by the runtime and prints its argument. Every function ends
 with a terminator such as `ret` giving the program's exit code.
 
 **Gotcha:** Every module must start with a version line (e.g., `il 0.1`).
@@ -132,13 +132,13 @@ IL is statically typed and uses SSA-style virtual registers (`%v0`, `%t1`, ...).
 
 ```il
 il 0.1
-extern @Viper.Console.PrintI64(i64) -> void
+extern @Viper.Terminal.PrintI64(i64) -> void
 func @main() -> i64 {
 entry:
   %p = alloca 8            # reserve 8 bytes on the stack
   store i64, %p, 10        # write constant 10 to memory
   %v0 = load i64, %p       # read it back
-  call @Viper.Console.PrintI64(%v0)  # prints 10
+  call @Viper.Terminal.PrintI64(%v0)  # prints 10
   ret 0
 }
 ```
@@ -148,7 +148,7 @@ entry:
 - `%p = alloca 8` – allocate eight bytes of stack memory and bind its address to `%p` (type `ptr`).
 - `store i64, %p, 10` – store the 64‑bit constant `10` into the memory pointed to by `%p`.
 - `%v0 = load i64, %p` – load an `i64` from `%p` into `%v0`.
-- `call @Viper.Console.PrintI64(%v0)` – pass the loaded value to the runtime print routine.
+- `call @Viper.Terminal.PrintI64(%v0)` – pass the loaded value to the runtime print routine.
 - `ret 0` – return from `main` with exit code 0.
 
 **What just happened?** `alloca` creates a stack slot, `store` writes to it, and `load` reads from it.
@@ -161,7 +161,7 @@ Functions declare typed parameters. Values are passed and returned explicitly.
 
 ```il
 il 0.1
-extern @Viper.Console.PrintI64(i64) -> void
+extern @Viper.Terminal.PrintI64(i64) -> void
 func @add(i64 %a, i64 %b) -> i64 {
 entry:
   %sum = add %a, %b        # compute a + b
@@ -170,7 +170,7 @@ entry:
 func @main() -> i64 {
 entry:
   %v0 = call @add(2, 3)    # call with constants
-  call @Viper.Console.PrintI64(%v0)  # prints 5
+  call @Viper.Terminal.PrintI64(%v0)  # prints 5
   ret 0
 }
 ```
@@ -182,7 +182,7 @@ entry:
 - `ret %sum` – return the computed sum.
 - `func @main() -> i64 { ... }` – define the entry point.
 - `%v0 = call @add(2, 3)` – call `@add` with literal arguments; result stored in `%v0`.
-- `call @Viper.Console.PrintI64(%v0)` – print the returned value.
+- `call @Viper.Terminal.PrintI64(%v0)` – print the returned value.
 - `ret 0` – exit with status 0.
 
 **What just happened?** `call` pushes arguments and receives a result. Each function has one entry block.
@@ -193,12 +193,12 @@ entry:
 
 ```il
 il 0.1
-extern @Viper.Console.PrintI64(i64) -> void
+extern @Viper.Terminal.PrintI64(i64) -> void
 func @main() -> i64 {
 entry:
   %v0 = add 2, 2           # 4
   %v1 = scmp_gt %v0, 3     # 1 (true)
-  call @Viper.Console.PrintI64(%v1)  # prints 1
+  call @Viper.Terminal.PrintI64(%v1)  # prints 1
   ret 0
 }
 ```
@@ -207,12 +207,12 @@ entry:
 
 - `%v0 = add 2, 2` – compute the constant expression `2 + 2`.
 - `%v1 = scmp_gt %v0, 3` – signed compare‑greater; result is `1` because 4 > 3.
-- `call @Viper.Console.PrintI64(%v1)` – zero‑extend the `i1` result and print it.
+- `call @Viper.Terminal.PrintI64(%v1)` – zero‑extend the `i1` result and print it.
 - `ret 0` – terminate `main` with success.
 
 **What just happened?** `scmp_gt` compares signed integers and yields an `i1` (0 or 1).
 
-**Gotcha:** Comparison results are `i1`; printing them with `Viper.Console.PrintI64` zero-extends to `i64`.
+**Gotcha:** Comparison results are `i1`; printing them with `Viper.Terminal.PrintI64` zero-extends to `i64`.
 
 ### Control flow
 
@@ -220,16 +220,16 @@ Blocks end with a terminator. `cbr` chooses a target based on an `i1` value.
 
 ```il
 il 0.1
-extern @Viper.Console.PrintI64(i64) -> void
+extern @Viper.Terminal.PrintI64(i64) -> void
 func @main() -> i64 {
 entry:
   %flag = scmp_gt 5, 3     # 1 means take then
   cbr %flag, then, else    # conditional branch
 then:
-  call @Viper.Console.PrintI64(1)    # prints 1 if flag != 0
+  call @Viper.Terminal.PrintI64(1)    # prints 1 if flag != 0
   br done                  # jump to exit
 else:
-  call @Viper.Console.PrintI64(0)    # prints 0 otherwise
+  call @Viper.Terminal.PrintI64(0)    # prints 0 otherwise
   br done
 done:
   ret 0
@@ -256,26 +256,26 @@ done:
 
 ### Strings and text
 
-Strings live in globals and use `Viper.Console.PrintStr` for output.
+Strings live in globals and use `Viper.Terminal.PrintStr` for output.
 
 ```il
 il 0.1
-extern @Viper.Console.PrintStr(str) -> void
+extern @Viper.Terminal.PrintStr(str) -> void
 global const str @.msg = "hello"  # immutable global
 func @main() -> i64 {
 entry:
   %s = const_str @.msg     # load pointer to string
-  call @Viper.Console.PrintStr(%s)   # prints hello
+  call @Viper.Terminal.PrintStr(%s)   # prints hello
   ret 0
 }
 ```
 
 **Line by line**
 
-- `extern @Viper.Console.PrintStr(str) -> void` – declare the runtime string printer.
+- `extern @Viper.Terminal.PrintStr(str) -> void` – declare the runtime string printer.
 - `global const str @.msg = "hello"` – create an immutable global string named `@.msg`.
 - `%s = const_str @.msg` – get a pointer to the string constant.
-- `call @Viper.Console.PrintStr(%s)` – pass that pointer to the runtime for printing.
+- `call @Viper.Terminal.PrintStr(%s)` – pass that pointer to the runtime for printing.
 - `ret 0` – exit normally.
 
 **What just happened?** `const_str` loads the address of a global string constant.
@@ -317,11 +317,11 @@ Lowered IL:
 
 ```il
 il 0.1
-extern @Viper.Console.PrintI64(i64) -> void
+extern @Viper.Terminal.PrintI64(i64) -> void
 func @main() -> i64 {
 entry:
   %t0 = add 2, 2
-  call @Viper.Console.PrintI64(%t0)
+  call @Viper.Terminal.PrintI64(%t0)
   ret 0
 }
 ```
@@ -329,7 +329,7 @@ entry:
 **Line by line**
 
 - `%t0 = add 2, 2` – compute the arithmetic expression from the BASIC code.
-- `call @Viper.Console.PrintI64(%t0)` – print the result.
+- `call @Viper.Terminal.PrintI64(%t0)` – print the result.
 - `ret 0` – exit with success.
 
 **What just happened?** The front end evaluated the expression, emitted an `add`, and called the print routine.
@@ -434,10 +434,10 @@ External functions are declared with `extern` and may be called like normal func
 
 ```text
 il 0.1
-extern @Viper.Console.PrintI64(i64) -> void
+extern @Viper.Terminal.PrintI64(i64) -> void
 func @main() -> i64 {
 entry:
-  call @Viper.Console.PrintI64(42)
+  call @Viper.Terminal.PrintI64(42)
   ret 0
 }
 ```
@@ -765,20 +765,20 @@ names. Legacy `@rt_*` aliases are maintained for compatibility when built with `
 
 | Function                  | Signature     | Notes                                  |
 |---------------------------|---------------|----------------------------------------|
-| `@Viper.Console.PrintStr` | `str -> void` | write string to stdout                 |
-| `@Viper.Console.PrintI64` | `i64 -> void` | write integer to stdout                |
-| `@Viper.Console.PrintF64` | `f64 -> void` | write float to stdout                  |
-| `@Viper.Console.ReadLine` | `-> str`      | read line from stdin, newline stripped |
+| `@Viper.Terminal.PrintStr` | `str -> void` | write string to stdout                 |
+| `@Viper.Terminal.PrintI64` | `i64 -> void` | write integer to stdout                |
+| `@Viper.Terminal.PrintF64` | `f64 -> void` | write float to stdout                  |
+| `@Viper.Terminal.ReadLine` | `-> str`      | read line from stdin, newline stripped |
 
 ##### String Operations
 
 | Function                    | Signature                | Notes                                          |
 |-----------------------------|--------------------------|------------------------------------------------|
-| `@Viper.Strings.Len`        | `str -> i64`             | length in bytes                                |
-| `@Viper.Strings.Concat`     | `str × str -> str`       | concatenate strings                            |
-| `@Viper.Strings.Mid`        | `str × i64 × i64 -> str` | substring; indices clamp; negative bounds trap |
-| `@Viper.Strings.FromInt`    | `i64 -> str`             | convert integer to string                      |
-| `@Viper.Strings.FromDouble` | `f64 -> str`             | convert double to string                       |
+| `@Viper.String.Len`        | `str -> i64`             | length in bytes                                |
+| `@Viper.String.Concat`     | `str × str -> str`       | concatenate strings                            |
+| `@Viper.String.Mid`        | `str × i64 × i64 -> str` | substring; indices clamp; negative bounds trap |
+| `@Viper.Convert.ToString_Int`    | `i64 -> str`             | convert integer to string                      |
+| `@Viper.Convert.ToString_Double` | `f64 -> str`             | convert double to string                       |
 
 ##### Type Conversion
 
@@ -1312,9 +1312,9 @@ modules. The examples below update that material to IL v0.1.2 while preserving t
 the runtime is built with `-DVIPER_RUNTIME_NS_DUAL=ON` (the current default). New code should use the canonical
 `@Viper.*` names documented in the Runtime ABI section above. For example:
 
-- `@rt_print_str` → `@Viper.Console.PrintStr`
-- `@rt_print_i64` → `@Viper.Console.PrintI64`
-- `@rt_len` → `@Viper.Strings.Len`
+- `@rt_print_str` → `@Viper.Terminal.PrintStr`
+- `@rt_print_i64` → `@Viper.Terminal.PrintI64`
+- `@rt_len` → `@Viper.String.Len`
 
 #### Example 1 — Hello, arithmetic, and a conditional branch
 

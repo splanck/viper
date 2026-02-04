@@ -156,17 +156,23 @@ String manipulation class. In Viper, strings are immutable sequences of characte
 | `Cmp(other)`       | `Integer(String)` | Compares strings, returns -1, 0, or 1            |
 | `CmpNoCase(other)` | `Integer(String)` | Case-insensitive comparison, returns -1, 0, or 1 |
 
-### Static Functions (Viper.Strings)
+### Static Functions (Viper.String)
 
 | Function                                       | Signature                  | Description                              |
 |------------------------------------------------|----------------------------|------------------------------------------|
-| `Viper.Strings.FromStr(text)`                  | `String(String)`           | Create a runtime string from text        |
-| `Viper.Strings.FromInt(value)`                 | `String(Integer)`          | Convert integer to string                |
-| `Viper.Strings.FromDouble(value)`              | `String(Double)`           | Convert double to string                 |
-| `Viper.Strings.FromDoublePrecise(value)`       | `String(Double)`           | Convert double using precise formatting  |
-| `Viper.Strings.FromSingle(value)`              | `String(Double)`           | Convert single-precision value to string |
-| `Viper.Strings.Equals(a, b)`                   | `Boolean(String, String)`  | Compare two strings for equality         |
-| `Viper.Strings.Join(separator, items)`         | `String(String, Seq)`      | Joins sequence of strings with separator |
+| `Viper.String.FromStr(text)`                   | `String(String)`           | Create a runtime string from text        |
+| `Viper.String.FromSingle(value)`               | `String(Double)`           | Convert single-precision value to string |
+| `Viper.String.Equals(a, b)`                    | `Boolean(String, String)`  | Compare two strings for equality         |
+| `Viper.String.Join(separator, items)`          | `String(String, Seq)`      | Joins sequence of strings with separator |
+
+### Conversion Functions (Viper.Convert)
+
+| Function                                       | Signature                  | Description                              |
+|------------------------------------------------|----------------------------|------------------------------------------|
+| `Viper.Convert.ToString_Int(value)`            | `String(Integer)`          | Convert integer to string                |
+| `Viper.Convert.ToString_Double(value)`         | `String(Double)`           | Convert double to string                 |
+| `Viper.Convert.ToInt64(text)`                  | `Integer(String)`          | Parse string to integer                  |
+| `Viper.Convert.ToDouble(text)`                 | `Double(String)`           | Parse string to double                   |
 
 **Note:** `Flip()` performs byte-level reversal. It works correctly for ASCII strings but may produce invalid results
 for multi-byte UTF-8 characters.
@@ -210,7 +216,7 @@ PRINT "hello".Flip()                   ' Output: "olleh"
 DIM parts AS Viper.Collections.Seq
 parts = "a,b,c".Split(",")
 PRINT parts.Len                        ' Output: 3
-PRINT Viper.Strings.Join("-", parts)   ' Output: "a-b-c"
+PRINT Viper.String.Join("-", parts)   ' Output: "a-b-c"
 
 ' Comparison
 PRINT "abc".Cmp("abd")                 ' Output: -1

@@ -436,7 +436,7 @@ Top runtime functions called by frogger (unsupported):
 
 | Function                | Calls | Purpose            |
 |-------------------------|-------|--------------------|
-| @Viper.Console.PrintStr | 251   | String output      |
+| @Viper.Terminal.PrintStr | 251   | String output      |
 | @rt_modvar_addr_*       | 252   | Global variables   |
 | @rt_str_*               | 184   | String operations  |
 | @rt_arr_obj_*           | 138   | Array operations   |

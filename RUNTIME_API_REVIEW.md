@@ -437,23 +437,21 @@ There are several runtime aliases that indicate API evolution or convenience sho
 
 | Alias | Target | Notes |
 |-------|--------|-------|
-| `Viper.Console.PrintStr` | `Terminal.Say` | Undocumented `Console` namespace |
-| `Viper.Console.PrintI64` | `Terminal.PrintI64` | Undocumented `Console` namespace |
-| `Viper.Console.ReadLine` | `Terminal.ReadLine` | Undocumented `Console` namespace |
 | `Viper.Time.SleepMs` | `Clock.Sleep` | Convenience alias |
 | `Viper.Time.GetTickCount` | `Clock.Ticks` | Legacy name |
-| `Viper.Strings.Len` | `String.Length` | Duplicate functionality |
-| `Viper.Strings.Concat` | `String.Concat` | Duplicate functionality |
 
-**Issues Found:**
-1. `Viper.Console.*` exists as aliases but isn't documented - should be removed or documented
-2. `Viper.Time.SleepMs` and `Viper.Time.GetTickCount` are aliases that bypass `Clock` - inconsistent
-3. `Viper.Strings.Len/Concat` duplicate `Viper.String.*` methods
+**Completed Changes (v0.2.1):**
+- ✅ Removed `Viper.Console.*` aliases - use `Viper.Terminal.*` instead
+- ✅ Removed `Viper.Strings.*` namespace - use `Viper.String.*` instead
+- ✅ Removed deprecated string conversion functions:
+  - `Viper.String.FromInt` → use `Viper.Convert.ToString_Int`
+  - `Viper.String.FromDouble` → use `Viper.Convert.ToString_Double`
+  - `Viper.String.FromDoublePrecise` → use `Viper.Convert.ToString_Double`
+  - `Viper.Convert.IntToStr` → use `Viper.Convert.ToString_Int`
+  - `Viper.Convert.NumToStr` → use `Viper.Convert.ToString_Double`
 
-**Recommendation:**
-- Remove undocumented `Viper.Console.*` aliases (or document them)
-- Deprecate `Viper.Time.SleepMs` and `Viper.Time.GetTickCount` (use `Clock.Sleep`/`Clock.Ticks`)
-- Clean up `Viper.Strings.*` duplication when merging into `Viper.String.*`
+**Remaining:**
+- `Viper.Time.SleepMs` and `Viper.Time.GetTickCount` are aliases that bypass `Clock` - inconsistent
 
 ---
 

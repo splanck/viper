@@ -75,7 +75,6 @@ This document describes the C ABI provided by the runtime library (documented; e
 | `@rt_str`           | `f64 -> str` | Convert numeric value to decimal string                 |
 | `@rt_str_i32_alloc` | `i32 -> str` | Convert 32-bit integer to string                        |
 | `@rt_str_i16_alloc` | `i16 -> str` | Convert 16-bit integer to string                        |
-| `@rt_str_d_alloc`   | `f64 -> str` | Convert double to string                                |
 | `@rt_str_f_alloc`   | `f32 -> str` | Convert float to string                                 |
 
 ### Console I/O
@@ -239,21 +238,21 @@ Compatibility:
 
 ```il
 # Console I/O (canonical)
-extern @Viper.Console.PrintStr(str) -> void
-extern @Viper.Console.PrintI64(i64) -> void
-extern @Viper.Console.PrintF64(f64) -> void
-extern @Viper.Console.ReadLine() -> str
+extern @Viper.Terminal.PrintStr(str) -> void
+extern @Viper.Terminal.PrintI64(i64) -> void
+extern @Viper.Terminal.PrintF64(f64) -> void
+extern @Viper.Terminal.ReadLine() -> str
 
 # String operations
-extern @Viper.Strings.Len(str) -> i64
-extern @Viper.Strings.Concat(str, str) -> str
-extern @Viper.Strings.Mid(str, i64, i64) -> str
+extern @Viper.String.Len(str) -> i64
+extern @Viper.String.Concat(str, str) -> str
+extern @Viper.String.Mid(str, i64, i64) -> str
 extern @rt_str_eq(str, str) -> i1   # no Viper alias yet
 
 # String conversion
 extern @Viper.Convert.ToInt(str) -> i64
-extern @Viper.Strings.FromInt(i64) -> str
-extern @Viper.Strings.FromDouble(f64) -> str
+extern @Viper.Convert.ToString_Int(i64) -> str
+extern @Viper.Convert.ToString_Double(f64) -> str
 
 # Math
 extern @rt_sqrt(f64) -> f64
