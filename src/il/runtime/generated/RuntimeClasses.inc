@@ -92,7 +92,7 @@ RUNTIME_CLASS(
     RTCLS_List,
     "obj",
     "Viper.Collections.List.New",
-    RUNTIME_PROPS(RUNTIME_PROP("Count", "i64", "Viper.Collections.List.get_Count", nullptr)),
+    RUNTIME_PROPS(RUNTIME_PROP("Len", "i64", "Viper.Collections.List.get_Len", nullptr)),
     RUNTIME_METHODS(RUNTIME_METHOD("Add", "void(obj)", "Viper.Collections.List.Add"),
                     RUNTIME_METHOD("Clear", "void()", "Viper.Collections.List.Clear"),
                     RUNTIME_METHOD("Find", "i64(obj)", "Viper.Collections.List.Find"),
@@ -296,7 +296,7 @@ RUNTIME_CLASS(
                     RUNTIME_METHOD("Close", "void()", "Viper.Crypto.Tls.Close")))
 
 RUNTIME_CLASS(
-    "Viper.DateTime",
+    "Viper.Time.DateTime",
     RTCLS_DateTime,
     "obj",
     "",
@@ -671,7 +671,7 @@ RUNTIME_CLASS(
                     RUNTIME_METHOD("SetSize", "void(i64,i64)", "Viper.GUI.Widget.SetSize")))
 
 RUNTIME_CLASS(
-    "Viper.GUI.TreeNode",
+    "Viper.GUI.TreeView.Node",
     RTCLS_GuiTreeNode,
     "obj",
     "",
@@ -1380,9 +1380,9 @@ RUNTIME_CLASS(
                   RUNTIME_PROP("Rate", "f64", "Viper.Game.ParticleEmitter.get_Rate", "Viper.Game.ParticleEmitter.set_Rate"),
                   RUNTIME_PROP("IsEmitting", "i1", "Viper.Game.ParticleEmitter.get_IsEmitting", nullptr),
                   RUNTIME_PROP("Count", "i64", "Viper.Game.ParticleEmitter.get_Count", nullptr),
-                  RUNTIME_PROP("FadeOut", "i1", "none", "Viper.Game.ParticleEmitter.set_FadeOut"),
-                  RUNTIME_PROP("Shrink", "i1", "none", "Viper.Game.ParticleEmitter.set_Shrink"),
-                  RUNTIME_PROP("Color", "i64", "none", "Viper.Game.ParticleEmitter.set_Color")),
+                  RUNTIME_PROP("FadeOut", "i1", "Viper.Game.ParticleEmitter.get_FadeOut", "Viper.Game.ParticleEmitter.set_FadeOut"),
+                  RUNTIME_PROP("Shrink", "i1", "Viper.Game.ParticleEmitter.get_Shrink", "Viper.Game.ParticleEmitter.set_Shrink"),
+                  RUNTIME_PROP("Color", "i64", "Viper.Game.ParticleEmitter.get_Color", "Viper.Game.ParticleEmitter.set_Color")),
     RUNTIME_METHODS(RUNTIME_METHOD("SetPosition", "void(f64,f64)", "Viper.Game.ParticleEmitter.SetPosition"),
                     RUNTIME_METHOD("SetLifetime", "void(i64,i64)", "Viper.Game.ParticleEmitter.SetLifetime"),
                     RUNTIME_METHOD("SetVelocity", "void(f64,f64,f64,f64)", "Viper.Game.ParticleEmitter.SetVelocity"),
@@ -1407,8 +1407,8 @@ RUNTIME_CLASS(
                   RUNTIME_PROP("IsFinished", "i1", "Viper.Game.SpriteAnimation.get_IsFinished", nullptr),
                   RUNTIME_PROP("Progress", "i64", "Viper.Game.SpriteAnimation.get_Progress", nullptr),
                   RUNTIME_PROP("Speed", "f64", "Viper.Game.SpriteAnimation.get_Speed", "Viper.Game.SpriteAnimation.set_Speed"),
-                  RUNTIME_PROP("Loop", "i1", "none", "Viper.Game.SpriteAnimation.set_Loop"),
-                  RUNTIME_PROP("PingPong", "i1", "none", "Viper.Game.SpriteAnimation.set_PingPong"),
+                  RUNTIME_PROP("Loop", "i1", "Viper.Game.SpriteAnimation.get_Loop", "Viper.Game.SpriteAnimation.set_Loop"),
+                  RUNTIME_PROP("PingPong", "i1", "Viper.Game.SpriteAnimation.get_PingPong", "Viper.Game.SpriteAnimation.set_PingPong"),
                   RUNTIME_PROP("FrameChanged", "i1", "Viper.Game.SpriteAnimation.get_FrameChanged", nullptr)),
     RUNTIME_METHODS(RUNTIME_METHOD("Setup", "void(i64,i64,i64)", "Viper.Game.SpriteAnimation.Setup"),
                     RUNTIME_METHOD("Play", "void()", "Viper.Game.SpriteAnimation.Play"),
@@ -1445,7 +1445,7 @@ RUNTIME_CLASS(
                     RUNTIME_METHOD("ContainsRect", "i1(obj)", "Viper.Game.CollisionRect.ContainsRect")))
 
 RUNTIME_CLASS(
-    "Viper.Collision",
+    "Viper.Game.Collision",
     RTCLS_Collision,
     "obj",
     "",

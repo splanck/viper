@@ -118,6 +118,21 @@ void rt_particle_emitter_stop(rt_particle_emitter emitter);
 /// @return 1 if emitting, 0 if stopped.
 int8_t rt_particle_emitter_is_emitting(rt_particle_emitter emitter);
 
+/// Gets whether particles fade out over lifetime.
+/// @param emitter The emitter.
+/// @return 1 if fade out enabled, 0 if disabled.
+int8_t rt_particle_emitter_fade_out(rt_particle_emitter emitter);
+
+/// Gets whether particles shrink over lifetime.
+/// @param emitter The emitter.
+/// @return 1 if shrinking enabled, 0 if disabled.
+int8_t rt_particle_emitter_shrink(rt_particle_emitter emitter);
+
+/// Gets the particle color.
+/// @param emitter The emitter.
+/// @return Color in 0xAARRGGBB format.
+int64_t rt_particle_emitter_color(rt_particle_emitter emitter);
+
 /// Emits a burst of particles immediately.
 /// @param emitter The emitter.
 /// @param count Number of particles to emit.

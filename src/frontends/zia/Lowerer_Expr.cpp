@@ -444,8 +444,7 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
         if (expr->field == "Length" || expr->field == "length")
         {
             // Synthesize a call to Viper.String.Length(str)
-            // Note: Using "Viper.String.Length" to match Sema.cpp registration
-            Value result = emitCallRet(Type(Type::Kind::I64), "Viper.String.Length", {base.value});
+            Value result = emitCallRet(Type(Type::Kind::I64), kStringLength, {base.value});
             return {result, Type(Type::Kind::I64)};
         }
     }

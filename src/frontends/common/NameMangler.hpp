@@ -117,12 +117,6 @@ inline std::string mangleOopModuleInit()
     return "__mod_init$oop";
 }
 
-/// @brief Name for a Pascal-style OOP module initializer: "__pas_oop_init"
-inline std::string manglePascalOopInit()
-{
-    return "__pas_oop_init";
-}
-
 /// @brief Generates deterministic names for temporaries and blocks.
 /// @details Used during AST-to-IL lowering to create unique names.
 /// @invariant Temp IDs increase sequentially; block names gain numeric suffixes on collision.

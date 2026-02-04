@@ -19,6 +19,7 @@
 #include "vm/RuntimeBridge.hpp"
 
 #include "il/core/Module.hpp"
+#include "il/runtime/generated/RuntimeNames.hpp"
 #include "il/runtime/signatures/Registry.hpp"
 #include "rt.hpp"
 #include "rt_threads.h"
@@ -173,7 +174,7 @@ static void threads_thread_start_handler(void **args, void *result)
 void registerThreadsRuntimeExternals()
 {
     ExternDesc ext;
-    ext.name = "Viper.Threads.Thread.Start";
+    ext.name = il::runtime::names::kThreadsThreadStart;
     ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
     ext.fn = reinterpret_cast<void *>(&threads_thread_start_handler);
     RuntimeBridge::registerExtern(ext);

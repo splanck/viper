@@ -33,7 +33,7 @@ typeRegistry_["Viper.Crypto.Hash"] = types::runtimeClass("Viper.Crypto.Hash");
 typeRegistry_["Viper.Crypto.KeyDerive"] = types::runtimeClass("Viper.Crypto.KeyDerive");
 typeRegistry_["Viper.Crypto.Rand"] = types::runtimeClass("Viper.Crypto.Rand");
 typeRegistry_["Viper.Crypto.Tls"] = types::runtimeClass("Viper.Crypto.Tls");
-typeRegistry_["Viper.DateTime"] = types::runtimeClass("Viper.DateTime");
+typeRegistry_["Viper.Time.DateTime"] = types::runtimeClass("Viper.Time.DateTime");
 typeRegistry_["Viper.Time.Stopwatch"] = types::runtimeClass("Viper.Time.Stopwatch");
 typeRegistry_["Viper.Environment"] = types::runtimeClass("Viper.Environment");
 typeRegistry_["Viper.Exec"] = types::runtimeClass("Viper.Exec");
@@ -53,7 +53,7 @@ typeRegistry_["Viper.GUI.TextInput"] = types::runtimeClass("Viper.GUI.TextInput"
 typeRegistry_["Viper.GUI.Checkbox"] = types::runtimeClass("Viper.GUI.Checkbox");
 typeRegistry_["Viper.GUI.ScrollView"] = types::runtimeClass("Viper.GUI.ScrollView");
 typeRegistry_["Viper.GUI.TreeView"] = types::runtimeClass("Viper.GUI.TreeView");
-typeRegistry_["Viper.GUI.TreeNode"] = types::runtimeClass("Viper.GUI.TreeNode");
+typeRegistry_["Viper.GUI.TreeView.Node"] = types::runtimeClass("Viper.GUI.TreeView.Node");
 typeRegistry_["Viper.GUI.TabBar"] = types::runtimeClass("Viper.GUI.TabBar");
 typeRegistry_["Viper.GUI.Tab"] = types::runtimeClass("Viper.GUI.Tab");
 typeRegistry_["Viper.GUI.SplitPane"] = types::runtimeClass("Viper.GUI.SplitPane");
@@ -93,7 +93,7 @@ typeRegistry_["Viper.Game.SmoothValue"] = types::runtimeClass("Viper.Game.Smooth
 typeRegistry_["Viper.Game.ParticleEmitter"] = types::runtimeClass("Viper.Game.ParticleEmitter");
 typeRegistry_["Viper.Game.SpriteAnimation"] = types::runtimeClass("Viper.Game.SpriteAnimation");
 typeRegistry_["Viper.Game.CollisionRect"] = types::runtimeClass("Viper.Game.CollisionRect");
-typeRegistry_["Viper.Collision"] = types::runtimeClass("Viper.Collision");
+typeRegistry_["Viper.Game.Collision"] = types::runtimeClass("Viper.Game.Collision");
 typeRegistry_["Viper.Input.Manager"] = types::runtimeClass("Viper.Input.Manager");
 typeRegistry_["Viper.IO.Dir"] = types::runtimeClass("Viper.IO.Dir");
 typeRegistry_["Viper.IO.File"] = types::runtimeClass("Viper.IO.File");
@@ -228,7 +228,7 @@ defineExternFunction("Viper.Collections.Set.Put", types::boolean());
 defineExternFunction("Viper.Collections.List.Add", types::voidType());
 defineExternFunction("Viper.Collections.List.Clear", types::voidType());
 defineExternFunction("Viper.Collections.List.Find", types::integer());
-defineExternFunction("Viper.Collections.List.get_Count", types::integer());
+defineExternFunction("Viper.Collections.List.get_Len", types::integer());
 defineExternFunction("Viper.Collections.List.get_Item", types::ptr());
 defineExternFunction("Viper.Collections.List.Has", types::boolean());
 defineExternFunction("Viper.Collections.List.Insert", types::voidType());
@@ -907,7 +907,10 @@ defineExternFunction("Viper.Game.ParticleEmitter.SetGravity", types::voidType())
 defineExternFunction("Viper.Game.ParticleEmitter.set_Color", types::voidType());
 defineExternFunction("Viper.Game.ParticleEmitter.SetSize", types::voidType());
 defineExternFunction("Viper.Game.ParticleEmitter.set_FadeOut", types::voidType());
+defineExternFunction("Viper.Game.ParticleEmitter.get_FadeOut", types::boolean());
 defineExternFunction("Viper.Game.ParticleEmitter.set_Shrink", types::voidType());
+defineExternFunction("Viper.Game.ParticleEmitter.get_Shrink", types::boolean());
+defineExternFunction("Viper.Game.ParticleEmitter.get_Color", types::integer());
 defineExternFunction("Viper.Game.ParticleEmitter.Start", types::voidType());
 defineExternFunction("Viper.Game.ParticleEmitter.Stop", types::voidType());
 defineExternFunction("Viper.Game.ParticleEmitter.get_IsEmitting", types::boolean());
@@ -920,7 +923,9 @@ defineExternFunction("Viper.Game.SpriteAnimation.New", types::runtimeClass("Vipe
 defineExternFunction("Viper.Game.SpriteAnimation.Destroy", types::voidType());
 defineExternFunction("Viper.Game.SpriteAnimation.Setup", types::voidType());
 defineExternFunction("Viper.Game.SpriteAnimation.set_Loop", types::voidType());
+defineExternFunction("Viper.Game.SpriteAnimation.get_Loop", types::boolean());
 defineExternFunction("Viper.Game.SpriteAnimation.set_PingPong", types::voidType());
+defineExternFunction("Viper.Game.SpriteAnimation.get_PingPong", types::boolean());
 defineExternFunction("Viper.Game.SpriteAnimation.Play", types::voidType());
 defineExternFunction("Viper.Game.SpriteAnimation.Stop", types::voidType());
 defineExternFunction("Viper.Game.SpriteAnimation.Pause", types::voidType());
@@ -2229,9 +2234,10 @@ defineExternFunction("Viper.Vec3.Zero", types::ptr());
 // ===========================================================================
 // ALIASES
 // ===========================================================================
-defineExternFunction("Viper.String.Len", types::integer());
+defineExternFunction("Viper.Collections.List.get_Count", types::integer());
 defineExternFunction("Viper.String.Length", types::integer());
 defineExternFunction("Viper.String.ConcatSelf", types::string());
+defineExternFunction("Viper.String.FromFloat", types::string());
 defineExternFunction("Viper.Console.PrintStr", types::voidType());
 defineExternFunction("Viper.Console.PrintI64", types::voidType());
 defineExternFunction("Viper.Console.PrintF64", types::voidType());

@@ -22,6 +22,7 @@
 #include "frontends/basic/LowerExprNumeric.hpp"
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/NumericRules.hpp"
+#include "frontends/basic/RuntimeNames.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 
 #include <functional>
@@ -32,6 +33,7 @@
 namespace il::frontends::basic
 {
 using namespace il::core;
+using namespace il::frontends::basic::runtime;
 
 using IlType = il::core::Type;
 using IlKind = IlType::Kind;
@@ -335,7 +337,7 @@ Lowerer::RVal NumericExprLowering::lowerPowBinary(const BinaryExpr &expr,
 
 /// @brief Lower binary operations when operands are strings.
 ///
-/// @details Supports concatenation via `Viper.String.Concat` and equality/inequality tests
+/// @details Supports concatenation via `kStringConcat` and equality/inequality tests
 ///          via dedicated runtime helpers that preserve BASIC's string
 ///          comparison semantics.
 ///
@@ -355,7 +357,7 @@ Lowerer::RVal NumericExprLowering::lowerStringBinary(const BinaryExpr &expr,
         lowerer.trackRuntime(Lowerer::RuntimeFeature::Concat);
         // BUG-110: Avoid per-iteration alloca spills; pass operands directly.
         Value res = lowerer.emitCallRet(
-            IlType(IlKind::Str), "Viper.String.Concat", {lhs.value, rhs.value});
+            IlType(IlKind::Str), kStringConcat, {lhs.value, rhs.value});
         lowerer.deferReleaseStr(res);
         return {res, IlType(IlKind::Str)};
     }

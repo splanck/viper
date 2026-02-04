@@ -25,7 +25,7 @@ Located in `src/tests/unit/`. Test individual components in isolation:
 Located in `src/tests/golden/`. Test textual stability of outputs:
 
 - IL serialization format
-- Zia/BASIC/Pascal compiler output
+- Zia/BASIC compiler output
 - Diagnostic messages
 
 ### End-to-End Tests
@@ -34,7 +34,6 @@ Located in `src/tests/e2e/`. Test complete pipelines:
 
 - Zia programs compiled and executed
 - BASIC programs compiled and executed
-- Pascal programs compiled and executed
 - IL programs through VM and native backends
 
 ### Differential Tests

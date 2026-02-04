@@ -329,7 +329,7 @@ ctest --test-dir build --output-on-failure
 sudo cmake --install build --prefix /usr/local
 ```
 
-Installs: `vbasic`, `vpascal`, `zia`, `ilrun`, `viper`, `il-verify`, `il-dis`
+Installs: `vbasic`, `zia`, `ilrun`, `viper`, `il-verify`, `il-dis`
 
 ### Platform Notes
 

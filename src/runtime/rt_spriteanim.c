@@ -102,6 +102,16 @@ void rt_spriteanim_set_pingpong(rt_spriteanim anim, int8_t pingpong)
     anim->pingpong = pingpong ? 1 : 0;
 }
 
+int8_t rt_spriteanim_loop(rt_spriteanim anim)
+{
+    return anim ? anim->loop : 0;
+}
+
+int8_t rt_spriteanim_pingpong(rt_spriteanim anim)
+{
+    return anim ? anim->pingpong : 0;
+}
+
 void rt_spriteanim_play(rt_spriteanim anim)
 {
     if (!anim)

@@ -53,6 +53,16 @@ void rt_spriteanim_set_loop(rt_spriteanim anim, int8_t loop);
 /// @param pingpong 1 to enable ping-pong, 0 for normal loop.
 void rt_spriteanim_set_pingpong(rt_spriteanim anim, int8_t pingpong);
 
+/// Gets whether the animation loops.
+/// @param anim The animation.
+/// @return 1 if looping, 0 for one-shot.
+int8_t rt_spriteanim_loop(rt_spriteanim anim);
+
+/// Gets whether the animation ping-pongs.
+/// @param anim The animation.
+/// @return 1 if ping-pong enabled, 0 for normal.
+int8_t rt_spriteanim_pingpong(rt_spriteanim anim);
+
 /// Starts or restarts the animation from the beginning.
 /// @param anim The animation.
 void rt_spriteanim_play(rt_spriteanim anim);

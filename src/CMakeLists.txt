@@ -355,17 +355,9 @@ set(VIPER_CLI_LINK_LIBS
         viper_cmd_arm64
         viper_bytecode)
 
-if (VIPER_ENABLE_PASCAL)
-    list(APPEND VIPER_CLI_SOURCES tools/viper/cmd_front_pascal.cpp)
-    list(APPEND VIPER_CLI_LINK_LIBS fe_pascal)
-endif ()
-
 add_executable(viper ${VIPER_CLI_SOURCES})
 set_target_properties(viper PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/viper)
 target_link_libraries(viper PRIVATE ${VIPER_CLI_LINK_LIBS})
-if (VIPER_ENABLE_PASCAL)
-    target_compile_definitions(viper PRIVATE VIPER_ENABLE_PASCAL=1)
-endif ()
 get_target_property(VIPER_LINK_LIBS viper LINK_LIBRARIES)
 message(STATUS "viper LINK_LIBRARIES: ${VIPER_LINK_LIBS}")
 install(TARGETS viper RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
@@ -388,28 +380,6 @@ target_link_libraries(vbasic
         il_tools_common
         viper_bytecode)
 install(TARGETS vbasic RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-
-if (VIPER_ENABLE_PASCAL)
-    add_executable(vpascal
-            tools/vpascal/main.cpp
-            tools/vpascal/usage.cpp
-            tools/vpascal/cli_compat.cpp
-            tools/viper/cmd_front_pascal.cpp
-            tools/viper/cli.cpp)
-    set_target_properties(vpascal PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/vpascal)
-    target_link_libraries(vpascal
-            PRIVATE
-            viper_common_opts
-            viper::il_full
-            il_vm
-            il_transform
-            fe_pascal
-            il_api
-            il_tools_common
-            viper_bytecode)
-    target_compile_definitions(vpascal PRIVATE VIPER_ENABLE_PASCAL=1)
-    install(TARGETS vpascal RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-endif ()
 
 add_executable(zia
         tools/zia/main.cpp
@@ -470,9 +440,6 @@ install(TARGETS il-dis RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 add_subdirectory(frontends/common)
 add_subdirectory(frontends/basic)
-if (VIPER_ENABLE_PASCAL)
-    add_subdirectory(frontends/pascal)
-endif ()
 add_subdirectory(frontends/zia)
 
 add_executable(basic-ast-dump

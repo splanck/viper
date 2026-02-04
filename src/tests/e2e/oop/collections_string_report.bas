@@ -14,7 +14,7 @@ p2 = NEW Person()
 list.Add(p1)
 list.Add(p2)
 
-PRINT list.Count
+PRINT list.Len
 PRINT list.get_Item(0).ToString()
 PRINT list.get_Item(1).Equals(p2)
 

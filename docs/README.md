@@ -32,13 +32,6 @@ implementation guides.
 - **[BASIC Tutorial](basic-language.md)** — Learn Viper BASIC with hands-on examples
 - **[BASIC Reference](basic-reference.md)** — Complete language specification
 
-### Viper Pascal
-
-> Note: Pascal documentation is in development. See [experimental/](experimental/) for work-in-progress docs.
-
-- **[Pascal Tutorial](experimental/pascal-language.md)** — Learn Viper Pascal with hands-on examples
-- **[Pascal Reference](experimental/pascal-reference.md)** — Complete language specification (WIP)
-
 ### Intermediate Language (IL)
 
 - **[IL Guide](il-guide.md)** — Comprehensive guide to Viper IL
@@ -76,7 +69,7 @@ implementation guides.
 
 ## Additional Resources
 
-- **Examples**: See `/examples` for runnable BASIC and Pascal programs and IL modules
+- **Examples**: See `/examples` for runnable BASIC programs and IL modules
 - **Graphics Library**: See [graphics-library.md](graphics-library.md) for the ViperGFX 2D graphics API
 - **FAQ**: See [faq.md](faq.md) for frequently asked questions
 - **Developer Docs**: See `/devdocs` for architecture and contributor guides

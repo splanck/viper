@@ -188,7 +188,7 @@ RT_FUNC(SetPut,        rt_set_put,         "Viper.Collections.Set.Put",         
 RT_FUNC(ListAdd,      rt_list_add,       "Viper.Collections.List.Add",        "void(obj,obj)")
 RT_FUNC(ListClear,    rt_list_clear,     "Viper.Collections.List.Clear",      "void(obj)")
 RT_FUNC(ListFind,     rt_list_find,      "Viper.Collections.List.Find",       "i64(obj,obj)")
-RT_FUNC(ListGetCount, rt_list_get_count, "Viper.Collections.List.get_Count",  "i64(obj)")
+RT_FUNC(ListGetLen,   rt_list_get_count, "Viper.Collections.List.get_Len",    "i64(obj)")
 RT_FUNC(ListGetItem,  rt_list_get_item,  "Viper.Collections.List.get_Item",   "obj(obj,i64)")
 RT_FUNC(ListHas,      rt_list_has,       "Viper.Collections.List.Has",        "i1(obj,obj)")
 RT_FUNC(ListInsert,   rt_list_insert,    "Viper.Collections.List.Insert",     "void(obj,i64,obj)")
@@ -200,6 +200,9 @@ RT_FUNC(ListSlice,    rt_list_slice,     "Viper.Collections.List.Slice",      "o
 RT_FUNC(ListFlip,     rt_list_flip,      "Viper.Collections.List.Flip",       "void(obj)")
 RT_FUNC(ListFirst,    rt_list_first,     "Viper.Collections.List.First",      "obj(obj)")
 RT_FUNC(ListLast,     rt_list_last,      "Viper.Collections.List.Last",       "obj(obj)")
+
+// List aliases (backward compatibility)
+RT_ALIAS("Viper.Collections.List.get_Count", ListGetLen)
 
 //=============================================================================
 // COLLECTIONS - MAP
@@ -1593,17 +1596,17 @@ RT_FUNC(F64ToStr,              rt_f64_to_str,    "Viper.String.FromDouble",     
 RT_FUNC(IntToStr,              rt_int_to_str,    "Viper.String.FromInt",           "str(i64)")
 RT_FUNC(SplitFields,           rt_split_fields,  "Viper.String.SplitFields",       "i64(str,ptr,i64)")
 RT_FUNC(StrEquals,             rt_str_eq,        "Viper.String.Equals",            "i64(str,str)")
-RT_FUNC(StrFromDoublePrecise,  rt_str_d_alloc,   "Viper.String.FromDoublePrecise", "str(f64)")
+RT_FUNC(StrFromDoublePrecise,  rt_str_d_alloc,   "Viper.String.FromDoublePrecise", "str(f64)") // Legacy alias for FromDouble
 RT_FUNC(StrFromI16,            rt_str_i16_alloc, "Viper.String.FromI16",           "str(i16)")
 RT_FUNC(StrFromI32,            rt_str_i32_alloc, "Viper.String.FromI32",           "str(i32)")
-RT_FUNC(StrFromSingle,         rt_str_f_alloc,   "Viper.String.FromSingle",        "str(f64)")
+RT_FUNC(StrFromSingle,         rt_str_f_alloc,   "Viper.String.FromSingle",        "str(f64)") // Formats with single precision (truncates to f32)
 RT_FUNC(StrFromStr,            rt_from_str,      "Viper.String.FromStr",           "str(str)")
 RT_FUNC(StringsJoin,           rt_strings_join,  "Viper.String.Join",              "str(str,obj)")
 
 // String aliases (alternative canonical names)
-RT_ALIAS("Viper.String.Len", Len)
 RT_ALIAS("Viper.String.Length", Len)
 RT_ALIAS("Viper.String.ConcatSelf", Concat)
+RT_ALIAS("Viper.String.FromFloat", StrFromSingle)  // More intuitive name for FromSingle
 
 //=============================================================================
 // TERMINAL I/O
@@ -2422,7 +2425,10 @@ RT_FUNC(ParticleEmitterSetGravity, rt_particle_emitter_set_gravity, "Viper.Game.
 RT_FUNC(ParticleEmitterSetColor, rt_particle_emitter_set_color, "Viper.Game.ParticleEmitter.set_Color", "void(obj,i64)")
 RT_FUNC(ParticleEmitterSetSize, rt_particle_emitter_set_size, "Viper.Game.ParticleEmitter.SetSize", "void(obj,f64,f64)")
 RT_FUNC(ParticleEmitterSetFadeOut, rt_particle_emitter_set_fade_out, "Viper.Game.ParticleEmitter.set_FadeOut", "void(obj,i1)")
+RT_FUNC(ParticleEmitterGetFadeOut, rt_particle_emitter_fade_out, "Viper.Game.ParticleEmitter.get_FadeOut", "i1(obj)")
 RT_FUNC(ParticleEmitterSetShrink, rt_particle_emitter_set_shrink, "Viper.Game.ParticleEmitter.set_Shrink", "void(obj,i1)")
+RT_FUNC(ParticleEmitterGetShrink, rt_particle_emitter_shrink, "Viper.Game.ParticleEmitter.get_Shrink", "i1(obj)")
+RT_FUNC(ParticleEmitterGetColor, rt_particle_emitter_color, "Viper.Game.ParticleEmitter.get_Color", "i64(obj)")
 RT_FUNC(ParticleEmitterStart, rt_particle_emitter_start, "Viper.Game.ParticleEmitter.Start", "void(obj)")
 RT_FUNC(ParticleEmitterStop, rt_particle_emitter_stop, "Viper.Game.ParticleEmitter.Stop", "void(obj)")
 RT_FUNC(ParticleEmitterIsEmitting, rt_particle_emitter_is_emitting, "Viper.Game.ParticleEmitter.get_IsEmitting", "i1(obj)")
@@ -2440,7 +2446,9 @@ RT_FUNC(SpriteAnimNew, rt_spriteanim_new, "Viper.Game.SpriteAnimation.New", "obj
 RT_FUNC(SpriteAnimDestroy, rt_spriteanim_destroy, "Viper.Game.SpriteAnimation.Destroy", "void(obj)")
 RT_FUNC(SpriteAnimSetup, rt_spriteanim_setup, "Viper.Game.SpriteAnimation.Setup", "void(obj,i64,i64,i64)")
 RT_FUNC(SpriteAnimSetLoop, rt_spriteanim_set_loop, "Viper.Game.SpriteAnimation.set_Loop", "void(obj,i1)")
+RT_FUNC(SpriteAnimGetLoop, rt_spriteanim_loop, "Viper.Game.SpriteAnimation.get_Loop", "i1(obj)")
 RT_FUNC(SpriteAnimSetPingPong, rt_spriteanim_set_pingpong, "Viper.Game.SpriteAnimation.set_PingPong", "void(obj,i1)")
+RT_FUNC(SpriteAnimGetPingPong, rt_spriteanim_pingpong, "Viper.Game.SpriteAnimation.get_PingPong", "i1(obj)")
 RT_FUNC(SpriteAnimPlay, rt_spriteanim_play, "Viper.Game.SpriteAnimation.Play", "void(obj)")
 RT_FUNC(SpriteAnimStop, rt_spriteanim_stop, "Viper.Game.SpriteAnimation.Stop", "void(obj)")
 RT_FUNC(SpriteAnimPause, rt_spriteanim_pause, "Viper.Game.SpriteAnimation.Pause", "void(obj)")
@@ -2833,7 +2841,7 @@ RT_CLASS_END()
 
 // Viper.Collections.List
 RT_CLASS_BEGIN("Viper.Collections.List", List, "obj", ListNew)
-    RT_PROP("Count", "i64", ListGetCount, none)
+    RT_PROP("Len", "i64", ListGetLen, none)
     RT_METHOD("Add", "void(obj)", ListAdd)
     RT_METHOD("Clear", "void()", ListClear)
     RT_METHOD("Find", "i64(obj)", ListFind)
@@ -3014,8 +3022,8 @@ RT_CLASS_BEGIN("Viper.Crypto.Tls", Tls, "obj", none)
     RT_METHOD("Close", "void()", TlsClose)
 RT_CLASS_END()
 
-// Viper.DateTime - static utility class
-RT_CLASS_BEGIN("Viper.DateTime", DateTime, "obj", none)
+// Viper.Time.DateTime - static utility class
+RT_CLASS_BEGIN("Viper.Time.DateTime", DateTime, "obj", none)
     RT_METHOD("AddDays", "i64(i64,i64)", DateTimeAddDays)
     RT_METHOD("AddSeconds", "i64(i64,i64)", DateTimeAddSeconds)
     RT_METHOD("Create", "i64(i64,i64,i64,i64,i64,i64)", DateTimeCreate)
@@ -3341,8 +3349,8 @@ RT_CLASS_BEGIN("Viper.GUI.TreeView", GuiTreeView, "obj", GuiTreeViewNew)
     RT_METHOD("SetSize", "void(i64,i64)", GuiWidgetSetSize)
 RT_CLASS_END()
 
-// Viper.GUI.TreeNode - tree view node (returned by AddNode)
-RT_CLASS_BEGIN("Viper.GUI.TreeNode", GuiTreeNode, "obj", none)
+// Viper.GUI.TreeView.Node - tree view node (returned by AddNode)
+RT_CLASS_BEGIN("Viper.GUI.TreeView.Node", GuiTreeNode, "obj", none)
     RT_METHOD("GetText", "str()", GuiTreeViewNodeGetText)
     RT_METHOD("SetData", "void(str)", GuiTreeViewNodeSetData)
     RT_METHOD("GetData", "str()", GuiTreeViewNodeGetData)
@@ -4022,9 +4030,9 @@ RT_CLASS_BEGIN("Viper.Game.ParticleEmitter", ParticleEmitter, "obj", ParticleEmi
     RT_PROP("Rate", "f64", ParticleEmitterRate, ParticleEmitterSetRate)
     RT_PROP("IsEmitting", "i1", ParticleEmitterIsEmitting, none)
     RT_PROP("Count", "i64", ParticleEmitterCount, none)
-    RT_PROP("FadeOut", "i1", none, ParticleEmitterSetFadeOut)
-    RT_PROP("Shrink", "i1", none, ParticleEmitterSetShrink)
-    RT_PROP("Color", "i64", none, ParticleEmitterSetColor)
+    RT_PROP("FadeOut", "i1", ParticleEmitterGetFadeOut, ParticleEmitterSetFadeOut)
+    RT_PROP("Shrink", "i1", ParticleEmitterGetShrink, ParticleEmitterSetShrink)
+    RT_PROP("Color", "i64", ParticleEmitterGetColor, ParticleEmitterSetColor)
     RT_METHOD("SetPosition", "void(f64,f64)", ParticleEmitterSetPosition)
     RT_METHOD("SetLifetime", "void(i64,i64)", ParticleEmitterSetLifetime)
     RT_METHOD("SetVelocity", "void(f64,f64,f64,f64)", ParticleEmitterSetVelocity)
@@ -4047,8 +4055,8 @@ RT_CLASS_BEGIN("Viper.Game.SpriteAnimation", SpriteAnimation, "obj", SpriteAnimN
     RT_PROP("IsFinished", "i1", SpriteAnimIsFinished, none)
     RT_PROP("Progress", "i64", SpriteAnimProgress, none)
     RT_PROP("Speed", "f64", SpriteAnimSpeed, SpriteAnimSetSpeed)
-    RT_PROP("Loop", "i1", none, SpriteAnimSetLoop)
-    RT_PROP("PingPong", "i1", none, SpriteAnimSetPingPong)
+    RT_PROP("Loop", "i1", SpriteAnimGetLoop, SpriteAnimSetLoop)
+    RT_PROP("PingPong", "i1", SpriteAnimGetPingPong, SpriteAnimSetPingPong)
     RT_PROP("FrameChanged", "i1", SpriteAnimFrameChanged, none)
     RT_METHOD("Setup", "void(i64,i64,i64)", SpriteAnimSetup)
     RT_METHOD("Play", "void()", SpriteAnimPlay)
@@ -4083,8 +4091,8 @@ RT_CLASS_BEGIN("Viper.Game.CollisionRect", CollisionRect, "obj", CollisionRectNe
     RT_METHOD("ContainsRect", "i1(obj)", CollisionRectContainsRect)
 RT_CLASS_END()
 
-// Viper.Collision - static collision helpers
-RT_CLASS_BEGIN("Viper.Collision", Collision, "obj", none)
+// Viper.Game.Collision - static collision helpers
+RT_CLASS_BEGIN("Viper.Game.Collision", Collision, "obj", none)
     RT_METHOD("RectsOverlap", "i1(f64,f64,f64,f64,f64,f64,f64,f64)", CollisionRectsOverlap)
     RT_METHOD("PointInRect", "i1(f64,f64,f64,f64,f64,f64)", CollisionPointInRect)
     RT_METHOD("CirclesOverlap", "i1(f64,f64,f64,f64,f64,f64)", CollisionCirclesOverlap)

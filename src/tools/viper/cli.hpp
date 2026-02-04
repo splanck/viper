@@ -83,20 +83,6 @@ SharedOptionParseResult parseSharedOption(int &index,
 /// redirect `stdin` when `--stdin-from` is provided.
 int cmdFrontBasic(int argc, char **argv);
 
-/// @brief Handle `viper front pascal` subcommands.
-///
-/// Invoked when the command line begins with `viper front pascal`. After the
-/// subcommand tokens are consumed, `argc` and `argv` contain the remaining
-#ifdef VIPER_ENABLE_PASCAL
-/// arguments specific to the Pascal front end.
-///
-/// @param argc Number of arguments following `front pascal`.
-/// @param argv Array of argument strings.
-/// @return `0` on successful compilation or execution, non‑zero on errors such
-///         as parse failures or runtime traps.
-int cmdFrontPascal(int argc, char **argv);
-#endif
-
 /// @brief Handle `viper front zia` subcommands.
 ///
 /// @param argc Number of arguments following `front zia`.

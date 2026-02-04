@@ -815,7 +815,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 {
                     auto baseResult = lowerExpr(fieldExpr->base.get());
                     Value result = emitCallRet(
-                        Type(Type::Kind::I64), "Viper.String.Length", {baseResult.value});
+                        Type(Type::Kind::I64), kStringLength, {baseResult.value});
                     return {result, Type(Type::Kind::I64)};
                 }
             }

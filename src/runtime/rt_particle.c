@@ -258,6 +258,21 @@ int8_t rt_particle_emitter_is_emitting(rt_particle_emitter emitter)
     return emitter ? emitter->emitting : 0;
 }
 
+int8_t rt_particle_emitter_fade_out(rt_particle_emitter emitter)
+{
+    return emitter ? emitter->fade_out : 0;
+}
+
+int8_t rt_particle_emitter_shrink(rt_particle_emitter emitter)
+{
+    return emitter ? emitter->shrink : 0;
+}
+
+int64_t rt_particle_emitter_color(rt_particle_emitter emitter)
+{
+    return emitter ? emitter->color : 0;
+}
+
 /// Emit a single particle.
 static void emit_one(struct rt_particle_emitter_impl *e)
 {

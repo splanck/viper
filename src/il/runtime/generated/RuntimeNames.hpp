@@ -257,8 +257,8 @@ inline constexpr const char *kCollectionsListClear = "Viper.Collections.List.Cle
 /// @brief Viper.Collections.List.Find
 inline constexpr const char *kCollectionsListFind = "Viper.Collections.List.Find";
 
-/// @brief Viper.Collections.List.get_Count
-inline constexpr const char *kCollectionsListGetCount = "Viper.Collections.List.get_Count";
+/// @brief Viper.Collections.List.get_Len
+inline constexpr const char *kCollectionsListGetLen = "Viper.Collections.List.get_Len";
 
 /// @brief Viper.Collections.List.get_Item
 inline constexpr const char *kCollectionsListGetItem = "Viper.Collections.List.get_Item";
@@ -2418,8 +2418,17 @@ inline constexpr const char *kGameParticleEmitterSetSize = "Viper.Game.ParticleE
 /// @brief Viper.Game.ParticleEmitter.set_FadeOut
 inline constexpr const char *kGameParticleEmitterSetFadeOut = "Viper.Game.ParticleEmitter.set_FadeOut";
 
+/// @brief Viper.Game.ParticleEmitter.get_FadeOut
+inline constexpr const char *kGameParticleEmitterGetFadeOut = "Viper.Game.ParticleEmitter.get_FadeOut";
+
 /// @brief Viper.Game.ParticleEmitter.set_Shrink
 inline constexpr const char *kGameParticleEmitterSetShrink = "Viper.Game.ParticleEmitter.set_Shrink";
+
+/// @brief Viper.Game.ParticleEmitter.get_Shrink
+inline constexpr const char *kGameParticleEmitterGetShrink = "Viper.Game.ParticleEmitter.get_Shrink";
+
+/// @brief Viper.Game.ParticleEmitter.get_Color
+inline constexpr const char *kGameParticleEmitterGetColor = "Viper.Game.ParticleEmitter.get_Color";
 
 /// @brief Viper.Game.ParticleEmitter.Start
 inline constexpr const char *kGameParticleEmitterStart = "Viper.Game.ParticleEmitter.Start";
@@ -2666,8 +2675,14 @@ inline constexpr const char *kGameSpriteAnimationSetup = "Viper.Game.SpriteAnima
 /// @brief Viper.Game.SpriteAnimation.set_Loop
 inline constexpr const char *kGameSpriteAnimationSetLoop = "Viper.Game.SpriteAnimation.set_Loop";
 
+/// @brief Viper.Game.SpriteAnimation.get_Loop
+inline constexpr const char *kGameSpriteAnimationGetLoop = "Viper.Game.SpriteAnimation.get_Loop";
+
 /// @brief Viper.Game.SpriteAnimation.set_PingPong
 inline constexpr const char *kGameSpriteAnimationSetPingPong = "Viper.Game.SpriteAnimation.set_PingPong";
+
+/// @brief Viper.Game.SpriteAnimation.get_PingPong
+inline constexpr const char *kGameSpriteAnimationGetPingPong = "Viper.Game.SpriteAnimation.get_PingPong";
 
 /// @brief Viper.Game.SpriteAnimation.Play
 inline constexpr const char *kGameSpriteAnimationPlay = "Viper.Game.SpriteAnimation.Play";
@@ -6486,14 +6501,17 @@ inline constexpr const char *kVec3Zero = "Viper.Vec3.Zero";
 // ALIASES
 // ===========================================================================
 
-/// @brief Viper.String.Len (alias)
-inline constexpr const char *kStringLen = "Viper.String.Len";
+/// @brief Viper.Collections.List.get_Count (alias)
+inline constexpr const char *kCollectionsListGetCount = "Viper.Collections.List.get_Count";
 
 /// @brief Viper.String.Length (alias)
 inline constexpr const char *kStringLength = "Viper.String.Length";
 
 /// @brief Viper.String.ConcatSelf (alias)
 inline constexpr const char *kStringConcatSelf = "Viper.String.ConcatSelf";
+
+/// @brief Viper.String.FromFloat (alias)
+inline constexpr const char *kStringFromFloat = "Viper.String.FromFloat";
 
 /// @brief Viper.Console.PrintStr (alias)
 inline constexpr const char *kConsolePrintStr = "Viper.Console.PrintStr";

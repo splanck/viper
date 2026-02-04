@@ -67,8 +67,6 @@ option(VIPER_BUILD_TESTING "Enable CTest-based tests" ON)
 option(VIPER_VM_THREADED "Enable threaded VM dispatch (faster on GCC/Clang)" ON)
 option(VIPER_VM_TAILCALL "Enable tailcall" ON)
 option(VIPER_VM_OPCOUNTS "Enable op counters" ON)
-option(VIPER_ENABLE_PASCAL "Build Pascal frontend (experimental)" OFF)
-
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)

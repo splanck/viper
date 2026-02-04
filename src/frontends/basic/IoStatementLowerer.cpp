@@ -18,9 +18,12 @@
 #include "IoStatementLowerer.hpp"
 #include "Lowerer.hpp"
 #include "RuntimeCallHelpers.hpp"
+#include "RuntimeNames.hpp"
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/LocationScope.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
+
+using namespace il::frontends::basic::runtime;
 
 #include <algorithm>
 #include <cassert>
@@ -194,8 +197,8 @@ void IoStatementLowerer::lowerPrint(const PrintStmt &stmt)
                         lowerer_.emitCall("rt_str_retain_maybe", {value.value});
                     }
 
-                    // Print strings via Viper.Terminal.PrintStr
-                    lowerer_.emitCall("Viper.Terminal.PrintStr", {value.value});
+                    // Print strings via kTerminalPrintStr
+                    lowerer_.emitCall(kTerminalPrintStr, {value.value});
 
                     if (isLvalue)
                     {
@@ -209,14 +212,14 @@ void IoStatementLowerer::lowerPrint(const PrintStmt &stmt)
                 }
                 if (value.type.kind == IlType::Kind::F64)
                 {
-                    lowerer_.emitCall("Viper.Terminal.PrintF64", {value.value});
+                    lowerer_.emitCall(kTerminalPrintF64, {value.value});
                     updateColumn(widthEstimate);
                     break;
                 }
                 // Booleans are handled by lowerScalarExpr which calls coerceToI64,
                 // converting to BASIC logical -1/0 (True=-1, False=0).
                 value = lowerer_.lowerScalarExpr(std::move(value), stmt.loc);
-                lowerer_.emitCall("Viper.Terminal.PrintI64", {value.value});
+                lowerer_.emitCall(kTerminalPrintI64, {value.value});
                 updateColumn(widthEstimate);
                 break;
             }
@@ -232,7 +235,7 @@ void IoStatementLowerer::lowerPrint(const PrintStmt &stmt)
                 std::string padding(spaces, ' ');
                 std::string spaceLbl = lowerer_.getStringLabel(padding);
                 Value sp = lowerer_.emitConstStr(spaceLbl);
-                lowerer_.emitCall("Viper.Terminal.PrintStr", {sp});
+                lowerer_.emitCall(kTerminalPrintStr, {sp});
                 break;
             }
             case PrintItem::Kind::Semicolon:
@@ -245,7 +248,7 @@ void IoStatementLowerer::lowerPrint(const PrintStmt &stmt)
     {
         std::string nlLbl = lowerer_.getStringLabel("\n");
         Value nl = lowerer_.emitConstStr(nlLbl);
-        lowerer_.emitCall("Viper.Terminal.PrintStr", {nl});
+        lowerer_.emitCall(kTerminalPrintStr, {nl});
         resetColumn();
     }
 }
@@ -308,23 +311,23 @@ PrintChArgString lowerPrintChArgToString(IoStatementLowerer &self,
     switch (numericType)
     {
         case TypeRules::NumericType::Integer:
-            runtime = "Viper.String.FromI16";
+            runtime = kStringFromI16;
             feature = il::runtime::RuntimeFeature::StrFromI16;
             narrowInteger(IlType::Kind::I16);
             break;
         case TypeRules::NumericType::Long:
-            runtime = "Viper.String.FromI32";
+            runtime = kStringFromI32;
             feature = il::runtime::RuntimeFeature::StrFromI32;
             narrowInteger(IlType::Kind::I32);
             break;
         case TypeRules::NumericType::Single:
-            runtime = "Viper.String.FromSingle";
+            runtime = kStringFromSingle;
             feature = il::runtime::RuntimeFeature::StrFromSingle;
             value = self.lowerer_.ensureF64(std::move(value), expr.loc);
             break;
         case TypeRules::NumericType::Double:
         default:
-            runtime = "Viper.String.FromDouble";
+            runtime = kStringFromDouble;
             feature = il::runtime::RuntimeFeature::StrFromDouble;
             value = self.lowerer_.ensureF64(std::move(value), expr.loc);
             break;
@@ -369,9 +372,9 @@ Value buildPrintChWriteRecord(IoStatementLowerer &self, const PrintChStmt &stmt)
 
         self.lowerer_.curLoc = arg->loc;
         record = self.lowerer_.emitCallRet(
-            IlType(IlType::Kind::Str), "Viper.String.Concat", {record, comma});
+            IlType(IlType::Kind::Str), kStringConcat, {record, comma});
         record = self.lowerer_.emitCallRet(
-            IlType(IlType::Kind::Str), "Viper.String.Concat", {record, lowered.text});
+            IlType(IlType::Kind::Str), kStringConcat, {record, lowered.text});
     }
 
     if (!hasRecord)
@@ -491,14 +494,14 @@ void IoStatementLowerer::lowerInput(const InputStmt &stmt)
             std::string lbl = lowerer_.getStringLabel(se->value);
             Value v = lowerer_.emitConstStr(lbl);
             // Use rt_* printing helper to match unit test expectations
-            lowerer_.emitCall("Viper.Terminal.PrintStr", {v});
+            lowerer_.emitCall(kTerminalPrintStr, {v});
         }
     }
     if (stmt.vars.empty())
         return;
 
-    // Read a full line from the console using Viper.Terminal.ReadLine.
-    Value line = lowerer_.emitCallRet(IlType(IlType::Kind::Str), "Viper.Terminal.ReadLine", {});
+    // Read a full line from the console using kTerminalReadLine.
+    Value line = lowerer_.emitCallRet(IlType(IlType::Kind::Str), kTerminalReadLine, {});
     // Precompute store kinds for each variable to avoid repeated symbol lookups.
     enum class StoreKind
     {
@@ -573,19 +576,19 @@ void IoStatementLowerer::lowerInput(const InputStmt &stmt)
 
         if (slotInfo.type.kind == IlType::Kind::F64)
         {
-            // Convert string to double via Viper.Convert.ToDouble
+            // Convert string to double via kConvertToDouble
             lowerer_.requestHelper(il::runtime::RuntimeFeature::ToDouble);
             Value f =
-                lowerer_.emitCallRet(IlType(IlType::Kind::F64), "Viper.Convert.ToDouble", {field});
+                lowerer_.emitCallRet(IlType(IlType::Kind::F64), kConvertToDouble, {field});
             lowerer_.emitStore(IlType(IlType::Kind::F64), target, f);
             lowerer_.requireStrReleaseMaybe();
             lowerer_.emitCall("rt_str_release_maybe", {field});
             return;
         }
 
-        // Convert string to integer via Viper.Convert.ToInt
+        // Convert string to integer via kConvertToInt
         lowerer_.requestHelper(il::runtime::RuntimeFeature::ToInt);
-        Value n = lowerer_.emitCallRet(IlType(IlType::Kind::I64), "Viper.Convert.ToInt", {field});
+        Value n = lowerer_.emitCallRet(IlType(IlType::Kind::I64), kConvertToInt, {field});
         if (slotInfo.isBoolean)
         {
             Value b = lowerer_.coerceToBool({n, IlType(IlType::Kind::I64)}, stmt.loc).value;
@@ -610,7 +613,7 @@ void IoStatementLowerer::lowerInput(const InputStmt &stmt)
     // Split the input line into fields using the rt_* helper
     lowerer_.requestHelper(il::runtime::RuntimeFeature::SplitFields);
     lowerer_.emitCallRet(IlType(IlType::Kind::I64),
-                         "Viper.String.SplitFields",
+                         kStringSplitFields,
                          {line, fields, Value::constInt(fieldCount)});
     lowerer_.requireStrReleaseMaybe();
     lowerer_.emitCall("rt_str_release_maybe", {line});
@@ -655,7 +658,7 @@ void IoStatementLowerer::lowerInputCh(const InputChStmt &stmt)
     Value fieldsMem = lowerer_.emitAlloca(static_cast<int>(fieldCount * 8));
     lowerer_.emitStore(IlType(IlType::Kind::Ptr), fieldsMem, Value::null());
     lowerer_.emitCallRet(IlType(IlType::Kind::I64),
-                         "Viper.String.SplitFields",
+                         kStringSplitFields,
                          {line, fieldsMem, Value::constInt(fieldCount)});
     lowerer_.requireStrReleaseMaybe();
     lowerer_.emitCall("rt_str_release_maybe", {line});
@@ -679,7 +682,7 @@ void IoStatementLowerer::lowerInputCh(const InputChStmt &stmt)
         if (slotInfo.type.kind == IlType::Kind::F64)
         {
             Value err = lowerer_.emitCallRet(
-                IlType(IlType::Kind::I32), "Viper.Parse.Double", {fieldCstr, parsedSlot});
+                IlType(IlType::Kind::I32), kParseDouble, {fieldCstr, parsedSlot});
             lowerer_.emitRuntimeErrCheck(err,
                                          stmt.loc,
                                          "inputch_parse",
@@ -690,7 +693,7 @@ void IoStatementLowerer::lowerInputCh(const InputChStmt &stmt)
         else
         {
             Value err = lowerer_.emitCallRet(
-                IlType(IlType::Kind::I32), "Viper.Parse.Int64", {fieldCstr, parsedSlot});
+                IlType(IlType::Kind::I32), kParseInt64, {fieldCstr, parsedSlot});
             lowerer_.emitRuntimeErrCheck(err,
                                          stmt.loc,
                                          "inputch_parse",

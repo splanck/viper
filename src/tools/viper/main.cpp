@@ -266,10 +266,6 @@ void usage()
            "[--no-runtime-namespaces]\n"
         << "       viper front basic -run <file.bas> [--trace=il|src] [--stdin-from <file>] "
            "[--max-steps N] [--bounds-checks] [--dump-trap] [--no-runtime-namespaces]\n"
-        << "       viper front pascal -emit-il <file.pas> [unit1.pas unit2.pas ...]\n"
-        << "       viper front pascal -run <file.pas> [unit1.pas ...] [--trace=il|src] "
-           "[--stdin-from "
-           "<file>]\n"
         << "       viper codegen x64 -S <in.il> [-o <exe>] [--run-native]\n"
         << "       viper codegen arm64 <in.il> [-S <out.s>] [-o <exe|obj>] [-run-native]\n"
         << "       viper il-opt <in.il> -o <out.il> [--passes p1,p2] [-print-before] [-print-after]"
@@ -378,12 +374,6 @@ int main(int argc, char **argv)
     {
         return cmdFrontBasic(argc - 3, argv + 3);
     }
-#ifdef VIPER_ENABLE_PASCAL
-    if (cmd == "front" && argc >= 3 && std::string(argv[2]) == "pascal")
-    {
-        return cmdFrontPascal(argc - 3, argv + 3);
-    }
-#endif
     if (cmd == "front" && argc >= 3 && std::string(argv[2]) == "zia")
     {
         return cmdFrontZia(argc - 3, argv + 3);
