@@ -56,9 +56,9 @@ static void test_direct_qualified_builtin_call()
 
 static void test_using_import_then_unqualified_call()
 {
-    // Import the Console namespace, then call PrintI64 unqualified.
+    // Import the Terminal namespace, then call PrintI64 unqualified.
     const std::string src = R"(
-10 USING Viper.Console
+10 USING Viper.Terminal
 20 PrintI64(42)
 )";
     std::string out = analyzeAndGetOutput(src);

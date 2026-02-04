@@ -64,12 +64,12 @@ int main()
         "rt_str_i16_alloc",
         "rt_str_i32_alloc",
         "rt_str_f_alloc",
-        "rt_str_d_alloc",
+        "rt_f64_to_str",
         // Canonical spellings under Viper.* runtime namespaces
         "Viper.String.FromI16",
         "Viper.String.FromI32",
         "Viper.String.FromSingle",
-        "Viper.String.FromDoublePrecise",
+        "Viper.Convert.ToString_Double",
     };
     bool foundStringHelper = false;
     for (const auto &helper : stringHelpers)

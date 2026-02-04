@@ -1,5 +1,5 @@
 NAMESPACE App
-  USING Viper.Console
+  USING Viper.Terminal
   SUB Main()
     Viper.Terminal.PrintI64(99)
   END SUB

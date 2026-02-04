@@ -1,6 +1,6 @@
 il 0.1
-extern @Viper.Console.PrintStr(str) -> void
-extern @Viper.Console.PrintI64(i64) -> void
+extern @Viper.Terminal.PrintStr(str) -> void
+extern @Viper.Terminal.PrintI64(i64) -> void
 
 global const str @.L0 = "TABLE 5x5"
 
@@ -11,7 +11,7 @@ entry:
   %j_slot = alloca 8
 
   %h = const_str @.L0
-  call @Viper.Console.PrintStr(%h)
+  call @Viper.Terminal.PrintStr(%h)
 
   store i64, %n_slot, 5
   store i64, %i_slot, 1
@@ -36,7 +36,7 @@ inner_head:
 inner_body:
   %i1 = load i64, %i_slot
   %prod = imul.ovf %i1, %j0
-  call @Viper.Console.PrintI64(%prod)
+  call @Viper.Terminal.PrintI64(%prod)
   %j1 = iadd.ovf %j0, 1
   store i64, %j_slot, %j1
   br label inner_head

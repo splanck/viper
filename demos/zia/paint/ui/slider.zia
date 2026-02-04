@@ -158,7 +158,7 @@ entity Slider {
         gfx.Text( x, textY, label, config.UI_TEXT_DIM);
 
         // Draw value at right side
-        var valStr = Viper.Convert.IntToStr(value);
+        var valStr = Viper.Convert.ToString_Int(value);
         var valX = x + width - 24;
         gfx.Text( valX, textY, valStr, config.UI_TEXT);
     }

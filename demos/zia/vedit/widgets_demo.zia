@@ -165,7 +165,7 @@ func main() {
 
         // Update slider label
         var fontSize = fontSlider.Value;
-        var fontSizeStr = Viper.Convert.NumToStr(fontSize);
+        var fontSizeStr = Viper.Convert.ToString_Double(fontSize);
         sliderValue.SetText(fontSizeStr + " pt");
 
         // Update progress bar animation

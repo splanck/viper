@@ -236,8 +236,8 @@ RUNTIME_CLASS(
     RUNTIME_PROPS(),
     RUNTIME_METHODS(RUNTIME_METHOD("ToDouble", "f64(str)", "Viper.Convert.ToDouble"),
                     RUNTIME_METHOD("ToInt64", "i64(str)", "Viper.Convert.ToInt"),
-                    RUNTIME_METHOD("ToString_Double", "str(f64)", "Viper.String.FromDouble"),
-                    RUNTIME_METHOD("ToString_Int", "str(i64)", "Viper.String.FromInt")))
+                    RUNTIME_METHOD("ToString_Double", "str(f64)", "F64ToStr"),
+                    RUNTIME_METHOD("ToString_Int", "str(i64)", "IntToStr")))
 
 RUNTIME_CLASS(
     "Viper.Crypto.Hash",
@@ -386,7 +386,7 @@ RUNTIME_CLASS(
     "obj",
     "Viper.Graphics.Canvas.New",
     RUNTIME_PROPS(RUNTIME_PROP("Height", "i64", "Viper.Graphics.Canvas.get_Height", nullptr),
-                  RUNTIME_PROP("ShouldClose", "i64", "Viper.Graphics.Canvas.get_ShouldClose", nullptr),
+                  RUNTIME_PROP("ShouldClose", "i1", "Viper.Graphics.Canvas.get_ShouldClose", nullptr),
                   RUNTIME_PROP("Width", "i64", "Viper.Graphics.Canvas.get_Width", nullptr)),
     RUNTIME_METHODS(RUNTIME_METHOD("Box", "void(i64,i64,i64,i64,i64)", "Viper.Graphics.Canvas.Box"),
                     RUNTIME_METHOD("Clear", "void(i64)", "Viper.Graphics.Canvas.Clear"),
@@ -479,7 +479,7 @@ RUNTIME_CLASS(
                   RUNTIME_PROP("ScaleX", "i64", "Viper.Graphics.Sprite.get_ScaleX", "Viper.Graphics.Sprite.set_ScaleX"),
                   RUNTIME_PROP("ScaleY", "i64", "Viper.Graphics.Sprite.get_ScaleY", "Viper.Graphics.Sprite.set_ScaleY"),
                   RUNTIME_PROP("Rotation", "i64", "Viper.Graphics.Sprite.get_Rotation", "Viper.Graphics.Sprite.set_Rotation"),
-                  RUNTIME_PROP("Visible", "i64", "Viper.Graphics.Sprite.get_Visible", "Viper.Graphics.Sprite.set_Visible"),
+                  RUNTIME_PROP("Visible", "i1", "Viper.Graphics.Sprite.get_Visible", "Viper.Graphics.Sprite.set_Visible"),
                   RUNTIME_PROP("Frame", "i64", "Viper.Graphics.Sprite.get_Frame", "Viper.Graphics.Sprite.set_Frame"),
                   RUNTIME_PROP("FrameCount", "i64", "Viper.Graphics.Sprite.get_FrameCount", nullptr)),
     RUNTIME_METHODS(RUNTIME_METHOD("Draw", "void(obj)", "Viper.Graphics.Sprite.Draw"),
@@ -539,7 +539,7 @@ RUNTIME_CLASS(
     RTCLS_GuiApp,
     "obj",
     "Viper.GUI.App.New",
-    RUNTIME_PROPS(RUNTIME_PROP("ShouldClose", "i64", "Viper.GUI.App.get_ShouldClose", nullptr),
+    RUNTIME_PROPS(RUNTIME_PROP("ShouldClose", "i1", "Viper.GUI.App.get_ShouldClose", nullptr),
                   RUNTIME_PROP("Root", "obj", "Viper.GUI.App.get_Root", nullptr)),
     RUNTIME_METHODS(RUNTIME_METHOD("Poll", "void()", "Viper.GUI.App.Poll"),
                     RUNTIME_METHOD("Render", "void()", "Viper.GUI.App.Render"),

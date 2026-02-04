@@ -23,4 +23,8 @@ namespace il::frontends::basic::runtime
 // Import all generated names into this namespace
 using namespace il::runtime::names;
 
+// Aliases for removed String.From* functions (use Convert.ToString_* canonical names)
+inline constexpr const char *kStringFromInt = kConvertToStringInt;
+inline constexpr const char *kStringFromDouble = kConvertToStringDouble;
+
 } // namespace il::frontends::basic::runtime

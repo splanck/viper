@@ -118,16 +118,14 @@ TEST(RuntimeClassConvertBinding, MethodIndexTargets)
     EXPECT_EQ(td->target, std::string("Viper.Convert.ToDouble"));
 
     // Test Convert.ToString_Int(i: Int) -> String
-    // Note: Delegates to Viper.String.FromInt for implementation
     auto tsi = midx.find("Viper.Convert", "ToString_Int", 1);
     ASSERT_TRUE(tsi.has_value());
-    EXPECT_EQ(tsi->target, std::string("Viper.String.FromInt"));
+    EXPECT_EQ(tsi->target, std::string("Viper.Convert.ToString_Int"));
 
     // Test Convert.ToString_Double(f: Float) -> String
-    // Note: Delegates to Viper.String.FromDouble for implementation
     auto tsd = midx.find("Viper.Convert", "ToString_Double", 1);
     ASSERT_TRUE(tsd.has_value());
-    EXPECT_EQ(tsd->target, std::string("Viper.String.FromDouble"));
+    EXPECT_EQ(tsd->target, std::string("Viper.Convert.ToString_Double"));
 }
 
 /// @brief Test entry point.

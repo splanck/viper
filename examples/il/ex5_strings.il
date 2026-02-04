@@ -1,6 +1,6 @@
 il 0.1
-extern @Viper.Console.PrintStr(str) -> void
-extern @Viper.Console.PrintI64(i64) -> void
+extern @Viper.Terminal.PrintStr(str) -> void
+extern @Viper.Terminal.PrintI64(i64) -> void
 extern @Viper.String.Length(str) -> i64
 extern @Viper.String.Concat(str, str) -> str
 extern @Viper.String.Substring(str, i64, i64) -> str
@@ -36,20 +36,20 @@ entry:
 
   %c3 = load str, %c_slot
   %out = const_str @.L3
-  call @Viper.Console.PrintStr(%out)
+  call @Viper.Terminal.PrintStr(%out)
   %nl0 = const_str @.L4
-  call @Viper.Console.PrintStr(%nl0)
+  call @Viper.Terminal.PrintStr(%nl0)
 
   %len = call @Viper.String.Length(%c3)
   store i64, %l_slot, %len
-  call @Viper.Console.PrintI64(%len)
+  call @Viper.Terminal.PrintI64(%len)
   %nl1 = const_str @.L4
-  call @Viper.Console.PrintStr(%nl1)
+  call @Viper.Terminal.PrintStr(%nl1)
 
   %first = call @Viper.String.Substring(%c3, 0, 1)
-  call @Viper.Console.PrintStr(%first)
+  call @Viper.Terminal.PrintStr(%first)
   %nl2 = const_str @.L4
-  call @Viper.Console.PrintStr(%nl2)
+  call @Viper.Terminal.PrintStr(%nl2)
 
   %target = const_str @.L3
   %eq64 = call @Viper.String.Equals(%c3, %target)
@@ -57,15 +57,15 @@ entry:
   cbr %eq, label then1, label else0
 
 then1:
-  call @Viper.Console.PrintI64(1)
+  call @Viper.Terminal.PrintI64(1)
   %nl3 = const_str @.L4
-  call @Viper.Console.PrintStr(%nl3)
+  call @Viper.Terminal.PrintStr(%nl3)
   br label exit
 
 else0:
-  call @Viper.Console.PrintI64(0)
+  call @Viper.Terminal.PrintI64(0)
   %nl4 = const_str @.L4
-  call @Viper.Console.PrintStr(%nl4)
+  call @Viper.Terminal.PrintStr(%nl4)
   br label exit
 
 exit:

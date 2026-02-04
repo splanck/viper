@@ -29,7 +29,6 @@ extern @Viper.String.Repeat(str, i64) -> str
 extern @Viper.String.Flip(str) -> str
 extern @Viper.String.Cmp(str, str) -> i64
 extern @Viper.String.CmpNoCase(str, str) -> i64
-extern @Viper.String.FromDoublePrecise(f64) -> str
 extern @Viper.String.FromI32(i32) -> str
 extern @Viper.String.Join(str, ptr) -> str
 extern @rt_int_floor(f64) -> f64
@@ -37,6 +36,7 @@ extern @rt_val(str) -> f64
 extern @rt_val_to_double(ptr, ptr) -> f64
 extern @rt_string_cstr(str) -> ptr
 extern @rt_str_empty() -> str
+extern @Viper.Convert.ToString_Double(f64) -> str
 extern @rt_str_retain_maybe(str) -> void
 extern @rt_str_release_maybe(str) -> void
 global const str @.L0 = "              "
@@ -83,7 +83,7 @@ L30:
   .loc 1 3 24
   %t10 = load f64, %t1
   .loc 1 3 19
-  %t11 = call @Viper.String.FromDoublePrecise(%t10)
+  %t11 = call @Viper.Convert.ToString_Double(%t10)
   .loc 1 3 19
   call @Viper.Terminal.PrintStr(%t11)
   .loc 1 3 19

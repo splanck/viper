@@ -639,12 +639,12 @@ entity PaintApp {
         var cx = mouseX - canvasOffsetX;
         var cy = mouseY - canvasOffsetY;
         if cx >= 0 and cx < canvas.width and cy >= 0 and cy < canvas.height {
-            var coordStr = "X: " + Viper.Convert.IntToStr(cx) + " Y: " + Viper.Convert.IntToStr(cy);
+            var coordStr = "X: " + Viper.Convert.ToString_Int(cx) + " Y: " + Viper.Convert.ToString_Int(cy);
             gfx.Text( 200, barY + 8, coordStr, config.UI_TEXT_DIM);
         }
 
         // Canvas size
-        var sizeStr = Viper.Convert.IntToStr(canvas.width) + "x" + Viper.Convert.IntToStr(canvas.height);
+        var sizeStr = Viper.Convert.ToString_Int(canvas.width) + "x" + Viper.Convert.ToString_Int(canvas.height);
         gfx.Text( config.WINDOW_WIDTH - 100, barY + 8, sizeStr, config.UI_TEXT_DIM);
     }
 

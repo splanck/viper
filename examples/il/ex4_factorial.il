@@ -1,7 +1,7 @@
 il 0.1
-extern @Viper.Console.PrintStr(str) -> void
-extern @Viper.Console.PrintI64(i64) -> void
-extern @Viper.Console.ReadLine() -> str
+extern @Viper.Terminal.PrintStr(str) -> void
+extern @Viper.Terminal.PrintI64(i64) -> void
+extern @Viper.Terminal.ReadLine() -> str
 extern @Viper.Convert.ToInt(str) -> i64
 
 global const str @.L0 = "FACTORIAL"
@@ -14,11 +14,11 @@ entry:
   %r_slot = alloca 8
 
   %h0 = const_str @.L0
-  call @Viper.Console.PrintStr(%h0)
+  call @Viper.Terminal.PrintStr(%h0)
   %h1 = const_str @.L1
-  call @Viper.Console.PrintStr(%h1)
+  call @Viper.Terminal.PrintStr(%h1)
 
-  %line = call @Viper.Console.ReadLine()
+  %line = call @Viper.Terminal.ReadLine()
   store str, %s_slot, %line
 
   %sval = load str, %s_slot
@@ -43,6 +43,6 @@ loop_body:
 
 done:
   %r2 = load i64, %r_slot
-  call @Viper.Console.PrintI64(%r2)
+  call @Viper.Terminal.PrintI64(%r2)
   ret 0
 }

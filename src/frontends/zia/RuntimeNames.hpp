@@ -35,7 +35,8 @@ using namespace il::runtime::names;
 
 // String aliases
 inline constexpr const char *kStringContains = kStringHas;
-inline constexpr const char *kStringFromNum = kStringFromDouble;
+inline constexpr const char *kStringFromInt = kConvertToStringInt;
+inline constexpr const char *kStringFromNum = kConvertToStringDouble;
 
 // Collections - short names for convenience
 inline constexpr const char *kListNew = kCollectionsListNew;

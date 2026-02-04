@@ -56,8 +56,8 @@ inline constexpr std::array<std::string_view, kRtSigCount> kRtSigSymbolNames = {
     "rt_parse_int64",      "rt_parse_double",
     "rt_int_to_str",       "rt_f64_to_str",
     "rt_str_i16_alloc",    "rt_str_i32_alloc",
-    "rt_str_f_alloc",      "rt_str_d_alloc",
-    "rt_str_retain_maybe", "rt_str_release_maybe",
+    "rt_str_f_alloc",      "rt_str_retain_maybe",
+    "rt_str_release_maybe",
 };
 
 static_assert(kRtSigSpecs.size() == kRtSigSymbolNames.size(),

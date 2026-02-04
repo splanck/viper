@@ -613,12 +613,6 @@ inline constexpr const char *kConvertToStringDouble = "Viper.Convert.ToString_Do
 /// @brief Viper.Convert.NumToInt
 inline constexpr const char *kConvertNumToInt = "Viper.Convert.NumToInt";
 
-/// @brief Viper.Convert.IntToStr
-inline constexpr const char *kConvertIntToStr = "Viper.Convert.IntToStr";
-
-/// @brief Viper.Convert.NumToStr
-inline constexpr const char *kConvertNumToStr = "Viper.Convert.NumToStr";
-
 // ===========================================================================
 // Viper.Crypto.Aes
 // ===========================================================================
@@ -5737,20 +5731,11 @@ inline constexpr const char *kStringTrim = "Viper.String.Trim";
 /// @brief Viper.String.ToUpper
 inline constexpr const char *kStringToUpper = "Viper.String.ToUpper";
 
-/// @brief Viper.String.FromDouble
-inline constexpr const char *kStringFromDouble = "Viper.String.FromDouble";
-
-/// @brief Viper.String.FromInt
-inline constexpr const char *kStringFromInt = "Viper.String.FromInt";
-
 /// @brief Viper.String.SplitFields
 inline constexpr const char *kStringSplitFields = "Viper.String.SplitFields";
 
 /// @brief Viper.String.Equals
 inline constexpr const char *kStringEquals = "Viper.String.Equals";
-
-/// @brief Viper.String.FromDoublePrecise
-inline constexpr const char *kStringFromDoublePrecise = "Viper.String.FromDoublePrecise";
 
 /// @brief Viper.String.FromI16
 inline constexpr const char *kStringFromI16 = "Viper.String.FromI16";
@@ -6504,6 +6489,9 @@ inline constexpr const char *kVec3Zero = "Viper.Vec3.Zero";
 /// @brief Viper.Collections.List.get_Count (alias)
 inline constexpr const char *kCollectionsListGetCount = "Viper.Collections.List.get_Count";
 
+/// @brief Viper.IO.BinFile.get_Len (alias)
+inline constexpr const char *kIOBinFileGetLen = "Viper.IO.BinFile.get_Len";
+
 /// @brief Viper.String.Length (alias)
 inline constexpr const char *kStringLength = "Viper.String.Length";
 
@@ -6513,22 +6501,19 @@ inline constexpr const char *kStringConcatSelf = "Viper.String.ConcatSelf";
 /// @brief Viper.String.FromFloat (alias)
 inline constexpr const char *kStringFromFloat = "Viper.String.FromFloat";
 
-/// @brief Viper.Console.PrintStr (alias)
-inline constexpr const char *kConsolePrintStr = "Viper.Console.PrintStr";
-
-/// @brief Viper.Console.PrintI64 (alias)
-inline constexpr const char *kConsolePrintI64 = "Viper.Console.PrintI64";
-
-/// @brief Viper.Console.PrintF64 (alias)
-inline constexpr const char *kConsolePrintF64 = "Viper.Console.PrintF64";
-
-/// @brief Viper.Console.ReadLine (alias)
-inline constexpr const char *kConsoleReadLine = "Viper.Console.ReadLine";
-
 /// @brief Viper.Time.SleepMs (alias)
 inline constexpr const char *kTimeSleepMs = "Viper.Time.SleepMs";
 
 /// @brief Viper.Time.GetTickCount (alias)
 inline constexpr const char *kTimeGetTickCount = "Viper.Time.GetTickCount";
+
+/// @brief Viper.Game.Grid2D.get_Len (alias)
+inline constexpr const char *kGameGrid2DGetLen = "Viper.Game.Grid2D.get_Len";
+
+/// @brief Viper.Game.ButtonGroup.get_Len (alias)
+inline constexpr const char *kGameButtonGroupGetLen = "Viper.Game.ButtonGroup.get_Len";
+
+/// @brief Viper.Game.ParticleEmitter.get_Len (alias)
+inline constexpr const char *kGameParticleEmitterGetLen = "Viper.Game.ParticleEmitter.get_Len";
 
 } // namespace il::runtime::names

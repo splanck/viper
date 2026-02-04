@@ -338,8 +338,6 @@ defineExternFunction("Viper.Convert.ToInt64", types::integer());
 defineExternFunction("Viper.Convert.ToString_Int", types::string());
 defineExternFunction("Viper.Convert.ToString_Double", types::string());
 defineExternFunction("Viper.Convert.NumToInt", types::integer());
-defineExternFunction("Viper.Convert.IntToStr", types::string());
-defineExternFunction("Viper.Convert.NumToStr", types::string());
 
 // ===========================================================================
 // Viper.Crypto
@@ -484,7 +482,7 @@ defineExternFunction("Viper.Fmt.Oct", types::string());
 // ===========================================================================
 defineExternFunction("Viper.GUI.App.New", types::runtimeClass("Viper.GUI.App"));
 defineExternFunction("Viper.GUI.App.Destroy", types::voidType());
-defineExternFunction("Viper.GUI.App.get_ShouldClose", types::integer());
+defineExternFunction("Viper.GUI.App.get_ShouldClose", types::boolean());
 defineExternFunction("Viper.GUI.App.Poll", types::voidType());
 defineExternFunction("Viper.GUI.App.Render", types::voidType());
 defineExternFunction("Viper.GUI.App.get_Root", types::ptr());
@@ -1139,7 +1137,7 @@ defineExternFunction("Viper.Graphics.Sprite.get_ScaleY", types::integer());
 defineExternFunction("Viper.Graphics.Sprite.set_ScaleY", types::voidType());
 defineExternFunction("Viper.Graphics.Sprite.get_Rotation", types::integer());
 defineExternFunction("Viper.Graphics.Sprite.set_Rotation", types::voidType());
-defineExternFunction("Viper.Graphics.Sprite.get_Visible", types::integer());
+defineExternFunction("Viper.Graphics.Sprite.get_Visible", types::boolean());
 defineExternFunction("Viper.Graphics.Sprite.set_Visible", types::voidType());
 defineExternFunction("Viper.Graphics.Sprite.get_Frame", types::integer());
 defineExternFunction("Viper.Graphics.Sprite.set_Frame", types::voidType());
@@ -1982,11 +1980,8 @@ defineExternFunction("Viper.String.StartsWith", types::boolean());
 defineExternFunction("Viper.String.Substring", types::string());
 defineExternFunction("Viper.String.Trim", types::string());
 defineExternFunction("Viper.String.ToUpper", types::string());
-defineExternFunction("Viper.String.FromDouble", types::string());
-defineExternFunction("Viper.String.FromInt", types::string());
 defineExternFunction("Viper.String.SplitFields", types::integer());
 defineExternFunction("Viper.String.Equals", types::integer());
-defineExternFunction("Viper.String.FromDoublePrecise", types::string());
 defineExternFunction("Viper.String.FromI16", types::string());
 defineExternFunction("Viper.String.FromI32", types::string());
 defineExternFunction("Viper.String.FromSingle", types::string());
@@ -2235,13 +2230,13 @@ defineExternFunction("Viper.Vec3.Zero", types::ptr());
 // ALIASES
 // ===========================================================================
 defineExternFunction("Viper.Collections.List.get_Count", types::integer());
+defineExternFunction("Viper.IO.BinFile.get_Len", types::integer());
 defineExternFunction("Viper.String.Length", types::integer());
 defineExternFunction("Viper.String.ConcatSelf", types::string());
 defineExternFunction("Viper.String.FromFloat", types::string());
-defineExternFunction("Viper.Console.PrintStr", types::voidType());
-defineExternFunction("Viper.Console.PrintI64", types::voidType());
-defineExternFunction("Viper.Console.PrintF64", types::voidType());
-defineExternFunction("Viper.Console.ReadLine", types::optional(types::string()));
 defineExternFunction("Viper.Time.SleepMs", types::voidType());
 defineExternFunction("Viper.Time.GetTickCount", types::integer());
+defineExternFunction("Viper.Game.Grid2D.get_Len", types::integer());
+defineExternFunction("Viper.Game.ButtonGroup.get_Len", types::integer());
+defineExternFunction("Viper.Game.ParticleEmitter.get_Len", types::integer());
 

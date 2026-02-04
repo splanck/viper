@@ -52,7 +52,7 @@ Seeded random (12345):
   r3 in [0,1): -1
 Reproducible with same seed: PASS
 
-=== Viper.Console ===
+=== Viper.Terminal ===
 WriteLine test: PASS
 
 === Viper.Convert ===

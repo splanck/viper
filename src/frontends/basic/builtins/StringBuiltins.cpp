@@ -194,8 +194,8 @@ Value lowerStr(LowerCtx &ctx, ArrayRef<Value> args)
             break;
         case TypeRules::NumericType::Double:
         default:
-            runtime = "rt_str_d_alloc";
-            feature = RuntimeFeature::StrFromDouble;
+            runtime = "rt_f64_to_str";
+            feature = RuntimeFeature::F64ToStr;
             ctx.ensureF64(0, argLoc);
             break;
     }

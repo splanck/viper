@@ -69,7 +69,6 @@ void register_string_signatures()
     register_signature(make_signature("rt_str_i16_alloc", {Kind::I32}, {Kind::Ptr}));
     register_signature(make_signature("rt_str_i32_alloc", {Kind::I32}, {Kind::Ptr}));
     register_signature(make_signature("rt_str_f_alloc", {Kind::F64}, {Kind::Ptr}));
-    register_signature(make_signature("rt_str_d_alloc", {Kind::F64}, {Kind::Ptr}));
     register_signature(make_signature("rt_str_empty", {}, {Kind::Ptr}));
     register_signature(make_signature("rt_const_cstr", {Kind::Ptr}, {Kind::Ptr}));
     register_signature(make_signature("rt_str_retain_maybe", {Kind::Ptr}));

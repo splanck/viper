@@ -134,9 +134,9 @@ END IF
 PRINT ""
 
 ' =============================================================================
-' Viper.Console Tests
+' Viper.Terminal Tests
 ' =============================================================================
-PRINT "=== Viper.Console ==="
+PRINT "=== Viper.Terminal ==="
 PRINT "WriteLine test: PASS"
 PRINT ""
 

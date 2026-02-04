@@ -591,8 +591,8 @@ RT_FUNC(SpriteGetScaleY,    rt_sprite_get_scale_y,   "Viper.Graphics.Sprite.get_
 RT_FUNC(SpriteSetScaleY,    rt_sprite_set_scale_y,   "Viper.Graphics.Sprite.set_ScaleY",   "void(obj,i64)")
 RT_FUNC(SpriteGetRotation,  rt_sprite_get_rotation,  "Viper.Graphics.Sprite.get_Rotation", "i64(obj)")
 RT_FUNC(SpriteSetRotation,  rt_sprite_set_rotation,  "Viper.Graphics.Sprite.set_Rotation", "void(obj,i64)")
-RT_FUNC(SpriteGetVisible,   rt_sprite_get_visible,   "Viper.Graphics.Sprite.get_Visible",  "i64(obj)")
-RT_FUNC(SpriteSetVisible,   rt_sprite_set_visible,   "Viper.Graphics.Sprite.set_Visible",  "void(obj,i64)")
+RT_FUNC(SpriteGetVisible,   rt_sprite_get_visible,   "Viper.Graphics.Sprite.get_Visible",  "i1(obj)")
+RT_FUNC(SpriteSetVisible,   rt_sprite_set_visible,   "Viper.Graphics.Sprite.set_Visible",  "void(obj,i1)")
 RT_FUNC(SpriteGetFrame,     rt_sprite_get_frame,     "Viper.Graphics.Sprite.get_Frame",    "i64(obj)")
 RT_FUNC(SpriteSetFrame,     rt_sprite_set_frame,     "Viper.Graphics.Sprite.set_Frame",    "void(obj,i64)")
 RT_FUNC(SpriteGetFrameCount, rt_sprite_get_frame_count, "Viper.Graphics.Sprite.get_FrameCount", "i64(obj)")
@@ -658,7 +658,7 @@ RT_FUNC(CameraClearBounds,  rt_camera_clear_bounds,  "Viper.Graphics.Camera.Clea
 
 RT_FUNC(GuiAppNew,         rt_gui_app_new,          "Viper.GUI.App.New",            "obj(str,i64,i64)")
 RT_FUNC(GuiAppDestroy,     rt_gui_app_destroy,      "Viper.GUI.App.Destroy",        "void(obj)")
-RT_FUNC(GuiAppShouldClose, rt_gui_app_should_close, "Viper.GUI.App.get_ShouldClose","i64(obj)")
+RT_FUNC(GuiAppShouldClose, rt_gui_app_should_close, "Viper.GUI.App.get_ShouldClose","i1(obj)")
 RT_FUNC(GuiAppPoll,        rt_gui_app_poll,         "Viper.GUI.App.Poll",           "void(obj)")
 RT_FUNC(GuiAppRender,      rt_gui_app_render,       "Viper.GUI.App.Render",         "void(obj)")
 RT_FUNC(GuiAppGetRoot,     rt_gui_app_get_root,     "Viper.GUI.App.get_Root",       "obj(obj)")
@@ -1299,6 +1299,7 @@ RT_FUNC(BinFileRead,      rt_binfile_read,       "Viper.IO.BinFile.Read",       
 RT_FUNC(BinFileReadByte,  rt_binfile_read_byte,  "Viper.IO.BinFile.ReadByte",   "i64(obj)")
 RT_FUNC(BinFileSeek,      rt_binfile_seek,       "Viper.IO.BinFile.Seek",       "i64(obj,i64,i64)")
 RT_FUNC(BinFileSize,      rt_binfile_size,       "Viper.IO.BinFile.get_Size",   "i64(obj)")
+RT_ALIAS("Viper.IO.BinFile.get_Len", BinFileSize)  // Consistency alias
 RT_FUNC(BinFileWrite,     rt_binfile_write,      "Viper.IO.BinFile.Write",      "void(obj,obj,i64,i64)")
 RT_FUNC(BinFileWriteByte, rt_binfile_write_byte, "Viper.IO.BinFile.WriteByte",  "void(obj,i64)")
 
@@ -1592,11 +1593,8 @@ RT_FUNC(Trim,           rt_trim,             "Viper.String.Trim",        "str(st
 RT_FUNC(UCase,          rt_ucase,            "Viper.String.ToUpper",     "str(str)")
 
 // String static utilities (Viper.Strings.*)
-RT_FUNC(F64ToStr,              rt_f64_to_str,    "Viper.String.FromDouble",        "str(f64)")
-RT_FUNC(IntToStr,              rt_int_to_str,    "Viper.String.FromInt",           "str(i64)")
 RT_FUNC(SplitFields,           rt_split_fields,  "Viper.String.SplitFields",       "i64(str,ptr,i64)")
 RT_FUNC(StrEquals,             rt_str_eq,        "Viper.String.Equals",            "i64(str,str)")
-RT_FUNC(StrFromDoublePrecise,  rt_str_d_alloc,   "Viper.String.FromDoublePrecise", "str(f64)") // Legacy alias for FromDouble
 RT_FUNC(StrFromI16,            rt_str_i16_alloc, "Viper.String.FromI16",           "str(i16)")
 RT_FUNC(StrFromI32,            rt_str_i32_alloc, "Viper.String.FromI32",           "str(i32)")
 RT_FUNC(StrFromSingle,         rt_str_f_alloc,   "Viper.String.FromSingle",        "str(f64)") // Formats with single precision (truncates to f32)
@@ -1647,12 +1645,6 @@ RT_FUNC(TermSetPosition,      rt_term_locate_i32,         "Viper.Terminal.SetPos
 RT_FUNC(TermBeginBatch, rt_term_begin_batch, "Viper.Terminal.BeginBatch", "void()")
 RT_FUNC(TermEndBatch,   rt_term_end_batch,   "Viper.Terminal.EndBatch",   "void()")
 RT_FUNC(TermFlush,      rt_term_flush,       "Viper.Terminal.Flush",      "void()")
-
-// Console aliases (backward compatibility)
-RT_ALIAS("Viper.Console.PrintStr", PrintStr)
-RT_ALIAS("Viper.Console.PrintI64", PrintI64)
-RT_ALIAS("Viper.Console.PrintF64", PrintF64)
-RT_ALIAS("Viper.Console.ReadLine", TermReadLine)
 
 //=============================================================================
 // TEXT - CODEC
@@ -1928,8 +1920,6 @@ RT_FUNC(ToInt64,     rt_to_int,       "Viper.Convert.ToInt64",  "i64(str)")
 RT_FUNC(ToStringInt, rt_int_to_str,   "Viper.Convert.ToString_Int", "str(i64)")
 RT_FUNC(ToStringDbl, rt_f64_to_str,   "Viper.Convert.ToString_Double", "str(f64)")
 RT_FUNC(NumToInt,      rt_f64_to_i64,   "Viper.Convert.NumToInt", "i64(f64)")
-RT_FUNC(ConvIntToStr,  rt_int_to_str,   "Viper.Convert.IntToStr", "str(i64)")
-RT_FUNC(ConvNumToStr,  rt_f64_to_str,   "Viper.Convert.NumToStr", "str(f64)")
 
 // Safe parsing functions (return success/failure, use defaults)
 RT_FUNC(ParseTryInt,   rt_parse_try_int,   "Viper.Parse.TryInt",   "i1(str,ptr)")
@@ -2301,6 +2291,7 @@ RT_FUNC(Grid2DWidth, rt_grid2d_width, "Viper.Game.Grid2D.get_Width", "i64(obj)")
 RT_FUNC(Grid2DHeight, rt_grid2d_height, "Viper.Game.Grid2D.get_Height", "i64(obj)")
 RT_FUNC(Grid2DInBounds, rt_grid2d_in_bounds, "Viper.Game.Grid2D.InBounds", "i1(obj,i64,i64)")
 RT_FUNC(Grid2DSize, rt_grid2d_size, "Viper.Game.Grid2D.get_Size", "i64(obj)")
+RT_ALIAS("Viper.Game.Grid2D.get_Len", Grid2DSize)  // Consistency alias
 RT_FUNC(Grid2DCopyFrom, rt_grid2d_copy_from, "Viper.Game.Grid2D.CopyFrom", "i1(obj,obj)")
 RT_FUNC(Grid2DCount, rt_grid2d_count, "Viper.Game.Grid2D.Count", "i64(obj,i64)")
 RT_FUNC(Grid2DReplace, rt_grid2d_replace, "Viper.Game.Grid2D.Replace", "i64(obj,i64,i64)")
@@ -2379,6 +2370,7 @@ RT_FUNC(ButtonGroupAdd, rt_buttongroup_add, "Viper.Game.ButtonGroup.Add", "i1(ob
 RT_FUNC(ButtonGroupRemove, rt_buttongroup_remove, "Viper.Game.ButtonGroup.Remove", "i1(obj,i64)")
 RT_FUNC(ButtonGroupHas, rt_buttongroup_has, "Viper.Game.ButtonGroup.Has", "i1(obj,i64)")
 RT_FUNC(ButtonGroupCount, rt_buttongroup_count, "Viper.Game.ButtonGroup.get_Count", "i64(obj)")
+RT_ALIAS("Viper.Game.ButtonGroup.get_Len", ButtonGroupCount)  // Consistency alias
 RT_FUNC(ButtonGroupSelect, rt_buttongroup_select, "Viper.Game.ButtonGroup.Select", "i1(obj,i64)")
 RT_FUNC(ButtonGroupClearSelection, rt_buttongroup_clear_selection, "Viper.Game.ButtonGroup.ClearSelection", "void(obj)")
 RT_FUNC(ButtonGroupSelected, rt_buttongroup_selected, "Viper.Game.ButtonGroup.get_Selected", "i64(obj)")
@@ -2435,6 +2427,7 @@ RT_FUNC(ParticleEmitterIsEmitting, rt_particle_emitter_is_emitting, "Viper.Game.
 RT_FUNC(ParticleEmitterBurst, rt_particle_emitter_burst, "Viper.Game.ParticleEmitter.Burst", "void(obj,i64)")
 RT_FUNC(ParticleEmitterUpdate, rt_particle_emitter_update, "Viper.Game.ParticleEmitter.Update", "void(obj)")
 RT_FUNC(ParticleEmitterCount, rt_particle_emitter_count, "Viper.Game.ParticleEmitter.get_Count", "i64(obj)")
+RT_ALIAS("Viper.Game.ParticleEmitter.get_Len", ParticleEmitterCount)  // Consistency alias
 RT_FUNC(ParticleEmitterClear, rt_particle_emitter_clear, "Viper.Game.ParticleEmitter.Clear", "void(obj)")
 RT_FUNC(ParticleEmitterGet, rt_particle_emitter_get, "Viper.Game.ParticleEmitter.Get", "i1(obj,i64,ptr,ptr,ptr,ptr)")
 
@@ -2968,8 +2961,8 @@ RT_CLASS_END()
 RT_CLASS_BEGIN("Viper.Convert", Convert, "obj", none)
     RT_METHOD("ToDouble", "f64(str)", ToDouble)
     RT_METHOD("ToInt64", "i64(str)", ToInt)
-    RT_METHOD("ToString_Double", "str(f64)", F64ToStr)
-    RT_METHOD("ToString_Int", "str(i64)", IntToStr)
+    RT_METHOD("ToString_Double", "str(f64)", ToStringDbl)
+    RT_METHOD("ToString_Int", "str(i64)", ToStringInt)
 RT_CLASS_END()
 
 // Viper.Crypto.Hash - cryptographic hash functions (MD5, SHA1, SHA256, CRC32)
@@ -3096,7 +3089,7 @@ RT_CLASS_END()
 // Viper.Graphics.Canvas - drawing surface
 RT_CLASS_BEGIN("Viper.Graphics.Canvas", Canvas, "obj", CanvasNew)
     RT_PROP("Height", "i64", CanvasHeight, none)
-    RT_PROP("ShouldClose", "i64", CanvasShouldClose, none)
+    RT_PROP("ShouldClose", "i1", CanvasShouldClose, none)
     RT_PROP("Width", "i64", CanvasWidth, none)
     RT_METHOD("Box", "void(i64,i64,i64,i64,i64)", CanvasBox)
     RT_METHOD("Clear", "void(i64)", CanvasClear)
@@ -3182,7 +3175,7 @@ RT_CLASS_BEGIN("Viper.Graphics.Sprite", Sprite, "obj", SpriteNew)
     RT_PROP("ScaleX", "i64", SpriteGetScaleX, SpriteSetScaleX)
     RT_PROP("ScaleY", "i64", SpriteGetScaleY, SpriteSetScaleY)
     RT_PROP("Rotation", "i64", SpriteGetRotation, SpriteSetRotation)
-    RT_PROP("Visible", "i64", SpriteGetVisible, SpriteSetVisible)
+    RT_PROP("Visible", "i1", SpriteGetVisible, SpriteSetVisible)
     RT_PROP("Frame", "i64", SpriteGetFrame, SpriteSetFrame)
     RT_PROP("FrameCount", "i64", SpriteGetFrameCount, none)
     RT_METHOD("Draw", "void(obj)", SpriteDraw)
@@ -3240,7 +3233,7 @@ RT_CLASS_END()
 
 // Viper.GUI.App - application framework
 RT_CLASS_BEGIN("Viper.GUI.App", GuiApp, "obj", GuiAppNew)
-    RT_PROP("ShouldClose", "i64", GuiAppShouldClose, none)
+    RT_PROP("ShouldClose", "i1", GuiAppShouldClose, none)
     RT_PROP("Root", "obj", GuiAppGetRoot, none)
     RT_METHOD("Poll", "void()", GuiAppPoll)
     RT_METHOD("Render", "void()", GuiAppRender)

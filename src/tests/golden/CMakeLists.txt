@@ -1055,7 +1055,7 @@ function(viper_add_golden_suite_tests)
             ${CMAKE_COMMAND}
             -DILC=${BASIC_ILC}
             -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/ambiguous_using_call.bas
-            "-DEXPECT=ambiguous procedure 'PRINTI64'.* matches: My\\.Console\\.PRINTI64, Viper\\.Console\\.PRINTI64"
+            "-DEXPECT=ambiguous procedure 'PRINTI64'.* matches: My\\.Console\\.PRINTI64, Viper\\.Terminal\\.PRINTI64"
             -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 
     # Shadowing builtin extern should trigger dedicated error

@@ -1,7 +1,7 @@
 il 0.1
 extern @Viper.Memory.Alloc(i64) -> ptr
-extern @Viper.Console.PrintF64(f64) -> void
-extern @Viper.Console.PrintStr(str) -> void
+extern @Viper.Terminal.PrintF64(f64) -> void
+extern @Viper.Terminal.PrintStr(str) -> void
 
 global const str @.L0 = "DONE"
 
@@ -51,9 +51,9 @@ done:
   %fsum = sitofp %sum2
   %fn = sitofp %n2
   %avg = fdiv %fsum, %fn
-  call @Viper.Console.PrintF64(%avg)
+  call @Viper.Terminal.PrintF64(%avg)
 
   %d = const_str @.L0
-  call @Viper.Console.PrintStr(%d)
+  call @Viper.Terminal.PrintStr(%d)
   ret 0
 }

@@ -73,7 +73,7 @@ func main() {
 
         // Update status with line count
         if editor.IsModified() != 0 {
-            var lineStr = Viper.Convert.IntToStr(editor.LineCount);
+            var lineStr = Viper.Convert.ToString_Int(editor.LineCount);
             status.SetText("Modified - " + lineStr + " lines");
         }
 
