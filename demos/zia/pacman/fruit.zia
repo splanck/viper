@@ -2,8 +2,8 @@
 // PAC-MAN - Fruit Entity
 // =============================================================================
 // Uses new Viper runtime features:
-// - Viper.Timer for fruit visibility and points display duration
-// - Viper.Tween for floating points animation
+// - Viper.Game.Timer for fruit visibility and points display duration
+// - Viper.Game.Tween for floating points animation
 // =============================================================================
 
 module fruit;
@@ -25,11 +25,11 @@ entity Fruit {
     hide Integer lastPoints;
 
     // Use Timer for fruit visibility
-    hide Viper.Timer visibilityTimer;
+    hide Viper.Game.Timer visibilityTimer;
 
     // Use Timer and Tween for points display
-    hide Viper.Timer displayTimer;
-    hide Viper.Tween pointsTween;
+    hide Viper.Game.Timer displayTimer;
+    hide Viper.Game.Tween pointsTween;
     hide Boolean showingPoints;
 
     expose func init() {
@@ -42,9 +42,9 @@ entity Fruit {
         lastPoints = 0;
         showingPoints = false;
 
-        visibilityTimer = Viper.Timer.New();
-        displayTimer = Viper.Timer.New();
-        pointsTween = Viper.Tween.New();
+        visibilityTimer = Viper.Game.Timer.New();
+        displayTimer = Viper.Game.Timer.New();
+        pointsTween = Viper.Game.Tween.New();
     }
 
     expose func spawn(level: Integer) {

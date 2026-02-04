@@ -66,8 +66,8 @@ inline constexpr std::string_view RTCLASS_STOPWATCH = "Viper.Diagnostics.Stopwat
 inline constexpr std::string_view RTCLASS_GUID = "Viper.Text.Guid";
 
 // Utility namespace prefixes
-/// @brief Namespace prefix for Viper.Strings helpers.
-inline constexpr std::string_view RTNS_STRINGS = "Viper.Strings";
+/// @brief Namespace prefix for Viper.String helpers.
+inline constexpr std::string_view RTNS_STRINGS = "Viper.String";
 
 // Helper to check if a type matches a specific runtime class
 /// @brief Check whether a qualified name matches a runtime class.

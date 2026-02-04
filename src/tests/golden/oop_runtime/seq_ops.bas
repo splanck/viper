@@ -9,14 +9,14 @@ a.Push("2")
 b.Push("3")
 
 a.PushAll(b)
-PRINT Viper.Strings.Join("|", a)
+PRINT Viper.String.Join("|", a)
 
 DIM self AS Viper.Collections.Seq
 self = NEW Viper.Collections.Seq()
 self.Push("a")
 self.Push("b")
 self.PushAll(self)
-PRINT Viper.Strings.Join("|", self)
+PRINT Viper.String.Join("|", self)
 
 DIM sh AS Viper.Collections.Seq
 sh = NEW Viper.Collections.Seq()
@@ -28,7 +28,7 @@ sh.Push("e")
 
 Viper.Random.Seed(1)
 sh.Shuffle()
-PRINT Viper.Strings.Join("|", sh)
+PRINT Viper.String.Join("|", sh)
 
 END
 

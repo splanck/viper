@@ -2,7 +2,7 @@
 // PAC-MAN - Player Entity
 // =============================================================================
 // Uses new Viper runtime features:
-// - Viper.Timer for mouth animation timing
+// - Viper.Game.Timer for mouth animation timing
 // - Simplified movement with cleaner logic
 // =============================================================================
 
@@ -25,7 +25,7 @@ entity PacMan {
     hide Integer nextDirection;
 
     // Use Timer for mouth animation
-    hide Viper.Timer mouthTimer;
+    hide Viper.Game.Timer mouthTimer;
     hide Boolean mouthOpen;
 
     expose func init(startX: Integer, startY: Integer) {
@@ -37,7 +37,7 @@ entity PacMan {
         nextDirection = config.DIR_NONE;
 
         // Setup mouth animation timer (toggles every 5 frames)
-        mouthTimer = Viper.Timer.New();
+        mouthTimer = Viper.Game.Timer.New();
         mouthTimer.StartRepeating(5);
         mouthOpen = true;
     }

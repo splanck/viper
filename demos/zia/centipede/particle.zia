@@ -1,0 +1,245 @@
+// =============================================================================
+// CENTIPEDE - Particle System
+// =============================================================================
+// Visual effects for explosions, sparks, and other game events
+// Uses Viper.Timer for lifetime management
+// =============================================================================
+
+module particle;
+
+bind "./config";
+bind "./utils";
+
+// =============================================================================
+// PARTICLE ENTITY - Individual particle with velocity and lifetime
+// =============================================================================
+
+entity Particle {
+    hide Integer screenX;
+    hide Integer screenY;
+    hide Integer velocityX;
+    hide Integer velocityY;
+    hide Integer lifetime;
+    hide Integer maxLifetime;
+    hide Integer color;
+    hide Integer size;
+    hide Boolean active;
+
+    expose func init() {
+        screenX = 0;
+        screenY = 0;
+        velocityX = 0;
+        velocityY = 0;
+        lifetime = 0;
+        maxLifetime = 30;
+        color = config.COLOR_WHITE;
+        size = 2;
+        active = false;
+    }
+
+    expose func spawn(x: Integer, y: Integer, vx: Integer, vy: Integer, life: Integer, col: Integer, sz: Integer) {
+        screenX = x;
+        screenY = y;
+        velocityX = vx;
+        velocityY = vy;
+        lifetime = life;
+        maxLifetime = life;
+        color = col;
+        size = sz;
+        active = true;
+    }
+
+    expose func isActive() -> Boolean {
+        return active;
+    }
+
+    expose func update() {
+        if !active {
+            return;
+        }
+
+        // Apply velocity
+        screenX = screenX + velocityX;
+        screenY = screenY + velocityY;
+
+        // Apply gravity (slight downward pull)
+        velocityY = velocityY + 1;
+
+        // Reduce lifetime
+        lifetime = lifetime - 1;
+        if lifetime <= 0 {
+            active = false;
+        }
+
+        // Deactivate if off screen
+        if screenX < -20 || screenX > config.SCREEN_WIDTH + 20 {
+            active = false;
+        }
+        if screenY < -20 || screenY > config.SCREEN_HEIGHT + 20 {
+            active = false;
+        }
+    }
+
+    expose func draw(canvas: Viper.Graphics.Canvas) {
+        if !active {
+            return;
+        }
+
+        // Fade color based on lifetime
+        var alpha = lifetime * 255 / maxLifetime;
+        var drawSize = size;
+
+        // Shrink as particle dies
+        if lifetime < maxLifetime / 3 {
+            drawSize = size - 1;
+            if drawSize < 1 {
+                drawSize = 1;
+            }
+        }
+
+        canvas.Disc(screenX, screenY, drawSize, color);
+    }
+}
+
+// =============================================================================
+// PARTICLE SYSTEM ENTITY - Manages multiple particles
+// =============================================================================
+
+entity ParticleSystem {
+    hide List[Particle] particles;
+    hide Integer maxParticles;
+
+    expose func init() {
+        particles = [];
+        maxParticles = 200;
+
+        // Pre-allocate particle pool
+        for i in 0..maxParticles {
+            var p = new Particle();
+            particles.add(p);
+        }
+    }
+
+    expose func spawnExplosion(x: Integer, y: Integer, color: Integer, count: Integer) {
+        var spawned = 0;
+        for p in particles {
+            if !p.isActive() && spawned < count {
+                // Random velocity in all directions
+                var vx = Viper.Random.NextInt(12) - 6;
+                var vy = Viper.Random.NextInt(12) - 8;  // Bias upward
+                var life = 15 + Viper.Random.NextInt(15);
+                var size = 2 + Viper.Random.NextInt(3);
+                p.spawn(x, y, vx, vy, life, color, size);
+                spawned = spawned + 1;
+            }
+        }
+    }
+
+    expose func spawnBigExplosion(x: Integer, y: Integer) {
+        // Multi-colored big explosion
+        self.spawnExplosion(x, y, config.COLOR_WHITE, 8);
+        self.spawnExplosion(x, y, config.COLOR_YELLOW, 6);
+        self.spawnExplosion(x, y, config.COLOR_ORANGE, 4);
+        self.spawnExplosion(x, y, config.COLOR_RED, 3);
+    }
+
+    expose func spawnMediumExplosion(x: Integer, y: Integer, color: Integer) {
+        self.spawnExplosion(x, y, color, 6);
+        self.spawnExplosion(x, y, config.COLOR_WHITE, 3);
+    }
+
+    expose func spawnSmallExplosion(x: Integer, y: Integer, color: Integer) {
+        self.spawnExplosion(x, y, color, 4);
+    }
+
+    expose func spawnSpark(x: Integer, y: Integer, color: Integer) {
+        for p in particles {
+            if !p.isActive() {
+                var vx = Viper.Random.NextInt(6) - 3;
+                var vy = Viper.Random.NextInt(4) - 6;
+                p.spawn(x, y, vx, vy, 10, color, 2);
+                return;
+            }
+        }
+    }
+
+    expose func spawnMushroomDebris(x: Integer, y: Integer) {
+        // Small debris when mushroom is destroyed
+        var spawned = 0;
+        for p in particles {
+            if !p.isActive() && spawned < 3 {
+                var vx = Viper.Random.NextInt(8) - 4;
+                var vy = Viper.Random.NextInt(6) - 4;
+                var col = config.COLOR_MUSHROOM_2;
+                if Viper.Random.NextInt(2) == 0 {
+                    col = config.COLOR_MUSHROOM_3;
+                }
+                p.spawn(x, y, vx, vy, 12, col, 2);
+                spawned = spawned + 1;
+            }
+        }
+    }
+
+    expose func spawnCentipedeGore(x: Integer, y: Integer, isHead: Boolean) {
+        var mainColor = config.COLOR_CENTIPEDE_BODY;
+        if isHead {
+            mainColor = config.COLOR_CENTIPEDE_HEAD;
+        }
+        self.spawnExplosion(x, y, mainColor, 8);
+        self.spawnExplosion(x, y, config.COLOR_GREEN, 4);
+    }
+
+    expose func spawnSpiderGore(x: Integer, y: Integer) {
+        self.spawnExplosion(x, y, config.COLOR_SPIDER, 10);
+        self.spawnExplosion(x, y, config.COLOR_BROWN, 5);
+    }
+
+    expose func spawnFleaGore(x: Integer, y: Integer) {
+        self.spawnExplosion(x, y, config.COLOR_FLEA, 8);
+        self.spawnExplosion(x, y, config.COLOR_PINK, 4);
+    }
+
+    expose func spawnScorpionGore(x: Integer, y: Integer) {
+        self.spawnExplosion(x, y, config.COLOR_SCORPION, 12);
+        self.spawnExplosion(x, y, config.COLOR_RED, 6);
+    }
+
+    expose func spawnPlayerDeath(x: Integer, y: Integer) {
+        // Big dramatic explosion for player death
+        self.spawnBigExplosion(x, y);
+        self.spawnExplosion(x, y, config.COLOR_PLAYER, 10);
+    }
+
+    expose func update() {
+        for p in particles {
+            if p.isActive() {
+                p.update();
+            }
+        }
+    }
+
+    expose func draw(canvas: Viper.Graphics.Canvas) {
+        for p in particles {
+            if p.isActive() {
+                p.draw(canvas);
+            }
+        }
+    }
+
+    expose func getActiveCount() -> Integer {
+        var count = 0;
+        for p in particles {
+            if p.isActive() {
+                count = count + 1;
+            }
+        }
+        return count;
+    }
+
+    expose func clear() {
+        for p in particles {
+            p.init();
+        }
+    }
+}
+

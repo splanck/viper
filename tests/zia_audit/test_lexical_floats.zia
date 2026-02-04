@@ -15,7 +15,7 @@ func checkNum(name: String, actual: Number, expected: Number) {
         Viper.Terminal.Say("PASS: " + name);
     } else {
         failed = failed + 1;
-        Viper.Terminal.Say("FAIL: " + name + " - expected " + Viper.Strings.FromDouble(expected) + ", got " + Viper.Strings.FromDouble(actual));
+        Viper.Terminal.Say("FAIL: " + name + " - expected " + Viper.String.FromDouble(expected) + ", got " + Viper.String.FromDouble(actual));
     }
 }
 
@@ -73,8 +73,8 @@ func start() {
 
     // Report results
     Viper.Terminal.Say("=== Results ===");
-    Viper.Terminal.Say("Passed: " + Viper.Strings.FromInt(passed));
-    Viper.Terminal.Say("Failed: " + Viper.Strings.FromInt(failed));
+    Viper.Terminal.Say("Passed: " + Viper.String.FromInt(passed));
+    Viper.Terminal.Say("Failed: " + Viper.String.FromInt(failed));
 
     if (failed == 0) {
         Viper.Terminal.Say("RESULT: ok");

@@ -2,7 +2,7 @@
 // PAC-MAN - Ghost Entity
 // =============================================================================
 // Uses new Viper runtime features:
-// - Viper.Timer for frightened mode countdown and flash animation
+// - Viper.Game.Timer for frightened mode countdown and flash animation
 // - Cleaner AI targeting logic
 // =============================================================================
 
@@ -39,9 +39,9 @@ entity Ghost {
     hide Boolean inHouse;  // True if ghost is still in the ghost house
 
     // Use Timers for frightened mode
-    hide Viper.Timer frightenedTimer;
-    hide Viper.Timer flashTimer;
-    hide Viper.Timer exitTimer;  // Delay before exiting house
+    hide Viper.Game.Timer frightenedTimer;
+    hide Viper.Game.Timer flashTimer;
+    hide Viper.Game.Timer exitTimer;  // Delay before exiting house
     hide Boolean flashWhite;
 
     expose func init(gType: Integer, startX: Integer, startY: Integer, ghostColor: Integer) {
@@ -76,15 +76,15 @@ entity Ghost {
         }
 
         // Setup frightened timer
-        frightenedTimer = Viper.Timer.New();
+        frightenedTimer = Viper.Game.Timer.New();
 
         // Setup flash timer (toggles every 10 frames when about to end)
-        flashTimer = Viper.Timer.New();
+        flashTimer = Viper.Game.Timer.New();
         flashTimer.StartRepeating(10);
         flashWhite = false;
 
         // Setup exit timer - stagger ghost exits
-        exitTimer = Viper.Timer.New();
+        exitTimer = Viper.Game.Timer.New();
         if ghostType == GHOST_PINKY {
             exitTimer.Start(60);   // Pinky exits after 1 second
         } else if ghostType == GHOST_INKY {

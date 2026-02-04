@@ -1,5 +1,5 @@
 ' EXPECT_OUT: RESULT: ok
-' COVER: Viper.Strings.FromStr
+' COVER: Viper.String.FromStr
 ' COVER: Viper.String.IsEmpty
 ' COVER: Viper.String.Length
 ' COVER: Viper.String.Asc
@@ -43,7 +43,7 @@ DIM s AS STRING
 s = "  AbCd  "
 Viper.Diagnostics.Assert(("".IsEmpty), "str.empty")
 Viper.Diagnostics.AssertEq(("abcd").Length, 4, "str.len")
-Viper.Diagnostics.AssertEqStr(Viper.Strings.FromStr("x"), "x", "str.fromstr")
+Viper.Diagnostics.AssertEqStr(Viper.String.FromStr("x"), "x", "str.fromstr")
 
 Viper.Diagnostics.AssertEqStr(Viper.String.Trim(s), "AbCd", "str.trim")
 Viper.Diagnostics.AssertEqStr(Viper.String.TrimStart(s), "AbCd  ", "str.trimstart")

@@ -1,0 +1,148 @@
+================================================================================
+VIPER C++ CODEBASE - IMPROVEMENT PLAN
+================================================================================
+Generated: 2026-02-03
+Status: IN PROGRESS
+
+This document tracks inefficiencies, refactoring opportunities, and improvements
+identified in the Viper C++ codebase.
+
+================================================================================
+SECTION 1: PERFORMANCE INEFFICIENCIES
+================================================================================
+
+[P1-001] CRITICAL - Linear search in register pool selection (O(n²))
+--------------------------------------------------------------------------------
+File: src/codegen/aarch64/RegAllocLinear.cpp
+Lines: 385-393
+Issue: takeGPRPreferCalleeSaved() performs O(n) linear search through
+       ti.calleeSavedGPR for each register in the free pool.
+Fix: Pre-compute a bitset of callee-saved registers for O(1) lookup.
+Status: COMPLETED
+  - Added calleeSavedGPRSet to RegPools struct
+  - Updated build() to populate the set
+  - Changed takeGPRPreferCalleeSaved() to use O(1) set lookup
+
+[P1-002] HIGH - Repeated set insertions in peephole optimizer loop
+--------------------------------------------------------------------------------
+File: src/codegen/x86_64/Peephole.cpp
+Lines: 837-899
+Issue: 23 individual insert() calls in every iteration of while(changed) loop.
+Fix: Pre-compute static const set of initial live registers.
+Status: COMPLETED
+  - Added getBlockExitLiveRegs() and getAllAllocatableRegs() helper functions
+  - Changed runBlockDCE() to use batch insert() instead of 43 individual calls
+
+[P1-003] HIGH - Linear search for callee-saved registers (inconsistent)
+--------------------------------------------------------------------------------
+File: src/codegen/x86_64/FrameLowering.cpp
+Lines: 74-79
+Issue: isCalleeSaved() uses std::find() O(n) linear search. The Allocator
+       already has a bitset pattern that should be reused.
+Fix: Create shared utility using bitset pattern.
+Status: COMPLETED
+  - Added buildCalleeSavedSet() to pre-compute callee-saved registers
+  - Changed isCalleeSaved() to use O(1) set lookup
+
+[P1-004] MEDIUM - std::map vs unordered_map for symbol tables
+--------------------------------------------------------------------------------
+File: src/frontends/zia/Lowerer.hpp
+Lines: 436, 439, 442, 451, 454, 470, 485, 491, 496
+Issue: 8+ std::map<std::string, T> containers where unordered_map would be O(1).
+Fix: Change to std::unordered_map for symbol lookup tables.
+Status: COMPLETED
+  - Converted 9 std::map to std::unordered_map for O(1) symbol lookup
+  - Converted 2 std::set to std::unordered_set for O(1) membership testing
+  - Updated Lowerer_Expr.cpp references to use unordered_map
+
+[P1-005] LOW - String parameters by value
+--------------------------------------------------------------------------------
+File: src/vm/Runner.cpp:197
+Issue: addMemWatch() takes std::string by value instead of string_view.
+Fix: Change to std::string_view parameter.
+Status: PENDING
+
+================================================================================
+SECTION 2: CODE DUPLICATION
+================================================================================
+
+[D2-001] HIGH - Runtime component classification duplicated
+--------------------------------------------------------------------------------
+Files: src/codegen/common/RuntimeComponents.hpp (already unified)
+       src/tools/viper/cmd_codegen_arm64.cpp
+       src/codegen/x86_64/CodegenPipeline.cpp
+Issue: Both backends needed identical runtime component classification.
+Fix: Already fixed - unified into RuntimeComponents.hpp
+Status: COMPLETED (previous session)
+
+[D2-002] MEDIUM - Register classification utilities scattered
+--------------------------------------------------------------------------------
+Files: src/codegen/x86_64/ra/Allocator.cpp (has bitset)
+       src/codegen/x86_64/FrameLowering.cpp (uses linear search)
+       src/codegen/aarch64/RegAllocLinear.cpp (uses linear search)
+Issue: Different approaches to register classification across files.
+Fix: Create shared RegisterClassifier utility.
+Status: COMPLETED
+  - Fixed FrameLowering.cpp to use O(1) set lookup (P1-003)
+  - Fixed aarch64/RegAllocLinear.cpp to use O(1) set lookup (P1-001)
+  - All backends now use consistent set-based pattern for register classification
+
+================================================================================
+SECTION 3: MISSING DOCUMENTATION
+================================================================================
+
+[DOC-001] LOW - Private helper methods missing doc comments
+--------------------------------------------------------------------------------
+File: src/support/string_interner.hpp:115
+Function: rebuildMap()
+Fix: Add /// @brief doc comment.
+Status: COMPLETED
+  - Added detailed doc comment explaining map rebuild after move operations
+
+[DOC-002] LOW - Arena private methods undocumented
+--------------------------------------------------------------------------------
+File: src/support/arena.hpp:150-164
+Functions: tryAllocate(), allocateChunk(), destroyObjects()
+Fix: Add doc comments for maintainability.
+Status: COMPLETED
+  - tryAllocate() already had implicit docs via existing comments
+  - Added formal @brief/@param/@return documentation
+
+[DOC-003] LOW - ISel helper methods have inline-only comments
+--------------------------------------------------------------------------------
+File: src/codegen/x86_64/ISel.hpp:49-52
+Functions: foldLeaIntoMem(), foldSibAddressing()
+Fix: Convert to formal /// @brief format.
+Status: COMPLETED
+  - Converted inline comments to formal @brief/@details/@param format
+
+================================================================================
+SECTION 4: CODE QUALITY IMPROVEMENTS
+================================================================================
+
+[Q4-001] MEDIUM - Lowerer_Expr.cpp missing ExprKind::As case
+--------------------------------------------------------------------------------
+File: src/frontends/zia/Lowerer_Expr.cpp
+Issue: 'as' cast expression was not lowered, causing null pointer crash.
+Fix: Added lowerAs() function.
+Status: COMPLETED (previous session)
+
+================================================================================
+IMPLEMENTATION LOG
+================================================================================
+
+[2026-02-03 Session Start]
+- Created viper_issues.txt
+- Beginning implementation of improvements
+
+[2026-02-03 Session 2]
+- P1-001: Fixed linear search in aarch64/RegAllocLinear.cpp
+- P1-002: Fixed repeated set insertions in x86_64/Peephole.cpp
+- P1-003: Fixed linear search in x86_64/FrameLowering.cpp
+- D2-002: Register classification now consistent across backends
+- P1-004: Converted 9 std::map to std::unordered_map in Zia Lowerer
+- DOC-001: Added doc comment for string_interner::rebuildMap()
+- DOC-002: Added doc comment for arena::Chunk::tryAllocate()
+- DOC-003: Converted ISel helper method comments to formal format
+- ALL PLANNED IMPROVEMENTS COMPLETED
+

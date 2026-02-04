@@ -15,7 +15,7 @@ func start() {
         _ => { result = 99; }
     }
 
-    Viper.Terminal.Say("Result: " + Viper.Strings.FromInt(result));
+    Viper.Terminal.Say("Result: " + Viper.String.FromInt(result));
 
     if (result == 30) {
         Viper.Terminal.Say("RESULT: ok");

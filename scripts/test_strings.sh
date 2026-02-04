@@ -5,7 +5,7 @@
 # Usage: scripts/test_strings.sh
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ILC="$ROOT/build/src/tools/ilc/ilc"
+ILC="$ROOT/build/src/tools/viper/viper"
 FAIL=0
 for BAS in "$ROOT"/src/tests/basic/strings/*.bas; do
   NAME="$(basename "$BAS" .bas)"

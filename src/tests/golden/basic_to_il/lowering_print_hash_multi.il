@@ -1,10 +1,36 @@
 il 0.2.0
-extern @rt_print_str(str) -> void
-extern @rt_print_i64(i64) -> void
-extern @rt_print_f64(f64) -> void
-extern @rt_len(str) -> i64
-extern @rt_substr(str, i64, i64) -> str
-extern @rt_str_i16_alloc(i16) -> str
+extern @Viper.Terminal.PrintStr(str) -> void
+extern @Viper.Terminal.PrintI64(i64) -> void
+extern @Viper.Terminal.PrintF64(f64) -> void
+extern @Viper.String.get_Length(str) -> i64
+extern @Viper.String.Substring(str, i64, i64) -> str
+extern @Viper.String.Left(str, i64) -> str
+extern @Viper.String.Right(str, i64) -> str
+extern @Viper.String.Mid(str, i64) -> str
+extern @Viper.String.MidLen(str, i64, i64) -> str
+extern @Viper.String.Trim(str) -> str
+extern @Viper.String.TrimStart(str) -> str
+extern @Viper.String.TrimEnd(str) -> str
+extern @Viper.String.ToUpper(str) -> str
+extern @Viper.String.ToLower(str) -> str
+extern @Viper.String.IndexOf(str, str) -> i64
+extern @Viper.String.IndexOfFrom(str, i64, str) -> i64
+extern @Viper.String.Chr(i64) -> str
+extern @Viper.String.Asc(str) -> i64
+extern @Viper.String.Replace(str, str, str) -> str
+extern @Viper.String.StartsWith(str, str) -> i1
+extern @Viper.String.EndsWith(str, str) -> i1
+extern @Viper.String.Has(str, str) -> i1
+extern @Viper.String.Count(str, str) -> i64
+extern @Viper.String.PadLeft(str, i64, str) -> str
+extern @Viper.String.PadRight(str, i64, str) -> str
+extern @Viper.String.Split(str, str) -> ptr
+extern @Viper.String.Repeat(str, i64) -> str
+extern @Viper.String.Flip(str) -> str
+extern @Viper.String.Cmp(str, str) -> i64
+extern @Viper.String.CmpNoCase(str, str) -> i64
+extern @Viper.String.FromI16(i16) -> str
+extern @Viper.String.Join(str, ptr) -> str
 extern @rt_str_empty() -> str
 extern @rt_write_ch_err(i32, str) -> i32
 extern @rt_println_ch_err(i32, str) -> i32
@@ -88,7 +114,7 @@ printch_cont:
   .loc 1 1 19
   %t6:i16 = cast.si_narrow.chk 42
   .loc 1 1 19
-  %t7 = call @rt_str_i16_alloc(%t6)
+  %t7 = call @Viper.String.FromI16(%t6)
   .loc 1 1 19
   %t8 = call @rt_println_ch_err(%t0, %t7)
   .loc 1 1 19
@@ -116,7 +142,7 @@ printch_cont2:
   .loc 1 2 19
   %t18:i16 = cast.si_narrow.chk 7
   .loc 1 2 19
-  %t19 = call @rt_str_i16_alloc(%t18)
+  %t19 = call @Viper.String.FromI16(%t18)
   .loc 1 2 19
   %t20 = call @rt_println_ch_err(%t12, %t19)
   .loc 1 2 19

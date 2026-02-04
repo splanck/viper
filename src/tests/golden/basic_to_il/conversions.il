@@ -2,8 +2,8 @@ il 0.2.0
 extern @Viper.Terminal.PrintStr(str) -> void
 extern @Viper.Terminal.PrintI64(i64) -> void
 extern @Viper.Terminal.PrintF64(f64) -> void
-extern @Viper.Strings.Len(str) -> i64
-extern @Viper.Strings.Mid(str, i64, i64) -> str
+extern @Viper.String.get_Length(str) -> i64
+extern @Viper.String.Substring(str, i64, i64) -> str
 extern @Viper.String.Left(str, i64) -> str
 extern @Viper.String.Right(str, i64) -> str
 extern @Viper.String.Mid(str, i64) -> str
@@ -29,9 +29,9 @@ extern @Viper.String.Repeat(str, i64) -> str
 extern @Viper.String.Flip(str) -> str
 extern @Viper.String.Cmp(str, str) -> i64
 extern @Viper.String.CmpNoCase(str, str) -> i64
-extern @Viper.Strings.Join(str, ptr) -> str
-extern @Viper.Strings.FromI32(i32) -> str
-extern @Viper.Strings.FromDoublePrecise(f64) -> str
+extern @Viper.String.FromDoublePrecise(f64) -> str
+extern @Viper.String.FromI32(i32) -> str
+extern @Viper.String.Join(str, ptr) -> str
 extern @rt_int_floor(f64) -> f64
 extern @rt_val(str) -> f64
 extern @rt_val_to_double(ptr, ptr) -> f64
@@ -73,7 +73,7 @@ L30:
   .loc 1 3 15
   %t7:i32 = cast.si_narrow.chk %t6
   .loc 1 3 10
-  %t8 = call @Viper.Strings.FromI32(%t7)
+  %t8 = call @Viper.String.FromI32(%t7)
   .loc 1 3 10
   call @Viper.Terminal.PrintStr(%t8)
   .loc 1 3 10
@@ -83,7 +83,7 @@ L30:
   .loc 1 3 24
   %t10 = load f64, %t1
   .loc 1 3 19
-  %t11 = call @Viper.Strings.FromDoublePrecise(%t10)
+  %t11 = call @Viper.String.FromDoublePrecise(%t10)
   .loc 1 3 19
   call @Viper.Terminal.PrintStr(%t11)
   .loc 1 3 19

@@ -73,6 +73,7 @@ add_library(il_runtime STATIC
         il/runtime/signatures/Signatures_Strings.cpp
         il/runtime/signatures/Signatures_Math.cpp
         il/runtime/signatures/Signatures_Arrays.cpp
+        il/runtime/signatures/Signatures_OOP.cpp
         il/runtime/classes/RuntimeClasses.cpp)
 add_dependencies(il_runtime generate_runtime_registry)
 target_link_libraries(il_runtime PUBLIC viper_il_core viper_runtime)

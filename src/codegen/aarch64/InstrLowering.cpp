@@ -87,6 +87,8 @@
 #include "FrameBuilder.hpp"
 #include "OpcodeMappings.hpp"
 
+#include "il/runtime/RuntimeNameMap.hpp"
+
 #include <cstring>
 
 namespace viper::codegen::aarch64
@@ -526,7 +528,12 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
         return false;
     }
 
-    seq.call = MInstr{MOpcode::Bl, {MOperand::labelOp(callee)}};
+    // Map canonical runtime names (e.g., "Viper.Grid2D.New") to C symbols (e.g., "rt_grid2d_new")
+    std::string mappedCallee = callee;
+    if (auto mapped = il::runtime::mapCanonicalRuntimeName(callee))
+        mappedCallee = std::string(*mapped);
+
+    seq.call = MInstr{MOpcode::Bl, {MOperand::labelOp(mappedCallee)}};
 
     // First pass: materialize all arguments and collect them
     struct ArgInfo

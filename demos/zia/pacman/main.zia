@@ -7,10 +7,10 @@
 //
 // NEW FEATURES DEMONSTRATED:
 // - Viper.Input.Manager:   Edge detection and debounced input for menus
-// - Viper.Grid2D:          2D tile storage with bounds checking
-// - Viper.Timer:           Frame-based timers (repeating, countdown)
-// - Viper.Tween:           Smooth animations (ready text bounce)
-// - Viper.SmoothValue:     Animated score counter
+// - Viper.Game.Grid2D:          2D tile storage with bounds checking
+// - Viper.Game.Timer:           Frame-based timers (repeating, countdown)
+// - Viper.Game.Tween:           Smooth animations (ready text bounce)
+// - Viper.Game.SmoothValue:     Animated score counter
 //
 // LANGUAGE FEATURES:
 // - for-in range syntax:   `for i in 0..10 { ... }`
@@ -37,10 +37,10 @@ func start() {
     Viper.Terminal.Say("");
     Viper.Terminal.Say("Demonstrating new game development features:");
     Viper.Terminal.Say("  - Viper.Input.Manager (debounced input)");
-    Viper.Terminal.Say("  - Viper.Grid2D (2D tile storage)");
-    Viper.Terminal.Say("  - Viper.Timer (frame-based timers)");
-    Viper.Terminal.Say("  - Viper.Tween (smooth animations)");
-    Viper.Terminal.Say("  - Viper.SmoothValue (animated counters)");
+    Viper.Terminal.Say("  - Viper.Game.Grid2D (2D tile storage)");
+    Viper.Terminal.Say("  - Viper.Game.Timer (frame-based timers)");
+    Viper.Terminal.Say("  - Viper.Game.Tween (smooth animations)");
+    Viper.Terminal.Say("  - Viper.Game.SmoothValue (animated counters)");
     Viper.Terminal.Say("");
     Viper.Terminal.Say("Controls:");
     Viper.Terminal.Say("  Arrow Keys / WASD - Move");

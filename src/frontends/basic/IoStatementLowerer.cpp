@@ -308,23 +308,23 @@ PrintChArgString lowerPrintChArgToString(IoStatementLowerer &self,
     switch (numericType)
     {
         case TypeRules::NumericType::Integer:
-            runtime = "Viper.Strings.FromI16";
+            runtime = "Viper.String.FromI16";
             feature = il::runtime::RuntimeFeature::StrFromI16;
             narrowInteger(IlType::Kind::I16);
             break;
         case TypeRules::NumericType::Long:
-            runtime = "Viper.Strings.FromI32";
+            runtime = "Viper.String.FromI32";
             feature = il::runtime::RuntimeFeature::StrFromI32;
             narrowInteger(IlType::Kind::I32);
             break;
         case TypeRules::NumericType::Single:
-            runtime = "Viper.Strings.FromSingle";
+            runtime = "Viper.String.FromSingle";
             feature = il::runtime::RuntimeFeature::StrFromSingle;
             value = self.lowerer_.ensureF64(std::move(value), expr.loc);
             break;
         case TypeRules::NumericType::Double:
         default:
-            runtime = "Viper.Strings.FromDouble";
+            runtime = "Viper.String.FromDouble";
             feature = il::runtime::RuntimeFeature::StrFromDouble;
             value = self.lowerer_.ensureF64(std::move(value), expr.loc);
             break;
@@ -369,9 +369,9 @@ Value buildPrintChWriteRecord(IoStatementLowerer &self, const PrintChStmt &stmt)
 
         self.lowerer_.curLoc = arg->loc;
         record = self.lowerer_.emitCallRet(
-            IlType(IlType::Kind::Str), "Viper.Strings.Concat", {record, comma});
+            IlType(IlType::Kind::Str), "Viper.String.Concat", {record, comma});
         record = self.lowerer_.emitCallRet(
-            IlType(IlType::Kind::Str), "Viper.Strings.Concat", {record, lowered.text});
+            IlType(IlType::Kind::Str), "Viper.String.Concat", {record, lowered.text});
     }
 
     if (!hasRecord)
@@ -610,7 +610,7 @@ void IoStatementLowerer::lowerInput(const InputStmt &stmt)
     // Split the input line into fields using the rt_* helper
     lowerer_.requestHelper(il::runtime::RuntimeFeature::SplitFields);
     lowerer_.emitCallRet(IlType(IlType::Kind::I64),
-                         "Viper.Strings.SplitFields",
+                         "Viper.String.SplitFields",
                          {line, fields, Value::constInt(fieldCount)});
     lowerer_.requireStrReleaseMaybe();
     lowerer_.emitCall("rt_str_release_maybe", {line});
@@ -655,7 +655,7 @@ void IoStatementLowerer::lowerInputCh(const InputChStmt &stmt)
     Value fieldsMem = lowerer_.emitAlloca(static_cast<int>(fieldCount * 8));
     lowerer_.emitStore(IlType(IlType::Kind::Ptr), fieldsMem, Value::null());
     lowerer_.emitCallRet(IlType(IlType::Kind::I64),
-                         "Viper.Strings.SplitFields",
+                         "Viper.String.SplitFields",
                          {line, fieldsMem, Value::constInt(fieldCount)});
     lowerer_.requireStrReleaseMaybe();
     lowerer_.emitCall("rt_str_release_maybe", {line});

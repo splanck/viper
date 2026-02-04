@@ -146,7 +146,7 @@ inline constexpr const char *kStringConcat = "Viper.String.Concat";
 /// @brief Compare two strings for equality.
 /// @details Signature: Equals(str, str) -> i1
 /// Returns true if the strings contain identical byte sequences.
-inline constexpr const char *kStringEquals = "Viper.Strings.Equals";
+inline constexpr const char *kStringEquals = "Viper.String.Equals";
 
 /// @brief Get the length of a string in bytes.
 /// @details Signature: get_Length(str) -> i64
@@ -201,12 +201,12 @@ inline constexpr const char *kStringSplit = "Viper.String.Split";
 /// @brief Convert an integer to its string representation.
 /// @details Signature: FromInt(i64) -> str
 /// Converts the integer to a decimal string (e.g., 42 -> "42").
-inline constexpr const char *kStringFromInt = "Viper.Strings.FromInt";
+inline constexpr const char *kStringFromInt = "Viper.String.FromInt";
 
 /// @brief Convert a floating-point number to its string representation.
 /// @details Signature: FromDouble(f64) -> str
 /// Uses default formatting with appropriate precision.
-inline constexpr const char *kStringFromNum = "Viper.Strings.FromDouble";
+inline constexpr const char *kStringFromNum = "Viper.String.FromDouble";
 
 /// @}
 

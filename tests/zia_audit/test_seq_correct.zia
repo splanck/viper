@@ -14,8 +14,8 @@ func start() {
     var v0 = Viper.Box.ToI64(Viper.Collections.Seq.Get(arr, 0));
     var v1 = Viper.Box.ToI64(Viper.Collections.Seq.Get(arr, 1));
 
-    Viper.Terminal.Say("v0 = " + Viper.Strings.FromInt(v0));
-    Viper.Terminal.Say("v1 = " + Viper.Strings.FromInt(v1));
+    Viper.Terminal.Say("v0 = " + Viper.String.FromInt(v0));
+    Viper.Terminal.Say("v1 = " + Viper.String.FromInt(v1));
 
     if (v0 == 10 && v1 == 20) {
         Viper.Terminal.Say("RESULT: ok");

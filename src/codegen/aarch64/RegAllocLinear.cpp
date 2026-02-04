@@ -327,10 +327,19 @@ struct RegPools
     std::unordered_set<PhysReg> calleeUsed{};
     std::unordered_set<PhysReg> calleeUsedFPR{};
 
+    /// Pre-computed set of callee-saved GPRs for O(1) lookup.
+    /// This avoids O(n) linear search in takeGPRPreferCalleeSaved().
+    std::unordered_set<PhysReg> calleeSavedGPRSet{};
+
     void build(const TargetInfo &ti)
     {
         gprFree.clear();
         fprFree.clear();
+        calleeSavedGPRSet.clear();
+
+        // Pre-compute callee-saved GPR set for O(1) lookup in takeGPRPreferCalleeSaved()
+        for (auto r : ti.calleeSavedGPR)
+            calleeSavedGPRSet.insert(r);
 
         // Prefer caller-saved first, exclude argument registers
         for (auto r : ti.callerSavedGPR)
@@ -376,16 +385,18 @@ struct RegPools
     ///
     /// Used for values that need to survive function calls, since callee-saved
     /// registers don't need to be spilled/restored around calls.
-    PhysReg takeGPRPreferCalleeSaved(const TargetInfo &ti)
+    ///
+    /// @note Uses pre-computed calleeSavedGPRSet for O(1) lookup instead of
+    ///       O(n) linear search through ti.calleeSavedGPR.
+    PhysReg takeGPRPreferCalleeSaved(const TargetInfo & /*ti*/)
     {
         if (gprFree.empty())
             return PhysReg::X19;
 
-        // Try to find a callee-saved register first
+        // Try to find a callee-saved register first using O(1) set lookup
         for (auto it = gprFree.begin(); it != gprFree.end(); ++it)
         {
-            if (std::find(ti.calleeSavedGPR.begin(), ti.calleeSavedGPR.end(), *it) !=
-                ti.calleeSavedGPR.end())
+            if (calleeSavedGPRSet.count(*it) != 0)
             {
                 PhysReg r = *it;
                 gprFree.erase(it);

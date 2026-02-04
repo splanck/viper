@@ -15,22 +15,22 @@ implemented in C and exposed through the IL runtime system.
 |---------------------------------|---------------------------------------------------------------------------|
 | [Architecture](architecture.md) | Runtime internals, type reference                                         |
 | [Audio](audio.md)               | `Sound`, `Music` — audio playback for games and applications              |
-| [Collections](collections.md)   | `Bag`, `Bytes`, `Grid2D`, `Heap`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Set`, `Stack`, `TreeMap` |
+| [Collections](collections.md)   | `Bag`, `Bytes`, `Heap`, `List`, `Map`, `Queue`, `Ring`, `Seq`, `Set`, `Stack`, `TreeMap` |
 | [Core Types](core.md)           | `Object`, `Box`, `String` — foundational types                             |
 | [Cryptography](crypto.md)       | `Hash`, `KeyDerive`, `Rand`, `Tls`                                        |
 | [Diagnostics](diagnostics.md)   | `Assert`, `Trap`, `Stopwatch`                                             |
-| [Game Utilities](game.md)       | `StateMachine`, `Tween`, `ObjectPool`, `Quadtree` — game development abstractions |
+| [Game Utilities](game.md)       | `Grid2D`, `Timer`, `StateMachine`, `Tween`, `ObjectPool`, `Quadtree` — game development abstractions |
 | [Graphics](graphics.md)         | `Canvas`, `Color`, `Pixels`, `Sprite`, `Tilemap`, `Camera`                |
 | [GUI](gui.md)                   | `App`, `Button`, `Label`, widgets — GUI toolkit for applications          |
 | [Input](input.md)               | `Keyboard`, `Mouse`, `Pad`, `Manager` — input for games and interactive apps |
 | [Input/Output](io.md)           | `Archive`, `BinFile`, `Compress`, `Dir`, `File`, `LineReader`, `LineWriter`, `MemStream`, `Path`, `Watcher` |
-| [Mathematics](math.md)          | `BigInt`, `Bits`, `Mat3`, `Mat4`, `Math`, `Random`, `Vec2`, `Vec3`        |
+| [Mathematics](math.md)          | `Bits`, `Math`, `Random`, `Vec2`, `Vec3`                                  |
 | [Network](network.md)           | `Dns`, `Http`, `HttpReq`, `HttpRes`, `Tcp`, `TcpServer`, `Udp`, `Url`, `WebSocket` |
 | [System](system.md)             | `Environment`, `Exec`, `Machine`, `Terminal`                              |
-| [Text Processing](text.md)      | `Codec`, `Csv`, `Guid`, `Pattern`, `StringBuilder`, `Template`, `Xml`, `Yaml` |
-| [Threads](threads.md)           | `Barrier`, `Channel`, `Gate`, `Monitor`, `Pool`, `RwLock`, `SafeI64`, `Thread` |
-| [Time & Timing](time.md)        | `Clock`, `Countdown`, `Timer`, `DateTime`, `Stopwatch`                    |
-| [Utilities](utilities.md)       | `Convert`, `Fmt`, `Log`, `Parse`                                          |
+| [Text Processing](text.md)      | `Codec`, `Csv`, `Guid`, `Json`, `Pattern`, `StringBuilder`, `Template` |
+| [Threads](threads.md)           | `Barrier`, `Gate`, `Monitor`, `RwLock`, `SafeI64`, `Thread` |
+| [Time & Timing](time.md)        | `Clock`, `Countdown`, `DateTime`, `Stopwatch`                             |
+| [Utilities](utilities.md)       | `Convert`, `Fmt`, `Log`                                                   |
 
 ---
 
@@ -42,41 +42,19 @@ implemented in C and exposed through the IL runtime system.
 |---------------------------------------------|----------|-----------------------------------------------|
 | [`Bits`](math.md#viperbits)                 | Static   | Bit manipulation (shifts, rotates, counting)  |
 | [`Box`](core.md#viperbox)                   | Static   | Boxing helpers for generic collections         |
-| [`ButtonGroup`](game.md#viperbuttongroup)   | Instance | Mutually exclusive button selection            |
-| [`Collision`](game.md#vipercollision)       | Static   | Static collision detection helpers             |
-| [`CollisionRect`](game.md#vipercollisionrect) | Instance | AABB collision detection                     |
 | [`Convert`](utilities.md#viperconvert)      | Static   | Type conversion utilities                     |
-| [`DateTime`](time.md#viperdatetime)         | Static   | Date and time operations                      |
 | [`Environment`](system.md#viperenvironment) | Static   | Command-line args and environment             |
 | [`Exec`](system.md#viperexec)               | Static   | External command execution                    |
 | [`Fmt`](utilities.md#viperfmt)              | Static   | String formatting                             |
 | [`Log`](utilities.md#viperlog)              | Static   | Logging utilities                             |
 | [`Machine`](system.md#vipermachine)         | Static   | System information queries                    |
 | [`Math`](math.md#vipermath)                 | Static   | Mathematical functions (trig, pow, abs, etc.) |
-| [`Mat3`](math.md#vipermathmat3)             | Instance | 3×3 matrix for 2D transformations             |
-| [`Mat4`](math.md#vipermathmat4)             | Instance | 4×4 matrix for 3D transformations             |
 | [`Object`](core.md#viperobject)             | Base     | Root type for all reference types             |
-| [`Parse`](utilities.md#viperparse)          | Static   | String parsing utilities                      |
-| [`ParticleEmitter`](game.md#viperparticleemitter) | Instance | Particle effects system                  |
 | [`Random`](math.md#viperrandom)             | Static   | Random number generation                      |
-| [`SmoothValue`](game.md#vipersmoothvalue)   | Instance | Smooth value interpolation                    |
-| [`SpriteAnimation`](game.md#viperspriteanimation) | Instance | Frame-based sprite animation controller |
-| [`StateMachine`](game.md#viperstatemachine) | Instance | Finite state machine for game states          |
 | [`String`](core.md#viperstring)             | Instance | Immutable string with manipulation methods    |
 | [`Terminal`](system.md#viperterminal)       | Static   | Terminal input/output                         |
-| [`Tween`](game.md#vipertween)               | Instance | Animation tweening with easing functions      |
-| [`ObjectPool`](game.md#viperobjectpool)     | Instance | Efficient object slot reuse                   |
-| [`ScreenFX`](game.md#viperscreenfx)         | Instance | Screen effects (shake, flash, fade)           |
-| [`PathFollower`](game.md#viperpathfollower) | Instance | Path following along waypoints                |
-| [`Quadtree`](game.md#viperquadtree)         | Instance | Spatial partitioning for collision queries    |
 | [`Vec2`](math.md#vipervec2)                 | Instance | 2D vector math                                |
 | [`Vec3`](math.md#vipervec3)                 | Instance | 3D vector math                                |
-
-### Viper.Math
-
-| Class                                       | Type     | Description                                   |
-|---------------------------------------------|----------|-----------------------------------------------|
-| [`BigInt`](math.md#vipermathbigint)         | Instance | Arbitrary precision integers                  |
 
 ### Viper.Collections
 
@@ -84,11 +62,10 @@ implemented in C and exposed through the IL runtime system.
 |-----------------------------------------------------|----------|-------------------------------------|
 | [`Bag`](collections.md#vipercollectionsbag)         | Instance | String set with set operations      |
 | [`Bytes`](collections.md#vipercollectionsbytes)     | Instance | Byte array for binary data          |
-| [`Grid2D`](collections.md#vipercollectionsgrid2d)   | Instance | 2D array for tile maps and grids    |
+| [`Heap`](collections.md#vipercollectionsheap)       | Instance | Priority queue (min/max heap)       |
 | [`List`](collections.md#vipercollectionslist)       | Instance | Dynamic array of objects            |
 | [`Map`](collections.md#vipercollectionsmap)         | Instance | String-keyed hash map               |
 | [`Queue`](collections.md#vipercollectionsqueue)     | Instance | FIFO collection                     |
-| [`Heap`](collections.md#vipercollectionsheap)       | Instance | Priority queue (min/max heap)       |
 | [`Ring`](collections.md#vipercollectionsring)       | Instance | Fixed-size circular buffer          |
 | [`Seq`](collections.md#vipercollectionsseq)         | Instance | Growable array with stack/queue ops |
 | [`Set`](collections.md#vipercollectionsset)         | Instance | Generic object set with set ops     |
@@ -104,20 +81,31 @@ implemented in C and exposed through the IL runtime system.
 | [`Rand`](crypto.md#vipercryptorand)           | Static   | Cryptographically secure random bytes    |
 | [`Tls`](crypto.md#vipercryptotls)             | Instance | TLS 1.3 secure socket connections        |
 
-### Viper.Data
-
-| Class                                   | Type   | Description                        |
-|-----------------------------------------|--------|------------------------------------|
-| [`Xml`](text.md#viperdataxml)           | Static | XML parsing, manipulation, output  |
-| [`Yaml`](text.md#viperdatayaml)         | Static | YAML parsing and formatting        |
-
 ### Viper.Diagnostics
 
 | Class                                             | Type     | Description        |
 |---------------------------------------------------|----------|--------------------|
 | [`Assert`](diagnostics.md#viperdiagnostics)       | Static   | Assertion checking |
 | [`Trap`](diagnostics.md#viperdiagnostics)         | Static   | Unconditional trap |
-| [`Stopwatch`](time.md#viperdiagnosticsstopwatch)  | Instance | Performance timing |
+
+### Viper.Game
+
+| Class                                                     | Type     | Description                             |
+|-----------------------------------------------------------|----------|-----------------------------------------|
+| [`ButtonGroup`](game.md#vipergamebuttongroup)             | Instance | Mutually exclusive button selection     |
+| [`Collision`](game.md#vipergamecollision)                 | Static   | Static collision detection helpers      |
+| [`CollisionRect`](game.md#vipergamecollisionrect)         | Instance | AABB collision detection                |
+| [`Grid2D`](game.md#vipergamegrid2d)                       | Instance | 2D array for tile maps and grids        |
+| [`ObjectPool`](game.md#vipergameobjectpool)               | Instance | Efficient object slot reuse             |
+| [`ParticleEmitter`](game.md#vipergameparticleemitter)     | Instance | Particle effects system                 |
+| [`PathFollower`](game.md#vipergamepathfollower)           | Instance | Path following along waypoints          |
+| [`Quadtree`](game.md#vipergamequadtree)                   | Instance | Spatial partitioning for collision      |
+| [`ScreenFX`](game.md#vipergamescreenfx)                   | Instance | Screen effects (shake, flash, fade)     |
+| [`SmoothValue`](game.md#vipergamesmoothvalue)             | Instance | Smooth value interpolation              |
+| [`SpriteAnimation`](game.md#vipergamespriteanimation)     | Instance | Frame-based sprite animation controller |
+| [`StateMachine`](game.md#vipergamestatemachine)           | Instance | Finite state machine for game states    |
+| [`Timer`](game.md#vipergametimer)                         | Instance | Frame-based game timers                 |
+| [`Tween`](game.md#vipergametween)                         | Instance | Animation tweening with easing          |
 
 ### Viper.Sound
 
@@ -165,10 +153,11 @@ implemented in C and exposed through the IL runtime system.
 
 | Class                                         | Type     | Description                        |
 |-----------------------------------------------|----------|------------------------------------|
+| [`Action`](input.md#viperinputaction)         | Static   | Device-agnostic action mapping     |
 | [`Keyboard`](input.md#viperinputkeyboard)     | Static   | Keyboard input for games and UI    |
+| [`Manager`](input.md#viperinputmanager)       | Instance | Unified input with debouncing      |
 | [`Mouse`](input.md#viperinputmouse)           | Static   | Mouse input for games and UI       |
 | [`Pad`](input.md#viperinputpad)               | Static   | Gamepad/controller input           |
-| [`Manager`](input.md#viperinputmanager)       | Instance | Unified input with debouncing      |
 
 ### Viper.IO
 
@@ -206,6 +195,7 @@ implemented in C and exposed through the IL runtime system.
 | [`Codec`](text.md#vipertextcodec)                 | Static   | Base64, Hex, URL encoding  |
 | [`Csv`](text.md#vipertextcsv)                     | Static   | CSV parsing and formatting |
 | [`Guid`](text.md#vipertextguid)                   | Static   | UUID v4 generation         |
+| [`Json`](text.md#vipertextjson)                   | Static   | JSON parsing and formatting|
 | [`Pattern`](text.md#vipertextpattern)             | Static   | Regex pattern matching     |
 | [`StringBuilder`](text.md#vipertextstringbuilder) | Instance | Mutable string builder     |
 | [`Template`](text.md#vipertexttemplate)           | Static   | Template rendering         |
@@ -215,21 +205,20 @@ implemented in C and exposed through the IL runtime system.
 | Class                                         | Type     | Description                                  |
 |-----------------------------------------------|----------|----------------------------------------------|
 | [`Barrier`](threads.md#viperthreadsbarrier)   | Instance | Synchronization barrier for N participants   |
-| [`Channel`](threads.md#viperthreadschannel)   | Instance | Bounded channel for thread communication     |
 | [`Gate`](threads.md#viperthreadsgate)         | Instance | Counting gate/semaphore                      |
 | [`Monitor`](threads.md#viperthreadsmonitor)   | Static   | FIFO-fair, re-entrant object monitor         |
-| [`Pool`](threads.md#viperthreadspool)         | Instance | Thread pool for concurrent task execution    |
 | [`RwLock`](threads.md#viperthreadsrwlock)     | Instance | Reader-writer lock                           |
 | [`SafeI64`](threads.md#viperthreadssafei64)   | Instance | FIFO-serialized safe integer cell            |
 | [`Thread`](threads.md#viperthreadsthread)     | Instance | OS thread handle + join/sleep/yield helpers  |
 
 ### Viper.Time
 
-| Class                                     | Type     | Description                  |
-|-------------------------------------------|----------|------------------------------|
-| [`Clock`](time.md#vipertimeclock)         | Static   | Sleep and tick counting      |
-| [`Countdown`](time.md#vipertimecountdown) | Instance | Millisecond-based countdown  |
-| [`Timer`](time.md#vipertimetimer)         | Instance | Frame-based game timers      |
+| Class                                       | Type     | Description                  |
+|---------------------------------------------|----------|------------------------------|
+| [`Clock`](time.md#vipertimeclock)           | Static   | Sleep and tick counting      |
+| [`Countdown`](time.md#vipertimecountdown)   | Instance | Millisecond-based countdown  |
+| [`DateTime`](time.md#vipertimedatetime)     | Static   | Date and time operations     |
+| [`Stopwatch`](time.md#vipertimestopwatch)   | Instance | Performance timing           |
 
 ---
 

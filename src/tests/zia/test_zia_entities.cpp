@@ -461,6 +461,105 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
+//===----------------------------------------------------------------------===//
+// As Cast Expression
+//===----------------------------------------------------------------------===//
+
+/// @brief Test 'as' type cast with list elements.
+/// This regression test verifies that the 'as' operator correctly lowers
+/// to IL. Previously, ExprKind::As was missing from lowerExpr(), causing
+/// casts to return 0 instead of the actual value.
+TEST(ZiaEntities, AsCastWithListElements)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+entity Animal {
+    hide Integer age;
+
+    expose func init(a: Integer) {
+        age = a;
+    }
+
+    expose func getAge() -> Integer {
+        return age;
+    }
+}
+
+entity Dog extends Animal {
+    hide String name;
+
+    expose func init(a: Integer, n: String) {
+        super.init(a);
+        name = n;
+    }
+
+    expose func getName() -> String {
+        return name;
+    }
+}
+
+func start() {
+    var animals = Viper.Collections.List.New();
+    animals.Add(new Dog(5, "Rex"));
+    animals.Add(new Dog(3, "Max"));
+
+    // Test single element cast
+    var item = animals[0];
+    var dog1 = item as Dog;
+    Viper.Terminal.SayInt(dog1.getAge());
+
+    // Test cast in loop
+    var totalAge = 0;
+    for i in 0..animals.Count {
+        var dog = animals[i] as Dog;
+        totalAge = totalAge + dog.getAge();
+    }
+    Viper.Terminal.SayInt(totalAge);
+}
+)";
+    CompilerInput input{.source = source, .path = "ascast.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+/// @brief Test basic 'as' cast without list (direct entity cast).
+TEST(ZiaEntities, AsCastBasic)
+{
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+entity Base {
+    expose Integer value;
+}
+
+entity Derived extends Base {
+    expose String name;
+}
+
+func start() {
+    var d = new Derived();
+    d.value = 42;
+    d.name = "test";
+
+    // Cast derived to base and back
+    var b = d as Base;
+    Viper.Terminal.SayInt(b.value);
+}
+)";
+    CompilerInput input{.source = source, .path = "ascast_basic.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
 } // namespace
 
 int main()

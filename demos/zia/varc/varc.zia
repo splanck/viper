@@ -32,7 +32,7 @@ var ENT_HEADER_SIZE: Integer = 14;
 // --- Helper Functions ---
 
 func intToStr(n: Integer) -> String {
-    return Viper.Strings.FromInt(n);
+    return Viper.String.FromInt(n);
 }
 
 func strToInt(s: String) -> Integer {

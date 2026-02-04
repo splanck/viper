@@ -210,7 +210,7 @@ void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boun
         {
             // Only declare spellings that were actually used at call sites.
             // This allows declaring multiple aliases in the same signature
-            // group when both were referenced (e.g., Viper.Strings.Mid and
+            // group when both were referenced (e.g., Viper.String.Mid and
             // Viper.String.Substring).
             if (!usedNames_.contains(std::string(d.name)))
                 return;
@@ -241,31 +241,7 @@ void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boun
                 }
             }
 
-            // Additional canonical preference: when both Viper.Strings.* and
-            // Viper.String.* exist for the same signature id, prefer the
-            // functions in Viper.Strings.* unless the Viper.String.* spelling
-            // was explicitly used at a call site.
-            if (d.name.rfind("Viper.String.", 0) == 0)
-            {
-                if (auto sigId = il::runtime::findRuntimeSignatureId(d.name))
-                {
-                    const auto &reg = il::runtime::runtimeRegistry();
-                    for (const auto &other : reg)
-                    {
-                        auto otherId = il::runtime::findRuntimeSignatureId(other.name);
-                        if (!otherId || *otherId != *sigId)
-                            continue;
-                        if (other.name.rfind("Viper.Strings.", 0) == 0)
-                        {
-                            // Prefer the Viper.Strings.* variant when no explicit usage forces
-                            // otherwise.
-                            return;
-                        }
-                    }
-                }
-            }
-
-            // Similarly, prefer Viper.Terminal.* over Viper.Console.* (Console
+            // Prefer Viper.Terminal.* over Viper.Console.* (Console
             // is now an alias for backward compatibility).
             if (d.name.rfind("Viper.Console.", 0) == 0)
             {
@@ -289,7 +265,7 @@ void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boun
             // Avoid declaring certain OOP-style or ctor helpers unless used.
             // Tests/goldens expect these only when referenced.
             if (d.name == std::string_view{"Viper.String.get_IsEmpty"} ||
-                d.name == std::string_view{"Viper.Strings.FromStr"})
+                d.name == std::string_view{"Viper.String.FromStr"})
             {
                 return;
             }
@@ -332,7 +308,7 @@ void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boun
 
     // Declare any manually-lowered helpers that were explicitly used at call sites.
     // This keeps IL lean (no unconditional alias declarations) while ensuring
-    // names like Viper.Text.StringBuilder.* and Viper.Strings.Builder.* appear
+    // names like Viper.Text.StringBuilder.* and Viper.String.Builder.* appear
     // only when referenced.
     for (const auto &name : usedNames_)
     {

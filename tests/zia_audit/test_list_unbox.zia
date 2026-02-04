@@ -12,7 +12,7 @@ func start() {
     Viper.Terminal.Say("Got item");
 
     var value: Integer = Viper.Box.ToI64(item);
-    Viper.Terminal.Say("Value: " + Viper.Strings.FromInt(value));
+    Viper.Terminal.Say("Value: " + Viper.String.FromInt(value));
 
     if (value == 100) {
         Viper.Terminal.Say("RESULT: ok");

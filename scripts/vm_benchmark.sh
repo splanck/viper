@@ -38,8 +38,8 @@ find_ilc() {
     return 0
   fi
   local candidates=(
-    "$ROOT_DIR/build/src/tools/ilc/ilc"
-    "$ROOT_DIR/build/tools/ilc/ilc"
+    "$ROOT_DIR/build/src/tools/viper/viper"
+    "$ROOT_DIR/build/tools/viper/viper"
     "$ROOT_DIR/build/bin/ilc"
   )
   for c in "${candidates[@]}"; do

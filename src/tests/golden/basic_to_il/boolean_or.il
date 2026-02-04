@@ -2,8 +2,8 @@ il 0.2.0
 extern @Viper.Terminal.PrintStr(str) -> void
 extern @Viper.Terminal.PrintI64(i64) -> void
 extern @Viper.Terminal.PrintF64(f64) -> void
-extern @Viper.Strings.Len(str) -> i64
-extern @Viper.Strings.Mid(str, i64, i64) -> str
+extern @Viper.String.get_Length(str) -> i64
+extern @Viper.String.Substring(str, i64, i64) -> str
 extern @Viper.String.Left(str, i64) -> str
 extern @Viper.String.Right(str, i64) -> str
 extern @Viper.String.Mid(str, i64) -> str
@@ -29,8 +29,8 @@ extern @Viper.String.Repeat(str, i64) -> str
 extern @Viper.String.Flip(str) -> str
 extern @Viper.String.Cmp(str, str) -> i64
 extern @Viper.String.CmpNoCase(str, str) -> i64
-extern @Viper.Strings.Join(str, ptr) -> str
 extern @Viper.Convert.ToInt(str) -> i64
+extern @Viper.String.Join(str, ptr) -> str
 extern @rt_str_empty() -> str
 extern @Viper.Terminal.ReadLine() -> str
 extern @rt_str_release_maybe(str) -> void
@@ -91,12 +91,12 @@ L50:
   .loc 1 5 4
   %t14 = trunc1 %t13
   .loc 1 5 4
-  store i1, %t2, %t14
+  store i1, %t0, %t14
   .loc 1 5 4
   br L60
 L60:
   .loc 1 6 17
-  %t15 = load i1, %t2
+  %t15 = load i1, %t0
   .loc 1 6 21
   %t16 = zext1 %t15
   .loc 1 6 21
@@ -114,12 +114,12 @@ L60:
   .loc 1 6 4
   %t23 = trunc1 %t22
   .loc 1 6 4
-  store i1, %t0, %t23
+  store i1, %t2, %t23
   .loc 1 6 4
   br L70
 L70:
   .loc 1 7 10
-  %t24 = load i1, %t0
+  %t24 = load i1, %t2
   .loc 1 7 4
   %t25 = zext1 %t24
   .loc 1 7 4

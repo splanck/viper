@@ -22,7 +22,7 @@ func checkLen(name: String, s: String, expected: Integer) {
         Viper.Terminal.Say("PASS: " + name);
     } else {
         failed = failed + 1;
-        Viper.Terminal.Say("FAIL: " + name + " - expected length " + Viper.Strings.FromInt(expected) + ", got " + Viper.Strings.FromInt(len));
+        Viper.Terminal.Say("FAIL: " + name + " - expected length " + Viper.String.FromInt(expected) + ", got " + Viper.String.FromInt(len));
     }
 }
 
@@ -88,8 +88,8 @@ func start() {
 
     // Report results
     Viper.Terminal.Say("=== Results ===");
-    Viper.Terminal.Say("Passed: " + Viper.Strings.FromInt(passed));
-    Viper.Terminal.Say("Failed: " + Viper.Strings.FromInt(failed));
+    Viper.Terminal.Say("Passed: " + Viper.String.FromInt(passed));
+    Viper.Terminal.Say("Failed: " + Viper.String.FromInt(failed));
 
     if (failed == 0) {
         Viper.Terminal.Say("RESULT: ok");

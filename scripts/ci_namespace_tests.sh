@@ -131,7 +131,7 @@ echo ""
 
 echo -e "${BLUE}[5/5]${NC} Verifying namespace_demo.bas compiles..."
 EXAMPLE_FILE="${REPO_ROOT}/examples/basic/namespace_demo.bas"
-ILC="${BUILD_DIR}/src/tools/ilc/ilc"
+ILC="${BUILD_DIR}/src/tools/viper/viper"
 
 if [[ ! -f "$ILC" ]]; then
   echo -e "${RED}✗ FAIL${NC}: ilc not found at $ILC"

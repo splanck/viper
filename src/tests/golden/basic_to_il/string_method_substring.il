@@ -2,8 +2,7 @@ il 0.2.0
 extern @Viper.Terminal.PrintStr(str) -> void
 extern @Viper.Terminal.PrintI64(i64) -> void
 extern @Viper.Terminal.PrintF64(f64) -> void
-extern @Viper.Strings.Len(str) -> i64
-extern @Viper.Strings.Mid(str, i64, i64) -> str
+extern @Viper.String.get_Length(str) -> i64
 extern @Viper.String.Substring(str, i64, i64) -> str
 extern @Viper.String.Left(str, i64) -> str
 extern @Viper.String.Right(str, i64) -> str
@@ -30,7 +29,7 @@ extern @Viper.String.Repeat(str, i64) -> str
 extern @Viper.String.Flip(str) -> str
 extern @Viper.String.Cmp(str, str) -> i64
 extern @Viper.String.CmpNoCase(str, str) -> i64
-extern @Viper.Strings.Join(str, ptr) -> str
+extern @Viper.String.Join(str, ptr) -> str
 extern @rt_str_empty() -> str
 extern @rt_obj_retain_maybe(ptr) -> void
 extern @rt_obj_release_check0(ptr) -> i1
@@ -51,7 +50,7 @@ L10:
   .loc 1 1 11
   %t1 = const_str @.L0
   .loc 1 1 19
-  %t2 = call @Viper.Strings.Mid(%t1, 2, 2)
+  %t2 = call @Viper.String.Substring(%t1, 2, 2)
   .loc 1 1 19
   call @Viper.Terminal.PrintStr(%t2)
   .loc 1 1 19

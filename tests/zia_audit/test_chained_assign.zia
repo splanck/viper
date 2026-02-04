@@ -10,9 +10,9 @@ func start() {
     var c: Integer = 0;
     a = b = c = 42;
 
-    Viper.Terminal.Say("a = " + Viper.Strings.FromInt(a));
-    Viper.Terminal.Say("b = " + Viper.Strings.FromInt(b));
-    Viper.Terminal.Say("c = " + Viper.Strings.FromInt(c));
+    Viper.Terminal.Say("a = " + Viper.String.FromInt(a));
+    Viper.Terminal.Say("b = " + Viper.String.FromInt(b));
+    Viper.Terminal.Say("c = " + Viper.String.FromInt(c));
 
     if (a == 42 && b == 42 && c == 42) {
         Viper.Terminal.Say("RESULT: ok");

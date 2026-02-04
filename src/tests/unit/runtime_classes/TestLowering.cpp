@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/runtime_classes/TestLowering.cpp
-// Purpose: Ensure lowering of "\"abcd\".Length" emits exactly one call to Viper.Strings.Len.
+// Purpose: Ensure lowering of "\"abcd\".Length" emits exactly one call to Viper.String.Len.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md
@@ -53,8 +53,8 @@ TEST(RuntimeClassLowering, StringLiteralLengthLowersToStringsLen)
     il::frontends::basic::BasicCompilerInput input{src, "lit_len.bas"};
     auto result = il::frontends::basic::compileBasic(input, opts, sm);
     ASSERT_TRUE(result.succeeded());
-    // One extern call to Viper.Strings.Len should appear in IL
-    EXPECT_EQ(countCallsTo(result.module, "Viper.Strings.Len"), 1);
+    // One extern call to Viper.String.get_Length should appear in IL
+    EXPECT_EQ(countCallsTo(result.module, "Viper.String.get_Length"), 1);
 }
 
 int main(int argc, char **argv)

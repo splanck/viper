@@ -1,10 +1,10 @@
 il 0.1
 extern @Viper.Console.PrintStr(str) -> void
 extern @Viper.Console.PrintI64(i64) -> void
-extern @Viper.Strings.Len(str) -> i64
-extern @Viper.Strings.Concat(str, str) -> str
-extern @Viper.Strings.Mid(str, i64, i64) -> str
-extern @Viper.Strings.Equals(str, str) -> i64
+extern @Viper.String.Len(str) -> i64
+extern @Viper.String.Concat(str, str) -> str
+extern @Viper.String.Substring(str, i64, i64) -> str
+extern @Viper.String.Equals(str, str) -> i64
 
 global const str @.L0 = "JOHN"
 global const str @.L1 = "DOE"
@@ -26,12 +26,12 @@ entry:
 
   %sSp = const_str @.L2
   %a0 = load str, %a_slot
-  %c0 = call @Viper.Strings.Concat(%a0, %sSp)
+  %c0 = call @Viper.String.Concat(%a0, %sSp)
   store str, %c_slot, %c0
 
   %c1 = load str, %c_slot
   %b0 = load str, %b_slot
-  %c2 = call @Viper.Strings.Concat(%c1, %b0)
+  %c2 = call @Viper.String.Concat(%c1, %b0)
   store str, %c_slot, %c2
 
   %c3 = load str, %c_slot
@@ -40,19 +40,19 @@ entry:
   %nl0 = const_str @.L4
   call @Viper.Console.PrintStr(%nl0)
 
-  %len = call @Viper.Strings.Len(%c3)
+  %len = call @Viper.String.Len(%c3)
   store i64, %l_slot, %len
   call @Viper.Console.PrintI64(%len)
   %nl1 = const_str @.L4
   call @Viper.Console.PrintStr(%nl1)
 
-  %first = call @Viper.Strings.Mid(%c3, 0, 1)
+  %first = call @Viper.String.Substring(%c3, 0, 1)
   call @Viper.Console.PrintStr(%first)
   %nl2 = const_str @.L4
   call @Viper.Console.PrintStr(%nl2)
 
   %target = const_str @.L3
-  %eq64 = call @Viper.Strings.Equals(%c3, %target)
+  %eq64 = call @Viper.String.Equals(%c3, %target)
   %eq = trunc1 %eq64
   cbr %eq, label then1, label else0
 

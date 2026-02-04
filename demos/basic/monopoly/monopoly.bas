@@ -306,7 +306,7 @@ END SUB
 ' ====================================================================
 SUB InitGame()
     ' Seed random number generator with current time
-    Viper.Random.Seed(Viper.DateTime.NowMs())
+    Viper.Random.Seed(Viper.Time.DateTime.NowMs())
 
     ' Initialize board and players
     InitBoard()

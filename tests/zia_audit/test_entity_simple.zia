@@ -20,9 +20,9 @@ func start() {
     Viper.Terminal.Say("=== Entity Simple Test ===");
 
     var p: Point = new Point(10, 20);
-    Viper.Terminal.Say("x = " + Viper.Strings.FromInt(p.x));
-    Viper.Terminal.Say("y = " + Viper.Strings.FromInt(p.y));
-    Viper.Terminal.Say("sum = " + Viper.Strings.FromInt(p.getSum()));
+    Viper.Terminal.Say("x = " + Viper.String.FromInt(p.x));
+    Viper.Terminal.Say("y = " + Viper.String.FromInt(p.y));
+    Viper.Terminal.Say("sum = " + Viper.String.FromInt(p.getSum()));
 
     if (p.x == 10 && p.y == 20 && p.getSum() == 30) {
         Viper.Terminal.Say("RESULT: ok");

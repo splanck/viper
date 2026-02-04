@@ -6,22 +6,281 @@
 
 ## Contents
 
-- [Viper.StateMachine](#viperstatemachine)
-- [Viper.Tween](#vipertween)
-- [Viper.ButtonGroup](#viperbuttongroup)
-- [Viper.SmoothValue](#vipersmoothvalue)
-- [Viper.ParticleEmitter](#viperparticleemitter)
-- [Viper.SpriteAnimation](#viperspriteanimation)
-- [Viper.CollisionRect](#vipercollisionrect)
-- [Viper.Collision](#vipercollision)
-- [Viper.ObjectPool](#viperobjectpool)
-- [Viper.ScreenFX](#viperscreenfx)
-- [Viper.PathFollower](#viperpathfollower)
-- [Viper.Quadtree](#viperquadtree)
+- [Viper.Game.Grid2D](#vipergamegrid2d)
+- [Viper.Game.Timer](#vipergametimer)
+- [Viper.Game.StateMachine](#vipergamestatemachine)
+- [Viper.Game.Tween](#vipergametween)
+- [Viper.Game.ButtonGroup](#vipergamebuttongroup)
+- [Viper.Game.SmoothValue](#vipergamesmoothvalue)
+- [Viper.Game.ParticleEmitter](#vipergameparticleemitter)
+- [Viper.Game.SpriteAnimation](#vipergamespriteanimation)
+- [Viper.Game.CollisionRect](#vipergamecollisionrect)
+- [Viper.Game.Collision](#vipergamecollision)
+- [Viper.Game.ObjectPool](#vipergameobjectpool)
+- [Viper.Game.ScreenFX](#vipergamescreenfx)
+- [Viper.Game.PathFollower](#vipergamepathfollower)
+- [Viper.Game.Quadtree](#vipergamequadtree)
 
 ---
 
-## Viper.StateMachine
+## Viper.Game.Grid2D
+
+A 2D array container optimized for tile maps, game boards, and grid-based data.
+
+**Type:** Instance class (requires `New(width, height, defaultValue)`)
+
+### Constructor
+
+| Method                        | Signature                 | Description                                      |
+|-------------------------------|---------------------------|--------------------------------------------------|
+| `New(width, height, default)` | `Grid2D(Int, Int, Int)`   | Create a grid with dimensions and default value  |
+
+### Properties
+
+| Property | Type                  | Description                            |
+|----------|-----------------------|----------------------------------------|
+| `Width`  | `Integer` (read-only) | Width of the grid                      |
+| `Height` | `Integer` (read-only) | Height of the grid                     |
+| `Size`   | `Integer` (read-only) | Total number of cells (width × height) |
+
+### Methods
+
+| Method                | Signature                 | Description                                        |
+|-----------------------|---------------------------|----------------------------------------------------|
+| `Get(x, y)`           | `Integer(Int, Int)`       | Get value at coordinates                           |
+| `Set(x, y, value)`    | `Void(Int, Int, Int)`     | Set value at coordinates                           |
+| `Fill(value)`         | `Void(Integer)`           | Fill entire grid with value                        |
+| `Clear()`             | `Void()`                  | Clear grid (fill with 0)                           |
+| `InBounds(x, y)`      | `Boolean(Int, Int)`       | Check if coordinates are valid                     |
+| `CopyFrom(other)`     | `Boolean(Grid2D)`         | Copy data from another grid (must match dimensions)|
+| `Count(value)`        | `Integer(Integer)`        | Count cells with specified value                   |
+| `Replace(old, new)`   | `Integer(Int, Int)`       | Replace all occurrences; returns count replaced    |
+
+### Notes
+
+- Coordinates are 0-based: (0,0) is top-left
+- Out-of-bounds access traps with an error
+- Use `InBounds()` to validate coordinates before access
+- Grid stores integer values (use as tile IDs, flags, etc.)
+
+### Example: Tile Map
+
+```basic
+' Create a 20x15 tile map (defaults to 0 = empty)
+DIM map AS OBJECT = Viper.Game.Grid2D.New(20, 15, 0)
+
+' Set some tiles
+CONST TILE_WALL = 1
+CONST TILE_FLOOR = 2
+CONST TILE_DOOR = 3
+
+' Fill with floor
+map.Fill(TILE_FLOOR)
+
+' Add walls around the edges
+FOR x = 0 TO map.Width - 1
+    map.Set(x, 0, TILE_WALL)
+    map.Set(x, map.Height - 1, TILE_WALL)
+NEXT
+FOR y = 0 TO map.Height - 1
+    map.Set(0, y, TILE_WALL)
+    map.Set(map.Width - 1, y, TILE_WALL)
+NEXT
+
+' Add a door
+map.Set(10, 0, TILE_DOOR)
+
+' Check a position before moving
+DIM newX AS INTEGER = playerX + dx
+DIM newY AS INTEGER = playerY + dy
+IF map.InBounds(newX, newY) THEN
+    DIM tile AS INTEGER = map.Get(newX, newY)
+    IF tile <> TILE_WALL THEN
+        playerX = newX
+        playerY = newY
+    END IF
+END IF
+```
+
+### Example: Game of Life
+
+```basic
+DIM grid AS OBJECT = Viper.Game.Grid2D.New(50, 50, 0)
+DIM next AS OBJECT = Viper.Game.Grid2D.New(50, 50, 0)
+
+' Initialize with random cells
+FOR y = 0 TO 49
+    FOR x = 0 TO 49
+        IF Viper.Random.Chance(0.3) THEN
+            grid.Set(x, y, 1)
+        END IF
+    NEXT
+NEXT
+
+' Update step
+FOR y = 0 TO 49
+    FOR x = 0 TO 49
+        DIM neighbors AS INTEGER = CountNeighbors(grid, x, y)
+        DIM alive AS INTEGER = grid.Get(x, y)
+        IF alive = 1 AND (neighbors = 2 OR neighbors = 3) THEN
+            next.Set(x, y, 1)
+        ELSEIF alive = 0 AND neighbors = 3 THEN
+            next.Set(x, y, 1)
+        ELSE
+            next.Set(x, y, 0)
+        END IF
+    NEXT
+NEXT
+grid.CopyFrom(next)
+```
+
+### Use Cases
+
+- **Tile maps:** 2D game levels, dungeon maps
+- **Game boards:** Chess, checkers, puzzle games
+- **Cellular automata:** Game of Life, simulation grids
+- **Pathfinding:** Navigation grids, A* maps
+- **Collision maps:** Simple tile-based collision detection
+
+---
+
+## Viper.Game.Timer
+
+Frame-based timers for games and animations. Unlike wall-clock timers, Timer operates
+in discrete frames, making it ideal for deterministic game logic.
+
+**Type:** Instance class (requires `New()`)
+
+### Constructor
+
+| Method  | Signature  | Description                                 |
+|---------|------------|---------------------------------------------|
+| `New()` | `Timer()`  | Create a new timer (initially stopped)      |
+
+### Properties
+
+| Property      | Type                   | Description                                      |
+|---------------|------------------------|--------------------------------------------------|
+| `Duration`    | `Integer` (read/write) | Total frames for the countdown                   |
+| `Elapsed`     | `Integer` (read-only)  | Frames elapsed since start                       |
+| `Remaining`   | `Integer` (read-only)  | Frames remaining until expiration (0 if expired) |
+| `Progress`    | `Integer` (read-only)  | Completion percentage (0-100)                    |
+| `IsRunning`   | `Boolean` (read-only)  | True if the timer is currently running           |
+| `IsExpired`   | `Boolean` (read-only)  | True if the timer has finished                   |
+| `IsRepeating` | `Boolean` (read-only)  | True if the timer auto-restarts when expired     |
+
+### Methods
+
+| Method                   | Signature       | Description                                               |
+|--------------------------|-----------------|-----------------------------------------------------------|
+| `Start(frames)`          | `Void(Integer)` | Start a one-shot countdown for specified frames           |
+| `StartRepeating(frames)` | `Void(Integer)` | Start a repeating timer that auto-restarts                |
+| `Stop()`                 | `Void()`        | Pause the timer, preserving elapsed time                  |
+| `Reset()`                | `Void()`        | Reset elapsed to 0 without stopping                       |
+| `Update()`               | `Boolean()`     | Advance timer by one frame; returns true if just expired  |
+
+### Notes
+
+- Timer operates in frames, not milliseconds - call `Update()` once per frame
+- `Update()` returns true exactly once when the timer expires
+- One-shot timers stop when expired; repeating timers reset and continue
+- `Progress` returns integer percentage (0-100), useful for animations
+- Frame-based timing ensures deterministic game behavior across different hardware
+
+### Example: Animation Timer
+
+```basic
+DIM canvas AS OBJECT = Viper.Graphics.Canvas.New("Animation", 800, 600)
+
+' Create a 60-frame animation timer (1 second at 60fps)
+DIM anim AS OBJECT = Viper.Game.Timer.New()
+anim.Start(60)
+
+DO WHILE canvas.ShouldClose = 0
+    canvas.Poll()
+
+    ' Update timer each frame
+    IF anim.Update() THEN
+        PRINT "Animation complete!"
+    END IF
+
+    ' Use progress for smooth interpolation
+    DIM progress AS INTEGER = anim.Progress
+    DIM x AS INTEGER = progress * 7  ' Move from 0 to 700
+
+    canvas.Clear(&H00000000)
+    canvas.Box(x, 280, 40, 40, &HFF0000)
+    canvas.Flip()
+LOOP
+```
+
+### Example: Repeating Timer (Game Events)
+
+```basic
+' Create a timer that fires every 180 frames (3 seconds at 60fps)
+DIM spawnTimer AS OBJECT = Viper.Game.Timer.New()
+spawnTimer.StartRepeating(180)
+
+' Game loop
+DO WHILE running
+    canvas.Poll()
+
+    ' Check if it's time to spawn an enemy
+    IF spawnTimer.Update() THEN
+        SpawnEnemy()  ' Called every 3 seconds
+    END IF
+
+    ' Rest of game logic...
+LOOP
+```
+
+### Example: Power-Up Duration
+
+```basic
+DIM powerUpTimer AS OBJECT = Viper.Game.Timer.New()
+
+' When player collects power-up
+SUB OnPowerUpCollected()
+    powerUpTimer.Start(600)  ' 10 seconds at 60fps
+    playerSpeed = playerSpeed * 2
+END SUB
+
+' In game loop
+IF powerUpTimer.IsRunning THEN
+    ' Show remaining time
+    IF powerUpTimer.Remaining < 120 THEN
+        FlashPowerUpIndicator()  ' Warning: almost over
+    END IF
+
+    IF powerUpTimer.Update() THEN
+        playerSpeed = playerSpeed / 2  ' Power-up expired
+    END IF
+END IF
+```
+
+### Comparison with Viper.Time.Countdown
+
+| Feature             | Timer                          | Countdown                       |
+|---------------------|--------------------------------|---------------------------------|
+| Time unit           | Frames                         | Milliseconds                    |
+| Determinism         | Fully deterministic            | Subject to system clock jitter  |
+| Use case            | Game logic, animations         | Real-world timeouts             |
+| Update model        | Manual `Update()` per frame    | Automatic based on clock        |
+| Progress tracking   | 0-100 integer percentage       | Elapsed/remaining in ms         |
+| Repeating mode      | Yes (`StartRepeating`)         | No (must manually restart)      |
+
+### Use Cases
+
+- **Animations:** Smooth interpolation with `Progress` property
+- **Cooldowns:** Weapon fire rate, ability cooldowns
+- **Spawn timers:** Periodic enemy spawning
+- **Power-ups:** Duration-limited effects
+- **Mode transitions:** Ghost AI state changes
+- **Delays:** Wait N frames before action
+
+---
+
+## Viper.Game.StateMachine
 
 A finite state machine for managing game/application states like menus, gameplay, pause screens, and transitions.
 
@@ -73,7 +332,7 @@ CONST STATE_PAUSED = 2
 CONST STATE_GAMEOVER = 3
 
 ' Create and configure state machine
-DIM sm AS OBJECT = Viper.StateMachine.New()
+DIM sm AS OBJECT = Viper.Game.StateMachine.New()
 sm.AddState(STATE_MENU)
 sm.AddState(STATE_PLAYING)
 sm.AddState(STATE_PAUSED)
@@ -123,7 +382,7 @@ LOOP
 
 ---
 
-## Viper.Tween
+## Viper.Game.Tween
 
 Frame-based tweening with easing functions for smooth animations. Interpolates between values over time with various easing curves.
 
@@ -195,7 +454,7 @@ Frame-based tweening with easing functions for smooth animations. Interpolates b
 
 ```basic
 DIM canvas AS OBJECT = Viper.Graphics.Canvas.New("Tween Demo", 800, 600)
-DIM moveTween AS OBJECT = Viper.Tween.New()
+DIM moveTween AS OBJECT = Viper.Game.Tween.New()
 
 ' Move from x=100 to x=600 over 60 frames with ease-out
 moveTween.Start(100.0, 600.0, 60, 2)  ' EASE_OUT_QUAD = 2
@@ -224,7 +483,7 @@ LOOP
 
 ```basic
 ' Fade-in effect using opacity tween
-DIM fadeTween AS OBJECT = Viper.Tween.New()
+DIM fadeTween AS OBJECT = Viper.Game.Tween.New()
 fadeTween.Start(0.0, 255.0, 30, 8)  ' EASE_OUT_SINE
 
 DO WHILE fadeTween.IsRunning
@@ -241,7 +500,7 @@ LOOP
 
 ---
 
-## Viper.ButtonGroup
+## Viper.Game.ButtonGroup
 
 Manages mutually exclusive button selection, like radio buttons or tool palettes. Only one button can be selected at a time.
 
@@ -287,7 +546,7 @@ CONST TOOL_ERASER = 3
 CONST TOOL_FILL = 4
 
 ' Create tool group
-DIM tools AS OBJECT = Viper.ButtonGroup.New()
+DIM tools AS OBJECT = Viper.Game.ButtonGroup.New()
 tools.Add(TOOL_PENCIL)
 tools.Add(TOOL_BRUSH)
 tools.Add(TOOL_ERASER)
@@ -333,7 +592,7 @@ CONST DIFF_EASY = 0
 CONST DIFF_NORMAL = 1
 CONST DIFF_HARD = 2
 
-DIM difficulty AS OBJECT = Viper.ButtonGroup.New()
+DIM difficulty AS OBJECT = Viper.Game.ButtonGroup.New()
 difficulty.Add(DIFF_EASY)
 difficulty.Add(DIFF_NORMAL)
 difficulty.Add(DIFF_HARD)
@@ -353,7 +612,7 @@ DIM selectedDifficulty AS INTEGER = difficulty.Selected
 
 ---
 
-## Viper.SmoothValue
+## Viper.Game.SmoothValue
 
 Smooth value interpolation for camera follow, UI animations, and other cases where instant changes would be jarring. Uses exponential smoothing.
 
@@ -394,8 +653,8 @@ Smooth value interpolation for camera follow, UI animations, and other cases whe
 
 ```basic
 ' Create smooth camera position
-DIM camX AS OBJECT = Viper.SmoothValue.New(400.0, 0.9)
-DIM camY AS OBJECT = Viper.SmoothValue.New(300.0, 0.9)
+DIM camX AS OBJECT = Viper.Game.SmoothValue.New(400.0, 0.9)
+DIM camY AS OBJECT = Viper.Game.SmoothValue.New(300.0, 0.9)
 
 ' In game loop
 camX.Target = playerX  ' Camera follows player
@@ -410,7 +669,7 @@ DIM offsetY AS INTEGER = camY.ValueI64 - 300
 
 ---
 
-## Viper.ParticleEmitter
+## Viper.Game.ParticleEmitter
 
 Simple particle system for visual effects like explosions, sparks, smoke, and other game effects.
 
@@ -453,7 +712,7 @@ Simple particle system for visual effects like explosions, sparks, smoke, and ot
 ### Example: Explosion Effect
 
 ```basic
-DIM explosion AS OBJECT = Viper.ParticleEmitter.New(200)
+DIM explosion AS OBJECT = Viper.Game.ParticleEmitter.New(200)
 explosion.SetPosition(400.0, 300.0)
 explosion.SetLifetime(20, 40)
 explosion.SetVelocity(2.0, 8.0, 0.0, 360.0)  ' All directions
@@ -471,7 +730,7 @@ explosion.Update()
 
 ---
 
-## Viper.SpriteAnimation
+## Viper.Game.SpriteAnimation
 
 Frame-based sprite animation controller for animated characters, effects, and UI elements.
 
@@ -514,7 +773,7 @@ Frame-based sprite animation controller for animated characters, effects, and UI
 ### Example: Character Walk Cycle
 
 ```basic
-DIM walkAnim AS OBJECT = Viper.SpriteAnimation.New()
+DIM walkAnim AS OBJECT = Viper.Game.SpriteAnimation.New()
 walkAnim.Setup(0, 7, 6)  ' Frames 0-7, 6 game frames each
 walkAnim.Loop = 1
 walkAnim.Play()
@@ -528,7 +787,7 @@ DIM frameIndex AS INTEGER = walkAnim.Frame
 ### Example: Attack Animation (One-Shot)
 
 ```basic
-DIM attackAnim AS OBJECT = Viper.SpriteAnimation.New()
+DIM attackAnim AS OBJECT = Viper.Game.SpriteAnimation.New()
 attackAnim.Setup(8, 15, 4)  ' Frames 8-15, faster playback
 attackAnim.Loop = 0  ' One-shot
 
@@ -544,7 +803,7 @@ END IF
 
 ---
 
-## Viper.CollisionRect
+## Viper.Game.CollisionRect
 
 Axis-aligned bounding box (AABB) for collision detection between game objects.
 
@@ -589,8 +848,8 @@ Axis-aligned bounding box (AABB) for collision detection between game objects.
 ### Example: Player-Enemy Collision
 
 ```basic
-DIM playerBox AS OBJECT = Viper.CollisionRect.New(100.0, 100.0, 32.0, 48.0)
-DIM enemyBox AS OBJECT = Viper.CollisionRect.New(200.0, 100.0, 32.0, 32.0)
+DIM playerBox AS OBJECT = Viper.Game.CollisionRect.New(100.0, 100.0, 32.0, 48.0)
+DIM enemyBox AS OBJECT = Viper.Game.CollisionRect.New(200.0, 100.0, 32.0, 32.0)
 
 ' Update positions
 playerBox.SetPosition(playerX, playerY)
@@ -604,7 +863,7 @@ END IF
 
 ---
 
-## Viper.Collision
+## Viper.Game.Collision
 
 Static utility class for collision detection without creating objects. Useful for one-off checks.
 
@@ -626,17 +885,17 @@ Static utility class for collision detection without creating objects. Useful fo
 
 ```basic
 ' Check if mouse click hits a button
-IF Viper.Collision.PointInRect(mouseX, mouseY, btnX, btnY, btnW, btnH) THEN
+IF Viper.Game.Collision.PointInRect(mouseX, mouseY, btnX, btnY, btnW, btnH) THEN
     OnButtonClick()
 END IF
 
 ' Check if two circles overlap
-IF Viper.Collision.CirclesOverlap(p1X, p1Y, p1R, p2X, p2Y, p2R) THEN
+IF Viper.Game.Collision.CirclesOverlap(p1X, p1Y, p1R, p2X, p2Y, p2R) THEN
     HandleCollision()
 END IF
 
 ' Get distance for range checks
-DIM dist AS DOUBLE = Viper.Collision.Distance(playerX, playerY, enemyX, enemyY)
+DIM dist AS DOUBLE = Viper.Game.Collision.Distance(playerX, playerY, enemyX, enemyY)
 IF dist < attackRange THEN
     CanAttack = 1
 END IF
@@ -644,7 +903,7 @@ END IF
 
 ---
 
-## Viper.ObjectPool
+## Viper.Game.ObjectPool
 
 Efficient object pool for reusing slot indices, avoiding allocation churn for frequently created/destroyed game objects like bullets, enemies, and particles.
 
@@ -683,7 +942,7 @@ Efficient object pool for reusing slot indices, avoiding allocation churn for fr
 
 ```basic
 ' Create bullet pool
-DIM bullets AS OBJECT = Viper.ObjectPool.New(100)
+DIM bullets AS OBJECT = Viper.Game.ObjectPool.New(100)
 DIM bulletX(99) AS DOUBLE
 DIM bulletY(99) AS DOUBLE
 DIM bulletVX(99) AS DOUBLE
@@ -719,7 +978,7 @@ END SUB
 
 ---
 
-## Viper.ScreenFX
+## Viper.Game.ScreenFX
 
 Screen effects manager for camera shake, color flash, and fade effects.
 
@@ -767,7 +1026,7 @@ Screen effects manager for camera shake, color flash, and fade effects.
 ### Example: Damage Effects
 
 ```basic
-DIM fx AS OBJECT = Viper.ScreenFX.New()
+DIM fx AS OBJECT = Viper.Game.ScreenFX.New()
 
 ' On player damage
 SUB OnDamage()
@@ -795,7 +1054,7 @@ END IF
 
 ---
 
-## Viper.PathFollower
+## Viper.Game.PathFollower
 
 Path following for moving objects along predefined waypoint paths.
 
@@ -844,7 +1103,7 @@ Path following for moving objects along predefined waypoint paths.
 ### Example: Patrol Route
 
 ```basic
-DIM patrol AS OBJECT = Viper.PathFollower.New()
+DIM patrol AS OBJECT = Viper.Game.PathFollower.New()
 patrol.AddPoint(100000, 100000)   ' 100, 100
 patrol.AddPoint(400000, 100000)   ' 400, 100
 patrol.AddPoint(400000, 400000)   ' 400, 400
@@ -862,7 +1121,7 @@ DIM enemyY AS INTEGER = patrol.Y / 1000
 ### Example: Cutscene Camera
 
 ```basic
-DIM cameraPath AS OBJECT = Viper.PathFollower.New()
+DIM cameraPath AS OBJECT = Viper.Game.PathFollower.New()
 cameraPath.AddPoint(0, 0)
 cameraPath.AddPoint(200000, 100000)
 cameraPath.AddPoint(500000, 300000)
@@ -879,7 +1138,7 @@ LOOP
 
 ---
 
-## Viper.Quadtree
+## Viper.Game.Quadtree
 
 Spatial partitioning data structure for efficient collision detection and spatial queries.
 
@@ -917,7 +1176,7 @@ Spatial partitioning data structure for efficient collision detection and spatia
 
 ```basic
 ' Create quadtree for game world
-DIM tree AS OBJECT = Viper.Quadtree.New(0, 0, 800000, 600000)
+DIM tree AS OBJECT = Viper.Game.Quadtree.New(0, 0, 800000, 600000)
 
 ' Add game objects (using fixed-point coordinates)
 tree.Insert(1, playerX * 1000, playerY * 1000, 32000, 48000)
@@ -946,7 +1205,7 @@ NEXT
 
 ```basic
 ' Instead of O(n²) collision checks
-DIM tree AS OBJECT = Viper.Quadtree.New(0, 0, 800000, 600000)
+DIM tree AS OBJECT = Viper.Game.Quadtree.New(0, 0, 800000, 600000)
 
 ' Add all enemies to tree
 FOR i = 0 TO enemyCount - 1

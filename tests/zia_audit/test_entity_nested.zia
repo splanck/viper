@@ -30,10 +30,10 @@ func start() {
     Viper.Terminal.Say("=== Nested Entity Test ===");
 
     var c: Container = new Container(5, 10, 42);
-    Viper.Terminal.Say("point.x = " + Viper.Strings.FromInt(c.point.x));
-    Viper.Terminal.Say("point.y = " + Viper.Strings.FromInt(c.point.y));
-    Viper.Terminal.Say("value = " + Viper.Strings.FromInt(c.value));
-    Viper.Terminal.Say("point.getSum() = " + Viper.Strings.FromInt(c.point.getSum()));
+    Viper.Terminal.Say("point.x = " + Viper.String.FromInt(c.point.x));
+    Viper.Terminal.Say("point.y = " + Viper.String.FromInt(c.point.y));
+    Viper.Terminal.Say("value = " + Viper.String.FromInt(c.value));
+    Viper.Terminal.Say("point.getSum() = " + Viper.String.FromInt(c.point.getSum()));
 
     if (c.point.x == 5 && c.point.y == 10 && c.value == 42 && c.point.getSum() == 15) {
         Viper.Terminal.Say("RESULT: ok");

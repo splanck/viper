@@ -10,13 +10,13 @@ func start() {
     Viper.Collections.List.Add(list, 200);
 
     var count: Integer = Viper.Collections.List.get_Count(list);
-    Viper.Terminal.Say("Count: " + Viper.Strings.FromInt(count));
+    Viper.Terminal.Say("Count: " + Viper.String.FromInt(count));
 
     var v0: Integer = Viper.Box.ToI64(Viper.Collections.List.get_Item(list, 0));
     var v1: Integer = Viper.Box.ToI64(Viper.Collections.List.get_Item(list, 1));
 
-    Viper.Terminal.Say("v0 = " + Viper.Strings.FromInt(v0));
-    Viper.Terminal.Say("v1 = " + Viper.Strings.FromInt(v1));
+    Viper.Terminal.Say("v0 = " + Viper.String.FromInt(v0));
+    Viper.Terminal.Say("v1 = " + Viper.String.FromInt(v1));
 
     if (count == 2 && v0 == 100 && v1 == 200) {
         Viper.Terminal.Say("RESULT: ok");

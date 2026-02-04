@@ -8,7 +8,6 @@
 
 - [Viper.Collections.Bag](#vipercollectionsbag)
 - [Viper.Collections.Bytes](#vipercollectionsbytes)
-- [Viper.Collections.Grid2D](#vipercollectionsgrid2d)
 - [Viper.Collections.Heap](#vipercollectionsheap)
 - [Viper.Collections.List](#vipercollectionslist)
 - [Viper.Collections.Map](#vipercollectionsmap)
@@ -207,167 +206,75 @@ PRINT data.ToHex()        ' Output: "00000000"
 
 ---
 
-## Viper.Collections.Grid2D
+## Viper.Collections.Heap
 
-A 2D array container for integer values, optimized for tile maps, pixel buffers, and game grids.
+A priority queue implemented as a binary heap. Elements are stored with an integer priority value and retrieved in priority order. Supports both min-heap (smallest priority first) and max-heap (largest priority first) modes.
 
 **Type:** Instance (obj)
-**Constructor:** `NEW Viper.Collections.Grid2D(width, height, defaultValue)`
+**Constructor:** `NEW Viper.Collections.Heap()` (min-heap) or `Heap.NewMax(isMax)` for max-heap
 
 ### Properties
 
-| Property | Type    | Description                           |
-|----------|---------|---------------------------------------|
-| `Width`  | Integer | Number of columns in the grid         |
-| `Height` | Integer | Number of rows in the grid            |
-| `Size`   | Integer | Total number of cells (width * height)|
+| Property  | Type    | Description                                    |
+|-----------|---------|------------------------------------------------|
+| `Len`     | Integer | Number of elements in the heap                 |
+| `IsEmpty` | Boolean | Returns true if the heap has no elements       |
+| `IsMax`   | Boolean | Returns true if max-heap, false if min-heap    |
 
 ### Methods
 
-| Method                    | Signature                    | Description                                                     |
-|---------------------------|------------------------------|-----------------------------------------------------------------|
-| `Get(x, y)`               | `Integer(Integer, Integer)`  | Get value at coordinates (returns 0 if out of bounds)           |
-| `Set(x, y, value)`        | `Void(Integer, Integer, Integer)` | Set value at coordinates (ignored if out of bounds)       |
-| `Fill(value)`             | `Void(Integer)`              | Set all cells to the specified value                            |
-| `Clear()`                 | `Void()`                     | Set all cells to zero                                           |
-| `InBounds(x, y)`          | `Boolean(Integer, Integer)`  | Check if coordinates are within grid boundaries                 |
-| `Count(value)`            | `Integer(Integer)`           | Count cells matching the specified value                        |
-| `Replace(oldVal, newVal)` | `Integer(Integer, Integer)`  | Replace all occurrences; returns count of replacements          |
-| `CopyFrom(other)`         | `Boolean(Grid2D)`            | Copy values from another grid (must have same dimensions)       |
-| `Find(value)`             | `Boolean(Integer)`           | Find first cell with value (row-major order); returns success   |
-| `FindX()`                 | `Integer()`                  | Get X coordinate of last Find result                            |
-| `FindY()`                 | `Integer()`                  | Get Y coordinate of last Find result                            |
+| Method               | Signature              | Description                                                |
+|----------------------|------------------------|------------------------------------------------------------|
+| `Push(priority,val)` | `Void(Integer,Object)` | Add element with priority (lower = higher priority in min-heap) |
+| `Pop()`              | `Object()`             | Remove and return highest priority element (traps if empty) |
+| `Peek()`             | `Object()`             | Return highest priority element without removing (traps if empty) |
+| `TryPop()`           | `Object()`             | Remove and return highest priority element, or null if empty |
+| `TryPeek()`          | `Object()`             | Return highest priority element, or null if empty          |
+| `Clear()`            | `Void()`               | Remove all elements                                        |
+| `ToSeq()`            | `Seq()`                | Return elements in priority order as a Seq                 |
 
-### Example: Basic Usage
+### Example
 
 ```basic
-' Create a 10x10 grid filled with zeros
-DIM grid AS Viper.Collections.Grid2D
-grid = NEW Viper.Collections.Grid2D(10, 10, 0)
+DIM heap AS Viper.Collections.Heap
+heap = NEW Viper.Collections.Heap()  ' Create min-heap
 
-PRINT grid.Width   ' Output: 10
-PRINT grid.Height  ' Output: 10
-PRINT grid.Size    ' Output: 100
+' Add tasks with priorities (lower = more urgent)
+heap.Push(3, "Low priority task")
+heap.Push(1, "Urgent task")
+heap.Push(2, "Medium priority task")
 
-' Set some values
-grid.Set(5, 5, 42)
-grid.Set(0, 0, 1)
-grid.Set(9, 9, 2)
+PRINT heap.Len       ' Output: 3
 
-' Get values
-PRINT grid.Get(5, 5)  ' Output: 42
-PRINT grid.Get(0, 0)  ' Output: 1
+' Pop returns elements in priority order (lowest priority value first)
+PRINT heap.Pop()     ' Output: "Urgent task" (priority 1)
+PRINT heap.Pop()     ' Output: "Medium priority task" (priority 2)
+PRINT heap.Peek()    ' Output: "Low priority task" (priority 3, still in heap)
 
-' Out of bounds access is safe
-PRINT grid.Get(-1, 0)   ' Output: 0 (out of bounds)
-PRINT grid.Get(100, 0)  ' Output: 0 (out of bounds)
+' Max-heap example
+DIM maxHeap AS Viper.Collections.Heap
+maxHeap = Viper.Collections.Heap.NewMax(True)
 
-' Check bounds explicitly
-IF grid.InBounds(5, 5) THEN
-    PRINT "Valid coordinates"
-END IF
+maxHeap.Push(1, "Low")
+maxHeap.Push(5, "High")
+maxHeap.Push(3, "Medium")
 
-' Fill and clear
-grid.Fill(7)
-PRINT grid.Get(0, 0)  ' Output: 7
-
-grid.Clear()
-PRINT grid.Get(0, 0)  ' Output: 0
+PRINT maxHeap.Pop()  ' Output: "High" (priority 5 - highest)
 ```
-
-### Example: Tile Map
-
-```basic
-' Tile constants
-CONST TILE_EMPTY = 0
-CONST TILE_WALL = 1
-CONST TILE_DOT = 2
-CONST TILE_POWER = 3
-
-' Create a simple Pac-Man style level (28x31)
-DIM level AS Viper.Collections.Grid2D
-level = NEW Viper.Collections.Grid2D(28, 31, TILE_EMPTY)
-
-' Set up walls around the border
-FOR x = 0 TO 27
-    level.Set(x, 0, TILE_WALL)
-    level.Set(x, 30, TILE_WALL)
-NEXT x
-
-FOR y = 0 TO 30
-    level.Set(0, y, TILE_WALL)
-    level.Set(27, y, TILE_WALL)
-NEXT y
-
-' Fill interior with dots
-FOR y = 1 TO 29
-    FOR x = 1 TO 26
-        level.Set(x, y, TILE_DOT)
-    NEXT x
-NEXT y
-
-' Place power pellets in corners
-level.Set(1, 1, TILE_POWER)
-level.Set(26, 1, TILE_POWER)
-level.Set(1, 29, TILE_POWER)
-level.Set(26, 29, TILE_POWER)
-
-' Count tiles
-PRINT "Walls: "; level.Count(TILE_WALL)
-PRINT "Dots: "; level.Count(TILE_DOT)
-PRINT "Power pellets: "; level.Count(TILE_POWER)
-
-' Check for collision with walls
-DIM playerX = 5
-DIM playerY = 5
-IF level.Get(playerX, playerY) = TILE_WALL THEN
-    PRINT "Cannot move there!"
-END IF
-
-' Eat a dot
-IF level.Get(playerX, playerY) = TILE_DOT THEN
-    level.Set(playerX, playerY, TILE_EMPTY)
-    score = score + 10
-END IF
-```
-
-### Example: Game State Copy
-
-```basic
-' Create a snapshot for undo functionality
-DIM current AS Viper.Collections.Grid2D
-current = NEW Viper.Collections.Grid2D(20, 20, 0)
-
-' ... make some changes ...
-
-' Save state
-DIM backup AS Viper.Collections.Grid2D
-backup = NEW Viper.Collections.Grid2D(20, 20, 0)
-backup.CopyFrom(current)
-
-' ... more changes ...
-
-' Restore state (undo)
-current.CopyFrom(backup)
-```
-
-### Notes
-
-- Coordinates are zero-indexed: (0,0) is top-left
-- Out-of-bounds `Get()` returns 0 silently
-- Out-of-bounds `Set()` is silently ignored
-- Uses row-major storage internally for cache efficiency
-- Grid dimensions are fixed at creation time
-- Only stores 64-bit integers; use separate grids for different value types
 
 ### Use Cases
 
-- **Tile maps:** Store level data for 2D games
-- **Pixel buffers:** Raw pixel manipulation before rendering
-- **Collision maps:** Track walkable/blocked areas
-- **Game boards:** Chess, checkers, puzzle games
-- **Cellular automata:** Conway's Game of Life, flood fill
-- **Pathfinding:** A* open/closed sets, distance grids
+- **Task scheduling:** Process tasks by priority
+- **Event-driven simulation:** Handle events in time order
+- **Dijkstra's algorithm:** Find shortest paths
+- **Huffman coding:** Build optimal prefix codes
+- **Median finding:** Use two heaps (min and max)
+
+### Errors (Traps)
+
+- `Heap.Pop: heap is empty` - Called Pop on empty heap
+- `Heap.Peek: heap is empty` - Called Peek on empty heap
+- `Heap.Push: null heap` - Called Push on null reference
 
 ---
 
@@ -570,78 +477,6 @@ PRINT queue.IsEmpty  ' Output: True
 - **Breadth-first search:** Track nodes to visit
 - **Message passing:** Handle messages in arrival order
 - **Print queues:** Process print jobs sequentially
-
----
-
-## Viper.Collections.Heap
-
-A priority queue implemented as a binary heap. Elements are stored with an integer priority value and retrieved in priority order. Supports both min-heap (smallest priority first) and max-heap (largest priority first) modes.
-
-**Type:** Instance (obj)
-**Constructor:** `NEW Viper.Collections.Heap()` (min-heap) or `Heap.NewMax(isMax)` for max-heap
-
-### Properties
-
-| Property  | Type    | Description                                    |
-|-----------|---------|------------------------------------------------|
-| `Len`     | Integer | Number of elements in the heap                 |
-| `IsEmpty` | Boolean | Returns true if the heap has no elements       |
-| `IsMax`   | Boolean | Returns true if max-heap, false if min-heap    |
-
-### Methods
-
-| Method               | Signature              | Description                                                |
-|----------------------|------------------------|------------------------------------------------------------|
-| `Push(priority,val)` | `Void(Integer,Object)` | Add element with priority (lower = higher priority in min-heap) |
-| `Pop()`              | `Object()`             | Remove and return highest priority element (traps if empty) |
-| `Peek()`             | `Object()`             | Return highest priority element without removing (traps if empty) |
-| `TryPop()`           | `Object()`             | Remove and return highest priority element, or null if empty |
-| `TryPeek()`          | `Object()`             | Return highest priority element, or null if empty          |
-| `Clear()`            | `Void()`               | Remove all elements                                        |
-| `ToSeq()`            | `Seq()`                | Return elements in priority order as a Seq                 |
-
-### Example
-
-```basic
-DIM heap AS Viper.Collections.Heap
-heap = NEW Viper.Collections.Heap()  ' Create min-heap
-
-' Add tasks with priorities (lower = more urgent)
-heap.Push(3, "Low priority task")
-heap.Push(1, "Urgent task")
-heap.Push(2, "Medium priority task")
-
-PRINT heap.Len       ' Output: 3
-
-' Pop returns elements in priority order (lowest priority value first)
-PRINT heap.Pop()     ' Output: "Urgent task" (priority 1)
-PRINT heap.Pop()     ' Output: "Medium priority task" (priority 2)
-PRINT heap.Peek()    ' Output: "Low priority task" (priority 3, still in heap)
-
-' Max-heap example
-DIM maxHeap AS Viper.Collections.Heap
-maxHeap = Viper.Collections.Heap.NewMax(True)
-
-maxHeap.Push(1, "Low")
-maxHeap.Push(5, "High")
-maxHeap.Push(3, "Medium")
-
-PRINT maxHeap.Pop()  ' Output: "High" (priority 5 - highest)
-```
-
-### Use Cases
-
-- **Task scheduling:** Process tasks by priority
-- **Event-driven simulation:** Handle events in time order
-- **Dijkstra's algorithm:** Find shortest paths
-- **Huffman coding:** Build optimal prefix codes
-- **Median finding:** Use two heaps (min and max)
-
-### Errors (Traps)
-
-- `Heap.Pop: heap is empty` - Called Pop on empty heap
-- `Heap.Peek: heap is empty` - Called Peek on empty heap
-- `Heap.Push: null heap` - Called Push on null reference
 
 ---
 

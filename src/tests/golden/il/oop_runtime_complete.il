@@ -2,8 +2,8 @@ il 0.2.0
 extern @Viper.Terminal.PrintStr(str) -> void
 extern @Viper.Terminal.PrintI64(i64) -> void
 extern @Viper.Terminal.PrintF64(f64) -> void
-extern @Viper.Strings.Len(str) -> i64
-extern @Viper.Strings.Mid(str, i64, i64) -> str
+extern @Viper.String.get_Length(str) -> i64
+extern @Viper.String.Substring(str, i64, i64) -> str
 extern @Viper.String.Left(str, i64) -> str
 extern @Viper.String.Right(str, i64) -> str
 extern @Viper.String.Mid(str, i64) -> str
@@ -29,7 +29,7 @@ extern @Viper.String.Repeat(str, i64) -> str
 extern @Viper.String.Flip(str) -> str
 extern @Viper.String.Cmp(str, str) -> i64
 extern @Viper.String.CmpNoCase(str, str) -> i64
-extern @Viper.Strings.Join(str, ptr) -> str
+extern @Viper.String.Join(str, ptr) -> str
 extern @rt_left(str, i64) -> str
 extern @rt_right(str, i64) -> str
 extern @rt_mid2(str, i64) -> str
@@ -246,7 +246,7 @@ UL999999996:
   .loc 1 11 23
   %t36 = load str, %t23
   .loc 1 11 19
-  %t37 = call @Viper.Strings.Len(%t36)
+  %t37 = call @Viper.String.get_Length(%t36)
   .loc 1 11 19
   call @Viper.Terminal.PrintI64(%t37)
   .loc 1 11 19

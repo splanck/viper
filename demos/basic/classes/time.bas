@@ -10,31 +10,31 @@ PRINT
 ' === DateTime (Static API) ===
 PRINT "=== DateTime ==="
 DIM ts AS INTEGER
-ts = Viper.DateTime.Now()
+ts = Viper.Time.DateTime.Now()
 PRINT "DateTime.Now() (Unix timestamp): "; ts
-PRINT "DateTime.NowMs() (Unix ms): "; Viper.DateTime.NowMs()
-PRINT "Year: "; Viper.DateTime.Year(ts)
-PRINT "Month: "; Viper.DateTime.Month(ts)
-PRINT "Day: "; Viper.DateTime.Day(ts)
-PRINT "Hour: "; Viper.DateTime.Hour(ts)
-PRINT "Minute: "; Viper.DateTime.Minute(ts)
-PRINT "Second: "; Viper.DateTime.Second(ts)
-PRINT "DayOfWeek: "; Viper.DateTime.DayOfWeek(ts)
-PRINT "ISO Format: "; Viper.DateTime.ToISO(ts)
+PRINT "DateTime.NowMs() (Unix ms): "; Viper.Time.DateTime.NowMs()
+PRINT "Year: "; Viper.Time.DateTime.Year(ts)
+PRINT "Month: "; Viper.Time.DateTime.Month(ts)
+PRINT "Day: "; Viper.Time.DateTime.Day(ts)
+PRINT "Hour: "; Viper.Time.DateTime.Hour(ts)
+PRINT "Minute: "; Viper.Time.DateTime.Minute(ts)
+PRINT "Second: "; Viper.Time.DateTime.Second(ts)
+PRINT "DayOfWeek: "; Viper.Time.DateTime.DayOfWeek(ts)
+PRINT "ISO Format: "; Viper.Time.DateTime.ToISO(ts)
 PRINT
 
 DIM epoch AS INTEGER
 epoch = 0
 PRINT "Unix Epoch (timestamp=0):"
-PRINT "  Year: "; Viper.DateTime.Year(epoch)
-PRINT "  Month: "; Viper.DateTime.Month(epoch)
-PRINT "  Day: "; Viper.DateTime.Day(epoch)
+PRINT "  Year: "; Viper.Time.DateTime.Year(epoch)
+PRINT "  Month: "; Viper.Time.DateTime.Month(epoch)
+PRINT "  Day: "; Viper.Time.DateTime.Day(epoch)
 PRINT
 
 ' === Stopwatch ===
 PRINT "=== Stopwatch ==="
-DIM sw AS Viper.Diagnostics.Stopwatch
-sw = Viper.Diagnostics.Stopwatch.New()
+DIM sw AS Viper.Time.Stopwatch
+sw = Viper.Time.Stopwatch.New()
 sw.Start()
 ' Do some work
 DIM i AS INTEGER

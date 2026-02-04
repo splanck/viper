@@ -31,8 +31,8 @@
 /// |-------------------|-------|------------------------------|
 /// | ToInt64(str)      | 1     | Viper.Convert.ToInt          |
 /// | ToDouble(str)     | 1     | Viper.Convert.ToDouble       |
-/// | ToString_Int(i64) | 1     | Viper.Strings.FromInt        |
-/// | ToString_Double(f64)| 1   | Viper.Strings.FromDouble     |
+/// | ToString_Int(i64) | 1     | Viper.String.FromInt        |
+/// | ToString_Double(f64)| 1   | Viper.String.FromDouble     |
 ///
 /// ## Conversion Architecture
 ///
@@ -118,16 +118,16 @@ TEST(RuntimeClassConvertBinding, MethodIndexTargets)
     EXPECT_EQ(td->target, std::string("Viper.Convert.ToDouble"));
 
     // Test Convert.ToString_Int(i: Int) -> String
-    // Note: Delegates to Viper.Strings.FromInt for implementation
+    // Note: Delegates to Viper.String.FromInt for implementation
     auto tsi = midx.find("Viper.Convert", "ToString_Int", 1);
     ASSERT_TRUE(tsi.has_value());
-    EXPECT_EQ(tsi->target, std::string("Viper.Strings.FromInt"));
+    EXPECT_EQ(tsi->target, std::string("Viper.String.FromInt"));
 
     // Test Convert.ToString_Double(f: Float) -> String
-    // Note: Delegates to Viper.Strings.FromDouble for implementation
+    // Note: Delegates to Viper.String.FromDouble for implementation
     auto tsd = midx.find("Viper.Convert", "ToString_Double", 1);
     ASSERT_TRUE(tsd.has_value());
-    EXPECT_EQ(tsd->target, std::string("Viper.Strings.FromDouble"));
+    EXPECT_EQ(tsd->target, std::string("Viper.String.FromDouble"));
 }
 
 /// @brief Test entry point.

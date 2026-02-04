@@ -22,7 +22,7 @@ DIM list AS Viper.Collections.Seq
 list = Viper.IO.Dir.ListSeq(base)
 
 DIM list_join AS STRING
-list_join = "|" + Viper.Strings.Join("|", list) + "|"
+list_join = "|" + Viper.String.Join("|", list) + "|"
 
 PRINT list.Len
 PRINT list_join.Has("|subdir|")
@@ -33,7 +33,7 @@ DIM files AS Viper.Collections.Seq
 files = Viper.IO.Dir.FilesSeq(base)
 
 DIM files_join AS STRING
-files_join = "|" + Viper.Strings.Join("|", files) + "|"
+files_join = "|" + Viper.String.Join("|", files) + "|"
 
 PRINT files.Len
 PRINT files_join.Has("|file1.txt|")
@@ -43,7 +43,7 @@ DIM dirs AS Viper.Collections.Seq
 dirs = Viper.IO.Dir.DirsSeq(base)
 
 DIM dirs_join AS STRING
-dirs_join = "|" + Viper.Strings.Join("|", dirs) + "|"
+dirs_join = "|" + Viper.String.Join("|", dirs) + "|"
 
 PRINT dirs.Len
 PRINT dirs_join.Has("|subdir|")

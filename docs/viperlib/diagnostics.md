@@ -7,7 +7,7 @@
 ## Contents
 
 - [Viper.Diagnostics](#viperdiagnostics)
-- [Viper.Diagnostics.Stopwatch](time.md#viperdiagnosticsstopwatch)
+- [Viper.Time.Stopwatch](time.md#vipertimestopwatch)
 
 ---
 

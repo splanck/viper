@@ -897,6 +897,10 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
         case MOpcode::TstRR:
             emitTstRR(os, getReg(mi.ops[0]), getReg(mi.ops[1]));
             return;
+        case MOpcode::Bl:
+            // Direct call to named symbol - apply runtime name mapping and mangling
+            os << "  bl " << mangleCallTarget(mi.ops[0].label) << "\n";
+            return;
         case MOpcode::Blr:
             os << "  blr " << rn(getReg(mi.ops[0])) << "\n";
             return;

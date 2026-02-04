@@ -46,10 +46,10 @@ parts = Viper.String.Split("", ",")
 PRINT "Split('', ',') length: "; parts.Len
 IF parts.Len = 1 THEN PRINT "NOTE: Split('', ',') returns 1 element (empty string) - is this correct?"
 
-' Viper.Strings.Join with empty seq
+' Viper.String.Join with empty seq
 DIM emptySeq AS Viper.Collections.Seq
 emptySeq = Viper.Collections.Seq.New()
-result = Viper.Strings.Join(",", emptySeq)
+result = Viper.String.Join(",", emptySeq)
 PRINT "Join(',', emptySeq): '"; result; "'"
 
 ' === Zero index tests (valid) ===

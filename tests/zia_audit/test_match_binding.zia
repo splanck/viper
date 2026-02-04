@@ -13,7 +13,7 @@ func start() {
         n => { result = n + 1; }
     }
 
-    Viper.Terminal.Say("Result: " + Viper.Strings.FromInt(result));
+    Viper.Terminal.Say("Result: " + Viper.String.FromInt(result));
 
     if (result == 43) {
         Viper.Terminal.Say("RESULT: ok");

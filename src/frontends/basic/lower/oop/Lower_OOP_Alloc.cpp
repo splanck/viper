@@ -48,7 +48,7 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
 {
     curLoc = expr.loc;
 
-    // Runtime class ctor mapping via catalog (e.g., Viper.Strings.FromStr)
+    // Runtime class ctor mapping via catalog (e.g., Viper.String.FromStr)
     {
         std::string qname = qualify(expr.className);
         if (const auto *c = il::runtime::findRuntimeClassByQName(qname))

@@ -2,8 +2,8 @@ il 0.2.0
 extern @Viper.Terminal.PrintStr(str) -> void
 extern @Viper.Terminal.PrintI64(i64) -> void
 extern @Viper.Terminal.PrintF64(f64) -> void
-extern @Viper.Strings.Len(str) -> i64
-extern @Viper.Strings.Mid(str, i64, i64) -> str
+extern @Viper.String.get_Length(str) -> i64
+extern @Viper.String.Substring(str, i64, i64) -> str
 extern @Viper.String.Left(str, i64) -> str
 extern @Viper.String.Right(str, i64) -> str
 extern @Viper.String.Mid(str, i64) -> str

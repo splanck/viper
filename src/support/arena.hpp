@@ -147,6 +147,11 @@ class GrowingArena
         Chunk(Chunk &&) noexcept = default;
         Chunk &operator=(Chunk &&) noexcept = default;
 
+        /// @brief Attempt to allocate memory from this chunk.
+        /// @param sz The size in bytes to allocate.
+        /// @param align The alignment requirement (must be a power of 2).
+        /// @return Pointer to the allocated memory, or nullptr if insufficient space.
+        /// @details Advances the internal offset by the aligned allocation size.
         void *tryAllocate(size_t sz, size_t align);
     };
 

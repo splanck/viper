@@ -45,13 +45,13 @@ func handleApiEcho(path: String, query: String) -> String {
 
 // Handler for /api/time - returns current server time
 func handleApiTime(path: String, query: String) -> String {
-    var now = Viper.DateTime.Now();
-    var year = Viper.DateTime.Year(now);
-    var month = Viper.DateTime.Month(now);
-    var day = Viper.DateTime.Day(now);
-    var hour = Viper.DateTime.Hour(now);
-    var minute = Viper.DateTime.Minute(now);
-    var second = Viper.DateTime.Second(now);
+    var now = Viper.Time.DateTime.Now();
+    var year = Viper.Time.DateTime.Year(now);
+    var month = Viper.Time.DateTime.Month(now);
+    var day = Viper.Time.DateTime.Day(now);
+    var hour = Viper.Time.DateTime.Hour(now);
+    var minute = Viper.Time.DateTime.Minute(now);
+    var second = Viper.Time.DateTime.Second(now);
 
     var body = "{";
     body = body + "\"year\": " + Viper.Fmt.Int(year) + ",";

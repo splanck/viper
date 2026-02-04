@@ -164,6 +164,8 @@ LowerResult Lowerer::lowerExpr(Expr *expr)
             return lowerBlockExpr(static_cast<BlockExpr *>(expr));
         case ExprKind::Match:
             return lowerMatchExpr(static_cast<MatchExpr *>(expr));
+        case ExprKind::As:
+            return lowerAs(static_cast<AsExpr *>(expr));
         default:
             return {Value::constInt(0), Type(Type::Kind::I64)};
     }
@@ -957,8 +959,8 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr)
     {
         if (innerType->kind == TypeKindSem::Value || innerType->kind == TypeKindSem::Entity)
         {
-            const std::map<std::string, ValueTypeInfo> &valueTypes = valueTypes_;
-            const std::map<std::string, EntityTypeInfo> &entityTypes = entityTypes_;
+            const std::unordered_map<std::string, ValueTypeInfo> &valueTypes = valueTypes_;
+            const std::unordered_map<std::string, EntityTypeInfo> &entityTypes = entityTypes_;
             if (innerType->kind == TypeKindSem::Value)
             {
                 auto it = valueTypes.find(innerType->name);
@@ -1385,6 +1387,27 @@ LowerResult Lowerer::lowerBlockExpr(BlockExpr *expr)
 
     // No value expression - return void/unit
     return {Value::constInt(0), Type(Type::Kind::Void)};
+}
+
+LowerResult Lowerer::lowerAs(AsExpr *expr)
+{
+    // Lower the source value expression
+    auto source = lowerExpr(expr->value.get());
+
+    // Resolve the target type
+    TypeRef targetType = sema_.resolveType(expr->type.get());
+    Type ilTargetType = mapType(targetType);
+
+    // For entity/object types, the cast is essentially a no-op at the IL level
+    // since all objects are represented as pointers. The semantic analysis
+    // already validated the cast is valid.
+    //
+    // For primitive type conversions (e.g., Integer as Float), we'd need
+    // conversion instructions, but Zia typically uses explicit conversion
+    // functions for those.
+    //
+    // Simply return the source value with the target type.
+    return {source.value, ilTargetType};
 }
 
 } // namespace il::frontends::zia

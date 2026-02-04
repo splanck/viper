@@ -214,7 +214,7 @@ func start() {
 }
 
 /// @brief Bug #29: String comparison with empty string.
-/// Empty string literals should be compared using Viper.Strings.Equals.
+/// Empty string literals should be compared using Viper.String.Equals.
 TEST(ZiaExpressions, StringComparisonWithEmptyString)
 {
     SourceManager sm;
@@ -251,7 +251,7 @@ func start() {
 
     EXPECT_TRUE(result.succeeded());
 
-    // Verify that we're calling Viper.Strings.Equals for both functions
+    // Verify that we're calling Viper.String.Equals for both functions
     bool foundEqualsCall = false;
     for (const auto &fn : result.module.functions)
     {
@@ -262,7 +262,7 @@ func start() {
                 for (const auto &instr : block.instructions)
                 {
                     if (instr.op == il::core::Opcode::Call &&
-                        instr.callee == "Viper.Strings.Equals")
+                        instr.callee == "Viper.String.Equals")
                     {
                         foundEqualsCall = true;
                     }

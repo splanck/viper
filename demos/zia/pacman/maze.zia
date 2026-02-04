@@ -2,8 +2,8 @@
 // PAC-MAN - Maze Entity
 // =============================================================================
 // Uses new Viper runtime features:
-// - Viper.Grid2D for 2D tile storage with bounds checking
-// - Viper.Timer for pellet blink animation
+// - Viper.Game.Grid2D for 2D tile storage with bounds checking
+// - Viper.Game.Timer for pellet blink animation
 // - for-in range syntax for cleaner iteration
 // =============================================================================
 
@@ -17,22 +17,22 @@ bind "./utils";
 // =============================================================================
 
 entity Maze {
-    hide Viper.Grid2D tiles;
+    hide Viper.Game.Grid2D tiles;
     hide Integer totalDots;
     hide Integer dotsRemaining;
 
     // Use Timer for pellet blinking instead of manual counter
-    hide Viper.Timer pelletBlinkTimer;
+    hide Viper.Game.Timer pelletBlinkTimer;
     hide Boolean pelletVisible;
 
     expose func init() {
         // Create Grid2D with dimensions and default value
-        tiles = Viper.Grid2D.New(config.GRID_WIDTH, config.GRID_HEIGHT, config.TILE_EMPTY);
+        tiles = Viper.Game.Grid2D.New(config.GRID_WIDTH, config.GRID_HEIGHT, config.TILE_EMPTY);
         totalDots = 0;
         dotsRemaining = 0;
 
         // Setup pellet blink timer (toggles every 10 frames)
-        pelletBlinkTimer = Viper.Timer.New();
+        pelletBlinkTimer = Viper.Game.Timer.New();
         pelletBlinkTimer.StartRepeating(10);
         pelletVisible = true;
 

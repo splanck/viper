@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 BUILD_DIR="${ROOT_DIR}/build"
-ILC_BIN="${BUILD_DIR}/src/tools/ilc/ilc"
+ILC_BIN="${BUILD_DIR}/src/tools/viper/viper"
 
 if command -v timeout >/dev/null 2>&1; then
   run_with_timeout() {
@@ -90,7 +90,7 @@ echo
 echo "All smoke tests passed."
 
 # String concat test
-run_with_timeout 2 "$BUILD_ROOT/src/tools/ilc/ilc" front basic -run tests/smoke/basic/strings_concat.bas | grep -F "Hello, World"
+run_with_timeout 2 "$BUILD_ROOT/src/tools/viper/viper" front basic -run tests/smoke/basic/strings_concat.bas | grep -F "Hello, World"
 
 # String aliasing test
-printf "Stephen\n" | run_with_timeout 2 "$BUILD_ROOT/src/tools/ilc/ilc" front basic -run tests/smoke/basic/strings_alias.bas | grep -F "StephenStephen"
+printf "Stephen\n" | run_with_timeout 2 "$BUILD_ROOT/src/tools/viper/viper" front basic -run tests/smoke/basic/strings_alias.bas | grep -F "StephenStephen"

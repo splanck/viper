@@ -51,6 +51,74 @@ struct PeepholeStats
     std::size_t coldBlocksMoved{0};
 };
 
+//-----------------------------------------------------------------------------
+// Pre-computed register sets for efficient liveness initialization in DCE.
+// Using static const vectors avoids repeated insert() calls in hot loops.
+//-----------------------------------------------------------------------------
+
+/// @brief Registers assumed live at block exit (callee-saved + return registers).
+/// @details Pre-computed to avoid 11 individual insert() calls per DCE iteration.
+inline const std::vector<uint16_t> &getBlockExitLiveRegs()
+{
+    static const std::vector<uint16_t> regs = {
+        static_cast<uint16_t>(PhysReg::RAX),
+        static_cast<uint16_t>(PhysReg::RBX),
+        static_cast<uint16_t>(PhysReg::RBP),
+        static_cast<uint16_t>(PhysReg::RDI),
+        static_cast<uint16_t>(PhysReg::RSI),
+        static_cast<uint16_t>(PhysReg::RSP),
+        static_cast<uint16_t>(PhysReg::R12),
+        static_cast<uint16_t>(PhysReg::R13),
+        static_cast<uint16_t>(PhysReg::R14),
+        static_cast<uint16_t>(PhysReg::R15),
+        static_cast<uint16_t>(PhysReg::XMM0),
+    };
+    return regs;
+}
+
+/// @brief All allocatable registers (GPR + XMM), marked live at labels.
+/// @details Pre-computed to avoid 32 individual insert() calls when hitting a label.
+inline const std::vector<uint16_t> &getAllAllocatableRegs()
+{
+    static const std::vector<uint16_t> regs = {
+        // GPRs
+        static_cast<uint16_t>(PhysReg::RAX),
+        static_cast<uint16_t>(PhysReg::RBX),
+        static_cast<uint16_t>(PhysReg::RCX),
+        static_cast<uint16_t>(PhysReg::RDX),
+        static_cast<uint16_t>(PhysReg::RSI),
+        static_cast<uint16_t>(PhysReg::RDI),
+        static_cast<uint16_t>(PhysReg::R8),
+        static_cast<uint16_t>(PhysReg::R9),
+        static_cast<uint16_t>(PhysReg::R10),
+        static_cast<uint16_t>(PhysReg::R11),
+        static_cast<uint16_t>(PhysReg::R12),
+        static_cast<uint16_t>(PhysReg::R13),
+        static_cast<uint16_t>(PhysReg::R14),
+        static_cast<uint16_t>(PhysReg::R15),
+        static_cast<uint16_t>(PhysReg::RBP),
+        static_cast<uint16_t>(PhysReg::RSP),
+        // XMM registers
+        static_cast<uint16_t>(PhysReg::XMM0),
+        static_cast<uint16_t>(PhysReg::XMM1),
+        static_cast<uint16_t>(PhysReg::XMM2),
+        static_cast<uint16_t>(PhysReg::XMM3),
+        static_cast<uint16_t>(PhysReg::XMM4),
+        static_cast<uint16_t>(PhysReg::XMM5),
+        static_cast<uint16_t>(PhysReg::XMM6),
+        static_cast<uint16_t>(PhysReg::XMM7),
+        static_cast<uint16_t>(PhysReg::XMM8),
+        static_cast<uint16_t>(PhysReg::XMM9),
+        static_cast<uint16_t>(PhysReg::XMM10),
+        static_cast<uint16_t>(PhysReg::XMM11),
+        static_cast<uint16_t>(PhysReg::XMM12),
+        static_cast<uint16_t>(PhysReg::XMM13),
+        static_cast<uint16_t>(PhysReg::XMM14),
+        static_cast<uint16_t>(PhysReg::XMM15),
+    };
+    return regs;
+}
+
 /// @brief Test whether an operand is the immediate integer zero.
 ///
 /// @details Peephole rewrites often recognise the canonical pattern of moving
@@ -834,17 +902,9 @@ std::size_t runBlockDCE(std::vector<MInstr> &instrs, PeepholeStats &stats)
 
         // At block exit, assume all callee-saved and return registers are live
         // On Windows x64, callee-saved GPRs are: RBX, RBP, RDI, RSI, RSP, R12-R15
-        liveRegs.insert(static_cast<uint16_t>(PhysReg::RAX));
-        liveRegs.insert(static_cast<uint16_t>(PhysReg::RBX));
-        liveRegs.insert(static_cast<uint16_t>(PhysReg::RBP));
-        liveRegs.insert(static_cast<uint16_t>(PhysReg::RDI));
-        liveRegs.insert(static_cast<uint16_t>(PhysReg::RSI));
-        liveRegs.insert(static_cast<uint16_t>(PhysReg::RSP));
-        liveRegs.insert(static_cast<uint16_t>(PhysReg::R12));
-        liveRegs.insert(static_cast<uint16_t>(PhysReg::R13));
-        liveRegs.insert(static_cast<uint16_t>(PhysReg::R14));
-        liveRegs.insert(static_cast<uint16_t>(PhysReg::R15));
-        liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM0));
+        // Use pre-computed set for efficiency (avoids 11 individual inserts per iteration)
+        const auto &exitRegs = getBlockExitLiveRegs();
+        liveRegs.insert(exitRegs.begin(), exitRegs.end());
 
         std::vector<bool> toRemove(instrs.size(), false);
 
@@ -861,42 +921,11 @@ std::size_t runBlockDCE(std::vector<MInstr> &instrs, PeepholeStats &stats)
                 // because control can flow there from a branch elsewhere.
                 // Mark all allocatable registers as live to prevent incorrectly
                 // eliminating code that precedes a branch to this label.
+                // Use pre-computed set for efficiency (avoids 32 individual inserts).
                 if (instr.opcode == MOpcode::LABEL)
                 {
-                    // GPRs
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::RAX));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::RBX));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::RCX));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::RDX));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::RSI));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::RDI));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::R8));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::R9));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::R10));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::R11));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::R12));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::R13));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::R14));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::R15));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::RBP));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::RSP));
-                    // XMM registers
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM0));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM1));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM2));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM3));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM4));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM5));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM6));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM7));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM8));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM9));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM10));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM11));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM12));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM13));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM14));
-                    liveRegs.insert(static_cast<uint16_t>(PhysReg::XMM15));
+                    const auto &allRegs = getAllAllocatableRegs();
+                    liveRegs.insert(allRegs.begin(), allRegs.end());
                 }
                 collectUsedRegs(instr, liveRegs);
                 continue;

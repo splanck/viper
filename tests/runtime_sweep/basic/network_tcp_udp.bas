@@ -44,7 +44,7 @@
 ' COVER: Viper.Network.Udp.IsBound
 
 DIM basePort AS INTEGER
-basePort = 49200 + (Viper.DateTime.NowMs() MOD 1000)
+basePort = 49200 + (Viper.Time.DateTime.NowMs() MOD 1000)
 
 DIM server1 AS Viper.Network.TcpServer
 server1 = Viper.Network.TcpServer.ListenAt("127.0.0.1", basePort)

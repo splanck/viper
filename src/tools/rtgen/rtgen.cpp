@@ -15,6 +15,7 @@
 //   - RuntimeNameMap.inc     (canonical Viper.* -> rt_* symbol mapping)
 //   - RuntimeClasses.inc     (OOP class/method/property catalog)
 //   - RuntimeSignatures.inc  (runtime descriptor rows)
+//   - RuntimeNames.hpp       (C++ constants for frontend use)
 //
 // Key invariants:
 //   - Parses runtime.def line by line
@@ -1297,10 +1298,47 @@ static void generateSignatures(const ParseState &state,
     std::unordered_map<std::string, RuntimeEntry> entries;
     entries.reserve(state.functions.size() + state.aliases.size());
 
+    // Build a lookup from C symbol to any override (for fallback when canonical name changes)
+    std::unordered_map<std::string, std::string> cSymbolToOverrideName;
+    for (const auto &[name, row] : overrides.rows)
+    {
+        // Extract C symbol from handler string like "&DirectHandler<&rt_split_fields, ...>::invoke"
+        size_t ampPos = name.find('&');
+        if (ampPos == std::string::npos)
+        {
+            // Name might be the C symbol itself (like "rt_split_fields")
+            if (name.substr(0, 3) == "rt_")
+            {
+                cSymbolToOverrideName[name] = name;
+            }
+        }
+    }
+    // Also index by canonical name patterns (extract C symbol from existing overrides)
+    for (const auto &func : state.functions)
+    {
+        // Check if there's an override for any previous canonical name with this C symbol
+        for (const auto &[overrideName, row] : overrides.rows)
+        {
+            // Check if override handler contains our C symbol
+            auto checkFields = [&](const std::optional<DescriptorFields> &fields) {
+                if (fields && fields->handler.find("&" + func.c_symbol) != std::string::npos)
+                {
+                    cSymbolToOverrideName[func.c_symbol] = overrideName;
+                }
+            };
+            checkFields(row.always);
+            checkFields(row.dual_if);
+            checkFields(row.dual_else);
+        }
+    }
+
+    // Map from C symbol to function entry for legacy alias lookups
+    std::unordered_map<std::string, const RuntimeFunc *> cSymbolToFunc;
     for (const auto &func : state.functions)
     {
         entries.emplace(func.canonical,
                         RuntimeEntry{func.canonical, func.c_symbol, func.signature});
+        cSymbolToFunc[func.c_symbol] = &func;
     }
     for (const auto &alias : state.aliases)
     {
@@ -1316,9 +1354,23 @@ static void generateSignatures(const ParseState &state,
     std::vector<std::string> orderedNames;
     orderedNames.reserve(entries.size());
 
+    // Include names from overrides if they still exist in current entries OR are C symbol
+    // aliases (rt_*) that correspond to valid functions (needed for VIPER_RUNTIME_NS_DUAL builds).
     for (const auto &name : overrides.order)
     {
-        if (seen.insert(name).second)
+        bool shouldInclude = entries.count(name);
+        // C symbol names (rt_*) should be included if they have a valid function mapping
+        if (!shouldInclude && name.substr(0, 3) == "rt_")
+        {
+            shouldInclude = cSymbolToFunc.count(name) > 0;
+            // Also add to entries so the lookup later works
+            if (shouldInclude)
+            {
+                const auto &func = *cSymbolToFunc[name];
+                entries.emplace(name, RuntimeEntry{name, func.c_symbol, func.signature});
+            }
+        }
+        if (shouldInclude && seen.insert(name).second)
             orderedNames.push_back(name);
     }
 
@@ -1337,6 +1389,22 @@ static void generateSignatures(const ParseState &state,
     for (const auto &name : orderedNames)
     {
         auto overrideIt = overrides.rows.find(name);
+
+        // Fallback: if no override by canonical name, try to find by C symbol
+        if (overrideIt == overrides.rows.end())
+        {
+            auto entryIt = entries.find(name);
+            if (entryIt != entries.end())
+            {
+                const std::string &cSym = entryIt->second.c_symbol;
+                auto fallbackIt = cSymbolToOverrideName.find(cSym);
+                if (fallbackIt != cSymbolToOverrideName.end())
+                {
+                    overrideIt = overrides.rows.find(fallbackIt->second);
+                }
+            }
+        }
+
         if (overrideIt == overrides.rows.end())
         {
             auto entryIt = entries.find(name);
@@ -1533,6 +1601,149 @@ static void generateZiaExterns(const ParseState &state, const fs::path &outDir)
     std::cout << "  Generated " << outPath << "\n";
 }
 
+/// @brief Convert a canonical name to a C++ constant identifier.
+/// @details "Viper.String.Concat" -> "kStringConcat"
+///          "Viper.Time.DateTime.Now" -> "kTimeDateTimeNow"
+static std::string canonicalToIdentifier(const std::string &canonical)
+{
+    // Skip "Viper." prefix
+    std::string name = canonical;
+    if (name.substr(0, 6) == "Viper.")
+    {
+        name = name.substr(6);
+    }
+
+    // Convert dots to nothing, capitalize each segment
+    std::string result = "k";
+    bool capitalizeNext = true;
+
+    for (char c : name)
+    {
+        if (c == '.')
+        {
+            capitalizeNext = true;
+        }
+        else if (c == '_')
+        {
+            capitalizeNext = true;
+        }
+        else
+        {
+            if (capitalizeNext)
+            {
+                result += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+                capitalizeNext = false;
+            }
+            else
+            {
+                result += c;
+            }
+        }
+    }
+
+    return result;
+}
+
+static void generateFrontendNames(const ParseState &state, const fs::path &outDir)
+{
+    fs::path outPath = outDir / "RuntimeNames.hpp";
+    std::ofstream out(outPath);
+    if (!out)
+    {
+        std::cerr << "error: cannot write " << outPath << "\n";
+        std::exit(1);
+    }
+
+    out << "//===----------------------------------------------------------------------===//\n";
+    out << "//\n";
+    out << "// AUTO-GENERATED FILE - DO NOT EDIT\n";
+    out << "// Generated by rtgen from runtime.def\n";
+    out << "//\n";
+    out << "//===----------------------------------------------------------------------===//\n";
+    out << "//\n";
+    out << "// File: RuntimeNames.hpp\n";
+    out << "// Purpose: Canonical runtime function name constants for all frontends.\n";
+    out << "//\n";
+    out << "// Usage: #include \"il/runtime/RuntimeNames.hpp\"\n";
+    out << "//        Then use il::runtime::names::kStringConcat etc.\n";
+    out << "//\n";
+    out << "//===----------------------------------------------------------------------===//\n\n";
+
+    out << "#pragma once\n\n";
+    out << "namespace il::runtime::names {\n\n";
+
+    // Group functions by namespace for readability
+    std::map<std::string, std::vector<const RuntimeFunc *>> byNamespace;
+    std::set<std::string> emittedIdentifiers; // Track duplicates
+
+    for (const auto &func : state.functions)
+    {
+        // Extract namespace: "Viper.String.Concat" -> "Viper.String"
+        size_t lastDot = func.canonical.rfind('.');
+        std::string ns = "Other";
+        if (lastDot != std::string::npos)
+        {
+            ns = func.canonical.substr(0, lastDot);
+        }
+        byNamespace[ns].push_back(&func);
+    }
+
+    for (const auto &[ns, funcs] : byNamespace)
+    {
+        out << "// " << std::string(75, '=') << "\n";
+        out << "// " << ns << "\n";
+        out << "// " << std::string(75, '=') << "\n\n";
+
+        for (const auto *func : funcs)
+        {
+            std::string id = canonicalToIdentifier(func->canonical);
+
+            // Handle duplicate identifiers by appending a suffix
+            std::string uniqueId = id;
+            int suffix = 2;
+            while (emittedIdentifiers.count(uniqueId))
+            {
+                uniqueId = id + std::to_string(suffix++);
+            }
+            emittedIdentifiers.insert(uniqueId);
+
+            out << "/// @brief " << func->canonical << "\n";
+            out << "inline constexpr const char *" << uniqueId << " = \"" << func->canonical
+                << "\";\n\n";
+        }
+    }
+
+    // Also emit aliases
+    if (!state.aliases.empty())
+    {
+        out << "// " << std::string(75, '=') << "\n";
+        out << "// ALIASES\n";
+        out << "// " << std::string(75, '=') << "\n\n";
+
+        for (const auto &alias : state.aliases)
+        {
+            std::string id = canonicalToIdentifier(alias.canonical);
+
+            // Handle duplicate identifiers
+            std::string uniqueId = id;
+            int suffix = 2;
+            while (emittedIdentifiers.count(uniqueId))
+            {
+                uniqueId = id + std::to_string(suffix++);
+            }
+            emittedIdentifiers.insert(uniqueId);
+
+            out << "/// @brief " << alias.canonical << " (alias)\n";
+            out << "inline constexpr const char *" << uniqueId << " = \"" << alias.canonical
+                << "\";\n\n";
+        }
+    }
+
+    out << "} // namespace il::runtime::names\n";
+
+    std::cout << "  Generated " << outPath << "\n";
+}
+
 //===----------------------------------------------------------------------===//
 // Main
 //===----------------------------------------------------------------------===//
@@ -1578,6 +1789,7 @@ int main(int argc, char **argv)
     generateClasses(state, outputDir);
     generateSignatures(state, outputDir, inputPath);
     generateZiaExterns(state, outputDir);
+    generateFrontendNames(state, outputDir);
 
     std::cout << "rtgen: Done\n";
     return 0;

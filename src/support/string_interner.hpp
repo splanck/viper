@@ -112,6 +112,10 @@ class StringInterner
     /// Maximum number of unique symbols representable by this interner.
     uint32_t maxSymbols_;
 
+    /// @brief Rebuild the lookup map from storage after move operations.
+    /// @details After a move assignment or copy, the map's string_view keys
+    /// may become invalidated. This method reconstructs the map by iterating
+    /// through the storage_ deque and creating fresh entries.
     void rebuildMap();
 };
 } // namespace il::support

@@ -11,7 +11,7 @@ func start() {
 
     // Unbox it
     var unboxed: Integer = Viper.Box.ToI64(boxed);
-    Viper.Terminal.Say("Unboxed: " + Viper.Strings.FromInt(unboxed));
+    Viper.Terminal.Say("Unboxed: " + Viper.String.FromInt(unboxed));
 
     if (unboxed == 42) {
         Viper.Terminal.Say("RESULT: ok");

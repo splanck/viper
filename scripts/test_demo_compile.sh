@@ -19,7 +19,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="$ROOT_DIR/build"
 
-ILC="$BUILD_DIR/src/tools/ilc/ilc"
+ILC="$BUILD_DIR/src/tools/viper/viper"
 ZIA="$BUILD_DIR/src/tools/zia/zia"
 RUNTIME_LIB="$BUILD_DIR/src/runtime/libviper_runtime.a"
 GFX_LIB="$BUILD_DIR/lib/libvipergfx.a"

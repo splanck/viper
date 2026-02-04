@@ -65,17 +65,28 @@ struct SlotKeyHash
     }
 };
 
-/// @brief Determine whether @p reg belongs to the callee-saved set.
-/// @details Consults the target's callee-saved lists for both GPR and XMM
-///          classes.
+/// @brief Build a set of callee-saved registers for O(1) lookup.
+/// @details Pre-computes the union of GPR and XMM callee-saved registers
+///          into an unordered_set for efficient membership testing.
 /// @param target Target description providing ABI details.
+/// @return Set containing all callee-saved physical registers.
+[[nodiscard]] std::unordered_set<PhysReg> buildCalleeSavedSet(const TargetInfo &target)
+{
+    std::unordered_set<PhysReg> result{};
+    result.reserve(target.calleeSavedGPR.size() + target.calleeSavedXMM.size());
+    result.insert(target.calleeSavedGPR.begin(), target.calleeSavedGPR.end());
+    result.insert(target.calleeSavedXMM.begin(), target.calleeSavedXMM.end());
+    return result;
+}
+
+/// @brief Determine whether @p reg belongs to the callee-saved set.
+/// @details Uses a pre-computed set for O(1) lookup instead of O(n) linear search.
+/// @param calleeSavedSet Pre-computed set of callee-saved registers.
 /// @param reg Physical register being queried.
 /// @return True when the register must be preserved across calls.
-[[nodiscard]] bool isCalleeSaved(const TargetInfo &target, PhysReg reg)
+[[nodiscard]] bool isCalleeSaved(const std::unordered_set<PhysReg> &calleeSavedSet, PhysReg reg)
 {
-    const auto hasReg = [&](const std::vector<PhysReg> &regs)
-    { return std::find(regs.begin(), regs.end(), reg) != regs.end(); };
-    return hasReg(target.calleeSavedGPR) || hasReg(target.calleeSavedXMM);
+    return calleeSavedSet.count(reg) > 0;
 }
 
 /// @brief Guess the register class used by a memory operand.
@@ -139,6 +150,9 @@ struct SlotKeyHash
 ///              outgoing argument requirements.
 void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &frame)
 {
+    // Pre-compute callee-saved set for O(1) lookup instead of O(n) linear search.
+    const auto calleeSavedSet = buildCalleeSavedSet(target);
+
     std::unordered_set<PhysReg> usedCalleeSaved{};
     std::set<int> gprSpillSlots{};
     std::set<int> xmmSpillSlots{};
@@ -159,7 +173,7 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
                 if (auto *reg = std::get_if<OpReg>(&operand); reg && reg->isPhys)
                 {
                     const auto phys = static_cast<PhysReg>(reg->idOrPhys);
-                    if (phys != PhysReg::RBP && phys != PhysReg::RSP && isCalleeSaved(target, phys))
+                    if (phys != PhysReg::RBP && phys != PhysReg::RSP && isCalleeSaved(calleeSavedSet, phys))
                     {
                         usedCalleeSaved.insert(phys);
                     }

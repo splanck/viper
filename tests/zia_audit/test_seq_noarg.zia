@@ -12,7 +12,7 @@ func start() {
     Viper.Terminal.Say("Pushed element");
 
     var len = Viper.Collections.Seq.get_Len(s);
-    Viper.Terminal.Say("Len: " + Viper.Strings.FromInt(len));
+    Viper.Terminal.Say("Len: " + Viper.String.FromInt(len));
 
     if (len == 1) {
         Viper.Terminal.Say("RESULT: ok");

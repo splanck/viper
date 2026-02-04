@@ -3,9 +3,9 @@
 // =============================================================================
 // Uses new Viper runtime features:
 // - Viper.Input.Manager for edge detection and debounced menu input
-// - Viper.Timer for game timing (ready state, death, mode switching)
-// - Viper.Tween for animations (ready text bounce)
-// - Viper.SmoothValue for score counter animation
+// - Viper.Game.Timer for game timing (ready state, death, mode switching)
+// - Viper.Game.Tween for animations (ready text bounce)
+// - Viper.Game.SmoothValue for score counter animation
 // - for-in range syntax for cleaner iteration
 // =============================================================================
 
@@ -42,14 +42,14 @@ entity Game {
     hide Integer menuSelection;
 
     // Use Timers instead of manual counters
-    hide Viper.Timer readyTimer;
-    hide Viper.Timer deathTimer;
-    hide Viper.Timer modeTimer;
+    hide Viper.Game.Timer readyTimer;
+    hide Viper.Game.Timer deathTimer;
+    hide Viper.Game.Timer modeTimer;
     hide Boolean chaseMode;
 
     // Animations
-    hide Viper.Tween readyTween;
-    hide Viper.SmoothValue displayScore;
+    hide Viper.Game.Tween readyTween;
+    hide Viper.Game.SmoothValue displayScore;
 
     // High scores list
     hide List[Integer] highScores;
@@ -74,13 +74,13 @@ entity Game {
         theFruit.init();
 
         // Initialize timers
-        readyTimer = Viper.Timer.New();
-        deathTimer = Viper.Timer.New();
-        modeTimer = Viper.Timer.New();
+        readyTimer = Viper.Game.Timer.New();
+        deathTimer = Viper.Game.Timer.New();
+        modeTimer = Viper.Game.Timer.New();
 
         // Initialize animations
-        readyTween = Viper.Tween.New();
-        displayScore = Viper.SmoothValue.New(0.0, 900.0);
+        readyTween = Viper.Game.Tween.New();
+        displayScore = Viper.Game.SmoothValue.New(0.0, 900.0);
 
         // Initialize high scores
         highScores = [];

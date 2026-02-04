@@ -23,6 +23,7 @@
 
 #include "codegen/x86_64/CodegenPipeline.hpp"
 
+#include "codegen/common/RuntimeComponents.hpp"
 #include "codegen/x86_64/passes/EmitPass.hpp"
 #include "codegen/x86_64/passes/LegalizePass.hpp"
 #include "codegen/x86_64/passes/LoweringPass.hpp"
@@ -232,19 +233,8 @@ int invokeLinker(const std::filesystem::path &asmPath,
                  std::ostream &out,
                  std::ostream &err)
 {
-    // Common enum for both Windows and Unix
-    enum class RtComponent
-    {
-        Base,
-        Arrays,
-        Oop,
-        Collections,
-        Text,
-        IoFs,
-        Exec,
-        Threads,
-        Graphics,
-    };
+    // Use common runtime component classification
+    using RtComponent = viper::codegen::RtComponent;
 
 #if defined(_WIN32)
     // Windows: Simple approach - find build dir and link all runtime libraries
@@ -448,47 +438,6 @@ int invokeLinker(const std::filesystem::path &asmPath,
         return symbols;
     };
 
-    auto needsComponentForSymbol = [](std::string_view sym) -> std::optional<RtComponent>
-    {
-        auto starts = [&](std::string_view p) -> bool { return sym.rfind(p, 0) == 0; };
-
-        if (starts("rt_arr_"))
-            return RtComponent::Arrays;
-
-        if (starts("rt_obj_") || starts("rt_type_") || starts("rt_cast_") || starts("rt_ns_") ||
-            sym == "rt_bind_interface")
-            return RtComponent::Oop;
-
-        if (starts("rt_list_") || starts("rt_map_") || starts("rt_treemap_") || starts("rt_bag_") ||
-            starts("rt_queue_") || starts("rt_ring_") || starts("rt_seq_") || starts("rt_stack_") ||
-            starts("rt_bytes_"))
-            return RtComponent::Collections;
-
-        if (starts("rt_codec_") || starts("rt_csv_") || starts("rt_guid_") || starts("rt_hash_") ||
-            starts("rt_parse_"))
-            return RtComponent::Text;
-
-        if (starts("rt_file_") || starts("rt_dir_") || starts("rt_path_") ||
-            starts("rt_binfile_") || starts("rt_linereader_") || starts("rt_linewriter_") ||
-            starts("rt_io_file_") || sym == "rt_eof_ch" || sym == "rt_lof_ch" ||
-            sym == "rt_loc_ch" || sym == "rt_close_err" || sym == "rt_seek_ch_err" ||
-            sym == "rt_write_ch_err" || sym == "rt_println_ch_err" ||
-            sym == "rt_line_input_ch_err" || sym == "rt_open_err_vstr")
-            return RtComponent::IoFs;
-
-        if (starts("rt_exec_") || starts("rt_machine_"))
-            return RtComponent::Exec;
-
-        if (starts("rt_monitor_") || starts("rt_thread_") || starts("rt_safe_"))
-            return RtComponent::Threads;
-
-        if (starts("rt_canvas_") || starts("rt_color_") || starts("rt_vec2_") ||
-            starts("rt_vec3_") || starts("rt_pixels_"))
-            return RtComponent::Graphics;
-
-        return std::nullopt;
-    };
-
     std::string asmText;
     if (!readFile(asmPath, asmText))
     {
@@ -509,7 +458,7 @@ int invokeLinker(const std::filesystem::path &asmPath,
 
     for (const auto &sym : symbols)
     {
-        const auto comp = needsComponentForSymbol(sym);
+        const auto comp = viper::codegen::componentForRuntimeSymbol(sym);
         if (!comp)
             continue;
         switch (*comp)
@@ -545,6 +494,8 @@ int invokeLinker(const std::filesystem::path &asmPath,
 
     if (needText || needIoFs || needExec)
         needCollections = true;
+    if (needCollections)
+        needArrays = true; // Collections uses rt_arr_obj_* internally
     if (needCollections || needArrays || needGraphics || needThreads)
         needOop = true;
 

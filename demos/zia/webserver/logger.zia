@@ -65,15 +65,15 @@ func log_pad3(n: Integer) -> String {
 }
 
 func log_timestamp() -> String {
-    var now = Viper.DateTime.Now();
-    var ms = Viper.DateTime.NowMs() % 1000;
+    var now = Viper.Time.DateTime.Now();
+    var ms = Viper.Time.DateTime.NowMs() % 1000;
 
-    var year = Viper.DateTime.Year(now);
-    var month = Viper.DateTime.Month(now);
-    var day = Viper.DateTime.Day(now);
-    var hour = Viper.DateTime.Hour(now);
-    var minute = Viper.DateTime.Minute(now);
-    var second = Viper.DateTime.Second(now);
+    var year = Viper.Time.DateTime.Year(now);
+    var month = Viper.Time.DateTime.Month(now);
+    var day = Viper.Time.DateTime.Day(now);
+    var hour = Viper.Time.DateTime.Hour(now);
+    var minute = Viper.Time.DateTime.Minute(now);
+    var second = Viper.Time.DateTime.Second(now);
 
     // Format: YYYY-MM-DD HH:MM:SS.mmm
     var ts = Viper.Fmt.Int(year) + "-";

@@ -222,7 +222,7 @@ func catCommand(filename: String) -> String {
 
 // DATE command
 func dateCommand() -> String {
-    var now = Viper.DateTime.Now();
+    var now = Viper.Time.DateTime.Now();
     return Viper.Fmt.Int(now) + " (unix timestamp)\n";
 }
 

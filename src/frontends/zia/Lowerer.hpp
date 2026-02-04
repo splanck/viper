@@ -108,6 +108,7 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace il::frontends::zia
@@ -433,25 +434,32 @@ class Lowerer
     std::string namespacePrefix_;
 
     /// @brief Local variable bindings: name -> SSA value.
-    std::map<std::string, Value> locals_;
+    /// @details Uses unordered_map for O(1) lookup instead of O(log n).
+    std::unordered_map<std::string, Value> locals_;
 
     /// @brief Local variable types: name -> semantic type.
-    std::map<std::string, TypeRef> localTypes_;
+    /// @details Uses unordered_map for O(1) lookup instead of O(log n).
+    std::unordered_map<std::string, TypeRef> localTypes_;
 
     /// @brief Mutable variable slots: name -> slot pointer.
-    std::map<std::string, Value> slots_;
+    /// @details Uses unordered_map for O(1) lookup instead of O(log n).
+    std::unordered_map<std::string, Value> slots_;
 
     /// @brief External functions used (for declaration).
-    std::set<std::string> usedExterns_;
+    /// @details Uses unordered_set for O(1) lookup instead of O(log n).
+    std::unordered_set<std::string> usedExterns_;
 
     /// @brief Functions defined in this module.
-    std::set<std::string> definedFunctions_;
+    /// @details Uses unordered_set for O(1) lookup instead of O(log n).
+    std::unordered_set<std::string> definedFunctions_;
 
     /// @brief Value type layout information.
-    std::map<std::string, ValueTypeInfo> valueTypes_;
+    /// @details Uses unordered_map for O(1) lookup instead of O(log n).
+    std::unordered_map<std::string, ValueTypeInfo> valueTypes_;
 
     /// @brief Entity type layout information.
-    std::map<std::string, EntityTypeInfo> entityTypes_;
+    /// @details Uses unordered_map for O(1) lookup instead of O(log n).
+    std::unordered_map<std::string, EntityTypeInfo> entityTypes_;
 
     /// @brief Pending generic entity instantiations that need methods lowered.
     /// @details Populated during expression lowering when generic entities are
@@ -467,7 +475,8 @@ class Lowerer
     std::vector<std::pair<std::string, FunctionDecl *>> pendingFunctionInstantiations_;
 
     /// @brief Interface type information.
-    std::map<std::string, InterfaceTypeInfo> interfaceTypes_;
+    /// @details Uses unordered_map for O(1) lookup instead of O(log n).
+    std::unordered_map<std::string, InterfaceTypeInfo> interfaceTypes_;
 
     /// @brief Current value type context (for self access).
     const ValueTypeInfo *currentValueType_{nullptr};
@@ -482,18 +491,21 @@ class Lowerer
     /// @details Stores the lowered values of module-level constants
     /// (e.g., `Integer GAME_WIDTH = 70;`). Used during identifier
     /// resolution to replace constant references with their values.
-    std::map<std::string, Value> globalConstants_;
+    /// Uses unordered_map for O(1) lookup instead of O(log n).
+    std::unordered_map<std::string, Value> globalConstants_;
 
     /// @brief Global mutable variable types: name -> semantic type.
     /// @details Stores the types of module-level mutable variables
     /// (e.g., `var running: Boolean;`). Used for generating runtime
     /// storage access calls.
-    std::map<std::string, TypeRef> globalVariables_;
+    /// Uses unordered_map for O(1) lookup instead of O(log n).
+    std::unordered_map<std::string, TypeRef> globalVariables_;
 
     /// @brief Initial values for mutable global variables with literal initializers.
     /// @details Stores literal initializer values that need to be stored to
     /// runtime storage during module initialization (e.g., `var counter = 10;`).
-    std::map<std::string, Value> globalInitializers_;
+    /// Uses unordered_map for O(1) lookup instead of O(log n).
+    std::unordered_map<std::string, Value> globalInitializers_;
 
     /// @}
     //=========================================================================
@@ -773,6 +785,10 @@ class Lowerer
     /// @brief Lower a lambda expression.
     /// @return LowerResult with closure pointer.
     LowerResult lowerLambda(LambdaExpr *expr);
+
+    /// @brief Lower an as (type cast) expression.
+    /// @return LowerResult with value cast to target type.
+    LowerResult lowerAs(AsExpr *expr);
 
     /// @}
     //=========================================================================

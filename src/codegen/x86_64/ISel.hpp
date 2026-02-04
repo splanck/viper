@@ -45,10 +45,19 @@ class ISel
   private:
     const TargetInfo *target_{nullptr};
 
-    // Scans blocks and folds LEA bases into mem operands when the temp has a single use.
+    /// @brief Fold LEA base addresses into memory operands.
+    /// @details Scans all blocks looking for LEA instructions whose result
+    /// temporary has exactly one use as a memory operand base. When found,
+    /// the LEA's offset is folded directly into the memory operand's
+    /// displacement, eliminating the intermediate register.
+    /// @param func The machine function to optimize.
     void foldLeaIntoMem(MFunction &func) const;
 
-    // Folds SHL+ADD into SIB addressing modes in memory operands.
+    /// @brief Fold shift-add patterns into SIB addressing modes.
+    /// @details Identifies patterns where an index register is shifted left
+    /// and added to a base register, converting them into x86's scaled-index-base
+    /// addressing mode (e.g., [base + index*scale + disp]).
+    /// @param func The machine function to optimize.
     void foldSibAddressing(MFunction &func) const;
 };
 
