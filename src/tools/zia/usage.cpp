@@ -7,8 +7,6 @@
 
 /// @file
 /// @brief Implements usage and version output for the `zia` CLI tool.
-/// @details Centralizes help text so the main entry point and compatibility
-///          shims can share consistent output.
 
 #include "usage.hpp"
 #include "tools/common/CommonUsage.hpp"
@@ -18,10 +16,6 @@
 namespace zia
 {
 
-/// @brief Print tool and IL version information.
-/// @details Emits the Zia compiler name, semantic version string, and IL
-///          version to stdout. This output is intended for scripting and
-///          diagnostics rather than end-user help.
 void printVersion()
 {
     std::cout << "zia v" << VIPER_VERSION_STR << "\n";
@@ -29,10 +23,6 @@ void printVersion()
     std::cout << "IL version: " << VIPER_IL_VERSION_STR << "\n";
 }
 
-/// @brief Print usage information for the `zia` command.
-/// @details Writes a multi-section help message to stderr including invocation
-///          modes, flag descriptions, and practical examples. The messaging is
-///          designed to guide new users while remaining concise for CLI users.
 void printUsage()
 {
     std::cerr << "zia v" << VIPER_VERSION_STR << " - Zia Compiler\n"
@@ -52,16 +42,10 @@ void printUsage()
               << "  zia hello.zia --emit-il                 Show generated IL\n"
               << "  zia hello.zia -o hello.il               Save IL to file\n"
               << "  zia hello.zia --trace --bounds-checks   Debug mode\n"
-              << "  zia hello.zia -- arg1 arg2               Pass args to program\n"
+              << "  zia hello.zia -- arg1 arg2              Pass args to program\n"
               << "  zia hello.zia --stdin-from input.txt    Redirect input\n"
               << "\n"
-              << "Zia Language Notes:\n"
-              << "  - Functions must return a value on all paths\n"
-              << "  - Use 'var' for mutable variables, 'let' for immutable\n"
-              << "  - Entity types are reference types, value types are copied\n"
-              << "  - Use 'bind' to include other Zia modules\n"
-              << "\n"
-              << "For detailed documentation, see: docs/zia-guide.md\n";
+              << "Documentation: docs/zia-guide.md\n";
 }
 
 } // namespace zia
