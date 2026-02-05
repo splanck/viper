@@ -28,7 +28,30 @@ Type conversion utilities.
 | `ToString_Int(value)`    | `String(Integer)` | Converts an integer to its string representation |
 | `ToString_Double(value)` | `String(Double)`  | Converts a double to its string representation   |
 
-### Example
+### Zia Example
+
+```zia
+module ConvertDemo;
+
+bind Viper.Terminal;
+bind Viper.Convert as Convert;
+
+func start() {
+    // Parse string to integer
+    var n = Convert.ToInt64("12345");
+    Say("Parsed: " + Convert.ToString_Int(n + 1));  // Output: Parsed: 12346
+
+    // Parse string to double
+    var d = Convert.ToDouble("3.14159");
+    Say("Pi: " + Convert.ToString_Double(d));        // Output: Pi: 3.14159
+
+    // Convert back to string
+    Say(Convert.ToString_Int(42));                   // Output: 42
+    Say(Convert.ToString_Double(2.5));               // Output: 2.5
+}
+```
+
+### BASIC Example
 
 ```basic
 DIM s AS STRING
@@ -74,7 +97,36 @@ String formatting utilities for converting values to formatted strings.
 | `Bin(value)`                | `String(Integer)`                  | Format as binary                         |
 | `Oct(value)`                | `String(Integer)`                  | Format as octal                          |
 
-### Example
+### Zia Example
+
+```zia
+module FmtDemo;
+
+bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    // Integer formatting
+    Say("Int: " + Fmt.Int(12345));           // Output: Int: 12345
+    Say("Hex: " + Fmt.Hex(255));             // Output: Hex: ff
+    Say("HexPad: " + Fmt.HexPad(255, 4));   // Output: HexPad: 00ff
+    Say("Bin: " + Fmt.Bin(10));              // Output: Bin: 1010
+    Say("Oct: " + Fmt.Oct(64));              // Output: Oct: 100
+    Say("Padded: " + Fmt.IntPad(42, 5, "0"));  // Output: Padded: 00042
+
+    // Number formatting
+    Say("Fixed: " + Fmt.NumFixed(3.14159, 2));  // Output: Fixed: 3.14
+
+    // Boolean formatting
+    Say("Bool: " + Fmt.Bool(true));          // Output: Bool: true
+    Say("YesNo: " + Fmt.BoolYN(false));      // Output: YesNo: No
+
+    // Size formatting
+    Say("Size: " + Fmt.Size(1048576));       // Output: Size: 1.0 MB
+}
+```
+
+### BASIC Example
 
 ```basic
 ' Integer formatting
@@ -145,7 +197,28 @@ Structured logging with configurable log levels.
 - Format: `[LEVEL] YYYY-MM-DD HH:MM:SS message`
 - Set `Level = Viper.Log.OFF` to disable all logging
 
-### Example
+### Zia Example
+
+```zia
+module LogDemo;
+
+bind Viper.Terminal;
+bind Viper.Log;
+
+func start() {
+    // Log at various levels (output goes to stderr)
+    Info("Application started");
+    Warn("Configuration file not found, using defaults");
+    Error("Failed to connect to database");
+
+    // Debug messages are suppressed by default (level < INFO)
+    Debug("This won't appear");
+
+    Say("Log demo complete");
+}
+```
+
+### BASIC Example
 
 ```basic
 ' Basic logging
@@ -203,7 +276,41 @@ graceful error handling.
 - `IntRadix` supports radix 2-36 (digits 0-9, letters a-z)
 - Leading/trailing whitespace is trimmed before parsing
 
-### Example
+### Zia Example
+
+```zia
+module ParseDemo;
+
+bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    // Parse with default fallback
+    var port = Viper.Parse.IntOr("8080", 3000);
+    Say("Port: " + Fmt.Int(port));             // Output: Port: 8080
+
+    var timeout = Viper.Parse.NumOr("invalid", 30.0);
+    Say("Timeout: " + Fmt.Num(timeout));       // Output: Timeout: 30
+
+    // Validate input
+    if Viper.Parse.IsInt("42") {
+        Say("42 is a valid integer");          // Output: 42 is a valid integer
+    }
+    if !Viper.Parse.IsInt("hello") {
+        Say("hello is not a valid integer");   // Output: hello is not a valid integer
+    }
+
+    // Boolean parsing
+    var enabled = Viper.Parse.BoolOr("yes", false);
+    Say("Enabled: " + Fmt.Bool(enabled));      // Output: Enabled: true
+
+    // Hex parsing with default
+    var color = Viper.Parse.IntRadix("ff", 16, 0);
+    Say("Color: " + Fmt.Int(color));           // Output: Color: 255
+}
+```
+
+### BASIC Example
 
 ```basic
 ' Parse with default fallback

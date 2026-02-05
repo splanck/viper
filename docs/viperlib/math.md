@@ -72,7 +72,26 @@ Rotate counts are normalized to 0-63 (count MOD 64).
 All single-bit operations accept bit positions 0-63. Out-of-range positions return the input unchanged (for
 Set/Clear/Toggle) or false (for Get).
 
-### Example
+### Zia Example
+
+```zia
+module BitsDemo;
+
+bind Viper.Terminal;
+bind Viper.Bits as Bits;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    Say("And: " + Fmt.Int(Bits.And(12, 10)));     // 8
+    Say("Or: " + Fmt.Int(Bits.Or(12, 10)));        // 14
+    Say("Xor: " + Fmt.Int(Bits.Xor(12, 10)));     // 6
+    Say("Shl: " + Fmt.Int(Bits.Shl(1, 4)));       // 16
+    Say("Count: " + Fmt.Int(Bits.Count(255)));     // 8
+    Say("LeadZ: " + Fmt.Int(Bits.LeadZ(1)));       // 63
+}
+```
+
+### BASIC Example
 
 ```basic
 ' Basic bitwise operations
@@ -199,7 +218,28 @@ Mathematical functions and constants.
 | `Deg(radians)` | `Double(Double)` | Convert radians to degrees |
 | `Rad(degrees)` | `Double(Double)` | Convert degrees to radians |
 
-### Example
+### Zia Example
+
+```zia
+module MathDemo;
+
+bind Viper.Terminal;
+bind Viper.Math as Math;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    Say("Sqrt(144): " + Fmt.NumFixed(Math.Sqrt(144.0), 1));          // 12.0
+    Say("Pow(2,10): " + Fmt.NumFixed(Math.Pow(2.0, 10.0), 0));      // 1024
+    Say("AbsInt(-42): " + Fmt.Int(Math.AbsInt(-42)));                 // 42
+    Say("MinInt(3,7): " + Fmt.Int(Math.MinInt(3, 7)));                // 3
+    Say("MaxInt(3,7): " + Fmt.Int(Math.MaxInt(3, 7)));                // 7
+    Say("ClampInt(15,0,10): " + Fmt.Int(Math.ClampInt(15, 0, 10)));   // 10
+    Say("Floor(3.7): " + Fmt.NumFixed(Math.Floor(3.7), 0));           // 3
+    Say("Ceil(3.2): " + Fmt.NumFixed(Math.Ceil(3.2), 0));             // 4
+}
+```
+
+### BASIC Example
 
 ```basic
 ' Using constants
@@ -264,7 +304,23 @@ Random number generation with uniform and distribution-based functions.
 | `Chance(probability)`      | `Integer(Double)`      | Returns 1 with probability p, otherwise 0             |
 | `Shuffle(seq)`             | `Void(Seq)`            | Randomly shuffles a sequence in place                 |
 
-### Example
+### Zia Example
+
+```zia
+module RandomDemo;
+
+bind Viper.Terminal;
+bind Viper.Random as Random;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    Say("Range(1,100): " + Fmt.Int(Random.Range(1, 100)));
+    Say("Float: " + Fmt.NumFixed(Random.Next(), 4));
+    Say("Dice d6: " + Fmt.Int(Random.Dice(6)));
+}
+```
+
+### BASIC Example
 
 ```basic
 ' Seed for reproducible sequences
@@ -376,7 +432,29 @@ Viper.Random.Shuffle(seq)  ' Now shuffled: e.g., [3, 1, 5, 2, 4]
 - `Cross()` returns the scalar z-component of the 3D cross product (treating 2D vectors as 3D with z=0)
 - Angles are in radians; use `Viper.Math.Rad()` and `Viper.Math.Deg()` for conversion
 
-### Example
+### Zia Example
+
+```zia
+module Vec2Demo;
+
+bind Viper.Terminal;
+bind Viper.Vec2 as V2;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var a = V2.New(3.0, 4.0);
+    Say("Length: " + Fmt.NumFixed(V2.Len(a), 2));            // 5.00
+
+    var b = V2.New(1.0, 0.0);
+    var c = V2.Add(a, b);
+    Say("Add length: " + Fmt.NumFixed(V2.Len(c), 4));        // 5.6569
+
+    var n = V2.Norm(a);
+    Say("Normalized: " + Fmt.NumFixed(V2.Len(n), 2));         // 1.00
+}
+```
+
+### BASIC Example
 
 ```basic
 ' Create vectors
@@ -466,7 +544,30 @@ END IF
 - `Cross()` returns a Vec3 perpendicular to both input vectors (right-hand rule)
 - The cross product formula: a × b = (ay*bz - az*by, az*bx - ax*bz, ax*by - ay*bx)
 
-### Example
+### Zia Example
+
+```zia
+module Vec3Demo;
+
+bind Viper.Terminal;
+bind Viper.Vec3 as V3;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var v = V3.New(1.0, 2.0, 3.0);
+    Say("Length: " + Fmt.NumFixed(V3.Len(v), 4));             // 3.7417
+
+    var n = V3.Norm(v);
+    Say("Normalized: " + Fmt.NumFixed(V3.Len(n), 2));         // 1.00
+
+    var a = V3.New(1.0, 0.0, 0.0);
+    var b = V3.New(0.0, 1.0, 0.0);
+    var cross = V3.Cross(a, b);
+    Say("Cross len: " + Fmt.NumFixed(V3.Len(cross), 2));      // 1.00
+}
+```
+
+### BASIC Example
 
 ```basic
 ' Create 3D vectors

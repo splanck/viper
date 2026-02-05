@@ -970,6 +970,36 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
             }
         }
 
+        // Fallback: Map semantic collection types to runtime class methods.
+        // Handles runtime-specific methods (get_Len, Put, First, etc.) that aren't
+        // in the built-in Zia-friendly method tables above.
+        if (baseType && (baseType->kind == TypeKindSem::Set ||
+                         baseType->kind == TypeKindSem::List ||
+                         baseType->kind == TypeKindSem::Map))
+        {
+            std::string className;
+            if (baseType->kind == TypeKindSem::Set)
+                className = "Viper.Collections.Set";
+            else if (baseType->kind == TypeKindSem::List)
+                className = "Viper.Collections.List";
+            else
+                className = "Viper.Collections.Map";
+
+            std::string fullMethodName = className + "." + fieldExpr->field;
+            Symbol *sym = lookupSymbol(fullMethodName);
+            if (sym && sym->kind == Symbol::Kind::Function)
+            {
+                analyzeArgs();
+                if (sym->isExtern)
+                {
+                    runtimeCallees_[expr] = fullMethodName;
+                }
+                if (sym->type && sym->type->kind == TypeKindSem::Function)
+                    return sym->type->returnType();
+                return sym->type;
+            }
+        }
+
         // Handle String methods using lookup table
         if (baseType && baseType->kind == TypeKindSem::String)
         {
@@ -1209,6 +1239,26 @@ TypeRef Sema::analyzeField(FieldExpr *expr)
         }
     }
 
+    // Handle built-in properties on maps (.count, .size, .length)
+    if (baseType && baseType->kind == TypeKindSem::Map)
+    {
+        if (expr->field == "Count" || expr->field == "count" || expr->field == "size" ||
+            expr->field == "length" || expr->field == "Len")
+        {
+            return types::integer();
+        }
+    }
+
+    // Handle built-in properties on sets (.count, .size, .length)
+    if (baseType && baseType->kind == TypeKindSem::Set)
+    {
+        if (expr->field == "Count" || expr->field == "count" || expr->field == "size" ||
+            expr->field == "length" || expr->field == "Len")
+        {
+            return types::integer();
+        }
+    }
+
     // Handle built-in properties on strings (Bug #3 fix)
     if (baseType && baseType->kind == TypeKindSem::String)
     {
@@ -1284,6 +1334,28 @@ TypeRef Sema::analyzeOptionalChain(OptionalChainExpr *expr)
         else
         {
             error(expr->loc, "Unknown field '" + expr->field + "' on List");
+        }
+    }
+    else if (innerType->kind == TypeKindSem::Map)
+    {
+        if (expr->field == "count" || expr->field == "size" || expr->field == "length")
+        {
+            fieldType = types::integer();
+        }
+        else
+        {
+            error(expr->loc, "Unknown field '" + expr->field + "' on Map");
+        }
+    }
+    else if (innerType->kind == TypeKindSem::Set)
+    {
+        if (expr->field == "count" || expr->field == "size" || expr->field == "length")
+        {
+            fieldType = types::integer();
+        }
+        else
+        {
+            error(expr->loc, "Unknown field '" + expr->field + "' on Set");
         }
     }
     else

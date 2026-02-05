@@ -160,6 +160,43 @@ All key codes are accessed as read-only properties on the Keyboard class.
 | `KEY_NUMDOT`   | 330   | `KEY_NUMMUL`   | 332   |
 | `KEY_NUMENTER` | 335   | `KEY_NUMDIV`   | 331   |
 
+### Zia Example: Basic Game Input
+
+```zia
+module GameInput;
+
+bind Viper.Terminal;
+bind Viper.Graphics.Canvas as Canvas;
+bind Viper.Graphics.Color as Color;
+bind Viper.Input.Keyboard as KB;
+
+func start() {
+    var c = Canvas.New("Game", 800, 600);
+    var px = 400;
+    var py = 300;
+
+    while c.get_ShouldClose() == 0 {
+        c.Poll();
+
+        // Movement using polling (smooth, held keys)
+        if KB.IsDown(KB.get_KEY_W()) { py = py - 5; }
+        if KB.IsDown(KB.get_KEY_S()) { py = py + 5; }
+        if KB.IsDown(KB.get_KEY_A()) { px = px - 5; }
+        if KB.IsDown(KB.get_KEY_D()) { px = px + 5; }
+
+        // Action on single press
+        if KB.WasPressed(KB.get_KEY_SPACE()) { Say("Action!"); }
+
+        // Escape to quit
+        if KB.WasPressed(KB.get_KEY_ESCAPE()) { return; }
+
+        c.Clear(Color.RGB(0, 0, 0));
+        c.Box(px - 10, py - 10, 20, 20, Color.RGB(255, 0, 0));
+        c.Flip();
+    }
+}
+```
+
 ### Example: Basic Game Input
 
 ```basic
@@ -365,6 +402,37 @@ Mouse state is updated automatically when you call `Canvas.Poll()`.
 | `BUTTON_MIDDLE` | 2     | Middle mouse button      |
 | `BUTTON_X1`     | 3     | Extra button 1 (back)    |
 | `BUTTON_X2`     | 4     | Extra button 2 (forward) |
+
+### Zia Example: Mouse Drawing
+
+```zia
+module MouseDraw;
+
+bind Viper.Graphics.Canvas as Canvas;
+bind Viper.Graphics.Color as Color;
+bind Viper.Input.Mouse as Mouse;
+
+func start() {
+    var c = Canvas.New("Draw", 800, 600);
+    c.Clear(Color.RGB(0, 0, 0));
+
+    while c.get_ShouldClose() == 0 {
+        c.Poll();
+
+        // Draw while left button held
+        if Mouse.Left() {
+            c.Disc(Mouse.X(), Mouse.Y(), 5, Color.RGB(255, 0, 0));
+        }
+
+        // Clear on right click
+        if Mouse.WasClicked(Mouse.get_BUTTON_RIGHT()) {
+            c.Clear(Color.RGB(0, 0, 0));
+        }
+
+        c.Flip();
+    }
+}
+```
 
 ### Example: Drawing with Mouse
 
@@ -648,6 +716,42 @@ Standard gamepad layout compatible with Xbox and PlayStation controllers:
 | `PAD_LEFT`      | 12    | D-pad Left    | D-pad Left     |
 | `PAD_RIGHT`     | 13    | D-pad Right   | D-pad Right    |
 | `PAD_GUIDE`     | 14    | Xbox Button   | PS Button      |
+
+### Zia Example: Controller Movement
+
+```zia
+module PadDemo;
+
+bind Viper.Terminal;
+bind Viper.Input.Pad as Pad;
+bind Viper.Graphics.Canvas as Canvas;
+bind Viper.Graphics.Color as Color;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var c = Canvas.New("Controller", 800, 600);
+    var px = 400.0;
+    var py = 300.0;
+
+    while c.get_ShouldClose() == 0 {
+        c.Poll();
+
+        if Pad.IsConnected(0) {
+            // Left stick movement
+            px = px + Pad.LeftX(0) * 5.0;
+            py = py + Pad.LeftY(0) * 5.0;
+
+            if Pad.WasPressed(0, Pad.get_PAD_A()) { Say("Jump!"); }
+
+            // Trigger for shooting
+            if Pad.RightTrigger(0) > 0.5 { Say("Shooting!"); }
+        }
+
+        c.Clear(Color.RGB(0, 0, 0));
+        c.Flip();
+    }
+}
+```
 
 ### Example: Basic Controller Movement
 
@@ -950,6 +1054,63 @@ Action state is updated automatically when you call `Canvas.Poll()`.
 | `AXIS_LEFT_TRIGGER` | 4     | Left trigger (0.0 to 1.0)       |
 | `AXIS_RIGHT_TRIGGER`| 5     | Right trigger (0.0 to 1.0)      |
 
+### Zia Example: Action Mapping
+
+```zia
+module ActionDemo;
+
+bind Viper.Terminal;
+bind Viper.Input.Action as Action;
+bind Viper.Input.Keyboard as KB;
+bind Viper.Input.Pad as Pad;
+bind Viper.Graphics.Canvas as Canvas;
+bind Viper.Graphics.Color as Color;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var c = Canvas.New("Action Demo", 800, 600);
+
+    // Define actions
+    Action.Define("jump");
+    Action.Define("fire");
+    Action.DefineAxis("move_x");
+    Action.DefineAxis("move_y");
+
+    // Bind keyboard
+    Action.BindKey("jump", KB.get_KEY_SPACE());
+    Action.BindKey("fire", KB.get_KEY_Z());
+    Action.BindKeyAxis("move_x", KB.get_KEY_LEFT(), -1.0);
+    Action.BindKeyAxis("move_x", KB.get_KEY_RIGHT(), 1.0);
+    Action.BindKeyAxis("move_y", KB.get_KEY_UP(), -1.0);
+    Action.BindKeyAxis("move_y", KB.get_KEY_DOWN(), 1.0);
+
+    // Bind gamepad (any controller)
+    Action.BindPadButton("jump", -1, Pad.get_PAD_A());
+    Action.BindPadButton("fire", -1, Pad.get_PAD_X());
+
+    Say("Jump bindings: " + Action.BindingsStr("jump"));
+
+    var px = 400.0;
+    var py = 300.0;
+
+    while c.get_ShouldClose() == 0 {
+        c.Poll();
+
+        // Device-agnostic movement
+        px = px + Action.Axis("move_x") * 5.0;
+        py = py + Action.Axis("move_y") * 5.0;
+
+        if Action.Pressed("jump") { Say("Jump!"); }
+        if Action.Held("fire") { Say("Firing..."); }
+
+        c.Clear(Color.RGB(0, 0, 0));
+        c.Flip();
+    }
+
+    Action.Clear();
+}
+```
+
 ### Example: Basic Game Actions
 
 ```basic
@@ -1170,6 +1331,45 @@ These methods check ALL input sources (keyboard, D-pad, analog sticks) and retur
 | `PadRightTrigger(pad)`        | `Double(Integer)`           | Right trigger (0.0 to 1.0)            |
 
 **Note:** Use pad index `-1` to check any connected controller.
+
+### Zia Example: Menu Navigation
+
+```zia
+module MenuDemo;
+
+bind Viper.Terminal;
+bind Viper.Input.Manager as IM;
+bind Viper.Graphics.Canvas as Canvas;
+bind Viper.Graphics.Color as Color;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var c = Canvas.New("Menu", 800, 600);
+    var input = IM.New();
+    input.set_DebounceDelay(12);
+
+    var selected = 0;
+
+    while c.get_ShouldClose() == 0 {
+        c.Poll();
+        input.Update();
+
+        // Unified direction (keyboard + gamepad)
+        if input.get_Up() { selected = selected - 1; }
+        if input.get_Down() { selected = selected + 1; }
+        if selected < 0 { selected = 3; }
+        if selected > 3 { selected = 0; }
+
+        if input.get_Confirm() {
+            Say("Selected item: " + Fmt.Int(selected));
+        }
+        if input.get_Cancel() { return; }
+
+        c.Clear(Color.RGB(0, 0, 0));
+        c.Flip();
+    }
+}
+```
 
 ### Example: Menu Navigation
 

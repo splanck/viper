@@ -32,7 +32,27 @@ Command-line arguments and environment access.
 | `SetVariable(name, value)` | `Void(String, String)` | Sets or overwrites an environment variable (empty value allowed)        |
 | `EndProgram(code)`         | `Void(Integer)`        | Terminates the program with the provided exit code                      |
 
-### Example
+### Zia Example
+
+```zia
+module EnvDemo;
+
+bind Viper.Terminal;
+bind Viper.Environment as Env;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    Say("Args: " + Fmt.Int(Env.GetArgumentCount()));
+    Say("Native: " + Fmt.Bool(Env.IsNative()));
+
+    // Environment variables
+    var home = Env.GetVariable("HOME");
+    Say("HOME: " + home);
+    Say("Has HOME: " + Fmt.Bool(Env.HasVariable("HOME")));
+}
+```
+
+### BASIC Example
 
 ```basic
 ' Program invoked as: ./program arg1 arg2 arg3
@@ -106,7 +126,11 @@ args.Push(userInput)
 Viper.Exec.RunArgs("/bin/cat", args)  ' Arguments are passed directly
 ```
 
-### Example
+### Zia Example
+
+> Exec is accessible via fully-qualified calls: `Viper.Exec.Run(...)`, `Viper.Exec.RunCapture(...)`.
+
+### BASIC Example
 
 ```basic
 ' Simple command execution
@@ -178,7 +202,11 @@ System information queries providing read-only access to machine properties.
 | `MemFree`  | `Integer` | Available RAM in bytes                                                   |
 | `Endian`   | `String`  | Byte order: `"little"` or `"big"`                                        |
 
-### Example
+### Zia Example
+
+> Machine properties (Cores, Endian, Home, Host, etc.) use the get_/set_ pattern which is not directly accessible via alias in Zia. Use BASIC for property access.
+
+### BASIC Example
 
 ```basic
 ' Operating system information
@@ -285,7 +313,21 @@ Terminal input and output operations.
 | `EndBatch()`    | `Void()`  | End batch mode and flush pending output                   |
 | `Flush()`       | `Void()`  | Force buffered output to be written immediately           |
 
-### Example
+### Zia Example
+
+```zia
+module TerminalDemo;
+
+bind Viper.Terminal;
+
+func start() {
+    Say("Hello from Terminal!");       // prints with newline
+    Print("No newline: ");             // prints without newline
+    Say("done.");                       // No newline: done.
+}
+```
+
+### BASIC Example
 
 ```basic
 DIM name AS STRING

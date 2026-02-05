@@ -52,6 +52,11 @@ inline constexpr const char *kListInsert = kCollectionsListInsert;
 inline constexpr const char *kListFind = kCollectionsListFind;
 
 inline constexpr const char *kSetNew = kCollectionsSetNew;
+inline constexpr const char *kSetCount = kCollectionsSetGetLen;
+inline constexpr const char *kSetHas = kCollectionsSetHas;
+inline constexpr const char *kSetPut = kCollectionsSetPut;
+inline constexpr const char *kSetDrop = kCollectionsSetDrop;
+inline constexpr const char *kSetClear = kCollectionsSetClear;
 
 inline constexpr const char *kMapNew = kCollectionsMapNew;
 inline constexpr const char *kMapSet = kCollectionsMapSet;

@@ -324,58 +324,7 @@ static int linkToExe(const std::string &asmPath,
 
     const std::unordered_set<std::string> symbols = parse_runtime_symbols(asmText);
 
-    bool needArrays = false;
-    bool needOop = false;
-    bool needCollections = false;
-    bool needText = false;
-    bool needIoFs = false;
-    bool needExec = false;
-    bool needThreads = false;
-    bool needGraphics = false;
-
-    for (const auto &sym : symbols)
-    {
-        const auto comp = viper::codegen::componentForRuntimeSymbol(sym);
-        if (!comp)
-            continue;
-        switch (*comp)
-        {
-            case RtComponent::Arrays:
-                needArrays = true;
-                break;
-            case RtComponent::Oop:
-                needOop = true;
-                break;
-            case RtComponent::Collections:
-                needCollections = true;
-                break;
-            case RtComponent::Text:
-                needText = true;
-                break;
-            case RtComponent::IoFs:
-                needIoFs = true;
-                break;
-            case RtComponent::Exec:
-                needExec = true;
-                break;
-            case RtComponent::Threads:
-                needThreads = true;
-                break;
-            case RtComponent::Graphics:
-                needGraphics = true;
-                break;
-            case RtComponent::Base:
-                break;
-        }
-    }
-
-    // Component dependencies (internal runtime calls).
-    if (needText || needIoFs || needExec)
-        needCollections = true;
-    if (needCollections)
-        needArrays = true; // Collections uses rt_arr_obj_* internally
-    if (needCollections || needArrays || needGraphics || needThreads)
-        needOop = true;
+    const auto requiredComponents = viper::codegen::resolveRequiredComponents(symbols);
 
     const std::optional<std::filesystem::path> buildDirOpt = find_build_dir();
     const std::filesystem::path buildDir = buildDirOpt.value_or(std::filesystem::path{});
@@ -390,25 +339,17 @@ static int linkToExe(const std::string &asmPath,
     };
 
     std::vector<std::pair<std::string, std::filesystem::path>> requiredArchives;
-    requiredArchives.emplace_back("viper_rt_base", runtime_archive_path("viper_rt_base"));
-    if (needOop)
-        requiredArchives.emplace_back("viper_rt_oop", runtime_archive_path("viper_rt_oop"));
-    if (needArrays)
-        requiredArchives.emplace_back("viper_rt_arrays", runtime_archive_path("viper_rt_arrays"));
-    if (needCollections)
-        requiredArchives.emplace_back("viper_rt_collections",
-                                      runtime_archive_path("viper_rt_collections"));
-    if (needText)
-        requiredArchives.emplace_back("viper_rt_text", runtime_archive_path("viper_rt_text"));
-    if (needIoFs)
-        requiredArchives.emplace_back("viper_rt_io_fs", runtime_archive_path("viper_rt_io_fs"));
-    if (needExec)
-        requiredArchives.emplace_back("viper_rt_exec", runtime_archive_path("viper_rt_exec"));
-    if (needThreads)
-        requiredArchives.emplace_back("viper_rt_threads", runtime_archive_path("viper_rt_threads"));
-    if (needGraphics)
-        requiredArchives.emplace_back("viper_rt_graphics",
-                                      runtime_archive_path("viper_rt_graphics"));
+    for (auto comp : requiredComponents)
+    {
+        auto name = viper::codegen::archiveNameForComponent(comp);
+        requiredArchives.emplace_back(std::string(name), runtime_archive_path(name));
+    }
+
+    auto hasComponent = [&](RtComponent c) {
+        for (auto rc : requiredComponents)
+            if (rc == c) return true;
+        return false;
+    };
 
     std::vector<std::string> missingTargets;
     if (!buildDir.empty())
@@ -418,7 +359,7 @@ static int linkToExe(const std::string &asmPath,
             if (!file_exists(path))
                 missingTargets.push_back(tgt);
         }
-        if (needGraphics)
+        if (hasComponent(RtComponent::Graphics))
         {
             const std::filesystem::path gfxLib = buildDir / "lib" / "libvipergfx.a";
             if (!file_exists(gfxLib))
@@ -453,25 +394,11 @@ static int linkToExe(const std::string &asmPath,
             linkCmd.push_back(path.string());
     };
 
-    if (needGraphics)
-        appendArchiveIf("viper_rt_graphics");
-    if (needExec)
-        appendArchiveIf("viper_rt_exec");
-    if (needIoFs)
-        appendArchiveIf("viper_rt_io_fs");
-    if (needText)
-        appendArchiveIf("viper_rt_text");
-    if (needCollections)
-        appendArchiveIf("viper_rt_collections");
-    if (needArrays)
-        appendArchiveIf("viper_rt_arrays");
-    if (needThreads)
-        appendArchiveIf("viper_rt_threads");
-    if (needOop)
-        appendArchiveIf("viper_rt_oop");
-    appendArchiveIf("viper_rt_base");
+    // Reverse the component order for linking (dependents before their dependencies).
+    for (auto it = requiredComponents.rbegin(); it != requiredComponents.rend(); ++it)
+        appendArchiveIf(viper::codegen::archiveNameForComponent(*it));
 
-    if (needGraphics)
+    if (hasComponent(RtComponent::Graphics))
     {
         std::filesystem::path gfxLib;
         if (!buildDir.empty())

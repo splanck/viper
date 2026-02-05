@@ -983,6 +983,17 @@ class Lowerer
                                                   const std::string &methodName,
                                                   CallExpr *expr);
 
+    /// @brief Lower a method call on a Set collection.
+    /// @param baseValue The lowered set value.
+    /// @param baseType The semantic type of the set.
+    /// @param methodName The method name being called.
+    /// @param expr The call expression for arguments.
+    /// @return The call result, or nullopt if method not recognized.
+    std::optional<LowerResult> lowerSetMethodCall(Value baseValue,
+                                                  TypeRef baseType,
+                                                  const std::string &methodName,
+                                                  CallExpr *expr);
+
     /// @brief Lower a built-in function call (print, println, toString).
     /// @param name The function name.
     /// @param expr The call expression.

@@ -90,6 +90,10 @@ entry:
 - `Thread.Join: already joined`
 - `Thread.Join: cannot join self`
 
+### Zia Example
+
+> Thread requires function pointers (`addr_of`) for entry functions, which is an advanced Zia feature. See the IL example above or use BASIC `ADDR_OF` for thread creation.
+
 ---
 
 ## Viper.Threads.Monitor
@@ -128,6 +132,10 @@ FIFO-fair, re-entrant monitor for explicit object locking.
 - `Monitor.Pause: not owner`
 - `Monitor.PauseAll: not owner`
 
+### Zia Example
+
+> Monitor is a static utility class that operates on any object. Use `bind Viper.Threads.Monitor as Monitor;` and call `Monitor.Enter(obj)` / `Monitor.Exit(obj)`. Typically used with threads for synchronization.
+
 ---
 
 ## Viper.Threads.SafeI64
@@ -163,6 +171,31 @@ FIFO-serialized “safe variable” for shared counters and flags.
 - `SafeI64.Set: null object`
 - `SafeI64.Add: null object`
 - `SafeI64.CompareExchange: null object`
+
+### Zia Example
+
+```zia
+module SafeI64Demo;
+
+bind Viper.Terminal;
+bind Viper.Threads.SafeI64 as SafeI64;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var counter = SafeI64.New(0);
+    Say("Initial: " + Fmt.Int(counter.Get()));
+
+    counter.Set(42);
+    Say("After Set: " + Fmt.Int(counter.Get()));
+
+    var newVal = counter.Add(8);
+    Say("After Add(8): " + Fmt.Int(newVal));    // 50
+
+    var old = counter.CompareExchange(50, 100);
+    Say("CAS old: " + Fmt.Int(old));            // 50
+    Say("CAS result: " + Fmt.Int(counter.Get())); // 100
+}
+```
 
 ---
 
@@ -208,6 +241,32 @@ FIFO-fair permit gate (semaphore concept).
 - `Gate.Leave: null object`
 - `Gate.Leave: count cannot be negative`
 
+### Zia Example
+
+```zia
+module GateDemo;
+
+bind Viper.Terminal;
+bind Viper.Threads.Gate as Gate;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var gate = Gate.New(3);
+    Say("Permits: " + Fmt.Int(gate.get_Permits()));    // 3
+
+    gate.Enter();
+    Say("After Enter: " + Fmt.Int(gate.get_Permits())); // 2
+
+    Say("TryEnter: " + Fmt.Bool(gate.TryEnter()));      // true
+    Say("Permits: " + Fmt.Int(gate.get_Permits()));      // 1
+
+    gate.Leave();
+    gate.Leave();
+}
+```
+
+> **Note:** Gate properties (`Permits`) use the get_/set_ pattern; access as `gate.get_Permits()` in Zia.
+
 ---
 
 ## Viper.Threads.Barrier
@@ -246,6 +305,23 @@ Reusable N-party barrier.
 - `Barrier.Arrive: null object`
 - `Barrier.Reset: null object`
 - `Barrier.Reset: threads are waiting`
+
+### Zia Example
+
+```zia
+module BarrierDemo;
+
+bind Viper.Terminal;
+bind Viper.Threads.Barrier as Barrier;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var b = Barrier.New(3);
+    Say("Parties: " + Fmt.Int(b.get_Parties()));  // 3
+    Say("Waiting: " + Fmt.Int(b.get_Waiting()));  // 0
+    // In a real program, multiple threads would call b.Arrive()
+}
+```
 
 ---
 
@@ -293,6 +369,36 @@ Writer-preference reader-writer lock.
 - `RwLock.WriteExit: exit without matching enter`
 - `RwLock.WriteExit: not owner`
 
+### Zia Example
+
+```zia
+module RwLockDemo;
+
+bind Viper.Terminal;
+bind Viper.Threads.RwLock as RwLock;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var lock = RwLock.New();
+
+    // Read lock (shared)
+    lock.ReadEnter();
+    Say("Readers: " + Fmt.Int(lock.get_Readers()));  // 1
+    lock.ReadExit();
+
+    // Write lock (exclusive)
+    lock.WriteEnter();
+    Say("IsWriteLocked: " + Fmt.Bool(lock.get_IsWriteLocked()));  // true
+    lock.WriteExit();
+
+    // Non-blocking try variants
+    Say("TryRead: " + Fmt.Bool(lock.TryReadEnter()));   // true
+    lock.ReadExit();
+    Say("TryWrite: " + Fmt.Bool(lock.TryWriteEnter())); // true
+    lock.WriteExit();
+}
+```
+
 ---
 
 ## Viper.Threads.Promise
@@ -324,7 +430,11 @@ value (or error), and the Future is used by the consumer thread to retrieve the 
 |----------|------------------------|----------------------------------------|
 | `IsDone` | `Boolean` (read-only)  | True if Set or SetError was called     |
 
-### Example
+### Zia Example
+
+> Promise is not yet constructible from Zia (`New` symbol not resolved). Use BASIC for Promise/Future patterns.
+
+### BASIC Example
 
 ```basic
 ' Create a promise and get its future
@@ -373,7 +483,11 @@ Promise which is used to set the value.
 | `IsError` | `Boolean` (read-only)  | True if resolved with error                  |
 | `Error`   | `String` (read-only)   | Error message (empty if no error)            |
 
-### Basic Example
+### Zia Example
+
+> Future is obtained via `Promise.GetFuture()`. Since Promise is not yet constructible from Zia, Future is also not accessible. Use BASIC for async result patterns.
+
+### BASIC Example
 
 ```basic
 ' Get a future from a promise
@@ -504,7 +618,11 @@ Provides common parallel patterns like ForEach, Map, and Invoke using a shared t
 | `DefaultWorkers()`          | `Integer()`                          | Get number of CPU cores                               |
 | `DefaultPool()`             | `Pool()`                             | Get or create the shared default thread pool          |
 
-### Basic ForEach Example
+### Zia Example
+
+> Parallel requires function pointers (`addr_of`) which is an advanced Zia feature. Use BASIC `ADDR_OF` for parallel operations.
+
+### BASIC ForEach Example
 
 ```basic
 SUB ProcessItem(item AS PTR)
@@ -631,7 +749,11 @@ Cooperative cancellation token for signaling cancellation to long-running or asy
 - **Linked tokens:** Child tokens created with `Linked()` are automatically cancelled when the parent is cancelled.
 - **Cooperative:** Cancellation is advisory. The operation must check the token and respond appropriately.
 
-### Example
+### Zia Example
+
+> CancellationToken is not yet constructible from Zia (`New` symbol not resolved). Use BASIC for cancellation patterns.
+
+### BASIC Example
 
 ```basic
 ' Create a cancellation token
@@ -701,7 +823,11 @@ Time-based debouncer that delays execution until a quiet period has elapsed. Use
 3. `IsReady()` returns true only after the full delay has elapsed with no new signals
 4. This ensures the action fires only after events stop arriving
 
-### Example
+### Zia Example
+
+> Debouncer is not yet constructible from Zia (`New` symbol not resolved). Use BASIC for debouncing patterns.
+
+### BASIC Example
 
 ```basic
 ' Create a debouncer with 300ms delay
@@ -760,7 +886,11 @@ Time-based throttler that limits operations to at most once per interval. Unlike
 3. Returns `false` if the interval hasn't elapsed yet
 4. The first call always succeeds
 
-### Example
+### Zia Example
+
+> Throttler is not yet constructible from Zia (`New` symbol not resolved). Use BASIC for throttling patterns.
+
+### BASIC Example
 
 ```basic
 ' Create a throttler allowing one operation per second
@@ -831,7 +961,11 @@ Named task scheduler for scheduling delayed operations. Tasks are identified by 
 - **Monotonic clock:** Uses monotonic clock for accurate timing unaffected by system clock changes.
 - **Immediate tasks:** A delay of 0 schedules a task that is immediately due on the next `Poll()`.
 
-### Example
+### Zia Example
+
+> Scheduler is not yet constructible from Zia (`New` symbol not resolved). Use BASIC for task scheduling.
+
+### BASIC Example
 
 ```basic
 ' Create a scheduler

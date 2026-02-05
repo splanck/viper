@@ -391,6 +391,74 @@ std::optional<LowerResult> Lowerer::lowerMapMethodCall(Value baseValue,
 }
 
 //=============================================================================
+// Set Method Call Helper
+//=============================================================================
+
+std::optional<LowerResult> Lowerer::lowerSetMethodCall(Value baseValue,
+                                                       TypeRef baseType,
+                                                       const std::string &methodName,
+                                                       CallExpr *expr)
+{
+    const CollectionMethod method = lookupMethod(methodName);
+
+    switch (method)
+    {
+        case CollectionMethod::Has:
+        case CollectionMethod::Contains:
+            if (expr->args.size() >= 1)
+            {
+                auto valueResult = lowerExpr(expr->args[0].value.get());
+                TypeRef argType = sema_.typeOf(expr->args[0].value.get());
+                Value boxedValue = emitBoxValue(valueResult.value, valueResult.type, argType);
+                Value result =
+                    emitCallRet(Type(Type::Kind::I1), kSetHas, {baseValue, boxedValue});
+                return LowerResult{result, Type(Type::Kind::I1)};
+            }
+            break;
+
+        case CollectionMethod::Add:
+        case CollectionMethod::Put:
+            if (expr->args.size() >= 1)
+            {
+                auto valueResult = lowerExpr(expr->args[0].value.get());
+                TypeRef argType = sema_.typeOf(expr->args[0].value.get());
+                Value boxedValue = emitBoxValue(valueResult.value, valueResult.type, argType);
+                emitCall(kSetPut, {baseValue, boxedValue});
+                return LowerResult{Value::constInt(0), Type(Type::Kind::Void)};
+            }
+            break;
+
+        case CollectionMethod::Remove:
+            if (expr->args.size() >= 1)
+            {
+                auto valueResult = lowerExpr(expr->args[0].value.get());
+                TypeRef argType = sema_.typeOf(expr->args[0].value.get());
+                Value boxedValue = emitBoxValue(valueResult.value, valueResult.type, argType);
+                emitCall(kSetDrop, {baseValue, boxedValue});
+                return LowerResult{Value::constInt(0), Type(Type::Kind::Void)};
+            }
+            break;
+
+        case CollectionMethod::Size:
+        case CollectionMethod::Count:
+        case CollectionMethod::Length:
+        {
+            Value result = emitCallRet(Type(Type::Kind::I64), kSetCount, {baseValue});
+            return LowerResult{result, Type(Type::Kind::I64)};
+        }
+
+        case CollectionMethod::Clear:
+            emitCall(kSetClear, {baseValue});
+            return LowerResult{Value::constInt(0), Type(Type::Kind::Void)};
+
+        default:
+            break;
+    }
+
+    return std::nullopt;
+}
+
+//=============================================================================
 // Built-in Function Call Helper
 //=============================================================================
 
@@ -865,6 +933,16 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 if (mapResult)
                     return *mapResult;
             }
+
+            // Handle Set method calls
+            if (baseType->kind == TypeKindSem::Set)
+            {
+                auto baseResult = lowerExpr(fieldExpr->base.get());
+                auto setResult =
+                    lowerSetMethodCall(baseResult.value, baseType, fieldExpr->field, expr);
+                if (setResult)
+                    return *setResult;
+            }
         }
     }
 
@@ -877,7 +955,10 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
         if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get()))
         {
             TypeRef baseType = sema_.typeOf(fieldExpr->base.get());
-            if (baseType && baseType->name.find("Viper.") == 0)
+            if (baseType && (baseType->name.find("Viper.") == 0 ||
+                             baseType->kind == TypeKindSem::Set ||
+                             baseType->kind == TypeKindSem::List ||
+                             baseType->kind == TypeKindSem::Map))
             {
                 auto baseResult = lowerExpr(fieldExpr->base.get());
                 args.push_back(baseResult.value);

@@ -461,6 +461,28 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
         }
     }
 
+    // Handle Map.count, Map.size, and Map.length property
+    if (baseType->kind == TypeKindSem::Map)
+    {
+        if (expr->field == "Count" || expr->field == "count" || expr->field == "size" ||
+            expr->field == "length" || expr->field == "Len")
+        {
+            Value result = emitCallRet(Type(Type::Kind::I64), kMapCount, {base.value});
+            return {result, Type(Type::Kind::I64)};
+        }
+    }
+
+    // Handle Set.count, Set.size, and Set.length property
+    if (baseType->kind == TypeKindSem::Set)
+    {
+        if (expr->field == "Count" || expr->field == "count" || expr->field == "size" ||
+            expr->field == "length" || expr->field == "Len")
+        {
+            Value result = emitCallRet(Type(Type::Kind::I64), kSetCount, {base.value});
+            return {result, Type(Type::Kind::I64)};
+        }
+    }
+
     // Handle runtime class property access (e.g., app.ShouldClose, editor.LineCount)
     // Runtime classes are Ptr types with a non-empty name like "Viper.GUI.App"
     if (baseType->kind == TypeKindSem::Ptr && !baseType->name.empty())
@@ -993,6 +1015,22 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr)
             {
                 fieldType = types::integer();
                 fieldValue = emitCallRet(Type(Type::Kind::I64), kListCount, {base.value});
+            }
+        }
+        else if (innerType->kind == TypeKindSem::Map)
+        {
+            if (expr->field == "count" || expr->field == "size" || expr->field == "length")
+            {
+                fieldType = types::integer();
+                fieldValue = emitCallRet(Type(Type::Kind::I64), kMapCount, {base.value});
+            }
+        }
+        else if (innerType->kind == TypeKindSem::Set)
+        {
+            if (expr->field == "count" || expr->field == "size" || expr->field == "length")
+            {
+                fieldType = types::integer();
+                fieldValue = emitCallRet(Type(Type::Kind::I64), kSetCount, {base.value});
             }
         }
     }

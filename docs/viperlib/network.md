@@ -73,7 +73,11 @@ The implementation enables the following socket options by default:
 
 - **TCP_NODELAY:** Disables Nagle's algorithm for low-latency communication
 
-### Example
+### Zia Example
+
+> Tcp requires an active network connection and is typically used in interactive programs. Use `bind Viper.Network.Tcp as Tcp;` and call `Tcp.Connect(host, port)`. Properties use get_ pattern: `conn.get_Host()`, `conn.get_IsOpen()`.
+
+### BASIC Example
 
 ```basic
 ' Connect to a server
@@ -212,7 +216,11 @@ TCP server for accepting incoming client connections.
 | `AcceptFor(ms)`    | Tcp     | Accept with timeout, returns null on timeout     |
 | `Close()`          | void    | Stop listening and close the server              |
 
-### Example
+### Zia Example
+
+> TcpServer is accessible via `bind Viper.Network.TcpServer as TcpServer;`. Call `TcpServer.Listen(port)` or `TcpServer.ListenAt(addr, port)`. Properties use get_ pattern.
+
+### BASIC Example
 
 ```basic
 ' Start a simple echo server on port 8080
@@ -401,7 +409,11 @@ UDP datagram socket for connectionless communication.
 | `SetRecvTimeout(ms)`    | void    | Set receive timeout (0 = no timeout)         |
 | `Close()`               | void    | Close the socket                             |
 
-### Example
+### Zia Example
+
+> Udp is accessible via `bind Viper.Network.Udp as Udp;`. Call `Udp.New()` to create a socket, then `Udp.Bind(port)` or use `SendTo`/`Recv`. Properties use get_ pattern.
+
+### BASIC Example
 
 ```basic
 ' Simple UDP echo client/server
@@ -546,7 +558,28 @@ Static utility class for DNS resolution and IP address validation.
 | `LocalHost()`  | String  | Get local machine hostname                   |
 | `LocalAddrs()` | Seq     | Get all local IP addresses                   |
 
-### Example
+### Zia Example
+
+```zia
+module DnsDemo;
+
+bind Viper.Terminal;
+bind Viper.Network.Dns as Dns;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    // IP validation (no network required)
+    Say("IsIP 1.2.3.4: " + Fmt.Bool(Dns.IsIP("1.2.3.4")));
+    Say("IsIPv4 1.2.3.4: " + Fmt.Bool(Dns.IsIPv4("1.2.3.4")));
+    Say("IsIPv6 ::1: " + Fmt.Bool(Dns.IsIPv6("::1")));
+    Say("LocalHost: " + Dns.LocalHost());
+
+    // Resolve localhost
+    Say("localhost: " + Dns.Resolve("localhost"));
+}
+```
+
+### BASIC Example
 
 ```basic
 ' Resolve a hostname
@@ -651,7 +684,11 @@ Static HTTP client utilities for simple HTTP requests.
 | `Download(url, destPath)`      | Boolean | Download file to destination path            |
 | `Head(url)`                    | Map     | HEAD request, return headers as Map          |
 
-### Example
+### Zia Example
+
+> Http is accessible via `bind Viper.Network.Http as Http;`. Call `Http.Get(url)`, `Http.Post(url, body)`, etc. Requires network access.
+
+### BASIC Example
 
 ```basic
 ' Simple GET request
@@ -741,7 +778,11 @@ HTTP request builder for advanced requests with custom headers and options.
 | `SetTimeout(ms)`          | HttpReq | Set request timeout in milliseconds          |
 | `Send()`                  | HttpRes | Execute the request and return response      |
 
-### Example
+### Zia Example
+
+> HttpReq is accessible via `bind Viper.Network.HttpReq as HttpReq;`. Call `HttpReq.New(method, url)` to create a request, configure with `SetHeader`/`SetBody`, then call `Send()`. Requires network access.
+
+### BASIC Example
 
 ```basic
 ' Custom GET request with headers
@@ -795,7 +836,11 @@ HTTP response object returned by `HttpReq.Send()`.
 | `Header(name)`  | String  | Get specific header value (case-insensitive) |
 | `IsOk()`        | Boolean | True if status is 2xx (success)              |
 
-### Example
+### Zia Example
+
+> HttpRes is returned by `HttpReq.Send()`. Access properties via get_ pattern: `res.get_Status()`, `res.get_StatusText()`. Call `res.BodyStr()`, `res.IsOk()`, `res.Header(name)`.
+
+### BASIC Example
 
 ```basic
 DIM res AS OBJECT = Viper.Network.HttpReq.New("GET", "http://example.com/api").Send()
@@ -928,6 +973,37 @@ All properties are read/write.
 | ssh    | 22   |
 | ws     | 80   |
 | wss    | 443  |
+
+### Zia Example
+
+```zia
+module UrlDemo;
+
+bind Viper.Terminal;
+bind Viper.Network.Url as Url;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    // Parse a URL
+    var u = Url.Parse("https://example.com:8080/path?key=value#section");
+    Say("Scheme: " + u.get_Scheme());
+    Say("Host: " + u.get_Host());
+    Say("Port: " + Fmt.Int(u.get_Port()));
+    Say("Path: " + u.get_Path());
+    Say("Query: " + u.get_Query());
+    Say("Fragment: " + u.get_Fragment());
+    Say("Full: " + u.get_Full());
+
+    // URL encoding/decoding
+    Say("Encode: " + Url.Encode("hello world!"));
+    Say("Decode: " + Url.Decode("hello%20world%21"));
+
+    // Validation
+    Say("IsValid: " + Fmt.Bool(Url.IsValid("https://example.com")));
+}
+```
+
+> **Note:** Url properties use the get_/set_ pattern in Zia: `u.get_Scheme()`, `u.set_Host("new.com")`, etc.
 
 ### Parsing Example
 
@@ -1074,7 +1150,11 @@ ws://host[:port][/path]      # Unencrypted (port 80 default)
 wss://host[:port][/path]     # TLS encrypted (port 443 default)
 ```
 
-### Example
+### Zia Example
+
+> WebSocket is accessible via `bind Viper.Network.WebSocket as WS;`. Call `WS.Connect(url)` or `WS.ConnectFor(url, ms)`. Properties use get_ pattern: `ws.get_Url()`, `ws.get_IsOpen()`. Requires network access.
+
+### BASIC Example
 
 ```basic
 ' Connect to a WebSocket server
@@ -1225,6 +1305,10 @@ Automatically sets `Content-Type` and `Accept` headers for JSON, parses response
 | `LastStatus()`   | Integer | HTTP status code of last request (0 if none)         |
 | `LastResponse()` | HttpRes | Last response object (null if none)                  |
 | `LastOk()`       | Boolean | True if last status was 200-299                      |
+
+### Zia Example
+
+> **Note:** RestClient is not yet fully usable from Zia. The `New()` constructor fails with "no exported symbol 'New'" due to a frontend symbol resolution bug. This affects all instance classes that use `New` constructors in the Network module. See also: RetryPolicy, RateLimiter.
 
 ### Basic Example
 
@@ -1406,6 +1490,10 @@ Configurable retry policy with backoff strategies for handling transient failure
 | Fixed        | `New()`         | Same delay every time: `base, base, base, ...`   |
 | Exponential  | `Exponential()` | Doubles each time: `base, 2*base, 4*base, ...` (capped at max) |
 
+### Zia Example
+
+> **Note:** RetryPolicy is not yet constructible from Zia. The `New()` and `Exponential()` constructors fail with "no exported symbol 'New'" due to a frontend symbol resolution bug affecting newer instance classes.
+
 ### Example
 
 ```basic
@@ -1489,6 +1577,10 @@ Token bucket rate limiter for controlling the rate of operations. Tokens refill 
 2. Tokens refill continuously at `refillPerSec` rate, up to `maxTokens`
 3. Each operation consumes one or more tokens
 4. If insufficient tokens are available, the operation is denied (returns false)
+
+### Zia Example
+
+> **Note:** RateLimiter is not yet constructible from Zia. The `New()` constructor fails with "no exported symbol 'New'" due to a frontend symbol resolution bug affecting newer instance classes.
 
 ### Example
 

@@ -15,6 +15,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_box.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_random.h"
@@ -880,13 +881,13 @@ void rt_seq_clear(void *obj)
 /// ```
 ///
 /// @param obj Pointer to a Seq object. If NULL, returns -1.
-/// @param val The element to search for (compared by pointer equality).
+/// @param val The element to search for (compared by content for boxed values).
 ///
 /// @return The zero-based index of the first occurrence, or -1 if not found
 ///         or obj is NULL.
 ///
 /// @note O(n) time complexity - linear search from the beginning.
-/// @note Compares by pointer identity, not value equality.
+/// @note Boxed values are compared by content; non-boxed by pointer identity.
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_seq_has For boolean membership check
@@ -899,7 +900,7 @@ int64_t rt_seq_find(void *obj, void *val)
 
     for (int64_t i = 0; i < seq->len; i++)
     {
-        if (seq->items[i] == val)
+        if (rt_box_equal(seq->items[i], val))
         {
             return i;
         }
@@ -910,7 +911,7 @@ int64_t rt_seq_find(void *obj, void *val)
 
 /// @brief Checks whether the Seq contains a specific element.
 ///
-/// Tests if the element is present in the Seq using pointer equality.
+/// Tests if the element is present in the Seq using content-aware equality.
 /// This is a convenience wrapper around rt_seq_find that returns a boolean.
 ///
 /// **Example:**
@@ -923,12 +924,12 @@ int64_t rt_seq_find(void *obj, void *val)
 /// ```
 ///
 /// @param obj Pointer to a Seq object. If NULL, returns 0 (false).
-/// @param val The element to search for (compared by pointer equality).
+/// @param val The element to search for (compared by content for boxed values).
 ///
 /// @return 1 (true) if the element is found, 0 (false) otherwise.
 ///
 /// @note O(n) time complexity - linear search.
-/// @note Compares by pointer identity, not value equality.
+/// @note Boxed values are compared by content; non-boxed by pointer identity.
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_seq_find For getting the index of the element

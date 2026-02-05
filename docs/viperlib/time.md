@@ -35,7 +35,25 @@ Basic timing utilities for sleeping and measuring elapsed time.
 - `Sleep(0)` returns immediately without sleeping
 - Negative values passed to `Sleep()` are treated as 0
 
-### Example
+### Zia Example
+
+```zia
+module ClockDemo;
+
+bind Viper.Terminal;
+bind Viper.Time.Clock as Clock;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var t1 = Clock.Ticks();
+    // ... some work ...
+    var t2 = Clock.Ticks();
+    Say("Elapsed: " + Fmt.Int(t2 - t1) + " ms");
+    Say("Ticks (us): " + Fmt.Int(Clock.TicksUs()));
+}
+```
+
+### BASIC Example
 
 ```basic
 ' Measure execution time
@@ -101,7 +119,11 @@ interval has expired.
 - `Wait()` blocks the current thread until expiration; returns immediately if already expired
 - Changing `Interval` while running affects when `Expired` becomes true
 
-### Example
+### Zia Example
+
+> Countdown is not yet available as a constructible type in Zia. Use BASIC or access via the runtime API.
+
+### BASIC Example
 
 ```basic
 ' Create a 5-second countdown
@@ -172,7 +194,25 @@ Date and time operations. Timestamps are Unix timestamps (seconds since January 
 | `AddDays(timestamp, days)`       | `Integer(Integer, Integer)` | Adds days to a timestamp                                 |
 | `Diff(t1, t2)`                   | `Integer(Integer, Integer)` | Returns the difference in seconds between two timestamps |
 
-### Example
+### Zia Example
+
+```zia
+module DateTimeDemo;
+
+bind Viper.Terminal;
+bind Viper.Time.DateTime as DateTime;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var now = DateTime.Now();
+    Say("Year: " + Fmt.Int(DateTime.Year(now)));
+    Say("Month: " + Fmt.Int(DateTime.Month(now)));
+    Say("Day: " + Fmt.Int(DateTime.Day(now)));
+    Say("Hour: " + Fmt.Int(DateTime.Hour(now)));
+}
+```
+
+### BASIC Example
 
 ```basic
 ' Get current time
@@ -263,7 +303,11 @@ resolution.
 - `Start()` has no effect if already running (doesn't reset)
 - `Stop()` has no effect if already stopped
 
-### Example
+### Zia Example
+
+> Stopwatch is not yet available as a constructible type in Zia. Use `Viper.Time.Clock.Ticks()` for timing measurements.
+
+### BASIC Example
 
 ```basic
 ' Create and start a stopwatch

@@ -125,6 +125,21 @@ extern "C"
     /// @note The compiler copies struct fields into this memory.
     void *rt_box_value_type(int64_t size);
 
+    /// @brief Content-aware hash for an element.
+    /// Boxed values (RT_ELEM_BOX) are hashed by content using FNV-1a;
+    /// non-boxed objects fall back to pointer identity hashing.
+    /// @param elem Element pointer (may be NULL).
+    /// @return Hash value.
+    size_t rt_box_hash(void *elem);
+
+    /// @brief Content-aware equality for two elements.
+    /// Boxed values (RT_ELEM_BOX) are compared by content (tag + data);
+    /// non-boxed objects fall back to pointer identity.
+    /// @param a First element (may be NULL).
+    /// @param b Second element (may be NULL).
+    /// @return 1 if equal, 0 otherwise.
+    int rt_box_equal(void *a, void *b);
+
 #ifdef __cplusplus
 }
 #endif

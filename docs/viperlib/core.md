@@ -32,7 +32,12 @@ Base class for all Viper reference types. Provides fundamental object operations
 |--------------------------------------|---------------------------|-----------------------------------------------------------|
 | `Viper.Object.ReferenceEquals(a, b)` | `Boolean(Object, Object)` | Tests if two references point to the same object instance |
 
-### Example
+### Zia Example
+
+> Object is the base type for all reference types. In Zia, it is implicit—most programs interact
+> with concrete types rather than calling Object methods directly.
+
+### BASIC Example
 
 ```basic
 DIM obj1 AS Viper.Object
@@ -81,7 +86,31 @@ Boxing helpers for storing primitive values in generic collections. Boxed values
 - Type tags: 0 = integer, 1 = double, 2 = boolean, 3 = string.
 - Unboxing with the wrong type traps with a runtime diagnostic.
 
-### Example
+### Zia Example
+
+```zia
+module BoxDemo;
+
+bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    // Box an integer (type tag 0)
+    var boxed = Viper.Box.I64(42);
+    Say("Type: " + Fmt.Int(Viper.Box.Type(boxed)));   // 0
+    Say("Value: " + Fmt.Int(Viper.Box.ToI64(boxed)));  // 42
+
+    // Box a string (type tag 3)
+    var sbox = Viper.Box.Str("hello");
+    Say("String: " + Viper.Box.ToStr(sbox));           // hello
+
+    // Box a float (type tag 1)
+    var fbox = Viper.Box.F64(3.14);
+    Say("Float type: " + Fmt.Int(Viper.Box.Type(fbox)));  // 1
+}
+```
+
+### BASIC Example
 
 ```basic
 DIM boxed AS OBJECT
@@ -177,7 +206,29 @@ String manipulation class. In Viper, strings are immutable sequences of characte
 **Note:** `Flip()` performs byte-level reversal. It works correctly for ASCII strings but may produce invalid results
 for multi-byte UTF-8 characters.
 
-### Example
+### Zia Example
+
+```zia
+module StringDemo;
+
+bind Viper.Terminal;
+bind Viper.String as Str;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var s = "  Hello, World!  ";
+
+    Say("Length: " + Fmt.Int(Str.Length(s)));               // 17
+    Say(Str.Trim(s));                                       // Hello, World!
+    Say(Str.ToUpper(s));                                    // HELLO, WORLD!
+    Say(Str.ToLower(s));                                    // hello, world!
+    Say("IndexOf: " + Fmt.Int(Str.IndexOf(s, "World")));    // 10
+    Say("Has World: " + Fmt.Bool(Str.Has(s, "World")));     // true
+    Say(Str.Replace(s, "World", "Zia"));                    // Hello, Zia!
+}
+```
+
+### BASIC Example
 
 ```basic
 DIM s AS STRING
@@ -193,7 +244,33 @@ DIM code AS INTEGER
 code = s.Trim().Asc()   ' code = 72 (ASCII for 'H')
 ```
 
-### Extended Methods Example
+### Extended Methods Zia Example
+
+```zia
+module StringExtDemo;
+
+bind Viper.Terminal;
+bind Viper.String as Str;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var s = "hello world";
+
+    // Search and match
+    Say("Starts: " + Fmt.Bool(Str.StartsWith(s, "hello")));  // true
+    Say("Ends: " + Fmt.Bool(Str.EndsWith(s, "world")));      // true
+    Say("Has: " + Fmt.Bool(Str.Has(s, "lo wo")));            // true
+    Say("Count l: " + Fmt.Int(Str.Count(s, "l")));           // 3
+
+    // Transformation
+    Say(Str.Replace(s, "world", "zia"));    // hello zia
+    Say(Str.PadLeft("42", 5, "0"));         // 00042
+    Say(Str.Repeat("ab", 3));               // ababab
+    Say(Str.Flip("hello"));                 // olleh
+}
+```
+
+### Extended Methods BASIC Example
 
 ```basic
 DIM s AS STRING

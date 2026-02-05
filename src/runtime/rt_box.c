@@ -35,7 +35,7 @@ typedef struct rt_box
 /// Allocate a new boxed value
 static void *alloc_box(void)
 {
-    return rt_heap_alloc(RT_HEAP_OBJECT, RT_ELEM_NONE, 1, sizeof(rt_box_t), sizeof(rt_box_t));
+    return rt_heap_alloc(RT_HEAP_OBJECT, RT_ELEM_BOX, 1, sizeof(rt_box_t), sizeof(rt_box_t));
 }
 
 void *rt_box_i64(int64_t val)
@@ -198,4 +198,93 @@ void *rt_box_value_type(int64_t size)
         return NULL;
     // Allocate raw memory for value type - the compiler will copy fields
     return rt_heap_alloc(RT_HEAP_OBJECT, RT_ELEM_NONE, 1, (size_t)size, (size_t)size);
+}
+
+//===----------------------------------------------------------------------===//
+// Content-aware hashing and equality for boxed values
+//===----------------------------------------------------------------------===//
+
+/// @brief FNV-1a hash for byte sequences.
+static size_t fnv1a_hash(const void *data, size_t len)
+{
+    const uint8_t *bytes = (const uint8_t *)data;
+    size_t hash = 0xcbf29ce484222325ULL; // FNV offset basis
+    for (size_t i = 0; i < len; i++)
+    {
+        hash ^= bytes[i];
+        hash *= 0x100000001b3ULL; // FNV prime
+    }
+    return hash;
+}
+
+/// @brief Check if a heap-allocated element is a boxed value.
+/// Safe for non-heap pointers: checks magic before accessing header fields.
+static int is_boxed(void *elem)
+{
+    if (!elem)
+        return 0;
+    // Manually compute header location without asserting magic.
+    // This is safe because we check magic before accessing any other fields.
+    rt_heap_hdr_t *hdr = (rt_heap_hdr_t *)((uint8_t *)elem - sizeof(rt_heap_hdr_t));
+    return hdr->magic == RT_MAGIC && hdr->elem_kind == RT_ELEM_BOX;
+}
+
+size_t rt_box_hash(void *elem)
+{
+    if (is_boxed(elem))
+    {
+        rt_box_t *box = (rt_box_t *)elem;
+        switch (box->tag)
+        {
+            case RT_BOX_I64:
+            case RT_BOX_I1:
+                return fnv1a_hash(&box->data.i64_val, sizeof(int64_t));
+            case RT_BOX_F64:
+                return fnv1a_hash(&box->data.f64_val, sizeof(double));
+            case RT_BOX_STR:
+            {
+                rt_string s = box->data.str_val;
+                if (!s)
+                    return 0;
+                const char *cstr = rt_string_cstr(s);
+                if (!cstr)
+                    return 0;
+                return fnv1a_hash(cstr, strlen(cstr));
+            }
+            default:
+                break;
+        }
+    }
+    // Fallback: pointer identity hash
+    const uint64_t KNUTH_MULT = 0x9e3779b97f4a7c15ULL;
+    uint64_t val = (uint64_t)(uintptr_t)elem;
+    return (size_t)((val * KNUTH_MULT) >> 16);
+}
+
+int rt_box_equal(void *a, void *b)
+{
+    if (a == b)
+        return 1;
+    if (!a || !b)
+        return 0;
+    if (!is_boxed(a) || !is_boxed(b))
+        return 0;
+
+    rt_box_t *ba = (rt_box_t *)a;
+    rt_box_t *bb = (rt_box_t *)b;
+    if (ba->tag != bb->tag)
+        return 0;
+
+    switch (ba->tag)
+    {
+        case RT_BOX_I64:
+        case RT_BOX_I1:
+            return ba->data.i64_val == bb->data.i64_val;
+        case RT_BOX_F64:
+            return ba->data.f64_val == bb->data.f64_val;
+        case RT_BOX_STR:
+            return rt_str_eq(ba->data.str_val, bb->data.str_val) != 0;
+        default:
+            return 0;
+    }
 }

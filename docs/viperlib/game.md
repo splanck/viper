@@ -63,6 +63,32 @@ A 2D array container optimized for tile maps, game boards, and grid-based data.
 - Use `InBounds()` to validate coordinates before access
 - Grid stores integer values (use as tile IDs, flags, etc.)
 
+### Zia Example
+
+```zia
+module Grid2DDemo;
+
+bind Viper.Terminal;
+bind Viper.Game.Grid2D as Grid;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var g = Grid.New(10, 8, 0);
+    Say("Size: " + Fmt.Int(g.get_Width()) + "x" + Fmt.Int(g.get_Height()));
+    Say("Total: " + Fmt.Int(g.get_Size()));
+
+    g.Fill(1);
+    g.Set(5, 5, 42);
+    Say("(5,5): " + Fmt.Int(g.Get(5, 5)));
+
+    Say("InBounds(9,7): " + Fmt.Bool(g.InBounds(9, 7)));
+    Say("Count(1): " + Fmt.Int(g.Count(1)));
+
+    g.Replace(1, 2);
+    g.Clear();
+}
+```
+
 ### Example: Tile Map
 
 ```basic
@@ -186,6 +212,39 @@ in discrete frames, making it ideal for deterministic game logic.
 - One-shot timers stop when expired; repeating timers reset and continue
 - `Progress` returns integer percentage (0-100), useful for animations
 - Frame-based timing ensures deterministic game behavior across different hardware
+
+### Zia Example
+
+```zia
+module TimerDemo;
+
+bind Viper.Terminal;
+bind Viper.Game.Timer as Timer;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var t = Timer.New();
+    t.Start(60);
+
+    var i = 0;
+    while i < 5 {
+        t.Update();
+        i = i + 1;
+    }
+    Say("Elapsed: " + Fmt.Int(t.get_Elapsed()));
+    Say("Remaining: " + Fmt.Int(t.get_Remaining()));
+    Say("Progress: " + Fmt.Int(t.get_Progress()) + "%");
+
+    // Repeating timer
+    var r = Timer.New();
+    r.StartRepeating(5);
+    i = 0;
+    while i < 12 {
+        if r.Update() { Say("Expired at frame " + Fmt.Int(i)); }
+        i = i + 1;
+    }
+}
+```
 
 ### Example: Animation Timer
 
@@ -322,6 +381,34 @@ A finite state machine for managing game/application states like menus, gameplay
 - Call `Update()` once per frame to track `FramesInState`
 - Call `ClearFlags()` at end of frame if checking flags multiple times
 
+### Zia Example
+
+```zia
+module StateMachineDemo;
+
+bind Viper.Terminal;
+bind Viper.Game.StateMachine as SM;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var sm = SM.New();
+    sm.AddState(0);  // MENU
+    sm.AddState(1);  // PLAYING
+    sm.AddState(2);  // PAUSED
+    sm.SetInitial(0);
+
+    Say("State: " + Fmt.Int(sm.get_Current()));
+    sm.Transition(1);
+    Say("After transition: " + Fmt.Int(sm.get_Current()));
+    Say("Previous: " + Fmt.Int(sm.get_Previous()));
+
+    sm.Update();
+    sm.Update();
+    Say("Frames in state: " + Fmt.Int(sm.get_FramesInState()));
+    Say("IsState(1): " + Fmt.Bool(sm.IsState(1)));
+}
+```
+
 ### Example: Game States
 
 ```basic
@@ -450,6 +537,36 @@ Frame-based tweening with easing functions for smooth animations. Interpolates b
 | `EASE_OUT_BOUNCE`      | 17    | Bounce ease-out                    |
 | `EASE_IN_OUT_BOUNCE`   | 18    | Bounce ease-in-out                 |
 
+### Zia Example
+
+```zia
+module TweenDemo;
+
+bind Viper.Terminal;
+bind Viper.Game.Tween as Tween;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var tw = Tween.New();
+    tw.Start(0.0, 100.0, 10, 0);  // Linear, 10 frames
+
+    var i = 0;
+    while i < 11 {
+        var done = tw.Update();
+        Say("Frame " + Fmt.Int(i) + ": " + Fmt.Int(tw.get_ValueI64()));
+        if done { Say("  Complete!"); }
+        i = i + 1;
+    }
+
+    // Integer tween with easing
+    var tw2 = Tween.New();
+    tw2.StartI64(0, 200, 5, 2);  // EASE_OUT_QUAD
+
+    // Static lerp
+    Say("Lerp(0,100,0.5): " + Fmt.Int(Tween.LerpI64(0, 100, 0.5)));
+}
+```
+
 ### Example: Smooth Movement
 
 ```basic
@@ -535,6 +652,35 @@ Manages mutually exclusive button selection, like radio buttons or tool palettes
 | `GetAt(index)`        | `Integer(Integer)`  | Get button ID at index (for iteration)         |
 | `SelectNext()`        | `Integer()`         | Select next button (wraps); returns new ID     |
 | `SelectPrev()`        | `Integer()`         | Select previous button (wraps); returns new ID |
+
+### Zia Example
+
+```zia
+module ButtonGroupDemo;
+
+bind Viper.Terminal;
+bind Viper.Game.ButtonGroup as BG;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var bg = BG.New();
+    bg.Add(0);  // Pencil
+    bg.Add(1);  // Brush
+    bg.Add(2);  // Eraser
+    bg.Select(0);
+
+    Say("Selected: " + Fmt.Int(bg.get_Selected()));
+    Say("Count: " + Fmt.Int(bg.get_Count()));
+
+    bg.SelectNext();
+    Say("After next: " + Fmt.Int(bg.get_Selected()));
+
+    bg.SelectPrev();
+    Say("After prev: " + Fmt.Int(bg.get_Selected()));
+
+    Say("IsSelected(0): " + Fmt.Bool(bg.IsSelected(0)));
+}
+```
 
 ### Example: Tool Palette
 
@@ -649,6 +795,31 @@ Smooth value interpolation for camera follow, UI animations, and other cases whe
 - Higher values (0.95-0.99) give slower, more gradual movement
 - Call `Update()` once per frame to advance the interpolation
 
+### Zia Example
+
+```zia
+module SmoothValueDemo;
+
+bind Viper.Terminal;
+bind Viper.Game.SmoothValue as SV;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var sv = SV.New(0.0, 0.9);
+    sv.set_Target(100.0);
+
+    var i = 0;
+    while i < 10 {
+        sv.Update();
+        Say("Frame " + Fmt.Int(i) + ": " + Fmt.Int(sv.get_ValueI64()));
+        i = i + 1;
+    }
+
+    sv.SetImmediate(50.0);
+    Say("After SetImmediate: " + Fmt.Int(sv.get_ValueI64()));
+}
+```
+
 ### Example: Camera Follow
 
 ```basic
@@ -708,6 +879,44 @@ Simple particle system for visual effects like explosions, sparks, smoke, and ot
 | `Burst(count)`                       | `Void(Integer)`            | Emit burst of particles instantly    |
 | `Update()`                           | `Void()`                   | Update all particles (call per frame)|
 | `Clear()`                            | `Void()`                   | Remove all particles                 |
+
+### Zia Example
+
+```zia
+module ParticleDemo;
+
+bind Viper.Terminal;
+bind Viper.Game.ParticleEmitter as PE;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var pe = PE.New(200);
+    pe.SetPosition(400.0, 300.0);
+    pe.SetLifetime(20, 40);
+    pe.SetVelocity(2.0, 8.0, 0.0, 360.0);
+    pe.SetGravity(0.0, 0.1);
+    pe.SetSize(3.0, 6.0);
+
+    // One-shot burst for explosion
+    pe.Burst(50);
+    pe.Update();
+    Say("After burst: " + Fmt.Int(pe.get_Count()));
+
+    // Continuous emission
+    pe.set_Rate(5.0);
+    pe.Start();
+    var i = 0;
+    while i < 10 {
+        pe.Update();
+        i = i + 1;
+    }
+    Say("After emitting: " + Fmt.Int(pe.get_Count()));
+
+    pe.Stop();
+    pe.Clear();
+    Say("After clear: " + Fmt.Int(pe.get_Count()));
+}
+```
 
 ### Example: Explosion Effect
 
@@ -769,6 +978,40 @@ Frame-based sprite animation controller for animated characters, effects, and UI
 | `Resume()`                     | `Void()`          | Resume paused animation             |
 | `Reset()`                      | `Void()`          | Reset to first frame                |
 | `Update()`                     | `Boolean()`       | Advance animation; true if finished |
+
+### Zia Example
+
+```zia
+module SpriteAnimDemo;
+
+bind Viper.Terminal;
+bind Viper.Game.SpriteAnimation as SA;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var anim = SA.New();
+    anim.Setup(0, 7, 6);       // Frames 0-7, 6 game frames each
+    anim.set_Loop(true);       // Note: Loop takes bool, not int
+    anim.Play();
+
+    Say("FrameCount: " + Fmt.Int(anim.get_FrameCount()));
+
+    var i = 0;
+    while i < 20 {
+        anim.Update();
+        if anim.get_FrameChanged() {
+            Say("Frame " + Fmt.Int(i) + ": " + Fmt.Int(anim.get_Frame()));
+        }
+        i = i + 1;
+    }
+
+    anim.Pause();
+    Say("Paused at frame: " + Fmt.Int(anim.get_Frame()));
+    anim.Resume();
+    anim.Update();
+    Say("Resumed, frame: " + Fmt.Int(anim.get_Frame()));
+}
+```
 
 ### Example: Character Walk Cycle
 
@@ -845,6 +1088,31 @@ Axis-aligned bounding box (AABB) for collision detection between game objects.
 | `Expand(margin)`                | `Void(Double)`              | Grow rect on all sides               |
 | `ContainsRect(other)`           | `Boolean(CollisionRect)`    | Test if fully contains another       |
 
+### Zia Example
+
+```zia
+module CollisionDemo;
+
+bind Viper.Terminal;
+bind Viper.Game.Collision as Coll;
+bind Viper.Game.CollisionRect as CR;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    // Static collision checks
+    Say("Rects overlap: " + Fmt.Bool(Coll.RectsOverlap(0.0, 0.0, 10.0, 10.0, 5.0, 5.0, 10.0, 10.0)));
+    Say("Point in rect: " + Fmt.Bool(Coll.PointInRect(5.0, 5.0, 0.0, 0.0, 10.0, 10.0)));
+    Say("Circles overlap: " + Fmt.Bool(Coll.CirclesOverlap(0.0, 0.0, 5.0, 8.0, 0.0, 5.0)));
+    Say("Distance: " + Fmt.Num(Coll.Distance(0.0, 0.0, 3.0, 4.0)));
+
+    // CollisionRect instance
+    var r = CR.New(10.0, 20.0, 100.0, 50.0);
+    Say("Contains(50,30): " + Fmt.Bool(r.ContainsPoint(50.0, 30.0)));
+    r.Move(5.0, 10.0);
+    Say("After move X: " + Fmt.Num(r.get_X()));
+}
+```
+
 ### Example: Player-Enemy Collision
 
 ```basic
@@ -880,6 +1148,10 @@ Static utility class for collision detection without creating objects. Useful fo
 | `CircleRect(cx,cy,r,rx,ry,rw,rh)`   | `Boolean(7×Double)`              | Test circle-rectangle overlap       |
 | `Distance(x1,y1,x2,y2)`             | `Double(4×Double)`               | Distance between two points         |
 | `DistanceSquared(x1,y1,x2,y2)`      | `Double(4×Double)`               | Squared distance (faster)           |
+
+### Zia Example
+
+> See the CollisionRect Zia example above for both static and instance collision API usage.
 
 ### Example: Quick Collision Checks
 
@@ -937,6 +1209,41 @@ Efficient object pool for reusing slot indices, avoiding allocation churn for fr
 | `NextActive(after)`  | `Integer(Integer)`  | Get next active slot after index               |
 | `SetData(slot,data)` | `Boolean(Int,Int)`  | Associate user data with slot                  |
 | `GetData(slot)`      | `Integer(Integer)`  | Get user data for slot                         |
+
+### Zia Example
+
+```zia
+module ObjectPoolDemo;
+
+bind Viper.Terminal;
+bind Viper.Game.ObjectPool as Pool;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var pool = Pool.New(10);
+    Say("Capacity: " + Fmt.Int(pool.get_Capacity()));
+
+    var s1 = pool.Acquire();
+    var s2 = pool.Acquire();
+    var s3 = pool.Acquire();
+    Say("Active: " + Fmt.Int(pool.get_ActiveCount()));
+
+    pool.SetData(s1, 100);
+    Say("Data s1: " + Fmt.Int(pool.GetData(s1)));
+
+    pool.Release(s2);
+    Say("After release: " + Fmt.Int(pool.get_ActiveCount()));
+
+    // Iterate active slots
+    var slot = pool.FirstActive();
+    while slot >= 0 {
+        Say("Active: " + Fmt.Int(slot));
+        slot = pool.NextActive(slot);
+    }
+
+    pool.Clear();
+}
+```
 
 ### Example: Bullet Pool
 
@@ -1023,6 +1330,36 @@ Screen effects manager for camera shake, color flash, and fade effects.
 | `SCREENFX_FADE_IN`  | 3     | Fade from color to clear |
 | `SCREENFX_FADE_OUT` | 4     | Fade from clear to color |
 
+### Zia Example
+
+```zia
+module ScreenFXDemo;
+
+bind Viper.Terminal;
+bind Viper.Game.ScreenFX as FX;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var fx = FX.New();
+
+    // Camera shake
+    fx.Shake(5000, 300, 500);
+    fx.Update(16);
+    Say("Active after shake: " + Fmt.Bool(fx.get_IsActive()));
+    Say("ShakeX: " + Fmt.Int(fx.get_ShakeX()));
+    Say("ShakeY: " + Fmt.Int(fx.get_ShakeY()));
+
+    // Flash effect
+    fx.Flash(16711680, 200);     // Red flash
+    fx.Update(16);
+    Say("Overlay alpha: " + Fmt.Int(fx.get_OverlayAlpha()));
+
+    // Cancel all
+    fx.CancelAll();
+    Say("After cancel: " + Fmt.Bool(fx.get_IsActive()));
+}
+```
+
 ### Example: Damage Effects
 
 ```basic
@@ -1100,6 +1437,40 @@ Path following for moving objects along predefined waypoint paths.
 | `PATHFOLLOW_LOOP`     | 1     | Loop back to start         |
 | `PATHFOLLOW_PINGPONG` | 2     | Reverse at endpoints       |
 
+### Zia Example
+
+```zia
+module PathFollowerDemo;
+
+bind Viper.Terminal;
+bind Viper.Game.PathFollower as PF;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var pf = PF.New();
+    pf.AddPoint(0, 0);
+    pf.AddPoint(100000, 0);       // 100 units right
+    pf.AddPoint(100000, 100000);   // 100 units down
+    pf.set_Speed(50000);           // 50 units/sec
+    pf.set_Mode(1);                // PATHFOLLOW_LOOP
+
+    pf.Start();
+    Say("Points: " + Fmt.Int(pf.get_PointCount()));
+    Say("Active: " + Fmt.Bool(pf.get_IsActive()));
+
+    // Simulate a few frames
+    var i = 0;
+    while i < 5 {
+        pf.Update(16);
+        Say("Pos: " + Fmt.Int(pf.get_X()) + ", " + Fmt.Int(pf.get_Y()));
+        i = i + 1;
+    }
+
+    pf.Pause();
+    Say("Paused, segment: " + Fmt.Int(pf.get_Segment()));
+}
+```
+
 ### Example: Patrol Route
 
 ```basic
@@ -1171,6 +1542,40 @@ Spatial partitioning data structure for efficient collision detection and spatia
 | `GetPairs()`                     | `Integer()`                 | Get potential collision pairs; returns count |
 | `PairFirst(index)`               | `Integer(Integer)`          | Get first ID of collision pair           |
 | `PairSecond(index)`              | `Integer(Integer)`          | Get second ID of collision pair          |
+
+### Zia Example
+
+```zia
+module QuadtreeDemo;
+
+bind Viper.Terminal;
+bind Viper.Game.Quadtree as QT;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var qt = QT.New(0, 0, 1000, 1000);
+    qt.Insert(1, 100, 100, 50, 50);
+    qt.Insert(2, 200, 200, 50, 50);
+    qt.Insert(3, 800, 800, 50, 50);
+    Say("Items: " + Fmt.Int(qt.get_ItemCount()));
+
+    // Query for items in a region
+    var count = qt.QueryRect(50, 50, 250, 250);
+    Say("QueryRect found: " + Fmt.Int(count));
+    var i = 0;
+    while i < count {
+        Say("  Result: " + Fmt.Int(qt.GetResult(i)));
+        i = i + 1;
+    }
+
+    // Remove and re-query
+    qt.Remove(2);
+    Say("After remove: " + Fmt.Int(qt.get_ItemCount()));
+
+    qt.Clear();
+    Say("After clear: " + Fmt.Int(qt.get_ItemCount()));
+}
+```
 
 ### Example: Collision Detection
 

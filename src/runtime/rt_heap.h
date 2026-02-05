@@ -83,6 +83,7 @@ typedef enum
     RT_ELEM_F64 = 3,
     RT_ELEM_U8 = 4,
     RT_ELEM_STR = 5, // String pointer (rt_string) requiring reference counting
+    RT_ELEM_BOX = 6, // Boxed primitive value (rt_box_t) with type tag
 } rt_elem_kind_t;
 
 typedef struct rt_heap_hdr

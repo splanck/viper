@@ -569,6 +569,18 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_convert_coll PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_convert_coll test_rt_convert_coll)
 
+    viper_add_test(test_rt_set ${VIPER_TESTS_DIR}/runtime/RTSetTests.cpp)
+    target_link_libraries(test_rt_set PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_set test_rt_set)
+
+    viper_add_test(test_rt_seq_box ${VIPER_TESTS_DIR}/runtime/RTSeqBoxTests.cpp)
+    target_link_libraries(test_rt_seq_box PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_seq_box test_rt_seq_box)
+
+    viper_add_test(test_rt_list_box ${VIPER_TESTS_DIR}/runtime/RTListBoxTests.cpp)
+    target_link_libraries(test_rt_list_box PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_list_box test_rt_list_box)
+
     viper_add_test(test_rt_sortedset ${VIPER_TESTS_DIR}/runtime/RTSortedSetTests.cpp)
     target_link_libraries(test_rt_sortedset PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_sortedset test_rt_sortedset)

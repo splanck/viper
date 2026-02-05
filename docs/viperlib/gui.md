@@ -38,6 +38,37 @@
 
 The Viper GUI library provides a comprehensive set of widgets for building desktop applications. All widgets are rendered using the ViperGFX graphics library and support both dark and light themes.
 
+### Basic Structure (Zia)
+
+```zia
+module GuiDemo;
+
+bind Viper.Terminal;
+bind Viper.GUI.App as App;
+bind Viper.GUI.Label as Label;
+bind Viper.GUI.Button as Button;
+
+func start() {
+    var app = App.New("My Application", 800, 600);
+    var root = app.get_Root();
+
+    var label = Label.New(root, "Hello, World!");
+    var btn = Button.New(root, "Click Me");
+    btn.SetSize(100, 30);
+    btn.SetPosition(10, 50);
+
+    while app.get_ShouldClose() == 0 {
+        app.Poll();
+
+        if btn.WasClicked() == 1 {
+            label.SetText("Button clicked!");
+        }
+
+        app.Render();
+    }
+}
+```
+
 ### Basic Structure
 
 ```basic
@@ -474,6 +505,17 @@ Dropdown selection list.
 | `GetSelectedText()`        | `String()`         | Get selected item text          |
 | `SetPlaceholder(text)`     | `Void(String)`     | Set placeholder text            |
 
+```zia
+// Zia example
+var dropdown = Dropdown.New(root);
+dropdown.SetPlaceholder("Pick one...");
+dropdown.AddItem("Red");
+dropdown.AddItem("Green");
+dropdown.AddItem("Blue");
+dropdown.SetSelected(1);
+Say("Selected: " + dropdown.get_SelectedText());
+```
+
 ```basic
 DIM colorPicker AS Viper.GUI.Dropdown
 colorPicker = NEW Viper.GUI.Dropdown(root)
@@ -713,6 +755,21 @@ Hierarchical tree view with expandable nodes.
 | `Select(node)`                 | `Void(Object)`                     | Select a node                  |
 | `SetFont(font, size)`          | `Void(Font, Double)`               | Set font                       |
 
+```zia
+// Zia example
+var tree = TreeView.New(root);
+tree.SetSize(250, 400);
+
+var rootNode = tree.AddNode(null, "Project");
+var srcNode = tree.AddNode(rootNode, "src");
+tree.AddNode(srcNode, "main.zia");
+tree.AddNode(srcNode, "utils.zia");
+var docsNode = tree.AddNode(rootNode, "docs");
+tree.AddNode(docsNode, "README.md");
+
+tree.Expand(rootNode);
+```
+
 ```basic
 DIM tree AS Viper.GUI.TreeView
 tree = NEW Viper.GUI.TreeView(root)
@@ -791,6 +848,64 @@ Viper.GUI.Theme.SetLight()
 ```
 
 ---
+
+## Complete Example (Zia)
+
+```zia
+module NoteEditor;
+
+bind Viper.GUI.App as App;
+bind Viper.GUI.VBox as VBox;
+bind Viper.GUI.HBox as HBox;
+bind Viper.GUI.Label as Label;
+bind Viper.GUI.Button as Button;
+bind Viper.GUI.CodeEditor as CodeEditor;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var app = App.New("Note Editor", 800, 600);
+    var root = app.get_Root();
+
+    // Layout
+    var vbox = VBox.New();
+    vbox.SetSpacing(5.0);
+    vbox.SetPadding(10.0);
+
+    // Toolbar
+    var toolbar = HBox.New();
+    toolbar.SetSpacing(5.0);
+    var newBtn = Button.New(toolbar, "New");
+    newBtn.SetSize(60, 28);
+    var saveBtn = Button.New(toolbar, "Save");
+    saveBtn.SetStyle(1);
+    saveBtn.SetSize(60, 28);
+
+    // Editor
+    var editor = CodeEditor.New(root);
+    editor.SetSize(780, 500);
+
+    // Status bar
+    var status = Label.New(root, "Ready");
+
+    while app.get_ShouldClose() == 0 {
+        app.Poll();
+
+        if newBtn.WasClicked() == 1 {
+            editor.SetText("");
+            status.SetText("New file");
+        }
+        if saveBtn.WasClicked() == 1 {
+            editor.ClearModified();
+            status.SetText("Saved!");
+        }
+        if editor.IsModified() == 1 {
+            status.SetText("Modified - " + Fmt.Int(editor.get_LineCount()) + " lines");
+        }
+
+        app.Render();
+    }
+}
+```
 
 ## Complete Example
 

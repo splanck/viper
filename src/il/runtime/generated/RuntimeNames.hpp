@@ -156,6 +156,123 @@ inline constexpr const char *kCollectionsBagNew = "Viper.Collections.Bag.New";
 inline constexpr const char *kCollectionsBagPut = "Viper.Collections.Bag.Put";
 
 // ===========================================================================
+// Viper.Collections.BiMap
+// ===========================================================================
+
+/// @brief Viper.Collections.BiMap.New
+inline constexpr const char *kCollectionsBiMapNew = "Viper.Collections.BiMap.New";
+
+/// @brief Viper.Collections.BiMap.get_Len
+inline constexpr const char *kCollectionsBiMapGetLen = "Viper.Collections.BiMap.get_Len";
+
+/// @brief Viper.Collections.BiMap.get_IsEmpty
+inline constexpr const char *kCollectionsBiMapGetIsEmpty = "Viper.Collections.BiMap.get_IsEmpty";
+
+/// @brief Viper.Collections.BiMap.Put
+inline constexpr const char *kCollectionsBiMapPut = "Viper.Collections.BiMap.Put";
+
+/// @brief Viper.Collections.BiMap.GetByKey
+inline constexpr const char *kCollectionsBiMapGetByKey = "Viper.Collections.BiMap.GetByKey";
+
+/// @brief Viper.Collections.BiMap.GetByValue
+inline constexpr const char *kCollectionsBiMapGetByValue = "Viper.Collections.BiMap.GetByValue";
+
+/// @brief Viper.Collections.BiMap.HasKey
+inline constexpr const char *kCollectionsBiMapHasKey = "Viper.Collections.BiMap.HasKey";
+
+/// @brief Viper.Collections.BiMap.HasValue
+inline constexpr const char *kCollectionsBiMapHasValue = "Viper.Collections.BiMap.HasValue";
+
+/// @brief Viper.Collections.BiMap.RemoveByKey
+inline constexpr const char *kCollectionsBiMapRemoveByKey = "Viper.Collections.BiMap.RemoveByKey";
+
+/// @brief Viper.Collections.BiMap.RemoveByValue
+inline constexpr const char *kCollectionsBiMapRemoveByValue = "Viper.Collections.BiMap.RemoveByValue";
+
+/// @brief Viper.Collections.BiMap.Keys
+inline constexpr const char *kCollectionsBiMapKeys = "Viper.Collections.BiMap.Keys";
+
+/// @brief Viper.Collections.BiMap.Values
+inline constexpr const char *kCollectionsBiMapValues = "Viper.Collections.BiMap.Values";
+
+/// @brief Viper.Collections.BiMap.Clear
+inline constexpr const char *kCollectionsBiMapClear = "Viper.Collections.BiMap.Clear";
+
+// ===========================================================================
+// Viper.Collections.BitSet
+// ===========================================================================
+
+/// @brief Viper.Collections.BitSet.And
+inline constexpr const char *kCollectionsBitSetAnd = "Viper.Collections.BitSet.And";
+
+/// @brief Viper.Collections.BitSet.Clear
+inline constexpr const char *kCollectionsBitSetClear = "Viper.Collections.BitSet.Clear";
+
+/// @brief Viper.Collections.BitSet.ClearAll
+inline constexpr const char *kCollectionsBitSetClearAll = "Viper.Collections.BitSet.ClearAll";
+
+/// @brief Viper.Collections.BitSet.get_Count
+inline constexpr const char *kCollectionsBitSetGetCount = "Viper.Collections.BitSet.get_Count";
+
+/// @brief Viper.Collections.BitSet.Get
+inline constexpr const char *kCollectionsBitSetGet = "Viper.Collections.BitSet.Get";
+
+/// @brief Viper.Collections.BitSet.get_IsEmpty
+inline constexpr const char *kCollectionsBitSetGetIsEmpty = "Viper.Collections.BitSet.get_IsEmpty";
+
+/// @brief Viper.Collections.BitSet.get_Len
+inline constexpr const char *kCollectionsBitSetGetLen = "Viper.Collections.BitSet.get_Len";
+
+/// @brief Viper.Collections.BitSet.New
+inline constexpr const char *kCollectionsBitSetNew = "Viper.Collections.BitSet.New";
+
+/// @brief Viper.Collections.BitSet.Not
+inline constexpr const char *kCollectionsBitSetNot = "Viper.Collections.BitSet.Not";
+
+/// @brief Viper.Collections.BitSet.Or
+inline constexpr const char *kCollectionsBitSetOr = "Viper.Collections.BitSet.Or";
+
+/// @brief Viper.Collections.BitSet.Set
+inline constexpr const char *kCollectionsBitSetSet = "Viper.Collections.BitSet.Set";
+
+/// @brief Viper.Collections.BitSet.SetAll
+inline constexpr const char *kCollectionsBitSetSetAll = "Viper.Collections.BitSet.SetAll";
+
+/// @brief Viper.Collections.BitSet.Toggle
+inline constexpr const char *kCollectionsBitSetToggle = "Viper.Collections.BitSet.Toggle";
+
+/// @brief Viper.Collections.BitSet.ToString
+inline constexpr const char *kCollectionsBitSetToString = "Viper.Collections.BitSet.ToString";
+
+/// @brief Viper.Collections.BitSet.Xor
+inline constexpr const char *kCollectionsBitSetXor = "Viper.Collections.BitSet.Xor";
+
+// ===========================================================================
+// Viper.Collections.BloomFilter
+// ===========================================================================
+
+/// @brief Viper.Collections.BloomFilter.New
+inline constexpr const char *kCollectionsBloomFilterNew = "Viper.Collections.BloomFilter.New";
+
+/// @brief Viper.Collections.BloomFilter.Add
+inline constexpr const char *kCollectionsBloomFilterAdd = "Viper.Collections.BloomFilter.Add";
+
+/// @brief Viper.Collections.BloomFilter.MightContain
+inline constexpr const char *kCollectionsBloomFilterMightContain = "Viper.Collections.BloomFilter.MightContain";
+
+/// @brief Viper.Collections.BloomFilter.get_Count
+inline constexpr const char *kCollectionsBloomFilterGetCount = "Viper.Collections.BloomFilter.get_Count";
+
+/// @brief Viper.Collections.BloomFilter.Fpr
+inline constexpr const char *kCollectionsBloomFilterFpr = "Viper.Collections.BloomFilter.Fpr";
+
+/// @brief Viper.Collections.BloomFilter.Clear
+inline constexpr const char *kCollectionsBloomFilterClear = "Viper.Collections.BloomFilter.Clear";
+
+/// @brief Viper.Collections.BloomFilter.Merge
+inline constexpr const char *kCollectionsBloomFilterMerge = "Viper.Collections.BloomFilter.Merge";
+
+// ===========================================================================
 // Viper.Collections.Bytes
 // ===========================================================================
 
@@ -203,6 +320,157 @@ inline constexpr const char *kCollectionsBytesToHex = "Viper.Collections.Bytes.T
 
 /// @brief Viper.Collections.Bytes.ToStr
 inline constexpr const char *kCollectionsBytesToStr = "Viper.Collections.Bytes.ToStr";
+
+// ===========================================================================
+// Viper.Collections.CountMap
+// ===========================================================================
+
+/// @brief Viper.Collections.CountMap.New
+inline constexpr const char *kCollectionsCountMapNew = "Viper.Collections.CountMap.New";
+
+/// @brief Viper.Collections.CountMap.get_Len
+inline constexpr const char *kCollectionsCountMapGetLen = "Viper.Collections.CountMap.get_Len";
+
+/// @brief Viper.Collections.CountMap.get_IsEmpty
+inline constexpr const char *kCollectionsCountMapGetIsEmpty = "Viper.Collections.CountMap.get_IsEmpty";
+
+/// @brief Viper.Collections.CountMap.Inc
+inline constexpr const char *kCollectionsCountMapInc = "Viper.Collections.CountMap.Inc";
+
+/// @brief Viper.Collections.CountMap.IncBy
+inline constexpr const char *kCollectionsCountMapIncBy = "Viper.Collections.CountMap.IncBy";
+
+/// @brief Viper.Collections.CountMap.Dec
+inline constexpr const char *kCollectionsCountMapDec = "Viper.Collections.CountMap.Dec";
+
+/// @brief Viper.Collections.CountMap.Get
+inline constexpr const char *kCollectionsCountMapGet = "Viper.Collections.CountMap.Get";
+
+/// @brief Viper.Collections.CountMap.Set
+inline constexpr const char *kCollectionsCountMapSet = "Viper.Collections.CountMap.Set";
+
+/// @brief Viper.Collections.CountMap.Has
+inline constexpr const char *kCollectionsCountMapHas = "Viper.Collections.CountMap.Has";
+
+/// @brief Viper.Collections.CountMap.get_Total
+inline constexpr const char *kCollectionsCountMapGetTotal = "Viper.Collections.CountMap.get_Total";
+
+/// @brief Viper.Collections.CountMap.Keys
+inline constexpr const char *kCollectionsCountMapKeys = "Viper.Collections.CountMap.Keys";
+
+/// @brief Viper.Collections.CountMap.MostCommon
+inline constexpr const char *kCollectionsCountMapMostCommon = "Viper.Collections.CountMap.MostCommon";
+
+/// @brief Viper.Collections.CountMap.Remove
+inline constexpr const char *kCollectionsCountMapRemove = "Viper.Collections.CountMap.Remove";
+
+/// @brief Viper.Collections.CountMap.Clear
+inline constexpr const char *kCollectionsCountMapClear = "Viper.Collections.CountMap.Clear";
+
+// ===========================================================================
+// Viper.Collections.DefaultMap
+// ===========================================================================
+
+/// @brief Viper.Collections.DefaultMap.New
+inline constexpr const char *kCollectionsDefaultMapNew = "Viper.Collections.DefaultMap.New";
+
+/// @brief Viper.Collections.DefaultMap.get_Len
+inline constexpr const char *kCollectionsDefaultMapGetLen = "Viper.Collections.DefaultMap.get_Len";
+
+/// @brief Viper.Collections.DefaultMap.Get
+inline constexpr const char *kCollectionsDefaultMapGet = "Viper.Collections.DefaultMap.Get";
+
+/// @brief Viper.Collections.DefaultMap.Set
+inline constexpr const char *kCollectionsDefaultMapSet = "Viper.Collections.DefaultMap.Set";
+
+/// @brief Viper.Collections.DefaultMap.Has
+inline constexpr const char *kCollectionsDefaultMapHas = "Viper.Collections.DefaultMap.Has";
+
+/// @brief Viper.Collections.DefaultMap.Remove
+inline constexpr const char *kCollectionsDefaultMapRemove = "Viper.Collections.DefaultMap.Remove";
+
+/// @brief Viper.Collections.DefaultMap.Keys
+inline constexpr const char *kCollectionsDefaultMapKeys = "Viper.Collections.DefaultMap.Keys";
+
+/// @brief Viper.Collections.DefaultMap.GetDefault
+inline constexpr const char *kCollectionsDefaultMapGetDefault = "Viper.Collections.DefaultMap.GetDefault";
+
+/// @brief Viper.Collections.DefaultMap.Clear
+inline constexpr const char *kCollectionsDefaultMapClear = "Viper.Collections.DefaultMap.Clear";
+
+// ===========================================================================
+// Viper.Collections.FrozenMap
+// ===========================================================================
+
+/// @brief Viper.Collections.FrozenMap.FromSeqs
+inline constexpr const char *kCollectionsFrozenMapFromSeqs = "Viper.Collections.FrozenMap.FromSeqs";
+
+/// @brief Viper.Collections.FrozenMap.Empty
+inline constexpr const char *kCollectionsFrozenMapEmpty = "Viper.Collections.FrozenMap.Empty";
+
+/// @brief Viper.Collections.FrozenMap.get_Len
+inline constexpr const char *kCollectionsFrozenMapGetLen = "Viper.Collections.FrozenMap.get_Len";
+
+/// @brief Viper.Collections.FrozenMap.get_IsEmpty
+inline constexpr const char *kCollectionsFrozenMapGetIsEmpty = "Viper.Collections.FrozenMap.get_IsEmpty";
+
+/// @brief Viper.Collections.FrozenMap.Get
+inline constexpr const char *kCollectionsFrozenMapGet = "Viper.Collections.FrozenMap.Get";
+
+/// @brief Viper.Collections.FrozenMap.Has
+inline constexpr const char *kCollectionsFrozenMapHas = "Viper.Collections.FrozenMap.Has";
+
+/// @brief Viper.Collections.FrozenMap.Keys
+inline constexpr const char *kCollectionsFrozenMapKeys = "Viper.Collections.FrozenMap.Keys";
+
+/// @brief Viper.Collections.FrozenMap.Values
+inline constexpr const char *kCollectionsFrozenMapValues = "Viper.Collections.FrozenMap.Values";
+
+/// @brief Viper.Collections.FrozenMap.GetOr
+inline constexpr const char *kCollectionsFrozenMapGetOr = "Viper.Collections.FrozenMap.GetOr";
+
+/// @brief Viper.Collections.FrozenMap.Merge
+inline constexpr const char *kCollectionsFrozenMapMerge = "Viper.Collections.FrozenMap.Merge";
+
+/// @brief Viper.Collections.FrozenMap.Equals
+inline constexpr const char *kCollectionsFrozenMapEquals = "Viper.Collections.FrozenMap.Equals";
+
+// ===========================================================================
+// Viper.Collections.FrozenSet
+// ===========================================================================
+
+/// @brief Viper.Collections.FrozenSet.FromSeq
+inline constexpr const char *kCollectionsFrozenSetFromSeq = "Viper.Collections.FrozenSet.FromSeq";
+
+/// @brief Viper.Collections.FrozenSet.Empty
+inline constexpr const char *kCollectionsFrozenSetEmpty = "Viper.Collections.FrozenSet.Empty";
+
+/// @brief Viper.Collections.FrozenSet.get_Len
+inline constexpr const char *kCollectionsFrozenSetGetLen = "Viper.Collections.FrozenSet.get_Len";
+
+/// @brief Viper.Collections.FrozenSet.get_IsEmpty
+inline constexpr const char *kCollectionsFrozenSetGetIsEmpty = "Viper.Collections.FrozenSet.get_IsEmpty";
+
+/// @brief Viper.Collections.FrozenSet.Has
+inline constexpr const char *kCollectionsFrozenSetHas = "Viper.Collections.FrozenSet.Has";
+
+/// @brief Viper.Collections.FrozenSet.Items
+inline constexpr const char *kCollectionsFrozenSetItems = "Viper.Collections.FrozenSet.Items";
+
+/// @brief Viper.Collections.FrozenSet.Union
+inline constexpr const char *kCollectionsFrozenSetUnion = "Viper.Collections.FrozenSet.Union";
+
+/// @brief Viper.Collections.FrozenSet.Intersect
+inline constexpr const char *kCollectionsFrozenSetIntersect = "Viper.Collections.FrozenSet.Intersect";
+
+/// @brief Viper.Collections.FrozenSet.Diff
+inline constexpr const char *kCollectionsFrozenSetDiff = "Viper.Collections.FrozenSet.Diff";
+
+/// @brief Viper.Collections.FrozenSet.IsSubset
+inline constexpr const char *kCollectionsFrozenSetIsSubset = "Viper.Collections.FrozenSet.IsSubset";
+
+/// @brief Viper.Collections.FrozenSet.Equals
+inline constexpr const char *kCollectionsFrozenSetEquals = "Viper.Collections.FrozenSet.Equals";
 
 // ===========================================================================
 // Viper.Collections.Heap
@@ -294,6 +562,49 @@ inline constexpr const char *kCollectionsListFirst = "Viper.Collections.List.Fir
 inline constexpr const char *kCollectionsListLast = "Viper.Collections.List.Last";
 
 // ===========================================================================
+// Viper.Collections.LruCache
+// ===========================================================================
+
+/// @brief Viper.Collections.LruCache.get_Cap
+inline constexpr const char *kCollectionsLruCacheGetCap = "Viper.Collections.LruCache.get_Cap";
+
+/// @brief Viper.Collections.LruCache.Clear
+inline constexpr const char *kCollectionsLruCacheClear = "Viper.Collections.LruCache.Clear";
+
+/// @brief Viper.Collections.LruCache.Get
+inline constexpr const char *kCollectionsLruCacheGet = "Viper.Collections.LruCache.Get";
+
+/// @brief Viper.Collections.LruCache.Has
+inline constexpr const char *kCollectionsLruCacheHas = "Viper.Collections.LruCache.Has";
+
+/// @brief Viper.Collections.LruCache.get_IsEmpty
+inline constexpr const char *kCollectionsLruCacheGetIsEmpty = "Viper.Collections.LruCache.get_IsEmpty";
+
+/// @brief Viper.Collections.LruCache.Keys
+inline constexpr const char *kCollectionsLruCacheKeys = "Viper.Collections.LruCache.Keys";
+
+/// @brief Viper.Collections.LruCache.get_Len
+inline constexpr const char *kCollectionsLruCacheGetLen = "Viper.Collections.LruCache.get_Len";
+
+/// @brief Viper.Collections.LruCache.New
+inline constexpr const char *kCollectionsLruCacheNew = "Viper.Collections.LruCache.New";
+
+/// @brief Viper.Collections.LruCache.Peek
+inline constexpr const char *kCollectionsLruCachePeek = "Viper.Collections.LruCache.Peek";
+
+/// @brief Viper.Collections.LruCache.Put
+inline constexpr const char *kCollectionsLruCachePut = "Viper.Collections.LruCache.Put";
+
+/// @brief Viper.Collections.LruCache.Remove
+inline constexpr const char *kCollectionsLruCacheRemove = "Viper.Collections.LruCache.Remove";
+
+/// @brief Viper.Collections.LruCache.RemoveOldest
+inline constexpr const char *kCollectionsLruCacheRemoveOldest = "Viper.Collections.LruCache.RemoveOldest";
+
+/// @brief Viper.Collections.LruCache.Values
+inline constexpr const char *kCollectionsLruCacheValues = "Viper.Collections.LruCache.Values";
+
+// ===========================================================================
 // Viper.Collections.Map
 // ===========================================================================
 
@@ -332,6 +643,83 @@ inline constexpr const char *kCollectionsMapSetIfMissing = "Viper.Collections.Ma
 
 /// @brief Viper.Collections.Map.Values
 inline constexpr const char *kCollectionsMapValues = "Viper.Collections.Map.Values";
+
+// ===========================================================================
+// Viper.Collections.MultiMap
+// ===========================================================================
+
+/// @brief Viper.Collections.MultiMap.Clear
+inline constexpr const char *kCollectionsMultiMapClear = "Viper.Collections.MultiMap.Clear";
+
+/// @brief Viper.Collections.MultiMap.CountFor
+inline constexpr const char *kCollectionsMultiMapCountFor = "Viper.Collections.MultiMap.CountFor";
+
+/// @brief Viper.Collections.MultiMap.Get
+inline constexpr const char *kCollectionsMultiMapGet = "Viper.Collections.MultiMap.Get";
+
+/// @brief Viper.Collections.MultiMap.GetFirst
+inline constexpr const char *kCollectionsMultiMapGetFirst = "Viper.Collections.MultiMap.GetFirst";
+
+/// @brief Viper.Collections.MultiMap.Has
+inline constexpr const char *kCollectionsMultiMapHas = "Viper.Collections.MultiMap.Has";
+
+/// @brief Viper.Collections.MultiMap.get_IsEmpty
+inline constexpr const char *kCollectionsMultiMapGetIsEmpty = "Viper.Collections.MultiMap.get_IsEmpty";
+
+/// @brief Viper.Collections.MultiMap.get_KeyCount
+inline constexpr const char *kCollectionsMultiMapGetKeyCount = "Viper.Collections.MultiMap.get_KeyCount";
+
+/// @brief Viper.Collections.MultiMap.Keys
+inline constexpr const char *kCollectionsMultiMapKeys = "Viper.Collections.MultiMap.Keys";
+
+/// @brief Viper.Collections.MultiMap.get_Len
+inline constexpr const char *kCollectionsMultiMapGetLen = "Viper.Collections.MultiMap.get_Len";
+
+/// @brief Viper.Collections.MultiMap.New
+inline constexpr const char *kCollectionsMultiMapNew = "Viper.Collections.MultiMap.New";
+
+/// @brief Viper.Collections.MultiMap.Put
+inline constexpr const char *kCollectionsMultiMapPut = "Viper.Collections.MultiMap.Put";
+
+/// @brief Viper.Collections.MultiMap.RemoveAll
+inline constexpr const char *kCollectionsMultiMapRemoveAll = "Viper.Collections.MultiMap.RemoveAll";
+
+// ===========================================================================
+// Viper.Collections.OrderedMap
+// ===========================================================================
+
+/// @brief Viper.Collections.OrderedMap.New
+inline constexpr const char *kCollectionsOrderedMapNew = "Viper.Collections.OrderedMap.New";
+
+/// @brief Viper.Collections.OrderedMap.get_Len
+inline constexpr const char *kCollectionsOrderedMapGetLen = "Viper.Collections.OrderedMap.get_Len";
+
+/// @brief Viper.Collections.OrderedMap.get_IsEmpty
+inline constexpr const char *kCollectionsOrderedMapGetIsEmpty = "Viper.Collections.OrderedMap.get_IsEmpty";
+
+/// @brief Viper.Collections.OrderedMap.Set
+inline constexpr const char *kCollectionsOrderedMapSet = "Viper.Collections.OrderedMap.Set";
+
+/// @brief Viper.Collections.OrderedMap.Get
+inline constexpr const char *kCollectionsOrderedMapGet = "Viper.Collections.OrderedMap.Get";
+
+/// @brief Viper.Collections.OrderedMap.Has
+inline constexpr const char *kCollectionsOrderedMapHas = "Viper.Collections.OrderedMap.Has";
+
+/// @brief Viper.Collections.OrderedMap.Remove
+inline constexpr const char *kCollectionsOrderedMapRemove = "Viper.Collections.OrderedMap.Remove";
+
+/// @brief Viper.Collections.OrderedMap.Keys
+inline constexpr const char *kCollectionsOrderedMapKeys = "Viper.Collections.OrderedMap.Keys";
+
+/// @brief Viper.Collections.OrderedMap.Values
+inline constexpr const char *kCollectionsOrderedMapValues = "Viper.Collections.OrderedMap.Values";
+
+/// @brief Viper.Collections.OrderedMap.KeyAt
+inline constexpr const char *kCollectionsOrderedMapKeyAt = "Viper.Collections.OrderedMap.KeyAt";
+
+/// @brief Viper.Collections.OrderedMap.Clear
+inline constexpr const char *kCollectionsOrderedMapClear = "Viper.Collections.OrderedMap.Clear";
 
 // ===========================================================================
 // Viper.Collections.Queue
@@ -474,6 +862,39 @@ inline constexpr const char *kCollectionsSeqTake = "Viper.Collections.Seq.Take";
 /// @brief Viper.Collections.Seq.Drop
 inline constexpr const char *kCollectionsSeqDrop = "Viper.Collections.Seq.Drop";
 
+/// @brief Viper.Collections.Seq.Keep
+inline constexpr const char *kCollectionsSeqKeep = "Viper.Collections.Seq.Keep";
+
+/// @brief Viper.Collections.Seq.Reject
+inline constexpr const char *kCollectionsSeqReject = "Viper.Collections.Seq.Reject";
+
+/// @brief Viper.Collections.Seq.Apply
+inline constexpr const char *kCollectionsSeqApply = "Viper.Collections.Seq.Apply";
+
+/// @brief Viper.Collections.Seq.All
+inline constexpr const char *kCollectionsSeqAll = "Viper.Collections.Seq.All";
+
+/// @brief Viper.Collections.Seq.Any
+inline constexpr const char *kCollectionsSeqAny = "Viper.Collections.Seq.Any";
+
+/// @brief Viper.Collections.Seq.None
+inline constexpr const char *kCollectionsSeqNone = "Viper.Collections.Seq.None";
+
+/// @brief Viper.Collections.Seq.CountWhere
+inline constexpr const char *kCollectionsSeqCountWhere = "Viper.Collections.Seq.CountWhere";
+
+/// @brief Viper.Collections.Seq.FindWhere
+inline constexpr const char *kCollectionsSeqFindWhere = "Viper.Collections.Seq.FindWhere";
+
+/// @brief Viper.Collections.Seq.TakeWhile
+inline constexpr const char *kCollectionsSeqTakeWhile = "Viper.Collections.Seq.TakeWhile";
+
+/// @brief Viper.Collections.Seq.DropWhile
+inline constexpr const char *kCollectionsSeqDropWhile = "Viper.Collections.Seq.DropWhile";
+
+/// @brief Viper.Collections.Seq.Fold
+inline constexpr const char *kCollectionsSeqFold = "Viper.Collections.Seq.Fold";
+
 // ===========================================================================
 // Viper.Collections.Set
 // ===========================================================================
@@ -519,6 +940,37 @@ inline constexpr const char *kCollectionsSetNew = "Viper.Collections.Set.New";
 
 /// @brief Viper.Collections.Set.Put
 inline constexpr const char *kCollectionsSetPut = "Viper.Collections.Set.Put";
+
+// ===========================================================================
+// Viper.Collections.SparseArray
+// ===========================================================================
+
+/// @brief Viper.Collections.SparseArray.New
+inline constexpr const char *kCollectionsSparseArrayNew = "Viper.Collections.SparseArray.New";
+
+/// @brief Viper.Collections.SparseArray.get_Len
+inline constexpr const char *kCollectionsSparseArrayGetLen = "Viper.Collections.SparseArray.get_Len";
+
+/// @brief Viper.Collections.SparseArray.Get
+inline constexpr const char *kCollectionsSparseArrayGet = "Viper.Collections.SparseArray.Get";
+
+/// @brief Viper.Collections.SparseArray.Set
+inline constexpr const char *kCollectionsSparseArraySet = "Viper.Collections.SparseArray.Set";
+
+/// @brief Viper.Collections.SparseArray.Has
+inline constexpr const char *kCollectionsSparseArrayHas = "Viper.Collections.SparseArray.Has";
+
+/// @brief Viper.Collections.SparseArray.Remove
+inline constexpr const char *kCollectionsSparseArrayRemove = "Viper.Collections.SparseArray.Remove";
+
+/// @brief Viper.Collections.SparseArray.Indices
+inline constexpr const char *kCollectionsSparseArrayIndices = "Viper.Collections.SparseArray.Indices";
+
+/// @brief Viper.Collections.SparseArray.Values
+inline constexpr const char *kCollectionsSparseArrayValues = "Viper.Collections.SparseArray.Values";
+
+/// @brief Viper.Collections.SparseArray.Clear
+inline constexpr const char *kCollectionsSparseArrayClear = "Viper.Collections.SparseArray.Clear";
 
 // ===========================================================================
 // Viper.Collections.Stack
@@ -592,6 +1044,105 @@ inline constexpr const char *kCollectionsTreeMapFloor = "Viper.Collections.TreeM
 inline constexpr const char *kCollectionsTreeMapCeil = "Viper.Collections.TreeMap.Ceil";
 
 // ===========================================================================
+// Viper.Collections.Trie
+// ===========================================================================
+
+/// @brief Viper.Collections.Trie.Clear
+inline constexpr const char *kCollectionsTrieClear = "Viper.Collections.Trie.Clear";
+
+/// @brief Viper.Collections.Trie.Get
+inline constexpr const char *kCollectionsTrieGet = "Viper.Collections.Trie.Get";
+
+/// @brief Viper.Collections.Trie.Has
+inline constexpr const char *kCollectionsTrieHas = "Viper.Collections.Trie.Has";
+
+/// @brief Viper.Collections.Trie.HasPrefix
+inline constexpr const char *kCollectionsTrieHasPrefix = "Viper.Collections.Trie.HasPrefix";
+
+/// @brief Viper.Collections.Trie.get_IsEmpty
+inline constexpr const char *kCollectionsTrieGetIsEmpty = "Viper.Collections.Trie.get_IsEmpty";
+
+/// @brief Viper.Collections.Trie.Keys
+inline constexpr const char *kCollectionsTrieKeys = "Viper.Collections.Trie.Keys";
+
+/// @brief Viper.Collections.Trie.get_Len
+inline constexpr const char *kCollectionsTrieGetLen = "Viper.Collections.Trie.get_Len";
+
+/// @brief Viper.Collections.Trie.LongestPrefix
+inline constexpr const char *kCollectionsTrieLongestPrefix = "Viper.Collections.Trie.LongestPrefix";
+
+/// @brief Viper.Collections.Trie.New
+inline constexpr const char *kCollectionsTrieNew = "Viper.Collections.Trie.New";
+
+/// @brief Viper.Collections.Trie.Put
+inline constexpr const char *kCollectionsTriePut = "Viper.Collections.Trie.Put";
+
+/// @brief Viper.Collections.Trie.Remove
+inline constexpr const char *kCollectionsTrieRemove = "Viper.Collections.Trie.Remove";
+
+/// @brief Viper.Collections.Trie.WithPrefix
+inline constexpr const char *kCollectionsTrieWithPrefix = "Viper.Collections.Trie.WithPrefix";
+
+// ===========================================================================
+// Viper.Collections.UnionFind
+// ===========================================================================
+
+/// @brief Viper.Collections.UnionFind.New
+inline constexpr const char *kCollectionsUnionFindNew = "Viper.Collections.UnionFind.New";
+
+/// @brief Viper.Collections.UnionFind.Find
+inline constexpr const char *kCollectionsUnionFindFind = "Viper.Collections.UnionFind.Find";
+
+/// @brief Viper.Collections.UnionFind.Union
+inline constexpr const char *kCollectionsUnionFindUnion = "Viper.Collections.UnionFind.Union";
+
+/// @brief Viper.Collections.UnionFind.Connected
+inline constexpr const char *kCollectionsUnionFindConnected = "Viper.Collections.UnionFind.Connected";
+
+/// @brief Viper.Collections.UnionFind.get_Count
+inline constexpr const char *kCollectionsUnionFindGetCount = "Viper.Collections.UnionFind.get_Count";
+
+/// @brief Viper.Collections.UnionFind.SetSize
+inline constexpr const char *kCollectionsUnionFindSetSize = "Viper.Collections.UnionFind.SetSize";
+
+/// @brief Viper.Collections.UnionFind.Reset
+inline constexpr const char *kCollectionsUnionFindReset = "Viper.Collections.UnionFind.Reset";
+
+// ===========================================================================
+// Viper.Collections.WeakMap
+// ===========================================================================
+
+/// @brief Viper.Collections.WeakMap.New
+inline constexpr const char *kCollectionsWeakMapNew = "Viper.Collections.WeakMap.New";
+
+/// @brief Viper.Collections.WeakMap.get_Len
+inline constexpr const char *kCollectionsWeakMapGetLen = "Viper.Collections.WeakMap.get_Len";
+
+/// @brief Viper.Collections.WeakMap.get_IsEmpty
+inline constexpr const char *kCollectionsWeakMapGetIsEmpty = "Viper.Collections.WeakMap.get_IsEmpty";
+
+/// @brief Viper.Collections.WeakMap.Set
+inline constexpr const char *kCollectionsWeakMapSet = "Viper.Collections.WeakMap.Set";
+
+/// @brief Viper.Collections.WeakMap.Get
+inline constexpr const char *kCollectionsWeakMapGet = "Viper.Collections.WeakMap.Get";
+
+/// @brief Viper.Collections.WeakMap.Has
+inline constexpr const char *kCollectionsWeakMapHas = "Viper.Collections.WeakMap.Has";
+
+/// @brief Viper.Collections.WeakMap.Remove
+inline constexpr const char *kCollectionsWeakMapRemove = "Viper.Collections.WeakMap.Remove";
+
+/// @brief Viper.Collections.WeakMap.Keys
+inline constexpr const char *kCollectionsWeakMapKeys = "Viper.Collections.WeakMap.Keys";
+
+/// @brief Viper.Collections.WeakMap.Clear
+inline constexpr const char *kCollectionsWeakMapClear = "Viper.Collections.WeakMap.Clear";
+
+/// @brief Viper.Collections.WeakMap.Compact
+inline constexpr const char *kCollectionsWeakMapCompact = "Viper.Collections.WeakMap.Compact";
+
+// ===========================================================================
 // Viper.Convert
 // ===========================================================================
 
@@ -614,6 +1165,37 @@ inline constexpr const char *kConvertToStringDouble = "Viper.Convert.ToString_Do
 inline constexpr const char *kConvertNumToInt = "Viper.Convert.NumToInt";
 
 // ===========================================================================
+// Viper.Core.MessageBus
+// ===========================================================================
+
+/// @brief Viper.Core.MessageBus.New
+inline constexpr const char *kCoreMessageBusNew = "Viper.Core.MessageBus.New";
+
+/// @brief Viper.Core.MessageBus.Subscribe
+inline constexpr const char *kCoreMessageBusSubscribe = "Viper.Core.MessageBus.Subscribe";
+
+/// @brief Viper.Core.MessageBus.Unsubscribe
+inline constexpr const char *kCoreMessageBusUnsubscribe = "Viper.Core.MessageBus.Unsubscribe";
+
+/// @brief Viper.Core.MessageBus.Publish
+inline constexpr const char *kCoreMessageBusPublish = "Viper.Core.MessageBus.Publish";
+
+/// @brief Viper.Core.MessageBus.SubscriberCount
+inline constexpr const char *kCoreMessageBusSubscriberCount = "Viper.Core.MessageBus.SubscriberCount";
+
+/// @brief Viper.Core.MessageBus.get_TotalSubscriptions
+inline constexpr const char *kCoreMessageBusGetTotalSubscriptions = "Viper.Core.MessageBus.get_TotalSubscriptions";
+
+/// @brief Viper.Core.MessageBus.Topics
+inline constexpr const char *kCoreMessageBusTopics = "Viper.Core.MessageBus.Topics";
+
+/// @brief Viper.Core.MessageBus.ClearTopic
+inline constexpr const char *kCoreMessageBusClearTopic = "Viper.Core.MessageBus.ClearTopic";
+
+/// @brief Viper.Core.MessageBus.Clear
+inline constexpr const char *kCoreMessageBusClear = "Viper.Core.MessageBus.Clear";
+
+// ===========================================================================
 // Viper.Crypto.Aes
 // ===========================================================================
 
@@ -628,6 +1210,28 @@ inline constexpr const char *kCryptoAesEncryptStr = "Viper.Crypto.Aes.EncryptStr
 
 /// @brief Viper.Crypto.Aes.DecryptStr
 inline constexpr const char *kCryptoAesDecryptStr = "Viper.Crypto.Aes.DecryptStr";
+
+// ===========================================================================
+// Viper.Crypto.Cipher
+// ===========================================================================
+
+/// @brief Viper.Crypto.Cipher.Encrypt
+inline constexpr const char *kCryptoCipherEncrypt = "Viper.Crypto.Cipher.Encrypt";
+
+/// @brief Viper.Crypto.Cipher.Decrypt
+inline constexpr const char *kCryptoCipherDecrypt = "Viper.Crypto.Cipher.Decrypt";
+
+/// @brief Viper.Crypto.Cipher.EncryptWithKey
+inline constexpr const char *kCryptoCipherEncryptWithKey = "Viper.Crypto.Cipher.EncryptWithKey";
+
+/// @brief Viper.Crypto.Cipher.DecryptWithKey
+inline constexpr const char *kCryptoCipherDecryptWithKey = "Viper.Crypto.Cipher.DecryptWithKey";
+
+/// @brief Viper.Crypto.Cipher.GenerateKey
+inline constexpr const char *kCryptoCipherGenerateKey = "Viper.Crypto.Cipher.GenerateKey";
+
+/// @brief Viper.Crypto.Cipher.DeriveKey
+inline constexpr const char *kCryptoCipherDeriveKey = "Viper.Crypto.Cipher.DeriveKey";
 
 // ===========================================================================
 // Viper.Crypto.Hash
@@ -684,6 +1288,19 @@ inline constexpr const char *kCryptoKeyDerivePbkdf2SHA256 = "Viper.Crypto.KeyDer
 
 /// @brief Viper.Crypto.KeyDerive.Pbkdf2SHA256Str
 inline constexpr const char *kCryptoKeyDerivePbkdf2SHA256Str = "Viper.Crypto.KeyDerive.Pbkdf2SHA256Str";
+
+// ===========================================================================
+// Viper.Crypto.Password
+// ===========================================================================
+
+/// @brief Viper.Crypto.Password.Hash
+inline constexpr const char *kCryptoPasswordHash = "Viper.Crypto.Password.Hash";
+
+/// @brief Viper.Crypto.Password.HashIters
+inline constexpr const char *kCryptoPasswordHashIters = "Viper.Crypto.Password.HashIters";
+
+/// @brief Viper.Crypto.Password.Verify
+inline constexpr const char *kCryptoPasswordVerify = "Viper.Crypto.Password.Verify";
 
 // ===========================================================================
 // Viper.Crypto.Rand
@@ -998,6 +1615,18 @@ inline constexpr const char *kFmtBin = "Viper.Fmt.Bin";
 
 /// @brief Viper.Fmt.Oct
 inline constexpr const char *kFmtOct = "Viper.Fmt.Oct";
+
+/// @brief Viper.Fmt.IntGrouped
+inline constexpr const char *kFmtIntGrouped = "Viper.Fmt.IntGrouped";
+
+/// @brief Viper.Fmt.Currency
+inline constexpr const char *kFmtCurrency = "Viper.Fmt.Currency";
+
+/// @brief Viper.Fmt.ToWords
+inline constexpr const char *kFmtToWords = "Viper.Fmt.ToWords";
+
+/// @brief Viper.Fmt.Ordinal
+inline constexpr const char *kFmtOrdinal = "Viper.Fmt.Ordinal";
 
 // ===========================================================================
 // Viper.GUI.App
@@ -1517,6 +2146,33 @@ inline constexpr const char *kGUIListBoxSelect = "Viper.GUI.ListBox.Select";
 
 /// @brief Viper.GUI.ListBox.get_Selected
 inline constexpr const char *kGUIListBoxGetSelected = "Viper.GUI.ListBox.get_Selected";
+
+/// @brief Viper.GUI.ListBox.get_Count
+inline constexpr const char *kGUIListBoxGetCount = "Viper.GUI.ListBox.get_Count";
+
+/// @brief Viper.GUI.ListBox.get_SelectedIndex
+inline constexpr const char *kGUIListBoxGetSelectedIndex = "Viper.GUI.ListBox.get_SelectedIndex";
+
+/// @brief Viper.GUI.ListBox.SelectIndex
+inline constexpr const char *kGUIListBoxSelectIndex = "Viper.GUI.ListBox.SelectIndex";
+
+/// @brief Viper.GUI.ListBox.WasSelectionChanged
+inline constexpr const char *kGUIListBoxWasSelectionChanged = "Viper.GUI.ListBox.WasSelectionChanged";
+
+/// @brief Viper.GUI.ListBox.ItemGetText
+inline constexpr const char *kGUIListBoxItemGetText = "Viper.GUI.ListBox.ItemGetText";
+
+/// @brief Viper.GUI.ListBox.ItemSetText
+inline constexpr const char *kGUIListBoxItemSetText = "Viper.GUI.ListBox.ItemSetText";
+
+/// @brief Viper.GUI.ListBox.ItemGetData
+inline constexpr const char *kGUIListBoxItemGetData = "Viper.GUI.ListBox.ItemGetData";
+
+/// @brief Viper.GUI.ListBox.ItemSetData
+inline constexpr const char *kGUIListBoxItemSetData = "Viper.GUI.ListBox.ItemSetData";
+
+/// @brief Viper.GUI.ListBox.SetFont
+inline constexpr const char *kGUIListBoxSetFont = "Viper.GUI.ListBox.SetFont";
 
 // ===========================================================================
 // Viper.GUI.Menu
@@ -3137,6 +3793,27 @@ inline constexpr const char *kGraphicsColorBrighten = "Viper.Graphics.Color.Brig
 /// @brief Viper.Graphics.Color.Darken
 inline constexpr const char *kGraphicsColorDarken = "Viper.Graphics.Color.Darken";
 
+/// @brief Viper.Graphics.Color.FromHex
+inline constexpr const char *kGraphicsColorFromHex = "Viper.Graphics.Color.FromHex";
+
+/// @brief Viper.Graphics.Color.ToHex
+inline constexpr const char *kGraphicsColorToHex = "Viper.Graphics.Color.ToHex";
+
+/// @brief Viper.Graphics.Color.Saturate
+inline constexpr const char *kGraphicsColorSaturate = "Viper.Graphics.Color.Saturate";
+
+/// @brief Viper.Graphics.Color.Desaturate
+inline constexpr const char *kGraphicsColorDesaturate = "Viper.Graphics.Color.Desaturate";
+
+/// @brief Viper.Graphics.Color.Complement
+inline constexpr const char *kGraphicsColorComplement = "Viper.Graphics.Color.Complement";
+
+/// @brief Viper.Graphics.Color.Grayscale
+inline constexpr const char *kGraphicsColorGrayscale = "Viper.Graphics.Color.Grayscale";
+
+/// @brief Viper.Graphics.Color.Invert
+inline constexpr const char *kGraphicsColorInvert = "Viper.Graphics.Color.Invert";
+
 // ===========================================================================
 // Viper.Graphics.Pixels
 // ===========================================================================
@@ -3212,6 +3889,158 @@ inline constexpr const char *kGraphicsPixelsBlur = "Viper.Graphics.Pixels.Blur";
 
 /// @brief Viper.Graphics.Pixels.Resize
 inline constexpr const char *kGraphicsPixelsResize = "Viper.Graphics.Pixels.Resize";
+
+// ===========================================================================
+// Viper.Graphics.Scene
+// ===========================================================================
+
+/// @brief Viper.Graphics.Scene.New
+inline constexpr const char *kGraphicsSceneNew = "Viper.Graphics.Scene.New";
+
+/// @brief Viper.Graphics.Scene.get_Root
+inline constexpr const char *kGraphicsSceneGetRoot = "Viper.Graphics.Scene.get_Root";
+
+/// @brief Viper.Graphics.Scene.get_NodeCount
+inline constexpr const char *kGraphicsSceneGetNodeCount = "Viper.Graphics.Scene.get_NodeCount";
+
+/// @brief Viper.Graphics.Scene.Add
+inline constexpr const char *kGraphicsSceneAdd = "Viper.Graphics.Scene.Add";
+
+/// @brief Viper.Graphics.Scene.Remove
+inline constexpr const char *kGraphicsSceneRemove = "Viper.Graphics.Scene.Remove";
+
+/// @brief Viper.Graphics.Scene.Find
+inline constexpr const char *kGraphicsSceneFind = "Viper.Graphics.Scene.Find";
+
+/// @brief Viper.Graphics.Scene.Draw
+inline constexpr const char *kGraphicsSceneDraw = "Viper.Graphics.Scene.Draw";
+
+/// @brief Viper.Graphics.Scene.DrawWithCamera
+inline constexpr const char *kGraphicsSceneDrawWithCamera = "Viper.Graphics.Scene.DrawWithCamera";
+
+/// @brief Viper.Graphics.Scene.Update
+inline constexpr const char *kGraphicsSceneUpdate = "Viper.Graphics.Scene.Update";
+
+/// @brief Viper.Graphics.Scene.Clear
+inline constexpr const char *kGraphicsSceneClear = "Viper.Graphics.Scene.Clear";
+
+// ===========================================================================
+// Viper.Graphics.SceneNode
+// ===========================================================================
+
+/// @brief Viper.Graphics.SceneNode.New
+inline constexpr const char *kGraphicsSceneNodeNew = "Viper.Graphics.SceneNode.New";
+
+/// @brief Viper.Graphics.SceneNode.FromSprite
+inline constexpr const char *kGraphicsSceneNodeFromSprite = "Viper.Graphics.SceneNode.FromSprite";
+
+/// @brief Viper.Graphics.SceneNode.get_X
+inline constexpr const char *kGraphicsSceneNodeGetX = "Viper.Graphics.SceneNode.get_X";
+
+/// @brief Viper.Graphics.SceneNode.set_X
+inline constexpr const char *kGraphicsSceneNodeSetX = "Viper.Graphics.SceneNode.set_X";
+
+/// @brief Viper.Graphics.SceneNode.get_Y
+inline constexpr const char *kGraphicsSceneNodeGetY = "Viper.Graphics.SceneNode.get_Y";
+
+/// @brief Viper.Graphics.SceneNode.set_Y
+inline constexpr const char *kGraphicsSceneNodeSetY = "Viper.Graphics.SceneNode.set_Y";
+
+/// @brief Viper.Graphics.SceneNode.get_WorldX
+inline constexpr const char *kGraphicsSceneNodeGetWorldX = "Viper.Graphics.SceneNode.get_WorldX";
+
+/// @brief Viper.Graphics.SceneNode.get_WorldY
+inline constexpr const char *kGraphicsSceneNodeGetWorldY = "Viper.Graphics.SceneNode.get_WorldY";
+
+/// @brief Viper.Graphics.SceneNode.get_ScaleX
+inline constexpr const char *kGraphicsSceneNodeGetScaleX = "Viper.Graphics.SceneNode.get_ScaleX";
+
+/// @brief Viper.Graphics.SceneNode.set_ScaleX
+inline constexpr const char *kGraphicsSceneNodeSetScaleX = "Viper.Graphics.SceneNode.set_ScaleX";
+
+/// @brief Viper.Graphics.SceneNode.get_ScaleY
+inline constexpr const char *kGraphicsSceneNodeGetScaleY = "Viper.Graphics.SceneNode.get_ScaleY";
+
+/// @brief Viper.Graphics.SceneNode.set_ScaleY
+inline constexpr const char *kGraphicsSceneNodeSetScaleY = "Viper.Graphics.SceneNode.set_ScaleY";
+
+/// @brief Viper.Graphics.SceneNode.get_WorldScaleX
+inline constexpr const char *kGraphicsSceneNodeGetWorldScaleX = "Viper.Graphics.SceneNode.get_WorldScaleX";
+
+/// @brief Viper.Graphics.SceneNode.get_WorldScaleY
+inline constexpr const char *kGraphicsSceneNodeGetWorldScaleY = "Viper.Graphics.SceneNode.get_WorldScaleY";
+
+/// @brief Viper.Graphics.SceneNode.get_Rotation
+inline constexpr const char *kGraphicsSceneNodeGetRotation = "Viper.Graphics.SceneNode.get_Rotation";
+
+/// @brief Viper.Graphics.SceneNode.set_Rotation
+inline constexpr const char *kGraphicsSceneNodeSetRotation = "Viper.Graphics.SceneNode.set_Rotation";
+
+/// @brief Viper.Graphics.SceneNode.get_WorldRotation
+inline constexpr const char *kGraphicsSceneNodeGetWorldRotation = "Viper.Graphics.SceneNode.get_WorldRotation";
+
+/// @brief Viper.Graphics.SceneNode.get_Visible
+inline constexpr const char *kGraphicsSceneNodeGetVisible = "Viper.Graphics.SceneNode.get_Visible";
+
+/// @brief Viper.Graphics.SceneNode.set_Visible
+inline constexpr const char *kGraphicsSceneNodeSetVisible = "Viper.Graphics.SceneNode.set_Visible";
+
+/// @brief Viper.Graphics.SceneNode.get_Depth
+inline constexpr const char *kGraphicsSceneNodeGetDepth = "Viper.Graphics.SceneNode.get_Depth";
+
+/// @brief Viper.Graphics.SceneNode.set_Depth
+inline constexpr const char *kGraphicsSceneNodeSetDepth = "Viper.Graphics.SceneNode.set_Depth";
+
+/// @brief Viper.Graphics.SceneNode.get_Name
+inline constexpr const char *kGraphicsSceneNodeGetName = "Viper.Graphics.SceneNode.get_Name";
+
+/// @brief Viper.Graphics.SceneNode.set_Name
+inline constexpr const char *kGraphicsSceneNodeSetName = "Viper.Graphics.SceneNode.set_Name";
+
+/// @brief Viper.Graphics.SceneNode.get_Sprite
+inline constexpr const char *kGraphicsSceneNodeGetSprite = "Viper.Graphics.SceneNode.get_Sprite";
+
+/// @brief Viper.Graphics.SceneNode.set_Sprite
+inline constexpr const char *kGraphicsSceneNodeSetSprite = "Viper.Graphics.SceneNode.set_Sprite";
+
+/// @brief Viper.Graphics.SceneNode.get_Parent
+inline constexpr const char *kGraphicsSceneNodeGetParent = "Viper.Graphics.SceneNode.get_Parent";
+
+/// @brief Viper.Graphics.SceneNode.get_ChildCount
+inline constexpr const char *kGraphicsSceneNodeGetChildCount = "Viper.Graphics.SceneNode.get_ChildCount";
+
+/// @brief Viper.Graphics.SceneNode.AddChild
+inline constexpr const char *kGraphicsSceneNodeAddChild = "Viper.Graphics.SceneNode.AddChild";
+
+/// @brief Viper.Graphics.SceneNode.RemoveChild
+inline constexpr const char *kGraphicsSceneNodeRemoveChild = "Viper.Graphics.SceneNode.RemoveChild";
+
+/// @brief Viper.Graphics.SceneNode.GetChild
+inline constexpr const char *kGraphicsSceneNodeGetChild = "Viper.Graphics.SceneNode.GetChild";
+
+/// @brief Viper.Graphics.SceneNode.Find
+inline constexpr const char *kGraphicsSceneNodeFind = "Viper.Graphics.SceneNode.Find";
+
+/// @brief Viper.Graphics.SceneNode.Detach
+inline constexpr const char *kGraphicsSceneNodeDetach = "Viper.Graphics.SceneNode.Detach";
+
+/// @brief Viper.Graphics.SceneNode.Draw
+inline constexpr const char *kGraphicsSceneNodeDraw = "Viper.Graphics.SceneNode.Draw";
+
+/// @brief Viper.Graphics.SceneNode.DrawWithCamera
+inline constexpr const char *kGraphicsSceneNodeDrawWithCamera = "Viper.Graphics.SceneNode.DrawWithCamera";
+
+/// @brief Viper.Graphics.SceneNode.Update
+inline constexpr const char *kGraphicsSceneNodeUpdate = "Viper.Graphics.SceneNode.Update";
+
+/// @brief Viper.Graphics.SceneNode.Move
+inline constexpr const char *kGraphicsSceneNodeMove = "Viper.Graphics.SceneNode.Move";
+
+/// @brief Viper.Graphics.SceneNode.SetPosition
+inline constexpr const char *kGraphicsSceneNodeSetPosition = "Viper.Graphics.SceneNode.SetPosition";
+
+/// @brief Viper.Graphics.SceneNode.SetScale
+inline constexpr const char *kGraphicsSceneNodeSetScale = "Viper.Graphics.SceneNode.SetScale";
 
 // ===========================================================================
 // Viper.Graphics.Sprite
@@ -3297,6 +4126,55 @@ inline constexpr const char *kGraphicsSpriteContains = "Viper.Graphics.Sprite.Co
 
 /// @brief Viper.Graphics.Sprite.Move
 inline constexpr const char *kGraphicsSpriteMove = "Viper.Graphics.Sprite.Move";
+
+// ===========================================================================
+// Viper.Graphics.SpriteBatch
+// ===========================================================================
+
+/// @brief Viper.Graphics.SpriteBatch.New
+inline constexpr const char *kGraphicsSpriteBatchNew = "Viper.Graphics.SpriteBatch.New";
+
+/// @brief Viper.Graphics.SpriteBatch.Begin
+inline constexpr const char *kGraphicsSpriteBatchBegin = "Viper.Graphics.SpriteBatch.Begin";
+
+/// @brief Viper.Graphics.SpriteBatch.End
+inline constexpr const char *kGraphicsSpriteBatchEnd = "Viper.Graphics.SpriteBatch.End";
+
+/// @brief Viper.Graphics.SpriteBatch.Draw
+inline constexpr const char *kGraphicsSpriteBatchDraw = "Viper.Graphics.SpriteBatch.Draw";
+
+/// @brief Viper.Graphics.SpriteBatch.DrawScaled
+inline constexpr const char *kGraphicsSpriteBatchDrawScaled = "Viper.Graphics.SpriteBatch.DrawScaled";
+
+/// @brief Viper.Graphics.SpriteBatch.DrawEx
+inline constexpr const char *kGraphicsSpriteBatchDrawEx = "Viper.Graphics.SpriteBatch.DrawEx";
+
+/// @brief Viper.Graphics.SpriteBatch.DrawPixels
+inline constexpr const char *kGraphicsSpriteBatchDrawPixels = "Viper.Graphics.SpriteBatch.DrawPixels";
+
+/// @brief Viper.Graphics.SpriteBatch.DrawRegion
+inline constexpr const char *kGraphicsSpriteBatchDrawRegion = "Viper.Graphics.SpriteBatch.DrawRegion";
+
+/// @brief Viper.Graphics.SpriteBatch.get_Count
+inline constexpr const char *kGraphicsSpriteBatchGetCount = "Viper.Graphics.SpriteBatch.get_Count";
+
+/// @brief Viper.Graphics.SpriteBatch.get_Capacity
+inline constexpr const char *kGraphicsSpriteBatchGetCapacity = "Viper.Graphics.SpriteBatch.get_Capacity";
+
+/// @brief Viper.Graphics.SpriteBatch.get_IsActive
+inline constexpr const char *kGraphicsSpriteBatchGetIsActive = "Viper.Graphics.SpriteBatch.get_IsActive";
+
+/// @brief Viper.Graphics.SpriteBatch.SetSortByDepth
+inline constexpr const char *kGraphicsSpriteBatchSetSortByDepth = "Viper.Graphics.SpriteBatch.SetSortByDepth";
+
+/// @brief Viper.Graphics.SpriteBatch.SetTint
+inline constexpr const char *kGraphicsSpriteBatchSetTint = "Viper.Graphics.SpriteBatch.SetTint";
+
+/// @brief Viper.Graphics.SpriteBatch.SetAlpha
+inline constexpr const char *kGraphicsSpriteBatchSetAlpha = "Viper.Graphics.SpriteBatch.SetAlpha";
+
+/// @brief Viper.Graphics.SpriteBatch.ResetSettings
+inline constexpr const char *kGraphicsSpriteBatchResetSettings = "Viper.Graphics.SpriteBatch.ResetSettings";
 
 // ===========================================================================
 // Viper.Graphics.Tilemap
@@ -3596,6 +4474,22 @@ inline constexpr const char *kIOFileWriteBytes = "Viper.IO.File.WriteBytes";
 inline constexpr const char *kIOFileWriteLines = "Viper.IO.File.WriteLines";
 
 // ===========================================================================
+// Viper.IO.Glob
+// ===========================================================================
+
+/// @brief Viper.IO.Glob.Match
+inline constexpr const char *kIOGlobMatch = "Viper.IO.Glob.Match";
+
+/// @brief Viper.IO.Glob.Files
+inline constexpr const char *kIOGlobFiles = "Viper.IO.Glob.Files";
+
+/// @brief Viper.IO.Glob.FilesRecursive
+inline constexpr const char *kIOGlobFilesRecursive = "Viper.IO.Glob.FilesRecursive";
+
+/// @brief Viper.IO.Glob.Entries
+inline constexpr const char *kIOGlobEntries = "Viper.IO.Glob.Entries";
+
+// ===========================================================================
 // Viper.IO.LineReader
 // ===========================================================================
 
@@ -3787,6 +4681,98 @@ inline constexpr const char *kIOPathStem = "Viper.IO.Path.Stem";
 
 /// @brief Viper.IO.Path.WithExt
 inline constexpr const char *kIOPathWithExt = "Viper.IO.Path.WithExt";
+
+// ===========================================================================
+// Viper.IO.Stream
+// ===========================================================================
+
+/// @brief Viper.IO.Stream.OpenFile
+inline constexpr const char *kIOStreamOpenFile = "Viper.IO.Stream.OpenFile";
+
+/// @brief Viper.IO.Stream.OpenMemory
+inline constexpr const char *kIOStreamOpenMemory = "Viper.IO.Stream.OpenMemory";
+
+/// @brief Viper.IO.Stream.OpenBytes
+inline constexpr const char *kIOStreamOpenBytes = "Viper.IO.Stream.OpenBytes";
+
+/// @brief Viper.IO.Stream.FromBinFile
+inline constexpr const char *kIOStreamFromBinFile = "Viper.IO.Stream.FromBinFile";
+
+/// @brief Viper.IO.Stream.FromMemStream
+inline constexpr const char *kIOStreamFromMemStream = "Viper.IO.Stream.FromMemStream";
+
+/// @brief Viper.IO.Stream.get_Type
+inline constexpr const char *kIOStreamGetType = "Viper.IO.Stream.get_Type";
+
+/// @brief Viper.IO.Stream.get_Pos
+inline constexpr const char *kIOStreamGetPos = "Viper.IO.Stream.get_Pos";
+
+/// @brief Viper.IO.Stream.set_Pos
+inline constexpr const char *kIOStreamSetPos = "Viper.IO.Stream.set_Pos";
+
+/// @brief Viper.IO.Stream.get_Len
+inline constexpr const char *kIOStreamGetLen = "Viper.IO.Stream.get_Len";
+
+/// @brief Viper.IO.Stream.get_Eof
+inline constexpr const char *kIOStreamGetEof = "Viper.IO.Stream.get_Eof";
+
+/// @brief Viper.IO.Stream.Read
+inline constexpr const char *kIOStreamRead = "Viper.IO.Stream.Read";
+
+/// @brief Viper.IO.Stream.ReadAll
+inline constexpr const char *kIOStreamReadAll = "Viper.IO.Stream.ReadAll";
+
+/// @brief Viper.IO.Stream.Write
+inline constexpr const char *kIOStreamWrite = "Viper.IO.Stream.Write";
+
+/// @brief Viper.IO.Stream.ReadByte
+inline constexpr const char *kIOStreamReadByte = "Viper.IO.Stream.ReadByte";
+
+/// @brief Viper.IO.Stream.WriteByte
+inline constexpr const char *kIOStreamWriteByte = "Viper.IO.Stream.WriteByte";
+
+/// @brief Viper.IO.Stream.Flush
+inline constexpr const char *kIOStreamFlush = "Viper.IO.Stream.Flush";
+
+/// @brief Viper.IO.Stream.Close
+inline constexpr const char *kIOStreamClose = "Viper.IO.Stream.Close";
+
+/// @brief Viper.IO.Stream.AsBinFile
+inline constexpr const char *kIOStreamAsBinFile = "Viper.IO.Stream.AsBinFile";
+
+/// @brief Viper.IO.Stream.AsMemStream
+inline constexpr const char *kIOStreamAsMemStream = "Viper.IO.Stream.AsMemStream";
+
+/// @brief Viper.IO.Stream.ToBytes
+inline constexpr const char *kIOStreamToBytes = "Viper.IO.Stream.ToBytes";
+
+// ===========================================================================
+// Viper.IO.TempFile
+// ===========================================================================
+
+/// @brief Viper.IO.TempFile.Dir
+inline constexpr const char *kIOTempFileDir = "Viper.IO.TempFile.Dir";
+
+/// @brief Viper.IO.TempFile.Path
+inline constexpr const char *kIOTempFilePath = "Viper.IO.TempFile.Path";
+
+/// @brief Viper.IO.TempFile.PathWithPrefix
+inline constexpr const char *kIOTempFilePathWithPrefix = "Viper.IO.TempFile.PathWithPrefix";
+
+/// @brief Viper.IO.TempFile.PathWithExt
+inline constexpr const char *kIOTempFilePathWithExt = "Viper.IO.TempFile.PathWithExt";
+
+/// @brief Viper.IO.TempFile.Create
+inline constexpr const char *kIOTempFileCreate = "Viper.IO.TempFile.Create";
+
+/// @brief Viper.IO.TempFile.CreateWithPrefix
+inline constexpr const char *kIOTempFileCreateWithPrefix = "Viper.IO.TempFile.CreateWithPrefix";
+
+/// @brief Viper.IO.TempFile.CreateDir
+inline constexpr const char *kIOTempFileCreateDir = "Viper.IO.TempFile.CreateDir";
+
+/// @brief Viper.IO.TempFile.CreateDirWithPrefix
+inline constexpr const char *kIOTempFileCreateDirWithPrefix = "Viper.IO.TempFile.CreateDirWithPrefix";
 
 // ===========================================================================
 // Viper.IO.Watcher
@@ -5061,6 +6047,113 @@ inline constexpr const char *kMathBigIntClearBit = "Viper.Math.BigInt.ClearBit";
 inline constexpr const char *kMathBigIntSqrt = "Viper.Math.BigInt.Sqrt";
 
 // ===========================================================================
+// Viper.Math.Easing
+// ===========================================================================
+
+/// @brief Viper.Math.Easing.Linear
+inline constexpr const char *kMathEasingLinear = "Viper.Math.Easing.Linear";
+
+/// @brief Viper.Math.Easing.InQuad
+inline constexpr const char *kMathEasingInQuad = "Viper.Math.Easing.InQuad";
+
+/// @brief Viper.Math.Easing.OutQuad
+inline constexpr const char *kMathEasingOutQuad = "Viper.Math.Easing.OutQuad";
+
+/// @brief Viper.Math.Easing.InOutQuad
+inline constexpr const char *kMathEasingInOutQuad = "Viper.Math.Easing.InOutQuad";
+
+/// @brief Viper.Math.Easing.InCubic
+inline constexpr const char *kMathEasingInCubic = "Viper.Math.Easing.InCubic";
+
+/// @brief Viper.Math.Easing.OutCubic
+inline constexpr const char *kMathEasingOutCubic = "Viper.Math.Easing.OutCubic";
+
+/// @brief Viper.Math.Easing.InOutCubic
+inline constexpr const char *kMathEasingInOutCubic = "Viper.Math.Easing.InOutCubic";
+
+/// @brief Viper.Math.Easing.InQuart
+inline constexpr const char *kMathEasingInQuart = "Viper.Math.Easing.InQuart";
+
+/// @brief Viper.Math.Easing.OutQuart
+inline constexpr const char *kMathEasingOutQuart = "Viper.Math.Easing.OutQuart";
+
+/// @brief Viper.Math.Easing.InOutQuart
+inline constexpr const char *kMathEasingInOutQuart = "Viper.Math.Easing.InOutQuart";
+
+/// @brief Viper.Math.Easing.InSine
+inline constexpr const char *kMathEasingInSine = "Viper.Math.Easing.InSine";
+
+/// @brief Viper.Math.Easing.OutSine
+inline constexpr const char *kMathEasingOutSine = "Viper.Math.Easing.OutSine";
+
+/// @brief Viper.Math.Easing.InOutSine
+inline constexpr const char *kMathEasingInOutSine = "Viper.Math.Easing.InOutSine";
+
+/// @brief Viper.Math.Easing.InExpo
+inline constexpr const char *kMathEasingInExpo = "Viper.Math.Easing.InExpo";
+
+/// @brief Viper.Math.Easing.OutExpo
+inline constexpr const char *kMathEasingOutExpo = "Viper.Math.Easing.OutExpo";
+
+/// @brief Viper.Math.Easing.InOutExpo
+inline constexpr const char *kMathEasingInOutExpo = "Viper.Math.Easing.InOutExpo";
+
+/// @brief Viper.Math.Easing.InCirc
+inline constexpr const char *kMathEasingInCirc = "Viper.Math.Easing.InCirc";
+
+/// @brief Viper.Math.Easing.OutCirc
+inline constexpr const char *kMathEasingOutCirc = "Viper.Math.Easing.OutCirc";
+
+/// @brief Viper.Math.Easing.InOutCirc
+inline constexpr const char *kMathEasingInOutCirc = "Viper.Math.Easing.InOutCirc";
+
+/// @brief Viper.Math.Easing.InBack
+inline constexpr const char *kMathEasingInBack = "Viper.Math.Easing.InBack";
+
+/// @brief Viper.Math.Easing.OutBack
+inline constexpr const char *kMathEasingOutBack = "Viper.Math.Easing.OutBack";
+
+/// @brief Viper.Math.Easing.InOutBack
+inline constexpr const char *kMathEasingInOutBack = "Viper.Math.Easing.InOutBack";
+
+/// @brief Viper.Math.Easing.InElastic
+inline constexpr const char *kMathEasingInElastic = "Viper.Math.Easing.InElastic";
+
+/// @brief Viper.Math.Easing.OutElastic
+inline constexpr const char *kMathEasingOutElastic = "Viper.Math.Easing.OutElastic";
+
+/// @brief Viper.Math.Easing.InOutElastic
+inline constexpr const char *kMathEasingInOutElastic = "Viper.Math.Easing.InOutElastic";
+
+/// @brief Viper.Math.Easing.InBounce
+inline constexpr const char *kMathEasingInBounce = "Viper.Math.Easing.InBounce";
+
+/// @brief Viper.Math.Easing.OutBounce
+inline constexpr const char *kMathEasingOutBounce = "Viper.Math.Easing.OutBounce";
+
+/// @brief Viper.Math.Easing.InOutBounce
+inline constexpr const char *kMathEasingInOutBounce = "Viper.Math.Easing.InOutBounce";
+
+// ===========================================================================
+// Viper.Math.PerlinNoise
+// ===========================================================================
+
+/// @brief Viper.Math.PerlinNoise.New
+inline constexpr const char *kMathPerlinNoiseNew = "Viper.Math.PerlinNoise.New";
+
+/// @brief Viper.Math.PerlinNoise.Noise2D
+inline constexpr const char *kMathPerlinNoiseNoise2D = "Viper.Math.PerlinNoise.Noise2D";
+
+/// @brief Viper.Math.PerlinNoise.Noise3D
+inline constexpr const char *kMathPerlinNoiseNoise3D = "Viper.Math.PerlinNoise.Noise3D";
+
+/// @brief Viper.Math.PerlinNoise.Octave2D
+inline constexpr const char *kMathPerlinNoiseOctave2D = "Viper.Math.PerlinNoise.Octave2D";
+
+/// @brief Viper.Math.PerlinNoise.Octave3D
+inline constexpr const char *kMathPerlinNoiseOctave3D = "Viper.Math.PerlinNoise.Octave3D";
+
+// ===========================================================================
 // Viper.Network.Dns
 // ===========================================================================
 
@@ -5162,6 +6255,62 @@ inline constexpr const char *kNetworkHttpResHeader = "Viper.Network.HttpRes.Head
 
 /// @brief Viper.Network.HttpRes.IsOk
 inline constexpr const char *kNetworkHttpResIsOk = "Viper.Network.HttpRes.IsOk";
+
+// ===========================================================================
+// Viper.Network.RateLimiter
+// ===========================================================================
+
+/// @brief Viper.Network.RateLimiter.New
+inline constexpr const char *kNetworkRateLimiterNew = "Viper.Network.RateLimiter.New";
+
+/// @brief Viper.Network.RateLimiter.TryAcquire
+inline constexpr const char *kNetworkRateLimiterTryAcquire = "Viper.Network.RateLimiter.TryAcquire";
+
+/// @brief Viper.Network.RateLimiter.TryAcquireN
+inline constexpr const char *kNetworkRateLimiterTryAcquireN = "Viper.Network.RateLimiter.TryAcquireN";
+
+/// @brief Viper.Network.RateLimiter.get_Available
+inline constexpr const char *kNetworkRateLimiterGetAvailable = "Viper.Network.RateLimiter.get_Available";
+
+/// @brief Viper.Network.RateLimiter.Reset
+inline constexpr const char *kNetworkRateLimiterReset = "Viper.Network.RateLimiter.Reset";
+
+/// @brief Viper.Network.RateLimiter.get_Max
+inline constexpr const char *kNetworkRateLimiterGetMax = "Viper.Network.RateLimiter.get_Max";
+
+/// @brief Viper.Network.RateLimiter.get_Rate
+inline constexpr const char *kNetworkRateLimiterGetRate = "Viper.Network.RateLimiter.get_Rate";
+
+// ===========================================================================
+// Viper.Network.RetryPolicy
+// ===========================================================================
+
+/// @brief Viper.Network.RetryPolicy.New
+inline constexpr const char *kNetworkRetryPolicyNew = "Viper.Network.RetryPolicy.New";
+
+/// @brief Viper.Network.RetryPolicy.Exponential
+inline constexpr const char *kNetworkRetryPolicyExponential = "Viper.Network.RetryPolicy.Exponential";
+
+/// @brief Viper.Network.RetryPolicy.get_CanRetry
+inline constexpr const char *kNetworkRetryPolicyGetCanRetry = "Viper.Network.RetryPolicy.get_CanRetry";
+
+/// @brief Viper.Network.RetryPolicy.NextDelay
+inline constexpr const char *kNetworkRetryPolicyNextDelay = "Viper.Network.RetryPolicy.NextDelay";
+
+/// @brief Viper.Network.RetryPolicy.get_Attempt
+inline constexpr const char *kNetworkRetryPolicyGetAttempt = "Viper.Network.RetryPolicy.get_Attempt";
+
+/// @brief Viper.Network.RetryPolicy.get_MaxRetries
+inline constexpr const char *kNetworkRetryPolicyGetMaxRetries = "Viper.Network.RetryPolicy.get_MaxRetries";
+
+/// @brief Viper.Network.RetryPolicy.Reset
+inline constexpr const char *kNetworkRetryPolicyReset = "Viper.Network.RetryPolicy.Reset";
+
+/// @brief Viper.Network.RetryPolicy.get_TotalAttempts
+inline constexpr const char *kNetworkRetryPolicyGetTotalAttempts = "Viper.Network.RetryPolicy.get_TotalAttempts";
+
+/// @brief Viper.Network.RetryPolicy.get_IsExhausted
+inline constexpr const char *kNetworkRetryPolicyGetIsExhausted = "Viper.Network.RetryPolicy.get_IsExhausted";
 
 // ===========================================================================
 // Viper.Network.Tcp
@@ -5752,6 +6901,54 @@ inline constexpr const char *kStringFromStr = "Viper.String.FromStr";
 /// @brief Viper.String.Join
 inline constexpr const char *kStringJoin = "Viper.String.Join";
 
+/// @brief Viper.String.Capitalize
+inline constexpr const char *kStringCapitalize = "Viper.String.Capitalize";
+
+/// @brief Viper.String.Title
+inline constexpr const char *kStringTitle = "Viper.String.Title";
+
+/// @brief Viper.String.RemovePrefix
+inline constexpr const char *kStringRemovePrefix = "Viper.String.RemovePrefix";
+
+/// @brief Viper.String.RemoveSuffix
+inline constexpr const char *kStringRemoveSuffix = "Viper.String.RemoveSuffix";
+
+/// @brief Viper.String.LastIndexOf
+inline constexpr const char *kStringLastIndexOf = "Viper.String.LastIndexOf";
+
+/// @brief Viper.String.TrimChar
+inline constexpr const char *kStringTrimChar = "Viper.String.TrimChar";
+
+/// @brief Viper.String.Slug
+inline constexpr const char *kStringSlug = "Viper.String.Slug";
+
+/// @brief Viper.String.Levenshtein
+inline constexpr const char *kStringLevenshtein = "Viper.String.Levenshtein";
+
+/// @brief Viper.String.Jaro
+inline constexpr const char *kStringJaro = "Viper.String.Jaro";
+
+/// @brief Viper.String.JaroWinkler
+inline constexpr const char *kStringJaroWinkler = "Viper.String.JaroWinkler";
+
+/// @brief Viper.String.Hamming
+inline constexpr const char *kStringHamming = "Viper.String.Hamming";
+
+/// @brief Viper.String.CamelCase
+inline constexpr const char *kStringCamelCase = "Viper.String.CamelCase";
+
+/// @brief Viper.String.PascalCase
+inline constexpr const char *kStringPascalCase = "Viper.String.PascalCase";
+
+/// @brief Viper.String.SnakeCase
+inline constexpr const char *kStringSnakeCase = "Viper.String.SnakeCase";
+
+/// @brief Viper.String.KebabCase
+inline constexpr const char *kStringKebabCase = "Viper.String.KebabCase";
+
+/// @brief Viper.String.ScreamingSnake
+inline constexpr const char *kStringScreamingSnake = "Viper.String.ScreamingSnake";
+
 // ===========================================================================
 // Viper.Terminal
 // ===========================================================================
@@ -5882,6 +7079,22 @@ inline constexpr const char *kTextCsvFormat = "Viper.Text.Csv.Format";
 inline constexpr const char *kTextCsvFormatWith = "Viper.Text.Csv.FormatWith";
 
 // ===========================================================================
+// Viper.Text.Diff
+// ===========================================================================
+
+/// @brief Viper.Text.Diff.Lines
+inline constexpr const char *kTextDiffLines = "Viper.Text.Diff.Lines";
+
+/// @brief Viper.Text.Diff.Unified
+inline constexpr const char *kTextDiffUnified = "Viper.Text.Diff.Unified";
+
+/// @brief Viper.Text.Diff.CountChanges
+inline constexpr const char *kTextDiffCountChanges = "Viper.Text.Diff.CountChanges";
+
+/// @brief Viper.Text.Diff.Patch
+inline constexpr const char *kTextDiffPatch = "Viper.Text.Diff.Patch";
+
+// ===========================================================================
 // Viper.Text.Guid
 // ===========================================================================
 
@@ -5899,6 +7112,56 @@ inline constexpr const char *kTextGuidNew = "Viper.Text.Guid.New";
 
 /// @brief Viper.Text.Guid.ToBytes
 inline constexpr const char *kTextGuidToBytes = "Viper.Text.Guid.ToBytes";
+
+// ===========================================================================
+// Viper.Text.Html
+// ===========================================================================
+
+/// @brief Viper.Text.Html.Parse
+inline constexpr const char *kTextHtmlParse = "Viper.Text.Html.Parse";
+
+/// @brief Viper.Text.Html.ToText
+inline constexpr const char *kTextHtmlToText = "Viper.Text.Html.ToText";
+
+/// @brief Viper.Text.Html.Escape
+inline constexpr const char *kTextHtmlEscape = "Viper.Text.Html.Escape";
+
+/// @brief Viper.Text.Html.Unescape
+inline constexpr const char *kTextHtmlUnescape = "Viper.Text.Html.Unescape";
+
+/// @brief Viper.Text.Html.StripTags
+inline constexpr const char *kTextHtmlStripTags = "Viper.Text.Html.StripTags";
+
+/// @brief Viper.Text.Html.ExtractLinks
+inline constexpr const char *kTextHtmlExtractLinks = "Viper.Text.Html.ExtractLinks";
+
+/// @brief Viper.Text.Html.ExtractText
+inline constexpr const char *kTextHtmlExtractText = "Viper.Text.Html.ExtractText";
+
+// ===========================================================================
+// Viper.Text.Ini
+// ===========================================================================
+
+/// @brief Viper.Text.Ini.Parse
+inline constexpr const char *kTextIniParse = "Viper.Text.Ini.Parse";
+
+/// @brief Viper.Text.Ini.Format
+inline constexpr const char *kTextIniFormat = "Viper.Text.Ini.Format";
+
+/// @brief Viper.Text.Ini.Get
+inline constexpr const char *kTextIniGet = "Viper.Text.Ini.Get";
+
+/// @brief Viper.Text.Ini.Set
+inline constexpr const char *kTextIniSet = "Viper.Text.Ini.Set";
+
+/// @brief Viper.Text.Ini.HasSection
+inline constexpr const char *kTextIniHasSection = "Viper.Text.Ini.HasSection";
+
+/// @brief Viper.Text.Ini.Sections
+inline constexpr const char *kTextIniSections = "Viper.Text.Ini.Sections";
+
+/// @brief Viper.Text.Ini.Remove
+inline constexpr const char *kTextIniRemove = "Viper.Text.Ini.Remove";
 
 // ===========================================================================
 // Viper.Text.Json
@@ -5924,6 +7187,72 @@ inline constexpr const char *kTextJsonIsValid = "Viper.Text.Json.IsValid";
 
 /// @brief Viper.Text.Json.TypeOf
 inline constexpr const char *kTextJsonTypeOf = "Viper.Text.Json.TypeOf";
+
+// ===========================================================================
+// Viper.Text.JsonPath
+// ===========================================================================
+
+/// @brief Viper.Text.JsonPath.Get
+inline constexpr const char *kTextJsonPathGet = "Viper.Text.JsonPath.Get";
+
+/// @brief Viper.Text.JsonPath.GetOr
+inline constexpr const char *kTextJsonPathGetOr = "Viper.Text.JsonPath.GetOr";
+
+/// @brief Viper.Text.JsonPath.Has
+inline constexpr const char *kTextJsonPathHas = "Viper.Text.JsonPath.Has";
+
+/// @brief Viper.Text.JsonPath.Query
+inline constexpr const char *kTextJsonPathQuery = "Viper.Text.JsonPath.Query";
+
+/// @brief Viper.Text.JsonPath.GetStr
+inline constexpr const char *kTextJsonPathGetStr = "Viper.Text.JsonPath.GetStr";
+
+/// @brief Viper.Text.JsonPath.GetInt
+inline constexpr const char *kTextJsonPathGetInt = "Viper.Text.JsonPath.GetInt";
+
+// ===========================================================================
+// Viper.Text.Markdown
+// ===========================================================================
+
+/// @brief Viper.Text.Markdown.ToHtml
+inline constexpr const char *kTextMarkdownToHtml = "Viper.Text.Markdown.ToHtml";
+
+/// @brief Viper.Text.Markdown.ToText
+inline constexpr const char *kTextMarkdownToText = "Viper.Text.Markdown.ToText";
+
+/// @brief Viper.Text.Markdown.ExtractLinks
+inline constexpr const char *kTextMarkdownExtractLinks = "Viper.Text.Markdown.ExtractLinks";
+
+/// @brief Viper.Text.Markdown.ExtractHeadings
+inline constexpr const char *kTextMarkdownExtractHeadings = "Viper.Text.Markdown.ExtractHeadings";
+
+// ===========================================================================
+// Viper.Text.NumberFormat
+// ===========================================================================
+
+/// @brief Viper.Text.NumberFormat.Decimals
+inline constexpr const char *kTextNumberFormatDecimals = "Viper.Text.NumberFormat.Decimals";
+
+/// @brief Viper.Text.NumberFormat.Thousands
+inline constexpr const char *kTextNumberFormatThousands = "Viper.Text.NumberFormat.Thousands";
+
+/// @brief Viper.Text.NumberFormat.Currency
+inline constexpr const char *kTextNumberFormatCurrency = "Viper.Text.NumberFormat.Currency";
+
+/// @brief Viper.Text.NumberFormat.Percent
+inline constexpr const char *kTextNumberFormatPercent = "Viper.Text.NumberFormat.Percent";
+
+/// @brief Viper.Text.NumberFormat.Ordinal
+inline constexpr const char *kTextNumberFormatOrdinal = "Viper.Text.NumberFormat.Ordinal";
+
+/// @brief Viper.Text.NumberFormat.ToWords
+inline constexpr const char *kTextNumberFormatToWords = "Viper.Text.NumberFormat.ToWords";
+
+/// @brief Viper.Text.NumberFormat.Bytes
+inline constexpr const char *kTextNumberFormatBytes = "Viper.Text.NumberFormat.Bytes";
+
+/// @brief Viper.Text.NumberFormat.Pad
+inline constexpr const char *kTextNumberFormatPad = "Viper.Text.NumberFormat.Pad";
 
 // ===========================================================================
 // Viper.Text.Pattern
@@ -5955,6 +7284,19 @@ inline constexpr const char *kTextPatternSplit = "Viper.Text.Pattern.Split";
 
 /// @brief Viper.Text.Pattern.Escape
 inline constexpr const char *kTextPatternEscape = "Viper.Text.Pattern.Escape";
+
+// ===========================================================================
+// Viper.Text.Pluralize
+// ===========================================================================
+
+/// @brief Viper.Text.Pluralize.Plural
+inline constexpr const char *kTextPluralizePlural = "Viper.Text.Pluralize.Plural";
+
+/// @brief Viper.Text.Pluralize.Singular
+inline constexpr const char *kTextPluralizeSingular = "Viper.Text.Pluralize.Singular";
+
+/// @brief Viper.Text.Pluralize.Count
+inline constexpr const char *kTextPluralizeCount = "Viper.Text.Pluralize.Count";
 
 // ===========================================================================
 // Viper.Text.StringBuilder
@@ -6004,6 +7346,65 @@ inline constexpr const char *kTextTemplateKeys = "Viper.Text.Template.Keys";
 inline constexpr const char *kTextTemplateEscape = "Viper.Text.Template.Escape";
 
 // ===========================================================================
+// Viper.Text.Toml
+// ===========================================================================
+
+/// @brief Viper.Text.Toml.Parse
+inline constexpr const char *kTextTomlParse = "Viper.Text.Toml.Parse";
+
+/// @brief Viper.Text.Toml.IsValid
+inline constexpr const char *kTextTomlIsValid = "Viper.Text.Toml.IsValid";
+
+/// @brief Viper.Text.Toml.Format
+inline constexpr const char *kTextTomlFormat = "Viper.Text.Toml.Format";
+
+/// @brief Viper.Text.Toml.Get
+inline constexpr const char *kTextTomlGet = "Viper.Text.Toml.Get";
+
+// ===========================================================================
+// Viper.Text.Version
+// ===========================================================================
+
+/// @brief Viper.Text.Version.Parse
+inline constexpr const char *kTextVersionParse = "Viper.Text.Version.Parse";
+
+/// @brief Viper.Text.Version.IsValid
+inline constexpr const char *kTextVersionIsValid = "Viper.Text.Version.IsValid";
+
+/// @brief Viper.Text.Version.get_Major
+inline constexpr const char *kTextVersionGetMajor = "Viper.Text.Version.get_Major";
+
+/// @brief Viper.Text.Version.get_Minor
+inline constexpr const char *kTextVersionGetMinor = "Viper.Text.Version.get_Minor";
+
+/// @brief Viper.Text.Version.get_Patch
+inline constexpr const char *kTextVersionGetPatch = "Viper.Text.Version.get_Patch";
+
+/// @brief Viper.Text.Version.get_Prerelease
+inline constexpr const char *kTextVersionGetPrerelease = "Viper.Text.Version.get_Prerelease";
+
+/// @brief Viper.Text.Version.get_Build
+inline constexpr const char *kTextVersionGetBuild = "Viper.Text.Version.get_Build";
+
+/// @brief Viper.Text.Version.ToString
+inline constexpr const char *kTextVersionToString = "Viper.Text.Version.ToString";
+
+/// @brief Viper.Text.Version.Cmp
+inline constexpr const char *kTextVersionCmp = "Viper.Text.Version.Cmp";
+
+/// @brief Viper.Text.Version.Satisfies
+inline constexpr const char *kTextVersionSatisfies = "Viper.Text.Version.Satisfies";
+
+/// @brief Viper.Text.Version.BumpMajor
+inline constexpr const char *kTextVersionBumpMajor = "Viper.Text.Version.BumpMajor";
+
+/// @brief Viper.Text.Version.BumpMinor
+inline constexpr const char *kTextVersionBumpMinor = "Viper.Text.Version.BumpMinor";
+
+/// @brief Viper.Text.Version.BumpPatch
+inline constexpr const char *kTextVersionBumpPatch = "Viper.Text.Version.BumpPatch";
+
+// ===========================================================================
 // Viper.Threads.Barrier
 // ===========================================================================
 
@@ -6021,6 +7422,31 @@ inline constexpr const char *kThreadsBarrierGetParties = "Viper.Threads.Barrier.
 
 /// @brief Viper.Threads.Barrier.get_Waiting
 inline constexpr const char *kThreadsBarrierGetWaiting = "Viper.Threads.Barrier.get_Waiting";
+
+// ===========================================================================
+// Viper.Threads.CancellationToken
+// ===========================================================================
+
+/// @brief Viper.Threads.CancellationToken.New
+inline constexpr const char *kThreadsCancellationTokenNew = "Viper.Threads.CancellationToken.New";
+
+/// @brief Viper.Threads.CancellationToken.get_IsCancelled
+inline constexpr const char *kThreadsCancellationTokenGetIsCancelled = "Viper.Threads.CancellationToken.get_IsCancelled";
+
+/// @brief Viper.Threads.CancellationToken.Cancel
+inline constexpr const char *kThreadsCancellationTokenCancel = "Viper.Threads.CancellationToken.Cancel";
+
+/// @brief Viper.Threads.CancellationToken.Reset
+inline constexpr const char *kThreadsCancellationTokenReset = "Viper.Threads.CancellationToken.Reset";
+
+/// @brief Viper.Threads.CancellationToken.Linked
+inline constexpr const char *kThreadsCancellationTokenLinked = "Viper.Threads.CancellationToken.Linked";
+
+/// @brief Viper.Threads.CancellationToken.Check
+inline constexpr const char *kThreadsCancellationTokenCheck = "Viper.Threads.CancellationToken.Check";
+
+/// @brief Viper.Threads.CancellationToken.ThrowIfCancelled
+inline constexpr const char *kThreadsCancellationTokenThrowIfCancelled = "Viper.Threads.CancellationToken.ThrowIfCancelled";
 
 // ===========================================================================
 // Viper.Threads.Channel
@@ -6064,6 +7490,59 @@ inline constexpr const char *kThreadsChannelGetIsEmpty = "Viper.Threads.Channel.
 
 /// @brief Viper.Threads.Channel.get_IsFull
 inline constexpr const char *kThreadsChannelGetIsFull = "Viper.Threads.Channel.get_IsFull";
+
+// ===========================================================================
+// Viper.Threads.ConcurrentQueue
+// ===========================================================================
+
+/// @brief Viper.Threads.ConcurrentQueue.New
+inline constexpr const char *kThreadsConcurrentQueueNew = "Viper.Threads.ConcurrentQueue.New";
+
+/// @brief Viper.Threads.ConcurrentQueue.get_Len
+inline constexpr const char *kThreadsConcurrentQueueGetLen = "Viper.Threads.ConcurrentQueue.get_Len";
+
+/// @brief Viper.Threads.ConcurrentQueue.get_IsEmpty
+inline constexpr const char *kThreadsConcurrentQueueGetIsEmpty = "Viper.Threads.ConcurrentQueue.get_IsEmpty";
+
+/// @brief Viper.Threads.ConcurrentQueue.Enqueue
+inline constexpr const char *kThreadsConcurrentQueueEnqueue = "Viper.Threads.ConcurrentQueue.Enqueue";
+
+/// @brief Viper.Threads.ConcurrentQueue.TryDequeue
+inline constexpr const char *kThreadsConcurrentQueueTryDequeue = "Viper.Threads.ConcurrentQueue.TryDequeue";
+
+/// @brief Viper.Threads.ConcurrentQueue.Dequeue
+inline constexpr const char *kThreadsConcurrentQueueDequeue = "Viper.Threads.ConcurrentQueue.Dequeue";
+
+/// @brief Viper.Threads.ConcurrentQueue.DequeueTimeout
+inline constexpr const char *kThreadsConcurrentQueueDequeueTimeout = "Viper.Threads.ConcurrentQueue.DequeueTimeout";
+
+/// @brief Viper.Threads.ConcurrentQueue.Peek
+inline constexpr const char *kThreadsConcurrentQueuePeek = "Viper.Threads.ConcurrentQueue.Peek";
+
+/// @brief Viper.Threads.ConcurrentQueue.Clear
+inline constexpr const char *kThreadsConcurrentQueueClear = "Viper.Threads.ConcurrentQueue.Clear";
+
+// ===========================================================================
+// Viper.Threads.Debouncer
+// ===========================================================================
+
+/// @brief Viper.Threads.Debouncer.New
+inline constexpr const char *kThreadsDebouncerNew = "Viper.Threads.Debouncer.New";
+
+/// @brief Viper.Threads.Debouncer.Signal
+inline constexpr const char *kThreadsDebouncerSignal = "Viper.Threads.Debouncer.Signal";
+
+/// @brief Viper.Threads.Debouncer.get_IsReady
+inline constexpr const char *kThreadsDebouncerGetIsReady = "Viper.Threads.Debouncer.get_IsReady";
+
+/// @brief Viper.Threads.Debouncer.Reset
+inline constexpr const char *kThreadsDebouncerReset = "Viper.Threads.Debouncer.Reset";
+
+/// @brief Viper.Threads.Debouncer.get_Delay
+inline constexpr const char *kThreadsDebouncerGetDelay = "Viper.Threads.Debouncer.get_Delay";
+
+/// @brief Viper.Threads.Debouncer.get_SignalCount
+inline constexpr const char *kThreadsDebouncerGetSignalCount = "Viper.Threads.Debouncer.get_SignalCount";
 
 // ===========================================================================
 // Viper.Threads.Gate
@@ -6203,6 +7682,31 @@ inline constexpr const char *kThreadsSafeI64Add = "Viper.Threads.SafeI64.Add";
 inline constexpr const char *kThreadsSafeI64CompareExchange = "Viper.Threads.SafeI64.CompareExchange";
 
 // ===========================================================================
+// Viper.Threads.Scheduler
+// ===========================================================================
+
+/// @brief Viper.Threads.Scheduler.New
+inline constexpr const char *kThreadsSchedulerNew = "Viper.Threads.Scheduler.New";
+
+/// @brief Viper.Threads.Scheduler.Schedule
+inline constexpr const char *kThreadsSchedulerSchedule = "Viper.Threads.Scheduler.Schedule";
+
+/// @brief Viper.Threads.Scheduler.Cancel
+inline constexpr const char *kThreadsSchedulerCancel = "Viper.Threads.Scheduler.Cancel";
+
+/// @brief Viper.Threads.Scheduler.IsDue
+inline constexpr const char *kThreadsSchedulerIsDue = "Viper.Threads.Scheduler.IsDue";
+
+/// @brief Viper.Threads.Scheduler.Poll
+inline constexpr const char *kThreadsSchedulerPoll = "Viper.Threads.Scheduler.Poll";
+
+/// @brief Viper.Threads.Scheduler.get_Pending
+inline constexpr const char *kThreadsSchedulerGetPending = "Viper.Threads.Scheduler.get_Pending";
+
+/// @brief Viper.Threads.Scheduler.Clear
+inline constexpr const char *kThreadsSchedulerClear = "Viper.Threads.Scheduler.Clear";
+
+// ===========================================================================
 // Viper.Threads.Thread
 // ===========================================================================
 
@@ -6229,6 +7733,31 @@ inline constexpr const char *kThreadsThreadSleep = "Viper.Threads.Thread.Sleep";
 
 /// @brief Viper.Threads.Thread.Yield
 inline constexpr const char *kThreadsThreadYield = "Viper.Threads.Thread.Yield";
+
+// ===========================================================================
+// Viper.Threads.Throttler
+// ===========================================================================
+
+/// @brief Viper.Threads.Throttler.New
+inline constexpr const char *kThreadsThrottlerNew = "Viper.Threads.Throttler.New";
+
+/// @brief Viper.Threads.Throttler.Try
+inline constexpr const char *kThreadsThrottlerTry = "Viper.Threads.Throttler.Try";
+
+/// @brief Viper.Threads.Throttler.get_CanProceed
+inline constexpr const char *kThreadsThrottlerGetCanProceed = "Viper.Threads.Throttler.get_CanProceed";
+
+/// @brief Viper.Threads.Throttler.Reset
+inline constexpr const char *kThreadsThrottlerReset = "Viper.Threads.Throttler.Reset";
+
+/// @brief Viper.Threads.Throttler.get_Interval
+inline constexpr const char *kThreadsThrottlerGetInterval = "Viper.Threads.Throttler.get_Interval";
+
+/// @brief Viper.Threads.Throttler.get_Count
+inline constexpr const char *kThreadsThrottlerGetCount = "Viper.Threads.Throttler.get_Count";
+
+/// @brief Viper.Threads.Throttler.get_RemainingMs
+inline constexpr const char *kThreadsThrottlerGetRemainingMs = "Viper.Threads.Throttler.get_RemainingMs";
 
 // ===========================================================================
 // Viper.Time.Clock
@@ -6281,6 +7810,43 @@ inline constexpr const char *kTimeCountdownGetIsRunning = "Viper.Time.Countdown.
 inline constexpr const char *kTimeCountdownWait = "Viper.Time.Countdown.Wait";
 
 // ===========================================================================
+// Viper.Time.DateRange
+// ===========================================================================
+
+/// @brief Viper.Time.DateRange.New
+inline constexpr const char *kTimeDateRangeNew = "Viper.Time.DateRange.New";
+
+/// @brief Viper.Time.DateRange.get_Start
+inline constexpr const char *kTimeDateRangeGetStart = "Viper.Time.DateRange.get_Start";
+
+/// @brief Viper.Time.DateRange.get_End
+inline constexpr const char *kTimeDateRangeGetEnd = "Viper.Time.DateRange.get_End";
+
+/// @brief Viper.Time.DateRange.Contains
+inline constexpr const char *kTimeDateRangeContains = "Viper.Time.DateRange.Contains";
+
+/// @brief Viper.Time.DateRange.Overlaps
+inline constexpr const char *kTimeDateRangeOverlaps = "Viper.Time.DateRange.Overlaps";
+
+/// @brief Viper.Time.DateRange.Intersection
+inline constexpr const char *kTimeDateRangeIntersection = "Viper.Time.DateRange.Intersection";
+
+/// @brief Viper.Time.DateRange.Union
+inline constexpr const char *kTimeDateRangeUnion = "Viper.Time.DateRange.Union";
+
+/// @brief Viper.Time.DateRange.Days
+inline constexpr const char *kTimeDateRangeDays = "Viper.Time.DateRange.Days";
+
+/// @brief Viper.Time.DateRange.Hours
+inline constexpr const char *kTimeDateRangeHours = "Viper.Time.DateRange.Hours";
+
+/// @brief Viper.Time.DateRange.Duration
+inline constexpr const char *kTimeDateRangeDuration = "Viper.Time.DateRange.Duration";
+
+/// @brief Viper.Time.DateRange.ToString
+inline constexpr const char *kTimeDateRangeToString = "Viper.Time.DateRange.ToString";
+
+// ===========================================================================
 // Viper.Time.DateTime
 // ===========================================================================
 
@@ -6328,6 +7894,107 @@ inline constexpr const char *kTimeDateTimeToISO = "Viper.Time.DateTime.ToISO";
 
 /// @brief Viper.Time.DateTime.Year
 inline constexpr const char *kTimeDateTimeYear = "Viper.Time.DateTime.Year";
+
+// ===========================================================================
+// Viper.Time.Duration
+// ===========================================================================
+
+/// @brief Viper.Time.Duration.FromMillis
+inline constexpr const char *kTimeDurationFromMillis = "Viper.Time.Duration.FromMillis";
+
+/// @brief Viper.Time.Duration.FromSeconds
+inline constexpr const char *kTimeDurationFromSeconds = "Viper.Time.Duration.FromSeconds";
+
+/// @brief Viper.Time.Duration.FromMinutes
+inline constexpr const char *kTimeDurationFromMinutes = "Viper.Time.Duration.FromMinutes";
+
+/// @brief Viper.Time.Duration.FromHours
+inline constexpr const char *kTimeDurationFromHours = "Viper.Time.Duration.FromHours";
+
+/// @brief Viper.Time.Duration.FromDays
+inline constexpr const char *kTimeDurationFromDays = "Viper.Time.Duration.FromDays";
+
+/// @brief Viper.Time.Duration.Create
+inline constexpr const char *kTimeDurationCreate = "Viper.Time.Duration.Create";
+
+/// @brief Viper.Time.Duration.Zero
+inline constexpr const char *kTimeDurationZero = "Viper.Time.Duration.Zero";
+
+/// @brief Viper.Time.Duration.TotalMillis
+inline constexpr const char *kTimeDurationTotalMillis = "Viper.Time.Duration.TotalMillis";
+
+/// @brief Viper.Time.Duration.TotalSeconds
+inline constexpr const char *kTimeDurationTotalSeconds = "Viper.Time.Duration.TotalSeconds";
+
+/// @brief Viper.Time.Duration.TotalMinutes
+inline constexpr const char *kTimeDurationTotalMinutes = "Viper.Time.Duration.TotalMinutes";
+
+/// @brief Viper.Time.Duration.TotalHours
+inline constexpr const char *kTimeDurationTotalHours = "Viper.Time.Duration.TotalHours";
+
+/// @brief Viper.Time.Duration.TotalDays
+inline constexpr const char *kTimeDurationTotalDays = "Viper.Time.Duration.TotalDays";
+
+/// @brief Viper.Time.Duration.TotalSecondsF
+inline constexpr const char *kTimeDurationTotalSecondsF = "Viper.Time.Duration.TotalSecondsF";
+
+/// @brief Viper.Time.Duration.get_Days
+inline constexpr const char *kTimeDurationGetDays = "Viper.Time.Duration.get_Days";
+
+/// @brief Viper.Time.Duration.get_Hours
+inline constexpr const char *kTimeDurationGetHours = "Viper.Time.Duration.get_Hours";
+
+/// @brief Viper.Time.Duration.get_Minutes
+inline constexpr const char *kTimeDurationGetMinutes = "Viper.Time.Duration.get_Minutes";
+
+/// @brief Viper.Time.Duration.get_Seconds
+inline constexpr const char *kTimeDurationGetSeconds = "Viper.Time.Duration.get_Seconds";
+
+/// @brief Viper.Time.Duration.get_Millis
+inline constexpr const char *kTimeDurationGetMillis = "Viper.Time.Duration.get_Millis";
+
+/// @brief Viper.Time.Duration.Add
+inline constexpr const char *kTimeDurationAdd = "Viper.Time.Duration.Add";
+
+/// @brief Viper.Time.Duration.Sub
+inline constexpr const char *kTimeDurationSub = "Viper.Time.Duration.Sub";
+
+/// @brief Viper.Time.Duration.Mul
+inline constexpr const char *kTimeDurationMul = "Viper.Time.Duration.Mul";
+
+/// @brief Viper.Time.Duration.Div
+inline constexpr const char *kTimeDurationDiv = "Viper.Time.Duration.Div";
+
+/// @brief Viper.Time.Duration.Abs
+inline constexpr const char *kTimeDurationAbs = "Viper.Time.Duration.Abs";
+
+/// @brief Viper.Time.Duration.Neg
+inline constexpr const char *kTimeDurationNeg = "Viper.Time.Duration.Neg";
+
+/// @brief Viper.Time.Duration.Cmp
+inline constexpr const char *kTimeDurationCmp = "Viper.Time.Duration.Cmp";
+
+/// @brief Viper.Time.Duration.ToString
+inline constexpr const char *kTimeDurationToString = "Viper.Time.Duration.ToString";
+
+/// @brief Viper.Time.Duration.ToISO
+inline constexpr const char *kTimeDurationToISO = "Viper.Time.Duration.ToISO";
+
+// ===========================================================================
+// Viper.Time.RelativeTime
+// ===========================================================================
+
+/// @brief Viper.Time.RelativeTime.Format
+inline constexpr const char *kTimeRelativeTimeFormat = "Viper.Time.RelativeTime.Format";
+
+/// @brief Viper.Time.RelativeTime.FormatFrom
+inline constexpr const char *kTimeRelativeTimeFormatFrom = "Viper.Time.RelativeTime.FormatFrom";
+
+/// @brief Viper.Time.RelativeTime.FormatDuration
+inline constexpr const char *kTimeRelativeTimeFormatDuration = "Viper.Time.RelativeTime.FormatDuration";
+
+/// @brief Viper.Time.RelativeTime.FormatShort
+inline constexpr const char *kTimeRelativeTimeFormatShort = "Viper.Time.RelativeTime.FormatShort";
 
 // ===========================================================================
 // Viper.Time.Stopwatch

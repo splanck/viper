@@ -41,7 +41,23 @@ Runtime assertion helpers that terminate execution when a condition fails.
 - Traps print a diagnostic to stderr and terminate the process with exit code 1.
 - `AssertEqNum` uses a relative epsilon for floating-point comparison.
 
-### Example
+### Zia Example
+
+```zia
+module DiagDemo;
+
+bind Viper.Terminal;
+
+func start() {
+    // Diagnostics uses fully-qualified calls
+    Viper.Diagnostics.Assert(true, "this should pass");
+    Viper.Diagnostics.AssertEq(42, 42, "integers match");
+    Viper.Diagnostics.AssertEqStr("hello", "hello", "strings match");
+    Say("All assertions passed!");
+}
+```
+
+### BASIC Example
 
 ```basic
 DIM value AS INTEGER

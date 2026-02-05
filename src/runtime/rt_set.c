@@ -6,26 +6,26 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/rt_set.c
-// Purpose: Implement a generic hash set using identity hashing (pointer-based).
+// Purpose: Implement a generic hash set with content-aware hashing.
 // Structure: [vptr | buckets | capacity | count]
 // - vptr: points to class vtable (placeholder for OOP compatibility)
 // - buckets: array of entry chain heads
 // - capacity: number of buckets
 // - count: number of entries
 //
-// Uses identity-based hashing (pointer value as hash key) with reference
-// equality for comparisons. This is the standard approach for generic
-// collections in managed runtimes.
+// Uses content-aware hashing and equality for boxed values (RT_ELEM_BOX):
+// boxed integers, floats, booleans, and strings are compared by value.
+// Non-boxed objects fall back to pointer identity hashing.
 //
 //===----------------------------------------------------------------------===//
 
 #include "rt_set.h"
 
+#include "rt_box.h"
 #include "rt_object.h"
 #include "rt_seq.h"
 
 #include <stdlib.h>
-#include <string.h>
 
 /// Initial number of buckets.
 #define SET_INITIAL_CAPACITY 16
@@ -50,22 +50,12 @@ typedef struct rt_set_impl
     size_t count;           ///< Number of elements currently in the Set.
 } rt_set_impl;
 
-/// @brief Compute hash from pointer value using multiplicative hashing.
-/// Uses Knuth's multiplicative hash constant for good distribution.
-static size_t hash_ptr(void *ptr)
-{
-    // Knuth's multiplicative hash constant for 64-bit
-    const uint64_t KNUTH_MULT = 0x9e3779b97f4a7c15ULL;
-    uint64_t val = (uint64_t)(uintptr_t)ptr;
-    return (size_t)((val * KNUTH_MULT) >> 16);
-}
-
-/// @brief Find an entry in a bucket's collision chain.
+/// @brief Find an entry in a bucket's collision chain using content equality.
 static rt_set_entry *find_entry(rt_set_entry *head, void *elem)
 {
     for (rt_set_entry *e = head; e; e = e->next)
     {
-        if (e->elem == elem)
+        if (rt_box_equal(e->elem, elem))
             return e;
     }
     return NULL;
@@ -86,7 +76,7 @@ static void resize_set(rt_set_impl *set)
         while (e)
         {
             rt_set_entry *next = e->next;
-            size_t new_idx = hash_ptr(e->elem) % new_capacity;
+            size_t new_idx = rt_box_hash(e->elem) % new_capacity;
             e->next = new_buckets[new_idx];
             new_buckets[new_idx] = e;
             e = next;
@@ -163,7 +153,7 @@ int8_t rt_set_put(void *obj, void *elem)
         resize_set(set);
     }
 
-    size_t idx = hash_ptr(elem) % set->capacity;
+    size_t idx = rt_box_hash(elem) % set->capacity;
 
     // Check if already present
     if (find_entry(set->buckets[idx], elem))
@@ -191,12 +181,12 @@ int8_t rt_set_drop(void *obj, void *elem)
         return 0;
     rt_set_impl *set = obj;
 
-    size_t idx = hash_ptr(elem) % set->capacity;
+    size_t idx = rt_box_hash(elem) % set->capacity;
 
     rt_set_entry *prev = NULL;
     for (rt_set_entry *e = set->buckets[idx]; e; prev = e, e = e->next)
     {
-        if (e->elem == elem)
+        if (rt_box_equal(e->elem, elem))
         {
             // Remove from chain
             if (prev)
@@ -222,7 +212,7 @@ int8_t rt_set_has(void *obj, void *elem)
         return 0;
     rt_set_impl *set = obj;
 
-    size_t idx = hash_ptr(elem) % set->capacity;
+    size_t idx = rt_box_hash(elem) % set->capacity;
     return find_entry(set->buckets[idx], elem) ? 1 : 0;
 }
 

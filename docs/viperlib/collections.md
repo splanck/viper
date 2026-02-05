@@ -60,7 +60,36 @@ intersection, difference), and enumeration.
 - Uses FNV-1a hash function for O(1) average-case operations
 - Automatically resizes when load factor exceeds 75%
 
-### Example
+### Zia Example
+
+```zia
+module BagDemo;
+
+bind Viper.Terminal;
+bind Viper.Collections;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var fruits = new Bag();
+    fruits.Put("apple");
+    fruits.Put("banana");
+    fruits.Put("cherry");
+    Say("Count: " + Fmt.Int(fruits.Len));              // 3
+
+    // Membership testing
+    Say("Has banana: " + Fmt.Bool(fruits.Has("banana")));  // true
+    Say("Has grape: " + Fmt.Bool(fruits.Has("grape")));    // false
+
+    // Duplicate returns false
+    Say("Add apple: " + Fmt.Bool(fruits.Put("apple")));    // false
+
+    // Remove
+    fruits.Drop("banana");
+    Say("After drop: " + Fmt.Int(fruits.Len));             // 2
+}
+```
+
+### BASIC Example
 
 ```basic
 ' Create and populate a bag
@@ -156,7 +185,33 @@ An efficient byte array for binary data. More memory-efficient than Seq for byte
 | `Find(value)`                            | `Integer(Integer)`        | Find first occurrence (-1 if not found)                               |
 | `Clone()`                                | `Bytes()`                 | Create independent copy                                               |
 
-### Example
+### Zia Example
+
+```zia
+module BytesDemo;
+
+bind Viper.Terminal;
+bind Viper.Collections;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    // Create from string
+    var data = Bytes.FromStr("Hello");
+    Say("Length: " + Fmt.Int(data.Len));        // 5
+    Say("First byte: " + Fmt.Int(data.Get(0))); // 72 (ASCII 'H')
+    Say("As string: " + data.ToStr());          // Hello
+
+    // Hex and Base64 encoding
+    Say("Hex: " + data.ToHex());                // 48656c6c6f
+    Say("Base64: " + data.ToBase64());          // SGVsbG8=
+
+    // Create from hex
+    var hex = Bytes.FromHex("deadbeef");
+    Say("From hex len: " + Fmt.Int(hex.Len));   // 4
+}
+```
+
+### BASIC Example
 
 ```basic
 ' Create a 4-byte array and set values
@@ -246,7 +301,11 @@ stacks and queues while also supporting indexed access.
 | `Reverse()`          | `Void()`                | Reverse elements in place                             |
 | `Clone()`            | `Deque()`               | Create shallow copy                                   |
 
-### Example
+### Zia Example
+
+> Deque is not yet available as a constructible type in Zia. Use BASIC or access via the runtime API.
+
+### BASIC Example
 
 ```basic
 DIM deque AS Viper.Collections.Deque
@@ -342,7 +401,30 @@ A priority queue implemented as a binary heap. Elements are stored with an integ
 | `Clear()`            | `Void()`               | Remove all elements                                        |
 | `ToSeq()`            | `Seq()`                | Return elements in priority order as a Seq                 |
 
-### Example
+### Zia Example
+
+```zia
+module HeapDemo;
+
+bind Viper.Terminal;
+bind Viper.Collections;
+
+func start() {
+    var heap = new Heap();
+
+    // Add tasks with priorities (lower = more urgent)
+    heap.Push(3, Viper.Box.Str("Low priority"));
+    heap.Push(1, Viper.Box.Str("Urgent"));
+    heap.Push(2, Viper.Box.Str("Medium"));
+
+    // Pop returns in priority order (min-heap)
+    Say(Viper.Box.ToStr(heap.Pop()));   // Urgent
+    Say(Viper.Box.ToStr(heap.Pop()));   // Medium
+    Say(Viper.Box.ToStr(heap.Pop()));   // Low priority
+}
+```
+
+### BASIC Example
 
 ```basic
 DIM heap AS Viper.Collections.Heap
@@ -443,7 +525,11 @@ collectors.
 | `Any(pred)`    | `Boolean(Function)`          | True if any element matches                            |
 | `All(pred)`    | `Boolean(Function)`          | True if all elements match (may not terminate!)        |
 
-### Example
+### Zia Example
+
+> LazySeq is not yet available as a constructible type in Zia. Use BASIC or access via the runtime API.
+
+### BASIC Example
 
 ```basic
 ' Create a range (like Python's range)
@@ -568,7 +654,45 @@ Dynamic array that grows automatically. Stores object references.
 | `get_Item(index)`        | `Object(Integer)`       | Gets the item at the specified index                                                    |
 | `set_Item(index, value)` | `Void(Integer, Object)` | Sets the item at the specified index                                                    |
 
-### Example
+### Zia Example
+
+```zia
+module ListDemo;
+
+bind Viper.Terminal;
+bind Viper.Collections;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var list = new List[String]();
+
+    // Add items
+    list.add("apple");
+    list.add("banana");
+    list.add("cherry");
+    Say("Count: " + Fmt.Int(list.count));       // 3
+
+    // Access by index
+    Say("First: " + list.get(0));                // apple
+    Say("Last: " + list.get(list.count - 1));    // cherry
+
+    // Iterate with for-in
+    for item in list {
+        Print(item + " ");
+    }
+    Say("");                                     // apple banana cherry
+
+    // Modify
+    list.set(1, "blueberry");
+    Say("Updated: " + list.get(1));              // blueberry
+
+    // Insert at position
+    list.insert(0, "avocado");
+    Say("First: " + list.get(0));                // avocado
+}
+```
+
+### BASIC Example
 
 ```basic
 DIM list AS Viper.Collections.List
@@ -628,7 +752,38 @@ A key-value dictionary with string keys. Provides O(1) average-case lookup, inse
 | `Keys()`                   | `Seq()`                   | Get sequence of all keys                                                 |
 | `Values()`                 | `Seq()`                   | Get sequence of all values                                               |
 
-### Example
+### Zia Example
+
+```zia
+module MapDemo;
+
+bind Viper.Terminal;
+bind Viper.Collections;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var scores = new Map[String, Integer]();
+
+    // Add entries
+    scores.set("Alice", 95);
+    scores.set("Bob", 87);
+    scores.set("Carol", 92);
+
+    // Check and retrieve
+    Say("Has Alice: " + Fmt.Bool(scores.has("Alice")));  // true
+    Say("Alice: " + Fmt.Int(scores.get("Alice")));       // 95
+
+    // Update
+    scores.set("Bob", 91);
+    Say("Bob updated: " + Fmt.Int(scores.get("Bob")));   // 91
+
+    // Remove
+    scores.remove("Carol");
+    Say("Has Carol: " + Fmt.Bool(scores.has("Carol")));  // false
+}
+```
+
+### BASIC Example
 
 ```basic
 DIM scores AS Viper.Collections.Map
@@ -710,7 +865,33 @@ circular buffer for O(1) add and take operations.
 | `Peek()`     | `Object()`     | Return front element without removing (traps if empty) |
 | `Clear()`    | `Void()`       | Remove all elements                                    |
 
-### Example
+### Zia Example
+
+```zia
+module QueueDemo;
+
+bind Viper.Terminal;
+bind Viper.Collections;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var queue = new Queue();
+    queue.Add("first");
+    queue.Add("second");
+    queue.Add("third");
+    Say("Length: " + Fmt.Int(queue.Len));                 // 3
+
+    // FIFO order
+    Say("Take: " + Viper.Box.ToStr(queue.Take()));        // first
+    Say("Peek: " + Viper.Box.ToStr(queue.Peek()));        // second
+    Say("After take: " + Fmt.Int(queue.Len));              // 2
+
+    queue.Clear();
+    Say("Empty: " + Fmt.Bool(queue.IsEmpty));              // true
+}
+```
+
+### BASIC Example
 
 ```basic
 DIM queue AS Viper.Collections.Queue
@@ -771,7 +952,35 @@ elements.
 | `Get(index)` | Object  | Get item by logical index (0 = oldest)              |
 | `Clear()`    | void    | Remove all elements                                 |
 
-### Example
+### Zia Example
+
+```zia
+module RingDemo;
+
+bind Viper.Terminal;
+bind Viper.Collections;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var ring = new Ring(3);
+
+    ring.Push(Viper.Box.Str("first"));
+    ring.Push(Viper.Box.Str("second"));
+    ring.Push(Viper.Box.Str("third"));
+    Say("Length: " + Fmt.Int(ring.Len));         // 3
+    Say("Full: " + Fmt.Bool(ring.IsFull));       // true
+
+    // Overflow overwrites oldest
+    ring.Push(Viper.Box.Str("fourth"));
+    Say("Oldest: " + Viper.Box.ToStr(ring.Peek()));  // second
+
+    // Pop removes oldest (FIFO)
+    Say("Pop: " + Viper.Box.ToStr(ring.Pop()));       // second
+    Say("After pop: " + Fmt.Int(ring.Len));            // 2
+}
+```
+
+### BASIC Example
 
 ```basic
 ' Create a ring buffer with capacity 3
@@ -870,7 +1079,36 @@ push/pop, insert/remove, and slicing operations.
 | `DropWhile(pred)`      | `Seq(Function)`         | Returns new Seq skipping leading elements while predicate is true                     |
 | `Fold(init, fn)`       | `Object(Object, Function)` | Reduces sequence to single value using accumulator                                 |
 
-### Example
+### Zia Example
+
+```zia
+module SeqDemo;
+
+bind Viper.Terminal;
+bind Viper.Collections;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var seq = new Seq();
+
+    // Stack-like operations (stores boxed values)
+    seq.Push("first");
+    seq.Push("second");
+    seq.Push("third");
+    Say("Length: " + Fmt.Int(seq.Len));                     // 3
+
+    // Peek and Pop (LIFO)
+    Say("Peek: " + Viper.Box.ToStr(seq.Peek()));            // third
+    Say("Pop: " + Viper.Box.ToStr(seq.Pop()));              // third
+    Say("After pop: " + Fmt.Int(seq.Len));                   // 2
+
+    // Reverse in place
+    seq.Reverse();
+    Say("Reversed first: " + Viper.Box.ToStr(seq.Get(0)));  // second
+}
+```
+
+### BASIC Example
 
 ```basic
 DIM seq AS Viper.Collections.Seq
@@ -1068,7 +1306,11 @@ intersection, difference), and subset/superset queries. Unlike `Bag` which store
 - Uses object identity hash for O(1) average-case operations
 - Automatically resizes when load factor exceeds threshold
 
-### Example
+### Zia Example
+
+> Set is not yet available as a constructible type in Zia. Use BASIC or access via the runtime API.
+
+### BASIC Example
 
 ```basic
 ' Create and populate a set
@@ -1195,7 +1437,11 @@ keeps elements sorted, enabling efficient range queries, ordered iteration, and 
 | `Diff(other)`       | `SortedSet(SortedSet)`     | Return new set with elements in this but not other                 |
 | `IsSubset(other)`   | `Boolean(SortedSet)`       | True if this set is a subset of other                              |
 
-### Example
+### Zia Example
+
+> SortedSet is not yet available as a constructible type in Zia. Use BASIC or access via the runtime API.
+
+### BASIC Example
 
 ```basic
 DIM words AS OBJECT = NEW Viper.Collections.SortedSet()
@@ -1311,7 +1557,33 @@ A LIFO (last-in-first-out) collection. Elements are added and removed from the t
 | `Peek()`      | `Object()`     | Return top element without removing (traps if empty) |
 | `Clear()`     | `Void()`       | Remove all elements                                  |
 
-### Example
+### Zia Example
+
+```zia
+module StackDemo;
+
+bind Viper.Terminal;
+bind Viper.Collections;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var stack = new Stack();
+    stack.Push("first");
+    stack.Push("second");
+    stack.Push("third");
+    Say("Length: " + Fmt.Int(stack.Len));                  // 3
+
+    // LIFO order
+    Say("Pop: " + Viper.Box.ToStr(stack.Pop()));           // third
+    Say("Peek: " + Viper.Box.ToStr(stack.Peek()));         // second
+    Say("After pop: " + Fmt.Int(stack.Len));               // 2
+
+    stack.Clear();
+    Say("Empty: " + Fmt.Bool(stack.IsEmpty));              // true
+}
+```
+
+### BASIC Example
 
 ```basic
 DIM stack AS Viper.Collections.Stack
@@ -1375,7 +1647,34 @@ Supports range queries via Floor/Ceil operations.
 | `Floor(key)`      | `String()`             | Get the largest key <= given key; returns empty string if none  |
 | `Ceil(key)`       | `String()`             | Get the smallest key >= given key; returns empty string if none |
 
-### Example
+### Zia Example
+
+```zia
+module TreeMapDemo;
+
+bind Viper.Terminal;
+bind Viper.Collections;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var tm = new TreeMap();
+
+    // Insert in any order — stored sorted
+    tm.Set("cherry", Viper.Box.Str("red"));
+    tm.Set("apple", Viper.Box.Str("green"));
+    tm.Set("banana", Viper.Box.Str("yellow"));
+
+    Say("Length: " + Fmt.Int(tm.Len));           // 3
+    Say("First: " + tm.First());                  // apple
+    Say("Last: " + tm.Last());                    // cherry
+
+    // Range queries
+    Say("Floor(cat): " + tm.Floor("cat"));        // banana
+    Say("Ceil(cat): " + tm.Ceil("cat"));          // cherry
+}
+```
+
+### BASIC Example
 
 ```basic
 DIM tm AS Viper.Collections.TreeMap
@@ -1453,7 +1752,11 @@ A map with weak value references. Values may become NULL when their referent is 
 - **String keys:** Keys are regular (strong) string references.
 - **Len includes stale:** `Len` counts all entries including those with collected values. Call `Compact()` first for an accurate live count.
 
-### Example
+### Zia Example
+
+> WeakMap is not yet available as a constructible type in Zia. Use BASIC or access via the runtime API.
+
+### BASIC Example
 
 ```basic
 ' Create a weak map for caching

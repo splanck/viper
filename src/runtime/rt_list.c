@@ -16,6 +16,7 @@
 #include "rt_list.h"
 
 #include "rt_array_obj.h"
+#include "rt_box.h"
 #include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
@@ -399,13 +400,13 @@ void rt_list_remove_at(void *list, int64_t index)
 /// ```
 ///
 /// @param list Pointer to a List object. If NULL, returns -1.
-/// @param elem The element to search for (compared by pointer equality).
+/// @param elem The element to search for (compared by content for boxed values).
 ///
 /// @return The zero-based index of the first occurrence, or -1 if not found
 ///         or list is NULL.
 ///
 /// @note O(n) time complexity - linear search from the beginning.
-/// @note Compares by pointer identity, not value equality.
+/// @note Boxed values are compared by content; non-boxed by pointer identity.
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_list_has For boolean membership check
@@ -419,7 +420,7 @@ int64_t rt_list_find(void *list, void *elem)
 
     for (size_t i = 0; i < len; ++i)
     {
-        if (L->arr[i] == elem)
+        if (rt_box_equal(L->arr[i], elem))
             return (int64_t)i;
     }
 
@@ -428,7 +429,7 @@ int64_t rt_list_find(void *list, void *elem)
 
 /// @brief Checks whether the List contains a specific element.
 ///
-/// Tests if the element is present in the List using pointer equality.
+/// Tests if the element is present in the List using content-aware equality.
 /// This is a convenience wrapper around rt_list_find that returns a boolean.
 ///
 /// **Example:**
@@ -441,12 +442,12 @@ int64_t rt_list_find(void *list, void *elem)
 /// ```
 ///
 /// @param list Pointer to a List object. If NULL, returns 0 (false).
-/// @param elem The element to search for (compared by pointer equality).
+/// @param elem The element to search for (compared by content for boxed values).
 ///
 /// @return 1 (true) if the element is found, 0 (false) otherwise.
 ///
 /// @note O(n) time complexity - linear search.
-/// @note Compares by pointer identity, not value equality.
+/// @note Boxed values are compared by content; non-boxed by pointer identity.
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_list_find For getting the index of the element
@@ -523,7 +524,7 @@ void rt_list_insert(void *list, int64_t index, void *elem)
 
 /// @brief Removes the first occurrence of an element from the List.
 ///
-/// Searches for the element by pointer equality and removes the first match.
+/// Searches for the element by content-aware equality and removes the first match.
 /// If the element is not found, the List remains unchanged and false is returned.
 ///
 /// **Example:**
@@ -537,7 +538,7 @@ void rt_list_insert(void *list, int64_t index, void *elem)
 /// ```
 ///
 /// @param list Pointer to a List object. If NULL, returns 0 (false).
-/// @param elem The element to remove (compared by pointer equality).
+/// @param elem The element to remove (compared by content for boxed values).
 ///
 /// @return 1 (true) if the element was found and removed, 0 (false) otherwise.
 ///

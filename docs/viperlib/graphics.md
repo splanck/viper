@@ -87,6 +87,35 @@ Colors are specified as 32-bit integers in `0x00RRGGBB` format:
 
 Use `Viper.Graphics.Color.RGB()` or `Viper.Graphics.Color.RGBA()` to create colors from components.
 
+### Zia Example
+
+```zia
+module GameDemo;
+
+bind Viper.Graphics.Canvas as Canvas;
+bind Viper.Graphics.Color as Color;
+
+func start() {
+    var c = Canvas.New("My Game", 800, 600);
+
+    // Main loop
+    while c.get_ShouldClose() == 0 {
+        c.Poll();
+        c.Clear(Color.RGB(0, 0, 0));
+
+        // Draw shapes
+        c.Box(100, 100, 200, 150, Color.RGB(255, 0, 0));
+        c.Disc(400, 300, 50, Color.RGB(0, 0, 255));
+        c.Line(0, 0, 800, 600, Color.RGB(0, 255, 0));
+        c.Frame(50, 50, 100, 100, Color.RGB(255, 255, 255));
+        c.Ring(600, 200, 40, Color.RGB(255, 255, 0));
+        c.Text(10, 10, "Hello Zia!", Color.RGB(255, 255, 255));
+
+        c.Flip();
+    }
+}
+```
+
 ### Example
 
 ```basic
@@ -311,6 +340,28 @@ Color utility functions for graphics operations.
 | `RGB(r, g, b)`     | `Integer(Integer, Integer, Integer)`          | Creates a color value from red, green, blue components (0-255 each)             |
 | `RGBA(r, g, b, a)` | `Integer(Integer, Integer, Integer, Integer)` | Creates a color with alpha from red, green, blue, alpha components (0-255 each) |
 
+### Zia Example
+
+```zia
+module ColorDemo;
+
+bind Viper.Terminal;
+bind Viper.Graphics.Color as Color;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var red = Color.RGB(255, 0, 0);
+    var green = Color.RGB(0, 255, 0);
+    var blue = Color.RGB(0, 0, 255);
+    var semi = Color.RGBA(255, 0, 0, 128);
+
+    Say("Red: " + Fmt.Int(red));
+    Say("Green: " + Fmt.Int(green));
+    Say("Blue: " + Fmt.Int(blue));
+    Say("Semi-transparent: " + Fmt.Int(semi));
+}
+```
+
 ### Example
 
 ```basic
@@ -391,6 +442,41 @@ Colors are stored as packed 32-bit RGBA integers in the format `0xRRGGBBAA`:
 - `AA` - Alpha component (0-255, where 255 = opaque)
 
 Use `Viper.Graphics.Color.RGBA()` to create colors.
+
+### Zia Example
+
+```zia
+module PixelsDemo;
+
+bind Viper.Terminal;
+bind Viper.Graphics.Pixels as Pixels;
+bind Viper.Graphics.Color as Color;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var p = Pixels.New(64, 64);
+    Say("Size: " + Fmt.Int(p.get_Width()) + "x" + Fmt.Int(p.get_Height()));
+
+    // Set and get pixels
+    p.Set(0, 0, Color.RGB(255, 0, 0));
+    var c = p.Get(0, 0);
+    Say("Pixel(0,0): " + Fmt.Int(c));
+
+    // Fill and clear
+    p.Fill(Color.RGB(0, 255, 0));
+    p.Clear();
+
+    // Clone
+    var clone = p.Clone();
+    Say("Clone: " + Fmt.Int(clone.get_Width()) + "x" + Fmt.Int(clone.get_Height()));
+
+    // Transform operations (return new Pixels)
+    var flipped = p.FlipH();
+    var rotated = p.RotateCW();
+    var scaled = p.Scale(128, 128);
+    Say("Scaled: " + Fmt.Int(scaled.get_Width()) + "x" + Fmt.Int(scaled.get_Height()));
+}
+```
 
 ### Example
 
@@ -513,6 +599,39 @@ scaled = pixels.Scale(pixels.Width * 2, pixels.Height * 2)  ' Double size
 | `Contains(x, y)`            | `Integer(Integer, Integer)`        | Check if point is inside sprite (returns 1 or 0)      |
 | `Move(dx, dy)`              | `Void(Integer, Integer)`           | Move sprite by delta amounts                          |
 
+### Zia Example
+
+```zia
+module SpriteDemo;
+
+bind Viper.Terminal;
+bind Viper.Graphics.Sprite as Sprite;
+bind Viper.Graphics.Pixels as Pixels;
+bind Viper.Graphics.Color as Color;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    // Create sprite from pixels
+    var px = Pixels.New(32, 32);
+    px.Fill(Color.RGB(255, 0, 0));
+    var s = Sprite.New(px);
+
+    Say("Size: " + Fmt.Int(s.get_Width()) + "x" + Fmt.Int(s.get_Height()));
+
+    // Position and transform
+    s.set_X(100);
+    s.set_Y(200);
+    s.set_ScaleX(150);
+    s.set_ScaleY(150);
+    s.set_Rotation(45);
+    Say("Pos: " + Fmt.Int(s.get_X()) + "," + Fmt.Int(s.get_Y()));
+
+    // Movement
+    s.Move(10, 20);
+    Say("After move: " + Fmt.Int(s.get_X()) + "," + Fmt.Int(s.get_Y()));
+}
+```
+
 ### Example
 
 ```basic
@@ -619,6 +738,39 @@ Efficient tile-based 2D map rendering for platformers, RPGs, and strategy games.
 | `ToPixelX(tileX)`                              | `Integer(Integer)`                           | Convert tile X to pixel X                             |
 | `ToPixelY(tileY)`                              | `Integer(Integer)`                           | Convert tile Y to pixel Y                             |
 
+### Zia Example
+
+```zia
+module TilemapDemo;
+
+bind Viper.Terminal;
+bind Viper.Graphics.Tilemap as TM;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var map = TM.New(10, 10, 16, 16);
+    Say("Map: " + Fmt.Int(map.get_Width()) + "x" + Fmt.Int(map.get_Height()));
+    Say("Tile size: " + Fmt.Int(map.get_TileWidth()) + "x" + Fmt.Int(map.get_TileHeight()));
+
+    // Fill with grass (tile 1)
+    map.Fill(1);
+    Say("Tile(0,0): " + Fmt.Int(map.GetTile(0, 0)));
+
+    // Place individual tiles
+    map.SetTile(5, 5, 3);
+    Say("Tile(5,5): " + Fmt.Int(map.GetTile(5, 5)));
+
+    // Fill a rectangle region
+    map.FillRect(2, 2, 3, 3, 7);
+
+    // Coordinate conversion
+    Say("ToTileX(32): " + Fmt.Int(map.ToTileX(32)));
+    Say("ToPixelX(2): " + Fmt.Int(map.ToPixelX(2)));
+
+    map.Clear();
+}
+```
+
 ### Example
 
 ```basic
@@ -717,6 +869,37 @@ Tiles in the tileset image are arranged left-to-right, top-to-bottom:
 | `Move(dx, dy)`                   | `Void(Integer, Integer)`               | Move camera by delta amounts                     |
 | `SetBounds(minX, minY, maxX, maxY)` | `Void(Integer, Integer, Integer, Integer)` | Limit camera movement range         |
 | `ClearBounds()`                  | `Void()`                               | Remove camera bounds                             |
+
+### Zia Example
+
+```zia
+module CameraDemo;
+
+bind Viper.Terminal;
+bind Viper.Graphics.Camera as Camera;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var cam = Camera.New(800, 600);
+    Say("Viewport: " + Fmt.Int(cam.get_Width()) + "x" + Fmt.Int(cam.get_Height()));
+
+    // Position camera
+    cam.set_X(100);
+    cam.set_Y(200);
+    cam.Follow(500, 400);
+    Say("Pos: " + Fmt.Int(cam.get_X()) + "," + Fmt.Int(cam.get_Y()));
+
+    // Coordinate conversion
+    var sx = cam.ToScreenX(500);
+    var sy = cam.ToScreenY(400);
+    Say("Screen: " + Fmt.Int(sx) + "," + Fmt.Int(sy));
+
+    // Movement and bounds
+    cam.Move(10, 20);
+    cam.SetBounds(0, 0, 2000, 1500);
+    cam.ClearBounds();
+}
+```
 
 ### Example
 
@@ -840,6 +1023,10 @@ Creates a scene node wrapping a sprite. Scene nodes support parent-child hierarc
 | `SetSprite(sprite)`        | `Void(Sprite)`                 | Set the sprite for this node                   |
 | `GetSprite()`              | `Sprite()`                     | Get the sprite                                 |
 
+### Zia Example
+
+> **Note:** SceneNode is not yet constructible from Zia. The `New()` constructor fails with "no exported symbol 'New'" due to a frontend symbol resolution bug.
+
 ### Example
 
 ```basic
@@ -896,6 +1083,10 @@ Root container for a scene graph. Manages rendering order and provides scene-lev
 | `GetNodeCount()`           | `Integer()`                    | Get number of root nodes                       |
 | `Draw(canvas)`             | `Void(Canvas)`                 | Render all visible nodes to canvas             |
 | `FindNode(name)`           | `SceneNode(String)`            | Find a node by name (if named)                 |
+
+### Zia Example
+
+> **Note:** Scene is not yet constructible from Zia. The `New()` constructor fails with "no exported symbol 'New'" due to a frontend symbol resolution bug.
 
 ### Example
 
@@ -1013,6 +1204,10 @@ SpriteBatch collects draw calls and renders them efficiently in a single batch. 
 | `SetAlpha(alpha)`                               | `Void(Double)`                               | Set global alpha (0.0-1.0)                     |
 | `Clear()`                                       | `Void()`                                     | Clear batch without rendering                  |
 | `GetCount()`                                    | `Integer()`                                  | Get number of pending draws                    |
+
+### Zia Example
+
+> **Note:** SpriteBatch is not yet constructible from Zia. The `New()` constructor fails with "no exported symbol 'New'" due to a frontend symbol resolution bug.
 
 ### Example
 

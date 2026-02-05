@@ -45,6 +45,41 @@ After playing a sound, you receive a voice ID that can be used with `Viper.Sound
 | `Viper.Sound.Voice.SetPan(id, pan)` | Set voice pan (-100 left, 0 center, 100 right) |
 | `Viper.Sound.Voice.IsPlaying(id)`   | Returns 1 if voice is still playing            |
 
+### Zia Example
+
+```zia
+module SoundDemo;
+
+bind Viper.Terminal;
+bind Viper.Sound.Audio as Audio;
+bind Viper.Sound.Sound as Sound;
+bind Viper.Sound.Voice as Voice;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    Audio.Init();
+
+    var snd = Sound.Load("laser.wav");
+    if snd != null {
+        // Play with default settings
+        var id = snd.Play();
+
+        // Play with volume and pan
+        var id2 = snd.PlayEx(80, -50);
+
+        // Control the playing voice
+        Voice.SetVolume(id2, 50);
+        Say("Playing: " + Fmt.Int(Voice.IsPlaying(id2)));
+
+        // Play looping
+        var loopId = snd.PlayLoop(60, 0);
+        Voice.Stop(loopId);
+    }
+
+    Audio.Shutdown();
+}
+```
+
 ### Example
 
 ```basic
@@ -108,6 +143,41 @@ Streaming music class for longer audio tracks. Music is streamed from disk for m
 | `Pause()`      | `Void()`            | Pause playback                           |
 | `Resume()`     | `Void()`            | Resume paused playback                   |
 | `Seek(ms)`     | `Void(Integer)`     | Seek to position in milliseconds         |
+
+### Zia Example
+
+```zia
+module MusicDemo;
+
+bind Viper.Terminal;
+bind Viper.Sound.Audio as Audio;
+bind Viper.Sound.Music as Music;
+bind Viper.Graphics.Canvas as Canvas;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    Audio.Init();
+    var c = Canvas.New("Music Player", 400, 200);
+
+    var mus = Music.Load("background.wav");
+    if mus != null {
+        mus.set_Volume(70);
+        mus.Play(1);  // Looped
+
+        Say("Duration: " + Fmt.Int(mus.get_Duration()) + " ms");
+
+        while c.get_ShouldClose() == 0 {
+            c.Poll();
+            Say("Pos: " + Fmt.Int(mus.get_Position()));
+            c.Flip();
+        }
+
+        mus.Stop();
+    }
+
+    Audio.Shutdown();
+}
+```
 
 ### Example
 
@@ -186,6 +256,30 @@ Global audio system control functions.
 | `PauseAll()`                    | `Void()`                       | Pause all audio playback                       |
 | `ResumeAll()`                   | `Void()`                       | Resume all audio playback                      |
 | `StopAllSounds()`               | `Void()`                       | Stop all playing sounds (not music)            |
+
+### Zia Example
+
+```zia
+module AudioDemo;
+
+bind Viper.Terminal;
+bind Viper.Sound.Audio as Audio;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var ok = Audio.Init();
+    Say("Init: " + Fmt.Int(ok));
+
+    Audio.SetMasterVolume(80);
+    Say("Volume: " + Fmt.Int(Audio.GetMasterVolume()));
+
+    Audio.PauseAll();
+    Audio.ResumeAll();
+    Audio.StopAllSounds();
+    Audio.Shutdown();
+    Say("Done");
+}
+```
 
 ### Example
 

@@ -91,7 +91,40 @@ Invalid names trap with `Archive: invalid entry name`.
 | `method`         | Integer | Compression method (0=stored, 8=deflate) |
 | `isDir`          | Boolean | True if entry is a directory          |
 
-### Example
+### Zia Example
+
+```zia
+module ArchiveDemo;
+
+bind Viper.Terminal;
+bind Viper.IO.Archive as Arc;
+bind Viper.IO.File as File;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    // Create a new archive
+    var arc = Arc.Create("/tmp/backup.zip");
+    arc.AddStr("hello.txt", "Hello from Zia!");
+    arc.AddStr("data.txt", "Some data content");
+    arc.AddDir("subdir/");
+    arc.Finish();
+    Say("Archive created");
+
+    // Check if it's a valid ZIP
+    Say("IsZip: " + Fmt.Bool(Arc.IsZip("/tmp/backup.zip")));
+
+    // Open and read
+    var reader = Arc.Open("/tmp/backup.zip");
+    Say("Count: " + Fmt.Int(reader.get_Count()));
+    Say("Has hello.txt: " + Fmt.Bool(reader.Has("hello.txt")));
+    Say("Content: " + reader.ReadStr("hello.txt"));
+
+    // Clean up
+    File.Delete("/tmp/backup.zip");
+}
+```
+
+### BASIC Example
 
 ```basic
 ' Create a new archive
@@ -245,7 +278,46 @@ Binary file stream for reading and writing raw bytes with random access capabili
 | `1`    | From current position (SEEK_CUR)  |
 | `2`    | From end of file (SEEK_END)       |
 
-### Example
+### Zia Example
+
+```zia
+module BinFileDemo;
+
+bind Viper.Terminal;
+bind Viper.IO.BinFile as BF;
+bind Viper.IO.File as File;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    // Write binary data
+    var bf = BF.Open("/tmp/data.bin", "w");
+    bf.WriteByte(0xCA);
+    bf.WriteByte(0xFE);
+    bf.WriteByte(0xBA);
+    bf.WriteByte(0xBE);
+    bf.Close();
+
+    // Read binary data
+    bf = BF.Open("/tmp/data.bin", "r");
+    Say("Size: " + Fmt.Int(bf.get_Size()));
+
+    var b1 = bf.ReadByte();
+    var b2 = bf.ReadByte();
+    Say("Byte 1: " + Fmt.Int(b1));   // 202 (0xCA)
+    Say("Byte 2: " + Fmt.Int(b2));   // 254 (0xFE)
+
+    // Seek back to start
+    bf.Seek(0, 0);
+    Say("After seek: " + Fmt.Int(bf.ReadByte()));
+    bf.Close();
+
+    File.Delete("/tmp/data.bin");
+}
+```
+
+> **Note:** BinFile properties (`Pos`, `Size`, `Eof`) use the get_/set_ pattern; access them as `bf.get_Size()`, `bf.get_Pos()`, `bf.get_Eof()` in Zia.
+
+### BASIC Example
 
 ```basic
 ' Write binary data
@@ -355,7 +427,31 @@ Use DEFLATE when:
 - Minimal overhead is required
 - Used as part of another format (ZIP, PNG, etc.)
 
-### Example
+### Zia Example
+
+```zia
+module CompressDemo;
+
+bind Viper.Terminal;
+bind Viper.IO.Compress as Comp;
+
+func start() {
+    // Compress a string with DEFLATE
+    var compressed = Comp.DeflateStr("Hello, World! This is a test of compression.");
+    Say("Compressed");
+
+    // Decompress back to string
+    var restored = Comp.InflateStr(compressed);
+    Say("Restored: " + restored);
+
+    // GZIP compression (compatible with gzip command-line tool)
+    var gzipped = Comp.GzipStr("Gzip compressed data");
+    var gunzipped = Comp.GunzipStr(gzipped);
+    Say("Gzip roundtrip: " + gunzipped);
+}
+```
+
+### BASIC Example
 
 ```basic
 ' Compress binary data
@@ -463,7 +559,33 @@ Cross-platform directory operations for creating, removing, listing, and navigat
 **Note:** `Entries()`, `List()`, `Files()`, and `Dirs()` return entry names (not full paths). Use
 `Viper.IO.Path.Join(dir, name)` to build full paths when needed.
 
-### Example
+### Zia Example
+
+```zia
+module DirDemo;
+
+bind Viper.Terminal;
+bind Viper.IO.Dir as Dir;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    // Current working directory
+    Say("CWD: " + Dir.Current());
+
+    // Check if directory exists
+    Say("Exists /tmp: " + Fmt.Bool(Dir.Exists("/tmp")));
+
+    // Create nested directories (like mkdir -p)
+    Dir.MakeAll("/tmp/viper_demo/sub/deep");
+    Say("Created: " + Fmt.Bool(Dir.Exists("/tmp/viper_demo/sub/deep")));
+
+    // Clean up
+    Dir.RemoveAll("/tmp/viper_demo");
+    Say("Removed: " + Fmt.Bool(!Dir.Exists("/tmp/viper_demo")));
+}
+```
+
+### BASIC Example
 
 ```basic
 ' Check if a directory exists
@@ -597,7 +719,40 @@ File system operations.
   does not add an extra empty final line.
 - `ReadAllBytes`, `WriteAllBytes`, and `ReadAllLines` trap (write a diagnostic to stderr and terminate) on I/O errors.
 
-### Example
+### Zia Example
+
+```zia
+module FileDemo;
+
+bind Viper.Terminal;
+bind Viper.IO.File as File;
+bind Viper.IO.Path as Path;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    // Path utilities
+    var p = Path.Join("/tmp", "test.txt");
+    Say("Path: " + p);
+    Say("Ext: " + Path.Ext(p));
+    Say("Name: " + Path.Name(p));
+    Say("Dir: " + Path.Dir(p));
+    Say("Stem: " + Path.Stem(p));
+
+    // Write and read a file
+    File.WriteAllText("/tmp/viper_test.txt", "Hello from Zia!");
+    var content = File.ReadAllText("/tmp/viper_test.txt");
+    Say("Content: " + content);
+    Say("Exists: " + Fmt.Bool(File.Exists("/tmp/viper_test.txt")));
+
+    // File size
+    Say("Size: " + Fmt.Int(File.Size("/tmp/viper_test.txt")));
+
+    // Clean up
+    File.Delete("/tmp/viper_test.txt");
+}
+```
+
+### BASIC Example
 
 ```basic
 DIM filename AS STRING
@@ -718,7 +873,31 @@ LineReader automatically handles all common line ending formats:
 | `PeekChar()` | Integer | View next character without consuming (0-255 or -1)          |
 | `ReadAll()`  | String  | Read all remaining content as a string                       |
 
-### Example
+### Zia Example
+
+```zia
+module LineReaderDemo;
+
+bind Viper.Terminal;
+bind Viper.IO.LineReader as LR;
+bind Viper.IO.File as File;
+
+func start() {
+    // Create a test file
+    File.WriteAllText("/tmp/lr_test.txt", "Line 1\nLine 2\nLine 3\n");
+
+    // Read line by line
+    var reader = LR.Open("/tmp/lr_test.txt");
+    Say(reader.Read());    // Line 1
+    Say(reader.Read());    // Line 2
+    Say(reader.Read());    // Line 3
+    reader.Close();
+
+    File.Delete("/tmp/lr_test.txt");
+}
+```
+
+### BASIC Example
 
 ```basic
 ' Read a file line by line
@@ -814,7 +993,33 @@ Buffered text file writer with configurable line endings.
 | Windows          | `\r\n` (CRLF)   |
 | Unix/Linux/macOS | `\n` (LF)       |
 
-### Example
+### Zia Example
+
+```zia
+module LineWriterDemo;
+
+bind Viper.Terminal;
+bind Viper.IO.LineWriter as LW;
+bind Viper.IO.File as File;
+
+func start() {
+    // Write lines to a file
+    var writer = LW.Open("/tmp/lw_test.txt");
+    writer.WriteLn("First line");
+    writer.WriteLn("Second line");
+    writer.Write("No newline here");
+    writer.Close();
+
+    // Verify contents
+    Say(File.ReadAllText("/tmp/lw_test.txt"));
+
+    File.Delete("/tmp/lw_test.txt");
+}
+```
+
+> **Note:** `LineWriter.Append()` is not currently accessible from Zia. Use `File.Append()` or `File.AppendLine()` for append operations.
+
+### BASIC Example
 
 ```basic
 ' Write text to a file
@@ -928,7 +1133,41 @@ All multi-byte integers and floats use **little-endian** byte order. This matche
 - **Gap filling:** Writing past the current length fills the gap with zeros
 - **Read traps:** Reading past the end of data traps with an error
 
-### Example
+### Zia Example
+
+```zia
+module MemStreamDemo;
+
+bind Viper.Terminal;
+bind Viper.IO.MemStream as MS;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    // Create a new memory stream
+    var ms = MS.New();
+
+    // Write various data types
+    ms.WriteI32(12345);       // 4 bytes
+    ms.WriteF64(3.14159);     // 8 bytes
+    ms.WriteStr("Hello");     // 5 bytes
+
+    Say("Length: " + Fmt.Int(ms.get_Len()));   // 17
+
+    // Seek back to start and read
+    ms.Seek(0);
+    Say("Int: " + Fmt.Int(ms.ReadI32()));      // 12345
+    Say("Float: " + Fmt.Num(ms.ReadF64()));    // 3.14159
+    Say("Str: " + ms.ReadStr(5));              // Hello
+
+    // Clear and reuse
+    ms.Clear();
+    Say("After clear: " + Fmt.Int(ms.get_Len()));  // 0
+}
+```
+
+> **Note:** MemStream properties (`Pos`, `Len`, `Capacity`) use the get_/set_ pattern; access them as `ms.get_Len()`, `ms.get_Pos()`, `ms.set_Pos(n)` in Zia.
+
+### BASIC Example
 
 ```basic
 ' Create a new memory stream
@@ -1068,7 +1307,43 @@ Cross-platform path manipulation utilities. All functions work with both Unix (`
 | `Norm(path)`         | `String(String)`         | Normalizes a path (removes `.`, `..`, duplicate separators) |
 | `Sep()`              | `String()`               | Returns the platform-specific path separator                |
 
-### Example
+### Zia Example
+
+```zia
+module PathDemo;
+
+bind Viper.Terminal;
+bind Viper.IO.Path as Path;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var p = "/home/user/documents/report.txt";
+
+    // Extract path components
+    Say("Dir:  " + Path.Dir(p));    // /home/user/documents
+    Say("Name: " + Path.Name(p));   // report.txt
+    Say("Stem: " + Path.Stem(p));   // report
+    Say("Ext:  " + Path.Ext(p));    // .txt
+
+    // Join paths
+    Say("Join: " + Path.Join("/home/user", "downloads"));
+
+    // Replace extension
+    Say("WithExt: " + Path.WithExt(p, ".md"));
+
+    // Check if absolute
+    Say("IsAbs: " + Fmt.Bool(Path.IsAbs(p)));
+    Say("IsAbs relative: " + Fmt.Bool(Path.IsAbs("foo/bar")));
+
+    // Normalize paths
+    Say("Norm: " + Path.Norm("/foo//bar/../baz"));
+
+    // Platform separator
+    Say("Sep: " + Path.Sep());
+}
+```
+
+### BASIC Example
 
 ```basic
 DIM path AS STRING
@@ -1179,7 +1454,11 @@ Cross-platform file system watcher for monitoring files and directories for chan
 | macOS    | kqueue                     |
 | Windows  | ReadDirectoryChangesW      |
 
-### Example
+### Zia Example
+
+> Watcher is not yet available from Zia. The constructor name `new()` conflicts with the Zia `new` keyword, and `Poll`/`PollFor` are not exported. Use BASIC for file system watching.
+
+### BASIC Example
 
 ```basic
 ' Watch a directory for changes
@@ -1305,7 +1584,11 @@ Unified stream abstraction providing a common interface over file and memory str
 | `"rw"` | Read and write (file must exist)          |
 | `"a"`  | Append (creates if needed)                |
 
-### Example
+### Zia Example
+
+> Stream is not yet fully accessible from Zia. `OpenFile`/`OpenMemory` return untyped pointers, and `FromMemStream`/`FromBinFile` have runtime issues. Use `BinFile` or `MemStream` directly instead.
+
+### BASIC Example
 
 ```basic
 ' Open a file stream

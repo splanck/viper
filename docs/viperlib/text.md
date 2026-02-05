@@ -50,7 +50,25 @@ String-based encoding and decoding utilities for Base64, Hex, and URL encoding.
 - **Hex:** Lowercase hex encoding (e.g., "Hello" → "48656c6c6f")
 - Invalid input to `Base64Dec` or `HexDec` will trap
 
-### Example
+### Zia Example
+
+```zia
+module CodecDemo;
+
+bind Viper.Terminal;
+bind Viper.Text.Codec as Codec;
+
+func start() {
+    Say("Base64: " + Codec.Base64Enc("Hello"));        // SGVsbG8=
+    Say("Decoded: " + Codec.Base64Dec("SGVsbG8="));     // Hello
+    Say("Hex: " + Codec.HexEnc("Hello"));               // 48656c6c6f
+    Say("HexDec: " + Codec.HexDec("48656c6c6f"));       // Hello
+    Say("UrlEnc: " + Codec.UrlEncode("hello world"));   // hello%20world
+    Say("UrlDec: " + Codec.UrlDecode("hello%20world")); // hello world
+}
+```
+
+### BASIC Example
 
 ```basic
 ' URL encoding for query parameters
@@ -109,7 +127,11 @@ RFC 4180-compliant CSV parsing and formatting.
 - Empty fields are supported (adjacent delimiters create empty strings)
 - Parse functions return `Seq` objects (use `Count`, `Get(index)` to access)
 
-### Example
+### Zia Example
+
+> Csv is accessible via fully-qualified calls: `Viper.Text.Csv.ParseLine(...)`, `Viper.Text.Csv.FormatLine(...)`.
+
+### BASIC Example
 
 ```basic
 ' Parse a simple CSV line
@@ -184,7 +206,24 @@ UUID version 4 (random) generation and manipulation per RFC 4122.
 - `ToBytes()` traps if the GUID format is invalid
 - `FromBytes()` traps if the Bytes object is not exactly 16 bytes
 
-### Example
+### Zia Example
+
+```zia
+module GuidDemo;
+
+bind Viper.Terminal;
+bind Viper.Text.Guid as Guid;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var id = Guid.New();
+    Say("GUID: " + id);                                    // e.g. a1b2c3d4-...
+    Say("Valid: " + Fmt.Bool(Guid.IsValid(id)));            // true
+    Say("Invalid: " + Fmt.Bool(Guid.IsValid("not-guid"))); // false
+}
+```
+
+### BASIC Example
 
 ```basic
 ' Generate a new GUID
@@ -242,7 +281,24 @@ JSON values are returned as native Viper types:
 | array       | Seq                | `value.Get(index)`, `value.Len`    |
 | object      | Map                | `value.Get(key)`, `value.Keys()`   |
 
-### Example
+### Zia Example
+
+```zia
+module JsonDemo;
+
+bind Viper.Terminal;
+bind Viper.Text.Json as Json;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var obj = Json.Parse("{\"name\":\"Viper\",\"version\":1}");
+    Say("Type: " + Json.TypeOf(obj));                       // object
+    Say("Valid: " + Fmt.Bool(Json.IsValid("{\"ok\":true}"))); // true
+    Say(Json.Format(obj));                                    // {"name":"Viper","version":1}
+}
+```
+
+### BASIC Example
 
 ```basic
 ' Parse JSON
@@ -341,7 +397,23 @@ The following advanced regex features are not implemented:
 
 - Invalid pattern syntax traps with a descriptive error message
 
-### Pattern Matching Example
+### Zia Example
+
+```zia
+module PatternDemo;
+
+bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    // Note: Pattern functions take (pattern, text) order
+    Say("Match: " + Fmt.Bool(Viper.Text.Pattern.IsMatch("[a-z]+[0-9]+", "hello123")));
+    Say("Find: " + Viper.Text.Pattern.Find("[0-9]+", "Price is $42.50"));
+    Say("Replace: " + Viper.Text.Pattern.Replace("[0-9]+", "foo 123 bar 456", "#"));
+}
+```
+
+### Pattern Matching BASIC Example
 
 ```basic
 ' Basic matching
@@ -473,7 +545,11 @@ The `Captures` and `CapturesFrom` methods return a Seq containing:
 
 If there is no match, an empty Seq is returned.
 
-### Example
+### Zia Example
+
+> CompiledPattern is not yet available as a constructible type in Zia. Use the static `Viper.Text.Pattern` functions instead.
+
+### BASIC Example
 
 ```basic
 ' Compile a pattern once for multiple uses
@@ -597,7 +673,22 @@ Simple string templating with placeholder substitution.
 - `RenderSeq`: Traps if template or values is null
 - `RenderWith`: Traps if template, values, prefix, or suffix is null; traps if prefix or suffix is empty
 
-### Basic Example
+### Zia Example
+
+```zia
+module TemplateDemo;
+
+bind Viper.Terminal;
+bind Viper.Text.Json as Json;
+
+func start() {
+    var data = Json.Parse("{\"name\":\"Zia\",\"version\":\"1.0\"}");
+    var result = Viper.Text.Template.Render("Hello {{name}} v{{version}}!", data);
+    Say(result);  // Hello Zia v1.0!
+}
+```
+
+### Basic BASIC Example
 
 ```basic
 ' Create a Map with values
@@ -734,7 +825,11 @@ Tolerant HTML parser and utility functions for escaping, unescaping, tag strippi
 - **StripTags vs ToText:** `StripTags` removes tags but leaves entities as-is. `ToText` removes tags AND unescapes entities.
 - All methods return empty string/empty Seq for NULL input.
 
-### Example
+### Zia Example
+
+> Html utilities are accessible via fully-qualified calls: `Viper.Text.Html.Escape(...)`, `Viper.Text.Html.Unescape(...)`, `Viper.Text.Html.StripTags(...)`.
+
+### BASIC Example
 
 ```basic
 ' Escape user input for safe HTML display
@@ -810,7 +905,11 @@ JSONPath-like query expressions for navigating parsed JSON objects. Works with o
 | `key1.key2[0].x` | Mixed object/array access             | `"users[0].name"`    |
 | `key.*`          | Wildcard (all children)               | `"users.*.name"`     |
 
-### Example
+### Zia Example
+
+> JsonPath is accessible via fully-qualified calls: `Viper.Text.JsonPath.Get(...)`, `Viper.Text.JsonPath.GetStr(...)`, `Viper.Text.JsonPath.Has(...)`.
+
+### BASIC Example
 
 ```basic
 ' Parse a JSON document
@@ -878,7 +977,11 @@ Basic Markdown to HTML conversion and text extraction. Supports common Markdown 
 | `- item`              | `<li>item</li>`      | Unordered list items   |
 | Blank line             | `<p>...</p>`         | Paragraph breaks       |
 
-### Example
+### Zia Example
+
+> Markdown is accessible via fully-qualified calls: `Viper.Text.Markdown.ToHtml(...)`, `Viper.Text.Markdown.StripMarkdown(...)`.
+
+### BASIC Example
 
 ```basic
 ' Convert Markdown to HTML
@@ -941,7 +1044,11 @@ TOML (Tom's Obvious Minimal Language) configuration file parser and formatter.
 - **Format:** Converts a Map back to TOML text format.
 - Invalid TOML returns NULL from `Parse()` rather than trapping.
 
-### Example
+### Zia Example
+
+> Toml is accessible via fully-qualified calls: `Viper.Text.Toml.Parse(...)`, `Viper.Text.Toml.Format(...)`.
+
+### BASIC Example
 
 ```basic
 ' Parse TOML configuration
@@ -999,7 +1106,24 @@ many intermediate string objects.
 | `ToString()`       | `String()`              | Returns the accumulated string                        |
 | `Clear()`          | `Void()`                | Clears the buffer                                     |
 
-### Example
+### Zia Example
+
+```zia
+module StringBuilderDemo;
+
+bind Viper.Terminal;
+bind Viper.Text.StringBuilder as SB;
+
+func start() {
+    var sb = SB.New();
+    SB.Append(sb, "Hello");
+    SB.Append(sb, ", ");
+    SB.Append(sb, "World!");
+    Say("Result: " + SB.ToString(sb));  // Hello, World!
+}
+```
+
+### BASIC Example
 
 ```basic
 DIM sb AS Viper.Text.StringBuilder

@@ -58,7 +58,11 @@ Key-based encryption produces:
 - **Authentication Tag:** 128 bits (16 bytes)
 - **Key Derivation:** HKDF-SHA256 with random 16-byte salt
 
-### Password-Based Encryption Example
+### Zia Example
+
+> Cipher is accessible via fully-qualified calls: `Viper.Crypto.Cipher.Encrypt(...)`, `Viper.Crypto.Cipher.Decrypt(...)`, `Viper.Crypto.Cipher.GenerateKey()`.
+
+### Password-Based Encryption BASIC Example
 
 ```basic
 ' Encrypt with a password
@@ -196,7 +200,22 @@ Cryptographic hash functions, checksums, and HMAC authentication for strings and
 - **SHA1**: Cryptographically broken. Chosen-prefix collisions demonstrated. Do NOT use for security.
 - **SHA256**: Currently secure. Recommended for all security applications.
 
-### Hash Example
+### Zia Example
+
+```zia
+module HashDemo;
+
+bind Viper.Terminal;
+bind Viper.Crypto.Hash as Hash;
+
+func start() {
+    Say("MD5: " + Hash.MD5("hello"));
+    Say("SHA1: " + Hash.SHA1("hello"));
+    Say("SHA256: " + Hash.SHA256("hello"));
+}
+```
+
+### Hash BASIC Example
 
 ```basic
 ' Compute checksums and hashes
@@ -294,7 +313,11 @@ Key derivation functions for deriving cryptographic keys from passwords.
 - `iterations < 1000`: Traps with "iterations must be at least 1000"
 - `keyLen < 1 or keyLen > 1024`: Traps with "key_len must be between 1 and 1024"
 
-### Example
+### Zia Example
+
+> KeyDerive is accessible via fully-qualified calls: `Viper.Crypto.KeyDerive.Derive(...)`, `Viper.Crypto.KeyDerive.HKDF(...)`.
+
+### BASIC Example
 
 ```basic
 ' Derive a key from a password
@@ -385,7 +408,11 @@ Cryptographically secure random number generation.
 | macOS    | /dev/urandom                     |
 | Windows  | BCryptGenRandom                  |
 
-### Example
+### Zia Example
+
+> Crypto.Rand is accessible via fully-qualified calls: `Viper.Crypto.Rand.Bytes(...)`, `Viper.Crypto.Rand.Int(...)`, `Viper.Crypto.Rand.Token(...)`.
+
+### BASIC Example
 
 ```basic
 ' Generate random bytes
@@ -496,7 +523,11 @@ The TLS implementation uses:
 - **Hash:** SHA-256
 - **Certificate Verification:** Enabled by default
 
-### Example
+### Zia Example
+
+> Tls is accessible via fully-qualified calls: `Viper.Crypto.Tls.Connect(...)`, `Viper.Crypto.Tls.Send(...)`, `Viper.Crypto.Tls.Receive(...)`.
+
+### BASIC Example
 
 ```basic
 ' Connect to HTTPS server
