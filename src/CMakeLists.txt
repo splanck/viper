@@ -226,6 +226,7 @@ target_include_directories(il_utils PUBLIC
 add_library(il_tools_common STATIC
         tools/common/module_loader.cpp
         tools/common/source_loader.cpp
+        tools/common/project_loader.cpp
         tools/common/vm_executor.cpp
 )
 target_link_libraries(il_tools_common PUBLIC il_api viper_bytecode)
@@ -329,9 +330,18 @@ add_library(viper_cmd_arm64 STATIC
         tools/viper/cmd_codegen_arm64.cpp)
 target_link_libraries(viper_cmd_arm64 PRIVATE viper_common_opts viper_common il_tools_common il_codegen_aarch64 viper::il_full)
 
+add_library(viper_native_compiler STATIC
+        tools/common/native_compiler.cpp)
+target_link_libraries(viper_native_compiler
+        PUBLIC il_tools_common
+        PRIVATE viper_codegen_x86_64 viper_cmd_arm64 viper_common)
+target_include_directories(viper_native_compiler PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+
 # Build viper (CLI) sources list conditionally based on enabled frontends
 set(VIPER_CLI_SOURCES
         tools/viper/main.cpp
+        tools/viper/cmd_run.cpp
         tools/viper/cmd_run_il.cpp
         tools/viper/cmd_front_basic.cpp
         tools/viper/cmd_front_zia.cpp
@@ -350,6 +360,7 @@ set(VIPER_CLI_LINK_LIBS
         fe_zia
         il_api
         il_tools_common
+        viper_native_compiler
         viper_codegen_x86_64
         il_codegen_aarch64
         viper_cmd_arm64
@@ -378,6 +389,11 @@ target_link_libraries(vbasic
         fe_basic
         il_api
         il_tools_common
+        viper_native_compiler
+        viper_codegen_x86_64
+        il_codegen_aarch64
+        viper_cmd_arm64
+        viper_common
         viper_bytecode)
 install(TARGETS vbasic RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
@@ -397,6 +413,11 @@ target_link_libraries(zia
         fe_zia
         il_api
         il_tools_common
+        viper_native_compiler
+        viper_codegen_x86_64
+        il_codegen_aarch64
+        viper_cmd_arm64
+        viper_common
         viper_bytecode)
 install(TARGETS zia RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 

@@ -259,7 +259,24 @@ void usage()
 {
     std::cerr
         << "viper v" << VIPER_VERSION_STR << "\n"
-        << "Usage: viper -run <file.il> [--trace=il|src] [--stdin-from <file>] [--max-steps N]"
+        << "Usage: viper run <target> [options] [-- program-args...]\n"
+        << "       viper build <target> [-o output] [options]\n"
+        << "\n"
+        << "  <target> is a .zia file, .bas file, directory, or viper.project path.\n"
+        << "  If omitted, defaults to current directory.\n"
+        << "\n"
+        << "  Build output:\n"
+        << "    -o output.il       Emit IL text to file\n"
+        << "    -o output          Compile to native binary\n"
+        << "    (no -o)            Emit IL to stdout\n"
+        << "    --arch arm64|x64   Override target architecture (default: host)\n"
+        << "\n"
+        << "  Options: [--trace=il|src] [--stdin-from <file>] [--max-steps N]\n"
+        << "           [--bounds-checks] [--dump-trap] [--debug-vm] [-O0|-O1|-O2]\n"
+        << "           [--no-runtime-namespaces]\n"
+        << "\n"
+        << "Advanced:\n"
+        << "       viper -run <file.il> [--trace=il|src] [--stdin-from <file>] [--max-steps N]"
            " [--break label|file:line]* [--break-src file:line]* [--watch name]* [--bounds-checks] "
            "[--count] [--time] [--dump-trap]\n"
         << "       viper front basic -emit-il <file.bas> [--bounds-checks] "
@@ -341,6 +358,14 @@ int main(int argc, char **argv)
     if (cmd == "--dump-runtime-classes")
     {
         return dumpRuntimeClasses();
+    }
+    if (cmd == "run")
+    {
+        return cmdRun(argc - 2, argv + 2);
+    }
+    if (cmd == "build")
+    {
+        return cmdBuild(argc - 2, argv + 2);
     }
     if (cmd == "-run")
     {

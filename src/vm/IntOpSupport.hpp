@@ -139,6 +139,11 @@ void applySignedRem(const il::core::Instr &in,
         emitTrap(TrapKind::DivideByZero, "divide by zero in srem", in, fr, bb);
         return;
     }
+    if (lhs == std::numeric_limits<T>::min() && rhs == static_cast<T>(-1))
+    {
+        out.i64 = 0;
+        return;
+    }
 
     const int64_t wideLhs = static_cast<int64_t>(lhs);
     const int64_t wideRhs = static_cast<int64_t>(rhs);

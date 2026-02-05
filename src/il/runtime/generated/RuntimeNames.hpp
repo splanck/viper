@@ -399,6 +399,58 @@ inline constexpr const char *kCollectionsDefaultMapGetDefault = "Viper.Collectio
 inline constexpr const char *kCollectionsDefaultMapClear = "Viper.Collections.DefaultMap.Clear";
 
 // ===========================================================================
+// Viper.Collections.Deque
+// ===========================================================================
+
+/// @brief Viper.Collections.Deque.New
+inline constexpr const char *kCollectionsDequeNew = "Viper.Collections.Deque.New";
+
+/// @brief Viper.Collections.Deque.get_Len
+inline constexpr const char *kCollectionsDequeGetLen = "Viper.Collections.Deque.get_Len";
+
+/// @brief Viper.Collections.Deque.get_Cap
+inline constexpr const char *kCollectionsDequeGetCap = "Viper.Collections.Deque.get_Cap";
+
+/// @brief Viper.Collections.Deque.get_IsEmpty
+inline constexpr const char *kCollectionsDequeGetIsEmpty = "Viper.Collections.Deque.get_IsEmpty";
+
+/// @brief Viper.Collections.Deque.PushFront
+inline constexpr const char *kCollectionsDequePushFront = "Viper.Collections.Deque.PushFront";
+
+/// @brief Viper.Collections.Deque.PopFront
+inline constexpr const char *kCollectionsDequePopFront = "Viper.Collections.Deque.PopFront";
+
+/// @brief Viper.Collections.Deque.PeekFront
+inline constexpr const char *kCollectionsDequePeekFront = "Viper.Collections.Deque.PeekFront";
+
+/// @brief Viper.Collections.Deque.PushBack
+inline constexpr const char *kCollectionsDequePushBack = "Viper.Collections.Deque.PushBack";
+
+/// @brief Viper.Collections.Deque.PopBack
+inline constexpr const char *kCollectionsDequePopBack = "Viper.Collections.Deque.PopBack";
+
+/// @brief Viper.Collections.Deque.PeekBack
+inline constexpr const char *kCollectionsDequePeekBack = "Viper.Collections.Deque.PeekBack";
+
+/// @brief Viper.Collections.Deque.Get
+inline constexpr const char *kCollectionsDequeGet = "Viper.Collections.Deque.Get";
+
+/// @brief Viper.Collections.Deque.Set
+inline constexpr const char *kCollectionsDequeSet = "Viper.Collections.Deque.Set";
+
+/// @brief Viper.Collections.Deque.Clear
+inline constexpr const char *kCollectionsDequeClear = "Viper.Collections.Deque.Clear";
+
+/// @brief Viper.Collections.Deque.Has
+inline constexpr const char *kCollectionsDequeHas = "Viper.Collections.Deque.Has";
+
+/// @brief Viper.Collections.Deque.Reverse
+inline constexpr const char *kCollectionsDequeReverse = "Viper.Collections.Deque.Reverse";
+
+/// @brief Viper.Collections.Deque.Clone
+inline constexpr const char *kCollectionsDequeClone = "Viper.Collections.Deque.Clone";
+
+// ===========================================================================
 // Viper.Collections.FrozenMap
 // ===========================================================================
 
@@ -940,6 +992,79 @@ inline constexpr const char *kCollectionsSetNew = "Viper.Collections.Set.New";
 
 /// @brief Viper.Collections.Set.Put
 inline constexpr const char *kCollectionsSetPut = "Viper.Collections.Set.Put";
+
+// ===========================================================================
+// Viper.Collections.SortedSet
+// ===========================================================================
+
+/// @brief Viper.Collections.SortedSet.New
+inline constexpr const char *kCollectionsSortedSetNew = "Viper.Collections.SortedSet.New";
+
+/// @brief Viper.Collections.SortedSet.get_Len
+inline constexpr const char *kCollectionsSortedSetGetLen = "Viper.Collections.SortedSet.get_Len";
+
+/// @brief Viper.Collections.SortedSet.get_IsEmpty
+inline constexpr const char *kCollectionsSortedSetGetIsEmpty = "Viper.Collections.SortedSet.get_IsEmpty";
+
+/// @brief Viper.Collections.SortedSet.Clear
+inline constexpr const char *kCollectionsSortedSetClear = "Viper.Collections.SortedSet.Clear";
+
+/// @brief Viper.Collections.SortedSet.Put
+inline constexpr const char *kCollectionsSortedSetPut = "Viper.Collections.SortedSet.Put";
+
+/// @brief Viper.Collections.SortedSet.Drop
+inline constexpr const char *kCollectionsSortedSetDrop = "Viper.Collections.SortedSet.Drop";
+
+/// @brief Viper.Collections.SortedSet.Has
+inline constexpr const char *kCollectionsSortedSetHas = "Viper.Collections.SortedSet.Has";
+
+/// @brief Viper.Collections.SortedSet.First
+inline constexpr const char *kCollectionsSortedSetFirst = "Viper.Collections.SortedSet.First";
+
+/// @brief Viper.Collections.SortedSet.Last
+inline constexpr const char *kCollectionsSortedSetLast = "Viper.Collections.SortedSet.Last";
+
+/// @brief Viper.Collections.SortedSet.Floor
+inline constexpr const char *kCollectionsSortedSetFloor = "Viper.Collections.SortedSet.Floor";
+
+/// @brief Viper.Collections.SortedSet.Ceil
+inline constexpr const char *kCollectionsSortedSetCeil = "Viper.Collections.SortedSet.Ceil";
+
+/// @brief Viper.Collections.SortedSet.Lower
+inline constexpr const char *kCollectionsSortedSetLower = "Viper.Collections.SortedSet.Lower";
+
+/// @brief Viper.Collections.SortedSet.Higher
+inline constexpr const char *kCollectionsSortedSetHigher = "Viper.Collections.SortedSet.Higher";
+
+/// @brief Viper.Collections.SortedSet.At
+inline constexpr const char *kCollectionsSortedSetAt = "Viper.Collections.SortedSet.At";
+
+/// @brief Viper.Collections.SortedSet.IndexOf
+inline constexpr const char *kCollectionsSortedSetIndexOf = "Viper.Collections.SortedSet.IndexOf";
+
+/// @brief Viper.Collections.SortedSet.Items
+inline constexpr const char *kCollectionsSortedSetItems = "Viper.Collections.SortedSet.Items";
+
+/// @brief Viper.Collections.SortedSet.Range
+inline constexpr const char *kCollectionsSortedSetRange = "Viper.Collections.SortedSet.Range";
+
+/// @brief Viper.Collections.SortedSet.Take
+inline constexpr const char *kCollectionsSortedSetTake = "Viper.Collections.SortedSet.Take";
+
+/// @brief Viper.Collections.SortedSet.Skip
+inline constexpr const char *kCollectionsSortedSetSkip = "Viper.Collections.SortedSet.Skip";
+
+/// @brief Viper.Collections.SortedSet.Merge
+inline constexpr const char *kCollectionsSortedSetMerge = "Viper.Collections.SortedSet.Merge";
+
+/// @brief Viper.Collections.SortedSet.Common
+inline constexpr const char *kCollectionsSortedSetCommon = "Viper.Collections.SortedSet.Common";
+
+/// @brief Viper.Collections.SortedSet.Diff
+inline constexpr const char *kCollectionsSortedSetDiff = "Viper.Collections.SortedSet.Diff";
+
+/// @brief Viper.Collections.SortedSet.IsSubset
+inline constexpr const char *kCollectionsSortedSetIsSubset = "Viper.Collections.SortedSet.IsSubset";
 
 // ===========================================================================
 // Viper.Collections.SparseArray
@@ -4778,8 +4903,8 @@ inline constexpr const char *kIOTempFileCreateDirWithPrefix = "Viper.IO.TempFile
 // Viper.IO.Watcher
 // ===========================================================================
 
-/// @brief Viper.IO.Watcher.new
-inline constexpr const char *kIOWatcherNew = "Viper.IO.Watcher.new";
+/// @brief Viper.IO.Watcher.New
+inline constexpr const char *kIOWatcherNew = "Viper.IO.Watcher.New";
 
 /// @brief Viper.IO.Watcher.get_Path
 inline constexpr const char *kIOWatcherGetPath = "Viper.IO.Watcher.get_Path";
@@ -7361,6 +7486,9 @@ inline constexpr const char *kTextTomlFormat = "Viper.Text.Toml.Format";
 /// @brief Viper.Text.Toml.Get
 inline constexpr const char *kTextTomlGet = "Viper.Text.Toml.Get";
 
+/// @brief Viper.Text.Toml.GetStr
+inline constexpr const char *kTextTomlGetStr = "Viper.Text.Toml.GetStr";
+
 // ===========================================================================
 // Viper.Text.Version
 // ===========================================================================
@@ -8155,6 +8283,9 @@ inline constexpr const char *kVec3Zero = "Viper.Vec3.Zero";
 
 /// @brief Viper.Collections.List.get_Count (alias)
 inline constexpr const char *kCollectionsListGetCount = "Viper.Collections.List.get_Count";
+
+/// @brief Viper.Collections.Seq.get_Count (alias)
+inline constexpr const char *kCollectionsSeqGetCount = "Viper.Collections.Seq.get_Count";
 
 /// @brief Viper.IO.BinFile.get_Len (alias)
 inline constexpr const char *kIOBinFileGetLen = "Viper.IO.BinFile.get_Len";

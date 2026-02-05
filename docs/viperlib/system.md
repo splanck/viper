@@ -128,7 +128,27 @@ Viper.Exec.RunArgs("/bin/cat", args)  ' Arguments are passed directly
 
 ### Zia Example
 
-> Exec is accessible via fully-qualified calls: `Viper.Exec.Run(...)`, `Viper.Exec.RunCapture(...)`.
+```zia
+module ExecDemo;
+
+bind Viper.Terminal;
+bind Viper.Exec as Exec;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    // Capture shell command output
+    var output = Exec.ShellCapture("echo Hello from shell");
+    Say("Shell: " + output);
+
+    // Run a command and get exit code
+    var code = Exec.Shell("true");
+    Say("Exit code: " + Fmt.Int(code));
+
+    // Capture program output directly
+    var result = Exec.Capture("/bin/echo");
+    Say("Echo: " + result);
+}
+```
 
 ### BASIC Example
 
@@ -204,7 +224,21 @@ System information queries providing read-only access to machine properties.
 
 ### Zia Example
 
-> Machine properties (Cores, Endian, Home, Host, etc.) use the get_/set_ pattern which is not directly accessible via alias in Zia. Use BASIC for property access.
+```zia
+module MachineDemo;
+
+bind Viper.Terminal;
+bind Viper.Machine as Machine;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    Say("OS: " + Machine.get_OS());
+    Say("Endian: " + Machine.get_Endian());
+    Say("Cores: " + Fmt.Int(Machine.get_Cores()));
+    Say("Home: " + Machine.get_Home());
+    Say("User: " + Machine.get_User());
+}
+```
 
 ### BASIC Example
 

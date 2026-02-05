@@ -7,7 +7,9 @@
 
 #include "rt_jsonpath.h"
 
+#include "rt_box.h"
 #include "rt_internal.h"
+#include "rt_json.h"
 #include "rt_map.h"
 #include "rt_seq.h"
 #include "rt_string.h"
@@ -168,9 +170,39 @@ static void collect_wildcard(void *current, const char *remaining, void *results
 
 // --- Public API ---
 
+/// @brief Auto-detect if root is a raw JSON string and parse it.
+/// @details Checks the RT_STRING_MAGIC header to identify raw strings,
+///          and also handles boxed strings (from Zia str→ptr conversion).
+static void *auto_parse_root(void *root)
+{
+    if (!root)
+        return NULL;
+    uint64_t magic = *(uint64_t *)root;
+    if (magic == RT_STRING_MAGIC)
+    {
+        // root is a raw string — try to parse it as JSON
+        void *parsed = rt_json_parse((rt_string)root);
+        return parsed;
+    }
+    if (magic == RT_BOX_STR)
+    {
+        // root is a boxed string — unbox and parse
+        rt_string s = rt_unbox_str(root);
+        if (s)
+        {
+            void *parsed = rt_json_parse(s);
+            return parsed;
+        }
+    }
+    return root;
+}
+
 void *rt_jsonpath_get(void *root, rt_string path)
 {
     if (!root || !path)
+        return NULL;
+    root = auto_parse_root(root);
+    if (!root)
         return NULL;
     return resolve_path(root, rt_string_cstr(path));
 }
@@ -190,6 +222,10 @@ void *rt_jsonpath_query(void *root, rt_string path)
 {
     void *results = rt_seq_new();
     if (!root || !path)
+        return results;
+
+    root = auto_parse_root(root);
+    if (!root)
         return results;
 
     const char *p = rt_string_cstr(path);

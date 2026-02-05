@@ -129,7 +129,26 @@ RFC 4180-compliant CSV parsing and formatting.
 
 ### Zia Example
 
-> Csv is accessible via fully-qualified calls: `Viper.Text.Csv.ParseLine(...)`, `Viper.Text.Csv.FormatLine(...)`.
+```zia
+module CsvDemo;
+
+bind Viper.Terminal;
+bind Viper.Text.Csv as Csv;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    // Parse a CSV line into fields
+    var fields = Csv.ParseLine("name,age,city");
+    Say("Field count: " + Fmt.Int(fields.Len));
+
+    // Format a CSV line with quoting
+    var data = new Viper.Collections.Seq();
+    data.Push(Viper.Box.Str("Hello, World"));
+    data.Push(Viper.Box.Str("Simple"));
+    var line = Csv.FormatLine(data);
+    Say("Formatted: " + line);
+}
+```
 
 ### BASIC Example
 
@@ -827,7 +846,30 @@ Tolerant HTML parser and utility functions for escaping, unescaping, tag strippi
 
 ### Zia Example
 
-> Html utilities are accessible via fully-qualified calls: `Viper.Text.Html.Escape(...)`, `Viper.Text.Html.Unescape(...)`, `Viper.Text.Html.StripTags(...)`.
+```zia
+module HtmlDemo;
+
+bind Viper.Terminal;
+bind Viper.Text.Html as Html;
+
+func start() {
+    // Escape HTML special characters
+    var escaped = Html.Escape("<script>alert('xss')</script>");
+    Say("Escaped: " + escaped);
+
+    // Unescape HTML entities
+    var unescaped = Html.Unescape("&lt;div&gt;Hello&lt;/div&gt;");
+    Say("Unescaped: " + unescaped);
+
+    // Strip HTML tags
+    var stripped = Html.StripTags("<p>Hello <b>World</b></p>");
+    Say("Stripped: " + stripped);
+
+    // Convert HTML to plain text
+    var plain = Html.ToText("<p>Price: &lt;$10&gt;</p>");
+    Say("Plain: " + plain);
+}
+```
 
 ### BASIC Example
 
@@ -907,7 +949,26 @@ JSONPath-like query expressions for navigating parsed JSON objects. Works with o
 
 ### Zia Example
 
-> JsonPath is accessible via fully-qualified calls: `Viper.Text.JsonPath.Get(...)`, `Viper.Text.JsonPath.GetStr(...)`, `Viper.Text.JsonPath.Has(...)`.
+```zia
+module JsonPathDemo;
+
+bind Viper.Terminal;
+bind Viper.Text.Json as Json;
+bind Viper.Text.JsonPath as JP;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    var data = Json.Parse("{\"user\": {\"name\": \"Alice\", \"age\": 30}}");
+
+    // Get a string value by path
+    var name = JP.GetStr(data, "user.name");
+    Say("Name: " + name);
+
+    // Check if a path exists
+    Say("Has name: " + Fmt.Bool(JP.Has(data, "user.name")));
+    Say("Has email: " + Fmt.Bool(JP.Has(data, "user.email")));
+}
+```
 
 ### BASIC Example
 
@@ -979,7 +1040,24 @@ Basic Markdown to HTML conversion and text extraction. Supports common Markdown 
 
 ### Zia Example
 
-> Markdown is accessible via fully-qualified calls: `Viper.Text.Markdown.ToHtml(...)`, `Viper.Text.Markdown.StripMarkdown(...)`.
+```zia
+module MarkdownDemo;
+
+bind Viper.Terminal;
+bind Viper.Text.Markdown as Md;
+
+func start() {
+    var src = "# Hello\nThis is **bold** text.";
+
+    // Convert Markdown to HTML
+    var html = Md.ToHtml(src);
+    Say("HTML: " + html);
+
+    // Convert Markdown to plain text
+    var plain = Md.ToText(src);
+    Say("Text: " + plain);
+}
+```
 
 ### BASIC Example
 
@@ -1046,7 +1124,19 @@ TOML (Tom's Obvious Minimal Language) configuration file parser and formatter.
 
 ### Zia Example
 
-> Toml is accessible via fully-qualified calls: `Viper.Text.Toml.Parse(...)`, `Viper.Text.Toml.Format(...)`.
+```zia
+module TomlDemo;
+
+bind Viper.Terminal;
+bind Viper.Text.Toml as Toml;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    // Validate TOML strings
+    Say("Valid: " + Fmt.Bool(Toml.IsValid("key = \"value\"")));
+    Say("Invalid: " + Fmt.Bool(Toml.IsValid("= bad")));
+}
+```
 
 ### BASIC Example
 

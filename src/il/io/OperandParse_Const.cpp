@@ -211,7 +211,7 @@ ParseResult parseConstOperand(viper::parse::Cursor &cur, Context &ctx)
             token.pop_back();
         if (token.empty())
         {
-            std::string msg = tail == ',' ? "missing operand" : "missing operand";
+            std::string msg = tail == ',' ? "missing operand before ','" : "missing operand before ')'";
             return syntaxError(ctx, msg);
         }
     }

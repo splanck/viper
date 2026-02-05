@@ -66,6 +66,7 @@
 
 #include "rt_csv.h"
 
+#include "rt_box.h"
 #include "rt_internal.h"
 #include "rt_seq.h"
 #include "rt_string.h"
@@ -76,6 +77,21 @@
 
 /// Default CSV delimiter.
 #define DEFAULT_DELIMITER ','
+
+/// @brief Extract an rt_string from a value that may be a boxed string or raw string.
+/// @details Checks if the pointer is a boxed string (tag == RT_BOX_STR) and unboxes it,
+///          otherwise treats it as a raw rt_string.
+static rt_string csv_extract_string(void *val)
+{
+    if (!val)
+        return NULL;
+    // Check if the value is a boxed string (first 8 bytes = tag 0-3)
+    int64_t tag = *(int64_t *)val;
+    if (tag == RT_BOX_STR)
+        return rt_unbox_str(val);
+    // Treat as raw rt_string
+    return (rt_string)val;
+}
 
 /// @brief Get delimiter character from string.
 static char get_delim(rt_string delim)
@@ -642,7 +658,7 @@ rt_string rt_csv_format_line_with(void *fields, rt_string delim)
     size_t total_size = 0;
     for (int64_t i = 0; i < count; i++)
     {
-        rt_string field = (rt_string)rt_seq_get(fields, i);
+        rt_string field = csv_extract_string(rt_seq_get(fields, i));
         const char *str = rt_string_cstr(field);
         if (!str)
             str = "";
@@ -659,7 +675,7 @@ rt_string rt_csv_format_line_with(void *fields, rt_string delim)
     size_t pos = 0;
     for (int64_t i = 0; i < count; i++)
     {
-        rt_string field = (rt_string)rt_seq_get(fields, i);
+        rt_string field = csv_extract_string(rt_seq_get(fields, i));
         const char *str = rt_string_cstr(field);
         if (!str)
             str = "";
@@ -773,7 +789,7 @@ rt_string rt_csv_format_with(void *rows, rt_string delim)
         int64_t count = rt_seq_len(row);
         for (int64_t i = 0; i < count; i++)
         {
-            rt_string field = (rt_string)rt_seq_get(row, i);
+            rt_string field = csv_extract_string(rt_seq_get(row, i));
             const char *str = rt_string_cstr(field);
             if (!str)
                 str = "";
@@ -802,7 +818,7 @@ rt_string rt_csv_format_with(void *rows, rt_string delim)
         int64_t count = rt_seq_len(row);
         for (int64_t i = 0; i < count; i++)
         {
-            rt_string field = (rt_string)rt_seq_get(row, i);
+            rt_string field = csv_extract_string(rt_seq_get(row, i));
             const char *str = rt_string_cstr(field);
             if (!str)
                 str = "";

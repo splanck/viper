@@ -734,6 +734,23 @@ bool lowerInstruction(const il::core::Instr &ins,
                         bbOut().instrs.push_back(MInstr{
                             MOpcode::MovRR,
                             {MOperand::vregOp(RegClass::GPR, dst), MOperand::regOp(PhysReg::X0)}});
+                        // Bug #1 fix: mask boolean return values to a single bit.
+                        // Per AAPCS64, a C function returning bool only guarantees
+                        // the low 8 bits of w0 are meaningful.
+                        if (ins.type.kind == il::core::Type::Kind::I1)
+                        {
+                            const uint16_t mask = ctx.nextVRegId++;
+                            bbOut().instrs.push_back(MInstr{
+                                MOpcode::MovRI,
+                                {MOperand::vregOp(RegClass::GPR, mask), MOperand::immOp(1)}});
+                            const uint16_t masked = ctx.nextVRegId++;
+                            bbOut().instrs.push_back(MInstr{
+                                MOpcode::AndRRR,
+                                {MOperand::vregOp(RegClass::GPR, masked),
+                                 MOperand::vregOp(RegClass::GPR, dst),
+                                 MOperand::vregOp(RegClass::GPR, mask)}});
+                            ctx.tempVReg[*ins.result] = masked;
+                        }
                     }
                     // Special handling for rt_arr_obj_get - spill and reload
                     if (ins.callee == "rt_arr_obj_get")
@@ -858,6 +875,21 @@ bool lowerInstruction(const il::core::Instr &ins,
                     bbOut().instrs.push_back(MInstr{
                         MOpcode::MovRR,
                         {MOperand::vregOp(RegClass::GPR, dst), MOperand::regOp(PhysReg::X0)}});
+                    // Bug #1 fix: mask boolean return values from indirect calls
+                    if (ins.type.kind == il::core::Type::Kind::I1)
+                    {
+                        const uint16_t mask = ctx.nextVRegId++;
+                        bbOut().instrs.push_back(MInstr{
+                            MOpcode::MovRI,
+                            {MOperand::vregOp(RegClass::GPR, mask), MOperand::immOp(1)}});
+                        const uint16_t masked = ctx.nextVRegId++;
+                        bbOut().instrs.push_back(MInstr{
+                            MOpcode::AndRRR,
+                            {MOperand::vregOp(RegClass::GPR, masked),
+                             MOperand::vregOp(RegClass::GPR, dst),
+                             MOperand::vregOp(RegClass::GPR, mask)}});
+                        ctx.tempVReg[*ins.result] = masked;
+                    }
                 }
             }
             return true;
@@ -923,6 +955,13 @@ bool lowerInstruction(const il::core::Instr &ins,
                             {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, v)}});
                     }
                 }
+            }
+            // Bug #3 fix: for void main, zero x0 so the process exit code is 0
+            if (ins.operands.empty() && ctx.mf.name == "main")
+            {
+                bbOut().instrs.push_back(MInstr{
+                    MOpcode::MovRI,
+                    {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
             }
             bbOut().instrs.push_back(MInstr{MOpcode::Ret, {}});
             return true;

@@ -329,12 +329,10 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
         case BinaryOp::Eq:
             if (leftType && leftType->kind == TypeKindSem::String)
             {
-                // String equality: rt_str_eq returns i64 (0 or 1), convert to boolean
+                // String equality: rt_str_eq returns i1 (boolean) directly
                 Value result =
-                    emitCallRet(Type(Type::Kind::I64), kStringEquals, {left.value, right.value});
-                Value boolResult =
-                    emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), result, Value::constInt(0));
-                return {boolResult, Type(Type::Kind::I1)};
+                    emitCallRet(Type(Type::Kind::I1), kStringEquals, {left.value, right.value});
+                return {result, Type(Type::Kind::I1)};
             }
             if (isFloat)
             {
@@ -353,11 +351,12 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
         case BinaryOp::Ne:
             if (leftType && leftType->kind == TypeKindSem::String)
             {
-                // String inequality: rt_str_eq returns i64 (0 or 1), invert for !=
+                // String inequality: rt_str_eq returns i1, zext to i64 then invert
                 Value eqResult =
-                    emitCallRet(Type(Type::Kind::I64), kStringEquals, {left.value, right.value});
+                    emitCallRet(Type(Type::Kind::I1), kStringEquals, {left.value, right.value});
+                Value eqI64 = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), eqResult);
                 Value result =
-                    emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), eqResult, Value::constInt(0));
+                    emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), eqI64, Value::constInt(0));
                 return {result, Type(Type::Kind::I1)};
             }
             if (isFloat)

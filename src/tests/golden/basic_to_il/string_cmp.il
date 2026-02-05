@@ -29,8 +29,8 @@ extern @Viper.String.Repeat(str, i64) -> str
 extern @Viper.String.Flip(str) -> str
 extern @Viper.String.Cmp(str, str) -> i64
 extern @Viper.String.CmpNoCase(str, str) -> i64
-extern @rt_str_eq(str, str) -> i64
-extern @Viper.String.Equals(str, str) -> i64
+extern @rt_str_eq(str, str) -> i1
+extern @Viper.String.Equals(str, str) -> i1
 extern @Viper.String.Join(str, ptr) -> str
 extern @rt_str_empty() -> str
 extern @rt_str_retain_maybe(str) -> void
@@ -81,18 +81,20 @@ if_test_0:
   .loc 1 2 10
   %t6 = call @rt_str_eq(%t4, %t5)
   .loc 1 2 10
-  %t7 = isub.ovf 0, %t6
-  .loc 1 2 4
-  %t8 = trunc1 %t7
+  %t7 = zext1 %t6
   .loc 1 2 10
-  cbr %t8, if_then_0, if_else
+  %t8 = isub.ovf 0, %t7
+  .loc 1 2 4
+  %t9 = trunc1 %t8
+  .loc 1 2 10
+  cbr %t9, if_then_0, if_else
 if_then_0:
   .loc 1 2 31
   call @Viper.Terminal.PrintI64(1)
   .loc 1 2 31
-  %t9 = const_str @.L1
+  %t10 = const_str @.L1
   .loc 1 2 31
-  call @Viper.Terminal.PrintStr(%t9)
+  call @Viper.Terminal.PrintStr(%t10)
   .loc 1 2 4
   br if_exit
 if_else:
@@ -103,26 +105,28 @@ if_exit:
   br L30
 if_test_01:
   .loc 1 3 7
-  %t10 = load str, %t0
+  %t11 = load str, %t0
   .loc 1 3 13
-  %t11 = const_str @.L2
+  %t12 = const_str @.L2
   .loc 1 3 10
-  %t12 = call @rt_str_eq(%t10, %t11)
+  %t13 = call @rt_str_eq(%t11, %t12)
   .loc 1 3 10
-  %t13 = isub.ovf 0, %t12
+  %t14 = zext1 %t13
   .loc 1 3 10
-  %t14 = xor %t13, -1
+  %t15 = isub.ovf 0, %t14
+  .loc 1 3 10
+  %t16 = xor %t15, -1
   .loc 1 3 4
-  %t15 = trunc1 %t14
+  %t17 = trunc1 %t16
   .loc 1 3 10
-  cbr %t15, if_then_01, if_else1
+  cbr %t17, if_then_01, if_else1
 if_then_01:
   .loc 1 3 28
   call @Viper.Terminal.PrintI64(2)
   .loc 1 3 28
-  %t16 = const_str @.L1
+  %t18 = const_str @.L1
   .loc 1 3 28
-  call @Viper.Terminal.PrintStr(%t16)
+  call @Viper.Terminal.PrintStr(%t18)
   .loc 1 3 4
   br if_exit1
 if_else1:

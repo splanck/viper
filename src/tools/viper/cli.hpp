@@ -140,6 +140,26 @@ int cmdILOpt(int argc, char **argv);
 /// @return `0` on success, non-zero on failure.
 int cmdBench(int argc, char **argv);
 
+/// @brief Handle `viper run` subcommand.
+///
+/// Compiles and executes a Viper project. The target may be a single source file,
+/// a directory (with optional viper.project manifest), or a manifest path.
+/// Auto-detects language (Zia or BASIC) and entry point.
+///
+/// @param argc Number of arguments following `run`.
+/// @param argv Array of argument strings.
+/// @return `0` on success, non-zero on failure.
+int cmdRun(int argc, char **argv);
+
+/// @brief Handle `viper build` subcommand.
+///
+/// Compiles a Viper project and emits IL to stdout or a file specified with -o.
+///
+/// @param argc Number of arguments following `build`.
+/// @param argv Array of argument strings.
+/// @return `0` on success, non-zero on failure.
+int cmdBuild(int argc, char **argv);
+
 /// @brief Print usage information for viper.
 ///
 /// Called when no or invalid arguments are supplied to `viper` or when a handler

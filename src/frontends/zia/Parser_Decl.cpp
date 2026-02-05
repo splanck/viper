@@ -86,6 +86,47 @@ BindDecl Parser::parseBindDecl()
     else if (check(TokenKind::Identifier))
     {
         Token firstTok = advance();
+
+        // Check for alias assignment syntax: bind Alias = Viper.Path;
+        if (match(TokenKind::Equal))
+        {
+            std::string alias = firstTok.text;
+
+            if (!check(TokenKind::Identifier))
+            {
+                error("expected namespace path after '='");
+                return BindDecl(loc, "");
+            }
+
+            Token pathTok = advance();
+            path = pathTok.text;
+
+            while (match(TokenKind::Dot))
+            {
+                if (!check(TokenKind::Identifier))
+                {
+                    error("expected identifier in bind path");
+                    return BindDecl(loc, path);
+                }
+                path += ".";
+                Token segmentTok = advance();
+                path += segmentTok.text;
+            }
+
+            if (path.rfind("Viper.", 0) == 0)
+                isNamespaceBind = true;
+
+            BindDecl decl(loc, path);
+            decl.isNamespaceBind = isNamespaceBind;
+            decl.alias = alias;
+
+            if (!expect(TokenKind::Semicolon, ";"))
+                return decl;
+
+            return decl;
+        }
+
+        // Standard dotted path: bind Viper.Terminal; or bind Viper.Terminal as T;
         path = firstTok.text;
 
         while (match(TokenKind::Dot))

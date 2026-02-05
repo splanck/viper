@@ -236,7 +236,7 @@ static bool isBranch(MOpcode opc)
 /// @return True for Bl (branch-and-link) opcode.
 static bool isCall(MOpcode opc)
 {
-    return opc == MOpcode::Bl;
+    return opc == MOpcode::Bl || opc == MOpcode::Blr;
 }
 
 /// @brief Check if an opcode is a register-register comparison.

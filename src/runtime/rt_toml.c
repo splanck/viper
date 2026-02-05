@@ -7,6 +7,7 @@
 
 #include "rt_toml.h"
 
+#include "rt_box.h"
 #include "rt_internal.h"
 #include "rt_map.h"
 #include "rt_seq.h"
@@ -317,6 +318,26 @@ void *rt_toml_get(void *root, rt_string key_path)
     if (!root || !key_path)
         return NULL;
 
+    // Auto-parse: if root is a raw TOML string, parse it first
+    uint64_t magic = *(uint64_t *)root;
+    if (magic == RT_STRING_MAGIC)
+    {
+        root = rt_toml_parse((rt_string)root);
+        if (!root)
+            return NULL;
+    }
+    else if (magic == RT_BOX_STR)
+    {
+        // Boxed string (from Zia str→ptr conversion) — unbox and parse
+        rt_string s = rt_unbox_str(root);
+        if (s)
+        {
+            root = rt_toml_parse(s);
+            if (!root)
+                return NULL;
+        }
+    }
+
     const char *path = rt_string_cstr(key_path);
     void *current = root;
 
@@ -343,4 +364,20 @@ void *rt_toml_get(void *root, rt_string key_path)
     }
 
     return current;
+}
+
+rt_string rt_toml_get_str(void *root, rt_string key_path)
+{
+    void *val = rt_toml_get(root, key_path);
+    if (!val)
+        return rt_string_from_bytes("", 0);
+    // Check if value is a raw string
+    uint64_t m = *(uint64_t *)val;
+    if (m == RT_STRING_MAGIC)
+        return (rt_string)val;
+    // Try as boxed string
+    int64_t tag = *(int64_t *)val;
+    if (tag == RT_BOX_STR)
+        return rt_unbox_str(val);
+    return rt_string_from_bytes("", 0);
 }

@@ -934,7 +934,7 @@ rt_string rt_lcase(rt_string s)
 /// @param a First operand.
 /// @param b Second operand.
 /// @return 1 when equal, otherwise 0.
-int64_t rt_str_eq(rt_string a, rt_string b)
+int8_t rt_str_eq(rt_string a, rt_string b)
 {
     if (!a || !b)
         return 0;

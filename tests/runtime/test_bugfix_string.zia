@@ -1,0 +1,31 @@
+module TestBugfixString;
+
+bind "./_support";
+bind Viper.Terminal;
+bind Viper.String as Str;
+
+// EXPECT_OUT: RESULT: ok
+// COVER: Bug #6 - String.Equals returns boolean
+
+func start() {
+    // --- Bug #6: String.Equals returns boolean type ---
+    setTest("Bug6_StringEqualsReturnType");
+
+    // Basic equality - use assertEqInt since the return might be int
+    var eq1 = Str.Equals("hello", "hello");
+    assertTrue(eq1, "String.Equals same strings");
+
+    // Inequality
+    var eq2 = Str.Equals("hello", "world");
+    assertFalse(eq2, "String.Equals different strings");
+
+    // Empty strings
+    var eq3 = Str.Equals("", "");
+    assertTrue(eq3, "String.Equals empty strings");
+
+    // One empty
+    var eq4 = Str.Equals("hello", "");
+    assertFalse(eq4, "String.Equals one empty");
+
+    report();
+}

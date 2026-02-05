@@ -1,0 +1,56 @@
+module TestBugfixCrypto;
+
+bind "./_support";
+bind Viper.Terminal;
+bind Viper.Crypto.Rand as CRand;
+bind Viper.Crypto.Cipher as Cipher;
+bind Viper.Crypto.KeyDerive as KD;
+bind Viper.Collections.Bytes as Bytes;
+bind Viper.Fmt as Fmt;
+
+// EXPECT_OUT: RESULT: ok
+// COVER: Bug #7  - Crypto function return types as Bytes
+// COVER: Bug #5  - Bytes static method calls on crypto results
+
+func start() {
+    // --- Bug #7: Crypto.Rand.Bytes returns proper Bytes type ---
+    setTest("Bug7_CryptoRandBytesType");
+    var randBytes = CRand.Bytes(16);
+    // Static call to Bytes.get_Len - this should work with the type fix
+    var randLen = Bytes.get_Len(randBytes);
+    assertEqInt(randLen, 16, "CRand.Bytes(16) has length 16");
+
+    // Bug #5: Static Bytes.ToHex should work
+    var hex = Bytes.ToHex(randBytes);
+    assertEqInt(Viper.String.get_Length(hex), 32, "Bytes.ToHex(16 bytes) is 32 hex chars");
+
+    // --- Bug #7: Cipher.GenerateKey returns proper Bytes type ---
+    setTest("Bug7_CipherGenerateKeyType");
+    var key = Cipher.GenerateKey();
+    var keyLen = Bytes.get_Len(key);
+    assertGtInt(keyLen, 0, "Cipher.GenerateKey() has positive length");
+
+    // Static Bytes.ToHex on cipher key
+    var keyHex = Bytes.ToHex(key);
+    assertGtInt(Viper.String.get_Length(keyHex), 0, "Cipher.GenerateKey().ToHex() is non-empty");
+
+    // --- Bug #7: Cipher.Encrypt returns proper Bytes type ---
+    setTest("Bug7_CipherEncryptType");
+    var plaintext = Bytes.FromStr("Hello World");
+    var encrypted = Cipher.EncryptWithKey(plaintext, key);
+    var encLen = Bytes.get_Len(encrypted);
+    assertGtInt(encLen, 0, "Cipher.EncryptWithKey() has positive length");
+
+    // Decrypt should return Bytes with correct content
+    var decrypted = Cipher.DecryptWithKey(encrypted, key);
+    var decStr = Bytes.ToStr(decrypted);
+    assertEqStr(decStr, "Hello World", "Cipher roundtrip preserves content");
+
+    // --- Bug #7: KeyDerive.Pbkdf2SHA256 returns proper Bytes type ---
+    setTest("Bug7_KeyDeriveType");
+    var salt = CRand.Bytes(16);
+    var derived = KD.Pbkdf2SHA256("password", salt, 1000, 32);
+    assertEqInt(Bytes.get_Len(derived), 32, "Pbkdf2SHA256 returns 32 bytes");
+
+    report();
+}

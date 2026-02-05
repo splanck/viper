@@ -14,11 +14,22 @@
 
 #pragma once
 
+#include "tools/common/native_compiler.hpp"
+
+#include <filesystem>
 #include <functional>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
+
+#ifdef _WIN32
+#include <io.h>
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 
 namespace viper::tools
 {
@@ -32,6 +43,7 @@ struct FrontendToolConfig
     bool run = false;
     std::vector<std::string> forwardedArgs;
     std::vector<std::string> programArgs;
+    std::optional<TargetArch> archOverride;
 };
 
 /// @brief Callbacks for language-specific behavior in frontend tools.
@@ -91,6 +103,26 @@ inline FrontendToolConfig parseArgs(int argc, char **argv, const FrontendToolCal
             }
             config.outputPath = argv[++i];
             config.emitIl = true; // -o implies emit-il
+        }
+        else if (arg == "--arch")
+        {
+            if (i + 1 >= argc)
+            {
+                std::cerr << "error: --arch requires arm64 or x64\n\n";
+                callbacks.printUsage();
+                std::exit(1);
+            }
+            std::string_view val = argv[++i];
+            if (val == "arm64")
+                config.archOverride = TargetArch::ARM64;
+            else if (val == "x64")
+                config.archOverride = TargetArch::X64;
+            else
+            {
+                std::cerr << "error: --arch must be 'arm64' or 'x64'\n\n";
+                callbacks.printUsage();
+                std::exit(1);
+            }
         }
         else if (arg.starts_with("-"))
         {
@@ -227,18 +259,46 @@ inline int runFrontendTool(int argc, char **argv, const FrontendToolCallbacks &c
     // Parse arguments
     FrontendToolConfig config = parseArgs(argc, argv, callbacks);
 
+    // Detect native output: -o with non-.il extension
+    const bool nativeOutput = !config.outputPath.empty() && isNativeOutputPath(config.outputPath);
+
+    std::string realOutputPath = config.outputPath;
+    std::string tempIlPath;
+
+    if (nativeOutput)
+    {
+        // Redirect IL to temp file; we'll codegen from it later
+        tempIlPath = generateTempIlPath();
+        config.outputPath = tempIlPath;
+    }
+
     // Build argument vector for ilc frontend
     std::vector<std::string> argStorage;
     std::vector<char *> ilcArgs = buildIlcArgs(config, argStorage);
 
-    // Handle -o output redirection
+    // Handle -o output redirection (either to real file or temp file for native)
     FILE *outputFile = nullptr;
+    int savedStdoutFd = -1;
     if (!config.outputPath.empty())
     {
+        // Save stdout so we can restore it after IL emission (needed for native codegen output)
+#ifdef _WIN32
+        savedStdoutFd = _dup(_fileno(stdout));
+#else
+        savedStdoutFd = dup(fileno(stdout));
+#endif
         outputFile = std::freopen(config.outputPath.c_str(), "w", stdout);
         if (!outputFile)
         {
             std::cerr << "error: failed to open output file: " << config.outputPath << "\n";
+            if (savedStdoutFd >= 0)
+            {
+#ifdef _WIN32
+                _close(savedStdoutFd);
+#else
+                close(savedStdoutFd);
+#endif
+            }
             return 1;
         }
     }
@@ -249,7 +309,35 @@ inline int runFrontendTool(int argc, char **argv, const FrontendToolCallbacks &c
     // Restore stdout if we redirected it
     if (outputFile)
     {
-        std::fclose(outputFile);
+        std::fflush(stdout);
+        if (savedStdoutFd >= 0)
+        {
+#ifdef _WIN32
+            _dup2(savedStdoutFd, _fileno(stdout));
+            _close(savedStdoutFd);
+#else
+            dup2(savedStdoutFd, fileno(stdout));
+            close(savedStdoutFd);
+#endif
+        }
+        else
+        {
+            std::fclose(outputFile);
+        }
+    }
+
+    // Native compilation step: compile the IL temp file to a binary
+    if (result == 0 && nativeOutput)
+    {
+        auto arch = config.archOverride.value_or(detectHostArch());
+        result = compileToNative(tempIlPath, realOutputPath, arch);
+    }
+
+    // Clean up temp file
+    if (!tempIlPath.empty())
+    {
+        std::error_code ec;
+        std::filesystem::remove(tempIlPath, ec);
     }
 
     return result;

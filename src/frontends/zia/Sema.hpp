@@ -220,6 +220,17 @@ class Scope
         return parent_;
     }
 
+    /// @brief Check if any symbol name starts with the given prefix.
+    bool hasSymbolWithPrefix(const std::string &prefix) const
+    {
+        for (const auto &[name, _] : symbols_)
+        {
+            if (name.rfind(prefix, 0) == 0)
+                return true;
+        }
+        return false;
+    }
+
   private:
     /// @brief The enclosing scope.
     Scope *parent_{nullptr};

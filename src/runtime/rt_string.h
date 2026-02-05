@@ -216,7 +216,7 @@ extern "C"
     /// @param a First operand.
     /// @param b Second operand.
     /// @return 1 when equal, 0 otherwise.
-    int64_t rt_str_eq(rt_string a, rt_string b);
+    int8_t rt_str_eq(rt_string a, rt_string b);
 
     /// @brief Compare @p a < @p b lexicographically.
     /// @param a First operand.

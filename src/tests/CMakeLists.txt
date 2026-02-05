@@ -190,6 +190,11 @@ if (NOT WIN32)
     target_link_libraries(test_codegen_arm64_run_native PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
     viper_add_ctest(test_codegen_arm64_run_native $<TARGET_FILE:test_codegen_arm64_run_native>)
 
+    # Regression tests for ARM64 codegen bug fixes #1, #2, #3
+    add_executable(test_codegen_arm64_bugfix ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_bugfix.cpp)
+    target_link_libraries(test_codegen_arm64_bugfix PRIVATE viper_testing il_codegen_aarch64 viper_cmd_arm64)
+    viper_add_ctest(test_codegen_arm64_bugfix $<TARGET_FILE:test_codegen_arm64_bugfix>)
+
     # Environment.IsNative should distinguish VM vs native paths
     add_executable(test_codegen_env_is_native ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_env_is_native.cpp)
     target_link_libraries(test_codegen_env_is_native PRIVATE viper_test_common il_codegen_aarch64 viper_cmd_arm64)
@@ -734,6 +739,9 @@ set(ZIA_RUNTIME_TESTS
         test_diagnostics
         test_file
         test_gui
+        test_bugfix_text
+        test_bugfix_crypto
+        test_bugfix_string
 )
 
 foreach (test_name IN LISTS ZIA_RUNTIME_TESTS)

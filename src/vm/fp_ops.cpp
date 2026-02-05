@@ -482,20 +482,17 @@ VM::ExecResult handleSitofp(VM &vm,
 }
 
 /// @brief Execute the `fptosi` opcode by converting a floating-point value to a
-///        signed 64-bit integer.
-/// @details Delegates to @ref ops::applyUnary to read the operand, then casts
-///          the `double` to `int64_t` using truncation toward zero as mandated by
-///          the IL spec.  The operation assumes the operand is representable; if
-///          the host exhibits undefined behaviour for out-of-range values it is
-///          preserved here because the opcode does not trap.  Only the
-///          destination slot is modified.
+///        signed 64-bit integer with truncation toward zero.
+/// @details Per IL spec, traps on NaN or overflow.  Validates that the operand
+///          is finite and within the representable range of int64_t before
+///          performing the cast.
 /// @param vm Virtual machine coordinating execution (unused).
 /// @param fr Active frame providing operand and destination slots.
 /// @param in Instruction describing the conversion.
 /// @param blocks Map of basic blocks for the current function (unused).
 /// @param bb Reference to the current basic block pointer (unused).
 /// @param ip Instruction index within @p bb (unused).
-/// @return Execution result signalling the interpreter should continue.
+/// @return Execution result signalling the interpreter should continue when no trap fires.
 VM::ExecResult handleFptosi(VM &vm,
                             Frame &fr,
                             const Instr &in,
@@ -504,11 +501,32 @@ VM::ExecResult handleFptosi(VM &vm,
                             size_t &ip)
 {
     (void)blocks;
-    (void)bb;
     (void)ip;
     Slot value = VMAccess::eval(vm, fr, in.operands[0]);
+    const double operand = value.f64;
+
+    if (!std::isfinite(operand))
+    {
+        RuntimeBridge::trap(TrapKind::InvalidCast,
+                            "invalid fp operand in fptosi",
+                            in.loc,
+                            fr.func->name,
+                            bb ? bb->label : "");
+    }
+
+    constexpr double kMin = static_cast<double>(std::numeric_limits<int64_t>::min());
+    constexpr double kMax = static_cast<double>(std::numeric_limits<int64_t>::max());
+    if (operand < kMin || operand > kMax)
+    {
+        RuntimeBridge::trap(TrapKind::Overflow,
+                            "fp overflow in fptosi",
+                            in.loc,
+                            fr.func->name,
+                            bb ? bb->label : "");
+    }
+
     Slot out{};
-    out.i64 = static_cast<int64_t>(value.f64);
+    out.i64 = static_cast<int64_t>(operand);
     ops::storeResult(fr, in, out);
     return {};
 }

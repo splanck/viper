@@ -1,0 +1,81 @@
+module TestBugfixText;
+
+bind "./_support";
+bind Viper.Terminal;
+bind Viper.Text.Csv as Csv;
+bind Viper.Text.Markdown as Md;
+bind Viper.Text.JsonPath as JP;
+bind Viper.Text.Json as Json;
+bind Viper.Text.Toml as Toml;
+bind Viper.Collections.Seq as Seq;
+bind Viper.Box as Box;
+bind Viper.Fmt as Fmt;
+
+// EXPECT_OUT: RESULT: ok
+// COVER: Bug #8  - Csv.ParseLine count via Seq.get_Count
+// COVER: Bug #9  - Csv.FormatLine with boxed strings
+// COVER: Bug #10 - Markdown.ExtractHeadings count
+// COVER: Bug #11 - JsonPath auto-parse raw JSON strings
+// COVER: Bug #12 - Toml.GetStr for string values
+
+func start() {
+    // --- Bug #8: Csv.ParseLine().Count should return field count ---
+    setTest("Bug8_CsvParseLineCount");
+    var fields = Csv.ParseLine("Alice,30,NY");
+    assertEqInt(fields.Len, 3, "Csv.ParseLine field count via .Len");
+    assertEqInt(fields.Count, 3, "Csv.ParseLine field count via .Count");
+
+    // --- Bug #9: Csv.FormatLine with boxed strings ---
+    setTest("Bug9_CsvFormatLineBoxed");
+    var seq = Seq.New();
+    seq.Push(Box.Str("Alice"));
+    seq.Push(Box.Str("30"));
+    seq.Push(Box.Str("NY"));
+    var line = Csv.FormatLine(seq);
+    assertEqStr(line, "Alice,30,NY", "Csv.FormatLine with boxed strings");
+
+    // Test with raw strings too
+    var seq2 = Seq.New();
+    seq2.Push("Bob");
+    seq2.Push("25");
+    seq2.Push("LA");
+    var line2 = Csv.FormatLine(seq2);
+    assertEqStr(line2, "Bob,25,LA", "Csv.FormatLine with raw strings");
+
+    // --- Bug #10: Markdown.ExtractHeadings().Count ---
+    setTest("Bug10_MarkdownExtractHeadings");
+    var md = "# Hello\n## World\nParagraph.\n### Third";
+    var headings = Md.ExtractHeadings(md);
+    assertGtInt(headings.Count, 0, "Markdown.ExtractHeadings count > 0");
+
+    // Also check ExtractLinks returns a proper Seq
+    var md2 = "Visit [here](http://example.com) and [there](http://test.com).";
+    var links = Md.ExtractLinks(md2);
+    assertGtInt(links.Count, 0, "Markdown.ExtractLinks count > 0");
+
+    // --- Bug #11: JsonPath auto-parse raw JSON strings ---
+    setTest("Bug11_JsonPathAutoParse");
+    var json = "{\"name\":\"Alice\",\"age\":30}";
+
+    // Test with pre-parsed JSON (expected behavior) - GetStr works on string values
+    var parsed = Json.Parse(json);
+    var nameParsed = JP.GetStr(parsed, "name");
+    assertEqStr(nameParsed, "Alice", "JsonPath.GetStr with parsed JSON");
+
+    // Test with raw JSON string (auto-parse - Bug #11 fix)
+    var nameRaw = JP.GetStr(json, "name");
+    assertEqStr(nameRaw, "Alice", "JsonPath.GetStr with raw JSON string");
+
+    // Test Has with raw JSON
+    assertTrue(JP.Has(json, "name"), "JsonPath.Has with raw JSON");
+
+    // --- Bug #12: Toml.GetStr for string values ---
+    setTest("Bug12_TomlGetStr");
+    var toml = "name = \"Alice\"\nage = \"30\"";
+    var tomlName = Toml.GetStr(toml, "name");
+    assertEqStr(tomlName, "Alice", "Toml.GetStr returns string value");
+    var tomlAge = Toml.GetStr(toml, "age");
+    assertEqStr(tomlAge, "30", "Toml.GetStr returns second string value");
+
+    report();
+}

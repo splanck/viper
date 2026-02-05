@@ -479,6 +479,7 @@ RT_FUNC(SeqInsert,       rt_seq_insert,        "Viper.Collections.Seq.Insert",  
 RT_FUNC(SeqIsEmpty,      rt_seq_is_empty,      "Viper.Collections.Seq.get_IsEmpty",  "i1(obj)")
 RT_FUNC(SeqLast,         rt_seq_last,          "Viper.Collections.Seq.Last",         "obj(obj)")
 RT_FUNC(SeqLen,          rt_seq_len,           "Viper.Collections.Seq.get_Len",      "i64(obj)")
+RT_ALIAS("Viper.Collections.Seq.get_Count", SeqLen)
 RT_FUNC(SeqNew,          rt_seq_new,           "Viper.Collections.Seq.New",          "obj()")
 RT_FUNC(SeqPeek,         rt_seq_peek,          "Viper.Collections.Seq.Peek",         "obj(obj)")
 RT_FUNC(SeqPop,          rt_seq_pop,           "Viper.Collections.Seq.Pop",          "obj(obj)")
@@ -2138,7 +2139,7 @@ RT_FUNC(UCase,          rt_ucase,            "Viper.String.ToUpper",     "str(st
 
 // String static utilities (Viper.Strings.*)
 RT_FUNC(SplitFields,           rt_split_fields,  "Viper.String.SplitFields",       "i64(str,ptr,i64)")
-RT_FUNC(StrEquals,             rt_str_eq,        "Viper.String.Equals",            "i64(str,str)")
+RT_FUNC(StrEquals,             rt_str_eq,        "Viper.String.Equals",            "bool(str,str)")
 RT_FUNC(StrFromI16,            rt_str_i16_alloc, "Viper.String.FromI16",           "str(i16)")
 RT_FUNC(StrFromI32,            rt_str_i32_alloc, "Viper.String.FromI32",           "str(i32)")
 RT_FUNC(StrFromSingle,         rt_str_f_alloc,   "Viper.String.FromSingle",        "str(f64)") // Formats with single precision (truncates to f32)
@@ -2352,6 +2353,7 @@ RT_FUNC(TomlParse,          rt_toml_parse,            "Viper.Text.Toml.Parse",  
 RT_FUNC(TomlIsValid,        rt_toml_is_valid,         "Viper.Text.Toml.IsValid",        "i1(str)")
 RT_FUNC(TomlFormat,         rt_toml_format,           "Viper.Text.Toml.Format",         "str(obj)")
 RT_FUNC(TomlGet,            rt_toml_get,              "Viper.Text.Toml.Get",            "obj(obj,str)")
+RT_FUNC(TomlGetStr,         rt_toml_get_str,          "Viper.Text.Toml.GetStr",         "str(obj,str)")
 
 //=============================================================================
 // TEXT - MARKDOWN

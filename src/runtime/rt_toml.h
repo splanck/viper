@@ -41,10 +41,16 @@ extern "C"
     rt_string rt_toml_format(void *map);
 
     /// @brief Get a value from parsed TOML using dotted key path.
-    /// @param root Root Map from rt_toml_parse.
+    /// @param root Root Map from rt_toml_parse, or a raw TOML string.
     /// @param key_path Dotted key path (e.g., "server.host").
     /// @return Value at path, or NULL if not found.
     void *rt_toml_get(void *root, rt_string key_path);
+
+    /// @brief Get a string value from TOML using dotted key path.
+    /// @param root Root Map from rt_toml_parse, or a raw TOML string.
+    /// @param key_path Dotted key path (e.g., "server.host").
+    /// @return String value, or empty string if not found.
+    rt_string rt_toml_get_str(void *root, rt_string key_path);
 
 #ifdef __cplusplus
 }

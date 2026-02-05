@@ -53,11 +53,10 @@ management, pixel operations, drawing primitives, and input handling through a s
 ViperGFX builds as part of the main Viper build:
 
 ```bash
-cmake -S . -B build
-cmake --build build --target vipergfx
+./scripts/build_viper.sh
 ```
 
-Or build standalone:
+Or build the graphics library standalone:
 
 ```bash
 cd src/lib/graphics

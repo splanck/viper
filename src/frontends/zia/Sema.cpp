@@ -884,9 +884,23 @@ TypeRef Sema::resolveNamedType(const std::string &name) const
     auto dotPos = name.find('.');
     if (dotPos != std::string::npos)
     {
-        std::string typeName = name.substr(dotPos + 1);
+        std::string prefix = name.substr(0, dotPos);
+        std::string suffix = name.substr(dotPos + 1);
+
+        // Check if prefix is a namespace alias (e.g., GUI → Viper.GUI)
+        auto prefixIt = importedSymbols_.find(prefix);
+        if (prefixIt != importedSymbols_.end())
+        {
+            std::string fullName = prefixIt->second + "." + suffix;
+            it = typeRegistry_.find(fullName);
+            if (it != typeRegistry_.end())
+                return it->second;
+            if (fullName.rfind("Viper.", 0) == 0)
+                return types::runtimeClass(fullName);
+        }
+
         // Look up the unqualified type name in the registry
-        it = typeRegistry_.find(typeName);
+        it = typeRegistry_.find(suffix);
         if (it != typeRegistry_.end())
             return it->second;
     }

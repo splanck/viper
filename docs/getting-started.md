@@ -23,51 +23,25 @@ Before you begin, ensure you have:
 
 ## Building Viper
 
-### 1. Configure the Build
-
-Use an out-of-source build directory for clean rebuilds and configuration switching:
+The build script configures, compiles, tests, and installs Viper in one step:
 
 ```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+./scripts/build_viper.sh
 ```
 
-**Build types:**
-
-- `Debug` — Full debug symbols, no optimization
-- `Release` — Optimized, minimal debug info
-- `RelWithDebInfo` — Optimized with debug symbols (recommended)
-
-### 2. Compile
-
-```sh
-cmake --build build -j
-```
-
-The `-j` flag enables parallel compilation for faster builds.
-
-### 3. Optional: Install Locally
-
-For packaging or downstream testing, install into a local prefix:
-
-```sh
-cmake --install build --prefix ./_install
-```
+On Windows, use `scripts/build_viper.cmd` instead.
 
 ---
 
 ## Verify the Installation
 
-After building, confirm the primary tools work correctly:
+After building, confirm the primary tool works correctly:
 
 ```sh
-./build/src/tools/vbasic/vbasic --help
-./build/src/tools/zia/zia --help
-./build/src/tools/vpascal/vpascal --help
-./build/src/tools/ilrun/ilrun --help
-./build/src/tools/il-verify/il-verify --help
+viper --version
 ```
 
-Each tool should display its help message without errors.
+This should display the Viper version and IL version without errors.
 
 ---
 
@@ -76,7 +50,7 @@ Each tool should display its help message without errors.
 ### BASIC
 
 ```sh
-./build/src/tools/vbasic/vbasic examples/basic/ex1_hello_cond.bas
+viper run examples/basic/ex1_hello_cond.bas
 ```
 
 **Expected output:**
@@ -101,30 +75,7 @@ func start() {
 Run it:
 
 ```sh
-./build/src/tools/zia/zia hello.zia
-```
-
-**Expected output:**
-
-```
-Hello, World!
-```
-
-### Pascal
-
-Create a file `hello.pas`:
-
-```pascal
-program Hello;
-begin
-    WriteLn('Hello, World!');
-end.
-```
-
-Run it:
-
-```sh
-./build/src/tools/vpascal/vpascal hello.pas
+viper run hello.zia
 ```
 
 **Expected output:**
@@ -140,17 +91,17 @@ Hello, World!
 You can inspect the generated IL or run IL programs directly:
 
 ```sh
-# Show generated IL from BASIC
-./build/src/tools/vbasic/vbasic examples/basic/ex1_hello_cond.bas --emit-il
+# Emit IL from BASIC
+viper build examples/basic/ex1_hello_cond.bas
 
-# Show generated IL from Zia
-./build/src/tools/zia/zia hello.zia --emit-il
+# Emit IL from Zia
+viper build hello.zia
 
 # Save IL to a file
-./build/src/tools/vbasic/vbasic examples/basic/ex1_hello_cond.bas -o hello.il
+viper build examples/basic/ex1_hello_cond.bas -o hello.il
 
 # Run the IL program directly
-./build/src/tools/ilrun/ilrun hello.il
+ilrun hello.il
 ```
 
 For more examples, see the **[BASIC Tutorial](basic-language.md)**,
@@ -160,27 +111,19 @@ For more examples, see the **[BASIC Tutorial](basic-language.md)**,
 
 ## Command Reference
 
-### User-Facing Tools (Simplified CLI)
+### Primary Tools
 
-| Tool        | Purpose                       | Example                  |
-|-------------|-------------------------------|--------------------------|
-| `vbasic`    | Run/compile BASIC programs    | `vbasic script.bas`      |
-| `zia`       | Run/compile Zia programs      | `zia program.zia`        |
-| `vpascal`   | Run/compile Pascal programs   | `vpascal program.pas`    |
-| `ilrun`     | Execute IL programs           | `ilrun program.il`       |
-| `il-verify` | Verify IL correctness         | `il-verify program.il`   |
-| `il-dis`    | Disassemble IL                | `il-dis program.il`      |
+| Tool        | Purpose                                   | Example                     |
+|-------------|-------------------------------------------|-----------------------------|
+| `viper`     | Unified compiler driver — run and build   | `viper run program.zia`     |
+| `vbasic`    | Run/compile BASIC programs                | `vbasic script.bas`         |
+| `zia`       | Run/compile Zia programs                  | `zia program.zia`           |
+| `ilrun`     | Execute IL programs                       | `ilrun program.il`          |
+| `il-verify` | Verify IL correctness                     | `il-verify program.il`      |
+| `il-dis`    | Disassemble IL                            | `il-dis program.il`         |
 
-### Advanced Tools
-
-| Tool             | Purpose                     | Example                             |
-|------------------|-----------------------------|-------------------------------------|
-| `viper`          | Unified compiler (advanced) | `viper front basic -run script.bas` |
-| `basic-ast-dump` | Dump BASIC AST              | `basic-ast-dump script.bas`       |
-| `basic-lex-dump` | Dump BASIC tokens           | `basic-lex-dump script.bas`       |
-
-> **Note:** The simplified tools (`vbasic`, `zia`, `ilrun`) are recommended for everyday use. The unified `viper`
-command provides access to advanced features.
+> **Note:** `viper run` is the recommended way to run programs. It auto-detects the language
+and can run entire project directories.
 
 ---
 
@@ -216,8 +159,6 @@ Viper guarantees consistent numeric behavior across all platforms and execution 
 - **[BASIC Reference](basic-reference.md)** — Complete BASIC language reference
 - **[Zia Tutorial](zia-getting-started.md)** — Learn Zia by example
 - **[Zia Reference](zia-reference.md)** — Complete Zia language reference
-- **[Pascal Tutorial](experimental/pascal-language.md)** — Learn Viper Pascal by example
-- **[Pascal Reference](experimental/pascal-reference.md)** — Complete Pascal language reference
 - **[IL Guide](il-guide.md)** — Comprehensive IL documentation
 
 **Implementation Guides:**

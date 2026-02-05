@@ -260,11 +260,11 @@ void SelectCaseLowering::lowerStringArms(const SelectCaseStmt &stmt,
         assert(entry.kind == CasePlanEntry::Kind::StringLabel);
         std::string labelStr(entry.strLiteral);
         il::core::Value labelValue = lowerer_.emitConstStr(lowerer_.getStringLabel(labelStr));
-        // rt_str_eq returns i64 (0 or 1), convert to boolean
-        il::core::Type i64Ty(il::core::Type::Kind::I64);
+        // rt_str_eq returns i1 (boolean)
+        il::core::Type i1Ty(il::core::Type::Kind::I1);
         il::core::Value result =
-            lowerer_.emitCallRet(i64Ty, "rt_str_eq", {stringSelector, labelValue});
-        return lowerer_.coerceToBool({result, i64Ty}, entry.loc).value;
+            lowerer_.emitCallRet(i1Ty, "rt_str_eq", {stringSelector, labelValue});
+        return result;
     };
 
     emitCompareChain(blocks.currentIdx, plan, emitter);

@@ -25,6 +25,7 @@
 #include "frontends/basic/RuntimeNames.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 
+#include <cstring>
 #include <functional>
 #include <limits>
 #include <optional>
@@ -393,9 +394,13 @@ Lowerer::RVal NumericExprLowering::lowerStringBinary(const BinaryExpr &expr,
             break;
     }
 
-    // String comparison runtime functions return i64 (0 or 1)
-    IlType i64Ty(IlKind::I64);
-    Value cmp = lowerer.emitCallRet(i64Ty, rtFunc, {lhs.value, rhs.value});
+    // rt_str_eq returns i1 (boolean), other string comparisons return i64
+    bool isStrEq = (std::strcmp(rtFunc, "rt_str_eq") == 0);
+    IlType callRetTy = isStrEq ? IlType(IlKind::I1) : IlType(IlKind::I64);
+    Value cmp = lowerer.emitCallRet(callRetTy, rtFunc, {lhs.value, rhs.value});
+    // Widen i1 to i64 if needed
+    if (isStrEq)
+        cmp = lowerer.emitZext1ToI64(cmp);
     // Convert to BASIC logical form: 0 stays 0, 1 becomes -1 (negate: 0-cmp)
     Value zero = lowerer.emitConstI64(0);
     Value cmpLogical = lowerer.emitISub(zero, cmp);

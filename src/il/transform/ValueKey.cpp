@@ -97,14 +97,6 @@ bool isCommutativeCSE(Opcode op) noexcept
         case Opcode::Xor:
         case Opcode::ICmpEq:
         case Opcode::ICmpNe:
-        case Opcode::UCmpLT:
-        case Opcode::UCmpLE:
-        case Opcode::UCmpGT:
-        case Opcode::UCmpGE:
-        case Opcode::SCmpLT:
-        case Opcode::SCmpLE:
-        case Opcode::SCmpGT:
-        case Opcode::SCmpGE:
         case Opcode::FAdd:
         case Opcode::FMul:
         case Opcode::FCmpEQ:

@@ -78,7 +78,7 @@ int main()
     assert(strEqDescriptor && "string equality runtime descriptor missing");
     assert(strEqDescriptor->name == "rt_str_eq" &&
            "string equality runtime descriptor name mismatch");
-    assert(strEqDescriptor->signature.retType.kind == il::core::Type::Kind::I64 &&
+    assert(strEqDescriptor->signature.retType.kind == il::core::Type::Kind::I1 &&
            "string equality runtime descriptor return type mismatch");
     assert(strEqDescriptor->signature.paramTypes.size() == 2 &&
            "string equality runtime descriptor arity mismatch");

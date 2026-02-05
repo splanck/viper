@@ -30,6 +30,7 @@ set(ZIA_SOURCES
 add_library(fe_zia ${ZIA_SOURCES})
 
 target_include_directories(fe_zia PUBLIC
+        ${CMAKE_BINARY_DIR}/generated
         ${PROJECT_SOURCE_DIR}/src
         ${PROJECT_SOURCE_DIR}/include
 )

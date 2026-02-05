@@ -886,19 +886,19 @@ std::optional<int> EmitCommon::fcmpConditionCode(std::string_view opcode) noexce
     }
     if (suffix == "lt")
     {
-        return 2;
+        return 8; // "b" (below) — UCOMISD clears SF/OF, so signed codes are wrong
     }
     if (suffix == "le")
     {
-        return 3;
+        return 9; // "be" (below or equal)
     }
     if (suffix == "gt")
     {
-        return 4;
+        return 6; // "a" (above)
     }
     if (suffix == "ge")
     {
-        return 5;
+        return 7; // "ae" (above or equal)
     }
     return std::nullopt;
 }

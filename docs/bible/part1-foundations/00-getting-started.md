@@ -349,20 +349,18 @@ Enter the Viper directory:
 cd viper
 ```
 
-Now run these commands:
+Now run the build script:
 ```bash
-cmake -S . -B build
-cmake --build build -j
+./scripts/build_viper.sh
 ```
 
-**What do these commands do?**
+**What does this do?**
 
-The first command (`cmake -S . -B build`) prepares the build. It:
-- Reads the project's configuration
-- Checks that you have the necessary tools installed
-- Creates a `build` folder with all the necessary setup
-
-The second command (`cmake --build build -j`) actually compiles the code. The `-j` flag tells it to use multiple processor cores, making it faster.
+The build script:
+- Configures the project using CMake
+- Compiles all the code
+- Runs the test suite to verify everything works
+- Installs the tools so you can use them from anywhere
 
 **This step might take several minutes.** You'll see a lot of text scrolling by — that's normal. Don't worry about understanding it all. What matters is that it completes without errors.
 
@@ -530,7 +528,7 @@ Here are solutions to problems that commonly trip up beginners:
 
 **Solutions:**
 
-1. **Did you complete the build?** Make sure `cmake --build build -j` finished without errors.
+1. **Did you complete the build?** Make sure `./scripts/build_viper.sh` finished without errors.
 
 2. **Did you set up your PATH?** Run the export command again:
    ```bash
@@ -607,8 +605,7 @@ Here are solutions to problems that commonly trip up beginners:
    ```bash
    cd ~/dev/viper
    rm -rf build
-   cmake -S . -B build
-   cmake --build build -j
+   ./scripts/build_viper.sh
    ```
 
 4. **Check available disk space.** Building software requires several gigabytes of free space.

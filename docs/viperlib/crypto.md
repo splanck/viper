@@ -60,7 +60,26 @@ Key-based encryption produces:
 
 ### Zia Example
 
-> Cipher is accessible via fully-qualified calls: `Viper.Crypto.Cipher.Encrypt(...)`, `Viper.Crypto.Cipher.Decrypt(...)`, `Viper.Crypto.Cipher.GenerateKey()`.
+```zia
+module CipherDemo;
+
+bind Viper.Terminal;
+bind Viper.Crypto.Cipher as Cipher;
+bind Viper.Collections;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    // Encrypt data with a password
+    var plaintext = Bytes.FromStr("Secret message");
+    var password = "my-secure-password";
+    var ciphertext = Cipher.Encrypt(plaintext, password);
+    Say("Encrypted len: " + Fmt.Int(ciphertext.Len));
+
+    // Generate a random encryption key
+    var key = Cipher.GenerateKey();
+    Say("Key len: " + Fmt.Int(key.Len));
+}
+```
 
 ### Password-Based Encryption BASIC Example
 
@@ -315,7 +334,22 @@ Key derivation functions for deriving cryptographic keys from passwords.
 
 ### Zia Example
 
-> KeyDerive is accessible via fully-qualified calls: `Viper.Crypto.KeyDerive.Derive(...)`, `Viper.Crypto.KeyDerive.HKDF(...)`.
+```zia
+module KeyDeriveDemo;
+
+bind Viper.Terminal;
+bind Viper.Crypto.KeyDerive as KD;
+bind Viper.Crypto.Rand as CRand;
+
+func start() {
+    // Generate a random salt
+    var salt = CRand.Bytes(16);
+
+    // Derive a key using PBKDF2-SHA256
+    var keyHex = KD.Pbkdf2SHA256Str("password123", salt, 1000, 32);
+    Say("Derived key: " + keyHex);
+}
+```
 
 ### BASIC Example
 
@@ -410,7 +444,25 @@ Cryptographically secure random number generation.
 
 ### Zia Example
 
-> Crypto.Rand is accessible via fully-qualified calls: `Viper.Crypto.Rand.Bytes(...)`, `Viper.Crypto.Rand.Int(...)`, `Viper.Crypto.Rand.Token(...)`.
+```zia
+module CryptoRandDemo;
+
+bind Viper.Terminal;
+bind Viper.Crypto.Rand as CRand;
+bind Viper.Collections;
+bind Viper.Fmt as Fmt;
+
+func start() {
+    // Generate cryptographically secure random bytes
+    var bytes = CRand.Bytes(16);
+    var hex = Bytes.ToHex(bytes);
+    Say("Hex: " + hex);
+
+    // Generate a random integer in range
+    var n = CRand.Int(1, 100);
+    Say("Random 1-100: " + Fmt.Int(n));
+}
+```
 
 ### BASIC Example
 

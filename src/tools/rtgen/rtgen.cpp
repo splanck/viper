@@ -584,6 +584,8 @@ static std::string ilTypeToCType(const std::string &ilType)
         return "float";
     if (ilType == "void")
         return "void";
+    if (ilType == "bool")
+        return "int8_t";
     if (ilType == "obj" || ilType == "ptr")
         return "void *";
     // Default to void* for unknown types
@@ -601,6 +603,8 @@ static std::string ilTypeToSigType(const std::string &ilType)
         return "string";
     if (ilType == "obj")
         return "ptr";
+    if (ilType == "bool")
+        return "i1";
     // Most types map directly
     return ilType;
 }
@@ -1484,12 +1488,48 @@ static std::string ilTypeToZiaType(const std::string &ilType, const std::string 
         return "types::integer()";
     if (ilType == "f64")
         return "types::number()";
-    if (ilType == "i1")
+    if (ilType == "i1" || ilType == "bool")
         return "types::boolean()";
     if (ilType == "void")
         return "types::voidType()";
     if (ilType == "obj" || ilType == "ptr")
     {
+        // Explicit return type overrides for functions that return objects
+        // from a different namespace than their own.
+        static const std::unordered_map<std::string, std::string> returnTypeOverrides = {
+            // Crypto functions returning Viper.Collections.Bytes
+            {"Viper.Crypto.Rand.Bytes", "Viper.Collections.Bytes"},
+            {"Viper.Crypto.Cipher.Encrypt", "Viper.Collections.Bytes"},
+            {"Viper.Crypto.Cipher.Decrypt", "Viper.Collections.Bytes"},
+            {"Viper.Crypto.Cipher.EncryptWithKey", "Viper.Collections.Bytes"},
+            {"Viper.Crypto.Cipher.DecryptWithKey", "Viper.Collections.Bytes"},
+            {"Viper.Crypto.Cipher.GenerateKey", "Viper.Collections.Bytes"},
+            {"Viper.Crypto.Cipher.DeriveKey", "Viper.Collections.Bytes"},
+            {"Viper.Crypto.Aes.Encrypt", "Viper.Collections.Bytes"},
+            {"Viper.Crypto.Aes.Decrypt", "Viper.Collections.Bytes"},
+            {"Viper.Crypto.Aes.EncryptStr", "Viper.Collections.Bytes"},
+            {"Viper.Crypto.KeyDerive.Pbkdf2SHA256", "Viper.Collections.Bytes"},
+            // IO functions returning Viper.Collections.Bytes
+            {"Viper.IO.Stream.ToBytes", "Viper.Collections.Bytes"},
+            // Text functions returning Viper.Collections.Seq
+            {"Viper.Text.Csv.ParseLine", "Viper.Collections.Seq"},
+            {"Viper.Text.Csv.ParseLineWith", "Viper.Collections.Seq"},
+            {"Viper.Text.Csv.Parse", "Viper.Collections.Seq"},
+            {"Viper.Text.Csv.ParseWith", "Viper.Collections.Seq"},
+            {"Viper.Text.Markdown.ExtractLinks", "Viper.Collections.Seq"},
+            {"Viper.Text.Markdown.ExtractHeadings", "Viper.Collections.Seq"},
+            {"Viper.Text.Html.ExtractLinks", "Viper.Collections.Seq"},
+            {"Viper.Text.Html.ExtractText", "Viper.Collections.Seq"},
+            // Collection methods returning Seq from non-Seq classes
+            {"Viper.Collections.Bag.Items", "Viper.Collections.Seq"},
+            {"Viper.Collections.SortedSet.Items", "Viper.Collections.Seq"},
+            {"Viper.Collections.Set.Items", "Viper.Collections.Seq"},
+        };
+
+        auto overrideIt = returnTypeOverrides.find(canonical);
+        if (overrideIt != returnTypeOverrides.end())
+            return "types::runtimeClass(\"" + overrideIt->second + "\")";
+
         // For factory methods that return instances of their class, derive the class type
         // e.g., "Viper.GUI.App.New" -> runtimeClass("Viper.GUI.App")
         // e.g., "Viper.Graphics.Pixels.LoadBmp" -> runtimeClass("Viper.Graphics.Pixels")

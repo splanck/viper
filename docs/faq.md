@@ -31,46 +31,31 @@ Pascal, it's intended for education, experimentation, and compiler research rath
 ### 4. How do I build Viper?
 
 ```bash
-cmake -S . -B build
-cmake --build build -j
+./scripts/build_viper.sh
 ```
 
 Requirements: CMake 3.20+, Clang or GCC with C++20 support. See the top-level README for platform-specific details.
 
 ### 5. How do I run a program?
 
-**Zia:**
-
 ```bash
-./build/src/tools/zia/zia myprogram.zia
+viper run myprogram.zia
+viper run myprogram.bas
 ```
 
-**BASIC:**
+You can also run an entire project directory:
 
 ```bash
-./build/src/tools/vbasic/vbasic myprogram.bas
+viper run demos/zia/frogger/
+viper run demos/basic/chess/
 ```
 
-**Pascal:**
+The standalone tools `vbasic`, `zia`, and `ilrun` are also available:
 
 ```bash
-./build/src/tools/vpascal/vpascal myprogram.pas
-```
-
-For additional options:
-
-```bash
-./build/src/tools/zia/zia --help
-./build/src/tools/vbasic/vbasic --help
-./build/src/tools/vpascal/vpascal --help
-```
-
-The advanced `viper` command is also available:
-
-```bash
-./build/src/tools/viper/viper front zia -run myprogram.zia
-./build/src/tools/viper/viper front basic -run myprogram.bas
-./build/src/tools/viper/viper front pascal -run myprogram.pas
+vbasic myprogram.bas
+zia myprogram.zia
+ilrun program.il
 ```
 
 ### 6. Where can I find example programs?

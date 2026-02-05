@@ -30,21 +30,25 @@ cd viper
 Build and test:
 
 ```bash
-cmake -S . -B build
-cmake --build build -j
-ctest --test-dir build --output-on-failure
+./scripts/build_viper.sh
 ```
 
 Run a BASIC program:
 
 ```bash
-./build/src/tools/vbasic/vbasic examples/basic/ex1_hello_cond.bas
+./build/src/tools/viper/viper run examples/basic/ex1_hello_cond.bas
 ```
 
 Run a Zia program:
 
 ```bash
-./build/src/tools/zia/zia demos/zia/frogger/main.zia
+./build/src/tools/viper/viper run demos/zia/frogger/main.zia
+```
+
+Run a project directory (auto-discovers language and entry point):
+
+```bash
+./build/src/tools/viper/viper run demos/basic/chess/
 ```
 
 Run an IL program directly:
@@ -127,10 +131,10 @@ Run demos:
 
 ```bash
 # BASIC
-./build/src/tools/vbasic/vbasic demos/basic/frogger/frogger.bas
+./build/src/tools/viper/viper run demos/basic/frogger/
 
 # Zia
-./build/src/tools/zia/zia demos/zia/frogger/main.zia
+./build/src/tools/viper/viper run demos/zia/frogger/
 ```
 
 ---
@@ -242,6 +246,7 @@ See the **[Runtime Library Reference](docs/viperlib/README.md)** for complete AP
 
 | Tool | Purpose |
 |------|---------|
+| `viper` | Unified compiler driver — run, build, and compile projects |
 | `vbasic` | Run or compile BASIC programs |
 | `zia` | Run or compile Zia programs |
 | `ilrun` | Execute IL programs |
@@ -251,34 +256,31 @@ See the **[Runtime Library Reference](docs/viperlib/README.md)** for complete AP
 **Examples:**
 
 ```bash
-# Run BASIC
+# Run any source file (auto-detects language)
+./build/src/tools/viper/viper run program.zia
+./build/src/tools/viper/viper run program.bas
+
+# Run a project directory (discovers files and entry point)
+./build/src/tools/viper/viper run demos/zia/frogger/
+./build/src/tools/viper/viper run demos/basic/chess/
+
+# Compile to IL
+./build/src/tools/viper/viper build program.zia
+./build/src/tools/viper/viper build program.bas -o output.il
+
+# Run with standalone tools
 ./build/src/tools/vbasic/vbasic program.bas
-
-# Run Zia
 ./build/src/tools/zia/zia program.zia
-
-# Emit IL from any frontend
-./build/src/tools/vbasic/vbasic program.bas --emit-il
-./build/src/tools/zia/zia program.zia --emit-il
-
-# Run IL
 ./build/src/tools/ilrun/ilrun program.il
 
 # Verify IL
 ./build/src/tools/il-verify/il-verify program.il
 ```
 
-**Advanced tool:**
-
-`viper` is a unified compiler driver for advanced workflows:
+**Native compilation (experimental):**
 
 ```bash
-# Compile BASIC to native executable (experimental)
-./build/src/tools/viper/viper front basic -emit-il program.bas > program.il
-./build/src/tools/viper/viper codegen arm64 program.il -o program
-
-# Compile Zia to native executable
-./build/src/tools/viper/viper front zia -emit-il program.zia > program.il
+./build/src/tools/viper/viper build program.zia -o program.il
 ./build/src/tools/viper/viper codegen arm64 program.il -o program
 ```
 
@@ -318,24 +320,16 @@ cmake -S . -B build -DVIPER_VM_THREADED=ON
 ### Build Steps
 
 ```bash
-cmake -S . -B build
-cmake --build build -j
-ctest --test-dir build --output-on-failure
+./scripts/build_viper.sh
 ```
 
-### Install (Optional)
-
-```bash
-sudo cmake --install build --prefix /usr/local
-```
-
-Installs: `vbasic`, `zia`, `ilrun`, `viper`, `il-verify`, `il-dis`
+This configures, builds, tests, and installs Viper in one step.
 
 ### Platform Notes
 
 - **macOS**: Use Apple Clang. ARM64 tests skip x86-64-specific checks automatically.
-- **Linux**: Clang recommended. Force with `CC=clang CXX=clang++ cmake -S . -B build`
-- **Windows**: Clang-CL preferred. Some POSIX tests are skipped.
+- **Linux**: Clang recommended.
+- **Windows**: Use `scripts/build_viper.cmd` instead. Clang-CL preferred. Some POSIX tests are skipped.
 
 ---
 

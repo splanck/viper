@@ -26,6 +26,7 @@
 #include "il/io/StringEscape.hpp"
 
 #include <cmath>
+#include <cstring>
 #include <functional>
 #include <iomanip>
 #include <limits>
@@ -202,7 +203,17 @@ bool valueEquals(const Value &a, const Value &b) noexcept
         case Value::Kind::ConstInt:
             return a.i64 == b.i64 && a.isBool == b.isBool;
         case Value::Kind::ConstFloat:
-            return a.f64 == b.f64;
+        {
+            // Use bitwise comparison to match valueHash() behavior.
+            // IEEE 754 == treats -0.0 == 0.0 (true) and NaN != NaN (true),
+            // but for CSE/hashing we need bitwise identity: -0.0 and 0.0 are
+            // distinct constants, and identical NaN values must compare equal.
+            static_assert(sizeof(double) == sizeof(unsigned long long));
+            unsigned long long aBits, bBits;
+            std::memcpy(&aBits, &a.f64, sizeof(double));
+            std::memcpy(&bBits, &b.f64, sizeof(double));
+            return aBits == bBits;
+        }
         case Value::Kind::ConstStr:
         case Value::Kind::GlobalAddr:
             return a.str == b.str;

@@ -19,7 +19,7 @@ GUI_LIB="$BUILD_DIR/src/lib/gui/libvipergui.a"
 ZIA_DIR="$ROOT_DIR/demos/zia"
 
 # macOS frameworks needed for graphics
-MACOS_GFX_FRAMEWORKS="-framework Cocoa -framework IOKit -framework CoreFoundation"
+MACOS_GFX_FRAMEWORKS="-framework Cocoa -framework IOKit -framework CoreFoundation -framework UniformTypeIdentifiers"
 
 # Colors for output
 RED='\033[0;31m'

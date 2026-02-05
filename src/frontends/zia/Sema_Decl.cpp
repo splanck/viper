@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/Sema.hpp"
+#include "il/runtime/RuntimeNameMap.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
 namespace il::frontends::zia
@@ -136,6 +137,9 @@ void Sema::analyzeNamespaceBind(BindDecl &decl)
         sym.type = types::module(ns);
         sym.isFinal = true;
         defineSymbol(decl.alias, sym);
+        // Also register in importedSymbols_ so type resolution can expand
+        // aliased dotted names (e.g., T.Canvas → Viper.Graphics.Canvas)
+        importedSymbols_[decl.alias] = ns;
     }
     else
     {
@@ -175,6 +179,14 @@ bool Sema::isValidRuntimeNamespace(const std::string &ns)
             if (m.target && std::string(m.target).rfind(prefix, 0) == 0)
                 return true;
         }
+    }
+
+    // Check scope symbols for extern functions registered via defineExternFunction
+    // (e.g., Viper.Box.* functions that aren't part of a runtime class)
+    for (Scope *s = currentScope_; s != nullptr; s = s->parent())
+    {
+        if (s->hasSymbolWithPrefix(prefix))
+            return true;
     }
 
     return false;
@@ -258,16 +270,17 @@ void Sema::importNamespaceSymbols(const std::string &ns)
             importedSymbols_[shortName] = target;
         }
 
-        // Also import property getters as functions (for property access)
+        // Also import properties by their display name (e.g., "Length")
+        // mapped to the getter's qualified name (e.g., "Viper.String.get_Length")
         for (const auto &p : cls.properties)
         {
-            if (p.getter)
+            if (p.getter && p.name)
             {
                 std::string getter(p.getter);
                 if (getter.rfind(prefix, 0) != 0)
                     continue;
 
-                std::string shortName = getter.substr(prefix.size());
+                std::string shortName(p.name);
                 if (shortName.find('.') != std::string::npos)
                     continue;
 
@@ -276,6 +289,25 @@ void Sema::importNamespaceSymbols(const std::string &ns)
                     importedSymbols_[shortName] = getter;
             }
         }
+
+    }
+
+    // Discover sub-namespace prefixes from standalone runtime functions
+    // (registered via runtime.def, not in the RuntimeClasses catalog).
+    // For example, Viper.GUI.Shortcuts.Register → register "Shortcuts"
+    // as a module-like symbol mapping to "Viper.GUI.Shortcuts".
+    for (const auto &alias : il::runtime::kRuntimeNameAliases)
+    {
+        std::string canonical(alias.canonical);
+        if (canonical.rfind(prefix, 0) != 0)
+            continue;
+        std::string shortName = canonical.substr(prefix.size());
+        auto dotPos = shortName.find('.');
+        if (dotPos == std::string::npos)
+            continue; // Direct child, already handled above
+        std::string subNs = shortName.substr(0, dotPos);
+        if (importedSymbols_.find(subNs) == importedSymbols_.end())
+            importedSymbols_[subNs] = ns + "." + subNs;
     }
 }
 
